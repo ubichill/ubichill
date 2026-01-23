@@ -17,36 +17,34 @@ ubichill/
 
 - **言語**: TypeScript
 - **パッケージマネージャ**: pnpm
-- **フロントエンド**: Next.js (App Router), Tailwind CSS, Socket.io Client
+- **フロントエンド**: Next.js (App Router), Panda CSS, Socket.io Client
 - **バックエンド**: Node.js, Express, Socket.io
-- **インフラ**: Docker, Kubernetes (k3s想定)
+- **インフラ**: DevContainer, Docker, Kubernetes (k3s想定)
 
 ## セットアップ手順
 
 ### 前提条件
-- Node.js (v18以上推奨)
-- pnpm (v8以上)
-- Docker (コンテナで実行する場合)
+- Docker Desktop or Docker Engine
+- VS Code + Dev Containers extension
 
-### ローカル開発 (pnpm)
+### 開発環境の起動 (推奨)
+
+1. VS Code でこのリポジトリを開きます。
+2. 左下の "><" アイコンをクリックするか、コマンドパレットから **Dev Containers: Reopen in Container** を選択します。
+3. コンテナがビルドされ、環境が立ち上がります。
+4. ターミナルで `pnpm dev` を実行すると、Frontend (3000) と Backend (3001) が起動します。
+
+### ローカル開発 (非推奨)
 
 依存関係のインストール:
 ```bash
 pnpm install
 ```
 
-開発サーバーの起動 (Frontend: 3000, Backend: 3001):
+開発サーバーの起動:
 ```bash
 pnpm dev
 ```
 
-### Docker開発
-
-Docker Composeを使用して開発環境を立ち上げます:
-```bash
-docker-compose up --build
-```
-これで `http://localhost:3000` にアクセスできます。
-
 ## AIアシスタントの方へ
-このリポジトリのコードを編集・生成する際は、`AI_INSTRUCTIONS.md` を必ず参照してください。
+このリポジトリのコードを編集・生成する際は、`.agent/workflows/ai-guidelines.md` を必ず参照してください。

@@ -29,16 +29,16 @@ description: AIアシスタント向けガイドライン
 - **スタイリング**: **Panda CSS** を使用してください。
   - Tailwind CSSは削除されました。
   - スタイリングは `styled-system` から `css` 関数などをインポートして使用してください。
-    - `import { css } from '../../styled-system/css';`
-  - デザインシステムの値（色、スペースなど）は `panda.config.ts` で定義されています。
   - `className` 属性に `css({})` の戻り値を渡す形で記述してください。
 - **コンポーネント**: 再利用可能なUIパーツは `src/components` に作成してください。
-- **Socket.io**: イベント名は、`shared` パッケージの `ServerToClientEvents` / `ClientToServerEvents` インターフェースで厳密に管理してください。文字列リテラルを直接コードに埋め込むのは避けてください。
+- **Socket.io**: イベント名は、`shared` パッケージの `ServerToClientEvents` / `ClientToServerEvents` インターフェースで厳密に管理してください。
 
 ## 4. Docker / 環境
 
-- `Dockerfile` はルートに配置されており、モノリポ全体をビルドするコンテキストを持っています。
-- 開発時は `docker-compose.yml` を使用して、ソースコードの変更を即座に反映 (Hot Reload) できるようにしてあります。
+- **DevContainer**: 開発環境は `.devcontainer` で定義されています。VS Code の "Dev Containers: Reopen in Container" を使用して開発することを推奨します。
+  - これにより、Frontend/Backend が統合された環境で開発できます。
+- `Dockerfile` (ルート): 本番ビルドおよび GitHub Actions 用です。
+- 開発サーバー起動: `pnpm dev` (コンテナ内で実行)
 
 ## 5. コマンド
 

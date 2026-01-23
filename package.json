@@ -3,22 +3,24 @@
   "version": "1.0.0",
   "private": true,
   "description": "2D metaverse-style work sharing web application",
+  "packageManager": "pnpm@8.15.1",
   "scripts": {
     "dev": "pnpm --filter \"./packages/*\" --parallel dev",
     "build": "pnpm --filter \"./packages/*\" build",
     "lint": "pnpm --filter \"./packages/*\" lint",
-    "test": "echo \"No tests specified yet\" && exit 0",
-    "clean": "pnpm --filter \"./packages/*\" clean"
+    "clean": "pnpm --filter \"./packages/*\" clean",
+    "test": "echo \"No tests specified yet\" && exit 0"
   },
-  "keywords": [
-    "metaverse",
-    "workspace",
-    "collaboration"
+  "workspaces": [
+    "packages/*"
   ],
-  "author": "",
-  "license": "MIT",
   "engines": {
     "node": ">=18.0.0",
     "pnpm": ">=8.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.19",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.3"
   }
 }
