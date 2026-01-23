@@ -1,0 +1,26 @@
+name: 💬 その他
+description: 質問や相談など
+title: "[その他]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        質問や相談はこちらからどうぞ！
+  
+  - type: textarea
+    id: description
+    attributes:
+      label: 内容
+      description: 聞きたいことや相談したいことを書いてください
+      placeholder: 例：使い方がわからない、こんな機能はありますか？
+    validations:
+      required: true
+  
+  - type: textarea
+    id: additional
+    attributes:
+      label: 補足
+      description: あれば追加情報を貼り付けてください
+    validations:
+      required: false

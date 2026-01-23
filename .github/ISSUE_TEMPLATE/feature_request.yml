@@ -1,0 +1,35 @@
+name: ✨ 機能リクエスト
+description: 新しい機能や改善を提案する
+title: "[機能]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        機能提案ありがとうございます！
+  
+  - type: textarea
+    id: want
+    attributes:
+      label: こんな機能がほしい
+      description: どんな機能があったら便利ですか？
+      placeholder: 例：カーソルの色を変えられるようにしてほしい
+    validations:
+      required: true
+  
+  - type: textarea
+    id: why
+    attributes:
+      label: なぜ必要か
+      description: その機能があると何が嬉しいですか？
+      placeholder: 例：友達と区別しやすくなるから
+    validations:
+      required: true
+  
+  - type: textarea
+    id: additional
+    attributes:
+      label: 補足（イメージ画像など）
+      description: あれば追加情報を貼り付けてください
+    validations:
+      required: false

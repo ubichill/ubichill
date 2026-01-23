@@ -1,0 +1,48 @@
+name: 🐛 バグ報告
+description: 不具合や問題を報告する
+title: "[バグ]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        バグ報告ありがとうございます！
+  
+  - type: textarea
+    id: problem
+    attributes:
+      label: 困っていること
+      description: どんな問題が起きていますか？
+      placeholder: 例：ログインボタンを押しても何も起きない
+    validations:
+      required: true
+  
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現手順
+      description: どうすればその問題が起きますか？
+      placeholder: |
+        1. ○○ページを開く
+        2. △△ボタンをクリック
+        3. エラーが表示される
+    validations:
+      required: true
+  
+  - type: textarea
+    id: environment
+    attributes:
+      label: 環境（分かれば）
+      placeholder: |
+        - OS: Windows 11 / macOS など
+        - ブラウザ: Chrome / Safari など
+    validations:
+      required: false
+  
+  - type: textarea
+    id: additional
+    attributes:
+      label: 補足（スクリーンショットなど）
+      description: あれば追加情報を貼り付けてください
+    validations:
+      required: false
