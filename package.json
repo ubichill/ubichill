@@ -1,0 +1,24 @@
+{
+  "name": "ubichill",
+  "version": "1.0.0",
+  "private": true,
+  "description": "2D metaverse-style work sharing web application",
+  "scripts": {
+    "dev": "pnpm --filter \"./packages/*\" --parallel dev",
+    "build": "pnpm --filter \"./packages/*\" build",
+    "lint": "pnpm --filter \"./packages/*\" lint",
+    "test": "echo \"No tests specified yet\" && exit 0",
+    "clean": "pnpm --filter \"./packages/*\" clean"
+  },
+  "keywords": [
+    "metaverse",
+    "workspace",
+    "collaboration"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}

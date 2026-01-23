@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base # 開発時はbaseイメージを使ってコマンド上書き等も可能だが、ここでは簡単のためnodeイメージベースでdev起動する構成にする
+    image: node:18-alpine
+    working_dir: /app
+    volumes:
+      - .:/app
+    environment:
+      - NODE_ENV=development
+    ports:
+      - "3001:3001"
+    command: sh -c "corepack enable && pnpm install && pnpm --filter backend dev"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+    image: node:18-alpine
+    working_dir: /app
+    volumes:
+      - .:/app
+    environment:
+      - NODE_ENV=development
+    ports:
+      - "3000:3000"
+    command: sh -c "corepack enable && pnpm install && pnpm --filter frontend dev"
+    depends_on:
+      - backend
+
+# 注意: ホットリロードを効かせるため、volumesでローカルのソースをマウントし、
+# コンテナ起動時に install & dev を実行するパターンにしています。
+# プロダクションビルドの確認には個別の target (frontend-runner/backend-runner) を指定してください。
