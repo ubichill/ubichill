@@ -3,11 +3,11 @@
     "version": "1.0.0",
     "private": true,
     "scripts": {
-        "prepare:panda": "panda codegen && panda",
+        "prepare:panda": "panda codegen",
         "prepare": "pnpm run prepare:panda",
-        "dev": "panda codegen && next dev",
+        "dev": "pnpm run prepare:panda && next dev",
         "build": "pnpm run build:prepare && next build",
-        "build:prepare": "NODE_ENV=production pnpm run prepare",
+        "build:prepare": "cross-env NODE_ENV=production pnpm run prepare",
         "start": "next start",
         "lint": "next lint"
     },

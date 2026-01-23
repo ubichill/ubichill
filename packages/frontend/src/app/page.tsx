@@ -29,7 +29,7 @@ export default function Home() {
             className={flex({
                 minH: 'screen',
                 direction: 'column',
-                align: 'center',
+                alignItems: 'center',
                 justify: 'space-between',
                 p: '24'
             })}
@@ -78,7 +78,7 @@ export default function Home() {
             </div>
 
             {!hasJoined ? (
-                <div className={vstack({ gap: '4', align: 'center' })}>
+                <div className={vstack({ gap: '4', alignItems: 'center' })}>
                     <h1 className={css({ fontSize: '4xl', fontWeight: 'bold' })}>Ubichill</h1>
                     <form onSubmit={handleJoin} className={hstack({ gap: '2' })}>
                         <input

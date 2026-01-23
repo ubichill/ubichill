@@ -27,14 +27,14 @@ ubichill/
 - Docker Desktop or Docker Engine
 - VS Code + Dev Containers extension
 
-### 開発環境の起動 (推奨)
+### 開発環境の起動
 
 1. VS Code でこのリポジトリを開きます。
 2. 左下の "><" アイコンをクリックするか、コマンドパレットから **Dev Containers: Reopen in Container** を選択します。
 3. コンテナがビルドされ、環境が立ち上がります。
 4. ターミナルで `pnpm dev` を実行すると、Frontend (3000) と Backend (3001) が起動します。
 
-### ローカル開発 (非推奨)
+### ローカル開発
 
 依存関係のインストール:
 ```bash
