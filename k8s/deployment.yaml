@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: ghcr.io/youkan0124/ubichill-backend:latest
+          image: ghcr.io/ubichill/ubichill-backend:latest
           ports:
             - containerPort: 3001
           resources:
@@ -59,7 +59,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: ghcr.io/youkan0124/ubichill-frontend:latest
+          image: ghcr.io/ubichill/ubichill-frontend:latest
           ports:
             - containerPort: 3000
           resources:
