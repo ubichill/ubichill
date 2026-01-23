@@ -17,6 +17,7 @@ COPY package.json ./
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/backend/package.json ./packages/backend/
 COPY packages/frontend/package.json ./packages/frontend/
+COPY packages/frontend/panda.config.ts ./packages/frontend/
 
 # 依存関係のインストール
 RUN pnpm install --frozen-lockfile
