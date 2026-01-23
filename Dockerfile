@@ -25,17 +25,16 @@ RUN pnpm install --frozen-lockfile
 # ソースコードのコピー
 COPY . .
 
-# 全パッケージのビルド
-RUN pnpm build
-
 # 実行ステージ (Backend)
 FROM base AS backend-runner
 WORKDIR /app
+RUN pnpm --filter "@ubichill/backend..." build
 EXPOSE 3001
 CMD ["pnpm", "--filter", "backend", "start"]
 
 # 実行ステージ (Frontend)
 FROM base AS frontend-runner
 WORKDIR /app
+RUN pnpm --filter "@ubichill/frontend..." build
 EXPOSE 3000
 CMD ["pnpm", "--filter", "frontend", "start"]
