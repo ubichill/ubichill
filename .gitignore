@@ -1,11 +1,12 @@
 # Dependencies
 node_modules/
-.pnpm-store/
+.pnpm-store
 
 # Build outputs
 dist/
 .next/
 out/
+styled-system/
 
 # Environment files
 .env

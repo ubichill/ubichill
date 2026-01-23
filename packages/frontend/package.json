@@ -3,11 +3,13 @@
     "version": "1.0.0",
     "private": true,
     "scripts": {
-        "dev": "next dev",
-        "build": "next build",
+        "prepare:panda": "panda codegen && panda",
+        "prepare": "pnpm run prepare:panda",
+        "dev": "panda codegen && next dev",
+        "build": "pnpm run build:prepare && next build",
+        "build:prepare": "NODE_ENV=production pnpm run prepare",
         "start": "next start",
-        "lint": "next lint",
-        "prepare": "panda codegen"
+        "lint": "next lint"
     },
     "dependencies": {
         "@ubichill/shared": "workspace:*",
