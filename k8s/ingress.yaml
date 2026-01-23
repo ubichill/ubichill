@@ -1,0 +1,40 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ubichill
+  namespace: ubichill
+  annotations:
+    external-dns.alpha.kubernetes.io/hostname: ubichill.youkan.uk
+    # WebSocket support generally works by default, but ensuring session stickiness/timeouts might be needed depending on ingress controller
+    # nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    # nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: cloudflare
+  rules:
+    - host: ubichill.youkan.uk
+      http:
+        paths:
+          # Socket.io routing (MUST come before / to capture traffic)
+          - path: /socket.io
+            pathType: Prefix
+            backend:
+              service:
+                name: ubichill-backend
+                port:
+                  number: 3001
+          # API routing
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: ubichill-backend
+                port:
+                  number: 3001
+          # Frontend routing (catch-all)
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ubichill-frontend
+                port:
+                  number: 3000

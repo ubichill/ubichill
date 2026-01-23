@@ -22,8 +22,15 @@ export const useSocket = () => {
 
     useEffect(() => {
         // Initialize socket connection
-        const socket: AppSocket = io(SERVER_CONFIG.DEV_URL, {
+        // Production: Connect to the same origin (handled by Ingress)
+        // Development: Connect to SERVER_CONFIG.DEV_URL
+        const socketUrl = process.env.NODE_ENV === 'production'
+            ? undefined // undefined means "same origin"
+            : SERVER_CONFIG.DEV_URL;
+
+        const socket: AppSocket = io(socketUrl || window.location.origin, {
             autoConnect: false,
+            path: '/socket.io', // Explicitly define path, though default is often /socket.io
         });
 
         socketRef.current = socket;

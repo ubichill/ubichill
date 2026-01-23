@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ubichill-backend
+  namespace: ubichill
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ubichill-backend
+  template:
+    metadata:
+      labels:
+        app: ubichill-backend
+    spec:
+      containers:
+        - name: backend
+          image: ghcr.io/youkan0124/ubichill-backend:latest
+          ports:
+            - containerPort: 3001
+          resources:
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+          env:
+            - name: NODE_ENV
+              value: "production"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ubichill-backend
+  namespace: ubichill
+spec:
+  selector:
+    app: ubichill-backend
+  ports:
+    - protocol: TCP
+      port: 3001
+      targetPort: 3001
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ubichill-frontend
+  namespace: ubichill
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ubichill-frontend
+  template:
+    metadata:
+      labels:
+        app: ubichill-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: ghcr.io/youkan0124/ubichill-frontend:latest
+          ports:
+            - containerPort: 3000
+          resources:
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+          env:
+            - name: NODE_ENV
+              value: "production"
+            # Ingress経由でアクセスする場合、クライアントサイドからは相対パスでアクセスするため、
+            # 特に追加の環境変数が必須ではない場合が多いが、必要に応じて追加
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ubichill-frontend
+  namespace: ubichill
+spec:
+  selector:
+    app: ubichill-frontend
+  ports:
+    - protocol: TCP
+      port: 3000
+      targetPort: 3000
