@@ -10,7 +10,7 @@ ubichill/
 ├── packages/
 │   ├── shared/   # 共通の型定義・定数 (@ubichill/shared)
 │   ├── backend/  # Express + Socket.io サーバー (@ubichill/backend)
-│   └── frontend/ # Next.js + Tailwind CSS フロントエンド (@ubichill/frontend)
+│   └── frontend/ # Next.js + Panda CSS フロントエンド (@ubichill/frontend)
 ```
 
 ## 技術スタック
