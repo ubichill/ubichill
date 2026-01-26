@@ -1,0 +1,47 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "saturday"
+      time: "03:00"
+      timezone: "Asia/Tokyo"
+    
+    # 基本は本番環境用(production)のみ許可
+    allow:
+      - dependency-type: "production"
+
+    groups:
+      # 【グループ1】Next.js / React 関連
+      # これらはバージョンが連動するため、絶対に一緒のPRにするべきです
+      framework-nextjs:
+        patterns:
+          - "next"
+          - "react"
+          - "react-dom"
+          - "eslint-config-next"
+
+      # 【グループ2】バックエンド (Express)
+      # 重要な基盤なので、他のライブラリとは混ぜずに単独で確認
+      framework-express:
+        patterns:
+          - "express"
+          - "cors"
+
+      # 【グループ3】Node.jsの型定義など
+      types-node:
+        patterns:
+          - "@types/node"
+
+      # 【グループ4】その他すべての本番ライブラリ (Patch/Minorのみ)
+      dependencies-others:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+    commit-message:
+      prefix: "chore(deps):"
+      include: "scope"

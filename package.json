@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "2D metaverse-style work sharing web application",
-  "packageManager": "pnpm@8.15.1",
+  "packageManager": "pnpm@9.15.4",
   "scripts": {
     "dev": "pnpm --filter \"./packages/*\" --parallel dev",
     "build": "pnpm --filter \"./packages/*\" build",
@@ -15,13 +15,13 @@
     "packages/*"
   ],
   "engines": {
-    "node": ">=18.0.0",
-    "pnpm": ">=8.0.0"
+    "node": ">=22.0.0",
+    "pnpm": ">=9.0.0"
   },
   "devDependencies": {
-    "@types/node": "^20.11.19",
+    "@types/node": "^22.13.4",
     "cross-env": "^10.1.0",
-    "eslint": "^8.56.0",
-    "typescript": "^5.3.3"
+    "eslint": "^9.20.0",
+    "typescript": "^5.9.3"
   }
 }

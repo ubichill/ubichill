@@ -13,18 +13,18 @@
     },
     "dependencies": {
         "@ubichill/shared": "workspace:*",
-        "next": "14.1.0",
-        "react": "^18",
-        "react-dom": "^18",
-        "socket.io-client": "^4.7.4"
+        "next": "^16.1.4",
+        "react": "^19.2.3",
+        "react-dom": "^19.2.3",
+        "socket.io-client": "^4.8.3"
     },
     "devDependencies": {
         "@pandacss/dev": "^1.8.1",
-        "@types/node": "^20",
-        "@types/react": "^18",
-        "@types/react-dom": "^18",
-        "eslint": "^8",
-        "eslint-config-next": "14.1.0",
-        "typescript": "^5"
+        "@types/node": "^22",
+        "@types/react": "^19",
+        "@types/react-dom": "^19",
+        "eslint": "^9",
+        "eslint-config-next": "^16.1.4",
+        "typescript": "^5.9.3"
     }
 }
