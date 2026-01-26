@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useSocket } from '@/hooks/useSocket';
 import * as styles from './styles';
 
@@ -17,9 +17,19 @@ export default function Home() {
         }
     };
 
+    // Add ref for the container
+    const canvasRef = useRef<HTMLDivElement>(null);
+
     const handleMouseMove = (e: React.MouseEvent) => {
-        if (hasJoined) {
-            updatePosition({ x: e.clientX, y: e.clientY });
+        if (hasJoined && canvasRef.current) {
+            // Get the container's position relative to the viewport
+            const rect = canvasRef.current.getBoundingClientRect();
+
+            // Calculate position relative to the container
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            updatePosition({ x, y });
         }
     };
 
@@ -61,7 +71,10 @@ export default function Home() {
                     </form>
                 </div>
             ) : (
-                <div className={styles.roomCanvas}>
+                <div
+                    ref={canvasRef}
+                    className={styles.roomCanvas}
+                >
                     <div className={styles.userListContainer}>
                         <h2 className={styles.userListTitle}>Room Users ({users.length})</h2>
                         <ul className={styles.userList}>
