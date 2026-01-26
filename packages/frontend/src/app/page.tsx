@@ -2,8 +2,7 @@
 
 import { useState } from 'react';
 import { useSocket } from '@/hooks/useSocket';
-import { css } from '../../styled-system/css';
-import { center, flex, vstack, hstack } from '../../styled-system/patterns';
+import * as styles from './styles';
 
 export default function Home() {
     const { isConnected, users, currentUser, error, joinRoom, updatePosition } = useSocket();
@@ -26,84 +25,35 @@ export default function Home() {
 
     return (
         <main
-            className={flex({
-                minH: 'screen',
-                direction: 'column',
-                alignItems: 'center',
-                justify: 'space-between',
-                p: '24'
-            })}
+            className={styles.mainContainer}
             onMouseMove={handleMouseMove}
         >
-            <div className={css({
-                zIndex: 10,
-                w: 'full',
-                maxW: '5xl',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                fontFamily: 'mono',
-                fontSize: 'sm',
-                lg: { display: 'flex' }
-            })}>
-                <p className={css({
-                    pos: 'fixed',
-                    left: 0,
-                    top: 0,
-                    display: 'flex',
-                    w: 'full',
-                    justifyContent: 'center',
-                    borderBottomWidth: '1px',
-                    borderColor: 'border',
-                    bg: { base: 'zinc.200', _dark: 'zinc.800/30' },
-                    pb: '6',
-                    pt: '8',
-                    backdropFilter: 'blur(16px)',
-                    lg: {
-                        pos: 'static',
-                        w: 'auto',
-                        rounded: 'xl',
-                        borderWidth: '1px',
-                        bg: 'gray.200',
-                        p: '4'
-                    }
-                })}>
+            <div className={styles.headerContainer}>
+                <p className={styles.statusBar}>
                     Status: {isConnected ? 'Connected' : 'Disconnected'}
-                    {error && <span className={css({ color: 'red.500', ml: '4' })}>{error}</span>}
+                    {error && <span className={styles.errorText}>{error}</span>}
                 </p>
                 {currentUser && (
-                    <p className={css({ pos: 'fixed', right: 0, top: 0, p: '4' })}>
+                    <p className={styles.userInfo}>
                         Logged in as: {currentUser.name}
                     </p>
                 )}
             </div>
 
             {!hasJoined ? (
-                <div className={vstack({ gap: '4', alignItems: 'center' })}>
-                    <h1 className={css({ fontSize: '4xl', fontWeight: 'bold' })}>Ubichill</h1>
-                    <form onSubmit={handleJoin} className={hstack({ gap: '2' })}>
+                <div className={styles.loginContainer}>
+                    <h1 className={styles.title}>Ubichill</h1>
+                    <form onSubmit={handleJoin} className={styles.loginForm}>
                         <input
                             type="text"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                             placeholder="Enter your name"
-                            className={css({
-                                p: '2',
-                                borderWidth: '1px',
-                                borderColor: 'border',
-                                rounded: 'md',
-                                color: 'text'
-                            })}
+                            className={styles.input}
                         />
                         <button
                             type="submit"
-                            className={css({
-                                p: '2',
-                                bg: 'blue.500',
-                                color: 'white',
-                                rounded: 'md',
-                                _hover: { bg: 'blue.600' },
-                                _disabled: { opacity: 0.5, cursor: 'not-allowed' }
-                            })}
+                            className={styles.button}
                             disabled={!isConnected}
                         >
                             Join
@@ -111,19 +61,10 @@ export default function Home() {
                     </form>
                 </div>
             ) : (
-                <div className={css({
-                    pos: 'relative',
-                    w: 'full',
-                    h: '600px',
-                    borderWidth: '1px',
-                    borderColor: 'white/5',
-                    rounded: 'lg',
-                    overflow: 'hidden',
-                    bg: 'white/5'
-                })}>
-                    <div className={css({ pos: 'absolute', top: '4', left: '4' })}>
-                        <h2 className={css({ fontSize: 'xl' })}>Room Users ({users.length})</h2>
-                        <ul className={css({ listStyleType: 'disc', pl: '5' })}>
+                <div className={styles.roomCanvas}>
+                    <div className={styles.userListContainer}>
+                        <h2 className={styles.userListTitle}>Room Users ({users.length})</h2>
+                        <ul className={styles.userList}>
                             {users.map(user => (
                                 <li key={user.id}>
                                     {user.name} ({user.status})
@@ -138,35 +79,14 @@ export default function Home() {
                         user.id !== currentUser?.id && (
                             <div
                                 key={user.id}
-                                className={css({
-                                    pos: 'absolute',
-                                    w: '4',
-                                    h: '4',
-                                    bg: 'red.500/50',
-                                    rounded: 'full',
-                                    pointerEvents: 'none',
-                                    transitionProperty: 'all',
-                                    transitionDuration: '100ms',
-                                    transitionTimingFunction: 'linear'
-                                })}
+                                className={styles.cursor}
                                 style={{
                                     left: user.position.x,
                                     top: user.position.y,
                                     transform: 'translate(-50%, -50%)'
                                 }}
                             >
-                                <span className={css({
-                                    pos: 'absolute',
-                                    top: '-6',
-                                    left: '50%',
-                                    transform: 'translateX(-50%)',
-                                    fontSize: 'xs',
-                                    bg: 'black/70',
-                                    color: 'white',
-                                    px: '1',
-                                    rounded: 'sm',
-                                    whiteSpace: 'nowrap'
-                                })}>
+                                <span className={styles.cursorLabel}>
                                     {user.name}
                                 </span>
                             </div>
