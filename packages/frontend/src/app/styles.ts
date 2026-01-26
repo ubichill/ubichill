@@ -1,5 +1,5 @@
 import { css } from '../../styled-system/css';
-import { flex, vstack, hstack } from '../../styled-system/patterns';
+import { flex, hstack, vstack } from '../../styled-system/patterns';
 
 /**
  * Centralized PandaCSS style definitions
@@ -12,7 +12,7 @@ export const mainContainer = flex({
     direction: 'column',
     alignItems: 'center',
     justify: 'space-between',
-    p: '24'
+    p: '24',
 });
 
 export const headerContainer = css({
@@ -23,7 +23,7 @@ export const headerContainer = css({
     justifyContent: 'space-between',
     fontFamily: 'mono',
     fontSize: 'sm',
-    lg: { display: 'flex' }
+    lg: { display: 'flex' },
 });
 
 export const statusBar = css({
@@ -45,30 +45,30 @@ export const statusBar = css({
         rounded: 'xl',
         borderWidth: '1px',
         bg: 'gray.200',
-        p: '4'
-    }
+        p: '4',
+    },
 });
 
 export const userInfo = css({
     pos: 'fixed',
     right: 0,
     top: 0,
-    p: '4'
+    p: '4',
 });
 
 // Login Screen Styles
 export const loginContainer = vstack({
     gap: '4',
-    alignItems: 'center'
+    alignItems: 'center',
 });
 
 export const title = css({
     fontSize: '4xl',
-    fontWeight: 'bold'
+    fontWeight: 'bold',
 });
 
 export const loginForm = hstack({
-    gap: '2'
+    gap: '2',
 });
 
 // Form Elements - Cute & Simple Design
@@ -77,7 +77,7 @@ export const input = css({
     borderWidth: '1px',
     borderColor: 'border',
     rounded: 'md',
-    color: 'text'
+    color: 'text',
 });
 
 export const button = css({
@@ -86,7 +86,7 @@ export const button = css({
     color: 'white',
     rounded: 'md',
     _hover: { bg: 'blue.600' },
-    _disabled: { opacity: 0.5, cursor: 'not-allowed' }
+    _disabled: { opacity: 0.5, cursor: 'not-allowed' },
 });
 
 // Room/Canvas Styles
@@ -97,22 +97,22 @@ export const roomCanvas = css({
     borderWidth: '1px',
     borderColor: 'white/5',
     rounded: 'lg',
-    bg: 'white/5'
+    bg: 'white/5',
 });
 
 export const userListContainer = css({
     pos: 'absolute',
     top: '4',
-    left: '4'
+    left: '4',
 });
 
 export const userListTitle = css({
-    fontSize: 'xl'
+    fontSize: 'xl',
 });
 
 export const userList = css({
     listStyleType: 'disc',
-    pl: '5'
+    pl: '5',
 });
 
 // Cursor & Interactive Elements
@@ -125,7 +125,7 @@ export const cursor = css({
     pointerEvents: 'none',
     transitionProperty: 'all',
     transitionDuration: '100ms',
-    transitionTimingFunction: 'linear'
+    transitionTimingFunction: 'linear',
 });
 
 export const cursorLabel = css({
@@ -138,11 +138,11 @@ export const cursorLabel = css({
     color: 'white',
     px: '1',
     rounded: 'sm',
-    whiteSpace: 'nowrap'
+    whiteSpace: 'nowrap',
 });
 
 // Status & Error Text
 export const errorText = css({
     color: 'red.500',
-    ml: '4'
+    ml: '4',
 });

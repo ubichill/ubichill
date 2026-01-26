@@ -1,4 +1,4 @@
-import { User, UserStatus, CursorPosition } from '@ubichill/shared';
+import type { CursorPosition, User, UserStatus } from '@ubichill/shared';
 
 /**
  * ユーザー管理サービス
@@ -7,7 +7,6 @@ import { User, UserStatus, CursorPosition } from '@ubichill/shared';
 export class UserManager {
     private users: Map<string, User> = new Map();
     private userRooms: Map<string, string> = new Map(); // userId -> roomId
-
 
     addUser(userId: string, roomId: string, user: User): void {
         this.users.set(userId, user);

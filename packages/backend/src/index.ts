@@ -1,22 +1,12 @@
-import express from 'express';
-import http from 'http';
-import { Server } from 'socket.io';
+import http from 'node:http';
+import type { ClientToServerEvents, InterServerEvents, ServerToClientEvents, SocketData } from '@ubichill/shared';
 import cors from 'cors';
-import helmet from 'helmet';
+import express from 'express';
 import rateLimit from 'express-rate-limit';
-import {
-    ServerToClientEvents,
-    ClientToServerEvents,
-    InterServerEvents,
-    SocketData
-} from '@ubichill/shared';
+import helmet from 'helmet';
+import { Server } from 'socket.io';
 import { appConfig } from './config';
-import {
-    handleRoomJoin,
-    handleCursorMove,
-    handleStatusUpdate,
-    handleDisconnect
-} from './handlers/socketHandlers';
+import { handleCursorMove, handleDisconnect, handleRoomJoin, handleStatusUpdate } from './handlers/socketHandlers';
 
 // Expressアプリを初期化
 const app = express();
@@ -25,10 +15,12 @@ const app = express();
 app.use(helmet());
 
 // CORS設定
-app.use(cors({
-    origin: appConfig.cors.origin,
-    credentials: true
-}));
+app.use(
+    cors({
+        origin: appConfig.cors.origin,
+        credentials: true,
+    }),
+);
 
 // レート制限
 const limiter = rateLimit({
@@ -44,7 +36,7 @@ app.use(limiter);
 app.use(express.json());
 
 // ヘルスチェックエンドポイント
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
     res.json({ status: 'ok', timestamp: Date.now() });
 });
 
@@ -52,17 +44,12 @@ app.get('/health', (req, res) => {
 const server = http.createServer(app);
 
 // 型付きイベントでSocket.IOを初期化
-const io = new Server<
-    ClientToServerEvents,
-    ServerToClientEvents,
-    InterServerEvents,
-    SocketData
->(server, {
+const io = new Server<ClientToServerEvents, ServerToClientEvents, InterServerEvents, SocketData>(server, {
     cors: {
         origin: appConfig.cors.origin,
         methods: ['GET', 'POST'],
-        credentials: true
-    }
+        credentials: true,
+    },
 });
 
 // Socket.IOの接続処理

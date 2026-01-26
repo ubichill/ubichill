@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useRef } from 'react';
-import { useSocket } from '@/hooks/useSocket';
 import { DEFAULTS } from '@ubichill/shared';
+import { useRef, useState } from 'react';
+import { useSocket } from '@/hooks/useSocket';
 import * as styles from './styles';
 
 export default function Home() {
@@ -35,20 +35,13 @@ export default function Home() {
     };
 
     return (
-        <main
-            className={styles.mainContainer}
-            onMouseMove={handleMouseMove}
-        >
+        <main className={styles.mainContainer} onMouseMove={handleMouseMove}>
             <div className={styles.headerContainer}>
                 <p className={styles.statusBar}>
                     Status: {isConnected ? 'Connected' : 'Disconnected'}
                     {error && <span className={styles.errorText}>{error}</span>}
                 </p>
-                {currentUser && (
-                    <p className={styles.userInfo}>
-                        Logged in as: {currentUser.name}
-                    </p>
-                )}
+                {currentUser && <p className={styles.userInfo}>Logged in as: {currentUser.name}</p>}
             </div>
 
             {!hasJoined ? (
@@ -62,50 +55,41 @@ export default function Home() {
                             placeholder="Enter your name"
                             className={styles.input}
                         />
-                        <button
-                            type="submit"
-                            className={styles.button}
-                            disabled={!isConnected}
-                        >
+                        <button type="submit" className={styles.button} disabled={!isConnected}>
                             Join
                         </button>
                     </form>
                 </div>
             ) : (
-                <div
-                    ref={canvasRef}
-                    className={styles.roomCanvas}
-                >
+                <div ref={canvasRef} className={styles.roomCanvas}>
                     <div className={styles.userListContainer}>
                         <h2 className={styles.userListTitle}>Room Users ({users.length})</h2>
                         <ul className={styles.userList}>
-                            {users.map(user => (
+                            {users.map((user) => (
                                 <li key={user.id}>
-                                    {user.name} ({user.status})
-                                    {user.id === currentUser?.id && ' (You)'}
+                                    {user.name} ({user.status}){user.id === currentUser?.id && ' (You)'}
                                 </li>
                             ))}
                         </ul>
                     </div>
 
                     {/* Cursors */}
-                    {users.map(user => (
-                        user.id !== currentUser?.id && (
-                            <div
-                                key={user.id}
-                                className={styles.cursor}
-                                style={{
-                                    left: user.position.x,
-                                    top: user.position.y,
-                                    transform: 'translate(-50%, -50%)'
-                                }}
-                            >
-                                <span className={styles.cursorLabel}>
-                                    {user.name}
-                                </span>
-                            </div>
-                        )
-                    ))}
+                    {users.map(
+                        (user) =>
+                            user.id !== currentUser?.id && (
+                                <div
+                                    key={user.id}
+                                    className={styles.cursor}
+                                    style={{
+                                        left: user.position.x,
+                                        top: user.position.y,
+                                        transform: 'translate(-50%, -50%)',
+                                    }}
+                                >
+                                    <span className={styles.cursorLabel}>{user.name}</span>
+                                </div>
+                            ),
+                    )}
                 </div>
             )}
         </main>
