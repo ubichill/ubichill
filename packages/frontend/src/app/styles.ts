@@ -97,7 +97,6 @@ export const roomCanvas = css({
     borderWidth: '1px',
     borderColor: 'white/5',
     rounded: 'lg',
-    overflow: 'hidden',
     bg: 'white/5'
 });
 
