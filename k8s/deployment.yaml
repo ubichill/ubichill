@@ -25,9 +25,9 @@ spec:
             requests:
               memory: "256Mi"
               cpu: "250m"
-          env:
-            - name: NODE_ENV
-              value: "production"
+          envFrom:
+            - configMapRef:
+                name: ubichill-backend-config
 ---
 apiVersion: v1
 kind: Service
@@ -69,11 +69,9 @@ spec:
             requests:
               memory: "256Mi"
               cpu: "250m"
-          env:
-            - name: NODE_ENV
-              value: "production"
-            # Ingress経由でアクセスする場合、クライアントサイドからは相対パスでアクセスするため、
-            # 特に追加の環境変数が必須ではない場合が多いが、必要に応じて追加
+          envFrom:
+            - configMapRef:
+                name: ubichill-frontend-config
 ---
 apiVersion: v1
 kind: Service

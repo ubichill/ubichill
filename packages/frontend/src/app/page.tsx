@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { useSocket } from '@/hooks/useSocket';
+import { DEFAULTS } from '@ubichill/shared';
 import * as styles from './styles';
 
 export default function Home() {
@@ -12,7 +13,7 @@ export default function Home() {
     const handleJoin = (e: React.FormEvent) => {
         e.preventDefault();
         if (name.trim()) {
-            joinRoom(name);
+            joinRoom(name, DEFAULTS.ROOM_ID);
             setHasJoined(true);
         }
     };
