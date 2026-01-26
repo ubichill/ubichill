@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ubichill-backend-config
+  namespace: ubichill
+data:
+  # Node環境
+  NODE_ENV: "production"
+  
+  # サーバーポート
+  PORT: "3001"
+  
+  # CORS設定
+  # 本番環境のフロントエンドオリジンを指定
+  # 複数のオリジンを許可する場合はカンマ区切り
+  CORS_ORIGIN: "https://ubichill.youkan.uk"
+  
+  # レート制限設定
+  # ウィンドウ期間（ミリ秒単位、デフォルト: 15分）
+  RATE_LIMIT_WINDOW_MS: "900000"
+  
+  # ウィンドウ期間あたりの最大リクエスト数
+  RATE_LIMIT_MAX_REQUESTS: "100"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ubichill-frontend-config
+  namespace: ubichill
+data:
+  # Node環境
+  NODE_ENV: "production"
+  
+  # バックエンドAPIのURL（Next.jsのサーバーサイドから使用）
+  # Ingress経由でアクセスする場合、クライアントサイドは相対パスを使用
+  NEXT_PUBLIC_API_URL: "https://ubichill.youkan.uk"

@@ -82,9 +82,9 @@ export interface InterServerEvents {
  * ソケットデータ（各接続に紐づくデータ）
  */
 export interface SocketData {
-    userId: string;
-    roomId: string;
-    user: User;
+    userId?: string;
+    roomId?: string;
+    user?: User;
 }
 
 // ============================================
