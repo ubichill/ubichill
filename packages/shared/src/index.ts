@@ -51,7 +51,7 @@ export interface ServerToClientEvents {
     'status:changed': (data: { userId: string; status: UserStatus }) => void;
 
     /** エラー通知 */
-    'error': (message: string) => void;
+    error: (message: string) => void;
 }
 
 /**
@@ -59,7 +59,10 @@ export interface ServerToClientEvents {
  */
 export interface ClientToServerEvents {
     /** ルームに参加 */
-    'room:join': (data: { roomId: string; user: Omit<User, 'id'> }, callback: (response: { success: boolean; userId?: string; error?: string }) => void) => void;
+    'room:join': (
+        data: { roomId: string; user: Omit<User, 'id'> },
+        callback: (response: { success: boolean; userId?: string; error?: string }) => void,
+    ) => void;
 
     /** ルームから退出 */
     'room:leave': () => void;

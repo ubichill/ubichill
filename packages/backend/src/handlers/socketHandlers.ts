@@ -1,33 +1,26 @@
-import { Socket } from 'socket.io';
 import {
-    ServerToClientEvents,
-    ClientToServerEvents,
-    InterServerEvents,
-    SocketData,
-    User,
-    DEFAULTS
+    type ClientToServerEvents,
+    DEFAULTS,
+    type InterServerEvents,
+    type ServerToClientEvents,
+    type SocketData,
+    type User,
 } from '@ubichill/shared';
+import type { Socket } from 'socket.io';
 import { userManager } from '../services/userManager';
-import {
-    validateUsername,
-    validateRoomId,
-    validateCursorPosition,
-    validateUserStatus
-} from '../utils/validation';
 import { logger } from '../utils/logger';
+import { validateCursorPosition, validateRoomId, validateUsername, validateUserStatus } from '../utils/validation';
 
-type TypedSocket = Socket<
-    ClientToServerEvents,
-    ServerToClientEvents,
-    InterServerEvents,
-    SocketData
->;
+type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents, InterServerEvents, SocketData>;
 
 /**
  * ルーム参加イベントを処理
  */
 export function handleRoomJoin(socket: TypedSocket) {
-    return ({ roomId, user }: { roomId: string; user: Omit<User, 'id'> }, callback: (response: { success: boolean; userId?: string; error?: string }) => void) => {
+    return (
+        { roomId, user }: { roomId: string; user: Omit<User, 'id'> },
+        callback: (response: { success: boolean; userId?: string; error?: string }) => void,
+    ) => {
         logger.debug('room:join イベント受信:', { roomId, user, socketId: socket.id });
 
         // ルームIDを検証
@@ -52,7 +45,7 @@ export function handleRoomJoin(socket: TypedSocket) {
             ...user,
             name: usernameValidation.data,
             position: user.position || DEFAULTS.INITIAL_POSITION,
-            lastActiveAt: Date.now()
+            lastActiveAt: Date.now(),
         };
 
         // ルームにユーザーを追加
@@ -70,7 +63,7 @@ export function handleRoomJoin(socket: TypedSocket) {
         // 成功レスポンスを送信
         callback({
             success: true,
-            userId: socket.id
+            userId: socket.id,
         });
 
         // 新しいユーザーに現在のユーザー一覧を送信
@@ -79,7 +72,9 @@ export function handleRoomJoin(socket: TypedSocket) {
         // ルーム内の他のユーザーに参加を通知
         socket.to(roomValidation.data).emit('user:joined', newUser);
 
-        logger.info(`✅ ユーザー「${newUser.name}」(${socket.id.substring(0, 8)}) がルーム「${roomValidation.data}」に参加しました`);
+        logger.info(
+            `✅ ユーザー「${newUser.name}」(${socket.id.substring(0, 8)}) がルーム「${roomValidation.data}」に参加しました`,
+        );
     };
 }
 
@@ -111,7 +106,7 @@ export function handleCursorMove(socket: TypedSocket) {
         // ルーム内の他のユーザーにブロードキャスト
         socket.to(roomId).emit('cursor:moved', {
             userId: socket.id,
-            position: validation.data
+            position: validation.data,
         });
     };
 }
@@ -144,7 +139,7 @@ export function handleStatusUpdate(socket: TypedSocket) {
         // ルーム内の他のユーザーにブロードキャスト
         socket.to(roomId).emit('status:changed', {
             userId: socket.id,
-            status: validation.data
+            status: validation.data,
         });
     };
 }
@@ -160,7 +155,9 @@ export function handleDisconnect(socket: TypedSocket) {
         if (roomId && user) {
             // ルーム内の他のユーザーに退出を通知
             socket.to(roomId).emit('user:left', socket.id);
-            logger.info(`👋 ユーザー「${user.name}」(${socket.id.substring(0, 8)}) がルーム「${roomId}」から退出しました`);
+            logger.info(
+                `👋 ユーザー「${user.name}」(${socket.id.substring(0, 8)}) がルーム「${roomId}」から退出しました`,
+            );
         } else {
             logger.info(`👋 ユーザーが切断しました: ${socket.id.substring(0, 8)}`);
         }

@@ -1,14 +1,14 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { io, Socket } from 'socket.io-client';
 import {
-    ClientToServerEvents,
-    ServerToClientEvents,
-    User,
-    UserStatus,
-    CursorPosition,
+    type ClientToServerEvents,
+    type CursorPosition,
+    DEFAULTS,
     SERVER_CONFIG,
-    DEFAULTS
+    type ServerToClientEvents,
+    type User,
+    type UserStatus,
 } from '@ubichill/shared';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { io, type Socket } from 'socket.io-client';
 
 // Socket type definition
 type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
@@ -24,9 +24,10 @@ export const useSocket = () => {
         // Initialize socket connection
         // Production: Connect to the same origin (handled by Ingress)
         // Development: Connect to SERVER_CONFIG.DEV_URL
-        const socketUrl = process.env.NODE_ENV === 'production'
-            ? undefined // undefined means "same origin"
-            : SERVER_CONFIG.DEV_URL;
+        const socketUrl =
+            process.env.NODE_ENV === 'production'
+                ? undefined // undefined means "same origin"
+                : SERVER_CONFIG.DEV_URL;
 
         const socket: AppSocket = io(socketUrl || window.location.origin, {
             autoConnect: false,
@@ -55,23 +56,19 @@ export const useSocket = () => {
         });
 
         socket.on('user:joined', (user) => {
-            setUsers(prev => [...prev, user]);
+            setUsers((prev) => [...prev, user]);
         });
 
         socket.on('user:left', (userId) => {
-            setUsers(prev => prev.filter(u => u.id !== userId));
+            setUsers((prev) => prev.filter((u) => u.id !== userId));
         });
 
         socket.on('cursor:moved', ({ userId, position }) => {
-            setUsers(prev => prev.map(u =>
-                u.id === userId ? { ...u, position } : u
-            ));
+            setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, position } : u)));
         });
 
         socket.on('status:changed', ({ userId, status }) => {
-            setUsers(prev => prev.map(u =>
-                u.id === userId ? { ...u, status } : u
-            ));
+            setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, status } : u)));
         });
 
         socket.on('error', (msg) => {
@@ -107,29 +104,35 @@ export const useSocket = () => {
         });
     }, []);
 
-    const updatePosition = useCallback((position: CursorPosition) => {
-        const socket = socketRef.current;
-        if (!socket || !isConnected) return;
+    const updatePosition = useCallback(
+        (position: CursorPosition) => {
+            const socket = socketRef.current;
+            if (!socket || !isConnected) return;
 
-        socket.emit('cursor:move', position);
+            socket.emit('cursor:move', position);
 
-        // Optimistic update for current user
-        if (currentUser) {
-            setCurrentUser({ ...currentUser, position });
-        }
-    }, [isConnected, currentUser]);
+            // Optimistic update for current user
+            if (currentUser) {
+                setCurrentUser({ ...currentUser, position });
+            }
+        },
+        [isConnected, currentUser],
+    );
 
-    const updateStatus = useCallback((status: UserStatus) => {
-        const socket = socketRef.current;
-        if (!socket || !isConnected) return;
+    const updateStatus = useCallback(
+        (status: UserStatus) => {
+            const socket = socketRef.current;
+            if (!socket || !isConnected) return;
 
-        socket.emit('status:update', status);
+            socket.emit('status:update', status);
 
-        // Optimistic update for current user
-        if (currentUser) {
-            setCurrentUser({ ...currentUser, status });
-        }
-    }, [isConnected, currentUser]);
+            // Optimistic update for current user
+            if (currentUser) {
+                setCurrentUser({ ...currentUser, status });
+            }
+        },
+        [isConnected, currentUser],
+    );
 
     return {
         socket: socketRef.current,
@@ -139,6 +142,6 @@ export const useSocket = () => {
         error,
         joinRoom,
         updatePosition,
-        updateStatus
+        updateStatus,
     };
 };

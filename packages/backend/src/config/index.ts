@@ -11,7 +11,10 @@ const envSchema = z.object({
     CORS_ORIGIN: z.string().default('http://localhost:3000'),
     RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().finite().default(900000),
     RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().finite().default(100),
-    DEBUG: z.string().default('false').transform(val => val === 'true'),
+    DEBUG: z
+        .string()
+        .default('false')
+        .transform((val) => val === 'true'),
 });
 
 // 環境変数をパースして検証
@@ -24,9 +27,10 @@ if (!parsedEnv.success) {
 }
 
 // CORS originの処理: '*'の場合は文字列のまま、それ以外は配列化
-const corsOrigin = parsedEnv.data.CORS_ORIGIN === '*'
-    ? '*'
-    : parsedEnv.data.CORS_ORIGIN.split(',').map((origin: string) => origin.trim());
+const corsOrigin =
+    parsedEnv.data.CORS_ORIGIN === '*'
+        ? '*'
+        : parsedEnv.data.CORS_ORIGIN.split(',').map((origin: string) => origin.trim());
 
 // 検証済みの設定をエクスポート
 export const appConfig = {
@@ -48,6 +52,8 @@ export const appConfig = {
 console.log('📋 サーバー設定:');
 console.log(`   環境: ${appConfig.nodeEnv}`);
 console.log(`   ポート: ${appConfig.port}`);
-console.log(`   CORS許可オリジン: ${Array.isArray(appConfig.cors.origin) ? appConfig.cors.origin.join(', ') : appConfig.cors.origin}`);
+console.log(
+    `   CORS許可オリジン: ${Array.isArray(appConfig.cors.origin) ? appConfig.cors.origin.join(', ') : appConfig.cors.origin}`,
+);
 console.log(`   レート制限: ${appConfig.rateLimit.maxRequests}リクエスト/${appConfig.rateLimit.windowMs / 1000}秒`);
 console.log(`   デバッグモード: ${appConfig.debug ? '有効' : '無効'}`);
