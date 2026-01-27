@@ -18,7 +18,7 @@ type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 interface SocketContextValue {
     socket: AppSocket | null;
     isConnected: boolean;
-    users: User[];
+    users: Map<string, User>;
     currentUser: User | null;
     error: string | null;
     joinRoom: (name: string, roomId?: string) => void;
@@ -31,10 +31,10 @@ const SocketContext = createContext<SocketContextValue | null>(null);
 /**
  * ソケット接続を子コンポーネントに提供するプロバイダー
  */
-export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({children}) => {
+export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const socketRef = useRef<AppSocket | null>(null);
     const [isConnected, setIsConnected] = useState(false);
-    const [users, setUsers] = useState<User[]>([]);
+    const [users, setUsers] = useState<Map<string, User>>(new Map());
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [error, setError] = useState<string | null>(null);
 
@@ -68,23 +68,48 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({childre
         });
 
         socket.on('users:update', (updatedUsers) => {
-            setUsers(updatedUsers);
+            // 配列をMapに変換
+            const userMap = new Map<string, User>();
+            updatedUsers.forEach(u => userMap.set(u.id, u));
+            setUsers(userMap);
         });
 
         socket.on('user:joined', (user) => {
-            setUsers((prev) => [...prev, user]);
+            setUsers((prev) => {
+                const newMap = new Map(prev);
+                newMap.set(user.id, user);
+                return newMap;
+            });
         });
 
         socket.on('user:left', (userId) => {
-            setUsers((prev) => prev.filter((u) => u.id !== userId));
+            setUsers((prev) => {
+                const newMap = new Map(prev);
+                newMap.delete(userId);
+                return newMap;
+            });
         });
 
         socket.on('cursor:moved', ({ userId, position }) => {
-            setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, position } : u)));
+            setUsers((prev) => {
+                const user = prev.get(userId);
+                if (!user) return prev; // まだユーザー情報がない場合は更新できない（通常ありえないが）
+
+                // 位置情報だけ更新したいが、イミュータブルにMapを更新
+                const newMap = new Map(prev);
+                newMap.set(userId, { ...user, position });
+                return newMap;
+            });
         });
 
         socket.on('status:changed', ({ userId, status }) => {
-            setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, status } : u)));
+            setUsers((prev) => {
+                const user = prev.get(userId);
+                if (!user) return prev;
+                const newMap = new Map(prev);
+                newMap.set(userId, { ...user, status });
+                return newMap;
+            });
         });
 
         socket.on('error', (msg) => {
@@ -161,7 +186,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({childre
 
     return (
         <SocketContext.Provider value={value}>
-        {children}
+            {children}
         </SocketContext.Provider>
     );
 };

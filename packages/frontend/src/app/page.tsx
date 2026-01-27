@@ -63,9 +63,9 @@ export default function Home() {
             ) : (
                 <div ref={canvasRef} className={styles.roomCanvas}>
                     <div className={styles.userListContainer}>
-                        <h2 className={styles.userListTitle}>Room Users ({users.length})</h2>
+                        <h2 className={styles.userListTitle}>Room Users ({users.size})</h2>
                         <ul className={styles.userList}>
-                            {users.map((user) => (
+                            {Array.from(users.values()).map((user) => (
                                 <li key={user.id}>
                                     {user.name} ({user.status}){user.id === currentUser?.id && ' (You)'}
                                 </li>
@@ -74,7 +74,7 @@ export default function Home() {
                     </div>
 
                     {/* Cursors */}
-                    {users.map(
+                    {Array.from(users.values()).map(
                         (user) =>
                             user.id !== currentUser?.id && (
                                 <div

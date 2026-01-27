@@ -79,7 +79,44 @@ export function handleRoomJoin(socket: TypedSocket) {
         socket.emit('users:update', roomUsers);
 
         // 新しいユーザーにワールドスナップショットを送信（UEP）
-        const entities = getWorldSnapshot(roomValidation.data);
+        let entities = getWorldSnapshot(roomValidation.data);
+
+        // ペンが1つもない場合、デフォルトのペンを作成（永続化対応）
+        const existingPens = entities.filter(e => e.type === 'pen');
+        if (existingPens.length === 0) {
+            const defaultPens = [
+                { color: '#000000', x: -150 },
+                { color: '#FF0000', x: -50 },
+                { color: '#0000FF', x: 50 },
+                { color: '#00FF00', x: 150 },
+            ];
+
+            defaultPens.forEach(def => {
+                createEntity(roomValidation.data, {
+                    type: 'pen',
+                    transform: {
+                        x: 600 + def.x, // ステータスバーと被らないように少し右に移動
+                        y: 40, // Trayの中央（Top: 20, Height: 80 -> Center: 60だがアイコンサイズ考慮して調整）
+                        z: 0,
+                        w: 48,
+                        h: 48,
+                        rotation: 0,
+                    },
+                    data: {
+                        color: def.color,
+                        strokeWidth: 4,
+                        isHeld: false,
+                    },
+                    ownerId: 'system',
+                    createdAt: Date.now(),
+                    updatedAt: Date.now(),
+                } as any);
+            });
+            // 再取得
+            entities = getWorldSnapshot(roomValidation.data);
+            logger.info(`デフォルトペンを作成しました: ${entities.length}件`);
+        }
+
         socket.emit('world:snapshot', entities);
         logger.debug(`ワールドスナップショット送信: ${entities.length}件のエンティティ`);
 
@@ -167,6 +204,65 @@ export function handleDisconnect(socket: TypedSocket) {
         const user = userManager.removeUser(socket.id);
 
         if (roomId && user) {
+            // 切断したユーザーがロックしていたエンティティを解放する
+            const entities = getWorldSnapshot(roomId);
+            const userLockedEntities = entities.filter((e) => e.lockedBy === socket.id);
+
+            userLockedEntities.forEach((entity) => {
+                // ペンならトレイに戻すロジック（簡易実装: 色を見て位置を決める）
+                // 汎用性を高めるなら、単に unlocked にするだけでも良いが、
+                // 今回は「トレイに戻す」振る舞いが期待されているため位置もリセットする
+                let targetX = entity.transform.x;
+                let targetY = entity.transform.y;
+
+                if (entity.type === 'pen') {
+                    const data = entity.data as any;
+                    let offsetX = 0;
+                    if (data.color === '#FF0000') offsetX = -50;
+                    else if (data.color === '#0000FF') offsetX = 50;
+                    else if (data.color === '#00FF00') offsetX = 150;
+                    else offsetX = -150; // 黒
+                    targetX = 600 + offsetX;
+                    targetY = 40;
+                }
+
+                patchEntity(roomId, entity.id, {
+                    lockedBy: null,
+                    transform: {
+                        ...entity.transform,
+                        x: targetX,
+                        y: targetY,
+                        rotation: 0,
+                    },
+                    data: {
+                        ...entity.data,
+                        isHeld: false,
+                    } as any
+                });
+
+                // 他のユーザーに通知
+                socket.to(roomId).emit('entity:patched', {
+                    entityId: entity.id,
+                    patch: {
+                        lockedBy: null,
+                        transform: {
+                            ...entity.transform,
+                            x: targetX,
+                            y: targetY,
+                            rotation: 0,
+                        },
+                        data: {
+                            ...entity.data,
+                            isHeld: false
+                        } as any
+                    }
+                });
+            });
+
+            if (userLockedEntities.length > 0) {
+                logger.info(`ユーザー ${user.name} がロックしていた ${userLockedEntities.length} 個のエンティティを解放しました`);
+            }
+
             // ルーム内の他のユーザーに退出を通知
             socket.to(roomId).emit('user:left', socket.id);
             logger.info(
