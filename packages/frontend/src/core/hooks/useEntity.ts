@@ -1,13 +1,10 @@
 'use client';
 
-import {
-    type EntityPatchPayload,
-    type WorldEntity,
-} from '@ubichill/shared';
+import type { WorldEntity } from '@ubichill/shared';
 import throttle from 'lodash.throttle';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSocket } from './useSocket';
+import { useCallback, useMemo, useRef } from 'react';
 import { useWorld } from '../contexts/WorldContext';
+import { useSocket } from './useSocket';
 
 /**
  * 特定のエンティティを操作するフック
@@ -16,7 +13,7 @@ import { useWorld } from '../contexts/WorldContext';
  */
 export const useEntity = <T = Record<string, unknown>>(
     entityId: string,
-    options?: { initialEntity?: WorldEntity<T> }
+    options?: { initialEntity?: WorldEntity<T> },
 ) => {
     const { socket, isConnected, currentUser } = useSocket();
     const { entities, ephemeralData, patchEntity } = useWorld();
@@ -44,7 +41,7 @@ export const useEntity = <T = Record<string, unknown>>(
             }
             previousPatchRef.current = patch;
 
-            patchEntity(entityId, patch as any);
+            patchEntity(entityId, patch as Partial<WorldEntity<Record<string, unknown>>>);
         },
         [patchEntity, isConnected, entityId],
     );
@@ -75,7 +72,7 @@ export const useEntity = <T = Record<string, unknown>>(
 
         // 誰もロックしていない
         if (!entity.lockedBy) {
-            syncState({ lockedBy: currentUser.id } as any);
+            syncState({ lockedBy: currentUser.id } as Partial<Omit<WorldEntity<T>, 'id' | 'type'>>);
             return true;
         }
 
@@ -89,7 +86,7 @@ export const useEntity = <T = Record<string, unknown>>(
         if (!entity || !currentUser) return;
 
         if (entity.lockedBy === currentUser.id) {
-            syncState({ lockedBy: null } as any);
+            syncState({ lockedBy: null } as Partial<Omit<WorldEntity<T>, 'id' | 'type'>>);
         }
     }, [entity, currentUser, syncState]);
 

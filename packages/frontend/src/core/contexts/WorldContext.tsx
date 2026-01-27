@@ -1,11 +1,7 @@
 'use client';
 
-import {
-    type EntityEphemeralPayload,
-    type EntityPatchPayload,
-    type WorldEntity,
-} from '@ubichill/shared';
-import { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
+import type { EntityEphemeralPayload, EntityPatchPayload, WorldEntity } from '@ubichill/shared';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useSocket } from '../hooks/useSocket';
 
 // ============================================
@@ -76,7 +72,10 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                         ? { ...entity.transform, ...payload.patch.transform }
                         : entity.transform,
                     data: payload.patch.data
-                        ? { ...entity.data, ...payload.patch.data }
+                        ? {
+                              ...(entity.data as Record<string, unknown>),
+                              ...(payload.patch.data as Record<string, unknown>),
+                          }
                         : entity.data,
                 };
                 newMap.set(payload.entityId, updatedEntity);
@@ -144,6 +143,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 transform,
                 data,
                 ownerId: socket.id || '',
+                lockedBy: null,
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
             } as unknown as Omit<WorldEntity, 'id'>;
@@ -182,11 +182,9 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 const updatedEntity: WorldEntity = {
                     ...entity,
                     ...patch,
-                    transform: patch.transform
-                        ? { ...entity.transform, ...patch.transform }
-                        : entity.transform,
+                    transform: patch.transform ? { ...entity.transform, ...patch.transform } : entity.transform,
                     data: patch.data
-                        ? { ...entity.data, ...patch.data }
+                        ? { ...(entity.data as Record<string, unknown>), ...(patch.data as Record<string, unknown>) }
                         : entity.data,
                 };
                 newMap.set(entityId, updatedEntity);
@@ -196,7 +194,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             // 2. サーバーへ送信
             socket.emit('entity:patch', { entityId, patch });
         },
-        [socket, isConnected]
+        [socket, isConnected],
     );
 
     const deleteEntity = useCallback(
@@ -215,20 +213,19 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         [socket, isConnected],
     );
 
-    const contextValue: WorldContextType = useMemo(() => ({
-        entities,
-        ephemeralData,
-        createEntity,
-        patchEntity,
-        deleteEntity,
-        isConnected,
-    }), [entities, ephemeralData, createEntity, patchEntity, deleteEntity, isConnected]);
-
-    return (
-        <WorldContext.Provider value={contextValue}>
-            {children}
-        </WorldContext.Provider>
+    const contextValue: WorldContextType = useMemo(
+        () => ({
+            entities,
+            ephemeralData,
+            createEntity,
+            patchEntity,
+            deleteEntity,
+            isConnected,
+        }),
+        [entities, ephemeralData, createEntity, patchEntity, deleteEntity, isConnected],
     );
+
+    return <WorldContext.Provider value={contextValue}>{children}</WorldContext.Provider>;
 };
 
 export const useWorld = () => {

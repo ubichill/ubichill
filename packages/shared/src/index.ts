@@ -37,23 +37,23 @@ export interface User {
 export interface EntityTransform {
     x: number;
     y: number;
-    z: number;          // レイヤー順
-    w: number;          // 幅
-    h: number;          // 高さ
-    rotation: number;   // 回転角度（度）
+    z: number; // レイヤー順
+    w: number; // 幅
+    h: number; // 高さ
+    rotation: number; // 回転角度（度）
 }
 
 /**
  * ワールドエンティティの共通コンテナ
  * @template T ウィジェット固有のデータ型
  */
-export interface WorldEntity<T = Record<string, unknown>> {
-    id: string;                 // UUID
-    type: string;               // プラグインID (例: "pen", "sticky")
-    ownerId: string | null;     // 作成者のユーザーID
-    lockedBy: string | null;    // 操作中のユーザーID（nullで未ロック）
+export interface WorldEntity<T = unknown> {
+    id: string; // UUID
+    type: string; // プラグインID (例: "pen", "sticky")
+    ownerId: string | null; // 作成者のユーザーID
+    lockedBy: string | null; // 操作中のユーザーID（nullで未ロック）
     transform: EntityTransform;
-    data: T;                    // ウィジェット固有データ
+    data: T; // ウィジェット固有データ
 }
 
 /**
@@ -69,7 +69,7 @@ export interface EntityPatchPayload {
  */
 export interface EntityEphemeralPayload {
     entityId: string;
-    data: unknown;  // バックエンドはこの中身を解釈しない
+    data: unknown; // バックエンドはこの中身を解釈しない
 }
 
 // ============================================
@@ -201,3 +201,9 @@ export const SERVER_CONFIG = {
     /** 開発環境でのバックエンドURL */
     DEV_URL: 'http://localhost:3001',
 } as const;
+
+/**
+ * すべてのエンティティのユニオン型
+ * 特定のfeature型はこのファイルではなく、各featureの定義を参照してください。
+ */
+export type AnyWorldEntity = WorldEntity<unknown>;

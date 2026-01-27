@@ -4,7 +4,7 @@ import { logger } from '../utils/logger';
 
 /**
  * ルームごとのワールド状態を管理するインメモリストア
- * 
+ *
  * 設計思想:
  * - バックエンドは「土管」として動作し、dataの中身を解釈しない
  * - 各ルームは独立したエンティティ空間を持つ
@@ -60,7 +60,7 @@ export function createEntity(roomId: string, entityData: Omit<WorldEntity, 'id'>
 export function patchEntity(
     roomId: string,
     entityId: string,
-    patch: Partial<Omit<WorldEntity, 'id' | 'type'>>
+    patch: Partial<Omit<WorldEntity, 'id' | 'type'>>,
 ): WorldEntity | null {
     const roomState = getWorldState(roomId);
     const entity = roomState.get(entityId);
@@ -74,9 +74,7 @@ export function patchEntity(
     const updatedEntity: WorldEntity = {
         ...entity,
         ...patch,
-        transform: patch.transform
-            ? { ...entity.transform, ...patch.transform }
-            : entity.transform,
+        transform: patch.transform ? { ...entity.transform, ...patch.transform } : entity.transform,
     };
 
     roomState.set(entityId, updatedEntity);

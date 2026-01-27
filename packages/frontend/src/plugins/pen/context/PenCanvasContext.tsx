@@ -1,27 +1,20 @@
 'use client';
 
 import getStroke from 'perfect-freehand';
-import { createContext, useCallback, useContext, useEffect, useRef, useState, useMemo } from 'react';
-import { useSocket } from '../hooks/useSocket';
-import { useWorld } from './WorldContext';
+import type React from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useWorld } from '../../../core/contexts/WorldContext';
+import { useSocket } from '../../../core/hooks/useSocket';
+import type { DrawingData, StrokeData as Stroke } from '../types';
 
 // ============================================
 // Types
 // ============================================
 
-export interface Stroke {
-    points: number[][];
-    color: string;
-    size: number;
-}
-
-export interface DrawingData {
-    points: number[][];
-    color: string;
-    size: number;
-}
-
-export interface GlobalCanvasContextType {
+export interface PenCanvasContextType {
+    /**
+     * @deprecated Use createEntity('stroke') instead
+     */
     addStroke: (stroke: Stroke) => void;
     setCurrentDrawing: (drawing: DrawingData | null) => void;
     setRemoteDrawing: (entityId: string, drawing: DrawingData | null) => void;
@@ -32,7 +25,7 @@ export interface GlobalCanvasContextType {
 // Context
 // ============================================
 
-const GlobalCanvasContext = createContext<GlobalCanvasContextType | null>(null);
+const PenCanvasContext = createContext<PenCanvasContextType | null>(null);
 
 // ============================================
 // Utilities
@@ -68,10 +61,9 @@ function getSvgPathFromStroke(stroke: number[][]): string {
 // Provider
 // ============================================
 
-export const GlobalCanvasProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const PenCanvasProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const { socket } = useSocket();
     const { entities } = useWorld();
-    // const strokesRef = useRef<Stroke[]>([]); // 廃止: entitiesから直接描画
     const currentDrawingRef = useRef<DrawingData | null>(null);
     const remoteDrawingsRef = useRef<Map<string, DrawingData>>(new Map());
     const [, setTick] = useState(0);
@@ -80,62 +72,68 @@ export const GlobalCanvasProvider: React.FC<{ children: React.ReactNode }> = ({ 
         setTick((t) => t + 1);
     }, []);
 
-    const addStroke = useCallback((stroke: Stroke) => {
-        // strokesRef.current = [...strokesRef.current, stroke];
-        // forceUpdate();
-        // 廃止: ストロークは WorldContext 経由で追加されるため、ここは使わない
-        console.warn('GlobalCanvasContext.addStroke is deprecated. Use createEntity("stroke"...) instead.');
+    const addStroke = useCallback((_stroke: Stroke) => {
+        console.warn('PenCanvasContext.addStroke is deprecated. Use createEntity("stroke"...) instead.');
     }, []);
 
-    const setCurrentDrawing = useCallback((drawing: DrawingData | null) => {
-        currentDrawingRef.current = drawing;
-        forceUpdate();
-    }, [forceUpdate]);
+    const setCurrentDrawing = useCallback(
+        (drawing: DrawingData | null) => {
+            currentDrawingRef.current = drawing;
+            forceUpdate();
+        },
+        [forceUpdate],
+    );
 
-    const setRemoteDrawing = useCallback((entityId: string, drawing: DrawingData | null) => {
-        if (drawing) {
-            remoteDrawingsRef.current.set(entityId, drawing);
-        } else {
-            remoteDrawingsRef.current.delete(entityId);
-        }
-        forceUpdate();
-    }, [forceUpdate]);
+    const setRemoteDrawing = useCallback(
+        (entityId: string, drawing: DrawingData | null) => {
+            if (drawing) {
+                remoteDrawingsRef.current.set(entityId, drawing);
+            } else {
+                remoteDrawingsRef.current.delete(entityId);
+            }
+            forceUpdate();
+        },
+        [forceUpdate],
+    );
 
     useEffect(() => {
         if (!socket) return;
 
-        const handleStream = (payload: { entityId: string; data: DrawingData & { isComplete?: boolean } }) => {
-            // データ検証
-            if (!payload.data || !Array.isArray(payload.data.points)) return;
+        const handleEphemeral = (payload: { entityId: string; data: unknown }) => {
+            const data = payload.data as DrawingData & { isComplete?: boolean };
 
-            if (payload.data.isComplete) {
+            // データ検証
+            if (!data || !Array.isArray(data.points)) return;
+
+            if (data.isComplete) {
                 // 描画完了：リモート描画を削除
-                // ストロークの保存は送信者が createEntity を行うので、ここでは何もしない
-                // （二重描画を防ぐため）
                 setRemoteDrawing(payload.entityId, null);
             } else {
                 // 描画中：リモート描画を更新
-                setRemoteDrawing(payload.entityId, payload.data);
+                setRemoteDrawing(payload.entityId, data);
             }
         };
 
-        (socket as any).on('entity:stream', handleStream);
+        socket.on('entity:ephemeral', handleEphemeral);
         return () => {
-            (socket as any).off('entity:stream', handleStream);
+            socket.off('entity:ephemeral', handleEphemeral);
         };
-    }, [socket, addStroke, setRemoteDrawing]);
+    }, [socket, setRemoteDrawing]);
 
-    const contextValue: GlobalCanvasContextType = useMemo(() => ({
-        addStroke,
-        setCurrentDrawing,
-        setRemoteDrawing,
-        forceUpdate,
-    }), [addStroke, setCurrentDrawing, setRemoteDrawing, forceUpdate]);
+    const contextValue: PenCanvasContextType = useMemo(
+        () => ({
+            addStroke,
+            setCurrentDrawing,
+            setRemoteDrawing,
+            forceUpdate,
+        }),
+        [addStroke, setCurrentDrawing, setRemoteDrawing, forceUpdate],
+    );
 
     return (
-        <GlobalCanvasContext.Provider value={contextValue}>
+        <PenCanvasContext.Provider value={contextValue}>
             {children}
-            {/* Global Canvas SVG */}
+            {/* Pen Canvas SVG */}
             <svg
                 style={{
                     position: 'fixed',
@@ -174,19 +172,24 @@ export const GlobalCanvasProvider: React.FC<{ children: React.ReactNode }> = ({ 
                 {/* 自分の描画中ストローク */}
                 {currentDrawingRef.current && currentDrawingRef.current.points.length > 0 && (
                     <path
-                        d={getSvgPathFromStroke(getStroke(currentDrawingRef.current.points, getStrokeOptions(currentDrawingRef.current.size)))}
+                        d={getSvgPathFromStroke(
+                            getStroke(
+                                currentDrawingRef.current.points,
+                                getStrokeOptions(currentDrawingRef.current.size),
+                            ),
+                        )}
                         fill={currentDrawingRef.current.color}
                     />
                 )}
             </svg>
-        </GlobalCanvasContext.Provider>
+        </PenCanvasContext.Provider>
     );
 };
 
-export const useGlobalCanvas = () => {
-    const context = useContext(GlobalCanvasContext);
+export const usePenCanvas = () => {
+    const context = useContext(PenCanvasContext);
     if (!context) {
-        throw new Error('useGlobalCanvas must be used within GlobalCanvasProvider');
+        throw new Error('usePenCanvas must be used within PenCanvasProvider');
     }
     return context;
 };

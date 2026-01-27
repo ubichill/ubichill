@@ -9,7 +9,8 @@ import {
     type User,
     type UserStatus,
 } from '@ubichill/shared';
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import type React from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 
 // Socket type definition
@@ -40,10 +41,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     useEffect(() => {
         // Initialize socket connection
-        const socketUrl =
-            process.env.NODE_ENV === 'production'
-                ? undefined
-                : SERVER_CONFIG.DEV_URL;
+        const socketUrl = process.env.NODE_ENV === 'production' ? undefined : SERVER_CONFIG.DEV_URL;
 
         const socket: AppSocket = io(socketUrl || window.location.origin, {
             autoConnect: false,
@@ -70,7 +68,9 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         socket.on('users:update', (updatedUsers) => {
             // 配列をMapに変換
             const userMap = new Map<string, User>();
-            updatedUsers.forEach(u => userMap.set(u.id, u));
+            updatedUsers.forEach((u) => {
+                userMap.set(u.id, u);
+            });
             setUsers(userMap);
         });
 
@@ -184,11 +184,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         updateStatus,
     };
 
-    return (
-        <SocketContext.Provider value={value}>
-            {children}
-        </SocketContext.Provider>
-    );
+    return <SocketContext.Provider value={value}>{children}</SocketContext.Provider>;
 };
 
 /**

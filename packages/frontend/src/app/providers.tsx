@@ -1,16 +1,14 @@
 'use client';
 
-import { SocketProvider } from '@/hooks/useSocket';
-import { WorldProvider } from '@/contexts/WorldContext';
-import { GlobalCanvasProvider } from '@/contexts/GlobalCanvasContext';
+import { WorldProvider } from '@/core/contexts/WorldContext';
+import { SocketProvider } from '@/core/hooks/useSocket';
+import { PenCanvasProvider } from '@/plugins/pen/context/PenCanvasContext';
 
 export function Providers({ children }: { children: React.ReactNode }) {
     return (
         <SocketProvider>
             <WorldProvider>
-                <GlobalCanvasProvider>
-                    {children}
-                </GlobalCanvasProvider>
+                <PenCanvasProvider>{children}</PenCanvasProvider>
             </WorldProvider>
         </SocketProvider>
     );

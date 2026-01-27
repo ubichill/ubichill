@@ -2,8 +2,8 @@
 
 import { DEFAULTS } from '@ubichill/shared';
 import { useRef, useState } from 'react';
-import { useSocket } from '@/hooks/useSocket';
-import * as styles from './styles';
+import { useSocket } from '@/core/hooks/useSocket';
+import * as styles from '@/styles/styles';
 
 export default function Home() {
     const { isConnected, users, currentUser, error, joinRoom, updatePosition } = useSocket();

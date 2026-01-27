@@ -9,8 +9,8 @@
         "build": "pnpm run build:prepare && next build",
         "build:prepare": "cross-env NODE_ENV=production pnpm run prepare",
         "start": "next start",
-        "lint": "biome lint .",
-        "lint:fix": "biome lint --apply .",
+        "lint": "biome check .",
+        "lint:fix": "biome check --write .",
         "format": "biome format --write ."
     },
     "dependencies": {
