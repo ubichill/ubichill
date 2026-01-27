@@ -1,3 +1,5 @@
+'use client';
+
 import {
     type ClientToServerEvents,
     type CursorPosition,
@@ -7,13 +9,29 @@ import {
     type User,
     type UserStatus,
 } from '@ubichill/shared';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 
 // Socket type definition
 type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
-export const useSocket = () => {
+interface SocketContextValue {
+    socket: AppSocket | null;
+    isConnected: boolean;
+    users: User[];
+    currentUser: User | null;
+    error: string | null;
+    joinRoom: (name: string, roomId?: string) => void;
+    updatePosition: (position: CursorPosition) => void;
+    updateStatus: (status: UserStatus) => void;
+}
+
+const SocketContext = createContext<SocketContextValue | null>(null);
+
+/**
+ * ソケット接続を子コンポーネントに提供するプロバイダー
+ */
+export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({children}) => {
     const socketRef = useRef<AppSocket | null>(null);
     const [isConnected, setIsConnected] = useState(false);
     const [users, setUsers] = useState<User[]>([]);
@@ -22,16 +40,14 @@ export const useSocket = () => {
 
     useEffect(() => {
         // Initialize socket connection
-        // Production: Connect to the same origin (handled by Ingress)
-        // Development: Connect to SERVER_CONFIG.DEV_URL
         const socketUrl =
             process.env.NODE_ENV === 'production'
-                ? undefined // undefined means "same origin"
+                ? undefined
                 : SERVER_CONFIG.DEV_URL;
 
         const socket: AppSocket = io(socketUrl || window.location.origin, {
             autoConnect: false,
-            path: '/socket.io', // Explicitly define path, though default is often /socket.io
+            path: '/socket.io',
         });
 
         socketRef.current = socket;
@@ -111,7 +127,6 @@ export const useSocket = () => {
 
             socket.emit('cursor:move', position);
 
-            // Optimistic update for current user
             if (currentUser) {
                 setCurrentUser({ ...currentUser, position });
             }
@@ -126,7 +141,6 @@ export const useSocket = () => {
 
             socket.emit('status:update', status);
 
-            // Optimistic update for current user
             if (currentUser) {
                 setCurrentUser({ ...currentUser, status });
             }
@@ -134,7 +148,7 @@ export const useSocket = () => {
         [isConnected, currentUser],
     );
 
-    return {
+    const value: SocketContextValue = {
         socket: socketRef.current,
         isConnected,
         users,
@@ -144,4 +158,21 @@ export const useSocket = () => {
         updatePosition,
         updateStatus,
     };
+
+    return (
+        <SocketContext.Provider value={value}>
+        {children}
+        </SocketContext.Provider>
+    );
+};
+
+/**
+ * ソケット接続を利用するフック
+ */
+export const useSocket = (): SocketContextValue => {
+    const context = useContext(SocketContext);
+    if (!context) {
+        throw new Error('useSocket must be used within a SocketProvider');
+    }
+    return context;
 };

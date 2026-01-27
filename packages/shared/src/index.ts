@@ -28,6 +28,51 @@ export interface User {
 }
 
 // ============================================
+// UEP (Ubichill Entity Protocol) Types
+// ============================================
+
+/**
+ * エンティティの変形情報（位置・サイズ・回転）
+ */
+export interface EntityTransform {
+    x: number;
+    y: number;
+    z: number;          // レイヤー順
+    w: number;          // 幅
+    h: number;          // 高さ
+    rotation: number;   // 回転角度（度）
+}
+
+/**
+ * ワールドエンティティの共通コンテナ
+ * @template T ウィジェット固有のデータ型
+ */
+export interface WorldEntity<T = Record<string, unknown>> {
+    id: string;                 // UUID
+    type: string;               // プラグインID (例: "pen", "sticky")
+    ownerId: string | null;     // 作成者のユーザーID
+    lockedBy: string | null;    // 操作中のユーザーID（nullで未ロック）
+    transform: EntityTransform;
+    data: T;                    // ウィジェット固有データ
+}
+
+/**
+ * エンティティパッチ（Reliable）のペイロード
+ */
+export interface EntityPatchPayload {
+    entityId: string;
+    patch: Partial<Omit<WorldEntity, 'id' | 'type'>>;
+}
+
+/**
+ * エンティティエフェメラル（Volatile）のペイロード
+ */
+export interface EntityEphemeralPayload {
+    entityId: string;
+    data: unknown;  // バックエンドはこの中身を解釈しない
+}
+
+// ============================================
 // Socket.io Event Types
 // ============================================
 
@@ -52,6 +97,25 @@ export interface ServerToClientEvents {
 
     /** エラー通知 */
     error: (message: string) => void;
+
+    // ============================================
+    // UEP Events (Server -> Client)
+    // ============================================
+
+    /** ワールド状態のスナップショット（初期ロード時） */
+    'world:snapshot': (entities: WorldEntity[]) => void;
+
+    /** エンティティが作成された */
+    'entity:created': (entity: WorldEntity) => void;
+
+    /** エンティティが更新された（Reliable） */
+    'entity:patched': (payload: EntityPatchPayload) => void;
+
+    /** エンティティのリアルタイムデータ（Volatile） */
+    'entity:ephemeral': (payload: EntityEphemeralPayload) => void;
+
+    /** エンティティが削除された */
+    'entity:deleted': (entityId: string) => void;
 }
 
 /**
@@ -72,6 +136,25 @@ export interface ClientToServerEvents {
 
     /** ステータスを更新 */
     'status:update': (status: UserStatus) => void;
+
+    // ============================================
+    // UEP Events (Client -> Server)
+    // ============================================
+
+    /** エンティティを作成 */
+    'entity:create': (
+        payload: Omit<WorldEntity, 'id'>,
+        callback: (response: { success: boolean; entity?: WorldEntity; error?: string }) => void,
+    ) => void;
+
+    /** エンティティを更新（Reliable） */
+    'entity:patch': (payload: EntityPatchPayload) => void;
+
+    /** エンティティのリアルタイムデータ送信（Volatile） */
+    'entity:ephemeral': (payload: EntityEphemeralPayload) => void;
+
+    /** エンティティを削除 */
+    'entity:delete': (entityId: string) => void;
 }
 
 /**
