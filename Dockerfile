@@ -2,69 +2,74 @@ FROM node:22-alpine AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable
+RUN apk add --no-cache libc6-compat
 
 # ==========================================
-# Builder Stage
+# Builder Stage (Unified)
 # ==========================================
 FROM base AS builder
 WORKDIR /app
-
-# コピー & インストール
-# キャッシュを効かせるため、依存関係定義ファイルのみ先にコピー
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
-COPY packages/shared/package.json ./packages/shared/
-COPY packages/backend/package.json ./packages/backend/
-COPY packages/frontend/package.json ./packages/frontend/
-# Panda CSSの生成に必要な設定ファイルもコピー
-COPY packages/frontend/panda.config.ts ./packages/frontend/
-
-RUN pnpm install --frozen-lockfile
-
-# その後ソースコード全体をコピー
+RUN pnpm install -g turbo
 COPY . .
+RUN turbo prune @ubichill/backend @ubichill/frontend --docker --out-dir out
 
-# 環境変数設定 (ビルド用)
+# ==========================================
+# Installer & Builder Stage
+# ==========================================
+FROM base AS installer
+WORKDIR /app
+
+# Install dependencies referenced in lockfile
+COPY --from=builder /app/out/json/ .
+COPY --from=builder /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
+# --ignore-scripts is needed because some prepare scripts (e.g. panda codegen) fail without source
+RUN pnpm install --frozen-lockfile --ignore-scripts
+
+# Copy source code
+COPY --from=builder /app/out/full/ .
+COPY turbo.json turbo.json
+
+# Build environment variables
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 
-# ビルド実行
-# Backend: tsc
-# Frontend: next build (standalone)
-RUN pnpm --filter "@ubichill/backend..." build
-RUN pnpm --filter "@ubichill/frontend..." build
+# Build everything
+RUN pnpm run build
 
-# Backend用のデプロイ (prod依存のみ抽出)
-RUN pnpm --filter "@ubichill/backend" --prod deploy /out/backend
+# 配置用設定 (Docker内のみで有効)
+# pnpm deployには inject-workspace-packages=true が必要
+RUN echo "inject-workspace-packages=true" > .npmrc
+
+# Backend Deploy
+# これにより、必要なprod依存関係とビルド済みファイルが /app/deploy-backend に集約される
+RUN pnpm --filter="@ubichill/backend" --prod deploy /app/deploy-backend
 
 # ==========================================
-# Backend Runner Stage
+# Backend Runner
 # ==========================================
 FROM base AS backend-runner
 WORKDIR /app
+USER node
 
-# 必要なファイルのみコピー
-COPY --from=builder /out/backend .
+# Deployed application is self-contained (includes node_modules, dist, package.json, and workspace deps)
+COPY --from=installer --chown=node:node /app/deploy-backend .
 
 EXPOSE 3001
 CMD ["node", "dist/index.js"]
 
 # ==========================================
-# Frontend Runner Stage
+# Frontend Runner
 # ==========================================
 FROM base AS frontend-runner
 WORKDIR /app
-
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
+USER node
 
-# Frontend Static Files & Standalone Server
-# 公開ディレクトリ
-COPY --from=builder /app/packages/frontend/public ./packages/frontend/public
-# 静的ファイル (.next/static)
-COPY --from=builder /app/packages/frontend/.next/static ./packages/frontend/.next/static
-# Standaloneビルド (必要な依存関係とサーバーコードが含まれる)
-COPY --from=builder /app/packages/frontend/.next/standalone ./
+COPY --from=installer --chown=node:node /app/packages/frontend/public ./packages/frontend/public
+COPY --from=installer --chown=node:node /app/packages/frontend/.next/static ./packages/frontend/.next/static
+COPY --from=installer --chown=node:node /app/packages/frontend/.next/standalone ./
 
 EXPOSE 3000
 CMD ["node", "packages/frontend/server.js"]
