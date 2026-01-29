@@ -6,7 +6,16 @@ import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import { Server } from 'socket.io';
 import { appConfig } from './config';
-import { handleCursorMove, handleDisconnect, handleRoomJoin, handleStatusUpdate } from './handlers/socketHandlers';
+import {
+    handleCursorMove,
+    handleDisconnect,
+    handleEntityCreate,
+    handleEntityDelete,
+    handleEntityEphemeral,
+    handleEntityPatch,
+    handleRoomJoin,
+    handleStatusUpdate,
+} from './handlers/socketHandlers';
 
 // Expressアプリを初期化
 const app = express();
@@ -56,11 +65,17 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents, InterServerEve
 io.on('connection', (socket) => {
     console.log(`🔌 新しい接続: ${socket.id.substring(0, 8)}`);
 
-    // イベントハンドラーを登録
+    // 既存イベントハンドラー
     socket.on('room:join', handleRoomJoin(socket));
     socket.on('cursor:move', handleCursorMove(socket));
     socket.on('status:update', handleStatusUpdate(socket));
     socket.on('disconnect', handleDisconnect(socket));
+
+    // UEP (Ubichill Entity Protocol) イベントハンドラー
+    socket.on('entity:create', handleEntityCreate(socket));
+    socket.on('entity:patch', handleEntityPatch(socket));
+    socket.on('entity:ephemeral', handleEntityEphemeral(socket));
+    socket.on('entity:delete', handleEntityDelete(socket));
 });
 
 // サーバーを起動

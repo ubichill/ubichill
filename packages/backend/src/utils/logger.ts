@@ -9,7 +9,7 @@ export const logger = {
     /**
      * デバッグログ（DEBUG=trueの場合のみ出力）
      */
-    debug: (...args: any[]) => {
+    debug: (...args: unknown[]) => {
         if (appConfig.debug) {
             console.log('[DEBUG]', ...args);
         }
@@ -18,21 +18,21 @@ export const logger = {
     /**
      * 情報ログ（常に出力）
      */
-    info: (...args: any[]) => {
+    info: (...args: unknown[]) => {
         console.log(...args);
     },
 
     /**
      * 警告ログ（常に出力）
      */
-    warn: (...args: any[]) => {
+    warn: (...args: unknown[]) => {
         console.warn(...args);
     },
 
     /**
      * エラーログ（常に出力）
      */
-    error: (...args: any[]) => {
+    error: (...args: unknown[]) => {
         console.error(...args);
     },
 };

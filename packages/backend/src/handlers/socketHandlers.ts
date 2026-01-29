@@ -1,13 +1,17 @@
 import {
     type ClientToServerEvents,
     DEFAULTS,
+    type EntityEphemeralPayload,
+    type EntityPatchPayload,
     type InterServerEvents,
     type ServerToClientEvents,
     type SocketData,
     type User,
+    type WorldEntity,
 } from '@ubichill/shared';
 import type { Socket } from 'socket.io';
 import { userManager } from '../services/userManager';
+import { createEntity, deleteEntity, getWorldSnapshot, patchEntity } from '../services/worldState';
 import { logger } from '../utils/logger';
 import { validateCursorPosition, validateRoomId, validateUsername, validateUserStatus } from '../utils/validation';
 
@@ -68,6 +72,15 @@ export function handleRoomJoin(socket: TypedSocket) {
 
         // 新しいユーザーに現在のユーザー一覧を送信
         socket.emit('users:update', roomUsers);
+
+        // 新しいユーザーにワールドスナップショットを送信（UEP）
+        const entities = getWorldSnapshot(roomValidation.data);
+
+        // デフォルトペン作成ロジックはフロントエンド主導へ移行しました。
+        // ここでの自動生成は不要です。
+
+        socket.emit('world:snapshot', entities);
+        logger.debug(`ワールドスナップショット送信: ${entities.length}件のエンティティ`);
 
         // ルーム内の他のユーザーに参加を通知
         socket.to(roomValidation.data).emit('user:joined', newUser);
@@ -153,6 +166,39 @@ export function handleDisconnect(socket: TypedSocket) {
         const user = userManager.removeUser(socket.id);
 
         if (roomId && user) {
+            // 切断したユーザーがロックしていたエンティティを解放する
+            const entities = getWorldSnapshot(roomId);
+            const userLockedEntities = entities.filter((e) => e.lockedBy === socket.id);
+
+            userLockedEntities.forEach((entity) => {
+                // ロックを解除するだけ（位置はそのまま）
+                patchEntity(roomId, entity.id, {
+                    lockedBy: null,
+                    data: {
+                        ...(entity.data as Record<string, unknown>),
+                        isHeld: false,
+                    },
+                });
+
+                // 他のユーザーに通知
+                socket.to(roomId).emit('entity:patched', {
+                    entityId: entity.id,
+                    patch: {
+                        lockedBy: null,
+                        data: {
+                            ...(entity.data as Record<string, unknown>),
+                            isHeld: false,
+                        },
+                    },
+                });
+            });
+
+            if (userLockedEntities.length > 0) {
+                logger.info(
+                    `ユーザー ${user.name} がロックしていた ${userLockedEntities.length} 個のエンティティを解放しました`,
+                );
+            }
+
             // ルーム内の他のユーザーに退出を通知
             socket.to(roomId).emit('user:left', socket.id);
             logger.info(
@@ -162,4 +208,121 @@ export function handleDisconnect(socket: TypedSocket) {
             logger.info(`👋 ユーザーが切断しました: ${socket.id.substring(0, 8)}`);
         }
     };
+}
+
+// ============================================
+// UEP (Ubichill Entity Protocol) Handlers
+// ============================================
+
+/**
+ * エンティティ作成イベントを処理
+ */
+export function handleEntityCreate(socket: TypedSocket) {
+    return (
+        payload: Omit<WorldEntity, 'id'>,
+        callback: (response: { success: boolean; entity?: WorldEntity; error?: string }) => void,
+    ) => {
+        const roomId = socket.data.roomId;
+        if (!roomId) {
+            callback({ success: false, error: '最初にルームに参加する必要があります' });
+            return;
+        }
+
+        try {
+            // エンティティを作成（IDはサーバーで生成）
+            const entity = createEntity(roomId, payload);
+
+            // 成功レスポンスを送信
+            callback({ success: true, entity });
+
+            // ルーム内の他のユーザーにブロードキャスト
+            socket.to(roomId).emit('entity:created', entity);
+
+            logger.debug(`エンティティ作成: ${entity.id} (type: ${entity.type})`);
+        } catch (error) {
+            logger.error('エンティティ作成エラー:', error);
+            callback({ success: false, error: 'エンティティの作成に失敗しました' });
+        }
+    };
+}
+
+/**
+ * エンティティパッチイベントを処理（Reliable）
+ * - サーバーに状態を保存する
+ * - 送信者以外の全員にブロードキャストする
+ */
+export function handleEntityPatch(socket: TypedSocket) {
+    return (payload: EntityPatchPayload) => {
+        const roomId = socket.data.roomId;
+        if (!roomId) {
+            socket.emit('error', '最初にルームに参加する必要があります');
+            return;
+        }
+
+        const { entityId, patch } = payload;
+
+        // エンティティを更新
+        const updated = patchEntity(roomId, entityId, patch);
+        if (!updated) {
+            socket.emit('error', 'エンティティが見つかりません');
+            return;
+        }
+
+        // ルーム内の他のユーザーにブロードキャスト
+        socket.to(roomId).emit('entity:patched', payload);
+
+        logger.debug(`エンティティパッチ: ${entityId}`);
+    };
+}
+
+/**
+ * エンティティエフェメラルイベントを処理（Volatile）
+ * - サーバーに保存しない
+ * - 送信者以外の全員にブロードキャストする
+ */
+export function handleEntityEphemeral(socket: TypedSocket) {
+    return (payload: EntityEphemeralPayload) => {
+        const roomId = socket.data.roomId;
+        if (!roomId) {
+            socket.emit('error', '最初にルームに参加する必要があります');
+            return;
+        }
+
+        // 保存せずにそのままブロードキャスト（土管）
+        socket.to(roomId).emit('entity:ephemeral', payload);
+    };
+}
+
+/**
+ * エンティティ削除イベントを処理
+ */
+export function handleEntityDelete(socket: TypedSocket) {
+    return (entityId: string) => {
+        const roomId = socket.data.roomId;
+        if (!roomId) {
+            socket.emit('error', '最初にルームに参加する必要があります');
+            return;
+        }
+
+        // エンティティを削除
+        const deleted = deleteEntity(roomId, entityId);
+        if (!deleted) {
+            socket.emit('error', 'エンティティが見つかりません');
+            return;
+        }
+
+        // ルーム内の他のユーザーにブロードキャスト
+        socket.to(roomId).emit('entity:deleted', entityId);
+
+        logger.debug(`エンティティ削除: ${entityId}`);
+    };
+}
+
+/**
+ * ワールドスナップショットを送信（ルーム参加時に呼び出す）
+ */
+export function sendWorldSnapshot(socket: TypedSocket, roomId: string): void {
+    const entities = getWorldSnapshot(roomId);
+    socket.emit('world:snapshot', entities);
+    logger.debug(`ワールドスナップショット送信: ${entities.length}件のエンティティ`);
 }

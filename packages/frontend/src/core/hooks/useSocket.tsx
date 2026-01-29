@@ -1,3 +1,5 @@
+'use client';
+
 import {
     type ClientToServerEvents,
     type CursorPosition,
@@ -7,31 +9,43 @@ import {
     type User,
     type UserStatus,
 } from '@ubichill/shared';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import type React from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 
 // Socket type definition
 type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
-export const useSocket = () => {
+interface SocketContextValue {
+    socket: AppSocket | null;
+    isConnected: boolean;
+    users: Map<string, User>;
+    currentUser: User | null;
+    error: string | null;
+    joinRoom: (name: string, roomId?: string) => void;
+    updatePosition: (position: CursorPosition) => void;
+    updateStatus: (status: UserStatus) => void;
+}
+
+const SocketContext = createContext<SocketContextValue | null>(null);
+
+/**
+ * ソケット接続を子コンポーネントに提供するプロバイダー
+ */
+export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const socketRef = useRef<AppSocket | null>(null);
     const [isConnected, setIsConnected] = useState(false);
-    const [users, setUsers] = useState<User[]>([]);
+    const [users, setUsers] = useState<Map<string, User>>(new Map());
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         // Initialize socket connection
-        // Production: Connect to the same origin (handled by Ingress)
-        // Development: Connect to SERVER_CONFIG.DEV_URL
-        const socketUrl =
-            process.env.NODE_ENV === 'production'
-                ? undefined // undefined means "same origin"
-                : SERVER_CONFIG.DEV_URL;
+        const socketUrl = process.env.NODE_ENV === 'production' ? undefined : SERVER_CONFIG.DEV_URL;
 
         const socket: AppSocket = io(socketUrl || window.location.origin, {
             autoConnect: false,
-            path: '/socket.io', // Explicitly define path, though default is often /socket.io
+            path: '/socket.io',
         });
 
         socketRef.current = socket;
@@ -52,23 +66,50 @@ export const useSocket = () => {
         });
 
         socket.on('users:update', (updatedUsers) => {
-            setUsers(updatedUsers);
+            // 配列をMapに変換
+            const userMap = new Map<string, User>();
+            updatedUsers.forEach((u) => {
+                userMap.set(u.id, u);
+            });
+            setUsers(userMap);
         });
 
         socket.on('user:joined', (user) => {
-            setUsers((prev) => [...prev, user]);
+            setUsers((prev) => {
+                const newMap = new Map(prev);
+                newMap.set(user.id, user);
+                return newMap;
+            });
         });
 
         socket.on('user:left', (userId) => {
-            setUsers((prev) => prev.filter((u) => u.id !== userId));
+            setUsers((prev) => {
+                const newMap = new Map(prev);
+                newMap.delete(userId);
+                return newMap;
+            });
         });
 
         socket.on('cursor:moved', ({ userId, position }) => {
-            setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, position } : u)));
+            setUsers((prev) => {
+                const user = prev.get(userId);
+                if (!user) return prev; // まだユーザー情報がない場合は更新できない（通常ありえないが）
+
+                // 位置情報だけ更新したいが、イミュータブルにMapを更新
+                const newMap = new Map(prev);
+                newMap.set(userId, { ...user, position });
+                return newMap;
+            });
         });
 
         socket.on('status:changed', ({ userId, status }) => {
-            setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, status } : u)));
+            setUsers((prev) => {
+                const user = prev.get(userId);
+                if (!user) return prev;
+                const newMap = new Map(prev);
+                newMap.set(userId, { ...user, status });
+                return newMap;
+            });
         });
 
         socket.on('error', (msg) => {
@@ -111,7 +152,6 @@ export const useSocket = () => {
 
             socket.emit('cursor:move', position);
 
-            // Optimistic update for current user
             if (currentUser) {
                 setCurrentUser({ ...currentUser, position });
             }
@@ -126,7 +166,6 @@ export const useSocket = () => {
 
             socket.emit('status:update', status);
 
-            // Optimistic update for current user
             if (currentUser) {
                 setCurrentUser({ ...currentUser, status });
             }
@@ -134,7 +173,7 @@ export const useSocket = () => {
         [isConnected, currentUser],
     );
 
-    return {
+    const value: SocketContextValue = {
         socket: socketRef.current,
         isConnected,
         users,
@@ -144,4 +183,17 @@ export const useSocket = () => {
         updatePosition,
         updateStatus,
     };
+
+    return <SocketContext.Provider value={value}>{children}</SocketContext.Provider>;
+};
+
+/**
+ * ソケット接続を利用するフック
+ */
+export const useSocket = (): SocketContextValue => {
+    const context = useContext(SocketContext);
+    if (!context) {
+        throw new Error('useSocket must be used within a SocketProvider');
+    }
+    return context;
 };
