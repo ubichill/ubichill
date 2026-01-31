@@ -1,5 +1,5 @@
-import { css } from '../../styled-system/css';
-import { flex, hstack, vstack } from '../../styled-system/patterns';
+import { css } from '@/styled-system/css';
+import { flex, hstack, vstack } from '@/styled-system/patterns';
 
 /**
  * Centralized PandaCSS style definitions

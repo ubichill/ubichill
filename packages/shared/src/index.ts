@@ -73,6 +73,40 @@ export interface EntityEphemeralPayload {
 }
 
 // ============================================
+// World Snapshot (拡張版)
+// ============================================
+
+/**
+ * 利用可能なKind（ツールバー用）
+ */
+export interface AvailableKind {
+    id: string; // "package-name:kind-id"
+    displayName: string;
+    baseType: string;
+    icon?: string;
+    defaults?: Record<string, unknown>;
+}
+
+/**
+ * ルーム環境設定
+ */
+export interface RoomEnvironmentData {
+    backgroundColor: string;
+    backgroundImage: string | null;
+    bgm: string | null;
+    worldSize: { width: number; height: number };
+}
+
+/**
+ * ワールドスナップショットペイロード（拡張版）
+ */
+export interface WorldSnapshotPayload {
+    entities: WorldEntity[];
+    availableKinds: AvailableKind[];
+    environment: RoomEnvironmentData;
+}
+
+// ============================================
 // Socket.io Event Types
 // ============================================
 
@@ -102,8 +136,8 @@ export interface ServerToClientEvents {
     // UEP Events (Server -> Client)
     // ============================================
 
-    /** ワールド状態のスナップショット（初期ロード時） */
-    'world:snapshot': (entities: WorldEntity[]) => void;
+    /** ワールド状態のスナップショット（拡張版） */
+    'world:snapshot': (payload: WorldSnapshotPayload) => void;
 
     /** エンティティが作成された */
     'entity:created': (entity: WorldEntity) => void;
@@ -116,6 +150,16 @@ export interface ServerToClientEvents {
 
     /** エンティティが削除された */
     'entity:deleted': (entityId: string) => void;
+
+    // ============================================
+    // Instance Events (Server -> Client)
+    // ============================================
+
+    /** インスタンス状態更新 */
+    'instance:updated': (stats: { currentUsers: number }) => void;
+
+    /** インスタンス終了通知 */
+    'instance:closing': (reason: string) => void;
 }
 
 /**
@@ -124,7 +168,7 @@ export interface ServerToClientEvents {
 export interface ClientToServerEvents {
     /** ルームに参加 */
     'room:join': (
-        data: { roomId: string; user: Omit<User, 'id'> },
+        data: { roomId: string; instanceId?: string; user: Omit<User, 'id'> },
         callback: (response: { success: boolean; userId?: string; error?: string }) => void,
     ) => void;
 
@@ -170,6 +214,7 @@ export interface InterServerEvents {
 export interface SocketData {
     userId?: string;
     roomId?: string;
+    instanceId?: string;
     user?: User;
 }
 
@@ -182,17 +227,40 @@ export interface SocketData {
  */
 export const DEFAULTS = {
     /** デフォルトのルームID */
-    ROOM_ID: 'main',
+    ROOM_ID: 'default',
 
     /** ユーザーのデフォルトステータス */
     USER_STATUS: 'online' as UserStatus,
 
     /** カーソル位置の初期値 */
     INITIAL_POSITION: { x: 0, y: 0 } as CursorPosition,
+
+    /** デフォルトのルーム環境 */
+    ROOM_ENVIRONMENT: {
+        backgroundColor: '#F0F8FF',
+        backgroundImage: null,
+        bgm: null,
+        worldSize: { width: 2000, height: 1500 },
+    } as RoomEnvironmentData,
 } as const;
 
 /**
- * サーバー設定
+ * 環境変数キー定数
+ * 各パッケージで散らばらないよう、ここで一元管理する
+ */
+export const ENV_KEYS = {
+    /** バックエンドのポート番号 */
+    PORT: 'PORT',
+
+    /** ルーム定義ディレクトリのパス */
+    ROOMS_DIR: 'ROOMS_DIR',
+
+    /** バックエンドAPI URL（フロントエンド用、Next.js の NEXT_PUBLIC_ プレフィックス） */
+    API_URL: 'NEXT_PUBLIC_API_URL',
+} as const;
+
+/**
+ * サーバー設定（デフォルト値）
  */
 export const SERVER_CONFIG = {
     /** バックエンドのポート番号 */
@@ -200,6 +268,9 @@ export const SERVER_CONFIG = {
 
     /** 開発環境でのバックエンドURL */
     DEV_URL: 'http://localhost:3001',
+
+    /** ルーム定義ディレクトリのデフォルト相対パス（バックエンドcwd基準） */
+    ROOMS_DIR_DEFAULT: '../../rooms',
 } as const;
 
 /**
@@ -207,3 +278,9 @@ export const SERVER_CONFIG = {
  * 特定のfeature型はこのファイルではなく、各featureの定義を参照してください。
  */
 export type AnyWorldEntity = WorldEntity<unknown>;
+
+// ============================================
+// Re-export Schemas
+// ============================================
+
+export * from './schemas';
