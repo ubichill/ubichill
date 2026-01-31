@@ -191,36 +191,104 @@ spec:
 
 ユーザーの見た目（カーソル）を定義します。
 
+> **設計方針**: ブラウザは `.ani` / `.cur` ファイルを直接表示できないため、**状態（State）ベース**で画像を切り替える構造を採用。アニメーションは WebP / APNG で対応。
+
 ```yaml
 apiVersion: ubichill.com/v1alpha1
 kind: Avatar
 metadata:
-  name: cat-paw-style
+  name: windows-aero-style
   version: "1.0.0"
   author:
-    name: "Designer A"
+    name: "Microsoft (Example)"
+    url: "https://example.com"
 spec:
-  displayName: "猫の手カーソル"
-  description: "かわいい猫の手でクリック！"
-  
-  visuals:
-    cursorImage: "./assets/paw.png"
-    cursorSize: { width: 32, height: 32 }
-    cursorOffset: { x: 16, y: 4 }   # ホットスポット
-    
-    # カーソルの軌跡エフェクト
-    trail:
-      enabled: true
-      color: "#FFB6C1"
-      length: 15
-      decay: 0.9
+  displayName: "エアロカーソル"
+  description: "懐かしのWindows Aero風のアニメーションカーソルセット"
+
+  # ★ 状態ごとのカーソル定義
+  states:
+    # 1. 通常時 (Normal Select)
+    default:
+      src: "./assets/normal.png"      # .cur から変換
+      hotspot: { x: 0, y: 0 }         # 左上が基準
+
+    # 2. クリック可能 (Link Select)
+    pointer:
+      src: "./assets/link.png"
+      hotspot: { x: 6, y: 0 }
+
+    # 3. 処理中/待機中 (Busy) - アニメーション対応
+    wait:
+      src: "./assets/busy.webp"       # .ani から変換 (アニメーション)
+      hotspot: { x: 10, y: 10 }
+
+    # 4. テキスト入力 (Text)
+    text:
+      src: "./assets/text.png"
+      hotspot: { x: 4, y: 10 }
+
+    # 5. ヘルプ (Help)
+    help:
+      src: "./assets/help.webp"
+      hotspot: { x: 0, y: 0 }
+
+    # 6. 禁止 (Not Allowed)
+    not-allowed:
+      src: "./assets/unavailable.webp"
+      hotspot: { x: 10, y: 10 }
+
+    # 7. リサイズ系
+    resize-ew:                        # 水平 (東西)
+      src: "./assets/resize-h.webp"
+      hotspot: { x: 10, y: 10 }
       
-    # クリック時のエフェクト
-    clickEffect:
-      type: "ripple"
-      color: "#FFB6C1"
-      duration: 300
+    resize-ns:                        # 垂直 (南北)
+      src: "./assets/resize-v.webp"
+      hotspot: { x: 10, y: 10 }
+
+    resize-nwse:                      # 斜め (北西-南東)
+      src: "./assets/resize-nwse.webp"
+      hotspot: { x: 10, y: 10 }
+
+    resize-nesw:                      # 斜め (北東-南西)
+      src: "./assets/resize-nesw.webp"
+      hotspot: { x: 10, y: 10 }
+
+    # 8. 移動 (Move/Grab)
+    move:
+      src: "./assets/move.webp"
+      hotspot: { x: 10, y: 10 }
+
+    grabbing:
+      src: "./assets/grabbing.png"
+      hotspot: { x: 10, y: 10 }
+
+  # オプション: サイズ倍率（高解像度対応）
+  scale: 1.0
 ```
+
+#### 標準カーソル状態一覧
+
+| State | 用途 | CSS対応 |
+|-------|------|---------|
+| `default` | 通常時 | `cursor: default` |
+| `pointer` | クリック可能要素 | `cursor: pointer` |
+| `wait` | 処理中（アニメーション推奨） | `cursor: wait` |
+| `text` | テキスト入力 | `cursor: text` |
+| `help` | ヘルプ | `cursor: help` |
+| `not-allowed` | 操作不可 | `cursor: not-allowed` |
+| `resize-*` | リサイズ系 | `cursor: ew-resize` 等 |
+| `move` | 移動可能 | `cursor: move` |
+| `grabbing` | ドラッグ中 | `cursor: grabbing` |
+
+#### アセットフォーマット
+
+| 種類 | 推奨フォーマット | 変換元 |
+|------|------------------|--------|
+| 静止画 | PNG | `.cur` |
+| アニメーション | WebP (animated), APNG | `.ani` |
+| フォールバック | GIF | `.ani` |
 
 ---
 
