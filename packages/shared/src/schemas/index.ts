@@ -1,0 +1,41 @@
+// Room CRD スキーマ
+export {
+    LIMITS,
+    SafeString,
+    KebabCaseId,
+    SemVer,
+    HexColor,
+    TransformSchema,
+    AuthorSchema,
+    RoomEnvironmentSchema,
+    RoomCapacitySchema,
+    InitialEntitySchema,
+    RoomPermissionsSchema,
+    RoomDefinitionSchema,
+    ResolvedRoomSchema,
+    type RoomDefinition,
+    type RoomEnvironment,
+    type RoomCapacity,
+    type InitialEntity,
+    type ResolvedRoom,
+} from './room.schema';
+
+// Instance API スキーマ
+export {
+    AccessType,
+    InstanceStatus,
+    InstanceAccessSchema,
+    InstanceStatsSchema,
+    InstanceConnectionSchema,
+    InstanceSchema,
+    CreateInstanceRequestSchema,
+    ListInstancesQuerySchema,
+    RoomListItemSchema,
+    type InstanceAccess,
+    type InstanceStats,
+    type InstanceConnection,
+    type Instance,
+    type CreateInstanceRequest,
+    type ListInstancesQuery,
+    type RoomListItem,
+} from './instance.schema';

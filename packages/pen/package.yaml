@@ -1,0 +1,41 @@
+apiVersion: ubichill.com/v1alpha1
+kind: Package
+metadata:
+  name: pen
+  version: "1.0.0"
+  author:
+    name: "Ubichill Team"
+    url: "https://github.com/ubichill/ubichill"
+
+spec:
+  displayName: "ペン"
+  description: "シンプルなペンオブジェクト。クリックしてドラッグで移動できます。"
+  category: "core"
+  icon: "pencil"
+  
+  # このパッケージが提供する Kind 一覧
+  kinds:
+    - id: pen
+      displayName: "ペン"
+      description: "ドラッグ可能なペンオブジェクト"
+      
+      # デフォルトの初期データ
+      defaultData:
+        color: "#228BE6"
+        isHeld: false
+      
+      # デフォルトのトランスフォーム
+      defaultTransform:
+        x: 100
+        y: 100
+        z: 1
+        scale: 1
+        rotation: -45
+      
+      # フロントエンド実装
+      implementation:
+        type: "builtin"
+        module: "@ubichill/frontend/plugins/pen"
+
+  # パッケージの依存関係（なし）
+  dependencies: []

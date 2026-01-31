@@ -1,6 +1,14 @@
 'use client';
 
-import type { EntityEphemeralPayload, EntityPatchPayload, WorldEntity } from '@ubichill/shared';
+import type {
+    EntityEphemeralPayload,
+    EntityPatchPayload,
+    WorldEntity,
+    WorldSnapshotPayload,
+    AvailableKind,
+    RoomEnvironmentData,
+} from '@ubichill/shared';
+import { DEFAULTS } from '@ubichill/shared';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useSocket } from '../hooks/useSocket';
 
@@ -11,6 +19,8 @@ import { useSocket } from '../hooks/useSocket';
 export interface WorldContextType {
     entities: Map<string, WorldEntity>;
     ephemeralData: Map<string, unknown>;
+    environment: RoomEnvironmentData;
+    availableKinds: AvailableKind[];
     createEntity: <T = Record<string, unknown>>(
         type: string,
         transform: WorldEntity['transform'],
@@ -35,17 +45,21 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const { socket, isConnected } = useSocket();
     const [entities, setEntities] = useState<Map<string, WorldEntity>>(new Map());
     const [ephemeralData, setEphemeralData] = useState<Map<string, unknown>>(new Map());
+    const [environment, setEnvironment] = useState<RoomEnvironmentData>(DEFAULTS.ROOM_ENVIRONMENT);
+    const [availableKinds, setAvailableKinds] = useState<AvailableKind[]>([]);
 
     useEffect(() => {
         if (!socket) return;
 
         // ワールドスナップショットを受信（初期ロード）
-        const handleWorldSnapshot = (entityList: WorldEntity[]) => {
+        const handleWorldSnapshot = (payload: WorldSnapshotPayload) => {
             const newMap = new Map<string, WorldEntity>();
-            for (const entity of entityList) {
+            for (const entity of payload.entities) {
                 newMap.set(entity.id, entity);
             }
             setEntities(newMap);
+            setEnvironment(payload.environment);
+            setAvailableKinds(payload.availableKinds);
         };
 
         // エンティティ作成を受信
@@ -73,9 +87,9 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                         : entity.transform,
                     data: payload.patch.data
                         ? {
-                              ...(entity.data as Record<string, unknown>),
-                              ...(payload.patch.data as Record<string, unknown>),
-                          }
+                            ...(entity.data as Record<string, unknown>),
+                            ...(payload.patch.data as Record<string, unknown>),
+                        }
                         : entity.data,
                 };
                 newMap.set(payload.entityId, updatedEntity);
@@ -107,7 +121,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         };
 
         socket.on('world:snapshot', (data) => {
-            console.log('[WorldContext] Received world:snapshot', data.length);
+            console.log('[WorldContext] Received world:snapshot', data.entities.length);
             handleWorldSnapshot(data);
         });
         socket.on('entity:created', (data) => {
@@ -217,12 +231,14 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         () => ({
             entities,
             ephemeralData,
+            environment,
+            availableKinds,
             createEntity,
             patchEntity,
             deleteEntity,
             isConnected,
         }),
-        [entities, ephemeralData, createEntity, patchEntity, deleteEntity, isConnected],
+        [entities, ephemeralData, environment, availableKinds, createEntity, patchEntity, deleteEntity, isConnected],
     );
 
     return <WorldContext.Provider value={contextValue}>{children}</WorldContext.Provider>;

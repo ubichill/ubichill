@@ -16,6 +16,9 @@ import {
     handleRoomJoin,
     handleStatusUpdate,
 } from './handlers/socketHandlers';
+import roomsRouter from './routes/rooms';
+import instancesRouter from './routes/instances';
+import { roomRegistry } from './services/roomRegistry';
 
 // Expressアプリを初期化
 const app = express();
@@ -49,6 +52,12 @@ app.get('/health', (_req, res) => {
     res.json({ status: 'ok', timestamp: Date.now() });
 });
 
+// ============================================
+// REST API ルート
+// ============================================
+app.use('/api/v1/rooms', roomsRouter);
+app.use('/api/v1/instances', instancesRouter);
+
 // HTTPサーバーを作成
 const server = http.createServer(app);
 
@@ -78,13 +87,21 @@ io.on('connection', (socket) => {
     socket.on('entity:delete', handleEntityDelete(socket));
 });
 
-// サーバーを起動
-server.listen(appConfig.port, () => {
-    console.log('');
-    console.log('🚀 Ubichill サーバー起動');
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log(`   🌐 ポート ${appConfig.port} で起動中`);
-    console.log(`   📍 環境: ${appConfig.nodeEnv}`);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('');
-});
+// サーバーを起動（非同期初期化）
+async function startServer() {
+    // ルーム定義を読み込み
+    await roomRegistry.loadRooms();
+
+    server.listen(appConfig.port, () => {
+        console.log('');
+        console.log('🚀 Ubichill サーバー起動');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log(`   🌐 ポート ${appConfig.port} で起動中`);
+        console.log(`   📍 環境: ${appConfig.nodeEnv}`);
+        console.log(`   📁 ルーム数: ${roomRegistry.listRooms().length}`);
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('');
+    });
+}
+
+startServer().catch(console.error);
