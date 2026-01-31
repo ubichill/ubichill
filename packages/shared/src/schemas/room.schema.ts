@@ -50,8 +50,9 @@ export const TransformSchema = z.object({
     x: z.number(),
     y: z.number(),
     z: z.number().default(0),
-    w: z.number().positive(),
-    h: z.number().positive(),
+    w: z.number().positive().optional(),
+    h: z.number().positive().optional(),
+    scale: z.number().positive().optional().default(1),
     rotation: z.number().default(0),
 });
 
