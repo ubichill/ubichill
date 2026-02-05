@@ -1,0 +1,124 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid()) // UUID v4
+  name      String
+  email     String?  @unique // ログイン用。ユニークインデックスが作成される
+  avatarUrl String?  @map("avatar_url")
+  
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  ownedRooms Room[]
+  presences  UserPresence[]
+
+  @@map("users") // テーブル名は複数形・小文字
+}
+
+model Room {
+  id          String   @id @default(uuid())
+  slug        String   @unique // URL用識別子。例: "workspace-a"
+  name        String
+  description String?
+  thumbnail   String?
+  ownerId     String?  @map("owner_id")
+  
+  // 正規化された設定フィールド (検索・フィルタリング用)
+  capacityMax Int      @default(20) @map("capacity_max")
+  isPublic    Boolean  @default(true) @map("is_public")
+  isOfficial  Boolean  @default(false) @map("is_official")
+  
+  // その他の複雑な設定や将来の拡張フィールドはJSONに残す
+  // (例: permissions, dependencies, initialEntities)
+  definition  Json     
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  owner     User?      @relation(fields: [ownerId], references: [id])
+  instances Instance[]
+
+  // Indexes
+  @@index([ownerId]) 
+  @@index([isPublic, isOfficial])
+  @@index([capacityMax])
+
+  @@map("rooms")
+}
+
+enum InstanceStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+model Instance {
+  id           String         @id @default(uuid())
+  roomId       String         @map("room_id")
+  status       InstanceStatus @default(ACTIVE)
+  
+  createdAt    DateTime       @default(now()) @map("created_at")
+  lastActiveAt DateTime       @default(now()) @map("last_active_at")
+
+  // Relations
+  room       Room          @relation(fields: [roomId], references: [id])
+  worldState WorldState?
+  presences  UserPresence[]
+
+  // Indexes
+  // ルームに紐づくアクティブなインスタンス一覧取得の高速化
+  @@index([roomId, status])
+  
+  // 古いインスタンスの掃除（GC）用
+  @@index([lastActiveAt])
+
+  @@map("instances")
+}
+
+model WorldState {
+  instanceId String   @id @map("instance_id") // Instance IDと同じにする（1:1関係）
+  
+  // エンティティの塊。
+  // 頻繁な書き込みがあるため、個別のEntityテーブルに分解すると
+  // 書き込みコストが爆発するためJSONBで一括保存を選択。
+  entities   Json
+  
+  version    Int      @default(1)
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  instance   Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  @@map("world_states")
+}
+
+// 誰がどこにいるかを管理（Redis等でも良いが永続化のためDBに）
+model UserPresence {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  instanceId String   @map("instance_id")
+  
+  joinedAt   DateTime @default(now()) @map("joined_at")
+  lastSeenAt DateTime @default(now()) @map("last_seen_at")
+
+  // Relations
+  user     User     @relation(fields: [userId], references: [id])
+  instance Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  // 特定ユーザーが今どこにいるかを探す
+  @@index([userId, lastSeenAt])
+  // インスタンス内のユーザー一覧
+  @@index([instanceId])
+
+  @@map("user_presences")
+}

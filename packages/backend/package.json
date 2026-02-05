@@ -14,12 +14,14 @@
         "format": "biome format --write ."
     },
     "dependencies": {
+        "@prisma/client": "6.0.0",
         "@ubichill/shared": "workspace:*",
         "cors": "^2.8.5",
         "dotenv": "^17.2.3",
         "express": "^5.2.1",
         "express-rate-limit": "^8.2.1",
         "helmet": "^8.1.0",
+        "redis": "^5.10.0",
         "socket.io": "^4.8.3",
         "yaml": "^2.8.2",
         "zod": "^4.3.6"
@@ -28,6 +30,7 @@
         "@types/cors": "^2.8.17",
         "@types/express": "^5.0.0",
         "@types/node": "^22.13.4",
+        "prisma": "6.0.0",
         "rimraf": "^6.0.1",
         "ts-node-dev": "^2.0.0",
         "typescript": "^5.9.3",
