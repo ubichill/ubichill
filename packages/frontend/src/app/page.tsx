@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { Lobby } from '@/components/lobby';
+import { useWorld } from '@/core/contexts/WorldContext';
 import { useSocket } from '@/core/hooks/useSocket';
 import * as styles from '@/styles/styles';
 
@@ -9,6 +10,7 @@ type AppScreen = 'name' | 'lobby' | 'room';
 
 export default function Home() {
     const { isConnected, users, currentUser, error, joinRoom, updatePosition } = useSocket();
+    const { environment } = useWorld();
     const [name, setName] = useState('');
     const [screen, setScreen] = useState<AppScreen>('name');
 
@@ -104,7 +106,17 @@ export default function Home() {
 
     // ルーム画面
     return (
-        <main className={styles.mainContainer} onMouseMove={handleMouseMove}>
+        <main
+            className={styles.mainContainer}
+            onMouseMove={handleMouseMove}
+            style={{
+                backgroundColor: environment.backgroundColor,
+                backgroundImage: environment.backgroundImage ? `url(${environment.backgroundImage})` : undefined,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat',
+            }}
+        >
             <div className={styles.headerContainer}>
                 <p className={styles.statusBar}>
                     Status: {isConnected ? 'Connected' : 'Disconnected'}

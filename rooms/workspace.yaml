@@ -1,43 +1,42 @@
 apiVersion: ubichill.com/v1alpha1
 kind: Room
 metadata:
-  name: default
+  name: workspace
   version: "1.0.0"
   author:
     name: "Ubichill Team"
 spec:
-  displayName: "デフォルトルーム"
-  description: "Ubichill のデフォルトコラボレーションスペース"
-  thumbnail: "https://images.unsplash.com/photo-1519389950473-47ba0277781c?w=400&h=200&fit=crop&q=80"
+  displayName: "ワークスペース"
+  description: "落ち着いた雰囲気の作業空間"
+  thumbnail: "https://images.unsplash.com/photo-1497366216548-37526070297c?w=400&h=200&fit=crop&q=80"
   
   capacity:
-    default: 10
-    max: 20
+    default: 8
+    max: 15
   
   environment:
-    backgroundColor: "#F0F8FF"
+    backgroundColor: "#1a1a2e"
+    backgroundImage: "https://images.unsplash.com/photo-1497366216548-37526070297c?w=1920&q=80"
     worldSize:
       width: 2000
       height: 1500
   
-  # パッケージ依存関係
   dependencies:
     - name: pen
       source:
         type: repository
         path: "packages/pen"
   
-  # 初期配置エンティティ（ペンを1つ配置）
   initialEntities:
     - kind: "pen:pen"
       transform:
-        x: 400
-        y: 300
+        x: 600
+        y: 400
         z: 1
         scale: 1
-        rotation: -45
+        rotation: 0
       data:
-        color: "#228BE6"
+        color: "#E6E6E6"
   
   permissions:
     allowGuestCreate: true

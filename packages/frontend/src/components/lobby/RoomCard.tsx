@@ -88,7 +88,7 @@ export function RoomCard({ room, onSelect }: RoomCardProps) {
             {room.description && <p className={css(descriptionStyle)}>{room.description}</p>}
             <div className={css(metaStyle)}>
                 <span>
-                    👥 {room.capacity.default}/{room.capacity.max}
+                    👥 推奨: {room.capacity.default}人 / 最大: {room.capacity.max}人
                 </span>
                 <span>v{room.version}</span>
             </div>
