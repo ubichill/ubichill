@@ -13,6 +13,132 @@ import { logger } from '../utils/logger';
 
 // インスタンスID -> エンティティID -> エンティティ のネストしたMap
 const worldStates: Map<string, Map<string, WorldEntity>> = new Map();
+// 変更があったインスタンスIDを保持するSet（定期保存用）
+const dirtyInstances: Set<string> = new Set();
+
+import { prisma } from '../lib/prisma';
+
+/**
+ * DBからワールド状態をロード（存在する場合）
+ * メモリ上に既にある場合は何もしない
+ */
+export async function ensureWorldStateLoaded(instanceId: string): Promise<void> {
+    if (worldStates.has(instanceId)) {
+        return;
+    }
+
+    try {
+        const state = await prisma.worldState.findUnique({
+            where: { instanceId },
+        });
+
+        if (state?.entities) {
+            const entityMap = new Map<string, WorldEntity>();
+            const entities = state.entities as unknown as WorldEntity[];
+
+            entities.forEach((e) => {
+                entityMap.set(e.id, e);
+            });
+
+            worldStates.set(instanceId, entityMap);
+            logger.info(`DBからワールド状態を復元しました: ${instanceId} (${entities.length} entities)`);
+        }
+    } catch (error) {
+        logger.error(`ワールド状態のロードに失敗: ${instanceId}`, error);
+    }
+}
+
+/**
+ * ワールド状態をDBに保存
+ */
+async function saveWorldState(instanceId: string): Promise<void> {
+    const instanceState = worldStates.get(instanceId);
+    if (!instanceState) return;
+
+    const entities = Array.from(instanceState.values());
+
+    try {
+        // Instanceが存在しないと外部キー制約で失敗するので、
+        // Instanceがない場合は作成する（シングルトンルームの場合など）のケアが必要だが
+        // 基本的にInstanceレコードは createInstance で作られるべき。
+        // ただし、defaultルームなどはInstanceレコードがないまま動くことがあるため、
+        // ここでupsertする際にInstanceも作るか、あるいはWorldStateだけ保存...はできない（Relationあるため）。
+
+        // 簡易対策: instanceIdがルームIDと同じ（シングルトン）の場合、
+        // Instanceテーブルに対応するレコードがあるか確認し、なければ作る
+
+        // WorldStateの保存
+        await prisma.worldState.upsert({
+            where: { instanceId },
+            update: {
+                entities: entities as unknown as object,
+                version: { increment: 1 },
+            },
+            create: {
+                instanceId,
+                entities: entities as unknown as object,
+            },
+        });
+        logger.debug(`ワールド状態を保存しました: ${instanceId}`);
+        // biome-ignore lint/suspicious/noExplicitAny: error type is unknown in strict mode but we need to check .code
+    } catch (error: any) {
+        // FK制約違反 (P2003) の場合、Instanceがない可能性がある
+        if (error.code === 'P2003') {
+            logger.warn(`Instance missing for ${instanceId}, attempting to create...`);
+            try {
+                // instanceId が room slug と一致するか確認
+                const room = await prisma.room.findUnique({ where: { slug: instanceId } });
+                if (room) {
+                    // Singleton Instanceを作成
+                    await prisma.instance.create({
+                        data: {
+                            id: instanceId,
+                            roomId: room.id,
+                            status: 'ACTIVE',
+                        },
+                    });
+
+                    // Retry save
+                    await prisma.worldState.create({
+                        data: {
+                            instanceId,
+                            entities: entities as unknown as object,
+                        },
+                    });
+                    logger.info(`Singleton Instance created and WorldState saved: ${instanceId}`);
+                    return;
+                }
+            } catch (innerError) {
+                logger.error(`Failed to recover Instance/WorldState for ${instanceId}`, innerError);
+            }
+        }
+        logger.error(`ワールド状態の保存に失敗: ${instanceId}`, error);
+    }
+}
+
+/**
+ * 変更があったワールド状態を定期的に保存
+ */
+export async function flushDirtyWorldStates(): Promise<void> {
+    if (dirtyInstances.size === 0) return;
+
+    const instancesToSave = Array.from(dirtyInstances);
+    dirtyInstances.clear();
+
+    await Promise.all(instancesToSave.map((id) => saveWorldState(id)));
+}
+
+// 定期保存ループを開始（10秒ごと）
+if (process.env.NODE_ENV !== 'test') {
+    setInterval(() => {
+        flushDirtyWorldStates().catch((err) => logger.error('Periodic save failed:', err));
+    }, 10000);
+}
+
+// Dirty Marking Helper
+function markDirty(instanceId: string) {
+    dirtyInstances.add(instanceId);
+}
 
 /**
  * 指定インスタンスのワールド状態を取得（なければ作成）
@@ -48,6 +174,7 @@ export function createEntity(instanceId: string, entityData: Omit<WorldEntity, '
     };
 
     instanceState.set(entity.id, entity);
+    markDirty(instanceId);
     logger.debug(`エンティティ作成: ${entity.id} (type: ${entity.type}, instance: ${instanceId})`);
 
     return entity;
@@ -78,6 +205,7 @@ export function patchEntity(
     };
 
     instanceState.set(entityId, updatedEntity);
+    markDirty(instanceId);
     logger.debug(`エンティティ更新: ${entityId}`);
 
     return updatedEntity;
@@ -92,6 +220,7 @@ export function deleteEntity(instanceId: string, entityId: string): boolean {
     const deleted = instanceState.delete(entityId);
 
     if (deleted) {
+        markDirty(instanceId);
         logger.debug(`エンティティ削除: ${entityId}`);
     } else {
         logger.debug(`削除対象のエンティティが見つかりません: ${entityId}`);

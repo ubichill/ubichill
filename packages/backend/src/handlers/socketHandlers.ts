@@ -13,7 +13,13 @@ import {
 import type { Socket } from 'socket.io';
 import { instanceManager } from '../services/instanceManager';
 import { userManager } from '../services/userManager';
-import { createEntity, deleteEntity, getWorldSnapshot, patchEntity } from '../services/worldState';
+import {
+    createEntity,
+    deleteEntity,
+    ensureWorldStateLoaded,
+    getWorldSnapshot,
+    patchEntity,
+} from '../services/worldState';
 import { logger } from '../utils/logger';
 import { validateCursorPosition, validateRoomId, validateUsername, validateUserStatus } from '../utils/validation';
 
@@ -23,7 +29,7 @@ type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents, InterServe
  * ルーム参加イベントを処理
  */
 export function handleRoomJoin(socket: TypedSocket) {
-    return (
+    return async (
         { roomId, instanceId, user }: { roomId: string; instanceId?: string; user: Omit<User, 'id'> },
         callback: (response: { success: boolean; userId?: string; error?: string }) => void,
     ) => {
@@ -58,6 +64,9 @@ export function handleRoomJoin(socket: TypedSocket) {
         // instanceIdがある場合はそれを使い、ない場合はroomIdにフォールバック
         const socketRoom = instanceId || roomValidation.data;
         const worldStateKey = instanceId || roomValidation.data;
+
+        // ワールド状態をロード（DBにあれば復元）
+        await ensureWorldStateLoaded(worldStateKey);
 
         // ルームにユーザーを追加
         userManager.addUser(socket.id, socketRoom, newUser);

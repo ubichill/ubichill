@@ -1,4 +1,6 @@
 import type { CursorPosition, User, UserStatus } from '@ubichill/shared';
+import { prisma } from '../lib/prisma';
+import { logger } from '../utils/logger';
 
 /**
  * ユーザー管理サービス
@@ -11,6 +13,29 @@ export class UserManager {
     addUser(userId: string, roomId: string, user: User): void {
         this.users.set(userId, user);
         this.userRooms.set(userId, roomId);
+
+        // DBにユーザーを永続化（非同期で実行し、メインフローをブロックしない）
+        this.saveUserToDb(user).catch((err) => {
+            logger.error(`Failed to save user to DB: ${err.message}`);
+        });
+    }
+
+    private async saveUserToDb(user: User): Promise<void> {
+        try {
+            // 名前で検索して既存ユーザーがあれば更新、なければ作成
+            // 注意: 現状は認証がないため、同名の別人も同じユーザーとして扱われる可能性がある
+            // 本来はCookie/TokenなどでPersistent IDを管理すべき
+            await prisma.user.create({
+                data: {
+                    name: user.name,
+                    // 将来的には avatarUrl なども
+                },
+            });
+            logger.debug(`User saved to DB: ${user.name}`);
+        } catch (error) {
+            logger.error('Error saving user to DB:', error);
+            throw error;
+        }
     }
 
     removeUser(userId: string): User | undefined {

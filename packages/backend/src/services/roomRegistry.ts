@@ -9,6 +9,7 @@ import {
     SERVER_CONFIG,
 } from '@ubichill/shared';
 import yaml from 'yaml';
+import { prisma } from '../lib/prisma';
 
 /**
  * ルームレジストリ
@@ -72,7 +73,42 @@ class RoomRegistry {
 
         const room = this.resolveRoom(result.data);
         this.rooms.set(room.id, room);
+
+        // DBに同期（非同期で実行）
+        this.syncRoomToDb(room).catch(console.error);
+
         console.log(`   📄 ${room.id} (v${room.version})`);
+    }
+
+    /**
+     * ルーム定義をDBに同期
+     */
+    private async syncRoomToDb(room: ResolvedRoom): Promise<void> {
+        try {
+            await prisma.room.upsert({
+                where: { slug: room.id },
+                update: {
+                    name: room.displayName,
+                    description: room.description,
+                    thumbnail: room.thumbnail,
+                    capacityMax: room.capacity.max,
+                    definition: room as unknown as object, // JSONとして保存
+                    isOfficial: true,
+                },
+                create: {
+                    slug: room.id,
+                    name: room.displayName,
+                    description: room.description,
+                    thumbnail: room.thumbnail,
+                    capacityMax: room.capacity.max,
+                    definition: room as unknown as object,
+                    isOfficial: true,
+                    isPublic: true,
+                },
+            });
+        } catch (error) {
+            console.error(`Failed to sync room ${room.id} to DB:`, error);
+        }
     }
 
     /**
@@ -124,6 +160,7 @@ class RoomRegistry {
         };
 
         this.rooms.set('default', defaultRoom);
+        this.syncRoomToDb(defaultRoom).catch(console.error);
         console.log('📦 デフォルトルームを作成しました');
     }
 
