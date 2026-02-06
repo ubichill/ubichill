@@ -31,6 +31,11 @@ jobs:
         with:
           version: 'v3.14.0'
 
+      - name: Add Helm Repositories
+        run: |
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm repo update
+
       - name: Package charts
         run: |
           mkdir -p .cr-release-packages

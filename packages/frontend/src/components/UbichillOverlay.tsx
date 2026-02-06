@@ -22,8 +22,11 @@ export const UbichillOverlay: React.FC = () => {
         return <EntityRenderer key={entity.id} entityId={entity.id} />;
     });
 
-    // プラグインの SingletonComponent を自動的にレンダリング
-    const renderPluginSingletons = INSTALLED_PLUGINS.filter((plugin) => plugin.SingletonComponent).map((plugin) => {
+    // プラグインの SingletonComponent を自動的にレンダリング (アクティブなプラグインのみ)
+    const { activePlugins } = useWorld();
+    const renderPluginSingletons = INSTALLED_PLUGINS.filter(
+        (plugin) => activePlugins.includes(plugin.id) && plugin.SingletonComponent,
+    ).map((plugin) => {
         const Component = plugin.SingletonComponent;
         return Component ? <Component key={plugin.id} /> : null;
     });
