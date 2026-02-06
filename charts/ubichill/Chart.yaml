@@ -2,7 +2,7 @@ apiVersion: v2
 name: ubichill
 description: Ubichill Main Application - Frontend and Backend Platform
 type: application
-version: 0.1.0
+version: 0.0.1
 appVersion: "latest"
 
 keywords:
