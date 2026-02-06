@@ -9,6 +9,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME_BACKEND: ubichill-backend
   IMAGE_NAME_FRONTEND: ubichill-frontend
+  IMAGE_NAME_VIDEO_PLAYER: video-player-backend
 
 jobs:
   build-and-push:
@@ -41,9 +42,11 @@ jobs:
               - 'pnpm-workspace.yaml'
               - 'pnpm-lock.yaml'
               - 'Dockerfile'
+            video-player:
+              - 'plugins/video-player/**'
 
       - name: Log in to the Container registry
-        if: steps.filter.outputs.backend == 'true' || steps.filter.outputs.frontend == 'true'
+        if: steps.filter.outputs.backend == 'true' || steps.filter.outputs.frontend == 'true' || steps.filter.outputs.video-player == 'true'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -51,7 +54,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        if: steps.filter.outputs.backend == 'true' || steps.filter.outputs.frontend == 'true'
+        if: steps.filter.outputs.backend == 'true' || steps.filter.outputs.frontend == 'true' || steps.filter.outputs.video-player == 'true'
         uses: docker/setup-buildx-action@v3
 
       # Backend Build & Push
@@ -85,3 +88,59 @@ jobs:
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME_FRONTEND }}:v0.0.${{ github.run_number }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Video Player Lint & Test
+      - name: Set up Python for video-player backend
+        if: steps.filter.outputs.video-player == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Lint video-player backend
+        if: steps.filter.outputs.video-player == 'true'
+        working-directory: plugins/video-player/backend
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          export PATH="$HOME/.cargo/bin:$PATH"
+          uv venv
+          source .venv/bin/activate
+          uv pip install -r pyproject.toml
+          uv pip install ruff
+          ruff check main.py
+          python -c "import main; print('✅ Import successful')"
+
+      - name: Setup pnpm for video-player frontend
+        if: steps.filter.outputs.video-player == 'true'
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Setup Node.js for video-player frontend
+        if: steps.filter.outputs.video-player == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Lint video-player frontend
+        if: steps.filter.outputs.video-player == 'true'
+        run: |
+          pnpm install
+          pnpm biome check plugins/video-player/frontend/src
+
+      # Video Player Build & Push
+      - name: Build and push Video Player image
+        if: steps.filter.outputs.video-player == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: plugins/video-player/backend
+          file: plugins/video-player/backend/Dockerfile.prod
+          target: production
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME_VIDEO_PLAYER }}:latest
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME_VIDEO_PLAYER }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME_VIDEO_PLAYER }}:v0.0.${{ github.run_number }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false

@@ -167,6 +167,7 @@ export const ResolvedRoomSchema = z.object({
     thumbnail: z.string().optional(),
     environment: RoomEnvironmentSchema,
     capacity: RoomCapacitySchema,
+    dependencies: z.array(DependencySchema).optional(),
     // availableKinds は別途追加
     initialEntities: z.array(InitialEntitySchema),
 });

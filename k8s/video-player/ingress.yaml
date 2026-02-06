@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: video-player-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    # Rate limiting (YouTube API保護)
+    nginx.ingress.kubernetes.io/limit-rps: "10"
+    # タイムアウト設定（動画取得は時間がかかる）
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: api.ubichill.example.com
+    http:
+      paths:
+      - path: /api/stream
+        pathType: Prefix
+        backend:
+          service:
+            name: video-player-backend
+            port:
+              number: 8000

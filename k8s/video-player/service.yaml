@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: video-player-backend
+  labels:
+    app: video-player
+    component: backend
+spec:
+  type: ClusterIP
+  selector:
+    app: video-player
+    component: backend
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+    name: http

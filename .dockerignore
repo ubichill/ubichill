@@ -1,0 +1,7 @@
+node_modules
+.git
+.next
+dist
+packages/*/node_modules
+packages/*/.next
+packages/*/dist

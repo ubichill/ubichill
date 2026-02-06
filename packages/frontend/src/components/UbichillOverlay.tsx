@@ -1,13 +1,11 @@
 'use client';
 
+import { useSocket, useWorld, Z_INDEX } from '@ubichill/sdk';
 import { DEFAULTS } from '@ubichill/shared';
 import type React from 'react';
 import { EntityRenderer } from '@/core/components/EntityRenderer';
-import { useWorld } from '@/core/contexts/WorldContext';
 import { useRoomInitializer } from '@/core/hooks/useRoomInitializer';
-import { useSocket } from '@/core/hooks/useSocket';
-import { PenTray } from '@/plugins/pen/PenTray';
-import { Z_INDEX } from '@/styles/layers';
+import { INSTALLED_PLUGINS } from '@/plugins/registry';
 
 export const UbichillOverlay: React.FC = () => {
     const { isConnected } = useSocket();
@@ -24,13 +22,19 @@ export const UbichillOverlay: React.FC = () => {
         return <EntityRenderer key={entity.id} entityId={entity.id} />;
     });
 
+    // プラグインの SingletonComponent を自動的にレンダリング
+    const renderPluginSingletons = INSTALLED_PLUGINS.filter((plugin) => plugin.SingletonComponent).map((plugin) => {
+        const Component = plugin.SingletonComponent;
+        return Component ? <Component key={plugin.id} /> : null;
+    });
+
     return (
         <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: Z_INDEX.UI_BASE }}>
             {/* ウィジェットレイヤー（動的レンダリング） */}
             {renderEntities}
 
-            {/* 機能オーバーレイ（トレイなど） */}
-            <PenTray />
+            {/* プラグインのシングルトンコンポーネント（トレイなど） */}
+            {renderPluginSingletons}
         </div>
     );
 };

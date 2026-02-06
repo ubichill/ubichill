@@ -1,0 +1,166 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ubichill-plugins
+  labels:
+    name: ubichill-plugins
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: video-player-backend
+  namespace: ubichill-plugins
+  labels:
+    app: video-player
+    component: backend
+spec:
+  replicas: 3  # 水平スケーリング用
+  selector:
+    matchLabels:
+      app: video-player
+      component: backend
+  template:
+    metadata:
+      labels:
+        app: video-player
+        component: backend
+    spec:
+      containers:
+      - name: backend
+        image: ghcr.io/YOUR_ORG/video-player-backend:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        env:
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        - name: ENV
+          value: "production"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        # セキュリティコンテキスト
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false  # yt-dlpがキャッシュを書き込むため
+          capabilities:
+            drop:
+            - ALL
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: video-player-backend
+  namespace: ubichill-plugins
+  labels:
+    app: video-player
+    component: backend
+spec:
+  type: ClusterIP
+  selector:
+    app: video-player
+    component: backend
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+    name: http
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: video-player-backend-hpa
+  namespace: ubichill-plugins
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: video-player-backend
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+      - type: Pods
+        value: 2
+        periodSeconds: 15
+      selectPolicy: Max
+
+---
+# Ingress設定（例：Nginx Ingress Controller使用）
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: video-player-ingress
+  namespace: ubichill-plugins
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    # Rate limiting (YouTube API保護)
+    nginx.ingress.kubernetes.io/limit-rps: "10"
+    # タイムアウト設定（動画取得は時間がかかる）
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: api.ubichill.example.com
+    http:
+      paths:
+      - path: /api/stream
+        pathType: Prefix
+        backend:
+          service:
+            name: video-player-backend
+            port:
+              number: 8000

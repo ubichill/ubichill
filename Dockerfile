@@ -73,3 +73,21 @@ COPY --from=installer --chown=node:node /app/packages/frontend/.next/standalone 
 
 EXPOSE 3000
 CMD ["node", "packages/frontend/server.js"]
+
+# ==========================================
+# Development Stage
+# ==========================================
+FROM base AS development
+WORKDIR /app
+
+# Install git for watch mode/tools
+RUN apk add --no-cache git
+
+# Copy all source files
+COPY . .
+
+# Install all dependencies (including devDependencies)
+RUN pnpm install --frozen-lockfile
+
+# Default command (can be overridden)
+CMD ["pnpm", "dev"]

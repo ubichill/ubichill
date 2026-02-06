@@ -1,9 +1,8 @@
 'use client';
 
+import { useSocket, useWorld } from '@ubichill/sdk';
 import { useRef, useState } from 'react';
 import { Lobby } from '@/components/lobby';
-import { useWorld } from '@/core/contexts/WorldContext';
-import { useSocket } from '@/core/hooks/useSocket';
 import * as styles from '@/styles/styles';
 
 type AppScreen = 'name' | 'lobby' | 'room';
@@ -154,6 +153,8 @@ export default function Home() {
                             </div>
                         ),
                 )}
+
+                {/* Entities and Plugins are handled by UbichillOverlay */}
             </div>
         </main>
     );

@@ -1,8 +1,7 @@
 'use client';
 
-import { WorldProvider } from '@/core/contexts/WorldContext';
-import { SocketProvider } from '@/core/hooks/useSocket';
-import { PenCanvasProvider } from '@/plugins/pen/context/PenCanvasContext';
+import { PenCanvasProvider } from '@ubichill/plugin-pen';
+import { SocketProvider, WorldProvider } from '@ubichill/sdk';
 
 export function Providers({ children }: { children: React.ReactNode }) {
     return (

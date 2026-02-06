@@ -1,7 +1,12 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
     output: 'standalone',
-    transpilePackages: ['@ubichill/shared'],
+    transpilePackages: [
+        '@ubichill/shared',
+        '@ubichill/sdk',
+        '@ubichill/plugin-pen',
+        '@ubichill/plugin-music-player',
+    ],
     images: {
         remotePatterns: [
             {

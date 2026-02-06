@@ -1,0 +1,30 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ubichill-plugins
+
+resources:
+  - namespace.yaml
+  - deployment.yaml
+  - service.yaml
+  - hpa.yaml
+  - ingress.yaml
+
+# イメージタグを環境ごとにオーバーライド可能
+images:
+  - name: ghcr.io/YOUR_ORG/video-player-backend
+    newName: ghcr.io/YOUR_ORG/video-player-backend
+    newTag: latest
+
+# 共通ラベル
+commonLabels:
+  app.kubernetes.io/name: video-player
+  app.kubernetes.io/component: backend
+  app.kubernetes.io/part-of: ubichill
+
+# ConfigMap生成（オプション）
+configMapGenerator:
+  - name: video-player-config
+    literals:
+      - PYTHONUNBUFFERED=1
+      - ENV=production

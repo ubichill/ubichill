@@ -12,6 +12,7 @@ import {
 } from '@ubichill/shared';
 import type { Socket } from 'socket.io';
 import { instanceManager } from '../services/instanceManager';
+import { roomRegistry } from '../services/roomRegistry';
 import { userManager } from '../services/userManager';
 import { createEntity, deleteEntity, getWorldSnapshot, patchEntity } from '../services/worldState';
 import { logger } from '../utils/logger';
@@ -91,14 +92,21 @@ export function handleRoomJoin(socket: TypedSocket) {
         const entities = getWorldSnapshot(worldStateKey);
         const environment = instanceManager.getRoomEnvironment(roomValidation.data);
 
+        // ルーム定義から依存関係を取得
+        const room = roomRegistry.getRoom(roomValidation.data);
+        const activePlugins = room?.dependencies?.map((d) => d.name) || [];
+
         // ワールドスナップショット（拡張版）を送信
         const snapshotPayload: WorldSnapshotPayload = {
             entities,
             availableKinds: [], // 将来的にルーム定義から取得
+            activePlugins,
             environment,
         };
         socket.emit('world:snapshot', snapshotPayload);
-        logger.debug(`ワールドスナップショット送信: ${entities.length}件のエンティティ (instance: ${worldStateKey})`);
+        logger.debug(
+            `ワールドスナップショット送信: ${entities.length}件のエンティティ, plugins: ${activePlugins.length} (instance: ${worldStateKey})`,
+        );
 
         // ルーム内の他のユーザーに参加を通知
         socket.to(socketRoom).emit('user:joined', newUser);
@@ -349,13 +357,72 @@ export function handleEntityDelete(socket: TypedSocket) {
  */
 export function sendWorldSnapshot(socket: TypedSocket, instanceOrRoomId: string, roomId?: string): void {
     const entities = getWorldSnapshot(instanceOrRoomId);
-    const environment = instanceManager.getRoomEnvironment(roomId || instanceOrRoomId);
+
+    // RoomIDを解決
+    let targetRoomId = roomId;
+    if (!targetRoomId) {
+        if (roomRegistry.hasRoom(instanceOrRoomId)) {
+            targetRoomId = instanceOrRoomId;
+        } else {
+            // インスタンスIDからルームIDを特定を試みる
+            const instance = instanceManager.getInstance(instanceOrRoomId);
+            if (instance) {
+                targetRoomId = instance.room.id;
+            }
+        }
+    }
+
+    // 環境設定とプラグイン情報を取得
+    const finalRoomId = targetRoomId || instanceOrRoomId;
+    const environment = instanceManager.getRoomEnvironment(finalRoomId);
+    const room = roomRegistry.getRoom(finalRoomId);
+    const activePlugins = room?.dependencies?.map((d) => d.name) || [];
 
     const snapshotPayload: WorldSnapshotPayload = {
         entities,
         availableKinds: [],
+        activePlugins,
         environment,
     };
     socket.emit('world:snapshot', snapshotPayload);
-    logger.debug(`ワールドスナップショット送信: ${entities.length}件のエンティティ (key: ${instanceOrRoomId})`);
+    logger.debug(
+        `ワールドスナップショット送信: ${entities.length}件のエンティティ, plugins: ${activePlugins.length} (key: ${instanceOrRoomId})`,
+    );
+}
+
+/**
+ * ビデオプレイヤーの同期イベントを処理
+ */
+export function handleVideoPlayerSync(socket: TypedSocket) {
+    return async (syncData: { currentIndex: number; isPlaying: boolean; currentTime: number }) => {
+        const roomId = socket.data.roomId;
+        if (!roomId) {
+            logger.warn('video-player:sync - ルームIDが設定されていません');
+            return;
+        }
+
+        // ルーム内の全ソケットを取得
+        const roomSockets = await socket.in(roomId).fetchSockets();
+        const otherSockets = roomSockets.filter((s) => s.id !== socket.id);
+
+        logger.debug('video-player:sync イベント受信:', {
+            roomId,
+            syncData,
+            fromSocketId: socket.id,
+            fromUserId: socket.data.userId,
+            totalSocketsInRoom: roomSockets.length,
+            otherSocketsCount: otherSockets.length,
+            otherSocketIds: otherSockets.map((s) => s.id),
+            timestamp: new Date().toISOString(),
+        });
+
+        // 同じルーム内の他のユーザーに同期データをブロードキャスト
+        const emitResult = socket.to(roomId).emit('video-player:sync', syncData);
+
+        logger.debug('video-player:sync ブロードキャスト完了:', {
+            roomId,
+            targetSocketsCount: otherSockets.length,
+            emitResult: emitResult ? 'success' : 'no-result',
+        });
+    };
 }

@@ -1,0 +1,46 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: video-player-backend
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  
+  source:
+    repoURL: https://github.com/ubichill/ubichill.git
+    targetRevision: main
+    path: k8s/video-player
+    
+    # Kustomize設定
+    kustomize:
+      images:
+        - ghcr.io/ubichill/video-player-backend:latest
+  
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ubichill-plugins
+  
+  syncPolicy:
+    automated:
+      prune: true      # 削除されたリソースを自動削除
+      selfHeal: true   # driftした場合に自動修復
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  
+  # Health check設定
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas  # HPAが管理するため無視

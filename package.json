@@ -5,7 +5,9 @@
   "description": "2D metaverse-style work sharing web application",
   "packageManager": "pnpm@10.28.2",
   "scripts": {
-    "dev": "pnpm --filter \"./packages/*\" --parallel dev",
+    "dev": "./dev.sh",
+    "docker:up": "./start-plugins.sh up -d",
+    "docker:down": "./start-plugins.sh down",
     "build": "turbo build",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
@@ -13,7 +15,8 @@
     "test": "echo \"No tests specified yet\" && exit 0"
   },
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "plugins/*/frontend"
   ],
   "engines": {
     "node": ">=22.0.0",

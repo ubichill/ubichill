@@ -1,7 +1,6 @@
+import { DEFAULT_PENS, PEN_CONFIG } from '@ubichill/plugin-pen';
+import { useSocket, useWorld } from '@ubichill/sdk';
 import { useEffect, useRef } from 'react';
-import { DEFAULT_PENS, PEN_CONFIG } from '../../plugins/pen/config';
-import { useWorld } from '../contexts/WorldContext';
-import { useSocket } from '../hooks/useSocket';
 
 /**
  * ルームの初期化状態を監視し、必要なエンティティがなければ作成するフック。
@@ -16,7 +15,7 @@ export const useRoomInitializer = (roomId: string | null) => {
         if (!roomId || !isConnected || !currentUser || initializedRef.current) return;
 
         // 既存のペンがあるか確認
-        const existingPens = Array.from(entities.values()).filter((e) => e.type === 'pen');
+        const existingPens = Array.from(entities.values()).filter((e) => e.type === 'pen:pen');
 
         if (existingPens.length === 0) {
             console.log('[useRoomInitializer] No pens found. Initializing default pens.');
@@ -34,13 +33,14 @@ export const useRoomInitializer = (roomId: string | null) => {
                 // フロントエンド主導ならIDはUUIDでも良いはず。
 
                 createEntity(
-                    'pen',
+                    'pen:pen',
                     {
                         x: PEN_CONFIG.TRAY_X_BASE + def.x,
                         y: PEN_CONFIG.DEFAULT_Y,
                         z: 0,
                         w: 48,
                         h: 48,
+                        scale: 1,
                         rotation: 0,
                     },
                     {

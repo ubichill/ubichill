@@ -15,7 +15,9 @@ import {
     handleEntityPatch,
     handleRoomJoin,
     handleStatusUpdate,
+    handleVideoPlayerSync,
 } from './handlers/socketHandlers';
+import audioRouter from './routes/audio';
 import instancesRouter from './routes/instances';
 import roomsRouter from './routes/rooms';
 import { roomRegistry } from './services/roomRegistry';
@@ -52,6 +54,9 @@ app.get('/health', (_req, res) => {
     res.json({ status: 'ok', timestamp: Date.now() });
 });
 
+// オーディオAPI（YouTube音楽ストリーム）
+app.use('/api/audio', audioRouter);
+
 // ============================================
 // REST API ルート
 // ============================================
@@ -85,6 +90,9 @@ io.on('connection', (socket) => {
     socket.on('entity:patch', handleEntityPatch(socket));
     socket.on('entity:ephemeral', handleEntityEphemeral(socket));
     socket.on('entity:delete', handleEntityDelete(socket));
+
+    // Video Player同期
+    socket.on('video-player:sync', handleVideoPlayerSync(socket));
 });
 
 // サーバーを起動（非同期初期化）

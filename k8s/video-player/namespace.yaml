@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ubichill-plugins
+  labels:
+    name: ubichill-plugins
+    app.kubernetes.io/managed-by: argocd

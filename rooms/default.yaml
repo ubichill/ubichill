@@ -26,18 +26,28 @@ spec:
       source:
         type: repository
         path: "packages/pen"
+    - name: ubichill-music-player
+      source:
+        type: repository
+        path: "plugins/music-player"
   
-  # 初期配置エンティティ（ペンを1つ配置）
+  # 初期配置エンティティ
   initialEntities:
-    - kind: "pen:pen"
+    - kind: "video-player"
       transform:
-        x: 400
-        y: 300
-        z: 1
+        x: 800
+        y: 100
+        z: 2
         scale: 1
-        rotation: -45
+        rotation: 0
       data:
-        color: "#228BE6"
+        playlist: []
+        currentIndex: 0
+        isPlaying: false
+        volume: 0.7
+        currentTime: 0
+        loop: 'none'
+        shuffle: false
   
   permissions:
     allowGuestCreate: true

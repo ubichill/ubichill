@@ -14,6 +14,7 @@
         "format": "biome format --write ."
     },
     "dependencies": {
+        "@distube/ytdl-core": "^4.16.12",
         "@ubichill/shared": "workspace:*",
         "cors": "^2.8.5",
         "dotenv": "^17.2.3",
