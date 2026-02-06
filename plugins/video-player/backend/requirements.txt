@@ -4,3 +4,12 @@ yt-dlp==2024.12.13
 python-multipart==0.0.20
 pydantic==2.10.4
 httpx==0.28.1
+
+# Kubernetes integration for auto-scaling
+kubernetes>=28.1.0
+
+# Redis support (optional)
+redis>=5.0.0
+
+# Optional utilities
+aiofiles>=23.2.1

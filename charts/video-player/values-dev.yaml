@@ -1,0 +1,46 @@
+# Development environment values
+# Override default values for development
+
+backend:
+  replicaCount: 1  # Single replica for dev
+  
+  image:
+    tag: "dev"
+    pullPolicy: Always
+  
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  
+  autoscaling:
+    enabled: false  # Disable HPA in dev
+  
+  env:
+    LOG_LEVEL: "DEBUG"
+    CORS_ORIGINS: "http://localhost:3000,http://localhost:3002,http://host.docker.internal:3000"
+
+# Enable Redis for development testing
+redis:
+  enabled: true
+  master:
+    persistence:
+      enabled: false  # No persistence needed in dev
+    resources:
+      limits:
+        memory: 128Mi
+        cpu: 100m
+      requests:
+        memory: 64Mi
+        cpu: 50m
+
+# Enable internal load balancer for dev testing
+internalLB:
+  enabled: true
+  service:
+    type: LoadBalancer
+    annotations:
+      # Development annotations (cloud provider specific)

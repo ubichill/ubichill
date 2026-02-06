@@ -1,0 +1,103 @@
+{{- if .Values.backend.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "video-player.fullname" . }}-backend
+  labels:
+    {{- include "video-player.labels" . | nindent 4 }}
+    component: backend
+spec:
+  replicas: {{ .Values.backend.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "video-player.selectorLabels" . | nindent 6 }}
+      component: backend
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+      labels:
+        {{- include "video-player.selectorLabels" . | nindent 8 }}
+        component: backend
+    spec:
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.nodeAffinity.enabled }}
+      affinity:
+        nodeAffinity:
+          {{- with .Values.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution }}
+          preferredDuringSchedulingIgnoredDuringExecution:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  {{- include "video-player.selectorLabels" . | nindent 18 }}
+                  component: backend
+              topologyKey: kubernetes.io/hostname
+      {{- end }}
+      serviceAccountName: {{ include "video-player.fullname" . }}-backend
+      securityContext:
+        {{- toYaml .Values.backend.securityContext | nindent 8 }}
+      containers:
+      - name: backend
+        image: "{{ .Values.global.imageRegistry | default "ghcr.io" }}/{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.backend.image.pullPolicy | default .Values.global.imagePullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.backend.service.targetPort }}
+          protocol: TCP
+        env:
+        {{- range $key, $value := .Values.backend.env }}
+        - name: {{ $key }}
+          value: {{ $value | quote }}
+        {{- end }}
+        {{- if .Values.redis.enabled }}
+        - name: REDIS_ENABLED
+          value: "true"
+        - name: REDIS_URL
+          value: "redis://{{ include "redis.fullname" .Subcharts.redis }}:{{ .Values.redis.master.service.ports.redis }}"
+        {{- end }}
+        # Kubernetes scaling environment variables
+        - name: K8S_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: K8S_DEPLOYMENT_NAME
+          value: "{{ include "video-player.fullname" . }}-backend"
+        - name: K8S_HPA_NAME
+          value: "{{ include "video-player.fullname" . }}-backend"
+        {{- if .Values.backend.env.INTERNAL_API_TOKEN }}
+        - name: INTERNAL_API_TOKEN
+          value: {{ .Values.backend.env.INTERNAL_API_TOKEN | quote }}
+        {{- end }}
+        {{- if .Values.backend.healthcheck.enabled }}
+        livenessProbe:
+          httpGet:
+            path: {{ .Values.backend.healthcheck.path }}
+            port: http
+          initialDelaySeconds: {{ .Values.backend.healthcheck.livenessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.backend.healthcheck.livenessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.backend.healthcheck.livenessProbe.timeoutSeconds }}
+          failureThreshold: {{ .Values.backend.healthcheck.livenessProbe.failureThreshold }}
+        readinessProbe:
+          httpGet:
+            path: {{ .Values.backend.healthcheck.path }}
+            port: http
+          initialDelaySeconds: {{ .Values.backend.healthcheck.readinessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.backend.healthcheck.readinessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.backend.healthcheck.readinessProbe.timeoutSeconds }}
+          failureThreshold: {{ .Values.backend.healthcheck.readinessProbe.failureThreshold }}
+        {{- end }}
+        resources:
+          {{- toYaml .Values.backend.resources | nindent 12 }}
+{{- end }}
