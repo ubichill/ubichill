@@ -8,8 +8,10 @@ import {
     type SocketData,
     type User,
     type WorldEntity,
+    type WorldSnapshotPayload,
 } from '@ubichill/shared';
 import type { Socket } from 'socket.io';
+import { instanceManager } from '../services/instanceManager';
 import { userManager } from '../services/userManager';
 import { createEntity, deleteEntity, getWorldSnapshot, patchEntity } from '../services/worldState';
 import { logger } from '../utils/logger';
@@ -22,10 +24,10 @@ type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents, InterServe
  */
 export function handleRoomJoin(socket: TypedSocket) {
     return (
-        { roomId, user }: { roomId: string; user: Omit<User, 'id'> },
+        { roomId, instanceId, user }: { roomId: string; instanceId?: string; user: Omit<User, 'id'> },
         callback: (response: { success: boolean; userId?: string; error?: string }) => void,
     ) => {
-        logger.debug('room:join イベント受信:', { roomId, user, socketId: socket.id });
+        logger.debug('room:join イベント受信:', { roomId, instanceId, user, socketId: socket.id });
 
         // ルームIDを検証
         const roomValidation = validateRoomId(roomId);
@@ -52,17 +54,28 @@ export function handleRoomJoin(socket: TypedSocket) {
             lastActiveAt: Date.now(),
         };
 
+        // インスタンスIDを使ってSocket.IOルームとワールド状態を管理
+        // instanceIdがある場合はそれを使い、ない場合はroomIdにフォールバック
+        const socketRoom = instanceId || roomValidation.data;
+        const worldStateKey = instanceId || roomValidation.data;
+
         // ルームにユーザーを追加
-        userManager.addUser(socket.id, roomValidation.data, newUser);
-        socket.join(roomValidation.data);
+        userManager.addUser(socket.id, socketRoom, newUser);
+        socket.join(socketRoom);
 
         // ソケットデータに保存
         socket.data.userId = socket.id;
-        socket.data.roomId = roomValidation.data;
+        socket.data.roomId = socketRoom;
+        socket.data.instanceId = instanceId;
         socket.data.user = newUser;
 
+        // インスタンスのユーザー数を更新
+        if (instanceId) {
+            instanceManager.updateUserCount(instanceId, 1);
+        }
+
         // このルーム内の全ユーザーを取得
-        const roomUsers = userManager.getUsersByRoom(roomValidation.data);
+        const roomUsers = userManager.getUsersByRoom(socketRoom);
 
         // 成功レスポンスを送信
         callback({
@@ -74,19 +87,24 @@ export function handleRoomJoin(socket: TypedSocket) {
         socket.emit('users:update', roomUsers);
 
         // 新しいユーザーにワールドスナップショットを送信（UEP）
-        const entities = getWorldSnapshot(roomValidation.data);
+        // instanceIdをキーにしてワールド状態を取得（インスタンスごとに独立した状態）
+        const entities = getWorldSnapshot(worldStateKey);
+        const environment = instanceManager.getRoomEnvironment(roomValidation.data);
 
-        // デフォルトペン作成ロジックはフロントエンド主導へ移行しました。
-        // ここでの自動生成は不要です。
-
-        socket.emit('world:snapshot', entities);
-        logger.debug(`ワールドスナップショット送信: ${entities.length}件のエンティティ`);
+        // ワールドスナップショット（拡張版）を送信
+        const snapshotPayload: WorldSnapshotPayload = {
+            entities,
+            availableKinds: [], // 将来的にルーム定義から取得
+            environment,
+        };
+        socket.emit('world:snapshot', snapshotPayload);
+        logger.debug(`ワールドスナップショット送信: ${entities.length}件のエンティティ (instance: ${worldStateKey})`);
 
         // ルーム内の他のユーザーに参加を通知
-        socket.to(roomValidation.data).emit('user:joined', newUser);
+        socket.to(socketRoom).emit('user:joined', newUser);
 
         logger.info(
-            `✅ ユーザー「${newUser.name}」(${socket.id.substring(0, 8)}) がルーム「${roomValidation.data}」に参加しました`,
+            `✅ ユーザー「${newUser.name}」(${socket.id.substring(0, 8)}) がインスタンス「${socketRoom}」に参加しました`,
         );
     };
 }
@@ -163,7 +181,13 @@ export function handleStatusUpdate(socket: TypedSocket) {
 export function handleDisconnect(socket: TypedSocket) {
     return () => {
         const roomId = socket.data.roomId;
+        const instanceId = socket.data.instanceId;
         const user = userManager.removeUser(socket.id);
+
+        // インスタンスのユーザー数を更新
+        if (instanceId) {
+            instanceManager.updateUserCount(instanceId, -1);
+        }
 
         if (roomId && user) {
             // 切断したユーザーがロックしていたエンティティを解放する
@@ -320,9 +344,18 @@ export function handleEntityDelete(socket: TypedSocket) {
 
 /**
  * ワールドスナップショットを送信（ルーム参加時に呼び出す）
+ * @param instanceOrRoomId インスタンスIDまたはルームID（ワールド状態のキー）
+ * @param roomId 環境設定取得用のルームID
  */
-export function sendWorldSnapshot(socket: TypedSocket, roomId: string): void {
-    const entities = getWorldSnapshot(roomId);
-    socket.emit('world:snapshot', entities);
-    logger.debug(`ワールドスナップショット送信: ${entities.length}件のエンティティ`);
+export function sendWorldSnapshot(socket: TypedSocket, instanceOrRoomId: string, roomId?: string): void {
+    const entities = getWorldSnapshot(instanceOrRoomId);
+    const environment = instanceManager.getRoomEnvironment(roomId || instanceOrRoomId);
+
+    const snapshotPayload: WorldSnapshotPayload = {
+        entities,
+        availableKinds: [],
+        environment,
+    };
+    socket.emit('world:snapshot', snapshotPayload);
+    logger.debug(`ワールドスナップショット送信: ${entities.length}件のエンティティ (key: ${instanceOrRoomId})`);
 }

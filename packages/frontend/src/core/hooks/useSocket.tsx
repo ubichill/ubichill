@@ -22,7 +22,7 @@ interface SocketContextValue {
     users: Map<string, User>;
     currentUser: User | null;
     error: string | null;
-    joinRoom: (name: string, roomId?: string) => void;
+    joinRoom: (name: string, roomId?: string, instanceId?: string) => void;
     updatePosition: (position: CursorPosition) => void;
     updateStatus: (status: UserStatus) => void;
 }
@@ -125,7 +125,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         };
     }, []);
 
-    const joinRoom = useCallback((name: string, roomId: string = DEFAULTS.ROOM_ID) => {
+    const joinRoom = useCallback((name: string, roomId: string = DEFAULTS.ROOM_ID, instanceId?: string) => {
         const socket = socketRef.current;
         if (!socket) return;
 
@@ -136,7 +136,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             lastActiveAt: Date.now(),
         };
 
-        socket.emit('room:join', { roomId, user: initialUser }, (response) => {
+        socket.emit('room:join', { roomId, instanceId, user: initialUser }, (response) => {
             if (response.success && response.userId) {
                 setCurrentUser({ ...initialUser, id: response.userId });
             } else {

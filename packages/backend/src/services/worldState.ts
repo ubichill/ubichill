@@ -3,52 +3,52 @@ import type { WorldEntity } from '@ubichill/shared';
 import { logger } from '../utils/logger';
 
 /**
- * ルームごとのワールド状態を管理するインメモリストア
+ * インスタンスごとのワールド状態を管理するインメモリストア
  *
  * 設計思想:
  * - バックエンドは「土管」として動作し、dataの中身を解釈しない
- * - 各ルームは独立したエンティティ空間を持つ
- * - エンティティはルームID + エンティティIDで一意に識別される
+ * - 各インスタンスは独立したエンティティ空間を持つ
+ * - エンティティはインスタンスID + エンティティIDで一意に識別される
  */
 
-// ルームID -> エンティティID -> エンティティ のネストしたMap
+// インスタンスID -> エンティティID -> エンティティ のネストしたMap
 const worldStates: Map<string, Map<string, WorldEntity>> = new Map();
 
 /**
- * 指定ルームのワールド状態を取得（なければ作成）
+ * 指定インスタンスのワールド状態を取得（なければ作成）
  */
-export function getWorldState(roomId: string): Map<string, WorldEntity> {
-    let roomState = worldStates.get(roomId);
-    if (!roomState) {
-        roomState = new Map();
-        worldStates.set(roomId, roomState);
-        logger.debug(`ルーム ${roomId} のワールド状態を初期化しました`);
+export function getWorldState(instanceId: string): Map<string, WorldEntity> {
+    let instanceState = worldStates.get(instanceId);
+    if (!instanceState) {
+        instanceState = new Map();
+        worldStates.set(instanceId, instanceState);
+        logger.debug(`インスタンス ${instanceId} のワールド状態を初期化しました`);
     }
-    return roomState;
+    return instanceState;
 }
 
 /**
- * 指定ルームの全エンティティを配列で取得
+ * 指定インスタンスの全エンティティを配列で取得
  */
-export function getWorldSnapshot(roomId: string): WorldEntity[] {
-    const roomState = getWorldState(roomId);
-    return Array.from(roomState.values());
+export function getWorldSnapshot(instanceId: string): WorldEntity[] {
+    const instanceState = getWorldState(instanceId);
+    return Array.from(instanceState.values());
 }
 
 /**
  * 新しいエンティティを作成
  * @returns 作成されたエンティティ（IDが付与される）
  */
-export function createEntity(roomId: string, entityData: Omit<WorldEntity, 'id'>): WorldEntity {
-    const roomState = getWorldState(roomId);
+export function createEntity(instanceId: string, entityData: Omit<WorldEntity, 'id'>): WorldEntity {
+    const instanceState = getWorldState(instanceId);
 
     const entity: WorldEntity = {
         ...entityData,
         id: randomUUID(),
     };
 
-    roomState.set(entity.id, entity);
-    logger.debug(`エンティティ作成: ${entity.id} (type: ${entity.type}, room: ${roomId})`);
+    instanceState.set(entity.id, entity);
+    logger.debug(`エンティティ作成: ${entity.id} (type: ${entity.type}, instance: ${instanceId})`);
 
     return entity;
 }
@@ -58,12 +58,12 @@ export function createEntity(roomId: string, entityData: Omit<WorldEntity, 'id'>
  * @returns 更新後のエンティティ、存在しない場合はnull
  */
 export function patchEntity(
-    roomId: string,
+    instanceId: string,
     entityId: string,
     patch: Partial<Omit<WorldEntity, 'id' | 'type'>>,
 ): WorldEntity | null {
-    const roomState = getWorldState(roomId);
-    const entity = roomState.get(entityId);
+    const instanceState = getWorldState(instanceId);
+    const entity = instanceState.get(entityId);
 
     if (!entity) {
         logger.debug(`パッチ対象のエンティティが見つかりません: ${entityId}`);
@@ -77,7 +77,7 @@ export function patchEntity(
         transform: patch.transform ? { ...entity.transform, ...patch.transform } : entity.transform,
     };
 
-    roomState.set(entityId, updatedEntity);
+    instanceState.set(entityId, updatedEntity);
     logger.debug(`エンティティ更新: ${entityId}`);
 
     return updatedEntity;
@@ -87,9 +87,9 @@ export function patchEntity(
  * エンティティを削除
  * @returns 削除に成功したかどうか
  */
-export function deleteEntity(roomId: string, entityId: string): boolean {
-    const roomState = getWorldState(roomId);
-    const deleted = roomState.delete(entityId);
+export function deleteEntity(instanceId: string, entityId: string): boolean {
+    const instanceState = getWorldState(instanceId);
+    const deleted = instanceState.delete(entityId);
 
     if (deleted) {
         logger.debug(`エンティティ削除: ${entityId}`);
@@ -103,23 +103,23 @@ export function deleteEntity(roomId: string, entityId: string): boolean {
 /**
  * エンティティを取得
  */
-export function getEntity(roomId: string, entityId: string): WorldEntity | undefined {
-    const roomState = getWorldState(roomId);
-    return roomState.get(entityId);
+export function getEntity(instanceId: string, entityId: string): WorldEntity | undefined {
+    const instanceState = getWorldState(instanceId);
+    return instanceState.get(entityId);
 }
 
 /**
- * ルームのワールド状態をクリア（テスト用）
+ * インスタンスのワールド状態をクリア
  */
-export function clearWorldState(roomId: string): void {
-    worldStates.delete(roomId);
-    logger.debug(`ルーム ${roomId} のワールド状態をクリアしました`);
+export function clearWorldState(instanceId: string): void {
+    worldStates.delete(instanceId);
+    logger.debug(`インスタンス ${instanceId} のワールド状態をクリアしました`);
 }
 
 /**
- * 全ルームのワールド状態をクリア（テスト用）
+ * 全インスタンスのワールド状態をクリア（テスト用）
  */
 export function clearAllWorldStates(): void {
     worldStates.clear();
-    logger.debug('全ルームのワールド状態をクリアしました');
+    logger.debug('全インスタンスのワールド状態をクリアしました');
 }
