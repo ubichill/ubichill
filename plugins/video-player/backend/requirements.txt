@@ -8,8 +8,8 @@ httpx==0.28.1
 # Kubernetes integration for auto-scaling
 kubernetes>=28.1.0
 
-# Redis support (optional)
-redis>=5.0.0
+# Redis removed - using shared ubichill Redis instance instead
+# redis>=5.0.0
 
 # Optional utilities
 aiofiles>=23.2.1

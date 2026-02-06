@@ -1,0 +1,55 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: video-player-dev
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+  labels:
+    environment: development
+    component: video-player
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/ubichill/ubichill
+    targetRevision: feat/helm-deployment  # Use specific branch for testing
+    path: charts/video-player
+    helm:
+      valueFiles:
+        - values-dev.yaml
+      parameters:
+        - name: backend.image.tag
+          value: "dev"
+        - name: backend.env.LOG_LEVEL
+          value: "DEBUG"
+        - name: redis.enabled
+          value: "true"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ubichill
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false  # Namespace already exists
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  revisionHistoryLimit: 3
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/template/metadata/annotations/rollme
+  # Health checks
+  info:
+    - name: 'Environment'
+      value: 'Development'
+    - name: 'Redis Cache'
+      value: 'Enabled'

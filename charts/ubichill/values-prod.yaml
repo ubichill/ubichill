@@ -1,0 +1,104 @@
+# Production environment values for ubichill
+# Override default values for production
+
+# Production image registry
+global:
+  imageRegistry: "ghcr.io"
+
+# Backend configuration for production
+backend:
+  replicaCount: 3  # High availability
+  
+  image:
+    repository: "ubichill-backend"
+    tag: "stable"  # Use stable tags in production
+    pullPolicy: IfNotPresent
+  
+  resources:
+    limits:
+      cpu: 1500m
+      memory: 1.5Gi
+    requests:
+      cpu: 300m
+      memory: 512Mi
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 12
+    targetCPUUtilizationPercentage: 60  # More conservative scaling
+    targetMemoryUtilizationPercentage: 70
+  
+  env:
+    NODE_ENV: "production"
+    CORS_ORIGIN: "https://ubichill.com"
+
+# Frontend configuration for production
+frontend:
+  replicaCount: 3  # High availability
+  
+  image:
+    repository: "ubichill-frontend"
+    tag: "stable"  # Use stable tags in production
+    pullPolicy: IfNotPresent
+  
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 60
+    targetMemoryUtilizationPercentage: 70
+  
+  env:
+    NODE_ENV: "production"
+
+# Production Redis with persistence
+redis:
+  enabled: true
+  master:
+    persistence:
+      enabled: true
+      size: 5Gi
+    resources:
+      limits:
+        memory: 1Gi
+        cpu: 500m
+      requests:
+        memory: 512Mi
+        cpu: 200m
+
+# Production PostgreSQL
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: "CHANGE-ME-IN-PRODUCTION"
+    database: "ubichill"
+  primary:
+    persistence:
+      enabled: true
+      size: 20Gi
+    resources:
+      limits:
+        memory: 2Gi
+        cpu: 1000m
+      requests:
+        memory: 512Mi
+        cpu: 200m
+
+# Enable monitoring in production
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+
+# Enable node affinity for multi-AZ deployment
+nodeAffinity:
+  enabled: true

@@ -1,11 +1,16 @@
 # Development environment values
 # Override default values for development
 
+# Clear global image registry for local images
+global:
+  imageRegistry: ""
+
 backend:
   replicaCount: 1  # Single replica for dev
   
   image:
-    tag: "dev"
+    repository: "ubichill-video-player-music-backend"
+    tag: "latest"
     pullPolicy: Always
   
   resources:
@@ -23,9 +28,10 @@ backend:
     LOG_LEVEL: "DEBUG"
     CORS_ORIGINS: "http://localhost:3000,http://localhost:3002,http://host.docker.internal:3000"
 
-# Enable Redis for development testing
+# Redis disabled - Plugin-specific caching not needed for now
+# Consider shared ubichill Redis instance for cross-plugin caching
 redis:
-  enabled: true
+  enabled: false
   master:
     persistence:
       enabled: false  # No persistence needed in dev

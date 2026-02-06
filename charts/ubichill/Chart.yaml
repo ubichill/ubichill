@@ -1,0 +1,28 @@
+apiVersion: v2
+name: ubichill
+description: Ubichill Main Application - Frontend and Backend Platform
+type: application
+version: 0.1.0
+appVersion: "latest"
+
+keywords:
+  - ubichill
+  - platform
+  - frontend
+  - backend
+  - plugins
+
+maintainers:
+  - name: Ubichill Team
+    email: dev@ubichill.com
+
+# Dependencies for shared services (optional Redis, PostgreSQL, etc.)
+dependencies:
+  - name: redis
+    version: "17.11.3"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: redis.enabled
+  - name: postgresql
+    version: "12.8.2" 
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: postgresql.enabled

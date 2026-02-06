@@ -12,7 +12,7 @@ backend:
   replicaCount: 3
   
   image:
-    repository: "ubichill/video-player-backend"
+    repository: "ubichill-video-player-music-backend"
     tag: "latest"
     pullPolicy: Always
   
@@ -76,7 +76,7 @@ backend:
   env:
     CORS_ORIGINS: "http://localhost:3000,http://localhost:3002"
     LOG_LEVEL: "INFO"
-    REDIS_ENABLED: "false"  # Will be overridden if redis.enabled = true
+    # Redis configuration removed - use shared ubichill Redis when needed
 
   # Security context
   securityContext:
@@ -88,29 +88,10 @@ backend:
       drop:
         - ALL
 
-# Redis cache (optional)
-redis:
-  enabled: false  # Set to true to enable Redis caching
-  architecture: standalone
-  auth:
-    enabled: false
-  master:
-    persistence:
-      enabled: true
-      size: 1Gi
-    resources:
-      limits:
-        memory: 256Mi
-        cpu: 250m
-      requests:
-        memory: 128Mi
-        cpu: 100m
-  
-  # Redis configuration
-  commonConfiguration: |-
-    maxmemory 256mb
-    maxmemory-policy allkeys-lru
-    appendonly yes
+# Redis configuration removed from video-player plugin
+# Use shared ubichill Redis instance for cross-plugin caching when needed
+# redis:
+#   enabled: false
 
 # Internal load balancer (if needed)
 # This is separate from external ingress which is handled by infrastructure

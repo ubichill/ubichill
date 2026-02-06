@@ -1,0 +1,65 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ubichill-dev
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+  labels:
+    environment: development
+    component: ubichill
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/ubichill/ubichill
+    targetRevision: feat/helm-deployment  # Use feature branch for testing
+    path: charts/ubichill
+    helm:
+      valueFiles:
+        - values-dev.yaml
+      parameters:
+        - name: backend.image.tag
+          value: "latest"
+        - name: frontend.image.tag
+          value: "latest"
+        - name: redis.enabled
+          value: "true"
+        - name: postgresql.enabled
+          value: "false"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ubichill
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - PrunePropagationPolicy=background
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  revisionHistoryLimit: 5
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/template/metadata/annotations/rollme
+    # Ignore HPA changes (managed by auto-scaling)
+    - group: autoscaling
+      kind: HorizontalPodAutoscaler
+      jsonPointers:
+        - /status
+  info:
+    - name: 'Environment'
+      value: 'Development'
+    - name: 'Backend'
+      value: 'Node.js/TypeScript'
+    - name: 'Frontend'
+      value: 'Next.js'
+    - name: 'Shared Redis'
+      value: 'Enabled'

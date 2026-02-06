@@ -1,0 +1,76 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ubichill-prod
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+    notifications.argoproj.io/subscribe.on-sync-succeeded.slack: ubichill-alerts
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: ubichill-alerts
+  labels:
+    environment: production
+    component: ubichill
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/ubichill/ubichill
+    targetRevision: main  # Use main branch for production
+    path: charts/ubichill
+    helm:
+      valueFiles:
+        - values-prod.yaml
+      parameters:
+        - name: backend.image.tag
+          value: "stable"
+        - name: frontend.image.tag
+          value: "stable"
+        - name: redis.enabled
+          value: "true"
+        - name: postgresql.enabled
+          value: "true"
+        - name: monitoring.enabled
+          value: "true"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ubichill
+  syncPolicy:
+    # Manual sync for production - require approval
+    automated: null
+    syncOptions:
+      - CreateNamespace=false
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 10m
+  revisionHistoryLimit: 20
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/template/metadata/annotations/rollme
+    # Ignore HPA changes (managed by auto-scaling)
+    - group: autoscaling
+      kind: HorizontalPodAutoscaler
+      jsonPointers:
+        - /status
+    # Ignore secret changes (managed externally)
+    - group: ""
+      kind: Secret
+      jsonPointers:
+        - /data
+  info:
+    - name: 'Environment'
+      value: 'Production'
+    - name: 'High Availability'
+      value: 'Frontend: 3-10, Backend: 3-12'
+    - name: 'Database'
+      value: 'PostgreSQL with persistence'
+    - name: 'Cache'
+      value: 'Redis with 5GB persistence'
+    - name: 'Monitoring'
+      value: 'Enabled'

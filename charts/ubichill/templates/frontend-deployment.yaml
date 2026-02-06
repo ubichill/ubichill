@@ -1,0 +1,88 @@
+{{- if .Values.frontend.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ubichill.fullname" . }}-frontend
+  labels:
+    {{- include "ubichill.labels" . | nindent 4 }}
+    component: frontend
+spec:
+  replicas: {{ .Values.frontend.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "ubichill.selectorLabels" . | nindent 6 }}
+      component: frontend
+  template:
+    metadata:
+      annotations:
+        # Force pod restart on chart upgrade
+        rollme: {{ randAlphaNum 5 | quote }}
+      labels:
+        {{- include "ubichill.selectorLabels" . | nindent 8 }}
+        component: frontend
+    spec:
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.nodeAffinity.enabled }}
+      affinity:
+        nodeAffinity:
+          {{- with .Values.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution }}
+          preferredDuringSchedulingIgnoredDuringExecution:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  {{- include "ubichill.selectorLabels" . | nindent 18 }}
+                  component: frontend
+              topologyKey: kubernetes.io/hostname
+      {{- end }}
+      serviceAccountName: {{ include "ubichill.serviceAccountName.frontend" . }}
+      securityContext:
+        {{- toYaml .Values.frontend.securityContext | nindent 8 }}
+      containers:
+      - name: frontend
+        image: {{ include "ubichill.frontend.image" . }}
+        imagePullPolicy: {{ .Values.frontend.image.pullPolicy | default .Values.global.imagePullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.frontend.service.targetPort }}
+          protocol: TCP
+        env:
+        {{- range $key, $value := .Values.frontend.env }}
+        - name: {{ $key }}
+          value: {{ $value | quote }}
+        {{- end }}
+        # Backend URL configuration
+        - name: NEXT_PUBLIC_BACKEND_URL
+          value: "http://{{ include "ubichill.fullname" . }}-backend:{{ .Values.backend.service.port }}"
+        {{- if .Values.frontend.healthcheck.enabled }}
+        livenessProbe:
+          httpGet:
+            path: {{ .Values.frontend.healthcheck.path }}
+            port: http
+          initialDelaySeconds: {{ .Values.frontend.healthcheck.livenessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.frontend.healthcheck.livenessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.frontend.healthcheck.livenessProbe.timeoutSeconds }}
+          failureThreshold: {{ .Values.frontend.healthcheck.livenessProbe.failureThreshold }}
+        readinessProbe:
+          httpGet:
+            path: {{ .Values.frontend.healthcheck.path }}
+            port: http
+          initialDelaySeconds: {{ .Values.frontend.healthcheck.readinessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.frontend.healthcheck.readinessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.frontend.healthcheck.readinessProbe.timeoutSeconds }}
+          failureThreshold: {{ .Values.frontend.healthcheck.readinessProbe.failureThreshold }}
+        {{- end }}
+        resources:
+          {{- toYaml .Values.frontend.resources | nindent 12 }}
+{{- end }}

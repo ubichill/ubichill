@@ -2,15 +2,15 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "video-player.fullname" . }}-backend
+  name: {{ include "ubichill.fullname" . }}-backend
   labels:
-    {{- include "video-player.labels" . | nindent 4 }}
+    {{- include "ubichill.labels" . | nindent 4 }}
     component: backend
 spec:
   replicas: {{ .Values.backend.replicaCount }}
   selector:
     matchLabels:
-      {{- include "video-player.selectorLabels" . | nindent 6 }}
+      {{- include "ubichill.selectorLabels" . | nindent 6 }}
       component: backend
   template:
     metadata:
@@ -18,7 +18,7 @@ spec:
         # Force pod restart on chart upgrade
         rollme: {{ randAlphaNum 5 | quote }}
       labels:
-        {{- include "video-player.selectorLabels" . | nindent 8 }}
+        {{- include "ubichill.selectorLabels" . | nindent 8 }}
         component: backend
     spec:
       {{- with .Values.nodeSelector }}
@@ -42,14 +42,16 @@ spec:
             podAffinityTerm:
               labelSelector:
                 matchLabels:
-                  {{- include "video-player.selectorLabels" . | nindent 18 }}
+                  {{- include "ubichill.selectorLabels" . | nindent 18 }}
                   component: backend
               topologyKey: kubernetes.io/hostname
       {{- end }}
-      serviceAccountName: {{ include "video-player.fullname" . }}-backend
+      serviceAccountName: {{ include "ubichill.serviceAccountName.backend" . }}
+      securityContext:
+        {{- toYaml .Values.backend.securityContext | nindent 8 }}
       containers:
       - name: backend
-        image: "{{ if .Values.global.imageRegistry }}{{ .Values.global.imageRegistry }}/{{ end }}{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Chart.AppVersion }}"
+        image: {{ include "ubichill.backend.image" . }}
         imagePullPolicy: {{ .Values.backend.image.pullPolicy | default .Values.global.imagePullPolicy }}
         ports:
         - name: http
@@ -57,29 +59,18 @@ spec:
           protocol: TCP
         env:
         {{- range $key, $value := .Values.backend.env }}
-        {{- if ne $key "REDIS_ENABLED" }}
         - name: {{ $key }}
           value: {{ $value | quote }}
         {{- end }}
+        # Database connections
+        {{- if .Values.postgresql.enabled }}
+        - name: DATABASE_URL
+          value: "postgresql://postgres:{{ .Values.postgresql.auth.postgresPassword }}@{{ include "ubichill.fullname" . }}-postgresql:5432/{{ .Values.postgresql.auth.database }}"
         {{- end }}
-        # Redis connection to shared ubichill instance (future)
-        - name: REDIS_ENABLED
-          value: "false"
-        # When implementing shared Redis:
-        # - name: REDIS_URL
-        #   value: "redis://ubichill-redis-master.ubichill.svc.cluster.local:6379"
-        # Kubernetes scaling environment variables
-        - name: K8S_NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
-        - name: K8S_DEPLOYMENT_NAME
-          value: "{{ include "video-player.fullname" . }}-backend"
-        - name: K8S_HPA_NAME
-          value: "{{ include "video-player.fullname" . }}-backend"
-        {{- if .Values.backend.env.INTERNAL_API_TOKEN }}
-        - name: INTERNAL_API_TOKEN
-          value: {{ .Values.backend.env.INTERNAL_API_TOKEN | quote }}
+        # Redis connection
+        {{- if .Values.redis.enabled }}
+        - name: REDIS_URL
+          value: "redis://{{ include "ubichill.fullname" . }}-redis-master:6379"
         {{- end }}
         {{- if .Values.backend.healthcheck.enabled }}
         livenessProbe:

@@ -1,0 +1,71 @@
+# Development environment values for ubichill
+# Override default values for development
+
+# Clear global image registry for local images
+global:
+  imageRegistry: ""
+
+# Backend configuration for development
+backend:
+  replicaCount: 1  # Single replica for dev
+  
+  image:
+    repository: "ubichill-backend"
+    tag: "latest"
+    pullPolicy: Always
+  
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  
+  autoscaling:
+    enabled: false  # Disable HPA in dev
+  
+  env:
+    NODE_ENV: "development"
+    CORS_ORIGIN: "http://localhost:3000,http://localhost:3002,http://host.docker.internal:3000"
+
+# Frontend configuration for development  
+frontend:
+  replicaCount: 1  # Single replica for dev
+  
+  image:
+    repository: "ubichill-frontend"
+    tag: "latest"
+    pullPolicy: Always
+  
+  resources:
+    limits:
+      cpu: 250m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+  
+  autoscaling:
+    enabled: false  # Disable HPA in dev
+  
+  env:
+    NODE_ENV: "development"
+
+# Use Redis for shared caching
+redis:
+  enabled: true
+  master:
+    persistence:
+      enabled: false  # No persistence needed in dev
+    resources:
+      limits:
+        memory: 128Mi
+        cpu: 100m
+      requests:
+        memory: 64Mi
+        cpu: 50m
+
+# Disable PostgreSQL for dev (use SQLite or external DB)
+postgresql:
+  enabled: false

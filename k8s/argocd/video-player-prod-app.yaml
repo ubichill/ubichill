@@ -1,0 +1,68 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: video-player-prod
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+    notifications.argoproj.io/subscribe.on-sync-succeeded.slack: video-player-alerts
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: video-player-alerts
+  labels:
+    environment: production
+    component: video-player
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/ubichill/ubichill
+    targetRevision: main  # Use main branch for production
+    path: charts/video-player
+    helm:
+      valueFiles:
+        - values-prod.yaml
+      parameters:
+        - name: backend.image.tag
+          value: "stable"
+        - name: monitoring.enabled
+          value: "true"
+        - name: redis.enabled
+          value: "true"
+        - name: redis.master.persistence.size
+          value: "10Gi"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ubichill
+  syncPolicy:
+    # Manual sync for production
+    automated: null
+    syncOptions:
+      - CreateNamespace=false
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 10m
+  revisionHistoryLimit: 10
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/template/metadata/annotations/rollme
+    # Ignore HPA changes (managed by auto-scaling)
+    - group: autoscaling
+      kind: HorizontalPodAutoscaler
+      jsonPointers:
+        - /status
+  # Health checks with custom conditions
+  info:
+    - name: 'Environment'
+      value: 'Production'
+    - name: 'High Availability'
+      value: 'Enabled'
+    - name: 'Auto Scaling'
+      value: '3-20 replicas'
+    - name: 'Redis Cache'
+      value: 'Persistent'

@@ -1,0 +1,35 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: video-player-apps
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  labels:
+    component: app-of-apps
+    system: video-player
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/ubichill/ubichill
+    targetRevision: HEAD
+    path: k8s/argocd
+    directory:
+      recurse: true
+      include: "video-player-*-app.yaml"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ApplyOutOfSyncOnly=true
+  revisionHistoryLimit: 5
+  info:
+    - name: 'Pattern'
+      value: 'App of Apps'
+    - name: 'Manages'
+      value: 'Video Player environments'
