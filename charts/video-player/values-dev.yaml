@@ -9,7 +9,7 @@ backend:
   replicaCount: 1  # Single replica for dev
   
   image:
-    repository: "ubichill-video-player-music-backend"
+    repository: "video-player-backend"
     tag: "latest"
     pullPolicy: Always
   
