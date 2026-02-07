@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { memo, useRef, useState } from 'react';
 import styles from './RadialMenu.module.css';
 
 export interface RadialMenuItem {
@@ -18,7 +18,7 @@ export interface RadialMenuProps {
     centerLabel?: string;
 }
 
-export const RadialMenu: React.FC<RadialMenuProps> = ({ position, items, onClose, centerLabel = '✕' }) => {
+export const RadialMenu = memo<RadialMenuProps>(({ position, items, onClose, centerLabel = '✕' }) => {
     const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
     const [currentItems, setCurrentItems] = useState(items);
     const [history, setHistory] = useState<RadialMenuItem[][]>([]);
@@ -201,4 +201,6 @@ export const RadialMenu: React.FC<RadialMenuProps> = ({ position, items, onClose
             </div>
         </div>
     );
-};
+});
+
+RadialMenu.displayName = 'RadialMenu';

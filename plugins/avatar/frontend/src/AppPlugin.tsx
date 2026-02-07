@@ -30,7 +30,6 @@ export const AvatarPlugin: React.FC<AvatarPluginProps> = ({
 }) => {
     // SDK hooks
     const { currentUser, users, updateUser, socket: _socket, isConnected } = useSocket();
-    const _usersArray = Array.from(users.values());
 
     // 絵文字ブロードキャスト用のエンティティ (ephemeralデータとして共有)
     const { ephemeral: emojiEphemeral, syncStream: broadcastEmoji } = useEntity<{
@@ -260,98 +259,103 @@ export const AvatarPlugin: React.FC<AvatarPluginProps> = ({
             </div>
 
             {/* Remote Users' Avatars */}
-            {Array.from(users.values())
-                .filter((user) => user.id !== currentUser?.id)
-                .map((user) => {
-                    // Use remote user's cursor state, fallback to default
-                    const remoteCursorState = user.cursorState || 'default';
-                    const userAvatarState = user.avatar?.states?.[remoteCursorState] || user.avatar?.states?.default;
-                    const remoteUrl = userAvatarState?.url;
-                    const remoteHotspot = userAvatarState?.hotspot || { x: 0, y: 0 };
-                    // メニュー開いているユーザーは位置を固定表示
-                    const displayPosition = user.position;
+            {useMemo(
+                () =>
+                    Array.from(users.values())
+                        .filter((user) => user.id !== currentUser?.id)
+                        .map((user) => {
+                            // Use remote user's cursor state, fallback to default
+                            const remoteCursorState = user.cursorState || 'default';
+                            const userAvatarState =
+                                user.avatar?.states?.[remoteCursorState] || user.avatar?.states?.default;
+                            const remoteUrl = userAvatarState?.url;
+                            const remoteHotspot = userAvatarState?.hotspot || { x: 0, y: 0 };
+                            // メニュー開いているユーザーは位置を固定表示
+                            const displayPosition = user.position;
 
-                    return (
-                        <div
-                            key={user.id}
-                            style={{
-                                position: 'fixed',
-                                pointerEvents: 'none',
-                                zIndex: 10000,
-                                left: canvasOffset.left + displayPosition.x - remoteHotspot.x,
-                                top: canvasOffset.top + displayPosition.y - remoteHotspot.y,
-                            }}
-                        >
-                            {remoteUrl ? (
-                                <>
-                                    <img
-                                        src={remoteUrl}
-                                        alt={`${user.name}'s cursor`}
-                                        style={{
-                                            maxWidth: '64px',
-                                            maxHeight: '64px',
-                                            pointerEvents: 'none',
-                                            display: 'block',
-                                        }}
-                                    />
-                                    {user.status === 'busy' && (
-                                        <div
-                                            style={{
-                                                position: 'absolute',
-                                                top: '-8px',
-                                                right: '-8px',
-                                                width: '20px',
-                                                height: '20px',
-                                                borderRadius: '50%',
-                                                backgroundColor: '#fa5252',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                fontSize: '12px',
-                                                boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-                                            }}
-                                        >
-                                            🔴
-                                        </div>
-                                    )}
-                                    <span
-                                        style={{
-                                            display: 'block',
-                                            position: 'absolute',
-                                            top: '100%',
-                                            left: '50%',
-                                            transform: 'translateX(-50%)',
-                                            marginTop: '4px',
-                                            whiteSpace: 'nowrap',
-                                            fontSize: '12px',
-                                            background: 'rgba(0,0,0,0.7)',
-                                            color: 'white',
-                                            padding: '2px 6px',
-                                            borderRadius: '4px',
-                                        }}
-                                    >
-                                        {user.name}
-                                        {user.status === 'busy' && ' 🔴'}
-                                        {user.isMenuOpen && ' 📋'}
-                                    </span>
-                                </>
-                            ) : (
+                            return (
                                 <div
+                                    key={user.id}
                                     style={{
-                                        backgroundColor: '#4263eb',
-                                        color: 'white',
-                                        padding: '4px 8px',
-                                        borderRadius: '12px',
-                                        fontSize: '12px',
-                                        whiteSpace: 'nowrap',
+                                        position: 'fixed',
+                                        pointerEvents: 'none',
+                                        zIndex: 10000,
+                                        left: canvasOffset.left + displayPosition.x - remoteHotspot.x,
+                                        top: canvasOffset.top + displayPosition.y - remoteHotspot.y,
                                     }}
                                 >
-                                    {user.name}
+                                    {remoteUrl ? (
+                                        <>
+                                            <img
+                                                src={remoteUrl}
+                                                alt={`${user.name}'s cursor`}
+                                                style={{
+                                                    maxWidth: '64px',
+                                                    maxHeight: '64px',
+                                                    pointerEvents: 'none',
+                                                    display: 'block',
+                                                }}
+                                            />
+                                            {user.status === 'busy' && (
+                                                <div
+                                                    style={{
+                                                        position: 'absolute',
+                                                        top: '-8px',
+                                                        right: '-8px',
+                                                        width: '20px',
+                                                        height: '20px',
+                                                        borderRadius: '50%',
+                                                        backgroundColor: '#fa5252',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        fontSize: '12px',
+                                                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                                                    }}
+                                                >
+                                                    🔴
+                                                </div>
+                                            )}
+                                            <span
+                                                style={{
+                                                    display: 'block',
+                                                    position: 'absolute',
+                                                    top: '100%',
+                                                    left: '50%',
+                                                    transform: 'translateX(-50%)',
+                                                    marginTop: '4px',
+                                                    whiteSpace: 'nowrap',
+                                                    fontSize: '12px',
+                                                    background: 'rgba(0,0,0,0.7)',
+                                                    color: 'white',
+                                                    padding: '2px 6px',
+                                                    borderRadius: '4px',
+                                                }}
+                                            >
+                                                {user.name}
+                                                {user.status === 'busy' && ' 🔴'}
+                                                {user.isMenuOpen && ' 📋'}
+                                            </span>
+                                        </>
+                                    ) : (
+                                        <div
+                                            style={{
+                                                backgroundColor: '#4263eb',
+                                                color: 'white',
+                                                padding: '4px 8px',
+                                                borderRadius: '12px',
+                                                fontSize: '12px',
+                                                whiteSpace: 'nowrap',
+                                            }}
+                                        >
+                                            {user.name}
+                                        </div>
+                                    )}
                                 </div>
-                            )}
-                        </div>
-                    );
-                })}
+                            );
+                        }),
+                [users, currentUser?.id, canvasOffset],
+            )}
 
             {/* Local Avatar Cursor - カスタムカーソル選択時のみ表示 */}
             <AvatarCursor

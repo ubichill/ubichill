@@ -40,12 +40,10 @@ export const CursorMenu: React.FC<CursorMenuProps> = ({ avatar, onAvatarChange }
     useEffect(() => {
         loadAvatarIndex('/avatar-content/index.yaml')
             .then((loaded) => {
-                console.log('[CursorMenu] Loaded YAML templates:', loaded);
                 setTemplates(loaded);
             })
             .catch((err) => {
                 console.error('[CursorMenu] Failed to load YAML templates:', err);
-                console.log('[CursorMenu] Falling back to manual template definitions');
                 // フォールバック: 手動で定義されたテンプレート
                 setTemplates([
                     {

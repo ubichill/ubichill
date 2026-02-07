@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import styles from './EmojiFloat.module.css';
 
 export interface FloatingEmoji {
@@ -15,7 +15,7 @@ export interface EmojiFloatProps {
     onComplete: (id: string) => void;
 }
 
-export const EmojiFloat: React.FC<EmojiFloatProps> = ({ emojis, onComplete }) => {
+export const EmojiFloat = memo<EmojiFloatProps>(({ emojis, onComplete }) => {
     return (
         <div className={styles.container}>
             {emojis.map((emoji) => (
@@ -23,14 +23,16 @@ export const EmojiFloat: React.FC<EmojiFloatProps> = ({ emojis, onComplete }) =>
             ))}
         </div>
     );
-};
+});
+
+EmojiFloat.displayName = 'EmojiFloat';
 
 interface EmojiItemProps {
     emoji: FloatingEmoji;
     onComplete: () => void;
 }
 
-const EmojiItem: React.FC<EmojiItemProps> = ({ emoji, onComplete }) => {
+const EmojiItem = memo<EmojiItemProps>(({ emoji, onComplete }) => {
     const [isVisible, setIsVisible] = useState(true);
 
     useEffect(() => {
@@ -60,4 +62,6 @@ const EmojiItem: React.FC<EmojiItemProps> = ({ emoji, onComplete }) => {
             {emoji.emoji}
         </div>
     );
-};
+});
+
+EmojiItem.displayName = 'EmojiItem';

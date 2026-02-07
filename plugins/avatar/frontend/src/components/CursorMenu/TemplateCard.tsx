@@ -31,8 +31,6 @@ export const TemplateCard: React.FC<TemplateCardProps> = memo(({ template, onSel
             const fullUrl = imageUrl.startsWith('http') ? imageUrl : `${getBaseUrl()}${imageUrl}`;
             const ext = imageUrl.split('.').pop()?.toLowerCase();
 
-            console.log('[TemplateCard] Loading thumbnail:', { name: template.name, fullUrl, ext });
-
             try {
                 // ANI/CURファイルの場合は変換処理が必要
                 if (ext === 'ani' || ext === 'cur') {
@@ -51,7 +49,6 @@ export const TemplateCard: React.FC<TemplateCardProps> = memo(({ template, onSel
                         resultUrl = processed.url;
                     }
                     if (resultUrl) {
-                        console.log('[TemplateCard] Thumbnail loaded successfully:', template.name);
                         setThumbnailUrl(resultUrl);
                     }
                 } else {
