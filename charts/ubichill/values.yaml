@@ -164,6 +164,7 @@ frontend:
     PORT: "3000"
     HOSTNAME: "0.0.0.0"
     # NEXT_PUBLIC_BACKEND_URL set by template
+    # NEXT_PUBLIC_VIDEO_PLAYER_BACKEND_URL set by template
 
   # Security context
   securityContext:

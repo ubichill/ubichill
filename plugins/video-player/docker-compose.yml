@@ -9,6 +9,7 @@ services:
       - "8000:8000"
     environment:
       - PYTHONUNBUFFERED=1
+      - CORS_ORIGINS=*
     volumes:
       # main.pyのみマウント（.venvを保護）
       - ./backend/main.py:/app/main.py

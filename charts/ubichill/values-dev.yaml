@@ -57,7 +57,7 @@ frontend:
   
   env:
     NODE_ENV: "development"
-    NEXT_PUBLIC_VIDEO_PLAYER_BACKEND_URL: "http://localhost:8000"  # Development video player API
+    # NEXT_PUBLIC_VIDEO_PLAYER_BACKEND_URL auto-configured by template
 
 # Use Redis for shared caching
 redis:
