@@ -283,7 +283,7 @@ export const CursorMenu: React.FC<CursorMenuProps> = ({ avatar, onAvatarChange }
             }
         } catch (error) {
             console.error('Failed to convert cursor file:', error);
-            alert('Failed to process cursor file. Please try another file.');
+            alert('カーソルファイルの処理に失敗しました。別のファイルを試してください。');
         } finally {
             setIsConverting(false);
         }
@@ -324,7 +324,7 @@ export const CursorMenu: React.FC<CursorMenuProps> = ({ avatar, onAvatarChange }
                     boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
                 }}
             >
-                <span>🖱️</span> Change Cursor
+                <span>🖱️</span> カーソル変更
             </button>
 
             {isOpen && (
@@ -347,7 +347,7 @@ export const CursorMenu: React.FC<CursorMenuProps> = ({ avatar, onAvatarChange }
                     }}
                 >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 'bold' }}>Cursor Settings</h3>
+                        <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 'bold' }}>カーソル設定</h3>
                         <button
                             type="button"
                             onClick={() => setIsOpen(false)}
@@ -395,7 +395,7 @@ export const CursorMenu: React.FC<CursorMenuProps> = ({ avatar, onAvatarChange }
                                 gap: '8px',
                             }}
                         >
-                            Image URL for "{selectedState}"
+                            "{selectedState}" の画像URL
                             <div style={{ display: 'flex', gap: '8px' }}>
                                 <input
                                     type="text"
@@ -425,7 +425,7 @@ export const CursorMenu: React.FC<CursorMenuProps> = ({ avatar, onAvatarChange }
                                         opacity: urlInput.trim() ? 1 : 0.6,
                                     }}
                                 >
-                                    Set
+                                    設定
                                 </button>
                             </div>
                         </label>
@@ -434,7 +434,7 @@ export const CursorMenu: React.FC<CursorMenuProps> = ({ avatar, onAvatarChange }
                     {/* Hotspot Settings */}
                     <div style={{ display: 'flex', gap: '8px' }}>
                         <label style={{ fontSize: '12px', flex: 1 }}>
-                            Hotspot X
+                            ホットスポット X
                             <input
                                 type="number"
                                 value={currentStateDef.hotspot.x}
@@ -452,7 +452,7 @@ export const CursorMenu: React.FC<CursorMenuProps> = ({ avatar, onAvatarChange }
                             />
                         </label>
                         <label style={{ fontSize: '12px', flex: 1 }}>
-                            Hotspot Y
+                            ホットスポット Y
                             <input
                                 type="number"
                                 value={currentStateDef.hotspot.y}
@@ -484,7 +484,7 @@ export const CursorMenu: React.FC<CursorMenuProps> = ({ avatar, onAvatarChange }
                                 gap: '8px',
                             }}
                         >
-                            Upload Image (.png, .jpg, .cur, .ani)
+                            画像アップロード (.png, .jpg, .cur, .ani)
                             <input
                                 type="file"
                                 ref={fileInputRef}
@@ -509,7 +509,7 @@ export const CursorMenu: React.FC<CursorMenuProps> = ({ avatar, onAvatarChange }
                                     opacity: isConverting ? 0.7 : 1,
                                 }}
                             >
-                                {isConverting ? 'Converting...' : 'Choose File...'}
+                                {isConverting ? '変換中...' : 'ファイルを選択...'}
                             </button>
                         </label>
                     </div>
@@ -518,7 +518,7 @@ export const CursorMenu: React.FC<CursorMenuProps> = ({ avatar, onAvatarChange }
                         <>
                             <div style={{ height: '1px', backgroundColor: '#f1f3f5' }} />
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontSize: '12px', color: '#868e96' }}>Current: Custom</span>
+                                <span style={{ fontSize: '12px', color: '#868e96' }}>現在の設定: カスタム</span>
                                 <button
                                     type="button"
                                     onClick={handleClear}
@@ -532,7 +532,7 @@ export const CursorMenu: React.FC<CursorMenuProps> = ({ avatar, onAvatarChange }
                                         cursor: 'pointer',
                                     }}
                                 >
-                                    Reset this state
+                                    リセット
                                 </button>
                             </div>
                         </>

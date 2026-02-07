@@ -139,7 +139,7 @@ export default function Home() {
             <main className={styles.mainContainer}>
                 <div className={styles.headerContainer}>
                     <p className={styles.statusBar}>
-                        Status: {isConnected ? 'Connected' : 'Disconnected'}
+                        ステータス: {isConnected ? '接続済み' : '切断'}
                         {error && <span className={styles.errorText}>{error}</span>}
                     </p>
                 </div>
@@ -172,7 +172,7 @@ export default function Home() {
             <main className={styles.mainContainer}>
                 <div className={styles.headerContainer}>
                     <p className={styles.statusBar}>
-                        Status: {isConnected ? 'Connected' : 'Disconnected'}
+                        ステータス: {isConnected ? '接続済み' : '切断'}
                         {error && <span className={styles.errorText}>{error}</span>}
                     </p>
                     <button
@@ -212,22 +212,22 @@ export default function Home() {
         >
             <div className={styles.headerContainer}>
                 <p className={styles.statusBar}>
-                    Status: {isConnected ? 'Connected' : 'Disconnected'}
+                    ステータス: {isConnected ? '接続済み' : '切断'}
                     {error && <span className={styles.errorText}>{error}</span>}
                 </p>
                 <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
                     <CursorMenu avatar={localAvatar} onAvatarChange={setLocalAvatar} />
-                    {currentUser && <p className={styles.userInfo}>Logged in as: {currentUser.name}</p>}
+                    {currentUser && <p className={styles.userInfo}>ログイン中: {currentUser.name}</p>}
                 </div>
             </div>
 
             <div ref={canvasRef} className={styles.roomCanvas}>
                 <div className={styles.userListContainer}>
-                    <h2 className={styles.userListTitle}>Room Users ({users.size})</h2>
+                    <h2 className={styles.userListTitle}>参加ユーザー ({users.size}人)</h2>
                     <ul className={styles.userList}>
                         {Array.from(users.values()).map((user) => (
                             <li key={user.id}>
-                                {user.name} ({user.status}){user.id === currentUser?.id && ' (You)'}
+                                {user.name} ({user.status}){user.id === currentUser?.id && ' (あなた)'}
                             </li>
                         ))}
                     </ul>
