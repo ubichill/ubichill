@@ -1,0 +1,33 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+{{- if .Values.backend.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "ubichill.fullname" . }}-backend
+  labels:
+    {{- include "ubichill.labels" . | nindent 4 }}
+    component: backend
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "ubichill.selectorLabels" . | nindent 6 }}
+      component: backend
+---
+{{- end }}
+{{- if .Values.frontend.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "ubichill.fullname" . }}-frontend
+  labels:
+    {{- include "ubichill.labels" . | nindent 4 }}
+    component: frontend
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "ubichill.selectorLabels" . | nindent 6 }}
+      component: frontend
+{{- end }}
+{{- end }}

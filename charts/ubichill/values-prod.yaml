@@ -1,0 +1,179 @@
+# Production environment values for ubichill
+# Override default values for production
+
+# Production image registry
+global:
+  imageRegistry: "ghcr.io"
+  security:
+    allowInsecureImages: true
+
+# Backend configuration for production
+backend:
+  replicaCount: 3  # High availability
+  
+  image:
+    repository: "ubichill-backend"
+    tag: "stable"  # Use stable tags in production
+    pullPolicy: IfNotPresent
+  
+  resources:
+    limits:
+      cpu: 1500m
+      memory: 1.5Gi
+    requests:
+      cpu: 300m
+      memory: 512Mi
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 12
+    targetCPUUtilizationPercentage: 60  # More conservative scaling
+    targetMemoryUtilizationPercentage: 70
+  
+  env:
+    NODE_ENV: "production"
+    CORS_ORIGIN: "https://ubichill.com"
+
+# Frontend configuration for production
+frontend:
+  replicaCount: 3  # High availability
+  
+  image:
+    repository: "ubichill-frontend"
+    tag: "stable"  # Use stable tags in production
+    pullPolicy: IfNotPresent
+  
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 60
+    targetMemoryUtilizationPercentage: 70
+  
+  env:
+    NODE_ENV: "production"
+    # NEXT_PUBLIC_VIDEO_PLAYER_BACKEND_URL auto-configured by template
+
+# Production Redis with persistence
+redis:
+  enabled: true
+  master:
+    persistence:
+      enabled: true
+      size: 5Gi
+    resources:
+      limits:
+        memory: 1Gi
+        cpu: 500m
+      requests:
+        memory: 512Mi
+        cpu: 200m
+
+# Production PostgreSQL
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: "CHANGE-ME-IN-PRODUCTION"
+    database: "ubichill"
+  primary:
+    persistence:
+      enabled: true
+      size: 20Gi
+    resources:
+      limits:
+        memory: 2Gi
+        cpu: 1000m
+      requests:
+        memory: 512Mi
+        cpu: 200m
+
+# Enable monitoring in production
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+
+# Enable node affinity for multi-AZ deployment
+nodeAffinity:
+  enabled: true
+
+# Video Player Plugin (Subchart) for production
+video-player:
+  enabled: true
+  global:
+    imageRegistry: "ghcr.io"
+  backend:
+    replicaCount: 3
+    rootPath: "/plugin/video-player"
+    image:
+      repository: "ubichill-video-player-backend"
+      tag: "stable"
+      pullPolicy: IfNotPresent
+    env:
+      CORS_ORIGINS: "https://ubichill.com,https://app.ubichill.com"
+      LOG_LEVEL: "INFO"
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+      requests:
+        cpu: 200m
+        memory: 512Mi
+    autoscaling:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 60
+      targetMemoryUtilizationPercentage: 70
+  redis:
+    enabled: true
+    master:
+      persistence:
+        enabled: true
+        size: 2Gi
+      resources:
+        limits:
+          memory: 512Mi
+          cpu: 300m
+        requests:
+          memory: 256Mi
+          cpu: 100m
+
+# Ingress configuration for production
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  tls:
+    - secretName: ubichill-tls
+      hosts:
+        - ubichill.com
+  hosts:
+    - host: ubichill.com
+      paths:
+        - path: /plugin/video-player
+          pathType: Prefix
+          backend:
+            service:
+              name: video-player
+              port: 8000
+        - path: /api
+          pathType: Prefix
+          backend:
+            service:
+              name: backend
+              port: 3001
+        - path: /
+          pathType: Prefix
+          # Default to frontend (will use template default)

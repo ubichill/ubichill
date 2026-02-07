@@ -1,0 +1,20 @@
+{{- if and .Values.backend.enabled .Values.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "video-player.fullname" . }}-backend
+  labels:
+    {{- include "video-player.labels" . | nindent 4 }}
+    component: backend
+spec:
+  {{- if .Values.podDisruptionBudget.minAvailable }}
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  {{- end }}
+  {{- if .Values.podDisruptionBudget.maxUnavailable }}
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "video-player.selectorLabels" . | nindent 6 }}
+      component: backend
+{{- end }}
