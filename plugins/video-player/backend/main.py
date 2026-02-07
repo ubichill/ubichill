@@ -5,14 +5,17 @@ import yt_dlp
 import httpx
 from typing import Dict, Any
 import re
+import os
 from urllib.parse import urljoin, quote
 
-app = FastAPI(title="Ubichill Music Streaming API", version="1.0.0")
+app = FastAPI(title="Ubichill Video Player API", version="1.0.0")
 
-# CORS設定
+# CORS設定（環境変数から取得、デフォルトは開発環境用）
+allowed_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:3001").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3002"],
+    allow_origins=[origin.strip() for origin in allowed_origins] if allowed_origins != ["*"] else ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

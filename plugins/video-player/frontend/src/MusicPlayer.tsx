@@ -22,7 +22,7 @@ interface SearchResult {
 const API_BASE =
     process.env.NEXT_PUBLIC_VIDEO_PLAYER_BACKEND_URL ||
     (typeof window !== 'undefined' && window.location.hostname !== 'localhost'
-        ? '' // 本番環境では相対パス（同一ドメイン）
+        ? '/api/stream' // 本番環境ではIngressパス経由
         : 'http://localhost:8000'); // 開発環境
 
 export const MusicPlayer: React.FC<Props> = ({ entity, isLocked, update }) => {

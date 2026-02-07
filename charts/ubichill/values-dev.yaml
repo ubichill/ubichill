@@ -57,6 +57,7 @@ frontend:
   
   env:
     NODE_ENV: "development"
+    NEXT_PUBLIC_VIDEO_PLAYER_BACKEND_URL: "http://localhost:8000"  # Development video player API
 
 # Use Redis for shared caching
 redis:
@@ -87,6 +88,9 @@ video-player:
     imageRegistry: "" # Use local/docker registry for video player if it uses global
   backend:
     replicaCount: 1
+    env:
+      CORS_ORIGINS: "http://localhost:3000,http://localhost:3002,*"  # Allow all origins in dev
+      LOG_LEVEL: "DEBUG"
     resources:
       limits:
         cpu: 250m
@@ -94,7 +98,32 @@ video-player:
       requests:
         cpu: 50m
         memory: 128Mi
+    autoscaling:
+      enabled: false
   redis:
     enabled: true
     global:
       imageRegistry: "" # Ensure nested redis in video-player also ignores global registry
+
+# Ingress configuration for development
+ingress:
+  enabled: true
+  className: "nginx"
+  hosts:
+    - host: localhost
+      paths:
+        - path: /api/stream
+          pathType: Prefix
+          backend:
+            service:
+              name: video-player
+              port: 8000
+        - path: /api
+          pathType: Prefix
+          backend:
+            service:
+              name: backend
+              port: 3001
+        - path: /
+          pathType: Prefix
+          # Default to frontend (will use template default)

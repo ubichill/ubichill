@@ -61,6 +61,7 @@ frontend:
   
   env:
     NODE_ENV: "production"
+    NEXT_PUBLIC_VIDEO_PLAYER_BACKEND_URL: "https://ubichill.com/api/stream"  # Production video player API via ingress
 
 # Production Redis with persistence
 redis:
@@ -104,3 +105,74 @@ monitoring:
 # Enable node affinity for multi-AZ deployment
 nodeAffinity:
   enabled: true
+
+# Video Player Plugin (Subchart) for production
+video-player:
+  enabled: true
+  global:
+    imageRegistry: "ghcr.io"
+  backend:
+    replicaCount: 3
+    image:
+      repository: "ubichill-video-player-backend"
+      tag: "stable"
+      pullPolicy: IfNotPresent
+    env:
+      CORS_ORIGINS: "https://ubichill.com,https://app.ubichill.com"
+      LOG_LEVEL: "INFO"
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+      requests:
+        cpu: 200m
+        memory: 512Mi
+    autoscaling:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 60
+      targetMemoryUtilizationPercentage: 70
+  redis:
+    enabled: true
+    master:
+      persistence:
+        enabled: true
+        size: 2Gi
+      resources:
+        limits:
+          memory: 512Mi
+          cpu: 300m
+        requests:
+          memory: 256Mi
+          cpu: 100m
+
+# Ingress configuration for production
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  tls:
+    - secretName: ubichill-tls
+      hosts:
+        - ubichill.com
+  hosts:
+    - host: ubichill.com
+      paths:
+        - path: /api/stream
+          pathType: Prefix
+          backend:
+            service:
+              name: video-player
+              port: 8000
+        - path: /api
+          pathType: Prefix
+          backend:
+            service:
+              name: backend
+              port: 3001
+        - path: /
+          pathType: Prefix
+          # Default to frontend (will use template default)

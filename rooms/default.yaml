@@ -26,10 +26,10 @@ spec:
       source:
         type: repository
         path: "packages/pen"
-    - name: ubichill-music-player
+    - name: video-player
       source:
         type: repository
-        path: "plugins/music-player"
+        path: "plugins/video-player"
   
   # 初期配置エンティティ
   initialEntities:
