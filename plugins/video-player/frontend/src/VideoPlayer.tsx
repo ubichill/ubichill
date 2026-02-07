@@ -5,6 +5,7 @@ import type { WorldEntity } from '@ubichill/shared';
 import Hls from 'hls.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+    ListIcon,
     PauseIcon,
     PlayIcon,
     RepeatIcon,
@@ -56,6 +57,7 @@ export const VideoPlayer: React.FC<Props> = ({ entity, isLocked, update }) => {
     const [localTime, setLocalTime] = useState(data.currentTime);
     const [showVideo, setShowVideo] = useState(false);
     const [isLoadingTrack, setIsLoadingTrack] = useState(false);
+    const [showPlaylist, setShowPlaylist] = useState(true);
 
     const currentTrack = data.playlist[data.currentIndex];
 
@@ -662,18 +664,28 @@ export const VideoPlayer: React.FC<Props> = ({ entity, isLocked, update }) => {
                                         <VideoIcon size={16} />
                                     </button>
                                 )}
+                                <button
+                                    type="button"
+                                    className={`${styles.controlBtn} ${showPlaylist ? styles.active : ''}`}
+                                    onClick={() => setShowPlaylist(!showPlaylist)}
+                                    title="プレイリストを表示/非表示"
+                                >
+                                    <ListIcon size={16} />
+                                </button>
                             </div>
                         </div>
                     </div>
 
                     {/* 右側: プレイリスト */}
-                    <PlaylistPanel
-                        data={data}
-                        isLocked={isLocked}
-                        onSelectTrack={handleSelectTrack}
-                        onRemoveTrack={handleRemoveTrack}
-                        onAddTrack={handleAddTrack}
-                    />
+                    {showPlaylist && (
+                        <PlaylistPanel
+                            data={data}
+                            isLocked={isLocked}
+                            onSelectTrack={handleSelectTrack}
+                            onRemoveTrack={handleRemoveTrack}
+                            onAddTrack={handleAddTrack}
+                        />
+                    )}
                 </div>
             </div>
         </div>
