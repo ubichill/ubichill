@@ -7,6 +7,11 @@ import * as UPNG from 'upng-js';
 
 // --- Constants & Types ---
 
+const getBaseUrl = () => {
+    if (typeof window !== 'undefined') return window.location.origin;
+    return '';
+};
+
 const AVAILABLE_STATES: CursorState[] = [
     'default',
     'pointer',
@@ -277,7 +282,8 @@ const TemplateButton = memo(({
             const defaultCursorFile = template.mappings['default'];
             if (!defaultCursorFile) return;
 
-            const url = `/templates/${template.directory}/${defaultCursorFile}`;
+            const baseUrl = getBaseUrl();
+            const url = `${baseUrl}/templates/${template.directory}/${defaultCursorFile}`;
             try {
                 const res = await fetch(url);
                 if (!res.ok) throw new Error(`Failed to fetch thumbnail source`);
@@ -348,7 +354,7 @@ export const CursorMenu: React.FC<CursorMenuProps> = ({ avatar, onAvatarChange }
     const currentStateDef = avatar.states[selectedState] || { url: '', hotspot: { x: 0, y: 0 } };
 
     useEffect(() => {
-        fetch('/templates/manifest.json')
+        fetch(`${getBaseUrl()}/templates/manifest.json`)
             .then((res) => res.json())
             .then((data) => setTemplates(data))
             .catch((err) => console.error('Failed to load templates:', err));
@@ -436,7 +442,8 @@ export const CursorMenu: React.FC<CursorMenuProps> = ({ avatar, onAvatarChange }
                 const filename = template.mappings[state];
                 if (!filename) continue;
 
-                const url = `/templates/${template.directory}/${filename}`;
+                const baseUrl = getBaseUrl();
+                const url = `${baseUrl}/templates/${template.directory}/${filename}`;
                 try {
                     const res = await fetch(url);
                     if (!res.ok) throw new Error(`Failed to fetch ${url}`);
