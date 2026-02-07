@@ -1,4 +1,4 @@
-import type { CursorPosition, UserStatus } from '@ubichill/shared';
+import type { CursorPosition, CursorState, UserStatus } from '@ubichill/shared';
 import { z } from 'zod';
 
 /**
@@ -27,6 +27,18 @@ export const cursorPositionSchema = z.object({
 
 // ユーザーステータスのバリデーション
 export const userStatusSchema = z.enum(['online', 'away', 'busy', 'offline']) satisfies z.ZodType<UserStatus>;
+
+// カーソル状態のバリデーション
+export const cursorStateSchema = z.enum([
+    'default',
+    'pointer',
+    'text',
+    'wait',
+    'help',
+    'not-allowed',
+    'move',
+    'grabbing',
+]) satisfies z.ZodType<CursorState>;
 
 /**
  * バリデーションヘルパー関数
@@ -64,6 +76,16 @@ export function validateUserStatus(
     const result = userStatusSchema.safeParse(status);
     if (!result.success) {
         return { valid: false, error: '無効なユーザーステータスです' };
+    }
+    return { valid: true, data: result.data };
+}
+
+export function validateCursorState(
+    state: unknown,
+): { valid: true; data: CursorState } | { valid: false; error: string } {
+    const result = cursorStateSchema.safeParse(state);
+    if (!result.success) {
+        return { valid: false, error: '無効なカーソル状態です' };
     }
     return { valid: true, data: result.data };
 }

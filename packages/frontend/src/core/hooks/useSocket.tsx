@@ -97,14 +97,18 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             });
         });
 
-        socket.on('cursor:moved', ({ userId, position }) => {
+        socket.on('cursor:moved', ({ userId, position, state }) => {
             setUsers((prev) => {
                 const user = prev.get(userId);
                 if (!user) return prev; // まだユーザー情報がない場合は更新できない（通常ありえないが）
 
-                // 位置情報だけ更新したいが、イミュータブルにMapを更新
+                // 位置情報と状態を更新
                 const newMap = new Map(prev);
-                newMap.set(userId, { ...user, position });
+                newMap.set(userId, {
+                    ...user,
+                    position,
+                    ...(state !== undefined && { cursorState: state }),
+                });
                 return newMap;
             });
         });

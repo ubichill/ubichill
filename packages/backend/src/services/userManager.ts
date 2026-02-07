@@ -1,4 +1,4 @@
-import type { CursorPosition, User, UserStatus } from '@ubichill/shared';
+import type { CursorPosition, CursorState, User, UserStatus } from '@ubichill/shared';
 
 /**
  * ユーザー管理サービス
@@ -52,11 +52,14 @@ export class UserManager {
     /**
      * ユーザーのカーソル位置を更新
      */
-    updateUserPosition(userId: string, position: CursorPosition): boolean {
+    updateUserPosition(userId: string, position: CursorPosition, state?: CursorState): boolean {
         const user = this.users.get(userId);
         if (!user) return false;
 
         user.position = position;
+        if (state !== undefined) {
+            user.cursorState = state;
+        }
         user.lastActiveAt = Date.now();
         return true;
     }
