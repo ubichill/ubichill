@@ -1,0 +1,44 @@
+{{- if .Values.backend.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "video-player.fullname" . }}-backend
+  labels:
+    {{- include "video-player.labels" . | nindent 4 }}
+    component: backend
+spec:
+  type: {{ .Values.backend.service.type }}
+  ports:
+  - port: {{ .Values.backend.service.port }}
+    targetPort: {{ .Values.backend.service.targetPort }}
+    protocol: TCP
+    name: http
+  selector:
+    {{- include "video-player.selectorLabels" . | nindent 4 }}
+    component: backend
+{{- end }}
+
+{{- if .Values.internalLB.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "video-player.fullname" . }}-internal-lb
+  labels:
+    {{- include "video-player.labels" . | nindent 4 }}
+    component: internal-lb
+  {{- with .Values.internalLB.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.internalLB.service.type }}
+  ports:
+  - port: {{ .Values.backend.service.port }}
+    targetPort: {{ .Values.backend.service.targetPort }}
+    protocol: TCP
+    name: http
+  selector:
+    {{- include "video-player.selectorLabels" . | nindent 4 }}
+    component: backend
+{{- end }}

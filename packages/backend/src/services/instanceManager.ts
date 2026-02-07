@@ -89,6 +89,7 @@ class InstanceManager {
                         z: entityDef.transform.z,
                         w: entityDef.transform.w ?? 100,
                         h: entityDef.transform.h ?? 100,
+                        scale: entityDef.transform.scale ?? 1,
                         rotation: entityDef.transform.rotation,
                     },
                     data: entityDef.data ?? {},

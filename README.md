@@ -46,5 +46,104 @@ pnpm install
 pnpm dev
 ```
 
+## Kubernetes デプロイメント
+
+### 📦 Helm Charts
+
+UbichillアプリケーションはHelmチャートとして公開されており、Kubernetes環境に簡単にデプロイできます。
+
+#### リポジトリ追加
+```bash
+# Ubichill Helm リポジトリを追加
+helm repo add ubichill https://ubichill.github.io/ubichill
+helm repo update
+```
+
+#### 利用可能なチャート
+- `ubichill/ubichill` - メインアプリケーション (Frontend + Backend + Redis + PostgreSQL)
+- `ubichill/video-player` - Video Playerプラグイン (yt-dlp backend)
+
+#### デプロイ例
+
+**開発環境:**
+```bash
+# メインアプリケーション
+helm install ubichill-dev ubichill/ubichill \
+  --version 0.1.0 \
+  --namespace ubichill \
+  --create-namespace \
+  --set redis.enabled=true \
+  --set postgresql.enabled=false
+
+# Video Playerプラグイン
+helm install video-player-dev ubichill/video-player \
+  --version 0.1.0 \
+  --namespace ubichill \
+  --set backend.image.tag=latest
+```
+
+**本番環境:**
+```bash
+# メインアプリケーション
+helm install ubichill-prod ubichill/ubichill \
+  --version 0.1.0 \
+  --namespace ubichill \
+  --create-namespace \
+  --values https://raw.githubusercontent.com/ubichill/ubichill/main/charts/ubichill/values-prod.yaml
+
+# Video Playerプラグイン
+helm install video-player-prod ubichill/video-player \
+  --version 0.1.0 \
+  --namespace ubichill \
+  --values https://raw.githubusercontent.com/ubichill/ubichill/main/charts/video-player/values-prod.yaml
+```
+
+#### 設定のカスタマイズ
+
+独自の設定ファイルを作成することもできます：
+
+```yaml
+# my-values.yaml
+backend:
+  replicaCount: 2
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    
+frontend:
+  replicaCount: 3
+  env:
+    NEXT_PUBLIC_API_URL: "https://api.example.com"
+
+redis:
+  enabled: true
+  master:
+    persistence:
+      size: 2Gi
+```
+
+```bash
+helm install ubichill-custom ubichill/ubichill -f my-values.yaml
+```
+
+### 🚀 ArgoCD GitOps
+
+本プロジェクトはArgoCD GitOpsでの自動デプロイにも対応しています。
+`k8s/argocd/` ディレクトリにApplication manifestが含まれています。
+
+## プラグインアーキテクチャ
+
+Ubichillはマイクロサービス・プラグインアーキテクチャを採用しており、各プラグインは独立してデプロイ可能です：
+
+### Video Player Plugin
+- **技術**: Python FastAPI + yt-dlp
+- **機能**: YouTube動画再生、ライブストリーミング、HLS対応
+- **デプロイ**: 独立したHelmチャート
+
+### 共有インフラ
+- **Redis**: プラグイン間でのキャッシュ共有
+- **PostgreSQL**: データ永続化 (オプション)
+
 ## AIアシスタントの方へ
 このリポジトリのコードを編集・生成する際は、`.agent/workflows/ai-guidelines.md` を必ず参照してください。

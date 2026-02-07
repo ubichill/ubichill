@@ -1,0 +1,12 @@
+dependencies:
+- name: redis
+  repository: https://charts.bitnami.com/bitnami
+  version: 20.6.1
+- name: postgresql
+  repository: https://charts.bitnami.com/bitnami
+  version: 16.4.3
+- name: video-player
+  repository: file://../video-player
+  version: 0.1.4
+digest: sha256:763c2fe730a5cf3dbe1d4f690db84e68c6e25946a79c2cd80da631ab6e713cdf
+generated: "2026-02-07T23:05:21.636314+09:00"

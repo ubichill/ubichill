@@ -1,0 +1,79 @@
+# ==========================================
+# Redis Cache Layer（オプション）
+# ==========================================
+# video-playerのスケーラビリティを向上させるためのキャッシュ層
+# YouTube API呼び出しを削減し、レスポンスタイムを改善
+
+version: '3.8'
+
+services:
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: ubichill-video-player-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - ubichill-network
+
+  # Video Player Backend with Redis
+  video-player-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+      target: production
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-ubichill}/video-player-backend:${VERSION:-latest}
+    container_name: ubichill-video-player-backend-cached
+    restart: unless-stopped
+    ports:
+      - "${VIDEO_PLAYER_PORT:-8000}:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - ENV=production
+      - REDIS_URL=redis://redis:6379
+      - REDIS_ENABLED=true
+      - CACHE_TTL=3600  # 1 hour
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+      replicas: 1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - ubichill-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  redis-data:
+    driver: local
+
+networks:
+  ubichill-network:
+    external: true
+
+name: ubichill-video-player-cached

@@ -1,4 +1,5 @@
 import http from 'node:http';
+// Force restart check
 import type { ClientToServerEvents, InterServerEvents, ServerToClientEvents, SocketData } from '@ubichill/shared';
 import cors from 'cors';
 import express from 'express';
@@ -16,7 +17,9 @@ import {
     handleRoomJoin,
     handleStatusUpdate,
     handleUserUpdate,
+    handleVideoPlayerSync,
 } from './handlers/socketHandlers';
+import audioRouter from './routes/audio';
 import instancesRouter from './routes/instances';
 import roomsRouter from './routes/rooms';
 import { roomRegistry } from './services/roomRegistry';
@@ -53,6 +56,9 @@ app.get('/health', (_req, res) => {
     res.json({ status: 'ok', timestamp: Date.now() });
 });
 
+// オーディオAPI（YouTube音楽ストリーム）
+app.use('/api/audio', audioRouter);
+
 // ============================================
 // REST API ルート
 // ============================================
@@ -87,6 +93,9 @@ io.on('connection', (socket) => {
     socket.on('entity:patch', handleEntityPatch(socket));
     socket.on('entity:ephemeral', handleEntityEphemeral(socket));
     socket.on('entity:delete', handleEntityDelete(socket));
+
+    // Video Player同期
+    socket.on('video-player:sync', handleVideoPlayerSync(socket));
 });
 
 // サーバーを起動（非同期初期化）
@@ -106,4 +115,7 @@ async function startServer() {
     });
 }
 
-startServer().catch(console.error);
+console.log('🏁 calling startServer()...');
+startServer().catch((err) => {
+    console.error('❌ Unhandled error in startServer:', err);
+});
