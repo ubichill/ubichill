@@ -47,10 +47,10 @@ spec:
               topologyKey: kubernetes.io/hostname
       {{- end }}
       serviceAccountName: {{ include "ubichill.serviceAccountName.frontend" . }}
-      securityContext:
-        {{- toYaml .Values.frontend.securityContext | nindent 8 }}
       containers:
       - name: frontend
+        securityContext:
+          {{- toYaml .Values.frontend.securityContext | nindent 10 }}
         image: {{ include "ubichill.frontend.image" . }}
         imagePullPolicy: {{ .Values.frontend.image.pullPolicy | default .Values.global.imagePullPolicy }}
         ports:
@@ -63,8 +63,10 @@ spec:
           value: {{ $value | quote }}
         {{- end }}
         # Backend URL configuration
+        {{- if not (hasKey .Values.frontend.env "NEXT_PUBLIC_BACKEND_URL") }}
         - name: NEXT_PUBLIC_BACKEND_URL
-          value: "http://{{ include "ubichill.fullname" . }}-backend:{{ .Values.backend.service.port }}"
+          value: "{{ if .Values.ingress.enabled }}https://{{ (index .Values.ingress.hosts 0).host }}{{ else }}http://localhost:{{ .Values.backend.service.port }}{{ end }}"
+        {{- end }}
         {{- if .Values.frontend.healthcheck.enabled }}
         livenessProbe:
           httpGet:

@@ -47,10 +47,10 @@ spec:
               topologyKey: kubernetes.io/hostname
       {{- end }}
       serviceAccountName: {{ include "ubichill.serviceAccountName.backend" . }}
-      securityContext:
-        {{- toYaml .Values.backend.securityContext | nindent 8 }}
       containers:
       - name: backend
+        securityContext:
+          {{- toYaml .Values.backend.securityContext | nindent 10 }}
         image: {{ include "ubichill.backend.image" . }}
         imagePullPolicy: {{ .Values.backend.image.pullPolicy | default .Values.global.imagePullPolicy }}
         ports:
