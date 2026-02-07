@@ -21,8 +21,9 @@ interface SearchResult {
     duration: number;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_VIDEO_PLAYER_BACKEND_URL || 
-    (typeof window !== 'undefined' && window.location.hostname !== 'localhost' 
+const API_BASE =
+    process.env.NEXT_PUBLIC_VIDEO_PLAYER_BACKEND_URL ||
+    (typeof window !== 'undefined' && window.location.hostname !== 'localhost'
         ? '' // 本番環境では相対パス（同一ドメイン）
         : 'http://localhost:8000'); // 開発環境
 
