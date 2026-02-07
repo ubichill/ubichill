@@ -1,15 +1,11 @@
 from fastapi import FastAPI, HTTPException, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, RedirectResponse
+from fastapi.responses import RedirectResponse
 import yt_dlp
-import asyncio
 import httpx
-from typing import List, Dict, Any
-import json
-import os
+from typing import Dict, Any
 import re
 from urllib.parse import urljoin, quote
-from yt_dlp.utils import traverse_obj
 
 app = FastAPI(title="Ubichill Music Streaming API", version="1.0.0")
 
