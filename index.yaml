@@ -3,6 +3,34 @@ entries:
   ubichill:
   - apiVersion: v2
     appVersion: latest
+    created: "2026-02-07T01:07:55.120901997Z"
+    dependencies:
+    - condition: redis.enabled
+      name: redis
+      repository: https://charts.bitnami.com/bitnami
+      version: 18.0.0
+    - condition: postgresql.enabled
+      name: postgresql
+      repository: https://charts.bitnami.com/bitnami
+      version: 13.0.0
+    description: Ubichill Main Application - Frontend and Backend Platform
+    digest: 55ca3cb4f33de281ab8ec20497a33339f24a4dd639725c53ba1aa69c17df7b7b
+    keywords:
+    - ubichill
+    - platform
+    - frontend
+    - backend
+    - plugins
+    maintainers:
+    - email: dev@ubichill.com
+      name: Ubichill Team
+    name: ubichill
+    type: application
+    urls:
+    - https://github.com/ubichill/ubichill/releases/download/ubichill-0.1.1/ubichill-0.1.1.tgz
+    version: 0.1.1
+  - apiVersion: v2
+    appVersion: latest
     created: "2026-02-07T00:05:39.434069356Z"
     dependencies:
     - condition: redis.enabled
@@ -32,6 +60,24 @@ entries:
   video-player:
   - apiVersion: v2
     appVersion: latest
+    created: "2026-02-07T01:07:55.263338863Z"
+    description: Ubichill Video Player Plugin with optional Redis caching
+    digest: 4af0b97c4667db9712f4194614238c579f921df6c3ed0a73b4366c5d9e21322c
+    keywords:
+    - video
+    - streaming
+    - youtube
+    - hls
+    maintainers:
+    - email: dev@ubichill.com
+      name: Ubichill Team
+    name: video-player
+    type: application
+    urls:
+    - https://github.com/ubichill/ubichill/releases/download/video-player-0.1.1/video-player-0.1.1.tgz
+    version: 0.1.1
+  - apiVersion: v2
+    appVersion: latest
     created: "2026-02-07T00:05:39.66030902Z"
     description: Ubichill Video Player Plugin with optional Redis caching
     digest: d93ac42c0f1977f06b028c9c1dddee985ce51beed3ad5b487c521a23375be59e
@@ -48,4 +94,4 @@ entries:
     urls:
     - https://github.com/ubichill/ubichill/releases/download/video-player-0.1.0/video-player-0.1.0.tgz
     version: 0.1.0
-generated: "2026-02-07T00:05:39.660317997Z"
+generated: "2026-02-07T01:07:55.263374771Z"
