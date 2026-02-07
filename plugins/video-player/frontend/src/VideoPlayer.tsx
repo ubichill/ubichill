@@ -5,6 +5,9 @@ import type { WorldEntity } from '@ubichill/shared';
 import Hls from 'hls.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+    FullscreenExitIcon,
+    FullscreenIcon,
+    ListIcon,
     PauseIcon,
     PlayIcon,
     RepeatIcon,
@@ -56,6 +59,8 @@ export const VideoPlayer: React.FC<Props> = ({ entity, isLocked, update }) => {
     const [localTime, setLocalTime] = useState(data.currentTime);
     const [showVideo, setShowVideo] = useState(false);
     const [isLoadingTrack, setIsLoadingTrack] = useState(false);
+    const [showPlaylist, setShowPlaylist] = useState(true);
+    const [videoSize, setVideoSize] = useState<'small' | 'medium' | 'large'>('small');
 
     const currentTrack = data.playlist[data.currentIndex];
 
@@ -529,7 +534,7 @@ export const VideoPlayer: React.FC<Props> = ({ entity, isLocked, update }) => {
                 <div className={styles.playerSection}>
                     {/* 動画表示 */}
                     {showVideo && currentTrack && (
-                        <div className={styles.videoDisplay}>
+                        <div className={`${styles.videoDisplay} ${styles[videoSize]}`}>
                             {/* biome-ignore lint/a11y/useMediaCaption: Visualizer only */}
                             <video
                                 ref={videoRef}
@@ -654,19 +659,53 @@ export const VideoPlayer: React.FC<Props> = ({ entity, isLocked, update }) => {
                                     onChange={handleVolumeChange}
                                 />
                                 {currentTrack && (
-                                    <button
-                                        type="button"
-                                        className={`${styles.controlBtn} ${showVideo ? styles.active : ''}`}
-                                        onClick={() => setShowVideo(!showVideo)}
-                                    >
-                                        <VideoIcon size={16} />
-                                    </button>
+                                    <>
+                                        <button
+                                            type="button"
+                                            className={`${styles.controlBtn} ${showVideo ? styles.active : ''}`}
+                                            onClick={() => setShowVideo(!showVideo)}
+                                        >
+                                            <VideoIcon size={16} />
+                                        </button>
+                                        {showVideo && (
+                                            <button
+                                                type="button"
+                                                className={styles.controlBtn}
+                                                onClick={() => {
+                                                    setVideoSize((prev) =>
+                                                        prev === 'small'
+                                                            ? 'medium'
+                                                            : prev === 'medium'
+                                                              ? 'large'
+                                                              : 'small',
+                                                    );
+                                                }}
+                                                title={`動画サイズ: ${videoSize === 'small' ? '小' : videoSize === 'medium' ? '中' : '大'}`}
+                                            >
+                                                {videoSize === 'large' ? (
+                                                    <FullscreenExitIcon size={16} />
+                                                ) : (
+                                                    <FullscreenIcon size={16} />
+                                                )}
+                                            </button>
+                                        )}
+                                    </>
                                 )}
+                                <button
+                                    type="button"
+                                    className={`${styles.controlBtn} ${showPlaylist ? styles.active : ''}`}
+                                    onClick={() => setShowPlaylist(!showPlaylist)}
+                                    title="プレイリストを表示/非表示"
+                                >
+                                    <ListIcon size={16} />
+                                </button>
                             </div>
                         </div>
                     </div>
+                </div>
 
-                    {/* 右側: プレイリスト */}
+                {/* 右側: プレイリスト */}
+                {showPlaylist && (
                     <PlaylistPanel
                         data={data}
                         isLocked={isLocked}
@@ -674,7 +713,7 @@ export const VideoPlayer: React.FC<Props> = ({ entity, isLocked, update }) => {
                         onRemoveTrack={handleRemoveTrack}
                         onAddTrack={handleAddTrack}
                     />
-                </div>
+                )}
             </div>
         </div>
     );

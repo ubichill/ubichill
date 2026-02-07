@@ -45,6 +45,19 @@
     display: block;
 }
 
+/* Video Size Variants */
+.videoDisplay.small .videoElement {
+    max-height: 300px;
+}
+
+.videoDisplay.medium .videoElement {
+    max-height: 500px;
+}
+
+.videoDisplay.large .videoElement {
+    max-height: 800px;
+}
+
 /* Player Control Bar */
 .playerControl {
     background: rgba(20, 20, 20, 0.95);
