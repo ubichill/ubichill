@@ -7,7 +7,6 @@ from typing import Dict, Any
 import re
 import os
 from urllib.parse import urljoin, quote
-from fastapi.requests import Request
 
 app = FastAPI(title="Ubichill Video Player API", version="1.0.0")
 
