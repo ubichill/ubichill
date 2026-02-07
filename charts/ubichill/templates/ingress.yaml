@@ -43,9 +43,16 @@ spec:
             {{- end }}
             backend:
               service:
-                name: {{ if eq .backend.service.name "frontend" }}{{ include "ubichill.fullname" $ }}-frontend{{ else }}{{ include "ubichill.fullname" $ }}-backend{{ end }}
+                {{- if and .backend (hasKey .backend "service") }}
+                name: {{ if eq .backend.service.name "backend" }}{{ include "ubichill.fullname" $ }}-backend{{ else }}{{ include "ubichill.fullname" $ }}-frontend{{ end }}
                 port:
                   number: {{ .backend.service.port }}
+                {{- else }}
+                # Default to frontend if not specified
+                name: {{ include "ubichill.fullname" $ }}-frontend
+                port:
+                  number: {{ $svcPortFrontend }}
+                {{- end }}
           {{- end }}
     {{- end }}
 {{- end }}

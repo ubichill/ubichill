@@ -218,10 +218,11 @@ postgresql:
 
 # Ingress configuration
 ingress:
-  enabled: false
-  # This is typically managed by infrastructure team
-  # className: "nginx"
-  # annotations: {}
+  enabled: true
+  className: "nginx"
+  annotations: 
+    kubernetes.io/ingress.class: nginx
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
   # hosts: []
   # tls: []
 
