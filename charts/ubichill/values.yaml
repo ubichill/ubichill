@@ -218,36 +218,12 @@ postgresql:
 
 # Ingress configuration
 ingress:
-  enabled: true
-  className: "nginx"
-  annotations: 
-    kubernetes.io/ingress.class: nginx
-    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
-  hosts:
-    - host: ubichill.local
-      paths:
-        - path: /
-          pathType: Prefix
-          backend:
-            service:
-              name: frontend
-              port: 3000
-        - path: /api
-          pathType: Prefix
-          backend:
-            service:
-              name: backend
-              port: 3001
-        - path: /socket.io
-          pathType: Prefix
-          backend:
-            service:
-              name: backend
-              port: 3001
-  tls: []
-  #  - secretName: chart-example-tls
-  #    hosts:
-  #      - chart-example.local
+  enabled: false
+  # This is typically managed by infrastructure team
+  # className: "nginx"
+  # annotations: {}
+  # hosts: []
+  # tls: []
 
 # Service configuration
 service:
