@@ -338,12 +338,14 @@ export const VideoPlayer: React.FC<Props> = ({ entity, isLocked, update }) => {
         }
     }, [data.isPlaying, currentTrack]);
 
-    // 音量を同期
+    // 音量を同期（ローカル）
+    const [localVolume, setLocalVolume] = useState(0.5);
+
     useEffect(() => {
         if (videoRef.current) {
-            videoRef.current.volume = data.volume;
+            videoRef.current.volume = localVolume;
         }
-    }, [data.volume]);
+    }, [localVolume]);
 
     // 再生位置の更新
     const handleTimeUpdate = useCallback(() => {
@@ -447,7 +449,7 @@ export const VideoPlayer: React.FC<Props> = ({ entity, isLocked, update }) => {
 
     const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newVolume = Number.parseFloat(e.target.value);
-        update({ data: { ...data, volume: newVolume } });
+        setLocalVolume(newVolume);
     };
 
     const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -632,11 +634,11 @@ export const VideoPlayer: React.FC<Props> = ({ entity, isLocked, update }) => {
                                     {data.loop === 'track' ? <RepeatOneIcon size={16} /> : <RepeatIcon size={16} />}
                                 </button>
                                 <button type="button" className={styles.controlBtn}>
-                                    {data.volume === 0 ? (
+                                    {localVolume === 0 ? (
                                         <VolumeMuteIcon size={16} />
-                                    ) : data.volume < 0.3 ? (
+                                    ) : localVolume < 0.3 ? (
                                         <VolumeLowIcon size={16} />
-                                    ) : data.volume < 0.7 ? (
+                                    ) : localVolume < 0.7 ? (
                                         <VolumeMediumIcon size={16} />
                                     ) : (
                                         <VolumeHighIcon size={16} />
@@ -648,7 +650,7 @@ export const VideoPlayer: React.FC<Props> = ({ entity, isLocked, update }) => {
                                     min="0"
                                     max="1"
                                     step="0.01"
-                                    value={data.volume}
+                                    value={localVolume}
                                     onChange={handleVolumeChange}
                                 />
                                 {currentTrack && (
@@ -663,16 +665,16 @@ export const VideoPlayer: React.FC<Props> = ({ entity, isLocked, update }) => {
                             </div>
                         </div>
                     </div>
-                </div>
 
-                {/* 右側: プレイリスト */}
-                <PlaylistPanel
-                    data={data}
-                    isLocked={isLocked}
-                    onSelectTrack={handleSelectTrack}
-                    onRemoveTrack={handleRemoveTrack}
-                    onAddTrack={handleAddTrack}
-                />
+                    {/* 右側: プレイリスト */}
+                    <PlaylistPanel
+                        data={data}
+                        isLocked={isLocked}
+                        onSelectTrack={handleSelectTrack}
+                        onRemoveTrack={handleRemoveTrack}
+                        onAddTrack={handleAddTrack}
+                    />
+                </div>
             </div>
         </div>
     );

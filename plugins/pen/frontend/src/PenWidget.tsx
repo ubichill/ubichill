@@ -92,6 +92,21 @@ export const PenWidget: React.FC<PenWidgetProps> = ({ entity, isLocked, update, 
         }
     }, [entity.transform.x, entity.transform.y]);
 
+    // ペンを持っている間はテキスト選択を無効化
+    useEffect(() => {
+        if (isLockedByMe) {
+            document.body.style.userSelect = 'none';
+            document.body.style.webkitUserSelect = 'none'; // Safari
+        } else {
+            document.body.style.userSelect = '';
+            document.body.style.webkitUserSelect = '';
+        }
+        return () => {
+            document.body.style.userSelect = '';
+            document.body.style.webkitUserSelect = '';
+        };
+    }, [isLockedByMe]);
+
     // マウスイベントハンドラ（追従モード・描画モード用）
     useEffect(() => {
         if (!isLockedByMe) return;

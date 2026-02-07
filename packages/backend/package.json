@@ -5,13 +5,26 @@
     "description": "Backend server for Ubichill",
     "main": "dist/index.js",
     "scripts": {
-        "dev": "wait-on ../shared/dist/index.js && ts-node-dev --respawn --transpile-only --debounce 1000 src/index.ts",
+        "dev": "wait-on ../shared/dist/.build_done && nodemon",
         "build": "tsc",
         "start": "node dist/index.js",
         "clean": "rimraf dist",
         "lint": "biome lint .",
         "lint:fix": "biome lint --apply .",
         "format": "biome format --write ."
+    },
+    "nodemonConfig": {
+        "watch": [
+            "src",
+            "../shared/dist/.build_done"
+        ],
+        "ignore": [
+            "../shared/dist/**/*.js",
+            "../shared/dist/**/*.d.ts",
+            "../shared/dist/**/*.map"
+        ],
+        "ext": "ts,json,done",
+        "exec": "ts-node --transpile-only src/index.ts"
     },
     "dependencies": {
         "@distube/ytdl-core": "^4.16.12",
@@ -29,7 +42,9 @@
         "@types/cors": "^2.8.17",
         "@types/express": "^5.0.0",
         "@types/node": "^22.13.4",
+        "nodemon": "^3.1.11",
         "rimraf": "^6.0.1",
+        "ts-node": "^10.9.2",
         "ts-node-dev": "^2.0.0",
         "typescript": "^5.9.3",
         "wait-on": "^9.0.3"

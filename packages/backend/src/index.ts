@@ -115,4 +115,7 @@ async function startServer() {
     });
 }
 
-startServer().catch(console.error);
+console.log('🏁 calling startServer()...');
+startServer().catch((err) => {
+    console.error('❌ Unhandled error in startServer:', err);
+});
