@@ -163,17 +163,19 @@ async def get_popular_tracks():
 # ヘルパー関数
 def _rewrite_manifest_urls(content: str, base_url: str) -> str:
     """HLSマニフェスト内のURLをプロキシURL に書き換え"""
+    
+    proxy_path = f"{root_path}/proxy" if root_path else "/proxy"
 
     def replace_url(match):
         original_url = match.group(1)
-        if original_url.startswith("/proxy"):
+        if original_url.startswith(proxy_path):
             return original_url
         full_url = (
             original_url
             if original_url.startswith("http")
             else urljoin(base_url, original_url)
         )
-        return f"/proxy?url={quote(full_url, safe='')}"
+        return f"{proxy_path}?url={quote(full_url, safe='')}"
 
     content = re.sub(r'(https?://[^\s"]+\.(?:m3u8|ts))', replace_url, content)
     content = re.sub(
