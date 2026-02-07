@@ -16,7 +16,13 @@ import { instanceManager } from '../services/instanceManager';
 import { userManager } from '../services/userManager';
 import { createEntity, deleteEntity, getWorldSnapshot, patchEntity } from '../services/worldState';
 import { logger } from '../utils/logger';
-import { validateCursorPosition, validateRoomId, validateUsername, validateUserStatus } from '../utils/validation';
+import {
+    validateCursorPosition,
+    validateCursorState,
+    validateRoomId,
+    validateUsername,
+    validateUserStatus,
+} from '../utils/validation';
 
 type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents, InterServerEvents, SocketData>;
 
@@ -129,8 +135,19 @@ export function handleCursorMove(socket: TypedSocket) {
             return;
         }
 
-        // 位置とstateを更新
-        const updated = userManager.updateUserPosition(socket.id, validation.data, state);
+        // カーソル状態を検証（存在する場合のみ）
+        let validatedState: CursorState | undefined;
+        if (state !== undefined) {
+            const stateValidation = validateCursorState(state);
+            if (!stateValidation.valid) {
+                socket.emit('error', stateValidation.error || '無効なカーソル状態です');
+                return;
+            }
+            validatedState = stateValidation.data;
+        }
+
+        // 位置と状態を更新
+        const updated = userManager.updateUserPosition(socket.id, validation.data, validatedState);
         if (!updated) {
             socket.emit('error', 'ユーザーが見つかりません');
             return;
@@ -140,7 +157,7 @@ export function handleCursorMove(socket: TypedSocket) {
         socket.to(roomId).emit('cursor:moved', {
             userId: socket.id,
             position: validation.data,
-            state,
+            state: validatedState,
         });
     };
 }

@@ -103,9 +103,13 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 const user = prev.get(userId);
                 if (!user) return prev; // まだユーザー情報がない場合は更新できない（通常ありえないが）
 
-                // 位置情報とstateを更新
+                // 位置情報と状態を更新
                 const newMap = new Map(prev);
-                newMap.set(userId, { ...user, position, ...(state !== undefined && { cursorState: state }) });
+                newMap.set(userId, {
+                    ...user,
+                    position,
+                    ...(state !== undefined && { cursorState: state }),
+                });
                 return newMap;
             });
         });

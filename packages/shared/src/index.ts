@@ -16,9 +16,15 @@ export interface CursorPosition {
 }
 
 /**
+ * カーソルの状態の定数配列（単一の情報源）
+ * CSS cursor values + customized
+ */
+export const CURSOR_STATES = ['default', 'pointer', 'text', 'wait', 'help', 'not-allowed', 'move', 'grabbing'] as const;
+
+/**
  * カーソルの状態 (CSS cursor values + customized)
  */
-export type CursorState = 'default' | 'pointer' | 'text' | 'wait' | 'help' | 'not-allowed' | 'move' | 'grabbing';
+export type CursorState = (typeof CURSOR_STATES)[number];
 
 /**
  * アプリケーション側で定義するアバター（カーソル）設定

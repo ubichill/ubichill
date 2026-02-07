@@ -18,7 +18,7 @@ export default function Home() {
     const [screen, setScreen] = useState<AppScreen>('name');
 
     // 現在のカーソル状態を取得
-    const cursorState = useCursorState();
+    const cursorState: CursorState = useCursorState();
 
     // ローカルカーソル設定 (AppAvatarDef)
     // サーバー側にavatarがあればそれを初期値として利用し、なければ空のstatesで初期化
