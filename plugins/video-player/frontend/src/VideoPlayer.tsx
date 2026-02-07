@@ -675,18 +675,18 @@ export const VideoPlayer: React.FC<Props> = ({ entity, isLocked, update }) => {
                             </div>
                         </div>
                     </div>
-
-                    {/* 右側: プレイリスト */}
-                    {showPlaylist && (
-                        <PlaylistPanel
-                            data={data}
-                            isLocked={isLocked}
-                            onSelectTrack={handleSelectTrack}
-                            onRemoveTrack={handleRemoveTrack}
-                            onAddTrack={handleAddTrack}
-                        />
-                    )}
                 </div>
+
+                {/* 右側: プレイリスト */}
+                {showPlaylist && (
+                    <PlaylistPanel
+                        data={data}
+                        isLocked={isLocked}
+                        onSelectTrack={handleSelectTrack}
+                        onRemoveTrack={handleRemoveTrack}
+                        onAddTrack={handleAddTrack}
+                    />
+                )}
             </div>
         </div>
     );
