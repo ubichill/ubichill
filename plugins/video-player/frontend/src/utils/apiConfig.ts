@@ -5,7 +5,7 @@
  * 優先順位:
  * 1. 環境変数 NEXT_PUBLIC_VIDEO_PLAYER_BACKEND_URL
  * 2. ローカル開発: http://localhost:8000
- * 3. 本番環境: /api/stream (Ingressパス)
+ * 3. 本番環境: /plugin/video-player (統一プラグインパス)
  */
 
 export const getVideoPlayerApiBase = (): string => {
@@ -16,9 +16,9 @@ export const getVideoPlayerApiBase = (): string => {
 
     // SSR時は本番環境パスをデフォルトに
     if (typeof window === 'undefined') {
-        return '/api/stream';
+        return '/plugin/video-player';
     }
 
     // クライアントサイドでホスト名チェック
-    return window.location.hostname === 'localhost' ? 'http://localhost:8000' : '/api/stream';
+    return window.location.hostname === 'localhost' ? 'http://localhost:8000' : '/plugin/video-player';
 };

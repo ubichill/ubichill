@@ -54,7 +54,7 @@ async def health_check():
     return {"message": "Ubichill Music Streaming API", "status": "healthy"}
 
 
-@app.get("/api/stream/search")
+@app.get("/search")
 async def search_tracks(q: str, limit: int = 10):
     """YouTube検索"""
     try:
@@ -89,7 +89,7 @@ async def search_tracks(q: str, limit: int = 10):
         print(f"Search error: {e}")
 
 
-@app.get("/api/stream/info/{video_id}")
+@app.get("/info/{video_id}")
 async def get_video_info(video_id: str, request: Request):
     """動画情報を取得"""
     try:
@@ -130,7 +130,7 @@ async def get_video_info(video_id: str, request: Request):
             )
 
 
-@app.get("/api/stream/popular")
+@app.get("/popular")
 async def get_popular_tracks():
     """人気トラックを返す（サンプル）"""
     # 実際のプロダクションでは、データベースやキャッシュから取得
@@ -159,14 +159,14 @@ def _rewrite_manifest_urls(content: str, base_url: str) -> str:
 
     def replace_url(match):
         original_url = match.group(1)
-        if original_url.startswith("/api/stream/proxy"):
+        if original_url.startswith("/proxy"):
             return original_url
         full_url = (
             original_url
             if original_url.startswith("http")
             else urljoin(base_url, original_url)
         )
-        return f"/api/stream/proxy?url={quote(full_url, safe='')}"
+        return f"/proxy?url={quote(full_url, safe='')}"
 
     content = re.sub(r'(https?://[^\s"]+\.(?:m3u8|ts))', replace_url, content)
     content = re.sub(
@@ -182,7 +182,7 @@ def _get_content_type_for_ts(content: bytes, original_type: str) -> str:
     return original_type
 
 
-@app.get("/api/stream/proxy")
+@app.get("/proxy")
 async def proxy_url(url: str, request: Request):
     """任意のURLをプロキシ（HLSセグメント用）"""
     headers = {
@@ -239,7 +239,7 @@ async def proxy_url(url: str, request: Request):
         raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
 
 
-@app.get("/api/stream/live/{video_id}")
+@app.get("/live/{video_id}")
 async def stream_live(video_id: str, request: Request):
     """ライブストリーム配信（HLS最適化）"""
     try:
@@ -286,7 +286,7 @@ async def stream_live(video_id: str, request: Request):
             )
 
 
-@app.get("/api/stream/video/{video_id}")
+@app.get("/video/{video_id}")
 async def stream_video(video_id: str):
     """通常動画配信（MP4直接再生 - リダイレクト方式）"""
     try:

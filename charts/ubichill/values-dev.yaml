@@ -112,7 +112,7 @@ ingress:
   hosts:
     - host: localhost
       paths:
-        - path: /api/stream
+        - path: /plugin/video-player
           pathType: Prefix
           backend:
             service:

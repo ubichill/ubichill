@@ -297,22 +297,6 @@ export const SERVER_CONFIG = {
 } as const;
 
 /**
- * Video Player API のベースURLを取得（SSR対応）
- * @returns Video Player APIのベースURL
- */
-export function getVideoPlayerApiBase(): string {
-    // SSR時（サーバーサイド）は本番環境パスをデフォルトとする
-    if (typeof window === 'undefined') {
-        return SERVER_CONFIG.VIDEO_PLAYER_PROD_PATH;
-    }
-
-    // クライアントサイドで開発環境の場合のみlocalhost
-    return window.location.hostname === 'localhost'
-        ? SERVER_CONFIG.VIDEO_PLAYER_DEV_URL
-        : SERVER_CONFIG.VIDEO_PLAYER_PROD_PATH;
-}
-
-/**
  * すべてのエンティティのユニオン型
  * 特定のfeature型はこのファイルではなく、各featureの定義を参照してください。
  */

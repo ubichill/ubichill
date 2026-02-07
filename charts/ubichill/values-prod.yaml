@@ -61,7 +61,7 @@ frontend:
   
   env:
     NODE_ENV: "production"
-    NEXT_PUBLIC_VIDEO_PLAYER_BACKEND_URL: "https://ubichill.com/api/stream"  # Production video player API via ingress
+    # NEXT_PUBLIC_VIDEO_PLAYER_BACKEND_URL auto-configured by template
 
 # Production Redis with persistence
 redis:
@@ -161,7 +161,7 @@ ingress:
   hosts:
     - host: ubichill.com
       paths:
-        - path: /api/stream
+        - path: /plugin/video-player
           pathType: Prefix
           backend:
             service:
