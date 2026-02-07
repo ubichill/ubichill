@@ -44,7 +44,7 @@ spec:
             backend:
               service:
                 {{- if and .backend (hasKey .backend "service") }}
-                name: {{ if eq .backend.service.name "backend" }}{{ include "ubichill.fullname" $ }}-backend{{ else if eq .backend.service.name "video-player" }}{{ include "ubichill.fullname" $ }}-video-player-backend{{ else }}{{ include "ubichill.fullname" $ }}-frontend{{ end }}
+                name: {{ if eq .backend.service.name "backend" }}{{ include "ubichill.fullname" $ }}-backend{{ else if or (eq .backend.service.name "video-player") (eq .backend.service.name "video-player-backend") }}{{ include "ubichill.fullname" $ }}-video-player-backend{{ else }}{{ include "ubichill.fullname" $ }}-frontend{{ end }}
                 port:
                   number: {{ if kindIs "map" .backend.service.port }}{{ .backend.service.port.number }}{{ else }}{{ .backend.service.port }}{{ end }}
                 {{- else }}
