@@ -92,24 +92,32 @@ export default function Home() {
 
     // カーソルスタイル制御 (ローカル)
     useEffect(() => {
-        if (localCursorUrl) {
-            // 全要素でカーソルを非表示にするスタイルを追加
-            const style = document.createElement('style');
+        if (!localCursorUrl) {
+            return;
+        }
+
+        // body にクラスを付与して、その範囲内のみカーソルを非表示にする
+        document.body.classList.add('cursor-hidden');
+
+        let style = document.getElementById('cursor-none-style') as HTMLStyleElement | null;
+        if (!style) {
+            style = document.createElement('style');
+            style.id = 'cursor-none-style';
             style.innerHTML = `
-                * {
+                body.cursor-hidden * {
                     cursor: none !important;
                 }
             `;
-            style.id = 'cursor-none-style';
             document.head.appendChild(style);
-
-            return () => {
-                const existingStyle = document.getElementById('cursor-none-style');
-                if (existingStyle) {
-                    existingStyle.remove();
-                }
-            };
         }
+
+        return () => {
+            document.body.classList.remove('cursor-hidden');
+            const existingStyle = document.getElementById('cursor-none-style');
+            if (existingStyle) {
+                existingStyle.remove();
+            }
+        };
     }, [localCursorUrl]);
 
     // 名前入力画面
