@@ -156,6 +156,10 @@ frontend:
 redis:
   enabled: true
   architecture: standalone
+  image:
+    registry: docker.io
+    repository: bitnami/redis
+    tag: 7.2.4-debian-11-r2
   auth:
     enabled: false
   master:
@@ -182,6 +186,10 @@ redis:
 # Database (optional)
 postgresql:
   enabled: false  # Enable if using PostgreSQL
+  image:
+    registry: docker.io
+    repository: bitnami/postgresql
+    tag: 16.2.0-debian-11-r1
   auth:
     enablePostgresUser: true
     postgresPassword: "ubichill-db-secret"
