@@ -198,6 +198,12 @@ importers:
 
   plugins/avatar/frontend:
     dependencies:
+      '@ubichill/sdk':
+        specifier: workspace:*
+        version: link:../../../packages/sdk
+      '@ubichill/shared':
+        specifier: workspace:*
+        version: link:../../../packages/shared
       icojs:
         specifier: ^0.20.1
         version: 0.20.1(@jimp/custom@0.22.12)

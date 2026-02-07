@@ -11,6 +11,8 @@
         "./CursorMenu": "./src/components/CursorMenu.tsx"
     },
     "dependencies": {
+        "@ubichill/sdk": "workspace:*",
+        "@ubichill/shared": "workspace:*",
         "icojs": "^0.20.1",
         "upng-js": "^2.1.0",
         "js-yaml": "^4.1.1"
