@@ -33,7 +33,7 @@ backend:
   
   env:
     NODE_ENV: "development"
-    CORS_ORIGIN: "http://localhost:3000,http://localhost:3002,http://host.docker.internal:3000"
+    CORS_ORIGIN: "*"  # Allow all origins in Kubernetes dev environment
 
 # Frontend configuration for development  
 frontend:
