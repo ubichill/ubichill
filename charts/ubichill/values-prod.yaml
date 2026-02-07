@@ -4,6 +4,8 @@
 # Production image registry
 global:
   imageRegistry: "ghcr.io"
+  security:
+    allowInsecureImages: true
 
 # Backend configuration for production
 backend:

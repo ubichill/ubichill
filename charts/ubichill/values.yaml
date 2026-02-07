@@ -4,6 +4,11 @@
 global:
   imageRegistry: "ghcr.io"
   imagePullPolicy: Always
+  compatibility:
+    openshift:
+      adaptSecurityContext: auto
+  security:
+    allowInsecureImages: true
 
 # Backend application configuration
 backend:

@@ -4,6 +4,8 @@
 # Clear global image registry for local images
 global:
   imageRegistry: ""
+  security:
+    allowInsecureImages: true
 
 # Backend configuration for development
 backend:
