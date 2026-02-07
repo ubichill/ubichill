@@ -1,5 +1,6 @@
 import {
     type ClientToServerEvents,
+    type CursorState,
     DEFAULTS,
     type EntityEphemeralPayload,
     type EntityPatchPayload,
@@ -15,7 +16,13 @@ import { instanceManager } from '../services/instanceManager';
 import { userManager } from '../services/userManager';
 import { createEntity, deleteEntity, getWorldSnapshot, patchEntity } from '../services/worldState';
 import { logger } from '../utils/logger';
-import { validateCursorPosition, validateRoomId, validateUsername, validateUserStatus } from '../utils/validation';
+import {
+    validateCursorPosition,
+    validateCursorState,
+    validateRoomId,
+    validateUsername,
+    validateUserStatus,
+} from '../utils/validation';
 
 type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents, InterServerEvents, SocketData>;
 
@@ -113,7 +120,8 @@ export function handleRoomJoin(socket: TypedSocket) {
  * カーソル移動イベントを処理
  */
 export function handleCursorMove(socket: TypedSocket) {
-    return (position: { x: number; y: number }) => {
+    return (payload: { position: { x: number; y: number }; state?: CursorState }) => {
+        const { position, state } = payload;
         const roomId = socket.data.roomId;
         if (!roomId) {
             socket.emit('error', '最初にルームに参加する必要があります');
@@ -127,8 +135,19 @@ export function handleCursorMove(socket: TypedSocket) {
             return;
         }
 
-        // 位置を更新
-        const updated = userManager.updateUserPosition(socket.id, validation.data);
+        // カーソル状態を検証（存在する場合のみ）
+        let validatedState: CursorState | undefined;
+        if (state !== undefined) {
+            const stateValidation = validateCursorState(state);
+            if (!stateValidation.valid) {
+                socket.emit('error', stateValidation.error || '無効なカーソル状態です');
+                return;
+            }
+            validatedState = stateValidation.data;
+        }
+
+        // 位置と状態を更新
+        const updated = userManager.updateUserPosition(socket.id, validation.data, validatedState);
         if (!updated) {
             socket.emit('error', 'ユーザーが見つかりません');
             return;
@@ -138,6 +157,7 @@ export function handleCursorMove(socket: TypedSocket) {
         socket.to(roomId).emit('cursor:moved', {
             userId: socket.id,
             position: validation.data,
+            state: validatedState,
         });
     };
 }
@@ -172,6 +192,33 @@ export function handleStatusUpdate(socket: TypedSocket) {
             userId: socket.id,
             status: validation.data,
         });
+    };
+}
+
+/**
+ * ユーザー情報の更新イベントを処理
+ */
+export function handleUserUpdate(socket: TypedSocket) {
+    return (patch: Partial<User>) => {
+        const roomId = socket.data.roomId;
+        if (!roomId) {
+            socket.emit('error', '最初にルームに参加する必要があります');
+            return;
+        }
+
+        // ユーザー情報を更新
+        // userManager側でホワイトリストベースのフィルタリングを実施
+        const updatedUser = userManager.updateUser(socket.id, patch);
+
+        if (!updatedUser) {
+            socket.emit('error', 'ユーザーが見つかりません');
+            return;
+        }
+
+        // ルーム内の全員（自分含む）にブロードキャスト
+        // 自分にも送ることで、サーバー側で正規化された状態（もしあれば）を反映できる
+        // また、他のクライアントと同じイベントフローで更新を受け取れるメリットがある
+        socket.nsp.to(roomId).emit('user:updated', updatedUser);
     };
 }
 

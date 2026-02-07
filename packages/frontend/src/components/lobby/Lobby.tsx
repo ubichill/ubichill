@@ -122,7 +122,7 @@ export function Lobby({ userName, onJoinInstance }: LobbyProps) {
         if (instance) {
             onJoinInstance(instance.id, roomId);
         } else {
-            alert('Failed to create instance. Please try again.');
+            alert('インスタンスの作成に失敗しました。もう一度お試しください。');
         }
     };
 

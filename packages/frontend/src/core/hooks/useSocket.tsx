@@ -3,6 +3,7 @@
 import {
     type ClientToServerEvents,
     type CursorPosition,
+    type CursorState,
     DEFAULTS,
     SERVER_CONFIG,
     type ServerToClientEvents,
@@ -23,8 +24,9 @@ interface SocketContextValue {
     currentUser: User | null;
     error: string | null;
     joinRoom: (name: string, roomId?: string, instanceId?: string) => void;
-    updatePosition: (position: CursorPosition) => void;
+    updatePosition: (position: CursorPosition, state?: CursorState) => void;
     updateStatus: (status: UserStatus) => void;
+    updateUser: (patch: Partial<User>) => void;
 }
 
 const SocketContext = createContext<SocketContextValue | null>(null);
@@ -37,7 +39,13 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const [isConnected, setIsConnected] = useState(false);
     const [users, setUsers] = useState<Map<string, User>>(new Map());
     const [currentUser, setCurrentUser] = useState<User | null>(null);
+    const currentUserRef = useRef<User | null>(null);
     const [error, setError] = useState<string | null>(null);
+
+    // Keep ref in sync
+    useEffect(() => {
+        currentUserRef.current = currentUser;
+    }, [currentUser]);
 
     useEffect(() => {
         // Initialize socket connection
@@ -90,14 +98,18 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             });
         });
 
-        socket.on('cursor:moved', ({ userId, position }) => {
+        socket.on('cursor:moved', ({ userId, position, state }) => {
             setUsers((prev) => {
                 const user = prev.get(userId);
                 if (!user) return prev; // まだユーザー情報がない場合は更新できない（通常ありえないが）
 
-                // 位置情報だけ更新したいが、イミュータブルにMapを更新
+                // 位置情報と状態を更新
                 const newMap = new Map(prev);
-                newMap.set(userId, { ...user, position });
+                newMap.set(userId, {
+                    ...user,
+                    position,
+                    ...(state !== undefined && { cursorState: state }),
+                });
                 return newMap;
             });
         });
@@ -110,6 +122,20 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 newMap.set(userId, { ...user, status });
                 return newMap;
             });
+        });
+
+        socket.on('user:updated', (updatedUser) => {
+            setUsers((prev) => {
+                const newMap = new Map(prev);
+                newMap.set(updatedUser.id, updatedUser);
+                return newMap;
+            });
+
+            // 自分の情報が更新された場合はcurrentUserも更新
+            const current = currentUserRef.current;
+            if (current && current.id === updatedUser.id) {
+                setCurrentUser(updatedUser);
+            }
         });
 
         socket.on('error', (msg) => {
@@ -146,14 +172,15 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }, []);
 
     const updatePosition = useCallback(
-        (position: CursorPosition) => {
+        (position: CursorPosition, state?: CursorState) => {
             const socket = socketRef.current;
             if (!socket || !isConnected) return;
 
-            socket.emit('cursor:move', position);
+            socket.emit('cursor:move', { position, state });
 
             if (currentUser) {
-                setCurrentUser({ ...currentUser, position });
+                // ローカルのcurrentUserも更新
+                setCurrentUser({ ...currentUser, position, ...(state !== undefined && { cursorState: state }) });
             }
         },
         [isConnected, currentUser],
@@ -173,6 +200,19 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         [isConnected, currentUser],
     );
 
+    const updateUser = useCallback(
+        (patch: Partial<User>) => {
+            const socket = socketRef.current;
+            if (!socket || !isConnected) return;
+
+            socket.emit('user:update', patch);
+
+            // 楽観的更新はせず、サーバーからの user:updated イベントを待つ
+            // (サーバー側でのバリデーションや正規化を反映するため)
+        },
+        [isConnected],
+    );
+
     const value: SocketContextValue = {
         socket: socketRef.current,
         isConnected,
@@ -182,6 +222,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         joinRoom,
         updatePosition,
         updateStatus,
+        updateUser,
     };
 
     return <SocketContext.Provider value={value}>{children}</SocketContext.Provider>;
