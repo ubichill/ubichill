@@ -57,6 +57,8 @@ frontend:
 # Use Redis for shared caching
 redis:
   enabled: true
+  global:
+    imageRegistry: ""
   master:
     persistence:
       enabled: false  # No persistence needed in dev
@@ -71,3 +73,24 @@ redis:
 # Disable PostgreSQL for dev (use SQLite or external DB)
 postgresql:
   enabled: false
+  global:
+    imageRegistry: ""
+
+# Video Player Plugin (Subchart)
+video-player:
+  enabled: true
+  global:
+    imageRegistry: "" # Use local/docker registry for video player if it uses global
+  backend:
+    replicaCount: 1
+    resources:
+      limits:
+        cpu: 250m
+        memory: 256Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+  redis:
+    enabled: true
+    global:
+      imageRegistry: "" # Ensure nested redis in video-player also ignores global registry
