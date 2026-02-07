@@ -111,15 +111,15 @@ jobs:
 
       - name: Setup pnpm for video-player frontend
         if: steps.filter.outputs.video-player == 'true'
-        uses: pnpm/action-setup@v2
+        uses: pnpm/action-setup@v4
         with:
-          version: 8
+          version: '10'
 
       - name: Setup Node.js for video-player frontend
         if: steps.filter.outputs.video-player == 'true'
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
 
       - name: Lint video-player frontend
