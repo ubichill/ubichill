@@ -2,7 +2,7 @@
 
 import type { AppAvatarDef, CursorState } from '@ubichill/shared';
 import * as ICO from 'icojs';
-import { useEffect, useRef, useState, memo } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import * as UPNG from 'upng-js';
 
 // --- Constants & Types ---
@@ -266,79 +266,81 @@ const processAniFile = async (buffer: ArrayBuffer): Promise<{ url: string; hotsp
 
 // --- Child Components ---
 
-const TemplateButton = memo(({
-    template,
-    onSelect,
-    disabled,
-}: {
-    template: TemplateManifest;
-    onSelect: (t: TemplateManifest) => void;
-    disabled: boolean;
-}) => {
-    const [thumbnailUrl, setThumbnailUrl] = useState<string>('');
+const TemplateButton = memo(
+    ({
+        template,
+        onSelect,
+        disabled,
+    }: {
+        template: TemplateManifest;
+        onSelect: (t: TemplateManifest) => void;
+        disabled: boolean;
+    }) => {
+        const [thumbnailUrl, setThumbnailUrl] = useState<string>('');
 
-    useEffect(() => {
-        const loadThumbnail = async () => {
-            const defaultCursorFile = template.mappings['default'];
-            if (!defaultCursorFile) return;
+        useEffect(() => {
+            const loadThumbnail = async () => {
+                const defaultCursorFile = template.mappings['default'];
+                if (!defaultCursorFile) return;
 
-            const baseUrl = getBaseUrl();
-            const url = `${baseUrl}/templates/${template.directory}/${defaultCursorFile}`;
-            try {
-                const res = await fetch(url);
-                if (!res.ok) throw new Error(`Failed to fetch thumbnail source`);
-                const buffer = await res.arrayBuffer();
-                const ext = defaultCursorFile.split('.').pop()?.toLowerCase();
+                const baseUrl = getBaseUrl();
+                const url = `${baseUrl}/templates/${template.directory}/${defaultCursorFile}`;
+                try {
+                    const res = await fetch(url);
+                    if (!res.ok) throw new Error(`Failed to fetch thumbnail source`);
+                    const buffer = await res.arrayBuffer();
+                    const ext = defaultCursorFile.split('.').pop()?.toLowerCase();
 
-                let resultUrl = '';
-                if (ext === 'cur') {
-                    const processed = await processCurFile(buffer);
-                    resultUrl = processed.url;
-                } else if (ext === 'ani') {
-                    const processed = await processAniFile(buffer);
-                    resultUrl = processed.url;
+                    let resultUrl = '';
+                    if (ext === 'cur') {
+                        const processed = await processCurFile(buffer);
+                        resultUrl = processed.url;
+                    } else if (ext === 'ani') {
+                        const processed = await processAniFile(buffer);
+                        resultUrl = processed.url;
+                    }
+                    if (resultUrl) setThumbnailUrl(resultUrl);
+                } catch (e) {
+                    console.error('Thumbnail load failed:', e);
                 }
-                if (resultUrl) setThumbnailUrl(resultUrl);
-            } catch (e) {
-                console.error('Thumbnail load failed:', e);
-            }
-        };
-        loadThumbnail();
-    }, [template]);
+            };
+            loadThumbnail();
+        }, [template]);
 
-    return (
-        <button
-            type="button"
-            onClick={() => onSelect(template)}
-            disabled={disabled}
-            style={{
-                padding: '8px',
-                border: '1px solid #dee2e6',
-                borderRadius: '6px',
-                backgroundColor: '#f8f9fa',
-                cursor: disabled ? 'wait' : 'pointer',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '4px',
-                transition: 'all 0.2s',
-                height: '80px',
-                justifyContent: 'center',
-            }}
-        >
-            {thumbnailUrl ? (
-                <img
-                    src={thumbnailUrl}
-                    alt={template.name}
-                    style={{ width: '32px', height: '32px', objectFit: 'contain' }}
-                />
-            ) : (
-                <span style={{ fontSize: '20px' }}>🎨</span>
-            )}
-            <span style={{ fontSize: '11px', fontWeight: '500' }}>{template.name}</span>
-        </button>
-    );
-});
+        return (
+            <button
+                type="button"
+                onClick={() => onSelect(template)}
+                disabled={disabled}
+                style={{
+                    padding: '8px',
+                    border: '1px solid #dee2e6',
+                    borderRadius: '6px',
+                    backgroundColor: '#f8f9fa',
+                    cursor: disabled ? 'wait' : 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '4px',
+                    transition: 'all 0.2s',
+                    height: '80px',
+                    justifyContent: 'center',
+                }}
+            >
+                {thumbnailUrl ? (
+                    <img
+                        src={thumbnailUrl}
+                        alt={template.name}
+                        style={{ width: '32px', height: '32px', objectFit: 'contain' }}
+                    />
+                ) : (
+                    <span style={{ fontSize: '20px' }}>🎨</span>
+                )}
+                <span style={{ fontSize: '11px', fontWeight: '500' }}>{template.name}</span>
+            </button>
+        );
+    },
+);
 TemplateButton.displayName = 'TemplateButton';
 
 // --- Main Component ---
@@ -475,7 +477,6 @@ export const CursorMenu: React.FC<CursorMenuProps> = ({ avatar, onAvatarChange }
                 ...avatar,
                 states: newStates,
             });
-
         } catch (error) {
             console.error('Template application failed:', error);
             alert('テンプレートの適用中にエラーが発生しました。');

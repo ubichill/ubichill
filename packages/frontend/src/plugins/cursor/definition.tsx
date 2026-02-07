@@ -148,9 +148,7 @@ const CursorWidget: React.FC<{
                     </div>
                 </div>
 
-                <div style={{ fontSize: '12px', color: '#666' }}>
-                    Current: {entity.data.url ? 'Custom' : 'Default'}
-                </div>
+                <div style={{ fontSize: '12px', color: '#666' }}>Current: {entity.data.url ? 'Custom' : 'Default'}</div>
             </div>
 
             {/* カーソル画像 (DOMオーバーレイ) */}
