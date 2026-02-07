@@ -2,7 +2,7 @@ name: Docker Build and Publish
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "dev" ]
   workflow_dispatch:
 
 env:
@@ -67,9 +67,9 @@ jobs:
           target: backend-runner
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME_BACKEND }}:latest
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME_BACKEND }}:${{ github.ref_name == 'main' && 'latest' || 'dev' }}
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME_BACKEND }}:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME_BACKEND }}:v0.0.${{ github.run_number }}
+            ${{ github.ref_name == 'main' && format('{0}/{1}/{2}:v0.0.{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME_BACKEND, github.run_number) || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -83,9 +83,9 @@ jobs:
           target: frontend-runner
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME_FRONTEND }}:latest
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME_FRONTEND }}:${{ github.ref_name == 'main' && 'latest' || 'dev' }}
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME_FRONTEND }}:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME_FRONTEND }}:v0.0.${{ github.run_number }}
+            ${{ github.ref_name == 'main' && format('{0}/{1}/{2}:v0.0.{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME_FRONTEND, github.run_number) || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -138,9 +138,9 @@ jobs:
           target: production
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME_VIDEO_PLAYER }}:latest
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME_VIDEO_PLAYER }}:${{ github.ref_name == 'main' && 'latest' || 'dev' }}
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME_VIDEO_PLAYER }}:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME_VIDEO_PLAYER }}:v0.0.${{ github.run_number }}
+            ${{ github.ref_name == 'main' && format('{0}/{1}/{2}:v0.0.{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME_VIDEO_PLAYER, github.run_number) || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false
