@@ -1,0 +1,47 @@
+[
+    {
+        "id": "suisei",
+        "name": "Suisei",
+        "directory": "suisei",
+        "mappings": {
+            "default": "normal_select.ani",
+            "pointer": "link_select.ani",
+            "text": "text_select.ani",
+            "wait": "busy.ani",
+            "help": "normal_select.ani",
+            "not-allowed": "normal_select.ani",
+            "move": "normal_select.ani",
+            "grabbing": "normal_select.ani"
+        }
+    },
+    {
+        "id": "amongus",
+        "name": "Among Us",
+        "directory": "amongus",
+        "mappings": {
+            "default": "normal_select.ani",
+            "pointer": "link_select.ani",
+            "text": "text_select.ani",
+            "wait": "busy.ani",
+            "help": "normal_select.ani",
+            "not-allowed": "normal_select.ani",
+            "move": "normal_select.ani",
+            "grabbing": "normal_select.ani"
+        }
+    },
+    {
+        "id": "spiki",
+        "name": "Spiki",
+        "directory": "spiki",
+        "mappings": {
+            "default": "normal_select.ani",
+            "pointer": "link_select.ani",
+            "text": "text_select.ani",
+            "wait": "busy.ani",
+            "help": "help.ani",
+            "not-allowed": "unavailable.ani",
+            "move": "move.ani",
+            "grabbing": "move.ani"
+        }
+    }
+]

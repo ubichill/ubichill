@@ -1,7 +1,6 @@
 import type { WorldEntity } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import type { WidgetDefinition } from '@ubichill/sdk';
-import defaultCursor from './assets/default_cursor.png';
 import type { CursorData } from './types';
 
 const CursorWidget: React.FC<{
@@ -13,8 +12,8 @@ const CursorWidget: React.FC<{
     const [isVisible, setIsVisible] = useState(false);
 
     useEffect(() => {
-        // 画像URLがある場合のみ適用（デフォルトカーソルは除外）
-        const hasCustomCursor = !!entity.data.url && entity.data.url !== defaultCursor.src;
+        // 画像URLがある場合のみ適用
+        const hasCustomCursor = !!entity.data.url;
         if (hasCustomCursor) {
             document.body.style.cursor = 'none';
         }
@@ -33,7 +32,7 @@ const CursorWidget: React.FC<{
         };
     }, [entity.data.url, isVisible]);
 
-    const cursorUrl = entity.data.url || defaultCursor.src;
+    const cursorUrl = entity.data.url;
     const hotX = entity.data.hotspot?.x ?? 0;
     const hotY = entity.data.hotspot?.y ?? 0;
 
@@ -149,9 +148,7 @@ const CursorWidget: React.FC<{
                     </div>
                 </div>
 
-                <div style={{ fontSize: '12px', color: '#666' }}>
-                    Current: {entity.data.url === defaultCursor.src ? 'Default' : 'Custom'}
-                </div>
+                <div style={{ fontSize: '12px', color: '#666' }}>Current: {entity.data.url ? 'Custom' : 'Default'}</div>
             </div>
 
             {/* カーソル画像 (DOMオーバーレイ) */}
@@ -179,7 +176,7 @@ export const cursorWidgetDefinition: WidgetDefinition<CursorData> = {
     icon: <span>🖱️</span>,
     defaultSize: { w: 200, h: 100 },
     defaultData: {
-        url: defaultCursor.src,
+        url: '',
         hotspot: { x: 0, y: 0 },
     },
     Component: CursorWidget,
