@@ -83,8 +83,15 @@ export class UserManager {
         const user = this.users.get(userId);
         if (!user) return null;
 
-        // IDは変更不可
-        const { id, ...safePatch } = patch;
+        // 更新を許可するフィールドのみをホワイトリストで抽出
+        const safePatch: Partial<User> = {};
+
+        if ('avatar' in patch && patch.avatar !== undefined) {
+            safePatch.avatar = patch.avatar;
+        }
+        if ('cursorState' in patch && patch.cursorState !== undefined) {
+            safePatch.cursorState = patch.cursorState;
+        }
 
         // オブジェクトを更新
         const updatedUser = {

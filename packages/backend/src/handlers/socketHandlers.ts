@@ -120,7 +120,7 @@ export function handleRoomJoin(socket: TypedSocket) {
  * カーソル移動イベントを処理
  */
 export function handleCursorMove(socket: TypedSocket) {
-    return (payload: { position: { x: number; y: number }; state?: unknown }) => {
+    return (payload: { position: { x: number; y: number }; state?: CursorState }) => {
         const { position, state } = payload;
         const roomId = socket.data.roomId;
         if (!roomId) {
@@ -207,10 +207,8 @@ export function handleUserUpdate(socket: TypedSocket) {
         }
 
         // ユーザー情報を更新
-        // IDは変更できないようにするなどの制御はuserManager側でも行っているが
-        // ここでも念のためIDは除外して渡すのが安全（型定義上は含まれている可能性があるため）
-        const { id, ...safePatch } = patch;
-        const updatedUser = userManager.updateUser(socket.id, safePatch);
+        // userManager側でホワイトリストベースのフィルタリングを実施
+        const updatedUser = userManager.updateUser(socket.id, patch);
 
         if (!updatedUser) {
             socket.emit('error', 'ユーザーが見つかりません');

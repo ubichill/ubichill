@@ -3,6 +3,7 @@
 import {
     type ClientToServerEvents,
     type CursorPosition,
+    type CursorState,
     DEFAULTS,
     SERVER_CONFIG,
     type ServerToClientEvents,
@@ -23,7 +24,7 @@ interface SocketContextValue {
     currentUser: User | null;
     error: string | null;
     joinRoom: (name: string, roomId?: string, instanceId?: string) => void;
-    updatePosition: (position: CursorPosition, state?: unknown) => void;
+    updatePosition: (position: CursorPosition, state?: CursorState) => void;
     updateStatus: (status: UserStatus) => void;
     updateUser: (patch: Partial<User>) => void;
 }
@@ -171,16 +172,15 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }, []);
 
     const updatePosition = useCallback(
-        (position: CursorPosition, state?: unknown) => {
+        (position: CursorPosition, state?: CursorState) => {
             const socket = socketRef.current;
             if (!socket || !isConnected) return;
 
-            // @ts-expect-error Shared側の型定義更新がまだ反映されていない可能性があるため、一旦anyキャストで送信
             socket.emit('cursor:move', { position, state });
 
             if (currentUser) {
-                // ローカルのcurrentUserも更新 (stateはまだUser型に入っていないかもしれないが、一旦無視)
-                setCurrentUser({ ...currentUser, position });
+                // ローカルのcurrentUserも更新
+                setCurrentUser({ ...currentUser, position, ...(state !== undefined && { cursorState: state }) });
             }
         },
         [isConnected, currentUser],
