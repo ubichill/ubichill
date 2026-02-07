@@ -2,7 +2,7 @@ apiVersion: v2
 name: video-player
 description: Ubichill Video Player Plugin with optional Redis caching
 type: application
-version: 0.1.1
+version: 0.1.2
 appVersion: "latest"
 
 keywords:
