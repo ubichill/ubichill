@@ -77,6 +77,9 @@ backend:
     CORS_ORIGINS: "http://localhost:3000,http://localhost:3002"
     LOG_LEVEL: "INFO"
     # Redis configuration removed - use shared ubichill Redis when needed
+  
+  # Root path for Ingress prefix (empty for local dev, /plugin/video-player for prod)
+  rootPath: ""
 
   # Security context
   securityContext:

@@ -65,6 +65,9 @@ spec:
         # Redis connection to shared ubichill instance (future)
         - name: REDIS_ENABLED
           value: "false"
+        # Root path for Ingress prefix (e.g., /plugin/video-player)
+        - name: ROOT_PATH
+          value: {{ .Values.backend.rootPath | default "" | quote }}
         # When implementing shared Redis:
         # - name: REDIS_URL
         #   value: "redis://ubichill-redis-master.ubichill.svc.cluster.local:6379"

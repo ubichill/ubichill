@@ -88,6 +88,7 @@ video-player:
     imageRegistry: "" # Use local/docker registry for video player if it uses global
   backend:
     replicaCount: 1
+    rootPath: "/plugin/video-player"
     env:
       CORS_ORIGINS: "http://localhost:3000,http://localhost:3002,*"  # Allow all origins in dev
       LOG_LEVEL: "DEBUG"

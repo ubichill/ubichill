@@ -113,6 +113,7 @@ video-player:
     imageRegistry: "ghcr.io"
   backend:
     replicaCount: 3
+    rootPath: "/plugin/video-player"
     image:
       repository: "ubichill-video-player-backend"
       tag: "stable"

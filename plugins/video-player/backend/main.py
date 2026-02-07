@@ -8,7 +8,14 @@ import re
 import os
 from urllib.parse import urljoin, quote
 
-app = FastAPI(title="Ubichill Video Player API", version="1.0.0")
+# ROOT_PATH環境変数を取得（Kubernetes Ingressでのプレフィックス対応）
+root_path = os.getenv("ROOT_PATH", "")
+
+app = FastAPI(
+    title="Ubichill Video Player API",
+    version="1.0.0",
+    root_path=root_path
+)
 
 # CORS設定（環境変数から取得、デフォルトは開発環境用）
 allowed_origins = os.getenv(
