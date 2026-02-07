@@ -9,7 +9,9 @@ import {
 } from '@ubichill/shared';
 import { useCallback, useEffect, useState } from 'react';
 
-const API_BASE = process.env[ENV_KEYS.API_URL] || SERVER_CONFIG.DEV_URL;
+const API_BASE =
+    process.env[ENV_KEYS.API_URL] ||
+    (typeof window !== 'undefined' && window.location.hostname !== 'localhost' ? '' : SERVER_CONFIG.DEV_URL);
 
 interface UseInstancesReturn {
     instances: Instance[];
