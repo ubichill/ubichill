@@ -10,7 +10,6 @@ export const useCursorState = (): CursorState => {
     const [cursorState, setCursorState] = useState<CursorState>('default');
 
     useEffect(() => {
-        const rafId: number = 0;
         let lastElement: Element | null = null;
 
         const checkCursor = (e: MouseEvent) => {
