@@ -2,13 +2,13 @@ name: Release Helm Charts
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
+      - feat/helm-deployment
     paths:
       - 'charts/**'
 
-permissions:
-  contents: write
+permissions: write-all
 
 jobs:
   release:
