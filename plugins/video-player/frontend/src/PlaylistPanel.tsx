@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { PlayIcon, TrashIcon } from './icons';
 import styles from './styles.module.css';
 import type { MusicPlayerState, Track } from './types';
+import { getVideoPlayerApiBase } from './utils/apiConfig';
 
 interface PlaylistPanelProps {
     data: MusicPlayerState;
@@ -21,11 +22,8 @@ interface SearchResult {
     duration: number;
 }
 
-// ubichill本体と同じパターン：本番環境では相対パス、開発環境のみlocalhost
-const API_BASE =
-    typeof window !== 'undefined' && window.location.hostname === 'localhost'
-        ? 'http://localhost:8000' // 開発環境のみ
-        : '/video-player-api'; // 本番環境（Kubernetesなど）
+// 共通API設定を使用
+const API_BASE = getVideoPlayerApiBase();
 
 const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -66,9 +64,7 @@ export const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
 
         setIsSearching(true);
         try {
-            const res = await fetch(
-                `${API_BASE}/api/stream/search?q=${encodeURIComponent(`${searchQuery} lofi`)}&limit=10`,
-            );
+            const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(`${searchQuery} lofi`)}&limit=10`);
             if (!res.ok) throw new Error('Search failed');
             const results = await res.json();
             setSearchResults(results);
@@ -102,7 +98,7 @@ export const PlaylistPanel: React.FC<PlaylistPanelProps> = ({
         setIsSearching(true);
         try {
             // バックエンドから動画情報を取得
-            const res = await fetch(`${API_BASE}/api/stream/info/${videoId}`);
+            const res = await fetch(`${API_BASE}/info/${videoId}`);
             if (!res.ok) {
                 const errorText = await res.text();
                 console.error(`API Error (${res.status}):`, errorText);

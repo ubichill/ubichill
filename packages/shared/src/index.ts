@@ -286,6 +286,12 @@ export const SERVER_CONFIG = {
     /** 開発環境でのバックエンドURL */
     DEV_URL: 'http://localhost:3001',
 
+    /** Video Player開発環境URL */
+    VIDEO_PLAYER_DEV_URL: 'http://localhost:8000',
+
+    /** Video Player本番環境パス */
+    VIDEO_PLAYER_PROD_PATH: '/video-player-api',
+
     /** ルーム定義ディレクトリのデフォルト相対パス（バックエンドcwd基準） */
     ROOMS_DIR_DEFAULT: '../../rooms',
 } as const;

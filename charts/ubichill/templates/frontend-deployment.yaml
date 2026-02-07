@@ -70,7 +70,7 @@ spec:
         # Video Player Backend URL configuration
         {{- if not (hasKey .Values.frontend.env "NEXT_PUBLIC_VIDEO_PLAYER_BACKEND_URL") }}
         - name: NEXT_PUBLIC_VIDEO_PLAYER_BACKEND_URL
-          value: "{{ if .Values.ingress.enabled }}https://{{ (index .Values.ingress.hosts 0).host }}/api/stream{{ else }}http://localhost:8000{{ end }}"
+          value: "{{ if .Values.ingress.enabled }}https://{{ (index .Values.ingress.hosts 0).host }}/plugin/video-player{{ else }}http://localhost:8000{{ end }}"
         {{- end }}
         {{- if .Values.frontend.healthcheck.enabled }}
         livenessProbe:
