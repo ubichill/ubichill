@@ -7,6 +7,6 @@ dependencies:
   version: 16.4.3
 - name: video-player
   repository: file://../video-player
-  version: 0.1.3
-digest: sha256:5b61fd667f8d36af13e526b4cb582c8258b026f95f097eea5460d1e658a08bd4
-generated: "2026-02-07T11:01:16.974794+09:00"
+  version: 0.1.4
+digest: sha256:763c2fe730a5cf3dbe1d4f690db84e68c6e25946a79c2cd80da631ab6e713cdf
+generated: "2026-02-07T23:05:21.636314+09:00"
