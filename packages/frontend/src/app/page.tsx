@@ -230,11 +230,13 @@ export default function Home() {
                             }}
                         >
                             {remoteUrl ? (
-                                <div style={{
-                                    position: 'relative',
-                                    // ホットスポット分だけずらす
-                                    transform: `translate(${-remoteHotspot.x}px, ${-remoteHotspot.y}px)`,
-                                }}>
+                                <div
+                                    style={{
+                                        position: 'relative',
+                                        // ホットスポット分だけずらす
+                                        transform: `translate(${-remoteHotspot.x}px, ${-remoteHotspot.y}px)`,
+                                    }}
+                                >
                                     {/* Custom Cursor Image for Remote User */}
                                     <img
                                         src={remoteUrl}
@@ -268,7 +270,7 @@ export default function Home() {
                                     style={{
                                         top: '100%',
                                         marginTop: '4px',
-                                        transform: 'translateX(-50%)'
+                                        transform: 'translateX(-50%)',
                                     }}
                                 >
                                     {user.name}

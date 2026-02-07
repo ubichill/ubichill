@@ -34,11 +34,18 @@ export const useCursorState = (): CursorState => {
                     const type = current.getAttribute('type');
                     const contentEditable = current.getAttribute('contenteditable');
 
-                    if (tagName === 'a' || tagName === 'button' || role === 'button' || role === 'link' || current.hasAttribute('onclick')) {
+                    if (
+                        tagName === 'a' ||
+                        tagName === 'button' ||
+                        role === 'button' ||
+                        role === 'link' ||
+                        current.hasAttribute('onclick')
+                    ) {
                         newState = 'pointer';
                         break;
                     } else if (
-                        (tagName === 'input' && (type === 'text' || type === 'email' || type === 'password' || !type)) ||
+                        (tagName === 'input' &&
+                            (type === 'text' || type === 'email' || type === 'password' || !type)) ||
                         tagName === 'textarea' ||
                         contentEditable === 'true'
                     ) {

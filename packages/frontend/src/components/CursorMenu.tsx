@@ -52,14 +52,14 @@ export const CursorMenu: React.FC<CursorMenuProps> = ({ avatar, onAvatarChange }
     ): Promise<{ data: ArrayBuffer; width: number; height: number }> => {
         // ICO/CURパース
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const images: any[] = await ICO.parseICO(buffer, 'image/png');
+        const images = await ICO.parseICO(buffer, 'image/png');
         if (!images || images.length === 0) {
             throw new Error('No images found');
         }
 
         // 最大サイズの画像を検索
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const largestImage = images.sort((a: any, b: any) => b.width - a.width)[0];
+        const largestImage = images.sort((a, b) => b.width - a.width)[0];
 
         return new Promise((resolve, reject) => {
             const img = new Image();

@@ -171,7 +171,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const socket = socketRef.current;
             if (!socket || !isConnected) return;
 
-            // @ts-ignore Shared側の型定義更新がまだ反映されていない可能性があるため、一旦anyキャストで送信
+            // @ts-expect-error Shared側の型定義更新がまだ反映されていない可能性があるため、一旦anyキャストで送信
             socket.emit('cursor:move', { position, state });
 
             if (currentUser) {
