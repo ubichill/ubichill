@@ -1,0 +1,15 @@
+apiVersion: ubichill.youkan.uk/v1alpha1
+kind: Avatar
+metadata:
+  name: amongus
+  displayName: Among Us
+spec:
+  states:
+    default: /templates/amongus/normal_select.ani
+    pointer: /templates/amongus/link_select.ani
+    text: /templates/amongus/text_select.ani
+    wait: /templates/amongus/busy.ani
+    help: /templates/amongus/normal_select.ani
+    not-allowed: /templates/amongus/normal_select.ani
+    move: /templates/amongus/normal_select.ani
+    grabbing: /templates/amongus/normal_select.ani

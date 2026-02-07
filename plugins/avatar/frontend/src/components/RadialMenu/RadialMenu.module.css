@@ -1,0 +1,207 @@
+/* RadialMenu.module.css - ドーナッツ型バームクーヘンメニュー */
+
+.overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10000;
+    pointer-events: all;
+    background: rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(2px);
+    animation: fadeIn 0.2s ease-out;
+}
+
+.menu {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    pointer-events: auto;
+}
+
+.menu.animating .segment {
+    animation: segmentPopIn 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.menu.animating .itemLabel {
+    animation: popIn 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.menu.animating .centerCircle {
+    animation: fadeIn 0.2s ease-out;
+}
+
+/* SVG メニュー */
+.menuSvg {
+    display: block;
+    pointer-events: all;
+    filter: drop-shadow(0 8px 32px rgba(0, 0, 0, 0.5));
+}
+
+/* 扇形セグメント (バームクーヘン) */
+.segment {
+    fill: rgba(30, 30, 35, 0.95);
+    stroke: rgba(255, 255, 255, 0.15);
+    stroke-width: 1.5;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    transform-origin: center;
+}
+
+.segment:hover,
+.selectedSegment {
+    fill: rgba(66, 135, 245, 0.85);
+    stroke: rgba(100, 150, 255, 0.6);
+    stroke-width: 2;
+    filter: drop-shadow(0 0 15px rgba(100, 150, 255, 0.6));
+}
+
+/* 中央の円 */
+.centerCircle {
+    fill: rgba(20, 20, 20, 0.95);
+    stroke: rgba(255, 255, 255, 0.3);
+    stroke-width: 3;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    filter: drop-shadow(0 4px 16px rgba(0, 0, 0, 0.4));
+}
+
+.centerCircle:hover {
+    fill: rgba(30, 30, 30, 0.98);
+    stroke: rgba(100, 150, 255, 0.5);
+    stroke-width: 4;
+    filter: drop-shadow(0 0 20px rgba(100, 150, 255, 0.4));
+    transform: scale(1.1);
+}
+
+.centerCircle:active {
+    transform: scale(0.95);
+}
+
+.centerCircle.backButton {
+    fill: rgba(66, 135, 245, 0.9);
+    stroke: rgba(100, 150, 255, 0.6);
+}
+
+/* アイコンとラベル */
+.itemLabel {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    pointer-events: none;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 10;
+}
+
+.itemLabel.selectedLabel {
+    transform: translate(-50%, -50%) scale(1.2);
+}
+
+.icon {
+    font-size: 32px;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+    transition: transform 0.2s ease;
+    filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.3));
+}
+
+.selectedLabel .icon {
+    transform: scale(1.15);
+    filter: drop-shadow(0 0 12px rgba(100, 150, 255, 0.8));
+}
+
+.label {
+    font-size: 11px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.9);
+    text-align: center;
+    white-space: nowrap;
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
+    letter-spacing: 0.5px;
+    transition: color 0.2s ease;
+}
+
+.selectedLabel .label {
+    color: rgba(255, 255, 255, 1);
+    text-shadow:
+        0 2px 8px rgba(0, 0, 0, 0.9),
+        0 0 10px rgba(100, 150, 255, 0.6);
+}
+
+.arrow {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    font-size: 16px;
+    color: rgba(100, 150, 255, 1);
+    font-weight: bold;
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
+    filter: drop-shadow(0 0 8px rgba(100, 150, 255, 0.6));
+}
+
+/* 中央のラベル */
+.centerLabel {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 11;
+}
+
+.centerIcon {
+    display: block;
+    font-size: 28px;
+    color: rgba(255, 255, 255, 0.95);
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+    transition: transform 0.2s ease;
+}
+
+.centerCircle:hover ~ .centerLabel .centerIcon {
+    transform: scale(1.2);
+}
+
+/* アニメーション */
+@keyframes segmentPopIn {
+    0% {
+        opacity: 0;
+        transform: scale(0);
+    }
+    60% {
+        opacity: 1;
+        transform: scale(1.1);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes popIn {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0);
+    }
+    60% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1.15);
+    }
+    100% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+}
+
+@keyframes fadeIn {
+    0% {
+        opacity: 0;
+    }
+    100% {
+        opacity: 1;
+    }
+}

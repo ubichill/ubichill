@@ -1,0 +1,8 @@
+apiVersion: ubichill.youkan.uk/v1alpha1
+kind: Avatar
+metadata:
+  name: custom-single
+  displayName: Custom Single
+spec:
+  # 全状態共通の画像を指定
+  image: /templates/suisei/normal_select.ani

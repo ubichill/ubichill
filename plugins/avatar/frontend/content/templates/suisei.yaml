@@ -1,0 +1,16 @@
+apiVersion: ubichill.youkan.uk/v1alpha1
+kind: Avatar
+metadata:
+  name: suisei
+  displayName: Suisei
+spec:
+  # 状態ごとのカーソル設定
+  states:
+    default: /templates/suisei/normal_select.ani
+    pointer: /templates/suisei/link_select.ani
+    text: /templates/suisei/text_select.ani
+    wait: /templates/suisei/busy.ani
+    help: /templates/suisei/normal_select.ani
+    not-allowed: /templates/suisei/normal_select.ani
+    move: /templates/suisei/normal_select.ani
+    grabbing: /templates/suisei/normal_select.ani
