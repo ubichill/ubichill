@@ -193,8 +193,9 @@ export const CursorMenu: React.FC<CursorMenuProps> = ({ avatar, onAvatarChange }
         // ANI rate is in Jiffies (1/60 sec)
         // UPNG delay is in milliseconds
         const delays: number[] = [];
-        // Default delay: if jifRate is 0, use 10 jiffies (typical default) or 60Hz
-        const defaultDelay = (jifRate || 60) * (1000 / 60);
+        // Default delay: if jifRate is 0, use 10 jiffies (typical default)
+        const defaultJiffies = jifRate || 10;
+        const defaultDelay = defaultJiffies * (1000 / 60);
 
         for (let i = 0; i < frames.length; i++) {
             const rate = rates[i];
