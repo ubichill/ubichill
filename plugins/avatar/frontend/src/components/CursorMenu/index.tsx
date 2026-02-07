@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { bufferToDataUrl, processAniFile, processCurFile } from '../../utils/cursorProcessor';
 import { applyTemplate, loadAvatarIndex, type ParsedTemplate } from '../../utils/loader';
 import { AdvancedSettings } from './AdvancedSettings';
+import styles from './CursorMenu.module.css';
 import { TemplateCard } from './TemplateCard';
 
 const getBaseUrl = () => {
@@ -225,54 +226,34 @@ export const CursorMenu: React.FC<CursorMenuProps> = ({ avatar, onAvatarChange }
     };
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div className={styles.container}>
             {/* テンプレート選択 (常に表示) */}
-            <div
-                style={{
-                    backgroundColor: 'white',
-                    borderRadius: '12px',
-                    padding: '16px',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                }}
-            >
-                <div
-                    style={{
-                        marginBottom: '12px',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                    }}
-                >
-                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 'bold', color: '#212529' }}>
-                        カーソルテンプレート
-                    </h3>
-                    <button
-                        type="button"
-                        onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-                        style={{
-                            padding: '6px 12px',
-                            backgroundColor: isSettingsOpen ? '#228be6' : '#f8f9fa',
-                            color: isSettingsOpen ? 'white' : '#495057',
-                            border: '1px solid #dee2e6',
-                            borderRadius: '6px',
-                            fontSize: '13px',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                        }}
-                    >
-                        ⚙️ 詳細設定
-                    </button>
+            <div className={styles.section}>
+                <div className={styles.sectionHeader}>
+                    <h3 className={styles.sectionTitle}>カーソルテンプレート</h3>
+                    <div className={styles.buttonGroup}>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (confirm('すべてのカーソル設定をクリアしますか？')) {
+                                    onAvatarChange({ states: {} });
+                                }
+                            }}
+                            className={styles.clearButton}
+                        >
+                            ❌ オフ
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+                            className={`${styles.settingsButton} ${isSettingsOpen ? styles.active : ''}`}
+                        >
+                            ⚙️ 詳細設定
+                        </button>
+                    </div>
                 </div>
 
-                <div
-                    style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
-                        gap: '12px',
-                    }}
-                >
+                <div className={styles.templatesGrid}>
                     {templates.map((template) => (
                         <TemplateCard
                             key={template.id}
@@ -283,21 +264,7 @@ export const CursorMenu: React.FC<CursorMenuProps> = ({ avatar, onAvatarChange }
                     ))}
                 </div>
 
-                {isConverting && (
-                    <div
-                        style={{
-                            marginTop: '12px',
-                            padding: '8px',
-                            backgroundColor: '#e7f5ff',
-                            borderRadius: '6px',
-                            fontSize: '13px',
-                            color: '#1971c2',
-                            textAlign: 'center',
-                        }}
-                    >
-                        🔄 テンプレートを適用中...
-                    </div>
-                )}
+                {isConverting && <div className={styles.convertingMessage}>🔄 テンプレートを適用中...</div>}
             </div>
 
             {/* 詳細設定パネル */}

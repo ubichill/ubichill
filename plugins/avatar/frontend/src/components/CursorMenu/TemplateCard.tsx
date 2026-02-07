@@ -3,6 +3,7 @@
 import { memo, useEffect, useState } from 'react';
 import { processAniFile, processCurFile } from '../../utils/cursorProcessor';
 import type { ParsedTemplate } from '../../utils/loader';
+import styles from './TemplateCard.module.css';
 
 const getBaseUrl = () => {
     if (typeof window !== 'undefined') return window.location.origin;
@@ -66,70 +67,15 @@ export const TemplateCard: React.FC<TemplateCardProps> = memo(({ template, onSel
     }, [template]);
 
     return (
-        <button
-            type="button"
-            onClick={() => onSelect(template)}
-            disabled={disabled}
-            style={{
-                padding: '12px',
-                backgroundColor: 'white',
-                border: '2px solid #e9ecef',
-                borderRadius: '12px',
-                cursor: disabled ? 'wait' : 'pointer',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '8px',
-                transition: 'all 0.2s',
-                opacity: disabled ? 0.6 : 1,
-                boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
-            }}
-            onMouseEnter={(e) => {
-                if (!disabled) {
-                    e.currentTarget.style.borderColor = '#228be6';
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.1)';
-                }
-            }}
-            onMouseLeave={(e) => {
-                if (!disabled) {
-                    e.currentTarget.style.borderColor = '#e9ecef';
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.05)';
-                }
-            }}
-        >
+        <button type="button" onClick={() => onSelect(template)} disabled={disabled} className={styles.card}>
             {thumbnailUrl ? (
-                <img
-                    src={thumbnailUrl}
-                    alt={template.name}
-                    style={{
-                        width: '48px',
-                        height: '48px',
-                        objectFit: 'contain',
-                    }}
-                />
+                <img src={thumbnailUrl} alt={template.name} className={styles.thumbnail} />
             ) : (
-                <div
-                    style={{
-                        width: '48px',
-                        height: '48px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        backgroundColor: '#f1f3f5',
-                        borderRadius: '8px',
-                        fontSize: '24px',
-                    }}
-                >
-                    🖱️
-                </div>
+                <div className={styles.placeholder}>🖱️</div>
             )}
-            <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#212529' }}>{template.name}</div>
-                {template.description && (
-                    <div style={{ fontSize: '11px', color: '#868e96', marginTop: '2px' }}>{template.description}</div>
-                )}
+            <div className={styles.info}>
+                <div className={styles.name}>{template.name}</div>
+                {template.description && <div className={styles.description}>{template.description}</div>}
             </div>
         </button>
     );

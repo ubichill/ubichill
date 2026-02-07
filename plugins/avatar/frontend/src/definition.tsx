@@ -12,12 +12,6 @@ const AvatarWidget: React.FC<{
     const [isVisible, setIsVisible] = useState(false);
 
     useEffect(() => {
-        // 画像URLがある場合のみ適用
-        const hasCustomCursor = !!entity.data.url;
-        if (hasCustomCursor) {
-            document.body.style.cursor = 'none';
-        }
-
         const handleMouseMove = (e: MouseEvent) => {
             setPosition({ x: e.clientX, y: e.clientY });
             if (!isVisible) setIsVisible(true);
@@ -27,10 +21,9 @@ const AvatarWidget: React.FC<{
 
         // クリーンアップ
         return () => {
-            document.body.style.cursor = 'auto';
             window.removeEventListener('mousemove', handleMouseMove);
         };
-    }, [entity.data.url, isVisible]);
+    }, [isVisible]);
 
     const avatarUrl = entity.data.url;
     const hotX = entity.data.hotspot?.x ?? 0;

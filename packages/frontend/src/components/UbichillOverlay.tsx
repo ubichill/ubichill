@@ -23,9 +23,14 @@ export const UbichillOverlay: React.FC = () => {
     });
 
     // プラグインの SingletonComponent を自動的にレンダリング (アクティブなプラグインのみ)
-    const renderPluginSingletons = INSTALLED_PLUGINS.filter(
-        (plugin) => activePlugins.includes(plugin.id) && plugin.SingletonComponent,
-    ).map((plugin) => {
+    console.log('[UbichillOverlay] Active Plugins:', activePlugins);
+    const renderPluginSingletons = INSTALLED_PLUGINS.filter((plugin) => {
+        const isActive = activePlugins.includes(plugin.id);
+        if (isActive) {
+            console.log(`[UbichillOverlay] Rendering singleton for: ${plugin.id}`);
+        }
+        return isActive && plugin.SingletonComponent;
+    }).map((plugin) => {
         const Component = plugin.SingletonComponent;
         return Component ? <Component key={plugin.id} /> : null;
     });

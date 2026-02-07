@@ -38,12 +38,13 @@ jobs:
             frontend:
               - 'packages/frontend/**'
               - 'packages/shared/**'
+              - 'plugins/*/frontend/**'
               - 'package.json'
               - 'pnpm-workspace.yaml'
               - 'pnpm-lock.yaml'
               - 'Dockerfile'
             video-player:
-              - 'plugins/video-player/**'
+              - 'plugins/video-player/backend/**'
 
       # 変更されたディレクトリのハッシュ計算
       - name: Calculate content hash for backend
@@ -175,23 +176,6 @@ jobs:
           uv pip install ruff
           ruff check main.py
           python -c "import main; print('✅ Import successful')"
-
-      - name: Setup pnpm for video-player frontend
-        if: steps.filter.outputs.video-player == 'true'
-        uses: pnpm/action-setup@v4
-
-      - name: Setup Node.js for video-player frontend
-        if: steps.filter.outputs.video-player == 'true'
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-
-      - name: Lint video-player frontend
-        if: steps.filter.outputs.video-player == 'true'
-        run: |
-          pnpm install
-          pnpm biome check plugins/video-player/frontend/src
 
       # Video Player Build & Push
       - name: Build and push Video Player image

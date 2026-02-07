@@ -1,0 +1,123 @@
+/* AdvancedSettings.module.css */
+
+.container {
+    background-color: white;
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.title {
+    margin: 0;
+    font-size: 14px;
+    font-weight: bold;
+    color: #212529;
+}
+
+.stateSelect {
+    padding: 8px;
+    border-radius: 6px;
+    border: 1px solid #dee2e6;
+    font-size: 13px;
+}
+
+.urlForm {
+    display: flex;
+    gap: 8px;
+}
+
+.urlInput {
+    flex: 1;
+    padding: 8px;
+    border-radius: 6px;
+    border: 1px solid #dee2e6;
+    font-size: 13px;
+}
+
+.submitButton {
+    padding: 8px 16px;
+    background-color: #228be6;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.submitButton:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.submitButton:hover:not(:disabled) {
+    background-color: #1c7ed6;
+}
+
+.hotspotGrid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.hotspotLabel {
+    font-size: 12px;
+    color: #495057;
+}
+
+.hotspotInput {
+    width: 100%;
+    margin-top: 4px;
+    padding: 6px;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+}
+
+.divider {
+    height: 1px;
+    background-color: #e9ecef;
+}
+
+.fileInput {
+    display: none;
+}
+
+.uploadButton {
+    padding: 10px;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    color: #495057;
+    transition: background-color 0.2s;
+}
+
+.uploadButton:hover:not(:disabled) {
+    background-color: #e9ecef;
+}
+
+.uploadButton:disabled {
+    cursor: wait;
+}
+
+.clearButton {
+    padding: 8px;
+    background-color: transparent;
+    color: #fa5252;
+    border: 1px solid #fa5252;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    transition:
+        background-color 0.2s,
+        color 0.2s;
+}
+
+.clearButton:hover {
+    background-color: #fa5252;
+    color: white;
+}

@@ -2,6 +2,7 @@
 
 import type { AppAvatarDef, CursorState } from '@ubichill/shared';
 import { useRef } from 'react';
+import styles from './AdvancedSettings.module.css';
 
 const AVAILABLE_STATES: CursorState[] = [
     'default',
@@ -59,28 +60,13 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
     };
 
     return (
-        <div
-            style={{
-                backgroundColor: 'white',
-                borderRadius: '12px',
-                padding: '16px',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '12px',
-            }}
-        >
-            <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 'bold', color: '#212529' }}>詳細設定</h4>
+        <div className={styles.container}>
+            <h4 className={styles.title}>詳細設定</h4>
 
             <select
                 value={selectedState}
                 onChange={(e) => onSelectedStateChange(e.target.value as CursorState)}
-                style={{
-                    padding: '8px',
-                    borderRadius: '6px',
-                    border: '1px solid #dee2e6',
-                    fontSize: '13px',
-                }}
+                className={styles.stateSelect}
             >
                 {AVAILABLE_STATES.map((state) => (
                     <option key={state} value={state}>
@@ -89,40 +75,21 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
                 ))}
             </select>
 
-            <form onSubmit={onUrlSubmit} style={{ display: 'flex', gap: '8px' }}>
+            <form onSubmit={onUrlSubmit} className={styles.urlForm}>
                 <input
                     type="text"
                     value={urlInput}
                     onChange={(e) => onUrlInputChange(e.target.value)}
                     placeholder="画像URLを入力..."
-                    style={{
-                        flex: 1,
-                        padding: '8px',
-                        borderRadius: '6px',
-                        border: '1px solid #dee2e6',
-                        fontSize: '13px',
-                    }}
+                    className={styles.urlInput}
                 />
-                <button
-                    type="submit"
-                    disabled={!urlInput.trim()}
-                    style={{
-                        padding: '8px 16px',
-                        backgroundColor: '#228be6',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '6px',
-                        fontSize: '13px',
-                        cursor: urlInput.trim() ? 'pointer' : 'not-allowed',
-                        opacity: urlInput.trim() ? 1 : 0.5,
-                    }}
-                >
+                <button type="submit" disabled={!urlInput.trim()} className={styles.submitButton}>
                     適用
                 </button>
             </form>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <label style={{ fontSize: '12px', color: '#495057' }}>
+            <div className={styles.hotspotGrid}>
+                <label className={styles.hotspotLabel}>
                     ホットスポット X
                     <input
                         type="number"
@@ -132,16 +99,10 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
                                 hotspot: { ...currentStateDef.hotspot, x: Number(e.target.value) },
                             })
                         }
-                        style={{
-                            width: '100%',
-                            marginTop: '4px',
-                            padding: '6px',
-                            border: '1px solid #dee2e6',
-                            borderRadius: '4px',
-                        }}
+                        className={styles.hotspotInput}
                     />
                 </label>
-                <label style={{ fontSize: '12px', color: '#495057' }}>
+                <label className={styles.hotspotLabel}>
                     ホットスポット Y
                     <input
                         type="number"
@@ -151,57 +112,31 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
                                 hotspot: { ...currentStateDef.hotspot, y: Number(e.target.value) },
                             })
                         }
-                        style={{
-                            width: '100%',
-                            marginTop: '4px',
-                            padding: '6px',
-                            border: '1px solid #dee2e6',
-                            borderRadius: '4px',
-                        }}
+                        className={styles.hotspotInput}
                     />
                 </label>
             </div>
 
-            <div style={{ height: '1px', backgroundColor: '#e9ecef' }} />
+            <div className={styles.divider} />
 
             <input
                 type="file"
                 ref={fileInputRef}
                 onChange={onFileUpload}
                 accept="image/*,.cur,.ani"
-                style={{ display: 'none' }}
+                className={styles.fileInput}
             />
             <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isConverting}
-                style={{
-                    padding: '10px',
-                    backgroundColor: '#f8f9fa',
-                    border: '1px solid #dee2e6',
-                    borderRadius: '6px',
-                    fontSize: '13px',
-                    cursor: isConverting ? 'wait' : 'pointer',
-                    color: '#495057',
-                }}
+                className={styles.uploadButton}
             >
                 📁 ファイルをアップロード (.png, .jpg, .cur, .ani)
             </button>
 
             {currentStateDef.url && (
-                <button
-                    type="button"
-                    onClick={onClear}
-                    style={{
-                        padding: '8px',
-                        backgroundColor: 'transparent',
-                        color: '#fa5252',
-                        border: '1px solid #fa5252',
-                        borderRadius: '6px',
-                        fontSize: '13px',
-                        cursor: 'pointer',
-                    }}
-                >
+                <button type="button" onClick={onClear} className={styles.clearButton}>
                     🗑️ リセット
                 </button>
             )}

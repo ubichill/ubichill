@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import styles from './RadialMenu.module.css';
 
 export interface RadialMenuItem {
@@ -22,7 +22,6 @@ export const RadialMenu: React.FC<RadialMenuProps> = ({ position, items, onClose
     const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
     const [currentItems, setCurrentItems] = useState(items);
     const [history, setHistory] = useState<RadialMenuItem[][]>([]);
-    const [isAnimating, setIsAnimating] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
 
     // 最大6個のアイテムに制限
@@ -31,12 +30,6 @@ export const RadialMenu: React.FC<RadialMenuProps> = ({ position, items, onClose
     const outerRadius = 120; // 外側の半径
     const innerRadius = 60; // 内側の半径（ドーナッツの穴）
     const centerRadius = 40; // 中央ボタンの半径
-
-    useEffect(() => {
-        setIsAnimating(true);
-        const timer = setTimeout(() => setIsAnimating(false), 300);
-        return () => clearTimeout(timer);
-    }, [currentItems]);
 
     // 扇形のSVGパスを生成
     const createSegmentPath = (index: number): string => {
@@ -148,7 +141,7 @@ export const RadialMenu: React.FC<RadialMenuProps> = ({ position, items, onClose
         <div className={styles.overlay} onClick={handleClickOutside}>
             <div
                 ref={menuRef}
-                className={`${styles.menu} ${isAnimating ? styles.animating : ''}`}
+                className={styles.menu}
                 style={{
                     left: position.x,
                     top: position.y,
@@ -167,9 +160,6 @@ export const RadialMenu: React.FC<RadialMenuProps> = ({ position, items, onClose
                             key={item.id}
                             className={`${styles.segment} ${selectedIndex === index ? styles.selectedSegment : ''}`}
                             d={createSegmentPath(index)}
-                            style={{
-                                transitionDelay: `${index * 30}ms`,
-                            }}
                         />
                     ))}
 
@@ -195,7 +185,6 @@ export const RadialMenu: React.FC<RadialMenuProps> = ({ position, items, onClose
                             className={`${styles.itemLabel} ${selectedIndex === index ? styles.selectedLabel : ''}`}
                             style={{
                                 transform: `translate(${pos.x}px, ${pos.y}px)`,
-                                transitionDelay: `${index * 30}ms`,
                             }}
                         >
                             <span className={styles.icon}>{item.icon}</span>

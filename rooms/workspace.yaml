@@ -22,10 +22,18 @@ spec:
       height: 1500
   
   dependencies:
-    - name: pen
+    - name: pen:pen
       source:
         type: repository
-        path: "packages/pen"
+        path: "plugins/pen"
+    - name: video-player
+      source:
+        type: repository
+        path: "plugins/video-player"
+    - name: avatar
+      source:
+        type: repository
+        path: "plugins/avatar"
 
   initialEntities:
     - kind: "video-player"

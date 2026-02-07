@@ -27,7 +27,6 @@ export const PenTray: React.FC = () => {
             const targetY = PEN_CONFIG.DEFAULT_Y; // Top位置（トレイ内）に戻す
 
             console.log(`[PenTray] Releasing pen: ${pen.id}`);
-
             // パッチ送信: ロック解除と位置リセット
             if (isConnected) {
                 const patch = {

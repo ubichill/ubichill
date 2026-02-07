@@ -2,7 +2,8 @@
 
 import { useEntity, useSocket } from '@ubichill/sdk';
 import type { AppAvatarDef, CursorState, UserStatus } from '@ubichill/shared';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AvatarCursor } from './AvatarCursor';
 import { CursorMenu } from './components/CursorMenu';
 import { EmojiFloat, type FloatingEmoji } from './components/EmojiFloat';
 import { RadialMenu, type RadialMenuItem } from './components/RadialMenu';
@@ -12,6 +13,9 @@ export interface AvatarPluginProps {
     userStatus: UserStatus;
     onStatusChange: (status: UserStatus) => void;
     mousePosition: { x: number; y: number };
+    canvasOffset?: { left: number; top: number };
+    showRadialMenu?: boolean;
+    onRadialMenuOpen?: (position: { x: number; y: number }) => void;
 }
 
 /**
@@ -22,10 +26,11 @@ export const AvatarPlugin: React.FC<AvatarPluginProps> = ({
     userStatus: _userStatus,
     onStatusChange,
     mousePosition,
+    canvasOffset = { left: 0, top: 0 },
 }) => {
     // SDK hooks
     const { currentUser, users, updateUser, socket: _socket, isConnected } = useSocket();
-    const usersArray = Array.from(users.values());
+    const _usersArray = Array.from(users.values());
 
     // 絵文字ブロードキャスト用のエンティティ (ephemeralデータとして共有)
     const { ephemeral: emojiEphemeral, syncStream: broadcastEmoji } = useEntity<{
@@ -42,12 +47,10 @@ export const AvatarPlugin: React.FC<AvatarPluginProps> = ({
         _setLocalAvatar(value as AppAvatarDef);
     };
 
-    const [smoothAvatarPosition, setSmoothAvatarPosition] = useState({ x: 0, y: 0 });
-    const animationFrameRef = useRef<number | null>(null);
-
-    // RadialMenu state
-    const [showRadialMenu, setShowRadialMenu] = useState(false);
-    const [radialMenuPosition, setRadialMenuPosition] = useState({ x: 0, y: 0 });
+    // RadialMenu state - positionがnullでない時にメニュー表示
+    const [radialMenuPosition, setRadialMenuPosition] = useState<{ x: number; y: number } | null>(null);
+    const menuOpenPositionRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+    const showRadialMenu = radialMenuPosition !== null;
 
     // Floating emojis state
     const [floatingEmojis, setFloatingEmojis] = useState<FloatingEmoji[]>([]);
@@ -95,24 +98,35 @@ export const AvatarPlugin: React.FC<AvatarPluginProps> = ({
         setFloatingEmojis((prev) => [...prev, newEmoji]);
     }, [emojiEphemeral, currentUser?.id]);
 
+    // メニュー位置のrefを更新
+    useEffect(() => {
+        if (!showRadialMenu) {
+            menuOpenPositionRef.current = mousePosition;
+        }
+    }, [mousePosition, showRadialMenu]);
+
     // 右クリックでRadialMenuを開く
     useEffect(() => {
         const handleContextMenu = (e: MouseEvent) => {
             e.preventDefault();
-            setRadialMenuPosition({ x: e.clientX, y: e.clientY });
-            setShowRadialMenu(true);
+            const position = { x: e.clientX, y: e.clientY };
+            // 位置を設定することでメニューを表示
+            setRadialMenuPosition(position);
+            menuOpenPositionRef.current = position;
+            // メニュー開始を同期
+            updateUser({ isMenuOpen: true });
         };
 
         window.addEventListener('contextmenu', handleContextMenu);
         return () => window.removeEventListener('contextmenu', handleContextMenu);
-    }, []);
+    }, [updateUser]);
 
     // ステータス変更
     const changeStatus = useCallback(
         (newStatus: UserStatus) => {
             onStatusChange(newStatus);
-            updateUser({ status: newStatus });
-            setShowRadialMenu(false);
+            updateUser({ status: newStatus, isMenuOpen: false });
+            setRadialMenuPosition(null);
         },
         [updateUser, onStatusChange],
     );
@@ -122,10 +136,13 @@ export const AvatarPlugin: React.FC<AvatarPluginProps> = ({
         (emoji: string) => {
             if (!currentUser?.id) return;
 
+            // メニューが開いている場合はメニューを開いた時の位置を使用、そうでなければ現在のマウス位置
+            const emojiPosition = showRadialMenu ? menuOpenPositionRef.current : mousePosition;
+
             const newEmoji: FloatingEmoji = {
                 id: Date.now().toString(),
                 emoji,
-                position: { x: mousePosition.x, y: mousePosition.y },
+                position: emojiPosition,
                 timestamp: Date.now(),
             };
             setFloatingEmojis((prev) => [...prev, newEmoji]);
@@ -133,14 +150,16 @@ export const AvatarPlugin: React.FC<AvatarPluginProps> = ({
             // SDKのephemeralデータとして他のユーザーに送信
             broadcastEmoji({
                 emoji,
-                position: mousePosition,
+                position: emojiPosition,
                 userId: currentUser.id,
                 timestamp: Date.now(),
             });
 
-            setShowRadialMenu(false);
+            setRadialMenuPosition(null);
+            // メニュー閉じたことを同期
+            updateUser({ isMenuOpen: false });
         },
-        [mousePosition, currentUser?.id, broadcastEmoji],
+        [currentUser?.id, broadcastEmoji, showRadialMenu, mousePosition, updateUser],
     );
 
     // 絵文字アニメーション完了
@@ -149,136 +168,79 @@ export const AvatarPlugin: React.FC<AvatarPluginProps> = ({
     }, []);
 
     // RadialMenu items
-    const radialMenuItems: RadialMenuItem[] = [
-        {
-            id: 'emoji',
-            label: '絵文字',
-            icon: '😊',
-            submenu: [
-                {
-                    id: 'emoji-thumbsup',
-                    label: 'いいね',
-                    icon: '👍',
-                    action: () => sendEmoji('👍'),
-                },
-                {
-                    id: 'emoji-heart',
-                    label: 'ハート',
-                    icon: '❤️',
-                    action: () => sendEmoji('❤️'),
-                },
-                {
-                    id: 'emoji-laugh',
-                    label: '笑い',
-                    icon: '😂',
-                    action: () => sendEmoji('😂'),
-                },
-                {
-                    id: 'emoji-clap',
-                    label: '拍手',
-                    icon: '👏',
-                    action: () => sendEmoji('👏'),
-                },
-                {
-                    id: 'emoji-fire',
-                    label: '炎',
-                    icon: '🔥',
-                    action: () => sendEmoji('🔥'),
-                },
-                {
-                    id: 'emoji-thinking',
-                    label: '考え中',
-                    icon: '🤔',
-                    action: () => sendEmoji('🤔'),
-                },
-            ],
-        },
-        {
-            id: 'status',
-            label: 'ステータス',
-            icon: '🟢',
-            submenu: [
-                {
-                    id: 'status-online',
-                    label: 'オンライン',
-                    icon: '🟢',
-                    action: () => changeStatus('online'),
-                },
-                {
-                    id: 'status-busy',
-                    label: '作業中',
-                    icon: '🔴',
-                    action: () => changeStatus('busy'),
-                },
-                {
-                    id: 'status-dnd',
-                    label: '起こさないで',
-                    icon: '🔕',
-                    action: () => changeStatus('dnd'),
-                },
-            ],
-        },
-    ];
-
-    // 現在の状態に対応するローカルアバターカーソルURLを取得
-    const currentLocalAvatar = localAvatar.states[cursorState] || localAvatar.states.default;
-    const localAvatarUrl = currentLocalAvatar?.url;
-    const localHotspot = currentLocalAvatar?.hotspot || { x: 0, y: 0 };
-
-    // 滑らかなアバター追跡のためのアニメーションループ
-    useEffect(() => {
-        const lerp = (start: number, end: number, factor: number) => {
-            return start + (end - start) * factor;
-        };
-
-        const animate = () => {
-            setSmoothAvatarPosition((prev) => {
-                const lerpFactor = 0.2;
-                return {
-                    x: lerp(prev.x, mousePosition.x, lerpFactor),
-                    y: lerp(prev.y, mousePosition.y, lerpFactor),
-                };
-            });
-            animationFrameRef.current = requestAnimationFrame(animate);
-        };
-
-        animationFrameRef.current = requestAnimationFrame(animate);
-
-        return () => {
-            if (animationFrameRef.current !== null) {
-                cancelAnimationFrame(animationFrameRef.current);
-            }
-        };
-    }, [mousePosition]);
-
-    // アバターカーソルスタイル制御 (ローカル)
-    useEffect(() => {
-        if (!localAvatarUrl) {
-            return;
-        }
-
-        document.body.classList.add('cursor-hidden');
-
-        let style = document.getElementById('cursor-none-style') as HTMLStyleElement | null;
-        if (!style) {
-            style = document.createElement('style');
-            style.id = 'cursor-none-style';
-            style.innerHTML = `
-                body.cursor-hidden * {
-                    cursor: none !important;
-                }
-            `;
-            document.head.appendChild(style);
-        }
-
-        return () => {
-            document.body.classList.remove('cursor-hidden');
-            const existingStyle = document.getElementById('cursor-none-style');
-            if (existingStyle) {
-                existingStyle.remove();
-            }
-        };
-    }, [localAvatarUrl]);
+    const radialMenuItems: RadialMenuItem[] = useMemo(
+        () => [
+            {
+                id: 'emoji',
+                label: '絵文字',
+                icon: '😊',
+                submenu: [
+                    {
+                        id: 'emoji-thumbsup',
+                        label: 'いいね',
+                        icon: '👍',
+                        action: () => sendEmoji('👍'),
+                    },
+                    {
+                        id: 'emoji-heart',
+                        label: 'ハート',
+                        icon: '❤️',
+                        action: () => sendEmoji('❤️'),
+                    },
+                    {
+                        id: 'emoji-laugh',
+                        label: '笑い',
+                        icon: '😂',
+                        action: () => sendEmoji('😂'),
+                    },
+                    {
+                        id: 'emoji-clap',
+                        label: '拍手',
+                        icon: '👏',
+                        action: () => sendEmoji('👏'),
+                    },
+                    {
+                        id: 'emoji-fire',
+                        label: '炎',
+                        icon: '🔥',
+                        action: () => sendEmoji('🔥'),
+                    },
+                    {
+                        id: 'emoji-thinking',
+                        label: '考え中',
+                        icon: '🤔',
+                        action: () => sendEmoji('🤔'),
+                    },
+                ],
+            },
+            {
+                id: 'status',
+                label: 'ステータス',
+                icon: '🟢',
+                submenu: [
+                    {
+                        id: 'status-online',
+                        label: 'オンライン',
+                        icon: '🟢',
+                        action: () => changeStatus('online'),
+                    },
+                    {
+                        id: 'status-busy',
+                        label: '作業中',
+                        icon: '🔴',
+                        action: () => changeStatus('busy'),
+                    },
+                    {
+                        id: 'status-dnd',
+                        label: '起こさないで',
+                        icon: '🔕',
+                        action: () => changeStatus('dnd'),
+                    },
+                ],
+            },
+        ],
+        [sendEmoji, changeStatus],
+    );
 
     return (
         <>
@@ -298,12 +260,16 @@ export const AvatarPlugin: React.FC<AvatarPluginProps> = ({
             </div>
 
             {/* Remote Users' Avatars */}
-            {usersArray
+            {Array.from(users.values())
                 .filter((user) => user.id !== currentUser?.id)
                 .map((user) => {
-                    const userAvatarState = user.avatar?.states?.[cursorState] || user.avatar?.states?.default;
+                    // Use remote user's cursor state, fallback to default
+                    const remoteCursorState = user.cursorState || 'default';
+                    const userAvatarState = user.avatar?.states?.[remoteCursorState] || user.avatar?.states?.default;
                     const remoteUrl = userAvatarState?.url;
                     const remoteHotspot = userAvatarState?.hotspot || { x: 0, y: 0 };
+                    // メニュー開いているユーザーは位置を固定表示
+                    const displayPosition = user.position;
 
                     return (
                         <div
@@ -311,27 +277,13 @@ export const AvatarPlugin: React.FC<AvatarPluginProps> = ({
                             style={{
                                 position: 'fixed',
                                 pointerEvents: 'none',
-                                zIndex: 100,
-                                backgroundColor: remoteUrl ? 'transparent' : '#4263eb',
-                                color: 'white',
-                                padding: remoteUrl ? undefined : '4px 8px',
-                                borderRadius: remoteUrl ? '0' : '12px',
-                                fontSize: '12px',
-                                whiteSpace: 'nowrap',
-                                left: user.position.x,
-                                top: user.position.y,
-                                transform: 'none',
-                                width: remoteUrl ? 'auto' : undefined,
-                                height: remoteUrl ? 'auto' : undefined,
+                                zIndex: 10000,
+                                left: canvasOffset.left + displayPosition.x - remoteHotspot.x,
+                                top: canvasOffset.top + displayPosition.y - remoteHotspot.y,
                             }}
                         >
                             {remoteUrl ? (
-                                <div
-                                    style={{
-                                        position: 'relative',
-                                        transform: `translate(${-remoteHotspot.x}px, ${-remoteHotspot.y}px)`,
-                                    }}
-                                >
+                                <>
                                     <img
                                         src={remoteUrl}
                                         alt={`${user.name}'s cursor`}
@@ -342,6 +294,26 @@ export const AvatarPlugin: React.FC<AvatarPluginProps> = ({
                                             display: 'block',
                                         }}
                                     />
+                                    {user.status === 'busy' && (
+                                        <div
+                                            style={{
+                                                position: 'absolute',
+                                                top: '-8px',
+                                                right: '-8px',
+                                                width: '20px',
+                                                height: '20px',
+                                                borderRadius: '50%',
+                                                backgroundColor: '#fa5252',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                fontSize: '12px',
+                                                boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                                            }}
+                                        >
+                                            🔴
+                                        </div>
+                                    )}
                                     <span
                                         style={{
                                             display: 'block',
@@ -351,53 +323,52 @@ export const AvatarPlugin: React.FC<AvatarPluginProps> = ({
                                             transform: 'translateX(-50%)',
                                             marginTop: '4px',
                                             whiteSpace: 'nowrap',
+                                            fontSize: '12px',
+                                            background: 'rgba(0,0,0,0.7)',
+                                            color: 'white',
+                                            padding: '2px 6px',
+                                            borderRadius: '4px',
                                         }}
                                     >
                                         {user.name}
+                                        {user.status === 'busy' && ' 🔴'}
+                                        {user.isMenuOpen && ' 📋'}
                                     </span>
-                                </div>
+                                </>
                             ) : (
-                                <span
+                                <div
                                     style={{
-                                        display: 'block',
-                                        top: '100%',
-                                        marginTop: '4px',
-                                        transform: 'translateX(-50%)',
+                                        backgroundColor: '#4263eb',
+                                        color: 'white',
+                                        padding: '4px 8px',
+                                        borderRadius: '12px',
+                                        fontSize: '12px',
+                                        whiteSpace: 'nowrap',
                                     }}
                                 >
                                     {user.name}
-                                </span>
+                                </div>
                             )}
                         </div>
                     );
                 })}
 
-            {/* Local Avatar Cursor */}
-            {localAvatarUrl && (
-                <img
-                    src={localAvatarUrl}
-                    alt="avatar cursor"
-                    style={{
-                        position: 'fixed',
-                        left: smoothAvatarPosition.x - localHotspot.x,
-                        top: smoothAvatarPosition.y - localHotspot.y,
-                        pointerEvents: 'none',
-                        zIndex: 9999,
-                        maxWidth: '64px',
-                        maxHeight: '64px',
-                        width: 'auto',
-                        height: 'auto',
-                        transition: 'none',
-                    }}
-                />
-            )}
+            {/* Local Avatar Cursor - カスタムカーソル選択時のみ表示 */}
+            <AvatarCursor
+                cursorState={cursorState}
+                userStatus={_userStatus}
+                mousePosition={mousePosition}
+                canvasOffset={canvasOffset}
+                showRadialMenu={showRadialMenu}
+            />
 
             {/* Radial Menu */}
-            {showRadialMenu && (
+            {radialMenuPosition && (
                 <RadialMenu
+                    key={`${radialMenuPosition.x}-${radialMenuPosition.y}`}
                     position={radialMenuPosition}
                     items={radialMenuItems}
-                    onClose={() => setShowRadialMenu(false)}
+                    onClose={() => setRadialMenuPosition(null)}
                 />
             )}
 
