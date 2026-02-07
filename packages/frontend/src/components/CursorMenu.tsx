@@ -210,7 +210,24 @@ export const CursorMenu: React.FC<CursorMenuProps> = ({ avatar, onAvatarChange }
         // Encode APNG
         const apngBuffer = UPNG.encode(rgbaFrames, finalWidth, finalHeight, 0, delays);
         const apngBlob = new Blob([apngBuffer], { type: 'image/png' });
-        return URL.createObjectURL(apngBlob);
+
+        // Convert Blob to Data URL so it can be serialized and used by other clients
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                if (typeof reader.result === 'string') {
+                    resolve(reader.result);
+                } else {
+                    reject(new Error('Failed to convert APNG blob to Data URL'));
+                }
+            };
+            reader.onerror = () => {
+                reject(reader.error ?? new Error('Error reading APNG blob'));
+            };
+            reader.readAsDataURL(apngBlob);
+        });
+
+        return dataUrl;
     };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
