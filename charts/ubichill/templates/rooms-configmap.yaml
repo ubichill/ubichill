@@ -1,0 +1,121 @@
+{{- if .Values.rooms.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ubichill.fullname" . }}-rooms
+  labels:
+    {{- include "ubichill.labels" . | nindent 4 }}
+    component: rooms
+data:
+  default.yaml: |
+    apiVersion: ubichill.com/v1alpha1
+    kind: Room
+    metadata:
+      name: default
+      version: "1.0.0"
+      author:
+        name: "Ubichill Team"
+    spec:
+      displayName: "デフォルトルーム"
+      description: "Ubichill のデフォルトコラボレーションスペース"
+      thumbnail: "https://images.unsplash.com/photo-1519389950473-47ba0277781c?w=400&h=200&fit=crop&q=80"
+      
+      capacity:
+        default: 10
+        max: 20
+      
+      environment:
+        backgroundColor: "#F0F8FF"
+        worldSize:
+          width: 2000
+          height: 1500
+      
+      # パッケージ依存関係
+      dependencies:
+        - name: pen
+          source:
+            type: repository
+            path: "packages/pen"
+        - name: video-player
+          source:
+            type: repository
+            path: "plugins/video-player"
+      
+      # 初期配置エンティティ
+      initialEntities:
+        - kind: "video-player"
+          transform:
+            x: 800
+            y: 100
+            z: 2
+            scale: 1
+            rotation: 0
+          data:
+            playlist: []
+            currentIndex: 0
+            isPlaying: false
+            volume: 0.7
+            currentTime: 0
+            loop: 'none'
+            shuffle: false
+      
+      permissions:
+        allowGuestCreate: true
+        allowGuestDelete: false
+
+  workspace.yaml: |
+    apiVersion: ubichill.com/v1alpha1
+    kind: Room
+    metadata:
+      name: workspace
+      version: "1.0.0"
+      author:
+        name: "Ubichill Team"
+    spec:
+      displayName: "ワークスペース"
+      description: "落ち着いた雰囲気の作業空間"
+      thumbnail: "https://images.unsplash.com/photo-1497366216548-37526070297c?w=400&h=200&fit=crop&q=80"
+      
+      capacity:
+        default: 8
+        max: 15
+      
+      environment:
+        backgroundColor: "#1a1a2e"
+        backgroundImage: "https://images.unsplash.com/photo-1497366216548-37526070297c?w=1920&q=80"
+        worldSize:
+          width: 2000
+          height: 1500
+      
+      dependencies:
+        - name: pen
+          source:
+            type: repository
+            path: "packages/pen"
+
+      initialEntities:
+        - kind: "video-player"
+          transform:
+            x: 800
+            y: 100
+            z: 2
+            scale: 1
+            rotation: 0
+          data:
+            playlist: []
+            currentIndex: 0
+            isPlaying: false
+            volume: 0.7
+            currentTime: 0
+            loop: 'none'
+            shuffle: false
+      
+      permissions:
+        allowGuestCreate: true
+        allowGuestDelete: false
+
+{{- range $name, $content := .Values.rooms.custom }}
+  {{ $name }}.yaml: |
+{{ $content | toYaml | indent 4 }}
+{{- end }}
+{{- end }}

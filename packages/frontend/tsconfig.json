@@ -25,8 +25,17 @@
             "@/*": [
                 "./src/*"
             ],
+            "@styled-system/*": [
+                "./styled-system/*"
+            ],
+            "@styles/*": [
+                "./src/styles/*"
+            ],
             "@/styled-system/*": [
                 "./styled-system/*"
+            ],
+            "@ubichill/sdk": [
+                "../sdk/src/index.ts"
             ]
         },
         "target": "ES2017"

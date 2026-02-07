@@ -1,0 +1,130 @@
+# Development environment values for ubichill
+# Override default values for development
+
+# Disable dynamic rooms in development (use default built-in rooms)
+rooms:
+  enabled: false
+
+# Clear global image registry for local images
+global:
+  imageRegistry: ""
+  security:
+    allowInsecureImages: true
+
+# Backend configuration for development
+backend:
+  replicaCount: 1  # Single replica for dev
+  
+  image:
+    repository: "ubichill-backend"
+    tag: "latest"
+    pullPolicy: Always
+  
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  
+  autoscaling:
+    enabled: false  # Disable HPA in dev
+  
+  env:
+    NODE_ENV: "development"
+    CORS_ORIGIN: "*"  # Allow all origins in Kubernetes dev environment
+
+# Frontend configuration for development  
+frontend:
+  replicaCount: 1  # Single replica for dev
+  
+  image:
+    repository: "ubichill-frontend"
+    tag: "latest"
+    pullPolicy: Always
+  
+  resources:
+    limits:
+      cpu: 250m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+  
+  autoscaling:
+    enabled: false  # Disable HPA in dev
+  
+  env:
+    NODE_ENV: "development"
+    # NEXT_PUBLIC_VIDEO_PLAYER_BACKEND_URL auto-configured by template
+
+# Use Redis for shared caching
+redis:
+  enabled: true
+  global:
+    imageRegistry: ""
+  master:
+    persistence:
+      enabled: false  # No persistence needed in dev
+    resources:
+      limits:
+        memory: 128Mi
+        cpu: 100m
+      requests:
+        memory: 64Mi
+        cpu: 50m
+
+# Disable PostgreSQL for dev (use SQLite or external DB)
+postgresql:
+  enabled: false
+  global:
+    imageRegistry: ""
+
+# Video Player Plugin (Subchart)
+video-player:
+  enabled: true
+  global:
+    imageRegistry: "" # Use local/docker registry for video player if it uses global
+  backend:
+    replicaCount: 1
+    rootPath: "/plugin/video-player"
+    env:
+      CORS_ORIGINS: "http://localhost:3000,http://localhost:3002,*"  # Allow all origins in dev
+      LOG_LEVEL: "DEBUG"
+    resources:
+      limits:
+        cpu: 250m
+        memory: 256Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+    autoscaling:
+      enabled: false
+  redis:
+    enabled: true
+    global:
+      imageRegistry: "" # Ensure nested redis in video-player also ignores global registry
+
+# Ingress configuration for development
+ingress:
+  enabled: true
+  className: "nginx"
+  hosts:
+    - host: localhost
+      paths:
+        - path: /plugin/video-player
+          pathType: Prefix
+          backend:
+            service:
+              name: video-player
+              port: 8000
+        - path: /api
+          pathType: Prefix
+          backend:
+            service:
+              name: backend
+              port: 3001
+        - path: /
+          pathType: Prefix
+          # Default to frontend (will use template default)

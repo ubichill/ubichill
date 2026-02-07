@@ -1,0 +1,81 @@
+# Production environment values
+# Override default values for production
+
+backend:
+  replicaCount: 5  # Higher replica count for production
+  
+  image:
+    tag: "stable"
+    pullPolicy: IfNotPresent
+  
+  resources:
+    limits:
+      cpu: 3000m      # Higher limits for production
+      memory: 4Gi
+    requests:
+      cpu: 1000m      # Higher requests for guaranteed resources
+      memory: 1Gi
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 20   # Allow higher scaling in production
+    targetCPUUtilizationPercentage: 60  # Lower threshold for faster scaling
+    targetMemoryUtilizationPercentage: 70
+  
+  env:
+    LOG_LEVEL: "INFO"
+    CORS_ORIGINS: "https://ubichill.com,https://app.ubichill.com"
+
+# Enable Redis with persistence for production
+redis:
+  enabled: true
+  architecture: standalone
+  master:
+    persistence:
+      enabled: true
+      size: 10Gi
+      storageClass: "fast-ssd"  # Use high-performance storage
+    resources:
+      limits:
+        memory: 1Gi
+        cpu: 500m
+      requests:
+        memory: 512Mi
+        cpu: 250m
+  
+  # Production Redis configuration
+  commonConfiguration: |-
+    maxmemory 1gb
+    maxmemory-policy allkeys-lru
+    appendonly yes
+    save 900 1
+    save 300 10
+    save 60 10000
+
+# Pod Disruption Budget for high availability
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2  # Ensure at least 2 pods are always available
+
+# Node affinity for multi-AZ deployment
+nodeAffinity:
+  enabled: true
+  preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      preference:
+        matchExpressions:
+        - key: topology.kubernetes.io/zone
+          operator: In
+          values:
+          - us-west-2a
+          - us-west-2b
+          - us-west-2c
+
+# Monitoring enabled in production
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 15s
+    scrapeTimeout: 10s

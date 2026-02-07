@@ -1,0 +1,111 @@
+{{- if .Values.backend.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ubichill.fullname" . }}-backend
+  labels:
+    {{- include "ubichill.labels" . | nindent 4 }}
+    component: backend
+spec:
+  replicas: {{ .Values.backend.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "ubichill.selectorLabels" . | nindent 6 }}
+      component: backend
+  template:
+    metadata:
+      annotations:
+        # Force pod restart on chart upgrade
+        rollme: {{ randAlphaNum 5 | quote }}
+      labels:
+        {{- include "ubichill.selectorLabels" . | nindent 8 }}
+        component: backend
+    spec:
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.nodeAffinity.enabled }}
+      affinity:
+        nodeAffinity:
+          {{- with .Values.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution }}
+          preferredDuringSchedulingIgnoredDuringExecution:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  {{- include "ubichill.selectorLabels" . | nindent 18 }}
+                  component: backend
+              topologyKey: kubernetes.io/hostname
+      {{- end }}
+      serviceAccountName: {{ include "ubichill.serviceAccountName.backend" . }}
+      containers:
+      - name: backend
+        securityContext:
+          {{- toYaml .Values.backend.securityContext | nindent 10 }}
+        image: {{ include "ubichill.backend.image" . }}
+        imagePullPolicy: {{ .Values.backend.image.pullPolicy | default .Values.global.imagePullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.backend.service.targetPort }}
+          protocol: TCP
+        env:
+        {{- range $key, $value := .Values.backend.env }}
+        - name: {{ $key }}
+          value: {{ $value | quote }}
+        {{- end }}
+        {{- if .Values.rooms.enabled }}
+        - name: ROOMS_DIR
+          value: "/app/rooms"
+        {{- end }}
+        # Database connections
+        {{- if .Values.postgresql.enabled }}
+        - name: DATABASE_URL
+          value: "postgresql://postgres:{{ .Values.postgresql.auth.postgresPassword }}@{{ include "ubichill.fullname" . }}-postgresql:5432/{{ .Values.postgresql.auth.database }}"
+        {{- end }}
+        # Redis connection
+        {{- if .Values.redis.enabled }}
+        - name: REDIS_URL
+          value: "redis://{{ include "ubichill.fullname" . }}-redis-master:6379"
+        {{- end }}
+        {{- if .Values.backend.healthcheck.enabled }}
+        livenessProbe:
+          httpGet:
+            path: {{ .Values.backend.healthcheck.path }}
+            port: http
+          initialDelaySeconds: {{ .Values.backend.healthcheck.livenessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.backend.healthcheck.livenessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.backend.healthcheck.livenessProbe.timeoutSeconds }}
+          failureThreshold: {{ .Values.backend.healthcheck.livenessProbe.failureThreshold }}
+        readinessProbe:
+          httpGet:
+            path: {{ .Values.backend.healthcheck.path }}
+            port: http
+          initialDelaySeconds: {{ .Values.backend.healthcheck.readinessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.backend.healthcheck.readinessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.backend.healthcheck.readinessProbe.timeoutSeconds }}
+          failureThreshold: {{ .Values.backend.healthcheck.readinessProbe.failureThreshold }}
+        {{- end }}
+        resources:
+          {{- toYaml .Values.backend.resources | nindent 12 }}
+        {{- if .Values.rooms.enabled }}
+        volumeMounts:
+        - name: rooms
+          mountPath: /app/rooms
+          readOnly: true
+        {{- end }}
+      {{- if .Values.rooms.enabled }}
+      volumes:
+      - name: rooms
+        configMap:
+          name: {{ include "ubichill.fullname" . }}-rooms
+      {{- end }}
+{{- end }}

@@ -13,12 +13,13 @@
         }
     },
     "scripts": {
-        "dev": "tsc --watch --preserveWatchOutput",
+        "dev": "tsc-watch --onSuccess \"touch dist/.build_done\"",
         "build": "tsc",
         "clean": "rimraf dist"
     },
     "devDependencies": {
         "rimraf": "^6.0.1",
+        "tsc-watch": "^7.2.0",
         "typescript": "^5.9.3"
     },
     "dependencies": {

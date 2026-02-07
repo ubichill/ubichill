@@ -1,9 +1,8 @@
 'use client';
 
+import { useSocket, useWorld } from '@ubichill/sdk';
 import type React from 'react';
 import { PLUGIN_MAP } from '../../plugins/registry';
-import { useWorld } from '../hooks/useEntity';
-import { useSocket } from '../hooks/useSocket';
 
 interface EntityRendererProps {
     entityId: string;
