@@ -87,13 +87,23 @@ export const CursorMenu: React.FC<CursorMenuProps> = ({ avatar, onAvatarChange }
         });
     };
 
+    const bufferToDataUrl = (buffer: ArrayBuffer | Uint8Array, mimeType: string): string => {
+        const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+        let binary = '';
+        for (let i = 0; i < bytes.length; i++) {
+            binary += String.fromCharCode(bytes[i]);
+        }
+        const base64 = btoa(binary);
+        return `data:${mimeType};base64,${base64}`;
+    };
+
     const processCurFile = async (buffer: ArrayBuffer): Promise<string> => {
         try {
             const { data, width, height } = await getImageDataFromBuffer(buffer);
             // APNG (Static 1 frame)
             const pngBuffer = UPNG.encode([data], width, height, 0);
-            const apngBlob = new Blob([pngBuffer], { type: 'image/png' });
-            return URL.createObjectURL(apngBlob);
+            const dataUrl = bufferToDataUrl(pngBuffer, 'image/png');
+            return dataUrl;
         } catch (e) {
             console.error('CUR processing error:', e);
             throw e;
