@@ -1,5 +1,6 @@
 import {
     type ClientToServerEvents,
+    type CursorState,
     DEFAULTS,
     type EntityEphemeralPayload,
     type EntityPatchPayload,
@@ -15,7 +16,13 @@ import { instanceManager } from '../services/instanceManager';
 import { userManager } from '../services/userManager';
 import { createEntity, deleteEntity, getWorldSnapshot, patchEntity } from '../services/worldState';
 import { logger } from '../utils/logger';
-import { validateCursorPosition, validateRoomId, validateUsername, validateUserStatus } from '../utils/validation';
+import {
+    validateCursorPosition,
+    validateCursorState,
+    validateRoomId,
+    validateUsername,
+    validateUserStatus,
+} from '../utils/validation';
 
 type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents, InterServerEvents, SocketData>;
 
@@ -128,22 +135,29 @@ export function handleCursorMove(socket: TypedSocket) {
             return;
         }
 
-        // 位置を更新
-        const updated = userManager.updateUserPosition(socket.id, validation.data);
+        // カーソル状態を検証（存在する場合のみ）
+        let validatedState: CursorState | undefined;
+        if (state !== undefined) {
+            const stateValidation = validateCursorState(state);
+            if (!stateValidation.valid) {
+                socket.emit('error', stateValidation.error || '無効なカーソル状態です');
+                return;
+            }
+            validatedState = stateValidation.data;
+        }
+
+        // 位置と状態を更新
+        const updated = userManager.updateUserPosition(socket.id, validation.data, validatedState);
         if (!updated) {
             socket.emit('error', 'ユーザーが見つかりません');
             return;
         }
 
-        // TODO: stateの検証も必要かもしれないが、一旦unknownとして受け取ってそのまま流す
-        // 必要なら validateCursorState を実装する
-
         // ルーム内の他のユーザーにブロードキャスト
         socket.to(roomId).emit('cursor:moved', {
             userId: socket.id,
             position: validation.data,
-            // @ts-ignore Shared側の型定義更新がまだ反映されていない可能性があるため一旦ignore、あるいはanyキャスト
-            state: state as any,
+            state: validatedState,
         });
     };
 }
