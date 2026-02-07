@@ -64,8 +64,12 @@ export const CursorMenu: React.FC<CursorMenuProps> = ({ avatar, onAvatarChange }
         return new Promise((resolve, reject) => {
             const img = new Image();
             const blob = new Blob([largestImage.buffer], { type: 'image/png' });
-            img.src = URL.createObjectURL(blob);
+            const objectURL = URL.createObjectURL(blob);
+            img.src = objectURL;
             img.onload = () => {
+                // Revoke the object URL to prevent memory leak
+                URL.revokeObjectURL(objectURL);
+
                 const canvas = document.createElement('canvas');
                 canvas.width = img.width;
                 canvas.height = img.height;
@@ -83,7 +87,11 @@ export const CursorMenu: React.FC<CursorMenuProps> = ({ avatar, onAvatarChange }
                     height: img.height,
                 });
             };
-            img.onerror = () => reject(new Error('Failed to load image for buffer conversion'));
+            img.onerror = () => {
+                // Revoke the object URL even on error
+                URL.revokeObjectURL(objectURL);
+                reject(new Error('Failed to load image for buffer conversion'));
+            };
         });
     };
 

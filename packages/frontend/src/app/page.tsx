@@ -71,6 +71,10 @@ export default function Home() {
     // Add ref for the container
     const canvasRef = useRef<HTMLDivElement>(null);
 
+    // Throttle cursor position updates
+    const lastPositionUpdateRef = useRef({ x: 0, y: 0, state: cursorState, time: 0 });
+    const POSITION_UPDATE_THROTTLE = 50; // ms
+
     const handleMouseMove = (e: React.MouseEvent) => {
         // ローカルカーソル用（画面全体での追跡）
         setMousePosition({ x: e.clientX, y: e.clientY });
@@ -80,8 +84,17 @@ export default function Home() {
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
 
-            // 状態も一緒に送信
-            updatePosition({ x, y }, cursorState);
+            // Throttle updates to reduce socket traffic
+            const now = Date.now();
+            const lastUpdate = lastPositionUpdateRef.current;
+            const timeSinceLastUpdate = now - lastUpdate.time;
+            const positionChanged = x !== lastUpdate.x || y !== lastUpdate.y;
+            const stateChanged = cursorState !== lastUpdate.state;
+
+            if ((positionChanged || stateChanged) && timeSinceLastUpdate >= POSITION_UPDATE_THROTTLE) {
+                updatePosition({ x, y }, cursorState);
+                lastPositionUpdateRef.current = { x, y, state: cursorState, time: now };
+            }
         }
     };
 

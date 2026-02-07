@@ -1,5 +1,6 @@
 import {
     type ClientToServerEvents,
+    type CursorState,
     DEFAULTS,
     type EntityEphemeralPayload,
     type EntityPatchPayload,
@@ -113,7 +114,7 @@ export function handleRoomJoin(socket: TypedSocket) {
  * カーソル移動イベントを処理
  */
 export function handleCursorMove(socket: TypedSocket) {
-    return (payload: { position: { x: number; y: number }; state?: unknown }) => {
+    return (payload: { position: { x: number; y: number }; state?: CursorState }) => {
         const { position, state } = payload;
         const roomId = socket.data.roomId;
         if (!roomId) {
@@ -128,22 +129,18 @@ export function handleCursorMove(socket: TypedSocket) {
             return;
         }
 
-        // 位置を更新
-        const updated = userManager.updateUserPosition(socket.id, validation.data);
+        // 位置とstateを更新
+        const updated = userManager.updateUserPosition(socket.id, validation.data, state);
         if (!updated) {
             socket.emit('error', 'ユーザーが見つかりません');
             return;
         }
 
-        // TODO: stateの検証も必要かもしれないが、一旦unknownとして受け取ってそのまま流す
-        // 必要なら validateCursorState を実装する
-
         // ルーム内の他のユーザーにブロードキャスト
         socket.to(roomId).emit('cursor:moved', {
             userId: socket.id,
             position: validation.data,
-            // @ts-ignore Shared側の型定義更新がまだ反映されていない可能性があるため一旦ignore、あるいはanyキャスト
-            state: state as any,
+            state,
         });
     };
 }
@@ -193,10 +190,8 @@ export function handleUserUpdate(socket: TypedSocket) {
         }
 
         // ユーザー情報を更新
-        // IDは変更できないようにするなどの制御はuserManager側でも行っているが
-        // ここでも念のためIDは除外して渡すのが安全（型定義上は含まれている可能性があるため）
-        const { id, ...safePatch } = patch;
-        const updatedUser = userManager.updateUser(socket.id, safePatch);
+        // userManager側でホワイトリストベースのフィルタリングを実施
+        const updatedUser = userManager.updateUser(socket.id, patch);
 
         if (!updatedUser) {
             socket.emit('error', 'ユーザーが見つかりません');

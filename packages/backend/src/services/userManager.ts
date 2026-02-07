@@ -1,4 +1,4 @@
-import type { CursorPosition, User, UserStatus } from '@ubichill/shared';
+import type { CursorPosition, CursorState, User, UserStatus } from '@ubichill/shared';
 
 /**
  * ユーザー管理サービス
@@ -52,11 +52,14 @@ export class UserManager {
     /**
      * ユーザーのカーソル位置を更新
      */
-    updateUserPosition(userId: string, position: CursorPosition): boolean {
+    updateUserPosition(userId: string, position: CursorPosition, state?: CursorState): boolean {
         const user = this.users.get(userId);
         if (!user) return false;
 
         user.position = position;
+        if (state !== undefined) {
+            user.cursorState = state;
+        }
         user.lastActiveAt = Date.now();
         return true;
     }
@@ -80,8 +83,15 @@ export class UserManager {
         const user = this.users.get(userId);
         if (!user) return null;
 
-        // IDは変更不可
-        const { id, ...safePatch } = patch;
+        // 更新を許可するフィールドのみをホワイトリストで抽出
+        const safePatch: Partial<User> = {};
+
+        if ('avatar' in patch) {
+            safePatch.avatar = patch.avatar;
+        }
+        if ('cursorState' in patch) {
+            safePatch.cursorState = patch.cursorState;
+        }
 
         // オブジェクトを更新
         const updatedUser = {

@@ -10,7 +10,6 @@ export const useCursorState = (): CursorState => {
     const [cursorState, setCursorState] = useState<CursorState>('default');
 
     useEffect(() => {
-        let rafId: number = 0;
         let lastElement: Element | null = null;
 
         const checkCursor = (e: MouseEvent) => {
@@ -87,7 +86,6 @@ export const useCursorState = (): CursorState => {
 
         return () => {
             window.removeEventListener('mouseover', handleMouseOver);
-            if (rafId) cancelAnimationFrame(rafId);
         };
     }, []);
 
