@@ -161,6 +161,9 @@ frontend:
 redis:
   enabled: true
   architecture: standalone
+  # Explicitly reset registry for this subchart to avoid inheriting 'ghcr.io' from global
+  global:
+    imageRegistry: ""
   image:
     registry: docker.io
     repository: bitnami/redis
@@ -191,6 +194,8 @@ redis:
 # Database (optional)
 postgresql:
   enabled: false  # Enable if using PostgreSQL
+  global:
+    imageRegistry: ""
   image:
     registry: docker.io
     repository: bitnami/postgresql
