@@ -1,12 +1,6 @@
 'use client';
 
-import {
-    type CreateInstanceRequest,
-    ENV_KEYS,
-    type Instance,
-    type RoomListItem,
-    SERVER_CONFIG,
-} from '@ubichill/shared';
+import { type CreateInstanceRequest, type Instance, type RoomListItem, SERVER_CONFIG } from '@ubichill/shared';
 import { useCallback, useEffect, useState } from 'react';
 
 const API_BASE =

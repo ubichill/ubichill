@@ -224,8 +224,12 @@ export const VideoPlayer: React.FC<Props> = ({ entity, isLocked, update }) => {
                                                 try {
                                                     const detail = (errorData.response.data as { detail?: unknown })
                                                         .detail;
-                                                    if (typeof detail === 'object' && detail.message) {
-                                                        alert(`動画エラー: ${detail.message}`);
+                                                    if (
+                                                        typeof detail === 'object' &&
+                                                        detail !== null &&
+                                                        'message' in detail
+                                                    ) {
+                                                        alert(`動画エラー: ${(detail as { message: string }).message}`);
                                                         return;
                                                     } else if (typeof detail === 'string') {
                                                         alert(`動画エラー: ${detail}`);
@@ -286,8 +290,8 @@ export const VideoPlayer: React.FC<Props> = ({ entity, isLocked, update }) => {
                         const response = (error as { response?: { data?: { detail?: unknown } } }).response;
                         if (response?.data?.detail) {
                             const detail = response.data.detail;
-                            if (typeof detail === 'object' && detail.message) {
-                                errorMessage = detail.message;
+                            if (typeof detail === 'object' && detail !== null && 'message' in detail) {
+                                errorMessage = (detail as { message: string }).message;
                             } else if (typeof detail === 'string') {
                                 errorMessage = detail;
                             }
