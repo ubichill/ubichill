@@ -86,10 +86,10 @@ export class UserManager {
         // 更新を許可するフィールドのみをホワイトリストで抽出
         const safePatch: Partial<User> = {};
 
-        if ('avatar' in patch) {
+        if ('avatar' in patch && patch.avatar !== undefined) {
             safePatch.avatar = patch.avatar;
         }
-        if ('cursorState' in patch) {
+        if ('cursorState' in patch && patch.cursorState !== undefined) {
             safePatch.cursorState = patch.cursorState;
         }
 

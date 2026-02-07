@@ -72,7 +72,7 @@ export default function Home() {
     const canvasRef = useRef<HTMLDivElement>(null);
 
     // Throttle cursor position updates
-    const lastPositionUpdateRef = useRef({ x: 0, y: 0, state: cursorState, time: 0 });
+    const lastPositionUpdateRef = useRef({ x: 0, y: 0, state: 'default' as CursorState, time: 0 });
     const POSITION_UPDATE_THROTTLE = 50; // ms
 
     const handleMouseMove = (e: React.MouseEvent) => {
