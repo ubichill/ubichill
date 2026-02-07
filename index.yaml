@@ -3,6 +3,38 @@ entries:
   ubichill:
   - apiVersion: v2
     appVersion: latest
+    created: "2026-02-07T14:07:12.422172985Z"
+    dependencies:
+    - condition: redis.enabled
+      name: redis
+      repository: https://charts.bitnami.com/bitnami
+      version: 20.6.1
+    - condition: postgresql.enabled
+      name: postgresql
+      repository: https://charts.bitnami.com/bitnami
+      version: 16.4.3
+    - condition: video-player.enabled
+      name: video-player
+      repository: file://../video-player
+      version: 0.1.4
+    description: Ubichill Main Application - Frontend and Backend Platform
+    digest: 8437e00830d86689281a4f3d2d617a99526d87b2e03e243edd8095fbcb1b556a
+    keywords:
+    - ubichill
+    - platform
+    - frontend
+    - backend
+    - plugins
+    maintainers:
+    - email: dev@ubichill.com
+      name: Ubichill Team
+    name: ubichill
+    type: application
+    urls:
+    - https://github.com/ubichill/ubichill/releases/download/ubichill-0.1.4/ubichill-0.1.4.tgz
+    version: 0.1.4
+  - apiVersion: v2
+    appVersion: latest
     created: "2026-02-07T01:23:02.459721098Z"
     dependencies:
     - condition: redis.enabled
@@ -88,6 +120,24 @@ entries:
   video-player:
   - apiVersion: v2
     appVersion: latest
+    created: "2026-02-07T14:07:12.560587484Z"
+    description: Ubichill Video Player Plugin with optional Redis caching
+    digest: 46ae32dc1335f6222ac209f5e2d47938b1396d7a7ab9be842dc00291189ff29e
+    keywords:
+    - video
+    - streaming
+    - youtube
+    - hls
+    maintainers:
+    - email: dev@ubichill.com
+      name: Ubichill Team
+    name: video-player
+    type: application
+    urls:
+    - https://github.com/ubichill/ubichill/releases/download/video-player-0.1.4/video-player-0.1.4.tgz
+    version: 0.1.4
+  - apiVersion: v2
+    appVersion: latest
     created: "2026-02-07T01:23:02.685354013Z"
     description: Ubichill Video Player Plugin with optional Redis caching
     digest: 1d127b9983c6e9b0b294e6244fafd95252bf18816830ac7bcf2ca480927df2b8
@@ -140,4 +190,4 @@ entries:
     urls:
     - https://github.com/ubichill/ubichill/releases/download/video-player-0.1.0/video-player-0.1.0.tgz
     version: 0.1.0
-generated: "2026-02-07T01:23:02.685376495Z"
+generated: "2026-02-07T14:07:12.560621267Z"
