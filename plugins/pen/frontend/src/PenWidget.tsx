@@ -1,11 +1,8 @@
 'use client';
 
+import { useObjectInteraction, useSocket, useWorld, Z_INDEX } from '@ubichill/sdk';
 import type { WorldEntity } from '@ubichill/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useWorld } from '../../core/hooks/useEntity';
-import { useObjectInteraction } from '../../core/hooks/useObjectInteraction';
-import { useSocket } from '../../core/hooks/useSocket';
-import { Z_INDEX } from '../../styles/layers';
 import { PEN_CONFIG } from './config';
 import { usePenCanvas } from './context/PenCanvasContext';
 import { PenIcon } from './PenIcon';
@@ -41,7 +38,7 @@ export const PenWidget: React.FC<PenWidgetProps> = ({ entity, isLocked, update, 
         hideCursor: true, // 持っている間カーソルを隠す
         singleHold: true, // 他のペンを持っていたら離す
         onAutoRelease: (ent: WorldEntity) => {
-            if (ent.type !== 'pen') return {};
+            if (ent.type !== 'pen:pen') return {};
 
             const pData = ent.data as unknown as PenData;
 
@@ -164,7 +161,7 @@ export const PenWidget: React.FC<PenWidgetProps> = ({ entity, isLocked, update, 
                 };
 
                 // 位置は (0,0) を基準にする（pointsが絶対座標のため）
-                createEntityRef.current('stroke', { x: 0, y: 0, z: 0, w: 0, h: 0, rotation: 0 }, strokeData);
+                createEntityRef.current('stroke', { x: 0, y: 0, z: 0, w: 0, h: 0, scale: 1, rotation: 0 }, strokeData);
             }
 
             penCanvasRef.current.setCurrentDrawing(null);

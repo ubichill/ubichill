@@ -1,15 +1,11 @@
 'use client';
 
-import {
-    type CreateInstanceRequest,
-    ENV_KEYS,
-    type Instance,
-    type RoomListItem,
-    SERVER_CONFIG,
-} from '@ubichill/shared';
+import { type CreateInstanceRequest, type Instance, type RoomListItem, SERVER_CONFIG } from '@ubichill/shared';
 import { useCallback, useEffect, useState } from 'react';
 
-const API_BASE = process.env[ENV_KEYS.API_URL] || SERVER_CONFIG.DEV_URL;
+const API_BASE =
+    process.env.NEXT_PUBLIC_BACKEND_URL ||
+    (typeof window !== 'undefined' && window.location.hostname !== 'localhost' ? '' : SERVER_CONFIG.DEV_URL);
 
 interface UseInstancesReturn {
     instances: Instance[];

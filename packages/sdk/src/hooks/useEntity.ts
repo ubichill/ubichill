@@ -3,8 +3,8 @@
 import type { WorldEntity } from '@ubichill/shared';
 import throttle from 'lodash.throttle';
 import { useCallback, useMemo, useRef } from 'react';
-import { useWorld } from '../contexts/WorldContext';
 import { useSocket } from './useSocket';
+import { useWorld } from './useWorld';
 
 /**
  * 特定のエンティティを操作するフック
@@ -51,7 +51,7 @@ export const useEntity = <T = Record<string, unknown>>(
      * サーバーに保存されず、他のクライアントに即座に配信される
      * 間引き処理付き (50ms)
      */
-    const syncStream = useMemo(
+    const syncStream: ReturnType<typeof throttle> = useMemo(
         () =>
             throttle((data: unknown) => {
                 if (!socket || !isConnected) return;
@@ -105,6 +105,3 @@ export const useEntity = <T = Record<string, unknown>>(
         isConnected,
     };
 };
-
-// Re-export useWorld from context
-export { useWorld } from '../contexts/WorldContext';

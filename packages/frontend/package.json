@@ -14,6 +14,10 @@
         "format": "biome format --write ."
     },
     "dependencies": {
+        "@ubichill/plugin-pen": "workspace:*",
+        "@ubichill/plugin-video-player": "workspace:*",
+        "@ubichill/plugin-cursor": "workspace:*",
+        "@ubichill/sdk": "workspace:*",
         "@ubichill/shared": "workspace:*",
         "icojs": "^0.20.1",
         "lodash.throttle": "^4.1.1",

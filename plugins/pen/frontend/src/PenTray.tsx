@@ -1,10 +1,8 @@
 'use client';
 
+import { useSocket, useWorld, Z_INDEX } from '@ubichill/sdk';
 import type React from 'react';
 import { useCallback } from 'react';
-import { useWorld } from '../../core/hooks/useEntity';
-import { useSocket } from '../../core/hooks/useSocket';
-import { Z_INDEX } from '../../styles/layers';
 import { DEFAULT_PENS, PEN_CONFIG } from './config';
 import type { PenEntity } from './types';
 
@@ -15,7 +13,7 @@ export const PenTray: React.FC = () => {
     const handleTrayClick = useCallback(() => {
         // 自分がロックしているペンがあれば解放する
         const myLockedPens = Array.from(entities.values()).filter(
-            (e): e is PenEntity => e.type === 'pen' && e.lockedBy === currentUser?.id,
+            (e): e is PenEntity => e.type === 'pen:pen' && e.lockedBy === currentUser?.id,
         );
 
         myLockedPens.forEach((pen) => {

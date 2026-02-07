@@ -62,6 +62,7 @@ export interface EntityTransform {
     z: number; // レイヤー順
     w: number; // 幅
     h: number; // 高さ
+    scale: number; // 拡大縮小
     rotation: number; // 回転角度（度）
 }
 
@@ -125,6 +126,8 @@ export interface RoomEnvironmentData {
 export interface WorldSnapshotPayload {
     entities: WorldEntity[];
     availableKinds: AvailableKind[];
+    /** アクティブなプラグインIDのリスト */
+    activePlugins: string[];
     environment: RoomEnvironmentData;
 }
 
@@ -185,6 +188,13 @@ export interface ServerToClientEvents {
 
     /** インスタンス終了通知 */
     'instance:closing': (reason: string) => void;
+
+    // ============================================
+    // Video Player Events (Server -> Client)
+    // ============================================
+
+    /** 動画プレイヤーの状態同期 */
+    'video-player:sync': (data: { currentIndex: number; isPlaying: boolean; currentTime: number }) => void;
 }
 
 /**
@@ -227,6 +237,13 @@ export interface ClientToServerEvents {
 
     /** エンティティを削除 */
     'entity:delete': (entityId: string) => void;
+
+    // ============================================
+    // Video Player Events (Client -> Server)
+    // ============================================
+
+    /** 動画プレイヤーの状態を同期 */
+    'video-player:sync': (data: { currentIndex: number; isPlaying: boolean; currentTime: number }) => void;
 }
 
 /**
@@ -296,6 +313,12 @@ export const SERVER_CONFIG = {
 
     /** 開発環境でのバックエンドURL */
     DEV_URL: 'http://localhost:3001',
+
+    /** Video Player開発環境URL */
+    VIDEO_PLAYER_DEV_URL: 'http://localhost:8000',
+
+    /** Video Player本番環境パス */
+    VIDEO_PLAYER_PROD_PATH: '/video-player-api',
 
     /** ルーム定義ディレクトリのデフォルト相対パス（バックエンドcwd基準） */
     ROOMS_DIR_DEFAULT: '../../rooms',

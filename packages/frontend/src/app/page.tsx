@@ -1,12 +1,12 @@
 'use client';
 
+import { CursorMenu } from '@ubichill/plugin-cursor';
+import { useSocket, useWorld } from '@ubichill/sdk';
 import type { AppAvatarDef, CursorState } from '@ubichill/shared';
+import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
-import { CursorMenu } from '@/components/CursorMenu';
 import { Lobby } from '@/components/lobby';
-import { useWorld } from '@/core/contexts/WorldContext';
 import { useCursorState } from '@/core/hooks/useCursorState';
-import { useSocket } from '@/core/hooks/useSocket';
 import * as styles from '@/styles/styles';
 
 type AppScreen = 'name' | 'lobby' | 'room';
@@ -275,9 +275,12 @@ export default function Home() {
                                     }}
                                 >
                                     {/* Custom Cursor Image for Remote User */}
-                                    <img
+                                    <Image
                                         src={remoteUrl}
                                         alt={`${user.name}'s cursor`}
+                                        width={64}
+                                        height={64}
+                                        unoptimized
                                         style={{
                                             maxWidth: '64px',
                                             maxHeight: '64px',
@@ -318,18 +321,25 @@ export default function Home() {
                 })}
                 {/* Custom Local Cursor */}
                 {localCursorUrl && (
-                    <img
+                    <Image
                         src={localCursorUrl}
                         alt="cursor"
+                        width={32}
+                        height={32}
+                        unoptimized
                         style={{
                             position: 'fixed',
                             left: mousePosition.x - localHotspot.x,
                             top: mousePosition.y - localHotspot.y,
                             pointerEvents: 'none',
                             zIndex: 9999,
+                            width: 'auto',
+                            height: 'auto',
                         }}
                     />
                 )}
+
+                {/* Entities and Plugins are handled by UbichillOverlay */}
             </div>
         </main>
     );

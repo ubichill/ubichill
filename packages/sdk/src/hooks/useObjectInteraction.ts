@@ -1,7 +1,7 @@
 import type { WorldEntity } from '@ubichill/shared';
 import { useCallback, useEffect } from 'react';
-import { useWorld } from '../contexts/WorldContext';
 import { useSocket } from './useSocket';
+import { useWorld } from './useWorld';
 
 interface InteractionOptions {
     /**
@@ -51,19 +51,13 @@ export const useObjectInteraction = (
     // ==========================================
     const releaseOthers = useCallback(() => {
         if (!options.singleHold) return;
-        // UserIDが必要
-        // contextから取れない場合は引数で渡すか、ここで取得する
-        // ここでは一旦簡易的に実装
 
         // 自分がロックしている他のエンティティを探す
         const myHeldEntities = Array.from(entities.values()).filter(
             (e) => e.lockedBy === currentUser?.id && e.id !== entityId,
-            // && e.type === entityType // 同じタイプだけにする？それとも全タイプ？「手は2つない」なら全タイプ
         );
 
         myHeldEntities.forEach((ent) => {
-            console.log(`[useObjectInteraction] Releasing other entity: ${ent.id}`);
-
             // 位置リセットなどのカスタムロジックはコールバックに委譲
             let additionalPatch: Partial<WorldEntity> = {};
             if (options.onAutoRelease) {

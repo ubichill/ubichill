@@ -10,7 +10,7 @@ import type {
 } from '@ubichill/shared';
 import { DEFAULTS } from '@ubichill/shared';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { useSocket } from '../hooks/useSocket';
+import { useSocket } from './useSocket';
 
 // ============================================
 // Types
@@ -21,6 +21,7 @@ export interface WorldContextType {
     ephemeralData: Map<string, unknown>;
     environment: RoomEnvironmentData;
     availableKinds: AvailableKind[];
+    activePlugins: string[];
     createEntity: <T = Record<string, unknown>>(
         type: string,
         transform: WorldEntity['transform'],
@@ -47,6 +48,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const [ephemeralData, setEphemeralData] = useState<Map<string, unknown>>(new Map());
     const [environment, setEnvironment] = useState<RoomEnvironmentData>(DEFAULTS.ROOM_ENVIRONMENT);
     const [availableKinds, setAvailableKinds] = useState<AvailableKind[]>([]);
+    const [activePlugins, setActivePlugins] = useState<string[]>([]);
 
     useEffect(() => {
         if (!socket) return;
@@ -60,6 +62,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             setEntities(newMap);
             setEnvironment(payload.environment);
             setAvailableKinds(payload.availableKinds);
+            setActivePlugins(payload.activePlugins || []);
         };
 
         // エンティティ作成を受信
@@ -73,7 +76,6 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         // エンティティパッチを受信（Reliable）
         const handleEntityPatched = (payload: EntityPatchPayload) => {
-            console.log('[WorldContext] Received entity:patched', payload);
             setEntities((prev) => {
                 const entity = prev.get(payload.entityId);
                 if (!entity) return prev;
@@ -120,20 +122,11 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             });
         };
 
-        socket.on('world:snapshot', (data) => {
-            console.log('[WorldContext] Received world:snapshot', data.entities.length);
-            handleWorldSnapshot(data);
-        });
-        socket.on('entity:created', (data) => {
-            console.log('[WorldContext] Received entity:created', data);
-            handleEntityCreated(data);
-        });
+        socket.on('world:snapshot', handleWorldSnapshot);
+        socket.on('entity:created', handleEntityCreated);
         socket.on('entity:patched', handleEntityPatched);
         socket.on('entity:ephemeral', handleEntityEphemeral);
-        socket.on('entity:deleted', (id) => {
-            console.log('[WorldContext] Received entity:deleted', id);
-            handleEntityDeleted(id);
-        });
+        socket.on('entity:deleted', handleEntityDeleted);
 
         return () => {
             socket.off('world:snapshot', handleWorldSnapshot);
@@ -166,7 +159,6 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 socket.emit('entity:create', payload as unknown as Omit<WorldEntity, 'id'>, (response) => {
                     if (response.success && response.entity) {
                         const newEntity = response.entity as WorldEntity<T>;
-                        // 自分のステートも更新（サーバーからのブロードキャストは自分には来ないため）
                         setEntities((prev) => {
                             const newMap = new Map(prev);
                             newMap.set(newEntity.id, newEntity as unknown as WorldEntity);
@@ -187,10 +179,9 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         (entityId: string, patch: EntityPatchPayload['patch']) => {
             if (!socket || !isConnected) return;
 
-            // 1. 即座にローカルステートを更新（Optimistic UI）
             setEntities((prev) => {
                 const entity = prev.get(entityId);
-                if (!entity) return prev; // 存在しないエンティティのパッチは無視
+                if (!entity) return prev;
 
                 const newMap = new Map(prev);
                 const updatedEntity: WorldEntity = {
@@ -205,7 +196,6 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 return newMap;
             });
 
-            // 2. サーバーへ送信
             socket.emit('entity:patch', { entityId, patch });
         },
         [socket, isConnected],
@@ -215,7 +205,6 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         (entityId: string) => {
             if (!socket || !isConnected) return;
 
-            // ローカルから即削除
             setEntities((prev) => {
                 const newMap = new Map(prev);
                 newMap.delete(entityId);
@@ -233,12 +222,23 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             ephemeralData,
             environment,
             availableKinds,
+            activePlugins,
             createEntity,
             patchEntity,
             deleteEntity,
             isConnected,
         }),
-        [entities, ephemeralData, environment, availableKinds, createEntity, patchEntity, deleteEntity, isConnected],
+        [
+            entities,
+            ephemeralData,
+            environment,
+            availableKinds,
+            activePlugins,
+            createEntity,
+            patchEntity,
+            deleteEntity,
+            isConnected,
+        ],
     );
 
     return <WorldContext.Provider value={contextValue}>{children}</WorldContext.Provider>;

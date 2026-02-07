@@ -97,6 +97,10 @@ class RoomRegistry {
                 worldSize: env.worldSize ?? DEFAULTS.ROOM_ENVIRONMENT.worldSize,
             },
             capacity: def.spec.capacity,
+            dependencies: def.spec.dependencies?.map((d) => ({
+                name: d.name,
+                source: d.source,
+            })),
             initialEntities: def.spec.initialEntities.map((e) => ({
                 ...e,
                 data: e.data ?? {},

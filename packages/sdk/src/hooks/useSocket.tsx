@@ -17,7 +17,7 @@ import { io, type Socket } from 'socket.io-client';
 // Socket type definition
 type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
-interface SocketContextValue {
+export interface SocketContextValue {
     socket: AppSocket | null;
     isConnected: boolean;
     users: Map<string, User>;
@@ -74,7 +74,6 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         });
 
         socket.on('users:update', (updatedUsers) => {
-            // 配列をMapに変換
             const userMap = new Map<string, User>();
             updatedUsers.forEach((u) => {
                 userMap.set(u.id, u);
@@ -101,7 +100,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         socket.on('cursor:moved', ({ userId, position, state }) => {
             setUsers((prev) => {
                 const user = prev.get(userId);
-                if (!user) return prev; // まだユーザー情報がない場合は更新できない（通常ありえないが）
+                if (!user) return prev;
 
                 // 位置情報と状態を更新
                 const newMap = new Map(prev);

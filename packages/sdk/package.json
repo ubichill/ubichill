@@ -1,0 +1,25 @@
+{
+    "name": "@ubichill/sdk",
+    "version": "1.0.0",
+    "description": "Ubichill Plugin SDK - Tools and hooks for building Ubichill plugins",
+    "main": "src/index.ts",
+    "types": "src/index.ts",
+    "exports": {
+        ".": "./src/index.ts"
+    },
+    "peerDependencies": {
+        "@ubichill/shared": "workspace:*",
+        "react": "^19.0.0",
+        "socket.io-client": "^4.8.3"
+    },
+    "dependencies": {
+        "lodash.throttle": "^4.1.1"
+    },
+    "devDependencies": {
+        "@types/lodash.throttle": "^4.1.9",
+        "@types/node": "^22.0.0",
+        "@types/react": "^19.2.10",
+        "@types/react-dom": "^19.2.3",
+        "typescript": "^5.9.3"
+    }
+}

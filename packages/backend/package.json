@@ -5,7 +5,7 @@
     "description": "Backend server for Ubichill",
     "main": "dist/index.js",
     "scripts": {
-        "dev": "wait-on ../shared/dist/index.js && ts-node-dev --respawn --transpile-only src/index.ts",
+        "dev": "wait-on ../shared/dist/index.js && ts-node-dev --respawn --transpile-only --debounce 1000 src/index.ts",
         "build": "tsc",
         "start": "node dist/index.js",
         "clean": "rimraf dist",
@@ -14,6 +14,7 @@
         "format": "biome format --write ."
     },
     "dependencies": {
+        "@distube/ytdl-core": "^4.16.12",
         "@ubichill/shared": "workspace:*",
         "cors": "^2.8.5",
         "dotenv": "^17.2.3",

@@ -1,5 +1,6 @@
 {
     "compilerOptions": {
+        "target": "ES2017",
         "lib": [
             "dom",
             "dom.iterable",
@@ -16,36 +17,17 @@
         "isolatedModules": true,
         "jsx": "react-jsx",
         "incremental": true,
-        "plugins": [
-            {
-                "name": "next"
-            }
-        ],
         "paths": {
             "@/*": [
-                "./src/*"
-            ],
-            "@styled-system/*": [
-                "./styled-system/*"
-            ],
-            "@styles/*": [
-                "./src/styles/*"
-            ],
-            "@/styled-system/*": [
-                "./styled-system/*"
+                "./*"
             ],
             "@ubichill/sdk": [
-                "../sdk/src/index.ts"
+                "../../../packages/sdk/src/index.ts"
             ]
-        },
-        "target": "ES2017"
+        }
     },
     "include": [
-        "next-env.d.ts",
-        "**/*.ts",
-        "**/*.tsx",
-        ".next/types/**/*.ts",
-        ".next/dev/types/**/*.ts"
+        "."
     ],
     "exclude": [
         "node_modules"

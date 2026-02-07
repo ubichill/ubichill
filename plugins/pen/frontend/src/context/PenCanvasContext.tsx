@@ -1,10 +1,9 @@
 'use client';
 
+import { useSocket, useWorld } from '@ubichill/sdk';
 import getStroke from 'perfect-freehand';
 import type React from 'react';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { useWorld } from '../../../core/contexts/WorldContext';
-import { useSocket } from '../../../core/hooks/useSocket';
 import type { DrawingData, StrokeData as Stroke } from '../types';
 
 // ============================================

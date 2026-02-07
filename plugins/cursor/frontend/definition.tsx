@@ -1,6 +1,6 @@
 import type { WorldEntity } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
-import type { WidgetDefinition } from '../types';
+import type { WidgetDefinition } from '@ubichill/sdk';
 import defaultCursor from './assets/default_cursor.png';
 import type { CursorData } from './types';
 
