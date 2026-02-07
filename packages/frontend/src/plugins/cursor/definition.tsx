@@ -13,9 +13,9 @@ const CursorWidget: React.FC<{
     const [isVisible, setIsVisible] = useState(false);
 
     useEffect(() => {
-        // 画像URLがある場合のみ適用
-        const cursorUrl = entity.data.url || defaultCursor.src;
-        if (cursorUrl) {
+        // 画像URLがある場合のみ適用（デフォルトカーソルは除外）
+        const hasCustomCursor = !!entity.data.url && entity.data.url !== defaultCursor.src;
+        if (hasCustomCursor) {
             document.body.style.cursor = 'none';
         }
 
