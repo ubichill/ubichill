@@ -21,23 +21,39 @@ export default function Home() {
     const cursorState = useCursorState();
 
     // ローカルカーソル設定 (AppAvatarDef)
-    // 初期値はcurrentUserから復元できると良いが、今は簡易的にnullスタート
-    const [localAvatar, setLocalAvatar] = useState<AppAvatarDef>({ states: {} });
+    // サーバー側にavatarがあればそれを初期値として利用し、なければ空のstatesで初期化
+    const [localAvatar, _setLocalAvatar] = useState<AppAvatarDef>(() => currentUser?.avatar ?? { states: {} });
+    const [hasUserModifiedAvatar, setHasUserModifiedAvatar] = useState(false);
+    const setLocalAvatar = (value: AppAvatarDef | ((prev: AppAvatarDef) => AppAvatarDef)) => {
+        setHasUserModifiedAvatar(true);
+        _setLocalAvatar(value as AppAvatarDef);
+    };
 
     const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
 
     // カーソル画像のサーバー同期
+    // 1. サーバー側avatarをローカルに取り込む（ユーザーがまだ編集していない場合のみ）
     useEffect(() => {
-        if (currentUser?.id && isConnected) {
-            // ローカルのavatar設定が変更されたらサーバーに同期
-            // 比較が難しいので、変更があった体で送る（頻度調整が必要かも）
-            // deep equal checkなどを入れるのが理想だが、一旦簡易実装
-            if (JSON.stringify(currentUser.avatar) !== JSON.stringify(localAvatar)) {
-                updateUser({ avatar: localAvatar });
-            }
+        if (currentUser?.avatar && !hasUserModifiedAvatar) {
+            _setLocalAvatar(currentUser.avatar);
         }
-    }, [localAvatar, isConnected, currentUser?.id, updateUser, currentUser?.avatar]);
+    }, [currentUser?.avatar, hasUserModifiedAvatar]);
 
+    // 2. ユーザーがローカルでavatarを変更した後のみサーバーに同期
+    useEffect(() => {
+        if (!currentUser?.id || !isConnected) {
+            return;
+        }
+        if (!hasUserModifiedAvatar) {
+            // ユーザーがまだローカル設定を変更していない場合はサーバーを上書きしない
+            return;
+        }
+        // ローカルのavatar設定が変更されたらサーバーに同期
+        // deep equal checkなどを入れるのが理想だが、一旦簡易実装
+        if (JSON.stringify(currentUser.avatar) !== JSON.stringify(localAvatar)) {
+            updateUser({ avatar: localAvatar });
+        }
+    }, [localAvatar, isConnected, currentUser?.id, updateUser, currentUser?.avatar, hasUserModifiedAvatar]);
     // 名前入力完了
     const handleNameSubmit = (e: React.FormEvent) => {
         e.preventDefault();
