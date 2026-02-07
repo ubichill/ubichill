@@ -222,7 +222,8 @@ export const VideoPlayer: React.FC<Props> = ({ entity, isLocked, update }) => {
                                                 typeof errorData.response.data === 'object'
                                             ) {
                                                 try {
-                                                    const detail = (errorData.response.data as any).detail;
+                                                    const detail = (errorData.response.data as { detail?: unknown })
+                                                        .detail;
                                                     if (typeof detail === 'object' && detail.message) {
                                                         alert(`動画エラー: ${detail.message}`);
                                                         return;
@@ -282,7 +283,7 @@ export const VideoPlayer: React.FC<Props> = ({ entity, isLocked, update }) => {
 
                 if (error && typeof error === 'object' && 'response' in error) {
                     try {
-                        const response = (error as any).response;
+                        const response = (error as { response?: { data?: { detail?: unknown } } }).response;
                         if (response?.data?.detail) {
                             const detail = response.data.detail;
                             if (typeof detail === 'object' && detail.message) {

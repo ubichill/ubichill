@@ -9,7 +9,7 @@ import { INSTALLED_PLUGINS } from '@/plugins/registry';
 
 export const UbichillOverlay: React.FC = () => {
     const { isConnected } = useSocket();
-    const { entities } = useWorld();
+    const { entities, activePlugins } = useWorld();
 
     useRoomInitializer(DEFAULTS.ROOM_ID);
 
@@ -23,7 +23,6 @@ export const UbichillOverlay: React.FC = () => {
     });
 
     // プラグインの SingletonComponent を自動的にレンダリング (アクティブなプラグインのみ)
-    const { activePlugins } = useWorld();
     const renderPluginSingletons = INSTALLED_PLUGINS.filter(
         (plugin) => activePlugins.includes(plugin.id) && plugin.SingletonComponent,
     ).map((plugin) => {
