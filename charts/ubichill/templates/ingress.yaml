@@ -46,7 +46,7 @@ spec:
                 {{- if and .backend (hasKey .backend "service") }}
                 name: {{ if eq .backend.service.name "backend" }}{{ include "ubichill.fullname" $ }}-backend{{ else if eq .backend.service.name "video-player" }}{{ include "ubichill.fullname" $ }}-video-player-backend{{ else }}{{ include "ubichill.fullname" $ }}-frontend{{ end }}
                 port:
-                  number: {{ .backend.service.port }}
+                  number: {{ if kindIs "map" .backend.service.port }}{{ .backend.service.port.number }}{{ else }}{{ .backend.service.port }}{{ end }}
                 {{- else }}
                 # Default to frontend if not specified
                 name: {{ include "ubichill.fullname" $ }}-frontend
