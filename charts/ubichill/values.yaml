@@ -271,3 +271,8 @@ monitoring:
     enabled: false
     interval: 30s
     scrapeTimeout: 10s
+
+# Video Player Plugin (Subchart)
+video-player:
+  enabled: false # Default to disabled, enabled via values-dev/prod or ArgoCD
+  # Other values will be inherited from the subchart's default values
