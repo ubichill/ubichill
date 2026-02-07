@@ -74,6 +74,27 @@ export class UserManager {
     }
 
     /**
+     * ユーザー情報を更新（汎用）
+     */
+    updateUser(userId: string, patch: Partial<User>): User | null {
+        const user = this.users.get(userId);
+        if (!user) return null;
+
+        // IDは変更不可
+        const { id, ...safePatch } = patch;
+
+        // オブジェクトを更新
+        const updatedUser = {
+            ...user,
+            ...safePatch,
+            lastActiveAt: Date.now(),
+        };
+
+        this.users.set(userId, updatedUser);
+        return updatedUser;
+    }
+
+    /**
      * ユーザー総数を取得
      */
     getUserCount(): number {

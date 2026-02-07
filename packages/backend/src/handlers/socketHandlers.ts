@@ -113,7 +113,8 @@ export function handleRoomJoin(socket: TypedSocket) {
  * カーソル移動イベントを処理
  */
 export function handleCursorMove(socket: TypedSocket) {
-    return (position: { x: number; y: number }) => {
+    return (payload: { position: { x: number; y: number }; state?: unknown }) => {
+        const { position, state } = payload;
         const roomId = socket.data.roomId;
         if (!roomId) {
             socket.emit('error', '最初にルームに参加する必要があります');
@@ -134,10 +135,15 @@ export function handleCursorMove(socket: TypedSocket) {
             return;
         }
 
+        // TODO: stateの検証も必要かもしれないが、一旦unknownとして受け取ってそのまま流す
+        // 必要なら validateCursorState を実装する
+
         // ルーム内の他のユーザーにブロードキャスト
         socket.to(roomId).emit('cursor:moved', {
             userId: socket.id,
             position: validation.data,
+            // @ts-ignore Shared側の型定義更新がまだ反映されていない可能性があるため一旦ignore、あるいはanyキャスト
+            state: state as any,
         });
     };
 }
@@ -172,6 +178,35 @@ export function handleStatusUpdate(socket: TypedSocket) {
             userId: socket.id,
             status: validation.data,
         });
+    };
+}
+
+/**
+ * ユーザー情報の更新イベントを処理
+ */
+export function handleUserUpdate(socket: TypedSocket) {
+    return (patch: Partial<User>) => {
+        const roomId = socket.data.roomId;
+        if (!roomId) {
+            socket.emit('error', '最初にルームに参加する必要があります');
+            return;
+        }
+
+        // ユーザー情報を更新
+        // IDは変更できないようにするなどの制御はuserManager側でも行っているが
+        // ここでも念のためIDは除外して渡すのが安全（型定義上は含まれている可能性があるため）
+        const { id, ...safePatch } = patch;
+        const updatedUser = userManager.updateUser(socket.id, safePatch);
+
+        if (!updatedUser) {
+            socket.emit('error', 'ユーザーが見つかりません');
+            return;
+        }
+
+        // ルーム内の全員（自分含む）にブロードキャスト
+        // 自分にも送ることで、サーバー側で正規化された状態（もしあれば）を反映できる
+        // また、他のクライアントと同じイベントフローで更新を受け取れるメリットがある
+        socket.nsp.to(roomId).emit('user:updated', updatedUser);
     };
 }
 

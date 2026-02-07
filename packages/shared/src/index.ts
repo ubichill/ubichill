@@ -16,12 +16,28 @@ export interface CursorPosition {
 }
 
 /**
+ * カーソルの状態 (CSS cursor values + customized)
+ */
+export type CursorState = 'default' | 'pointer' | 'text' | 'wait' | 'help' | 'not-allowed' | 'move' | 'grabbing';
+
+/**
+ * アプリケーション側で定義するアバター（カーソル）設定
+ */
+export interface AppAvatarDef {
+    states: Partial<Record<CursorState, { url: string; hotspot: { x: number; y: number } }>>;
+}
+
+/**
  * ユーザー情報
  */
 export interface User {
     id: string;
     name: string;
     avatarUrl?: string;
+    /** @deprecated Use avatar.states.default instead */
+    cursorUrl?: string | null;
+    avatar?: AppAvatarDef;
+    cursorState?: CursorState;
     status: UserStatus;
     position: CursorPosition;
     lastActiveAt: number;
@@ -124,10 +140,13 @@ export interface ServerToClientEvents {
     'user:left': (userId: string) => void;
 
     /** ユーザーのカーソル位置更新 */
-    'cursor:moved': (data: { userId: string; position: CursorPosition }) => void;
+    'cursor:moved': (data: { userId: string; position: CursorPosition; state?: CursorState }) => void;
 
     /** ユーザーのステータス更新 */
     'status:changed': (data: { userId: string; status: UserStatus }) => void;
+
+    /** ユーザー情報の更新 */
+    'user:updated': (user: User) => void;
 
     /** エラー通知 */
     error: (message: string) => void;
@@ -176,10 +195,13 @@ export interface ClientToServerEvents {
     'room:leave': () => void;
 
     /** カーソル位置を更新 */
-    'cursor:move': (position: CursorPosition) => void;
+    'cursor:move': (data: { position: CursorPosition; state?: CursorState }) => void;
 
     /** ステータスを更新 */
     'status:update': (status: UserStatus) => void;
+
+    /** ユーザー情報を更新 */
+    'user:update': (patch: Partial<User>) => void;
 
     // ============================================
     // UEP Events (Client -> Server)

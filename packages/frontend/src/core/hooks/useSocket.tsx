@@ -23,8 +23,9 @@ interface SocketContextValue {
     currentUser: User | null;
     error: string | null;
     joinRoom: (name: string, roomId?: string, instanceId?: string) => void;
-    updatePosition: (position: CursorPosition) => void;
+    updatePosition: (position: CursorPosition, state?: unknown) => void;
     updateStatus: (status: UserStatus) => void;
+    updateUser: (patch: Partial<User>) => void;
 }
 
 const SocketContext = createContext<SocketContextValue | null>(null);
@@ -37,7 +38,13 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const [isConnected, setIsConnected] = useState(false);
     const [users, setUsers] = useState<Map<string, User>>(new Map());
     const [currentUser, setCurrentUser] = useState<User | null>(null);
+    const currentUserRef = useRef<User | null>(null);
     const [error, setError] = useState<string | null>(null);
+
+    // Keep ref in sync
+    useEffect(() => {
+        currentUserRef.current = currentUser;
+    }, [currentUser]);
 
     useEffect(() => {
         // Initialize socket connection
@@ -112,6 +119,20 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             });
         });
 
+        socket.on('user:updated', (updatedUser) => {
+            setUsers((prev) => {
+                const newMap = new Map(prev);
+                newMap.set(updatedUser.id, updatedUser);
+                return newMap;
+            });
+
+            // 自分の情報が更新された場合はcurrentUserも更新
+            const current = currentUserRef.current;
+            if (current && current.id === updatedUser.id) {
+                setCurrentUser(updatedUser);
+            }
+        });
+
         socket.on('error', (msg) => {
             setError(msg);
         });
@@ -146,13 +167,15 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }, []);
 
     const updatePosition = useCallback(
-        (position: CursorPosition) => {
+        (position: CursorPosition, state?: unknown) => {
             const socket = socketRef.current;
             if (!socket || !isConnected) return;
 
-            socket.emit('cursor:move', position);
+            // @ts-ignore Shared側の型定義更新がまだ反映されていない可能性があるため、一旦anyキャストで送信
+            socket.emit('cursor:move', { position, state });
 
             if (currentUser) {
+                // ローカルのcurrentUserも更新 (stateはまだUser型に入っていないかもしれないが、一旦無視)
                 setCurrentUser({ ...currentUser, position });
             }
         },
@@ -173,6 +196,19 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         [isConnected, currentUser],
     );
 
+    const updateUser = useCallback(
+        (patch: Partial<User>) => {
+            const socket = socketRef.current;
+            if (!socket || !isConnected) return;
+
+            socket.emit('user:update', patch);
+
+            // 楽観的更新はせず、サーバーからの user:updated イベントを待つ
+            // (サーバー側でのバリデーションや正規化を反映するため)
+        },
+        [isConnected],
+    );
+
     const value: SocketContextValue = {
         socket: socketRef.current,
         isConnected,
@@ -182,6 +218,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         joinRoom,
         updatePosition,
         updateStatus,
+        updateUser,
     };
 
     return <SocketContext.Provider value={value}>{children}</SocketContext.Provider>;

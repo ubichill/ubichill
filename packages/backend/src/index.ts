@@ -15,6 +15,7 @@ import {
     handleEntityPatch,
     handleRoomJoin,
     handleStatusUpdate,
+    handleUserUpdate,
 } from './handlers/socketHandlers';
 import instancesRouter from './routes/instances';
 import roomsRouter from './routes/rooms';
@@ -78,6 +79,7 @@ io.on('connection', (socket) => {
     socket.on('room:join', handleRoomJoin(socket));
     socket.on('cursor:move', handleCursorMove(socket));
     socket.on('status:update', handleStatusUpdate(socket));
+    socket.on('user:update', handleUserUpdate(socket));
     socket.on('disconnect', handleDisconnect(socket));
 
     // UEP (Ubichill Entity Protocol) イベントハンドラー
