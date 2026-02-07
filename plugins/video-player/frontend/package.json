@@ -1,0 +1,19 @@
+{
+    "name": "@ubichill/plugin-video-player",
+    "version": "1.0.0",
+    "main": "src/index.ts",
+    "types": "src/index.ts",
+    "peerDependencies": {
+        "@ubichill/sdk": "workspace:*",
+        "@ubichill/shared": "workspace:*",
+        "react": "^19.0.0"
+    },
+    "devDependencies": {
+        "@types/node": "^22.0.0",
+        "@types/react": "^19.2.10",
+        "@types/react-dom": "^19.2.3"
+    },
+    "dependencies": {
+        "hls.js": "^1.6.15"
+    }
+}

@@ -1,0 +1,371 @@
+/* Video Player Styles - Compact and Minimal */
+
+/* Main Container */
+.videoPlayerContainer {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90%;
+    max-width: 1200px;
+    pointer-events: auto;
+    z-index: 1000;
+}
+
+/* Horizontal Layout */
+.mainContent {
+    display: flex;
+    flex-direction: row;
+    gap: 12px;
+    align-items: flex-end;
+}
+
+.playerSection {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+/* Video Display */
+.videoDisplay {
+    width: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.videoElement {
+    width: 100%;
+    height: auto;
+    max-height: 300px;
+    object-fit: contain;
+    display: block;
+}
+
+/* Player Control Bar */
+.playerControl {
+    background: rgba(20, 20, 20, 0.95);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 8px 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.progressContainer {
+    width: 100%;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+    cursor: pointer;
+    margin-bottom: 8px;
+    transition: height 0.2s;
+}
+
+.progressContainer:hover {
+    height: 6px;
+}
+
+.progressBar {
+    height: 100%;
+    background: #007aff;
+    border-radius: 2px;
+    transition: width 0.1s;
+}
+
+/* Control Row */
+.controlRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+/* Track Info */
+.trackInfo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+}
+
+.trackThumb {
+    width: 36px;
+    height: 36px;
+    border-radius: 4px;
+    object-fit: cover;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.trackText {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.trackTitle {
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.trackTime {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+/* Play Controls */
+.playControls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.controlBtn {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.8);
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.controlBtn:hover:not(:disabled) {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.controlBtn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.controlBtn.active {
+    color: #007aff;
+}
+
+.playBtn {
+    background: #007aff;
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
+}
+
+.playBtn:hover:not(:disabled) {
+    background: #0056b3;
+    transform: scale(1.05);
+}
+
+.playBtn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Extra Controls */
+.extraControls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    justify-content: flex-end;
+}
+
+.volumeControl {
+    width: 60px;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+    appearance: none;
+}
+
+.volumeControl::-webkit-slider-thumb {
+    appearance: none;
+    width: 10px;
+    height: 10px;
+    background: #fff;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.volumeControl::-moz-range-thumb {
+    width: 10px;
+    height: 10px;
+    background: #fff;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+}
+
+/* Playlist Panel */
+.playlistPanel {
+    width: 300px;
+    max-height: 500px;
+    background: rgba(20, 20, 20, 0.95);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.playlistHeader {
+    padding: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.playlistTitle {
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+}
+
+.playlistSearch {
+    padding: 8px 12px;
+    display: flex;
+    gap: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.playlistInput {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    padding: 6px 10px;
+    color: #fff;
+    font-size: 12px;
+    outline: none;
+}
+
+.playlistInput::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.playlistInput:focus {
+    border-color: #007aff;
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.playlistSearchBtn {
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: rgba(255, 255, 255, 0.8);
+    cursor: pointer;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.playlistSearchBtn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.playlistSearchBtn:disabled {
+    opacity: 0.5;
+}
+
+.playlistList {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+}
+
+.playlistItem {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    margin-bottom: 4px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.playlistItem:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.playlistItemActive {
+    background: rgba(0, 122, 255, 0.2);
+}
+
+.playlistThumb {
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    object-fit: cover;
+}
+
+.playlistInfo {
+    flex: 1;
+    min-width: 0;
+}
+
+.playlistItemTitle {
+    font-size: 11px;
+    font-weight: 500;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.playlistItemDuration {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.playingIndicator {
+    color: #007aff;
+}
+
+.playlistAddBtn,
+.playlistDeleteBtn {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.6);
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+.playlistAddBtn:hover,
+.playlistDeleteBtn:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.playlistEmpty {
+    padding: 24px;
+    text-align: center;
+}
+
+.playlistEmptyText {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.5);
+}

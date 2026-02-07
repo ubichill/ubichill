@@ -26,17 +26,23 @@ spec:
       source:
         type: repository
         path: "packages/pen"
-  
+
   initialEntities:
-    - kind: "pen:pen"
+    - kind: "video-player"
       transform:
-        x: 600
-        y: 400
-        z: 1
+        x: 800
+        y: 100
+        z: 2
         scale: 1
         rotation: 0
       data:
-        color: "#E6E6E6"
+        playlist: []
+        currentIndex: 0
+        isPlaying: false
+        volume: 0.7
+        currentTime: 0
+        loop: 'none'
+        shuffle: false
   
   permissions:
     allowGuestCreate: true
