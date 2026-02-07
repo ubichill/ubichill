@@ -206,7 +206,6 @@ export default function Home() {
                     const remoteAvatarState = user.avatar?.states?.[remoteState] || user.avatar?.states?.default;
                     const remoteUrl = remoteAvatarState?.url || user.cursorUrl;
                     const remoteHotspot = remoteAvatarState?.hotspot || { x: 0, y: 0 };
-
                     return (
                         <div
                             key={user.id}
@@ -214,7 +213,13 @@ export default function Home() {
                             style={{
                                 left: user.position.x,
                                 top: user.position.y,
-                                transform: 'translate(-50%, -50%)', // 基本は中心(?)いや、ホットスポット次第
+                                // Remove translate(-50%, -50%) from default style if present, or override it.
+                                // styles.cursor might have default transforms, so we might need to be careful.
+                                // Actually styles.cursor does NOT have transform.
+                                // But previous code added transform: 'translate(-50%, -50%)'.
+                                // We will use top-left positioning and shift by hotspot.
+                                transform: 'none',
+
                                 // 画像がある場合はデフォルトのスタイルを無効化
                                 backgroundColor: remoteUrl ? 'transparent' : undefined,
                                 width: remoteUrl ? 'auto' : undefined,
@@ -225,7 +230,11 @@ export default function Home() {
                             }}
                         >
                             {remoteUrl ? (
-                                <>
+                                <div style={{
+                                    position: 'relative',
+                                    // ホットスポット分だけずらす
+                                    transform: `translate(${-remoteHotspot.x}px, ${-remoteHotspot.y}px)`,
+                                }}>
                                     {/* Custom Cursor Image for Remote User */}
                                     <img
                                         src={remoteUrl}
@@ -234,11 +243,6 @@ export default function Home() {
                                             maxWidth: '64px',
                                             maxHeight: '64px',
                                             pointerEvents: 'none',
-                                            // ホットスポット補正
-                                            // デフォルトカーソル(CSS)は左上基準だが、このDOM要素は translate(-50%, -50%) で配置されているため
-                                            // その分を考慮しつつ、ホットスポット分ずらす必要がある
-                                            // translate(-50%, -50%) を打ち消して左上基準にし、そこから -hotspot する
-                                            transform: `translate(calc(50% - ${remoteHotspot.x}px), calc(50% - ${remoteHotspot.y}px))`,
                                             display: 'block',
                                         }}
                                     />
@@ -256,10 +260,19 @@ export default function Home() {
                                     >
                                         {user.name}
                                     </span>
-                                </>
+                                </div>
                             ) : (
                                 /* Default Cursor Label (or shape) */
-                                <span className={styles.cursorLabel}>{user.name}</span>
+                                <span
+                                    className={styles.cursorLabel}
+                                    style={{
+                                        top: '100%',
+                                        marginTop: '4px',
+                                        transform: 'translateX(-50%)'
+                                    }}
+                                >
+                                    {user.name}
+                                </span>
                             )}
                         </div>
                     );

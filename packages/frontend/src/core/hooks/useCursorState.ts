@@ -24,29 +24,45 @@ export const useCursorState = (): CursorState => {
 
             let newState: CursorState = 'default';
 
-            if (cursor === 'pointer') newState = 'pointer';
-            else if (cursor === 'text') newState = 'text';
-            else if (cursor === 'wait' || cursor === 'progress') newState = 'wait';
-            else if (cursor === 'help') newState = 'help';
-            else if (cursor === 'not-allowed' || cursor === 'no-drop') newState = 'not-allowed';
-            else if (cursor === 'move') newState = 'move';
-            else if (cursor === 'grabbing') newState = 'grabbing';
-            else if (cursor === 'auto') {
-                // autoの場合、タグ名や属性から推測
-                const tagName = target.tagName.toLowerCase();
-                const role = target.getAttribute('role');
-                const type = target.getAttribute('type');
+            // cursor: noneの場合は要素から推測する
+            if (cursor === 'none' || cursor === 'auto') {
+                // 親要素を遡ってインタラクティブな要素を探す
+                let current: Element | null = target;
+                while (current) {
+                    const tagName = current.tagName.toLowerCase();
+                    const role = current.getAttribute('role');
+                    const type = current.getAttribute('type');
+                    const contentEditable = current.getAttribute('contenteditable');
 
-                if (tagName === 'a' || tagName === 'button' || role === 'button') {
-                    newState = 'pointer';
-                } else if (
-                    tagName === 'input' &&
-                    (type === 'text' || type === 'email' || type === 'password' || !type)
-                ) {
-                    newState = 'text';
-                } else if (tagName === 'textarea') {
-                    newState = 'text';
+                    if (tagName === 'a' || tagName === 'button' || role === 'button' || role === 'link' || current.hasAttribute('onclick')) {
+                        newState = 'pointer';
+                        break;
+                    } else if (
+                        (tagName === 'input' && (type === 'text' || type === 'email' || type === 'password' || !type)) ||
+                        tagName === 'textarea' ||
+                        contentEditable === 'true'
+                    ) {
+                        newState = 'text';
+                        break;
+                    } else if (window.getComputedStyle(current).cursor === 'pointer') {
+                        // 親要素が明示的にpointerを持っている場合（ただしnoneで上書きされていると取れないので、これは補助的）
+                        newState = 'pointer';
+                        break;
+                    }
+
+                    // 探索範囲を限定（bodyまで行ったら終わり）
+                    if (current === document.body) break;
+                    current = current.parentElement;
                 }
+            } else {
+                // 明示的なカーソル指定がある場合（none以外）
+                if (cursor === 'pointer') newState = 'pointer';
+                else if (cursor === 'text') newState = 'text';
+                else if (cursor === 'wait' || cursor === 'progress') newState = 'wait';
+                else if (cursor === 'help') newState = 'help';
+                else if (cursor === 'not-allowed' || cursor === 'no-drop') newState = 'not-allowed';
+                else if (cursor === 'move') newState = 'move';
+                else if (cursor === 'grabbing') newState = 'grabbing';
             }
 
             setCursorState(newState);
