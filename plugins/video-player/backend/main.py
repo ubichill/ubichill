@@ -7,6 +7,7 @@ from typing import Dict, Any
 import re
 import os
 from urllib.parse import urljoin, quote
+from fastapi.requests import Request
 
 app = FastAPI(title="Ubichill Video Player API", version="1.0.0")
 
@@ -77,7 +78,7 @@ async def search_tracks(q: str, limit: int = 10):
         
 
 @app.get("/api/stream/info/{video_id}")
-async def get_video_info(video_id: str):
+async def get_video_info(video_id: str, request: Request):
     """動画情報を取得"""
     try:
         ydl_opts: Dict[str, Any] = {
@@ -90,13 +91,16 @@ async def get_video_info(video_id: str):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
             
+            # リクエストのベースURLを取得して完全なURLを生成
+            base_url = f"{request.url.scheme}://{request.url.netloc}"
+            
             return {
                 "id": info.get("id"),
                 "title": info.get("title", "Unknown"),
                 "thumbnail": info.get("thumbnail", ""),
                 "duration": info.get("duration", 0),
                 "author": info.get("uploader", "Unknown"),
-                "streamUrl": f"/api/stream/video/{video_id}"
+                "streamUrl": f"{base_url}/api/stream/video/{video_id}"
             }
     except Exception as e:
         error_msg = str(e)
@@ -106,6 +110,29 @@ async def get_video_info(video_id: str):
             raise HTTPException(status_code=404, detail=f"Video not found: {video_id}")
         else:
             raise HTTPException(status_code=500, detail=f"Failed to get video info: {error_msg}")
+
+@app.get("/api/stream/popular")
+async def get_popular_tracks():
+    """人気トラックを返す（サンプル）"""
+    # 実際のプロダクションでは、データベースやキャッシュから取得
+    popular_tracks = [
+        {
+            "id": "dQw4w9WgXcQ",
+            "title": "Rick Astley - Never Gonna Give You Up",
+            "thumbnail": "https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg",
+            "duration": 213,
+            "author": "Rick Astley"
+        },
+        {
+            "id": "9bZkp7q19f0", 
+            "title": "PSY - GANGNAM STYLE",
+            "thumbnail": "https://img.youtube.com/vi/9bZkp7q19f0/maxresdefault.jpg",
+            "duration": 252,
+            "author": "officialpsy"
+        }
+    ]
+    return popular_tracks
+
 
 # ヘルパー関数
 def _rewrite_manifest_urls(content: str, base_url: str) -> str:
