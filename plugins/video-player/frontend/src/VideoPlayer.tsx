@@ -29,11 +29,10 @@ interface Props {
     update: (patch: Partial<WorldEntity<MusicPlayerState>>) => void;
 }
 
-const API_BASE =
-    process.env.NEXT_PUBLIC_VIDEO_PLAYER_BACKEND_URL ||
-    (typeof window !== 'undefined' && window.location.hostname !== 'localhost'
-        ? '/video-player-api/api/stream' // 本番環境ではIngressパス経由
-        : 'http://localhost:8000'); // 開発環境
+// ubichill本体と同じパターン：本番環境では相対パス、開発環境のみlocalhost
+const API_BASE = typeof window !== 'undefined' && window.location.hostname === 'localhost'
+    ? 'http://localhost:8000' // 開発環境のみ
+    : '/video-player-api'; // 本番環境（Kubernetesなど）
 
 const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
