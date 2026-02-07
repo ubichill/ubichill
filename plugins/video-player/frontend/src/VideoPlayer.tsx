@@ -139,7 +139,7 @@ export const VideoPlayer: React.FC<Props> = ({ entity, isLocked, update }) => {
         async (trackId: string, mode: 'live' | 'video' = 'video') => {
             // モードによってエンドポイントを切り替え
             const endpoint = mode === 'live' ? 'live' : 'video';
-            const videoUrl = `${apiBase}/api/stream/${endpoint}/${trackId}`;
+            const videoUrl = `${apiBase}/${endpoint}/${trackId}`;
 
             setIsLoadingTrack(true);
             try {
