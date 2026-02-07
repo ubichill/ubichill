@@ -165,8 +165,8 @@ redis:
   global:
     imageRegistry: ""
   image:
-    registry: docker.io
-    repository: bitnami/redis
+    registry: ""
+    repository: docker.io/bitnami/redis
     tag: 7.2.4-debian-11-r2
   auth:
     enabled: false
@@ -197,8 +197,8 @@ postgresql:
   global:
     imageRegistry: ""
   image:
-    registry: docker.io
-    repository: bitnami/postgresql
+    registry: ""
+    repository: docker.io/bitnami/postgresql
     tag: 16.2.0-debian-11-r1
   auth:
     enablePostgresUser: true
