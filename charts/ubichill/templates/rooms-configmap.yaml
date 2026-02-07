@@ -116,6 +116,6 @@ data:
 
 {{- range $name, $content := .Values.rooms.custom }}
   {{ $name }}.yaml: |
-{{ $content | indent 4 }}
+{{ $content | toYaml | indent 4 }}
 {{- end }}
 {{- end }}
