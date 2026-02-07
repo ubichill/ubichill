@@ -88,10 +88,7 @@ backend:
       drop:
         - ALL
 
-# Redis configuration removed from video-player plugin
-# Use shared ubichill Redis instance for cross-plugin caching when needed
-# redis:
-#   enabled: false
+
 
 # Internal load balancer (if needed)
 # This is separate from external ingress which is handled by infrastructure

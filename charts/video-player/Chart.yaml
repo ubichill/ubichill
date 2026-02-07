@@ -14,10 +14,3 @@ keywords:
 maintainers:
   - name: Ubichill Team
     email: dev@ubichill.com
-
-# Redis dependency removed - use shared ubichill Redis instance when needed
-# dependencies:
-#   - name: redis
-#     version: "17.11.3"
-#     repository: "https://charts.bitnami.com/bitnami"
-#     condition: redis.enabled
