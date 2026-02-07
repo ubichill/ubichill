@@ -1,6 +1,6 @@
 'use client';
 
-import type { AppAvatarDef } from '@ubichill/shared';
+import type { AppAvatarDef, CursorState } from '@ubichill/shared';
 import { useEffect, useRef, useState } from 'react';
 import { CursorMenu } from '@/components/CursorMenu';
 import { Lobby } from '@/components/lobby';
