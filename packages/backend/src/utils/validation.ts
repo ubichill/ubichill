@@ -1,4 +1,4 @@
-import type { CursorPosition, CursorState, UserStatus } from '@ubichill/shared';
+import { CURSOR_STATES, type CursorPosition, type CursorState, type UserStatus } from '@ubichill/shared';
 import { z } from 'zod';
 
 /**
@@ -28,17 +28,8 @@ export const cursorPositionSchema = z.object({
 // ユーザーステータスのバリデーション
 export const userStatusSchema = z.enum(['online', 'away', 'busy', 'offline']) satisfies z.ZodType<UserStatus>;
 
-// カーソル状態のバリデーション
-export const cursorStateSchema = z.enum([
-    'default',
-    'pointer',
-    'text',
-    'wait',
-    'help',
-    'not-allowed',
-    'move',
-    'grabbing',
-]) satisfies z.ZodType<CursorState>;
+// カーソル状態のバリデーション（CURSOR_STATESから生成）
+export const cursorStateSchema = z.enum(CURSOR_STATES) satisfies z.ZodType<CursorState>;
 
 /**
  * バリデーションヘルパー関数
