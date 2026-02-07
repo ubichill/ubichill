@@ -1,6 +1,7 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { CursorMenu } from '@/components/CursorMenu';
 import { Lobby } from '@/components/lobby';
 import { useWorld } from '@/core/contexts/WorldContext';
 import { useSocket } from '@/core/hooks/useSocket';
@@ -13,6 +14,20 @@ export default function Home() {
     const { environment } = useWorld();
     const [name, setName] = useState('');
     const [screen, setScreen] = useState<AppScreen>('name');
+    const [localCursorUrl, setLocalCursorUrl] = useState<string | null>(null);
+    const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+
+    // カーソルスタイル制御
+    useEffect(() => {
+        if (localCursorUrl) {
+            document.body.style.cursor = 'none';
+        } else {
+            document.body.style.cursor = 'auto';
+        }
+        return () => {
+            document.body.style.cursor = 'auto';
+        };
+    }, [localCursorUrl]);
 
     // 名前入力完了
     const handleNameSubmit = (e: React.FormEvent) => {
@@ -32,6 +47,9 @@ export default function Home() {
     const canvasRef = useRef<HTMLDivElement>(null);
 
     const handleMouseMove = (e: React.MouseEvent) => {
+        // ローカルカーソル用（画面全体での追跡）
+        setMousePosition({ x: e.clientX, y: e.clientY });
+
         if (screen === 'room' && canvasRef.current) {
             const rect = canvasRef.current.getBoundingClientRect();
             const x = e.clientX - rect.left;
@@ -122,7 +140,10 @@ export default function Home() {
                     Status: {isConnected ? 'Connected' : 'Disconnected'}
                     {error && <span className={styles.errorText}>{error}</span>}
                 </p>
-                {currentUser && <p className={styles.userInfo}>Logged in as: {currentUser.name}</p>}
+                <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                    <CursorMenu onCursorChange={setLocalCursorUrl} currentCursorUrl={localCursorUrl} />
+                    {currentUser && <p className={styles.userInfo}>Logged in as: {currentUser.name}</p>}
+                </div>
             </div>
 
             <div ref={canvasRef} className={styles.roomCanvas}>
@@ -153,6 +174,21 @@ export default function Home() {
                                 <span className={styles.cursorLabel}>{user.name}</span>
                             </div>
                         ),
+                )}
+                {/* Custom Local Cursor */}
+                {localCursorUrl && (
+                    <img
+                        src={localCursorUrl}
+                        alt="cursor"
+                        style={{
+                            position: 'fixed',
+                            left: mousePosition.x,
+                            top: mousePosition.y,
+                            pointerEvents: 'none',
+                            zIndex: 9999,
+                            transform: 'translate(-5px, -2px)', // 少し補正しないとクリック位置がずれることがある
+                        }}
+                    />
                 )}
             </div>
         </main>
