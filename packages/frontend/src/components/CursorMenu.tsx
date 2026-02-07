@@ -1,9 +1,9 @@
 'use client';
 
 import type { AppAvatarDef, CursorState } from '@ubichill/shared';
-import ICO from 'icojs';
+import * as ICO from 'icojs';
 import { useRef, useState } from 'react';
-import UPNG from 'upng-js';
+import * as UPNG from 'upng-js';
 
 interface CursorMenuProps {
     avatar: AppAvatarDef;
