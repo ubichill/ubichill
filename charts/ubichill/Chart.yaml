@@ -2,7 +2,7 @@ apiVersion: v2
 name: ubichill
 description: Ubichill Main Application - Frontend and Backend Platform
 type: application
-version: 0.1.3
+version: 0.1.4
 appVersion: "latest"
 
 keywords:
@@ -27,6 +27,6 @@ dependencies:
     repository: "https://charts.bitnami.com/bitnami"
     condition: postgresql.enabled
   - name: video-player
-    version: "0.1.3"
+    version: "0.1.4"
     repository: "file://../video-player"
     condition: video-player.enabled
