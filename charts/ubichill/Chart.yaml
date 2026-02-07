@@ -19,10 +19,10 @@ maintainers:
 # Dependencies for shared services (optional Redis, PostgreSQL, etc.)
 dependencies:
   - name: redis
-    version: "18.0.0" 
+    version: "20.6.1"
     repository: "https://charts.bitnami.com/bitnami"
     condition: redis.enabled
   - name: postgresql
-    version: "13.0.0"
+    version: "16.4.3"
     repository: "https://charts.bitnami.com/bitnami"
     condition: postgresql.enabled
