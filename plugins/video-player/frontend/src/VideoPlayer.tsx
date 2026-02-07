@@ -22,18 +22,13 @@ import { PlaylistPanel } from './PlaylistPanel';
 import { DEFAULT_LOFI_PLAYLIST } from './playlists';
 import styles from './styles.module.css';
 import type { MusicPlayerState, Track } from './types';
+import { getVideoPlayerApiBase } from './utils/apiConfig';
 
 interface Props {
     entity: WorldEntity<MusicPlayerState>;
     isLocked: boolean;
     update: (patch: Partial<WorldEntity<MusicPlayerState>>) => void;
 }
-
-// ubichill本体と同じパターン：本番環境では相対パス、開発環境のみlocalhost
-const API_BASE =
-    typeof window !== 'undefined' && window.location.hostname === 'localhost'
-        ? 'http://localhost:8000' // 開発環境のみ
-        : '/video-player-api'; // 本番環境（Kubernetesなど）
 
 const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -45,6 +40,16 @@ export const VideoPlayer: React.FC<Props> = ({ entity, isLocked, update }) => {
     const { data } = entity;
     const { socket } = useSocket();
     const videoRef = useRef<HTMLVideoElement | null>(null);
+
+    // SSR対応：共通API設定を使用
+    const [apiBase, setApiBase] = useState(() => getVideoPlayerApiBase());
+
+    useEffect(() => {
+        // クライアントサイドで再評価（環境変数がない場合のみ）
+        if (!process.env.NEXT_PUBLIC_VIDEO_PLAYER_BACKEND_URL) {
+            setApiBase(getVideoPlayerApiBase());
+        }
+    }, []);
     const hlsRef = useRef<Hls | null>(null);
     const dataRef = useRef(data);
     const updateRef = useRef(update);
@@ -134,7 +139,7 @@ export const VideoPlayer: React.FC<Props> = ({ entity, isLocked, update }) => {
         async (trackId: string, mode: 'live' | 'video' = 'video') => {
             // モードによってエンドポイントを切り替え
             const endpoint = mode === 'live' ? 'live' : 'video';
-            const videoUrl = `${API_BASE}/api/stream/${endpoint}/${trackId}`;
+            const videoUrl = `${apiBase}/api/stream/${endpoint}/${trackId}`;
 
             setIsLoadingTrack(true);
             try {
@@ -312,7 +317,7 @@ export const VideoPlayer: React.FC<Props> = ({ entity, isLocked, update }) => {
                 setIsLoadingTrack(false);
             }
         },
-        [data.isPlaying],
+        [data.isPlaying, apiBase],
     );
 
     // トラックが変わったら動画を読み込む

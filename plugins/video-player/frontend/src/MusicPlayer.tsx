@@ -18,11 +18,8 @@ interface SearchResult {
     duration: number;
 }
 
-// ubichill本体と同じパターン：本番環境では相対パス、開発環境のみlocalhost
-const API_BASE =
-    typeof window !== 'undefined' && window.location.hostname === 'localhost'
-        ? 'http://localhost:8000' // 開発環境のみ
-        : '/video-player-api'; // 本番環境（Kubernetesなど）
+// 共通API設定を使用
+const API_BASE = getVideoPlayerApiBase();
 
 export const MusicPlayer: React.FC<Props> = ({ entity, isLocked, update }) => {
     const { data } = entity;

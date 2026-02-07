@@ -286,9 +286,31 @@ export const SERVER_CONFIG = {
     /** 開発環境でのバックエンドURL */
     DEV_URL: 'http://localhost:3001',
 
+    /** Video Player開発環境URL */
+    VIDEO_PLAYER_DEV_URL: 'http://localhost:8000',
+
+    /** Video Player本番環境パス */
+    VIDEO_PLAYER_PROD_PATH: '/video-player-api',
+
     /** ルーム定義ディレクトリのデフォルト相対パス（バックエンドcwd基準） */
     ROOMS_DIR_DEFAULT: '../../rooms',
 } as const;
+
+/**
+ * Video Player API のベースURLを取得（SSR対応）
+ * @returns Video Player APIのベースURL
+ */
+export function getVideoPlayerApiBase(): string {
+    // SSR時（サーバーサイド）は本番環境パスをデフォルトとする
+    if (typeof window === 'undefined') {
+        return SERVER_CONFIG.VIDEO_PLAYER_PROD_PATH;
+    }
+
+    // クライアントサイドで開発環境の場合のみlocalhost
+    return window.location.hostname === 'localhost'
+        ? SERVER_CONFIG.VIDEO_PLAYER_DEV_URL
+        : SERVER_CONFIG.VIDEO_PLAYER_PROD_PATH;
+}
 
 /**
  * すべてのエンティティのユニオン型
