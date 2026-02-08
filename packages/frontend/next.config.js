@@ -6,6 +6,8 @@ const nextConfig = {
         '@ubichill/sdk',
         '@ubichill/plugin-pen',
         '@ubichill/plugin-music-player',
+        '@ubichill/plugin-avatar',
+        '@ubichill/plugin-video-player',
     ],
     images: {
         remotePatterns: [

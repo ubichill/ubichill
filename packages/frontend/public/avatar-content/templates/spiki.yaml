@@ -1,0 +1,19 @@
+apiVersion: ubichill.youkan.uk/v1alpha1
+kind: Avatar
+metadata:
+  name: spiki
+  displayName: ｽﾋﾟｷ
+  version: "1.0.0"
+  author:
+    name: "snooah"
+    url: "https://ko-fi.com/snooah/"
+spec:
+  states:
+    default: /templates/spiki/normal_select.ani
+    pointer: /templates/spiki/link_select.ani
+    text: /templates/spiki/text_select.ani
+    wait: /templates/spiki/busy.ani
+    help: /templates/spiki/help.ani
+    not-allowed: /templates/spiki/unavailable.ani
+    move: /templates/spiki/move.ani
+    grabbing: /templates/spiki/move.ani

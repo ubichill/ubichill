@@ -1,18 +1,18 @@
 'use client';
 
-import { CursorMenu } from '@ubichill/plugin-cursor';
 import { useSocket, useWorld } from '@ubichill/sdk';
-import type { AppAvatarDef, CursorState } from '@ubichill/shared';
-import Image from 'next/image';
-import { useEffect, useRef, useState } from 'react';
+import type { CursorState, UserStatus } from '@ubichill/shared';
+import { useCallback, useRef, useState } from 'react';
 import { Lobby } from '@/components/lobby';
+import { UbichillOverlay } from '@/components/UbichillOverlay';
 import { useCursorState } from '@/core/hooks/useCursorState';
+import { APP_PLUGINS } from '@/plugins/registry';
 import * as styles from '@/styles/styles';
 
 type AppScreen = 'name' | 'lobby' | 'room';
 
 export default function Home() {
-    const { isConnected, users, currentUser, error, joinRoom, updatePosition, updateUser } = useSocket();
+    const { isConnected, users, currentUser, error, joinRoom, updatePosition } = useSocket();
     const { environment } = useWorld();
     const [name, setName] = useState('');
     const [screen, setScreen] = useState<AppScreen>('name');
@@ -20,40 +20,11 @@ export default function Home() {
     // 現在のカーソル状態を取得
     const cursorState: CursorState = useCursorState();
 
-    // ローカルカーソル設定 (AppAvatarDef)
-    // サーバー側にavatarがあればそれを初期値として利用し、なければ空のstatesで初期化
-    const [localAvatar, _setLocalAvatar] = useState<AppAvatarDef>(() => currentUser?.avatar ?? { states: {} });
-    const [hasUserModifiedAvatar, setHasUserModifiedAvatar] = useState(false);
-    const setLocalAvatar = (value: AppAvatarDef | ((prev: AppAvatarDef) => AppAvatarDef)) => {
-        setHasUserModifiedAvatar(true);
-        _setLocalAvatar(value as AppAvatarDef);
-    };
-
+    // User status (busy = 作業中でカーソル固定)
+    const [userStatus, setUserStatus] = useState<UserStatus>('online');
+    const [cursorLockPosition, setCursorLockPosition] = useState<{ x: number; y: number } | null>(null);
     const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
 
-    // カーソル画像のサーバー同期
-    // 1. サーバー側avatarをローカルに取り込む（ユーザーがまだ編集していない場合のみ）
-    useEffect(() => {
-        if (currentUser?.avatar && !hasUserModifiedAvatar) {
-            _setLocalAvatar(currentUser.avatar);
-        }
-    }, [currentUser?.avatar, hasUserModifiedAvatar]);
-
-    // 2. ユーザーがローカルでavatarを変更した後のみサーバーに同期
-    useEffect(() => {
-        if (!currentUser?.id || !isConnected) {
-            return;
-        }
-        if (!hasUserModifiedAvatar) {
-            // ユーザーがまだローカル設定を変更していない場合はサーバーを上書きしない
-            return;
-        }
-        // ローカルのavatar設定が変更されたらサーバーに同期
-        // deep equal checkなどを入れるのが理想だが、一旦簡易実装
-        if (JSON.stringify(currentUser.avatar) !== JSON.stringify(localAvatar)) {
-            updateUser({ avatar: localAvatar });
-        }
-    }, [localAvatar, isConnected, currentUser?.id, updateUser, currentUser?.avatar, hasUserModifiedAvatar]);
     // 名前入力完了
     const handleNameSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -76,13 +47,19 @@ export default function Home() {
     const POSITION_UPDATE_THROTTLE = 50; // ms
 
     const handleMouseMove = (e: React.MouseEvent) => {
-        // ローカルカーソル用（画面全体での追跡）
+        // マウス位置を追跡（AppPluginに渡すため）
         setMousePosition({ x: e.clientX, y: e.clientY });
 
         if (screen === 'room' && canvasRef.current) {
             const rect = canvasRef.current.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
+            let x = e.clientX - rect.left;
+            let y = e.clientY - rect.top;
+
+            // 作業中ステータスの場合は、カーソルをロックした位置に固定
+            if (userStatus === 'busy' && cursorLockPosition) {
+                x = cursorLockPosition.x;
+                y = cursorLockPosition.y;
+            }
 
             // Throttle updates to reduce socket traffic
             const now = Date.now();
@@ -98,40 +75,30 @@ export default function Home() {
         }
     };
 
-    // 現在の状態に対応するローカルカーソルURLを取得
-    const currentLocalCursor = localAvatar.states[cursorState] || localAvatar.states.default;
-    const localCursorUrl = currentLocalCursor?.url;
-    const localHotspot = currentLocalCursor?.hotspot || { x: 0, y: 0 };
+    // 右クリックハンドラー: 自分のカーソル上で右クリックするとRadialMenuを表示
+    const handleContextMenu = useCallback((e: React.MouseEvent) => {
+        // デフォルトのコンテキストメニューを無効化
+        e.preventDefault();
+    }, []);
 
-    // カーソルスタイル制御 (ローカル)
-    useEffect(() => {
-        if (!localCursorUrl) {
-            return;
-        }
+    // ステータス変更
+    const handleStatusChange = useCallback(
+        (status: UserStatus) => {
+            setUserStatus(status);
 
-        // body にクラスを付与して、その範囲内のみカーソルを非表示にする
-        document.body.classList.add('cursor-hidden');
-
-        let style = document.getElementById('cursor-none-style') as HTMLStyleElement | null;
-        if (!style) {
-            style = document.createElement('style');
-            style.id = 'cursor-none-style';
-            style.innerHTML = `
-                body.cursor-hidden * {
-                    cursor: none !important;
-                }
-            `;
-            document.head.appendChild(style);
-        }
-
-        return () => {
-            document.body.classList.remove('cursor-hidden');
-            const existingStyle = document.getElementById('cursor-none-style');
-            if (existingStyle) {
-                existingStyle.remove();
+            if (status === 'busy' && canvasRef.current) {
+                // 作業中: カーソルの現在位置をロック
+                const rect = canvasRef.current.getBoundingClientRect();
+                const x = mousePosition.x - rect.left;
+                const y = mousePosition.y - rect.top;
+                setCursorLockPosition({ x, y });
+            } else {
+                // その他のステータス: ロック解除
+                setCursorLockPosition(null);
             }
-        };
-    }, [localCursorUrl]);
+        },
+        [mousePosition],
+    );
 
     // 名前入力画面
     if (screen === 'name') {
@@ -202,6 +169,7 @@ export default function Home() {
         <main
             className={styles.mainContainer}
             onMouseMove={handleMouseMove}
+            onContextMenu={handleContextMenu}
             style={{
                 backgroundColor: environment.backgroundColor,
                 backgroundImage: environment.backgroundImage ? `url(${environment.backgroundImage})` : undefined,
@@ -216,7 +184,6 @@ export default function Home() {
                     {error && <span className={styles.errorText}>{error}</span>}
                 </p>
                 <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-                    <CursorMenu avatar={localAvatar} onAvatarChange={setLocalAvatar} />
                     {currentUser && <p className={styles.userInfo}>ログイン中: {currentUser.name}</p>}
                 </div>
             </div>
@@ -233,113 +200,23 @@ export default function Home() {
                     </ul>
                 </div>
 
-                {/* Cursors */}
-                {Array.from(users.values()).map((user) => {
-                    if (user.id === currentUser?.id) return null;
+                {/* Entities and Plugins are handled by UbichillOverlay */}
+                <UbichillOverlay />
 
-                    // リモートユーザーのカーソル解決
-                    const remoteState = user.cursorState || 'default';
-                    // avatar定義か、古いcursorUrlへフォールバック
-                    const remoteAvatarState = user.avatar?.states?.[remoteState] || user.avatar?.states?.default;
-                    const remoteUrl = remoteAvatarState?.url || user.cursorUrl;
-                    const remoteHotspot = remoteAvatarState?.hotspot || { x: 0, y: 0 };
+                {/* Avatar Plugin */}
+                {APP_PLUGINS.map((plugin) => {
+                    const canvasOffset = canvasRef.current?.getBoundingClientRect() || { left: 0, top: 0 };
                     return (
-                        <div
-                            key={user.id}
-                            className={styles.cursor}
-                            style={{
-                                left: user.position.x,
-                                top: user.position.y,
-                                // Remove translate(-50%, -50%) from default style if present, or override it.
-                                // styles.cursor might have default transforms, so we might need to be careful.
-                                // Actually styles.cursor does NOT have transform.
-                                // But previous code added transform: 'translate(-50%, -50%)'.
-                                // We will use top-left positioning and shift by hotspot.
-                                transform: 'none',
-
-                                // 画像がある場合はデフォルトのスタイルを無効化
-                                backgroundColor: remoteUrl ? 'transparent' : undefined,
-                                width: remoteUrl ? 'auto' : undefined,
-                                height: remoteUrl ? 'auto' : undefined,
-                                borderRadius: remoteUrl ? '0' : undefined,
-                                pointerEvents: 'none',
-                                zIndex: 100,
-                            }}
-                        >
-                            {remoteUrl ? (
-                                <div
-                                    style={{
-                                        position: 'relative',
-                                        // ホットスポット分だけずらす
-                                        transform: `translate(${-remoteHotspot.x}px, ${-remoteHotspot.y}px)`,
-                                    }}
-                                >
-                                    {/* Custom Cursor Image for Remote User */}
-                                    <Image
-                                        src={remoteUrl}
-                                        alt={`${user.name}'s cursor`}
-                                        width={64}
-                                        height={64}
-                                        unoptimized
-                                        style={{
-                                            maxWidth: '64px',
-                                            maxHeight: '64px',
-                                            pointerEvents: 'none',
-                                            display: 'block',
-                                        }}
-                                    />
-                                    {/* Name Label below image */}
-                                    <span
-                                        className={styles.cursorLabel}
-                                        style={{
-                                            position: 'absolute',
-                                            top: '100%',
-                                            left: '50%',
-                                            transform: 'translateX(-50%)',
-                                            marginTop: '4px',
-                                            whiteSpace: 'nowrap',
-                                        }}
-                                    >
-                                        {user.name}
-                                    </span>
-                                </div>
-                            ) : (
-                                /* Default Cursor Label (or shape) */
-                                <span
-                                    className={styles.cursorLabel}
-                                    style={{
-                                        top: '100%',
-                                        marginTop: '4px',
-                                        transform: 'translateX(-50%)',
-                                    }}
-                                >
-                                    {user.name}
-                                </span>
-                            )}
-                        </div>
+                        <plugin.Component
+                            key={plugin.id}
+                            cursorState={cursorState}
+                            userStatus={userStatus}
+                            onStatusChange={handleStatusChange}
+                            mousePosition={mousePosition}
+                            canvasOffset={canvasOffset}
+                        />
                     );
                 })}
-                {/* Custom Local Cursor */}
-                {localCursorUrl && (
-                    <Image
-                        src={localCursorUrl}
-                        alt="cursor"
-                        width={32}
-                        height={32}
-                        unoptimized
-                        style={{
-                            position: 'fixed',
-                            left: mousePosition.x - localHotspot.x,
-                            top: mousePosition.y - localHotspot.y,
-                            pointerEvents: 'none',
-                            zIndex: 9999,
-                            width: 'auto',
-                            height: 'auto',
-                        }}
-                    />
-                )}
-
-                {/* Entities and Plugins are handled by UbichillOverlay */}
             </div>
         </main>
     );

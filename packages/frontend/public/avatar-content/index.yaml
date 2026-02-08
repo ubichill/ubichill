@@ -1,0 +1,10 @@
+apiVersion: ubichill.youkan.uk/v1alpha1
+kind: AvatarIndex
+metadata:
+  name: avatar-templates
+  version: "1.0.0"
+templates:
+  - templates/suisei.yaml
+  - templates/amongus.yaml
+  - templates/spiki.yaml
+  - templates/custom-single.yaml

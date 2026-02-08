@@ -1,23 +1,17 @@
+import type { WidgetDefinition } from '@ubichill/sdk';
 import type { WorldEntity } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
-import type { WidgetDefinition } from '@ubichill/sdk';
-import type { CursorData } from './types';
+import type { AvatarData } from './types';
 
-const CursorWidget: React.FC<{
-    entity: WorldEntity<CursorData>;
-    update: (patch: Partial<WorldEntity<CursorData>>) => void;
+const AvatarWidget: React.FC<{
+    entity: WorldEntity<AvatarData>;
+    update: (patch: Partial<WorldEntity<AvatarData>>) => void;
 }> = ({ entity, update }) => {
     const [position, setPosition] = useState({ x: 0, y: 0 });
     // 初期表示で左上に一瞬出るのを防ぐためのフラグ
     const [isVisible, setIsVisible] = useState(false);
 
     useEffect(() => {
-        // 画像URLがある場合のみ適用
-        const hasCustomCursor = !!entity.data.url;
-        if (hasCustomCursor) {
-            document.body.style.cursor = 'none';
-        }
-
         const handleMouseMove = (e: MouseEvent) => {
             setPosition({ x: e.clientX, y: e.clientY });
             if (!isVisible) setIsVisible(true);
@@ -27,12 +21,11 @@ const CursorWidget: React.FC<{
 
         // クリーンアップ
         return () => {
-            document.body.style.cursor = 'auto';
             window.removeEventListener('mousemove', handleMouseMove);
         };
-    }, [entity.data.url, isVisible]);
+    }, [isVisible]);
 
-    const cursorUrl = entity.data.url;
+    const avatarUrl = entity.data.url;
     const hotX = entity.data.hotspot?.x ?? 0;
     const hotY = entity.data.hotspot?.y ?? 0;
 
@@ -52,7 +45,7 @@ const CursorWidget: React.FC<{
                     width: '200px',
                 }}
             >
-                <h3 style={{ margin: 0, fontSize: '14px' }}>Cursor Settings</h3>
+                <h3 style={{ margin: 0, fontSize: '14px' }}>Avatar Settings</h3>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     <label
@@ -151,11 +144,11 @@ const CursorWidget: React.FC<{
                 <div style={{ fontSize: '12px', color: '#666' }}>Current: {entity.data.url ? 'Custom' : 'Default'}</div>
             </div>
 
-            {/* カーソル画像 (DOMオーバーレイ) */}
-            {cursorUrl && (
+            {/* アバター画像 (DOMオーバーレイ) */}
+            {avatarUrl && (
                 <img
-                    src={cursorUrl}
-                    alt="cursor"
+                    src={avatarUrl}
+                    alt="avatar"
                     style={{
                         position: 'fixed',
                         left: position.x - hotX,
@@ -170,14 +163,14 @@ const CursorWidget: React.FC<{
     );
 };
 
-export const cursorWidgetDefinition: WidgetDefinition<CursorData> = {
-    id: 'cursor',
-    name: 'Cursor',
-    icon: <span>🖱️</span>,
+export const avatarWidgetDefinition: WidgetDefinition<AvatarData> = {
+    id: 'avatar',
+    name: 'Avatar',
+    icon: <span>👤</span>,
     defaultSize: { w: 200, h: 100 },
     defaultData: {
         url: '',
         hotspot: { x: 0, y: 0 },
     },
-    Component: CursorWidget,
+    Component: AvatarWidget,
 };

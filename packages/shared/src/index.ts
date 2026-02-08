@@ -4,8 +4,13 @@
 
 /**
  * ユーザーのステータス
+ * 'online' - オンライン
+ * 'busy' - 作業中（カーソル固定）
+ * 'dnd' - 話しかけないで（Do Not Disturb）
+ * 'away' - 離席中
+ * 'offline' - オフライン
  */
-export type UserStatus = 'online' | 'away' | 'busy' | 'offline';
+export type UserStatus = 'online' | 'busy' | 'dnd' | 'away' | 'offline';
 
 /**
  * カーソル位置
@@ -31,6 +36,7 @@ export type CursorState = (typeof CURSOR_STATES)[number];
  */
 export interface AppAvatarDef {
     states: Partial<Record<CursorState, { url: string; hotspot: { x: number; y: number } }>>;
+    hideSystemCursor?: boolean;
 }
 
 /**
@@ -47,6 +53,17 @@ export interface User {
     status: UserStatus;
     position: CursorPosition;
     lastActiveAt: number;
+    isMenuOpen?: boolean;
+}
+
+/**
+ * 絵文字イベント
+ */
+export interface EmojiEvent {
+    userId: string;
+    emoji: string;
+    position: CursorPosition;
+    timestamp: number;
 }
 
 // ============================================

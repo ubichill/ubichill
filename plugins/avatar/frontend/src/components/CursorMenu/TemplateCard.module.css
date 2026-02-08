@@ -1,0 +1,59 @@
+/* TemplateCard.module.css */
+
+.card {
+    padding: 12px;
+    background-color: white;
+    border: 2px solid #e9ecef;
+    border-radius: 12px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.card:hover:not(:disabled) {
+    border-color: #228be6;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.card:disabled {
+    cursor: wait;
+    opacity: 0.6;
+}
+
+.thumbnail {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+}
+
+.placeholder {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #f1f3f5;
+    border-radius: 8px;
+    font-size: 24px;
+}
+
+.info {
+    text-align: center;
+}
+
+.name {
+    font-size: 13px;
+    font-weight: bold;
+    color: #212529;
+}
+
+.description {
+    font-size: 11px;
+    color: #868e96;
+    margin-top: 2px;
+}

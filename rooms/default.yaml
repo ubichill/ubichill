@@ -22,14 +22,18 @@ spec:
   
   # パッケージ依存関係
   dependencies:
-    - name: pen
+    - name: pen:pen
       source:
         type: repository
-        path: "packages/pen"
+        path: "plugins/pen"
     - name: video-player
       source:
         type: repository
         path: "plugins/video-player"
+    - name: avatar
+      source:
+        type: repository
+        path: "plugins/avatar"
   
   # 初期配置エンティティ
   initialEntities:
@@ -48,6 +52,50 @@ spec:
         currentTime: 0
         loop: 'none'
         shuffle: false
+    - kind: "pen:pen"
+      transform:
+        x: 450
+        y: 40
+        z: 0
+        scale: 1
+        rotation: 0
+      data:
+        color: "#000000"
+        strokeWidth: 4
+        isHeld: false
+    - kind: "pen:pen"
+      transform:
+        x: 550
+        y: 40
+        z: 0
+        scale: 1
+        rotation: 0
+      data:
+        color: "#FF0000"
+        strokeWidth: 4
+        isHeld: false
+    - kind: "pen:pen"
+      transform:
+        x: 650
+        y: 40
+        z: 0
+        scale: 1
+        rotation: 0
+      data:
+        color: "#0000FF"
+        strokeWidth: 4
+        isHeld: false
+    - kind: "pen:pen"
+      transform:
+        x: 750
+        y: 40
+        z: 0
+        scale: 1
+        rotation: 0
+      data:
+        color: "#00FF00"
+        strokeWidth: 4
+        isHeld: false
   
   permissions:
     allowGuestCreate: true

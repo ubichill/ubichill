@@ -1,6 +1,7 @@
+import type { WidgetDefinition } from '@ubichill/sdk';
 import { VideoIcon } from './icons';
-import type { WidgetDefinition } from './types';
-import { DEFAULT_MUSIC_PLAYER_STATE, type MusicPlayerState } from './types';
+import type { MusicPlayerState } from './types';
+import { DEFAULT_MUSIC_PLAYER_STATE } from './types';
 import { VideoPlayer } from './VideoPlayer';
 
 export const videoPlayerDefinition: WidgetDefinition<MusicPlayerState> = {
