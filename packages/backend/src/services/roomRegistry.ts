@@ -126,9 +126,9 @@ class RoomRegistry {
             capacity: { default: 10, max: 20 },
             initialEntities: [],
             dependencies: [
-                { name: 'pen:pen', source: { type: 'npm', version: '1.0.0' } },
-                { name: 'video-player', source: { type: 'npm', version: '1.0.0' } },
-                { name: 'avatar', source: { type: 'npm', version: '0.1.0' } },
+                { name: 'pen:pen', source: { type: 'repository', path: 'plugins/pen' } },
+                { name: 'video-player', source: { type: 'repository', path: 'plugins/video-player' } },
+                { name: 'avatar', source: { type: 'repository', path: 'plugins/avatar' } },
             ],
         };
 
