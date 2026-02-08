@@ -1,5 +1,6 @@
 'use client';
 
+import { PenTray } from '@ubichill/plugin-pen';
 import { useSocket, useWorld } from '@ubichill/sdk';
 import type { CursorState, UserStatus } from '@ubichill/shared';
 import { useCallback, useRef, useState } from 'react';
@@ -221,7 +222,7 @@ export default function Home() {
                                 />
                             );
                         case 'pen-tray':
-                            return <plugin.Component key={plugin.id} />;
+                            return <PenTray key={plugin.id} />;
                         default:
                             return null;
                     }

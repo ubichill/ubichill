@@ -28,7 +28,7 @@ export interface AvatarAppPlugin extends AppPluginBase {
 
 export interface PenTrayAppPlugin extends AppPluginBase {
     id: 'pen-tray';
-    Component: React.ComponentType<Record<string, never>>;
+    Component: React.ComponentType;
 }
 
 export type AppPlugin = AvatarAppPlugin | PenTrayAppPlugin;
