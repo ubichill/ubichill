@@ -203,19 +203,28 @@ export default function Home() {
                 {/* Entities and Plugins are handled by UbichillOverlay */}
                 <UbichillOverlay />
 
-                {/* Avatar Plugin */}
+                {/* App-Level Plugins */}
                 {APP_PLUGINS.map((plugin) => {
                     const canvasOffset = canvasRef.current?.getBoundingClientRect() || { left: 0, top: 0 };
-                    return (
-                        <plugin.Component
-                            key={plugin.id}
-                            cursorState={cursorState}
-                            userStatus={userStatus}
-                            onStatusChange={handleStatusChange}
-                            mousePosition={mousePosition}
-                            canvasOffset={canvasOffset}
-                        />
-                    );
+
+                    // Type-safe plugin rendering based on plugin type
+                    switch (plugin.id) {
+                        case 'avatar':
+                            return (
+                                <plugin.Component
+                                    key={plugin.id}
+                                    cursorState={cursorState}
+                                    userStatus={userStatus}
+                                    onStatusChange={handleStatusChange}
+                                    mousePosition={mousePosition}
+                                    canvasOffset={canvasOffset}
+                                />
+                            );
+                        case 'pen-tray':
+                            return <plugin.Component key={plugin.id} />;
+                        default:
+                            return null;
+                    }
                 })}
             </div>
         </main>

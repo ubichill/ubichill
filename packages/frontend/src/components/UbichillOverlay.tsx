@@ -5,11 +5,10 @@ import { DEFAULTS } from '@ubichill/shared';
 import type React from 'react';
 import { EntityRenderer } from '@/core/components/EntityRenderer';
 import { useRoomInitializer } from '@/core/hooks/useRoomInitializer';
-import { INSTALLED_PLUGINS } from '@/plugins/registry';
 
 export const UbichillOverlay: React.FC = () => {
     const { isConnected } = useSocket();
-    const { entities, activePlugins } = useWorld();
+    const { entities } = useWorld();
 
     useRoomInitializer(DEFAULTS.ROOM_ID);
 
@@ -22,26 +21,12 @@ export const UbichillOverlay: React.FC = () => {
         return <EntityRenderer key={entity.id} entityId={entity.id} />;
     });
 
-    // プラグインの SingletonComponent を自動的にレンダリング (アクティブなプラグインのみ)
-    console.log('[UbichillOverlay] Active Plugins:', activePlugins);
-    const renderPluginSingletons = INSTALLED_PLUGINS.filter((plugin) => {
-        const isActive = activePlugins.includes(plugin.id);
-        if (isActive) {
-            console.log(`[UbichillOverlay] Rendering singleton for: ${plugin.id}`);
-        }
-        return isActive && plugin.SingletonComponent;
-    }).map((plugin) => {
-        const Component = plugin.SingletonComponent;
-        return Component ? <Component key={plugin.id} /> : null;
-    });
+    // Singleton components are now handled by APP_PLUGINS in page.tsx
 
     return (
         <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: Z_INDEX.UI_BASE }}>
             {/* ウィジェットレイヤー（動的レンダリング） */}
             {renderEntities}
-
-            {/* プラグインのシングルトンコンポーネント（トレイなど） */}
-            {renderPluginSingletons}
         </div>
     );
 };
