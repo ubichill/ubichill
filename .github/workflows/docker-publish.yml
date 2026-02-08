@@ -48,7 +48,7 @@ jobs:
 
       # 変更されたディレクトリのハッシュ計算
       - name: Calculate content hash for backend
-        if: steps.filter.outputs.backend == 'true'
+        if: steps.filter.outputs.backend == 'true' || github.ref_name == 'main'
         id: backend_hash
         run: |
           HASH=$(find packages/backend packages/shared package.json pnpm-workspace.yaml pnpm-lock.yaml Dockerfile -type f -exec sha256sum {} \; 2>/dev/null | sort | sha256sum | cut -d' ' -f1 | head -c 12)
@@ -56,7 +56,7 @@ jobs:
           echo "Backend content hash: $HASH"
 
       - name: Calculate content hash for frontend
-        if: steps.filter.outputs.frontend == 'true'
+        if: steps.filter.outputs.frontend == 'true' || github.ref_name == 'main'
         id: frontend_hash
         run: |
           HASH=$(find packages/frontend packages/shared package.json pnpm-workspace.yaml pnpm-lock.yaml Dockerfile -type f -exec sha256sum {} \; 2>/dev/null | sort | sha256sum | cut -d' ' -f1 | head -c 12)
@@ -64,7 +64,7 @@ jobs:
           echo "Frontend content hash: $HASH"
 
       - name: Calculate content hash for video-player
-        if: steps.filter.outputs.video-player == 'true'
+        if: steps.filter.outputs.video-player == 'true' || github.ref_name == 'main'
         id: video_player_hash
         run: |
           HASH=$(find plugins/video-player -type f -exec sha256sum {} \; 2>/dev/null | sort | sha256sum | cut -d' ' -f1 | head -c 12)
@@ -73,7 +73,7 @@ jobs:
 
       # 既存のイメージをチェック
       - name: Check if backend image exists
-        if: steps.filter.outputs.backend == 'true'
+        if: steps.filter.outputs.backend == 'true' || github.ref_name == 'main'
         id: backend_exists
         run: |
           TAG="${{ github.ref_name == 'main' && 'latest' || 'dev' }}-${{ steps.backend_hash.outputs.hash }}"
@@ -86,7 +86,7 @@ jobs:
           fi
 
       - name: Check if frontend image exists
-        if: steps.filter.outputs.frontend == 'true'
+        if: steps.filter.outputs.frontend == 'true' || github.ref_name == 'main'
         id: frontend_exists
         run: |
           TAG="${{ github.ref_name == 'main' && 'latest' || 'dev' }}-${{ steps.frontend_hash.outputs.hash }}"
@@ -99,7 +99,7 @@ jobs:
           fi
 
       - name: Check if video-player image exists
-        if: steps.filter.outputs.video-player == 'true'
+        if: steps.filter.outputs.video-player == 'true' || github.ref_name == 'main'
         id: video_player_exists
         run: |
           TAG="${{ github.ref_name == 'main' && 'latest' || 'dev' }}-${{ steps.video_player_hash.outputs.hash }}"
@@ -112,7 +112,7 @@ jobs:
           fi
 
       - name: Log in to the Container registry
-        if: steps.filter.outputs.backend == 'true' || steps.filter.outputs.frontend == 'true' || steps.filter.outputs.video-player == 'true'
+        if: steps.filter.outputs.backend == 'true' || steps.filter.outputs.frontend == 'true' || steps.filter.outputs.video-player == 'true' || github.ref_name == 'main'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -120,12 +120,12 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        if: steps.filter.outputs.backend == 'true' || steps.filter.outputs.frontend == 'true' || steps.filter.outputs.video-player == 'true'
+        if: steps.filter.outputs.backend == 'true' || steps.filter.outputs.frontend == 'true' || steps.filter.outputs.video-player == 'true' || github.ref_name == 'main'
         uses: docker/setup-buildx-action@v3
 
       # Backend Build & Push
       - name: Build and push Backend image
-        if: steps.filter.outputs.backend == 'true' && steps.backend_exists.outputs.exists == 'false'
+        if: (steps.filter.outputs.backend == 'true' || github.ref_name == 'main') && steps.backend_exists.outputs.exists == 'false'
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -142,7 +142,7 @@ jobs:
 
       # Frontend Build & Push
       - name: Build and push Frontend image
-        if: steps.filter.outputs.frontend == 'true' && steps.frontend_exists.outputs.exists == 'false'
+        if: (steps.filter.outputs.frontend == 'true' || github.ref_name == 'main') && steps.frontend_exists.outputs.exists == 'false'
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -159,13 +159,13 @@ jobs:
 
       # Video Player Lint & Test
       - name: Set up Python for video-player backend
-        if: steps.filter.outputs.video-player == 'true'
+        if: steps.filter.outputs.video-player == 'true' || github.ref_name == 'main'
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
       - name: Lint video-player backend
-        if: steps.filter.outputs.video-player == 'true'
+        if: steps.filter.outputs.video-player == 'true' || github.ref_name == 'main'
         working-directory: plugins/video-player/backend
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -179,7 +179,7 @@ jobs:
 
       # Video Player Build & Push
       - name: Build and push Video Player image
-        if: steps.filter.outputs.video-player == 'true' && steps.video_player_exists.outputs.exists == 'false'
+        if: (steps.filter.outputs.video-player == 'true' || github.ref_name == 'main') && steps.video_player_exists.outputs.exists == 'false'
         uses: docker/build-push-action@v5
         with:
           context: plugins/video-player/backend
