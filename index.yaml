@@ -3,6 +3,38 @@ entries:
   ubichill:
   - apiVersion: v2
     appVersion: latest
+    created: "2026-02-08T01:34:09.963023853Z"
+    dependencies:
+    - condition: redis.enabled
+      name: redis
+      repository: https://charts.bitnami.com/bitnami
+      version: 20.6.1
+    - condition: postgresql.enabled
+      name: postgresql
+      repository: https://charts.bitnami.com/bitnami
+      version: 16.4.3
+    - condition: video-player.enabled
+      name: video-player
+      repository: file://../video-player
+      version: 0.1.4
+    description: Ubichill Main Application - Frontend and Backend Platform
+    digest: 23db6f3e8017c3753b95744183e7b0404434a91029b03ffe14712f036a269a40
+    keywords:
+    - ubichill
+    - platform
+    - frontend
+    - backend
+    - plugins
+    maintainers:
+    - email: dev@ubichill.com
+      name: Ubichill Team
+    name: ubichill
+    type: application
+    urls:
+    - https://github.com/ubichill/ubichill/releases/download/ubichill-0.1.5/ubichill-0.1.5.tgz
+    version: 0.1.5
+  - apiVersion: v2
+    appVersion: latest
     created: "2026-02-07T14:07:12.422172985Z"
     dependencies:
     - condition: redis.enabled
@@ -190,4 +222,4 @@ entries:
     urls:
     - https://github.com/ubichill/ubichill/releases/download/video-player-0.1.0/video-player-0.1.0.tgz
     version: 0.1.0
-generated: "2026-02-07T14:07:12.560621267Z"
+generated: "2026-02-08T01:34:09.9630437Z"
