@@ -1,6 +1,6 @@
 import type { AvatarPluginProps } from '@ubichill/plugin-avatar';
 import { AvatarPlugin, avatarWidgetDefinition } from '@ubichill/plugin-avatar';
-import { penWidgetDefinition } from '@ubichill/plugin-pen';
+import { PenTray, penWidgetDefinition } from '@ubichill/plugin-pen';
 import { videoPlayerDefinition } from '@ubichill/plugin-video-player';
 import type { WidgetDefinition } from '@ubichill/sdk';
 import type React from 'react';
@@ -16,15 +16,31 @@ export const INSTALLED_PLUGINS: WidgetDefinition<any>[] = [
 // IDから検索しやすくするMap
 export const PLUGIN_MAP = new Map(INSTALLED_PLUGINS.map((p) => [p.id, p]));
 
-// App-Level Plugins (UI overlays, full-screen features)
-export interface AppPlugin<P = unknown> {
+// App-Level Plugin type definitions
+export interface AppPluginBase {
     id: string;
-    Component: React.ComponentType<P>;
 }
 
-export const APP_PLUGINS: AppPlugin<AvatarPluginProps>[] = [
+export interface AvatarAppPlugin extends AppPluginBase {
+    id: 'avatar';
+    Component: React.ComponentType<AvatarPluginProps>;
+}
+
+export interface PenTrayAppPlugin extends AppPluginBase {
+    id: 'pen-tray';
+    Component: React.ComponentType<Record<string, never>>;
+}
+
+export type AppPlugin = AvatarAppPlugin | PenTrayAppPlugin;
+
+// App-Level Plugins (UI overlays, singleton components)
+export const APP_PLUGINS: AppPlugin[] = [
     {
         id: 'avatar',
         Component: AvatarPlugin,
+    },
+    {
+        id: 'pen-tray',
+        Component: PenTray,
     },
 ];

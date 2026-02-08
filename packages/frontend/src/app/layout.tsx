@@ -13,16 +13,11 @@ export const metadata: Metadata = {
     },
 };
 
-import { UbichillOverlay } from '@/components/UbichillOverlay';
-
 export default function RootLayout({ children }: { children: React.ReactNode }) {
     return (
         <html lang="en">
             <body className={inter.className}>
-                <Providers>
-                    <UbichillOverlay />
-                    {children}
-                </Providers>
+                <Providers>{children}</Providers>
             </body>
         </html>
     );
