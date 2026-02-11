@@ -2,11 +2,11 @@ version: '3.8'
 
 services:
   app:
-    image: mcr.microsoft.com/devcontainers/typescript-node:1-18-bullseye
+    image: mcr.microsoft.com/devcontainers/base:bullseye
     volumes:
       - ..:/workspace:cached
     command: sleep infinity
-    network_mode: service:db # Future proofing for DB/Redis sharing localhost
+    # network_mode: service:db # Future proofing for DB/Redis sharing localhost
     # Overrides default command so things don't shut down after the process ends.
 
     # Forward ports for frontend and backend
