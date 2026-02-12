@@ -13,8 +13,9 @@
             ]
         }
     },
-    "remoteUser": "node",
+    "remoteUser": "vscode",
     "features": {
         "ghcr.io/devcontainers/features/docker-in-docker:2": {}
-    }
+    },
+    "postCreateCommand": "chmod +x .devcontainer/setup.sh && ./.devcontainer/setup.sh"
 }

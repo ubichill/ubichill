@@ -13,7 +13,7 @@
         }
     },
     "scripts": {
-        "dev": "tsc-watch --onSuccess \"touch dist/.build_done\"",
+        "dev": "tsc-watch --onSuccess \"node ../../scripts/touch.mjs dist/.build_done\"",
         "build": "tsc",
         "clean": "rimraf dist"
     },
