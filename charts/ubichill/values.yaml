@@ -10,20 +10,20 @@ global:
   security:
     allowInsecureImages: true
 
-# Rooms configuration
-rooms:
+# Worlds configuration
+worlds:
   enabled: true
-  # Custom rooms can be defined here
+  # Custom worlds can be defined here
   # custom:
-  #   my-custom-room:
+  #   my-custom-world:
   #     apiVersion: ubichill.com/v1alpha1
-  #     kind: Room
+  #     kind: World
   #     metadata:
-  #       name: my-custom-room
+  #       name: my-custom-world
   #       version: "1.0.0"
   #     spec:
-  #       displayName: "My Custom Room"
-  #       description: "A custom room"
+  #       displayName: "My Custom World"
+  #       description: "A custom world"
   #       environment:
   #         backgroundColor: "#FF0000"
   custom: {}

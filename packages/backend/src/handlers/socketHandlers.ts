@@ -13,14 +13,14 @@ import {
 } from '@ubichill/shared';
 import type { Socket } from 'socket.io';
 import { instanceManager } from '../services/instanceManager';
-import { roomRegistry } from '../services/roomRegistry';
+import { worldRegistry } from '../services/worldRegistry';
 import { userManager } from '../services/userManager';
 import { createEntity, deleteEntity, getWorldSnapshot, patchEntity } from '../services/worldState';
 import { logger } from '../utils/logger';
 import {
     validateCursorPosition,
     validateCursorState,
-    validateRoomId,
+    validateWorldId,
     validateUsername,
     validateUserStatus,
 } from '../utils/validation';
@@ -28,20 +28,20 @@ import {
 type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents, InterServerEvents, SocketData>;
 
 /**
- * ルーム参加イベントを処理
+ * ワールド参加イベントを処理
  */
-export function handleRoomJoin(socket: TypedSocket) {
+export function handleWorldJoin(socket: TypedSocket) {
     return (
-        { roomId, instanceId, user }: { roomId: string; instanceId?: string; user: Omit<User, 'id'> },
+        { worldId, instanceId, user }: { worldId: string; instanceId?: string; user: Omit<User, 'id'> },
         callback: (response: { success: boolean; userId?: string; error?: string }) => void,
     ) => {
-        logger.debug('room:join イベント受信:', { roomId, instanceId, user, socketId: socket.id });
+        logger.debug('world:join イベント受信:', { worldId, instanceId, user, socketId: socket.id });
 
-        // ルームIDを検証
-        const roomValidation = validateRoomId(roomId);
-        if (!roomValidation.valid) {
-            logger.debug('ルームID検証失敗:', roomValidation.error);
-            callback({ success: false, error: roomValidation.error });
+        // ワールドIDを検証
+        const worldValidation = validateWorldId(worldId);
+        if (!worldValidation.valid) {
+            logger.debug('ワールドID検証失敗:', worldValidation.error);
+            callback({ success: false, error: worldValidation.error });
             return;
         }
 
@@ -63,17 +63,17 @@ export function handleRoomJoin(socket: TypedSocket) {
         };
 
         // インスタンスIDを使ってSocket.IOルームとワールド状態を管理
-        // instanceIdがある場合はそれを使い、ない場合はroomIdにフォールバック
-        const socketRoom = instanceId || roomValidation.data;
-        const worldStateKey = instanceId || roomValidation.data;
+        // instanceIdがある場合はそれを使い、ない場合はworldIdにフォールバック
+        const socketRoom = instanceId || worldValidation.data;
+        const worldStateKey = instanceId || worldValidation.data;
 
-        // ルームにユーザーを追加
+        // ワールドにユーザーを追加
         userManager.addUser(socket.id, socketRoom, newUser);
         socket.join(socketRoom);
 
         // ソケットデータに保存
         socket.data.userId = socket.id;
-        socket.data.roomId = socketRoom;
+        socket.data.worldId = socketRoom;
         socket.data.instanceId = instanceId;
         socket.data.user = newUser;
 
@@ -82,8 +82,8 @@ export function handleRoomJoin(socket: TypedSocket) {
             instanceManager.updateUserCount(instanceId, 1);
         }
 
-        // このルーム内の全ユーザーを取得
-        const roomUsers = userManager.getUsersByRoom(socketRoom);
+        // このワールド内の全ユーザーを取得
+        const worldUsers = userManager.getUsersByWorld(socketRoom);
 
         // 成功レスポンスを送信
         callback({
@@ -92,21 +92,21 @@ export function handleRoomJoin(socket: TypedSocket) {
         });
 
         // 新しいユーザーに現在のユーザー一覧を送信
-        socket.emit('users:update', roomUsers);
+        socket.emit('users:update', worldUsers);
 
         // 新しいユーザーにワールドスナップショットを送信（UEP）
         // instanceIdをキーにしてワールド状態を取得（インスタンスごとに独立した状態）
         const entities = getWorldSnapshot(worldStateKey);
-        const environment = instanceManager.getRoomEnvironment(roomValidation.data);
+        const environment = instanceManager.getWorldEnvironment(worldValidation.data);
 
-        // ルーム定義から依存関係を取得
-        const room = roomRegistry.getRoom(roomValidation.data);
-        const activePlugins = room?.dependencies?.map((d) => d.name) || [];
+        // ワールド定義から依存関係を取得
+        const world = worldRegistry.getWorld(worldValidation.data);
+        const activePlugins = world?.dependencies?.map((d) => d.name) || [];
 
         // ワールドスナップショット（拡張版）を送信
         const snapshotPayload: WorldSnapshotPayload = {
             entities,
-            availableKinds: [], // 将来的にルーム定義から取得
+            availableKinds: [], // 将来的にワールド定義から取得
             activePlugins,
             environment,
         };
@@ -115,7 +115,7 @@ export function handleRoomJoin(socket: TypedSocket) {
             `ワールドスナップショット送信: ${entities.length}件のエンティティ, plugins: ${activePlugins.length} (instance: ${worldStateKey})`,
         );
 
-        // ルーム内の他のユーザーに参加を通知
+        // ワールド内の他のユーザーに参加を通知
         socket.to(socketRoom).emit('user:joined', newUser);
 
         logger.info(
@@ -130,9 +130,9 @@ export function handleRoomJoin(socket: TypedSocket) {
 export function handleCursorMove(socket: TypedSocket) {
     return (payload: { position: { x: number; y: number }; state?: CursorState }) => {
         const { position, state } = payload;
-        const roomId = socket.data.roomId;
-        if (!roomId) {
-            socket.emit('error', '最初にルームに参加する必要があります');
+        const worldId = socket.data.worldId;
+        if (!worldId) {
+            socket.emit('error', '最初にワールドに参加する必要があります');
             return;
         }
 
@@ -161,8 +161,8 @@ export function handleCursorMove(socket: TypedSocket) {
             return;
         }
 
-        // ルーム内の他のユーザーにブロードキャスト
-        socket.to(roomId).emit('cursor:moved', {
+        // ワールド内の他のユーザーにブロードキャスト
+        socket.to(worldId).emit('cursor:moved', {
             userId: socket.id,
             position: validation.data,
             state: validatedState,
@@ -175,9 +175,9 @@ export function handleCursorMove(socket: TypedSocket) {
  */
 export function handleStatusUpdate(socket: TypedSocket) {
     return (status: string) => {
-        const roomId = socket.data.roomId;
-        if (!roomId) {
-            socket.emit('error', '最初にルームに参加する必要があります');
+        const worldId = socket.data.worldId;
+        if (!worldId) {
+            socket.emit('error', '最初にワールドに参加する必要があります');
             return;
         }
 
@@ -195,8 +195,8 @@ export function handleStatusUpdate(socket: TypedSocket) {
             return;
         }
 
-        // ルーム内の他のユーザーにブロードキャスト
-        socket.to(roomId).emit('status:changed', {
+        // ワールド内の他のユーザーにブロードキャスト
+        socket.to(worldId).emit('status:changed', {
             userId: socket.id,
             status: validation.data,
         });
@@ -208,9 +208,9 @@ export function handleStatusUpdate(socket: TypedSocket) {
  */
 export function handleUserUpdate(socket: TypedSocket) {
     return (patch: Partial<User>) => {
-        const roomId = socket.data.roomId;
-        if (!roomId) {
-            socket.emit('error', '最初にルームに参加する必要があります');
+        const worldId = socket.data.worldId;
+        if (!worldId) {
+            socket.emit('error', '最初にワールドに参加する必要があります');
             return;
         }
 
@@ -223,10 +223,10 @@ export function handleUserUpdate(socket: TypedSocket) {
             return;
         }
 
-        // ルーム内の全員（自分含む）にブロードキャスト
+        // ワールド内の全員（自分含む）にブロードキャスト
         // 自分にも送ることで、サーバー側で正規化された状態（もしあれば）を反映できる
         // また、他のクライアントと同じイベントフローで更新を受け取れるメリットがある
-        socket.nsp.to(roomId).emit('user:updated', updatedUser);
+        socket.nsp.to(worldId).emit('user:updated', updatedUser);
     };
 }
 
@@ -235,7 +235,7 @@ export function handleUserUpdate(socket: TypedSocket) {
  */
 export function handleDisconnect(socket: TypedSocket) {
     return () => {
-        const roomId = socket.data.roomId;
+        const worldId = socket.data.worldId;
         const instanceId = socket.data.instanceId;
         const user = userManager.removeUser(socket.id);
 
@@ -244,14 +244,14 @@ export function handleDisconnect(socket: TypedSocket) {
             instanceManager.updateUserCount(instanceId, -1);
         }
 
-        if (roomId && user) {
+        if (worldId && user) {
             // 切断したユーザーがロックしていたエンティティを解放する
-            const entities = getWorldSnapshot(roomId);
+            const entities = getWorldSnapshot(worldId);
             const userLockedEntities = entities.filter((e) => e.lockedBy === socket.id);
 
             userLockedEntities.forEach((entity) => {
                 // ロックを解除するだけ（位置はそのまま）
-                patchEntity(roomId, entity.id, {
+                patchEntity(worldId, entity.id, {
                     lockedBy: null,
                     data: {
                         ...(entity.data as Record<string, unknown>),
@@ -260,7 +260,7 @@ export function handleDisconnect(socket: TypedSocket) {
                 });
 
                 // 他のユーザーに通知
-                socket.to(roomId).emit('entity:patched', {
+                socket.to(worldId).emit('entity:patched', {
                     entityId: entity.id,
                     patch: {
                         lockedBy: null,
@@ -278,10 +278,10 @@ export function handleDisconnect(socket: TypedSocket) {
                 );
             }
 
-            // ルーム内の他のユーザーに退出を通知
-            socket.to(roomId).emit('user:left', socket.id);
+            // ワールド内の他のユーザーに退出を通知
+            socket.to(worldId).emit('user:left', socket.id);
             logger.info(
-                `👋 ユーザー「${user.name}」(${socket.id.substring(0, 8)}) がルーム「${roomId}」から退出しました`,
+                `👋 ユーザー「${user.name}」(${socket.id.substring(0, 8)}) がワールド「${worldId}」から退出しました`,
             );
         } else {
             logger.info(`👋 ユーザーが切断しました: ${socket.id.substring(0, 8)}`);
@@ -301,21 +301,21 @@ export function handleEntityCreate(socket: TypedSocket) {
         payload: Omit<WorldEntity, 'id'>,
         callback: (response: { success: boolean; entity?: WorldEntity; error?: string }) => void,
     ) => {
-        const roomId = socket.data.roomId;
-        if (!roomId) {
-            callback({ success: false, error: '最初にルームに参加する必要があります' });
+        const worldId = socket.data.worldId;
+        if (!worldId) {
+            callback({ success: false, error: '最初にワールドに参加する必要があります' });
             return;
         }
 
         try {
             // エンティティを作成（IDはサーバーで生成）
-            const entity = createEntity(roomId, payload);
+            const entity = createEntity(worldId, payload);
 
             // 成功レスポンスを送信
             callback({ success: true, entity });
 
-            // ルーム内の他のユーザーにブロードキャスト
-            socket.to(roomId).emit('entity:created', entity);
+            // ワールド内の他のユーザーにブロードキャスト
+            socket.to(worldId).emit('entity:created', entity);
 
             logger.debug(`エンティティ作成: ${entity.id} (type: ${entity.type})`);
         } catch (error) {
@@ -332,23 +332,23 @@ export function handleEntityCreate(socket: TypedSocket) {
  */
 export function handleEntityPatch(socket: TypedSocket) {
     return (payload: EntityPatchPayload) => {
-        const roomId = socket.data.roomId;
-        if (!roomId) {
-            socket.emit('error', '最初にルームに参加する必要があります');
+        const worldId = socket.data.worldId;
+        if (!worldId) {
+            socket.emit('error', '最初にワールドに参加する必要があります');
             return;
         }
 
         const { entityId, patch } = payload;
 
         // エンティティを更新
-        const updated = patchEntity(roomId, entityId, patch);
+        const updated = patchEntity(worldId, entityId, patch);
         if (!updated) {
             socket.emit('error', 'エンティティが見つかりません');
             return;
         }
 
-        // ルーム内の他のユーザーにブロードキャスト
-        socket.to(roomId).emit('entity:patched', payload);
+        // ワールド内の他のユーザーにブロードキャスト
+        socket.to(worldId).emit('entity:patched', payload);
 
         logger.debug(`エンティティパッチ: ${entityId}`);
     };
@@ -361,14 +361,14 @@ export function handleEntityPatch(socket: TypedSocket) {
  */
 export function handleEntityEphemeral(socket: TypedSocket) {
     return (payload: EntityEphemeralPayload) => {
-        const roomId = socket.data.roomId;
-        if (!roomId) {
-            socket.emit('error', '最初にルームに参加する必要があります');
+        const worldId = socket.data.worldId;
+        if (!worldId) {
+            socket.emit('error', '最初にワールドに参加する必要があります');
             return;
         }
 
         // 保存せずにそのままブロードキャスト（土管）
-        socket.to(roomId).emit('entity:ephemeral', payload);
+        socket.to(worldId).emit('entity:ephemeral', payload);
     };
 }
 
@@ -377,53 +377,53 @@ export function handleEntityEphemeral(socket: TypedSocket) {
  */
 export function handleEntityDelete(socket: TypedSocket) {
     return (entityId: string) => {
-        const roomId = socket.data.roomId;
-        if (!roomId) {
-            socket.emit('error', '最初にルームに参加する必要があります');
+        const worldId = socket.data.worldId;
+        if (!worldId) {
+            socket.emit('error', '最初にワールドに参加する必要があります');
             return;
         }
 
         // エンティティを削除
-        const deleted = deleteEntity(roomId, entityId);
+        const deleted = deleteEntity(worldId, entityId);
         if (!deleted) {
             socket.emit('error', 'エンティティが見つかりません');
             return;
         }
 
-        // ルーム内の他のユーザーにブロードキャスト
-        socket.to(roomId).emit('entity:deleted', entityId);
+        // ワールド内の他のユーザーにブロードキャスト
+        socket.to(worldId).emit('entity:deleted', entityId);
 
         logger.debug(`エンティティ削除: ${entityId}`);
     };
 }
 
 /**
- * ワールドスナップショットを送信（ルーム参加時に呼び出す）
- * @param instanceOrRoomId インスタンスIDまたはルームID（ワールド状態のキー）
- * @param roomId 環境設定取得用のルームID
+ * ワールドスナップショットを送信（ワールド参加時に呼び出す）
+ * @param instanceOrWorldId インスタンスIDまたはワールドID（ワールド状態のキー）
+ * @param worldId 環境設定取得用のワールドID
  */
-export function sendWorldSnapshot(socket: TypedSocket, instanceOrRoomId: string, roomId?: string): void {
-    const entities = getWorldSnapshot(instanceOrRoomId);
+export function sendWorldSnapshot(socket: TypedSocket, instanceOrWorldId: string, worldId?: string): void {
+    const entities = getWorldSnapshot(instanceOrWorldId);
 
-    // RoomIDを解決
-    let targetRoomId = roomId;
-    if (!targetRoomId) {
-        if (roomRegistry.hasRoom(instanceOrRoomId)) {
-            targetRoomId = instanceOrRoomId;
+    // WorldIDを解決
+    let targetWorldId = worldId;
+    if (!targetWorldId) {
+        if (worldRegistry.hasWorld(instanceOrWorldId)) {
+            targetWorldId = instanceOrWorldId;
         } else {
-            // インスタンスIDからルームIDを特定を試みる
-            const instance = instanceManager.getInstance(instanceOrRoomId);
+            // インスタンスIDからワールドIDを特定を試みる
+            const instance = instanceManager.getInstance(instanceOrWorldId);
             if (instance) {
-                targetRoomId = instance.room.id;
+                targetWorldId = instance.world.id;
             }
         }
     }
 
     // 環境設定とプラグイン情報を取得
-    const finalRoomId = targetRoomId || instanceOrRoomId;
-    const environment = instanceManager.getRoomEnvironment(finalRoomId);
-    const room = roomRegistry.getRoom(finalRoomId);
-    const activePlugins = room?.dependencies?.map((d) => d.name) || [];
+    const finalWorldId = targetWorldId || instanceOrWorldId;
+    const environment = instanceManager.getWorldEnvironment(finalWorldId);
+    const world = worldRegistry.getWorld(finalWorldId);
+    const activePlugins = world?.dependencies?.map((d) => d.name) || [];
 
     const snapshotPayload: WorldSnapshotPayload = {
         entities,
@@ -433,7 +433,7 @@ export function sendWorldSnapshot(socket: TypedSocket, instanceOrRoomId: string,
     };
     socket.emit('world:snapshot', snapshotPayload);
     logger.debug(
-        `ワールドスナップショット送信: ${entities.length}件のエンティティ, plugins: ${activePlugins.length} (key: ${instanceOrRoomId})`,
+        `ワールドスナップショット送信: ${entities.length}件のエンティティ, plugins: ${activePlugins.length} (key: ${instanceOrWorldId})`,
     );
 }
 
@@ -442,32 +442,32 @@ export function sendWorldSnapshot(socket: TypedSocket, instanceOrRoomId: string,
  */
 export function handleVideoPlayerSync(socket: TypedSocket) {
     return async (syncData: { currentIndex: number; isPlaying: boolean; currentTime: number }) => {
-        const roomId = socket.data.roomId;
-        if (!roomId) {
-            logger.warn('video-player:sync - ルームIDが設定されていません');
+        const worldId = socket.data.worldId;
+        if (!worldId) {
+            logger.warn('video-player:sync - ワールドIDが設定されていません');
             return;
         }
 
-        // ルーム内の全ソケットを取得
-        const roomSockets = await socket.in(roomId).fetchSockets();
-        const otherSockets = roomSockets.filter((s) => s.id !== socket.id);
+        // ワールド内の全ソケットを取得
+        const worldSockets = await socket.in(worldId).fetchSockets();
+        const otherSockets = worldSockets.filter((s) => s.id !== socket.id);
 
         logger.debug('video-player:sync イベント受信:', {
-            roomId,
+            worldId,
             syncData,
             fromSocketId: socket.id,
             fromUserId: socket.data.userId,
-            totalSocketsInRoom: roomSockets.length,
+            totalSocketsInWorld: worldSockets.length,
             otherSocketsCount: otherSockets.length,
             otherSocketIds: otherSockets.map((s) => s.id),
             timestamp: new Date().toISOString(),
         });
 
-        // 同じルーム内の他のユーザーに同期データをブロードキャスト
-        const emitResult = socket.to(roomId).emit('video-player:sync', syncData);
+        // 同じワールド内の他のユーザーに同期データをブロードキャスト
+        const emitResult = socket.to(worldId).emit('video-player:sync', syncData);
 
         logger.debug('video-player:sync ブロードキャスト完了:', {
-            roomId,
+            worldId,
             targetSocketsCount: otherSockets.length,
             emitResult: emitResult ? 'success' : 'no-result',
         });

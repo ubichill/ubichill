@@ -10,10 +10,10 @@ import { useCursorState } from '@/core/hooks/useCursorState';
 import { APP_PLUGINS } from '@/plugins/registry';
 import * as styles from '@/styles/styles';
 
-type AppScreen = 'name' | 'lobby' | 'room';
+type AppScreen = 'name' | 'lobby' | 'world';
 
 export default function Home() {
-    const { isConnected, users, currentUser, error, joinRoom, updatePosition } = useSocket();
+    const { isConnected, users, currentUser, error, joinWorld, updatePosition } = useSocket();
     const { environment } = useWorld();
     const [name, setName] = useState('');
     const [screen, setScreen] = useState<AppScreen>('name');
@@ -35,9 +35,9 @@ export default function Home() {
     };
 
     // インスタンスに参加
-    const handleJoinInstance = (instanceId: string, roomId: string) => {
-        joinRoom(name, roomId, instanceId);
-        setScreen('room');
+    const handleJoinInstance = (instanceId: string, worldId: string) => {
+        joinWorld(name, worldId, instanceId);
+        setScreen('world');
     };
 
     // Add ref for the container
@@ -51,7 +51,7 @@ export default function Home() {
         // マウス位置を追跡（AppPluginに渡すため）
         setMousePosition({ x: e.clientX, y: e.clientY });
 
-        if (screen === 'room' && canvasRef.current) {
+        if (screen === 'world' && canvasRef.current) {
             const rect = canvasRef.current.getBoundingClientRect();
             let x = e.clientX - rect.left;
             let y = e.clientY - rect.top;
@@ -165,7 +165,7 @@ export default function Home() {
         );
     }
 
-    // ルーム画面
+    // ワールド画面
     return (
         <main
             className={styles.mainContainer}
@@ -189,7 +189,7 @@ export default function Home() {
                 </div>
             </div>
 
-            <div ref={canvasRef} className={styles.roomCanvas}>
+            <div ref={canvasRef} className={styles.worldCanvas}>
                 <div className={styles.userListContainer}>
                     <h2 className={styles.userListTitle}>参加ユーザー ({users.size}人)</h2>
                     <ul className={styles.userList}>

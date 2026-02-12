@@ -23,7 +23,7 @@ export interface SocketContextValue {
     users: Map<string, User>;
     currentUser: User | null;
     error: string | null;
-    joinRoom: (name: string, roomId?: string, instanceId?: string) => void;
+    joinWorld: (name: string, worldId?: string, instanceId?: string) => void;
     updatePosition: (position: CursorPosition, state?: CursorState) => void;
     updateStatus: (status: UserStatus) => void;
     updateUser: (patch: Partial<User>) => void;
@@ -150,7 +150,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         };
     }, []);
 
-    const joinRoom = useCallback((name: string, roomId: string = DEFAULTS.ROOM_ID, instanceId?: string) => {
+    const joinWorld = useCallback((name: string, worldId: string = DEFAULTS.WORLD_ID, instanceId?: string) => {
         const socket = socketRef.current;
         if (!socket) return;
 
@@ -161,11 +161,11 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             lastActiveAt: Date.now(),
         };
 
-        socket.emit('room:join', { roomId, instanceId, user: initialUser }, (response) => {
+        socket.emit('world:join', { worldId, instanceId, user: initialUser }, (response) => {
             if (response.success && response.userId) {
                 setCurrentUser({ ...initialUser, id: response.userId });
             } else {
-                setError(response.error || 'Failed to join room');
+                setError(response.error || 'Failed to join world');
             }
         });
     }, []);
@@ -218,7 +218,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         users,
         currentUser,
         error,
-        joinRoom,
+        joinWorld,
         updatePosition,
         updateStatus,
         updateUser,

@@ -89,8 +89,8 @@ export const button = css({
     _disabled: { opacity: 0.5, cursor: 'not-allowed' },
 });
 
-// Room/Canvas Styles
-export const roomCanvas = css({
+// World/Canvas Styles
+export const worldCanvas = css({
     pos: 'relative',
     w: 'full',
     h: '600px',
