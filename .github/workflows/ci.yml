@@ -30,15 +30,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Extract Versions from package.json
+        id: versions
+        run: |
+          echo "node=$(jq -r '.volta.node' package.json)" >> $GITHUB_OUTPUT
+          echo "pnpm=$(jq -r '.volta.pnpm' package.json)" >> $GITHUB_OUTPUT
+
       - name: Install pnpm
         uses: pnpm/action-setup@v3
         with:
-          version: 10
+          version: ${{ steps.versions.outputs.pnpm }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ steps.versions.outputs.node }}
           cache: 'pnpm'
 
       - name: Cache Next.js
