@@ -4,7 +4,7 @@ import type {
     AvailableKind,
     EntityEphemeralPayload,
     EntityPatchPayload,
-    RoomEnvironmentData,
+    WorldEnvironmentData,
     WorldEntity,
     WorldSnapshotPayload,
 } from '@ubichill/shared';
@@ -19,7 +19,7 @@ import { useSocket } from './useSocket';
 export interface WorldContextType {
     entities: Map<string, WorldEntity>;
     ephemeralData: Map<string, unknown>;
-    environment: RoomEnvironmentData;
+    environment: WorldEnvironmentData;
     availableKinds: AvailableKind[];
     activePlugins: string[];
     createEntity: <T = Record<string, unknown>>(
@@ -46,7 +46,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const { socket, isConnected } = useSocket();
     const [entities, setEntities] = useState<Map<string, WorldEntity>>(new Map());
     const [ephemeralData, setEphemeralData] = useState<Map<string, unknown>>(new Map());
-    const [environment, setEnvironment] = useState<RoomEnvironmentData>(DEFAULTS.ROOM_ENVIRONMENT);
+    const [environment, setEnvironment] = useState<WorldEnvironmentData>(DEFAULTS.WORLD_ENVIRONMENT);
     const [availableKinds, setAvailableKinds] = useState<AvailableKind[]>([]);
     const [activePlugins, setActivePlugins] = useState<string[]>([]);
 
@@ -89,9 +89,9 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                         : entity.transform,
                     data: payload.patch.data
                         ? {
-                              ...(entity.data as Record<string, unknown>),
-                              ...(payload.patch.data as Record<string, unknown>),
-                          }
+                            ...(entity.data as Record<string, unknown>),
+                            ...(payload.patch.data as Record<string, unknown>),
+                        }
                         : entity.data,
                 };
                 newMap.set(payload.entityId, updatedEntity);
