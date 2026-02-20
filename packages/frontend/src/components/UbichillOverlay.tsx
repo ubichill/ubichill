@@ -4,13 +4,13 @@ import { useSocket, useWorld, Z_INDEX } from '@ubichill/sdk';
 import { DEFAULTS } from '@ubichill/shared';
 import type React from 'react';
 import { EntityRenderer } from '@/core/components/EntityRenderer';
-import { useRoomInitializer } from '@/core/hooks/useRoomInitializer';
+import { useWorldInitializer } from '@/core/hooks/useWorldInitializer';
 
 export const UbichillOverlay: React.FC = () => {
     const { isConnected } = useSocket();
     const { entities } = useWorld();
 
-    useRoomInitializer(DEFAULTS.ROOM_ID);
+    useWorldInitializer(DEFAULTS.WORLD_ID);
 
     if (!isConnected) {
         return null;

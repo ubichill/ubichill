@@ -10,7 +10,7 @@ export type {
     CursorPosition,
     EntityEphemeralPayload,
     EntityPatchPayload,
-    RoomEnvironmentData,
+    WorldEnvironmentData,
     User,
     WorldEntity,
 } from '@ubichill/shared';
