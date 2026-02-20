@@ -20,6 +20,6 @@
         "@types/react-dom": "^19.0.0"
     },
     "dependencies": {
-        "perfect-freehand": "^1.2.2"
+        "perfect-freehand": "^1.2.3"
     }
 }
