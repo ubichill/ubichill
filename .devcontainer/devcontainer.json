@@ -15,7 +15,10 @@
     },
     "remoteUser": "vscode",
     "features": {
-        "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+        "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+        "ghcr.io/devcontainers/features/common-utils:2": {
+            "configureZshAsDefaultShell": true
+        }
     },
     "postCreateCommand": "chmod +x .devcontainer/setup.sh && ./.devcontainer/setup.sh"
 }

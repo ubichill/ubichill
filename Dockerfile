@@ -1,7 +1,10 @@
-FROM node:22-alpine AS base
+ARG NODE_VERSION=22
+FROM node:${NODE_VERSION}-alpine AS base
+
+ARG PNPM_VERSION=10.28.2
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable
+RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 RUN apk add --no-cache libc6-compat
 
 # ==========================================
