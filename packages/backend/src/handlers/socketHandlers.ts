@@ -13,16 +13,16 @@ import {
 } from '@ubichill/shared';
 import type { Socket } from 'socket.io';
 import { instanceManager } from '../services/instanceManager';
-import { worldRegistry } from '../services/worldRegistry';
 import { userManager } from '../services/userManager';
+import { worldRegistry } from '../services/worldRegistry';
 import { createEntity, deleteEntity, getWorldSnapshot, patchEntity } from '../services/worldState';
 import { logger } from '../utils/logger';
 import {
     validateCursorPosition,
     validateCursorState,
-    validateWorldId,
     validateUsername,
     validateUserStatus,
+    validateWorldId,
 } from '../utils/validation';
 
 type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents, InterServerEvents, SocketData>;

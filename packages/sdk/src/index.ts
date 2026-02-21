@@ -10,9 +10,9 @@ export type {
     CursorPosition,
     EntityEphemeralPayload,
     EntityPatchPayload,
-    WorldEnvironmentData,
     User,
     WorldEntity,
+    WorldEnvironmentData,
 } from '@ubichill/shared';
 // Constants & Utils
 export { Z_INDEX } from './constants';

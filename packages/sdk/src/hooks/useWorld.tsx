@@ -4,8 +4,8 @@ import type {
     AvailableKind,
     EntityEphemeralPayload,
     EntityPatchPayload,
-    WorldEnvironmentData,
     WorldEntity,
+    WorldEnvironmentData,
     WorldSnapshotPayload,
 } from '@ubichill/shared';
 import { DEFAULTS } from '@ubichill/shared';
@@ -89,9 +89,9 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                         : entity.transform,
                     data: payload.patch.data
                         ? {
-                            ...(entity.data as Record<string, unknown>),
-                            ...(payload.patch.data as Record<string, unknown>),
-                        }
+                              ...(entity.data as Record<string, unknown>),
+                              ...(payload.patch.data as Record<string, unknown>),
+                          }
                         : entity.data,
                 };
                 newMap.set(payload.entityId, updatedEntity);

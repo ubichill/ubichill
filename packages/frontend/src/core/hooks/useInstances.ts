@@ -1,6 +1,6 @@
 'use client';
 
-import { type CreateInstanceRequest, type Instance, type WorldListItem, SERVER_CONFIG } from '@ubichill/shared';
+import { type CreateInstanceRequest, type Instance, SERVER_CONFIG, type WorldListItem } from '@ubichill/shared';
 import { useCallback, useEffect, useState } from 'react';
 
 const API_BASE =

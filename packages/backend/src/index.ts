@@ -14,10 +14,10 @@ import {
     handleEntityDelete,
     handleEntityEphemeral,
     handleEntityPatch,
-    handleWorldJoin,
     handleStatusUpdate,
     handleUserUpdate,
     handleVideoPlayerSync,
+    handleWorldJoin,
 } from './handlers/socketHandlers';
 import audioRouter from './routes/audio';
 import instancesRouter from './routes/instances';

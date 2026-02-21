@@ -4,9 +4,9 @@ import {
     DEFAULTS,
     ENV_KEYS,
     type ResolvedWorld,
+    SERVER_CONFIG,
     type WorldDefinition,
     WorldDefinitionSchema,
-    SERVER_CONFIG,
 } from '@ubichill/shared';
 import yaml from 'yaml';
 
