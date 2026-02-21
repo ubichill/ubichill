@@ -14,22 +14,11 @@ services:
       - "3000:3000"
       - "3001:3001"
   # Database and Redis placeholders (commented out for now as requested)
-  # db:
-  #   image: postgres:15-alpine
-  #   restart: unless-stopped
-  #   environment:
-  #     POSTGRES_PASSWORD: password
-  #     POSTGRES_USER: user
-  #     POSTGRES_DB: ubichill
-  #   volumes:
-  #     - db-data:/var/lib/postgresql/data
-
   # redis:
   #   image: redis:7-alpine
   #   restart: unless-stopped
   #   volumes:
   #     - redis-data:/data
 
-  # volumes:
-  #   db-data:
-  #   redis-data:
+volumes:
+  redis-data:

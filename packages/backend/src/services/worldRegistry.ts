@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { userRepository, type WorldRecord, worldRepository } from '@ubichill/db';
 import {
     DEFAULTS,
     ENV_KEYS,
@@ -10,17 +11,19 @@ import {
 } from '@ubichill/shared';
 import yaml from 'yaml';
 
+// システムユーザーID（YAMLからのシード用）
+const SYSTEM_AUTHOR_ID = '00000000-0000-0000-0000-000000000000';
+
 /**
  * ワールドレジストリ
- * ワールド定義のロード・キャッシュを管理
+ * YAMLからの初期シードとDBからのワールド管理を統合
  */
 class WorldRegistry {
-    private worlds: Map<string, ResolvedWorld> = new Map();
     private worldsDir: string;
+    private cache: Map<string, ResolvedWorld> = new Map();
+    private allWorldsCache: ResolvedWorld[] | null = null;
 
     constructor() {
-        // 環境変数で指定可能（コンテナ環境向け）
-        // 未指定時はプロジェクトルートの worlds ディレクトリにフォールバック
         const envWorldsDir = process.env[ENV_KEYS.WORLDS_DIR];
         this.worldsDir = envWorldsDir
             ? path.resolve(envWorldsDir)
@@ -28,15 +31,44 @@ class WorldRegistry {
     }
 
     /**
-     * ワールド定義を読み込む
+     * ワールドを初期化
+     * 1. システムユーザーを作成（FK制約のため）
+     * 2. YAMLディレクトリから初期ワールドをDBにシード
+     * 3. DBからワールドを読み込み
      */
     async loadWorlds(): Promise<void> {
-        console.log(`📁 ワールド定義を読み込み中: ${this.worldsDir}`);
+        console.log('📁 ワールドを初期化中...');
 
+        // システムユーザーを作成（FK制約を満たすため）
+        await userRepository.ensureSystemUser(SYSTEM_AUTHOR_ID);
+        console.log('👤 システムユーザーを確認しました');
+
+        // YAMLからシード
+        await this.seedFromYaml();
+
+        // DBにワールドがなければデフォルトを作成
+        const worlds = await worldRepository.findAll();
+        if (worlds.length === 0) {
+            await this.createDefaultWorld();
+        }
+
+        const allWorlds = await worldRepository.findAll();
+        // 初期読み込み時にキャッシュに乗せる
+        this.cache.clear();
+        this.allWorldsCache = null;
+        for (const record of allWorlds) {
+            this.cache.set(record.name, this.resolveWorld(record));
+        }
+
+        console.log(`✅ ${allWorlds.length}件のワールドを読み込みました`);
+    }
+
+    /**
+     * YAMLディレクトリからワールドをシード
+     */
+    private async seedFromYaml(): Promise<void> {
         if (!fs.existsSync(this.worldsDir)) {
             console.warn(`⚠️ worldsディレクトリが見つかりません: ${this.worldsDir}`);
-            // デフォルトワールドを作成
-            this.createDefaultWorld();
             return;
         }
 
@@ -44,49 +76,86 @@ class WorldRegistry {
 
         for (const file of files) {
             try {
-                await this.loadWorldFile(path.join(this.worldsDir, file));
+                await this.seedWorldFile(path.join(this.worldsDir, file));
             } catch (error) {
                 console.error(`❌ ワールド定義の読み込みに失敗: ${file}`, error);
             }
         }
-
-        if (this.worlds.size === 0) {
-            this.createDefaultWorld();
-        }
-
-        console.log(`✅ ${this.worlds.size}件のワールド定義を読み込みました`);
     }
 
     /**
-     * 単一のワールド定義ファイルを読み込み
+     * 単一のYAMLファイルをDBにシード
      */
-    private async loadWorldFile(filePath: string): Promise<void> {
+    private async seedWorldFile(filePath: string): Promise<void> {
         const content = fs.readFileSync(filePath, 'utf-8');
         const parsed = yaml.parse(content) as unknown;
 
-        // Zodでバリデーション
         const result = WorldDefinitionSchema.safeParse(parsed);
         if (!result.success) {
             throw new Error(`Validation failed: ${result.error.issues.map((e) => e.message).join(', ')}`);
         }
 
-        const world = this.resolveWorld(result.data);
-        this.worlds.set(world.id, world);
-        console.log(`   📄 ${world.id} (v${world.version})`);
+        const definition = result.data;
+        const name = definition.metadata.name;
+
+        // 既存チェック（upsert）
+        await worldRepository.upsertByName({
+            authorId: SYSTEM_AUTHOR_ID,
+            name,
+            version: definition.metadata.version,
+            definition,
+        });
+
+        console.log(`   📄 ${name} (v${definition.metadata.version}) - シード完了`);
     }
 
     /**
-     * WorldDefinition を ResolvedWorld に変換
+     * デフォルトワールドをDBに作成
      */
-    private resolveWorld(def: WorldDefinition): ResolvedWorld {
+    private async createDefaultWorld(): Promise<void> {
+        const defaultDefinition: WorldDefinition = {
+            apiVersion: 'ubichill.com/v1alpha1',
+            kind: 'World',
+            metadata: {
+                name: 'default',
+                version: '1.0.0',
+            },
+            spec: {
+                displayName: 'デフォルトワールド',
+                description: 'Ubichill のデフォルトコラボレーションスペース',
+                capacity: { default: 10, max: 20 },
+                environment: {
+                    backgroundColor: DEFAULTS.WORLD_ENVIRONMENT.backgroundColor,
+                    worldSize: DEFAULTS.WORLD_ENVIRONMENT.worldSize,
+                },
+                initialEntities: [],
+            },
+        };
+
+        await worldRepository.create({
+            authorId: SYSTEM_AUTHOR_ID,
+            name: 'default',
+            version: '1.0.0',
+            definition: defaultDefinition,
+        });
+
+        console.log('📦 デフォルトワールドを作成しました');
+    }
+
+    /**
+     * WorldRecord を ResolvedWorld に変換
+     */
+    private resolveWorld(record: WorldRecord): ResolvedWorld {
+        const def = record.definition as WorldDefinition;
         const env = def.spec.environment ?? {
             backgroundColor: DEFAULTS.WORLD_ENVIRONMENT.backgroundColor,
             worldSize: DEFAULTS.WORLD_ENVIRONMENT.worldSize,
         };
 
         return {
-            id: def.metadata.name,
-            version: def.metadata.version,
+            id: record.name, // 人間が読める識別子
+            dbId: record.id, // DBの実際のID（外部キー用）
+            version: record.version,
             displayName: def.spec.displayName,
             description: def.spec.description,
             thumbnail: def.spec.thumbnail,
@@ -109,52 +178,131 @@ class WorldRegistry {
     }
 
     /**
-     * デフォルトワールドを作成
+     * キャッシュの無効化（更新/削除時に利用）
      */
-    private createDefaultWorld(): void {
-        const defaultWorld: ResolvedWorld = {
-            id: 'default',
-            version: '1.0.0',
-            displayName: 'デフォルトワールド',
-            description: 'Ubichill のデフォルトコラボレーションスペース',
-            environment: {
-                backgroundColor: DEFAULTS.WORLD_ENVIRONMENT.backgroundColor,
-                backgroundImage: null,
-                bgm: null,
-                worldSize: DEFAULTS.WORLD_ENVIRONMENT.worldSize,
-            },
-            capacity: { default: 10, max: 20 },
-            initialEntities: [],
-            dependencies: [
-                { name: 'pen:pen', source: { type: 'repository', path: 'plugins/pen' } },
-                { name: 'video-player', source: { type: 'repository', path: 'plugins/video-player' } },
-                { name: 'avatar', source: { type: 'repository', path: 'plugins/avatar' } },
-            ],
-        };
-
-        this.worlds.set('default', defaultWorld);
-        console.log('📦 デフォルトワールドを作成しました');
+    private invalidateCache(worldId?: string): void {
+        this.allWorldsCache = null;
+        if (worldId) {
+            this.cache.delete(worldId);
+        } else {
+            this.cache.clear();
+        }
     }
 
     /**
      * ワールド一覧を取得
      */
-    listWorlds(): ResolvedWorld[] {
-        return Array.from(this.worlds.values());
+    async listWorlds(): Promise<ResolvedWorld[]> {
+        if (this.allWorldsCache) {
+            return this.allWorldsCache;
+        }
+
+        const records = await worldRepository.findAll();
+        const resolved = records.map((r) => this.resolveWorld(r));
+
+        // キャッシュの更新
+        this.cache.clear();
+        for (const world of resolved) {
+            this.cache.set(world.id, world);
+        }
+        this.allWorldsCache = resolved;
+
+        return resolved;
     }
 
     /**
      * ワールドを取得
      */
-    getWorld(worldId: string): ResolvedWorld | undefined {
-        return this.worlds.get(worldId);
+    async getWorld(worldId: string): Promise<ResolvedWorld | undefined> {
+        if (this.cache.has(worldId)) {
+            return this.cache.get(worldId);
+        }
+
+        const record = await worldRepository.findByName(worldId);
+        if (!record) return undefined;
+
+        const resolved = this.resolveWorld(record);
+        this.cache.set(worldId, resolved);
+        return resolved;
     }
 
     /**
      * ワールドが存在するか確認
      */
-    hasWorld(worldId: string): boolean {
-        return this.worlds.has(worldId);
+    async hasWorld(worldId: string): Promise<boolean> {
+        if (this.cache.has(worldId)) return true;
+
+        const record = await worldRepository.findByName(worldId);
+        return !!record;
+    }
+
+    /**
+     * ワールドを作成
+     */
+    async createWorld(authorId: string, definition: WorldDefinition): Promise<ResolvedWorld> {
+        const record = await worldRepository.create({
+            authorId,
+            name: definition.metadata.name,
+            version: definition.metadata.version,
+            definition,
+        });
+
+        const resolved = this.resolveWorld(record);
+        this.cache.set(resolved.id, resolved);
+        this.invalidateCache(); // allWorldsCache を無効化
+
+        return resolved;
+    }
+
+    /**
+     * ワールドを更新
+     */
+    async updateWorld(worldId: string, definition: WorldDefinition): Promise<ResolvedWorld | undefined> {
+        const existing = await worldRepository.findByName(worldId);
+        if (!existing) return undefined;
+
+        const updated = await worldRepository.update(existing.id, {
+            version: definition.metadata.version,
+            definition,
+        });
+
+        if (updated) {
+            const resolved = this.resolveWorld(updated);
+            this.cache.set(worldId, resolved);
+            this.invalidateCache(); // allWorldsCache を無効化
+            return resolved;
+        }
+        return undefined;
+    }
+
+    /**
+     * ワールドを削除
+     */
+    async deleteWorld(worldId: string): Promise<boolean> {
+        const existing = await worldRepository.findByName(worldId);
+        if (!existing) return false;
+
+        const success = await worldRepository.delete(existing.id);
+        if (success) {
+            this.invalidateCache(worldId);
+        }
+        return success;
+    }
+
+    /**
+     * DB内のUUID IDでワールドを取得
+     */
+    async getWorldByDbId(dbId: string): Promise<ResolvedWorld | undefined> {
+        // IDがUUIDなので直接DBを引く（頻度が少なければこれで十分）
+        const record = await worldRepository.findById(dbId);
+        return record ? this.resolveWorld(record) : undefined;
+    }
+
+    /**
+     * 生のDBレコードを取得（内部用）
+     */
+    async getWorldRecord(worldId: string): Promise<WorldRecord | undefined> {
+        return worldRepository.findByName(worldId);
     }
 }
 

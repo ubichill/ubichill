@@ -26,7 +26,9 @@ export function useInstances(): UseInstancesReturn {
     const refreshInstances = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await fetch(`${API_BASE}/api/v1/instances`);
+            const res = await fetch(`${API_BASE}/api/v1/instances`, {
+                credentials: 'include',
+            });
             if (!res.ok) throw new Error('Failed to fetch instances');
             const data = await res.json();
             setInstances(data.instances);
@@ -40,7 +42,9 @@ export function useInstances(): UseInstancesReturn {
     const refreshWorlds = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await fetch(`${API_BASE}/api/v1/worlds`);
+            const res = await fetch(`${API_BASE}/api/v1/worlds`, {
+                credentials: 'include',
+            });
             if (!res.ok) throw new Error('Failed to fetch worlds');
             const data = await res.json();
             setWorlds(data.worlds);
@@ -59,6 +63,7 @@ export function useInstances(): UseInstancesReturn {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(request),
+                credentials: 'include',
             });
             if (!res.ok) {
                 const data = await res.json();

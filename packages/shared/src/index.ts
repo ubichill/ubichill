@@ -220,7 +220,7 @@ export interface ServerToClientEvents {
 export interface ClientToServerEvents {
     /** ワールドに参加 */
     'world:join': (
-        data: { worldId: string; instanceId?: string; user: Omit<User, 'id'> },
+        data: { worldId: string; instanceId?: string; password?: string; user: Omit<User, 'id'> },
         callback: (response: { success: boolean; userId?: string; error?: string }) => void,
     ) => void;
 
@@ -278,6 +278,13 @@ export interface SocketData {
     worldId?: string;
     instanceId?: string;
     user?: User;
+    /** better-auth で認証されたユーザー情報（接続時にセット、以降不変） */
+    authUser?: {
+        id: string;
+        email: string;
+        name: string;
+        image: string | null;
+    };
 }
 
 // ============================================
