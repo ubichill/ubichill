@@ -14,15 +14,15 @@ import {
     handleEntityDelete,
     handleEntityEphemeral,
     handleEntityPatch,
-    handleRoomJoin,
     handleStatusUpdate,
     handleUserUpdate,
     handleVideoPlayerSync,
+    handleWorldJoin,
 } from './handlers/socketHandlers';
 import audioRouter from './routes/audio';
 import instancesRouter from './routes/instances';
-import roomsRouter from './routes/rooms';
-import { roomRegistry } from './services/roomRegistry';
+import worldsRouter from './routes/worlds';
+import { worldRegistry } from './services/worldRegistry';
 
 // Expressアプリを初期化
 const app = express();
@@ -62,7 +62,7 @@ app.use('/api/audio', audioRouter);
 // ============================================
 // REST API ルート
 // ============================================
-app.use('/api/v1/rooms', roomsRouter);
+app.use('/api/v1/worlds', worldsRouter);
 app.use('/api/v1/instances', instancesRouter);
 
 // HTTPサーバーを作成
@@ -82,7 +82,7 @@ io.on('connection', (socket) => {
     console.log(`🔌 新しい接続: ${socket.id.substring(0, 8)}`);
 
     // 既存イベントハンドラー
-    socket.on('room:join', handleRoomJoin(socket));
+    socket.on('world:join', handleWorldJoin(socket));
     socket.on('cursor:move', handleCursorMove(socket));
     socket.on('status:update', handleStatusUpdate(socket));
     socket.on('user:update', handleUserUpdate(socket));
@@ -100,8 +100,8 @@ io.on('connection', (socket) => {
 
 // サーバーを起動（非同期初期化）
 async function startServer() {
-    // ルーム定義を読み込み
-    await roomRegistry.loadRooms();
+    // ワールド定義を読み込み
+    await worldRegistry.loadWorlds();
 
     server.listen(appConfig.port, () => {
         console.log('');
@@ -109,7 +109,7 @@ async function startServer() {
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log(`   🌐 ポート ${appConfig.port} で起動中`);
         console.log(`   📍 環境: ${appConfig.nodeEnv}`);
-        console.log(`   📁 ルーム数: ${roomRegistry.listRooms().length}`);
+        console.log(`   📁 ワールド数: ${worldRegistry.listWorlds().length}`);
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log('');
     });

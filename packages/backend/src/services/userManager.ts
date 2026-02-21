@@ -2,21 +2,21 @@ import type { CursorPosition, CursorState, User, UserStatus } from '@ubichill/sh
 
 /**
  * ユーザー管理サービス
- * ルームベースのフィルタリングでユーザー状態を管理
+ * ワールドベースのフィルタリングでユーザー状態を管理
  */
 export class UserManager {
     private users: Map<string, User> = new Map();
-    private userRooms: Map<string, string> = new Map(); // userId -> roomId
+    private userWorlds: Map<string, string> = new Map(); // userId -> worldId
 
-    addUser(userId: string, roomId: string, user: User): void {
+    addUser(userId: string, worldId: string, user: User): void {
         this.users.set(userId, user);
-        this.userRooms.set(userId, roomId);
+        this.userWorlds.set(userId, worldId);
     }
 
     removeUser(userId: string): User | undefined {
         const user = this.users.get(userId);
         this.users.delete(userId);
-        this.userRooms.delete(userId);
+        this.userWorlds.delete(userId);
         return user;
     }
 
@@ -25,28 +25,28 @@ export class UserManager {
     }
 
     /**
-     * 特定のルーム内の全ユーザーを取得
+     * 特定のワールド内の全ユーザーを取得
      */
-    getUsersByRoom(roomId: string): User[] {
-        const roomUsers: User[] = [];
+    getUsersByWorld(worldId: string): User[] {
+        const worldUsers: User[] = [];
 
-        for (const [userId, userRoomId] of this.userRooms.entries()) {
-            if (userRoomId === roomId) {
+        for (const [userId, userWorldId] of this.userWorlds.entries()) {
+            if (userWorldId === worldId) {
                 const user = this.users.get(userId);
                 if (user) {
-                    roomUsers.push(user);
+                    worldUsers.push(user);
                 }
             }
         }
 
-        return roomUsers;
+        return worldUsers;
     }
 
     /**
-     * ユーザーのルームIDを取得
+     * ユーザーのワールドIDを取得
      */
-    getUserRoom(userId: string): string | undefined {
-        return this.userRooms.get(userId);
+    getUserWorld(userId: string): string | undefined {
+        return this.userWorlds.get(userId);
     }
 
     /**
@@ -112,10 +112,10 @@ export class UserManager {
     }
 
     /**
-     * ルーム総数を取得
+     * ワールド総数を取得
      */
-    getRoomCount(): number {
-        return new Set(this.userRooms.values()).size;
+    getWorldCount(): number {
+        return new Set(this.userWorlds.values()).size;
     }
 }
 

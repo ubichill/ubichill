@@ -4,17 +4,17 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useInstances } from '@/core/hooks/useInstances';
 import { css } from '@/styled-system/css';
 import { InstanceCard } from './InstanceCard';
-import { RoomCard } from './RoomCard';
+import { WorldCard } from './WorldCard';
 
-type LobbyView = 'instances' | 'rooms';
+type LobbyView = 'instances' | 'worlds';
 
 interface LobbyProps {
     userName: string;
-    onJoinInstance: (instanceId: string, roomId: string) => void;
+    onJoinInstance: (instanceId: string, worldId: string) => void;
 }
 
 export function Lobby({ userName, onJoinInstance }: LobbyProps) {
-    const { instances, rooms, loading, error, createInstance, refreshInstances, refreshRooms } = useInstances();
+    const { instances, worlds, loading, error, createInstance, refreshInstances, refreshWorlds } = useInstances();
     const [view, setView] = useState<LobbyView>('instances');
 
     // Pull-to-refresh state
@@ -33,12 +33,12 @@ export function Lobby({ userName, onJoinInstance }: LobbyProps) {
             if (view === 'instances') {
                 await refreshInstances();
             } else {
-                await refreshRooms();
+                await refreshWorlds();
             }
         } finally {
             setIsRefreshing(false);
         }
-    }, [view, refreshInstances, refreshRooms]);
+    }, [view, refreshInstances, refreshWorlds]);
 
     // Refresh data when switching tabs
     const handleTabSwitch = useCallback(
@@ -50,13 +50,13 @@ export function Lobby({ userName, onJoinInstance }: LobbyProps) {
                 if (newView === 'instances') {
                     await refreshInstances();
                 } else {
-                    await refreshRooms();
+                    await refreshWorlds();
                 }
             } finally {
                 setIsRefreshing(false);
             }
         },
-        [view, refreshInstances, refreshRooms],
+        [view, refreshInstances, refreshWorlds],
     );
 
     // Touch-based pull-to-refresh
@@ -117,10 +117,10 @@ export function Lobby({ userName, onJoinInstance }: LobbyProps) {
         };
     }, []);
 
-    const handleCreateFromRoom = async (roomId: string) => {
-        const instance = await createInstance({ roomId });
+    const handleCreateFromWorld = async (worldId: string) => {
+        const instance = await createInstance({ worldId });
         if (instance) {
-            onJoinInstance(instance.id, roomId);
+            onJoinInstance(instance.id, worldId);
         } else {
             alert('インスタンスの作成に失敗しました。もう一度お試しください。');
         }
@@ -129,7 +129,7 @@ export function Lobby({ userName, onJoinInstance }: LobbyProps) {
     const handleJoinInstance = (instanceId: string) => {
         const instance = instances.find((i) => i.id === instanceId);
         if (instance) {
-            onJoinInstance(instanceId, instance.room.id);
+            onJoinInstance(instanceId, instance.world.id);
         }
     };
 
@@ -206,22 +206,22 @@ export function Lobby({ userName, onJoinInstance }: LobbyProps) {
                 </button>
                 <button
                     type="button"
-                    onClick={() => handleTabSwitch('rooms')}
+                    onClick={() => handleTabSwitch('worlds')}
                     className={css({
                         flex: 1,
                         padding: '12px 16px',
-                        backgroundColor: view === 'rooms' ? 'white' : 'transparent',
-                        color: view === 'rooms' ? '#212529' : '#868e96',
+                        backgroundColor: view === 'worlds' ? 'white' : 'transparent',
+                        color: view === 'worlds' ? '#212529' : '#868e96',
                         border: 'none',
                         borderRadius: '8px',
                         fontSize: '14px',
                         fontWeight: '500',
                         cursor: 'pointer',
                         transition: 'all 0.2s ease',
-                        boxShadow: view === 'rooms' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
+                        boxShadow: view === 'worlds' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
                     })}
                 >
-                    新規作成 ({rooms.length})
+                    新規作成 ({worlds.length})
                 </button>
             </div>
 
@@ -326,7 +326,7 @@ export function Lobby({ userName, onJoinInstance }: LobbyProps) {
                                         marginBottom: '16px',
                                     })}
                                 >
-                                    🏠
+                                    🌍
                                 </p>
                                 <p
                                     className={css({
@@ -339,7 +339,7 @@ export function Lobby({ userName, onJoinInstance }: LobbyProps) {
                                 </p>
                                 <button
                                     type="button"
-                                    onClick={() => handleTabSwitch('rooms')}
+                                    onClick={() => handleTabSwitch('worlds')}
                                     className={css({
                                         padding: '12px 24px',
                                         backgroundColor: '#228BE6',
@@ -362,8 +362,8 @@ export function Lobby({ userName, onJoinInstance }: LobbyProps) {
                     </div>
                 )}
 
-                {/* Rooms View */}
-                {view === 'rooms' && !loading && (
+                {/* Worlds View */}
+                {view === 'worlds' && !loading && (
                     <div>
                         <p
                             className={css({
@@ -381,8 +381,8 @@ export function Lobby({ userName, onJoinInstance }: LobbyProps) {
                                 gap: '16px',
                             })}
                         >
-                            {rooms.map((room) => (
-                                <RoomCard key={room.id} room={room} onSelect={handleCreateFromRoom} />
+                            {worlds.map((world) => (
+                                <WorldCard key={world.id} world={world} onSelect={handleCreateFromWorld} />
                             ))}
                         </div>
                     </div>

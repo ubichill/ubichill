@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import type { CreateInstanceRequest, Instance, InstanceAccess, RoomEnvironmentData } from '@ubichill/shared';
+import type { CreateInstanceRequest, Instance, InstanceAccess, WorldEnvironmentData } from '@ubichill/shared';
 import { DEFAULTS } from '@ubichill/shared';
-import { roomRegistry } from './roomRegistry';
+import { worldRegistry } from './worldRegistry';
 import { clearWorldState, createEntity } from './worldState';
 
 /**
@@ -17,16 +17,16 @@ interface InstanceState extends Instance {
  */
 class InstanceManager {
     private instances: Map<string, InstanceState> = new Map();
-    // roomId -> Set<instanceId> のマッピング
-    private roomToInstances: Map<string, Set<string>> = new Map();
+    // worldId -> Set<instanceId> のマッピング
+    private worldToInstances: Map<string, Set<string>> = new Map();
 
     /**
      * 新しいインスタンスを作成
      */
     createInstance(request: CreateInstanceRequest, leaderId: string): Instance | { error: string } {
-        const room = roomRegistry.getRoom(request.roomId);
-        if (!room) {
-            return { error: `Room not found: ${request.roomId}` };
+        const world = worldRegistry.getWorld(request.worldId);
+        if (!world) {
+            return { error: `World not found: ${request.worldId}` };
         }
 
         const instanceId = randomUUID();
@@ -38,7 +38,7 @@ class InstanceManager {
             password: !!request.access?.password,
         };
 
-        const maxUsers = request.settings?.maxUsers ?? room.capacity.default;
+        const maxUsers = request.settings?.maxUsers ?? world.capacity.default;
 
         const instance: InstanceState = {
             id: instanceId,
@@ -47,20 +47,20 @@ class InstanceManager {
             createdAt: now,
             expiresAt: null, // 無期限
 
-            room: {
-                id: room.id,
-                version: room.version,
-                displayName: room.displayName,
-                thumbnail: room.thumbnail,
+            world: {
+                id: world.id,
+                version: world.version,
+                displayName: world.displayName,
+                thumbnail: world.thumbnail,
             },
 
             access,
             stats: {
                 currentUsers: 0,
-                maxUsers: Math.min(maxUsers, room.capacity.max),
+                maxUsers: Math.min(maxUsers, world.capacity.max),
             },
             connection: {
-                url: DEFAULTS.ROOM_ID, // 将来的にはサーバーURLを返す
+                url: DEFAULTS.WORLD_ID, // 将来的にはサーバーURLを返す
                 namespace: `/${instanceId}`,
             },
 
@@ -70,15 +70,15 @@ class InstanceManager {
 
         this.instances.set(instanceId, instance);
 
-        // roomId -> instanceId のマッピングを追加
-        if (!this.roomToInstances.has(request.roomId)) {
-            this.roomToInstances.set(request.roomId, new Set());
+        // worldId -> instanceId のマッピングを追加
+        if (!this.worldToInstances.has(request.worldId)) {
+            this.worldToInstances.set(request.worldId, new Set());
         }
-        this.roomToInstances.get(request.roomId)?.add(instanceId);
+        this.worldToInstances.get(request.worldId)?.add(instanceId);
 
         // インスタンス固有のワールド状態を初期化（initialEntitiesを配置）
-        if (room.initialEntities && room.initialEntities.length > 0) {
-            for (const entityDef of room.initialEntities) {
+        if (world.initialEntities && world.initialEntities.length > 0) {
+            for (const entityDef of world.initialEntities) {
                 createEntity(instanceId, {
                     type: entityDef.kind,
                     ownerId: null,
@@ -96,11 +96,11 @@ class InstanceManager {
                 });
             }
             console.log(
-                `🌍 インスタンス ${instanceId} にinitialEntities ${room.initialEntities.length}件を配置しました`,
+                `🌍 インスタンス ${instanceId} にinitialEntities ${world.initialEntities.length}件を配置しました`,
             );
         }
 
-        console.log(`🏠 インスタンス作成: ${instanceId} (room: ${room.id})`);
+        console.log(`🏠 インスタンス作成: ${instanceId} (world: ${world.id})`);
 
         return this.toPublicInstance(instance);
     }
@@ -150,11 +150,11 @@ class InstanceManager {
         this.instances.delete(instanceId);
 
         // マッピングからも削除
-        const roomInstances = this.roomToInstances.get(instance.room.id);
-        if (roomInstances) {
-            roomInstances.delete(instanceId);
-            if (roomInstances.size === 0) {
-                this.roomToInstances.delete(instance.room.id);
+        const worldInstances = this.worldToInstances.get(instance.world.id);
+        if (worldInstances) {
+            worldInstances.delete(instanceId);
+            if (worldInstances.size === 0) {
+                this.worldToInstances.delete(instance.world.id);
             }
         }
 
@@ -185,11 +185,11 @@ class InstanceManager {
                 this.instances.delete(instanceId);
 
                 // マッピングからも削除
-                const roomInstances = this.roomToInstances.get(currentInstance.room.id);
-                if (roomInstances) {
-                    roomInstances.delete(instanceId);
-                    if (roomInstances.size === 0) {
-                        this.roomToInstances.delete(currentInstance.room.id);
+                const worldInstances = this.worldToInstances.get(currentInstance.world.id);
+                if (worldInstances) {
+                    worldInstances.delete(instanceId);
+                    if (worldInstances.size === 0) {
+                        this.worldToInstances.delete(currentInstance.world.id);
                     }
                 }
 
@@ -212,10 +212,10 @@ class InstanceManager {
     }
 
     /**
-     * ルームIDからインスタンスを検索（既存インスタンスへの参加用）
+     * ワールドIDからインスタンスを検索（既存インスタンスへの参加用）
      */
-    findInstancesByRoom(roomId: string): Instance[] {
-        const instanceIds = this.roomToInstances.get(roomId);
+    findInstancesByWorld(worldId: string): Instance[] {
+        const instanceIds = this.worldToInstances.get(worldId);
         if (!instanceIds) return [];
 
         return Array.from(instanceIds)
@@ -225,20 +225,20 @@ class InstanceManager {
     }
 
     /**
-     * ルームの環境設定を取得
+     * ワールドの環境設定を取得
      */
-    getRoomEnvironment(roomId: string): RoomEnvironmentData {
-        const room = roomRegistry.getRoom(roomId);
-        if (room) {
+    getWorldEnvironment(worldId: string): WorldEnvironmentData {
+        const world = worldRegistry.getWorld(worldId);
+        if (world) {
             // undefined を null に変換
             return {
-                backgroundColor: room.environment.backgroundColor,
-                backgroundImage: room.environment.backgroundImage ?? null,
-                bgm: room.environment.bgm ?? null,
-                worldSize: room.environment.worldSize,
+                backgroundColor: world.environment.backgroundColor,
+                backgroundImage: world.environment.backgroundImage ?? null,
+                bgm: world.environment.bgm ?? null,
+                worldSize: world.environment.worldSize,
             };
         }
-        return DEFAULTS.ROOM_ENVIRONMENT;
+        return DEFAULTS.WORLD_ENVIRONMENT;
     }
 
     /**

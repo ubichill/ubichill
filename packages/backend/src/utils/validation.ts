@@ -12,12 +12,12 @@ export const usernameSchema = z
     .max(50, 'ユーザー名は50文字以下である必要があります')
     .trim();
 
-// ルームIDのバリデーション: 英数字、ハイフン、アンダースコアのみ
-export const roomIdSchema = z
+// ワールドIDのバリデーション: 英数字、ハイフン、アンダースコアのみ
+export const worldIdSchema = z
     .string()
-    .min(1, 'ルームIDは1文字以上である必要があります')
-    .max(100, 'ルームIDは100文字以下である必要があります')
-    .regex(/^[a-zA-Z0-9_-]+$/, 'ルームIDには英数字、ハイフン、アンダースコアのみ使用できます');
+    .min(1, 'ワールドIDは1文字以上である必要があります')
+    .max(100, 'ワールドIDは100文字以下である必要があります')
+    .regex(/^[a-zA-Z0-9_-]+$/, 'ワールドIDには英数字、ハイフン、アンダースコアのみ使用できます');
 
 // カーソル位置のバリデーション: 妥当な画面範囲
 export const cursorPositionSchema = z.object({
@@ -43,8 +43,8 @@ export function validateUsername(username: string): { valid: true; data: string 
     return { valid: true, data: result.data };
 }
 
-export function validateRoomId(roomId: string): { valid: true; data: string } | { valid: false; error: string } {
-    const result = roomIdSchema.safeParse(roomId);
+export function validateWorldId(worldId: string): { valid: true; data: string } | { valid: false; error: string } {
+    const result = worldIdSchema.safeParse(worldId);
     if (!result.success) {
         return { valid: false, error: result.error.issues[0].message };
     }

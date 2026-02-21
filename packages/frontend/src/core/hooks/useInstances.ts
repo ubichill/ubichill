@@ -1,6 +1,6 @@
 'use client';
 
-import { type CreateInstanceRequest, type Instance, type RoomListItem, SERVER_CONFIG } from '@ubichill/shared';
+import { type CreateInstanceRequest, type Instance, SERVER_CONFIG, type WorldListItem } from '@ubichill/shared';
 import { useCallback, useEffect, useState } from 'react';
 
 const API_BASE =
@@ -9,17 +9,17 @@ const API_BASE =
 
 interface UseInstancesReturn {
     instances: Instance[];
-    rooms: RoomListItem[];
+    worlds: WorldListItem[];
     loading: boolean;
     error: string | null;
     createInstance: (request: CreateInstanceRequest) => Promise<Instance | null>;
     refreshInstances: () => Promise<void>;
-    refreshRooms: () => Promise<void>;
+    refreshWorlds: () => Promise<void>;
 }
 
 export function useInstances(): UseInstancesReturn {
     const [instances, setInstances] = useState<Instance[]>([]);
-    const [rooms, setRooms] = useState<RoomListItem[]>([]);
+    const [worlds, setWorlds] = useState<WorldListItem[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -37,13 +37,13 @@ export function useInstances(): UseInstancesReturn {
         }
     }, []);
 
-    const refreshRooms = useCallback(async () => {
+    const refreshWorlds = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await fetch(`${API_BASE}/api/v1/rooms`);
-            if (!res.ok) throw new Error('Failed to fetch rooms');
+            const res = await fetch(`${API_BASE}/api/v1/worlds`);
+            if (!res.ok) throw new Error('Failed to fetch worlds');
             const data = await res.json();
-            setRooms(data.rooms);
+            setWorlds(data.worlds);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Unknown error');
         } finally {
@@ -77,16 +77,16 @@ export function useInstances(): UseInstancesReturn {
 
     useEffect(() => {
         refreshInstances();
-        refreshRooms();
-    }, [refreshInstances, refreshRooms]);
+        refreshWorlds();
+    }, [refreshInstances, refreshWorlds]);
 
     return {
         instances,
-        rooms,
+        worlds,
         loading,
         error,
         createInstance,
         refreshInstances,
-        refreshRooms,
+        refreshWorlds,
     };
 }

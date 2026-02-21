@@ -128,9 +128,9 @@ export interface AvailableKind {
 }
 
 /**
- * ルーム環境設定
+ * ワールド環境設定
  */
-export interface RoomEnvironmentData {
+export interface WorldEnvironmentData {
     backgroundColor: string;
     backgroundImage: string | null;
     bgm: string | null;
@@ -145,7 +145,7 @@ export interface WorldSnapshotPayload {
     availableKinds: AvailableKind[];
     /** アクティブなプラグインIDのリスト */
     activePlugins: string[];
-    environment: RoomEnvironmentData;
+    environment: WorldEnvironmentData;
 }
 
 // ============================================
@@ -218,14 +218,14 @@ export interface ServerToClientEvents {
  * クライアントからサーバーへ送信されるイベント
  */
 export interface ClientToServerEvents {
-    /** ルームに参加 */
-    'room:join': (
-        data: { roomId: string; instanceId?: string; user: Omit<User, 'id'> },
+    /** ワールドに参加 */
+    'world:join': (
+        data: { worldId: string; instanceId?: string; user: Omit<User, 'id'> },
         callback: (response: { success: boolean; userId?: string; error?: string }) => void,
     ) => void;
 
-    /** ルームから退出 */
-    'room:leave': () => void;
+    /** ワールドから退出 */
+    'world:leave': () => void;
 
     /** カーソル位置を更新 */
     'cursor:move': (data: { position: CursorPosition; state?: CursorState }) => void;
@@ -275,7 +275,7 @@ export interface InterServerEvents {
  */
 export interface SocketData {
     userId?: string;
-    roomId?: string;
+    worldId?: string;
     instanceId?: string;
     user?: User;
 }
@@ -288,8 +288,8 @@ export interface SocketData {
  * デフォルト設定
  */
 export const DEFAULTS = {
-    /** デフォルトのルームID */
-    ROOM_ID: 'default',
+    /** デフォルトのワールドID */
+    WORLD_ID: 'default',
 
     /** ユーザーのデフォルトステータス */
     USER_STATUS: 'online' as UserStatus,
@@ -297,13 +297,13 @@ export const DEFAULTS = {
     /** カーソル位置の初期値 */
     INITIAL_POSITION: { x: 0, y: 0 } as CursorPosition,
 
-    /** デフォルトのルーム環境 */
-    ROOM_ENVIRONMENT: {
+    /** デフォルトのワールド環境 */
+    WORLD_ENVIRONMENT: {
         backgroundColor: '#F0F8FF',
         backgroundImage: null,
         bgm: null,
         worldSize: { width: 2000, height: 1500 },
-    } as RoomEnvironmentData,
+    } as WorldEnvironmentData,
 } as const;
 
 /**
@@ -314,8 +314,8 @@ export const ENV_KEYS = {
     /** バックエンドのポート番号 */
     PORT: 'PORT',
 
-    /** ルーム定義ディレクトリのパス */
-    ROOMS_DIR: 'ROOMS_DIR',
+    /** ワールド定義ディレクトリのパス */
+    WORLDS_DIR: 'WORLDS_DIR',
 
     /** バックエンドAPI URL（フロントエンド用、Next.js の NEXT_PUBLIC_ プレフィックス） */
     API_URL: 'NEXT_PUBLIC_API_URL',
@@ -337,8 +337,8 @@ export const SERVER_CONFIG = {
     /** Video Player本番環境パス */
     VIDEO_PLAYER_PROD_PATH: '/video-player-api',
 
-    /** ルーム定義ディレクトリのデフォルト相対パス（バックエンドcwd基準） */
-    ROOMS_DIR_DEFAULT: '../../rooms',
+    /** ワールド定義ディレクトリのデフォルト相対パス（バックエンドcwd基準） */
+    WORLDS_DIR_DEFAULT: '../../worlds',
 } as const;
 
 /**

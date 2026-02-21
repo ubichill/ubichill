@@ -1,12 +1,12 @@
 'use client';
 
-import type { RoomListItem } from '@ubichill/shared';
+import type { WorldListItem } from '@ubichill/shared';
 import Image from 'next/image';
 import { css } from '@/styled-system/css';
 
-interface RoomCardProps {
-    room: RoomListItem;
-    onSelect: (roomId: string) => void;
+interface WorldCardProps {
+    world: WorldListItem;
+    onSelect: (worldId: string) => void;
 }
 
 const cardStyle = {
@@ -63,34 +63,34 @@ const metaStyle = {
     color: '#adb5bd',
 };
 
-export function RoomCard({ room, onSelect }: RoomCardProps) {
+export function WorldCard({ world, onSelect }: WorldCardProps) {
     return (
-        <button type="button" onClick={() => onSelect(room.id)} className={css(cardStyle)}>
+        <button type="button" onClick={() => onSelect(world.id)} className={css(cardStyle)}>
             <div
                 className={css({
                     ...thumbnailContainerStyle,
-                    backgroundColor: room.thumbnail ? 'transparent' : '#f1f3f5',
+                    backgroundColor: world.thumbnail ? 'transparent' : '#f1f3f5',
                 })}
             >
-                {room.thumbnail ? (
+                {world.thumbnail ? (
                     <Image
-                        src={room.thumbnail}
-                        alt={room.displayName}
+                        src={world.thumbnail}
+                        alt={world.displayName}
                         fill
                         className={css({ objectFit: 'cover' })}
                         sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                     />
                 ) : (
-                    '🏠'
+                    '🌍'
                 )}
             </div>
-            <h3 className={css(titleStyle)}>{room.displayName}</h3>
-            {room.description && <p className={css(descriptionStyle)}>{room.description}</p>}
+            <h3 className={css(titleStyle)}>{world.displayName}</h3>
+            {world.description && <p className={css(descriptionStyle)}>{world.description}</p>}
             <div className={css(metaStyle)}>
                 <span>
-                    👥 推奨: {room.capacity.default}人 / 最大: {room.capacity.max}人
+                    👥 推奨: {world.capacity.default}人 / 最大: {world.capacity.max}人
                 </span>
-                <span>v{room.version}</span>
+                <span>v{world.version}</span>
             </div>
         </button>
     );

@@ -59,7 +59,7 @@ export const InstanceSchema = z.object({
     createdAt: z.string().datetime(),
     expiresAt: z.string().datetime().nullable(),
 
-    room: z.object({
+    world: z.object({
         id: z.string(),
         version: z.string(),
         displayName: z.string(),
@@ -81,7 +81,7 @@ export type Instance = z.infer<typeof InstanceSchema>;
  * インスタンス作成リクエスト
  */
 export const CreateInstanceRequestSchema = z.object({
-    roomId: z.string(),
+    worldId: z.string(),
     access: z
         .object({
             type: AccessType.optional(),
@@ -109,9 +109,9 @@ export const ListInstancesQuerySchema = z.object({
 export type ListInstancesQuery = z.infer<typeof ListInstancesQuerySchema>;
 
 /**
- * ルーム一覧レスポンス（簡易版）
+ * ワールド一覧レスポンス（簡易版）
  */
-export const RoomListItemSchema = z.object({
+export const WorldListItemSchema = z.object({
     id: z.string(),
     displayName: z.string(),
     description: z.string().optional(),
@@ -123,4 +123,4 @@ export const RoomListItemSchema = z.object({
     }),
 });
 
-export type RoomListItem = z.infer<typeof RoomListItemSchema>;
+export type WorldListItem = z.infer<typeof WorldListItemSchema>;

@@ -66,10 +66,10 @@ export const AuthorSchema = z.object({
 });
 
 // ============================================
-// Room Environment（環境設定）
+// World Environment（環境設定）
 // ============================================
 
-export const RoomEnvironmentSchema = z.object({
+export const WorldEnvironmentSchema = z.object({
     backgroundColor: HexColor.default('#F0F8FF'),
     backgroundImage: z.string().url().nullable().optional(),
     bgm: z.string().url().nullable().optional(),
@@ -82,10 +82,10 @@ export const RoomEnvironmentSchema = z.object({
 });
 
 // ============================================
-// Room Capacity（キャパシティ設定）
+// World Capacity（キャパシティ設定）
 // ============================================
 
-export const RoomCapacitySchema = z.object({
+export const WorldCapacitySchema = z.object({
     default: z.number().int().positive().default(10),
     max: z.number().int().positive().default(20),
 });
@@ -101,16 +101,16 @@ export const InitialEntitySchema = z.object({
 });
 
 // ============================================
-// Room Permissions（権限設定）
+// World Permissions（権限設定）
 // ============================================
 
-export const RoomPermissionsSchema = z.object({
+export const WorldPermissionsSchema = z.object({
     allowGuestCreate: z.boolean().default(false),
     allowGuestDelete: z.boolean().default(false),
 });
 
 // ============================================
-// Room Dependencies（依存関係）
+// World Dependencies（依存関係）
 // ============================================
 
 export const DependencySourceSchema = z.object({
@@ -126,12 +126,12 @@ export const DependencySchema = z.object({
 });
 
 // ============================================
-// Room Definition（ルーム定義 CRD）
+// World Definition（ワールド定義 CRD）
 // ============================================
 
-export const RoomDefinitionSchema = z.object({
+export const WorldDefinitionSchema = z.object({
     apiVersion: z.literal('ubichill.com/v1alpha1'),
-    kind: z.literal('Room'),
+    kind: z.literal('World'),
     metadata: z.object({
         name: KebabCaseId,
         version: SemVer,
@@ -141,35 +141,35 @@ export const RoomDefinitionSchema = z.object({
         displayName: SafeString,
         description: SafeString.optional(),
         thumbnail: z.string().url().optional(),
-        capacity: RoomCapacitySchema.default({ default: 10, max: 20 }),
-        environment: RoomEnvironmentSchema.optional(),
+        capacity: WorldCapacitySchema.default({ default: 10, max: 20 }),
+        environment: WorldEnvironmentSchema.optional(),
         // 依存関係
         dependencies: z.array(DependencySchema).optional(),
         initialEntities: z.array(InitialEntitySchema).max(LIMITS.MAX_INITIAL_ENTITIES).default([]),
-        permissions: RoomPermissionsSchema.optional(),
+        permissions: WorldPermissionsSchema.optional(),
     }),
 });
 
-export type RoomDefinition = z.infer<typeof RoomDefinitionSchema>;
-export type RoomEnvironment = z.infer<typeof RoomEnvironmentSchema>;
-export type RoomCapacity = z.infer<typeof RoomCapacitySchema>;
+export type WorldDefinition = z.infer<typeof WorldDefinitionSchema>;
+export type WorldEnvironment = z.infer<typeof WorldEnvironmentSchema>;
+export type WorldCapacity = z.infer<typeof WorldCapacitySchema>;
 export type InitialEntity = z.infer<typeof InitialEntitySchema>;
 
 // ============================================
-// Resolved Room（解決済みルーム）
+// Resolved World（解決済みワールド）
 // ============================================
 
-export const ResolvedRoomSchema = z.object({
+export const ResolvedWorldSchema = z.object({
     id: z.string(),
     version: z.string(),
     displayName: z.string(),
     description: z.string().optional(),
     thumbnail: z.string().optional(),
-    environment: RoomEnvironmentSchema,
-    capacity: RoomCapacitySchema,
+    environment: WorldEnvironmentSchema,
+    capacity: WorldCapacitySchema,
     dependencies: z.array(DependencySchema).optional(),
     // availableKinds は別途追加
     initialEntities: z.array(InitialEntitySchema),
 });
 
-export type ResolvedRoom = z.infer<typeof ResolvedRoomSchema>;
+export type ResolvedWorld = z.infer<typeof ResolvedWorldSchema>;

@@ -1,5 +1,5 @@
 apiVersion: ubichill.com/v1alpha1
-kind: Room
+kind: World
 metadata:
   name: workspace
   version: "1.0.0"
@@ -9,18 +9,18 @@ spec:
   displayName: "ワークスペース"
   description: "落ち着いた雰囲気の作業空間"
   thumbnail: "https://images.unsplash.com/photo-1497366216548-37526070297c?w=400&h=200&fit=crop&q=80"
-  
+
   capacity:
     default: 8
     max: 15
-  
+
   environment:
     backgroundColor: "#1a1a2e"
     backgroundImage: "https://images.unsplash.com/photo-1497366216548-37526070297c?w=1920&q=80"
     worldSize:
       width: 2000
       height: 1500
-  
+
   dependencies:
     - name: pen:pen
       source:
@@ -51,7 +51,7 @@ spec:
         currentTime: 0
         loop: 'none'
         shuffle: false
-  
+
   permissions:
     allowGuestCreate: true
     allowGuestDelete: false

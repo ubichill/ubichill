@@ -1,4 +1,4 @@
-// Room CRD スキーマ
+// World CRD スキーマ
 
 // Instance API スキーマ
 export {
@@ -16,8 +16,8 @@ export {
     InstanceStatus,
     type ListInstancesQuery,
     ListInstancesQuerySchema,
-    type RoomListItem,
-    RoomListItemSchema,
+    type WorldListItem,
+    WorldListItemSchema,
 } from './instance.schema';
 export {
     AuthorSchema,
@@ -26,16 +26,16 @@ export {
     InitialEntitySchema,
     KebabCaseId,
     LIMITS,
-    type ResolvedRoom,
-    ResolvedRoomSchema,
-    type RoomCapacity,
-    RoomCapacitySchema,
-    type RoomDefinition,
-    RoomDefinitionSchema,
-    type RoomEnvironment,
-    RoomEnvironmentSchema,
-    RoomPermissionsSchema,
+    type ResolvedWorld,
+    ResolvedWorldSchema,
     SafeString,
     SemVer,
     TransformSchema,
-} from './room.schema';
+    type WorldCapacity,
+    WorldCapacitySchema,
+    type WorldDefinition,
+    WorldDefinitionSchema,
+    type WorldEnvironment,
+    WorldEnvironmentSchema,
+    WorldPermissionsSchema,
+} from './world.schema';

@@ -44,7 +44,7 @@ export function InstanceCard({ instance, onJoin }: InstanceCardProps) {
                         fontSize: '24px',
                     })}
                 >
-                    🏠
+                    🌍
                 </div>
                 <div>
                     <h3
@@ -55,7 +55,7 @@ export function InstanceCard({ instance, onJoin }: InstanceCardProps) {
                             marginBottom: '4px',
                         })}
                     >
-                        {instance.room.displayName}
+                        {instance.world.displayName}
                     </h3>
                     <div
                         className={css({

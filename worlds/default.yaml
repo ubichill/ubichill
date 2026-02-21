@@ -1,25 +1,25 @@
 apiVersion: ubichill.com/v1alpha1
-kind: Room
+kind: World
 metadata:
   name: default
   version: "1.0.0"
   author:
     name: "Ubichill Team"
 spec:
-  displayName: "デフォルトルーム"
+  displayName: "デフォルトワールド"
   description: "Ubichill のデフォルトコラボレーションスペース"
   thumbnail: "https://images.unsplash.com/photo-1519389950473-47ba0277781c?w=400&h=200&fit=crop&q=80"
-  
+
   capacity:
     default: 10
     max: 20
-  
+
   environment:
     backgroundColor: "#F0F8FF"
     worldSize:
       width: 2000
       height: 1500
-  
+
   # パッケージ依存関係
   dependencies:
     - name: pen:pen
@@ -34,7 +34,7 @@ spec:
       source:
         type: repository
         path: "plugins/avatar"
-  
+
   # 初期配置エンティティ
   initialEntities:
     - kind: "video-player"
@@ -96,7 +96,7 @@ spec:
         color: "#00FF00"
         strokeWidth: 4
         isHeld: false
-  
+
   permissions:
     allowGuestCreate: true
     allowGuestDelete: false
