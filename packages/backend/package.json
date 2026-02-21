@@ -28,9 +28,11 @@
     },
     "dependencies": {
         "@distube/ytdl-core": "^4.16.12",
+        "@ubichill/db": "workspace:*",
         "@ubichill/shared": "workspace:*",
         "cors": "^2.8.5",
         "dotenv": "^17.2.3",
+        "drizzle-orm": "^0.45.1",
         "express": "^5.2.1",
         "express-rate-limit": "^8.2.1",
         "helmet": "^8.1.0",
@@ -46,6 +48,7 @@
         "rimraf": "^6.0.1",
         "ts-node": "^10.9.2",
         "ts-node-dev": "^2.0.0",
+        "tsx": "^4.21.0",
         "typescript": "^5.9.3",
         "wait-on": "^9.0.3"
     }

@@ -1,0 +1,39 @@
+{
+    "name": "@ubichill/db",
+    "version": "1.0.0",
+    "private": true,
+    "description": "Database definitions and migrations for Ubichill",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js",
+            "require": "./dist/index.js"
+        }
+    },
+    "scripts": {
+        "dev": "docker compose up -d && drizzle-kit studio",
+        "build": "tsc",
+        "clean": "rimraf dist",
+        "lint": "biome check .",
+        "lint:fix": "biome check --write .",
+        "generate": "drizzle-kit generate",
+        "push": "drizzle-kit push",
+        "stop": "docker compose down"
+    },
+    "dependencies": {
+        "drizzle-orm": "^0.45.1",
+        "drizzle-zod": "^0.8.3",
+        "postgres": "^3.4.8",
+        "zod": "^4.3.6",
+        "@ubichill/shared": "workspace:*"
+    },
+    "devDependencies": {
+        "@types/node": "^22.13.4",
+        "drizzle-kit": "^0.31.9",
+        "rimraf": "^6.0.1",
+        "typescript": "^5.9.3",
+        "tsx": "^4.21.0"
+    }
+}
