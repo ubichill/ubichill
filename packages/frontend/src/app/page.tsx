@@ -3,20 +3,33 @@
 import { PenTray } from '@ubichill/plugin-pen';
 import { useSocket, useWorld } from '@ubichill/sdk';
 import type { CursorState, UserStatus } from '@ubichill/shared';
-import { useCallback, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Lobby } from '@/components/lobby';
 import { UbichillOverlay } from '@/components/UbichillOverlay';
 import { useCursorState } from '@/core/hooks/useCursorState';
+import { signOut, useSession } from '@/lib/auth-client';
 import { APP_PLUGINS } from '@/plugins/registry';
 import * as styles from '@/styles/styles';
 
-type AppScreen = 'name' | 'lobby' | 'world';
+type AppScreen = 'lobby' | 'world';
 
 export default function Home() {
+    const router = useRouter();
+    const { data: session, isPending } = useSession();
     const { isConnected, users, currentUser, error, joinWorld, updatePosition } = useSocket();
     const { environment } = useWorld();
-    const [name, setName] = useState('');
-    const [screen, setScreen] = useState<AppScreen>('name');
+    const [screen, setScreen] = useState<AppScreen>('lobby');
+
+    // 認証チェック - ログインしていない場合はリダイレクト
+    useEffect(() => {
+        if (!isPending && !session) {
+            router.push('/auth');
+        }
+    }, [session, isPending, router]);
+
+    // ユーザー名はセッションから取得
+    const userName = session?.user?.name || '';
 
     // 現在のカーソル状態を取得
     const cursorState: CursorState = useCursorState();
@@ -26,18 +39,16 @@ export default function Home() {
     const [cursorLockPosition, setCursorLockPosition] = useState<{ x: number; y: number } | null>(null);
     const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
 
-    // 名前入力完了
-    const handleNameSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (name.trim()) {
-            setScreen('lobby');
-        }
-    };
-
     // インスタンスに参加
     const handleJoinInstance = (instanceId: string, worldId: string) => {
-        joinWorld(name, worldId, instanceId);
+        joinWorld(userName, worldId, instanceId);
         setScreen('world');
+    };
+
+    // ログアウト
+    const handleLogout = async () => {
+        await signOut();
+        router.push('/auth');
     };
 
     // Add ref for the container
@@ -101,34 +112,13 @@ export default function Home() {
         [mousePosition],
     );
 
-    // 名前入力画面
-    if (screen === 'name') {
+    // ローディング中または未認証の場合
+    if (isPending || !session) {
         return (
             <main className={styles.mainContainer}>
-                <div className={styles.headerContainer}>
-                    <p className={styles.statusBar}>
-                        ステータス: {isConnected ? '接続済み' : '切断'}
-                        {error && <span className={styles.errorText}>{error}</span>}
-                    </p>
-                </div>
-
                 <div className={styles.loginContainer}>
                     <h1 className={styles.title}>Ubichill</h1>
-                    <p style={{ color: '#868e96', marginBottom: '24px', fontSize: '14px' }}>
-                        2Dメタバーススタイルのコラボレーションスペース
-                    </p>
-                    <form onSubmit={handleNameSubmit} className={styles.loginForm}>
-                        <input
-                            type="text"
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            placeholder="名前を入力してください"
-                            className={styles.input}
-                        />
-                        <button type="submit" className={styles.button} disabled={!isConnected || !name.trim()}>
-                            続ける
-                        </button>
-                    </form>
+                    <p style={{ color: '#868e96', marginBottom: '24px', fontSize: '14px' }}>読み込み中...</p>
                 </div>
             </main>
         );
@@ -143,24 +133,27 @@ export default function Home() {
                         ステータス: {isConnected ? '接続済み' : '切断'}
                         {error && <span className={styles.errorText}>{error}</span>}
                     </p>
-                    <button
-                        type="button"
-                        onClick={() => setScreen('name')}
-                        style={{
-                            padding: '8px 16px',
-                            backgroundColor: 'transparent',
-                            color: '#868e96',
-                            border: '1px solid #dee2e6',
-                            borderRadius: '6px',
-                            fontSize: '13px',
-                            cursor: 'pointer',
-                        }}
-                    >
-                        ← 戻る
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <span style={{ color: '#495057', fontSize: '14px' }}>{userName}</span>
+                        <button
+                            type="button"
+                            onClick={handleLogout}
+                            style={{
+                                padding: '8px 16px',
+                                backgroundColor: 'transparent',
+                                color: '#868e96',
+                                border: '1px solid #dee2e6',
+                                borderRadius: '6px',
+                                fontSize: '13px',
+                                cursor: 'pointer',
+                            }}
+                        >
+                            ログアウト
+                        </button>
+                    </div>
                 </div>
 
-                <Lobby userName={name} onJoinInstance={handleJoinInstance} />
+                <Lobby userName={userName} onJoinInstance={handleJoinInstance} />
             </main>
         );
     }

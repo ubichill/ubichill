@@ -160,7 +160,8 @@ export type InitialEntity = z.infer<typeof InitialEntitySchema>;
 // ============================================
 
 export const ResolvedWorldSchema = z.object({
-    id: z.string(),
+    id: z.string(), // 人間が読める識別子（name）
+    dbId: z.string(), // DBの実際のID（nanoid、外部キー用）
     version: z.string(),
     displayName: z.string(),
     description: z.string().optional(),
