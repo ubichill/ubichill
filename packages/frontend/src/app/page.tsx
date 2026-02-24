@@ -8,6 +8,7 @@ import { Lobby } from '@/components/lobby';
 import { UbichillOverlay } from '@/components/UbichillOverlay';
 import { useCursorState } from '@/core/hooks/useCursorState';
 import { APP_PLUGINS } from '@/plugins/registry';
+import { css } from '@/styled-system/css';
 import * as styles from '@/styles/styles';
 
 type AppScreen = 'name' | 'lobby' | 'world';
@@ -105,30 +106,63 @@ export default function Home() {
     if (screen === 'name') {
         return (
             <main className={styles.mainContainer}>
-                <div className={styles.headerContainer}>
-                    <p className={styles.statusBar}>
-                        ステータス: {isConnected ? '接続済み' : '切断'}
-                        {error && <span className={styles.errorText}>{error}</span>}
-                    </p>
-                </div>
+                <div className={styles.texturedBackdrop} />
+                <div className={styles.shell}>
+                    <div className={styles.headerContainer}>
+                        <p className={styles.statusBar}>
+                            ステータス: {isConnected ? '接続済み' : '切断'}
+                            {error && <span className={styles.errorText}>{error}</span>}
+                        </p>
+                    </div>
 
-                <div className={styles.loginContainer}>
-                    <h1 className={styles.title}>Ubichill</h1>
-                    <p style={{ color: '#868e96', marginBottom: '24px', fontSize: '14px' }}>
-                        2Dメタバーススタイルのコラボレーションスペース
-                    </p>
-                    <form onSubmit={handleNameSubmit} className={styles.loginForm}>
-                        <input
-                            type="text"
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            placeholder="名前を入力してください"
-                            className={styles.input}
-                        />
-                        <button type="submit" className={styles.button} disabled={!isConnected || !name.trim()}>
-                            続ける
-                        </button>
-                    </form>
+                    <div className={styles.loginContainer}>
+                        <p className={styles.titleTag}>TITLE</p>
+                        <div className={styles.brandTitleRow}>
+                            <svg
+                                className={styles.brandIcon}
+                                viewBox="0 0 64 64"
+                                role="img"
+                                aria-label="ubichill icon"
+                                xmlns="http://www.w3.org/2000/svg"
+                            >
+                                <rect x="4" y="4" width="56" height="56" rx="18" fill="#1e3155" />
+                                <path
+                                    d="M21 40v-8.2c0-1.9 1.6-3.5 3.5-3.5s3.5 1.6 3.5 3.5V39h1.2v-4.8c0-1.7 1.3-3 3-3s3 1.3 3 3V40c0 5.5-4.4 10-9.9 10h-.8C19 50 15 46 15 41.1V36c0-1.7 1.4-3.1 3.1-3.1s3.1 1.4 3.1 3.1V40H21z"
+                                    fill="#f6e8d2"
+                                />
+                                <path
+                                    d="M30 18.5c1.7-1.2 3.4-1.2 5.1 0s3.4 1.2 5.1 0"
+                                    fill="none"
+                                    stroke="#f6e8d2"
+                                    strokeWidth="2.5"
+                                    strokeLinecap="round"
+                                />
+                                <path
+                                    d="M33 23c1.3-.9 2.6-.9 3.9 0s2.6.9 3.9 0"
+                                    fill="none"
+                                    stroke="#f6e8d2"
+                                    strokeWidth="2.5"
+                                    strokeLinecap="round"
+                                />
+                                <circle cx="24.5" cy="24.5" r="2.5" fill="#f6e8d2" />
+                            </svg>
+                            <h1 className={styles.title}>ubichill</h1>
+                        </div>
+                        <p className={styles.subtitle}>作業を始める前に表示名を入力してください</p>
+                        <form onSubmit={handleNameSubmit} className={styles.loginForm}>
+                            <input
+                                type="text"
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                                placeholder="表示名を入力"
+                                className={styles.input}
+                            />
+                            <button type="submit" className={styles.button} disabled={!isConnected || !name.trim()}>
+                                開始
+                            </button>
+                        </form>
+                        <p className={styles.hintText}>※ 表示名は後で設定画面から変更できます</p>
+                    </div>
                 </div>
             </main>
         );
@@ -138,29 +172,20 @@ export default function Home() {
     if (screen === 'lobby') {
         return (
             <main className={styles.mainContainer}>
-                <div className={styles.headerContainer}>
-                    <p className={styles.statusBar}>
-                        ステータス: {isConnected ? '接続済み' : '切断'}
-                        {error && <span className={styles.errorText}>{error}</span>}
-                    </p>
-                    <button
-                        type="button"
-                        onClick={() => setScreen('name')}
-                        style={{
-                            padding: '8px 16px',
-                            backgroundColor: 'transparent',
-                            color: '#868e96',
-                            border: '1px solid #dee2e6',
-                            borderRadius: '6px',
-                            fontSize: '13px',
-                            cursor: 'pointer',
-                        }}
-                    >
-                        ← 戻る
-                    </button>
-                </div>
+                <div className={styles.texturedBackdrop} />
+                <div className={styles.shell}>
+                    <div className={styles.headerContainer}>
+                        <p className={styles.statusBar}>
+                            ステータス: {isConnected ? '接続済み' : '切断'}
+                            {error && <span className={styles.errorText}>{error}</span>}
+                        </p>
+                        <button type="button" onClick={() => setScreen('name')} className={styles.backButton}>
+                            ← 戻る
+                        </button>
+                    </div>
 
-                <Lobby userName={name} onJoinInstance={handleJoinInstance} />
+                    <Lobby onJoinInstance={handleJoinInstance} />
+                </div>
             </main>
         );
     }
@@ -179,54 +204,62 @@ export default function Home() {
                 backgroundRepeat: 'no-repeat',
             }}
         >
-            <div className={styles.headerContainer}>
-                <p className={styles.statusBar}>
-                    ステータス: {isConnected ? '接続済み' : '切断'}
-                    {error && <span className={styles.errorText}>{error}</span>}
-                </p>
-                <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-                    {currentUser && <p className={styles.userInfo}>ログイン中: {currentUser.name}</p>}
-                </div>
-            </div>
-
-            <div ref={canvasRef} className={styles.worldCanvas}>
-                <div className={styles.userListContainer}>
-                    <h2 className={styles.userListTitle}>参加ユーザー ({users.size}人)</h2>
-                    <ul className={styles.userList}>
-                        {Array.from(users.values()).map((user) => (
-                            <li key={user.id}>
-                                {user.name} ({user.status}){user.id === currentUser?.id && ' (あなた)'}
-                            </li>
-                        ))}
-                    </ul>
+            <div className={styles.shell}>
+                <div className={styles.headerContainer}>
+                    <p className={styles.statusBar}>
+                        ステータス: {isConnected ? '接続済み' : '切断'}
+                        {error && <span className={styles.errorText}>{error}</span>}
+                    </p>
+                    <div
+                        className={css({
+                            display: 'flex',
+                            gap: '4',
+                            alignItems: 'center',
+                        })}
+                    >
+                        {currentUser && <p className={styles.userInfo}>ログイン中: {currentUser.name}</p>}
+                    </div>
                 </div>
 
-                {/* Entities and Plugins are handled by UbichillOverlay */}
-                <UbichillOverlay />
+                <div ref={canvasRef} className={styles.worldCanvas}>
+                    <div className={styles.userListContainer}>
+                        <h2 className={styles.userListTitle}>参加ユーザー ({users.size}人)</h2>
+                        <ul className={styles.userList}>
+                            {Array.from(users.values()).map((user) => (
+                                <li key={user.id}>
+                                    {user.name} ({user.status}){user.id === currentUser?.id && ' (あなた)'}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
 
-                {/* App-Level Plugins */}
-                {APP_PLUGINS.map((plugin) => {
-                    const canvasOffset = canvasRef.current?.getBoundingClientRect() || { left: 0, top: 0 };
+                    {/* Entities and Plugins are handled by UbichillOverlay */}
+                    <UbichillOverlay />
 
-                    // Type-safe plugin rendering based on plugin type
-                    switch (plugin.id) {
-                        case 'avatar':
-                            return (
-                                <plugin.Component
-                                    key={plugin.id}
-                                    cursorState={cursorState}
-                                    userStatus={userStatus}
-                                    onStatusChange={handleStatusChange}
-                                    mousePosition={mousePosition}
-                                    canvasOffset={canvasOffset}
-                                />
-                            );
-                        case 'pen-tray':
-                            return <PenTray key={plugin.id} />;
-                        default:
-                            return null;
-                    }
-                })}
+                    {/* App-Level Plugins */}
+                    {APP_PLUGINS.map((plugin) => {
+                        const canvasOffset = canvasRef.current?.getBoundingClientRect() || { left: 0, top: 0 };
+
+                        // Type-safe plugin rendering based on plugin type
+                        switch (plugin.id) {
+                            case 'avatar':
+                                return (
+                                    <plugin.Component
+                                        key={plugin.id}
+                                        cursorState={cursorState}
+                                        userStatus={userStatus}
+                                        onStatusChange={handleStatusChange}
+                                        mousePosition={mousePosition}
+                                        canvasOffset={canvasOffset}
+                                    />
+                                );
+                            case 'pen-tray':
+                                return <PenTray key={plugin.id} />;
+                            default:
+                                return null;
+                        }
+                    })}
+                </div>
             </div>
         </main>
     );

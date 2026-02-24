@@ -1,5 +1,5 @@
 import { css } from '@/styled-system/css';
-import { flex, hstack, vstack } from '@/styled-system/patterns';
+import { flex } from '@/styled-system/patterns';
 
 /**
  * Centralized PandaCSS style definitions
@@ -10,83 +10,165 @@ import { flex, hstack, vstack } from '@/styled-system/patterns';
 export const mainContainer = flex({
     minH: 'screen',
     direction: 'column',
-    alignItems: 'center',
-    justify: 'space-between',
-    p: '24',
+    px: { base: '4', md: '8' },
+    py: { base: '4', md: '6' },
+    position: 'relative',
+    bg: '#0f1a2d',
+    overflow: 'hidden',
+});
+
+export const texturedBackdrop = css({
+    position: 'absolute',
+    inset: 0,
+    pointerEvents: 'none',
+    bgImage:
+        'radial-gradient(circle at 20% 10%, rgba(232, 216, 192, 0.12), transparent 40%), radial-gradient(circle at 80% 80%, rgba(232, 216, 192, 0.08), transparent 45%), linear-gradient(to bottom, rgba(255, 255, 255, 0.03), transparent)',
+    opacity: 1,
+});
+
+export const shell = css({
+    width: 'full',
+    maxW: '5xl',
+    mx: 'auto',
+    zIndex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    flex: 1,
 });
 
 export const headerContainer = css({
-    zIndex: 10,
+    zIndex: 2,
     w: 'full',
-    maxW: '5xl',
     alignItems: 'center',
     justifyContent: 'space-between',
-    fontFamily: 'mono',
-    fontSize: 'sm',
-    lg: { display: 'flex' },
+    display: 'flex',
+    mb: '4',
 });
 
 export const statusBar = css({
-    pos: 'fixed',
-    left: 0,
-    top: 0,
     display: 'flex',
-    w: 'full',
-    justifyContent: 'center',
-    borderBottomWidth: '1px',
-    borderColor: 'border',
-    bg: { base: 'zinc.200', _dark: 'zinc.800/30' },
-    pb: '6',
-    pt: '8',
-    backdropFilter: 'blur(16px)',
-    lg: {
-        pos: 'static',
-        w: 'auto',
-        rounded: 'xl',
-        borderWidth: '1px',
-        bg: 'gray.200',
-        p: '4',
-    },
+    alignItems: 'center',
+    gap: '2',
+    rounded: 'full',
+    borderWidth: '1px',
+    borderColor: 'rgba(230,216,197,0.3)',
+    bg: 'rgba(22, 37, 66, 0.72)',
+    color: '#e8ddcc',
+    px: '4',
+    py: '2',
+    fontSize: 'sm',
+    backdropFilter: 'blur(8px)',
 });
 
 export const userInfo = css({
-    pos: 'fixed',
-    right: 0,
-    top: 0,
-    p: '4',
+    color: '#e8ddcc',
+    fontSize: 'sm',
 });
 
 // Login Screen Styles
-export const loginContainer = vstack({
+export const loginContainer = css({
+    width: 'full',
+    maxW: '2xl',
+    mx: 'auto',
+    mt: { base: '6', md: '10' },
+    rounded: '3xl',
+    px: { base: '6', md: '10' },
+    py: { base: '8', md: '12' },
+    bg: '#e6d7c4',
+    borderWidth: '1px',
+    borderColor: 'rgba(27,42,68,0.08)',
+    boxShadow: '0 24px 48px rgba(5, 11, 23, 0.35)',
+    display: 'flex',
+    flexDirection: 'column',
     gap: '4',
-    alignItems: 'center',
+});
+
+export const titleTag = css({
+    fontSize: 'xs',
+    fontWeight: '600',
+    letterSpacing: '0.18em',
+    color: '#5e6a82',
 });
 
 export const title = css({
-    fontSize: '4xl',
-    fontWeight: 'bold',
+    fontSize: { base: '4xl', md: '5xl' },
+    fontWeight: '700',
+    color: '#1b2a44',
+    lineHeight: '1.1',
 });
 
-export const loginForm = hstack({
-    gap: '2',
+export const brandTitleRow = css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: { base: '3', md: '4' },
+});
+
+export const brandIcon = css({
+    width: { base: '48px', md: '56px' },
+    height: { base: '48px', md: '56px' },
+    flexShrink: 0,
+    filter: 'drop-shadow(0 6px 10px rgba(27, 42, 68, 0.14))',
+});
+
+export const subtitle = css({
+    color: '#445775',
+    fontSize: { base: 'sm', md: 'md' },
+});
+
+export const loginForm = css({
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '3',
+    mt: '2',
 });
 
 // Form Elements - Cute & Simple Design
 export const input = css({
-    p: '2',
+    px: '4',
+    py: '3',
     borderWidth: '1px',
-    borderColor: 'border',
-    rounded: 'md',
-    color: 'text',
+    borderColor: '#cebca2',
+    rounded: 'lg',
+    color: '#1f2f4c',
+    bg: '#f5ecdf',
+    fontSize: 'md',
+    _placeholder: { color: '#777069' },
+    _focusVisible: {
+        outline: 'none',
+        borderColor: '#2e446f',
+        boxShadow: '0 0 0 3px rgba(30, 49, 85, 0.2)',
+    },
 });
 
 export const button = css({
-    p: '2',
-    bg: 'blue.500',
-    color: 'white',
-    rounded: 'md',
-    _hover: { bg: 'blue.600' },
+    px: '4',
+    py: '3',
+    bg: '#1e3155',
+    color: '#f8f3ea',
+    rounded: 'lg',
+    fontWeight: '600',
+    transition: 'background-color 0.16s ease, opacity 0.16s ease',
+    _hover: { bg: '#263d68' },
     _disabled: { opacity: 0.5, cursor: 'not-allowed' },
+});
+
+export const hintText = css({
+    fontSize: 'xs',
+    color: '#5a6a85',
+});
+
+export const backButton = css({
+    px: '4',
+    py: '2',
+    bg: 'transparent',
+    color: '#d7ccb9',
+    borderWidth: '1px',
+    borderColor: 'rgba(230,216,197,0.35)',
+    rounded: 'lg',
+    cursor: 'pointer',
+    fontSize: 'sm',
+    transition: 'background-color 0.16s ease',
+    _hover: { bg: 'rgba(230,216,197,0.1)' },
 });
 
 // World/Canvas Styles
@@ -143,6 +225,6 @@ export const cursorLabel = css({
 
 // Status & Error Text
 export const errorText = css({
-    color: 'red.500',
-    ml: '4',
+    color: '#ff8f8f',
+    ml: '2',
 });

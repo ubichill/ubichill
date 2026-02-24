@@ -10,9 +10,9 @@ interface InstanceCardProps {
 
 export function InstanceCard({ instance, onJoin }: InstanceCardProps) {
     const statusColors: Record<string, string> = {
-        active: '#40c057',
-        full: '#fab005',
-        closing: '#868e96',
+        active: '#8ad29b',
+        full: '#f1c86c',
+        closing: '#9ea7bd',
     };
 
     return (
@@ -21,37 +21,22 @@ export function InstanceCard({ instance, onJoin }: InstanceCardProps) {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                padding: '16px',
-                backgroundColor: 'white',
-                border: '1px solid #e9ecef',
-                borderRadius: '12px',
-                transition: 'all 0.2s ease',
+                padding: { base: '12px', md: '16px' },
+                backgroundColor: '#1d3054',
+                borderRadius: '14px',
+                transition: 'background-color 0.16s ease',
                 _hover: {
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                    backgroundColor: '#243b66',
                 },
             })}
         >
-            <div className={css({ display: 'flex', alignItems: 'center', gap: '16px' })}>
-                <div
-                    className={css({
-                        width: '48px',
-                        height: '48px',
-                        borderRadius: '10px',
-                        backgroundColor: '#f1f3f5',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '24px',
-                    })}
-                >
-                    🌍
-                </div>
+            <div className={css({ display: 'flex', alignItems: 'center', gap: { base: '3', md: '4' } })}>
                 <div>
                     <h3
                         className={css({
-                            fontSize: '15px',
+                            fontSize: { base: '14px', md: '16px' },
                             fontWeight: '600',
-                            color: '#212529',
+                            color: '#e9ddcb',
                             marginBottom: '4px',
                         })}
                     >
@@ -62,8 +47,9 @@ export function InstanceCard({ instance, onJoin }: InstanceCardProps) {
                             display: 'flex',
                             alignItems: 'center',
                             gap: '12px',
+                            flexWrap: 'wrap',
                             fontSize: '13px',
-                            color: '#868e96',
+                            color: '#d8cfbf',
                         })}
                     >
                         <span
@@ -95,20 +81,21 @@ export function InstanceCard({ instance, onJoin }: InstanceCardProps) {
                 onClick={() => onJoin(instance.id)}
                 disabled={instance.status === 'full' || instance.status === 'closing'}
                 className={css({
-                    padding: '10px 20px',
-                    backgroundColor: '#228BE6',
-                    color: 'white',
+                    padding: { base: '8px 14px', md: '10px 18px' },
+                    backgroundColor: '#e6d8c5',
+                    color: '#1a2a45',
                     border: 'none',
-                    borderRadius: '8px',
+                    borderRadius: '10px',
                     fontSize: '14px',
-                    fontWeight: '500',
+                    fontWeight: '600',
                     cursor: 'pointer',
-                    transition: 'all 0.2s ease',
+                    transition: 'opacity 0.16s ease',
                     _hover: {
-                        backgroundColor: '#1c7ed6',
+                        opacity: 0.9,
                     },
                     _disabled: {
-                        backgroundColor: '#dee2e6',
+                        backgroundColor: 'rgba(230, 216, 197, 0.35)',
+                        color: '#93a0ba',
                         cursor: 'not-allowed',
                     },
                 })}
