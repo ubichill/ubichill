@@ -103,13 +103,16 @@ async function startServer() {
     // ワールド定義を読み込み
     await worldRegistry.loadWorlds();
 
+    // ワールド数を取得（非同期）
+    const worlds = await worldRegistry.listWorlds();
+
     server.listen(appConfig.port, () => {
         console.log('');
         console.log('🚀 Ubichill サーバー起動');
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log(`   🌐 ポート ${appConfig.port} で起動中`);
         console.log(`   📍 環境: ${appConfig.nodeEnv}`);
-        console.log(`   📁 ワールド数: ${worldRegistry.listWorlds().length}`);
+        console.log(`   📁 ワールド数: ${worlds.length}`);
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log('');
     });

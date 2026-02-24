@@ -1,6 +1,6 @@
+import type { WorldDefinition } from '@ubichill/shared';
 import { relations } from 'drizzle-orm';
 import { jsonb, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
-import type { WorldDefinition } from '@ubichill/shared';
 import { userFavorites, users } from './users';
 
 export const worlds = pgTable('worlds', {

@@ -1,5 +1,6 @@
 import { CreateInstanceRequestSchema, ListInstancesQuerySchema } from '@ubichill/shared';
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { instanceManager } from '../services/instanceManager';
 
 const router = Router();
@@ -23,8 +24,6 @@ router.get('/', (req, res) => {
     res.json({ instances });
 });
 
-import rateLimit from 'express-rate-limit';
-
 const createInstanceLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, // 1時間
     limit: 10, // 1IPあたり10件まで
@@ -37,24 +36,29 @@ const createInstanceLimiter = rateLimit({
  * POST /api/v1/instances
  * 新しいインスタンスを作成
  */
-router.post('/', createInstanceLimiter, (req, res) => {
-    const bodyResult = CreateInstanceRequestSchema.safeParse(req.body);
-    if (!bodyResult.success) {
-        res.status(400).json({ error: 'Invalid request body', details: bodyResult.error.issues });
-        return;
+router.post('/', createInstanceLimiter, async (req, res) => {
+    try {
+        const bodyResult = CreateInstanceRequestSchema.safeParse(req.body);
+        if (!bodyResult.success) {
+            res.status(400).json({ error: 'Invalid request body', details: bodyResult.error.issues });
+            return;
+        }
+
+        // TODO: 認証からユーザーIDを取得
+        const leaderId = (req.headers['x-user-id'] as string) || 'anonymous';
+
+        const result = await instanceManager.createInstance(bodyResult.data, leaderId);
+
+        if ('error' in result) {
+            res.status(400).json({ error: result.error });
+            return;
+        }
+
+        res.status(201).json(result);
+    } catch (error) {
+        console.error('インスタンス作成エラー:', error);
+        res.status(500).json({ error: 'Internal server error' });
     }
-
-    // TODO: 認証からユーザーIDを取得
-    const leaderId = (req.headers['x-user-id'] as string) || 'anonymous';
-
-    const result = instanceManager.createInstance(bodyResult.data, leaderId);
-
-    if ('error' in result) {
-        res.status(400).json({ error: result.error });
-        return;
-    }
-
-    res.status(201).json(result);
 });
 
 /**

@@ -31,7 +31,7 @@ type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents, InterServe
  * ワールド参加イベントを処理
  */
 export function handleWorldJoin(socket: TypedSocket) {
-    return (
+    return async (
         { worldId, instanceId, user }: { worldId: string; instanceId?: string; user: Omit<User, 'id'> },
         callback: (response: { success: boolean; userId?: string; error?: string }) => void,
     ) => {
@@ -97,10 +97,10 @@ export function handleWorldJoin(socket: TypedSocket) {
         // 新しいユーザーにワールドスナップショットを送信（UEP）
         // instanceIdをキーにしてワールド状態を取得（インスタンスごとに独立した状態）
         const entities = getWorldSnapshot(worldStateKey);
-        const environment = instanceManager.getWorldEnvironment(worldValidation.data);
+        const environment = await instanceManager.getWorldEnvironment(worldValidation.data);
 
         // ワールド定義から依存関係を取得
-        const world = worldRegistry.getWorld(worldValidation.data);
+        const world = await worldRegistry.getWorld(worldValidation.data);
         const activePlugins = world?.dependencies?.map((d) => d.name) || [];
 
         // ワールドスナップショット（拡張版）を送信
@@ -402,13 +402,17 @@ export function handleEntityDelete(socket: TypedSocket) {
  * @param instanceOrWorldId インスタンスIDまたはワールドID（ワールド状態のキー）
  * @param worldId 環境設定取得用のワールドID
  */
-export function sendWorldSnapshot(socket: TypedSocket, instanceOrWorldId: string, worldId?: string): void {
+export async function sendWorldSnapshot(
+    socket: TypedSocket,
+    instanceOrWorldId: string,
+    worldId?: string,
+): Promise<void> {
     const entities = getWorldSnapshot(instanceOrWorldId);
 
     // WorldIDを解決
     let targetWorldId = worldId;
     if (!targetWorldId) {
-        if (worldRegistry.hasWorld(instanceOrWorldId)) {
+        if (await worldRegistry.hasWorld(instanceOrWorldId)) {
             targetWorldId = instanceOrWorldId;
         } else {
             // インスタンスIDからワールドIDを特定を試みる
@@ -421,8 +425,8 @@ export function sendWorldSnapshot(socket: TypedSocket, instanceOrWorldId: string
 
     // 環境設定とプラグイン情報を取得
     const finalWorldId = targetWorldId || instanceOrWorldId;
-    const environment = instanceManager.getWorldEnvironment(finalWorldId);
-    const world = worldRegistry.getWorld(finalWorldId);
+    const environment = await instanceManager.getWorldEnvironment(finalWorldId);
+    const world = await worldRegistry.getWorld(finalWorldId);
     const activePlugins = world?.dependencies?.map((d) => d.name) || [];
 
     const snapshotPayload: WorldSnapshotPayload = {

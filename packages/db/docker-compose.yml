@@ -1,12 +1,10 @@
-version: '3.8'
-
 services:
   db:
     image: postgres:15-alpine
     restart: unless-stopped
     environment:
       POSTGRES_PASSWORD: password
-      POSTGRES_USER: user
+      POSTGRES_USER: ubichill
       POSTGRES_DB: ubichill
     ports:
       - "5433:5432"

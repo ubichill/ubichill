@@ -23,8 +23,8 @@ class InstanceManager {
     /**
      * 新しいインスタンスを作成
      */
-    createInstance(request: CreateInstanceRequest, leaderId: string): Instance | { error: string } {
-        const world = worldRegistry.getWorld(request.worldId);
+    async createInstance(request: CreateInstanceRequest, leaderId: string): Promise<Instance | { error: string }> {
+        const world = await worldRegistry.getWorld(request.worldId);
         if (!world) {
             return { error: `World not found: ${request.worldId}` };
         }
@@ -177,7 +177,6 @@ class InstanceManager {
         instance.stats.currentUsers = Math.max(0, instance.stats.currentUsers + delta);
 
         // ユーザーが0になったらインスタンスを自動削除
-        // ユーザーが0になったらインスタンスを自動削除
         if (instance.stats.currentUsers === 0) {
             // 他の処理で既に削除されていないか、最新状態を確認してからクリーンアップする
             const currentInstance = this.instances.get(instanceId);
@@ -227,8 +226,8 @@ class InstanceManager {
     /**
      * ワールドの環境設定を取得
      */
-    getWorldEnvironment(worldId: string): WorldEnvironmentData {
-        const world = worldRegistry.getWorld(worldId);
+    async getWorldEnvironment(worldId: string): Promise<WorldEnvironmentData> {
+        const world = await worldRegistry.getWorld(worldId);
         if (world) {
             // undefined を null に変換
             return {
