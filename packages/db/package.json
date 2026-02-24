@@ -23,17 +23,18 @@
         "stop": "docker compose down"
     },
     "dependencies": {
+        "@ubichill/shared": "workspace:*",
         "drizzle-orm": "^0.45.1",
         "drizzle-zod": "^0.8.3",
+        "nanoid": "^5.1.6",
         "postgres": "^3.4.8",
-        "zod": "^4.3.6",
-        "@ubichill/shared": "workspace:*"
+        "zod": "^4.3.6"
     },
     "devDependencies": {
         "@types/node": "^22.13.4",
         "drizzle-kit": "^0.31.9",
         "rimraf": "^6.0.1",
-        "typescript": "^5.9.3",
-        "tsx": "^4.21.0"
+        "tsx": "^4.21.0",
+        "typescript": "^5.9.3"
     }
 }

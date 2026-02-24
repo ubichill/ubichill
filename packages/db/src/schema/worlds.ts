@@ -1,11 +1,14 @@
 import type { WorldDefinition } from '@ubichill/shared';
 import { relations } from 'drizzle-orm';
-import { jsonb, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
+import { jsonb, pgTable, text, timestamp, varchar } from 'drizzle-orm/pg-core';
+import { nanoid } from 'nanoid';
 import { userFavorites, users } from './users';
 
 export const worlds = pgTable('worlds', {
-    id: uuid('id').defaultRandom().primaryKey(),
-    authorId: uuid('author_id')
+    id: varchar('id', { length: 21 })
+        .$defaultFn(() => nanoid())
+        .primaryKey(),
+    authorId: text('author_id')
         .notNull()
         .references(() => users.id, { onDelete: 'cascade' }),
     name: varchar('name', { length: 255 }).notNull(),

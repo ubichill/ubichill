@@ -1,14 +1,15 @@
 import { WorldDefinitionSchema } from '@ubichill/shared';
 import { Router } from 'express';
+import { requireAuth } from '../middleware/auth';
 import { worldRegistry } from '../services/worldRegistry';
 
 const router = Router();
 
 /**
  * GET /api/v1/worlds
- * ワールドテンプレート一覧を取得
+ * ワールドテンプレート一覧を取得（認証必須）
  */
-router.get('/', async (_req, res) => {
+router.get('/', requireAuth, async (_req, res) => {
     try {
         const worlds = await worldRegistry.listWorlds();
         const response = worlds.map((world) => ({
@@ -29,11 +30,11 @@ router.get('/', async (_req, res) => {
 
 /**
  * GET /api/v1/worlds/:worldId
- * ワールドテンプレート詳細を取得
+ * ワールドテンプレート詳細を取得（認証必須）
  */
-router.get('/:worldId', async (req, res) => {
+router.get('/:worldId', requireAuth, async (req, res) => {
     try {
-        const { worldId } = req.params;
+        const worldId = req.params.worldId as string;
         const world = await worldRegistry.getWorld(worldId);
 
         if (!world) {
@@ -50,9 +51,9 @@ router.get('/:worldId', async (req, res) => {
 
 /**
  * POST /api/v1/worlds
- * 新しいワールドをアップロード
+ * 新しいワールドをアップロード（認証必須）
  */
-router.post('/', async (req, res) => {
+router.post('/', requireAuth, async (req, res) => {
     try {
         const result = WorldDefinitionSchema.safeParse(req.body);
         if (!result.success) {
@@ -73,8 +74,12 @@ router.post('/', async (req, res) => {
             return;
         }
 
-        // TODO: 認証から authorId を取得（現在は仮のシステムID）
-        const authorId = '00000000-0000-0000-0000-000000000000';
+        // 認証されたユーザーIDを使用（requireAuthで保証）
+        if (!req.user) {
+            res.status(401).json({ error: 'Unauthorized' });
+            return;
+        }
+        const authorId = req.user.id;
 
         const world = await worldRegistry.createWorld(authorId, definition);
         res.status(201).json(world);
@@ -86,11 +91,11 @@ router.post('/', async (req, res) => {
 
 /**
  * PUT /api/v1/worlds/:worldId
- * ワールドを更新
+ * ワールドを更新（認証必須）
  */
-router.put('/:worldId', async (req, res) => {
+router.put('/:worldId', requireAuth, async (req, res) => {
     try {
-        const { worldId } = req.params;
+        const worldId = req.params.worldId as string;
 
         const result = WorldDefinitionSchema.safeParse(req.body);
         if (!result.success) {
@@ -127,11 +132,11 @@ router.put('/:worldId', async (req, res) => {
 
 /**
  * DELETE /api/v1/worlds/:worldId
- * ワールドを削除
+ * ワールドを削除（認証必須）
  */
-router.delete('/:worldId', async (req, res) => {
+router.delete('/:worldId', requireAuth, async (req, res) => {
     try {
-        const { worldId } = req.params;
+        const worldId = req.params.worldId as string;
 
         const deleted = await worldRegistry.deleteWorld(worldId);
         if (!deleted) {

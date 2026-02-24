@@ -153,7 +153,8 @@ class WorldRegistry {
         };
 
         return {
-            id: record.name,
+            id: record.name, // 人間が読める識別子
+            dbId: record.id, // DBの実際のID（外部キー用）
             version: record.version,
             displayName: def.spec.displayName,
             description: def.spec.description,

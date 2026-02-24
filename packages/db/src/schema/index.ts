@@ -1,9 +1,11 @@
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 
+export * from './instances';
 export * from './users';
 export * from './worlds';
 
 // Import from schemas
+import { instances } from './instances';
 import { userFavorites, userFriends, userSettings, users } from './users';
 import { worlds } from './worlds';
 
@@ -26,3 +28,7 @@ export const selectUserFavoriteSchema = createSelectSchema(userFavorites);
 // worlds
 export const insertWorldSchema = createInsertSchema(worlds);
 export const selectWorldSchema = createSelectSchema(worlds);
+
+// instances
+export const insertInstanceSchema = createInsertSchema(instances);
+export const selectInstanceSchema = createSelectSchema(instances);

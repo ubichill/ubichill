@@ -5,12 +5,12 @@ import { users } from '../schema';
 export type UserRecord = typeof users.$inferSelect;
 
 export interface CreateUserInput {
-    id?: string;
-    username: string;
+    id: string;
+    name: string;
     email: string;
-    passwordHash?: string;
-    oauthProvider?: string;
-    oauthId?: string;
+    emailVerified?: boolean;
+    image?: string;
+    username?: string;
     profileImageUrl?: string;
 }
 
@@ -30,11 +30,11 @@ export const userRepository = {
             .insert(users)
             .values({
                 id: input.id,
-                username: input.username,
+                name: input.name,
                 email: input.email,
-                passwordHash: input.passwordHash,
-                oauthProvider: input.oauthProvider,
-                oauthId: input.oauthId,
+                emailVerified: input.emailVerified ?? false,
+                image: input.image,
+                username: input.username,
                 profileImageUrl: input.profileImageUrl,
             })
             .returning();
@@ -49,8 +49,9 @@ export const userRepository = {
 
         return this.create({
             id: systemUserId,
-            username: 'system',
+            name: 'System',
             email: 'system@ubichill.local',
+            emailVerified: true,
         });
     },
 };

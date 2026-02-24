@@ -1,25 +1,14 @@
-import { randomUUID } from 'node:crypto';
+import { instanceRepository } from '@ubichill/db';
 import type { CreateInstanceRequest, Instance, InstanceAccess, WorldEnvironmentData } from '@ubichill/shared';
 import { DEFAULTS } from '@ubichill/shared';
 import { worldRegistry } from './worldRegistry';
 import { clearWorldState, createEntity } from './worldState';
 
 /**
- * インスタンス内部状態
- */
-interface InstanceState extends Instance {
-    passwordHash?: string; // パスワード保護用
-}
-
-/**
  * インスタンスマネージャー
- * インスタンスのライフサイクルを管理
+ * インスタンスのライフサイクルを管理（DBベース）
  */
 class InstanceManager {
-    private instances: Map<string, InstanceState> = new Map();
-    // worldId -> Set<instanceId> のマッピング
-    private worldToInstances: Map<string, Set<string>> = new Map();
-
     /**
      * 新しいインスタンスを作成
      */
@@ -29,57 +18,24 @@ class InstanceManager {
             return { error: `World not found: ${request.worldId}` };
         }
 
-        const instanceId = randomUUID();
-        const now = new Date().toISOString();
-
-        const access: InstanceAccess = {
-            type: request.access?.type ?? 'public',
-            tags: request.access?.tags ?? [],
-            password: !!request.access?.password,
-        };
-
         const maxUsers = request.settings?.maxUsers ?? world.capacity.default;
+        const cappedMaxUsers = Math.min(maxUsers, world.capacity.max);
 
-        const instance: InstanceState = {
-            id: instanceId,
-            status: 'active',
+        // DBにインスタンスを作成（world.dbIdを使用）
+        const dbInstance = await instanceRepository.create({
+            worldId: world.dbId,
             leaderId,
-            createdAt: now,
-            expiresAt: null, // 無期限
-
-            world: {
-                id: world.id,
-                version: world.version,
-                displayName: world.displayName,
-                thumbnail: world.thumbnail,
-            },
-
-            access,
-            stats: {
-                currentUsers: 0,
-                maxUsers: Math.min(maxUsers, world.capacity.max),
-            },
-            connection: {
-                url: DEFAULTS.WORLD_ID, // 将来的にはサーバーURLを返す
-                namespace: `/${instanceId}`,
-            },
-
-            // 内部状態
+            accessType: request.access?.type ?? 'public',
+            accessTags: request.access?.tags ?? [],
+            hasPassword: request.access?.password ? 'true' : 'false',
+            maxUsers: cappedMaxUsers,
             passwordHash: request.access?.password, // 簡易実装（本番ではハッシュ化）
-        };
-
-        this.instances.set(instanceId, instance);
-
-        // worldId -> instanceId のマッピングを追加
-        if (!this.worldToInstances.has(request.worldId)) {
-            this.worldToInstances.set(request.worldId, new Set());
-        }
-        this.worldToInstances.get(request.worldId)?.add(instanceId);
+        });
 
         // インスタンス固有のワールド状態を初期化（initialEntitiesを配置）
         if (world.initialEntities && world.initialEntities.length > 0) {
             for (const entityDef of world.initialEntities) {
-                createEntity(instanceId, {
+                createEntity(dbInstance.id, {
                     type: entityDef.kind,
                     ownerId: null,
                     lockedBy: null,
@@ -96,66 +52,65 @@ class InstanceManager {
                 });
             }
             console.log(
-                `🌍 インスタンス ${instanceId} にinitialEntities ${world.initialEntities.length}件を配置しました`,
+                `🌍 インスタンス ${dbInstance.id} にinitialEntities ${world.initialEntities.length}件を配置しました`,
             );
         }
 
-        console.log(`🏠 インスタンス作成: ${instanceId} (world: ${world.id})`);
+        console.log(`🏠 インスタンス作成: ${dbInstance.id} (world: ${world.id})`);
 
-        return this.toPublicInstance(instance);
+        return this.toPublicInstance(dbInstance, world);
     }
 
     /**
      * インスタンス一覧を取得
      */
-    listInstances(options?: { tag?: string; includeFull?: boolean }): Instance[] {
-        let instances = Array.from(this.instances.values());
+    async listInstances(options?: { tag?: string; includeFull?: boolean }): Promise<Instance[]> {
+        const dbInstances = await instanceRepository.findAll({
+            tag: options?.tag,
+            includeFull: options?.includeFull,
+        });
 
-        // タグでフィルタリング
-        if (options?.tag) {
-            const tag = options.tag;
-            instances = instances.filter((i) => i.access.tags.includes(tag));
+        const instances: Instance[] = [];
+        for (const dbInstance of dbInstances) {
+            const world = await worldRegistry.getWorld(dbInstance.worldId);
+            if (world) {
+                instances.push(this.toPublicInstance(dbInstance, world));
+            }
         }
 
-        // 満員を除外
-        if (!options?.includeFull) {
-            instances = instances.filter((i) => i.status !== 'full');
-        }
-
-        return instances.map((i) => this.toPublicInstance(i));
+        return instances;
     }
 
     /**
      * インスタンスを取得
      */
-    getInstance(instanceId: string): Instance | undefined {
-        const instance = this.instances.get(instanceId);
-        return instance ? this.toPublicInstance(instance) : undefined;
+    async getInstance(instanceId: string): Promise<Instance | undefined> {
+        const dbInstance = await instanceRepository.findById(instanceId);
+        if (!dbInstance) return undefined;
+
+        const world = await worldRegistry.getWorld(dbInstance.worldId);
+        if (!world) return undefined;
+
+        return this.toPublicInstance(dbInstance, world);
     }
 
     /**
      * インスタンスを終了
      */
-    closeInstance(instanceId: string, userId: string): { success: boolean; error?: string } {
-        const instance = this.instances.get(instanceId);
-        if (!instance) {
+    async closeInstance(instanceId: string, userId: string): Promise<{ success: boolean; error?: string }> {
+        const dbInstance = await instanceRepository.findById(instanceId);
+        if (!dbInstance) {
             return { success: false, error: 'Instance not found' };
         }
 
-        if (instance.leaderId !== userId) {
+        if (dbInstance.leaderId !== userId) {
             return { success: false, error: 'Only the leader can close the instance' };
         }
 
-        instance.status = 'closing';
-        this.instances.delete(instanceId);
-
-        // マッピングからも削除
-        const worldInstances = this.worldToInstances.get(instance.world.id);
-        if (worldInstances) {
-            worldInstances.delete(instanceId);
-            if (worldInstances.size === 0) {
-                this.worldToInstances.delete(instance.world.id);
-            }
+        // DBから削除
+        const deleted = await instanceRepository.deleteByLeader(instanceId, userId);
+        if (!deleted) {
+            return { success: false, error: 'Failed to delete instance' };
         }
 
         // ワールド状態をクリーンアップ
@@ -170,57 +125,33 @@ class InstanceManager {
      * ユーザー数を更新
      * @returns 更新後のユーザー数。インスタンスが見つからない場合は -1
      */
-    updateUserCount(instanceId: string, delta: number): number {
-        const instance = this.instances.get(instanceId);
-        if (!instance) return -1;
-
-        instance.stats.currentUsers = Math.max(0, instance.stats.currentUsers + delta);
+    async updateUserCount(instanceId: string, delta: number): Promise<number> {
+        const updated = await instanceRepository.updateUserCount(instanceId, delta);
+        if (!updated) return -1;
 
         // ユーザーが0になったらインスタンスを自動削除
-        if (instance.stats.currentUsers === 0) {
-            // 他の処理で既に削除されていないか、最新状態を確認してからクリーンアップする
-            const currentInstance = this.instances.get(instanceId);
-            if (currentInstance && currentInstance.stats.currentUsers === 0) {
-                this.instances.delete(instanceId);
+        if (updated.currentUsers === 0) {
+            await instanceRepository.delete(instanceId);
 
-                // マッピングからも削除
-                const worldInstances = this.worldToInstances.get(currentInstance.world.id);
-                if (worldInstances) {
-                    worldInstances.delete(instanceId);
-                    if (worldInstances.size === 0) {
-                        this.worldToInstances.delete(currentInstance.world.id);
-                    }
-                }
+            // ワールド状態をクリーンアップ
+            clearWorldState(instanceId);
 
-                // ワールド状態をクリーンアップ
-                clearWorldState(instanceId);
-
-                console.log(`🗑️ インスタンス自動削除（ユーザー0）: ${instanceId}`);
-            }
+            console.log(`🗑️ インスタンス自動削除（ユーザー0）: ${instanceId}`);
             return 0;
         }
 
-        // ステータス更新
-        if (instance.stats.currentUsers >= instance.stats.maxUsers) {
-            instance.status = 'full';
-        } else if (instance.status === 'full') {
-            instance.status = 'active';
-        }
-
-        return instance.stats.currentUsers;
+        return updated.currentUsers;
     }
 
     /**
      * ワールドIDからインスタンスを検索（既存インスタンスへの参加用）
      */
-    findInstancesByWorld(worldId: string): Instance[] {
-        const instanceIds = this.worldToInstances.get(worldId);
-        if (!instanceIds) return [];
+    async findInstancesByWorld(worldId: string): Promise<Instance[]> {
+        const dbInstances = await instanceRepository.findByWorldId(worldId);
+        const world = await worldRegistry.getWorld(worldId);
+        if (!world) return [];
 
-        return Array.from(instanceIds)
-            .map((id) => this.instances.get(id))
-            .filter((i): i is InstanceState => !!i)
-            .map((i) => this.toPublicInstance(i));
+        return dbInstances.map((dbInstance) => this.toPublicInstance(dbInstance, world));
     }
 
     /**
@@ -241,12 +172,42 @@ class InstanceManager {
     }
 
     /**
-     * 内部状態から公開用のInstanceオブジェクトに変換
+     * DB record から公開用のInstanceオブジェクトに変換
      */
-    private toPublicInstance(instance: InstanceState): Instance {
-        // passwordHash を除外
-        const { passwordHash: _, ...publicInstance } = instance;
-        return publicInstance;
+    private toPublicInstance(
+        dbInstance: Awaited<ReturnType<typeof instanceRepository.findById>> & object,
+        world: { id: string; version: string; displayName: string; thumbnail?: string },
+    ): Instance {
+        const access: InstanceAccess = {
+            type: dbInstance.accessType,
+            tags: dbInstance.accessTags ?? [],
+            password: dbInstance.hasPassword === 'true',
+        };
+
+        return {
+            id: dbInstance.id,
+            status: dbInstance.status,
+            leaderId: dbInstance.leaderId,
+            createdAt: dbInstance.createdAt.toISOString(),
+            expiresAt: dbInstance.expiresAt?.toISOString() ?? null,
+
+            world: {
+                id: world.id,
+                version: world.version,
+                displayName: world.displayName,
+                thumbnail: world.thumbnail,
+            },
+
+            access,
+            stats: {
+                currentUsers: dbInstance.currentUsers,
+                maxUsers: dbInstance.maxUsers,
+            },
+            connection: {
+                url: DEFAULTS.WORLD_ID, // 将来的にはサーバーURLを返す
+                namespace: `/${dbInstance.id}`,
+            },
+        };
     }
 }
 

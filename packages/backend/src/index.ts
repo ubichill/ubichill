@@ -19,8 +19,10 @@ import {
     handleVideoPlayerSync,
     handleWorldJoin,
 } from './handlers/socketHandlers';
+import { auth } from './lib/auth';
 import audioRouter from './routes/audio';
 import instancesRouter from './routes/instances';
+import usersRouter from './routes/users';
 import worldsRouter from './routes/worlds';
 import { worldRegistry } from './services/worldRegistry';
 
@@ -59,11 +61,26 @@ app.get('/health', (_req, res) => {
 // オーディオAPI（YouTube音楽ストリーム）
 app.use('/api/audio', audioRouter);
 
+import { toNodeHandler } from 'better-auth/node';
+
+// 認証APIのデバッグログ
+app.use('/api/auth', (req, _res, next) => {
+    console.log(`🔐 Auth リクエスト: ${req.method} ${req.originalUrl}`);
+    if (req.method === 'POST') {
+        console.log(`   Body:`, JSON.stringify(req.body, null, 2));
+    }
+    next();
+});
+
+// 認証API（Better Auth）- CORSとプリフライトを確実に処理するため、先に配置
+app.all('/api/auth/{*path}', toNodeHandler(auth));
+
 // ============================================
 // REST API ルート
 // ============================================
 app.use('/api/v1/worlds', worldsRouter);
 app.use('/api/v1/instances', instancesRouter);
+app.use('/api/v1/users', usersRouter);
 
 // HTTPサーバーを作成
 const server = http.createServer(app);

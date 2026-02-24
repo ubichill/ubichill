@@ -19,6 +19,7 @@
         "@ubichill/plugin-video-player": "workspace:*",
         "@ubichill/sdk": "workspace:*",
         "@ubichill/shared": "workspace:*",
+        "better-auth": "^1.4.19",
         "icojs": "^0.20.1",
         "lodash.throttle": "^4.1.1",
         "next": "^16.1.6",

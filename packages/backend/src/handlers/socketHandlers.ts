@@ -79,7 +79,7 @@ export function handleWorldJoin(socket: TypedSocket) {
 
         // インスタンスのユーザー数を更新
         if (instanceId) {
-            instanceManager.updateUserCount(instanceId, 1);
+            await instanceManager.updateUserCount(instanceId, 1);
         }
 
         // このワールド内の全ユーザーを取得
@@ -234,14 +234,14 @@ export function handleUserUpdate(socket: TypedSocket) {
  * 切断イベントを処理
  */
 export function handleDisconnect(socket: TypedSocket) {
-    return () => {
+    return async () => {
         const worldId = socket.data.worldId;
         const instanceId = socket.data.instanceId;
         const user = userManager.removeUser(socket.id);
 
         // インスタンスのユーザー数を更新
         if (instanceId) {
-            instanceManager.updateUserCount(instanceId, -1);
+            await instanceManager.updateUserCount(instanceId, -1);
         }
 
         if (worldId && user) {
@@ -416,7 +416,7 @@ export async function sendWorldSnapshot(
             targetWorldId = instanceOrWorldId;
         } else {
             // インスタンスIDからワールドIDを特定を試みる
-            const instance = instanceManager.getInstance(instanceOrWorldId);
+            const instance = await instanceManager.getInstance(instanceOrWorldId);
             if (instance) {
                 targetWorldId = instance.world.id;
             }
