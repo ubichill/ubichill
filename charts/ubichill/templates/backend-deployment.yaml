@@ -58,11 +58,20 @@ spec:
           containerPort: {{ .Values.backend.service.targetPort }}
           protocol: TCP
         env:
-        {{- /* existingSecretを使う場合はDATABASE_URLはシークレット内に含める。
-              existingSecretなしの場合は values から自動生成 */}}
-        {{- if and .Values.postgresql.enabled (not .Values.backend.existingSecret) }}
+        {{- /* DATABASE_URL: backend.envに未指定の場合、BitnamiのPostgreSQL Secretから
+              パスワードを取得して自動組み立て */}}
+        {{- if and .Values.postgresql.enabled (not (hasKey .Values.backend.env "DATABASE_URL")) }}
+        - name: PG_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              {{- if .Values.postgresql.auth.existingSecret }}
+              name: {{ .Values.postgresql.auth.existingSecret }}
+              {{- else }}
+              name: {{ include "ubichill.fullname" . }}-postgresql
+              {{- end }}
+              key: postgres-password
         - name: DATABASE_URL
-          value: "postgresql://postgres:{{ .Values.postgresql.auth.postgresPassword }}@{{ include "ubichill.fullname" . }}-postgresql:5432/{{ .Values.postgresql.auth.database }}"
+          value: "postgresql://postgres:$(PG_PASSWORD)@{{ include "ubichill.fullname" . }}-postgresql:5432/{{ .Values.postgresql.auth.database }}"
         {{- end }}
         {{- range $key, $value := .Values.backend.env }}
         - name: {{ $key }}
