@@ -56,9 +56,12 @@ USER node
 
 # Deployed application is self-contained (includes node_modules, dist, package.json, and workspace deps)
 COPY --from=installer --chown=node:node /app/deploy-backend .
+# マイグレーションSQLをコピー（node_modules/@ubichill/db/drizzle への配置）
+COPY --from=installer --chown=node:node /app/packages/db/drizzle ./node_modules/@ubichill/db/drizzle
 
 EXPOSE 3001
-CMD ["node", "dist/index.js"]
+# 起動前にDBマイグレーションを実行
+CMD ["sh", "-c", "node node_modules/@ubichill/db/dist/migrate.js && node dist/index.js"]
 
 # ==========================================
 # Frontend Runner

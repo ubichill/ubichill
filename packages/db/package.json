@@ -10,11 +10,16 @@
             "types": "./dist/index.d.ts",
             "import": "./dist/index.js",
             "require": "./dist/index.js"
+        },
+        "./migrate": {
+            "types": "./dist/migrate.d.ts",
+            "import": "./dist/migrate.js"
         }
     },
     "scripts": {
         "dev": "docker compose up -d && drizzle-kit studio",
         "build": "tsc",
+        "migrate": "npm run build && node dist/migrate.js",
         "clean": "rimraf dist",
         "lint": "biome check .",
         "lint:fix": "biome check --write .",
