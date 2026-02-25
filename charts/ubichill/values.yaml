@@ -106,6 +106,9 @@ backend:
   secretEnv:
     BETTER_AUTH_SECRET: "replace-in-production"
     RESEND_API_KEY: "replace-with-resend-key"
+  
+  # Existing secret containing the secrets (skips secretEnv creation and injects it)
+  existingSecret: ""
 
   # Security context
   securityContext:
@@ -228,6 +231,7 @@ postgresql:
   auth:
     enablePostgresUser: true
     postgresPassword: "ubichill-db-secret"
+    existingSecret: ""
     database: "ubichill"
   primary:
     persistence:
