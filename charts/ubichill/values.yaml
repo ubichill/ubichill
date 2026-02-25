@@ -99,7 +99,6 @@ backend:
     NODE_ENV: "production"
     PORT: "3001"
     CORS_ORIGIN: "http://localhost:3000"
-    BETTER_AUTH_URL: "http://localhost:3001"
     # Database and Redis connections set by templates
 
   # Secret environment variables (rendered as Secret)

@@ -77,6 +77,11 @@ spec:
         - name: {{ $key }}
           value: {{ $value | quote }}
         {{- end }}
+        {{- /* BETTER_AUTH_URL: Ingressホストから自動設定。envに未指定の場合のみ */}}
+        {{- if not (hasKey .Values.backend.env "BETTER_AUTH_URL") }}
+        - name: BETTER_AUTH_URL
+          value: "{{ if and .Values.ingress.enabled .Values.ingress.hosts }}https://{{ (index .Values.ingress.hosts 0).host }}{{ else }}http://localhost:{{ .Values.backend.service.port }}{{ end }}"
+        {{- end }}
         {{- if and (not .Values.backend.existingSecret) .Values.backend.secretEnv }}
         {{- range $key, $value := .Values.backend.secretEnv }}
         - name: {{ $key }}
