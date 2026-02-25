@@ -62,6 +62,15 @@ spec:
         - name: {{ $key }}
           value: {{ $value | quote }}
         {{- end }}
+        {{- if .Values.backend.secretEnv }}
+        {{- range $key, $value := .Values.backend.secretEnv }}
+        - name: {{ $key }}
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "ubichill.fullname" $ }}-backend-secrets
+              key: {{ $key }}
+        {{- end }}
+        {{- end }}
         {{- if .Values.worlds.enabled }}
         - name: WORLDS_DIR
           value: "/app/worlds"

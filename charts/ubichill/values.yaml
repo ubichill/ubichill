@@ -99,7 +99,13 @@ backend:
     NODE_ENV: "production"
     PORT: "3001"
     CORS_ORIGIN: "http://localhost:3000"
+    BETTER_AUTH_URL: "http://localhost:3001"
     # Database and Redis connections set by templates
+
+  # Secret environment variables (rendered as Secret)
+  secretEnv:
+    BETTER_AUTH_SECRET: "replace-in-production"
+    RESEND_API_KEY: "replace-with-resend-key"
 
   # Security context
   securityContext:
@@ -212,7 +218,7 @@ redis:
 
 # Database (optional)
 postgresql:
-  enabled: false  # Enable if using PostgreSQL
+  enabled: true  # Enable if using PostgreSQL
   global:
     imageRegistry: ""
   image:
