@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
-import { registerWithOTP, resendOTP, signIn, useSession, verifyOTPAndRegister } from '@/lib/auth-client';
+import { API_BASE, registerWithOTP, resendOTP, signIn, useSession, verifyOTPAndRegister } from '@/lib/auth-client';
 import { css } from '@/styled-system/css';
 import { flex, vstack } from '@/styled-system/patterns';
 
@@ -56,7 +56,6 @@ export default function AuthPage() {
         const timer = setTimeout(async () => {
             setIsCheckingUsername(true);
             try {
-                const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
                 const res = await fetch(
                     `${API_BASE}/api/v1/users/check-username?username=${encodeURIComponent(trimmedUsername)}`,
                 );

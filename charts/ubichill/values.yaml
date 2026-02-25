@@ -227,7 +227,6 @@ postgresql:
   image:
     registry: ""
     repository: docker.io/bitnami/postgresql
-    tag: "16.4.1-debian-12-r3"
   auth:
     enablePostgresUser: true
     postgresPassword: "ubichill-db-secret"

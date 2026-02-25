@@ -67,6 +67,16 @@ spec:
         - name: NEXT_PUBLIC_BACKEND_URL
           value: "{{ if and .Values.ingress.enabled .Values.ingress.hosts }}https://{{ (index .Values.ingress.hosts 0).host }}{{ else }}http://localhost:{{ .Values.backend.service.port }}{{ end }}"
         {{- end }}
+        # NEXT_PUBLIC_API_URL: browser-side URL via Ingress (public)
+        {{- if not (hasKey .Values.frontend.env "NEXT_PUBLIC_API_URL") }}
+        - name: NEXT_PUBLIC_API_URL
+          value: "{{ if and .Values.ingress.enabled .Values.ingress.hosts }}https://{{ (index .Values.ingress.hosts 0).host }}{{ else }}http://localhost:{{ .Values.backend.service.port }}{{ end }}"
+        {{- end }}
+        # BACKEND_INTERNAL_URL: server-side (SSR) URL via K8s internal DNS (non-public)
+        {{- if not (hasKey .Values.frontend.env "BACKEND_INTERNAL_URL") }}
+        - name: BACKEND_INTERNAL_URL
+          value: "http://{{ include "ubichill.fullname" . }}-backend:{{ .Values.backend.service.port }}"
+        {{- end }}
         # Video Player Backend URL configuration
         {{- if not (hasKey .Values.frontend.env "NEXT_PUBLIC_VIDEO_PLAYER_BACKEND_URL") }}
         - name: NEXT_PUBLIC_VIDEO_PLAYER_BACKEND_URL

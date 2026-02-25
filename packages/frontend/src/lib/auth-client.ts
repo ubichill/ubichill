@@ -1,6 +1,14 @@
 import { createAuthClient } from 'better-auth/react';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+// ブラウザ(CSR)ではNEXT_PUBLIC_API_URLを使う（外部URL）
+// SSR(Podから別Podへ)ではBACKEND_INTERNAL_URLを使う（K8s内部Service DNS）
+// typeof window === 'undefined' はSSRを示す
+const API_BASE =
+    typeof window === 'undefined'
+        ? (process.env.BACKEND_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001')
+        : (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001');
+
+export { API_BASE };
 
 export const authClient = createAuthClient({
     baseURL: API_BASE,
