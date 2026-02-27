@@ -278,6 +278,13 @@ export interface SocketData {
     worldId?: string;
     instanceId?: string;
     user?: User;
+    /** better-auth で認証されたユーザー情報（接続時にセット、以降不変） */
+    authUser?: {
+        id: string;
+        email: string;
+        name: string;
+        image: string | null;
+    };
 }
 
 // ============================================

@@ -31,11 +31,18 @@ type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents, InterServe
  * ワールド参加イベントを処理
  */
 export function handleWorldJoin(socket: TypedSocket) {
-    return (
+    return async (
         { worldId, instanceId, user }: { worldId: string; instanceId?: string; user: Omit<User, 'id'> },
         callback: (response: { success: boolean; userId?: string; error?: string }) => void,
     ) => {
         logger.debug('world:join イベント受信:', { worldId, instanceId, user, socketId: socket.id });
+
+        // 認証済みユーザー確認（socketAuthMiddleware が先に実行されているはず）
+        const authUser = socket.data.authUser;
+        if (!authUser) {
+            callback({ success: false, error: '認証が必要です' });
+            return;
+        }
 
         // ワールドIDを検証
         const worldValidation = validateWorldId(worldId);
@@ -45,17 +52,20 @@ export function handleWorldJoin(socket: TypedSocket) {
             return;
         }
 
+        // 表示名: クライアント指定があれば優先（ニックネーム機能）、なければ DB の名前を使用
+        const displayName = user.name?.trim() || authUser.name;
+
         // ユーザー名を検証
-        const usernameValidation = validateUsername(user.name);
+        const usernameValidation = validateUsername(displayName);
         if (!usernameValidation.valid) {
             logger.debug('ユーザー名検証失敗:', usernameValidation.error);
             callback({ success: false, error: usernameValidation.error });
             return;
         }
 
-        // ユーザーオブジェクトを作成
+        // ユーザーオブジェクトを作成（DB由来のIDを使用）
         const newUser: User = {
-            id: socket.id,
+            id: authUser.id, // socket.id ではなく DB の user.id を使用
             ...user,
             name: usernameValidation.data,
             position: user.position || DEFAULTS.INITIAL_POSITION,
@@ -79,7 +89,7 @@ export function handleWorldJoin(socket: TypedSocket) {
 
         // インスタンスのユーザー数を更新
         if (instanceId) {
-            instanceManager.updateUserCount(instanceId, 1);
+            await instanceManager.updateUserCount(instanceId, 1);
         }
 
         // このワールド内の全ユーザーを取得
@@ -97,10 +107,10 @@ export function handleWorldJoin(socket: TypedSocket) {
         // 新しいユーザーにワールドスナップショットを送信（UEP）
         // instanceIdをキーにしてワールド状態を取得（インスタンスごとに独立した状態）
         const entities = getWorldSnapshot(worldStateKey);
-        const environment = instanceManager.getWorldEnvironment(worldValidation.data);
+        const environment = await instanceManager.getWorldEnvironment(worldValidation.data);
 
         // ワールド定義から依存関係を取得
-        const world = worldRegistry.getWorld(worldValidation.data);
+        const world = await worldRegistry.getWorld(worldValidation.data);
         const activePlugins = world?.dependencies?.map((d) => d.name) || [];
 
         // ワールドスナップショット（拡張版）を送信
@@ -234,14 +244,14 @@ export function handleUserUpdate(socket: TypedSocket) {
  * 切断イベントを処理
  */
 export function handleDisconnect(socket: TypedSocket) {
-    return () => {
+    return async () => {
         const worldId = socket.data.worldId;
         const instanceId = socket.data.instanceId;
         const user = userManager.removeUser(socket.id);
 
         // インスタンスのユーザー数を更新
         if (instanceId) {
-            instanceManager.updateUserCount(instanceId, -1);
+            await instanceManager.updateUserCount(instanceId, -1);
         }
 
         if (worldId && user) {
@@ -402,17 +412,21 @@ export function handleEntityDelete(socket: TypedSocket) {
  * @param instanceOrWorldId インスタンスIDまたはワールドID（ワールド状態のキー）
  * @param worldId 環境設定取得用のワールドID
  */
-export function sendWorldSnapshot(socket: TypedSocket, instanceOrWorldId: string, worldId?: string): void {
+export async function sendWorldSnapshot(
+    socket: TypedSocket,
+    instanceOrWorldId: string,
+    worldId?: string,
+): Promise<void> {
     const entities = getWorldSnapshot(instanceOrWorldId);
 
     // WorldIDを解決
     let targetWorldId = worldId;
     if (!targetWorldId) {
-        if (worldRegistry.hasWorld(instanceOrWorldId)) {
+        if (await worldRegistry.hasWorld(instanceOrWorldId)) {
             targetWorldId = instanceOrWorldId;
         } else {
             // インスタンスIDからワールドIDを特定を試みる
-            const instance = instanceManager.getInstance(instanceOrWorldId);
+            const instance = await instanceManager.getInstance(instanceOrWorldId);
             if (instance) {
                 targetWorldId = instance.world.id;
             }
@@ -421,8 +435,8 @@ export function sendWorldSnapshot(socket: TypedSocket, instanceOrWorldId: string
 
     // 環境設定とプラグイン情報を取得
     const finalWorldId = targetWorldId || instanceOrWorldId;
-    const environment = instanceManager.getWorldEnvironment(finalWorldId);
-    const world = worldRegistry.getWorld(finalWorldId);
+    const environment = await instanceManager.getWorldEnvironment(finalWorldId);
+    const world = await worldRegistry.getWorld(finalWorldId);
     const activePlugins = world?.dependencies?.map((d) => d.name) || [];
 
     const snapshotPayload: WorldSnapshotPayload = {

@@ -20,5 +20,5 @@
             "configureZshAsDefaultShell": true
         }
     },
-    "postCreateCommand": "chmod +x .devcontainer/setup.sh && ./.devcontainer/setup.sh"
+    "postCreateCommand": "sed -i 's/\\r$//' .devcontainer/setup.sh && bash .devcontainer/setup.sh"
 }

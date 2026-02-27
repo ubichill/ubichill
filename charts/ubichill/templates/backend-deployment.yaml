@@ -58,23 +58,47 @@ spec:
           containerPort: {{ .Values.backend.service.targetPort }}
           protocol: TCP
         env:
+        {{- /* When using `existingSecret`, let the secret supply BETTER_AUTH_SECRET, RESEND_API_KEY */}}
+        {{- if .Values.postgresql.enabled }}
+        {{- if .Values.backend.existingSecret }}
+        - name: PG_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.backend.existingSecret }}
+              key: "postgres-password"
+        - name: DATABASE_URL
+          value: "postgresql://postgres:$(PG_PASSWORD)@{{ include "ubichill.fullname" . }}-postgresql:5432/{{ .Values.postgresql.auth.database }}"
+        {{- else }}
+        - name: DATABASE_URL
+          value: "postgresql://postgres:{{ .Values.postgresql.auth.postgresPassword }}@{{ include "ubichill.fullname" . }}-postgresql:5432/{{ .Values.postgresql.auth.database }}"
+        {{- end }}
+        {{- end }}
         {{- range $key, $value := .Values.backend.env }}
         - name: {{ $key }}
           value: {{ $value | quote }}
+        {{- end }}
+        {{- if and (not .Values.backend.existingSecret) .Values.backend.secretEnv }}
+        {{- range $key, $value := .Values.backend.secretEnv }}
+        - name: {{ $key }}
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "ubichill.fullname" $ }}-backend-secrets
+              key: {{ $key }}
+        {{- end }}
         {{- end }}
         {{- if .Values.worlds.enabled }}
         - name: WORLDS_DIR
           value: "/app/worlds"
         {{- end }}
-        # Database connections
-        {{- if .Values.postgresql.enabled }}
-        - name: DATABASE_URL
-          value: "postgresql://postgres:{{ .Values.postgresql.auth.postgresPassword }}@{{ include "ubichill.fullname" . }}-postgresql:5432/{{ .Values.postgresql.auth.database }}"
-        {{- end }}
         # Redis connection
         {{- if .Values.redis.enabled }}
         - name: REDIS_URL
           value: "redis://{{ include "ubichill.fullname" . }}-redis-master:6379"
+        {{- end }}
+        {{- if .Values.backend.existingSecret }}
+        envFrom:
+        - secretRef:
+            name: {{ .Values.backend.existingSecret }}
         {{- end }}
         {{- if .Values.backend.healthcheck.enabled }}
         livenessProbe:
