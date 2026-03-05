@@ -41,22 +41,32 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const currentUserRef = useRef<User | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const isInitializedRef = useRef(false);
 
     // Keep ref in sync
     useEffect(() => {
         currentUserRef.current = currentUser;
     }, [currentUser]);
 
-    useEffect(() => {
-        // Initialize socket connection
+    /**
+     * ソケットを初期化（まだ接続しない）
+     * joinWorld が呼ばれたときに接続する
+     */
+    const initializeSocket = useCallback(() => {
+        if (isInitializedRef.current && socketRef.current) {
+            return socketRef.current;
+        }
+
         const socketUrl = process.env.NODE_ENV === 'production' ? undefined : SERVER_CONFIG.DEV_URL;
 
         const socket: AppSocket = io(socketUrl || window.location.origin, {
             autoConnect: false,
             path: '/socket.io',
+            withCredentials: true,
         });
 
         socketRef.current = socket;
+        isInitializedRef.current = true;
 
         // Set up event listeners
         socket.on('connect', () => {
@@ -71,6 +81,14 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         socket.on('connect_error', (err) => {
             setError(`Connection error: ${err.message}`);
             setIsConnected(false);
+
+            // 未認証の場合は再接続を止めてログインページへリダイレクト
+            if (err.message === 'Unauthorized') {
+                socket.disconnect(); // 再接続を防止
+                if (typeof window !== 'undefined') {
+                    window.location.href = '/auth';
+                }
+            }
         });
 
         socket.on('users:update', (updatedUsers) => {
@@ -141,34 +159,50 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             setError(msg);
         });
 
-        // Connect to server
-        socket.connect();
+        return socket;
+    }, []);
 
-        // Cleanup on unmount
+    // Cleanup on unmount
+    useEffect(() => {
         return () => {
-            socket.disconnect();
-        };
-    }, []);
-
-    const joinWorld = useCallback((name: string, worldId: string = DEFAULTS.WORLD_ID, instanceId?: string) => {
-        const socket = socketRef.current;
-        if (!socket) return;
-
-        const initialUser: Omit<User, 'id'> = {
-            name,
-            status: DEFAULTS.USER_STATUS,
-            position: DEFAULTS.INITIAL_POSITION,
-            lastActiveAt: Date.now(),
-        };
-
-        socket.emit('world:join', { worldId, instanceId, user: initialUser }, (response) => {
-            if (response.success && response.userId) {
-                setCurrentUser({ ...initialUser, id: response.userId });
-            } else {
-                setError(response.error || 'Failed to join world');
+            if (socketRef.current) {
+                socketRef.current.disconnect();
             }
-        });
+        };
     }, []);
+
+    const joinWorld = useCallback(
+        (name: string, worldId: string = DEFAULTS.WORLD_ID, instanceId?: string) => {
+            // ソケットを初期化して接続
+            const socket = initializeSocket();
+
+            const initialUser: Omit<User, 'id'> = {
+                name,
+                status: DEFAULTS.USER_STATUS,
+                position: DEFAULTS.INITIAL_POSITION,
+                lastActiveAt: Date.now(),
+            };
+
+            // 接続後にワールドに参加
+            const emitJoin = () => {
+                socket.emit('world:join', { worldId, instanceId, user: initialUser }, (response) => {
+                    if (response.success && response.userId) {
+                        setCurrentUser({ ...initialUser, id: response.userId });
+                    } else {
+                        setError(response.error || 'Failed to join world');
+                    }
+                });
+            };
+
+            if (socket.connected) {
+                emitJoin();
+            } else {
+                socket.once('connect', emitJoin);
+                socket.connect();
+            }
+        },
+        [initializeSocket],
+    );
 
     const updatePosition = useCallback(
         (position: CursorPosition, state?: CursorState) => {

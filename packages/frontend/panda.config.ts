@@ -33,7 +33,7 @@ export default defineConfig({
                     border: { value: '#e5e7eb' },
                 },
                 fonts: {
-                    body: { value: 'system-ui, sans-serif' },
+                    body: { value: 'var(--font-inter), system-ui, sans-serif' },
                     mono: { value: 'Menlo, monospace' },
                 },
             },

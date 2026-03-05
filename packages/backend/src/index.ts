@@ -19,8 +19,11 @@ import {
     handleVideoPlayerSync,
     handleWorldJoin,
 } from './handlers/socketHandlers';
+import { auth } from './lib/auth';
+import { socketAuthMiddleware } from './middleware/socketAuth';
 import audioRouter from './routes/audio';
 import instancesRouter from './routes/instances';
+import usersRouter from './routes/users';
 import worldsRouter from './routes/worlds';
 import { worldRegistry } from './services/worldRegistry';
 
@@ -59,11 +62,26 @@ app.get('/health', (_req, res) => {
 // オーディオAPI（YouTube音楽ストリーム）
 app.use('/api/audio', audioRouter);
 
+import { toNodeHandler } from 'better-auth/node';
+
+// 認証APIのデバッグログ
+app.use('/api/auth', (req, _res, next) => {
+    console.log(`🔐 Auth リクエスト: ${req.method} ${req.originalUrl}`);
+    if (req.method === 'POST') {
+        console.log(`   Body:`, JSON.stringify(req.body, null, 2));
+    }
+    next();
+});
+
+// 認証API（Better Auth）- CORSとプリフライトを確実に処理するため、先に配置
+app.use('/api/auth', toNodeHandler(auth));
+
 // ============================================
 // REST API ルート
 // ============================================
 app.use('/api/v1/worlds', worldsRouter);
 app.use('/api/v1/instances', instancesRouter);
+app.use('/api/v1/users', usersRouter);
 
 // HTTPサーバーを作成
 const server = http.createServer(app);
@@ -77,9 +95,15 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents, InterServerEve
     },
 });
 
-// Socket.IOの接続処理
+// ============================================
+// Socket.IO 認証ミドルウェア（接続時に better-auth 検証）
+// ============================================
+io.use(socketAuthMiddleware);
+
+// Socket.IO 接続ハンドラー
 io.on('connection', (socket) => {
-    console.log(`🔌 新しい接続: ${socket.id.substring(0, 8)}`);
+    const authUser = socket.data.authUser;
+    console.log(`🔌 新しい接続: ${socket.id.substring(0, 8)} (user: ${authUser?.name ?? 'unknown'})`);
 
     // 既存イベントハンドラー
     socket.on('world:join', handleWorldJoin(socket));
@@ -103,13 +127,16 @@ async function startServer() {
     // ワールド定義を読み込み
     await worldRegistry.loadWorlds();
 
+    // ワールド数を取得（非同期）
+    const worlds = await worldRegistry.listWorlds();
+
     server.listen(appConfig.port, () => {
         console.log('');
         console.log('🚀 Ubichill サーバー起動');
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log(`   🌐 ポート ${appConfig.port} で起動中`);
         console.log(`   📍 環境: ${appConfig.nodeEnv}`);
-        console.log(`   📁 ワールド数: ${worldRegistry.listWorlds().length}`);
+        console.log(`   📁 ワールド数: ${worlds.length}`);
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log('');
     });

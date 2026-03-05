@@ -20,6 +20,47 @@ async function main() {
         process.exit(1);
     }
 
+    // Build db package
+    console.log('🏗️  Building db package...');
+    const buildDb = spawnSync('pnpm', ['--filter', '@ubichill/db', 'build'], { stdio: 'inherit', shell: true });
+    if (buildDb.status !== 0) {
+        console.error('Failed to build db package.');
+        process.exit(1);
+    }
+
+    // Start database
+    console.log('🗄️  Starting PostgreSQL database...');
+    const startDb = spawnSync('docker', ['compose', '-f', 'packages/db/docker-compose.yml', 'up', '-d'], { stdio: 'inherit', shell: true });
+    if (startDb.status !== 0) {
+        console.error('Failed to start database. Make sure Docker is running.');
+        process.exit(1);
+    }
+
+    // Wait for database to be ready
+    console.log('⏳ Waiting for database to be ready...');
+    let dbReady = false;
+    for (let i = 0; i < 30; i++) {
+        const check = spawnSync('docker', ['compose', '-f', 'packages/db/docker-compose.yml', 'exec', '-T', 'db', 'pg_isready', '-U', 'ubichill'], { stdio: 'pipe', shell: true });
+        if (check.status === 0) {
+            dbReady = true;
+            break;
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    if (!dbReady) {
+        console.error('Database failed to start within timeout.');
+        process.exit(1);
+    }
+    console.log('✅ Database is ready.');
+
+    // Run database migrations
+    console.log('🔄 Running database migrations...');
+    const migrate = spawnSync('pnpm', ['--filter', '@ubichill/db', 'push'], { stdio: 'inherit', shell: true });
+    if (migrate.status !== 0) {
+        console.error('Failed to run database migrations.');
+        process.exit(1);
+    }
+
     // Start plugins
     console.log('🚀 Starting Docker plugins...');
     const startPlugins = spawnSync('node', ['scripts/start-plugins.mjs', 'up', '-d'], { stdio: 'inherit' });
@@ -32,6 +73,8 @@ async function main() {
     const cleanup = () => {
         console.log('\n🛑 Stopping Docker plugins...');
         spawnSync('node', ['scripts/start-plugins.mjs', 'down'], { stdio: 'inherit' });
+        console.log('🛑 Stopping database...');
+        spawnSync('docker', ['compose', '-f', 'packages/db/docker-compose.yml', 'down'], { stdio: 'inherit', shell: true });
         process.exit();
     };
 

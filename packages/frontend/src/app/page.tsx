@@ -3,21 +3,34 @@
 import { PenTray } from '@ubichill/plugin-pen';
 import { useSocket, useWorld } from '@ubichill/sdk';
 import type { CursorState, UserStatus } from '@ubichill/shared';
-import { useCallback, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Lobby } from '@/components/lobby';
 import { UbichillOverlay } from '@/components/UbichillOverlay';
 import { useCursorState } from '@/core/hooks/useCursorState';
+import { signOut, useSession } from '@/lib/auth-client';
 import { APP_PLUGINS } from '@/plugins/registry';
 import { css } from '@/styled-system/css';
 import * as styles from '@/styles/styles';
 
-type AppScreen = 'name' | 'lobby' | 'world';
+type AppScreen = 'lobby' | 'world';
 
 export default function Home() {
+    const router = useRouter();
+    const { data: session, isPending } = useSession();
     const { isConnected, users, currentUser, error, joinWorld, updatePosition } = useSocket();
     const { environment } = useWorld();
-    const [name, setName] = useState('');
-    const [screen, setScreen] = useState<AppScreen>('name');
+    const [screen, setScreen] = useState<AppScreen>('lobby');
+
+    // 認証チェック - ログインしていない場合はリダイレクト
+    useEffect(() => {
+        if (!isPending && !session) {
+            router.push('/auth');
+        }
+    }, [session, isPending, router]);
+
+    // ユーザー名はセッションから取得
+    const userName = session?.user?.name || '';
 
     // 現在のカーソル状態を取得
     const cursorState: CursorState = useCursorState();
@@ -27,18 +40,16 @@ export default function Home() {
     const [cursorLockPosition, setCursorLockPosition] = useState<{ x: number; y: number } | null>(null);
     const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
 
-    // 名前入力完了
-    const handleNameSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (name.trim()) {
-            setScreen('lobby');
-        }
-    };
-
     // インスタンスに参加
     const handleJoinInstance = (instanceId: string, worldId: string) => {
-        joinWorld(name, worldId, instanceId);
+        joinWorld(userName, worldId, instanceId);
         setScreen('world');
+    };
+
+    // ログアウト
+    const handleLogout = async () => {
+        await signOut();
+        router.push('/auth');
     };
 
     // Add ref for the container
@@ -102,67 +113,13 @@ export default function Home() {
         [mousePosition],
     );
 
-    // 名前入力画面
-    if (screen === 'name') {
+    // ローディング中または未認証の場合
+    if (isPending || !session) {
         return (
             <main className={styles.mainContainer}>
-                <div className={styles.texturedBackdrop} />
-                <div className={styles.shell}>
-                    <div className={styles.headerContainer}>
-                        <p className={styles.statusBar}>
-                            ステータス: {isConnected ? '接続済み' : '切断'}
-                            {error && <span className={styles.errorText}>{error}</span>}
-                        </p>
-                    </div>
-
-                    <div className={styles.loginContainer}>
-                        <p className={styles.titleTag}>TITLE</p>
-                        <div className={styles.brandTitleRow}>
-                            <svg
-                                className={styles.brandIcon}
-                                viewBox="0 0 64 64"
-                                role="img"
-                                aria-label="ubichill icon"
-                                xmlns="http://www.w3.org/2000/svg"
-                            >
-                                <rect x="4" y="4" width="56" height="56" rx="18" fill="#1e3155" />
-                                <path
-                                    d="M21 40v-8.2c0-1.9 1.6-3.5 3.5-3.5s3.5 1.6 3.5 3.5V39h1.2v-4.8c0-1.7 1.3-3 3-3s3 1.3 3 3V40c0 5.5-4.4 10-9.9 10h-.8C19 50 15 46 15 41.1V36c0-1.7 1.4-3.1 3.1-3.1s3.1 1.4 3.1 3.1V40H21z"
-                                    fill="#f6e8d2"
-                                />
-                                <path
-                                    d="M30 18.5c1.7-1.2 3.4-1.2 5.1 0s3.4 1.2 5.1 0"
-                                    fill="none"
-                                    stroke="#f6e8d2"
-                                    strokeWidth="2.5"
-                                    strokeLinecap="round"
-                                />
-                                <path
-                                    d="M33 23c1.3-.9 2.6-.9 3.9 0s2.6.9 3.9 0"
-                                    fill="none"
-                                    stroke="#f6e8d2"
-                                    strokeWidth="2.5"
-                                    strokeLinecap="round"
-                                />
-                                <circle cx="24.5" cy="24.5" r="2.5" fill="#f6e8d2" />
-                            </svg>
-                            <h1 className={styles.title}>ubichill</h1>
-                        </div>
-                        <p className={styles.subtitle}>作業を始める前に表示名を入力してください</p>
-                        <form onSubmit={handleNameSubmit} className={styles.loginForm}>
-                            <input
-                                type="text"
-                                value={name}
-                                onChange={(e) => setName(e.target.value)}
-                                placeholder="表示名を入力"
-                                className={styles.input}
-                            />
-                            <button type="submit" className={styles.button} disabled={!isConnected || !name.trim()}>
-                                開始
-                            </button>
-                        </form>
-                        <p className={styles.hintText}>※ 表示名は後で設定画面から変更できます</p>
-                    </div>
+                <div className={styles.loginContainer}>
+                    <h1 className={styles.title}>Ubichill</h1>
+                    <p style={{ color: '#868e96', marginBottom: '24px', fontSize: '14px' }}>読み込み中...</p>
                 </div>
             </main>
         );
@@ -172,20 +129,32 @@ export default function Home() {
     if (screen === 'lobby') {
         return (
             <main className={styles.mainContainer}>
-                <div className={styles.texturedBackdrop} />
-                <div className={styles.shell}>
-                    <div className={styles.headerContainer}>
-                        <p className={styles.statusBar}>
-                            ステータス: {isConnected ? '接続済み' : '切断'}
-                            {error && <span className={styles.errorText}>{error}</span>}
-                        </p>
-                        <button type="button" onClick={() => setScreen('name')} className={styles.backButton}>
-                            ← 戻る
+                <div className={styles.headerContainer}>
+                    <p className={styles.statusBar}>
+                        ステータス: {isConnected ? '接続済み' : '切断'}
+                        {error && <span className={styles.errorText}>{error}</span>}
+                    </p>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <span style={{ color: '#495057', fontSize: '14px' }}>{userName}</span>
+                        <button
+                            type="button"
+                            onClick={handleLogout}
+                            style={{
+                                padding: '8px 16px',
+                                backgroundColor: 'transparent',
+                                color: '#868e96',
+                                border: '1px solid #dee2e6',
+                                borderRadius: '6px',
+                                fontSize: '13px',
+                                cursor: 'pointer',
+                            }}
+                        >
+                            ログアウト
                         </button>
                     </div>
-
-                    <Lobby onJoinInstance={handleJoinInstance} />
                 </div>
+
+                <Lobby userName={userName} onJoinInstance={handleJoinInstance} />
             </main>
         );
     }
