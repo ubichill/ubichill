@@ -34,6 +34,10 @@ backend:
   env:
     NODE_ENV: "production"
     CORS_ORIGIN: "https://ubichill.com"
+    BETTER_AUTH_URL: "https://api.ubichill.com"
+  secretEnv:
+    BETTER_AUTH_SECRET: "replace-in-production-vault"
+    RESEND_API_KEY: "replace-in-production-vault"
 
 # Frontend configuration for production
 frontend:

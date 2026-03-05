@@ -99,7 +99,16 @@ backend:
     NODE_ENV: "production"
     PORT: "3001"
     CORS_ORIGIN: "http://localhost:3000"
+    BETTER_AUTH_URL: "http://localhost:3001"
     # Database and Redis connections set by templates
+
+  # Secret environment variables (rendered as Secret)
+  secretEnv:
+    BETTER_AUTH_SECRET: "replace-in-production"
+    RESEND_API_KEY: "replace-with-resend-key"
+  
+  # Existing secret containing the secrets (skips secretEnv creation and injects it)
+  existingSecret: ""
 
   # Security context
   securityContext:
@@ -212,16 +221,16 @@ redis:
 
 # Database (optional)
 postgresql:
-  enabled: false  # Enable if using PostgreSQL
+  enabled: true  # Enable if using PostgreSQL
   global:
     imageRegistry: ""
   image:
     registry: ""
     repository: docker.io/bitnami/postgresql
-    tag: 16.2.0-debian-11-r1
   auth:
     enablePostgresUser: true
     postgresPassword: "ubichill-db-secret"
+    existingSecret: ""
     database: "ubichill"
   primary:
     persistence:
