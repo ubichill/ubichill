@@ -2,7 +2,7 @@
 
 import { useSocket, useWorld } from '@ubichill/sdk';
 import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { UbichillOverlay } from '@/components/UbichillOverlay';
 import { useCursorState } from '@/core/hooks/useCursorState';
 import { useSession } from '@/lib/auth-client';
@@ -19,9 +19,10 @@ export default function WorldPage() {
 
     // UI states
     const [connecting, setConnecting] = useState(true);
+    const hasJoinedRef = useRef(false);
     const cursorState = useCursorState();
 
-    // Ensure auth and connect
+    // Ensure auth and connect (1度だけ実行)
     useEffect(() => {
         if (isPending) return;
 
@@ -30,7 +31,11 @@ export default function WorldPage() {
             return;
         }
 
+        // 重複実行を防止
+        if (hasJoinedRef.current) return;
+
         if (params.id) {
+            hasJoinedRef.current = true;
             // "default" is a placeholder instance ID for simply joining the world's default instance space
             joinWorld(session.user.name, params.id, 'default');
             setConnecting(false);

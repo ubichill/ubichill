@@ -3,6 +3,7 @@
 import { PenTray } from '@ubichill/plugin-pen';
 import { useSocket, useWorld } from '@ubichill/sdk';
 import type { CursorState, UserStatus } from '@ubichill/shared';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Lobby } from '@/components/lobby';
@@ -10,6 +11,7 @@ import { UbichillOverlay } from '@/components/UbichillOverlay';
 import { useCursorState } from '@/core/hooks/useCursorState';
 import { signOut, useSession } from '@/lib/auth-client';
 import { APP_PLUGINS } from '@/plugins/registry';
+import { css } from '@/styled-system/css';
 import * as styles from '@/styles/styles';
 
 type AppScreen = 'lobby' | 'world';
@@ -117,8 +119,28 @@ export default function Home() {
         return (
             <main className={styles.mainContainer}>
                 <div className={styles.loginContainer}>
+                    <Image
+                        src="/icon.png"
+                        alt="Ubichill"
+                        width={64}
+                        height={64}
+                        className={css({
+                            borderRadius: '14px',
+                            filter: 'drop-shadow(0 4px 8px rgba(27, 42, 68, 0.10))',
+                        })}
+                    />
                     <h1 className={styles.title}>Ubichill</h1>
-                    <p style={{ color: '#868e96', marginBottom: '24px', fontSize: '14px' }}>読み込み中...</p>
+                    <p style={{ color: '#5e6a82', marginBottom: '16px', fontSize: '14px' }}>読み込み中...</p>
+                    <div
+                        className={css({
+                            width: '24px',
+                            height: '24px',
+                            border: '3px solid #cebca2',
+                            borderTopColor: '#1b2a44',
+                            borderRadius: '50%',
+                            animation: 'spin 0.8s linear infinite',
+                        })}
+                    />
                 </div>
             </main>
         );
@@ -134,15 +156,15 @@ export default function Home() {
                         {error && <span className={styles.errorText}>{error}</span>}
                     </p>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <span style={{ color: '#495057', fontSize: '14px' }}>{userName}</span>
+                        <span style={{ color: '#1b2a44', fontSize: '14px' }}>{userName}</span>
                         <button
                             type="button"
                             onClick={handleLogout}
                             style={{
                                 padding: '8px 16px',
                                 backgroundColor: 'transparent',
-                                color: '#868e96',
-                                border: '1px solid #dee2e6',
+                                color: '#3d4f6a',
+                                border: '1px solid #cebca2',
                                 borderRadius: '6px',
                                 fontSize: '13px',
                                 cursor: 'pointer',
@@ -153,7 +175,7 @@ export default function Home() {
                     </div>
                 </div>
 
-                <Lobby userName={userName} onJoinInstance={handleJoinInstance} />
+                <Lobby onJoinInstance={handleJoinInstance} />
             </main>
         );
     }
@@ -172,54 +194,62 @@ export default function Home() {
                 backgroundRepeat: 'no-repeat',
             }}
         >
-            <div className={styles.headerContainer}>
-                <p className={styles.statusBar}>
-                    ステータス: {isConnected ? '接続済み' : '切断'}
-                    {error && <span className={styles.errorText}>{error}</span>}
-                </p>
-                <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-                    {currentUser && <p className={styles.userInfo}>ログイン中: {currentUser.name}</p>}
-                </div>
-            </div>
-
-            <div ref={canvasRef} className={styles.worldCanvas}>
-                <div className={styles.userListContainer}>
-                    <h2 className={styles.userListTitle}>参加ユーザー ({users.size}人)</h2>
-                    <ul className={styles.userList}>
-                        {Array.from(users.values()).map((user) => (
-                            <li key={user.id}>
-                                {user.name} ({user.status}){user.id === currentUser?.id && ' (あなた)'}
-                            </li>
-                        ))}
-                    </ul>
+            <div className={styles.shell}>
+                <div className={styles.headerContainer}>
+                    <p className={styles.statusBar}>
+                        ステータス: {isConnected ? '接続済み' : '切断'}
+                        {error && <span className={styles.errorText}>{error}</span>}
+                    </p>
+                    <div
+                        className={css({
+                            display: 'flex',
+                            gap: '4',
+                            alignItems: 'center',
+                        })}
+                    >
+                        {currentUser && <p className={styles.userInfo}>ログイン中: {currentUser.name}</p>}
+                    </div>
                 </div>
 
-                {/* Entities and Plugins are handled by UbichillOverlay */}
-                <UbichillOverlay />
+                <div ref={canvasRef} className={styles.worldCanvas}>
+                    <div className={styles.userListContainer}>
+                        <h2 className={styles.userListTitle}>参加ユーザー ({users.size}人)</h2>
+                        <ul className={styles.userList}>
+                            {Array.from(users.values()).map((user) => (
+                                <li key={user.id}>
+                                    {user.name} ({user.status}){user.id === currentUser?.id && ' (あなた)'}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
 
-                {/* App-Level Plugins */}
-                {APP_PLUGINS.map((plugin) => {
-                    const canvasOffset = canvasRef.current?.getBoundingClientRect() || { left: 0, top: 0 };
+                    {/* Entities and Plugins are handled by UbichillOverlay */}
+                    <UbichillOverlay />
 
-                    // Type-safe plugin rendering based on plugin type
-                    switch (plugin.id) {
-                        case 'avatar':
-                            return (
-                                <plugin.Component
-                                    key={plugin.id}
-                                    cursorState={cursorState}
-                                    userStatus={userStatus}
-                                    onStatusChange={handleStatusChange}
-                                    mousePosition={mousePosition}
-                                    canvasOffset={canvasOffset}
-                                />
-                            );
-                        case 'pen-tray':
-                            return <PenTray key={plugin.id} />;
-                        default:
-                            return null;
-                    }
-                })}
+                    {/* App-Level Plugins */}
+                    {APP_PLUGINS.map((plugin) => {
+                        const canvasOffset = canvasRef.current?.getBoundingClientRect() || { left: 0, top: 0 };
+
+                        // Type-safe plugin rendering based on plugin type
+                        switch (plugin.id) {
+                            case 'avatar':
+                                return (
+                                    <plugin.Component
+                                        key={plugin.id}
+                                        cursorState={cursorState}
+                                        userStatus={userStatus}
+                                        onStatusChange={handleStatusChange}
+                                        mousePosition={mousePosition}
+                                        canvasOffset={canvasOffset}
+                                    />
+                                );
+                            case 'pen-tray':
+                                return <PenTray key={plugin.id} />;
+                            default:
+                                return null;
+                        }
+                    })}
+                </div>
             </div>
         </main>
     );

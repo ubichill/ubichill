@@ -11,7 +11,7 @@ export const worlds = pgTable('worlds', {
     authorId: text('author_id')
         .notNull()
         .references(() => users.id, { onDelete: 'cascade' }),
-    name: varchar('name', { length: 255 }).notNull(),
+    name: varchar('name', { length: 255 }).notNull().unique(),
     version: varchar('version', { length: 50 }).notNull(),
     definition: jsonb('definition').$type<WorldDefinition>().notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),

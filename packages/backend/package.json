@@ -30,6 +30,7 @@
         "@distube/ytdl-core": "^4.16.12",
         "@ubichill/db": "workspace:*",
         "@ubichill/shared": "workspace:*",
+        "bcryptjs": "^3.0.3",
         "better-auth": "^1.4.19",
         "cors": "^2.8.5",
         "dotenv": "^17.2.3",
@@ -43,6 +44,7 @@
         "zod": "^4.3.6"
     },
     "devDependencies": {
+        "@types/bcryptjs": "^3.0.0",
         "@types/cors": "^2.8.17",
         "@types/express": "^5.0.0",
         "@types/node": "^22.13.4",

@@ -1,0 +1,1084 @@
+{
+  "version": "2.8",
+  "children": [
+    {
+      "type": "frame",
+      "id": "bi8Au",
+      "x": 0,
+      "y": 0,
+      "name": "Frame",
+      "clip": true,
+      "width": 800,
+      "height": 600,
+      "fill": "#FFFFFF",
+      "layout": "none"
+    },
+    {
+      "type": "frame",
+      "id": "UCLqR",
+      "x": 0,
+      "y": 0,
+      "name": "Login Screen",
+      "width": 1440,
+      "height": 900,
+      "fill": "#faf6f0",
+      "layout": "vertical",
+      "justifyContent": "center",
+      "alignItems": "center",
+      "children": [
+        {
+          "type": "frame",
+          "id": "Lxu4j",
+          "name": "loginCard",
+          "width": 400,
+          "fill": "#ffffff",
+          "cornerRadius": 12,
+          "layout": "vertical",
+          "gap": 24,
+          "padding": 32,
+          "children": [
+            {
+              "type": "frame",
+              "id": "5e7qh",
+              "name": "loginHeader",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 12,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "id": "xzr47",
+                  "fill": {
+                    "type": "image",
+                    "enabled": true,
+                    "url": "../../packages/frontend/public/icon.png",
+                    "mode": "fill"
+                  },
+                  "width": 67,
+                  "height": 62
+                },
+                {
+                  "type": "text",
+                  "id": "xGKgz",
+                  "name": "loginTitle",
+                  "fill": "#1b2a44",
+                  "content": "Ubichill",
+                  "fontFamily": "Inter",
+                  "fontSize": 32,
+                  "fontWeight": "bold"
+                },
+                {
+                  "type": "text",
+                  "id": "JFyN6",
+                  "name": "loginSubtitle",
+                  "fill": "#5e6a82",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "2Dメタバーススタイルのコラボレーションスペース",
+                  "lineHeight": 1.5,
+                  "textAlign": "center",
+                  "fontFamily": "Inter",
+                  "fontSize": 14,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "lY5YD",
+              "name": "loginTabs",
+              "width": "fill_container",
+              "fill": "#ede4d6",
+              "cornerRadius": 8,
+              "gap": 8,
+              "padding": 4,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "fh0ih",
+                  "name": "loginTab1",
+                  "width": "fill_container",
+                  "height": 36,
+                  "fill": "#1e3155",
+                  "cornerRadius": 6,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "xk8pC",
+                      "fill": "#f8f3ea",
+                      "content": "ログイン",
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "500"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "ZqAfT",
+                  "name": "loginTab2",
+                  "width": "fill_container",
+                  "height": 36,
+                  "fill": "#00000000",
+                  "cornerRadius": 6,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "wPvpS",
+                      "fill": "#3d4f6a",
+                      "content": "新規登録",
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "500"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "TsQf9",
+              "name": "loginForm",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 16,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "aogWJ",
+                  "name": "loginEmailField",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 4,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "YSGUb",
+                      "fill": "#3d4f6a",
+                      "content": "メールアドレス",
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "500"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "gGde8",
+                      "name": "loginEmailInput",
+                      "width": "fill_container",
+                      "height": 40,
+                      "fill": "#ede4d6",
+                      "cornerRadius": 8,
+                      "stroke": {
+                        "thickness": 1,
+                        "fill": "#cebca2"
+                      },
+                      "padding": [
+                        0,
+                        12
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "uFqvp",
+                          "fill": "#5e6a82",
+                          "content": "example@email.com",
+                          "fontFamily": "Inter",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "98Qxt",
+                  "name": "loginPasswordField",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 4,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "5INNt",
+                      "fill": "#3d4f6a",
+                      "content": "パスワード",
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "500"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "fc1ok",
+                      "name": "loginPasswordInput",
+                      "width": "fill_container",
+                      "height": 40,
+                      "fill": "#ede4d6",
+                      "cornerRadius": 8,
+                      "stroke": {
+                        "thickness": 1,
+                        "fill": "#cebca2"
+                      },
+                      "padding": [
+                        0,
+                        12
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "Tq2Vx",
+                          "fill": "#5e6a82",
+                          "content": "••••••••",
+                          "fontFamily": "Inter",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "VwLBo",
+                  "name": "loginSubmit",
+                  "width": "fill_container",
+                  "height": 40,
+                  "fill": "#1e3155",
+                  "cornerRadius": 8,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "Sjsiu",
+                      "fill": "#f8f3ea",
+                      "content": "ログイン",
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "500"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "f7LoM",
+      "x": 1540,
+      "y": 0,
+      "name": "Signup Screen",
+      "width": 1440,
+      "height": 900,
+      "fill": "#faf6f0",
+      "layout": "vertical",
+      "justifyContent": "center",
+      "alignItems": "center",
+      "children": [
+        {
+          "type": "frame",
+          "id": "MjS97",
+          "name": "signupCard",
+          "width": 400,
+          "fill": "#ffffff",
+          "cornerRadius": 12,
+          "layout": "vertical",
+          "gap": 24,
+          "padding": 32,
+          "children": [
+            {
+              "type": "frame",
+              "id": "II53j",
+              "name": "signupHeader",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 8,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "id": "ejcVz",
+                  "fill": {
+                    "type": "image",
+                    "enabled": true,
+                    "url": "../../packages/frontend/public/icon.png",
+                    "mode": "fill"
+                  },
+                  "width": 67,
+                  "height": 62
+                },
+                {
+                  "type": "text",
+                  "id": "tzpEL",
+                  "name": "signupTitle",
+                  "fill": "#1b2a44",
+                  "content": "Ubichill",
+                  "fontFamily": "Inter",
+                  "fontSize": 32,
+                  "fontWeight": "bold"
+                },
+                {
+                  "type": "text",
+                  "id": "jK3U7",
+                  "name": "signupSubtitle",
+                  "fill": "#5e6a82",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "2Dメタバーススタイルのコラボレーションスペース",
+                  "lineHeight": 1.5,
+                  "textAlign": "center",
+                  "fontFamily": "Inter",
+                  "fontSize": 14,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "ZqSUR",
+              "name": "signupTabs",
+              "width": "fill_container",
+              "fill": "#ede4d6",
+              "cornerRadius": 8,
+              "gap": 8,
+              "padding": 4,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "S1YEq",
+                  "name": "signupTab1",
+                  "width": "fill_container",
+                  "height": 36,
+                  "fill": "#00000000",
+                  "cornerRadius": 6,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "PNEyS",
+                      "fill": "#3d4f6a",
+                      "content": "ログイン",
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "500"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "gQGUg",
+                  "name": "signupTab2",
+                  "width": "fill_container",
+                  "height": 36,
+                  "fill": "#1e3155",
+                  "cornerRadius": 6,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "vM07b",
+                      "fill": "#f8f3ea",
+                      "content": "新規登録",
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "500"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "m76wh",
+              "name": "signupForm",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 16,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "iFzjp",
+                  "name": "signupUserField",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 4,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "Cu04D",
+                      "fill": "#3d4f6a",
+                      "content": "ユーザー名",
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "500"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "YHZa7",
+                      "name": "signupUserInput",
+                      "width": "fill_container",
+                      "height": 40,
+                      "fill": "#ede4d6",
+                      "cornerRadius": 8,
+                      "stroke": {
+                        "thickness": 1,
+                        "fill": "#cebca2"
+                      },
+                      "padding": [
+                        0,
+                        12
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "9Qu7H",
+                          "fill": "#5e6a82",
+                          "content": "ユーザー名",
+                          "fontFamily": "Inter",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "CzmMS",
+                      "fill": "#5e6a82",
+                      "content": "1〜30文字で自由に設定できます",
+                      "fontFamily": "Inter",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "kk39n",
+                  "name": "signupEmailField",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 4,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "7keZ3",
+                      "fill": "#3d4f6a",
+                      "content": "メールアドレス",
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "500"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "d6TSb",
+                      "name": "signupEmailInput",
+                      "width": "fill_container",
+                      "height": 40,
+                      "fill": "#ede4d6",
+                      "cornerRadius": 8,
+                      "stroke": {
+                        "thickness": 1,
+                        "fill": "#cebca2"
+                      },
+                      "padding": [
+                        0,
+                        12
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "v945B",
+                          "fill": "#5e6a82",
+                          "content": "example@email.com",
+                          "fontFamily": "Inter",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "PRJDt",
+                  "name": "signupPasswordField",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 4,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "3z2iF",
+                      "fill": "#3d4f6a",
+                      "content": "パスワード",
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "500"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "Iywmg",
+                      "name": "signupPasswordInput",
+                      "width": "fill_container",
+                      "height": 40,
+                      "fill": "#ede4d6",
+                      "cornerRadius": 8,
+                      "stroke": {
+                        "thickness": 1,
+                        "fill": "#cebca2"
+                      },
+                      "padding": [
+                        0,
+                        12
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "tCwDh",
+                          "fill": "#5e6a82",
+                          "content": "8文字以上",
+                          "fontFamily": "Inter",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "G5mDg",
+                  "name": "signupSubmit",
+                  "width": "fill_container",
+                  "height": 40,
+                  "fill": "#1e3155",
+                  "cornerRadius": 8,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "9STz4",
+                      "fill": "#f8f3ea",
+                      "content": "登録",
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "500"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "p1fcm",
+      "x": 3080,
+      "y": 0,
+      "name": "Verification Screen",
+      "width": 1440,
+      "height": 900,
+      "fill": "#faf6f0",
+      "layout": "vertical",
+      "justifyContent": "center",
+      "alignItems": "center",
+      "children": [
+        {
+          "type": "frame",
+          "id": "38N44",
+          "name": "verifyCard",
+          "width": 400,
+          "fill": "#ffffff",
+          "cornerRadius": 12,
+          "layout": "vertical",
+          "gap": 24,
+          "padding": 32,
+          "children": [
+            {
+              "type": "frame",
+              "id": "nc7Vq",
+              "name": "verifyHeader",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 8,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "TCqNd",
+                  "name": "verifyTitle",
+                  "fill": "#1b2a44",
+                  "content": "認証コードを入力",
+                  "fontFamily": "Inter",
+                  "fontSize": 24,
+                  "fontWeight": "bold"
+                },
+                {
+                  "type": "text",
+                  "id": "sb5II",
+                  "name": "verifySubtitle",
+                  "fill": "#5e6a82",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "example@email.com に6桁の認証コードを送信しました。",
+                  "lineHeight": 1.5,
+                  "textAlign": "center",
+                  "fontFamily": "Inter",
+                  "fontSize": 14,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "LhB3B",
+              "name": "verifyForm",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 16,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "vBj5F",
+                  "name": "verifyCodeField",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 4,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "2lwoX",
+                      "fill": "#3d4f6a",
+                      "content": "認証コード",
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "500"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "YK5Jt",
+                      "name": "verifyCodeInput",
+                      "width": "fill_container",
+                      "height": 56,
+                      "fill": "#ede4d6",
+                      "cornerRadius": 8,
+                      "stroke": {
+                        "thickness": 2,
+                        "fill": "#cebca2"
+                      },
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "JGq25",
+                          "fill": "#5e6a82",
+                          "content": "000000",
+                          "fontFamily": "Inter",
+                          "fontSize": 24,
+                          "fontWeight": "bold",
+                          "letterSpacing": 8
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "EMhY0",
+                  "name": "verifySubmit",
+                  "width": "fill_container",
+                  "height": 40,
+                  "fill": "#1e3155",
+                  "cornerRadius": 8,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "Y46A7",
+                      "fill": "#f8f3ea",
+                      "content": "確認する",
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "500"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "QYFBo",
+              "name": "verifyInfo",
+              "width": "fill_container",
+              "fill": "#ede4d6",
+              "cornerRadius": 8,
+              "layout": "vertical",
+              "gap": 4,
+              "padding": 16,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "1TbVK",
+                  "fill": "#3d4f6a",
+                  "content": "コードが届かない場合:",
+                  "fontFamily": "Inter",
+                  "fontSize": 14,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "frame",
+                  "id": "sgl2P",
+                  "name": "verifyList",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 4,
+                  "padding": [
+                    4,
+                    0,
+                    0,
+                    16
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "laZll",
+                      "fill": "#5e6a82",
+                      "content": "• 迷惑メールフォルダをご確認ください",
+                      "fontFamily": "Inter",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "GgGiN",
+                      "fill": "#5e6a82",
+                      "content": "• コードは10分間有効です",
+                      "fontFamily": "Inter",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "Hn11o",
+              "name": "verifyResend",
+              "width": "fill_container",
+              "justifyContent": "center",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "vBdcm",
+                  "fill": "#5e6a82",
+                  "content": "認証コードを再送信",
+                  "fontFamily": "Inter",
+                  "fontSize": 14,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "FWi9m",
+              "name": "verifyBack",
+              "width": "fill_container",
+              "justifyContent": "center",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "yJTR1",
+                  "fill": "#5e6a82",
+                  "content": "登録画面に戻る",
+                  "fontFamily": "Inter",
+                  "fontSize": 14,
+                  "fontWeight": "normal"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "sZ0B4",
+      "x": 4620,
+      "y": 0,
+      "name": "World Selection Screen",
+      "width": 1440,
+      "height": 900,
+      "fill": "#faf6f0",
+      "layout": "vertical",
+      "justifyContent": "center",
+      "alignItems": "center",
+      "children": [
+        {
+          "type": "frame",
+          "id": "JRv09",
+          "name": "worldContainer",
+          "width": 730,
+          "height": 650,
+          "fill": "#e6d7c4",
+          "cornerRadius": 24,
+          "layout": "vertical",
+          "gap": 16,
+          "padding": [
+            32,
+            24,
+            20,
+            24
+          ],
+          "children": [
+            {
+              "type": "text",
+              "id": "QRkLA",
+              "fill": "#1b2a44",
+              "content": "🌎ワールド選択",
+              "fontFamily": "Inter",
+              "fontSize": 36,
+              "fontWeight": "bold"
+            },
+            {
+              "type": "frame",
+              "id": "HOHWI",
+              "name": "worldTabs",
+              "gap": 12,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "OZg9r",
+                  "name": "worldTab1",
+                  "height": 40,
+                  "fill": "#1b2a44",
+                  "cornerRadius": 10,
+                  "padding": [
+                    0,
+                    14
+                  ],
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "WJhp5",
+                      "fill": "#f8f3ea",
+                      "content": "参加可能なインスタンス",
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "RocmP",
+                  "name": "worldTab2",
+                  "height": 40,
+                  "fill": "#ede4d6",
+                  "cornerRadius": 10,
+                  "padding": [
+                    0,
+                    14
+                  ],
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "CsOoO",
+                      "fill": "#5e6a82",
+                      "content": "新規作成",
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "600"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "U55sA",
+              "name": "worldList",
+              "width": "fill_container",
+              "height": "fill_container",
+              "layout": "vertical",
+              "gap": 16,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "GXJn6",
+                  "name": "emptyState",
+                  "width": "fill_container",
+                  "height": "fill_container",
+                  "fill": "#d4c4ab",
+                  "cornerRadius": 14,
+                  "layout": "vertical",
+                  "gap": 16,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "kUDrp",
+                      "content": "🌍",
+                      "fontFamily": "Inter",
+                      "fontSize": 44,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "kfzbm",
+                      "fill": "#5e6a82",
+                      "content": "参加可能なインスタンスがありません",
+                      "fontFamily": "Inter",
+                      "fontSize": 15,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "hKLVI",
+                      "name": "createBtn",
+                      "height": 40,
+                      "fill": "#1b2a44",
+                      "cornerRadius": 10,
+                      "padding": [
+                        0,
+                        20
+                      ],
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "cJNfb",
+                          "fill": "#f8f3ea",
+                          "content": "新規作成",
+                          "fontFamily": "Inter",
+                          "fontSize": 14,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "AGAep",
+      "x": 6160,
+      "y": 0,
+      "name": "Loading Screen",
+      "width": 400,
+      "height": 600,
+      "fill": "#faf6f0",
+      "layout": "vertical",
+      "justifyContent": "center",
+      "alignItems": "center",
+      "children": [
+        {
+          "type": "frame",
+          "id": "10mhF",
+          "name": "loadingCard",
+          "width": 320,
+          "fill": "#ffffff",
+          "cornerRadius": 12,
+          "layout": "vertical",
+          "gap": 16,
+          "padding": 32,
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "UkCxT",
+              "name": "loadingIcon",
+              "width": 64,
+              "height": 64,
+              "fill": {
+                "type": "image",
+                "enabled": true,
+                "url": "../../packages/frontend/public/icon.png",
+                "mode": "fill"
+              },
+              "cornerRadius": 14
+            },
+            {
+              "type": "text",
+              "id": "AwvKO",
+              "name": "loadingTitle",
+              "fill": "#1b2a44",
+              "content": "Ubichill",
+              "fontFamily": "Inter",
+              "fontSize": 32,
+              "fontWeight": "bold"
+            },
+            {
+              "type": "text",
+              "id": "ieEVo",
+              "name": "loadingText",
+              "fill": "#5e6a82",
+              "content": "読み込み中...",
+              "fontFamily": "Inter",
+              "fontSize": 14,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "frame",
+              "id": "F7cvx",
+              "name": "spinner",
+              "width": 24,
+              "height": 24,
+              "cornerRadius": 12,
+              "stroke": {
+                "thickness": 3,
+                "fill": "#cebca2"
+              },
+              "children": [
+                {
+                  "type": "ellipse",
+                  "id": "fS4np",
+                  "name": "spinnerArc",
+                  "width": 24,
+                  "height": 24,
+                  "stroke": {
+                    "thickness": 3,
+                    "fill": "#1b2a44"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

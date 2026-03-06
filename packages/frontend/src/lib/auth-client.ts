@@ -21,7 +21,7 @@ export const registerWithOTP = async (
     email: string,
     password: string,
     username: string,
-): Promise<{ success: boolean; error?: string }> => {
+): Promise<{ success: boolean; error?: string; skipVerification?: boolean; message?: string }> => {
     try {
         const res = await fetch(`${API_BASE}/api/v1/users/register`, {
             method: 'POST',
@@ -32,7 +32,7 @@ export const registerWithOTP = async (
         if (!res.ok) {
             return { success: false, error: data.error || '登録に失敗しました' };
         }
-        return { success: true };
+        return { success: true, skipVerification: data.skipVerification, message: data.message };
     } catch {
         return { success: false, error: '通信エラーが発生しました' };
     }

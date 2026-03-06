@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm';
-import { integer, jsonb, pgEnum, pgTable, text, timestamp, varchar } from 'drizzle-orm/pg-core';
+import { boolean, integer, jsonb, pgEnum, pgTable, text, timestamp, varchar } from 'drizzle-orm/pg-core';
 import { nanoid } from 'nanoid';
 import { users } from './users';
 import { worlds } from './worlds';
@@ -25,7 +25,7 @@ export const instances = pgTable('instances', {
     status: instanceStatusEnum('status').notNull().default('active'),
     accessType: instanceAccessTypeEnum('access_type').notNull().default('public'),
     accessTags: jsonb('access_tags').$type<string[]>().default([]),
-    hasPassword: text('has_password').default('false'),
+    hasPassword: boolean('has_password').notNull().default(false),
     maxUsers: integer('max_users').notNull().default(10),
     currentUsers: integer('current_users').notNull().default(0),
     createdAt: timestamp('created_at').notNull().defaultNow(),

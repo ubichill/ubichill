@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../index';
 import { instances } from '../schema';
 
@@ -10,7 +10,7 @@ export interface CreateInstanceInput {
     leaderId: string;
     accessType?: 'public' | 'friend_plus' | 'friend_only' | 'invite_only';
     accessTags?: string[];
-    hasPassword?: string;
+    hasPassword?: boolean;
     maxUsers?: number;
     passwordHash?: string;
 }
@@ -39,7 +39,8 @@ export const instanceRepository = {
         let query = db.select().from(instances);
 
         if (!options?.includeFull) {
-            query = query.where(and(eq(instances.status, 'active'), eq(instances.status, 'active'))) as typeof query;
+            // 満員でないインスタンスのみを返す（activeまたはclosing）
+            query = query.where(eq(instances.status, 'active')) as typeof query;
         }
 
         const results = await query;
@@ -62,7 +63,7 @@ export const instanceRepository = {
                 leaderId: input.leaderId,
                 accessType: input.accessType ?? 'public',
                 accessTags: input.accessTags ?? [],
-                hasPassword: input.hasPassword ?? 'false',
+                hasPassword: input.hasPassword ?? false,
                 maxUsers: input.maxUsers ?? 10,
                 currentUsers: 0,
                 passwordHash: input.passwordHash,
@@ -83,17 +84,22 @@ export const instanceRepository = {
     },
 
     async updateUserCount(id: string, delta: number): Promise<InstanceRecord | undefined> {
-        const instance = await this.findById(id);
-        if (!instance) return undefined;
-
-        const newCount = Math.max(0, instance.currentUsers + delta);
-        const newStatus: 'active' | 'full' | 'closing' =
-            newCount >= instance.maxUsers ? 'full' : newCount === 0 ? 'closing' : 'active';
-
-        return this.update(id, {
-            currentUsers: newCount,
-            status: newStatus,
-        });
+        // 原子的に更新（greatest で 0 未満にならないようにする）
+        const results = await db
+            .update(instances)
+            .set({
+                currentUsers: sql`greatest(0, ${instances.currentUsers} + ${delta})`,
+                status: sql`
+                    case
+                        when greatest(0, ${instances.currentUsers} + ${delta}) >= ${instances.maxUsers} then 'full'::instance_status
+                        when greatest(0, ${instances.currentUsers} + ${delta}) = 0 then 'closing'::instance_status
+                        else 'active'::instance_status
+                    end
+                `,
+            })
+            .where(eq(instances.id, id))
+            .returning();
+        return results[0];
     },
 
     async delete(id: string): Promise<boolean> {

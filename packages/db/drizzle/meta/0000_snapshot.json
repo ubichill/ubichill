@@ -1,5 +1,5 @@
 {
-  "id": "29ce8e65-f745-49f3-9444-f95ae4ec7a6d",
+  "id": "25adba85-1405-495e-8ff7-958dc81d43bb",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -51,10 +51,10 @@
         },
         "has_password": {
           "name": "has_password",
-          "type": "text",
+          "type": "boolean",
           "primaryKey": false,
-          "notNull": false,
-          "default": "'false'"
+          "notNull": true,
+          "default": false
         },
         "max_users": {
           "name": "max_users",
@@ -715,7 +715,15 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "worlds_name_unique": {
+          "name": "worlds_name_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "name"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false

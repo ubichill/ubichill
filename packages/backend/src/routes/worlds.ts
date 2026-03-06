@@ -91,11 +91,30 @@ router.post('/', requireAuth, async (req, res) => {
 
 /**
  * PUT /api/v1/worlds/:worldId
- * ワールドを更新（認証必須）
+ * ワールドを更新（認証必須、作成者のみ）
  */
 router.put('/:worldId', requireAuth, async (req, res) => {
     try {
         const worldId = req.params.worldId as string;
+
+        // 認証されたユーザーIDを取得
+        if (!req.user) {
+            res.status(401).json({ error: 'Unauthorized' });
+            return;
+        }
+
+        // ワールドの作成者を確認
+        const worldRecord = await worldRegistry.getWorldRecord(worldId);
+        if (!worldRecord) {
+            res.status(404).json({ error: 'World not found' });
+            return;
+        }
+
+        // 作成者のみ更新可能
+        if (worldRecord.authorId !== req.user.id) {
+            res.status(403).json({ error: 'Forbidden: Only the author can update this world' });
+            return;
+        }
 
         const result = WorldDefinitionSchema.safeParse(req.body);
         if (!result.success) {
@@ -132,11 +151,30 @@ router.put('/:worldId', requireAuth, async (req, res) => {
 
 /**
  * DELETE /api/v1/worlds/:worldId
- * ワールドを削除（認証必須）
+ * ワールドを削除（認証必須、作成者のみ）
  */
 router.delete('/:worldId', requireAuth, async (req, res) => {
     try {
         const worldId = req.params.worldId as string;
+
+        // 認証されたユーザーIDを取得
+        if (!req.user) {
+            res.status(401).json({ error: 'Unauthorized' });
+            return;
+        }
+
+        // ワールドの作成者を確認
+        const worldRecord = await worldRegistry.getWorldRecord(worldId);
+        if (!worldRecord) {
+            res.status(404).json({ error: 'World not found' });
+            return;
+        }
+
+        // 作成者のみ削除可能
+        if (worldRecord.authorId !== req.user.id) {
+            res.status(403).json({ error: 'Forbidden: Only the author can delete this world' });
+            return;
+        }
 
         const deleted = await worldRegistry.deleteWorld(worldId);
         if (!deleted) {

@@ -20,6 +20,7 @@ import {
     handleWorldJoin,
 } from './handlers/socketHandlers';
 import { auth } from './lib/auth';
+import { socketAuthMiddleware } from './middleware/socketAuth';
 import audioRouter from './routes/audio';
 import instancesRouter from './routes/instances';
 import usersRouter from './routes/users';
@@ -73,7 +74,7 @@ app.use('/api/auth', (req, _res, next) => {
 });
 
 // 認証API（Better Auth）- CORSとプリフライトを確実に処理するため、先に配置
-app.all('/api/auth/{*path}', toNodeHandler(auth));
+app.use('/api/auth', toNodeHandler(auth));
 
 // ============================================
 // REST API ルート
@@ -94,9 +95,15 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents, InterServerEve
     },
 });
 
-// Socket.IOの接続処理
+// ============================================
+// Socket.IO 認証ミドルウェア（接続時に better-auth 検証）
+// ============================================
+io.use(socketAuthMiddleware);
+
+// Socket.IO 接続ハンドラー
 io.on('connection', (socket) => {
-    console.log(`🔌 新しい接続: ${socket.id.substring(0, 8)}`);
+    const authUser = socket.data.authUser;
+    console.log(`🔌 新しい接続: ${socket.id.substring(0, 8)} (user: ${authUser?.name ?? 'unknown'})`);
 
     // 既存イベントハンドラー
     socket.on('world:join', handleWorldJoin(socket));

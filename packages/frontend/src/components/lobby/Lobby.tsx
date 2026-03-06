@@ -9,11 +9,10 @@ import { WorldCard } from './WorldCard';
 type LobbyView = 'instances' | 'worlds';
 
 interface LobbyProps {
-    userName: string;
     onJoinInstance: (instanceId: string, worldId: string) => void;
 }
 
-export function Lobby({ userName, onJoinInstance }: LobbyProps) {
+export function Lobby({ onJoinInstance }: LobbyProps) {
     const { instances, worlds, loading, error, createInstance, refreshInstances, refreshWorlds } = useInstances();
     const [view, setView] = useState<LobbyView>('instances');
 
@@ -136,257 +135,258 @@ export function Lobby({ userName, onJoinInstance }: LobbyProps) {
     return (
         <div
             className={css({
-                maxWidth: '800px',
+                width: 'full',
+                maxWidth: '5xl',
                 margin: '0 auto',
-                padding: '24px 24px 0',
+                padding: { base: '8px 0 0', md: '16px 0 0' },
                 display: 'flex',
                 flexDirection: 'column',
-                height: 'calc(100vh - 80px)',
+                height: 'calc(100vh - 112px)',
                 overflow: 'hidden',
             })}
         >
-            {/* Fixed Header */}
             <div
                 className={css({
-                    textAlign: 'center',
-                    marginBottom: '24px',
-                    flexShrink: 0,
+                    width: 'full',
+                    maxW: '730px',
+                    mx: 'auto',
+                    mb: '4',
+                    px: { base: '2', md: '0' },
                 })}
-            >
-                <h1
-                    className={css({
-                        fontSize: '32px',
-                        fontWeight: '700',
-                        color: '#212529',
-                        marginBottom: '8px',
-                    })}
-                >
-                    {userName}
-                </h1>
-                <p
-                    className={css({
-                        fontSize: '16px',
-                        color: '#868e96',
-                    })}
-                >
-                    インスタンスに参加するか、新しいワールドを作成しましょう
-                </p>
-            </div>
-
-            {/* Fixed Tab Navigation */}
-            <div
-                className={css({
-                    display: 'flex',
-                    gap: '8px',
-                    marginBottom: '16px',
-                    padding: '4px',
-                    backgroundColor: '#f1f3f5',
-                    borderRadius: '10px',
-                    flexShrink: 0,
-                })}
-            >
-                <button
-                    type="button"
-                    onClick={() => handleTabSwitch('instances')}
-                    className={css({
-                        flex: 1,
-                        padding: '12px 16px',
-                        backgroundColor: view === 'instances' ? 'white' : 'transparent',
-                        color: view === 'instances' ? '#212529' : '#868e96',
-                        border: 'none',
-                        borderRadius: '8px',
-                        fontSize: '14px',
-                        fontWeight: '500',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s ease',
-                        boxShadow: view === 'instances' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
-                    })}
-                >
-                    参加可能なインスタンス ({instances.length})
-                </button>
-                <button
-                    type="button"
-                    onClick={() => handleTabSwitch('worlds')}
-                    className={css({
-                        flex: 1,
-                        padding: '12px 16px',
-                        backgroundColor: view === 'worlds' ? 'white' : 'transparent',
-                        color: view === 'worlds' ? '#212529' : '#868e96',
-                        border: 'none',
-                        borderRadius: '8px',
-                        fontSize: '14px',
-                        fontWeight: '500',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s ease',
-                        boxShadow: view === 'worlds' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
-                    })}
-                >
-                    新規作成 ({worlds.length})
-                </button>
-            </div>
-
-            {/* Error */}
-            {error && (
-                <div
-                    className={css({
-                        padding: '12px 16px',
-                        backgroundColor: '#fff5f5',
-                        color: '#c92a2a',
-                        borderRadius: '8px',
-                        marginBottom: '12px',
-                        fontSize: '14px',
-                        flexShrink: 0,
-                    })}
-                >
-                    {error}
-                </div>
-            )}
-
-            {/* Pull-to-refresh indicator */}
-            <div
-                className={css({
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    overflow: 'hidden',
-                    flexShrink: 0,
-                    transition: 'height 0.2s ease',
-                })}
-                style={{ height: isRefreshing ? 40 : pullOffset > 10 ? Math.min(pullOffset, 50) : 0 }}
             >
                 <div
                     className={css({
-                        width: '24px',
-                        height: '24px',
-                        border: '3px solid #e9ecef',
-                        borderTopColor: '#228BE6',
-                        borderRadius: '50%',
-                        animation: isRefreshing ? 'spin 0.8s linear infinite' : 'none',
+                        bg: '#e6d7c4',
+                        borderRadius: '24px',
+                        px: { base: '4', md: '8' },
+                        py: { base: '5', md: '6' },
+                        boxShadow: '0 8px 24px rgba(27, 42, 68, 0.08)',
+                        minH: '650px',
+                        display: 'flex',
+                        flexDirection: 'column',
                     })}
-                    style={{
-                        transform: isRefreshing ? undefined : `rotate(${pullOffset * 3}deg)`,
-                        opacity: isRefreshing || pullOffset > 10 ? 1 : 0,
-                    }}
-                />
-            </div>
-
-            {/* Scrollable Content Area */}
-            <div
-                ref={scrollRef}
-                onTouchStart={handleTouchStart}
-                onTouchMove={handleTouchMove}
-                onTouchEnd={handleTouchEnd}
-                onScroll={handleScroll}
-                className={css({
-                    flex: 1,
-                    overflowY: 'auto',
-                    overflowX: 'hidden',
-                    paddingBottom: '24px',
-                    // Hide scrollbar on webkit
-                    '&::-webkit-scrollbar': {
-                        width: '6px',
-                    },
-                    '&::-webkit-scrollbar-track': {
-                        backgroundColor: 'transparent',
-                    },
-                    '&::-webkit-scrollbar-thumb': {
-                        backgroundColor: '#dee2e6',
-                        borderRadius: '3px',
-                    },
-                })}
-            >
-                {/* Loading */}
-                {loading && !isRefreshing && (
-                    <div
+                >
+                    <h1
                         className={css({
-                            textAlign: 'center',
-                            padding: '40px',
-                            color: '#868e96',
+                            fontSize: { base: '3xl', md: '4xl' },
+                            fontWeight: '700',
+                            color: '#1b2a44',
+                            mb: '4',
                         })}
                     >
-                        読み込み中...
-                    </div>
-                )}
+                        ワールド選択
+                    </h1>
 
-                {/* Instances View */}
-                {view === 'instances' && !loading && (
-                    <div className={css({ display: 'flex', flexDirection: 'column', gap: '12px' })}>
-                        {instances.length === 0 ? (
+                    <div
+                        className={css({
+                            display: 'flex',
+                            gap: '3',
+                            mb: '4',
+                            flexShrink: 0,
+                        })}
+                    >
+                        <button
+                            type="button"
+                            onClick={() => handleTabSwitch('instances')}
+                            className={css({
+                                flex: 1,
+                                padding: '10px 14px',
+                                backgroundColor: view === 'instances' ? '#1b2a44' : '#d4c4ab',
+                                color: view === 'instances' ? '#f8f3ea' : '#5e6a82',
+                                border: 'none',
+                                borderRadius: '10px',
+                                fontSize: { base: 'xs', sm: 'sm' },
+                                fontWeight: '600',
+                                cursor: 'pointer',
+                                transition: 'opacity 0.16s ease',
+                                whiteSpace: 'nowrap',
+                                _hover: { opacity: 0.9 },
+                            })}
+                        >
+                            参加可能なインスタンス
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handleTabSwitch('worlds')}
+                            className={css({
+                                flex: 1,
+                                padding: '10px 14px',
+                                backgroundColor: view === 'worlds' ? '#1b2a44' : '#d4c4ab',
+                                color: view === 'worlds' ? '#f8f3ea' : '#5e6a82',
+                                border: 'none',
+                                borderRadius: '10px',
+                                fontSize: { base: 'xs', sm: 'sm' },
+                                fontWeight: '600',
+                                cursor: 'pointer',
+                                transition: 'opacity 0.16s ease',
+                                _hover: { opacity: 0.9 },
+                            })}
+                        >
+                            新規作成
+                        </button>
+                    </div>
+
+                    {error && (
+                        <div
+                            className={css({
+                                padding: '10px 14px',
+                                backgroundColor: '#f9e4e1',
+                                color: '#922b21',
+                                borderRadius: '8px',
+                                marginBottom: '12px',
+                                fontSize: '13px',
+                                flexShrink: 0,
+                            })}
+                        >
+                            {error}
+                        </div>
+                    )}
+
+                    <div
+                        className={css({
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            overflow: 'hidden',
+                            flexShrink: 0,
+                            transition: 'height 0.2s ease',
+                        })}
+                        style={{ height: isRefreshing ? 40 : pullOffset > 10 ? Math.min(pullOffset, 50) : 0 }}
+                    >
+                        <div
+                            className={css({
+                                width: '24px',
+                                height: '24px',
+                                border: '3px solid rgba(27, 42, 68, 0.15)',
+                                borderTopColor: '#1b2a44',
+                                borderRadius: '50%',
+                                animation: isRefreshing ? 'spin 0.8s linear infinite' : 'none',
+                            })}
+                            style={{
+                                transform: isRefreshing ? undefined : `rotate(${pullOffset * 3}deg)`,
+                                opacity: isRefreshing || pullOffset > 10 ? 1 : 0,
+                            }}
+                        />
+                    </div>
+
+                    <div
+                        ref={scrollRef}
+                        onTouchStart={handleTouchStart}
+                        onTouchMove={handleTouchMove}
+                        onTouchEnd={handleTouchEnd}
+                        onScroll={handleScroll}
+                        className={css({
+                            flex: 1,
+                            overflowY: 'auto',
+                            overflowX: 'hidden',
+                            paddingBottom: '20px',
+                            '&::-webkit-scrollbar': {
+                                width: '6px',
+                            },
+                            '&::-webkit-scrollbar-track': {
+                                backgroundColor: 'transparent',
+                            },
+                            '&::-webkit-scrollbar-thumb': {
+                                backgroundColor: 'rgba(27, 42, 68, 0.15)',
+                                borderRadius: '3px',
+                            },
+                        })}
+                    >
+                        {loading && !isRefreshing && (
                             <div
                                 className={css({
                                     textAlign: 'center',
-                                    padding: '60px 24px',
-                                    backgroundColor: '#f8f9fa',
-                                    borderRadius: '12px',
+                                    padding: '40px',
+                                    color: '#5e6a82',
                                 })}
                             >
-                                <p
-                                    className={css({
-                                        fontSize: '48px',
-                                        marginBottom: '16px',
-                                    })}
-                                >
-                                    🌍
-                                </p>
-                                <p
-                                    className={css({
-                                        fontSize: '16px',
-                                        color: '#868e96',
-                                        marginBottom: '16px',
-                                    })}
-                                >
-                                    参加可能なインスタンスがありません
-                                </p>
-                                <button
-                                    type="button"
-                                    onClick={() => handleTabSwitch('worlds')}
-                                    className={css({
-                                        padding: '12px 24px',
-                                        backgroundColor: '#228BE6',
-                                        color: 'white',
-                                        border: 'none',
-                                        borderRadius: '8px',
-                                        fontSize: '14px',
-                                        fontWeight: '500',
-                                        cursor: 'pointer',
-                                    })}
-                                >
-                                    新規作成
-                                </button>
+                                読み込み中...
                             </div>
-                        ) : (
-                            instances.map((instance) => (
-                                <InstanceCard key={instance.id} instance={instance} onJoin={handleJoinInstance} />
-                            ))
+                        )}
+
+                        {view === 'instances' && !loading && (
+                            <div className={css({ display: 'flex', flexDirection: 'column', gap: '3' })}>
+                                {instances.length === 0 ? (
+                                    <div
+                                        className={css({
+                                            textAlign: 'center',
+                                            padding: '56px 24px',
+                                            backgroundColor: '#d4c4ab',
+                                            borderRadius: '14px',
+                                        })}
+                                    >
+                                        <p
+                                            className={css({
+                                                fontSize: '44px',
+                                                marginBottom: '14px',
+                                            })}
+                                        >
+                                            🌍
+                                        </p>
+                                        <p
+                                            className={css({
+                                                fontSize: '15px',
+                                                color: '#5e6a82',
+                                                marginBottom: '16px',
+                                            })}
+                                        >
+                                            参加可能なインスタンスがありません
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleTabSwitch('worlds')}
+                                            className={css({
+                                                padding: '10px 20px',
+                                                backgroundColor: '#1b2a44',
+                                                color: '#f8f3ea',
+                                                border: 'none',
+                                                borderRadius: '10px',
+                                                fontSize: '14px',
+                                                fontWeight: '600',
+                                                cursor: 'pointer',
+                                            })}
+                                        >
+                                            新規作成
+                                        </button>
+                                    </div>
+                                ) : (
+                                    instances.map((instance) => (
+                                        <InstanceCard
+                                            key={instance.id}
+                                            instance={instance}
+                                            onJoin={handleJoinInstance}
+                                        />
+                                    ))
+                                )}
+                            </div>
+                        )}
+
+                        {view === 'worlds' && !loading && (
+                            <div>
+                                <p
+                                    className={css({
+                                        fontSize: '14px',
+                                        color: '#5e6a82',
+                                        marginBottom: '16px',
+                                    })}
+                                >
+                                    テンプレートを選択して新しいワールドを作成します
+                                </p>
+                                <div
+                                    className={css({
+                                        display: 'grid',
+                                        gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+                                        gap: '16px',
+                                    })}
+                                >
+                                    {worlds.map((world) => (
+                                        <WorldCard key={world.id} world={world} onSelect={handleCreateFromWorld} />
+                                    ))}
+                                </div>
+                            </div>
                         )}
                     </div>
-                )}
-
-                {/* Worlds View */}
-                {view === 'worlds' && !loading && (
-                    <div>
-                        <p
-                            className={css({
-                                fontSize: '14px',
-                                color: '#868e96',
-                                marginBottom: '16px',
-                            })}
-                        >
-                            テンプレートを選択して新しいワールドを作成します
-                        </p>
-                        <div
-                            className={css({
-                                display: 'grid',
-                                gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
-                                gap: '16px',
-                            })}
-                        >
-                            {worlds.map((world) => (
-                                <WorldCard key={world.id} world={world} onSelect={handleCreateFromWorld} />
-                            ))}
-                        </div>
-                    </div>
-                )}
+                </div>
             </div>
         </div>
     );

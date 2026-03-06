@@ -32,10 +32,44 @@ type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents, InterServe
  */
 export function handleWorldJoin(socket: TypedSocket) {
     return async (
-        { worldId, instanceId, user }: { worldId: string; instanceId?: string; user: Omit<User, 'id'> },
+        {
+            worldId,
+            instanceId,
+            password,
+            user,
+        }: { worldId: string; instanceId?: string; password?: string; user: Omit<User, 'id'> },
         callback: (response: { success: boolean; userId?: string; error?: string }) => void,
     ) => {
         logger.debug('world:join イベント受信:', { worldId, instanceId, user, socketId: socket.id });
+
+        // 認証済みユーザー確認（socketAuthMiddleware が先に実行されているはず）
+        const authUser = socket.data.authUser;
+        if (!authUser) {
+            callback({ success: false, error: '認証が必要です' });
+            return;
+        }
+
+        // インスタンスのパスワード検証
+        if (instanceId) {
+            const instance = await instanceManager.getInstance(instanceId);
+            if (!instance) {
+                callback({ success: false, error: 'インスタンスが見つかりません' });
+                return;
+            }
+
+            // パスワード保護されている場合は検証
+            if (instance.access.password) {
+                if (!password) {
+                    callback({ success: false, error: 'パスワードが必要です' });
+                    return;
+                }
+                const isPasswordValid = await instanceManager.verifyInstancePassword(instanceId, password);
+                if (!isPasswordValid) {
+                    callback({ success: false, error: 'パスワードが正しくありません' });
+                    return;
+                }
+            }
+        }
 
         // ワールドIDを検証
         const worldValidation = validateWorldId(worldId);
@@ -45,17 +79,20 @@ export function handleWorldJoin(socket: TypedSocket) {
             return;
         }
 
+        // 表示名: クライアント指定があれば優先（ニックネーム機能）、なければ DB の名前を使用
+        const displayName = user.name?.trim() || authUser.name;
+
         // ユーザー名を検証
-        const usernameValidation = validateUsername(user.name);
+        const usernameValidation = validateUsername(displayName);
         if (!usernameValidation.valid) {
             logger.debug('ユーザー名検証失敗:', usernameValidation.error);
             callback({ success: false, error: usernameValidation.error });
             return;
         }
 
-        // ユーザーオブジェクトを作成
+        // ユーザーオブジェクトを作成（DB由来のIDを使用）
         const newUser: User = {
-            id: socket.id,
+            id: authUser.id, // socket.id ではなく DB の user.id を使用
             ...user,
             name: usernameValidation.data,
             position: user.position || DEFAULTS.INITIAL_POSITION,

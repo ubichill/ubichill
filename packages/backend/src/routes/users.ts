@@ -28,6 +28,15 @@ router.post('/register', async (req, res) => {
         return res.status(400).json({ error: result.error });
     }
 
+    // メール確認をスキップした場合
+    if (result.skipVerification) {
+        return res.json({
+            success: true,
+            skipVerification: true,
+            message: '登録が完了しました。ログインしてください。',
+        });
+    }
+
     return res.json({ success: true, message: '認証コードをメールに送信しました' });
 });
 

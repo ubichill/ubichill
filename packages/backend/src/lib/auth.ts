@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto';
 import { accounts, db, sessions, users, verifications } from '@ubichill/db';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
@@ -16,17 +17,20 @@ interface PendingRegistration {
 }
 export const pendingRegistrations = new Map<string, PendingRegistration>();
 
-// OTPを生成
+// OTPを生成（暗号学的に安全な乱数を使用）
 export function generateOTP(): string {
-    return Math.floor(100000 + Math.random() * 900000).toString();
+    return randomInt(100000, 1000000).toString();
 }
+
+// 環境変数でメール確認を無効化できるようにする
+const SKIP_EMAIL_VERIFICATION = process.env.SKIP_EMAIL_VERIFICATION === 'true';
 
 // 仮登録を作成してOTPを送信
 export async function createPendingRegistration(
     email: string,
     password: string,
     username: string,
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; skipVerification?: boolean }> {
     // 既存ユーザーチェック
     const existingUser = await db.query.users.findFirst({
         where: eq(users.email, email),
@@ -41,6 +45,33 @@ export async function createPendingRegistration(
     });
     if (existingUsername) {
         return { success: false, error: 'このユーザー名は既に使用されています' };
+    }
+
+    // メール確認をスキップする場合は直接登録
+    if (SKIP_EMAIL_VERIFICATION) {
+        console.log(`⚠️ メール確認をスキップして直接登録: ${email}`);
+        try {
+            const result = await auth.api.signUpEmail({
+                body: {
+                    email,
+                    password,
+                    name: username,
+                },
+            });
+
+            if (!result) {
+                return { success: false, error: '登録に失敗しました' };
+            }
+
+            // メール確認済みに設定
+            await db.update(users).set({ emailVerified: true, username }).where(eq(users.email, email));
+
+            console.log(`✅ ユーザー登録完了（メール確認スキップ）: ${email}`);
+            return { success: true, skipVerification: true };
+        } catch (error) {
+            console.error('Registration error:', error);
+            return { success: false, error: '登録に失敗しました' };
+        }
     }
 
     const otp = generateOTP();
@@ -59,13 +90,28 @@ export async function createPendingRegistration(
 
     // OTPをメールで送信
     console.log(`📧 OTP送信: ${email}`);
-    console.log(`   OTP: ${otp}`);
+    if (process.env.NODE_ENV === 'development') {
+        console.log(`   OTP: ${otp}`);
+    } else {
+        // 本番環境ではOTPの値をログに出さない（セキュリティリスク）
+        console.log('   OTP: [REDACTED]');
+    }
     try {
         const result = await resend.emails.send({
             from: 'Ubichill <noreply@youkan.uk>',
             to: email,
-            subject: '【Ubichill】認証コード',
-            text: `あなたの認証コードは: ${otp}\n\nこのコードは10分間有効です。\n\nこのメールに心当たりがない場合は、無視してください。`,
+            subject: `【Ubichill】${username} さんの認証コード`,
+            text: `${username} さん、Ubichill へようこそ！
+
+あなたの認証コード:
+
+${otp}
+
+このコードは10分間有効です。
+
+---
+このメールは ${email} 宛に送信されました。
+心当たりがない場合は、このメールを無視してください。`,
         });
         console.log(`   ✅ OTP送信成功:`, result);
         return { success: true };
@@ -132,13 +178,28 @@ export async function resendOTP(email: string): Promise<{ success: boolean; erro
     pending.expiresAt = Date.now() + 10 * 60 * 1000;
 
     console.log(`📧 OTP再送信: ${email}`);
-    console.log(`   OTP: ${otp}`);
+    if (process.env.NODE_ENV === 'development') {
+        console.log(`   OTP: ${otp}`);
+    } else {
+        // 本番環境ではOTPの値をログに出さない（セキュリティリスク）
+        console.log('   OTP: [REDACTED]');
+    }
     try {
         await resend.emails.send({
             from: 'Ubichill <noreply@youkan.uk>',
             to: email,
-            subject: '【Ubichill】認証コード',
-            text: `あなたの認証コードは: ${otp}\n\nこのコードは10分間有効です。\n\nこのメールに心当たりがない場合は、無視してください。`,
+            subject: `【Ubichill】${pending.username} さんの認証コード（再送信）`,
+            text: `${pending.username} さん
+
+新しい認証コード:
+
+${otp}
+
+このコードは10分間有効です。
+
+---
+このメールは ${email} 宛に送信されました。
+心当たりがない場合は、このメールを無視してください。`,
         });
         return { success: true };
     } catch (error) {
@@ -152,6 +213,7 @@ console.log('🔐 Better Auth 初期化中...');
 console.log(`   RESEND_API_KEY: ${process.env.RESEND_API_KEY ? '設定済み' : '❌ 未設定'}`);
 console.log(`   BETTER_AUTH_URL: ${process.env.BETTER_AUTH_URL || 'http://localhost:3001'}`);
 console.log(`   CORS_ORIGIN: ${process.env.CORS_ORIGIN || 'http://localhost:3000'}`);
+console.log(`   SKIP_EMAIL_VERIFICATION: ${SKIP_EMAIL_VERIFICATION ? '✅ 有効（メール確認スキップ）' : '無効'}`);
 
 export const auth = betterAuth({
     database: drizzleAdapter(db, {

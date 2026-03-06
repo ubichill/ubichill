@@ -1,6 +1,7 @@
 import { instanceRepository } from '@ubichill/db';
 import type { CreateInstanceRequest, Instance, InstanceAccess, WorldEnvironmentData } from '@ubichill/shared';
 import { DEFAULTS } from '@ubichill/shared';
+import bcrypt from 'bcryptjs';
 import { worldRegistry } from './worldRegistry';
 import { clearWorldState, createEntity } from './worldState';
 
@@ -21,15 +22,21 @@ class InstanceManager {
         const maxUsers = request.settings?.maxUsers ?? world.capacity.default;
         const cappedMaxUsers = Math.min(maxUsers, world.capacity.max);
 
+        // パスワードがある場合はハッシュ化
+        let passwordHash: string | undefined;
+        if (request.access?.password) {
+            passwordHash = await bcrypt.hash(request.access.password, 10);
+        }
+
         // DBにインスタンスを作成（world.dbIdを使用）
         const dbInstance = await instanceRepository.create({
             worldId: world.dbId,
             leaderId,
             accessType: request.access?.type ?? 'public',
             accessTags: request.access?.tags ?? [],
-            hasPassword: request.access?.password ? 'true' : 'false',
+            hasPassword: !!request.access?.password,
             maxUsers: cappedMaxUsers,
-            passwordHash: request.access?.password, // 簡易実装（本番ではハッシュ化）
+            passwordHash,
         });
 
         // インスタンス固有のワールド状態を初期化（initialEntitiesを配置）
@@ -72,7 +79,7 @@ class InstanceManager {
 
         const instances: Instance[] = [];
         for (const dbInstance of dbInstances) {
-            const world = await worldRegistry.getWorld(dbInstance.worldId);
+            const world = await worldRegistry.getWorldByDbId(dbInstance.worldId);
             if (world) {
                 instances.push(this.toPublicInstance(dbInstance, world));
             }
@@ -82,13 +89,24 @@ class InstanceManager {
     }
 
     /**
+     * インスタンスのパスワードを検証
+     */
+    async verifyInstancePassword(instanceId: string, password: string): Promise<boolean> {
+        const dbInstance = await instanceRepository.findById(instanceId);
+        if (!dbInstance || !dbInstance.passwordHash) {
+            return false;
+        }
+        return bcrypt.compare(password, dbInstance.passwordHash);
+    }
+
+    /**
      * インスタンスを取得
      */
     async getInstance(instanceId: string): Promise<Instance | undefined> {
         const dbInstance = await instanceRepository.findById(instanceId);
         if (!dbInstance) return undefined;
 
-        const world = await worldRegistry.getWorld(dbInstance.worldId);
+        const world = await worldRegistry.getWorldByDbId(dbInstance.worldId);
         if (!world) return undefined;
 
         return this.toPublicInstance(dbInstance, world);
@@ -147,10 +165,10 @@ class InstanceManager {
      * ワールドIDからインスタンスを検索（既存インスタンスへの参加用）
      */
     async findInstancesByWorld(worldId: string): Promise<Instance[]> {
-        const dbInstances = await instanceRepository.findByWorldId(worldId);
         const world = await worldRegistry.getWorld(worldId);
         if (!world) return [];
 
+        const dbInstances = await instanceRepository.findByWorldId(world.dbId);
         return dbInstances.map((dbInstance) => this.toPublicInstance(dbInstance, world));
     }
 
@@ -181,7 +199,7 @@ class InstanceManager {
         const access: InstanceAccess = {
             type: dbInstance.accessType,
             tags: dbInstance.accessTags ?? [],
-            password: dbInstance.hasPassword === 'true',
+            password: dbInstance.hasPassword,
         };
 
         return {
