@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { API_BASE, registerWithOTP, resendOTP, signIn, useSession, verifyOTPAndRegister } from '@/lib/auth-client';
@@ -270,6 +271,7 @@ export default function AuthPage() {
     return (
         <main className={containerStyle}>
             <div className={cardStyle}>
+                <Image src="/icon.png" alt="Ubichill" width={64} height={64} className={iconStyle} />
                 <h1 className={titleStyle}>Ubichill</h1>
                 <p className={subtitleStyle}>2Dメタバーススタイルのコラボレーションスペース</p>
 
@@ -361,46 +363,46 @@ export default function AuthPage() {
     );
 }
 
-// Styles
+// Styles — Beige/Navy palette (from pencil-new.pen mockup)
 const containerStyle = flex({
     minH: 'screen',
     alignItems: 'center',
     justifyContent: 'center',
-    bg: 'gray.50',
-    _dark: { bg: 'gray.900' },
+    bg: '#faf6f0',
 });
 
 const cardStyle = vstack({
     gap: '6',
     p: '8',
-    bg: 'white',
+    bg: '#ffffff',
     rounded: 'xl',
-    shadow: 'lg',
+    shadow: '0 8px 32px rgba(27, 42, 68, 0.08)',
     w: 'full',
     maxW: '400px',
-    _dark: { bg: 'gray.800' },
+});
+
+const iconStyle = css({
+    borderRadius: '14px',
 });
 
 const titleStyle = css({
     fontSize: '3xl',
     fontWeight: 'bold',
-    color: 'gray.800',
-    _dark: { color: 'white' },
+    color: '#1b2a44',
 });
 
 const subtitleStyle = css({
     fontSize: 'sm',
-    color: 'gray.500',
+    color: '#5e6a82',
     textAlign: 'center',
 });
 
 const tabContainerStyle = flex({
     w: 'full',
     gap: '2',
-    bg: 'gray.100',
+    bg: '#ede4d6',
     p: '1',
     rounded: 'lg',
-    _dark: { bg: 'gray.700' },
 });
 
 const tabStyle = css({
@@ -409,12 +411,11 @@ const tabStyle = css({
     px: '4',
     fontSize: 'sm',
     fontWeight: 'medium',
-    color: 'gray.600',
+    color: '#3d4f6a',
     rounded: 'md',
     cursor: 'pointer',
     transition: 'all 0.2s',
-    _hover: { color: 'gray.800' },
-    _dark: { color: 'gray.400', _hover: { color: 'white' } },
+    _hover: { color: '#1b2a44' },
 });
 
 const tabActiveStyle = css({
@@ -423,8 +424,8 @@ const tabActiveStyle = css({
     px: '4',
     fontSize: 'sm',
     fontWeight: 'medium',
-    color: 'white',
-    bg: 'blue.500',
+    color: '#f8f3ea',
+    bg: '#1e3155',
     rounded: 'md',
     cursor: 'pointer',
 });
@@ -443,8 +444,7 @@ const fieldStyle = vstack({
 const labelStyle = css({
     fontSize: 'sm',
     fontWeight: 'medium',
-    color: 'gray.700',
-    _dark: { color: 'gray.300' },
+    color: '#3d4f6a',
 });
 
 const inputStyle = css({
@@ -452,13 +452,15 @@ const inputStyle = css({
     py: '2.5',
     px: '3',
     fontSize: 'sm',
+    color: '#1b2a44',
+    bg: '#ede4d6',
     borderWidth: '1px',
-    borderColor: 'gray.300',
+    borderColor: '#cebca2',
     rounded: 'lg',
     outline: 'none',
     transition: 'all 0.2s',
-    _focus: { borderColor: 'blue.500', ring: '2', ringColor: 'blue.500/20' },
-    _dark: { bg: 'gray.700', borderColor: 'gray.600', color: 'white' },
+    _placeholder: { color: '#8a7e6d' },
+    _focus: { borderColor: '#1e3155', ring: '2', ringColor: 'rgba(30, 49, 85, 0.15)' },
 });
 
 const inputErrorStyle = css({
@@ -466,28 +468,30 @@ const inputErrorStyle = css({
     py: '2.5',
     px: '3',
     fontSize: 'sm',
+    color: '#1b2a44',
+    bg: '#ede4d6',
     borderWidth: '1px',
-    borderColor: 'red.500',
+    borderColor: '#c0392b',
     rounded: 'lg',
     outline: 'none',
     transition: 'all 0.2s',
-    _focus: { borderColor: 'red.500', ring: '2', ringColor: 'red.500/20' },
-    _dark: { bg: 'gray.700', borderColor: 'red.500', color: 'white' },
+    _placeholder: { color: '#8a7e6d' },
+    _focus: { borderColor: '#c0392b', ring: '2', ringColor: 'rgba(192, 57, 43, 0.15)' },
 });
 
 const fieldErrorStyle = css({
     fontSize: 'xs',
-    color: 'red.500',
+    color: '#c0392b',
 });
 
 const fieldSuccessStyle = css({
     fontSize: 'xs',
-    color: 'green.500',
+    color: '#27ae60',
 });
 
 const hintStyle = css({
     fontSize: 'xs',
-    color: 'gray.400',
+    color: '#8a7e6d',
 });
 
 const otpInputStyle = css({
@@ -496,15 +500,16 @@ const otpInputStyle = css({
     px: '4',
     fontSize: '2xl',
     fontWeight: 'bold',
+    color: '#1b2a44',
     textAlign: 'center',
     letterSpacing: '0.5em',
+    bg: '#ede4d6',
     borderWidth: '2px',
-    borderColor: 'gray.300',
+    borderColor: '#cebca2',
     rounded: 'lg',
     outline: 'none',
     transition: 'all 0.2s',
-    _focus: { borderColor: 'blue.500', ring: '2', ringColor: 'blue.500/20' },
-    _dark: { bg: 'gray.700', borderColor: 'gray.600', color: 'white' },
+    _focus: { borderColor: '#1e3155', ring: '2', ringColor: 'rgba(30, 49, 85, 0.15)' },
 });
 
 const buttonStyle = css({
@@ -513,24 +518,24 @@ const buttonStyle = css({
     px: '4',
     fontSize: 'sm',
     fontWeight: 'medium',
-    color: 'white',
-    bg: 'blue.500',
+    color: '#f8f3ea',
+    bg: '#1e3155',
     rounded: 'lg',
     cursor: 'pointer',
     transition: 'all 0.2s',
-    _hover: { bg: 'blue.600' },
+    _hover: { bg: '#263d68' },
     _disabled: { opacity: 0.6, cursor: 'not-allowed' },
 });
 
 const linkButtonStyle = css({
     py: '2',
     fontSize: 'sm',
-    color: 'gray.500',
+    color: '#5e6a82',
     bg: 'transparent',
     border: 'none',
     cursor: 'pointer',
     transition: 'all 0.2s',
-    _hover: { color: 'blue.500' },
+    _hover: { color: '#1b2a44' },
 });
 
 const errorStyle = css({
@@ -538,10 +543,9 @@ const errorStyle = css({
     py: '2',
     px: '3',
     fontSize: 'sm',
-    color: 'red.600',
-    bg: 'red.50',
+    color: '#922b21',
+    bg: '#f9e4e1',
     rounded: 'lg',
-    _dark: { bg: 'red.900/20', color: 'red.400' },
 });
 
 const successStyle = css({
@@ -549,10 +553,9 @@ const successStyle = css({
     py: '2',
     px: '3',
     fontSize: 'sm',
-    color: 'green.600',
-    bg: 'green.50',
+    color: '#1e7e46',
+    bg: '#e4f5ec',
     rounded: 'lg',
-    _dark: { bg: 'green.900/20', color: 'green.400' },
 });
 
 const verifyInfoStyle = css({
@@ -560,10 +563,9 @@ const verifyInfoStyle = css({
     py: '4',
     px: '4',
     fontSize: 'sm',
-    color: 'gray.600',
-    bg: 'gray.50',
+    color: '#3d4f6a',
+    bg: '#ede4d6',
     rounded: 'lg',
-    _dark: { bg: 'gray.700', color: 'gray.300' },
 });
 
 const verifyListStyle = css({
@@ -571,7 +573,7 @@ const verifyListStyle = css({
     ml: '4',
     listStyleType: 'disc',
     fontSize: 'xs',
-    color: 'gray.500',
+    color: '#5e6a82',
     '& li': {
         mt: '1',
     },

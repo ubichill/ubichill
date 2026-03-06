@@ -14,16 +14,16 @@ const cardStyle = {
     flexDirection: 'column',
     alignItems: 'flex-start',
     padding: '16px',
-    backgroundColor: '#1d3054',
-    border: '1px solid rgba(230, 216, 197, 0.2)',
+    backgroundColor: '#f5ecdf',
+    border: '1px solid #cebca2',
     borderRadius: '14px',
     cursor: 'pointer',
     transition: 'background-color 0.16s ease, border-color 0.16s ease',
     width: '100%',
     textAlign: 'left',
     _hover: {
-        borderColor: 'rgba(230, 216, 197, 0.45)',
-        backgroundColor: '#253b66',
+        borderColor: '#b0a48e',
+        backgroundColor: '#ede4d6',
     },
 };
 
@@ -43,13 +43,13 @@ const thumbnailContainerStyle = {
 const titleStyle = {
     fontSize: '16px',
     fontWeight: '600',
-    color: '#e9ddcb',
+    color: '#1b2a44',
     marginBottom: '4px',
 };
 
 const descriptionStyle = {
     fontSize: '13px',
-    color: '#d8cfbf',
+    color: '#5e6a82',
     lineHeight: '1.4',
 };
 
@@ -59,7 +59,7 @@ const metaStyle = {
     gap: '8px',
     marginTop: '8px',
     fontSize: '12px',
-    color: '#bdc8e0',
+    color: '#8a7e6d',
 };
 
 export function WorldCard({ world, onSelect }: WorldCardProps) {
@@ -68,7 +68,7 @@ export function WorldCard({ world, onSelect }: WorldCardProps) {
             <div
                 className={css({
                     ...thumbnailContainerStyle,
-                    backgroundColor: world.thumbnail ? 'transparent' : '#243b66',
+                    backgroundColor: world.thumbnail ? 'transparent' : '#d4c4ab',
                 })}
             >
                 {world.thumbnail ? (

@@ -156,11 +156,11 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
             >
                 <div
                     className={css({
-                        bg: '#162542',
+                        bg: '#e6d7c4',
                         borderRadius: '24px',
                         px: { base: '4', md: '8' },
                         py: { base: '5', md: '6' },
-                        boxShadow: '0 20px 38px rgba(3, 8, 18, 0.4)',
+                        boxShadow: '0 8px 24px rgba(27, 42, 68, 0.08)',
                         minH: '650px',
                         display: 'flex',
                         flexDirection: 'column',
@@ -170,7 +170,7 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                         className={css({
                             fontSize: { base: '3xl', md: '4xl' },
                             fontWeight: '700',
-                            color: '#f2e6d6',
+                            color: '#1b2a44',
                             mb: '4',
                         })}
                     >
@@ -191,8 +191,8 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                             className={css({
                                 flex: 1,
                                 padding: '10px 14px',
-                                backgroundColor: view === 'instances' ? '#e6d8c5' : '#29406d',
-                                color: view === 'instances' ? '#1b2a44' : '#d7e1f5',
+                                backgroundColor: view === 'instances' ? '#1b2a44' : '#d4c4ab',
+                                color: view === 'instances' ? '#f8f3ea' : '#5e6a82',
                                 border: 'none',
                                 borderRadius: '10px',
                                 fontSize: { base: 'xs', sm: 'sm' },
@@ -211,8 +211,8 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                             className={css({
                                 flex: 1,
                                 padding: '10px 14px',
-                                backgroundColor: view === 'worlds' ? '#e6d8c5' : '#29406d',
-                                color: view === 'worlds' ? '#1b2a44' : '#d7e1f5',
+                                backgroundColor: view === 'worlds' ? '#1b2a44' : '#d4c4ab',
+                                color: view === 'worlds' ? '#f8f3ea' : '#5e6a82',
                                 border: 'none',
                                 borderRadius: '10px',
                                 fontSize: { base: 'xs', sm: 'sm' },
@@ -230,8 +230,8 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                         <div
                             className={css({
                                 padding: '10px 14px',
-                                backgroundColor: '#472a37',
-                                color: '#ffdce5',
+                                backgroundColor: '#f9e4e1',
+                                color: '#922b21',
                                 borderRadius: '8px',
                                 marginBottom: '12px',
                                 fontSize: '13px',
@@ -257,8 +257,8 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                             className={css({
                                 width: '24px',
                                 height: '24px',
-                                border: '3px solid rgba(230, 216, 197, 0.35)',
-                                borderTopColor: '#e6d8c5',
+                                border: '3px solid rgba(27, 42, 68, 0.15)',
+                                borderTopColor: '#1b2a44',
                                 borderRadius: '50%',
                                 animation: isRefreshing ? 'spin 0.8s linear infinite' : 'none',
                             })}
@@ -287,7 +287,7 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                                 backgroundColor: 'transparent',
                             },
                             '&::-webkit-scrollbar-thumb': {
-                                backgroundColor: 'rgba(230, 216, 197, 0.3)',
+                                backgroundColor: 'rgba(27, 42, 68, 0.15)',
                                 borderRadius: '3px',
                             },
                         })}
@@ -297,7 +297,7 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                                 className={css({
                                     textAlign: 'center',
                                     padding: '40px',
-                                    color: '#d5ccb9',
+                                    color: '#5e6a82',
                                 })}
                             >
                                 読み込み中...
@@ -311,7 +311,7 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                                         className={css({
                                             textAlign: 'center',
                                             padding: '56px 24px',
-                                            backgroundColor: '#1e3258',
+                                            backgroundColor: '#d4c4ab',
                                             borderRadius: '14px',
                                         })}
                                     >
@@ -326,7 +326,7 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                                         <p
                                             className={css({
                                                 fontSize: '15px',
-                                                color: '#d8cfbf',
+                                                color: '#5e6a82',
                                                 marginBottom: '16px',
                                             })}
                                         >
@@ -337,8 +337,8 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                                             onClick={() => handleTabSwitch('worlds')}
                                             className={css({
                                                 padding: '10px 20px',
-                                                backgroundColor: '#e6d8c5',
-                                                color: '#1b2a44',
+                                                backgroundColor: '#1b2a44',
+                                                color: '#f8f3ea',
                                                 border: 'none',
                                                 borderRadius: '10px',
                                                 fontSize: '14px',
@@ -366,7 +366,7 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                                 <p
                                     className={css({
                                         fontSize: '14px',
-                                        color: '#d8cfbf',
+                                        color: '#5e6a82',
                                         marginBottom: '16px',
                                     })}
                                 >

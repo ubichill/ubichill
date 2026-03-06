@@ -3,6 +3,7 @@
 import { PenTray } from '@ubichill/plugin-pen';
 import { useSocket, useWorld } from '@ubichill/sdk';
 import type { CursorState, UserStatus } from '@ubichill/shared';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Lobby } from '@/components/lobby';
@@ -118,8 +119,28 @@ export default function Home() {
         return (
             <main className={styles.mainContainer}>
                 <div className={styles.loginContainer}>
+                    <Image
+                        src="/icon.png"
+                        alt="Ubichill"
+                        width={64}
+                        height={64}
+                        className={css({
+                            borderRadius: '14px',
+                            filter: 'drop-shadow(0 4px 8px rgba(27, 42, 68, 0.10))',
+                        })}
+                    />
                     <h1 className={styles.title}>Ubichill</h1>
-                    <p style={{ color: '#868e96', marginBottom: '24px', fontSize: '14px' }}>読み込み中...</p>
+                    <p style={{ color: '#5e6a82', marginBottom: '16px', fontSize: '14px' }}>読み込み中...</p>
+                    <div
+                        className={css({
+                            width: '24px',
+                            height: '24px',
+                            border: '3px solid #cebca2',
+                            borderTopColor: '#1b2a44',
+                            borderRadius: '50%',
+                            animation: 'spin 0.8s linear infinite',
+                        })}
+                    />
                 </div>
             </main>
         );
@@ -135,15 +156,15 @@ export default function Home() {
                         {error && <span className={styles.errorText}>{error}</span>}
                     </p>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <span style={{ color: '#495057', fontSize: '14px' }}>{userName}</span>
+                        <span style={{ color: '#1b2a44', fontSize: '14px' }}>{userName}</span>
                         <button
                             type="button"
                             onClick={handleLogout}
                             style={{
                                 padding: '8px 16px',
                                 backgroundColor: 'transparent',
-                                color: '#868e96',
-                                border: '1px solid #dee2e6',
+                                color: '#3d4f6a',
+                                border: '1px solid #cebca2',
                                 borderRadius: '6px',
                                 fontSize: '13px',
                                 cursor: 'pointer',

@@ -13,7 +13,7 @@ export const mainContainer = flex({
     px: { base: '4', md: '8' },
     py: { base: '4', md: '6' },
     position: 'relative',
-    bg: '#0f1a2d',
+    bg: '#faf6f0',
     overflow: 'hidden',
 });
 
@@ -22,7 +22,7 @@ export const texturedBackdrop = css({
     inset: 0,
     pointerEvents: 'none',
     bgImage:
-        'radial-gradient(circle at 20% 10%, rgba(232, 216, 192, 0.12), transparent 40%), radial-gradient(circle at 80% 80%, rgba(232, 216, 192, 0.08), transparent 45%), linear-gradient(to bottom, rgba(255, 255, 255, 0.03), transparent)',
+        'radial-gradient(circle at 20% 10%, rgba(27, 42, 68, 0.04), transparent 40%), radial-gradient(circle at 80% 80%, rgba(27, 42, 68, 0.03), transparent 45%), linear-gradient(to bottom, rgba(0, 0, 0, 0.01), transparent)',
     opacity: 1,
 });
 
@@ -51,9 +51,9 @@ export const statusBar = css({
     gap: '2',
     rounded: 'full',
     borderWidth: '1px',
-    borderColor: 'rgba(230,216,197,0.3)',
-    bg: 'rgba(22, 37, 66, 0.72)',
-    color: '#e8ddcc',
+    borderColor: '#cebca2',
+    bg: 'rgba(255, 255, 255, 0.72)',
+    color: '#1b2a44',
     px: '4',
     py: '2',
     fontSize: 'sm',
@@ -61,7 +61,7 @@ export const statusBar = css({
 });
 
 export const userInfo = css({
-    color: '#e8ddcc',
+    color: '#1b2a44',
     fontSize: 'sm',
 });
 
@@ -74,10 +74,10 @@ export const loginContainer = css({
     rounded: '3xl',
     px: { base: '6', md: '10' },
     py: { base: '8', md: '12' },
-    bg: '#e6d7c4',
+    bg: '#ffffff',
     borderWidth: '1px',
-    borderColor: 'rgba(27,42,68,0.08)',
-    boxShadow: '0 24px 48px rgba(5, 11, 23, 0.35)',
+    borderColor: '#cebca2',
+    boxShadow: '0 8px 32px rgba(27, 42, 68, 0.08)',
     display: 'flex',
     flexDirection: 'column',
     gap: '4',
@@ -88,6 +88,7 @@ export const titleTag = css({
     fontWeight: '600',
     letterSpacing: '0.18em',
     color: '#5e6a82',
+    textTransform: 'uppercase',
 });
 
 export const title = css({
@@ -107,11 +108,11 @@ export const brandIcon = css({
     width: { base: '48px', md: '56px' },
     height: { base: '48px', md: '56px' },
     flexShrink: 0,
-    filter: 'drop-shadow(0 6px 10px rgba(27, 42, 68, 0.14))',
+    filter: 'drop-shadow(0 4px 8px rgba(27, 42, 68, 0.10))',
 });
 
 export const subtitle = css({
-    color: '#445775',
+    color: '#5e6a82',
     fontSize: { base: 'sm', md: 'md' },
 });
 
@@ -129,14 +130,14 @@ export const input = css({
     borderWidth: '1px',
     borderColor: '#cebca2',
     rounded: 'lg',
-    color: '#1f2f4c',
-    bg: '#f5ecdf',
+    color: '#1b2a44',
+    bg: '#ede4d6',
     fontSize: 'md',
-    _placeholder: { color: '#777069' },
+    _placeholder: { color: '#8a7e6d' },
     _focusVisible: {
         outline: 'none',
-        borderColor: '#2e446f',
-        boxShadow: '0 0 0 3px rgba(30, 49, 85, 0.2)',
+        borderColor: '#1e3155',
+        boxShadow: '0 0 0 3px rgba(30, 49, 85, 0.15)',
     },
 });
 
@@ -154,21 +155,21 @@ export const button = css({
 
 export const hintText = css({
     fontSize: 'xs',
-    color: '#5a6a85',
+    color: '#8a7e6d',
 });
 
 export const backButton = css({
     px: '4',
     py: '2',
     bg: 'transparent',
-    color: '#d7ccb9',
+    color: '#3d4f6a',
     borderWidth: '1px',
-    borderColor: 'rgba(230,216,197,0.35)',
+    borderColor: '#cebca2',
     rounded: 'lg',
     cursor: 'pointer',
     fontSize: 'sm',
     transition: 'background-color 0.16s ease',
-    _hover: { bg: 'rgba(230,216,197,0.1)' },
+    _hover: { bg: 'rgba(27, 42, 68, 0.06)' },
 });
 
 // World/Canvas Styles
