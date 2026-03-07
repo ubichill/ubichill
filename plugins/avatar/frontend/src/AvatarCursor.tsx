@@ -1,24 +1,28 @@
-import { useSocket } from '@ubichill/sdk';
-import type { CursorState, UserStatus } from '@ubichill/shared';
+import type { CursorState, UserStatus } from '@ubichill/sdk';
+import { usePluginWorker, useSocket } from '@ubichill/sdk/react';
 import type React from 'react';
 import { useEffect, useRef, useState } from 'react';
+import { avatarPluginCode } from './AvatarBehaviour';
 
 export interface AvatarCursorProps {
     cursorState: CursorState;
     userStatus: UserStatus;
     mousePosition: { x: number; y: number };
-    canvasOffset?: { left: number; top: number };
     showRadialMenu?: boolean;
 }
 
 /**
- * AvatarCursor - Handles the local user's custom cursor rendering and logic.
+ * AvatarCursor - ローカルユーザーのカスタムカーソルの描画とロジックを管理します。
+ *
+ * プラグインコードはStringとして Worker に注入され、実際の座標計算は
+ * Sandbox Worker 内で行われます。HOSTは LIFECYCLE_TICK イベントと
+ * CUSTOM イベント（SET_TARGET_POSITION）をWorkerへ送信し、
+ * WorkerからはSCENE_UPDATE_CURSOR コマンドを受け取ります。
  */
 export const AvatarCursor: React.FC<AvatarCursorProps> = ({
     cursorState,
     userStatus,
     mousePosition,
-    canvasOffset: _canvasOffset = { left: 0, top: 0 },
     showRadialMenu = false,
 }) => {
     const { currentUser } = useSocket();
@@ -27,73 +31,57 @@ export const AvatarCursor: React.FC<AvatarCursorProps> = ({
     const previousMenuRef = useRef<boolean>(showRadialMenu);
     const cursorRef = useRef<HTMLDivElement>(null);
 
-    // Initial mouse position sync
     const [smoothPosition, setSmoothPosition] = useState(mousePosition);
 
-    // Sync position with mouse or fixed status
+    // ステータス変化でカーソル位置をロック
     useEffect(() => {
-        // Handle busy status - lock cursor position
         if (userStatus === 'busy' && previousStatusRef.current !== 'busy') {
             setFixedAvatarPosition({ ...mousePosition });
         } else if (userStatus !== 'busy' && previousStatusRef.current === 'busy') {
             setFixedAvatarPosition(null);
         }
-
         previousStatusRef.current = userStatus;
     }, [userStatus, mousePosition]);
 
-    // Handle radial menu - lock cursor position
+    // ラジアルメニュー表示でカーソル位置をロック
     useEffect(() => {
-        // When menu opens, lock position
         if (showRadialMenu && !previousMenuRef.current) {
             setFixedAvatarPosition({ ...mousePosition });
-        }
-        // When menu closes, unlock if not busy
-        else if (!showRadialMenu && previousMenuRef.current && userStatus !== 'busy') {
+        } else if (!showRadialMenu && previousMenuRef.current && userStatus !== 'busy') {
             setFixedAvatarPosition(null);
         }
-
         previousMenuRef.current = showRadialMenu;
     }, [showRadialMenu, mousePosition, userStatus]);
 
-    // Animation loop for smooth cursor movement
-    useEffect(() => {
-        let animationFrameId: number;
-
-        const animate = () => {
-            const targetPos =
-                (userStatus === 'busy' || showRadialMenu) && fixedAvatarPosition ? fixedAvatarPosition : mousePosition;
-
-            setSmoothPosition((prev) => {
-                // Simple lerp for smoothness
-                const lerpFactor = 0.3; // Higher value = faster follow
-                const x = prev.x + (targetPos.x - prev.x) * lerpFactor;
-                const y = prev.y + (targetPos.y - prev.y) * lerpFactor;
-
-                // If very close, snap to target to avoid jitter
-                if (Math.abs(targetPos.x - x) < 0.1 && Math.abs(targetPos.y - y) < 0.1) {
-                    return targetPos;
+    const { sendEvent } = usePluginWorker({
+        pluginCode: avatarPluginCode,
+        handlers: {
+            onCommand: (cmd) => {
+                if (cmd.type === 'SCENE_UPDATE_CURSOR') {
+                    setSmoothPosition({ x: cmd.payload.x, y: cmd.payload.y });
                 }
-                return { x, y };
-            });
+            },
+        },
+    });
 
-            animationFrameId = requestAnimationFrame(animate);
-        };
+    // マウス位置の変更をWorkerへ送信（EVT_CUSTOM 経由）
+    useEffect(() => {
+        const targetPos =
+            (userStatus === 'busy' || showRadialMenu) && fixedAvatarPosition ? fixedAvatarPosition : mousePosition;
 
-        animationFrameId = requestAnimationFrame(animate);
+        sendEvent({
+            type: 'EVT_CUSTOM',
+            payload: { eventType: 'SET_TARGET_POSITION', data: targetPos },
+        });
+    }, [mousePosition, userStatus, fixedAvatarPosition, showRadialMenu, sendEvent]);
 
-        return () => {
-            cancelAnimationFrame(animationFrameId);
-        };
-    }, [mousePosition, userStatus, fixedAvatarPosition, showRadialMenu]);
-
-    // Determine current avatar image and hotspot
+    // カーソル画像の取得
     const localAvatar = currentUser?.avatar || { states: {} };
     const currentLocalAvatar = localAvatar.states[cursorState] || localAvatar.states.default;
     const localAvatarUrl = currentLocalAvatar?.url;
     const localHotspot = currentLocalAvatar?.hotspot || { x: 0, y: 0 };
 
-    // Hide system cursor logic
+    // システムカーソルの非表示
     useEffect(() => {
         if (localAvatarUrl && localAvatar.hideSystemCursor) {
             document.body.classList.add('cursor-hidden');
@@ -128,7 +116,7 @@ export const AvatarCursor: React.FC<AvatarCursorProps> = ({
                 position: 'fixed',
                 left: 0,
                 top: 0,
-                transform: `translate3d(${smoothPosition.x - localHotspot.x}px, ${smoothPosition.y - localHotspot.y}px, 0)`,
+                transform: `translate3d(${smoothPosition.x - localHotspot.x - (typeof window !== 'undefined' ? window.scrollX : 0)}px, ${smoothPosition.y - localHotspot.y - (typeof window !== 'undefined' ? window.scrollY : 0)}px, 0)`,
                 pointerEvents: 'none',
                 zIndex: 9999,
                 willChange: 'transform',

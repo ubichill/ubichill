@@ -20,6 +20,9 @@ importers:
       cross-env:
         specifier: ^10.1.0
         version: 10.1.0
+      esbuild:
+        specifier: ^0.25.0
+        version: 0.25.12
       kill-port:
         specifier: ^2.0.1
         version: 2.0.1
@@ -149,6 +152,12 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  packages/engine:
+    devDependencies:
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   packages/frontend:
     dependencies:
       '@next/env':
@@ -222,8 +231,14 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
-  packages/sdk:
+  packages/react:
     dependencies:
+      '@ubichill/engine':
+        specifier: workspace:*
+        version: link:../engine
+      '@ubichill/sandbox':
+        specifier: workspace:*
+        version: link:../sandbox
       '@ubichill/shared':
         specifier: workspace:*
         version: link:../shared
@@ -240,15 +255,47 @@ importers:
       '@types/lodash.throttle':
         specifier: ^4.1.9
         version: 4.1.9
-      '@types/node':
-        specifier: ^22.0.0
-        version: 22.19.7
       '@types/react':
         specifier: ^19.2.10
         version: 19.2.10
       '@types/react-dom':
         specifier: ^19.2.3
         version: 19.2.3(@types/react@19.2.10)
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  packages/sandbox:
+    dependencies:
+      '@ubichill/engine':
+        specifier: workspace:*
+        version: link:../engine
+      '@ubichill/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  packages/sdk:
+    dependencies:
+      '@ubichill/engine':
+        specifier: workspace:*
+        version: link:../engine
+      '@ubichill/react':
+        specifier: workspace:*
+        version: link:../react
+      '@ubichill/sandbox':
+        specifier: workspace:*
+        version: link:../sandbox
+      '@ubichill/shared':
+        specifier: workspace:*
+        version: link:../shared
+      react:
+        specifier: ^19.0.0
+        version: 19.2.4
+    devDependencies:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -274,9 +321,6 @@ importers:
       '@ubichill/sdk':
         specifier: workspace:*
         version: link:../../../packages/sdk
-      '@ubichill/shared':
-        specifier: workspace:*
-        version: link:../../../packages/shared
       icojs:
         specifier: ^0.20.1
         version: 0.20.1(@jimp/custom@0.22.12)
@@ -308,9 +352,6 @@ importers:
       '@ubichill/sdk':
         specifier: workspace:*
         version: link:../../../packages/sdk
-      '@ubichill/shared':
-        specifier: workspace:*
-        version: link:../../../packages/shared
       perfect-freehand:
         specifier: ^1.2.2
         version: 1.2.2
@@ -330,9 +371,6 @@ importers:
       '@ubichill/sdk':
         specifier: workspace:*
         version: link:../../../packages/sdk
-      '@ubichill/shared':
-        specifier: workspace:*
-        version: link:../../../packages/shared
       hls.js:
         specifier: ^1.6.15
         version: 1.6.15

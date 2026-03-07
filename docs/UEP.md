@@ -27,29 +27,94 @@ interface WorldEntity<T = any> {
     transform: {
         x: number;
         y: number;
-        rotation: number; // 向き (描画時のペン先や、スタンプの角度など)
-        z: number;       // World Layer内での表示順序 (CSSのz-indexとは別)
+        rotation: number;
+        z: number;       // World Layer 内での表示順序
     };
-    data: T;             // エンティティ固有データ (色、Strokeの点群など)
+    data: T;             // エンティティ固有データ
 }
-
-### 1.3 レイヤー戦略 (z-index vs transform.z)
-二つの「重なり順」を明確に区別します。
-
-1.  **Application Layer (`layers.ts`)**:
-    *   **目的**: UIアーキテクチャとしての階層管理。
-    *   **範囲**: オーバーレイUI > 自分が持っている物体 > 他人が持っている物体 > 床にある物体。
-    *   **実装**: CSS `z-index`。
-
-2.  **World Layer (`entity.transform.z`)**:
-    *   **目的**: 空間内でのオブジェクト同士の前後関係。
-    *   **範囲**: 「床にある物体」または「トレイ」の中での相対順序（例: カードの上にコインを置く）。
-    *   **実装**: React側で `.sort((a, b) => a.z - b.z)` してレンダリング順を制御（現在は簡易実装のため未厳密）。
 ```
 
-## 2. インタラクションフロー
+### 1.3 レイヤー戦略 (z-index vs transform.z)
 
-オブジェクト操作は **Lock -> Mutate -> Release** のサイクルで行われます。
+1.  **Application Layer (`layers.ts`)**: CSS `z-index` によるUI階層（オーバーレイ > 持ち物 > ワールドアイテム）
+2.  **World Layer (`entity.transform.z`)**: 空間内オブジェクト同士の前後関係。React側で `.sort((a, b) => a.z - b.z)` してレンダリング順を制御。
+
+---
+
+## 2. プラグイン実行モデル (ECS)
+
+プラグインロジックは **ECS (Entity Component System)** アーキテクチャで実装されます。
+ロジックは Worker Sandbox 内で実行され、React Host とはメッセージパッシングのみで通信します。
+
+### 2.1 レイヤー分離
+
+```
+┌─────────────────────────────────────────────┐
+│  React Host (メインスレッド)                  │
+│  - UI レンダリング                            │
+│  - WorldEntity 同期 (UEP)                    │
+│  - PenWorker → onCommand で描画データ受信     │
+└──────────────┬──────────────────────────────┘
+               │ EVT_CUSTOM (sendEvent)
+               │ postMessage
+               ▼
+┌─────────────────────────────────────────────┐
+│  Worker Sandbox                              │
+│  ┌─────────────────────────────────────────┐│
+│  │  ECS World (Ubi.world)                  ││
+│  │  ┌──────────────────────────────────┐   ││
+│  │  │  Entity: pen-main                │   ││
+│  │  │    Transform { x, y }            │   ││
+│  │  │    PenState  { isDrawing, ... }  │   ││
+│  │  │    SyncState { lastSyncTime }    │   ││
+│  │  └──────────────────────────────────┘   ││
+│  │                                         ││
+│  │  Systems (登録順に毎フレーム実行):        ││
+│  │    1. PenInputSystem  ← events[]        ││
+│  │    2. PenSyncSystem   → messaging.send  ││
+│  └─────────────────────────────────────────┘│
+└─────────────────────────────────────────────┘
+```
+
+### 2.2 イベントフロー (EVT_CUSTOM → ECS)
+
+```
+Host                         UbiSDK (sandbox内)              ECS Systems
+  │                               │                               │
+  │─ EVT_CUSTOM ─────────────────▶│                               │
+  │  { eventType: 'MOUSE_MOVE',   │ _pendingWorkerEvents.push()   │
+  │    data: { x, y, buttons } }  │ { type: 'MOUSE_MOVE',         │
+  │                               │   payload: { x, y, buttons }} │
+  │                               │                               │
+  │─ EVT_LIFECYCLE_TICK ─────────▶│                               │
+  │                               │─ world.tick(dt, events) ─────▶│
+  │                               │  _pendingWorkerEvents = []    │ PenInputSystem
+  │                               │                               │ PenSyncSystem
+  │                               │◀─ Ubi.messaging.send() ───────│
+  │◀─ CUSTOM_MESSAGE ─────────────│  (DRAWING_UPDATE等)           │
+  │◀─ SCENE_UPDATE_CURSOR ────────│  Ubi.scene.updateCursorPos()  │
+```
+
+### 2.3 Component 設計
+
+| Component | データ | 責務 |
+| :--- | :--- | :--- |
+| `Transform` | `{ x, y }` | 空間上の位置 |
+| `PenState` | `{ isDrawing, currentStroke, ... }` | 描画ロジックの状態 |
+| `SyncState` | `{ lastSyncTime }` | Host への送信レート制御 |
+
+### 2.4 System 責務分離
+
+| System | 入力 | 出力 |
+| :--- | :--- | :--- |
+| `PenInputSystem` | `WorkerEvent[]` (MOUSE_*) | Component 更新、カーソル位置送信 |
+| `PenSyncSystem` | Component 読み取り | `Ubi.messaging.send()` (DRAWING_UPDATE / STROKE_COMPLETE) |
+
+---
+
+## 3. インタラクションフロー
+
+オブジェクト操作は **Lock → Mutate → Release** のサイクルで行われます。
 
 1.  **Try Lock (楽観的ロック)**
     *   ユーザーがオブジェクトをクリック。
@@ -63,58 +128,94 @@ interface WorldEntity<T = any> {
 
 3.  **Commit / Release**
     *   操作終了時（MouseUp）、最終的な `transform` や生成された `stroke` データを `PATCH` または `Create` でサーバーに送信。
-    *   これをもってデータが永続化される。
     *   `lockedBy: null` を送信してロック解除。
 
-## 3. ライフサイクル
+---
 
-### 3.1 Create (生成)
-新しいデータが確定したときに発生します。
+## 4. ライフサイクル
+
+### 4.1 Create (生成)
 *   **API**: `createEntity(type, transform, data)` via `WorldContext`
-*   **タイミング**:
-    *   `PenWidget`: ストロークを描き終わった瞬間 (MouseUp) に `stroke` エンティティを作成。
-    *   `ImageWidget`: ドラッグ＆ドロップで画像を配置した瞬間。
-*   **フロー**: Client -> Server (DB Insert) -> Broadcast -> All Clients (Add to State)
+*   **タイミング**: ストローク完成時 (STROKE_COMPLETE)、画像ドロップ時など
+*   **フロー**: Client → Server (DB Insert) → Broadcast → All Clients
 
-### 3.2 Update / Patch (更新)
-既存のエンティティの状態を変更します。
+### 4.2 Update / Patch (更新)
 *   **API**: `patchEntity(id, patch)` via `WorldContext`
-*   **タイミング**:
-    *   移動終了時 (Drag End)。
-    *   所有権の変更 (Lock/Unlock)。
-    *   プロパティ変更 (色変更など)。
-*   **フロー**: Client -> Server (DB Update) -> Broadcast -> All Clients (Merge to State)
-*   **注意**: 頻繁な更新（ドラッグ中）は `patch` ではなく `stream` を使用します。
+*   **タイミング**: 移動終了、ロック変更、プロパティ変更
+*   **注意**: 高頻度更新（描画中）は `stream` を使用。
 
-### 3.3 Delete (削除)
+### 4.3 Delete (削除)
 *   **API**: `deleteEntity(id)`
-*   **タイミング**: ゴミ箱に入れた時、またはリセット時。
 
-## 4. 所有権とロック機構 (Ownership)
+---
 
-UEPでは「早い者勝ち (First-come, first-served)」の排他制御を採用しています。
+## 5. 所有権とロック機構 (Ownership)
 
-### 4.1 `lockedBy` プロパティ
+UEP では「早い者勝ち (First-come, first-served)」の排他制御を採用しています。
+
+### 5.1 `lockedBy` プロパティ
 各エンティティは `lockedBy: string | null` (User ID) を持ちます。
 
-*   `null`: 誰でも触れる状態（Free）。
-*   `"user_id"`: 特定のユーザーが操作中（Locked）。
+*   `null`: 誰でも触れる状態（Free）
+*   `"user_id"`: 特定のユーザーが操作中（Locked）
 
-### 4.2 ロックの取得フロー (`useEntity`)
-1.  **ユーザー操作**: オブジェクトをクリック。
-2.  **楽観的UI**: フロント側で即座に `isLockedByMe = true` と判定し、操作を受け付ける。
-3.  **サーバー同期**: 背後で `patchEntity({ lockedBy: me })` を送信。
-4.  **競合解決**: もしサーバー側ですでに他人がロックしていた場合、Patchは拒否され、ロールバックされる（操作がキャンセルされる）。
+### 5.2 ロックの取得フロー
 
-### 4.3 「使用中」の判定
-コード上では以下のように判定されています（`useEntity.ts`）。
+1.  ユーザーがオブジェクトをクリック
+2.  フロント側で即座に `isLockedByMe = true` と判定（楽観的UI）
+3.  背後で `patchEntity({ lockedBy: me })` を送信
+4.  競合時はサーバーが拒否 → ロールバック
 
 ```typescript
 const isLockedByMe = entity.lockedBy === currentUser.id;
 const isLockedByOther = !!entity.lockedBy && entity.lockedBy !== currentUser.id;
 ```
 
-### 4.4 自動開放 (Auto Release)
-*   **切断時**: WebSocket切断時、サーバーはそのユーザーが `lockedBy` している全エンティティを強制的に `null` に戻します（デッドロック防止）。
-*   **Single Hold**: `useObjectInteraction` フックにより、「新しい物を掴んだら、古い物を離す」処理が自動で行われます。
+### 5.3 自動開放
+
+*   **切断時**: WebSocket切断時、サーバーが全エンティティの `lockedBy` を強制 `null` に戻す（デッドロック防止）
+*   **Single Hold**: `useObjectInteraction` フックにより、新しい物を掴んだら古い物を自動で離す
+
+---
+
+## 6. 将来のプラグイン実行モデル
+
+現在の ECS Worker (JavaScript 文字列評価) に加え、以下の実行モデルを段階的に対応予定です。
+
+### 6.1 TypeScript / React モード (近期)
+
+```
+plugins/my-plugin/
+  frontend/        ← React + TypeScript (現在も使用)
+  worker/
+    src/
+      components.ts  ← ECS Component 定義 (TypeScript)
+      systems/       ← ECS System (TypeScript)
+      index.ts       ← エントリポイント
+```
+
+ビルドパイプライン (Ubicrate CLI) が worker を bundle し、sandbox に渡す文字列を自動生成します。
+
+### 6.2 WASM モード (中期)
+
+```
+plugins/my-plugin/
+  worker/
+    src/
+      lib.rs         ← Rust で ECS を実装
+```
+
+```
+Worker Sandbox
+  ├── ECS World (JS)
+  └── WASM Module ← Rust/C++ でコンパイルされた System
+```
+
+WASM System は JS ECS World の Entity に直接アクセスし、高パフォーマンスな処理（物理演算、AI、複雑な描画）を実現します。
+
+| モード | 言語 | 用途 | 状態 |
+| :--- | :--- | :--- | :--- |
+| ECS (JS string) | JavaScript | 軽量プラグイン | ✅ 現在 |
+| ECS (TypeScript bundle) | TypeScript + React | 標準プラグイン | 🔄 準備中 |
+| ECS (WASM) | Rust / C++ | 高性能プラグイン | 📋 計画中 |
 

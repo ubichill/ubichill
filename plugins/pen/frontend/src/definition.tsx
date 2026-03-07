@@ -1,4 +1,4 @@
-import type { WidgetDefinition } from '@ubichill/sdk';
+import type { WidgetDefinition } from '@ubichill/sdk/react';
 import { PEN_CONFIG } from './config';
 import { PenIcon } from './PenIcon';
 import { PenTray } from './PenTray';

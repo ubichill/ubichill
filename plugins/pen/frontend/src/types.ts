@@ -1,7 +1,7 @@
-import type { WorldEntity } from '@ubichill/shared';
-// React is peer dependency
-import type React from 'react';
-import type { ReactNode } from 'react';
+import type { WorldEntity } from '@ubichill/sdk';
+
+export type { WidgetDefinition } from '@ubichill/sdk/react';
+export type { PenWorkerMessage } from '../../worker/src/types';
 
 export interface PenData {
     color: string;
@@ -14,9 +14,6 @@ export interface StrokeData {
     color: string;
     size: number;
 }
-
-// Legacy alias if needed, or just replace usage
-// export type Stroke = StrokeData;
 
 export interface PenStream {
     currentPoints?: number[][];
@@ -35,20 +32,4 @@ export interface PenEntity extends WorldEntity<PenData> {
 
 export interface StrokeEntity extends WorldEntity<StrokeData> {
     type: 'stroke';
-}
-
-export interface WidgetDefinition<T = unknown> {
-    id: string;
-    name: string;
-    icon: ReactNode;
-    defaultSize: { w: number; h: number };
-    defaultData: T;
-    Component: React.FC<{
-        entity: WorldEntity<T>;
-        isLocked: boolean;
-        update: (patch: Partial<WorldEntity<T>>) => void;
-        ephemeral?: unknown;
-        broadcast?: (data: unknown) => void;
-    }>;
-    SingletonComponent?: React.FC;
 }

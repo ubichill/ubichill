@@ -1,0 +1,23 @@
+{
+    "compilerOptions": {
+        "target": "ES2022",
+        "lib": ["ES2022", "WebWorker"],
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "skipLibCheck": true,
+        "noEmit": true,
+        "esModuleInterop": true,
+        "resolveJsonModule": true,
+        "baseUrl": ".",
+        "paths": {
+            "@ubichill/sdk": ["../../../packages/sdk/src/index.ts"],
+            "@ubichill/sdk/*": ["../../../packages/sdk/src/*"],
+            "@ubichill/engine": ["../../../packages/engine/src/index.ts"],
+            "@ubichill/sandbox": ["../../../packages/sandbox/src/index.ts"],
+            "@ubichill/shared": ["../../../packages/shared/src/index.ts"]
+        }
+    },
+    "include": ["src/**/*.ts"],
+    "exclude": ["node_modules"]
+}

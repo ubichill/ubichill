@@ -24,7 +24,15 @@
             ],
             "@ubichill/sdk": [
                 "../../../packages/sdk/src/index.ts"
-            ]
+            ],
+            "@ubichill/sdk/react": [
+                "../../../packages/sdk/src/react/index.ts"
+            ],
+            "@ubichill/engine": ["../../../packages/engine/src/index.ts"],
+            "@ubichill/sandbox": ["../../../packages/sandbox/src/index.ts"],
+            "@ubichill/sandbox/host": ["../../../packages/sandbox/src/host/index.ts"],
+            "@ubichill/react": ["../../../packages/react/src/index.ts"],
+            "@ubichill/shared": ["../../../packages/shared/src/index.ts"]
         }
     },
     "include": [

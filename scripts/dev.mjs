@@ -1,3 +1,4 @@
+import concurrently from 'concurrently';
 import killPort from 'kill-port';
 import { spawn, spawnSync } from 'node:child_process';
 import { join } from 'node:path';
@@ -61,6 +62,14 @@ async function main() {
         process.exit(1);
     }
 
+    // Build plugin workers (TypeScript → JS bundle → .gen.ts)
+    console.log('🔨 Building plugin workers...');
+    const buildWorkers = spawnSync('node', ['scripts/build-workers.mjs'], { stdio: 'inherit' });
+    if (buildWorkers.status !== 0) {
+        console.error('Failed to build plugin workers.');
+        process.exit(1);
+    }
+
     // Start plugins
     console.log('🚀 Starting Docker plugins...');
     const startPlugins = spawnSync('node', ['scripts/start-plugins.mjs', 'up', '-d'], { stdio: 'inherit' });
@@ -70,37 +79,43 @@ async function main() {
     }
 
     // Cleanup function
+    let isCleaning = false;
     const cleanup = () => {
+        if (isCleaning) return;
+        isCleaning = true;
         console.log('\n🛑 Stopping Docker plugins...');
-        spawnSync('node', ['scripts/start-plugins.mjs', 'down'], { stdio: 'inherit' });
-        console.log('🛑 Stopping database...');
-        spawnSync('docker', ['compose', '-f', 'packages/db/docker-compose.yml', 'down'], { stdio: 'inherit', shell: true });
-        process.exit();
+
+        // Run synchronously to avoid flashing a new detached command prompt window
+        spawnSync(process.execPath, ['scripts/start-plugins.mjs', 'down'], {
+            stdio: 'inherit',
+        });
+
+        process.exit(0);
     };
 
     process.on('SIGINT', cleanup);
     process.on('SIGTERM', cleanup);
-    process.on('exit', () => {
-        // This might be called on normal exit, catch-all
-    });
 
-    // Run dev server
+    // Run dev server using concurrently
     console.log('💻 Starting development server...');
-    const concurrentlyArgs = [
-        '-k',
-        '-p', '[{name}]',
-        '-n', 'BACK,FRONT,SHARED',
-        '-c', 'blue.bold,magenta.bold,yellow.bold',
-        '"pnpm --filter @ubichill/backend dev"',
-        '"pnpm --filter @ubichill/frontend dev"',
-        '"pnpm --filter @ubichill/shared dev"'
-    ];
 
-    const devServer = spawn(join('node_modules', '.bin', 'concurrently'), concurrentlyArgs, { stdio: 'inherit', shell: true });
+    const { result } = concurrently(
+        [
+            { command: 'pnpm --filter @ubichill/frontend dev', name: 'frontend', prefixColor: 'cyan' },
+            { command: 'pnpm --filter @ubichill/backend dev', name: 'backend', prefixColor: 'magenta' },
+            { command: 'pnpm --filter @ubichill/shared dev', name: 'shared', prefixColor: 'yellow' },
+        ],
+        {
+            prefix: '[{name}]',
+            killOthers: ['failure', 'success'],
+            restartTries: 0,
+        }
+    );
 
-    devServer.on('close', (code) => {
-        cleanup();
-    });
+    result.then(
+        () => cleanup(),
+        () => cleanup()
+    );
 }
 
 main();
