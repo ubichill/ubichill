@@ -5,7 +5,14 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { eq } from 'drizzle-orm';
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// SKIP_EMAIL_VERIFICATION=true の場合はAPIキー不要なので遅延初期化
+let _resend: Resend | null = null;
+function getResend(): Resend {
+    if (!_resend) {
+        _resend = new Resend(process.env.RESEND_API_KEY);
+    }
+    return _resend;
+}
 
 // 仮登録データを保持（メモリ内、本番ではRedisなどを使用）
 interface PendingRegistration {
@@ -97,7 +104,7 @@ export async function createPendingRegistration(
         console.log('   OTP: [REDACTED]');
     }
     try {
-        const result = await resend.emails.send({
+        const result = await getResend().emails.send({
             from: 'Ubichill <noreply@youkan.uk>',
             to: email,
             subject: `【Ubichill】${username} さんの認証コード`,
