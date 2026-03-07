@@ -36,6 +36,9 @@ COPY turbo.json turbo.json
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 
+ARG COMMIT_HASH=unknown
+ENV COMMIT_HASH=${COMMIT_HASH}
+
 # Build everything
 RUN pnpm run build
 
@@ -53,6 +56,10 @@ RUN pnpm --filter="@ubichill/backend" --prod deploy /app/deploy-backend
 FROM base AS backend-runner
 WORKDIR /app
 USER node
+
+# ビルド時のコミットハッシュをENVとして焼き込む
+ARG COMMIT_HASH=unknown
+ENV COMMIT_HASH=${COMMIT_HASH}
 
 # Deployed application is self-contained (includes node_modules, dist, package.json, and workspace deps)
 COPY --from=installer --chown=node:node /app/deploy-backend .
