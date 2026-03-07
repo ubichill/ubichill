@@ -5,7 +5,9 @@
     "main": "src/index.ts",
     "types": "src/index.ts",
     "exports": {
-        ".": "./src/index.ts"
+        ".": "./src/index.ts",
+        "./plugin/guest": "./src/plugin/guest.ts",
+        "./plugin/host": "./src/plugin/host.ts"
     },
     "peerDependencies": {
         "@ubichill/shared": "workspace:*",

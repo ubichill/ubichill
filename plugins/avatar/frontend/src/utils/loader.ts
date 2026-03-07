@@ -1,4 +1,4 @@
-import type { CursorState } from '@ubichill/shared';
+import type { CursorState } from '@ubichill/sdk';
 import yaml from 'js-yaml';
 
 /**

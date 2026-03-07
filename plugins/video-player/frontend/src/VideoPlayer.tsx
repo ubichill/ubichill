@@ -1,7 +1,7 @@
 'use client';
 
+import type { WorldEntity } from '@ubichill/sdk';
 import { useSocket } from '@ubichill/sdk';
-import type { WorldEntity } from '@ubichill/shared';
 import Hls from 'hls.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -325,12 +325,18 @@ export const VideoPlayer: React.FC<Props> = ({ entity, isLocked, update }) => {
         [data.isPlaying, apiBase],
     );
 
-    // トラックが変わったら動画を読み込む
+    const loadedTrackIdRef = useRef<string | null>(null);
+
+    // トラックが変わった、または再生状態が変わった場合
     useEffect(() => {
         if (currentTrack) {
-            loadTrackVideo(currentTrack.id, currentTrack.mode);
+            // isPlaying が true になったタイミングでまだロードされていなければロードする
+            if (data.isPlaying && loadedTrackIdRef.current !== currentTrack.id) {
+                loadedTrackIdRef.current = currentTrack.id;
+                loadTrackVideo(currentTrack.id, currentTrack.mode);
+            }
         }
-    }, [currentTrack, loadTrackVideo]);
+    }, [currentTrack, data.isPlaying, loadTrackVideo]);
 
     // 再生/一時停止の状態を同期
     useEffect(() => {

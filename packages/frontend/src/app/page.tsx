@@ -59,13 +59,16 @@ export default function Home() {
     const POSITION_UPDATE_THROTTLE = 50; // ms
 
     const handleMouseMove = (e: React.MouseEvent) => {
+        // ワールド絶対座標を手に入れる
+        const worldX = e.clientX + window.scrollX;
+        const worldY = e.clientY + window.scrollY;
+
         // マウス位置を追跡（AppPluginに渡すため）
-        setMousePosition({ x: e.clientX, y: e.clientY });
+        setMousePosition({ x: worldX, y: worldY });
 
         if (screen === 'world' && canvasRef.current) {
-            const rect = canvasRef.current.getBoundingClientRect();
-            let x = e.clientX - rect.left;
-            let y = e.clientY - rect.top;
+            let x = worldX;
+            let y = worldY;
 
             // 作業中ステータスの場合は、カーソルをロックした位置に固定
             if (userStatus === 'busy' && cursorLockPosition) {
@@ -98,12 +101,9 @@ export default function Home() {
         (status: UserStatus) => {
             setUserStatus(status);
 
-            if (status === 'busy' && canvasRef.current) {
-                // 作業中: カーソルの現在位置をロック
-                const rect = canvasRef.current.getBoundingClientRect();
-                const x = mousePosition.x - rect.left;
-                const y = mousePosition.y - rect.top;
-                setCursorLockPosition({ x, y });
+            if (status === 'busy') {
+                // 作業中: カーソルの現在位置（ワールド座標）をロック
+                setCursorLockPosition({ ...mousePosition });
             } else {
                 // その他のステータス: ロック解除
                 setCursorLockPosition(null);

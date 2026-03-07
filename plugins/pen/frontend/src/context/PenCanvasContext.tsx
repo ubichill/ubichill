@@ -140,6 +140,7 @@ export const PenCanvasProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                     left: 0,
                     width: '100vw',
                     height: '100vh',
+                    overflow: 'visible',
                     pointerEvents: 'none',
                     zIndex: 50,
                 }}

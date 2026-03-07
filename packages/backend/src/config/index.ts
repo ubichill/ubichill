@@ -13,8 +13,12 @@ const envSchema = z.object({
     RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().finite().default(100),
     DEBUG: z
         .string()
-        .default('false')
-        .transform((val) => val === 'true'),
+        .optional()
+        .transform((val) => {
+            if (val === 'true') return true;
+            if (val === 'false') return false;
+            return process.env.NODE_ENV !== 'production';
+        }),
 });
 
 // 環境変数をパースして検証

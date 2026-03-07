@@ -34,3 +34,6 @@ pnpm-debug.log*
 
 # Testing
 coverage/
+
+# Auto-generated worker bundles
+*.gen.ts

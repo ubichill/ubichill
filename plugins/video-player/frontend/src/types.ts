@@ -1,7 +1,4 @@
-import type { WorldEntity } from '@ubichill/shared';
-// React is peer dependency
-import type React from 'react';
-import type { ReactNode } from 'react';
+// 型は必要に応じて @ubichill/sdk から import してください
 
 // 音楽プレイヤーの状態タイプ
 export interface Track {
@@ -31,18 +28,5 @@ export const DEFAULT_MUSIC_PLAYER_STATE: MusicPlayerState = {
     shuffle: false,
 };
 
-export interface WidgetDefinition<T = unknown> {
-    id: string;
-    name: string;
-    icon: ReactNode;
-    defaultSize: { w: number; h: number };
-    defaultData: T;
-    Component: React.FC<{
-        entity: WorldEntity<T>;
-        isLocked: boolean;
-        update: (patch: Partial<WorldEntity<T>>) => void;
-        ephemeral?: unknown;
-        broadcast?: (data: unknown) => void;
-    }>;
-    SingletonComponent?: React.FC;
-}
+/** @deprecated 代わりに @ubichill/sdk の WidgetDefinition を使用してください */
+export type { WidgetDefinition } from '@ubichill/sdk';

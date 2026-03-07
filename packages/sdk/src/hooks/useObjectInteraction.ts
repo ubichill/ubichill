@@ -18,12 +18,7 @@ interface InteractionOptions {
     onAutoRelease?: (entity: WorldEntity) => Partial<WorldEntity>;
 }
 
-export const useObjectInteraction = (
-    entityId: string,
-    _entityType: string,
-    isLockedByMe: boolean,
-    options: InteractionOptions = {},
-) => {
+export const useObjectInteraction = (entityId: string, isLockedByMe: boolean, options: InteractionOptions = {}) => {
     const { entities, patchEntity } = useWorld();
     const { currentUser } = useSocket();
 
