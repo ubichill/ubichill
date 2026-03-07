@@ -1,0 +1,21 @@
+{
+  "id": "pen:pen",
+  "name": "Pen",
+  "version": "2.0.0",
+  "description": "Drawing tool for collaborative real-time sketching and annotation",
+  "author": "Ubichill Team",
+  "license": "MIT",
+  "repository": "https://github.com/ubichill/ubichill",
+  "entry": {
+    "frontend": "./frontend/src/index.ts",
+    "worker": "./worker/src/index.ts"
+  },
+  "capabilities": [
+    "scene:read",
+    "scene:update",
+    "ui:toast"
+  ],
+  "experimental": {
+    "typescript_strict": true
+  }
+}

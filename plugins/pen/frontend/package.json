@@ -9,7 +9,6 @@
     },
     "peerDependencies": {
         "@ubichill/sdk": "workspace:*",
-        "@ubichill/shared": "workspace:*",
         "react": "^19.0.0"
     },
     "scripts": {

@@ -355,7 +355,8 @@ export const SERVER_CONFIG = {
 export type AnyWorldEntity = WorldEntity<unknown>;
 
 // ============================================
-// Re-export Schemas
+// Re-export Schemas and Plugins
 // ============================================
 
+export * from './plugin/types';
 export * from './schemas';

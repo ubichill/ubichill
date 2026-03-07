@@ -9,7 +9,7 @@ global:
 # Backend application configuration
 backend:
   enabled: true
-  replicaCount: 3
+  replicaCount: 1
   
   image:
     repository: "ubichill-video-player-music-backend"
@@ -32,7 +32,7 @@ backend:
   
   # Auto-scaling configuration
   autoscaling:
-    enabled: true
+    enabled: false
     minReplicas: 2
     maxReplicas: 10
     targetCPUUtilizationPercentage: 70

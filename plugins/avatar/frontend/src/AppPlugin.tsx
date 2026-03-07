@@ -1,7 +1,7 @@
 'use client';
 
-import { useEntity, useSocket } from '@ubichill/sdk';
-import type { AppAvatarDef, CursorState, UserStatus } from '@ubichill/shared';
+import type { AppAvatarDef, CursorState, UserStatus } from '@ubichill/sdk';
+import { useEntity, useSocket } from '@ubichill/sdk/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AvatarCursor } from './AvatarCursor';
 import { CursorMenu } from './components/CursorMenu';
@@ -108,10 +108,12 @@ export const AvatarPlugin: React.FC<AvatarPluginProps> = ({
     useEffect(() => {
         const handleContextMenu = (e: MouseEvent) => {
             e.preventDefault();
-            const position = { x: e.clientX, y: e.clientY };
-            // 位置を設定することでメニューを表示
-            setRadialMenuPosition(position);
-            menuOpenPositionRef.current = position;
+            const screenPosition = { x: e.clientX, y: e.clientY };
+            const worldPosition = { x: e.clientX + window.scrollX, y: e.clientY + window.scrollY };
+            // 位置を設定することでメニューを表示 (UI用は画面固定座標)
+            setRadialMenuPosition(screenPosition);
+            // 絵文字などのスポーン用にはワールド座標を保持
+            menuOpenPositionRef.current = worldPosition;
             // メニュー開始を同期
             updateUser({ isMenuOpen: true });
         };
@@ -280,8 +282,14 @@ export const AvatarPlugin: React.FC<AvatarPluginProps> = ({
                                         position: 'fixed',
                                         pointerEvents: 'none',
                                         zIndex: 10000,
-                                        left: canvasOffset.left + displayPosition.x - remoteHotspot.x,
-                                        top: canvasOffset.top + displayPosition.y - remoteHotspot.y,
+                                        left:
+                                            displayPosition.x -
+                                            remoteHotspot.x -
+                                            (typeof window !== 'undefined' ? window.scrollX : 0),
+                                        top:
+                                            displayPosition.y -
+                                            remoteHotspot.y -
+                                            (typeof window !== 'undefined' ? window.scrollY : 0),
                                     }}
                                 >
                                     {remoteUrl ? (
@@ -358,13 +366,7 @@ export const AvatarPlugin: React.FC<AvatarPluginProps> = ({
             )}
 
             {/* Local Avatar Cursor - カスタムカーソル選択時のみ表示 */}
-            <AvatarCursor
-                cursorState={cursorState}
-                userStatus={_userStatus}
-                mousePosition={mousePosition}
-                canvasOffset={canvasOffset}
-                showRadialMenu={showRadialMenu}
-            />
+            <AvatarCursor cursorState={cursorState} userStatus={_userStatus} showRadialMenu={showRadialMenu} />
 
             {/* Radial Menu */}
             {radialMenuPosition && (

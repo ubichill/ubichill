@@ -1,6 +1,6 @@
 'use client';
 
-import { useSocket, useWorld, Z_INDEX } from '@ubichill/sdk';
+import { useSocket, useWorld, Z_INDEX } from '@ubichill/sdk/react';
 import { DEFAULTS } from '@ubichill/shared';
 import type React from 'react';
 import { EntityRenderer } from '@/core/components/EntityRenderer';

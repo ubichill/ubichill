@@ -1,6 +1,6 @@
 'use client';
 
-import { useSocket, useWorld, Z_INDEX } from '@ubichill/sdk';
+import { useSocket, useWorld, Z_INDEX } from '@ubichill/sdk/react';
 import type React from 'react';
 import { useCallback } from 'react';
 import { DEFAULT_PENS, PEN_CONFIG } from './config';

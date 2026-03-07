@@ -1,6 +1,6 @@
 'use client';
 
-import { useSocket, useWorld } from '@ubichill/sdk';
+import { useSocket, useWorld } from '@ubichill/sdk/react';
 import getStroke from 'perfect-freehand';
 import type React from 'react';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
@@ -95,6 +95,20 @@ export const PenCanvasProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         [forceUpdate],
     );
 
+    // 新しいワールドに参加したときにキャンバス状態をリセット
+    useEffect(() => {
+        if (!socket) return;
+        const handleSnapshot = () => {
+            currentDrawingRef.current = null;
+            remoteDrawingsRef.current = new Map();
+            forceUpdate();
+        };
+        socket.on('world:snapshot', handleSnapshot);
+        return () => {
+            socket.off('world:snapshot', handleSnapshot);
+        };
+    }, [socket, forceUpdate]);
+
     useEffect(() => {
         if (!socket) return;
 
@@ -140,6 +154,7 @@ export const PenCanvasProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                     left: 0,
                     width: '100vw',
                     height: '100vh',
+                    overflow: 'visible',
                     pointerEvents: 'none',
                     zIndex: 50,
                 }}

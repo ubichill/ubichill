@@ -1,31 +1,9 @@
-import type { WidgetDefinition } from '@ubichill/sdk';
-import type { WorldEntity } from '@ubichill/shared';
-import { useEffect, useState } from 'react';
+import type { WidgetComponentProps, WidgetDefinition } from '@ubichill/sdk/react';
 import type { AvatarData } from './types';
 
-const AvatarWidget: React.FC<{
-    entity: WorldEntity<AvatarData>;
-    update: (patch: Partial<WorldEntity<AvatarData>>) => void;
-}> = ({ entity, update }) => {
-    const [position, setPosition] = useState({ x: 0, y: 0 });
-    // 初期表示で左上に一瞬出るのを防ぐためのフラグ
-    const [isVisible, setIsVisible] = useState(false);
+const AvatarWidget: React.FC<WidgetComponentProps<AvatarData>> = ({ entity, update }) => {
+    // duplicated cursor was here
 
-    useEffect(() => {
-        const handleMouseMove = (e: MouseEvent) => {
-            setPosition({ x: e.clientX, y: e.clientY });
-            if (!isVisible) setIsVisible(true);
-        };
-
-        window.addEventListener('mousemove', handleMouseMove);
-
-        // クリーンアップ
-        return () => {
-            window.removeEventListener('mousemove', handleMouseMove);
-        };
-    }, [isVisible]);
-
-    const avatarUrl = entity.data.url;
     const hotX = entity.data.hotspot?.x ?? 0;
     const hotY = entity.data.hotspot?.y ?? 0;
 
@@ -143,22 +121,6 @@ const AvatarWidget: React.FC<{
 
                 <div style={{ fontSize: '12px', color: '#666' }}>Current: {entity.data.url ? 'Custom' : 'Default'}</div>
             </div>
-
-            {/* アバター画像 (DOMオーバーレイ) */}
-            {avatarUrl && (
-                <img
-                    src={avatarUrl}
-                    alt="avatar"
-                    style={{
-                        position: 'fixed',
-                        left: position.x - hotX,
-                        top: position.y - hotY,
-                        pointerEvents: 'none',
-                        zIndex: 9999,
-                        opacity: isVisible ? 1 : 0,
-                    }}
-                />
-            )}
         </>
     );
 };

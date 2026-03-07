@@ -1,99 +1,57 @@
-import { useSocket } from '@ubichill/sdk';
-import type { CursorState, UserStatus } from '@ubichill/shared';
+import type { CursorState, UserStatus } from '@ubichill/sdk';
+import { useCursorPosition, usePluginWorker, useSocket } from '@ubichill/sdk/react';
 import type React from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
+import { avatarPluginCode } from './AvatarBehaviour.gen';
 
 export interface AvatarCursorProps {
     cursorState: CursorState;
     userStatus: UserStatus;
-    mousePosition: { x: number; y: number };
-    canvasOffset?: { left: number; top: number };
     showRadialMenu?: boolean;
 }
 
 /**
- * AvatarCursor - Handles the local user's custom cursor rendering and logic.
+ * AvatarCursor - ローカルユーザーのカスタムカーソルの描画を担当します。
+ *
+ * マウス入力は InputCollector が毎フレーム全 Worker へ自動配信するため、
+ * Frontend からマウス座標を送信するコードは不要です。
+ * Worker（AvatarBehaviour.gen.ts）が EcsEventType.INPUT_MOUSE_MOVE で座標を受け取り、
+ * lerp 補間後に SCENE_UPDATE_CURSOR コマンドで位置を返します。
+ *
+ * このコンポーネントの責務:
+ *   - Worker の起動とコマンド受信（描画位置の更新）
+ *   - busy ステータス / ラジアルメニュー時のロック状態を Worker に通知
+ *   - カーソル画像の描画
+ *   - システムカーソルの制御
  */
-export const AvatarCursor: React.FC<AvatarCursorProps> = ({
-    cursorState,
-    userStatus,
-    mousePosition,
-    canvasOffset: _canvasOffset = { left: 0, top: 0 },
-    showRadialMenu = false,
-}) => {
+export const AvatarCursor: React.FC<AvatarCursorProps> = ({ cursorState, userStatus, showRadialMenu = false }) => {
     const { currentUser } = useSocket();
-    const [fixedAvatarPosition, setFixedAvatarPosition] = useState<{ x: number; y: number } | null>(null);
-    const previousStatusRef = useRef<UserStatus>(userStatus);
-    const previousMenuRef = useRef<boolean>(showRadialMenu);
-    const cursorRef = useRef<HTMLDivElement>(null);
 
-    // Initial mouse position sync
-    const [smoothPosition, setSmoothPosition] = useState(mousePosition);
-
-    // Sync position with mouse or fixed status
-    useEffect(() => {
-        // Handle busy status - lock cursor position
-        if (userStatus === 'busy' && previousStatusRef.current !== 'busy') {
-            setFixedAvatarPosition({ ...mousePosition });
-        } else if (userStatus !== 'busy' && previousStatusRef.current === 'busy') {
-            setFixedAvatarPosition(null);
-        }
-
-        previousStatusRef.current = userStatus;
-    }, [userStatus, mousePosition]);
-
-    // Handle radial menu - lock cursor position
-    useEffect(() => {
-        // When menu opens, lock position
-        if (showRadialMenu && !previousMenuRef.current) {
-            setFixedAvatarPosition({ ...mousePosition });
-        }
-        // When menu closes, unlock if not busy
-        else if (!showRadialMenu && previousMenuRef.current && userStatus !== 'busy') {
-            setFixedAvatarPosition(null);
-        }
-
-        previousMenuRef.current = showRadialMenu;
-    }, [showRadialMenu, mousePosition, userStatus]);
-
-    // Animation loop for smooth cursor movement
-    useEffect(() => {
-        let animationFrameId: number;
-
-        const animate = () => {
-            const targetPos =
-                (userStatus === 'busy' || showRadialMenu) && fixedAvatarPosition ? fixedAvatarPosition : mousePosition;
-
-            setSmoothPosition((prev) => {
-                // Simple lerp for smoothness
-                const lerpFactor = 0.3; // Higher value = faster follow
-                const x = prev.x + (targetPos.x - prev.x) * lerpFactor;
-                const y = prev.y + (targetPos.y - prev.y) * lerpFactor;
-
-                // If very close, snap to target to avoid jitter
-                if (Math.abs(targetPos.x - x) < 0.1 && Math.abs(targetPos.y - y) < 0.1) {
-                    return targetPos;
-                }
-                return { x, y };
-            });
-
-            animationFrameId = requestAnimationFrame(animate);
-        };
-
-        animationFrameId = requestAnimationFrame(animate);
-
-        return () => {
-            cancelAnimationFrame(animationFrameId);
-        };
-    }, [mousePosition, userStatus, fixedAvatarPosition, showRadialMenu]);
-
-    // Determine current avatar image and hotspot
     const localAvatar = currentUser?.avatar || { states: {} };
     const currentLocalAvatar = localAvatar.states[cursorState] || localAvatar.states.default;
     const localAvatarUrl = currentLocalAvatar?.url;
     const localHotspot = currentLocalAvatar?.hotspot || { x: 0, y: 0 };
 
-    // Hide system cursor logic
+    // DOM 直接書き込みで re-render ゼロのカーソル位置更新
+    const { divRef, onCursorUpdate } = useCursorPosition({ hotspot: localHotspot });
+
+    const { sendEvent } = usePluginWorker({
+        pluginCode: avatarPluginCode,
+        handlers: {
+            onCursorUpdate,
+        },
+    });
+
+    // busy ステータスまたはラジアルメニュー表示中は入力をロック
+    const locked = userStatus === 'busy' || showRadialMenu;
+    const prevLockedRef = useRef(locked);
+    useEffect(() => {
+        if (locked === prevLockedRef.current) return;
+        prevLockedRef.current = locked;
+        sendEvent({ type: 'EVT_CUSTOM', payload: { eventType: 'avatar:lock', data: { locked } } });
+    }, [locked, sendEvent]);
+
+    // システムカーソルの非表示
     useEffect(() => {
         if (localAvatarUrl && localAvatar.hideSystemCursor) {
             document.body.classList.add('cursor-hidden');
@@ -123,12 +81,12 @@ export const AvatarCursor: React.FC<AvatarCursorProps> = ({
 
     return (
         <div
-            ref={cursorRef}
+            ref={divRef}
             style={{
                 position: 'fixed',
                 left: 0,
                 top: 0,
-                transform: `translate3d(${smoothPosition.x - localHotspot.x}px, ${smoothPosition.y - localHotspot.y}px, 0)`,
+                visibility: 'hidden',
                 pointerEvents: 'none',
                 zIndex: 9999,
                 willChange: 'transform',

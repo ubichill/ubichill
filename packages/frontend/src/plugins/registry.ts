@@ -2,7 +2,7 @@ import type { AvatarPluginProps } from '@ubichill/plugin-avatar';
 import { AvatarPlugin, avatarWidgetDefinition } from '@ubichill/plugin-avatar';
 import { PenTray, penWidgetDefinition } from '@ubichill/plugin-pen';
 import { videoPlayerDefinition } from '@ubichill/plugin-video-player';
-import type { WidgetDefinition } from '@ubichill/sdk';
+import type { WidgetDefinition } from '@ubichill/sdk/react';
 import type React from 'react';
 
 // Widget Plugins (Draggable entities in the world)

@@ -36,7 +36,15 @@
             ],
             "@ubichill/sdk": [
                 "../sdk/src/index.ts"
-            ]
+            ],
+            "@ubichill/sdk/react": [
+                "../sdk/src/react/index.ts"
+            ],
+            "@ubichill/engine": ["../engine/src/index.ts"],
+            "@ubichill/sandbox": ["../sandbox/src/index.ts"],
+            "@ubichill/sandbox/host": ["../sandbox/src/host/index.ts"],
+            "@ubichill/react": ["../react/src/index.ts"],
+            "@ubichill/shared": ["../shared/src/index.ts"]
         },
         "target": "ES2017"
     },
