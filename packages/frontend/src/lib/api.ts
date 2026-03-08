@@ -17,18 +17,10 @@
 export function getApiBase(): string {
     if (typeof window === 'undefined') {
         // SSR: Pod 内から別 Pod への通信
-        return (
-            process.env.BACKEND_INTERNAL_URL ??
-            process.env.NEXT_PUBLIC_API_URL ??
-            'http://localhost:3001'
-        );
+        return process.env.BACKEND_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
     }
     // CSR: ブラウザから Ingress 経由
-    return (
-        process.env.NEXT_PUBLIC_BACKEND_URL ||
-        process.env.NEXT_PUBLIC_API_URL ||
-        window.location.origin
-    );
+    return process.env.NEXT_PUBLIC_BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || window.location.origin;
 }
 
 /**

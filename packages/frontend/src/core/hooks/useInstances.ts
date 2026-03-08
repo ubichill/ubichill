@@ -1,6 +1,6 @@
 'use client';
 
-import { type CreateInstanceRequest, type Instance, type WorldListItem } from '@ubichill/shared';
+import type { CreateInstanceRequest, Instance, WorldListItem } from '@ubichill/shared';
 import { useCallback, useEffect, useState } from 'react';
 
 import { API_BASE } from '@/lib/api';

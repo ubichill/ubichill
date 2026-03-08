@@ -1,9 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { css } from '@/styled-system/css';
-
 import { getApiBase } from '@/lib/api';
+import { css } from '@/styled-system/css';
 
 interface VersionInfo {
     commitHash: string;
