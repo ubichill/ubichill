@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { css } from '@/styled-system/css';
 
-const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+import { getApiBase } from '@/lib/api';
 
 interface VersionInfo {
     commitHash: string;
@@ -14,7 +14,7 @@ export function VersionBadge() {
     const [info, setInfo] = useState<VersionInfo | null>(null);
 
     useEffect(() => {
-        fetch(`${API_BASE}/api/version`)
+        fetch(`${getApiBase()}/api/version`)
             .then((r) => r.json())
             .then((data: VersionInfo) => setInfo(data))
             .catch(() => {

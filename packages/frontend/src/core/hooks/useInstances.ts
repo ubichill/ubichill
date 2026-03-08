@@ -1,11 +1,9 @@
 'use client';
 
-import { type CreateInstanceRequest, type Instance, SERVER_CONFIG, type WorldListItem } from '@ubichill/shared';
+import { type CreateInstanceRequest, type Instance, type WorldListItem } from '@ubichill/shared';
 import { useCallback, useEffect, useState } from 'react';
 
-const API_BASE =
-    process.env.NEXT_PUBLIC_BACKEND_URL ||
-    (typeof window !== 'undefined' && window.location.hostname !== 'localhost' ? '' : SERVER_CONFIG.DEV_URL);
+import { API_BASE } from '@/lib/api';
 
 interface UseInstancesReturn {
     instances: Instance[];
