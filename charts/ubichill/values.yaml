@@ -229,7 +229,9 @@ postgresql:
     repository: docker.io/bitnami/postgresql
   auth:
     enablePostgresUser: true
-    postgresPassword: "ubichill-db-secret"
+    postgresPassword: "password"
+    username: "ubichill"
+    password: "password"
     existingSecret: ""
     database: "ubichill"
   primary:
