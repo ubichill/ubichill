@@ -14,7 +14,6 @@ export const mainContainer = flex({
     py: { base: '4', md: '6' },
     position: 'relative',
     bg: '#faf6f0',
-    overflow: 'hidden',
 });
 
 export const texturedBackdrop = css({
