@@ -81,6 +81,7 @@ function maskUrl(url: string): string {
 
 // 設定を表示（機密情報を除く）
 console.log('📋 サーバー設定:');
+console.log(`   コミット: ${process.env.COMMIT_HASH ?? 'unknown'}`);
 console.log(`   環境: ${appConfig.nodeEnv}`);
 console.log(`   ポート: ${appConfig.port}`);
 console.log(

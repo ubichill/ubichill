@@ -36,6 +36,13 @@ COPY turbo.json turbo.json
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 
+# フロントエンドのコミットハッシュ（ビルド時に Next.js へ静的埋め込み）
+ARG NEXT_PUBLIC_COMMIT_HASH=unknown
+ENV NEXT_PUBLIC_COMMIT_HASH=${NEXT_PUBLIC_COMMIT_HASH}
+
+ARG COMMIT_HASH=unknown
+ENV COMMIT_HASH=${COMMIT_HASH}
+
 # Build everything
 RUN pnpm run build
 
@@ -47,14 +54,33 @@ RUN echo "inject-workspace-packages=true" > .npmrc
 # これにより、必要なprod依存関係とビルド済みファイルが /app/deploy-backend に集約される
 RUN pnpm --filter="@ubichill/backend" --prod deploy /app/deploy-backend
 
+# Frontend Deploy (pnpm の完璧な node_modules を生成)
+# standalone の node_modules は pnpm 仮想ストアのシンボリックリンク問題で不完全なため、
+# pnpm deploy が作る解決済みの node_modules に差し替えてイメージの完全性を確保する。
+RUN pnpm --filter="@ubichill/frontend" --prod deploy --ignore-scripts /app/deploy-frontend \
+    # server.js: standalone が生成した固有のエントリポイント
+    && cp packages/frontend/.next/standalone/packages/frontend/server.js /app/deploy-frontend/server.js \
+    # .next/server/: ページバンドルと各種マニフェスト (server-side rendering に必須)
+    && cp -r packages/frontend/.next/server /app/deploy-frontend/.next/ \
+    # .next/ 直下のファイル群: BUILD_ID・routes-manifest.json 等 Next.js が起動時に読むもの
+    && find packages/frontend/.next -maxdepth 1 -type f -exec cp {} /app/deploy-frontend/.next/ \; \
+    # static アセット (CSS/JS チャンク、クライアント向け)
+    && cp -r packages/frontend/.next/static /app/deploy-frontend/.next/ \
+    # public ディレクトリ (画像・フォント等)
+    && cp -r packages/frontend/public /app/deploy-frontend/public
+
 # ==========================================
 # Backend Runner
 # ==========================================
-FROM base AS backend-runner
+FROM node:${NODE_VERSION}-alpine AS backend-runner
+RUN apk add --no-cache libc6-compat
 WORKDIR /app
-USER node
+ENV NODE_ENV=production
 
-# Deployed application is self-contained (includes node_modules, dist, package.json, and workspace deps)
+ARG COMMIT_HASH=unknown
+ENV COMMIT_HASH=${COMMIT_HASH}
+
+USER node
 COPY --from=installer --chown=node:node /app/deploy-backend .
 
 EXPOSE 3001
@@ -63,19 +89,21 @@ CMD ["node", "dist/index.js"]
 # ==========================================
 # Frontend Runner
 # ==========================================
-FROM base AS frontend-runner
+FROM node:${NODE_VERSION}-alpine AS frontend-runner
+RUN apk add --no-cache libc6-compat
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
-USER node
 
-COPY --from=installer --chown=node:node /app/packages/frontend/public ./packages/frontend/public
-COPY --from=installer --chown=node:node /app/packages/frontend/.next/static ./packages/frontend/.next/static
-COPY --from=installer --chown=node:node /app/packages/frontend/.next/standalone ./
+ARG COMMIT_HASH=unknown
+ENV COMMIT_HASH=${COMMIT_HASH}
+
+USER node
+COPY --from=installer --chown=node:node /app/deploy-frontend .
 
 EXPOSE 3000
-CMD ["node", "packages/frontend/server.js"]
+CMD ["node", "server.js"]
 
 # ==========================================
 # Development Stage

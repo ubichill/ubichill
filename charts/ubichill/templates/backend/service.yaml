@@ -1,23 +1,23 @@
-{{- if .Values.frontend.enabled }}
+{{- if .Values.backend.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "ubichill.fullname" . }}-frontend
+  name: {{ include "ubichill.fullname" . }}-backend
   labels:
     {{- include "ubichill.labels" . | nindent 4 }}
-    component: frontend
-  {{- with .Values.service.frontend.annotations }}
+    component: backend
+  {{- with .Values.service.backend.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  type: {{ .Values.service.frontend.type }}
+  type: {{ .Values.service.backend.type }}
   ports:
-    - port: {{ .Values.service.frontend.port }}
+    - port: {{ .Values.service.backend.port }}
       targetPort: http
       protocol: TCP
       name: http
   selector:
     {{- include "ubichill.selectorLabels" . | nindent 4 }}
-    component: frontend
+    component: backend
 {{- end }}

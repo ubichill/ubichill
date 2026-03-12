@@ -192,7 +192,7 @@ export async function resendOTP(email: string): Promise<{ success: boolean; erro
         console.log('   OTP: [REDACTED]');
     }
     try {
-        await resend.emails.send({
+        await getResend().emails.send({
             from: 'Ubichill <noreply@youkan.uk>',
             to: email,
             subject: `【Ubichill】${pending.username} さんの認証コード（再送信）`,

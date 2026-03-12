@@ -151,6 +151,12 @@ importers:
 
   packages/frontend:
     dependencies:
+      '@next/env':
+        specifier: ^16.1.6
+        version: 16.1.6
+      '@swc/helpers':
+        specifier: 0.5.15
+        version: 0.5.15
       '@ubichill/plugin-avatar':
         specifier: workspace:*
         version: link:../../plugins/avatar/frontend
@@ -190,6 +196,9 @@ importers:
       socket.io-client:
         specifier: ^4.8.3
         version: 4.8.3
+      styled-jsx:
+        specifier: 5.1.6
+        version: 5.1.6(react@19.2.4)
       upng-js:
         specifier: ^2.1.0
         version: 2.1.0

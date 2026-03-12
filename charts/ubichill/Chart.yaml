@@ -14,7 +14,7 @@ keywords:
 
 maintainers:
   - name: Ubichill Team
-    email: dev@ubichill.com
+    email: pnasimonan@gmail.com
 
 # Dependencies for shared services (optional Redis, PostgreSQL, etc.)
 dependencies:

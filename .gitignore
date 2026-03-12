@@ -8,6 +8,7 @@ dist/
 out/
 styled-system/
 .turbo/
+next-env.d.ts
 
 # Environment files
 .env

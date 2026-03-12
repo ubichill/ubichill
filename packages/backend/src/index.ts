@@ -59,6 +59,14 @@ app.get('/health', (_req, res) => {
     res.json({ status: 'ok', timestamp: Date.now() });
 });
 
+// バージョン情報エンドポイント（ビルド時のコミットハッシュを返す）
+app.get('/api/version', (_req, res) => {
+    res.json({
+        commitHash: process.env.COMMIT_HASH ?? 'unknown',
+        environment: appConfig.nodeEnv,
+    });
+});
+
 // オーディオAPI（YouTube音楽ストリーム）
 app.use('/api/audio', audioRouter);
 
