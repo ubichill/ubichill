@@ -3,7 +3,7 @@
 import { usePluginWorker } from '@ubichill/sdk/react';
 import { useEffect, useRef } from 'react';
 import { penPluginCode } from './PenBehaviour.gen';
-import type { PenWorkerMessage } from './types';
+import type { PenPayloads } from './types';
 
 interface PenWorkerProps {
     entityId: string;
@@ -37,7 +37,7 @@ export const PenWorker: React.FC<PenWorkerProps> = ({
         broadcastRef.current = broadcast;
     }, [onDrawingUpdate, onStrokeComplete, onPositionUpdate, broadcast]);
 
-    usePluginWorker<PenWorkerMessage>({
+    usePluginWorker<PenPayloads & { 'cursor:position': { x: number; y: number } }>({
         pluginCode: penPluginCode,
         pluginId: `pen:${entityId.slice(0, 8)}`,
         handlers: {
@@ -52,15 +52,14 @@ export const PenWorker: React.FC<PenWorkerProps> = ({
                 } else if (msg.type === 'STROKE_COMPLETE') {
                     onStrokeCompleteRef.current({ points: msg.payload.points, color, size: strokeWidth });
                     broadcastRef.current?.({ isComplete: true, points: msg.payload.points, color, size: strokeWidth });
-                    // ストローク完成後にプレビューをクリア（DRAWING_CLEAR を別途送らなくてよい）
                     onDrawingUpdateRef.current([]);
                 } else if (msg.type === 'DRAWING_CLEAR') {
-                    // 将来の「全消し」操作向け（消しゴムボタンなど）
                     onDrawingUpdateRef.current([]);
                     broadcastRef.current?.({ isComplete: true, points: [], color, size: strokeWidth });
+                } else if (msg.type === 'cursor:position') {
+                    onPositionUpdateRef.current(msg.payload.x, msg.payload.y);
                 }
             },
-            onCursorUpdate: (x, y) => onPositionUpdateRef.current(x, y),
         },
     });
 

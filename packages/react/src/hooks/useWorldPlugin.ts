@@ -1,6 +1,5 @@
 'use client';
 
-import type { PluginWorkerMessage } from '@ubichill/engine';
 import { PluginHostManager } from '@ubichill/sandbox/host';
 import type { EntityPatchPayload, PluginHostEvent, WorldEntity } from '@ubichill/shared';
 import { useCallback, useEffect, useRef } from 'react';
@@ -16,23 +15,22 @@ import { useWorld } from './useWorld';
  * UI 描画に特化したプラグインには usePluginWorker を直接使う。
  * ワールドの entity を操作するプラグインにはこちらを使う。
  */
-export type UseWorldPluginOptions<TMsg extends PluginWorkerMessage = PluginWorkerMessage> = Omit<
-    UsePluginWorkerOptions<TMsg>,
+export type UseWorldPluginOptions<TPayloadMap extends Record<string, unknown> = Record<string, unknown>> = Omit<
+    UsePluginWorkerOptions<TPayloadMap>,
     'handlers'
 > & {
-    handlers?: Pick<PluginWorkerHandlers<TMsg>, 'onMessage' | 'onCommand' | 'onCursorUpdate'>;
+    handlers?: Pick<PluginWorkerHandlers<TPayloadMap>, 'onMessage' | 'onCommand'>;
 };
 
-export function useWorldPlugin<TMsg extends PluginWorkerMessage = PluginWorkerMessage>(
-    options: UseWorldPluginOptions<TMsg>,
+export function useWorldPlugin<TPayloadMap extends Record<string, unknown> = Record<string, unknown>>(
+    options: UseWorldPluginOptions<TPayloadMap>,
 ) {
     const { entities, createEntity, patchEntity, deleteEntity } = useWorld();
-    const managerRef = useRef<PluginHostManager<TMsg> | null>(null);
+    const managerRef = useRef<PluginHostManager<TPayloadMap> | null>(null);
 
-    // Ref で最新の値を参照（Worker コールバックが stale closure にならないようにする）
     const entitiesRef = useRef(entities);
     entitiesRef.current = entities;
-    const handlersRef = useRef<UseWorldPluginOptions<TMsg>['handlers']>(options.handlers);
+    const handlersRef = useRef<UseWorldPluginOptions<TPayloadMap>['handlers']>(options.handlers);
     const createEntityRef = useRef(createEntity);
     const patchEntityRef = useRef(patchEntity);
     const deleteEntityRef = useRef(deleteEntity);
@@ -47,13 +45,14 @@ export function useWorldPlugin<TMsg extends PluginWorkerMessage = PluginWorkerMe
     });
 
     useEffect(() => {
-        const manager = new PluginHostManager<TMsg>({
+        const manager = new PluginHostManager<TPayloadMap>({
             pluginCode: options.pluginCode,
             pluginId: options.pluginId,
             capabilities: options.capabilities,
             maxExecutionTime: options.maxExecutionTime,
             tickFps: options.tickFps,
             disableAutoTick: options.disableAutoTick,
+            disableAutoInput: options.disableAutoInput,
             worldId: options.worldId,
             myUserId: options.myUserId,
             handlers: {
@@ -78,14 +77,7 @@ export function useWorldPlugin<TMsg extends PluginWorkerMessage = PluginWorkerMe
                 },
 
                 onMessage: (msg) => handlersRef.current?.onMessage?.(msg),
-
-                onCommand: (cmd) => {
-                    if (cmd.type === 'SCENE_UPDATE_CURSOR') {
-                        handlersRef.current?.onCursorUpdate?.(cmd.payload.x, cmd.payload.y);
-                        return;
-                    }
-                    handlersRef.current?.onCommand?.(cmd);
-                },
+                onCommand: (cmd) => handlersRef.current?.onCommand?.(cmd),
             },
         });
         managerRef.current = manager;
@@ -101,6 +93,7 @@ export function useWorldPlugin<TMsg extends PluginWorkerMessage = PluginWorkerMe
         options.maxExecutionTime,
         options.tickFps,
         options.disableAutoTick,
+        options.disableAutoInput,
         options.worldId,
         options.myUserId,
     ]);

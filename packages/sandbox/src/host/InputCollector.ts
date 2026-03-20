@@ -98,10 +98,9 @@ export class InputCollector {
      * System がループすると「クリック → 位置確定」の自然な順序になる。
      */
     public flushEvents(): InputFrameEvent[] {
-        const events =
-            this._latestMousePos
-                ? [...this._discreteEvents, this._latestMousePos]
-                : this._discreteEvents.slice();
+        const events = this._latestMousePos
+            ? [...this._discreteEvents, this._latestMousePos]
+            : this._discreteEvents.slice();
 
         this._discreteEvents = [];
         this._latestMousePos = null;

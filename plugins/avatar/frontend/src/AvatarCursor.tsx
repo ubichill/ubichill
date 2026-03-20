@@ -4,6 +4,10 @@ import type React from 'react';
 import { useEffect, useRef } from 'react';
 import { avatarPluginCode } from './AvatarBehaviour.gen';
 
+type AvatarPayloads = {
+    'cursor:position': { x: number; y: number };
+};
+
 export interface AvatarCursorProps {
     cursorState: CursorState;
     userStatus: UserStatus;
@@ -15,11 +19,11 @@ export interface AvatarCursorProps {
  *
  * マウス入力は InputCollector が毎フレーム全 Worker へ自動配信するため、
  * Frontend からマウス座標を送信するコードは不要です。
- * Worker（AvatarBehaviour.gen.ts）が EcsEventType.INPUT_MOUSE_MOVE で座標を受け取り、
- * lerp 補間後に SCENE_UPDATE_CURSOR コマンドで位置を返します。
+ * Worker が EcsEventType.INPUT_MOUSE_MOVE で座標を受け取り、
+ * lerp 補間後に Ubi.network.sendToHost('cursor:position') で位置を返します。
  *
  * このコンポーネントの責務:
- *   - Worker の起動とコマンド受信（描画位置の更新）
+ *   - Worker の起動と onMessage 受信（描画位置の更新）
  *   - busy ステータス / ラジアルメニュー時のロック状態を Worker に通知
  *   - カーソル画像の描画
  *   - システムカーソルの制御
@@ -35,10 +39,14 @@ export const AvatarCursor: React.FC<AvatarCursorProps> = ({ cursorState, userSta
     // DOM 直接書き込みで re-render ゼロのカーソル位置更新
     const { divRef, onCursorUpdate } = useCursorPosition({ hotspot: localHotspot });
 
-    const { sendEvent } = usePluginWorker({
+    const { sendEvent } = usePluginWorker<AvatarPayloads>({
         pluginCode: avatarPluginCode,
         handlers: {
-            onCursorUpdate,
+            onMessage: (msg) => {
+                if (msg.type === 'cursor:position') {
+                    onCursorUpdate(msg.payload.x, msg.payload.y);
+                }
+            },
         },
     });
 

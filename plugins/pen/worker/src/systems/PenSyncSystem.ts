@@ -14,6 +14,7 @@
 import type { Entity, System } from '@ubichill/sdk';
 import type { PenStateData, SyncStateData } from '../components';
 import { PenState, SyncState } from '../components';
+import type { PenPayloads } from '../types';
 
 const SYNC_INTERVAL_MS = 30;
 
@@ -29,7 +30,7 @@ export const PenSyncSystem: System = (entities: Entity[], _dt: number) => {
             // プレビュー更新（スロットリングあり）
             const now = Date.now();
             if (now - syncState.lastSyncTime >= SYNC_INTERVAL_MS) {
-                Ubi.messaging.send('DRAWING_UPDATE', { points: penState.currentStroke });
+                Ubi.network.sendToHost<PenPayloads>('DRAWING_UPDATE', { points: penState.currentStroke });
                 syncState.lastSyncTime = now;
             }
             continue;
@@ -39,7 +40,7 @@ export const PenSyncSystem: System = (entities: Entity[], _dt: number) => {
             // ストローク完成: 先にクリアしてから送信（2重送信防止）
             const points = penState.currentStroke;
             penState.currentStroke = [];
-            Ubi.messaging.send('STROKE_COMPLETE', { points });
+            Ubi.network.sendToHost<PenPayloads>('STROKE_COMPLETE', { points });
         }
     }
 };

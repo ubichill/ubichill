@@ -11,7 +11,7 @@
  *               AvatarState（初期化フラグ・ロックフラグ）
  *   System:     AvatarCursorSystem
  *               INPUT_MOUSE_MOVE イベントで Target を更新し、
- *               毎フレーム Position を lerp して Ubi.scene.updateCursorPosition() を呼ぶ。
+ *               毎フレーム Position を lerp して Ubi.network.sendToHost() で Host へ通知。
  *               'avatar:lock' イベントで入力受付を一時停止できる（busy ステータス等）。
  */
 
@@ -19,7 +19,7 @@ import type { Entity, InputMouseMoveData, System, WorkerEvent } from '@ubichill/
 import { EcsEventType } from '@ubichill/sdk';
 
 type PositionData = { x: number; y: number };
-type AvatarStateData = { initialized: boolean; locked: boolean };
+type AvatarStateData = { initialized: boolean; locked: boolean; lastSentX: number; lastSentY: number };
 
 /** deltaTime に乗算する補間係数（大きいほど追従が速い） */
 const LERP_SPEED = 0.015;
@@ -68,13 +68,17 @@ const AvatarCursorSystem: System = (entities: Entity[], deltaTime: number, event
         pos.y += dy * lerpFactor;
     }
 
-    Ubi.scene.updateCursorPosition(pos.x, pos.y);
+    if (pos.x !== state.lastSentX || pos.y !== state.lastSentY) {
+        state.lastSentX = pos.x;
+        state.lastSentY = pos.y;
+        Ubi.network.sendToHost('cursor:position', { x: pos.x, y: pos.y });
+    }
 };
 
-const avatarEntity = Ubi.world.createEntity('avatar-cursor');
+const avatarEntity = Ubi.local.createEntity('avatar-cursor');
 avatarEntity.setComponent('Position', { x: 0, y: 0 });
 avatarEntity.setComponent('Target', { x: 0, y: 0 });
-avatarEntity.setComponent('AvatarState', { initialized: false, locked: false });
+avatarEntity.setComponent('AvatarState', { initialized: false, locked: false, lastSentX: 0, lastSentY: 0 });
 
 Ubi.registerSystem(AvatarCursorSystem);
 

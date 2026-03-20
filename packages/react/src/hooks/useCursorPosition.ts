@@ -19,14 +19,14 @@
 
 'use client';
 
-import { useCallback, useRef } from 'react';
+import { type RefObject, useCallback, useRef } from 'react';
 
 export type UseCursorPositionOptions = {
     hotspot?: { x: number; y: number };
 };
 
 export function useCursorPosition({ hotspot = { x: 0, y: 0 } }: UseCursorPositionOptions = {}): {
-    divRef: React.RefObject<HTMLDivElement>;
+    divRef: RefObject<HTMLDivElement | null>;
     onCursorUpdate: (x: number, y: number) => void;
 } {
     const divRef = useRef<HTMLDivElement>(null);

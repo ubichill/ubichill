@@ -16,7 +16,7 @@ import { PenState, SyncState, Transform } from './components';
 import { PenInputSystem } from './systems/PenInputSystem';
 import { PenSyncSystem } from './systems/PenSyncSystem';
 
-const penEntity = Ubi.world.createEntity('pen-main');
+const penEntity = Ubi.local.createEntity('pen-main');
 penEntity.setComponent(Transform.name, { ...Transform.default });
 penEntity.setComponent(PenState.name, { ...PenState.default });
 penEntity.setComponent(SyncState.name, { ...SyncState.default });

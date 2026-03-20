@@ -56,4 +56,11 @@ export const EcsEventType = {
     INPUT_MOUSE_UP: 'input:mouse_up',
     INPUT_KEY_DOWN: 'input:key_down',
     INPUT_KEY_UP: 'input:key_up',
+    /**
+     * 他ユーザーの Worker が Ubi.network.broadcast() で送ったデータ。
+     * payload: { userId: string; data: unknown }
+     * event.type が broadcast の type 文字列になるため、このキーで比較するのではなく
+     * broadcast 時に指定した type 文字列で比較すること。
+     */
+    NETWORK_BROADCAST: 'network:broadcast',
 } as const;

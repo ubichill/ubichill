@@ -7,8 +7,13 @@
  * React 環境では @ubichill/react の usePluginWorker 経由で使用することを推奨。
  */
 
-import type { PluginWorkerMessage } from '@ubichill/engine';
-import type { EntityPatchPayload, PluginGuestCommand, PluginHostEvent, WorldEntity } from '@ubichill/shared';
+import type {
+    EntityPatchPayload,
+    PluginGuestCommand,
+    PluginHostEvent,
+    PluginWorkerMessage,
+    WorldEntity,
+} from '@ubichill/shared';
 import { InputCollector } from './InputCollector';
 
 // ============================================================
@@ -21,11 +26,11 @@ export const CAPABILITY_COMMANDS: Readonly<Record<string, readonly string[]>> = 
         'SCENE_CREATE_ENTITY',
         'SCENE_UPDATE_ENTITY',
         'SCENE_DESTROY_ENTITY',
-        'SCENE_UPDATE_CURSOR',
         'SCENE_SUBSCRIBE_ENTITY',
         'SCENE_UNSUBSCRIBE_ENTITY',
     ],
     'net:fetch': ['NET_FETCH'],
+    'net:broadcast': ['NETWORK_BROADCAST'],
     'ui:toast': ['UI_SHOW_TOAST'],
     'avatar:set': ['AVATAR_SET'],
 };
@@ -48,22 +53,23 @@ export type FetchResult = {
     body: string;
 };
 
-export type HostHandlers<TMsg extends PluginWorkerMessage = PluginWorkerMessage> = {
+export type HostHandlers<TPayloadMap extends Record<string, unknown> = Record<string, unknown>> = {
     onGetEntity?: (id: string) => WorldEntity | undefined;
     onCreateEntity?: (entity: Omit<WorldEntity, 'id'>) => Promise<WorldEntity>;
     onUpdateEntity?: (id: string, patch: EntityPatchPayload) => Promise<void>;
     onDestroyEntity?: (id: string) => Promise<void>;
     onFetch?: (url: string, options?: FetchOptions) => Promise<FetchResult>;
-    onMessage?: (msg: TMsg) => void;
+    onMessage?: (msg: PluginWorkerMessage<TPayloadMap>) => void;
+    onNetworkBroadcast?: (type: string, data: unknown) => void;
     onCommand?: (command: PluginGuestCommand) => void;
 };
 
-export interface PluginHostManagerOptions<TMsg extends PluginWorkerMessage = PluginWorkerMessage> {
+export interface PluginHostManagerOptions<TPayloadMap extends Record<string, unknown> = Record<string, unknown>> {
     pluginCode: string;
     worldId?: string;
     myUserId?: string;
     pluginId?: string;
-    handlers: HostHandlers<TMsg>;
+    handlers: HostHandlers<TPayloadMap>;
     capabilities?: string[];
     maxExecutionTime?: number;
     onResourceLimitExceeded?: (reason: string) => void;
@@ -77,9 +83,9 @@ export interface PluginHostManagerOptions<TMsg extends PluginWorkerMessage = Plu
 // PluginHostManager
 // ============================================================
 
-export class PluginHostManager<TMsg extends PluginWorkerMessage = PluginWorkerMessage> {
+export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Record<string, unknown>> {
     private worker: Worker;
-    private handlers: HostHandlers<TMsg>;
+    private handlers: HostHandlers<TPayloadMap>;
     private executionTimer: ReturnType<typeof setTimeout> | null = null;
     private onResourceLimitExceeded?: (reason: string) => void;
     private isInitialized = false;
@@ -125,13 +131,13 @@ export class PluginHostManager<TMsg extends PluginWorkerMessage = PluginWorkerMe
         }
     };
 
-    constructor(options: PluginHostManagerOptions<TMsg>) {
+    constructor(options: PluginHostManagerOptions<TPayloadMap>) {
         this.handlers = options.handlers;
         this.onResourceLimitExceeded = options.onResourceLimitExceeded;
         this._logPrefix = options.pluginId ? `[PluginSandbox:${options.pluginId}]` : '[PluginSandbox]';
 
         if (options.capabilities) {
-            this.allowedCommands = new Set(['CUSTOM_MESSAGE']);
+            this.allowedCommands = new Set(['NETWORK_SEND_TO_HOST']);
             for (const cap of options.capabilities) {
                 for (const cmd of CAPABILITY_COMMANDS[cap] ?? []) {
                     this.allowedCommands.add(cmd);
@@ -191,15 +197,15 @@ export class PluginHostManager<TMsg extends PluginWorkerMessage = PluginWorkerMe
         }
     }
 
-    static async fromUrl<TMsg extends PluginWorkerMessage = PluginWorkerMessage>(
+    static async fromUrl<TPayloadMap extends Record<string, unknown> = Record<string, unknown>>(
         url: string,
-        options: Omit<PluginHostManagerOptions<TMsg>, 'pluginCode'>,
-    ): Promise<PluginHostManager<TMsg>> {
+        options: Omit<PluginHostManagerOptions<TPayloadMap>, 'pluginCode'>,
+    ): Promise<PluginHostManager<TPayloadMap>> {
         const res = await fetch(url);
         if (!res.ok) {
             throw new Error(`[PluginHostManager] プラグインコードの取得に失敗: ${res.status} ${url}`);
         }
-        return new PluginHostManager<TMsg>({ ...options, pluginCode: await res.text() });
+        return new PluginHostManager<TPayloadMap>({ ...options, pluginCode: await res.text() });
     }
 
     private _startTickLoop(): void {
@@ -266,11 +272,14 @@ export class PluginHostManager<TMsg extends PluginWorkerMessage = PluginWorkerMe
                 case 'NET_FETCH':
                     result = await this.handlers.onFetch?.(command.payload.url, command.payload.options);
                     break;
-                case 'CUSTOM_MESSAGE':
+                case 'NETWORK_SEND_TO_HOST':
                     this.handlers.onMessage?.({
                         type: command.payload.type,
                         payload: command.payload.data,
-                    } as TMsg);
+                    } as PluginWorkerMessage<TPayloadMap>);
+                    break;
+                case 'NETWORK_BROADCAST':
+                    this.handlers.onNetworkBroadcast?.(command.payload.type, command.payload.data);
                     break;
                 default:
                     this.handlers.onCommand?.(command);

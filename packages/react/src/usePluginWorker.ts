@@ -1,11 +1,10 @@
-import type { PluginWorkerMessage } from '@ubichill/engine';
 import {
     type FetchOptions,
     type FetchResult,
     PluginHostManager,
     type PluginHostManagerOptions,
 } from '@ubichill/sandbox/host';
-import type { PluginGuestCommand, PluginHostEvent } from '@ubichill/shared';
+import type { PluginGuestCommand, PluginHostEvent, PluginWorkerMessage } from '@ubichill/shared';
 import { useCallback, useEffect, useRef } from 'react';
 
 export { PluginHostManager, type FetchOptions, type FetchResult, type PluginHostManagerOptions };
@@ -21,29 +20,27 @@ export {
 /**
  * usePluginWorker に渡すハンドラ定義。
  *
- * `onCursorUpdate` は Worker が `SCENE_UPDATE_CURSOR` を送信したときに呼ばれる。
- * プロトコルの型詳細（PluginGuestCommand）を直接扱う必要はない。
- * その他の未処理コマンドは `onCommand` で受け取る。
+ * `onMessage` は Worker が `Ubi.network.sendToHost()` で送信したメッセージを受け取る。
+ * `onCommand` はその他の未処理コマンドを受け取る。
  */
-export type PluginWorkerHandlers<TMsg extends PluginWorkerMessage = PluginWorkerMessage> = {
-    onCursorUpdate?: (x: number, y: number) => void;
-    onMessage?: (msg: TMsg) => void;
+export type PluginWorkerHandlers<TPayloadMap extends Record<string, unknown> = Record<string, unknown>> = {
+    onMessage?: (msg: PluginWorkerMessage<TPayloadMap>) => void;
     onCommand?: (command: PluginGuestCommand) => void;
 };
 
-export type UsePluginWorkerOptions<TMsg extends PluginWorkerMessage = PluginWorkerMessage> = Omit<
-    PluginHostManagerOptions<TMsg>,
+export type UsePluginWorkerOptions<TPayloadMap extends Record<string, unknown> = Record<string, unknown>> = Omit<
+    PluginHostManagerOptions<TPayloadMap>,
     'handlers'
 > & {
-    handlers?: PluginWorkerHandlers<TMsg>;
+    handlers?: PluginWorkerHandlers<TPayloadMap>;
 };
 
-export function usePluginWorker<TMsg extends PluginWorkerMessage = PluginWorkerMessage>(
-    options: UsePluginWorkerOptions<TMsg>,
+export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Record<string, unknown>>(
+    options: UsePluginWorkerOptions<TPayloadMap>,
 ) {
-    const managerRef = useRef<PluginHostManager<TMsg> | null>(null);
+    const managerRef = useRef<PluginHostManager<TPayloadMap> | null>(null);
 
-    const handlersRef = useRef<PluginWorkerHandlers<TMsg>>(options.handlers ?? {});
+    const handlersRef = useRef<PluginWorkerHandlers<TPayloadMap>>(options.handlers ?? {});
     const onResourceLimitExceededRef = useRef(options.onResourceLimitExceeded);
 
     useEffect(() => {
@@ -54,24 +51,19 @@ export function usePluginWorker<TMsg extends PluginWorkerMessage = PluginWorkerM
     });
 
     useEffect(() => {
-        const manager = new PluginHostManager<TMsg>({
+        const manager = new PluginHostManager<TPayloadMap>({
             pluginCode: options.pluginCode,
             pluginId: options.pluginId,
             capabilities: options.capabilities,
             maxExecutionTime: options.maxExecutionTime,
             tickFps: options.tickFps,
             disableAutoTick: options.disableAutoTick,
+            disableAutoInput: options.disableAutoInput,
             worldId: options.worldId,
             myUserId: options.myUserId,
             handlers: {
                 onMessage: (msg) => handlersRef.current.onMessage?.(msg),
-                onCommand: (cmd) => {
-                    if (cmd.type === 'SCENE_UPDATE_CURSOR') {
-                        handlersRef.current.onCursorUpdate?.(cmd.payload.x, cmd.payload.y);
-                        return;
-                    }
-                    handlersRef.current.onCommand?.(cmd);
-                },
+                onCommand: (cmd) => handlersRef.current.onCommand?.(cmd),
             },
             onResourceLimitExceeded: (reason) => onResourceLimitExceededRef.current?.(reason),
         });
@@ -88,6 +80,7 @@ export function usePluginWorker<TMsg extends PluginWorkerMessage = PluginWorkerM
         options.maxExecutionTime,
         options.tickFps,
         options.disableAutoTick,
+        options.disableAutoInput,
         options.worldId,
         options.myUserId,
     ]);

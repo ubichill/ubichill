@@ -8,27 +8,23 @@
 import type { PluginWorkerMessage } from '@ubichill/sdk';
 
 /**
- * Worker が Host へ送信するメッセージ
- *
- * @example
- * ```ts
- * Ubi.messaging.send('DRAWING_UPDATE', { points: [...] });
- * ```
+ * Pen プラグインのペイロードマップ。
+ * sendToHost<PenPayloads>('DRAWING_UPDATE', { points }) のように使用する。
  */
-export type PenWorkerMessage = PluginWorkerMessage<
-    'DRAWING_UPDATE' | 'STROKE_COMPLETE' | 'DRAWING_CLEAR',
-    {
-        /** 描画中のストロークポイント（リアルタイムプレビュー用） */
-        DRAWING_UPDATE: {
-            points: Array<[x: number, y: number, pressure: number]>;
-        };
+export type PenPayloads = {
+    /** 描画中のストロークポイント（リアルタイムプレビュー用） */
+    DRAWING_UPDATE: {
+        points: Array<[x: number, y: number, pressure: number]>;
+    };
 
-        /** ストロークの完成。永続化される */
-        STROKE_COMPLETE: {
-            points: Array<[x: number, y: number, pressure: number]>;
-        };
+    /** ストロークの完成。永続化される */
+    STROKE_COMPLETE: {
+        points: Array<[x: number, y: number, pressure: number]>;
+    };
 
-        /** 描画キャンセル・クリア */
-        DRAWING_CLEAR: Record<string, never>;
-    }
->;
+    /** 描画キャンセル・クリア */
+    DRAWING_CLEAR: Record<string, never>;
+};
+
+/** 受信側で使う判別可能ユニオン型 */
+export type PenWorkerMessage = PluginWorkerMessage<PenPayloads>;

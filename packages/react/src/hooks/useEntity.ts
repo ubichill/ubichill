@@ -14,6 +14,7 @@ function shallowEqual(a: object | null, b: object): boolean {
     }
     return true;
 }
+
 import { useSocket } from './useSocket';
 import { useWorld } from './useWorld';
 

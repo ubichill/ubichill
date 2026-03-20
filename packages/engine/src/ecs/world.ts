@@ -31,7 +31,7 @@ export class EcsWorldImpl implements EcsWorld {
     }
 
     query(componentNames: string[]): QueryImpl {
-        const key = componentNames.sort().join('|');
+        const key = [...componentNames].sort().join('|');
         if (this._queryCache.has(key)) {
             return this._queryCache.get(key) as QueryImpl;
         }

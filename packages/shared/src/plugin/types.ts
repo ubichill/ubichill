@@ -1,5 +1,27 @@
 // These types are imported from their source files to avoid circular dependency with index.ts
 import type { AppAvatarDef, CursorPosition, EntityPatchPayload, User, WorldEntity } from '../index';
+
+/**
+ * ペイロードマップから判別可能ユニオン型（Discriminated Union）を生成する。
+ *
+ * - **送信側**: `sendToHost<TMap>('TYPE', data)` — K が推論され payload が型安全に制約される
+ * - **受信側**: `onMessage(msg: PluginWorkerMessage<TMap>)` — `msg.type` で switch すると payload が自動で絞り込まれる
+ *
+ * @example
+ * ```ts
+ * type PenPayloads = {
+ *     DRAWING_UPDATE: { points: Array<[number, number, number]> };
+ *     STROKE_COMPLETE: { points: Array<[number, number, number]> };
+ * };
+ * // 送信
+ * Ubi.network.sendToHost<PenPayloads>('DRAWING_UPDATE', { points: [...] });
+ * // 受信（判別可能ユニオン）
+ * type PenMsg = PluginWorkerMessage<PenPayloads>;
+ * ```
+ */
+export type PluginWorkerMessage<TPayloadMap extends Record<string, unknown> = Record<string, unknown>> = {
+    [K in keyof TPayloadMap & string]: { type: K; payload: TPayloadMap[K] };
+}[keyof TPayloadMap & string];
 // TODO: Ideally, we should move the base types out of index.ts into, e.g., 'schemas' or 'types.ts' in shared root.
 
 // ============================================
@@ -21,7 +43,7 @@ import type { AppAvatarDef, CursorPosition, EntityPatchPayload, User, WorldEntit
 // ============================================
 
 /**
- * Ubi.Scene.getEntity(id) → WorldEntity | null
+ * Ubi.world.getEntity(id) → WorldEntity | null
  * 指定IDのエンティティを取得します。
  */
 export type CmdSceneGetEntity = {
@@ -31,7 +53,7 @@ export type CmdSceneGetEntity = {
 };
 
 /**
- * Ubi.Scene.createEntity(entity) → string (作成されたエンティティのID)
+ * Ubi.world.createEntity(entity) → string (作成されたエンティティのID)
  * 新しいエンティティをワールドに作成します。
  */
 export type CmdSceneCreateEntity = {
@@ -41,7 +63,7 @@ export type CmdSceneCreateEntity = {
 };
 
 /**
- * Ubi.Scene.updateEntity(id, patch) → void
+ * Ubi.world.updateEntity(id, patch) → void
  * エンティティの状態を宣言的に更新します。
  * ※ DOM操作ではなく「状態の宣言」として設計
  */
@@ -52,7 +74,7 @@ export type CmdSceneUpdateEntity = {
 };
 
 /**
- * Ubi.Scene.destroyEntity(id) → void
+ * Ubi.world.destroyEntity(id) → void
  * エンティティを削除します。
  */
 export type CmdSceneDestroyEntity = {
@@ -62,7 +84,7 @@ export type CmdSceneDestroyEntity = {
 };
 
 /**
- * Ubi.Scene.subscribeEntity(id) → (購読開始、以降 EVT_ENTITY_UPDATED が届く)
+ * Ubi.world.subscribeEntity(id) → (購読開始、以降 EVT_SCENE_ENTITY_UPDATED が届く)
  * Fire & Forget: エンティティ更新の購読を開始します。
  */
 export type CmdSceneSubscribeEntity = {
@@ -71,22 +93,12 @@ export type CmdSceneSubscribeEntity = {
 };
 
 /**
- * Ubi.Scene.unsubscribeEntity(id)
+ * Ubi.world.unsubscribeEntity(id)
  * Fire & Forget: エンティティ更新の購読を解除します。
  */
 export type CmdSceneUnsubscribeEntity = {
     type: 'SCENE_UNSUBSCRIBE_ENTITY';
     payload: { id: string };
-};
-
-/**
- * Ubi.Scene.updateCursorPosition(x, y)
- * Fire & Forget: このプラグインが制御するカーソルの位置を更新します。
- * ※ 毎フレーム呼ぶことを想定した高頻度コマンド
- */
-export type CmdSceneUpdateCursor = {
-    type: 'SCENE_UPDATE_CURSOR';
-    payload: { x: number; y: number };
 };
 
 /**
@@ -99,16 +111,28 @@ export type CmdReady = {
 };
 
 /**
- * Ubi.messaging.send(type, data)
- * Fire & Forget: ホストに対して専用のカスタムメッセージを送信します。
+ * Ubi.network.sendToHost(type, data)
+ * Fire & Forget: 自分の Host (React) にだけメッセージを送ります。
+ * 他のユーザーには届きません。onMessage ハンドラで受け取ります。
  */
-export type CmdCustomMessage = {
-    type: 'CUSTOM_MESSAGE';
+export type CmdNetworkSendToHost = {
+    type: 'NETWORK_SEND_TO_HOST';
     payload: { type: string; data: unknown };
 };
 
 /**
- * Ubi.UI.showToast(text)
+ * Ubi.network.broadcast(type, data)
+ * Fire & Forget: ワールド内の全ユーザーに揮発性データを送ります。
+ * DB には保存されません。他ユーザーの Worker に ECS イベントとして届きます。
+ * capability: 'net:broadcast' が必要です。
+ */
+export type CmdNetworkBroadcast = {
+    type: 'NETWORK_BROADCAST';
+    payload: { type: string; data: unknown };
+};
+
+/**
+ * Ubi.ui.showToast(text)
  * Fire & Forget: 画面にトースト通知を表示します。
  */
 export type CmdUiShowToast = {
@@ -117,7 +141,7 @@ export type CmdUiShowToast = {
 };
 
 /**
- * Ubi.Avatar.set(appDef)
+ * Ubi.avatar.set(appDef)
  * Fire & Forget: 自ユーザーのアバター（カーソル）設定を更新します。
  */
 export type CmdAvatarSet = {
@@ -126,7 +150,7 @@ export type CmdAvatarSet = {
 };
 
 /**
- * Ubi.Net.fetch(url, options) → Response
+ * Ubi.network.fetch(url, options) → Response
  * ホワイトリストされたURLに対してHTTPリクエストを送信します。
  * セキュリティのため、ホスト側でURL検証を行います。
  */
@@ -152,8 +176,8 @@ export type PluginGuestCommand =
     | CmdSceneDestroyEntity
     | CmdSceneSubscribeEntity
     | CmdSceneUnsubscribeEntity
-    | CmdSceneUpdateCursor
-    | CmdCustomMessage
+    | CmdNetworkSendToHost
+    | CmdNetworkBroadcast
     | CmdUiShowToast
     | CmdAvatarSet
     | CmdNetFetch;
@@ -171,8 +195,8 @@ export type PluginCommand = PluginGuestCommand;
 // ============================================
 
 /**
- * [Lifecycle] プラグインの初期化完了時
- * Ubi.Events.onInit((ctx) => { ... })
+ * [Lifecycle] プラグインの初期化完了時に Worker へ送られるイベント。
+ * 初期化後は Ubi.worldId / Ubi.myUserId / Ubi.pluginId で参照可能。
  *
  * @param worldId   所属ワールドのID
  * @param myUserId  自分のユーザーID
@@ -184,8 +208,8 @@ export type EvtLifecycleInit = {
 };
 
 /**
- * [Lifecycle] 毎フレーム (requestAnimationFrame相当)
- * Ubi.Events.onTick((deltaTime: number) => { ... })
+ * [Lifecycle] 毎フレーム (requestAnimationFrame相当) に Worker へ送られるイベント。
+ * Ubi.registerSystem(fn) で登録した System が deltaTime を受け取る。
  *
  * @param deltaTime  前フレームからの経過時間 (ms)
  */
@@ -195,8 +219,8 @@ export type EvtLifecycleTick = {
 };
 
 /**
- * [Player] ユーザーが入室したとき
- * Ubi.Events.onPlayerJoined((player: User) => { ... })
+ * [Player] ユーザーが入室したとき。
+ * ECS System の events に EcsEventType.PLAYER_JOINED として届く。
  *
  * @param user  入室したユーザーの情報
  */
@@ -206,8 +230,8 @@ export type EvtPlayerJoined = {
 };
 
 /**
- * [Player] ユーザーが退室したとき
- * Ubi.Events.onPlayerLeft((userId: string) => { ... })
+ * [Player] ユーザーが退室したとき。
+ * ECS System の events に EcsEventType.PLAYER_LEFT として届く。
  *
  * @param userId  退室したユーザーのID
  */
@@ -217,8 +241,8 @@ export type EvtPlayerLeft = {
 };
 
 /**
- * [Player] ユーザーのカーソルが移動したとき
- * Ubi.Events.onPlayerCursorMoved((userId, position) => { ... })
+ * [Player] ユーザーのカーソルが移動したとき。
+ * ECS System の events に EcsEventType.PLAYER_CURSOR_MOVED として届く。
  *
  * @param userId    移動したユーザーのID
  * @param position  新しいカーソル位置 {x, y}
@@ -229,10 +253,9 @@ export type EvtPlayerCursorMoved = {
 };
 
 /**
- * [Scene] 購読中のエンティティが更新されたとき
- * Ubi.Events.onEntityUpdated((entity: WorldEntity) => { ... })
- *
- * ※ subscribeEntity() で購読したエンティティのみ届く
+ * [Scene] 購読中のエンティティが更新されたとき。
+ * ECS System の events に EcsEventType.ENTITY_UPDATED として届く。
+ * ※ Ubi.world.subscribeEntity() で購読したエンティティのみ届く
  *
  * @param entity  更新後のエンティティの完全なスナップショット
  */
@@ -255,12 +278,25 @@ export type EvtRpcResponse = {
 };
 
 /**
- * [Custom] プラグイン間・ホストからの汎用カスタムイベント
- * Ubi.Events.onCustomEvent((eventType, data) => { ... })
+ * [Custom] Host から Worker へ任意のイベントを送る低レベル脱出口。
+ * ECS System の events に { type: eventType, payload: data } として届く。
+ *
+ * @deprecated 通常は sendToHost / network.broadcast の逆方向通信として使わない。
+ * Host → Worker の型安全な通信 API が整備されるまでの暫定手段。
+ * 現在は avatar:lock の送信にのみ使用。
  */
 export type EvtCustom = {
     type: 'EVT_CUSTOM';
     payload: { eventType: string; data: unknown };
+};
+
+/**
+ * [Network] 他ユーザーの Worker が Ubi.network.broadcast() で送ったデータ。
+ * ECS System の events に { type: broadcastType, payload: { userId, data } } として届く。
+ */
+export type EvtNetworkBroadcast = {
+    type: 'EVT_NETWORK_BROADCAST';
+    payload: { userId: string; type: string; data: unknown };
 };
 
 // ============================================
@@ -305,6 +341,7 @@ export type PluginHostEvent =
     | EvtSceneEntityUpdated
     | EvtRpcResponse
     | EvtCustom
+    | EvtNetworkBroadcast
     | EvtInput;
 
 /** 後方互換エイリアス */

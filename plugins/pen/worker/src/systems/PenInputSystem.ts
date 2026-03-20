@@ -44,7 +44,10 @@ export const PenInputSystem: System = (entities: Entity[], _dt: number, events: 
                     penState.currentStroke.push([x, y, 1]);
                 }
 
-                Ubi.scene.updateCursorPosition(transform.x, transform.y);
+                Ubi.network.sendToHost<{ 'cursor:position': { x: number; y: number } }>('cursor:position', {
+                    x: transform.x,
+                    y: transform.y,
+                });
             }
         } else if (event.type === EcsEventType.INPUT_MOUSE_DOWN) {
             const { x, y, button } = event.payload as InputMouseDownData;

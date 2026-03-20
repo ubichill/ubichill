@@ -4,11 +4,22 @@ import type {
     AppAvatarDef,
     EntityPatchPayload,
     EvtLifecycleInit,
-    InputFrameEvent,
     PluginGuestCommand,
     PluginHostEvent,
+    PluginWorkerMessage,
     WorldEntity,
 } from '@ubichill/shared';
+
+export type { PluginWorkerMessage };
+
+/** EVT_INPUT の type 文字列マッピング（毎フレーム再生成を回避） */
+const INPUT_TYPE_MAP: Readonly<Record<string, string>> = {
+    MOUSE_MOVE: EcsEventType.INPUT_MOUSE_MOVE,
+    MOUSE_DOWN: EcsEventType.INPUT_MOUSE_DOWN,
+    MOUSE_UP: EcsEventType.INPUT_MOUSE_UP,
+    KEY_DOWN: EcsEventType.INPUT_KEY_DOWN,
+    KEY_UP: EcsEventType.INPUT_KEY_UP,
+};
 
 type PendingRequest = {
     resolve: (data: unknown) => void;
@@ -29,7 +40,7 @@ export class UbiSDK {
     private _rpcTimeout: number;
 
     private _pendingWorkerEvents: WorkerEvent[] = [];
-    public readonly world: EcsWorld;
+    public readonly local: EcsWorld;
 
     public worldId?: string;
     public myUserId?: string;
@@ -40,7 +51,7 @@ export class UbiSDK {
     constructor(postMessage: (cmd: PluginGuestCommand) => void, options?: { rpcTimeout?: number }) {
         this._sendToHost = postMessage;
         this._rpcTimeout = options?.rpcTimeout ?? 10_000;
-        this.world = new EcsWorldImpl();
+        this.local = new EcsWorldImpl();
     }
 
     public _dispatchEvent(event: PluginHostEvent): void {
@@ -56,8 +67,8 @@ export class UbiSDK {
             case 'EVT_LIFECYCLE_TICK': {
                 const dt = event.payload.deltaTime;
                 try {
-                    this.world.tick(dt, this._pendingWorkerEvents);
-                    this._pendingWorkerEvents = [];
+                    this.local.tick(dt, this._pendingWorkerEvents);
+                    this._pendingWorkerEvents.length = 0;
                 } catch (err) {
                     console.error('[UbiSDK] ECS World tick error:', err);
                 }
@@ -110,18 +121,18 @@ export class UbiSDK {
                     timestamp: Date.now(),
                 });
                 break;
+            case 'EVT_NETWORK_BROADCAST':
+                this._pendingWorkerEvents.push({
+                    type: event.payload.type,
+                    payload: { userId: event.payload.userId, data: event.payload.data },
+                    timestamp: Date.now(),
+                });
+                break;
             case 'EVT_INPUT': {
                 const now = Date.now();
-                const typeMap: Record<InputFrameEvent['type'], string> = {
-                    MOUSE_MOVE: EcsEventType.INPUT_MOUSE_MOVE,
-                    MOUSE_DOWN: EcsEventType.INPUT_MOUSE_DOWN,
-                    MOUSE_UP: EcsEventType.INPUT_MOUSE_UP,
-                    KEY_DOWN: EcsEventType.INPUT_KEY_DOWN,
-                    KEY_UP: EcsEventType.INPUT_KEY_UP,
-                };
                 for (const inputEvent of event.payload.events) {
                     this._pendingWorkerEvents.push({
-                        type: typeMap[inputEvent.type],
+                        type: INPUT_TYPE_MAP[inputEvent.type],
                         payload: inputEvent.data,
                         timestamp: now,
                     });
@@ -160,10 +171,10 @@ export class UbiSDK {
     }
 
     public registerSystem(system: System): void {
-        this.world.registerSystem(system);
+        this.local.registerSystem(system);
     }
 
-    public readonly scene = {
+    public readonly world = {
         getEntity: (id: string): Promise<WorldEntity | null> =>
             this._rpc<WorldEntity | null>({ type: 'SCENE_GET_ENTITY', payload: { id } }),
 
@@ -175,9 +186,6 @@ export class UbiSDK {
 
         destroyEntity: (id: string): Promise<void> =>
             this._rpc<void>({ type: 'SCENE_DESTROY_ENTITY', payload: { id } }),
-
-        updateCursorPosition: (x: number, y: number): void =>
-            this._send({ type: 'SCENE_UPDATE_CURSOR', payload: { x, y } }),
 
         subscribeEntity: (id: string): void => this._send({ type: 'SCENE_SUBSCRIBE_ENTITY', payload: { id } }),
 
@@ -192,7 +200,48 @@ export class UbiSDK {
         set: (appDef: AppAvatarDef): void => this._send({ type: 'AVATAR_SET', payload: { appDef } }),
     };
 
-    public readonly net = {
+    public readonly network = {
+        /**
+         * 自分の Host (React) にだけメッセージを送る。他ユーザーには届かない。
+         * Host の onMessage ハンドラで受け取る。
+         *
+         * @example
+         * ```ts
+         * type MyPayloads = { 'cursor:position': { x: number; y: number } };
+         * Ubi.network.sendToHost<MyPayloads>('cursor:position', { x: 100, y: 200 });
+         * ```
+         */
+        sendToHost: <
+            TPayloadMap extends Record<string, unknown> = Record<string, unknown>,
+            K extends keyof TPayloadMap & string = keyof TPayloadMap & string,
+        >(
+            type: K,
+            data: TPayloadMap[K],
+        ): void => this._send({ type: 'NETWORK_SEND_TO_HOST', payload: { type, data } }),
+
+        /**
+         * ワールド内の全ユーザーに揮発性データをブロードキャストする。
+         * DB には保存されない。他ユーザーの Worker に ECS イベントとして届く。
+         * イベントの type は broadcast 時に指定した type 文字列になる。
+         * payload: { userId: string; data: unknown }
+         *
+         * @example
+         * ```ts
+         * type CursorPayloads = { 'cursor:move': { x: number; y: number } };
+         * Ubi.network.broadcast<CursorPayloads>('cursor:move', { x: 100, y: 200 });
+         * ```
+         */
+        broadcast: <
+            TPayloadMap extends Record<string, unknown> = Record<string, unknown>,
+            K extends keyof TPayloadMap & string = keyof TPayloadMap & string,
+        >(
+            type: K,
+            data: TPayloadMap[K],
+        ): void => this._send({ type: 'NETWORK_BROADCAST', payload: { type, data } }),
+
+        /**
+         * ホワイトリストされた URL に HTTP リクエストを送る。
+         */
         fetch: (
             url: string,
             options?: {
@@ -201,10 +250,5 @@ export class UbiSDK {
                 body?: string;
             },
         ) => this._rpc({ type: 'NET_FETCH', payload: { url, options } }),
-    };
-
-    public readonly messaging = {
-        send: (type: string, payload: unknown): void =>
-            this._send({ type: 'CUSTOM_MESSAGE', payload: { type, data: payload } }),
     };
 }

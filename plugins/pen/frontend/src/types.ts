@@ -1,7 +1,7 @@
 import type { WorldEntity } from '@ubichill/sdk';
 
 export type { WidgetDefinition } from '@ubichill/sdk/react';
-export type { PenWorkerMessage } from '../../worker/src/types';
+export type { PenPayloads, PenWorkerMessage } from '../../worker/src/types';
 
 export interface PenData {
     color: string;
