@@ -5,13 +5,14 @@ export default defineConfig({
     preflight: true,
 
     // Where to look for your css declarations
-    include: [
-        './src/**/*.{js,jsx,ts,tsx}',
-        `${process.env.PLUGIN_PATH || '../../plugins/music-player/frontend/src'}/**/*.{js,jsx,ts,tsx}`,
-    ],
+    include: ["./src/**/*.{js,jsx,ts,tsx}"],
 
     // Files to exclude
-    exclude: [],
+    exclude: [
+        '**/node_modules/**',
+        '**/styled-system/**',
+        '**/.next/**',
+    ],
 
     // Useful for theme customization
     theme: {

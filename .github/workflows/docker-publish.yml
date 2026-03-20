@@ -2,7 +2,8 @@ name: Docker Build and Publish
 
 on:
   push:
-    branches: [ "main", "dev" ]
+    # dev ブランチは ci.yml の sync-to-dev ジョブが直接イメージをビルド・プッシュするため除外
+    branches: [ "main" ]
   workflow_dispatch:
 
 env:
@@ -143,6 +144,7 @@ jobs:
           build-args: |
             NODE_VERSION=${{ steps.versions.outputs.node }}
             PNPM_VERSION=${{ steps.versions.outputs.pnpm }}
+            COMMIT_HASH=${{ github.sha }}
           tags: |
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME_BACKEND }}:${{ github.ref_name == 'main' && 'latest' || 'dev' }}
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME_BACKEND }}:${{ github.ref_name == 'main' && 'latest' || 'dev' }}-${{ steps.backend_hash.outputs.hash }}
@@ -163,6 +165,8 @@ jobs:
           build-args: |
             NODE_VERSION=${{ steps.versions.outputs.node }}
             PNPM_VERSION=${{ steps.versions.outputs.pnpm }}
+            COMMIT_HASH=${{ github.sha }}
+            NEXT_PUBLIC_COMMIT_HASH=${{ github.sha }}
           tags: |
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME_FRONTEND }}:${{ github.ref_name == 'main' && 'latest' || 'dev' }}
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME_FRONTEND }}:${{ github.ref_name == 'main' && 'latest' || 'dev' }}-${{ steps.frontend_hash.outputs.hash }}

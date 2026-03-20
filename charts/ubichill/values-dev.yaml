@@ -34,7 +34,7 @@ backend:
   env:
     NODE_ENV: "development"
     CORS_ORIGIN: "*"  # Allow all origins in Kubernetes dev environment
-    BETTER_AUTH_URL: "http://localhost:3001"
+    BETTER_AUTH_URL: "https://ubichill-dev.youkan.uk"
   secretEnv:
     BETTER_AUTH_SECRET: "dev-secret-key"
     RESEND_API_KEY: "dev-resend-key"

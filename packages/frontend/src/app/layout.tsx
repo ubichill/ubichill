@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
+import { VersionBadge } from '@/components/VersionBadge';
 import { Providers } from './providers';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
@@ -18,6 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <html lang="ja" className={inter.variable}>
             <body>
                 <Providers>{children}</Providers>
+                <VersionBadge />
             </body>
         </html>
     );
