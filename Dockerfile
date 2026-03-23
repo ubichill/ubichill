@@ -32,6 +32,8 @@ RUN pnpm install --frozen-lockfile --ignore-scripts
 COPY --from=builder /app/out/full/ .
 COPY turbo.json turbo.json
 COPY scripts/ scripts/
+# turbo prune は plugins/*/worker と plugin.json を out/full に含めないため builder から直接取得
+COPY --from=builder /app/plugins/ plugins/
 
 # Build environment variables
 ARG NEXT_PUBLIC_API_URL
