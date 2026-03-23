@@ -31,6 +31,7 @@ RUN pnpm install --frozen-lockfile --ignore-scripts
 # Copy source code
 COPY --from=builder /app/out/full/ .
 COPY turbo.json turbo.json
+COPY scripts/ scripts/
 
 # Build environment variables
 ARG NEXT_PUBLIC_API_URL
