@@ -1,6 +1,6 @@
 'use client';
 
-import { useSocket, useWorld } from '@ubichill/sdk';
+import { useSocket, useWorld } from '@ubichill/sdk/react';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { UbichillOverlay } from '@/components/UbichillOverlay';

@@ -30,7 +30,10 @@ COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 # packages/*
 COPY packages/backend/package.json   ./packages/backend/package.json
 COPY packages/db/package.json        ./packages/db/package.json
+COPY packages/engine/package.json    ./packages/engine/package.json
 COPY packages/frontend/package.json  ./packages/frontend/package.json
+COPY packages/react/package.json     ./packages/react/package.json
+COPY packages/sandbox/package.json   ./packages/sandbox/package.json
 COPY packages/sdk/package.json       ./packages/sdk/package.json
 COPY packages/shared/package.json    ./packages/shared/package.json
 

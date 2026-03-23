@@ -90,9 +90,12 @@ export function handleWorldJoin(socket: TypedSocket) {
             return;
         }
 
-        // ユーザーオブジェクトを作成（DB由来のIDを使用）
+        // socket.id をユーザーIDとして使用する。
+        // cursor:moved / user:left / user:updated などすべてのイベントは socket.id で
+        // ユーザーを識別するため、User.id を socket.id に統一しないとクライアントの
+        // users Map が正しく更新されず、カーソルが動かない / 退出が反映されない。
         const newUser: User = {
-            id: authUser.id, // socket.id ではなく DB の user.id を使用
+            id: socket.id,
             ...user,
             name: usernameValidation.data,
             position: user.position || DEFAULTS.INITIAL_POSITION,
@@ -264,6 +267,48 @@ export function handleUserUpdate(socket: TypedSocket) {
         // 自分にも送ることで、サーバー側で正規化された状態（もしあれば）を反映できる
         // また、他のクライアントと同じイベントフローで更新を受け取れるメリットがある
         socket.nsp.to(worldId).emit('user:updated', updatedUser);
+    };
+}
+
+/**
+ * ワールド退出イベントを処理（SPA内でロビーに戻る場合など、ソケットを切断せずに退出するケース）
+ */
+export function handleWorldLeave(socket: TypedSocket) {
+    return async () => {
+        const worldId = socket.data.worldId;
+        const instanceId = socket.data.instanceId;
+        const user = userManager.removeUser(socket.id);
+
+        if (instanceId) {
+            await instanceManager.updateUserCount(instanceId, -1);
+        }
+
+        if (worldId && user) {
+            socket.leave(worldId);
+
+            const entities = getWorldSnapshot(worldId);
+            const userLockedEntities = entities.filter((e) => e.lockedBy === socket.id);
+            userLockedEntities.forEach((entity) => {
+                patchEntity(worldId, entity.id, {
+                    lockedBy: null,
+                    data: { ...(entity.data as Record<string, unknown>), isHeld: false },
+                });
+                socket.to(worldId).emit('entity:patched', {
+                    entityId: entity.id,
+                    patch: { lockedBy: null, data: { ...(entity.data as Record<string, unknown>), isHeld: false } },
+                });
+            });
+
+            socket.to(worldId).emit('user:left', socket.id);
+            logger.info(
+                `🚪 ユーザー「${user.name}」(${socket.id.substring(0, 8)}) がワールド「${worldId}」から退出しました`,
+            );
+        }
+
+        // ソケットデータをリセット（再参加できるよう）
+        socket.data.worldId = undefined;
+        socket.data.instanceId = undefined;
+        socket.data.user = undefined;
     };
 }
 

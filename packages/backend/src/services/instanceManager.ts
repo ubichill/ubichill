@@ -227,6 +227,13 @@ class InstanceManager {
             },
         };
     }
+
+    /**
+     * 全インスタンスを削除（サーバー起動時の孤立レコードクリーンアップ用）
+     */
+    async cleanupAll(): Promise<number> {
+        return instanceRepository.deleteAll();
+    }
 }
 
 // シングルトンインスタンス

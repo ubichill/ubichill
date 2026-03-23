@@ -2,7 +2,7 @@
 # Override default values for production
 
 backend:
-  replicaCount: 5  # Higher replica count for production
+  replicaCount: 1  # Higher replica count disabled due to lack of multi-replica support
   
   image:
     tag: "stable"
@@ -17,7 +17,7 @@ backend:
       memory: 1Gi
   
   autoscaling:
-    enabled: true
+    enabled: false
     minReplicas: 3
     maxReplicas: 20   # Allow higher scaling in production
     targetCPUUtilizationPercentage: 60  # Lower threshold for faster scaling

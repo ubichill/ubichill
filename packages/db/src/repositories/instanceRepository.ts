@@ -114,4 +114,9 @@ export const instanceRepository = {
             .returning();
         return result.length > 0;
     },
+
+    async deleteAll(): Promise<number> {
+        const result = await db.delete(instances).returning();
+        return result.length;
+    },
 };
