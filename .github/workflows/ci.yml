@@ -126,6 +126,7 @@ jobs:
     if: >
       github.event_name == 'pull_request' &&
       github.event.pull_request.base.ref == 'main' &&
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
       (needs.detect-changes.outputs.backend == 'true' ||
        needs.detect-changes.outputs.frontend == 'true')
     runs-on: ubuntu-latest
