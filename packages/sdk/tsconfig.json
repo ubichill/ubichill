@@ -2,7 +2,6 @@
     "compilerOptions": {
         "target": "ES2017",
         "lib": ["dom", "dom.iterable", "esnext"],
-        "allowJs": true,
         "skipLibCheck": true,
         "strict": true,
         "noEmit": true,
@@ -12,12 +11,13 @@
         "resolveJsonModule": true,
         "isolatedModules": true,
         "jsx": "react-jsx",
-        "incremental": true,
-        "types": ["node"],
         "declaration": true,
-        "declarationMap": true,
         "paths": {
-            "@/*": ["./src/*"]
+            "@/*": ["./src/*"],
+            "@ubichill/engine": ["../engine/src/index.ts"],
+            "@ubichill/sandbox": ["../sandbox/src/index.ts"],
+            "@ubichill/react": ["../react/src/index.ts"],
+            "@ubichill/shared": ["../shared/src/index.ts"]
         }
     },
     "include": ["src"],

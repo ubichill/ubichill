@@ -29,6 +29,8 @@ export interface WorldContextType {
     ) => Promise<WorldEntity<T> | null>;
     patchEntity: (entityId: string, patch: EntityPatchPayload['patch']) => void;
     deleteEntity: (entityId: string) => void;
+    /** ワールドのローカル状態をリセット（ロビーに戻る際などに呼ぶ） */
+    resetWorld: () => void;
     isConnected: boolean;
 }
 
@@ -216,6 +218,14 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         [socket, isConnected],
     );
 
+    const resetWorld = useCallback(() => {
+        setEntities(new Map());
+        setEphemeralData(new Map());
+        setEnvironment(DEFAULTS.WORLD_ENVIRONMENT);
+        setAvailableKinds([]);
+        setActivePlugins([]);
+    }, []);
+
     const contextValue: WorldContextType = useMemo(
         () => ({
             entities,
@@ -226,6 +236,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             createEntity,
             patchEntity,
             deleteEntity,
+            resetWorld,
             isConnected,
         }),
         [
@@ -237,6 +248,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             createEntity,
             patchEntity,
             deleteEntity,
+            resetWorld,
             isConnected,
         ],
     );

@@ -1,3 +1,6 @@
+# Local tool settings
+.claude/settings.local.json
+
 # Dependencies
 node_modules/
 .pnpm-store
@@ -35,3 +38,6 @@ pnpm-debug.log*
 
 # Testing
 coverage/
+
+# Auto-generated worker bundles
+*.gen.ts

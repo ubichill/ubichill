@@ -1,0 +1,15 @@
+{
+  "id": "avatar:avatar",
+  "name": "Avatar",
+  "version": "1.0.0",
+  "description": "Custom avatar cursors with smooth interpolation and status indicators",
+  "author": "Ubichill Team",
+  "license": "MIT",
+  "entry": {
+    "frontend": "./frontend/src/index.ts",
+    "worker": "./worker/src/index.ts"
+  },
+  "capabilities": [
+    "scene:update"
+  ]
+}

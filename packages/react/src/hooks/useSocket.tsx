@@ -24,6 +24,7 @@ export interface SocketContextValue {
     currentUser: User | null;
     error: string | null;
     joinWorld: (name: string, worldId?: string, instanceId?: string) => void;
+    leaveWorld: () => void;
     updatePosition: (position: CursorPosition, state?: CursorState) => void;
     updateStatus: (status: UserStatus) => void;
     updateUser: (patch: Partial<User>) => void;
@@ -246,6 +247,14 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         [isConnected],
     );
 
+    const leaveWorld = useCallback(() => {
+        const socket = socketRef.current;
+        if (!socket || !isConnected) return;
+        socket.emit('world:leave');
+        setUsers(new Map());
+        setCurrentUser(null);
+    }, [isConnected]);
+
     const value: SocketContextValue = {
         socket: socketRef.current,
         isConnected,
@@ -253,6 +262,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         currentUser,
         error,
         joinWorld,
+        leaveWorld,
         updatePosition,
         updateStatus,
         updateUser,

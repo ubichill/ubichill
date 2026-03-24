@@ -1,7 +1,7 @@
 'use client';
 
 import { PenTray } from '@ubichill/plugin-pen';
-import { useSocket, useWorld } from '@ubichill/sdk';
+import { useSocket, useWorld } from '@ubichill/sdk/react';
 import type { CursorState, UserStatus } from '@ubichill/shared';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -19,8 +19,8 @@ type AppScreen = 'lobby' | 'world';
 export default function Home() {
     const router = useRouter();
     const { data: session, isPending } = useSession();
-    const { isConnected, users, currentUser, error, joinWorld, updatePosition } = useSocket();
-    const { environment } = useWorld();
+    const { isConnected, users, currentUser, error, joinWorld, leaveWorld, updatePosition } = useSocket();
+    const { environment, resetWorld } = useWorld();
     const [screen, setScreen] = useState<AppScreen>('lobby');
 
     // 認証チェック - ログインしていない場合はリダイレクト
@@ -61,13 +61,16 @@ export default function Home() {
     const POSITION_UPDATE_THROTTLE = 50; // ms
 
     const handleMouseMove = (e: React.MouseEvent) => {
+        // ワールド絶対座標を手に入れる
+        const worldX = e.clientX + window.scrollX;
+        const worldY = e.clientY + window.scrollY;
+
         // マウス位置を追跡（AppPluginに渡すため）
-        setMousePosition({ x: e.clientX, y: e.clientY });
+        setMousePosition({ x: worldX, y: worldY });
 
         if (screen === 'world' && canvasRef.current) {
-            const rect = canvasRef.current.getBoundingClientRect();
-            let x = e.clientX - rect.left;
-            let y = e.clientY - rect.top;
+            let x = worldX;
+            let y = worldY;
 
             // 作業中ステータスの場合は、カーソルをロックした位置に固定
             if (userStatus === 'busy' && cursorLockPosition) {
@@ -100,12 +103,9 @@ export default function Home() {
         (status: UserStatus) => {
             setUserStatus(status);
 
-            if (status === 'busy' && canvasRef.current) {
-                // 作業中: カーソルの現在位置をロック
-                const rect = canvasRef.current.getBoundingClientRect();
-                const x = mousePosition.x - rect.left;
-                const y = mousePosition.y - rect.top;
-                setCursorLockPosition({ x, y });
+            if (status === 'busy') {
+                // 作業中: カーソルの現在位置（ワールド座標）をロック
+                setCursorLockPosition({ ...mousePosition });
             } else {
                 // その他のステータス: ロック解除
                 setCursorLockPosition(null);
@@ -194,21 +194,45 @@ export default function Home() {
                 backgroundRepeat: 'no-repeat',
             }}
         >
-            <div className={styles.shell}>
-                <div className={styles.headerContainer}>
-                    <p className={styles.statusBar}>
-                        ステータス: {isConnected ? '接続済み' : '切断'}
-                        {error && <span className={styles.errorText}>{error}</span>}
-                    </p>
-                    <div
-                        className={css({
-                            display: 'flex',
-                            gap: '4',
-                            alignItems: 'center',
-                        })}
+            <div className={styles.headerContainer}>
+                <p className={styles.statusBar}>
+                    ステータス: {isConnected ? '接続済み' : '切断'}
+                    {error && <span className={styles.errorText}>{error}</span>}
+                </p>
+                <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                    {currentUser && <p className={styles.userInfo}>ログイン中: {currentUser.name}</p>}
+                    <button
+                        type="button"
+                        onClick={() => {
+                            leaveWorld();
+                            resetWorld();
+                            setScreen('lobby');
+                        }}
+                        style={{
+                            padding: '6px 14px',
+                            backgroundColor: 'transparent',
+                            color: '#868e96',
+                            border: '1px solid #dee2e6',
+                            borderRadius: '6px',
+                            fontSize: '13px',
+                            cursor: 'pointer',
+                        }}
                     >
-                        {currentUser && <p className={styles.userInfo}>ログイン中: {currentUser.name}</p>}
-                    </div>
+                        ロビーに戻る
+                    </button>
+                </div>
+            </div>
+
+            <div ref={canvasRef} className={styles.worldCanvas}>
+                <div className={styles.userListContainer}>
+                    <h2 className={styles.userListTitle}>参加ユーザー ({users.size}人)</h2>
+                    <ul className={styles.userList}>
+                        {Array.from(users.values()).map((user) => (
+                            <li key={user.id}>
+                                {user.name} ({user.status}){user.id === currentUser?.id && ' (あなた)'}
+                            </li>
+                        ))}
+                    </ul>
                 </div>
 
                 <div ref={canvasRef} className={styles.worldCanvas}>

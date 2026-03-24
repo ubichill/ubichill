@@ -1,5 +1,5 @@
 import { DEFAULT_PENS, PEN_CONFIG } from '@ubichill/plugin-pen';
-import { useSocket, useWorld } from '@ubichill/sdk';
+import { useSocket, useWorld } from '@ubichill/sdk/react';
 import { useEffect, useRef } from 'react';
 
 /**

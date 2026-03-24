@@ -31,7 +31,7 @@ worlds:
 # Backend application configuration
 backend:
   enabled: true
-  replicaCount: 2
+  replicaCount: 1
   
   image:
     repository: "ubichill-backend"
@@ -54,7 +54,7 @@ backend:
   
   # Auto-scaling configuration
   autoscaling:
-    enabled: true
+    enabled: false
     minReplicas: 2
     maxReplicas: 8
     targetCPUUtilizationPercentage: 70
@@ -123,7 +123,7 @@ backend:
 # Frontend application configuration
 frontend:
   enabled: true
-  replicaCount: 2
+  replicaCount: 1
   
   image:
     repository: "ubichill-frontend"
@@ -146,7 +146,7 @@ frontend:
   
   # Auto-scaling configuration
   autoscaling:
-    enabled: true
+    enabled: false
     minReplicas: 2
     maxReplicas: 6
     targetCPUUtilizationPercentage: 70

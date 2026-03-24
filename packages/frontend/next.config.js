@@ -21,6 +21,9 @@ const nextConfig = {
         },
     }),
     transpilePackages: [
+        '@ubichill/engine',
+        '@ubichill/sandbox',
+        '@ubichill/react',
         '@ubichill/shared',
         '@ubichill/sdk',
         '@ubichill/plugin-pen',

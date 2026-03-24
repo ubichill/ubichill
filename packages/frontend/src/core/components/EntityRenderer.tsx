@@ -1,6 +1,6 @@
 'use client';
 
-import { useSocket, useWorld } from '@ubichill/sdk';
+import { useSocket, useWorld } from '@ubichill/sdk/react';
 import type React from 'react';
 import { PLUGIN_MAP } from '../../plugins/registry';
 

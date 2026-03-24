@@ -1,0 +1,124 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Ubichill Plugin Configuration",
+  "description": "プラグインのメタデータと設定スキーマ（CLI用）",
+  "type": "object",
+  "required": ["id", "name", "version"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+:[a-z0-9]+$",
+      "description": "プラグインのユニークID (namespace:name形式)",
+      "examples": ["pen:pen", "video-player:player"]
+    },
+    "name": {
+      "type": "string",
+      "description": "プラグインの表示名（ツールバー用）",
+      "examples": ["Pen", "Video Player"]
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+",
+      "description": "セマンティックバージョニング",
+      "examples": ["1.0.0", "2.1.0-beta"]
+    },
+    "description": {
+      "type": "string",
+      "description": "プラグインの説明"
+    },
+    "author": {
+      "type": "string",
+      "description": "開発者名またはチーム名"
+    },
+    "license": {
+      "type": "string",
+      "description": "ライセンス識別子",
+      "examples": ["MIT", "Apache-2.0"]
+    },
+    "repository": {
+      "type": "string",
+      "description": "リポジトリURL"
+    },
+    "entry": {
+      "type": "object",
+      "description": "プラグインのエントリーポイント",
+      "properties": {
+        "frontend": {
+          "type": "string",
+          "description": "フロントエンド（React コンポーネント）のエントリーポイント",
+          "default": "./frontend/src/index.ts"
+        },
+        "worker": {
+          "type": "string",
+          "description": "ワーカー（ロジック）のエントリーポイント",
+          "default": "./worker/src/index.ts"
+        }
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "description": "プラグインが使用する機能（将来の権限管理用）",
+      "items": {
+        "type": "string",
+        "enum": [
+          "scene:create",
+          "scene:read",
+          "scene:update",
+          "scene:delete",
+          "net:fetch",
+          "ui:toast",
+          "avatar:set"
+        ]
+      }
+    },
+    "manifest": {
+      "type": "object",
+      "description": "プラグインのランタイムマニフェスト（自動生成用、ユーザー編集不要）",
+      "properties": {
+        "bundled_at": {
+          "type": "string",
+          "description": "ビルド時刻（ISO 8601形式）"
+        },
+        "checksum": {
+          "type": "string",
+          "description": "バンドルのチェックサム（整合性検証用）"
+        }
+      }
+    },
+    "experimental": {
+      "type": "object",
+      "description": "プラグインの実験的設定（内部用）",
+      "properties": {
+        "wasm_enabled": {
+          "type": "boolean",
+          "description": "WASM モジュール対応（将来用）",
+          "default": false
+        },
+        "typescript_strict": {
+          "type": "boolean",
+          "description": "TypeScript の strict mode を強制",
+          "default": true
+        }
+      }
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "id": "pen:pen",
+      "name": "Pen",
+      "version": "2.0.0",
+      "description": "Drawing tool for collaborative sketching",
+      "author": "Ubichill Team",
+      "license": "MIT",
+      "entry": {
+        "frontend": "./frontend/src/index.ts",
+        "worker": "./worker/src/index.ts"
+      },
+      "capabilities": ["scene:read", "scene:update", "ui:toast"],
+      "experimental": {
+        "typescript_strict": true
+      }
+    }
+  ]
+}

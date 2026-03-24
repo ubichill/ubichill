@@ -13,8 +13,13 @@ const envSchema = z.object({
     RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().finite().default(100),
     DEBUG: z
         .string()
-        .default('false')
-        .transform((val) => val === 'true'),
+        .optional()
+        .transform((val) => {
+            if (val === 'true') return true;
+            if (val === 'false') return false;
+            // 未指定時は production 以外（development/test）で true にする賢いロジック
+            return process.env.NODE_ENV !== 'production';
+        }),
     DATABASE_URL: z.string().min(1),
     REDIS_URL: z.string().default('redis://127.0.0.1:6379'),
     BETTER_AUTH_SECRET: z.string().min(1),

@@ -31,7 +31,6 @@ packages/frontend/styled-system
 charts/
 worlds/
 .github/
-scripts/
 
 # ----------------------------------------
 # ドキュメント・エディタ設定

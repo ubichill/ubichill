@@ -16,7 +16,7 @@
         "paths": {
             "@/*": ["./src/*"],
             "@ubichill/sdk": ["../../../packages/sdk/src/index.ts"],
-            "@ubichill/shared": ["../../../packages/shared/src/index.ts"]
+            "@ubichill/sdk/react": ["../../../packages/sdk/src/react/index.ts"]
         }
     },
     "include": ["src"],

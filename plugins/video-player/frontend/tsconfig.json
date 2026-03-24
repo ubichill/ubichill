@@ -24,6 +24,9 @@
             ],
             "@ubichill/sdk": [
                 "../../../packages/sdk/src/index.ts"
+            ],
+            "@ubichill/sdk/react": [
+                "../../../packages/sdk/src/react/index.ts"
             ]
         }
     },

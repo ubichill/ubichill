@@ -63,36 +63,6 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      - name: Build
-        run: pnpm build
-        env:
-          NEXT_PUBLIC_COMMIT_HASH: ${{ github.event.pull_request.head.sha || github.sha }}
-          COMMIT_HASH: ${{ github.event.pull_request.head.sha || github.sha }}
-
-      # PR → main の場合のみ成果物を次ジョブへ渡す
-      # upload-artifact@v4 は共通祖先ディレクトリ(packages/)を除去してアーカイブする。
-      # .next は隠しディレクトリのため include-hidden-files: true が必要。
-      # standalone は server.js のみ使用するため 1 ファイルのみアップロードする。
-      - name: Upload build artifacts
-        if: github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main'
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-artifacts-${{ github.event.pull_request.head.sha }}
-          path: |
-            packages/backend/dist
-            packages/shared/dist
-            packages/db/dist
-            packages/frontend/.next/standalone/packages/frontend/server.js
-            packages/frontend/.next/server
-            packages/frontend/.next/static
-            packages/frontend/.next/BUILD_ID
-            packages/frontend/.next/*.json
-            packages/frontend/.next/*.js
-            packages/frontend/public
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 1
-
   # 変更検知: どのパッケージが変わったかを判定する
   detect-changes:
     name: Detect changed packages
@@ -111,19 +81,24 @@ jobs:
               - 'packages/backend/**'
               - 'packages/shared/**'
               - 'packages/db/**'
-              - 'Dockerfile.ci'
+              - 'Dockerfile'
               - 'pnpm-lock.yaml'
             frontend:
               - 'packages/frontend/**'
               - 'packages/shared/**'
               - 'packages/sdk/**'
-              - 'Dockerfile.ci'
+              - 'Dockerfile'
               - 'pnpm-lock.yaml'
 
   sync-to-dev:
     name: Sync to dev & build Docker images
     needs: [lint-and-build, detect-changes]
-    if: github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main'
+    if: >
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.base.ref == 'main' &&
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      (needs.detect-changes.outputs.backend == 'true' ||
+       needs.detect-changes.outputs.frontend == 'true')
     runs-on: ubuntu-latest
     permissions:
       contents: write      # devブランチへのpushに必要
@@ -148,18 +123,6 @@ jobs:
           echo "pnpm=$(jq -r '.volta.pnpm' package.json)" >> $GITHUB_OUTPUT
           echo "short-sha=$(echo '${{ github.event.pull_request.head.sha }}' | cut -c1-7)" >> $GITHUB_OUTPUT
 
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-artifacts-${{ github.event.pull_request.head.sha }}
-          # upload-artifact@v4 は共通祖先ディレクトリ(packages/)を除去してアーカイブするため
-          # path を packages に指定して packages/*/dist の形でリストアする
-          path: packages
-
-      # .dockerignore は packages/*/dist を除外しているが Dockerfile.ci では dist が必要なため上書きする
-      - name: Override .dockerignore for CI build
-        run: cp Dockerfile.ci.dockerignore .dockerignore
-
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -170,13 +133,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Dockerfile.ci を使用（turbo prune なし・ビルド成果物をそのまま利用）
       - name: Build and push Backend image
         if: needs.detect-changes.outputs.backend == 'true'
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./Dockerfile.ci
+          file: ./Dockerfile
           target: backend-runner
           push: true
           build-args: |
@@ -187,7 +149,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME_BACKEND }}:dev
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME_BACKEND }}:dev-${{ steps.versions.outputs.short-sha }}
           cache-from: type=gha
-          cache-to: type=gha,mode=min
+          cache-to: type=gha,mode=max
           provenance: false
 
       - name: Build and push Frontend image
@@ -195,7 +157,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./Dockerfile.ci
+          file: ./Dockerfile
           target: frontend-runner
           push: true
           build-args: |
@@ -207,7 +169,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME_FRONTEND }}:dev
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME_FRONTEND }}:dev-${{ steps.versions.outputs.short-sha }}
           cache-from: type=gha
-          cache-to: type=gha,mode=min
+          cache-to: type=gha,mode=max
           provenance: false
 
       - name: Force push to dev

@@ -18,6 +18,7 @@ import {
     handleUserUpdate,
     handleVideoPlayerSync,
     handleWorldJoin,
+    handleWorldLeave,
 } from './handlers/socketHandlers';
 import { auth } from './lib/auth';
 import { socketAuthMiddleware } from './middleware/socketAuth';
@@ -25,6 +26,7 @@ import audioRouter from './routes/audio';
 import instancesRouter from './routes/instances';
 import usersRouter from './routes/users';
 import worldsRouter from './routes/worlds';
+import { instanceManager } from './services/instanceManager';
 import { worldRegistry } from './services/worldRegistry';
 
 // Expressアプリを初期化
@@ -115,6 +117,7 @@ io.on('connection', (socket) => {
 
     // 既存イベントハンドラー
     socket.on('world:join', handleWorldJoin(socket));
+    socket.on('world:leave', handleWorldLeave(socket));
     socket.on('cursor:move', handleCursorMove(socket));
     socket.on('status:update', handleStatusUpdate(socket));
     socket.on('user:update', handleUserUpdate(socket));
@@ -134,6 +137,14 @@ io.on('connection', (socket) => {
 async function startServer() {
     // ワールド定義を読み込み
     await worldRegistry.loadWorlds();
+
+    // 起動時クリーンアップ: 前回の実行で残ったインスタンスを削除する。
+    // サーバーが再起動するとソケット接続が全て切断されるが、disconnect ハンドラは
+    // 実行されないため DB の currentUsers が 0 にならずインスタンスが残り続ける。
+    const cleaned = await instanceManager.cleanupAll();
+    if (cleaned > 0) {
+        console.log(`🧹 起動クリーンアップ: 孤立インスタンス ${cleaned} 件を削除しました`);
+    }
 
     // ワールド数を取得（非同期）
     const worlds = await worldRegistry.listWorlds();
