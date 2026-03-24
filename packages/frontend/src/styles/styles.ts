@@ -17,15 +17,6 @@ export const mainContainer = flex({
     overflow: 'hidden',
 });
 
-export const texturedBackdrop = css({
-    position: 'absolute',
-    inset: 0,
-    pointerEvents: 'none',
-    bgImage:
-        'radial-gradient(circle at 20% 10%, rgba(27, 42, 68, 0.04), transparent 40%), radial-gradient(circle at 80% 80%, rgba(27, 42, 68, 0.03), transparent 45%), linear-gradient(to bottom, rgba(0, 0, 0, 0.01), transparent)',
-    opacity: 1,
-});
-
 export const shell = css({
     width: 'full',
     maxW: '5xl',
@@ -80,6 +71,8 @@ export const loginContainer = css({
     boxShadow: '0 8px 32px rgba(27, 42, 68, 0.08)',
     display: 'flex',
     flexDirection: 'column',
+    alignItems: 'center',
+    textAlign: 'center',
     gap: '4',
 });
 
@@ -96,19 +89,6 @@ export const title = css({
     fontWeight: '700',
     color: '#1b2a44',
     lineHeight: '1.1',
-});
-
-export const brandTitleRow = css({
-    display: 'flex',
-    alignItems: 'center',
-    gap: { base: '3', md: '4' },
-});
-
-export const brandIcon = css({
-    width: { base: '48px', md: '56px' },
-    height: { base: '48px', md: '56px' },
-    flexShrink: 0,
-    filter: 'drop-shadow(0 4px 8px rgba(27, 42, 68, 0.10))',
 });
 
 export const subtitle = css({
@@ -151,25 +131,6 @@ export const button = css({
     transition: 'background-color 0.16s ease, opacity 0.16s ease',
     _hover: { bg: '#263d68' },
     _disabled: { opacity: 0.5, cursor: 'not-allowed' },
-});
-
-export const hintText = css({
-    fontSize: 'xs',
-    color: '#8a7e6d',
-});
-
-export const backButton = css({
-    px: '4',
-    py: '2',
-    bg: 'transparent',
-    color: '#3d4f6a',
-    borderWidth: '1px',
-    borderColor: '#cebca2',
-    rounded: 'lg',
-    cursor: 'pointer',
-    fontSize: 'sm',
-    transition: 'background-color 0.16s ease',
-    _hover: { bg: 'rgba(27, 42, 68, 0.06)' },
 });
 
 // World/Canvas Styles

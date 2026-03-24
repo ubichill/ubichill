@@ -161,7 +161,7 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                         px: { base: '4', md: '8' },
                         py: { base: '5', md: '6' },
                         boxShadow: '0 8px 24px rgba(27, 42, 68, 0.08)',
-                        minH: '650px',
+                        flex: 1,
                         display: 'flex',
                         flexDirection: 'column',
                     })}
@@ -277,6 +277,7 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                         onScroll={handleScroll}
                         className={css({
                             flex: 1,
+                            minH: 0,
                             overflowY: 'auto',
                             overflowX: 'hidden',
                             paddingBottom: '20px',
