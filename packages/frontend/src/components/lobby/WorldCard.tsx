@@ -9,7 +9,7 @@ interface WorldCardProps {
     onSelect: (worldId: string) => void;
 }
 
-const cardStyle = {
+const cardStyle = css({
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'flex-start',
@@ -25,49 +25,45 @@ const cardStyle = {
         borderColor: '#b0a48e',
         backgroundColor: '#ede4d6',
     },
-};
+});
 
-const thumbnailContainerStyle = {
-    width: '100%',
-    height: '100px',
-    borderRadius: '8px',
-    marginBottom: '12px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: '32px',
-    position: 'relative',
-    overflow: 'hidden',
-};
-
-const titleStyle = {
+const titleStyle = css({
     fontSize: '16px',
     fontWeight: '600',
     color: '#1b2a44',
     marginBottom: '4px',
-};
+});
 
-const descriptionStyle = {
+const descriptionStyle = css({
     fontSize: '13px',
     color: '#5e6a82',
     lineHeight: '1.4',
-};
+});
 
-const metaStyle = {
+const metaStyle = css({
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
     marginTop: '8px',
     fontSize: '12px',
     color: '#8a7e6d',
-};
+});
 
 export function WorldCard({ world, onSelect }: WorldCardProps) {
     return (
-        <button type="button" onClick={() => onSelect(world.id)} className={css(cardStyle)}>
+        <button type="button" onClick={() => onSelect(world.id)} className={cardStyle}>
             <div
                 className={css({
-                    ...thumbnailContainerStyle,
+                    width: '100%',
+                    height: '100px',
+                    borderRadius: '8px',
+                    marginBottom: '12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '32px',
+                    position: 'relative',
+                    overflow: 'hidden',
                     backgroundColor: world.thumbnail ? 'transparent' : '#d4c4ab',
                 })}
             >
@@ -83,9 +79,9 @@ export function WorldCard({ world, onSelect }: WorldCardProps) {
                     '🌍'
                 )}
             </div>
-            <h3 className={css(titleStyle)}>{world.displayName}</h3>
-            {world.description && <p className={css(descriptionStyle)}>{world.description}</p>}
-            <div className={css(metaStyle)}>
+            <h3 className={titleStyle}>{world.displayName}</h3>
+            {world.description && <p className={descriptionStyle}>{world.description}</p>}
+            <div className={metaStyle}>
                 <span>
                     👥 推奨: {world.capacity.default}人 / 最大: {world.capacity.max}人
                 </span>

@@ -130,7 +130,7 @@ export default function Home() {
                         })}
                     />
                     <h1 className={styles.title}>Ubichill</h1>
-                    <p style={{ color: '#5e6a82', marginBottom: '16px', fontSize: '14px' }}>読み込み中...</p>
+                    <p className={css({ color: '#5e6a82', marginBottom: '4', fontSize: 'sm' })}>読み込み中...</p>
                     <div
                         className={css({
                             width: '24px',
@@ -155,12 +155,12 @@ export default function Home() {
                         ステータス: {isConnected ? '接続済み' : '切断'}
                         {error && <span className={styles.errorText}>{error}</span>}
                     </p>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <span style={{ color: '#1b2a44', fontSize: '14px' }}>{userName}</span>
+                    <div className={css({ display: 'flex', gap: '2', alignItems: 'center' })}>
+                        <span className={css({ color: '#1b2a44', fontSize: 'sm' })}>{userName}</span>
                         <button
                             type="button"
                             onClick={handleLogout}
-                            style={{
+                            className={css({
                                 padding: '8px 16px',
                                 backgroundColor: 'transparent',
                                 color: '#3d4f6a',
@@ -168,7 +168,9 @@ export default function Home() {
                                 borderRadius: '6px',
                                 fontSize: '13px',
                                 cursor: 'pointer',
-                            }}
+                                transition: 'background-color 0.16s ease',
+                                _hover: { bg: 'rgba(27, 42, 68, 0.06)' },
+                            })}
                         >
                             ログアウト
                         </button>
@@ -183,15 +185,23 @@ export default function Home() {
     // ワールド画面
     return (
         <main
-            className={styles.mainContainer}
+            className={css({
+                minH: 'screen',
+                display: 'flex',
+                flexDirection: 'column',
+                px: { base: '4', md: '8' },
+                py: { base: '4', md: '6' },
+                position: 'relative',
+                overflow: 'hidden',
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat',
+            })}
             onMouseMove={handleMouseMove}
             onContextMenu={handleContextMenu}
             style={{
                 backgroundColor: environment.backgroundColor,
                 backgroundImage: environment.backgroundImage ? `url(${environment.backgroundImage})` : undefined,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-                backgroundRepeat: 'no-repeat',
             }}
         >
             <div className={styles.headerContainer}>
@@ -199,7 +209,7 @@ export default function Home() {
                     ステータス: {isConnected ? '接続済み' : '切断'}
                     {error && <span className={styles.errorText}>{error}</span>}
                 </p>
-                <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                <div className={css({ display: 'flex', gap: '4', alignItems: 'center' })}>
                     {currentUser && <p className={styles.userInfo}>ログイン中: {currentUser.name}</p>}
                     <button
                         type="button"
@@ -208,7 +218,7 @@ export default function Home() {
                             resetWorld();
                             setScreen('lobby');
                         }}
-                        style={{
+                        className={css({
                             padding: '6px 14px',
                             backgroundColor: 'transparent',
                             color: '#868e96',
@@ -216,7 +226,9 @@ export default function Home() {
                             borderRadius: '6px',
                             fontSize: '13px',
                             cursor: 'pointer',
-                        }}
+                            transition: 'background-color 0.16s ease',
+                            _hover: { bg: 'rgba(134, 142, 150, 0.06)' },
+                        })}
                     >
                         ロビーに戻る
                     </button>
