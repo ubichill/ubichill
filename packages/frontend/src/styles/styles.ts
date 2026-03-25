@@ -13,7 +13,7 @@ export const mainContainer = flex({
     px: { base: '4', md: '8' },
     py: { base: '4', md: '6' },
     position: 'relative',
-    bg: '#faf6f0',
+    bg: 'background',
     overflow: 'hidden',
 });
 
@@ -42,9 +42,9 @@ export const statusBar = css({
     gap: '2',
     rounded: 'full',
     borderWidth: '1px',
-    borderColor: '#cebca2',
+    borderColor: 'border',
     bg: 'rgba(255, 255, 255, 0.72)',
-    color: '#1b2a44',
+    color: 'text',
     px: '4',
     py: '2',
     fontSize: 'sm',
@@ -52,7 +52,7 @@ export const statusBar = css({
 });
 
 export const userInfo = css({
-    color: '#1b2a44',
+    color: 'text',
     fontSize: 'sm',
 });
 
@@ -67,7 +67,7 @@ export const loginContainer = css({
     py: { base: '8', md: '12' },
     bg: '#ffffff',
     borderWidth: '1px',
-    borderColor: '#cebca2',
+    borderColor: 'border',
     boxShadow: '0 8px 32px rgba(27, 42, 68, 0.08)',
     display: 'flex',
     flexDirection: 'column',
@@ -80,19 +80,19 @@ export const titleTag = css({
     fontSize: 'xs',
     fontWeight: '600',
     letterSpacing: '0.18em',
-    color: '#5e6a82',
+    color: 'textMuted',
     textTransform: 'uppercase',
 });
 
 export const title = css({
     fontSize: { base: '4xl', md: '5xl' },
     fontWeight: '700',
-    color: '#1b2a44',
+    color: 'text',
     lineHeight: '1.1',
 });
 
 export const subtitle = css({
-    color: '#5e6a82',
+    color: 'textMuted',
     fontSize: { base: 'sm', md: 'md' },
 });
 
@@ -108,15 +108,15 @@ export const input = css({
     px: '4',
     py: '3',
     borderWidth: '1px',
-    borderColor: '#cebca2',
+    borderColor: 'border',
     rounded: 'lg',
-    color: '#1b2a44',
-    bg: '#ede4d6',
+    color: 'text',
+    bg: 'surfaceHover',
     fontSize: 'md',
-    _placeholder: { color: '#8a7e6d' },
+    _placeholder: { color: 'textSubtle' },
     _focusVisible: {
         outline: 'none',
-        borderColor: '#1e3155',
+        borderColor: 'primaryHover',
         boxShadow: '0 0 0 3px rgba(30, 49, 85, 0.15)',
     },
 });
@@ -124,12 +124,12 @@ export const input = css({
 export const button = css({
     px: '4',
     py: '3',
-    bg: '#1e3155',
-    color: '#f8f3ea',
+    bg: 'primaryHover',
+    color: 'textOnPrimary',
     rounded: 'lg',
     fontWeight: '600',
     transition: 'background-color 0.16s ease, opacity 0.16s ease',
-    _hover: { bg: '#263d68' },
+    _hover: { bg: 'primaryActive' },
     _disabled: { opacity: 0.5, cursor: 'not-allowed' },
 });
 

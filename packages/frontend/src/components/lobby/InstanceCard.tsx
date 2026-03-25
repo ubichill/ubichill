@@ -10,9 +10,9 @@ interface InstanceCardProps {
 
 export function InstanceCard({ instance, onJoin }: InstanceCardProps) {
     const statusColors: Record<string, string> = {
-        active: '#8ad29b',
-        full: '#f1c86c',
-        closing: '#9ea7bd',
+        active: '#8ad29b', // success token value
+        full: '#f1c86c', // warning token value
+        closing: '#9ea7bd', // info token value
     };
 
     return (
@@ -22,12 +22,13 @@ export function InstanceCard({ instance, onJoin }: InstanceCardProps) {
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 padding: { base: '12px', md: '16px' },
-                backgroundColor: '#f5ecdf',
+                backgroundColor: 'surface',
                 borderRadius: '14px',
-                border: '1px solid #cebca2',
+                border: '1px solid',
+                borderColor: 'border',
                 transition: 'background-color 0.16s ease',
                 _hover: {
-                    backgroundColor: '#ede4d6',
+                    backgroundColor: 'surfaceHover',
                 },
             })}
         >
@@ -37,7 +38,7 @@ export function InstanceCard({ instance, onJoin }: InstanceCardProps) {
                         className={css({
                             fontSize: { base: '14px', md: '16px' },
                             fontWeight: '600',
-                            color: '#1b2a44',
+                            color: 'text',
                             marginBottom: '4px',
                         })}
                     >
@@ -50,7 +51,7 @@ export function InstanceCard({ instance, onJoin }: InstanceCardProps) {
                             gap: '12px',
                             flexWrap: 'wrap',
                             fontSize: '13px',
-                            color: '#5e6a82',
+                            color: 'textMuted',
                         })}
                     >
                         <span
@@ -83,8 +84,8 @@ export function InstanceCard({ instance, onJoin }: InstanceCardProps) {
                 disabled={instance.status === 'full' || instance.status === 'closing'}
                 className={css({
                     padding: { base: '8px 14px', md: '10px 18px' },
-                    backgroundColor: '#1b2a44',
-                    color: '#f8f3ea',
+                    backgroundColor: 'primary',
+                    color: 'textOnPrimary',
                     border: 'none',
                     borderRadius: '10px',
                     fontSize: '14px',
@@ -96,7 +97,7 @@ export function InstanceCard({ instance, onJoin }: InstanceCardProps) {
                     },
                     _disabled: {
                         backgroundColor: 'rgba(27, 42, 68, 0.15)',
-                        color: '#8a7e6d',
+                        color: 'textSubtle',
                         cursor: 'not-allowed',
                     },
                 })}

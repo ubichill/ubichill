@@ -368,7 +368,7 @@ const containerStyle = flex({
     minH: 'screen',
     alignItems: 'center',
     justifyContent: 'center',
-    bg: '#faf6f0',
+    bg: 'background',
 });
 
 const cardStyle = vstack({
@@ -388,19 +388,19 @@ const iconStyle = css({
 const titleStyle = css({
     fontSize: '3xl',
     fontWeight: 'bold',
-    color: '#1b2a44',
+    color: 'text',
 });
 
 const subtitleStyle = css({
     fontSize: 'sm',
-    color: '#5e6a82',
+    color: 'textMuted',
     textAlign: 'center',
 });
 
 const tabContainerStyle = flex({
     w: 'full',
     gap: '2',
-    bg: '#ede4d6',
+    bg: 'surfaceHover',
     p: '1',
     rounded: 'lg',
 });
@@ -411,11 +411,11 @@ const tabStyle = css({
     px: '4',
     fontSize: 'sm',
     fontWeight: 'medium',
-    color: '#3d4f6a',
+    color: 'textMuted',
     rounded: 'md',
     cursor: 'pointer',
     transition: 'all 0.2s',
-    _hover: { color: '#1b2a44' },
+    _hover: { color: 'text' },
 });
 
 const tabActiveStyle = css({
@@ -424,8 +424,8 @@ const tabActiveStyle = css({
     px: '4',
     fontSize: 'sm',
     fontWeight: 'medium',
-    color: '#f8f3ea',
-    bg: '#1e3155',
+    color: 'textOnPrimary',
+    bg: 'primaryHover',
     rounded: 'md',
     cursor: 'pointer',
 });
@@ -444,7 +444,7 @@ const fieldStyle = vstack({
 const labelStyle = css({
     fontSize: 'sm',
     fontWeight: 'medium',
-    color: '#3d4f6a',
+    color: 'textMuted',
 });
 
 const inputStyle = css({
@@ -452,15 +452,15 @@ const inputStyle = css({
     py: '2.5',
     px: '3',
     fontSize: 'sm',
-    color: '#1b2a44',
-    bg: '#ede4d6',
+    color: 'text',
+    bg: 'surfaceHover',
     borderWidth: '1px',
-    borderColor: '#cebca2',
+    borderColor: 'border',
     rounded: 'lg',
     outline: 'none',
     transition: 'all 0.2s',
-    _placeholder: { color: '#8a7e6d' },
-    _focus: { borderColor: '#1e3155', ring: '2', ringColor: 'rgba(30, 49, 85, 0.15)' },
+    _placeholder: { color: 'textSubtle' },
+    _focus: { borderColor: 'primaryHover', ring: '2', ringColor: 'rgba(30, 49, 85, 0.15)' },
 });
 
 const inputErrorStyle = css({
@@ -468,20 +468,20 @@ const inputErrorStyle = css({
     py: '2.5',
     px: '3',
     fontSize: 'sm',
-    color: '#1b2a44',
-    bg: '#ede4d6',
+    color: 'text',
+    bg: 'surfaceHover',
     borderWidth: '1px',
-    borderColor: '#c0392b',
+    borderColor: 'error',
     rounded: 'lg',
     outline: 'none',
     transition: 'all 0.2s',
-    _placeholder: { color: '#8a7e6d' },
-    _focus: { borderColor: '#c0392b', ring: '2', ringColor: 'rgba(192, 57, 43, 0.15)' },
+    _placeholder: { color: 'textSubtle' },
+    _focus: { borderColor: 'error', ring: '2', ringColor: 'rgba(192, 57, 43, 0.15)' },
 });
 
 const fieldErrorStyle = css({
     fontSize: 'xs',
-    color: '#c0392b',
+    color: 'error',
 });
 
 const fieldSuccessStyle = css({
@@ -491,7 +491,7 @@ const fieldSuccessStyle = css({
 
 const hintStyle = css({
     fontSize: 'xs',
-    color: '#8a7e6d',
+    color: 'textSubtle',
 });
 
 const otpInputStyle = css({
@@ -500,16 +500,16 @@ const otpInputStyle = css({
     px: '4',
     fontSize: '2xl',
     fontWeight: 'bold',
-    color: '#1b2a44',
+    color: 'text',
     textAlign: 'center',
     letterSpacing: '0.5em',
-    bg: '#ede4d6',
+    bg: 'surfaceHover',
     borderWidth: '2px',
-    borderColor: '#cebca2',
+    borderColor: 'border',
     rounded: 'lg',
     outline: 'none',
     transition: 'all 0.2s',
-    _focus: { borderColor: '#1e3155', ring: '2', ringColor: 'rgba(30, 49, 85, 0.15)' },
+    _focus: { borderColor: 'primaryHover', ring: '2', ringColor: 'rgba(30, 49, 85, 0.15)' },
 });
 
 const buttonStyle = css({
@@ -518,24 +518,24 @@ const buttonStyle = css({
     px: '4',
     fontSize: 'sm',
     fontWeight: 'medium',
-    color: '#f8f3ea',
-    bg: '#1e3155',
+    color: 'textOnPrimary',
+    bg: 'primaryHover',
     rounded: 'lg',
     cursor: 'pointer',
     transition: 'all 0.2s',
-    _hover: { bg: '#263d68' },
+    _hover: { bg: 'primaryActive' },
     _disabled: { opacity: 0.6, cursor: 'not-allowed' },
 });
 
 const linkButtonStyle = css({
     py: '2',
     fontSize: 'sm',
-    color: '#5e6a82',
+    color: 'textMuted',
     bg: 'transparent',
     border: 'none',
     cursor: 'pointer',
     transition: 'all 0.2s',
-    _hover: { color: '#1b2a44' },
+    _hover: { color: 'text' },
 });
 
 const errorStyle = css({
@@ -543,8 +543,8 @@ const errorStyle = css({
     py: '2',
     px: '3',
     fontSize: 'sm',
-    color: '#922b21',
-    bg: '#f9e4e1',
+    color: 'errorText',
+    bg: 'errorBg',
     rounded: 'lg',
 });
 
@@ -553,8 +553,8 @@ const successStyle = css({
     py: '2',
     px: '3',
     fontSize: 'sm',
-    color: '#1e7e46',
-    bg: '#e4f5ec',
+    color: 'successText',
+    bg: 'successBg',
     rounded: 'lg',
 });
 
@@ -563,8 +563,8 @@ const verifyInfoStyle = css({
     py: '4',
     px: '4',
     fontSize: 'sm',
-    color: '#3d4f6a',
-    bg: '#ede4d6',
+    color: 'textMuted',
+    bg: 'surfaceHover',
     rounded: 'lg',
 });
 
@@ -573,7 +573,7 @@ const verifyListStyle = css({
     ml: '4',
     listStyleType: 'disc',
     fontSize: 'xs',
-    color: '#5e6a82',
+    color: 'textMuted',
     '& li': {
         mt: '1',
     },
