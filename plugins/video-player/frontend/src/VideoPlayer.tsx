@@ -465,6 +465,7 @@ export const VideoPlayer: React.FC<Props> = ({ entity, isLocked, update }) => {
         if (!videoRef.current || !currentTrack) return;
 
         const rect = e.currentTarget.getBoundingClientRect();
+        if (rect.width === 0) return;
         const percent = (e.clientX - rect.left) / rect.width;
         const newTime = percent * currentTrack.duration;
 
@@ -577,7 +578,12 @@ export const VideoPlayer: React.FC<Props> = ({ entity, isLocked, update }) => {
                         >
                             <div
                                 className={styles.progressBar}
-                                style={{ width: currentTrack ? `${(localTime / currentTrack.duration) * 100}%` : '0%' }}
+                                style={{
+                                    width:
+                                        currentTrack && currentTrack.duration > 0
+                                            ? `${(localTime / currentTrack.duration) * 100}%`
+                                            : '0%',
+                                }}
                             />
                         </div>
 

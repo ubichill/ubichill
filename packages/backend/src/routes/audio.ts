@@ -391,4 +391,4 @@ router.get('/popular', async (_req, res) => {
     return res.json(popularTracks);
 });
 
-export default router;
+export { router };

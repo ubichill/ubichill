@@ -111,8 +111,8 @@ const EntityCEBridge: React.FC<BridgeProps> = ({
                         ...additionalPatch,
                         data: {
                             ...(e.data as Record<string, unknown>),
-                            isHeld: false,
                             ...(additionalPatch.data as Record<string, unknown>),
+                            isHeld: false, // ロック解放は必ず false で上書き
                         },
                     });
                 }

@@ -140,7 +140,8 @@ export class AvatarWidgetElement extends UbiWidget<AvatarData> {
     }
 
     disconnectedCallback() {
-        this.#root?.unmount();
+        const root = this.#root;
         this.#root = null;
+        setTimeout(() => root?.unmount(), 0);
     }
 }

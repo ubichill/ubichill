@@ -22,10 +22,10 @@ import {
 } from './handlers/socketHandlers';
 import { auth } from './lib/auth';
 import { socketAuthMiddleware } from './middleware/socketAuth';
-import audioRouter from './routes/audio';
-import instancesRouter from './routes/instances';
-import usersRouter from './routes/users';
-import worldsRouter from './routes/worlds';
+import { router as audioRouter } from './routes/audio';
+import { router as instancesRouter } from './routes/instances';
+import { router as usersRouter } from './routes/users';
+import { router as worldsRouter } from './routes/worlds';
 import { instanceManager } from './services/instanceManager';
 import { worldRegistry } from './services/worldRegistry';
 
@@ -33,8 +33,10 @@ import { worldRegistry } from './services/worldRegistry';
 const app = express();
 
 // Ingress / リバースプロキシ経由の X-Forwarded-For を信頼する
-// express-rate-limit が正しいクライアント IP を識別するために必要
-app.set('trust proxy', 1);
+// production のみ有効化（開発環境では偽装リスクを避けるため無効）
+if (appConfig.isProduction) {
+    app.set('trust proxy', 1);
+}
 
 // セキュリティミドルウェア
 app.use(helmet());

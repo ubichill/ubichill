@@ -189,4 +189,4 @@ router.delete('/:worldId', requireAuth, async (req, res) => {
     }
 });
 
-export default router;
+export { router };

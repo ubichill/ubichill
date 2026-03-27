@@ -1,6 +1,7 @@
 import type { UbiEntityContext } from '@ubichill/sdk/ui';
 import { UbiWidget } from '@ubichill/sdk/ui';
 import Hls from 'hls.js';
+import type React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Root } from 'react-dom/client';
 import { createRoot } from 'react-dom/client';
@@ -323,15 +324,22 @@ const VideoPlayerContent: React.FC<{ ctx: UbiEntityContext<MusicPlayerState> }> 
                         <div
                             className={styles.progressContainer}
                             onClick={handleSeek}
-                            role="slider"
+                            role="button"
                             tabIndex={0}
-                            aria-valuenow={localTime}
-                            aria-valuemin={0}
-                            aria-valuemax={currentTrack?.duration || 0}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ')
+                                    handleSeek(e as unknown as React.MouseEvent<HTMLDivElement>);
+                            }}
+                            aria-label="シークバー"
                         >
                             <div
                                 className={styles.progressBar}
-                                style={{ width: currentTrack ? `${(localTime / currentTrack.duration) * 100}%` : '0%' }}
+                                style={{
+                                    width:
+                                        currentTrack && currentTrack.duration > 0
+                                            ? `${(localTime / currentTrack.duration) * 100}%`
+                                            : '0%',
+                                }}
                             />
                         </div>
 

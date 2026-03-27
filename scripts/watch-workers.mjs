@@ -35,6 +35,16 @@ function scheduleRebuild(pluginJsonPath, pluginId) {
     );
 }
 
+/** ディレクトリを再帰走査して各ディレクトリに watch を張る（Linux 対応） */
+function watchRecursive(dir, callback) {
+    watch(dir, callback);
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (entry.isDirectory()) {
+            watchRecursive(join(dir, entry.name), callback);
+        }
+    }
+}
+
 console.log('[workers] 👀 Watching worker sources...');
 
 for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
@@ -50,9 +60,9 @@ for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
 
     const pluginId = pluginJson.id;
 
-    watch(workerSrcDir, { recursive: true }, () => {
-        scheduleRebuild(pluginJsonPath, pluginId);
-    });
+    // fs.watch の recursive オプションは Linux で動作しない場合があるため
+    // ディレクトリを再帰走査して個別に watch を張る
+    watchRecursive(workerSrcDir, () => scheduleRebuild(pluginJsonPath, pluginId));
 
     console.log(`[workers]   watching ${entry.name}/worker/src`);
 }

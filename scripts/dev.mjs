@@ -98,13 +98,16 @@ async function main() {
     console.log('💻 Starting development server...');
 
     // shared / workers は watch のみで、終了しても frontend/backend を道連れにしない
-    concurrently(
+    const { result: watchResult } = concurrently(
         [
             { command: 'pnpm --filter @ubichill/shared dev', name: 'shared', prefixColor: 'yellow' },
             { command: 'node scripts/watch-workers.mjs', name: 'workers', prefixColor: 'green' },
         ],
         { prefix: '[{name}]', killOthers: [], restartTries: 3 },
     );
+    watchResult.catch((err) => {
+        console.error('[watch] watcher exited with error:', err?.message ?? err);
+    });
 
     const { result } = concurrently(
         [
