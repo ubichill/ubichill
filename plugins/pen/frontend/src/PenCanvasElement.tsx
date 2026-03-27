@@ -45,6 +45,7 @@ const PenCanvasContent: React.FC<{ ctx: UbiInstanceContext }> = ({ ctx }) => {
     const [, setTick] = useState(0);
     const currentDrawingRef = useRef<DrawingData | null>(null);
     const remoteDrawingsRef = useRef<Map<string, DrawingData>>(new Map());
+    const strokePathCacheRef = useRef<Map<string, { path: string; color: string }>>(new Map());
 
     const forceUpdate = useCallback(() => setTick((t) => t + 1), []);
 
@@ -58,14 +59,13 @@ const PenCanvasContent: React.FC<{ ctx: UbiInstanceContext }> = ({ ctx }) => {
                 currentDrawingRef.current = drawing;
             }
             forceUpdate();
-            // ローカル描画データをブロードキャスト（リモートユーザーへ）
-            if (drawing !== null) {
-                socket?.emit('entity:ephemeral', { entityId, data: drawing });
-            }
+            // NOTE:
+            // 一時描画データの送信は PenWidgetElement 側の broadcast に統一する。
+            // ここで emit すると二重送信になり、重複描画とネットワーク負荷の原因になる。
         };
         document.addEventListener('ubi:pen-drawing', handler);
         return () => document.removeEventListener('ubi:pen-drawing', handler);
-    }, [socket, forceUpdate]);
+    }, [forceUpdate]);
 
     // リモートユーザーの描画中ストロークを受信
     useEffect(() => {
@@ -99,7 +99,28 @@ const PenCanvasContent: React.FC<{ ctx: UbiInstanceContext }> = ({ ctx }) => {
         return () => socket.off('world:snapshot', handleSnapshot as (...args: unknown[]) => void);
     }, [socket, forceUpdate]);
 
-    const strokes = Array.from(entities.values()).filter((e) => e.type === 'stroke');
+    const strokeEntities = Array.from(entities.values()).filter((e) => e.type === 'stroke');
+    const activeStrokeIds = new Set<string>();
+    const confirmedStrokePaths = strokeEntities.map((entity) => {
+        activeStrokeIds.add(entity.id);
+
+        const cached = strokePathCacheRef.current.get(entity.id);
+        if (cached) {
+            return { id: entity.id, path: cached.path, color: cached.color };
+        }
+
+        const stroke = entity.data as unknown as StrokeData;
+        const path = getSvgPathFromStroke(getStroke(stroke.points, getStrokeOptions(stroke.size)));
+        const record = { path, color: stroke.color };
+        strokePathCacheRef.current.set(entity.id, record);
+        return { id: entity.id, ...record };
+    });
+
+    for (const cachedId of strokePathCacheRef.current.keys()) {
+        if (!activeStrokeIds.has(cachedId)) {
+            strokePathCacheRef.current.delete(cachedId);
+        }
+    }
 
     return (
         <svg
@@ -115,16 +136,9 @@ const PenCanvasContent: React.FC<{ ctx: UbiInstanceContext }> = ({ ctx }) => {
             }}
         >
             {/* 確定済みストローク */}
-            {strokes.map((entity) => {
-                const stroke = entity.data as unknown as StrokeData;
-                return (
-                    <path
-                        key={entity.id}
-                        d={getSvgPathFromStroke(getStroke(stroke.points, getStrokeOptions(stroke.size)))}
-                        fill={stroke.color}
-                    />
-                );
-            })}
+            {confirmedStrokePaths.map((stroke) => (
+                <path key={stroke.id} d={stroke.path} fill={stroke.color} />
+            ))}
 
             {/* リモートユーザーの描画中ストローク */}
             {Array.from(remoteDrawingsRef.current.entries()).map(([id, drawing]) => (

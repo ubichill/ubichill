@@ -110,6 +110,50 @@ color: 'text'
 - `CMD_READY` 受信後にキューをフラッシュする。`CMD_READY` が来ない = プラグイン初期化失敗。
 - `plugin.json` の `capabilities` を `PluginHostManager` に渡すと、未宣言コマンドを RPC エラーで弾く。
 
+## プラグイン開発ロードマップ
+
+### 現在（Phase 1）— CE ベース
+プラグインは2つのファイルで構成される。
+
+| ファイル | 役割 | 実行場所 |
+|---|---|---|
+| `worker/src/index.ts` | ロジック（ECS） | Sandbox Worker（隔離） |
+| `frontend/src/*.tsx` | UI（Custom Element） | メインスレッド（信頼前提） |
+
+CE は `UbiWidget` / `UbiSingleton` を継承して実装する。
+ホストとの通信には `ctx.broadcastEphemeral` / `ctx.onBroadcast` を使う（`socket` 直接アクセス禁止）。
+
+### 今後（Phase 2）— Worker 統合 UI
+UI も Worker 内で記述し、メインスレッドへのアクセスをなくす。
+
+```
+プラグイン（独自 JSX / 軽量 vDOM）
+  → Worker 内でレンダリング → UI パッチ命令列
+  → postMessage → ホストが実 DOM に適用
+```
+
+- プラグイン開発者は Worker 1 ファイルだけ書けば完結する
+- DOM・React・Socket の知識は不要
+- `Ubi.*` API のみで完結する
+- CE (`UbiWidget` / `UbiSingleton`) は段階的に廃止
+
+### URL 配布
+プラグインは CDN の URL 1 本で配布する。
+
+```
+plugin.json（マニフェスト）
+  worker: https://cdn.example.com/myplugin/worker.js   ← サンドボックスで実行
+  frontend: https://cdn.example.com/myplugin/ui.js     ← Phase 2 以降は worker のみ
+```
+
+`PLUGIN_LOADERS`（registry.ts のハードコード）は将来的に廃止し、ワールド設定の URL から動的ロードする。
+
+### プラグイン開発者が意識すること（現在）
+1. `@ubichill/sdk` のみ依存（`@ubichill/shared` など本体への直接依存禁止）
+2. Worker コードは ECS で書く（`Ubi.local` / `Ubi.world` / `Ubi.network`）
+3. UI は CE で書き、ホストとのやり取りは `ctx.broadcastEphemeral` / `ctx.onBroadcast`
+4. `socket` 直接アクセス禁止（`@deprecated`）
+
 ## パフォーマンス設計（engine / sandbox レイヤーで完結、プラグイン側は意識不要）
 
 ### InputCollector — MOUSE_MOVE O(1) デデュプ

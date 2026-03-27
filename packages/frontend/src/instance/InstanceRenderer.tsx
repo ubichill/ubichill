@@ -2,8 +2,9 @@
 
 import { useSocket, useWorld, Z_INDEX } from '@ubichill/sdk/react';
 import type { UbiInstanceContext } from '@ubichill/sdk/ui';
-import React, { useLayoutEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { EntityRenderer } from '@/core/components/EntityRenderer';
+import { wrapSocket } from '@/core/utils/socket';
 import { usePluginRegistry } from '@/plugins/PluginRegistryContext';
 
 // ============================================
@@ -39,6 +40,73 @@ export const InstanceRenderer: React.FC = () => {
     const { isConnected, socket, currentUser, users, updateUser, updatePosition } = useSocket();
     const { entities, patchEntity, createEntity, ephemeralData } = useWorld();
     const { pluginMap } = usePluginRegistry();
+    const pendingEphemeralRef = useRef<Map<string, unknown>>(new Map());
+    const flushRafRef = useRef<number | null>(null);
+
+    // ブロードキャストチャンネル登録: channel → handler set
+    const broadcastHandlersRef = useRef<Map<string, Set<(data: unknown) => void>>>(new Map());
+
+    const onBroadcast = useCallback((channel: string, handler: (data: unknown) => void) => {
+        const handlers = broadcastHandlersRef.current.get(channel) ?? new Set();
+        handlers.add(handler);
+        broadcastHandlersRef.current.set(channel, handlers);
+        return () => {
+            handlers.delete(handler);
+            if (handlers.size === 0) broadcastHandlersRef.current.delete(channel);
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!socket) return;
+        const handler = ({ entityId, data }: { entityId: string; data: unknown }) => {
+            for (const h of broadcastHandlersRef.current.get(entityId) ?? []) {
+                h(data);
+            }
+        };
+        const h = handler as (...args: unknown[]) => void;
+        socket.on('entity:ephemeral', h);
+        return () => { socket.off('entity:ephemeral', h); };
+    }, [socket]);
+
+    const flushEphemeralQueue = useCallback(() => {
+        if (!socket) {
+            pendingEphemeralRef.current.clear();
+            return;
+        }
+
+        for (const [entityId, data] of pendingEphemeralRef.current.entries()) {
+            socket.emit('entity:ephemeral', { entityId, data });
+        }
+        pendingEphemeralRef.current.clear();
+    }, [socket]);
+
+    const scheduleEphemeralFlush = useCallback(() => {
+        if (flushRafRef.current !== null) return;
+        flushRafRef.current = requestAnimationFrame(() => {
+            flushRafRef.current = null;
+            flushEphemeralQueue();
+        });
+    }, [flushEphemeralQueue]);
+
+    const enqueueEphemeral = useCallback(
+        (entityId: string, data: unknown) => {
+            pendingEphemeralRef.current.set(entityId, data);
+            scheduleEphemeralFlush();
+        },
+        [scheduleEphemeralFlush],
+    );
+
+    useEffect(() => {
+        return () => {
+            if (flushRafRef.current !== null) {
+                cancelAnimationFrame(flushRafRef.current);
+                flushRafRef.current = null;
+            }
+            pendingEphemeralRef.current.clear();
+        };
+    }, []);
+
+    const wrappedSocket = useMemo(() => (socket ? wrapSocket(socket) : null), [socket]);
 
     if (!isConnected) {
         return null;
@@ -58,19 +126,9 @@ export const InstanceRenderer: React.FC = () => {
             return result ?? null;
         },
         ephemeralData,
-        broadcastEphemeral: (entityId, data) => {
-            socket?.emit('entity:ephemeral', { entityId, data });
-        },
-        socket: socket
-            ? {
-                  emit: (event, ...args) => (socket.emit as (ev: string, ...a: unknown[]) => void)(event, ...args),
-                  on: (event, handler) => socket.on(event as never, handler as never),
-                  off: (event, handler) => socket.off(event as never, handler as never),
-                  get id() {
-                      return socket.id;
-                  },
-              }
-            : null,
+        broadcastEphemeral: enqueueEphemeral,
+        onBroadcast,
+        socket: wrappedSocket,
     };
 
     // ロード済みプラグインのシングルトンタグを収集
@@ -85,7 +143,14 @@ export const InstanceRenderer: React.FC = () => {
     }
 
     const renderEntities = Array.from(entities.values()).map((entity) => (
-        <EntityRenderer key={entity.id} entityId={entity.id} />
+        <EntityRenderer
+            key={entity.id}
+            entityId={entity.id}
+            broadcastEphemeral={enqueueEphemeral}
+            wrappedSocket={wrappedSocket}
+            currentUser={currentUser}
+            users={users}
+        />
     ));
 
     return (

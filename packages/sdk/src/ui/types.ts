@@ -89,7 +89,12 @@ export interface UbiInstanceContext {
     ephemeralData: ReadonlyMap<string, unknown>;
     /** エンティティにエフェメラルデータをブロードキャスト */
     broadcastEphemeral: (entityId: string, data: unknown) => void;
+    /**
+     * ブロードキャストチャンネルを購読する。戻り値の関数で購読解除。
+     * `socket.on('entity:ephemeral')` の直接使用の代わりに使う。
+     */
+    onBroadcast: (channel: string, handler: (data: unknown) => void) => () => void;
 
-    /** Socket.IO クライアント（プラグイン固有のソケットイベントに使用） */
+    /** @deprecated プラグイン固有イベントには onBroadcast / broadcastEphemeral を使用 */
     socket: SocketLike | null;
 }

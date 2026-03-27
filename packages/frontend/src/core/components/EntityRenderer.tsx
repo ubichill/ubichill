@@ -1,18 +1,28 @@
 'use client';
 
 import type { WorldEntity } from '@ubichill/sdk';
-import { useSocket, useWorld } from '@ubichill/sdk/react';
-import type { UbiEntityContext } from '@ubichill/sdk/ui';
+import { useWorld } from '@ubichill/sdk/react';
+import type { SocketLike, UbiEntityContext } from '@ubichill/sdk/ui';
 import React, { useLayoutEffect, useRef } from 'react';
+import type { User } from '@ubichill/shared';
 import { usePluginRegistry } from '../../plugins/PluginRegistryContext';
 
 interface EntityRendererProps {
     entityId: string;
+    broadcastEphemeral: (entityId: string, data: unknown) => void;
+    wrappedSocket: SocketLike | null;
+    currentUser: User | null;
+    users: Map<string, User>;
 }
 
-export const EntityRenderer: React.FC<EntityRendererProps> = ({ entityId }) => {
+export const EntityRenderer: React.FC<EntityRendererProps> = ({
+    entityId,
+    broadcastEphemeral,
+    wrappedSocket,
+    currentUser,
+    users,
+}) => {
     const { entities, patchEntity, createEntity, ephemeralData } = useWorld();
-    const { socket, currentUser, users } = useSocket();
     const { pluginMap, loadPlugin } = usePluginRegistry();
     const ref = useRef<HTMLElement>(null);
 
@@ -33,12 +43,13 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({ entityId }) => {
             key={plugin.elementTag}
             tag={plugin.elementTag}
             entityId={entityId}
+            broadcastEphemeral={broadcastEphemeral}
             entity={entity}
             entities={entities}
             patchEntity={patchEntity}
             createEntity={createEntity}
             ephemeralData={ephemeralData}
-            socket={socket}
+            socket={wrappedSocket}
             currentUser={currentUser}
             users={users}
             ref={ref}
@@ -53,20 +64,22 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({ entityId }) => {
 interface BridgeProps {
     tag: string;
     entityId: string;
+    broadcastEphemeral: (entityId: string, data: unknown) => void;
     entity: WorldEntity;
     entities: Map<string, WorldEntity>;
     patchEntity: (id: string, patch: Partial<WorldEntity>) => void;
     createEntity: (type: string, transform: WorldEntity['transform'], data: unknown) => Promise<WorldEntity | null>;
     ephemeralData: Map<string, unknown>;
-    socket: import('socket.io-client').Socket | null;
-    currentUser: import('@ubichill/shared').User | null;
-    users: Map<string, import('@ubichill/shared').User>;
+    socket: SocketLike | null;
+    currentUser: User | null;
+    users: Map<string, User>;
     ref: React.RefObject<HTMLElement | null>;
 }
 
 const EntityCEBridge: React.FC<BridgeProps> = ({
     tag,
     entityId,
+    broadcastEphemeral,
     entity,
     entities,
     patchEntity,
@@ -88,9 +101,7 @@ const EntityCEBridge: React.FC<BridgeProps> = ({
             entity,
             ephemeral: ephemeralData.get(entityId),
             patchEntity: (patch) => patchEntity(entityId, patch as Partial<WorldEntity>),
-            broadcast: (data) => {
-                socket?.emit('entity:ephemeral', { entityId, data });
-            },
+            broadcast: (data) => broadcastEphemeral(entityId, data),
             isLocked: !!entity.lockedBy,
             isLockedByMe,
             isLockedByOther,
@@ -123,16 +134,7 @@ const EntityCEBridge: React.FC<BridgeProps> = ({
             },
             currentUserId: currentUser?.id,
             users,
-            socket: socket
-                ? {
-                      emit: (event, ...args) => (socket.emit as (ev: string, ...a: unknown[]) => void)(event, ...args),
-                      on: (event, handler) => socket.on(event as never, handler as never),
-                      off: (event, handler) => socket.off(event as never, handler as never),
-                      get id() {
-                          return socket.id;
-                      },
-                  }
-                : null,
+            socket,
         };
 
         // @ts-expect-error — CE に ubiCtx を注入

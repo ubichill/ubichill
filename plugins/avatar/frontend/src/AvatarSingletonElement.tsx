@@ -88,7 +88,7 @@ const useCursorState = (): CursorState => {
 // ============================================
 
 const AvatarSingletonContent: React.FC<{ ctx: UbiInstanceContext }> = ({ ctx }) => {
-    const { currentUser, users, updateUser, updatePosition, socket } = ctx;
+    const { currentUser, users, updateUser, updatePosition, broadcastEphemeral, onBroadcast } = ctx;
     const cursorState = useCursorState();
 
     const [userStatus, setUserStatus] = useState<UserStatus>('online');
@@ -159,17 +159,20 @@ const AvatarSingletonContent: React.FC<{ ctx: UbiInstanceContext }> = ({ ctx }) 
         return () => window.removeEventListener('contextmenu', handleContextMenu);
     }, [updateUser]);
 
+    // currentUser?.id のクロージャが古くならないよう ref で保持
+    const currentUserIdRef = useRef(currentUser?.id);
+    useEffect(() => { currentUserIdRef.current = currentUser?.id; });
+
     // 絵文字ブロードキャスト受信
     useEffect(() => {
-        if (!socket) return;
-        const handler = (payload: { entityId: string; data: unknown }) => {
-            const data = payload.data as {
+        return onBroadcast('emoji-broadcast', (raw) => {
+            const data = raw as {
                 emoji: string;
                 position: { x: number; y: number };
                 userId: string;
                 timestamp: number;
             };
-            if (!data || data.userId === currentUser?.id) return;
+            if (!data?.position || data.userId === currentUserIdRef.current) return;
             setFloatingEmojis((prev) => [
                 ...prev,
                 {
@@ -179,11 +182,8 @@ const AvatarSingletonContent: React.FC<{ ctx: UbiInstanceContext }> = ({ ctx }) 
                     timestamp: data.timestamp,
                 },
             ]);
-        };
-        const h = handler as (...args: unknown[]) => void;
-        socket.on('entity:ephemeral', h);
-        return () => socket.off('entity:ephemeral', h);
-    }, [socket, currentUser?.id]);
+        });
+    }, [onBroadcast]);
 
     useEffect(() => {
         if (!showRadialMenu) {
@@ -207,23 +207,18 @@ const AvatarSingletonContent: React.FC<{ ctx: UbiInstanceContext }> = ({ ctx }) 
 
     const sendEmoji = useCallback(
         (emoji: string) => {
-            if (!currentUser?.id || !socket) return;
+            if (!currentUser?.id) return;
             const pos = showRadialMenu ? menuOpenPositionRef.current : lastPositionRef.current;
-            const newEmoji: FloatingEmoji = {
-                id: Date.now().toString(),
-                emoji,
-                position: pos,
-                timestamp: Date.now(),
-            };
-            setFloatingEmojis((prev) => [...prev, newEmoji]);
-            socket.emit('entity:ephemeral', {
-                entityId: 'emoji-broadcast',
-                data: { emoji, position: pos, userId: currentUser.id, timestamp: Date.now() },
-            });
+            const timestamp = Date.now();
+            setFloatingEmojis((prev) => [
+                ...prev,
+                { id: timestamp.toString(), emoji, position: pos, timestamp },
+            ]);
+            broadcastEphemeral('emoji-broadcast', { emoji, position: pos, userId: currentUser.id, timestamp });
             setRadialMenuPosition(null);
             updateUser({ isMenuOpen: false });
         },
-        [currentUser?.id, socket, showRadialMenu, updateUser],
+        [currentUser?.id, broadcastEphemeral, showRadialMenu, updateUser],
     );
 
     const handleEmojiComplete = useCallback((id: string) => {
