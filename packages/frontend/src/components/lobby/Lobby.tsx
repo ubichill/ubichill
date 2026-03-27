@@ -1,5 +1,3 @@
-'use client';
-
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useInstances } from '@/core/hooks/useInstances';
 import { css } from '@/styled-system/css';
@@ -156,7 +154,7 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
             >
                 <div
                     className={css({
-                        bg: '#e6d7c4',
+                        bg: 'surfaceAccent',
                         borderRadius: '24px',
                         px: { base: '4', md: '8' },
                         py: { base: '5', md: '6' },

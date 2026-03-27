@@ -43,28 +43,21 @@ WORKDIR /app
 
 COPY . .
 
-ARG NEXT_PUBLIC_API_URL
-ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+# Vite ビルド時に埋め込まれる環境変数
+ARG VITE_BACKEND_URL
+ENV VITE_BACKEND_URL=${VITE_BACKEND_URL}
 
-ARG NEXT_PUBLIC_COMMIT_HASH=unknown
-ENV NEXT_PUBLIC_COMMIT_HASH=${NEXT_PUBLIC_COMMIT_HASH}
+ARG VITE_COMMIT_HASH=unknown
+ENV VITE_COMMIT_HASH=${VITE_COMMIT_HASH}
 
 ARG COMMIT_HASH=unknown
 ENV COMMIT_HASH=${COMMIT_HASH}
 
-# Next.js ビルドキャッシュを永続化してリビルドを高速化
-RUN --mount=type=cache,id=nextjs-cache,target=/app/packages/frontend/.next/cache \
-    pnpm run build
+RUN pnpm run build
 
 # inject-workspace-packages=true: pnpm deploy がシンボリックリンクではなく実ファイルをコピーする
 RUN echo "inject-workspace-packages=true" > .npmrc \
-    && pnpm --filter="@ubichill/backend" --prod deploy --ignore-scripts /app/deploy-backend \
-    && pnpm --filter="@ubichill/frontend" --prod deploy --ignore-scripts /app/deploy-frontend \
-    && cp packages/frontend/.next/standalone/packages/frontend/server.js /app/deploy-frontend/server.js \
-    && cp -r packages/frontend/.next/server /app/deploy-frontend/.next/ \
-    && find packages/frontend/.next -maxdepth 1 -type f -exec cp {} /app/deploy-frontend/.next/ \; \
-    && cp -r packages/frontend/.next/static /app/deploy-frontend/.next/ \
-    && cp -r packages/frontend/public /app/deploy-frontend/public
+    && pnpm --filter="@ubichill/backend" --prod deploy --ignore-scripts /app/deploy-backend
 
 # ==========================================
 # backend-runner
@@ -84,23 +77,21 @@ EXPOSE 3001
 CMD ["node", "dist/index.js"]
 
 # ==========================================
-# frontend-runner
+# frontend-runner: Vite 静的ファイルを nginx で配信
 # ==========================================
-FROM node:${NODE_VERSION}-alpine AS frontend-runner
-RUN apk add --no-cache libc6-compat
-WORKDIR /app
-ENV NODE_ENV=production
-ENV PORT=3000
-ENV HOSTNAME="0.0.0.0"
+FROM nginx:stable-alpine AS frontend-runner
 
-ARG COMMIT_HASH=unknown
-ENV COMMIT_HASH=${COMMIT_HASH}
+# SPA ルーティング: すべてのパスを index.html にフォールバック
+RUN printf 'server {\n\
+    listen 3000;\n\
+    root /usr/share/nginx/html;\n\
+    index index.html;\n\
+    location / {\n\
+        try_files $uri $uri/ /index.html;\n\
+    }\n\
+}\n' > /etc/nginx/conf.d/default.conf
 
-ARG NEXT_PUBLIC_COMMIT_HASH=unknown
-ENV NEXT_PUBLIC_COMMIT_HASH=${NEXT_PUBLIC_COMMIT_HASH}
-
-USER node
-COPY --from=builder --chown=node:node /app/deploy-frontend .
+COPY --from=builder /app/packages/frontend/dist /usr/share/nginx/html
 
 EXPOSE 3000
-CMD ["node", "server.js"]
+CMD ["nginx", "-g", "daemon off;"]
