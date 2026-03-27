@@ -7,20 +7,12 @@
 
 import type { CursorState, User, WorldEntity } from '@ubichill/shared';
 
-// ============================================
-// Socket 抽象 (socket.io-client を直接依存しない)
-// ============================================
-
 export interface SocketLike {
     emit(event: string, ...args: unknown[]): void;
     on(event: string, handler: (...args: unknown[]) => void): void;
     off(event: string, handler: (...args: unknown[]) => void): void;
     readonly id: string | undefined;
 }
-
-// ============================================
-// エンティティコンテキスト (UbiWidget 用)
-// ============================================
 
 export interface UbiEntityContext<TData = unknown, TEphemeral = unknown> {
     /** このウィジェットが表すエンティティ */
@@ -60,10 +52,6 @@ export interface UbiEntityContext<TData = unknown, TEphemeral = unknown> {
     /** Socket.IO クライアント（プラグイン固有のソケットイベントに使用） */
     socket: SocketLike | null;
 }
-
-// ============================================
-// インスタンスコンテキスト (UbiSingleton 用)
-// ============================================
 
 export interface UbiInstanceContext {
     /** ログイン中のユーザー情報 */

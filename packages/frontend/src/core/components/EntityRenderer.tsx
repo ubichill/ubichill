@@ -28,12 +28,10 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({
 
     const entity = entities.get(entityId);
 
-    // エンティティが存在しない場合は何も描画しない
     if (!entity) return null;
 
     const plugin = pluginMap.get(entity.type);
     if (!plugin) {
-        // 未ロードの場合は動的ロードを試みる
         loadPlugin(entity.type);
         return null;
     }
@@ -56,10 +54,6 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({
         />
     );
 };
-
-// ============================================
-// CE ブリッジ — コンテキストを注入する内部コンポーネント
-// ============================================
 
 interface BridgeProps {
     tag: string;

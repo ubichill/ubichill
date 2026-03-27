@@ -7,10 +7,6 @@ import { EntityRenderer } from '@/core/components/EntityRenderer';
 import { wrapSocket } from '@/core/utils/socket';
 import { usePluginRegistry } from '@/plugins/PluginRegistryContext';
 
-// ============================================
-// シングルトン CE をマウントし instanceCtx を注入するコンポーネント
-// ============================================
-
 interface SingletonMountProps {
     tag: string;
     ctx: UbiInstanceContext;
@@ -32,10 +28,6 @@ const SingletonMount: React.FC<SingletonMountProps> = ({ tag, ctx }) => {
     });
 };
 
-// ============================================
-// InstanceRenderer — インスタンス参加中のオーバーレイ全体
-// ============================================
-
 export const InstanceRenderer: React.FC = () => {
     const { isConnected, socket, currentUser, users, updateUser, updatePosition } = useSocket();
     const { entities, patchEntity, createEntity, ephemeralData } = useWorld();
@@ -43,7 +35,6 @@ export const InstanceRenderer: React.FC = () => {
     const pendingEphemeralRef = useRef<Map<string, unknown>>(new Map());
     const flushRafRef = useRef<number | null>(null);
 
-    // ブロードキャストチャンネル登録: channel → handler set
     const broadcastHandlersRef = useRef<Map<string, Set<(data: unknown) => void>>>(new Map());
 
     const onBroadcast = useCallback((channel: string, handler: (data: unknown) => void) => {
@@ -112,7 +103,6 @@ export const InstanceRenderer: React.FC = () => {
         return null;
     }
 
-    // インスタンスコンテキストを構築（UbiSingleton へ注入）
     const instanceCtx: UbiInstanceContext = {
         currentUser,
         users,
@@ -131,7 +121,6 @@ export const InstanceRenderer: React.FC = () => {
         socket: wrappedSocket,
     };
 
-    // ロード済みプラグインのシングルトンタグを収集
     const singletonTags: string[] = [];
     for (const plugin of pluginMap.values()) {
         if (plugin.singletonTag) {
