@@ -77,21 +77,16 @@ EXPOSE 3001
 CMD ["node", "dist/index.js"]
 
 # ==========================================
-# frontend-runner: Vite 静的ファイルを nginx で配信
+# frontend-runner: Vite 静的ファイルを static-web-server で配信
+# Rust 製・非 root デフォルト・設定不要で SPA フォールバック対応
 # ==========================================
-FROM nginx:stable-alpine AS frontend-runner
+FROM joseluisq/static-web-server:2-alpine AS frontend-runner
 
-# SPA ルーティング: すべてのパスを index.html にフォールバック
-RUN printf 'server {\n\
-    listen 3000;\n\
-    root /usr/share/nginx/html;\n\
-    index index.html;\n\
-    location / {\n\
-        try_files $uri $uri/ /index.html;\n\
-    }\n\
-}\n' > /etc/nginx/conf.d/default.conf
+COPY --from=builder /app/packages/frontend/dist /public
 
-COPY --from=builder /app/packages/frontend/dist /usr/share/nginx/html
+ENV SERVER_PORT=3000
+ENV SERVER_ROOT=/public
+ENV SERVER_FALLBACK_PAGE=/index.html
+ENV SERVER_LOG_LEVEL=error
 
 EXPOSE 3000
-CMD ["nginx", "-g", "daemon off;"]
