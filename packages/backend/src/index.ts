@@ -32,6 +32,10 @@ import { worldRegistry } from './services/worldRegistry';
 // Expressアプリを初期化
 const app = express();
 
+// Ingress / リバースプロキシ経由の X-Forwarded-For を信頼する
+// express-rate-limit が正しいクライアント IP を識別するために必要
+app.set('trust proxy', 1);
+
 // セキュリティミドルウェア
 app.use(helmet());
 

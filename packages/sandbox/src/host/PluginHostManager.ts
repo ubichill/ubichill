@@ -152,9 +152,10 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
         this.tickEnabled = !options.disableAutoTick && fps > 0;
 
         const maxExecutionTime = options.maxExecutionTime ?? 0;
-        const workerUrl = new URL('../guest/sandbox.worker.ts', import.meta.url);
 
-        this.worker = new Worker(workerUrl, { type: 'module' });
+        // Vite の Worker 検出は new Worker(new URL(...)) の形式でないと機能しない
+        // 変数に分離すると .ts がそのままアセットとして data:video/mp2t で埋め込まれてしまう
+        this.worker = new Worker(new URL('../guest/sandbox.worker.ts', import.meta.url), { type: 'module' });
         this.worker.addEventListener('message', (e: MessageEvent<PluginGuestCommand>) => {
             if (e.data.type === 'CMD_READY') {
                 this.isInitialized = true;
