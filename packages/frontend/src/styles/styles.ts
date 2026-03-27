@@ -1,5 +1,5 @@
 import { css } from '@/styled-system/css';
-import { flex, hstack, vstack } from '@/styled-system/patterns';
+import { flex } from '@/styled-system/patterns';
 
 /**
  * Centralized PandaCSS style definitions
@@ -10,82 +10,126 @@ import { flex, hstack, vstack } from '@/styled-system/patterns';
 export const mainContainer = flex({
     minH: 'screen',
     direction: 'column',
-    alignItems: 'center',
-    justify: 'space-between',
-    p: '24',
+    px: { base: '4', md: '8' },
+    py: { base: '4', md: '6' },
+    position: 'relative',
+    bg: 'background',
+    overflow: 'hidden',
+});
+
+export const shell = css({
+    width: 'full',
+    maxW: '5xl',
+    mx: 'auto',
+    zIndex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    flex: 1,
 });
 
 export const headerContainer = css({
-    zIndex: 10,
+    zIndex: 2,
     w: 'full',
-    maxW: '5xl',
     alignItems: 'center',
     justifyContent: 'space-between',
-    fontFamily: 'mono',
-    fontSize: 'sm',
-    lg: { display: 'flex' },
+    display: 'flex',
+    mb: '4',
 });
 
 export const statusBar = css({
-    pos: 'fixed',
-    left: 0,
-    top: 0,
     display: 'flex',
-    w: 'full',
-    justifyContent: 'center',
-    borderBottomWidth: '1px',
+    alignItems: 'center',
+    gap: '2',
+    rounded: 'full',
+    borderWidth: '1px',
     borderColor: 'border',
-    bg: { base: 'zinc.200', _dark: 'zinc.800/30' },
-    pb: '6',
-    pt: '8',
-    backdropFilter: 'blur(16px)',
-    lg: {
-        pos: 'static',
-        w: 'auto',
-        rounded: 'xl',
-        borderWidth: '1px',
-        bg: 'gray.200',
-        p: '4',
-    },
+    bg: 'rgba(255, 255, 255, 0.72)',
+    color: 'text',
+    px: '4',
+    py: '2',
+    fontSize: 'sm',
+    backdropFilter: 'blur(8px)',
 });
 
 export const userInfo = css({
-    pos: 'fixed',
-    right: 0,
-    top: 0,
-    p: '4',
+    color: 'text',
+    fontSize: 'sm',
 });
 
 // Login Screen Styles
-export const loginContainer = vstack({
-    gap: '4',
+export const loginContainer = css({
+    width: 'full',
+    maxW: '2xl',
+    mx: 'auto',
+    mt: { base: '6', md: '10' },
+    rounded: '3xl',
+    px: { base: '6', md: '10' },
+    py: { base: '8', md: '12' },
+    bg: '#ffffff',
+    borderWidth: '1px',
+    borderColor: 'border',
+    boxShadow: '0 8px 32px rgba(27, 42, 68, 0.08)',
+    display: 'flex',
+    flexDirection: 'column',
     alignItems: 'center',
+    textAlign: 'center',
+    gap: '4',
+});
+
+export const titleTag = css({
+    fontSize: 'xs',
+    fontWeight: '600',
+    letterSpacing: '0.18em',
+    color: 'textMuted',
+    textTransform: 'uppercase',
 });
 
 export const title = css({
-    fontSize: '4xl',
-    fontWeight: 'bold',
+    fontSize: { base: '4xl', md: '5xl' },
+    fontWeight: '700',
+    color: 'text',
+    lineHeight: '1.1',
 });
 
-export const loginForm = hstack({
-    gap: '2',
+export const subtitle = css({
+    color: 'textMuted',
+    fontSize: { base: 'sm', md: 'md' },
+});
+
+export const loginForm = css({
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '3',
+    mt: '2',
 });
 
 // Form Elements - Cute & Simple Design
 export const input = css({
-    p: '2',
+    px: '4',
+    py: '3',
     borderWidth: '1px',
     borderColor: 'border',
-    rounded: 'md',
+    rounded: 'lg',
     color: 'text',
+    bg: 'surfaceHover',
+    fontSize: 'md',
+    _placeholder: { color: 'textSubtle' },
+    _focusVisible: {
+        outline: 'none',
+        borderColor: 'primaryHover',
+        boxShadow: '0 0 0 3px rgba(30, 49, 85, 0.15)',
+    },
 });
 
 export const button = css({
-    p: '2',
-    bg: 'blue.500',
-    color: 'white',
-    rounded: 'md',
-    _hover: { bg: 'blue.600' },
+    px: '4',
+    py: '3',
+    bg: 'primaryHover',
+    color: 'textOnPrimary',
+    rounded: 'lg',
+    fontWeight: '600',
+    transition: 'background-color 0.16s ease, opacity 0.16s ease',
+    _hover: { bg: 'primaryActive' },
     _disabled: { opacity: 0.5, cursor: 'not-allowed' },
 });
 
@@ -143,6 +187,6 @@ export const cursorLabel = css({
 
 // Status & Error Text
 export const errorText = css({
-    color: 'red.500',
-    ml: '4',
+    color: '#ff8f8f',
+    ml: '2',
 });

@@ -41,3 +41,4 @@ coverage/
 
 # Auto-generated worker bundles
 *.gen.ts
+CODE_STUDY.md
