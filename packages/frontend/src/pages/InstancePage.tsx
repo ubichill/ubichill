@@ -1,6 +1,7 @@
 import { useSocket, useWorld } from '@ubichill/sdk/react';
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { InstanceHUD } from '@/components/hud/InstanceHUD';
 import { InstanceRenderer } from '@/instance/InstanceRenderer';
 import { API_BASE } from '@/lib/api';
 import { useSession } from '@/lib/auth-client';
@@ -118,6 +119,7 @@ export function InstancePage() {
             <PluginRegistryProvider>
                 <InstanceRenderer />
             </PluginRegistryProvider>
+            <InstanceHUD />
         </main>
     );
 }
