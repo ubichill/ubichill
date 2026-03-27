@@ -172,8 +172,8 @@ frontend:
     NODE_ENV: "production"
     PORT: "3000"
     HOSTNAME: "0.0.0.0"
-    # NEXT_PUBLIC_BACKEND_URL set by template
-    # NEXT_PUBLIC_VIDEO_PLAYER_BACKEND_URL set by template
+    # バックエンドURL: window.location.origin にフォールバック (設定不要)
+    # Video Player URL: /plugin/video-player にフォールバック (設定不要)
 
   # Security context
   securityContext:

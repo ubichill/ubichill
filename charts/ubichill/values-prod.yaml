@@ -65,7 +65,7 @@ frontend:
   
   env:
     NODE_ENV: "production"
-    # NEXT_PUBLIC_VIDEO_PLAYER_BACKEND_URL auto-configured by template
+    # Video Player URL: /plugin/video-player にフォールバック (設定不要)
 
 # Production Redis with persistence
 redis:
