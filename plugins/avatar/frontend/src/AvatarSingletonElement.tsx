@@ -1,5 +1,3 @@
-'use client';
-
 import type { AppAvatarDef, CursorState, UserStatus } from '@ubichill/sdk';
 import type { UbiInstanceContext } from '@ubichill/sdk/ui';
 import { UbiSingleton } from '@ubichill/sdk/ui';
@@ -285,7 +283,7 @@ const AvatarSingletonContent: React.FC<{ ctx: UbiInstanceContext }> = ({ ctx }) 
                     const userAvatarState = user.avatar?.states?.[remoteCursorState] || user.avatar?.states?.default;
                     const remoteUrl = userAvatarState?.url;
                     const remoteHotspot = userAvatarState?.hotspot || { x: 0, y: 0 };
-                    const displayPosition = user.position;
+                    const displayPosition = user.position ?? { x: 0, y: 0 };
 
                     return (
                         <div

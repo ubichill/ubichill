@@ -1,5 +1,3 @@
-'use client';
-
 import type { WorldEntity } from '@ubichill/sdk';
 import { usePluginWorker, Z_INDEX } from '@ubichill/sdk/react';
 import type { UbiEntityContext } from '@ubichill/sdk/ui';

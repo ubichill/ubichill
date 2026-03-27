@@ -1,5 +1,3 @@
-'use client';
-
 import type { AppAvatarDef, CursorState } from '@ubichill/sdk';
 import { useRef } from 'react';
 import styles from './AdvancedSettings.module.css';

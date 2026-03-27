@@ -1,5 +1,3 @@
-'use client';
-
 import type { UbiInstanceContext } from '@ubichill/sdk/ui';
 import { UbiSingleton } from '@ubichill/sdk/ui';
 import getStroke from 'perfect-freehand';

@@ -1,5 +1,3 @@
-'use client';
-
 import type { AppAvatarDef, CursorState } from '@ubichill/sdk';
 import { useEffect, useState } from 'react';
 import { bufferToDataUrl, processAniFile, processCurFile } from '../../utils/cursorProcessor';

@@ -1,5 +1,3 @@
-'use client';
-
 import { memo, useEffect, useState } from 'react';
 import { processAniFile, processCurFile } from '../../utils/cursorProcessor';
 import type { ParsedTemplate } from '../../utils/loader';

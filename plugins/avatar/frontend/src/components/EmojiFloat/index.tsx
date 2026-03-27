@@ -1,5 +1,3 @@
-'use client';
-
 import { memo, useEffect, useState } from 'react';
 import styles from './EmojiFloat.module.css';
 

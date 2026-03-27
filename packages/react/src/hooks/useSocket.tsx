@@ -1,5 +1,3 @@
-'use client';
-
 import {
     type ClientToServerEvents,
     type CursorPosition,

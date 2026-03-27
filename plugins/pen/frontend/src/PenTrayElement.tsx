@@ -1,5 +1,3 @@
-'use client';
-
 import { Z_INDEX } from '@ubichill/sdk/react';
 import type { UbiInstanceContext } from '@ubichill/sdk/ui';
 import { UbiSingleton } from '@ubichill/sdk/ui';

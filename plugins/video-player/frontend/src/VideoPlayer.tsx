@@ -1,5 +1,3 @@
-'use client';
-
 import type { WorldEntity } from '@ubichill/sdk';
 import { useSocket } from '@ubichill/sdk/react';
 import Hls from 'hls.js';

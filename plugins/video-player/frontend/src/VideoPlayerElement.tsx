@@ -1,5 +1,3 @@
-'use client';
-
 import type { UbiEntityContext } from '@ubichill/sdk/ui';
 import { UbiWidget } from '@ubichill/sdk/ui';
 import Hls from 'hls.js';
