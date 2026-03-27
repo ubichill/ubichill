@@ -19,7 +19,10 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
-const distDir = join(root, 'dist', 'workers');
+
+// --dist-dir=<path> で出力先を上書き可能（デフォルト: dist/workers/）
+const distDirArg = process.argv.slice(2).find((a) => a.startsWith('--dist-dir='));
+const distDir = distDirArg ? join(root, distDirArg.split('=')[1]) : join(root, 'dist', 'workers');
 
 // ============================================================
 // plugin.json の自動探索
@@ -41,7 +44,7 @@ function findPluginJsonFiles(pluginsDir) {
 // ビルド
 // ============================================================
 
-async function buildWorker(pluginJsonPath) {
+export async function buildWorker(pluginJsonPath) {
     const pluginDir = dirname(pluginJsonPath);
     const pluginJson = JSON.parse(readFileSync(pluginJsonPath, 'utf-8'));
 

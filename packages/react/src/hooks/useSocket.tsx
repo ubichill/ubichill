@@ -23,7 +23,7 @@ export interface SocketContextValue {
     users: Map<string, User>;
     currentUser: User | null;
     error: string | null;
-    joinWorld: (name: string, worldId?: string, instanceId?: string) => void;
+    joinWorld: (name: string, worldId: string, instanceId: string, onError?: (error: string) => void) => void;
     leaveWorld: () => void;
     updatePosition: (position: CursorPosition, state?: CursorState) => void;
     updateStatus: (status: UserStatus) => void;
@@ -173,7 +173,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }, []);
 
     const joinWorld = useCallback(
-        (name: string, worldId: string = DEFAULTS.WORLD_ID, instanceId?: string) => {
+        (name: string, worldId: string, instanceId: string, onError?: (error: string) => void) => {
             // ソケットを初期化して接続
             const socket = initializeSocket();
 
@@ -190,7 +190,9 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     if (response.success && response.userId) {
                         setCurrentUser({ ...initialUser, id: response.userId });
                     } else {
-                        setError(response.error || 'Failed to join world');
+                        const msg = response.error || 'Failed to join world';
+                        setError(msg);
+                        onError?.(msg);
                     }
                 });
             };

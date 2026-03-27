@@ -1,5 +1,5 @@
-import type { CursorState, UserStatus } from '@ubichill/sdk';
-import { useCursorPosition, usePluginWorker, useSocket } from '@ubichill/sdk/react';
+import type { AppAvatarDef, CursorState, UserStatus } from '@ubichill/sdk';
+import { useCursorPosition, usePluginWorker } from '@ubichill/sdk/react';
 import type React from 'react';
 import { useEffect, useRef } from 'react';
 import { avatarPluginCode } from './AvatarBehaviour.gen';
@@ -12,6 +12,7 @@ export interface AvatarCursorProps {
     cursorState: CursorState;
     userStatus: UserStatus;
     showRadialMenu?: boolean;
+    localAvatar: AppAvatarDef;
 }
 
 /**
@@ -28,10 +29,12 @@ export interface AvatarCursorProps {
  *   - カーソル画像の描画
  *   - システムカーソルの制御
  */
-export const AvatarCursor: React.FC<AvatarCursorProps> = ({ cursorState, userStatus, showRadialMenu = false }) => {
-    const { currentUser } = useSocket();
-
-    const localAvatar = currentUser?.avatar || { states: {} };
+export const AvatarCursor: React.FC<AvatarCursorProps> = ({
+    cursorState,
+    userStatus,
+    showRadialMenu = false,
+    localAvatar,
+}) => {
     const currentLocalAvatar = localAvatar.states[cursorState] || localAvatar.states.default;
     const localAvatarUrl = currentLocalAvatar?.url;
     const localHotspot = currentLocalAvatar?.hotspot || { x: 0, y: 0 };

@@ -1,46 +1,26 @@
-import type { AvatarPluginProps } from '@ubichill/plugin-avatar';
-import { AvatarPlugin, avatarWidgetDefinition } from '@ubichill/plugin-avatar';
-import { PenTray, penWidgetDefinition } from '@ubichill/plugin-pen';
-import { videoPlayerDefinition } from '@ubichill/plugin-video-player';
 import type { WidgetDefinition } from '@ubichill/sdk/react';
-import type React from 'react';
 
-// Widget Plugins (Draggable entities in the world)
-// biome-ignore lint/suspicious/noExplicitAny: Registry requires flexibility
-export const INSTALLED_PLUGINS: WidgetDefinition<any>[] = [
-    penWidgetDefinition,
-    videoPlayerDefinition,
-    avatarWidgetDefinition,
-];
+type WidgetLoader = () => Promise<WidgetDefinition>;
 
-// IDから検索しやすくするMap
-export const PLUGIN_MAP = new Map(INSTALLED_PLUGINS.map((p) => [p.id, p]));
+/**
+ * エンティティタイプ → WidgetDefinition 動的ローダー
+ *
+ * world:snapshot の activePlugins またはエンティティタイプに基づいて
+ * 実行時に動的ロードされる。ビルド時に静的バンドルしない。
+ */
+export const PLUGIN_LOADERS: Record<string, WidgetLoader> = {
+    'pen:pen': () => import('@ubichill/plugin-pen').then((m) => m.penWidgetDefinition),
+    avatar: () => import('@ubichill/plugin-avatar').then((m) => m.avatarWidgetDefinition),
+    'video-player': () => import('@ubichill/plugin-video-player').then((m) => m.videoPlayerDefinition),
+};
 
-// App-Level Plugin type definitions
-export interface AppPluginBase {
-    id: string;
-}
-
-export interface AvatarAppPlugin extends AppPluginBase {
-    id: 'avatar';
-    Component: React.ComponentType<AvatarPluginProps>;
-}
-
-export interface PenTrayAppPlugin extends AppPluginBase {
-    id: 'pen-tray';
-    Component: React.ComponentType;
-}
-
-export type AppPlugin = AvatarAppPlugin | PenTrayAppPlugin;
-
-// App-Level Plugins (UI overlays, singleton components)
-export const APP_PLUGINS: AppPlugin[] = [
-    {
-        id: 'avatar',
-        Component: AvatarPlugin,
-    },
-    {
-        id: 'pen-tray',
-        Component: PenTray,
-    },
-];
+/**
+ * plugin.json の id → エンティティタイプ のマッピング
+ *
+ * activePlugins は plugin.json の id（例: 'avatar:avatar'）を含むが、
+ * WidgetDefinition.id はエンティティタイプ（例: 'avatar'）のため変換が必要。
+ */
+export const PLUGIN_ID_TO_ENTITY_TYPE: Record<string, string> = {
+    'pen:pen': 'pen:pen',
+    'avatar:avatar': 'avatar',
+};

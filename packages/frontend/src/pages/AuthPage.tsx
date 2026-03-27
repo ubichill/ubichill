@@ -1,15 +1,13 @@
-'use client';
-
-import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { API_BASE, registerWithOTP, resendOTP, signIn, useSession, verifyOTPAndRegister } from '@/lib/auth-client';
 import { css } from '@/styled-system/css';
 import { flex, vstack } from '@/styled-system/patterns';
 
 type AuthMode = 'login' | 'register' | 'verify';
 
-export default function AuthPage() {
-    const router = useRouter();
+export function AuthPage() {
+    const navigate = useNavigate();
     const { data: session, isPending } = useSession();
     const [mode, setMode] = useState<AuthMode>('login');
     const [email, setEmail] = useState('');
@@ -34,9 +32,9 @@ export default function AuthPage() {
     // Redirect if already logged in
     useEffect(() => {
         if (session && !isPending) {
-            router.push('/');
+            navigate('/');
         }
-    }, [session, isPending, router]);
+    }, [session, isPending, navigate]);
 
     // ユーザー名の重複チェック（デバウンス付き）
     useEffect(() => {
@@ -125,7 +123,7 @@ export default function AuthPage() {
                 if (result.error) {
                     setError(result.error.message || 'ログインに失敗しました');
                 } else {
-                    router.push('/');
+                    navigate('/');
                 }
             }
         } catch {

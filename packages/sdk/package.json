@@ -6,7 +6,8 @@
     "types": "src/index.ts",
     "exports": {
         ".": "./src/index.ts",
-        "./react": "./src/react/index.ts"
+        "./react": "./src/react/index.ts",
+        "./ui": "./src/ui/index.ts"
     },
     "peerDependencies": {
         "@ubichill/engine": "workspace:*",

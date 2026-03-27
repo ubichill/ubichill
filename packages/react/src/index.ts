@@ -7,5 +7,5 @@ export { SocketProvider, useSocket } from './hooks/useSocket';
 export type { WorldContextType } from './hooks/useWorld';
 export { useWorld, WorldProvider } from './hooks/useWorld';
 export { type UseWorldPluginOptions, useWorldPlugin } from './hooks/useWorldPlugin';
-export type { WidgetComponentProps, WidgetDefinition } from './types';
+export type { WidgetDefinition } from './types';
 export * from './usePluginWorker';

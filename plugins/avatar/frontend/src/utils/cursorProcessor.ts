@@ -1,4 +1,4 @@
-import { parseICO } from 'icojs';
+import { parseICO } from 'icojs/browser';
 import * as UPNG from 'upng-js';
 
 // --- Types ---

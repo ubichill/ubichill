@@ -1,14 +1,14 @@
 import type { WidgetDefinition } from '@ubichill/sdk/react';
-import { VideoIcon } from './icons';
-import type { MusicPlayerState } from './types';
-import { DEFAULT_MUSIC_PLAYER_STATE } from './types';
-import { VideoPlayer } from './VideoPlayer';
 
-export const videoPlayerDefinition: WidgetDefinition<MusicPlayerState> = {
+export const videoPlayerDefinition: WidgetDefinition = {
     id: 'video-player',
     name: 'Video Player',
-    icon: <VideoIcon size={18} />,
-    defaultSize: { w: 320, h: 480 },
-    defaultData: DEFAULT_MUSIC_PLAYER_STATE,
-    Component: VideoPlayer,
+    elementTag: 'video-player-widget',
+    register: () => {
+        if (!customElements.get('video-player-widget')) {
+            import('./VideoPlayerElement').then(({ VideoPlayerElement }) => {
+                customElements.define('video-player-widget', VideoPlayerElement);
+            });
+        }
+    },
 };
