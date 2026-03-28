@@ -36,11 +36,7 @@ function getSvgPathFromStroke(stroke: number[][]): string {
     return d.join(' ');
 }
 
-// ============================================
-// React コンテンツ
-// ============================================
-
-const PenCanvasContent: React.FC<{ ctx: UbiInstanceContext }> = ({ ctx }) => {
+const PenCanvasContent = ({ ctx }: { ctx: UbiInstanceContext }) => {
     const { entities, socket } = ctx;
     const [, setTick] = useState(0);
     const currentDrawingRef = useRef<DrawingData | null>(null);

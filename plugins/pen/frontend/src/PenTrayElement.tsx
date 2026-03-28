@@ -9,11 +9,7 @@ import { createRoot } from 'react-dom/client';
 import { DEFAULT_PENS, PEN_CONFIG } from './config';
 import type { PenData, PenEntity } from './types';
 
-// ============================================
-// React コンテンツ
-// ============================================
-
-const PenTrayContent: React.FC<{ ctx: UbiInstanceContext }> = ({ ctx }) => {
+const PenTrayContent = ({ ctx }: { ctx: UbiInstanceContext }) => {
     const { currentUser, isConnected, entities, patchEntity } = ctx;
 
     const handleTrayClick = useCallback(() => {

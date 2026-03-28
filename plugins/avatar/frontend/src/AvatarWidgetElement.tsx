@@ -6,11 +6,7 @@ import type { Root } from 'react-dom/client';
 import { createRoot } from 'react-dom/client';
 import type { AvatarData } from './types';
 
-// ============================================
-// React コンテンツ（context を props で受け取る）
-// ============================================
-
-const AvatarWidgetContent: React.FC<{ ctx: UbiEntityContext<AvatarData> }> = ({ ctx }) => {
+const AvatarWidgetContent = ({ ctx }: { ctx: UbiEntityContext<AvatarData> }) => {
     const { entity, patchEntity } = ctx;
     const hotX = entity.data.hotspot?.x ?? 0;
     const hotY = entity.data.hotspot?.y ?? 0;

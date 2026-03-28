@@ -4,6 +4,7 @@ import type { WorldEntity } from '@ubichill/sdk';
 import { usePluginWorker, Z_INDEX } from '@ubichill/sdk/react';
 import type { UbiEntityContext } from '@ubichill/sdk/ui';
 import { UbiWidget } from '@ubichill/sdk/ui';
+import type React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Root } from 'react-dom/client';
 import { createRoot } from 'react-dom/client';
@@ -11,10 +12,6 @@ import { DEFAULT_PENS, PEN_CONFIG } from './config';
 import { penPluginCode } from './PenBehaviour.gen';
 import { PenIcon } from './PenIcon';
 import type { DrawingData, PenData, PenPayloads } from './types';
-
-// ============================================
-// PenWorker (usePluginWorker を使うため React コンポーネント)
-// ============================================
 
 interface PenWorkerProps {
     entityId: string;
@@ -26,7 +23,7 @@ interface PenWorkerProps {
     broadcast?: (data: unknown) => void;
 }
 
-const PenWorkerInner: React.FC<PenWorkerProps> = ({
+const PenWorkerInner = ({
     entityId,
     color,
     strokeWidth,
@@ -34,7 +31,7 @@ const PenWorkerInner: React.FC<PenWorkerProps> = ({
     onStrokeComplete,
     onPositionUpdate,
     broadcast,
-}) => {
+}: PenWorkerProps) => {
     const onDrawingUpdateRef = useRef(onDrawingUpdate);
     const onStrokeCompleteRef = useRef(onStrokeComplete);
     const onPositionUpdateRef = useRef(onPositionUpdate);
@@ -77,11 +74,7 @@ const PenWorkerInner: React.FC<PenWorkerProps> = ({
     return null;
 };
 
-// ============================================
-// PenWidgetContent（Context から props で受け取る）
-// ============================================
-
-const PenWidgetContent: React.FC<{ ctx: UbiEntityContext<PenData> }> = ({ ctx }) => {
+const PenWidgetContent = ({ ctx }: { ctx: UbiEntityContext<PenData> }) => {
     const { entity, isLockedByMe, isLockedByOther, lockEntity, releaseOtherLocks, createEntity, users, broadcast } =
         ctx;
 

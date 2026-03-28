@@ -83,11 +83,7 @@ const useCursorState = (): CursorState => {
     return cursorState;
 };
 
-// ============================================
-// AvatarSingletonContent（React コンポーネント）
-// ============================================
-
-const AvatarSingletonContent: React.FC<{ ctx: UbiInstanceContext }> = ({ ctx }) => {
+const AvatarSingletonContent = ({ ctx }: { ctx: UbiInstanceContext }) => {
     const { currentUser, users, updateUser, updatePosition, broadcastEphemeral, onBroadcast } = ctx;
     const cursorState = useCursorState();
 
