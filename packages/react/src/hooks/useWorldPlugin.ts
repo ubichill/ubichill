@@ -1,5 +1,3 @@
-'use client';
-
 import { PluginHostManager } from '@ubichill/sandbox/host';
 import type { EntityPatchPayload, PluginHostEvent, WorldEntity } from '@ubichill/shared';
 import { useCallback, useEffect, useRef } from 'react';

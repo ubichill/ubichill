@@ -1,0 +1,10 @@
+/**
+ * @ubichill/sdk/ui — Custom Elements ベースのプラグイン UI 基盤
+ *
+ * Worker-safe ではない（DOM API を使用）。
+ * ブラウザ環境（プラグインフロントエンド）からのみインポートすること。
+ */
+
+export type { SocketLike, UbiEntityContext, UbiInstanceContext } from './types';
+export { UbiSingleton } from './UbiSingleton';
+export { UbiWidget } from './UbiWidget';

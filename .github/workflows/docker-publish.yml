@@ -166,7 +166,7 @@ jobs:
             NODE_VERSION=${{ steps.versions.outputs.node }}
             PNPM_VERSION=${{ steps.versions.outputs.pnpm }}
             COMMIT_HASH=${{ github.sha }}
-            NEXT_PUBLIC_COMMIT_HASH=${{ github.sha }}
+            VITE_COMMIT_HASH=${{ github.sha }}
           tags: |
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME_FRONTEND }}:${{ github.ref_name == 'main' && 'latest' || 'dev' }}
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME_FRONTEND }}:${{ github.ref_name == 'main' && 'latest' || 'dev' }}-${{ steps.frontend_hash.outputs.hash }}

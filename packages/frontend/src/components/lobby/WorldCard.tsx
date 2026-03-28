@@ -1,7 +1,4 @@
-'use client';
-
 import type { WorldListItem } from '@ubichill/shared';
-import Image from 'next/image';
 import { css } from '@/styled-system/css';
 
 interface WorldCardProps {
@@ -69,12 +66,10 @@ export function WorldCard({ world, onSelect }: WorldCardProps) {
                 })}
             >
                 {world.thumbnail ? (
-                    <Image
+                    <img
                         src={world.thumbnail}
                         alt={world.displayName}
-                        fill
-                        className={css({ objectFit: 'cover' })}
-                        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                        className={css({ objectFit: 'cover', width: '100%', height: '100%' })}
                     />
                 ) : (
                     '🌍'

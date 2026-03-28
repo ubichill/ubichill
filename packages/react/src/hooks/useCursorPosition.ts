@@ -17,8 +17,6 @@
  * - hotspot: カーソル画像の原点オフセット（左上起点のピクセル）
  */
 
-'use client';
-
 import { type RefObject, useCallback, useRef } from 'react';
 
 export type UseCursorPositionOptions = {

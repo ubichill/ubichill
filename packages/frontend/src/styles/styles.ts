@@ -43,7 +43,7 @@ export const statusBar = css({
     rounded: 'full',
     borderWidth: '1px',
     borderColor: 'border',
-    bg: 'rgba(255, 255, 255, 0.72)',
+    bg: 'glassBg',
     color: 'text',
     px: '4',
     py: '2',
@@ -65,7 +65,7 @@ export const loginContainer = css({
     rounded: '3xl',
     px: { base: '6', md: '10' },
     py: { base: '8', md: '12' },
-    bg: '#ffffff',
+    bg: 'white',
     borderWidth: '1px',
     borderColor: 'border',
     boxShadow: '0 8px 32px rgba(27, 42, 68, 0.08)',
@@ -187,6 +187,6 @@ export const cursorLabel = css({
 
 // Status & Error Text
 export const errorText = css({
-    color: '#ff8f8f',
+    color: 'errorLight',
     ml: '2',
 });

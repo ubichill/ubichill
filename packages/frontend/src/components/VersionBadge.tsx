@@ -1,5 +1,3 @@
-'use client';
-
 import { useEffect, useState } from 'react';
 import { getApiBase } from '@/lib/api';
 import { css } from '@/styled-system/css';
@@ -10,7 +8,7 @@ interface VersionInfo {
 }
 
 // ビルド時に埋め込まれたフロントエンドのコミットハッシュ
-const FE_COMMIT = process.env.NEXT_PUBLIC_COMMIT_HASH ?? 'unknown';
+const FE_COMMIT = import.meta.env.VITE_COMMIT_HASH ?? 'unknown';
 
 const REPO = 'https://github.com/ubichill/ubichill';
 

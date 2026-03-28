@@ -1,5 +1,3 @@
-'use client';
-
 import type { AppAvatarDef, CursorState } from '@ubichill/sdk';
 import { useEffect, useState } from 'react';
 import { bufferToDataUrl, processAniFile, processCurFile } from '../../utils/cursorProcessor';
@@ -35,6 +33,7 @@ export const CursorMenu: React.FC<CursorMenuProps> = ({ avatar, onAvatarChange }
     const [selectedState, setSelectedState] = useState<CursorState>('default');
     const [urlInput, setUrlInput] = useState('');
     const [isConverting, setIsConverting] = useState(false);
+    const [convertError, setConvertError] = useState<string | null>(null);
 
     // YAMLテンプレートを読み込む
     useEffect(() => {
@@ -109,11 +108,8 @@ export const CursorMenu: React.FC<CursorMenuProps> = ({ avatar, onAvatarChange }
     };
 
     const handleTemplateSelect = async (template: ParsedTemplate) => {
-        if (!confirm(`テンプレート "${template.name}" を適用しますか？\n現在の設定は上書きされます。`)) {
-            return;
-        }
-
         setIsConverting(true);
+        setConvertError(null);
         const newStates = { ...avatar.states };
 
         try {
@@ -142,7 +138,6 @@ export const CursorMenu: React.FC<CursorMenuProps> = ({ avatar, onAvatarChange }
                         resultUrl = processed.url;
                         hotspot = processed.hotspot;
                     } else {
-                        // 通常の画像ファイル
                         resultUrl = bufferToDataUrl(buffer, 'image/png');
                     }
 
@@ -154,13 +149,10 @@ export const CursorMenu: React.FC<CursorMenuProps> = ({ avatar, onAvatarChange }
                 }
             }
 
-            onAvatarChange({
-                ...avatar,
-                states: newStates,
-            });
+            onAvatarChange({ ...avatar, states: newStates });
         } catch (error) {
             console.error('Template application failed:', error);
-            alert('テンプレートの適用中にエラーが発生しました。');
+            setConvertError('テンプレートの適用に失敗しました');
         } finally {
             setIsConverting(false);
         }
@@ -212,7 +204,7 @@ export const CursorMenu: React.FC<CursorMenuProps> = ({ avatar, onAvatarChange }
             }
         } catch (error) {
             console.error('Failed to convert cursor file:', error);
-            alert('カーソルファイルの処理に失敗しました。');
+            setConvertError('カーソルファイルの処理に失敗しました');
         } finally {
             setIsConverting(false);
         }
@@ -232,11 +224,7 @@ export const CursorMenu: React.FC<CursorMenuProps> = ({ avatar, onAvatarChange }
                     <div className={styles.buttonGroup}>
                         <button
                             type="button"
-                            onClick={() => {
-                                if (confirm('すべてのカーソル設定をクリアしますか？')) {
-                                    onAvatarChange({ states: {} });
-                                }
-                            }}
+                            onClick={() => onAvatarChange({ states: {} })}
                             className={styles.clearButton}
                         >
                             ❌ オフ
@@ -262,7 +250,8 @@ export const CursorMenu: React.FC<CursorMenuProps> = ({ avatar, onAvatarChange }
                     ))}
                 </div>
 
-                {isConverting && <div className={styles.convertingMessage}>🔄 テンプレートを適用中...</div>}
+                {isConverting && <div className={styles.convertingMessage}>テンプレートを適用中...</div>}
+                {convertError && <div className={styles.errorMessage}>{convertError}</div>}
             </div>
 
             {/* 詳細設定パネル */}

@@ -1,22 +1,26 @@
-import type { WorldEntity } from '@ubichill/shared';
-import type React from 'react';
-import type { ReactNode } from 'react';
-
-export interface WidgetComponentProps<TData = unknown, TEphemeral = unknown> {
-    entity: WorldEntity<TData>;
-    isLocked: boolean;
-    update: (patch: Partial<WorldEntity<TData>>) => void;
-    ephemeral?: TEphemeral;
-    broadcast?: (data: TEphemeral) => void;
-}
-
-export interface WidgetDefinition<TData = unknown, TEphemeral = unknown> {
+/**
+ * プラグインが Host (PluginRegistry) に渡す定義オブジェクト。
+ *
+ * React コンポーネントではなく Custom Elements タグ名で宣言する。
+ * Host は elementTag / singletonTag で CE を生成し、コンテキストを注入する。
+ */
+export interface WidgetDefinition {
+    /** プラグイン識別子（plugin.json の id と一致） */
     id: string;
+    /** 表示名 */
     name: string;
-    icon?: ReactNode;
-    defaultSize: { w: number; h: number };
-    defaultData: TData;
-    Component: React.FC<WidgetComponentProps<TData, TEphemeral>>;
-    SingletonComponent?: React.FC;
-    configPath?: string;
+    /** エンティティごとに描画される Custom Elements タグ名 */
+    elementTag: string;
+    /**
+     * ワールド参加中に 1 つだけ描画される Custom Elements タグ名（オプション）。
+     * 複数のシングルトンタグが必要な場合は singletonTags を使う。
+     */
+    singletonTag?: string;
+    /** 複数のシングルトンタグを登録する場合（singletonTag との排他） */
+    singletonTags?: string[];
+    /**
+     * このプラグインの Custom Elements を customElements.define する関数。
+     * PluginRegistry がプラグインロード後に一度だけ呼び出す。
+     */
+    register: () => void;
 }

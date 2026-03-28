@@ -1,5 +1,3 @@
-'use client';
-
 import { memo, useRef, useState } from 'react';
 import styles from './RadialMenu.module.css';
 

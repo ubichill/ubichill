@@ -1,5 +1,3 @@
-'use client';
-
 import type { WorldEntity } from '@ubichill/shared';
 import throttle from 'lodash.throttle';
 import { useCallback, useMemo, useRef } from 'react';

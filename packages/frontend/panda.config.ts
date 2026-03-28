@@ -53,15 +53,39 @@ export default defineConfig({
                     primaryHover: { value: '#1e3155' },
                     primaryActive: { value: '#263d68' },
                     
+                    // 純色
+                    white: { value: '#ffffff' },
+
                     // ステータス色
                     success: { value: '#8ad29b' },
                     warning: { value: '#f1c86c' },
                     error: { value: '#c0392b' },
+                    errorLight: { value: '#ff8f8f' },
                     errorBg: { value: '#f9e4e1' },
                     errorText: { value: '#922b21' },
                     successBg: { value: '#e4f5ec' },
                     successText: { value: '#1e7e46' },
                     info: { value: '#9ea7bd' },
+
+                    // ガラス効果（半透明白）
+                    glassBg: { value: 'rgba(255, 255, 255, 0.72)' },
+
+                    // HUD オーバーレイ UI（ワールド上に重なるダークグラス UI）
+                    hudBg: { value: 'rgba(0, 0, 0, 0.55)' },
+                    hudBgHover: { value: 'rgba(0, 0, 0, 0.70)' },
+                    hudPanel: { value: 'rgba(15, 15, 20, 0.88)' },
+                    hudBorder: { value: 'rgba(255, 255, 255, 0.10)' },
+                    hudDivider: { value: 'rgba(255, 255, 255, 0.08)' },
+                    hudText: { value: 'rgba(255, 255, 255, 0.90)' },
+                    hudTextMuted: { value: 'rgba(255, 255, 255, 0.45)' },
+                    hudTextSubtle: { value: 'rgba(255, 255, 255, 0.35)' },
+                    hudTextBody: { value: 'rgba(255, 255, 255, 0.85)' },
+                    hudTextAction: { value: 'rgba(255, 255, 255, 0.80)' },
+                    hudScrollThumb: { value: 'rgba(255, 255, 255, 0.15)' },
+                    hudActionHover: { value: 'rgba(255, 255, 255, 0.08)' },
+                    hudAvatar: { value: 'rgba(99, 102, 241, 0.70)' },
+                    hudStatusOn: { value: '#40c057' },
+                    hudStatusOff: { value: '#fa5252' },
                 },
                 fonts: {
                     body: { value: 'var(--font-inter), system-ui, sans-serif' },

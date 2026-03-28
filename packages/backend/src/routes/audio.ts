@@ -235,9 +235,9 @@ router.get('/proxy/:id', (req, res) => {
             }
         });
 
-        // biome-ignore lint/suspicious/noExplicitAny: External library error type
-        ytDlp.on('error', (err: any) => {
-            console.error('Failed to start yt-dlp process:', err);
+        ytDlp.on('error', (err: unknown) => {
+            const message = err instanceof Error ? err.message : String(err);
+            console.error('Failed to start yt-dlp process:', message);
             // ヘッダー未送信なら500
             if (!res.headersSent) {
                 res.status(500).json({ error: 'Stream process failed' });
@@ -308,9 +308,9 @@ router.get('/video/:id', (req, res) => {
             }
         });
 
-        // biome-ignore lint/suspicious/noExplicitAny: External library error type
-        ytDlp.on('error', (err: any) => {
-            console.error('Failed to start yt-dlp video process:', err);
+        ytDlp.on('error', (err: unknown) => {
+            const message = err instanceof Error ? err.message : String(err);
+            console.error('Failed to start yt-dlp video process:', message);
             if (!res.headersSent) {
                 res.status(500).json({ error: 'Video stream process failed' });
             } else {
@@ -391,4 +391,4 @@ router.get('/popular', async (_req, res) => {
     return res.json(popularTracks);
 });
 
-export default router;
+export { router };
