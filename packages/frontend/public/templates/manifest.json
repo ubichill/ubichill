@@ -1,47 +1,47 @@
 [
     {
-        "id": "suisei",
-        "name": "Suisei",
-        "directory": "suisei",
+        "id": "character_oji_03_blue_brown",
+        "name": "Character Oji 03 Blue Brown",
+        "directory": "character_oji_03_blue_brown",
         "mappings": {
-            "default": "normal_select.ani",
-            "pointer": "link_select.ani",
-            "text": "text_select.ani",
-            "wait": "busy.ani",
-            "help": "normal_select.ani",
-            "not-allowed": "normal_select.ani",
-            "move": "normal_select.ani",
-            "grabbing": "normal_select.ani"
+            "default": "normal_select.cur",
+            "pointer": "link_select.cur",
+            "text": "text_select.cur",
+            "wait": "busy.cur",
+            "help": "help.cur",
+            "not-allowed": "unavailable.cur",
+            "move": "move.cur",
+            "grabbing": "move.cur"
         }
     },
     {
-        "id": "amongus",
-        "name": "Among Us",
-        "directory": "amongus",
+        "id": "character_tenshi_gold",
+        "name": "Character Tenshi Gold",
+        "directory": "character_tenshi_gold",
         "mappings": {
-            "default": "normal_select.ani",
-            "pointer": "link_select.ani",
-            "text": "text_select.ani",
-            "wait": "busy.ani",
-            "help": "normal_select.ani",
-            "not-allowed": "normal_select.ani",
-            "move": "normal_select.ani",
-            "grabbing": "normal_select.ani"
+            "default": "normal_select.cur",
+            "pointer": "link_select.cur",
+            "text": "text_select.cur",
+            "wait": "busy.cur",
+            "help": "help.cur",
+            "not-allowed": "unavailable.cur",
+            "move": "move.cur",
+            "grabbing": "move.cur"
         }
     },
     {
-        "id": "spiki",
-        "name": "Spiki",
-        "directory": "spiki",
+        "id": "cat_halloween_purple",
+        "name": "Cat Halloween Purple",
+        "directory": "cat_halloween_purple",
         "mappings": {
-            "default": "normal_select.ani",
-            "pointer": "link_select.ani",
-            "text": "text_select.ani",
-            "wait": "busy.ani",
-            "help": "help.ani",
-            "not-allowed": "unavailable.ani",
-            "move": "move.ani",
-            "grabbing": "move.ani"
+            "default": "normal_select.cur",
+            "pointer": "link_select.cur",
+            "text": "text_select.cur",
+            "wait": "busy.cur",
+            "help": "help.cur",
+            "not-allowed": "unavailable.cur",
+            "move": "move.cur",
+            "grabbing": "move.cur"
         }
     }
 ]

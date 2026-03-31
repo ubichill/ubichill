@@ -1,0 +1,15 @@
+apiVersion: ubichill.youkan.uk/v1alpha1
+kind: Avatar
+metadata:
+  name: cat_halloween_purple
+  displayName: Cat Halloween Purple
+spec:
+  states:
+    default: /templates/cat_halloween_purple/normal_select.cur
+    pointer: /templates/cat_halloween_purple/link_select.cur
+    text: /templates/cat_halloween_purple/text_select.cur
+    wait: /templates/cat_halloween_purple/busy.cur
+    help: /templates/cat_halloween_purple/help.cur
+    not-allowed: /templates/cat_halloween_purple/unavailable.cur
+    move: /templates/cat_halloween_purple/move.cur
+    grabbing: /templates/cat_halloween_purple/move.cur

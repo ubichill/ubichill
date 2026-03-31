@@ -4,7 +4,7 @@ metadata:
   name: avatar-templates
   version: "1.0.0"
 templates:
-  - templates/suisei.yaml
-  - templates/amongus.yaml
-  - templates/spiki.yaml
+  - templates/character_oji_03_blue_brown.yaml
+  - templates/character_tenshi_gold.yaml
+  - templates/cat_halloween_purple.yaml
   - templates/custom-single.yaml

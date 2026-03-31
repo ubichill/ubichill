@@ -1,0 +1,15 @@
+apiVersion: ubichill.youkan.uk/v1alpha1
+kind: Avatar
+metadata:
+  name: character_tenshi_gold
+  displayName: Character Tenshi Gold
+spec:
+  states:
+    default: /templates/character_tenshi_gold/normal_select.cur
+    pointer: /templates/character_tenshi_gold/link_select.cur
+    text: /templates/character_tenshi_gold/text_select.cur
+    wait: /templates/character_tenshi_gold/busy.cur
+    help: /templates/character_tenshi_gold/help.cur
+    not-allowed: /templates/character_tenshi_gold/unavailable.cur
+    move: /templates/character_tenshi_gold/move.cur
+    grabbing: /templates/character_tenshi_gold/move.cur

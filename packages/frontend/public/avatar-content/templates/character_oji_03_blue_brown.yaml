@@ -1,0 +1,15 @@
+apiVersion: ubichill.youkan.uk/v1alpha1
+kind: Avatar
+metadata:
+  name: character_oji_03_blue_brown
+  displayName: Character Oji 03 Blue Brown
+spec:
+  states:
+    default: /templates/character_oji_03_blue_brown/normal_select.cur
+    pointer: /templates/character_oji_03_blue_brown/link_select.cur
+    text: /templates/character_oji_03_blue_brown/text_select.cur
+    wait: /templates/character_oji_03_blue_brown/busy.cur
+    help: /templates/character_oji_03_blue_brown/help.cur
+    not-allowed: /templates/character_oji_03_blue_brown/unavailable.cur
+    move: /templates/character_oji_03_blue_brown/move.cur
+    grabbing: /templates/character_oji_03_blue_brown/move.cur
