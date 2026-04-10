@@ -12,7 +12,7 @@
     },
     "dependencies": {
         "@ubichill/sdk": "workspace:*",
-        "icojs": "^0.20.1",
+        "icojs": "^0.20.2",
         "upng-js": "^2.1.0",
         "js-yaml": "^4.1.1"
     },
