@@ -502,9 +502,11 @@ export type InputKeyDownData = { key: string; code: string };
 export type InputKeyUpData = { key: string; code: string };
 /**
  * コンテキストメニュー（右クリック）データ。
- * x/y はページ絶対座標、clientX/clientY はビューポート座標（position:fixed 要素の配置に使う）。
+ * x/y はビューポート座標（clientX/Y 相当）。
+ * ワールドスクロールは div で起きるため window.scrollX/Y = 0 となり、
+ * ビューポート座標 = clientX/Y となる。ワールド座標への変換は Host 側で行う。
  */
-export type InputContextMenuData = { x: number; y: number; clientX: number; clientY: number };
+export type InputContextMenuData = { x: number; y: number };
 
 /** 1フレーム内の入力イベント1件 */
 export type InputFrameEvent =
