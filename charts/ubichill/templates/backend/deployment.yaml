@@ -79,6 +79,15 @@ spec:
         - name: {{ $key }}
           value: {{ $value | quote }}
         {{- end }}
+        {{- /* global.domain から CORS_ORIGIN / BETTER_AUTH_URL を自動導出（values で上書き可能） */}}
+        {{- if and .Values.global.domain (not (index .Values.backend.env "CORS_ORIGIN")) }}
+        - name: CORS_ORIGIN
+          value: {{ printf "https://%s" .Values.global.domain | quote }}
+        {{- end }}
+        {{- if and .Values.global.domain (not (index .Values.backend.env "BETTER_AUTH_URL")) }}
+        - name: BETTER_AUTH_URL
+          value: {{ printf "https://%s" .Values.global.domain | quote }}
+        {{- end }}
         {{- if and (not .Values.backend.existingSecret) .Values.backend.secretEnv }}
         {{- range $key, $value := .Values.backend.secretEnv }}
         - name: {{ $key }}
@@ -88,9 +97,16 @@ spec:
               key: {{ $key }}
         {{- end }}
         {{- end }}
-        {{- if .Values.worlds.enabled }}
-        - name: WORLDS_DIR
-          value: "/app/worlds"
+        {{- if .Values.worlds.registries }}
+        - name: WORLDS_REGISTRY_URLS
+          value: {{ .Values.worlds.registries | join "," | quote }}
+        {{- end }}
+        {{- if .Values.worlds.registryToken }}
+        - name: WORLDS_REGISTRY_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "ubichill.fullname" . }}-worlds-token
+              key: token
         {{- end }}
         # Redis connection
         {{- if .Values.redis.enabled }}
@@ -122,16 +138,4 @@ spec:
         {{- end }}
         resources:
           {{- toYaml .Values.backend.resources | nindent 12 }}
-        {{- if .Values.worlds.enabled }}
-        volumeMounts:
-        - name: worlds
-          mountPath: /app/worlds
-          readOnly: true
-        {{- end }}
-      {{- if .Values.worlds.enabled }}
-      volumes:
-      - name: worlds
-        configMap:
-          name: {{ include "ubichill.fullname" . }}-worlds
-      {{- end }}
 {{- end }}

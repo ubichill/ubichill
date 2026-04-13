@@ -33,8 +33,7 @@ backend:
   
   env:
     NODE_ENV: "production"
-    CORS_ORIGIN: "https://ubichill.com"
-    BETTER_AUTH_URL: "https://api.ubichill.com"
+    # CORS_ORIGIN / BETTER_AUTH_URL は global.domain から自動導出される
   secretEnv:
     BETTER_AUTH_SECRET: "replace-in-production-vault"
     RESEND_API_KEY: "replace-in-production-vault"
@@ -100,6 +99,31 @@ postgresql:
         memory: 512Mi
         cpu: 200m
 
+# Worlds registry for production
+worlds:
+  registries:
+    - https://github.com/ubichill/ubichill/tree/main/worlds
+
+# Plugin backends for production
+pluginBackends:
+  - id: video-player
+    image:
+      repository: ghcr.io/ubichill/video-player-backend
+      tag: stable
+    port: 8000
+    pathPrefix: /plugins/video-player/api
+    replicaCount: 1
+    env:
+      ROOT_PATH: /plugins/video-player/api
+      # CORS_ORIGINS は global.domain から導出。上書きが必要な場合のみ設定
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+      requests:
+        cpu: 200m
+        memory: 256Mi
+
 # Enable monitoring in production
 monitoring:
   enabled: true
@@ -110,74 +134,18 @@ monitoring:
 nodeAffinity:
   enabled: true
 
-# Video Player Plugin (Subchart) for production
-video-player:
-  enabled: true
-  global:
-    imageRegistry: "ghcr.io"
-  backend:
-    replicaCount: 1
-    rootPath: "/plugin/video-player"
-    image:
-      repository: "ubichill-video-player-backend"
-      tag: "stable"
-      pullPolicy: IfNotPresent
-    env:
-      CORS_ORIGINS: "https://ubichill.com,https://app.ubichill.com"
-      LOG_LEVEL: "INFO"
-    resources:
-      limits:
-        cpu: 1000m
-        memory: 1Gi
-      requests:
-        cpu: 200m
-        memory: 512Mi
-    autoscaling:
-      enabled: false
-      minReplicas: 3
-      maxReplicas: 10
-      targetCPUUtilizationPercentage: 60
-      targetMemoryUtilizationPercentage: 70
-  redis:
-    enabled: true
-    master:
-      persistence:
-        enabled: true
-        size: 2Gi
-      resources:
-        limits:
-          memory: 512Mi
-          cpu: 300m
-        requests:
-          memory: 256Mi
-          cpu: 100m
-
 # Ingress configuration for production
 ingress:
   enabled: true
-  className: "nginx"
+  className: ""  # Cloudflare Ingress の場合は該当クラス名を設定
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-  tls:
-    - secretName: ubichill-tls
-      hosts:
-        - ubichill.com
-  hosts:
-    - host: ubichill.com
-      paths:
-        - path: /plugin/video-player
-          pathType: Prefix
-          backend:
-            service:
-              name: video-player
-              port: 8000
-        - path: /api
-          pathType: Prefix
-          backend:
-            service:
-              name: backend
-              port: 3001
-        - path: /
-          pathType: Prefix
-          # Default to frontend (will use template default)
+  # hosts / tls は global.domain から自動生成される
+  # 独自の TLS 設定が必要な場合のみ以下を有効化:
+  # tls:
+  #   - secretName: my-tls-secret
+  #     hosts:
+  #       - example.com
+  # hosts:
+  #   - host: example.com
+  #     paths: [...]

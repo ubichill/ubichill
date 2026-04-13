@@ -1,28 +1,74 @@
 /**
  * build-workers.mjs
  *
- * plugins/ 以下の plugin.json を自動探索し、entry.worker が存在する
- * プラグインの Worker コードを esbuild でバンドルします。
+ * plugins/ 以下の plugin.json を自動探索し、Worker コードを esbuild でバンドルします。
  *
- * 出力物:
- *   1. <frontend>/src/<Name>Behaviour.gen.ts  — 後方互換（static import 用）
- *   2. dist/workers/<pluginId>@<version>.js   — CDN 配布用（URL ベースロード用）
+ * plugin.json の workers フィールドを読み取り、Worker コードをバンドルします。
  *
- * URL ベースの動的ロードに移行する場合は dist/workers/ を CDN にアップロードし、
- * usePluginWorker({ pluginCodeUrl: 'https://cdn.example.com/...' }) で参照する。
+ * ── 単一エントリ形式（後方互換） ──────────────────────────────
+ * "entry": { "worker": "./src/worker.ts" }
+ *
+ * 出力物 (プラグインディレクトリ名を <name> とする):
+ *   dist/plugins/<name>/v<version>/index.js
+ *   dist/plugins/<name>/v<version>/plugin.json
+ *   public/plugins/<name>/v<version>/index.js
+ *   public/plugins/<name>/index.js   (バージョン非依存エイリアス)
+ *   public/plugins/<name>/plugin.json
+ *
+ * ── 複数エントリ形式 ──────────────────────────────────────────
+ * "workers": { "pen": "./src/worker.ts", "tray": "./src/tray.worker.tsx" }
+ *
+ * 出力物 (エントリキーを <worker> とする):
+ *   dist/plugins/<name>/v<version>/<worker>/index.js
+ *   dist/plugins/<name>/v<version>/plugin.json
+ *   public/plugins/<name>/<worker>/index.js
+ *   public/plugins/<name>/plugin.json
  */
 
 import * as esbuild from 'esbuild';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { basename, dirname, join, relative } from 'node:path';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
 
-// --dist-dir=<path> で出力先を上書き可能（デフォルト: dist/workers/）
+// --dist-dir=<path> で出力先を上書き可能（デフォルト: dist/plugins/）
 const distDirArg = process.argv.slice(2).find((a) => a.startsWith('--dist-dir='));
-const distDir = distDirArg ? join(root, distDirArg.split('=')[1]) : join(root, 'dist', 'workers');
+const distPluginsDir = distDirArg ? join(root, distDirArg.split('=')[1]) : join(root, 'dist', 'plugins');
+
+// ============================================================
+// ヘルパー関数
+// ============================================================
+
+function copyDirRecursive(src, dest) {
+    mkdirSync(dest, { recursive: true });
+    for (const entry of readdirSync(src, { withFileTypes: true })) {
+        const srcPath = join(src, entry.name);
+        const destPath = join(dest, entry.name);
+        if (entry.isDirectory()) {
+            copyDirRecursive(srcPath, destPath);
+        } else {
+            copyFileSync(srcPath, destPath);
+        }
+    }
+}
+
+async function bundleWorker(entryPath, tsconfig) {
+    const result = await esbuild.build({
+        entryPoints: [entryPath],
+        bundle: true,
+        format: 'iife',
+        platform: 'browser',
+        target: 'es2020',
+        jsx: 'automatic',
+        jsxImportSource: '@ubichill/sdk',
+        write: false,
+        minify: false,
+        tsconfig,
+    });
+    return result.outputFiles[0].text;
+}
 
 // ============================================================
 // plugin.json の自動探索
@@ -48,66 +94,87 @@ export async function buildWorker(pluginJsonPath) {
     const pluginDir = dirname(pluginJsonPath);
     const pluginJson = JSON.parse(readFileSync(pluginJsonPath, 'utf-8'));
 
-    const workerEntry = pluginJson.entry?.worker;
-    if (!workerEntry) return; // worker なしプラグインはスキップ
+    const pluginId = pluginJson.id;
+    const pluginDirName = basename(pluginDir);
+    const version = pluginJson.version;
+    const pluginJsonContent = readFileSync(pluginJsonPath, 'utf-8');
 
-    const pluginId = pluginJson.id;         // 例: "pen:pen"
-    const pluginName = pluginJson.name;     // 例: "Pen"
-    const version = pluginJson.version;    // 例: "2.0.0"
-    const safeId = pluginId.replace(/[^a-zA-Z0-9]/g, '_'); // ファイル名に使える形式
+    const publicPluginDir = join(root, 'packages', 'frontend', 'public', 'plugins', pluginDirName);
+    const distVersionDir = join(distPluginsDir, pluginDirName, `v${version}`);
 
-    const entryPath = join(pluginDir, workerEntry);
-    if (!existsSync(entryPath)) {
-        console.error(`❌ [${pluginId}] entry.worker が見つかりません: ${entryPath}`);
-        return;
-    }
-
-    // worker/tsconfig.json を探す（なければルートの tsconfig を使用）
+    // tsconfig 検索
+    const rootTsconfig = join(pluginDir, 'tsconfig.json');
     const workerTsconfig = join(pluginDir, 'worker', 'tsconfig.json');
-    const tsconfig = existsSync(workerTsconfig) ? workerTsconfig : undefined;
+    const tsconfig = existsSync(rootTsconfig) ? rootTsconfig : existsSync(workerTsconfig) ? workerTsconfig : undefined;
 
-    const result = await esbuild.build({
-        entryPoints: [entryPath],
-        bundle: true,
-        format: 'iife',
-        platform: 'browser',
-        target: 'es2020',
-        // @ubichill/sdk は型と EcsEventType 等の値をエクスポートするためバンドルに含める。
-        // UbiSDK インスタンスは `Ubi` グローバルとして実行時に注入されるが、
-        // EcsEventType などの定数は bundleで静的に解決する必要がある。
-        write: false,
-        minify: false,
-        tsconfig,
-    });
+    // plugin.json をコピー（バージョン固定 + エイリアス）
+    mkdirSync(distVersionDir, { recursive: true });
+    mkdirSync(publicPluginDir, { recursive: true });
+    writeFileSync(join(distVersionDir, 'plugin.json'), pluginJsonContent, 'utf-8');
+    writeFileSync(join(publicPluginDir, 'plugin.json'), pluginJsonContent, 'utf-8');
 
-    const code = result.outputFiles[0].text;
+    // ── 単一エントリ形式: entry.worker ────────────────────────
+    const singleEntry = pluginJson.entry?.worker;
+    if (singleEntry) {
+        const entryPath = join(pluginDir, singleEntry);
+        if (!existsSync(entryPath)) {
+            console.error(`❌ [${pluginId}] entry.worker が見つかりません: ${entryPath}`);
+            return;
+        }
+        const code = await bundleWorker(entryPath, tsconfig);
 
-    // --- 出力 1: CDN 配布用 JS ---
-    mkdirSync(distDir, { recursive: true });
-    const distFile = join(distDir, `${safeId}@${version}.js`);
-    writeFileSync(distFile, code, 'utf-8');
-
-    // --- 出力 2: .gen.ts (後方互換・static import 用) ---
-    // frontend/src/ が存在する場合のみ生成
-    const frontendSrc = join(pluginDir, 'frontend', 'src');
-    if (existsSync(frontendSrc)) {
-        const exportName = `${pluginName.toLowerCase().replace(/[^a-zA-Z0-9]/g, '')}PluginCode`;
-        const genFile = join(frontendSrc, `${pluginName}Behaviour.gen.ts`);
-        const relEntry = relative(root, entryPath).replace(/\\/g, '/');
-
-        const generated = [
-            `// AUTO-GENERATED by scripts/build-workers.mjs — DO NOT EDIT`,
-            `// Source: ${relEntry}`,
-            `// Run \`pnpm build:workers\` to regenerate`,
-            ``,
-            `export const ${exportName} = ${JSON.stringify(code)};`,
-        ].join('\n');
-
-        writeFileSync(genFile, generated, 'utf-8');
-        console.log(`✅ [${pluginId}] .gen.ts → ${relative(root, genFile)}`);
+        // dist: バージョン固定
+        writeFileSync(join(distVersionDir, 'index.js'), code, 'utf-8');
+        // public: バージョン固定 + エイリアス
+        const publicVersionDir = join(publicPluginDir, `v${version}`);
+        mkdirSync(publicVersionDir, { recursive: true });
+        writeFileSync(join(publicVersionDir, 'index.js'), code, 'utf-8');
+        writeFileSync(join(publicVersionDir, 'plugin.json'), pluginJsonContent, 'utf-8');
+        writeFileSync(join(publicPluginDir, 'index.js'), code, 'utf-8');
+        console.log(`✅ [${pluginId}] /plugins/${pluginDirName}/v${version}/index.js`);
     }
 
-    console.log(`✅ [${pluginId}] dist  → dist/workers/${basename(distFile)}`);
+    // ── 複数エントリ形式: workers ──────────────────────────────
+    const multiEntries = pluginJson.workers;
+    if (multiEntries && typeof multiEntries === 'object') {
+        for (const [workerKey, workerEntry] of Object.entries(multiEntries)) {
+            // 文字列（旧形式）またはオブジェクト { src, ... }（新形式）の両方に対応
+            const workerRelPath = typeof workerEntry === 'string' ? workerEntry : workerEntry?.src;
+            if (!workerRelPath) {
+                console.error(`❌ [${pluginId}:${workerKey}] src が指定されていません`);
+                continue;
+            }
+            const entryPath = join(pluginDir, workerRelPath);
+            if (!existsSync(entryPath)) {
+                console.error(`❌ [${pluginId}:${workerKey}] エントリが見つかりません: ${entryPath}`);
+                continue;
+            }
+            const code = await bundleWorker(entryPath, tsconfig);
+            const workerLabel = `${pluginId}:${workerKey}`;
+
+            // dist: バージョン固定
+            const distWorkerDir = join(distVersionDir, workerKey);
+            mkdirSync(distWorkerDir, { recursive: true });
+            writeFileSync(join(distWorkerDir, 'index.js'), code, 'utf-8');
+
+            // public: バージョン固定パス（CDNキャッシュバスティング用）
+            const publicVersionedWorkerDir = join(publicPluginDir, `v${version}`, workerKey);
+            mkdirSync(publicVersionedWorkerDir, { recursive: true });
+            writeFileSync(join(publicVersionedWorkerDir, 'index.js'), code, 'utf-8');
+            console.log(`✅ [${workerLabel}] /plugins/${pluginDirName}/v${version}/${workerKey}/index.js`);
+        }
+    }
+
+    if (!singleEntry && !multiEntries) {
+        return; // worker なしプラグインはスキップ
+    }
+
+    // --- assets/ → public/plugins/<name>/ ---
+    const assetsDir = join(pluginDir, 'assets');
+    if (existsSync(assetsDir)) {
+        copyDirRecursive(assetsDir, publicPluginDir);
+        console.log(`✅ [${pluginId}] assets → /plugins/${pluginDirName}/`);
+    }
 }
 
 // ============================================================
@@ -129,9 +196,7 @@ async function main() {
     }
 
     console.log('🎉 All workers built.');
-    console.log(`📦 CDN 配布用: dist/workers/`);
-    console.log(`   PluginHostManager.fromUrl('https://cdn.example.com/plugins/<file>.js', { ... })`);
-    console.log(`   usePluginWorker({ pluginCodeUrl: 'https://...', ... })`);
+    console.log(`📦 CDN 配布用: dist/plugins/`);
 }
 
 main().catch((err) => {

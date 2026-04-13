@@ -2,7 +2,7 @@ apiVersion: v2
 name: ubichill
 description: Ubichill Main Application - Frontend and Backend Platform
 type: application
-version: 0.1.6
+version: 0.1.7
 appVersion: "latest"
 
 keywords:
@@ -26,7 +26,5 @@ dependencies:
     version: "16.4.3"
     repository: "https://charts.bitnami.com/bitnami"
     condition: postgresql.enabled
-  - name: video-player
-    version: "0.1.4"
-    repository: "file://../video-player"
-    condition: video-player.enabled
+  # video-player は独立した Helm チャート（charts/video-player）として別途デプロイする。
+  # 例: helm install video-player ./charts/video-player -f ./charts/video-player/values-dev.yaml

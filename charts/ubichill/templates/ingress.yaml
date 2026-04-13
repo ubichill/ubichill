@@ -30,12 +30,30 @@ spec:
         {{- end }}
       secretName: {{ .secretName }}
     {{- end }}
+  {{- else if .Values.global.domain }}
+  {{- /* ingress.tls 未設定かつ global.domain がある場合は TLS を自動生成 */}}
+  tls:
+    - hosts:
+        - {{ .Values.global.domain | quote }}
+      secretName: {{ $fullName }}-tls
   {{- end }}
   rules:
+    {{- if .Values.ingress.hosts }}
+    {{- /* ingress.hosts が明示されている場合はそのまま使用 */}}
     {{- range .Values.ingress.hosts }}
     - host: {{ .host | quote }}
       http:
         paths:
+          {{/* プラグインバックエンドのパスを最初に置く（より具体的なパスを優先） */}}
+          {{- range $.Values.pluginBackends }}
+          - path: {{ .pathPrefix }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "ubichill.fullname" $ }}-plugin-{{ .id }}
+                port:
+                  number: {{ .port }}
+          {{- end }}
           {{- range .paths }}
           - path: {{ .path }}
             {{- if .pathType }}
@@ -44,15 +62,50 @@ spec:
             backend:
               service:
                 {{- if and .backend (hasKey .backend "service") }}
-                name: {{ if eq .backend.service.name "backend" }}{{ include "ubichill.fullname" $ }}-backend{{ else if or (eq .backend.service.name "video-player") (eq .backend.service.name "video-player-backend") }}{{ include "ubichill.fullname" $ }}-video-player-backend{{ else }}{{ include "ubichill.fullname" $ }}-frontend{{ end }}
+                name: {{ if eq .backend.service.name "backend" }}{{ include "ubichill.fullname" $ }}-backend{{ else }}{{ include "ubichill.fullname" $ }}-frontend{{ end }}
                 port:
                   number: {{ if kindIs "map" .backend.service.port }}{{ .backend.service.port.number }}{{ else }}{{ .backend.service.port }}{{ end }}
                 {{- else }}
-                # Default to frontend if not specified
                 name: {{ include "ubichill.fullname" $ }}-frontend
                 port:
                   number: {{ $svcPortFrontend }}
                 {{- end }}
           {{- end }}
+    {{- end }}
+    {{- else if .Values.global.domain }}
+    {{- /* global.domain のみの場合はデフォルトルート（/api → backend, / → frontend）を自動生成 */}}
+    - host: {{ .Values.global.domain | quote }}
+      http:
+        paths:
+          {{- range .Values.pluginBackends }}
+          - path: {{ .pathPrefix }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "ubichill.fullname" $ }}-plugin-{{ .id }}
+                port:
+                  number: {{ .port }}
+          {{- end }}
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullName }}-backend
+                port:
+                  number: {{ $svcPortBackend }}
+          - path: /socket.io
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullName }}-backend
+                port:
+                  number: {{ $svcPortBackend }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullName }}-frontend
+                port:
+                  number: {{ $svcPortFrontend }}
     {{- end }}
 {{- end }}

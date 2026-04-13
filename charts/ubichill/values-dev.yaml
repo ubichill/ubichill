@@ -33,8 +33,8 @@ backend:
   
   env:
     NODE_ENV: "development"
-    CORS_ORIGIN: "*"  # Allow all origins in Kubernetes dev environment
-    BETTER_AUTH_URL: "https://ubichill-dev.youkan.uk"
+    TRUST_PROXY: "true"
+    CORS_ORIGIN: "*"  # dev では全オリジン許可
   secretEnv:
     BETTER_AUTH_SECRET: "dev-secret-key"
     RESEND_API_KEY: "dev-resend-key"
@@ -59,9 +59,8 @@ frontend:
   autoscaling:
     enabled: false  # Disable HPA in dev
   
-  env:
-    NODE_ENV: "development"
-    # Video Player URL: /plugin/video-player にフォールバック (設定不要)
+  # BACKEND_HOST / BACKEND_PORT は deployment.yaml テンプレートで自動注入
+  env: {}
 
 # Use Redis for shared caching
 redis:
@@ -85,50 +84,34 @@ postgresql:
   global:
     imageRegistry: ""
 
-# Video Player Plugin (Subchart)
-video-player:
-  enabled: true
-  global:
-    imageRegistry: "" # Use local/docker registry for video player if it uses global
-  backend:
+# Worlds registry for development
+worlds:
+  registries:
+    - https://github.com/ubichill/ubichill/tree/dev/worlds
+
+# Plugin backends for development
+pluginBackends:
+  - id: video-player
+    image:
+      repository: ubichill-video-player-backend
+      tag: latest
+    port: 8000
+    pathPrefix: /plugins/video-player/api
     replicaCount: 1
-    rootPath: "/plugin/video-player"
     env:
-      CORS_ORIGINS: "http://localhost:3000,http://localhost:3002,*"  # Allow all origins in dev
-      LOG_LEVEL: "DEBUG"
+      ROOT_PATH: /plugins/video-player/api
+      CORS_ORIGINS: "*"
     resources:
       limits:
-        cpu: 250m
-        memory: 256Mi
+        cpu: 500m
+        memory: 512Mi
       requests:
-        cpu: 50m
+        cpu: 100m
         memory: 128Mi
-    autoscaling:
-      enabled: false
-  redis:
-    enabled: true
-    global:
-      imageRegistry: "" # Ensure nested redis in video-player also ignores global registry
 
 # Ingress configuration for development
 ingress:
   enabled: true
-  className: "nginx"
-  hosts:
-    - host: localhost
-      paths:
-        - path: /plugin/video-player
-          pathType: Prefix
-          backend:
-            service:
-              name: video-player
-              port: 8000
-        - path: /api
-          pathType: Prefix
-          backend:
-            service:
-              name: backend
-              port: 3001
-        - path: /
-          pathType: Prefix
-          # Default to frontend (will use template default)
+  className: "cloudflare"
+  # dev では global.domain を設定してデフォルトルールを自動生成する
+  # hosts / tls はハードコードしない
