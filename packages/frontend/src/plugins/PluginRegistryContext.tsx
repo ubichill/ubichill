@@ -1,17 +1,125 @@
-'use client';
-
-import type { WidgetDefinition } from '@ubichill/sdk/react';
-import { useWorld } from '@ubichill/sdk/react';
+import type { WidgetDefinition, WorkerPluginDefinition } from '@ubichill/sdk/react';
+import { isWorkerPlugin, useWorld } from '@ubichill/sdk/react';
 import type React from 'react';
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { PLUGIN_ID_TO_ENTITY_TYPE, PLUGIN_LOADERS } from './registry';
+import { PLUGIN_LOADERS } from './registry';
+
+// ============================================
+// plugin.json 自動ローダー
+// ============================================
+
+interface WorkerMetaObject {
+    src: string;
+    capabilities?: string[];
+    singleton?: boolean;
+    canvasTargets?: string[];
+    watchEntityTypes?: string[];
+    mediaTargets?: string[];
+    fetchDomains?: string[];
+}
+
+interface PluginJson {
+    id: string;
+    name?: string;
+    workers?: Record<string, string | WorkerMetaObject>;
+}
+
+/**
+ * プラグインのベースURL。
+ * VITE_PLUGIN_CDN_URL が設定されている場合はそちらを使う（外部CDN / GitHub Pages）。
+ * 未設定の場合は自ホストの /plugins/ に相対パスでアクセスする。
+ *
+ * 例: VITE_PLUGIN_CDN_URL=https://myorg.github.io/ubichill-plugins
+ *     → https://myorg.github.io/ubichill-plugins/pen/plugin.json
+ */
+const PLUGIN_BASE_URL: string = (() => {
+    const envUrl = import.meta.env.VITE_PLUGIN_CDN_URL as string | undefined;
+    if (envUrl) return envUrl.replace(/\/$/, '');
+    return '/plugins';
+})();
+
+/** プラグイン名 → plugin.json のキャッシュ（Promise を保持して重複フェッチ防止） */
+const pluginJsonCache = new Map<string, Promise<PluginJson | null>>();
+
+function fetchPluginJson(pluginName: string): Promise<PluginJson | null> {
+    if (!pluginJsonCache.has(pluginName)) {
+        pluginJsonCache.set(
+            pluginName,
+            fetch(`${PLUGIN_BASE_URL}/${pluginName}/plugin.json`)
+                .then((r) => (r.ok ? (r.json() as Promise<PluginJson>) : null))
+                .catch(() => null),
+        );
+    }
+    const cached = pluginJsonCache.get(pluginName);
+    if (!cached) {
+        return Promise.resolve(null);
+    }
+    return cached;
+}
+
+/**
+ * plugin.json のメタデータを使って WorkerPluginDefinition を自動構築する。
+ * `pluginName` 形式の場合は定義されているすべてのワーカーをロードし、配列を返す。
+ * `pluginName:workerKey` 形式の場合は該当ワーカーのみを配列で返す。
+ */
+async function autoLoadWorkerPlugins(entityType: string): Promise<WorkerPluginDefinition[]> {
+    const colonIdx = entityType.indexOf(':');
+    let pluginName: string;
+    let targetWorkerKey: string | null = null;
+
+    if (colonIdx === -1) {
+        pluginName = entityType;
+    } else {
+        pluginName = entityType.slice(0, colonIdx);
+        targetWorkerKey = entityType.slice(colonIdx + 1);
+    }
+
+    const pluginJson = await fetchPluginJson(pluginName);
+    if (!pluginJson?.workers) return [];
+
+    const workerKeys = targetWorkerKey ? [targetWorkerKey] : Object.keys(pluginJson.workers);
+    const definitions: WorkerPluginDefinition[] = [];
+
+    for (const workerKey of workerKeys) {
+        const workerEntry = pluginJson.workers[workerKey];
+        if (!workerEntry) continue;
+
+        const meta: Partial<WorkerMetaObject> = typeof workerEntry === 'string' ? {} : workerEntry;
+        const workerUrl = `${PLUGIN_BASE_URL}/${pluginName}/v${pluginJson.version}/${workerKey}/index.js`;
+
+        let workerCode: string;
+        try {
+            const res = await fetch(workerUrl);
+            if (!res.ok) continue;
+            workerCode = await res.text();
+        } catch {
+            continue;
+        }
+
+        definitions.push({
+            id: `${pluginName}:${workerKey}`,
+            name: `${pluginJson.name ?? pluginName} - ${workerKey}`,
+            workerCode,
+            capabilities: meta.capabilities,
+            singleton: meta.singleton,
+            canvasTargets: meta.canvasTargets,
+            watchEntityTypes: meta.watchEntityTypes,
+            mediaTargets: meta.mediaTargets,
+            fetchDomains: meta.fetchDomains,
+        });
+    }
+
+    return definitions;
+}
 
 // ============================================
 // Types
 // ============================================
 
+export type AnyPluginDefinition = WidgetDefinition | WorkerPluginDefinition;
+
 interface PluginRegistryContextType {
-    pluginMap: Map<string, WidgetDefinition>;
+    pluginMap: Map<string, AnyPluginDefinition>;
     /** エンティティタイプを指定してプラグインを動的ロードする（未ロードの場合のみ実行） */
     loadPlugin: (entityType: string) => void;
 }
@@ -31,15 +139,26 @@ const PluginRegistryContext = createContext<PluginRegistryContextType>({
 
 export const PluginRegistryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const { activePlugins } = useWorld();
-    const [pluginMap, setPluginMap] = useState<Map<string, WidgetDefinition>>(new Map());
+    const [pluginMap, setPluginMap] = useState<Map<string, AnyPluginDefinition>>(new Map());
     // ロード済み（またはロード中）のエンティティタイプを追跡して重複ロードを防ぐ
     const loadingRef = useRef(new Set<string>());
     // register() 呼び出し済みの plugin id を追跡（StrictMode での二重呼び出し防止）
     const registeredRef = useRef(new Set<string>());
 
-    const addPlugin = useCallback((def: WidgetDefinition) => {
+    const addPlugin = useCallback((def: AnyPluginDefinition) => {
         if (registeredRef.current.has(def.id)) return;
         registeredRef.current.add(def.id);
+
+        if (isWorkerPlugin(def)) {
+            // WorkerPluginDefinition は CE 不要。即座にマップへ追加する。
+            setPluginMap((prev) => {
+                if (prev.has(def.id)) return prev;
+                const next = new Map(prev);
+                next.set(def.id, def);
+                return next;
+            });
+            return;
+        }
 
         // CE クラスの import() + define() を開始
         def.register();
@@ -61,26 +180,43 @@ export const PluginRegistryProvider: React.FC<{ children: React.ReactNode }> = (
     const loadPlugin = useCallback(
         (entityType: string) => {
             if (loadingRef.current.has(entityType)) return;
-            const loader = PLUGIN_LOADERS[entityType];
-            if (!loader) return;
             loadingRef.current.add(entityType);
-            loader()
-                .then(addPlugin)
+
+            // 1. plugin.json 自動ローダー
+            autoLoadWorkerPlugins(entityType)
+                .then((defs) => {
+                    if (defs.length > 0) {
+                        defs.forEach((def) => {
+                            addPlugin(def);
+                        });
+                        return;
+                    }
+                    // 2. フォールバック: 静的 PLUGIN_LOADERS（video-player 等の非 Worker プラグイン）
+                    const loader = PLUGIN_LOADERS[entityType];
+                    if (!loader) {
+                        loadingRef.current.delete(entityType);
+                        return;
+                    }
+                    return loader()
+                        .then(addPlugin)
+                        .catch((err: unknown) => {
+                            console.error(`[PluginRegistry] Failed to load plugin: ${entityType}`, err);
+                            // 失敗時に loadingRef を解放してリトライを許可する
+                            loadingRef.current.delete(entityType);
+                        });
+                })
                 .catch((err) => {
                     console.error(`[PluginRegistry] Failed to load plugin: ${entityType}`, err);
-                    // リトライできるようにフラグを解除
                     loadingRef.current.delete(entityType);
                 });
         },
         [addPlugin],
     );
 
-    // world:snapshot 受信後に activePlugins が更新されたタイミングでプラグインをロード
+    // world:snapshot 受信後に activePlugins が更新されたタイミングでシングルトンプラグインをロード
     useEffect(() => {
         for (const pluginId of activePlugins) {
-            // plugin.json の id → エンティティタイプ に変換（一致しない場合はそのまま使用）
-            const entityType = PLUGIN_ID_TO_ENTITY_TYPE[pluginId] ?? pluginId;
-            loadPlugin(entityType);
+            loadPlugin(pluginId);
         }
     }, [activePlugins, loadPlugin]);
 

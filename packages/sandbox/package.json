@@ -7,7 +7,8 @@
     "exports": {
         ".": "./src/index.ts",
         "./host": "./src/host/index.ts",
-        "./guest": "./src/guest/index.ts"
+        "./guest": "./src/guest/index.ts",
+        "./guest/jsx-runtime": "./src/guest/jsx-runtime.ts"
     },
     "peerDependencies": {
         "@ubichill/engine": "workspace:*",

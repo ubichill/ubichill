@@ -1,0 +1,26 @@
+[
+  {
+    "name": "default",
+    "file": "default.yaml",
+    "displayName": "デフォルトワールド",
+    "description": "Ubichill のデフォルトコラボレーションスペース",
+    "thumbnail": "https://images.unsplash.com/photo-1519389950473-47ba0277781c?w=400&h=200&fit=crop&q=80",
+    "version": "1.0.0",
+    "capacity": {
+      "default": 10,
+      "max": 20
+    }
+  },
+  {
+    "name": "workspace",
+    "file": "workspace.yaml",
+    "displayName": "ワークスペース",
+    "description": "落ち着いた雰囲気の作業空間",
+    "thumbnail": "https://images.unsplash.com/photo-1497366216548-37526070297c?w=400&h=200&fit=crop&q=80",
+    "version": "1.0.0",
+    "capacity": {
+      "default": 8,
+      "max": 15
+    }
+  }
+]

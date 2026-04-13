@@ -1,4 +1,6 @@
+import { watch } from 'node:fs';
 import http from 'node:http';
+import { resolve } from 'node:path';
 // Force restart check
 import type { ClientToServerEvents, InterServerEvents, ServerToClientEvents, SocketData } from '@ubichill/shared';
 import cors from 'cors';
@@ -16,13 +18,14 @@ import {
     handleEntityPatch,
     handleStatusUpdate,
     handleUserUpdate,
+    handleVideoPlayerStateRequest,
+    handleVideoPlayerStateResponse,
     handleVideoPlayerSync,
     handleWorldJoin,
     handleWorldLeave,
 } from './handlers/socketHandlers';
 import { auth } from './lib/auth';
 import { socketAuthMiddleware } from './middleware/socketAuth';
-import { router as audioRouter } from './routes/audio';
 import { router as instancesRouter } from './routes/instances';
 import { router as usersRouter } from './routes/users';
 import { router as worldsRouter } from './routes/worlds';
@@ -33,8 +36,8 @@ import { worldRegistry } from './services/worldRegistry';
 const app = express();
 
 // Ingress / リバースプロキシ経由の X-Forwarded-For を信頼する
-// production のみ有効化（開発環境では偽装リスクを避けるため無効）
-if (appConfig.isProduction) {
+// production または TRUST_PROXY=true の場合に有効化（K8s dev 環境でも必要）
+if (appConfig.isProduction || appConfig.trustProxy) {
     app.set('trust proxy', 1);
 }
 
@@ -49,7 +52,12 @@ app.use(
     }),
 );
 
-// レート制限
+// ヘルスチェック（レートリミッターより前に配置して K8s probe を除外）
+app.get('/health', (_req, res) => {
+    res.json({ status: 'ok', timestamp: Date.now() });
+});
+
+// レート制限（/health は対象外）
 const limiter = rateLimit({
     windowMs: appConfig.rateLimit.windowMs,
     max: appConfig.rateLimit.maxRequests,
@@ -62,11 +70,6 @@ app.use(limiter);
 // JSONボディパーサー
 app.use(express.json());
 
-// ヘルスチェックエンドポイント
-app.get('/health', (_req, res) => {
-    res.json({ status: 'ok', timestamp: Date.now() });
-});
-
 // バージョン情報エンドポイント（ビルド時のコミットハッシュを返す）
 app.get('/api/version', (_req, res) => {
     res.json({
@@ -74,9 +77,6 @@ app.get('/api/version', (_req, res) => {
         environment: appConfig.nodeEnv,
     });
 });
-
-// オーディオAPI（YouTube音楽ストリーム）
-app.use('/api/audio', audioRouter);
 
 import { toNodeHandler } from 'better-auth/node';
 
@@ -137,12 +137,14 @@ io.on('connection', (socket) => {
 
     // Video Player同期
     socket.on('video-player:sync', handleVideoPlayerSync(socket));
+    socket.on('video-player:state-request', handleVideoPlayerStateRequest(socket));
+    socket.on('video-player:state-response', handleVideoPlayerStateResponse(socket));
 });
 
 // サーバーを起動（非同期初期化）
 async function startServer() {
-    // ワールド定義を読み込み
-    await worldRegistry.loadWorlds();
+    // システムユーザー初期化のみ（ワールドシードは行わない）
+    await worldRegistry.initialize();
 
     // 起動時クリーンアップ: 前回の実行で残ったインスタンスを削除する。
     // サーバーが再起動するとソケット接続が全て切断されるが、disconnect ハンドラは
@@ -152,19 +154,40 @@ async function startServer() {
         console.log(`🧹 起動クリーンアップ: 孤立インスタンス ${cleaned} 件を削除しました`);
     }
 
-    // ワールド数を取得（非同期）
-    const worlds = await worldRegistry.listWorlds();
-
     server.listen(appConfig.port, () => {
         console.log('');
         console.log('🚀 Ubichill サーバー起動');
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log(`   🌐 ポート ${appConfig.port} で起動中`);
         console.log(`   📍 環境: ${appConfig.nodeEnv}`);
-        console.log(`   📁 ワールド数: ${worlds.length}`);
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log('');
     });
+
+    // worlds ディレクトリのファイルウォッチャー（YAML 変更時に自動リロード）
+    const worldsDir = resolve(process.env.WORLDS_DIR ?? 'worlds');
+    const reloadTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    try {
+        watch(worldsDir, { persistent: false }, (_event, filename) => {
+            if (!filename?.endsWith('.yaml') && !filename?.endsWith('.yml')) return;
+            // ファイルごとにデバウンス（500ms）
+            const existing = reloadTimers.get(filename);
+            if (existing) clearTimeout(existing);
+            reloadTimers.set(
+                filename,
+                setTimeout(() => {
+                    reloadTimers.delete(filename);
+                    console.log(`📝 ワールドファイル変更を検知: ${filename}`);
+                    worldRegistry.reloadWorlds().catch((err) => {
+                        console.error('ワールド自動リロードエラー:', err);
+                    });
+                }, 500),
+            );
+        });
+        console.log(`👀 ワールドファイルを監視中: ${worldsDir}`);
+    } catch {
+        // worlds ディレクトリが存在しない場合はウォッチャーをスキップ
+    }
 }
 
 console.log('🏁 calling startServer()...');

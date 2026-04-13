@@ -1,3 +1,5 @@
+import type { FetchOptions, FetchResult } from '@ubichill/shared';
+
 export const PRODUCTION_ALLOWED_DOMAINS = ['api.github.com', 'cdn.jsdelivr.net', 'unpkg.com'];
 
 export const DEMO_ALLOWED_DOMAINS = [
@@ -32,20 +34,7 @@ export function isUrlAllowed(url: string, allowedDomains: string[] = DEFAULT_ALL
 }
 
 export function createPluginFetchHandler(allowedDomains: string[] = DEFAULT_ALLOWED_DOMAINS) {
-    return async (
-        url: string,
-        options?: {
-            method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
-            headers?: Record<string, string>;
-            body?: string;
-        },
-    ): Promise<{
-        ok: boolean;
-        status: number;
-        statusText: string;
-        headers: Record<string, string>;
-        body: string;
-    }> => {
+    return async (url: string, options?: FetchOptions): Promise<FetchResult> => {
         if (!isUrlAllowed(url, allowedDomains)) {
             return {
                 ok: false,

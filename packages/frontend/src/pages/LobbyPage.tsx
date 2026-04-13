@@ -51,7 +51,7 @@ export function LobbyPage() {
                 </div>
             </div>
 
-            <Lobby userName={userName} onJoinInstance={handleJoinInstance} />
+            <Lobby onJoinInstance={handleJoinInstance} />
         </main>
     );
 }

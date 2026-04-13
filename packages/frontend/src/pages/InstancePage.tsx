@@ -1,4 +1,4 @@
-import { useSocket, useWorld } from '@ubichill/sdk/react';
+import { useSocket } from '@ubichill/sdk/react';
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { InstanceHUD } from '@/components/hud/InstanceHUD';
@@ -15,11 +15,9 @@ export function InstancePage() {
     const { data: session, isPending } = useSession();
 
     const { isConnected, error, joinWorld, leaveWorld } = useSocket();
-    const { environment } = useWorld();
 
     const [connecting, setConnecting] = useState(true);
     const hasJoinedRef = useRef(false);
-    // leaveWorld を ref で保持してクリーンアップ effect の再実行を防ぐ
     const leaveWorldRef = useRef(leaveWorld);
     leaveWorldRef.current = leaveWorld;
 
@@ -42,18 +40,24 @@ export function InstancePage() {
 
         hasJoinedRef.current = true;
 
+        // インスタンスが見つからない場合はロビーに戻る
         const onJoinError = () => navigate('/');
 
         // ロビーから来た場合は state に worldId が入っている
         const stateWorldId = (location.state as { worldId?: string } | null)?.worldId;
+        // sessionStorage フォールバック: 直接 URL アクセス時に前回の worldId を復元
+        const cachedWorldId = sessionStorage.getItem(`instance:${id}:worldId`);
 
         const doJoin = (worldId: string) => {
+            sessionStorage.setItem(`instance:${id}:worldId`, worldId);
             joinWorld(session.user.name, worldId, id, onJoinError);
             setConnecting(false);
         };
 
         if (stateWorldId) {
             doJoin(stateWorldId);
+        } else if (cachedWorldId) {
+            doJoin(cachedWorldId);
         } else {
             // 直接 URL アクセス: API からインスタンス情報を取得して worldId を解決
             fetch(`${API_BASE}/api/v1/instances/${id}`, { credentials: 'include' })
@@ -78,7 +82,6 @@ export function InstancePage() {
         );
     }
 
-    // ソケット接続自体が切れた場合のみエラー表示（join エラーは onJoinError でリダイレクト済み）
     if (error && !isConnected) {
         return (
             <div
@@ -97,25 +100,14 @@ export function InstancePage() {
                     onClick={() => navigate('/')}
                     className={css({ padding: '8px 16px', bg: 'gray.200', rounded: 'md' })}
                 >
-                    戻る
+                    ロビーへ
                 </button>
             </div>
         );
     }
 
     return (
-        <main
-            style={{
-                width: '100vw',
-                height: '100vh',
-                position: 'relative',
-                overflow: 'hidden',
-                backgroundColor: environment?.backgroundColor || '#f8f9fa',
-                backgroundImage: environment?.backgroundImage ? `url(${environment.backgroundImage})` : 'none',
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-            }}
-        >
+        <main>
             <PluginRegistryProvider>
                 <InstanceRenderer />
             </PluginRegistryProvider>

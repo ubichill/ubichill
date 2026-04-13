@@ -8,3 +8,4 @@
 export type { SocketLike, UbiEntityContext, UbiInstanceContext } from './types';
 export { UbiSingleton } from './UbiSingleton';
 export { UbiWidget } from './UbiWidget';
+export { renderVNode } from './VNodeRenderer';

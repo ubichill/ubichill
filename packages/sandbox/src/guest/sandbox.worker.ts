@@ -58,7 +58,8 @@ const securePostMessage = nullifyGlobals();
 // UbiSDK を securePostMessage で初期化（グローバル無効化後に生成することで安全な送信経路を確保）
 const Ubi = new UbiSDK(securePostMessage);
 
-const DANGEROUS_PATTERNS = [/importScripts/, /eval\s*\(/, /Function\s*\(/, /__proto__/, /prototype\s*\[/] as const;
+// \bFunction\s*\( — 単語境界を使うことで ZodFunction( / ProxyFunction( 等の誤検知を防ぐ
+const DANGEROUS_PATTERNS = [/importScripts/, /eval\s*\(/, /\bFunction\s*\(/, /__proto__/, /prototype\s*\[/] as const;
 
 function checkDangerousPatterns(code: string): void {
     for (const pattern of DANGEROUS_PATTERNS) {
@@ -78,6 +79,7 @@ self.addEventListener('message', (e: MessageEvent<PluginHostEvent>) => {
 
     Ubi.worldId = event.payload.worldId;
     Ubi.myUserId = event.payload.myUserId;
+    Ubi.entityId = event.payload.entityId;
 
     const pluginId = event.payload.pluginId ?? event.payload.worldId ?? 'unknown';
     Ubi.pluginId = pluginId;

@@ -1,0 +1,1 @@
+export { AvatarMainSystem } from './AvatarMainSystem';

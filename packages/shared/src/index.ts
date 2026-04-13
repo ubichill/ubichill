@@ -54,6 +54,8 @@ export interface User {
     position: CursorPosition;
     lastActiveAt: number;
     isMenuOpen?: boolean;
+    /** 現在持っているペンの色（ペンプラグインが設定・解除する） */
+    penColor?: string | null;
 }
 
 /**
@@ -212,6 +214,12 @@ export interface ServerToClientEvents {
 
     /** 動画プレイヤーの状態同期 */
     'video-player:sync': (data: { currentIndex: number; isPlaying: boolean; currentTime: number }) => void;
+
+    /** 動画プレイヤーの再生状態リクエスト（参加時・Resync）*/
+    'video-player:state-request': (data: { fromSocketId: string }) => void;
+
+    /** 動画プレイヤーの再生状態レスポンス */
+    'video-player:state-response': (data: { currentIndex: number; isPlaying: boolean; currentTime: number }) => void;
 }
 
 /**
@@ -221,7 +229,7 @@ export interface ClientToServerEvents {
     /** ワールドに参加 */
     'world:join': (
         data: { worldId: string; instanceId: string; password?: string; user: Omit<User, 'id'> },
-        callback: (response: { success: boolean; userId?: string; error?: string }) => void,
+        callback: (response: { success: boolean; userId?: string; instanceId?: string; error?: string }) => void,
     ) => void;
 
     /** ワールドから退出 */
@@ -261,6 +269,17 @@ export interface ClientToServerEvents {
 
     /** 動画プレイヤーの状態を同期 */
     'video-player:sync': (data: { currentIndex: number; isPlaying: boolean; currentTime: number }) => void;
+
+    /** 他のユーザーに現在の再生状態を要求 */
+    'video-player:state-request': () => void;
+
+    /** 再生状態リクエストへの応答 */
+    'video-player:state-response': (data: {
+        toSocketId: string;
+        currentIndex: number;
+        isPlaying: boolean;
+        currentTime: number;
+    }) => void;
 }
 
 /**
@@ -321,8 +340,14 @@ export const ENV_KEYS = {
     /** バックエンドのポート番号 */
     PORT: 'PORT',
 
-    /** ワールド定義ディレクトリのパス */
+    /** ワールド定義ディレクトリのパス（ローカルファイル用、レガシー） */
     WORLDS_DIR: 'WORLDS_DIR',
+
+    /** ワールドレジストリURL（カンマ区切り複数指定可） */
+    WORLDS_REGISTRY_URLS: 'WORLDS_REGISTRY_URLS',
+
+    /** ワールドレジストリ認証トークン（プライベートリポジトリ向け） */
+    WORLDS_REGISTRY_TOKEN: 'WORLDS_REGISTRY_TOKEN',
 
     /** バックエンドAPI URL（フロントエンド用、Next.js の NEXT_PUBLIC_ プレフィックス） */
     API_URL: 'NEXT_PUBLIC_API_URL',
@@ -359,4 +384,5 @@ export type AnyWorldEntity = WorldEntity<unknown>;
 // ============================================
 
 export * from './plugin/types';
+export * from './plugin/vnode';
 export * from './schemas';

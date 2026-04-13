@@ -1,10 +1,12 @@
-'use client';
-
-import { useSocket, useWorld, Z_INDEX } from '@ubichill/sdk/react';
+import type { WorkerPluginDefinition } from '@ubichill/sdk/react';
+import { GenericPluginHost, isWorkerPlugin, useSocket, useWorld } from '@ubichill/sdk/react';
 import type { UbiInstanceContext } from '@ubichill/sdk/ui';
-import React, { useLayoutEffect, useRef } from 'react';
+import type { WorldEntity } from '@ubichill/shared';
+import React, { useLayoutEffect, useMemo, useRef } from 'react';
 import { EntityRenderer } from '@/core/components/EntityRenderer';
 import { usePluginRegistry } from '@/plugins/PluginRegistryContext';
+import { Z_INDEX } from '@/styles/layers';
+import { buildAvatarThumbnails, loadAvatarTemplate } from './avatarTemplateLoader';
 
 // ============================================
 // シングルトン CE をマウントし instanceCtx を注入するコンポーネント
@@ -35,10 +37,101 @@ const SingletonMount: React.FC<SingletonMountProps> = ({ tag, ctx }) => {
 // InstanceRenderer — インスタンス参加中のオーバーレイ全体
 // ============================================
 
+// ============================================
+// singleton WorkerPlugin ホスト（avatar 等）
+// ============================================
+
+const FALLBACK_ENTITY: WorldEntity = {
+    id: '',
+    type: '',
+    ownerId: null,
+    lockedBy: null,
+    data: {},
+    transform: { x: 0, y: 0, z: 0, w: 0, h: 0, scale: 1, rotation: 0 },
+};
+
+interface SingletonWorkerHostProps {
+    plugin: WorkerPluginDefinition;
+    /** World YAML から解決したエンティティ（transform.z で z-index を決定） */
+    entity: WorldEntity;
+    updateUser: ReturnType<typeof useSocket>['updateUser'];
+}
+
+const SingletonWorkerHost: React.FC<SingletonWorkerHostProps> = ({ plugin, entity, updateUser }) => {
+    const updateUserRef = useRef(updateUser);
+    useLayoutEffect(() => {
+        updateUserRef.current = updateUser;
+    });
+
+    const sendHostMessageRef = useRef<((type: string, payload: unknown) => void) | null>(null);
+
+    const handleCustomMessage = React.useCallback((type: string, payload: unknown) => {
+        if (type === 'avatar:applyTemplate') {
+            const { templateId } = payload as { templateId: string };
+            void loadAvatarTemplate(templateId).then((states) => {
+                updateUserRef.current({ avatar: { states } });
+            });
+        } else if (type === 'avatar:resetTemplate') {
+            updateUserRef.current({ avatar: { states: {} } });
+        } else if (type === 'avatar:initThumbnails') {
+            void buildAvatarThumbnails().then((thumbnails) => {
+                sendHostMessageRef.current?.('avatar:thumbnails', { thumbnails });
+            });
+        }
+    }, []);
+
+    const isSettings = plugin.id === 'avatar:settings';
+    const { x, y, z, w, h } = entity.transform;
+
+    return (
+        <div
+            style={{
+                position: 'absolute',
+                left: x,
+                top: y,
+                zIndex: z || undefined,
+                width: w > 0 ? w : undefined,
+                height: h > 0 ? h : undefined,
+                pointerEvents: 'none',
+            }}
+        >
+            <GenericPluginHost
+                entityId={`singleton:${plugin.id}`}
+                entity={entity}
+                definition={plugin}
+                onCustomMessage={isSettings ? handleCustomMessage : undefined}
+                sendHostMessageRef={isSettings ? sendHostMessageRef : undefined}
+            />
+        </div>
+    );
+};
+
 export const InstanceRenderer: React.FC = () => {
     const { isConnected, socket, currentUser, users, updateUser, updatePosition } = useSocket();
-    const { entities, patchEntity, createEntity, ephemeralData } = useWorld();
+    const { entities, patchEntity, createEntity, ephemeralData, environment } = useWorld();
     const { pluginMap } = usePluginRegistry();
+
+    // フックは早期 return より前にすべて宣言する（Rules of Hooks）
+    const singletonTags = useMemo(() => {
+        const tags: string[] = [];
+        for (const plugin of pluginMap.values()) {
+            if ('singletonTag' in plugin && plugin.singletonTag) tags.push(plugin.singletonTag);
+            if ('singletonTags' in plugin && plugin.singletonTags) tags.push(...plugin.singletonTags);
+        }
+        return tags;
+    }, [pluginMap]);
+
+    const singletonWorkerPlugins = useMemo(
+        () => Array.from(pluginMap.values()).filter((p) => isWorkerPlugin(p) && p.singleton),
+        [pluginMap],
+    );
+
+    const renderEntities = useMemo(
+        () => Array.from(entities.keys()).map((id) => <EntityRenderer key={id} entityId={id} />),
+        [entities],
+    );
+
+    const { width: worldWidth, height: worldHeight } = environment.worldSize;
 
     if (!isConnected) {
         return null;
@@ -73,27 +166,48 @@ export const InstanceRenderer: React.FC = () => {
             : null,
     };
 
-    // ロード済みプラグインのシングルトンタグを収集
-    const singletonTags: string[] = [];
-    for (const plugin of pluginMap.values()) {
-        if (plugin.singletonTag) {
-            singletonTags.push(plugin.singletonTag);
-        }
-        if (plugin.singletonTags) {
-            singletonTags.push(...plugin.singletonTags);
-        }
-    }
-
-    const renderEntities = Array.from(entities.values()).map((entity) => (
-        <EntityRenderer key={entity.id} entityId={entity.id} />
-    ));
-
     return (
-        <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: Z_INDEX.UI_BASE }}>
-            {renderEntities}
-            {singletonTags.map((tag) => (
-                <SingletonMount key={tag} tag={tag} ctx={instanceCtx} />
-            ))}
+        <div
+            data-scroll-world
+            style={{
+                position: 'fixed',
+                inset: 0,
+                overflow: 'auto',
+                backgroundColor: environment.backgroundColor,
+                backgroundImage: environment.backgroundImage ? `url(${environment.backgroundImage})` : undefined,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center center',
+                backgroundAttachment: 'fixed',
+                zIndex: Z_INDEX.INSTANCE_FRAME,
+            }}
+        >
+            <div
+                style={{
+                    position: 'relative',
+                    width: worldWidth,
+                    height: worldHeight,
+                    minWidth: '100%',
+                    minHeight: '100%',
+                }}
+            >
+                {renderEntities}
+                {singletonTags.map((tag) => (
+                    <SingletonMount key={tag} tag={tag} ctx={instanceCtx} />
+                ))}
+                {singletonWorkerPlugins.map((plugin) => {
+                    if (!isWorkerPlugin(plugin)) return null;
+                    const singletonEntity =
+                        Array.from(entities.values()).find((e) => e.type === plugin.id) ?? FALLBACK_ENTITY;
+                    return (
+                        <SingletonWorkerHost
+                            key={plugin.id}
+                            plugin={plugin}
+                            entity={singletonEntity}
+                            updateUser={updateUser}
+                        />
+                    );
+                })}
+            </div>
         </div>
     );
 };

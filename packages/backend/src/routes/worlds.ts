@@ -6,24 +6,71 @@ import { worldRegistry } from '../services/worldRegistry';
 const router = Router();
 
 /**
+ * POST /api/v1/worlds/reload
+ * YAMLファイルからワールド定義を再読み込み（認証必須）
+ * サーバーを再起動せずにワールド定義を更新できる
+ */
+router.post('/reload', requireAuth, async (_req, res) => {
+    try {
+        await worldRegistry.reloadWorlds();
+        const worlds = await worldRegistry.listWorlds();
+        res.json({ success: true, worldCount: worlds.length });
+    } catch (error) {
+        console.error('ワールド再読み込みエラー:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
  * GET /api/v1/worlds
  * ワールドテンプレート一覧を取得（認証必須）
  */
 router.get('/', requireAuth, async (_req, res) => {
     try {
         const worlds = await worldRegistry.listWorlds();
-        const response = worlds.map((world) => ({
-            id: world.id,
-            displayName: world.displayName,
-            description: world.description,
-            thumbnail: world.thumbnail,
-            version: world.version,
-            capacity: world.capacity,
-        }));
-
-        res.json({ worlds: response });
+        res.json({ worlds });
     } catch (error) {
         console.error('ワールド一覧取得エラー:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * PUT /api/v1/worlds/order
+ * ワールドの表示順を更新（認証必須）
+ * body: { order: string[] }  ワールドIDの配列
+ */
+router.put('/order', requireAuth, async (req, res) => {
+    try {
+        const { order } = req.body as { order?: unknown };
+        if (!Array.isArray(order) || !order.every((v) => typeof v === 'string')) {
+            res.status(400).json({ error: 'order must be an array of strings' });
+            return;
+        }
+        await worldRegistry.reorderWorlds(order);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('ワールド並べ替えエラー:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * POST /api/v1/worlds/:worldId/reload
+ * 指定ワールドのYAML定義のみを再読み込み（認証必須）
+ */
+router.post('/:worldId/reload', requireAuth, async (req, res) => {
+    try {
+        const worldId = req.params.worldId as string;
+        const found = await worldRegistry.reloadWorld(worldId);
+        if (!found) {
+            res.status(404).json({ error: 'ローカルYAMLにワールドが見つかりません' });
+            return;
+        }
+        const world = await worldRegistry.getWorld(worldId);
+        res.json({ success: true, world: world ? { id: world.id, version: world.version } : null });
+    } catch (error) {
+        console.error('ワールド再読み込みエラー:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -85,6 +132,26 @@ router.post('/', requireAuth, async (req, res) => {
         res.status(201).json(world);
     } catch (error) {
         console.error('ワールド作成エラー:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * GET /api/v1/worlds/:worldId/definition
+ * ワールドの生定義（WorldDefinition）を取得（GUI エディタ用）
+ * ResolvedWorld ではなく YAML と同等の構造をそのまま返す
+ */
+router.get('/:worldId/definition', requireAuth, async (req, res) => {
+    try {
+        const worldId = req.params.worldId as string;
+        const record = await worldRegistry.getWorldRecord(worldId);
+        if (!record) {
+            res.status(404).json({ error: 'World not found' });
+            return;
+        }
+        res.json(record.definition);
+    } catch (error) {
+        console.error('ワールド定義取得エラー:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

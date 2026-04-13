@@ -1,5 +1,8 @@
+import type { WorldListItem } from '@ubichill/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useInstances } from '@/core/hooks/useInstances';
+import { API_BASE } from '@/lib/api';
 import { css } from '@/styled-system/css';
 import { InstanceCard } from './InstanceCard';
 import { WorldCard } from './WorldCard';
@@ -11,8 +14,10 @@ interface LobbyProps {
 }
 
 export function Lobby({ onJoinInstance }: LobbyProps) {
-    const { instances, worlds, loading, error, createInstance, refreshInstances, refreshWorlds } = useInstances();
+    const navigate = useNavigate();
+    const { instances, worlds, loading, error, refreshInstances, refreshWorlds } = useInstances();
     const [view, setView] = useState<LobbyView>('instances');
+    const [orderedWorlds, setOrderedWorlds] = useState<WorldListItem[]>([]);
 
     // Pull-to-refresh state
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -22,6 +27,33 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
 
     const PULL_THRESHOLD = 60;
+
+    // worlds が更新されたら順序を同期
+    useEffect(() => {
+        setOrderedWorlds(worlds);
+    }, [worlds]);
+
+    const handleMoveWorld = useCallback(
+        async (index: number, direction: -1 | 1) => {
+            const next = [...orderedWorlds];
+            const target = index + direction;
+            if (target < 0 || target >= next.length) return;
+            [next[index], next[target]] = [next[target], next[index]];
+            setOrderedWorlds(next);
+            try {
+                await fetch(`${API_BASE}/api/v1/worlds/order`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ order: next.map((w) => w.id) }),
+                });
+            } catch {
+                // 失敗したら元に戻す
+                setOrderedWorlds(orderedWorlds);
+            }
+        },
+        [orderedWorlds],
+    );
 
     // Refresh current view data
     const refreshCurrentView = useCallback(async () => {
@@ -114,13 +146,8 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
         };
     }, []);
 
-    const handleCreateFromWorld = async (worldId: string) => {
-        const instance = await createInstance({ worldId });
-        if (instance) {
-            onJoinInstance(instance.id, worldId);
-        } else {
-            alert('インスタンスの作成に失敗しました。もう一度お試しください。');
-        }
+    const handleNavigateToWorld = (worldId: string) => {
+        navigate(`/world/${worldId}`);
     };
 
     const handleJoinInstance = (instanceId: string) => {
@@ -158,7 +185,7 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                         borderRadius: '24px',
                         px: { base: '4', md: '8' },
                         py: { base: '5', md: '6' },
-                        boxShadow: '0 8px 24px rgba(27, 42, 68, 0.08)',
+                        boxShadow: 'card',
                         flex: 1,
                         display: 'flex',
                         flexDirection: 'column',
@@ -255,7 +282,8 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                             className={css({
                                 width: '24px',
                                 height: '24px',
-                                border: '3px solid rgba(27, 42, 68, 0.15)',
+                                border: '3px solid',
+                                borderColor: 'primarySubtle',
                                 borderTopColor: 'primary',
                                 borderRadius: '50%',
                                 animation: isRefreshing ? 'spin 0.8s linear infinite' : 'none',
@@ -286,7 +314,7 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                                 backgroundColor: 'transparent',
                             },
                             '&::-webkit-scrollbar-thumb': {
-                                backgroundColor: 'rgba(27, 42, 68, 0.15)',
+                                backgroundColor: 'primarySubtle',
                                 borderRadius: '3px',
                             },
                         })}
@@ -296,7 +324,7 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                                 className={css({
                                     textAlign: 'center',
                                     padding: '40px',
-                                    color: '#5e6a82',
+                                    color: 'textMuted',
                                 })}
                             >
                                 読み込み中...
@@ -314,14 +342,26 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                                             borderRadius: '14px',
                                         })}
                                     >
-                                        <p
+                                        <div
                                             className={css({
-                                                fontSize: '44px',
                                                 marginBottom: '14px',
+                                                display: 'flex',
+                                                justifyContent: 'center',
                                             })}
                                         >
-                                            🌍
-                                        </p>
+                                            <svg
+                                                width="44"
+                                                height="44"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                strokeWidth="1.5"
+                                                className={css({ color: 'textSubtle' })}
+                                            >
+                                                <circle cx="12" cy="12" r="10" />
+                                                <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                                            </svg>
+                                        </div>
                                         <p
                                             className={css({
                                                 fontSize: '15px',
@@ -378,8 +418,16 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                                         gap: '16px',
                                     })}
                                 >
-                                    {worlds.map((world) => (
-                                        <WorldCard key={world.id} world={world} onSelect={handleCreateFromWorld} />
+                                    {orderedWorlds.map((world, i) => (
+                                        <WorldCard
+                                            key={world.id}
+                                            world={world}
+                                            onNavigate={handleNavigateToWorld}
+                                            onMoveUp={() => handleMoveWorld(i, -1)}
+                                            onMoveDown={() => handleMoveWorld(i, 1)}
+                                            isFirst={i === 0}
+                                            isLast={i === orderedWorlds.length - 1}
+                                        />
                                     ))}
                                 </div>
                             </div>

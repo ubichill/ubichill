@@ -1,5 +1,3 @@
-'use client';
-
 import type { CreateInstanceRequest, Instance, WorldListItem } from '@ubichill/shared';
 import { useCallback, useEffect, useState } from 'react';
 

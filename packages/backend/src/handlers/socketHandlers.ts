@@ -13,9 +13,9 @@ import {
 } from '@ubichill/shared';
 import type { Socket } from 'socket.io';
 import { instanceManager } from '../services/instanceManager';
+import { createEntity, deleteEntity, getInstanceSnapshot, patchEntity } from '../services/instanceState';
 import { userManager } from '../services/userManager';
 import { worldRegistry } from '../services/worldRegistry';
-import { createEntity, deleteEntity, getWorldSnapshot, patchEntity } from '../services/worldState';
 import { logger } from '../utils/logger';
 import {
     validateCursorPosition,
@@ -38,7 +38,7 @@ export function handleWorldJoin(socket: TypedSocket) {
             password,
             user,
         }: { worldId: string; instanceId: string; password?: string; user: Omit<User, 'id'> },
-        callback: (response: { success: boolean; userId?: string; error?: string }) => void,
+        callback: (response: { success: boolean; userId?: string; instanceId?: string; error?: string }) => void,
     ) => {
         logger.debug('world:join イベント受信:', { worldId, instanceId, user, socketId: socket.id });
 
@@ -49,19 +49,29 @@ export function handleWorldJoin(socket: TypedSocket) {
             return;
         }
 
-        // インスタンスの存在確認とパスワード検証
+        // インスタンスの存在確認: 存在しない場合はエラー（自動再作成しない）
         const instance = await instanceManager.getInstance(instanceId);
         if (!instance) {
-            callback({ success: false, error: 'インスタンスが見つかりません' });
+            callback({ success: false, error: 'インスタンスが見つかりません。ロビーから参加してください。' });
             return;
         }
+
+        // インスタンスはDBに存在するが、サーバー再起動でインメモリ状態が消えた場合は
+        // 初期エンティティを再配置する
+        const existingEntities = getInstanceSnapshot(instance.id);
+        if (existingEntities.length === 0) {
+            await instanceManager.reinitializeEntities(instance.id, worldId);
+            logger.info(`🔄 ワールド状態を再初期化しました: ${instance.id} (worldId: ${worldId})`);
+        }
+
+        const effectiveInstanceId = instance.id;
 
         if (instance.access.password) {
             if (!password) {
                 callback({ success: false, error: 'パスワードが必要です' });
                 return;
             }
-            const isPasswordValid = await instanceManager.verifyInstancePassword(instanceId, password);
+            const isPasswordValid = await instanceManager.verifyInstancePassword(effectiveInstanceId, password);
             if (!isPasswordValid) {
                 callback({ success: false, error: 'パスワードが正しくありません' });
                 return;
@@ -99,23 +109,24 @@ export function handleWorldJoin(socket: TypedSocket) {
             lastActiveAt: Date.now(),
         };
 
-        // instanceId が Socket.IO ルームキー兼エンティティ状態キー
-        userManager.addUser(socket.id, instanceId, newUser);
-        socket.join(instanceId);
+        // effectiveInstanceId が Socket.IO ルームキー兼エンティティ状態キー
+        userManager.addUser(socket.id, effectiveInstanceId, newUser);
+        socket.join(effectiveInstanceId);
 
         socket.data.userId = socket.id;
-        socket.data.instanceId = instanceId;
+        socket.data.instanceId = effectiveInstanceId;
         socket.data.user = newUser;
 
-        await instanceManager.updateUserCount(instanceId, 1);
+        await instanceManager.updateUserCount(effectiveInstanceId, 1);
 
-        const roomUsers = userManager.getUsersByWorld(instanceId);
+        const roomUsers = userManager.getUsersByWorld(effectiveInstanceId);
 
-        callback({ success: true, userId: socket.id });
+        // instanceId が要求と異なる場合（自動再作成）はクライアントへ新しい ID を通知
+        callback({ success: true, userId: socket.id, instanceId: effectiveInstanceId });
 
         socket.emit('users:update', roomUsers);
 
-        const entities = getWorldSnapshot(instanceId);
+        const entities = getInstanceSnapshot(effectiveInstanceId);
         const environment = await instanceManager.getWorldEnvironment(worldValidation.data);
 
         // ワールド定義から依存関係を取得（worldId で引く。instanceId は不可）
@@ -130,13 +141,13 @@ export function handleWorldJoin(socket: TypedSocket) {
         };
         socket.emit('world:snapshot', snapshotPayload);
         logger.debug(
-            `ワールドスナップショット送信: ${entities.length}件のエンティティ, plugins: ${activePlugins.length} (instanceId: ${instanceId})`,
+            `ワールドスナップショット送信: ${entities.length}件のエンティティ, plugins: ${activePlugins.length} (instanceId: ${effectiveInstanceId})`,
         );
 
-        socket.to(instanceId).emit('user:joined', newUser);
+        socket.to(effectiveInstanceId).emit('user:joined', newUser);
 
         logger.info(
-            `✅ ユーザー「${newUser.name}」(${socket.id.substring(0, 8)}) がインスタンス「${instanceId}」に参加しました`,
+            `✅ ユーザー「${newUser.name}」(${socket.id.substring(0, 8)}) がインスタンス「${effectiveInstanceId}」に参加しました`,
         );
     };
 }
@@ -253,7 +264,7 @@ export function handleWorldLeave(socket: TypedSocket) {
         if (instanceId && user) {
             socket.leave(instanceId);
 
-            const entities = getWorldSnapshot(instanceId);
+            const entities = getInstanceSnapshot(instanceId);
             const userLockedEntities = entities.filter((e) => e.lockedBy === socket.id);
             userLockedEntities.forEach((entity) => {
                 patchEntity(instanceId, entity.id, {
@@ -290,7 +301,7 @@ export function handleDisconnect(socket: TypedSocket) {
         }
 
         if (instanceId && user) {
-            const entities = getWorldSnapshot(instanceId);
+            const entities = getInstanceSnapshot(instanceId);
             const userLockedEntities = entities.filter((e) => e.lockedBy === socket.id);
 
             userLockedEntities.forEach((entity) => {
@@ -427,7 +438,7 @@ export function handleEntityDelete(socket: TypedSocket) {
  * @param worldId ワールド定義取得用の worldId
  */
 export async function sendWorldSnapshot(socket: TypedSocket, instanceId: string, worldId: string): Promise<void> {
-    const entities = getWorldSnapshot(instanceId);
+    const entities = getInstanceSnapshot(instanceId);
     const environment = await instanceManager.getWorldEnvironment(worldId);
     const world = await worldRegistry.getWorld(worldId);
     const activePlugins = world?.dependencies?.map((d) => d.name) || [];
@@ -468,5 +479,33 @@ export function handleVideoPlayerSync(socket: TypedSocket) {
         });
 
         socket.to(instanceId).emit('video-player:sync', syncData);
+    };
+}
+
+/**
+ * 再生状態リクエスト：参加時・Resync ボタンで呼ばれる
+ * ルーム内の他ユーザーへ「今の状態を教えて」とブロードキャスト
+ */
+export function handleVideoPlayerStateRequest(socket: TypedSocket) {
+    return () => {
+        const instanceId = socket.data.instanceId;
+        if (!instanceId) return;
+        socket.to(instanceId).emit('video-player:state-request', { fromSocketId: socket.id });
+    };
+}
+
+/**
+ * 再生状態レスポンス：リクエスト元のソケットへピンポイントで届ける
+ * Socket.IO では socket.id = プライベートルーム名なので socket.to(id) でDM可能
+ */
+export function handleVideoPlayerStateResponse(socket: TypedSocket) {
+    return (payload: { toSocketId: string; currentIndex: number; isPlaying: boolean; currentTime: number }) => {
+        const instanceId = socket.data.instanceId;
+        if (!instanceId) return;
+        socket.to(payload.toSocketId).emit('video-player:state-response', {
+            currentIndex: payload.currentIndex,
+            isPlaying: payload.isPlaying,
+            currentTime: payload.currentTime,
+        });
     };
 }

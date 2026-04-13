@@ -1,7 +1,5 @@
-'use client';
-
 import type { WorldEntity } from '@ubichill/sdk';
-import { useSocket, useWorld } from '@ubichill/sdk/react';
+import { GenericPluginHost, isWorkerPlugin, useSocket, useWorld } from '@ubichill/sdk/react';
 import type { UbiEntityContext } from '@ubichill/sdk/ui';
 import React, { useLayoutEffect, useRef } from 'react';
 import { usePluginRegistry } from '../../plugins/PluginRegistryContext';
@@ -10,28 +8,69 @@ interface EntityRendererProps {
     entityId: string;
 }
 
+/**
+ * WorkerPlugin エンティティ用。useSocket を呼ばないことで
+ * カーソル移動などのソケット更新による不要な再レンダーを防ぐ。
+ */
 export const EntityRenderer: React.FC<EntityRendererProps> = ({ entityId }) => {
-    const { entities, patchEntity, createEntity, ephemeralData } = useWorld();
-    const { socket, currentUser, users } = useSocket();
+    const { entities } = useWorld();
     const { pluginMap, loadPlugin } = usePluginRegistry();
-    const ref = useRef<HTMLElement>(null);
 
     const entity = entities.get(entityId);
-
-    // エンティティが存在しない場合は何も描画しない
     if (!entity) return null;
 
     const plugin = pluginMap.get(entity.type);
     if (!plugin) {
-        // 未ロードの場合は動的ロードを試みる
         loadPlugin(entity.type);
         return null;
     }
 
+    if (isWorkerPlugin(plugin)) {
+        // singleton プラグインは InstanceRenderer が処理するためここではスキップ
+        if (plugin.singleton) return null;
+
+        const isCanvas = (plugin.canvasTargets?.length ?? 0) > 0;
+        const { x, y, z, w, h, scale, rotation } = entity.transform;
+
+        const wrapperStyle: React.CSSProperties = isCanvas
+            ? { position: 'absolute', inset: 0, zIndex: z || undefined, pointerEvents: 'none' }
+            : {
+                  position: 'absolute',
+                  left: x,
+                  top: y,
+                  zIndex: z || undefined,
+                  width: w > 0 ? w : undefined,
+                  height: h > 0 ? h : undefined,
+                  pointerEvents: 'none',
+                  transform: `scale(${scale ?? 1}) rotate(${rotation ?? 0}deg)`,
+                  transformOrigin: '0 0',
+              };
+
+        return (
+            <div style={wrapperStyle}>
+                <GenericPluginHost entityId={entityId} entity={entity} definition={plugin} />
+            </div>
+        );
+    }
+
+    // Custom Element プラグイン — ソケット情報が必要なため専用コンポーネントへ委譲
+    return <EntityCEHost entityId={entityId} entity={entity} elementTag={plugin.elementTag} />;
+};
+
+/** Custom Element プラグイン用ホスト。ソケット更新を購読するため EntityRenderer とは分離する。 */
+const EntityCEHost: React.FC<{
+    entityId: string;
+    entity: WorldEntity;
+    elementTag: string;
+}> = ({ entityId, entity, elementTag }) => {
+    const { entities, patchEntity, createEntity, ephemeralData } = useWorld();
+    const { socket, currentUser, users } = useSocket();
+    const ref = useRef<HTMLElement>(null);
+
     return (
         <EntityCEBridge
-            key={plugin.elementTag}
-            tag={plugin.elementTag}
+            key={elementTag}
+            tag={elementTag}
             entityId={entityId}
             entity={entity}
             entities={entities}
@@ -111,8 +150,8 @@ const EntityCEBridge: React.FC<BridgeProps> = ({
                         ...additionalPatch,
                         data: {
                             ...(e.data as Record<string, unknown>),
+                            isHeld: false,
                             ...(additionalPatch.data as Record<string, unknown>),
-                            isHeld: false, // ロック解放は必ず false で上書き
                         },
                     });
                 }

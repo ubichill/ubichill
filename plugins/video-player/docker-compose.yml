@@ -10,6 +10,8 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - CORS_ORIGINS=*
+      # Vite proxy のプレフィックスと合わせる → m3u8 内セグメントURLを正しくリライト
+      - ROOT_PATH=/plugins/video-player/api
     volumes:
       # main.pyのみマウント（.venvを保護）
       - ./backend/main.py:/app/main.py
