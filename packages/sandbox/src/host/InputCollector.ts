@@ -4,12 +4,22 @@
  * DOM の入力イベント（マウス・キーボード）を収集し、
  * 毎フレームの Tick 送信時にまとめて Worker へ渡すためのバッファ。
  *
+ * ## 座標系
+ *
+ * マウスイベントは 2 つの座標を含む:
+ * - x/y          … ワールド座標 (clientX + scrollLeft)
+ * - viewportX/Y  … ビューポート座標 (clientX/clientY)
+ *
+ * ワールドスクロールは div で起きるため window.scrollX/Y は常に 0。
+ * スクロール要素は setScrollElement() で登録する。
+ *
  * ## アルゴリズム: MOUSE_MOVE の上書きデデュプ (O(1))
  *
  * フレーム内に複数の mousemove が届いても、Worker に必要なのは
  * そのフレームの「最終位置」だけ。
  * そのため MOUSE_MOVE は専用スロット _latestMousePos に上書き保持し、
  * クリック・キーなどの離散イベントのみ _discreteEvents に積む。
+ * SCROLL も同様に最終値のみ保持する。
  *
  * flush 時のコスト: O(k)  k = 離散イベント数（通常 0〜3）
  *   → mousemove が 100 件来ても flushEvents は配列長 k+1 を返すだけ
@@ -37,11 +47,17 @@ export class InputCollector {
     /** フレーム内の最新マウス位置（上書きデデュプ） */
     private _latestMousePos: InputFrameEvent | null = null;
 
+    /** フレーム内の最新スクロール状態（上書きデデュプ） */
+    private _latestScroll: InputFrameEvent | null = null;
+
     /** クリック・キーなどの離散イベント（すべて保持） */
     private _discreteEvents: InputFrameEvent[] = [];
 
     /** mouseover で追跡している最新の computed cursor スタイル */
     private _cursorStyle = 'default';
+
+    /** スクロール量を供給するスクロール要素 */
+    private _scrollEl: Element | null = null;
 
     private readonly _onMouseMove: (e: MouseEvent) => void;
     private readonly _onMouseDown: (e: MouseEvent) => void;
@@ -50,17 +66,19 @@ export class InputCollector {
     private readonly _onKeyUp: (e: KeyboardEvent) => void;
     private readonly _onMouseOver: (e: MouseEvent) => void;
     private readonly _onContextMenu: (e: MouseEvent) => void;
+    private _onScroll: (() => void) | null = null;
 
     constructor() {
-        // MOUSE_MOVE: スロットを上書きするだけ — O(1)
-        // x/y はビューポート座標。ワールドスクロールは div で起きるため window.scroll は常に 0。
-        // ワールド座標への変換は GenericPluginHost の position:update ハンドラで行う。
         this._onMouseMove = (e: MouseEvent) => {
+            const scrollLeft = this._scrollEl?.scrollLeft ?? 0;
+            const scrollTop = this._scrollEl?.scrollTop ?? 0;
             this._latestMousePos = {
                 type: 'MOUSE_MOVE',
                 data: {
-                    x: e.clientX,
-                    y: e.clientY,
+                    x: e.clientX + scrollLeft,
+                    y: e.clientY + scrollTop,
+                    viewportX: e.clientX,
+                    viewportY: e.clientY,
                     buttons: e.buttons,
                     cursorStyle: this._cursorStyle,
                 },
@@ -78,11 +96,15 @@ export class InputCollector {
         this._onContextMenu = (e: MouseEvent) => {
             if (_isInteractiveTarget(e.target)) return;
             e.preventDefault();
+            const scrollLeft = this._scrollEl?.scrollLeft ?? 0;
+            const scrollTop = this._scrollEl?.scrollTop ?? 0;
             this._discreteEvents.push({
                 type: 'CONTEXT_MENU',
                 data: {
-                    x: e.clientX,
-                    y: e.clientY,
+                    x: e.clientX + scrollLeft,
+                    y: e.clientY + scrollTop,
+                    viewportX: e.clientX,
+                    viewportY: e.clientY,
                 },
             });
         };
@@ -90,11 +112,15 @@ export class InputCollector {
         // 離散イベント: UI 要素上は無視、それ以外は全件保持
         this._onMouseDown = (e: MouseEvent) => {
             if (_isInteractiveTarget(e.target)) return;
+            const scrollLeft = this._scrollEl?.scrollLeft ?? 0;
+            const scrollTop = this._scrollEl?.scrollTop ?? 0;
             this._discreteEvents.push({
                 type: 'MOUSE_DOWN',
                 data: {
-                    x: e.clientX,
-                    y: e.clientY,
+                    x: e.clientX + scrollLeft,
+                    y: e.clientY + scrollTop,
+                    viewportX: e.clientX,
+                    viewportY: e.clientY,
                     button: e.button,
                 },
             });
@@ -102,11 +128,15 @@ export class InputCollector {
 
         this._onMouseUp = (e: MouseEvent) => {
             if (_isInteractiveTarget(e.target)) return;
+            const scrollLeft = this._scrollEl?.scrollLeft ?? 0;
+            const scrollTop = this._scrollEl?.scrollTop ?? 0;
             this._discreteEvents.push({
                 type: 'MOUSE_UP',
                 data: {
-                    x: e.clientX,
-                    y: e.clientY,
+                    x: e.clientX + scrollLeft,
+                    y: e.clientY + scrollTop,
+                    viewportX: e.clientX,
+                    viewportY: e.clientY,
                     button: e.button,
                 },
             });
@@ -136,19 +166,44 @@ export class InputCollector {
     }
 
     /**
+     * ワールドスクロールを供給する要素を登録する。
+     * 登録後のマウスイベントでワールド座標 (x/y) が正しく計算される。
+     * null を渡すと登録解除。
+     */
+    public setScrollElement(el: Element | null): void {
+        if (this._scrollEl && this._onScroll) {
+            this._scrollEl.removeEventListener('scroll', this._onScroll);
+        }
+        this._scrollEl = el;
+        if (el) {
+            this._onScroll = () => {
+                this._latestScroll = {
+                    type: 'SCROLL',
+                    data: { x: el.scrollLeft, y: el.scrollTop },
+                };
+            };
+            el.addEventListener('scroll', this._onScroll, { passive: true });
+        } else {
+            this._onScroll = null;
+        }
+    }
+
+    /**
      * バッファを取得してリセット。
      *
-     * 返り値: [...離散イベント, MOUSE_MOVE の最終位置?]
-     * MOUSE_MOVE は末尾に 1 件だけ追加されるため、
-     * System がループすると「クリック → 位置確定」の自然な順序になる。
+     * 返り値: [...離散イベント, MOUSE_MOVE の最終位置?, SCROLL の最終状態?]
+     * MOUSE_MOVE / SCROLL は末尾に 1 件ずつ追加されるため、
+     * System がループすると「クリック → 位置確定 → スクロール確定」の自然な順序になる。
      */
     public flushEvents(): InputFrameEvent[] {
         const events = this._latestMousePos
             ? [...this._discreteEvents, this._latestMousePos]
             : this._discreteEvents.slice();
+        if (this._latestScroll) events.push(this._latestScroll);
 
         this._discreteEvents = [];
         this._latestMousePos = null;
+        this._latestScroll = null;
         return events;
     }
 
@@ -160,5 +215,8 @@ export class InputCollector {
         window.removeEventListener('keyup', this._onKeyUp);
         window.removeEventListener('mouseover', this._onMouseOver);
         window.removeEventListener('contextmenu', this._onContextMenu);
+        if (this._scrollEl && this._onScroll) {
+            this._scrollEl.removeEventListener('scroll', this._onScroll);
+        }
     }
 }

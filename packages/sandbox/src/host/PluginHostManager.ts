@@ -569,6 +569,14 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
      * Transferable オブジェクト（OffscreenCanvas 等）付きでイベントを送信する。
      * Transferable は所有権が Worker に移るため、送信後は Host 側から使用できない。
      */
+    /**
+     * ワールドスクロールを供給する要素を InputCollector に登録する。
+     * GenericPluginHost が [data-scroll-world] 要素を見つけたときに呼ぶ。
+     */
+    public setScrollElement(el: Element | null): void {
+        this._inputCollector?.setScrollElement(el);
+    }
+
     public sendEventWithTransfer(event: PluginHostEvent, transfer: Transferable[]): void {
         if (this.isInitialized) {
             this.worker.postMessage(event, transfer);

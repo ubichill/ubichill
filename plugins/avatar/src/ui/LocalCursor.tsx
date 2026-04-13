@@ -1,4 +1,4 @@
-import { cursorZIndex, lerpX, lerpY, localAvatar, localCursorStyle, localStatus } from '../state';
+import { cursorZIndex, lerpX, lerpY, localAvatar, localCursorStyle, localStatus, scrollX, scrollY } from '../state';
 import { cssToState } from '../systems/AvatarMainSystem';
 
 export const LocalCursor = () => {
@@ -11,8 +11,8 @@ export const LocalCursor = () => {
         <div
             style={{
                 position: 'fixed',
-                left: lerpX - hx,
-                top: lerpY - hy,
+                left: lerpX - scrollX - hx,
+                top: lerpY - scrollY - hy,
                 pointerEvents: 'none',
                 zIndex: cursorZIndex,
                 willChange: 'transform',

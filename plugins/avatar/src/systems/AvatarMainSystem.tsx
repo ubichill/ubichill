@@ -122,8 +122,8 @@ export const AvatarMainSystem: System = (_entities: Entity[], deltaTime: number,
         }
 
         if (event.type === EcsEventType.INPUT_CONTEXT_MENU) {
-            const d = event.payload as { x: number; y: number };
-            setRadialMenuPos({ x: d.x, y: d.y });
+            const d = event.payload as { x: number; y: number; viewportX: number; viewportY: number };
+            setRadialMenuPos({ x: d.viewportX, y: d.viewportY });
             Ubi.network.sendToHost('user:update', { isMenuOpen: true });
         }
 

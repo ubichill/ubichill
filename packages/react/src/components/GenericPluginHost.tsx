@@ -144,7 +144,7 @@ export const GenericPluginHost: React.FC<GenericPluginHostProps> = ({
     const { getVideoRef, mediaHandlers } = usePluginMedia(definition, sendEventRef);
 
     // ── Worker ────────────────────────────────────────────────────
-    const { sendEvent, workerRevision } = usePluginWorker({
+    const { sendEvent, workerRevision, setScrollElement } = usePluginWorker({
         pluginCode: definition.workerCode,
         pluginId: definition.id,
         entityId,
@@ -158,10 +158,7 @@ export const GenericPluginHost: React.FC<GenericPluginHostProps> = ({
                 const m = msg as { type: string; payload: unknown };
                 if (m.type === 'position:update') {
                     const { x, y, cursorState } = m.payload as { x: number; y: number; cursorState?: CursorState };
-                    const scrollEl = scrollElRef.current;
-                    const wx = x + (scrollEl?.scrollLeft ?? 0);
-                    const wy = y + (scrollEl?.scrollTop ?? 0);
-                    updatePositionRef.current({ x: wx, y: wy }, cursorState);
+                    updatePositionRef.current({ x, y }, cursorState);
                 } else if (m.type === 'user:update') {
                     updateUserRef.current(m.payload as Parameters<typeof updateUserRef.current>[0]);
                 } else {
@@ -191,22 +188,12 @@ export const GenericPluginHost: React.FC<GenericPluginHostProps> = ({
     // sendEvent を sendEventRef に同期（レンダー中・副作用なし）
     sendEventRef.current = sendEvent;
 
-    // ── スクロールオフセット追跡 ────────────────────────────────────
-    const scrollElRef = useRef<Element | null>(null);
-    // biome-ignore lint/correctness/useExhaustiveDependencies: sendEventRef is a stable ref object
+    // ── スクロール要素を InputCollector に登録 ──────────────────────
     useEffect(() => {
         const el = document.querySelector('[data-scroll-world]');
-        scrollElRef.current = el;
-        if (!el) return;
-        const onScroll = () => {
-            sendEventRef.current?.({
-                type: 'EVT_CUSTOM',
-                payload: { eventType: 'input:scroll', data: { x: el.scrollLeft, y: el.scrollTop } },
-            });
-        };
-        el.addEventListener('scroll', onScroll, { passive: true });
-        return () => el.removeEventListener('scroll', onScroll);
-    }, []);
+        if (el) setScrollElement(el);
+        return () => setScrollElement(null);
+    }, [setScrollElement]);
 
     // ── 同期 effects ───────────────────────────────────────────────
     usePluginPresence(definition, users, sendEvent, workerRevision);

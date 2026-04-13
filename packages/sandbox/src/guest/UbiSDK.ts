@@ -24,6 +24,7 @@ const INPUT_TYPE_MAP: Readonly<Record<string, string>> = {
     KEY_DOWN: EcsEventType.INPUT_KEY_DOWN,
     KEY_UP: EcsEventType.INPUT_KEY_UP,
     CONTEXT_MENU: EcsEventType.INPUT_CONTEXT_MENU,
+    SCROLL: EcsEventType.INPUT_SCROLL,
 };
 
 type PendingRequest = {

@@ -183,5 +183,9 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
         managerRef.current?.sendEventWithTransfer(event, transfer);
     }, []);
 
-    return { sendEvent, sendEventWithTransfer, workerRevision };
+    const setScrollElement = useCallback((el: Element | null) => {
+        managerRef.current?.setScrollElement(el);
+    }, []);
+
+    return { sendEvent, sendEventWithTransfer, workerRevision, setScrollElement };
 }

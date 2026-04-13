@@ -53,15 +53,20 @@ import { RemoteCursor } from '../ui/RemoteCursor';
 import { cssToState } from './AvatarMainSystem';
 
 export function sendEmoji(emoji: string): void {
-    const pos = radialMenuPos ?? { x: lerpX, y: lerpY };
+    // radialMenuPos はビューポート座標。ブロードキャストにはワールド座標を使う。
+    const worldPos = radialMenuPos
+        ? { x: radialMenuPos.x + scrollX, y: radialMenuPos.y + scrollY }
+        : { x: lerpX, y: lerpY };
+    // ローカル表示はビューポート座標（EmojiFloat は position:fixed）
+    const viewportPos = radialMenuPos ?? { x: lerpX - scrollX, y: lerpY - scrollY };
     const timestamp = Date.now();
     const id = `${timestamp}-local`;
-    const fe = { id, emoji, position: pos, timestamp };
+    const fe = { id, emoji, position: viewportPos, timestamp };
     setFloatingEmojis([...floatingEmojis, fe]);
     Ubi.ui.render(() => <EmojiFloat fe={fe} />, `emoji-${id}`);
     Ubi.network.broadcast('emoji:broadcast', {
         emoji,
-        position: pos,
+        position: worldPos,
         userId: Ubi.myUserId ?? '',
         timestamp,
     });
@@ -75,7 +80,14 @@ export const AvatarCursorSystem: System = (_entities: Entity[], deltaTime: numbe
 
     for (const event of events) {
         if (event.type === EcsEventType.INPUT_MOUSE_MOVE) {
-            const d = event.payload as { x: number; y: number; buttons: number; cursorStyle?: string };
+            const d = event.payload as {
+                x: number;
+                y: number;
+                viewportX: number;
+                viewportY: number;
+                buttons: number;
+                cursorStyle?: string;
+            };
             if (!initialized) {
                 setLerpX(d.x);
                 setLerpY(d.y);
@@ -89,8 +101,8 @@ export const AvatarCursorSystem: System = (_entities: Entity[], deltaTime: numbe
         }
 
         if (event.type === EcsEventType.INPUT_CONTEXT_MENU) {
-            const d = event.payload as { x: number; y: number };
-            setRadialMenuPos({ x: d.x, y: d.y });
+            const d = event.payload as { x: number; y: number; viewportX: number; viewportY: number };
+            setRadialMenuPos({ x: d.viewportX, y: d.viewportY });
             Ubi.network.sendToHost('user:update', { isMenuOpen: true });
         }
 
@@ -176,10 +188,12 @@ export const AvatarCursorSystem: System = (_entities: Entity[], deltaTime: numbe
                     timestamp: number;
                 };
                 if (broadcast.userId !== myUserId) {
+                    // d.position はワールド座標。EmojiFloat は position:fixed なのでビューポートへ変換。
+                    const viewportPos = { x: d.position.x - scrollX, y: d.position.y - scrollY };
                     const fe = {
                         id: `${d.timestamp}-${broadcast.userId}`,
                         emoji: d.emoji,
-                        position: d.position,
+                        position: viewportPos,
                         timestamp: d.timestamp,
                     };
                     setFloatingEmojis([...floatingEmojis, fe]);

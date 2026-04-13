@@ -484,29 +484,45 @@ export type EvtUiAction = {
 // §2.1 入力イベント (Host が毎フレーム全 Worker へ配信)
 // ============================================
 
-/** マウス移動データ */
+/**
+ * マウス移動データ。
+ * x/y はワールド座標（clientX + scrollLeft）。
+ * viewportX/viewportY はビューポート座標（clientX/clientY）。
+ */
 export type InputMouseMoveData = {
     x: number;
     y: number;
+    viewportX: number;
+    viewportY: number;
     buttons: number;
     /** DOM の computed cursor スタイル（'pointer' / 'text' / 'default' 等） */
     cursorStyle?: string;
 };
-/** マウスボタン押下データ */
-export type InputMouseDownData = { x: number; y: number; button: number };
-/** マウスボタン解放データ */
-export type InputMouseUpData = { x: number; y: number; button: number };
+/**
+ * マウスボタン押下データ。
+ * x/y はワールド座標、viewportX/viewportY はビューポート座標。
+ */
+export type InputMouseDownData = { x: number; y: number; viewportX: number; viewportY: number; button: number };
+/**
+ * マウスボタン解放データ。
+ * x/y はワールド座標、viewportX/viewportY はビューポート座標。
+ */
+export type InputMouseUpData = { x: number; y: number; viewportX: number; viewportY: number; button: number };
 /** キーボード押下データ */
 export type InputKeyDownData = { key: string; code: string };
 /** キーボード解放データ */
 export type InputKeyUpData = { key: string; code: string };
 /**
  * コンテキストメニュー（右クリック）データ。
- * x/y はビューポート座標（clientX/Y 相当）。
- * ワールドスクロールは div で起きるため window.scrollX/Y = 0 となり、
- * ビューポート座標 = clientX/Y となる。ワールド座標への変換は Host 側で行う。
+ * x/y はワールド座標（clientX + scrollLeft）。
+ * viewportX/viewportY はビューポート座標（clientX/clientY）。
  */
-export type InputContextMenuData = { x: number; y: number };
+export type InputContextMenuData = { x: number; y: number; viewportX: number; viewportY: number };
+/**
+ * スクロールデータ。
+ * x/y はスクロール量（scrollLeft/scrollTop）。
+ */
+export type InputScrollData = { x: number; y: number };
 
 /** 1フレーム内の入力イベント1件 */
 export type InputFrameEvent =
@@ -515,7 +531,8 @@ export type InputFrameEvent =
     | { type: 'MOUSE_UP'; data: InputMouseUpData }
     | { type: 'KEY_DOWN'; data: InputKeyDownData }
     | { type: 'KEY_UP'; data: InputKeyUpData }
-    | { type: 'CONTEXT_MENU'; data: InputContextMenuData };
+    | { type: 'CONTEXT_MENU'; data: InputContextMenuData }
+    | { type: 'SCROLL'; data: InputScrollData };
 
 /**
  * [Input] Tick 直前に Host がすべての Worker へ配信する入力スナップショット。
