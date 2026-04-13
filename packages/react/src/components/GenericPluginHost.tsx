@@ -131,7 +131,7 @@ export const GenericPluginHost: React.FC<GenericPluginHostProps> = ({
         const mergedDomains = [...(definition.fetchDomains ?? []), ...entityFetchDomains];
         const externalHandler = createPluginFetchHandler(mergedDomains);
         return (url: string, options?: FetchOptions): Promise<FetchResult> => {
-            if (url.startsWith('/') || url.startsWith('./') || url.startsWith('../')) {
+            if (url.startsWith('/') || url.startsWith('./')) {
                 return _fetchLocal(url, options);
             }
             return externalHandler(url, options);

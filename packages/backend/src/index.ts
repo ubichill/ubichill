@@ -1,6 +1,4 @@
-import { watch } from 'node:fs';
 import http from 'node:http';
-import { resolve } from 'node:path';
 // Force restart check
 import type { ClientToServerEvents, InterServerEvents, ServerToClientEvents, SocketData } from '@ubichill/shared';
 import cors from 'cors';
@@ -163,31 +161,6 @@ async function startServer() {
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log('');
     });
-
-    // worlds ディレクトリのファイルウォッチャー（YAML 変更時に自動リロード）
-    const worldsDir = resolve(process.env.WORLDS_DIR ?? 'worlds');
-    const reloadTimers = new Map<string, ReturnType<typeof setTimeout>>();
-    try {
-        watch(worldsDir, { persistent: false }, (_event, filename) => {
-            if (!filename?.endsWith('.yaml') && !filename?.endsWith('.yml')) return;
-            // ファイルごとにデバウンス（500ms）
-            const existing = reloadTimers.get(filename);
-            if (existing) clearTimeout(existing);
-            reloadTimers.set(
-                filename,
-                setTimeout(() => {
-                    reloadTimers.delete(filename);
-                    console.log(`📝 ワールドファイル変更を検知: ${filename}`);
-                    worldRegistry.reloadWorlds().catch((err) => {
-                        console.error('ワールド自動リロードエラー:', err);
-                    });
-                }, 500),
-            );
-        });
-        console.log(`👀 ワールドファイルを監視中: ${worldsDir}`);
-    } catch {
-        // worlds ディレクトリが存在しない場合はウォッチャーをスキップ
-    }
 }
 
 console.log('🏁 calling startServer()...');
