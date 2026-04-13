@@ -67,9 +67,13 @@ async function _aniToDataUrl(url: string): Promise<{ url: string; hotspot: { x: 
     const images = await parseICO(icoBuffer, 'image/png');
     if (!images.length) throw new Error(`ICO parse failed: ${url}`);
     const best = images.reduce((a, b) => (a.width >= b.width ? a : b));
+    // チャンク分割で O(n) に抑える（スプレッドのスタックオーバーフローも防止）
     const bytes = new Uint8Array(best.buffer);
+    const CHUNK = 8192;
     let binary = '';
-    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+    }
     return { url: `data:image/png;base64,${btoa(binary)}`, hotspot: { x: 0, y: 0 } };
 }
 

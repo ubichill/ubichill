@@ -10,7 +10,7 @@
  * entity:pen:stroke で同じストロークが戻ってきた際に PenCanvasSystem が二重描画をスキップする。
  */
 
-import type { Entity, System, WorldEntity } from '@ubichill/sdk';
+import type { Entity, System } from '@ubichill/sdk';
 import type { DrawStateData } from '../components';
 import { DrawState } from '../components';
 import { addCommittedFingerprint, strokeFingerprint } from '../penFingerprint';
@@ -40,9 +40,11 @@ export const PenSyncSystem: System = (entities: Entity[]) => {
     Ubi.world
         .createEntity({
             type: 'pen:stroke',
-            transform: { x: 0, y: 0, width: 0, height: 0, rotation: 0, zIndex: 0 },
+            ownerId: null,
+            lockedBy: null,
+            transform: { x: 0, y: 0, z: 0, w: 0, h: 0, scale: 1, rotation: 0 },
             data: strokeData,
-        } as unknown as Omit<WorldEntity, 'id'>)
+        })
         .catch((err: unknown) => {
             Ubi.log(`[PenSync] 永続化失敗: ${String(err)}`, 'warn');
         });

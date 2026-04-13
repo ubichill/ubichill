@@ -14,5 +14,5 @@ export const Z_INDEX = {
     /** HUD 内オーバーレイ（モーダル等） */
     HUD_OVERLAY: 10002,
     /** バッジ・ツールチップ等の最前面要素 */
-    TOP: 9999,
+    TOP: 10003,
 } as const;

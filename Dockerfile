@@ -28,9 +28,6 @@ COPY packages/react/package.json          ./packages/react/package.json
 COPY packages/sandbox/package.json        ./packages/sandbox/package.json
 COPY packages/sdk/package.json            ./packages/sdk/package.json
 COPY packages/shared/package.json         ./packages/shared/package.json
-COPY plugins/avatar/package.json                ./plugins/avatar/package.json
-COPY plugins/pen/package.json                   ./plugins/pen/package.json
-
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile --ignore-scripts
 
@@ -71,6 +68,10 @@ ENV COMMIT_HASH=${COMMIT_HASH}
 
 USER node
 COPY --from=builder --chown=node:node /app/deploy-backend .
+COPY --from=builder --chown=node:node /app/worlds ./worlds
+
+# コンテナ内の絶対パス。k8s で ConfigMap/PVC をマウントする場合は WORLDS_DIR で上書きする
+ENV WORLDS_DIR=/app/worlds
 
 EXPOSE 3001
 CMD ["node", "dist/index.js"]

@@ -41,12 +41,13 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
             [next[index], next[target]] = [next[target], next[index]];
             setOrderedWorlds(next);
             try {
-                await fetch(`${API_BASE}/api/v1/worlds/order`, {
+                const res = await fetch(`${API_BASE}/api/v1/worlds/order`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'include',
                     body: JSON.stringify({ order: next.map((w) => w.id) }),
                 });
+                if (!res.ok) throw new Error(`${res.status}`);
             } catch {
                 // 失敗したら元に戻す
                 setOrderedWorlds(orderedWorlds);
