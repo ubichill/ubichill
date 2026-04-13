@@ -53,12 +53,14 @@ export class InputCollector {
 
     constructor() {
         // MOUSE_MOVE: スロットを上書きするだけ — O(1)
+        // x/y はビューポート座標。ワールドスクロールは div で起きるため window.scroll は常に 0。
+        // ワールド座標への変換は GenericPluginHost の position:update ハンドラで行う。
         this._onMouseMove = (e: MouseEvent) => {
             this._latestMousePos = {
                 type: 'MOUSE_MOVE',
                 data: {
-                    x: e.clientX + window.scrollX,
-                    y: e.clientY + window.scrollY,
+                    x: e.clientX,
+                    y: e.clientY,
                     buttons: e.buttons,
                     cursorStyle: this._cursorStyle,
                 },
@@ -79,10 +81,8 @@ export class InputCollector {
             this._discreteEvents.push({
                 type: 'CONTEXT_MENU',
                 data: {
-                    x: e.clientX + window.scrollX,
-                    y: e.clientY + window.scrollY,
-                    clientX: e.clientX,
-                    clientY: e.clientY,
+                    x: e.clientX,
+                    y: e.clientY,
                 },
             });
         };
@@ -93,8 +93,8 @@ export class InputCollector {
             this._discreteEvents.push({
                 type: 'MOUSE_DOWN',
                 data: {
-                    x: e.clientX + window.scrollX,
-                    y: e.clientY + window.scrollY,
+                    x: e.clientX,
+                    y: e.clientY,
                     button: e.button,
                 },
             });
@@ -105,8 +105,8 @@ export class InputCollector {
             this._discreteEvents.push({
                 type: 'MOUSE_UP',
                 data: {
-                    x: e.clientX + window.scrollX,
-                    y: e.clientY + window.scrollY,
+                    x: e.clientX,
+                    y: e.clientY,
                     button: e.button,
                 },
             });

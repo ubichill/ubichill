@@ -5,7 +5,6 @@ import type {
     CanvasCursorData,
     CanvasStrokeData,
     EntityPatchPayload,
-    EvtLifecycleInit,
     FetchOptions,
     PluginGuestCommand,
     PluginHostEvent,
@@ -63,15 +62,6 @@ export class UbiSDK {
 
     public _dispatchEvent(event: PluginHostEvent): void {
         switch (event.type) {
-            case 'EVT_LIFECYCLE_INIT': {
-                // sandbox.worker.ts が early-return するためここは呼ばれない（dead code）
-                const init = event as EvtLifecycleInit;
-                this.worldId = init.payload.worldId;
-                this.myUserId = init.payload.myUserId;
-                this.pluginId = init.payload.pluginId;
-                this.entityId = init.payload.entityId;
-                break;
-            }
             case 'EVT_LIFECYCLE_TICK': {
                 const dt = event.payload.deltaTime;
                 try {
