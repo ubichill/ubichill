@@ -5,7 +5,7 @@
   "workers": {
     "screen": {
       "src": "./src/screen.worker.tsx",
-      "capabilities": ["video:control", "scene:read", "scene:update"],
+      "capabilities": ["video:control", "scene:read", "scene:update", "net:broadcast"],
       "mediaTargets": ["main"],
       "watchEntityTypes": ["video-player:screen"]
     },

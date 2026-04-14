@@ -307,40 +307,6 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
-  plugins/avatar:
-    dependencies:
-      '@ubichill/sdk':
-        specifier: workspace:*
-        version: link:../../packages/sdk
-
-  plugins/pen:
-    dependencies:
-      '@ubichill/sdk':
-        specifier: workspace:*
-        version: link:../../packages/sdk
-
-  plugins/video-player/frontend:
-    dependencies:
-      '@ubichill/sdk':
-        specifier: workspace:*
-        version: link:../../../packages/sdk
-      hls.js:
-        specifier: ^1.6.15
-        version: 1.6.15
-      react:
-        specifier: ^19.0.0
-        version: 19.2.4
-    devDependencies:
-      '@types/node':
-        specifier: ^22.0.0
-        version: 22.19.7
-      '@types/react':
-        specifier: ^19.2.10
-        version: 19.2.10
-      '@types/react-dom':
-        specifier: ^19.2.3
-        version: 19.2.3(@types/react@19.2.10)
-
 packages:
 
   '@babel/code-frame@7.29.0':
