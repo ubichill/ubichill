@@ -1,5 +1,5 @@
 import type { AppAvatarDef } from '@ubichill/sdk';
-import type { FloatingEmoji, RemoteUser, UserStatus } from './types';
+import type { RemoteUser, UserStatus } from './types';
 
 export interface TemplateEntry {
     id: string;
@@ -17,9 +17,6 @@ export let initialized = false;
 export let localCursorStyle = 'default';
 export let localStatus: UserStatus = 'online';
 export let localAvatar: AppAvatarDef = { states: {} };
-export let radialMenuPos: { x: number; y: number } | null = null;
-export let activeSubmenuId: string | null = null;
-export let floatingEmojis: FloatingEmoji[] = [];
 export let lastSentX = -1;
 export let lastSentY = -1;
 export let lastSentCursorState = '';
@@ -62,9 +59,7 @@ export function setSettingsPanelZIndex(v: number) {
 export const POSITION_THROTTLE_MS = 50;
 export const LERP_SPEED = 0.015;
 export const SNAP_THRESHOLD = 0.1;
-export const EMOJI_DURATION_MS = 3000;
 
-// HMR / 再初期化用にまとめて状態をクリア
 export function resetState(): void {
     remoteUsers.clear();
     lerpX = 0;
@@ -75,9 +70,6 @@ export function resetState(): void {
     localCursorStyle = 'default';
     localStatus = 'online';
     localAvatar = { states: {} };
-    radialMenuPos = null;
-    activeSubmenuId = null;
-    floatingEmojis = [];
     lastSentX = -1;
     lastSentY = -1;
     lastSentCursorState = '';
@@ -86,7 +78,6 @@ export function resetState(): void {
     scrollY = 0;
 }
 
-// setter functions (ESモジュールのletは直接再代入できないのでsetterを使う)
 export function setLerpX(v: number) {
     lerpX = v;
 }
@@ -110,15 +101,6 @@ export function setLocalStatus(v: UserStatus) {
 }
 export function setLocalAvatar(v: AppAvatarDef) {
     localAvatar = v;
-}
-export function setRadialMenuPos(v: { x: number; y: number } | null) {
-    radialMenuPos = v;
-}
-export function setActiveSubmenuId(v: string | null) {
-    activeSubmenuId = v;
-}
-export function setFloatingEmojis(v: FloatingEmoji[]) {
-    floatingEmojis = v;
 }
 export function setLastSentX(v: number) {
     lastSentX = v;

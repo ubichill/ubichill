@@ -98,5 +98,5 @@ export const AvatarSettingsSystem: System = (_entities: Entity[], _deltaTime: nu
 // SettingsPanel で使う changeStatus 相当（設定ワーカーのみ）
 export function changeStatus(newStatus: UserStatus): void {
     setLocalStatus(newStatus);
-    Ubi.network.sendToHost('user:update', { status: newStatus, isMenuOpen: false });
+    Ubi.network.sendToHost('user:update', { status: newStatus });
 }

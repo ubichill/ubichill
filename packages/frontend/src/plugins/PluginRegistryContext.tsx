@@ -21,6 +21,7 @@ interface WorkerMetaObject {
 interface PluginJson {
     id: string;
     name?: string;
+    version: string;
     workers?: Record<string, string | WorkerMetaObject>;
 }
 

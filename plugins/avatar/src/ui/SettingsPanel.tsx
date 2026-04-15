@@ -8,7 +8,7 @@ import {
     templates,
     thumbnailUrls,
 } from '../state';
-import { cssToState } from '../systems/AvatarMainSystem';
+import { cssToState } from '../systems/utils';
 
 /** 適用中テンプレート ID（ホスト側の読み込み完了前に重複クリックをブロック） */
 let _pendingTemplateId: string | null = null;
@@ -161,7 +161,9 @@ export const SettingsPanel = () => {
                                             style={{ width: '40px', height: '40px', objectFit: 'contain' }}
                                         />
                                     ) : (
-                                        <span style={{ fontSize: '22px' }}>🖱️</span>
+                                        <svg width="22" height="22" viewBox="0 0 24 24" fill="#adb5bd">
+                                            <path d="M4 0 20 12l-7 1-4 8z" />
+                                        </svg>
                                     )}
                                 </div>
 

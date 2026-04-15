@@ -29,29 +29,22 @@ export const RemoteCursor = ({ user }: RemoteCursorProps) => {
                     }}
                 />
             )}
+            {user.status === 'busy' && (
+                <div
+                    style={{
+                        position: 'absolute',
+                        top: '-6px',
+                        right: '-6px',
+                        width: '10px',
+                        height: '10px',
+                        borderRadius: '50%',
+                        backgroundColor: '#fa5252',
+                        border: '2px solid white',
+                    }}
+                />
+            )}
             {url ? (
-                <>
-                    <img src={url} alt={user.name} style={{ maxWidth: '64px', maxHeight: '64px', display: 'block' }} />
-                    {user.status === 'busy' && (
-                        <div
-                            style={{
-                                position: 'absolute',
-                                top: '-8px',
-                                right: '-8px',
-                                width: '16px',
-                                height: '16px',
-                                borderRadius: '50%',
-                                backgroundColor: '#fa5252',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontSize: '10px',
-                            }}
-                        >
-                            🔴
-                        </div>
-                    )}
-                </>
+                <img src={url} alt={user.name} style={{ maxWidth: '64px', maxHeight: '64px', display: 'block' }} />
             ) : (
                 <div
                     style={{
@@ -83,8 +76,6 @@ export const RemoteCursor = ({ user }: RemoteCursorProps) => {
                 }}
             >
                 {user.name}
-                {user.status === 'busy' ? ' 🔴' : ''}
-                {user.isMenuOpen ? ' 📋' : ''}
             </span>
         </div>
     );

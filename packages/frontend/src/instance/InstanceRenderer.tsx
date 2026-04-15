@@ -3,10 +3,10 @@ import { GenericPluginHost, isWorkerPlugin, useSocket, useWorld } from '@ubichil
 import type { UbiInstanceContext } from '@ubichill/sdk/ui';
 import type { WorldEntity } from '@ubichill/shared';
 import React, { useLayoutEffect, useMemo, useRef } from 'react';
-import { EntityRenderer } from '@/core/components/EntityRenderer';
 import { usePluginRegistry } from '@/plugins/PluginRegistryContext';
 import { Z_INDEX } from '@/styles/layers';
 import { buildAvatarThumbnails, loadAvatarTemplate } from './avatarTemplateLoader';
+import { EntityRenderer } from './EntityRenderer';
 
 // ============================================
 // シングルトン CE をマウントし instanceCtx を注入するコンポーネント

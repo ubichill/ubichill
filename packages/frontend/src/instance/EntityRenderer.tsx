@@ -2,7 +2,7 @@ import type { WorldEntity } from '@ubichill/sdk';
 import { GenericPluginHost, isWorkerPlugin, useSocket, useWorld } from '@ubichill/sdk/react';
 import type { UbiEntityContext } from '@ubichill/sdk/ui';
 import React, { useLayoutEffect, useRef } from 'react';
-import { usePluginRegistry } from '../../plugins/PluginRegistryContext';
+import { usePluginRegistry } from '../plugins/PluginRegistryContext';
 
 interface EntityRendererProps {
     entityId: string;

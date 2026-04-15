@@ -24,6 +24,9 @@ export default defineConfig({
                 },
             },
             tokens: {
+                shadows: {
+                    card: { value: '0 8px 24px rgba(27, 42, 68, 0.08)' },
+                },
                 colors: {
                     // メインカラー（ダークネイビー - ボタンやアクセントに使用）
                     primary: { value: '#1b2a44' },
@@ -95,9 +98,6 @@ export default defineConfig({
                     body: { value: 'var(--font-inter), system-ui, sans-serif' },
                     mono: { value: 'Menlo, monospace' },
                 },
-            },
-            shadows: {
-                card: { value: '0 8px 24px rgba(27, 42, 68, 0.08)' },
             },
             semanticTokens: {
                 colors: {

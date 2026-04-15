@@ -9,21 +9,5 @@ export type RemoteUser = {
     cursorState?: string;
     status: UserStatus;
     avatar?: AppAvatarDef;
-    isMenuOpen?: boolean;
     penColor?: string | null;
-};
-
-export type FloatingEmoji = {
-    id: string;
-    emoji: string;
-    position: { x: number; y: number };
-    timestamp: number;
-};
-
-export type RadialMenuItem = {
-    id: string;
-    label: string;
-    icon: string;
-    action?: () => void;
-    submenu?: RadialMenuItem[];
 };

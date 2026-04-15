@@ -1,10 +1,10 @@
 import type { WorldListItem } from '@ubichill/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useInstances } from '@/core/hooks/useInstances';
 import { API_BASE } from '@/lib/api';
 import { css } from '@/styled-system/css';
 import { InstanceCard } from './InstanceCard';
+import { useInstances } from './useInstances';
 import { WorldCard } from './WorldCard';
 
 type LobbyView = 'instances' | 'worlds';
