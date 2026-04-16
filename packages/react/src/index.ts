@@ -1,6 +1,6 @@
-export type { GenericPluginHostProps } from './components/GenericPluginHost';
-export { GenericPluginHost } from './components/GenericPluginHost';
 export { PluginUIMount } from './components/PluginUIMount';
+export type { WorkerPluginHostProps } from './components/WorkerPluginHost';
+export { WorkerPluginHost } from './components/WorkerPluginHost';
 export { useCursorPosition } from './hooks/useCursorPosition';
 export { useEntity } from './hooks/useEntity';
 export { useObjectInteraction } from './hooks/useObjectInteraction';

@@ -1,5 +1,5 @@
 /**
- * GenericPluginHost — Worker のみで動作するプラグイン向けの汎用 React ホスト。
+ * WorkerPluginHost — Worker ベースプラグイン向け React ホスト。
  *
  * 責務（orchestration のみ）:
  * - usePluginWorker でサンドボックスのライフサイクルを管理
@@ -24,7 +24,7 @@ import type { WorkerPluginDefinition } from '../types';
 import { usePluginWorker } from '../usePluginWorker';
 import { PluginUIMount } from './PluginUIMount';
 
-export interface GenericPluginHostProps {
+export interface WorkerPluginHostProps {
     entityId: string;
     entity: WorldEntity;
     definition: WorkerPluginDefinition;
@@ -38,7 +38,7 @@ export interface GenericPluginHostProps {
     sendHostMessageRef?: React.RefObject<((type: string, payload: unknown) => void) | null>;
 }
 
-export const GenericPluginHost: React.FC<GenericPluginHostProps> = ({
+export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({
     entityId,
     entity,
     definition,

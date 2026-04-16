@@ -1,5 +1,5 @@
 import type { WorkerPluginDefinition } from '@ubichill/sdk/react';
-import { GenericPluginHost, isWorkerPlugin, useSocket, useWorld } from '@ubichill/sdk/react';
+import { isWorkerPlugin, useSocket, useWorld, WorkerPluginHost } from '@ubichill/sdk/react';
 import type { UbiInstanceContext } from '@ubichill/sdk/ui';
 import type { WorldEntity } from '@ubichill/shared';
 import React, { useLayoutEffect, useMemo, useRef } from 'react';
@@ -114,7 +114,7 @@ const SingletonWorkerHost: React.FC<SingletonWorkerHostProps> = ({ plugin, entit
                 pointerEvents: 'none',
             }}
         >
-            <GenericPluginHost
+            <WorkerPluginHost
                 entityId={`singleton:${plugin.id}`}
                 entity={entity}
                 definition={plugin}

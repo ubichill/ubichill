@@ -34,12 +34,15 @@ export function usePluginWorld(): Pick<
         onGetEntity: (id: string): WorldEntity | undefined => entitiesRef.current.get(id),
         onQueryEntities: (entityType: string): WorldEntity[] =>
             Array.from(entitiesRef.current.values()).filter((e) => e.type === entityType),
-        onCreateEntity: async (entity: Omit<WorldEntity, 'id'>): Promise<WorldEntity> =>
-            worldOpsRef.current.createEntity(
+        onCreateEntity: async (entity: Omit<WorldEntity, 'id'>): Promise<WorldEntity> => {
+            const result = await worldOpsRef.current.createEntity(
                 entity.type,
                 entity.transform,
                 entity.data as Record<string, unknown>,
-            ),
+            );
+            if (!result) throw new Error('エンティティの作成に失敗しました');
+            return result;
+        },
         onUpdateEntity: async (_id: string, patch: import('@ubichill/shared').EntityPatchPayload): Promise<void> => {
             worldOpsRef.current.patchEntity(patch.entityId, patch.patch);
         },

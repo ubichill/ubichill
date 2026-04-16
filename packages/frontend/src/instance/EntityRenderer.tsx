@@ -1,5 +1,5 @@
 import type { WorldEntity } from '@ubichill/sdk';
-import { GenericPluginHost, isWorkerPlugin, useSocket, useWorld } from '@ubichill/sdk/react';
+import { isWorkerPlugin, useSocket, useWorld, WorkerPluginHost } from '@ubichill/sdk/react';
 import type { UbiEntityContext } from '@ubichill/sdk/ui';
 import React, { useLayoutEffect, useRef } from 'react';
 import { usePluginRegistry } from '../plugins/PluginRegistryContext';
@@ -48,7 +48,7 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({ entityId }) => {
 
         return (
             <div style={wrapperStyle}>
-                <GenericPluginHost entityId={entityId} entity={entity} definition={plugin} />
+                <WorkerPluginHost entityId={entityId} entity={entity} definition={plugin} />
             </div>
         );
     }
