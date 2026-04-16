@@ -86,7 +86,10 @@ export function loadImage(url: string): Promise<DecodedImage> {
         } else {
             p = Promise.resolve({ url, hotspot: { x: 0, y: 0 } });
         }
-        p.catch(() => _cache.delete(url));
+        p.catch((err) => {
+            console.error(`[imageLoader] 画像の読み込みに失敗しました: ${url}`, err);
+            _cache.delete(url);
+        });
         _cache.set(url, p);
     }
     return _cache.get(url) as Promise<DecodedImage>;

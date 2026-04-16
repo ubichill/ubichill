@@ -69,12 +69,14 @@ const SingletonWorkerHost: React.FC<SingletonWorkerHostProps> = ({ plugin, entit
         if (type === 'avatar:applyTemplate') {
             // Worker からバージョン付き URL のリストを受け取り、各ファイルをデコードして states を構築
             const { files } = payload as { files: Array<{ state: string; url: string }> };
-            void Promise.all(files.map(async ({ state, url }) => [state, await loadImage(url)] as const)).then(
-                (entries) => {
+            void Promise.all(files.map(async ({ state, url }) => [state, await loadImage(url)] as const))
+                .then((entries) => {
                     const states = Object.fromEntries(entries.map(([state, frame]) => [state, frame]));
                     updateUserRef.current({ avatar: { states } });
-                },
-            );
+                })
+                .catch((err: unknown) => {
+                    console.error('[InstanceRenderer] avatar:applyTemplate 画像読み込み失敗', err);
+                });
         } else if (type === 'avatar:resetTemplate') {
             updateUserRef.current({ avatar: { states: {} } });
         } else if (type === 'avatar:initThumbnails') {
@@ -85,7 +87,8 @@ const SingletonWorkerHost: React.FC<SingletonWorkerHostProps> = ({ plugin, entit
                     try {
                         const frame = await loadImage(url);
                         return [id, frame.url] as const;
-                    } catch {
+                    } catch (err) {
+                        console.error(`[InstanceRenderer] サムネイル読み込み失敗 id=${id} url=${url}`, err);
                         return null;
                     }
                 }),

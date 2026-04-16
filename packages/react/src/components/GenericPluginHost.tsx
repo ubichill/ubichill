@@ -150,6 +150,7 @@ export const GenericPluginHost: React.FC<GenericPluginHostProps> = ({
         entityId,
         capabilities: definition.capabilities,
         myUserId: currentUser?.id,
+        pluginBase: definition.pluginBase,
         handlers: {
             ...canvasHandlers,
             ...mediaHandlers,

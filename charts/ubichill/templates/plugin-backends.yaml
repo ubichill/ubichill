@@ -36,11 +36,17 @@ spec:
           ports:
             - containerPort: {{ .port }}
               protocol: TCP
-          {{- if .env }}
+          {{- $injectCors := and $.Values.global.domain (not (index .env "CORS_ORIGINS")) }}
+          {{- if or .env $injectCors }}
           env:
             {{- range $k, $v := .env }}
             - name: {{ $k }}
               value: {{ $v | quote }}
+            {{- end }}
+            {{- /* CORS_ORIGINS を global.domain から自動導出（env で上書き可能） */}}
+            {{- if $injectCors }}
+            - name: CORS_ORIGINS
+              value: {{ printf "https://%s" $.Values.global.domain | quote }}
             {{- end }}
           {{- end }}
           {{- if .resources }}

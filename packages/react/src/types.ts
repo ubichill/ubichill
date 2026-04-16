@@ -65,6 +65,11 @@ export interface WorkerPluginDefinition {
      */
     fetchDomains?: string[];
     /**
+     * プラグインアセットのベースURL（Worker で Ubi.pluginBase として参照可能）。
+     * PluginRegistryContext が plugin.json のバージョンから自動計算して設定する。
+     */
+    pluginBase?: string;
+    /**
      * true の場合、エンティティごとではなくワールド参加中に 1 つだけ起動される。
      * Host は EVT_PLAYER_JOINED / EVT_PLAYER_LEFT / EVT_PLAYER_CURSOR_MOVED を
      * Worker へ配信するため、プレゼンス情報を利用できる。

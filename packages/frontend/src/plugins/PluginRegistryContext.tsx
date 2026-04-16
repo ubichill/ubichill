@@ -99,6 +99,7 @@ async function autoLoadWorkerPlugins(entityType: string): Promise<WorkerPluginDe
             watchEntityTypes: meta.watchEntityTypes,
             mediaTargets: meta.mediaTargets,
             fetchDomains: meta.fetchDomains,
+            pluginBase: `${PLUGIN_BASE_URL}/${pluginName}/v${pluginJson.version}`,
         },
     ];
 }

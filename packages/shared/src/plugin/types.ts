@@ -352,7 +352,14 @@ export type PluginCommand = PluginGuestCommand;
  */
 export type EvtLifecycleInit = {
     type: 'EVT_LIFECYCLE_INIT';
-    payload: { worldId: string; myUserId: string; code: string; pluginId?: string; entityId?: string };
+    payload: {
+        worldId: string;
+        myUserId: string;
+        code: string;
+        pluginId?: string;
+        entityId?: string;
+        pluginBase?: string;
+    };
 };
 
 /**

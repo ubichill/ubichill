@@ -80,6 +80,7 @@ self.addEventListener('message', (e: MessageEvent<PluginHostEvent>) => {
     Ubi.worldId = event.payload.worldId;
     Ubi.myUserId = event.payload.myUserId;
     Ubi.entityId = event.payload.entityId;
+    Ubi.pluginBase = event.payload.pluginBase ?? '';
 
     const pluginId = event.payload.pluginId ?? event.payload.worldId ?? 'unknown';
     Ubi.pluginId = pluginId;

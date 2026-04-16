@@ -115,7 +115,7 @@ pluginBackends:
     replicaCount: 1
     env:
       ROOT_PATH: /plugins/video-player/api
-      # CORS_ORIGINS は global.domain から導出。上書きが必要な場合のみ設定
+      # CORS_ORIGINS は global.domain から自動注入される。上書きが必要な場合のみ設定
     resources:
       limits:
         cpu: 1000m

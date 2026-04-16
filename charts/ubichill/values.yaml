@@ -273,15 +273,14 @@ podDisruptionBudget:
 # Node affinity (optional - for multi-AZ deployment)
 nodeAffinity:
   enabled: false
+  # 有効時: 配置したいゾーン名をクラスタに合わせて指定する（例: ap-northeast-1a, ap-northeast-1c）
   preferredDuringSchedulingIgnoredDuringExecution:
     - weight: 100
       preference:
         matchExpressions:
         - key: topology.kubernetes.io/zone
           operator: In
-          values:
-          - us-west-2a
-          - us-west-2b
+          values: []
 
 # Tolerations (optional)
 tolerations: []

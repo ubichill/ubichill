@@ -155,6 +155,8 @@ export interface PluginHostManagerOptions<TPayloadMap extends Record<string, unk
     pluginId?: string;
     /** このプラグインを起動したエンティティのID（Worker で Ubi.entityId として参照可能） */
     entityId?: string;
+    /** プラグインアセットのベースURL（Worker で Ubi.pluginBase として参照可能） */
+    pluginBase?: string;
     handlers: HostHandlers<TPayloadMap>;
     capabilities?: string[];
     maxExecutionTime?: number;
@@ -403,6 +405,7 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
                 myUserId: options.myUserId ?? '',
                 pluginId: options.pluginId,
                 entityId: options.entityId,
+                pluginBase: options.pluginBase,
             },
         });
 

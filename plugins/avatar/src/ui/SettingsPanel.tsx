@@ -33,7 +33,7 @@ function applyTemplate(templateId: string): void {
         .filter((entry): entry is [string, string] => !!entry[1])
         .map(([state, filename]) => ({
             state,
-            url: `${__PLUGIN_BASE__}/templates/${template.directory}/${filename}`,
+            url: `${Ubi.pluginBase}/templates/${template.directory}/${filename}`,
         }));
     Ubi.network.sendToHost('avatar:applyTemplate', { files });
     // ホスト側の完了通知がないため、一定時間後に解除してリトライを許可する

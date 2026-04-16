@@ -82,6 +82,7 @@ export class UbiSDK {
     public myUserId?: string;
     public pluginId?: string;
     public entityId?: string;
+    public pluginBase = '';
 
     private readonly _sendToHost: (cmd: PluginGuestCommand) => void;
 

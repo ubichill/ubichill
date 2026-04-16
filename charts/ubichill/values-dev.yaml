@@ -1,10 +1,6 @@
 # Development environment values for ubichill
 # Override default values for development
 
-# Disable dynamic rooms in development (use default built-in rooms)
-rooms:
-  enabled: false
-
 # Clear global image registry for local images
 global:
   imageRegistry: ""

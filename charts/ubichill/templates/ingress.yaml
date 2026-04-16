@@ -62,7 +62,7 @@ spec:
             backend:
               service:
                 {{- if and .backend (hasKey .backend "service") }}
-                name: {{ if eq .backend.service.name "backend" }}{{ include "ubichill.fullname" $ }}-backend{{ else }}{{ include "ubichill.fullname" $ }}-frontend{{ end }}
+                name: {{ include "ubichill.fullname" $ }}-{{ .backend.service.name }}
                 port:
                   number: {{ if kindIs "map" .backend.service.port }}{{ .backend.service.port.number }}{{ else }}{{ .backend.service.port }}{{ end }}
                 {{- else }}
@@ -73,7 +73,7 @@ spec:
           {{- end }}
     {{- end }}
     {{- else if .Values.global.domain }}
-    {{- /* global.domain のみの場合はデフォルトルート（/api → backend, / → frontend）を自動生成 */}}
+    {{- /* global.domain のみの場合はデフォルトルート（/api・/socket.io → backend, / → frontend）を自動生成 */}}
     - host: {{ .Values.global.domain | quote }}
       http:
         paths:

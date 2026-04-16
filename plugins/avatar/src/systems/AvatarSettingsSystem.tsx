@@ -26,25 +26,31 @@ export async function initTemplates(): Promise<void> {
     if (templatesLoaded) return;
     setTemplatesLoaded(true);
     try {
-        const result = (await Ubi.network.fetch(`${__PLUGIN_BASE__}/templates/manifest.json`)) as {
+        const result = (await Ubi.network.fetch(`${Ubi.pluginBase}/templates/manifest.json`)) as {
             ok: boolean;
+            status: number;
             body: string;
         };
-        if (result.ok) {
-            const data = JSON.parse(result.body) as TemplateEntry[];
-            setTemplates(data);
-            setSettingsDirty(true);
-            // サムネイル用バージョン付き URL をまとめて Host に送る（Host 側で ANI/CUR デコード）
-            const thumbnailFiles = data
-                .filter((t) => !!t.mappings.default)
-                .map((t) => ({
-                    id: t.id,
-                    url: `${__PLUGIN_BASE__}/templates/${t.directory}/${t.mappings.default as string}`,
-                }));
-            Ubi.network.sendToHost('avatar:initThumbnails', { thumbnailFiles });
+        if (!result.ok) {
+            Ubi.log(
+                `テンプレートマニフェスト取得失敗 (${result.status}): ${Ubi.pluginBase}/templates/manifest.json`,
+                'error',
+            );
+            return;
         }
-    } catch {
-        // テンプレート読み込み失敗は無視
+        const data = JSON.parse(result.body) as TemplateEntry[];
+        setTemplates(data);
+        setSettingsDirty(true);
+        // サムネイル用バージョン付き URL をまとめて Host に送る（Host 側で ANI/CUR デコード）
+        const thumbnailFiles = data
+            .filter((t) => !!t.mappings.default)
+            .map((t) => ({
+                id: t.id,
+                url: `${Ubi.pluginBase}/templates/${t.directory}/${t.mappings.default as string}`,
+            }));
+        Ubi.network.sendToHost('avatar:initThumbnails', { thumbnailFiles });
+    } catch (err) {
+        Ubi.log(`テンプレート初期化エラー: ${String(err)}`, 'error');
     }
 }
 

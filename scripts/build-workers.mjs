@@ -14,9 +14,10 @@
  *   public/plugins/<name>/v<version>/  ← assets/ もここにコピー（バージョン固定）
  *   public/plugins/<name>/plugin.json  ← ローダー用エイリアス（最新バージョン）
  *
- * Worker コード内では __PLUGIN_BASE__ でバージョン付きアセットベースパスを参照できます。
- * 例: `${__PLUGIN_BASE__}/templates/manifest.json`
- *      → /plugins/avatar/v1.0.0/templates/manifest.json
+ * Worker コード内では Ubi.pluginBase でバージョン付きアセットベースパスを参照できます。
+ * Ubi.pluginBase は Host が EVT_LIFECYCLE_INIT 時に設定するランタイム値です。
+ * 例: `${Ubi.pluginBase}/templates/manifest.json`
+ *      → https://cdn.example.com/plugins/avatar/v1.0.0/templates/manifest.json
  */
 
 import * as esbuild from 'esbuild';
@@ -118,13 +119,6 @@ export async function buildWorker(pluginJsonPath) {
         return;
     }
 
-    // Worker コードに注入するバージョン付きベースパス
-    // 例: /plugins/avatar/v1.0.0
-    const pluginBaseUrl = `/plugins/${pluginDirName}/v${version}`;
-    const defines = {
-        __PLUGIN_BASE__: JSON.stringify(pluginBaseUrl),
-    };
-
     for (const [entityType, entityEntry] of Object.entries(entityEntries)) {
         const workerRelPath = typeof entityEntry === 'string' ? entityEntry : entityEntry?.src;
         if (!workerRelPath) {
@@ -142,7 +136,7 @@ export async function buildWorker(pluginJsonPath) {
             continue;
         }
 
-        const code = await bundleWorker(entryPath, tsconfig, defines);
+        const code = await bundleWorker(entryPath, tsconfig, {});
 
         // dist: バージョン固定
         const distEntityDir = join(distVersionDir, entityKey);
