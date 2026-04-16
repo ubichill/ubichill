@@ -8,24 +8,14 @@
 import type { AppAvatarDef, Entity, System, WorkerEvent } from '@ubichill/sdk';
 import { EcsEventType } from '@ubichill/sdk';
 import type { TemplateEntry } from '../state';
-import {
-    currentTemplateId,
-    localCursorStyle,
-    setLocalAvatar,
-    setLocalCursorStyle,
-    setSettingsDirty,
-    setTemplates,
-    setTemplatesLoaded,
-    settingsDirty,
-    templatesLoaded,
-    thumbnailUrls,
-} from '../state';
+import { settings } from '../state';
 import { clearPendingTemplate, SettingsPanel } from '../ui/SettingsPanel';
 
 export async function initTemplates(): Promise<void> {
-    if (templatesLoaded) return;
-    setTemplatesLoaded(true);
+    if (settings.templatesLoaded) return;
+    settings.templatesLoaded = true;
     try {
+        Ubi.log(`[initTemplates] pluginBase: ${Ubi.pluginBase}`, 'info');
         const result = (await Ubi.network.fetch(`${Ubi.pluginBase}/templates/manifest.json`)) as {
             ok: boolean;
             status: number;
@@ -39,8 +29,10 @@ export async function initTemplates(): Promise<void> {
             return;
         }
         const data = JSON.parse(result.body) as TemplateEntry[];
-        setTemplates(data);
-        setSettingsDirty(true);
+        Ubi.log(`[initTemplates] ${data.length} テンプレート取得`, 'info');
+        settings.templates = data;
+        settings.dirty = true;
+
         // サムネイル用バージョン付き URL をまとめて Host に送る（Host 側で ANI/CUR デコード）
         const thumbnailFiles = data
             .filter((t) => !!t.mappings.default)
@@ -48,6 +40,7 @@ export async function initTemplates(): Promise<void> {
                 id: t.id,
                 url: `${Ubi.pluginBase}/templates/${t.directory}/${t.mappings.default as string}`,
             }));
+        Ubi.log(`[initTemplates] サムネイル送信: ${thumbnailFiles.map((f) => f.url).join(', ')}`, 'info');
         Ubi.network.sendToHost('avatar:initThumbnails', { thumbnailFiles });
     } catch (err) {
         Ubi.log(`テンプレート初期化エラー: ${String(err)}`, 'error');
@@ -61,9 +54,9 @@ export const AvatarSettingsSystem: System = (_entities: Entity[], _deltaTime: nu
     for (const event of events) {
         if (event.type === EcsEventType.INPUT_MOUSE_MOVE) {
             const d = event.payload as { cursorStyle?: string };
-            if (d.cursorStyle && d.cursorStyle !== localCursorStyle) {
-                setLocalCursorStyle(d.cursorStyle);
-                setSettingsDirty(true);
+            if (d.cursorStyle && d.cursorStyle !== settings.cursorStyle) {
+                settings.cursorStyle = d.cursorStyle;
+                settings.dirty = true;
             }
         }
 
@@ -71,27 +64,28 @@ export const AvatarSettingsSystem: System = (_entities: Entity[], _deltaTime: nu
             const msg = event.payload as { type: string; payload: unknown };
             if (msg.type === 'avatar:thumbnails') {
                 const { thumbnails } = msg.payload as { thumbnails: Record<string, string> };
+                Ubi.log(`[avatar:thumbnails] 受信: ${Object.keys(thumbnails).length} 件`, 'info');
                 for (const [id, url] of Object.entries(thumbnails)) {
-                    thumbnailUrls.set(id, url);
+                    settings.thumbnailUrls.set(id, url);
                 }
-                setSettingsDirty(true);
+                settings.dirty = true;
             }
         }
 
         if (event.type === EcsEventType.PLAYER_JOINED) {
             const user = event.payload as { id: string; avatar?: AppAvatarDef };
             if (user.id === myUserId && user.avatar) {
-                setLocalAvatar(user.avatar);
-                setSettingsDirty(true);
-                if (currentTemplateId !== null) {
-                    clearPendingTemplate(currentTemplateId);
+                settings.avatar = user.avatar;
+                settings.dirty = true;
+                if (settings.currentTemplateId !== null) {
+                    clearPendingTemplate(settings.currentTemplateId);
                 }
             }
         }
     }
 
-    if (settingsDirty) {
-        setSettingsDirty(false);
+    if (settings.dirty) {
+        settings.dirty = false;
         Ubi.ui.render(() => <SettingsPanel />, 'settings');
     }
 };

@@ -6,17 +6,17 @@
  * カーソルオーバーレイの CSS zIndex に反映する。
  */
 
-import { resetState, setCursorZIndex } from './state';
+import { cursor, resetCursor } from './state';
 import { AvatarCursorSystem } from './systems/AvatarCursorSystem';
 
-resetState();
+resetCursor();
 
 // ワールドエンティティから zIndex を取得（avatar:cursor エンティティの transform.z）
 void (async () => {
     try {
         const entities = await Ubi.world.queryEntities('avatar:cursor');
         if (entities.length > 0) {
-            setCursorZIndex(entities[0].transform.z);
+            cursor.zIndex = entities[0].transform.z;
             Ubi.log(`[Avatar Cursor] zIndex: ${entities[0].transform.z}`, 'info');
         }
     } catch {

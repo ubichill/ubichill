@@ -1,13 +1,4 @@
-import {
-    currentTemplateId,
-    localAvatar,
-    localCursorStyle,
-    setCurrentTemplateId,
-    setLocalAvatar,
-    setSettingsDirty,
-    templates,
-    thumbnailUrls,
-} from '../state';
+import { settings } from '../state';
 import { cssToState } from '../systems/utils';
 
 /** 適用中テンプレート ID（ホスト側の読み込み完了前に重複クリックをブロック） */
@@ -15,19 +6,19 @@ let _pendingTemplateId: string | null = null;
 
 function resetToDefault(): void {
     if (_pendingTemplateId !== null) return;
-    setCurrentTemplateId(null);
-    setLocalAvatar({ states: {} });
-    setSettingsDirty(true);
+    settings.currentTemplateId = null;
+    settings.avatar = { states: {} };
+    settings.dirty = true;
     Ubi.network.sendToHost('avatar:resetTemplate', {});
 }
 
 function applyTemplate(templateId: string): void {
     if (_pendingTemplateId === templateId) return; // 連打を無視
-    const template = templates.find((t) => t.id === templateId);
+    const template = settings.templates.find((t) => t.id === templateId);
     if (!template) return;
     _pendingTemplateId = templateId;
-    setCurrentTemplateId(templateId);
-    setSettingsDirty(true);
+    settings.currentTemplateId = templateId;
+    settings.dirty = true;
     // バージョン付き URL を組み立てて Host に送る（Host 側で ANI/CUR デコード）
     const files = (Object.entries(template.mappings) as [string, string | undefined][])
         .filter((entry): entry is [string, string] => !!entry[1])
@@ -35,12 +26,13 @@ function applyTemplate(templateId: string): void {
             state,
             url: `${Ubi.pluginBase}/templates/${template.directory}/${filename}`,
         }));
+    Ubi.log(`[applyTemplate] ${templateId}: ${files.map((f) => `${f.state}=${f.url}`).join(', ')}`, 'info');
     Ubi.network.sendToHost('avatar:applyTemplate', { files });
     // ホスト側の完了通知がないため、一定時間後に解除してリトライを許可する
     setTimeout(() => {
         if (_pendingTemplateId === templateId) {
             _pendingTemplateId = null;
-            setSettingsDirty(true);
+            settings.dirty = true;
         }
     }, 10_000);
 }
@@ -52,14 +44,14 @@ function applyTemplate(templateId: string): void {
 export function clearPendingTemplate(templateId: string): void {
     if (_pendingTemplateId === templateId) {
         _pendingTemplateId = null;
-        setSettingsDirty(true);
+        settings.dirty = true;
     }
 }
 
 export const SettingsPanel = () => {
-    const cursorState = cssToState(localCursorStyle);
+    const cursorState = cssToState(settings.cursorStyle);
     const currentStateDef =
-        localAvatar.states[cursorState as keyof typeof localAvatar.states] ?? localAvatar.states.default;
+        settings.avatar.states[cursorState as keyof typeof settings.avatar.states] ?? settings.avatar.states.default;
 
     return (
         <div
@@ -94,7 +86,7 @@ export const SettingsPanel = () => {
             </div>
 
             {/* テンプレートカードグリッド */}
-            {templates.length === 0 ? (
+            {settings.templates.length === 0 ? (
                 <div style={{ color: '#868e96', fontSize: '12px', textAlign: 'center', padding: '16px 0' }}>
                     テンプレートを読み込み中...
                 </div>
@@ -107,15 +99,12 @@ export const SettingsPanel = () => {
                         marginBottom: '12px',
                     }}
                 >
-                    {templates.map((t) => {
-                        const isSelected = currentTemplateId === t.id;
+                    {settings.templates.map((t) => {
+                        const isSelected = settings.currentTemplateId === t.id;
                         const isLoading = _pendingTemplateId === t.id;
-                        // 選択済み＋ロード完了: 変換済みdata URL（ANI対応）
-                        // それ以外: マニフェストの直接パス（PNG/SVGのみ表示可、ANIはフォールバック）
-                        // ホストから事前変換済みURL（ANI含む全形式対応）を優先
-                        const hostThumb = thumbnailUrls.get(t.id) ?? '';
+                        const hostThumb = settings.thumbnailUrls.get(t.id) ?? '';
                         const thumbUrl =
-                            isSelected && !isLoading ? (localAvatar.states?.default?.url ?? hostThumb) : hostThumb;
+                            isSelected && !isLoading ? (settings.avatar.states?.default?.url ?? hostThumb) : hostThumb;
 
                         return (
                             <button
@@ -194,7 +183,7 @@ export const SettingsPanel = () => {
             )}
 
             {/* デフォルトに戻すボタン */}
-            {currentTemplateId !== null && (
+            {settings.currentTemplateId !== null && (
                 <button
                     type="button"
                     style={{
@@ -264,14 +253,14 @@ export const SettingsPanel = () => {
                         onUbiInput={(value: unknown) => {
                             const url = String(value);
                             const hotspot = currentStateDef?.hotspot ?? { x: 0, y: 0 };
-                            setLocalAvatar({
-                                ...localAvatar,
+                            settings.avatar = {
+                                ...settings.avatar,
                                 states: {
-                                    ...localAvatar.states,
+                                    ...settings.avatar.states,
                                     [cursorState]: { url, hotspot },
                                 },
-                            });
-                            Ubi.network.sendToHost('user:update', { avatar: localAvatar });
+                            };
+                            Ubi.network.sendToHost('user:update', { avatar: settings.avatar });
                         }}
                     />
                 </div>

@@ -5,23 +5,7 @@
 
 import type { AppAvatarDef, Entity, System, WorkerEvent } from '@ubichill/sdk';
 import { EcsEventType } from '@ubichill/sdk';
-import {
-    initialized,
-    LERP_SPEED,
-    lerpViewportX,
-    lerpViewportY,
-    localCursorStyle,
-    SNAP_THRESHOLD,
-    setInitialized,
-    setLerpViewportX,
-    setLerpViewportY,
-    setLocalAvatar,
-    setLocalCursorStyle,
-    setTargetViewportX,
-    setTargetViewportY,
-    targetViewportX,
-    targetViewportY,
-} from '../state';
+import { cursor, LERP_SPEED, SNAP_THRESHOLD } from '../state';
 import { AvatarCursor } from '../ui/AvatarCursor';
 
 export const AvatarCursorSystem: System = (_entities: Entity[], deltaTime: number, events: WorkerEvent[]) => {
@@ -34,37 +18,37 @@ export const AvatarCursorSystem: System = (_entities: Entity[], deltaTime: numbe
                 viewportY: number;
                 cursorStyle?: string;
             };
-            if (!initialized) {
-                setLerpViewportX(d.viewportX);
-                setLerpViewportY(d.viewportY);
-                setInitialized(true);
+            if (!cursor.initialized) {
+                cursor.lerpViewportX = d.viewportX;
+                cursor.lerpViewportY = d.viewportY;
+                cursor.initialized = true;
             }
-            setTargetViewportX(d.viewportX);
-            setTargetViewportY(d.viewportY);
-            if (d.cursorStyle && d.cursorStyle !== localCursorStyle) {
-                setLocalCursorStyle(d.cursorStyle);
+            cursor.targetViewportX = d.viewportX;
+            cursor.targetViewportY = d.viewportY;
+            if (d.cursorStyle && d.cursorStyle !== cursor.cursorStyle) {
+                cursor.cursorStyle = d.cursorStyle;
             }
         }
 
         if (event.type === EcsEventType.PLAYER_JOINED) {
             const user = event.payload as { id: string; avatar?: AppAvatarDef };
             if (user.id === myUserId && user.avatar) {
-                setLocalAvatar(user.avatar);
+                cursor.avatar = user.avatar;
             }
         }
     }
 
     // viewport lerp
-    if (initialized) {
-        const dvx = targetViewportX - lerpViewportX;
-        const dvy = targetViewportY - lerpViewportY;
+    if (cursor.initialized) {
+        const dvx = cursor.targetViewportX - cursor.lerpViewportX;
+        const dvy = cursor.targetViewportY - cursor.lerpViewportY;
         if (Math.abs(dvx) < SNAP_THRESHOLD && Math.abs(dvy) < SNAP_THRESHOLD) {
-            setLerpViewportX(targetViewportX);
-            setLerpViewportY(targetViewportY);
+            cursor.lerpViewportX = cursor.targetViewportX;
+            cursor.lerpViewportY = cursor.targetViewportY;
         } else {
             const f = Math.min(1, deltaTime * LERP_SPEED);
-            setLerpViewportX(lerpViewportX + dvx * f);
-            setLerpViewportY(lerpViewportY + dvy * f);
+            cursor.lerpViewportX += dvx * f;
+            cursor.lerpViewportY += dvy * f;
         }
     }
 
