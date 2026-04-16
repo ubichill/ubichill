@@ -139,6 +139,34 @@ io.on('connection', (socket) => {
     socket.on('video-player:state-response', handleVideoPlayerStateResponse(socket));
 });
 
+// ============================================
+// グレースフルシャットダウン
+// ============================================
+function setupGracefulShutdown() {
+    const shutdown = (signal: string) => {
+        console.log(`⚡ ${signal} 受信 — グレースフルシャットダウン開始`);
+
+        // 新規 HTTP 接続を拒否し、既存リクエストの完了を待つ
+        server.close(() => {
+            console.log('✅ HTTP サーバー停止完了');
+        });
+
+        // Socket.IO を閉じる（既存クライアントに disconnect イベントを送信）
+        io.close(() => {
+            console.log('✅ Socket.IO 停止完了');
+        });
+
+        // フォールバック: 一定時間内に完了しない場合は強制終了
+        setTimeout(() => {
+            console.warn('⏰ シャットダウンタイムアウト — 強制終了');
+            process.exit(0);
+        }, 15_000).unref();
+    };
+
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
+}
+
 // サーバーを起動（非同期初期化）
 async function startServer() {
     // システムユーザー初期化のみ（ワールドシードは行わない）
@@ -151,6 +179,8 @@ async function startServer() {
     if (cleaned > 0) {
         console.log(`🧹 起動クリーンアップ: 孤立インスタンス ${cleaned} 件を削除しました`);
     }
+
+    setupGracefulShutdown();
 
     server.listen(appConfig.port, () => {
         console.log('');
