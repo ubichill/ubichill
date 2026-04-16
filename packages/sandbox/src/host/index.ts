@@ -2,6 +2,7 @@ export {
     createPluginFetchHandler,
     DEFAULT_ALLOWED_DOMAINS,
     DEMO_ALLOWED_DOMAINS,
+    fetchDirect,
     isUrlAllowed,
     PRODUCTION_ALLOWED_DOMAINS,
 } from './fetchHandler';

@@ -3,21 +3,21 @@
  *
  * 責務（orchestration のみ）:
  * - usePluginWorker でサンドボックスのライフサイクルを管理
- * - usePluginCanvas / usePluginUI / usePluginEntitySync / usePluginPresence を合成
- * - entity:ephemeral ↔ Ubi.network.broadcast の Socket.IO ブリッジ
- * - Ubi.world.* ↔ Socket.IO UEP ブリッジ
+ * - 各 usePlugin* hook を合成して handlers を組み立てる
  * - sendHostMessageRef を通じた Host → Worker カスタムメッセージ
  */
 
-import { createPluginFetchHandler } from '@ubichill/sandbox/host';
-import type { CursorState, EntityEphemeralPayload, FetchOptions, FetchResult, WorldEntity } from '@ubichill/shared';
+import type { CursorState, WorldEntity } from '@ubichill/shared';
 import type React from 'react';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useRef } from 'react';
+import { usePluginBroadcast } from '../hooks/usePluginBroadcast';
 import { usePluginCanvas } from '../hooks/usePluginCanvas';
 import { usePluginEntitySync } from '../hooks/usePluginEntitySync';
+import { usePluginFetch } from '../hooks/usePluginFetch';
 import { usePluginMedia } from '../hooks/usePluginMedia';
 import { usePluginPresence } from '../hooks/usePluginPresence';
 import { usePluginUI } from '../hooks/usePluginUI';
+import { usePluginWorld } from '../hooks/usePluginWorld';
 import { useSocket } from '../hooks/useSocket';
 import { useWorld } from '../hooks/useWorld';
 import type { WorkerPluginDefinition } from '../types';
@@ -38,78 +38,22 @@ export interface GenericPluginHostProps {
     sendHostMessageRef?: React.RefObject<((type: string, payload: unknown) => void) | null>;
 }
 
-async function _fetchLocal(url: string, options?: FetchOptions): Promise<FetchResult> {
-    try {
-        const response = await fetch(url, {
-            method: options?.method ?? 'GET',
-            headers: options?.headers,
-            body: options?.body,
-        });
-        const headers: Record<string, string> = {};
-        response.headers.forEach((value, key) => {
-            headers[key] = value;
-        });
-        return {
-            ok: response.ok,
-            status: response.status,
-            statusText: response.statusText,
-            headers,
-            body: await response.text(),
-        };
-    } catch (error) {
-        return {
-            ok: false,
-            status: 500,
-            statusText: 'Internal Server Error',
-            headers: {},
-            body: JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
-        };
-    }
-}
-
 export const GenericPluginHost: React.FC<GenericPluginHostProps> = ({
     entityId,
-    entity: _entity,
+    entity,
     definition,
     onCustomMessage,
     sendHostMessageRef,
 }) => {
+    const { users, currentUser, updatePosition, updateUser } = useSocket();
+    const { entities } = useWorld();
+    const hostDivRef = useRef<HTMLDivElement>(null);
+
     const onCustomMessageRef = useRef(onCustomMessage);
     useEffect(() => {
         onCustomMessageRef.current = onCustomMessage;
     });
 
-    const {
-        entities,
-        createEntity: worldCreateEntity,
-        patchEntity: worldPatchEntity,
-        deleteEntity: worldDeleteEntity,
-    } = useWorld();
-    const { socket, currentUser, users, updatePosition, updateUser } = useSocket();
-
-    const hostDivRef = useRef<HTMLDivElement>(null);
-
-    // ── stale closure 防止用 refs ──────────────────────────────────
-    const worldOpsRef = useRef({
-        createEntity: worldCreateEntity,
-        patchEntity: worldPatchEntity,
-        deleteEntity: worldDeleteEntity,
-    });
-    useEffect(() => {
-        worldOpsRef.current = {
-            createEntity: worldCreateEntity,
-            patchEntity: worldPatchEntity,
-            deleteEntity: worldDeleteEntity,
-        };
-    });
-    const socketRef = useRef(socket);
-    useEffect(() => {
-        socketRef.current = socket;
-    });
-    const currentUserIdRef = useRef(currentUser?.id);
-    useEffect(() => {
-        currentUserIdRef.current = currentUser?.id;
-    });
     const updatePositionRef = useRef(updatePosition);
     const updateUserRef = useRef(updateUser);
     useEffect(() => {
@@ -117,31 +61,15 @@ export const GenericPluginHost: React.FC<GenericPluginHostProps> = ({
         updateUserRef.current = updateUser;
     });
 
-    // ── フェッチハンドラ ─────────────────────────────────────────────
-    // 許可ドメインの優先順位:
-    //   1. plugin.json の fetchDomains（プラグイン発行者が制御）
-    //   2. entity.data.fetchDomains（ワールド作成者が制御・外部バックエンド用）
-    // 相対 URL（/、./、../）は常に _fetchLocal を経由してチェックをスキップ。
-    const entityFetchDomains = useMemo(() => {
-        const raw = (_entity.data as Record<string, unknown>).fetchDomains;
-        return Array.isArray(raw) ? (raw as string[]) : [];
-    }, [_entity.data]);
-
-    const onFetch = useMemo(() => {
-        const mergedDomains = [...(definition.fetchDomains ?? []), ...entityFetchDomains];
-        const externalHandler = createPluginFetchHandler(mergedDomains);
-        return (url: string, options?: FetchOptions): Promise<FetchResult> => {
-            if (url.startsWith('/') || url.startsWith('./')) {
-                return _fetchLocal(url, options);
-            }
-            return externalHandler(url, options);
-        };
-    }, [definition.fetchDomains, entityFetchDomains]);
+    // ── onNetworkBroadcast は usePluginWorker より後に確定するため ref で橋渡し ──
+    const onNetworkBroadcastRef = useRef<((type: string, data: unknown) => void) | null>(null);
 
     // ── サブ hooks ─────────────────────────────────────────────────
     const { getCanvasRef, canvasHandlers } = usePluginCanvas(definition, hostDivRef);
     const { vnodes, onRender, sendAction, sendEventRef } = usePluginUI();
     const { getVideoRef, mediaHandlers } = usePluginMedia(definition, sendEventRef);
+    const onFetch = usePluginFetch(definition, entity);
+    const worldHandlers = usePluginWorld();
 
     // ── Worker ────────────────────────────────────────────────────
     const { sendEvent, workerRevision, setScrollElement } = usePluginWorker({
@@ -154,7 +82,10 @@ export const GenericPluginHost: React.FC<GenericPluginHostProps> = ({
         handlers: {
             ...canvasHandlers,
             ...mediaHandlers,
+            ...worldHandlers,
             onRender,
+            onFetch,
+            onNetworkBroadcast: (type, data) => onNetworkBroadcastRef.current?.(type, data),
             onMessage: (msg) => {
                 const m = msg as { type: string; payload: unknown };
                 if (m.type === 'position:update') {
@@ -166,58 +97,24 @@ export const GenericPluginHost: React.FC<GenericPluginHostProps> = ({
                     onCustomMessageRef.current?.(m.type, m.payload);
                 }
             },
-            onFetch,
-            onGetEntity: (id) => entities.get(id),
-            onQueryEntities: (entityType) => Array.from(entities.values()).filter((e) => e.type === entityType),
-            onNetworkBroadcast: (type, data) => {
-                socketRef.current?.emit('entity:ephemeral', {
-                    entityId,
-                    data: { type, userId: currentUserIdRef.current ?? '', data },
-                });
-            },
-            onCreateEntity: async (entity) =>
-                worldOpsRef.current.createEntity(entity.type, entity.transform, entity.data as Record<string, unknown>),
-            onUpdateEntity: async (_id, patch) => {
-                worldOpsRef.current.patchEntity(patch.entityId, patch.patch);
-            },
-            onDestroyEntity: async (id) => {
-                worldOpsRef.current.deleteEntity(id);
-            },
         },
     });
 
-    // sendEvent を sendEventRef に同期（レンダー中・副作用なし）
     sendEventRef.current = sendEvent;
 
-    // ── スクロール要素を InputCollector に登録 ──────────────────────
+    // ── broadcast ブリッジ（sendEvent 確定後に初期化）─────────────────
+    const { onNetworkBroadcast } = usePluginBroadcast(entityId, sendEvent);
+    onNetworkBroadcastRef.current = onNetworkBroadcast;
+
     useEffect(() => {
         const el = document.querySelector('[data-scroll-world]');
         if (el) setScrollElement(el);
         return () => setScrollElement(null);
     }, [setScrollElement]);
 
-    // ── 同期 effects ───────────────────────────────────────────────
     usePluginPresence(definition, users, sendEvent, workerRevision);
     usePluginEntitySync(definition, entities, sendEvent, workerRevision);
 
-    // entity:ephemeral → 他ユーザーのブロードキャストを Worker へ転送
-    useEffect(() => {
-        const sock = socket;
-        if (!sock) return;
-        const handler = (payload: EntityEphemeralPayload) => {
-            if (payload.entityId !== entityId) return;
-            const d = payload.data as { type: string; userId: string; data: unknown };
-            if (!d?.type) return;
-            if (d.userId === currentUserIdRef.current) return;
-            sendEvent({ type: 'EVT_NETWORK_BROADCAST', payload: { type: d.type, userId: d.userId, data: d.data } });
-        };
-        sock.on('entity:ephemeral', handler);
-        return () => {
-            sock.off('entity:ephemeral', handler);
-        };
-    }, [socket, entityId, sendEvent]);
-
-    // sendHostMessageRef: Host → Worker カスタムメッセージの外部公開
     useEffect(() => {
         if (!sendHostMessageRef) return;
         sendHostMessageRef.current = (type: string, payload: unknown) => {
@@ -234,22 +131,14 @@ export const GenericPluginHost: React.FC<GenericPluginHostProps> = ({
             ref={hostDivRef}
             data-entity-type={definition.id}
             data-entity-id={entityId}
-            style={{
-                pointerEvents: 'none',
-            }}
+            style={{ pointerEvents: 'none' }}
         >
             {definition.canvasTargets?.map((targetId) => (
                 <canvas
                     key={targetId}
                     ref={getCanvasRef(targetId)}
                     data-canvas-target={targetId}
-                    style={{
-                        position: 'absolute',
-                        inset: 0,
-                        width: '100%',
-                        height: '100%',
-                        pointerEvents: 'none',
-                    }}
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
                 />
             ))}
             {definition.mediaTargets?.map((targetId) => (

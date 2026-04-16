@@ -83,6 +83,10 @@ class WorldRegistry {
     // biome-ignore lint/correctness/noUnusedPrivateClassMembers: watcher は起動後も参照保持が必要
     private _watcher: ReturnType<typeof fs.watch> | null = null;
     private readonly _debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    /** 外部レジストリの最終取得時刻（レート制限対策） */
+    private _lastRegistrySeedAt = 0;
+    /** 外部レジストリの最小再取得間隔 ms（デフォルト: 1時間） */
+    private static readonly REGISTRY_SEED_INTERVAL_MS = 60 * 60 * 1000;
 
     constructor() {
         const envWorldsDir = process.env[ENV_KEYS.WORLDS_DIR];
@@ -452,10 +456,21 @@ class WorldRegistry {
     // ================================================================
 
     private async _seedFromRegistries(): Promise<void> {
+        const now = Date.now();
+        if (now - this._lastRegistrySeedAt < WorldRegistry.REGISTRY_SEED_INTERVAL_MS) {
+            return;
+        }
+        this._lastRegistrySeedAt = now;
+
         for (const registryUrl of this.registryUrls) {
             try {
                 let yamlUrls: string[];
                 if (GITHUB_TREE_RE.test(registryUrl)) {
+                    if (!this.registryToken) {
+                        console.warn(
+                            `⚠️  GitHub レジストリにトークンなしでアクセスします（レート制限: 60回/時間）。WORLDS_REGISTRY_TOKEN の設定を推奨します: ${registryUrl}`,
+                        );
+                    }
                     yamlUrls = await resolveGitHubRegistryUrls(registryUrl, this.registryToken);
                     console.log(`🌐 GitHub レジストリ: ${yamlUrls.length}件`);
                 } else {
