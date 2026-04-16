@@ -5,8 +5,8 @@ import type { WorldEntity } from '@ubichill/shared';
 import React, { useLayoutEffect, useMemo, useRef } from 'react';
 import { usePluginRegistry } from '@/plugins/PluginRegistryContext';
 import { Z_INDEX } from '@/styles/layers';
-import { buildAvatarThumbnails, loadAvatarTemplate } from './avatarTemplateLoader';
 import { EntityRenderer } from './EntityRenderer';
+import { loadImage } from './imageLoader';
 
 // ============================================
 // シングルトン CE をマウントし instanceCtx を注入するコンポーネント
@@ -67,14 +67,30 @@ const SingletonWorkerHost: React.FC<SingletonWorkerHostProps> = ({ plugin, entit
 
     const handleCustomMessage = React.useCallback((type: string, payload: unknown) => {
         if (type === 'avatar:applyTemplate') {
-            const { templateId } = payload as { templateId: string };
-            void loadAvatarTemplate(templateId).then((states) => {
-                updateUserRef.current({ avatar: { states } });
-            });
+            // Worker からバージョン付き URL のリストを受け取り、各ファイルをデコードして states を構築
+            const { files } = payload as { files: Array<{ state: string; url: string }> };
+            void Promise.all(files.map(async ({ state, url }) => [state, await loadImage(url)] as const)).then(
+                (entries) => {
+                    const states = Object.fromEntries(entries.map(([state, frame]) => [state, frame]));
+                    updateUserRef.current({ avatar: { states } });
+                },
+            );
         } else if (type === 'avatar:resetTemplate') {
             updateUserRef.current({ avatar: { states: {} } });
         } else if (type === 'avatar:initThumbnails') {
-            void buildAvatarThumbnails().then((thumbnails) => {
+            // Worker からバージョン付き URL のリストを受け取り、サムネイルをデコードして返す
+            const { thumbnailFiles } = payload as { thumbnailFiles: Array<{ id: string; url: string }> };
+            void Promise.all(
+                thumbnailFiles.map(async ({ id, url }) => {
+                    try {
+                        const frame = await loadImage(url);
+                        return [id, frame.url] as const;
+                    } catch {
+                        return null;
+                    }
+                }),
+            ).then((results) => {
+                const thumbnails = Object.fromEntries(results.filter((r) => r !== null));
                 sendHostMessageRef.current?.('avatar:thumbnails', { thumbnails });
             });
         }

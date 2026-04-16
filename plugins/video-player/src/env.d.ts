@@ -6,3 +6,5 @@
  * inline import type を使う。
  */
 declare const Ubi: import('@ubichill/sdk').UbiSDK;
+/** esbuild が注入するバージョン付きアセットベースパス。例: /plugins/video-player/v2.1.0 */
+declare const __PLUGIN_BASE__: string;

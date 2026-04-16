@@ -23,10 +23,19 @@ function resetToDefault(): void {
 
 function applyTemplate(templateId: string): void {
     if (_pendingTemplateId === templateId) return; // 連打を無視
+    const template = templates.find((t) => t.id === templateId);
+    if (!template) return;
     _pendingTemplateId = templateId;
     setCurrentTemplateId(templateId);
     setSettingsDirty(true);
-    Ubi.network.sendToHost('avatar:applyTemplate', { templateId });
+    // バージョン付き URL を組み立てて Host に送る（Host 側で ANI/CUR デコード）
+    const files = (Object.entries(template.mappings) as [string, string | undefined][])
+        .filter((entry): entry is [string, string] => !!entry[1])
+        .map(([state, filename]) => ({
+            state,
+            url: `${__PLUGIN_BASE__}/templates/${template.directory}/${filename}`,
+        }));
+    Ubi.network.sendToHost('avatar:applyTemplate', { files });
     // ホスト側の完了通知がないため、一定時間後に解除してリトライを許可する
     setTimeout(() => {
         if (_pendingTemplateId === templateId) {

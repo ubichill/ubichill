@@ -46,7 +46,7 @@ function fetchPluginJson(pluginName: string): Promise<PluginJson | null> {
     if (!pluginJsonCache.has(pluginName)) {
         pluginJsonCache.set(
             pluginName,
-            fetch(`${PLUGIN_BASE_URL}/${pluginName}/plugin.json`)
+            fetch(`${PLUGIN_BASE_URL}/${pluginName}/plugin.json`, { cache: 'no-store' })
                 .then((r) => (r.ok ? (r.json() as Promise<PluginJson>) : null))
                 .catch(() => null),
         );
