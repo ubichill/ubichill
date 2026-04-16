@@ -116,6 +116,7 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
             disableAutoInput: options.disableAutoInput,
             worldId: options.worldId,
             myUserId: options.myUserId,
+            pluginBase: options.pluginBase,
             handlers: {
                 onMessage: (msg) => handlersRef.current.onMessage?.(msg),
                 onCommand: (cmd) => handlersRef.current.onCommand?.(cmd),
@@ -173,6 +174,7 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
         options.disableAutoInput,
         options.worldId,
         options.myUserId,
+        options.pluginBase,
     ]);
 
     const sendEvent = useCallback((event: PluginHostEvent) => {
