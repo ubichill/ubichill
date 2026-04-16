@@ -3,10 +3,10 @@ import { isWorkerPlugin, useSocket, useWorld, WorkerPluginHost } from '@ubichill
 import type { UbiInstanceContext } from '@ubichill/sdk/ui';
 import type { WorldEntity } from '@ubichill/shared';
 import React, { useLayoutEffect, useMemo, useRef } from 'react';
+import { loadImage } from '@/lib/imageLoader';
 import { usePluginRegistry } from '@/plugins/PluginRegistryContext';
 import { Z_INDEX } from '@/styles/layers';
 import { EntityRenderer } from './EntityRenderer';
-import { loadImage } from './imageLoader';
 
 // ============================================
 // シングルトン CE をマウントし instanceCtx を注入するコンポーネント
@@ -82,20 +82,33 @@ const SingletonWorkerHost: React.FC<SingletonWorkerHostProps> = ({ plugin, entit
         } else if (type === 'avatar:initThumbnails') {
             // Worker からバージョン付き URL のリストを受け取り、サムネイルをデコードして返す
             const { thumbnailFiles } = payload as { thumbnailFiles: Array<{ id: string; url: string }> };
+            console.log(
+                `[avatar] initThumbnails: ${thumbnailFiles.length} 件`,
+                thumbnailFiles.map((f) => f.url),
+            );
             void Promise.all(
                 thumbnailFiles.map(async ({ id, url }) => {
                     try {
                         const frame = await loadImage(url);
                         return [id, frame.url] as const;
                     } catch (err) {
-                        console.error(`[InstanceRenderer] サムネイル読み込み失敗 id=${id} url=${url}`, err);
+                        console.error(`[avatar] サムネイル読み込み失敗 id=${id} url=${url}`, err);
                         return null;
                     }
                 }),
-            ).then((results) => {
-                const thumbnails = Object.fromEntries(results.filter((r) => r !== null));
-                sendHostMessageRef.current?.('avatar:thumbnails', { thumbnails });
-            });
+            )
+                .then((results) => {
+                    const thumbnails = Object.fromEntries(results.filter((r) => r !== null));
+                    console.log(`[avatar] thumbnails 送信: ${Object.keys(thumbnails).length} 件`);
+                    if (!sendHostMessageRef.current) {
+                        console.error('[avatar] sendHostMessageRef が null のため avatar:thumbnails を送信できません');
+                        return;
+                    }
+                    sendHostMessageRef.current('avatar:thumbnails', { thumbnails });
+                })
+                .catch((err: unknown) => {
+                    console.error('[avatar] initThumbnails 処理中エラー', err);
+                });
         }
     }, []);
 
