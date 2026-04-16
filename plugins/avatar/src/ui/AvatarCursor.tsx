@@ -1,7 +1,7 @@
-import { cursorZIndex, lerpX, lerpY, localAvatar, localCursorStyle, scrollX, scrollY } from '../state';
+import { cursorZIndex, lerpViewportX, lerpViewportY, localAvatar, localCursorStyle } from '../state';
 import { cssToState } from '../systems/utils';
 
-export const LocalCursor = () => {
+export const AvatarCursor = () => {
     const cursorState = cssToState(localCursorStyle);
     const stateDef = localAvatar.states[cursorState as keyof typeof localAvatar.states] ?? localAvatar.states.default;
     if (!stateDef?.url) return null;
@@ -11,8 +11,8 @@ export const LocalCursor = () => {
         <div
             style={{
                 position: 'fixed',
-                left: lerpX - scrollX - hx,
-                top: lerpY - scrollY - hy,
+                left: lerpViewportX - hx,
+                top: lerpViewportY - hy,
                 pointerEvents: 'none',
                 zIndex: cursorZIndex,
                 willChange: 'transform',

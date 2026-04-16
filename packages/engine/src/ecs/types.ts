@@ -60,6 +60,8 @@ export const EcsEventType = {
     INPUT_CONTEXT_MENU: 'input:context_menu',
     /** スクロール — payload: { x: scrollLeft, y: scrollTop } */
     INPUT_SCROLL: 'input:scroll',
+    /** ウィンドウリサイズ — payload: { width: number; height: number } */
+    INPUT_RESIZE: 'input:resize',
     /**
      * 他ユーザーの Worker が Ubi.network.broadcast() で送ったデータ。
      * payload: { userId: string; data: unknown }

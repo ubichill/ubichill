@@ -16,6 +16,18 @@ import { _beginRender, _callHandler, _clearTarget } from './jsx-runtime';
 
 export type { PluginWorkerMessage };
 
+export type UiRenderCostStat = {
+    targetId: string;
+    entityId?: string;
+    componentName?: string;
+    renderCount: number;
+    totalFactoryMs: number;
+    averageFactoryMs: number;
+    maxFactoryMs: number;
+    lastFactoryMs: number;
+    lastRenderedAt: number;
+};
+
 /** EVT_INPUT の type 文字列マッピング（毎フレーム再生成を回避） */
 const INPUT_TYPE_MAP: Readonly<Record<string, string>> = {
     MOUSE_MOVE: EcsEventType.INPUT_MOUSE_MOVE,
@@ -25,6 +37,7 @@ const INPUT_TYPE_MAP: Readonly<Record<string, string>> = {
     KEY_UP: EcsEventType.INPUT_KEY_UP,
     CONTEXT_MENU: EcsEventType.INPUT_CONTEXT_MENU,
     SCROLL: EcsEventType.INPUT_SCROLL,
+    RESIZE: EcsEventType.INPUT_RESIZE,
 };
 
 type PendingRequest = {
@@ -46,6 +59,23 @@ export class UbiSDK {
     private _rpcTimeout: number;
 
     private _pendingWorkerEvents: WorkerEvent[] = [];
+    private _uiRenderQueue = new Map<string, VNode | null>();
+    private _uiFlushScheduled = false;
+    private _isTicking = false;
+    private _uiTargetScope = new Map<string, { entityId: string; componentName: string }>();
+    private _uiRenderStats = new Map<
+        string,
+        {
+            targetId: string;
+            entityId?: string;
+            componentName?: string;
+            renderCount: number;
+            totalFactoryMs: number;
+            maxFactoryMs: number;
+            lastFactoryMs: number;
+            lastRenderedAt: number;
+        }
+    >();
     public readonly local: EcsWorld;
 
     public worldId?: string;
@@ -61,15 +91,83 @@ export class UbiSDK {
         this.local = new EcsWorldImpl();
     }
 
+    private _buildEntityTargetId(entityId: string, componentName: string): string {
+        return `entity:${entityId}:component:${componentName}`;
+    }
+
+    private _queueUiRender(targetId: string, vnode: VNode | null): void {
+        this._uiRenderQueue.set(targetId, vnode);
+        if (this._isTicking || this._uiFlushScheduled) return;
+        this._uiFlushScheduled = true;
+        queueMicrotask(() => {
+            this._uiFlushScheduled = false;
+            if (!this._isTicking) {
+                this._flushUiRenderQueue();
+            }
+        });
+    }
+
+    private _flushUiRenderQueue(): void {
+        if (this._uiRenderQueue.size === 0) return;
+        for (const [targetId, vnode] of this._uiRenderQueue) {
+            this._send({ type: 'UI_RENDER', payload: { targetId, vnode } });
+        }
+        this._uiRenderQueue.clear();
+    }
+
+    private _recordUiRenderCost(
+        targetId: string,
+        costMs: number,
+        scope?: { entityId: string; componentName: string },
+    ): void {
+        if (scope) {
+            this._uiTargetScope.set(targetId, scope);
+        }
+        const meta = this._uiTargetScope.get(targetId);
+        const prev = this._uiRenderStats.get(targetId);
+        this._uiRenderStats.set(targetId, {
+            targetId,
+            entityId: meta?.entityId,
+            componentName: meta?.componentName,
+            renderCount: (prev?.renderCount ?? 0) + 1,
+            totalFactoryMs: (prev?.totalFactoryMs ?? 0) + costMs,
+            maxFactoryMs: Math.max(prev?.maxFactoryMs ?? 0, costMs),
+            lastFactoryMs: costMs,
+            lastRenderedAt: Date.now(),
+        });
+    }
+
+    private _renderUi(
+        factory: () => VNode,
+        targetId: string,
+        scope?: { entityId: string; componentName: string },
+    ): void {
+        const start = performance.now();
+        _beginRender(targetId);
+        const vnode = factory();
+        const costMs = performance.now() - start;
+        this._recordUiRenderCost(targetId, costMs, scope);
+        this._queueUiRender(targetId, vnode);
+    }
+
+    private _unmountUi(targetId: string): void {
+        _clearTarget(targetId);
+        this._queueUiRender(targetId, null);
+    }
+
     public _dispatchEvent(event: PluginHostEvent): void {
         switch (event.type) {
             case 'EVT_LIFECYCLE_TICK': {
                 const dt = event.payload.deltaTime;
                 try {
+                    this._isTicking = true;
                     this.local.tick(dt, this._pendingWorkerEvents);
-                    this._pendingWorkerEvents.length = 0;
                 } catch (err) {
                     console.error('[UbiSDK] ECS World tick error:', err);
+                } finally {
+                    this._isTicking = false;
+                    this._pendingWorkerEvents.length = 0;
+                    this._flushUiRenderQueue();
                 }
                 break;
             }
@@ -257,9 +355,16 @@ export class UbiSDK {
          * ```
          */
         render: (factory: () => VNode, targetId = 'default'): void => {
-            _beginRender(targetId);
-            const vnode = factory();
-            this._send({ type: 'UI_RENDER', payload: { targetId, vnode } });
+            this._renderUi(factory, targetId);
+        },
+
+        /**
+         * entity/component 単位で描画する。
+         * targetId の命名を統一し、描画コストを entity 単位で集計しやすくする。
+         */
+        renderEntity: (entityId: string, componentName: string, factory: () => VNode): void => {
+            const targetId = this._buildEntityTargetId(entityId, componentName);
+            this._renderUi(factory, targetId, { entityId, componentName });
         },
 
         /**
@@ -267,8 +372,53 @@ export class UbiSDK {
          * @param targetId Host 側の描画スロット名（省略時: 'default'）
          */
         unmount: (targetId = 'default'): void => {
-            _clearTarget(targetId);
-            this._send({ type: 'UI_RENDER', payload: { targetId, vnode: null } });
+            this._unmountUi(targetId);
+        },
+
+        /**
+         * entity/component 単位でアンマウントする。
+         */
+        unmountEntity: (entityId: string, componentName: string): void => {
+            this._unmountUi(this._buildEntityTargetId(entityId, componentName));
+        },
+
+        /**
+         * target/entity/component ごとの描画コスト統計を取得する。
+         * 1件 = 1targetId の累積値。
+         */
+        getRenderStats: (): UiRenderCostStat[] => {
+            const out: UiRenderCostStat[] = [];
+            for (const stat of this._uiRenderStats.values()) {
+                out.push({
+                    targetId: stat.targetId,
+                    entityId: stat.entityId,
+                    componentName: stat.componentName,
+                    renderCount: stat.renderCount,
+                    totalFactoryMs: stat.totalFactoryMs,
+                    averageFactoryMs: stat.renderCount > 0 ? stat.totalFactoryMs / stat.renderCount : 0,
+                    maxFactoryMs: stat.maxFactoryMs,
+                    lastFactoryMs: stat.lastFactoryMs,
+                    lastRenderedAt: stat.lastRenderedAt,
+                });
+            }
+            return out.sort((a, b) => b.totalFactoryMs - a.totalFactoryMs);
+        },
+
+        /**
+         * 描画コスト統計をクリアする。entityId 指定時はその entity のみ削除。
+         */
+        clearRenderStats: (entityId?: string): void => {
+            if (!entityId) {
+                this._uiRenderStats.clear();
+                this._uiTargetScope.clear();
+                return;
+            }
+            for (const [targetId, stat] of this._uiRenderStats) {
+                if (stat.entityId === entityId) {
+                    this._uiRenderStats.delete(targetId);
+                    this._uiTargetScope.delete(targetId);
+                }
+            }
         },
     };
 

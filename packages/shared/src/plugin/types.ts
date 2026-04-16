@@ -523,6 +523,8 @@ export type InputContextMenuData = { x: number; y: number; viewportX: number; vi
  * x/y はスクロール量（scrollLeft/scrollTop）。
  */
 export type InputScrollData = { x: number; y: number };
+/** ウィンドウリサイズデータ */
+export type InputResizeData = { width: number; height: number };
 
 /** 1フレーム内の入力イベント1件 */
 export type InputFrameEvent =
@@ -532,7 +534,8 @@ export type InputFrameEvent =
     | { type: 'KEY_DOWN'; data: InputKeyDownData }
     | { type: 'KEY_UP'; data: InputKeyUpData }
     | { type: 'CONTEXT_MENU'; data: InputContextMenuData }
-    | { type: 'SCROLL'; data: InputScrollData };
+    | { type: 'SCROLL'; data: InputScrollData }
+    | { type: 'RESIZE'; data: InputResizeData };
 
 /**
  * [Input] Tick 直前に Host がすべての Worker へ配信する入力スナップショット。

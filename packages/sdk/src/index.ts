@@ -11,7 +11,7 @@
 // ECS + メッセージング型
 export * from '@ubichill/engine';
 // UbiSDK 型（プラグイン Worker の `declare const Ubi: UbiSDK` 用）
-export type { UbiSDK } from '@ubichill/sandbox';
+export type { UbiSDK, UiRenderCostStat } from '@ubichill/sandbox';
 // プロトコル型（@ubichill/shared より選択的に re-export）
 export type {
     AppAvatarDef,

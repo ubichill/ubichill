@@ -13,7 +13,6 @@ import {
     localCursorStyle,
     setLocalAvatar,
     setLocalCursorStyle,
-    setLocalStatus,
     setSettingsDirty,
     setTemplates,
     setTemplatesLoaded,
@@ -21,7 +20,6 @@ import {
     templatesLoaded,
     thumbnailUrls,
 } from '../state';
-import type { UserStatus } from '../types';
 import { clearPendingTemplate, SettingsPanel } from '../ui/SettingsPanel';
 
 export async function initTemplates(): Promise<void> {
@@ -36,7 +34,6 @@ export async function initTemplates(): Promise<void> {
             const data = JSON.parse(result.body) as TemplateEntry[];
             setTemplates(data);
             setSettingsDirty(true);
-            // ホストにサムネイル変換を依頼（ANI → data URL 等）
             Ubi.network.sendToHost('avatar:initThumbnails', {});
         }
     } catch {
@@ -69,34 +66,19 @@ export const AvatarSettingsSystem: System = (_entities: Entity[], _deltaTime: nu
         }
 
         if (event.type === EcsEventType.PLAYER_JOINED) {
-            const user = event.payload as {
-                id: string;
-                status: UserStatus;
-                avatar?: AppAvatarDef;
-            };
-            if (user.id === myUserId) {
-                if (user.status) setLocalStatus(user.status);
-                if (user.avatar) {
-                    setLocalAvatar(user.avatar);
-                    setSettingsDirty(true);
-                    // テンプレート適用完了 → ローディング状態を解除
-                    if (currentTemplateId !== null) {
-                        clearPendingTemplate(currentTemplateId);
-                    }
+            const user = event.payload as { id: string; avatar?: AppAvatarDef };
+            if (user.id === myUserId && user.avatar) {
+                setLocalAvatar(user.avatar);
+                setSettingsDirty(true);
+                if (currentTemplateId !== null) {
+                    clearPendingTemplate(currentTemplateId);
                 }
             }
         }
     }
 
-    // 設定パネル: 状態変化時のみ再描画
     if (settingsDirty) {
         setSettingsDirty(false);
         Ubi.ui.render(() => <SettingsPanel />, 'settings');
     }
 };
-
-// SettingsPanel で使う changeStatus 相当（設定ワーカーのみ）
-export function changeStatus(newStatus: UserStatus): void {
-    setLocalStatus(newStatus);
-    Ubi.network.sendToHost('user:update', { status: newStatus });
-}

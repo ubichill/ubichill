@@ -22,7 +22,7 @@ interface PluginJson {
     id: string;
     name?: string;
     version: string;
-    workers?: Record<string, string | WorkerMetaObject>;
+    entities?: Record<string, string | WorkerMetaObject>;
 }
 
 /**
@@ -59,47 +59,39 @@ function fetchPluginJson(pluginName: string): Promise<PluginJson | null> {
 }
 
 /**
- * plugin.json のメタデータを使って WorkerPluginDefinition を自動構築する。
- * `pluginName` 形式の場合は定義されているすべてのワーカーをロードし、配列を返す。
- * `pluginName:workerKey` 形式の場合は該当ワーカーのみを配列で返す。
+ * plugin.json のエンティティ定義から WorkerPluginDefinition を構築する。
+ * entityType は `pluginName:entityKey` 形式（例: "avatar:cursor"）。
+ * entities キーがそのまま entityType と一致する。
  */
 async function autoLoadWorkerPlugins(entityType: string): Promise<WorkerPluginDefinition[]> {
     const colonIdx = entityType.indexOf(':');
-    let pluginName: string;
-    let targetWorkerKey: string | null = null;
+    if (colonIdx === -1) return [];
 
-    if (colonIdx === -1) {
-        pluginName = entityType;
-    } else {
-        pluginName = entityType.slice(0, colonIdx);
-        targetWorkerKey = entityType.slice(colonIdx + 1);
-    }
+    const pluginName = entityType.slice(0, colonIdx);
+    const entityKey = entityType.slice(colonIdx + 1);
 
     const pluginJson = await fetchPluginJson(pluginName);
-    if (!pluginJson?.workers) return [];
+    if (!pluginJson?.entities) return [];
 
-    const workerKeys = targetWorkerKey ? [targetWorkerKey] : Object.keys(pluginJson.workers);
-    const definitions: WorkerPluginDefinition[] = [];
+    const entry = pluginJson.entities[entityType];
+    if (!entry) return [];
 
-    for (const workerKey of workerKeys) {
-        const workerEntry = pluginJson.workers[workerKey];
-        if (!workerEntry) continue;
+    const meta: Partial<WorkerMetaObject> = typeof entry === 'string' ? {} : entry;
+    const workerUrl = `${PLUGIN_BASE_URL}/${pluginName}/v${pluginJson.version}/${entityKey}/index.js`;
 
-        const meta: Partial<WorkerMetaObject> = typeof workerEntry === 'string' ? {} : workerEntry;
-        const workerUrl = `${PLUGIN_BASE_URL}/${pluginName}/v${pluginJson.version}/${workerKey}/index.js`;
+    let workerCode: string;
+    try {
+        const res = await fetch(workerUrl);
+        if (!res.ok) return [];
+        workerCode = await res.text();
+    } catch {
+        return [];
+    }
 
-        let workerCode: string;
-        try {
-            const res = await fetch(workerUrl);
-            if (!res.ok) continue;
-            workerCode = await res.text();
-        } catch {
-            continue;
-        }
-
-        definitions.push({
-            id: `${pluginName}:${workerKey}`,
-            name: `${pluginJson.name ?? pluginName} - ${workerKey}`,
+    return [
+        {
+            id: entityType,
+            name: `${pluginJson.name ?? pluginName} - ${entityKey}`,
             workerCode,
             capabilities: meta.capabilities,
             singleton: meta.singleton,
@@ -107,10 +99,8 @@ async function autoLoadWorkerPlugins(entityType: string): Promise<WorkerPluginDe
             watchEntityTypes: meta.watchEntityTypes,
             mediaTargets: meta.mediaTargets,
             fetchDomains: meta.fetchDomains,
-        });
-    }
-
-    return definitions;
+        },
+    ];
 }
 
 // ============================================

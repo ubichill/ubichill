@@ -11,6 +11,7 @@ import type {
     EntityPatchPayload,
     FetchOptions,
     FetchResult,
+    InputFrameEvent,
     PluginGuestCommand,
     PluginHostEvent,
     PluginWorkerMessage,
@@ -35,6 +36,7 @@ export const CAPABILITY_COMMANDS: Readonly<Record<string, readonly string[]>> = 
     ],
     'net:fetch': ['NET_FETCH'],
     'net:broadcast': ['NETWORK_BROADCAST'],
+    'net:host-message': ['NETWORK_SEND_TO_HOST'],
     'ui:toast': ['UI_SHOW_TOAST'],
     'ui:render': ['UI_RENDER'],
     'avatar:set': ['AVATAR_SET'],
@@ -180,6 +182,72 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
     // スタティックレジストリ — アクティブWorkerの一覧と総数を外部から取得できる
     // ============================================================
     private static readonly _registry = new Map<string, PluginWorkerInfo>();
+    private static _sharedInputCollector: InputCollector | null = null;
+    private static _sharedInputRefCount = 0;
+    private static readonly _sharedInputCursor = new Map<string, number>();
+    private static readonly _sharedScrollElementByInstance = new Map<string, Element | null>();
+
+    private static _acquireSharedInput(instanceKey: string): void {
+        if (!PluginHostManager._sharedInputCollector) {
+            PluginHostManager._sharedInputCollector = new InputCollector();
+        }
+        PluginHostManager._sharedInputRefCount += 1;
+        PluginHostManager._sharedInputCursor.set(instanceKey, 0);
+        PluginHostManager._sharedScrollElementByInstance.set(instanceKey, null);
+    }
+
+    private static _releaseSharedInput(instanceKey: string): void {
+        PluginHostManager._sharedInputCursor.delete(instanceKey);
+        PluginHostManager._sharedScrollElementByInstance.delete(instanceKey);
+        PluginHostManager._applySharedScrollElement();
+
+        PluginHostManager._sharedInputRefCount = Math.max(0, PluginHostManager._sharedInputRefCount - 1);
+        if (PluginHostManager._sharedInputRefCount === 0) {
+            PluginHostManager._sharedInputCollector?.destroy();
+            PluginHostManager._sharedInputCollector = null;
+            PluginHostManager._sharedInputCursor.clear();
+            PluginHostManager._sharedScrollElementByInstance.clear();
+        }
+    }
+
+    private static _applySharedScrollElement(): void {
+        const collector = PluginHostManager._sharedInputCollector;
+        if (!collector) return;
+
+        let scrollElement: Element | null = null;
+        for (const candidate of PluginHostManager._sharedScrollElementByInstance.values()) {
+            if (candidate) {
+                scrollElement = candidate;
+                break;
+            }
+        }
+        collector.setScrollElement(scrollElement);
+    }
+
+    private static _setSharedScrollElement(instanceKey: string, el: Element | null): void {
+        if (!PluginHostManager._sharedInputCollector) return;
+        PluginHostManager._sharedScrollElementByInstance.set(instanceKey, el);
+        PluginHostManager._applySharedScrollElement();
+    }
+
+    private static _collectSharedInputFor(instanceKey: string): InputFrameEvent[] {
+        const collector = PluginHostManager._sharedInputCollector;
+        if (!collector) return [];
+
+        const lastSeq = PluginHostManager._sharedInputCursor.get(instanceKey) ?? 0;
+        const { events, lastSeq: nextSeq } = collector.collectSince(lastSeq);
+        PluginHostManager._sharedInputCursor.set(instanceKey, nextSeq);
+
+        let minSeq = Number.POSITIVE_INFINITY;
+        for (const seq of PluginHostManager._sharedInputCursor.values()) {
+            if (seq < minSeq) minSeq = seq;
+        }
+        if (Number.isFinite(minSeq)) {
+            collector.pruneEventsBefore(minSeq);
+        }
+
+        return events;
+    }
 
     /** アクティブな全WorkerのInfo。読み取り専用。 */
     static get registry(): ReadonlyMap<string, PluginWorkerInfo> {
@@ -222,7 +290,7 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
     private lastTime = performance.now();
     private readonly intervalMs: number;
     private readonly tickEnabled: boolean;
-    private _inputCollector: InputCollector | null = null;
+    private readonly _autoInputEnabled: boolean;
 
     // Arrow fields: bind 済みのため毎フレーム bind() しない（GC ゼロ）
     private readonly _animate = (time: number): void => {
@@ -284,7 +352,7 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
         });
 
         if (options.capabilities) {
-            this.allowedCommands = new Set(['NETWORK_SEND_TO_HOST', 'CMD_LOG']);
+            this.allowedCommands = new Set(['CMD_LOG']);
             for (const cap of options.capabilities) {
                 for (const cmd of CAPABILITY_COMMANDS[cap] ?? []) {
                     this.allowedCommands.add(cmd);
@@ -297,6 +365,7 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
         const fps = options.tickFps ?? 60;
         this.intervalMs = fps > 0 ? 1000 / fps : 0;
         this.tickEnabled = !options.disableAutoTick && fps > 0;
+        this._autoInputEnabled = this.tickEnabled && !options.disableAutoInput;
 
         const maxExecutionTime = options.maxExecutionTime ?? 0;
 
@@ -341,8 +410,8 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
             this._startTickLoop();
         }
 
-        if (this.tickEnabled && !options.disableAutoInput) {
-            this._inputCollector = new InputCollector();
+        if (this._autoInputEnabled) {
+            PluginHostManager._acquireSharedInput(this._instanceKey);
         }
     }
 
@@ -369,8 +438,8 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
     private _sendTick(deltaTime: number): void {
         if (this.isInitialized) {
             // 入力イベントを Tick より先に送信（UbiSDK 側でキューに積まれ、同 Tick で処理される）
-            if (this._inputCollector) {
-                const inputEvents = this._inputCollector.flushEvents();
+            if (this._autoInputEnabled) {
+                const inputEvents = PluginHostManager._collectSharedInputFor(this._instanceKey);
                 if (inputEvents.length > 0) {
                     this.sendEvent({ type: 'EVT_INPUT', payload: { events: inputEvents } });
                 }
@@ -574,7 +643,8 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
      * GenericPluginHost が [data-scroll-world] 要素を見つけたときに呼ぶ。
      */
     public setScrollElement(el: Element | null): void {
-        this._inputCollector?.setScrollElement(el);
+        if (!this._autoInputEnabled) return;
+        PluginHostManager._setSharedScrollElement(this._instanceKey, el);
     }
 
     public sendEventWithTransfer(event: PluginHostEvent, transfer: Transferable[]): void {
@@ -595,8 +665,9 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
         }
         if (this.animationFrameId !== undefined) cancelAnimationFrame(this.animationFrameId);
         if (this.intervalId !== undefined) clearInterval(this.intervalId);
-        this._inputCollector?.destroy();
-        this._inputCollector = null;
+        if (this._autoInputEnabled) {
+            PluginHostManager._releaseSharedInput(this._instanceKey);
+        }
         this.worker.terminate();
         PluginHostManager._registry.delete(this._instanceKey);
     }

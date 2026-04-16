@@ -1,7 +1,5 @@
 /**
- * AvatarCursorSystem — ローカルカーソル・リモートカーソルを担当。
- *
- * avatar:cursor エンティティの transform.z が CSS zIndex として使われる。
+ * AvatarCursorSystem — ローカルカーソル表示を担当。
  * cursor.worker.tsx にのみ登録される。
  */
 
@@ -10,39 +8,21 @@ import { EcsEventType } from '@ubichill/sdk';
 import {
     initialized,
     LERP_SPEED,
-    lastPositionSentAt,
-    lastSentCursorState,
-    lastSentX,
-    lastSentY,
-    lerpX,
-    lerpY,
+    lerpViewportX,
+    lerpViewportY,
     localCursorStyle,
-    POSITION_THROTTLE_MS,
-    remoteUsers,
     SNAP_THRESHOLD,
-    scrollX,
-    scrollY,
     setInitialized,
-    setLastPositionSentAt,
-    setLastSentCursorState,
-    setLastSentX,
-    setLastSentY,
-    setLerpX,
-    setLerpY,
+    setLerpViewportX,
+    setLerpViewportY,
     setLocalAvatar,
     setLocalCursorStyle,
-    setLocalStatus,
-    setScrollX,
-    setScrollY,
-    setTargetX,
-    setTargetY,
-    targetX,
-    targetY,
+    setTargetViewportX,
+    setTargetViewportY,
+    targetViewportX,
+    targetViewportY,
 } from '../state';
-import type { UserStatus } from '../types';
-import { LocalCursor } from '../ui/LocalCursor';
-import { RemoteCursor } from '../ui/RemoteCursor';
-import { cssToState } from './utils';
+import { AvatarCursor } from '../ui/AvatarCursor';
 
 export const AvatarCursorSystem: System = (_entities: Entity[], deltaTime: number, events: WorkerEvent[]) => {
     const myUserId = Ubi.myUserId;
@@ -50,120 +30,43 @@ export const AvatarCursorSystem: System = (_entities: Entity[], deltaTime: numbe
     for (const event of events) {
         if (event.type === EcsEventType.INPUT_MOUSE_MOVE) {
             const d = event.payload as {
-                x: number;
-                y: number;
                 viewportX: number;
                 viewportY: number;
-                buttons: number;
                 cursorStyle?: string;
             };
             if (!initialized) {
-                setLerpX(d.x);
-                setLerpY(d.y);
+                setLerpViewportX(d.viewportX);
+                setLerpViewportY(d.viewportY);
                 setInitialized(true);
             }
-            setTargetX(d.x);
-            setTargetY(d.y);
+            setTargetViewportX(d.viewportX);
+            setTargetViewportY(d.viewportY);
             if (d.cursorStyle && d.cursorStyle !== localCursorStyle) {
                 setLocalCursorStyle(d.cursorStyle);
             }
         }
 
-        if (event.type === EcsEventType.INPUT_SCROLL) {
-            const d = event.payload as { x: number; y: number };
-            setScrollX(d.x);
-            setScrollY(d.y);
-            for (const [userId, user] of remoteUsers) {
-                const vx = user.position.x - d.x;
-                const vy = user.position.y - d.y;
-                Ubi.ui.render(
-                    () => <RemoteCursor user={{ ...user, position: { x: vx, y: vy } }} />,
-                    `cursor-${userId}`,
-                );
-            }
-        }
-
         if (event.type === EcsEventType.PLAYER_JOINED) {
-            const user = event.payload as {
-                id: string;
-                name: string;
-                position?: { x: number; y: number };
-                cursorState?: string;
-                status: UserStatus;
-                avatar?: AppAvatarDef;
-                penColor?: string | null;
-            };
-            if (user.id === myUserId) {
-                if (user.status) setLocalStatus(user.status);
-                if (user.avatar) setLocalAvatar(user.avatar);
-            } else {
-                remoteUsers.set(user.id, {
-                    id: user.id,
-                    name: user.name,
-                    position: user.position ?? { x: 0, y: 0 },
-                    cursorState: user.cursorState,
-                    status: user.status,
-                    avatar: user.avatar,
-                    penColor: user.penColor,
-                });
-            }
-        }
-
-        if (event.type === EcsEventType.PLAYER_LEFT) {
-            const userId = event.payload as string;
-            remoteUsers.delete(userId);
-            Ubi.ui.unmount(`cursor-${userId}`);
-        }
-
-        if (event.type === EcsEventType.PLAYER_CURSOR_MOVED) {
-            const { userId, position } = event.payload as {
-                userId: string;
-                position: { x: number; y: number };
-            };
-            if (userId !== myUserId) {
-                const user = remoteUsers.get(userId);
-                if (user) {
-                    remoteUsers.set(userId, { ...user, position });
-                    const updatedUser = remoteUsers.get(userId);
-                    if (updatedUser) {
-                        const vx = position.x - scrollX;
-                        const vy = position.y - scrollY;
-                        Ubi.ui.render(
-                            () => <RemoteCursor user={{ ...updatedUser, position: { x: vx, y: vy } }} />,
-                            `cursor-${userId}`,
-                        );
-                    }
-                }
+            const user = event.payload as { id: string; avatar?: AppAvatarDef };
+            if (user.id === myUserId && user.avatar) {
+                setLocalAvatar(user.avatar);
             }
         }
     }
 
-    // lerp
+    // viewport lerp
     if (initialized) {
-        const dx = targetX - lerpX;
-        const dy = targetY - lerpY;
-        if (Math.abs(dx) < SNAP_THRESHOLD && Math.abs(dy) < SNAP_THRESHOLD) {
-            setLerpX(targetX);
-            setLerpY(targetY);
+        const dvx = targetViewportX - lerpViewportX;
+        const dvy = targetViewportY - lerpViewportY;
+        if (Math.abs(dvx) < SNAP_THRESHOLD && Math.abs(dvy) < SNAP_THRESHOLD) {
+            setLerpViewportX(targetViewportX);
+            setLerpViewportY(targetViewportY);
         } else {
             const f = Math.min(1, deltaTime * LERP_SPEED);
-            setLerpX(lerpX + dx * f);
-            setLerpY(lerpY + dy * f);
-        }
-
-        const now = Date.now();
-        const cursorState = cssToState(localCursorStyle);
-        if (
-            now - lastPositionSentAt > POSITION_THROTTLE_MS &&
-            (lerpX !== lastSentX || lerpY !== lastSentY || cursorState !== lastSentCursorState)
-        ) {
-            setLastPositionSentAt(now);
-            setLastSentX(lerpX);
-            setLastSentY(lerpY);
-            setLastSentCursorState(cursorState);
-            Ubi.network.sendToHost('position:update', { x: lerpX, y: lerpY, cursorState });
+            setLerpViewportX(lerpViewportX + dvx * f);
+            setLerpViewportY(lerpViewportY + dvy * f);
         }
     }
 
-    Ubi.ui.render(() => <LocalCursor />, 'local-cursor');
+    Ubi.ui.renderEntity(`user:${myUserId ?? 'unknown'}`, 'cursor', () => <AvatarCursor />);
 };
