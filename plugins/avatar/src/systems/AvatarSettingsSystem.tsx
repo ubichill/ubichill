@@ -52,10 +52,10 @@ export const AvatarSettingsSystem: System = (_entities: Entity[], _deltaTime: nu
     const myUserId = Ubi.myUserId;
 
     for (const event of events) {
-        if (event.type === EcsEventType.INPUT_MOUSE_MOVE) {
-            const d = event.payload as { cursorStyle?: string };
-            if (d.cursorStyle && d.cursorStyle !== settings.cursorStyle) {
-                settings.cursorStyle = d.cursorStyle;
+        if (event.type === EcsEventType.INPUT_CURSOR_STYLE) {
+            const d = event.payload as { style: string };
+            if (d.style !== settings.cursorStyle) {
+                settings.cursorStyle = d.style;
                 settings.dirty = true;
             }
         }

@@ -34,8 +34,25 @@ export type CursorState = (typeof CURSOR_STATES)[number];
 /**
  * アプリケーション側で定義するアバター（カーソル）設定
  */
+export interface AvatarStateFrame {
+    url: string;
+    duration: number; // ms
+}
+
+export interface AvatarStateDef {
+    /** 最初のフレームの PNG data URL（サーバー送信・他ユーザーへの表示用） */
+    url: string;
+    hotspot: { x: number; y: number };
+    /**
+     * 元ファイルの URL（ANI/CUR/PNG）。
+     * cursor worker がアニメーションフレームをホストへ要求するときに使う。
+     * サーバー経由で他ユーザーへも配信されるため軽量な文字列に限る。
+     */
+    sourceUrl?: string;
+}
+
 export interface AppAvatarDef {
-    states: Partial<Record<CursorState, { url: string; hotspot: { x: number; y: number } }>>;
+    states: Partial<Record<CursorState, AvatarStateDef>>;
     hideSystemCursor?: boolean;
 }
 

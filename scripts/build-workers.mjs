@@ -93,8 +93,6 @@ export async function buildWorker(pluginJsonPath) {
     const pluginId = pluginJson.id;
     const pluginDirName = basename(pluginDir);
     const version = pluginJson.version;
-    const pluginJsonContent = readFileSync(pluginJsonPath, 'utf-8');
-
     const publicPluginDir = join(root, 'packages', 'frontend', 'public', 'plugins', pluginDirName);
     const publicVersionDir = join(publicPluginDir, `v${version}`);
     const distVersionDir = join(distPluginsDir, pluginDirName, `v${version}`);
@@ -103,14 +101,18 @@ export async function buildWorker(pluginJsonPath) {
     const rootTsconfig = join(pluginDir, 'tsconfig.json');
     const tsconfig = existsSync(rootTsconfig) ? rootTsconfig : undefined;
 
-    // plugin.json をコピー（バージョン固定 + エイリアス）
+    // ── ルート index（npm の "latest" pointer 相当） ──────────────────
+    // バージョンへのポインタのみ。エンティティ詳細はバージョン付きマニフェストに分離。
+    const rootIndex = JSON.stringify({ id: pluginId, name: pluginJson.name, version }, null, 2);
+    mkdirSync(publicPluginDir, { recursive: true });
+    writeFileSync(join(publicPluginDir, 'plugin.json'), rootIndex, 'utf-8');
+    mkdirSync(join(distPluginsDir, pluginDirName), { recursive: true });
+    writeFileSync(join(distPluginsDir, pluginDirName, 'plugin.json'), rootIndex, 'utf-8');
+
+    // ── バージョン付きマニフェスト（ランタイム用・src なし・workerUrl 明示） ──
+    // src はビルド時のみ必要なため除去。workerUrl でロード先を明示する。
     mkdirSync(distVersionDir, { recursive: true });
     mkdirSync(publicVersionDir, { recursive: true });
-    writeFileSync(join(distVersionDir, 'plugin.json'), pluginJsonContent, 'utf-8');
-    writeFileSync(join(publicVersionDir, 'plugin.json'), pluginJsonContent, 'utf-8');
-    // publicPluginDir 直下のエイリアス（ローダーが /plugins/<name>/plugin.json で取得する）
-    mkdirSync(publicPluginDir, { recursive: true });
-    writeFileSync(join(publicPluginDir, 'plugin.json'), pluginJsonContent, 'utf-8');
 
     // ── entities 形式 (entity-first) ────────────────────────────
     const entityEntries = pluginJson.entities;
@@ -118,6 +120,9 @@ export async function buildWorker(pluginJsonPath) {
         console.warn(`⚠️  [${pluginId}] entities フィールドが見つかりません。スキップします。`);
         return;
     }
+
+    // バージョン付きマニフェスト用エンティティ（src 除去・workerUrl 追加）
+    const versionedEntities = {};
 
     for (const [entityType, entityEntry] of Object.entries(entityEntries)) {
         const workerRelPath = typeof entityEntry === 'string' ? entityEntry : entityEntry?.src;
@@ -148,8 +153,21 @@ export async function buildWorker(pluginJsonPath) {
         mkdirSync(publicEntityDir, { recursive: true });
         writeFileSync(join(publicEntityDir, 'index.js'), code, 'utf-8');
 
+        // workerUrl を明示、src（ビルド時のみ）は除去
+        const { src: _src, ...runtimeMeta } = typeof entityEntry === 'string' ? {} : entityEntry;
+        versionedEntities[entityType] = { ...runtimeMeta, workerUrl: `./${entityKey}/index.js` };
+
         console.log(`✅ [${entityType}] /plugins/${pluginDirName}/v${version}/${entityKey}/index.js`);
     }
+
+    // バージョン付きマニフェストを書き出す（ランタイム用・src なし）
+    const versionedManifest = JSON.stringify(
+        { id: pluginId, name: pluginJson.name, version, entities: versionedEntities },
+        null,
+        2,
+    );
+    writeFileSync(join(distVersionDir, 'manifest.json'), versionedManifest, 'utf-8');
+    writeFileSync(join(publicVersionDir, 'manifest.json'), versionedManifest, 'utf-8');
 
     // --- assets/ → public/plugins/<name>/v<version>/ ---
     // バージョン付きパスにのみコピーすることでキャッシュバスティングを保証する。

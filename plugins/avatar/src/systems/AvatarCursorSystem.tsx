@@ -3,10 +3,12 @@
  * cursor.worker.tsx にのみ登録される。
  */
 
+import type { AnimFrame } from '../state';
 import type { AppAvatarDef, Entity, System, WorkerEvent } from '@ubichill/sdk';
 import { EcsEventType } from '@ubichill/sdk';
 import { cursor, LERP_SPEED, SNAP_THRESHOLD } from '../state';
 import { AvatarCursor } from '../ui/AvatarCursor';
+import { cssToState } from './utils';
 
 export const AvatarCursorSystem: System = (_entities: Entity[], deltaTime: number, events: WorkerEvent[]) => {
     const myUserId = Ubi.myUserId;
@@ -16,7 +18,6 @@ export const AvatarCursorSystem: System = (_entities: Entity[], deltaTime: numbe
             const d = event.payload as {
                 viewportX: number;
                 viewportY: number;
-                cursorStyle?: string;
             };
             if (!cursor.initialized) {
                 cursor.lerpViewportX = d.viewportX;
@@ -25,8 +26,14 @@ export const AvatarCursorSystem: System = (_entities: Entity[], deltaTime: numbe
             }
             cursor.targetViewportX = d.viewportX;
             cursor.targetViewportY = d.viewportY;
-            if (d.cursorStyle && d.cursorStyle !== cursor.cursorStyle) {
-                cursor.cursorStyle = d.cursorStyle;
+        }
+
+        if (event.type === EcsEventType.INPUT_CURSOR_STYLE) {
+            const d = event.payload as { style: string };
+            if (d.style !== cursor.cursorStyle) {
+                cursor.cursorStyle = d.style;
+                cursor.animFrame = 0;
+                cursor.animElapsed = 0;
             }
         }
 
@@ -34,6 +41,26 @@ export const AvatarCursorSystem: System = (_entities: Entity[], deltaTime: numbe
             const user = event.payload as { id: string; avatar?: AppAvatarDef };
             if (user.id === myUserId && user.avatar) {
                 cursor.avatar = user.avatar;
+                cursor.stateFrames = {};
+                cursor.animFrame = 0;
+                cursor.animElapsed = 0;
+                // sourceUrl を持つ状態のフレームをホストへ要求する
+                const sourceUrls = Object.entries(user.avatar.states)
+                    .filter(([, def]) => def?.sourceUrl)
+                    .map(([state, def]) => ({ state, sourceUrl: def!.sourceUrl! }));
+                if (sourceUrls.length > 0) {
+                    Ubi.network.sendToHost('avatar:requestFrames', { sourceUrls });
+                }
+            }
+        }
+
+        if (event.type === EcsEventType.HOST_MESSAGE) {
+            const m = event.payload as { type: string; payload: unknown };
+            if (m.type === 'avatar:localFrames') {
+                const { framesMap } = m.payload as { framesMap: Record<string, AnimFrame[]> };
+                cursor.stateFrames = framesMap;
+                cursor.animFrame = 0;
+                cursor.animElapsed = 0;
             }
         }
     }
@@ -50,6 +77,20 @@ export const AvatarCursorSystem: System = (_entities: Entity[], deltaTime: numbe
             cursor.lerpViewportX += dvx * f;
             cursor.lerpViewportY += dvy * f;
         }
+    }
+
+    // アニメーション frame advance
+    const currentState = cssToState(cursor.cursorStyle);
+    const frames = cursor.stateFrames[currentState];
+    if (frames && frames.length > 1) {
+        cursor.animElapsed += deltaTime;
+        const frameDuration = frames[cursor.animFrame]?.duration ?? 100;
+        if (cursor.animElapsed >= frameDuration) {
+            cursor.animElapsed -= frameDuration;
+            cursor.animFrame = (cursor.animFrame + 1) % frames.length;
+        }
+    } else {
+        cursor.animFrame = 0;
     }
 
     Ubi.ui.renderEntity(`user:${myUserId ?? 'unknown'}`, 'cursor', () => <AvatarCursor />);

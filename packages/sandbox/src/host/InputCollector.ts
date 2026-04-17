@@ -24,6 +24,17 @@
  * flush 時のコスト: O(k)  k = 離散イベント数（通常 0〜3）
  *   → mousemove が 100 件来ても collectSince は配列長 k+1 を返すだけ
  *
+ * ## CURSOR_STYLE 検出: elementFromPoint ベース
+ *
+ * mousemove のたびに document.elementFromPoint でカーソル直下の要素を取得。
+ * 要素が変わった場合のみ _detectCursorStyle() でスタイルを再判定し、
+ * 変化があれば CURSOR_STYLE 離散イベントを積む。
+ *
+ * mouseover ベースの旧実装より優れる点:
+ * - テキストノードや shadow DOM の再ターゲット問題がない
+ * - React re-render で DOM が差し替わっても追従できる
+ * - スクロール時にも elementFromPoint で再チェックする
+ *
  * PluginHostManager が内部で保持し、_sendTick() の直前に collectSince() を呼ぶ。
  * プラグイン開発者は Frontend コードを一切書かずに入力を受け取れる。
  */
@@ -34,6 +45,18 @@ type SequencedInputFrameEvent = {
     seq: number;
     event: InputFrameEvent;
 };
+
+const TEXT_SELECTOR =
+    'input[type="text"], input[type="search"], input[type="email"], input[type="url"],' +
+    'input[type="number"], input[type="password"], input[type="date"], input[type="time"],' +
+    'input[type="datetime-local"], input[type="month"], input[type="week"],' +
+    'textarea, [contenteditable]';
+
+const POINTER_SELECTOR =
+    'button, a[href], [role="button"], select,' +
+    '[role="link"], [role="menuitem"], [role="option"], [role="tab"],' +
+    'input[type="checkbox"], input[type="radio"], input[type="range"], input[type="file"],' +
+    'label';
 
 /**
  * クリック対象が plugin UI 要素（button, input, a 等）の場合 true を返す。
@@ -70,8 +93,11 @@ export class InputCollector {
     /** 直近のマウスボタン状態。スクロール由来の MOUSE_MOVE に正確な buttons を埋める。 */
     private _currentButtons = 0;
 
-    /** mouseover で追跡している最新の computed cursor スタイル */
+    /** elementFromPoint で追跡している最新の cursor スタイル */
     private _cursorStyle = 'default';
+
+    /** 最後に検出した要素（同一要素への再判定をスキップするため） */
+    private _lastHoverElement: Element | null = null;
 
     /** スクロール量を供給するスクロール要素 */
     private _scrollEl: Element | null = null;
@@ -81,7 +107,6 @@ export class InputCollector {
     private readonly _onMouseUp: (e: MouseEvent) => void;
     private readonly _onKeyDown: (e: KeyboardEvent) => void;
     private readonly _onKeyUp: (e: KeyboardEvent) => void;
-    private readonly _onMouseOver: (e: MouseEvent) => void;
     private readonly _onContextMenu: (e: MouseEvent) => void;
     private readonly _onResize: () => void;
     private _onScroll: (() => void) | null = null;
@@ -89,6 +114,24 @@ export class InputCollector {
     private _nextSeq(): number {
         this._seq += 1;
         return this._seq;
+    }
+
+    /** 要素からカーソルスタイル文字列を返す（'text' | 'pointer' | 'default' | CSS値） */
+    private _detectCursorStyle(el: Element): string {
+        if (el.closest(TEXT_SELECTOR)) return 'text';
+        if (el.closest(POINTER_SELECTOR)) return 'pointer';
+        const inlineCursor = (el as HTMLElement).style?.cursor;
+        return inlineCursor && inlineCursor !== 'none' ? inlineCursor : 'default';
+    }
+
+    /** スタイルが変化した場合のみ CURSOR_STYLE 離散イベントを積む */
+    private _emitCursorStyleIfChanged(nextStyle: string): void {
+        if (nextStyle === this._cursorStyle) return;
+        this._cursorStyle = nextStyle;
+        this._discreteEvents.push({
+            seq: this._nextSeq(),
+            event: { type: 'CURSOR_STYLE', data: { style: nextStyle } },
+        });
     }
 
     constructor() {
@@ -107,17 +150,16 @@ export class InputCollector {
                         viewportX: e.clientX,
                         viewportY: e.clientY,
                         buttons: e.buttons,
-                        cursorStyle: this._cursorStyle,
                     },
                 },
             };
-        };
 
-        // MOUSE_OVER: computed cursor スタイルを追跡（mousemove より低頻度）
-        this._onMouseOver = (e: MouseEvent) => {
-            const target = e.target as Element | null;
-            if (!target) return;
-            this._cursorStyle = window.getComputedStyle(target).cursor || 'default';
+            // カーソル直下の要素を取得し、変化した場合のみ CURSOR_STYLE を発火
+            const el = document.elementFromPoint(e.clientX, e.clientY);
+            if (el && el !== this._lastHoverElement) {
+                this._lastHoverElement = el;
+                this._emitCursorStyleIfChanged(this._detectCursorStyle(el));
+            }
         };
 
         // CONTEXT_MENU: 右クリックメニューを抑制し離散イベントとして積む（UI 要素は除外）
@@ -219,7 +261,6 @@ export class InputCollector {
         window.addEventListener('mouseup', this._onMouseUp);
         window.addEventListener('keydown', this._onKeyDown);
         window.addEventListener('keyup', this._onKeyUp);
-        window.addEventListener('mouseover', this._onMouseOver);
         window.addEventListener('contextmenu', this._onContextMenu);
         window.addEventListener('resize', this._onResize, { passive: true });
     }
@@ -256,10 +297,19 @@ export class InputCollector {
                                 viewportX: this._lastViewportPos.x,
                                 viewportY: this._lastViewportPos.y,
                                 buttons: this._currentButtons,
-                                cursorStyle: this._cursorStyle,
                             },
                         },
                     };
+
+                    // スクロール後に要素位置が変わるため elementFromPoint で再チェック
+                    const hovered = document.elementFromPoint(this._lastViewportPos.x, this._lastViewportPos.y);
+                    if (hovered) {
+                        // スクロールで別要素に乗った場合は _lastHoverElement をリセット
+                        if (hovered !== this._lastHoverElement) {
+                            this._lastHoverElement = hovered;
+                        }
+                        this._emitCursorStyleIfChanged(this._detectCursorStyle(hovered));
+                    }
                 }
             };
             el.addEventListener('scroll', this._onScroll, { passive: true });
@@ -317,7 +367,6 @@ export class InputCollector {
         window.removeEventListener('mouseup', this._onMouseUp);
         window.removeEventListener('keydown', this._onKeyDown);
         window.removeEventListener('keyup', this._onKeyUp);
-        window.removeEventListener('mouseover', this._onMouseOver);
         window.removeEventListener('contextmenu', this._onContextMenu);
         window.removeEventListener('resize', this._onResize);
         if (this._scrollEl && this._onScroll) {

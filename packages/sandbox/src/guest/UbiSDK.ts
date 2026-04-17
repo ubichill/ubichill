@@ -38,6 +38,7 @@ const INPUT_TYPE_MAP: Readonly<Record<string, string>> = {
     CONTEXT_MENU: EcsEventType.INPUT_CONTEXT_MENU,
     SCROLL: EcsEventType.INPUT_SCROLL,
     RESIZE: EcsEventType.INPUT_RESIZE,
+    CURSOR_STYLE: EcsEventType.INPUT_CURSOR_STYLE,
 };
 
 type PendingRequest = {

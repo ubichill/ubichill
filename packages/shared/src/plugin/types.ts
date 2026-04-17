@@ -502,8 +502,6 @@ export type InputMouseMoveData = {
     viewportX: number;
     viewportY: number;
     buttons: number;
-    /** DOM の computed cursor スタイル（'pointer' / 'text' / 'default' 等） */
-    cursorStyle?: string;
 };
 /**
  * マウスボタン押下データ。
@@ -532,6 +530,8 @@ export type InputContextMenuData = { x: number; y: number; viewportX: number; vi
 export type InputScrollData = { x: number; y: number };
 /** ウィンドウリサイズデータ */
 export type InputResizeData = { width: number; height: number };
+/** カーソルスタイルデータ */
+export type InputCursorStyleData = { style: string };
 
 /** 1フレーム内の入力イベント1件 */
 export type InputFrameEvent =
@@ -542,7 +542,8 @@ export type InputFrameEvent =
     | { type: 'KEY_UP'; data: InputKeyUpData }
     | { type: 'CONTEXT_MENU'; data: InputContextMenuData }
     | { type: 'SCROLL'; data: InputScrollData }
-    | { type: 'RESIZE'; data: InputResizeData };
+    | { type: 'RESIZE'; data: InputResizeData }
+    | { type: 'CURSOR_STYLE'; data: InputCursorStyleData };
 
 /**
  * [Input] Tick 直前に Host がすべての Worker へ配信する入力スナップショット。

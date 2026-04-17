@@ -62,6 +62,8 @@ export const EcsEventType = {
     INPUT_SCROLL: 'input:scroll',
     /** ウィンドウリサイズ — payload: { width: number; height: number } */
     INPUT_RESIZE: 'input:resize',
+    /** カーソルスタイル変化 — payload: { style: string } */
+    INPUT_CURSOR_STYLE: 'input:cursor_style',
     /**
      * 他ユーザーの Worker が Ubi.network.broadcast() で送ったデータ。
      * payload: { userId: string; data: unknown }

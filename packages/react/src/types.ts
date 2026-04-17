@@ -2,7 +2,7 @@
  * プラグインが Host (PluginRegistry) に渡す定義オブジェクト（Custom Elements ベース）。
  *
  * React コンポーネントではなく Custom Elements タグ名で宣言する。
- * Host は elementTag / singletonTag で CE を生成し、コンテキストを注入する。
+ * Host は elementTag で CE を生成し、コンテキストを注入する。
  */
 export interface WidgetDefinition {
     /** プラグイン識別子（plugin.json の id と一致） */
@@ -11,13 +11,6 @@ export interface WidgetDefinition {
     name: string;
     /** エンティティごとに描画される Custom Elements タグ名 */
     elementTag: string;
-    /**
-     * ワールド参加中に 1 つだけ描画される Custom Elements タグ名（オプション）。
-     * 複数のシングルトンタグが必要な場合は singletonTags を使う。
-     */
-    singletonTag?: string;
-    /** 複数のシングルトンタグを登録する場合（singletonTag との排他） */
-    singletonTags?: string[];
     /**
      * このプラグインの Custom Elements を customElements.define する関数。
      * PluginRegistry がプラグインロード後に一度だけ呼び出す。
@@ -76,6 +69,19 @@ export interface WorkerPluginDefinition {
      * Worker は Ubi.network.sendToHost() で位置・ステータス更新を Host へ送れる。
      */
     singleton?: boolean;
+    /**
+     * Worker が `Ubi.network.sendToHost(type, payload)` で送ったカスタムメッセージのホスト側ハンドラ。
+     * `api.updateUser` でユーザー状態を更新、`api.sendToWorker` で Worker へ返答できる。
+     * プラグイン固有のホスト処理をここに記述することで InstanceRenderer との結合を断ち切る。
+     */
+    onHostMessage?: (
+        type: string,
+        payload: unknown,
+        api: {
+            updateUser: (patch: unknown) => void;
+            sendToWorker: (type: string, payload: unknown) => void;
+        },
+    ) => void;
 }
 
 /** 型ガード: WorkerPluginDefinition かどうか判定する */

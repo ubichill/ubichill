@@ -24,4 +24,4 @@ void (async () => {
 
 Ubi.registerSystem(AvatarSettingsSystem);
 
-console.log('[Avatar Settings Worker] Initialized.');
+Ubi.log('initialized', 'info');

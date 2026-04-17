@@ -9,9 +9,9 @@
  * - stale closure を防ぐための ref 管理
  */
 
+import type { HostHandlers } from '@ubichill/sandbox/host';
 import type { WorldEntity } from '@ubichill/shared';
 import { useEffect, useRef } from 'react';
-import type { HostHandlers } from '../usePluginWorker';
 import { useWorld } from './useWorld';
 
 export function usePluginWorld(): Pick<

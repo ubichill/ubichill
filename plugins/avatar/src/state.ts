@@ -1,5 +1,10 @@
 import type { AppAvatarDef } from '@ubichill/sdk';
 
+export interface AnimFrame {
+    url: string;
+    duration: number; // ms
+}
+
 export interface TemplateEntry {
     id: string;
     name: string;
@@ -22,6 +27,12 @@ export const cursor = {
     cursorStyle: 'default',
     avatar: { states: {} } as AppAvatarDef,
     zIndex: 10100,
+    /** 現在表示中のアニメーションフレームインデックス */
+    animFrame: 0,
+    /** 現在フレームの経過時間 (ms) */
+    animElapsed: 0,
+    /** カーソル状態ごとのローカルフレーム（host から受け取る、サーバー送信しない） */
+    stateFrames: {} as Record<string, AnimFrame[]>,
 };
 
 export function resetCursor(): void {
@@ -32,6 +43,9 @@ export function resetCursor(): void {
     cursor.initialized = false;
     cursor.cursorStyle = 'default';
     cursor.avatar = { states: {} };
+    cursor.animFrame = 0;
+    cursor.animElapsed = 0;
+    cursor.stateFrames = {};
 }
 
 // ============================================================

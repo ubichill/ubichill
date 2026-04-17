@@ -89,8 +89,18 @@ self.addEventListener('message', (e: MessageEvent<PluginHostEvent>) => {
         // SECURITY NOTE: 本番環境では静的解析・コード署名・CSP・将来的に QuickJS+WASM への移行を推奨
         checkDangerousPatterns(event.payload.code);
 
+        // プラグインの console.log 等を Ubi.log へリダイレクト（グローバル console をシャドウ）
+        const _pluginConsole = {
+            log: (...args: unknown[]) => Ubi.log(args.map(String).join(' '), 'info'),
+            info: (...args: unknown[]) => Ubi.log(args.map(String).join(' '), 'info'),
+            warn: (...args: unknown[]) => Ubi.log(args.map(String).join(' '), 'warn'),
+            error: (...args: unknown[]) => Ubi.log(args.map(String).join(' '), 'error'),
+            debug: (...args: unknown[]) => Ubi.log(args.map(String).join(' '), 'debug'),
+        };
+
         const pluginFn = new SafeFunction(
             'Ubi',
+            'console',
             `"use strict";
 try {
     ${event.payload.code}
@@ -100,7 +110,7 @@ try {
 }`,
         );
 
-        pluginFn(Ubi);
+        pluginFn(Ubi, _pluginConsole);
 
         // ACK: 初期化完了を Host に通知 → Host がキューをフラッシュする
         securePostMessage({ type: 'CMD_READY' });

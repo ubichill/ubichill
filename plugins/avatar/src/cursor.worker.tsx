@@ -26,4 +26,4 @@ void (async () => {
 
 Ubi.registerSystem(AvatarCursorSystem);
 
-console.log('[Avatar Cursor Worker] Initialized.');
+Ubi.log('initialized', 'info');

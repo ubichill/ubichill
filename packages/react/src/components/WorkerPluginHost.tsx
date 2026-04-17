@@ -4,7 +4,7 @@
  * 責務（orchestration のみ）:
  * - usePluginWorker でサンドボックスのライフサイクルを管理
  * - 各 usePlugin* hook を合成して handlers を組み立てる
- * - sendHostMessageRef を通じた Host → Worker カスタムメッセージ
+ * - definition.onHostMessage を通じたカスタムメッセージのプラグイン側委譲
  */
 
 import type { CursorState, WorldEntity } from '@ubichill/shared';
@@ -28,31 +28,12 @@ export interface WorkerPluginHostProps {
     entityId: string;
     entity: WorldEntity;
     definition: WorkerPluginDefinition;
-    /** Worker が sendToHost で送った未処理メッセージのカスタムハンドラ */
-    onCustomMessage?: (type: string, payload: unknown) => void;
-    /**
-     * Host → Worker へメッセージを送る関数を受け取るための ref。
-     * マウント時に `(type, payload) => void` がセットされ、
-     * アンマウント時に null に戻る。
-     */
-    sendHostMessageRef?: React.RefObject<((type: string, payload: unknown) => void) | null>;
 }
 
-export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({
-    entityId,
-    entity,
-    definition,
-    onCustomMessage,
-    sendHostMessageRef,
-}) => {
+export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, entity, definition }) => {
     const { users, currentUser, updatePosition, updateUser } = useSocket();
     const { entities } = useWorld();
     const hostDivRef = useRef<HTMLDivElement>(null);
-
-    const onCustomMessageRef = useRef(onCustomMessage);
-    useEffect(() => {
-        onCustomMessageRef.current = onCustomMessage;
-    });
 
     const updatePositionRef = useRef(updatePosition);
     const updateUserRef = useRef(updateUser);
@@ -94,7 +75,15 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({
                 } else if (m.type === 'user:update') {
                     updateUserRef.current(m.payload as Parameters<typeof updateUserRef.current>[0]);
                 } else {
-                    onCustomMessageRef.current?.(m.type, m.payload);
+                    definition.onHostMessage?.(m.type, m.payload, {
+                        updateUser: (patch) =>
+                            updateUserRef.current(patch as Parameters<typeof updateUserRef.current>[0]),
+                        sendToWorker: (type, payload) =>
+                            sendEventRef.current?.({
+                                type: 'EVT_CUSTOM',
+                                payload: { eventType: 'host:message', data: { type, payload } },
+                            }),
+                    });
                 }
             },
         },
@@ -114,16 +103,6 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({
 
     usePluginPresence(definition, users, sendEvent, workerRevision);
     usePluginEntitySync(definition, entities, sendEvent, workerRevision);
-
-    useEffect(() => {
-        if (!sendHostMessageRef) return;
-        sendHostMessageRef.current = (type: string, payload: unknown) => {
-            sendEvent({ type: 'EVT_CUSTOM', payload: { eventType: 'host:message', data: { type, payload } } });
-        };
-        return () => {
-            sendHostMessageRef.current = null;
-        };
-    }, [sendEvent, sendHostMessageRef]);
 
     // ── レンダー ───────────────────────────────────────────────────
     return (

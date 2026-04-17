@@ -11,7 +11,7 @@
     },
     "pen:tray": {
       "src": "./src/tray.worker.tsx",
-      "capabilities": ["scene:read", "scene:update", "ui:render"],
+      "capabilities": ["scene:read", "scene:update", "ui:render", "net:host-message"],
       "watchEntityTypes": ["pen:pen"]
     }
   }

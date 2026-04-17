@@ -2,14 +2,32 @@ import type { WidgetDefinition, WorkerPluginDefinition } from '@ubichill/sdk/rea
 import { isWorkerPlugin, useWorld } from '@ubichill/sdk/react';
 import type React from 'react';
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { attachAvatarCursorHostBridge } from './avatarCursorHostBridge';
+import { attachAvatarHostBridge } from './avatarHostBridge';
 import { PLUGIN_LOADERS } from './registry';
 
 // ============================================
 // plugin.json 自動ローダー
 // ============================================
 
+/**
+ * ルート plugin.json（バージョン index）。
+ * npm の package endpoint と同様に「最新バージョンへのポインタ」としてのみ機能する。
+ * エンティティ詳細はバージョン付きマニフェストに分離されている。
+ */
+interface PluginIndex {
+    id: string;
+    name?: string;
+    version: string;
+}
+
+/**
+ * バージョン付きマニフェスト（/plugins/<name>/v<ver>/plugin.json）のエンティティ定義。
+ * ビルド時のみ必要な src フィールドは含まない。
+ * workerUrl はバージョンディレクトリからの相対パス（例: "./cursor/index.js"）。
+ */
 interface WorkerMetaObject {
-    src: string;
+    workerUrl: string;
     capabilities?: string[];
     singleton?: boolean;
     canvasTargets?: string[];
@@ -18,20 +36,18 @@ interface WorkerMetaObject {
     fetchDomains?: string[];
 }
 
-interface PluginJson {
+/** バージョン付きマニフェスト全体 */
+interface VersionedPluginJson {
     id: string;
     name?: string;
     version: string;
-    entities?: Record<string, string | WorkerMetaObject>;
+    entities?: Record<string, WorkerMetaObject>;
 }
 
 /**
  * プラグインのベースURL。
  * VITE_PLUGIN_CDN_URL が設定されている場合はそちらを使う（外部CDN / GitHub Pages）。
  * 未設定の場合は自ホストの /plugins/ に相対パスでアクセスする。
- *
- * 例: VITE_PLUGIN_CDN_URL=https://myorg.github.io/ubichill-plugins
- *     → https://myorg.github.io/ubichill-plugins/pen/plugin.json
  */
 const PLUGIN_BASE_URL: string = (() => {
     const envUrl = import.meta.env.VITE_PLUGIN_CDN_URL as string | undefined;
@@ -39,45 +55,67 @@ const PLUGIN_BASE_URL: string = (() => {
     return '/plugins';
 })();
 
-/** プラグイン名 → plugin.json のキャッシュ（Promise を保持して重複フェッチ防止） */
-const pluginJsonCache = new Map<string, Promise<PluginJson | null>>();
+/** プラグイン名 → ルート index のキャッシュ */
+const pluginIndexCache = new Map<string, Promise<PluginIndex | null>>();
+/** "pluginName@version" → バージョン付きマニフェストのキャッシュ */
+const versionedManifestCache = new Map<string, Promise<VersionedPluginJson | null>>();
 
-function fetchPluginJson(pluginName: string): Promise<PluginJson | null> {
-    if (!pluginJsonCache.has(pluginName)) {
-        pluginJsonCache.set(
+function fetchPluginIndex(pluginName: string): Promise<PluginIndex | null> {
+    if (!pluginIndexCache.has(pluginName)) {
+        pluginIndexCache.set(
             pluginName,
             fetch(`${PLUGIN_BASE_URL}/${pluginName}/plugin.json`, { cache: 'no-store' })
-                .then((r) => (r.ok ? (r.json() as Promise<PluginJson>) : null))
+                .then((r) => (r.ok ? (r.json() as Promise<PluginIndex>) : null))
                 .catch(() => null),
         );
     }
-    const cached = pluginJsonCache.get(pluginName);
-    if (!cached) {
-        return Promise.resolve(null);
+    return pluginIndexCache.get(pluginName) ?? Promise.resolve(null);
+}
+
+function fetchVersionedManifest(pluginName: string, version: string): Promise<VersionedPluginJson | null> {
+    const key = `${pluginName}@${version}`;
+    if (!versionedManifestCache.has(key)) {
+        versionedManifestCache.set(
+            key,
+            fetch(`${PLUGIN_BASE_URL}/${pluginName}/v${version}/manifest.json`)
+                .then((r) => (r.ok ? (r.json() as Promise<VersionedPluginJson>) : null))
+                .catch(() => null),
+        );
     }
-    return cached;
+    return versionedManifestCache.get(key) ?? Promise.resolve(null);
 }
 
 /**
- * plugin.json のエンティティ定義から WorkerPluginDefinition を構築する。
+ * エンティティタイプから WorkerPluginDefinition を構築する。
  * entityType は `pluginName:entityKey` 形式（例: "avatar:cursor"）。
- * entities キーがそのまま entityType と一致する。
+ * コロンなしの場合はプラグイン名として扱い、全エンティティを一括ロード。
  */
 async function autoLoadWorkerPlugins(entityType: string): Promise<WorkerPluginDefinition[]> {
     const colonIdx = entityType.indexOf(':');
-    if (colonIdx === -1) return [];
+
+    if (colonIdx === -1) {
+        // プラグイン名のみ（例: 'avatar'）→ 全エンティティを一括ロード
+        const index = await fetchPluginIndex(entityType);
+        if (!index?.version) return [];
+        const manifest = await fetchVersionedManifest(entityType, index.version);
+        if (!manifest?.entities) return [];
+        const results = await Promise.all(Object.keys(manifest.entities).map(autoLoadWorkerPlugins));
+        return results.flat();
+    }
 
     const pluginName = entityType.slice(0, colonIdx);
-    const entityKey = entityType.slice(colonIdx + 1);
 
-    const pluginJson = await fetchPluginJson(pluginName);
-    if (!pluginJson?.entities) return [];
+    const index = await fetchPluginIndex(pluginName);
+    if (!index?.version) return [];
 
-    const entry = pluginJson.entities[entityType];
+    const manifest = await fetchVersionedManifest(pluginName, index.version);
+    if (!manifest?.entities) return [];
+
+    const entry = manifest.entities[entityType];
     if (!entry) return [];
 
-    const meta: Partial<WorkerMetaObject> = typeof entry === 'string' ? {} : entry;
-    const workerUrl = `${PLUGIN_BASE_URL}/${pluginName}/v${pluginJson.version}/${entityKey}/index.js`;
+    const versionedBase = `${PLUGIN_BASE_URL}/${pluginName}/v${index.version}`;
+    const workerUrl = `${versionedBase}/${entry.workerUrl.replace(/^\.\//, '')}`;
 
     let workerCode: string;
     try {
@@ -88,20 +126,19 @@ async function autoLoadWorkerPlugins(entityType: string): Promise<WorkerPluginDe
         return [];
     }
 
-    return [
-        {
-            id: entityType,
-            name: `${pluginJson.name ?? pluginName} - ${entityKey}`,
-            workerCode,
-            capabilities: meta.capabilities,
-            singleton: meta.singleton,
-            canvasTargets: meta.canvasTargets,
-            watchEntityTypes: meta.watchEntityTypes,
-            mediaTargets: meta.mediaTargets,
-            fetchDomains: meta.fetchDomains,
-            pluginBase: `${PLUGIN_BASE_URL}/${pluginName}/v${pluginJson.version}`,
-        },
-    ];
+    const def: WorkerPluginDefinition = {
+        id: entityType,
+        name: `${manifest.name ?? pluginName} - ${entityType.slice(colonIdx + 1)}`,
+        workerCode,
+        capabilities: entry.capabilities,
+        singleton: entry.singleton,
+        canvasTargets: entry.canvasTargets,
+        watchEntityTypes: entry.watchEntityTypes,
+        mediaTargets: entry.mediaTargets,
+        fetchDomains: entry.fetchDomains,
+        pluginBase: versionedBase,
+    };
+    return [attachAvatarHostBridge(attachAvatarCursorHostBridge(def))];
 }
 
 // ============================================
@@ -155,10 +192,8 @@ export const PluginRegistryProvider: React.FC<{ children: React.ReactNode }> = (
         // CE クラスの import() + define() を開始
         def.register();
 
-        // 全タグ（entity + singleton）の define が完了してから pluginMap に追加する。
-        // これにより EntityCEBridge / SingletonMount が createElement した時点で
-        // 必ず CE クラスが存在し、ubiCtx / instanceCtx setter → onUpdate が動作する。
-        const allTags = [def.elementTag, ...(def.singletonTag ? [def.singletonTag] : []), ...(def.singletonTags ?? [])];
+        // elementTag の define が完了してから pluginMap に追加する。
+        const allTags = [def.elementTag];
         Promise.all(allTags.map((tag) => customElements.whenDefined(tag))).then(() => {
             setPluginMap((prev) => {
                 if (prev.has(def.id)) return prev;
