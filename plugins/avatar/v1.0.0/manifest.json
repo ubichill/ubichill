@@ -10,7 +10,7 @@
         "net:host-message",
         "scene:read"
       ],
-      "workerUrl": "./cursor/index.f13f9017.js"
+      "workerUrl": "./cursor/index.dc1e5da4.js"
     },
     "avatar:settings": {
       "singleton": true,

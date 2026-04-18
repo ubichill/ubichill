@@ -16,7 +16,7 @@
       "watchEntityTypes": [
         "video-player:screen"
       ],
-      "workerUrl": "./screen/index.2163c43e.js"
+      "workerUrl": "./screen/index.67ea81a2.js"
     },
     "video-player:controls": {
       "capabilities": [
