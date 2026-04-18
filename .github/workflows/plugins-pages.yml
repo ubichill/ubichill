@@ -1,0 +1,77 @@
+name: Publish Plugins to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'plugins/**'
+      - 'scripts/build-workers.mjs'
+  workflow_dispatch:
+
+concurrency:
+  group: gh-pages-plugins
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract Versions from package.json
+        id: versions
+        run: |
+          echo "node=$(jq -r '.volta.node' package.json)" >> $GITHUB_OUTPUT
+          echo "pnpm=$(jq -r '.volta.pnpm' package.json)" >> $GITHUB_OUTPUT
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: ${{ steps.versions.outputs.pnpm }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.versions.outputs.node }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build plugin workers
+        # dist/plugins/ に各プラグインのバンドルが出力される
+        run: pnpm build:workers
+
+      - name: Checkout gh-pages branch (worktree)
+        run: |
+          git fetch origin gh-pages --depth=1 2>/dev/null || true
+          git worktree add /tmp/gh-pages gh-pages 2>/dev/null || \
+            (git worktree add --orphan /tmp/gh-pages gh-pages-deploy && \
+             cd /tmp/gh-pages && git checkout --orphan gh-pages && git rm -rf . 2>/dev/null || true)
+
+      - name: Sync plugins to gh-pages
+        run: |
+          # dist/plugins/ を gh-pages の plugins/ ディレクトリにコピー
+          # Helm charts インデックスは charts/ に別途配置されるため競合しない
+          mkdir -p /tmp/gh-pages/plugins
+          cp -r dist/plugins/. /tmp/gh-pages/plugins/
+          echo "✅ Plugins synced to gh-pages/plugins/"
+          ls -la /tmp/gh-pages/plugins/
+
+      - name: Commit and push to gh-pages
+        working-directory: /tmp/gh-pages
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add plugins/
+          if git diff --cached --quiet; then
+            echo "No changes to plugins, skipping commit"
+          else
+            git commit -m "chore(plugins): プラグインバンドルを更新 (${GITHUB_SHA::7})"
+            git push origin HEAD:gh-pages --force
+            echo "✅ Plugins published to GitHub Pages"
+          fi

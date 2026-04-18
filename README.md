@@ -1,149 +1,162 @@
 # Ubichill
 
-2Dメタバース風（作業通話・コワーキング）Webアプリケーションです。
-Misskeyのようなpnpm workspaceによるモノリポ構成を採用しています。
+URLで起動しSocket.IOで同期する、ゼロトラスト型プラグイン動的ロード 2D メタバース基盤。
+Vite ベースの完全 CSR。pnpm workspace モノリポ構成。
 
-## プロジェクト構成
+## クイックスタート
 
+```bash
+pnpm install
+pnpm dev            # Frontend (5173) + Backend (3001) + Docker 起動
+pnpm build:workers  # プラグイン Worker を esbuild でバンドル
+pnpm lint:fix       # Biome フォーマット
 ```
-ubichill/
-├── packages/
-│   ├── shared/   # 共通の型定義・定数 (@ubichill/shared)
-│   ├── backend/  # Express + Socket.io サーバー (@ubichill/backend)
-│   └── frontend/ # Next.js + Panda CSS フロントエンド (@ubichill/frontend)
-```
+
+## パッケージ構成
+
+| パッケージ | 役割 | 実行環境 |
+|---|---|---|
+| `@ubichill/shared` | 型・定数・Zod スキーマ | 全環境 |
+| `@ubichill/engine` | 純粋 ECS エンジン | Worker / Host |
+| `@ubichill/sandbox` | Worker 隔離実行環境・VNodeRenderer | Host / Worker |
+| `@ubichill/react` | React Hooks（`usePluginWorker`, `usePluginUI`） | Host |
+| `@ubichill/sdk` | プラグイン開発者向け公開 API | Worker のみ |
+
+---
 
 ## 技術スタック
 
-- **言語**: TypeScript
-- **パッケージマネージャ**: pnpm
-- **フロントエンド**: Next.js (App Router), Panda CSS, Socket.io Client
-- **バックエンド**: Node.js, Express, Socket.io
-- **インフラ**: DevContainer, Docker, Kubernetes (k3s想定)
+当プロジェクトは最新のフロントエンド・バックエンド技術を採用し、スケーラブルなモノリポ構成で開発されています。
 
-## セットアップ手順
+### フロントエンド
+- **フレームワーク:** Vite, React 19
+- **スタイリング:** Panda CSS
+- **ルーティング:** React Router v7
+- **リアルタイム通信:** Socket.IO Client
+- **認証:** Better Auth
 
-### 前提条件
-- Docker Desktop or Docker Engine
-- VS Code + Dev Containers extension
+### バックエンド
+- **ベース環境:** Node.js, Express 5
+- **リアルタイム通信:** Socket.IO
+- **DB連携:** Drizzle ORM
+- **認証:** Better Auth
+- **メール連携:** Resend
 
-### 開発環境の起動
+### データベース
+- **RDBMS:** PostgreSQL
 
-1. VS Code でこのリポジトリを開きます。
-2. 左下の "><" アイコンをクリックするか、コマンドパレットから **Dev Containers: Reopen in Container** を選択します。
-3. コンテナがビルドされ、環境が立ち上がります。
-4. ターミナルで `pnpm dev` を実行すると、Frontend (3000) と Backend (3001) が起動します。
+### 開発環境・インフラ
+- **言語:** TypeScript
+- **モノリポ管理:** pnpm Workspace, Turborepo
+- **バンドラ:** Vite, esbuild (プラグイン Worker 用)
+- **静的解析:** Biome
+- **デプロイ・インフラ:** Docker, Kubernetes, Helm (ArgoCD 対応)
 
-### ローカル開発
+---
 
-依存関係のインストール:
-```bash
-pnpm install
+## プラグイン UI アーキテクチャ
+
+### 設計の大原則：Worker 内 JS がメインスレッドに触れない
+
+プラグインの UI ロジックは **Web Worker** の中で完結する。
+Worker は DOM に直接アクセスできないため、Host への指示は `postMessage` 経由のシリアライズ可能なデータ（VNode）のみ。
+
+```mermaid
+flowchart TB
+    subgraph Worker["🔒 Sandbox Worker (隔離)"]
+        SYS["Plugin Systems (ECS)"]
+        JSX["jsx-runtime\n関数 → '__h0' 変換"]
+        SDK["UbiSDK\npostMessage 送信"]
+    end
+
+    subgraph Host["Host (React / メインスレッド)"]
+        PHM["PluginHostManager\npostMessage 受信"]
+        UPU["usePluginUI\nvnodes state 管理"]
+        PUM["PluginUIMount"]
+        VNR["VNodeRenderer\ncreateElement / sanitize"]
+    end
+
+    SYS -->|"Ubi.ui.render(() => JSX)"| JSX
+    JSX -->|"VNode\n{onUbiClick: '__h0'}"| SDK
+    SDK -->|"postMessage\nUI_RENDER"| PHM
+    PHM -->|"onRender(targetId, vnode)"| UPU
+    UPU -->|"vnodes Map"| PUM
+    PUM --> VNR
+    VNR -->|"createElement()"| DOM["実 DOM"]
+
+    DOM -->|"click"| PUM
+    PUM -->|"sendEvent\nEVT_UI_ACTION {index:0}"| PHM
+    PHM -->|"postMessage"| SDK
+    SDK -->|"_callHandler(0)"| SYS
 ```
 
-開発サーバーの起動:
-```bash
-pnpm dev
+---
+
+### TSX → VNode → postMessage → DOM の変換フロー
+
+```mermaid
+sequenceDiagram
+    participant W as Worker (Plugin)
+    participant H as PluginHostManager
+    participant R as usePluginUI
+    participant D as VNodeRenderer / DOM
+
+    W->>W: Ubi.ui.render(() => &lt;button onUbiClick={fn}&gt;)
+    Note over W: jsx-runtime が関数をレジストリに登録<br/>VNode は {onUbiClick:"__h0"} に変換（プリミティブのみ）
+
+    W->>H: postMessage({ type:"UI_RENDER", vnode })
+    H->>R: onRender("pen-palette", vnode)
+    R->>D: renderVNode(vnode, container)
+    Note over D: createElement — innerHTML 禁止<br/>href/src → sanitizeUrl()<br/>style → setProperty() で cssText 書き換え防止<br/>許可タグ外は無視
+
+    D->>H: click イベント発火
+    H->>W: postMessage({ type:"EVT_UI_ACTION", handlerIndex:0 })
+    W->>W: _callHandler("pen-palette", 0, detail)
+    Note over W: クロージャが実行される<br/>penState.color = c
 ```
 
-## Kubernetes デプロイメント
+---
 
-### 📦 Helm Charts
+### セキュリティの多層防御
 
-UbichillアプリケーションはHelmチャートとして公開されており、Kubernetes環境に簡単にデプロイできます。
+```mermaid
+flowchart LR
+    code["プラグインコード\n(文字列)"]
 
-#### リポジトリ追加
+    code -->|"静的スキャン\nFunction( / eval( / __proto__"| check{{"危険パターン？"}}
+    check -->|"Yes → 即時停止"| err["初期化失敗"]
+    check -->|"No"| sandbox
+
+    subgraph sandbox["Sandbox Worker 実行環境"]
+        freeze["グローバル無効化\nfetch / eval / Function\nWebSocket / localStorage"]
+        cap["capability ホワイトリスト\nplugin.json 未宣言コマンドは RPC エラー"]
+        serial["VNode シリアライズ\n関数は '__h0' に変換\npostMessage に関数は乗らない"]
+        vnode["VNodeRenderer サニタイズ\nタグ許可リスト / URL 検証\ninnerHTML 禁止"]
+    end
+
+    freeze & cap & serial & vnode --> safe["安全な実行"]
+```
+
+---
+
+### パフォーマンス設計
+
+| 対象 | 手法 | 効果 |
+|---|---|---|
+| mousemove | `InputCollector` がフレーム内で最終位置1件に上書きデデュプ | 100件来ても Worker 送信は O(1) |
+| 描画中プレビュー | `PenSyncSystem` が 30ms スロットリング | 高頻度描画でも postMessage を抑制 |
+| Canvas | permanent + active の 2 レイヤー | 確定ストロークが増えても再描画しない |
+| UI 再描画 | vnode 参照が同一なら DOM 再構築をスキップ | 毎 Tick render() しても DOM は変わらない |
+| React re-render | カーソル移動は `divRef.current.style` 直接書き換え | Re-render 0 回 |
+| Worker バンドル | `sideEffects:false` + Fragment インライン定義で Zod を排除 | バンドル 250 行以下 |
+
+---
+
+## デプロイ
+
 ```bash
-# Ubichill Helm リポジトリを追加
 helm repo add ubichill https://ubichill.github.io/ubichill
-helm repo update
+helm install ubichill ubichill/ubichill --namespace ubichill --create-namespace
 ```
 
-#### 利用可能なチャート
-- `ubichill/ubichill` - メインアプリケーション (Frontend + Backend + Redis + PostgreSQL)
-- `ubichill/video-player` - Video Playerプラグイン (yt-dlp backend)
-
-#### デプロイ例
-
-**開発環境:**
-```bash
-# メインアプリケーション
-helm install ubichill-dev ubichill/ubichill \
-  --version 0.1.0 \
-  --namespace ubichill \
-  --create-namespace \
-  --set redis.enabled=true \
-  --set postgresql.enabled=false
-
-# Video Playerプラグイン
-helm install video-player-dev ubichill/video-player \
-  --version 0.1.0 \
-  --namespace ubichill \
-  --set backend.image.tag=latest
-```
-
-**本番環境:**
-```bash
-# メインアプリケーション
-helm install ubichill-prod ubichill/ubichill \
-  --version 0.1.0 \
-  --namespace ubichill \
-  --create-namespace \
-  --values https://raw.githubusercontent.com/ubichill/ubichill/main/charts/ubichill/values-prod.yaml
-
-# Video Playerプラグイン
-helm install video-player-prod ubichill/video-player \
-  --version 0.1.0 \
-  --namespace ubichill \
-  --values https://raw.githubusercontent.com/ubichill/ubichill/main/charts/video-player/values-prod.yaml
-```
-
-#### 設定のカスタマイズ
-
-独自の設定ファイルを作成することもできます：
-
-```yaml
-# my-values.yaml
-backend:
-  replicaCount: 2
-  resources:
-    limits:
-      cpu: 1000m
-      memory: 1Gi
-    
-frontend:
-  replicaCount: 3
-  env:
-    NEXT_PUBLIC_API_URL: "https://api.example.com"
-
-redis:
-  enabled: true
-  master:
-    persistence:
-      size: 2Gi
-```
-
-```bash
-helm install ubichill-custom ubichill/ubichill -f my-values.yaml
-```
-
-### 🚀 ArgoCD GitOps
-
-本プロジェクトはArgoCD GitOpsでの自動デプロイにも対応しています。
-`k8s/argocd/` ディレクトリにApplication manifestが含まれています。
-
-## プラグインアーキテクチャ
-
-Ubichillはマイクロサービス・プラグインアーキテクチャを採用しており、各プラグインは独立してデプロイ可能です：
-
-### Video Player Plugin
-- **技術**: Python FastAPI + yt-dlp
-- **機能**: YouTube動画再生、ライブストリーミング、HLS対応
-- **デプロイ**: 独立したHelmチャート
-
-### 共有インフラ
-- **Redis**: プラグイン間でのキャッシュ共有
-- **PostgreSQL**: データ永続化 (オプション)
-
-## AIアシスタントの方へ
-このリポジトリのコードを編集・生成する際は、`.agent/workflows/ai-guidelines.md` を必ず参照してください。
+ArgoCD GitOps 対応。`charts/` に Helm チャート、`worlds/` に World as Code の YAML 定義。

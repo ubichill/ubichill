@@ -1,2 +1,2 @@
-export type { OmitId } from './UbiSDK';
+export type { EntityState, EntityStateFor, OmitId, UiRenderCostStat } from './UbiSDK';
 export { UbiSDK } from './UbiSDK';

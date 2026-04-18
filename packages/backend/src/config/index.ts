@@ -29,6 +29,10 @@ const envSchema = z.object({
         .string()
         .default('false')
         .transform((val) => val === 'true'),
+    TRUST_PROXY: z
+        .string()
+        .default('false')
+        .transform((val) => val === 'true'),
 });
 
 // 環境変数をパースして検証
@@ -72,6 +76,7 @@ export const appConfig = {
         resendApiKey: parsedEnv.data.RESEND_API_KEY,
         skipVerification: parsedEnv.data.SKIP_EMAIL_VERIFICATION,
     },
+    trustProxy: parsedEnv.data.TRUST_PROXY,
 } as const;
 
 // URLのホスト部分だけ表示するヘルパー（機密情報を除く）

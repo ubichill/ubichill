@@ -1,21 +1,18 @@
 {
-  "id": "pen:pen",
+  "id": "pen",
   "name": "Pen",
   "version": "2.0.0",
-  "description": "Drawing tool for collaborative real-time sketching and annotation",
-  "author": "Ubichill Team",
-  "license": "MIT",
-  "repository": "https://github.com/ubichill/ubichill",
-  "entry": {
-    "frontend": "./frontend/src/index.ts",
-    "worker": "./worker/src/index.ts"
-  },
-  "capabilities": [
-    "scene:read",
-    "scene:update",
-    "ui:toast"
-  ],
-  "experimental": {
-    "typescript_strict": true
+  "entities": {
+    "pen:canvas": {
+      "src": "./src/canvas.worker.ts",
+      "capabilities": ["scene:read", "scene:update", "ui:render", "net:broadcast", "canvas:draw"],
+      "canvasTargets": ["drawing"],
+      "watchEntityTypes": ["pen:stroke", "pen:pen"]
+    },
+    "pen:tray": {
+      "src": "./src/tray.worker.tsx",
+      "capabilities": ["scene:read", "scene:update", "ui:render", "net:host-message"],
+      "watchEntityTypes": ["pen:pen"]
+    }
   }
 }

@@ -4,6 +4,9 @@
 global:
   imageRegistry: "ghcr.io"
   imagePullPolicy: Always
+  # デプロイ時に必須。helm install 時に --set global.domain=example.com で指定する。
+  # CORS_ORIGIN / BETTER_AUTH_URL / Ingress host はここから自動導出される。
+  domain: ""
   compatibility:
     openshift:
       adaptSecurityContext: auto
@@ -11,22 +14,18 @@ global:
     allowInsecureImages: true
 
 # Worlds configuration
+# ワールド定義は URL レジストリから取得する（ConfigMap 不要）
 worlds:
-  enabled: true
-  # Custom worlds can be defined here
-  # custom:
-  #   my-custom-world:
-  #     apiVersion: ubichill.com/v1alpha1
-  #     kind: World
-  #     metadata:
-  #       name: my-custom-world
-  #       version: "1.0.0"
-  #     spec:
-  #       displayName: "My Custom World"
-  #       description: "A custom world"
-  #       environment:
-  #         backgroundColor: "#FF0000"
-  custom: {}
+  # ワールド YAML を取得するURL一覧（カンマ区切りで環境変数に渡される）
+  # GitHub tree URL を指定すると GitHub Contents API で自動解決する
+  # 例: https://github.com/ubichill/ubichill/tree/main/worlds
+  # 例: https://raw.githubusercontent.com/ubichill/ubichill/main/worlds/default.yaml
+  registries: []
+  # プライベートリポジトリの場合はトークンを設定（Secret として注入される）
+  # 本番環境では registryToken に直書きせず existingTokenSecret を使うことを推奨
+  registryToken: ""
+  # 既存の Secret を使う場合（key: token が必要）。設定すると registryToken の Secret 生成をスキップ
+  existingTokenSecret: ""
 
 # Backend application configuration
 backend:
@@ -95,11 +94,11 @@ backend:
       failureThreshold: 3
   
   # Environment variables
+  # CORS_ORIGIN / BETTER_AUTH_URL は global.domain から自動導出される。
+  # 上書きが必要な場合のみここに記述する。
   env:
     NODE_ENV: "production"
     PORT: "3001"
-    CORS_ORIGIN: "http://localhost:3000"
-    BETTER_AUTH_URL: "http://localhost:3001"
     # Database and Redis connections set by templates
 
   # Secret environment variables (rendered as Secret)
@@ -110,7 +109,11 @@ backend:
   # Existing secret containing the secrets (skips secretEnv creation and injects it)
   existingSecret: ""
 
-  # Security context
+  # Pod-level security context (fsGroup でマウントされた emptyDir をグループ書き込み可能にする)
+  podSecurityContext:
+    fsGroup: 1000
+
+  # Container-level security context
   securityContext:
     runAsNonRoot: true
     runAsUser: 1000
@@ -168,17 +171,19 @@ frontend:
       failureThreshold: 3
   
   # Environment variables
-  env:
-    NODE_ENV: "production"
-    PORT: "3000"
-    HOSTNAME: "0.0.0.0"
-    # バックエンドURL: window.location.origin にフォールバック (設定不要)
-    # Video Player URL: /plugin/video-player にフォールバック (設定不要)
+  # nginx コンテナが使う環境変数のみ記述する。
+  # BACKEND_HOST / BACKEND_PORT は deployment.yaml テンプレートで自動注入されるため不要。
+  env: {}
 
-  # Security context
+  # Pod-level security context
+  podSecurityContext:
+    fsGroup: 101
+
+  # Container-level security context
   securityContext:
     runAsNonRoot: true
-    runAsUser: 1000
+    runAsUser: 101
+    runAsGroup: 101
     allowPrivilegeEscalation: false
     readOnlyRootFilesystem: false
     capabilities:
@@ -250,12 +255,13 @@ postgresql:
 # Ingress configuration
 ingress:
   enabled: true
-  className: "nginx"
-  annotations: 
-    # kubernetes.io/ingress.class: nginx
-    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
-  # hosts: []
-  # tls: []
+  # Cloudflare Ingress Controller を使う場合は該当クラス名を設定する
+  # 例: kubectl get ingressclass で確認
+  className: ""
+  annotations: {}
+  # hosts: []  # 未設定時は global.domain から自動生成
+  # tls: []    # 未設定時は global.domain から自動生成
+  # hosts を手書きする場合は /socket.io → backend も忘れずに追加すること
 
 # Service configuration
 service:
@@ -279,21 +285,44 @@ podDisruptionBudget:
 # Node affinity (optional - for multi-AZ deployment)
 nodeAffinity:
   enabled: false
+  # 有効時: 配置したいゾーン名をクラスタに合わせて指定する（例: ap-northeast-1a, ap-northeast-1c）
   preferredDuringSchedulingIgnoredDuringExecution:
     - weight: 100
       preference:
         matchExpressions:
         - key: topology.kubernetes.io/zone
           operator: In
-          values:
-          - us-west-2a
-          - us-west-2b
+          values: []
 
 # Tolerations (optional)
 tolerations: []
 
 # Node selector (optional)
 nodeSelector: {}
+
+# Plugin backends (optional)
+# 任意のプラグインバックエンドコンテナを起動する設定。
+# 各エントリは Deployment + Service + Ingress ルールを自動生成する。
+# 例:
+# pluginBackends:
+#   - id: video-player
+#     image:
+#       repository: ghcr.io/yourorg/video-player-backend
+#       tag: latest
+#     port: 8000
+#     pathPrefix: /plugins/video-player/api
+#     replicaCount: 1
+#     env:
+#       ROOT_PATH: /plugins/video-player/api
+#       CORS_ORIGINS: "*"
+#     resources:
+#       limits:
+#         cpu: 500m
+#         memory: 512Mi
+#       requests:
+#         cpu: 100m
+#         memory: 128Mi
+pluginBackends: []
 
 # Monitoring and observability
 monitoring:
@@ -302,8 +331,3 @@ monitoring:
     enabled: false
     interval: 30s
     scrapeTimeout: 10s
-
-# Video Player Plugin (Subchart)
-video-player:
-  enabled: false # Default to disabled, enabled via values-dev/prod or ArgoCD
-  # Other values will be inherited from the subchart's default values

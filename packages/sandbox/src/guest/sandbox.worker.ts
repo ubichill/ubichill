@@ -58,7 +58,8 @@ const securePostMessage = nullifyGlobals();
 // UbiSDK を securePostMessage で初期化（グローバル無効化後に生成することで安全な送信経路を確保）
 const Ubi = new UbiSDK(securePostMessage);
 
-const DANGEROUS_PATTERNS = [/importScripts/, /eval\s*\(/, /Function\s*\(/, /__proto__/, /prototype\s*\[/] as const;
+// \bFunction\s*\( — 単語境界を使うことで ZodFunction( / ProxyFunction( 等の誤検知を防ぐ
+const DANGEROUS_PATTERNS = [/importScripts/, /eval\s*\(/, /\bFunction\s*\(/, /__proto__/, /prototype\s*\[/] as const;
 
 function checkDangerousPatterns(code: string): void {
     for (const pattern of DANGEROUS_PATTERNS) {
@@ -78,6 +79,8 @@ self.addEventListener('message', (e: MessageEvent<PluginHostEvent>) => {
 
     Ubi.worldId = event.payload.worldId;
     Ubi.myUserId = event.payload.myUserId;
+    Ubi.entityId = event.payload.entityId;
+    Ubi.pluginBase = event.payload.pluginBase ?? '';
 
     const pluginId = event.payload.pluginId ?? event.payload.worldId ?? 'unknown';
     Ubi.pluginId = pluginId;
@@ -86,8 +89,18 @@ self.addEventListener('message', (e: MessageEvent<PluginHostEvent>) => {
         // SECURITY NOTE: 本番環境では静的解析・コード署名・CSP・将来的に QuickJS+WASM への移行を推奨
         checkDangerousPatterns(event.payload.code);
 
+        // プラグインの console.log 等を Ubi.log へリダイレクト（グローバル console をシャドウ）
+        const _pluginConsole = {
+            log: (...args: unknown[]) => Ubi.log(args.map(String).join(' '), 'info'),
+            info: (...args: unknown[]) => Ubi.log(args.map(String).join(' '), 'info'),
+            warn: (...args: unknown[]) => Ubi.log(args.map(String).join(' '), 'warn'),
+            error: (...args: unknown[]) => Ubi.log(args.map(String).join(' '), 'error'),
+            debug: (...args: unknown[]) => Ubi.log(args.map(String).join(' '), 'debug'),
+        };
+
         const pluginFn = new SafeFunction(
             'Ubi',
+            'console',
             `"use strict";
 try {
     ${event.payload.code}
@@ -97,7 +110,7 @@ try {
 }`,
         );
 
-        pluginFn(Ubi);
+        pluginFn(Ubi, _pluginConsole);
 
         // ACK: 初期化完了を Host に通知 → Host がキューをフラッシュする
         securePostMessage({ type: 'CMD_READY' });
