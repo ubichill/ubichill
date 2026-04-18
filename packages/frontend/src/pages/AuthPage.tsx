@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE, registerWithOTP, resendOTP, signIn, useSession, verifyOTPAndRegister } from '@/lib/auth-client';
 import { css } from '@/styled-system/css';
 import { flex, vstack } from '@/styled-system/patterns';
@@ -8,6 +8,8 @@ type AuthMode = 'login' | 'register' | 'verify';
 
 export function AuthPage() {
     const navigate = useNavigate();
+    const location = useLocation();
+    const from = (location.state as { from?: string } | null)?.from ?? '/';
     const { data: session, isPending } = useSession();
     const [mode, setMode] = useState<AuthMode>('login');
     const [email, setEmail] = useState('');
@@ -32,9 +34,9 @@ export function AuthPage() {
     // Redirect if already logged in
     useEffect(() => {
         if (session && !isPending) {
-            navigate('/');
+            navigate(from, { replace: true });
         }
-    }, [session, isPending, navigate]);
+    }, [session, isPending, navigate, from]);
 
     // ユーザー名の重複チェック（デバウンス付き）
     useEffect(() => {
@@ -123,7 +125,7 @@ export function AuthPage() {
                 if (result.error) {
                     setError(result.error.message || 'ログインに失敗しました');
                 } else {
-                    navigate('/');
+                    navigate(from, { replace: true });
                 }
             }
         } catch {
@@ -371,9 +373,9 @@ const containerStyle = flex({
 const cardStyle = vstack({
     gap: '6',
     p: '8',
-    bg: '#ffffff',
+    bg: 'white',
     rounded: 'xl',
-    shadow: '0 8px 32px rgba(27, 42, 68, 0.08)',
+    shadow: 'card',
     w: 'full',
     maxW: '400px',
 });
@@ -457,7 +459,7 @@ const inputStyle = css({
     outline: 'none',
     transition: 'all 0.2s',
     _placeholder: { color: 'textSubtle' },
-    _focus: { borderColor: 'primaryHover', ring: '2', ringColor: 'rgba(30, 49, 85, 0.15)' },
+    _focus: { borderColor: 'primaryHover', ring: '2', ringColor: 'primarySubtle' },
 });
 
 const inputErrorStyle = css({
@@ -473,7 +475,7 @@ const inputErrorStyle = css({
     outline: 'none',
     transition: 'all 0.2s',
     _placeholder: { color: 'textSubtle' },
-    _focus: { borderColor: 'error', ring: '2', ringColor: 'rgba(192, 57, 43, 0.15)' },
+    _focus: { borderColor: 'error', ring: '2', ringColor: 'errorSubtle' },
 });
 
 const fieldErrorStyle = css({
@@ -483,7 +485,7 @@ const fieldErrorStyle = css({
 
 const fieldSuccessStyle = css({
     fontSize: 'xs',
-    color: '#27ae60',
+    color: 'successText',
 });
 
 const hintStyle = css({
@@ -506,7 +508,7 @@ const otpInputStyle = css({
     rounded: 'lg',
     outline: 'none',
     transition: 'all 0.2s',
-    _focus: { borderColor: 'primaryHover', ring: '2', ringColor: 'rgba(30, 49, 85, 0.15)' },
+    _focus: { borderColor: 'primaryHover', ring: '2', ringColor: 'primarySubtle' },
 });
 
 const buttonStyle = css({

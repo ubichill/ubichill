@@ -1,114 +1,115 @@
-import { useSocket, useWorld } from '@ubichill/sdk/react';
-import { useEffect, useRef, useState } from 'react';
+import type { Instance, WorldListItem } from '@ubichill/shared';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useInstances } from '@/core/hooks/useInstances';
-import { InstanceRenderer } from '@/instance/InstanceRenderer';
+import { API_BASE } from '@/lib/api';
 import { useSession } from '@/lib/auth-client';
-import { PluginRegistryProvider } from '@/plugins/PluginRegistryContext';
 import { css } from '@/styled-system/css';
 
-type PageState = 'loading' | 'joining' | 'connected' | 'error';
-
 /**
- * 公開ワールド URL (/world/:worldId)
- * - 未認証: /auth にリダイレクトし、認証後このページに戻ってくる
- * - 認証済み: ワールドに紐づくインスタンスを自動作成して参加
+ * ワールド詳細ページ (/world/:worldId)
+ * URL 直アクセス対応。認証後に当ページへ戻るリダイレクトを保持する。
+ * ソケット接続は行わない。
  */
 export function WorldPage() {
     const navigate = useNavigate();
     const { worldId } = useParams<{ worldId: string }>();
     const { data: session, isPending } = useSession();
 
-    const { isConnected, error: socketError, joinWorld, leaveWorld } = useSocket();
-    const { environment } = useWorld();
-    const { createInstance } = useInstances();
-
-    const [pageState, setPageState] = useState<PageState>('loading');
-    const [errorMessage, setErrorMessage] = useState('');
-    const hasJoinedRef = useRef(false);
-    const leaveWorldRef = useRef(leaveWorld);
-    leaveWorldRef.current = leaveWorld;
-
-    useEffect(() => {
-        return () => {
-            leaveWorldRef.current();
-        };
-    }, []);
+    const [world, setWorld] = useState<WorldListItem | null>(null);
+    const [instances, setInstances] = useState<Instance[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [creating, setCreating] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         if (isPending) return;
-
         if (!session) {
-            // 認証後にこのページに戻れるよう state に保存してリダイレクト
-            navigate('/auth', { state: { from: { pathname: `/world/${worldId}` } }, replace: true });
+            navigate('/auth', { state: { from: `/world/${worldId}` }, replace: true });
             return;
         }
+        if (!worldId) return;
 
-        if (hasJoinedRef.current) return;
-        if (!worldId) {
-            setErrorMessage('ワールドIDが見つかりません');
-            setPageState('error');
-            return;
-        }
+        setLoading(true);
+        setError(null);
 
-        hasJoinedRef.current = true;
-        setPageState('joining');
+        Promise.all([
+            fetch(`${API_BASE}/api/v1/worlds/${worldId}`, { credentials: 'include' }).then((r) => {
+                if (!r.ok) throw new Error('World not found');
+                return r.json() as Promise<WorldListItem>;
+            }),
+            fetch(`${API_BASE}/api/v1/instances?worldId=${encodeURIComponent(worldId)}`, {
+                credentials: 'include',
+            }).then((r) => r.json() as Promise<{ instances: Instance[] }>),
+        ])
+            .then(([worldData, instancesData]) => {
+                setWorld(worldData);
+                setInstances(instancesData.instances ?? []);
+            })
+            .catch((e: unknown) => setError(e instanceof Error ? e.message : 'データの取得に失敗しました'))
+            .finally(() => setLoading(false));
+    }, [isPending, session, worldId, navigate]);
 
-        (async () => {
-            const instance = await createInstance({ worldId });
-            if (!instance) {
-                setErrorMessage('インスタンスの作成に失敗しました');
-                setPageState('error');
-                return;
-            }
+    const handleJoin = (instanceId: string) => {
+        navigate(`/instance/${instanceId}`, { state: { worldId } });
+    };
 
-            joinWorld(session.user.name, worldId, instance.id, (err) => {
-                setErrorMessage(err);
-                setPageState('error');
+    const handleCreate = async () => {
+        if (!worldId || creating) return;
+        setCreating(true);
+        setError(null);
+        try {
+            const res = await fetch(`${API_BASE}/api/v1/instances`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ worldId }),
             });
-        })();
-    }, [session, isPending, navigate, worldId, createInstance, joinWorld]);
-
-    useEffect(() => {
-        if (isConnected && pageState === 'joining') {
-            setPageState('connected');
+            if (!res.ok) {
+                const data = (await res.json()) as { error?: string };
+                throw new Error(data.error ?? 'インスタンスの作成に失敗しました');
+            }
+            const instance = (await res.json()) as Instance;
+            navigate(`/instance/${instance.id}`, { state: { worldId } });
+        } catch (e: unknown) {
+            setError(e instanceof Error ? e.message : 'インスタンスの作成に失敗しました');
+        } finally {
+            setCreating(false);
         }
-    }, [isConnected, pageState]);
+    };
 
-    if (pageState === 'loading' || pageState === 'joining') {
+    if (isPending || loading) {
         return (
-            <div
-                className={css({
-                    minH: '100vh',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexDir: 'column',
-                    gap: 4,
-                })}
-            >
-                <p>ワールドに接続中...</p>
+            <div className={css({ minH: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' })}>
+                <p className={css({ color: 'textMuted' })}>読み込み中...</p>
             </div>
         );
     }
 
-    if (pageState === 'error' || (socketError && !isConnected)) {
+    if (error) {
         return (
             <div
                 className={css({
                     minH: '100vh',
                     display: 'flex',
+                    flexDir: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    flexDir: 'column',
                     gap: 4,
                 })}
             >
-                <p className={css({ color: 'red.500' })}>{errorMessage || socketError}</p>
+                <p className={css({ color: 'errorText' })}>{error}</p>
                 <button
                     type="button"
                     onClick={() => navigate('/')}
-                    className={css({ padding: '8px 16px', bg: 'gray.200', rounded: 'md' })}
+                    className={css({
+                        px: 6,
+                        py: 3,
+                        bg: 'secondary',
+                        color: 'textMuted',
+                        borderRadius: 'md',
+                        cursor: 'pointer',
+                        border: 'none',
+                    })}
                 >
                     ロビーへ
                 </button>
@@ -117,21 +118,104 @@ export function WorldPage() {
     }
 
     return (
-        <main
-            style={{
-                width: '100vw',
-                height: '100vh',
-                position: 'relative',
-                overflow: 'hidden',
-                backgroundColor: environment?.backgroundColor || '#f8f9fa',
-                backgroundImage: environment?.backgroundImage ? `url(${environment.backgroundImage})` : 'none',
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-            }}
+        <div
+            className={css({
+                minH: '100vh',
+                display: 'flex',
+                flexDir: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                p: 8,
+            })}
         >
-            <PluginRegistryProvider>
-                <InstanceRenderer />
-            </PluginRegistryProvider>
-        </main>
+            {world?.thumbnail && (
+                <img
+                    src={world.thumbnail}
+                    alt={world.displayName}
+                    className={css({
+                        width: '100%',
+                        maxW: 'sm',
+                        height: '160px',
+                        objectFit: 'cover',
+                        borderRadius: 'xl',
+                    })}
+                />
+            )}
+            <h1 className={css({ fontSize: '2xl', fontWeight: '700', color: 'text' })}>
+                {world?.displayName ?? worldId}
+            </h1>
+            {world?.description && (
+                <p className={css({ color: 'textMuted', fontSize: 'sm', textAlign: 'center', maxW: 'sm' })}>
+                    {world.description}
+                </p>
+            )}
+
+            {instances.length > 0 && (
+                <div className={css({ display: 'flex', flexDir: 'column', gap: 3, width: 'full', maxW: 'sm' })}>
+                    {instances.map((i) => (
+                        <button
+                            key={i.id}
+                            type="button"
+                            onClick={() => handleJoin(i.id)}
+                            className={css({
+                                p: 4,
+                                bg: 'surfaceAccent',
+                                border: '1px solid',
+                                borderColor: 'border',
+                                borderRadius: 'lg',
+                                textAlign: 'left',
+                                cursor: 'pointer',
+                                _hover: { borderColor: 'primary' },
+                            })}
+                        >
+                            <span className={css({ fontSize: 'sm', color: 'textMuted' })}>
+                                参加者 {i.stats.currentUsers} / {i.stats.maxUsers}
+                            </span>
+                        </button>
+                    ))}
+                </div>
+            )}
+
+            {instances.length === 0 && (
+                <p className={css({ color: 'textMuted', fontSize: 'sm' })}>参加可能なインスタンスがありません</p>
+            )}
+
+            <div className={css({ display: 'flex', gap: 3 })}>
+                <button
+                    type="button"
+                    onClick={handleCreate}
+                    disabled={creating}
+                    className={css({
+                        px: 6,
+                        py: 3,
+                        bg: 'primary',
+                        color: 'textOnPrimary',
+                        borderRadius: 'md',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        border: 'none',
+                        _disabled: { opacity: 0.6, cursor: 'not-allowed' },
+                    })}
+                >
+                    {creating ? '作成中...' : '新しいインスタンスを作成'}
+                </button>
+                <button
+                    type="button"
+                    onClick={() => navigate('/')}
+                    className={css({
+                        px: 6,
+                        py: 3,
+                        bg: 'secondary',
+                        color: 'textMuted',
+                        borderRadius: 'md',
+                        cursor: 'pointer',
+                        border: 'none',
+                    })}
+                >
+                    ロビーへ
+                </button>
+            </div>
+        </div>
     );
 }

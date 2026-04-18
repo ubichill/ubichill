@@ -8,6 +8,11 @@ metadata:
     component: backend
 spec:
   replicas: {{ .Values.backend.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       {{- include "ubichill.selectorLabels" . | nindent 6 }}
@@ -46,6 +51,7 @@ spec:
                   component: backend
               topologyKey: kubernetes.io/hostname
       {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.backend.terminationGracePeriodSeconds | default 30 }}
       serviceAccountName: {{ include "ubichill.serviceAccountName.backend" . }}
       containers:
       - name: backend
@@ -53,6 +59,11 @@ spec:
           {{- toYaml .Values.backend.securityContext | nindent 10 }}
         image: {{ include "ubichill.backend.image" . }}
         imagePullPolicy: {{ .Values.backend.image.pullPolicy | default .Values.global.imagePullPolicy }}
+        lifecycle:
+          preStop:
+            exec:
+              # Ingress がこの pod をバックエンドから除外するまで待機してから SIGTERM を受け取る
+              command: ["sleep", "5"]
         ports:
         - name: http
           containerPort: {{ .Values.backend.service.targetPort }}
@@ -68,16 +79,25 @@ spec:
               name: {{ .Values.postgresql.auth.existingSecret }}
               key: {{ .Values.postgresql.auth.secretKeys.adminPasswordKey | default "postgres-password" }}
         - name: DATABASE_URL
-          value: "postgresql://{{ .Values.postgresql.auth.username | default "postgres" }}:$(PG_PASSWORD)@{{ include "ubichill.fullname" . }}-postgresql:5432/{{ .Values.postgresql.auth.database }}"
+          value: "postgresql://{{ .Values.postgresql.auth.username | default "postgres" }}:$(PG_PASSWORD)@{{ include "ubichill.fullname" . }}-postgresql:{{ .Values.postgresql.primary.service.ports.postgresql | default 5432 }}/{{ .Values.postgresql.auth.database }}"
         {{- else }}
         {{- /* Use password from values */}}
         - name: DATABASE_URL
-          value: "postgresql://{{ .Values.postgresql.auth.username | default "postgres" }}:{{ .Values.postgresql.auth.password | default .Values.postgresql.auth.postgresPassword | default "password" }}@{{ include "ubichill.fullname" . }}-postgresql:5432/{{ .Values.postgresql.auth.database }}"
+          value: "postgresql://{{ .Values.postgresql.auth.username | default "postgres" }}:{{ .Values.postgresql.auth.password | default .Values.postgresql.auth.postgresPassword | default "password" }}@{{ include "ubichill.fullname" . }}-postgresql:{{ .Values.postgresql.primary.service.ports.postgresql | default 5432 }}/{{ .Values.postgresql.auth.database }}"
         {{- end }}
         {{- end }}
         {{- range $key, $value := .Values.backend.env }}
         - name: {{ $key }}
           value: {{ $value | quote }}
+        {{- end }}
+        {{- /* global.domain から CORS_ORIGIN / BETTER_AUTH_URL を自動導出（values で上書き可能） */}}
+        {{- if and .Values.global.domain (not (index .Values.backend.env "CORS_ORIGIN")) }}
+        - name: CORS_ORIGIN
+          value: {{ printf "https://%s" .Values.global.domain | quote }}
+        {{- end }}
+        {{- if and .Values.global.domain (not (index .Values.backend.env "BETTER_AUTH_URL")) }}
+        - name: BETTER_AUTH_URL
+          value: {{ printf "https://%s" .Values.global.domain | quote }}
         {{- end }}
         {{- if and (not .Values.backend.existingSecret) .Values.backend.secretEnv }}
         {{- range $key, $value := .Values.backend.secretEnv }}
@@ -88,14 +108,21 @@ spec:
               key: {{ $key }}
         {{- end }}
         {{- end }}
-        {{- if .Values.worlds.enabled }}
-        - name: WORLDS_DIR
-          value: "/app/worlds"
+        {{- if .Values.worlds.registries }}
+        - name: WORLDS_REGISTRY_URLS
+          value: {{ .Values.worlds.registries | join "," | quote }}
+        {{- end }}
+        {{- if .Values.worlds.registryToken }}
+        - name: WORLDS_REGISTRY_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "ubichill.fullname" . }}-worlds-token
+              key: token
         {{- end }}
         # Redis connection
         {{- if .Values.redis.enabled }}
         - name: REDIS_URL
-          value: "redis://{{ include "ubichill.fullname" . }}-redis-master:6379"
+          value: "redis://{{ include "ubichill.fullname" . }}-redis-master:{{ .Values.redis.master.service.ports.redis | default 6379 }}"
         {{- end }}
         {{- if .Values.backend.existingSecret }}
         envFrom:
@@ -122,16 +149,4 @@ spec:
         {{- end }}
         resources:
           {{- toYaml .Values.backend.resources | nindent 12 }}
-        {{- if .Values.worlds.enabled }}
-        volumeMounts:
-        - name: worlds
-          mountPath: /app/worlds
-          readOnly: true
-        {{- end }}
-      {{- if .Values.worlds.enabled }}
-      volumes:
-      - name: worlds
-        configMap:
-          name: {{ include "ubichill.fullname" . }}-worlds
-      {{- end }}
 {{- end }}

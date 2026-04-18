@@ -1,31 +1,41 @@
-FROM python:3.12-slim-bookworm
+FROM python:3.12-slim-bookworm AS base
 
-# 1. 必須ツール（ffmpegは動画処理に必須）
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. uv のインストール（pipより圧倒的に速い）
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
-# 3. 作業ディレクトリ
+# ── Builder ──────────────────────────────────────────────────
+FROM base AS builder
 WORKDIR /app
 
-# 4. 依存関係のインストール
-# pyproject.toml をコピー
 COPY pyproject.toml ./
-
-# 仮想環境を作成してパッケージをインストール
 RUN uv venv .venv
 ENV PATH="/app/.venv/bin:$PATH"
 RUN uv pip install -r pyproject.toml
 
-# 5. アプリケーションコードをコピー
-COPY main.py ./
+# ── Production ───────────────────────────────────────────────
+FROM base AS production
+WORKDIR /app
 
-# 6. ポート8000を公開
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
+
+COPY --chown=appuser:appuser main.py ./
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/ || exit 1
+
 EXPOSE 8000
 
-# 7. サーバー起動（Python モジュールとして実行）
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uvicorn", "main:app", \
+     "--host", "0.0.0.0", \
+     "--port", "8000", \
+     "--workers", "4", \
+     "--proxy-headers", \
+     "--forwarded-allow-ips", "*"]

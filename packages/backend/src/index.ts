@@ -16,13 +16,14 @@ import {
     handleEntityPatch,
     handleStatusUpdate,
     handleUserUpdate,
+    handleVideoPlayerStateRequest,
+    handleVideoPlayerStateResponse,
     handleVideoPlayerSync,
     handleWorldJoin,
     handleWorldLeave,
 } from './handlers/socketHandlers';
 import { auth } from './lib/auth';
 import { socketAuthMiddleware } from './middleware/socketAuth';
-import { router as audioRouter } from './routes/audio';
 import { router as instancesRouter } from './routes/instances';
 import { router as usersRouter } from './routes/users';
 import { router as worldsRouter } from './routes/worlds';
@@ -33,8 +34,8 @@ import { worldRegistry } from './services/worldRegistry';
 const app = express();
 
 // Ingress / リバースプロキシ経由の X-Forwarded-For を信頼する
-// production のみ有効化（開発環境では偽装リスクを避けるため無効）
-if (appConfig.isProduction) {
+// production または TRUST_PROXY=true の場合に有効化（K8s dev 環境でも必要）
+if (appConfig.isProduction || appConfig.trustProxy) {
     app.set('trust proxy', 1);
 }
 
@@ -49,7 +50,12 @@ app.use(
     }),
 );
 
-// レート制限
+// ヘルスチェック（レートリミッターより前に配置して K8s probe を除外）
+app.get('/health', (_req, res) => {
+    res.json({ status: 'ok', timestamp: Date.now() });
+});
+
+// レート制限（/health は対象外）
 const limiter = rateLimit({
     windowMs: appConfig.rateLimit.windowMs,
     max: appConfig.rateLimit.maxRequests,
@@ -62,11 +68,6 @@ app.use(limiter);
 // JSONボディパーサー
 app.use(express.json());
 
-// ヘルスチェックエンドポイント
-app.get('/health', (_req, res) => {
-    res.json({ status: 'ok', timestamp: Date.now() });
-});
-
 // バージョン情報エンドポイント（ビルド時のコミットハッシュを返す）
 app.get('/api/version', (_req, res) => {
     res.json({
@@ -74,9 +75,6 @@ app.get('/api/version', (_req, res) => {
         environment: appConfig.nodeEnv,
     });
 });
-
-// オーディオAPI（YouTube音楽ストリーム）
-app.use('/api/audio', audioRouter);
 
 import { toNodeHandler } from 'better-auth/node';
 
@@ -137,12 +135,42 @@ io.on('connection', (socket) => {
 
     // Video Player同期
     socket.on('video-player:sync', handleVideoPlayerSync(socket));
+    socket.on('video-player:state-request', handleVideoPlayerStateRequest(socket));
+    socket.on('video-player:state-response', handleVideoPlayerStateResponse(socket));
 });
+
+// ============================================
+// グレースフルシャットダウン
+// ============================================
+function setupGracefulShutdown() {
+    const shutdown = (signal: string) => {
+        console.log(`⚡ ${signal} 受信 — グレースフルシャットダウン開始`);
+
+        // 新規 HTTP 接続を拒否し、既存リクエストの完了を待つ
+        server.close(() => {
+            console.log('✅ HTTP サーバー停止完了');
+        });
+
+        // Socket.IO を閉じる（既存クライアントに disconnect イベントを送信）
+        io.close(() => {
+            console.log('✅ Socket.IO 停止完了');
+        });
+
+        // フォールバック: 一定時間内に完了しない場合は強制終了
+        setTimeout(() => {
+            console.warn('⏰ シャットダウンタイムアウト — 強制終了');
+            process.exit(0);
+        }, 15_000).unref();
+    };
+
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
+}
 
 // サーバーを起動（非同期初期化）
 async function startServer() {
-    // ワールド定義を読み込み
-    await worldRegistry.loadWorlds();
+    // システムユーザー初期化のみ（ワールドシードは行わない）
+    await worldRegistry.initialize();
 
     // 起動時クリーンアップ: 前回の実行で残ったインスタンスを削除する。
     // サーバーが再起動するとソケット接続が全て切断されるが、disconnect ハンドラは
@@ -152,8 +180,7 @@ async function startServer() {
         console.log(`🧹 起動クリーンアップ: 孤立インスタンス ${cleaned} 件を削除しました`);
     }
 
-    // ワールド数を取得（非同期）
-    const worlds = await worldRegistry.listWorlds();
+    setupGracefulShutdown();
 
     server.listen(appConfig.port, () => {
         console.log('');
@@ -161,7 +188,6 @@ async function startServer() {
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log(`   🌐 ポート ${appConfig.port} で起動中`);
         console.log(`   📍 環境: ${appConfig.nodeEnv}`);
-        console.log(`   📁 ワールド数: ${worlds.length}`);
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log('');
     });

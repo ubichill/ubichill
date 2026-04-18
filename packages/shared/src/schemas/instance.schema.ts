@@ -103,6 +103,7 @@ export type CreateInstanceRequest = z.infer<typeof CreateInstanceRequestSchema>;
  */
 export const ListInstancesQuerySchema = z.object({
     tag: z.string().optional(),
+    worldId: z.string().optional(),
     includeFull: z.coerce.boolean().default(false),
 });
 

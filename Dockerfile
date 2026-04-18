@@ -28,10 +28,6 @@ COPY packages/react/package.json          ./packages/react/package.json
 COPY packages/sandbox/package.json        ./packages/sandbox/package.json
 COPY packages/sdk/package.json            ./packages/sdk/package.json
 COPY packages/shared/package.json         ./packages/shared/package.json
-COPY plugins/avatar/frontend/package.json       ./plugins/avatar/frontend/package.json
-COPY plugins/pen/frontend/package.json          ./plugins/pen/frontend/package.json
-COPY plugins/video-player/frontend/package.json ./plugins/video-player/frontend/package.json
-
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile --ignore-scripts
 
@@ -60,7 +56,7 @@ RUN echo "inject-workspace-packages=true" > .npmrc \
     && pnpm --filter="@ubichill/backend" --prod deploy --ignore-scripts /app/deploy-backend
 
 # ==========================================
-# backend-runner
+# backend-runner: Express API サーバー
 # ==========================================
 FROM node:${NODE_VERSION}-alpine AS backend-runner
 RUN apk add --no-cache libc6-compat
@@ -72,21 +68,30 @@ ENV COMMIT_HASH=${COMMIT_HASH}
 
 USER node
 COPY --from=builder --chown=node:node /app/deploy-backend .
+COPY --from=builder --chown=node:node /app/worlds ./worlds
+
+# コンテナ内の絶対パス。k8s で ConfigMap/PVC をマウントする場合は WORLDS_DIR で上書きする
+ENV WORLDS_DIR=/app/worlds
 
 EXPOSE 3001
 CMD ["node", "dist/index.js"]
 
 # ==========================================
-# frontend-runner: Vite 静的ファイルを static-web-server で配信
-# Rust 製・非 root デフォルト・設定不要で SPA フォールバック対応
+# frontend-runner: nginx で SPA を配信
+#
+# try_files で「SPA ルート委譲」と「存在しないアセットの 404」を分離する。
+# static-web-server の SERVER_FALLBACK_PAGE と異なり、
+# .js/.css 等のファイルが存在しない場合は正しく 404 を返す。
 # ==========================================
-FROM joseluisq/static-web-server:2-alpine AS frontend-runner
+FROM nginx:alpine AS frontend-runner
 
-COPY --from=builder /app/packages/frontend/dist /public
+COPY --from=builder /app/packages/frontend/dist /usr/share/nginx/html
+# テンプレートを配置すると nginx エントリポイントが起動時に envsubst を実行し
+# /etc/nginx/conf.d/default.conf を生成する
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 
-ENV SERVER_PORT=3000
-ENV SERVER_ROOT=/public
-ENV SERVER_FALLBACK_PAGE=/index.html
-ENV SERVER_LOG_LEVEL=error
+# デフォルト値。docker-compose や K8s で上書きする
+ENV BACKEND_HOST=backend
+ENV BACKEND_PORT=3001
 
 EXPOSE 3000
