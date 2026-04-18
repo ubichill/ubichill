@@ -21,6 +21,7 @@
  */
 
 import * as esbuild from 'esbuild';
+import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -143,21 +144,25 @@ export async function buildWorker(pluginJsonPath) {
 
         const code = await bundleWorker(entryPath, tsconfig, {});
 
+        // コンテンツハッシュ（8文字）でキャッシュバスティング
+        const hash = createHash('sha256').update(code).digest('hex').slice(0, 8);
+        const outFilename = `index.${hash}.js`;
+
         // dist: バージョン固定
         const distEntityDir = join(distVersionDir, entityKey);
         mkdirSync(distEntityDir, { recursive: true });
-        writeFileSync(join(distEntityDir, 'index.js'), code, 'utf-8');
+        writeFileSync(join(distEntityDir, outFilename), code, 'utf-8');
 
         // public: バージョン固定パス（CDN キャッシュバスティング用）
         const publicEntityDir = join(publicVersionDir, entityKey);
         mkdirSync(publicEntityDir, { recursive: true });
-        writeFileSync(join(publicEntityDir, 'index.js'), code, 'utf-8');
+        writeFileSync(join(publicEntityDir, outFilename), code, 'utf-8');
 
         // workerUrl を明示、src（ビルド時のみ）は除去
         const { src: _src, ...runtimeMeta } = typeof entityEntry === 'string' ? {} : entityEntry;
-        versionedEntities[entityType] = { ...runtimeMeta, workerUrl: `./${entityKey}/index.js` };
+        versionedEntities[entityType] = { ...runtimeMeta, workerUrl: `./${entityKey}/${outFilename}` };
 
-        console.log(`✅ [${entityType}] /plugins/${pluginDirName}/v${version}/${entityKey}/index.js`);
+        console.log(`✅ [${entityType}] /plugins/${pluginDirName}/v${version}/${entityKey}/${outFilename}`);
     }
 
     // バージョン付きマニフェストを書き出す（ランタイム用・src なし）

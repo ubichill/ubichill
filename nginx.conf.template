@@ -10,8 +10,6 @@ server {
     }
 
     # ── API / 認証 → バックエンドコンテナへプロキシ ─────────────────────
-    # BACKEND_HOST / BACKEND_PORT は環境変数で注入する（envsubst）。
-    # Docker Compose ではサービス名、K8s では Service 名を指定する。
     location /api/ {
         proxy_pass         http://${BACKEND_HOST}:${BACKEND_PORT};
         proxy_set_header   Host              $host;
@@ -32,19 +30,18 @@ server {
         proxy_set_header   X-Forwarded-Proto $scheme;
     }
 
-    # ── プラグインアセット（/plugins/ 以下）──────────────────────────────
-    # Worker JS / マニフェスト JSON は再デプロイで内容が変わるため immutable にしない。
-    # テンプレートアセット（.ani / .cur / .png 等）も同じパス以下にあるため同様に扱う。
-    # バージョンパス (v1.0.0/) が含まれるが plugin.json はバージョン間で共有されるため
-    # no-cache とし、常に最新を返す。
-    location /plugins/ {
+    # ── プラグインアセット (/plugins/ 以下) ─────────────────────────────
+    # ^~ により regex location (~* .js 等) より優先される。
+    # Worker JS はデプロイ毎に内容が変わるが URL が変わらないため immutable にしない。
+    # no-cache: 毎回サーバーへ確認するが 304 Not Modified で高速に返せる。
+    location ^~ /plugins/ {
         try_files $uri =404;
         add_header Cache-Control "public, no-cache";
     }
 
     # ── 静的アセット（Vite のハッシュ付きファイル名）─────────────────────
-    # ハッシュ付きファイル名は内容が変わると URL 自体が変わるため immutable で安全。
-    # 存在しない場合は正しく 404 を返す（古いハッシュへの参照など）
+    # ハッシュ付き URL は内容変更で URL 自体が変わるため immutable で安全。
+    # /plugins/ は上の location ^~ が先に適用されるためここには来ない。
     location ~* \.(js|css|woff2?|ttf|eot|otf|ico|png|jpg|jpeg|gif|svg|webp|avif|map)$ {
         try_files $uri =404;
         expires 1y;
