@@ -3,9 +3,9 @@
  * cursor.worker.tsx にのみ登録される。
  */
 
-import type { AnimFrame } from '../state';
 import type { AppAvatarDef, Entity, System, WorkerEvent } from '@ubichill/sdk';
 import { EcsEventType } from '@ubichill/sdk';
+import type { AnimFrame } from '../state';
 import { cursor, LERP_SPEED, SNAP_THRESHOLD } from '../state';
 import { AvatarCursor } from '../ui/AvatarCursor';
 import { cssToState } from './utils';
@@ -45,9 +45,14 @@ export const AvatarCursorSystem: System = (_entities: Entity[], deltaTime: numbe
                 cursor.animFrame = 0;
                 cursor.animElapsed = 0;
                 // sourceUrl を持つ状態のフレームをホストへ要求する
-                const sourceUrls = Object.entries(user.avatar.states)
-                    .filter(([, def]) => def?.sourceUrl)
-                    .map(([state, def]) => ({ state, sourceUrl: def!.sourceUrl! }));
+                const sourceUrls = Object.entries(user.avatar.states).reduce<
+                    Array<{ state: string; sourceUrl: string }>
+                >((acc, [state, def]) => {
+                    if (def?.sourceUrl) {
+                        acc.push({ state, sourceUrl: def.sourceUrl });
+                    }
+                    return acc;
+                }, []);
                 if (sourceUrls.length > 0) {
                     Ubi.network.sendToHost('avatar:requestFrames', { sourceUrls });
                 }

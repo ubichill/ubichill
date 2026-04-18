@@ -8,7 +8,7 @@ export const AvatarCursor = () => {
 
     // ローカルフレームがある場合は現在フレームの URL を使用（アニメーション）
     const frames = cursor.stateFrames[state];
-    const frameUrl = (frames && frames.length > 0) ? (frames[cursor.animFrame]?.url ?? stateDef.url) : stateDef.url;
+    const frameUrl = frames && frames.length > 0 ? (frames[cursor.animFrame]?.url ?? stateDef.url) : stateDef.url;
     const hx = stateDef.hotspot?.x ?? 0;
     const hy = stateDef.hotspot?.y ?? 0;
 

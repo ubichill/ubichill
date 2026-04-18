@@ -127,10 +127,16 @@ async function _decodeAni(buffer: ArrayBuffer): Promise<DecodedImage> {
 
     hotspot = decodedMap.get(seq[0])?.hotspot ?? { x: 0, y: 0 };
 
-    const frames: AvatarStateFrame[] = seq.map((frameIdx, i) => ({
-        url: decodedMap.get(frameIdx)!.url,
-        duration: stepDurations[i],
-    }));
+    const frames: AvatarStateFrame[] = seq.map((frameIdx, i) => {
+        const decoded = decodedMap.get(frameIdx);
+        if (!decoded) {
+            throw new Error(`ANI: failed to decode frame index ${frameIdx}`);
+        }
+        return {
+            url: decoded.url,
+            duration: stepDurations[i],
+        };
+    });
 
     return { url: frames[0].url, hotspot, frames };
 }
