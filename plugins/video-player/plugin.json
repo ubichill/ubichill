@@ -1,5 +1,19 @@
 {
   "id": "video-player",
   "name": "VideoPlayer",
-  "version": "1.0.0"
+  "version": "2.1.0",
+  "entities": {
+    "video-player:screen": {
+      "src": "./src/screen.worker.tsx",
+      "capabilities": ["video:control", "scene:read", "scene:update", "net:broadcast"],
+      "mediaTargets": ["main"],
+      "watchEntityTypes": ["video-player:screen"]
+    },
+    "video-player:controls": {
+      "src": "./src/controls.worker.tsx",
+      "capabilities": ["ui:render", "net:fetch", "scene:read", "scene:update"],
+      "mediaTargets": [],
+      "watchEntityTypes": ["video-player:screen"]
+    }
+  }
 }

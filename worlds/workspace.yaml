@@ -22,7 +22,7 @@ spec:
       height: 1500
 
   dependencies:
-    - name: pen:pen
+    - name: pen
       source:
         type: repository
         path: "plugins/pen"
@@ -36,11 +36,22 @@ spec:
         path: "plugins/avatar"
 
   initialEntities:
-    - kind: "video-player"
+    # ── ペンキャンバス ───────────────────────────────────────────
+    - kind: "pen:canvas"
+      transform:
+        x: 0
+        y: 0
+        z: 5000
+        scale: 1
+        rotation: 0
+      data: {}
+
+    - kind: "video-player:video"
       transform:
         x: 800
         y: 100
         z: 2
+        w: 620
         scale: 1
         rotation: 0
       data:
@@ -51,6 +62,92 @@ spec:
         currentTime: 0
         loop: 'none'
         shuffle: false
+        fetchDomains: []
+
+    # ── アバター設定 ─────────────────────────────────────────────
+    - kind: "avatar:cursor"
+      transform:
+        x: 0
+        y: 0
+        z: 10100
+        scale: 1
+        rotation: 0
+      data: {}
+
+    - kind: "avatar:settings"
+      transform:
+        x: 20
+        y: 100
+        z: 9998
+        scale: 1
+        rotation: 0
+      data: {}
+
+    # ── ペントレイ ──────────────────────────────────────────────
+    - kind: "pen:tray"
+      transform:
+        x: 20
+        y: 20
+        z: 1000
+        scale: 1
+        rotation: 0
+      data: {}
+
+    # ── ペン (色ごとに 1 エンティティ) ──────────────────────────
+    - kind: "pen:pen"
+      transform:
+        x: 0
+        y: 0
+        z: 1
+        scale: 1
+        rotation: 0
+      data:
+        color: "#1a1a1a"
+        strokeWidth: 4
+
+    - kind: "pen:pen"
+      transform:
+        x: 0
+        y: 0
+        z: 2
+        scale: 1
+        rotation: 0
+      data:
+        color: "#e63946"
+        strokeWidth: 4
+
+    - kind: "pen:pen"
+      transform:
+        x: 0
+        y: 0
+        z: 3
+        scale: 1
+        rotation: 0
+      data:
+        color: "#457b9d"
+        strokeWidth: 4
+
+    - kind: "pen:pen"
+      transform:
+        x: 0
+        y: 0
+        z: 4
+        scale: 1
+        rotation: 0
+      data:
+        color: "#2a9d8f"
+        strokeWidth: 4
+
+    - kind: "pen:pen"
+      transform:
+        x: 0
+        y: 0
+        z: 5
+        scale: 1
+        rotation: 0
+      data:
+        color: "#e9c46a"
+        strokeWidth: 4
 
   permissions:
     allowGuestCreate: true

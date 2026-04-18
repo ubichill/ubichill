@@ -1,15 +1,17 @@
 {
-  "id": "avatar:avatar",
+  "id": "avatar",
   "name": "Avatar",
   "version": "1.0.0",
-  "description": "Custom avatar cursors with smooth interpolation and status indicators",
-  "author": "Ubichill Team",
-  "license": "MIT",
-  "entry": {
-    "frontend": "./frontend/src/index.ts",
-    "worker": "./worker/src/index.ts"
-  },
-  "capabilities": [
-    "scene:update"
-  ]
+  "entities": {
+    "avatar:cursor": {
+      "src": "./src/cursor.worker.tsx",
+      "singleton": true,
+      "capabilities": ["ui:render", "net:host-message", "scene:read"]
+    },
+    "avatar:settings": {
+      "src": "./src/settings.worker.tsx",
+      "singleton": true,
+      "capabilities": ["ui:render", "net:host-message", "net:fetch", "scene:read"]
+    }
+  }
 }

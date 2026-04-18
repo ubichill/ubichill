@@ -1,5 +1,3 @@
-'use client';
-
 import type { Instance } from '@ubichill/shared';
 import { css } from '@/styled-system/css';
 
@@ -96,7 +94,7 @@ export function InstanceCard({ instance, onJoin }: InstanceCardProps) {
                         opacity: 0.9,
                     },
                     _disabled: {
-                        backgroundColor: 'rgba(27, 42, 68, 0.15)',
+                        backgroundColor: 'primarySubtle',
                         color: 'textSubtle',
                         cursor: 'not-allowed',
                     },

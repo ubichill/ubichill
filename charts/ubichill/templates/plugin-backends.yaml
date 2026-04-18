@@ -1,0 +1,75 @@
+{{- range .Values.pluginBackends }}
+{{- $fullName := include "ubichill.fullname" $ }}
+{{- $name := printf "%s-plugin-%s" $fullName .id }}
+{{- $registry := $.Values.global.imageRegistry }}
+{{- $image := printf "%s:%s" .image.repository (.image.tag | default "latest") }}
+{{- if $registry }}
+{{- $image = printf "%s/%s:%s" $registry .image.repository (.image.tag | default "latest") }}
+{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "ubichill.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: plugin-backend
+    ubichill.com/plugin-id: {{ .id | quote }}
+spec:
+  replicas: {{ .replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "ubichill.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: plugin-backend
+      ubichill.com/plugin-id: {{ .id | quote }}
+  template:
+    metadata:
+      labels:
+        {{- include "ubichill.selectorLabels" $ | nindent 8 }}
+        app.kubernetes.io/component: plugin-backend
+        ubichill.com/plugin-id: {{ .id | quote }}
+    spec:
+      containers:
+        - name: {{ .id }}-backend
+          image: {{ $image }}
+          imagePullPolicy: {{ $.Values.global.imagePullPolicy | default "IfNotPresent" }}
+          ports:
+            - containerPort: {{ .port }}
+              protocol: TCP
+          {{- $injectCors := and $.Values.global.domain (not (index .env "CORS_ORIGINS")) }}
+          {{- if or .env $injectCors }}
+          env:
+            {{- range $k, $v := .env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+            {{- /* CORS_ORIGINS を global.domain から自動導出（env で上書き可能） */}}
+            {{- if $injectCors }}
+            - name: CORS_ORIGINS
+              value: {{ printf "https://%s" $.Values.global.domain | quote }}
+            {{- end }}
+          {{- end }}
+          {{- if .resources }}
+          resources:
+            {{- toYaml .resources | nindent 12 }}
+          {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "ubichill.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: plugin-backend
+    ubichill.com/plugin-id: {{ .id | quote }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "ubichill.selectorLabels" $ | nindent 4 }}
+    app.kubernetes.io/component: plugin-backend
+    ubichill.com/plugin-id: {{ .id | quote }}
+  ports:
+    - port: {{ .port }}
+      targetPort: {{ .port }}
+      protocol: TCP
+{{- end }}

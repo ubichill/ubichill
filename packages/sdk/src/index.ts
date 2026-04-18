@@ -11,12 +11,17 @@
 // ECS + メッセージング型
 export * from '@ubichill/engine';
 // UbiSDK 型（プラグイン Worker の `declare const Ubi: UbiSDK` 用）
-export type { UbiSDK } from '@ubichill/sandbox';
+export type { UbiSDK, UiRenderCostStat } from '@ubichill/sandbox';
 // プロトコル型（@ubichill/shared より選択的に re-export）
 export type {
     AppAvatarDef,
     AvailableKind,
+    CanvasCursorData,
+    CanvasStrokeData,
     CmdAvatarSet,
+    CmdCanvasCommitStroke,
+    CmdCanvasFrame,
+    CmdLog,
     CmdNetFetch,
     CmdNetworkBroadcast,
     CmdNetworkSendToHost,
@@ -24,6 +29,7 @@ export type {
     CmdSceneCreateEntity,
     CmdSceneDestroyEntity,
     CmdSceneGetEntity,
+    CmdSceneQueryEntities,
     CmdSceneSubscribeEntity,
     CmdSceneUnsubscribeEntity,
     CmdSceneUpdateEntity,
@@ -45,12 +51,14 @@ export type {
     EvtPlayerLeft,
     EvtRpcResponse,
     EvtSceneEntityUpdated,
+    InputContextMenuData,
     InputFrameEvent,
     InputKeyDownData,
     InputKeyUpData,
     InputMouseDownData,
     InputMouseMoveData,
     InputMouseUpData,
+    InputScrollData,
     PluginCommand,
     PluginEvent,
     PluginGuestCommand,

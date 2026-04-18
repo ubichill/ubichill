@@ -5,14 +5,16 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      target: builder
     ports:
       - "8000:8000"
     environment:
       - PYTHONUNBUFFERED=1
       - CORS_ORIGINS=*
+      - ROOT_PATH=/plugins/video-player/api
     volumes:
-      # main.pyのみマウント（.venvを保護）
       - ./backend/main.py:/app/main.py
+    command: ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/"]
       interval: 30s
@@ -24,4 +26,5 @@ services:
 networks:
   ubichill-network:
     external: true
+
 name: ubichill-video-player

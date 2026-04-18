@@ -15,13 +15,9 @@
     "clean": "pnpm --filter \"./packages/*\" clean",
     "test": "echo \"No tests specified yet\" && exit 0"
   },
-  "workspaces": [
-    "packages/*",
-    "plugins/*/frontend"
-  ],
   "volta": {
-    "node": "25.6.1",
-    "pnpm": "10.29.3"
+    "node": "25.9.0",
+    "pnpm": "10.33.0"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

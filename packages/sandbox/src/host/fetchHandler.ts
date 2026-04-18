@@ -1,3 +1,38 @@
+import type { FetchOptions, FetchResult } from '@ubichill/shared';
+
+/**
+ * 相対 URL およびプラグインアセット origin への直接フェッチ。
+ * ドメインホワイトリストチェックをスキップする。
+ */
+export async function fetchDirect(url: string, options?: FetchOptions): Promise<FetchResult> {
+    try {
+        const response = await fetch(url, {
+            method: options?.method ?? 'GET',
+            headers: options?.headers,
+            body: options?.body,
+        });
+        const headers: Record<string, string> = {};
+        response.headers.forEach((value, key) => {
+            headers[key] = value;
+        });
+        return {
+            ok: response.ok,
+            status: response.status,
+            statusText: response.statusText,
+            headers,
+            body: await response.text(),
+        };
+    } catch (error) {
+        return {
+            ok: false,
+            status: 500,
+            statusText: 'Internal Server Error',
+            headers: {},
+            body: JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
+        };
+    }
+}
+
 export const PRODUCTION_ALLOWED_DOMAINS = ['api.github.com', 'cdn.jsdelivr.net', 'unpkg.com'];
 
 export const DEMO_ALLOWED_DOMAINS = [
@@ -32,20 +67,7 @@ export function isUrlAllowed(url: string, allowedDomains: string[] = DEFAULT_ALL
 }
 
 export function createPluginFetchHandler(allowedDomains: string[] = DEFAULT_ALLOWED_DOMAINS) {
-    return async (
-        url: string,
-        options?: {
-            method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
-            headers?: Record<string, string>;
-            body?: string;
-        },
-    ): Promise<{
-        ok: boolean;
-        status: number;
-        statusText: string;
-        headers: Record<string, string>;
-        body: string;
-    }> => {
+    return async (url: string, options?: FetchOptions): Promise<FetchResult> => {
         if (!isUrlAllowed(url, allowedDomains)) {
             return {
                 ok: false,

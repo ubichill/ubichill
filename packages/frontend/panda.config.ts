@@ -24,6 +24,9 @@ export default defineConfig({
                 },
             },
             tokens: {
+                shadows: {
+                    card: { value: '0 8px 24px rgba(27, 42, 68, 0.08)' },
+                },
                 colors: {
                     // メインカラー（ダークネイビー - ボタンやアクセントに使用）
                     primary: { value: '#1b2a44' },
@@ -66,6 +69,10 @@ export default defineConfig({
                     successBg: { value: '#e4f5ec' },
                     successText: { value: '#1e7e46' },
                     info: { value: '#9ea7bd' },
+
+                    // プライマリ・エラー 半透明（フォーカスリング、スクロールバーなど）
+                    primarySubtle: { value: 'rgba(27, 42, 68, 0.15)' },
+                    errorSubtle: { value: 'rgba(192, 57, 43, 0.15)' },
 
                     // ガラス効果（半透明白）
                     glassBg: { value: 'rgba(255, 255, 255, 0.72)' },

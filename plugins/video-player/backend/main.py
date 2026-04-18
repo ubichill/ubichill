@@ -1,12 +1,14 @@
+import asyncio
+import re
+import os
+from typing import Dict, Any
+from urllib.parse import urljoin, quote
+
 from fastapi import FastAPI, HTTPException, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 import yt_dlp
 import httpx
-from typing import Dict, Any
-import re
-import os
-from urllib.parse import urljoin, quote
 
 # ROOT_PATH環境変数を取得（Kubernetes Ingressでのプレフィックス対応）
 root_path = os.getenv("ROOT_PATH", "")
@@ -61,68 +63,79 @@ async def health_check():
     return {"message": "Ubichill Music Streaming API", "status": "healthy"}
 
 
+def _yt_search(q: str, limit: int) -> list:
+    # ライブ配信を除外するために多めに取得してフィルタリング
+    fetch_limit = limit * 3
+    search_opts: Dict[str, Any] = {
+        "quiet": True,
+        "no_warnings": True,
+        "logger": YTDLPLogger(),
+        "extract_flat": True,
+        "playlist_items": f"1:{fetch_limit}",
+    }
+    with yt_dlp.YoutubeDL(search_opts) as ydl:
+        search_results = ydl.extract_info(f"ytsearch{fetch_limit}:{q}", download=False)
+    tracks = []
+    if search_results is not None and "entries" in search_results:
+        for entry in search_results["entries"]:
+            if not entry:
+                continue
+            # ライブ配信・プレミア公開中の動画を除外
+            if entry.get("is_live") or entry.get("live_status") in ("is_live", "is_upcoming"):
+                continue
+            vid_id = entry.get("id", "")
+            # extract_flat では thumbnail が空の場合があるため ytimg で補完
+            thumbnail = entry.get("thumbnail") or f"https://i.ytimg.com/vi/{vid_id}/mqdefault.jpg"
+            tracks.append(
+                {
+                    "id": vid_id,
+                    "title": entry.get("title", "Unknown"),
+                    "thumbnail": thumbnail,
+                    "duration": entry.get("duration", 0),
+                    "author": entry.get("uploader", "Unknown"),
+                }
+            )
+            if len(tracks) >= limit:
+                break
+    return tracks
+
+
 @app.get("/search")
 async def search_tracks(q: str, limit: int = 10):
     """YouTube検索"""
     try:
-        search_opts: Dict[str, Any] = {
-            "quiet": True,
-            "no_warnings": True,
-            "logger": YTDLPLogger(),
-            "extract_flat": True,
-            "playlist_items": f"1:{limit}",
-        }
-
-        with yt_dlp.YoutubeDL(search_opts) as ydl:
-            # YouTube検索
-            search_results = ydl.extract_info(f"ytsearch{limit}:{q}", download=False)
-
-            tracks = []
-            if search_results is not None and "entries" in search_results:
-                for entry in search_results["entries"]:
-                    if entry:
-                        tracks.append(
-                            {
-                                "id": entry.get("id"),
-                                "title": entry.get("title", "Unknown"),
-                                "thumbnail": entry.get("thumbnail", ""),
-                                "duration": entry.get("duration", 0),
-                                "author": entry.get("uploader", "Unknown"),
-                            }
-                        )
-
-            return tracks
+        tracks = await asyncio.to_thread(_yt_search, q, limit)
+        return tracks
     except Exception as e:
         print(f"Search error: {e}")
+        return []
+
+
+def _yt_info(video_id: str) -> dict:
+    ydl_opts: Dict[str, Any] = {
+        "quiet": True,
+        "no_warnings": True,
+        "logger": YTDLPLogger(),
+        "extract_flat": False,
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        return ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
 
 
 @app.get("/info/{video_id}")
 async def get_video_info(video_id: str, request: Request):
     """動画情報を取得"""
     try:
-        ydl_opts: Dict[str, Any] = {
-            "quiet": True,
-            "no_warnings": True,
-            "logger": YTDLPLogger(),
-            "extract_flat": False,
+        info = await asyncio.to_thread(_yt_info, video_id)
+        base_url = f"{request.url.scheme}://{request.url.netloc}"
+        return {
+            "id": info.get("id"),
+            "title": info.get("title", "Unknown"),
+            "thumbnail": info.get("thumbnail") or f"https://i.ytimg.com/vi/{video_id}/mqdefault.jpg",
+            "duration": info.get("duration", 0),
+            "author": info.get("uploader", "Unknown"),
+            "streamUrl": f"{base_url}/api/stream/video/{video_id}",
         }
-
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(
-                f"https://www.youtube.com/watch?v={video_id}", download=False
-            )
-
-            # リクエストのベースURLを取得して完全なURLを生成
-            base_url = f"{request.url.scheme}://{request.url.netloc}"
-
-            return {
-                "id": info.get("id"),
-                "title": info.get("title", "Unknown"),
-                "thumbnail": info.get("thumbnail", ""),
-                "duration": info.get("duration", 0),
-                "author": info.get("uploader", "Unknown"),
-                "streamUrl": f"{base_url}/api/stream/video/{video_id}",
-            }
     except Exception as e:
         error_msg = str(e)
         if "Requested format is not available" in error_msg:
@@ -191,6 +204,27 @@ def _get_content_type_for_ts(content: bytes, original_type: str) -> str:
     return original_type
 
 
+@app.get("/thumbnail/{video_id}")
+async def get_thumbnail(video_id: str):
+    """YouTubeサムネイルをプロキシ（CSP回避・同一オリジン配信）"""
+    thumbnail_url = f"https://i.ytimg.com/vi/{video_id}/mqdefault.jpg"
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=10.0) as client:
+            response = await client.get(
+                thumbnail_url,
+                headers={"Referer": "https://www.youtube.com/"},
+            )
+            response.raise_for_status()
+            return Response(
+                content=response.content,
+                media_type=response.headers.get("content-type", "image/jpeg"),
+                headers={"Cache-Control": "public, max-age=86400"},
+            )
+    except Exception:
+        # フォールバック: ytimg に直接リダイレクト
+        return RedirectResponse(url=thumbnail_url, status_code=302)
+
+
 @app.get("/proxy")
 async def proxy_url(url: str, request: Request):
     """任意のURLをプロキシ（HLSセグメント用）"""
@@ -248,29 +282,29 @@ async def proxy_url(url: str, request: Request):
         raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
 
 
+def _yt_live_url(video_id: str) -> str:
+    youtube_url = f"https://www.youtube.com/watch?v={video_id}"
+    stream_opts: Dict[str, Any] = {
+        "quiet": True,
+        "no_warnings": True,
+        "logger": YTDLPLogger(),
+        "format": "95/96/best[height<=720]/best",
+        "youtube_include_dash_manifest": False,
+        "hls_prefer_native": False,
+    }
+    with yt_dlp.YoutubeDL(stream_opts) as ydl:
+        info = ydl.extract_info(youtube_url, download=False)
+    stream_url = info.get("url")
+    if not stream_url:
+        raise ValueError("Stream URL not found")
+    return stream_url
+
+
 @app.get("/live/{video_id}")
 async def stream_live(video_id: str, request: Request):
     """ライブストリーム配信（HLS最適化）"""
     try:
-        youtube_url = f"https://www.youtube.com/watch?v={video_id}"
-
-        # ライブストリーム用フォーマット（HLS優先、720p以下）
-        stream_opts: Dict[str, Any] = {
-            "quiet": True,
-            "no_warnings": True,
-            "logger": YTDLPLogger(),
-            "format": "95/96/best[height<=720]/best",
-            "youtube_include_dash_manifest": False,
-            "hls_prefer_native": False,
-        }
-
-        with yt_dlp.YoutubeDL(stream_opts) as ydl:
-            info = ydl.extract_info(youtube_url, download=False)
-            stream_url = info.get("url")
-
-            if not stream_url:
-                raise HTTPException(status_code=404, detail="Stream URL not found")
-
+        stream_url = await asyncio.to_thread(_yt_live_url, video_id)
         return await proxy_url(stream_url, request)
 
     except HTTPException:
@@ -295,28 +329,28 @@ async def stream_live(video_id: str, request: Request):
             )
 
 
+def _yt_video_url(video_id: str) -> str:
+    youtube_url = f"https://www.youtube.com/watch?v={video_id}"
+    stream_opts: Dict[str, Any] = {
+        "quiet": True,
+        "no_warnings": True,
+        "logger": YTDLPLogger(),
+        "format": "best[height<=720][ext=mp4]/best[height<=720]/best",
+        "youtube_include_dash_manifest": False,
+    }
+    with yt_dlp.YoutubeDL(stream_opts) as ydl:
+        info = ydl.extract_info(youtube_url, download=False)
+    stream_url = info.get("url")
+    if not stream_url:
+        raise ValueError("Stream URL not found")
+    return stream_url
+
+
 @app.get("/video/{video_id}")
 async def stream_video(video_id: str):
     """通常動画配信（MP4直接再生 - リダイレクト方式）"""
     try:
-        youtube_url = f"https://www.youtube.com/watch?v={video_id}"
-
-        # 通常動画用フォーマット（MP4優先、720p以下で安定性重視）
-        stream_opts: Dict[str, Any] = {
-            "quiet": True,
-            "no_warnings": True,
-            "logger": YTDLPLogger(),
-            "format": "best[height<=720][ext=mp4]/best[height<=720]/best",
-            "youtube_include_dash_manifest": False,
-        }
-
-        with yt_dlp.YoutubeDL(stream_opts) as ydl:
-            info = ydl.extract_info(youtube_url, download=False)
-            stream_url = info.get("url")
-
-            if not stream_url:
-                raise HTTPException(status_code=404, detail="Stream URL not found")
-
+        stream_url = await asyncio.to_thread(_yt_video_url, video_id)
         # 通常動画は直接URLにリダイレクト（プロキシ不要）
         return RedirectResponse(url=stream_url, status_code=302)
 

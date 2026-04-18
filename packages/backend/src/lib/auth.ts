@@ -24,6 +24,14 @@ interface PendingRegistration {
 }
 export const pendingRegistrations = new Map<string, PendingRegistration>();
 
+// 期限切れエントリを定期削除（メモリリーク防止）
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, reg] of pendingRegistrations) {
+        if (reg.expiresAt < now) pendingRegistrations.delete(key);
+    }
+}, 60_000).unref();
+
 // OTPを生成（暗号学的に安全な乱数を使用）
 export function generateOTP(): string {
     return randomInt(100000, 1000000).toString();

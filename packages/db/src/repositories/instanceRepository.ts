@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, type SQL, sql } from 'drizzle-orm';
 import { db } from '../index';
 import { instances } from '../schema';
 
@@ -36,22 +36,23 @@ export const instanceRepository = {
     },
 
     async findAll(options?: { includeFull?: boolean; tag?: string }): Promise<InstanceRecord[]> {
-        let query = db.select().from(instances);
+        const conditions: SQL[] = [];
 
         if (!options?.includeFull) {
-            // 満員でないインスタンスのみを返す（activeまたはclosing）
-            query = query.where(eq(instances.status, 'active')) as typeof query;
+            conditions.push(eq(instances.status, 'active'));
         }
 
-        const results = await query;
-
-        // タグフィルタリングはメモリ上で行う（jsonbフィールドのため）
+        // jsonb の @> 演算子でDBレベルにフィルタ（全件取得→メモリフィルタを回避）
         if (options?.tag) {
-            const tag = options.tag;
-            return results.filter((i) => i.accessTags?.includes(tag));
+            conditions.push(sql`${instances.accessTags} @> ${JSON.stringify([options.tag])}::jsonb`);
         }
 
-        return results;
+        return conditions.length > 0
+            ? db
+                  .select()
+                  .from(instances)
+                  .where(and(...conditions))
+            : db.select().from(instances);
     },
 
     async create(input: CreateInstanceInput): Promise<InstanceRecord> {

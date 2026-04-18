@@ -20,6 +20,7 @@ router.get('/', requireAuth, async (req, res) => {
 
         const instances = await instanceManager.listInstances({
             tag: queryResult.data.tag,
+            worldId: queryResult.data.worldId,
             includeFull: queryResult.data.includeFull,
         });
 
