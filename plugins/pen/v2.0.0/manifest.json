@@ -1,0 +1,36 @@
+{
+  "id": "pen",
+  "name": "Pen",
+  "version": "2.0.0",
+  "entities": {
+    "pen:canvas": {
+      "capabilities": [
+        "scene:read",
+        "scene:update",
+        "ui:render",
+        "net:broadcast",
+        "canvas:draw"
+      ],
+      "canvasTargets": [
+        "drawing"
+      ],
+      "watchEntityTypes": [
+        "pen:stroke",
+        "pen:pen"
+      ],
+      "workerUrl": "./canvas/index.1dae3b37.js"
+    },
+    "pen:tray": {
+      "capabilities": [
+        "scene:read",
+        "scene:update",
+        "ui:render",
+        "net:host-message"
+      ],
+      "watchEntityTypes": [
+        "pen:pen"
+      ],
+      "workerUrl": "./tray/index.c41173c2.js"
+    }
+  }
+}

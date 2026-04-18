@@ -1,0 +1,35 @@
+{
+  "id": "video-player",
+  "name": "VideoPlayer",
+  "version": "2.1.0",
+  "entities": {
+    "video-player:screen": {
+      "capabilities": [
+        "video:control",
+        "scene:read",
+        "scene:update",
+        "net:broadcast"
+      ],
+      "mediaTargets": [
+        "main"
+      ],
+      "watchEntityTypes": [
+        "video-player:screen"
+      ],
+      "workerUrl": "./screen/index.2163c43e.js"
+    },
+    "video-player:controls": {
+      "capabilities": [
+        "ui:render",
+        "net:fetch",
+        "scene:read",
+        "scene:update"
+      ],
+      "mediaTargets": [],
+      "watchEntityTypes": [
+        "video-player:screen"
+      ],
+      "workerUrl": "./controls/index.fb8fe032.js"
+    }
+  }
+}

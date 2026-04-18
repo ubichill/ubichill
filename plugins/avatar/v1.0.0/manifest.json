@@ -1,0 +1,26 @@
+{
+  "id": "avatar",
+  "name": "Avatar",
+  "version": "1.0.0",
+  "entities": {
+    "avatar:cursor": {
+      "singleton": true,
+      "capabilities": [
+        "ui:render",
+        "net:host-message",
+        "scene:read"
+      ],
+      "workerUrl": "./cursor/index.f13f9017.js"
+    },
+    "avatar:settings": {
+      "singleton": true,
+      "capabilities": [
+        "ui:render",
+        "net:host-message",
+        "net:fetch",
+        "scene:read"
+      ],
+      "workerUrl": "./settings/index.dcf4a5f9.js"
+    }
+  }
+}
