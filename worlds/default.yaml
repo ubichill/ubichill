@@ -22,7 +22,7 @@ spec:
 
   # パッケージ依存関係
   dependencies:
-    - name: pen:pen
+    - name: pen
       source:
         type: repository
         path: "plugins/pen"
@@ -36,66 +36,158 @@ spec:
         path: "plugins/avatar"
 
   # 初期配置エンティティ
+  #
+  # ── z-index レイヤー構成 ──────────────────────────────────────
+  # transform.z が GenericPluginHost の CSS zIndex に直接対応する。
+  # pointer-events: none のプラグインは視覚的に上にあっても UI 操作を妨げない。
+  #
+  #  z=10100  avatar:cursor        カーソル（最前面・常時表示）
+  #  z= 9998  avatar:settings      アバター設定パネル
+  #  z= 5000  pen:canvas           描画レイヤー（pointer-events:none のため UI 操作は素通り）
+  #  z= 1000  pen:tray             ペントレイ UI
+  #  z=  200  video-player:controls コントロールバー + プレイリスト
+  #  z=    2  video-player:screen  動画表示（最背面）
+  #  z=  1-5  pen:pen              ペンエンティティ（UI なし）
+  # ─────────────────────────────────────────────────────────────
+
   initialEntities:
-    - kind: "video-player"
+    # ── ペンキャンバス ───────────────────────────────────────────
+    # 描画レイヤー。pointer-events:none のためコンテンツ・UI プラグインの
+    # 操作を妨げずに全プラグインの上に描画できる。
+    - kind: "pen:canvas"
+      transform:
+        x: 0
+        y: 0
+        z: 5000
+        scale: 1
+        rotation: 0
+      data: {}
+
+    # ── ビデオ画面（動画表示のみ・UI なし）──────────────────────
+    # transform の x/y/w/h で動画の表示位置とサイズを決める。
+    # controls エンティティとは別オブジェクトなので干渉しない。
+    - kind: "video-player:screen"
       transform:
         x: 800
-        y: 100
+        y: 60
         z: 2
+        w: 640
+        h: 360
         scale: 1
         rotation: 0
       data:
-        playlist: []
+        playlist:
+          - id: "jfKfPfyJRdk"
+            title: "lofi hip hop radio - beats to relax/study to"
+            thumbnail: "https://i.ytimg.com/vi/jfKfPfyJRdk/default.jpg"
+            duration: 0
+            mode: "live"
         currentIndex: 0
         isPlaying: false
         volume: 0.7
         currentTime: 0
-        loop: 'none'
+        duration: 0
+        loop: "none"
         shuffle: false
+        apiBase: "/plugins/video-player/api"
+
+    # ── コントロール + プレイリスト（UI のみ・メディアなし）──────
+    # screen エンティティの真下に配置する。
+    # watchEntityTypes: ['video-player:screen'] で状態を受信する。
+    - kind: "video-player:controls"
+      transform:
+        x: 800
+        y: 800
+        z: 200
+        w: 740
+        scale: 1
+        rotation: 0
+      data: {}
+
+    # ── アバター設定 ─────────────────────────────────────────────
+    - kind: "avatar:cursor"
+      transform:
+        x: 0
+        y: 0
+        z: 10100
+        scale: 1
+        rotation: 0
+      data: {}
+
+    - kind: "avatar:settings"
+      transform:
+        x: 20
+        y: 100
+        z: 9998
+        scale: 1
+        rotation: 0
+      data: {}
+
+    # ── ペントレイ ──────────────────────────────────────────────
+    - kind: "pen:tray"
+      transform:
+        x: 20
+        y: 20
+        z: 1000
+        scale: 1
+        rotation: 0
+      data: {}
+
+    # ── ペン (色ごとに 1 エンティティ) ──────────────────────────
     - kind: "pen:pen"
       transform:
-        x: 450
-        y: 40
-        z: 0
+        x: 0
+        y: 0
+        z: 1
         scale: 1
         rotation: 0
       data:
-        color: "#000000"
+        color: "#1a1a1a"
         strokeWidth: 4
-        isHeld: false
+
     - kind: "pen:pen"
       transform:
-        x: 550
-        y: 40
-        z: 0
+        x: 0
+        y: 0
+        z: 2
         scale: 1
         rotation: 0
       data:
-        color: "#FF0000"
+        color: "#e63946"
         strokeWidth: 4
-        isHeld: false
+
     - kind: "pen:pen"
       transform:
-        x: 650
-        y: 40
-        z: 0
+        x: 0
+        y: 0
+        z: 3
         scale: 1
         rotation: 0
       data:
-        color: "#0000FF"
+        color: "#457b9d"
         strokeWidth: 4
-        isHeld: false
+
     - kind: "pen:pen"
       transform:
-        x: 750
-        y: 40
-        z: 0
+        x: 0
+        y: 0
+        z: 4
         scale: 1
         rotation: 0
       data:
-        color: "#00FF00"
+        color: "#2a9d8f"
         strokeWidth: 4
-        isHeld: false
+
+    - kind: "pen:pen"
+      transform:
+        x: 0
+        y: 0
+        z: 5
+        scale: 1
+        rotation: 0
+      data:
+        color: "#e9c46a"
+        strokeWidth: 4
 
   permissions:
     allowGuestCreate: true

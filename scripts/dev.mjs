@@ -78,6 +78,31 @@ async function main() {
         // Don't exit here, maybe we can run without plugins or user can fix it
     }
 
+    // Plugin port health check: 各プラグインのバックエンドポートが正しく応答しているか検証する。
+    // Docker がポートを占有していても、ホスト側に別プロセスが先に bind していると
+    // Vite プロキシがそちらへ届いてしまうため、Content-Type で判定する。
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    const pluginChecks = [
+        { name: 'video-player', url: 'http://localhost:8000/', expectedContentType: 'application/json' },
+    ];
+    for (const { name, url, expectedContentType } of pluginChecks) {
+        try {
+            const res = await fetch(url);
+            const ct = res.headers.get('content-type') ?? '';
+            if (!ct.includes(expectedContentType)) {
+                console.warn(`\n⚠️  [plugin:${name}] ポート競合の可能性があります`);
+                console.warn(`   ${url} が "${ct}" を返しています（期待値: ${expectedContentType}）`);
+                console.warn(`   同じポートを使用している別プロセスを確認してください:`);
+                console.warn(`   lsof -i :${new URL(url).port || 80}\n`);
+            } else {
+                console.log(`[plugin:${name}] バックエンド OK (${url})`);
+            }
+        } catch {
+            console.warn(`\n⚠️  [plugin:${name}] バックエンドに接続できません: ${url}`);
+            console.warn(`   Docker コンテナが起動しているか確認してください: docker ps\n`);
+        }
+    }
+
     // Cleanup function
     let isCleaning = false;
     const cleanup = () => {
@@ -98,16 +123,14 @@ async function main() {
     console.log('💻 Starting development server...');
 
     // shared / workers は watch のみで、終了しても frontend/backend を道連れにしない
-    const { result: watchResult } = concurrently(
+    // .result を catch しないと unhandled rejection になるため明示的に握り潰す
+    concurrently(
         [
             { command: 'pnpm --filter @ubichill/shared dev', name: 'shared', prefixColor: 'yellow' },
             { command: 'node scripts/watch-workers.mjs', name: 'workers', prefixColor: 'green' },
         ],
         { prefix: '[{name}]', killOthers: [], restartTries: 3 },
-    );
-    watchResult.catch((err) => {
-        console.error('[watch] watcher exited with error:', err?.message ?? err);
-    });
+    ).result.catch(() => {});
 
     const { result } = concurrently(
         [

@@ -58,13 +58,16 @@ spec:
           containerPort: {{ .Values.frontend.service.targetPort }}
           protocol: TCP
         env:
+        # nginx の envsubst テンプレートが参照するバックエンド接続先
+        # K8s Service 名を自動解決し、values.yaml に書く必要はない
+        - name: BACKEND_HOST
+          value: {{ include "ubichill.fullname" . }}-backend
+        - name: BACKEND_PORT
+          value: {{ .Values.backend.service.port | quote }}
         {{- range $key, $value := .Values.frontend.env }}
         - name: {{ $key }}
           value: {{ $value | quote }}
         {{- end }}
-        # Vite はビルド時に環境変数を埋め込む。
-        # バックエンドURLは window.location.origin にフォールバックするため、
-        # Ingress が同一ホストを使う場合は追加設定不要。
         {{- if .Values.frontend.healthcheck.enabled }}
         livenessProbe:
           httpGet:
@@ -83,6 +86,24 @@ spec:
           timeoutSeconds: {{ .Values.frontend.healthcheck.readinessProbe.timeoutSeconds }}
           failureThreshold: {{ .Values.frontend.healthcheck.readinessProbe.failureThreshold }}
         {{- end }}
+        volumeMounts:
+        # nginx が非 root (uid=1000) で動作するために書き込み可能な emptyDir を使用する。
+        # /etc/nginx/conf.d  : envsubst が default.conf を書き出す
+        # /var/cache/nginx   : nginx の一時ファイル (client_temp 等)
+        # /var/run           : nginx.pid
+        - name: nginx-conf-d
+          mountPath: /etc/nginx/conf.d
+        - name: nginx-cache
+          mountPath: /var/cache/nginx
+        - name: nginx-run
+          mountPath: /var/run
         resources:
           {{- toYaml .Values.frontend.resources | nindent 12 }}
+      volumes:
+      - name: nginx-conf-d
+        emptyDir: {}
+      - name: nginx-cache
+        emptyDir: {}
+      - name: nginx-run
+        emptyDir: {}
 {{- end }}

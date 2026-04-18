@@ -56,6 +56,14 @@ export const EcsEventType = {
     INPUT_MOUSE_UP: 'input:mouse_up',
     INPUT_KEY_DOWN: 'input:key_down',
     INPUT_KEY_UP: 'input:key_up',
+    /** 右クリック（コンテキストメニュー）— payload: { x, y } */
+    INPUT_CONTEXT_MENU: 'input:context_menu',
+    /** スクロール — payload: { x: scrollLeft, y: scrollTop } */
+    INPUT_SCROLL: 'input:scroll',
+    /** ウィンドウリサイズ — payload: { width: number; height: number } */
+    INPUT_RESIZE: 'input:resize',
+    /** カーソルスタイル変化 — payload: { style: string } */
+    INPUT_CURSOR_STYLE: 'input:cursor_style',
     /**
      * 他ユーザーの Worker が Ubi.network.broadcast() で送ったデータ。
      * payload: { userId: string; data: unknown }
@@ -63,4 +71,12 @@ export const EcsEventType = {
      * broadcast 時に指定した type 文字列で比較すること。
      */
     NETWORK_BROADCAST: 'network:broadcast',
+    /** OffscreenCanvas のリサイズ通知。payload: { targetId: string; width: number; height: number } */
+    CANVAS_RESIZE: 'canvas:resize',
+    /**
+     * Host からプラグイン Worker へのカスタムメッセージ。
+     * payload: { type: string; payload: unknown }
+     * GenericPluginHost の sendHostMessage() で送信する。
+     */
+    HOST_MESSAGE: 'host:message',
 } as const;

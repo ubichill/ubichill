@@ -4,7 +4,7 @@ services:
   video-player-backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile.prod
+      dockerfile: Dockerfile
       target: production
     image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-ubichill}/video-player-backend:${VERSION:-latest}
     container_name: ubichill-video-player-backend-prod
@@ -14,7 +14,6 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - ENV=production
-    # Resource limits for production
     deploy:
       resources:
         limits:

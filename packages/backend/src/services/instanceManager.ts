@@ -2,8 +2,9 @@ import { instanceRepository } from '@ubichill/db';
 import type { CreateInstanceRequest, Instance, InstanceAccess, WorldEnvironmentData } from '@ubichill/shared';
 import { DEFAULTS } from '@ubichill/shared';
 import bcrypt from 'bcryptjs';
+import { logger } from '../utils/logger';
+import { clearInstanceState, createEntity } from './instanceState';
 import { worldRegistry } from './worldRegistry';
-import { clearWorldState, createEntity } from './worldState';
 
 /**
  * インスタンスマネージャー
@@ -39,7 +40,7 @@ class InstanceManager {
             passwordHash,
         });
 
-        // インスタンス固有のワールド状態を初期化（initialEntitiesを配置）
+        // ワールド定義の initialEntities からインスタンスのエンティティ初期状態を配置
         if (world.initialEntities && world.initialEntities.length > 0) {
             for (const entityDef of world.initialEntities) {
                 createEntity(dbInstance.id, {
@@ -58,12 +59,12 @@ class InstanceManager {
                     data: entityDef.data ?? {},
                 });
             }
-            console.log(
-                `🌍 インスタンス ${dbInstance.id} にinitialEntities ${world.initialEntities.length}件を配置しました`,
+            logger.info(
+                `インスタンス ${dbInstance.id} にinitialEntities ${world.initialEntities.length}件を配置しました`,
             );
         }
 
-        console.log(`🏠 インスタンス作成: ${dbInstance.id} (world: ${world.id})`);
+        logger.info(`インスタンス作成: ${dbInstance.id} (world: ${world.id})`);
 
         return this.toPublicInstance(dbInstance, world);
     }
@@ -71,7 +72,11 @@ class InstanceManager {
     /**
      * インスタンス一覧を取得
      */
-    async listInstances(options?: { tag?: string; includeFull?: boolean }): Promise<Instance[]> {
+    async listInstances(options?: { tag?: string; worldId?: string; includeFull?: boolean }): Promise<Instance[]> {
+        if (options?.worldId) {
+            return this.findInstancesByWorld(options.worldId);
+        }
+
         const dbInstances = await instanceRepository.findAll({
             tag: options?.tag,
             includeFull: options?.includeFull,
@@ -97,6 +102,35 @@ class InstanceManager {
             return false;
         }
         return bcrypt.compare(password, dbInstance.passwordHash);
+    }
+
+    /**
+     * サーバー再起動後にインメモリのエンティティ状態が失われた場合、
+     * ワールド定義の initialEntities からインスタンスエンティティを再配置する。
+     */
+    async reinitializeEntities(instanceId: string, worldId: string): Promise<void> {
+        const world = await worldRegistry.getWorld(worldId);
+        if (!world?.initialEntities?.length) return;
+        for (const entityDef of world.initialEntities) {
+            createEntity(instanceId, {
+                type: entityDef.kind,
+                ownerId: null,
+                lockedBy: null,
+                transform: {
+                    x: entityDef.transform.x,
+                    y: entityDef.transform.y,
+                    z: entityDef.transform.z,
+                    w: entityDef.transform.w ?? 100,
+                    h: entityDef.transform.h ?? 100,
+                    scale: entityDef.transform.scale ?? 1,
+                    rotation: entityDef.transform.rotation,
+                },
+                data: entityDef.data ?? {},
+            });
+        }
+        logger.info(
+            `インスタンス ${instanceId} のエンティティ状態を再初期化しました (${world.initialEntities.length}件)`,
+        );
     }
 
     /**
@@ -131,10 +165,10 @@ class InstanceManager {
             return { success: false, error: 'Failed to delete instance' };
         }
 
-        // ワールド状態をクリーンアップ
-        clearWorldState(instanceId);
+        // インスタンスのエンティティ状態をクリーンアップ
+        clearInstanceState(instanceId);
 
-        console.log(`🚪 インスタンス終了: ${instanceId}`);
+        logger.info(`インスタンス終了: ${instanceId}`);
 
         return { success: true };
     }
@@ -151,10 +185,10 @@ class InstanceManager {
         if (updated.currentUsers === 0) {
             await instanceRepository.delete(instanceId);
 
-            // ワールド状態をクリーンアップ
-            clearWorldState(instanceId);
+            // インスタンスのエンティティ状態をクリーンアップ
+            clearInstanceState(instanceId);
 
-            console.log(`🗑️ インスタンス自動削除（ユーザー0）: ${instanceId}`);
+            logger.info(`インスタンス自動削除（ユーザー0）: ${instanceId}`);
             return 0;
         }
 

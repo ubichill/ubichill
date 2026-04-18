@@ -5,8 +5,5 @@ dependencies:
 - name: postgresql
   repository: https://charts.bitnami.com/bitnami
   version: 16.4.3
-- name: video-player
-  repository: file://../video-player
-  version: 0.1.4
-digest: sha256:763c2fe730a5cf3dbe1d4f690db84e68c6e25946a79c2cd80da631ab6e713cdf
-generated: "2026-02-07T23:05:21.636314+09:00"
+digest: sha256:6cbd1d727e2754f96ba4c7b21044c5cc87b641e2b278d6879e3b254382c7c7be
+generated: "2026-04-05T00:29:18.984501+09:00"

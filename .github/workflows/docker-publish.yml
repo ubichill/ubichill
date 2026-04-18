@@ -39,7 +39,8 @@ jobs:
             frontend:
               - 'packages/frontend/**'
               - 'packages/shared/**'
-              - 'plugins/*/frontend/**'
+              - 'plugins/**'
+              - 'scripts/build-workers.mjs'
               - 'package.json'
               - 'pnpm-workspace.yaml'
               - 'pnpm-lock.yaml'

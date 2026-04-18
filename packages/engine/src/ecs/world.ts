@@ -16,8 +16,7 @@ export class EcsWorldImpl implements EcsWorld {
 
     createEntity(id: string): EntityImpl {
         if (this._entities.has(id)) {
-            console.warn(`[ECS] Entity "${id}" already exists.`);
-            return this._entities.get(id) as EntityImpl;
+            throw new Error(`[ECS] Entity "${id}" already exists.`);
         }
         const entity = new EntityImpl(id);
         this._entities.set(id, entity);
@@ -52,11 +51,7 @@ export class EcsWorldImpl implements EcsWorld {
     tick(deltaTime: number, events: WorkerEvent[] = []): void {
         const entities = this._snapshot();
         for (const system of this._systems) {
-            try {
-                system(entities, deltaTime, events);
-            } catch (error) {
-                console.error('[ECS] System error:', error);
-            }
+            system(entities, deltaTime, events);
         }
     }
 
