@@ -91,9 +91,9 @@ class WorldRegistry {
         await userRepository.ensureSystemUser(SYSTEM_AUTHOR_ID);
         await this._loadIndex();
         this._startWatcher();
-        // 外部レジストリはバックグラウンドで非同期取得（起動をブロックしない）
+        // レジストリからワールドを取得（起動時は await して DB に反映してからサービスイン）
         if (this.registryUrls.length > 0) {
-            void this._seedFromRegistries().catch((err) => {
+            await this._seedFromRegistries().catch((err) => {
                 console.error('❌ 外部レジストリ取得失敗:', err);
             });
         }
@@ -122,10 +122,11 @@ class WorldRegistry {
                 capacity: e.capacity,
             }));
 
-        // YAML 管理外のユーザー作成ワールドを DB から追加
+        // _fileIndex にないワールドを DB から補完（レジストリ経由で取得したシステムワールドを含む）
         const allRecords = await worldRepository.findAll();
-        const userItems: WorldListItem[] = allRecords
-            .filter((r) => r.authorId !== SYSTEM_AUTHOR_ID && !this._fileIndex.has(r.name))
+        const knownNames = new Set(this._fileIndex.keys());
+        const dbItems: WorldListItem[] = allRecords
+            .filter((r) => !knownNames.has(r.name))
             .map((r) => {
                 const def = r.definition as WorldDefinition;
                 return {
@@ -138,7 +139,7 @@ class WorldRegistry {
                 };
             });
 
-        return [...localItems, ...userItems];
+        return [...localItems, ...dbItems];
     }
 
     /**
