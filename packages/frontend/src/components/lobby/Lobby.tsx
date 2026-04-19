@@ -147,6 +147,34 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
         };
     }, []);
 
+    const [importUrl, setImportUrl] = useState('');
+    const [importState, setImportState] = useState<'idle' | 'loading' | 'error'>('idle');
+    const [importError, setImportError] = useState('');
+
+    const handleImport = useCallback(async () => {
+        if (!importUrl.trim()) return;
+        setImportState('loading');
+        setImportError('');
+        try {
+            const res = await fetch(`${API_BASE}/api/v1/worlds/import`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ url: importUrl.trim() }),
+            });
+            if (!res.ok) {
+                const data = (await res.json()) as { error?: string };
+                throw new Error(data.error ?? `${res.status}`);
+            }
+            setImportUrl('');
+            setImportState('idle');
+            await refreshWorlds();
+        } catch (e) {
+            setImportError(e instanceof Error ? e.message : '取得失敗');
+            setImportState('error');
+        }
+    }, [importUrl, refreshWorlds]);
+
     const handleNavigateToWorld = (worldId: string) => {
         navigate(`/world/${worldId}`);
     };
@@ -412,6 +440,73 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                                 >
                                     テンプレートを選択して新しいワールドを作成します
                                 </p>
+
+                                {/* URL インポート */}
+                                <div
+                                    className={css({
+                                        display: 'flex',
+                                        gap: '8px',
+                                        marginBottom: '20px',
+                                    })}
+                                >
+                                    <input
+                                        type="url"
+                                        value={importUrl}
+                                        onChange={(e) => {
+                                            setImportUrl(e.target.value);
+                                            setImportState('idle');
+                                        }}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') void handleImport();
+                                        }}
+                                        placeholder="GitHub URL または YAML URL を入力"
+                                        className={css({
+                                            flex: 1,
+                                            padding: '9px 12px',
+                                            borderRadius: '10px',
+                                            border: '1.5px solid',
+                                            borderColor: importState === 'error' ? 'errorText' : 'border',
+                                            backgroundColor: 'surface',
+                                            color: 'text',
+                                            fontSize: '13px',
+                                            outline: 'none',
+                                            _focus: { borderColor: 'primary' },
+                                            _placeholder: { color: 'textSubtle' },
+                                        })}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => void handleImport()}
+                                        disabled={importState === 'loading' || !importUrl.trim()}
+                                        className={css({
+                                            padding: '9px 16px',
+                                            backgroundColor: 'primary',
+                                            color: 'textOnPrimary',
+                                            border: 'none',
+                                            borderRadius: '10px',
+                                            fontSize: '13px',
+                                            fontWeight: '600',
+                                            cursor: 'pointer',
+                                            whiteSpace: 'nowrap',
+                                            _disabled: { opacity: 0.5, cursor: 'not-allowed' },
+                                        })}
+                                    >
+                                        {importState === 'loading' ? '取得中...' : '読み込む'}
+                                    </button>
+                                </div>
+                                {importState === 'error' && (
+                                    <p
+                                        className={css({
+                                            fontSize: '12px',
+                                            color: 'errorText',
+                                            marginBottom: '12px',
+                                            marginTop: '-12px',
+                                        })}
+                                    >
+                                        {importError}
+                                    </p>
+                                )}
+
                                 <div
                                     className={css({
                                         display: 'grid',

@@ -22,6 +22,29 @@ router.post('/reload', requireAuth, async (_req, res) => {
 });
 
 /**
+ * POST /api/v1/worlds/import
+ * URL または GitHub blob URL からワールドを取り込む（認証必須）
+ * body: { url: string }
+ */
+router.post('/import', requireAuth, async (req, res) => {
+    const { url } = req.body as { url?: unknown };
+    if (typeof url !== 'string' || !url.startsWith('http')) {
+        res.status(400).json({ error: 'url が不正です' });
+        return;
+    }
+    try {
+        const worlds = await worldRegistry.importFromUrl(url);
+        res.json({
+            success: true,
+            worlds: worlds.map((w) => ({ id: w.id, displayName: w.displayName, version: w.version })),
+        });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : '取得失敗';
+        res.status(422).json({ error: message });
+    }
+});
+
+/**
  * GET /api/v1/worlds
  * ワールドテンプレート一覧を取得（認証必須）
  */

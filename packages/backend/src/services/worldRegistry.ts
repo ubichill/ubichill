@@ -16,6 +16,14 @@ import yaml from 'yaml';
 
 const SYSTEM_AUTHOR_ID = '00000000-0000-0000-0000-000000000000';
 
+const GITHUB_BLOB_RE = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/;
+
+function toRawUrl(url: string): string {
+    const m = GITHUB_BLOB_RE.exec(url);
+    if (m) return `https://raw.githubusercontent.com/${m[1]}/${m[2]}/${m[3]}/${m[4]}`;
+    return url;
+}
+
 async function resolveWorldsJsonUrls(jsonUrl: string): Promise<string[]> {
     const res = await fetch(jsonUrl);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -91,11 +99,18 @@ class WorldRegistry {
         await userRepository.ensureSystemUser(SYSTEM_AUTHOR_ID);
         await this._loadIndex();
         this._startWatcher();
-        // 外部レジストリはバックグラウンドで非同期取得（起動をブロックしない）
         if (this.registryUrls.length > 0) {
-            void this._seedFromRegistries().catch((err) => {
-                console.error('❌ 外部レジストリ取得失敗:', err);
-            });
+            // DB に既存ワールドがあればバックグラウンドで更新チェック、なければブロックして初期投入
+            const hasWorlds = (await worldRepository.findAll()).length > 0;
+            if (hasWorlds) {
+                void this._seedFromRegistries().catch((err) => {
+                    console.error('❌ 外部レジストリ更新失敗:', err);
+                });
+            } else {
+                await this._seedFromRegistries().catch((err) => {
+                    console.error('❌ 外部レジストリ取得失敗:', err);
+                });
+            }
         }
         console.log('👤 システムユーザーを確認しました');
     }
@@ -122,10 +137,11 @@ class WorldRegistry {
                 capacity: e.capacity,
             }));
 
-        // YAML 管理外のユーザー作成ワールドを DB から追加
+        // _fileIndex にないワールドを DB から補完（レジストリ経由で取得したシステムワールドを含む）
         const allRecords = await worldRepository.findAll();
-        const userItems: WorldListItem[] = allRecords
-            .filter((r) => r.authorId !== SYSTEM_AUTHOR_ID && !this._fileIndex.has(r.name))
+        const knownNames = new Set(this._fileIndex.keys());
+        const dbItems: WorldListItem[] = allRecords
+            .filter((r) => !knownNames.has(r.name))
             .map((r) => {
                 const def = r.definition as WorldDefinition;
                 return {
@@ -138,7 +154,7 @@ class WorldRegistry {
                 };
             });
 
-        return [...localItems, ...userItems];
+        return [...localItems, ...dbItems];
     }
 
     /**
@@ -192,6 +208,38 @@ class WorldRegistry {
         const resolved = this._resolveWorld(record);
         this._resolvedCache.set(resolved.id, resolved);
         return resolved;
+    }
+
+    /**
+     * URL または GitHub blob URL からワールドを取り込む。
+     * worlds.json 形式の場合は全エントリを一括取得する。
+     * 既存ワールドは上書き（upsert）される。
+     */
+    async importFromUrl(url: string): Promise<ResolvedWorld[]> {
+        const rawUrl = toRawUrl(url);
+        const yamlUrls = rawUrl.endsWith('.json') ? await resolveWorldsJsonUrls(rawUrl) : [rawUrl];
+        const settled = await Promise.allSettled(
+            yamlUrls.map(async (yamlUrl) => {
+                const res = await fetch(yamlUrl);
+                if (!res.ok) throw new Error(`HTTP ${res.status}: ${yamlUrl}`);
+                const parsed = yaml.parse(await res.text()) as unknown;
+                const result = WorldDefinitionSchema.safeParse(parsed);
+                if (!result.success) throw new Error(`不正なワールド定義: ${yamlUrl}`);
+                const def = result.data;
+                const record = await worldRepository.upsertByName({
+                    authorId: SYSTEM_AUTHOR_ID,
+                    name: def.metadata.name,
+                    version: def.metadata.version,
+                    definition: def,
+                });
+                const resolved = this._resolveWorld(record);
+                this._resolvedCache.set(resolved.id, resolved);
+                return resolved;
+            }),
+        );
+        const errors = settled.filter((r) => r.status === 'rejected').map((r) => (r as PromiseRejectedResult).reason);
+        if (errors.length > 0) throw new Error(errors.map((e: unknown) => String(e)).join(', '));
+        return settled.map((r) => (r as PromiseFulfilledResult<ResolvedWorld>).value);
     }
 
     async updateWorld(worldId: string, definition: WorldDefinition): Promise<ResolvedWorld | undefined> {
@@ -428,26 +476,31 @@ class WorldRegistry {
         }
         this._lastRegistrySeedAt = now;
 
-        for (const registryUrl of this.registryUrls) {
-            try {
-                let yamlUrls: string[];
-                if (registryUrl.endsWith('.json')) {
-                    yamlUrls = await resolveWorldsJsonUrls(registryUrl);
-                    console.log(`📋 worlds.json レジストリ: ${yamlUrls.length}件`);
-                } else {
-                    yamlUrls = [registryUrl];
-                }
-                for (const url of yamlUrls) {
-                    try {
-                        await this._seedWorldFromUrl(url);
-                    } catch (err) {
-                        console.error(`❌ ワールド取得失敗: ${url}`, err);
+        const allYamlUrls = (
+            await Promise.allSettled(
+                this.registryUrls.map(async (registryUrl) => {
+                    if (registryUrl.endsWith('.json')) {
+                        const urls = await resolveWorldsJsonUrls(registryUrl);
+                        console.log(`📋 worlds.json レジストリ: ${urls.length}件`);
+                        return urls;
                     }
+                    return [registryUrl];
+                }),
+            )
+        ).flatMap((r) => {
+            if (r.status === 'rejected') console.error('❌ レジストリ取得失敗:', r.reason);
+            return r.status === 'fulfilled' ? r.value : [];
+        });
+
+        await Promise.allSettled(
+            allYamlUrls.map(async (url) => {
+                try {
+                    await this._seedWorldFromUrl(url);
+                } catch (err) {
+                    console.error(`❌ ワールド取得失敗: ${url}`, err);
                 }
-            } catch (err) {
-                console.error(`❌ レジストリ取得失敗: ${registryUrl}`, err);
-            }
-        }
+            }),
+        );
     }
 
     private async _seedWorldFromUrl(url: string): Promise<void> {
@@ -458,6 +511,9 @@ class WorldRegistry {
         const result = WorldDefinitionSchema.safeParse(parsed);
         if (!result.success) throw new Error(`Validation failed: ${url}`);
         const def = result.data;
+        // 同バージョンが既に DB にある場合はスキップ
+        const existing = await worldRepository.findByName(def.metadata.name);
+        if (existing?.version === def.metadata.version) return;
         await worldRepository.upsertByName({
             authorId: SYSTEM_AUTHOR_ID,
             name: def.metadata.name,
