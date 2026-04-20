@@ -157,6 +157,10 @@ export interface PluginHostManagerOptions<TPayloadMap extends Record<string, unk
     entityId?: string;
     /** プラグインアセットのベースURL（Worker で Ubi.pluginBase として参照可能） */
     pluginBase?: string;
+    /** このプラグインが監視するエンティティ種別一覧（plugin.json の watchEntityTypes）。SDK の state 自動同期に使用 */
+    watchEntityTypes?: string[];
+    /** Worker 起動時点で watchEntityTypes にマッチしている既存エンティティ。SDK がプラグインコード実行前に state.local へ同期反映する */
+    initialEntities?: WorldEntity[];
     handlers: HostHandlers<TPayloadMap>;
     capabilities?: string[];
     maxExecutionTime?: number;
@@ -406,6 +410,8 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
                 pluginId: options.pluginId,
                 entityId: options.entityId,
                 pluginBase: options.pluginBase,
+                watchEntityTypes: options.watchEntityTypes,
+                initialEntities: options.initialEntities,
             },
         });
 

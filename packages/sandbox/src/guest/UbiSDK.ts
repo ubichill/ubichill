@@ -49,35 +49,60 @@ type PendingRequest = {
 export type OmitId<T> = T extends unknown ? Omit<T, 'id'> : never;
 
 /**
- * `Ubi.createState` が返すエンティティ状態オブジェクト。
+ * `Ubi.state.define` が返すエンティティ状態オブジェクト。
  *
- * - `local` : 全フィールドへの直接アクセス（自分のみ・ローカル）
- * - `set()`  : 同期フィールドを書き込み、全ユーザーへ broadcast する
- * - `for()`  : 指定ユーザーの同期済み値 + 位置を取得する
- * - `renderForEachUser()` : 全ユーザーに対して描画する
+ * スコープマーカー (`Ubi.state.shared / persistent / persistMine`) でフィールドごとに同期方式を宣言する。
+ * ローカル専用フィールドはマーカーなしで記述する。
+ *
+ * - `local`              : 全フィールドへの Proxy アクセス。書き込みはスコープに応じて自動フラッシュ
+ *                          (shared → presence broadcast / persistent → entity.data / persistMine → entity.data[`${field}:${userId}`])
+ * - `for(userId)`        : 指定ユーザーの値 + 位置を取得。shared/persistMine はそのユーザーの値、persistent/local は共通値を返す
+ * - `onChange(key, fn)`  : 指定フィールドが変わったときに呼ばれるリスナー（ローカル・リモート両方を通知）
+ * - `renderForEachUser()`: 全ユーザー統一描画（退室時は自動アンマウント）
  */
-export interface EntityState<T extends Record<string, unknown>, K extends readonly (keyof T & string)[]> {
-    /** 全フィールドへの直接アクセス（自分のみ）。ローカル専用フィールドはここから書き込む */
+export interface EntityState<T extends Record<string, unknown>> {
     readonly local: T;
-    /** 同期フィールドを書き込み、全ユーザーへ broadcast する */
-    set(data: Partial<{ [P in K[number]]: T[P] }>): void;
-    /**
-     * 指定ユーザーの同期済み値 + 位置を取得する。
-     * 未受信フィールドは初期値でフォールバック。
-     */
-    for(userId: string): EntityStateFor<T, K>;
-    /** 全ユーザーに対して描画する（退室時は自動アンマウント） */
-    renderForEachUser(componentName: string, factory: (state: EntityStateFor<T, K>) => VNode | null): void;
+    for(userId: string): EntityStateFor<T>;
+    onChange<K extends keyof T & string>(key: K, listener: (next: T[K], prev: T[K]) => void): void;
+    renderForEachUser(componentName: string, factory: (state: EntityStateFor<T>) => VNode | null): void;
 }
 
 /** `EntityState.for()` / `renderForEachUser` コールバックの型 */
-export type EntityStateFor<T extends Record<string, unknown>, K extends readonly (keyof T & string)[]> = {
+export type EntityStateFor<T extends Record<string, unknown>> = {
     readonly id: string;
     readonly worldX: number;
     readonly worldY: number;
     readonly viewportX: number;
     readonly viewportY: number;
-} & { readonly [P in K[number]]: T[P] };
+} & { readonly [P in keyof T]: T[P] };
+
+// ── スコープマーカー（state.define 内部でフィールドの同期方式を判定するために使う） ──
+const UBI_STATE_SCOPE = Symbol.for('@ubichill/stateScope');
+type StateScope = 'shared' | 'persistent' | 'persistMine';
+
+interface ScopeMarker<T = unknown> {
+    readonly [UBI_STATE_SCOPE]: StateScope;
+    readonly value: T;
+}
+
+function isScopeMarker(v: unknown): v is ScopeMarker {
+    return typeof v === 'object' && v !== null && UBI_STATE_SCOPE in v;
+}
+
+/**
+ * SDK 内部で保持する状態バインディング。
+ * EVT_ENTITY_WATCH 受信時に {@link applyEntityData} が呼ばれ、entity.data を local に反映する。
+ */
+interface StateBinding {
+    /** 監視対象エンティティの種別（watchEntityTypes の先頭 or 自エンティティ種別） */
+    readonly watchType: string;
+    /** 現在の target entity id。未解決のとき null */
+    getTargetId(): string | null;
+    /** 未解決時のみターゲットを設定する */
+    trySetTargetId(id: string): void;
+    /** entity.data を local / perUserPersistMine に反映する */
+    applyEntityData(data: Record<string, unknown>): void;
+}
 
 /** SDK 内部で保持するユーザーエントリ（viewport 座標は持たない・worldX/Y は可変） */
 type PresenceEntry = {
@@ -123,6 +148,8 @@ export class UbiSDK {
     public pluginId?: string;
     public entityId?: string;
     public pluginBase = '';
+    /** plugin.json の watchEntityTypes（state 自動同期のターゲット解決に使用） */
+    public watchEntityTypes: string[] = [];
 
     // ── presence 内部状態 ──────────────────────────────────────────
     private _presenceUsers = new Map<string, PresenceEntry>();
@@ -138,6 +165,10 @@ export class UbiSDK {
     private _forEachUserComponents = new Set<string>();
     /** state.define の set() で dirty になった flush 関数（ティック末端で一括実行） */
     private _pendingStateFlushes = new Set<() => void>();
+    /** state.define で作成されたバインディング（EVT_ENTITY_WATCH の受信時に local へ反映される） */
+    private _stateBindings: StateBinding[] = [];
+    /** Worker 起動時点で Host から渡された、watchEntityTypes にマッチする既存エンティティ */
+    private _initialEntities: WorldEntity[] = [];
 
     private readonly _sendToHost: (cmd: PluginGuestCommand) => void;
 
@@ -223,6 +254,14 @@ export class UbiSDK {
     private _unmountUi(targetId: string): void {
         _clearTarget(targetId);
         this._queueUiRender(targetId, null);
+    }
+
+    /**
+     * @internal Worker の init ハンドラが EVT_LIFECYCLE_INIT を受けたときに呼ぶ。
+     * state.define はこのスナップショットを使ってプラグインコード実行前に local を同期反映する。
+     */
+    public _setInitialEntities(entities: WorldEntity[]): void {
+        this._initialEntities = entities;
     }
 
     public _dispatchEvent(event: PluginHostEvent): void {
@@ -321,13 +360,29 @@ export class UbiSDK {
                     timestamp: Date.now(),
                 });
                 break;
-            case 'EVT_ENTITY_WATCH':
+            case 'EVT_ENTITY_WATCH': {
+                const entity = event.payload.entity as WorldEntity | undefined;
+                const entityType = event.payload.entityType;
+                if (entity && this._stateBindings.length > 0) {
+                    for (const binding of this._stateBindings) {
+                        if (binding.watchType !== entityType) continue;
+                        const existingId = binding.getTargetId();
+                        if (!existingId) {
+                            if (entity.id) binding.trySetTargetId(entity.id);
+                        } else if (existingId !== entity.id) {
+                            continue;
+                        }
+                        const data = entity.data as Record<string, unknown> | undefined;
+                        if (data) binding.applyEntityData(data);
+                    }
+                }
                 this._pendingWorkerEvents.push({
-                    type: `entity:${event.payload.entityType}`,
-                    payload: event.payload.entity,
+                    type: `entity:${entityType}`,
+                    payload: entity,
                     timestamp: Date.now(),
                 });
                 break;
+            }
             case 'EVT_NETWORK_BROADCAST':
                 // presence:sharedState は SDK レベルで処理し ECS には渡さない
                 if (event.payload.type === 'presence:sharedState') {
@@ -581,72 +636,237 @@ export class UbiSDK {
     };
 
     /**
-    /**
      * エンティティ状態の管理。
      *
-     * `Ubi.state.define()` でエンティティの全状態を一か所で宣言する。
-     * ローカル専用フィールドと全ユーザー同期フィールドを同じオブジェクトで管理できる。
+     * `Ubi.state.define(schema)` でエンティティの全状態を一か所で宣言する。
+     * 各フィールドにスコープマーカーを付けて同期方式を選ぶ:
+     *
+     * - `Ubi.state.shared(default)`      : presence 経由で全ユーザーへ broadcast（ephemeral）
+     * - `Ubi.state.persistent(default)`  : entity.data に書き込む（共有 + リロード後も保持）
+     * - `Ubi.state.persistMine(default)` : entity.data[`${field}:${userId}`] に書き込む（ユーザーごと）
+     * - マーカーなし                     : ローカルのみ（自分のプロセス内）
+     *
+     * 同期対象のエンティティ（= `persistent` / `persistMine` の書き込み先）は
+     * plugin.json の watchEntityTypes から自動解決される:
+     *   - 自プラグインの entityType が watchEntityTypes に含まれる → Ubi.entityId（自エンティティ）
+     *   - それ以外 → watchEntityTypes[0] の最初のエンティティ
+     *
+     * @example
+     * ```ts
+     * const state = Ubi.state.define({
+     *   playlist: Ubi.state.persistent([] as Track[]),  // entity.data に保存
+     *   isPlaying: Ubi.state.persistent(false),
+     *   myVolume: Ubi.state.persistMine(0.7),           // 自分だけの音量
+     *   localTime: 0,                                   // ローカルのみ
+     * });
+     *
+     * state.local.playlist = [newTrack];  // → entity.data に自動保存
+     * state.local.myVolume = 0.8;          // → entity.data['myVolume:<userId>'] に保存
+     * state.onChange('isPlaying', (next) => { if (next) play(); });
+     * ```
      */
     public readonly state = {
-        /**
-         * エンティティの状態を宣言する。ローカルとグローバル同期の区別は `syncKeys` で行う。
-         *
-         * - `local` : 全フィールドへの直接アクセス（自分のみ）
-         * - `set()`  : 同期フィールドを書き込み、全ユーザーへ broadcast する
-         * - `for(userId)` : そのユーザーの同期済み値 + 位置を取得
-         * - `renderForEachUser()` : 全ユーザーに対して描画
-         *
-         * @example
-         * ```ts
-         * const cursor = Ubi.state.define(
-         *   { lerpX: 0, lerpY: 0, cursorState: 'default', avatar: null as AppAvatarDef | null },
-         *   ['cursorState', 'avatar'] as const,
-         * );
-         *
-         * cursor.set({ cursorState: 'pointer' }); // → 全ユーザーへ同期
-         *
-         * cursor.renderForEachUser('cursor', (state) => {
-         *   const { id, viewportX, viewportY, cursorState, avatar } = state;
-         *   return <CursorImage ... />;
-         * });
-         * ```
-         */
-        define: <T extends Record<string, unknown>, K extends readonly (keyof T & string)[]>(
-            initial: T,
-            syncKeys: K = [] as unknown as K,
-        ): EntityState<T, K> => {
-            const local = { ...initial } as T;
-            const syncKeysArr = syncKeys as readonly string[];
+        /** presence 経由で全ユーザーへ broadcast する ephemeral フィールド */
+        shared: <T>(defaultValue: T): T =>
+            ({ [UBI_STATE_SCOPE]: 'shared' as StateScope, value: defaultValue }) as unknown as T,
+        /** entity.data に書き込む共有フィールド（ページをリロードしても残る） */
+        persistent: <T>(defaultValue: T): T =>
+            ({ [UBI_STATE_SCOPE]: 'persistent' as StateScope, value: defaultValue }) as unknown as T,
+        /** entity.data[`${field}:${userId}`] に書き込むユーザーごとのフィールド */
+        persistMine: <T>(defaultValue: T): T =>
+            ({ [UBI_STATE_SCOPE]: 'persistMine' as StateScope, value: defaultValue }) as unknown as T,
 
-            // 初期値のうち未設定のキーだけ _localSharedState にマージ
-            for (const key of syncKeysArr) {
-                if (!(key in this._localSharedState)) this._localSharedState[key] = initial[key];
+        define: <T extends Record<string, unknown>>(schema: T): EntityState<T> => {
+            // ── スキーマをスコープと初期値に分解 ─────────────────────
+            const scopes = new Map<string, StateScope | 'local'>();
+            const defaults: Record<string, unknown> = {};
+            for (const key of Object.keys(schema)) {
+                const raw = (schema as Record<string, unknown>)[key];
+                if (isScopeMarker(raw)) {
+                    scopes.set(key, raw[UBI_STATE_SCOPE]);
+                    defaults[key] = raw.value;
+                } else {
+                    scopes.set(key, 'local');
+                    defaults[key] = raw;
+                }
             }
 
-            // ── 差分ブロードキャスト（ティック末端で一括送信）─────────────
-            const pendingData: Record<string, unknown> = {};
-            let dirty = false;
+            const local: Record<string, unknown> = { ...defaults };
+            // 他ユーザーの persistMine 値（entity.data から抽出）
+            const perUserPersistMine = new Map<string, Record<string, unknown>>();
+            const listeners = new Map<string, Set<(next: unknown, prev: unknown) => void>>();
 
-            const flush = (): void => {
-                if (!dirty) return;
-                dirty = false;
-                Object.assign(this._localSharedState, pendingData);
+            // ── shared フィールドを presence の _localSharedState にシード ──
+            for (const [key, scope] of scopes) {
+                if (scope === 'shared' && !(key in this._localSharedState)) {
+                    this._localSharedState[key] = defaults[key];
+                }
+            }
+
+            // ── 同期対象エンティティの解決 ──────────────────────────
+            // 優先順位:
+            //   (1) 自エンティティが watchEntityTypes に含まれているならそれを使う
+            //   (2) Host から渡された initialEntities のうち watchEntityTypes にマッチするもの
+            // どちらも該当しなければ targetEntityId は null のまま、その後の EVT_ENTITY_WATCH で解決する。
+            const watchType = this.watchEntityTypes[0] ?? this.pluginId ?? '';
+            let targetEntityId: string | null = null;
+            let initialData: Record<string, unknown> | null = null;
+            if (this.entityId && this.pluginId && this.watchEntityTypes.includes(this.pluginId)) {
+                targetEntityId = this.entityId;
+                const self = this._initialEntities.find((e) => e.id === this.entityId);
+                initialData = (self?.data as Record<string, unknown> | undefined) ?? null;
+            } else if (watchType) {
+                const match = this._initialEntities.find((e) => e.type === watchType);
+                if (match) {
+                    targetEntityId = match.id;
+                    initialData = (match.data as Record<string, unknown> | undefined) ?? null;
+                }
+            }
+
+            // ── flush バッファ ──────────────────────────────────────
+            const pendingSharedWrites: Record<string, unknown> = {};
+            const pendingEntityWrites: Record<string, unknown> = {};
+            let sharedDirty = false;
+            let entityDirty = false;
+
+            const flushShared = (): void => {
+                if (!sharedDirty) return;
+                sharedDirty = false;
+                Object.assign(this._localSharedState, pendingSharedWrites);
                 if (this.myUserId) {
-                    const myEntry = this._presenceUsers.get(this.myUserId);
-                    if (myEntry) Object.assign(myEntry.sharedState, pendingData);
+                    const me = this._presenceUsers.get(this.myUserId);
+                    if (me) Object.assign(me.sharedState, pendingSharedWrites);
                 }
                 this._send({
                     type: 'NETWORK_BROADCAST',
-                    payload: { type: 'presence:sharedState', data: { sharedState: { ...pendingData } } },
+                    payload: {
+                        type: 'presence:sharedState',
+                        data: { sharedState: { ...pendingSharedWrites } },
+                    },
                 });
-                for (const key of Object.keys(pendingData)) delete pendingData[key];
+                for (const k of Object.keys(pendingSharedWrites)) delete pendingSharedWrites[k];
             };
 
-            const getFor = (userId: string): EntityStateFor<T, K> => {
+            const flushEntity = (): void => {
+                if (!entityDirty) return;
+                if (!targetEntityId) return; // target 未解決 → 次回のフラッシュで再試行
+                entityDirty = false;
+                const id = targetEntityId;
+                const patch = { ...pendingEntityWrites };
+                for (const k of Object.keys(pendingEntityWrites)) delete pendingEntityWrites[k];
+                void this.world.updateEntity(id, { data: patch });
+            };
+
+            const fire = (key: string, next: unknown, prev: unknown): void => {
+                const set = listeners.get(key);
+                if (!set) return;
+                for (const fn of set) fn(next, prev);
+            };
+
+            // ── entity.data → local への反映 ───────────────────────
+            const applyEntityData = (data: Record<string, unknown>): void => {
+                const persistMinePrefixes = new Map<string, string>(); // 'field:' → fieldName
+                for (const [key, scope] of scopes) {
+                    if (scope === 'persistent') {
+                        if (key in data) {
+                            const next = data[key];
+                            const prev = local[key];
+                            if (next !== prev) {
+                                local[key] = next;
+                                fire(key, next, prev);
+                            }
+                        }
+                    } else if (scope === 'persistMine') {
+                        persistMinePrefixes.set(`${key}:`, key);
+                    }
+                }
+
+                if (persistMinePrefixes.size === 0) return;
+                for (const dataKey of Object.keys(data)) {
+                    for (const [prefix, field] of persistMinePrefixes) {
+                        if (!dataKey.startsWith(prefix)) continue;
+                        const userId = dataKey.slice(prefix.length);
+                        if (!userId) break;
+                        const value = data[dataKey];
+                        if (userId === this.myUserId) {
+                            const prev = local[field];
+                            if (prev !== value) {
+                                local[field] = value;
+                                fire(field, value, prev);
+                            }
+                        } else {
+                            let entry = perUserPersistMine.get(userId);
+                            if (!entry) {
+                                entry = {};
+                                perUserPersistMine.set(userId, entry);
+                            }
+                            entry[field] = value;
+                        }
+                        break;
+                    }
+                }
+            };
+
+            // ── プラグインコード実行前に初期エンティティを同期反映 ──
+            // ここで onChange listener はまだ登録されていないので fire は空打ちになる。
+            // プラグインは state.local.xxx を読めば初期値が取れる。
+            if (initialData) applyEntityData(initialData);
+
+            // ── バインディング登録 ──────────────────────────────────
+            this._stateBindings.push({
+                watchType,
+                getTargetId: () => targetEntityId,
+                trySetTargetId: (id) => {
+                    if (!targetEntityId) targetEntityId = id;
+                },
+                applyEntityData,
+            });
+
+            // ── local は Proxy。書き込みでスコープに応じた flush を予約 ──
+            const proxy = new Proxy(local, {
+                get: (target, prop) => (typeof prop === 'string' ? target[prop] : undefined),
+                set: (target, prop, value) => {
+                    if (typeof prop !== 'string') return false;
+                    const prev = target[prop];
+                    target[prop] = value;
+                    if (prev === value) return true;
+
+                    const scope = scopes.get(prop) ?? 'local';
+                    fire(prop, value, prev);
+
+                    if (scope === 'shared') {
+                        pendingSharedWrites[prop] = value;
+                        sharedDirty = true;
+                        this._pendingStateFlushes.add(flushShared);
+                    } else if (scope === 'persistent') {
+                        pendingEntityWrites[prop] = value;
+                        entityDirty = true;
+                        this._pendingStateFlushes.add(flushEntity);
+                    } else if (scope === 'persistMine' && this.myUserId) {
+                        pendingEntityWrites[`${prop}:${this.myUserId}`] = value;
+                        entityDirty = true;
+                        this._pendingStateFlushes.add(flushEntity);
+                    }
+                    return true;
+                },
+            }) as T;
+
+            const getFor = (userId: string): EntityStateFor<T> => {
                 const entry = this._presenceUsers.get(userId);
+                const mine = perUserPersistMine.get(userId);
                 const result: Record<string, unknown> = { id: userId };
-                for (const key of syncKeysArr) {
-                    result[key] = entry?.sharedState[key] !== undefined ? entry.sharedState[key] : initial[key];
+                for (const [key, scope] of scopes) {
+                    if (scope === 'shared') {
+                        result[key] = entry?.sharedState[key] !== undefined ? entry.sharedState[key] : defaults[key];
+                    } else if (scope === 'persistMine') {
+                        if (userId === this.myUserId) {
+                            result[key] = local[key];
+                        } else {
+                            result[key] = mine?.[key] !== undefined ? mine[key] : defaults[key];
+                        }
+                    } else {
+                        result[key] = local[key];
+                    }
                 }
                 const worldX = entry?.worldX ?? 0;
                 const worldY = entry?.worldY ?? 0;
@@ -654,28 +874,20 @@ export class UbiSDK {
                 result.worldY = worldY;
                 result.viewportX = worldX - this._scrollX;
                 result.viewportY = worldY - this._scrollY;
-                return result as unknown as EntityStateFor<T, K>;
-            };
-
-            const set = (data: Partial<{ [P in K[number]]: T[P] }>): void => {
-                if (syncKeysArr.length === 0) return; // 同期キーなし = ローカルのみ
-                let changed = false;
-                for (const [k, v] of Object.entries(data)) {
-                    if ((local as Record<string, unknown>)[k] !== v) {
-                        (local as Record<string, unknown>)[k] = v;
-                        pendingData[k] = v;
-                        changed = true;
-                    }
-                }
-                if (!changed) return;
-                dirty = true;
-                this._pendingStateFlushes.add(flush);
+                return result as unknown as EntityStateFor<T>;
             };
 
             return {
-                local,
-                set,
+                local: proxy,
                 for: getFor,
+                onChange: (key, listener) => {
+                    let set = listeners.get(key);
+                    if (!set) {
+                        set = new Set();
+                        listeners.set(key, set);
+                    }
+                    set.add(listener as (n: unknown, p: unknown) => void);
+                },
                 renderForEachUser: (componentName, factory) => {
                     this._forEachUserComponents.add(componentName);
                     for (const [userId] of this._presenceUsers) {

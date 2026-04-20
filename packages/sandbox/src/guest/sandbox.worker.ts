@@ -81,6 +81,9 @@ self.addEventListener('message', (e: MessageEvent<PluginHostEvent>) => {
     Ubi.myUserId = event.payload.myUserId;
     Ubi.entityId = event.payload.entityId;
     Ubi.pluginBase = event.payload.pluginBase ?? '';
+    Ubi.watchEntityTypes = event.payload.watchEntityTypes ?? [];
+    // state.define がプラグインコード実行前にこのスナップショットを同期反映する
+    Ubi._setInitialEntities(event.payload.initialEntities ?? []);
 
     const pluginId = event.payload.pluginId ?? event.payload.worldId ?? 'unknown';
     Ubi.pluginId = pluginId;

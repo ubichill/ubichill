@@ -6,7 +6,7 @@
     "avatar:cursor": {
       "src": "./src/cursor.worker.tsx",
       "singleton": true,
-      "capabilities": ["ui:render", "net:host-message", "scene:read"]
+      "capabilities": ["ui:render", "net:host-message", "scene:read", "net:broadcast"]
     },
     "avatar:settings": {
       "src": "./src/settings.worker.tsx",
