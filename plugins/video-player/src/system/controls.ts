@@ -58,15 +58,6 @@ const SIZE_PRESETS: [number, number][] = [
 
 const DEFAULT_API_BASE = '/plugins/video-player/api';
 
-// ── ヘルパー ─────────────────────────────────────────
-
-const _fmt = (sec: number): string => {
-    if (!Number.isFinite(sec) || sec <= 0) return '0:00';
-    const m = Math.floor(sec / 60);
-    const s = Math.floor(sec % 60);
-    return `${m}:${s.toString().padStart(2, '0')}`;
-};
-
 const _extractYouTubeId = (url: string): string | null => {
     const patterns = [
         /(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/,
@@ -332,6 +323,3 @@ export function initControls(): void {
     // 進行バー推定は時計依存なので、state 変化がなくても再描画を打つ必要がある
     setInterval(_render, 500);
 }
-
-// 未使用関数警告の回避 (format ヘルパは UI 側で使用)
-void _fmt;
