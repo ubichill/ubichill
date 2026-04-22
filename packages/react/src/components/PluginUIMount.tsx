@@ -1,4 +1,4 @@
-import { renderVNode } from '@ubichill/sandbox/host';
+import { renderVNode } from '@ubichill/sandbox';
 import type { VNode } from '@ubichill/shared';
 import { useLayoutEffect, useRef } from 'react';
 

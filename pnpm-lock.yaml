@@ -261,6 +261,9 @@ importers:
       '@ubichill/engine':
         specifier: workspace:*
         version: link:../engine
+      '@ubichill/sdk':
+        specifier: workspace:*
+        version: link:../sdk
       '@ubichill/shared':
         specifier: workspace:*
         version: link:../shared
@@ -277,9 +280,6 @@ importers:
       '@ubichill/react':
         specifier: workspace:*
         version: link:../react
-      '@ubichill/sandbox':
-        specifier: workspace:*
-        version: link:../sandbox
       '@ubichill/shared':
         specifier: workspace:*
         version: link:../shared

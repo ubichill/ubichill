@@ -56,6 +56,10 @@ state.onChange('currentIndex', () => {
 });
 
 state.onChange('isPlaying', (playing) => {
+    Ubi.log(
+        `[Screen:onChange] isPlaying=${playing} loaded=${state.local.loaded} playlist=${state.local.playlist.length}`,
+        'info',
+    );
     if (playing) {
         if (!state.local.loaded) _loadTrack(true);
         else Ubi.media.play(TARGET);
@@ -104,6 +108,16 @@ export const ScreenSystem: System = (_entities: Entity[], _dt: number, events: W
             state.local.loaded = true;
             state.local.localDuration = p.duration;
             if (state.local.localDuration > 0) state.local.duration = state.local.localDuration;
+            // 後から参加したユーザーが正しい再生位置から開始できるようシークする。
+            // ライブ配信はシーク不要。currentTime が 0 の場合もスキップ。
+            const _track = state.local.playlist[state.local.currentIndex];
+            if (state.local.currentTime > 0 && _track?.mode !== 'live') {
+                Ubi.media.seek(state.local.currentTime, TARGET);
+                state.local.localTime = state.local.currentTime;
+            }
+            if (state.local.isPlaying) {
+                Ubi.media.play(TARGET);
+            }
             continue;
         }
 
@@ -147,6 +161,10 @@ export const ScreenSystem: System = (_entities: Entity[], _dt: number, events: W
 
 export function initScreen(): void {
     state.local.apiBase = state.local.apiBase.trim() || DEFAULT_API_BASE;
+    Ubi.log(
+        `[Screen:init] playlist=${state.local.playlist.length} isPlaying=${state.local.isPlaying} isVisible=${state.local.isVisible} currentTime=${state.local.currentTime}`,
+        'info',
+    );
     // 初期状態で既にトラック + 再生中なら、ここでロード（onChange は初期値では発火しない）
     if (state.local.playlist.length > 0 && state.local.isPlaying) {
         _loadTrack(true);

@@ -377,7 +377,7 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
 
         // Vite の Worker 検出は new Worker(new URL(...)) の形式でないと機能しない
         // 変数に分離すると .ts がそのままアセットとして data:video/mp2t で埋め込まれてしまう
-        this.worker = new Worker(new URL('../guest/sandbox.worker.ts', import.meta.url), { type: 'module' });
+        this.worker = new Worker(new URL('./sandbox.worker.ts', import.meta.url), { type: 'module' });
         this.worker.addEventListener('message', (e: MessageEvent<PluginGuestCommand>) => {
             if (e.data.type === 'CMD_READY') {
                 this.isInitialized = true;

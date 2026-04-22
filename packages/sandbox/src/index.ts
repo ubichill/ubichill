@@ -1,7 +1,10 @@
 /**
- * @ubichill/sandbox — Worker-safe entry point.
+ * @ubichill/sandbox — Host-side entry point.
  *
- * Guest（Worker内部）の型のみをエクスポートする。
- * DOM に依存するホスト側 API（PluginHostManager 等）は @ubichill/sandbox/host から。
+ * Worker 管理・隔離実行のホスト API。
+ * プラグイン向け API は @ubichill/sdk から。
  */
-export * from './guest/index';
+export * from './fetchHandler';
+export * from './PluginHostManager';
+export * from './pluginDiagnostics';
+export { renderVNode } from './VNodeRenderer';

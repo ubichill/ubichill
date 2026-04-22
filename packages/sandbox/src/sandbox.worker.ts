@@ -1,5 +1,5 @@
+import { UbiSDK } from '@ubichill/sdk';
 import type { PluginGuestCommand, PluginHostEvent } from '@ubichill/shared';
-import { UbiSDK } from './UbiSDK';
 
 // IMPORTANT: Function コンストラクタを無効化する前に保存
 const SafeFunction = Function;

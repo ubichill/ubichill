@@ -119,7 +119,10 @@ state.onChange('seekNonce', () => {
     _render();
 });
 
-state.onChange('playlist', _render);
+state.onChange('playlist', (v) => {
+    Ubi.log(`[Controls:onChange] playlist changed: ${(v as unknown[]).length} tracks`, 'info');
+    _render();
+});
 state.onChange('isVisible', _render);
 state.onChange('loop', _render);
 state.onChange('shuffle', _render);
@@ -315,6 +318,16 @@ export const ControlsSystem: System = (_entities: Entity[], _dt: number, events:
 
 export function initControls(): void {
     state.local.apiBase = _apiBase();
+    Ubi.log(
+        `[Controls:init] playlist=${state.local.playlist.length} isPlaying=${state.local.isPlaying} currentTime=${state.local.currentTime}`,
+        'info',
+    );
+    // applyEntityData は onChange 登録前に実行されるため currentTime が反映されない。
+    // 後から参加したユーザーが正しい再生位置を表示できるよう手動で初期化する。
+    if (state.local.currentTime > 0) {
+        state.local.lastSyncedTime = state.local.currentTime;
+        state.local.lastSyncedAt = Date.now();
+    }
     _render();
     // 進行バー推定は時計依存なので、state 変化がなくても再描画を打つ必要がある
     setInterval(_render, 500);

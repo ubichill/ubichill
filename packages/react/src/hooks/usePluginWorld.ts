@@ -9,7 +9,7 @@
  * - stale closure を防ぐための ref 管理
  */
 
-import type { HostHandlers } from '@ubichill/sandbox/host';
+import type { HostHandlers } from '@ubichill/sandbox';
 import type { WorldEntity } from '@ubichill/shared';
 import { useEffect, useRef } from 'react';
 import { useWorld } from './useWorld';

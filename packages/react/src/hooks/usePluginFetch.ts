@@ -13,7 +13,7 @@
  *   2. entity.data.fetchDomains（ワールド作成者が制御・外部バックエンド用）
  */
 
-import { createPluginFetchHandler, fetchDirect } from '@ubichill/sandbox/host';
+import { createPluginFetchHandler, fetchDirect } from '@ubichill/sandbox';
 import type { FetchOptions, FetchResult, WorldEntity } from '@ubichill/shared';
 import { useMemo } from 'react';
 import type { WorkerPluginDefinition } from '../types';

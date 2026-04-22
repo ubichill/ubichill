@@ -1,4 +1,4 @@
-import { PluginHostManager } from '@ubichill/sandbox/host';
+import { PluginHostManager } from '@ubichill/sandbox';
 import type { EntityPatchPayload, PluginHostEvent, WorldEntity } from '@ubichill/shared';
 import { useCallback, useEffect, useRef } from 'react';
 import type { PluginWorkerHandlers, UsePluginWorkerOptions } from '../usePluginWorker';

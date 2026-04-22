@@ -1,4 +1,4 @@
-import { type HostHandlers, PluginHostManager, type PluginHostManagerOptions } from '@ubichill/sandbox/host';
+import { type HostHandlers, PluginHostManager, type PluginHostManagerOptions } from '@ubichill/sandbox';
 import type {
     EntityPatchPayload,
     FetchOptions,
@@ -19,7 +19,7 @@ export {
     DEFAULT_ALLOWED_DOMAINS,
     isUrlAllowed,
     PRODUCTION_ALLOWED_DOMAINS,
-} from '@ubichill/sandbox/host';
+} from '@ubichill/sandbox';
 
 /**
  * usePluginWorker に渡すハンドラ定義。
@@ -71,7 +71,7 @@ export type PluginWorkerHandlers<TPayloadMap extends Record<string, unknown> = R
     /** Worker が Ubi.network.fetch() を呼んだときに発火する */
     onFetch?: (url: string, options?: FetchOptions) => Promise<FetchResult>;
     /** Tick 送信直前に発火するパフォーマンスフック（setMetricHandler 登録時のみ） */
-    onTickComplete?: (metric: import('@ubichill/sandbox/host').TickMetric) => void;
+    onTickComplete?: (metric: import('@ubichill/sandbox').TickMetric) => void;
 };
 
 /**
