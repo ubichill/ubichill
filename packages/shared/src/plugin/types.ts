@@ -359,6 +359,13 @@ export type EvtLifecycleInit = {
         pluginId?: string;
         entityId?: string;
         pluginBase?: string;
+        watchEntityTypes?: string[];
+        /**
+         * plugin が `watchEntityTypes` で宣言したエンティティの、Worker 起動時点でのスナップショット。
+         * SDK がプラグインコード実行前に state.local へ同期反映するため、
+         * 遅れて入室したユーザーでも初期値が揃った状態でプラグインが立ち上がる。
+         */
+        initialEntities?: WorldEntity[];
     };
 };
 

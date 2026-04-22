@@ -14,7 +14,6 @@
         "paths": {
             "@ubichill/engine": ["../engine/src/index.ts"],
             "@ubichill/sandbox": ["../sandbox/src/index.ts"],
-            "@ubichill/sandbox/host": ["../sandbox/src/host/index.ts"],
             "@ubichill/shared": ["../shared/src/index.ts"]
         }
     },

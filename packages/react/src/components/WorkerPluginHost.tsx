@@ -9,7 +9,7 @@
 
 import type { CursorState, WorldEntity } from '@ubichill/shared';
 import type React from 'react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { usePluginBroadcast } from '../hooks/usePluginBroadcast';
 import { usePluginCanvas } from '../hooks/usePluginCanvas';
 import { usePluginEntitySync } from '../hooks/usePluginEntitySync';
@@ -52,6 +52,18 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
     const onFetch = usePluginFetch(definition, entity);
     const worldHandlers = usePluginWorld();
 
+    // ── Worker 起動時点の watchEntityTypes マッチ分を抽出 ──────────────
+    // initialEntities は Worker 生成の瞬間だけ読まれるため、
+    // ここでは毎レンダー計算しても（Worker は再作成されず）問題ない。
+    const initialEntities = useMemo<WorldEntity[]>(() => {
+        const types = definition.watchEntityTypes;
+        if (!types?.length) return [];
+        const set = new Set(types);
+        const out: WorldEntity[] = [];
+        for (const e of entities.values()) if (set.has(e.type)) out.push(e);
+        return out;
+    }, [entities, definition.watchEntityTypes]);
+
     // ── Worker ────────────────────────────────────────────────────
     const { sendEvent, workerRevision, setScrollElement } = usePluginWorker({
         pluginCode: definition.workerCode,
@@ -60,6 +72,8 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
         capabilities: definition.capabilities,
         myUserId: currentUser?.id,
         pluginBase: definition.pluginBase,
+        watchEntityTypes: definition.watchEntityTypes,
+        initialEntities,
         handlers: {
             ...canvasHandlers,
             ...mediaHandlers,

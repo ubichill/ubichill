@@ -61,6 +61,9 @@ export function patchEntity(
         ...entity,
         ...patch,
         transform: patch.transform ? { ...entity.transform, ...patch.transform } : entity.transform,
+        data: patch.data
+            ? { ...(entity.data as Record<string, unknown>), ...(patch.data as Record<string, unknown>) }
+            : entity.data,
     };
     state.set(entityId, updated);
     logger.debug(`エンティティ更新: ${entityId}`);
