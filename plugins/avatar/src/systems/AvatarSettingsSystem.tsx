@@ -8,8 +8,8 @@
 import type { AppAvatarDef, Entity, System, WorkerEvent } from '@ubichill/sdk';
 import { EcsEventType } from '@ubichill/sdk';
 import type { TemplateEntry } from '../state';
-import { settings } from '../state';
-import { clearPendingTemplate, SettingsPanel } from '../ui/SettingsPanel';
+import { DEFAULT_TEMPLATE_ID, settings } from '../state';
+import { applyTemplate, clearPendingTemplate, SettingsPanel } from '../ui/SettingsPanel';
 
 export async function initTemplates(): Promise<void> {
     if (settings.templatesLoaded) return;
@@ -47,6 +47,31 @@ export async function initTemplates(): Promise<void> {
     }
 }
 
+function hasAvatarStates(avatar: AppAvatarDef): boolean {
+    return Object.keys(avatar.states).length > 0;
+}
+
+function maybeApplyDefaultTemplate(): void {
+    if (!settings.hasLocalUserSnapshot) return;
+    if (settings.defaultTemplateEvaluated) return;
+    if (settings.templates.length === 0) return;
+
+    if (hasAvatarStates(settings.avatar)) {
+        settings.defaultTemplateEvaluated = true;
+        return;
+    }
+
+    const hasDefaultTemplate = settings.templates.some((template) => template.id === DEFAULT_TEMPLATE_ID);
+    if (!hasDefaultTemplate) {
+        settings.defaultTemplateEvaluated = true;
+        Ubi.log(`デフォルトテンプレートが見つかりません: ${DEFAULT_TEMPLATE_ID}`, 'error');
+        return;
+    }
+
+    settings.defaultTemplateEvaluated = true;
+    applyTemplate(DEFAULT_TEMPLATE_ID);
+}
+
 export const AvatarSettingsSystem: System = (_entities: Entity[], _deltaTime: number, events: WorkerEvent[]) => {
     void initTemplates();
     const myUserId = Ubi.myUserId;
@@ -74,8 +99,9 @@ export const AvatarSettingsSystem: System = (_entities: Entity[], _deltaTime: nu
 
         if (event.type === EcsEventType.PLAYER_JOINED) {
             const user = event.payload as { id: string; avatar?: AppAvatarDef };
-            if (user.id === myUserId && user.avatar) {
-                settings.avatar = user.avatar;
+            if (user.id === myUserId) {
+                settings.hasLocalUserSnapshot = true;
+                settings.avatar = user.avatar ?? { states: {} };
                 settings.dirty = true;
                 if (settings.currentTemplateId !== null) {
                     clearPendingTemplate(settings.currentTemplateId);
@@ -83,6 +109,8 @@ export const AvatarSettingsSystem: System = (_entities: Entity[], _deltaTime: nu
             }
         }
     }
+
+    maybeApplyDefaultTemplate();
 
     if (settings.dirty) {
         settings.dirty = false;

@@ -14,6 +14,7 @@ export interface TemplateEntry {
 
 export const LERP_SPEED = 0.015;
 export const SNAP_THRESHOLD = 0.1;
+export const DEFAULT_TEMPLATE_ID = 'character_oji_03_blue_brown';
 
 // ============================================================
 // cursor.worker 専用ストア
@@ -55,6 +56,8 @@ export const settings = {
     templates: [] as TemplateEntry[],
     currentTemplateId: null as string | null,
     templatesLoaded: false,
+    hasLocalUserSnapshot: false,
+    defaultTemplateEvaluated: false,
     thumbnailUrls: new Map<string, string>(),
     dirty: true,
     cursorStyle: 'default',

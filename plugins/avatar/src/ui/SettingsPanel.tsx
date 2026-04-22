@@ -12,7 +12,7 @@ function resetToDefault(): void {
     Ubi.network.sendToHost('avatar:resetTemplate', {});
 }
 
-function applyTemplate(templateId: string): void {
+export function applyTemplate(templateId: string): void {
     if (_pendingTemplateId === templateId) return; // 連打を無視
     const template = settings.templates.find((t) => t.id === templateId);
     if (!template) return;
