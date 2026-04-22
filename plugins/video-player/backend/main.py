@@ -6,7 +6,7 @@ from urllib.parse import urljoin, quote
 
 from fastapi import FastAPI, HTTPException, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 import yt_dlp
 import httpx
 
@@ -347,12 +347,45 @@ def _yt_video_url(video_id: str) -> str:
 
 
 @app.get("/video/{video_id}")
-async def stream_video(video_id: str):
-    """通常動画配信（MP4直接再生 - リダイレクト方式）"""
+async def stream_video(video_id: str, request: Request):
+    """通常動画配信（ストリーミングプロキシ方式）
+
+    YouTube CDN の URL はサーバー側 IP で署名されるため、
+    ブラウザへ直接リダイレクトすると IP 不一致で拒否される。
+    ライブと同様にサーバー側でプロキシして返す。
+    Range ヘッダーを転送してシーク（seek）も動作させる。
+    """
     try:
         stream_url = await asyncio.to_thread(_yt_video_url, video_id)
-        # 通常動画は直接URLにリダイレクト（プロキシ不要）
-        return RedirectResponse(url=stream_url, status_code=302)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "*/*",
+            "Referer": "https://www.youtube.com/",
+            "Origin": "https://www.youtube.com",
+        }
+        range_header = request.headers.get("range")
+        if range_header:
+            headers["Range"] = range_header
+
+        client = httpx.AsyncClient(follow_redirects=True, timeout=60.0)
+        upstream = await client.get(stream_url, headers=headers)
+
+        async def _iter():
+            async for chunk in upstream.aiter_bytes(65536):
+                yield chunk
+            await client.aclose()
+
+        res_headers: dict[str, str] = {"Access-Control-Allow-Origin": "*", "Accept-Ranges": "bytes"}
+        for key in ("content-length", "content-range", "content-type"):
+            if key in upstream.headers:
+                res_headers[key] = upstream.headers[key]
+
+        return StreamingResponse(
+            _iter(),
+            status_code=upstream.status_code,
+            media_type=upstream.headers.get("content-type", "video/mp4"),
+            headers=res_headers,
+        )
 
     except HTTPException:
         raise

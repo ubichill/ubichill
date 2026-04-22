@@ -157,6 +157,10 @@ export interface PluginHostManagerOptions<TPayloadMap extends Record<string, unk
     entityId?: string;
     /** プラグインアセットのベースURL（Worker で Ubi.pluginBase として参照可能） */
     pluginBase?: string;
+    /** このプラグインが監視するエンティティ種別一覧（plugin.json の watchEntityTypes）。SDK の state 自動同期に使用 */
+    watchEntityTypes?: string[];
+    /** Worker 起動時点で watchEntityTypes にマッチしている既存エンティティ。SDK がプラグインコード実行前に state.local へ同期反映する */
+    initialEntities?: WorldEntity[];
     handlers: HostHandlers<TPayloadMap>;
     capabilities?: string[];
     maxExecutionTime?: number;
@@ -373,7 +377,7 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
 
         // Vite の Worker 検出は new Worker(new URL(...)) の形式でないと機能しない
         // 変数に分離すると .ts がそのままアセットとして data:video/mp2t で埋め込まれてしまう
-        this.worker = new Worker(new URL('../guest/sandbox.worker.ts', import.meta.url), { type: 'module' });
+        this.worker = new Worker(new URL('./sandbox.worker.ts', import.meta.url), { type: 'module' });
         this.worker.addEventListener('message', (e: MessageEvent<PluginGuestCommand>) => {
             if (e.data.type === 'CMD_READY') {
                 this.isInitialized = true;
@@ -406,6 +410,8 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
                 pluginId: options.pluginId,
                 entityId: options.entityId,
                 pluginBase: options.pluginBase,
+                watchEntityTypes: options.watchEntityTypes,
+                initialEntities: options.initialEntities,
             },
         });
 

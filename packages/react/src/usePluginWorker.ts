@@ -1,4 +1,4 @@
-import { type HostHandlers, PluginHostManager, type PluginHostManagerOptions } from '@ubichill/sandbox/host';
+import { type HostHandlers, PluginHostManager, type PluginHostManagerOptions } from '@ubichill/sandbox';
 import type {
     EntityPatchPayload,
     FetchOptions,
@@ -19,7 +19,7 @@ export {
     DEFAULT_ALLOWED_DOMAINS,
     isUrlAllowed,
     PRODUCTION_ALLOWED_DOMAINS,
-} from '@ubichill/sandbox/host';
+} from '@ubichill/sandbox';
 
 /**
  * usePluginWorker に渡すハンドラ定義。
@@ -71,7 +71,7 @@ export type PluginWorkerHandlers<TPayloadMap extends Record<string, unknown> = R
     /** Worker が Ubi.network.fetch() を呼んだときに発火する */
     onFetch?: (url: string, options?: FetchOptions) => Promise<FetchResult>;
     /** Tick 送信直前に発火するパフォーマンスフック（setMetricHandler 登録時のみ） */
-    onTickComplete?: (metric: import('@ubichill/sandbox/host').TickMetric) => void;
+    onTickComplete?: (metric: import('@ubichill/sandbox').TickMetric) => void;
 };
 
 /**
@@ -104,6 +104,14 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
         onResourceLimitExceededRef.current = options.onResourceLimitExceeded;
     });
 
+    // initialEntities は「Worker 起動時点のスナップショット」であって
+    // deps の中に入れると entities 更新のたびに Worker が壊れて作り直される。
+    // 最新の参照だけ ref に保持して、新しい Worker を作る瞬間に読み取る。
+    const initialEntitiesRef = useRef(options.initialEntities);
+    useEffect(() => {
+        initialEntitiesRef.current = options.initialEntities;
+    });
+
     useEffect(() => {
         const manager = new PluginHostManager<TPayloadMap>({
             pluginCode: options.pluginCode,
@@ -117,6 +125,8 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
             worldId: options.worldId,
             myUserId: options.myUserId,
             pluginBase: options.pluginBase,
+            watchEntityTypes: options.watchEntityTypes,
+            initialEntities: initialEntitiesRef.current,
             handlers: {
                 onMessage: (msg) => handlersRef.current.onMessage?.(msg),
                 onCommand: (cmd) => handlersRef.current.onCommand?.(cmd),
@@ -175,6 +185,7 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
         options.worldId,
         options.myUserId,
         options.pluginBase,
+        options.watchEntityTypes,
     ]);
 
     const sendEvent = useCallback((event: PluginHostEvent) => {

@@ -39,7 +39,6 @@ export default defineConfig({
             '@ubichill/sdk/react': resolve(__dirname, '../sdk/src/react/index.ts'),
             '@ubichill/sdk/ui': resolve(__dirname, '../sdk/src/ui/index.ts'),
             '@ubichill/sdk': resolve(__dirname, '../sdk/src/index.ts'),
-            '@ubichill/sandbox/host': resolve(__dirname, '../sandbox/src/host/index.ts'),
             '@ubichill/sandbox': resolve(__dirname, '../sandbox/src/index.ts'),
             '@ubichill/engine': resolve(__dirname, '../engine/src/index.ts'),
             '@ubichill/react': resolve(__dirname, '../react/src/index.ts'),

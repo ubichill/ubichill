@@ -13,7 +13,8 @@
         "enabled": true,
         "indentStyle": "space",
         "indentWidth": 4,
-        "lineWidth": 120
+        "lineWidth": 120,
+        "lineEnding": "lf"
     },
     "assist": {
         "actions": {
@@ -49,5 +50,13 @@
         "formatter": {
             "quoteStyle": "single"
         }
-    }
+    },
+    "overrides": [
+        {
+            "includes": ["**/*"],
+            "formatter": {
+                "lineEnding": "auto"
+            }
+        }
+    ]
 }

@@ -58,7 +58,6 @@ spec:
         playlist: []
         currentIndex: 0
         isPlaying: false
-        volume: 0.7
         currentTime: 0
         loop: 'none'
         shuffle: false

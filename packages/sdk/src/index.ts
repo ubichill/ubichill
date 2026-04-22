@@ -10,8 +10,6 @@
 
 // ECS + メッセージング型
 export * from '@ubichill/engine';
-// UbiSDK 型（プラグイン Worker の `declare const Ubi: UbiSDK` 用）
-export type { EntityState, EntityStateFor, UbiSDK, UiRenderCostStat } from '@ubichill/sandbox';
 // プロトコル型（@ubichill/shared より選択的に re-export）
 export type {
     AppAvatarDef,
@@ -75,3 +73,6 @@ export type {
     WorldEntity,
     WorldEnvironmentData,
 } from '@ubichill/shared';
+// UbiSDK クラス + 型
+export { UbiSDK } from './ubi';
+export type { EntityState, EntityStateFor, OmitId, UiRenderCostStat } from './ubi/types';

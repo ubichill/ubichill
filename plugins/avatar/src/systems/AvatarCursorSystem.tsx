@@ -4,7 +4,7 @@
  *
  * 状態は cursor に一元管理する。
  * - ローカル専用フィールド (lerpX, lerpY, ...) は cursor.local から直接読み書き
- * - グローバル同期フィールド (cursorState, avatar) は cursor.set() で書くだけで全ユーザーへ同期
+ * - shared フィールド (cursorState, avatar) も cursor.local への代入で全ユーザーへ同期
  * - 描画は cursor.renderForEachUser() で全ユーザー統一
  */
 
@@ -25,25 +25,23 @@ const SNAP_THRESHOLD = 0.1;
 
 // ── エンティティ状態 ─────────────────────────────────────────────────
 /**
- * カーソルの全状態。syncKeys で指定したフィールドのみ全ユーザーへ同期される。
- * ローカル専用フィールドは cursor.local から直接読み書きする。
+ * カーソルの全状態。スコープマーカーで各フィールドの同期方式を宣言する。
+ * ローカル専用フィールドは cursor.local から直接読み書きし、
+ * shared フィールドも同じく cursor.local への代入で全ユーザーへ同期される。
  */
-const cursor = Ubi.state.define(
-    {
-        // ローカル専用（lerp・アニメーション・表示制御）
-        lerpX: 0,
-        lerpY: 0,
-        targetX: 0,
-        targetY: 0,
-        initialized: false,
-        localCursorStyle: 'default',
-        zIndex: 10100,
-        // グローバル同期（全ユーザーに配布）
-        cursorState: 'default' as string,
-        avatar: null as AppAvatarDef | null,
-    },
-    ['cursorState', 'avatar'] as const,
-);
+const cursor = Ubi.state.define({
+    // ローカル専用（lerp・アニメーション・表示制御）
+    lerpX: 0,
+    lerpY: 0,
+    targetX: 0,
+    targetY: 0,
+    initialized: false,
+    localCursorStyle: 'default',
+    zIndex: 10100,
+    // グローバル同期（presence 経由で全ユーザーに配布）
+    cursorState: Ubi.state.shared('default' as string),
+    avatar: Ubi.state.shared(null as AppAvatarDef | null),
+});
 
 // ── フレームキャッシュ（全ユーザー共用、sourceUrl キー） ──────────────
 const framesCache = new Map<string, AnimFrame[]>();
@@ -86,7 +84,7 @@ export const AvatarCursorSystem: System = (_entities: Entity[], deltaTime: numbe
             const d = event.payload as { style: string };
             if (d.style !== local.localCursorStyle) {
                 local.localCursorStyle = d.style;
-                cursor.set({ cursorState: cssToState(d.style) });
+                local.cursorState = cssToState(d.style);
             }
         }
 
@@ -104,7 +102,8 @@ export const AvatarCursorSystem: System = (_entities: Entity[], deltaTime: numbe
         if (event.type === EcsEventType.PLAYER_JOINED) {
             const user = event.payload as { id: string; avatar?: AppAvatarDef };
             if (user.id === Ubi.myUserId && user.avatar) {
-                cursor.set({ avatar: user.avatar, cursorState: 'default' });
+                local.avatar = user.avatar;
+                local.cursorState = 'default';
                 ensureFrames(user.avatar);
             }
         }
