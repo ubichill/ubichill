@@ -16,7 +16,7 @@
       "watchEntityTypes": [
         "video-player:screen"
       ],
-      "workerUrl": "./screen/index.67ea81a2.js"
+      "workerUrl": "./screen/index.c3c3c599.js"
     },
     "video-player:controls": {
       "capabilities": [
@@ -29,7 +29,7 @@
       "watchEntityTypes": [
         "video-player:screen"
       ],
-      "workerUrl": "./controls/index.fb8fe032.js"
+      "workerUrl": "./controls/index.86197a88.js"
     }
   }
 }

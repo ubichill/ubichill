@@ -8,9 +8,10 @@
       "capabilities": [
         "ui:render",
         "net:host-message",
-        "scene:read"
+        "scene:read",
+        "net:broadcast"
       ],
-      "workerUrl": "./cursor/index.dc1e5da4.js"
+      "workerUrl": "./cursor/index.61c2862b.js"
     },
     "avatar:settings": {
       "singleton": true,
@@ -20,7 +21,7 @@
         "net:fetch",
         "scene:read"
       ],
-      "workerUrl": "./settings/index.dcf4a5f9.js"
+      "workerUrl": "./settings/index.b8273cb3.js"
     }
   }
 }
