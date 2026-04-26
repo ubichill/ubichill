@@ -30,8 +30,8 @@ importers:
         specifier: ^2.8.3
         version: 2.8.3
       typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
 
   packages/backend:
     dependencies:
@@ -101,16 +101,16 @@ importers:
         version: 6.1.2
       ts-node:
         specifier: ^10.9.2
-        version: 10.9.2(@types/node@22.19.7)(typescript@5.9.3)
+        version: 10.9.2(@types/node@22.19.7)(typescript@6.0.3)
       ts-node-dev:
         specifier: ^2.0.0
-        version: 2.0.0(@types/node@22.19.7)(typescript@5.9.3)
+        version: 2.0.0(@types/node@22.19.7)(typescript@6.0.3)
       tsx:
         specifier: ^4.21.0
         version: 4.21.0
       typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
       wait-on:
         specifier: ^9.0.3
         version: 9.0.3
@@ -149,14 +149,14 @@ importers:
         specifier: ^4.21.0
         version: 4.21.0
       typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
 
   packages/engine:
     devDependencies:
       typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
 
   packages/frontend:
     dependencies:
@@ -196,7 +196,7 @@ importers:
     devDependencies:
       '@pandacss/dev':
         specifier: ^1.8.1
-        version: 1.8.1(hono@4.11.5)(typescript@5.9.3)
+        version: 1.8.1(hono@4.11.5)(typescript@6.0.3)
       '@types/lodash.throttle':
         specifier: ^4.1.9
         version: 4.1.9
@@ -213,8 +213,8 @@ importers:
         specifier: ^4.4.1
         version: 4.7.0(vite@6.4.1(@types/node@22.19.7)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
       vite:
         specifier: ^6.3.2
         version: 6.4.1(@types/node@22.19.7)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
@@ -253,8 +253,8 @@ importers:
         specifier: ^19.2.3
         version: 19.2.3(@types/react@19.2.10)
       typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
 
   packages/sandbox:
     dependencies:
@@ -269,8 +269,8 @@ importers:
         version: link:../shared
     devDependencies:
       typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
 
   packages/sdk:
     dependencies:
@@ -288,8 +288,8 @@ importers:
         version: 19.2.4
     devDependencies:
       typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
 
   packages/shared:
     dependencies:
@@ -302,10 +302,10 @@ importers:
         version: 6.1.2
       tsc-watch:
         specifier: ^7.2.0
-        version: 7.2.0(typescript@5.9.3)
+        version: 7.2.0(typescript@6.0.3)
       typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
 
 packages:
 
@@ -561,8 +561,8 @@ packages:
   '@drizzle-team/brocli@0.10.2':
     resolution: {integrity: sha512-z33Il7l5dKjUgGULTqBsQBQwckHh5AbIuxhdsIxDDiZAzBOrZO6q9ogcWC65kU382AfynTfgNumVcNIjuIua6w==}
 
-  '@emnapi/runtime@1.8.1':
-    resolution: {integrity: sha512-mehfKSMWjjNol8659Z8KxEMrdSJDDot5SXMq00dM8BN4o+CLNXQ0xH2V7EchNHV4RmbZLmmPdEaXZc5H2FXmDg==}
+  '@emnapi/runtime@1.10.0':
+    resolution: {integrity: sha512-ewvYlk86xUoGI0zQRNq/mC+16R1QeDlKQy21Ki3oSYXNgLb45GV1P6A0M+/s6nyCuNDqe5VpaY84BzXGwVbwFA==}
 
   '@epic-web/invariant@1.0.0':
     resolution: {integrity: sha512-lrTPqgvfFQtR/eY/qkIzp98OGdNJu0m5ji3q/nJI8v3SXkRKEnWiOxMmbvcSoAIzv/cGiuvRy57k4suKQSAdwA==}
@@ -1045,8 +1045,8 @@ packages:
     peerDependencies:
       hono: ^4
 
-  '@img/colour@1.0.0':
-    resolution: {integrity: sha512-A5P/LfWGFSl6nsckYtjw9da+19jB8hkJ6ACTGcDfEJ0aE+l2n2El7dsVM7UVHZQ9s2lmYMWlrS21YLy2IR1LUw==}
+  '@img/colour@1.1.0':
+    resolution: {integrity: sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ==}
     engines: {node: '>=18'}
 
   '@img/sharp-darwin-arm64@0.34.5':
@@ -1249,8 +1249,8 @@ packages:
       '@cfworker/json-schema':
         optional: true
 
-  '@mongodb-js/saslprep@1.4.6':
-    resolution: {integrity: sha512-y+x3H1xBZd38n10NZF/rEBlvDOOMQ6LKUTHqr8R9VkJ+mmQOYtJFxIlkkK8fZrtOiL6VixbOBWMbZGBdal3Z1g==}
+  '@mongodb-js/saslprep@1.4.9':
+    resolution: {integrity: sha512-RXSxsokhAF/4nWys8An8npsqOI33Ex1Hlzqjw2pZOO+GKtMAR2noGnUdsFiGwsaO/xXI+56mtjTmDA3JXJsvmA==}
 
   '@next/env@16.1.6':
     resolution: {integrity: sha512-N1ySLuZjnAtN3kFnwhAwPvZah8RJxKasD7x1f8shFqhncnWZn4JMfg37diLNuoHsLAlrDfM3g4mawVdtAG8XLQ==}
@@ -1600,8 +1600,8 @@ packages:
   '@types/node@17.0.45':
     resolution: {integrity: sha512-w+tIMs3rq2afQdsPJlODhoUEKzFP1ayaoyl1CcnwtIlsVe7K7bA1NGm4s3PraqTLlXnbIN84zuBlxBWo1u9BLw==}
 
-  '@types/node@22.19.15':
-    resolution: {integrity: sha512-F0R/h2+dsy5wJAUe3tAU6oqa2qbWY5TpNfL/RGmo1y38hiyO1w3x2jPtt76wmuaJI4DQnOBu21cNXQ2STIUUWg==}
+  '@types/node@22.19.17':
+    resolution: {integrity: sha512-wGdMcf+vPYM6jikpS/qhg6WiqSV/OhG+jeeHT/KlVqxYfD40iYJf9/AE1uQxVWFvU7MipKRkRv8NSHiCGgPr8Q==}
 
   '@types/node@22.19.7':
     resolution: {integrity: sha512-MciR4AKGHWl7xwxkBa6xUGxQJ4VBOmPTF7sL+iGzuahOFaO0jHCsuEfS80pan1ef4gWId1oWOweIhrDEYLuaOw==}
@@ -1739,6 +1739,11 @@ packages:
   base64id@2.0.0:
     resolution: {integrity: sha512-lGe34o6EHj9y3Kts9R4ZYs/Gr+6N7MCaMlIFA3F1R2O5/m7K06AxfSeO5530PEERE6/WyEg3lsuyw4GHlPZHog==}
     engines: {node: ^4.5.0 || >= 5.9}
+
+  baseline-browser-mapping@2.10.21:
+    resolution: {integrity: sha512-Q+rUQ7Uz8AHM7DEaNdwvfFCTq7a43lNTzuS94eiWqwyxfV/wJv+oUivef51T91mmRY4d4A1u9rcSvkeufCVXlA==}
+    engines: {node: '>=6.0.0'}
+    hasBin: true
 
   baseline-browser-mapping@2.9.19:
     resolution: {integrity: sha512-ipDqC8FrAl/76p2SSWKSI+H9tFwm7vYqXQrItCuiVPt26Km0jS+NzSsBWAaBusvSbQcfJG+JitdMm+wZAgTYqg==}
@@ -1878,6 +1883,9 @@ packages:
 
   caniuse-lite@1.0.30001766:
     resolution: {integrity: sha512-4C0lfJ0/YPjJQHagaE9x2Elb69CIqEPZeG0anQt9SIvIoOH4a4uaRl73IavyO+0qZh6MDLH//DrXThEYKHkmYA==}
+
+  caniuse-lite@1.0.30001790:
+    resolution: {integrity: sha512-bOoxfJPyYo+ds6W0YfptaCWbFnJYjh2Y1Eow5lRv+vI2u8ganPZqNm1JwNh0t2ELQCqIWg4B3dWEusgAmsoyOw==}
 
   chalk@4.1.2:
     resolution: {integrity: sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA==}
@@ -3188,6 +3196,11 @@ packages:
     engines: {node: '>=10'}
     hasBin: true
 
+  semver@7.7.4:
+    resolution: {integrity: sha512-vFKC2IEtQnVhpT78h1Yp8wzwrf8CM+MzKMHGJZfBtzhZNycRFnXsHk6E5TxIkkMsgNS7mdX3AGB7x2QM2di4lA==}
+    engines: {node: '>=10'}
+    hasBin: true
+
   send@1.2.1:
     resolution: {integrity: sha512-1gnZf7DFcoIcajTjTwjwuDjzuz4PPcY2StKPlsGAQ1+YH20IRVrBaXSWmdjowTJ6u8Rc01PoYOGHXfP1mYcZNQ==}
     engines: {node: '>= 18'}
@@ -3528,6 +3541,11 @@ packages:
 
   typescript@5.9.3:
     resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
+    engines: {node: '>=14.17'}
+    hasBin: true
+
+  typescript@6.0.3:
+    resolution: {integrity: sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==}
     engines: {node: '>=14.17'}
     hasBin: true
 
@@ -3961,7 +3979,7 @@ snapshots:
 
   '@drizzle-team/brocli@0.10.2': {}
 
-  '@emnapi/runtime@1.8.1':
+  '@emnapi/runtime@1.10.0':
     dependencies:
       tslib: 2.8.1
     optional: true
@@ -4220,7 +4238,7 @@ snapshots:
     dependencies:
       hono: 4.11.5
 
-  '@img/colour@1.0.0':
+  '@img/colour@1.1.0':
     optional: true
 
   '@img/sharp-darwin-arm64@0.34.5':
@@ -4305,7 +4323,7 @@ snapshots:
 
   '@img/sharp-wasm32@0.34.5':
     dependencies:
-      '@emnapi/runtime': 1.8.1
+      '@emnapi/runtime': 1.10.0
     optional: true
 
   '@img/sharp-win32-arm64@0.34.5':
@@ -4398,7 +4416,7 @@ snapshots:
       - hono
       - supports-color
 
-  '@mongodb-js/saslprep@1.4.6':
+  '@mongodb-js/saslprep@1.4.9':
     dependencies:
       sparse-bitfield: 3.0.3
 
@@ -4480,14 +4498,14 @@ snapshots:
       postcss-selector-parser: 7.1.1
       ts-pattern: 5.9.0
 
-  '@pandacss/dev@1.8.1(hono@4.11.5)(typescript@5.9.3)':
+  '@pandacss/dev@1.8.1(hono@4.11.5)(typescript@6.0.3)':
     dependencies:
       '@clack/prompts': 0.11.0
       '@pandacss/config': 1.8.1
       '@pandacss/logger': 1.8.1
-      '@pandacss/mcp': 1.8.1(hono@4.11.5)(typescript@5.9.3)
-      '@pandacss/node': 1.8.1(typescript@5.9.3)
-      '@pandacss/postcss': 1.8.1(typescript@5.9.3)
+      '@pandacss/mcp': 1.8.1(hono@4.11.5)(typescript@6.0.3)
+      '@pandacss/node': 1.8.1(typescript@6.0.3)
+      '@pandacss/postcss': 1.8.1(typescript@6.0.3)
       '@pandacss/preset-base': 1.8.1
       '@pandacss/preset-panda': 1.8.1
       '@pandacss/shared': 1.8.1
@@ -4501,10 +4519,10 @@ snapshots:
       - supports-color
       - typescript
 
-  '@pandacss/extractor@1.8.1(typescript@5.9.3)':
+  '@pandacss/extractor@1.8.1(typescript@6.0.3)':
     dependencies:
       '@pandacss/shared': 1.8.1
-      ts-evaluator: 1.2.0(typescript@5.9.3)
+      ts-evaluator: 1.2.0(typescript@6.0.3)
       ts-morph: 27.0.2
     transitivePeerDependencies:
       - jsdom
@@ -4531,12 +4549,12 @@ snapshots:
       '@pandacss/types': 1.8.1
       kleur: 4.1.5
 
-  '@pandacss/mcp@1.8.1(hono@4.11.5)(typescript@5.9.3)':
+  '@pandacss/mcp@1.8.1(hono@4.11.5)(typescript@6.0.3)':
     dependencies:
       '@clack/prompts': 0.11.0
       '@modelcontextprotocol/sdk': 1.25.3(hono@4.11.5)(zod@4.3.6)
       '@pandacss/logger': 1.8.1
-      '@pandacss/node': 1.8.1(typescript@5.9.3)
+      '@pandacss/node': 1.8.1(typescript@6.0.3)
       '@pandacss/token-dictionary': 1.8.1
       '@pandacss/types': 1.8.1
       zod: 4.3.6
@@ -4547,13 +4565,13 @@ snapshots:
       - supports-color
       - typescript
 
-  '@pandacss/node@1.8.1(typescript@5.9.3)':
+  '@pandacss/node@1.8.1(typescript@6.0.3)':
     dependencies:
       '@pandacss/config': 1.8.1
       '@pandacss/core': 1.8.1
       '@pandacss/generator': 1.8.1
       '@pandacss/logger': 1.8.1
-      '@pandacss/parser': 1.8.1(typescript@5.9.3)
+      '@pandacss/parser': 1.8.1(typescript@6.0.3)
       '@pandacss/reporter': 1.8.1
       '@pandacss/shared': 1.8.1
       '@pandacss/token-dictionary': 1.8.1
@@ -4577,16 +4595,16 @@ snapshots:
       prettier: 3.2.5
       ts-morph: 27.0.2
       ts-pattern: 5.9.0
-      tsconfck: 3.1.6(typescript@5.9.3)
+      tsconfck: 3.1.6(typescript@6.0.3)
     transitivePeerDependencies:
       - jsdom
       - typescript
 
-  '@pandacss/parser@1.8.1(typescript@5.9.3)':
+  '@pandacss/parser@1.8.1(typescript@6.0.3)':
     dependencies:
       '@pandacss/config': 1.8.1
       '@pandacss/core': 1.8.1
-      '@pandacss/extractor': 1.8.1(typescript@5.9.3)
+      '@pandacss/extractor': 1.8.1(typescript@6.0.3)
       '@pandacss/logger': 1.8.1
       '@pandacss/shared': 1.8.1
       '@pandacss/types': 1.8.1
@@ -4598,9 +4616,9 @@ snapshots:
       - jsdom
       - typescript
 
-  '@pandacss/postcss@1.8.1(typescript@5.9.3)':
+  '@pandacss/postcss@1.8.1(typescript@6.0.3)':
     dependencies:
-      '@pandacss/node': 1.8.1(typescript@5.9.3)
+      '@pandacss/node': 1.8.1(typescript@6.0.3)
       postcss: 8.5.6
     transitivePeerDependencies:
       - jsdom
@@ -4810,7 +4828,7 @@ snapshots:
 
   '@types/node@17.0.45': {}
 
-  '@types/node@22.19.15':
+  '@types/node@22.19.17':
     dependencies:
       undici-types: 6.21.0
     optional: true
@@ -4821,7 +4839,7 @@ snapshots:
 
   '@types/pg@8.16.0':
     dependencies:
-      '@types/node': 22.19.15
+      '@types/node': 22.19.17
       pg-protocol: 1.13.0
       pg-types: 2.2.0
     optional: true
@@ -4969,6 +4987,9 @@ snapshots:
 
   base64id@2.0.0: {}
 
+  baseline-browser-mapping@2.10.21:
+    optional: true
+
   baseline-browser-mapping@2.9.19: {}
 
   bcryptjs@3.0.3: {}
@@ -5087,6 +5108,9 @@ snapshots:
       lodash.uniq: 4.5.0
 
   caniuse-lite@1.0.30001766: {}
+
+  caniuse-lite@1.0.30001790:
+    optional: true
 
   chalk@4.1.2:
     dependencies:
@@ -5880,7 +5904,7 @@ snapshots:
 
   mongodb@7.1.0:
     dependencies:
-      '@mongodb-js/saslprep': 1.4.6
+      '@mongodb-js/saslprep': 1.4.9
       bson: 7.2.0
       mongodb-connection-string-url: 7.0.1
 
@@ -5900,8 +5924,8 @@ snapshots:
     dependencies:
       '@next/env': 16.1.6
       '@swc/helpers': 0.5.15
-      baseline-browser-mapping: 2.9.19
-      caniuse-lite: 1.0.30001766
+      baseline-browser-mapping: 2.10.21
+      caniuse-lite: 1.0.30001790
       postcss: 8.4.31
       react: 19.2.4
       react-dom: 19.2.4(react@19.2.4)
@@ -6280,6 +6304,9 @@ snapshots:
 
   semver@7.7.3: {}
 
+  semver@7.7.4:
+    optional: true
+
   send@1.2.1:
     dependencies:
       debug: 4.4.3(supports-color@5.5.0)
@@ -6313,9 +6340,9 @@ snapshots:
 
   sharp@0.34.5:
     dependencies:
-      '@img/colour': 1.0.0
+      '@img/colour': 1.1.0
       detect-libc: 2.1.2
-      semver: 7.7.3
+      semver: 7.7.4
     optionalDependencies:
       '@img/sharp-darwin-arm64': 0.34.5
       '@img/sharp-darwin-x64': 0.34.5
@@ -6576,19 +6603,19 @@ snapshots:
 
   tree-kill@1.2.2: {}
 
-  ts-evaluator@1.2.0(typescript@5.9.3):
+  ts-evaluator@1.2.0(typescript@6.0.3):
     dependencies:
       ansi-colors: 4.1.3
       crosspath: 2.0.0
       object-path: 0.11.8
-      typescript: 5.9.3
+      typescript: 6.0.3
 
   ts-morph@27.0.2:
     dependencies:
       '@ts-morph/common': 0.28.1
       code-block-writer: 13.0.3
 
-  ts-node-dev@2.0.0(@types/node@22.19.7)(typescript@5.9.3):
+  ts-node-dev@2.0.0(@types/node@22.19.7)(typescript@6.0.3):
     dependencies:
       chokidar: 3.6.0
       dynamic-dedupe: 0.3.0
@@ -6598,15 +6625,15 @@ snapshots:
       rimraf: 2.7.1
       source-map-support: 0.5.21
       tree-kill: 1.2.2
-      ts-node: 10.9.2(@types/node@22.19.7)(typescript@5.9.3)
+      ts-node: 10.9.2(@types/node@22.19.7)(typescript@6.0.3)
       tsconfig: 7.0.0
-      typescript: 5.9.3
+      typescript: 6.0.3
     transitivePeerDependencies:
       - '@swc/core'
       - '@swc/wasm'
       - '@types/node'
 
-  ts-node@10.9.2(@types/node@22.19.7)(typescript@5.9.3):
+  ts-node@10.9.2(@types/node@22.19.7)(typescript@6.0.3):
     dependencies:
       '@cspotcode/source-map-support': 0.8.1
       '@tsconfig/node10': 1.0.12
@@ -6620,23 +6647,23 @@ snapshots:
       create-require: 1.1.1
       diff: 4.0.4
       make-error: 1.3.6
-      typescript: 5.9.3
+      typescript: 6.0.3
       v8-compile-cache-lib: 3.0.1
       yn: 3.1.1
 
   ts-pattern@5.9.0: {}
 
-  tsc-watch@7.2.0(typescript@5.9.3):
+  tsc-watch@7.2.0(typescript@6.0.3):
     dependencies:
       cross-spawn: 7.0.6
       node-cleanup: 2.1.2
       ps-tree: 1.2.0
       string-argv: 0.3.2
-      typescript: 5.9.3
+      typescript: 6.0.3
 
-  tsconfck@3.1.6(typescript@5.9.3):
+  tsconfck@3.1.6(typescript@6.0.3):
     optionalDependencies:
-      typescript: 5.9.3
+      typescript: 6.0.3
 
   tsconfig@7.0.0:
     dependencies:
@@ -6688,6 +6715,8 @@ snapshots:
       mime-types: 3.0.2
 
   typescript@5.9.3: {}
+
+  typescript@6.0.3: {}
 
   uint8array-extras@1.5.0: {}
 
