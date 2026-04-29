@@ -1,7 +1,7 @@
 import type { WidgetDefinition, WorkerPluginDefinition } from '@ubichill/sdk/react';
-import { isWorkerPlugin, useWorld } from '@ubichill/sdk/react';
+import { isWorkerPlugin } from '@ubichill/sdk/react';
 import type React from 'react';
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useRef, useState } from 'react';
 import { attachAvatarCursorHostBridge } from './avatarCursorHostBridge';
 import { attachAvatarHostBridge } from './avatarHostBridge';
 import { PLUGIN_LOADERS } from './registry';
@@ -113,6 +113,8 @@ async function autoLoadWorkerPlugins(entityType: string): Promise<WorkerPluginDe
 
     const entry = manifest.entities[entityType];
     if (!entry) return [];
+    // workerUrl がない = データ専用エンティティ（plugin.json に src がないもの）。worker は起動しない。
+    if (!entry.workerUrl) return [];
 
     const versionedBase = `${PLUGIN_BASE_URL}/${pluginName}/v${index.version}`;
     const workerUrl = `${versionedBase}/${entry.workerUrl.replace(/^\.\//, '')}`;
@@ -167,7 +169,6 @@ const PluginRegistryContext = createContext<PluginRegistryContextType>({
 // ============================================
 
 export const PluginRegistryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const { activePlugins } = useWorld();
     const [pluginMap, setPluginMap] = useState<Map<string, AnyPluginDefinition>>(new Map());
     // ロード済み（またはロード中）のエンティティタイプを追跡して重複ロードを防ぐ
     const loadingRef = useRef(new Set<string>());
@@ -240,12 +241,9 @@ export const PluginRegistryProvider: React.FC<{ children: React.ReactNode }> = (
         [addPlugin],
     );
 
-    // world:snapshot 受信後に activePlugins が更新されたタイミングでシングルトンプラグインをロード
-    useEffect(() => {
-        for (const pluginId of activePlugins) {
-            loadPlugin(pluginId);
-        }
-    }, [activePlugins, loadPlugin]);
+    // dependencies が登録されているからといって全 worker を一括起動しない。
+    // シーン (initialEntities) に置かれたエンティティだけが EntityRenderer 経由で
+    // loadPlugin される。singleton も同じく entity が無ければ起動しない。
 
     return (
         <PluginRegistryContext.Provider value={{ pluginMap, loadPlugin }}>{children}</PluginRegistryContext.Provider>

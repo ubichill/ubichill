@@ -21,12 +21,8 @@ export function WorldPage() {
     const [creating, setCreating] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    // 公開ページ: 未認証でも閲覧可能。参加・作成時にだけ認証を要求する。
     useEffect(() => {
-        if (isPending) return;
-        if (!session) {
-            navigate('/auth', { state: { from: `/world/${worldId}` }, replace: true });
-            return;
-        }
         if (!worldId) return;
 
         setLoading(true);
@@ -47,14 +43,27 @@ export function WorldPage() {
             })
             .catch((e: unknown) => setError(e instanceof Error ? e.message : 'データの取得に失敗しました'))
             .finally(() => setLoading(false));
-    }, [isPending, session, worldId, navigate]);
+    }, [worldId]);
+
+    const requireAuthThenGo = (next: () => void) => {
+        if (isPending) return;
+        if (!session) {
+            navigate('/auth', { state: { from: `/world/${worldId}` }, replace: false });
+            return;
+        }
+        next();
+    };
 
     const handleJoin = (instanceId: string) => {
-        navigate(`/instance/${instanceId}`, { state: { worldId } });
+        requireAuthThenGo(() => navigate(`/instance/${instanceId}`, { state: { worldId } }));
     };
 
     const handleCreate = async () => {
         if (!worldId || creating) return;
+        if (!session) {
+            navigate('/auth', { state: { from: `/world/${worldId}` }, replace: false });
+            return;
+        }
         setCreating(true);
         setError(null);
         try {
@@ -77,7 +86,7 @@ export function WorldPage() {
         }
     };
 
-    if (isPending || loading) {
+    if (loading) {
         return (
             <div className={css({ minH: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' })}>
                 <p className={css({ color: 'textMuted' })}>読み込み中...</p>

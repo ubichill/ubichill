@@ -6,12 +6,16 @@
     "avatar:cursor": {
       "src": "./src/cursor.worker.tsx",
       "singleton": true,
-      "capabilities": ["ui:render", "net:host-message", "scene:read", "net:broadcast"]
+      "capabilities": ["ui:render", "net:host-message", "scene:read", "net:broadcast"],
+      "defaultTransform": { "x": 0, "y": 0, "z": 10100 },
+      "dataFields": {}
     },
     "avatar:settings": {
       "src": "./src/settings.worker.tsx",
       "singleton": true,
-      "capabilities": ["ui:render", "net:host-message", "net:fetch", "scene:read"]
+      "capabilities": ["ui:render", "net:host-message", "net:fetch", "scene:read"],
+      "defaultTransform": { "x": 20, "y": 100, "z": 9998 },
+      "dataFields": {}
     }
   }
 }

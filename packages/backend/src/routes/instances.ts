@@ -1,7 +1,7 @@
 import { CreateInstanceRequestSchema, ListInstancesQuerySchema } from '@ubichill/shared';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { requireAuth } from '../middleware/auth';
+import { optionalAuth, requireAuth } from '../middleware/auth';
 import { instanceManager } from '../services/instanceManager';
 
 const router = Router();
@@ -10,7 +10,7 @@ const router = Router();
  * GET /api/v1/instances
  * インスタンス一覧を取得（認証必須）
  */
-router.get('/', requireAuth, async (req, res) => {
+router.get('/', optionalAuth, async (req, res) => {
     try {
         const queryResult = ListInstancesQuerySchema.safeParse(req.query);
         if (!queryResult.success) {
@@ -76,7 +76,7 @@ router.post('/', requireAuth, createInstanceLimiter, async (req, res) => {
  * GET /api/v1/instances/:id
  * インスタンス詳細を取得（認証必須）
  */
-router.get('/:id', requireAuth, async (req, res) => {
+router.get('/:id', optionalAuth, async (req, res) => {
     try {
         const id = req.params.id as string;
         const instance = await instanceManager.getInstance(id);

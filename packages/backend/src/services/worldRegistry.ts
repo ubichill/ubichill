@@ -6,11 +6,16 @@ import {
     ENV_KEYS,
     type ResolvedWorld,
     SERVER_CONFIG,
+    type WorldCreateInput,
     type WorldDefinition,
     WorldDefinitionSchema,
     type WorldListItem,
 } from '@ubichill/shared';
+import { customAlphabet } from 'nanoid';
 import yaml from 'yaml';
+
+// KebabCaseId 互換の lowercase + 数字のみ。21文字で十分な衝突耐性を確保。
+const generateWorldId = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 21);
 
 // ── システム定数 ──────────────────────────────────────────────────
 
@@ -208,6 +213,51 @@ class WorldRegistry {
         const resolved = this._resolveWorld(record);
         this._resolvedCache.set(resolved.id, resolved);
         return resolved;
+    }
+
+    /**
+     * フォーム入力からワールドを作成する。
+     * - metadata.name はサーバー側で nanoid 生成（ユーザーの日本語名は displayName 側に入る）
+     * - author.name はセッションのユーザー名で補完
+     */
+    async createFromInput(
+        authorId: string,
+        authorDisplayName: string,
+        input: WorldCreateInput,
+    ): Promise<ResolvedWorld> {
+        const definition: WorldDefinition = {
+            apiVersion: 'ubichill.com/v1alpha1',
+            kind: 'World',
+            metadata: {
+                name: generateWorldId(),
+                version: '1.0.0',
+                author: { name: authorDisplayName },
+            },
+            spec: input,
+        };
+        return this.createWorld(authorId, definition);
+    }
+
+    /**
+     * YAML テキストからワールドを作成する。
+     * metadata.name は無視してサーバー側で再生成し、所有権を確実に作成者に紐付ける。
+     */
+    async createFromYaml(authorId: string, authorDisplayName: string, yamlText: string): Promise<ResolvedWorld> {
+        const parsed = yaml.parse(yamlText) as unknown;
+        const result = WorldDefinitionSchema.safeParse(parsed);
+        if (!result.success) {
+            const issue = result.error.issues[0];
+            throw new Error(`YAML が不正です: ${issue?.path.join('.') ?? ''} ${issue?.message ?? ''}`);
+        }
+        const def: WorldDefinition = {
+            ...result.data,
+            metadata: {
+                ...result.data.metadata,
+                name: generateWorldId(),
+                author: result.data.metadata.author ?? { name: authorDisplayName },
+            },
+        };
+        return this.createWorld(authorId, def);
     }
 
     /**

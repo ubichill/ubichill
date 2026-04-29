@@ -1,12 +1,47 @@
 import { useSocket } from '@ubichill/sdk/react';
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { API_BASE } from '@/lib/api';
 import { css } from '@/styled-system/css';
 
 export function InstanceHUD() {
     const navigate = useNavigate();
+    const { id: instanceId } = useParams<{ id: string }>();
     const { users, isConnected, currentUser } = useSocket();
     const [menuOpen, setMenuOpen] = useState(false);
+    const [editableWorldId, setEditableWorldId] = useState<string | null>(null);
+
+    // currentUser は useSocket からカーソル移動の度に新しい参照が来るので、
+    // useEffect の依存には id だけを使って /owner fetch の連発を防ぐ
+    const currentUserId = currentUser?.id;
+
+    // 現在のワールドが自分の作成物かを判定（編集ボタン表示用）
+    useEffect(() => {
+        if (!instanceId || !currentUserId) {
+            setEditableWorldId(null);
+            return;
+        }
+        const worldId = sessionStorage.getItem(`instance:${instanceId}:worldId`);
+        if (!worldId) {
+            setEditableWorldId(null);
+            return;
+        }
+        let cancelled = false;
+        fetch(`${API_BASE}/api/v1/worlds/${worldId}/owner`, { credentials: 'include' })
+            .then((r) => (r.ok ? (r.json() as Promise<{ authorId: string }>) : null))
+            .then((data) => {
+                if (cancelled || !data) return;
+                if (data.authorId === currentUserId) {
+                    setEditableWorldId(worldId);
+                }
+            })
+            .catch(() => {
+                /* 取得失敗時は編集ボタン非表示 */
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [instanceId, currentUserId]);
 
     const userCount = users.size;
 
@@ -210,7 +245,75 @@ export function InstanceHUD() {
                         </div>
 
                         {/* アクション */}
-                        <div className={css({ padding: '8px' })}>
+                        <div className={css({ padding: '8px', display: 'flex', flexDirection: 'column', gap: '2px' })}>
+                            {editableWorldId && (
+                                <button
+                                    type="button"
+                                    onClick={() => navigate(`/world/${editableWorldId}/edit`)}
+                                    className={css({
+                                        width: 'full',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        padding: '9px 12px',
+                                        backgroundColor: 'transparent',
+                                        border: 'none',
+                                        borderRadius: '8px',
+                                        cursor: 'pointer',
+                                        color: 'hudTextAction',
+                                        fontSize: '13px',
+                                        fontWeight: '500',
+                                        transition: 'background-color 0.12s ease',
+                                        _hover: { backgroundColor: 'hudActionHover' },
+                                    })}
+                                >
+                                    <svg
+                                        width="14"
+                                        height="14"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                    >
+                                        <path d="M12 20h9" />
+                                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                                    </svg>
+                                    このワールドを編集
+                                </button>
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => navigate('/user/me')}
+                                className={css({
+                                    width: 'full',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    padding: '9px 12px',
+                                    backgroundColor: 'transparent',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    cursor: 'pointer',
+                                    color: 'hudTextAction',
+                                    fontSize: '13px',
+                                    fontWeight: '500',
+                                    transition: 'background-color 0.12s ease',
+                                    _hover: { backgroundColor: 'hudActionHover' },
+                                })}
+                            >
+                                <svg
+                                    width="14"
+                                    height="14"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                >
+                                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                                    <circle cx="12" cy="7" r="4" />
+                                </svg>
+                                マイページ
+                            </button>
                             <button
                                 type="button"
                                 onClick={() => navigate('/')}

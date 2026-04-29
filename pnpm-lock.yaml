@@ -71,6 +71,9 @@ importers:
       helmet:
         specifier: ^8.1.0
         version: 8.1.0
+      nanoid:
+        specifier: ^5.1.7
+        version: 5.1.7
       resend:
         specifier: ^6.9.4
         version: 6.9.4
@@ -186,6 +189,9 @@ importers:
       upng-js:
         specifier: ^2.1.0
         version: 2.1.0
+      yaml:
+        specifier: ^2.8.2
+        version: 2.8.2
     devDependencies:
       '@pandacss/dev':
         specifier: ^1.8.1

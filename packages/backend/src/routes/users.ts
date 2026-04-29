@@ -1,7 +1,10 @@
-import { db, users } from '@ubichill/db';
+import { db, userRepository, users, worldRepository } from '@ubichill/db';
+import type { WorldDefinition } from '@ubichill/shared';
+import { LIMITS } from '@ubichill/shared';
 import { eq } from 'drizzle-orm';
 import { Router } from 'express';
 import { createPendingRegistration, resendOTP, verifyAndRegister } from '../lib/auth';
+import { requireAuth } from '../middleware/auth';
 
 const router = Router();
 
@@ -104,6 +107,79 @@ router.get('/check-username', async (req, res) => {
         console.error('Username check error:', error);
         return res.status(500).json({ error: 'Internal server error' });
     }
+});
+
+// 自分のプロフィール
+router.get('/me', requireAuth, async (req, res) => {
+    if (!req.user) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const user = await userRepository.findById(req.user.id);
+    if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+    }
+    return res.json({
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        profileImageUrl: user.profileImageUrl ?? user.image ?? null,
+    });
+});
+
+// 自分が作成したワールド一覧（編集に使う詳細情報を含む）
+router.get('/me/worlds', requireAuth, async (req, res) => {
+    if (!req.user) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const records = await worldRepository.findByAuthorId(req.user.id);
+    const worlds = records.map((r) => {
+        const def = r.definition as WorldDefinition;
+        return {
+            id: r.name,
+            displayName: def.spec.displayName,
+            description: def.spec.description ?? null,
+            thumbnail: def.spec.thumbnail ?? null,
+            version: r.version,
+            capacity: def.spec.capacity,
+            updatedAt: r.updatedAt,
+        };
+    });
+    return res.json({
+        worlds,
+        limit: LIMITS.MAX_WORLDS_PER_USER,
+        remaining: Math.max(0, LIMITS.MAX_WORLDS_PER_USER - worlds.length),
+    });
+});
+
+// 公開プロフィール（他ユーザー閲覧用）
+router.get('/:userId', async (req, res) => {
+    const user = await userRepository.findById(req.params.userId);
+    if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+    }
+    return res.json({
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        profileImageUrl: user.profileImageUrl ?? user.image ?? null,
+    });
+});
+
+// 他ユーザーが作成したワールド一覧（公開メタデータのみ）
+router.get('/:userId/worlds', async (req, res) => {
+    const records = await worldRepository.findByAuthorId(req.params.userId);
+    const worlds = records.map((r) => {
+        const def = r.definition as WorldDefinition;
+        return {
+            id: r.name,
+            displayName: def.spec.displayName,
+            description: def.spec.description ?? null,
+            thumbnail: def.spec.thumbnail ?? null,
+            version: r.version,
+            capacity: def.spec.capacity,
+        };
+    });
+    return res.json({ worlds });
 });
 
 export { router };
