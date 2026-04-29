@@ -14,7 +14,7 @@
     },
     "scripts": {
         "dev": "docker compose up -d && drizzle-kit studio",
-        "build": "tsc",
+        "build": "tsgo",
         "clean": "rimraf dist",
         "lint": "biome check .",
         "lint:fix": "biome check --write .",
@@ -34,7 +34,6 @@
         "@types/node": "^22.13.4",
         "drizzle-kit": "^0.31.9",
         "rimraf": "^6.0.1",
-        "tsx": "^4.21.0",
-        "typescript": "^6.0.3"
+        "tsx": "^4.21.0"
     }
 }
