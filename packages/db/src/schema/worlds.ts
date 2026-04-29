@@ -1,6 +1,14 @@
 import type { WorldDefinition } from '@ubichill/shared';
-import { relations } from 'drizzle-orm';
-import { jsonb, pgTable, text, timestamp, varchar } from 'drizzle-orm/pg-core';
+import { type Many, type One, type Relations, relations } from 'drizzle-orm';
+import {
+    type PgColumn,
+    type PgTableWithColumns,
+    jsonb,
+    pgTable,
+    text,
+    timestamp,
+    varchar,
+} from 'drizzle-orm/pg-core';
 import { nanoid } from 'nanoid';
 import { userFavorites, users } from './users';
 

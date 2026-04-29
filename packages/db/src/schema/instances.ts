@@ -1,5 +1,18 @@
-import { relations } from 'drizzle-orm';
-import { boolean, index, integer, jsonb, pgEnum, pgTable, text, timestamp, varchar } from 'drizzle-orm/pg-core';
+import { type One, type Relations, relations } from 'drizzle-orm';
+import {
+    type PgColumn,
+    type PgEnum,
+    type PgTableWithColumns,
+    boolean,
+    index,
+    integer,
+    jsonb,
+    pgEnum,
+    pgTable,
+    text,
+    timestamp,
+    varchar,
+} from 'drizzle-orm/pg-core';
 import { nanoid } from 'nanoid';
 import { users } from './users';
 import { worlds } from './worlds';
