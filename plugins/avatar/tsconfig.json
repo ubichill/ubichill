@@ -1,8 +1,8 @@
 {
     "compilerOptions": {
-        "target": "ESNext",
-        "lib": ["ESNext", "WebWorker"],
-        "module": "ESNext",
+        "target": "ES2025",
+        "lib": ["ES2025", "WebWorker"],
+        "module": "ES2025",
         "moduleResolution": "bundler",
         "strict": true,
         "skipLibCheck": true,

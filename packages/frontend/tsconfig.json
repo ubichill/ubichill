@@ -39,7 +39,7 @@
             "@ubichill/react": ["../react/src/index.ts"],
             "@ubichill/shared": ["../shared/src/index.ts"]
         },
-        "target": "ESNext"
+        "target": "ES2025"
     },
     "include": [
         "**/*.ts",

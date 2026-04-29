@@ -1,8 +1,8 @@
 {
     "compilerOptions": {
-        "target": "ESNext",
+        "target": "ES2025",
         "module": "commonjs",
-        "lib": ["ESNext"],
+        "lib": ["ES2025"],
         "strict": true,
         "esModuleInterop": true,
         "skipLibCheck": true,
