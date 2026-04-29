@@ -1,5 +1,16 @@
-import { relations } from 'drizzle-orm';
-import { boolean, pgEnum, pgTable, primaryKey, text, timestamp, varchar } from 'drizzle-orm/pg-core';
+import { type Many, type One, type Relations, relations } from 'drizzle-orm';
+import {
+    type PgColumn,
+    type PgEnum,
+    type PgTableWithColumns,
+    boolean,
+    pgEnum,
+    pgTable,
+    primaryKey,
+    text,
+    timestamp,
+    varchar,
+} from 'drizzle-orm/pg-core';
 import { worlds } from './worlds';
 
 export const friendStatusEnum = pgEnum('friend_status', ['pending', 'accepted']);
