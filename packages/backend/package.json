@@ -6,7 +6,7 @@
     "main": "dist/index.js",
     "scripts": {
         "dev": "wait-on ../shared/dist/.build_done && nodemon",
-        "build": "tsc",
+        "build": "tsgo",
         "start": "node dist/index.js",
         "clean": "rimraf dist",
         "lint": "biome lint .",
@@ -53,7 +53,6 @@
         "ts-node": "^10.9.2",
         "ts-node-dev": "^2.0.0",
         "tsx": "^4.21.0",
-        "typescript": "^6.0.3",
         "wait-on": "^9.0.3"
     }
 }
