@@ -4,8 +4,8 @@
     "types": [
       "node"
     ],
-    "module": "CommonJS",
-    "moduleResolution": "bundler",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "declaration": true,
     "composite": true,
     "sourceMap": true,
