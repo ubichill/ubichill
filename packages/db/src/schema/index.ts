@@ -1,13 +1,13 @@
-import { createInsertSchema, createSelectSchema } from "drizzle-zod";
+import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 
-export * from "./instances";
-export * from "./users";
-export * from "./worlds";
+export * from './instances';
+export * from './users';
+export * from './worlds';
 
 // Import from schemas
-import { instances } from "./instances";
-import { userFavorites, userFriends, userSettings, users } from "./users";
-import { worlds } from "./worlds";
+import { instances } from './instances';
+import { userFavorites, userFriends, userSettings, users } from './users';
+import { worlds } from './worlds';
 
 // users
 export const insertUserSchema = createInsertSchema(users);
