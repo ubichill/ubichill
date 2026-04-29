@@ -1,5 +1,4 @@
-import { WorldDefinitionSchema, type WorldDefinition } from '@ubichill/shared';
-import type { PgColumn } from 'drizzle-orm/pg-core';
+import { WorldDefinitionSchema } from '@ubichill/shared';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { z } from 'zod';
 
@@ -8,31 +7,25 @@ export * from './users';
 export * from './worlds';
 
 // Import from schemas
-import { instances } from './instances';
+import type { instances } from './instances';
 import { userFavorites, userFriends, userSettings, users } from './users';
-import { worlds } from './worlds';
+import type { worlds } from './worlds';
 
 // users
 export const insertUserSchema: z.ZodType<typeof users.$inferInsert> = createInsertSchema(users);
 export const selectUserSchema: z.ZodType<typeof users.$inferSelect> = createSelectSchema(users);
 
 // user_settings
-export const insertUserSettingsSchema: z.ZodType<typeof userSettings.$inferInsert> =
-    createInsertSchema(userSettings);
-export const selectUserSettingsSchema: z.ZodType<typeof userSettings.$inferSelect> =
-    createSelectSchema(userSettings);
+export const insertUserSettingsSchema: z.ZodType<typeof userSettings.$inferInsert> = createInsertSchema(userSettings);
+export const selectUserSettingsSchema: z.ZodType<typeof userSettings.$inferSelect> = createSelectSchema(userSettings);
 
 // user_friends
-export const insertUserFriendSchema: z.ZodType<typeof userFriends.$inferInsert> =
-    createInsertSchema(userFriends);
-export const selectUserFriendSchema: z.ZodType<typeof userFriends.$inferSelect> =
-    createSelectSchema(userFriends);
+export const insertUserFriendSchema: z.ZodType<typeof userFriends.$inferInsert> = createInsertSchema(userFriends);
+export const selectUserFriendSchema: z.ZodType<typeof userFriends.$inferSelect> = createSelectSchema(userFriends);
 
 // user_favorites
-export const insertUserFavoriteSchema: z.ZodType<typeof userFavorites.$inferInsert> =
-    createInsertSchema(userFavorites);
-export const selectUserFavoriteSchema: z.ZodType<typeof userFavorites.$inferSelect> =
-    createSelectSchema(userFavorites);
+export const insertUserFavoriteSchema: z.ZodType<typeof userFavorites.$inferInsert> = createInsertSchema(userFavorites);
+export const selectUserFavoriteSchema: z.ZodType<typeof userFavorites.$inferSelect> = createSelectSchema(userFavorites);
 
 // worlds
 export const insertWorldSchema: z.ZodType<typeof worlds.$inferInsert> = z.object({
