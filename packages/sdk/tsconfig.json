@@ -1,25 +1,43 @@
 {
-    "compilerOptions": {
-        "target": "ES2017",
-        "lib": ["dom", "dom.iterable", "esnext"],
-        "skipLibCheck": true,
-        "strict": true,
-        "noEmit": true,
-        "esModuleInterop": true,
-        "module": "esnext",
-        "moduleResolution": "bundler",
-        "resolveJsonModule": true,
-        "isolatedModules": true,
-        "jsx": "react-jsx",
-        "declaration": true,
-        "paths": {
-            "@/*": ["./src/*"],
-            "@ubichill/engine": ["../engine/src/index.ts"],
-            "@ubichill/sandbox": ["../sandbox/src/index.ts"],
-            "@ubichill/react": ["../react/src/index.ts"],
-            "@ubichill/shared": ["../shared/src/index.ts"]
-        }
-    },
-    "include": ["src"],
-    "exclude": ["node_modules"]
+  "compilerOptions": {
+    "target": "ES2025",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "declaration": true,
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ],
+      "@ubichill/engine": [
+        "../engine/src/index.ts"
+      ],
+      "@ubichill/sandbox": [
+        "../sandbox/src/index.ts"
+      ],
+      "@ubichill/react": [
+        "../react/src/index.ts"
+      ],
+      "@ubichill/shared": [
+        "../shared/src/index.ts"
+      ]
+    }
+  },
+  "include": [
+    "src"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }

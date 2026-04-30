@@ -11,8 +11,5 @@
         "@ubichill/engine": "workspace:*",
         "@ubichill/sdk": "workspace:*",
         "@ubichill/shared": "workspace:*"
-    },
-    "devDependencies": {
-        "typescript": "^5.9.3"
     }
 }
