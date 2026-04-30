@@ -24,7 +24,7 @@
         }
     },
     "scripts": {
-        "dev": "tsc-watch --onSuccess \"node ../../scripts/touch.mjs dist/.build_done\"",
+        "dev": "nodemon --watch src --ext ts --exec \"tsgo && node ../../scripts/touch.mjs dist/.build_done\"",
         "build": "tsgo",
         "clean": "rimraf dist"
     },
