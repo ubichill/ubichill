@@ -86,35 +86,20 @@ function fetchVersionedManifest(pluginName: string, version: string): Promise<Ve
 }
 
 /**
- * エンティティタイプから WorkerPluginDefinition を構築する。
- * entityType は `pluginName:entityKey` 形式（例: "avatar:cursor"）。
- * コロンなしの場合はプラグイン名として扱い、全エンティティを一括ロード。
+ * エンティティタイプ (`pluginName:entityKey`) から WorkerPluginDefinition を構築する。
+ * 該当するプラグインがない or workerUrl が無いデータ専用エンティティの場合は null。
  */
-async function autoLoadWorkerPlugins(entityType: string): Promise<WorkerPluginDefinition[]> {
+async function loadWorkerPlugin(entityType: string): Promise<WorkerPluginDefinition | null> {
     const colonIdx = entityType.indexOf(':');
-
-    if (colonIdx === -1) {
-        // プラグイン名のみ（例: 'avatar'）→ 全エンティティを一括ロード
-        const index = await fetchPluginIndex(entityType);
-        if (!index?.version) return [];
-        const manifest = await fetchVersionedManifest(entityType, index.version);
-        if (!manifest?.entities) return [];
-        const results = await Promise.all(Object.keys(manifest.entities).map(autoLoadWorkerPlugins));
-        return results.flat();
-    }
+    if (colonIdx === -1) return null; // entityType は必ずコロン形式
 
     const pluginName = entityType.slice(0, colonIdx);
-
     const index = await fetchPluginIndex(pluginName);
-    if (!index?.version) return [];
+    if (!index?.version) return null;
 
     const manifest = await fetchVersionedManifest(pluginName, index.version);
-    if (!manifest?.entities) return [];
-
-    const entry = manifest.entities[entityType];
-    if (!entry) return [];
-    // workerUrl がない = データ専用エンティティ（plugin.json に src がないもの）。worker は起動しない。
-    if (!entry.workerUrl) return [];
+    const entry = manifest?.entities?.[entityType];
+    if (!entry || !entry.workerUrl) return null;
 
     const versionedBase = `${PLUGIN_BASE_URL}/${pluginName}/v${index.version}`;
     const workerUrl = `${versionedBase}/${entry.workerUrl.replace(/^\.\//, '')}`;
@@ -122,15 +107,15 @@ async function autoLoadWorkerPlugins(entityType: string): Promise<WorkerPluginDe
     let workerCode: string;
     try {
         const res = await fetch(workerUrl);
-        if (!res.ok) return [];
+        if (!res.ok) return null;
         workerCode = await res.text();
     } catch {
-        return [];
+        return null;
     }
 
     const def: WorkerPluginDefinition = {
         id: entityType,
-        name: `${manifest.name ?? pluginName} - ${entityType.slice(colonIdx + 1)}`,
+        name: `${manifest?.name ?? pluginName} - ${entityType.slice(colonIdx + 1)}`,
         workerCode,
         capabilities: entry.capabilities,
         singleton: entry.singleton,
@@ -140,7 +125,7 @@ async function autoLoadWorkerPlugins(entityType: string): Promise<WorkerPluginDe
         fetchDomains: entry.fetchDomains,
         pluginBase: versionedBase,
     };
-    return [attachAvatarHostBridge(attachAvatarCursorHostBridge(def))];
+    return attachAvatarHostBridge(attachAvatarCursorHostBridge(def));
 }
 
 // ============================================
@@ -210,16 +195,13 @@ export const PluginRegistryProvider: React.FC<{ children: React.ReactNode }> = (
             if (loadingRef.current.has(entityType)) return;
             loadingRef.current.add(entityType);
 
-            // 1. plugin.json 自動ローダー
-            autoLoadWorkerPlugins(entityType)
-                .then((defs) => {
-                    if (defs.length > 0) {
-                        defs.forEach((def) => {
-                            addPlugin(def);
-                        });
+            loadWorkerPlugin(entityType)
+                .then((def) => {
+                    if (def) {
+                        addPlugin(def);
                         return;
                     }
-                    // 2. フォールバック: 静的 PLUGIN_LOADERS（video-player 等の非 Worker プラグイン）
+                    // フォールバック: 静的 PLUGIN_LOADERS（CE ベースの非 Worker プラグイン）
                     const loader = PLUGIN_LOADERS[entityType];
                     if (!loader) {
                         loadingRef.current.delete(entityType);
@@ -229,7 +211,6 @@ export const PluginRegistryProvider: React.FC<{ children: React.ReactNode }> = (
                         .then(addPlugin)
                         .catch((err: unknown) => {
                             console.error(`[PluginRegistry] Failed to load plugin: ${entityType}`, err);
-                            // 失敗時に loadingRef を解放してリトライを許可する
                             loadingRef.current.delete(entityType);
                         });
                 })

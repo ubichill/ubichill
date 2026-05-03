@@ -305,24 +305,6 @@ router.put('/:worldId/yaml', requireAuth, async (req, res) => {
 });
 
 /**
- * GET /api/v1/worlds/:worldId/owner
- * ワールドの作成者IDを取得（編集ボタン表示判定用、軽量レスポンス）
- */
-router.get('/:worldId/owner', async (req, res) => {
-    try {
-        const record = await worldRegistry.getWorldRecord(req.params.worldId as string);
-        if (!record) {
-            res.status(404).json({ error: 'World not found' });
-            return;
-        }
-        res.json({ authorId: record.authorId });
-    } catch (error) {
-        console.error('ワールド所有者取得エラー:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-/**
  * PUT /api/v1/worlds/:worldId
  * ワールドを更新（認証必須、作成者のみ）
  */

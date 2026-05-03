@@ -181,6 +181,8 @@ export type WorldCreateInput = z.infer<typeof WorldCreateInputSchema>;
 export const ResolvedWorldSchema = z.object({
     id: z.string(), // 人間が読める識別子（name）
     dbId: z.string(), // DBの実際のID（nanoid、外部キー用）
+    authorId: z.string(), // 作成者のユーザーID
+    authorName: z.string().optional(), // YAML metadata.author.name
     version: z.string(),
     displayName: z.string(),
     description: z.string().optional(),

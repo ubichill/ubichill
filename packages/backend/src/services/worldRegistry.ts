@@ -586,6 +586,8 @@ class WorldRegistry {
         return {
             id: record.name,
             dbId: record.id,
+            authorId: record.authorId,
+            authorName: def.metadata.author?.name,
             version: record.version,
             displayName: def.spec.displayName,
             description: def.spec.description,

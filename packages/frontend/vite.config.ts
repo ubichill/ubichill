@@ -57,6 +57,7 @@ export default defineConfig({
         },
     },
     build: {
+        target: 'es2025',
         outDir: 'dist',
     },
 });

@@ -1,4 +1,5 @@
 import { useSocket } from '@ubichill/sdk/react';
+import type { Instance } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { API_BASE } from '@/lib/api';
@@ -9,31 +10,26 @@ export function InstanceHUD() {
     const { id: instanceId } = useParams<{ id: string }>();
     const { users, isConnected, currentUser } = useSocket();
     const [menuOpen, setMenuOpen] = useState(false);
-    const [editableWorldId, setEditableWorldId] = useState<string | null>(null);
+    /** 現在のインスタンスが指すワールド（authorName 比較で編集ボタン表示を判定） */
+    const [instanceWorld, setInstanceWorld] = useState<Instance['world'] | null>(null);
 
-    // currentUser は useSocket からカーソル移動の度に新しい参照が来るので、
-    // useEffect の依存には id だけを使って /owner fetch の連発を防ぐ
-    const currentUserId = currentUser?.id;
+    // currentUser はカーソル移動のたびに参照が変わるので、name だけ依存に使う
+    const currentUserName = currentUser?.name;
 
-    // 現在のワールドが自分の作成物かを判定（編集ボタン表示用）
+    // 編集ボタンの表示判定はワールド作成者名で行う。
+    // 正規の認可は backend の PUT/DELETE で authorId 厳格チェックされるため、
+    // UI で偶然一致して編集ボタンが見えても、他人のワールドは絶対に書き換えできない。
     useEffect(() => {
-        if (!instanceId || !currentUserId) {
-            setEditableWorldId(null);
-            return;
-        }
-        const worldId = sessionStorage.getItem(`instance:${instanceId}:worldId`);
-        if (!worldId) {
-            setEditableWorldId(null);
+        if (!instanceId) {
+            setInstanceWorld(null);
             return;
         }
         let cancelled = false;
-        fetch(`${API_BASE}/api/v1/worlds/${worldId}/owner`, { credentials: 'include' })
-            .then((r) => (r.ok ? (r.json() as Promise<{ authorId: string }>) : null))
-            .then((data) => {
-                if (cancelled || !data) return;
-                if (data.authorId === currentUserId) {
-                    setEditableWorldId(worldId);
-                }
+        fetch(`${API_BASE}/api/v1/instances/${instanceId}`, { credentials: 'include' })
+            .then((r) => (r.ok ? (r.json() as Promise<Instance>) : null))
+            .then((instance) => {
+                if (cancelled || !instance) return;
+                setInstanceWorld(instance.world);
             })
             .catch(() => {
                 /* 取得失敗時は編集ボタン非表示 */
@@ -41,7 +37,10 @@ export function InstanceHUD() {
         return () => {
             cancelled = true;
         };
-    }, [instanceId, currentUserId]);
+    }, [instanceId]);
+
+    const editableWorldId =
+        instanceWorld && currentUserName && instanceWorld.authorName === currentUserName ? instanceWorld.id : null;
 
     const userCount = users.size;
 
