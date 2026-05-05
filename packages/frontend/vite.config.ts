@@ -29,6 +29,10 @@ const serveSourcePluginJson = () => ({
 export default defineConfig({
     plugins: [react(), serveSourcePluginJson()],
     resolve: {
+        // monorepo の他パッケージが node_modules/react を別途持っていると build 時に
+        // React が 2 つ bundle され、フックが null になる ("Cannot read properties of null (reading 'useRef')").
+        // 同じインスタンスを使うよう強制する。
+        dedupe: ['react', 'react-dom'],
         alias: {
             // @/styled-system/* → styled-system/* (src/ 外)、@/ より先に定義
             '@/styled-system': resolve(__dirname, 'styled-system'),
