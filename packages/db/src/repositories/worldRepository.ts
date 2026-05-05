@@ -1,5 +1,5 @@
 import type { WorldDefinition } from '@ubichill/shared';
-import { eq } from 'drizzle-orm';
+import { count, eq } from 'drizzle-orm';
 import { db } from '../index';
 import { worlds } from '../schema';
 
@@ -52,6 +52,14 @@ export const worldRepository = {
      */
     async findByAuthorId(authorId: string): Promise<WorldRecord[]> {
         return db.select().from(worlds).where(eq(worlds.authorId, authorId));
+    },
+
+    /**
+     * 作成者IDでワールド数をカウント（上限チェック用）
+     */
+    async countByAuthorId(authorId: string): Promise<number> {
+        const result = await db.select({ value: count() }).from(worlds).where(eq(worlds.authorId, authorId));
+        return result[0]?.value ?? 0;
     },
 
     /**

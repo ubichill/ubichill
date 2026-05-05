@@ -10,6 +10,7 @@ export const LIMITS = {
     MAX_INITIAL_ENTITIES: 500,
     MAX_DEPENDENCY_DEPTH: 3,
     MAX_TAGS: 10,
+    MAX_WORLDS_PER_USER: 5,
 } as const;
 
 // ============================================
@@ -156,12 +157,32 @@ export type WorldCapacity = z.infer<typeof WorldCapacitySchema>;
 export type InitialEntity = z.infer<typeof InitialEntitySchema>;
 
 // ============================================
+// World Create Input（ブラウザフォーム用）
+// metadata.name はサーバー側で nanoid 生成、author はセッションから補完するため不要。
+// ============================================
+
+export const WorldCreateInputSchema = z.object({
+    displayName: SafeString,
+    description: SafeString.optional(),
+    thumbnail: z.string().url().optional(),
+    capacity: WorldCapacitySchema.default({ default: 10, max: 20 }),
+    environment: WorldEnvironmentSchema.optional(),
+    dependencies: z.array(DependencySchema).optional(),
+    initialEntities: z.array(InitialEntitySchema).max(LIMITS.MAX_INITIAL_ENTITIES).default([]),
+    permissions: WorldPermissionsSchema.optional(),
+});
+
+export type WorldCreateInput = z.infer<typeof WorldCreateInputSchema>;
+
+// ============================================
 // Resolved World（解決済みワールド）
 // ============================================
 
 export const ResolvedWorldSchema = z.object({
     id: z.string(), // 人間が読める識別子（name）
     dbId: z.string(), // DBの実際のID（nanoid、外部キー用）
+    authorId: z.string(), // 作成者のユーザーID
+    authorName: z.string().optional(), // YAML metadata.author.name
     version: z.string(),
     displayName: z.string(),
     description: z.string().optional(),

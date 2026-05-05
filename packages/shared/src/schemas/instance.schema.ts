@@ -64,6 +64,9 @@ export const InstanceSchema = z.object({
         version: z.string(),
         displayName: z.string(),
         thumbnail: z.string().optional(),
+        authorId: z.string(),
+        /** ワールド作成者の表示名（YAML metadata.author.name または DB users.name） */
+        authorName: z.string().optional(),
     }),
 
     access: InstanceAccessSchema,

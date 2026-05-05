@@ -1,6 +1,8 @@
-import { WorldDefinitionSchema } from '@ubichill/shared';
+import { worldRepository } from '@ubichill/db';
+import { LIMITS, WorldCreateInputSchema, WorldDefinitionSchema } from '@ubichill/shared';
 import { Router } from 'express';
-import { requireAuth } from '../middleware/auth';
+import yaml from 'yaml';
+import { optionalAuth, requireAuth } from '../middleware/auth';
 import { worldRegistry } from '../services/worldRegistry';
 
 const router = Router();
@@ -48,7 +50,7 @@ router.post('/import', requireAuth, async (req, res) => {
  * GET /api/v1/worlds
  * ワールドテンプレート一覧を取得（認証必須）
  */
-router.get('/', requireAuth, async (_req, res) => {
+router.get('/', optionalAuth, async (_req, res) => {
     try {
         const worlds = await worldRegistry.listWorlds();
         res.json({ worlds });
@@ -102,7 +104,7 @@ router.post('/:worldId/reload', requireAuth, async (req, res) => {
  * GET /api/v1/worlds/:worldId
  * ワールドテンプレート詳細を取得（認証必須）
  */
-router.get('/:worldId', requireAuth, async (req, res) => {
+router.get('/:worldId', optionalAuth, async (req, res) => {
     try {
         const worldId = req.params.worldId as string;
         const world = await worldRegistry.getWorld(worldId);
@@ -121,41 +123,81 @@ router.get('/:worldId', requireAuth, async (req, res) => {
 
 /**
  * POST /api/v1/worlds
- * 新しいワールドをアップロード（認証必須）
+ * フォーム入力から新しいワールドを作成する（認証必須）
+ * - metadata.name はサーバー側で nanoid 生成
+ * - 1ユーザー最大 LIMITS.MAX_WORLDS_PER_USER 個まで
  */
 router.post('/', requireAuth, async (req, res) => {
     try {
-        const result = WorldDefinitionSchema.safeParse(req.body);
+        if (!req.user) {
+            res.status(401).json({ error: 'Unauthorized' });
+            return;
+        }
+
+        const ownedCount = await worldRepository.countByAuthorId(req.user.id);
+        if (ownedCount >= LIMITS.MAX_WORLDS_PER_USER) {
+            res.status(403).json({
+                error: `1ユーザーが作成できるワールドは ${LIMITS.MAX_WORLDS_PER_USER} 個までです`,
+                limit: LIMITS.MAX_WORLDS_PER_USER,
+            });
+            return;
+        }
+
+        const result = WorldCreateInputSchema.safeParse(req.body);
         if (!result.success) {
             res.status(400).json({
-                error: 'Invalid world definition',
+                error: 'Invalid world input',
                 details: result.error.issues,
             });
             return;
         }
 
-        const definition = result.data;
-        const worldId = definition.metadata.name;
-
-        // 既存チェック
-        const existing = await worldRegistry.getWorld(worldId);
-        if (existing) {
-            res.status(409).json({ error: 'World already exists', worldId });
-            return;
-        }
-
-        // 認証されたユーザーIDを使用（requireAuthで保証）
-        if (!req.user) {
-            res.status(401).json({ error: 'Unauthorized' });
-            return;
-        }
-        const authorId = req.user.id;
-
-        const world = await worldRegistry.createWorld(authorId, definition);
+        const world = await worldRegistry.createFromInput(req.user.id, req.user.name, result.data);
         res.status(201).json(world);
     } catch (error) {
         console.error('ワールド作成エラー:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * POST /api/v1/worlds/yaml
+ * YAML テキストから新しいワールドを作成する（認証必須）
+ * body: { yaml: string }
+ * - metadata.name は無視してサーバー側で再生成
+ * - 1ユーザー最大 LIMITS.MAX_WORLDS_PER_USER 個まで
+ */
+router.post('/yaml', requireAuth, async (req, res) => {
+    try {
+        if (!req.user) {
+            res.status(401).json({ error: 'Unauthorized' });
+            return;
+        }
+
+        const { yaml: yamlText } = req.body as { yaml?: unknown };
+        if (typeof yamlText !== 'string' || yamlText.length === 0) {
+            res.status(400).json({ error: 'yaml フィールドが必要です' });
+            return;
+        }
+        if (yamlText.length > LIMITS.MAX_YAML_SIZE) {
+            res.status(413).json({ error: `YAML が大きすぎます（最大 ${LIMITS.MAX_YAML_SIZE} bytes）` });
+            return;
+        }
+
+        const ownedCount = await worldRepository.countByAuthorId(req.user.id);
+        if (ownedCount >= LIMITS.MAX_WORLDS_PER_USER) {
+            res.status(403).json({
+                error: `1ユーザーが作成できるワールドは ${LIMITS.MAX_WORLDS_PER_USER} 個までです`,
+                limit: LIMITS.MAX_WORLDS_PER_USER,
+            });
+            return;
+        }
+
+        const world = await worldRegistry.createFromYaml(req.user.id, req.user.name, yamlText);
+        res.status(201).json(world);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'YAML 解析に失敗しました';
+        res.status(422).json({ error: message });
     }
 });
 
@@ -176,6 +218,89 @@ router.get('/:worldId/definition', requireAuth, async (req, res) => {
     } catch (error) {
         console.error('ワールド定義取得エラー:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * GET /api/v1/worlds/:worldId/yaml
+ * ワールドの定義を YAML テキストで取得（YAMLエディタ用）
+ */
+router.get('/:worldId/yaml', requireAuth, async (req, res) => {
+    try {
+        const record = await worldRegistry.getWorldRecord(req.params.worldId as string);
+        if (!record) {
+            res.status(404).json({ error: 'World not found' });
+            return;
+        }
+        const text = yaml.stringify(record.definition);
+        res.type('text/yaml').send(text);
+    } catch (error) {
+        console.error('ワールドYAML取得エラー:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * PUT /api/v1/worlds/:worldId/yaml
+ * YAML テキストでワールド定義を更新（認証必須、作成者のみ）
+ * body: { yaml: string }
+ * - metadata.name は URL の worldId に強制上書きする（ID は不変）
+ */
+router.put('/:worldId/yaml', requireAuth, async (req, res) => {
+    try {
+        const worldId = req.params.worldId as string;
+
+        if (!req.user) {
+            res.status(401).json({ error: 'Unauthorized' });
+            return;
+        }
+
+        const worldRecord = await worldRegistry.getWorldRecord(worldId);
+        if (!worldRecord) {
+            res.status(404).json({ error: 'World not found' });
+            return;
+        }
+
+        if (worldRecord.authorId !== req.user.id) {
+            res.status(403).json({ error: 'Forbidden: Only the author can update this world' });
+            return;
+        }
+
+        const { yaml: yamlText } = req.body as { yaml?: unknown };
+        if (typeof yamlText !== 'string' || yamlText.length === 0) {
+            res.status(400).json({ error: 'yaml フィールドが必要です' });
+            return;
+        }
+        if (yamlText.length > LIMITS.MAX_YAML_SIZE) {
+            res.status(413).json({ error: `YAML が大きすぎます（最大 ${LIMITS.MAX_YAML_SIZE} bytes）` });
+            return;
+        }
+
+        const parsed = yaml.parse(yamlText) as unknown;
+        const result = WorldDefinitionSchema.safeParse(parsed);
+        if (!result.success) {
+            res.status(400).json({
+                error: 'Invalid world definition',
+                details: result.error.issues,
+            });
+            return;
+        }
+
+        // ID を不変にするため metadata.name を URL の worldId に強制上書き
+        const definition = {
+            ...result.data,
+            metadata: { ...result.data.metadata, name: worldId },
+        };
+
+        const updated = await worldRegistry.updateWorld(worldId, definition);
+        if (!updated) {
+            res.status(404).json({ error: 'World not found' });
+            return;
+        }
+        res.json(updated);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'YAML 更新に失敗しました';
+        res.status(422).json({ error: message });
     }
 });
 

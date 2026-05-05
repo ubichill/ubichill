@@ -12,6 +12,7 @@
     "build": "node scripts/build-workers.mjs && turbo build",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
+    "typecheck": "pnpm -r exec tsgo --noEmit",
     "clean": "pnpm --filter \"./packages/*\" clean",
     "test": "echo \"No tests specified yet\" && exit 0"
   },
@@ -20,6 +21,11 @@
     "pnpm": "10.33.0"
   },
   "pnpm": {
+    "overrides": {
+      "esbuild": "0.28.0",
+      "react": "^19.2.5",
+      "react-dom": "^19.2.5"
+    },
     "onlyBuiltDependencies": [
       "esbuild",
       "sharp"
@@ -31,7 +37,7 @@
     "@typescript/native-preview": "7.0.0-dev.20260421.2",
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.28.0",
     "kill-port": "^2.0.1",
     "nodemon": "^3.1.11",
     "turbo": "^2.8.3"

@@ -28,7 +28,7 @@ export interface SocketContextValue {
     updateUser: (patch: Partial<User>) => void;
 }
 
-const SocketContext = createContext<SocketContextValue | null>(null);
+export const SocketContext = createContext<SocketContextValue | null>(null);
 
 /**
  * ソケット接続を子コンポーネントに提供するプロバイダー

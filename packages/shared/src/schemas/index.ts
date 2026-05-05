@@ -33,6 +33,8 @@ export {
     TransformSchema,
     type WorldCapacity,
     WorldCapacitySchema,
+    type WorldCreateInput,
+    WorldCreateInputSchema,
     type WorldDefinition,
     WorldDefinitionSchema,
     type WorldEnvironment,
