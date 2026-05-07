@@ -49,17 +49,31 @@ export function WorldEditorPage() {
     const isEdit = !!worldId;
 
     const [definition, setDefinition] = useState<WorldDefinition>(createInitialDefinition);
-    const [yamlText, setYamlText] = useState('');
-    const [yamlDirty, setYamlDirty] = useState(false);
+    /** DB に保存済みの YAML (編集モード初期ロード時にセットされ、保存成功時に更新)。
+     *  これと yaml.stringify(definition) を比較して dirty を判定する。 */
+    const [savedYaml, setSavedYaml] = useState<string | null>(null);
 
     const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
     /** エディタ画面上で非表示にしているエンティティの index 集合（保存には影響しない・編集ローカル状態） */
     const [hiddenIndices, setHiddenIndices] = useState<Set<number>>(new Set());
     const [openModal, setOpenModal] = useState<'info' | 'yaml' | null>(null);
 
+    /** ワールド情報モーダル内の編集中 draft（適用ボタンで definition に反映） */
+    const [infoDraft, setInfoDraft] = useState<WorldDefinition | null>(null);
+    /** YAML モーダル内のテキスト draft */
+    const [yamlDraft, setYamlDraft] = useState<string>('');
+    /** YAML draft の parse / schema エラー（適用ボタン無効化に使う） */
+    const [yamlDraftError, setYamlDraftError] = useState<string>('');
+
     const [loading, setLoading] = useState(isEdit);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
+
+    /** 保存済みからの未保存変更があるか。新規作成時は常に true（まだ DB に居ない）。 */
+    const dirty = useMemo(() => {
+        if (savedYaml === null) return true;
+        return yaml.stringify(definition) !== savedYaml;
+    }, [definition, savedYaml]);
 
     const { kinds, loading: kindsLoading } = useAvailableEntityKinds(definition);
 
@@ -76,7 +90,7 @@ export function WorldEditorPage() {
                 const def = (await res.json()) as WorldDefinition;
                 if (cancelled) return;
                 setDefinition(def);
-                setYamlText(yaml.stringify(def));
+                setSavedYaml(yaml.stringify(def));
             })
             .catch((e: unknown) => {
                 if (cancelled) return;
@@ -91,56 +105,75 @@ export function WorldEditorPage() {
         };
     }, [worldId, isEdit]);
 
-    // YAMLモーダルを開いた時、yaml が dirty でなければ definition から再生成
-    useEffect(() => {
-        if (openModal === 'yaml' && !yamlDirty) {
-            setYamlText(yaml.stringify(definition));
-        }
-    }, [openModal, definition, yamlDirty]);
+    // ---------- ワールド情報モーダル (staging) ----------
+    const handleOpenInfo = useCallback(() => {
+        setInfoDraft(definition);
+        setOpenModal('info');
+    }, [definition]);
+    const handleApplyInfo = useCallback(() => {
+        if (infoDraft) setDefinition(infoDraft);
+        setInfoDraft(null);
+        setOpenModal(null);
+    }, [infoDraft]);
+    const handleCancelInfo = useCallback(() => {
+        setInfoDraft(null);
+        setOpenModal(null);
+    }, []);
 
-    // ---------- YAML 編集 ----------
-    const handleYamlChange = useCallback((text: string) => {
-        setYamlText(text);
-        setYamlDirty(true);
+    // ---------- YAML モーダル (staging) ----------
+    const handleOpenYaml = useCallback(() => {
+        setYamlDraft(yaml.stringify(definition));
+        setYamlDraftError('');
+        setOpenModal('yaml');
+    }, [definition]);
+    const handleYamlDraftChange = useCallback((text: string) => {
+        setYamlDraft(text);
+        // 即時 parse は行わない。エラー表示用に先読みチェックだけ実施。
         try {
             const parsed = yaml.parse(text) as unknown;
             const result = WorldDefinitionSchema.safeParse(parsed);
-            if (result.success) {
-                setDefinition(result.data);
-                setYamlDirty(false);
+            setYamlDraftError(result.success ? '' : (result.error.issues[0]?.message ?? 'スキーマ違反'));
+        } catch (e) {
+            setYamlDraftError(e instanceof Error ? e.message : 'YAML parse error');
+        }
+    }, []);
+    const handleApplyYaml = useCallback(() => {
+        try {
+            const parsed = yaml.parse(yamlDraft) as unknown;
+            const result = WorldDefinitionSchema.safeParse(parsed);
+            if (!result.success) {
+                setYamlDraftError(result.error.issues[0]?.message ?? 'スキーマ違反');
+                return;
             }
+            setDefinition(result.data);
+            setOpenModal(null);
+            setYamlDraftError('');
+        } catch (e) {
+            setYamlDraftError(e instanceof Error ? e.message : 'YAML parse error');
+        }
+    }, [yamlDraft]);
+    const handleCancelYaml = useCallback(() => {
+        setYamlDraftError('');
+        setOpenModal(null);
+    }, []);
+
+    const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        try {
+            const text = await file.text();
+            setYamlDraft(text);
+            setOpenModal('yaml');
+            setYamlDraftError('');
+            setError('');
         } catch {
-            /* parse 中エラーは無視 */
+            setError('ファイルの読み込みに失敗しました');
+        } finally {
+            e.target.value = '';
         }
     }, []);
 
-    const handleFileUpload = useCallback(
-        async (e: React.ChangeEvent<HTMLInputElement>) => {
-            const file = e.target.files?.[0];
-            if (!file) return;
-            try {
-                const text = await file.text();
-                setOpenModal('yaml');
-                handleYamlChange(text);
-                setError('');
-            } catch {
-                setError('ファイルの読み込みに失敗しました');
-            } finally {
-                e.target.value = '';
-            }
-        },
-        [handleYamlChange],
-    );
-
     // ---------- definition 操作 ----------
-    const updateSpec = useCallback((patch: Partial<WorldDefinition['spec']>) => {
-        setDefinition((prev) => ({ ...prev, spec: { ...prev.spec, ...patch } }));
-    }, []);
-
-    const updateMetadata = useCallback((patch: Partial<WorldDefinition['metadata']>) => {
-        setDefinition((prev) => ({ ...prev, metadata: { ...prev.metadata, ...patch } }));
-    }, []);
-
     const updateEntities = useCallback((mutate: (prev: InitialEntity[]) => InitialEntity[]) => {
         setDefinition((prev) => ({
             ...prev,
@@ -235,21 +268,18 @@ export function WorldEditorPage() {
         setSelectedIndex((cur) => (cur === index ? null : cur));
     }, []);
 
-    // ---------- 保存・削除 ----------
+    // ---------- 保存・削除・インスタンス作成 ----------
     const handleSave = useCallback(async () => {
-        if (yamlDirty) {
-            setError('YAML が不正です。修正してから保存してください');
-            return;
-        }
         if (!definition.spec.displayName.trim()) {
             setError('表示名は必須です。「ワールド情報」から入力してください');
-            setOpenModal('info');
+            handleOpenInfo();
             return;
         }
         setSaving(true);
         setError('');
         try {
-            const body = JSON.stringify({ yaml: yaml.stringify(definition) });
+            const text = yaml.stringify(definition);
+            const body = JSON.stringify({ yaml: text });
             const url =
                 isEdit && worldId ? `${API_BASE}/api/v1/worlds/${worldId}/yaml` : `${API_BASE}/api/v1/worlds/yaml`;
             const method = isEdit ? 'PUT' : 'POST';
@@ -263,13 +293,43 @@ export function WorldEditorPage() {
                 const data = (await res.json().catch(() => ({}))) as { error?: string };
                 throw new Error(data.error ?? `HTTP ${res.status}`);
             }
-            navigate('/user/me');
+            // 新規作成: サーバーが nanoid 生成した worldId を使い編集画面に遷移して dirty を解消
+            if (!isEdit) {
+                const created = (await res.json()) as { id: string };
+                navigate(`/world/${created.id}/edit`, { replace: true });
+                return;
+            }
+            // 編集モード: そのまま留まり savedYaml を更新して dirty=false にする
+            setSavedYaml(text);
         } catch (e) {
             setError(e instanceof Error ? e.message : '保存失敗');
         } finally {
             setSaving(false);
         }
-    }, [definition, yamlDirty, isEdit, worldId, navigate]);
+    }, [definition, isEdit, worldId, navigate, handleOpenInfo]);
+
+    const handleCreateInstance = useCallback(async () => {
+        if (!worldId) return;
+        setSaving(true);
+        setError('');
+        try {
+            const res = await fetch(`${API_BASE}/api/v1/instances`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ worldId }),
+            });
+            if (!res.ok) {
+                const data = (await res.json().catch(() => ({}))) as { error?: string };
+                throw new Error(data.error ?? `HTTP ${res.status}`);
+            }
+            const inst = (await res.json()) as { id: string };
+            navigate(`/instance/${inst.id}`, { state: { worldId } });
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'インスタンス作成失敗');
+            setSaving(false);
+        }
+    }, [worldId, navigate]);
 
     const handleDelete = useCallback(async () => {
         if (!worldId) return;
@@ -292,12 +352,14 @@ export function WorldEditorPage() {
         }
     }, [worldId, navigate]);
 
-    if (isPending) {
+    // 未認証のリダイレクトはレンダー中の副作用にしない (StrictMode 重複呼び出し回避)。
+    // 親 ProtectedRoute で守られているが念のため二重チェック。
+    useEffect(() => {
+        if (!isPending && !session) navigate('/auth');
+    }, [isPending, session, navigate]);
+
+    if (isPending || !session) {
         return <CenteredMessage text="読み込み中..." />;
-    }
-    if (!session) {
-        navigate('/auth');
-        return null;
     }
     if (loading) {
         return <CenteredMessage text="ワールドを読み込み中..." />;
@@ -330,11 +392,12 @@ export function WorldEditorPage() {
                 title={title}
                 isEdit={isEdit}
                 saving={saving}
-                yamlDirty={yamlDirty}
-                onOpenInfo={() => setOpenModal('info')}
-                onOpenYaml={() => setOpenModal('yaml')}
+                dirty={dirty}
+                onOpenInfo={handleOpenInfo}
+                onOpenYaml={handleOpenYaml}
                 onSave={handleSave}
                 onDelete={isEdit ? handleDelete : undefined}
+                onCreateInstance={isEdit ? handleCreateInstance : undefined}
             />
 
             <EditorHierarchy
@@ -417,18 +480,104 @@ export function WorldEditorPage() {
             )}
 
             {/* モーダル */}
-            <Modal open={openModal === 'info'} onClose={() => setOpenModal(null)} title="ワールド情報" width="640px">
-                <WorldInfoForm definition={definition} onUpdateSpec={updateSpec} onUpdateMetadata={updateMetadata} />
+            <Modal
+                open={openModal === 'info'}
+                onClose={handleCancelInfo}
+                title="ワールド情報"
+                width="640px"
+                footer={
+                    <>
+                        <ModalSecondaryButton onClick={handleCancelInfo}>キャンセル</ModalSecondaryButton>
+                        <ModalPrimaryButton onClick={handleApplyInfo}>適用</ModalPrimaryButton>
+                    </>
+                }
+            >
+                {infoDraft && <WorldInfoForm draft={infoDraft} onChange={setInfoDraft} />}
             </Modal>
-            <Modal open={openModal === 'yaml'} onClose={() => setOpenModal(null)} title="YAML 編集" width="800px">
+            <Modal
+                open={openModal === 'yaml'}
+                onClose={handleCancelYaml}
+                title="YAML 編集"
+                width="800px"
+                footer={
+                    <>
+                        <ModalSecondaryButton onClick={handleCancelYaml}>キャンセル</ModalSecondaryButton>
+                        <ModalPrimaryButton
+                            onClick={handleApplyYaml}
+                            disabled={!!yamlDraftError}
+                            title={yamlDraftError || undefined}
+                        >
+                            適用
+                        </ModalPrimaryButton>
+                    </>
+                }
+            >
                 <YamlEditorForm
-                    yamlText={yamlText}
-                    yamlDirty={yamlDirty}
-                    onChange={handleYamlChange}
+                    yamlText={yamlDraft}
+                    yamlDirty={!!yamlDraftError}
+                    onChange={handleYamlDraftChange}
                     onFileUpload={handleFileUpload}
                 />
             </Modal>
         </div>
+    );
+}
+
+function ModalPrimaryButton({
+    onClick,
+    children,
+    disabled,
+    title,
+}: {
+    onClick: () => void;
+    children: React.ReactNode;
+    disabled?: boolean;
+    title?: string;
+}) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            disabled={disabled}
+            title={title}
+            className={css({
+                padding: '8px 16px',
+                bg: 'primary',
+                color: 'textOnPrimary',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                _disabled: { opacity: 0.5, cursor: 'not-allowed' },
+                _hover: { opacity: 0.9 },
+            })}
+        >
+            {children}
+        </button>
+    );
+}
+
+function ModalSecondaryButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className={css({
+                padding: '8px 16px',
+                bg: 'surface',
+                color: 'textMuted',
+                border: '1px solid',
+                borderColor: 'border',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                _hover: { borderColor: 'borderStrong' },
+            })}
+        >
+            {children}
+        </button>
     );
 }
 

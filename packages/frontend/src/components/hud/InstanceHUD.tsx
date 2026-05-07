@@ -10,15 +10,15 @@ export function InstanceHUD() {
     const { id: instanceId } = useParams<{ id: string }>();
     const { users, isConnected, currentUser } = useSocket();
     const [menuOpen, setMenuOpen] = useState(false);
-    /** 現在のインスタンスが指すワールド（authorName 比較で編集ボタン表示を判定） */
+    /** 現在のインスタンスが指すワールド（authorId 比較で編集ボタン表示を判定） */
     const [instanceWorld, setInstanceWorld] = useState<Instance['world'] | null>(null);
 
-    // currentUser はカーソル移動のたびに参照が変わるので、name だけ依存に使う
-    const currentUserName = currentUser?.name;
+    // currentUser はカーソル移動のたびに参照が変わるので、id だけ依存に使う
+    const currentUserId = currentUser?.id;
 
-    // 編集ボタンの表示判定はワールド作成者名で行う。
-    // 正規の認可は backend の PUT/DELETE で authorId 厳格チェックされるため、
-    // UI で偶然一致して編集ボタンが見えても、他人のワールドは絶対に書き換えできない。
+    // socket イベントの userId と DB users.id は ID 統一済み (handlers/socketHandlers.ts 参照)。
+    // よって currentUser.id === world.authorId が信頼できる比較になる。
+    // authorName の文字列比較は同名ユーザーの誤判定リスクがあるため使わない。
     useEffect(() => {
         if (!instanceId) {
             setInstanceWorld(null);
@@ -40,7 +40,7 @@ export function InstanceHUD() {
     }, [instanceId]);
 
     const editableWorldId =
-        instanceWorld && currentUserName && instanceWorld.authorName === currentUserName ? instanceWorld.id : null;
+        instanceWorld && currentUserId && instanceWorld.authorId === currentUserId ? instanceWorld.id : null;
 
     const userCount = users.size;
 

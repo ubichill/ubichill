@@ -22,8 +22,16 @@ export function EditorStage({
     onSelect,
     onPatchTransform,
 }: EditorStageProps) {
+    // 背景（プラグイン UI のない場所）クリックで選択解除する。
+    // EditOverlay 自体は pointer-events:none のため背景クリックを拾えないので、
+    // ここで mousedown を受ける。エンティティハンドルは stopPropagation でブロックする。
+    const handleStageMouseDown = (e: React.MouseEvent) => {
+        if (e.target === e.currentTarget) onSelect(null);
+    };
+
     return (
         <main
+            onMouseDown={handleStageMouseDown}
             className={css({
                 gridArea: 'center',
                 position: 'relative',
@@ -37,6 +45,7 @@ export function EditorStage({
                 definition={definition}
                 hiddenIndices={hiddenIndices}
                 fillContainer
+                onBackgroundMouseDown={() => onSelect(null)}
                 overlay={
                     <EditOverlay
                         entities={definition.spec.initialEntities}

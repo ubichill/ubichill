@@ -5,11 +5,14 @@ interface EditorHeaderProps {
     title: string;
     isEdit: boolean;
     saving: boolean;
-    yamlDirty: boolean;
+    /** 編集中で未保存の変更があるか。true の間は「インスタンス作成」ボタンを出さない */
+    dirty: boolean;
     onOpenInfo: () => void;
     onOpenYaml: () => void;
     onSave: () => void;
     onDelete?: () => void;
+    /** 編集モードかつ未変更時に有効。クリックでこのワールドの新インスタンスを作成して参加する */
+    onCreateInstance?: () => void;
 }
 
 /**
@@ -20,11 +23,12 @@ export function EditorHeader({
     title,
     isEdit,
     saving,
-    yamlDirty,
+    dirty,
     onOpenInfo,
     onOpenYaml,
     onSave,
     onDelete,
+    onCreateInstance,
 }: EditorHeaderProps) {
     const navigate = useNavigate();
 
@@ -100,8 +104,8 @@ export function EditorHeader({
             <button
                 type="button"
                 onClick={onSave}
-                disabled={saving || yamlDirty}
-                title={yamlDirty ? 'YAML が不正です' : undefined}
+                disabled={saving || (isEdit && !dirty)}
+                title={isEdit && !dirty ? '未変更' : undefined}
                 className={css({
                     padding: '8px 16px',
                     bg: 'primary',
@@ -117,6 +121,29 @@ export function EditorHeader({
             >
                 {saving ? '保存中...' : isEdit ? '保存' : '作成'}
             </button>
+            {isEdit && !dirty && onCreateInstance && (
+                <button
+                    type="button"
+                    onClick={onCreateInstance}
+                    disabled={saving}
+                    title="このワールドで新しいインスタンスを作って参加する"
+                    className={css({
+                        padding: '8px 14px',
+                        bg: 'success',
+                        color: 'text',
+                        border: '1px solid',
+                        borderColor: 'success',
+                        borderRadius: '8px',
+                        fontSize: '13px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        _disabled: { opacity: 0.5, cursor: 'not-allowed' },
+                        _hover: { opacity: 0.9 },
+                    })}
+                >
+                    ▶ インスタンス作成
+                </button>
+            )}
         </header>
     );
 }

@@ -35,13 +35,14 @@ export function EditOverlay({ entities, selectedIndex, hiddenIndices, onSelect, 
     }, [drag, onPatchTransform]);
 
     return (
+        // pointer-events: none のためここでは背景クリックを拾えない（拾うと
+        // プラグイン UI のクリックを奪ってしまう）。背景クリックでの選択解除は
+        // 親の EditorStage で onMouseDown(null) を行う。
         <div
-            // 背景クリックで選択解除（pointer-events を持つ透明レイヤー）
-            onMouseDown={() => onSelect(null)}
             style={{
                 position: 'absolute',
                 inset: 0,
-                pointerEvents: 'none', // デフォルトは透過。子の実体だけが pointer-events: auto
+                pointerEvents: 'none',
                 zIndex: 99000,
             }}
         >
@@ -101,8 +102,6 @@ function EntityHandle({
     const h = t.h ?? 0;
     return (
         <div
-            role="button"
-            tabIndex={0}
             onMouseDown={(e) => onMouseDownEntity(e, 'move')}
             style={{
                 position: 'absolute',
@@ -163,8 +162,6 @@ function SizelessChip({
     const t = entity.transform;
     return (
         <div
-            role="button"
-            tabIndex={0}
             onMouseDown={onMouseDownEntity}
             style={{
                 position: 'absolute',

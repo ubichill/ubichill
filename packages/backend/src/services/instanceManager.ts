@@ -212,11 +212,8 @@ class InstanceManager {
     async getWorldEnvironment(worldId: string): Promise<WorldEnvironmentData> {
         const world = await worldRegistry.getWorld(worldId);
         if (world) {
-            // undefined を null に変換
             return {
                 backgroundColor: world.environment.backgroundColor,
-                backgroundImage: world.environment.backgroundImage ?? null,
-                bgm: world.environment.bgm ?? null,
                 worldSize: world.environment.worldSize,
             };
         }

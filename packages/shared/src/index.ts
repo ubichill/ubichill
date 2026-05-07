@@ -151,8 +151,6 @@ export interface AvailableKind {
  */
 export interface WorldEnvironmentData {
     backgroundColor: string;
-    backgroundImage: string | null;
-    bgm: string | null;
     worldSize: { width: number; height: number };
 }
 
@@ -343,8 +341,6 @@ export const DEFAULTS = {
     /** デフォルトのワールド環境 */
     WORLD_ENVIRONMENT: {
         backgroundColor: '#F0F8FF',
-        backgroundImage: null,
-        bgm: null,
         worldSize: { width: 2000, height: 1500 },
     } as WorldEnvironmentData,
 } as const;

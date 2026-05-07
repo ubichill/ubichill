@@ -25,15 +25,20 @@ interface PluginIndex {
  * バージョン付きマニフェスト（/plugins/<name>/v<ver>/plugin.json）のエンティティ定義。
  * ビルド時のみ必要な src フィールドは含まない。
  * workerUrl はバージョンディレクトリからの相対パス（例: "./cursor/index.js"）。
+ *
+ * workerUrl が無いエントリは「データ専用エンティティ」(plugin.json で src 未定義) で、
+ * worker は起動せず manifest 上のメタ情報のみを表す。
  */
 interface WorkerMetaObject {
-    workerUrl: string;
+    workerUrl?: string;
     capabilities?: string[];
     singleton?: boolean;
     canvasTargets?: string[];
     watchEntityTypes?: string[];
     mediaTargets?: string[];
     fetchDomains?: string[];
+    defaultTransform?: Record<string, unknown>;
+    dataFields?: Record<string, unknown>;
 }
 
 /** バージョン付きマニフェスト全体 */

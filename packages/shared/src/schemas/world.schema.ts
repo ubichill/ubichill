@@ -72,8 +72,6 @@ export const AuthorSchema = z.object({
 
 export const WorldEnvironmentSchema = z.object({
     backgroundColor: HexColor.default('#F0F8FF'),
-    backgroundImage: z.string().url().nullable().optional(),
-    bgm: z.string().url().nullable().optional(),
     worldSize: z
         .object({
             width: z.number().positive().default(2000),

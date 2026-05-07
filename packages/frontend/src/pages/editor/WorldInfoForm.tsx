@@ -3,16 +3,24 @@ import { css } from '@/styled-system/css';
 import { PluginSelector } from './PluginSelector';
 
 interface WorldInfoFormProps {
-    definition: WorldDefinition;
-    onUpdateSpec: (patch: Partial<WorldDefinition['spec']>) => void;
-    onUpdateMetadata: (patch: Partial<WorldDefinition['metadata']>) => void;
+    /** 編集中の draft definition。親 (WorldEditorPage) が状態を持ち、モーダルの footer の「適用」ボタンで反映する。 */
+    draft: WorldDefinition;
+    onChange: (next: WorldDefinition) => void;
 }
 
 /**
- * ワールド情報モーダルの中身。
+ * ワールド情報モーダルの中身（staging）。
  * displayName / description / thumbnail / version / capacity / worldSize / 背景色 / 使用プラグイン。
+ *
+ * フィールドの編集は draft の更新のみで、外側の definition には反映しない。
+ * 「適用」ボタンが押されたタイミングで親が draft → definition へ移し替える。
  */
-export function WorldInfoForm({ definition, onUpdateSpec, onUpdateMetadata }: WorldInfoFormProps) {
+export function WorldInfoForm({ draft, onChange }: WorldInfoFormProps) {
+    const definition = draft;
+    const onUpdateSpec = (patch: Partial<WorldDefinition['spec']>) =>
+        onChange({ ...draft, spec: { ...draft.spec, ...patch } });
+    const onUpdateMetadata = (patch: Partial<WorldDefinition['metadata']>) =>
+        onChange({ ...draft, metadata: { ...draft.metadata, ...patch } });
     const spec = definition.spec;
     const env = spec.environment ?? {
         backgroundColor: '#F0F8FF',

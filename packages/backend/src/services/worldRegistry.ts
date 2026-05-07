@@ -594,8 +594,6 @@ class WorldRegistry {
             thumbnail: def.spec.thumbnail,
             environment: {
                 backgroundColor: env.backgroundColor ?? DEFAULTS.WORLD_ENVIRONMENT.backgroundColor,
-                backgroundImage: env.backgroundImage ?? null,
-                bgm: env.bgm ?? null,
                 worldSize: env.worldSize ?? DEFAULTS.WORLD_ENVIRONMENT.worldSize,
             },
             capacity: def.spec.capacity,

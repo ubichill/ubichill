@@ -16,7 +16,6 @@ spec:
 
   environment:
     backgroundColor: "#1a1a2e"
-    backgroundImage: "https://images.unsplash.com/photo-1497366216548-37526070297c?w=1920&q=80"
     worldSize:
       width: 2000
       height: 1500

@@ -8,12 +8,14 @@ interface ModalProps {
     children: React.ReactNode;
     /** モーダル幅 (CSS) */
     width?: string;
+    /** 下部のアクション領域（適用 / キャンセル等） */
+    footer?: React.ReactNode;
 }
 
 /**
  * 共通モーダル。背景クリック・ESCキーで閉じる。
  */
-export function Modal({ open, onClose, title, children, width = '640px' }: ModalProps) {
+export function Modal({ open, onClose, title, children, width = '640px', footer }: ModalProps) {
     useEffect(() => {
         if (!open) return;
         const onKey = (e: KeyboardEvent) => {
@@ -97,6 +99,21 @@ export function Modal({ open, onClose, title, children, width = '640px' }: Modal
                 >
                     {children}
                 </div>
+                {footer && (
+                    <div
+                        className={css({
+                            display: 'flex',
+                            gap: '8px',
+                            justifyContent: 'flex-end',
+                            padding: '12px 16px',
+                            borderTop: '1px solid',
+                            borderColor: 'border',
+                            flexShrink: 0,
+                        })}
+                    >
+                        {footer}
+                    </div>
+                )}
             </div>
         </div>
     );

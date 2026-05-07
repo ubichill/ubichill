@@ -203,15 +203,23 @@ router.post('/yaml', requireAuth, async (req, res) => {
 
 /**
  * GET /api/v1/worlds/:worldId/definition
- * ワールドの生定義（WorldDefinition）を取得（GUI エディタ用）
+ * ワールドの生定義（WorldDefinition）を取得（GUI エディタ用、作成者のみ）
  * ResolvedWorld ではなく YAML と同等の構造をそのまま返す
  */
 router.get('/:worldId/definition', requireAuth, async (req, res) => {
     try {
+        if (!req.user) {
+            res.status(401).json({ error: 'Unauthorized' });
+            return;
+        }
         const worldId = req.params.worldId as string;
         const record = await worldRegistry.getWorldRecord(worldId);
         if (!record) {
             res.status(404).json({ error: 'World not found' });
+            return;
+        }
+        if (record.authorId !== req.user.id) {
+            res.status(403).json({ error: 'Forbidden: Only the author can view the raw definition' });
             return;
         }
         res.json(record.definition);
@@ -223,13 +231,21 @@ router.get('/:worldId/definition', requireAuth, async (req, res) => {
 
 /**
  * GET /api/v1/worlds/:worldId/yaml
- * ワールドの定義を YAML テキストで取得（YAMLエディタ用）
+ * ワールドの定義を YAML テキストで取得（YAMLエディタ用、作成者のみ）
  */
 router.get('/:worldId/yaml', requireAuth, async (req, res) => {
     try {
+        if (!req.user) {
+            res.status(401).json({ error: 'Unauthorized' });
+            return;
+        }
         const record = await worldRegistry.getWorldRecord(req.params.worldId as string);
         if (!record) {
             res.status(404).json({ error: 'World not found' });
+            return;
+        }
+        if (record.authorId !== req.user.id) {
+            res.status(403).json({ error: 'Forbidden: Only the author can view the raw YAML' });
             return;
         }
         const text = yaml.stringify(record.definition);

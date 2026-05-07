@@ -43,6 +43,8 @@ interface EditorPreviewProps {
     fillContainer?: boolean;
     /** 編集ローカルに非表示にするエンティティの index 集合（プラグインの実体描画も止める） */
     hiddenIndices?: Set<number>;
+    /** プレビュー領域の背景（プラグイン UI なし）クリック時のハンドラ */
+    onBackgroundMouseDown?: () => void;
 }
 
 /**
@@ -53,16 +55,20 @@ interface EditorPreviewProps {
  * - 各 entity wrapper は pointer-events: none を維持する（既存の EntityRenderer 仕様）
  * - 編集オーバーレイは `overlay` で渡し、その上に重ねる（pointer-events: auto を持つ）
  */
-export function EditorPreview({ definition, overlay, fillContainer = false, hiddenIndices }: EditorPreviewProps) {
+export function EditorPreview({
+    definition,
+    overlay,
+    fillContainer = false,
+    hiddenIndices,
+    onBackgroundMouseDown,
+}: EditorPreviewProps) {
     const env = definition.spec.environment;
     const environment: WorldEnvironmentData = useMemo(
         () => ({
             backgroundColor: env?.backgroundColor ?? '#F0F8FF',
-            backgroundImage: env?.backgroundImage ?? null,
-            bgm: env?.bgm ?? null,
             worldSize: env?.worldSize ?? { width: 2000, height: 1500 },
         }),
-        [env?.backgroundColor, env?.backgroundImage, env?.bgm, env?.worldSize],
+        [env?.backgroundColor, env?.worldSize],
     );
 
     const entities = useMemo(() => {
@@ -151,21 +157,26 @@ export function EditorPreview({ definition, overlay, fillContainer = false, hidd
 
     return (
         <div
+            onMouseDown={(e) => {
+                if (e.target === e.currentTarget) onBackgroundMouseDown?.();
+            }}
             style={{
                 position: 'relative',
                 overflow: 'auto',
                 height: fillContainer ? '100%' : '70vh',
                 backgroundColor: environment.backgroundColor,
-                backgroundImage: environment.backgroundImage ? `url(${environment.backgroundImage})` : undefined,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center center',
                 borderRadius: fillContainer ? 0 : 12,
             }}
         >
             <SocketContext.Provider value={socketValue}>
                 <WorldContext.Provider value={worldValue}>
                     <PluginRegistryProvider>
-                        <PreviewStage entities={entities} environment={environment} overlay={overlay} />
+                        <PreviewStage
+                            entities={entities}
+                            environment={environment}
+                            overlay={overlay}
+                            onBackgroundMouseDown={onBackgroundMouseDown}
+                        />
                     </PluginRegistryProvider>
                 </WorldContext.Provider>
             </SocketContext.Provider>
@@ -181,10 +192,12 @@ function PreviewStage({
     entities,
     environment,
     overlay,
+    onBackgroundMouseDown,
 }: {
     entities: Map<string, WorldEntity>;
     environment: WorldEnvironmentData;
     overlay?: React.ReactNode;
+    onBackgroundMouseDown?: () => void;
 }) {
     const { pluginMap } = usePluginRegistry();
 
@@ -202,6 +215,9 @@ function PreviewStage({
 
     return (
         <div
+            onMouseDown={(e) => {
+                if (e.target === e.currentTarget) onBackgroundMouseDown?.();
+            }}
             style={{
                 position: 'relative',
                 width,
