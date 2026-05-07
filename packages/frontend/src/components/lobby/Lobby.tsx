@@ -206,6 +206,10 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                     mx: 'auto',
                     mb: '4',
                     px: { base: '2', md: '0' },
+                    display: 'flex',
+                    flexDirection: 'column',
+                    flex: 1,
+                    minH: 0,
                 })}
             >
                 <div
@@ -218,6 +222,7 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                         flex: 1,
                         display: 'flex',
                         flexDirection: 'column',
+                        minH: 0,
                     })}
                 >
                     <h1
