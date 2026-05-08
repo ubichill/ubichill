@@ -1,5 +1,5 @@
 import { css } from '@/styled-system/css';
-import type { AvailableEntityKind } from './useAvailableEntityKinds';
+import type { AvailableEntityKind } from '../hooks/useAvailableEntityKinds';
 
 interface EditorAssetsProps {
     kinds: AvailableEntityKind[];
@@ -16,7 +16,6 @@ export function EditorAssets({ kinds, loading, placedKinds, onAdd }: EditorAsset
     return (
         <section
             className={css({
-                gridArea: 'bottom',
                 bg: 'surface',
                 borderTop: '1px solid',
                 borderColor: 'border',
@@ -24,6 +23,8 @@ export function EditorAssets({ kinds, loading, placedKinds, onAdd }: EditorAsset
                 flexDirection: 'column',
                 overflow: 'hidden',
                 minH: 0,
+                width: 'full',
+                height: 'full',
             })}
         >
             <div

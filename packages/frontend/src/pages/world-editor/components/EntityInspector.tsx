@@ -1,7 +1,7 @@
 import type { InitialEntity } from '@ubichill/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { css } from '@/styled-system/css';
-import type { DataFieldSpec, DataFields } from './useAvailableEntityKinds';
+import type { DataFieldSpec, DataFields } from '../hooks/useAvailableEntityKinds';
 
 interface EntityInspectorProps {
     entity: InitialEntity;

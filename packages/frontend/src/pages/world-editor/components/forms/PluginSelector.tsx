@@ -1,7 +1,7 @@
 import type { WorldDefinition } from '@ubichill/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { css } from '@/styled-system/css';
-import { type AvailablePlugin, pluginToDependency, useAvailablePlugins } from './useAvailablePlugins';
+import { type AvailablePlugin, pluginToDependency, useAvailablePlugins } from '../../hooks/useAvailablePlugins';
 
 const REGISTRY_URLS_STORAGE_KEY = 'world-editor:registry-urls';
 

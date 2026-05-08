@@ -56,7 +56,14 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             return socketRef.current;
         }
 
-        const socketUrl = process.env.NODE_ENV === 'production' ? undefined : SERVER_CONFIG.DEV_URL;
+        // Dev サーバー検出: 開発時は frontend (5173 等) と backend (3001) が別ポート。
+        // 本番は同 origin で配信されるので socketUrl は undefined にして同 origin を使う。
+        const isDev =
+            typeof window !== 'undefined' &&
+            (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') &&
+            window.location.port !== '' &&
+            window.location.port !== '3001';
+        const socketUrl = isDev ? SERVER_CONFIG.DEV_URL : undefined;
 
         const socket: AppSocket = io(socketUrl || window.location.origin, {
             autoConnect: false,

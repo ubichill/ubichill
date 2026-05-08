@@ -5,8 +5,8 @@ import { AuthPage } from './pages/AuthPage';
 import { InstancePage } from './pages/InstancePage';
 import { LobbyPage } from './pages/LobbyPage';
 import { UserPage } from './pages/UserPage';
-import { WorldEditorPage } from './pages/WorldEditorPage';
 import { WorldPage } from './pages/WorldPage';
+import { WorldEditorPage } from './pages/world-editor';
 
 export function AppRouter() {
     return (

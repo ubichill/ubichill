@@ -1,6 +1,6 @@
 import type { InitialEntity } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
-import { applyDrag, type DragMode, type DragState } from './dragHelpers';
+import { applyDrag, type DragMode, type DragState } from '../lib/dragHelpers';
 
 interface EditOverlayProps {
     entities: InitialEntity[];

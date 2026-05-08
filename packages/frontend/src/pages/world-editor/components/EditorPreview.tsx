@@ -166,6 +166,10 @@ export function EditorPreview({
                 height: fillContainer ? '100%' : '70vh',
                 backgroundColor: environment.backgroundColor,
                 borderRadius: fillContainer ? 0 : 12,
+                // プラグインが大きな z-index (例: avatar:cursor=10100) を持つので、
+                // プレビュー外（ヒエラルキー / インスペクタ / アセット等）に漏れて
+                // それらを覆わないよう、独立したスタッキングコンテキストに閉じ込める。
+                isolation: 'isolate',
             }}
         >
             <SocketContext.Provider value={socketValue}>

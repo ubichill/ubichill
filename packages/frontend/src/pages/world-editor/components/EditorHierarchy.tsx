@@ -26,7 +26,6 @@ export function EditorHierarchy({
     return (
         <aside
             className={css({
-                gridArea: 'left',
                 bg: 'surface',
                 borderRight: '1px solid',
                 borderColor: 'border',
@@ -34,6 +33,8 @@ export function EditorHierarchy({
                 flexDirection: 'column',
                 overflow: 'hidden',
                 minH: 0,
+                width: 'full',
+                height: 'full',
             })}
         >
             <div

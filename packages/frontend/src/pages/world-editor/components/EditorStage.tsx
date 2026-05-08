@@ -33,12 +33,13 @@ export function EditorStage({
         <main
             onMouseDown={handleStageMouseDown}
             className={css({
-                gridArea: 'center',
                 position: 'relative',
                 minH: 0,
                 minW: 0,
                 overflow: 'hidden',
                 bg: 'background',
+                width: 'full',
+                height: 'full',
             })}
         >
             <EditorPreview
