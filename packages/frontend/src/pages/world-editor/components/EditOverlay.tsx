@@ -1,5 +1,6 @@
 import type { InitialEntity } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
+import { css } from '@/styled-system/css';
 import { applyDrag, type DragMode, type DragState } from '../lib/dragHelpers';
 
 interface EditOverlayProps {
@@ -13,7 +14,13 @@ interface EditOverlayProps {
 /**
  * world 座標系に絶対配置される編集オーバーレイ。
  * 各エンティティに矩形ハンドルを重ね、ドラッグで移動・リサイズできる。
- * サイズなしエンティティは表示しない（下のリストから選択する）。
+ *
+ * 編集モード中はプラグイン UI への直接操作をブロックする「シールド」を兼ねる。
+ * pointer-events: auto で全クリックを overlay が吸収し、エンティティハンドル以外
+ * (背景) は onSelect(null) で選択解除する。
+ *
+ * 色は inline style ではなく className に統一し、Panda CSS トークンで管理する。
+ * 座標・サイズ・z-index など「エンティティごとに動的に変わる値」のみ style で渡す。
  */
 export function EditOverlay({ entities, selectedIndex, hiddenIndices, onSelect, onPatchTransform }: EditOverlayProps) {
     const [drag, setDrag] = useState<DragState | null>(null);
@@ -35,19 +42,18 @@ export function EditOverlay({ entities, selectedIndex, hiddenIndices, onSelect, 
     }, [drag, onPatchTransform]);
 
     return (
-        // pointer-events: none のためここでは背景クリックを拾えない（拾うと
-        // プラグイン UI のクリックを奪ってしまう）。背景クリックでの選択解除は
-        // 親の EditorStage で onMouseDown(null) を行う。
         <div
-            style={{
+            onMouseDown={(e) => {
+                if (e.target === e.currentTarget) onSelect(null);
+            }}
+            className={css({
                 position: 'absolute',
                 inset: 0,
-                pointerEvents: 'none',
+                pointerEvents: 'auto',
                 zIndex: 99000,
-            }}
+            })}
         >
             {entities.map((ent, i) => {
-                // 非表示エンティティは overlay からも除外（クリック・選択不可）
                 if (hiddenIndices?.has(i)) return null;
                 const t = ent.transform;
                 const w = t.w ?? 0;
@@ -103,37 +109,25 @@ function EntityHandle({
     return (
         <div
             onMouseDown={(e) => onMouseDownEntity(e, 'move')}
-            style={{
+            className={css({
                 position: 'absolute',
+                cursor: 'move',
+                pointerEvents: 'auto',
+                userSelect: 'none',
+                outlineOffset: '-1px',
+                outline: selected ? '2px solid' : '1.5px dashed',
+                outlineColor: selected ? 'primary' : 'selectionDashed',
+                bg: selected ? 'primarySubtle' : 'transparent',
+            })}
+            style={{
                 left: t.x,
                 top: t.y,
                 width: w,
                 height: h,
                 zIndex: 99000 + (t.z ?? 0),
-                cursor: 'move',
-                pointerEvents: 'auto',
-                outline: selected ? '2px solid #1b2a44' : '1.5px dashed rgba(27, 42, 68, 0.5)',
-                outlineOffset: -1,
-                background: selected ? 'rgba(27, 42, 68, 0.08)' : 'rgba(255, 255, 255, 0.02)',
-                userSelect: 'none',
             }}
         >
-            <span
-                style={{
-                    position: 'absolute',
-                    top: -22,
-                    left: 0,
-                    fontSize: 11,
-                    padding: '2px 6px',
-                    background: selected ? '#1b2a44' : 'rgba(27, 42, 68, 0.7)',
-                    color: '#fff',
-                    borderRadius: 4,
-                    pointerEvents: 'none',
-                    whiteSpace: 'nowrap',
-                }}
-            >
-                {entity.kind}
-            </span>
+            <KindLabel kind={entity.kind} selected={selected} />
             {selected && (
                 <>
                     <Handle position="nw" onMouseDown={(e) => onMouseDownEntity(e, 'resize-nw')} />
@@ -163,46 +157,55 @@ function SizelessChip({
     return (
         <div
             onMouseDown={onMouseDownEntity}
-            style={{
+            className={css({
                 position: 'absolute',
-                left: t.x,
-                top: t.y,
-                width: 28,
-                height: 28,
-                zIndex: 99000 + (t.z ?? 0),
+                width: '28px',
+                height: '28px',
                 cursor: 'move',
                 pointerEvents: 'auto',
-                background: selected ? 'rgba(27, 42, 68, 0.8)' : 'rgba(27, 42, 68, 0.5)',
-                border: '2px solid #fff',
+                bg: selected ? 'chipBgActive' : 'chipBg',
+                border: '2px solid',
+                borderColor: 'white',
                 borderRadius: '50%',
                 userSelect: 'none',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: '#fff',
-                fontSize: 11,
-                fontWeight: 700,
-                boxShadow: selected ? '0 0 0 2px #1b2a44' : '0 1px 4px rgba(0,0,0,0.3)',
+                color: 'white',
+                fontSize: '11px',
+                fontWeight: '700',
+                boxShadow: selected ? 'selectionRing' : 'chipDrop',
+            })}
+            style={{
+                left: t.x,
+                top: t.y,
+                zIndex: 99000 + (t.z ?? 0),
             }}
         >
-            <span
-                style={{
-                    position: 'absolute',
-                    top: -22,
-                    left: 0,
-                    fontSize: 11,
-                    padding: '2px 6px',
-                    background: selected ? '#1b2a44' : 'rgba(27, 42, 68, 0.7)',
-                    color: '#fff',
-                    borderRadius: 4,
-                    pointerEvents: 'none',
-                    whiteSpace: 'nowrap',
-                }}
-            >
-                {entity.kind}
-            </span>
-            ●
+            <KindLabel kind={entity.kind} selected={selected} />●
         </div>
+    );
+}
+
+/** エンティティの kind を上に表示する小さなラベル。selected 時に primary 色で強調。 */
+function KindLabel({ kind, selected }: { kind: string; selected: boolean }) {
+    return (
+        <span
+            className={css({
+                position: 'absolute',
+                top: '-22px',
+                left: 0,
+                fontSize: '11px',
+                padding: '2px 6px',
+                bg: selected ? 'primary' : 'chipLabelBg',
+                color: 'white',
+                borderRadius: '4px',
+                pointerEvents: 'none',
+                whiteSpace: 'nowrap',
+            })}
+        >
+            {kind}
+        </span>
     );
 }
 
@@ -214,7 +217,7 @@ function Handle({
     onMouseDown: (e: React.MouseEvent) => void;
 }) {
     const cursor = position === 'nw' || position === 'se' ? 'nwse-resize' : 'nesw-resize';
-    const styles: Record<string, React.CSSProperties> = {
+    const offset: Record<string, React.CSSProperties> = {
         nw: { left: -7, top: -7 },
         ne: { right: -7, top: -7 },
         sw: { left: -7, bottom: -7 },
@@ -226,18 +229,18 @@ function Handle({
                 e.stopPropagation();
                 onMouseDown(e);
             }}
-            style={{
+            className={css({
                 position: 'absolute',
-                width: 14,
-                height: 14,
-                background: '#1b2a44',
-                border: '2px solid #fff',
+                width: '14px',
+                height: '14px',
+                bg: 'primary',
+                border: '2px solid',
+                borderColor: 'white',
                 borderRadius: '50%',
                 zIndex: 100,
                 pointerEvents: 'auto',
-                ...styles[position],
-                cursor,
-            }}
+            })}
+            style={{ ...offset[position], cursor }}
         />
     );
 }

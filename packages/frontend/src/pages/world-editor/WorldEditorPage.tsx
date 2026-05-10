@@ -14,6 +14,7 @@ import { EntityInspector } from './components/EntityInspector';
 import { WorldInfoForm } from './components/forms/WorldInfoForm';
 import { YamlEditorForm } from './components/forms/YamlEditorForm';
 import { MobileLeftHandle } from './components/MobileLeftHandle';
+import { MobileRightHandle } from './components/MobileRightHandle';
 import { Modal } from './components/Modal';
 import { ModalPrimaryButton, ModalSecondaryButton } from './components/ModalButtons';
 import { type AvailableEntityKind, useAvailableEntityKinds } from './hooks/useAvailableEntityKinds';
@@ -62,6 +63,8 @@ export function WorldEditorPage() {
     const [hiddenIndices, setHiddenIndices] = useState<Set<number>>(new Set());
     /** モバイル時のヒエラルキー drawer 開閉（md 以上では無視される） */
     const [mobileLeftOpen, setMobileLeftOpen] = useState(false);
+    /** モバイル時のインスペクタ drawer 開閉。エンティティ選択時に自動で true にして開く。 */
+    const [mobileRightOpen, setMobileRightOpen] = useState(false);
     const [loading, setLoading] = useState(isEdit);
 
     const dirty = useMemo(() => {
@@ -80,31 +83,31 @@ export function WorldEditorPage() {
     const api = useWorldEditorApi({ isEdit, worldId, definition, onSavedYamlChange: setSavedYaml });
 
     // 編集モード: 初期データロード
+    // cleanup には AbortController を使い、unmount 時に in-flight fetch をキャンセルする。
     useEffect(() => {
         if (!isEdit || !worldId) return;
-        let cancelled = false;
+        const ctrl = new AbortController();
         setLoading(true);
-        fetch(`${API_BASE}/api/v1/worlds/${worldId}/definition`, { credentials: 'include' })
+        fetch(`${API_BASE}/api/v1/worlds/${worldId}/definition`, {
+            credentials: 'include',
+            signal: ctrl.signal,
+        })
             .then(async (res) => {
-                if (cancelled) return;
                 if (res.status === 403) throw new Error('このワールドの編集権限がありません');
                 if (!res.ok) throw new Error(`定義取得失敗 (${res.status})`);
                 const def = (await res.json()) as WorldDefinition;
-                if (cancelled) return;
                 setDefinition(def);
                 setSavedYaml(yaml.stringify(def));
             })
             .catch((e: unknown) => {
-                if (cancelled) return;
+                if (e instanceof DOMException && e.name === 'AbortError') return;
                 api.setError(e instanceof Error ? e.message : '読み込み失敗');
             })
             .finally(() => {
-                if (cancelled) return;
+                if (ctrl.signal.aborted) return;
                 setLoading(false);
             });
-        return () => {
-            cancelled = true;
-        };
+        return () => ctrl.abort();
     }, [worldId, isEdit, api.setError]);
 
     // 未認証は ProtectedRoute が弾くが、二重チェックとして useEffect でリダイレクト
@@ -118,6 +121,12 @@ export function WorldEditorPage() {
             ...prev,
             spec: { ...prev.spec, initialEntities: mutate(prev.spec.initialEntities) },
         }));
+    }, []);
+
+    /** エンティティ選択時にモバイル drawer も自動オープン (選択解除時はクローズ)。 */
+    const selectEntity = useCallback((index: number | null) => {
+        setSelectedIndex(index);
+        setMobileRightOpen(index !== null);
     }, []);
 
     const patchEntityTransform = useCallback(
@@ -156,9 +165,9 @@ export function WorldEditorPage() {
                 data: initialData,
             };
             updateEntities((prev) => [...prev, next]);
-            setSelectedIndex(entities.length);
+            selectEntity(entities.length);
         },
-        [definition.spec.initialEntities, definition.spec.environment, placedKinds, updateEntities],
+        [definition.spec.initialEntities, definition.spec.environment, placedKinds, updateEntities, selectEntity],
     );
 
     const handleDeleteEntity = useCallback(
@@ -249,8 +258,8 @@ export function WorldEditorPage() {
                     selectedIndex={selectedIndex}
                     hiddenIndices={hiddenIndices}
                     onSelect={(i) => {
-                        setSelectedIndex(i);
-                        // モバイルでヒエラルキーから選択したら drawer を閉じる（プレビュー & インスペクタを見せる）
+                        selectEntity(i);
+                        // モバイルでヒエラルキーから選択したら左 drawer を閉じる
                         setMobileLeftOpen(false);
                     }}
                     onDelete={handleDeleteEntity}
@@ -263,17 +272,17 @@ export function WorldEditorPage() {
                     definition={definition}
                     selectedIndex={selectedIndex}
                     hiddenIndices={hiddenIndices}
-                    onSelect={setSelectedIndex}
+                    onSelect={selectEntity}
                     onPatchTransform={patchEntityTransform}
                 />
             </div>
 
             <DockSlot
                 area="right"
-                // インスペクタはエンティティが選択された時だけ右からスライドして出る (モバイル)
-                mobileVisible={!!selectedEntity}
+                // 右ハンドル/選択時に開く drawer。閉じても selection は維持されハンドルから再開可能。
+                mobileVisible={mobileRightOpen && !!selectedEntity}
                 mobileTitle="設定"
-                onMobileClose={() => setSelectedIndex(null)}
+                onMobileClose={() => setMobileRightOpen(false)}
             >
                 {selectedEntity && selectedIndex !== null ? (
                     <EntityInspector
@@ -305,6 +314,8 @@ export function WorldEditorPage() {
 
             {/* モバイル: 左ハンドルでヒエラルキー drawer を開く (md 以上では非表示) */}
             {!mobileLeftOpen && <MobileLeftHandle onClick={() => setMobileLeftOpen(true)} />}
+            {/* モバイル: 右ハンドルでインスペクタを再開 (selection 中で drawer 閉じている時のみ) */}
+            {selectedEntity && !mobileRightOpen && <MobileRightHandle onClick={() => setMobileRightOpen(true)} />}
 
             {/* エラー通知 */}
             {api.error && (

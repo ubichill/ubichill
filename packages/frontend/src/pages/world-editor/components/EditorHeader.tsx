@@ -193,7 +193,7 @@ export function EditorHeader({
                             border: '1px solid',
                             borderColor: 'borderStrong',
                             borderRadius: '10px',
-                            boxShadow: '0 10px 24px rgba(0,0,0,0.2)',
+                            boxShadow: 'card',
                             zIndex: 20,
                         })}
                     >

@@ -13,42 +13,52 @@ export const DEFAULT_W = 200;
 export const DEFAULT_H = 150;
 export const MIN_SIZE = 20;
 
+type Transform = { x: number; y: number; w: number; h: number };
+
 /**
- * ドラッグ開始情報と移動量から、エンティティの transform 差分を返す。
+ * リサイズ操作の差分を「方向ごとの式」として返す純粋関数。
+ * let による途中書き換えを避け、各方向で1度の式評価のみで計算する。
  */
-export function applyDrag(drag: DragState, dx: number, dy: number): Partial<InitialEntity['transform']> {
-    const { startTransform: s, mode } = drag;
-    if (mode === 'move') {
-        return { x: Math.round(s.x + dx), y: Math.round(s.y + dy) };
+function applyResize(s: Transform, dx: number, dy: number, mode: Exclude<DragMode, 'move'>): Transform {
+    switch (mode) {
+        case 'resize-se': {
+            const w = Math.max(MIN_SIZE, Math.round(s.w + dx));
+            const h = Math.max(MIN_SIZE, Math.round(s.h + dy));
+            return { x: s.x, y: s.y, w, h };
+        }
+        case 'resize-sw': {
+            const w = Math.max(MIN_SIZE, Math.round(s.w - dx));
+            const h = Math.max(MIN_SIZE, Math.round(s.h + dy));
+            return { x: Math.round(s.x + (s.w - w)), y: s.y, w, h };
+        }
+        case 'resize-ne': {
+            const w = Math.max(MIN_SIZE, Math.round(s.w + dx));
+            const h = Math.max(MIN_SIZE, Math.round(s.h - dy));
+            return { x: s.x, y: Math.round(s.y + (s.h - h)), w, h };
+        }
+        case 'resize-nw': {
+            const w = Math.max(MIN_SIZE, Math.round(s.w - dx));
+            const h = Math.max(MIN_SIZE, Math.round(s.h - dy));
+            return { x: Math.round(s.x + (s.w - w)), y: Math.round(s.y + (s.h - h)), w, h };
+        }
     }
-    let x = s.x;
-    let y = s.y;
-    let w = s.w;
-    let h = s.h;
-    if (mode === 'resize-se') {
-        w = Math.max(MIN_SIZE, Math.round(s.w + dx));
-        h = Math.max(MIN_SIZE, Math.round(s.h + dy));
-    } else if (mode === 'resize-sw') {
-        w = Math.max(MIN_SIZE, Math.round(s.w - dx));
-        h = Math.max(MIN_SIZE, Math.round(s.h + dy));
-        x = Math.round(s.x + (s.w - w));
-    } else if (mode === 'resize-ne') {
-        w = Math.max(MIN_SIZE, Math.round(s.w + dx));
-        h = Math.max(MIN_SIZE, Math.round(s.h - dy));
-        y = Math.round(s.y + (s.h - h));
-    } else if (mode === 'resize-nw') {
-        w = Math.max(MIN_SIZE, Math.round(s.w - dx));
-        h = Math.max(MIN_SIZE, Math.round(s.h - dy));
-        x = Math.round(s.x + (s.w - w));
-        y = Math.round(s.y + (s.h - h));
-    }
-    return { x, y, w, h };
 }
 
 /**
- * 既存のエンティティ群の z 値の最大 + 1 を返す。
+ * ドラッグ開始情報と移動量から、エンティティの transform 差分を返す。
+ * `move` は位置のみ、`resize-*` は applyResize に委譲。完全な純粋関数。
+ */
+export function applyDrag(drag: DragState, dx: number, dy: number): Partial<InitialEntity['transform']> {
+    const s = drag.startTransform;
+    if (drag.mode === 'move') {
+        return { x: Math.round(s.x + dx), y: Math.round(s.y + dy) };
+    }
+    return applyResize(s, dx, dy, drag.mode);
+}
+
+/**
+ * 既存のエンティティ群の z 値の最大 + 1 を返す純粋関数。
  */
 export function nextZ(entities: InitialEntity[]): number {
-    const max = entities.reduce((m, e) => Math.max(m, e.transform.z ?? 0), 0);
-    return max + 1;
+    return entities.reduce((m, e) => Math.max(m, e.transform.z ?? 0), 0) + 1;
 }

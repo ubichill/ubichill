@@ -108,7 +108,8 @@ export function DockSlot({ area, mobileVisible, mobileTitle, onMobileClose, chil
                     )}
                 </div>
             )}
-            <div className={css({ flex: 1, minH: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' })}>
+            {/* スクロール領域: 中身がはみ出してもパネル内で縦スクロール可能にする */}
+            <div className={css({ flex: 1, minH: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column' })}>
                 {children}
             </div>
         </div>
