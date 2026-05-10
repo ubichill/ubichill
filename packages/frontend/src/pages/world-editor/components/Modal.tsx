@@ -33,7 +33,7 @@ export function Modal({ open, onClose, title, children, width = '640px', footer 
             className={css({
                 position: 'fixed',
                 inset: 0,
-                bg: 'rgba(0, 0, 0, 0.55)',
+                bg: 'hudBg',
                 zIndex: 100000,
                 display: 'flex',
                 alignItems: 'center',
@@ -46,8 +46,10 @@ export function Modal({ open, onClose, title, children, width = '640px', footer 
                 onClick={(e) => e.stopPropagation()}
                 role="dialog"
                 aria-modal="true"
-                style={{ width, maxWidth: '94vw', maxHeight: '90vh' }}
                 className={css({
+                    width,
+                    maxWidth: '94vw',
+                    maxHeight: '90vh',
                     bg: 'background',
                     borderRadius: '14px',
                     border: '1px solid',
@@ -55,7 +57,7 @@ export function Modal({ open, onClose, title, children, width = '640px', footer 
                     display: 'flex',
                     flexDirection: 'column',
                     overflow: 'hidden',
-                    boxShadow: '0 20px 60px rgba(0,0,0,0.35)',
+                    boxShadow: 'modal',
                 })}
             >
                 <div

@@ -29,6 +29,10 @@ export default defineConfig({
                     // ワールドエディタ: sizeless chip 用
                     selectionRing: { value: '0 0 0 2px {colors.primary}' },
                     chipDrop: { value: '0 1px 4px rgba(0, 0, 0, 0.3)' },
+                    drawerLeft: { value: '4px 0 16px rgba(0, 0, 0, 0.2)' },
+                    drawerRight: { value: '-4px 0 16px rgba(0, 0, 0, 0.2)' },
+                    toast: { value: '0 4px 12px rgba(0, 0, 0, 0.2)' },
+                    modal: { value: '0 20px 60px rgba(0, 0, 0, 0.35)' },
                 },
                 colors: {
                     // メインカラー（ダークネイビー - ボタンやアクセントに使用）

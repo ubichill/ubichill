@@ -122,7 +122,7 @@ export function EditorHierarchy({
                                         color: selected ? 'textOnPrimary' : 'textMuted',
                                         cursor: 'pointer',
                                         borderRadius: '4px',
-                                        _hover: { bg: 'rgba(0,0,0,0.08)' },
+                                        _hover: { bg: 'surfaceHover' },
                                     })}
                                 >
                                     {hidden ? (
@@ -206,7 +206,7 @@ export function EditorHierarchy({
                                         borderRadius: '4px',
                                         fontSize: '14px',
                                         lineHeight: '1',
-                                        _hover: { opacity: 1, bg: 'rgba(0,0,0,0.1)' },
+                                        _hover: { opacity: 1, bg: 'surfaceHover' },
                                     })}
                                 >
                                     ×

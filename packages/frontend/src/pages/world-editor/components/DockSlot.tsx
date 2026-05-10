@@ -65,7 +65,7 @@ export function DockSlot({ area, mobileVisible, mobileTitle, onMobileClose, chil
                 bg: 'surface',
                 overflow: 'hidden',
                 boxShadow: {
-                    base: isLeft ? '4px 0 16px rgba(0,0,0,0.2)' : '-4px 0 16px rgba(0,0,0,0.2)',
+                    base: isLeft ? 'drawerLeft' : 'drawerRight',
                     md: 'none',
                 },
             })}

@@ -340,7 +340,7 @@ export function WorldEditorPage() {
                         fontSize: '13px',
                         zIndex: 99999,
                         cursor: 'pointer',
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+                        boxShadow: 'toast',
                     })}
                 >
                     {api.error}

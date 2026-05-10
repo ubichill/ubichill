@@ -30,7 +30,7 @@ export function MobileRightHandle({ onClick }: MobileRightHandleProps) {
                 cursor: 'pointer',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: '-2px 2px 8px rgba(0,0,0,0.3)',
+                boxShadow: 'chipDrop',
                 _active: { opacity: 0.8 },
             })}
         >
