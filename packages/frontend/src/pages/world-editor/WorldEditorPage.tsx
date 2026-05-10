@@ -123,10 +123,15 @@ export function WorldEditorPage() {
         }));
     }, []);
 
-    /** エンティティ選択時にモバイル drawer も自動オープン (選択解除時はクローズ)。 */
+    /**
+     * エンティティ選択 (モバイル時のインスペクタ drawer 制御):
+     * - 選択時に drawer を自動展開すると、選択直後の移動・リサイズ操作の邪魔になるので**展開しない**。
+     *   ユーザーが必要に応じて右ハンドルから明示的に開く。
+     * - 選択解除時には drawer も閉じる（中身が空になるため）。
+     */
     const selectEntity = useCallback((index: number | null) => {
         setSelectedIndex(index);
-        setMobileRightOpen(index !== null);
+        if (index === null) setMobileRightOpen(false);
     }, []);
 
     const patchEntityTransform = useCallback(
