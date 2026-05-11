@@ -212,11 +212,8 @@ class InstanceManager {
     async getWorldEnvironment(worldId: string): Promise<WorldEnvironmentData> {
         const world = await worldRegistry.getWorld(worldId);
         if (world) {
-            // undefined を null に変換
             return {
                 backgroundColor: world.environment.backgroundColor,
-                backgroundImage: world.environment.backgroundImage ?? null,
-                bgm: world.environment.bgm ?? null,
                 worldSize: world.environment.worldSize,
             };
         }
@@ -228,7 +225,14 @@ class InstanceManager {
      */
     private toPublicInstance(
         dbInstance: Awaited<ReturnType<typeof instanceRepository.findById>> & object,
-        world: { id: string; version: string; displayName: string; thumbnail?: string },
+        world: {
+            id: string;
+            version: string;
+            displayName: string;
+            thumbnail?: string;
+            authorId: string;
+            authorName?: string;
+        },
     ): Instance {
         const access: InstanceAccess = {
             type: dbInstance.accessType,
@@ -248,6 +252,8 @@ class InstanceManager {
                 version: world.version,
                 displayName: world.displayName,
                 thumbnail: world.thumbnail,
+                authorId: world.authorId,
+                authorName: world.authorName,
             },
 
             access,

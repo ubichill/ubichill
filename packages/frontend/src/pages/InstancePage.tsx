@@ -40,38 +40,30 @@ export function InstancePage() {
 
         hasJoinedRef.current = true;
 
-        // インスタンスが見つからない場合はロビーに戻る
         const onJoinError = () => navigate('/');
 
-        // ロビーから来た場合は state に worldId が入っている
-        const stateWorldId = (location.state as { worldId?: string } | null)?.worldId;
-        // sessionStorage フォールバック: 直接 URL アクセス時に前回の worldId を復元
-        const cachedWorldId = sessionStorage.getItem(`instance:${id}:worldId`);
-
         const doJoin = (worldId: string) => {
-            sessionStorage.setItem(`instance:${id}:worldId`, worldId);
             joinWorld(session.user.name, worldId, id, onJoinError);
             setConnecting(false);
         };
 
+        // ロビーから来た場合は state に worldId が入っている。直接 URL 時は API から解決する
+        const stateWorldId = (location.state as { worldId?: string } | null)?.worldId;
         if (stateWorldId) {
             doJoin(stateWorldId);
-        } else if (cachedWorldId) {
-            doJoin(cachedWorldId);
-        } else {
-            // 直接 URL アクセス: API からインスタンス情報を取得して worldId を解決
-            fetch(`${API_BASE}/api/v1/instances/${id}`, { credentials: 'include' })
-                .then((r) => r.json())
-                .then((instance) => {
-                    const worldId = instance?.world?.id ?? instance?.worldId;
-                    if (!worldId) {
-                        navigate('/');
-                        return;
-                    }
-                    doJoin(worldId);
-                })
-                .catch(() => navigate('/'));
+            return;
         }
+        fetch(`${API_BASE}/api/v1/instances/${id}`, { credentials: 'include' })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((instance) => {
+                const worldId = instance?.world?.id;
+                if (!worldId) {
+                    navigate('/');
+                    return;
+                }
+                doJoin(worldId);
+            })
+            .catch(() => navigate('/'));
     }, [session, isPending, navigate, id, location.state, joinWorld]);
 
     if (isPending || connecting) {

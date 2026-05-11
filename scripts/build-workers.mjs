@@ -128,7 +128,10 @@ export async function buildWorker(pluginJsonPath) {
     for (const [entityType, entityEntry] of Object.entries(entityEntries)) {
         const workerRelPath = typeof entityEntry === 'string' ? entityEntry : entityEntry?.src;
         if (!workerRelPath) {
-            console.error(`❌ [${entityType}] src が指定されていません`);
+            // src なし = データエンティティ。worker をビルドせず manifest にメタだけ記録する。
+            const meta = typeof entityEntry === 'string' ? {} : entityEntry;
+            versionedEntities[entityType] = { ...meta };
+            console.log(`📋 [${entityType}] data-only (no worker)`);
             continue;
         }
 
@@ -188,6 +191,35 @@ export async function buildWorker(pluginJsonPath) {
 // エントリーポイント
 // ============================================================
 
+/**
+ * 全プラグインの index.json を作成する。
+ * エディタ等でローカル利用可能プラグインの一覧を取得するために使う。
+ * 各エントリは { id, name, version, kinds[] } 形式（plugin.json + バージョン付き manifest を集約）。
+ */
+function writePluginIndex(pluginJsonFiles) {
+    const entries = [];
+    for (const pluginJsonPath of pluginJsonFiles) {
+        const pluginJson = JSON.parse(readFileSync(pluginJsonPath, 'utf-8'));
+        const pluginId = pluginJson.id;
+        const pluginDirName = basename(dirname(pluginJsonPath));
+        const kinds = pluginJson.entities ? Object.keys(pluginJson.entities) : [];
+        entries.push({
+            id: pluginId,
+            name: pluginJson.name ?? pluginId,
+            version: pluginJson.version,
+            // dependencies に追加する際の repository path
+            repositoryPath: `plugins/${pluginDirName}`,
+            kinds,
+        });
+    }
+    const json = JSON.stringify(entries, null, 2);
+    const publicIndexPath = join(root, 'packages', 'frontend', 'public', 'plugins', 'index.json');
+    const distIndexPath = join(distPluginsDir, 'index.json');
+    writeFileSync(publicIndexPath, json, 'utf-8');
+    writeFileSync(distIndexPath, json, 'utf-8');
+    console.log(`📋 plugin index: ${entries.length} entries → public/plugins/index.json, dist/plugins/index.json`);
+}
+
 async function main() {
     console.log('🔨 Building plugin workers...');
     const pluginsDir = join(root, 'plugins');
@@ -201,6 +233,8 @@ async function main() {
     for (const pluginJsonPath of pluginJsonFiles) {
         await buildWorker(pluginJsonPath);
     }
+
+    writePluginIndex(pluginJsonFiles);
 
     console.log('🎉 All workers built.');
     console.log(`📦 CDN 配布用: dist/plugins/`);

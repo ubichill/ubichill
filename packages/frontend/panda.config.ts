@@ -26,6 +26,13 @@ export default defineConfig({
             tokens: {
                 shadows: {
                     card: { value: '0 8px 24px rgba(27, 42, 68, 0.08)' },
+                    // ワールドエディタ: sizeless chip 用
+                    selectionRing: { value: '0 0 0 2px {colors.primary}' },
+                    chipDrop: { value: '0 1px 4px rgba(0, 0, 0, 0.3)' },
+                    drawerLeft: { value: '4px 0 16px rgba(0, 0, 0, 0.2)' },
+                    drawerRight: { value: '-4px 0 16px rgba(0, 0, 0, 0.2)' },
+                    toast: { value: '0 4px 12px rgba(0, 0, 0, 0.2)' },
+                    modal: { value: '0 20px 60px rgba(0, 0, 0, 0.35)' },
                 },
                 colors: {
                     // メインカラー（ダークネイビー - ボタンやアクセントに使用）
@@ -73,6 +80,12 @@ export default defineConfig({
                     // プライマリ・エラー 半透明（フォーカスリング、スクロールバーなど）
                     primarySubtle: { value: 'rgba(27, 42, 68, 0.15)' },
                     errorSubtle: { value: 'rgba(192, 57, 43, 0.15)' },
+
+                    // ワールドエディタの選択 UI 用
+                    selectionDashed: { value: 'rgba(27, 42, 68, 0.5)' }, // 未選択時の点線アウトライン
+                    chipBg: { value: 'rgba(27, 42, 68, 0.5)' }, // sizeless chip の通常色
+                    chipBgActive: { value: 'rgba(27, 42, 68, 0.8)' }, // sizeless chip の選択時
+                    chipLabelBg: { value: 'rgba(27, 42, 68, 0.7)' }, // kind ラベルの非選択時背景
 
                     // ガラス効果（半透明白）
                     glassBg: { value: 'rgba(255, 255, 255, 0.72)' },

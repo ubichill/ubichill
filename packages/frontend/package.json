@@ -23,7 +23,8 @@
         "react-dom": "^19.2.5",
         "react-router-dom": "^7.5.0",
         "socket.io-client": "^4.8.3",
-        "upng-js": "^2.1.0"
+        "upng-js": "^2.1.0",
+        "yaml": "^2.8.2"
     },
     "devDependencies": {
         "@pandacss/dev": "^1.8.1",
@@ -31,7 +32,7 @@
         "@types/node": "^22",
         "@types/react": "^19",
         "@types/react-dom": "^19",
-        "@vitejs/plugin-react": "^4.4.1",
-        "vite": "^6.3.2"
+        "@vitejs/plugin-react": "^6.0.1",
+        "vite": "^8.0.10"
     }
 }

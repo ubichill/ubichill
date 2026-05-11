@@ -206,6 +206,10 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                     mx: 'auto',
                     mb: '4',
                     px: { base: '2', md: '0' },
+                    display: 'flex',
+                    flexDirection: 'column',
+                    flex: 1,
+                    minH: 0,
                 })}
             >
                 <div
@@ -218,6 +222,7 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                         flex: 1,
                         display: 'flex',
                         flexDirection: 'column',
+                        minH: 0,
                     })}
                 >
                     <h1
@@ -440,6 +445,78 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                                 >
                                     テンプレートを選択して新しいワールドを作成します
                                 </p>
+
+                                {/* 自分でワールドを作る / マイページ */}
+                                <div
+                                    className={css({
+                                        display: 'flex',
+                                        gap: '8px',
+                                        marginBottom: '16px',
+                                        flexWrap: 'wrap',
+                                    })}
+                                >
+                                    <button
+                                        type="button"
+                                        onClick={() => navigate('/worlds/new')}
+                                        className={css({
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            padding: '9px 16px',
+                                            backgroundColor: 'primary',
+                                            color: 'textOnPrimary',
+                                            border: 'none',
+                                            borderRadius: '10px',
+                                            fontSize: '13px',
+                                            fontWeight: '600',
+                                            cursor: 'pointer',
+                                            _hover: { opacity: 0.9 },
+                                        })}
+                                    >
+                                        <svg
+                                            width="14"
+                                            height="14"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="2"
+                                        >
+                                            <path d="M12 5v14M5 12h14" />
+                                        </svg>
+                                        自分でワールドを作る
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => navigate('/user/me')}
+                                        className={css({
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            padding: '9px 16px',
+                                            backgroundColor: 'secondary',
+                                            color: 'text',
+                                            border: 'none',
+                                            borderRadius: '10px',
+                                            fontSize: '13px',
+                                            fontWeight: '600',
+                                            cursor: 'pointer',
+                                            _hover: { opacity: 0.9 },
+                                        })}
+                                    >
+                                        <svg
+                                            width="14"
+                                            height="14"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="2"
+                                        >
+                                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                                            <circle cx="12" cy="7" r="4" />
+                                        </svg>
+                                        マイページ
+                                    </button>
+                                </div>
 
                                 {/* URL インポート */}
                                 <div

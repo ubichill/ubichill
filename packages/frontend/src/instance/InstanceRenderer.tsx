@@ -45,10 +45,6 @@ export const InstanceRenderer: React.FC = () => {
                 inset: 0,
                 overflow: 'auto',
                 backgroundColor: environment.backgroundColor,
-                backgroundImage: environment.backgroundImage ? `url(${environment.backgroundImage})` : undefined,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center center',
-                backgroundAttachment: 'fixed',
                 zIndex: Z_INDEX.INSTANCE_FRAME,
             }}
         >

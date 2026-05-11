@@ -36,7 +36,7 @@ export interface WorldContextType {
 // Context
 // ============================================
 
-const WorldContext = createContext<WorldContextType | null>(null);
+export const WorldContext = createContext<WorldContextType | null>(null);
 
 // ============================================
 // Provider

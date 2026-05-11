@@ -7,13 +7,40 @@
       "src": "./src/screen.worker.tsx",
       "capabilities": ["video:control", "scene:read", "scene:update", "net:broadcast"],
       "mediaTargets": ["main"],
-      "watchEntityTypes": ["video-player:screen"]
+      "watchEntityTypes": ["video-player:screen"],
+      "defaultTransform": { "x": 800, "y": 60, "z": 2, "w": 640, "h": 360 },
+      "dataFields": {
+        "playlist": {
+            "type": "json",
+            "default": [],
+            "label": "プレイリスト",
+            "help": "{ id, title, mode: 'live' | 'video' } の配列"
+        },
+        "currentIndex": { "type": "number", "default": 0, "label": "再生中インデックス" },
+        "isPlaying": { "type": "boolean", "default": false, "label": "再生中" },
+        "currentTime": { "type": "number", "default": 0, "label": "現在時刻 (秒)" },
+        "duration": { "type": "number", "default": 0, "label": "総再生時間 (秒)" },
+        "loop": {
+            "type": "enum",
+            "default": "none",
+            "options": ["none", "one", "all"],
+            "label": "ループ"
+        },
+        "shuffle": { "type": "boolean", "default": false, "label": "シャッフル" },
+        "apiBase": {
+            "type": "string",
+            "default": "/plugins/video-player/api",
+            "label": "API ベース URL"
+        }
+      }
     },
     "video-player:controls": {
       "src": "./src/controls.worker.tsx",
       "capabilities": ["ui:render", "net:fetch", "scene:read", "scene:update"],
       "mediaTargets": [],
-      "watchEntityTypes": ["video-player:screen"]
+      "watchEntityTypes": ["video-player:screen"],
+      "defaultTransform": { "x": 800, "y": 800, "z": 200, "w": 740, "h": 100 },
+      "dataFields": {}
     }
   }
 }

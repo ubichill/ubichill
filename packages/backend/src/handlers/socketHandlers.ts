@@ -28,6 +28,18 @@ import {
 type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents, InterServerEvents, SocketData>;
 
 /**
+ * ID 統一: User.id / userManager のキー / broadcast の userId は
+ * すべて DB の users.id (better-auth セッションの user.id) に統一する。
+ * これにより、フロントの currentUser.id と worldRecord.authorId が直接比較できる。
+ *
+ * NOTE: Socket.IO のルーミング・DM (socket.to(socket.id)) には引き続き socket.id を使う。
+ *       socket.id は接続単位、stableUserId はユーザー単位（同一ユーザーが複数 socket を持ちうる）。
+ */
+function stableUserId(socket: TypedSocket): string | undefined {
+    return socket.data.authUser?.id;
+}
+
+/**
  * ワールド参加イベントを処理
  */
 export function handleWorldJoin(socket: TypedSocket) {
@@ -97,12 +109,24 @@ export function handleWorldJoin(socket: TypedSocket) {
             return;
         }
 
-        // socket.id をユーザーIDとして使用する。
-        // cursor:moved / user:left / user:updated などすべてのイベントは socket.id で
-        // ユーザーを識別するため、User.id を socket.id に統一しないとクライアントの
-        // users Map が正しく更新されず、カーソルが動かない / 退出が反映されない。
+        // ID 統一: User.id = DB users.id (authUser.id)。socket.id は接続単位の別概念。
+        const userId = authUser.id;
+
+        // 同一ユーザーが既に同じ accountId で参加済みの場合、旧接続を切断して入れ替える
+        // （別タブで再接続したケース等）。userManager のキーが同じになるため必須。
+        const existing = userManager.getUser(userId);
+        if (existing) {
+            const sockets = await socket.nsp.fetchSockets();
+            for (const s of sockets) {
+                if (s.id !== socket.id && s.data.userId === userId) {
+                    s.disconnect(true);
+                }
+            }
+            userManager.removeUser(userId);
+        }
+
         const newUser: User = {
-            id: socket.id,
+            id: userId,
             ...user,
             name: usernameValidation.data,
             position: user.position || DEFAULTS.INITIAL_POSITION,
@@ -110,10 +134,10 @@ export function handleWorldJoin(socket: TypedSocket) {
         };
 
         // effectiveInstanceId が Socket.IO ルームキー兼エンティティ状態キー
-        userManager.addUser(socket.id, effectiveInstanceId, newUser);
+        userManager.addUser(userId, effectiveInstanceId, newUser);
         socket.join(effectiveInstanceId);
 
-        socket.data.userId = socket.id;
+        socket.data.userId = userId;
         socket.data.instanceId = effectiveInstanceId;
         socket.data.user = newUser;
 
@@ -122,7 +146,7 @@ export function handleWorldJoin(socket: TypedSocket) {
         const roomUsers = userManager.getUsersByWorld(effectiveInstanceId);
 
         // instanceId が要求と異なる場合（自動再作成）はクライアントへ新しい ID を通知
-        callback({ success: true, userId: socket.id, instanceId: effectiveInstanceId });
+        callback({ success: true, userId, instanceId: effectiveInstanceId });
 
         socket.emit('users:update', roomUsers);
 
@@ -182,15 +206,21 @@ export function handleCursorMove(socket: TypedSocket) {
             validatedState = stateValidation.data;
         }
 
+        const userId = stableUserId(socket);
+        if (!userId) {
+            socket.emit('error', '認証が必要です');
+            return;
+        }
+
         // 位置と状態を更新
-        const updated = userManager.updateUserPosition(socket.id, validation.data, validatedState);
+        const updated = userManager.updateUserPosition(userId, validation.data, validatedState);
         if (!updated) {
             socket.emit('error', 'ユーザーが見つかりません');
             return;
         }
 
         socket.to(instanceId).emit('cursor:moved', {
-            userId: socket.id,
+            userId,
             position: validation.data,
             state: validatedState,
         });
@@ -214,14 +244,20 @@ export function handleStatusUpdate(socket: TypedSocket) {
             return;
         }
 
-        const updated = userManager.updateUserStatus(socket.id, validation.data);
+        const userId = stableUserId(socket);
+        if (!userId) {
+            socket.emit('error', '認証が必要です');
+            return;
+        }
+
+        const updated = userManager.updateUserStatus(userId, validation.data);
         if (!updated) {
             socket.emit('error', 'ユーザーが見つかりません');
             return;
         }
 
         socket.to(instanceId).emit('status:changed', {
-            userId: socket.id,
+            userId,
             status: validation.data,
         });
     };
@@ -238,7 +274,13 @@ export function handleUserUpdate(socket: TypedSocket) {
             return;
         }
 
-        const updatedUser = userManager.updateUser(socket.id, patch);
+        const userId = stableUserId(socket);
+        if (!userId) {
+            socket.emit('error', '認証が必要です');
+            return;
+        }
+
+        const updatedUser = userManager.updateUser(userId, patch);
 
         if (!updatedUser) {
             socket.emit('error', 'ユーザーが見つかりません');
@@ -255,17 +297,18 @@ export function handleUserUpdate(socket: TypedSocket) {
 export function handleWorldLeave(socket: TypedSocket) {
     return async () => {
         const instanceId = socket.data.instanceId;
-        const user = userManager.removeUser(socket.id);
+        const userId = stableUserId(socket);
+        const user = userId ? userManager.removeUser(userId) : undefined;
 
         if (instanceId) {
             await instanceManager.updateUserCount(instanceId, -1);
         }
 
-        if (instanceId && user) {
+        if (instanceId && user && userId) {
             socket.leave(instanceId);
 
             const entities = getInstanceSnapshot(instanceId);
-            const userLockedEntities = entities.filter((e) => e.lockedBy === socket.id);
+            const userLockedEntities = entities.filter((e) => e.lockedBy === userId);
             userLockedEntities.forEach((entity) => {
                 patchEntity(instanceId, entity.id, {
                     lockedBy: null,
@@ -277,10 +320,8 @@ export function handleWorldLeave(socket: TypedSocket) {
                 });
             });
 
-            socket.to(instanceId).emit('user:left', socket.id);
-            logger.info(
-                `🚪 ユーザー「${user.name}」(${socket.id.substring(0, 8)}) がインスタンス「${instanceId}」から退出しました`,
-            );
+            socket.to(instanceId).emit('user:left', userId);
+            logger.info(`🚪 ユーザー「${user.name}」がインスタンス「${instanceId}」から退出しました`);
         }
 
         socket.data.instanceId = undefined;
@@ -294,33 +335,28 @@ export function handleWorldLeave(socket: TypedSocket) {
 export function handleDisconnect(socket: TypedSocket) {
     return async () => {
         const instanceId = socket.data.instanceId;
-        const user = userManager.removeUser(socket.id);
+        const userId = stableUserId(socket);
+        const user = userId ? userManager.removeUser(userId) : undefined;
 
         if (instanceId) {
             await instanceManager.updateUserCount(instanceId, -1);
         }
 
-        if (instanceId && user) {
+        if (instanceId && user && userId) {
             const entities = getInstanceSnapshot(instanceId);
-            const userLockedEntities = entities.filter((e) => e.lockedBy === socket.id);
+            const userLockedEntities = entities.filter((e) => e.lockedBy === userId);
 
             userLockedEntities.forEach((entity) => {
                 patchEntity(instanceId, entity.id, {
                     lockedBy: null,
-                    data: {
-                        ...(entity.data as Record<string, unknown>),
-                        isHeld: false,
-                    },
+                    data: { ...(entity.data as Record<string, unknown>), isHeld: false },
                 });
 
                 socket.to(instanceId).emit('entity:patched', {
                     entityId: entity.id,
                     patch: {
                         lockedBy: null,
-                        data: {
-                            ...(entity.data as Record<string, unknown>),
-                            isHeld: false,
-                        },
+                        data: { ...(entity.data as Record<string, unknown>), isHeld: false },
                     },
                 });
             });
@@ -331,10 +367,8 @@ export function handleDisconnect(socket: TypedSocket) {
                 );
             }
 
-            socket.to(instanceId).emit('user:left', socket.id);
-            logger.info(
-                `👋 ユーザー「${user.name}」(${socket.id.substring(0, 8)}) がインスタンス「${instanceId}」から退出しました`,
-            );
+            socket.to(instanceId).emit('user:left', userId);
+            logger.info(`👋 ユーザー「${user.name}」がインスタンス「${instanceId}」から退出しました`);
         } else {
             logger.info(`👋 ユーザーが切断しました: ${socket.id.substring(0, 8)}`);
         }
