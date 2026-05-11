@@ -1,0 +1,33 @@
+[
+  {
+    "id": "avatar",
+    "name": "Avatar",
+    "version": "1.0.0",
+    "repositoryPath": "plugins/avatar",
+    "kinds": [
+      "avatar:cursor",
+      "avatar:settings"
+    ]
+  },
+  {
+    "id": "pen",
+    "name": "Pen",
+    "version": "2.0.0",
+    "repositoryPath": "plugins/pen",
+    "kinds": [
+      "pen:canvas",
+      "pen:tray",
+      "pen:pen"
+    ]
+  },
+  {
+    "id": "video-player",
+    "name": "VideoPlayer",
+    "version": "2.1.0",
+    "repositoryPath": "plugins/video-player",
+    "kinds": [
+      "video-player:screen",
+      "video-player:controls"
+    ]
+  }
+]
