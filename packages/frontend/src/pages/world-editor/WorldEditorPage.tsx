@@ -330,12 +330,11 @@ export function WorldEditorPage() {
                 {selectedEntity && selectedEntityIndex !== null ? (
                     <EntityInspector
                         entity={selectedEntity}
-                        selectedComponentIndex={selectedComponentIndex}
+                        initiallyExpandedComponentIndex={selectedComponentIndex}
                         availableKinds={kinds}
                         onChange={(updater) =>
                             updateEntities((prev) => prev.map((e, i) => (i === selectedEntityIndex ? updater(e) : e)))
                         }
-                        onSelectComponent={selectComponent}
                         onAddComponent={(type) => handleAddComponentToEntity(selectedEntityIndex, type)}
                         onDeleteComponent={(ci) => handleDeleteComponent(selectedEntityIndex, ci)}
                         onDeleteEntity={() => handleDeleteEntity(selectedEntityIndex)}

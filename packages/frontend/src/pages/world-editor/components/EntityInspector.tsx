@@ -5,31 +5,21 @@ import type { AvailableEntityKind, DataFieldSpec, DataFields } from '../hooks/us
 
 interface EntityInspectorProps {
     entity: InitialEntity;
-    /** 選択中のコンポーネント index（null なら Entity 全体を表示） */
-    selectedComponentIndex: number | null;
-    /** 全 manifest から得た component カタログ。dataFields / displayName を引く */
+    /** Hierarchy 等から渡される「最初に展開しておく Component の index」。 */
+    initiallyExpandedComponentIndex: number | null;
     availableKinds: AvailableEntityKind[];
     onChange: (updater: (prev: InitialEntity) => InitialEntity) => void;
-    onSelectComponent: (componentIndex: number | null) => void;
     onAddComponent: (type: string) => void;
     onDeleteComponent: (componentIndex: number) => void;
     onDeleteEntity: () => void;
     onRenameEntity: (newId: string) => void;
 }
 
-/**
- * 現代的 ECS の Inspector。
- *
- * - 上段: Entity (GameObject) の id + transform を編集
- * - 中段: Components 一覧（追加・削除・選択）
- * - 下段: 選択中 Component の data フォーム
- */
 export function EntityInspector({
     entity,
-    selectedComponentIndex,
+    initiallyExpandedComponentIndex,
     availableKinds,
     onChange,
-    onSelectComponent,
     onAddComponent,
     onDeleteComponent,
     onDeleteEntity,
@@ -38,12 +28,6 @@ export function EntityInspector({
     const t = entity.transform;
     const updateTransform = (patch: Partial<typeof t>) =>
         onChange((prev) => ({ ...prev, transform: { ...prev.transform, ...patch } }));
-
-    const selectedComponent =
-        selectedComponentIndex !== null ? (entity.components[selectedComponentIndex] ?? null) : null;
-    const selectedComponentKind = selectedComponent
-        ? (availableKinds.find((k) => k.kind === selectedComponent.type) ?? null)
-        : null;
 
     return (
         <div
@@ -58,14 +42,7 @@ export function EntityInspector({
         >
             <EntityHeader entity={entity} onDelete={onDeleteEntity} onRename={onRenameEntity} />
 
-            <Section label="タグ">
-                <TagsEditor
-                    tags={entity.tags ?? []}
-                    onChange={(next) => onChange((prev) => ({ ...prev, tags: next }))}
-                />
-            </Section>
-
-            <Section label="位置・サイズ">
+            <Section label="Transform">
                 <div className={css({ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '2' })}>
                     <NumField label="X" value={t.x} onChange={(v) => updateTransform({ x: v })} />
                     <NumField label="Y" value={t.y} onChange={(v) => updateTransform({ y: v })} />
@@ -80,33 +57,266 @@ export function EntityInspector({
                 </div>
             </Section>
 
-            <Section label="コンポーネント">
-                <ComponentList
-                    components={entity.components}
-                    selectedIndex={selectedComponentIndex}
-                    onSelect={onSelectComponent}
-                    onDelete={onDeleteComponent}
-                />
-                <ComponentPicker
-                    availableKinds={availableKinds}
-                    existingTypes={new Set(entity.components.map((c) => c.type))}
-                    onAdd={onAddComponent}
+            <Section label="Tags">
+                <TagsEditor
+                    tags={entity.tags ?? []}
+                    onChange={(next) => onChange((prev) => ({ ...prev, tags: next }))}
                 />
             </Section>
 
-            {selectedComponent && selectedComponentIndex !== null && (
-                <Section label={`データ: ${selectedComponent.type}`}>
+            <div className={css({ display: 'flex', flexDirection: 'column', gap: '2' })}>
+                <div className={css({ fontSize: '12px', fontWeight: '600', color: 'text' })}>Components</div>
+                {entity.components.length === 0 ? (
+                    <div className={css({ fontSize: '12px', color: 'textSubtle' })}>
+                        コンポーネントがありません。下から追加するか、アセットからドロップしてください。
+                    </div>
+                ) : (
+                    entity.components.map((c, ci) => (
+                        <ComponentCard
+                            key={`${c.type}-${ci}`}
+                            component={c}
+                            componentIndex={ci}
+                            dataFields={availableKinds.find((k) => k.kind === c.type)?.dataFields}
+                            initiallyExpanded={ci === initiallyExpandedComponentIndex}
+                            onChange={onChange}
+                            onDelete={() => onDeleteComponent(ci)}
+                        />
+                    ))
+                )}
+                <ComponentPicker availableKinds={availableKinds} onAdd={onAddComponent} />
+            </div>
+        </div>
+    );
+}
+
+// ============================================
+// Component カード (Unity 風アコーディオン)
+// ============================================
+
+interface ComponentCardProps {
+    component: EntityComponentDef;
+    componentIndex: number;
+    dataFields?: DataFields;
+    initiallyExpanded: boolean;
+    onChange: (updater: (prev: InitialEntity) => InitialEntity) => void;
+    onDelete: () => void;
+}
+
+function ComponentCard({
+    component,
+    componentIndex,
+    dataFields,
+    initiallyExpanded,
+    onChange,
+    onDelete,
+}: ComponentCardProps) {
+    const [expanded, setExpanded] = useState(initiallyExpanded);
+
+    useEffect(() => {
+        if (initiallyExpanded) setExpanded(true);
+    }, [initiallyExpanded]);
+
+    return (
+        <div
+            className={css({
+                border: '1px solid',
+                borderColor: 'border',
+                borderRadius: '8px',
+                bg: 'background',
+                overflow: 'hidden',
+            })}
+        >
+            <div
+                onClick={() => setExpanded((p) => !p)}
+                className={css({
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 10px',
+                    cursor: 'pointer',
+                    _hover: { bg: 'surfaceHover' },
+                })}
+            >
+                <Chevron open={expanded} />
+                <span className={css({ flex: 1, fontSize: '13px', fontWeight: '600', color: 'text' })}>
+                    {component.type}
+                </span>
+                <button
+                    type="button"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete();
+                    }}
+                    title="このコンポーネントを削除"
+                    className={css({
+                        width: '22px',
+                        height: '22px',
+                        bg: 'transparent',
+                        color: 'errorText',
+                        border: '1px solid',
+                        borderColor: 'border',
+                        borderRadius: '4px',
+                        fontSize: '12px',
+                        cursor: 'pointer',
+                        _hover: { borderColor: 'errorLight' },
+                    })}
+                >
+                    ×
+                </button>
+            </div>
+            {expanded && (
+                <div
+                    className={css({
+                        padding: '10px',
+                        borderTop: '1px solid',
+                        borderColor: 'border',
+                        bg: 'surface',
+                    })}
+                >
                     <ComponentDataEditor
-                        component={selectedComponent}
-                        componentIndex={selectedComponentIndex}
-                        dataFields={selectedComponentKind?.dataFields}
+                        component={component}
+                        componentIndex={componentIndex}
+                        dataFields={dataFields}
                         onChange={onChange}
                     />
-                </Section>
+                </div>
             )}
         </div>
     );
 }
+
+// ============================================
+// Component data エディタ (フォーム + JSON タブ)
+// ============================================
+
+function ComponentDataEditor({
+    component,
+    componentIndex,
+    dataFields,
+    onChange,
+}: {
+    component: EntityComponentDef;
+    componentIndex: number;
+    dataFields?: DataFields;
+    onChange: (updater: (prev: InitialEntity) => InitialEntity) => void;
+}) {
+    const [dataTab, setDataTab] = useState<'form' | 'json'>('form');
+    const [jsonText, setJsonText] = useState(() => JSON.stringify(component.data ?? {}, null, 2));
+    const [jsonError, setJsonError] = useState('');
+
+    useEffect(() => {
+        setJsonText(JSON.stringify(component.data ?? {}, null, 2));
+        setJsonError('');
+    }, [component]);
+
+    const data = (component.data as Record<string, unknown> | undefined) ?? {};
+    const setData = (next: Record<string, unknown>) => {
+        onChange((prev) => ({
+            ...prev,
+            components: prev.components.map((c, i) => (i === componentIndex ? { ...c, data: next } : c)),
+        }));
+        setJsonText(JSON.stringify(next, null, 2));
+        setJsonError('');
+    };
+
+    return (
+        <div className={css({ display: 'flex', flexDirection: 'column', gap: '2' })}>
+            <div className={css({ display: 'flex', gap: '4px', alignSelf: 'flex-end' })}>
+                <MiniTab active={dataTab === 'form'} onClick={() => setDataTab('form')} label="フォーム" />
+                <MiniTab active={dataTab === 'json'} onClick={() => setDataTab('json')} label="JSON" />
+            </div>
+            {dataTab === 'form' ? (
+                <DataFormFields data={data} dataFields={dataFields} onChange={setData} />
+            ) : (
+                <DataJsonField
+                    text={jsonText}
+                    error={jsonError}
+                    onChange={(text) => {
+                        setJsonText(text);
+                        try {
+                            const parsed = JSON.parse(text || '{}') as Record<string, unknown>;
+                            onChange((prev) => ({
+                                ...prev,
+                                components: prev.components.map((c, i) =>
+                                    i === componentIndex ? { ...c, data: parsed } : c,
+                                ),
+                            }));
+                            setJsonError('');
+                        } catch (err) {
+                            setJsonError(err instanceof Error ? err.message : 'JSON parse error');
+                        }
+                    }}
+                />
+            )}
+        </div>
+    );
+}
+
+// ============================================
+// Component 追加ピッカー (重複可)
+// ============================================
+
+function ComponentPicker({
+    availableKinds,
+    onAdd,
+}: {
+    availableKinds: AvailableEntityKind[];
+    onAdd: (type: string) => void;
+}) {
+    const [type, setType] = useState('');
+    const candidates = useMemo(() => availableKinds.map((k) => k.kind).sort(), [availableKinds]);
+
+    const handleAdd = () => {
+        if (!type) return;
+        onAdd(type);
+        setType('');
+    };
+
+    return (
+        <div
+            className={css({
+                display: 'grid',
+                gridTemplateColumns: '1fr auto',
+                gap: '6px',
+                pt: '2',
+                borderTop: '1px dashed',
+                borderColor: 'border',
+            })}
+        >
+            <select value={type} onChange={(e) => setType(e.target.value)} className={inputStyle}>
+                <option value="">+ コンポーネントを選択...</option>
+                {candidates.map((k) => (
+                    <option key={k} value={k}>
+                        {k}
+                    </option>
+                ))}
+            </select>
+            <button
+                type="button"
+                onClick={handleAdd}
+                disabled={!type}
+                className={css({
+                    padding: '6px 12px',
+                    bg: 'primary',
+                    color: 'textOnPrimary',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    _disabled: { opacity: 0.4, cursor: 'not-allowed' },
+                    _hover: { opacity: 0.9 },
+                })}
+            >
+                追加
+            </button>
+        </div>
+    );
+}
+
+// ============================================
+// Tags
+// ============================================
 
 const TAG_PATTERN = /^[a-z0-9_-]+$/;
 
@@ -312,222 +522,6 @@ function EntityHeader({
 }
 
 // ============================================
-// Component 一覧
-// ============================================
-
-function ComponentList({
-    components,
-    selectedIndex,
-    onSelect,
-    onDelete,
-}: {
-    components: EntityComponentDef[];
-    selectedIndex: number | null;
-    onSelect: (i: number | null) => void;
-    onDelete: (i: number) => void;
-}) {
-    if (components.length === 0) {
-        return (
-            <div className={css({ fontSize: '12px', color: 'textSubtle' })}>
-                コンポーネントがありません。下から追加してください。
-            </div>
-        );
-    }
-    return (
-        <div className={css({ display: 'flex', flexDirection: 'column', gap: '1' })}>
-            {components.map((c, i) => {
-                const selected = i === selectedIndex;
-                return (
-                    <div
-                        key={`${c.type}-${i}`}
-                        onClick={() => onSelect(selected ? null : i)}
-                        className={css({
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            padding: '6px 8px',
-                            borderRadius: '6px',
-                            cursor: 'pointer',
-                            bg: selected ? 'primarySubtle' : 'background',
-                            color: selected ? 'primary' : 'text',
-                            border: '1px solid',
-                            borderColor: selected ? 'primary' : 'border',
-                            _hover: { borderColor: 'primary' },
-                        })}
-                    >
-                        <span
-                            className={css({
-                                flex: 1,
-                                fontSize: '12px',
-                                fontWeight: '500',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                            })}
-                        >
-                            {c.type}
-                        </span>
-                        <button
-                            type="button"
-                            onClick={(ev) => {
-                                ev.stopPropagation();
-                                onDelete(i);
-                            }}
-                            title="このコンポーネントを削除"
-                            className={css({
-                                padding: '2px 6px',
-                                bg: 'transparent',
-                                color: 'errorText',
-                                border: '1px solid',
-                                borderColor: 'border',
-                                borderRadius: '4px',
-                                fontSize: '11px',
-                                cursor: 'pointer',
-                                _hover: { borderColor: 'errorLight' },
-                            })}
-                        >
-                            ×
-                        </button>
-                    </div>
-                );
-            })}
-        </div>
-    );
-}
-
-// ============================================
-// Component 追加ピッカー
-// ============================================
-
-function ComponentPicker({
-    availableKinds,
-    existingTypes,
-    onAdd,
-}: {
-    availableKinds: AvailableEntityKind[];
-    existingTypes: Set<string>;
-    onAdd: (type: string) => void;
-}) {
-    const [type, setType] = useState('');
-    const candidates = useMemo(() => availableKinds.map((k) => k.kind).sort(), [availableKinds]);
-
-    const handleAdd = () => {
-        if (!type) return;
-        onAdd(type);
-        setType('');
-    };
-
-    return (
-        <div
-            className={css({
-                display: 'grid',
-                gridTemplateColumns: '1fr auto',
-                gap: '6px',
-                pt: '3',
-                borderTop: '1px dashed',
-                borderColor: 'border',
-            })}
-        >
-            <select value={type} onChange={(e) => setType(e.target.value)} className={inputStyle}>
-                <option value="">+ コンポーネントを選択...</option>
-                {candidates.map((k) => (
-                    <option key={k} value={k} disabled={existingTypes.has(k)}>
-                        {k}
-                        {existingTypes.has(k) ? ' (追加済み)' : ''}
-                    </option>
-                ))}
-            </select>
-            <button
-                type="button"
-                onClick={handleAdd}
-                disabled={!type}
-                className={css({
-                    padding: '6px 12px',
-                    bg: 'primary',
-                    color: 'textOnPrimary',
-                    border: 'none',
-                    borderRadius: '6px',
-                    fontSize: '12px',
-                    fontWeight: '600',
-                    cursor: 'pointer',
-                    _disabled: { opacity: 0.4, cursor: 'not-allowed' },
-                    _hover: { opacity: 0.9 },
-                })}
-            >
-                追加
-            </button>
-        </div>
-    );
-}
-
-// ============================================
-// Component data エディタ (フォーム + JSON タブ)
-// ============================================
-
-function ComponentDataEditor({
-    component,
-    componentIndex,
-    dataFields,
-    onChange,
-}: {
-    component: EntityComponentDef;
-    componentIndex: number;
-    dataFields?: DataFields;
-    onChange: (updater: (prev: InitialEntity) => InitialEntity) => void;
-}) {
-    const [dataTab, setDataTab] = useState<'form' | 'json'>('form');
-    const [jsonText, setJsonText] = useState(() => JSON.stringify(component.data ?? {}, null, 2));
-    const [jsonError, setJsonError] = useState('');
-
-    useEffect(() => {
-        setJsonText(JSON.stringify(component.data ?? {}, null, 2));
-        setJsonError('');
-    }, [component]);
-
-    const data = (component.data as Record<string, unknown> | undefined) ?? {};
-    const setData = (next: Record<string, unknown>) => {
-        onChange((prev) => ({
-            ...prev,
-            components: prev.components.map((c, i) => (i === componentIndex ? { ...c, data: next } : c)),
-        }));
-        setJsonText(JSON.stringify(next, null, 2));
-        setJsonError('');
-    };
-
-    return (
-        <div className={css({ display: 'flex', flexDirection: 'column', gap: '2' })}>
-            <div className={css({ display: 'flex', gap: '4px', alignSelf: 'flex-end' })}>
-                <MiniTab active={dataTab === 'form'} onClick={() => setDataTab('form')} label="フォーム" />
-                <MiniTab active={dataTab === 'json'} onClick={() => setDataTab('json')} label="JSON" />
-            </div>
-            {dataTab === 'form' ? (
-                <DataFormFields data={data} dataFields={dataFields} onChange={setData} />
-            ) : (
-                <DataJsonField
-                    text={jsonText}
-                    error={jsonError}
-                    onChange={(text) => {
-                        setJsonText(text);
-                        try {
-                            const parsed = JSON.parse(text || '{}') as Record<string, unknown>;
-                            onChange((prev) => ({
-                                ...prev,
-                                components: prev.components.map((c, i) =>
-                                    i === componentIndex ? { ...c, data: parsed } : c,
-                                ),
-                            }));
-                            setJsonError('');
-                        } catch (err) {
-                            setJsonError(err instanceof Error ? err.message : 'JSON parse error');
-                        }
-                    }}
-                />
-            )}
-        </div>
-    );
-}
-
-// ============================================
 // Data フォーム編集
 // ============================================
 
@@ -625,10 +619,6 @@ function DataFormFields({
         </div>
     );
 }
-
-// ============================================
-// 宣言フィールド: 型に応じた input
-// ============================================
 
 function DeclaredFieldRow({
     fieldKey,
@@ -979,6 +969,10 @@ function DataJsonField({ text, error, onChange }: { text: string; error: string;
     );
 }
 
+// ============================================
+// 共通: NumField / Section / MiniTab / Chevron
+// ============================================
+
 function NumField({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
     return (
         <label className={css({ display: 'flex', flexDirection: 'column', gap: '1' })}>
@@ -996,15 +990,7 @@ function NumField({ label, value, onChange }: { label: string; value: number; on
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
     return (
         <div className={css({ display: 'flex', flexDirection: 'column', gap: '2' })}>
-            <div
-                className={css({
-                    fontSize: '12px',
-                    fontWeight: '600',
-                    color: 'text',
-                })}
-            >
-                {label}
-            </div>
+            <div className={css({ fontSize: '12px', fontWeight: '600', color: 'text' })}>{label}</div>
             {children}
         </div>
     );
@@ -1030,6 +1016,23 @@ function MiniTab({ active, onClick, label }: { active: boolean; onClick: () => v
         >
             {label}
         </button>
+    );
+}
+
+function Chevron({ open }: { open: boolean }) {
+    return (
+        <svg
+            width="10"
+            height="10"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            style={{ transform: open ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }}
+            aria-hidden="true"
+        >
+            <path d="M9 18l6-6-6-6" />
+        </svg>
     );
 }
 
