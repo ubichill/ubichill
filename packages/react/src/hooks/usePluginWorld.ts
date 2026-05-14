@@ -1,12 +1,5 @@
 /**
- * usePluginWorld
- *
- * Worker の Ubi.world.* RPC を処理するハンドラ群を構築する。
- *
- * 責務:
- * - onGetEntity / onQueryEntities（同期読み取り）
- * - onCreateEntity / onUpdateEntity / onDestroyEntity（非同期書き込み）
- * - stale closure を防ぐための ref 管理
+ * Ubi.world.* RPC のハンドラ群。watchScope='entity' なら同 GameObject 内に絞る。
  */
 
 import type { HostHandlers } from '@ubichill/sandbox';
@@ -14,10 +7,10 @@ import type { WorldEntity } from '@ubichill/shared';
 import { useEffect, useRef } from 'react';
 import { useWorld } from './useWorld';
 
-export function usePluginWorld(): Pick<
-    HostHandlers,
-    'onGetEntity' | 'onQueryEntities' | 'onCreateEntity' | 'onUpdateEntity' | 'onDestroyEntity'
-> {
+export function usePluginWorld(
+    scope: 'entity' | 'world' = 'entity',
+    gameObjectId?: string,
+): Pick<HostHandlers, 'onGetEntity' | 'onQueryEntities' | 'onCreateEntity' | 'onUpdateEntity' | 'onDestroyEntity'> {
     const { entities, createEntity, patchEntity, deleteEntity } = useWorld();
 
     const worldOpsRef = useRef({ createEntity, patchEntity, deleteEntity });
@@ -30,10 +23,24 @@ export function usePluginWorld(): Pick<
         entitiesRef.current = entities;
     });
 
+    const scopeRef = useRef({ scope, gameObjectId });
+    useEffect(() => {
+        scopeRef.current = { scope, gameObjectId };
+    });
+
+    const isVisible = (e: WorldEntity): boolean => {
+        const s = scopeRef.current;
+        if (s.scope === 'world' || !s.gameObjectId) return true;
+        return e.gameObjectId === s.gameObjectId;
+    };
+
     return {
-        onGetEntity: (id: string): WorldEntity | undefined => entitiesRef.current.get(id),
+        onGetEntity: (id: string): WorldEntity | undefined => {
+            const e = entitiesRef.current.get(id);
+            return e && isVisible(e) ? e : undefined;
+        },
         onQueryEntities: (entityType: string): WorldEntity[] =>
-            Array.from(entitiesRef.current.values()).filter((e) => e.type === entityType),
+            Array.from(entitiesRef.current.values()).filter((e) => e.type === entityType && isVisible(e)),
         onCreateEntity: async (entity: Omit<WorldEntity, 'id'>): Promise<WorldEntity> => {
             const result = await worldOpsRef.current.createEntity(
                 entity.type,

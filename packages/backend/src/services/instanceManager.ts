@@ -1,10 +1,40 @@
 import { instanceRepository } from '@ubichill/db';
-import type { CreateInstanceRequest, Instance, InstanceAccess, WorldEnvironmentData } from '@ubichill/shared';
+import type {
+    CreateInstanceRequest,
+    InitialEntity,
+    Instance,
+    InstanceAccess,
+    WorldEntity,
+    WorldEnvironmentData,
+} from '@ubichill/shared';
 import { DEFAULTS } from '@ubichill/shared';
 import bcrypt from 'bcryptjs';
 import { logger } from '../utils/logger';
 import { clearInstanceState, createEntity } from './instanceState';
 import { worldRegistry } from './worldRegistry';
+
+/** GameObject を 1 Component = 1 WorldEntity に展開する純関数。 */
+function flattenGameObject(gameObject: InitialEntity): Array<Omit<WorldEntity, 'id'> & { id: string }> {
+    const t = gameObject.transform;
+    const transform: WorldEntity['transform'] = {
+        x: t.x,
+        y: t.y,
+        z: t.z ?? 0,
+        w: t.w ?? 100,
+        h: t.h ?? 100,
+        scale: t.scale ?? 1,
+        rotation: t.rotation ?? 0,
+    };
+    return (gameObject.components ?? []).map((c, i) => ({
+        id: `${gameObject.id}::${i}`,
+        type: c.type,
+        gameObjectId: gameObject.id,
+        ownerId: null,
+        lockedBy: null,
+        transform,
+        data: c.data ?? {},
+    }));
+}
 
 /**
  * インスタンスマネージャー
@@ -40,27 +70,17 @@ class InstanceManager {
             passwordHash,
         });
 
-        // ワールド定義の initialEntities からインスタンスのエンティティ初期状態を配置
+        // ワールド定義の initialEntities (GameObject + components[]) を flat WorldEntity に展開して配置
         if (world.initialEntities && world.initialEntities.length > 0) {
-            for (const entityDef of world.initialEntities) {
-                createEntity(dbInstance.id, {
-                    type: entityDef.kind,
-                    ownerId: null,
-                    lockedBy: null,
-                    transform: {
-                        x: entityDef.transform.x,
-                        y: entityDef.transform.y,
-                        z: entityDef.transform.z,
-                        w: entityDef.transform.w ?? 100,
-                        h: entityDef.transform.h ?? 100,
-                        scale: entityDef.transform.scale ?? 1,
-                        rotation: entityDef.transform.rotation,
-                    },
-                    data: entityDef.data ?? {},
-                });
+            let placed = 0;
+            for (const gameObject of world.initialEntities) {
+                for (const flat of flattenGameObject(gameObject)) {
+                    createEntity(dbInstance.id, flat);
+                    placed += 1;
+                }
             }
             logger.info(
-                `インスタンス ${dbInstance.id} にinitialEntities ${world.initialEntities.length}件を配置しました`,
+                `インスタンス ${dbInstance.id} に GameObject ${world.initialEntities.length}件 (Component ${placed}件) を配置しました`,
             );
         }
 
@@ -111,25 +131,15 @@ class InstanceManager {
     async reinitializeEntities(instanceId: string, worldId: string): Promise<void> {
         const world = await worldRegistry.getWorld(worldId);
         if (!world?.initialEntities?.length) return;
-        for (const entityDef of world.initialEntities) {
-            createEntity(instanceId, {
-                type: entityDef.kind,
-                ownerId: null,
-                lockedBy: null,
-                transform: {
-                    x: entityDef.transform.x,
-                    y: entityDef.transform.y,
-                    z: entityDef.transform.z,
-                    w: entityDef.transform.w ?? 100,
-                    h: entityDef.transform.h ?? 100,
-                    scale: entityDef.transform.scale ?? 1,
-                    rotation: entityDef.transform.rotation,
-                },
-                data: entityDef.data ?? {},
-            });
+        let placed = 0;
+        for (const gameObject of world.initialEntities) {
+            for (const flat of flattenGameObject(gameObject)) {
+                createEntity(instanceId, flat);
+                placed += 1;
+            }
         }
         logger.info(
-            `インスタンス ${instanceId} のエンティティ状態を再初期化しました (${world.initialEntities.length}件)`,
+            `インスタンス ${instanceId} のエンティティ状態を再初期化しました (GameObject ${world.initialEntities.length}件 → Component ${placed}件)`,
         );
     }
 

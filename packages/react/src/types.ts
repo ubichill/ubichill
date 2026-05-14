@@ -46,6 +46,12 @@ export interface WorkerPluginDefinition {
      */
     watchEntityTypes?: string[];
     /**
+     * watchEntityTypes / queryEntities のスコープ。
+     * 'entity' (default): 同じ GameObject 内の Component インスタンスのみ可視。
+     * 'world': ワールド全体を watch (旧挙動)。
+     */
+    watchScope?: 'entity' | 'world';
+    /**
      * Host が生成して Worker が操作する <video> 要素のターゲット名リスト。
      * Worker は `Ubi.media.load(url, targetId)` で再生を指示する。
      * 受け取れるイベント: media:timeUpdate / media:ended / media:error / media:loaded

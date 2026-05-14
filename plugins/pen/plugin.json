@@ -2,23 +2,24 @@
   "id": "pen",
   "name": "Pen",
   "version": "2.0.0",
-  "entities": {
-    "pen:canvas": {
+  "components": {
+    "canvas": {
       "src": "./src/canvas.worker.ts",
       "capabilities": ["scene:read", "scene:update", "ui:render", "net:broadcast", "canvas:draw"],
       "canvasTargets": ["drawing"],
       "watchEntityTypes": ["pen:stroke", "pen:pen"],
+      "watchScope": "world",
       "defaultTransform": { "x": 0, "y": 0, "z": 5000 },
       "dataFields": {}
     },
-    "pen:tray": {
+    "tray": {
       "src": "./src/tray.worker.tsx",
       "capabilities": ["scene:read", "scene:update", "ui:render", "net:host-message"],
       "watchEntityTypes": ["pen:pen"],
       "defaultTransform": { "x": 20, "y": 20, "z": 1000, "w": 60, "h": 240 },
       "dataFields": {}
     },
-    "pen:pen": {
+    "pen": {
       "defaultTransform": { "x": 0, "y": 0, "z": 1 },
       "dataFields": {
         "color": { "type": "color", "default": "#1a1a1a", "label": "ペンの色" },

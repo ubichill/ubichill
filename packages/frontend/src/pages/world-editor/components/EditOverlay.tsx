@@ -1,6 +1,7 @@
 import type { InitialEntity } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { css } from '@/styled-system/css';
+import { COMPONENT_DRAG_MIME } from '../lib/dnd';
 import { applyDrag, type DragMode, type DragState } from '../lib/dragHelpers';
 
 interface EditOverlayProps {
@@ -9,20 +10,22 @@ interface EditOverlayProps {
     hiddenIndices?: Set<number>;
     onSelect: (index: number | null) => void;
     onPatchTransform: (index: number, patch: Partial<InitialEntity['transform']>) => void;
+    /** Component カードをステージ上の Entity に drop したときの追加。 */
+    onDropComponent: (entityIndex: number, componentType: string) => void;
 }
 
 /**
- * world 座標系に絶対配置される編集オーバーレイ。
- * 各エンティティに矩形ハンドルを重ね、ドラッグで移動・リサイズできる。
- *
- * 編集モード中はプラグイン UI への直接操作をブロックする「シールド」を兼ねる。
- * pointer-events: auto で全クリックを overlay が吸収し、エンティティハンドル以外
- * (背景) は onSelect(null) で選択解除する。
- *
- * 色は inline style ではなく className に統一し、Panda CSS トークンで管理する。
- * 座標・サイズ・z-index など「エンティティごとに動的に変わる値」のみ style で渡す。
+ * world 座標系の編集オーバーレイ。各 Entity に矩形ハンドルを重ねて移動・リサイズし、
+ * 編集モード中はプラグイン UI への直接操作をシールドする。
  */
-export function EditOverlay({ entities, selectedIndex, hiddenIndices, onSelect, onPatchTransform }: EditOverlayProps) {
+export function EditOverlay({
+    entities,
+    selectedIndex,
+    hiddenIndices,
+    onSelect,
+    onPatchTransform,
+    onDropComponent,
+}: EditOverlayProps) {
     const [drag, setDrag] = useState<DragState | null>(null);
 
     useEffect(() => {
@@ -67,26 +70,28 @@ export function EditOverlay({ entities, selectedIndex, hiddenIndices, onSelect, 
                         index: i,
                         mode,
                         startClient: { x: ev.clientX, y: ev.clientY },
-                        // サイズなしの場合は drag 計算用に最小サイズを与える（実 transform の w/h は変えない）
                         startTransform: { x: t.x, y: t.y, w: sizeless ? 0 : w, h: sizeless ? 0 : h },
                     });
                 };
+                const onDrop = (type: string) => onDropComponent(i, type);
                 if (sizeless) {
                     return (
                         <SizelessChip
-                            key={`${ent.kind}-${i}`}
+                            key={ent.id}
                             entity={ent}
                             selected={selected}
                             onMouseDownEntity={(ev) => handleMouseDown(ev, 'move')}
+                            onDropType={onDrop}
                         />
                     );
                 }
                 return (
                     <EntityHandle
-                        key={`${ent.kind}-${i}`}
+                        key={ent.id}
                         entity={ent}
                         selected={selected}
                         onMouseDownEntity={handleMouseDown}
+                        onDropType={onDrop}
                     />
                 );
             })}
@@ -98,25 +103,43 @@ function EntityHandle({
     entity,
     selected,
     onMouseDownEntity,
+    onDropType,
 }: {
     entity: InitialEntity;
     selected: boolean;
     onMouseDownEntity: (ev: React.MouseEvent, mode: DragMode) => void;
+    onDropType: (type: string) => void;
 }) {
     const t = entity.transform;
     const w = t.w ?? 0;
     const h = t.h ?? 0;
+    const [dragOver, setDragOver] = useState(false);
     return (
         <div
             onMouseDown={(e) => onMouseDownEntity(e, 'move')}
+            onDragOver={(e) => {
+                if (e.dataTransfer.types.includes(COMPONENT_DRAG_MIME)) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'copy';
+                    setDragOver(true);
+                }
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+                const type = e.dataTransfer.getData(COMPONENT_DRAG_MIME);
+                setDragOver(false);
+                if (!type) return;
+                e.preventDefault();
+                onDropType(type);
+            }}
             className={css({
                 position: 'absolute',
                 cursor: 'move',
                 pointerEvents: 'auto',
                 userSelect: 'none',
                 outlineOffset: '-1px',
-                outline: selected ? '2px solid' : '1.5px dashed',
-                outlineColor: selected ? 'primary' : 'selectionDashed',
+                outline: selected || dragOver ? '2px solid' : '1.5px dashed',
+                outlineColor: dragOver ? 'success' : selected ? 'primary' : 'selectionDashed',
                 bg: selected ? 'primarySubtle' : 'transparent',
             })}
             style={{
@@ -127,7 +150,7 @@ function EntityHandle({
                 zIndex: 99000 + (t.z ?? 0),
             }}
         >
-            <KindLabel kind={entity.kind} selected={selected} />
+            <EntityLabel entity={entity} selected={selected} />
             {selected && (
                 <>
                     <Handle position="nw" onMouseDown={(e) => onMouseDownEntity(e, 'resize-nw')} />
@@ -140,23 +163,38 @@ function EntityHandle({
     );
 }
 
-/**
- * サイズなしエンティティ（pen:canvas, pen:pen, avatar:cursor 等）用の
- * 28x28 チップ表示。位置編集（ドラッグ移動）のみ可能。
- */
+/** サイズなし Entity 用の 28x28 チップ表示。位置編集 (ドラッグ移動) のみ可能。 */
 function SizelessChip({
     entity,
     selected,
     onMouseDownEntity,
+    onDropType,
 }: {
     entity: InitialEntity;
     selected: boolean;
     onMouseDownEntity: (ev: React.MouseEvent) => void;
+    onDropType: (type: string) => void;
 }) {
     const t = entity.transform;
+    const [dragOver, setDragOver] = useState(false);
     return (
         <div
             onMouseDown={onMouseDownEntity}
+            onDragOver={(e) => {
+                if (e.dataTransfer.types.includes(COMPONENT_DRAG_MIME)) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'copy';
+                    setDragOver(true);
+                }
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+                const type = e.dataTransfer.getData(COMPONENT_DRAG_MIME);
+                setDragOver(false);
+                if (!type) return;
+                e.preventDefault();
+                onDropType(type);
+            }}
             className={css({
                 position: 'absolute',
                 width: '28px',
@@ -165,7 +203,7 @@ function SizelessChip({
                 pointerEvents: 'auto',
                 bg: selected ? 'chipBgActive' : 'chipBg',
                 border: '2px solid',
-                borderColor: 'white',
+                borderColor: dragOver ? 'success' : 'white',
                 borderRadius: '50%',
                 userSelect: 'none',
                 display: 'flex',
@@ -182,13 +220,17 @@ function SizelessChip({
                 zIndex: 99000 + (t.z ?? 0),
             }}
         >
-            <KindLabel kind={entity.kind} selected={selected} />●
+            <EntityLabel entity={entity} selected={selected} />●
         </div>
     );
 }
 
-/** エンティティの kind を上に表示する小さなラベル。selected 時に primary 色で強調。 */
-function KindLabel({ kind, selected }: { kind: string; selected: boolean }) {
+/**
+ * エンティティ id と components 一覧を上に表示する小さなラベル。
+ * `id` (GameObject) と `components.length` をコンパクトに見せる。selected 時に primary 色で強調。
+ */
+function EntityLabel({ entity, selected }: { entity: InitialEntity; selected: boolean }) {
+    const summary = entity.components.length === 1 ? entity.components[0].type : `${entity.components.length} comps`;
     return (
         <span
             className={css({
@@ -204,7 +246,7 @@ function KindLabel({ kind, selected }: { kind: string; selected: boolean }) {
                 whiteSpace: 'nowrap',
             })}
         >
-            {kind}
+            {entity.id} · {summary}
         </span>
     );
 }

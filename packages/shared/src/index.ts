@@ -103,20 +103,52 @@ export interface EntityTransform {
 }
 
 /**
- * ワールドエンティティの共通コンテナ
+ * Worker 互換の flat エンティティ。
+ *
+ * Stage 1 の runtime / socket / SDK ではこの flat 形式が「1 単位」。
+ * 1 GameObject 上の 1 Component に 1:1 で対応する。
+ *
+ * Editor / World YAML / DB では GameObject + components[] (現代的 ECS) で表現するが、
+ * バックエンド側で flatten して各 Component を 1 WorldEntity として配信する。
+ *
  * @template T ウィジェット固有のデータ型
  */
 export interface WorldEntity<T = unknown> {
-    id: string; // UUID
-    type: string; // プラグインID (例: "pen", "sticky")
-    ownerId: string | null; // 作成者のユーザーID
-    lockedBy: string | null; // 操作中のユーザーID（nullで未ロック）
+    id: string;
+    type: string;
+    /** 親 GameObject の id（flatten 元）。Stage 2 で Component 間連携キーとして使う予定。 */
+    gameObjectId?: string;
+    ownerId: string | null;
+    lockedBy: string | null;
     transform: EntityTransform;
-    data: T; // ウィジェット固有データ
+    data: T;
 }
 
 /**
- * エンティティパッチ（Reliable）のペイロード
+ * Entity (GameObject) に載る 1 つの Component。
+ */
+export interface EntityComponent<T = unknown> {
+    type: string; // "pluginId:componentName"
+    data: T;
+}
+
+/**
+ * GameObject — `id` + `transform` を持つ「箱」。
+ *
+ * 振る舞いはすべて `components: EntityComponent[]` 経由で配布される。
+ * Stage 1 ではエディタ / YAML / DB の表現のみで、runtime は flatten 後の WorldEntity を使う。
+ */
+export interface WorldGameObject {
+    id: string;
+    transform: EntityTransform;
+    components: EntityComponent[];
+    ownerId: string | null;
+    lockedBy: string | null;
+}
+
+/**
+ * エンティティパッチ（Reliable）のペイロード。
+ * Stage 1 では flat WorldEntity 単位の patch（旧形式維持）。
  */
 export interface EntityPatchPayload {
     entityId: string;
@@ -136,12 +168,12 @@ export interface EntityEphemeralPayload {
 // ============================================
 
 /**
- * 利用可能なKind（ツールバー用）
+ * 利用可能な Component（ツールバー用）。
+ * 1 component = 1 振る舞い。`id` は `pluginId:componentName` 形式。
  */
-export interface AvailableKind {
-    id: string; // "package-name:kind-id"
+export interface AvailableComponent {
+    id: string; // "pluginId:componentName"
     displayName: string;
-    baseType: string;
     icon?: string;
     defaults?: Record<string, unknown>;
 }
@@ -155,11 +187,14 @@ export interface WorldEnvironmentData {
 }
 
 /**
- * ワールドスナップショットペイロード（拡張版）
+ * ワールドスナップショットペイロード（flat WorldEntity 単位）。
+ *
+ * GameObject に複数 Component が載っている場合、バックエンドが
+ * 各 Component を 1 つの flat WorldEntity に展開してから配信する。
  */
 export interface WorldSnapshotPayload {
     entities: WorldEntity[];
-    availableKinds: AvailableKind[];
+    availableComponents: AvailableComponent[];
     /** アクティブなプラグインIDのリスト */
     activePlugins: string[];
     environment: WorldEnvironmentData;
@@ -201,7 +236,7 @@ export interface ServerToClientEvents {
     /** ワールド状態のスナップショット（拡張版） */
     'world:snapshot': (payload: WorldSnapshotPayload) => void;
 
-    /** エンティティが作成された */
+    /** エンティティが作成された (flat WorldEntity 単位) */
     'entity:created': (entity: WorldEntity) => void;
 
     /** エンティティが更新された（Reliable） */
@@ -263,7 +298,7 @@ export interface ClientToServerEvents {
     // UEP Events (Client -> Server)
     // ============================================
 
-    /** エンティティを作成 */
+    /** エンティティを作成 (flat WorldEntity 単位) */
     'entity:create': (
         payload: Omit<WorldEntity, 'id'>,
         callback: (response: { success: boolean; entity?: WorldEntity; error?: string }) => void,

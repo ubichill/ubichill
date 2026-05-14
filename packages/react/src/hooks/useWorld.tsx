@@ -1,5 +1,5 @@
 import type {
-    AvailableKind,
+    AvailableComponent,
     EntityEphemeralPayload,
     EntityPatchPayload,
     WorldEntity,
@@ -18,7 +18,7 @@ export interface WorldContextType {
     entities: Map<string, WorldEntity>;
     ephemeralData: Map<string, unknown>;
     environment: WorldEnvironmentData;
-    availableKinds: AvailableKind[];
+    availableComponents: AvailableComponent[];
     activePlugins: string[];
     createEntity: <T = Record<string, unknown>>(
         type: string,
@@ -47,7 +47,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const [entities, setEntities] = useState<Map<string, WorldEntity>>(new Map());
     const [ephemeralData, setEphemeralData] = useState<Map<string, unknown>>(new Map());
     const [environment, setEnvironment] = useState<WorldEnvironmentData>(DEFAULTS.WORLD_ENVIRONMENT);
-    const [availableKinds, setAvailableKinds] = useState<AvailableKind[]>([]);
+    const [availableComponents, setAvailableComponents] = useState<AvailableComponent[]>([]);
     const [activePlugins, setActivePlugins] = useState<string[]>([]);
 
     useEffect(() => {
@@ -61,7 +61,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             }
             setEntities(newMap);
             setEnvironment(payload.environment);
-            setAvailableKinds(payload.availableKinds);
+            setAvailableComponents(payload.availableComponents);
             setActivePlugins(payload.activePlugins || []);
         };
 
@@ -220,7 +220,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setEntities(new Map());
         setEphemeralData(new Map());
         setEnvironment(DEFAULTS.WORLD_ENVIRONMENT);
-        setAvailableKinds([]);
+        setAvailableComponents([]);
         setActivePlugins([]);
     }, []);
 
@@ -229,7 +229,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             entities,
             ephemeralData,
             environment,
-            availableKinds,
+            availableComponents,
             activePlugins,
             createEntity,
             patchEntity,
@@ -241,7 +241,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             entities,
             ephemeralData,
             environment,
-            availableKinds,
+            availableComponents,
             activePlugins,
             createEntity,
             patchEntity,

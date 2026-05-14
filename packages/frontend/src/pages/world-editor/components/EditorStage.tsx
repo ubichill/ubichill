@@ -9,6 +9,7 @@ interface EditorStageProps {
     hiddenIndices: Set<number>;
     onSelect: (i: number | null) => void;
     onPatchTransform: (index: number, patch: Partial<InitialEntity['transform']>) => void;
+    onDropComponent: (entityIndex: number, componentType: string) => void;
 }
 
 /**
@@ -21,6 +22,7 @@ export function EditorStage({
     hiddenIndices,
     onSelect,
     onPatchTransform,
+    onDropComponent,
 }: EditorStageProps) {
     // 背景（プラグイン UI のない場所）クリックで選択解除する。
     // EditOverlay 自体は pointer-events:none のため背景クリックを拾えないので、
@@ -54,6 +56,7 @@ export function EditorStage({
                         hiddenIndices={hiddenIndices}
                         onSelect={onSelect}
                         onPatchTransform={onPatchTransform}
+                        onDropComponent={onDropComponent}
                     />
                 }
             />

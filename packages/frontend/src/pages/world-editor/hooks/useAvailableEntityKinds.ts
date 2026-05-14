@@ -53,7 +53,7 @@ interface PluginIndex {
     version: string;
 }
 
-interface VersionedManifestEntity {
+interface VersionedManifestComponent {
     singleton?: boolean;
     canvasTargets?: string[];
     mediaTargets?: string[];
@@ -64,7 +64,7 @@ interface VersionedManifestEntity {
 interface VersionedManifest {
     id: string;
     version: string;
-    entities?: Record<string, VersionedManifestEntity>;
+    components?: Record<string, VersionedManifestComponent>;
 }
 
 const PLUGIN_BASE_URL: string = (() => {
@@ -129,8 +129,8 @@ export function useAvailableEntityKinds(definition: WorldDefinition | null): {
                 const idx = await fetchIndex(dep.name);
                 if (!idx?.version) return [];
                 const manifest = await fetchManifest(dep.name, idx.version);
-                const entities = manifest?.entities ?? {};
-                return Object.entries(entities).map(([kind, meta]) => ({
+                const components = manifest?.components ?? {};
+                return Object.entries(components).map(([kind, meta]) => ({
                     pluginName: dep.name,
                     kind,
                     singleton: meta.singleton,

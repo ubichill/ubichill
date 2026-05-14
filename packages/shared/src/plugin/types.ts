@@ -345,10 +345,15 @@ export type PluginCommand = PluginGuestCommand;
  * [Lifecycle] プラグインの初期化完了時に Worker へ送られるイベント。
  * 初期化後は Ubi.worldId / Ubi.myUserId / Ubi.pluginId / Ubi.entityId で参照可能。
  *
- * @param worldId   所属ワールドのID
- * @param myUserId  自分のユーザーID
- * @param code      実行するプラグインコード (Sandbox内部のみ)
- * @param entityId  このプラグイン Worker を起動したエンティティの ID（オプション）
+ * Worker 1 個 = 1 Component インスタンス。
+ * - `entityId`: 自 Worker を識別する flat ID（`${gameObjectId}::${componentType}` 形式）。
+ * - `gameObjectId`: 自 Worker が乗っている GameObject の id。Stage 2 で `Ubi.gameObjectId` に公開予定。
+ * - `componentType`: 自 Worker の Component 型 (`pluginId:componentName`)。
+ *
+ * @param worldId        所属ワールドのID
+ * @param myUserId       自分のユーザーID
+ * @param code           実行するプラグインコード (Sandbox内部のみ)
+ * @param entityId       このプラグイン Worker を識別する flat ID（オプション）
  */
 export type EvtLifecycleInit = {
     type: 'EVT_LIFECYCLE_INIT';
@@ -358,12 +363,16 @@ export type EvtLifecycleInit = {
         code: string;
         pluginId?: string;
         entityId?: string;
+        gameObjectId?: string;
+        componentType?: string;
         pluginBase?: string;
         watchEntityTypes?: string[];
         /**
-         * plugin が `watchEntityTypes` で宣言したエンティティの、Worker 起動時点でのスナップショット。
+         * plugin が `watchEntityTypes` で宣言したコンポーネント型の、Worker 起動時点でのスナップショット。
          * SDK がプラグインコード実行前に state.local へ同期反映するため、
          * 遅れて入室したユーザーでも初期値が揃った状態でプラグインが立ち上がる。
+         *
+         * Worker 互換 view（flat WorldEntity）として渡る。
          */
         initialEntities?: WorldEntity[];
     };

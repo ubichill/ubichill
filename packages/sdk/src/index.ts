@@ -13,7 +13,7 @@ export * from '@ubichill/engine';
 // プロトコル型（@ubichill/shared より選択的に re-export）
 export type {
     AppAvatarDef,
-    AvailableKind,
+    AvailableComponent,
     CanvasCursorData,
     CanvasStrokeData,
     CmdAvatarSet,
@@ -36,6 +36,7 @@ export type {
     CursorPosition,
     CursorState,
     CustomEventCallback,
+    EntityComponent,
     EntityEphemeralPayload,
     EntityPatchPayload,
     EntityUpdatedCallback,
@@ -72,6 +73,7 @@ export type {
     UserStatus,
     WorldEntity,
     WorldEnvironmentData,
+    WorldGameObject,
 } from '@ubichill/shared';
 // UbiSDK クラス + 型
 export { UbiSDK } from './ubi';

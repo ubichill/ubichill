@@ -1,11 +1,8 @@
 /**
  * usePluginEntitySync
  *
- * definition.watchEntityTypes に一致するエンティティの変化を
- * EVT_ENTITY_WATCH として Worker へ転送する。
- *
- * - Worker 再作成時（workerRevision 変化）は全エンティティを再送
- * - 参照が変わったエンティティのみ差分送信
+ * watchEntityTypes に一致するエンティティの変化を EVT_ENTITY_WATCH として Worker へ転送する。
+ * watchScope='entity' (default) は自 GameObject 内の Component インスタンスのみ送信。
  */
 
 import type { PluginHostEvent, WorldEntity } from '@ubichill/shared';
@@ -17,8 +14,10 @@ export function usePluginEntitySync(
     entities: Map<string, WorldEntity>,
     sendEvent: (event: PluginHostEvent) => void,
     workerRevision: number,
+    gameObjectId: string | undefined,
 ): void {
     const watchTypes = definition.watchEntityTypes;
+    const scope = definition.watchScope ?? 'entity';
     const prevEntitiesRef = useRef<Map<string, WorldEntity>>(new Map());
     const prevWorkerRevisionRef = useRef(-1);
 
@@ -30,11 +29,12 @@ export function usePluginEntitySync(
 
         for (const [id, e] of entities) {
             if (!typeSet.has(e.type)) continue;
+            if (scope === 'entity' && gameObjectId && e.gameObjectId !== gameObjectId) continue;
             const prev = prevEntitiesRef.current.get(id);
             if (workerChanged || prev !== e) {
                 sendEvent({ type: 'EVT_ENTITY_WATCH', payload: { entityType: e.type, entity: e } });
             }
         }
         prevEntitiesRef.current = new Map(entities);
-    }, [entities, watchTypes, sendEvent, workerRevision]);
+    }, [entities, watchTypes, scope, gameObjectId, sendEvent, workerRevision]);
 }

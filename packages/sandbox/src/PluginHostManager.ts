@@ -153,11 +153,15 @@ export interface PluginHostManagerOptions<TPayloadMap extends Record<string, unk
     worldId?: string;
     myUserId?: string;
     pluginId?: string;
-    /** このプラグインを起動したエンティティのID（Worker で Ubi.entityId として参照可能） */
+    /** このプラグインを識別する flat ID（`${gameObjectId}::${componentType}` 形式。Worker で Ubi.entityId として参照可能） */
     entityId?: string;
+    /** 親 GameObject の id。Stage 2 で `Ubi.gameObjectId` として公開予定。 */
+    gameObjectId?: string;
+    /** この Worker が担当する Component 型 (`pluginId:componentName`)。Stage 2 で `Ubi.componentType` として公開予定。 */
+    componentType?: string;
     /** プラグインアセットのベースURL（Worker で Ubi.pluginBase として参照可能） */
     pluginBase?: string;
-    /** このプラグインが監視するエンティティ種別一覧（plugin.json の watchEntityTypes）。SDK の state 自動同期に使用 */
+    /** この Component が監視する他 Component 型一覧（plugin.json の watchEntityTypes）。SDK の state 自動同期に使用 */
     watchEntityTypes?: string[];
     /** Worker 起動時点で watchEntityTypes にマッチしている既存エンティティ。SDK がプラグインコード実行前に state.local へ同期反映する */
     initialEntities?: WorldEntity[];
@@ -409,6 +413,8 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
                 myUserId: options.myUserId ?? '',
                 pluginId: options.pluginId,
                 entityId: options.entityId,
+                gameObjectId: options.gameObjectId,
+                componentType: options.componentType,
                 pluginBase: options.pluginBase,
                 watchEntityTypes: options.watchEntityTypes,
                 initialEntities: options.initialEntities,

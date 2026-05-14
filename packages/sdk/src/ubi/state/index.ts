@@ -23,6 +23,7 @@ export type StateModuleDeps = {
     getMyUserId(): string | undefined;
     getEntityId(): string | undefined;
     getPluginId(): string | undefined;
+    getComponentType(): string | undefined;
     getWatchEntityTypes(): string[];
     getPresenceUsers(): Map<string, PresenceEntry>;
     getLocalSharedState(): Record<string, unknown>;
@@ -82,13 +83,15 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
         }
 
         // 同期対象エンティティの解決
+        // 1) 自 component を watch しているなら、自 entity を target に（多 entity 同居でも独立）
+        // 2) それ以外の watchType（別 component 覗き見）は initialEntities から最初の一致 entity を target に
         const watchType = deps.getWatchEntityTypes()[0] ?? deps.getPluginId() ?? '';
+        const entityId = deps.getEntityId();
+        const componentType = deps.getComponentType();
         let targetEntityId: string | null = null;
         let initialData: Record<string, unknown> | null = null;
 
-        const entityId = deps.getEntityId();
-        const pluginId = deps.getPluginId();
-        if (entityId && pluginId && deps.getWatchEntityTypes().includes(pluginId)) {
+        if (entityId && componentType && deps.getWatchEntityTypes().includes(componentType)) {
             targetEntityId = entityId;
             const self = deps.getInitialEntities().find((e) => e.id === entityId);
             initialData = (self?.data as Record<string, unknown> | undefined) ?? null;

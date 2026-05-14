@@ -1,44 +1,49 @@
-import type { InitialEntity } from '@ubichill/shared';
-import { useEffect, useMemo, useState } from 'react';
+import type { EntityComponentDef, InitialEntity } from '@ubichill/shared';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '@/styled-system/css';
-import type { DataFieldSpec, DataFields } from '../hooks/useAvailableEntityKinds';
+import type { AvailableEntityKind, DataFieldSpec, DataFields } from '../hooks/useAvailableEntityKinds';
 
 interface EntityInspectorProps {
     entity: InitialEntity;
-    /** プラグインが宣言した data フィールド。これらは entity.data に値が無くても必ず表示する。 */
-    dataFields?: DataFields;
+    /** 選択中のコンポーネント index（null なら Entity 全体を表示） */
+    selectedComponentIndex: number | null;
+    /** 全 manifest から得た component カタログ。dataFields / displayName を引く */
+    availableKinds: AvailableEntityKind[];
     onChange: (updater: (prev: InitialEntity) => InitialEntity) => void;
-    onDelete: () => void;
+    onSelectComponent: (componentIndex: number | null) => void;
+    onAddComponent: (type: string) => void;
+    onDeleteComponent: (componentIndex: number) => void;
+    onDeleteEntity: () => void;
+    onRenameEntity: (newId: string) => void;
 }
 
 /**
- * エンティティの transform と data を編集するインスペクタ。
+ * 現代的 ECS の Inspector。
  *
- * data は2モード:
- * - 「フォーム」: dataFields で宣言されたフィールドは型に応じた input で必ず表示。
- *               宣言外のキーがあれば「カスタム」セクションに表示。「+ 追加」で任意キーを追加可能。
- * - 「JSON」: 生 JSON を直接編集（高度なケース用）。
+ * - 上段: Entity (GameObject) の id + transform を編集
+ * - 中段: Components 一覧（追加・削除・選択）
+ * - 下段: 選択中 Component の data フォーム
  */
-export function EntityInspector({ entity, dataFields, onChange, onDelete }: EntityInspectorProps) {
-    const [dataTab, setDataTab] = useState<'form' | 'json'>('form');
-    const [jsonText, setJsonText] = useState(() => JSON.stringify(entity.data ?? {}, null, 2));
-    const [jsonError, setJsonError] = useState('');
-
-    useEffect(() => {
-        setJsonText(JSON.stringify(entity.data ?? {}, null, 2));
-        setJsonError('');
-    }, [entity]);
-
+export function EntityInspector({
+    entity,
+    selectedComponentIndex,
+    availableKinds,
+    onChange,
+    onSelectComponent,
+    onAddComponent,
+    onDeleteComponent,
+    onDeleteEntity,
+    onRenameEntity,
+}: EntityInspectorProps) {
     const t = entity.transform;
     const updateTransform = (patch: Partial<typeof t>) =>
         onChange((prev) => ({ ...prev, transform: { ...prev.transform, ...patch } }));
 
-    const data = (entity.data as Record<string, unknown> | undefined) ?? {};
-    const setData = (next: Record<string, unknown>) => {
-        onChange((prev) => ({ ...prev, data: next }));
-        setJsonText(JSON.stringify(next, null, 2));
-        setJsonError('');
-    };
+    const selectedComponent =
+        selectedComponentIndex !== null ? (entity.components[selectedComponentIndex] ?? null) : null;
+    const selectedComponentKind = selectedComponent
+        ? (availableKinds.find((k) => k.kind === selectedComponent.type) ?? null)
+        : null;
 
     return (
         <div
@@ -51,27 +56,14 @@ export function EntityInspector({ entity, dataFields, onChange, onDelete }: Enti
                 gap: '4',
             })}
         >
-            <div className={css({ display: 'flex', justifyContent: 'space-between', alignItems: 'center' })}>
-                <div className={css({ fontSize: '14px', fontWeight: '700', color: 'text' })}>{entity.kind}</div>
-                <button
-                    type="button"
-                    onClick={onDelete}
-                    className={css({
-                        padding: '6px 12px',
-                        bg: 'errorBg',
-                        color: 'errorText',
-                        border: '1px solid',
-                        borderColor: 'errorLight',
-                        borderRadius: '8px',
-                        fontSize: '12px',
-                        fontWeight: '600',
-                        cursor: 'pointer',
-                        _hover: { opacity: 0.9 },
-                    })}
-                >
-                    削除
-                </button>
-            </div>
+            <EntityHeader entity={entity} onDelete={onDeleteEntity} onRename={onRenameEntity} />
+
+            <Section label="タグ">
+                <TagsEditor
+                    tags={entity.tags ?? []}
+                    onChange={(next) => onChange((prev) => ({ ...prev, tags: next }))}
+                />
+            </Section>
 
             <Section label="位置・サイズ">
                 <div className={css({ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '2' })}>
@@ -88,34 +80,449 @@ export function EntityInspector({ entity, dataFields, onChange, onDelete }: Enti
                 </div>
             </Section>
 
-            <Section
-                label="データ"
-                right={
-                    <div className={css({ display: 'flex', gap: '4px' })}>
-                        <MiniTab active={dataTab === 'form'} onClick={() => setDataTab('form')} label="フォーム" />
-                        <MiniTab active={dataTab === 'json'} onClick={() => setDataTab('json')} label="JSON" />
-                    </div>
-                }
-            >
-                {dataTab === 'form' ? (
-                    <DataFormFields data={data} dataFields={dataFields} onChange={setData} />
-                ) : (
-                    <DataJsonField
-                        text={jsonText}
-                        error={jsonError}
-                        onChange={(text) => {
-                            setJsonText(text);
-                            try {
-                                const parsed = JSON.parse(text || '{}') as Record<string, unknown>;
-                                onChange((prev) => ({ ...prev, data: parsed }));
-                                setJsonError('');
-                            } catch (err) {
-                                setJsonError(err instanceof Error ? err.message : 'JSON parse error');
+            <Section label="コンポーネント">
+                <ComponentList
+                    components={entity.components}
+                    selectedIndex={selectedComponentIndex}
+                    onSelect={onSelectComponent}
+                    onDelete={onDeleteComponent}
+                />
+                <ComponentPicker
+                    availableKinds={availableKinds}
+                    existingTypes={new Set(entity.components.map((c) => c.type))}
+                    onAdd={onAddComponent}
+                />
+            </Section>
+
+            {selectedComponent && selectedComponentIndex !== null && (
+                <Section label={`データ: ${selectedComponent.type}`}>
+                    <ComponentDataEditor
+                        component={selectedComponent}
+                        componentIndex={selectedComponentIndex}
+                        dataFields={selectedComponentKind?.dataFields}
+                        onChange={onChange}
+                    />
+                </Section>
+            )}
+        </div>
+    );
+}
+
+const TAG_PATTERN = /^[a-z0-9_-]+$/;
+
+function TagsEditor({ tags, onChange }: { tags: string[]; onChange: (next: string[]) => void }) {
+    const [draft, setDraft] = useState('');
+    const [error, setError] = useState('');
+
+    const addTag = () => {
+        const next = draft.trim().toLowerCase();
+        if (!next) return;
+        if (!TAG_PATTERN.test(next)) {
+            setError('小文字英数 + - _ のみ');
+            return;
+        }
+        if (tags.includes(next)) {
+            setError('既に追加済み');
+            return;
+        }
+        onChange([...tags, next]);
+        setDraft('');
+        setError('');
+    };
+
+    return (
+        <div className={css({ display: 'flex', flexDirection: 'column', gap: '2' })}>
+            {tags.length > 0 && (
+                <div className={css({ display: 'flex', flexWrap: 'wrap', gap: '4px' })}>
+                    {tags.map((t) => (
+                        <span
+                            key={t}
+                            className={css({
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '3px 6px 3px 8px',
+                                bg: 'primarySubtle',
+                                color: 'primary',
+                                borderRadius: '999px',
+                                fontSize: '11px',
+                                fontWeight: '600',
+                            })}
+                        >
+                            {t}
+                            <button
+                                type="button"
+                                onClick={() => onChange(tags.filter((x) => x !== t))}
+                                aria-label={`${t} を削除`}
+                                className={css({
+                                    width: '16px',
+                                    height: '16px',
+                                    bg: 'transparent',
+                                    border: 'none',
+                                    color: 'primary',
+                                    cursor: 'pointer',
+                                    fontSize: '12px',
+                                    lineHeight: '1',
+                                    _hover: { opacity: 0.7 },
+                                })}
+                            >
+                                ×
+                            </button>
+                        </span>
+                    ))}
+                </div>
+            )}
+            <div className={css({ display: 'grid', gridTemplateColumns: '1fr auto', gap: '6px' })}>
+                <input
+                    type="text"
+                    value={draft}
+                    onChange={(e) => {
+                        setDraft(e.target.value);
+                        setError('');
+                    }}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            addTag();
+                        }
+                    }}
+                    placeholder="tag を追加 (例: ui, background)"
+                    className={inputStyle}
+                />
+                <button
+                    type="button"
+                    onClick={addTag}
+                    disabled={!draft.trim()}
+                    className={css({
+                        padding: '6px 12px',
+                        bg: 'primary',
+                        color: 'textOnPrimary',
+                        border: 'none',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        _disabled: { opacity: 0.4, cursor: 'not-allowed' },
+                        _hover: { opacity: 0.9 },
+                    })}
+                >
+                    + 追加
+                </button>
+            </div>
+            {error && <span className={css({ fontSize: '11px', color: 'errorText' })}>{error}</span>}
+        </div>
+    );
+}
+
+// ============================================
+// Entity ヘッダー: 名前リネーム + 削除
+// ============================================
+
+function EntityHeader({
+    entity,
+    onDelete,
+    onRename,
+}: {
+    entity: InitialEntity;
+    onDelete: () => void;
+    onRename: (id: string) => void;
+}) {
+    const [editing, setEditing] = useState(false);
+    const [draft, setDraft] = useState(entity.id);
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (!editing) setDraft(entity.id);
+    }, [entity.id, editing]);
+
+    useEffect(() => {
+        if (editing) inputRef.current?.focus();
+    }, [editing]);
+
+    const commit = () => {
+        const next = draft.trim();
+        if (next && next !== entity.id) onRename(next);
+        setEditing(false);
+    };
+
+    return (
+        <div className={css({ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '2' })}>
+            <div className={css({ flex: 1, minW: 0 })}>
+                {editing ? (
+                    <input
+                        ref={inputRef}
+                        type="text"
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        onBlur={commit}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') commit();
+                            else if (e.key === 'Escape') {
+                                setDraft(entity.id);
+                                setEditing(false);
                             }
                         }}
+                        className={inputStyle}
                     />
+                ) : (
+                    <button
+                        type="button"
+                        onClick={() => setEditing(true)}
+                        title="クリックして ID を編集"
+                        className={css({
+                            fontSize: '14px',
+                            fontWeight: '700',
+                            color: 'text',
+                            bg: 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                            padding: '4px 0',
+                            textAlign: 'left',
+                            width: '100%',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            _hover: { color: 'primary' },
+                        })}
+                    >
+                        {entity.id}
+                    </button>
                 )}
-            </Section>
+            </div>
+            <button
+                type="button"
+                onClick={onDelete}
+                className={css({
+                    padding: '6px 12px',
+                    bg: 'errorBg',
+                    color: 'errorText',
+                    border: '1px solid',
+                    borderColor: 'errorLight',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    _hover: { opacity: 0.9 },
+                })}
+            >
+                削除
+            </button>
+        </div>
+    );
+}
+
+// ============================================
+// Component 一覧
+// ============================================
+
+function ComponentList({
+    components,
+    selectedIndex,
+    onSelect,
+    onDelete,
+}: {
+    components: EntityComponentDef[];
+    selectedIndex: number | null;
+    onSelect: (i: number | null) => void;
+    onDelete: (i: number) => void;
+}) {
+    if (components.length === 0) {
+        return (
+            <div className={css({ fontSize: '12px', color: 'textSubtle' })}>
+                コンポーネントがありません。下から追加してください。
+            </div>
+        );
+    }
+    return (
+        <div className={css({ display: 'flex', flexDirection: 'column', gap: '1' })}>
+            {components.map((c, i) => {
+                const selected = i === selectedIndex;
+                return (
+                    <div
+                        key={`${c.type}-${i}`}
+                        onClick={() => onSelect(selected ? null : i)}
+                        className={css({
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '6px 8px',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            bg: selected ? 'primarySubtle' : 'background',
+                            color: selected ? 'primary' : 'text',
+                            border: '1px solid',
+                            borderColor: selected ? 'primary' : 'border',
+                            _hover: { borderColor: 'primary' },
+                        })}
+                    >
+                        <span
+                            className={css({
+                                flex: 1,
+                                fontSize: '12px',
+                                fontWeight: '500',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                            })}
+                        >
+                            {c.type}
+                        </span>
+                        <button
+                            type="button"
+                            onClick={(ev) => {
+                                ev.stopPropagation();
+                                onDelete(i);
+                            }}
+                            title="このコンポーネントを削除"
+                            className={css({
+                                padding: '2px 6px',
+                                bg: 'transparent',
+                                color: 'errorText',
+                                border: '1px solid',
+                                borderColor: 'border',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                cursor: 'pointer',
+                                _hover: { borderColor: 'errorLight' },
+                            })}
+                        >
+                            ×
+                        </button>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+// ============================================
+// Component 追加ピッカー
+// ============================================
+
+function ComponentPicker({
+    availableKinds,
+    existingTypes,
+    onAdd,
+}: {
+    availableKinds: AvailableEntityKind[];
+    existingTypes: Set<string>;
+    onAdd: (type: string) => void;
+}) {
+    const [type, setType] = useState('');
+    const candidates = useMemo(() => availableKinds.map((k) => k.kind).sort(), [availableKinds]);
+
+    const handleAdd = () => {
+        if (!type) return;
+        onAdd(type);
+        setType('');
+    };
+
+    return (
+        <div
+            className={css({
+                display: 'grid',
+                gridTemplateColumns: '1fr auto',
+                gap: '6px',
+                pt: '3',
+                borderTop: '1px dashed',
+                borderColor: 'border',
+            })}
+        >
+            <select value={type} onChange={(e) => setType(e.target.value)} className={inputStyle}>
+                <option value="">+ コンポーネントを選択...</option>
+                {candidates.map((k) => (
+                    <option key={k} value={k} disabled={existingTypes.has(k)}>
+                        {k}
+                        {existingTypes.has(k) ? ' (追加済み)' : ''}
+                    </option>
+                ))}
+            </select>
+            <button
+                type="button"
+                onClick={handleAdd}
+                disabled={!type}
+                className={css({
+                    padding: '6px 12px',
+                    bg: 'primary',
+                    color: 'textOnPrimary',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    _disabled: { opacity: 0.4, cursor: 'not-allowed' },
+                    _hover: { opacity: 0.9 },
+                })}
+            >
+                追加
+            </button>
+        </div>
+    );
+}
+
+// ============================================
+// Component data エディタ (フォーム + JSON タブ)
+// ============================================
+
+function ComponentDataEditor({
+    component,
+    componentIndex,
+    dataFields,
+    onChange,
+}: {
+    component: EntityComponentDef;
+    componentIndex: number;
+    dataFields?: DataFields;
+    onChange: (updater: (prev: InitialEntity) => InitialEntity) => void;
+}) {
+    const [dataTab, setDataTab] = useState<'form' | 'json'>('form');
+    const [jsonText, setJsonText] = useState(() => JSON.stringify(component.data ?? {}, null, 2));
+    const [jsonError, setJsonError] = useState('');
+
+    useEffect(() => {
+        setJsonText(JSON.stringify(component.data ?? {}, null, 2));
+        setJsonError('');
+    }, [component]);
+
+    const data = (component.data as Record<string, unknown> | undefined) ?? {};
+    const setData = (next: Record<string, unknown>) => {
+        onChange((prev) => ({
+            ...prev,
+            components: prev.components.map((c, i) => (i === componentIndex ? { ...c, data: next } : c)),
+        }));
+        setJsonText(JSON.stringify(next, null, 2));
+        setJsonError('');
+    };
+
+    return (
+        <div className={css({ display: 'flex', flexDirection: 'column', gap: '2' })}>
+            <div className={css({ display: 'flex', gap: '4px', alignSelf: 'flex-end' })}>
+                <MiniTab active={dataTab === 'form'} onClick={() => setDataTab('form')} label="フォーム" />
+                <MiniTab active={dataTab === 'json'} onClick={() => setDataTab('json')} label="JSON" />
+            </div>
+            {dataTab === 'form' ? (
+                <DataFormFields data={data} dataFields={dataFields} onChange={setData} />
+            ) : (
+                <DataJsonField
+                    text={jsonText}
+                    error={jsonError}
+                    onChange={(text) => {
+                        setJsonText(text);
+                        try {
+                            const parsed = JSON.parse(text || '{}') as Record<string, unknown>;
+                            onChange((prev) => ({
+                                ...prev,
+                                components: prev.components.map((c, i) =>
+                                    i === componentIndex ? { ...c, data: parsed } : c,
+                                ),
+                            }));
+                            setJsonError('');
+                        } catch (err) {
+                            setJsonError(err instanceof Error ? err.message : 'JSON parse error');
+                        }
+                    }}
+                />
+            )}
         </div>
     );
 }
@@ -140,7 +547,6 @@ function DataFormFields({
         onChange(next);
     };
 
-    // 宣言フィールド (dataFields にあるキー) と カスタムキー (dataFields に無いキー) を分ける
     const declaredKeys = useMemo(() => Object.keys(dataFields ?? {}), [dataFields]);
     const customKeys = useMemo(() => {
         const declared = new Set(declaredKeys);
@@ -149,7 +555,6 @@ function DataFormFields({
 
     return (
         <div className={css({ display: 'flex', flexDirection: 'column', gap: '3' })}>
-            {/* 宣言フィールド: 必ず表示 */}
             {declaredKeys.length > 0 && (
                 <div className={css({ display: 'flex', flexDirection: 'column', gap: '3' })}>
                     {declaredKeys.map((key) => {
@@ -170,7 +575,6 @@ function DataFormFields({
                 </div>
             )}
 
-            {/* カスタムフィールド: 宣言外のキー */}
             {customKeys.length > 0 && (
                 <div
                     className={css({
@@ -207,22 +611,14 @@ function DataFormFields({
                 </div>
             )}
 
-            {/*
-                空状態の文言:
-                - dataFields が宣言されていない (undefined): このプラグインは data 構造を未定義 → 自由追加を促す
-                - dataFields が空オブジェクト ({}): プラグインが「data 不要」を明示 → 何もしない案内
-                - dataFields に1つでもキーがある: 既に declaredKeys が表示されているのでこのメッセージは出ない
-            */}
             {declaredKeys.length === 0 && customKeys.length === 0 && (
                 <div className={css({ fontSize: '12px', color: 'textSubtle' })}>
                     {dataFields === undefined
                         ? 'プラグインが data フィールドを宣言していません。下から自由にキーを追加できます（プラグインが読まない可能性があります）。'
-                        : 'このエンティティはデータを必要としません。'}
+                        : 'このコンポーネントはデータを必要としません。'}
                 </div>
             )}
 
-            {/* dataFields が宣言されている (空でも) 場合は、プラグインが想定するフィールド以外は無効なので
-                カスタム追加 UI を出さない。dataFields が undefined なら自由追加を許す。 */}
             {dataFields === undefined && (
                 <AddFieldRow existing={new Set(Object.keys(data))} onAdd={(k, v) => onChange({ ...data, [k]: v })} />
             )}
@@ -376,13 +772,8 @@ function DeclaredInput({
             </select>
         );
     }
-    // json
     return <MiniJsonEditor value={value} onChange={onChange} />;
 }
-
-// ============================================
-// カスタムフィールド (dataFields 宣言外)
-// ============================================
 
 function CustomFieldRow({
     fieldKey,
@@ -463,10 +854,6 @@ function CustomFieldRow({
     );
 }
 
-// ============================================
-// JSON ミニエディタ (object/array 用)
-// ============================================
-
 function MiniJsonEditor({ value, onChange }: { value: unknown; onChange: (v: unknown) => void }) {
     const [text, setText] = useState(() => JSON.stringify(value, null, 2));
     const [err, setErr] = useState('');
@@ -496,10 +883,6 @@ function MiniJsonEditor({ value, onChange }: { value: unknown; onChange: (v: unk
         </div>
     );
 }
-
-// ============================================
-// + フィールド追加 (任意キーをカスタム追加)
-// ============================================
 
 function AddFieldRow({ existing, onAdd }: { existing: Set<string>; onAdd: (name: string, value: unknown) => void }) {
     const [name, setName] = useState('');
@@ -568,10 +951,6 @@ function AddFieldRow({ existing, onAdd }: { existing: Set<string>; onAdd: (name:
     );
 }
 
-// ============================================
-// JSON 直接編集タブ
-// ============================================
-
 function DataJsonField({ text, error, onChange }: { text: string; error: string; onChange: (text: string) => void }) {
     return (
         <div className={css({ display: 'flex', flexDirection: 'column', gap: '2px' })}>
@@ -600,10 +979,6 @@ function DataJsonField({ text, error, onChange }: { text: string; error: string;
     );
 }
 
-// ============================================
-// Transform 共通: NumField / Section / MiniTab
-// ============================================
-
 function NumField({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
     return (
         <label className={css({ display: 'flex', flexDirection: 'column', gap: '1' })}>
@@ -618,21 +993,17 @@ function NumField({ label, value, onChange }: { label: string; value: number; on
     );
 }
 
-function Section({ label, right, children }: { label: string; right?: React.ReactNode; children: React.ReactNode }) {
+function Section({ label, children }: { label: string; children: React.ReactNode }) {
     return (
         <div className={css({ display: 'flex', flexDirection: 'column', gap: '2' })}>
             <div
                 className={css({
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
                     fontSize: '12px',
                     fontWeight: '600',
                     color: 'text',
                 })}
             >
-                <span>{label}</span>
-                {right}
+                {label}
             </div>
             {children}
         </div>
@@ -661,10 +1032,6 @@ function MiniTab({ active, onClick, label }: { active: boolean; onClick: () => v
         </button>
     );
 }
-
-// ============================================
-// helpers
-// ============================================
 
 function detectType(v: unknown): 'string' | 'number' | 'boolean' | 'json' {
     if (typeof v === 'string') return 'string';

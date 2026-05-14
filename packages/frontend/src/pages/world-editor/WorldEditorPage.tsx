@@ -1,4 +1,4 @@
-import type { InitialEntity, WorldDefinition } from '@ubichill/shared';
+import type { EntityComponentDef, InitialEntity, WorldDefinition } from '@ubichill/shared';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import yaml from 'yaml';
@@ -17,10 +17,10 @@ import { MobileLeftHandle } from './components/MobileLeftHandle';
 import { MobileRightHandle } from './components/MobileRightHandle';
 import { Modal } from './components/Modal';
 import { ModalPrimaryButton, ModalSecondaryButton } from './components/ModalButtons';
-import { type AvailableEntityKind, useAvailableEntityKinds } from './hooks/useAvailableEntityKinds';
+import { useAvailableEntityKinds } from './hooks/useAvailableEntityKinds';
 import { useEditorModals } from './hooks/useEditorModals';
 import { useWorldEditorApi } from './hooks/useWorldEditorApi';
-import { DEFAULT_H, DEFAULT_W, nextZ } from './lib/dragHelpers';
+import { buildEntityId, DEFAULT_H, DEFAULT_W, nextZ } from './lib/dragHelpers';
 
 // 新規作成時の placeholder name (21文字, lowercase)。サーバー側で nanoid に置き換えられる。
 const PLACEHOLDER_NAME = 'newworldplaceholder12';
@@ -37,7 +37,6 @@ function createInitialDefinition(): WorldDefinition {
                 backgroundColor: '#F0F8FF',
                 worldSize: { width: 2000, height: 1500 },
             },
-            // デフォルトプラグイン: avatar, pen, video-player（後からモーダルで増減できる）
             dependencies: [
                 { name: 'avatar', source: { type: 'repository', path: 'plugins/avatar' } },
                 { name: 'pen', source: { type: 'repository', path: 'plugins/pen' } },
@@ -55,15 +54,12 @@ export function WorldEditorPage() {
     const isEdit = !!worldId;
 
     const [definition, setDefinition] = useState<WorldDefinition>(createInitialDefinition);
-    /** DB に保存済みの YAML テキスト。dirty 判定の baseline。 */
     const [savedYaml, setSavedYaml] = useState<string | null>(null);
 
-    const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-    /** 編集ローカルで非表示にしているエンティティ。保存には影響しない。 */
+    const [selectedEntityIndex, setSelectedEntityIndex] = useState<number | null>(null);
+    const [selectedComponentIndex, setSelectedComponentIndex] = useState<number | null>(null);
     const [hiddenIndices, setHiddenIndices] = useState<Set<number>>(new Set());
-    /** モバイル時のヒエラルキー drawer 開閉（md 以上では無視される） */
     const [mobileLeftOpen, setMobileLeftOpen] = useState(false);
-    /** モバイル時のインスペクタ drawer 開閉。エンティティ選択時に自動で true にして開く。 */
     const [mobileRightOpen, setMobileRightOpen] = useState(false);
     const [loading, setLoading] = useState(isEdit);
 
@@ -73,17 +69,10 @@ export function WorldEditorPage() {
     }, [definition, savedYaml]);
 
     const { kinds, loading: kindsLoading } = useAvailableEntityKinds(definition);
-    const kindByName = useMemo(() => new Map(kinds.map((k) => [k.kind, k])), [kinds]);
-    const placedKinds = useMemo(
-        () => new Set(definition.spec.initialEntities.map((e) => e.kind)),
-        [definition.spec.initialEntities],
-    );
 
     const modals = useEditorModals({ definition, onCommit: setDefinition });
     const api = useWorldEditorApi({ isEdit, worldId, definition, onSavedYamlChange: setSavedYaml });
 
-    // 編集モード: 初期データロード
-    // cleanup には AbortController を使い、unmount 時に in-flight fetch をキャンセルする。
     useEffect(() => {
         if (!isEdit || !worldId) return;
         const ctrl = new AbortController();
@@ -110,7 +99,6 @@ export function WorldEditorPage() {
         return () => ctrl.abort();
     }, [worldId, isEdit, api.setError]);
 
-    // 未認証は ProtectedRoute が弾くが、二重チェックとして useEffect でリダイレクト
     useEffect(() => {
         if (!isPending && !session) navigate('/auth');
     }, [isPending, session, navigate]);
@@ -124,14 +112,18 @@ export function WorldEditorPage() {
     }, []);
 
     /**
-     * エンティティ選択 (モバイル時のインスペクタ drawer 制御):
-     * - 選択時に drawer を自動展開すると、選択直後の移動・リサイズ操作の邪魔になるので**展開しない**。
-     *   ユーザーが必要に応じて右ハンドルから明示的に開く。
-     * - 選択解除時には drawer も閉じる（中身が空になるため）。
+     * Entity 選択。drawer は自動展開しない（移動/リサイズの邪魔になるため）。
      */
     const selectEntity = useCallback((index: number | null) => {
-        setSelectedIndex(index);
-        if (index === null) setMobileRightOpen(false);
+        setSelectedEntityIndex(index);
+        if (index === null) {
+            setSelectedComponentIndex(null);
+            setMobileRightOpen(false);
+        }
+    }, []);
+
+    const selectComponent = useCallback((componentIndex: number | null) => {
+        setSelectedComponentIndex(componentIndex);
     }, []);
 
     const patchEntityTransform = useCallback(
@@ -143,36 +135,50 @@ export function WorldEditorPage() {
         [updateEntities],
     );
 
-    const handleAddEntity = useCallback(
-        (k: AvailableEntityKind) => {
-            if (k.singleton && placedKinds.has(k.kind)) return;
-            const env = definition.spec.environment;
-            const worldSize = env?.worldSize ?? { width: 2000, height: 1500 };
-            const entities = definition.spec.initialEntities;
-            const dt = k.defaultTransform ?? {};
+    /** 空の GameObject (transform のみ) をワールド中央に新規作成する。 */
+    const handleCreateEmptyEntity = useCallback(() => {
+        const env = definition.spec.environment;
+        const worldSize = env?.worldSize ?? { width: 2000, height: 1500 };
+        const entities = definition.spec.initialEntities;
+        const next: InitialEntity = {
+            id: buildEntityId(
+                'entity',
+                entities.map((e) => e.id),
+            ),
+            transform: {
+                x: Math.round(worldSize.width / 2 - DEFAULT_W / 2),
+                y: Math.round(worldSize.height / 2 - DEFAULT_H / 2),
+                z: nextZ(entities),
+                w: DEFAULT_W,
+                h: DEFAULT_H,
+                scale: 1,
+                rotation: 0,
+            },
+            components: [],
+            tags: [],
+        };
+        updateEntities((prev) => [...prev, next]);
+        selectEntity(entities.length);
+        selectComponent(null);
+    }, [definition.spec.initialEntities, definition.spec.environment, updateEntities, selectEntity, selectComponent]);
+
+    /** Inspector / Hierarchy / Overlay からの component 追加 (D&D 含む)。既存 Entity に component を載せる。 */
+    const handleAddComponentToEntity = useCallback(
+        (entityIndex: number, componentType: string) => {
+            const kind = kinds.find((k) => k.kind === componentType);
             const initialData: Record<string, unknown> = {};
-            if (k.dataFields) {
-                for (const [name, spec] of Object.entries(k.dataFields)) {
+            if (kind?.dataFields) {
+                for (const [name, spec] of Object.entries(kind.dataFields)) {
                     if (spec.default !== undefined) initialData[name] = spec.default;
                 }
             }
-            const next: InitialEntity = {
-                kind: k.kind,
-                transform: {
-                    x: dt.x ?? Math.round(worldSize.width / 2 - DEFAULT_W / 2),
-                    y: dt.y ?? Math.round(worldSize.height / 2 - DEFAULT_H / 2),
-                    z: dt.z ?? nextZ(entities),
-                    w: dt.w ?? (k.suggestSize ? DEFAULT_W : undefined),
-                    h: dt.h ?? (k.suggestSize ? DEFAULT_H : undefined),
-                    scale: dt.scale ?? 1,
-                    rotation: dt.rotation ?? 0,
-                },
-                data: initialData,
-            };
-            updateEntities((prev) => [...prev, next]);
-            selectEntity(entities.length);
+            const newComponent: EntityComponentDef = { type: componentType, data: initialData };
+            updateEntities((prev) =>
+                prev.map((e, i) => (i === entityIndex ? { ...e, components: [...e.components, newComponent] } : e)),
+            );
+            selectComponent(definition.spec.initialEntities[entityIndex]?.components.length ?? 0);
         },
-        [definition.spec.initialEntities, definition.spec.environment, placedKinds, updateEntities, selectEntity],
+        [kinds, updateEntities, selectComponent, definition.spec.initialEntities],
     );
 
     const handleDeleteEntity = useCallback(
@@ -186,7 +192,36 @@ export function WorldEditorPage() {
                 }
                 return next;
             });
-            setSelectedIndex((cur) => (cur === index ? null : cur && cur > index ? cur - 1 : cur));
+            setSelectedEntityIndex((cur) => (cur === index ? null : cur !== null && cur > index ? cur - 1 : cur));
+            setSelectedComponentIndex(null);
+        },
+        [updateEntities],
+    );
+
+    const handleDeleteComponent = useCallback(
+        (entityIndex: number, componentIndex: number) => {
+            updateEntities((prev) =>
+                prev.map((e, i) =>
+                    i === entityIndex ? { ...e, components: e.components.filter((_, ci) => ci !== componentIndex) } : e,
+                ),
+            );
+            setSelectedComponentIndex((cur) => {
+                if (cur === null) return null;
+                if (cur === componentIndex) return null;
+                if (cur > componentIndex) return cur - 1;
+                return cur;
+            });
+        },
+        [updateEntities],
+    );
+
+    const handleRenameEntity = useCallback(
+        (entityIndex: number, newId: string) => {
+            updateEntities((prev) => {
+                const others = prev.filter((_, i) => i !== entityIndex).map((e) => e.id);
+                if (others.includes(newId)) return prev; // 重複は無視
+                return prev.map((e, i) => (i === entityIndex ? { ...e, id: newId } : e));
+            });
         },
         [updateEntities],
     );
@@ -198,10 +233,11 @@ export function WorldEditorPage() {
             else next.add(index);
             return next;
         });
-        setSelectedIndex((cur) => (cur === index ? null : cur));
+        setSelectedEntityIndex((cur) => (cur === index ? null : cur));
+        setSelectedComponentIndex(null);
     }, []);
 
-    // ---------- 保存（バリデーション + API 呼び出し） ----------
+    // ---------- 保存 ----------
     const handleSave = useCallback(() => {
         if (!definition.spec.displayName.trim()) {
             api.setError('表示名は必須です。「ワールド情報」から入力してください');
@@ -214,7 +250,7 @@ export function WorldEditorPage() {
     if (isPending || !session) return <CenteredMessage text="読み込み中..." />;
     if (loading) return <CenteredMessage text="ワールドを読み込み中..." />;
 
-    const selectedEntity = selectedIndex !== null ? definition.spec.initialEntities[selectedIndex] : null;
+    const selectedEntity = selectedEntityIndex !== null ? definition.spec.initialEntities[selectedEntityIndex] : null;
     const title =
         (definition.spec.displayName?.trim() || (isEdit ? 'ワールドを編集' : '新しいワールド')) +
         (isEdit ? '' : ' (未保存)');
@@ -225,8 +261,6 @@ export function WorldEditorPage() {
                 position: 'fixed',
                 inset: 0,
                 display: 'grid',
-                // モバイル: header / center (preview) / bottom (assets) の 3 行レイアウト。
-                // 左 (hierarchy) と右 (inspector) は drawer で重なる。
                 gridTemplateRows: { base: 'auto 1fr 140px', md: 'auto 1fr 220px' },
                 gridTemplateColumns: { base: '1fr', md: '240px 1fr 320px' },
                 gridTemplateAreas: {
@@ -260,43 +294,52 @@ export function WorldEditorPage() {
             >
                 <EditorHierarchy
                     entities={definition.spec.initialEntities}
-                    selectedIndex={selectedIndex}
+                    selectedEntityIndex={selectedEntityIndex}
+                    selectedComponentIndex={selectedComponentIndex}
                     hiddenIndices={hiddenIndices}
-                    onSelect={(i) => {
+                    onSelectEntity={(i) => {
                         selectEntity(i);
-                        // モバイルでヒエラルキーから選択したら左 drawer を閉じる
                         setMobileLeftOpen(false);
                     }}
-                    onDelete={handleDeleteEntity}
+                    onSelectComponent={selectComponent}
+                    onCreateEmptyEntity={handleCreateEmptyEntity}
+                    onDeleteEntity={handleDeleteEntity}
+                    onDeleteComponent={handleDeleteComponent}
                     onToggleHidden={handleToggleHidden}
+                    onDropComponent={handleAddComponentToEntity}
                 />
             </DockSlot>
 
             <div className={css({ gridArea: 'center', minH: 0, minW: 0 })}>
                 <EditorStage
                     definition={definition}
-                    selectedIndex={selectedIndex}
+                    selectedIndex={selectedEntityIndex}
                     hiddenIndices={hiddenIndices}
                     onSelect={selectEntity}
                     onPatchTransform={patchEntityTransform}
+                    onDropComponent={handleAddComponentToEntity}
                 />
             </div>
 
             <DockSlot
                 area="right"
-                // 右ハンドル/選択時に開く drawer。閉じても selection は維持されハンドルから再開可能。
                 mobileVisible={mobileRightOpen && !!selectedEntity}
                 mobileTitle="設定"
                 onMobileClose={() => setMobileRightOpen(false)}
             >
-                {selectedEntity && selectedIndex !== null ? (
+                {selectedEntity && selectedEntityIndex !== null ? (
                     <EntityInspector
                         entity={selectedEntity}
-                        dataFields={kindByName.get(selectedEntity.kind)?.dataFields}
+                        selectedComponentIndex={selectedComponentIndex}
+                        availableKinds={kinds}
                         onChange={(updater) =>
-                            updateEntities((prev) => prev.map((e, i) => (i === selectedIndex ? updater(e) : e)))
+                            updateEntities((prev) => prev.map((e, i) => (i === selectedEntityIndex ? updater(e) : e)))
                         }
-                        onDelete={() => handleDeleteEntity(selectedIndex)}
+                        onSelectComponent={selectComponent}
+                        onAddComponent={(type) => handleAddComponentToEntity(selectedEntityIndex, type)}
+                        onDeleteComponent={(ci) => handleDeleteComponent(selectedEntityIndex, ci)}
+                        onDeleteEntity={() => handleDeleteEntity(selectedEntityIndex)}
+                        onRenameEntity={(id) => handleRenameEntity(selectedEntityIndex, id)}
                     />
                 ) : (
                     <div
@@ -312,23 +355,23 @@ export function WorldEditorPage() {
                 )}
             </DockSlot>
 
-            {/* アセットは bottom = grid 内に常時表示 (モバイル時もプレビューに被らない常設トレイ) */}
             <DockSlot area="bottom" mobileVisible={true}>
-                <EditorAssets kinds={kinds} loading={kindsLoading} placedKinds={placedKinds} onAdd={handleAddEntity} />
+                <EditorAssets
+                    kinds={kinds}
+                    loading={kindsLoading}
+                    pluginNames={(definition.spec.dependencies ?? []).map((d) => d.name)}
+                />
             </DockSlot>
 
-            {/* モバイル: 左ハンドルでヒエラルキー drawer を開く (md 以上では非表示) */}
             {!mobileLeftOpen && <MobileLeftHandle onClick={() => setMobileLeftOpen(true)} />}
-            {/* モバイル: 右ハンドルでインスペクタを再開 (selection 中で drawer 閉じている時のみ) */}
             {selectedEntity && !mobileRightOpen && <MobileRightHandle onClick={() => setMobileRightOpen(true)} />}
 
-            {/* エラー通知 */}
             {api.error && (
                 <div
                     onClick={() => api.setError('')}
                     className={css({
                         position: 'fixed',
-                        bottom: { base: '152px', md: '232px' }, // モバイルは assets (140px) の上に出す
+                        bottom: { base: '152px', md: '232px' },
                         left: { base: '12px', md: '252px' },
                         right: { base: '12px', md: '332px' },
                         padding: '10px 14px',
@@ -348,7 +391,6 @@ export function WorldEditorPage() {
                 </div>
             )}
 
-            {/* モーダル: ワールド情報 */}
             <Modal
                 open={modals.openModal === 'info'}
                 onClose={modals.cancelInfo}
@@ -364,7 +406,6 @@ export function WorldEditorPage() {
                 {modals.infoDraft && <WorldInfoForm draft={modals.infoDraft} onChange={modals.setInfoDraft} />}
             </Modal>
 
-            {/* モーダル: YAML 編集 */}
             <Modal
                 open={modals.openModal === 'yaml'}
                 onClose={modals.cancelYaml}

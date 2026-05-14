@@ -50,25 +50,32 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
     const { vnodes, onRender, sendAction, sendEventRef } = usePluginUI();
     const { getVideoRef, mediaHandlers } = usePluginMedia(definition, sendEventRef);
     const onFetch = usePluginFetch(definition, entity);
-    const worldHandlers = usePluginWorld();
+    const worldHandlers = usePluginWorld(definition.watchScope ?? 'entity', entity.gameObjectId);
 
     // ── Worker 起動時点の watchEntityTypes マッチ分を抽出 ──────────────
-    // initialEntities は Worker 生成の瞬間だけ読まれるため、
-    // ここでは毎レンダー計算しても（Worker は再作成されず）問題ない。
+    // watchScope='entity' (default) は自 GameObject 内の Component のみ可視。
     const initialEntities = useMemo<WorldEntity[]>(() => {
         const types = definition.watchEntityTypes;
         if (!types?.length) return [];
-        const set = new Set(types);
+        const typeSet = new Set(types);
+        const scope = definition.watchScope ?? 'entity';
+        const gid = entity.gameObjectId;
         const out: WorldEntity[] = [];
-        for (const e of entities.values()) if (set.has(e.type)) out.push(e);
+        for (const e of entities.values()) {
+            if (!typeSet.has(e.type)) continue;
+            if (scope === 'entity' && gid && e.gameObjectId !== gid) continue;
+            out.push(e);
+        }
         return out;
-    }, [entities, definition.watchEntityTypes]);
+    }, [entities, definition.watchEntityTypes, definition.watchScope, entity.gameObjectId]);
 
     // ── Worker ────────────────────────────────────────────────────
     const { sendEvent, workerRevision, setScrollElement } = usePluginWorker({
         pluginCode: definition.workerCode,
         pluginId: definition.id,
         entityId,
+        gameObjectId: entity.gameObjectId,
+        componentType: entity.type,
         capabilities: definition.capabilities,
         myUserId: currentUser?.id,
         pluginBase: definition.pluginBase,
@@ -116,7 +123,7 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
     }, [setScrollElement]);
 
     usePluginPresence(definition, users, sendEvent, workerRevision);
-    usePluginEntitySync(definition, entities, sendEvent, workerRevision);
+    usePluginEntitySync(definition, entities, sendEvent, workerRevision, entity.gameObjectId);
 
     // ── レンダー ───────────────────────────────────────────────────
     return (

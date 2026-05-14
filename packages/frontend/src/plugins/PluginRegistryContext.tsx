@@ -22,11 +22,11 @@ interface PluginIndex {
 }
 
 /**
- * バージョン付きマニフェスト（/plugins/<name>/v<ver>/plugin.json）のエンティティ定義。
+ * バージョン付きマニフェスト（/plugins/<name>/v<ver>/manifest.json）の Component 定義。
  * ビルド時のみ必要な src フィールドは含まない。
  * workerUrl はバージョンディレクトリからの相対パス（例: "./cursor/index.js"）。
  *
- * workerUrl が無いエントリは「データ専用エンティティ」(plugin.json で src 未定義) で、
+ * workerUrl が無いエントリは「データ専用 Component」(plugin.json で src 未定義) で、
  * worker は起動せず manifest 上のメタ情報のみを表す。
  */
 interface WorkerMetaObject {
@@ -35,18 +35,20 @@ interface WorkerMetaObject {
     singleton?: boolean;
     canvasTargets?: string[];
     watchEntityTypes?: string[];
+    /** 'entity' (default) なら自 GameObject 内のみ、'world' ならワールド全体を watch */
+    watchScope?: 'entity' | 'world';
     mediaTargets?: string[];
     fetchDomains?: string[];
     defaultTransform?: Record<string, unknown>;
     dataFields?: Record<string, unknown>;
 }
 
-/** バージョン付きマニフェスト全体 */
+/** バージョン付きマニフェスト全体（Stage 1: `components` キーで全 Component を `pluginId:componentName` 形式で保持） */
 interface VersionedPluginJson {
     id: string;
     name?: string;
     version: string;
-    entities?: Record<string, WorkerMetaObject>;
+    components?: Record<string, WorkerMetaObject>;
 }
 
 /**
@@ -91,8 +93,8 @@ function fetchVersionedManifest(pluginName: string, version: string): Promise<Ve
 }
 
 /**
- * エンティティタイプ (`pluginName:entityKey`) から WorkerPluginDefinition を構築する。
- * 該当するプラグインがない or workerUrl が無いデータ専用エンティティの場合は null。
+ * Component 型 (`pluginName:componentName`) から WorkerPluginDefinition を構築する。
+ * 該当するプラグインがない or workerUrl が無いデータ専用 Component の場合は null。
  */
 async function loadWorkerPlugin(entityType: string): Promise<WorkerPluginDefinition | null> {
     const colonIdx = entityType.indexOf(':');
@@ -103,7 +105,7 @@ async function loadWorkerPlugin(entityType: string): Promise<WorkerPluginDefinit
     if (!index?.version) return null;
 
     const manifest = await fetchVersionedManifest(pluginName, index.version);
-    const entry = manifest?.entities?.[entityType];
+    const entry = manifest?.components?.[entityType];
     if (!entry || !entry.workerUrl) return null;
 
     const versionedBase = `${PLUGIN_BASE_URL}/${pluginName}/v${index.version}`;
@@ -126,6 +128,7 @@ async function loadWorkerPlugin(entityType: string): Promise<WorkerPluginDefinit
         singleton: entry.singleton,
         canvasTargets: entry.canvasTargets,
         watchEntityTypes: entry.watchEntityTypes,
+        watchScope: entry.watchScope ?? 'entity',
         mediaTargets: entry.mediaTargets,
         fetchDomains: entry.fetchDomains,
         pluginBase: versionedBase,

@@ -21,17 +21,14 @@ const FALLBACK_ENTITY: WorldEntity = {
     transform: { x: 0, y: 0, z: 0, w: 0, h: 0, scale: 1, rotation: 0 },
 };
 
-/**
- * 編集モード用のエンティティID。
- * initialEntities 配列の index と紐付ける。
- */
-export function makeEditorEntityId(index: number): string {
-    return `edit-${index}`;
+/** 編集モード用エンティティ ID: `edit-${entityIndex}-${componentIndex}` */
+export function makeEditorEntityId(entityIndex: number, componentIndex: number): string {
+    return `edit-${entityIndex}-${componentIndex}`;
 }
 
 export function parseEditorEntityIndex(id: string): number | null {
     if (!id.startsWith('edit-')) return null;
-    const n = Number.parseInt(id.slice('edit-'.length), 10);
+    const n = Number.parseInt(id.slice('edit-'.length).split('-')[0] ?? '', 10);
     return Number.isFinite(n) ? n : null;
 }
 
@@ -73,25 +70,30 @@ export function EditorPreview({
 
     const entities = useMemo(() => {
         const map = new Map<string, WorldEntity>();
-        definition.spec.initialEntities.forEach((e, i) => {
-            // 非表示中のエンティティはプラグイン本体ごと除外する（worker も起動しない）
-            if (hiddenIndices?.has(i)) return;
+        definition.spec.initialEntities.forEach((e, ei) => {
+            // 非表示中の GameObject は全 Component を一括除外（Worker も起動しない）
+            if (hiddenIndices?.has(ei)) return;
             const t = e.transform;
-            map.set(makeEditorEntityId(i), {
-                id: makeEditorEntityId(i),
-                type: e.kind,
-                ownerId: null,
-                lockedBy: null,
-                data: (e.data as Record<string, unknown> | undefined) ?? {},
-                transform: {
-                    x: t.x,
-                    y: t.y,
-                    z: t.z ?? 0,
-                    w: t.w ?? 0,
-                    h: t.h ?? 0,
-                    scale: t.scale ?? 1,
-                    rotation: t.rotation ?? 0,
-                },
+            const transform: WorldEntity['transform'] = {
+                x: t.x,
+                y: t.y,
+                z: t.z ?? 0,
+                w: t.w ?? 0,
+                h: t.h ?? 0,
+                scale: t.scale ?? 1,
+                rotation: t.rotation ?? 0,
+            };
+            e.components.forEach((c, ci) => {
+                const id = makeEditorEntityId(ei, ci);
+                map.set(id, {
+                    id,
+                    type: c.type,
+                    gameObjectId: e.id,
+                    ownerId: null,
+                    lockedBy: null,
+                    data: (c.data as Record<string, unknown> | undefined) ?? {},
+                    transform,
+                });
             });
         });
         return map;
@@ -100,8 +102,10 @@ export function EditorPreview({
     const activePlugins = useMemo(() => {
         const set = new Set<string>();
         for (const e of definition.spec.initialEntities) {
-            const colon = e.kind.indexOf(':');
-            set.add(colon === -1 ? e.kind : e.kind.slice(0, colon));
+            for (const c of e.components) {
+                const colon = c.type.indexOf(':');
+                set.add(colon === -1 ? c.type : c.type.slice(0, colon));
+            }
         }
         return Array.from(set);
     }, [definition.spec.initialEntities]);
@@ -111,7 +115,7 @@ export function EditorPreview({
             entities,
             ephemeralData: new Map(),
             environment,
-            availableKinds: [],
+            availableComponents: [],
             activePlugins,
             // エディタは entity 操作を hook 経由で許可しない（編集はオーバーレイで definition を直接書き換える）
             createEntity: async () => null,

@@ -35,7 +35,7 @@ spec:
         type: repository
         path: "plugins/avatar"
 
-  # 初期配置エンティティ
+  # 初期 GameObject（id + transform + components[]）
   #
   # ── z-index レイヤー構成 ──────────────────────────────────────
   # transform.z が GenericPluginHost の CSS zIndex に直接対応する。
@@ -43,7 +43,7 @@ spec:
   #
   #  z=10100  avatar:cursor        カーソル（最前面・常時表示）
   #  z= 9998  avatar:settings      アバター設定パネル
-  #  z= 5000  pen:canvas           描画レイヤー（pointer-events:none のため UI 操作は素通り）
+  #  z= 5000  pen:canvas           描画レイヤー
   #  z= 1000  pen:tray             ペントレイ UI
   #  z=  200  video-player:controls コントロールバー + プレイリスト
   #  z=    2  video-player:screen  動画表示（最背面）
@@ -52,21 +52,19 @@ spec:
 
   initialEntities:
     # ── ペンキャンバス ───────────────────────────────────────────
-    # 描画レイヤー。pointer-events:none のためコンテンツ・UI プラグインの
-    # 操作を妨げずに全プラグインの上に描画できる。
-    - kind: "pen:canvas"
+    - id: pen-canvas
       transform:
         x: 0
         y: 0
         z: 5000
         scale: 1
         rotation: 0
-      data: {}
+      components:
+        - type: "pen:canvas"
+          data: {}
 
     # ── ビデオ画面（動画表示のみ・UI なし）──────────────────────
-    # transform の x/y/w/h で動画の表示位置とサイズを決める。
-    # controls エンティティとは別オブジェクトなので干渉しない。
-    - kind: "video-player:screen"
+    - id: video-screen
       transform:
         x: 800
         y: 60
@@ -75,25 +73,25 @@ spec:
         h: 360
         scale: 1
         rotation: 0
-      data:
-        playlist:
-          - id: "jfKfPfyJRdk"
-            title: "lofi hip hop radio - beats to relax/study to"
-            thumbnail: "https://i.ytimg.com/vi/jfKfPfyJRdk/default.jpg"
+      components:
+        - type: "video-player:screen"
+          data:
+            playlist:
+              - id: "jfKfPfyJRdk"
+                title: "lofi hip hop radio - beats to relax/study to"
+                thumbnail: "https://i.ytimg.com/vi/jfKfPfyJRdk/default.jpg"
+                duration: 0
+                mode: "live"
+            currentIndex: 0
+            isPlaying: false
+            currentTime: 0
             duration: 0
-            mode: "live"
-        currentIndex: 0
-        isPlaying: false
-        currentTime: 0
-        duration: 0
-        loop: "none"
-        shuffle: false
-        apiBase: "/plugins/video-player/api"
+            loop: "none"
+            shuffle: false
+            apiBase: "/plugins/video-player/api"
 
     # ── コントロール + プレイリスト（UI のみ・メディアなし）──────
-    # screen エンティティの真下に配置する。
-    # watchEntityTypes: ['video-player:screen'] で状態を受信する。
-    - kind: "video-player:controls"
+    - id: video-controls
       transform:
         x: 800
         y: 800
@@ -101,92 +99,76 @@ spec:
         w: 740
         scale: 1
         rotation: 0
-      data: {}
+      components:
+        - type: "video-player:controls"
+          data: {}
 
-    # ── アバター設定 ─────────────────────────────────────────────
-    - kind: "avatar:cursor"
+    # ── アバター（カーソル + 設定）──────────────────────────────
+    - id: avatar-cursor
       transform:
         x: 0
         y: 0
         z: 10100
         scale: 1
         rotation: 0
-      data: {}
+      components:
+        - type: "avatar:cursor"
+          data: {}
 
-    - kind: "avatar:settings"
+    - id: avatar-settings
       transform:
         x: 20
         y: 100
         z: 9998
         scale: 1
         rotation: 0
-      data: {}
+      components:
+        - type: "avatar:settings"
+          data: {}
 
-    # ── ペントレイ ──────────────────────────────────────────────
-    - kind: "pen:tray"
+    # ── ペントレイ A: 暖色 (Entity 内に pen:pen を集約 → Tray は自 Entity 内のみ可視) ──
+    - id: pen-tray-warm
       transform:
         x: 20
         y: 20
         z: 1000
         scale: 1
         rotation: 0
-      data: {}
+      components:
+        - type: "pen:tray"
+          data: {}
+        - type: "pen:pen"
+          data:
+            color: "#1a1a1a"
+            strokeWidth: 4
+        - type: "pen:pen"
+          data:
+            color: "#e63946"
+            strokeWidth: 4
+        - type: "pen:pen"
+          data:
+            color: "#e9c46a"
+            strokeWidth: 4
 
-    # ── ペン (色ごとに 1 エンティティ) ──────────────────────────
-    - kind: "pen:pen"
+    # ── ペントレイ B: 寒色 (こちらは別 Entity なので Tray A からは分離) ──────
+    - id: pen-tray-cool
       transform:
-        x: 0
-        y: 0
-        z: 1
+        x: 100
+        y: 20
+        z: 1001
         scale: 1
         rotation: 0
-      data:
-        color: "#1a1a1a"
-        strokeWidth: 4
-
-    - kind: "pen:pen"
-      transform:
-        x: 0
-        y: 0
-        z: 2
-        scale: 1
-        rotation: 0
-      data:
-        color: "#e63946"
-        strokeWidth: 4
-
-    - kind: "pen:pen"
-      transform:
-        x: 0
-        y: 0
-        z: 3
-        scale: 1
-        rotation: 0
-      data:
-        color: "#457b9d"
-        strokeWidth: 4
-
-    - kind: "pen:pen"
-      transform:
-        x: 0
-        y: 0
-        z: 4
-        scale: 1
-        rotation: 0
-      data:
-        color: "#2a9d8f"
-        strokeWidth: 4
-
-    - kind: "pen:pen"
-      transform:
-        x: 0
-        y: 0
-        z: 5
-        scale: 1
-        rotation: 0
-      data:
-        color: "#e9c46a"
-        strokeWidth: 4
+      components:
+        - type: "pen:tray"
+          data: {}
+        - type: "pen:pen"
+          data:
+            color: "#457b9d"
+            strokeWidth: 4
+        - type: "pen:pen"
+          data:
+            color: "#2a9d8f"
+            strokeWidth: 4
 
   permissions:
     allowGuestCreate: true

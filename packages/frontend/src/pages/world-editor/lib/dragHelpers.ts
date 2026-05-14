@@ -57,8 +57,22 @@ export function applyDrag(drag: DragState, dx: number, dy: number): Partial<Init
 }
 
 /**
- * 既存のエンティティ群の z 値の最大 + 1 を返す純粋関数。
+ * 既存の GameObject 群の z 値の最大 + 1 を返す純粋関数。
  */
 export function nextZ(entities: InitialEntity[]): number {
     return entities.reduce((m, e) => Math.max(m, e.transform.z ?? 0), 0) + 1;
+}
+
+/**
+ * Component 型 (`pen:tray`) からエンティティ id を生成する。
+ * - 既存に重複しないよう連番でサフィックスを付ける
+ * - KebabCaseId 仕様: 小文字英数とハイフンのみ、50 文字以内
+ */
+export function buildEntityId(componentType: string, existing: Iterable<string>): string {
+    const base = componentType.replace(/[^a-z0-9-]/gi, '-').toLowerCase();
+    const used = new Set<string>(existing);
+    if (!used.has(base)) return base;
+    let n = 2;
+    while (used.has(`${base}-${n}`)) n += 1;
+    return `${base}-${n}`;
 }

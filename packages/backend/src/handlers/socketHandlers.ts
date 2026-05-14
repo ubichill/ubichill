@@ -159,7 +159,7 @@ export function handleWorldJoin(socket: TypedSocket) {
 
         const snapshotPayload: WorldSnapshotPayload = {
             entities,
-            availableKinds: [],
+            availableComponents: [],
             activePlugins,
             environment,
         };
@@ -479,7 +479,7 @@ export async function sendWorldSnapshot(socket: TypedSocket, instanceId: string,
 
     const snapshotPayload: WorldSnapshotPayload = {
         entities,
-        availableKinds: [],
+        availableComponents: [],
         activePlugins,
         environment,
     };

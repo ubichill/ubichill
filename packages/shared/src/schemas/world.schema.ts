@@ -8,6 +8,7 @@ export const LIMITS = {
     MAX_YAML_SIZE: 100 * 1024, // 100KB
     MAX_STRING_LENGTH: 1000,
     MAX_INITIAL_ENTITIES: 500,
+    MAX_COMPONENTS_PER_ENTITY: 32,
     MAX_DEPENDENCY_DEPTH: 3,
     MAX_TAGS: 10,
     MAX_WORLDS_PER_USER: 5,
@@ -90,13 +91,49 @@ export const WorldCapacitySchema = z.object({
 });
 
 // ============================================
-// Initial Entity（初期配置エンティティ）
+// Entity / Component（ECS スキーマ）
+//
+// 設計:
+// - Entity (GameObject) は id + transform のみを持つ「箱」
+// - Component (`<plugin>:<name>`) が振る舞いを配布する
+// - 1 Entity に複数の Component を載せられる
 // ============================================
 
+/**
+ * Component 型識別子: `pluginId:componentName` 形式。
+ * 例: `pen:tray`, `video-player:videoSurface`
+ */
+export const ComponentTypeSchema = z.string().regex(/^[a-z0-9-]+:[a-zA-Z0-9_-]+$/, 'Must be "pluginId:componentName"');
+
+/**
+ * Entity に載る 1 つの Component。
+ */
+export const EntityComponentSchema = z.object({
+    type: ComponentTypeSchema,
+    data: z.record(z.string(), z.unknown()).default({}),
+});
+
+/**
+ * Entity (GameObject) に付与する自由なタグ。
+ * Unity の Tag 相当。フィルタ / クエリ / レイヤー用途で使う。
+ * 安全のため kebab-case + 数字 + アンダースコア程度に限定。
+ */
+export const EntityTagSchema = z
+    .string()
+    .min(1)
+    .max(40)
+    .regex(/^[a-z0-9_-]+$/, 'tag は小文字英数 + - _ のみ');
+
+/**
+ * ワールド YAML 上の初期 Entity（GameObject）。
+ * 1 つの Entity に複数 Component を載せる「現代的 ECS」スタイル。
+ */
 export const InitialEntitySchema = z.object({
-    kind: z.string(), // "package-name:kind-id"
+    id: KebabCaseId,
     transform: TransformSchema,
-    data: z.record(z.string(), z.unknown()).optional(),
+    components: z.array(EntityComponentSchema).max(LIMITS.MAX_COMPONENTS_PER_ENTITY).default([]),
+    /** 自由なタグ (Unity の Tag 相当)。空配列で省略可。 */
+    tags: z.array(EntityTagSchema).max(LIMITS.MAX_TAGS).default([]),
 });
 
 // ============================================
@@ -153,6 +190,9 @@ export type WorldDefinition = z.infer<typeof WorldDefinitionSchema>;
 export type WorldEnvironment = z.infer<typeof WorldEnvironmentSchema>;
 export type WorldCapacity = z.infer<typeof WorldCapacitySchema>;
 export type InitialEntity = z.infer<typeof InitialEntitySchema>;
+export type EntityComponentDef = z.infer<typeof EntityComponentSchema>;
+export type ComponentType = z.infer<typeof ComponentTypeSchema>;
+export type EntityTag = z.infer<typeof EntityTagSchema>;
 
 // ============================================
 // World Create Input（ブラウザフォーム用）
@@ -188,7 +228,6 @@ export const ResolvedWorldSchema = z.object({
     environment: WorldEnvironmentSchema,
     capacity: WorldCapacitySchema,
     dependencies: z.array(DependencySchema).optional(),
-    // availableKinds は別途追加
     initialEntities: z.array(InitialEntitySchema),
 });
 

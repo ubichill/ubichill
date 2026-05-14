@@ -80,6 +80,8 @@ self.addEventListener('message', (e: MessageEvent<PluginHostEvent>) => {
     Ubi.worldId = event.payload.worldId;
     Ubi.myUserId = event.payload.myUserId;
     Ubi.entityId = event.payload.entityId;
+    Ubi.gameObjectId = event.payload.gameObjectId;
+    Ubi.componentType = event.payload.componentType;
     Ubi.pluginBase = event.payload.pluginBase ?? '';
     Ubi.watchEntityTypes = event.payload.watchEntityTypes ?? [];
     // state.define がプラグインコード実行前にこのスナップショットを同期反映する

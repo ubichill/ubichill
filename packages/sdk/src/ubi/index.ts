@@ -75,7 +75,15 @@ export class UbiSDK {
     public worldId?: string;
     public myUserId?: string;
     public pluginId?: string;
+    /**
+     * 自 Worker (1 Component インスタンス) を識別する flat ID。
+     * Stage 1 では `${gameObjectId}::${componentType}` 形式。
+     */
     public entityId?: string;
+    /** 親 GameObject の安定 ID。Stage 2 で Component 間連携の主要キーになる予定。 */
+    public gameObjectId?: string;
+    /** 自 Worker の Component 型 (`pluginId:componentName`) */
+    public componentType?: string;
     public pluginBase = '';
     public watchEntityTypes: string[] = [];
 
@@ -105,6 +113,7 @@ export class UbiSDK {
             getMyUserId: () => this.myUserId,
             getEntityId: () => this.entityId,
             getPluginId: () => this.pluginId,
+            getComponentType: () => this.componentType,
             getWatchEntityTypes: () => this.watchEntityTypes,
             getPresenceUsers: () => this.presence.getPresenceUsers(),
             getLocalSharedState: () => this.presence.getLocalSharedState(),

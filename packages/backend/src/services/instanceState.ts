@@ -3,13 +3,14 @@ import type { WorldEntity } from '@ubichill/shared';
 import { logger } from '../utils/logger';
 
 /**
- * インスタンスごとのエンティティ状態を管理するインメモリストア
+ * インスタンスごとの flat WorldEntity 状態を管理するインメモリストア。
  *
  * 設計思想:
- * - ワールド定義（YAML/DB）とは独立したランタイム状態
- * - バックエンドは「土管」として動作し、data の中身を解釈しない
- * - 各インスタンスは独立したエンティティ空間を持つ
- * - エンティティはインスタンスID + エンティティIDで一意に識別される
+ * - ワールド定義（YAML/DB）は GameObject + components[] で表現されるが、
+ *   ランタイム socket / SDK は引き続き flat WorldEntity 単位で動く（Stage 1）。
+ *   GameObject の flatten は `instanceManager` 側で行う。
+ * - バックエンドは「土管」として動作し、data の中身を解釈しない。
+ * - 各インスタンスは独立したエンティティ空間を持つ。
  */
 
 // instanceId → entityId → WorldEntity のネストした Map
@@ -26,25 +27,31 @@ function getInstanceEntityMap(instanceId: string): Map<string, WorldEntity> {
 }
 
 /**
- * 指定インスタンスの全エンティティを配列で取得
+ * 指定インスタンスの全エンティティを配列で取得。
  */
 export function getInstanceSnapshot(instanceId: string): WorldEntity[] {
     return Array.from(getInstanceEntityMap(instanceId).values());
 }
 
+interface CreateEntityInput extends Omit<WorldEntity, 'id'> {
+    /** 安定 ID。省略時はランダム UUID を採番する。 */
+    id?: string;
+}
+
 /**
- * 新しいエンティティを作成
+ * 新しいエンティティを作成。
  */
-export function createEntity(instanceId: string, entityData: Omit<WorldEntity, 'id'>): WorldEntity {
+export function createEntity(instanceId: string, input: CreateEntityInput): WorldEntity {
     const state = getInstanceEntityMap(instanceId);
-    const entity: WorldEntity = { ...entityData, id: randomUUID() };
+    const { id, ...rest } = input;
+    const entity: WorldEntity = { ...rest, id: id ?? randomUUID() };
     state.set(entity.id, entity);
     logger.debug(`エンティティ作成: ${entity.id} (type: ${entity.type}, instance: ${instanceId})`);
     return entity;
 }
 
 /**
- * エンティティを部分更新（transform は深くマージ）
+ * エンティティを部分更新（transform / data は深くマージ）。
  */
 export function patchEntity(
     instanceId: string,
@@ -71,7 +78,7 @@ export function patchEntity(
 }
 
 /**
- * エンティティを削除
+ * エンティティを削除。
  */
 export function deleteEntity(instanceId: string, entityId: string): boolean {
     const state = getInstanceEntityMap(instanceId);
@@ -81,14 +88,14 @@ export function deleteEntity(instanceId: string, entityId: string): boolean {
 }
 
 /**
- * エンティティを取得
+ * エンティティを取得。
  */
 export function getEntity(instanceId: string, entityId: string): WorldEntity | undefined {
     return getInstanceEntityMap(instanceId).get(entityId);
 }
 
 /**
- * インスタンスのエンティティ状態をクリア（インスタンス終了時）
+ * インスタンスのエンティティ状態をクリア（インスタンス終了時）。
  */
 export function clearInstanceState(instanceId: string): void {
     instanceStates.delete(instanceId);
