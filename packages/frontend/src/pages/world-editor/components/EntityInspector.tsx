@@ -2,6 +2,7 @@ import type { EntityComponentDef, InitialEntity } from '@ubichill/shared';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '@/styled-system/css';
 import type { AvailableEntityKind, DataFieldSpec, DataFields } from '../hooks/useAvailableEntityKinds';
+import { COMPONENT_DRAG_MIME } from '../lib/dnd';
 
 interface EntityInspectorProps {
     entity: InitialEntity;
@@ -267,6 +268,7 @@ function ComponentPicker({
     onAdd: (type: string) => void;
 }) {
     const [type, setType] = useState('');
+    const [dragOver, setDragOver] = useState(false);
     const candidates = useMemo(() => availableKinds.map((k) => k.kind).sort(), [availableKinds]);
 
     const handleAdd = () => {
@@ -277,6 +279,21 @@ function ComponentPicker({
 
     return (
         <div
+            onDragOver={(e) => {
+                if (e.dataTransfer.types.includes(COMPONENT_DRAG_MIME)) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'copy';
+                    setDragOver(true);
+                }
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+                const ctype = e.dataTransfer.getData(COMPONENT_DRAG_MIME);
+                setDragOver(false);
+                if (!ctype) return;
+                e.preventDefault();
+                onAdd(ctype);
+            }}
             className={css({
                 display: 'grid',
                 gridTemplateColumns: '1fr auto',
@@ -284,6 +301,10 @@ function ComponentPicker({
                 pt: '2',
                 borderTop: '1px dashed',
                 borderColor: 'border',
+                outline: dragOver ? '2px dashed' : 'none',
+                outlineColor: 'primary',
+                outlineOffset: '2px',
+                borderRadius: '4px',
             })}
         >
             <select value={type} onChange={(e) => setType(e.target.value)} className={inputStyle}>

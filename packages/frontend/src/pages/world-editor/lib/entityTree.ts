@@ -93,3 +93,43 @@ export function collectEntityIds(entities: InitialEntity[]): string[] {
     walk(entities);
     return out;
 }
+
+export const pathKey = (p: EntityPath): string => p.join('-');
+
+/** path とその全祖先 path のキーを返す。子の非表示判定に使う。 */
+export function pathAndAncestorKeys(path: EntityPath): string[] {
+    const out: string[] = [];
+    for (let i = 1; i <= path.length; i += 1) out.push(pathKey(path.slice(0, i)));
+    return out;
+}
+
+/** path が target または target の子孫であるか。 */
+export function isDescendantOrSelf(path: EntityPath, target: EntityPath): boolean {
+    if (path.length < target.length) return false;
+    return target.every((v, i) => v === path[i]);
+}
+
+/** Entity を path から取り外し、newParentPath の末尾子として挿入。null なら root 末尾。 */
+export function moveEntity(entities: InitialEntity[], from: EntityPath, to: EntityPath | null): InitialEntity[] {
+    if (from.length === 0) return entities;
+    if (to && isDescendantOrSelf(to, from)) return entities; // 自分の子孫には移動できない
+    const node = getEntityAt(entities, from);
+    if (!node) return entities;
+    const removed = deleteEntityAt(entities, from);
+    // from 削除によって to が指す位置が変わる可能性 → from の祖先・兄弟ケースを補正
+    const adjustedTo = adjustPathAfterRemove(to, from);
+    return insertEntity(removed, adjustedTo, node);
+}
+
+/** target path が from 削除後どう変わるかを計算する純関数。null なら影響なし。 */
+function adjustPathAfterRemove(target: EntityPath | null, from: EntityPath): EntityPath | null {
+    if (!target) return target;
+    if (target.length < from.length) return target;
+    const sameHead = from.slice(0, -1).every((v, i) => v === target[i]);
+    if (!sameHead) return target;
+    const sibIdx = from[from.length - 1];
+    const targetAtLevel = target[from.length - 1];
+    if (targetAtLevel < sibIdx) return target;
+    if (targetAtLevel === sibIdx) return target; // target が from と同じ位置 (= from の子孫を移動先にできない、上で弾く)
+    return [...target.slice(0, from.length - 1), targetAtLevel - 1, ...target.slice(from.length)];
+}

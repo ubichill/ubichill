@@ -2,31 +2,34 @@ import type { InitialEntity } from '@ubichill/shared';
 import { useState } from 'react';
 import { css } from '@/styled-system/css';
 import { COMPONENT_DRAG_MIME } from '../lib/dnd';
+import { type EntityPath, pathKey } from '../lib/entityTree';
 
-/** ヒエラルキー内で Entity を指す path (ルートからの index 列)。例: [0] / [0, 1] */
-export type EntityPath = number[];
+const ENTITY_DRAG_MIME = 'application/x-ubichill-entity-path';
+const INDENT_PX = 16;
 
 interface EditorHierarchyProps {
     entities: InitialEntity[];
     selectedPath: EntityPath | null;
-    /** Component index (null なら Entity 全体が選択中) */
     selectedComponentIndex: number | null;
-    /** ローカル非表示にしている **ルート** Entity の index 集合 */
-    hiddenRootIndices: Set<number>;
+    hiddenPaths: Set<string>;
     onSelectEntity: (path: EntityPath | null) => void;
     onSelectComponent: (componentIndex: number | null) => void;
     onCreateEmptyEntity: (parentPath: EntityPath | null) => void;
     onDeleteEntity: (path: EntityPath) => void;
     onDeleteComponent: (path: EntityPath, componentIndex: number) => void;
-    onToggleHidden: (rootIndex: number) => void;
+    onToggleHidden: (path: EntityPath) => void;
     onDropComponent: (path: EntityPath, componentType: string) => void;
+    /** Entity を別 Entity の子へ移動 (to=null なら root 末尾) */
+    onMoveEntity: (from: EntityPath, to: EntityPath | null) => void;
+    /** ダブルクリックで最初の子に降りる */
+    onEnterChild: (path: EntityPath) => void;
 }
 
 export function EditorHierarchy({
     entities,
     selectedPath,
     selectedComponentIndex,
-    hiddenRootIndices,
+    hiddenPaths,
     onSelectEntity,
     onSelectComponent,
     onCreateEmptyEntity,
@@ -34,7 +37,19 @@ export function EditorHierarchy({
     onDeleteComponent,
     onToggleHidden,
     onDropComponent,
+    onMoveEntity,
+    onEnterChild,
 }: EditorHierarchyProps) {
+    // root 余白への drop でルートに移動
+    const [rootDragOver, setRootDragOver] = useState(false);
+    const acceptEntityDrag = (e: React.DragEvent) => {
+        if (e.dataTransfer.types.includes(ENTITY_DRAG_MIME)) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            setRootDragOver(true);
+        }
+    };
+
     return (
         <aside
             className={css({
@@ -101,9 +116,26 @@ export function EditorHierarchy({
                     overflowX: 'hidden',
                     padding: '4px',
                     minH: 0,
+                    bg: rootDragOver ? 'primarySubtle' : 'transparent',
+                    transition: 'background 0.1s',
                     '&::-webkit-scrollbar': { width: '6px' },
                     '&::-webkit-scrollbar-thumb': { backgroundColor: 'primarySubtle', borderRadius: '3px' },
                 })}
+                onClick={(e) => {
+                    // 余白クリックで選択解除
+                    if (e.target === e.currentTarget) onSelectEntity(null);
+                }}
+                onDragOver={acceptEntityDrag}
+                onDragLeave={() => setRootDragOver(false)}
+                onDrop={(e) => {
+                    const fromKey = e.dataTransfer.getData(ENTITY_DRAG_MIME);
+                    setRootDragOver(false);
+                    if (!fromKey) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const from = fromKey.split('-').map(Number);
+                    onMoveEntity(from, null);
+                }}
             >
                 {entities.length === 0 ? (
                     <div
@@ -114,8 +146,7 @@ export function EditorHierarchy({
                             textAlign: 'center',
                         })}
                     >
-                        まだエンティティがありません。「+ Entity」を押すか、アセットからコンポーネントを drop
-                        してください。
+                        まだエンティティがありません。「+ Entity」を押すか、アセットから drop してください。
                     </div>
                 ) : (
                     entities.map((entity, i) => (
@@ -124,17 +155,19 @@ export function EditorHierarchy({
                             entity={entity}
                             path={[i]}
                             depth={0}
-                            rootIndex={i}
-                            rootHidden={hiddenRootIndices.has(i)}
+                            ancestorHidden={false}
+                            hiddenPaths={hiddenPaths}
                             selectedPath={selectedPath}
                             selectedComponentIndex={selectedComponentIndex}
                             onSelectEntity={onSelectEntity}
                             onSelectComponent={onSelectComponent}
-                            onCreateChild={onCreateEmptyEntity}
+                            onCreateEmptyEntity={onCreateEmptyEntity}
                             onDeleteEntity={onDeleteEntity}
                             onDeleteComponent={onDeleteComponent}
                             onToggleHidden={onToggleHidden}
                             onDropComponent={onDropComponent}
+                            onMoveEntity={onMoveEntity}
+                            onEnterChild={onEnterChild}
                         />
                     ))
                 )}
@@ -149,51 +182,58 @@ function pathsEqual(a: EntityPath | null, b: EntityPath | null): boolean {
     return a.every((v, i) => v === b[i]);
 }
 
-interface EntityNodeProps {
+interface EntityNodeProps extends Omit<EditorHierarchyProps, 'entities'> {
     entity: InitialEntity;
     path: EntityPath;
     depth: number;
-    rootIndex: number;
-    rootHidden: boolean;
-    selectedPath: EntityPath | null;
-    selectedComponentIndex: number | null;
-    onSelectEntity: (path: EntityPath | null) => void;
-    onSelectComponent: (componentIndex: number | null) => void;
-    onCreateChild: (parentPath: EntityPath) => void;
-    onDeleteEntity: (path: EntityPath) => void;
-    onDeleteComponent: (path: EntityPath, componentIndex: number) => void;
-    onToggleHidden: (rootIndex: number) => void;
-    onDropComponent: (path: EntityPath, componentType: string) => void;
+    ancestorHidden: boolean;
 }
+
+type DropZone = 'before' | 'into' | 'after' | null;
 
 function EntityNode({
     entity,
     path,
     depth,
-    rootIndex,
-    rootHidden,
+    ancestorHidden,
+    hiddenPaths,
     selectedPath,
     selectedComponentIndex,
     onSelectEntity,
     onSelectComponent,
-    onCreateChild,
+    onCreateEmptyEntity,
     onDeleteEntity,
     onDeleteComponent,
     onToggleHidden,
     onDropComponent,
+    onMoveEntity,
+    onEnterChild,
 }: EntityNodeProps) {
-    const [dragOver, setDragOver] = useState(false);
+    const [componentDragOver, setComponentDragOver] = useState(false);
+    const [entityDropZone, setEntityDropZone] = useState<DropZone>(null);
     const [open, setOpen] = useState(true);
 
     const hasFocus = pathsEqual(selectedPath, path);
     const selectedEntityOnly = hasFocus && selectedComponentIndex === null;
+    const selfHidden = hiddenPaths.has(pathKey(path));
+    const effectivelyHidden = selfHidden || ancestorHidden;
 
     const acceptComponentDrag = (e: React.DragEvent) => {
         if (e.dataTransfer.types.includes(COMPONENT_DRAG_MIME)) {
             e.preventDefault();
             e.dataTransfer.dropEffect = 'copy';
-            setDragOver(true);
+            setComponentDragOver(true);
         }
+    };
+
+    const acceptEntityDrag = (e: React.DragEvent) => {
+        if (!e.dataTransfer.types.includes(ENTITY_DRAG_MIME)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        const ratio = (e.clientY - rect.top) / rect.height;
+        const zone: DropZone = ratio < 0.25 ? 'before' : ratio > 0.75 ? 'after' : 'into';
+        setEntityDropZone(zone);
     };
 
     const w = entity.transform.w ?? 0;
@@ -201,21 +241,24 @@ function EntityNode({
     const sizeBadge = w > 0 && h > 0 ? `${w}×${h}` : '—';
     const hasChildren = (entity.children?.length ?? 0) > 0;
 
+    const handleRowClick = () => {
+        // 既に選択中の親をクリックしたら最初の子に降りる (Figma 風 enter-into)
+        if (selectedEntityOnly && hasChildren && open) {
+            onEnterChild(path);
+            return;
+        }
+        onSelectEntity(path);
+        onSelectComponent(null);
+    };
+
+    const handleRowDoubleClick = () => {
+        if (hasChildren) onEnterChild(path);
+    };
+
     return (
-        <div
-            className={css({ display: 'flex', flexDirection: 'column' })}
-            onDragOver={acceptComponentDrag}
-            onDragEnter={acceptComponentDrag}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={(e) => {
-                const type = e.dataTransfer.getData(COMPONENT_DRAG_MIME);
-                setDragOver(false);
-                if (!type) return;
-                e.preventDefault();
-                e.stopPropagation();
-                onDropComponent(path, type);
-            }}
-        >
+        <div className={css({ display: 'flex', flexDirection: 'column' })}>
+            {/* drop zone (before) */}
+            {entityDropZone === 'before' && <DropLine indentPx={4 + depth * INDENT_PX} />}
             <div
                 className={css({
                     display: 'flex',
@@ -224,18 +267,62 @@ function EntityNode({
                     padding: '6px 8px',
                     borderRadius: '6px',
                     cursor: 'pointer',
-                    bg: selectedEntityOnly ? 'primary' : dragOver ? 'primarySubtle' : 'transparent',
+                    bg: selectedEntityOnly
+                        ? 'primary'
+                        : componentDragOver || entityDropZone === 'into'
+                          ? 'primarySubtle'
+                          : 'transparent',
                     color: selectedEntityOnly ? 'textOnPrimary' : 'text',
-                    opacity: rootHidden ? 0.45 : 1,
-                    outline: dragOver ? '1px dashed' : 'none',
+                    opacity: effectivelyHidden ? 0.45 : 1,
+                    outline: componentDragOver || entityDropZone === 'into' ? '1px dashed' : 'none',
                     outlineColor: 'primary',
                     _hover: { bg: selectedEntityOnly ? 'primary' : 'surfaceHover' },
                 })}
-                style={{ paddingLeft: 8 + depth * 14 }}
-                onClick={() => {
-                    onSelectEntity(path);
-                    onSelectComponent(null);
+                style={{ paddingLeft: 8 + depth * INDENT_PX }}
+                draggable
+                onDragStart={(e) => {
+                    e.dataTransfer.setData(ENTITY_DRAG_MIME, pathKey(path));
+                    e.dataTransfer.effectAllowed = 'move';
                 }}
+                onDragOver={(e) => {
+                    if (e.dataTransfer.types.includes(COMPONENT_DRAG_MIME)) acceptComponentDrag(e);
+                    else acceptEntityDrag(e);
+                }}
+                onDragEnter={(e) => {
+                    if (e.dataTransfer.types.includes(COMPONENT_DRAG_MIME)) acceptComponentDrag(e);
+                    else acceptEntityDrag(e);
+                }}
+                onDragLeave={() => {
+                    setComponentDragOver(false);
+                    setEntityDropZone(null);
+                }}
+                onDrop={(e) => {
+                    const ctype = e.dataTransfer.getData(COMPONENT_DRAG_MIME);
+                    if (ctype) {
+                        setComponentDragOver(false);
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onDropComponent(path, ctype);
+                        return;
+                    }
+                    const fromKey = e.dataTransfer.getData(ENTITY_DRAG_MIME);
+                    if (fromKey) {
+                        const zone = entityDropZone;
+                        setEntityDropZone(null);
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const from = fromKey.split('-').map(Number);
+                        if (zone === 'into') {
+                            onMoveEntity(from, path);
+                        } else {
+                            // before/after: 兄弟として挿入 (= 親の子の指定位置)。簡素化: into のみサポート。
+                            // before/after は parentPath + sibling 位置だが Stage 4 で。今は「into」へ寄せる。
+                            onMoveEntity(from, path);
+                        }
+                    }
+                }}
+                onClick={handleRowClick}
+                onDoubleClick={handleRowDoubleClick}
             >
                 <button
                     type="button"
@@ -258,33 +345,31 @@ function EntityNode({
                 >
                     {hasChildren || entity.components.length > 0 ? <Chevron open={open} /> : <span />}
                 </button>
-                {depth === 0 && (
-                    <button
-                        type="button"
-                        onClick={(ev) => {
-                            ev.stopPropagation();
-                            onToggleHidden(rootIndex);
-                        }}
-                        aria-label={rootHidden ? '表示' : '非表示'}
-                        title={rootHidden ? '表示する' : '非表示にする'}
-                        className={css({
-                            flexShrink: 0,
-                            width: '22px',
-                            height: '22px',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            bg: 'transparent',
-                            border: 'none',
-                            color: selectedEntityOnly ? 'textOnPrimary' : 'textMuted',
-                            cursor: 'pointer',
-                            borderRadius: '4px',
-                            _hover: { bg: 'surfaceHover' },
-                        })}
-                    >
-                        {rootHidden ? <EyeOffIcon /> : <EyeIcon />}
-                    </button>
-                )}
+                <button
+                    type="button"
+                    onClick={(ev) => {
+                        ev.stopPropagation();
+                        onToggleHidden(path);
+                    }}
+                    aria-label={selfHidden ? '表示' : '非表示'}
+                    title={selfHidden ? '表示する' : '非表示にする'}
+                    className={css({
+                        flexShrink: 0,
+                        width: '22px',
+                        height: '22px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        bg: 'transparent',
+                        border: 'none',
+                        color: selectedEntityOnly ? 'textOnPrimary' : 'textMuted',
+                        cursor: 'pointer',
+                        borderRadius: '4px',
+                        _hover: { bg: 'surfaceHover' },
+                    })}
+                >
+                    {selfHidden ? <EyeOffIcon /> : <EyeIcon />}
+                </button>
                 <div className={css({ flex: 1, minW: 0, display: 'flex', flexDirection: 'column', gap: '1px' })}>
                     <span
                         className={css({
@@ -293,7 +378,7 @@ function EntityNode({
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             whiteSpace: 'nowrap',
-                            textDecoration: rootHidden ? 'line-through' : 'none',
+                            textDecoration: selfHidden ? 'line-through' : 'none',
                         })}
                     >
                         {entity.id}
@@ -307,25 +392,11 @@ function EntityNode({
                     type="button"
                     onClick={(ev) => {
                         ev.stopPropagation();
-                        onCreateChild(path);
+                        onCreateEmptyEntity(path);
                     }}
                     aria-label="子 Entity を追加"
                     title="子 Entity を追加"
-                    className={css({
-                        flexShrink: 0,
-                        width: '20px',
-                        height: '20px',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        bg: 'transparent',
-                        border: 'none',
-                        color: selectedEntityOnly ? 'textOnPrimary' : 'textSubtle',
-                        cursor: 'pointer',
-                        borderRadius: '4px',
-                        fontSize: '12px',
-                        _hover: { opacity: 1, bg: 'surfaceHover' },
-                    })}
+                    className={iconBtn(selectedEntityOnly)}
                 >
                     <PlusIcon />
                 </button>
@@ -337,28 +408,36 @@ function EntityNode({
                     }}
                     aria-label="削除"
                     title="エンティティを削除"
-                    className={css({
-                        flexShrink: 0,
-                        width: '20px',
-                        height: '20px',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        bg: 'transparent',
-                        border: 'none',
-                        color: selectedEntityOnly ? 'textOnPrimary' : 'textSubtle',
-                        opacity: 0.7,
-                        cursor: 'pointer',
-                        borderRadius: '4px',
-                        fontSize: '14px',
-                        _hover: { opacity: 1, bg: 'surfaceHover' },
-                    })}
+                    className={iconBtn(selectedEntityOnly)}
                 >
                     ×
                 </button>
             </div>
+            {/* drop zone (after) */}
+            {entityDropZone === 'after' && <DropLine indentPx={4 + depth * INDENT_PX} />}
             {open && (
-                <div className={css({ display: 'flex', flexDirection: 'column' })}>
+                <div
+                    className={css({
+                        display: 'flex',
+                        flexDirection: 'column',
+                        position: 'relative',
+                    })}
+                >
+                    {/* tree 縦線 (子があるときだけ表示) */}
+                    {(hasChildren || entity.components.length > 0) && (
+                        <div
+                            className={css({
+                                position: 'absolute',
+                                top: 0,
+                                bottom: 0,
+                                width: '1px',
+                                bg: 'border',
+                                pointerEvents: 'none',
+                            })}
+                            style={{ left: 8 + depth * INDENT_PX + 7 }}
+                            aria-hidden
+                        />
+                    )}
                     {entity.components.map((c, ci) => {
                         const compSelected = hasFocus && selectedComponentIndex === ci;
                         return (
@@ -366,8 +445,8 @@ function EntityNode({
                                 key={`${entity.id}::${ci}`}
                                 type={c.type}
                                 selected={compSelected}
-                                hidden={rootHidden}
-                                indentPx={8 + (depth + 1) * 14}
+                                hidden={effectivelyHidden}
+                                indentPx={8 + (depth + 1) * INDENT_PX}
                                 onClick={() => {
                                     onSelectEntity(path);
                                     onSelectComponent(ci);
@@ -382,17 +461,19 @@ function EntityNode({
                             entity={child}
                             path={[...path, ci]}
                             depth={depth + 1}
-                            rootIndex={rootIndex}
-                            rootHidden={rootHidden}
+                            ancestorHidden={effectivelyHidden}
+                            hiddenPaths={hiddenPaths}
                             selectedPath={selectedPath}
                             selectedComponentIndex={selectedComponentIndex}
                             onSelectEntity={onSelectEntity}
                             onSelectComponent={onSelectComponent}
-                            onCreateChild={onCreateChild}
+                            onCreateEmptyEntity={onCreateEmptyEntity}
                             onDeleteEntity={onDeleteEntity}
                             onDeleteComponent={onDeleteComponent}
                             onToggleHidden={onToggleHidden}
                             onDropComponent={onDropComponent}
+                            onMoveEntity={onMoveEntity}
+                            onEnterChild={onEnterChild}
                         />
                     ))}
                 </div>
@@ -401,16 +482,21 @@ function EntityNode({
     );
 }
 
-interface ComponentRowProps {
+function ComponentRow({
+    type,
+    selected,
+    hidden,
+    indentPx,
+    onClick,
+    onDelete,
+}: {
     type: string;
     selected: boolean;
     hidden: boolean;
     indentPx: number;
     onClick: () => void;
     onDelete: () => void;
-}
-
-function ComponentRow({ type, selected, hidden, indentPx, onClick, onDelete }: ComponentRowProps) {
+}) {
     return (
         <div
             onClick={onClick}
@@ -449,29 +535,45 @@ function ComponentRow({ type, selected, hidden, indentPx, onClick, onDelete }: C
                 }}
                 aria-label="コンポーネント削除"
                 title="このコンポーネントを削除"
-                className={css({
-                    flexShrink: 0,
-                    width: '18px',
-                    height: '18px',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    bg: 'transparent',
-                    border: 'none',
-                    color: 'textSubtle',
-                    opacity: 0.7,
-                    cursor: 'pointer',
-                    borderRadius: '4px',
-                    fontSize: '12px',
-                    lineHeight: '1',
-                    _hover: { opacity: 1, bg: 'surfaceHover' },
-                })}
+                className={iconBtn(false)}
             >
                 ×
             </button>
         </div>
     );
 }
+
+function DropLine({ indentPx }: { indentPx: number }) {
+    return (
+        <div
+            className={css({
+                height: '2px',
+                bg: 'primary',
+                borderRadius: '1px',
+                margin: '0 4px',
+            })}
+            style={{ marginLeft: indentPx }}
+            aria-hidden
+        />
+    );
+}
+
+const iconBtn = (active: boolean) =>
+    css({
+        flexShrink: 0,
+        width: '20px',
+        height: '20px',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        bg: 'transparent',
+        border: 'none',
+        color: active ? 'textOnPrimary' : 'textSubtle',
+        cursor: 'pointer',
+        borderRadius: '4px',
+        fontSize: '14px',
+        _hover: { bg: 'surfaceHover' },
+    });
 
 function Chevron({ open }: { open: boolean }) {
     return (

@@ -29,7 +29,9 @@ import {
     type EntityPath,
     getEntityAt,
     insertEntity,
+    moveEntity,
     nextRootZ,
+    pathKey,
     updateEntityAt,
 } from './lib/entityTree';
 
@@ -68,7 +70,7 @@ export function WorldEditorPage() {
 
     const [selectedPath, setSelectedPath] = useState<EntityPath | null>(null);
     const [selectedComponentIndex, setSelectedComponentIndex] = useState<number | null>(null);
-    const [hiddenRootIndices, setHiddenRootIndices] = useState<Set<number>>(new Set());
+    const [hiddenPaths, setHiddenPaths] = useState<Set<string>>(new Set());
     const [mobileLeftOpen, setMobileLeftOpen] = useState(false);
     const [mobileRightOpen, setMobileRightOpen] = useState(false);
     const [loading, setLoading] = useState(isEdit);
@@ -201,18 +203,16 @@ export function WorldEditorPage() {
     const handleDeleteEntity = useCallback(
         (path: EntityPath) => {
             updateEntities((prev) => deleteEntityAt(prev, path));
-            // ルート削除なら hiddenRootIndices を詰める
-            if (path.length === 1) {
-                const idx = path[0];
-                setHiddenRootIndices((prev) => {
-                    const next = new Set<number>();
-                    for (const i of prev) {
-                        if (i < idx) next.add(i);
-                        else if (i > idx) next.add(i - 1);
-                    }
-                    return next;
-                });
-            }
+            // 削除された path 以下の hiddenPaths キーを破棄 (path index ずれは諦めて単純化)
+            setHiddenPaths((prev) => {
+                const next = new Set<string>();
+                const removedKey = pathKey(path);
+                for (const k of prev) {
+                    if (k === removedKey || k.startsWith(`${removedKey}-`)) continue;
+                    next.add(k);
+                }
+                return next;
+            });
             setSelectedPath((cur) => adjustPathAfterDelete(cur, path));
             setSelectedComponentIndex(null);
         },
@@ -249,16 +249,36 @@ export function WorldEditorPage() {
         [updateEntities, definition.spec.initialEntities],
     );
 
-    const handleToggleHidden = useCallback((rootIndex: number) => {
-        setHiddenRootIndices((prev) => {
+    const handleToggleHidden = useCallback((path: EntityPath) => {
+        const key = pathKey(path);
+        setHiddenPaths((prev) => {
             const next = new Set(prev);
-            if (next.has(rootIndex)) next.delete(rootIndex);
-            else next.add(rootIndex);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
             return next;
         });
-        setSelectedPath((cur) => (cur?.[0] === rootIndex ? null : cur));
-        setSelectedComponentIndex(null);
     }, []);
+
+    const handleMoveEntity = useCallback(
+        (from: EntityPath, to: EntityPath | null) => {
+            updateEntities((prev) => moveEntity(prev, from, to));
+            // 移動後の selectedPath は厳密追跡が難しいので解除する
+            setSelectedPath(null);
+            setSelectedComponentIndex(null);
+            setHiddenPaths(new Set()); // path ずれを避けるため一旦リセット
+        },
+        [updateEntities],
+    );
+
+    const handleEnterChild = useCallback(
+        (path: EntityPath) => {
+            const parent = getEntityAt(definition.spec.initialEntities, path);
+            if (!parent?.children?.length) return;
+            setSelectedPath([...path, 0]);
+            setSelectedComponentIndex(null);
+        },
+        [definition.spec.initialEntities],
+    );
 
     const handleSave = useCallback(() => {
         if (!definition.spec.displayName.trim()) {
@@ -268,6 +288,18 @@ export function WorldEditorPage() {
         }
         void api.save();
     }, [definition.spec.displayName, api, modals]);
+
+    // hiddenPaths からルートのみの index Set を導出 (Stage / EditorPreview 用)
+    const hiddenRootIndices = useMemo(() => {
+        const out = new Set<number>();
+        for (const key of hiddenPaths) {
+            if (!key.includes('-')) {
+                const n = Number.parseInt(key, 10);
+                if (Number.isFinite(n)) out.add(n);
+            }
+        }
+        return out;
+    }, [hiddenPaths]);
 
     if (isPending || !session) return <CenteredMessage text="読み込み中..." />;
     if (loading) return <CenteredMessage text="ワールドを読み込み中..." />;
@@ -321,7 +353,7 @@ export function WorldEditorPage() {
                     entities={definition.spec.initialEntities}
                     selectedPath={selectedPath}
                     selectedComponentIndex={selectedComponentIndex}
-                    hiddenRootIndices={hiddenRootIndices}
+                    hiddenPaths={hiddenPaths}
                     onSelectEntity={(p) => {
                         selectEntity(p);
                         setMobileLeftOpen(false);
@@ -332,6 +364,8 @@ export function WorldEditorPage() {
                     onDeleteComponent={handleDeleteComponent}
                     onToggleHidden={handleToggleHidden}
                     onDropComponent={handleAddComponentToEntity}
+                    onMoveEntity={handleMoveEntity}
+                    onEnterChild={handleEnterChild}
                 />
             </DockSlot>
 

@@ -420,12 +420,6 @@ export const SERVER_CONFIG = {
     WORLDS_DIR_DEFAULT: '../../worlds',
 } as const;
 
-/**
- * すべてのエンティティのユニオン型
- * 特定のfeature型はこのファイルではなく、各featureの定義を参照してください。
- */
-export type AnyWorldEntity = WorldEntity<unknown>;
-
 // ============================================
 // Re-export Schemas and Plugins
 // ============================================

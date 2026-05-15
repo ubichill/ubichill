@@ -15,10 +15,7 @@ export const MIN_SIZE = 20;
 
 type Transform = { x: number; y: number; w: number; h: number };
 
-/**
- * リサイズ操作の差分を「方向ごとの式」として返す純粋関数。
- * let による途中書き換えを避け、各方向で1度の式評価のみで計算する。
- */
+/** リサイズ差分を方向ごとに 1 度の式で返す純粋関数。 */
 function applyResize(s: Transform, dx: number, dy: number, mode: Exclude<DragMode, 'move'>): Transform {
     switch (mode) {
         case 'resize-se': {
@@ -44,35 +41,11 @@ function applyResize(s: Transform, dx: number, dy: number, mode: Exclude<DragMod
     }
 }
 
-/**
- * ドラッグ開始情報と移動量から、エンティティの transform 差分を返す。
- * `move` は位置のみ、`resize-*` は applyResize に委譲。完全な純粋関数。
- */
+/** ドラッグ差分から transform patch を返す。`move` は位置のみ、`resize-*` は applyResize に委譲。 */
 export function applyDrag(drag: DragState, dx: number, dy: number): Partial<InitialEntity['transform']> {
     const s = drag.startTransform;
     if (drag.mode === 'move') {
         return { x: Math.round(s.x + dx), y: Math.round(s.y + dy) };
     }
     return applyResize(s, dx, dy, drag.mode);
-}
-
-/**
- * 既存の GameObject 群の z 値の最大 + 1 を返す純粋関数。
- */
-export function nextZ(entities: InitialEntity[]): number {
-    return entities.reduce((m, e) => Math.max(m, e.transform.z ?? 0), 0) + 1;
-}
-
-/**
- * Component 型 (`pen:tray`) からエンティティ id を生成する。
- * - 既存に重複しないよう連番でサフィックスを付ける
- * - KebabCaseId 仕様: 小文字英数とハイフンのみ、50 文字以内
- */
-export function buildEntityId(componentType: string, existing: Iterable<string>): string {
-    const base = componentType.replace(/[^a-z0-9-]/gi, '-').toLowerCase();
-    const used = new Set<string>(existing);
-    if (!used.has(base)) return base;
-    let n = 2;
-    while (used.has(`${base}-${n}`)) n += 1;
-    return `${base}-${n}`;
 }
