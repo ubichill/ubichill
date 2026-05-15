@@ -1,39 +1,36 @@
 import type { InitialEntity, WorldDefinition } from '@ubichill/shared';
 import { css } from '@/styled-system/css';
+import type { EntityPath, FlatEntityNode } from '../lib/entityTree';
 import { EditOverlay } from './EditOverlay';
 import { EditorPreview } from './EditorPreview';
 
 interface EditorStageProps {
     definition: WorldDefinition;
-    selectedIndex: number | null;
-    hiddenIndices: Set<number>;
-    onSelect: (i: number | null) => void;
-    onPatchTransform: (index: number, patch: Partial<InitialEntity['transform']>) => void;
-    onDropComponent: (entityIndex: number, componentType: string) => void;
+    flatNodes: FlatEntityNode[];
+    selectedPath: EntityPath | null;
+    hiddenPathKeys: Set<string>;
+    hiddenRootIndices: Set<number>;
+    onSelect: (path: EntityPath | null) => void;
+    onPatchTransform: (path: EntityPath, patch: Partial<InitialEntity['transform']>) => void;
+    onDropComponent: (path: EntityPath, componentType: string) => void;
 }
 
-/**
- * 中央ドック: 実プラグインのライブビュー + 編集オーバーレイ。
- * 親 grid セルの 100% を埋めるため EditorPreview の高さを stretch する。
- */
+/** プレビュー本体 + 編集オーバーレイのコンテナ。 */
 export function EditorStage({
     definition,
-    selectedIndex,
-    hiddenIndices,
+    flatNodes,
+    selectedPath,
+    hiddenPathKeys,
+    hiddenRootIndices,
     onSelect,
     onPatchTransform,
     onDropComponent,
 }: EditorStageProps) {
-    // 背景（プラグイン UI のない場所）クリックで選択解除する。
-    // EditOverlay 自体は pointer-events:none のため背景クリックを拾えないので、
-    // ここで mousedown を受ける。エンティティハンドルは stopPropagation でブロックする。
-    const handleStageMouseDown = (e: React.MouseEvent) => {
-        if (e.target === e.currentTarget) onSelect(null);
-    };
-
     return (
         <main
-            onMouseDown={handleStageMouseDown}
+            onMouseDown={(e) => {
+                if (e.target === e.currentTarget) onSelect(null);
+            }}
             className={css({
                 position: 'relative',
                 minH: 0,
@@ -46,14 +43,14 @@ export function EditorStage({
         >
             <EditorPreview
                 definition={definition}
-                hiddenIndices={hiddenIndices}
+                hiddenIndices={hiddenRootIndices}
                 fillContainer
                 onBackgroundMouseDown={() => onSelect(null)}
                 overlay={
                     <EditOverlay
-                        entities={definition.spec.initialEntities}
-                        selectedIndex={selectedIndex}
-                        hiddenIndices={hiddenIndices}
+                        nodes={flatNodes}
+                        selectedPath={selectedPath}
+                        hiddenPathKeys={hiddenPathKeys}
                         onSelect={onSelect}
                         onPatchTransform={onPatchTransform}
                         onDropComponent={onDropComponent}

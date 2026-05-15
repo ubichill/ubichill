@@ -121,6 +121,35 @@ export function moveEntity(entities: InitialEntity[], from: EntityPath, to: Enti
     return insertEntity(removed, adjustedTo, node);
 }
 
+/** Stage 用 flat 表示エントリ: path + 絶対座標 + Entity 参照。 */
+export interface FlatEntityNode {
+    path: EntityPath;
+    entity: InitialEntity;
+    /** 親 origin を加算した絶対座標 */
+    absX: number;
+    absY: number;
+    absZ: number;
+}
+
+/** ツリーを Stage 表示用に flatten する純関数。親基準の transform.x/y を絶対化する。 */
+export function flattenForStage(entities: InitialEntity[]): FlatEntityNode[] {
+    const out: FlatEntityNode[] = [];
+    const walk = (entity: InitialEntity, path: EntityPath, origin: { x: number; y: number; z: number }) => {
+        const t = entity.transform;
+        const absX = origin.x + t.x;
+        const absY = origin.y + t.y;
+        const absZ = origin.z + (t.z ?? 0);
+        out.push({ path, entity, absX, absY, absZ });
+        entity.children?.forEach((child, ci) => {
+            walk(child, [...path, ci], { x: absX, y: absY, z: absZ });
+        });
+    };
+    entities.forEach((e, i) => {
+        walk(e, [i], { x: 0, y: 0, z: 0 });
+    });
+    return out;
+}
+
 /** target path が from 削除後どう変わるかを計算する純関数。null なら影響なし。 */
 function adjustPathAfterRemove(target: EntityPath | null, from: EntityPath): EntityPath | null {
     if (!target) return target;

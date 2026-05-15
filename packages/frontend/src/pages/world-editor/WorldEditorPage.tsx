@@ -27,6 +27,7 @@ import {
     collectEntityIds,
     deleteEntityAt,
     type EntityPath,
+    flattenForStage,
     getEntityAt,
     insertEntity,
     moveEntity,
@@ -134,14 +135,19 @@ export function WorldEditorPage() {
         setSelectedComponentIndex(componentIndex);
     }, []);
 
-    /** EditOverlay からの transform 編集はルート Entity 限定 (子は Inspector で編集)。 */
-    const patchRootEntityTransform = useCallback(
-        (rootIndex: number, patch: Partial<InitialEntity['transform']>) => {
+    /** EditOverlay からの transform 編集 (path ベース、子 Entity は親基準で保存)。 */
+    const patchEntityTransform = useCallback(
+        (path: EntityPath, patch: Partial<InitialEntity['transform']>) => {
             updateEntities((prev) =>
-                updateEntityAt(prev, [rootIndex], (e) => ({ ...e, transform: { ...e.transform, ...patch } })),
+                updateEntityAt(prev, path, (e) => ({ ...e, transform: { ...e.transform, ...patch } })),
             );
         },
         [updateEntities],
+    );
+
+    const flatNodes = useMemo(
+        () => flattenForStage(definition.spec.initialEntities),
+        [definition.spec.initialEntities],
     );
 
     const handleCreateEmptyEntity = useCallback(
@@ -309,9 +315,6 @@ export function WorldEditorPage() {
         (definition.spec.displayName?.trim() || (isEdit ? 'ワールドを編集' : '新しいワールド')) +
         (isEdit ? '' : ' (未保存)');
 
-    // EditOverlay 用の root selectedIndex (子選択でも root をハイライト)
-    const selectedRootIndex = selectedPath?.[0] ?? null;
-
     return (
         <div
             className={css({
@@ -372,11 +375,13 @@ export function WorldEditorPage() {
             <div className={css({ gridArea: 'center', minH: 0, minW: 0 })}>
                 <EditorStage
                     definition={definition}
-                    selectedIndex={selectedRootIndex}
-                    hiddenIndices={hiddenRootIndices}
-                    onSelect={(idx) => selectEntity(idx !== null ? [idx] : null)}
-                    onPatchTransform={patchRootEntityTransform}
-                    onDropComponent={(idx, type) => handleAddComponentToEntity([idx], type)}
+                    flatNodes={flatNodes}
+                    selectedPath={selectedPath}
+                    hiddenPathKeys={hiddenPaths}
+                    hiddenRootIndices={hiddenRootIndices}
+                    onSelect={selectEntity}
+                    onPatchTransform={patchEntityTransform}
+                    onDropComponent={handleAddComponentToEntity}
                 />
             </div>
 

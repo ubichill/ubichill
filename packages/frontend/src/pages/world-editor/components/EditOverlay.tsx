@@ -3,25 +3,28 @@ import { useEffect, useState } from 'react';
 import { css } from '@/styled-system/css';
 import { COMPONENT_DRAG_MIME } from '../lib/dnd';
 import { applyDrag, type DragMode, type DragState } from '../lib/dragHelpers';
+import type { EntityPath, FlatEntityNode } from '../lib/entityTree';
 
 interface EditOverlayProps {
-    entities: InitialEntity[];
-    selectedIndex: number | null;
-    hiddenIndices?: Set<number>;
-    onSelect: (index: number | null) => void;
-    onPatchTransform: (index: number, patch: Partial<InitialEntity['transform']>) => void;
-    /** Component カードをステージ上の Entity に drop したときの追加。 */
-    onDropComponent: (entityIndex: number, componentType: string) => void;
+    /** flatten 済みの全 Entity（path + 絶対座標）。 */
+    nodes: FlatEntityNode[];
+    selectedPath: EntityPath | null;
+    /** path key の Set。祖先が hidden ならその子孫も描画しない。 */
+    hiddenPathKeys?: Set<string>;
+    onSelect: (path: EntityPath | null) => void;
+    /** 親基準の transform 差分を patch する。 */
+    onPatchTransform: (path: EntityPath, patch: Partial<InitialEntity['transform']>) => void;
+    onDropComponent: (path: EntityPath, componentType: string) => void;
 }
 
 /**
- * world 座標系の編集オーバーレイ。各 Entity に矩形ハンドルを重ねて移動・リサイズし、
- * 編集モード中はプラグイン UI への直接操作をシールドする。
+ * World 座標系の編集オーバーレイ。全 Entity (ルート + 子) に handle を重ねる。
+ * 表示位置は絶対座標、保存時は親基準座標で patch する。
  */
 export function EditOverlay({
-    entities,
-    selectedIndex,
-    hiddenIndices,
+    nodes,
+    selectedPath,
+    hiddenPathKeys,
     onSelect,
     onPatchTransform,
     onDropComponent,
@@ -33,7 +36,7 @@ export function EditOverlay({
         const onMove = (ev: MouseEvent) => {
             const dx = ev.clientX - drag.startClient.x;
             const dy = ev.clientY - drag.startClient.y;
-            onPatchTransform(drag.index, applyDrag(drag, dx, dy));
+            onPatchTransform(drag.path, applyDrag(drag, dx, dy));
         };
         const onUp = () => setDrag(null);
         window.addEventListener('mousemove', onMove);
@@ -43,6 +46,15 @@ export function EditOverlay({
             window.removeEventListener('mouseup', onUp);
         };
     }, [drag, onPatchTransform]);
+
+    // 祖先が hidden ならスキップ
+    const isHiddenByAncestor = (path: EntityPath): boolean => {
+        if (!hiddenPathKeys) return false;
+        for (let i = 1; i <= path.length; i += 1) {
+            if (hiddenPathKeys.has(path.slice(0, i).join('-'))) return true;
+        }
+        return false;
+    };
 
     return (
         <div
@@ -56,42 +68,49 @@ export function EditOverlay({
                 zIndex: 99000,
             })}
         >
-            {entities.map((ent, i) => {
-                if (hiddenIndices?.has(i)) return null;
-                const t = ent.transform;
+            {nodes.map((node) => {
+                if (isHiddenByAncestor(node.path)) return null;
+                const t = node.entity.transform;
                 const w = t.w ?? 0;
                 const h = t.h ?? 0;
                 const sizeless = w <= 0 || h <= 0;
-                const selected = i === selectedIndex;
+                const selected = !!selectedPath && pathsEqual(selectedPath, node.path);
                 const handleMouseDown = (ev: React.MouseEvent, mode: DragMode) => {
                     ev.stopPropagation();
-                    onSelect(i);
+                    onSelect(node.path);
                     setDrag({
-                        index: i,
+                        path: node.path,
                         mode,
                         startClient: { x: ev.clientX, y: ev.clientY },
+                        // ドラッグの x/y 起点は「保存される値」(= 親基準) のままで OK。
                         startTransform: { x: t.x, y: t.y, w: sizeless ? 0 : w, h: sizeless ? 0 : h },
                     });
                 };
-                const onDrop = (type: string) => onDropComponent(i, type);
+                const onDropType = (type: string) => onDropComponent(node.path, type);
                 if (sizeless) {
                     return (
                         <SizelessChip
-                            key={ent.id}
-                            entity={ent}
+                            key={node.path.join('-')}
+                            entity={node.entity}
+                            absX={node.absX}
+                            absY={node.absY}
+                            absZ={node.absZ}
                             selected={selected}
                             onMouseDownEntity={(ev) => handleMouseDown(ev, 'move')}
-                            onDropType={onDrop}
+                            onDropType={onDropType}
                         />
                     );
                 }
                 return (
                     <EntityHandle
-                        key={ent.id}
-                        entity={ent}
+                        key={node.path.join('-')}
+                        entity={node.entity}
+                        absX={node.absX}
+                        absY={node.absY}
+                        absZ={node.absZ}
                         selected={selected}
                         onMouseDownEntity={handleMouseDown}
-                        onDropType={onDrop}
+                        onDropType={onDropType}
                     />
                 );
             })}
@@ -99,13 +118,24 @@ export function EditOverlay({
     );
 }
 
+function pathsEqual(a: EntityPath, b: EntityPath): boolean {
+    if (a.length !== b.length) return false;
+    return a.every((v, i) => v === b[i]);
+}
+
 function EntityHandle({
     entity,
+    absX,
+    absY,
+    absZ,
     selected,
     onMouseDownEntity,
     onDropType,
 }: {
     entity: InitialEntity;
+    absX: number;
+    absY: number;
+    absZ: number;
     selected: boolean;
     onMouseDownEntity: (ev: React.MouseEvent, mode: DragMode) => void;
     onDropType: (type: string) => void;
@@ -143,11 +173,11 @@ function EntityHandle({
                 bg: selected ? 'primarySubtle' : 'transparent',
             })}
             style={{
-                left: t.x,
-                top: t.y,
+                left: absX,
+                top: absY,
                 width: w,
                 height: h,
-                zIndex: 99000 + (t.z ?? 0),
+                zIndex: 99000 + absZ,
             }}
         >
             <EntityLabel entity={entity} selected={selected} />
@@ -163,19 +193,23 @@ function EntityHandle({
     );
 }
 
-/** サイズなし Entity 用の 28x28 チップ表示。位置編集 (ドラッグ移動) のみ可能。 */
 function SizelessChip({
     entity,
+    absX,
+    absY,
+    absZ,
     selected,
     onMouseDownEntity,
     onDropType,
 }: {
     entity: InitialEntity;
+    absX: number;
+    absY: number;
+    absZ: number;
     selected: boolean;
     onMouseDownEntity: (ev: React.MouseEvent) => void;
     onDropType: (type: string) => void;
 }) {
-    const t = entity.transform;
     const [dragOver, setDragOver] = useState(false);
     return (
         <div
@@ -215,9 +249,9 @@ function SizelessChip({
                 boxShadow: selected ? 'selectionRing' : 'chipDrop',
             })}
             style={{
-                left: t.x,
-                top: t.y,
-                zIndex: 99000 + (t.z ?? 0),
+                left: absX,
+                top: absY,
+                zIndex: 99000 + absZ,
             }}
         >
             <EntityLabel entity={entity} selected={selected} />●
@@ -225,10 +259,6 @@ function SizelessChip({
     );
 }
 
-/**
- * エンティティ id と components 一覧を上に表示する小さなラベル。
- * `id` (GameObject) と `components.length` をコンパクトに見せる。selected 時に primary 色で強調。
- */
 function EntityLabel({ entity, selected }: { entity: InitialEntity; selected: boolean }) {
     const summary = entity.components.length === 1 ? entity.components[0].type : `${entity.components.length} comps`;
     return (

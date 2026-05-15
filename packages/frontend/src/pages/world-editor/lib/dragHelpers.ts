@@ -1,9 +1,10 @@
 import type { InitialEntity } from '@ubichill/shared';
+import type { EntityPath } from './entityTree';
 
 export type DragMode = 'move' | 'resize-se' | 'resize-sw' | 'resize-ne' | 'resize-nw';
 
 export interface DragState {
-    index: number;
+    path: EntityPath;
     mode: DragMode;
     startClient: { x: number; y: number };
     startTransform: { x: number; y: number; w: number; h: number };
