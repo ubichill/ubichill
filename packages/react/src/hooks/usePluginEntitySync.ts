@@ -2,11 +2,12 @@
  * usePluginEntitySync
  *
  * watchEntityTypes に一致するエンティティの変化を EVT_ENTITY_WATCH として Worker へ転送する。
- * watchScope='entity' (default) は自 GameObject 内の Component インスタンスのみ送信。
+ * watchScope に応じて可視範囲を絞る ('entity' / 'subtree' / 'world')。
  */
 
 import type { PluginHostEvent, WorldEntity } from '@ubichill/shared';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
+import { collectSubtreeGameObjectIds, isVisibleInScope, type WatchScope } from '../lib/entityScope';
 import type { WorkerPluginDefinition } from '../types';
 
 export function usePluginEntitySync(
@@ -17,7 +18,12 @@ export function usePluginEntitySync(
     gameObjectId: string | undefined,
 ): void {
     const watchTypes = definition.watchEntityTypes;
-    const scope = definition.watchScope ?? 'entity';
+    const scope: WatchScope = definition.watchScope ?? 'subtree';
+    const subtreeIds = useMemo(
+        () =>
+            scope === 'subtree' && gameObjectId ? collectSubtreeGameObjectIds(entities.values(), gameObjectId) : null,
+        [entities, scope, gameObjectId],
+    );
     const prevEntitiesRef = useRef<Map<string, WorldEntity>>(new Map());
     const prevWorkerRevisionRef = useRef(-1);
 
@@ -29,12 +35,12 @@ export function usePluginEntitySync(
 
         for (const [id, e] of entities) {
             if (!typeSet.has(e.type)) continue;
-            if (scope === 'entity' && gameObjectId && e.gameObjectId !== gameObjectId) continue;
+            if (!isVisibleInScope(e, scope, gameObjectId, subtreeIds)) continue;
             const prev = prevEntitiesRef.current.get(id);
             if (workerChanged || prev !== e) {
                 sendEvent({ type: 'EVT_ENTITY_WATCH', payload: { entityType: e.type, entity: e } });
             }
         }
         prevEntitiesRef.current = new Map(entities);
-    }, [entities, watchTypes, scope, gameObjectId, sendEvent, workerRevision]);
+    }, [entities, watchTypes, scope, gameObjectId, subtreeIds, sendEvent, workerRevision]);
 }

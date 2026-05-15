@@ -34,6 +34,7 @@ interface NewEntity {
     transform: LegacyTransform;
     components: NewComponent[];
     tags: string[];
+    children: NewEntity[];
 }
 
 /**
@@ -77,17 +78,26 @@ function migrateInitialEntities(entities: unknown[]): NewEntity[] {
                 transform: e.transform,
                 components: [{ type: e.kind, data: e.data ?? {} }],
                 tags: [],
+                children: [],
             };
         }
-        const obj = e as { id?: unknown; transform?: unknown; components?: unknown; tags?: unknown };
+        const obj = e as {
+            id?: unknown;
+            transform?: unknown;
+            components?: unknown;
+            tags?: unknown;
+            children?: unknown;
+        };
         const id = typeof obj.id === 'string' ? obj.id : buildId('entity', used);
         used.add(id);
         const tags = Array.isArray(obj.tags) ? obj.tags.filter((t): t is string => typeof t === 'string') : [];
+        const children = Array.isArray(obj.children) ? migrateInitialEntities(obj.children) : [];
         return {
             id,
             transform: (obj.transform ?? { x: 0, y: 0 }) as LegacyTransform,
             components: Array.isArray(obj.components) ? (obj.components as NewComponent[]) : [],
             tags,
+            children,
         };
     });
 }

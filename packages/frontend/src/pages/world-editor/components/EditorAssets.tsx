@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { Fragment, type ReactNode, useMemo, useState } from 'react';
 import { css } from '@/styled-system/css';
 import type { AvailableEntityKind } from '../hooks/useAvailableEntityKinds';
-import { type PluginAssetFile, usePluginAssets } from '../hooks/usePluginAssets';
+import { type AssetNode, usePluginAssets } from '../hooks/usePluginAssets';
 import { COMPONENT_DRAG_MIME } from '../lib/dnd';
 
 interface EditorAssetsProps {
@@ -11,8 +11,16 @@ interface EditorAssetsProps {
     pluginNames: string[];
 }
 
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg|avif)$/i;
+const CURSOR_EXT = /\.(cur|ani|ico)$/i;
+const VIDEO_EXT = /\.(mp4|webm|mov)$/i;
+
+/** ナビゲーション位置: [] = ルート（プラグイン一覧）、[plugin, ...folder] = 中。 */
+type Path = string[];
+
 export function EditorAssets({ kinds, loading, pluginNames }: EditorAssetsProps) {
-    const { assetsByPlugin } = usePluginAssets(pluginNames);
+    const { treesByPlugin } = usePluginAssets(pluginNames);
+    const [path, setPath] = useState<Path>([]);
 
     const componentsByPlugin = useMemo(() => {
         const map = new Map<string, AvailableEntityKind[]>();
@@ -23,6 +31,12 @@ export function EditorAssets({ kinds, loading, pluginNames }: EditorAssetsProps)
         }
         return map;
     }, [kinds]);
+
+    // 現在表示するエントリ
+    const entries = useMemo(
+        () => buildEntries(path, pluginNames, componentsByPlugin, treesByPlugin),
+        [path, pluginNames, componentsByPlugin, treesByPlugin],
+    );
 
     return (
         <section
@@ -38,48 +52,42 @@ export function EditorAssets({ kinds, loading, pluginNames }: EditorAssetsProps)
                 height: 'full',
             })}
         >
-            <div
-                className={css({
-                    padding: '10px 12px',
-                    fontSize: '11px',
-                    fontWeight: '700',
-                    color: 'textMuted',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.06em',
-                    borderBottom: '1px solid',
-                    borderColor: 'border',
-                    flexShrink: 0,
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                })}
-            >
-                <span>アセット</span>
-                {loading && <span className={css({ color: 'textSubtle', fontWeight: '500' })}>読み込み中...</span>}
-            </div>
+            <Toolbar path={path} onNavigate={setPath} loading={loading} />
             <div
                 className={css({
                     flex: 1,
                     overflowY: 'auto',
-                    overflowX: 'hidden',
-                    padding: '6px 8px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '4px',
+                    padding: '8px',
                     minH: 0,
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))',
+                    gap: '8px',
+                    alignContent: 'start',
                 })}
             >
-                {pluginNames.length === 0 ? (
-                    <div className={css({ fontSize: '12px', color: 'textSubtle', padding: '8px' })}>
-                        「ワールド情報」モーダルの「使用するプラグイン」からプラグインを追加してください
+                {entries.length === 0 ? (
+                    <div
+                        className={css({
+                            gridColumn: '1 / -1',
+                            fontSize: '12px',
+                            color: 'textSubtle',
+                            padding: '8px',
+                            textAlign: 'center',
+                        })}
+                    >
+                        {path.length === 0 && pluginNames.length === 0
+                            ? '「ワールド情報」モーダルからプラグインを追加してください'
+                            : '(空)'}
                     </div>
                 ) : (
-                    pluginNames.map((name) => (
-                        <PluginFolder
-                            key={name}
-                            pluginName={name}
-                            components={componentsByPlugin.get(name) ?? []}
-                            assets={assetsByPlugin.get(name) ?? []}
+                    entries.map((e) => (
+                        <EntryTile
+                            key={e.key}
+                            entry={e}
+                            onOpen={() => {
+                                if (e.kind === 'plugin') setPath([e.name]);
+                                else if (e.kind === 'folder') setPath([...path, e.name]);
+                            }}
                         />
                     ))
                 )}
@@ -88,204 +96,329 @@ export function EditorAssets({ kinds, loading, pluginNames }: EditorAssetsProps)
     );
 }
 
-interface PluginFolderProps {
-    pluginName: string;
-    components: AvailableEntityKind[];
-    assets: PluginAssetFile[];
-}
+// ============================================
+// ツールバー (breadcrumb + 戻る)
+// ============================================
 
-function PluginFolder({ pluginName, components, assets }: PluginFolderProps) {
-    const [open, setOpen] = useState(true);
-    const total = components.length + assets.length;
-    return (
-        <div className={css({ display: 'flex', flexDirection: 'column' })}>
-            <button
-                type="button"
-                onClick={() => setOpen((p) => !p)}
-                className={css({
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '6px 8px',
-                    bg: 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: 'text',
-                    textAlign: 'left',
-                    borderRadius: '4px',
-                    _hover: { bg: 'surfaceHover' },
-                })}
-            >
-                <Chevron open={open} />
-                <FolderIcon />
-                <span className={css({ fontSize: '13px', fontWeight: '600' })}>{pluginName}</span>
-                <span className={css({ fontSize: '10px', color: 'textSubtle' })}>{total}</span>
-            </button>
-            {open && (
-                <div className={css({ display: 'flex', flexDirection: 'column', gap: '4px', pl: '4', py: '2' })}>
-                    {components.length > 0 && (
-                        <Section title="Components">
-                            <div className={css({ display: 'flex', flexWrap: 'wrap', gap: '6px' })}>
-                                {components.map((c) => (
-                                    <ComponentCard key={c.kind} kind={c} />
-                                ))}
-                            </div>
-                        </Section>
-                    )}
-                    {assets.length > 0 && (
-                        <Section title="Files">
-                            <div className={css({ display: 'flex', flexWrap: 'wrap', gap: '6px' })}>
-                                {assets.map((a) => (
-                                    <AssetCard key={a.url} asset={a} />
-                                ))}
-                            </div>
-                        </Section>
-                    )}
-                    {components.length === 0 && assets.length === 0 && (
-                        <div className={css({ fontSize: '11px', color: 'textSubtle', pl: '6px' })}>(空)</div>
-                    )}
-                </div>
-            )}
-        </div>
-    );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-    return (
-        <div className={css({ display: 'flex', flexDirection: 'column', gap: '4px' })}>
-            <span
-                className={css({
-                    fontSize: '10px',
-                    fontWeight: '700',
-                    color: 'textSubtle',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.05em',
-                    pl: '6px',
-                })}
-            >
-                {title}
-            </span>
-            {children}
-        </div>
-    );
-}
-
-function ComponentCard({ kind }: { kind: AvailableEntityKind }) {
-    const localName = kind.kind.split(':').slice(1).join(':') || kind.kind;
+function Toolbar({ path, onNavigate, loading }: { path: Path; onNavigate: (p: Path) => void; loading: boolean }) {
     return (
         <div
-            draggable
-            onDragStart={(e) => {
-                e.dataTransfer.setData(COMPONENT_DRAG_MIME, kind.kind);
-                e.dataTransfer.setData('text/plain', kind.kind);
-                e.dataTransfer.effectAllowed = 'copy';
-            }}
-            title={`${kind.kind} — Entity 行へドラッグして追加`}
             className={css({
-                width: '120px',
-                p: '8px 10px',
-                bg: 'background',
-                border: '1px solid',
+                padding: '8px 12px',
+                borderBottom: '1px solid',
                 borderColor: 'border',
-                borderRadius: '8px',
-                cursor: 'grab',
                 display: 'flex',
-                flexDirection: 'column',
-                gap: '2px',
-                _active: { cursor: 'grabbing' },
-                _hover: { borderColor: 'primary' },
+                alignItems: 'center',
+                gap: '8px',
+                flexShrink: 0,
+                fontSize: '11px',
             })}
         >
-            <div className={css({ fontSize: '13px', fontWeight: '600', color: 'text' })}>{localName}</div>
-            <div className={css({ fontSize: '10px', color: 'textSubtle', fontFamily: 'mono' })}>{kind.kind}</div>
+            <button
+                type="button"
+                onClick={() => onNavigate(path.slice(0, -1))}
+                disabled={path.length === 0}
+                title="上の階層へ"
+                className={css({
+                    width: '24px',
+                    height: '24px',
+                    bg: 'transparent',
+                    border: '1px solid',
+                    borderColor: 'border',
+                    borderRadius: '4px',
+                    color: 'textMuted',
+                    cursor: 'pointer',
+                    _disabled: { opacity: 0.4, cursor: 'not-allowed' },
+                    _hover: { borderColor: 'primary' },
+                })}
+            >
+                <BackIcon />
+            </button>
+            <div className={css({ display: 'flex', alignItems: 'center', gap: '4px', flex: 1, minW: 0 })}>
+                <Crumb label="アセット" onClick={() => onNavigate([])} active={path.length === 0} />
+                {path.map((seg, i) => (
+                    <Fragment key={`${seg}-${i}`}>
+                        <span className={css({ color: 'textSubtle' })}>›</span>
+                        <Crumb
+                            label={seg}
+                            active={i === path.length - 1}
+                            onClick={() => onNavigate(path.slice(0, i + 1))}
+                        />
+                    </Fragment>
+                ))}
+            </div>
+            {loading && <span className={css({ color: 'textSubtle' })}>読み込み中...</span>}
         </div>
     );
 }
 
-const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg|avif)$/i;
-const VIDEO_EXT = /\.(mp4|webm|mov)$/i;
+function Crumb({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className={css({
+                padding: '2px 6px',
+                bg: 'transparent',
+                border: 'none',
+                color: active ? 'text' : 'textMuted',
+                fontWeight: active ? '600' : '500',
+                cursor: 'pointer',
+                fontSize: '11px',
+                borderRadius: '4px',
+                _hover: { bg: 'surfaceHover' },
+            })}
+        >
+            {label}
+        </button>
+    );
+}
 
-function AssetCard({ asset }: { asset: PluginAssetFile }) {
-    const isImage = IMAGE_EXT.test(asset.path);
-    const isVideo = VIDEO_EXT.test(asset.path);
+// ============================================
+// エントリ構築 (現在のパスから表示候補を組み立て)
+// ============================================
+
+type Entry =
+    | { kind: 'plugin'; key: string; name: string }
+    | { kind: 'folder'; key: string; name: string }
+    | {
+          kind: 'component';
+          key: string;
+          name: string;
+          componentType: string;
+          pluginName: string;
+          thumbnailUrl?: string;
+      }
+    | { kind: 'file'; key: string; name: string; url: string };
+
+function buildEntries(
+    path: Path,
+    pluginNames: string[],
+    componentsByPlugin: Map<string, AvailableEntityKind[]>,
+    treesByPlugin: Map<string, AssetNode[]>,
+): Entry[] {
+    if (path.length === 0) {
+        return pluginNames.map((p) => ({ kind: 'plugin', key: `plugin:${p}`, name: p }));
+    }
+    const [pluginName, ...rest] = path;
+    // プラグイン直下: Components フォルダ + Files フォルダ (実体があるときのみ)
+    if (rest.length === 0) {
+        const comps = componentsByPlugin.get(pluginName) ?? [];
+        const tree = treesByPlugin.get(pluginName) ?? [];
+        const out: Entry[] = [];
+        if (comps.length > 0) out.push({ kind: 'folder', key: 'folder:Components', name: 'Components' });
+        if (tree.length > 0) out.push({ kind: 'folder', key: 'folder:Files', name: 'Files' });
+        return out;
+    }
+    if (rest[0] === 'Components') {
+        const comps = componentsByPlugin.get(pluginName) ?? [];
+        return comps.map((c) => ({
+            kind: 'component',
+            key: `comp:${c.kind}`,
+            name: c.kind.split(':').slice(1).join(':') || c.kind,
+            componentType: c.kind,
+            pluginName,
+            thumbnailUrl: c.thumbnailUrl,
+        }));
+    }
+    if (rest[0] === 'Files') {
+        // path = [plugin, "Files", folder1, folder2, ...]
+        const folderPath = rest.slice(1);
+        const tree = treesByPlugin.get(pluginName) ?? [];
+        const node = walkTree(tree, folderPath);
+        if (!node) return [];
+        return node.map((n) =>
+            n.kind === 'folder'
+                ? { kind: 'folder', key: `folder:${n.name}`, name: n.name }
+                : { kind: 'file', key: `file:${n.path}`, name: n.name, url: n.url },
+        );
+    }
+    return [];
+}
+
+function walkTree(nodes: AssetNode[], folders: string[]): AssetNode[] | null {
+    let cur: AssetNode[] = nodes;
+    for (const seg of folders) {
+        const next = cur.find((n) => n.kind === 'folder' && n.name === seg);
+        if (!next || next.kind !== 'folder') return null;
+        cur = next.children;
+    }
+    return cur;
+}
+
+// ============================================
+// タイル (グリッド 1 セル)
+// ============================================
+
+function EntryTile({ entry, onOpen }: { entry: Entry; onOpen: () => void }) {
+    if (entry.kind === 'plugin' || entry.kind === 'folder') {
+        return (
+            <button
+                type="button"
+                onDoubleClick={onOpen}
+                onClick={onOpen}
+                title={entry.name}
+                className={tileButtonStyle}
+            >
+                {entry.kind === 'plugin' ? <PluginFolderIcon /> : <FolderIcon />}
+                <span className={tileLabelStyle}>{entry.name}</span>
+            </button>
+        );
+    }
+    if (entry.kind === 'component') {
+        return (
+            <div
+                draggable
+                onDragStart={(e) => {
+                    e.dataTransfer.setData(COMPONENT_DRAG_MIME, entry.componentType);
+                    e.dataTransfer.setData('text/plain', entry.componentType);
+                    e.dataTransfer.effectAllowed = 'copy';
+                }}
+                title={`${entry.componentType} — Entity へドラッグして追加`}
+                className={css({
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '6px 4px',
+                    bg: 'background',
+                    border: '1px solid',
+                    borderColor: 'border',
+                    borderRadius: '8px',
+                    cursor: 'grab',
+                    _active: { cursor: 'grabbing' },
+                    _hover: { borderColor: 'primary' },
+                })}
+            >
+                <ThumbBox>
+                    {entry.thumbnailUrl ? (
+                        <ImgWithFallback src={entry.thumbnailUrl} alt={entry.name} fallback={<ComponentIcon />} />
+                    ) : (
+                        <ComponentIcon />
+                    )}
+                </ThumbBox>
+                <span className={tileLabelStyle}>{entry.name}</span>
+            </div>
+        );
+    }
+    // file
     return (
         <a
-            href={asset.url}
+            href={entry.url}
             target="_blank"
             rel="noreferrer"
-            title={asset.url}
+            title={entry.url}
             className={css({
-                width: '92px',
-                p: '6px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '6px 4px',
                 bg: 'background',
                 border: '1px solid',
                 borderColor: 'border',
                 borderRadius: '8px',
                 textDecoration: 'none',
                 color: 'text',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '4px',
                 _hover: { borderColor: 'primary' },
             })}
         >
-            <div
-                className={css({
-                    width: '100%',
-                    height: '64px',
-                    bg: 'surface',
-                    borderRadius: '4px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    overflow: 'hidden',
-                })}
-            >
-                {isImage ? (
-                    <img
-                        src={asset.url}
-                        alt={asset.path}
-                        className={css({ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' })}
-                    />
-                ) : isVideo ? (
-                    <FileVideoIcon />
-                ) : (
-                    <FileIcon />
-                )}
-            </div>
-            <span
-                className={css({
-                    fontSize: '10px',
-                    color: 'textMuted',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                })}
-            >
-                {asset.path.split('/').pop()}
-            </span>
+            <FileThumb name={entry.name} url={entry.url} />
+            <span className={tileLabelStyle}>{entry.name}</span>
         </a>
     );
 }
 
-function Chevron({ open }: { open: boolean }) {
+function FileThumb({ name, url }: { name: string; url: string }) {
+    const isImage = IMAGE_EXT.test(name);
+    const isCursor = CURSOR_EXT.test(name);
+    const isVideo = VIDEO_EXT.test(name);
     return (
-        <svg
-            width="10"
-            height="10"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            style={{ transform: open ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }}
-            aria-hidden="true"
-        >
-            <path d="M9 18l6-6-6-6" />
-        </svg>
+        <ThumbBox>
+            {isImage || isCursor ? (
+                // .cur / .ani / .ico は Chrome なら <img> で描画できる。失敗時は FileIcon に fallback。
+                <ImgWithFallback src={url} alt={name} fallback={<FileIcon />} />
+            ) : isVideo ? (
+                <video
+                    src={url}
+                    muted
+                    preload="metadata"
+                    className={css({ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' })}
+                >
+                    <track kind="captions" />
+                </video>
+            ) : (
+                <FileIcon />
+            )}
+        </ThumbBox>
     );
 }
 
-function FolderIcon() {
+function ThumbBox({ children }: { children: ReactNode }) {
+    return (
+        <div
+            className={css({
+                width: '64px',
+                height: '64px',
+                bg: 'surface',
+                borderRadius: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                overflow: 'hidden',
+                flexShrink: 0,
+            })}
+        >
+            {children}
+        </div>
+    );
+}
+
+function ImgWithFallback({ src, alt, fallback }: { src: string; alt: string; fallback: ReactNode }) {
+    const [failed, setFailed] = useState(false);
+    if (failed) return <>{fallback}</>;
+    return (
+        <img
+            src={src}
+            alt={alt}
+            loading="lazy"
+            onError={() => setFailed(true)}
+            className={css({ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' })}
+        />
+    );
+}
+
+// ============================================
+// アイコン群
+// ============================================
+
+const tileButtonStyle = css({
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '4px',
+    padding: '8px 4px',
+    bg: 'background',
+    border: '1px solid',
+    borderColor: 'border',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    _hover: { borderColor: 'primary' },
+});
+
+const tileLabelStyle = css({
+    fontSize: '10px',
+    color: 'text',
+    fontWeight: '500',
+    textAlign: 'center',
+    width: '100%',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    padding: '0 2px',
+});
+
+function BackIcon() {
     return (
         <svg
             width="14"
@@ -293,10 +426,44 @@ function FolderIcon() {
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            strokeWidth="2"
+            strokeWidth="2.5"
             aria-hidden="true"
         >
-            <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            <path d="M15 18l-6-6 6-6" />
+        </svg>
+    );
+}
+
+function FolderIcon() {
+    return (
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path
+                d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"
+                fill="#d4c4ab"
+                stroke="#b0a48e"
+                strokeWidth="1"
+            />
+        </svg>
+    );
+}
+
+function PluginFolderIcon() {
+    return (
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="#1b2a44" />
+            <path d="M8 12h8M12 8v8" stroke="white" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+    );
+}
+
+function ComponentIcon() {
+    return (
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <rect x="4" y="4" width="16" height="16" rx="2" fill="#f5ecdf" stroke="#1b2a44" strokeWidth="1.5" />
+            <circle cx="9" cy="9" r="1.5" fill="#1b2a44" />
+            <circle cx="15" cy="9" r="1.5" fill="#1b2a44" />
+            <circle cx="9" cy="15" r="1.5" fill="#1b2a44" />
+            <circle cx="15" cy="15" r="1.5" fill="#1b2a44" />
         </svg>
     );
 }
@@ -304,8 +471,8 @@ function FolderIcon() {
 function FileIcon() {
     return (
         <svg
-            width="22"
-            height="22"
+            width="32"
+            height="32"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -314,24 +481,6 @@ function FileIcon() {
         >
             <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
             <path d="M14 3v6h6" />
-        </svg>
-    );
-}
-
-function FileVideoIcon() {
-    return (
-        <svg
-            width="22"
-            height="22"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            aria-hidden="true"
-        >
-            <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
-            <path d="M14 3v6h6" />
-            <path d="M10 13l4 2.5L10 18z" fill="currentColor" />
         </svg>
     );
 }

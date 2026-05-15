@@ -13,27 +13,42 @@ import { logger } from '../utils/logger';
 import { clearInstanceState, createEntity } from './instanceState';
 import { worldRegistry } from './worldRegistry';
 
-/** GameObject を 1 Component = 1 WorldEntity に展開する純関数。 */
-function flattenGameObject(gameObject: InitialEntity): Array<Omit<WorldEntity, 'id'> & { id: string }> {
+/**
+ * GameObject ツリーを 1 Component = 1 WorldEntity に展開する純関数。
+ * 子 Entity の transform.x/y は親基準の相対座標 → 親 origin を加算して絶対化する。
+ */
+function flattenGameObject(
+    gameObject: InitialEntity,
+    parentOrigin: { x: number; y: number; z: number } = { x: 0, y: 0, z: 0 },
+    parentGameObjectId?: string,
+): Array<Omit<WorldEntity, 'id'> & { id: string }> {
     const t = gameObject.transform;
+    const absX = parentOrigin.x + t.x;
+    const absY = parentOrigin.y + t.y;
+    const absZ = parentOrigin.z + (t.z ?? 0);
     const transform: WorldEntity['transform'] = {
-        x: t.x,
-        y: t.y,
-        z: t.z ?? 0,
+        x: absX,
+        y: absY,
+        z: absZ,
         w: t.w ?? 100,
         h: t.h ?? 100,
         scale: t.scale ?? 1,
         rotation: t.rotation ?? 0,
     };
-    return (gameObject.components ?? []).map((c, i) => ({
+    const own = (gameObject.components ?? []).map((c, i) => ({
         id: `${gameObject.id}::${i}`,
         type: c.type,
         gameObjectId: gameObject.id,
+        parentGameObjectId,
         ownerId: null,
         lockedBy: null,
         transform,
         data: c.data ?? {},
     }));
+    const fromChildren = (gameObject.children ?? []).flatMap((child) =>
+        flattenGameObject(child, { x: absX, y: absY, z: absZ }, gameObject.id),
+    );
+    return [...own, ...fromChildren];
 }
 
 /**

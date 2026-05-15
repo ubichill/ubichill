@@ -105,19 +105,18 @@ export interface EntityTransform {
 /**
  * Worker 互換の flat エンティティ。
  *
- * Stage 1 の runtime / socket / SDK ではこの flat 形式が「1 単位」。
- * 1 GameObject 上の 1 Component に 1:1 で対応する。
- *
- * Editor / World YAML / DB では GameObject + components[] (現代的 ECS) で表現するが、
- * バックエンド側で flatten して各 Component を 1 WorldEntity として配信する。
+ * 1 GameObject 上の 1 Component に 1:1 で対応する。GameObject の hierarchy は
+ * `gameObjectId` (自身が乗る GameObject) と `parentGameObjectId` (親 GameObject) で表現。
  *
  * @template T ウィジェット固有のデータ型
  */
 export interface WorldEntity<T = unknown> {
     id: string;
     type: string;
-    /** 親 GameObject の id（flatten 元）。Stage 2 で Component 間連携キーとして使う予定。 */
+    /** 自身が乗る GameObject の id。 */
     gameObjectId?: string;
+    /** 親 GameObject の id (子孫判定用)。ルートなら undefined。 */
+    parentGameObjectId?: string;
     ownerId: string | null;
     lockedBy: string | null;
     transform: EntityTransform;

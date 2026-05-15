@@ -125,16 +125,27 @@ export const EntityTagSchema = z
     .regex(/^[a-z0-9_-]+$/, 'tag は小文字英数 + - _ のみ');
 
 /**
- * ワールド YAML 上の初期 Entity（GameObject）。
- * 1 つの Entity に複数 Component を載せる「現代的 ECS」スタイル。
+ * Initial Entity (GameObject)。
+ * 1 Entity に複数 Component + 子 Entity を持つ Unity 風階層。
+ * `transform` の x/y は親 Entity 基準の相対座標。
  */
-export const InitialEntitySchema = z.object({
-    id: KebabCaseId,
-    transform: TransformSchema,
-    components: z.array(EntityComponentSchema).max(LIMITS.MAX_COMPONENTS_PER_ENTITY).default([]),
-    /** 自由なタグ (Unity の Tag 相当)。空配列で省略可。 */
-    tags: z.array(EntityTagSchema).max(LIMITS.MAX_TAGS).default([]),
-});
+export interface InitialEntity {
+    id: string;
+    transform: z.infer<typeof TransformSchema>;
+    components: Array<z.infer<typeof EntityComponentSchema>>;
+    tags: string[];
+    children: InitialEntity[];
+}
+
+export const InitialEntitySchema: z.ZodType<InitialEntity> = z.lazy(() =>
+    z.object({
+        id: KebabCaseId,
+        transform: TransformSchema,
+        components: z.array(EntityComponentSchema).max(LIMITS.MAX_COMPONENTS_PER_ENTITY).default([]),
+        tags: z.array(EntityTagSchema).max(LIMITS.MAX_TAGS).default([]),
+        children: z.array(InitialEntitySchema).max(LIMITS.MAX_INITIAL_ENTITIES).default([]),
+    }),
+);
 
 // ============================================
 // World Permissions（権限設定）
@@ -189,7 +200,6 @@ export const WorldDefinitionSchema = z.object({
 export type WorldDefinition = z.infer<typeof WorldDefinitionSchema>;
 export type WorldEnvironment = z.infer<typeof WorldEnvironmentSchema>;
 export type WorldCapacity = z.infer<typeof WorldCapacitySchema>;
-export type InitialEntity = z.infer<typeof InitialEntitySchema>;
 export type EntityComponentDef = z.infer<typeof EntityComponentSchema>;
 export type ComponentType = z.infer<typeof ComponentTypeSchema>;
 export type EntityTag = z.infer<typeof EntityTagSchema>;

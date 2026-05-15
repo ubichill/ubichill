@@ -20,9 +20,19 @@ import { ModalPrimaryButton, ModalSecondaryButton } from './components/ModalButt
 import { useAvailableEntityKinds } from './hooks/useAvailableEntityKinds';
 import { useEditorModals } from './hooks/useEditorModals';
 import { useWorldEditorApi } from './hooks/useWorldEditorApi';
-import { buildEntityId, DEFAULT_H, DEFAULT_W, nextZ } from './lib/dragHelpers';
+import { DEFAULT_H, DEFAULT_W } from './lib/dragHelpers';
+import {
+    adjustPathAfterDelete,
+    buildUniqueEntityId,
+    collectEntityIds,
+    deleteEntityAt,
+    type EntityPath,
+    getEntityAt,
+    insertEntity,
+    nextRootZ,
+    updateEntityAt,
+} from './lib/entityTree';
 
-// 新規作成時の placeholder name (21文字, lowercase)。サーバー側で nanoid に置き換えられる。
 const PLACEHOLDER_NAME = 'newworldplaceholder12';
 
 function createInitialDefinition(): WorldDefinition {
@@ -56,9 +66,9 @@ export function WorldEditorPage() {
     const [definition, setDefinition] = useState<WorldDefinition>(createInitialDefinition);
     const [savedYaml, setSavedYaml] = useState<string | null>(null);
 
-    const [selectedEntityIndex, setSelectedEntityIndex] = useState<number | null>(null);
+    const [selectedPath, setSelectedPath] = useState<EntityPath | null>(null);
     const [selectedComponentIndex, setSelectedComponentIndex] = useState<number | null>(null);
-    const [hiddenIndices, setHiddenIndices] = useState<Set<number>>(new Set());
+    const [hiddenRootIndices, setHiddenRootIndices] = useState<Set<number>>(new Set());
     const [mobileLeftOpen, setMobileLeftOpen] = useState(false);
     const [mobileRightOpen, setMobileRightOpen] = useState(false);
     const [loading, setLoading] = useState(isEdit);
@@ -103,7 +113,6 @@ export function WorldEditorPage() {
         if (!isPending && !session) navigate('/auth');
     }, [isPending, session, navigate]);
 
-    // ---------- entity 操作 ----------
     const updateEntities = useCallback((mutate: (prev: InitialEntity[]) => InitialEntity[]) => {
         setDefinition((prev) => ({
             ...prev,
@@ -111,12 +120,9 @@ export function WorldEditorPage() {
         }));
     }, []);
 
-    /**
-     * Entity 選択。drawer は自動展開しない（移動/リサイズの邪魔になるため）。
-     */
-    const selectEntity = useCallback((index: number | null) => {
-        setSelectedEntityIndex(index);
-        if (index === null) {
+    const selectEntity = useCallback((path: EntityPath | null) => {
+        setSelectedPath(path);
+        if (path === null) {
             setSelectedComponentIndex(null);
             setMobileRightOpen(false);
         }
@@ -126,45 +132,54 @@ export function WorldEditorPage() {
         setSelectedComponentIndex(componentIndex);
     }, []);
 
-    const patchEntityTransform = useCallback(
-        (index: number, patch: Partial<InitialEntity['transform']>) => {
+    /** EditOverlay からの transform 編集はルート Entity 限定 (子は Inspector で編集)。 */
+    const patchRootEntityTransform = useCallback(
+        (rootIndex: number, patch: Partial<InitialEntity['transform']>) => {
             updateEntities((prev) =>
-                prev.map((e, i) => (i === index ? { ...e, transform: { ...e.transform, ...patch } } : e)),
+                updateEntityAt(prev, [rootIndex], (e) => ({ ...e, transform: { ...e.transform, ...patch } })),
             );
         },
         [updateEntities],
     );
 
-    /** 空の GameObject (transform のみ) をワールド中央に新規作成する。 */
-    const handleCreateEmptyEntity = useCallback(() => {
-        const env = definition.spec.environment;
-        const worldSize = env?.worldSize ?? { width: 2000, height: 1500 };
-        const entities = definition.spec.initialEntities;
-        const next: InitialEntity = {
-            id: buildEntityId(
-                'entity',
-                entities.map((e) => e.id),
-            ),
-            transform: {
-                x: Math.round(worldSize.width / 2 - DEFAULT_W / 2),
-                y: Math.round(worldSize.height / 2 - DEFAULT_H / 2),
-                z: nextZ(entities),
-                w: DEFAULT_W,
-                h: DEFAULT_H,
-                scale: 1,
-                rotation: 0,
-            },
-            components: [],
-            tags: [],
-        };
-        updateEntities((prev) => [...prev, next]);
-        selectEntity(entities.length);
-        selectComponent(null);
-    }, [definition.spec.initialEntities, definition.spec.environment, updateEntities, selectEntity, selectComponent]);
+    const handleCreateEmptyEntity = useCallback(
+        (parentPath: EntityPath | null) => {
+            const env = definition.spec.environment;
+            const worldSize = env?.worldSize ?? { width: 2000, height: 1500 };
+            const entities = definition.spec.initialEntities;
+            const newEntity: InitialEntity = {
+                id: buildUniqueEntityId('entity', collectEntityIds(entities)),
+                transform: parentPath
+                    ? { x: 0, y: 0, z: 1, w: DEFAULT_W, h: DEFAULT_H, scale: 1, rotation: 0 }
+                    : {
+                          x: Math.round(worldSize.width / 2 - DEFAULT_W / 2),
+                          y: Math.round(worldSize.height / 2 - DEFAULT_H / 2),
+                          z: nextRootZ(entities),
+                          w: DEFAULT_W,
+                          h: DEFAULT_H,
+                          scale: 1,
+                          rotation: 0,
+                      },
+                components: [],
+                tags: [],
+                children: [],
+            };
+            updateEntities((prev) => insertEntity(prev, parentPath, newEntity));
+            // 新規作成した Entity を選択
+            if (parentPath) {
+                const parent = getEntityAt(entities, parentPath);
+                const newChildIdx = parent?.children?.length ?? 0;
+                selectEntity([...parentPath, newChildIdx]);
+            } else {
+                selectEntity([entities.length]);
+            }
+            selectComponent(null);
+        },
+        [definition.spec.initialEntities, definition.spec.environment, updateEntities, selectEntity, selectComponent],
+    );
 
-    /** Inspector / Hierarchy / Overlay からの component 追加 (D&D 含む)。既存 Entity に component を載せる。 */
     const handleAddComponentToEntity = useCallback(
-        (entityIndex: number, componentType: string) => {
+        (path: EntityPath, componentType: string) => {
             const kind = kinds.find((k) => k.kind === componentType);
             const initialData: Record<string, unknown> = {};
             if (kind?.dataFields) {
@@ -174,36 +189,43 @@ export function WorldEditorPage() {
             }
             const newComponent: EntityComponentDef = { type: componentType, data: initialData };
             updateEntities((prev) =>
-                prev.map((e, i) => (i === entityIndex ? { ...e, components: [...e.components, newComponent] } : e)),
+                updateEntityAt(prev, path, (e) => ({ ...e, components: [...e.components, newComponent] })),
             );
-            selectComponent(definition.spec.initialEntities[entityIndex]?.components.length ?? 0);
+            const target = getEntityAt(definition.spec.initialEntities, path);
+            selectEntity(path);
+            selectComponent(target?.components.length ?? 0);
         },
-        [kinds, updateEntities, selectComponent, definition.spec.initialEntities],
+        [kinds, updateEntities, selectEntity, selectComponent, definition.spec.initialEntities],
     );
 
     const handleDeleteEntity = useCallback(
-        (index: number) => {
-            updateEntities((prev) => prev.filter((_, i) => i !== index));
-            setHiddenIndices((prev) => {
-                const next = new Set<number>();
-                for (const i of prev) {
-                    if (i < index) next.add(i);
-                    else if (i > index) next.add(i - 1);
-                }
-                return next;
-            });
-            setSelectedEntityIndex((cur) => (cur === index ? null : cur !== null && cur > index ? cur - 1 : cur));
+        (path: EntityPath) => {
+            updateEntities((prev) => deleteEntityAt(prev, path));
+            // ルート削除なら hiddenRootIndices を詰める
+            if (path.length === 1) {
+                const idx = path[0];
+                setHiddenRootIndices((prev) => {
+                    const next = new Set<number>();
+                    for (const i of prev) {
+                        if (i < idx) next.add(i);
+                        else if (i > idx) next.add(i - 1);
+                    }
+                    return next;
+                });
+            }
+            setSelectedPath((cur) => adjustPathAfterDelete(cur, path));
             setSelectedComponentIndex(null);
         },
         [updateEntities],
     );
 
     const handleDeleteComponent = useCallback(
-        (entityIndex: number, componentIndex: number) => {
+        (path: EntityPath, componentIndex: number) => {
             updateEntities((prev) =>
-                prev.map((e, i) =>
-                    i === entityIndex ? { ...e, components: e.components.filter((_, ci) => ci !== componentIndex) } : e,
-                ),
+                updateEntityAt(prev, path, (e) => ({
+                    ...e,
+                    components: e.components.filter((_, ci) => ci !== componentIndex),
+                })),
             );
             setSelectedComponentIndex((cur) => {
                 if (cur === null) return null;
@@ -216,28 +238,28 @@ export function WorldEditorPage() {
     );
 
     const handleRenameEntity = useCallback(
-        (entityIndex: number, newId: string) => {
-            updateEntities((prev) => {
-                const others = prev.filter((_, i) => i !== entityIndex).map((e) => e.id);
-                if (others.includes(newId)) return prev; // 重複は無視
-                return prev.map((e, i) => (i === entityIndex ? { ...e, id: newId } : e));
-            });
+        (path: EntityPath, newId: string) => {
+            const taken = new Set(collectEntityIds(definition.spec.initialEntities));
+            // 自分自身は許可
+            const self = getEntityAt(definition.spec.initialEntities, path);
+            if (self) taken.delete(self.id);
+            if (taken.has(newId)) return;
+            updateEntities((prev) => updateEntityAt(prev, path, (e) => ({ ...e, id: newId })));
         },
-        [updateEntities],
+        [updateEntities, definition.spec.initialEntities],
     );
 
-    const handleToggleHidden = useCallback((index: number) => {
-        setHiddenIndices((prev) => {
+    const handleToggleHidden = useCallback((rootIndex: number) => {
+        setHiddenRootIndices((prev) => {
             const next = new Set(prev);
-            if (next.has(index)) next.delete(index);
-            else next.add(index);
+            if (next.has(rootIndex)) next.delete(rootIndex);
+            else next.add(rootIndex);
             return next;
         });
-        setSelectedEntityIndex((cur) => (cur === index ? null : cur));
+        setSelectedPath((cur) => (cur?.[0] === rootIndex ? null : cur));
         setSelectedComponentIndex(null);
     }, []);
 
-    // ---------- 保存 ----------
     const handleSave = useCallback(() => {
         if (!definition.spec.displayName.trim()) {
             api.setError('表示名は必須です。「ワールド情報」から入力してください');
@@ -250,10 +272,13 @@ export function WorldEditorPage() {
     if (isPending || !session) return <CenteredMessage text="読み込み中..." />;
     if (loading) return <CenteredMessage text="ワールドを読み込み中..." />;
 
-    const selectedEntity = selectedEntityIndex !== null ? definition.spec.initialEntities[selectedEntityIndex] : null;
+    const selectedEntity = selectedPath ? getEntityAt(definition.spec.initialEntities, selectedPath) : null;
     const title =
         (definition.spec.displayName?.trim() || (isEdit ? 'ワールドを編集' : '新しいワールド')) +
         (isEdit ? '' : ' (未保存)');
+
+    // EditOverlay 用の root selectedIndex (子選択でも root をハイライト)
+    const selectedRootIndex = selectedPath?.[0] ?? null;
 
     return (
         <div
@@ -294,11 +319,11 @@ export function WorldEditorPage() {
             >
                 <EditorHierarchy
                     entities={definition.spec.initialEntities}
-                    selectedEntityIndex={selectedEntityIndex}
+                    selectedPath={selectedPath}
                     selectedComponentIndex={selectedComponentIndex}
-                    hiddenIndices={hiddenIndices}
-                    onSelectEntity={(i) => {
-                        selectEntity(i);
+                    hiddenRootIndices={hiddenRootIndices}
+                    onSelectEntity={(p) => {
+                        selectEntity(p);
                         setMobileLeftOpen(false);
                     }}
                     onSelectComponent={selectComponent}
@@ -313,11 +338,11 @@ export function WorldEditorPage() {
             <div className={css({ gridArea: 'center', minH: 0, minW: 0 })}>
                 <EditorStage
                     definition={definition}
-                    selectedIndex={selectedEntityIndex}
-                    hiddenIndices={hiddenIndices}
-                    onSelect={selectEntity}
-                    onPatchTransform={patchEntityTransform}
-                    onDropComponent={handleAddComponentToEntity}
+                    selectedIndex={selectedRootIndex}
+                    hiddenIndices={hiddenRootIndices}
+                    onSelect={(idx) => selectEntity(idx !== null ? [idx] : null)}
+                    onPatchTransform={patchRootEntityTransform}
+                    onDropComponent={(idx, type) => handleAddComponentToEntity([idx], type)}
                 />
             </div>
 
@@ -327,18 +352,17 @@ export function WorldEditorPage() {
                 mobileTitle="設定"
                 onMobileClose={() => setMobileRightOpen(false)}
             >
-                {selectedEntity && selectedEntityIndex !== null ? (
+                {selectedEntity && selectedPath ? (
                     <EntityInspector
                         entity={selectedEntity}
                         initiallyExpandedComponentIndex={selectedComponentIndex}
                         availableKinds={kinds}
-                        onChange={(updater) =>
-                            updateEntities((prev) => prev.map((e, i) => (i === selectedEntityIndex ? updater(e) : e)))
-                        }
-                        onAddComponent={(type) => handleAddComponentToEntity(selectedEntityIndex, type)}
-                        onDeleteComponent={(ci) => handleDeleteComponent(selectedEntityIndex, ci)}
-                        onDeleteEntity={() => handleDeleteEntity(selectedEntityIndex)}
-                        onRenameEntity={(id) => handleRenameEntity(selectedEntityIndex, id)}
+                        isChild={selectedPath.length > 1}
+                        onChange={(updater) => updateEntities((prev) => updateEntityAt(prev, selectedPath, updater))}
+                        onAddComponent={(type) => handleAddComponentToEntity(selectedPath, type)}
+                        onDeleteComponent={(ci) => handleDeleteComponent(selectedPath, ci)}
+                        onDeleteEntity={() => handleDeleteEntity(selectedPath)}
+                        onRenameEntity={(id) => handleRenameEntity(selectedPath, id)}
                     />
                 ) : (
                     <div

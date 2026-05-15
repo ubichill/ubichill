@@ -8,6 +8,8 @@ interface EntityInspectorProps {
     /** Hierarchy 等から渡される「最初に展開しておく Component の index」。 */
     initiallyExpandedComponentIndex: number | null;
     availableKinds: AvailableEntityKind[];
+    /** true なら子 Entity (transform は親基準の相対座標) */
+    isChild: boolean;
     onChange: (updater: (prev: InitialEntity) => InitialEntity) => void;
     onAddComponent: (type: string) => void;
     onDeleteComponent: (componentIndex: number) => void;
@@ -19,6 +21,7 @@ export function EntityInspector({
     entity,
     initiallyExpandedComponentIndex,
     availableKinds,
+    isChild,
     onChange,
     onAddComponent,
     onDeleteComponent,
@@ -42,7 +45,7 @@ export function EntityInspector({
         >
             <EntityHeader entity={entity} onDelete={onDeleteEntity} onRename={onRenameEntity} />
 
-            <Section label="Transform">
+            <Section label={isChild ? 'Transform (親基準)' : 'Transform'}>
                 <div className={css({ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '2' })}>
                     <NumField label="X" value={t.x} onChange={(v) => updateTransform({ x: v })} />
                     <NumField label="Y" value={t.y} onChange={(v) => updateTransform({ y: v })} />

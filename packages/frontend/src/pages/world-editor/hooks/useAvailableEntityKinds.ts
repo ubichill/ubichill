@@ -46,6 +46,8 @@ export interface AvailableEntityKind {
     }>;
     /** インスペクタで必ず表示する data フィールドの宣言 */
     dataFields?: DataFields;
+    /** Component アイコン URL (アセットブラウザ表示用)。manifest の `thumbnail` を versioned base で絶対化済み。 */
+    thumbnailUrl?: string;
 }
 
 interface PluginIndex {
@@ -59,6 +61,7 @@ interface VersionedManifestComponent {
     mediaTargets?: string[];
     defaultTransform?: AvailableEntityKind['defaultTransform'];
     dataFields?: DataFields;
+    thumbnail?: string;
 }
 
 interface VersionedManifest {
@@ -130,6 +133,7 @@ export function useAvailableEntityKinds(definition: WorldDefinition | null): {
                 if (!idx?.version) return [];
                 const manifest = await fetchManifest(dep.name, idx.version);
                 const components = manifest?.components ?? {};
+                const versionedBase = `${PLUGIN_BASE_URL}/${dep.name}/v${idx.version}`;
                 return Object.entries(components).map(([kind, meta]) => ({
                     pluginName: dep.name,
                     kind,
@@ -139,6 +143,7 @@ export function useAvailableEntityKinds(definition: WorldDefinition | null): {
                     suggestSize: !!(meta.canvasTargets?.length || meta.mediaTargets?.length),
                     defaultTransform: meta.defaultTransform,
                     dataFields: meta.dataFields,
+                    thumbnailUrl: meta.thumbnail ? `${versionedBase}/${meta.thumbnail}` : undefined,
                 }));
             }),
         )

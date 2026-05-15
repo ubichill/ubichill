@@ -6,7 +6,7 @@ import {
     WorldContext,
     type WorldContextType,
 } from '@ubichill/sdk/react';
-import type { WorldDefinition, WorldEntity, WorldEnvironmentData } from '@ubichill/shared';
+import type { InitialEntity, WorldDefinition, WorldEntity, WorldEnvironmentData } from '@ubichill/shared';
 import type React from 'react';
 import { useMemo } from 'react';
 import { EntityRenderer } from '@/instance/EntityRenderer';
@@ -21,9 +21,10 @@ const FALLBACK_ENTITY: WorldEntity = {
     transform: { x: 0, y: 0, z: 0, w: 0, h: 0, scale: 1, rotation: 0 },
 };
 
-/** 編集モード用エンティティ ID: `edit-${entityIndex}-${componentIndex}` */
-export function makeEditorEntityId(entityIndex: number, componentIndex: number): string {
-    return `edit-${entityIndex}-${componentIndex}`;
+/** 編集モード用エンティティ ID: `edit-${rootIndex}[-childIdx...]*-c${componentIndex}` */
+export function makeEditorEntityId(rootEntityIndex: number, componentIndex: number, childPath: number[] = []): string {
+    const path = [rootEntityIndex, ...childPath];
+    return `edit-${path.join('-')}-c${componentIndex}`;
 }
 
 export function parseEditorEntityIndex(id: string): number | null {
@@ -70,43 +71,59 @@ export function EditorPreview({
 
     const entities = useMemo(() => {
         const map = new Map<string, WorldEntity>();
-        definition.spec.initialEntities.forEach((e, ei) => {
-            // 非表示中の GameObject は全 Component を一括除外（Worker も起動しない）
-            if (hiddenIndices?.has(ei)) return;
-            const t = e.transform;
+        const walk = (
+            entity: InitialEntity,
+            origin: { x: number; y: number; z: number },
+            pathPrefix: number[],
+            parentGameObjectId: string | undefined,
+        ) => {
+            const t = entity.transform;
+            const absX = origin.x + t.x;
+            const absY = origin.y + t.y;
+            const absZ = origin.z + (t.z ?? 0);
             const transform: WorldEntity['transform'] = {
-                x: t.x,
-                y: t.y,
-                z: t.z ?? 0,
+                x: absX,
+                y: absY,
+                z: absZ,
                 w: t.w ?? 0,
                 h: t.h ?? 0,
                 scale: t.scale ?? 1,
                 rotation: t.rotation ?? 0,
             };
-            e.components.forEach((c, ci) => {
-                const id = makeEditorEntityId(ei, ci);
+            entity.components.forEach((c, ci) => {
+                const id = `edit-${pathPrefix.join('-')}-c${ci}`;
                 map.set(id, {
                     id,
                     type: c.type,
-                    gameObjectId: e.id,
+                    gameObjectId: entity.id,
+                    parentGameObjectId,
                     ownerId: null,
                     lockedBy: null,
                     data: (c.data as Record<string, unknown> | undefined) ?? {},
                     transform,
                 });
             });
+            entity.children?.forEach((child, childIdx) => {
+                walk(child, { x: absX, y: absY, z: absZ }, [...pathPrefix, childIdx], entity.id);
+            });
+        };
+        definition.spec.initialEntities.forEach((e, ei) => {
+            if (hiddenIndices?.has(ei)) return;
+            walk(e, { x: 0, y: 0, z: 0 }, [ei], undefined);
         });
         return map;
     }, [definition.spec.initialEntities, hiddenIndices]);
 
     const activePlugins = useMemo(() => {
         const set = new Set<string>();
-        for (const e of definition.spec.initialEntities) {
+        const walk = (e: InitialEntity) => {
             for (const c of e.components) {
                 const colon = c.type.indexOf(':');
                 set.add(colon === -1 ? c.type : c.type.slice(0, colon));
             }
-        }
+            e.children?.forEach(walk);
+        };
+        definition.spec.initialEntities.forEach(walk);
         return Array.from(set);
     }, [definition.spec.initialEntities]);
 

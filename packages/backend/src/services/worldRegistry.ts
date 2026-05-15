@@ -609,12 +609,14 @@ class WorldRegistry {
             backgroundColor: DEFAULTS.WORLD_ENVIRONMENT.backgroundColor,
             worldSize: DEFAULTS.WORLD_ENVIRONMENT.worldSize,
         };
-        const initialEntities: InitialEntity[] = def.spec.initialEntities.map((e) => ({
+        const normalizeEntity = (e: InitialEntity): InitialEntity => ({
             id: e.id,
             transform: e.transform,
             components: e.components.map((c) => ({ type: c.type, data: c.data ?? {} })),
             tags: e.tags ?? [],
-        }));
+            children: (e.children ?? []).map(normalizeEntity),
+        });
+        const initialEntities: InitialEntity[] = def.spec.initialEntities.map(normalizeEntity);
         return {
             id: record.name,
             dbId: record.id,

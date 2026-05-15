@@ -35,8 +35,10 @@ interface WorkerMetaObject {
     singleton?: boolean;
     canvasTargets?: string[];
     watchEntityTypes?: string[];
-    /** 'entity' (default) なら自 GameObject 内のみ、'world' ならワールド全体を watch */
-    watchScope?: 'entity' | 'world';
+    /** 'entity' | 'subtree' (default) | 'world' */
+    watchScope?: 'entity' | 'subtree' | 'world';
+    /** アセット相対パス */
+    thumbnail?: string;
     mediaTargets?: string[];
     fetchDomains?: string[];
     defaultTransform?: Record<string, unknown>;
@@ -128,7 +130,8 @@ async function loadWorkerPlugin(entityType: string): Promise<WorkerPluginDefinit
         singleton: entry.singleton,
         canvasTargets: entry.canvasTargets,
         watchEntityTypes: entry.watchEntityTypes,
-        watchScope: entry.watchScope ?? 'entity',
+        watchScope: entry.watchScope ?? 'subtree',
+        thumbnail: entry.thumbnail,
         mediaTargets: entry.mediaTargets,
         fetchDomains: entry.fetchDomains,
         pluginBase: versionedBase,

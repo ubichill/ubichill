@@ -47,10 +47,13 @@ export interface WorkerPluginDefinition {
     watchEntityTypes?: string[];
     /**
      * watchEntityTypes / queryEntities のスコープ。
-     * 'entity' (default): 同じ GameObject 内の Component インスタンスのみ可視。
-     * 'world': ワールド全体を watch (旧挙動)。
+     * 'entity'  : 同じ GameObject 内のみ。
+     * 'subtree' : 自 GameObject + その子孫 (default、Unity の GetComponentsInChildren 相当)。
+     * 'world'   : ワールド全体。
      */
-    watchScope?: 'entity' | 'world';
+    watchScope?: 'entity' | 'subtree' | 'world';
+    /** プラグインアセット相対パスのサムネ画像 (エディタ表示用)。 */
+    thumbnail?: string;
     /**
      * Host が生成して Worker が操作する <video> 要素のターゲット名リスト。
      * Worker は `Ubi.media.load(url, targetId)` で再生を指示する。

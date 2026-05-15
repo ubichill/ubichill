@@ -20,6 +20,7 @@ import { usePluginUI } from '../hooks/usePluginUI';
 import { usePluginWorld } from '../hooks/usePluginWorld';
 import { useSocket } from '../hooks/useSocket';
 import { useWorld } from '../hooks/useWorld';
+import { collectSubtreeGameObjectIds, isVisibleInScope, type WatchScope } from '../lib/entityScope';
 import type { WorkerPluginDefinition } from '../types';
 import { usePluginWorker } from '../usePluginWorker';
 import { PluginUIMount } from './PluginUIMount';
@@ -50,24 +51,30 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
     const { vnodes, onRender, sendAction, sendEventRef } = usePluginUI();
     const { getVideoRef, mediaHandlers } = usePluginMedia(definition, sendEventRef);
     const onFetch = usePluginFetch(definition, entity);
-    const worldHandlers = usePluginWorld(definition.watchScope ?? 'entity', entity.gameObjectId);
+    const worldHandlers = usePluginWorld(definition.watchScope ?? 'subtree', entity.gameObjectId);
 
     // ── Worker 起動時点の watchEntityTypes マッチ分を抽出 ──────────────
-    // watchScope='entity' (default) は自 GameObject 内の Component のみ可視。
+    // watchScope='subtree' (default) は自 GameObject + 子孫 の Component を可視。
+    const scope: WatchScope = definition.watchScope ?? 'subtree';
+    const subtreeIds = useMemo(
+        () =>
+            scope === 'subtree' && entity.gameObjectId
+                ? collectSubtreeGameObjectIds(entities.values(), entity.gameObjectId)
+                : null,
+        [entities, scope, entity.gameObjectId],
+    );
     const initialEntities = useMemo<WorldEntity[]>(() => {
         const types = definition.watchEntityTypes;
         if (!types?.length) return [];
         const typeSet = new Set(types);
-        const scope = definition.watchScope ?? 'entity';
-        const gid = entity.gameObjectId;
         const out: WorldEntity[] = [];
         for (const e of entities.values()) {
             if (!typeSet.has(e.type)) continue;
-            if (scope === 'entity' && gid && e.gameObjectId !== gid) continue;
+            if (!isVisibleInScope(e, scope, entity.gameObjectId, subtreeIds)) continue;
             out.push(e);
         }
         return out;
-    }, [entities, definition.watchEntityTypes, definition.watchScope, entity.gameObjectId]);
+    }, [entities, definition.watchEntityTypes, scope, entity.gameObjectId, subtreeIds]);
 
     // ── Worker ────────────────────────────────────────────────────
     const { sendEvent, workerRevision, setScrollElement } = usePluginWorker({

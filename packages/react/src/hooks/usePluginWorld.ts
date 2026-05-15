@@ -1,14 +1,15 @@
 /**
- * Ubi.world.* RPC のハンドラ群。watchScope='entity' なら同 GameObject 内に絞る。
+ * Ubi.world.* RPC のハンドラ群。watchScope に応じて可視範囲を絞る。
  */
 
 import type { HostHandlers } from '@ubichill/sandbox';
 import type { WorldEntity } from '@ubichill/shared';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
+import { collectSubtreeGameObjectIds, isVisibleInScope, type WatchScope } from '../lib/entityScope';
 import { useWorld } from './useWorld';
 
 export function usePluginWorld(
-    scope: 'entity' | 'world' = 'entity',
+    scope: WatchScope = 'subtree',
     gameObjectId?: string,
 ): Pick<HostHandlers, 'onGetEntity' | 'onQueryEntities' | 'onCreateEntity' | 'onUpdateEntity' | 'onDestroyEntity'> {
     const { entities, createEntity, patchEntity, deleteEntity } = useWorld();
@@ -23,16 +24,23 @@ export function usePluginWorld(
         entitiesRef.current = entities;
     });
 
+    const subtreeIds = useMemo(
+        () =>
+            scope === 'subtree' && gameObjectId ? collectSubtreeGameObjectIds(entities.values(), gameObjectId) : null,
+        [entities, scope, gameObjectId],
+    );
+    const subtreeIdsRef = useRef(subtreeIds);
+    useEffect(() => {
+        subtreeIdsRef.current = subtreeIds;
+    });
+
     const scopeRef = useRef({ scope, gameObjectId });
     useEffect(() => {
         scopeRef.current = { scope, gameObjectId };
     });
 
-    const isVisible = (e: WorldEntity): boolean => {
-        const s = scopeRef.current;
-        if (s.scope === 'world' || !s.gameObjectId) return true;
-        return e.gameObjectId === s.gameObjectId;
-    };
+    const isVisible = (e: WorldEntity): boolean =>
+        isVisibleInScope(e, scopeRef.current.scope, scopeRef.current.gameObjectId, subtreeIdsRef.current);
 
     return {
         onGetEntity: (id: string): WorldEntity | undefined => {

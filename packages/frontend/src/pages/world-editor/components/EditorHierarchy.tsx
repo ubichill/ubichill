@@ -3,26 +3,30 @@ import { useState } from 'react';
 import { css } from '@/styled-system/css';
 import { COMPONENT_DRAG_MIME } from '../lib/dnd';
 
+/** ヒエラルキー内で Entity を指す path (ルートからの index 列)。例: [0] / [0, 1] */
+export type EntityPath = number[];
+
 interface EditorHierarchyProps {
     entities: InitialEntity[];
-    selectedEntityIndex: number | null;
+    selectedPath: EntityPath | null;
+    /** Component index (null なら Entity 全体が選択中) */
     selectedComponentIndex: number | null;
-    hiddenIndices: Set<number>;
-    onSelectEntity: (index: number | null) => void;
+    /** ローカル非表示にしている **ルート** Entity の index 集合 */
+    hiddenRootIndices: Set<number>;
+    onSelectEntity: (path: EntityPath | null) => void;
     onSelectComponent: (componentIndex: number | null) => void;
-    onCreateEmptyEntity: () => void;
-    onDeleteEntity: (index: number) => void;
-    onDeleteComponent: (entityIndex: number, componentIndex: number) => void;
-    onToggleHidden: (index: number) => void;
-    /** Component カードを Entity 行へ drop したときの追加。 */
-    onDropComponent: (entityIndex: number, componentType: string) => void;
+    onCreateEmptyEntity: (parentPath: EntityPath | null) => void;
+    onDeleteEntity: (path: EntityPath) => void;
+    onDeleteComponent: (path: EntityPath, componentIndex: number) => void;
+    onToggleHidden: (rootIndex: number) => void;
+    onDropComponent: (path: EntityPath, componentType: string) => void;
 }
 
 export function EditorHierarchy({
     entities,
-    selectedEntityIndex,
+    selectedPath,
     selectedComponentIndex,
-    hiddenIndices,
+    hiddenRootIndices,
     onSelectEntity,
     onSelectComponent,
     onCreateEmptyEntity,
@@ -70,7 +74,7 @@ export function EditorHierarchy({
                 </span>
                 <button
                     type="button"
-                    onClick={onCreateEmptyEntity}
+                    onClick={() => onCreateEmptyEntity(null)}
                     title="空の Entity を追加"
                     className={css({
                         padding: '4px 10px',
@@ -110,74 +114,79 @@ export function EditorHierarchy({
                             textAlign: 'center',
                         })}
                     >
-                        まだエンティティがありません。「+ Entity」を押すか、アセットからコンポーネントを Entity
-                        行にドロップしてください。
+                        まだエンティティがありません。「+ Entity」を押すか、アセットからコンポーネントを drop
+                        してください。
                     </div>
                 ) : (
-                    entities.map((entity, i) => {
-                        const entitySelected = i === selectedEntityIndex && selectedComponentIndex === null;
-                        const entityHasFocus = i === selectedEntityIndex;
-                        const hidden = hiddenIndices.has(i);
-                        return (
-                            <EntityNode
-                                key={entity.id}
-                                entity={entity}
-                                entityIndex={i}
-                                selected={entitySelected}
-                                hasFocus={entityHasFocus}
-                                hidden={hidden}
-                                selectedComponentIndex={entityHasFocus ? selectedComponentIndex : null}
-                                onSelectEntity={(idx) => {
-                                    onSelectEntity(idx);
-                                    onSelectComponent(null);
-                                }}
-                                onSelectComponent={(idx, ci) => {
-                                    onSelectEntity(idx);
-                                    onSelectComponent(ci);
-                                }}
-                                onToggleHidden={() => onToggleHidden(i)}
-                                onDeleteEntity={() => onDeleteEntity(i)}
-                                onDeleteComponent={(ci) => onDeleteComponent(i, ci)}
-                                onDropComponent={(type) => onDropComponent(i, type)}
-                            />
-                        );
-                    })
+                    entities.map((entity, i) => (
+                        <EntityNode
+                            key={entity.id}
+                            entity={entity}
+                            path={[i]}
+                            depth={0}
+                            rootIndex={i}
+                            rootHidden={hiddenRootIndices.has(i)}
+                            selectedPath={selectedPath}
+                            selectedComponentIndex={selectedComponentIndex}
+                            onSelectEntity={onSelectEntity}
+                            onSelectComponent={onSelectComponent}
+                            onCreateChild={onCreateEmptyEntity}
+                            onDeleteEntity={onDeleteEntity}
+                            onDeleteComponent={onDeleteComponent}
+                            onToggleHidden={onToggleHidden}
+                            onDropComponent={onDropComponent}
+                        />
+                    ))
                 )}
             </div>
         </aside>
     );
 }
 
+function pathsEqual(a: EntityPath | null, b: EntityPath | null): boolean {
+    if (!a || !b) return a === b;
+    if (a.length !== b.length) return false;
+    return a.every((v, i) => v === b[i]);
+}
+
 interface EntityNodeProps {
     entity: InitialEntity;
-    entityIndex: number;
-    selected: boolean;
-    hasFocus: boolean;
-    hidden: boolean;
+    path: EntityPath;
+    depth: number;
+    rootIndex: number;
+    rootHidden: boolean;
+    selectedPath: EntityPath | null;
     selectedComponentIndex: number | null;
-    onSelectEntity: (index: number) => void;
-    onSelectComponent: (index: number, componentIndex: number) => void;
-    onToggleHidden: () => void;
-    onDeleteEntity: () => void;
-    onDeleteComponent: (componentIndex: number) => void;
-    onDropComponent: (componentType: string) => void;
+    onSelectEntity: (path: EntityPath | null) => void;
+    onSelectComponent: (componentIndex: number | null) => void;
+    onCreateChild: (parentPath: EntityPath) => void;
+    onDeleteEntity: (path: EntityPath) => void;
+    onDeleteComponent: (path: EntityPath, componentIndex: number) => void;
+    onToggleHidden: (rootIndex: number) => void;
+    onDropComponent: (path: EntityPath, componentType: string) => void;
 }
 
 function EntityNode({
     entity,
-    entityIndex,
-    selected,
-    hasFocus,
-    hidden,
+    path,
+    depth,
+    rootIndex,
+    rootHidden,
+    selectedPath,
     selectedComponentIndex,
     onSelectEntity,
     onSelectComponent,
-    onToggleHidden,
+    onCreateChild,
     onDeleteEntity,
     onDeleteComponent,
+    onToggleHidden,
     onDropComponent,
 }: EntityNodeProps) {
     const [dragOver, setDragOver] = useState(false);
+    const [open, setOpen] = useState(true);
+
+    const hasFocus = pathsEqual(selectedPath, path);
+    const selectedEntityOnly = hasFocus && selectedComponentIndex === null;
 
     const acceptComponentDrag = (e: React.DragEvent) => {
         if (e.dataTransfer.types.includes(COMPONENT_DRAG_MIME)) {
@@ -190,6 +199,7 @@ function EntityNode({
     const w = entity.transform.w ?? 0;
     const h = entity.transform.h ?? 0;
     const sizeBadge = w > 0 && h > 0 ? `${w}×${h}` : '—';
+    const hasChildren = (entity.children?.length ?? 0) > 0;
 
     return (
         <div
@@ -202,60 +212,80 @@ function EntityNode({
                 setDragOver(false);
                 if (!type) return;
                 e.preventDefault();
-                onDropComponent(type);
+                e.stopPropagation();
+                onDropComponent(path, type);
             }}
         >
             <div
                 className={css({
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '4px',
+                    gap: '2px',
                     padding: '6px 8px',
                     borderRadius: '6px',
                     cursor: 'pointer',
-                    bg: selected ? 'primary' : dragOver ? 'primarySubtle' : 'transparent',
-                    color: selected ? 'textOnPrimary' : 'text',
-                    opacity: hidden ? 0.45 : 1,
+                    bg: selectedEntityOnly ? 'primary' : dragOver ? 'primarySubtle' : 'transparent',
+                    color: selectedEntityOnly ? 'textOnPrimary' : 'text',
+                    opacity: rootHidden ? 0.45 : 1,
                     outline: dragOver ? '1px dashed' : 'none',
                     outlineColor: 'primary',
-                    _hover: { bg: selected ? 'primary' : 'surfaceHover' },
+                    _hover: { bg: selectedEntityOnly ? 'primary' : 'surfaceHover' },
                 })}
-                onClick={() => onSelectEntity(entityIndex)}
+                style={{ paddingLeft: 8 + depth * 14 }}
+                onClick={() => {
+                    onSelectEntity(path);
+                    onSelectComponent(null);
+                }}
             >
                 <button
                     type="button"
                     onClick={(ev) => {
                         ev.stopPropagation();
-                        onToggleHidden();
+                        if (hasChildren || entity.components.length > 0) setOpen((p) => !p);
                     }}
-                    aria-label={hidden ? '表示' : '非表示'}
-                    title={hidden ? '表示する' : '非表示にする'}
                     className={css({
-                        flexShrink: 0,
-                        width: '22px',
-                        height: '22px',
+                        width: '16px',
+                        height: '16px',
+                        bg: 'transparent',
+                        border: 'none',
+                        color: 'inherit',
+                        cursor: 'pointer',
                         display: 'inline-flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        bg: 'transparent',
-                        border: 'none',
-                        color: selected ? 'textOnPrimary' : 'textMuted',
-                        cursor: 'pointer',
-                        borderRadius: '4px',
-                        _hover: { bg: 'surfaceHover' },
+                        flexShrink: 0,
                     })}
                 >
-                    {hidden ? <EyeOffIcon /> : <EyeIcon />}
+                    {hasChildren || entity.components.length > 0 ? <Chevron open={open} /> : <span />}
                 </button>
-                <div
-                    className={css({
-                        flex: 1,
-                        minW: 0,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '1px',
-                    })}
-                >
+                {depth === 0 && (
+                    <button
+                        type="button"
+                        onClick={(ev) => {
+                            ev.stopPropagation();
+                            onToggleHidden(rootIndex);
+                        }}
+                        aria-label={rootHidden ? '表示' : '非表示'}
+                        title={rootHidden ? '表示する' : '非表示にする'}
+                        className={css({
+                            flexShrink: 0,
+                            width: '22px',
+                            height: '22px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            bg: 'transparent',
+                            border: 'none',
+                            color: selectedEntityOnly ? 'textOnPrimary' : 'textMuted',
+                            cursor: 'pointer',
+                            borderRadius: '4px',
+                            _hover: { bg: 'surfaceHover' },
+                        })}
+                    >
+                        {rootHidden ? <EyeOffIcon /> : <EyeIcon />}
+                    </button>
+                )}
+                <div className={css({ flex: 1, minW: 0, display: 'flex', flexDirection: 'column', gap: '1px' })}>
                     <span
                         className={css({
                             fontSize: '12px',
@@ -263,17 +293,12 @@ function EntityNode({
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             whiteSpace: 'nowrap',
-                            textDecoration: hidden ? 'line-through' : 'none',
+                            textDecoration: rootHidden ? 'line-through' : 'none',
                         })}
                     >
                         {entity.id}
                     </span>
-                    <span
-                        className={css({
-                            fontSize: '10px',
-                            opacity: 0.7,
-                        })}
-                    >
+                    <span className={css({ fontSize: '10px', opacity: 0.7 })}>
                         ({Math.round(entity.transform.x)}, {Math.round(entity.transform.y)}) · {sizeBadge} ·{' '}
                         {entity.components.length}c
                     </span>
@@ -282,7 +307,33 @@ function EntityNode({
                     type="button"
                     onClick={(ev) => {
                         ev.stopPropagation();
-                        onDeleteEntity();
+                        onCreateChild(path);
+                    }}
+                    aria-label="子 Entity を追加"
+                    title="子 Entity を追加"
+                    className={css({
+                        flexShrink: 0,
+                        width: '20px',
+                        height: '20px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        bg: 'transparent',
+                        border: 'none',
+                        color: selectedEntityOnly ? 'textOnPrimary' : 'textSubtle',
+                        cursor: 'pointer',
+                        borderRadius: '4px',
+                        fontSize: '12px',
+                        _hover: { opacity: 1, bg: 'surfaceHover' },
+                    })}
+                >
+                    <PlusIcon />
+                </button>
+                <button
+                    type="button"
+                    onClick={(ev) => {
+                        ev.stopPropagation();
+                        onDeleteEntity(path);
                     }}
                     aria-label="削除"
                     title="エンティティを削除"
@@ -295,19 +346,18 @@ function EntityNode({
                         justifyContent: 'center',
                         bg: 'transparent',
                         border: 'none',
-                        color: selected ? 'textOnPrimary' : 'textSubtle',
+                        color: selectedEntityOnly ? 'textOnPrimary' : 'textSubtle',
                         opacity: 0.7,
                         cursor: 'pointer',
                         borderRadius: '4px',
                         fontSize: '14px',
-                        lineHeight: '1',
                         _hover: { opacity: 1, bg: 'surfaceHover' },
                     })}
                 >
                     ×
                 </button>
             </div>
-            {entity.components.length > 0 && (
+            {open && (
                 <div className={css({ display: 'flex', flexDirection: 'column' })}>
                     {entity.components.map((c, ci) => {
                         const compSelected = hasFocus && selectedComponentIndex === ci;
@@ -316,12 +366,35 @@ function EntityNode({
                                 key={`${entity.id}::${ci}`}
                                 type={c.type}
                                 selected={compSelected}
-                                hidden={hidden}
-                                onClick={() => onSelectComponent(entityIndex, ci)}
-                                onDelete={() => onDeleteComponent(ci)}
+                                hidden={rootHidden}
+                                indentPx={8 + (depth + 1) * 14}
+                                onClick={() => {
+                                    onSelectEntity(path);
+                                    onSelectComponent(ci);
+                                }}
+                                onDelete={() => onDeleteComponent(path, ci)}
                             />
                         );
                     })}
+                    {entity.children?.map((child, ci) => (
+                        <EntityNode
+                            key={child.id}
+                            entity={child}
+                            path={[...path, ci]}
+                            depth={depth + 1}
+                            rootIndex={rootIndex}
+                            rootHidden={rootHidden}
+                            selectedPath={selectedPath}
+                            selectedComponentIndex={selectedComponentIndex}
+                            onSelectEntity={onSelectEntity}
+                            onSelectComponent={onSelectComponent}
+                            onCreateChild={onCreateChild}
+                            onDeleteEntity={onDeleteEntity}
+                            onDeleteComponent={onDeleteComponent}
+                            onToggleHidden={onToggleHidden}
+                            onDropComponent={onDropComponent}
+                        />
+                    ))}
                 </div>
             )}
         </div>
@@ -332,11 +405,12 @@ interface ComponentRowProps {
     type: string;
     selected: boolean;
     hidden: boolean;
+    indentPx: number;
     onClick: () => void;
     onDelete: () => void;
 }
 
-function ComponentRow({ type, selected, hidden, onClick, onDelete }: ComponentRowProps) {
+function ComponentRow({ type, selected, hidden, indentPx, onClick, onDelete }: ComponentRowProps) {
     return (
         <div
             onClick={onClick}
@@ -344,7 +418,7 @@ function ComponentRow({ type, selected, hidden, onClick, onDelete }: ComponentRo
                 display: 'flex',
                 alignItems: 'center',
                 gap: '4px',
-                padding: '4px 8px 4px 24px',
+                padding: '4px 8px',
                 borderRadius: '6px',
                 cursor: 'pointer',
                 bg: selected ? 'primarySubtle' : 'transparent',
@@ -352,6 +426,7 @@ function ComponentRow({ type, selected, hidden, onClick, onDelete }: ComponentRo
                 opacity: hidden ? 0.45 : 1,
                 _hover: { bg: selected ? 'primarySubtle' : 'surfaceHover' },
             })}
+            style={{ paddingLeft: indentPx }}
         >
             <ComponentDotIcon />
             <span
@@ -395,6 +470,23 @@ function ComponentRow({ type, selected, hidden, onClick, onDelete }: ComponentRo
                 ×
             </button>
         </div>
+    );
+}
+
+function Chevron({ open }: { open: boolean }) {
+    return (
+        <svg
+            width="10"
+            height="10"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            style={{ transform: open ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }}
+            aria-hidden="true"
+        >
+            <path d="M9 18l6-6-6-6" />
+        </svg>
     );
 }
 
