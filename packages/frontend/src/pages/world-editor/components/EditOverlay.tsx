@@ -11,6 +11,10 @@ interface EditOverlayProps {
     selectedPath: EntityPath | null;
     /** path key の Set。祖先が hidden ならその子孫も描画しない。 */
     hiddenPathKeys?: Set<string>;
+    /** スナップ ON のときの grid step (px)。 */
+    snapStep?: number;
+    /** ワールド範囲。指定があれば座標 / サイズを範囲内に clamp する。 */
+    worldSize?: { width: number; height: number };
     onSelect: (path: EntityPath | null) => void;
     /** 親基準の transform 差分を patch する。 */
     onPatchTransform: (path: EntityPath, patch: Partial<InitialEntity['transform']>) => void;
@@ -25,6 +29,8 @@ export function EditOverlay({
     nodes,
     selectedPath,
     hiddenPathKeys,
+    snapStep,
+    worldSize,
     onSelect,
     onPatchTransform,
     onDropComponent,
@@ -36,7 +42,7 @@ export function EditOverlay({
         const onMove = (ev: MouseEvent) => {
             const dx = ev.clientX - drag.startClient.x;
             const dy = ev.clientY - drag.startClient.y;
-            onPatchTransform(drag.path, applyDrag(drag, dx, dy));
+            onPatchTransform(drag.path, applyDrag(drag, dx, dy, { snapStep, worldSize }));
         };
         const onUp = () => setDrag(null);
         window.addEventListener('mousemove', onMove);
@@ -45,7 +51,7 @@ export function EditOverlay({
             window.removeEventListener('mousemove', onMove);
             window.removeEventListener('mouseup', onUp);
         };
-    }, [drag, onPatchTransform]);
+    }, [drag, onPatchTransform, snapStep, worldSize]);
 
     // 祖先が hidden ならスキップ
     const isHiddenByAncestor = (path: EntityPath): boolean => {

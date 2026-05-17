@@ -11,6 +11,8 @@ interface EntityInspectorProps {
     availableKinds: AvailableEntityKind[];
     /** true なら子 Entity (transform は親基準の相対座標) */
     isChild: boolean;
+    /** W/H の上限として使うワールドサイズ。 */
+    worldSize?: { width: number; height: number };
     onChange: (updater: (prev: InitialEntity) => InitialEntity) => void;
     onAddComponent: (type: string) => void;
     onDeleteComponent: (componentIndex: number) => void;
@@ -23,6 +25,7 @@ export function EntityInspector({
     initiallyExpandedComponentIndex,
     availableKinds,
     isChild,
+    worldSize,
     onChange,
     onAddComponent,
     onDeleteComponent,
@@ -32,6 +35,8 @@ export function EntityInspector({
     const t = entity.transform;
     const updateTransform = (patch: Partial<typeof t>) =>
         onChange((prev) => ({ ...prev, transform: { ...prev.transform, ...patch } }));
+    const maxW = worldSize?.width;
+    const maxH = worldSize?.height;
 
     return (
         <div
@@ -50,8 +55,18 @@ export function EntityInspector({
                 <div className={css({ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '2' })}>
                     <NumField label="X" value={t.x} onChange={(v) => updateTransform({ x: v })} />
                     <NumField label="Y" value={t.y} onChange={(v) => updateTransform({ y: v })} />
-                    <NumField label="W" value={t.w ?? 0} onChange={(v) => updateTransform({ w: v || undefined })} />
-                    <NumField label="H" value={t.h ?? 0} onChange={(v) => updateTransform({ h: v || undefined })} />
+                    <NumField
+                        label="W"
+                        value={t.w ?? 0}
+                        max={maxW}
+                        onChange={(v) => updateTransform({ w: v || undefined })}
+                    />
+                    <NumField
+                        label="H"
+                        value={t.h ?? 0}
+                        max={maxH}
+                        onChange={(v) => updateTransform({ h: v || undefined })}
+                    />
                     <NumField label="Z" value={t.z ?? 0} onChange={(v) => updateTransform({ z: v })} />
                     <NumField
                         label="Rotation"
@@ -997,14 +1012,28 @@ function DataJsonField({ text, error, onChange }: { text: string; error: string;
 // 共通: NumField / Section / MiniTab / Chevron
 // ============================================
 
-function NumField({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+function NumField({
+    label,
+    value,
+    max,
+    onChange,
+}: {
+    label: string;
+    value: number;
+    max?: number;
+    onChange: (v: number) => void;
+}) {
     return (
         <label className={css({ display: 'flex', flexDirection: 'column', gap: '1' })}>
             <span className={css({ fontSize: '11px', color: 'textMuted' })}>{label}</span>
             <input
                 type="number"
                 value={value}
-                onChange={(e) => onChange(Number.parseFloat(e.target.value) || 0)}
+                max={max}
+                onChange={(e) => {
+                    const parsed = Number.parseFloat(e.target.value) || 0;
+                    onChange(max !== undefined ? Math.min(parsed, max) : parsed);
+                }}
                 className={inputStyle}
             />
         </label>

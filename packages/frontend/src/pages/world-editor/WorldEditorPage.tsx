@@ -20,7 +20,7 @@ import { ModalPrimaryButton, ModalSecondaryButton } from './components/ModalButt
 import { useAvailableEntityKinds } from './hooks/useAvailableEntityKinds';
 import { useEditorModals } from './hooks/useEditorModals';
 import { useWorldEditorApi } from './hooks/useWorldEditorApi';
-import { DEFAULT_H, DEFAULT_W } from './lib/dragHelpers';
+import { DEFAULT_H, DEFAULT_W, SNAP_STEP } from './lib/dragHelpers';
 import {
     adjustPathAfterDelete,
     buildUniqueEntityId,
@@ -72,6 +72,7 @@ export function WorldEditorPage() {
     const [selectedPath, setSelectedPath] = useState<EntityPath | null>(null);
     const [selectedComponentIndex, setSelectedComponentIndex] = useState<number | null>(null);
     const [hiddenPaths, setHiddenPaths] = useState<Set<string>>(new Set());
+    const [snapEnabled, setSnapEnabled] = useState(false);
     const [mobileLeftOpen, setMobileLeftOpen] = useState(false);
     const [mobileRightOpen, setMobileRightOpen] = useState(false);
     const [loading, setLoading] = useState(isEdit);
@@ -338,6 +339,8 @@ export function WorldEditorPage() {
                     isEdit={isEdit}
                     saving={api.saving}
                     dirty={dirty}
+                    snapEnabled={snapEnabled}
+                    onToggleSnap={() => setSnapEnabled((p) => !p)}
                     onOpenInfo={modals.openInfo}
                     onOpenYaml={modals.openYaml}
                     onSave={handleSave}
@@ -379,6 +382,7 @@ export function WorldEditorPage() {
                     selectedPath={selectedPath}
                     hiddenPathKeys={hiddenPaths}
                     hiddenRootIndices={hiddenRootIndices}
+                    snapStep={snapEnabled ? SNAP_STEP : 0}
                     onSelect={selectEntity}
                     onPatchTransform={patchEntityTransform}
                     onDropComponent={handleAddComponentToEntity}
@@ -397,6 +401,7 @@ export function WorldEditorPage() {
                         initiallyExpandedComponentIndex={selectedComponentIndex}
                         availableKinds={kinds}
                         isChild={selectedPath.length > 1}
+                        worldSize={snapEnabled ? definition.spec.environment?.worldSize : undefined}
                         onChange={(updater) => updateEntities((prev) => updateEntityAt(prev, selectedPath, updater))}
                         onAddComponent={(type) => handleAddComponentToEntity(selectedPath, type)}
                         onDeleteComponent={(ci) => handleDeleteComponent(selectedPath, ci)}

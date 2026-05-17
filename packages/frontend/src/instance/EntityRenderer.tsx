@@ -28,6 +28,9 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({ entityId }) => {
 
     const isCanvas = (plugin.canvasTargets?.length ?? 0) > 0;
     const { x, y, z, w, h, scale, rotation } = entity.transform;
+    // transform に w/h があれば overflow:hidden でプラグイン UI を強制 clip する。
+    // 0 (= サイズ未指定) のときはプラグインの自然サイズを尊重。
+    const sized = w > 0 && h > 0;
     const wrapperStyle: React.CSSProperties = isCanvas
         ? { position: 'absolute', inset: 0, zIndex: z || undefined, pointerEvents: 'none' }
         : {
@@ -37,6 +40,7 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({ entityId }) => {
               zIndex: z || undefined,
               width: w > 0 ? w : undefined,
               height: h > 0 ? h : undefined,
+              overflow: sized ? 'hidden' : undefined,
               pointerEvents: 'none',
               transform: `scale(${scale ?? 1}) rotate(${rotation ?? 0}deg)`,
               transformOrigin: '0 0',

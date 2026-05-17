@@ -41,6 +41,8 @@ interface EditorPreviewProps {
     fillContainer?: boolean;
     /** 編集ローカルに非表示にするエンティティの index 集合（プラグインの実体描画も止める） */
     hiddenIndices?: Set<number>;
+    /** > 0 のとき world 領域に grid 線 (px) を描画する。 */
+    gridStep?: number;
     /** プレビュー領域の背景（プラグイン UI なし）クリック時のハンドラ */
     onBackgroundMouseDown?: () => void;
 }
@@ -58,6 +60,7 @@ export function EditorPreview({
     overlay,
     fillContainer = false,
     hiddenIndices,
+    gridStep,
     onBackgroundMouseDown,
 }: EditorPreviewProps) {
     const env = definition.spec.environment;
@@ -200,6 +203,7 @@ export function EditorPreview({
                             entities={entities}
                             environment={environment}
                             overlay={overlay}
+                            gridStep={gridStep}
                             onBackgroundMouseDown={onBackgroundMouseDown}
                         />
                     </PluginRegistryProvider>
@@ -217,11 +221,13 @@ function PreviewStage({
     entities,
     environment,
     overlay,
+    gridStep,
     onBackgroundMouseDown,
 }: {
     entities: Map<string, WorldEntity>;
     environment: WorldEnvironmentData;
     overlay?: React.ReactNode;
+    gridStep?: number;
     onBackgroundMouseDown?: () => void;
 }) {
     const { pluginMap } = usePluginRegistry();
@@ -251,6 +257,25 @@ function PreviewStage({
                 minHeight: '100%',
             }}
         >
+            {/* ワールド範囲の境界 + (snap ON 時のみ) グリッド線 */}
+            <div
+                aria-hidden
+                style={{
+                    position: 'absolute',
+                    left: 0,
+                    top: 0,
+                    width,
+                    height,
+                    border: '2px dashed rgba(27, 42, 68, 0.35)',
+                    pointerEvents: 'none',
+                    zIndex: 98999,
+                    backgroundImage:
+                        gridStep && gridStep > 0
+                            ? `linear-gradient(to right, rgba(27,42,68,0.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(27,42,68,0.12) 1px, transparent 1px)`
+                            : undefined,
+                    backgroundSize: gridStep && gridStep > 0 ? `${gridStep}px ${gridStep}px` : undefined,
+                }}
+            />
             {renderEntities}
             {singletonWorkerPlugins.map((plugin) => {
                 if (!isWorkerPlugin(plugin)) return null;

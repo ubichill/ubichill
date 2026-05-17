@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { css } from '@/styled-system/css';
+import { editorButton } from '../recipes/button';
 
 interface EditorHeaderProps {
     title: string;
@@ -8,6 +9,9 @@ interface EditorHeaderProps {
     saving: boolean;
     /** 編集中で未保存の変更があるか。true の間は「インスタンス作成」ボタンを出さない */
     dirty: boolean;
+    /** ON のときドラッグ / リサイズをグリッド + ワールド範囲で snap/clamp する */
+    snapEnabled: boolean;
+    onToggleSnap: () => void;
     onOpenInfo: () => void;
     onOpenYaml: () => void;
     onSave: () => void;
@@ -16,15 +20,14 @@ interface EditorHeaderProps {
     onCreateInstance?: () => void;
 }
 
-/**
- * エディタ画面のトップバー。
- * Unity 風: 左に戻る・タイトル、右にアクション群。
- */
+/** エディタ画面のトップバー。Unity 風: 左に戻る・タイトル、右にアクション群。 */
 export function EditorHeader({
     title,
     isEdit,
     saving,
     dirty,
+    snapEnabled,
+    onToggleSnap,
     onOpenInfo,
     onOpenYaml,
     onSave,
@@ -34,10 +37,7 @@ export function EditorHeader({
     const navigate = useNavigate();
     const [menuOpen, setMenuOpen] = useState(false);
 
-    const closeMenu = useCallback(() => {
-        setMenuOpen(false);
-    }, []);
-
+    const closeMenu = useCallback(() => setMenuOpen(false), []);
     const runMenuAction = useCallback((action: () => void) => {
         setMenuOpen(false);
         action();
@@ -60,11 +60,15 @@ export function EditorHeader({
                 minH: '52px',
             })}
         >
-            <IconButton onClick={() => navigate(-1)} ariaLabel="戻る" tooltip="戻る">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M15 18l-6-6 6-6" />
-                </svg>
-            </IconButton>
+            <button
+                type="button"
+                onClick={() => navigate(-1)}
+                aria-label="戻る"
+                title="戻る"
+                className={editorButton({ intent: 'icon', size: 'iconSm' })}
+            >
+                <BackIcon />
+            </button>
             <div
                 className={css({
                     fontSize: '15px',
@@ -86,38 +90,30 @@ export function EditorHeader({
                     gap: '8px',
                 })}
             >
-                <SecondaryButton onClick={onOpenInfo}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <circle cx="12" cy="12" r="10" />
-                        <path d="M12 16v-4M12 8h.01" />
-                    </svg>
+                <button
+                    type="button"
+                    onClick={onToggleSnap}
+                    title="ON: ワールド範囲に収まるようにグリッドへスナップ"
+                    aria-pressed={snapEnabled}
+                    className={editorButton({ intent: snapEnabled ? 'toggleOn' : 'secondary' })}
+                >
+                    <GridIcon />
+                    スナップ
+                </button>
+                <button type="button" onClick={onOpenInfo} className={editorButton({ intent: 'secondary' })}>
+                    <InfoIcon />
                     ワールド情報
-                </SecondaryButton>
-                <SecondaryButton onClick={onOpenYaml}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                        <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
-                    </svg>
+                </button>
+                <button type="button" onClick={onOpenYaml} className={editorButton({ intent: 'secondary' })}>
+                    <FileIcon />
                     YAML
-                </SecondaryButton>
+                </button>
                 {isEdit && onDelete && (
                     <button
                         type="button"
                         onClick={onDelete}
                         disabled={saving}
-                        className={css({
-                            padding: '8px 14px',
-                            bg: 'errorBg',
-                            color: 'errorText',
-                            border: '1px solid',
-                            borderColor: 'errorLight',
-                            borderRadius: '8px',
-                            fontSize: '13px',
-                            fontWeight: '600',
-                            cursor: 'pointer',
-                            _disabled: { opacity: 0.5, cursor: 'not-allowed' },
-                            _hover: { opacity: 0.9 },
-                        })}
+                        className={editorButton({ intent: 'danger' })}
                     >
                         削除
                     </button>
@@ -127,18 +123,7 @@ export function EditorHeader({
                     onClick={onSave}
                     disabled={saveDisabled}
                     title={isEdit && !dirty ? '未変更' : undefined}
-                    className={css({
-                        padding: '8px 16px',
-                        bg: 'primary',
-                        color: 'textOnPrimary',
-                        border: 'none',
-                        borderRadius: '8px',
-                        fontSize: '13px',
-                        fontWeight: '600',
-                        cursor: 'pointer',
-                        _disabled: { opacity: 0.5, cursor: 'not-allowed' },
-                        _hover: { opacity: 0.9 },
-                    })}
+                    className={editorButton({ intent: 'primary', size: 'lg' })}
                 >
                     {saveLabel}
                 </button>
@@ -148,39 +133,22 @@ export function EditorHeader({
                         onClick={onCreateInstance}
                         disabled={saving}
                         title="このワールドで新しいインスタンスを作って参加する"
-                        className={css({
-                            padding: '8px 14px',
-                            bg: 'success',
-                            color: 'text',
-                            border: '1px solid',
-                            borderColor: 'success',
-                            borderRadius: '8px',
-                            fontSize: '13px',
-                            fontWeight: '700',
-                            cursor: 'pointer',
-                            _disabled: { opacity: 0.5, cursor: 'not-allowed' },
-                            _hover: { opacity: 0.9 },
-                        })}
+                        className={editorButton({ intent: 'success' })}
                     >
                         ▶ インスタンス作成
                     </button>
                 )}
             </div>
-            <div
-                className={css({
-                    display: { base: 'inline-flex', md: 'none' },
-                    position: 'relative',
-                })}
-            >
-                <IconButton
+            <div className={css({ display: { base: 'inline-flex', md: 'none' }, position: 'relative' })}>
+                <button
+                    type="button"
                     onClick={() => setMenuOpen((prev) => !prev)}
-                    ariaLabel="操作メニュー"
-                    tooltip="操作メニュー"
+                    aria-label="操作メニュー"
+                    title="操作メニュー"
+                    className={editorButton({ intent: 'icon', size: 'iconSm' })}
                 >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M4 12h16M4 6h16M4 18h16" />
-                    </svg>
-                </IconButton>
+                    <HamburgerIcon />
+                </button>
                 {menuOpen && (
                     <div
                         className={css({
@@ -195,34 +163,70 @@ export function EditorHeader({
                             borderRadius: '10px',
                             boxShadow: 'card',
                             zIndex: 20,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '2px',
                         })}
                     >
-                        <MenuButton onClick={() => runMenuAction(onOpenInfo)}>ワールド情報</MenuButton>
-                        <MenuButton onClick={() => runMenuAction(onOpenYaml)}>YAML</MenuButton>
+                        <button
+                            type="button"
+                            onClick={() => runMenuAction(onToggleSnap)}
+                            className={editorButton({ intent: 'menu', size: 'menu' })}
+                        >
+                            スナップ: {snapEnabled ? 'ON' : 'OFF'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => runMenuAction(onOpenInfo)}
+                            className={editorButton({ intent: 'menu', size: 'menu' })}
+                        >
+                            ワールド情報
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => runMenuAction(onOpenYaml)}
+                            className={editorButton({ intent: 'menu', size: 'menu' })}
+                        >
+                            YAML
+                        </button>
                         {isEdit && onDelete && (
-                            <MenuButton onClick={() => runMenuAction(onDelete)} danger disabled={saving}>
+                            <button
+                                type="button"
+                                onClick={() => runMenuAction(onDelete)}
+                                disabled={saving}
+                                className={editorButton({ intent: 'menuDanger', size: 'menu' })}
+                            >
                                 削除
-                            </MenuButton>
+                            </button>
                         )}
-                        <MenuButton
+                        <button
+                            type="button"
                             onClick={() => runMenuAction(onSave)}
-                            primary
                             disabled={saveDisabled}
                             title={isEdit && !dirty ? '未変更' : undefined}
+                            className={editorButton({ intent: 'menuPrimary', size: 'menu' })}
                         >
                             {saveLabel}
-                        </MenuButton>
+                        </button>
                         {isEdit && !dirty && onCreateInstance && (
-                            <MenuButton
+                            <button
+                                type="button"
                                 onClick={() => runMenuAction(onCreateInstance)}
                                 disabled={saving}
                                 title="このワールドで新しいインスタンスを作って参加する"
+                                className={editorButton({ intent: 'menu', size: 'menu' })}
                             >
                                 インスタンス作成
-                            </MenuButton>
+                            </button>
                         )}
-                        <MenuDivider />
-                        <MenuButton onClick={closeMenu}>閉じる</MenuButton>
+                        <div className={css({ height: '1px', bg: 'border', margin: '6px 2px' })} />
+                        <button
+                            type="button"
+                            onClick={closeMenu}
+                            className={editorButton({ intent: 'menu', size: 'menu' })}
+                        >
+                            閉じる
+                        </button>
                     </div>
                 )}
             </div>
@@ -230,120 +234,48 @@ export function EditorHeader({
     );
 }
 
-function IconButton({
-    onClick,
-    ariaLabel,
-    tooltip,
-    children,
-}: {
-    onClick: () => void;
-    ariaLabel: string;
-    tooltip?: string;
-    children: React.ReactNode;
-}) {
+// ============================================
+// アイコン
+// ============================================
+
+function BackIcon() {
     return (
-        <button
-            type="button"
-            onClick={onClick}
-            aria-label={ariaLabel}
-            title={tooltip}
-            className={css({
-                width: '32px',
-                height: '32px',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                bg: 'surface',
-                border: '1px solid',
-                borderColor: 'border',
-                borderRadius: '8px',
-                color: 'textMuted',
-                cursor: 'pointer',
-                _hover: { borderColor: 'borderStrong' },
-            })}
-        >
-            {children}
-        </button>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M15 18l-6-6 6-6" />
+        </svg>
     );
 }
 
-function SecondaryButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+function GridIcon() {
     return (
-        <button
-            type="button"
-            onClick={onClick}
-            className={css({
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '7px 12px',
-                bg: 'surface',
-                color: 'text',
-                border: '1px solid',
-                borderColor: 'border',
-                borderRadius: '8px',
-                fontSize: '13px',
-                fontWeight: '600',
-                cursor: 'pointer',
-                _hover: { borderColor: 'primary' },
-            })}
-        >
-            {children}
-        </button>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M3 3h18v18H3z M3 9h18 M3 15h18 M9 3v18 M15 3v18" />
+        </svg>
     );
 }
 
-function MenuButton({
-    onClick,
-    children,
-    disabled,
-    title,
-    danger,
-    primary,
-}: {
-    onClick: () => void;
-    children: React.ReactNode;
-    disabled?: boolean;
-    title?: string;
-    danger?: boolean;
-    primary?: boolean;
-}) {
+function InfoIcon() {
     return (
-        <button
-            type="button"
-            onClick={onClick}
-            disabled={disabled}
-            title={title}
-            className={css({
-                width: '100%',
-                textAlign: 'left',
-                padding: '8px 10px',
-                borderRadius: '8px',
-                fontSize: '13px',
-                fontWeight: '600',
-                color: danger ? 'errorText' : primary ? 'textOnPrimary' : 'text',
-                bg: danger ? 'errorBg' : primary ? 'primary' : 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                _hover: {
-                    bg: danger ? 'errorLight' : primary ? 'primary' : 'surfaceAccent',
-                },
-                _disabled: { opacity: 0.5, cursor: 'not-allowed' },
-            })}
-        >
-            {children}
-        </button>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 16v-4M12 8h.01" />
+        </svg>
     );
 }
 
-function MenuDivider() {
+function FileIcon() {
     return (
-        <div
-            className={css({
-                height: '1px',
-                bg: 'border',
-                margin: '6px 2px',
-            })}
-        />
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
+        </svg>
+    );
+}
+
+function HamburgerIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M4 12h16M4 6h16M4 18h16" />
+        </svg>
     );
 }

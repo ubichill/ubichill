@@ -16,6 +16,7 @@ import { worldRegistry } from './worldRegistry';
 /**
  * GameObject ツリーを 1 Component = 1 WorldEntity に展開する純関数。
  * 子 Entity の transform.x/y は親基準の相対座標 → 親 origin を加算して絶対化する。
+ * w/h は未指定 (undefined) なら 0 を入れて「サイズ未指定 = 自然サイズ尊重」を表す。
  */
 function flattenGameObject(
     gameObject: InitialEntity,
@@ -30,8 +31,8 @@ function flattenGameObject(
         x: absX,
         y: absY,
         z: absZ,
-        w: t.w ?? 100,
-        h: t.h ?? 100,
+        w: t.w ?? 0,
+        h: t.h ?? 0,
         scale: t.scale ?? 1,
         rotation: t.rotation ?? 0,
     };
