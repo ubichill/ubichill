@@ -209,6 +209,46 @@ export type CmdSceneQueryEntities = {
 };
 
 /**
+ * Ubi.entity.getSiblings() → WorldEntity[]
+ * 自 Entity (GameObject) 上の他 Component を取得する (自分自身は除外)。
+ */
+export type CmdEntityGetSiblings = {
+    type: 'ENTITY_GET_SIBLINGS';
+    payload: Record<string, never>;
+    id: string;
+};
+
+/**
+ * Ubi.entity.getParent() / getParentComponent(type)
+ * 親 Entity 上の Component を取得する (type 指定で絞り込み、なければ全件)。
+ */
+export type CmdEntityGetParent = {
+    type: 'ENTITY_GET_PARENT';
+    payload: { entityType?: string };
+    id: string;
+};
+
+/**
+ * Ubi.entity.getChildren() / queryChildren(type)
+ * 子 Entity (直接の子のみ) 上の Component を取得する。
+ */
+export type CmdEntityGetChildren = {
+    type: 'ENTITY_GET_CHILDREN';
+    payload: { entityType?: string };
+    id: string;
+};
+
+/**
+ * Ubi.entity.queryInSubtree(type)
+ * 自 Entity + 子孫の Component から指定 type を集める。
+ */
+export type CmdEntityQuerySubtree = {
+    type: 'ENTITY_QUERY_SUBTREE';
+    payload: { entityType: string };
+    id: string;
+};
+
+/**
  * Canvas に描画するストロークデータ。
  * points: [x, y, pressure] の配列。
  */
@@ -313,6 +353,10 @@ export type PluginGuestCommand =
     | CmdSceneSubscribeEntity
     | CmdSceneUnsubscribeEntity
     | CmdSceneQueryEntities
+    | CmdEntityGetSiblings
+    | CmdEntityGetParent
+    | CmdEntityGetChildren
+    | CmdEntityQuerySubtree
     | CmdCanvasFrame
     | CmdCanvasCommitStroke
     | CmdNetworkSendToHost

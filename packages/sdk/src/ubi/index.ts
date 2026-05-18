@@ -4,6 +4,8 @@ import type { PluginGuestCommand, PluginHostEvent, PluginWorkerMessage, WorldEnt
 import { _beginRender, _callHandler, _clearTarget } from '../jsx/jsx-runtime';
 import type { CanvasModule } from './canvas';
 import { createCanvasModule } from './canvas';
+import type { EntityModule } from './entity';
+import { createEntityModule } from './entity';
 import type { MediaModule } from './media';
 import { createMediaModule } from './media';
 import type { NetworkModule } from './network';
@@ -89,6 +91,7 @@ export class UbiSDK {
 
     // ── Public API modules ───────────────────────────────────
     public readonly world: WorldModule;
+    public readonly entity: EntityModule;
     public readonly ui: UiModule;
     public readonly presence: PresenceModule;
     public readonly state: StateModule;
@@ -107,6 +110,7 @@ export class UbiSDK {
         this.presence = createPresenceModule(send);
         this.ui = createUiModule(send, () => this._isTicking, _beginRender, _clearTarget);
         this.world = createWorldModule(send, rpc);
+        this.entity = createEntityModule(rpc);
         this.state = createStateModule({
             send,
             updateEntity: (id, patch) => this.world.updateEntity(id, patch),
