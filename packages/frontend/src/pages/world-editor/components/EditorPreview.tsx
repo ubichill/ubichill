@@ -6,13 +6,13 @@ import {
     WorldContext,
     type WorldContextType,
 } from '@ubichill/sdk/react';
-import type { InitialEntity, WorldDefinition, WorldEntity, WorldEnvironmentData } from '@ubichill/shared';
+import type { ComponentInstance, InitialEntity, WorldDefinition, WorldEnvironmentData } from '@ubichill/shared';
 import type React from 'react';
 import { useMemo } from 'react';
 import { EntityRenderer } from '@/instance/EntityRenderer';
 import { PluginRegistryProvider, usePluginRegistry } from '@/plugins/PluginRegistryContext';
 
-const FALLBACK_ENTITY: WorldEntity = {
+const FALLBACK_ENTITY: ComponentInstance = {
     id: '',
     type: '',
     ownerId: null,
@@ -73,18 +73,18 @@ export function EditorPreview({
     );
 
     const entities = useMemo(() => {
-        const map = new Map<string, WorldEntity>();
+        const map = new Map<string, ComponentInstance>();
         const walk = (
             entity: InitialEntity,
             origin: { x: number; y: number; z: number },
             pathPrefix: number[],
-            parentGameObjectId: string | undefined,
+            parentEntityId: string | undefined,
         ) => {
             const t = entity.transform;
             const absX = origin.x + t.x;
             const absY = origin.y + t.y;
             const absZ = origin.z + (t.z ?? 0);
-            const transform: WorldEntity['transform'] = {
+            const transform: ComponentInstance['transform'] = {
                 x: absX,
                 y: absY,
                 z: absZ,
@@ -98,8 +98,8 @@ export function EditorPreview({
                 map.set(id, {
                     id,
                     type: c.type,
-                    gameObjectId: entity.id,
-                    parentGameObjectId,
+                    entityId: entity.id,
+                    parentEntityId,
                     ownerId: null,
                     lockedBy: null,
                     data: (c.data as Record<string, unknown> | undefined) ?? {},
@@ -224,7 +224,7 @@ function PreviewStage({
     gridStep,
     onBackgroundMouseDown,
 }: {
-    entities: Map<string, WorldEntity>;
+    entities: Map<string, ComponentInstance>;
     environment: WorldEnvironmentData;
     overlay?: React.ReactNode;
     gridStep?: number;

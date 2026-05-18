@@ -12,12 +12,20 @@ Ubi.local.query(...componentNames)  // Query
 Ubi.registerSystem((entities, deltaTime, events) => { ... })
 
 // 共有エンティティ（全員に見える・インスタンス内永続・async）
-await Ubi.world.getEntity(id)               // WorldEntity | null
+await Ubi.world.getEntity(id)               // ComponentInstance | null
 await Ubi.world.createEntity(entity)        // string（生成された ID）
 await Ubi.world.updateEntity(id, patch)     // void
 await Ubi.world.destroyEntity(id)           // void
 Ubi.world.subscribeEntity(id)               // 更新を EVT_SCENE_ENTITY_UPDATED で受け取る
 Ubi.world.unsubscribeEntity(id)
+
+// 自 Entity (GameObject) 周辺の Component アクセス（Stage 4: Pure ECS 漸近）
+await Ubi.entity.getSiblings<T>()                  // 自 Entity 上の他 Component (自分は除く)
+await Ubi.entity.getSibling<T>(type)               // type 指定で最初の 1 件
+await Ubi.entity.getParent<T>(type?)               // 親 Entity 上の Component (type で絞り込み可)
+await Ubi.entity.getParentComponent<T>(type)       // 親 Entity 上の type 最初の 1 件
+await Ubi.entity.getChildren<T>(type?)             // 直接の子 Entity 上の Component
+await Ubi.entity.queryInSubtree<T>(type)           // 自 Entity + 子孫から type 一致を集める
 
 // 通信
 Ubi.network.sendToHost<TPayloadMap>(type, data)   // 自分の Host（React）にのみ送る
@@ -31,10 +39,18 @@ Ubi.ui.showToast(text)
 Ubi.avatar.set(appDef)
 
 // 読み取り専用プロパティ（初期化後に自動セット）
-Ubi.worldId    // string | undefined
-Ubi.myUserId   // string | undefined
-Ubi.pluginId   // string | undefined
+Ubi.worldId               // string | undefined
+Ubi.myUserId              // string | undefined
+Ubi.pluginId              // string | undefined
+Ubi.componentInstanceId   // string | undefined — 自 Worker (Component インスタンス) の flat ID
+Ubi.entityId              // string | undefined — 自 Worker が乗っている Entity (GameObject) の id
+Ubi.componentType         // string | undefined — "pluginId:componentName"
 ```
+
+> 命名規約: ubichill では **Entity == GameObject** (Pure ECS 標準)。Worker からは
+> `Ubi.entityId` が GameObject の id を指す。Worker 自身 (= 1 Component インスタンス)
+> を識別する flat ID は `Ubi.componentInstanceId`。詳細は
+> [design/ecs-migration.md](./design/ecs-migration.md) を参照。
 
 ### Entity メソッド
 
@@ -57,7 +73,7 @@ entity.removeComponent(name)      // void
 | `PLAYER_JOINED` | `User` |
 | `PLAYER_LEFT` | `userId: string` |
 | `PLAYER_CURSOR_MOVED` | `{ userId, position }` |
-| `ENTITY_UPDATED` | `WorldEntity` |
+| `ENTITY_UPDATED` | `ComponentInstance` |
 | `network:broadcast` | `{ userId, data }` |
 
 ---
@@ -92,7 +108,8 @@ const entity = useEntity(entityId)
 | `net:send` | `Ubi.network.sendToHost` |
 | `net:broadcast` | `Ubi.network.broadcast` |
 | `net:fetch` | `Ubi.network.fetch` |
-| `world:entity` | `Ubi.world.*` |
+| `world:entity` | `Ubi.world.*` (write 系) |
+| `scene:read` | `Ubi.world.getEntity` / `Ubi.entity.*` |
 
 ---
 

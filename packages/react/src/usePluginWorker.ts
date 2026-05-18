@@ -1,5 +1,6 @@
 import { type HostHandlers, PluginHostManager, type PluginHostManagerOptions } from '@ubichill/sandbox';
 import type {
+    ComponentInstance,
     EntityPatchPayload,
     FetchOptions,
     FetchResult,
@@ -7,7 +8,6 @@ import type {
     PluginHostEvent,
     PluginWorkerMessage,
     VNode,
-    WorldEntity,
 } from '@ubichill/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -55,27 +55,27 @@ export type PluginWorkerHandlers<TPayloadMap extends Record<string, unknown> = R
     /** Worker が Ubi.media.setVisible() を呼んだときに発火する */
     onMediaSetVisible?: (targetId: string, visible: boolean) => void;
     /** Worker が Ubi.world.getEntity(id) を呼んだときに発火する */
-    onGetEntity?: (id: string) => import('@ubichill/shared').WorldEntity | undefined;
+    onGetEntity?: (id: string) => import('@ubichill/shared').ComponentInstance | undefined;
     /** Worker が Ubi.world.queryEntities(type) を呼んだときに発火する */
-    onQueryEntities?: (entityType: string) => import('@ubichill/shared').WorldEntity[];
+    onQueryEntities?: (entityType: string) => import('@ubichill/shared').ComponentInstance[];
     /** Worker が Ubi.network.broadcast() で送ったデータを受信したときに発火する */
     onNetworkBroadcast?: (type: string, data: unknown) => void;
     /** Worker が Ubi.log() を呼んだときに発火する */
     onLog?: (level: 'debug' | 'info' | 'warn' | 'error', message: string) => void;
     /** Worker が Ubi.world.createEntity() を呼んだときに発火する */
-    onCreateEntity?: (entity: Omit<WorldEntity, 'id'>) => Promise<WorldEntity | null>;
+    onCreateEntity?: (entity: Omit<ComponentInstance, 'id'>) => Promise<ComponentInstance | null>;
     /** Worker が Ubi.world.updateEntity() を呼んだときに発火する */
     onUpdateEntity?: (id: string, patch: EntityPatchPayload) => Promise<void>;
     /** Worker が Ubi.world.destroyEntity() を呼んだときに発火する */
     onDestroyEntity?: (id: string) => Promise<void>;
     /** Worker が Ubi.entity.getSiblings() を呼んだときに発火する */
-    onEntityGetSiblings?: () => import('@ubichill/shared').WorldEntity[];
+    onEntityGetSiblings?: () => import('@ubichill/shared').ComponentInstance[];
     /** Worker が Ubi.entity.getParent(type?) を呼んだときに発火する */
-    onEntityGetParent?: (entityType?: string) => import('@ubichill/shared').WorldEntity[];
+    onEntityGetParent?: (entityType?: string) => import('@ubichill/shared').ComponentInstance[];
     /** Worker が Ubi.entity.getChildren(type?) を呼んだときに発火する */
-    onEntityGetChildren?: (entityType?: string) => import('@ubichill/shared').WorldEntity[];
+    onEntityGetChildren?: (entityType?: string) => import('@ubichill/shared').ComponentInstance[];
     /** Worker が Ubi.entity.queryInSubtree(type) を呼んだときに発火する */
-    onEntityQuerySubtree?: (entityType: string) => import('@ubichill/shared').WorldEntity[];
+    onEntityQuerySubtree?: (entityType: string) => import('@ubichill/shared').ComponentInstance[];
     /** Worker が Ubi.network.fetch() を呼んだときに発火する */
     onFetch?: (url: string, options?: FetchOptions) => Promise<FetchResult>;
     /** Tick 送信直前に発火するパフォーマンスフック（setMetricHandler 登録時のみ） */
@@ -124,8 +124,8 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
         const manager = new PluginHostManager<TPayloadMap>({
             pluginCode: options.pluginCode,
             pluginId: options.pluginId,
+            componentInstanceId: options.componentInstanceId,
             entityId: options.entityId,
-            gameObjectId: options.gameObjectId,
             componentType: options.componentType,
             capabilities: options.capabilities,
             maxExecutionTime: options.maxExecutionTime,
@@ -190,8 +190,8 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
     }, [
         options.pluginCode,
         options.pluginId,
+        options.componentInstanceId,
         options.entityId,
-        options.gameObjectId,
         options.componentType,
         options.capabilities,
         options.maxExecutionTime,

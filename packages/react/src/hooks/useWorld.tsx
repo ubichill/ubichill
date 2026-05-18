@@ -1,8 +1,8 @@
 import type {
     AvailableComponent,
+    ComponentInstance,
     EntityEphemeralPayload,
     EntityPatchPayload,
-    WorldEntity,
     WorldEnvironmentData,
     WorldSnapshotPayload,
 } from '@ubichill/shared';
@@ -15,16 +15,16 @@ import { useSocket } from './useSocket';
 // ============================================
 
 export interface WorldContextType {
-    entities: Map<string, WorldEntity>;
+    entities: Map<string, ComponentInstance>;
     ephemeralData: Map<string, unknown>;
     environment: WorldEnvironmentData;
     availableComponents: AvailableComponent[];
     activePlugins: string[];
     createEntity: <T = Record<string, unknown>>(
         type: string,
-        transform: WorldEntity['transform'],
+        transform: ComponentInstance['transform'],
         data: T,
-    ) => Promise<WorldEntity<T> | null>;
+    ) => Promise<ComponentInstance<T> | null>;
     patchEntity: (entityId: string, patch: EntityPatchPayload['patch']) => void;
     deleteEntity: (entityId: string) => void;
     /** ワールドのローカル状態をリセット（ロビーに戻る際などに呼ぶ） */
@@ -44,7 +44,7 @@ export const WorldContext = createContext<WorldContextType | null>(null);
 
 export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const { socket, isConnected } = useSocket();
-    const [entities, setEntities] = useState<Map<string, WorldEntity>>(new Map());
+    const [entities, setEntities] = useState<Map<string, ComponentInstance>>(new Map());
     const [ephemeralData, setEphemeralData] = useState<Map<string, unknown>>(new Map());
     const [environment, setEnvironment] = useState<WorldEnvironmentData>(DEFAULTS.WORLD_ENVIRONMENT);
     const [availableComponents, setAvailableComponents] = useState<AvailableComponent[]>([]);
@@ -55,7 +55,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         // ワールドスナップショットを受信（初期ロード）
         const handleWorldSnapshot = (payload: WorldSnapshotPayload) => {
-            const newMap = new Map<string, WorldEntity>();
+            const newMap = new Map<string, ComponentInstance>();
             for (const entity of payload.entities) {
                 newMap.set(entity.id, entity);
             }
@@ -66,7 +66,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         };
 
         // エンティティ作成を受信
-        const handleEntityCreated = (entity: WorldEntity) => {
+        const handleEntityCreated = (entity: ComponentInstance) => {
             setEntities((prev) => {
                 const newMap = new Map(prev);
                 newMap.set(entity.id, entity);
@@ -81,7 +81,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 if (!entity) return prev;
 
                 const newMap = new Map(prev);
-                const updatedEntity: WorldEntity = {
+                const updatedEntity: ComponentInstance = {
                     ...entity,
                     ...payload.patch,
                     transform: payload.patch.transform
@@ -140,9 +140,9 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const createEntity = useCallback(
         async <T = Record<string, unknown>>(
             type: string,
-            transform: WorldEntity['transform'],
+            transform: ComponentInstance['transform'],
             data: T,
-        ): Promise<WorldEntity<T> | null> => {
+        ): Promise<ComponentInstance<T> | null> => {
             if (!socket || !isConnected) return null;
 
             const payload = {
@@ -153,15 +153,15 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 lockedBy: null,
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
-            } as unknown as Omit<WorldEntity, 'id'>;
+            } as unknown as Omit<ComponentInstance, 'id'>;
 
             return new Promise((resolve) => {
-                socket.emit('entity:create', payload as unknown as Omit<WorldEntity, 'id'>, (response) => {
+                socket.emit('entity:create', payload as unknown as Omit<ComponentInstance, 'id'>, (response) => {
                     if (response.success && response.entity) {
-                        const newEntity = response.entity as WorldEntity<T>;
+                        const newEntity = response.entity as ComponentInstance<T>;
                         setEntities((prev) => {
                             const newMap = new Map(prev);
-                            newMap.set(newEntity.id, newEntity as unknown as WorldEntity);
+                            newMap.set(newEntity.id, newEntity as unknown as ComponentInstance);
                             return newMap;
                         });
                         resolve(newEntity);
@@ -184,7 +184,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 if (!entity) return prev;
 
                 const newMap = new Map(prev);
-                const updatedEntity: WorldEntity = {
+                const updatedEntity: ComponentInstance = {
                     ...entity,
                     ...patch,
                     transform: patch.transform ? { ...entity.transform, ...patch.transform } : entity.transform,

@@ -9,7 +9,7 @@
  * 保持ペンが変わった・リリースされた場合はストロークをリセットする。
  */
 
-import type { Entity, System, WorkerEvent, WorldEntity } from '@ubichill/sdk';
+import type { ComponentInstance, Entity, System, WorkerEvent } from '@ubichill/sdk';
 import { draw } from '../canvas.worker';
 
 interface PenPenData {
@@ -21,7 +21,7 @@ export const PenWatchSystem: System = (_entities: Entity[], _dt: number, events:
     for (const event of events) {
         if (event.type !== 'entity:pen:pen') continue;
 
-        const worldEntity = event.payload as WorldEntity<PenPenData>;
+        const worldEntity = event.payload as ComponentInstance<PenPenData>;
         const data = worldEntity.data;
         // lockedBy が自分のユーザーID と一致する場合のみ「持っている」
         const isHeldByMe = worldEntity.lockedBy === Ubi.myUserId;

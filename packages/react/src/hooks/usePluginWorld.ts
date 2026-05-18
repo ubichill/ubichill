@@ -3,14 +3,14 @@
  */
 
 import type { HostHandlers } from '@ubichill/sandbox';
-import type { WorldEntity } from '@ubichill/shared';
+import type { ComponentInstance } from '@ubichill/shared';
 import { useEffect, useMemo, useRef } from 'react';
 import { collectSubtreeGameObjectIds, isVisibleInScope, type WatchScope } from '../lib/entityScope';
 import { useWorld } from './useWorld';
 
 export function usePluginWorld(
     scope: WatchScope = 'subtree',
-    gameObjectId?: string,
+    entityId?: string,
 ): Pick<HostHandlers, 'onGetEntity' | 'onQueryEntities' | 'onCreateEntity' | 'onUpdateEntity' | 'onDestroyEntity'> {
     const { entities, createEntity, patchEntity, deleteEntity } = useWorld();
 
@@ -25,31 +25,30 @@ export function usePluginWorld(
     });
 
     const subtreeIds = useMemo(
-        () =>
-            scope === 'subtree' && gameObjectId ? collectSubtreeGameObjectIds(entities.values(), gameObjectId) : null,
-        [entities, scope, gameObjectId],
+        () => (scope === 'subtree' && entityId ? collectSubtreeGameObjectIds(entities.values(), entityId) : null),
+        [entities, scope, entityId],
     );
     const subtreeIdsRef = useRef(subtreeIds);
     useEffect(() => {
         subtreeIdsRef.current = subtreeIds;
     });
 
-    const scopeRef = useRef({ scope, gameObjectId });
+    const scopeRef = useRef({ scope, entityId });
     useEffect(() => {
-        scopeRef.current = { scope, gameObjectId };
+        scopeRef.current = { scope, entityId };
     });
 
-    const isVisible = (e: WorldEntity): boolean =>
-        isVisibleInScope(e, scopeRef.current.scope, scopeRef.current.gameObjectId, subtreeIdsRef.current);
+    const isVisible = (e: ComponentInstance): boolean =>
+        isVisibleInScope(e, scopeRef.current.scope, scopeRef.current.entityId, subtreeIdsRef.current);
 
     return {
-        onGetEntity: (id: string): WorldEntity | undefined => {
+        onGetEntity: (id: string): ComponentInstance | undefined => {
             const e = entitiesRef.current.get(id);
             return e && isVisible(e) ? e : undefined;
         },
-        onQueryEntities: (entityType: string): WorldEntity[] =>
+        onQueryEntities: (entityType: string): ComponentInstance[] =>
             Array.from(entitiesRef.current.values()).filter((e) => e.type === entityType && isVisible(e)),
-        onCreateEntity: async (entity: Omit<WorldEntity, 'id'>): Promise<WorldEntity> => {
+        onCreateEntity: async (entity: Omit<ComponentInstance, 'id'>): Promise<ComponentInstance> => {
             const result = await worldOpsRef.current.createEntity(
                 entity.type,
                 entity.transform,

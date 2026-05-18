@@ -7,7 +7,7 @@
  * - definition.onHostMessage を通じたカスタムメッセージのプラグイン側委譲
  */
 
-import type { CursorState, WorldEntity } from '@ubichill/shared';
+import type { ComponentInstance, CursorState } from '@ubichill/shared';
 import type React from 'react';
 import { useEffect, useMemo, useRef } from 'react';
 import { usePluginBroadcast } from '../hooks/usePluginBroadcast';
@@ -28,7 +28,7 @@ import { PluginUIMount } from './PluginUIMount';
 
 export interface WorkerPluginHostProps {
     entityId: string;
-    entity: WorldEntity;
+    entity: ComponentInstance;
     definition: WorkerPluginDefinition;
 }
 
@@ -52,38 +52,38 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
     const { vnodes, onRender, sendAction, sendEventRef } = usePluginUI();
     const { getVideoRef, mediaHandlers } = usePluginMedia(definition, sendEventRef);
     const onFetch = usePluginFetch(definition, entity);
-    const worldHandlers = usePluginWorld(definition.watchScope ?? 'subtree', entity.gameObjectId);
-    const entityHandlers = usePluginEntity(entityId, entity.gameObjectId);
+    const worldHandlers = usePluginWorld(definition.watchScope ?? 'subtree', entity.entityId);
+    const entityHandlers = usePluginEntity(entityId, entity.entityId);
 
     // ── Worker 起動時点の watchEntityTypes マッチ分を抽出 ──────────────
     // watchScope='subtree' (default) は自 GameObject + 子孫 の Component を可視。
     const scope: WatchScope = definition.watchScope ?? 'subtree';
     const subtreeIds = useMemo(
         () =>
-            scope === 'subtree' && entity.gameObjectId
-                ? collectSubtreeGameObjectIds(entities.values(), entity.gameObjectId)
+            scope === 'subtree' && entity.entityId
+                ? collectSubtreeGameObjectIds(entities.values(), entity.entityId)
                 : null,
-        [entities, scope, entity.gameObjectId],
+        [entities, scope, entity.entityId],
     );
-    const initialEntities = useMemo<WorldEntity[]>(() => {
+    const initialEntities = useMemo<ComponentInstance[]>(() => {
         const types = definition.watchEntityTypes;
         if (!types?.length) return [];
         const typeSet = new Set(types);
-        const out: WorldEntity[] = [];
+        const out: ComponentInstance[] = [];
         for (const e of entities.values()) {
             if (!typeSet.has(e.type)) continue;
-            if (!isVisibleInScope(e, scope, entity.gameObjectId, subtreeIds)) continue;
+            if (!isVisibleInScope(e, scope, entity.entityId, subtreeIds)) continue;
             out.push(e);
         }
         return out;
-    }, [entities, definition.watchEntityTypes, scope, entity.gameObjectId, subtreeIds]);
+    }, [entities, definition.watchEntityTypes, scope, entity.entityId, subtreeIds]);
 
     // ── Worker ────────────────────────────────────────────────────
     const { sendEvent, workerRevision, setScrollElement } = usePluginWorker({
         pluginCode: definition.workerCode,
         pluginId: definition.id,
-        entityId,
-        gameObjectId: entity.gameObjectId,
+        componentInstanceId: entityId,
+        entityId: entity.entityId,
         componentType: entity.type,
         capabilities: definition.capabilities,
         myUserId: currentUser?.id,
@@ -133,7 +133,7 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
     }, [setScrollElement]);
 
     usePluginPresence(definition, users, sendEvent, workerRevision);
-    usePluginEntitySync(definition, entities, sendEvent, workerRevision, entity.gameObjectId);
+    usePluginEntitySync(definition, entities, sendEvent, workerRevision, entity.entityId);
 
     // ── レンダー ───────────────────────────────────────────────────
     return (

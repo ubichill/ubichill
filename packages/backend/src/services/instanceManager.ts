@@ -1,10 +1,10 @@
 import { instanceRepository } from '@ubichill/db';
 import type {
+    ComponentInstance,
     CreateInstanceRequest,
     InitialEntity,
     Instance,
     InstanceAccess,
-    WorldEntity,
     WorldEnvironmentData,
 } from '@ubichill/shared';
 import { DEFAULTS } from '@ubichill/shared';
@@ -14,20 +14,20 @@ import { clearInstanceState, createEntity } from './instanceState';
 import { worldRegistry } from './worldRegistry';
 
 /**
- * GameObject ツリーを 1 Component = 1 WorldEntity に展開する純関数。
+ * GameObject ツリーを 1 Component = 1 ComponentInstance に展開する純関数。
  * 子 Entity の transform.x/y は親基準の相対座標 → 親 origin を加算して絶対化する。
  * w/h は未指定 (undefined) なら 0 を入れて「サイズ未指定 = 自然サイズ尊重」を表す。
  */
 function flattenGameObject(
     gameObject: InitialEntity,
     parentOrigin: { x: number; y: number; z: number } = { x: 0, y: 0, z: 0 },
-    parentGameObjectId?: string,
-): Array<Omit<WorldEntity, 'id'> & { id: string }> {
+    parentEntityId?: string,
+): Array<Omit<ComponentInstance, 'id'> & { id: string }> {
     const t = gameObject.transform;
     const absX = parentOrigin.x + t.x;
     const absY = parentOrigin.y + t.y;
     const absZ = parentOrigin.z + (t.z ?? 0);
-    const transform: WorldEntity['transform'] = {
+    const transform: ComponentInstance['transform'] = {
         x: absX,
         y: absY,
         z: absZ,
@@ -39,8 +39,8 @@ function flattenGameObject(
     const own = (gameObject.components ?? []).map((c, i) => ({
         id: `${gameObject.id}::${i}`,
         type: c.type,
-        gameObjectId: gameObject.id,
-        parentGameObjectId,
+        entityId: gameObject.id,
+        parentEntityId,
         ownerId: null,
         lockedBy: null,
         transform,
@@ -86,7 +86,7 @@ class InstanceManager {
             passwordHash,
         });
 
-        // ワールド定義の initialEntities (GameObject + components[]) を flat WorldEntity に展開して配置
+        // ワールド定義の initialEntities (GameObject + components[]) を flat ComponentInstance に展開して配置
         if (world.initialEntities && world.initialEntities.length > 0) {
             let placed = 0;
             for (const gameObject of world.initialEntities) {

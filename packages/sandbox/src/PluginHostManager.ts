@@ -8,6 +8,7 @@
  */
 
 import type {
+    ComponentInstance,
     EntityPatchPayload,
     FetchOptions,
     FetchResult,
@@ -16,7 +17,6 @@ import type {
     PluginHostEvent,
     PluginWorkerMessage,
     VNode,
-    WorldEntity,
 } from '@ubichill/shared';
 import { InputCollector } from './InputCollector';
 import { isMetricEnabled, reportDiagnostic, reportMetric } from './pluginDiagnostics';
@@ -99,19 +99,19 @@ const CMD_TO_HANDLER = {
 export type { FetchOptions, FetchResult } from '@ubichill/shared';
 
 export type HostHandlers<TPayloadMap extends Record<string, unknown> = Record<string, unknown>> = {
-    onGetEntity?: (id: string) => WorldEntity | undefined;
-    onQueryEntities?: (entityType: string) => WorldEntity[];
-    onCreateEntity?: (entity: Omit<WorldEntity, 'id'>) => Promise<WorldEntity>;
+    onGetEntity?: (id: string) => ComponentInstance | undefined;
+    onQueryEntities?: (entityType: string) => ComponentInstance[];
+    onCreateEntity?: (entity: Omit<ComponentInstance, 'id'>) => Promise<ComponentInstance>;
     onUpdateEntity?: (id: string, patch: EntityPatchPayload) => Promise<void>;
     onDestroyEntity?: (id: string) => Promise<void>;
     /** Ubi.entity.getSiblings — 自 Entity 上の他 Component (自分を除く)。 */
-    onEntityGetSiblings?: () => WorldEntity[];
+    onEntityGetSiblings?: () => ComponentInstance[];
     /** Ubi.entity.getParent — 親 Entity の Component (type 指定で絞り込み)。 */
-    onEntityGetParent?: (entityType?: string) => WorldEntity[];
+    onEntityGetParent?: (entityType?: string) => ComponentInstance[];
     /** Ubi.entity.getChildren — 直接の子 Entity の Component (type 指定で絞り込み)。 */
-    onEntityGetChildren?: (entityType?: string) => WorldEntity[];
+    onEntityGetChildren?: (entityType?: string) => ComponentInstance[];
     /** Ubi.entity.queryInSubtree — 自 Entity + 子孫の Component から type 一致を集める。 */
-    onEntityQuerySubtree?: (entityType: string) => WorldEntity[];
+    onEntityQuerySubtree?: (entityType: string) => ComponentInstance[];
     onFetch?: (url: string, options?: FetchOptions) => Promise<FetchResult>;
     onMessage?: (msg: PluginWorkerMessage<TPayloadMap>) => void;
     onNetworkBroadcast?: (type: string, data: unknown) => void;
@@ -163,7 +163,7 @@ export type HostHandlers<TPayloadMap extends Record<string, unknown> = Record<st
  */
 export interface PluginWorkerInfo {
     readonly pluginId: string;
-    readonly entityId: string | undefined;
+    readonly componentInstanceId: string | undefined;
     readonly startedAt: number;
 }
 
@@ -172,10 +172,10 @@ export interface PluginHostManagerOptions<TPayloadMap extends Record<string, unk
     worldId?: string;
     myUserId?: string;
     pluginId?: string;
-    /** このプラグインを識別する flat ID（`${gameObjectId}::${componentType}` 形式。Worker で Ubi.entityId として参照可能） */
+    /** Worker (= 1 Component インスタンス) を識別する flat ID。`Ubi.componentInstanceId` として参照可能。 */
+    componentInstanceId?: string;
+    /** 自 Worker が乗っている Entity (GameObject) の id。`Ubi.entityId` として参照可能。 */
     entityId?: string;
-    /** 親 GameObject の id。Stage 2 で `Ubi.gameObjectId` として公開予定。 */
-    gameObjectId?: string;
     /** この Worker が担当する Component 型 (`pluginId:componentName`)。Stage 2 で `Ubi.componentType` として公開予定。 */
     componentType?: string;
     /** プラグインアセットのベースURL（Worker で Ubi.pluginBase として参照可能） */
@@ -183,7 +183,7 @@ export interface PluginHostManagerOptions<TPayloadMap extends Record<string, unk
     /** この Component が監視する他 Component 型一覧（plugin.json の watchEntityTypes）。SDK の state 自動同期に使用 */
     watchEntityTypes?: string[];
     /** Worker 起動時点で watchEntityTypes にマッチしている既存エンティティ。SDK がプラグインコード実行前に state.local へ同期反映する */
-    initialEntities?: WorldEntity[];
+    initialEntities?: ComponentInstance[];
     handlers: HostHandlers<TPayloadMap>;
     capabilities?: string[];
     maxExecutionTime?: number;
@@ -330,7 +330,7 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
         if (isMetricEnabled()) {
             const metric = {
                 pluginId: this._pluginId,
-                entityId: PluginHostManager._registry.get(this._instanceKey)?.entityId,
+                componentInstanceId: PluginHostManager._registry.get(this._instanceKey)?.componentInstanceId,
                 deltaMs: deltaTime,
                 commandProcessingMs: this._currentTickCommandMs,
                 activeWorkerCount: PluginHostManager.activeWorkerCount,
@@ -376,7 +376,7 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
         this._instanceKey = `${this._pluginId}:${performance.now().toFixed(3)}:${Math.random().toString(36).slice(2)}`;
         PluginHostManager._registry.set(this._instanceKey, {
             pluginId: this._pluginId,
-            entityId: options.entityId,
+            componentInstanceId: options.componentInstanceId,
             startedAt: performance.now(),
         });
 
@@ -431,8 +431,8 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
                 worldId: options.worldId ?? '',
                 myUserId: options.myUserId ?? '',
                 pluginId: options.pluginId,
+                componentInstanceId: options.componentInstanceId,
                 entityId: options.entityId,
-                gameObjectId: options.gameObjectId,
                 componentType: options.componentType,
                 pluginBase: options.pluginBase,
                 watchEntityTypes: options.watchEntityTypes,

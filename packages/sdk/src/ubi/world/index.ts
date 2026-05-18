@@ -1,12 +1,12 @@
-import type { EntityPatchPayload, WorldEntity } from '@ubichill/shared';
+import type { ComponentInstance, EntityPatchPayload } from '@ubichill/shared';
 import type { RpcFn, SendFn } from '../types';
 
 export type WorldModule = {
-    getEntity(id: string): Promise<WorldEntity | null>;
-    createEntity(entity: Omit<WorldEntity, 'id'>): Promise<string>;
+    getEntity(id: string): Promise<ComponentInstance | null>;
+    createEntity(entity: Omit<ComponentInstance, 'id'>): Promise<string>;
     updateEntity(id: string, patch: EntityPatchPayload['patch']): Promise<void>;
     destroyEntity(id: string): Promise<void>;
-    queryEntities(entityType: string): Promise<WorldEntity[]>;
+    queryEntities(entityType: string): Promise<ComponentInstance[]>;
     subscribeEntity(id: string): void;
     unsubscribeEntity(id: string): void;
 };

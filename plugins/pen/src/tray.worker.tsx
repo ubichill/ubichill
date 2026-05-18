@@ -9,7 +9,7 @@
  *   - 他ユーザーが保持中: lockedBy = 他のユーザーID → グレーアウト表示
  */
 
-import type { Entity, System, WorkerEvent, WorldEntity } from '@ubichill/sdk';
+import type { ComponentInstance, Entity, System, WorkerEvent } from '@ubichill/sdk';
 
 // ────────────────────────────────────────────────────────────────
 // 状態
@@ -252,7 +252,7 @@ function renderTray(): void {
 const PenTraySystem: System = (_entities: Entity[], _dt: number, events: WorkerEvent[]) => {
     for (const event of events) {
         if (event.type === 'entity:pen:pen') {
-            const worldEntity = event.payload as WorldEntity;
+            const worldEntity = event.payload as ComponentInstance;
             penEntities.set(worldEntity.id, {
                 id: worldEntity.id,
                 data: worldEntity.data as PenData,

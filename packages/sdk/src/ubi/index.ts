@@ -1,6 +1,6 @@
 import type { EcsWorld, System, WorkerEvent } from '@ubichill/engine';
 import { EcsEventType, EcsWorldImpl } from '@ubichill/engine';
-import type { PluginGuestCommand, PluginHostEvent, PluginWorkerMessage, WorldEntity } from '@ubichill/shared';
+import type { ComponentInstance, PluginGuestCommand, PluginHostEvent, PluginWorkerMessage } from '@ubichill/shared';
 import { _beginRender, _callHandler, _clearTarget } from '../jsx/jsx-runtime';
 import type { CanvasModule } from './canvas';
 import { createCanvasModule } from './canvas';
@@ -68,7 +68,7 @@ export class UbiSDK {
 
     // ── State flush ──────────────────────────────────────────
     private _pendingStateFlushes = new Set<() => void>();
-    private _initialEntities: WorldEntity[] = [];
+    private _initialEntities: ComponentInstance[] = [];
 
     // ── ECS World (registerSystem で使用) ───────────────────
     public readonly local: EcsWorld;
@@ -77,13 +77,10 @@ export class UbiSDK {
     public worldId?: string;
     public myUserId?: string;
     public pluginId?: string;
-    /**
-     * 自 Worker (1 Component インスタンス) を識別する flat ID。
-     * Stage 1 では `${gameObjectId}::${componentType}` 形式。
-     */
+    /** 自 Worker (= 1 Component インスタンス) を識別する flat ID。 */
+    public componentInstanceId?: string;
+    /** 自 Worker が乗っている Entity (GameObject) の id。Pure ECS 用語の Entity に対応。 */
     public entityId?: string;
-    /** 親 GameObject の安定 ID。Stage 2 で Component 間連携の主要キーになる予定。 */
-    public gameObjectId?: string;
     /** 自 Worker の Component 型 (`pluginId:componentName`) */
     public componentType?: string;
     public pluginBase = '';
@@ -180,7 +177,7 @@ export class UbiSDK {
     // ── Sandbox lifecycle (@internal) ─────────────────────────
 
     /** @internal sandbox.worker.ts から EVT_LIFECYCLE_INIT 時に呼ばれる */
-    public _setInitialEntities(entities: WorldEntity[]): void {
+    public _setInitialEntities(entities: ComponentInstance[]): void {
         this._initialEntities = entities;
     }
 
@@ -263,7 +260,7 @@ export class UbiSDK {
                 });
                 break;
             case 'EVT_ENTITY_WATCH': {
-                const entity = event.payload.entity as WorldEntity | undefined;
+                const entity = event.payload.entity as ComponentInstance | undefined;
                 const entityType = event.payload.entityType;
                 if (entity) {
                     for (const binding of this.state.getStateBindings()) {

@@ -3,7 +3,7 @@
  */
 
 import type { HostHandlers } from '@ubichill/sandbox';
-import type { WorldEntity } from '@ubichill/shared';
+import type { ComponentInstance } from '@ubichill/shared';
 import { useEffect, useMemo, useRef } from 'react';
 import { collectSubtreeGameObjectIds } from '../lib/entityScope';
 import { useWorld } from './useWorld';
@@ -13,21 +13,21 @@ type EntityHandlers = Pick<
     'onEntityGetSiblings' | 'onEntityGetParent' | 'onEntityGetChildren' | 'onEntityQuerySubtree'
 >;
 
-export function usePluginEntity(selfId: string, gameObjectId: string | undefined): EntityHandlers {
+export function usePluginEntity(selfId: string, entityId: string | undefined): EntityHandlers {
     const { entities } = useWorld();
     const entitiesRef = useRef(entities);
     useEffect(() => {
         entitiesRef.current = entities;
     });
 
-    // gameObjectId → entities in that GameObject の事前 index
+    // entityId → entities in that GameObject の事前 index
     const indexByGameObject = useMemo(() => {
-        const map = new Map<string, WorldEntity[]>();
+        const map = new Map<string, ComponentInstance[]>();
         for (const e of entities.values()) {
-            if (!e.gameObjectId) continue;
-            const arr = map.get(e.gameObjectId) ?? [];
+            if (!e.entityId) continue;
+            const arr = map.get(e.entityId) ?? [];
             arr.push(e);
-            map.set(e.gameObjectId, arr);
+            map.set(e.entityId, arr);
         }
         return map;
     }, [entities]);
@@ -36,29 +36,29 @@ export function usePluginEntity(selfId: string, gameObjectId: string | undefined
         indexRef.current = indexByGameObject;
     });
 
-    /** 親の gameObjectId を解決 (自 entity の parentGameObjectId)。 */
+    /** 親の entityId を解決 (自 entity の parentEntityId)。 */
     const resolveParentId = (): string | undefined => {
-        if (!gameObjectId) return undefined;
+        if (!entityId) return undefined;
         for (const e of entitiesRef.current.values()) {
-            if (e.gameObjectId === gameObjectId && e.parentGameObjectId) return e.parentGameObjectId;
+            if (e.entityId === entityId && e.parentEntityId) return e.parentEntityId;
         }
         return undefined;
     };
 
-    /** 直接の子 gameObjectId 集合 (parentGameObjectId === gameObjectId)。 */
+    /** 直接の子 entityId 集合 (parentEntityId === entityId)。 */
     const resolveChildIds = (): Set<string> => {
         const set = new Set<string>();
-        if (!gameObjectId) return set;
+        if (!entityId) return set;
         for (const e of entitiesRef.current.values()) {
-            if (e.parentGameObjectId === gameObjectId && e.gameObjectId) set.add(e.gameObjectId);
+            if (e.parentEntityId === entityId && e.entityId) set.add(e.entityId);
         }
         return set;
     };
 
     return {
         onEntityGetSiblings: () => {
-            if (!gameObjectId) return [];
-            return (indexRef.current.get(gameObjectId) ?? []).filter((e) => e.id !== selfId);
+            if (!entityId) return [];
+            return (indexRef.current.get(entityId) ?? []).filter((e) => e.id !== selfId);
         },
         onEntityGetParent: (entityType?: string) => {
             const parentId = resolveParentId();
@@ -68,7 +68,7 @@ export function usePluginEntity(selfId: string, gameObjectId: string | undefined
         },
         onEntityGetChildren: (entityType?: string) => {
             const childIds = resolveChildIds();
-            const out: WorldEntity[] = [];
+            const out: ComponentInstance[] = [];
             for (const id of childIds) {
                 const list = indexRef.current.get(id) ?? [];
                 for (const e of list) if (!entityType || e.type === entityType) out.push(e);
@@ -76,11 +76,11 @@ export function usePluginEntity(selfId: string, gameObjectId: string | undefined
             return out;
         },
         onEntityQuerySubtree: (entityType: string) => {
-            if (!gameObjectId) return [];
-            const subtree = collectSubtreeGameObjectIds(entitiesRef.current.values(), gameObjectId);
-            const out: WorldEntity[] = [];
+            if (!entityId) return [];
+            const subtree = collectSubtreeGameObjectIds(entitiesRef.current.values(), entityId);
+            const out: ComponentInstance[] = [];
             for (const e of entitiesRef.current.values()) {
-                if (e.type === entityType && e.gameObjectId && subtree.has(e.gameObjectId)) out.push(e);
+                if (e.type === entityType && e.entityId && subtree.has(e.entityId)) out.push(e);
             }
             return out;
         },

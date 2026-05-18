@@ -36,6 +36,7 @@ export type {
     CmdSceneUnsubscribeEntity,
     CmdSceneUpdateEntity,
     CmdUiShowToast,
+    ComponentInstance,
     CursorMovedCallback,
     CursorPosition,
     CursorState,
@@ -77,7 +78,6 @@ export type {
     UserStatus,
     WorldEntity,
     WorldEnvironmentData,
-    WorldGameObject,
 } from '@ubichill/shared';
 // UbiSDK クラス + 型
 export { UbiSDK } from './ubi';

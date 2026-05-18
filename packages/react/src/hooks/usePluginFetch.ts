@@ -14,13 +14,13 @@
  */
 
 import { createPluginFetchHandler, fetchDirect } from '@ubichill/sandbox';
-import type { FetchOptions, FetchResult, WorldEntity } from '@ubichill/shared';
+import type { ComponentInstance, FetchOptions, FetchResult } from '@ubichill/shared';
 import { useMemo } from 'react';
 import type { WorkerPluginDefinition } from '../types';
 
 export function usePluginFetch(
     definition: WorkerPluginDefinition,
-    entity: WorldEntity,
+    entity: ComponentInstance,
 ): (url: string, options?: FetchOptions) => Promise<FetchResult> {
     const entityFetchDomains = useMemo(() => {
         const raw = (entity.data as Record<string, unknown>).fetchDomains;

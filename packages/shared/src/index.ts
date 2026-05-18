@@ -106,17 +106,17 @@ export interface EntityTransform {
  * Worker 互換の flat エンティティ。
  *
  * 1 GameObject 上の 1 Component に 1:1 で対応する。GameObject の hierarchy は
- * `gameObjectId` (自身が乗る GameObject) と `parentGameObjectId` (親 GameObject) で表現。
+ * `entityId` (自身が乗る GameObject) と `parentEntityId` (親 GameObject) で表現。
  *
  * @template T ウィジェット固有のデータ型
  */
-export interface WorldEntity<T = unknown> {
+export interface ComponentInstance<T = unknown> {
     id: string;
     type: string;
     /** 自身が乗る GameObject の id。 */
-    gameObjectId?: string;
+    entityId?: string;
     /** 親 GameObject の id (子孫判定用)。ルートなら undefined。 */
-    parentGameObjectId?: string;
+    parentEntityId?: string;
     ownerId: string | null;
     lockedBy: string | null;
     transform: EntityTransform;
@@ -135,9 +135,9 @@ export interface EntityComponent<T = unknown> {
  * GameObject — `id` + `transform` を持つ「箱」。
  *
  * 振る舞いはすべて `components: EntityComponent[]` 経由で配布される。
- * Stage 1 ではエディタ / YAML / DB の表現のみで、runtime は flatten 後の WorldEntity を使う。
+ * Stage 1 ではエディタ / YAML / DB の表現のみで、runtime は flatten 後の ComponentInstance を使う。
  */
-export interface WorldGameObject {
+export interface WorldEntity {
     id: string;
     transform: EntityTransform;
     components: EntityComponent[];
@@ -147,11 +147,11 @@ export interface WorldGameObject {
 
 /**
  * エンティティパッチ（Reliable）のペイロード。
- * Stage 1 では flat WorldEntity 単位の patch（旧形式維持）。
+ * Stage 1 では flat ComponentInstance 単位の patch（旧形式維持）。
  */
 export interface EntityPatchPayload {
     entityId: string;
-    patch: Partial<Omit<WorldEntity, 'id' | 'type'>>;
+    patch: Partial<Omit<ComponentInstance, 'id' | 'type'>>;
 }
 
 /**
@@ -186,13 +186,13 @@ export interface WorldEnvironmentData {
 }
 
 /**
- * ワールドスナップショットペイロード（flat WorldEntity 単位）。
+ * ワールドスナップショットペイロード（flat ComponentInstance 単位）。
  *
  * GameObject に複数 Component が載っている場合、バックエンドが
- * 各 Component を 1 つの flat WorldEntity に展開してから配信する。
+ * 各 Component を 1 つの flat ComponentInstance に展開してから配信する。
  */
 export interface WorldSnapshotPayload {
-    entities: WorldEntity[];
+    entities: ComponentInstance[];
     availableComponents: AvailableComponent[];
     /** アクティブなプラグインIDのリスト */
     activePlugins: string[];
@@ -235,8 +235,8 @@ export interface ServerToClientEvents {
     /** ワールド状態のスナップショット（拡張版） */
     'world:snapshot': (payload: WorldSnapshotPayload) => void;
 
-    /** エンティティが作成された (flat WorldEntity 単位) */
-    'entity:created': (entity: WorldEntity) => void;
+    /** エンティティが作成された (flat ComponentInstance 単位) */
+    'entity:created': (entity: ComponentInstance) => void;
 
     /** エンティティが更新された（Reliable） */
     'entity:patched': (payload: EntityPatchPayload) => void;
@@ -297,10 +297,10 @@ export interface ClientToServerEvents {
     // UEP Events (Client -> Server)
     // ============================================
 
-    /** エンティティを作成 (flat WorldEntity 単位) */
+    /** エンティティを作成 (flat ComponentInstance 単位) */
     'entity:create': (
-        payload: Omit<WorldEntity, 'id'>,
-        callback: (response: { success: boolean; entity?: WorldEntity; error?: string }) => void,
+        payload: Omit<ComponentInstance, 'id'>,
+        callback: (response: { success: boolean; entity?: ComponentInstance; error?: string }) => void,
     ) => void;
 
     /** エンティティを更新（Reliable） */

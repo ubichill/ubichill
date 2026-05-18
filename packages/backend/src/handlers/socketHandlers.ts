@@ -1,5 +1,6 @@
 import {
     type ClientToServerEvents,
+    type ComponentInstance,
     type CursorState,
     DEFAULTS,
     type EntityEphemeralPayload,
@@ -8,7 +9,6 @@ import {
     type ServerToClientEvents,
     type SocketData,
     type User,
-    type WorldEntity,
     type WorldSnapshotPayload,
 } from '@ubichill/shared';
 import type { Socket } from 'socket.io';
@@ -384,8 +384,8 @@ export function handleDisconnect(socket: TypedSocket) {
  */
 export function handleEntityCreate(socket: TypedSocket) {
     return (
-        payload: Omit<WorldEntity, 'id'>,
-        callback: (response: { success: boolean; entity?: WorldEntity; error?: string }) => void,
+        payload: Omit<ComponentInstance, 'id'>,
+        callback: (response: { success: boolean; entity?: ComponentInstance; error?: string }) => void,
     ) => {
         const instanceId = socket.data.instanceId;
         if (!instanceId) {

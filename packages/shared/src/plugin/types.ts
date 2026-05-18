@@ -1,5 +1,5 @@
 // These types are imported from their source files to avoid circular dependency with index.ts
-import type { AppAvatarDef, CursorPosition, EntityPatchPayload, User, WorldEntity } from '../index';
+import type { AppAvatarDef, ComponentInstance, CursorPosition, EntityPatchPayload, User } from '../index';
 import type { VNode } from './vnode';
 
 /**
@@ -44,7 +44,7 @@ export type PluginWorkerMessage<TPayloadMap extends Record<string, unknown> = Re
 // ============================================
 
 /**
- * Ubi.world.getEntity(id) → WorldEntity | null
+ * Ubi.world.getEntity(id) → ComponentInstance | null
  * 指定IDのエンティティを取得します。
  */
 export type CmdSceneGetEntity = {
@@ -59,7 +59,7 @@ export type CmdSceneGetEntity = {
  */
 export type CmdSceneCreateEntity = {
     type: 'SCENE_CREATE_ENTITY';
-    payload: { entity: Omit<WorldEntity, 'id'> };
+    payload: { entity: Omit<ComponentInstance, 'id'> };
     id: string; // RPC
 };
 
@@ -199,7 +199,7 @@ export type CmdNetFetch = {
 };
 
 /**
- * Ubi.world.queryEntities(type) → WorldEntity[]
+ * Ubi.world.queryEntities(type) → ComponentInstance[]
  * 指定タイプのエンティティを一括取得します。
  */
 export type CmdSceneQueryEntities = {
@@ -209,7 +209,7 @@ export type CmdSceneQueryEntities = {
 };
 
 /**
- * Ubi.entity.getSiblings() → WorldEntity[]
+ * Ubi.entity.getSiblings() → ComponentInstance[]
  * 自 Entity (GameObject) 上の他 Component を取得する (自分自身は除外)。
  */
 export type CmdEntityGetSiblings = {
@@ -390,8 +390,8 @@ export type PluginCommand = PluginGuestCommand;
  * 初期化後は Ubi.worldId / Ubi.myUserId / Ubi.pluginId / Ubi.entityId で参照可能。
  *
  * Worker 1 個 = 1 Component インスタンス。
- * - `entityId`: 自 Worker を識別する flat ID（`${gameObjectId}::${componentType}` 形式）。
- * - `gameObjectId`: 自 Worker が乗っている GameObject の id。Stage 2 で `Ubi.gameObjectId` に公開予定。
+ * - `entityId`: 自 Worker を識別する flat ID（`${entityId}::${componentType}` 形式）。
+ * - `entityId`: 自 Worker が乗っている GameObject の id。Stage 2 で `Ubi.entityId` に公開予定。
  * - `componentType`: 自 Worker の Component 型 (`pluginId:componentName`)。
  *
  * @param worldId        所属ワールドのID
@@ -406,8 +406,10 @@ export type EvtLifecycleInit = {
         myUserId: string;
         code: string;
         pluginId?: string;
+        /** Worker 識別用 flat ID (旧 entityId)。 */
+        componentInstanceId?: string;
+        /** 自 Worker が乗っている Entity (GameObject) の id。 */
         entityId?: string;
-        gameObjectId?: string;
         componentType?: string;
         pluginBase?: string;
         watchEntityTypes?: string[];
@@ -416,9 +418,9 @@ export type EvtLifecycleInit = {
          * SDK がプラグインコード実行前に state.local へ同期反映するため、
          * 遅れて入室したユーザーでも初期値が揃った状態でプラグインが立ち上がる。
          *
-         * Worker 互換 view（flat WorldEntity）として渡る。
+         * Worker 互換 view（flat ComponentInstance）として渡る。
          */
-        initialEntities?: WorldEntity[];
+        initialEntities?: ComponentInstance[];
     };
 };
 
@@ -476,7 +478,7 @@ export type EvtPlayerCursorMoved = {
  */
 export type EvtSceneEntityUpdated = {
     type: 'EVT_SCENE_ENTITY_UPDATED';
-    payload: { entity: WorldEntity };
+    payload: { entity: ComponentInstance };
 };
 
 /**
@@ -516,7 +518,7 @@ export type EvtEntityWatch = {
     type: 'EVT_ENTITY_WATCH';
     payload: {
         entityType: string;
-        entity: WorldEntity;
+        entity: ComponentInstance;
     };
 };
 
@@ -672,7 +674,7 @@ export type UserLeftCallback = (userId: string) => void;
 export type CursorMovedCallback = (userId: string, position: CursorPosition) => void;
 
 /** onEntityUpdated のコールバック。更新後のエンティティスナップショットが渡される */
-export type EntityUpdatedCallback = (entity: WorldEntity) => void;
+export type EntityUpdatedCallback = (entity: ComponentInstance) => void;
 
 /** onCustomEvent のコールバック */
 export type CustomEventCallback = (eventType: string, data: unknown) => void;
@@ -685,7 +687,7 @@ export type CustomEventCallback = (eventType: string, data: unknown) => void;
 // ============================================
 
 /** SCENE_GET_ENTITY の戻り値 */
-export type RpcGetEntityResult = WorldEntity | null;
+export type RpcGetEntityResult = ComponentInstance | null;
 
 /** SCENE_CREATE_ENTITY の戻り値 */
 export type RpcCreateEntityResult = string; // 作成されたエンティティのID

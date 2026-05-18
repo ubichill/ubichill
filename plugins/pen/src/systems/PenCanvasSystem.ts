@@ -14,7 +14,7 @@
  * - entity:pen:stroke 到着時に popCommittedFingerprint() でヒットすればスキップ
  */
 
-import type { CanvasStrokeData, Entity, System, WorkerEvent, WorldEntity } from '@ubichill/sdk';
+import type { CanvasStrokeData, ComponentInstance, Entity, System, WorkerEvent } from '@ubichill/sdk';
 import { draw } from '../canvas.worker';
 import { addCommittedFingerprint, popCommittedFingerprint, strokeFingerprint } from '../penFingerprint';
 
@@ -35,7 +35,7 @@ export const PenCanvasSystem: System = (_entities: Entity[], _dt: number, events
 
         // watchEntityTypes 経由: 永続ストロークエンティティ（参加後の初期描画、または接続中の新規ストローク）
         if (event.type === 'entity:pen:stroke') {
-            const entity = event.payload as WorldEntity<CanvasStrokeData>;
+            const entity = event.payload as ComponentInstance<CanvasStrokeData>;
             if (!_drawnEntityIds.has(entity.id)) {
                 _drawnEntityIds.add(entity.id);
                 // PenSyncSystem（自分）またはブロードキャスト経由で既に描画済みならスキップ

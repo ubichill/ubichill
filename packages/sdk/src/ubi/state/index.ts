@@ -1,4 +1,4 @@
-import type { EntityPatchPayload, VNode, WorldEntity } from '@ubichill/shared';
+import type { ComponentInstance, EntityPatchPayload, VNode } from '@ubichill/shared';
 import type { EntityState, EntityStateFor, PresenceEntry, SendFn, StateBinding } from '../types';
 
 // ── スコープマーカー (このファイル内部のみ) ───────────────────────
@@ -31,7 +31,7 @@ export type StateModuleDeps = {
     getScrollY(): number;
     getForEachUserComponents(): Set<string>;
     registerPendingFlush(fn: () => void): void;
-    getInitialEntities(): WorldEntity[];
+    getInitialEntities(): ComponentInstance[];
     // UI ヘルパー (renderForEachUser で使用)
     beginRender(targetId: string): void;
     queueUiRender(targetId: string, vnode: VNode | null): void;
