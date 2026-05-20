@@ -1,57 +1,40 @@
-import { settings } from '../state';
-import { cssToState } from '../systems/utils';
-
-/** 適用中テンプレート ID（ホスト側の読み込み完了前に重複クリックをブロック） */
-let _pendingTemplateId: string | null = null;
-
-function resetToDefault(): void {
-    if (_pendingTemplateId !== null) return;
-    settings.currentTemplateId = null;
-    settings.avatar = { states: {} };
-    settings.dirty = true;
-    Ubi.network.sendToHost('avatar:resetTemplate', {});
-}
-
-function applyTemplate(templateId: string): void {
-    if (_pendingTemplateId === templateId) return; // 連打を無視
-    const template = settings.templates.find((t) => t.id === templateId);
-    if (!template) return;
-    _pendingTemplateId = templateId;
-    settings.currentTemplateId = templateId;
-    settings.dirty = true;
-    // バージョン付き URL を組み立てて Host に送る（Host 側で ANI/CUR デコード）
-    const files = (Object.entries(template.mappings) as [string, string | undefined][])
-        .filter((entry): entry is [string, string] => !!entry[1])
-        .map(([state, filename]) => ({
-            state,
-            url: `${Ubi.pluginBase}/templates/${template.directory}/${filename}`,
-        }));
-    Ubi.log(`[applyTemplate] ${templateId}: ${files.map((f) => `${f.state}=${f.url}`).join(', ')}`, 'info');
-    Ubi.network.sendToHost('avatar:applyTemplate', { files });
-    // ホスト側の完了通知がないため、一定時間後に解除してリトライを許可する
-    setTimeout(() => {
-        if (_pendingTemplateId === templateId) {
-            _pendingTemplateId = null;
-            settings.dirty = true;
-        }
-    }, 10_000);
-}
-
 /**
- * ホスト側でテンプレート適用が完了したとき（avatar が更新されたとき）に呼ぶ。
- * AvatarSettingsSystem が PLAYER_JOINED でローカルアバターを更新した後に呼び出す。
+ * SettingsPanel — Avatar 設定パネルの純レンダー関数。
+ *
+ * state と actions を受け取り VNode を返すだけ (副作用なし)。
+ * テスト時は state を mock するだけで snapshot を取れる。
  */
-export function clearPendingTemplate(templateId: string): void {
-    if (_pendingTemplateId === templateId) {
-        _pendingTemplateId = null;
-        settings.dirty = true;
-    }
+
+import type { AppAvatarDef } from '@ubichill/sdk';
+import type { JSX } from '@ubichill/sdk/jsx-runtime';
+import { cssToState } from '../cssToState';
+
+interface TemplateEntry {
+    id: string;
+    name: string;
+    directory: string;
+    mappings: Partial<Record<string, string>>;
 }
 
-export const SettingsPanel = () => {
-    const cursorState = cssToState(settings.cursorStyle);
+export interface SettingsPanelState {
+    templates: TemplateEntry[];
+    currentTemplateId: string | null;
+    pendingTemplateId: string | null;
+    thumbnailUrls: Record<string, string>;
+    cursorStyle: string;
+    avatar: AppAvatarDef;
+}
+
+export interface SettingsPanelActions {
+    onApplyTemplate(id: string): void;
+    onResetToDefault(): void;
+    onCursorImageUrlChange(stateKey: string, url: string): void;
+}
+
+export function renderSettingsPanel(state: SettingsPanelState, actions: SettingsPanelActions): JSX.Element {
+    const cursorState = cssToState(state.cursorStyle);
     const currentStateDef =
-        settings.avatar.states[cursorState as keyof typeof settings.avatar.states] ?? settings.avatar.states.default;
+        state.avatar.states[cursorState as keyof typeof state.avatar.states] ?? state.avatar.states.default;
 
     return (
         <div
@@ -67,7 +50,6 @@ export const SettingsPanel = () => {
                 color: '#212529',
             }}
         >
-            {/* ヘッダー */}
             <div
                 style={{
                     fontWeight: 'bold',
@@ -85,8 +67,7 @@ export const SettingsPanel = () => {
                 カーソルテーマ
             </div>
 
-            {/* テンプレートカードグリッド */}
-            {settings.templates.length === 0 ? (
+            {state.templates.length === 0 ? (
                 <div style={{ color: '#868e96', fontSize: '12px', textAlign: 'center', padding: '16px 0' }}>
                     テンプレートを読み込み中...
                 </div>
@@ -99,12 +80,12 @@ export const SettingsPanel = () => {
                         marginBottom: '12px',
                     }}
                 >
-                    {settings.templates.map((t) => {
-                        const isSelected = settings.currentTemplateId === t.id;
-                        const isLoading = _pendingTemplateId === t.id;
-                        const hostThumb = settings.thumbnailUrls.get(t.id) ?? '';
+                    {state.templates.map((t) => {
+                        const isSelected = state.currentTemplateId === t.id;
+                        const isLoading = state.pendingTemplateId === t.id;
+                        const hostThumb = state.thumbnailUrls[t.id] ?? '';
                         const thumbUrl =
-                            isSelected && !isLoading ? (settings.avatar.states?.default?.url ?? hostThumb) : hostThumb;
+                            isSelected && !isLoading ? (state.avatar.states?.default?.url ?? hostThumb) : hostThumb;
 
                         return (
                             <button
@@ -124,9 +105,8 @@ export const SettingsPanel = () => {
                                     transition: 'all 0.15s',
                                     opacity: isLoading ? 0.6 : 1,
                                 }}
-                                onUbiClick={() => applyTemplate(t.id)}
+                                onUbiClick={() => actions.onApplyTemplate(t.id)}
                             >
-                                {/* サムネイル */}
                                 <div
                                     style={{
                                         width: '48px',
@@ -164,8 +144,6 @@ export const SettingsPanel = () => {
                                         </svg>
                                     )}
                                 </div>
-
-                                {/* 名前 */}
                                 <div
                                     style={{
                                         fontSize: '11px',
@@ -182,8 +160,7 @@ export const SettingsPanel = () => {
                 </div>
             )}
 
-            {/* デフォルトに戻すボタン */}
-            {settings.currentTemplateId !== null && (
+            {state.currentTemplateId !== null && (
                 <button
                     type="button"
                     style={{
@@ -197,13 +174,12 @@ export const SettingsPanel = () => {
                         color: '#868e96',
                         cursor: 'pointer',
                     }}
-                    onUbiClick={resetToDefault}
+                    onUbiClick={actions.onResetToDefault}
                 >
                     デフォルトに戻す
                 </button>
             )}
 
-            {/* 詳細設定 (折りたたみ) */}
             <details style={{ marginTop: '4px' }}>
                 <summary
                     style={{
@@ -250,21 +226,10 @@ export const SettingsPanel = () => {
                             fontSize: '12px',
                             boxSizing: 'border-box',
                         }}
-                        onUbiInput={(value: unknown) => {
-                            const url = String(value);
-                            const hotspot = currentStateDef?.hotspot ?? { x: 0, y: 0 };
-                            settings.avatar = {
-                                ...settings.avatar,
-                                states: {
-                                    ...settings.avatar.states,
-                                    [cursorState]: { url, hotspot },
-                                },
-                            };
-                            Ubi.network.sendToHost('user:update', { avatar: settings.avatar });
-                        }}
+                        onUbiInput={(value: unknown) => actions.onCursorImageUrlChange(cursorState, String(value))}
                     />
                 </div>
             </details>
         </div>
     );
-};
+}
