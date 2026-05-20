@@ -271,8 +271,8 @@ export class UbiSDK {
                         } else if (existingId !== entity.id) {
                             continue;
                         }
-                        const data = entity.data as Record<string, unknown> | undefined;
-                        if (data) binding.applyEntityData(data);
+                        // top-level + data の両方を一括反映
+                        binding.applyEntity(entity);
                     }
                 }
                 this._pendingWorkerEvents.push({

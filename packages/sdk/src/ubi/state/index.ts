@@ -4,7 +4,7 @@ import type { EntityState, EntityStateFor, PresenceEntry, SendFn, StateBinding }
 // ── スコープマーカー (このファイル内部のみ) ───────────────────────
 
 const UBI_STATE_SCOPE = Symbol.for('@ubichill/stateScope');
-type StateScope = 'shared' | 'persistent' | 'persistMine';
+type StateScope = 'shared' | 'persistent' | 'persistMine' | 'topLevel';
 
 interface ScopeMarker<T = unknown> {
     readonly [UBI_STATE_SCOPE]: StateScope;
@@ -14,6 +14,9 @@ interface ScopeMarker<T = unknown> {
 function isScopeMarker(v: unknown): v is ScopeMarker {
     return typeof v === 'object' && v !== null && UBI_STATE_SCOPE in v;
 }
+
+/** ComponentInstance の top-level として書き込める / 読み取れるフィールド。 */
+const TOP_LEVEL_KEYS = new Set(['lockedBy', 'ownerId']);
 
 // ── 依存型 ────────────────────────────────────────────────────────
 
@@ -46,6 +49,11 @@ export type StateModule = {
     shared<T>(defaultValue: T): T;
     persistent<T>(defaultValue: T): T;
     persistMine<T>(defaultValue: T): T;
+    /**
+     * ComponentInstance の top-level フィールド (lockedBy / ownerId) と同期する。
+     * フィールド名は `lockedBy` / `ownerId` でなければならない。
+     */
+    topLevel<T>(defaultValue: T): T;
     define<T extends Record<string, unknown>>(schema: T): EntityState<T>;
     getStateBindings(): StateBinding[];
 };
@@ -82,30 +90,41 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
             }
         }
 
-        // 同期対象エンティティの解決
-        // 1) 自 component を watch しているなら、自 entity を target に（多 entity 同居でも独立）
-        // 2) それ以外の watchType（別 component 覗き見）は initialEntities から最初の一致 entity を target に
+        // 同期対象 ComponentInstance の解決。
+        //   - 自 Component を watch している場合: 自 Entity 上の同 type Component を target に
+        //   - それ以外: initialEntities から最初の一致 type Component を target に
+        //
+        // targetEntityId は updateEntity の引数になる「ComponentInstance.id (flat row id)」。
+        // `Ubi.entityId` (GameObject id) と混同しないこと — 後者を渡しても backend は見つけられない。
         const watchType = deps.getWatchEntityTypes()[0] ?? deps.getPluginId() ?? '';
-        const entityId = deps.getEntityId();
+        const ownGameObjectId = deps.getEntityId();
         const componentType = deps.getComponentType();
         let targetEntityId: string | null = null;
         let initialData: Record<string, unknown> | null = null;
 
-        if (entityId && componentType && deps.getWatchEntityTypes().includes(componentType)) {
-            targetEntityId = entityId;
-            const self = deps.getInitialEntities().find((e) => e.id === entityId);
-            initialData = (self?.data as Record<string, unknown> | undefined) ?? null;
+        let initialEntity: ComponentInstance | null = null;
+        if (ownGameObjectId && componentType && deps.getWatchEntityTypes().includes(componentType)) {
+            const self = deps
+                .getInitialEntities()
+                .find((e) => e.entityId === ownGameObjectId && e.type === componentType);
+            if (self) {
+                targetEntityId = self.id;
+                initialData = (self.data as Record<string, unknown> | undefined) ?? null;
+                initialEntity = self;
+            }
         } else if (watchType) {
             const match = deps.getInitialEntities().find((e) => e.type === watchType);
             if (match) {
                 targetEntityId = match.id;
                 initialData = (match.data as Record<string, unknown> | undefined) ?? null;
+                initialEntity = match;
             }
         }
 
         // flush バッファ
         const pendingSharedWrites: Record<string, unknown> = {};
-        const pendingEntityWrites: Record<string, unknown> = {};
+        const pendingEntityWrites: Record<string, unknown> = {}; // entity.data 側
+        const pendingTopLevelWrites: Record<string, unknown> = {}; // ComponentInstance top-level 側
         let sharedDirty = false;
         let entityDirty = false;
 
@@ -139,9 +158,29 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
             if (!targetEntityId) return; // 未解決 → 次回フラッシュで再試行
             entityDirty = false;
             const id = targetEntityId;
-            const patch = { ...pendingEntityWrites };
+            const dataPatch = { ...pendingEntityWrites };
+            const topPatch = { ...pendingTopLevelWrites };
             for (const k of Object.keys(pendingEntityWrites)) delete pendingEntityWrites[k];
-            void deps.updateEntity(id, { data: patch });
+            for (const k of Object.keys(pendingTopLevelWrites)) delete pendingTopLevelWrites[k];
+            const patch: EntityPatchPayload['patch'] = { ...topPatch };
+            if (Object.keys(dataPatch).length > 0) patch.data = dataPatch;
+            void deps.updateEntity(id, patch);
+        };
+
+        /** ComponentInstance 全体を受け取り、top-level + data を一括反映する。 */
+        const applyEntity = (entity: ComponentInstance): void => {
+            for (const [key, scope] of scopes) {
+                if (scope !== 'topLevel') continue;
+                if (!TOP_LEVEL_KEYS.has(key)) continue;
+                const next = (entity as unknown as Record<string, unknown>)[key];
+                const prev = local[key];
+                if (next !== prev) {
+                    local[key] = next;
+                    fire(key, next, prev);
+                }
+            }
+            const data = entity.data as Record<string, unknown> | undefined;
+            if (data) applyEntityData(data);
         };
 
         const applyEntityData = (data: Record<string, unknown>): void => {
@@ -187,8 +226,9 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
             }
         };
 
-        // プラグインコード実行前に初期エンティティを同期反映
-        if (initialData) applyEntityData(initialData);
+        // プラグインコード実行前に初期エンティティを同期反映 (data + top-level)
+        if (initialEntity) applyEntity(initialEntity);
+        else if (initialData) applyEntityData(initialData);
 
         stateBindings.push({
             watchType,
@@ -197,6 +237,7 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
                 if (!targetEntityId) targetEntityId = id;
             },
             applyEntityData,
+            applyEntity,
         });
 
         // local は Proxy — 書き込みでスコープに応じた flush を予約
@@ -224,6 +265,14 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
                         entityDirty = true;
                         deps.registerPendingFlush(flushEntity);
                     }
+                } else if (scope === 'topLevel') {
+                    if (!TOP_LEVEL_KEYS.has(prop)) {
+                        // 安全のため: lockedBy / ownerId 以外は黙って無視 (誤用検知ログ)
+                        return true;
+                    }
+                    pendingTopLevelWrites[prop] = value;
+                    entityDirty = true;
+                    deps.registerPendingFlush(flushEntity);
                 }
                 return true;
             },
@@ -297,6 +346,8 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
                 [UBI_STATE_SCOPE]: 'persistMine' as StateScope,
                 value: defaultValue,
             }) as unknown as T,
+        topLevel: <T>(defaultValue: T): T =>
+            ({ [UBI_STATE_SCOPE]: 'topLevel' as StateScope, value: defaultValue }) as unknown as T,
         define,
         getStateBindings: () => stateBindings,
     };

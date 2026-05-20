@@ -30,7 +30,10 @@ export interface StateBinding {
     readonly watchType: string;
     getTargetId(): string | null;
     trySetTargetId(id: string): void;
+    /** entity.data 部分 (Ubi.state.persistent / persistMine 用) を流し込む。 */
     applyEntityData(data: Record<string, unknown>): void;
+    /** ComponentInstance 全体 (lockedBy / ownerId / transform 等の top-level も含む) を流し込む。 */
+    applyEntity(entity: import('@ubichill/shared').ComponentInstance): void;
 }
 
 export type EntityStateFor<T extends Record<string, unknown>> = {
