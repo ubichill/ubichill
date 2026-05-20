@@ -71,21 +71,8 @@ state.onChange('myVolume', (v) => {
     Ubi.media.setVolume(v, TARGET);
 });
 
-// ── UI (16:9 黒背景の placeholder) ────────────────────
-Ubi.ui.render(
-    () => (
-        <div
-            style={{
-                position: 'absolute',
-                inset: '0',
-                background: '#000',
-                borderRadius: '4px',
-                pointerEvents: 'none',
-            }}
-        />
-    ),
-    'screen-bg',
-);
+// 黒背景は host 側の <video> 要素 (mediaTargets) が標準で持つ。
+// プラグインから UI 層を被せると video が隠れて再生が見えなくなるので置かない。
 
 // ── ECS System (media イベント処理) ──────────────────
 export const ScreenSystem: System = (_entities: Entity[], _dt: number, events: WorkerEvent[]) => {

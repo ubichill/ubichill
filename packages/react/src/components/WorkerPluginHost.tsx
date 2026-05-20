@@ -168,6 +168,7 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
                         width: '100%',
                         height: '100%',
                         objectFit: 'contain',
+                        backgroundColor: '#000',
                         display: 'none',
                         pointerEvents: 'none',
                     }}

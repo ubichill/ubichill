@@ -5,7 +5,7 @@
   "components": {
     "screen": {
       "src": "./src/screen.worker.tsx",
-      "capabilities": ["video:control", "ui:render", "scene:read", "scene:update", "net:broadcast"],
+      "capabilities": ["video:control", "scene:read", "scene:update", "net:broadcast"],
       "mediaTargets": ["main"],
       "watchEntityTypes": ["video-player:screen"],
       "watchScope": "entity",
