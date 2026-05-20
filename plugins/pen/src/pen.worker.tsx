@@ -9,62 +9,47 @@
  * - 他ユーザーが保持中はグレーアウト
  * - 自分が既に保持中の他ペンを解放してから自分を選択 (1人1本ルール)
  *
- * 状態管理:
- * - color / strokeWidth は Ubi.state.persistent で entity.data と双方向自動同期
- * - lockedBy は data に乗らない top-level フィールドなので System で手動同期
+ * 状態管理: すべて Ubi.state で宣言的に。
+ * - color / strokeWidth: persistent (entity.data と双方向同期)
+ * - lockedBy:            topLevel  (ComponentInstance top-level と双方向同期)
  */
-
-import type { ComponentInstance, Entity, System, WorkerEvent } from '@ubichill/sdk';
 
 interface PenData {
     color: string;
     strokeWidth: number;
 }
 
-// ── 永続フィールド (entity.data 自動同期) ─────────────────
 const pen = Ubi.state.define({
     color: Ubi.state.persistent('#1a1a1a'),
     strokeWidth: Ubi.state.persistent(4),
+    lockedBy: Ubi.state.topLevel<string | null>(null),
 });
-
-// ── ローカル: lockedBy 追跡用の単一可変参照 ──────────────
-// (entity 上の top-level フィールドのため Ubi.state では追跡不能)
-const local = { lockedBy: null as string | null };
 
 // ── アクション ───────────────────────────────────────────
 async function selectMe(): Promise<void> {
     const myId = Ubi.myUserId;
     const selfId = Ubi.componentInstanceId;
     if (!myId || !selfId) return;
-    try {
-        const allPens = await Ubi.world.queryEntities<PenData>('pen:pen');
-        await Promise.all(
-            allPens
-                .filter((p) => p.id !== selfId && p.lockedBy === myId)
-                .map((p) => Ubi.world.updateEntity(p.id, { lockedBy: null }).catch(() => {})),
-        );
-        await Ubi.world.updateEntity(selfId, { lockedBy: myId });
-        Ubi.network.sendToHost('user:update', { penColor: pen.local.color });
-    } catch (err) {
-        Ubi.log(`[pen:pen] 選択失敗: ${String(err)}`, 'warn');
-    }
+    // 他の自分が保持中のペンを解放してから自分を選択 (Ubi.state 経由で書く → 自動同期)
+    const allPens = await Ubi.world.queryEntities<PenData>('pen:pen');
+    await Promise.all(
+        allPens
+            .filter((p) => p.id !== selfId && p.lockedBy === myId)
+            .map((p) => Ubi.world.updateEntity(p.id, { lockedBy: null }).catch(() => {})),
+    );
+    pen.local.lockedBy = myId;
+    Ubi.network.sendToHost('user:update', { penColor: pen.local.color });
 }
 
-async function releaseMe(): Promise<void> {
-    const selfId = Ubi.componentInstanceId;
-    if (!selfId) return;
-    try {
-        await Ubi.world.updateEntity(selfId, { lockedBy: null });
-        Ubi.network.sendToHost('user:update', { penColor: null });
-    } catch (err) {
-        Ubi.log(`[pen:pen] 解放失敗: ${String(err)}`, 'warn');
-    }
+function releaseMe(): void {
+    pen.local.lockedBy = null;
+    Ubi.network.sendToHost('user:update', { penColor: null });
 }
 
 // ── レンダリング (pure: 入力から VNode を構築) ─────────
 const renderPen = (): void => {
     const myId = Ubi.myUserId;
-    const heldBy = local.lockedBy;
+    const heldBy = pen.local.lockedBy;
     const isHeldByMe = heldBy !== null && heldBy === myId;
     const isHeldByOther = heldBy !== null && heldBy !== myId;
     const color = pen.local.color;
@@ -77,7 +62,7 @@ const renderPen = (): void => {
                 disabled={isHeldByOther}
                 onUbiClick={() => {
                     if (isHeldByOther) return;
-                    if (isHeldByMe) void releaseMe();
+                    if (isHeldByMe) releaseMe();
                     else void selectMe();
                 }}
                 style={{
@@ -117,29 +102,10 @@ const renderPen = (): void => {
     );
 };
 
-// data 側の変化は宣言的に再描画にひもづける
+// 状態変化はすべて onChange で宣言的に再描画
 pen.onChange('color', renderPen);
 pen.onChange('strokeWidth', renderPen);
+pen.onChange('lockedBy', renderPen);
 
-// lockedBy 同期: 自 Component に対する entity:pen:pen を畳み込む
-const PenSelfSystem: System = (_entities: Entity[], _dt: number, events: WorkerEvent[]) => {
-    const selfId = Ubi.componentInstanceId;
-    if (!selfId) return;
-
-    const nextLocked = events.reduce<string | null>((acc, event) => {
-        if (event.type !== 'entity:pen:pen') return acc;
-        const e = event.payload as ComponentInstance<PenData> | undefined;
-        if (!e || e.id !== selfId) return acc;
-        return e.lockedBy ?? null;
-    }, local.lockedBy);
-
-    if (nextLocked !== local.lockedBy) {
-        local.lockedBy = nextLocked;
-        renderPen();
-    }
-};
-
-Ubi.registerSystem(PenSelfSystem);
-
-// 初期 1 回レンダー (初期エンティティスナップショットは Ubi.state 側で同期反映済み)
+// 初期 1 回レンダー (初期エンティティスナップショットは Ubi.state が反映済み)
 renderPen();
