@@ -63,7 +63,7 @@ const addFromUrl = async (): Promise<void> => {
     if (!videoId) return;
     state.local.isSearching = true;
     render();
-    const res = (await Ubi.network.fetch(`${apiBase()}/info/${videoId}`)) as RpcNetFetchResult;
+    const res = (await Ubi.fetch(`${apiBase()}/info/${videoId}`)) as RpcNetFetchResult;
     const info = res.ok ? (JSON.parse(res.body) as { title?: string; thumbnail?: string; duration?: number }) : {};
     state.local.playlist = [
         ...state.local.playlist,
@@ -84,7 +84,7 @@ const doSearch = async (): Promise<void> => {
     if (!state.local.searchQuery.trim()) return;
     state.local.isSearching = true;
     render();
-    const res = (await Ubi.network.fetch(
+    const res = (await Ubi.fetch(
         `${apiBase()}/search?q=${encodeURIComponent(state.local.searchQuery)}&limit=10`,
     )) as RpcNetFetchResult;
     state.local.searchResults = res.ok ? (JSON.parse(res.body) as SearchResult[]) : [];

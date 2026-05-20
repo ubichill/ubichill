@@ -30,7 +30,7 @@ const settings = Ubi.state.define({
 
 // ── 自エンティティの zIndex を読む ──
 void (async () => {
-    const [self] = await Ubi.world.queryEntities('avatar:settings');
+    const [self] = await Ubi.world.query('avatar:settings');
     if (self) settings.local.zIndex = self.transform.z;
 })();
 
@@ -38,7 +38,7 @@ void (async () => {
 async function initTemplates(): Promise<void> {
     if (settings.local.templatesLoaded) return;
     settings.local.templatesLoaded = true;
-    const result = (await Ubi.network.fetch(`${Ubi.pluginBase}/templates/manifest.json`)) as RpcNetFetchResult;
+    const result = (await Ubi.fetch(`${Ubi.pluginBase}/templates/manifest.json`)) as RpcNetFetchResult;
     if (!result.ok) {
         Ubi.log(`テンプレート取得失敗 (${result.status})`, 'error');
         return;
@@ -53,7 +53,7 @@ async function initTemplates(): Promise<void> {
             id: t.id,
             url: `${Ubi.pluginBase}/templates/${t.directory}/${t.mappings.default as string}`,
         }));
-    Ubi.network.sendToHost('avatar:initThumbnails', { thumbnailFiles });
+    Ubi.event.sendToHost('avatar:initThumbnails', { thumbnailFiles });
 }
 
 // ── アクション ──
@@ -70,7 +70,7 @@ const actions: SettingsPanelActions = {
                 state,
                 url: `${Ubi.pluginBase}/templates/${template.directory}/${filename}`,
             }));
-        Ubi.network.sendToHost('avatar:applyTemplate', { files });
+        Ubi.event.sendToHost('avatar:applyTemplate', { files });
         // ホスト側完了通知が無い経路もあるため一定時間で解除しリトライを許可する
         setTimeout(() => {
             if (settings.local.pendingTemplateId === id) settings.local.pendingTemplateId = null;
@@ -80,7 +80,7 @@ const actions: SettingsPanelActions = {
         if (settings.local.pendingTemplateId !== null) return;
         settings.local.currentTemplateId = null;
         settings.local.avatar = { states: {} };
-        Ubi.network.sendToHost('avatar:resetTemplate', {});
+        Ubi.event.sendToHost('avatar:resetTemplate', {});
     },
     onCursorImageUrlChange(stateKey, url) {
         const cur = settings.local.avatar.states[stateKey as keyof typeof settings.local.avatar.states];
@@ -90,7 +90,7 @@ const actions: SettingsPanelActions = {
             states: { ...settings.local.avatar.states, [stateKey]: { url, hotspot } },
         };
         settings.local.avatar = next;
-        Ubi.network.sendToHost('user:update', { avatar: next });
+        Ubi.event.sendToHost('user:update', { avatar: next });
     },
 };
 

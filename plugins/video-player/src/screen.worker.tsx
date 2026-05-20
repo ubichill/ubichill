@@ -85,7 +85,7 @@ export const ScreenSystem: System = (_entities: Entity[], _dt: number, events: W
             const now = Date.now();
             if (state.local.isPlaying && now - state.local.lastBroadcastAt >= TIME_SYNC_INTERVAL_MS) {
                 state.local.lastBroadcastAt = now;
-                Ubi.network.broadcast('vp:timeSync', {
+                Ubi.event.broadcast('vp:timeSync', {
                     currentTime: state.local.localTime,
                     currentIndex: state.local.currentIndex,
                 });

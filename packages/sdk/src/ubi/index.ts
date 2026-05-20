@@ -1,17 +1,21 @@
 import type { EcsWorld, System, WorkerEvent } from '@ubichill/engine';
 import { EcsEventType, EcsWorldImpl } from '@ubichill/engine';
-import type { ComponentInstance, PluginGuestCommand, PluginHostEvent, PluginWorkerMessage } from '@ubichill/shared';
+import type {
+    ComponentInstance,
+    FetchOptions,
+    PluginGuestCommand,
+    PluginHostEvent,
+    PluginWorkerMessage,
+} from '@ubichill/shared';
 import { _beginRender, _callHandler, _clearTarget } from '../jsx/jsx-runtime';
 import type { CanvasModule } from './canvas';
 import { createCanvasModule } from './canvas';
-import type { EntityModule } from './entity';
-import { createEntityModule } from './entity';
+import type { EventModule } from './event';
+import { createEventModule } from './event';
 import type { MediaModule } from './media';
 import { createMediaModule } from './media';
-import type { NetworkModule } from './network';
-import { createNetworkModule } from './network';
-import type { PresenceModule } from './presence';
-import { createPresenceModule } from './presence';
+import type { PlayerModule } from './player';
+import { createPlayerModule } from './player';
 import type { StateModule } from './state';
 import { createStateModule } from './state';
 import type { OmitId, UiRenderCostStat } from './types';
@@ -41,19 +45,21 @@ type PendingRequest = {
 };
 
 /**
- * Ubichill Plugin SDK のメインクラス。
+ * Ubichill Plugin SDK のメインクラス。Sandbox Worker 内では `Ubi` として注入される。
  *
- * Sandbox Worker 内では `Ubi` として自動注入されます。
- * プラグインは ECS スタイル（registerSystem）で実装する。
- *
- * 各 API は ubi/ ディレクトリのモジュールに分離されています:
- * - ubi/state/   → Ubi.state
- * - ubi/ui/      → Ubi.ui
- * - ubi/presence/→ Ubi.presence
- * - ubi/world/   → Ubi.world
- * - ubi/network/ → Ubi.network
- * - ubi/media/   → Ubi.media
- * - ubi/canvas/  → Ubi.canvas
+ * Public API surface:
+ *   Ubi.state.*     — 宣言的リアクティブ状態 (persistent / persistMine / shared / topLevel)
+ *   Ubi.event.*     — トリガー (sendToHost / broadcast)
+ *   Ubi.ui.*        — UI render / toast
+ *   Ubi.media.*     — メディア再生 (video / audio / HLS)
+ *   Ubi.canvas.*    — canvas 描画
+ *   Ubi.player.*    — プレイヤー情報 (others / scroll / syncCursor)
+ *   Ubi.world.*     — エンティティ get / query (CRUD は spawn / destroy 経由)
+ *   Ubi.spawn(e)    — 新規エンティティ作成 (top-level shortcut)
+ *   Ubi.destroy(id) — エンティティ削除
+ *   Ubi.fetch(url)  — HTTP (whitelist 経由)
+ *   Ubi.registerSystem(fn) — ECS System 登録
+ *   Ubi.log(msg, level)
  */
 export class UbiSDK {
     // ── RPC ──────────────────────────────────────────────────
@@ -65,13 +71,11 @@ export class UbiSDK {
     // ── ECS ──────────────────────────────────────────────────
     private _pendingWorkerEvents: WorkerEvent[] = [];
     private _isTicking = false;
+    private readonly _local: EcsWorld;
 
     // ── State flush ──────────────────────────────────────────
     private _pendingStateFlushes = new Set<() => void>();
     private _initialEntities: ComponentInstance[] = [];
-
-    // ── ECS World (registerSystem で使用) ───────────────────
-    public readonly local: EcsWorld;
 
     // ── Plugin identity (sandbox.worker.ts が設定) ──────────
     public worldId?: string;
@@ -87,40 +91,38 @@ export class UbiSDK {
     public watchEntityTypes: string[] = [];
 
     // ── Public API modules ───────────────────────────────────
-    public readonly world: WorldModule;
-    public readonly entity: EntityModule;
-    public readonly ui: UiModule;
-    public readonly presence: PresenceModule;
     public readonly state: StateModule;
-    public readonly network: NetworkModule;
+    public readonly event: EventModule;
+    public readonly ui: UiModule;
     public readonly media: MediaModule;
     public readonly canvas: CanvasModule;
+    public readonly player: PlayerModule;
+    public readonly world: WorldModule;
 
     constructor(postMessage: (cmd: PluginGuestCommand) => void, options?: { rpcTimeout?: number }) {
         this._sendToHost = postMessage;
         this._rpcTimeout = options?.rpcTimeout ?? 10_000;
-        this.local = new EcsWorldImpl();
+        this._local = new EcsWorldImpl();
 
         const send = (cmd: OmitId<PluginGuestCommand>): void => this._send(cmd);
         const rpc = <T>(cmd: OmitId<PluginGuestCommand>): Promise<T> => this._rpc<T>(cmd);
 
-        this.presence = createPresenceModule(send);
+        this.player = createPlayerModule(send, () => this.myUserId);
         this.ui = createUiModule(send, () => this._isTicking, _beginRender, _clearTarget);
         this.world = createWorldModule(send, rpc);
-        this.entity = createEntityModule(rpc);
         this.state = createStateModule({
             send,
-            updateEntity: (id, patch) => this.world.updateEntity(id, patch),
+            updateEntity: (id, patch) => this.world.update(id, patch),
             getMyUserId: () => this.myUserId,
             getEntityId: () => this.entityId,
             getPluginId: () => this.pluginId,
             getComponentType: () => this.componentType,
             getWatchEntityTypes: () => this.watchEntityTypes,
-            getPresenceUsers: () => this.presence.getPresenceUsers(),
-            getLocalSharedState: () => this.presence.getLocalSharedState(),
-            getScrollX: () => this.presence.getScrollX(),
-            getScrollY: () => this.presence.getScrollY(),
-            getForEachUserComponents: () => this.presence.getForEachUserComponents(),
+            getPresenceUsers: () => this.player.getPresenceUsers(),
+            getLocalSharedState: () => this.player.getLocalSharedState(),
+            getScrollX: () => this.player.getScrollX(),
+            getScrollY: () => this.player.getScrollY(),
+            getForEachUserComponents: () => this.player.getForEachUserComponents(),
             registerPendingFlush: (fn) => this._pendingStateFlushes.add(fn),
             getInitialEntities: () => this._initialEntities,
             beginRender: _beginRender,
@@ -129,9 +131,26 @@ export class UbiSDK {
             recordUiRenderCost: (targetId, costMs, scope) => this.ui._recordUiRenderCost(targetId, costMs, scope),
             buildEntityTargetId: (entityId, componentName) => this.ui._buildEntityTargetId(entityId, componentName),
         });
-        this.network = createNetworkModule(send, rpc);
+        this.event = createEventModule(send);
         this.media = createMediaModule(send);
         this.canvas = createCanvasModule(send);
+    }
+
+    // ── Top-level shortcuts ──────────────────────────────────
+
+    /** 新規エンティティを作成。`id` は自動採番、他のフィールドは省略可能。 */
+    public spawn(entity: Omit<ComponentInstance, 'id'>): Promise<string> {
+        return this.world._createEntity(entity);
+    }
+
+    /** 指定 id のエンティティを削除。 */
+    public destroy(id: string): Promise<void> {
+        return this.world._destroyEntity(id);
+    }
+
+    /** HTTP リクエスト (capability whitelist 経由)。 */
+    public fetch(url: string, options?: FetchOptions): Promise<unknown> {
+        return this._rpc({ type: 'NET_FETCH', payload: { url, options } });
     }
 
     // ── Transport ─────────────────────────────────────────────
@@ -165,7 +184,7 @@ export class UbiSDK {
     // ── ECS ───────────────────────────────────────────────────
 
     public registerSystem(system: System): void {
-        this.local.registerSystem(system);
+        this._local.registerSystem(system);
     }
 
     // ── Logging ───────────────────────────────────────────────
@@ -187,7 +206,7 @@ export class UbiSDK {
             case 'EVT_LIFECYCLE_TICK': {
                 try {
                     this._isTicking = true;
-                    this.local.tick(event.payload.deltaTime, this._pendingWorkerEvents);
+                    this._local.tick(event.payload.deltaTime, this._pendingWorkerEvents);
                 } catch (err) {
                     console.error('[UbiSDK] ECS World tick error:', err);
                 } finally {
@@ -201,7 +220,7 @@ export class UbiSDK {
             }
             case 'EVT_PLAYER_JOINED': {
                 const { user } = event.payload;
-                this.presence.handlePlayerJoined(user);
+                this.player.handlePlayerJoined(user);
                 this._pendingWorkerEvents.push({
                     type: EcsEventType.PLAYER_JOINED,
                     payload: user,
@@ -211,8 +230,8 @@ export class UbiSDK {
             }
             case 'EVT_PLAYER_LEFT': {
                 const { userId } = event.payload;
-                this.presence.handlePlayerLeft(userId);
-                for (const componentName of this.presence.getForEachUserComponents()) {
+                this.player.handlePlayerLeft(userId);
+                for (const componentName of this.player.getForEachUserComponents()) {
                     this.ui._unmountUi(this.ui._buildEntityTargetId(`user:${userId}`, componentName));
                 }
                 this._pendingWorkerEvents.push({
@@ -225,7 +244,7 @@ export class UbiSDK {
             case 'EVT_PLAYER_CURSOR_MOVED': {
                 const { userId, position } = event.payload;
                 const incoming = (event.payload as { sharedState?: Record<string, unknown> }).sharedState;
-                this.presence.handleCursorMoved(userId, position, incoming);
+                this.player.handleCursorMoved(userId, position, incoming);
                 this._pendingWorkerEvents.push({
                     type: EcsEventType.PLAYER_CURSOR_MOVED,
                     payload: { userId, position },
@@ -285,7 +304,7 @@ export class UbiSDK {
             case 'EVT_NETWORK_BROADCAST':
                 if (event.payload.type === 'presence:sharedState') {
                     const d = event.payload.data as { sharedState: Record<string, unknown> };
-                    this.presence.handlePresenceSharedState(event.payload.userId, d.sharedState);
+                    this.player.handlePresenceSharedState(event.payload.userId, d.sharedState);
                 } else {
                     this._pendingWorkerEvents.push({
                         type: event.payload.type,
@@ -299,10 +318,10 @@ export class UbiSDK {
                 for (const inputEvent of event.payload.events) {
                     if (inputEvent.type === 'SCROLL') {
                         const d = inputEvent.data as { x: number; y: number };
-                        this.presence.handleScrollInput(d.x, d.y, now);
+                        this.player.handleScrollInput(d.x, d.y, now);
                     } else if (inputEvent.type === 'MOUSE_MOVE') {
                         const d = inputEvent.data as { viewportX: number; viewportY: number };
-                        this.presence.handleMouseMoveInput(d.viewportX, d.viewportY, now);
+                        this.player.handleMouseMoveInput(d.viewportX, d.viewportY, now);
                     }
                     this._pendingWorkerEvents.push({
                         type: INPUT_TYPE_MAP[inputEvent.type],

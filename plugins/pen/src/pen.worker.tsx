@@ -31,19 +31,19 @@ async function selectMe(): Promise<void> {
     const selfId = Ubi.componentInstanceId;
     if (!myId || !selfId) return;
     // 他の自分が保持中のペンを解放してから自分を選択 (Ubi.state 経由で書く → 自動同期)
-    const allPens = await Ubi.world.queryEntities<PenData>('pen:pen');
+    const allPens = await Ubi.world.query<PenData>('pen:pen');
     await Promise.all(
         allPens
             .filter((p) => p.id !== selfId && p.lockedBy === myId)
-            .map((p) => Ubi.world.updateEntity(p.id, { lockedBy: null }).catch(() => {})),
+            .map((p) => Ubi.world.update(p.id, { lockedBy: null }).catch(() => {})),
     );
     pen.local.lockedBy = myId;
-    Ubi.network.sendToHost('user:update', { penColor: pen.local.color });
+    Ubi.event.sendToHost('user:update', { penColor: pen.local.color });
 }
 
 function releaseMe(): void {
     pen.local.lockedBy = null;
-    Ubi.network.sendToHost('user:update', { penColor: null });
+    Ubi.event.sendToHost('user:update', { penColor: null });
 }
 
 // ── レンダリング (pure: 入力から VNode を構築) ─────────

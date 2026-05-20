@@ -52,7 +52,7 @@ function ensureFrames(avatar: AppAvatarDef): void {
     }
     if (toRequest.length === 0) return;
     pendingRequests.push(toRequest);
-    Ubi.network.sendToHost('avatar:requestFrames', { sourceUrls: toRequest });
+    Ubi.event.sendToHost('avatar:requestFrames', { sourceUrls: toRequest });
 }
 
 function getFrames(avatar: AppAvatarDef, state: string): AnimFrame[] | undefined {
@@ -62,12 +62,12 @@ function getFrames(avatar: AppAvatarDef, state: string): AnimFrame[] | undefined
 
 // ── 自エンティティの zIndex を読み取る (transform.z) ──
 void (async () => {
-    const [self] = await Ubi.world.queryEntities('avatar:cursor');
+    const [self] = await Ubi.world.query('avatar:cursor');
     if (self) cursor.local.zIndex = self.transform.z;
 })();
 
 // ── 位置同期は SDK に委譲 ──
-Ubi.presence.syncPosition({ throttleMs: 50 });
+Ubi.player.syncCursor({ throttleMs: 50 });
 
 // ── ECS System ──
 const CursorSystem: System = (_entities: Entity[], deltaTime: number, events: WorkerEvent[]) => {
@@ -125,7 +125,7 @@ const CursorSystem: System = (_entities: Entity[], deltaTime: number, events: Wo
     }
 
     // ── 全ユーザーのアニメーションをローカルで独立に進める ──
-    for (const [userId] of Ubi.presence.users()) {
+    for (const [userId] of Ubi.player.all()) {
         const { avatar, cursorState } = cursor.for(userId);
         if (!avatar) continue;
         if (userId !== Ubi.myUserId) ensureFrames(avatar);
@@ -149,7 +149,7 @@ const CursorSystem: System = (_entities: Entity[], deltaTime: number, events: Wo
     }
     // 退出したユーザーをクリーンアップ
     for (const userId of userAnim.keys()) {
-        if (!Ubi.presence.users().has(userId)) userAnim.delete(userId);
+        if (!Ubi.player.all().has(userId)) userAnim.delete(userId);
     }
 
     // ── 全ユーザー描画 ──

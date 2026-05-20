@@ -1,7 +1,15 @@
-import type { FetchOptions } from '@ubichill/shared';
-import type { RpcFn, SendFn } from '../types';
+/**
+ * Ubi.event — Worker からのトリガー送信。
+ *
+ * - sendToHost: 自 Worker → 自 Host (React 側) の片道通知。タブ内ローカル。
+ * - broadcast:  自 Worker → ワールドの他ユーザーの同じ entity Worker。揮発性 (Reliable 保存なし)。
+ *
+ * Reliable な状態同期は Ubi.state.persistent を使うこと。
+ */
 
-export type NetworkModule = {
+import type { SendFn } from '../types';
+
+export type EventModule = {
     sendToHost<
         TPayloadMap extends Record<string, unknown> = Record<string, unknown>,
         K extends keyof TPayloadMap & string = keyof TPayloadMap & string,
@@ -10,13 +18,11 @@ export type NetworkModule = {
         TPayloadMap extends Record<string, unknown> = Record<string, unknown>,
         K extends keyof TPayloadMap & string = keyof TPayloadMap & string,
     >(type: K, data: TPayloadMap[K]): void;
-    fetch(url: string, options?: FetchOptions): Promise<unknown>;
 };
 
-export function createNetworkModule(send: SendFn, rpc: RpcFn): NetworkModule {
+export function createEventModule(send: SendFn): EventModule {
     return {
         sendToHost: (type, data) => send({ type: 'NETWORK_SEND_TO_HOST', payload: { type, data } }),
         broadcast: (type, data) => send({ type: 'NETWORK_BROADCAST', payload: { type, data } }),
-        fetch: (url, options) => rpc({ type: 'NET_FETCH', payload: { url, options } }),
     };
 }

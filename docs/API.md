@@ -2,50 +2,68 @@
 
 ## Plugin SDK — `Ubi.*`
 
+API surface は意図的にコンパクト (8 ネームスペース + 数個のトップレベル shortcut):
+
 ```ts
-// Worker 内プライベート ECS（揮発性・非共有・同期）
-Ubi.local.createEntity(id)          // Entity
-Ubi.local.getEntity(id)             // Entity | null
-Ubi.local.query(...componentNames)  // Query
+// ──── 状態管理 (declarative)  ────────────────────────────
+Ubi.state.define(schema)                          // EntityState<T> を返す。詳細は次セクション
+Ubi.state.persistent<T>(default)                  // 全員共有 + DB 永続化 (entity.data)
+Ubi.state.persistMine<T>(default)                 // 全員共有だが per-user namespace
+Ubi.state.shared<T>(default)                      // 揮発性 broadcast (presence 経由)
+Ubi.state.topLevel<T>(default)                    // ComponentInstance top-level (lockedBy / ownerId)
 
-// System 登録（Ubi.local のショートカット）
-Ubi.registerSystem((entities, deltaTime, events) => { ... })
+// ──── トリガー (events) ──────────────────────────────────
+Ubi.event.sendToHost<TPayloadMap>(type, data)     // 自 Worker → 自 Host (タブ内ローカル)
+Ubi.event.broadcast<TPayloadMap>(type, data)      // 自 Worker → 他ユーザーの同 entity Worker
 
-// 共有エンティティ（全員に見える・インスタンス内永続・async）
-await Ubi.world.getEntity(id)               // ComponentInstance | null
-await Ubi.world.createEntity(entity)        // string（生成された ID）
-await Ubi.world.updateEntity(id, patch)     // void
-await Ubi.world.destroyEntity(id)           // void
-Ubi.world.subscribeEntity(id)               // 更新を EVT_SCENE_ENTITY_UPDATED で受け取る
-Ubi.world.unsubscribeEntity(id)
-
-// 自 Entity (GameObject) 周辺の Component アクセス（Stage 4: Pure ECS 漸近）
-await Ubi.entity.getSiblings<T>()                  // 自 Entity 上の他 Component (自分は除く)
-await Ubi.entity.getSibling<T>(type)               // type 指定で最初の 1 件
-await Ubi.entity.getParent<T>(type?)               // 親 Entity 上の Component (type で絞り込み可)
-await Ubi.entity.getParentComponent<T>(type)       // 親 Entity 上の type 最初の 1 件
-await Ubi.entity.getChildren<T>(type?)             // 直接の子 Entity 上の Component
-await Ubi.entity.queryInSubtree<T>(type)           // 自 Entity + 子孫から type 一致を集める
-
-// 通信
-Ubi.network.sendToHost<TPayloadMap>(type, data)   // 自分の Host（React）にのみ送る
-Ubi.network.broadcast<TPayloadMap>(type, data)    // ワールド全員の Worker に揮発性配信
-await Ubi.network.fetch(url, options?)             // ホワイトリスト URL へ HTTP
-
-// UI
+// ──── UI ─────────────────────────────────────────────────
+Ubi.ui.render(factory, targetId?)                  // VNode を Host へ送って DOM 化
 Ubi.ui.showToast(text)
+Ubi.ui.unmount(targetId?)
 
-// アバター
-Ubi.avatar.set(appDef)
+// ──── メディア (video / HLS) ─────────────────────────────
+Ubi.media.load(url, targetId, mediaType?)
+Ubi.media.play(targetId) / Ubi.media.pause(targetId)
+Ubi.media.seek(time, targetId)
+Ubi.media.setVolume(v, targetId) / Ubi.media.setVisible(visible, targetId)
 
-// 読み取り専用プロパティ（初期化後に自動セット）
+// ──── canvas 描画 ────────────────────────────────────────
+Ubi.canvas.frame(targetId, { activeStroke, cursor })
+Ubi.canvas.commitStroke(targetId, strokeData)
+
+// ──── プレイヤー (presence) ──────────────────────────────
+Ubi.player.others()                                // ReadonlyMap<userId, PlayerInfo> (自分以外)
+Ubi.player.all()                                   // ReadonlyMap<userId, PlayerInfo> (自分含む)
+Ubi.player.scroll()                                // { x, y }
+Ubi.player.syncCursor({ throttleMs })              // 自分のカーソル位置を一定間隔で host へ送る
+
+// ──── World (低レベル CRUD) ──────────────────────────────
+await Ubi.world.get(id)                            // ComponentInstance | null
+await Ubi.world.query(type)                        // ComponentInstance[]
+await Ubi.world.update(id, patch)                  // 他エンティティを直接更新 (escape hatch)
+
+// ──── トップレベル shortcut ─────────────────────────────
+await Ubi.spawn(entity)                            // 新規エンティティ作成 (id 自動採番)
+await Ubi.destroy(id)                              // エンティティ削除
+await Ubi.fetch(url, options?)                     // HTTP (capability whitelist 経由)
+Ubi.registerSystem((entities, dt, events) => {...}) // ECS System 登録
+Ubi.log(message, level?)                           // ログ ('debug' | 'info' | 'warn' | 'error')
+
+// ──── 読み取り専用プロパティ (初期化後に自動セット) ──────
 Ubi.worldId               // string | undefined
 Ubi.myUserId              // string | undefined
 Ubi.pluginId              // string | undefined
 Ubi.componentInstanceId   // string | undefined — 自 Worker (Component インスタンス) の flat ID
 Ubi.entityId              // string | undefined — 自 Worker が乗っている Entity (GameObject) の id
 Ubi.componentType         // string | undefined — "pluginId:componentName"
+Ubi.pluginBase            // string — プラグインアセットのバージョン付きベース URL
 ```
+
+**設計方針:**
+- 基本は `Ubi.state.*` で宣言的に書く。`onChange` で副作用を局所化
+- 副作用通知は `Ubi.event.*` (broadcast / sendToHost)
+- 他エンティティを横断して書く必要があるとき (例: pen の「他ペン解放」) だけ `Ubi.world.update`
+- `Ubi.spawn` / `Ubi.destroy` で新規 Entity の生成・削除
 
 > 命名規約: ubichill では **Entity == GameObject** (Pure ECS 標準)。Worker からは
 > `Ubi.entityId` が GameObject の id を指す。Worker 自身 (= 1 Component インスタンス)
@@ -182,11 +200,15 @@ const entity = useEntity(entityId)
 
 | capability | 有効になる API |
 |---|---|
-| `net:send` | `Ubi.network.sendToHost` |
-| `net:broadcast` | `Ubi.network.broadcast` |
-| `net:fetch` | `Ubi.network.fetch` |
-| `world:entity` | `Ubi.world.*` (write 系) |
-| `scene:read` | `Ubi.world.getEntity` / `Ubi.entity.*` |
+| `net:send` | `Ubi.event.sendToHost` |
+| `net:broadcast` | `Ubi.event.broadcast` (`Ubi.state.shared` も内部で使用) |
+| `net:fetch` | `Ubi.fetch` |
+| `scene:read` | `Ubi.world.get` / `Ubi.world.query` |
+| `scene:update` | `Ubi.spawn` / `Ubi.destroy` / `Ubi.world.update` / `Ubi.state.persistent` 等の書き込み全般 |
+| `ui:render` | `Ubi.ui.render` |
+| `ui:toast` | `Ubi.ui.showToast` |
+| `canvas:draw` | `Ubi.canvas.*` |
+| `video:control` | `Ubi.media.*` |
 
 ---
 
