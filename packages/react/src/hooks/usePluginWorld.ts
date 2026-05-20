@@ -5,7 +5,12 @@
 import type { HostHandlers } from '@ubichill/sandbox';
 import type { ComponentInstance } from '@ubichill/shared';
 import { useEffect, useMemo, useRef } from 'react';
-import { collectSubtreeGameObjectIds, isVisibleInScope, type WatchScope } from '../lib/entityScope';
+import {
+    collectAncestorGameObjectIds,
+    collectSubtreeGameObjectIds,
+    isVisibleInScope,
+    type WatchScope,
+} from '../lib/entityScope';
 import { useWorld } from './useWorld';
 
 export function usePluginWorld(
@@ -24,13 +29,15 @@ export function usePluginWorld(
         entitiesRef.current = entities;
     });
 
-    const subtreeIds = useMemo(
-        () => (scope === 'subtree' && entityId ? collectSubtreeGameObjectIds(entities.values(), entityId) : null),
-        [entities, scope, entityId],
-    );
-    const subtreeIdsRef = useRef(subtreeIds);
+    const scopedIds = useMemo(() => {
+        if (!entityId) return null;
+        if (scope === 'subtree') return collectSubtreeGameObjectIds(entities.values(), entityId);
+        if (scope === 'parent') return collectAncestorGameObjectIds(entities.values(), entityId);
+        return null;
+    }, [entities, scope, entityId]);
+    const scopedIdsRef = useRef(scopedIds);
     useEffect(() => {
-        subtreeIdsRef.current = subtreeIds;
+        scopedIdsRef.current = scopedIds;
     });
 
     const scopeRef = useRef({ scope, entityId });
@@ -39,7 +46,7 @@ export function usePluginWorld(
     });
 
     const isVisible = (e: ComponentInstance): boolean =>
-        isVisibleInScope(e, scopeRef.current.scope, scopeRef.current.entityId, subtreeIdsRef.current);
+        isVisibleInScope(e, scopeRef.current.scope, scopeRef.current.entityId, scopedIdsRef.current);
 
     return {
         onGetEntity: (id: string): ComponentInstance | undefined => {

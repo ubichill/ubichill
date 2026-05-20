@@ -2,12 +2,17 @@
  * usePluginEntitySync
  *
  * watchEntityTypes に一致するエンティティの変化を EVT_ENTITY_WATCH として Worker へ転送する。
- * watchScope に応じて可視範囲を絞る ('entity' / 'subtree' / 'world')。
+ * watchScope に応じて可視範囲を絞る ('entity' / 'subtree' / 'parent' / 'world')。
  */
 
 import type { ComponentInstance, PluginHostEvent } from '@ubichill/shared';
 import { useEffect, useMemo, useRef } from 'react';
-import { collectSubtreeGameObjectIds, isVisibleInScope, type WatchScope } from '../lib/entityScope';
+import {
+    collectAncestorGameObjectIds,
+    collectSubtreeGameObjectIds,
+    isVisibleInScope,
+    type WatchScope,
+} from '../lib/entityScope';
 import type { WorkerPluginDefinition } from '../types';
 
 export function usePluginEntitySync(
@@ -19,10 +24,12 @@ export function usePluginEntitySync(
 ): void {
     const watchTypes = definition.watchEntityTypes;
     const scope: WatchScope = definition.watchScope ?? 'subtree';
-    const subtreeIds = useMemo(
-        () => (scope === 'subtree' && entityId ? collectSubtreeGameObjectIds(entities.values(), entityId) : null),
-        [entities, scope, entityId],
-    );
+    const scopedIds = useMemo(() => {
+        if (!entityId) return null;
+        if (scope === 'subtree') return collectSubtreeGameObjectIds(entities.values(), entityId);
+        if (scope === 'parent') return collectAncestorGameObjectIds(entities.values(), entityId);
+        return null;
+    }, [entities, scope, entityId]);
     const prevEntitiesRef = useRef<Map<string, ComponentInstance>>(new Map());
     const prevWorkerRevisionRef = useRef(-1);
 
@@ -34,12 +41,12 @@ export function usePluginEntitySync(
 
         for (const [id, e] of entities) {
             if (!typeSet.has(e.type)) continue;
-            if (!isVisibleInScope(e, scope, entityId, subtreeIds)) continue;
+            if (!isVisibleInScope(e, scope, entityId, scopedIds)) continue;
             const prev = prevEntitiesRef.current.get(id);
             if (workerChanged || prev !== e) {
                 sendEvent({ type: 'EVT_ENTITY_WATCH', payload: { entityType: e.type, entity: e } });
             }
         }
         prevEntitiesRef.current = new Map(entities);
-    }, [entities, watchTypes, scope, entityId, subtreeIds, sendEvent, workerRevision]);
+    }, [entities, watchTypes, scope, entityId, scopedIds, sendEvent, workerRevision]);
 }

@@ -49,9 +49,10 @@ export interface WorkerPluginDefinition {
      * watchEntityTypes / queryEntities のスコープ。
      * 'entity'  : 同じ GameObject 内のみ。
      * 'subtree' : 自 GameObject + その子孫 (default、Unity の GetComponentsInChildren 相当)。
+     * 'parent'  : 自 GameObject + その祖先 (子から親 Component を読む場合)。
      * 'world'   : ワールド全体。
      */
-    watchScope?: 'entity' | 'subtree' | 'world';
+    watchScope?: 'entity' | 'subtree' | 'parent' | 'world';
     /** プラグインアセット相対パスのサムネ画像 (エディタ表示用)。 */
     thumbnail?: string;
     /**

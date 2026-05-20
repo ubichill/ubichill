@@ -1,11 +1,13 @@
 import type { InitialEntity } from '@ubichill/shared';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { css } from '@/styled-system/css';
 import { COMPONENT_DRAG_MIME } from '../lib/dnd';
 import { type EntityPath, pathKey } from '../lib/entityTree';
 
 const ENTITY_DRAG_MIME = 'application/x-ubichill-entity-path';
 const INDENT_PX = 16;
+/** dragOverKey の特別値: ヒエラルキー余白 (ルートへの drop)。 */
+const ROOT_DROP_KEY = '__root__';
 
 interface EditorHierarchyProps {
     entities: InitialEntity[];
@@ -40,14 +42,22 @@ export function EditorHierarchy({
     onMoveEntity,
     onEnterChild,
 }: EditorHierarchyProps) {
-    // root 余白への drop でルートに移動
-    const [rootDragOver, setRootDragOver] = useState(false);
-    const acceptEntityDrag = (e: React.DragEvent) => {
-        if (e.dataTransfer.types.includes(ENTITY_DRAG_MIME)) {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
-            setRootDragOver(true);
-        }
+    // ドラッグ中にハイライトする drop ターゲットの key (path-key または ROOT_DROP_KEY)。
+    // 1 つだけ保持するので state が滞留しない。dragend で必ず null にする。
+    const [dragOverKey, setDragOverKey] = useState<string | null>(null);
+    const clearDragHover = useCallback(() => setDragOverKey(null), []);
+    useEffect(() => {
+        // dragend は source 上で発火しバブルするので window で全部受け取れる。
+        // ドロップ成功/失敗/Esc キャンセル すべてで発火する → 滞留を防ぐ唯一の信頼できる経路。
+        window.addEventListener('dragend', clearDragHover);
+        return () => window.removeEventListener('dragend', clearDragHover);
+    }, [clearDragHover]);
+
+    const acceptRootDrag = (e: React.DragEvent) => {
+        if (!e.dataTransfer.types.includes(ENTITY_DRAG_MIME)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        setDragOverKey(ROOT_DROP_KEY);
     };
 
     return (
@@ -116,25 +126,26 @@ export function EditorHierarchy({
                     overflowX: 'hidden',
                     padding: '4px',
                     minH: 0,
-                    bg: rootDragOver ? 'primarySubtle' : 'transparent',
-                    transition: 'background 0.1s',
+                    outline: '2px dashed transparent',
+                    outlineOffset: '-4px',
                     '&::-webkit-scrollbar': { width: '6px' },
                     '&::-webkit-scrollbar-thumb': { backgroundColor: 'primarySubtle', borderRadius: '3px' },
                 })}
+                style={{
+                    outlineColor: dragOverKey === ROOT_DROP_KEY ? 'var(--colors-primary, #007aff)' : 'transparent',
+                }}
                 onClick={(e) => {
-                    // 余白クリックで選択解除
                     if (e.target === e.currentTarget) onSelectEntity(null);
                 }}
-                onDragOver={acceptEntityDrag}
-                onDragLeave={() => setRootDragOver(false)}
+                onDragOver={acceptRootDrag}
+                onDragEnter={acceptRootDrag}
                 onDrop={(e) => {
                     const fromKey = e.dataTransfer.getData(ENTITY_DRAG_MIME);
-                    setRootDragOver(false);
+                    setDragOverKey(null);
                     if (!fromKey) return;
                     e.preventDefault();
                     e.stopPropagation();
-                    const from = fromKey.split('-').map(Number);
-                    onMoveEntity(from, null);
+                    onMoveEntity(fromKey.split('-').map(Number), null);
                 }}
             >
                 {entities.length === 0 ? (
@@ -159,6 +170,8 @@ export function EditorHierarchy({
                             hiddenPaths={hiddenPaths}
                             selectedPath={selectedPath}
                             selectedComponentIndex={selectedComponentIndex}
+                            dragOverKey={dragOverKey}
+                            setDragOverKey={setDragOverKey}
                             onSelectEntity={onSelectEntity}
                             onSelectComponent={onSelectComponent}
                             onCreateEmptyEntity={onCreateEmptyEntity}
@@ -187,9 +200,9 @@ interface EntityNodeProps extends Omit<EditorHierarchyProps, 'entities'> {
     path: EntityPath;
     depth: number;
     ancestorHidden: boolean;
+    dragOverKey: string | null;
+    setDragOverKey: (key: string | null) => void;
 }
-
-type DropZone = 'before' | 'into' | 'after' | null;
 
 function EntityNode({
     entity,
@@ -199,6 +212,8 @@ function EntityNode({
     hiddenPaths,
     selectedPath,
     selectedComponentIndex,
+    dragOverKey,
+    setDragOverKey,
     onSelectEntity,
     onSelectComponent,
     onCreateEmptyEntity,
@@ -209,40 +224,45 @@ function EntityNode({
     onMoveEntity,
     onEnterChild,
 }: EntityNodeProps) {
-    const [componentDragOver, setComponentDragOver] = useState(false);
-    const [entityDropZone, setEntityDropZone] = useState<DropZone>(null);
     const [open, setOpen] = useState(true);
 
+    const myKey = pathKey(path);
+    const isDropTarget = dragOverKey === myKey;
     const hasFocus = pathsEqual(selectedPath, path);
     const selectedEntityOnly = hasFocus && selectedComponentIndex === null;
-    const selfHidden = hiddenPaths.has(pathKey(path));
+    const selfHidden = hiddenPaths.has(myKey);
     const effectivelyHidden = selfHidden || ancestorHidden;
-
-    const acceptComponentDrag = (e: React.DragEvent) => {
-        if (e.dataTransfer.types.includes(COMPONENT_DRAG_MIME)) {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'copy';
-            setComponentDragOver(true);
-        }
-    };
-
-    const acceptEntityDrag = (e: React.DragEvent) => {
-        if (!e.dataTransfer.types.includes(ENTITY_DRAG_MIME)) return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-        const ratio = (e.clientY - rect.top) / rect.height;
-        const zone: DropZone = ratio < 0.25 ? 'before' : ratio > 0.75 ? 'after' : 'into';
-        setEntityDropZone(zone);
-    };
 
     const w = entity.transform.w ?? 0;
     const h = entity.transform.h ?? 0;
     const sizeBadge = w > 0 && h > 0 ? `${w}×${h}` : '—';
     const hasChildren = (entity.children?.length ?? 0) > 0;
 
+    // ドラッグ中にこの行を「自分が target」と表明する。
+    // 別の行に移ったら、その行が setDragOverKey で上書きするので滞留しない。
+    const acceptDrag = (e: React.DragEvent) => {
+        const types = e.dataTransfer.types;
+        if (!types.includes(ENTITY_DRAG_MIME) && !types.includes(COMPONENT_DRAG_MIME)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = types.includes(COMPONENT_DRAG_MIME) ? 'copy' : 'move';
+        if (dragOverKey !== myKey) setDragOverKey(myKey);
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        const ctype = e.dataTransfer.getData(COMPONENT_DRAG_MIME);
+        const fromKey = e.dataTransfer.getData(ENTITY_DRAG_MIME);
+        setDragOverKey(null);
+        e.preventDefault();
+        e.stopPropagation();
+        if (ctype) {
+            onDropComponent(path, ctype);
+        } else if (fromKey) {
+            onMoveEntity(fromKey.split('-').map(Number), path);
+        }
+    };
+
     const handleRowClick = () => {
-        // 既に選択中の親をクリックしたら最初の子に降りる (Figma 風 enter-into)
         if (selectedEntityOnly && hasChildren && open) {
             onEnterChild(path);
             return;
@@ -251,14 +271,8 @@ function EntityNode({
         onSelectComponent(null);
     };
 
-    const handleRowDoubleClick = () => {
-        if (hasChildren) onEnterChild(path);
-    };
-
     return (
         <div className={css({ display: 'flex', flexDirection: 'column' })}>
-            {/* drop zone (before) */}
-            {entityDropZone === 'before' && <DropLine indentPx={4 + depth * INDENT_PX} />}
             <div
                 className={css({
                     display: 'flex',
@@ -267,62 +281,28 @@ function EntityNode({
                     padding: '6px 8px',
                     borderRadius: '6px',
                     cursor: 'pointer',
-                    bg: selectedEntityOnly
-                        ? 'primary'
-                        : componentDragOver || entityDropZone === 'into'
-                          ? 'primarySubtle'
-                          : 'transparent',
+                    bg: selectedEntityOnly ? 'primary' : 'transparent',
                     color: selectedEntityOnly ? 'textOnPrimary' : 'text',
                     opacity: effectivelyHidden ? 0.45 : 1,
-                    outline: componentDragOver || entityDropZone === 'into' ? '1px dashed' : 'none',
+                    // ドロップ可なら outline だけで示す。bg/opacity は変えない (滞留時の暗さ回避)。
+                    outline: isDropTarget ? '2px solid' : 'none',
                     outlineColor: 'primary',
+                    outlineOffset: '-2px',
                     _hover: { bg: selectedEntityOnly ? 'primary' : 'surfaceHover' },
                 })}
                 style={{ paddingLeft: 8 + depth * INDENT_PX }}
                 draggable
                 onDragStart={(e) => {
-                    e.dataTransfer.setData(ENTITY_DRAG_MIME, pathKey(path));
+                    e.dataTransfer.setData(ENTITY_DRAG_MIME, myKey);
                     e.dataTransfer.effectAllowed = 'move';
                 }}
-                onDragOver={(e) => {
-                    if (e.dataTransfer.types.includes(COMPONENT_DRAG_MIME)) acceptComponentDrag(e);
-                    else acceptEntityDrag(e);
-                }}
-                onDragEnter={(e) => {
-                    if (e.dataTransfer.types.includes(COMPONENT_DRAG_MIME)) acceptComponentDrag(e);
-                    else acceptEntityDrag(e);
-                }}
-                onDragLeave={() => {
-                    setComponentDragOver(false);
-                    setEntityDropZone(null);
-                }}
-                onDrop={(e) => {
-                    const ctype = e.dataTransfer.getData(COMPONENT_DRAG_MIME);
-                    if (ctype) {
-                        setComponentDragOver(false);
-                        e.preventDefault();
-                        e.stopPropagation();
-                        onDropComponent(path, ctype);
-                        return;
-                    }
-                    const fromKey = e.dataTransfer.getData(ENTITY_DRAG_MIME);
-                    if (fromKey) {
-                        const zone = entityDropZone;
-                        setEntityDropZone(null);
-                        e.preventDefault();
-                        e.stopPropagation();
-                        const from = fromKey.split('-').map(Number);
-                        if (zone === 'into') {
-                            onMoveEntity(from, path);
-                        } else {
-                            // before/after: 兄弟として挿入 (= 親の子の指定位置)。簡素化: into のみサポート。
-                            // before/after は parentPath + sibling 位置だが Stage 4 で。今は「into」へ寄せる。
-                            onMoveEntity(from, path);
-                        }
-                    }
-                }}
+                onDragOver={acceptDrag}
+                onDragEnter={acceptDrag}
+                onDrop={handleDrop}
                 onClick={handleRowClick}
-                onDoubleClick={handleRowDoubleClick}
+                onDoubleClick={() => {
+                    if (hasChildren) onEnterChild(path);
+                }}
             >
                 <button
                     type="button"
@@ -413,8 +393,6 @@ function EntityNode({
                     ×
                 </button>
             </div>
-            {/* drop zone (after) */}
-            {entityDropZone === 'after' && <DropLine indentPx={4 + depth * INDENT_PX} />}
             {open && (
                 <div
                     className={css({
@@ -423,7 +401,6 @@ function EntityNode({
                         position: 'relative',
                     })}
                 >
-                    {/* tree 縦線 (子があるときだけ表示) */}
                     {(hasChildren || entity.components.length > 0) && (
                         <div
                             className={css({
@@ -465,6 +442,8 @@ function EntityNode({
                             hiddenPaths={hiddenPaths}
                             selectedPath={selectedPath}
                             selectedComponentIndex={selectedComponentIndex}
+                            dragOverKey={dragOverKey}
+                            setDragOverKey={setDragOverKey}
                             onSelectEntity={onSelectEntity}
                             onSelectComponent={onSelectComponent}
                             onCreateEmptyEntity={onCreateEmptyEntity}
@@ -515,16 +494,7 @@ function ComponentRow({
             style={{ paddingLeft: indentPx }}
         >
             <ComponentDotIcon />
-            <span
-                className={css({
-                    flex: 1,
-                    fontSize: '11px',
-                    fontWeight: '500',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                })}
-            >
+            <span className={css({ flex: 1, fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis' })}>
                 {type}
             </span>
             <button
@@ -540,21 +510,6 @@ function ComponentRow({
                 ×
             </button>
         </div>
-    );
-}
-
-function DropLine({ indentPx }: { indentPx: number }) {
-    return (
-        <div
-            className={css({
-                height: '2px',
-                bg: 'primary',
-                borderRadius: '1px',
-                margin: '0 4px',
-            })}
-            style={{ marginLeft: indentPx }}
-            aria-hidden
-        />
     );
 }
 
@@ -621,6 +576,7 @@ function PlusIcon() {
             fill="none"
             stroke="currentColor"
             strokeWidth="3"
+            strokeLinecap="round"
             aria-hidden="true"
         >
             <path d="M12 5v14M5 12h14" />
@@ -630,8 +586,8 @@ function PlusIcon() {
 
 function ComponentDotIcon() {
     return (
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" aria-hidden="true">
-            <circle cx="5" cy="5" r="3" />
+        <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden="true">
+            <circle cx="4" cy="4" r="3" fill="currentColor" />
         </svg>
     );
 }

@@ -75,6 +75,7 @@ export type ComponentDataFieldSpec = z.infer<typeof ComponentDataFieldSpecSchema
  * - `watchScope`:
  *   - 'entity'   : 自 GameObject 内のみ
  *   - 'subtree'  : 自 GameObject + その子孫 (default、Unity の GetComponentsInChildren 相当)
+ *   - 'parent'   : 自 GameObject + その祖先 (子から親の Component を読む場合に使用)
  *   - 'world'    : ワールド全体
  * - `thumbnail`: アセット相対パス。エディタで Component カードに表示するプレビュー画像。
  */
@@ -86,7 +87,7 @@ export const ComponentManifestEntrySchema = z.object({
     mediaTargets: z.array(z.string()).optional(),
     fetchDomains: z.array(z.string()).optional(),
     watchEntityTypes: z.array(z.string()).optional(),
-    watchScope: z.enum(['entity', 'subtree', 'world']).optional(),
+    watchScope: z.enum(['entity', 'subtree', 'parent', 'world']).optional(),
     thumbnail: z.string().optional(),
     defaultTransform: TransformSchema.partial().optional(),
     dataFields: z.record(z.string(), ComponentDataFieldSpecSchema).optional(),

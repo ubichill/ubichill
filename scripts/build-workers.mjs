@@ -23,7 +23,7 @@
 
 import * as esbuild from 'esbuild';
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -48,6 +48,21 @@ function copyDirRecursive(src, dest) {
         } else {
             copyFileSync(srcPath, destPath);
         }
+    }
+}
+
+/**
+ * Component ディレクトリから古いハッシュ付きバンドル (`index.*.js`) を削除する。
+ * manifest が古いバンドルを参照していたブラウザキャッシュを段階的に剥がせる
+ * ように 1 つだけ残してもよいが、CDN を汚さないため keepFilename 以外は削除。
+ */
+function cleanOldBundles(dir, keepFilename) {
+    if (!existsSync(dir)) return;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (!entry.isFile()) continue;
+        if (entry.name === keepFilename) continue;
+        if (!/^index\.[a-f0-9]+\.js$/.test(entry.name)) continue;
+        rmSync(join(dir, entry.name));
     }
 }
 
@@ -168,11 +183,13 @@ export async function buildWorker(pluginJsonPath) {
         // dist: バージョン固定
         const distComponentDir = join(distVersionDir, componentName);
         mkdirSync(distComponentDir, { recursive: true });
+        cleanOldBundles(distComponentDir, outFilename);
         writeFileSync(join(distComponentDir, outFilename), code, 'utf-8');
 
         // public: バージョン固定パス（CDN キャッシュバスティング用）
         const publicComponentDir = join(publicVersionDir, componentName);
         mkdirSync(publicComponentDir, { recursive: true });
+        cleanOldBundles(publicComponentDir, outFilename);
         writeFileSync(join(publicComponentDir, outFilename), code, 'utf-8');
 
         // workerUrl を明示、src（ビルド時のみ）は除去

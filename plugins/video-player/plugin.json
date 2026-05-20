@@ -5,9 +5,10 @@
   "components": {
     "screen": {
       "src": "./src/screen.worker.tsx",
-      "capabilities": ["video:control", "scene:read", "scene:update", "net:broadcast"],
+      "capabilities": ["video:control", "ui:render", "scene:read", "scene:update", "net:broadcast"],
       "mediaTargets": ["main"],
       "watchEntityTypes": ["video-player:screen"],
+      "watchScope": "entity",
       "defaultTransform": { "x": 800, "y": 60, "z": 2, "w": 640, "h": 360 },
       "dataFields": {
         "playlist": {
@@ -32,14 +33,30 @@
             "default": "/plugins/video-player/api",
             "label": "API ベース URL"
         }
-      }
+    }
     },
     "controls": {
       "src": "./src/controls.worker.tsx",
-      "capabilities": ["ui:render", "net:fetch", "scene:read", "scene:update"],
-      "mediaTargets": [],
+      "capabilities": ["ui:render", "scene:read", "scene:update"],
       "watchEntityTypes": ["video-player:screen"],
-      "defaultTransform": { "x": 800, "y": 800, "z": 200, "w": 740, "h": 100 },
+      "watchScope": "parent",
+      "defaultTransform": { "x": 0, "y": 0, "z": 200, "w": 640, "h": 60 },
+      "dataFields": {}
+    },
+    "playlist": {
+      "src": "./src/playlist.worker.tsx",
+      "capabilities": ["ui:render", "scene:read", "scene:update"],
+      "watchEntityTypes": ["video-player:screen"],
+      "watchScope": "parent",
+      "defaultTransform": { "x": 0, "y": 0, "z": 200, "w": 320, "h": 360 },
+      "dataFields": {}
+    },
+    "search": {
+      "src": "./src/search.worker.tsx",
+      "capabilities": ["ui:render", "scene:read", "scene:update", "net:fetch"],
+      "watchEntityTypes": ["video-player:screen"],
+      "watchScope": "parent",
+      "defaultTransform": { "x": 0, "y": 0, "z": 200, "w": 320, "h": 360 },
       "dataFields": {}
     }
   }

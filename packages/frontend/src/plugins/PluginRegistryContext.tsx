@@ -35,8 +35,8 @@ interface WorkerMetaObject {
     singleton?: boolean;
     canvasTargets?: string[];
     watchEntityTypes?: string[];
-    /** 'entity' | 'subtree' (default) | 'world' */
-    watchScope?: 'entity' | 'subtree' | 'world';
+    /** 'entity' | 'subtree' (default) | 'parent' | 'world' */
+    watchScope?: 'entity' | 'subtree' | 'parent' | 'world';
     /** アセット相対パス */
     thumbnail?: string;
     mediaTargets?: string[];
@@ -86,7 +86,9 @@ function fetchVersionedManifest(pluginName: string, version: string): Promise<Ve
     if (!versionedManifestCache.has(key)) {
         versionedManifestCache.set(
             key,
-            fetch(`${PLUGIN_BASE_URL}/${pluginName}/v${version}/manifest.json`)
+            // cache: 'no-store' — manifest はビルド毎に workerUrl のハッシュが変わるため、
+            // 開発時に古いハッシュ参照を掴まされないようブラウザキャッシュを必ず迂回する。
+            fetch(`${PLUGIN_BASE_URL}/${pluginName}/v${version}/manifest.json`, { cache: 'no-store' })
                 .then((r) => (r.ok ? (r.json() as Promise<VersionedPluginJson>) : null))
                 .catch(() => null),
         );

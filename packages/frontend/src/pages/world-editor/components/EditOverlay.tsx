@@ -36,6 +36,9 @@ export function EditOverlay({
     onDropComponent,
 }: EditOverlayProps) {
     const [drag, setDrag] = useState<DragState | null>(null);
+    // Component drop hover: ハイライト中の 1 entity の path-key のみ保持。
+    // dragend で必ず null に戻す → 滞留しない。
+    const [dropHoverKey, setDropHoverKey] = useState<string | null>(null);
 
     useEffect(() => {
         if (!drag) return;
@@ -52,6 +55,12 @@ export function EditOverlay({
             window.removeEventListener('mouseup', onUp);
         };
     }, [drag, onPatchTransform, snapStep, worldSize]);
+
+    useEffect(() => {
+        const clear = () => setDropHoverKey(null);
+        window.addEventListener('dragend', clear);
+        return () => window.removeEventListener('dragend', clear);
+    }, []);
 
     // 祖先が hidden ならスキップ
     const isHiddenByAncestor = (path: EntityPath): boolean => {
@@ -80,7 +89,9 @@ export function EditOverlay({
                 const w = t.w ?? 0;
                 const h = t.h ?? 0;
                 const sizeless = w <= 0 || h <= 0;
+                const key = node.path.join('-');
                 const selected = !!selectedPath && pathsEqual(selectedPath, node.path);
+                const isDropTarget = dropHoverKey === key;
                 const handleMouseDown = (ev: React.MouseEvent, mode: DragMode) => {
                     ev.stopPropagation();
                     onSelect(node.path);
@@ -88,35 +99,39 @@ export function EditOverlay({
                         path: node.path,
                         mode,
                         startClient: { x: ev.clientX, y: ev.clientY },
-                        // ドラッグの x/y 起点は「保存される値」(= 親基準) のままで OK。
                         startTransform: { x: t.x, y: t.y, w: sizeless ? 0 : w, h: sizeless ? 0 : h },
                     });
                 };
                 const onDropType = (type: string) => onDropComponent(node.path, type);
+                const onHover = () => setDropHoverKey(key);
                 if (sizeless) {
                     return (
                         <SizelessChip
-                            key={node.path.join('-')}
+                            key={key}
                             entity={node.entity}
                             absX={node.absX}
                             absY={node.absY}
                             absZ={node.absZ}
                             selected={selected}
+                            isDropTarget={isDropTarget}
                             onMouseDownEntity={(ev) => handleMouseDown(ev, 'move')}
                             onDropType={onDropType}
+                            onHover={onHover}
                         />
                     );
                 }
                 return (
                     <EntityHandle
-                        key={node.path.join('-')}
+                        key={key}
                         entity={node.entity}
                         absX={node.absX}
                         absY={node.absY}
                         absZ={node.absZ}
                         selected={selected}
+                        isDropTarget={isDropTarget}
                         onMouseDownEntity={handleMouseDown}
                         onDropType={onDropType}
+                        onHover={onHover}
                     />
                 );
             })}
@@ -135,35 +150,40 @@ function EntityHandle({
     absY,
     absZ,
     selected,
+    isDropTarget,
     onMouseDownEntity,
     onDropType,
+    onHover,
 }: {
     entity: InitialEntity;
     absX: number;
     absY: number;
     absZ: number;
     selected: boolean;
+    isDropTarget: boolean;
     onMouseDownEntity: (ev: React.MouseEvent, mode: DragMode) => void;
     onDropType: (type: string) => void;
+    onHover: () => void;
 }) {
     const t = entity.transform;
     const w = t.w ?? 0;
     const h = t.h ?? 0;
-    const [dragOver, setDragOver] = useState(false);
     return (
         <div
             onMouseDown={(e) => onMouseDownEntity(e, 'move')}
             onDragOver={(e) => {
-                if (e.dataTransfer.types.includes(COMPONENT_DRAG_MIME)) {
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = 'copy';
-                    setDragOver(true);
-                }
+                if (!e.dataTransfer.types.includes(COMPONENT_DRAG_MIME)) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+                onHover();
             }}
-            onDragLeave={() => setDragOver(false)}
+            onDragEnter={(e) => {
+                if (!e.dataTransfer.types.includes(COMPONENT_DRAG_MIME)) return;
+                e.preventDefault();
+                onHover();
+            }}
             onDrop={(e) => {
                 const type = e.dataTransfer.getData(COMPONENT_DRAG_MIME);
-                setDragOver(false);
                 if (!type) return;
                 e.preventDefault();
                 onDropType(type);
@@ -174,8 +194,8 @@ function EntityHandle({
                 pointerEvents: 'auto',
                 userSelect: 'none',
                 outlineOffset: '-1px',
-                outline: selected || dragOver ? '2px solid' : '1.5px dashed',
-                outlineColor: dragOver ? 'success' : selected ? 'primary' : 'selectionDashed',
+                outline: selected || isDropTarget ? '2px solid' : '1.5px dashed',
+                outlineColor: isDropTarget ? 'success' : selected ? 'primary' : 'selectionDashed',
                 bg: selected ? 'primarySubtle' : 'transparent',
             })}
             style={{
@@ -205,32 +225,37 @@ function SizelessChip({
     absY,
     absZ,
     selected,
+    isDropTarget,
     onMouseDownEntity,
     onDropType,
+    onHover,
 }: {
     entity: InitialEntity;
     absX: number;
     absY: number;
     absZ: number;
     selected: boolean;
+    isDropTarget: boolean;
     onMouseDownEntity: (ev: React.MouseEvent) => void;
     onDropType: (type: string) => void;
+    onHover: () => void;
 }) {
-    const [dragOver, setDragOver] = useState(false);
     return (
         <div
             onMouseDown={onMouseDownEntity}
             onDragOver={(e) => {
-                if (e.dataTransfer.types.includes(COMPONENT_DRAG_MIME)) {
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = 'copy';
-                    setDragOver(true);
-                }
+                if (!e.dataTransfer.types.includes(COMPONENT_DRAG_MIME)) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+                onHover();
             }}
-            onDragLeave={() => setDragOver(false)}
+            onDragEnter={(e) => {
+                if (!e.dataTransfer.types.includes(COMPONENT_DRAG_MIME)) return;
+                e.preventDefault();
+                onHover();
+            }}
             onDrop={(e) => {
                 const type = e.dataTransfer.getData(COMPONENT_DRAG_MIME);
-                setDragOver(false);
                 if (!type) return;
                 e.preventDefault();
                 onDropType(type);
@@ -243,7 +268,7 @@ function SizelessChip({
                 pointerEvents: 'auto',
                 bg: selected ? 'chipBgActive' : 'chipBg',
                 border: '2px solid',
-                borderColor: dragOver ? 'success' : 'white',
+                borderColor: isDropTarget ? 'success' : 'white',
                 borderRadius: '50%',
                 userSelect: 'none',
                 display: 'flex',
