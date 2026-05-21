@@ -10,6 +10,8 @@ import type {
 import { _beginRender, _callHandler, _clearTarget } from '../jsx/jsx-runtime';
 import type { CanvasModule } from './canvas';
 import { createCanvasModule } from './canvas';
+import type { EntityModule } from './entity';
+import { createEntityModule } from './entity';
 import type { EventModule } from './event';
 import { createEventModule } from './event';
 import type { MediaModule } from './media';
@@ -98,6 +100,7 @@ export class UbiSDK {
     public readonly canvas: CanvasModule;
     public readonly player: PlayerModule;
     public readonly world: WorldModule;
+    public readonly entity: EntityModule;
 
     constructor(postMessage: (cmd: PluginGuestCommand) => void, options?: { rpcTimeout?: number }) {
         this._sendToHost = postMessage;
@@ -134,6 +137,11 @@ export class UbiSDK {
         this.event = createEventModule(send);
         this.media = createMediaModule(send);
         this.canvas = createCanvasModule(send);
+        this.entity = createEntityModule(
+            this.world,
+            () => this.componentInstanceId,
+            () => this.entityId,
+        );
     }
 
     // ── Top-level shortcuts ──────────────────────────────────
