@@ -60,6 +60,14 @@ export type PluginWorkerHandlers<TPayloadMap extends Record<string, unknown> = R
     onQueryEntities?: (entityType: string) => import('@ubichill/shared').ComponentInstance[];
     /** Worker が Ubi.network.broadcast() で送ったデータを受信したときに発火する */
     onNetworkBroadcast?: (type: string, data: unknown) => void;
+    /** Worker が Ubi.event.emit() を呼んだときに発火する。Host 側でクロス Worker ルーティングする。 */
+    onEventEmit?: (
+        type: string,
+        data: unknown,
+        scope: 'siblings' | 'parent' | 'children' | 'subtree' | 'world',
+        targetType: string | undefined,
+        senderComponentInstanceId: string | undefined,
+    ) => void;
     /** Worker が Ubi.log() を呼んだときに発火する */
     onLog?: (level: 'debug' | 'info' | 'warn' | 'error', message: string) => void;
     /** Worker が Ubi.world.createEntity() を呼んだときに発火する */
@@ -126,6 +134,7 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
             pluginId: options.pluginId,
             componentInstanceId: options.componentInstanceId,
             entityId: options.entityId,
+            parentEntityId: options.parentEntityId,
             componentType: options.componentType,
             capabilities: options.capabilities,
             maxExecutionTime: options.maxExecutionTime,
@@ -159,6 +168,8 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
                 onEntityGetChildren: (entityType) => handlersRef.current.onEntityGetChildren?.(entityType) ?? [],
                 onEntityQuerySubtree: (entityType) => handlersRef.current.onEntityQuerySubtree?.(entityType) ?? [],
                 onNetworkBroadcast: (type, data) => handlersRef.current.onNetworkBroadcast?.(type, data),
+                onEventEmit: (type, data, scope, targetType, senderId) =>
+                    handlersRef.current.onEventEmit?.(type, data, scope, targetType, senderId),
                 onLog: (level, message, prefix) => {
                     if (handlersRef.current.onLog) {
                         handlersRef.current.onLog(level, message);
@@ -192,6 +203,7 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
         options.pluginId,
         options.componentInstanceId,
         options.entityId,
+        options.parentEntityId,
         options.componentType,
         options.capabilities,
         options.maxExecutionTime,

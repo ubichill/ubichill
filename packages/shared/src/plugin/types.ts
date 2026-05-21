@@ -143,6 +143,23 @@ export type CmdNetworkBroadcast = {
 };
 
 /**
+ * Ubi.event.emit(type, data, { scope, targetType })
+ * Fire & Forget: 同 tab 内の他 Worker (siblings / parent / children / world スコープ) に
+ * Component type フィルタ付きで type 付きイベントを送る。受信側は WorkerEvent として届く。
+ * capability: 'net:emit' が必要。
+ */
+export type CmdEventEmit = {
+    type: 'EVENT_EMIT';
+    payload: {
+        type: string;
+        data: unknown;
+        scope: 'siblings' | 'parent' | 'children' | 'subtree' | 'world';
+        /** 受信側 Component type フィルタ ("pluginId:componentName")。省略時は scope 内の全 Component。 */
+        targetType?: string;
+    };
+};
+
+/**
  * Ubi.ui.showToast(text)
  * Fire & Forget: 画面にトースト通知を表示します。
  */
@@ -361,6 +378,7 @@ export type PluginGuestCommand =
     | CmdCanvasCommitStroke
     | CmdNetworkSendToHost
     | CmdNetworkBroadcast
+    | CmdEventEmit
     | CmdUiShowToast
     | CmdUiRender
     | CmdAvatarSet

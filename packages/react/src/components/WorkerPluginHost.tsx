@@ -7,6 +7,7 @@
  * - definition.onHostMessage を通じたカスタムメッセージのプラグイン側委譲
  */
 
+import { PluginHostManager } from '@ubichill/sandbox';
 import type { ComponentInstance, CursorState } from '@ubichill/shared';
 import type React from 'react';
 import { useEffect, useMemo, useRef } from 'react';
@@ -89,6 +90,7 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
         pluginId: definition.id,
         componentInstanceId: entityId,
         entityId: entity.entityId,
+        parentEntityId: entity.parentEntityId,
         componentType: entity.type,
         capabilities: definition.capabilities,
         myUserId: currentUser?.id,
@@ -103,6 +105,14 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
             onRender,
             onFetch,
             onNetworkBroadcast: (type, data) => onNetworkBroadcastRef.current?.(type, data),
+            onEventEmit: (type, data, scope, targetType, senderId) =>
+                PluginHostManager.routeEmit({
+                    senderComponentInstanceId: senderId,
+                    type,
+                    data,
+                    scope,
+                    targetType,
+                }),
             onMessage: (msg) => {
                 const m = msg as { type: string; payload: unknown };
                 if (m.type === 'position:update') {

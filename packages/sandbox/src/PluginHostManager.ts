@@ -44,6 +44,7 @@ export const CAPABILITY_COMMANDS: Readonly<Record<string, readonly string[]>> = 
     'net:fetch': ['NET_FETCH'],
     'net:broadcast': ['NETWORK_BROADCAST'],
     'net:host-message': ['NETWORK_SEND_TO_HOST'],
+    'net:emit': ['EVENT_EMIT'],
     'ui:toast': ['UI_SHOW_TOAST'],
     'ui:render': ['UI_RENDER'],
     'avatar:set': ['AVATAR_SET'],
@@ -80,6 +81,7 @@ const CMD_TO_HANDLER = {
     NET_FETCH: 'onFetch',
     NETWORK_SEND_TO_HOST: 'onMessage',
     NETWORK_BROADCAST: 'onNetworkBroadcast',
+    EVENT_EMIT: 'onEventEmit',
     UI_RENDER: 'onRender',
     CANVAS_FRAME: 'onCanvasFrame',
     CANVAS_COMMIT_STROKE: 'onCanvasCommitStroke',
@@ -115,6 +117,13 @@ export type HostHandlers<TPayloadMap extends Record<string, unknown> = Record<st
     onFetch?: (url: string, options?: FetchOptions) => Promise<FetchResult>;
     onMessage?: (msg: PluginWorkerMessage<TPayloadMap>) => void;
     onNetworkBroadcast?: (type: string, data: unknown) => void;
+    onEventEmit?: (
+        type: string,
+        data: unknown,
+        scope: 'siblings' | 'parent' | 'children' | 'subtree' | 'world',
+        targetType: string | undefined,
+        senderComponentInstanceId: string | undefined,
+    ) => void;
     onCommand?: (command: PluginGuestCommand) => void;
     /**
      * Worker が Ubi.ui.render() を呼ぶたびに発火する。
@@ -164,7 +173,12 @@ export type HostHandlers<TPayloadMap extends Record<string, unknown> = Record<st
 export interface PluginWorkerInfo {
     readonly pluginId: string;
     readonly componentInstanceId: string | undefined;
+    readonly entityId: string | undefined;
+    readonly parentEntityId: string | undefined;
+    readonly componentType: string | undefined;
     readonly startedAt: number;
+    /** @internal クロス Worker emit のための直接送信ハンドル。 */
+    readonly _sendEvent: (event: PluginHostEvent) => void;
 }
 
 export interface PluginHostManagerOptions<TPayloadMap extends Record<string, unknown> = Record<string, unknown>> {
@@ -176,6 +190,8 @@ export interface PluginHostManagerOptions<TPayloadMap extends Record<string, unk
     componentInstanceId?: string;
     /** 自 Worker が乗っている Entity (GameObject) の id。`Ubi.entityId` として参照可能。 */
     entityId?: string;
+    /** 自 Entity の親 Entity の id。emit ルーティング (parent / subtree) で使用。 */
+    parentEntityId?: string;
     /** この Worker が担当する Component 型 (`pluginId:componentName`)。Stage 2 で `Ubi.componentType` として公開予定。 */
     componentType?: string;
     /** プラグインアセットのベースURL（Worker で Ubi.pluginBase として参照可能） */
@@ -289,6 +305,68 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
     }
 
     /**
+     * `Ubi.event.emit(type, data, { scope, targetType })` の受信側へのルーティング。
+     * sender 以外で scope + targetType に一致する Worker 全てに `EVT_CUSTOM` で配送する。
+     */
+    static routeEmit(args: {
+        senderComponentInstanceId: string | undefined;
+        type: string;
+        data: unknown;
+        scope: 'siblings' | 'parent' | 'children' | 'subtree' | 'world';
+        targetType: string | undefined;
+    }): void {
+        const { senderComponentInstanceId, type, data, scope, targetType } = args;
+        const all = Array.from(PluginHostManager._registry.values());
+        const sender = all.find((w) => w.componentInstanceId === senderComponentInstanceId);
+
+        const matchesScope = (w: PluginWorkerInfo): boolean => {
+            switch (scope) {
+                case 'siblings':
+                    return !!sender?.entityId && w.entityId === sender.entityId;
+                case 'parent':
+                    return !!sender?.parentEntityId && w.entityId === sender.parentEntityId;
+                case 'children':
+                    return !!sender?.entityId && w.parentEntityId === sender.entityId;
+                case 'subtree':
+                    return !!sender?.entityId && PluginHostManager._isInSubtree(w, sender.entityId, all);
+                case 'world':
+                    return true;
+                default:
+                    return false;
+            }
+        };
+        const targets = all.filter((w) => {
+            if (w.componentInstanceId === senderComponentInstanceId) return false;
+            if (targetType && w.componentType !== targetType) return false;
+            return matchesScope(w);
+        });
+
+        for (const target of targets) {
+            target._sendEvent({
+                type: 'EVT_CUSTOM',
+                payload: { eventType: type, data },
+            });
+        }
+    }
+
+    /** w が rootEntityId をルートとする subtree (root + 子孫) に含まれるか。 */
+    private static _isInSubtree(w: PluginWorkerInfo, rootEntityId: string, all: PluginWorkerInfo[]): boolean {
+        if (w.entityId === rootEntityId) return true;
+        const parentOf = new Map<string, string | undefined>();
+        for (const info of all) {
+            if (info.entityId) parentOf.set(info.entityId, info.parentEntityId);
+        }
+        let cur: string | undefined = w.parentEntityId;
+        const seen = new Set<string>();
+        while (cur && !seen.has(cur)) {
+            if (cur === rootEntityId) return true;
+            seen.add(cur);
+            cur = parentOf.get(cur);
+        }
+        return false;
+    }
+
+    /**
      * テスト用: スタティックレジストリをリセットする。
      * テスト間でのレジストリ汚染を防ぐために使用する。
      * プロダクションコードから呼び出してはいけない。
@@ -377,7 +455,11 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
         PluginHostManager._registry.set(this._instanceKey, {
             pluginId: this._pluginId,
             componentInstanceId: options.componentInstanceId,
+            entityId: options.entityId,
+            parentEntityId: options.parentEntityId,
+            componentType: options.componentType,
             startedAt: performance.now(),
+            _sendEvent: (event) => this.sendEvent(event),
         });
 
         if (options.capabilities) {
@@ -595,6 +677,15 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
                     break;
                 case 'NETWORK_BROADCAST':
                     this.handlers.onNetworkBroadcast?.(command.payload.type, command.payload.data);
+                    break;
+                case 'EVENT_EMIT':
+                    this.handlers.onEventEmit?.(
+                        command.payload.type,
+                        command.payload.data,
+                        command.payload.scope,
+                        command.payload.targetType,
+                        PluginHostManager._registry.get(this._instanceKey)?.componentInstanceId,
+                    );
                     break;
                 case 'UI_RENDER':
                     this.handlers.onRender?.(command.payload.targetId, command.payload.vnode);
