@@ -50,15 +50,13 @@ type PendingRequest = {
  * Ubichill Plugin SDK のメインクラス。Sandbox Worker 内では `Ubi` として注入される。
  *
  * Public API surface:
- *   Ubi.state.*     — 宣言的リアクティブ状態 (persistent / persistMine / shared / topLevel)
- *   Ubi.event.*     — トリガー (sendToHost / broadcast)
+ *   Ubi.state.*     — 宣言的リアクティブ状態 (sync の options で挙動切替)
+ *   Ubi.event.*     — トリガー (sendToHost / broadcast / emit)
+ *   Ubi.entity.*    — エンティティ操作 (self / of(id) / query / get / spawn)
  *   Ubi.ui.*        — UI render / toast
  *   Ubi.media.*     — メディア再生 (video / audio / HLS)
  *   Ubi.canvas.*    — canvas 描画
  *   Ubi.player.*    — プレイヤー情報 (others / scroll / syncCursor)
- *   Ubi.world.*     — エンティティ get / query (CRUD は spawn / destroy 経由)
- *   Ubi.spawn(e)    — 新規エンティティ作成 (top-level shortcut)
- *   Ubi.destroy(id) — エンティティ削除
  *   Ubi.fetch(url)  — HTTP (whitelist 経由)
  *   Ubi.registerSystem(fn) — ECS System 登録
  *   Ubi.log(msg, level)
@@ -99,8 +97,9 @@ export class UbiSDK {
     public readonly media: MediaModule;
     public readonly canvas: CanvasModule;
     public readonly player: PlayerModule;
-    public readonly world: WorldModule;
     public readonly entity: EntityModule;
+    /** @internal Ubi.state / Ubi.entity の実装で使用。プラグインからは Ubi.entity 経由で操作する。 */
+    private readonly _world: WorldModule;
 
     constructor(postMessage: (cmd: PluginGuestCommand) => void, options?: { rpcTimeout?: number }) {
         this._sendToHost = postMessage;
@@ -112,10 +111,10 @@ export class UbiSDK {
 
         this.player = createPlayerModule(send, () => this.myUserId);
         this.ui = createUiModule(send, () => this._isTicking, _beginRender, _clearTarget);
-        this.world = createWorldModule(send, rpc);
+        this._world = createWorldModule(send, rpc);
         this.state = createStateModule({
             send,
-            updateEntity: (id, patch) => this.world.update(id, patch),
+            updateEntity: (id, patch) => this._world.update(id, patch),
             getMyUserId: () => this.myUserId,
             getEntityId: () => this.entityId,
             getPluginId: () => this.pluginId,
@@ -138,23 +137,13 @@ export class UbiSDK {
         this.media = createMediaModule(send);
         this.canvas = createCanvasModule(send);
         this.entity = createEntityModule(
-            this.world,
+            this._world,
             () => this.componentInstanceId,
             () => this.entityId,
         );
     }
 
     // ── Top-level shortcuts ──────────────────────────────────
-
-    /** 新規エンティティを作成。`id` は自動採番、他のフィールドは省略可能。 */
-    public spawn(entity: Omit<ComponentInstance, 'id'>): Promise<string> {
-        return this.world._createEntity(entity);
-    }
-
-    /** 指定 id のエンティティを削除。 */
-    public destroy(id: string): Promise<void> {
-        return this.world._destroyEntity(id);
-    }
 
     /** HTTP リクエスト (capability whitelist 経由)。 */
     public fetch(url: string, options?: FetchOptions): Promise<unknown> {

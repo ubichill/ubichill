@@ -62,7 +62,7 @@ function getFrames(avatar: AppAvatarDef, state: string): AnimFrame[] | undefined
 
 // ── 自エンティティの zIndex を読み取る (transform.z) ──
 void (async () => {
-    const [self] = await Ubi.world.query('avatar:cursor');
+    const [self] = await Ubi.entity.query('avatar:cursor');
     if (self) cursor.local.zIndex = self.transform.z;
 })();
 

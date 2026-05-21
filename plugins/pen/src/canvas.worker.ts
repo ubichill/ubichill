@@ -186,15 +186,17 @@ const flushCompletedStroke = (): void => {
 
     const parentEntityId = draw.local.heldPenEntityId ?? undefined;
     const strokeEntityId = parentEntityId ? `stroke-${crypto.randomUUID()}` : undefined;
-    Ubi.spawn({
-        type: 'pen:stroke',
-        entityId: strokeEntityId,
-        parentEntityId,
-        ownerId: null,
-        lockedBy: null,
-        transform: { x: 0, y: 0, z: 0, w: 0, h: 0, scale: 1, rotation: 0 },
-        data: strokeData,
-    }).catch((err: unknown) => Ubi.log(`[pen:canvas] 永続化失敗: ${String(err)}`, 'warn'));
+    Ubi.entity
+        .spawn({
+            type: 'pen:stroke',
+            entityId: strokeEntityId,
+            parentEntityId,
+            ownerId: null,
+            lockedBy: null,
+            transform: { x: 0, y: 0, z: 0, w: 0, h: 0, scale: 1, rotation: 0 },
+            data: strokeData,
+        })
+        .catch((err: unknown) => Ubi.log(`[pen:canvas] 永続化失敗: ${String(err)}`, 'warn'));
 };
 
 // ────────────────────────────────────────────────────────────────

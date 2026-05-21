@@ -30,9 +30,9 @@ const knownPens = new Map<string, PenEntry>();
 const setSize = (id: string, size: number): void => {
     const p = knownPens.get(id);
     if (!p) return;
-    // tray が「他 entity (pen:pen)」を直接書く escape hatch なので Ubi.world.update を使う
-    Ubi.world
-        .update(id, { data: { ...p.data, strokeWidth: size } })
+    // tray が「他 entity (pen:pen)」を直接書く escape hatch
+    Ubi.entity(id)
+        .update({ data: { ...p.data, strokeWidth: size } })
         .catch((err) => Ubi.log(`[pen:tray] サイズ変更失敗: ${String(err)}`, 'warn'));
 };
 

@@ -30,7 +30,7 @@ const settings = Ubi.state.define({
 
 // ── 自エンティティの zIndex を読む ──
 void (async () => {
-    const [self] = await Ubi.world.query('avatar:settings');
+    const [self] = await Ubi.entity.query('avatar:settings');
     if (self) settings.local.zIndex = self.transform.z;
 })();
 

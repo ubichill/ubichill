@@ -19,6 +19,7 @@ export class EcsWorldImpl implements EcsWorld {
             throw new Error(`[ECS] Entity "${id}" already exists.`);
         }
         const entity = new EntityImpl(id);
+        entity._onComponentChanged = () => this._invalidateAllQueries();
         this._entities.set(id, entity);
         this._cacheIsDirty = true;
         this._invalidateAllQueries();

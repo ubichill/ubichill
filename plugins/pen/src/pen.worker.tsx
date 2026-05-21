@@ -30,12 +30,16 @@ async function selectMe(): Promise<void> {
     const myId = Ubi.myUserId;
     const selfId = Ubi.componentInstanceId;
     if (!myId || !selfId) return;
-    // 他の自分が保持中のペンを解放してから自分を選択 (Ubi.state 経由で書く → 自動同期)
-    const allPens = await Ubi.world.query<PenData>('pen:pen');
+    // 他の自分が保持中のペンを解放してから自分を選択 (自 state は下で local 経由で書く)
+    const allPens = await Ubi.entity.query<PenData>('pen:pen');
     await Promise.all(
         allPens
             .filter((p) => p.id !== selfId && p.lockedBy === myId)
-            .map((p) => Ubi.world.update(p.id, { lockedBy: null }).catch(() => {})),
+            .map((p) =>
+                Ubi.entity(p.id)
+                    .update({ lockedBy: null })
+                    .catch(() => {}),
+            ),
     );
     pen.local.lockedBy = myId;
     Ubi.event.sendToHost('user:update', { penColor: pen.local.color });
