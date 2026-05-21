@@ -10,6 +10,14 @@
 
 import type { SendFn } from '../types';
 
+/**
+ * emit 配送のスコープ。すべて Entity 階層レベルの関係:
+ *  - 'siblings':  同じ parent を持つ別 Entity の Component (空 wrapper Entity 下で兄弟同士を結ぶ)
+ *  - 'parent':    自 Entity の親 Entity の Component
+ *  - 'children':  自 Entity の直接の子 Entity の Component
+ *  - 'subtree':   自 Entity + 子孫 全 Component
+ *  - 'world':     全 Worker
+ */
 export type EmitScope = 'siblings' | 'parent' | 'children' | 'subtree' | 'world';
 
 export interface EmitOptions {

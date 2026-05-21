@@ -322,7 +322,13 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
         const matchesScope = (w: PluginWorkerInfo): boolean => {
             switch (scope) {
                 case 'siblings':
-                    return !!sender?.entityId && w.entityId === sender.entityId;
+                    // Entity 階層レベル: 同じ parent を持つ別 Entity の Component。
+                    // 空の wrapper Entity の下にある兄弟 Entity 同士の通信を可能にする。
+                    return (
+                        !!sender?.parentEntityId &&
+                        w.parentEntityId === sender.parentEntityId &&
+                        w.entityId !== sender.entityId
+                    );
                 case 'parent':
                     return !!sender?.parentEntityId && w.entityId === sender.parentEntityId;
                 case 'children':
