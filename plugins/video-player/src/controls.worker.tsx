@@ -1,12 +1,27 @@
 /**
- * video-player:controls Worker — 再生コントロール UI。
+ * video-player:controls Worker — 再生制御の中枢。
  *
- * watchScope='parent' で screen の state を共有 (Ubi.state.sync 経由)。
- * 再生・一時停止 / シーク / 前後トラック / loop / shuffle / 音量のみを担当。
- * プレイリスト表示・検索は別 Entity (playlist / search)。
+ * 状態 (entity.data):
+ *  - isPlaying / currentTime / duration / seekNonce: 再生位置
+ *  - loop / shuffle:                                  繰り返し設定
+ *  - apiBase:                                         動画 URL のベース
+ *  - myVolume (per-user):                             音量 (個人設定)
+ *
+ * 受信 (Ubi.event):
+ *  - 'vp:track:current' (playlist から)  : 現トラックを cache、変わったら自動 load
+ *  - 'vp:media:time'    (screen から)    : currentTime / duration 更新
+ *  - 'vp:media:loaded'  (screen から)    : duration 確定 → 必要なら seek + play
+ *  - 'vp:media:ended'   (screen から)    : 次トラックを playlist にリクエスト
+ *
+ * 送信 (Ubi.event):
+ *  - 'vp:media:load'    (screen へ)      : URL を渡してロード
+ *  - 'vp:media:play' / 'vp:media:pause' (screen へ)
+ *  - 'vp:media:seek'    (screen へ)
+ *  - 'vp:media:volume'  (screen へ)
+ *  - 'vp:track:next' / 'vp:track:prev'  (playlist へ)
  */
 
-import type { Entity, System } from '@ubichill/sdk';
+import type { Entity, System, WorkerEvent } from '@ubichill/sdk';
 import {
     PauseIcon,
     PlayIcon,
@@ -22,46 +37,25 @@ import {
 } from './icons';
 import type { LoopMode, Track } from './types';
 
+const DEFAULT_API_BASE = '/plugins/video-player/api';
+
 const state = Ubi.state.define({
-    playlist: Ubi.state.sync([] as Track[]),
-    currentIndex: Ubi.state.sync(0),
+    // entity.data 同期
     isPlaying: Ubi.state.sync(false),
-    loop: Ubi.state.sync<LoopMode>('none'),
-    shuffle: Ubi.state.sync(false),
     currentTime: Ubi.state.sync(0),
     duration: Ubi.state.sync(0),
     seekNonce: Ubi.state.sync(0),
+    loop: Ubi.state.sync<LoopMode>('none'),
+    shuffle: Ubi.state.sync(false),
+    apiBase: Ubi.state.sync(DEFAULT_API_BASE),
     myVolume: Ubi.state.sync(0.7, { perUser: true }),
-    // ローカル: 進行バー推定用クロック
+    // ローカル
+    currentTrack: null as Track | null,
+    currentIndex: 0,
+    totalTracks: 0,
     lastSyncedTime: 0,
     lastSyncedAt: 0,
 });
-
-// ── 進行バー時計の起点同期 ──────────────────────────
-state.onChange('currentTime', (next) => {
-    state.local.lastSyncedTime = next;
-    state.local.lastSyncedAt = Date.now();
-});
-state.onChange('isPlaying', (playing) => {
-    if (playing) state.local.lastSyncedAt = Date.now();
-    else state.local.lastSyncedTime = estimatedTime();
-    render();
-});
-state.onChange('currentIndex', () => {
-    state.local.lastSyncedTime = 0;
-    state.local.lastSyncedAt = Date.now();
-    render();
-});
-state.onChange('seekNonce', () => {
-    state.local.lastSyncedTime = state.local.currentTime;
-    state.local.lastSyncedAt = Date.now();
-    render();
-});
-state.onChange('playlist', render);
-state.onChange('loop', render);
-state.onChange('shuffle', render);
-state.onChange('duration', render);
-state.onChange('myVolume', render);
 
 // ── ヘルパー ────────────────────────────────────────
 const fmt = (sec: number): string => {
@@ -77,29 +71,46 @@ function estimatedTime(): number {
     return Math.min(state.local.lastSyncedTime + elapsed, state.local.duration);
 }
 
-// ── アクション (純粋に state を書き換えるだけ) ───────
+function buildTrackUrl(track: Track): string {
+    const base = state.local.apiBase.trim() || DEFAULT_API_BASE;
+    const endpoint = track.mode === 'live' ? 'live' : 'video';
+    return `${base}/${endpoint}/${track.id}`;
+}
+
+// ── screen への emit (1 箇所に集約) ───────────────────
+const screenTarget = { scope: 'siblings' as const, targetType: 'video-player:screen' };
+const playlistTarget = { scope: 'siblings' as const, targetType: 'video-player:playlist' };
+
+function sendLoad(track: Track): void {
+    Ubi.event.emit('vp:media:load', { url: buildTrackUrl(track), mode: track.mode }, screenTarget);
+}
+function sendPlay(): void {
+    Ubi.event.emit('vp:media:play', {}, screenTarget);
+}
+function sendPause(): void {
+    Ubi.event.emit('vp:media:pause', {}, screenTarget);
+}
+function sendSeek(time: number): void {
+    Ubi.event.emit('vp:media:seek', { time }, screenTarget);
+}
+function sendVolume(v: number): void {
+    Ubi.event.emit('vp:media:volume', { volume: v }, screenTarget);
+}
+
+// ── UI アクション ──────────────────────────────────
 const onSeek = (time: number): void => {
     state.local.currentTime = time;
     state.local.seekNonce = Date.now();
+    sendSeek(time);
 };
 const onPlayToggle = (): void => {
-    const next = !state.local.isPlaying;
-    state.local.currentTime = next ? state.local.lastSyncedTime : estimatedTime();
-    state.local.isPlaying = next;
+    state.local.isPlaying = !state.local.isPlaying;
 };
 const onPrev = (): void => {
-    const len = state.local.playlist.length;
-    if (len === 0) return;
-    state.local.currentTime = 0;
-    state.local.currentIndex = state.local.currentIndex > 0 ? state.local.currentIndex - 1 : len - 1;
-    state.local.isPlaying = true;
+    Ubi.event.emit('vp:track:prev', {}, playlistTarget);
 };
 const onNext = (): void => {
-    const len = state.local.playlist.length;
-    if (len === 0) return;
-    state.local.currentTime = 0;
-    state.local.currentIndex = state.local.currentIndex < len - 1 ? state.local.currentIndex + 1 : 0;
-    state.local.isPlaying = true;
+    Ubi.event.emit('vp:track:next', { loop: state.local.loop, shuffle: state.local.shuffle }, playlistTarget);
 };
 const onShuffleToggle = (): void => {
     state.local.shuffle = !state.local.shuffle;
@@ -111,9 +122,34 @@ const onVolumeChange = (v: number): void => {
     state.local.myVolume = v;
 };
 
-// ── レンダリング ────────────────────────────────────
+// ── state 変化 → screen 通知 ───────────────────────
+state.onChange('isPlaying', (playing) => {
+    if (playing) sendPlay();
+    else sendPause();
+    state.local.lastSyncedAt = Date.now();
+    if (!playing) state.local.lastSyncedTime = estimatedTime();
+    render();
+});
+state.onChange('currentTime', (next) => {
+    state.local.lastSyncedTime = next;
+    state.local.lastSyncedAt = Date.now();
+});
+state.onChange('myVolume', (v) => {
+    sendVolume(v);
+    render();
+});
+state.onChange('loop', render);
+state.onChange('shuffle', render);
+state.onChange('duration', render);
+state.onChange('seekNonce', () => {
+    state.local.lastSyncedTime = state.local.currentTime;
+    state.local.lastSyncedAt = Date.now();
+    render();
+});
+
+// ── レンダリング ──────────────────────────────────
 function render(): void {
-    const track = state.local.playlist[state.local.currentIndex];
+    const track = state.local.currentTrack;
     const ct = estimatedTime();
     const progress = state.local.duration > 0 ? (ct / state.local.duration) * 100 : 0;
     const isLive = track?.mode === 'live';
@@ -122,7 +158,7 @@ function render(): void {
         volume === 0 ? VolumeMuteIcon : volume < 0.3 ? VolumeLowIcon : volume < 0.7 ? VolumeMediumIcon : VolumeHighIcon;
     const LoopIconComp = state.local.loop === 'one' ? RepeatOneIcon : RepeatIcon;
     const isPlaying = state.local.isPlaying;
-    const empty = state.local.playlist.length === 0;
+    const empty = state.local.totalTracks === 0;
 
     Ubi.ui.render(
         () => (
@@ -163,15 +199,7 @@ function render(): void {
                 />
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
                     {/* 左: トラック情報 */}
-                    <div
-                        style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            flex: '1',
-                            minWidth: '0',
-                        }}
-                    >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1', minWidth: '0' }}>
                         {track?.thumbnail && (
                             <img
                                 src={track.thumbnail}
@@ -281,7 +309,6 @@ function render(): void {
     );
 }
 
-// ── 共通ボタン ──────────────────────────────────────
 function CtrlBtn({
     children,
     onClick,
@@ -320,23 +347,59 @@ function CtrlBtn({
     );
 }
 
-// ── 進行バー推定の駆動 (clock-only 再描画) ─────────────
-// state.persistent の onChange だけでは「秒針が進む」の表現ができないため、
-// 1 秒ごとに軽量再描画 (clock estimation のみ) を打つ。
-const ClockSystem: System = (_e: Entity[], dt: number) => {
+// ── 進行バー時計のための tick ────────────────────────
+const accumulator = { ms: 0 };
+const ClockSystem: System = (_e: Entity[], dt: number, events: WorkerEvent[]) => {
+    // emit 受信
+    for (const ev of events) {
+        if (ev.type === 'vp:track:current') {
+            const { track, index, total } = ev.payload as {
+                track: Track | null;
+                index: number;
+                total: number;
+            };
+            const changed = state.local.currentTrack?.id !== track?.id;
+            state.local.currentTrack = track;
+            state.local.currentIndex = index;
+            state.local.totalTracks = total;
+            render();
+            // トラックが変わったら load → (isPlaying なら play)
+            if (changed && track) {
+                sendLoad(track);
+                if (state.local.isPlaying) sendPlay();
+            }
+        } else if (ev.type === 'vp:media:time') {
+            const { currentTime, duration } = ev.payload as { currentTime: number; duration: number };
+            state.local.lastSyncedTime = currentTime;
+            state.local.lastSyncedAt = Date.now();
+            if (duration > 0 && duration !== state.local.duration) state.local.duration = duration;
+        } else if (ev.type === 'vp:media:loaded') {
+            const { duration } = ev.payload as { duration: number };
+            if (duration > 0) state.local.duration = duration;
+            // 既存の currentTime がある場合 seek + 必要なら play
+            if (state.local.currentTime > 0 && state.local.currentTrack?.mode !== 'live') {
+                sendSeek(state.local.currentTime);
+            }
+            if (state.local.isPlaying) sendPlay();
+        } else if (ev.type === 'vp:media:ended') {
+            // 次トラックを playlist にリクエスト
+            Ubi.event.emit('vp:track:next', { loop: state.local.loop, shuffle: state.local.shuffle }, playlistTarget);
+        }
+    }
+
     if (!state.local.isPlaying) return;
-    // dt は ms。1 秒蓄積で再描画。
     accumulator.ms += dt;
-    if (accumulator.ms >= 1000) {
+    if (accumulator.ms >= 500) {
         accumulator.ms = 0;
         render();
     }
 };
-const accumulator = { ms: 0 };
 
 Ubi.registerSystem(ClockSystem);
 
-// 初期 1 回レンダー (state は Ubi.state.sync が initialEntities から既に同期反映済み)
+// 初期化
 state.local.lastSyncedTime = state.local.currentTime;
 state.local.lastSyncedAt = Date.now();
 render();
+// 起動時に screen へ初期音量を通知 (起動順依存吸収)
+queueMicrotask(() => sendVolume(state.local.myVolume));

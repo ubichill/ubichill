@@ -1,12 +1,21 @@
 /**
- * video-player:playlist Worker — トラック一覧 UI。
+ * video-player:playlist Worker — プレイリストの一意な所有者。
  *
- * watchScope='parent' で screen の playlist / currentIndex を読み書きする。
- * 自身のローカル状態は持たない。
+ * 状態: playlist + currentIndex のみ保持 (entity.data)。
+ * 他コンポーネントとの通信は Ubi.event.emit ベース:
+ *
+ * 受信:
+ *  - 'vp:track:add'      (search から) - 新規 track を末尾に追加
+ *  - 'vp:track:remove'   - 指定 index を削除
+ *  - 'vp:track:next' / 'vp:track:prev' (controls から) - 次/前へ
+ *
+ * 送信:
+ *  - 'vp:track:current'  (siblings 全員) - 現トラックを通知
  */
 
+import type { Entity, System, WorkerEvent } from '@ubichill/sdk';
 import { PlaySmallIcon, TrashIcon } from './icons';
-import type { Track } from './types';
+import type { LoopMode, Track } from './types';
 
 const state = Ubi.state.define({
     playlist: Ubi.state.sync([] as Track[]),
@@ -20,22 +29,55 @@ const fmt = (sec: number): string => {
     return `${m}:${s.toString().padStart(2, '0')}`;
 };
 
-const onSelectTrack = (i: number): void => {
-    state.local.currentIndex = i;
-};
+/** 現トラックを siblings に broadcast。 */
+function emitCurrent(): void {
+    const list = state.local.playlist;
+    const idx = state.local.currentIndex;
+    const track = list[idx] ?? null;
+    Ubi.event.emit('vp:track:current', { track, index: idx, total: list.length }, { scope: 'siblings' });
+}
 
-const onRemoveTrack = (i: number): void => {
+function addTrack(track: Track): void {
+    state.local.playlist = [...state.local.playlist, track];
+}
+
+function selectTrack(i: number): void {
+    if (i < 0 || i >= state.local.playlist.length) return;
+    state.local.currentIndex = i;
+}
+
+function removeTrack(i: number): void {
     const newList = state.local.playlist.filter((_, idx) => idx !== i);
     const newIdx =
         state.local.currentIndex >= newList.length ? Math.max(0, newList.length - 1) : state.local.currentIndex;
     state.local.playlist = newList;
     state.local.currentIndex = newIdx;
-};
+}
+
+function next(loop: LoopMode, shuffle: boolean): void {
+    const len = state.local.playlist.length;
+    if (len === 0) return;
+    if (loop === 'one') {
+        // 同じトラックを emit し直して screen に load を促す
+        emitCurrent();
+        return;
+    }
+    const nextIdx = shuffle ? Math.floor(Math.random() * len) : (state.local.currentIndex + 1) % len;
+    state.local.currentIndex = nextIdx;
+}
+
+function prev(): void {
+    const len = state.local.playlist.length;
+    if (len === 0) return;
+    state.local.currentIndex = state.local.currentIndex > 0 ? state.local.currentIndex - 1 : len - 1;
+}
+
+state.onChange('playlist', emitCurrent);
+state.onChange('currentIndex', emitCurrent);
 
 function render(): void {
-    const playlist = state.local.playlist;
-    const currentIndex = state.local.currentIndex;
-
+    const list = state.local.playlist;
+    const cur = state.local.currentIndex;
     Ubi.ui.render(
         () => (
             <div
@@ -63,17 +105,17 @@ function render(): void {
                         color: '#fff',
                     }}
                 >
-                    Playlist ({playlist.length})
+                    Playlist ({list.length})
                 </div>
                 <div style={{ flex: '1', overflowY: 'auto', padding: '8px' }}>
-                    {playlist.length === 0 ? (
+                    {list.length === 0 ? (
                         <div style={{ padding: '24px', textAlign: 'center' }}>
                             <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>No tracks</div>
                         </div>
                     ) : (
-                        playlist.map((t, i) => (
+                        list.map((t, i) => (
                             <div
-                                key={t.id}
+                                key={`${t.id}-${i}`}
                                 style={{
                                     display: 'flex',
                                     alignItems: 'center',
@@ -81,10 +123,10 @@ function render(): void {
                                     padding: '6px 8px',
                                     borderRadius: '6px',
                                     marginBottom: '4px',
-                                    background: i === currentIndex ? 'rgba(0,122,255,0.2)' : 'transparent',
+                                    background: i === cur ? 'rgba(0,122,255,0.2)' : 'transparent',
                                     cursor: 'pointer',
                                 }}
-                                onUbiClick={() => onSelectTrack(i)}
+                                onUbiClick={() => selectTrack(i)}
                             >
                                 <img
                                     src={t.thumbnail}
@@ -124,7 +166,7 @@ function render(): void {
                                         {t.duration > 0 ? fmt(t.duration) : t.mode === 'live' ? 'LIVE' : '--:--'}
                                     </div>
                                 </div>
-                                {i === currentIndex && (
+                                {i === cur && (
                                     <span style={{ color: '#007aff', flexShrink: '0' }}>
                                         <PlaySmallIcon />
                                     </span>
@@ -141,7 +183,7 @@ function render(): void {
                                         display: 'flex',
                                         alignItems: 'center',
                                     }}
-                                    onUbiClick={() => onRemoveTrack(i)}
+                                    onUbiClick={() => removeTrack(i)}
                                 >
                                     <TrashIcon size={14} />
                                 </button>
@@ -158,4 +200,24 @@ function render(): void {
 state.onChange('playlist', render);
 state.onChange('currentIndex', render);
 
+const PlaylistSystem: System = (_entities: Entity[], _dt: number, events: WorkerEvent[]) => {
+    for (const ev of events) {
+        if (ev.type === 'vp:track:add') {
+            const { track } = ev.payload as { track: Track };
+            addTrack(track);
+        } else if (ev.type === 'vp:track:remove') {
+            const { index } = ev.payload as { index: number };
+            removeTrack(index);
+        } else if (ev.type === 'vp:track:next') {
+            const { loop, shuffle } = ev.payload as { loop: LoopMode; shuffle: boolean };
+            next(loop, shuffle);
+        } else if (ev.type === 'vp:track:prev') {
+            prev();
+        }
+    }
+};
+Ubi.registerSystem(PlaylistSystem);
+
 render();
+// 起動時に siblings に通知 (siblings の起動順に依存しないよう少し遅延)
+queueMicrotask(emitCurrent);

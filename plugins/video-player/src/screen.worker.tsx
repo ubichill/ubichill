@@ -1,150 +1,65 @@
 /**
- * video-player:screen Worker — 親 Entity。
+ * video-player:screen Worker — メディア実行者。
  *
- * 責務:
- * - 共有再生状態 (playlist / currentIndex / isPlaying / currentTime / ...) を所有
- * - <video> 要素にメディア URL をロードして再生制御
- * - 16:9 黒背景の UI レイヤ (動画が無いときの placeholder)
- * - 子コンポーネント (controls / playlist / search) は watchScope='parent' で
- *   この screen の state を Ubi.state.sync 経由で共有する
+ * 状態を持たない。Ubi.event.emit で受信したコマンドを Ubi.media.* に流すだけ。
+ * 黒 16:9 の背景は host 側の <video> 要素が標準で持つ。
+ *
+ * 受信 (Ubi.event):
+ *  - 'vp:media:load'   { url, mode }    - HLS / VOD ロード
+ *  - 'vp:media:play'                    - 再生開始
+ *  - 'vp:media:pause'                   - 一時停止
+ *  - 'vp:media:seek'   { time }         - シーク
+ *  - 'vp:media:volume' { volume }       - 音量
+ *
+ * 送信 (Ubi.event, controls 宛):
+ *  - 'vp:media:time'   { currentTime, duration }  - timeupdate
+ *  - 'vp:media:loaded' { duration }               - loadedmetadata
+ *  - 'vp:media:ended'                             - ended
  */
 
 import type { Entity, System, WorkerEvent } from '@ubichill/sdk';
-import type { LoopMode, Track } from './types';
 
 const TARGET = 'main';
-const DEFAULT_API_BASE = '/plugins/video-player/api';
-const TIME_SYNC_INTERVAL_MS = 2_000;
-const TIME_PERSIST_INTERVAL_MS = 3_000;
+const controlsTarget = { scope: 'siblings' as const, targetType: 'video-player:controls' };
 
-const state = Ubi.state.define({
-    playlist: Ubi.state.sync([] as Track[]),
-    currentIndex: Ubi.state.sync(0),
-    isPlaying: Ubi.state.sync(false),
-    loop: Ubi.state.sync<LoopMode>('none'),
-    shuffle: Ubi.state.sync(false),
-    currentTime: Ubi.state.sync(0),
-    duration: Ubi.state.sync(0),
-    apiBase: Ubi.state.sync(DEFAULT_API_BASE),
-    seekNonce: Ubi.state.sync(0),
-    myVolume: Ubi.state.sync(0.7, { perUser: true }),
-    // ローカル
-    loaded: false,
-    localTime: 0,
-    lastBroadcastAt: 0,
-    lastPersistedAt: 0,
-});
+// 動画要素は常時表示
+Ubi.media.setVisible(true, TARGET);
 
-// ── メディア制御 ─────────────────────────────────────
-const loadTrack = (autoPlay: boolean): void => {
-    const track = state.local.playlist[state.local.currentIndex];
-    if (!track) return;
-    const base = state.local.apiBase.trim() || DEFAULT_API_BASE;
-    const endpoint = track.mode === 'live' ? 'live' : 'video';
-    Ubi.media.load(`${base}/${endpoint}/${track.id}`, TARGET, track.mode === 'live' ? 'hls' : 'auto');
-    if (autoPlay) Ubi.media.play(TARGET);
-};
-
-// ── 共有状態の変化を <video> に反映 ───────────────────
-state.onChange('currentIndex', () => {
-    state.local.loaded = false;
-    state.local.localTime = 0;
-    loadTrack(state.local.isPlaying);
-});
-
-state.onChange('isPlaying', (playing) => {
-    if (playing) {
-        if (!state.local.loaded) loadTrack(true);
-        else Ubi.media.play(TARGET);
-    } else {
-        Ubi.media.pause(TARGET);
-    }
-});
-
-state.onChange('seekNonce', () => {
-    if (!state.local.loaded) return;
-    Ubi.media.seek(state.local.currentTime, TARGET);
-    state.local.localTime = state.local.currentTime;
-});
-
-state.onChange('myVolume', (v) => {
-    Ubi.media.setVolume(v, TARGET);
-});
-
-// 黒背景は host 側の <video> 要素 (mediaTargets) が標準で持つ。
-// プラグインから UI 層を被せると video が隠れて再生が見えなくなるので置かない。
-
-// ── ECS System (media イベント処理) ──────────────────
-export const ScreenSystem: System = (_entities: Entity[], _dt: number, events: WorkerEvent[]) => {
-    for (const event of events) {
-        if (event.type === 'media:timeUpdate') {
-            const p = event.payload as { targetId: string; currentTime: number; duration: number };
-            if (p.targetId !== TARGET) continue;
-            state.local.localTime = p.currentTime;
-            if (p.duration > 0 && p.duration !== state.local.duration) state.local.duration = p.duration;
-            const now = Date.now();
-            if (state.local.isPlaying && now - state.local.lastBroadcastAt >= TIME_SYNC_INTERVAL_MS) {
-                state.local.lastBroadcastAt = now;
-                Ubi.event.broadcast('vp:timeSync', {
-                    currentTime: state.local.localTime,
-                    currentIndex: state.local.currentIndex,
-                });
-            }
-            // 3 秒ごとに currentTime を永続化 (新規参加者の同期用)
-            if (state.local.isPlaying && now - state.local.lastPersistedAt >= TIME_PERSIST_INTERVAL_MS) {
-                state.local.lastPersistedAt = now;
-                state.local.currentTime = state.local.localTime;
-            }
-            continue;
+const ScreenSystem: System = (_entities: Entity[], _dt: number, events: WorkerEvent[]) => {
+    for (const ev of events) {
+        // controls からのコマンド
+        if (ev.type === 'vp:media:load') {
+            const { url, mode } = ev.payload as { url: string; mode: 'live' | 'video' };
+            Ubi.media.load(url, TARGET, mode === 'live' ? 'hls' : 'auto');
+        } else if (ev.type === 'vp:media:play') {
+            Ubi.media.play(TARGET);
+        } else if (ev.type === 'vp:media:pause') {
+            Ubi.media.pause(TARGET);
+        } else if (ev.type === 'vp:media:seek') {
+            const { time } = ev.payload as { time: number };
+            Ubi.media.seek(time, TARGET);
+        } else if (ev.type === 'vp:media:volume') {
+            const { volume } = ev.payload as { volume: number };
+            Ubi.media.setVolume(volume, TARGET);
         }
-
-        if (event.type === 'media:loaded') {
-            const p = event.payload as { targetId: string; duration: number };
+        // <video> 要素から (usePluginMedia ハンドラ経由)
+        else if (ev.type === 'media:timeUpdate') {
+            const p = ev.payload as { targetId: string; currentTime: number; duration: number };
             if (p.targetId !== TARGET) continue;
-            state.local.loaded = true;
-            if (p.duration > 0) state.local.duration = p.duration;
-            const track = state.local.playlist[state.local.currentIndex];
-            if (state.local.currentTime > 0 && track?.mode !== 'live') {
-                Ubi.media.seek(state.local.currentTime, TARGET);
-                state.local.localTime = state.local.currentTime;
-            }
-            if (state.local.isPlaying) Ubi.media.play(TARGET);
-            continue;
-        }
-
-        if (event.type === 'media:ended') {
-            const p = event.payload as { targetId: string };
+            Ubi.event.emit('vp:media:time', { currentTime: p.currentTime, duration: p.duration }, controlsTarget);
+        } else if (ev.type === 'media:loaded') {
+            const p = ev.payload as { targetId: string; duration: number };
             if (p.targetId !== TARGET) continue;
-
-            if (state.local.loop === 'one') {
-                Ubi.media.seek(0, TARGET);
-                Ubi.media.play(TARGET);
-                continue;
-            }
-
-            const len = state.local.playlist.length;
-            if (len === 0) {
-                state.local.isPlaying = false;
-                continue;
-            }
-            const nextIdx = state.local.shuffle
-                ? Math.floor(Math.random() * len)
-                : (state.local.currentIndex + 1) % len;
-            const isWrapping = !state.local.shuffle && nextIdx === 0 && state.local.currentIndex === len - 1;
-            if (isWrapping && state.local.loop !== 'all') {
-                state.local.isPlaying = false;
-            } else {
-                state.local.currentIndex = nextIdx;
-                state.local.currentTime = 0;
-            }
+            Ubi.event.emit('vp:media:loaded', { duration: p.duration }, controlsTarget);
+        } else if (ev.type === 'media:ended') {
+            const p = ev.payload as { targetId: string };
+            if (p.targetId !== TARGET) continue;
+            Ubi.event.emit('vp:media:ended', {}, controlsTarget);
+        } else if (ev.type === 'media:error') {
+            const p = ev.payload as { targetId: string; message: string };
+            if (p.targetId === TARGET) Ubi.log(`[screen] media error: ${p.message}`, 'warn');
         }
     }
 };
 
 Ubi.registerSystem(ScreenSystem);
-
-// ── 初期化 ──────────────────────────────────────────
-// 動画要素は常時表示 (黒背景の上に重ねる)
-Ubi.media.setVisible(true, TARGET);
-Ubi.media.setVolume(state.local.myVolume, TARGET);
-if (state.local.playlist.length > 0) loadTrack(state.local.isPlaying);

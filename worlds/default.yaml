@@ -63,45 +63,41 @@ spec:
         - type: "pen:canvas"
           data: {}
 
-    # ── ビデオ: screen (親) + controls / playlist / search (子) ──
-    # 子は screen を watchScope='parent' で読み書きする。
-    # 子の transform.x/y は親基準の相対座標 (backend で flatten)。
-    - id: video-screen
-      transform:
-        x: 800
-        y: 60
-        z: 2
-        w: 640
-        h: 360
-        scale: 1
-        rotation: 0
-      components:
-        - type: "video-player:screen"
-          data:
-            playlist:
-              - id: "jfKfPfyJRdk"
-                title: "lofi hip hop radio - beats to relax/study to"
-                thumbnail: "https://i.ytimg.com/vi/jfKfPfyJRdk/default.jpg"
-                duration: 0
-                mode: "live"
-            currentIndex: 0
-            isPlaying: false
-            currentTime: 0
-            duration: 0
-            loop: "none"
-            shuffle: false
-            apiBase: "/plugins/video-player/api"
+    # ── ビデオ: 空 wrapper (components なし) + 4 つの兄弟 children ──
+    # コンポーネント間は Ubi.event.emit (scope='siblings') で通信する。
+    # 各子の state は entity.data に分離 (playlist は playlist Entity、再生状態は controls Entity)。
+    - id: video-player
+      transform: { x: 800, y: 60, z: 2, scale: 1, rotation: 0 }
+      components: []
       children:
+        - id: video-screen
+          transform: { x: 0, y: 0, z: 2, w: 640, h: 360, scale: 1, rotation: 0 }
+          components:
+            - type: "video-player:screen"
+              data: {}
         - id: video-controls
           transform: { x: 0, y: 370, z: 198, w: 640, h: 60, scale: 1, rotation: 0 }
           components:
             - type: "video-player:controls"
-              data: {}
+              data:
+                isPlaying: false
+                currentTime: 0
+                duration: 0
+                loop: "none"
+                shuffle: false
+                apiBase: "/plugins/video-player/api"
         - id: video-playlist
           transform: { x: 0, y: 440, z: 198, w: 310, h: 300, scale: 1, rotation: 0 }
           components:
             - type: "video-player:playlist"
-              data: {}
+              data:
+                playlist:
+                  - id: "jfKfPfyJRdk"
+                    title: "lofi hip hop radio - beats to relax/study to"
+                    thumbnail: "https://i.ytimg.com/vi/jfKfPfyJRdk/default.jpg"
+                    duration: 0
+                    mode: "live"
+                currentIndex: 0
         - id: video-search
           transform: { x: 330, y: 440, z: 198, w: 310, h: 300, scale: 1, rotation: 0 }
           components:

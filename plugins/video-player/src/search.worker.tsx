@@ -12,7 +12,6 @@ import type { SearchResult, Track } from './types';
 const DEFAULT_API_BASE = '/plugins/video-player/api';
 
 const state = Ubi.state.define({
-    playlist: Ubi.state.sync([] as Track[]),
     apiBase: Ubi.state.sync(DEFAULT_API_BASE),
     // ローカル
     selectedMode: 'video' as 'live' | 'video',
@@ -21,6 +20,11 @@ const state = Ubi.state.define({
     searchResults: [] as SearchResult[],
     isSearching: false,
 });
+
+const playlistTarget = { scope: 'siblings' as const, targetType: 'video-player:playlist' };
+const emitAddTrack = (track: Track): void => {
+    Ubi.event.emit('vp:track:add', { track }, playlistTarget);
+};
 
 const fmt = (sec: number): string => {
     if (!Number.isFinite(sec) || sec <= 0) return '0:00';
@@ -65,16 +69,13 @@ const addFromUrl = async (): Promise<void> => {
     render();
     const res = (await Ubi.fetch(`${apiBase()}/info/${videoId}`)) as RpcNetFetchResult;
     const info = res.ok ? (JSON.parse(res.body) as { title?: string; thumbnail?: string; duration?: number }) : {};
-    state.local.playlist = [
-        ...state.local.playlist,
-        {
-            id: videoId,
-            title: info.title ?? state.local.urlInput,
-            thumbnail: info.thumbnail ?? `https://i.ytimg.com/vi/${videoId}/default.jpg`,
-            duration: info.duration ?? 0,
-            mode: state.local.selectedMode,
-        },
-    ];
+    emitAddTrack({
+        id: videoId,
+        title: info.title ?? state.local.urlInput,
+        thumbnail: info.thumbnail ?? `https://i.ytimg.com/vi/${videoId}/default.jpg`,
+        duration: info.duration ?? 0,
+        mode: state.local.selectedMode,
+    });
     state.local.urlInput = '';
     state.local.isSearching = false;
     render();
@@ -93,18 +94,14 @@ const doSearch = async (): Promise<void> => {
 };
 
 const addResult = (r: SearchResult): void => {
-    state.local.playlist = [
-        ...state.local.playlist,
-        {
-            id: r.id,
-            title: r.title,
-            thumbnail: r.thumbnail,
-            duration: r.duration,
-            mode: state.local.selectedMode,
-        },
-    ];
+    emitAddTrack({
+        id: r.id,
+        title: r.title,
+        thumbnail: r.thumbnail,
+        duration: r.duration,
+        mode: state.local.selectedMode,
+    });
     // 検索クエリ / 結果はリセットしない (続けて他の曲も追加できるように)
-    render();
 };
 
 // ── レンダリング ───────────────────────────────────
