@@ -143,9 +143,9 @@ function render(): void {
                 <input
                     type="range"
                     min="0"
-                    max={String(state.local.duration > 0 ? Math.floor(state.local.duration) : 100)}
-                    step="1"
-                    value={String(Math.round(ct))}
+                    max={String(state.local.duration > 0 ? state.local.duration : 100)}
+                    step="0.1"
+                    value={String(ct.toFixed(1))}
                     disabled={state.local.duration <= 0 || isLive}
                     style={{
                         width: '100%',

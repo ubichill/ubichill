@@ -103,8 +103,7 @@ const addResult = (r: SearchResult): void => {
             mode: state.local.selectedMode,
         },
     ];
-    state.local.searchResults = [];
-    state.local.searchQuery = '';
+    // 検索クエリ / 結果はリセットしない (続けて他の曲も追加できるように)
     render();
 };
 

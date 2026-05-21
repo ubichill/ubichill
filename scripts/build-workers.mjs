@@ -280,7 +280,11 @@ async function main() {
     console.log(`📦 CDN 配布用: dist/plugins/`);
 }
 
-main().catch((err) => {
+// スクリプトとして直接実行された場合のみ main() を走らせる。
+// `watch-workers.mjs` が import { buildWorker } から取ってきたとき、main() が
+// 副作用として呼ばれて二重ビルドになるのを防ぐ。
+const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
+if (isMain) main().catch((err) => {
     console.error('❌ Worker build failed:', err);
     process.exit(1);
 });
