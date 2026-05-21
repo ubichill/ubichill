@@ -24,7 +24,7 @@ interface PenEntry {
 const SIZES = [2, 4, 8, 16] as const;
 
 // ── ローカル状態: subtree 上の pen:pen インデックス ──
-// (subtree 内に複数ペンがあるため Ubi.state.persistent は使えず手動管理)
+// (subtree 内に複数ペンがあるため Ubi.state.sync は使えず手動管理)
 const knownPens = new Map<string, PenEntry>();
 
 const setSize = (id: string, size: number): void => {

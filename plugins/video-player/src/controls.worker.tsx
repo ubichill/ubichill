@@ -1,7 +1,7 @@
 /**
  * video-player:controls Worker — 再生コントロール UI。
  *
- * watchScope='parent' で screen の state を共有 (Ubi.state.persistent 経由)。
+ * watchScope='parent' で screen の state を共有 (Ubi.state.sync 経由)。
  * 再生・一時停止 / シーク / 前後トラック / loop / shuffle / 音量のみを担当。
  * プレイリスト表示・検索は別 Entity (playlist / search)。
  */
@@ -23,15 +23,15 @@ import {
 import type { LoopMode, Track } from './types';
 
 const state = Ubi.state.define({
-    playlist: Ubi.state.persistent([] as Track[]),
-    currentIndex: Ubi.state.persistent(0),
-    isPlaying: Ubi.state.persistent(false),
-    loop: Ubi.state.persistent<LoopMode>('none'),
-    shuffle: Ubi.state.persistent(false),
-    currentTime: Ubi.state.persistent(0),
-    duration: Ubi.state.persistent(0),
-    seekNonce: Ubi.state.persistent(0),
-    myVolume: Ubi.state.persistMine(0.7),
+    playlist: Ubi.state.sync([] as Track[]),
+    currentIndex: Ubi.state.sync(0),
+    isPlaying: Ubi.state.sync(false),
+    loop: Ubi.state.sync<LoopMode>('none'),
+    shuffle: Ubi.state.sync(false),
+    currentTime: Ubi.state.sync(0),
+    duration: Ubi.state.sync(0),
+    seekNonce: Ubi.state.sync(0),
+    myVolume: Ubi.state.sync(0.7, { perUser: true }),
     // ローカル: 進行バー推定用クロック
     lastSyncedTime: 0,
     lastSyncedAt: 0,
@@ -336,7 +336,7 @@ const accumulator = { ms: 0 };
 
 Ubi.registerSystem(ClockSystem);
 
-// 初期 1 回レンダー (state は Ubi.state.persistent が initialEntities から既に同期反映済み)
+// 初期 1 回レンダー (state は Ubi.state.sync が initialEntities から既に同期反映済み)
 state.local.lastSyncedTime = state.local.currentTime;
 state.local.lastSyncedAt = Date.now();
 render();

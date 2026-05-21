@@ -6,7 +6,7 @@
  * - <video> 要素にメディア URL をロードして再生制御
  * - 16:9 黒背景の UI レイヤ (動画が無いときの placeholder)
  * - 子コンポーネント (controls / playlist / search) は watchScope='parent' で
- *   この screen の state を Ubi.state.persistent 経由で共有する
+ *   この screen の state を Ubi.state.sync 経由で共有する
  */
 
 import type { Entity, System, WorkerEvent } from '@ubichill/sdk';
@@ -18,16 +18,16 @@ const TIME_SYNC_INTERVAL_MS = 2_000;
 const TIME_PERSIST_INTERVAL_MS = 3_000;
 
 const state = Ubi.state.define({
-    playlist: Ubi.state.persistent([] as Track[]),
-    currentIndex: Ubi.state.persistent(0),
-    isPlaying: Ubi.state.persistent(false),
-    loop: Ubi.state.persistent<LoopMode>('none'),
-    shuffle: Ubi.state.persistent(false),
-    currentTime: Ubi.state.persistent(0),
-    duration: Ubi.state.persistent(0),
-    apiBase: Ubi.state.persistent(DEFAULT_API_BASE),
-    seekNonce: Ubi.state.persistent(0),
-    myVolume: Ubi.state.persistMine(0.7),
+    playlist: Ubi.state.sync([] as Track[]),
+    currentIndex: Ubi.state.sync(0),
+    isPlaying: Ubi.state.sync(false),
+    loop: Ubi.state.sync<LoopMode>('none'),
+    shuffle: Ubi.state.sync(false),
+    currentTime: Ubi.state.sync(0),
+    duration: Ubi.state.sync(0),
+    apiBase: Ubi.state.sync(DEFAULT_API_BASE),
+    seekNonce: Ubi.state.sync(0),
+    myVolume: Ubi.state.sync(0.7, { perUser: true }),
     // ローカル
     loaded: false,
     localTime: 0,

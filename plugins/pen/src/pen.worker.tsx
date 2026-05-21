@@ -20,9 +20,9 @@ interface PenData {
 }
 
 const pen = Ubi.state.define({
-    color: Ubi.state.persistent('#1a1a1a'),
-    strokeWidth: Ubi.state.persistent(4),
-    lockedBy: Ubi.state.topLevel<string | null>(null),
+    color: Ubi.state.sync('#1a1a1a'),
+    strokeWidth: Ubi.state.sync(4),
+    lockedBy: Ubi.state.sync<string | null>(null, { topLevel: 'lockedBy' }),
 });
 
 // ── アクション ───────────────────────────────────────────

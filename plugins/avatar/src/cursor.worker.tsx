@@ -3,7 +3,7 @@
  *
  * singleton: true (ユーザー 1 人に 1 インスタンス)。
  * 状態管理:
- *   - cursorState / avatar は Ubi.state.shared (presence 経由で全ユーザーへ揮発配布)
+ *   - cursorState / avatar は Ubi.state.sync (presence 経由で全ユーザーへ揮発配布)
  *   - lerpX/lerpY/animFrame 等はローカル (同期不要)
  * 描画は cursor.renderForEachUser() で全ユーザー分を一括レンダー。
  */
@@ -32,8 +32,8 @@ const cursor = Ubi.state.define({
     localCursorStyle: 'default',
     zIndex: DEFAULT_Z,
     // 全ユーザー共有 (presence 経由)
-    cursorState: Ubi.state.shared('default' as string),
-    avatar: Ubi.state.shared(null as AppAvatarDef | null),
+    cursorState: Ubi.state.sync('default' as string, { ephemeral: true }),
+    avatar: Ubi.state.sync(null as AppAvatarDef | null, { ephemeral: true }),
 });
 
 // ── アニメーションフレームキャッシュ (sourceUrl → frames) ──

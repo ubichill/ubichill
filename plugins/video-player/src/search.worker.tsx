@@ -12,8 +12,8 @@ import type { SearchResult, Track } from './types';
 const DEFAULT_API_BASE = '/plugins/video-player/api';
 
 const state = Ubi.state.define({
-    playlist: Ubi.state.persistent([] as Track[]),
-    apiBase: Ubi.state.persistent(DEFAULT_API_BASE),
+    playlist: Ubi.state.sync([] as Track[]),
+    apiBase: Ubi.state.sync(DEFAULT_API_BASE),
     // ローカル
     selectedMode: 'video' as 'live' | 'video',
     urlInput: '',

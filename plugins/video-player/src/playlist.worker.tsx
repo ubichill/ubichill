@@ -9,8 +9,8 @@ import { PlaySmallIcon, TrashIcon } from './icons';
 import type { Track } from './types';
 
 const state = Ubi.state.define({
-    playlist: Ubi.state.persistent([] as Track[]),
-    currentIndex: Ubi.state.persistent(0),
+    playlist: Ubi.state.sync([] as Track[]),
+    currentIndex: Ubi.state.sync(0),
 });
 
 const fmt = (sec: number): string => {
