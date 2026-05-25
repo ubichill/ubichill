@@ -65,10 +65,18 @@ const fmt = (sec: number): string => {
     return `${m}:${s.toString().padStart(2, '0')}`;
 };
 
+/**
+ * 進行バー表示用の現在時刻の推定値。
+ * `lastSyncedTime` を時計で外挿するが、`<video>` 側からの timeupdate が止まったら
+ * (= 通信切断 / バッファ枯渇 / メタデータ未確定 など) 一定値以上は伸ばさない。
+ * これがないと stall 中も無限にバーが進み、復帰時に巻き戻って見える。
+ */
+const STALL_THRESHOLD_S = 1.5;
 function estimatedTime(): number {
     if (!state.local.isPlaying || state.local.duration <= 0) return state.local.lastSyncedTime;
-    const elapsed = (Date.now() - state.local.lastSyncedAt) / 1000;
-    return Math.min(state.local.lastSyncedTime + elapsed, state.local.duration);
+    const elapsedSec = (Date.now() - state.local.lastSyncedAt) / 1000;
+    const capped = Math.min(elapsedSec, STALL_THRESHOLD_S);
+    return Math.min(state.local.lastSyncedTime + capped, state.local.duration);
 }
 
 function buildTrackUrl(track: Track): string {
@@ -388,8 +396,10 @@ const ClockSystem: System = (_e: Entity[], dt: number, events: WorkerEvent[]) =>
     }
 
     if (!state.local.isPlaying) return;
+    // 進行バーが体感ジャギにならない程度の頻度で再描画 (≒ 10fps)。
+    // VNode 生成のみ・ネットワーク 0 なので CPU は誤差。
     accumulator.ms += dt;
-    if (accumulator.ms >= 500) {
+    if (accumulator.ms >= 100) {
         accumulator.ms = 0;
         render();
     }
