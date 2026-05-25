@@ -49,3 +49,6 @@ coverage/
 # Build pipeline outputs (pnpm build:workers で生成)
 packages/frontend/public/plugins/
 CODE_STUDY.md
+
+# Antigravity CLI
+.antigravitycli/
