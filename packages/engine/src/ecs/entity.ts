@@ -34,7 +34,7 @@ export class EntityImpl implements Entity {
         this._onComponentChanged?.();
     }
 
-    _removeComponent(name: string): void {
+    removeComponent(name: string): void {
         this._components.delete(name);
         this._componentNames.delete(name);
         this._onComponentChanged?.();

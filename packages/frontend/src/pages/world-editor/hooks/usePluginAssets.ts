@@ -39,7 +39,9 @@ function fetchManifest(name: string, version: string): Promise<VersionedManifest
     const key = `${name}@${version}`;
     let p = manifestCache.get(key);
     if (!p) {
-        p = fetch(`${PLUGIN_BASE_URL}/${name}/v${version}/manifest.json`)
+        // cache: 'no-store' — manifest はビルド毎に workerUrl のハッシュや
+        // assets リストが変わるため、ブラウザキャッシュを必ず迂回する。
+        p = fetch(`${PLUGIN_BASE_URL}/${name}/v${version}/manifest.json`, { cache: 'no-store' })
             .then((r) => (r.ok ? (r.json() as Promise<VersionedManifest>) : null))
             .catch(() => null);
         manifestCache.set(key, p);

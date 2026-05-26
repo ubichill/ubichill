@@ -11,9 +11,13 @@ import type { SearchResult, Track } from './types';
 
 const DEFAULT_API_BASE = '/plugins/video-player/api';
 
+// search はどの entity も watch しない (watchEntityTypes=[]) ため、
+// sync 系フィールドは target が解決できず flush が無音失敗する。
+// search は外部と状態共有しないので全部ローカルでよい。
+// apiBase は本来 controls の同名フィールドと一致してほしいが、URL ベースが
+// 動的に変わるケースが今のところ無いので定数で十分。
 const state = Ubi.state.define({
-    apiBase: Ubi.state.sync(DEFAULT_API_BASE),
-    // ローカル
+    apiBase: DEFAULT_API_BASE,
     selectedMode: 'video' as 'live' | 'video',
     urlInput: '',
     searchQuery: '',

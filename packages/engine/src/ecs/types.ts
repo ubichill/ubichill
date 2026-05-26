@@ -13,6 +13,7 @@ export interface Entity {
     getComponent<T = unknown>(name: string): T | null;
     setComponent<T = unknown>(name: string, data: T): void;
     hasComponent(name: string): boolean;
+    removeComponent(name: string): void;
 
     readonly _componentNames: Set<string>;
 }

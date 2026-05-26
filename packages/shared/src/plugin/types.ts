@@ -408,14 +408,16 @@ export type PluginCommand = PluginGuestCommand;
  * 初期化後は Ubi.worldId / Ubi.myUserId / Ubi.pluginId / Ubi.entityId で参照可能。
  *
  * Worker 1 個 = 1 Component インスタンス。
- * - `entityId`: 自 Worker を識別する flat ID（`${entityId}::${componentType}` 形式）。
- * - `entityId`: 自 Worker が乗っている GameObject の id。Stage 2 で `Ubi.entityId` に公開予定。
+ * - `componentInstanceId`: 自 Worker を識別する flat ID。`Ubi.componentInstanceId` として公開。
+ * - `entityId`: 自 Worker が乗っている GameObject の id。`Ubi.entityId` として公開。
  * - `componentType`: 自 Worker の Component 型 (`pluginId:componentName`)。
  *
- * @param worldId        所属ワールドのID
- * @param myUserId       自分のユーザーID
- * @param code           実行するプラグインコード (Sandbox内部のみ)
- * @param entityId       このプラグイン Worker を識別する flat ID（オプション）
+ * @param worldId              所属ワールドのID
+ * @param myUserId             自分のユーザーID
+ * @param code                 実行するプラグインコード (Sandbox内部のみ)
+ * @param componentInstanceId  Worker 識別用 flat ID (オプション、singleton 等で未設定)
+ * @param entityId             GameObject id (オプション)
+ * @param componentType        Component 型名 (オプション)
  */
 export type EvtLifecycleInit = {
     type: 'EVT_LIFECYCLE_INIT';

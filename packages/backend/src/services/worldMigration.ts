@@ -67,9 +67,12 @@ function buildId(kind: string, used: Set<string>): string {
 /**
  * 旧 `kind` 形式のエンティティ配列を新形式に変換する純関数。
  * 入力に新形式が混ざっていても順次素通しする。
+ *
+ * `used` Set はツリー全体で 1 つを共有する (再帰呼び出しでも同じインスタンスを渡す)。
+ * 子階層が独立した Set を持つと親/兄弟と id が衝突しうるため (flatten 時に
+ * ComponentInstance.id `${gameObject.id}::${i}` がぶつかって state が誤適用される)。
  */
-function migrateInitialEntities(entities: unknown[]): NewEntity[] {
-    const used = new Set<string>();
+function migrateInitialEntities(entities: unknown[], used: Set<string> = new Set()): NewEntity[] {
     return entities.map((e) => {
         if (isLegacyEntity(e)) {
             const id = buildId(e.kind, used);
@@ -91,7 +94,7 @@ function migrateInitialEntities(entities: unknown[]): NewEntity[] {
         const id = typeof obj.id === 'string' ? obj.id : buildId('entity', used);
         used.add(id);
         const tags = Array.isArray(obj.tags) ? obj.tags.filter((t): t is string => typeof t === 'string') : [];
-        const children = Array.isArray(obj.children) ? migrateInitialEntities(obj.children) : [];
+        const children = Array.isArray(obj.children) ? migrateInitialEntities(obj.children, used) : [];
         return {
             id,
             transform: (obj.transform ?? { x: 0, y: 0 }) as LegacyTransform,

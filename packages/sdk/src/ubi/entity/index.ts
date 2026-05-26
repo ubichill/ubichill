@@ -23,6 +23,13 @@
 import type { ComponentInstance, EntityPatchPayload } from '@ubichill/shared';
 import type { WorldModule } from '../world';
 
+/** entityId 未指定時の自動採番: `${pluginId}-${componentName}-<short uuid>` 形式の人間可読 id。 */
+function autoEntityId(type: string): string {
+    const safe = type.replace(/[^a-z0-9]/gi, '-').toLowerCase();
+    const uuid = (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : '').slice(0, 8);
+    return `${safe}-${uuid || Date.now().toString(36)}`;
+}
+
 /** 自分自身を指す参照。spawn は親を自動付与する。 */
 export interface SelfEntityRef {
     update(patch: EntityPatchPayload['patch']): Promise<void>;
@@ -68,7 +75,13 @@ export function createEntityModule(
                 return world._destroyEntity(id);
             },
             spawn(child) {
-                return world._createEntity({ ...child, parentEntityId: getSelfEntityId() });
+                // entityId 未指定なら自動採番 (watchScope='entity'/'subtree'/'parent' で
+                // 可視判定されるよう、Component には必ず entityId を持たせる)
+                return world._createEntity({
+                    ...child,
+                    entityId: (child as { entityId?: string }).entityId ?? autoEntityId(child.type),
+                    parentEntityId: getSelfEntityId(),
+                });
             },
         };
     }
@@ -89,7 +102,11 @@ export function createEntityModule(
 
     fn.query = ((type: string) => world.query(type)) as EntityModule['query'];
     fn.get = ((id: string) => world.get(id)) as EntityModule['get'];
-    fn.spawn = (entity) => world._createEntity(entity);
+    fn.spawn = (entity) =>
+        world._createEntity({
+            ...entity,
+            entityId: entity.entityId ?? autoEntityId(entity.type),
+        });
 
     return fn;
 }
