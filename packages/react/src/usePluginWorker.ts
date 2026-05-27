@@ -36,7 +36,7 @@ export type PluginWorkerHandlers<TPayloadMap extends Record<string, unknown> = R
     onCanvasFrame?: (
         targetId: string,
         activeStroke: import('@ubichill/shared').CanvasStrokeData | null,
-        cursor: import('@ubichill/shared').CanvasCursorData | null,
+        cursors: import('@ubichill/shared').CanvasCursorData[],
     ) => void;
     /** Worker が Ubi.canvas.commitStroke() を呼んだときに発火する */
     onCanvasCommitStroke?: (targetId: string, stroke: import('@ubichill/shared').CanvasStrokeData) => void;
@@ -142,8 +142,8 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
                 onMessage: (msg) => handlersRef.current.onMessage?.(msg),
                 onCommand: (cmd) => handlersRef.current.onCommand?.(cmd),
                 onRender: (targetId, vnode) => handlersRef.current.onRender?.(targetId, vnode),
-                onCanvasFrame: (targetId, activeStroke, cursor) =>
-                    handlersRef.current.onCanvasFrame?.(targetId, activeStroke, cursor),
+                onCanvasFrame: (targetId, activeStroke, cursors) =>
+                    handlersRef.current.onCanvasFrame?.(targetId, activeStroke, cursors),
                 onCanvasCommitStroke: (targetId, stroke) =>
                     handlersRef.current.onCanvasCommitStroke?.(targetId, stroke),
                 onMediaLoad: (targetId, url, mediaType) => handlersRef.current.onMediaLoad?.(targetId, url, mediaType),

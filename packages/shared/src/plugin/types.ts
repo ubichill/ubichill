@@ -263,16 +263,18 @@ export type CanvasCursorData = {
 };
 
 /**
- * Ubi.canvas.frame(targetId, { activeStroke, cursor })
+ * Ubi.canvas.frame(targetId, { activeStroke, cursors })
  * Fire & Forget: ホストに毎フレームのキャンバス描画状態を送信する。
- * ホスト側で永続レイヤー + アクティブストローク + カーソルを合成して描画する。
+ * ホスト側で永続レイヤー + アクティブストローク + 全カーソルを合成して描画する。
+ *
+ * `cursors` は配列。自分 + リモート (= 他ユーザーが保持しているペン等) を一度に渡す。
  */
 export type CmdCanvasFrame = {
     type: 'CANVAS_FRAME';
     payload: {
         targetId: string;
         activeStroke: CanvasStrokeData | null;
-        cursor: CanvasCursorData | null;
+        cursors: CanvasCursorData[];
     };
 };
 

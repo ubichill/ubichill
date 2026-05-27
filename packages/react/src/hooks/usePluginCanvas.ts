@@ -144,7 +144,7 @@ export function usePluginCanvas(
     };
 
     const canvasHandlers: Pick<PluginWorkerHandlers, 'onCanvasFrame' | 'onCanvasCommitStroke'> = {
-        onCanvasFrame: (targetId, activeStroke, cursor) => {
+        onCanvasFrame: (targetId, activeStroke, cursors) => {
             const canvas = canvasElemsRef.current.get(targetId);
             if (!canvas) return;
             const ctx = canvas.getContext('2d');
@@ -153,7 +153,7 @@ export function usePluginCanvas(
             const perm = permanentCanvasesRef.current.get(targetId);
             if (perm) ctx.drawImage(perm, 0, 0);
             if (activeStroke) drawStroke(ctx, activeStroke);
-            if (cursor) drawCursor(ctx, cursor);
+            for (const cursor of cursors) drawCursor(ctx, cursor);
         },
         onCanvasCommitStroke: (targetId, stroke) => {
             const strokes = committedStrokesRef.current.get(targetId) ?? [];

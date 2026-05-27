@@ -116,7 +116,7 @@ export type HostHandlers<TPayloadMap extends Record<string, unknown> = Record<st
     onCanvasFrame?: (
         targetId: string,
         activeStroke: import('@ubichill/shared').CanvasStrokeData | null,
-        cursor: import('@ubichill/shared').CanvasCursorData | null,
+        cursors: import('@ubichill/shared').CanvasCursorData[],
     ) => void;
     /** Worker が Ubi.canvas.commitStroke() を呼んだときに発火する */
     onCanvasCommitStroke?: (targetId: string, stroke: import('@ubichill/shared').CanvasStrokeData) => void;
@@ -669,7 +669,7 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
                     this.handlers.onCanvasFrame?.(
                         command.payload.targetId,
                         command.payload.activeStroke,
-                        command.payload.cursor,
+                        command.payload.cursors,
                     );
                     break;
                 case 'CANVAS_COMMIT_STROKE':

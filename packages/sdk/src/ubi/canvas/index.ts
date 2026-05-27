@@ -2,10 +2,11 @@ import type { CanvasCursorData, CanvasStrokeData } from '@ubichill/shared';
 import type { SendFn } from '../types';
 
 export type CanvasModule = {
-    frame(
-        targetId: string,
-        options: { activeStroke?: CanvasStrokeData | null; cursor?: CanvasCursorData | null },
-    ): void;
+    /**
+     * 毎フレームのキャンバス描画状態をホストに送信する。
+     * `cursors` は配列 (自分 + リモートユーザーぶん) を一度に渡す。
+     */
+    frame(targetId: string, options: { activeStroke?: CanvasStrokeData | null; cursors?: CanvasCursorData[] }): void;
     commitStroke(targetId: string, stroke: CanvasStrokeData): void;
 };
 
@@ -17,7 +18,7 @@ export function createCanvasModule(send: SendFn): CanvasModule {
                 payload: {
                     targetId,
                     activeStroke: options.activeStroke ?? null,
-                    cursor: options.cursor ?? null,
+                    cursors: options.cursors ?? [],
                 },
             }),
         commitStroke: (targetId, stroke) => send({ type: 'CANVAS_COMMIT_STROKE', payload: { targetId, stroke } }),
