@@ -125,7 +125,8 @@ const CursorSystem: System = (_entities: Entity[], deltaTime: number, events: Wo
     }
 
     // ── 全ユーザーのアニメーションをローカルで独立に進める ──
-    for (const [userId] of Ubi.player.all()) {
+    const players = Ubi.player.all();
+    for (const [userId] of players) {
         const { avatar, cursorState } = cursor.for(userId);
         if (!avatar) continue;
         if (userId !== Ubi.myUserId) ensureFrames(avatar);
@@ -149,7 +150,7 @@ const CursorSystem: System = (_entities: Entity[], deltaTime: number, events: Wo
     }
     // 退出したユーザーをクリーンアップ
     for (const userId of userAnim.keys()) {
-        if (!Ubi.player.all().has(userId)) userAnim.delete(userId);
+        if (!players.has(userId)) userAnim.delete(userId);
     }
 
     // ── 全ユーザー描画 ──

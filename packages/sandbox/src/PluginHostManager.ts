@@ -26,14 +26,7 @@ import { isMetricEnabled, reportDiagnostic, reportMetric } from './pluginDiagnos
 // ============================================================
 
 export const CAPABILITY_COMMANDS: Readonly<Record<string, readonly string[]>> = {
-    'scene:read': [
-        'SCENE_GET_ENTITY',
-        'SCENE_QUERY_ENTITIES',
-        'ENTITY_GET_SIBLINGS',
-        'ENTITY_GET_PARENT',
-        'ENTITY_GET_CHILDREN',
-        'ENTITY_QUERY_SUBTREE',
-    ],
+    'scene:read': ['SCENE_GET_ENTITY', 'SCENE_QUERY_ENTITIES'],
     'scene:update': [
         'SCENE_CREATE_ENTITY',
         'SCENE_UPDATE_ENTITY',
@@ -74,10 +67,6 @@ const CMD_TO_HANDLER = {
     SCENE_CREATE_ENTITY: 'onCreateEntity',
     SCENE_UPDATE_ENTITY: 'onUpdateEntity',
     SCENE_DESTROY_ENTITY: 'onDestroyEntity',
-    ENTITY_GET_SIBLINGS: 'onEntityGetSiblings',
-    ENTITY_GET_PARENT: 'onEntityGetParent',
-    ENTITY_GET_CHILDREN: 'onEntityGetChildren',
-    ENTITY_QUERY_SUBTREE: 'onEntityQuerySubtree',
     NET_FETCH: 'onFetch',
     NETWORK_SEND_TO_HOST: 'onMessage',
     NETWORK_BROADCAST: 'onNetworkBroadcast',
@@ -106,14 +95,6 @@ export type HostHandlers<TPayloadMap extends Record<string, unknown> = Record<st
     onCreateEntity?: (entity: Omit<ComponentInstance, 'id'>) => Promise<ComponentInstance>;
     onUpdateEntity?: (id: string, patch: EntityPatchPayload) => Promise<void>;
     onDestroyEntity?: (id: string) => Promise<void>;
-    /** Ubi.entity.getSiblings — 自 Entity 上の他 Component (自分を除く)。 */
-    onEntityGetSiblings?: () => ComponentInstance[];
-    /** Ubi.entity.getParent — 親 Entity の Component (type 指定で絞り込み)。 */
-    onEntityGetParent?: (entityType?: string) => ComponentInstance[];
-    /** Ubi.entity.getChildren — 直接の子 Entity の Component (type 指定で絞り込み)。 */
-    onEntityGetChildren?: (entityType?: string) => ComponentInstance[];
-    /** Ubi.entity.queryInSubtree — 自 Entity + 子孫の Component から type 一致を集める。 */
-    onEntityQuerySubtree?: (entityType: string) => ComponentInstance[];
     onFetch?: (url: string, options?: FetchOptions) => Promise<FetchResult>;
     onMessage?: (msg: PluginWorkerMessage<TPayloadMap>) => void;
     onNetworkBroadcast?: (type: string, data: unknown) => void;
@@ -635,18 +616,6 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
                     break;
                 case 'SCENE_QUERY_ENTITIES':
                     result = this.handlers.onQueryEntities?.(command.payload.entityType) ?? [];
-                    break;
-                case 'ENTITY_GET_SIBLINGS':
-                    result = this.handlers.onEntityGetSiblings?.() ?? [];
-                    break;
-                case 'ENTITY_GET_PARENT':
-                    result = this.handlers.onEntityGetParent?.(command.payload.entityType) ?? [];
-                    break;
-                case 'ENTITY_GET_CHILDREN':
-                    result = this.handlers.onEntityGetChildren?.(command.payload.entityType) ?? [];
-                    break;
-                case 'ENTITY_QUERY_SUBTREE':
-                    result = this.handlers.onEntityQuerySubtree?.(command.payload.entityType) ?? [];
                     break;
                 case 'SCENE_CREATE_ENTITY':
                     result = (

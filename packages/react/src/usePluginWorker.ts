@@ -76,14 +76,6 @@ export type PluginWorkerHandlers<TPayloadMap extends Record<string, unknown> = R
     onUpdateEntity?: (id: string, patch: EntityPatchPayload) => Promise<void>;
     /** Worker が Ubi.world.destroyEntity() を呼んだときに発火する */
     onDestroyEntity?: (id: string) => Promise<void>;
-    /** Worker が Ubi.entity.getSiblings() を呼んだときに発火する */
-    onEntityGetSiblings?: () => import('@ubichill/shared').ComponentInstance[];
-    /** Worker が Ubi.entity.getParent(type?) を呼んだときに発火する */
-    onEntityGetParent?: (entityType?: string) => import('@ubichill/shared').ComponentInstance[];
-    /** Worker が Ubi.entity.getChildren(type?) を呼んだときに発火する */
-    onEntityGetChildren?: (entityType?: string) => import('@ubichill/shared').ComponentInstance[];
-    /** Worker が Ubi.entity.queryInSubtree(type) を呼んだときに発火する */
-    onEntityQuerySubtree?: (entityType: string) => import('@ubichill/shared').ComponentInstance[];
     /** Worker が Ubi.network.fetch() を呼んだときに発火する */
     onFetch?: (url: string, options?: FetchOptions) => Promise<FetchResult>;
     /** Tick 送信直前に発火するパフォーマンスフック（setMetricHandler 登録時のみ） */
@@ -163,10 +155,6 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
                 onMediaSetVisible: (targetId, visible) => handlersRef.current.onMediaSetVisible?.(targetId, visible),
                 onGetEntity: (id) => handlersRef.current.onGetEntity?.(id),
                 onQueryEntities: (entityType) => handlersRef.current.onQueryEntities?.(entityType) ?? [],
-                onEntityGetSiblings: () => handlersRef.current.onEntityGetSiblings?.() ?? [],
-                onEntityGetParent: (entityType) => handlersRef.current.onEntityGetParent?.(entityType) ?? [],
-                onEntityGetChildren: (entityType) => handlersRef.current.onEntityGetChildren?.(entityType) ?? [],
-                onEntityQuerySubtree: (entityType) => handlersRef.current.onEntityQuerySubtree?.(entityType) ?? [],
                 onNetworkBroadcast: (type, data) => handlersRef.current.onNetworkBroadcast?.(type, data),
                 onEventEmit: (type, data, scope, targetType, senderId) =>
                     handlersRef.current.onEventEmit?.(type, data, scope, targetType, senderId),

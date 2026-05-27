@@ -147,6 +147,46 @@ export const InitialEntitySchema: z.ZodType<InitialEntity> = z.lazy(() =>
     }),
 );
 
+/**
+ * `initialEntities` ツリー全体で id が一意であることを検証する純関数。
+ * 重複があれば最初の衝突 id を返す。
+ *
+ * runtime flatten 時に `entityId` および `${entityId}::${i}` 形式の
+ * ComponentInstance.id を生成するため、id 衝突は state/patch の誤適用に直結する。
+ */
+function findDuplicateId(entities: InitialEntity[]): string | null {
+    const seen = new Set<string>();
+    const walk = (e: InitialEntity): string | null => {
+        if (seen.has(e.id)) return e.id;
+        seen.add(e.id);
+        for (const child of e.children) {
+            const dup = walk(child);
+            if (dup) return dup;
+        }
+        return null;
+    };
+    for (const e of entities) {
+        const dup = walk(e);
+        if (dup) return dup;
+    }
+    return null;
+}
+
+/** `initialEntities` 配列に対するツリー全体 id ユニーク制約。 */
+export const InitialEntitiesSchema = z
+    .array(InitialEntitySchema)
+    .max(LIMITS.MAX_INITIAL_ENTITIES)
+    .default([])
+    .superRefine((entities, ctx) => {
+        const dup = findDuplicateId(entities);
+        if (dup) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `Entity id "${dup}" がツリー内で重複しています (子孫を含めて一意である必要があります)`,
+            });
+        }
+    });
+
 // ============================================
 // World Permissions（権限設定）
 // ============================================
@@ -192,7 +232,7 @@ export const WorldDefinitionSchema = z.object({
         environment: WorldEnvironmentSchema.optional(),
         // 依存関係
         dependencies: z.array(DependencySchema).optional(),
-        initialEntities: z.array(InitialEntitySchema).max(LIMITS.MAX_INITIAL_ENTITIES).default([]),
+        initialEntities: InitialEntitiesSchema,
         permissions: WorldPermissionsSchema.optional(),
     }),
 });
@@ -216,7 +256,7 @@ export const WorldCreateInputSchema = z.object({
     capacity: WorldCapacitySchema.default({ default: 10, max: 20 }),
     environment: WorldEnvironmentSchema.optional(),
     dependencies: z.array(DependencySchema).optional(),
-    initialEntities: z.array(InitialEntitySchema).max(LIMITS.MAX_INITIAL_ENTITIES).default([]),
+    initialEntities: InitialEntitiesSchema,
     permissions: WorldPermissionsSchema.optional(),
 });
 

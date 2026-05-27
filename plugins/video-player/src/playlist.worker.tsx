@@ -48,8 +48,14 @@ function selectTrack(i: number): void {
 
 function removeTrack(i: number): void {
     const newList = state.local.playlist.filter((_, idx) => idx !== i);
-    const newIdx =
-        state.local.currentIndex >= newList.length ? Math.max(0, newList.length - 1) : state.local.currentIndex;
+    // 削除位置に応じて currentIndex を補正:
+    //  - 削除位置が currentIndex より前: 1 つ前にシフト
+    //  - 削除位置が currentIndex (= 今再生中): その位置に新トラックが繰り上がってくるので維持
+    //  - 削除位置が currentIndex より後: 変化なし
+    //  - 最後に範囲外なら末尾にクランプ
+    let newIdx = state.local.currentIndex;
+    if (i < newIdx) newIdx -= 1;
+    if (newIdx >= newList.length) newIdx = Math.max(0, newList.length - 1);
     state.local.playlist = newList;
     state.local.currentIndex = newIdx;
 }
@@ -62,8 +68,21 @@ function next(loop: LoopMode, shuffle: boolean): void {
         emitCurrent();
         return;
     }
-    const nextIdx = shuffle ? Math.floor(Math.random() * len) : (state.local.currentIndex + 1) % len;
-    state.local.currentIndex = nextIdx;
+    if (shuffle) {
+        state.local.currentIndex = Math.floor(Math.random() * len);
+        return;
+    }
+    const cur = state.local.currentIndex;
+    if (cur + 1 < len) {
+        state.local.currentIndex = cur + 1;
+        return;
+    }
+    // 末尾に到達: loop='all' のみ先頭に戻る。'none' は停止 (controls 側で isPlaying=false に)
+    if (loop === 'all') {
+        state.local.currentIndex = 0;
+    } else {
+        Ubi.event.emit('vp:playback:stop', {}, { scope: 'siblings', targetType: 'video-player:controls' });
+    }
 }
 
 function prev(): void {

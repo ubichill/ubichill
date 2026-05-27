@@ -13,7 +13,6 @@ import type React from 'react';
 import { useEffect, useMemo, useRef } from 'react';
 import { usePluginBroadcast } from '../hooks/usePluginBroadcast';
 import { usePluginCanvas } from '../hooks/usePluginCanvas';
-import { usePluginEntity } from '../hooks/usePluginEntity';
 import { usePluginEntitySync } from '../hooks/usePluginEntitySync';
 import { usePluginFetch } from '../hooks/usePluginFetch';
 import { usePluginMedia } from '../hooks/usePluginMedia';
@@ -59,7 +58,6 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
     const { getVideoRef, mediaHandlers } = usePluginMedia(definition, sendEventRef);
     const onFetch = usePluginFetch(definition, entity);
     const worldHandlers = usePluginWorld(definition.watchScope ?? 'subtree', entity.entityId);
-    const entityHandlers = usePluginEntity(entityId, entity.entityId);
 
     // ── Worker 起動時点の watchEntityTypes マッチ分を抽出 ──────────────
     // watchScope='subtree' (default) は自 GameObject + 子孫 の Component を可視。
@@ -101,7 +99,6 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
             ...canvasHandlers,
             ...mediaHandlers,
             ...worldHandlers,
-            ...entityHandlers,
             onRender,
             onFetch,
             onNetworkBroadcast: (type, data) => onNetworkBroadcastRef.current?.(type, data),
