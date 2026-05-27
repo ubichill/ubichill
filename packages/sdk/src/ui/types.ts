@@ -5,7 +5,7 @@
  * React / Socket.IO には依存しない（注入されたコンテキストで受け取る）。
  */
 
-import type { CursorState, User, WorldEntity } from '@ubichill/shared';
+import type { ComponentInstance, CursorState, User } from '@ubichill/shared';
 
 // ============================================
 // Socket 抽象 (socket.io-client を直接依存しない)
@@ -24,12 +24,12 @@ export interface SocketLike {
 
 export interface UbiEntityContext<TData = unknown, TEphemeral = unknown> {
     /** このウィジェットが表すエンティティ */
-    entity: WorldEntity<TData>;
+    entity: ComponentInstance<TData>;
     /** 他ユーザーからのエフェメラルデータ */
     ephemeral: TEphemeral | undefined;
 
     /** エンティティを部分更新する */
-    patchEntity: (patch: Partial<WorldEntity<TData>>) => void;
+    patchEntity: (patch: Partial<ComponentInstance<TData>>) => void;
     /** エフェメラルデータを全ユーザーにブロードキャスト */
     broadcast: (data: TEphemeral) => void;
 
@@ -47,10 +47,16 @@ export interface UbiEntityContext<TData = unknown, TEphemeral = unknown> {
      * 自分がロックしている他エンティティを解放する（singleHold 制御用）
      * onAutoRelease でリリース時のパッチを返せる。
      */
-    releaseOtherLocks: (options?: { onAutoRelease?: (entity: WorldEntity) => Partial<WorldEntity> }) => void;
+    releaseOtherLocks: (options?: {
+        onAutoRelease?: (entity: ComponentInstance) => Partial<ComponentInstance>;
+    }) => void;
 
     /** 新しいエンティティをワールドに作成する */
-    createEntity: (type: string, transform: WorldEntity['transform'], data: unknown) => Promise<WorldEntity | null>;
+    createEntity: (
+        type: string,
+        transform: ComponentInstance['transform'],
+        data: unknown,
+    ) => Promise<ComponentInstance | null>;
 
     /** ログイン中のユーザー ID */
     currentUserId: string | null | undefined;
@@ -79,11 +85,15 @@ export interface UbiInstanceContext {
     updatePosition: (pos: { x: number; y: number }, cursorState: CursorState) => void;
 
     /** ワールド内の全エンティティ */
-    entities: ReadonlyMap<string, WorldEntity>;
+    entities: ReadonlyMap<string, ComponentInstance>;
     /** エンティティを部分更新する */
-    patchEntity: (id: string, patch: Partial<WorldEntity>) => void;
+    patchEntity: (id: string, patch: Partial<ComponentInstance>) => void;
     /** 新しいエンティティをワールドに作成する */
-    createEntity: (type: string, transform: WorldEntity['transform'], data: unknown) => Promise<WorldEntity | null>;
+    createEntity: (
+        type: string,
+        transform: ComponentInstance['transform'],
+        data: unknown,
+    ) => Promise<ComponentInstance | null>;
 
     /** エフェメラルデータマップ (entityId → data) */
     ephemeralData: ReadonlyMap<string, unknown>;

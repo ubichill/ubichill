@@ -7,7 +7,8 @@
  * - definition.onHostMessage を通じたカスタムメッセージのプラグイン側委譲
  */
 
-import type { CursorState, WorldEntity } from '@ubichill/shared';
+import { PluginHostManager } from '@ubichill/sandbox';
+import type { ComponentInstance, CursorState } from '@ubichill/shared';
 import type React from 'react';
 import { useEffect, useMemo, useRef } from 'react';
 import { usePluginBroadcast } from '../hooks/usePluginBroadcast';
@@ -20,13 +21,19 @@ import { usePluginUI } from '../hooks/usePluginUI';
 import { usePluginWorld } from '../hooks/usePluginWorld';
 import { useSocket } from '../hooks/useSocket';
 import { useWorld } from '../hooks/useWorld';
+import {
+    collectAncestorGameObjectIds,
+    collectSubtreeGameObjectIds,
+    isVisibleInScope,
+    type WatchScope,
+} from '../lib/entityScope';
 import type { WorkerPluginDefinition } from '../types';
 import { usePluginWorker } from '../usePluginWorker';
 import { PluginUIMount } from './PluginUIMount';
 
 export interface WorkerPluginHostProps {
     entityId: string;
-    entity: WorldEntity;
+    entity: ComponentInstance;
     definition: WorkerPluginDefinition;
 }
 
@@ -50,25 +57,39 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
     const { vnodes, onRender, sendAction, sendEventRef } = usePluginUI();
     const { getVideoRef, mediaHandlers } = usePluginMedia(definition, sendEventRef);
     const onFetch = usePluginFetch(definition, entity);
-    const worldHandlers = usePluginWorld();
+    const worldHandlers = usePluginWorld(definition.watchScope ?? 'subtree', entity.entityId);
 
     // ── Worker 起動時点の watchEntityTypes マッチ分を抽出 ──────────────
-    // initialEntities は Worker 生成の瞬間だけ読まれるため、
-    // ここでは毎レンダー計算しても（Worker は再作成されず）問題ない。
-    const initialEntities = useMemo<WorldEntity[]>(() => {
+    // watchScope='subtree' (default) は自 GameObject + 子孫 の Component を可視。
+    // watchScope='parent' は自 GameObject + 祖先 の Component を可視。
+    const scope: WatchScope = definition.watchScope ?? 'subtree';
+    const scopedIds = useMemo(() => {
+        if (!entity.entityId) return null;
+        if (scope === 'subtree') return collectSubtreeGameObjectIds(entities.values(), entity.entityId);
+        if (scope === 'parent') return collectAncestorGameObjectIds(entities.values(), entity.entityId);
+        return null;
+    }, [entities, scope, entity.entityId]);
+    const initialEntities = useMemo<ComponentInstance[]>(() => {
         const types = definition.watchEntityTypes;
         if (!types?.length) return [];
-        const set = new Set(types);
-        const out: WorldEntity[] = [];
-        for (const e of entities.values()) if (set.has(e.type)) out.push(e);
+        const typeSet = new Set(types);
+        const out: ComponentInstance[] = [];
+        for (const e of entities.values()) {
+            if (!typeSet.has(e.type)) continue;
+            if (!isVisibleInScope(e, scope, entity.entityId, scopedIds)) continue;
+            out.push(e);
+        }
         return out;
-    }, [entities, definition.watchEntityTypes]);
+    }, [entities, definition.watchEntityTypes, scope, entity.entityId, scopedIds]);
 
     // ── Worker ────────────────────────────────────────────────────
     const { sendEvent, workerRevision, setScrollElement } = usePluginWorker({
         pluginCode: definition.workerCode,
         pluginId: definition.id,
-        entityId,
+        componentInstanceId: entityId,
+        entityId: entity.entityId,
+        parentEntityId: entity.parentEntityId,
+        componentType: entity.type,
         capabilities: definition.capabilities,
         myUserId: currentUser?.id,
         pluginBase: definition.pluginBase,
@@ -81,6 +102,14 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
             onRender,
             onFetch,
             onNetworkBroadcast: (type, data) => onNetworkBroadcastRef.current?.(type, data),
+            onEventEmit: (type, data, scope, targetType, senderId) =>
+                PluginHostManager.routeEmit({
+                    senderComponentInstanceId: senderId,
+                    type,
+                    data,
+                    scope,
+                    targetType,
+                }),
             onMessage: (msg) => {
                 const m = msg as { type: string; payload: unknown };
                 if (m.type === 'position:update') {
@@ -93,9 +122,13 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
                         updateUser: (patch) =>
                             updateUserRef.current(patch as Parameters<typeof updateUserRef.current>[0]),
                         sendToWorker: (type, payload) =>
+                            // 旧仕様: eventType: 'host:message', data: { type, payload } という入れ子だったが
+                            // Worker 側で常に switch(payload.type) を書かされる二度手間だったので、
+                            // type を eventType に直接昇格させて Worker は Ubi.event.on(type, ...) で
+                            // フラットに受けられるようにした。
                             sendEventRef.current?.({
                                 type: 'EVT_CUSTOM',
-                                payload: { eventType: 'host:message', data: { type, payload } },
+                                payload: { eventType: type, data: payload },
                             }),
                     });
                 }
@@ -116,7 +149,7 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
     }, [setScrollElement]);
 
     usePluginPresence(definition, users, sendEvent, workerRevision);
-    usePluginEntitySync(definition, entities, sendEvent, workerRevision);
+    usePluginEntitySync(definition, entities, sendEvent, workerRevision, entity.entityId);
 
     // ── レンダー ───────────────────────────────────────────────────
     return (
@@ -146,6 +179,7 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
                         width: '100%',
                         height: '100%',
                         objectFit: 'contain',
+                        backgroundColor: '#000',
                         display: 'none',
                         pointerEvents: 'none',
                     }}

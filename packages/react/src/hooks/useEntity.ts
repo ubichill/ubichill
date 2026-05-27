@@ -1,4 +1,4 @@
-import type { WorldEntity } from '@ubichill/shared';
+import type { ComponentInstance } from '@ubichill/shared';
 import throttle from 'lodash.throttle';
 import { useCallback, useMemo, useRef } from 'react';
 
@@ -26,11 +26,11 @@ type ThrottledFn = ReturnType<typeof throttle<(...args: unknown[]) => unknown>>;
  */
 export const useEntity = <T = Record<string, unknown>>(
     entityId: string,
-    options?: { initialEntity?: WorldEntity<T> },
+    options?: { initialEntity?: ComponentInstance<T> },
 ): {
-    entity: WorldEntity<T> | null;
+    entity: ComponentInstance<T> | null;
     ephemeral: unknown;
-    syncState: (patch: Partial<Omit<WorldEntity<T>, 'id' | 'type'>>) => void;
+    syncState: (patch: Partial<Omit<ComponentInstance<T>, 'id' | 'type'>>) => void;
     syncStream: (data: unknown) => void;
     tryLock: () => boolean;
     unlock: () => void;
@@ -42,13 +42,13 @@ export const useEntity = <T = Record<string, unknown>>(
     const { entities, ephemeralData, patchEntity } = useWorld();
 
     // コンテキストからエンティティを取得、なければ初期値
-    const contextEntity = entities.get(entityId) as WorldEntity<T> | undefined;
+    const contextEntity = entities.get(entityId) as ComponentInstance<T> | undefined;
     const entity = contextEntity ?? options?.initialEntity ?? null;
 
     // コンテキストからエフェメラルデータを取得
     const ephemeral = ephemeralData.get(entityId) as unknown;
 
-    const previousPatchRef = useRef<Partial<Omit<WorldEntity<T>, 'id' | 'type'>> | null>(null);
+    const previousPatchRef = useRef<Partial<Omit<ComponentInstance<T>, 'id' | 'type'>> | null>(null);
 
     // syncStream の安定参照のために Refs で最新値を保持
     const socketRef = useRef(socket);
@@ -75,7 +75,7 @@ export const useEntity = <T = Record<string, unknown>>(
      * サーバーに保存され、他のクライアントに配信される
      */
     const syncState = useCallback(
-        (patch: Partial<Omit<WorldEntity<T>, 'id' | 'type'>>) => {
+        (patch: Partial<Omit<ComponentInstance<T>, 'id' | 'type'>>) => {
             if (!isConnected) return;
 
             // 変更がない場合は送信しない
@@ -84,7 +84,7 @@ export const useEntity = <T = Record<string, unknown>>(
             }
             previousPatchRef.current = patch;
 
-            patchEntity(entityId, patch as Partial<WorldEntity<Record<string, unknown>>>);
+            patchEntity(entityId, patch as Partial<ComponentInstance<Record<string, unknown>>>);
         },
         [patchEntity, isConnected, entityId],
     );
@@ -113,7 +113,7 @@ export const useEntity = <T = Record<string, unknown>>(
 
         // 誰もロックしていない
         if (!entity.lockedBy) {
-            syncState({ lockedBy: currentUser.id } as Partial<Omit<WorldEntity<T>, 'id' | 'type'>>);
+            syncState({ lockedBy: currentUser.id } as Partial<Omit<ComponentInstance<T>, 'id' | 'type'>>);
             return true;
         }
 
@@ -127,7 +127,7 @@ export const useEntity = <T = Record<string, unknown>>(
         if (!entity || !currentUser) return;
 
         if (entity.lockedBy === currentUser.id) {
-            syncState({ lockedBy: null } as Partial<Omit<WorldEntity<T>, 'id' | 'type'>>);
+            syncState({ lockedBy: null } as Partial<Omit<ComponentInstance<T>, 'id' | 'type'>>);
         }
     }, [entity, currentUser, syncState]);
 

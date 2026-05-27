@@ -1,23 +1,22 @@
 /**
- * usePluginWorld
- *
- * Worker の Ubi.world.* RPC を処理するハンドラ群を構築する。
- *
- * 責務:
- * - onGetEntity / onQueryEntities（同期読み取り）
- * - onCreateEntity / onUpdateEntity / onDestroyEntity（非同期書き込み）
- * - stale closure を防ぐための ref 管理
+ * Ubi.world.* RPC のハンドラ群。watchScope に応じて可視範囲を絞る。
  */
 
 import type { HostHandlers } from '@ubichill/sandbox';
-import type { WorldEntity } from '@ubichill/shared';
-import { useEffect, useRef } from 'react';
+import type { ComponentInstance } from '@ubichill/shared';
+import { useEffect, useMemo, useRef } from 'react';
+import {
+    collectAncestorGameObjectIds,
+    collectSubtreeGameObjectIds,
+    isVisibleInScope,
+    type WatchScope,
+} from '../lib/entityScope';
 import { useWorld } from './useWorld';
 
-export function usePluginWorld(): Pick<
-    HostHandlers,
-    'onGetEntity' | 'onQueryEntities' | 'onCreateEntity' | 'onUpdateEntity' | 'onDestroyEntity'
-> {
+export function usePluginWorld(
+    scope: WatchScope = 'subtree',
+    entityId?: string,
+): Pick<HostHandlers, 'onGetEntity' | 'onQueryEntities' | 'onCreateEntity' | 'onUpdateEntity' | 'onDestroyEntity'> {
     const { entities, createEntity, patchEntity, deleteEntity } = useWorld();
 
     const worldOpsRef = useRef({ createEntity, patchEntity, deleteEntity });
@@ -30,11 +29,33 @@ export function usePluginWorld(): Pick<
         entitiesRef.current = entities;
     });
 
+    const scopedIds = useMemo(() => {
+        if (!entityId) return null;
+        if (scope === 'subtree') return collectSubtreeGameObjectIds(entities.values(), entityId);
+        if (scope === 'parent') return collectAncestorGameObjectIds(entities.values(), entityId);
+        return null;
+    }, [entities, scope, entityId]);
+    const scopedIdsRef = useRef(scopedIds);
+    useEffect(() => {
+        scopedIdsRef.current = scopedIds;
+    });
+
+    const scopeRef = useRef({ scope, entityId });
+    useEffect(() => {
+        scopeRef.current = { scope, entityId };
+    });
+
+    const isVisible = (e: ComponentInstance): boolean =>
+        isVisibleInScope(e, scopeRef.current.scope, scopeRef.current.entityId, scopedIdsRef.current);
+
     return {
-        onGetEntity: (id: string): WorldEntity | undefined => entitiesRef.current.get(id),
-        onQueryEntities: (entityType: string): WorldEntity[] =>
-            Array.from(entitiesRef.current.values()).filter((e) => e.type === entityType),
-        onCreateEntity: async (entity: Omit<WorldEntity, 'id'>): Promise<WorldEntity> => {
+        onGetEntity: (id: string): ComponentInstance | undefined => {
+            const e = entitiesRef.current.get(id);
+            return e && isVisible(e) ? e : undefined;
+        },
+        onQueryEntities: (entityType: string): ComponentInstance[] =>
+            Array.from(entitiesRef.current.values()).filter((e) => e.type === entityType && isVisible(e)),
+        onCreateEntity: async (entity: Omit<ComponentInstance, 'id'>): Promise<ComponentInstance> => {
             const result = await worldOpsRef.current.createEntity(
                 entity.type,
                 entity.transform,

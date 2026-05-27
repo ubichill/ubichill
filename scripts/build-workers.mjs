@@ -3,14 +3,15 @@
  *
  * plugins/ 以下の plugin.json を自動探索し、Worker コードを esbuild でバンドルします。
  *
- * plugin.json の entities フィールド（entity-first 形式）を読み取り、Worker をバンドルします。
- * エンティティキーは "<pluginId>:<entityKey>" 形式（例: "avatar:cursor"）。
+ * plugin.json の components フィールド（Stage 1 の現代的 ECS 形式）を読み取り、Worker をバンドルします。
+ * Component キーは pluginId 抜きの単純名（例: "cursor"）で宣言し、
+ * Runtime / ワールド YAML からは `${pluginId}:${componentName}`（例: "avatar:cursor"）で参照します。
  *
- * 出力物 (プラグインディレクトリ名を <name>、エンティティキーを <key> とする):
+ * 出力物 (プラグインディレクトリ名を <name>、Component キーを <key> とする):
  *   dist/plugins/<name>/v<version>/<key>/index.js
- *   dist/plugins/<name>/v<version>/plugin.json
+ *   dist/plugins/<name>/v<version>/manifest.json
  *   public/plugins/<name>/v<version>/<key>/index.js
- *   public/plugins/<name>/v<version>/plugin.json
+ *   public/plugins/<name>/v<version>/manifest.json
  *   public/plugins/<name>/v<version>/  ← assets/ もここにコピー（バージョン固定）
  *   public/plugins/<name>/plugin.json  ← ローダー用エイリアス（最新バージョン）
  *
@@ -22,7 +23,7 @@
 
 import * as esbuild from 'esbuild';
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -48,6 +49,36 @@ function copyDirRecursive(src, dest) {
             copyFileSync(srcPath, destPath);
         }
     }
+}
+
+/**
+ * Component ディレクトリから古いハッシュ付きバンドル (`index.*.js`) を削除する。
+ * manifest が古いバンドルを参照していたブラウザキャッシュを段階的に剥がせる
+ * ように 1 つだけ残してもよいが、CDN を汚さないため keepFilename 以外は削除。
+ */
+function cleanOldBundles(dir, keepFilename) {
+    if (!existsSync(dir)) return;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (!entry.isFile()) continue;
+        if (entry.name === keepFilename) continue;
+        if (!/^index\.[a-f0-9]+\.js$/.test(entry.name)) continue;
+        rmSync(join(dir, entry.name));
+    }
+}
+
+/** ディレクトリ内の全ファイルをルートからの相対パスで列挙する純関数。 */
+function listFilesRecursive(rootDir, currentDir = rootDir) {
+    if (!existsSync(currentDir)) return [];
+    const out = [];
+    for (const entry of readdirSync(currentDir, { withFileTypes: true })) {
+        const abs = join(currentDir, entry.name);
+        if (entry.isDirectory()) {
+            out.push(...listFilesRecursive(rootDir, abs));
+        } else {
+            out.push(abs.slice(rootDir.length + 1).split('\\').join('/'));
+        }
+    }
+    return out;
 }
 
 async function bundleWorker(entryPath, tsconfig, defines) {
@@ -115,33 +146,31 @@ export async function buildWorker(pluginJsonPath) {
     mkdirSync(distVersionDir, { recursive: true });
     mkdirSync(publicVersionDir, { recursive: true });
 
-    // ── entities 形式 (entity-first) ────────────────────────────
-    const entityEntries = pluginJson.entities;
-    if (!entityEntries || typeof entityEntries !== 'object') {
-        console.warn(`⚠️  [${pluginId}] entities フィールドが見つかりません。スキップします。`);
+    // ── components 形式 (Stage 1: 現代的 ECS) ───────────────────
+    const componentEntries = pluginJson.components;
+    if (!componentEntries || typeof componentEntries !== 'object') {
+        console.warn(`⚠️  [${pluginId}] components フィールドが見つかりません。スキップします。`);
         return;
     }
 
-    // バージョン付きマニフェスト用エンティティ（src 除去・workerUrl 追加）
-    const versionedEntities = {};
+    // バージョン付きマニフェスト用 components（src 除去・workerUrl 追加、フル型キー化）
+    const versionedComponents = {};
 
-    for (const [entityType, entityEntry] of Object.entries(entityEntries)) {
-        const workerRelPath = typeof entityEntry === 'string' ? entityEntry : entityEntry?.src;
+    for (const [componentName, componentEntry] of Object.entries(componentEntries)) {
+        // ワールド YAML / runtime からは "pluginId:componentName" で参照する
+        const componentType = `${pluginId}:${componentName}`;
+        const workerRelPath = typeof componentEntry === 'string' ? componentEntry : componentEntry?.src;
         if (!workerRelPath) {
-            // src なし = データエンティティ。worker をビルドせず manifest にメタだけ記録する。
-            const meta = typeof entityEntry === 'string' ? {} : entityEntry;
-            versionedEntities[entityType] = { ...meta };
-            console.log(`📋 [${entityType}] data-only (no worker)`);
+            // src なし = データ専用 Component。worker をビルドせず manifest にメタだけ記録する。
+            const meta = typeof componentEntry === 'string' ? {} : componentEntry;
+            versionedComponents[componentType] = { ...meta };
+            console.log(`📋 [${componentType}] data-only (no worker)`);
             continue;
         }
 
-        // "avatar:cursor" → "cursor"
-        const colonIdx = entityType.indexOf(':');
-        const entityKey = colonIdx !== -1 ? entityType.slice(colonIdx + 1) : entityType;
-
         const entryPath = join(pluginDir, workerRelPath);
         if (!existsSync(entryPath)) {
-            console.error(`❌ [${entityType}] エントリが見つかりません: ${entryPath}`);
+            console.error(`❌ [${componentType}] エントリが見つかりません: ${entryPath}`);
             continue;
         }
 
@@ -152,39 +181,47 @@ export async function buildWorker(pluginJsonPath) {
         const outFilename = `index.${hash}.js`;
 
         // dist: バージョン固定
-        const distEntityDir = join(distVersionDir, entityKey);
-        mkdirSync(distEntityDir, { recursive: true });
-        writeFileSync(join(distEntityDir, outFilename), code, 'utf-8');
+        const distComponentDir = join(distVersionDir, componentName);
+        mkdirSync(distComponentDir, { recursive: true });
+        cleanOldBundles(distComponentDir, outFilename);
+        writeFileSync(join(distComponentDir, outFilename), code, 'utf-8');
 
         // public: バージョン固定パス（CDN キャッシュバスティング用）
-        const publicEntityDir = join(publicVersionDir, entityKey);
-        mkdirSync(publicEntityDir, { recursive: true });
-        writeFileSync(join(publicEntityDir, outFilename), code, 'utf-8');
+        const publicComponentDir = join(publicVersionDir, componentName);
+        mkdirSync(publicComponentDir, { recursive: true });
+        cleanOldBundles(publicComponentDir, outFilename);
+        writeFileSync(join(publicComponentDir, outFilename), code, 'utf-8');
 
         // workerUrl を明示、src（ビルド時のみ）は除去
-        const { src: _src, ...runtimeMeta } = typeof entityEntry === 'string' ? {} : entityEntry;
-        versionedEntities[entityType] = { ...runtimeMeta, workerUrl: `./${entityKey}/${outFilename}` };
+        const { src: _src, ...runtimeMeta } = typeof componentEntry === 'string' ? {} : componentEntry;
+        versionedComponents[componentType] = { ...runtimeMeta, workerUrl: `./${componentName}/${outFilename}` };
 
-        console.log(`✅ [${entityType}] /plugins/${pluginDirName}/v${version}/${entityKey}/${outFilename}`);
+        console.log(`✅ [${componentType}] /plugins/${pluginDirName}/v${version}/${componentName}/${outFilename}`);
     }
 
-    // バージョン付きマニフェストを書き出す（ランタイム用・src なし）
+    // assets/ をバージョン固定パスにコピー（Worker は Ubi.pluginBase で参照）
+    const assetsSrcDir = join(pluginDir, 'assets');
+    let assetFiles = [];
+    if (existsSync(assetsSrcDir)) {
+        copyDirRecursive(assetsSrcDir, publicVersionDir);
+        copyDirRecursive(assetsSrcDir, distVersionDir);
+        assetFiles = listFilesRecursive(assetsSrcDir);
+        console.log(`✅ [${pluginId}] assets → /plugins/${pluginDirName}/v${version}/ (${assetFiles.length} files)`);
+    }
+
     const versionedManifest = JSON.stringify(
-        { id: pluginId, name: pluginJson.name, version, entities: versionedEntities },
+        {
+            id: pluginId,
+            name: pluginJson.name,
+            version,
+            components: versionedComponents,
+            assets: assetFiles,
+        },
         null,
         2,
     );
     writeFileSync(join(distVersionDir, 'manifest.json'), versionedManifest, 'utf-8');
     writeFileSync(join(publicVersionDir, 'manifest.json'), versionedManifest, 'utf-8');
-
-    // --- assets/ → public/plugins/<name>/v<version>/ ---
-    // バージョン付きパスにのみコピーすることでキャッシュバスティングを保証する。
-    // Worker コード内では __PLUGIN_BASE__ を使って参照すること。
-    const assetsDir = join(pluginDir, 'assets');
-    if (existsSync(assetsDir)) {
-        copyDirRecursive(assetsDir, publicVersionDir);
-        console.log(`✅ [${pluginId}] assets → /plugins/${pluginDirName}/v${version}/`);
-    }
 }
 
 // ============================================================
@@ -202,14 +239,17 @@ function writePluginIndex(pluginJsonFiles) {
         const pluginJson = JSON.parse(readFileSync(pluginJsonPath, 'utf-8'));
         const pluginId = pluginJson.id;
         const pluginDirName = basename(dirname(pluginJsonPath));
-        const kinds = pluginJson.entities ? Object.keys(pluginJson.entities) : [];
+        // Component 型は "pluginId:componentName" 形式に展開
+        const components = pluginJson.components
+            ? Object.keys(pluginJson.components).map((name) => `${pluginId}:${name}`)
+            : [];
         entries.push({
             id: pluginId,
             name: pluginJson.name ?? pluginId,
             version: pluginJson.version,
             // dependencies に追加する際の repository path
             repositoryPath: `plugins/${pluginDirName}`,
-            kinds,
+            components,
         });
     }
     const json = JSON.stringify(entries, null, 2);
@@ -240,7 +280,14 @@ async function main() {
     console.log(`📦 CDN 配布用: dist/plugins/`);
 }
 
-main().catch((err) => {
-    console.error('❌ Worker build failed:', err);
-    process.exit(1);
-});
+// スクリプトとして直接実行された場合のみ main() を走らせる。
+// `watch-workers.mjs` が import { buildWorker } から取ってきたとき、main() が
+// 副作用として呼ばれて二重ビルドになるのを防ぐ。
+// パス比較は fileURLToPath で URL → 実パスに正規化 (スペース・Windows 対応)。
+const isMain = process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1];
+if (isMain) {
+    main().catch((err) => {
+        console.error('❌ Worker build failed:', err);
+        process.exit(1);
+    });
+}

@@ -1,19 +1,14 @@
 /**
- * pen:tray Worker — ペン選択トレイ UI
+ * pen:tray Worker — ペン置き場 + 太さ設定 UI。
  *
- * - watchEntityTypes: ['pen:pen'] により pen:pen エンティティの変更通知を受け取る
- * - Ubi.world.queryEntities('pen:pen') で初期ペン一覧を取得
- * - ペン選択は lockedBy を使用（isHeld 廃止）
- *   - 自分が選択: lockedBy = Ubi.myUserId
- *   - 解放: lockedBy = null
- *   - 他ユーザーが保持中: lockedBy = 他のユーザーID → グレーアウト表示
+ * tray はペンの「表示」「選択」は持たない (pen:pen Worker の責務)。
+ * 担当: 背景の枠を描く / 自 subtree で「自分が保持中」のペンに対し strokeWidth 設定 UI を出す。
+ *
+ * watchScope='subtree' により、tray-warm は warm 系ペンしか見えない。
+ * → 別 tray のペンを保持中はその tray にだけ size selector が出る。
  */
 
-import type { Entity, System, WorkerEvent, WorldEntity } from '@ubichill/sdk';
-
-// ────────────────────────────────────────────────────────────────
-// 状態
-// ────────────────────────────────────────────────────────────────
+import type { ComponentInstance, Entity, System, WorkerEvent } from '@ubichill/sdk';
 
 interface PenData {
     color: string;
@@ -21,253 +16,137 @@ interface PenData {
 }
 
 interface PenEntry {
-    id: string;
-    data: PenData;
-    lockedBy: string | null;
-    z: number;
+    readonly id: string;
+    readonly lockedBy: string | null;
+    readonly data: PenData;
 }
-
-/** entityId → PenEntry */
-const penEntities = new Map<string, PenEntry>();
-let trayZIndex = 0;
-let trayDirty = false;
 
 const SIZES = [2, 4, 8, 16] as const;
 
-// ────────────────────────────────────────────────────────────────
-// 初期化 (async — IIFE)
-// ────────────────────────────────────────────────────────────────
+// ── ローカル状態: subtree 上の pen:pen インデックス ──
+// (subtree 内に複数ペンがあるため Ubi.state.sync は使えず手動管理)
+const knownPens = new Map<string, PenEntry>();
 
-void (async () => {
-    const entityId = Ubi.entityId;
-    if (entityId) {
-        try {
-            const trayEntity = await Ubi.world.getEntity(entityId);
-            if (trayEntity) {
-                trayZIndex = trayEntity.transform.z ?? trayZIndex;
-            }
-        } catch {
-            // 失敗時はデフォルト値を使用
-        }
-    }
+const setSize = (id: string, size: number): void => {
+    const p = knownPens.get(id);
+    if (!p) return;
+    // tray が「他 entity (pen:pen)」を直接書く escape hatch
+    Ubi.entity(id)
+        .update({ data: { ...p.data, strokeWidth: size } })
+        .catch((err) => Ubi.log(`[pen:tray] サイズ変更失敗: ${String(err)}`, 'warn'));
+};
 
-    try {
-        const pens = await Ubi.world.queryEntities('pen:pen');
-        for (const pen of pens) {
-            penEntities.set(pen.id, {
-                id: pen.id,
-                data: pen.data as PenData,
-                lockedBy: pen.lockedBy ?? null,
-                z: pen.transform.z ?? 0,
-            });
-        }
-        trayDirty = true;
-        Ubi.log(`[PenTray] 初期化完了: ${penEntities.size} ペン, zIndex=${trayZIndex}`, 'info');
-    } catch (err) {
-        Ubi.log(`[PenTray] ペン一覧取得失敗: ${String(err)}`, 'warn');
-    }
-})();
-
-// ────────────────────────────────────────────────────────────────
-// ヘルパー
-// ────────────────────────────────────────────────────────────────
-
-/** 指定ペンを自分のものとしてロックし、自分が保持していた他のペンを解放する */
-async function selectPen(penId: string): Promise<void> {
+const findHeldByMe = (): PenEntry | null => {
     const myId = Ubi.myUserId;
-    if (!myId) return;
+    if (!myId) return null;
+    for (const p of knownPens.values()) if (p.lockedBy === myId) return p;
+    return null;
+};
 
-    // 自分が保持中の他のペンを解放
-    for (const pen of penEntities.values()) {
-        if (pen.id === penId) continue;
-        if (pen.lockedBy === myId) {
-            await Ubi.world.updateEntity(pen.id, { lockedBy: null });
-        }
-    }
-    await Ubi.world.updateEntity(penId, { lockedBy: myId });
-
-    // 自分のペン色を他ユーザーに共有（avatar:cursor の RemoteCursor で表示）
-    const pen = penEntities.get(penId);
-    if (pen) {
-        Ubi.network.sendToHost('user:update', { penColor: pen.data.color });
-    }
-}
-
-/** 保持中のペンを返却する */
-async function releasePen(penId: string): Promise<void> {
-    const pen = penEntities.get(penId);
-    if (pen?.lockedBy === Ubi.myUserId) {
-        await Ubi.world.updateEntity(penId, { lockedBy: null });
-        Ubi.network.sendToHost('user:update', { penColor: null });
-    }
-}
-
-/** 保持中ペンのサイズを変更する（自分がロックしている場合のみ） */
-async function setSize(penId: string, size: number): Promise<void> {
-    const pen = penEntities.get(penId);
-    if (!pen || pen.lockedBy !== Ubi.myUserId) return;
-    await Ubi.world.updateEntity(penId, { data: { ...pen.data, strokeWidth: size } });
-}
-
-// ────────────────────────────────────────────────────────────────
-// レンダリング
-// ────────────────────────────────────────────────────────────────
-
-function renderTray(): void {
-    const myId = Ubi.myUserId;
-    const pens = Array.from(penEntities.values()).sort((a, b) => a.z - b.z);
-    const heldPen = pens.find((p) => p.lockedBy === myId) ?? null;
+const renderTray = (): void => {
+    const held = findHeldByMe();
+    const color = held?.data.color ?? '#888';
+    const currentSize = held?.data.strokeWidth ?? 4;
 
     Ubi.ui.render(
         () => (
             <div
                 style={{
-                    width: 'max-content',
-                    backgroundColor: 'rgba(255,255,255,0.55)',
+                    position: 'absolute',
+                    inset: '0',
+                    backgroundColor: 'rgba(245,245,247,0.92)',
                     borderRadius: '12px',
-                    boxShadow: 'inset 0 2px 5px rgba(0,0,0,0.1), 0 4px 16px rgba(0,0,0,0.12)',
-                    backdropFilter: 'blur(8px)',
-                    border: '1px solid rgba(255,255,255,0.7)',
-                    padding: '12px 16px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    zIndex: trayZIndex,
-                    pointerEvents: 'auto',
+                    boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.06), 0 2px 8px rgba(0,0,0,0.08)',
+                    border: '1px solid rgba(0,0,0,0.08)',
                     userSelect: 'none',
+                    pointerEvents: 'none',
                 }}
             >
-                {pens.map((pen) => {
-                    const isSelectedByMe = pen.lockedBy === myId;
-                    const isLockedByOther = pen.lockedBy !== null && pen.lockedBy !== myId;
-                    return (
-                        <button
-                            key={pen.id}
-                            type="button"
-                            title={isLockedByOther ? `使用中` : pen.data.color}
-                            style={{
-                                width: '36px',
-                                height: '48px',
-                                borderRadius: '8px',
-                                border: isSelectedByMe ? `2px solid ${pen.data.color}` : '2px solid transparent',
-                                background: isSelectedByMe ? `${pen.data.color}22` : 'rgba(0,0,0,0.04)',
-                                cursor: isLockedByOther ? 'not-allowed' : 'pointer',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: '4px',
-                                padding: '4px',
-                                transition: 'all 0.15s',
-                                opacity: isLockedByOther ? 0.35 : 1,
-                            }}
-                            onUbiClick={() => {
-                                if (isLockedByOther) return;
-                                if (isSelectedByMe) {
-                                    void releasePen(pen.id);
-                                } else {
-                                    void selectPen(pen.id);
-                                }
-                            }}
-                        >
-                            <svg width="18" height="32" viewBox="0 0 18 32" style={{ display: 'block' }}>
-                                <polygon points="9,32 5,24 13,24" fill="#888" />
-                                <rect
-                                    x="5"
-                                    y="4"
-                                    width="8"
-                                    height="20"
-                                    rx="2"
-                                    fill={pen.data.color}
-                                    stroke="rgba(0,0,0,0.2)"
-                                    strokeWidth="0.8"
-                                />
-                                <rect x="6" y="6" width="2.5" height="14" rx="1" fill="rgba(255,255,255,0.3)" />
-                                <rect x="5" y="1" width="8" height="5" rx="1.5" fill="rgba(0,0,0,0.2)" />
-                            </svg>
-                        </button>
-                    );
-                })}
-
-                {pens.length > 0 && (
+                {held && (
                     <div
                         style={{
-                            width: '1px',
-                            height: '36px',
-                            backgroundColor: 'rgba(0,0,0,0.15)',
-                            margin: '0 4px',
-                            flexShrink: '0',
+                            position: 'absolute',
+                            left: '0',
+                            right: '0',
+                            bottom: '8px',
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '0 4px',
+                            pointerEvents: 'auto',
                         }}
-                    />
-                )}
-
-                {heldPen &&
-                    SIZES.map((s) => {
-                        const isSelected = heldPen.data.strokeWidth === s;
-                        return (
-                            <button
-                                key={String(s)}
-                                type="button"
-                                title={`${s}px`}
-                                style={{
-                                    width: '32px',
-                                    height: '32px',
-                                    borderRadius: '50%',
-                                    border: isSelected
-                                        ? `2px solid ${heldPen.data.color}`
-                                        : '2px solid rgba(0,0,0,0.15)',
-                                    background: isSelected ? `${heldPen.data.color}22` : 'transparent',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    padding: '0',
-                                    transition: 'all 0.15s',
-                                }}
-                                onUbiClick={() => {
-                                    void setSize(heldPen.id, s);
-                                }}
-                            >
-                                <div
+                    >
+                        {SIZES.map((s) => {
+                            const isSelected = currentSize === s;
+                            return (
+                                <button
+                                    key={String(s)}
+                                    type="button"
+                                    title={`${s}px`}
                                     style={{
-                                        width: Math.min(s * 1.5, 22),
-                                        height: Math.min(s * 1.5, 22),
+                                        width: '24px',
+                                        height: '24px',
                                         borderRadius: '50%',
-                                        background: isSelected ? heldPen.data.color : 'rgba(0,0,0,0.4)',
+                                        border: isSelected ? `2px solid ${color}` : '2px solid rgba(0,0,0,0.15)',
+                                        background: isSelected ? `${color}22` : 'transparent',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        padding: '0',
+                                        transition: 'all 0.15s',
                                     }}
-                                />
-                            </button>
-                        );
-                    })}
+                                    onUbiClick={() => setSize(held.id, s)}
+                                >
+                                    <div
+                                        style={{
+                                            width: Math.min(s * 1.5, 14),
+                                            height: Math.min(s * 1.5, 14),
+                                            borderRadius: '50%',
+                                            background: isSelected ? color : 'rgba(0,0,0,0.4)',
+                                        }}
+                                    />
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
         ),
         'pen-tray',
     );
-}
+};
 
-// ────────────────────────────────────────────────────────────────
-// ECS System
-// ────────────────────────────────────────────────────────────────
+/** entity:pen:pen イベントを 1 個取り込み、変化があれば true を返す副作用つき判定。 */
+const ingestEvent = (event: WorkerEvent): boolean => {
+    if (event.type !== 'entity:pen:pen') return false;
+    const e = event.payload as ComponentInstance<PenData> | undefined;
+    if (!e) return false;
+    const prev = knownPens.get(e.id);
+    const next: PenEntry = {
+        id: e.id,
+        lockedBy: e.lockedBy ?? null,
+        data: { color: e.data.color, strokeWidth: e.data.strokeWidth },
+    };
+    if (
+        prev &&
+        prev.lockedBy === next.lockedBy &&
+        prev.data.color === next.data.color &&
+        prev.data.strokeWidth === next.data.strokeWidth
+    ) {
+        return false;
+    }
+    knownPens.set(e.id, next);
+    return true;
+};
 
 const PenTraySystem: System = (_entities: Entity[], _dt: number, events: WorkerEvent[]) => {
-    for (const event of events) {
-        if (event.type === 'entity:pen:pen') {
-            const worldEntity = event.payload as WorldEntity;
-            penEntities.set(worldEntity.id, {
-                id: worldEntity.id,
-                data: worldEntity.data as PenData,
-                lockedBy: worldEntity.lockedBy ?? null,
-                z: worldEntity.transform.z ?? 0,
-            });
-            trayDirty = true;
-        }
-    }
-
-    if (!trayDirty) return;
-    trayDirty = false;
-    renderTray();
+    const changed = events.reduce((acc, ev) => ingestEvent(ev) || acc, false);
+    if (changed) renderTray();
 };
 
 Ubi.registerSystem(PenTraySystem);
 
-console.log('[PenTray Worker] Initialized.');
+// 初期 1 回レンダー (枠だけ — 保持ペン未確定なので size selector はまだ出ない)
+renderTray();

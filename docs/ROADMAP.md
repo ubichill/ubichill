@@ -1,16 +1,5 @@
 # ロードマップ
 
-## 現在のブランチ（feat/35）
-
-ECS アーキテクチャへの移行・SDK の整備。
-
-- [x] Plugin SDK を ECS アーキテクチャへ移行
-- [x] `@ubichill/sandbox` パッケージ分離（`PluginHostManager`）
-- [x] `@ubichill/react` パッケージ分離（`usePluginWorker` / `useWorldPlugin`）
-- [x] InputCollector による入力自動収集
-- [x] パフォーマンス最適化（InputCollector dedup / rAF bind-free / ECS cache / DOM cursor）
-- [x] `plugins/*` の tsconfig から内部パッケージ依存を排除
-
 ---
 
 ## Ubicrate CLI（`ubi`）
@@ -60,8 +49,6 @@ ubi deploy              # GitHub Pages / 任意ホストへ公開
 |---|---|---|
 | ECS プラグインモデル | ✅ 完了 | |
 | DOM レンダリング | ✅ 完了 | |
-| 動的プラグイン読み込み（URL） | 次のブランチ | `ubi create` と同時 |
-| World as Code（YAML） | 設計中 | `docs/WORLD_AS_CODE.md` 参照 |
 | WebGL レンダリング | 将来 | wallpaper engine 相当の表現 |
 | WASM サンドボックス（QuickJS） | 将来 | コスト高のため低優先度 |
 | プラグインマーケットプレイス | 将来 | Phase 5 |

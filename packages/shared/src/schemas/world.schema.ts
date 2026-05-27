@@ -8,6 +8,7 @@ export const LIMITS = {
     MAX_YAML_SIZE: 100 * 1024, // 100KB
     MAX_STRING_LENGTH: 1000,
     MAX_INITIAL_ENTITIES: 500,
+    MAX_COMPONENTS_PER_ENTITY: 32,
     MAX_DEPENDENCY_DEPTH: 3,
     MAX_TAGS: 10,
     MAX_WORLDS_PER_USER: 5,
@@ -90,14 +91,101 @@ export const WorldCapacitySchema = z.object({
 });
 
 // ============================================
-// Initial Entity（初期配置エンティティ）
+// Entity / Component（ECS スキーマ）
+//
+// 設計:
+// - Entity (GameObject) は id + transform のみを持つ「箱」
+// - Component (`<plugin>:<name>`) が振る舞いを配布する
+// - 1 Entity に複数の Component を載せられる
 // ============================================
 
-export const InitialEntitySchema = z.object({
-    kind: z.string(), // "package-name:kind-id"
-    transform: TransformSchema,
-    data: z.record(z.string(), z.unknown()).optional(),
+/**
+ * Component 型識別子: `pluginId:componentName` 形式。
+ * 例: `pen:tray`, `video-player:videoSurface`
+ */
+export const ComponentTypeSchema = z.string().regex(/^[a-z0-9-]+:[a-zA-Z0-9_-]+$/, 'Must be "pluginId:componentName"');
+
+/**
+ * Entity に載る 1 つの Component。
+ */
+export const EntityComponentSchema = z.object({
+    type: ComponentTypeSchema,
+    data: z.record(z.string(), z.unknown()).default({}),
 });
+
+/**
+ * Entity (GameObject) に付与する自由なタグ。
+ * Unity の Tag 相当。フィルタ / クエリ / レイヤー用途で使う。
+ * 安全のため kebab-case + 数字 + アンダースコア程度に限定。
+ */
+export const EntityTagSchema = z
+    .string()
+    .min(1)
+    .max(40)
+    .regex(/^[a-z0-9_-]+$/, 'tag は小文字英数 + - _ のみ');
+
+/**
+ * Initial Entity (GameObject)。
+ * 1 Entity に複数 Component + 子 Entity を持つ Unity 風階層。
+ * `transform` の x/y は親 Entity 基準の相対座標。
+ */
+export interface InitialEntity {
+    id: string;
+    transform: z.infer<typeof TransformSchema>;
+    components: Array<z.infer<typeof EntityComponentSchema>>;
+    tags: string[];
+    children: InitialEntity[];
+}
+
+export const InitialEntitySchema: z.ZodType<InitialEntity> = z.lazy(() =>
+    z.object({
+        id: KebabCaseId,
+        transform: TransformSchema,
+        components: z.array(EntityComponentSchema).max(LIMITS.MAX_COMPONENTS_PER_ENTITY).default([]),
+        tags: z.array(EntityTagSchema).max(LIMITS.MAX_TAGS).default([]),
+        children: z.array(InitialEntitySchema).max(LIMITS.MAX_INITIAL_ENTITIES).default([]),
+    }),
+);
+
+/**
+ * `initialEntities` ツリー全体で id が一意であることを検証する純関数。
+ * 重複があれば最初の衝突 id を返す。
+ *
+ * runtime flatten 時に `entityId` および `${entityId}::${i}` 形式の
+ * ComponentInstance.id を生成するため、id 衝突は state/patch の誤適用に直結する。
+ */
+function findDuplicateId(entities: InitialEntity[]): string | null {
+    const seen = new Set<string>();
+    const walk = (e: InitialEntity): string | null => {
+        if (seen.has(e.id)) return e.id;
+        seen.add(e.id);
+        for (const child of e.children) {
+            const dup = walk(child);
+            if (dup) return dup;
+        }
+        return null;
+    };
+    for (const e of entities) {
+        const dup = walk(e);
+        if (dup) return dup;
+    }
+    return null;
+}
+
+/** `initialEntities` 配列に対するツリー全体 id ユニーク制約。 */
+export const InitialEntitiesSchema = z
+    .array(InitialEntitySchema)
+    .max(LIMITS.MAX_INITIAL_ENTITIES)
+    .default([])
+    .superRefine((entities, ctx) => {
+        const dup = findDuplicateId(entities);
+        if (dup) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `Entity id "${dup}" がツリー内で重複しています (子孫を含めて一意である必要があります)`,
+            });
+        }
+    });
 
 // ============================================
 // World Permissions（権限設定）
@@ -144,7 +232,7 @@ export const WorldDefinitionSchema = z.object({
         environment: WorldEnvironmentSchema.optional(),
         // 依存関係
         dependencies: z.array(DependencySchema).optional(),
-        initialEntities: z.array(InitialEntitySchema).max(LIMITS.MAX_INITIAL_ENTITIES).default([]),
+        initialEntities: InitialEntitiesSchema,
         permissions: WorldPermissionsSchema.optional(),
     }),
 });
@@ -152,7 +240,9 @@ export const WorldDefinitionSchema = z.object({
 export type WorldDefinition = z.infer<typeof WorldDefinitionSchema>;
 export type WorldEnvironment = z.infer<typeof WorldEnvironmentSchema>;
 export type WorldCapacity = z.infer<typeof WorldCapacitySchema>;
-export type InitialEntity = z.infer<typeof InitialEntitySchema>;
+export type EntityComponentDef = z.infer<typeof EntityComponentSchema>;
+export type ComponentType = z.infer<typeof ComponentTypeSchema>;
+export type EntityTag = z.infer<typeof EntityTagSchema>;
 
 // ============================================
 // World Create Input（ブラウザフォーム用）
@@ -166,7 +256,7 @@ export const WorldCreateInputSchema = z.object({
     capacity: WorldCapacitySchema.default({ default: 10, max: 20 }),
     environment: WorldEnvironmentSchema.optional(),
     dependencies: z.array(DependencySchema).optional(),
-    initialEntities: z.array(InitialEntitySchema).max(LIMITS.MAX_INITIAL_ENTITIES).default([]),
+    initialEntities: InitialEntitiesSchema,
     permissions: WorldPermissionsSchema.optional(),
 });
 
@@ -188,7 +278,6 @@ export const ResolvedWorldSchema = z.object({
     environment: WorldEnvironmentSchema,
     capacity: WorldCapacitySchema,
     dependencies: z.array(DependencySchema).optional(),
-    // availableKinds は別途追加
     initialEntities: z.array(InitialEntitySchema),
 });
 

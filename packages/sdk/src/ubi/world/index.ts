@@ -1,25 +1,38 @@
-import type { EntityPatchPayload, WorldEntity } from '@ubichill/shared';
+/**
+ * Ubi.world — エンティティ CRUD の内部 API。
+ *
+ * 通常のプラグインからは `Ubi.spawn` / `Ubi.destroy` などのトップレベル shortcut や
+ * `Ubi.state.persistent` の自動同期を使うことを推奨。直接 `Ubi.world.query` を
+ * 呼ぶのは「自エンティティの transform.z を 1 回だけ読む」など稀なケースのみ。
+ */
+
+import type { ComponentInstance, EntityPatchPayload } from '@ubichill/shared';
 import type { RpcFn, SendFn } from '../types';
 
 export type WorldModule = {
-    getEntity(id: string): Promise<WorldEntity | null>;
-    createEntity(entity: Omit<WorldEntity, 'id'>): Promise<string>;
-    updateEntity(id: string, patch: EntityPatchPayload['patch']): Promise<void>;
-    destroyEntity(id: string): Promise<void>;
-    queryEntities(entityType: string): Promise<WorldEntity[]>;
-    subscribeEntity(id: string): void;
-    unsubscribeEntity(id: string): void;
+    /** 指定 id (= ComponentInstance.id) のエンティティを取得。 */
+    get(id: string): Promise<ComponentInstance | null>;
+    /** type 一致のエンティティ一覧。watchScope に応じて可視範囲が絞られる。 */
+    query(entityType: string): Promise<ComponentInstance[]>;
+    /**
+     * 他エンティティを直接更新するエスケープハッチ。自エンティティは `Ubi.state.*` を使う方が
+     * 宣言的で安全。ペンの「他ペンの lockedBy を null にする」など、複数エンティティを横断して
+     * 書く必要があるケース専用。
+     */
+    update(id: string, patch: EntityPatchPayload['patch']): Promise<void>;
+    /** @internal Ubi.spawn から呼ばれる。 */
+    _createEntity(entity: Omit<ComponentInstance, 'id'>): Promise<string>;
+    /** @internal Ubi.destroy から呼ばれる。 */
+    _destroyEntity(id: string): Promise<void>;
 };
 
 export function createWorldModule(send: SendFn, rpc: RpcFn): WorldModule {
+    void send;
     return {
-        getEntity: (id) => rpc({ type: 'SCENE_GET_ENTITY', payload: { id } }),
-        createEntity: (entity) => rpc({ type: 'SCENE_CREATE_ENTITY', payload: { entity } }),
-        updateEntity: (id, patch) =>
-            rpc({ type: 'SCENE_UPDATE_ENTITY', payload: { id, patch: { entityId: id, patch } } }),
-        destroyEntity: (id) => rpc({ type: 'SCENE_DESTROY_ENTITY', payload: { id } }),
-        queryEntities: (entityType) => rpc({ type: 'SCENE_QUERY_ENTITIES', payload: { entityType } }),
-        subscribeEntity: (id) => send({ type: 'SCENE_SUBSCRIBE_ENTITY', payload: { id } }),
-        unsubscribeEntity: (id) => send({ type: 'SCENE_UNSUBSCRIBE_ENTITY', payload: { id } }),
+        get: (id) => rpc({ type: 'SCENE_GET_ENTITY', payload: { id } }),
+        query: (entityType) => rpc({ type: 'SCENE_QUERY_ENTITIES', payload: { entityType } }),
+        update: (id, patch) => rpc({ type: 'SCENE_UPDATE_ENTITY', payload: { id, patch: { entityId: id, patch } } }),
+        _createEntity: (entity) => rpc({ type: 'SCENE_CREATE_ENTITY', payload: { entity } }),
+        _destroyEntity: (id) => rpc({ type: 'SCENE_DESTROY_ENTITY', payload: { id } }),
     };
 }

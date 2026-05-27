@@ -1,5 +1,5 @@
 // These types are imported from their source files to avoid circular dependency with index.ts
-import type { AppAvatarDef, CursorPosition, EntityPatchPayload, User, WorldEntity } from '../index';
+import type { AppAvatarDef, ComponentInstance, CursorPosition, EntityPatchPayload, User } from '../index';
 import type { VNode } from './vnode';
 
 /**
@@ -44,7 +44,7 @@ export type PluginWorkerMessage<TPayloadMap extends Record<string, unknown> = Re
 // ============================================
 
 /**
- * Ubi.world.getEntity(id) → WorldEntity | null
+ * Ubi.world.getEntity(id) → ComponentInstance | null
  * 指定IDのエンティティを取得します。
  */
 export type CmdSceneGetEntity = {
@@ -59,7 +59,7 @@ export type CmdSceneGetEntity = {
  */
 export type CmdSceneCreateEntity = {
     type: 'SCENE_CREATE_ENTITY';
-    payload: { entity: Omit<WorldEntity, 'id'> };
+    payload: { entity: Omit<ComponentInstance, 'id'> };
     id: string; // RPC
 };
 
@@ -143,6 +143,23 @@ export type CmdNetworkBroadcast = {
 };
 
 /**
+ * Ubi.event.emit(type, data, { scope, targetType })
+ * Fire & Forget: 同 tab 内の他 Worker (siblings / parent / children / world スコープ) に
+ * Component type フィルタ付きで type 付きイベントを送る。受信側は WorkerEvent として届く。
+ * capability: 'net:emit' が必要。
+ */
+export type CmdEventEmit = {
+    type: 'EVENT_EMIT';
+    payload: {
+        type: string;
+        data: unknown;
+        scope: 'siblings' | 'parent' | 'children' | 'subtree' | 'world';
+        /** 受信側 Component type フィルタ ("pluginId:componentName")。省略時は scope 内の全 Component。 */
+        targetType?: string;
+    };
+};
+
+/**
  * Ubi.ui.showToast(text)
  * Fire & Forget: 画面にトースト通知を表示します。
  */
@@ -199,7 +216,7 @@ export type CmdNetFetch = {
 };
 
 /**
- * Ubi.world.queryEntities(type) → WorldEntity[]
+ * Ubi.world.queryEntities(type) → ComponentInstance[]
  * 指定タイプのエンティティを一括取得します。
  */
 export type CmdSceneQueryEntities = {
@@ -246,16 +263,18 @@ export type CanvasCursorData = {
 };
 
 /**
- * Ubi.canvas.frame(targetId, { activeStroke, cursor })
+ * Ubi.canvas.frame(targetId, { activeStroke, cursors })
  * Fire & Forget: ホストに毎フレームのキャンバス描画状態を送信する。
- * ホスト側で永続レイヤー + アクティブストローク + カーソルを合成して描画する。
+ * ホスト側で永続レイヤー + アクティブストローク + 全カーソルを合成して描画する。
+ *
+ * `cursors` は配列。自分 + リモート (= 他ユーザーが保持しているペン等) を一度に渡す。
  */
 export type CmdCanvasFrame = {
     type: 'CANVAS_FRAME';
     payload: {
         targetId: string;
         activeStroke: CanvasStrokeData | null;
-        cursor: CanvasCursorData | null;
+        cursors: CanvasCursorData[];
     };
 };
 
@@ -317,6 +336,7 @@ export type PluginGuestCommand =
     | CmdCanvasCommitStroke
     | CmdNetworkSendToHost
     | CmdNetworkBroadcast
+    | CmdEventEmit
     | CmdUiShowToast
     | CmdUiRender
     | CmdAvatarSet
@@ -345,10 +365,17 @@ export type PluginCommand = PluginGuestCommand;
  * [Lifecycle] プラグインの初期化完了時に Worker へ送られるイベント。
  * 初期化後は Ubi.worldId / Ubi.myUserId / Ubi.pluginId / Ubi.entityId で参照可能。
  *
- * @param worldId   所属ワールドのID
- * @param myUserId  自分のユーザーID
- * @param code      実行するプラグインコード (Sandbox内部のみ)
- * @param entityId  このプラグイン Worker を起動したエンティティの ID（オプション）
+ * Worker 1 個 = 1 Component インスタンス。
+ * - `componentInstanceId`: 自 Worker を識別する flat ID。`Ubi.componentInstanceId` として公開。
+ * - `entityId`: 自 Worker が乗っている GameObject の id。`Ubi.entityId` として公開。
+ * - `componentType`: 自 Worker の Component 型 (`pluginId:componentName`)。
+ *
+ * @param worldId              所属ワールドのID
+ * @param myUserId             自分のユーザーID
+ * @param code                 実行するプラグインコード (Sandbox内部のみ)
+ * @param componentInstanceId  Worker 識別用 flat ID (オプション、singleton 等で未設定)
+ * @param entityId             GameObject id (オプション)
+ * @param componentType        Component 型名 (オプション)
  */
 export type EvtLifecycleInit = {
     type: 'EVT_LIFECYCLE_INIT';
@@ -357,15 +384,21 @@ export type EvtLifecycleInit = {
         myUserId: string;
         code: string;
         pluginId?: string;
+        /** Worker 識別用 flat ID (旧 entityId)。 */
+        componentInstanceId?: string;
+        /** 自 Worker が乗っている Entity (GameObject) の id。 */
         entityId?: string;
+        componentType?: string;
         pluginBase?: string;
         watchEntityTypes?: string[];
         /**
-         * plugin が `watchEntityTypes` で宣言したエンティティの、Worker 起動時点でのスナップショット。
+         * plugin が `watchEntityTypes` で宣言したコンポーネント型の、Worker 起動時点でのスナップショット。
          * SDK がプラグインコード実行前に state.local へ同期反映するため、
          * 遅れて入室したユーザーでも初期値が揃った状態でプラグインが立ち上がる。
+         *
+         * Worker 互換 view（flat ComponentInstance）として渡る。
          */
-        initialEntities?: WorldEntity[];
+        initialEntities?: ComponentInstance[];
     };
 };
 
@@ -423,7 +456,7 @@ export type EvtPlayerCursorMoved = {
  */
 export type EvtSceneEntityUpdated = {
     type: 'EVT_SCENE_ENTITY_UPDATED';
-    payload: { entity: WorldEntity };
+    payload: { entity: ComponentInstance };
 };
 
 /**
@@ -463,7 +496,7 @@ export type EvtEntityWatch = {
     type: 'EVT_ENTITY_WATCH';
     payload: {
         entityType: string;
-        entity: WorldEntity;
+        entity: ComponentInstance;
     };
 };
 
@@ -619,7 +652,7 @@ export type UserLeftCallback = (userId: string) => void;
 export type CursorMovedCallback = (userId: string, position: CursorPosition) => void;
 
 /** onEntityUpdated のコールバック。更新後のエンティティスナップショットが渡される */
-export type EntityUpdatedCallback = (entity: WorldEntity) => void;
+export type EntityUpdatedCallback = (entity: ComponentInstance) => void;
 
 /** onCustomEvent のコールバック */
 export type CustomEventCallback = (eventType: string, data: unknown) => void;
@@ -632,7 +665,7 @@ export type CustomEventCallback = (eventType: string, data: unknown) => void;
 // ============================================
 
 /** SCENE_GET_ENTITY の戻り値 */
-export type RpcGetEntityResult = WorldEntity | null;
+export type RpcGetEntityResult = ComponentInstance | null;
 
 /** SCENE_CREATE_ENTITY の戻り値 */
 export type RpcCreateEntityResult = string; // 作成されたエンティティのID

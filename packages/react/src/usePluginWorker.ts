@@ -1,5 +1,6 @@
 import { type HostHandlers, PluginHostManager, type PluginHostManagerOptions } from '@ubichill/sandbox';
 import type {
+    ComponentInstance,
     EntityPatchPayload,
     FetchOptions,
     FetchResult,
@@ -7,7 +8,6 @@ import type {
     PluginHostEvent,
     PluginWorkerMessage,
     VNode,
-    WorldEntity,
 } from '@ubichill/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -36,7 +36,7 @@ export type PluginWorkerHandlers<TPayloadMap extends Record<string, unknown> = R
     onCanvasFrame?: (
         targetId: string,
         activeStroke: import('@ubichill/shared').CanvasStrokeData | null,
-        cursor: import('@ubichill/shared').CanvasCursorData | null,
+        cursors: import('@ubichill/shared').CanvasCursorData[],
     ) => void;
     /** Worker が Ubi.canvas.commitStroke() を呼んだときに発火する */
     onCanvasCommitStroke?: (targetId: string, stroke: import('@ubichill/shared').CanvasStrokeData) => void;
@@ -55,15 +55,23 @@ export type PluginWorkerHandlers<TPayloadMap extends Record<string, unknown> = R
     /** Worker が Ubi.media.setVisible() を呼んだときに発火する */
     onMediaSetVisible?: (targetId: string, visible: boolean) => void;
     /** Worker が Ubi.world.getEntity(id) を呼んだときに発火する */
-    onGetEntity?: (id: string) => import('@ubichill/shared').WorldEntity | undefined;
+    onGetEntity?: (id: string) => import('@ubichill/shared').ComponentInstance | undefined;
     /** Worker が Ubi.world.queryEntities(type) を呼んだときに発火する */
-    onQueryEntities?: (entityType: string) => import('@ubichill/shared').WorldEntity[];
+    onQueryEntities?: (entityType: string) => import('@ubichill/shared').ComponentInstance[];
     /** Worker が Ubi.network.broadcast() で送ったデータを受信したときに発火する */
     onNetworkBroadcast?: (type: string, data: unknown) => void;
+    /** Worker が Ubi.event.emit() を呼んだときに発火する。Host 側でクロス Worker ルーティングする。 */
+    onEventEmit?: (
+        type: string,
+        data: unknown,
+        scope: 'siblings' | 'parent' | 'children' | 'subtree' | 'world',
+        targetType: string | undefined,
+        senderComponentInstanceId: string | undefined,
+    ) => void;
     /** Worker が Ubi.log() を呼んだときに発火する */
     onLog?: (level: 'debug' | 'info' | 'warn' | 'error', message: string) => void;
     /** Worker が Ubi.world.createEntity() を呼んだときに発火する */
-    onCreateEntity?: (entity: Omit<WorldEntity, 'id'>) => Promise<WorldEntity | null>;
+    onCreateEntity?: (entity: Omit<ComponentInstance, 'id'>) => Promise<ComponentInstance | null>;
     /** Worker が Ubi.world.updateEntity() を呼んだときに発火する */
     onUpdateEntity?: (id: string, patch: EntityPatchPayload) => Promise<void>;
     /** Worker が Ubi.world.destroyEntity() を呼んだときに発火する */
@@ -116,7 +124,10 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
         const manager = new PluginHostManager<TPayloadMap>({
             pluginCode: options.pluginCode,
             pluginId: options.pluginId,
+            componentInstanceId: options.componentInstanceId,
             entityId: options.entityId,
+            parentEntityId: options.parentEntityId,
+            componentType: options.componentType,
             capabilities: options.capabilities,
             maxExecutionTime: options.maxExecutionTime,
             tickFps: options.tickFps,
@@ -131,8 +142,8 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
                 onMessage: (msg) => handlersRef.current.onMessage?.(msg),
                 onCommand: (cmd) => handlersRef.current.onCommand?.(cmd),
                 onRender: (targetId, vnode) => handlersRef.current.onRender?.(targetId, vnode),
-                onCanvasFrame: (targetId, activeStroke, cursor) =>
-                    handlersRef.current.onCanvasFrame?.(targetId, activeStroke, cursor),
+                onCanvasFrame: (targetId, activeStroke, cursors) =>
+                    handlersRef.current.onCanvasFrame?.(targetId, activeStroke, cursors),
                 onCanvasCommitStroke: (targetId, stroke) =>
                     handlersRef.current.onCanvasCommitStroke?.(targetId, stroke),
                 onMediaLoad: (targetId, url, mediaType) => handlersRef.current.onMediaLoad?.(targetId, url, mediaType),
@@ -145,6 +156,8 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
                 onGetEntity: (id) => handlersRef.current.onGetEntity?.(id),
                 onQueryEntities: (entityType) => handlersRef.current.onQueryEntities?.(entityType) ?? [],
                 onNetworkBroadcast: (type, data) => handlersRef.current.onNetworkBroadcast?.(type, data),
+                onEventEmit: (type, data, scope, targetType, senderId) =>
+                    handlersRef.current.onEventEmit?.(type, data, scope, targetType, senderId),
                 onLog: (level, message, prefix) => {
                     if (handlersRef.current.onLog) {
                         handlersRef.current.onLog(level, message);
@@ -176,7 +189,10 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
     }, [
         options.pluginCode,
         options.pluginId,
+        options.componentInstanceId,
         options.entityId,
+        options.parentEntityId,
+        options.componentType,
         options.capabilities,
         options.maxExecutionTime,
         options.tickFps,

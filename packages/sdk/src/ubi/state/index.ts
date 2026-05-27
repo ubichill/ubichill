@@ -1,18 +1,40 @@
-import type { EntityPatchPayload, VNode, WorldEntity } from '@ubichill/shared';
+import type { ComponentInstance, EntityPatchPayload, VNode } from '@ubichill/shared';
 import type { EntityState, EntityStateFor, PresenceEntry, SendFn, StateBinding } from '../types';
 
 // ── スコープマーカー (このファイル内部のみ) ───────────────────────
 
 const UBI_STATE_SCOPE = Symbol.for('@ubichill/stateScope');
-type StateScope = 'shared' | 'persistent' | 'persistMine';
+type StateScope = 'shared' | 'persistent' | 'persistMine' | 'topLevel';
 
 interface ScopeMarker<T = unknown> {
     readonly [UBI_STATE_SCOPE]: StateScope;
     readonly value: T;
+    readonly topLevelKey?: 'lockedBy' | 'ownerId';
 }
 
 function isScopeMarker(v: unknown): v is ScopeMarker {
     return typeof v === 'object' && v !== null && UBI_STATE_SCOPE in v;
+}
+
+/** ComponentInstance の top-level として書き込める / 読み取れるフィールド。 */
+const TOP_LEVEL_KEYS = new Set(['lockedBy', 'ownerId']);
+
+// ── 公開オプション ───────────────────────────────────────────
+
+export interface SyncOptions {
+    /** ユーザーごとに独立した値 (旧: persistMine)。 */
+    perUser?: boolean;
+    /** 揮発性 (旧: shared)。DB に保存されず退出時に消える。 */
+    ephemeral?: boolean;
+    /** ComponentInstance の top-level フィールドに割り当てる (旧: topLevel)。 */
+    topLevel?: 'lockedBy' | 'ownerId';
+}
+
+function resolveScope(opts: SyncOptions | undefined): StateScope {
+    if (opts?.topLevel) return 'topLevel';
+    if (opts?.ephemeral) return 'shared';
+    if (opts?.perUser) return 'persistMine';
+    return 'persistent';
 }
 
 // ── 依存型 ────────────────────────────────────────────────────────
@@ -23,6 +45,7 @@ export type StateModuleDeps = {
     getMyUserId(): string | undefined;
     getEntityId(): string | undefined;
     getPluginId(): string | undefined;
+    getComponentType(): string | undefined;
     getWatchEntityTypes(): string[];
     getPresenceUsers(): Map<string, PresenceEntry>;
     getLocalSharedState(): Record<string, unknown>;
@@ -30,8 +53,7 @@ export type StateModuleDeps = {
     getScrollY(): number;
     getForEachUserComponents(): Set<string>;
     registerPendingFlush(fn: () => void): void;
-    getInitialEntities(): WorldEntity[];
-    // UI ヘルパー (renderForEachUser で使用)
+    getInitialEntities(): ComponentInstance[];
     beginRender(targetId: string): void;
     queueUiRender(targetId: string, vnode: VNode | null): void;
     unmountUi(targetId: string): void;
@@ -42,9 +64,23 @@ export type StateModuleDeps = {
 // ── 公開型 ────────────────────────────────────────────────────────
 
 export type StateModule = {
-    shared<T>(defaultValue: T): T;
-    persistent<T>(defaultValue: T): T;
-    persistMine<T>(defaultValue: T): T;
+    /**
+     * 値を同期対象としてマークする。マーカーなしの値 (例: `count: 0`) はローカル専用。
+     *
+     * デフォルトは「全員と共有 + 永続化 (entity.data)」。
+     * `perUser` / `ephemeral` / `topLevel` で挙動を変えられる。
+     *
+     * ```ts
+     * const state = Ubi.state.define({
+     *   count: 0,                                                  // ローカル専用
+     *   color: Ubi.state.sync('#1a1a1a'),                          // 共有 + 永続
+     *   myVolume: Ubi.state.sync(0.7, { perUser: true }),
+     *   cursorState: Ubi.state.sync('default', { ephemeral: true }),
+     *   lockedBy: Ubi.state.sync<string|null>(null, { topLevel: 'lockedBy' }),
+     * });
+     * ```
+     */
+    sync<T>(defaultValue: T, options?: SyncOptions): T;
     define<T extends Record<string, unknown>>(schema: T): EntityState<T>;
     getStateBindings(): StateBinding[];
 };
@@ -55,14 +91,17 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
     const stateBindings: StateBinding[] = [];
 
     const define = <T extends Record<string, unknown>>(schema: T): EntityState<T> => {
-        // スキーマをスコープと初期値に分解
         const scopes = new Map<string, StateScope | 'local'>();
+        const topLevelMap = new Map<string, 'lockedBy' | 'ownerId'>(); // schema key → top-level field name
         const defaults: Record<string, unknown> = {};
         for (const key of Object.keys(schema)) {
             const raw = (schema as Record<string, unknown>)[key];
             if (isScopeMarker(raw)) {
                 scopes.set(key, raw[UBI_STATE_SCOPE]);
                 defaults[key] = raw.value;
+                if (raw[UBI_STATE_SCOPE] === 'topLevel' && raw.topLevelKey) {
+                    topLevelMap.set(key, raw.topLevelKey);
+                }
             } else {
                 scopes.set(key, 'local');
                 defaults[key] = raw;
@@ -81,35 +120,74 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
             }
         }
 
-        // 同期対象エンティティの解決
+        // 同期対象 ComponentInstance の解決
         const watchType = deps.getWatchEntityTypes()[0] ?? deps.getPluginId() ?? '';
+        const ownGameObjectId = deps.getEntityId();
+        const componentType = deps.getComponentType();
         let targetEntityId: string | null = null;
         let initialData: Record<string, unknown> | null = null;
-
-        const entityId = deps.getEntityId();
-        const pluginId = deps.getPluginId();
-        if (entityId && pluginId && deps.getWatchEntityTypes().includes(pluginId)) {
-            targetEntityId = entityId;
-            const self = deps.getInitialEntities().find((e) => e.id === entityId);
-            initialData = (self?.data as Record<string, unknown> | undefined) ?? null;
+        let initialEntity: ComponentInstance | null = null;
+        if (ownGameObjectId && componentType && deps.getWatchEntityTypes().includes(componentType)) {
+            const self = deps
+                .getInitialEntities()
+                .find((e) => e.entityId === ownGameObjectId && e.type === componentType);
+            if (self) {
+                targetEntityId = self.id;
+                initialData = (self.data as Record<string, unknown> | undefined) ?? null;
+                initialEntity = self;
+            }
         } else if (watchType) {
             const match = deps.getInitialEntities().find((e) => e.type === watchType);
             if (match) {
                 targetEntityId = match.id;
                 initialData = (match.data as Record<string, unknown> | undefined) ?? null;
+                initialEntity = match;
             }
         }
 
         // flush バッファ
         const pendingSharedWrites: Record<string, unknown> = {};
         const pendingEntityWrites: Record<string, unknown> = {};
+        const pendingTopLevelWrites: Record<string, unknown> = {};
         let sharedDirty = false;
         let entityDirty = false;
 
+        let batchDepth = 0;
+        // batch 中は (firstPrev, latestNext) を集約。Map なので同一キーの再書込は最新値で上書き。
+        const batchedFires = new Map<string, { prev: unknown; next: unknown }>();
+
         const fire = (key: string, next: unknown, prev: unknown): void => {
+            if (batchDepth > 0) {
+                const existing = batchedFires.get(key);
+                if (existing) {
+                    existing.next = next;
+                } else {
+                    batchedFires.set(key, { prev, next });
+                }
+                return;
+            }
             const set = listeners.get(key);
             if (!set) return;
             for (const fn of set) fn(next, prev);
+        };
+
+        const runBatch = (fn: () => void): void => {
+            batchDepth++;
+            try {
+                fn();
+            } finally {
+                batchDepth--;
+                if (batchDepth === 0 && batchedFires.size > 0) {
+                    const entries = [...batchedFires.entries()];
+                    batchedFires.clear();
+                    for (const [key, { prev, next }] of entries) {
+                        if (prev === next) continue;
+                        const set = listeners.get(key);
+                        if (!set) continue;
+                        for (const fn of set) fn(next, prev);
+                    }
+                }
+            }
         };
 
         const flushShared = (): void => {
@@ -133,12 +211,33 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
 
         const flushEntity = (): void => {
             if (!entityDirty) return;
-            if (!targetEntityId) return; // 未解決 → 次回フラッシュで再試行
+            if (!targetEntityId) return;
             entityDirty = false;
             const id = targetEntityId;
-            const patch = { ...pendingEntityWrites };
+            const dataPatch = { ...pendingEntityWrites };
+            const topPatch = { ...pendingTopLevelWrites };
             for (const k of Object.keys(pendingEntityWrites)) delete pendingEntityWrites[k];
-            void deps.updateEntity(id, { data: patch });
+            for (const k of Object.keys(pendingTopLevelWrites)) delete pendingTopLevelWrites[k];
+            const patch: EntityPatchPayload['patch'] = { ...topPatch };
+            if (Object.keys(dataPatch).length > 0) patch.data = dataPatch;
+            void deps.updateEntity(id, patch);
+        };
+
+        /** ComponentInstance 全体を受け取り、top-level + data を一括反映する。 */
+        const applyEntity = (entity: ComponentInstance): void => {
+            for (const [key, scope] of scopes) {
+                if (scope !== 'topLevel') continue;
+                const topKey = topLevelMap.get(key) ?? key;
+                if (!TOP_LEVEL_KEYS.has(topKey)) continue;
+                const next = (entity as unknown as Record<string, unknown>)[topKey];
+                const prev = local[key];
+                if (next !== prev) {
+                    local[key] = next;
+                    fire(key, next, prev);
+                }
+            }
+            const data = entity.data as Record<string, unknown> | undefined;
+            if (data) applyEntityData(data);
         };
 
         const applyEntityData = (data: Record<string, unknown>): void => {
@@ -184,8 +283,9 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
             }
         };
 
-        // プラグインコード実行前に初期エンティティを同期反映
-        if (initialData) applyEntityData(initialData);
+        // プラグインコード実行前に初期エンティティを同期反映 (data + top-level)
+        if (initialEntity) applyEntity(initialEntity);
+        else if (initialData) applyEntityData(initialData);
 
         stateBindings.push({
             watchType,
@@ -194,6 +294,7 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
                 if (!targetEntityId) targetEntityId = id;
             },
             applyEntityData,
+            applyEntity,
         });
 
         // local は Proxy — 書き込みでスコープに応じた flush を予約
@@ -221,6 +322,12 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
                         entityDirty = true;
                         deps.registerPendingFlush(flushEntity);
                     }
+                } else if (scope === 'topLevel') {
+                    const topKey = topLevelMap.get(prop) ?? prop;
+                    if (!TOP_LEVEL_KEYS.has(topKey)) return true;
+                    pendingTopLevelWrites[topKey] = value;
+                    entityDirty = true;
+                    deps.registerPendingFlush(flushEntity);
                 }
                 return true;
             },
@@ -256,6 +363,7 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
         return {
             local: proxy,
             for: getFor,
+            batch: runBatch,
             onChange: (key, listener) => {
                 let set = listeners.get(key);
                 if (!set) {
@@ -285,15 +393,15 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
     };
 
     return {
-        shared: <T>(defaultValue: T): T =>
-            ({ [UBI_STATE_SCOPE]: 'shared' as StateScope, value: defaultValue }) as unknown as T,
-        persistent: <T>(defaultValue: T): T =>
-            ({ [UBI_STATE_SCOPE]: 'persistent' as StateScope, value: defaultValue }) as unknown as T,
-        persistMine: <T>(defaultValue: T): T =>
-            ({
-                [UBI_STATE_SCOPE]: 'persistMine' as StateScope,
+        sync: <T>(defaultValue: T, options?: SyncOptions): T => {
+            const scope = resolveScope(options);
+            const marker: ScopeMarker<T> = {
+                [UBI_STATE_SCOPE]: scope,
                 value: defaultValue,
-            }) as unknown as T,
+                topLevelKey: options?.topLevel,
+            };
+            return marker as unknown as T;
+        },
         define,
         getStateBindings: () => stateBindings,
     };

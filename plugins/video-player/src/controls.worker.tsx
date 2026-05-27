@@ -1,11 +1,421 @@
 /**
- * video-player:controls Worker エントリ。
+ * video-player:controls Worker — 再生制御の中枢。
  *
- * ロジックは system/controls.ts、UI は ui/controls.ui.tsx に分離してある。
- * ここでは登録と初期化のみ。
+ * 共有時計モデル:
+ *  - baselineTime (sync): 「最後にゼロ起点に固定した動画内位置」秒
+ *  - playEpoch   (sync): 「再生を開始した wall-clock ms」 (isPlaying=true のときだけ意味を持つ)
+ *  - 現在位置 = isPlaying ? baselineTime + (now - playEpoch) / 1000 : baselineTime
+ *
+ *  各ユーザーは Date.now() を使って独立に現在位置を算出するため、毎秒の broadcast は不要。
+ *  play / pause / seek / track-change の瞬間だけ baselineTime / playEpoch を同期する。
+ *
+ * その他の同期項目:
+ *  - isPlaying / duration / loop / shuffle / apiBase : 共有 + 永続
+ *  - myVolume (perUser): 各ユーザー音量
+ *
+ * Worker 間通信は VPEvents (型付き) のみ。
  */
 
-import { ControlsSystem, initControls } from './system/controls';
+import type { Entity, System } from '@ubichill/sdk';
+import { VPEvents } from './events';
+import {
+    PauseIcon,
+    PlayIcon,
+    RepeatIcon,
+    RepeatOneIcon,
+    ShuffleIcon,
+    SkipNextIcon,
+    SkipPrevIcon,
+    VolumeHighIcon,
+    VolumeLowIcon,
+    VolumeMediumIcon,
+    VolumeMuteIcon,
+} from './icons';
+import type { LoopMode, Track } from './types';
 
-Ubi.registerSystem(ControlsSystem);
-initControls();
+const DEFAULT_API_BASE = '/plugins/video-player/api';
+
+const state = Ubi.state.define({
+    // ── 共有 + 永続 ──
+    isPlaying: Ubi.state.sync(false),
+    baselineTime: Ubi.state.sync(0),
+    playEpoch: Ubi.state.sync(0),
+    duration: Ubi.state.sync(0),
+    loop: Ubi.state.sync<LoopMode>('none'),
+    shuffle: Ubi.state.sync(false),
+    apiBase: Ubi.state.sync(DEFAULT_API_BASE),
+    // ── 共有 + 永続 (per-user) ──
+    myVolume: Ubi.state.sync(0.7, { perUser: true }),
+    // ── ローカル ──
+    currentTrack: null as Track | null,
+    currentIndex: 0,
+    totalTracks: 0,
+});
+
+// ── ヘルパー ────────────────────────────────────────
+const fmt = (sec: number): string => {
+    if (!Number.isFinite(sec) || sec <= 0) return '0:00';
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+};
+
+/**
+ * 共有時計から現在の再生位置 (秒) を算出する純関数。
+ * 全ユーザーが同じ baselineTime / playEpoch / isPlaying から計算するため、
+ * Date.now() のクロックスキューが無視できる範囲なら位置は揃う。
+ */
+function currentTime(): number {
+    if (!state.local.isPlaying) return state.local.baselineTime;
+    const advanced = state.local.baselineTime + (Date.now() - state.local.playEpoch) / 1000;
+    if (state.local.duration > 0) return Math.min(advanced, state.local.duration);
+    return advanced;
+}
+
+function buildTrackUrl(track: Track): string {
+    const base = state.local.apiBase.trim() || DEFAULT_API_BASE;
+    const endpoint = track.mode === 'live' ? 'live' : 'video';
+    return `${base}/${endpoint}/${track.id}`;
+}
+
+// ── screen / playlist へのエイリアス ─────────────────
+const screenTarget = { scope: 'siblings' as const, targetType: 'video-player:screen' };
+const playlistTarget = { scope: 'siblings' as const, targetType: 'video-player:playlist' };
+
+/**
+ * 共有時計の現在状態に合わせてローカル <video> を同期する。
+ * isPlaying / baselineTime / playEpoch のどれかが変わったとき、または vp:media:loaded 時に呼ぶ。
+ * Live モードは seek 不可なので play/pause のみ。
+ */
+let syncScheduled = false;
+function scheduleSyncVideo(): void {
+    if (syncScheduled) return;
+    syncScheduled = true;
+    queueMicrotask(() => {
+        syncScheduled = false;
+        const isLive = state.local.currentTrack?.mode === 'live';
+        if (!isLive && state.local.duration > 0) {
+            VPEvents.emit('vp:media:seek', { time: currentTime() }, screenTarget);
+        }
+        if (state.local.isPlaying) VPEvents.emit('vp:media:play', {}, screenTarget);
+        else VPEvents.emit('vp:media:pause', {}, screenTarget);
+    });
+}
+
+// ── UI アクション ──────────────────────────────────
+const onSeek = (time: number): void => {
+    // baselineTime を seek 先に固定。isPlaying=true なら clock を restart。
+    state.batch(() => {
+        state.local.baselineTime = time;
+        if (state.local.isPlaying) state.local.playEpoch = Date.now();
+    });
+};
+const onPlayToggle = (): void => {
+    if (state.local.isPlaying) {
+        // pause: 現在位置を baselineTime に固定して時計を止める
+        state.batch(() => {
+            state.local.baselineTime = currentTime();
+            state.local.isPlaying = false;
+        });
+    } else {
+        // play: clock を起動 (baselineTime はそのまま)
+        state.batch(() => {
+            state.local.playEpoch = Date.now();
+            state.local.isPlaying = true;
+        });
+    }
+};
+const onPrev = (): void => {
+    VPEvents.emit('vp:track:prev', {}, playlistTarget);
+};
+const onNext = (): void => {
+    VPEvents.emit('vp:track:next', { loop: state.local.loop, shuffle: state.local.shuffle }, playlistTarget);
+};
+const onShuffleToggle = (): void => {
+    state.local.shuffle = !state.local.shuffle;
+};
+const onLoopCycle = (): void => {
+    state.local.loop = state.local.loop === 'none' ? 'all' : state.local.loop === 'all' ? 'one' : 'none';
+};
+const onVolumeChange = (v: number): void => {
+    state.local.myVolume = v;
+};
+
+// ── state 変化 → ローカル video 同期 + 再描画 ─────────
+// 共有時計を構成する 3 つは同じ syncVideo に集約 (microtask で dedupe)
+state.onChange('isPlaying', () => {
+    scheduleSyncVideo();
+    render();
+});
+state.onChange('baselineTime', scheduleSyncVideo);
+state.onChange('playEpoch', scheduleSyncVideo);
+state.onChange('myVolume', (v) => {
+    VPEvents.emit('vp:media:volume', { volume: v }, screenTarget);
+    render();
+});
+state.onChange('loop', render);
+state.onChange('shuffle', render);
+state.onChange('duration', render);
+
+// ── レンダリング ──────────────────────────────────
+function render(): void {
+    const track = state.local.currentTrack;
+    const ct = currentTime();
+    const progress = state.local.duration > 0 ? (ct / state.local.duration) * 100 : 0;
+    const isLive = track?.mode === 'live';
+    const volume = state.local.myVolume;
+    const VolumeIcon =
+        volume === 0 ? VolumeMuteIcon : volume < 0.3 ? VolumeLowIcon : volume < 0.7 ? VolumeMediumIcon : VolumeHighIcon;
+    const LoopIconComp = state.local.loop === 'one' ? RepeatOneIcon : RepeatIcon;
+    const isPlaying = state.local.isPlaying;
+    const empty = state.local.totalTracks === 0;
+
+    Ubi.ui.render(
+        () => (
+            <div
+                style={{
+                    position: 'absolute',
+                    inset: '0',
+                    background: '#1a1a1a',
+                    borderRadius: '12px',
+                    padding: '8px 12px',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    fontFamily: 'system-ui, -apple-system, sans-serif',
+                    userSelect: 'none',
+                    pointerEvents: 'auto',
+                }}
+            >
+                <input
+                    type="range"
+                    min="0"
+                    max={String(state.local.duration > 0 ? state.local.duration : 100)}
+                    step="0.1"
+                    value={String(ct.toFixed(1))}
+                    disabled={state.local.duration <= 0 || isLive}
+                    style={{
+                        width: '100%',
+                        height: '4px',
+                        marginBottom: '8px',
+                        display: 'block',
+                        cursor: state.local.duration <= 0 || isLive ? 'default' : 'pointer',
+                        accentColor: '#007aff',
+                        appearance: 'none',
+                        background: `linear-gradient(to right, #007aff ${progress}%, rgba(255,255,255,0.2) ${progress}%)`,
+                        borderRadius: '2px',
+                        outline: 'none',
+                    }}
+                    onUbiInput={(val: unknown) => onSeek(Number.parseFloat(String(val)))}
+                />
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                    {/* 左: トラック情報 */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1', minWidth: '0' }}>
+                        {track?.thumbnail && (
+                            <img
+                                src={track.thumbnail}
+                                alt=""
+                                style={{
+                                    width: '36px',
+                                    height: '36px',
+                                    borderRadius: '4px',
+                                    objectFit: 'cover',
+                                    flexShrink: '0',
+                                }}
+                            />
+                        )}
+                        <div style={{ display: 'flex', flexDirection: 'column', minWidth: '0' }}>
+                            <div
+                                style={{
+                                    fontSize: '12px',
+                                    fontWeight: '600',
+                                    color: '#fff',
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                }}
+                            >
+                                {track ? track.title || track.id : '---'}
+                            </div>
+                            <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.6)' }}>
+                                {fmt(ct)} /{' '}
+                                {state.local.duration > 0 ? fmt(state.local.duration) : isLive ? 'LIVE' : '--:--'}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 中央: 再生 */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <CtrlBtn disabled={empty} onClick={onPrev}>
+                            <SkipPrevIcon size={18} />
+                        </CtrlBtn>
+                        <button
+                            type="button"
+                            disabled={empty}
+                            style={{
+                                background: '#007aff',
+                                border: 'none',
+                                color: '#fff',
+                                cursor: empty ? 'not-allowed' : 'pointer',
+                                width: '36px',
+                                height: '36px',
+                                borderRadius: '50%',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                boxShadow: '0 2px 8px rgba(0,122,255,0.3)',
+                                opacity: empty ? '0.5' : '1',
+                            }}
+                            onUbiClick={onPlayToggle}
+                        >
+                            {isPlaying ? <PauseIcon size={20} /> : <PlayIcon size={20} />}
+                        </button>
+                        <CtrlBtn disabled={empty} onClick={onNext}>
+                            <SkipNextIcon size={18} />
+                        </CtrlBtn>
+                    </div>
+
+                    {/* 右: shuffle / loop / volume */}
+                    <div
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            flex: '1',
+                            justifyContent: 'flex-end',
+                        }}
+                    >
+                        <CtrlBtn active={state.local.shuffle} onClick={onShuffleToggle}>
+                            <ShuffleIcon size={16} />
+                        </CtrlBtn>
+                        <CtrlBtn active={state.local.loop !== 'none'} onClick={onLoopCycle}>
+                            <LoopIconComp size={16} />
+                        </CtrlBtn>
+                        <span style={{ color: 'rgba(255,255,255,0.8)', display: 'flex', alignItems: 'center' }}>
+                            <VolumeIcon size={16} />
+                        </span>
+                        <input
+                            type="range"
+                            min="0"
+                            max="1"
+                            step="0.01"
+                            value={String(volume)}
+                            style={{
+                                width: '60px',
+                                height: '3px',
+                                background: 'rgba(255,255,255,0.2)',
+                                borderRadius: '2px',
+                                outline: 'none',
+                                cursor: 'pointer',
+                                appearance: 'none',
+                                accentColor: '#007aff',
+                            }}
+                            onUbiInput={(val: unknown) => onVolumeChange(Number.parseFloat(String(val)))}
+                        />
+                    </div>
+                </div>
+            </div>
+        ),
+        'controls',
+    );
+}
+
+function CtrlBtn({
+    children,
+    onClick,
+    disabled = false,
+    active = false,
+}: {
+    children:
+        | import('@ubichill/sdk/jsx-runtime').JSX.Element
+        | import('@ubichill/sdk/jsx-runtime').JSX.Element[]
+        | null;
+    onClick: () => void;
+    disabled?: boolean;
+    active?: boolean;
+}): import('@ubichill/sdk/jsx-runtime').JSX.Element {
+    return (
+        <button
+            type="button"
+            disabled={disabled}
+            style={{
+                background: 'transparent',
+                border: 'none',
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                padding: '6px',
+                borderRadius: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: '0',
+                color: disabled ? 'rgba(255,255,255,0.3)' : active ? '#007aff' : 'rgba(255,255,255,0.8)',
+                opacity: disabled ? '0.3' : '1',
+            }}
+            onUbiClick={onClick}
+        >
+            {children}
+        </button>
+    );
+}
+
+// ── イベント受信 ──────────────────────────────────────
+VPEvents.on('vp:track:current', ({ track, index, total }) => {
+    const changed = state.local.currentTrack?.id !== track?.id;
+    state.local.currentTrack = track;
+    state.local.currentIndex = index;
+    state.local.totalTracks = total;
+    // トラックが変わったら共有時計をゼロから始める
+    if (changed) {
+        state.batch(() => {
+            state.local.baselineTime = 0;
+            state.local.playEpoch = Date.now();
+            state.local.duration = 0;
+        });
+    }
+    render();
+    // トラックが変わったら load (vp:media:loaded で seek + play に進む)
+    if (changed && track) {
+        VPEvents.emit('vp:media:load', { url: buildTrackUrl(track), mode: track.mode }, screenTarget);
+    }
+});
+
+// 自 <video> 由来の時刻通知は共有時計モデルでは無視 (進行バーは共有時計から計算)。
+// 必要になれば drift 検出に使う。
+VPEvents.on('vp:media:time', () => {});
+
+VPEvents.on('vp:media:loaded', ({ duration }) => {
+    if (duration > 0) state.local.duration = duration;
+    // 共有時計の現在位置にローカル <video> を合わせる (再生中ならそのまま、停止中なら baselineTime)
+    scheduleSyncVideo();
+});
+
+VPEvents.on('vp:media:ended', () => {
+    // 次トラックを playlist にリクエスト
+    VPEvents.emit('vp:track:next', { loop: state.local.loop, shuffle: state.local.shuffle }, playlistTarget);
+});
+
+VPEvents.on('vp:playback:stop', () => {
+    // playlist が末尾到達 (loop='none') を通知してきた → 再生停止
+    state.batch(() => {
+        state.local.baselineTime = currentTime();
+        state.local.isPlaying = false;
+    });
+});
+
+// ── 進行バー時計のための tick ────────────────────────
+// 進行バーが体感ジャギにならない程度の頻度で再描画 (≒ 10fps)。
+// VNode 生成のみ・ネットワーク 0 なので CPU は誤差。
+const accumulator = { ms: 0 };
+const ClockSystem: System = (_e: Entity[], dt: number) => {
+    if (!state.local.isPlaying) return;
+    accumulator.ms += dt;
+    if (accumulator.ms >= 100) {
+        accumulator.ms = 0;
+        render();
+    }
+};
+Ubi.registerSystem(ClockSystem);
+
+// 初期化
+render();
+// 起動時に screen へ初期音量を通知 (起動順依存吸収)
+queueMicrotask(() => VPEvents.emit('vp:media:volume', { volume: state.local.myVolume }, screenTarget));

@@ -165,7 +165,7 @@ export function PluginSelector({ definition, onUpdateSpec }: PluginSelectorProps
                                     {p.name}
                                 </div>
                                 <div className={css({ fontSize: '11px', color: 'textSubtle', mt: '2px' })}>
-                                    v{p.version} · {p.kinds.length} kinds
+                                    v{p.version} · {p.components.length} components
                                 </div>
                                 <div
                                     className={css({

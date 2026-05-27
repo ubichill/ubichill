@@ -1,28 +1,44 @@
-import type { InitialEntity, WorldDefinition } from '@ubichill/shared';
+import type { EntityComponentDef, InitialEntity, WorldDefinition } from '@ubichill/shared';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import yaml from 'yaml';
 import { API_BASE } from '@/lib/api';
 import { useSession } from '@/lib/auth-client';
 import { css } from '@/styled-system/css';
+import { EditorAssets } from './components/assets/EditorAssets';
 import { DockSlot } from './components/DockSlot';
-import { EditorAssets } from './components/EditorAssets';
 import { EditorHeader } from './components/EditorHeader';
-import { EditorHierarchy } from './components/EditorHierarchy';
 import { EditorStage } from './components/EditorStage';
-import { EntityInspector } from './components/EntityInspector';
 import { WorldInfoForm } from './components/forms/WorldInfoForm';
 import { YamlEditorForm } from './components/forms/YamlEditorForm';
+import { EditorHierarchy } from './components/hierarchy/EditorHierarchy';
+import { EntityInspector } from './components/inspector/EntityInspector';
 import { MobileLeftHandle } from './components/MobileLeftHandle';
 import { MobileRightHandle } from './components/MobileRightHandle';
 import { Modal } from './components/Modal';
 import { ModalPrimaryButton, ModalSecondaryButton } from './components/ModalButtons';
-import { type AvailableEntityKind, useAvailableEntityKinds } from './hooks/useAvailableEntityKinds';
+import { useAvailableEntityKinds } from './hooks/useAvailableEntityKinds';
 import { useEditorModals } from './hooks/useEditorModals';
+import { useEntityClipboard } from './hooks/useEntityClipboard';
 import { useWorldEditorApi } from './hooks/useWorldEditorApi';
-import { DEFAULT_H, DEFAULT_W, nextZ } from './lib/dragHelpers';
+import { DEFAULT_H, DEFAULT_W, SNAP_STEP } from './lib/dragHelpers';
+import {
+    adjustPathAfterDelete,
+    buildUniqueEntityId,
+    cloneEntitySubtree,
+    collectEntityIds,
+    deleteEntityAt,
+    type EntityPath,
+    ensureUniqueName,
+    flattenForStage,
+    getEntityAt,
+    insertEntity,
+    moveEntity,
+    nextRootZ,
+    pathKey,
+    updateEntityAt,
+} from './lib/entityTree';
 
-// 新規作成時の placeholder name (21文字, lowercase)。サーバー側で nanoid に置き換えられる。
 const PLACEHOLDER_NAME = 'newworldplaceholder12';
 
 function createInitialDefinition(): WorldDefinition {
@@ -37,7 +53,6 @@ function createInitialDefinition(): WorldDefinition {
                 backgroundColor: '#F0F8FF',
                 worldSize: { width: 2000, height: 1500 },
             },
-            // デフォルトプラグイン: avatar, pen, video-player（後からモーダルで増減できる）
             dependencies: [
                 { name: 'avatar', source: { type: 'repository', path: 'plugins/avatar' } },
                 { name: 'pen', source: { type: 'repository', path: 'plugins/pen' } },
@@ -55,15 +70,13 @@ export function WorldEditorPage() {
     const isEdit = !!worldId;
 
     const [definition, setDefinition] = useState<WorldDefinition>(createInitialDefinition);
-    /** DB に保存済みの YAML テキスト。dirty 判定の baseline。 */
     const [savedYaml, setSavedYaml] = useState<string | null>(null);
 
-    const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-    /** 編集ローカルで非表示にしているエンティティ。保存には影響しない。 */
-    const [hiddenIndices, setHiddenIndices] = useState<Set<number>>(new Set());
-    /** モバイル時のヒエラルキー drawer 開閉（md 以上では無視される） */
+    const [selectedPath, setSelectedPath] = useState<EntityPath | null>(null);
+    const [selectedComponentIndex, setSelectedComponentIndex] = useState<number | null>(null);
+    const [hiddenPaths, setHiddenPaths] = useState<Set<string>>(new Set());
+    const [snapEnabled, setSnapEnabled] = useState(false);
     const [mobileLeftOpen, setMobileLeftOpen] = useState(false);
-    /** モバイル時のインスペクタ drawer 開閉。エンティティ選択時に自動で true にして開く。 */
     const [mobileRightOpen, setMobileRightOpen] = useState(false);
     const [loading, setLoading] = useState(isEdit);
 
@@ -73,17 +86,10 @@ export function WorldEditorPage() {
     }, [definition, savedYaml]);
 
     const { kinds, loading: kindsLoading } = useAvailableEntityKinds(definition);
-    const kindByName = useMemo(() => new Map(kinds.map((k) => [k.kind, k])), [kinds]);
-    const placedKinds = useMemo(
-        () => new Set(definition.spec.initialEntities.map((e) => e.kind)),
-        [definition.spec.initialEntities],
-    );
 
     const modals = useEditorModals({ definition, onCommit: setDefinition });
     const api = useWorldEditorApi({ isEdit, worldId, definition, onSavedYamlChange: setSavedYaml });
 
-    // 編集モード: 初期データロード
-    // cleanup には AbortController を使い、unmount 時に in-flight fetch をキャンセルする。
     useEffect(() => {
         if (!isEdit || !worldId) return;
         const ctrl = new AbortController();
@@ -110,12 +116,10 @@ export function WorldEditorPage() {
         return () => ctrl.abort();
     }, [worldId, isEdit, api.setError]);
 
-    // 未認証は ProtectedRoute が弾くが、二重チェックとして useEffect でリダイレクト
     useEffect(() => {
         if (!isPending && !session) navigate('/auth');
     }, [isPending, session, navigate]);
 
-    // ---------- entity 操作 ----------
     const updateEntities = useCallback((mutate: (prev: InitialEntity[]) => InitialEntity[]) => {
         setDefinition((prev) => ({
             ...prev,
@@ -123,85 +127,205 @@ export function WorldEditorPage() {
         }));
     }, []);
 
-    /**
-     * エンティティ選択 (モバイル時のインスペクタ drawer 制御):
-     * - 選択時に drawer を自動展開すると、選択直後の移動・リサイズ操作の邪魔になるので**展開しない**。
-     *   ユーザーが必要に応じて右ハンドルから明示的に開く。
-     * - 選択解除時には drawer も閉じる（中身が空になるため）。
-     */
-    const selectEntity = useCallback((index: number | null) => {
-        setSelectedIndex(index);
-        if (index === null) setMobileRightOpen(false);
+    const selectEntity = useCallback((path: EntityPath | null) => {
+        setSelectedPath(path);
+        if (path === null) {
+            setSelectedComponentIndex(null);
+            setMobileRightOpen(false);
+        }
     }, []);
 
+    const selectComponent = useCallback((componentIndex: number | null) => {
+        setSelectedComponentIndex(componentIndex);
+    }, []);
+
+    /** EditOverlay からの transform 編集 (path ベース、子 Entity は親基準で保存)。 */
     const patchEntityTransform = useCallback(
-        (index: number, patch: Partial<InitialEntity['transform']>) => {
+        (path: EntityPath, patch: Partial<InitialEntity['transform']>) => {
             updateEntities((prev) =>
-                prev.map((e, i) => (i === index ? { ...e, transform: { ...e.transform, ...patch } } : e)),
+                updateEntityAt(prev, path, (e) => ({ ...e, transform: { ...e.transform, ...patch } })),
             );
         },
         [updateEntities],
     );
 
-    const handleAddEntity = useCallback(
-        (k: AvailableEntityKind) => {
-            if (k.singleton && placedKinds.has(k.kind)) return;
+    const flatNodes = useMemo(
+        () => flattenForStage(definition.spec.initialEntities),
+        [definition.spec.initialEntities],
+    );
+
+    const handleCreateEmptyEntity = useCallback(
+        (parentPath: EntityPath | null) => {
             const env = definition.spec.environment;
             const worldSize = env?.worldSize ?? { width: 2000, height: 1500 };
             const entities = definition.spec.initialEntities;
-            const dt = k.defaultTransform ?? {};
+            const newEntity: InitialEntity = {
+                id: buildUniqueEntityId('entity', collectEntityIds(entities)),
+                transform: parentPath
+                    ? { x: 0, y: 0, z: 1, w: DEFAULT_W, h: DEFAULT_H, scale: 1, rotation: 0 }
+                    : {
+                          x: Math.round(worldSize.width / 2 - DEFAULT_W / 2),
+                          y: Math.round(worldSize.height / 2 - DEFAULT_H / 2),
+                          z: nextRootZ(entities),
+                          w: DEFAULT_W,
+                          h: DEFAULT_H,
+                          scale: 1,
+                          rotation: 0,
+                      },
+                components: [],
+                tags: [],
+                children: [],
+            };
+            updateEntities((prev) => insertEntity(prev, parentPath, newEntity));
+            // 新規作成した Entity を選択
+            if (parentPath) {
+                const parent = getEntityAt(entities, parentPath);
+                const newChildIdx = parent?.children?.length ?? 0;
+                selectEntity([...parentPath, newChildIdx]);
+            } else {
+                selectEntity([entities.length]);
+            }
+            selectComponent(null);
+        },
+        [definition.spec.initialEntities, definition.spec.environment, updateEntities, selectEntity, selectComponent],
+    );
+
+    const handleAddComponentToEntity = useCallback(
+        (path: EntityPath, componentType: string) => {
+            const kind = kinds.find((k) => k.kind === componentType);
             const initialData: Record<string, unknown> = {};
-            if (k.dataFields) {
-                for (const [name, spec] of Object.entries(k.dataFields)) {
+            if (kind?.dataFields) {
+                for (const [name, spec] of Object.entries(kind.dataFields)) {
                     if (spec.default !== undefined) initialData[name] = spec.default;
                 }
             }
-            const next: InitialEntity = {
-                kind: k.kind,
-                transform: {
-                    x: dt.x ?? Math.round(worldSize.width / 2 - DEFAULT_W / 2),
-                    y: dt.y ?? Math.round(worldSize.height / 2 - DEFAULT_H / 2),
-                    z: dt.z ?? nextZ(entities),
-                    w: dt.w ?? (k.suggestSize ? DEFAULT_W : undefined),
-                    h: dt.h ?? (k.suggestSize ? DEFAULT_H : undefined),
-                    scale: dt.scale ?? 1,
-                    rotation: dt.rotation ?? 0,
-                },
-                data: initialData,
-            };
-            updateEntities((prev) => [...prev, next]);
-            selectEntity(entities.length);
+            const newComponent: EntityComponentDef = { type: componentType, data: initialData };
+            updateEntities((prev) =>
+                updateEntityAt(prev, path, (e) => ({ ...e, components: [...e.components, newComponent] })),
+            );
+            const target = getEntityAt(definition.spec.initialEntities, path);
+            selectEntity(path);
+            selectComponent(target?.components.length ?? 0);
         },
-        [definition.spec.initialEntities, definition.spec.environment, placedKinds, updateEntities, selectEntity],
+        [kinds, updateEntities, selectEntity, selectComponent, definition.spec.initialEntities],
     );
 
     const handleDeleteEntity = useCallback(
-        (index: number) => {
-            updateEntities((prev) => prev.filter((_, i) => i !== index));
-            setHiddenIndices((prev) => {
-                const next = new Set<number>();
-                for (const i of prev) {
-                    if (i < index) next.add(i);
-                    else if (i > index) next.add(i - 1);
+        (path: EntityPath) => {
+            updateEntities((prev) => deleteEntityAt(prev, path));
+            // 削除された path 以下の hiddenPaths キーを破棄 (path index ずれは諦めて単純化)
+            setHiddenPaths((prev) => {
+                const next = new Set<string>();
+                const removedKey = pathKey(path);
+                for (const k of prev) {
+                    if (k === removedKey || k.startsWith(`${removedKey}-`)) continue;
+                    next.add(k);
                 }
                 return next;
             });
-            setSelectedIndex((cur) => (cur === index ? null : cur && cur > index ? cur - 1 : cur));
+            setSelectedPath((cur) => adjustPathAfterDelete(cur, path));
+            setSelectedComponentIndex(null);
         },
         [updateEntities],
     );
 
-    const handleToggleHidden = useCallback((index: number) => {
-        setHiddenIndices((prev) => {
+    const handleDeleteComponent = useCallback(
+        (path: EntityPath, componentIndex: number) => {
+            updateEntities((prev) =>
+                updateEntityAt(prev, path, (e) => ({
+                    ...e,
+                    components: e.components.filter((_, ci) => ci !== componentIndex),
+                })),
+            );
+            setSelectedComponentIndex((cur) => {
+                if (cur === null) return null;
+                if (cur === componentIndex) return null;
+                if (cur > componentIndex) return cur - 1;
+                return cur;
+            });
+        },
+        [updateEntities],
+    );
+
+    const handleRenameEntity = useCallback(
+        (path: EntityPath, newId: string) => {
+            const taken = new Set(collectEntityIds(definition.spec.initialEntities));
+            // 自分自身は許可 (実質ノーオペになる)
+            const self = getEntityAt(definition.spec.initialEntities, path);
+            if (self) taken.delete(self.id);
+            // 衝突したら "hoge" → "hoge2" → "hoge3" の suffix を自動採番
+            const uniqueId = ensureUniqueName(newId, taken);
+            updateEntities((prev) => updateEntityAt(prev, path, (e) => ({ ...e, id: uniqueId })));
+        },
+        [updateEntities, definition.spec.initialEntities],
+    );
+
+    const handleToggleHidden = useCallback((path: EntityPath) => {
+        const key = pathKey(path);
+        setHiddenPaths((prev) => {
             const next = new Set(prev);
-            if (next.has(index)) next.delete(index);
-            else next.add(index);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
             return next;
         });
-        setSelectedIndex((cur) => (cur === index ? null : cur));
     }, []);
 
-    // ---------- 保存（バリデーション + API 呼び出し） ----------
+    const handleMoveEntity = useCallback(
+        (from: EntityPath, to: EntityPath | null) => {
+            updateEntities((prev) => moveEntity(prev, from, to));
+            // 移動後の selectedPath は厳密追跡が難しいので解除する
+            setSelectedPath(null);
+            setSelectedComponentIndex(null);
+            setHiddenPaths(new Set()); // path ずれを避けるため一旦リセット
+        },
+        [updateEntities],
+    );
+
+    // ── クリップボード (Entity subtree のコピー&ペースト) ─────────────
+    const clipboard = useEntityClipboard();
+
+    const handleCopyEntity = useCallback(
+        (path: EntityPath) => {
+            const target = getEntityAt(definition.spec.initialEntities, path);
+            if (target) clipboard.copy(target);
+        },
+        [clipboard, definition.spec.initialEntities],
+    );
+
+    const handlePasteEntity = useCallback(
+        (parentPath: EntityPath | null) => {
+            const source = clipboard.peek();
+            if (!source) return;
+            const taken = collectEntityIds(definition.spec.initialEntities);
+            const cloned = cloneEntitySubtree(source, taken);
+            // ルートに貼り付け時のみ z をスタック頂上に持ち上げる (見えなくならないように)
+            const placed = parentPath
+                ? cloned
+                : { ...cloned, transform: { ...cloned.transform, z: nextRootZ(definition.spec.initialEntities) } };
+            updateEntities((prev) => insertEntity(prev, parentPath, placed));
+            // 貼った Entity を選択
+            if (parentPath) {
+                const parent = getEntityAt(definition.spec.initialEntities, parentPath);
+                const newChildIdx = parent?.children?.length ?? 0;
+                selectEntity([...parentPath, newChildIdx]);
+            } else {
+                selectEntity([definition.spec.initialEntities.length]);
+            }
+            selectComponent(null);
+        },
+        [clipboard, definition.spec.initialEntities, updateEntities, selectEntity, selectComponent],
+    );
+
+    const handleEnterChild = useCallback(
+        (path: EntityPath) => {
+            const parent = getEntityAt(definition.spec.initialEntities, path);
+            if (!parent?.children?.length) return;
+            setSelectedPath([...path, 0]);
+            setSelectedComponentIndex(null);
+        },
+        [definition.spec.initialEntities],
+    );
+
     const handleSave = useCallback(() => {
         if (!definition.spec.displayName.trim()) {
             api.setError('表示名は必須です。「ワールド情報」から入力してください');
@@ -211,10 +335,22 @@ export function WorldEditorPage() {
         void api.save();
     }, [definition.spec.displayName, api, modals]);
 
+    // hiddenPaths からルートのみの index Set を導出 (Stage / EditorPreview 用)
+    const hiddenRootIndices = useMemo(() => {
+        const out = new Set<number>();
+        for (const key of hiddenPaths) {
+            if (!key.includes('-')) {
+                const n = Number.parseInt(key, 10);
+                if (Number.isFinite(n)) out.add(n);
+            }
+        }
+        return out;
+    }, [hiddenPaths]);
+
     if (isPending || !session) return <CenteredMessage text="読み込み中..." />;
     if (loading) return <CenteredMessage text="ワールドを読み込み中..." />;
 
-    const selectedEntity = selectedIndex !== null ? definition.spec.initialEntities[selectedIndex] : null;
+    const selectedEntity = selectedPath ? getEntityAt(definition.spec.initialEntities, selectedPath) : null;
     const title =
         (definition.spec.displayName?.trim() || (isEdit ? 'ワールドを編集' : '新しいワールド')) +
         (isEdit ? '' : ' (未保存)');
@@ -225,8 +361,6 @@ export function WorldEditorPage() {
                 position: 'fixed',
                 inset: 0,
                 display: 'grid',
-                // モバイル: header / center (preview) / bottom (assets) の 3 行レイアウト。
-                // 左 (hierarchy) と右 (inspector) は drawer で重なる。
                 gridTemplateRows: { base: 'auto 1fr 140px', md: 'auto 1fr 220px' },
                 gridTemplateColumns: { base: '1fr', md: '240px 1fr 320px' },
                 gridTemplateAreas: {
@@ -244,6 +378,8 @@ export function WorldEditorPage() {
                     isEdit={isEdit}
                     saving={api.saving}
                     dirty={dirty}
+                    snapEnabled={snapEnabled}
+                    onToggleSnap={() => setSnapEnabled((p) => !p)}
                     onOpenInfo={modals.openInfo}
                     onOpenYaml={modals.openYaml}
                     onSave={handleSave}
@@ -260,43 +396,59 @@ export function WorldEditorPage() {
             >
                 <EditorHierarchy
                     entities={definition.spec.initialEntities}
-                    selectedIndex={selectedIndex}
-                    hiddenIndices={hiddenIndices}
-                    onSelect={(i) => {
-                        selectEntity(i);
-                        // モバイルでヒエラルキーから選択したら左 drawer を閉じる
+                    selectedPath={selectedPath}
+                    selectedComponentIndex={selectedComponentIndex}
+                    hiddenPaths={hiddenPaths}
+                    onSelectEntity={(p) => {
+                        selectEntity(p);
                         setMobileLeftOpen(false);
                     }}
-                    onDelete={handleDeleteEntity}
+                    onSelectComponent={selectComponent}
+                    onCreateEmptyEntity={handleCreateEmptyEntity}
+                    onDeleteEntity={handleDeleteEntity}
+                    onDeleteComponent={handleDeleteComponent}
                     onToggleHidden={handleToggleHidden}
+                    onDropComponent={handleAddComponentToEntity}
+                    onMoveEntity={handleMoveEntity}
+                    onEnterChild={handleEnterChild}
+                    onCopyEntity={handleCopyEntity}
+                    onPasteEntity={handlePasteEntity}
+                    hasClipboard={clipboard.hasClipboard}
                 />
             </DockSlot>
 
             <div className={css({ gridArea: 'center', minH: 0, minW: 0 })}>
                 <EditorStage
                     definition={definition}
-                    selectedIndex={selectedIndex}
-                    hiddenIndices={hiddenIndices}
+                    flatNodes={flatNodes}
+                    selectedPath={selectedPath}
+                    hiddenPathKeys={hiddenPaths}
+                    hiddenRootIndices={hiddenRootIndices}
+                    snapStep={snapEnabled ? SNAP_STEP : 0}
                     onSelect={selectEntity}
                     onPatchTransform={patchEntityTransform}
+                    onDropComponent={handleAddComponentToEntity}
                 />
             </div>
 
             <DockSlot
                 area="right"
-                // 右ハンドル/選択時に開く drawer。閉じても selection は維持されハンドルから再開可能。
                 mobileVisible={mobileRightOpen && !!selectedEntity}
                 mobileTitle="設定"
                 onMobileClose={() => setMobileRightOpen(false)}
             >
-                {selectedEntity && selectedIndex !== null ? (
+                {selectedEntity && selectedPath ? (
                     <EntityInspector
                         entity={selectedEntity}
-                        dataFields={kindByName.get(selectedEntity.kind)?.dataFields}
-                        onChange={(updater) =>
-                            updateEntities((prev) => prev.map((e, i) => (i === selectedIndex ? updater(e) : e)))
-                        }
-                        onDelete={() => handleDeleteEntity(selectedIndex)}
+                        initiallyExpandedComponentIndex={selectedComponentIndex}
+                        availableKinds={kinds}
+                        isChild={selectedPath.length > 1}
+                        worldSize={snapEnabled ? definition.spec.environment?.worldSize : undefined}
+                        onChange={(updater) => updateEntities((prev) => updateEntityAt(prev, selectedPath, updater))}
+                        onAddComponent={(type) => handleAddComponentToEntity(selectedPath, type)}
+                        onDeleteComponent={(ci) => handleDeleteComponent(selectedPath, ci)}
+                        onDeleteEntity={() => handleDeleteEntity(selectedPath)}
+                        onRenameEntity={(id) => handleRenameEntity(selectedPath, id)}
                     />
                 ) : (
                     <div
@@ -312,23 +464,23 @@ export function WorldEditorPage() {
                 )}
             </DockSlot>
 
-            {/* アセットは bottom = grid 内に常時表示 (モバイル時もプレビューに被らない常設トレイ) */}
             <DockSlot area="bottom" mobileVisible={true}>
-                <EditorAssets kinds={kinds} loading={kindsLoading} placedKinds={placedKinds} onAdd={handleAddEntity} />
+                <EditorAssets
+                    kinds={kinds}
+                    loading={kindsLoading}
+                    pluginNames={(definition.spec.dependencies ?? []).map((d) => d.name)}
+                />
             </DockSlot>
 
-            {/* モバイル: 左ハンドルでヒエラルキー drawer を開く (md 以上では非表示) */}
             {!mobileLeftOpen && <MobileLeftHandle onClick={() => setMobileLeftOpen(true)} />}
-            {/* モバイル: 右ハンドルでインスペクタを再開 (selection 中で drawer 閉じている時のみ) */}
             {selectedEntity && !mobileRightOpen && <MobileRightHandle onClick={() => setMobileRightOpen(true)} />}
 
-            {/* エラー通知 */}
             {api.error && (
                 <div
                     onClick={() => api.setError('')}
                     className={css({
                         position: 'fixed',
-                        bottom: { base: '152px', md: '232px' }, // モバイルは assets (140px) の上に出す
+                        bottom: { base: '152px', md: '232px' },
                         left: { base: '12px', md: '252px' },
                         right: { base: '12px', md: '332px' },
                         padding: '10px 14px',
@@ -348,7 +500,6 @@ export function WorldEditorPage() {
                 </div>
             )}
 
-            {/* モーダル: ワールド情報 */}
             <Modal
                 open={modals.openModal === 'info'}
                 onClose={modals.cancelInfo}
@@ -364,7 +515,6 @@ export function WorldEditorPage() {
                 {modals.infoDraft && <WorldInfoForm draft={modals.infoDraft} onChange={modals.setInfoDraft} />}
             </Modal>
 
-            {/* モーダル: YAML 編集 */}
             <Modal
                 open={modals.openModal === 'yaml'}
                 onClose={modals.cancelYaml}

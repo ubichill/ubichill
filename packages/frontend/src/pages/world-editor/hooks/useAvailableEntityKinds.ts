@@ -46,6 +46,8 @@ export interface AvailableEntityKind {
     }>;
     /** インスペクタで必ず表示する data フィールドの宣言 */
     dataFields?: DataFields;
+    /** Component アイコン URL (アセットブラウザ表示用)。manifest の `thumbnail` を versioned base で絶対化済み。 */
+    thumbnailUrl?: string;
 }
 
 interface PluginIndex {
@@ -53,18 +55,19 @@ interface PluginIndex {
     version: string;
 }
 
-interface VersionedManifestEntity {
+interface VersionedManifestComponent {
     singleton?: boolean;
     canvasTargets?: string[];
     mediaTargets?: string[];
     defaultTransform?: AvailableEntityKind['defaultTransform'];
     dataFields?: DataFields;
+    thumbnail?: string;
 }
 
 interface VersionedManifest {
     id: string;
     version: string;
-    entities?: Record<string, VersionedManifestEntity>;
+    components?: Record<string, VersionedManifestComponent>;
 }
 
 const PLUGIN_BASE_URL: string = (() => {
@@ -129,8 +132,9 @@ export function useAvailableEntityKinds(definition: WorldDefinition | null): {
                 const idx = await fetchIndex(dep.name);
                 if (!idx?.version) return [];
                 const manifest = await fetchManifest(dep.name, idx.version);
-                const entities = manifest?.entities ?? {};
-                return Object.entries(entities).map(([kind, meta]) => ({
+                const components = manifest?.components ?? {};
+                const versionedBase = `${PLUGIN_BASE_URL}/${dep.name}/v${idx.version}`;
+                return Object.entries(components).map(([kind, meta]) => ({
                     pluginName: dep.name,
                     kind,
                     singleton: meta.singleton,
@@ -139,6 +143,7 @@ export function useAvailableEntityKinds(definition: WorldDefinition | null): {
                     suggestSize: !!(meta.canvasTargets?.length || meta.mediaTargets?.length),
                     defaultTransform: meta.defaultTransform,
                     dataFields: meta.dataFields,
+                    thumbnailUrl: meta.thumbnail ? `${versionedBase}/${meta.thumbnail}` : undefined,
                 }));
             }),
         )

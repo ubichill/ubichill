@@ -1,5 +1,5 @@
 import { PluginHostManager } from '@ubichill/sandbox';
-import type { EntityPatchPayload, PluginHostEvent, WorldEntity } from '@ubichill/shared';
+import type { ComponentInstance, EntityPatchPayload, PluginHostEvent } from '@ubichill/shared';
 import { useCallback, useEffect, useRef } from 'react';
 import type { PluginWorkerHandlers, UsePluginWorkerOptions } from '../usePluginWorker';
 import { useWorld } from './useWorld';
@@ -56,14 +56,14 @@ export function useWorldPlugin<TPayloadMap extends Record<string, unknown> = Rec
             handlers: {
                 onGetEntity: (id: string) => entitiesRef.current.get(id),
 
-                onCreateEntity: async (entity: Omit<WorldEntity, 'id'>) => {
+                onCreateEntity: async (entity: Omit<ComponentInstance, 'id'>) => {
                     const result = await createEntityRef.current(
                         entity.type,
                         entity.transform,
                         entity.data as Record<string, unknown>,
                     );
                     if (!result) throw new Error('[useWorldPlugin] エンティティの作成に失敗しました');
-                    return result as WorldEntity;
+                    return result as ComponentInstance;
                 },
 
                 onUpdateEntity: async (_id: string, entityPatch: EntityPatchPayload) => {

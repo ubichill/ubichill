@@ -1,36 +1,51 @@
 import type { InitialEntity } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { css } from '@/styled-system/css';
+import { COMPONENT_DRAG_MIME } from '../lib/dnd';
 import { applyDrag, type DragMode, type DragState } from '../lib/dragHelpers';
+import type { EntityPath, FlatEntityNode } from '../lib/entityTree';
 
 interface EditOverlayProps {
-    entities: InitialEntity[];
-    selectedIndex: number | null;
-    hiddenIndices?: Set<number>;
-    onSelect: (index: number | null) => void;
-    onPatchTransform: (index: number, patch: Partial<InitialEntity['transform']>) => void;
+    /** flatten 済みの全 Entity（path + 絶対座標）。 */
+    nodes: FlatEntityNode[];
+    selectedPath: EntityPath | null;
+    /** path key の Set。祖先が hidden ならその子孫も描画しない。 */
+    hiddenPathKeys?: Set<string>;
+    /** スナップ ON のときの grid step (px)。 */
+    snapStep?: number;
+    /** ワールド範囲。指定があれば座標 / サイズを範囲内に clamp する。 */
+    worldSize?: { width: number; height: number };
+    onSelect: (path: EntityPath | null) => void;
+    /** 親基準の transform 差分を patch する。 */
+    onPatchTransform: (path: EntityPath, patch: Partial<InitialEntity['transform']>) => void;
+    onDropComponent: (path: EntityPath, componentType: string) => void;
 }
 
 /**
- * world 座標系に絶対配置される編集オーバーレイ。
- * 各エンティティに矩形ハンドルを重ね、ドラッグで移動・リサイズできる。
- *
- * 編集モード中はプラグイン UI への直接操作をブロックする「シールド」を兼ねる。
- * pointer-events: auto で全クリックを overlay が吸収し、エンティティハンドル以外
- * (背景) は onSelect(null) で選択解除する。
- *
- * 色は inline style ではなく className に統一し、Panda CSS トークンで管理する。
- * 座標・サイズ・z-index など「エンティティごとに動的に変わる値」のみ style で渡す。
+ * World 座標系の編集オーバーレイ。全 Entity (ルート + 子) に handle を重ねる。
+ * 表示位置は絶対座標、保存時は親基準座標で patch する。
  */
-export function EditOverlay({ entities, selectedIndex, hiddenIndices, onSelect, onPatchTransform }: EditOverlayProps) {
+export function EditOverlay({
+    nodes,
+    selectedPath,
+    hiddenPathKeys,
+    snapStep,
+    worldSize,
+    onSelect,
+    onPatchTransform,
+    onDropComponent,
+}: EditOverlayProps) {
     const [drag, setDrag] = useState<DragState | null>(null);
+    // Component drop hover: ハイライト中の 1 entity の path-key のみ保持。
+    // dragend で必ず null に戻す → 滞留しない。
+    const [dropHoverKey, setDropHoverKey] = useState<string | null>(null);
 
     useEffect(() => {
         if (!drag) return;
         const onMove = (ev: MouseEvent) => {
             const dx = ev.clientX - drag.startClient.x;
             const dy = ev.clientY - drag.startClient.y;
-            onPatchTransform(drag.index, applyDrag(drag, dx, dy));
+            onPatchTransform(drag.path, applyDrag(drag, dx, dy, { snapStep, worldSize }));
         };
         const onUp = () => setDrag(null);
         window.addEventListener('mousemove', onMove);
@@ -39,7 +54,22 @@ export function EditOverlay({ entities, selectedIndex, hiddenIndices, onSelect, 
             window.removeEventListener('mousemove', onMove);
             window.removeEventListener('mouseup', onUp);
         };
-    }, [drag, onPatchTransform]);
+    }, [drag, onPatchTransform, snapStep, worldSize]);
+
+    useEffect(() => {
+        const clear = () => setDropHoverKey(null);
+        window.addEventListener('dragend', clear);
+        return () => window.removeEventListener('dragend', clear);
+    }, []);
+
+    // 祖先が hidden ならスキップ
+    const isHiddenByAncestor = (path: EntityPath): boolean => {
+        if (!hiddenPathKeys) return false;
+        for (let i = 1; i <= path.length; i += 1) {
+            if (hiddenPathKeys.has(path.slice(0, i).join('-'))) return true;
+        }
+        return false;
+    };
 
     return (
         <div
@@ -53,40 +83,55 @@ export function EditOverlay({ entities, selectedIndex, hiddenIndices, onSelect, 
                 zIndex: 99000,
             })}
         >
-            {entities.map((ent, i) => {
-                if (hiddenIndices?.has(i)) return null;
-                const t = ent.transform;
+            {nodes.map((node) => {
+                if (isHiddenByAncestor(node.path)) return null;
+                const t = node.entity.transform;
                 const w = t.w ?? 0;
                 const h = t.h ?? 0;
                 const sizeless = w <= 0 || h <= 0;
-                const selected = i === selectedIndex;
+                const key = node.path.join('-');
+                const selected = !!selectedPath && pathsEqual(selectedPath, node.path);
+                const isDropTarget = dropHoverKey === key;
                 const handleMouseDown = (ev: React.MouseEvent, mode: DragMode) => {
                     ev.stopPropagation();
-                    onSelect(i);
+                    onSelect(node.path);
                     setDrag({
-                        index: i,
+                        path: node.path,
                         mode,
                         startClient: { x: ev.clientX, y: ev.clientY },
-                        // サイズなしの場合は drag 計算用に最小サイズを与える（実 transform の w/h は変えない）
                         startTransform: { x: t.x, y: t.y, w: sizeless ? 0 : w, h: sizeless ? 0 : h },
                     });
                 };
+                const onDropType = (type: string) => onDropComponent(node.path, type);
+                const onHover = () => setDropHoverKey(key);
                 if (sizeless) {
                     return (
                         <SizelessChip
-                            key={`${ent.kind}-${i}`}
-                            entity={ent}
+                            key={key}
+                            entity={node.entity}
+                            absX={node.absX}
+                            absY={node.absY}
+                            absZ={node.absZ}
                             selected={selected}
+                            isDropTarget={isDropTarget}
                             onMouseDownEntity={(ev) => handleMouseDown(ev, 'move')}
+                            onDropType={onDropType}
+                            onHover={onHover}
                         />
                     );
                 }
                 return (
                     <EntityHandle
-                        key={`${ent.kind}-${i}`}
-                        entity={ent}
+                        key={key}
+                        entity={node.entity}
+                        absX={node.absX}
+                        absY={node.absY}
+                        absZ={node.absZ}
                         selected={selected}
+                        isDropTarget={isDropTarget}
                         onMouseDownEntity={handleMouseDown}
+                        onDropType={onDropType}
+                        onHover={onHover}
                     />
                 );
             })}
@@ -94,14 +139,31 @@ export function EditOverlay({ entities, selectedIndex, hiddenIndices, onSelect, 
     );
 }
 
+function pathsEqual(a: EntityPath, b: EntityPath): boolean {
+    if (a.length !== b.length) return false;
+    return a.every((v, i) => v === b[i]);
+}
+
 function EntityHandle({
     entity,
+    absX,
+    absY,
+    absZ,
     selected,
+    isDropTarget,
     onMouseDownEntity,
+    onDropType,
+    onHover,
 }: {
     entity: InitialEntity;
+    absX: number;
+    absY: number;
+    absZ: number;
     selected: boolean;
+    isDropTarget: boolean;
     onMouseDownEntity: (ev: React.MouseEvent, mode: DragMode) => void;
+    onDropType: (type: string) => void;
+    onHover: () => void;
 }) {
     const t = entity.transform;
     const w = t.w ?? 0;
@@ -109,25 +171,42 @@ function EntityHandle({
     return (
         <div
             onMouseDown={(e) => onMouseDownEntity(e, 'move')}
+            onDragOver={(e) => {
+                if (!e.dataTransfer.types.includes(COMPONENT_DRAG_MIME)) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+                onHover();
+            }}
+            onDragEnter={(e) => {
+                if (!e.dataTransfer.types.includes(COMPONENT_DRAG_MIME)) return;
+                e.preventDefault();
+                onHover();
+            }}
+            onDrop={(e) => {
+                const type = e.dataTransfer.getData(COMPONENT_DRAG_MIME);
+                if (!type) return;
+                e.preventDefault();
+                onDropType(type);
+            }}
             className={css({
                 position: 'absolute',
                 cursor: 'move',
                 pointerEvents: 'auto',
                 userSelect: 'none',
                 outlineOffset: '-1px',
-                outline: selected ? '2px solid' : '1.5px dashed',
-                outlineColor: selected ? 'primary' : 'selectionDashed',
+                outline: selected || isDropTarget ? '2px solid' : '1.5px dashed',
+                outlineColor: isDropTarget ? 'success' : selected ? 'primary' : 'selectionDashed',
                 bg: selected ? 'primarySubtle' : 'transparent',
             })}
             style={{
-                left: t.x,
-                top: t.y,
+                left: absX,
+                top: absY,
                 width: w,
                 height: h,
-                zIndex: 99000 + (t.z ?? 0),
+                zIndex: 99000 + absZ,
             }}
         >
-            <KindLabel kind={entity.kind} selected={selected} />
+            <EntityLabel entity={entity} selected={selected} />
             {selected && (
                 <>
                     <Handle position="nw" onMouseDown={(e) => onMouseDownEntity(e, 'resize-nw')} />
@@ -140,23 +219,47 @@ function EntityHandle({
     );
 }
 
-/**
- * サイズなしエンティティ（pen:canvas, pen:pen, avatar:cursor 等）用の
- * 28x28 チップ表示。位置編集（ドラッグ移動）のみ可能。
- */
 function SizelessChip({
     entity,
+    absX,
+    absY,
+    absZ,
     selected,
+    isDropTarget,
     onMouseDownEntity,
+    onDropType,
+    onHover,
 }: {
     entity: InitialEntity;
+    absX: number;
+    absY: number;
+    absZ: number;
     selected: boolean;
+    isDropTarget: boolean;
     onMouseDownEntity: (ev: React.MouseEvent) => void;
+    onDropType: (type: string) => void;
+    onHover: () => void;
 }) {
-    const t = entity.transform;
     return (
         <div
             onMouseDown={onMouseDownEntity}
+            onDragOver={(e) => {
+                if (!e.dataTransfer.types.includes(COMPONENT_DRAG_MIME)) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+                onHover();
+            }}
+            onDragEnter={(e) => {
+                if (!e.dataTransfer.types.includes(COMPONENT_DRAG_MIME)) return;
+                e.preventDefault();
+                onHover();
+            }}
+            onDrop={(e) => {
+                const type = e.dataTransfer.getData(COMPONENT_DRAG_MIME);
+                if (!type) return;
+                e.preventDefault();
+                onDropType(type);
+            }}
             className={css({
                 position: 'absolute',
                 width: '28px',
@@ -165,7 +268,7 @@ function SizelessChip({
                 pointerEvents: 'auto',
                 bg: selected ? 'chipBgActive' : 'chipBg',
                 border: '2px solid',
-                borderColor: 'white',
+                borderColor: isDropTarget ? 'success' : 'white',
                 borderRadius: '50%',
                 userSelect: 'none',
                 display: 'flex',
@@ -177,18 +280,18 @@ function SizelessChip({
                 boxShadow: selected ? 'selectionRing' : 'chipDrop',
             })}
             style={{
-                left: t.x,
-                top: t.y,
-                zIndex: 99000 + (t.z ?? 0),
+                left: absX,
+                top: absY,
+                zIndex: 99000 + absZ,
             }}
         >
-            <KindLabel kind={entity.kind} selected={selected} />●
+            <EntityLabel entity={entity} selected={selected} />●
         </div>
     );
 }
 
-/** エンティティの kind を上に表示する小さなラベル。selected 時に primary 色で強調。 */
-function KindLabel({ kind, selected }: { kind: string; selected: boolean }) {
+function EntityLabel({ entity, selected }: { entity: InitialEntity; selected: boolean }) {
+    const summary = entity.components.length === 1 ? entity.components[0].type : `${entity.components.length} comps`;
     return (
         <span
             className={css({
@@ -204,7 +307,7 @@ function KindLabel({ kind, selected }: { kind: string; selected: boolean }) {
                 whiteSpace: 'nowrap',
             })}
         >
-            {kind}
+            {entity.id} · {summary}
         </span>
     );
 }
