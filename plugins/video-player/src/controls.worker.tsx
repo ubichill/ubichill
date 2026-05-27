@@ -1,11 +1,17 @@
 /**
  * video-player:controls Worker — 再生制御の中枢。
  *
- * 状態 (entity.data):
- *  - isPlaying / currentTime / duration / seekNonce: 再生位置
- *  - loop / shuffle:                                  繰り返し設定
- *  - apiBase:                                         動画 URL のベース
- *  - myVolume (per-user):                             音量 (個人設定)
+ * 共有時計モデル:
+ *  - baselineTime (sync): 「最後にゼロ起点に固定した動画内位置」秒
+ *  - playEpoch   (sync): 「再生を開始した wall-clock ms」 (isPlaying=true のときだけ意味を持つ)
+ *  - 現在位置 = isPlaying ? baselineTime + (now - playEpoch) / 1000 : baselineTime
+ *
+ *  各ユーザーは Date.now() を使って独立に現在位置を算出するため、毎秒の broadcast は不要。
+ *  play / pause / seek / track-change の瞬間だけ baselineTime / playEpoch を同期する。
+ *
+ * その他の同期項目:
+ *  - isPlaying / duration / loop / shuffle / apiBase : 共有 + 永続
+ *  - myVolume (perUser): 各ユーザー音量
  *
  * Worker 間通信は VPEvents (型付き) のみ。
  */
@@ -30,21 +36,20 @@ import type { LoopMode, Track } from './types';
 const DEFAULT_API_BASE = '/plugins/video-player/api';
 
 const state = Ubi.state.define({
-    // entity.data 同期
+    // ── 共有 + 永続 ──
     isPlaying: Ubi.state.sync(false),
-    currentTime: Ubi.state.sync(0),
+    baselineTime: Ubi.state.sync(0),
+    playEpoch: Ubi.state.sync(0),
     duration: Ubi.state.sync(0),
-    seekNonce: Ubi.state.sync(0),
     loop: Ubi.state.sync<LoopMode>('none'),
     shuffle: Ubi.state.sync(false),
     apiBase: Ubi.state.sync(DEFAULT_API_BASE),
+    // ── 共有 + 永続 (per-user) ──
     myVolume: Ubi.state.sync(0.7, { perUser: true }),
-    // ローカル
+    // ── ローカル ──
     currentTrack: null as Track | null,
     currentIndex: 0,
     totalTracks: 0,
-    lastSyncedTime: 0,
-    lastSyncedAt: 0,
 });
 
 // ── ヘルパー ────────────────────────────────────────
@@ -56,17 +61,15 @@ const fmt = (sec: number): string => {
 };
 
 /**
- * 進行バー表示用の現在時刻の推定値。
- * `lastSyncedTime` を時計で外挿するが、`<video>` 側からの timeupdate が止まったら
- * (= 通信切断 / バッファ枯渇 / メタデータ未確定 など) 一定値以上は伸ばさない。
- * これがないと stall 中も無限にバーが進み、復帰時に巻き戻って見える。
+ * 共有時計から現在の再生位置 (秒) を算出する純関数。
+ * 全ユーザーが同じ baselineTime / playEpoch / isPlaying から計算するため、
+ * Date.now() のクロックスキューが無視できる範囲なら位置は揃う。
  */
-const STALL_THRESHOLD_S = 1.5;
-function estimatedTime(): number {
-    if (!state.local.isPlaying || state.local.duration <= 0) return state.local.lastSyncedTime;
-    const elapsedSec = (Date.now() - state.local.lastSyncedAt) / 1000;
-    const capped = Math.min(elapsedSec, STALL_THRESHOLD_S);
-    return Math.min(state.local.lastSyncedTime + capped, state.local.duration);
+function currentTime(): number {
+    if (!state.local.isPlaying) return state.local.baselineTime;
+    const advanced = state.local.baselineTime + (Date.now() - state.local.playEpoch) / 1000;
+    if (state.local.duration > 0) return Math.min(advanced, state.local.duration);
+    return advanced;
 }
 
 function buildTrackUrl(track: Track): string {
@@ -79,16 +82,48 @@ function buildTrackUrl(track: Track): string {
 const screenTarget = { scope: 'siblings' as const, targetType: 'video-player:screen' };
 const playlistTarget = { scope: 'siblings' as const, targetType: 'video-player:playlist' };
 
+/**
+ * 共有時計の現在状態に合わせてローカル <video> を同期する。
+ * isPlaying / baselineTime / playEpoch のどれかが変わったとき、または vp:media:loaded 時に呼ぶ。
+ * Live モードは seek 不可なので play/pause のみ。
+ */
+let syncScheduled = false;
+function scheduleSyncVideo(): void {
+    if (syncScheduled) return;
+    syncScheduled = true;
+    queueMicrotask(() => {
+        syncScheduled = false;
+        const isLive = state.local.currentTrack?.mode === 'live';
+        if (!isLive && state.local.duration > 0) {
+            VPEvents.emit('vp:media:seek', { time: currentTime() }, screenTarget);
+        }
+        if (state.local.isPlaying) VPEvents.emit('vp:media:play', {}, screenTarget);
+        else VPEvents.emit('vp:media:pause', {}, screenTarget);
+    });
+}
+
 // ── UI アクション ──────────────────────────────────
 const onSeek = (time: number): void => {
+    // baselineTime を seek 先に固定。isPlaying=true なら clock を restart。
     state.batch(() => {
-        state.local.currentTime = time;
-        state.local.seekNonce = Date.now();
+        state.local.baselineTime = time;
+        if (state.local.isPlaying) state.local.playEpoch = Date.now();
     });
-    VPEvents.emit('vp:media:seek', { time }, screenTarget);
 };
 const onPlayToggle = (): void => {
-    state.local.isPlaying = !state.local.isPlaying;
+    if (state.local.isPlaying) {
+        // pause: 現在位置を baselineTime に固定して時計を止める
+        state.batch(() => {
+            state.local.baselineTime = currentTime();
+            state.local.isPlaying = false;
+        });
+    } else {
+        // play: clock を起動 (baselineTime はそのまま)
+        state.batch(() => {
+            state.local.playEpoch = Date.now();
+            state.local.isPlaying = true;
+        });
+    }
 };
 const onPrev = (): void => {
     VPEvents.emit('vp:track:prev', {}, playlistTarget);
@@ -106,18 +141,14 @@ const onVolumeChange = (v: number): void => {
     state.local.myVolume = v;
 };
 
-// ── state 変化 → screen 通知 ───────────────────────
-state.onChange('isPlaying', (playing) => {
-    if (playing) VPEvents.emit('vp:media:play', {}, screenTarget);
-    else VPEvents.emit('vp:media:pause', {}, screenTarget);
-    state.local.lastSyncedAt = Date.now();
-    if (!playing) state.local.lastSyncedTime = estimatedTime();
+// ── state 変化 → ローカル video 同期 + 再描画 ─────────
+// 共有時計を構成する 3 つは同じ syncVideo に集約 (microtask で dedupe)
+state.onChange('isPlaying', () => {
+    scheduleSyncVideo();
     render();
 });
-state.onChange('currentTime', (next) => {
-    state.local.lastSyncedTime = next;
-    state.local.lastSyncedAt = Date.now();
-});
+state.onChange('baselineTime', scheduleSyncVideo);
+state.onChange('playEpoch', scheduleSyncVideo);
 state.onChange('myVolume', (v) => {
     VPEvents.emit('vp:media:volume', { volume: v }, screenTarget);
     render();
@@ -125,16 +156,11 @@ state.onChange('myVolume', (v) => {
 state.onChange('loop', render);
 state.onChange('shuffle', render);
 state.onChange('duration', render);
-state.onChange('seekNonce', () => {
-    state.local.lastSyncedTime = state.local.currentTime;
-    state.local.lastSyncedAt = Date.now();
-    render();
-});
 
 // ── レンダリング ──────────────────────────────────
 function render(): void {
     const track = state.local.currentTrack;
-    const ct = estimatedTime();
+    const ct = currentTime();
     const progress = state.local.duration > 0 ? (ct / state.local.duration) * 100 : 0;
     const isLive = track?.mode === 'live';
     const volume = state.local.myVolume;
@@ -337,38 +363,29 @@ VPEvents.on('vp:track:current', ({ track, index, total }) => {
     state.local.currentTrack = track;
     state.local.currentIndex = index;
     state.local.totalTracks = total;
-    // トラックが変わったら旧トラックの位置情報をリセット
-    // (これがないと、新トラック読み込み中も旧 duration/currentTime でシークバーが描画され、
-    //  vp:media:loaded で旧位置に勝手に seek されてしまう)
+    // トラックが変わったら共有時計をゼロから始める
     if (changed) {
         state.batch(() => {
-            state.local.currentTime = 0;
+            state.local.baselineTime = 0;
+            state.local.playEpoch = Date.now();
             state.local.duration = 0;
-            state.local.lastSyncedTime = 0;
-            state.local.lastSyncedAt = Date.now();
         });
     }
     render();
-    // トラックが変わったら load → (isPlaying なら play)
+    // トラックが変わったら load (vp:media:loaded で seek + play に進む)
     if (changed && track) {
         VPEvents.emit('vp:media:load', { url: buildTrackUrl(track), mode: track.mode }, screenTarget);
-        if (state.local.isPlaying) VPEvents.emit('vp:media:play', {}, screenTarget);
     }
 });
 
-VPEvents.on('vp:media:time', ({ currentTime, duration }) => {
-    state.local.lastSyncedTime = currentTime;
-    state.local.lastSyncedAt = Date.now();
-    if (duration > 0 && duration !== state.local.duration) state.local.duration = duration;
-});
+// 自 <video> 由来の時刻通知は共有時計モデルでは無視 (進行バーは共有時計から計算)。
+// 必要になれば drift 検出に使う。
+VPEvents.on('vp:media:time', () => {});
 
 VPEvents.on('vp:media:loaded', ({ duration }) => {
     if (duration > 0) state.local.duration = duration;
-    // 既存の currentTime がある場合 seek + 必要なら play
-    if (state.local.currentTime > 0 && state.local.currentTrack?.mode !== 'live') {
-        VPEvents.emit('vp:media:seek', { time: state.local.currentTime }, screenTarget);
-    }
-    if (state.local.isPlaying) VPEvents.emit('vp:media:play', {}, screenTarget);
+    // 共有時計の現在位置にローカル <video> を合わせる (再生中ならそのまま、停止中なら baselineTime)
+    scheduleSyncVideo();
 });
 
 VPEvents.on('vp:media:ended', () => {
@@ -378,7 +395,10 @@ VPEvents.on('vp:media:ended', () => {
 
 VPEvents.on('vp:playback:stop', () => {
     // playlist が末尾到達 (loop='none') を通知してきた → 再生停止
-    state.local.isPlaying = false;
+    state.batch(() => {
+        state.local.baselineTime = currentTime();
+        state.local.isPlaying = false;
+    });
 });
 
 // ── 進行バー時計のための tick ────────────────────────
@@ -396,8 +416,6 @@ const ClockSystem: System = (_e: Entity[], dt: number) => {
 Ubi.registerSystem(ClockSystem);
 
 // 初期化
-state.local.lastSyncedTime = state.local.currentTime;
-state.local.lastSyncedAt = Date.now();
 render();
 // 起動時に screen へ初期音量を通知 (起動順依存吸収)
 queueMicrotask(() => VPEvents.emit('vp:media:volume', { volume: state.local.myVolume }, screenTarget));

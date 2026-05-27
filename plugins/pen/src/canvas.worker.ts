@@ -5,7 +5,8 @@
  *   1. ワールド全体の pen:pen を watch して「自分のユーザーが保持中のペン」を 1 本特定
  *   2. マウス入力で stroke を組み立て
  *   3. 完成 stroke を canvas にコミット + broadcast + pen:stroke Entity として永続化
- *   4. canvas frame に active stroke と cursor を描画
+ *   4. canvas frame に active stroke と全ユーザーぶんのペンカーソルを描画
+ *      (リモートユーザーが保持中のペンも presence の worldX/Y で位置同期される)
  *
  * pen:stroke は描いたペン Entity の子として生成される (parentEntityId = heldPen.entityId)。
  */
@@ -46,6 +47,17 @@ const draw = Ubi.state.define({
 });
 
 // ────────────────────────────────────────────────────────────────
+// リモートで保持されているペン (userId → 表示用情報)
+// presence の worldX/Y と合成してペンカーソルを描画する。
+// ────────────────────────────────────────────────────────────────
+interface RemotePenInfo {
+    penId: string;
+    color: string;
+    strokeWidth: number;
+}
+const remoteHeld = new Map<string, RemotePenInfo>();
+
+// ────────────────────────────────────────────────────────────────
 // fingerprint (重複描画防止)
 // ────────────────────────────────────────────────────────────────
 // 自分の stroke を即時 commit したあと、broadcast / entity:pen:stroke 経由でも届く。
@@ -77,14 +89,14 @@ const popFingerprintIfExists = (fp: string): boolean => {
 // レンダリングヘルパー
 // ────────────────────────────────────────────────────────────────
 
-const buildCursor = (): CanvasCursorData => ({
-    x: draw.local.cursorX,
-    y: draw.local.cursorY,
-    color: draw.local.color,
-    size: Math.max(CURSOR_RADIUS * 2, draw.local.strokeWidth),
+const buildCursorAt = (x: number, y: number, color: string, strokeWidth: number): CanvasCursorData => ({
+    x,
+    y,
+    color,
+    size: Math.max(CURSOR_RADIUS * 2, strokeWidth),
     shape: 'custom',
     rotation: -Math.PI / 4,
-    pathFills: [...CURSOR_FIXED_FILLS, { d: 'M-3,-32 h6 v24 h-6 Z', fill: draw.local.color }],
+    pathFills: [...CURSOR_FIXED_FILLS, { d: 'M-3,-32 h6 v24 h-6 Z', fill: color }],
     pathStrokes: [...CURSOR_STROKES],
 });
 
@@ -119,6 +131,23 @@ PenEvents.on('entity:pen:pen', (pen) => {
             draw.local.heldPenEntityId = null;
             draw.local.isDrawing = false;
             draw.local.currentStroke = [];
+        });
+    }
+
+    // ── リモート保持の追跡 ─────────────────────────────────
+    // この pen が以前どのリモートユーザーに紐付いていたら一旦消す
+    for (const [userId, info] of remoteHeld) {
+        if (info.penId === pen.id) {
+            remoteHeld.delete(userId);
+            break;
+        }
+    }
+    // 現在リモートユーザーが持っているなら登録
+    if (pen.lockedBy && pen.lockedBy !== Ubi.myUserId) {
+        remoteHeld.set(pen.lockedBy, {
+            penId: pen.id,
+            color: pen.data.color ?? '#000000',
+            strokeWidth: pen.data.strokeWidth ?? 4,
         });
     }
 });
@@ -192,10 +221,26 @@ const flushCompletedStroke = (): void => {
 const FrameSystem: System = (_entities: Entity[]) => {
     flushCompletedStroke();
 
-    const isPenHeld = draw.local.heldPenId !== null;
+    const cursors: CanvasCursorData[] = [];
+
+    // 自分が保持中: INPUT_MOUSE_MOVE から取った world 座標で描く
+    if (draw.local.heldPenId !== null) {
+        cursors.push(buildCursorAt(draw.local.cursorX, draw.local.cursorY, draw.local.color, draw.local.strokeWidth));
+    }
+
+    // リモートユーザーが保持中のペン: presence の worldX/Y に追従
+    if (remoteHeld.size > 0) {
+        const players = Ubi.player.all();
+        for (const [userId, info] of remoteHeld) {
+            const player = players.get(userId);
+            if (!player) continue;
+            cursors.push(buildCursorAt(player.worldX, player.worldY, info.color, info.strokeWidth));
+        }
+    }
+
     Ubi.canvas.frame(CANVAS_TARGET, {
-        activeStroke: isPenHeld ? buildActiveStroke() : null,
-        cursor: isPenHeld ? buildCursor() : null,
+        activeStroke: buildActiveStroke(),
+        cursors,
     });
 };
 
