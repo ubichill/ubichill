@@ -8,7 +8,8 @@
  *
  * このモジュールは:
  *  - 占有者を ComponentInstance.lockedBy (top-level) として永続同期する
- *  - acquire() 時に同じ Component type の siblings に内部 emit で「離せ」を伝える
+ *  - acquire() 時に「同じ Component type の全 worker」(scope='world') に内部 emit で
+ *    「離せ」を伝える。兄弟階層に依らない世界横断ルール ("1 ユーザー = 同種 1 つ") を実現
  *  - 同時取得は acquireEpoch (Date.now) の新しい方が勝つ調停を SDK 側で完結
  *  - 受け手側プラグインは ev.type を意識しなくていい (event 名前空間は予約済み)
  */
@@ -57,9 +58,11 @@ export type GripModule = {
      * grip.onChange(renderPen);
      * ```
      *
-     * 同じ Component type の他エンティティを自分が掴んでいれば、acquire() で
-     * SDK が自動的に古い方を解放する (emit ベース調停)。プラグイン側に
-     * 「1 本だけ」コードを書く必要はない。
+     * **スコープ**: 同じ Component type のエンティティであれば、世界中どの subtree に
+     * いても 1 つだけ。たとえばペンが複数 tray に分散していても「ユーザー A は
+     * 同時に 1 本しか持てない」という制約が SDK 側で enforce される。
+     * 古い hold は acquire() の emit (scope='world') で自動的に解放される。
+     * プラグイン側に「1 本だけ」のコードを書く必要はない。
      */
     exclusive(): Grip;
 };
@@ -106,10 +109,12 @@ export function createGripModule(deps: GripModuleDeps): GripModule {
                     const epoch = Date.now();
                     acquireEpoch = epoch;
                     inner.local.holder = me;
+                    // 1 ユーザー = 同種 1 つ ルールはエンティティ階層に依存しない。
+                    // 別 tray / 別 subtree にあるペンも同じ componentType なら release 対象。
                     gripEvents.emit(
                         GRIP_CLAIM_EVENT,
                         { userId: me, senderId: self, epoch },
-                        { scope: 'siblings', targetType: type },
+                        { scope: 'world', targetType: type },
                     );
                 },
                 release(): void {

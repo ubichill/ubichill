@@ -73,13 +73,13 @@ Ubi.canvas.commitStroke(targetId, strokeData)
 Ubi.player.others() / .all() / .scroll() / .syncCursor({ throttleMs })
 
 // ──── 掴む / 持つ (排他オーナーシップ) ────────────────────
-const grip = Ubi.grip.exclusive()  // 同 Component type で 1 ユーザー 1 つだけ
-grip.acquire()                      // 掴む (他に自分が持ってたら自動で離す)
+const grip = Ubi.grip.exclusive()  // 世界中の同 Component type で 1 ユーザー 1 つだけ
+grip.acquire()                      // 掴む (別 subtree でも自分が持ってる同種があれば自動で離す)
 grip.release()                      // 離す
 grip.holder                         // string | null
 grip.isMine                         // boolean
 grip.onChange((next, prev) => ...)  // 占有者の変化を監視
-// 必要 capability: 'scene:update' (lockedBy 同期) + 'net:emit' (同タブ siblings への調停 emit)
+// 必要 capability: 'scene:update' (lockedBy 同期) + 'net:emit' (世界横断の調停 emit)
 
 // ──── エンティティ (callable + static) ──────────────────
 Ubi.entity()                                       // SelfEntityRef (自分自身)
