@@ -152,10 +152,42 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
         let sharedDirty = false;
         let entityDirty = false;
 
+        let batchDepth = 0;
+        // batch 中は (firstPrev, latestNext) を集約。Map なので同一キーの再書込は最新値で上書き。
+        const batchedFires = new Map<string, { prev: unknown; next: unknown }>();
+
         const fire = (key: string, next: unknown, prev: unknown): void => {
+            if (batchDepth > 0) {
+                const existing = batchedFires.get(key);
+                if (existing) {
+                    existing.next = next;
+                } else {
+                    batchedFires.set(key, { prev, next });
+                }
+                return;
+            }
             const set = listeners.get(key);
             if (!set) return;
             for (const fn of set) fn(next, prev);
+        };
+
+        const runBatch = (fn: () => void): void => {
+            batchDepth++;
+            try {
+                fn();
+            } finally {
+                batchDepth--;
+                if (batchDepth === 0 && batchedFires.size > 0) {
+                    const entries = [...batchedFires.entries()];
+                    batchedFires.clear();
+                    for (const [key, { prev, next }] of entries) {
+                        if (prev === next) continue;
+                        const set = listeners.get(key);
+                        if (!set) continue;
+                        for (const fn of set) fn(next, prev);
+                    }
+                }
+            }
         };
 
         const flushShared = (): void => {
@@ -331,6 +363,7 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
         return {
             local: proxy,
             for: getFor,
+            batch: runBatch,
             onChange: (key, listener) => {
                 let set = listeners.get(key);
                 if (!set) {

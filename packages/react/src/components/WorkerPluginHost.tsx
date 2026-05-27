@@ -122,9 +122,13 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
                         updateUser: (patch) =>
                             updateUserRef.current(patch as Parameters<typeof updateUserRef.current>[0]),
                         sendToWorker: (type, payload) =>
+                            // 旧仕様: eventType: 'host:message', data: { type, payload } という入れ子だったが
+                            // Worker 側で常に switch(payload.type) を書かされる二度手間だったので、
+                            // type を eventType に直接昇格させて Worker は Ubi.event.on(type, ...) で
+                            // フラットに受けられるようにした。
                             sendEventRef.current?.({
                                 type: 'EVT_CUSTOM',
-                                payload: { eventType: 'host:message', data: { type, payload } },
+                                payload: { eventType: type, data: payload },
                             }),
                     });
                 }

@@ -133,7 +133,10 @@ export class UbiSDK {
             recordUiRenderCost: (targetId, costMs, scope) => this.ui._recordUiRenderCost(targetId, costMs, scope),
             buildEntityTargetId: (entityId, componentName) => this.ui._buildEntityTargetId(entityId, componentName),
         });
-        this.event = createEventModule(send);
+        this.event = createEventModule({
+            send,
+            registerSystem: (system) => this._local.registerSystem(system),
+        });
         this.media = createMediaModule(send);
         this.canvas = createCanvasModule(send);
         this.entity = createEntityModule(

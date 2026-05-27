@@ -77,4 +77,5 @@ export type {
 } from '@ubichill/shared';
 // UbiSDK クラス + 型
 export { UbiSDK } from './ubi';
+export type { EmitOptions, EmitScope, EventRegistry } from './ubi/event';
 export type { EntityState, EntityStateFor, OmitId, UiRenderCostStat } from './ubi/types';
