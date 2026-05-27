@@ -81,25 +81,43 @@ async function main() {
     // Plugin port health check: 各プラグインのバックエンドポートが正しく応答しているか検証する。
     // Docker がポートを占有していても、ホスト側に別プロセスが先に bind していると
     // Vite プロキシがそちらへ届いてしまうため、Content-Type で判定する。
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    //
+    // 初回起動は image build + uvicorn の cold start で数十秒かかるので、
+    // 1.5 秒間隔で最大 30 秒ポーリング (=20 回) する。
     const pluginChecks = [
         { name: 'video-player', url: 'http://localhost:8000/', expectedContentType: 'application/json' },
     ];
+    const HEALTHCHECK_MAX_TRIES = 20;
+    const HEALTHCHECK_INTERVAL_MS = 1500;
     for (const { name, url, expectedContentType } of pluginChecks) {
-        try {
-            const res = await fetch(url);
-            const ct = res.headers.get('content-type') ?? '';
-            if (!ct.includes(expectedContentType)) {
+        let lastError = '';
+        let lastContentType = '';
+        let succeeded = false;
+        for (let i = 0; i < HEALTHCHECK_MAX_TRIES; i++) {
+            try {
+                const res = await fetch(url);
+                lastContentType = res.headers.get('content-type') ?? '';
+                if (lastContentType.includes(expectedContentType)) {
+                    console.log(`[plugin:${name}] バックエンド OK (${url})`);
+                    succeeded = true;
+                    break;
+                }
+                // Content-Type 不一致は別プロセス占有の可能性大 → 即報告 (リトライ不要)
                 console.warn(`\n⚠️  [plugin:${name}] ポート競合の可能性があります`);
-                console.warn(`   ${url} が "${ct}" を返しています（期待値: ${expectedContentType}）`);
+                console.warn(`   ${url} が "${lastContentType}" を返しています（期待値: ${expectedContentType}）`);
                 console.warn(`   同じポートを使用している別プロセスを確認してください:`);
                 console.warn(`   lsof -i :${new URL(url).port || 80}\n`);
-            } else {
-                console.log(`[plugin:${name}] バックエンド OK (${url})`);
+                succeeded = true; // 警告は出したのでループは抜ける
+                break;
+            } catch (err) {
+                lastError = err instanceof Error ? err.message : String(err);
+                await new Promise(resolve => setTimeout(resolve, HEALTHCHECK_INTERVAL_MS));
             }
-        } catch {
+        }
+        if (!succeeded) {
             console.warn(`\n⚠️  [plugin:${name}] バックエンドに接続できません: ${url}`);
-            console.warn(`   Docker コンテナが起動しているか確認してください: docker ps\n`);
+            console.warn(`   ${HEALTHCHECK_MAX_TRIES * HEALTHCHECK_INTERVAL_MS / 1000}s 待っても応答なし (${lastError})`);
+            console.warn(`   Docker コンテナのログを確認: docker compose -f plugins/${name}/docker-compose.yml logs\n`);
         }
     }
 
