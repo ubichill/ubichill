@@ -9,7 +9,7 @@ interface UseInstancesReturn {
     loading: boolean;
     error: string | null;
     createInstance: (request: CreateInstanceRequest) => Promise<Instance | null>;
-    refreshInstances: () => Promise<void>;
+    refreshInstances: (worldId?: string) => Promise<void>;
     refreshWorlds: () => Promise<void>;
 }
 
@@ -19,10 +19,12 @@ export function useInstances(): UseInstancesReturn {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const refreshInstances = useCallback(async () => {
+    const refreshInstances = useCallback(async (worldId?: string) => {
         setLoading(true);
+        setError(null);
         try {
-            const res = await fetch(`${API_BASE}/api/v1/instances`, {
+            const query = worldId ? `?worldId=${encodeURIComponent(worldId)}` : '';
+            const res = await fetch(`${API_BASE}/api/v1/instances${query}`, {
                 credentials: 'include',
             });
             if (!res.ok) throw new Error('Failed to fetch instances');
@@ -37,6 +39,7 @@ export function useInstances(): UseInstancesReturn {
 
     const refreshWorlds = useCallback(async () => {
         setLoading(true);
+        setError(null);
         try {
             const res = await fetch(`${API_BASE}/api/v1/worlds`, {
                 credentials: 'include',
@@ -77,9 +80,8 @@ export function useInstances(): UseInstancesReturn {
     }, []);
 
     useEffect(() => {
-        refreshInstances();
         refreshWorlds();
-    }, [refreshInstances, refreshWorlds]);
+    }, [refreshWorlds]);
 
     return {
         instances,

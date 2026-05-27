@@ -1,5 +1,5 @@
 import type { WorldListItem } from '@ubichill/shared';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE } from '@/lib/api';
 import { css } from '@/styled-system/css';
@@ -7,19 +7,17 @@ import { InstanceCard } from './InstanceCard';
 import { useInstances } from './useInstances';
 import { WorldCard } from './WorldCard';
 
-type LobbyView = 'instances' | 'worlds';
-
 interface LobbyProps {
     onJoinInstance: (instanceId: string, worldId: string) => void;
 }
 
 export function Lobby({ onJoinInstance }: LobbyProps) {
     const navigate = useNavigate();
-    const { instances, worlds, loading, error, refreshInstances, refreshWorlds } = useInstances();
-    const [view, setView] = useState<LobbyView>('instances');
+    const { instances, worlds, loading, error, createInstance, refreshInstances, refreshWorlds } = useInstances();
+    const [selectedWorldId, setSelectedWorldId] = useState<string | null>(null);
     const [orderedWorlds, setOrderedWorlds] = useState<WorldListItem[]>([]);
+    const [creating, setCreating] = useState(false);
 
-    // Pull-to-refresh state
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [pullOffset, setPullOffset] = useState(0);
     const pullStartY = useRef(0);
@@ -28,10 +26,54 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
 
     const PULL_THRESHOLD = 60;
 
-    // worlds が更新されたら順序を同期
+    const selectedWorld = useMemo(
+        () => orderedWorlds.find((world) => world.id === selectedWorldId) ?? null,
+        [orderedWorlds, selectedWorldId],
+    );
+
     useEffect(() => {
         setOrderedWorlds(worlds);
     }, [worlds]);
+
+    const refreshCurrentView = useCallback(async () => {
+        setIsRefreshing(true);
+        try {
+            if (selectedWorldId) {
+                await refreshInstances(selectedWorldId);
+            } else {
+                await refreshWorlds();
+            }
+        } finally {
+            setIsRefreshing(false);
+        }
+    }, [selectedWorldId, refreshInstances, refreshWorlds]);
+
+    const handleSelectWorld = useCallback(
+        async (worldId: string) => {
+            setSelectedWorldId(worldId);
+            scrollRef.current?.scrollTo({ top: 0 });
+            await refreshInstances(worldId);
+        },
+        [refreshInstances],
+    );
+
+    const handleBackToWorlds = useCallback(() => {
+        setSelectedWorldId(null);
+        scrollRef.current?.scrollTo({ top: 0 });
+    }, []);
+
+    const handleCreateInstance = useCallback(async () => {
+        if (!selectedWorldId || creating) return;
+        setCreating(true);
+        try {
+            const instance = await createInstance({ worldId: selectedWorldId });
+            if (instance) {
+                onJoinInstance(instance.id, instance.world.id);
+            }
+        } finally {
+            setCreating(false);
+        }
+    }, [selectedWorldId, creating, createInstance, onJoinInstance]);
 
     const handleMoveWorld = useCallback(
         async (index: number, direction: -1 | 1) => {
@@ -49,47 +91,12 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                 });
                 if (!res.ok) throw new Error(`${res.status}`);
             } catch {
-                // 失敗したら元に戻す
                 setOrderedWorlds(orderedWorlds);
             }
         },
         [orderedWorlds],
     );
 
-    // Refresh current view data
-    const refreshCurrentView = useCallback(async () => {
-        setIsRefreshing(true);
-        try {
-            if (view === 'instances') {
-                await refreshInstances();
-            } else {
-                await refreshWorlds();
-            }
-        } finally {
-            setIsRefreshing(false);
-        }
-    }, [view, refreshInstances, refreshWorlds]);
-
-    // Refresh data when switching tabs
-    const handleTabSwitch = useCallback(
-        async (newView: LobbyView) => {
-            if (newView === view) return;
-            setView(newView);
-            setIsRefreshing(true);
-            try {
-                if (newView === 'instances') {
-                    await refreshInstances();
-                } else {
-                    await refreshWorlds();
-                }
-            } finally {
-                setIsRefreshing(false);
-            }
-        },
-        [view, refreshInstances, refreshWorlds],
-    );
-
-    // Touch-based pull-to-refresh
     const handleTouchStart = useCallback((e: React.TouchEvent) => {
         if (scrollRef.current && scrollRef.current.scrollTop <= 0) {
             pullStartY.current = e.touches[0].clientY;
@@ -101,7 +108,6 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
         if (!isPulling.current) return;
         const diff = e.touches[0].clientY - pullStartY.current;
         if (diff > 0) {
-            // Dampen the pull distance
             setPullOffset(Math.min(diff * 0.4, 80));
         }
     }, []);
@@ -116,7 +122,6 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
         setPullOffset(0);
     }, [pullOffset, refreshCurrentView]);
 
-    // Scroll-based refresh (desktop: scroll overscroll at top)
     const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const handleScroll = useCallback(
         (e: React.UIEvent<HTMLDivElement>) => {
@@ -128,17 +133,14 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                         scrollTimeoutRef.current = null;
                     }, 500);
                 }
-            } else {
-                if (scrollTimeoutRef.current) {
-                    clearTimeout(scrollTimeoutRef.current);
-                    scrollTimeoutRef.current = null;
-                }
+            } else if (scrollTimeoutRef.current) {
+                clearTimeout(scrollTimeoutRef.current);
+                scrollTimeoutRef.current = null;
             }
         },
         [isRefreshing, refreshCurrentView],
     );
 
-    // Cleanup timeout on unmount
     useEffect(() => {
         return () => {
             if (scrollTimeoutRef.current) {
@@ -174,10 +176,6 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
             setImportState('error');
         }
     }, [importUrl, refreshWorlds]);
-
-    const handleNavigateToWorld = (worldId: string) => {
-        navigate(`/world/${worldId}`);
-    };
 
     const handleJoinInstance = (instanceId: string) => {
         const instance = instances.find((i) => i.id === instanceId);
@@ -225,64 +223,50 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                         minH: 0,
                     })}
                 >
-                    <h1
-                        className={css({
-                            fontSize: { base: '3xl', md: '4xl' },
-                            fontWeight: '700',
-                            color: 'text',
-                            mb: '4',
-                        })}
-                    >
-                        ワールド選択
-                    </h1>
-
-                    <div
-                        className={css({
-                            display: 'flex',
-                            gap: '3',
-                            mb: '4',
-                            flexShrink: 0,
-                        })}
-                    >
-                        <button
-                            type="button"
-                            onClick={() => handleTabSwitch('instances')}
+                    <div className={css({ display: 'flex', alignItems: 'center', gap: '3', mb: '4' })}>
+                        {selectedWorld && (
+                            <button
+                                type="button"
+                                onClick={handleBackToWorlds}
+                                aria-label="テンプレート一覧へ戻る"
+                                className={css({
+                                    width: '36px',
+                                    height: '36px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    bg: 'secondary',
+                                    color: 'text',
+                                    border: 'none',
+                                    borderRadius: '10px',
+                                    cursor: 'pointer',
+                                    flexShrink: 0,
+                                    _hover: { opacity: 0.9 },
+                                })}
+                            >
+                                <svg
+                                    width="18"
+                                    height="18"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                >
+                                    <path d="M19 12H5" />
+                                    <path d="m12 19-7-7 7-7" />
+                                </svg>
+                            </button>
+                        )}
+                        <h1
                             className={css({
-                                flex: 1,
-                                padding: '10px 14px',
-                                backgroundColor: view === 'instances' ? 'primary' : 'secondary',
-                                color: view === 'instances' ? 'textOnPrimary' : 'textMuted',
-                                border: 'none',
-                                borderRadius: '10px',
-                                fontSize: { base: 'xs', sm: 'sm' },
-                                fontWeight: '600',
-                                cursor: 'pointer',
-                                transition: 'opacity 0.16s ease',
-                                whiteSpace: 'nowrap',
-                                _hover: { opacity: 0.9 },
+                                fontSize: { base: '3xl', md: '4xl' },
+                                fontWeight: '700',
+                                color: 'text',
+                                minW: 0,
                             })}
                         >
-                            参加可能なインスタンス
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => handleTabSwitch('worlds')}
-                            className={css({
-                                flex: 1,
-                                padding: '10px 14px',
-                                backgroundColor: view === 'worlds' ? 'primary' : 'secondary',
-                                color: view === 'worlds' ? 'textOnPrimary' : 'textMuted',
-                                border: 'none',
-                                borderRadius: '10px',
-                                fontSize: { base: 'xs', sm: 'sm' },
-                                fontWeight: '600',
-                                cursor: 'pointer',
-                                transition: 'opacity 0.16s ease',
-                                _hover: { opacity: 0.9 },
-                            })}
-                        >
-                            新規作成
-                        </button>
+                            {selectedWorld ? selectedWorld.displayName : 'ワールド選択'}
+                        </h1>
                     </div>
 
                     {error && (
@@ -354,99 +338,17 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                         })}
                     >
                         {loading && !isRefreshing && (
-                            <div
-                                className={css({
-                                    textAlign: 'center',
-                                    padding: '40px',
-                                    color: 'textMuted',
-                                })}
-                            >
+                            <div className={css({ textAlign: 'center', padding: '40px', color: 'textMuted' })}>
                                 読み込み中...
                             </div>
                         )}
 
-                        {view === 'instances' && !loading && (
-                            <div className={css({ display: 'flex', flexDirection: 'column', gap: '3' })}>
-                                {instances.length === 0 ? (
-                                    <div
-                                        className={css({
-                                            textAlign: 'center',
-                                            padding: '56px 24px',
-                                            backgroundColor: 'secondary',
-                                            borderRadius: '14px',
-                                        })}
-                                    >
-                                        <div
-                                            className={css({
-                                                marginBottom: '14px',
-                                                display: 'flex',
-                                                justifyContent: 'center',
-                                            })}
-                                        >
-                                            <svg
-                                                width="44"
-                                                height="44"
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                strokeWidth="1.5"
-                                                className={css({ color: 'textSubtle' })}
-                                            >
-                                                <circle cx="12" cy="12" r="10" />
-                                                <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-                                            </svg>
-                                        </div>
-                                        <p
-                                            className={css({
-                                                fontSize: '15px',
-                                                color: 'textMuted',
-                                                marginBottom: '16px',
-                                            })}
-                                        >
-                                            参加可能なインスタンスがありません
-                                        </p>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleTabSwitch('worlds')}
-                                            className={css({
-                                                padding: '10px 20px',
-                                                backgroundColor: 'primary',
-                                                color: 'textOnPrimary',
-                                                border: 'none',
-                                                borderRadius: '10px',
-                                                fontSize: '14px',
-                                                fontWeight: '600',
-                                                cursor: 'pointer',
-                                            })}
-                                        >
-                                            新規作成
-                                        </button>
-                                    </div>
-                                ) : (
-                                    instances.map((instance) => (
-                                        <InstanceCard
-                                            key={instance.id}
-                                            instance={instance}
-                                            onJoin={handleJoinInstance}
-                                        />
-                                    ))
-                                )}
-                            </div>
-                        )}
-
-                        {view === 'worlds' && !loading && (
+                        {!selectedWorld && !loading && (
                             <div>
-                                <p
-                                    className={css({
-                                        fontSize: '14px',
-                                        color: 'textMuted',
-                                        marginBottom: '16px',
-                                    })}
-                                >
-                                    テンプレートを選択して新しいワールドを作成します
+                                <p className={css({ fontSize: '14px', color: 'textMuted', marginBottom: '16px' })}>
+                                    テンプレートを選択すると、そのワールドで作られたインスタンスを表示します
                                 </p>
 
-                                {/* 自分でワールドを作る / マイページ */}
                                 <div
                                     className={css({
                                         display: 'flex',
@@ -518,14 +420,7 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                                     </button>
                                 </div>
 
-                                {/* URL インポート */}
-                                <div
-                                    className={css({
-                                        display: 'flex',
-                                        gap: '8px',
-                                        marginBottom: '20px',
-                                    })}
-                                >
+                                <div className={css({ display: 'flex', gap: '8px', marginBottom: '20px' })}>
                                     <input
                                         type="url"
                                         value={importUrl}
@@ -547,6 +442,7 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                                             color: 'text',
                                             fontSize: '13px',
                                             outline: 'none',
+                                            minW: 0,
                                             _focus: { borderColor: 'primary' },
                                             _placeholder: { color: 'textSubtle' },
                                         })}
@@ -595,7 +491,7 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                                         <WorldCard
                                             key={world.id}
                                             world={world}
-                                            onNavigate={handleNavigateToWorld}
+                                            onNavigate={(worldId) => void handleSelectWorld(worldId)}
                                             onMoveUp={() => handleMoveWorld(i, -1)}
                                             onMoveDown={() => handleMoveWorld(i, 1)}
                                             isFirst={i === 0}
@@ -603,6 +499,154 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                                         />
                                     ))}
                                 </div>
+                            </div>
+                        )}
+
+                        {selectedWorld && !loading && (
+                            <div className={css({ display: 'flex', flexDirection: 'column', gap: '4' })}>
+                                <div
+                                    className={css({
+                                        display: 'grid',
+                                        gridTemplateColumns: { base: '1fr', sm: '160px 1fr' },
+                                        gap: '4',
+                                        alignItems: 'stretch',
+                                        p: '4',
+                                        bg: 'surface',
+                                        border: '1px solid',
+                                        borderColor: 'border',
+                                        borderRadius: '14px',
+                                    })}
+                                >
+                                    <div
+                                        className={css({
+                                            minH: '104px',
+                                            borderRadius: '10px',
+                                            overflow: 'hidden',
+                                            bg: 'secondary',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                        })}
+                                    >
+                                        {selectedWorld.thumbnail ? (
+                                            <img
+                                                src={selectedWorld.thumbnail}
+                                                alt={selectedWorld.displayName}
+                                                className={css({ width: '100%', height: '100%', objectFit: 'cover' })}
+                                            />
+                                        ) : (
+                                            <svg
+                                                width="36"
+                                                height="36"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                strokeWidth="1.5"
+                                                className={css({ color: 'textSubtle' })}
+                                            >
+                                                <circle cx="12" cy="12" r="10" />
+                                                <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                                            </svg>
+                                        )}
+                                    </div>
+                                    <div className={css({ minW: 0 })}>
+                                        {selectedWorld.description && (
+                                            <p
+                                                className={css({
+                                                    fontSize: '14px',
+                                                    color: 'textMuted',
+                                                    lineHeight: '1.5',
+                                                    marginBottom: '10px',
+                                                })}
+                                            >
+                                                {selectedWorld.description}
+                                            </p>
+                                        )}
+                                        <div
+                                            className={css({
+                                                display: 'flex',
+                                                gap: '2',
+                                                flexWrap: 'wrap',
+                                                fontSize: '12px',
+                                                color: 'textSubtle',
+                                                marginBottom: '14px',
+                                            })}
+                                        >
+                                            <span>
+                                                {selectedWorld.capacity.default}〜{selectedWorld.capacity.max}人
+                                            </span>
+                                            <span>v{selectedWorld.version}</span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => void handleCreateInstance()}
+                                            disabled={creating}
+                                            className={css({
+                                                padding: '10px 16px',
+                                                backgroundColor: 'primary',
+                                                color: 'textOnPrimary',
+                                                border: 'none',
+                                                borderRadius: '10px',
+                                                fontSize: '14px',
+                                                fontWeight: '600',
+                                                cursor: 'pointer',
+                                                _hover: { opacity: 0.9 },
+                                                _disabled: { opacity: 0.6, cursor: 'not-allowed' },
+                                            })}
+                                        >
+                                            {creating ? '作成中...' : '新しいインスタンスを作成'}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {instances.length === 0 ? (
+                                    <div
+                                        className={css({
+                                            textAlign: 'center',
+                                            padding: '40px 20px',
+                                            backgroundColor: 'secondary',
+                                            borderRadius: '14px',
+                                        })}
+                                    >
+                                        <p
+                                            className={css({
+                                                fontSize: '15px',
+                                                color: 'textMuted',
+                                                marginBottom: '16px',
+                                            })}
+                                        >
+                                            このテンプレートの参加可能なインスタンスはありません
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={() => void handleCreateInstance()}
+                                            disabled={creating}
+                                            className={css({
+                                                padding: '10px 18px',
+                                                backgroundColor: 'primary',
+                                                color: 'textOnPrimary',
+                                                border: 'none',
+                                                borderRadius: '10px',
+                                                fontSize: '14px',
+                                                fontWeight: '600',
+                                                cursor: 'pointer',
+                                                _disabled: { opacity: 0.6, cursor: 'not-allowed' },
+                                            })}
+                                        >
+                                            {creating ? '作成中...' : '新しく作成して参加'}
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className={css({ display: 'flex', flexDirection: 'column', gap: '3' })}>
+                                        {instances.map((instance) => (
+                                            <InstanceCard
+                                                key={instance.id}
+                                                instance={instance}
+                                                onJoin={handleJoinInstance}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
