@@ -2,7 +2,7 @@
   "id": "pen",
   "name": "Pen",
   "version": "2.0.0",
-  "entities": {
+  "components": {
     "pen:canvas": {
       "capabilities": [
         "scene:read",
@@ -18,24 +18,25 @@
         "pen:stroke",
         "pen:pen"
       ],
+      "watchScope": "world",
       "defaultTransform": {
         "x": 0,
         "y": 0,
         "z": 5000
       },
       "dataFields": {},
-      "workerUrl": "./canvas/index.1f0d3b8e.js"
+      "workerUrl": "./canvas/index.b694670e.js"
     },
     "pen:tray": {
       "capabilities": [
         "scene:read",
         "scene:update",
-        "ui:render",
-        "net:host-message"
+        "ui:render"
       ],
       "watchEntityTypes": [
         "pen:pen"
       ],
+      "watchScope": "subtree",
       "defaultTransform": {
         "x": 20,
         "y": 20,
@@ -44,13 +45,26 @@
         "h": 240
       },
       "dataFields": {},
-      "workerUrl": "./tray/index.9b6c752d.js"
+      "workerUrl": "./tray/index.9b765bf6.js"
     },
     "pen:pen": {
+      "capabilities": [
+        "scene:read",
+        "scene:update",
+        "ui:render",
+        "net:host-message",
+        "net:emit"
+      ],
+      "watchEntityTypes": [
+        "pen:pen"
+      ],
+      "watchScope": "entity",
       "defaultTransform": {
         "x": 0,
         "y": 0,
-        "z": 1
+        "z": 1,
+        "w": 36,
+        "h": 48
       },
       "dataFields": {
         "color": {
@@ -66,7 +80,9 @@
           "step": 1,
           "label": "線の太さ"
         }
-      }
+      },
+      "workerUrl": "./pen/index.e0af9ecd.js"
     }
-  }
+  },
+  "assets": []
 }

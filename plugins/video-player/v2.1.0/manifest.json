@@ -2,39 +2,46 @@
   "id": "video-player",
   "name": "VideoPlayer",
   "version": "2.1.0",
-  "entities": {
+  "components": {
     "video-player:screen": {
       "capabilities": [
         "video:control",
-        "scene:read",
-        "scene:update",
-        "net:broadcast"
+        "net:emit"
       ],
       "mediaTargets": [
         "main"
       ],
-      "watchEntityTypes": [
-        "video-player:screen"
-      ],
+      "watchEntityTypes": [],
+      "watchScope": "entity",
       "defaultTransform": {
-        "x": 800,
-        "y": 60,
+        "x": 0,
+        "y": 0,
         "z": 2,
         "w": 640,
         "h": 360
       },
+      "dataFields": {},
+      "workerUrl": "./screen/index.a0334b88.js"
+    },
+    "video-player:controls": {
+      "capabilities": [
+        "ui:render",
+        "scene:read",
+        "scene:update",
+        "net:emit"
+      ],
+      "watchEntityTypes": [
+        "video-player:controls"
+      ],
+      "watchScope": "entity",
+      "defaultTransform": {
+        "x": 0,
+        "y": 370,
+        "z": 198,
+        "w": 640,
+        "h": 60
+      },
       "dataFields": {
-        "playlist": {
-          "type": "json",
-          "default": [],
-          "label": "プレイリスト",
-          "help": "{ id, title, mode: 'live' | 'video' } の配列"
-        },
-        "currentIndex": {
-          "type": "number",
-          "default": 0,
-          "label": "再生中インデックス"
-        },
         "isPlaying": {
           "type": "boolean",
           "default": false,
@@ -71,28 +78,59 @@
           "label": "API ベース URL"
         }
       },
-      "workerUrl": "./screen/index.c3c3c599.js"
+      "workerUrl": "./controls/index.f8657b9b.js"
     },
-    "video-player:controls": {
+    "video-player:playlist": {
+      "capabilities": [
+        "ui:render",
+        "scene:read",
+        "scene:update",
+        "net:emit"
+      ],
+      "watchEntityTypes": [
+        "video-player:playlist"
+      ],
+      "watchScope": "entity",
+      "defaultTransform": {
+        "x": 0,
+        "y": 440,
+        "z": 198,
+        "w": 310,
+        "h": 300
+      },
+      "dataFields": {
+        "playlist": {
+          "type": "json",
+          "default": [],
+          "label": "プレイリスト",
+          "help": "{ id, title, mode: 'live' | 'video' } の配列"
+        },
+        "currentIndex": {
+          "type": "number",
+          "default": 0,
+          "label": "再生中インデックス"
+        }
+      },
+      "workerUrl": "./playlist/index.6d3179b4.js"
+    },
+    "video-player:search": {
       "capabilities": [
         "ui:render",
         "net:fetch",
-        "scene:read",
-        "scene:update"
+        "net:emit"
       ],
-      "mediaTargets": [],
-      "watchEntityTypes": [
-        "video-player:screen"
-      ],
+      "watchEntityTypes": [],
+      "watchScope": "entity",
       "defaultTransform": {
-        "x": 800,
-        "y": 800,
-        "z": 200,
-        "w": 740,
-        "h": 100
+        "x": 330,
+        "y": 440,
+        "z": 198,
+        "w": 310,
+        "h": 300
       },
       "dataFields": {},
-      "workerUrl": "./controls/index.86197a88.js"
+      "workerUrl": "./search/index.e190d409.js"
     }
-  }
+  },
+  "assets": []
 }

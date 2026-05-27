@@ -4,7 +4,7 @@
     "name": "Avatar",
     "version": "1.0.0",
     "repositoryPath": "plugins/avatar",
-    "kinds": [
+    "components": [
       "avatar:cursor",
       "avatar:settings"
     ]
@@ -14,7 +14,7 @@
     "name": "Pen",
     "version": "2.0.0",
     "repositoryPath": "plugins/pen",
-    "kinds": [
+    "components": [
       "pen:canvas",
       "pen:tray",
       "pen:pen"
@@ -25,9 +25,11 @@
     "name": "VideoPlayer",
     "version": "2.1.0",
     "repositoryPath": "plugins/video-player",
-    "kinds": [
+    "components": [
       "video-player:screen",
-      "video-player:controls"
+      "video-player:controls",
+      "video-player:playlist",
+      "video-player:search"
     ]
   }
 ]
