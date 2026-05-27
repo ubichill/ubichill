@@ -370,6 +370,15 @@ const ClockSystem: System = (_e: Entity[], dt: number, events: WorkerEvent[]) =>
             state.local.currentTrack = track;
             state.local.currentIndex = index;
             state.local.totalTracks = total;
+            // トラックが変わったら旧トラックの位置情報をリセット
+            // (これがないと、新トラック読み込み中も旧 duration/currentTime でシークバーが描画され、
+            //  vp:media:loaded で旧位置に勝手に seek されてしまう)
+            if (changed) {
+                state.local.currentTime = 0;
+                state.local.duration = 0;
+                state.local.lastSyncedTime = 0;
+                state.local.lastSyncedAt = Date.now();
+            }
             render();
             // トラックが変わったら load → (isPlaying なら play)
             if (changed && track) {
@@ -392,6 +401,9 @@ const ClockSystem: System = (_e: Entity[], dt: number, events: WorkerEvent[]) =>
         } else if (ev.type === 'vp:media:ended') {
             // 次トラックを playlist にリクエスト
             Ubi.event.emit('vp:track:next', { loop: state.local.loop, shuffle: state.local.shuffle }, playlistTarget);
+        } else if (ev.type === 'vp:playback:stop') {
+            // playlist が末尾到達 (loop='none') を通知してきた → 再生停止
+            state.local.isPlaying = false;
         }
     }
 
