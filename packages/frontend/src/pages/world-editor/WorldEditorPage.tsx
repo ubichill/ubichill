@@ -5,28 +5,31 @@ import yaml from 'yaml';
 import { API_BASE } from '@/lib/api';
 import { useSession } from '@/lib/auth-client';
 import { css } from '@/styled-system/css';
+import { EditorAssets } from './components/assets/EditorAssets';
 import { DockSlot } from './components/DockSlot';
-import { EditorAssets } from './components/EditorAssets';
 import { EditorHeader } from './components/EditorHeader';
-import { EditorHierarchy } from './components/EditorHierarchy';
 import { EditorStage } from './components/EditorStage';
-import { EntityInspector } from './components/EntityInspector';
 import { WorldInfoForm } from './components/forms/WorldInfoForm';
 import { YamlEditorForm } from './components/forms/YamlEditorForm';
+import { EditorHierarchy } from './components/hierarchy/EditorHierarchy';
+import { EntityInspector } from './components/inspector/EntityInspector';
 import { MobileLeftHandle } from './components/MobileLeftHandle';
 import { MobileRightHandle } from './components/MobileRightHandle';
 import { Modal } from './components/Modal';
 import { ModalPrimaryButton, ModalSecondaryButton } from './components/ModalButtons';
 import { useAvailableEntityKinds } from './hooks/useAvailableEntityKinds';
 import { useEditorModals } from './hooks/useEditorModals';
+import { useEntityClipboard } from './hooks/useEntityClipboard';
 import { useWorldEditorApi } from './hooks/useWorldEditorApi';
 import { DEFAULT_H, DEFAULT_W, SNAP_STEP } from './lib/dragHelpers';
 import {
     adjustPathAfterDelete,
     buildUniqueEntityId,
+    cloneEntitySubtree,
     collectEntityIds,
     deleteEntityAt,
     type EntityPath,
+    ensureUniqueName,
     flattenForStage,
     getEntityAt,
     insertEntity,
@@ -247,11 +250,12 @@ export function WorldEditorPage() {
     const handleRenameEntity = useCallback(
         (path: EntityPath, newId: string) => {
             const taken = new Set(collectEntityIds(definition.spec.initialEntities));
-            // 自分自身は許可
+            // 自分自身は許可 (実質ノーオペになる)
             const self = getEntityAt(definition.spec.initialEntities, path);
             if (self) taken.delete(self.id);
-            if (taken.has(newId)) return;
-            updateEntities((prev) => updateEntityAt(prev, path, (e) => ({ ...e, id: newId })));
+            // 衝突したら "hoge" → "hoge2" → "hoge3" の suffix を自動採番
+            const uniqueId = ensureUniqueName(newId, taken);
+            updateEntities((prev) => updateEntityAt(prev, path, (e) => ({ ...e, id: uniqueId })));
         },
         [updateEntities, definition.spec.initialEntities],
     );
@@ -275,6 +279,41 @@ export function WorldEditorPage() {
             setHiddenPaths(new Set()); // path ずれを避けるため一旦リセット
         },
         [updateEntities],
+    );
+
+    // ── クリップボード (Entity subtree のコピー&ペースト) ─────────────
+    const clipboard = useEntityClipboard();
+
+    const handleCopyEntity = useCallback(
+        (path: EntityPath) => {
+            const target = getEntityAt(definition.spec.initialEntities, path);
+            if (target) clipboard.copy(target);
+        },
+        [clipboard, definition.spec.initialEntities],
+    );
+
+    const handlePasteEntity = useCallback(
+        (parentPath: EntityPath | null) => {
+            const source = clipboard.peek();
+            if (!source) return;
+            const taken = collectEntityIds(definition.spec.initialEntities);
+            const cloned = cloneEntitySubtree(source, taken);
+            // ルートに貼り付け時のみ z をスタック頂上に持ち上げる (見えなくならないように)
+            const placed = parentPath
+                ? cloned
+                : { ...cloned, transform: { ...cloned.transform, z: nextRootZ(definition.spec.initialEntities) } };
+            updateEntities((prev) => insertEntity(prev, parentPath, placed));
+            // 貼った Entity を選択
+            if (parentPath) {
+                const parent = getEntityAt(definition.spec.initialEntities, parentPath);
+                const newChildIdx = parent?.children?.length ?? 0;
+                selectEntity([...parentPath, newChildIdx]);
+            } else {
+                selectEntity([definition.spec.initialEntities.length]);
+            }
+            selectComponent(null);
+        },
+        [clipboard, definition.spec.initialEntities, updateEntities, selectEntity, selectComponent],
     );
 
     const handleEnterChild = useCallback(
@@ -372,6 +411,9 @@ export function WorldEditorPage() {
                     onDropComponent={handleAddComponentToEntity}
                     onMoveEntity={handleMoveEntity}
                     onEnterChild={handleEnterChild}
+                    onCopyEntity={handleCopyEntity}
+                    onPasteEntity={handlePasteEntity}
+                    hasClipboard={clipboard.hasClipboard}
                 />
             </DockSlot>
 

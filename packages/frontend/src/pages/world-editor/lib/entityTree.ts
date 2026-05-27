@@ -81,6 +81,52 @@ export function buildUniqueEntityId(seed: string, taken: Iterable<string>): stri
     return `${base}-${n}`;
 }
 
+/**
+ * 名前 (entity id) の重複時に末尾の数字をインクリメントする。
+ *   "hoge"     + ["hoge"]         → "hoge2"
+ *   "hoge2"    + ["hoge2"]        → "hoge3"
+ *   "foo-bar"  + ["foo-bar"]      → "foo-bar2"
+ *   "hoge"     + ["hoge","hoge2"] → "hoge3"
+ *
+ * `buildUniqueEntityId` (`hoge-2` 形式) は plugin から spawn される ECS Entity
+ * 識別子向けで kebab を強制するため、ユーザー rename 用とは別。
+ */
+export function ensureUniqueName(desired: string, taken: Iterable<string>): string {
+    const used = new Set<string>(taken);
+    if (!used.has(desired)) return desired;
+    const m = desired.match(/^(.+?)(\d+)$/);
+    const base = m ? m[1] : desired;
+    let n = m ? Number(m[2]) + 1 : 2;
+    while (used.has(`${base}${n}`)) n += 1;
+    return `${base}${n}`;
+}
+
+/**
+ * Entity subtree をディープコピーし、自分と子孫全ての id を `taken` と衝突しないよう採番する。
+ * children を含む全 entity が新 id を持つ (= 永続化したときに id 競合しない)。
+ *
+ * 採番は `${base}-copy` を seed にして `buildUniqueEntityId` で kebab-uniqueness を取る。
+ * これで「再帰」中の中間 id も taken に積み増しながら一意性を保証する。
+ */
+export function cloneEntitySubtree(entity: InitialEntity, taken: Iterable<string>): InitialEntity {
+    const used = new Set<string>(taken);
+    const cloneRecursive = (e: InitialEntity): InitialEntity => {
+        const newId = buildUniqueEntityId(`${e.id}-copy`, used);
+        used.add(newId);
+        return {
+            id: newId,
+            transform: { ...e.transform },
+            components: e.components.map((c) => ({
+                type: c.type,
+                data: structuredClone(c.data) as Record<string, unknown>,
+            })),
+            tags: [...e.tags],
+            children: (e.children ?? []).map(cloneRecursive),
+        };
+    };
+    return cloneRecursive(entity);
+}
+
 /** ツリー内の全 entity id を再帰収集する。 */
 export function collectEntityIds(entities: InitialEntity[]): string[] {
     const out: string[] = [];

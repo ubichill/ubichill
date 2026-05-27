@@ -1,8 +1,8 @@
 import { Fragment, type ReactNode, useMemo, useState } from 'react';
 import { css } from '@/styled-system/css';
-import type { AvailableEntityKind } from '../hooks/useAvailableEntityKinds';
-import { type AssetNode, usePluginAssets } from '../hooks/usePluginAssets';
-import { COMPONENT_DRAG_MIME } from '../lib/dnd';
+import type { AvailableEntityKind } from '../../hooks/useAvailableEntityKinds';
+import { type AssetNode, usePluginAssets } from '../../hooks/usePluginAssets';
+import { COMPONENT_DRAG_MIME } from '../../lib/dnd';
 
 interface EditorAssetsProps {
     kinds: AvailableEntityKind[];

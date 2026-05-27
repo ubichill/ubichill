@@ -1,8 +1,8 @@
 import type { EntityComponentDef, InitialEntity } from '@ubichill/shared';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '@/styled-system/css';
-import type { AvailableEntityKind, DataFieldSpec, DataFields } from '../hooks/useAvailableEntityKinds';
-import { COMPONENT_DRAG_MIME } from '../lib/dnd';
+import type { AvailableEntityKind, DataFieldSpec, DataFields } from '../../hooks/useAvailableEntityKinds';
+import { COMPONENT_DRAG_MIME } from '../../lib/dnd';
 
 interface EntityInspectorProps {
     entity: InitialEntity;
