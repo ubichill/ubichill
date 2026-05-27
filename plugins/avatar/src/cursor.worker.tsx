@@ -8,9 +8,9 @@
  * 描画は cursor.renderForEachUser() で全ユーザー分を一括レンダー。
  */
 
-import type { AppAvatarDef, Entity, System, WorkerEvent } from '@ubichill/sdk';
-import { EcsEventType } from '@ubichill/sdk';
+import type { AppAvatarDef, Entity, System } from '@ubichill/sdk';
 import { cssToState } from './cssToState';
+import { AvatarEvents } from './events';
 import { CursorImage } from './ui/AvatarCursor';
 
 interface AnimFrame {
@@ -52,7 +52,7 @@ function ensureFrames(avatar: AppAvatarDef): void {
     }
     if (toRequest.length === 0) return;
     pendingRequests.push(toRequest);
-    Ubi.event.sendToHost('avatar:requestFrames', { sourceUrls: toRequest });
+    AvatarEvents.sendToHost('avatar:requestFrames', { sourceUrls: toRequest });
 }
 
 function getFrames(avatar: AppAvatarDef, state: string): AnimFrame[] | undefined {
@@ -69,46 +69,40 @@ void (async () => {
 // ── 位置同期は SDK に委譲 ──
 Ubi.player.syncCursor({ throttleMs: 50 });
 
-// ── ECS System ──
-const CursorSystem: System = (_entities: Entity[], deltaTime: number, events: WorkerEvent[]) => {
+// ── イベント受信 ────────────────────────────────────
+AvatarEvents.on('input:cursor_style', ({ style }) => {
+    if (style === cursor.local.localCursorStyle) return;
+    cursor.local.localCursorStyle = style;
+    cursor.local.cursorState = cssToState(style);
+});
+AvatarEvents.on('input:mouse_move', ({ viewportX, viewportY }) => {
     const { local } = cursor;
-
-    for (const event of events) {
-        if (event.type === EcsEventType.INPUT_CURSOR_STYLE) {
-            const d = event.payload as { style: string };
-            if (d.style !== local.localCursorStyle) {
-                local.localCursorStyle = d.style;
-                local.cursorState = cssToState(d.style);
-            }
-        } else if (event.type === EcsEventType.INPUT_MOUSE_MOVE) {
-            const d = event.payload as { viewportX: number; viewportY: number };
-            if (!local.initialized) {
-                local.lerpX = d.viewportX;
-                local.lerpY = d.viewportY;
-                local.initialized = true;
-            }
-            local.targetX = d.viewportX;
-            local.targetY = d.viewportY;
-        } else if (event.type === EcsEventType.PLAYER_JOINED) {
-            const user = event.payload as { id: string; avatar?: AppAvatarDef };
-            if (user.id === Ubi.myUserId && user.avatar) {
-                local.avatar = user.avatar;
-                local.cursorState = 'default';
-                ensureFrames(user.avatar);
-            }
-        } else if (event.type === EcsEventType.HOST_MESSAGE) {
-            const m = event.payload as { type: string; payload: unknown };
-            if (m.type === 'avatar:localFrames') {
-                const { framesMap } = m.payload as { framesMap: Record<string, AnimFrame[]> };
-                const batch = pendingRequests.shift();
-                if (!batch) continue;
-                for (const { state, sourceUrl } of batch) {
-                    const frames = framesMap[state];
-                    if (frames) framesCache.set(sourceUrl, frames);
-                }
-            }
-        }
+    if (!local.initialized) {
+        local.lerpX = viewportX;
+        local.lerpY = viewportY;
+        local.initialized = true;
     }
+    local.targetX = viewportX;
+    local.targetY = viewportY;
+});
+AvatarEvents.on('player:joined', (user) => {
+    if (user.id !== Ubi.myUserId || !user.avatar) return;
+    cursor.local.avatar = user.avatar;
+    cursor.local.cursorState = 'default';
+    ensureFrames(user.avatar);
+});
+AvatarEvents.on('avatar:localFrames', ({ framesMap }) => {
+    const batch = pendingRequests.shift();
+    if (!batch) return;
+    for (const { state, sourceUrl } of batch) {
+        const frames = framesMap[state];
+        if (frames) framesCache.set(sourceUrl, frames);
+    }
+});
+
+// ── ECS System (毎フレーム: lerp / アニメーション進行 / 描画) ──
+const CursorSystem: System = (_entities: Entity[], deltaTime: number) => {
+    const { local } = cursor;
 
     // ── 自分のカーソルのみ lerp ──
     if (local.initialized) {

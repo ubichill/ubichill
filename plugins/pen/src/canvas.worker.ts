@@ -10,18 +10,8 @@
  * pen:stroke は描いたペン Entity の子として生成される (parentEntityId = heldPen.entityId)。
  */
 
-import type {
-    CanvasCursorData,
-    CanvasStrokeData,
-    ComponentInstance,
-    Entity,
-    InputMouseDownData,
-    InputMouseMoveData,
-    InputMouseUpData,
-    System,
-    WorkerEvent,
-} from '@ubichill/sdk';
-import { EcsEventType } from '@ubichill/sdk';
+import type { CanvasCursorData, CanvasStrokeData, Entity, System } from '@ubichill/sdk';
+import { PenEvents } from './events';
 
 // ────────────────────────────────────────────────────────────────
 // 定数
@@ -41,11 +31,6 @@ const CURSOR_STROKES = [{ d: 'M-3,-32 h6 v24 h-6 Z', stroke: 'rgba(0,0,0,0.5)', 
 // ────────────────────────────────────────────────────────────────
 // 状態 (Ubi.state)
 // ────────────────────────────────────────────────────────────────
-
-interface PenPenData {
-    color?: string;
-    strokeWidth?: number;
-}
 
 const draw = Ubi.state.define({
     /** 保持中ペンの ComponentInstance.id (Worker 識別子)。null なら未保持。 */
@@ -109,66 +94,67 @@ const buildActiveStroke = (): CanvasStrokeData | null => {
 };
 
 // ────────────────────────────────────────────────────────────────
-// イベント処理 (1 System に統合)
+// イベント受信
 // ────────────────────────────────────────────────────────────────
 
-const handlePenPenEvent = (event: WorkerEvent): void => {
-    if (event.type !== 'entity:pen:pen') return;
-    const pen = event.payload as ComponentInstance<PenPenData> | undefined;
+PenEvents.on('entity:pen:pen', (pen) => {
     if (!pen) return;
     const isHeldByMe = pen.lockedBy === Ubi.myUserId;
     if (isHeldByMe) {
         if (draw.local.heldPenId !== pen.id) {
+            draw.batch(() => {
+                draw.local.isDrawing = false;
+                draw.local.currentStroke = [];
+            });
+        }
+        draw.batch(() => {
+            draw.local.heldPenId = pen.id;
+            draw.local.heldPenEntityId = pen.entityId ?? null;
+            if (pen.data.color !== undefined) draw.local.color = pen.data.color;
+            if (pen.data.strokeWidth !== undefined) draw.local.strokeWidth = pen.data.strokeWidth;
+        });
+    } else if (pen.id === draw.local.heldPenId) {
+        draw.batch(() => {
+            draw.local.heldPenId = null;
+            draw.local.heldPenEntityId = null;
             draw.local.isDrawing = false;
             draw.local.currentStroke = [];
-        }
-        draw.local.heldPenId = pen.id;
-        draw.local.heldPenEntityId = pen.entityId ?? null;
-        if (pen.data.color !== undefined) draw.local.color = pen.data.color;
-        if (pen.data.strokeWidth !== undefined) draw.local.strokeWidth = pen.data.strokeWidth;
-    } else if (pen.id === draw.local.heldPenId) {
-        draw.local.heldPenId = null;
-        draw.local.heldPenEntityId = null;
-        draw.local.isDrawing = false;
-        draw.local.currentStroke = [];
+        });
     }
-};
+});
 
-const handleInputEvent = (event: WorkerEvent): void => {
+PenEvents.on('input:mouse_move', ({ x, y, buttons }) => {
     if (draw.local.heldPenId === null) return;
-    if (event.type === EcsEventType.INPUT_MOUSE_MOVE) {
-        const { x, y, buttons } = event.payload as InputMouseMoveData;
-        draw.local.cursorX = x;
-        draw.local.cursorY = y;
-        if (draw.local.isDrawing && buttons & 1) draw.local.currentStroke.push([x, y, 1]);
-    } else if (event.type === EcsEventType.INPUT_MOUSE_DOWN) {
-        const { x, y, button } = event.payload as InputMouseDownData;
-        if (button === 0) {
-            draw.local.isDrawing = true;
-            draw.local.currentStroke = [[x, y, 1]];
-        }
-    } else if (event.type === EcsEventType.INPUT_MOUSE_UP) {
-        const { button } = event.payload as InputMouseUpData;
-        if (button === 0) draw.local.isDrawing = false;
-    }
-};
+    draw.local.cursorX = x;
+    draw.local.cursorY = y;
+    if (draw.local.isDrawing && buttons & 1) draw.local.currentStroke.push([x, y, 1]);
+});
 
-const handleStrokeEvent = (event: WorkerEvent): void => {
-    if (event.type === 'pen:stroke_complete') {
-        const { data } = event.payload as { userId: string; data: CanvasStrokeData };
-        Ubi.canvas.commitStroke(CANVAS_TARGET, data);
-        addFingerprint(strokeFingerprint(data));
-        return;
+PenEvents.on('input:mouse_down', ({ x, y, button }) => {
+    if (draw.local.heldPenId === null || button !== 0) return;
+    draw.batch(() => {
+        draw.local.isDrawing = true;
+        draw.local.currentStroke = [[x, y, 1]];
+    });
+});
+
+PenEvents.on('input:mouse_up', ({ button }) => {
+    if (draw.local.heldPenId === null || button !== 0) return;
+    draw.local.isDrawing = false;
+});
+
+PenEvents.onBroadcast('pen:stroke_complete', (_userId, data) => {
+    Ubi.canvas.commitStroke(CANVAS_TARGET, data);
+    addFingerprint(strokeFingerprint(data));
+});
+
+PenEvents.on('entity:pen:stroke', (entity) => {
+    if (drawnEntityIds.has(entity.id)) return;
+    drawnEntityIds.add(entity.id);
+    if (!popFingerprintIfExists(strokeFingerprint(entity.data))) {
+        Ubi.canvas.commitStroke(CANVAS_TARGET, entity.data);
     }
-    if (event.type === 'entity:pen:stroke') {
-        const entity = event.payload as ComponentInstance<CanvasStrokeData>;
-        if (drawnEntityIds.has(entity.id)) return;
-        drawnEntityIds.add(entity.id);
-        if (!popFingerprintIfExists(strokeFingerprint(entity.data))) {
-            Ubi.canvas.commitStroke(CANVAS_TARGET, entity.data);
-        }
-    }
-};
+});
 
 // マウス up で stroke が確定したらコミット + 永続化
 const flushCompletedStroke = (): void => {
@@ -182,7 +168,7 @@ const flushCompletedStroke = (): void => {
 
     Ubi.canvas.commitStroke(CANVAS_TARGET, strokeData);
     addFingerprint(strokeFingerprint(strokeData));
-    Ubi.event.broadcast('pen:stroke_complete', strokeData);
+    PenEvents.broadcast('pen:stroke_complete', strokeData);
 
     const parentEntityId = draw.local.heldPenEntityId ?? undefined;
     const strokeEntityId = parentEntityId ? `stroke-${crypto.randomUUID()}` : undefined;
@@ -200,15 +186,10 @@ const flushCompletedStroke = (): void => {
 };
 
 // ────────────────────────────────────────────────────────────────
-// ECS System (1 つに統合)
+// 毎フレーム描画: 完成 stroke flush + canvas frame
 // ────────────────────────────────────────────────────────────────
 
-const PenCanvasSystem: System = (_entities: Entity[], _dt: number, events: WorkerEvent[]) => {
-    for (const event of events) {
-        handlePenPenEvent(event);
-        handleInputEvent(event);
-        handleStrokeEvent(event);
-    }
+const FrameSystem: System = (_entities: Entity[]) => {
     flushCompletedStroke();
 
     const isPenHeld = draw.local.heldPenId !== null;
@@ -218,4 +199,4 @@ const PenCanvasSystem: System = (_entities: Entity[], _dt: number, events: Worke
     });
 };
 
-Ubi.registerSystem(PenCanvasSystem);
+Ubi.registerSystem(FrameSystem);

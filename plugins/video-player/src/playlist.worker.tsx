@@ -2,18 +2,10 @@
  * video-player:playlist Worker — プレイリストの一意な所有者。
  *
  * 状態: playlist + currentIndex のみ保持 (entity.data)。
- * 他コンポーネントとの通信は Ubi.event.emit ベース:
- *
- * 受信:
- *  - 'vp:track:add'      (search から) - 新規 track を末尾に追加
- *  - 'vp:track:remove'   - 指定 index を削除
- *  - 'vp:track:next' / 'vp:track:prev' (controls から) - 次/前へ
- *
- * 送信:
- *  - 'vp:track:current'  (siblings 全員) - 現トラックを通知
+ * Worker 間通信は `VPEvents` に閉じた型付き emit/on のみ。
  */
 
-import type { Entity, System, WorkerEvent } from '@ubichill/sdk';
+import { VPEvents } from './events';
 import { PlaySmallIcon, TrashIcon } from './icons';
 import type { LoopMode, Track } from './types';
 
@@ -29,12 +21,12 @@ const fmt = (sec: number): string => {
     return `${m}:${s.toString().padStart(2, '0')}`;
 };
 
-/** 現トラックを siblings に broadcast。 */
+/** 現トラックを siblings に通知。 */
 function emitCurrent(): void {
     const list = state.local.playlist;
     const idx = state.local.currentIndex;
     const track = list[idx] ?? null;
-    Ubi.event.emit('vp:track:current', { track, index: idx, total: list.length }, { scope: 'siblings' });
+    VPEvents.emit('vp:track:current', { track, index: idx, total: list.length }, { scope: 'siblings' });
 }
 
 function addTrack(track: Track): void {
@@ -53,14 +45,16 @@ function removeTrack(i: number): void {
     //  - 削除位置が currentIndex (= 今再生中): その位置に新トラックが繰り上がってくるので維持
     //  - 削除位置が currentIndex より後: 変化なし
     //  - 最後に範囲外なら末尾にクランプ
-    let newIdx = state.local.currentIndex;
-    if (i < newIdx) newIdx -= 1;
-    if (newIdx >= newList.length) newIdx = Math.max(0, newList.length - 1);
-    state.local.playlist = newList;
-    state.local.currentIndex = newIdx;
+    state.batch(() => {
+        let newIdx = state.local.currentIndex;
+        if (i < newIdx) newIdx -= 1;
+        if (newIdx >= newList.length) newIdx = Math.max(0, newList.length - 1);
+        state.local.playlist = newList;
+        state.local.currentIndex = newIdx;
+    });
 }
 
-function next(loop: LoopMode, shuffle: boolean): void {
+function nextTrack(loop: LoopMode, shuffle: boolean): void {
     const len = state.local.playlist.length;
     if (len === 0) return;
     if (loop === 'one') {
@@ -81,11 +75,11 @@ function next(loop: LoopMode, shuffle: boolean): void {
     if (loop === 'all') {
         state.local.currentIndex = 0;
     } else {
-        Ubi.event.emit('vp:playback:stop', {}, { scope: 'siblings', targetType: 'video-player:controls' });
+        VPEvents.emit('vp:playback:stop', {}, { scope: 'siblings', targetType: 'video-player:controls' });
     }
 }
 
-function prev(): void {
+function prevTrack(): void {
     const len = state.local.playlist.length;
     if (len === 0) return;
     state.local.currentIndex = state.local.currentIndex > 0 ? state.local.currentIndex - 1 : len - 1;
@@ -219,23 +213,11 @@ function render(): void {
 state.onChange('playlist', render);
 state.onChange('currentIndex', render);
 
-const PlaylistSystem: System = (_entities: Entity[], _dt: number, events: WorkerEvent[]) => {
-    for (const ev of events) {
-        if (ev.type === 'vp:track:add') {
-            const { track } = ev.payload as { track: Track };
-            addTrack(track);
-        } else if (ev.type === 'vp:track:remove') {
-            const { index } = ev.payload as { index: number };
-            removeTrack(index);
-        } else if (ev.type === 'vp:track:next') {
-            const { loop, shuffle } = ev.payload as { loop: LoopMode; shuffle: boolean };
-            next(loop, shuffle);
-        } else if (ev.type === 'vp:track:prev') {
-            prev();
-        }
-    }
-};
-Ubi.registerSystem(PlaylistSystem);
+// ── イベント受信 ──────────────────────────────────────
+VPEvents.on('vp:track:add', ({ track }) => addTrack(track));
+VPEvents.on('vp:track:remove', ({ index }) => removeTrack(index));
+VPEvents.on('vp:track:next', ({ loop, shuffle }) => nextTrack(loop, shuffle));
+VPEvents.on('vp:track:prev', () => prevTrack());
 
 render();
 // 起動時に siblings に通知 (siblings の起動順に依存しないよう少し遅延)

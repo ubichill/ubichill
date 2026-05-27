@@ -7,21 +7,11 @@
  *  - apiBase:                                         動画 URL のベース
  *  - myVolume (per-user):                             音量 (個人設定)
  *
- * 受信 (Ubi.event):
- *  - 'vp:track:current' (playlist から)  : 現トラックを cache、変わったら自動 load
- *  - 'vp:media:time'    (screen から)    : currentTime / duration 更新
- *  - 'vp:media:loaded'  (screen から)    : duration 確定 → 必要なら seek + play
- *  - 'vp:media:ended'   (screen から)    : 次トラックを playlist にリクエスト
- *
- * 送信 (Ubi.event):
- *  - 'vp:media:load'    (screen へ)      : URL を渡してロード
- *  - 'vp:media:play' / 'vp:media:pause' (screen へ)
- *  - 'vp:media:seek'    (screen へ)
- *  - 'vp:media:volume'  (screen へ)
- *  - 'vp:track:next' / 'vp:track:prev'  (playlist へ)
+ * Worker 間通信は VPEvents (型付き) のみ。
  */
 
-import type { Entity, System, WorkerEvent } from '@ubichill/sdk';
+import type { Entity, System } from '@ubichill/sdk';
+import { VPEvents } from './events';
 import {
     PauseIcon,
     PlayIcon,
@@ -85,40 +75,26 @@ function buildTrackUrl(track: Track): string {
     return `${base}/${endpoint}/${track.id}`;
 }
 
-// ── screen への emit (1 箇所に集約) ───────────────────
+// ── screen / playlist へのエイリアス ─────────────────
 const screenTarget = { scope: 'siblings' as const, targetType: 'video-player:screen' };
 const playlistTarget = { scope: 'siblings' as const, targetType: 'video-player:playlist' };
 
-function sendLoad(track: Track): void {
-    Ubi.event.emit('vp:media:load', { url: buildTrackUrl(track), mode: track.mode }, screenTarget);
-}
-function sendPlay(): void {
-    Ubi.event.emit('vp:media:play', {}, screenTarget);
-}
-function sendPause(): void {
-    Ubi.event.emit('vp:media:pause', {}, screenTarget);
-}
-function sendSeek(time: number): void {
-    Ubi.event.emit('vp:media:seek', { time }, screenTarget);
-}
-function sendVolume(v: number): void {
-    Ubi.event.emit('vp:media:volume', { volume: v }, screenTarget);
-}
-
 // ── UI アクション ──────────────────────────────────
 const onSeek = (time: number): void => {
-    state.local.currentTime = time;
-    state.local.seekNonce = Date.now();
-    sendSeek(time);
+    state.batch(() => {
+        state.local.currentTime = time;
+        state.local.seekNonce = Date.now();
+    });
+    VPEvents.emit('vp:media:seek', { time }, screenTarget);
 };
 const onPlayToggle = (): void => {
     state.local.isPlaying = !state.local.isPlaying;
 };
 const onPrev = (): void => {
-    Ubi.event.emit('vp:track:prev', {}, playlistTarget);
+    VPEvents.emit('vp:track:prev', {}, playlistTarget);
 };
 const onNext = (): void => {
-    Ubi.event.emit('vp:track:next', { loop: state.local.loop, shuffle: state.local.shuffle }, playlistTarget);
+    VPEvents.emit('vp:track:next', { loop: state.local.loop, shuffle: state.local.shuffle }, playlistTarget);
 };
 const onShuffleToggle = (): void => {
     state.local.shuffle = !state.local.shuffle;
@@ -132,8 +108,8 @@ const onVolumeChange = (v: number): void => {
 
 // ── state 変化 → screen 通知 ───────────────────────
 state.onChange('isPlaying', (playing) => {
-    if (playing) sendPlay();
-    else sendPause();
+    if (playing) VPEvents.emit('vp:media:play', {}, screenTarget);
+    else VPEvents.emit('vp:media:pause', {}, screenTarget);
     state.local.lastSyncedAt = Date.now();
     if (!playing) state.local.lastSyncedTime = estimatedTime();
     render();
@@ -143,7 +119,7 @@ state.onChange('currentTime', (next) => {
     state.local.lastSyncedAt = Date.now();
 });
 state.onChange('myVolume', (v) => {
-    sendVolume(v);
+    VPEvents.emit('vp:media:volume', { volume: v }, screenTarget);
     render();
 });
 state.onChange('loop', render);
@@ -355,68 +331,68 @@ function CtrlBtn({
     );
 }
 
-// ── 進行バー時計のための tick ────────────────────────
-const accumulator = { ms: 0 };
-const ClockSystem: System = (_e: Entity[], dt: number, events: WorkerEvent[]) => {
-    // emit 受信
-    for (const ev of events) {
-        if (ev.type === 'vp:track:current') {
-            const { track, index, total } = ev.payload as {
-                track: Track | null;
-                index: number;
-                total: number;
-            };
-            const changed = state.local.currentTrack?.id !== track?.id;
-            state.local.currentTrack = track;
-            state.local.currentIndex = index;
-            state.local.totalTracks = total;
-            // トラックが変わったら旧トラックの位置情報をリセット
-            // (これがないと、新トラック読み込み中も旧 duration/currentTime でシークバーが描画され、
-            //  vp:media:loaded で旧位置に勝手に seek されてしまう)
-            if (changed) {
-                state.local.currentTime = 0;
-                state.local.duration = 0;
-                state.local.lastSyncedTime = 0;
-                state.local.lastSyncedAt = Date.now();
-            }
-            render();
-            // トラックが変わったら load → (isPlaying なら play)
-            if (changed && track) {
-                sendLoad(track);
-                if (state.local.isPlaying) sendPlay();
-            }
-        } else if (ev.type === 'vp:media:time') {
-            const { currentTime, duration } = ev.payload as { currentTime: number; duration: number };
-            state.local.lastSyncedTime = currentTime;
+// ── イベント受信 ──────────────────────────────────────
+VPEvents.on('vp:track:current', ({ track, index, total }) => {
+    const changed = state.local.currentTrack?.id !== track?.id;
+    state.local.currentTrack = track;
+    state.local.currentIndex = index;
+    state.local.totalTracks = total;
+    // トラックが変わったら旧トラックの位置情報をリセット
+    // (これがないと、新トラック読み込み中も旧 duration/currentTime でシークバーが描画され、
+    //  vp:media:loaded で旧位置に勝手に seek されてしまう)
+    if (changed) {
+        state.batch(() => {
+            state.local.currentTime = 0;
+            state.local.duration = 0;
+            state.local.lastSyncedTime = 0;
             state.local.lastSyncedAt = Date.now();
-            if (duration > 0 && duration !== state.local.duration) state.local.duration = duration;
-        } else if (ev.type === 'vp:media:loaded') {
-            const { duration } = ev.payload as { duration: number };
-            if (duration > 0) state.local.duration = duration;
-            // 既存の currentTime がある場合 seek + 必要なら play
-            if (state.local.currentTime > 0 && state.local.currentTrack?.mode !== 'live') {
-                sendSeek(state.local.currentTime);
-            }
-            if (state.local.isPlaying) sendPlay();
-        } else if (ev.type === 'vp:media:ended') {
-            // 次トラックを playlist にリクエスト
-            Ubi.event.emit('vp:track:next', { loop: state.local.loop, shuffle: state.local.shuffle }, playlistTarget);
-        } else if (ev.type === 'vp:playback:stop') {
-            // playlist が末尾到達 (loop='none') を通知してきた → 再生停止
-            state.local.isPlaying = false;
-        }
+        });
     }
+    render();
+    // トラックが変わったら load → (isPlaying なら play)
+    if (changed && track) {
+        VPEvents.emit('vp:media:load', { url: buildTrackUrl(track), mode: track.mode }, screenTarget);
+        if (state.local.isPlaying) VPEvents.emit('vp:media:play', {}, screenTarget);
+    }
+});
 
+VPEvents.on('vp:media:time', ({ currentTime, duration }) => {
+    state.local.lastSyncedTime = currentTime;
+    state.local.lastSyncedAt = Date.now();
+    if (duration > 0 && duration !== state.local.duration) state.local.duration = duration;
+});
+
+VPEvents.on('vp:media:loaded', ({ duration }) => {
+    if (duration > 0) state.local.duration = duration;
+    // 既存の currentTime がある場合 seek + 必要なら play
+    if (state.local.currentTime > 0 && state.local.currentTrack?.mode !== 'live') {
+        VPEvents.emit('vp:media:seek', { time: state.local.currentTime }, screenTarget);
+    }
+    if (state.local.isPlaying) VPEvents.emit('vp:media:play', {}, screenTarget);
+});
+
+VPEvents.on('vp:media:ended', () => {
+    // 次トラックを playlist にリクエスト
+    VPEvents.emit('vp:track:next', { loop: state.local.loop, shuffle: state.local.shuffle }, playlistTarget);
+});
+
+VPEvents.on('vp:playback:stop', () => {
+    // playlist が末尾到達 (loop='none') を通知してきた → 再生停止
+    state.local.isPlaying = false;
+});
+
+// ── 進行バー時計のための tick ────────────────────────
+// 進行バーが体感ジャギにならない程度の頻度で再描画 (≒ 10fps)。
+// VNode 生成のみ・ネットワーク 0 なので CPU は誤差。
+const accumulator = { ms: 0 };
+const ClockSystem: System = (_e: Entity[], dt: number) => {
     if (!state.local.isPlaying) return;
-    // 進行バーが体感ジャギにならない程度の頻度で再描画 (≒ 10fps)。
-    // VNode 生成のみ・ネットワーク 0 なので CPU は誤差。
     accumulator.ms += dt;
     if (accumulator.ms >= 100) {
         accumulator.ms = 0;
         render();
     }
 };
-
 Ubi.registerSystem(ClockSystem);
 
 // 初期化
@@ -424,4 +400,4 @@ state.local.lastSyncedTime = state.local.currentTime;
 state.local.lastSyncedAt = Date.now();
 render();
 // 起動時に screen へ初期音量を通知 (起動順依存吸収)
-queueMicrotask(() => sendVolume(state.local.myVolume));
+queueMicrotask(() => VPEvents.emit('vp:media:volume', { volume: state.local.myVolume }, screenTarget));

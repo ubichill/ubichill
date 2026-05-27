@@ -14,6 +14,8 @@
  * - lockedBy:            topLevel  (ComponentInstance top-level と双方向同期)
  */
 
+import { PenEvents } from './events';
+
 interface PenData {
     color: string;
     strokeWidth: number;
@@ -42,12 +44,12 @@ async function selectMe(): Promise<void> {
             ),
     );
     pen.local.lockedBy = myId;
-    Ubi.event.sendToHost('user:update', { penColor: pen.local.color });
+    PenEvents.sendToHost('user:update', { penColor: pen.local.color });
 }
 
 function releaseMe(): void {
     pen.local.lockedBy = null;
-    Ubi.event.sendToHost('user:update', { penColor: null });
+    PenEvents.sendToHost('user:update', { penColor: null });
 }
 
 // ── レンダリング (pure: 入力から VNode を構築) ─────────
