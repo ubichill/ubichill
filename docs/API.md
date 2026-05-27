@@ -79,6 +79,7 @@ grip.release()                      // 離す
 grip.holder                         // string | null
 grip.isMine                         // boolean
 grip.onChange((next, prev) => ...)  // 占有者の変化を監視
+// 必要 capability: 'scene:update' (lockedBy 同期) + 'net:emit' (同タブ siblings への調停 emit)
 
 // ──── エンティティ (callable + static) ──────────────────
 Ubi.entity()                                       // SelfEntityRef (自分自身)

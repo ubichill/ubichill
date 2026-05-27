@@ -22,7 +22,7 @@
     },
     "pen": {
       "src": "./src/pen.worker.tsx",
-      "capabilities": ["scene:read", "scene:update", "ui:render", "net:host-message"],
+      "capabilities": ["scene:read", "scene:update", "ui:render", "net:host-message", "net:emit"],
       "watchEntityTypes": ["pen:pen"],
       "watchScope": "entity",
       "defaultTransform": { "x": 0, "y": 0, "z": 1, "w": 36, "h": 48 },
