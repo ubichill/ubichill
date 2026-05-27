@@ -5,59 +5,40 @@
  *
  * 責務:
  * - 自分のペンボタン UI をレンダー
- * - クリックで選択 (lockedBy=me) / 自分が選択中なら解放
- * - 他ユーザーが保持中はグレーアウト
- * - 自分が既に保持中の他ペンを解放してから自分を選択 (1人1本ルール)
+ * - クリックで掴む (Ubi.grip.exclusive 経由) / 自分が掴み中なら離す
+ * - 他ユーザーが掴み中はグレーアウト
+ * - 1 人 1 本ルールは Ubi.grip.exclusive が SDK 側で調停する (pen.worker は意識しない)
  *
  * 状態管理: すべて Ubi.state で宣言的に。
  * - color / strokeWidth: persistent (entity.data と双方向同期)
- * - lockedBy:            topLevel  (ComponentInstance top-level と双方向同期)
+ * - 占有者:               Ubi.grip.exclusive() が内部で ComponentInstance.lockedBy を同期
  */
 
 import { PenEvents } from './events';
 
-interface PenData {
-    color: string;
-    strokeWidth: number;
-}
-
 const pen = Ubi.state.define({
     color: Ubi.state.sync('#1a1a1a'),
     strokeWidth: Ubi.state.sync(4),
-    lockedBy: Ubi.state.sync<string | null>(null, { topLevel: 'lockedBy' }),
 });
 
-// ── アクション ───────────────────────────────────────────
-async function selectMe(): Promise<void> {
-    const myId = Ubi.myUserId;
-    const selfId = Ubi.componentInstanceId;
-    if (!myId || !selfId) return;
-    // 他の自分が保持中のペンを解放してから自分を選択 (自 state は下で local 経由で書く)
-    const allPens = await Ubi.entity.query<PenData>('pen:pen');
-    await Promise.all(
-        allPens
-            .filter((p) => p.id !== selfId && p.lockedBy === myId)
-            .map((p) =>
-                Ubi.entity(p.id)
-                    .update({ lockedBy: null })
-                    .catch(() => {}),
-            ),
-    );
-    pen.local.lockedBy = myId;
-    PenEvents.sendToHost('user:update', { penColor: pen.local.color });
-}
+// 1 ユーザー 1 本ルール (同じ pen:pen の中で 1 つだけ掴める) を SDK に委譲。
+// emit 調停・acquireEpoch・lockedBy 同期はすべて Ubi.grip 側で処理される。
+const grip = Ubi.grip.exclusive();
 
-function releaseMe(): void {
-    pen.local.lockedBy = null;
-    PenEvents.sendToHost('user:update', { penColor: null });
-}
+// 掴み変化に応じて host へペン色を通知 (avatar カーソルの色変えなど)
+grip.onChange((next, prev) => {
+    if (next === Ubi.myUserId && prev !== Ubi.myUserId) {
+        PenEvents.sendToHost('user:update', { penColor: pen.local.color });
+    } else if (prev === Ubi.myUserId && next !== Ubi.myUserId) {
+        PenEvents.sendToHost('user:update', { penColor: null });
+    }
+});
 
 // ── レンダリング (pure: 入力から VNode を構築) ─────────
 const renderPen = (): void => {
-    const myId = Ubi.myUserId;
-    const heldBy = pen.local.lockedBy;
-    const isHeldByMe = heldBy !== null && heldBy === myId;
-    const isHeldByOther = heldBy !== null && heldBy !== myId;
+    const heldBy = grip.holder;
+    const isHeldByMe = grip.isMine;
+    const isHeldByOther = heldBy !== null && !isHeldByMe;
     const color = pen.local.color;
 
     Ubi.ui.render(
@@ -68,8 +49,8 @@ const renderPen = (): void => {
                 disabled={isHeldByOther}
                 onUbiClick={() => {
                     if (isHeldByOther) return;
-                    if (isHeldByMe) releaseMe();
-                    else void selectMe();
+                    if (isHeldByMe) grip.release();
+                    else grip.acquire();
                 }}
                 style={{
                     width: '36px',
@@ -111,7 +92,7 @@ const renderPen = (): void => {
 // 状態変化はすべて onChange で宣言的に再描画
 pen.onChange('color', renderPen);
 pen.onChange('strokeWidth', renderPen);
-pen.onChange('lockedBy', renderPen);
+grip.onChange(renderPen);
 
 // 初期 1 回レンダー (初期エンティティスナップショットは Ubi.state が反映済み)
 renderPen();

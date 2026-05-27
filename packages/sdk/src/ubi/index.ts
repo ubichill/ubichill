@@ -14,6 +14,8 @@ import type { EntityModule } from './entity';
 import { createEntityModule } from './entity';
 import type { EventModule } from './event';
 import { createEventModule } from './event';
+import type { GripModule } from './grip';
+import { createGripModule } from './grip';
 import type { MediaModule } from './media';
 import { createMediaModule } from './media';
 import type { PlayerModule } from './player';
@@ -98,6 +100,7 @@ export class UbiSDK {
     public readonly canvas: CanvasModule;
     public readonly player: PlayerModule;
     public readonly entity: EntityModule;
+    public readonly grip: GripModule;
     /** @internal Ubi.state / Ubi.entity の実装で使用。プラグインからは Ubi.entity 経由で操作する。 */
     private readonly _world: WorldModule;
 
@@ -144,6 +147,13 @@ export class UbiSDK {
             () => this.componentInstanceId,
             () => this.entityId,
         );
+        this.grip = createGripModule({
+            state: this.state,
+            event: this.event,
+            getMyUserId: () => this.myUserId,
+            getComponentInstanceId: () => this.componentInstanceId,
+            getComponentType: () => this.componentType,
+        });
     }
 
     // ── Top-level shortcuts ──────────────────────────────────
