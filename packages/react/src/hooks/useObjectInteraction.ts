@@ -1,4 +1,4 @@
-import type { WorldEntity } from '@ubichill/shared';
+import type { ComponentInstance } from '@ubichill/shared';
 import { useCallback, useEffect } from 'react';
 import { useSocket } from './useSocket';
 import { useWorld } from './useWorld';
@@ -15,7 +15,7 @@ interface InteractionOptions {
     /**
      * 自動開放時に実行されるコールバック（位置をリセットするなどで使用）
      */
-    onAutoRelease?: (entity: WorldEntity) => Partial<WorldEntity>;
+    onAutoRelease?: (entity: ComponentInstance) => Partial<ComponentInstance>;
 }
 
 export const useObjectInteraction = (entityId: string, isLockedByMe: boolean, options: InteractionOptions = {}) => {
@@ -54,7 +54,7 @@ export const useObjectInteraction = (entityId: string, isLockedByMe: boolean, op
 
         myHeldEntities.forEach((ent) => {
             // 位置リセットなどのカスタムロジックはコールバックに委譲
-            let additionalPatch: Partial<WorldEntity> = {};
+            let additionalPatch: Partial<ComponentInstance> = {};
             if (options.onAutoRelease) {
                 additionalPatch = options.onAutoRelease(ent);
             }

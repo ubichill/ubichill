@@ -103,24 +103,55 @@ export interface EntityTransform {
 }
 
 /**
- * ワールドエンティティの共通コンテナ
+ * Worker 互換の flat エンティティ。
+ *
+ * 1 GameObject 上の 1 Component に 1:1 で対応する。GameObject の hierarchy は
+ * `entityId` (自身が乗る GameObject) と `parentEntityId` (親 GameObject) で表現。
+ *
  * @template T ウィジェット固有のデータ型
  */
-export interface WorldEntity<T = unknown> {
-    id: string; // UUID
-    type: string; // プラグインID (例: "pen", "sticky")
-    ownerId: string | null; // 作成者のユーザーID
-    lockedBy: string | null; // 操作中のユーザーID（nullで未ロック）
+export interface ComponentInstance<T = unknown> {
+    id: string;
+    type: string;
+    /** 自身が乗る GameObject の id。 */
+    entityId?: string;
+    /** 親 GameObject の id (子孫判定用)。ルートなら undefined。 */
+    parentEntityId?: string;
+    ownerId: string | null;
+    lockedBy: string | null;
     transform: EntityTransform;
-    data: T; // ウィジェット固有データ
+    data: T;
 }
 
 /**
- * エンティティパッチ（Reliable）のペイロード
+ * Entity (GameObject) に載る 1 つの Component。
+ */
+export interface EntityComponent<T = unknown> {
+    type: string; // "pluginId:componentName"
+    data: T;
+}
+
+/**
+ * GameObject — `id` + `transform` を持つ「箱」。
+ *
+ * 振る舞いはすべて `components: EntityComponent[]` 経由で配布される。
+ * Stage 1 ではエディタ / YAML / DB の表現のみで、runtime は flatten 後の ComponentInstance を使う。
+ */
+export interface WorldEntity {
+    id: string;
+    transform: EntityTransform;
+    components: EntityComponent[];
+    ownerId: string | null;
+    lockedBy: string | null;
+}
+
+/**
+ * エンティティパッチ（Reliable）のペイロード。
+ * Stage 1 では flat ComponentInstance 単位の patch（旧形式維持）。
  */
 export interface EntityPatchPayload {
     entityId: string;
-    patch: Partial<Omit<WorldEntity, 'id' | 'type'>>;
+    patch: Partial<Omit<ComponentInstance, 'id' | 'type'>>;
 }
 
 /**
@@ -136,12 +167,12 @@ export interface EntityEphemeralPayload {
 // ============================================
 
 /**
- * 利用可能なKind（ツールバー用）
+ * 利用可能な Component（ツールバー用）。
+ * 1 component = 1 振る舞い。`id` は `pluginId:componentName` 形式。
  */
-export interface AvailableKind {
-    id: string; // "package-name:kind-id"
+export interface AvailableComponent {
+    id: string; // "pluginId:componentName"
     displayName: string;
-    baseType: string;
     icon?: string;
     defaults?: Record<string, unknown>;
 }
@@ -155,11 +186,14 @@ export interface WorldEnvironmentData {
 }
 
 /**
- * ワールドスナップショットペイロード（拡張版）
+ * ワールドスナップショットペイロード（flat ComponentInstance 単位）。
+ *
+ * GameObject に複数 Component が載っている場合、バックエンドが
+ * 各 Component を 1 つの flat ComponentInstance に展開してから配信する。
  */
 export interface WorldSnapshotPayload {
-    entities: WorldEntity[];
-    availableKinds: AvailableKind[];
+    entities: ComponentInstance[];
+    availableComponents: AvailableComponent[];
     /** アクティブなプラグインIDのリスト */
     activePlugins: string[];
     environment: WorldEnvironmentData;
@@ -201,8 +235,8 @@ export interface ServerToClientEvents {
     /** ワールド状態のスナップショット（拡張版） */
     'world:snapshot': (payload: WorldSnapshotPayload) => void;
 
-    /** エンティティが作成された */
-    'entity:created': (entity: WorldEntity) => void;
+    /** エンティティが作成された (flat ComponentInstance 単位) */
+    'entity:created': (entity: ComponentInstance) => void;
 
     /** エンティティが更新された（Reliable） */
     'entity:patched': (payload: EntityPatchPayload) => void;
@@ -263,10 +297,10 @@ export interface ClientToServerEvents {
     // UEP Events (Client -> Server)
     // ============================================
 
-    /** エンティティを作成 */
+    /** エンティティを作成 (flat ComponentInstance 単位) */
     'entity:create': (
-        payload: Omit<WorldEntity, 'id'>,
-        callback: (response: { success: boolean; entity?: WorldEntity; error?: string }) => void,
+        payload: Omit<ComponentInstance, 'id'>,
+        callback: (response: { success: boolean; entity?: ComponentInstance; error?: string }) => void,
     ) => void;
 
     /** エンティティを更新（Reliable） */
@@ -385,12 +419,6 @@ export const SERVER_CONFIG = {
     /** ワールド定義ディレクトリのデフォルト相対パス（バックエンドcwd基準） */
     WORLDS_DIR_DEFAULT: '../../worlds',
 } as const;
-
-/**
- * すべてのエンティティのユニオン型
- * 特定のfeature型はこのファイルではなく、各featureの定義を参照してください。
- */
-export type AnyWorldEntity = WorldEntity<unknown>;
 
 // ============================================
 // Re-export Schemas and Plugins

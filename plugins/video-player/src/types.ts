@@ -17,4 +17,4 @@ export interface SearchResult {
     duration: number;
 }
 
-export type LoopMode = 'none' | 'playlist' | 'track';
+export type LoopMode = 'none' | 'one' | 'all';

@@ -6,6 +6,9 @@ export class EntityImpl implements Entity {
 
     private _components: Map<string, unknown> = new Map();
 
+    /** コールバック通知用 */
+    _onComponentChanged?: () => void;
+
     constructor(id: string) {
         this.id = id;
     }
@@ -18,6 +21,7 @@ export class EntityImpl implements Entity {
     setComponent<T = unknown>(name: string, data: T): void {
         this._components.set(name, data);
         this._componentNames.add(name);
+        this._onComponentChanged?.();
     }
 
     hasComponent(name: string): boolean {
@@ -27,10 +31,12 @@ export class EntityImpl implements Entity {
     _reset(): void {
         this._components.clear();
         this._componentNames.clear();
+        this._onComponentChanged?.();
     }
 
-    _removeComponent(name: string): void {
+    removeComponent(name: string): void {
         this._components.delete(name);
         this._componentNames.delete(name);
+        this._onComponentChanged?.();
     }
 }

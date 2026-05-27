@@ -79,7 +79,9 @@ self.addEventListener('message', (e: MessageEvent<PluginHostEvent>) => {
 
     Ubi.worldId = event.payload.worldId;
     Ubi.myUserId = event.payload.myUserId;
+    Ubi.componentInstanceId = event.payload.componentInstanceId;
     Ubi.entityId = event.payload.entityId;
+    Ubi.componentType = event.payload.componentType;
     Ubi.pluginBase = event.payload.pluginBase ?? '';
     Ubi.watchEntityTypes = event.payload.watchEntityTypes ?? [];
     // state.define がプラグインコード実行前にこのスナップショットを同期反映する
@@ -105,12 +107,12 @@ self.addEventListener('message', (e: MessageEvent<PluginHostEvent>) => {
             'Ubi',
             'console',
             `"use strict";
-try {
-    ${event.payload.code}
-} catch (err) {
-    console.error("[Sandbox:${pluginId}] プラグイン実行エラー", err);
-    throw err;
-}`,
+            try {
+                ${event.payload.code}
+            } catch (err) {
+                console.error("[Sandbox:${pluginId}] プラグイン実行エラー", err);
+                throw err;
+            }`,
         );
 
         pluginFn(Ubi, _pluginConsole);

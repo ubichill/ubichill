@@ -13,7 +13,7 @@ export * from '@ubichill/engine';
 // プロトコル型（@ubichill/shared より選択的に re-export）
 export type {
     AppAvatarDef,
-    AvailableKind,
+    AvailableComponent,
     CanvasCursorData,
     CanvasStrokeData,
     CmdAvatarSet,
@@ -32,10 +32,12 @@ export type {
     CmdSceneUnsubscribeEntity,
     CmdSceneUpdateEntity,
     CmdUiShowToast,
+    ComponentInstance,
     CursorMovedCallback,
     CursorPosition,
     CursorState,
     CustomEventCallback,
+    EntityComponent,
     EntityEphemeralPayload,
     EntityPatchPayload,
     EntityUpdatedCallback,
@@ -75,4 +77,6 @@ export type {
 } from '@ubichill/shared';
 // UbiSDK クラス + 型
 export { UbiSDK } from './ubi';
+export type { EmitOptions, EmitScope, EventRegistry } from './ubi/event';
+export type { Grip } from './ubi/grip';
 export type { EntityState, EntityStateFor, OmitId, UiRenderCostStat } from './ubi/types';

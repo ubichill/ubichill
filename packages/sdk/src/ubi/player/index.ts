@@ -1,10 +1,29 @@
+/**
+ * Ubi.player — プレイヤー (= ユーザー) 情報。
+ *
+ * - me: 自分の id (Ubi.myUserId へのショートカット)
+ * - others(): 自分以外のユーザーの位置情報
+ * - all():    自分含む全ユーザーの位置情報
+ * - scroll(): ワールドスクロール量
+ * - syncCursor(opts): 自分のカーソル位置を一定 throttle で host へ通知
+ */
+
 import type { PresenceEntry, SendFn } from '../types';
 
-export type PresenceModule = {
+export interface PlayerInfo {
+    id: string;
+    worldX: number;
+    worldY: number;
+    viewportX: number;
+    viewportY: number;
+}
+
+export type PlayerModule = {
     // ── Public API ────────────────────────────────────────
-    users(): ReadonlyMap<string, { worldX: number; worldY: number; viewportX: number; viewportY: number }>;
+    others(): ReadonlyMap<string, PlayerInfo>;
+    all(): ReadonlyMap<string, PlayerInfo>;
     scroll(): { readonly x: number; readonly y: number };
-    syncPosition(options?: { throttleMs?: number }): void;
+    syncCursor(options?: { throttleMs?: number }): void;
     // ── Internal accessors (state module + UbiSDK から使用) ──
     getPresenceUsers(): Map<string, PresenceEntry>;
     getLocalSharedState(): Record<string, unknown>;
@@ -25,7 +44,7 @@ export type PresenceModule = {
     handlePresenceSharedState(userId: string, sharedState: Record<string, unknown>): void;
 };
 
-export function createPresenceModule(send: SendFn): PresenceModule {
+export function createPlayerModule(send: SendFn, getMyUserId: () => string | undefined): PlayerModule {
     const presenceUsers = new Map<string, PresenceEntry>();
     const forEachUserComponents = new Set<string>();
     const localSharedState: Record<string, unknown> = {};
@@ -49,21 +68,31 @@ export function createPresenceModule(send: SendFn): PresenceModule {
         });
     };
 
+    const toPlayerInfo = (id: string, entry: PresenceEntry): PlayerInfo => ({
+        id,
+        worldX: entry.worldX,
+        worldY: entry.worldY,
+        viewportX: entry.worldX - scrollX,
+        viewportY: entry.worldY - scrollY,
+    });
+
     return {
-        users: () => {
-            const result = new Map<string, { worldX: number; worldY: number; viewportX: number; viewportY: number }>();
+        others: () => {
+            const myId = getMyUserId();
+            const result = new Map<string, PlayerInfo>();
             for (const [id, entry] of presenceUsers) {
-                result.set(id, {
-                    worldX: entry.worldX,
-                    worldY: entry.worldY,
-                    viewportX: entry.worldX - scrollX,
-                    viewportY: entry.worldY - scrollY,
-                });
+                if (id === myId) continue;
+                result.set(id, toPlayerInfo(id, entry));
             }
             return result;
         },
+        all: () => {
+            const result = new Map<string, PlayerInfo>();
+            for (const [id, entry] of presenceUsers) result.set(id, toPlayerInfo(id, entry));
+            return result;
+        },
         scroll: () => ({ x: scrollX, y: scrollY }),
-        syncPosition: (options) => {
+        syncCursor: (options) => {
             positionSyncThrottleMs = options?.throttleMs ?? 50;
         },
 

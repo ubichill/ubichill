@@ -4,6 +4,7 @@ import { userRepository, type WorldRecord, worldRepository } from '@ubichill/db'
 import {
     DEFAULTS,
     ENV_KEYS,
+    type InitialEntity,
     type ResolvedWorld,
     SERVER_CONFIG,
     type WorldCreateInput,
@@ -13,6 +14,7 @@ import {
 } from '@ubichill/shared';
 import { customAlphabet } from 'nanoid';
 import yaml from 'yaml';
+import { migrateLegacyWorldYaml } from './worldMigration';
 
 // KebabCaseId 互換の lowercase + 数字のみ。21文字で十分な衝突耐性を確保。
 const generateWorldId = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 21);
@@ -102,6 +104,7 @@ class WorldRegistry {
 
     async initialize(): Promise<void> {
         await userRepository.ensureSystemUser(SYSTEM_AUTHOR_ID);
+        await this._migrateLegacyDbRecords();
         await this._loadIndex();
         this._startWatcher();
         if (this.registryUrls.length > 0) {
@@ -243,7 +246,7 @@ class WorldRegistry {
      * metadata.name は無視してサーバー側で再生成し、所有権を確実に作成者に紐付ける。
      */
     async createFromYaml(authorId: string, authorDisplayName: string, yamlText: string): Promise<ResolvedWorld> {
-        const parsed = yaml.parse(yamlText) as unknown;
+        const parsed = migrateLegacyWorldYaml(yaml.parse(yamlText) as unknown);
         const result = WorldDefinitionSchema.safeParse(parsed);
         if (!result.success) {
             const issue = result.error.issues[0];
@@ -272,7 +275,7 @@ class WorldRegistry {
             yamlUrls.map(async (yamlUrl) => {
                 const res = await fetch(yamlUrl);
                 if (!res.ok) throw new Error(`HTTP ${res.status}: ${yamlUrl}`);
-                const parsed = yaml.parse(await res.text()) as unknown;
+                const parsed = migrateLegacyWorldYaml(yaml.parse(await res.text()) as unknown);
                 const result = WorldDefinitionSchema.safeParse(parsed);
                 if (!result.success) throw new Error(`不正なワールド定義: ${yamlUrl}`);
                 const def = result.data;
@@ -404,7 +407,7 @@ class WorldRegistry {
     private _parseYamlToEntry(filePath: string, fileName: string): WorldIndexEntry | null {
         try {
             const content = fs.readFileSync(filePath, 'utf-8');
-            const parsed = yaml.parse(content) as unknown;
+            const parsed = migrateLegacyWorldYaml(yaml.parse(content) as unknown);
             const result = WorldDefinitionSchema.safeParse(parsed);
             if (!result.success) return null;
             const def = result.data;
@@ -474,7 +477,7 @@ class WorldRegistry {
         // DB も更新（インスタンスマネージャーが参照するため）
         try {
             const content = fs.readFileSync(filePath, 'utf-8');
-            const parsed = WorldDefinitionSchema.safeParse(yaml.parse(content) as unknown);
+            const parsed = WorldDefinitionSchema.safeParse(migrateLegacyWorldYaml(yaml.parse(content) as unknown));
             if (!parsed.success) throw new Error(`YAML parse failed: ${newEntry.name}`);
             const def = parsed.data;
             await worldRepository.upsertByName({
@@ -498,7 +501,7 @@ class WorldRegistry {
     private async _loadWorldFromFile(entry: WorldIndexEntry): Promise<ResolvedWorld> {
         const filePath = path.join(this.worldsDir, entry.file);
         const content = fs.readFileSync(filePath, 'utf-8');
-        const parsed = yaml.parse(content) as unknown;
+        const parsed = migrateLegacyWorldYaml(yaml.parse(content) as unknown);
         const result = WorldDefinitionSchema.safeParse(parsed);
         if (!result.success) {
             throw new Error(`ワールド定義が無効: ${entry.name}`);
@@ -557,7 +560,7 @@ class WorldRegistry {
         const res = await fetch(url);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const content = await res.text();
-        const parsed = yaml.parse(content) as unknown;
+        const parsed = migrateLegacyWorldYaml(yaml.parse(content) as unknown);
         const result = WorldDefinitionSchema.safeParse(parsed);
         if (!result.success) throw new Error(`Validation failed: ${url}`);
         const def = result.data;
@@ -577,12 +580,43 @@ class WorldRegistry {
     // プライベート: 解決ヘルパー
     // ================================================================
 
+    /**
+     * 起動時に DB の全ワールドレコードを Stage 1 新スキーマへ正規化する。
+     * 既に新形式のレコードは no-op、legacy 形式のみ upsert で書き戻す。
+     */
+    private async _migrateLegacyDbRecords(): Promise<void> {
+        const all = await worldRepository.findAll();
+        let migrated = 0;
+        for (const record of all) {
+            const next = migrateLegacyWorldYaml(record.definition);
+            if (next === record.definition) continue;
+            const parsed = WorldDefinitionSchema.safeParse(next);
+            if (!parsed.success) {
+                console.warn(`⚠️ DB ワールド「${record.name}」のマイグレーション失敗 (skip):`, parsed.error.issues[0]);
+                continue;
+            }
+            await worldRepository.update(record.id, { version: record.version, definition: parsed.data });
+            migrated += 1;
+        }
+        if (migrated > 0) {
+            console.log(`🛠 DB ワールド ${migrated} 件を新スキーマへマイグレーションしました`);
+        }
+    }
+
     private _resolveWorld(record: WorldRecord): ResolvedWorld {
         const def = record.definition as WorldDefinition;
         const env = def.spec.environment ?? {
             backgroundColor: DEFAULTS.WORLD_ENVIRONMENT.backgroundColor,
             worldSize: DEFAULTS.WORLD_ENVIRONMENT.worldSize,
         };
+        const normalizeEntity = (e: InitialEntity): InitialEntity => ({
+            id: e.id,
+            transform: e.transform,
+            components: e.components.map((c) => ({ type: c.type, data: c.data ?? {} })),
+            tags: e.tags ?? [],
+            children: (e.children ?? []).map(normalizeEntity),
+        });
+        const initialEntities: InitialEntity[] = def.spec.initialEntities.map(normalizeEntity);
         return {
             id: record.name,
             dbId: record.id,
@@ -598,7 +632,7 @@ class WorldRegistry {
             },
             capacity: def.spec.capacity,
             dependencies: def.spec.dependencies?.map((d) => ({ name: d.name, source: d.source })),
-            initialEntities: def.spec.initialEntities.map((e) => ({ ...e, data: e.data ?? {} })),
+            initialEntities,
         };
     }
 }

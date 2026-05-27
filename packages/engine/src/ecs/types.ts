@@ -13,6 +13,7 @@ export interface Entity {
     getComponent<T = unknown>(name: string): T | null;
     setComponent<T = unknown>(name: string, data: T): void;
     hasComponent(name: string): boolean;
+    removeComponent(name: string): void;
 
     readonly _componentNames: Set<string>;
 }
@@ -73,10 +74,7 @@ export const EcsEventType = {
     NETWORK_BROADCAST: 'network:broadcast',
     /** OffscreenCanvas のリサイズ通知。payload: { targetId: string; width: number; height: number } */
     CANVAS_RESIZE: 'canvas:resize',
-    /**
-     * Host からプラグイン Worker へのカスタムメッセージ。
-     * payload: { type: string; payload: unknown }
-     * GenericPluginHost の sendHostMessage() で送信する。
-     */
-    HOST_MESSAGE: 'host:message',
+    // 旧 HOST_MESSAGE は廃止。Host → Worker のメッセージは sendToWorker(type, payload) で送られた
+    // type がそのまま event.type になる (WorkerPluginHost で展開)。プラグイン側は
+    // `Ubi.event.define()` で宣言した on(type, ...) でフラットに受け取る。
 } as const;

@@ -1,12 +1,12 @@
 import type { WorkerPluginDefinition } from '@ubichill/sdk/react';
 import { isWorkerPlugin, useSocket, useWorld, WorkerPluginHost } from '@ubichill/sdk/react';
-import type { WorldEntity } from '@ubichill/shared';
+import type { ComponentInstance } from '@ubichill/shared';
 import { useMemo } from 'react';
 import { usePluginRegistry } from '@/plugins/PluginRegistryContext';
 import { Z_INDEX } from '@/styles/layers';
 import { EntityRenderer } from './EntityRenderer';
 
-const FALLBACK_ENTITY: WorldEntity = {
+const FALLBACK_ENTITY: ComponentInstance = {
     id: '',
     type: '',
     ownerId: null,

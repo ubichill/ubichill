@@ -36,16 +36,19 @@ spec:
 
   initialEntities:
     # ── ペンキャンバス ───────────────────────────────────────────
-    - kind: "pen:canvas"
+    - id: pen-canvas
       transform:
         x: 0
         y: 0
         z: 5000
         scale: 1
         rotation: 0
-      data: {}
+      components:
+        - type: "pen:canvas"
+          data: {}
 
-    - kind: "video-player:video"
+    # ── 動画 (controls 不在の自由配置) ──────────────────────────
+    - id: video-screen
       transform:
         x: 800
         y: 100
@@ -53,99 +56,117 @@ spec:
         w: 620
         scale: 1
         rotation: 0
-      data:
-        playlist: []
-        currentIndex: 0
-        isPlaying: false
-        currentTime: 0
-        loop: 'none'
-        shuffle: false
-        fetchDomains: []
+      components:
+        - type: "video-player:screen"
+          data:
+            playlist: []
+            currentIndex: 0
+            isPlaying: false
+            currentTime: 0
+            loop: "none"
+            shuffle: false
+            fetchDomains: []
 
-    # ── アバター設定 ─────────────────────────────────────────────
-    - kind: "avatar:cursor"
+    # ── アバター ─────────────────────────────────────────────
+    - id: avatar-cursor
       transform:
         x: 0
         y: 0
         z: 10100
         scale: 1
         rotation: 0
-      data: {}
+      components:
+        - type: "avatar:cursor"
+          data: {}
 
-    - kind: "avatar:settings"
+    - id: avatar-settings
       transform:
         x: 20
         y: 100
         z: 9998
         scale: 1
         rotation: 0
-      data: {}
+      components:
+        - type: "avatar:settings"
+          data: {}
 
     # ── ペントレイ ──────────────────────────────────────────────
-    - kind: "pen:tray"
+    - id: pen-tray
       transform:
         x: 20
         y: 20
         z: 1000
         scale: 1
         rotation: 0
-      data: {}
+      components:
+        - type: "pen:tray"
+          data: {}
 
-    # ── ペン (色ごとに 1 エンティティ) ──────────────────────────
-    - kind: "pen:pen"
+    # ── ペン (色ごとに 1 Entity) ──────────────────────────────────
+    - id: pen-black
       transform:
         x: 0
         y: 0
         z: 1
         scale: 1
         rotation: 0
-      data:
-        color: "#1a1a1a"
-        strokeWidth: 4
+      components:
+        - type: "pen:pen"
+          data:
+            color: "#1a1a1a"
+            strokeWidth: 4
 
-    - kind: "pen:pen"
+    - id: pen-red
       transform:
         x: 0
         y: 0
         z: 2
         scale: 1
         rotation: 0
-      data:
-        color: "#e63946"
-        strokeWidth: 4
+      components:
+        - type: "pen:pen"
+          data:
+            color: "#e63946"
+            strokeWidth: 4
 
-    - kind: "pen:pen"
+    - id: pen-blue
       transform:
         x: 0
         y: 0
         z: 3
         scale: 1
         rotation: 0
-      data:
-        color: "#457b9d"
-        strokeWidth: 4
+      components:
+        - type: "pen:pen"
+          data:
+            color: "#457b9d"
+            strokeWidth: 4
 
-    - kind: "pen:pen"
+    - id: pen-green
       transform:
         x: 0
         y: 0
         z: 4
         scale: 1
         rotation: 0
-      data:
-        color: "#2a9d8f"
-        strokeWidth: 4
+      components:
+        - type: "pen:pen"
+          data:
+            color: "#2a9d8f"
+            strokeWidth: 4
 
-    - kind: "pen:pen"
+    - id: pen-yellow
       transform:
         x: 0
         y: 0
         z: 5
         scale: 1
         rotation: 0
-      data:
-        color: "#e9c46a"
-        strokeWidth: 4
+      components:
+        - type: "pen:pen"
+          data:
+            color: "#e9c46a"
+            strokeWidth: 4
 
   permissions:
     allowGuestCreate: true

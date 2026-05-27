@@ -2,15 +2,15 @@
   "id": "avatar",
   "name": "Avatar",
   "version": "1.0.0",
-  "entities": {
-    "avatar:cursor": {
+  "components": {
+    "cursor": {
       "src": "./src/cursor.worker.tsx",
       "singleton": true,
       "capabilities": ["ui:render", "net:host-message", "scene:read", "net:broadcast"],
       "defaultTransform": { "x": 0, "y": 0, "z": 10100 },
       "dataFields": {}
     },
-    "avatar:settings": {
+    "settings": {
       "src": "./src/settings.worker.tsx",
       "singleton": true,
       "capabilities": ["ui:render", "net:host-message", "net:fetch", "scene:read"],

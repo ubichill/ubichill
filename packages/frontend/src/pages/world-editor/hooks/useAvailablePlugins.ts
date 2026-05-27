@@ -12,7 +12,8 @@ export interface AvailablePlugin {
     id: string;
     name: string;
     version: string;
-    kinds: string[];
+    /** Component 型 (`pluginId:componentName`) 一覧 */
+    components: string[];
     /** ローカルプラグインのみ */
     repositoryPath?: string;
     /** リモート（レジストリ） */
@@ -25,7 +26,7 @@ interface RawIndexEntry {
     id: string;
     name?: string;
     version: string;
-    kinds?: string[];
+    components?: string[];
     repositoryPath?: string;
     baseUrl?: string;
 }
@@ -50,7 +51,7 @@ async function fetchRegistry(url: string, sourceLabel: string): Promise<Availabl
                 id: e.id,
                 name: e.name ?? e.id,
                 version: e.version,
-                kinds: e.kinds ?? [],
+                components: e.components ?? [],
                 repositoryPath: e.repositoryPath,
                 // リモートエントリ baseUrl が無い場合は registry URL のディレクトリを採用
                 baseUrl: e.baseUrl ?? (sourceLabel === 'local' ? undefined : baseUrl),

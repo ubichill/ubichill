@@ -20,7 +20,23 @@ export {
     WorldListItemSchema,
 } from './instance.schema';
 export {
+    type ComponentDataFieldSpec,
+    ComponentDataFieldSpecSchema,
+    type ComponentManifestEntry,
+    ComponentManifestEntrySchema,
+    type PluginManifest,
+    PluginManifestSchema,
+    type PluginVersionedManifest,
+    PluginVersionedManifestSchema,
+} from './plugin.schema';
+export {
     AuthorSchema,
+    type ComponentType,
+    ComponentTypeSchema,
+    type EntityComponentDef,
+    EntityComponentSchema,
+    type EntityTag,
+    EntityTagSchema,
     HexColor,
     type InitialEntity,
     InitialEntitySchema,

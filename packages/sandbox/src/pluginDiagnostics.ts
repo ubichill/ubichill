@@ -89,7 +89,7 @@ export function reportDiagnostic(diagnostic: PluginDiagnostic): void {
  */
 export interface TickMetric {
     pluginId: string;
-    entityId: string | undefined;
+    componentInstanceId: string | undefined;
     deltaMs: number;
     commandProcessingMs: number;
     activeWorkerCount: number;

@@ -85,6 +85,11 @@ jobs:
         id: filter
         if: github.event_name == 'pull_request'
         with:
+          # base に commit SHA を渡すと paths-filter が GitHub diff API を使わず
+          # ローカル git diff (上の checkout fetch-depth=0 で確保済み) で算出する。
+          # 巨大 PR で diff API が "this diff is temporarily unavailable" を返すのを回避。
+          base: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           filters: |
             backend:
               - 'packages/backend/**'

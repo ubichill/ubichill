@@ -295,6 +295,22 @@ export function UserPage() {
                                 editable={isOwnPage}
                                 onEdit={() => navigate(`/world/${w.id}/edit`)}
                                 onOpen={() => navigate(`/world/${w.id}`)}
+                                onDelete={
+                                    isOwnPage
+                                        ? async () => {
+                                              if (!window.confirm(`「${w.displayName}」を削除しますか?`)) return;
+                                              const res = await fetch(`${API_BASE}/api/v1/worlds/${w.id}`, {
+                                                  method: 'DELETE',
+                                                  credentials: 'include',
+                                              });
+                                              if (!res.ok) {
+                                                  setError(`削除に失敗しました (${res.status})`);
+                                                  return;
+                                              }
+                                              setWorlds((prev) => prev.filter((x) => x.id !== w.id));
+                                          }
+                                        : undefined
+                                }
                             />
                         ))}
                         {/* 空きスロット可視化（自分のみ） */}
@@ -348,12 +364,24 @@ function OwnedWorldCard({
     editable,
     onEdit,
     onOpen,
+    onDelete,
 }: {
     world: OwnedWorld;
     editable: boolean;
     onEdit: () => void;
     onOpen: () => void;
+    onDelete?: () => void;
 }) {
+    const [menuOpen, setMenuOpen] = useState(false);
+
+    // メニュー外クリックで閉じる
+    useEffect(() => {
+        if (!menuOpen) return;
+        const close = () => setMenuOpen(false);
+        window.addEventListener('click', close);
+        return () => window.removeEventListener('click', close);
+    }, [menuOpen]);
+
     return (
         <div
             className={css({
@@ -365,9 +393,87 @@ function OwnedWorldCard({
                 borderRadius: '14px',
                 overflow: 'hidden',
                 transition: 'border-color 0.16s ease',
+                position: 'relative',
                 _hover: { borderColor: 'borderStrong' },
             })}
         >
+            {onDelete && (
+                <div
+                    className={css({
+                        position: 'absolute',
+                        top: '8px',
+                        right: '8px',
+                        zIndex: 1,
+                    })}
+                >
+                    <button
+                        type="button"
+                        aria-label="メニュー"
+                        title="メニュー"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuOpen((p) => !p);
+                        }}
+                        className={css({
+                            width: '28px',
+                            height: '28px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            bg: 'rgba(0,0,0,0.45)',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '50%',
+                            cursor: 'pointer',
+                            _hover: { bg: 'rgba(0,0,0,0.6)' },
+                        })}
+                    >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                            <circle cx="5" cy="12" r="2" />
+                            <circle cx="12" cy="12" r="2" />
+                            <circle cx="19" cy="12" r="2" />
+                        </svg>
+                    </button>
+                    {menuOpen && (
+                        <div
+                            className={css({
+                                position: 'absolute',
+                                top: '34px',
+                                right: '0',
+                                minWidth: '120px',
+                                bg: 'surface',
+                                border: '1px solid',
+                                borderColor: 'border',
+                                borderRadius: '8px',
+                                boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+                                overflow: 'hidden',
+                            })}
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setMenuOpen(false);
+                                    onDelete();
+                                }}
+                                className={css({
+                                    width: '100%',
+                                    padding: '8px 12px',
+                                    bg: 'transparent',
+                                    border: 'none',
+                                    color: 'errorText',
+                                    fontSize: '13px',
+                                    textAlign: 'left',
+                                    cursor: 'pointer',
+                                    _hover: { bg: 'errorBg' },
+                                })}
+                            >
+                                削除
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
             <button
                 type="button"
                 onClick={onOpen}
