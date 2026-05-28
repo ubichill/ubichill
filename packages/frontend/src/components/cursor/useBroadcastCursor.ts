@@ -7,13 +7,14 @@ import { useEffect, useRef } from 'react';
  * 旧 avatar:cursor プラグインの `Ubi.player.syncCursor` がやっていた役割を
  * 本体に取り込んだもの。プラグインが消えても他人から自分の位置が見える。
  *
- * - viewport 座標 (x, y) を受け取り、`world = viewport + scroll` に変換して送る
+ * - viewport 座標 (localCursor) を受け取り、`world = viewport + scroll` に変換して送る
+ *   (scroll は `[data-scroll-world]` 要素から都度読む — React state 経由しないので最新)
  * - throttleMs ごとに max 1 回送信 (毎フレーム fire しても socket spam しない)
  * - currentUser が未確定 (= インスタンス未参加) の間は送信しない
  */
 export function useBroadcastCursor(
     localCursor: { x: number; y: number } | null,
-    scroll: { x: number; y: number },
+    scrollEl: HTMLElement | null,
     throttleMs = 50,
 ): void {
     const { currentUser, updatePosition } = useSocket();
@@ -24,9 +25,11 @@ export function useBroadcastCursor(
         const now = Date.now();
         if (now - lastSentAt.current < throttleMs) return;
         lastSentAt.current = now;
+        const sx = scrollEl?.scrollLeft ?? 0;
+        const sy = scrollEl?.scrollTop ?? 0;
         updatePosition({
-            x: localCursor.x + scroll.x,
-            y: localCursor.y + scroll.y,
+            x: localCursor.x + sx,
+            y: localCursor.y + sy,
         });
-    }, [localCursor, scroll, currentUser, updatePosition, throttleMs]);
+    }, [localCursor, scrollEl, currentUser, updatePosition, throttleMs]);
 }

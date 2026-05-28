@@ -1,48 +1,35 @@
 /**
- * カーソルに追従するネームプレート。
+ * Nameplate — アバター画像 + 名前バッジ。
  *
- * - viewport 座標 (x, y) を受け取り、`position: fixed` で固定描画
- * - clicks/hovers をブロックしない (pointerEvents: none)
- * - アバター URL があれば <img>、なければデフォルト SVG を表示
- * - 名前バッジは小さく、視認性のため半透明背景 + 影
- *
- * 純粋なプレゼンテーション。データソース (local mouse / socket presence) は呼び出し側が担う。
+ * カーソル先端 (親の 0, 0) から右下に小さくオフセットして描画する。
+ * 位置決めは親要素 (CursorBundle) の責務。
  */
 
 import { DefaultAvatar } from './DefaultAvatar';
 
 interface NameplateProps {
-    x: number;
-    y: number;
     name: string;
-    /** アバター画像 URL。未指定時はデフォルト SVG。 */
+    /** プロフィール画像 URL。未指定時はデフォルト SVG。 */
     avatarUrl?: string | null;
     /** デフォルトアバターのアクセント色 (penColor 等から借りる)。 */
     accentColor?: string | null;
     /** 自分自身かどうか。スタイルを少しだけ変える (ボーダー強調)。 */
     isSelf?: boolean;
-    /** 一番上に出すので大きめ。リモートは少し控えめに。 */
-    zIndex?: number;
 }
 
 const AVATAR_SIZE = 28;
 
-export function Nameplate({ x, y, name, avatarUrl, accentColor, isSelf, zIndex = 9998 }: NameplateProps) {
+export function Nameplate({ name, avatarUrl, accentColor, isSelf }: NameplateProps) {
     return (
         <div
             style={{
-                position: 'fixed',
-                left: x,
-                top: y,
-                transform: 'translate(8px, 8px)', // カーソル先端の右下にオフセット
-                pointerEvents: 'none',
-                zIndex,
+                position: 'absolute',
+                left: 14, // カーソル先端の右下に重ねない程度のオフセット
+                top: 14,
                 display: 'flex',
                 alignItems: 'center',
                 gap: 6,
-                userSelect: 'none',
             }}
-            aria-hidden="true"
         >
             {/* アバター本体 */}
             <div
