@@ -7,57 +7,55 @@ import { useEffect, useRef } from 'react';
  * 旧 avatar:cursor プラグインの `Ubi.player.syncCursor` がやっていた役割を
  * 本体に取り込んだもの。プラグインが消えても他人から自分の位置が見える。
  *
+ * **自己完結**: 内部で pointermove + scroll を addEventListener する。
+ * React state は使わない (= 親が再 render しない)。
+ *
  * トリガは 2 つ:
- *  1. localCursor の変化 (= pointermove) — マウスが動いたとき
- *  2. scrollEl の scroll イベント — マウスは動かなくてもスクロールで world 位置が変わる
+ *  1. pointermove — マウスが動いたとき
+ *  2. scroll  — マウスは動かなくてもスクロールで world 位置が変わる
  *
  * どちらの経路でも `world = viewport + scroll` を都度計算して送る。
  * 共通の throttleMs (デフォルト 50ms) で衝突しても 1 回に集約。
  *
  * currentUser が未確定 (= インスタンス未参加) の間は送信しない。
  */
-export function useBroadcastCursor(
-    localCursor: { x: number; y: number } | null,
-    scrollEl: HTMLElement | null,
-    throttleMs = 50,
-): void {
+export function useBroadcastCursor(scrollEl: HTMLElement | null, throttleMs = 50): void {
     const { currentUser, updatePosition } = useSocket();
-    const lastSentAt = useRef(0);
 
-    // ── 1. pointermove 経由: localCursor の変化で発火 ─────────────
-    useEffect(() => {
-        if (!localCursor || !currentUser) return;
-        const now = Date.now();
-        if (now - lastSentAt.current < throttleMs) return;
-        lastSentAt.current = now;
-        const sx = scrollEl?.scrollLeft ?? 0;
-        const sy = scrollEl?.scrollTop ?? 0;
-        updatePosition({ x: localCursor.x + sx, y: localCursor.y + sy });
-    }, [localCursor, scrollEl, currentUser, updatePosition, throttleMs]);
-
-    // ── 2. scroll 経由: マウスが動かなくても world 位置が変わる ───
-    // imperative addEventListener。scroll listener から localCursor / currentUser /
-    // updatePosition の最新値が必要なので ref で持つ。
-    const cursorRef = useRef(localCursor);
+    // listener 内から最新値を読むため ref で保持 (subscribe コスト 0)
     const currentUserIdRef = useRef(currentUser?.id);
     const updatePositionRef = useRef(updatePosition);
     useEffect(() => {
-        cursorRef.current = localCursor;
         currentUserIdRef.current = currentUser?.id;
         updatePositionRef.current = updatePosition;
     });
 
+    // 最後に観測した viewport 座標 (scroll-only 時に再利用)
+    const lastViewportRef = useRef<{ x: number; y: number } | null>(null);
+    const lastSentAt = useRef(0);
+
     useEffect(() => {
-        if (!scrollEl) return;
-        const onScroll = () => {
-            const c = cursorRef.current;
-            if (!c || !currentUserIdRef.current) return;
+        const send = () => {
+            const v = lastViewportRef.current;
+            if (!v || !currentUserIdRef.current) return;
             const now = Date.now();
             if (now - lastSentAt.current < throttleMs) return;
             lastSentAt.current = now;
-            updatePositionRef.current({ x: c.x + scrollEl.scrollLeft, y: c.y + scrollEl.scrollTop });
+            const sx = scrollEl?.scrollLeft ?? 0;
+            const sy = scrollEl?.scrollTop ?? 0;
+            updatePositionRef.current({ x: v.x + sx, y: v.y + sy });
         };
-        scrollEl.addEventListener('scroll', onScroll, { passive: true });
-        return () => scrollEl.removeEventListener('scroll', onScroll);
+
+        const onMove = (e: PointerEvent) => {
+            lastViewportRef.current = { x: e.clientX, y: e.clientY };
+            send();
+        };
+
+        window.addEventListener('pointermove', onMove);
+        scrollEl?.addEventListener('scroll', send, { passive: true });
+        return () => {
+            window.removeEventListener('pointermove', onMove);
+            scrollEl?.removeEventListener('scroll', send);
+        };
     }, [scrollEl, throttleMs]);
 }
