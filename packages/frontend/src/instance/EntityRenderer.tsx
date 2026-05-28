@@ -4,13 +4,14 @@ import { usePluginRegistry } from '../plugins/PluginRegistryContext';
 
 interface EntityRendererProps {
     entityId: string;
+    onWorkerReady?: (workerId: string) => void;
 }
 
 /**
  * Worker プラグイン エンティティ用ホスト。useSocket を購読しないことで
  * カーソル移動などの再レンダーを避ける。
  */
-export const EntityRenderer: React.FC<EntityRendererProps> = ({ entityId }) => {
+export const EntityRenderer: React.FC<EntityRendererProps> = ({ entityId, onWorkerReady }) => {
     const { entities } = useWorld();
     const { pluginMap, loadPlugin } = usePluginRegistry();
 
@@ -48,7 +49,7 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({ entityId }) => {
 
     return (
         <div style={wrapperStyle}>
-            <WorkerPluginHost entityId={entityId} entity={entity} definition={plugin} />
+            <WorkerPluginHost entityId={entityId} entity={entity} definition={plugin} onReady={onWorkerReady} />
         </div>
     );
 };

@@ -1,4 +1,4 @@
-import type { WorldListItem } from '@ubichill/shared';
+import type { Instance, WorldListItem } from '@ubichill/shared';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE } from '@/lib/api';
@@ -47,10 +47,12 @@ function sortWorlds(worlds: WorldListItem[], key: SortKey): WorldListItem[] {
 }
 
 interface LobbyProps {
-    onJoinInstance: (instanceId: string, worldId: string) => void;
+    onJoinInstance: (instance: Instance) => void;
+    /** ルート div の高さ。モーダル内で使用する場合は '100%' や 'auto' を指定する。 */
+    height?: string;
 }
 
-export function Lobby({ onJoinInstance }: LobbyProps) {
+export function Lobby({ onJoinInstance, height = 'calc(100vh - 112px)' }: LobbyProps) {
     const navigate = useNavigate();
     const { instances, worlds, loading, error, createInstance, refreshInstances, refreshWorlds } = useInstances();
     const [selectedWorldId, setSelectedWorldId] = useState<string | null>(null);
@@ -115,7 +117,7 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
         try {
             const instance = await createInstance({ worldId: selectedWorldId });
             if (instance) {
-                onJoinInstance(instance.id, instance.world.id);
+                onJoinInstance(instance);
             }
         } finally {
             setCreating(false);
@@ -205,7 +207,7 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
     const handleJoinInstance = (instanceId: string) => {
         const instance = instances.find((i) => i.id === instanceId);
         if (instance) {
-            onJoinInstance(instanceId, instance.world.id);
+            onJoinInstance(instance);
         }
     };
 
@@ -218,7 +220,7 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                 padding: { base: '8px 0 0', md: '16px 0 0' },
                 display: 'flex',
                 flexDirection: 'column',
-                height: 'calc(100vh - 112px)',
+                height: height,
                 overflow: 'hidden',
             })}
         >

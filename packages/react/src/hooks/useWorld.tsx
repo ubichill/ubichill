@@ -20,6 +20,8 @@ export interface WorldContextType {
     environment: WorldEnvironmentData;
     availableComponents: AvailableComponent[];
     activePlugins: string[];
+    snapshotRevision: number;
+    hasSnapshot: boolean;
     createEntity: <T = Record<string, unknown>>(
         type: string,
         transform: ComponentInstance['transform'],
@@ -49,6 +51,8 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const [environment, setEnvironment] = useState<WorldEnvironmentData>(DEFAULTS.WORLD_ENVIRONMENT);
     const [availableComponents, setAvailableComponents] = useState<AvailableComponent[]>([]);
     const [activePlugins, setActivePlugins] = useState<string[]>([]);
+    const [snapshotRevision, setSnapshotRevision] = useState(0);
+    const [hasSnapshot, setHasSnapshot] = useState(false);
 
     useEffect(() => {
         if (!socket) return;
@@ -63,6 +67,8 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             setEnvironment(payload.environment);
             setAvailableComponents(payload.availableComponents);
             setActivePlugins(payload.activePlugins || []);
+            setHasSnapshot(true);
+            setSnapshotRevision((revision) => revision + 1);
         };
 
         // エンティティ作成を受信
@@ -222,6 +228,8 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setEnvironment(DEFAULTS.WORLD_ENVIRONMENT);
         setAvailableComponents([]);
         setActivePlugins([]);
+        setHasSnapshot(false);
+        setSnapshotRevision((revision) => revision + 1);
     }, []);
 
     const contextValue: WorldContextType = useMemo(
@@ -231,6 +239,8 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             environment,
             availableComponents,
             activePlugins,
+            snapshotRevision,
+            hasSnapshot,
             createEntity,
             patchEntity,
             deleteEntity,
@@ -243,6 +253,8 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             environment,
             availableComponents,
             activePlugins,
+            snapshotRevision,
+            hasSnapshot,
             createEntity,
             patchEntity,
             deleteEntity,

@@ -1,6 +1,11 @@
 {
   "version": 1,
   "skills": {
+    "code-explainer": {
+      "source": "smithery.ai",
+      "sourceType": "well-known",
+      "computedHash": "c547dec078b3d317b6948fa92fe78ea7d70e5d3d7e47b9dcae6974630cbcdec5"
+    },
     "grill-me": {
       "source": "mattpocock/skills",
       "sourceType": "github",

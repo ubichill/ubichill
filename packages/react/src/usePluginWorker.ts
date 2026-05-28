@@ -106,10 +106,12 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
 
     const handlersRef = useRef<PluginWorkerHandlers<TPayloadMap>>(options.handlers ?? {});
     const onResourceLimitExceededRef = useRef(options.onResourceLimitExceeded);
+    const onReadyRef = useRef(options.onReady);
 
     useEffect(() => {
         handlersRef.current = options.handlers ?? {};
         onResourceLimitExceededRef.current = options.onResourceLimitExceeded;
+        onReadyRef.current = options.onReady;
     });
 
     // initialEntities は「Worker 起動時点のスナップショット」であって
@@ -178,6 +180,7 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
                 onTickComplete: (metric) => handlersRef.current.onTickComplete?.(metric),
             },
             onResourceLimitExceeded: (reason) => onResourceLimitExceededRef.current?.(reason),
+            onReady: (info) => onReadyRef.current?.(info),
         });
         managerRef.current = manager;
         setWorkerRevision((r) => r + 1);
