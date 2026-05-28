@@ -1,15 +1,13 @@
 /**
- * CursorBundle — カーソルアイコン + ネームプレートを 1 つにまとめた visual。
+ * CursorBundle — カーソルアイコン + (オプションで) ネームプレートをまとめた visual。
  *
- * **位置決めは親要素の責務**。CursorBundle 自身は `position: absolute` で wrapper の
- * 左上 (0, 0) を基準にカーソル先端を出す。親が transform / position で動かす。
+ * 位置決めは親要素の責務:
+ *  - SelfCursor: `position: fixed` + clientX/Y で配置 (viewport 基準、nameplate 非表示)
+ *  - RemoteCursor: scroll container 内に `position: absolute` + worldX/Y で配置
  *
- * - SelfCursor: 親が `position: fixed` + clientX/Y で配置 (viewport 基準)
- * - RemoteCursor: 親が scroll container 内に `position: absolute` + worldX/Y で配置
- *
- * 「親の側で動かす」ことで:
- *  - リモートカーソルは scroll 中に native スクロールに付いてくる (React 再render なし)
- *  - GPU 加速の translate3d + CSS transition で間欠 broadcast 間も滑らかに見える
+ * 自分の cursor には nameplate を出さない (`showNameplate=false`)。
+ *  - 自分の名前は自分で知ってるし、UI ノイズが増えると「自分の手」感が薄れる
+ *  - 視線が cursor 先端に集中する状態を保ちたい
  */
 
 import { CursorIcon } from './CursorIcon';
@@ -20,10 +18,11 @@ interface CursorBundleProps {
     name: string;
     avatarUrl?: string | null;
     accentColor?: string | null;
-    isSelf?: boolean;
+    /** false の場合はネームプレート (アバター + 名前) を描画しない。自分用。 */
+    showNameplate?: boolean;
 }
 
-export function CursorBundle({ cursorUrl, name, avatarUrl, accentColor, isSelf }: CursorBundleProps) {
+export function CursorBundle({ cursorUrl, name, avatarUrl, accentColor, showNameplate = true }: CursorBundleProps) {
     return (
         <div
             style={{
@@ -36,8 +35,8 @@ export function CursorBundle({ cursorUrl, name, avatarUrl, accentColor, isSelf }
         >
             {/* カーソル先端 (wrapper の 0, 0) */}
             <CursorIcon cursorUrl={cursorUrl} />
-            {/* ネームプレートは右下にオフセット */}
-            <Nameplate name={name} avatarUrl={avatarUrl} accentColor={accentColor} isSelf={isSelf} />
+            {/* ネームプレートは cursor の上 (リモートのみ) */}
+            {showNameplate && <Nameplate name={name} avatarUrl={avatarUrl} accentColor={accentColor} />}
         </div>
     );
 }
