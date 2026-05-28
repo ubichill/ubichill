@@ -10,6 +10,7 @@
 
 import type { CmdGrip } from '@ubichill/shared';
 import React, { createContext, useCallback, useContext, useRef, useState } from 'react';
+import { heldEntitySyncRef } from '../heldEntitySyncRef';
 
 export interface HoldState {
     /** 持っているエンティティの ComponentInstance ID */
@@ -58,9 +59,12 @@ export const HoldProvider: React.FC<{ children: React.ReactNode }> = ({ children
             };
             heldRef.current = state;
             setHeld(state);
+            // HoldProvider 外（router レベル）からも読めるよう同期
+            heldEntitySyncRef.set({ entityId: payload.entityId, share: payload.share });
         } else if (payload.action === 'release') {
             heldRef.current = null;
             setHeld(null);
+            heldEntitySyncRef.set(null);
         } else if (payload.action === 'setHover') {
             // hold より前に届くことがあるので pending に保存
             pendingHoverRef.current = { cursor: payload.cursor, heldCursor: payload.heldCursor };

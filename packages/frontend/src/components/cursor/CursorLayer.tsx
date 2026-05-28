@@ -19,11 +19,13 @@
  * (旧 avatar:cursor プラグインの役割)。
  *
  * 持っているエンティティの追従同期:
- *  - heldRef を useBroadcastCursor に渡して cursor:move に heldEntityId を含める
+ *  - useBroadcastCursor が cursor:move 送信時に HeldEntityStateRef から heldEntityId を含める
  *  - cursor:moved を受信したら HeldEntityPositionRegistry.notify で EntityRenderer に伝達
+ *  ※ CursorLayer は HoldProvider の外側（router レベル）で動くため、
+ *    useHold() ではなくモジュールレベルの HeldEntityStateRef / HeldEntityPositionRegistry を使う
  */
 
-import { useHold, useSocket } from '@ubichill/sdk/react';
+import { useSocket } from '@ubichill/sdk/react';
 import { useEffect } from 'react';
 import { useSession } from '@/lib/auth-client';
 import { HeldEntityPositionRegistry } from '@/instance/HeldEntityPositionRegistry';
@@ -35,7 +37,6 @@ import { useScrollWorldEl } from './useScrollWorldEl';
 export function CursorLayer() {
     const session = useSession();
     const { users, currentUser, isConnected, socket } = useSocket();
-    const { heldRef } = useHold();
     const scrollEl = useScrollWorldEl();
 
     const selfCursorUrl = currentUser?.cursorUrl ?? null;
@@ -48,8 +49,8 @@ export function CursorLayer() {
     }, [selfCursorUrl]);
 
     // 自分のカーソル位置を他人へブロードキャスト (インスタンス参加中のみ実効)
-    // heldRef を渡して cursor:move に heldEntityId を含める
-    useBroadcastCursor(scrollEl, heldRef);
+    // HeldEntityStateRef 経由で heldEntityId を cursor:move に含める
+    useBroadcastCursor(scrollEl);
 
     // cursor:moved を受信したら HeldEntityPositionRegistry に通知する
     // → EntityRenderer が DOM を直接更新して追従を実現する（React 再レンダーなし）

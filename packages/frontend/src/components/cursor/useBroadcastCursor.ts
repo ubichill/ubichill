@@ -1,5 +1,4 @@
-import type { HoldState } from '@ubichill/sdk/react';
-import { useSocket } from '@ubichill/sdk/react';
+import { heldEntitySyncRef, useSocket } from '@ubichill/sdk/react';
 import { useEffect, useRef } from 'react';
 
 /**
@@ -20,14 +19,12 @@ import { useEffect, useRef } from 'react';
  *
  * currentUser が未確定 (= インスタンス未参加) の間は送信しない。
  *
- * heldRef: HoldContext の ref。cursor:move に heldEntityId を含めて
- * 他ユーザーに「今持っているエンティティ」を伝える。
+ * heldEntityId:
+ *  HeldEntityStateRef.getHeldState() で現在の hold 状態を取得し、
+ *  share !== 'local' の場合に cursor:move へ含める。
+ *  CursorLayer は HoldProvider の外側で動くため React Context は使わない。
  */
-export function useBroadcastCursor(
-    scrollEl: HTMLElement | null,
-    heldRef: React.RefObject<HoldState | null>,
-    throttleMs = 50,
-): void {
+export function useBroadcastCursor(scrollEl: HTMLElement | null, throttleMs = 50): void {
     const { currentUser, updatePosition } = useSocket();
 
     // listener 内から最新値を読むため ref で保持 (subscribe コスト 0)
@@ -51,8 +48,9 @@ export function useBroadcastCursor(
             lastSentAt.current = now;
             const sx = scrollEl?.scrollLeft ?? 0;
             const sy = scrollEl?.scrollTop ?? 0;
-            const held = heldRef.current;
-            // share !== 'local' の場合のみ heldEntityId を含める
+            // heldEntitySyncRef からモジュールレベルで held 状態を読む
+            // (HoldProvider の外でも動作するようにするため React Context は使わない)
+            const held = heldEntitySyncRef.get();
             const heldEntityId =
                 held && held.share !== 'local' ? held.entityId : held === null ? null : undefined;
             updatePositionRef.current({ x: v.x + sx, y: v.y + sy }, undefined, heldEntityId);
@@ -69,5 +67,5 @@ export function useBroadcastCursor(
             window.removeEventListener('pointermove', onMove);
             scrollEl?.removeEventListener('scroll', send);
         };
-    }, [scrollEl, throttleMs, heldRef]);
+    }, [scrollEl, throttleMs]);
 }
