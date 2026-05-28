@@ -58,14 +58,22 @@ export interface AppAvatarDef {
 
 /**
  * ユーザー情報
+ *
+ * 画像系フィールドは「プロフィール画像」と「カーソル画像」を別ものとして扱う:
+ *  - `avatarUrl`: ネームプレート / プロフィールページ / 設定画面に出る顔写真
+ *  - `cursorUrl`: マウス先端に重ねる小型アイコン (ユーザーごとに自由設定)
+ * どちらも null 可。未設定時は本体側がデフォルト SVG で代替する。
  */
 export interface User {
     id: string;
     name: string;
+    /** プロフィール画像 URL (ネームプレートやユーザーページに表示) */
     avatarUrl?: string;
-    /** @deprecated Use avatar.states.default instead */
+    /** カーソル先端に重ねる画像 URL (avatarUrl とは別物・別に設定できる) */
     cursorUrl?: string | null;
+    /** @deprecated 旧 avatar plugin の多状態カーソル定義。新規開発では使わない。 */
     avatar?: AppAvatarDef;
+    /** @deprecated 旧 avatar plugin が使っていた CSS cursor state。 */
     cursorState?: CursorState;
     status: UserStatus;
     position: CursorPosition;
