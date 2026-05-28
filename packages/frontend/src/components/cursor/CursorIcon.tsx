@@ -1,13 +1,15 @@
 /**
- * CursorIcon — マウス先端 (viewport の x, y) に重ねる小型カーソル画像。
+ * CursorIcon — マウス先端 (viewport の x, y) に重ねるカーソル画像。
  *
  * 役割の区別:
- *  - これは「カーソルそのもの」を置き換える視覚要素 (user.cursorUrl)
+ *  - これは「カーソルそのもの」(user.cursorUrl)
  *  - 名前/プロフィール画像は <Nameplate> 側 (user.avatarUrl) が担当
  *
- * `cursorUrl` 未設定時は OS のデフォルト矢印で代用するため何も描画しない。
- * 設定時は OS カーソルを CSS で消して二重表示を避ける (CursorLayer 側で制御)。
+ * `cursorUrl` が未設定でも DefaultCursorIcon (矢印 SVG) にフォールバックする。
+ * OS カーソルは CursorLayer 側で常時非表示にしているので、必ず何かが見える。
  */
+
+import { DefaultCursorIcon } from './DefaultCursorIcon';
 
 interface CursorIconProps {
     x: number;
@@ -21,25 +23,30 @@ interface CursorIconProps {
 const DEFAULT_SIZE = 24;
 
 export function CursorIcon({ x, y, cursorUrl, size = DEFAULT_SIZE, zIndex = 10000 }: CursorIconProps) {
-    if (!cursorUrl) return null;
     return (
-        <img
-            src={cursorUrl}
-            alt=""
+        <div
             style={{
                 position: 'fixed',
                 left: x,
                 top: y,
                 width: size,
                 height: size,
-                // 多くのカーソル画像は左上が先端 (hotspot)。要件が増えたら hotspot offset を追加する。
-                transform: 'translate(0, 0)',
                 pointerEvents: 'none',
                 zIndex,
                 userSelect: 'none',
-                imageRendering: 'auto',
+                // 多くのカーソル画像は (0,0) が先端 (hotspot)。要件が増えたら hotspot offset を追加する。
             }}
-            draggable={false}
-        />
+        >
+            {cursorUrl ? (
+                <img
+                    src={cursorUrl}
+                    alt=""
+                    style={{ width: '100%', height: '100%', imageRendering: 'auto', display: 'block' }}
+                    draggable={false}
+                />
+            ) : (
+                <DefaultCursorIcon size={size} />
+            )}
+        </div>
     );
 }

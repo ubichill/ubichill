@@ -7,13 +7,14 @@
  *   │ Nameplate (user.avatarUrl + user.name) ← オフセット表示    │
  *   └─────────────────────────────────────────────────────────┘
  *
- * - ロビー / エディター / インスタンス、どこでも自分のネームプレートが付いてくる。
- * - インスタンス内のときだけ追加で他ユーザー (socket presence) を描画する。
- * - `cursorUrl` が設定されているユーザーは OS デフォルトカーソルを CSS で隠す
- *   (二重カーソル防止)。これは自分にだけ適用する (他人の OS カーソルは隠せないので)。
+ * - ロビー / エディター / インスタンス、どこでも自分のネームプレート + カーソルが付いてくる
+ * - インスタンス内のときだけ追加で他ユーザー (socket presence) を描画する
+ * - OS カーソルは常時非表示 (CursorIcon が cursorUrl または DefaultCursorIcon を必ず描画する)
+ * - 自分のカーソル位置はインスタンス内で他ユーザーに socket 経由でブロードキャストする
+ *   (旧 avatar:cursor プラグインがやっていた役割)
  *
  * 旧 avatar:cursor プラグインの責務を本体に取り込んだもの。プラグインの有無に依らず
- * 常に名前 + 仮アバター + 仮カーソルが見える。アバター / カーソル画像の選択 UI は別 PR。
+ * 常に名前 + 仮アバター + 仮カーソルが見える。選択 UI は別 PR。
  */
 
 import { useSocket } from '@ubichill/sdk/react';
@@ -21,6 +22,7 @@ import { useEffect } from 'react';
 import { useSession } from '@/lib/auth-client';
 import { CursorIcon } from './CursorIcon';
 import { Nameplate } from './Nameplate';
+import { useBroadcastCursor } from './useBroadcastCursor';
 import { useLocalCursor } from './useLocalCursor';
 import { useWorldScroll } from './useWorldScroll';
 
@@ -37,15 +39,19 @@ export function CursorLayer() {
     const selfAccent = currentUser?.penColor ?? null;
     const selfId = currentUser?.id ?? session.data?.user?.id;
 
-    // cursorUrl 設定時は OS カーソルを消す (自分のみ)
+    // OS カーソルは常時消す: CursorIcon が必ず何かを描画する (DefaultCursorIcon 含む) ので
+    // 二重カーソルにならない。テキスト入力等の I-beam も犠牲になるが、コラボアプリでは
+    // 自分も他人も同じ視覚モデル (custom cursor) で揃える方が一貫性が高い (Figma 系の判断)。
     useEffect(() => {
-        if (!selfCursorUrl) return;
         const prev = document.body.style.cursor;
         document.body.style.cursor = 'none';
         return () => {
             document.body.style.cursor = prev;
         };
-    }, [selfCursorUrl]);
+    }, []);
+
+    // 自分のカーソル位置を他ユーザーへブロードキャスト (インスタンス参加中のみ実効)
+    useBroadcastCursor(localCursor, scroll);
 
     return (
         <>
