@@ -1,4 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { CursorLayer } from './components/cursor/CursorLayer';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { VersionBadge } from './components/VersionBadge';
 import { AuthPage } from './pages/AuthPage';
@@ -70,6 +71,7 @@ export function AppRouter() {
                 <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
             <VersionBadge />
+            <CursorLayer />
         </BrowserRouter>
     );
 }

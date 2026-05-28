@@ -54,7 +54,6 @@ function createInitialDefinition(): WorldDefinition {
                 worldSize: { width: 2000, height: 1500 },
             },
             dependencies: [
-                { name: 'avatar', source: { type: 'repository', path: 'plugins/avatar' } },
                 { name: 'pen', source: { type: 'repository', path: 'plugins/pen' } },
                 { name: 'video-player', source: { type: 'repository', path: 'plugins/video-player' } },
             ],

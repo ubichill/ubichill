@@ -30,19 +30,14 @@ spec:
       source:
         type: repository
         path: "plugins/video-player"
-    - name: avatar
-      source:
-        type: repository
-        path: "plugins/avatar"
 
   # 初期 GameObject（id + transform + components[]）
   #
   # ── z-index レイヤー構成 ──────────────────────────────────────
   # transform.z が GenericPluginHost の CSS zIndex に直接対応する。
   # pointer-events: none のプラグインは視覚的に上にあっても UI 操作を妨げない。
+  # カーソル/ネームプレートはプラグインではなく本体 (packages/frontend) が描画する。
   #
-  #  z=10100  avatar:cursor        カーソル（最前面・常時表示）
-  #  z= 9998  avatar:settings      アバター設定パネル
   #  z= 5000  pen:canvas           描画レイヤー
   #  z= 1001  pen:pen              ペン本体（tray より前面でクリック可）
   #  z= 1000  pen:tray             ペントレイ UI（背景の枠のみ）
@@ -103,29 +98,6 @@ spec:
           components:
             - type: "video-player:search"
               data: {}
-
-    # ── アバター（カーソル + 設定）──────────────────────────────
-    - id: avatar-cursor
-      transform:
-        x: 0
-        y: 0
-        z: 10100
-        scale: 1
-        rotation: 0
-      components:
-        - type: "avatar:cursor"
-          data: {}
-
-    - id: avatar-settings
-      transform:
-        x: 20
-        y: 100
-        z: 9998
-        scale: 1
-        rotation: 0
-      components:
-        - type: "avatar:settings"
-          data: {}
 
     # ── ペントレイ A (暖色): tray は容器、pen:pen は独立 Entity ────
     # tray はもうペンを管理しない。各 pen:pen が自分で表示・選択を扱う。

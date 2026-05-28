@@ -2,9 +2,6 @@ import type { WidgetDefinition, WorkerPluginDefinition } from '@ubichill/sdk/rea
 import { isWorkerPlugin } from '@ubichill/sdk/react';
 import type React from 'react';
 import { createContext, useCallback, useContext, useRef, useState } from 'react';
-import { attachAvatarCursorHostBridge } from './avatarCursorHostBridge';
-import { attachAvatarHostBridge } from './avatarHostBridge';
-import { PLUGIN_LOADERS } from './registry';
 
 // ============================================
 // plugin.json 自動ローダー
@@ -138,7 +135,7 @@ async function loadWorkerPlugin(entityType: string): Promise<WorkerPluginDefinit
         fetchDomains: entry.fetchDomains,
         pluginBase: versionedBase,
     };
-    return attachAvatarHostBridge(attachAvatarCursorHostBridge(def));
+    return def;
 }
 
 // ============================================
@@ -214,18 +211,12 @@ export const PluginRegistryProvider: React.FC<{ children: React.ReactNode }> = (
                         addPlugin(def);
                         return;
                     }
-                    // フォールバック: 静的 PLUGIN_LOADERS（CE ベースの非 Worker プラグイン）
-                    const loader = PLUGIN_LOADERS[entityType];
-                    if (!loader) {
-                        loadingRef.current.delete(entityType);
-                        return;
-                    }
-                    return loader()
-                        .then(addPlugin)
-                        .catch((err: unknown) => {
-                            console.error(`[PluginRegistry] Failed to load plugin: ${entityType}`, err);
-                            loadingRef.current.delete(entityType);
-                        });
+                    // manifest が無い or workerUrl 無し → 古い YAML が削除済みプラグインを参照している。
+                    // graceful skip: 警告だけ出して silently 無視する (他の Entity の表示は阻害しない)。
+                    console.warn(
+                        `[PluginRegistry] component "${entityType}" のプラグインが見つかりませんでした。スキップします。`,
+                    );
+                    loadingRef.current.delete(entityType);
                 })
                 .catch((err) => {
                     console.error(`[PluginRegistry] Failed to load plugin: ${entityType}`, err);
