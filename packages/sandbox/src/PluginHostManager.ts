@@ -453,7 +453,12 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
         });
 
         if (options.capabilities) {
-            this.allowedCommands = new Set(['CMD_LOG']);
+            // CMD_LOG / CMD_READY / CMD_GRIP は capability 宣言なしで常に許可する。
+            // - CMD_LOG: デバッグログ（制限すると開発体験が著しく悪化）
+            // - CMD_READY: Worker の初期化通知（必須）
+            // - CMD_GRIP: SDK コアの「掴む」機能。capability 不要（pen.worker 等が普通に使う）
+            this.allowedCommands = new Set(['CMD_LOG', 'CMD_READY', 'CMD_GRIP']);
+
             for (const cap of options.capabilities) {
                 for (const cmd of CAPABILITY_COMMANDS[cap] ?? []) {
                     this.allowedCommands.add(cmd);
