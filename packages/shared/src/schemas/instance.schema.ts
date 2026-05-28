@@ -125,6 +125,8 @@ export const WorldListItemSchema = z.object({
         default: z.number(),
         max: z.number(),
     }),
+    createdAt: z.string().datetime().optional(),
+    updatedAt: z.string().datetime().optional(),
 });
 
 export type WorldListItem = z.infer<typeof WorldListItemSchema>;

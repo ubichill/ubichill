@@ -7,6 +7,45 @@ import { InstanceCard } from './InstanceCard';
 import { useInstances } from './useInstances';
 import { WorldCard } from './WorldCard';
 
+type SortKey = 'name_asc' | 'name_desc' | 'createdAt_desc' | 'createdAt_asc' | 'updatedAt_desc' | 'updatedAt_asc';
+
+const SORT_LABELS: Record<SortKey, string> = {
+    name_asc: '名前：A→Z',
+    name_desc: '名前：Z→A',
+    createdAt_desc: '作成日：新しい順',
+    createdAt_asc: '作成日：古い順',
+    updatedAt_desc: '更新日：新しい順',
+    updatedAt_asc: '更新日：古い順',
+};
+
+const SORT_STORAGE_KEY = 'ubichill_world_sort';
+const DEFAULT_SORT: SortKey = 'updatedAt_desc';
+
+function sortWorlds(worlds: WorldListItem[], key: SortKey): WorldListItem[] {
+    return [...worlds].sort((a, b) => {
+        switch (key) {
+            case 'name_asc':
+                return a.displayName.localeCompare(b.displayName, 'ja');
+            case 'name_desc':
+                return b.displayName.localeCompare(a.displayName, 'ja');
+            case 'createdAt_desc':
+            case 'createdAt_asc': {
+                const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                return key === 'createdAt_desc' ? tb - ta : ta - tb;
+            }
+            case 'updatedAt_desc':
+            case 'updatedAt_asc': {
+                const ta = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+                const tb = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+                return key === 'updatedAt_desc' ? tb - ta : ta - tb;
+            }
+            default:
+                return 0;
+        }
+    });
+}
+
 interface LobbyProps {
     onJoinInstance: (instanceId: string, worldId: string) => void;
 }
@@ -15,8 +54,20 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
     const navigate = useNavigate();
     const { instances, worlds, loading, error, createInstance, refreshInstances, refreshWorlds } = useInstances();
     const [selectedWorldId, setSelectedWorldId] = useState<string | null>(null);
-    const [orderedWorlds, setOrderedWorlds] = useState<WorldListItem[]>([]);
     const [creating, setCreating] = useState(false);
+
+    // ソートキーを localStorage で永続化
+    const [sortKey, setSortKey] = useState<SortKey>(() => {
+        const stored = localStorage.getItem(SORT_STORAGE_KEY);
+        return (stored as SortKey | null) ?? DEFAULT_SORT;
+    });
+
+    const handleSortChange = useCallback((key: SortKey) => {
+        setSortKey(key);
+        localStorage.setItem(SORT_STORAGE_KEY, key);
+    }, []);
+
+    const sortedWorlds = useMemo(() => sortWorlds(worlds, sortKey), [worlds, sortKey]);
 
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [pullOffset, setPullOffset] = useState(0);
@@ -27,13 +78,9 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
     const PULL_THRESHOLD = 60;
 
     const selectedWorld = useMemo(
-        () => orderedWorlds.find((world) => world.id === selectedWorldId) ?? null,
-        [orderedWorlds, selectedWorldId],
+        () => sortedWorlds.find((world) => world.id === selectedWorldId) ?? null,
+        [sortedWorlds, selectedWorldId],
     );
-
-    useEffect(() => {
-        setOrderedWorlds(worlds);
-    }, [worlds]);
 
     const refreshCurrentView = useCallback(async () => {
         setIsRefreshing(true);
@@ -74,28 +121,6 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
             setCreating(false);
         }
     }, [selectedWorldId, creating, createInstance, onJoinInstance]);
-
-    const handleMoveWorld = useCallback(
-        async (index: number, direction: -1 | 1) => {
-            const next = [...orderedWorlds];
-            const target = index + direction;
-            if (target < 0 || target >= next.length) return;
-            [next[index], next[target]] = [next[target], next[index]];
-            setOrderedWorlds(next);
-            try {
-                const res = await fetch(`${API_BASE}/api/v1/worlds/order`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'include',
-                    body: JSON.stringify({ order: next.map((w) => w.id) }),
-                });
-                if (!res.ok) throw new Error(`${res.status}`);
-            } catch {
-                setOrderedWorlds(orderedWorlds);
-            }
-        },
-        [orderedWorlds],
-    );
 
     const handleTouchStart = useCallback((e: React.TouchEvent) => {
         if (scrollRef.current && scrollRef.current.scrollTop <= 0) {
@@ -263,10 +288,40 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                                 fontWeight: '700',
                                 color: 'text',
                                 minW: 0,
+                                flex: 1,
                             })}
                         >
                             {selectedWorld ? selectedWorld.displayName : 'ワールド選択'}
                         </h1>
+                        {!selectedWorld && (
+                            <select
+                                id="world-sort-select"
+                                value={sortKey}
+                                onChange={(e) => handleSortChange(e.target.value as SortKey)}
+                                aria-label="ソート条件"
+                                className={css({
+                                    fontSize: '12px',
+                                    color: 'textMuted',
+                                    bg: 'surface',
+                                    border: '1px solid',
+                                    borderColor: 'border',
+                                    borderRadius: '8px',
+                                    px: '8px',
+                                    py: '5px',
+                                    cursor: 'pointer',
+                                    outline: 'none',
+                                    flexShrink: 0,
+                                    _hover: { borderColor: 'borderStrong' },
+                                    _focus: { borderColor: 'primary' },
+                                })}
+                            >
+                                {(Object.keys(SORT_LABELS) as SortKey[]).map((key) => (
+                                    <option key={key} value={key}>
+                                        {SORT_LABELS[key]}
+                                    </option>
+                                ))}
+                            </select>
+                        )}
                     </div>
 
                     {error && (
@@ -487,15 +542,11 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                                         gap: '16px',
                                     })}
                                 >
-                                    {orderedWorlds.map((world, i) => (
+                                    {sortedWorlds.map((world) => (
                                         <WorldCard
                                             key={world.id}
                                             world={world}
                                             onNavigate={(worldId) => void handleSelectWorld(worldId)}
-                                            onMoveUp={() => handleMoveWorld(i, -1)}
-                                            onMoveDown={() => handleMoveWorld(i, 1)}
-                                            isFirst={i === 0}
-                                            isLast={i === orderedWorlds.length - 1}
                                         />
                                     ))}
                                 </div>
