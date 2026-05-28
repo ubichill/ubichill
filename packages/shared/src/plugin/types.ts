@@ -321,6 +321,39 @@ export type CmdMediaDestroy = { type: 'MEDIA_DESTROY'; payload: { targetId: stri
 /** Ubi.media.setVisible(visible, targetId?) — video 要素の表示/非表示 */
 export type CmdMediaSetVisible = { type: 'MEDIA_SET_VISIBLE'; payload: { targetId: string; visible: boolean } };
 
+
+/**
+ * Ubi.grip.exclusive() が hold/release/setHover の変化をホストに通知する。
+ * Fire & Forget: capability 不要。
+ *
+ * action:
+ *  'hold'     — エンティティを持った。offset/slot でカーソル追従を開始する。
+ *  'release'  — エンティティを離した。カーソル追従を終了する。
+ *  'setHover' — ホバー時・保持時の CSS cursor style を設定する。
+ */
+export type CmdGrip = {
+    type: 'CMD_GRIP';
+    payload:
+        | {
+              action: 'hold';
+              /** 保持する ComponentInstance ID */
+              entityId: string;
+              /** カーソル位置からの X オフセット (px)。負値は左寄り */
+              offsetX: number;
+              /** カーソル位置からの Y オフセット (px) */
+              offsetY: number;
+              /**
+               * スロット名。現在は 'default' のみ実装。
+               * 将来: 'right-hand' / 'left-hand' でアバターアタッチポイント対応。
+               */
+              slot: string;
+              /** 同期範囲。share: 'local' ならホストは lockedBy パッチを送らない */
+              share: 'local' | 'presence' | 'persistent';
+          }
+        | { action: 'release'; entityId: string }
+        | { action: 'setHover'; cursor: string; heldCursor: string };
+};
+
 /** Guest → Host コマンドのユニオン型 */
 export type PluginGuestCommand =
     | CmdReady
@@ -347,7 +380,8 @@ export type PluginGuestCommand =
     | CmdMediaSeek
     | CmdMediaSetVolume
     | CmdMediaDestroy
-    | CmdMediaSetVisible;
+    | CmdMediaSetVisible
+    | CmdGrip;
 
 /** 後方互換エイリアス */
 export type PluginCommand = PluginGuestCommand;

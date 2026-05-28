@@ -23,7 +23,7 @@ export interface SocketContextValue {
     error: string | null;
     joinWorld: (name: string, worldId: string, instanceId: string, onError?: (error: string) => void) => void;
     leaveWorld: () => void;
-    updatePosition: (position: CursorPosition, state?: CursorState) => void;
+    updatePosition: (position: CursorPosition, state?: CursorState, heldEntityId?: string | null) => void;
     updateStatus: (status: UserStatus) => void;
     updateUser: (patch: Partial<User>) => void;
 }
@@ -121,7 +121,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             });
         });
 
-        socket.on('cursor:moved', ({ userId, position, state }) => {
+        socket.on('cursor:moved', ({ userId, position, state, heldEntityId }) => {
             setUsers((prev) => {
                 const user = prev.get(userId);
                 if (!user) return prev;
@@ -132,6 +132,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     ...user,
                     position,
                     ...(state !== undefined && { cursorState: state }),
+                    ...(heldEntityId !== undefined && { heldEntityId }),
                 });
                 return newMap;
             });
@@ -213,15 +214,24 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     );
 
     const updatePosition = useCallback(
-        (position: CursorPosition, state?: CursorState) => {
+        (position: CursorPosition, state?: CursorState, heldEntityId?: string | null) => {
             const socket = socketRef.current;
             if (!socket || !isConnected) return;
 
-            socket.emit('cursor:move', { position, state });
+            socket.emit('cursor:move', {
+                position,
+                state,
+                ...(heldEntityId !== undefined && { heldEntityId }),
+            });
 
             if (currentUser) {
-                // ローカルのcurrentUserも更新
-                setCurrentUser({ ...currentUser, position, ...(state !== undefined && { cursorState: state }) });
+                // ローカルの currentUser も更新
+                setCurrentUser({
+                    ...currentUser,
+                    position,
+                    ...(state !== undefined && { cursorState: state }),
+                    ...(heldEntityId !== undefined && { heldEntityId }),
+                });
             }
         },
         [isConnected, currentUser],

@@ -29,6 +29,7 @@ import {
 } from '../lib/entityScope';
 import type { WorkerPluginDefinition } from '../types';
 import { usePluginWorker } from '../usePluginWorker';
+import { HoldProvider, useHold } from './HoldContext';
 import { PluginUIMount } from './PluginUIMount';
 
 export interface WorkerPluginHostProps {
@@ -39,14 +40,19 @@ export interface WorkerPluginHostProps {
 
 export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, entity, definition }) => {
     const { users, currentUser, updatePosition, updateUser } = useSocket();
-    const { entities } = useWorld();
+    const { entities, patchEntity } = useWorld();
+    const { handleGripCommand } = useHold();
     const hostDivRef = useRef<HTMLDivElement>(null);
 
     const updatePositionRef = useRef(updatePosition);
     const updateUserRef = useRef(updateUser);
+    const patchEntityRef = useRef(patchEntity);
+    const currentUserRef = useRef(currentUser);
     useEffect(() => {
         updatePositionRef.current = updatePosition;
         updateUserRef.current = updateUser;
+        patchEntityRef.current = patchEntity;
+        currentUserRef.current = currentUser;
     });
 
     // ── onNetworkBroadcast は usePluginWorker より後に確定するため ref で橋渡し ──
@@ -110,6 +116,25 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
                     scope,
                     targetType,
                 }),
+            onGripCommand: (payload) => {
+                    handleGripCommand(payload);
+                    // persistent share: lockedBy をサーバー永続化
+                    if (payload.action === 'hold' && payload.share === 'persistent') {
+                        const myId = currentUserRef.current?.id ?? null;
+                        patchEntityRef.current(payload.entityId, {
+                            lockedBy: myId,
+                            data: { isHeld: true },
+                        });
+                        // user:update で heldEntityId を同期（cursor:move でも送るが初期値として）
+                        updateUserRef.current({ heldEntityId: payload.entityId });
+                    } else if (payload.action === 'release') {
+                        patchEntityRef.current(payload.entityId, {
+                            lockedBy: null,
+                            data: { isHeld: false },
+                        });
+                        updateUserRef.current({ heldEntityId: null });
+                    }
+                },
             onMessage: (msg) => {
                 const m = msg as { type: string; payload: unknown };
                 if (m.type === 'position:update') {

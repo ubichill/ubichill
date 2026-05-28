@@ -92,6 +92,14 @@ export class UserManager {
         if ('cursorState' in patch && patch.cursorState !== undefined) {
             safePatch.cursorState = patch.cursorState;
         }
+        // penColor: ペンプラグインが設定・解除する（null も許可）
+        if ('penColor' in patch) {
+            safePatch.penColor = patch.penColor ?? null;
+        }
+        // heldEntityId: Ubi.grip が hold/release 時に更新する（null も許可）
+        if ('heldEntityId' in patch) {
+            safePatch.heldEntityId = patch.heldEntityId ?? null;
+        }
 
         // オブジェクトを更新
         const updatedUser = {

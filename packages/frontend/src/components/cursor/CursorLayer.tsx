@@ -17,11 +17,16 @@
  *
  * 自分のカーソル位置は pointermove + scroll の両方をトリガに socket 配信
  * (旧 avatar:cursor プラグインの役割)。
+ *
+ * 持っているエンティティの追従同期:
+ *  - heldRef を useBroadcastCursor に渡して cursor:move に heldEntityId を含める
+ *  - cursor:moved を受信したら HeldEntityPositionRegistry.notify で EntityRenderer に伝達
  */
 
-import { useSocket } from '@ubichill/sdk/react';
+import { useHold, useSocket } from '@ubichill/sdk/react';
 import { useEffect } from 'react';
 import { useSession } from '@/lib/auth-client';
+import { HeldEntityPositionRegistry } from '@/instance/HeldEntityPositionRegistry';
 import { applyCursorStyles, removeCursorStyles } from './cursorImages';
 import { RemoteCursorsPortal } from './RemoteCursorsPortal';
 import { useBroadcastCursor } from './useBroadcastCursor';
@@ -29,7 +34,8 @@ import { useScrollWorldEl } from './useScrollWorldEl';
 
 export function CursorLayer() {
     const session = useSession();
-    const { users, currentUser, isConnected } = useSocket();
+    const { users, currentUser, isConnected, socket } = useSocket();
+    const { heldRef } = useHold();
     const scrollEl = useScrollWorldEl();
 
     const selfCursorUrl = currentUser?.cursorUrl ?? null;
@@ -42,9 +48,38 @@ export function CursorLayer() {
     }, [selfCursorUrl]);
 
     // 自分のカーソル位置を他人へブロードキャスト (インスタンス参加中のみ実効)
-    useBroadcastCursor(scrollEl);
+    // heldRef を渡して cursor:move に heldEntityId を含める
+    useBroadcastCursor(scrollEl, heldRef);
 
-    // 自分の cursor は CSS 側で描画されているので JSX には何も無い (ラグ無し)。
-    // リモートユーザーぶんだけ JS で overlay する。
-    return isConnected && scrollEl ? <RemoteCursorsPortal scrollEl={scrollEl} users={users} selfId={selfId} /> : null;
+    // cursor:moved を受信したら HeldEntityPositionRegistry に通知する
+    // → EntityRenderer が DOM を直接更新して追従を実現する（React 再レンダーなし）
+    useEffect(() => {
+        if (!socket) return;
+        const handler = ({
+            userId,
+            position,
+            heldEntityId,
+        }: {
+            userId: string;
+            position: { x: number; y: number };
+            heldEntityId?: string | null;
+        }) => {
+            if (!heldEntityId || userId === selfId) return;
+            // viewport 座標 = world 座標 - scroll
+            const sx = scrollEl?.scrollLeft ?? 0;
+            const sy = scrollEl?.scrollTop ?? 0;
+            // オフセット: デフォルトで左側に -24px
+            HeldEntityPositionRegistry.notify(heldEntityId, position.x - sx - 24, position.y - sy);
+        };
+        socket.on('cursor:moved', handler);
+        return () => {
+            socket.off('cursor:moved', handler);
+        };
+    }, [socket, selfId, scrollEl]);
+
+    // 自分のカーソル位置: OS コンポジタが描画するため JSX には何もない。
+    // リモートユーザー分だけ JS で overlay する。
+    return isConnected && scrollEl ? (
+        <RemoteCursorsPortal scrollEl={scrollEl} users={users} selfId={selfId} />
+    ) : null;
 }

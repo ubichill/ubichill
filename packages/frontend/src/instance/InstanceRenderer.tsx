@@ -1,5 +1,5 @@
 import type { WorkerPluginDefinition } from '@ubichill/sdk/react';
-import { isWorkerPlugin, useSocket, useWorld, WorkerPluginHost } from '@ubichill/sdk/react';
+import { HoldProvider, isWorkerPlugin, useSocket, useWorld, WorkerPluginHost } from '@ubichill/sdk/react';
 import type { ComponentInstance } from '@ubichill/shared';
 import { useMemo } from 'react';
 import { usePluginRegistry } from '@/plugins/PluginRegistryContext';
@@ -38,48 +38,50 @@ export const InstanceRenderer: React.FC = () => {
     }
 
     return (
-        <div
-            data-scroll-world
-            style={{
-                position: 'fixed',
-                inset: 0,
-                overflow: 'auto',
-                backgroundColor: environment.backgroundColor,
-                zIndex: Z_INDEX.INSTANCE_FRAME,
-            }}
-        >
+        <HoldProvider>
             <div
+                data-scroll-world
                 style={{
-                    position: 'relative',
-                    width: worldWidth,
-                    height: worldHeight,
-                    minWidth: '100%',
-                    minHeight: '100%',
+                    position: 'fixed',
+                    inset: 0,
+                    overflow: 'auto',
+                    backgroundColor: environment.backgroundColor,
+                    zIndex: Z_INDEX.INSTANCE_FRAME,
                 }}
             >
-                {renderEntities}
-                {singletonWorkerPlugins.map((plugin) => {
-                    const def = plugin as WorkerPluginDefinition;
-                    const entity = Array.from(entities.values()).find((e) => e.type === def.id) ?? FALLBACK_ENTITY;
-                    const { x, y, z, w, h } = entity.transform;
-                    return (
-                        <div
-                            key={def.id}
-                            style={{
-                                position: 'absolute',
-                                left: x,
-                                top: y,
-                                zIndex: z || undefined,
-                                width: w > 0 ? w : undefined,
-                                height: h > 0 ? h : undefined,
-                                pointerEvents: 'none',
-                            }}
-                        >
-                            <WorkerPluginHost entityId={`singleton:${def.id}`} entity={entity} definition={def} />
-                        </div>
-                    );
-                })}
+                <div
+                    style={{
+                        position: 'relative',
+                        width: worldWidth,
+                        height: worldHeight,
+                        minWidth: '100%',
+                        minHeight: '100%',
+                    }}
+                >
+                    {renderEntities}
+                    {singletonWorkerPlugins.map((plugin) => {
+                        const def = plugin as WorkerPluginDefinition;
+                        const entity = Array.from(entities.values()).find((e) => e.type === def.id) ?? FALLBACK_ENTITY;
+                        const { x, y, z, w, h } = entity.transform;
+                        return (
+                            <div
+                                key={def.id}
+                                style={{
+                                    position: 'absolute',
+                                    left: x,
+                                    top: y,
+                                    zIndex: z || undefined,
+                                    width: w > 0 ? w : undefined,
+                                    height: h > 0 ? h : undefined,
+                                    pointerEvents: 'none',
+                                }}
+                            >
+                                <WorkerPluginHost entityId={`singleton:${def.id}`} entity={entity} definition={def} />
+                            </div>
+                        );
+                    })}
+                </div>
             </div>
-        </div>
+        </HoldProvider>
     );
 };

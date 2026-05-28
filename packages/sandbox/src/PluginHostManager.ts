@@ -81,6 +81,7 @@ const CMD_TO_HANDLER = {
     MEDIA_SET_VOLUME: 'onMediaSetVolume',
     MEDIA_DESTROY: 'onMediaDestroy',
     MEDIA_SET_VISIBLE: 'onMediaSetVisible',
+    CMD_GRIP: 'onGripCommand',
 } as const satisfies Partial<Record<string, keyof HostHandlers>>;
 
 // ============================================================
@@ -118,6 +119,8 @@ export type HostHandlers<TPayloadMap extends Record<string, unknown> = Record<st
         activeStroke: import('@ubichill/shared').CanvasStrokeData | null,
         cursors: import('@ubichill/shared').CanvasCursorData[],
     ) => void;
+    /** Worker が Ubi.grip の hold/release/setHover を呼んだときに発火する */
+    onGripCommand?: (payload: import('@ubichill/shared').CmdGrip['payload']) => void;
     /** Worker が Ubi.canvas.commitStroke() を呼んだときに発火する */
     onCanvasCommitStroke?: (targetId: string, stroke: import('@ubichill/shared').CanvasStrokeData) => void;
     /** Worker が Ubi.media.load() を呼んだときに発火する */
@@ -699,6 +702,9 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
                     break;
                 case 'MEDIA_SET_VISIBLE':
                     this.handlers.onMediaSetVisible?.(command.payload.targetId, command.payload.visible);
+                    break;
+                case 'CMD_GRIP':
+                    this.handlers.onGripCommand?.(command.payload);
                     break;
                 case 'CMD_LOG': {
                     const { level, message } = command.payload;

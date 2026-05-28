@@ -153,6 +153,22 @@ export class UbiSDK {
             getMyUserId: () => this.myUserId,
             getComponentInstanceId: () => this.componentInstanceId,
             getComponentType: () => this.componentType,
+            getEntityId: () => this.entityId,
+            listenMouseUp: (cb) => {
+                // input:mouse_up ECS イベントを one-shot で listen して press モードの自動解放に使う
+                let fired = false;
+                const events = this.event.define<{ [EcsEventType.INPUT_MOUSE_UP]: unknown }>();
+                const unsub = events.on(EcsEventType.INPUT_MOUSE_UP, () => {
+                    if (fired) return;
+                    fired = true;
+                    cb();
+                    unsub();
+                });
+                return unsub;
+            },
+            sendGripCommand: (payload) => {
+                this._send({ type: 'CMD_GRIP', payload } as Parameters<typeof this._sendToHost>[0]);
+            },
         });
     }
 

@@ -1,4 +1,6 @@
 export { PluginUIMount } from './components/PluginUIMount';
+export type { HoldState } from './components/HoldContext';
+export { HoldProvider, useHold } from './components/HoldContext';
 export type { WorkerPluginHostProps } from './components/WorkerPluginHost';
 export { WorkerPluginHost } from './components/WorkerPluginHost';
 export { useCursorPosition } from './hooks/useCursorPosition';

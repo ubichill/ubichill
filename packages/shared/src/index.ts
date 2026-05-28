@@ -81,6 +81,12 @@ export interface User {
     isMenuOpen?: boolean;
     /** 現在持っているペンの色（ペンプラグインが設定・解除する） */
     penColor?: string | null;
+    /**
+     * 現在持っているエンティティの ComponentInstance ID。
+     * Ubi.grip.exclusive() が hold/release 時に更新する。
+     * share: 'local' の場合は送信しないため null のまま。
+     */
+    heldEntityId?: string | null;
 }
 
 /**
@@ -225,7 +231,7 @@ export interface ServerToClientEvents {
     'user:left': (userId: string) => void;
 
     /** ユーザーのカーソル位置更新 */
-    'cursor:moved': (data: { userId: string; position: CursorPosition; state?: CursorState }) => void;
+    'cursor:moved': (data: { userId: string; position: CursorPosition; state?: CursorState; heldEntityId?: string | null }) => void;
 
     /** ユーザーのステータス更新 */
     'status:changed': (data: { userId: string; status: UserStatus }) => void;
@@ -293,7 +299,7 @@ export interface ClientToServerEvents {
     'world:leave': () => void;
 
     /** カーソル位置を更新 */
-    'cursor:move': (data: { position: CursorPosition; state?: CursorState }) => void;
+    'cursor:move': (data: { position: CursorPosition; state?: CursorState; heldEntityId?: string | null }) => void;
 
     /** ステータスを更新 */
     'status:update': (status: UserStatus) => void;

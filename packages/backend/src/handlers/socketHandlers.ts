@@ -180,8 +180,8 @@ export function handleWorldJoin(socket: TypedSocket) {
  * カーソル移動イベントを処理
  */
 export function handleCursorMove(socket: TypedSocket) {
-    return (payload: { position: { x: number; y: number }; state?: CursorState }) => {
-        const { position, state } = payload;
+    return (payload: { position: { x: number; y: number }; state?: CursorState; heldEntityId?: string | null }) => {
+        const { position, state, heldEntityId } = payload;
         const instanceId = socket.data.instanceId;
         if (!instanceId) {
             socket.emit('error', '最初にワールドに参加する必要があります');
@@ -219,10 +219,19 @@ export function handleCursorMove(socket: TypedSocket) {
             return;
         }
 
+        // heldEntityId: 文字列なら最大64文字に制限してそのまま中継
+        const safeHeldEntityId =
+            typeof heldEntityId === 'string' && heldEntityId.length <= 64
+                ? heldEntityId
+                : heldEntityId === null
+                  ? null
+                  : undefined;
+
         socket.to(instanceId).emit('cursor:moved', {
             userId,
             position: validation.data,
             state: validatedState,
+            ...(safeHeldEntityId !== undefined && { heldEntityId: safeHeldEntityId }),
         });
     };
 }

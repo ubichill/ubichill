@@ -23,7 +23,18 @@ const pen = Ubi.state.define({
 
 // 1 ユーザー 1 本ルール (同じ pen:pen の中で 1 つだけ掴める) を SDK に委譲。
 // emit 調停・acquireEpoch・lockedBy 同期はすべて Ubi.grip 側で処理される。
-const grip = Ubi.grip.exclusive();
+//
+// GripOptions:
+//  mode: 'manual'  — クリックで掴む。pen-tray から選びなおすと release() が呼ばれる。
+//  hover: grab/grabbing — ペンにマウスを乗せると grab カーソルを表示。
+//  offset: { x: -24 } — カーソルの少し左側に表示（自然な持ち方に見える）。
+//  share: 'persistent' — lockedBy をサーバー永続化 + cursor:move で他ユーザーにも伝達。
+const grip = Ubi.grip.exclusive({
+    mode: 'manual',
+    hover: { cursor: 'grab', heldCursor: 'grabbing' },
+    offset: { x: -24, y: 0 },
+    share: 'persistent',
+});
 
 // 掴み変化に応じて host へペン色を通知 (avatar カーソルの色変えなど)
 grip.onChange((next, prev) => {

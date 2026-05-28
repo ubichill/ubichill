@@ -1,3 +1,4 @@
+import type { HoldState } from '@ubichill/sdk/react';
 import { useSocket } from '@ubichill/sdk/react';
 import { useEffect, useRef } from 'react';
 
@@ -18,8 +19,15 @@ import { useEffect, useRef } from 'react';
  * 共通の throttleMs (デフォルト 50ms) で衝突しても 1 回に集約。
  *
  * currentUser が未確定 (= インスタンス未参加) の間は送信しない。
+ *
+ * heldRef: HoldContext の ref。cursor:move に heldEntityId を含めて
+ * 他ユーザーに「今持っているエンティティ」を伝える。
  */
-export function useBroadcastCursor(scrollEl: HTMLElement | null, throttleMs = 50): void {
+export function useBroadcastCursor(
+    scrollEl: HTMLElement | null,
+    heldRef: React.RefObject<HoldState | null>,
+    throttleMs = 50,
+): void {
     const { currentUser, updatePosition } = useSocket();
 
     // listener 内から最新値を読むため ref で保持 (subscribe コスト 0)
@@ -43,7 +51,11 @@ export function useBroadcastCursor(scrollEl: HTMLElement | null, throttleMs = 50
             lastSentAt.current = now;
             const sx = scrollEl?.scrollLeft ?? 0;
             const sy = scrollEl?.scrollTop ?? 0;
-            updatePositionRef.current({ x: v.x + sx, y: v.y + sy });
+            const held = heldRef.current;
+            // share !== 'local' の場合のみ heldEntityId を含める
+            const heldEntityId =
+                held && held.share !== 'local' ? held.entityId : held === null ? null : undefined;
+            updatePositionRef.current({ x: v.x + sx, y: v.y + sy }, undefined, heldEntityId);
         };
 
         const onMove = (e: PointerEvent) => {
@@ -57,5 +69,5 @@ export function useBroadcastCursor(scrollEl: HTMLElement | null, throttleMs = 50
             window.removeEventListener('pointermove', onMove);
             scrollEl?.removeEventListener('scroll', send);
         };
-    }, [scrollEl, throttleMs]);
+    }, [scrollEl, throttleMs, heldRef]);
 }
