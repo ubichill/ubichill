@@ -85,12 +85,13 @@ export function InstancePage() {
     const [hasTimedOut, setHasTimedOut] = useState(false);
 
     useEffect(() => {
+        setHasTimedOut(false);
         if (!isConnected) return;
         const timer = setTimeout(() => {
             setHasTimedOut(true);
         }, 10000);
         return () => clearTimeout(timer);
-    }, [isConnected]);
+    }, [isConnected, id]);
 
     // Initial wait to ensure components are mounted and have a chance to register
     const [initialWaitDone, setInitialWaitDone] = useState(false);
