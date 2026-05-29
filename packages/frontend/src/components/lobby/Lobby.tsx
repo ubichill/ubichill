@@ -47,7 +47,11 @@ function sortWorlds(worlds: WorldListItem[], key: SortKey): WorldListItem[] {
 }
 
 interface LobbyProps {
-    onJoinInstance: (instanceId: string, worldId: string) => void;
+    onJoinInstance: (
+        instanceId: string,
+        worldId: string,
+        worldData?: { thumbnail?: string; displayName?: string }
+    ) => void;
     /** モーダル表示モード。省略時は 'lobby' */
     mode?: 'lobby' | 'modal';
     /** モーダルモード時、現在参加中のインスタンスID */
@@ -119,7 +123,10 @@ export function Lobby({ onJoinInstance, mode = 'lobby', currentInstanceId }: Lob
         try {
             const instance = await createInstance({ worldId: selectedWorldId });
             if (instance) {
-                onJoinInstance(instance.id, instance.world.id);
+                onJoinInstance(instance.id, instance.world.id, {
+                    thumbnail: instance.world.thumbnail,
+                    displayName: instance.world.displayName,
+                });
             }
         } finally {
             setCreating(false);
@@ -209,7 +216,10 @@ export function Lobby({ onJoinInstance, mode = 'lobby', currentInstanceId }: Lob
     const handleJoinInstance = (instanceId: string) => {
         const instance = instances.find((i) => i.id === instanceId);
         if (instance) {
-            onJoinInstance(instanceId, instance.world.id);
+            onJoinInstance(instanceId, instance.world.id, {
+                thumbnail: instance.world.thumbnail,
+                displayName: instance.world.displayName,
+            });
         }
     };
 

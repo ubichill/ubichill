@@ -11,8 +11,12 @@ export function LobbyPage() {
 
     const userName = session?.user?.name ?? '';
 
-    const handleJoinInstance = (instanceId: string, worldId: string) => {
-        navigate(`/instance/${instanceId}`, { state: { worldId } });
+    const handleJoinInstance = (
+        instanceId: string,
+        worldId: string,
+        worldData?: { thumbnail?: string; displayName?: string }
+    ) => {
+        navigate(`/instance/${instanceId}`, { state: { worldId, worldData } });
     };
 
     const handleLogout = async () => {

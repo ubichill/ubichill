@@ -81,9 +81,82 @@ export function InstancePage() {
     }, [session, isPending, navigate, id, location.state, joinWorld]);
 
     if (isPending || connecting) {
+        const stateWorldData = (location.state as { worldData?: { thumbnail?: string; displayName?: string } } | null)?.worldData;
+
         return (
-            <div className={css({ minH: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' })}>
-                <p>接続中...</p>
+            <div
+                className={css({
+                    minH: '100vh',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: 'primary',
+                    color: 'white',
+                    gap: '24px',
+                })}
+            >
+                {stateWorldData?.thumbnail ? (
+                    <img
+                        src={stateWorldData.thumbnail}
+                        alt="Thumbnail"
+                        className={css({
+                            width: '160px',
+                            height: '160px',
+                            objectFit: 'cover',
+                            borderRadius: '24px',
+                            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+                        })}
+                    />
+                ) : (
+                    <div
+                        className={css({
+                            width: '160px',
+                            height: '160px',
+                            borderRadius: '24px',
+                            backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                        })}
+                    >
+                        <span className={css({ color: 'rgba(255, 255, 255, 0.5)' })}>Loading...</span>
+                    </div>
+                )}
+                
+                <h2
+                    className={css({
+                        fontSize: '24px',
+                        fontWeight: 'bold',
+                        letterSpacing: '0.05em',
+                    })}
+                >
+                    {stateWorldData?.displayName || '接続中...'}
+                </h2>
+
+                <div
+                    className={css({
+                        width: '240px',
+                        height: '4px',
+                        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                        borderRadius: 'full',
+                        overflow: 'hidden',
+                        position: 'relative',
+                    })}
+                >
+                    <div
+                        className={css({
+                            position: 'absolute',
+                            top: 0,
+                            bottom: 0,
+                            left: 0,
+                            width: '50%',
+                            backgroundColor: 'white',
+                            borderRadius: 'full',
+                            animation: 'progress 1.5s infinite ease-in-out',
+                        })}
+                    />
+                </div>
             </div>
         );
     }

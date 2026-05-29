@@ -38,19 +38,25 @@ export function WorldListModal({ onClose, currentInstanceId }: WorldListModalPro
 
     // インスタンス参加ハンドラ — 確認後にナビゲーションで移動
     const handleJoinInstance = useCallback(
-        (instanceId: string, worldId: string) => {
+        (
+            instanceId: string,
+            worldId: string,
+            worldData?: { thumbnail?: string; displayName?: string }
+        ) => {
             // 現在のインスタンスと同じ場合はモーダルを閉じるだけ
             if (instanceId === currentInstanceId) {
                 onClose();
                 return;
             }
 
-            const confirmed = window.confirm('このインスタンスに移動しますか？現在のインスタンスから退出します。');
+            const confirmed = window.confirm(
+                'このインスタンスに移動しますか？現在のインスタンスから退出します。',
+            );
             if (!confirmed) return;
 
             // ナビゲーションにより InstancePage の unmount→mount が発生し、
             // 既存の leaveWorld/joinWorld フローが自動的に実行される
-            navigate(`/instance/${instanceId}`, { state: { worldId } });
+            navigate(`/instance/${instanceId}`, { state: { worldId, worldData } });
             onClose();
         },
         [currentInstanceId, navigate, onClose],
