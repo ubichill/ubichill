@@ -229,16 +229,19 @@ export const PluginRegistryProvider: React.FC<{
                     // フォールバック: 静的 PLUGIN_LOADERS（CE ベースの非 Worker プラグイン）
                     const loader = PLUGIN_LOADERS[entityType];
                     if (!loader) {
+                        loadingRef.current.delete(entityType);
                         return;
                     }
                     return loader()
                         .then(addPlugin)
                         .catch((err: unknown) => {
                             console.error(`[PluginRegistry] Failed to load plugin: ${entityType}`, err);
+                            loadingRef.current.delete(entityType);
                         });
                 })
                 .catch((err) => {
                     console.error(`[PluginRegistry] Failed to load plugin: ${entityType}`, err);
+                    loadingRef.current.delete(entityType);
                 })
                 .finally(() => {
                     setPendingPluginCount((c) => c - 1);
