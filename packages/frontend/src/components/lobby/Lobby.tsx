@@ -48,9 +48,13 @@ function sortWorlds(worlds: WorldListItem[], key: SortKey): WorldListItem[] {
 
 interface LobbyProps {
     onJoinInstance: (instanceId: string, worldId: string) => void;
+    /** モーダル表示モード。省略時は 'lobby' */
+    mode?: 'lobby' | 'modal';
+    /** モーダルモード時、現在参加中のインスタンスID */
+    currentInstanceId?: string;
 }
 
-export function Lobby({ onJoinInstance }: LobbyProps) {
+export function Lobby({ onJoinInstance, mode = 'lobby', currentInstanceId }: LobbyProps) {
     const navigate = useNavigate();
     const { instances, worlds, loading, error, createInstance, refreshInstances, refreshWorlds } = useInstances();
     const [selectedWorldId, setSelectedWorldId] = useState<string | null>(null);
@@ -218,7 +222,7 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                 padding: { base: '8px 0 0', md: '16px 0 0' },
                 display: 'flex',
                 flexDirection: 'column',
-                height: 'calc(100vh - 112px)',
+                height: mode === 'modal' ? '100%' : 'calc(100vh - 112px)',
                 overflow: 'hidden',
             })}
         >
@@ -694,6 +698,7 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                                                 key={instance.id}
                                                 instance={instance}
                                                 onJoin={handleJoinInstance}
+                                                isCurrent={instance.id === currentInstanceId}
                                             />
                                         ))}
                                     </div>

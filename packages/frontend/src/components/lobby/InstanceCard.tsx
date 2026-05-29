@@ -4,9 +4,11 @@ import { css } from '@/styled-system/css';
 interface InstanceCardProps {
     instance: Instance;
     onJoin: (instanceId: string) => void;
+    /** 現在参加中のインスタンスかどうか */
+    isCurrent?: boolean;
 }
 
-export function InstanceCard({ instance, onJoin }: InstanceCardProps) {
+export function InstanceCard({ instance, onJoin, isCurrent = false }: InstanceCardProps) {
     const statusColors: Record<string, string> = {
         active: '#8ad29b', // success token value
         full: '#f1c86c', // warning token value
@@ -76,32 +78,49 @@ export function InstanceCard({ instance, onJoin }: InstanceCardProps) {
                     </div>
                 </div>
             </div>
-            <button
-                type="button"
-                onClick={() => onJoin(instance.id)}
-                disabled={instance.status === 'full' || instance.status === 'closing'}
-                className={css({
-                    padding: { base: '8px 14px', md: '10px 18px' },
-                    backgroundColor: 'primary',
-                    color: 'textOnPrimary',
-                    border: 'none',
-                    borderRadius: '10px',
-                    fontSize: '14px',
-                    fontWeight: '600',
-                    cursor: 'pointer',
-                    transition: 'opacity 0.16s ease',
-                    _hover: {
-                        opacity: 0.9,
-                    },
-                    _disabled: {
-                        backgroundColor: 'primarySubtle',
-                        color: 'textSubtle',
-                        cursor: 'not-allowed',
-                    },
-                })}
-            >
-                参加
-            </button>
+            {isCurrent ? (
+                <span
+                    className={css({
+                        padding: { base: '8px 14px', md: '10px 18px' },
+                        backgroundColor: '#8ad29b1a',
+                        color: '#8ad29b',
+                        border: '1px solid #8ad29b44',
+                        borderRadius: '10px',
+                        fontSize: '14px',
+                        fontWeight: '600',
+                        whiteSpace: 'nowrap',
+                    })}
+                >
+                    参加中
+                </span>
+            ) : (
+                <button
+                    type="button"
+                    onClick={() => onJoin(instance.id)}
+                    disabled={instance.status === 'full' || instance.status === 'closing'}
+                    className={css({
+                        padding: { base: '8px 14px', md: '10px 18px' },
+                        backgroundColor: 'primary',
+                        color: 'textOnPrimary',
+                        border: 'none',
+                        borderRadius: '10px',
+                        fontSize: '14px',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        transition: 'opacity 0.16s ease',
+                        _hover: {
+                            opacity: 0.9,
+                        },
+                        _disabled: {
+                            backgroundColor: 'primarySubtle',
+                            color: 'textSubtle',
+                            cursor: 'not-allowed',
+                        },
+                    })}
+                >
+                    参加
+                </button>
+            )}
         </div>
     );
 }

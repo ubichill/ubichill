@@ -4,12 +4,14 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { API_BASE } from '@/lib/api';
 import { css } from '@/styled-system/css';
+import { WorldListModal } from './WorldListModal';
 
 export function InstanceHUD() {
     const navigate = useNavigate();
     const { id: instanceId } = useParams<{ id: string }>();
     const { users, isConnected, currentUser } = useSocket();
     const [menuOpen, setMenuOpen] = useState(false);
+    const [worldListOpen, setWorldListOpen] = useState(false);
     /** 現在のインスタンスが指すワールド（authorId 比較で編集ボタン表示を判定） */
     const [instanceWorld, setInstanceWorld] = useState<Instance['world'] | null>(null);
 
@@ -315,6 +317,42 @@ export function InstanceHUD() {
                             </button>
                             <button
                                 type="button"
+                                onClick={() => {
+                                    setMenuOpen(false);
+                                    setWorldListOpen(true);
+                                }}
+                                className={css({
+                                    width: 'full',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    padding: '9px 12px',
+                                    backgroundColor: 'transparent',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    cursor: 'pointer',
+                                    color: 'hudTextAction',
+                                    fontSize: '13px',
+                                    fontWeight: '500',
+                                    transition: 'background-color 0.12s ease',
+                                    _hover: { backgroundColor: 'hudActionHover' },
+                                })}
+                            >
+                                <svg
+                                    width="14"
+                                    height="14"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                >
+                                    <circle cx="12" cy="12" r="10" />
+                                    <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                                </svg>
+                                ワールド一覧
+                            </button>
+                            <button
+                                type="button"
                                 onClick={() => navigate('/')}
                                 className={css({
                                     width: 'full',
@@ -339,6 +377,14 @@ export function InstanceHUD() {
                         </div>
                     </div>
                 </>
+            )}
+
+            {/* ワールド一覧モーダル */}
+            {worldListOpen && instanceId && (
+                <WorldListModal
+                    currentInstanceId={instanceId}
+                    onClose={() => setWorldListOpen(false)}
+                />
             )}
         </>
     );
