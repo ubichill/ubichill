@@ -8,6 +8,7 @@ import { css } from '@/styled-system/css';
 import { InstanceCard } from './InstanceCard';
 import { useInstances } from './useInstances';
 import { WorldCard } from './WorldCard';
+import { WorldDetailModal } from './WorldDetailModal';
 
 type SortKey = 'name_asc' | 'name_desc' | 'createdAt_desc' | 'createdAt_asc' | 'updatedAt_desc' | 'updatedAt_asc';
 
@@ -71,9 +72,8 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
         },
         [confirm, navigate],
     );
-    const { instances, worlds, loading, error, createInstance, refreshInstances, refreshWorlds } = useInstances();
+    const { worlds, loading, error, refreshWorlds } = useInstances();
     const [selectedWorldId, setSelectedWorldId] = useState<string | null>(null);
-    const [creating, setCreating] = useState(false);
 
     // ソートキーを localStorage で永続化
     const [sortKey, setSortKey] = useState<SortKey>(() => {
@@ -90,40 +90,9 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
 
     const scrollRef = useRef<HTMLDivElement>(null);
 
-    const selectedWorld = useMemo(
-        () => sortedWorlds.find((world) => world.id === selectedWorldId) ?? null,
-        [sortedWorlds, selectedWorldId],
-    );
-
-    const handleSelectWorld = useCallback(
-        async (worldId: string) => {
-            setSelectedWorldId(worldId);
-            scrollRef.current?.scrollTo({ top: 0 });
-            await refreshInstances(worldId);
-        },
-        [refreshInstances],
-    );
-
-    const handleBackToWorlds = useCallback(() => {
-        setSelectedWorldId(null);
-        scrollRef.current?.scrollTo({ top: 0 });
+    const handleSelectWorld = useCallback((worldId: string) => {
+        setSelectedWorldId(worldId);
     }, []);
-
-    const handleCreateInstance = useCallback(async () => {
-        if (!selectedWorldId || creating) return;
-        setCreating(true);
-        try {
-            const instance = await createInstance({ worldId: selectedWorldId });
-            if (instance) {
-                onJoinInstance(instance.id, instance.world.id, {
-                    thumbnail: instance.world.thumbnail,
-                    displayName: instance.world.displayName,
-                });
-            }
-        } finally {
-            setCreating(false);
-        }
-    }, [selectedWorldId, creating, createInstance, onJoinInstance]);
 
     const [importUrl, setImportUrl] = useState('');
     const [importState, setImportState] = useState<'idle' | 'loading' | 'error'>('idle');
@@ -153,15 +122,7 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
         }
     }, [importUrl, refreshWorlds]);
 
-    const handleJoinInstance = (instanceId: string) => {
-        const instance = instances.find((i) => i.id === instanceId);
-        if (instance) {
-            onJoinInstance(instanceId, instance.world.id, {
-                thumbnail: instance.world.thumbnail,
-                displayName: instance.world.displayName,
-            });
-        }
-    };
+
 
     return (
         <div
@@ -203,62 +164,17 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                         minH: 0,
                     })}
                 >
-                    <div
-                        className={css({
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '3',
-                            mb: '4',
-                        })}
-                    >
-                        {selectedWorld && (
-                            <button
-                                type="button"
-                                onClick={handleBackToWorlds}
-                                aria-label="テンプレート一覧へ戻る"
-                                className={css({
-                                    width: '36px',
-                                    height: '36px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    bg: 'secondary',
-                                    color: 'text',
-                                    border: 'none',
-                                    borderRadius: '10px',
-                                    cursor: 'pointer',
-                                    flexShrink: 0,
-                                    _hover: { opacity: 0.9 },
-                                })}
-                            >
-                                <svg
-                                    width="18"
-                                    height="18"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                >
-                                    <path d="M19 12H5" />
-                                    <path d="m12 19-7-7 7-7" />
-                                </svg>
-                            </button>
-                        )}
                         <h1
                             className={css({
                                 fontSize: { base: 'lg', sm: 'xl', md: 'xl' },
                                 fontWeight: '700',
                                 color: 'text',
-                                minW: 0,
-                                flex: 1,
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
+                                mb: '4',
+                                flexShrink: 0,
                             })}
                         >
-                            {selectedWorld ? selectedWorld.displayName : 'ワールド選択'}
+                            ワールド一覧
                         </h1>
-                    </div>
 
                     {error && (
                         <div
@@ -308,7 +224,7 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                             </div>
                         )}
 
-                        {!selectedWorld && !loading && (
+                        {!loading && (
                             <div>
                                 <p
                                     className={css({
@@ -317,7 +233,7 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                                         marginBottom: '16px',
                                     })}
                                 >
-                                    テンプレートを選択すると、そのワールドで作られたインスタンスを表示します
+                                    ワールドを選択してインスタンスを作成または参加してください
                                 </p>
 
                                 <div
@@ -481,190 +397,19 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                                         <WorldCard
                                             key={world.id}
                                             world={world}
-                                            onNavigate={(worldId) => void handleSelectWorld(worldId)}
+                                            onNavigate={(worldId) => handleSelectWorld(worldId)}
                                         />
                                     ))}
                                 </div>
                             </div>
                         )}
-
-                        {selectedWorld && !loading && (
-                            <div
-                                className={css({
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '4',
-                                })}
-                            >
-                                <div
-                                    className={css({
-                                        display: 'grid',
-                                        gridTemplateColumns: { base: '1fr', sm: '160px 1fr' },
-                                        gap: '4',
-                                        alignItems: 'stretch',
-                                        p: '4',
-                                        bg: 'surface',
-                                        border: '1px solid',
-                                        borderColor: 'border',
-                                        borderRadius: '14px',
-                                    })}
-                                >
-                                    <div
-                                        className={css({
-                                            minH: '104px',
-                                            borderRadius: '10px',
-                                            overflow: 'hidden',
-                                            bg: 'secondary',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                        })}
-                                    >
-                                        {selectedWorld.thumbnail ? (
-                                            <img
-                                                src={selectedWorld.thumbnail}
-                                                alt={selectedWorld.displayName}
-                                                className={css({
-                                                    width: '100%',
-                                                    height: '100%',
-                                                    objectFit: 'cover',
-                                                })}
-                                            />
-                                        ) : (
-                                            <svg
-                                                width="36"
-                                                height="36"
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                strokeWidth="1.5"
-                                                className={css({ color: 'textSubtle' })}
-                                            >
-                                                <circle cx="12" cy="12" r="10" />
-                                                <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-                                            </svg>
-                                        )}
-                                    </div>
-                                    <div className={css({ minW: 0 })}>
-                                        {selectedWorld.description && (
-                                            <p
-                                                className={css({
-                                                    fontSize: '14px',
-                                                    color: 'textMuted',
-                                                    lineHeight: '1.5',
-                                                    marginBottom: '10px',
-                                                })}
-                                            >
-                                                {selectedWorld.description}
-                                            </p>
-                                        )}
-                                        <div
-                                            className={css({
-                                                display: 'flex',
-                                                gap: '2',
-                                                flexWrap: 'wrap',
-                                                fontSize: '12px',
-                                                color: 'textSubtle',
-                                                marginBottom: '14px',
-                                            })}
-                                        >
-                                            <span>
-                                                {selectedWorld.capacity.default}〜{selectedWorld.capacity.max}人
-                                            </span>
-                                            <span>v{selectedWorld.version}</span>
-                                        </div>
-                                        <div
-                                            className={css({
-                                                display: 'flex',
-                                                flexDirection: { base: 'column', sm: 'row' },
-                                                gap: '2',
-                                                flexWrap: 'wrap',
-                                            })}
-                                        >
-                                            <button
-                                                type="button"
-                                                onClick={() => void handleCreateInstance()}
-                                                disabled={creating}
-                                                className={css({
-                                                    padding: '10px 16px',
-                                                    backgroundColor: 'primary',
-                                                    color: 'textOnPrimary',
-                                                    border: 'none',
-                                                    borderRadius: '10px',
-                                                    fontSize: '14px',
-                                                    fontWeight: '600',
-                                                    cursor: 'pointer',
-                                                    _hover: { opacity: 0.9 },
-                                                    _disabled: { opacity: 0.6, cursor: 'not-allowed' },
-                                                })}
-                                            >
-                                                {creating ? '作成中...' : '新しいインスタンスを作成'}
-                                            </button>
-                                            {session && selectedWorld?.authorId === session.user.id && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        void goConfirmed(
-                                                            `/world/${selectedWorld.id}/edit`,
-                                                            'ワールドの編集画面に移動しますか？',
-                                                        )
-                                                    }
-                                                    className={css({
-                                                        padding: '10px 16px',
-                                                        backgroundColor: 'warning',
-                                                        color: 'primary',
-                                                        border: 'none',
-                                                        borderRadius: '10px',
-                                                        fontSize: '14px',
-                                                        fontWeight: '600',
-                                                        cursor: 'pointer',
-                                                        _hover: { opacity: 0.9 },
-                                                    })}
-                                                >
-                                                    ワールドを編集
-                                                </button>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {instances.length === 0 ? (
-                                    <div
-                                        className={css({
-                                            textAlign: 'center',
-                                            padding: '40px 20px',
-                                            backgroundColor: 'secondary',
-                                            borderRadius: '14px',
-                                        })}
-                                    >
-                                        <p
-                                            className={css({
-                                                fontSize: '15px',
-                                                color: 'textMuted',
-                                            })}
-                                        >
-                                            このテンプレートの参加可能なインスタンスはありません
-                                        </p>
-                                    </div>
-                                ) : (
-                                    <div
-                                        className={css({
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            gap: '3',
-                                        })}
-                                    >
-                                        {instances.map((instance) => (
-                                            <InstanceCard
-                                                key={instance.id}
-                                                instance={instance}
-                                                onJoin={handleJoinInstance}
-                                                isCurrent={instance.id === currentInstanceId}
-                                            />
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
+                        {selectedWorldId && (
+                            <WorldDetailModal
+                                worldId={selectedWorldId}
+                                onClose={() => setSelectedWorldId(null)}
+                                onJoinInstance={onJoinInstance}
+                                currentInstanceId={currentInstanceId}
+                            />
                         )}
                     </div>
                 </div>

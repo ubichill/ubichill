@@ -5,6 +5,7 @@ import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { API_BASE } from '@/lib/api';
 import { useSession } from '@/lib/auth-client';
 import { css } from '@/styled-system/css';
+import { WorldDetailModal } from '@/components/lobby/WorldDetailModal';
 
 interface UserProfile {
     id: string;
@@ -28,12 +29,18 @@ interface UserProfileViewProps {
     userId?: string;
     /** 画面遷移の直前に呼ばれる（オーバーレイを閉じる等） */
     onNavigate?: () => void;
+    /** インスタンス参加ハンドラ（HUDから開いた場合に使用） */
+    onJoinInstance?: (
+        instanceId: string,
+        worldId: string,
+        worldData?: { thumbnail?: string; displayName?: string },
+    ) => void;
 }
 
 /**
  * ユーザープロフィール本体。ページ（UserPage）と HUD のマイページタブ（HudTabs）で共通利用する。
  */
-export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
+export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProfileViewProps) {
     const navigate = useNavigate();
     const confirm = useConfirm();
     const { data: session, isPending } = useSession();
@@ -44,6 +51,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
 
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [worlds, setWorlds] = useState<OwnedWorld[]>([]);
+    const [selectedWorldId, setSelectedWorldId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
@@ -267,7 +275,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
                                 world={w}
                                 editable={isOwnPage}
                                 onEdit={() => go(`/world/${w.id}/edit`)}
-                                onOpen={() => go(`/world/${w.id}`)}
+                                onOpen={() => setSelectedWorldId(w.id)}
                                 onDelete={
                                     isOwnPage
                                         ? async () => {
@@ -328,6 +336,22 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
                     </div>
                 )}
             </section>
+
+            {selectedWorldId && (
+                <WorldDetailModal
+                    worldId={selectedWorldId}
+                    onClose={() => setSelectedWorldId(null)}
+                    onJoinInstance={(instanceId, worldId, worldData) => {
+                        if (onJoinInstance) {
+                            onJoinInstance(instanceId, worldId, worldData);
+                        } else {
+                            // もし onJoinInstance が渡されていなければ、フルページ遷移でインスタンスへ
+                            onNavigate?.();
+                            navigate(`/instance/${instanceId}`, { state: { worldId } });
+                        }
+                    }}
+                />
+            )}
         </div>
     );
 }

@@ -1,5 +1,5 @@
 import { isWorkerPlugin, useWorld, WorkerPluginHost } from '@ubichill/react';
-import type React from 'react';
+import React, { useEffect } from 'react';
 import { usePluginRegistry } from '../plugins/PluginRegistryContext';
 
 interface EntityRendererProps {
@@ -18,10 +18,11 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({ entityId }) => {
     if (!entity) return null;
 
     const plugin = pluginMap.get(entity.type);
-    if (!plugin) {
-        loadPlugin(entity.type);
-        return null;
-    }
+    // avoid starting network loads during render — schedule via effect
+    useEffect(() => {
+        if (!plugin) loadPlugin(entity.type);
+    }, [plugin, entity.type, loadPlugin]);
+    if (!plugin) return null;
     if (!isWorkerPlugin(plugin)) return null;
     // singleton は InstanceRenderer 側で起動するためここではスキップ
     if (plugin.singleton) return null;

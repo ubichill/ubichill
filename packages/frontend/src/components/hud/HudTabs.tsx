@@ -176,7 +176,7 @@ export function HudTabs({
                     <WorldsTab onJoinInstance={onJoinInstance} currentInstanceId={currentInstanceId} />
                 )}
                 {activeTab === 'friends' && <FriendsTab />}
-                {activeTab === 'profile' && <ProfileTab onNavigate={onNavigate} />}
+                {activeTab === 'profile' && <ProfileTab onNavigate={onNavigate} onJoinInstance={onJoinInstance} />}
             </div>
 
             <div
@@ -195,9 +195,12 @@ export function HudTabs({
                 <div
                     className={css({
                         display: 'flex',
-                        bg: 'primary',
+                        bg: 'hudPanel',
+                        backdropFilter: 'blur(12px)',
                         borderRadius: '24px',
-                        boxShadow: '0 12px 36px rgba(0,0,0,0.3)',
+                        boxShadow: 'modal',
+                        border: '1px solid',
+                        borderColor: 'hudBorder',
                         overflow: 'hidden',
                         p: '2',
                         gap: '2',
@@ -220,11 +223,11 @@ export function HudTabs({
                                 border: 'none',
                                 cursor: 'pointer',
                                 transition: 'all 0.2s ease',
-                                bg: 'transparent',
-                                color: activeTab === tab.id ? 'primaryHighlight' : 'hudTextMuted',
+                                bg: activeTab === tab.id ? 'rgba(255, 255, 255, 0.15)' : 'transparent',
+                                color: activeTab === tab.id ? 'hudText' : 'hudTextMuted',
                                 _hover: {
-                                    color: activeTab === tab.id ? 'primaryHighlight' : 'hudText',
-                                    bg: 'rgba(255, 255, 255, 0.05)',
+                                    color: 'hudText',
+                                    bg: activeTab === tab.id ? 'rgba(255, 255, 255, 0.15)' : 'hudActionHover',
                                 },
                             })}
                         >
