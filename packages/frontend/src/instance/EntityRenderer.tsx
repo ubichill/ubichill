@@ -75,34 +75,45 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
         const div = divRef.current;
         if (!div) return;
 
-        div.style.position = 'fixed';
         div.style.zIndex = String(Z_INDEX.HELD_ENTITY);
         div.style.pointerEvents = 'none';
 
         const onMove = (e: PointerEvent) => {
             const h = heldRef.current;
             if (!h || h.entityId !== entityId) return;
-            div.style.left = `${e.clientX + h.offsetX}px`;
-            div.style.top = `${e.clientY + h.offsetY}px`;
+
+            const scrollEl = document.querySelector('[data-scroll-world]') as HTMLElement | null;
+            const sx = scrollEl?.scrollLeft ?? 0;
+            const sy = scrollEl?.scrollTop ?? 0;
+            const targetX = e.clientX + sx + h.offsetX;
+            const targetY = e.clientY + sy + h.offsetY;
+
+            div.style.setProperty('--held-dx', `${targetX - entity.transform.x}px`);
+            div.style.setProperty('--held-dy', `${targetY - entity.transform.y}px`);
         };
 
         // 初期位置を現在のマウス位置で即時セット
-        const initX = held?.offsetX ?? -24;
-        const initY = held?.offsetY ?? 0;
-        div.style.left = `${(window as Window & { _lastMouseX?: number })._lastMouseX ?? 0 + initX}px`;
-        div.style.top = `${(window as Window & { _lastMouseY?: number })._lastMouseY ?? 0 + initY}px`;
+        const initOffsetX = held?.offsetX ?? -24;
+        const initOffsetY = held?.offsetY ?? 0;
+        const w = window as Window & { _lastMouseX?: number; _lastMouseY?: number };
+        const scrollEl = document.querySelector('[data-scroll-world]') as HTMLElement | null;
+        const sx = scrollEl?.scrollLeft ?? 0;
+        const sy = scrollEl?.scrollTop ?? 0;
+        const initialX = (w._lastMouseX ?? 0) + sx + initOffsetX;
+        const initialY = (w._lastMouseY ?? 0) + sy + initOffsetY;
+
+        div.style.setProperty('--held-dx', `${initialX - entity.transform.x}px`);
+        div.style.setProperty('--held-dy', `${initialY - entity.transform.y}px`);
 
         window.addEventListener('pointermove', onMove);
         return () => {
             window.removeEventListener('pointermove', onMove);
-            // 解放時: fixed を解除して元の absolute に戻す
-            div.style.position = '';
             div.style.zIndex = '';
-            div.style.left = '';
-            div.style.top = '';
             div.style.pointerEvents = '';
+            div.style.removeProperty('--held-dx');
+            div.style.removeProperty('--held-dy');
         };
-    }, [isHeldByMe, entityId, held?.offsetX, held?.offsetY, heldRef]);
+    }, [isHeldByMe, entityId, held?.offsetX, held?.offsetY, heldRef, entity.transform.x, entity.transform.y]);
 
     // ── 他ユーザーが持っているとき: HeldEntityPositionRegistry で DOM 更新 ──
     // biome-ignore lint/correctness/useExhaustiveDependencies: users は初期位置の参照だけに最新値を読む (subscribe 後は registry が逐次更新する)
@@ -111,39 +122,36 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
         const div = divRef.current;
         if (!div) return;
 
-        div.style.position = 'fixed';
         div.style.zIndex = String(Z_INDEX.HELD_ENTITY);
         div.style.pointerEvents = 'none';
         div.style.opacity = '0.85';
-        div.style.transition = 'left 80ms linear, top 80ms linear';
+        div.style.transition = 'transform 80ms linear';
 
         // 初期位置: 既知のユーザー座標から計算
         const holderUser = users.get(holderId);
         if (holderUser) {
-            const scrollEl = document.querySelector('[data-scroll-world]') as HTMLElement | null;
-            const sx = scrollEl?.scrollLeft ?? 0;
-            const sy = scrollEl?.scrollTop ?? 0;
-            div.style.left = `${holderUser.position.x - sx - 24}px`;
-            div.style.top = `${holderUser.position.y - sy}px`;
+            const targetX = holderUser.position.x - 24;
+            const targetY = holderUser.position.y;
+            div.style.setProperty('--held-dx', `${targetX - entity.transform.x}px`);
+            div.style.setProperty('--held-dy', `${targetY - entity.transform.y}px`);
         }
 
         // Registry に登録: cursor:moved で座標が更新されるたびに呼ばれる
-        const unsub = HeldEntityPositionRegistry.subscribe(entityId, (vx, vy) => {
-            div.style.left = `${vx}px`;
-            div.style.top = `${vy}px`;
+        const unsub = HeldEntityPositionRegistry.subscribe(entityId, (worldX, worldY) => {
+            div.style.setProperty('--held-dx', `${worldX - entity.transform.x}px`);
+            div.style.setProperty('--held-dy', `${worldY - entity.transform.y}px`);
         });
 
         return () => {
             unsub();
-            div.style.position = '';
             div.style.zIndex = '';
-            div.style.left = '';
-            div.style.top = '';
             div.style.pointerEvents = '';
             div.style.opacity = '';
             div.style.transition = '';
+            div.style.removeProperty('--held-dx');
+            div.style.removeProperty('--held-dy');
         };
-    }, [isHeldByOther, holderId, entityId]); // users は意図的に除外（初期値のみ使用）
+    }, [isHeldByOther, holderId, entityId, entity.transform.x, entity.transform.y]); // users は意図的に除外（初期値のみ使用）
 
     // null guard はすべての hook 呼び出しの後
     if (!entity || !plugin || !isWorker) return null;
@@ -154,7 +162,8 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
     const { x, y, z, w, h, scale, rotation } = entity.transform;
     const sized = w > 0 && h > 0;
 
-    // held 中は useEffect で直接スタイルを上書きするため、ここでは通常スタイルのみ定義
+    // held 中は useEffect で CSS変数を更新し、transform: translate() で直接スタイルを上書きする
+    // React の再描画によってインラインスタイルが上書きされても、CSS変数は保持されるためチラつかない
     const wrapperStyle: React.CSSProperties = isCanvas
         ? { position: 'absolute', inset: 0, zIndex: z || undefined, pointerEvents: 'none' }
         : {
@@ -166,7 +175,7 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
               height: h > 0 ? h : undefined,
               overflow: sized ? 'hidden' : undefined,
               pointerEvents: 'none',
-              transform: `scale(${scale ?? 1}) rotate(${rotation ?? 0}deg)`,
+              transform: `translate(var(--held-dx, 0px), var(--held-dy, 0px)) scale(${scale ?? 1}) rotate(${rotation ?? 0}deg)`,
               transformOrigin: '0 0',
           };
 

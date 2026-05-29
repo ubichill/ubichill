@@ -11,7 +11,7 @@
  * pen:stroke は描いたペン Entity の子として生成される (parentEntityId = heldPen.entityId)。
  */
 
-import type { CanvasCursorData, CanvasStrokeData, Entity, System } from '@ubichill/sdk';
+import type { CanvasStrokeData, Entity, System } from '@ubichill/sdk';
 import { PenEvents } from './events';
 
 // ────────────────────────────────────────────────────────────────
@@ -19,15 +19,7 @@ import { PenEvents } from './events';
 // ────────────────────────────────────────────────────────────────
 
 const CANVAS_TARGET = 'drawing';
-const CURSOR_RADIUS = 4;
 const MAX_FINGERPRINT_CACHE = 200;
-
-const CURSOR_FIXED_FILLS = [
-    { d: 'M0,0 L-3,-8 L3,-8 Z', fill: '#888' },
-    { d: 'M-2,-30 h2 v18 h-2 Z', fill: 'rgba(255,255,255,0.25)' },
-    { d: 'M-1.5,0 a1.5,1.5 0 1,0 3,0 a1.5,1.5 0 1,0 -3,0', fill: '#333' },
-] as const;
-const CURSOR_STROKES = [{ d: 'M-3,-32 h6 v24 h-6 Z', stroke: 'rgba(0,0,0,0.5)', lineWidth: 0.8 }] as const;
 
 // ────────────────────────────────────────────────────────────────
 // 状態 (Ubi.state)
@@ -88,17 +80,6 @@ const popFingerprintIfExists = (fp: string): boolean => {
 // ────────────────────────────────────────────────────────────────
 // レンダリングヘルパー
 // ────────────────────────────────────────────────────────────────
-
-const buildCursorAt = (x: number, y: number, color: string, strokeWidth: number): CanvasCursorData => ({
-    x,
-    y,
-    color,
-    size: Math.max(CURSOR_RADIUS * 2, strokeWidth),
-    shape: 'custom',
-    rotation: -Math.PI / 4,
-    pathFills: [...CURSOR_FIXED_FILLS, { d: 'M-3,-32 h6 v24 h-6 Z', fill: color }],
-    pathStrokes: [...CURSOR_STROKES],
-});
 
 const buildActiveStroke = (): CanvasStrokeData | null => {
     if (!draw.local.isDrawing || draw.local.currentStroke.length <= 1) return null;
@@ -221,26 +202,9 @@ const flushCompletedStroke = (): void => {
 const FrameSystem: System = (_entities: Entity[]) => {
     flushCompletedStroke();
 
-    const cursors: CanvasCursorData[] = [];
-
-    // 自分が保持中: INPUT_MOUSE_MOVE から取った world 座標で描く
-    if (draw.local.heldPenId !== null) {
-        cursors.push(buildCursorAt(draw.local.cursorX, draw.local.cursorY, draw.local.color, draw.local.strokeWidth));
-    }
-
-    // リモートユーザーが保持中のペン: presence の worldX/Y に追従
-    if (remoteHeld.size > 0) {
-        const players = Ubi.player.all();
-        for (const [userId, info] of remoteHeld) {
-            const player = players.get(userId);
-            if (!player) continue;
-            cursors.push(buildCursorAt(player.worldX, player.worldY, info.color, info.strokeWidth));
-        }
-    }
-
     Ubi.canvas.frame(CANVAS_TARGET, {
         activeStroke: buildActiveStroke(),
-        cursors,
+        cursors: [], // ペン本体（pen:pen）が追従するため、キャンバス側でのダミーカーソル描画は不要
     });
 };
 

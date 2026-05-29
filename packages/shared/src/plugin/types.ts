@@ -349,7 +349,14 @@ export type CmdGrip = {
               /** 同期範囲。share: 'local' ならホストは lockedBy パッチを送らない */
               share: 'local' | 'presence' | 'persistent';
           }
-        | { action: 'release'; entityId: string }
+        | {
+              action: 'release';
+              entityId: string;
+              /** 離した際の着地X座標（指定があればマウス座標より優先される） */
+              dropX?: number;
+              /** 離した際の着地Y座標（指定があればマウス座標より優先される） */
+              dropY?: number;
+          }
         | { action: 'setHover'; cursor: string; heldCursor: string };
 };
 

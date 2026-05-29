@@ -38,8 +38,8 @@ export interface Grip {
     readonly options: Readonly<GripOptions>;
     /** 掴む。1 ユーザー 1 つの制約を SDK が同タブ siblings に対して enforce する。 */
     acquire(): void;
-    /** 離す */
-    release(): void;
+    /** 離す。任意の着地座標を指定できる */
+    release(dropCoords?: { x: number; y: number }): void;
     /** mode に応じて acquire / release を切替える (toggle 風の操作にそのまま使える) */
     toggle(): void;
     /** 占有者の変化を監視。戻り関数で unregister。 */
@@ -192,7 +192,7 @@ export function createGripModule(deps: GripModuleDeps): GripModule {
                 if (prev === me && next !== me) {
                     deps.sendGripCommand({
                         action: 'release',
-                        entityId: deps.getEntityId() ?? deps.getComponentInstanceId() ?? '',
+                        entityId: deps.getComponentInstanceId() ?? '',
                     });
                 }
                 for (const fn of listeners) fn(next as string | null, prev as string | null);
@@ -261,10 +261,9 @@ export function createGripModule(deps: GripModuleDeps): GripModule {
                     }
 
                     // ホストへ CMD_GRIP hold を送信 → EntityRenderer がカーソル追従開始
-                    const entityId = deps.getEntityId() ?? self;
                     deps.sendGripCommand({
                         action: 'hold',
-                        entityId,
+                        entityId: self,
                         offsetX,
                         offsetY,
                         slot,
@@ -280,7 +279,7 @@ export function createGripModule(deps: GripModuleDeps): GripModule {
                         });
                     }
                 },
-                release(): void {
+                release(dropCoords?: { x: number; y: number }): void {
                     const entityId = deps.getEntityId() ?? deps.getComponentInstanceId() ?? '';
 
                     // press モードの mouseup listener をキャンセル
@@ -290,7 +289,12 @@ export function createGripModule(deps: GripModuleDeps): GripModule {
                     inner.local.holder = null;
 
                     // ホストへ CMD_GRIP release を送信 → EntityRenderer がカーソル追従終了
-                    deps.sendGripCommand({ action: 'release', entityId });
+                    deps.sendGripCommand({
+                        action: 'release',
+                        entityId,
+                        dropX: dropCoords?.x,
+                        dropY: dropCoords?.y,
+                    });
                 },
                 onChange(listener): () => void {
                     listeners.add(listener);

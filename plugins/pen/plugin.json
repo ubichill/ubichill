@@ -14,7 +14,7 @@
     },
     "tray": {
       "src": "./src/tray.worker.tsx",
-      "capabilities": ["ui:render", "net:emit"],
+      "capabilities": ["ui:render", "net:emit", "scene:read"],
       "defaultTransform": { "x": 20, "y": 20, "z": 1000, "w": 60, "h": 240 },
       "dataFields": {}
     },

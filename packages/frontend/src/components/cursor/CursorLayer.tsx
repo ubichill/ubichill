@@ -66,17 +66,15 @@ export function CursorLayer() {
             heldEntityId?: string | null;
         }) => {
             if (!heldEntityId || userId === selfId) return;
-            // viewport 座標 = world 座標 - scroll
-            const sx = scrollEl?.scrollLeft ?? 0;
-            const sy = scrollEl?.scrollTop ?? 0;
             // オフセット: デフォルトで左側に -24px
-            HeldEntityPositionRegistry.notify(heldEntityId, position.x - sx - 24, position.y - sy);
+            // EntityRenderer は world 座標を期待するためそのまま渡す
+            HeldEntityPositionRegistry.notify(heldEntityId, position.x - 24, position.y);
         };
         socket.on('cursor:moved', handler);
         return () => {
             socket.off('cursor:moved', handler);
         };
-    }, [socket, selfId, scrollEl]);
+    }, [socket, selfId]);
 
     // 自分のカーソル位置: OS コンポジタが描画するため JSX には何もない。
     // リモートユーザー分だけ JS で overlay する。

@@ -13,10 +13,16 @@ import { PenEvents } from './events';
 Ubi.ui.render(
     () => (
         <div
-            onUbiClick={() => {
-                // 世界中の pen:pen に「持ってるなら離して戻して」と通知。
-                // 自分が isMine の pen.worker だけが release() する。
-                PenEvents.emit('pen:tray:release', {}, { scope: 'world', targetType: 'pen:pen' });
+            onUbiClick={async () => {
+                if (!Ubi.componentInstanceId) return;
+                const tray = await Ubi.entity.get(Ubi.componentInstanceId);
+                if (!tray) return;
+                // ローカルの pen.worker に対して「トレイ座標にペンを置け」と通知
+                PenEvents.emit(
+                    'pen:tray:release',
+                    { x: tray.transform.x, y: tray.transform.y },
+                    { scope: 'world', targetType: 'pen:pen' },
+                );
             }}
             style={{
                 position: 'absolute',

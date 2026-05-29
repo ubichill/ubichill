@@ -33,9 +33,11 @@ const grip = Ubi.grip.exclusive({
     share: 'persistent',
 });
 
-// tray クリック → 持っているペンを離して tray に戻す。
-PenEvents.on('pen:tray:release', () => {
-    if (grip.isMine) grip.release();
+// tray クリック → ローカルのペンをトレイ座標に置く
+PenEvents.on('pen:tray:release', (data) => {
+    if (grip.isMine) {
+        grip.release({ x: data.x, y: data.y });
+    }
 });
 
 // 持ち / 離しに応じて自分の penColor を Host へ通知 (avatar カーソルの色変えなどに使う)

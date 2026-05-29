@@ -12,6 +12,7 @@ import type { CmdGrip } from '@ubichill/shared';
 import type React from 'react';
 import { createContext, useCallback, useContext, useRef, useState } from 'react';
 import { heldEntitySyncRef } from '../heldEntitySyncRef';
+import { useWorld } from '../hooks/useWorld';
 
 export interface HoldState {
     /** 持っているエンティティの ComponentInstance ID */
@@ -46,41 +47,75 @@ export const HoldProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const heldRef = useRef<HoldState | null>(null);
     // ホバーカーソル設定を保存（setHover は hold/release と別タイミングで届く）
     const pendingHoverRef = useRef<{ cursor: string; heldCursor: string } | null>(null);
+    const { patchEntity, entities } = useWorld();
+    const entitiesRef = useRef(entities);
+    entitiesRef.current = entities;
 
-    const handleGripCommand = useCallback((payload: CmdGrip['payload']) => {
-        if (payload.action === 'hold') {
-            const state: HoldState = {
-                entityId: payload.entityId,
-                offsetX: payload.offsetX,
-                offsetY: payload.offsetY,
-                slot: payload.slot,
-                share: payload.share,
-                hoverCursor: pendingHoverRef.current?.cursor,
-                heldCursor: pendingHoverRef.current?.heldCursor,
-            };
-            heldRef.current = state;
-            setHeld(state);
-            // HoldProvider 外（router レベル）からも読めるよう同期
-            heldEntitySyncRef.set({ entityId: payload.entityId, share: payload.share });
-        } else if (payload.action === 'release') {
-            heldRef.current = null;
-            setHeld(null);
-            heldEntitySyncRef.set(null);
-        } else if (payload.action === 'setHover') {
-            // hold より前に届くことがあるので pending に保存
-            pendingHoverRef.current = { cursor: payload.cursor, heldCursor: payload.heldCursor };
-            // 既に hold 中なら即時反映
-            if (heldRef.current) {
-                const updated: HoldState = {
-                    ...heldRef.current,
-                    hoverCursor: payload.cursor,
-                    heldCursor: payload.heldCursor,
+    const handleGripCommand = useCallback(
+        (payload: CmdGrip['payload']) => {
+            if (payload.action === 'hold') {
+                const state: HoldState = {
+                    entityId: payload.entityId,
+                    offsetX: payload.offsetX,
+                    offsetY: payload.offsetY,
+                    slot: payload.slot,
+                    share: payload.share,
+                    hoverCursor: pendingHoverRef.current?.cursor,
+                    heldCursor: pendingHoverRef.current?.heldCursor,
                 };
-                heldRef.current = updated;
-                setHeld(updated);
+                heldRef.current = state;
+                setHeld(state);
+                // HoldProvider 外（router レベル）からも読めるよう同期
+                heldEntitySyncRef.set({ entityId: payload.entityId, share: payload.share });
+            } else if (payload.action === 'release') {
+                const h = heldRef.current;
+                if (h && payload.entityId === h.entityId) {
+                    // ドロップ時の座標をワールドに適用する
+                    // `dropX`, `dropY` が指定されていればそれを優先。なければマウスの最終座標を使う
+                    let finalX = payload.dropX;
+                    let finalY = payload.dropY;
+
+                    if (finalX === undefined || finalY === undefined) {
+                        const w = window as Window & { _lastMouseX?: number; _lastMouseY?: number };
+                        if (w._lastMouseX !== undefined && w._lastMouseY !== undefined) {
+                            const scrollEl = document.querySelector('[data-scroll-world]') as HTMLElement | null;
+                            const sx = scrollEl?.scrollLeft ?? 0;
+                            const sy = scrollEl?.scrollTop ?? 0;
+                            if (finalX === undefined) finalX = w._lastMouseX + sx + h.offsetX;
+                            if (finalY === undefined) finalY = w._lastMouseY + sy + h.offsetY;
+                        }
+                    }
+
+                    if (finalX !== undefined && finalY !== undefined) {
+                        const currentEntity = entitiesRef.current.get(h.entityId);
+                        if (currentEntity) {
+                            patchEntity(h.entityId, {
+                                transform: { ...currentEntity.transform, x: finalX, y: finalY },
+                            });
+                        }
+                    }
+                }
+
+                heldRef.current = null;
+                setHeld(null);
+                heldEntitySyncRef.set(null);
+            } else if (payload.action === 'setHover') {
+                // hold より前に届くことがあるので pending に保存
+                pendingHoverRef.current = { cursor: payload.cursor, heldCursor: payload.heldCursor };
+                // 既に hold 中なら即時反映
+                if (heldRef.current) {
+                    const updated: HoldState = {
+                        ...heldRef.current,
+                        hoverCursor: payload.cursor,
+                        heldCursor: payload.heldCursor,
+                    };
+                    heldRef.current = updated;
+                    setHeld(updated);
+                }
             }
-        }
-    }, []);
+        },
+        [patchEntity],
+    );
 
     return <HoldContext.Provider value={{ held, heldRef, handleGripCommand }}>{children}</HoldContext.Provider>;
 };
