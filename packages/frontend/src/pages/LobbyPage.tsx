@@ -14,7 +14,7 @@ export function LobbyPage() {
     const handleJoinInstance = (
         instanceId: string,
         worldId: string,
-        worldData?: { thumbnail?: string; displayName?: string }
+        worldData?: { thumbnail?: string; displayName?: string },
     ) => {
         navigate(`/instance/${instanceId}`, { state: { worldId, worldData } });
     };

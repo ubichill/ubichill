@@ -50,7 +50,7 @@ interface LobbyProps {
     onJoinInstance: (
         instanceId: string,
         worldId: string,
-        worldData?: { thumbnail?: string; displayName?: string }
+        worldData?: { thumbnail?: string; displayName?: string },
     ) => void;
     /** モーダル表示モード。省略時は 'lobby' */
     mode?: 'lobby' | 'modal';

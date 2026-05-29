@@ -1,3 +1,4 @@
+import { useSocket } from '@ubichill/sdk/react';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lobby } from '@/components/lobby';
@@ -16,6 +17,7 @@ interface WorldListModalProps {
  */
 export function WorldListModal({ onClose, currentInstanceId }: WorldListModalProps) {
     const navigate = useNavigate();
+    const { leaveWorld } = useSocket();
 
     // フェードインアニメーション用の状態
     const [visible, setVisible] = useState(false);
@@ -38,28 +40,23 @@ export function WorldListModal({ onClose, currentInstanceId }: WorldListModalPro
 
     // インスタンス参加ハンドラ — 確認後にナビゲーションで移動
     const handleJoinInstance = useCallback(
-        (
-            instanceId: string,
-            worldId: string,
-            worldData?: { thumbnail?: string; displayName?: string }
-        ) => {
+        (instanceId: string, worldId: string, worldData?: { thumbnail?: string; displayName?: string }) => {
             // 現在のインスタンスと同じ場合はモーダルを閉じるだけ
             if (instanceId === currentInstanceId) {
                 onClose();
                 return;
             }
 
-            const confirmed = window.confirm(
-                'このインスタンスに移動しますか？現在のインスタンスから退出します。',
-            );
+            const confirmed = window.confirm('このインスタンスに移動しますか？現在のインスタンスから退出します。');
             if (!confirmed) return;
 
-            // ナビゲーションにより InstancePage の unmount→mount が発生し、
-            // 既存の leaveWorld/joinWorld フローが自動的に実行される
-            navigate(`/instance/${instanceId}`, { state: { worldId, worldData } });
-            onClose();
+            // 確実に古いインスタンスから退出してから新しいインスタンスへ移動する
+            leaveWorld().then(() => {
+                navigate(`/instance/${instanceId}`, { state: { worldId, worldData } });
+                onClose();
+            });
         },
-        [currentInstanceId, navigate, onClose],
+        [currentInstanceId, navigate, onClose, leaveWorld],
     );
 
     return (

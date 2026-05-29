@@ -9,7 +9,7 @@ import { WorldListModal } from './WorldListModal';
 export function InstanceHUD() {
     const navigate = useNavigate();
     const { id: instanceId } = useParams<{ id: string }>();
-    const { users, isConnected, currentUser } = useSocket();
+    const { users, isConnected, currentUser, leaveWorld } = useSocket();
     const [menuOpen, setMenuOpen] = useState(false);
     const [worldListOpen, setWorldListOpen] = useState(false);
     /** 現在のインスタンスが指すワールド（authorId 比較で編集ボタン表示を判定） */
@@ -353,7 +353,10 @@ export function InstanceHUD() {
                             </button>
                             <button
                                 type="button"
-                                onClick={() => navigate('/')}
+                                onClick={async () => {
+                                    await leaveWorld();
+                                    navigate('/');
+                                }}
                                 className={css({
                                     width: 'full',
                                     display: 'flex',

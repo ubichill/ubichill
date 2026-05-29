@@ -26,6 +26,7 @@ export function useInstances(): UseInstancesReturn {
             const query = worldId ? `?worldId=${encodeURIComponent(worldId)}` : '';
             const res = await fetch(`${API_BASE}/api/v1/instances${query}`, {
                 credentials: 'include',
+                cache: 'no-store',
             });
             if (!res.ok) throw new Error('Failed to fetch instances');
             const data = await res.json();
@@ -43,6 +44,7 @@ export function useInstances(): UseInstancesReturn {
         try {
             const res = await fetch(`${API_BASE}/api/v1/worlds`, {
                 credentials: 'include',
+                cache: 'no-store',
             });
             if (!res.ok) throw new Error('Failed to fetch worlds');
             const data = await res.json();

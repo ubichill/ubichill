@@ -295,7 +295,7 @@ export function handleUserUpdate(socket: TypedSocket) {
  * ワールド退出イベントを処理（SPA内でロビーに戻る場合など、ソケットを切断せずに退出するケース）
  */
 export function handleWorldLeave(socket: TypedSocket) {
-    return async () => {
+    return async (callback?: (response: { success: boolean }) => void) => {
         const instanceId = socket.data.instanceId;
         const userId = stableUserId(socket);
         const user = userId ? userManager.removeUser(userId) : undefined;
@@ -326,6 +326,8 @@ export function handleWorldLeave(socket: TypedSocket) {
 
         socket.data.instanceId = undefined;
         socket.data.user = undefined;
+
+        callback?.({ success: true });
     };
 }
 

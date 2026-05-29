@@ -282,7 +282,7 @@ export interface ClientToServerEvents {
     ) => void;
 
     /** ワールドから退出 */
-    'world:leave': () => void;
+    'world:leave': (callback?: (response: { success: boolean }) => void) => void;
 
     /** カーソル位置を更新 */
     'cursor:move': (data: { position: CursorPosition; state?: CursorState }) => void;
