@@ -38,42 +38,48 @@ export function InstancePage() {
         if (!id) return;
         if (joinedIdRef.current === id) return;
 
-        if (joinedIdRef.current) {
-            leaveWorldRef.current();
-            setConnecting(true);
-        }
-
-        joinedIdRef.current = id;
-
-        const onJoinError = () => navigate('/');
-
-        const doJoin = (worldId: string) => {
-            joinWorld(session.user.name, worldId, id, onJoinError);
-            setConnecting(false);
-        };
-
-        // ロビーから来た場合は state に worldId が入っている。直接 URL 時は API から解決する
-        const stateWorldId = (location.state as { worldId?: string } | null)?.worldId;
-        if (stateWorldId) {
-            doJoin(stateWorldId);
-            return;
-        }
-
         let cancelled = false;
-        fetch(`${API_BASE}/api/v1/instances/${id}`, { credentials: 'include' })
-            .then((r) => (r.ok ? r.json() : null))
-            .then((instance) => {
+
+        const connectToNewInstance = async () => {
+            if (joinedIdRef.current) {
+                setConnecting(true);
+                await leaveWorldRef.current();
+            }
+            if (cancelled) return;
+
+            joinedIdRef.current = id;
+
+            const onJoinError = () => navigate('/');
+
+            const doJoin = (worldId: string) => {
+                joinWorld(session.user.name, worldId, id, onJoinError);
+                setConnecting(false);
+            };
+
+            // ロビーから来た場合は state に worldId が入っている。直接 URL 時は API から解決する
+            const stateWorldId = (location.state as { worldId?: string } | null)?.worldId;
+            if (stateWorldId) {
+                doJoin(stateWorldId);
+                return;
+            }
+
+            try {
+                const r = await fetch(`${API_BASE}/api/v1/instances/${id}`, { credentials: 'include' });
+                const instance = r.ok ? await r.json() : null;
                 if (cancelled) return;
+
                 const worldId = instance?.world?.id;
                 if (!worldId) {
                     navigate('/');
                     return;
                 }
                 doJoin(worldId);
-            })
-            .catch(() => {
+            } catch {
                 if (!cancelled) navigate('/');
-            });
+            }
+        };
+
+        connectToNewInstance();
 
         return () => {
             cancelled = true;
