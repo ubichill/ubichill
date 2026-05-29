@@ -4,14 +4,16 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { API_BASE } from '@/lib/api';
 import { css } from '@/styled-system/css';
-import { WorldListModal } from './WorldListModal';
+import { HudOverlay } from './HudOverlay';
+import type { HudTabId } from './HudTabs';
 
 export function InstanceHUD() {
     const navigate = useNavigate();
     const { id: instanceId } = useParams<{ id: string }>();
     const { users, isConnected, currentUser, leaveWorld } = useSocket();
     const [menuOpen, setMenuOpen] = useState(false);
-    const [worldListOpen, setWorldListOpen] = useState(false);
+    /** オーバーレイで開くタブ。null のとき非表示 */
+    const [overlayTab, setOverlayTab] = useState<HudTabId | null>(null);
     /** 現在のインスタンスが指すワールド（authorId 比較で編集ボタン表示を判定） */
     const [instanceWorld, setInstanceWorld] = useState<Instance['world'] | null>(null);
 
@@ -187,61 +189,113 @@ export function InstanceHUD() {
                                     },
                                 })}
                             >
-                                {[...users.values()].map((user) => (
-                                    <li
-                                        key={user.id}
-                                        className={css({
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '8px',
-                                            padding: '5px 4px',
-                                            borderRadius: '8px',
-                                        })}
-                                    >
-                                        {/* アバターアイコン（名前の頭文字） */}
-                                        <span
-                                            className={css({
-                                                width: '26px',
-                                                height: '26px',
-                                                borderRadius: '50%',
-                                                backgroundColor: 'hudAvatar',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                fontSize: '11px',
-                                                fontWeight: '700',
-                                                color: 'white',
-                                                flexShrink: 0,
-                                                textTransform: 'uppercase',
-                                            })}
-                                        >
-                                            {user.name.charAt(0)}
-                                        </span>
-                                        <span
-                                            className={css({
-                                                fontSize: '13px',
-                                                color: 'hudTextBody',
-                                                overflow: 'hidden',
-                                                textOverflow: 'ellipsis',
-                                                whiteSpace: 'nowrap',
-                                                flex: 1,
-                                            })}
-                                        >
-                                            {user.name}
-                                            {user.id === currentUser?.id && (
-                                                <span
+                                {[...users.values()].map((user) => {
+                                    const isMe = user.id === currentUser?.id;
+                                    const rowContent = (
+                                        <>
+                                            {/* アバターアイコン（名前の頭文字） */}
+                                            <span
+                                                className={css({
+                                                    width: '26px',
+                                                    height: '26px',
+                                                    borderRadius: '50%',
+                                                    backgroundColor: 'hudAvatar',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    fontSize: '11px',
+                                                    fontWeight: '700',
+                                                    color: 'white',
+                                                    flexShrink: 0,
+                                                    textTransform: 'uppercase',
+                                                })}
+                                            >
+                                                {user.name.charAt(0)}
+                                            </span>
+                                            <span
+                                                className={css({
+                                                    fontSize: '13px',
+                                                    color: 'hudTextBody',
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                    whiteSpace: 'nowrap',
+                                                    flex: 1,
+                                                    textAlign: 'left',
+                                                })}
+                                            >
+                                                {user.name}
+                                                {isMe && (
+                                                    <span
+                                                        className={css({
+                                                            ml: '4px',
+                                                            fontSize: '10px',
+                                                            color: 'hudTextSubtle',
+                                                        })}
+                                                    >
+                                                        (あなた)
+                                                    </span>
+                                                )}
+                                            </span>
+                                            {/* 自分の行はマイページへ遷移できることを示すアイコン */}
+                                            {isMe && (
+                                                <svg
+                                                    width="14"
+                                                    height="14"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    strokeWidth="2"
+                                                    className={css({ flexShrink: 0, color: 'hudTextSubtle' })}
+                                                    aria-hidden="true"
+                                                >
+                                                    <path d="m9 18 6-6-6-6" />
+                                                </svg>
+                                            )}
+                                        </>
+                                    );
+
+                                    return (
+                                        <li key={user.id}>
+                                            {isMe ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setMenuOpen(false);
+                                                        setOverlayTab('profile');
+                                                    }}
+                                                    aria-label="マイページを開く"
                                                     className={css({
-                                                        ml: '4px',
-                                                        fontSize: '10px',
-                                                        color: 'hudTextSubtle',
+                                                        width: 'full',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px',
+                                                        padding: '5px 4px',
+                                                        borderRadius: '8px',
+                                                        border: 'none',
+                                                        backgroundColor: 'transparent',
+                                                        cursor: 'pointer',
+                                                        transition: 'background-color 0.12s ease',
+                                                        _hover: { backgroundColor: 'hudActionHover' },
                                                     })}
                                                 >
-                                                    (あなた)
-                                                </span>
+                                                    {rowContent}
+                                                </button>
+                                            ) : (
+                                                <div
+                                                    className={css({
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px',
+                                                        padding: '5px 4px',
+                                                        borderRadius: '8px',
+                                                    })}
+                                                >
+                                                    {rowContent}
+                                                </div>
                                             )}
-                                        </span>
-                                    </li>
-                                ))}
+                                        </li>
+                                    );
+                                })}
                             </ul>
                         </div>
 
@@ -284,42 +338,9 @@ export function InstanceHUD() {
                             )}
                             <button
                                 type="button"
-                                onClick={() => navigate('/user/me')}
-                                className={css({
-                                    width: 'full',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                    padding: '9px 12px',
-                                    backgroundColor: 'transparent',
-                                    border: 'none',
-                                    borderRadius: '8px',
-                                    cursor: 'pointer',
-                                    color: 'hudTextAction',
-                                    fontSize: '13px',
-                                    fontWeight: '500',
-                                    transition: 'background-color 0.12s ease',
-                                    _hover: { backgroundColor: 'hudActionHover' },
-                                })}
-                            >
-                                <svg
-                                    width="14"
-                                    height="14"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                >
-                                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                                    <circle cx="12" cy="7" r="4" />
-                                </svg>
-                                マイページ
-                            </button>
-                            <button
-                                type="button"
                                 onClick={() => {
                                     setMenuOpen(false);
-                                    setWorldListOpen(true);
+                                    setOverlayTab('worlds');
                                 }}
                                 className={css({
                                     width: 'full',
@@ -382,9 +403,13 @@ export function InstanceHUD() {
                 </>
             )}
 
-            {/* ワールド一覧モーダル */}
-            {worldListOpen && instanceId && (
-                <WorldListModal currentInstanceId={instanceId} onClose={() => setWorldListOpen(false)} />
+            {/* HUD オーバーレイ（ホーム / ワールド / フレンド / マイページ） */}
+            {overlayTab && instanceId && (
+                <HudOverlay
+                    currentInstanceId={instanceId}
+                    initialTab={overlayTab}
+                    onClose={() => setOverlayTab(null)}
+                />
             )}
         </>
     );

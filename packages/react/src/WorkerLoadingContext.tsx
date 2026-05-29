@@ -1,6 +1,12 @@
 import type React from 'react';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
+/** Worker 起動の進捗。total = マウント済み worker 数 / ready = 起動完了した worker 数 */
+export interface WorkerLoadingStatus {
+    ready: number;
+    total: number;
+}
+
 interface WorkerLoadingContextType {
     registerWorker: () => { markReady: () => void; unregister: () => void };
 }
@@ -13,30 +19,31 @@ export function useWorkerLoading() {
 
 export const WorkerLoadingProvider: React.FC<{
     children: React.ReactNode;
-    onStatusChange?: (pendingCount: number) => void;
+    onStatusChange?: (status: WorkerLoadingStatus) => void;
 }> = ({ children, onStatusChange }) => {
-    const [pendingCount, setPendingCount] = useState(0);
+    const [status, setStatus] = useState<WorkerLoadingStatus>({ ready: 0, total: 0 });
 
     // Context changes immediately notify the parent via prop
     useEffect(() => {
-        onStatusChange?.(pendingCount);
-    }, [pendingCount, onStatusChange]);
+        onStatusChange?.(status);
+    }, [status, onStatusChange]);
 
     const registerWorker = useCallback(() => {
-        setPendingCount((c) => c + 1);
+        setStatus((s) => ({ ...s, total: s.total + 1 }));
         let ready = false;
+        let done = false;
         return {
             markReady: () => {
-                if (!ready) {
-                    ready = true;
-                    setPendingCount((c) => c - 1);
-                }
+                if (done || ready) return;
+                ready = true;
+                setStatus((s) => ({ ...s, ready: s.ready + 1 }));
             },
+            // アンマウント時: 起動完了前なら total から外し、完了済みなら ready も戻す。
+            // これにより pending(= total - ready) は常に正しく保たれる。
             unregister: () => {
-                if (!ready) {
-                    ready = true;
-                    setPendingCount((c) => c - 1);
-                }
+                if (done) return;
+                done = true;
+                setStatus((s) => ({ ready: ready ? s.ready - 1 : s.ready, total: s.total - 1 }));
             },
         };
     }, []);

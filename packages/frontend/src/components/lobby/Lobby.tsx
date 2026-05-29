@@ -179,6 +179,7 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                     flex: 1,
                     minH: 0,
                 })}
+                onClick={(e) => e.stopPropagation()}
             >
                 <div
                     className={css({
@@ -376,37 +377,6 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                                             <path d="M12 5v14M5 12h14" />
                                         </svg>
                                         自分でワールドを作る
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => navigate('/user/me')}
-                                        className={css({
-                                            display: 'inline-flex',
-                                            alignItems: 'center',
-                                            gap: '6px',
-                                            padding: '9px 16px',
-                                            backgroundColor: 'secondary',
-                                            color: 'text',
-                                            border: 'none',
-                                            borderRadius: '10px',
-                                            fontSize: '13px',
-                                            fontWeight: '600',
-                                            cursor: 'pointer',
-                                            _hover: { opacity: 0.9 },
-                                        })}
-                                    >
-                                        <svg
-                                            width="14"
-                                            height="14"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="2"
-                                        >
-                                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                                            <circle cx="12" cy="7" r="4" />
-                                        </svg>
-                                        マイページ
                                     </button>
                                 </div>
 

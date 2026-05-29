@@ -67,7 +67,7 @@ export function useWorldEditorApi({ isEdit, worldId, definition, onSavedYamlChan
                 const data = (await res.json().catch(() => ({}))) as { error?: string };
                 throw new Error(data.error ?? `HTTP ${res.status}`);
             }
-            navigate('/user/me');
+            navigate('/');
         } catch (e) {
             setError(e instanceof Error ? e.message : '削除失敗');
             setSaving(false);

@@ -31,16 +31,7 @@ export function AppRouter() {
                 />
                 {/* 公開ワールド URL — 誰でもアクセス可能、認証後に自動参加 */}
                 <Route path="/world/:worldId" element={<WorldPage />} />
-                {/* 自分のマイページ */}
-                <Route
-                    path="/user/me"
-                    element={
-                        <ProtectedRoute>
-                            <UserPage />
-                        </ProtectedRoute>
-                    }
-                />
-                {/* 他ユーザーの公開ページ */}
+                {/* ユーザープロフィール（URL から閲覧。マイページは HUD タブで表示） */}
                 <Route
                     path="/user/:userId"
                     element={
