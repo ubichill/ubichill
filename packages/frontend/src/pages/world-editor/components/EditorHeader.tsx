@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { css } from '@/styled-system/css';
 import { editorButton } from '../recipes/button';
 

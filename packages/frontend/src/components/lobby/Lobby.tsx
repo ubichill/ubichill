@@ -1,6 +1,6 @@
 import type { WorldListItem } from '@ubichill/shared';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { API_BASE } from '@/lib/api';
 import { useSession } from '@/lib/auth-client';
@@ -246,7 +246,7 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                         )}
                         <h1
                             className={css({
-                                fontSize: { base: 'xl', sm: '2xl', md: '3xl' },
+                                fontSize: { base: 'lg', sm: 'xl', md: 'xl' },
                                 fontWeight: '700',
                                 color: 'text',
                                 minW: 0,
@@ -258,35 +258,6 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                         >
                             {selectedWorld ? selectedWorld.displayName : 'ワールド選択'}
                         </h1>
-                        {!selectedWorld && (
-                            <select
-                                id="world-sort-select"
-                                value={sortKey}
-                                onChange={(e) => handleSortChange(e.target.value as SortKey)}
-                                aria-label="ソート条件"
-                                className={css({
-                                    fontSize: '12px',
-                                    color: 'textMuted',
-                                    bg: 'surface',
-                                    border: '1px solid',
-                                    borderColor: 'border',
-                                    borderRadius: '8px',
-                                    px: '8px',
-                                    py: '5px',
-                                    cursor: 'pointer',
-                                    outline: 'none',
-                                    flexShrink: 0,
-                                    _hover: { borderColor: 'borderStrong' },
-                                    _focus: { borderColor: 'primary' },
-                                })}
-                            >
-                                {(Object.keys(SORT_LABELS) as SortKey[]).map((key) => (
-                                    <option key={key} value={key}>
-                                        {SORT_LABELS[key]}
-                                    </option>
-                                ))}
-                            </select>
-                        )}
                     </div>
 
                     {error && (
@@ -456,6 +427,48 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                                         {importError}
                                     </p>
                                 )}
+
+                                {/* ワールドカードの直上にソートを配置 */}
+                                <div
+                                    className={css({
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        gap: '2',
+                                        marginBottom: '12px',
+                                    })}
+                                >
+                                    <span className={css({ fontSize: '13px', fontWeight: '600', color: 'text' })}>
+                                        ワールド一覧
+                                    </span>
+                                    <select
+                                        id="world-sort-select"
+                                        value={sortKey}
+                                        onChange={(e) => handleSortChange(e.target.value as SortKey)}
+                                        aria-label="ソート条件"
+                                        className={css({
+                                            fontSize: '12px',
+                                            color: 'textMuted',
+                                            bg: 'surface',
+                                            border: '1px solid',
+                                            borderColor: 'border',
+                                            borderRadius: '8px',
+                                            px: '8px',
+                                            py: '5px',
+                                            cursor: 'pointer',
+                                            outline: 'none',
+                                            flexShrink: 0,
+                                            _hover: { borderColor: 'borderStrong' },
+                                            _focus: { borderColor: 'primary' },
+                                        })}
+                                    >
+                                        {(Object.keys(SORT_LABELS) as SortKey[]).map((key) => (
+                                            <option key={key} value={key}>
+                                                {SORT_LABELS[key]}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
 
                                 <div
                                     className={css({

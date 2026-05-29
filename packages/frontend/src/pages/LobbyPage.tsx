@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { HudTabs } from '@/components/hud/HudTabs';
 import { type AccountMenuItem, LobbyAccountMenu } from '@/components/lobby/LobbyAccountMenu';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
@@ -13,12 +13,11 @@ export function LobbyPage() {
 
     const userName = session?.user?.name ?? '';
 
-    const handleJoinInstance = async (
+    const handleJoinInstance = (
         instanceId: string,
         worldId: string,
         worldData?: { thumbnail?: string; displayName?: string },
     ) => {
-        if (!(await confirm('このインスタンスに参加しますか？'))) return;
         navigate(`/instance/${instanceId}`, { state: { worldId, worldData } });
     };
 

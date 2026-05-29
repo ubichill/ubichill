@@ -1,6 +1,6 @@
 import { useSocket, WorkerLoadingProvider } from '@ubichill/sdk/react';
 import { useEffect, useRef, useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router';
 import { InstanceHUD } from '@/components/hud/InstanceHUD';
 import { InstanceLoadingScreen } from '@/instance/InstanceLoadingScreen';
 import { InstanceRenderer } from '@/instance/InstanceRenderer';

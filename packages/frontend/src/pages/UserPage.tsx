@@ -1,4 +1,4 @@
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router';
 import { UserProfileView } from '@/components/profile';
 import { css } from '@/styled-system/css';
 

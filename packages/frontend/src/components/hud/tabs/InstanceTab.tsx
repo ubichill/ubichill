@@ -1,7 +1,7 @@
 import { useSocket } from '@ubichill/sdk/react';
 import type { Instance } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useInstances } from '@/components/lobby/useInstances';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { API_BASE } from '@/lib/api';

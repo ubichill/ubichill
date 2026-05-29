@@ -1,6 +1,6 @@
 import type { Instance, WorldListItem } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router';
 import { API_BASE } from '@/lib/api';
 import { useSession } from '@/lib/auth-client';
 import { css } from '@/styled-system/css';

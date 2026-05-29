@@ -1,6 +1,6 @@
 import { useSocket } from '@ubichill/sdk/react';
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { css } from '@/styled-system/css';
 import { type HudTabId, HudTabs } from './HudTabs';

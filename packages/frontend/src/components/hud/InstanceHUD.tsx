@@ -1,6 +1,6 @@
 import { useSocket } from '@ubichill/sdk/react';
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams } from 'react-router';
 import { css } from '@/styled-system/css';
 import { HudOverlay } from './HudOverlay';
 
@@ -23,7 +23,8 @@ export function InstanceHUD() {
                 aria-label="メニューを開く"
                 className={css({
                     position: 'fixed',
-                    bottom: '20px',
+                    top: { base: 'auto', md: '20px' },
+                    bottom: { base: '20px', md: 'auto' },
                     right: '20px',
                     width: '52px',
                     height: '52px',
