@@ -1,11 +1,26 @@
 import { useSocket } from '@ubichill/sdk/react';
-import type { Instance } from '@ubichill/shared';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { API_BASE } from '@/lib/api';
 import { css } from '@/styled-system/css';
 import { HudOverlay } from './HudOverlay';
 import type { HudTabId } from './HudTabs';
+
+const pillBase = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '7px 12px',
+    backgroundColor: 'hudBg',
+    backdropFilter: 'blur(6px)',
+    borderRadius: '20px',
+    border: 'none',
+    cursor: 'pointer',
+    color: 'hudText',
+    fontSize: '13px',
+    fontWeight: '500',
+    transition: 'background-color 0.15s ease',
+    _hover: { backgroundColor: 'hudBgHover' },
+};
 
 export function InstanceHUD() {
     const navigate = useNavigate();
@@ -14,98 +29,77 @@ export function InstanceHUD() {
     const [menuOpen, setMenuOpen] = useState(false);
     /** オーバーレイで開くタブ。null のとき非表示 */
     const [overlayTab, setOverlayTab] = useState<HudTabId | null>(null);
-    /** 現在のインスタンスが指すワールド（authorId 比較で編集ボタン表示を判定） */
-    const [instanceWorld, setInstanceWorld] = useState<Instance['world'] | null>(null);
-
-    // currentUser はカーソル移動のたびに参照が変わるので、id だけ依存に使う
-    const currentUserId = currentUser?.id;
-
-    // socket イベントの userId と DB users.id は ID 統一済み (handlers/socketHandlers.ts 参照)。
-    // よって currentUser.id === world.authorId が信頼できる比較になる。
-    // authorName の文字列比較は同名ユーザーの誤判定リスクがあるため使わない。
-    useEffect(() => {
-        if (!instanceId) {
-            setInstanceWorld(null);
-            return;
-        }
-        let cancelled = false;
-        fetch(`${API_BASE}/api/v1/instances/${instanceId}`, { credentials: 'include' })
-            .then((r) => (r.ok ? (r.json() as Promise<Instance>) : null))
-            .then((instance) => {
-                if (cancelled || !instance) return;
-                setInstanceWorld(instance.world);
-            })
-            .catch(() => {
-                /* 取得失敗時は編集ボタン非表示 */
-            });
-        return () => {
-            cancelled = true;
-        };
-    }, [instanceId]);
-
-    const editableWorldId =
-        instanceWorld && currentUserId && instanceWorld.authorId === currentUserId ? instanceWorld.id : null;
 
     const userCount = users.size;
+    const myName = currentUser?.name ?? '';
+
+    const handleReturnToLobby = async () => {
+        setMenuOpen(false);
+        await leaveWorld();
+        navigate('/');
+    };
 
     return (
         <>
-            {/* 常時表示のステータスバー（右上） */}
+            {/* 常時表示の HUD クラスタ（右上・縦並び）。上から アカウント / メニュー / 参加者 */}
             <div
                 className={css({
                     position: 'fixed',
                     top: '12px',
                     right: '12px',
                     display: 'flex',
-                    alignItems: 'center',
+                    flexDirection: 'column',
+                    alignItems: 'flex-end',
                     gap: '8px',
                     zIndex: 10000,
                     pointerEvents: 'auto',
                 })}
             >
-                {/* 接続状態 + ユーザー数 + メニューボタン */}
+                {/* アカウント → マイページ */}
+                <button
+                    type="button"
+                    onClick={() => setOverlayTab('profile')}
+                    className={css({ ...pillBase, maxWidth: '200px' })}
+                    aria-label="マイページを開く"
+                >
+                    <span
+                        className={css({
+                            width: '22px',
+                            height: '22px',
+                            borderRadius: '50%',
+                            backgroundColor: 'hudAvatar',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '11px',
+                            fontWeight: '700',
+                            color: 'white',
+                            flexShrink: 0,
+                            textTransform: 'uppercase',
+                        })}
+                    >
+                        {myName.charAt(0) || '?'}
+                    </span>
+                    <span
+                        className={css({
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                        })}
+                    >
+                        {myName || 'マイページ'}
+                    </span>
+                </button>
+
+                {/* メニューを開く */}
                 <button
                     type="button"
                     onClick={() => setMenuOpen((o) => !o)}
-                    className={css({
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '6px 12px',
-                        backgroundColor: 'hudBg',
-                        backdropFilter: 'blur(6px)',
-                        borderRadius: '20px',
-                        border: 'none',
-                        cursor: 'pointer',
-                        color: 'hudText',
-                        fontSize: '13px',
-                        fontWeight: '500',
-                        transition: 'background-color 0.15s ease',
-                        _hover: { backgroundColor: 'hudBgHover' },
-                    })}
+                    className={css(pillBase)}
                     aria-label="メニューを開く"
+                    aria-expanded={menuOpen}
                 >
-                    {/* 接続インジケーター */}
-                    <span
-                        className={css({
-                            width: '7px',
-                            height: '7px',
-                            borderRadius: '50%',
-                            flexShrink: 0,
-                            backgroundColor: isConnected ? 'hudStatusOn' : 'hudStatusOff',
-                        })}
-                    />
-                    {/* ユーザー数 */}
-                    <span>{userCount} 人</span>
-                    {/* ハンバーガーアイコン */}
-                    <span
-                        className={css({
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '3px',
-                            ml: '2px',
-                        })}
-                    >
+                    <span className={css({ display: 'flex', flexDirection: 'column', gap: '3px' })}>
                         {[0, 1, 2].map((i) => (
                             <span
                                 key={i}
@@ -119,29 +113,48 @@ export function InstanceHUD() {
                             />
                         ))}
                     </span>
+                    メニュー
+                </button>
+
+                {/* 参加者 → 現在地（インスタンス）タブ */}
+                <button
+                    type="button"
+                    onClick={() => setOverlayTab('instance')}
+                    className={css(pillBase)}
+                    aria-label="参加者を見る"
+                >
+                    <span
+                        className={css({
+                            width: '7px',
+                            height: '7px',
+                            borderRadius: '50%',
+                            flexShrink: 0,
+                            backgroundColor: isConnected ? 'hudStatusOn' : 'hudStatusOff',
+                        })}
+                    />
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                        <circle cx="9" cy="7" r="4" />
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                    </svg>
+                    {userCount}
                 </button>
             </div>
 
-            {/* メニューパネル */}
+            {/* メニューパネル（ロビーへ戻る等。ロビーは今後廃止予定） */}
             {menuOpen && (
                 <>
-                    {/* オーバーレイ（パネル外クリックで閉じる） */}
                     <div
-                        className={css({
-                            position: 'fixed',
-                            inset: 0,
-                            zIndex: 10001,
-                        })}
+                        className={css({ position: 'fixed', inset: 0, zIndex: 10001 })}
                         onClick={() => setMenuOpen(false)}
                     />
-
-                    {/* パネル本体 */}
                     <div
                         className={css({
                             position: 'fixed',
                             top: '52px',
                             right: '12px',
-                            width: '240px',
+                            width: '220px',
                             backgroundColor: 'hudPanel',
                             backdropFilter: 'blur(12px)',
                             borderRadius: '14px',
@@ -150,260 +163,40 @@ export function InstanceHUD() {
                             overflow: 'hidden',
                             zIndex: 10002,
                             boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+                            padding: '8px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '2px',
                         })}
                     >
-                        {/* ユーザー一覧 */}
-                        <div
+                        <button
+                            type="button"
+                            onClick={() => void handleReturnToLobby()}
                             className={css({
-                                padding: '12px 14px 8px',
-                                borderBottom: '1px solid',
-                                borderColor: 'hudDivider',
+                                width: 'full',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                padding: '9px 12px',
+                                backgroundColor: 'transparent',
+                                border: 'none',
+                                borderRadius: '8px',
+                                cursor: 'pointer',
+                                color: 'hudTextAction',
+                                fontSize: '13px',
+                                fontWeight: '500',
+                                transition: 'background-color 0.12s ease',
+                                _hover: { backgroundColor: 'hudActionHover' },
                             })}
                         >
-                            <p
-                                className={css({
-                                    fontSize: '11px',
-                                    fontWeight: '600',
-                                    color: 'hudTextMuted',
-                                    textTransform: 'uppercase',
-                                    letterSpacing: '0.08em',
-                                    marginBottom: '8px',
-                                })}
-                            >
-                                参加中 {userCount} 人
-                            </p>
-                            <ul
-                                className={css({
-                                    listStyle: 'none',
-                                    padding: 0,
-                                    margin: 0,
-                                    maxHeight: '200px',
-                                    overflowY: 'auto',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '2px',
-                                    '&::-webkit-scrollbar': { width: '4px' },
-                                    '&::-webkit-scrollbar-thumb': {
-                                        backgroundColor: 'hudScrollThumb',
-                                        borderRadius: '2px',
-                                    },
-                                })}
-                            >
-                                {[...users.values()].map((user) => {
-                                    const isMe = user.id === currentUser?.id;
-                                    const rowContent = (
-                                        <>
-                                            {/* アバターアイコン（名前の頭文字） */}
-                                            <span
-                                                className={css({
-                                                    width: '26px',
-                                                    height: '26px',
-                                                    borderRadius: '50%',
-                                                    backgroundColor: 'hudAvatar',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    fontSize: '11px',
-                                                    fontWeight: '700',
-                                                    color: 'white',
-                                                    flexShrink: 0,
-                                                    textTransform: 'uppercase',
-                                                })}
-                                            >
-                                                {user.name.charAt(0)}
-                                            </span>
-                                            <span
-                                                className={css({
-                                                    fontSize: '13px',
-                                                    color: 'hudTextBody',
-                                                    overflow: 'hidden',
-                                                    textOverflow: 'ellipsis',
-                                                    whiteSpace: 'nowrap',
-                                                    flex: 1,
-                                                    textAlign: 'left',
-                                                })}
-                                            >
-                                                {user.name}
-                                                {isMe && (
-                                                    <span
-                                                        className={css({
-                                                            ml: '4px',
-                                                            fontSize: '10px',
-                                                            color: 'hudTextSubtle',
-                                                        })}
-                                                    >
-                                                        (あなた)
-                                                    </span>
-                                                )}
-                                            </span>
-                                            {/* 自分の行はマイページへ遷移できることを示すアイコン */}
-                                            {isMe && (
-                                                <svg
-                                                    width="14"
-                                                    height="14"
-                                                    viewBox="0 0 24 24"
-                                                    fill="none"
-                                                    stroke="currentColor"
-                                                    strokeWidth="2"
-                                                    className={css({ flexShrink: 0, color: 'hudTextSubtle' })}
-                                                    aria-hidden="true"
-                                                >
-                                                    <path d="m9 18 6-6-6-6" />
-                                                </svg>
-                                            )}
-                                        </>
-                                    );
-
-                                    return (
-                                        <li key={user.id}>
-                                            {isMe ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setMenuOpen(false);
-                                                        setOverlayTab('profile');
-                                                    }}
-                                                    aria-label="マイページを開く"
-                                                    className={css({
-                                                        width: 'full',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '8px',
-                                                        padding: '5px 4px',
-                                                        borderRadius: '8px',
-                                                        border: 'none',
-                                                        backgroundColor: 'transparent',
-                                                        cursor: 'pointer',
-                                                        transition: 'background-color 0.12s ease',
-                                                        _hover: { backgroundColor: 'hudActionHover' },
-                                                    })}
-                                                >
-                                                    {rowContent}
-                                                </button>
-                                            ) : (
-                                                <div
-                                                    className={css({
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '8px',
-                                                        padding: '5px 4px',
-                                                        borderRadius: '8px',
-                                                    })}
-                                                >
-                                                    {rowContent}
-                                                </div>
-                                            )}
-                                        </li>
-                                    );
-                                })}
-                            </ul>
-                        </div>
-
-                        {/* アクション */}
-                        <div className={css({ padding: '8px', display: 'flex', flexDirection: 'column', gap: '2px' })}>
-                            {editableWorldId && (
-                                <button
-                                    type="button"
-                                    onClick={() => navigate(`/world/${editableWorldId}/edit`)}
-                                    className={css({
-                                        width: 'full',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px',
-                                        padding: '9px 12px',
-                                        backgroundColor: 'transparent',
-                                        border: 'none',
-                                        borderRadius: '8px',
-                                        cursor: 'pointer',
-                                        color: 'hudTextAction',
-                                        fontSize: '13px',
-                                        fontWeight: '500',
-                                        transition: 'background-color 0.12s ease',
-                                        _hover: { backgroundColor: 'hudActionHover' },
-                                    })}
-                                >
-                                    <svg
-                                        width="14"
-                                        height="14"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="2"
-                                    >
-                                        <path d="M12 20h9" />
-                                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
-                                    </svg>
-                                    このワールドを編集
-                                </button>
-                            )}
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setMenuOpen(false);
-                                    setOverlayTab('worlds');
-                                }}
-                                className={css({
-                                    width: 'full',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                    padding: '9px 12px',
-                                    backgroundColor: 'transparent',
-                                    border: 'none',
-                                    borderRadius: '8px',
-                                    cursor: 'pointer',
-                                    color: 'hudTextAction',
-                                    fontSize: '13px',
-                                    fontWeight: '500',
-                                    transition: 'background-color 0.12s ease',
-                                    _hover: { backgroundColor: 'hudActionHover' },
-                                })}
-                            >
-                                <svg
-                                    width="14"
-                                    height="14"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                >
-                                    <circle cx="12" cy="12" r="10" />
-                                    <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-                                </svg>
-                                ワールド一覧
-                            </button>
-                            <button
-                                type="button"
-                                onClick={async () => {
-                                    await leaveWorld();
-                                    navigate('/');
-                                }}
-                                className={css({
-                                    width: 'full',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                    padding: '9px 12px',
-                                    backgroundColor: 'transparent',
-                                    border: 'none',
-                                    borderRadius: '8px',
-                                    cursor: 'pointer',
-                                    color: 'hudTextAction',
-                                    fontSize: '13px',
-                                    fontWeight: '500',
-                                    transition: 'background-color 0.12s ease',
-                                    _hover: { backgroundColor: 'hudActionHover' },
-                                })}
-                            >
-                                <span className={css({ fontSize: '16px', lineHeight: 1 })}>←</span>
-                                ロビーへ戻る
-                            </button>
-                        </div>
+                            <span className={css({ fontSize: '16px', lineHeight: 1 })}>←</span>
+                            ロビーへ戻る
+                        </button>
                     </div>
                 </>
             )}
 
-            {/* HUD オーバーレイ（ホーム / ワールド / フレンド / マイページ） */}
+            {/* HUD オーバーレイ（現在地 / ホーム / ワールド / フレンド / マイページ） */}
             {overlayTab && instanceId && (
                 <HudOverlay
                     currentInstanceId={instanceId}

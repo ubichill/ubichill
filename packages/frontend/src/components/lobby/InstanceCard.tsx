@@ -22,13 +22,13 @@ export function InstanceCard({ instance, onJoin, isCurrent = false }: InstanceCa
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 padding: { base: '12px', md: '16px' },
-                backgroundColor: 'surface',
+                backgroundColor: isCurrent ? 'successBg' : 'surface',
                 borderRadius: '14px',
                 border: '1px solid',
-                borderColor: 'border',
+                borderColor: isCurrent ? '#8ad29b88' : 'border',
                 transition: 'background-color 0.16s ease',
                 _hover: {
-                    backgroundColor: 'surfaceHover',
+                    backgroundColor: isCurrent ? 'successBg' : 'surfaceHover',
                 },
             })}
         >
@@ -71,10 +71,37 @@ export function InstanceCard({ instance, onJoin, isCurrent = false }: InstanceCa
                             />
                             {instance.status}
                         </span>
-                        <span>
-                            👥 {instance.stats.currentUsers}/{instance.stats.maxUsers}
+                        <span className={css({ display: 'flex', alignItems: 'center', gap: '4px' })}>
+                            <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                aria-hidden="true"
+                            >
+                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                                <circle cx="9" cy="7" r="4" />
+                                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                            </svg>
+                            {instance.stats.currentUsers}/{instance.stats.maxUsers}
                         </span>
-                        {instance.access.password && <span>🔒</span>}
+                        {instance.access.password && (
+                            <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                aria-label="パスワード保護"
+                            >
+                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                            </svg>
+                        )}
                     </div>
                 </div>
             </div>

@@ -86,7 +86,8 @@ export function LobbyPage() {
 
             <LobbyAccountMenu userName={userName} items={accountMenuItems} />
 
-            <div className={css({ h: { base: '14', md: '12' }, flexShrink: 0 })} />
+            {/* スマホは上部にロゴ/アカウントがあるため余白を確保。PC はタブバーが上部に来るため不要 */}
+            <div className={css({ h: { base: '14', md: '0' }, flexShrink: 0 })} />
 
             <HudTabs onJoinInstance={handleJoinInstance} initialTab="home" />
         </main>

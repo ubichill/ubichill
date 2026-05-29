@@ -1,19 +1,43 @@
-import { useEffect, useState } from 'react';
-import { InstanceCard } from '@/components/lobby/InstanceCard';
-import { Lobby } from '@/components/lobby/Lobby';
-import { useInstances } from '@/components/lobby/useInstances';
-import { UserProfileView } from '@/components/profile';
+import { useState } from 'react';
 import { css } from '@/styled-system/css';
+import { FriendsTab } from './tabs/FriendsTab';
+import { HomeTab } from './tabs/HomeTab';
+import { InstanceTab } from './tabs/InstanceTab';
+import { ProfileTab } from './tabs/ProfileTab';
+import type { JoinInstanceHandler } from './tabs/shared';
+import { WorldsTab } from './tabs/WorldsTab';
 
-export type HudTabId = 'home' | 'worlds' | 'friends' | 'profile';
+export type HudTabId = 'instance' | 'home' | 'worlds' | 'friends' | 'profile';
 
-type JoinInstanceHandler = (
-    instanceId: string,
-    worldId: string,
-    worldData?: { thumbnail?: string; displayName?: string },
-) => void;
+interface TabDef {
+    id: HudTabId;
+    label: string;
+    icon: React.ReactNode;
+    /** インスタンス内（currentInstanceId あり）でのみ表示するタブ */
+    instanceOnly?: boolean;
+}
 
-const TABS: { id: HudTabId; label: string; icon: React.ReactNode }[] = [
+const TABS: TabDef[] = [
+    {
+        id: 'instance',
+        label: '現在地',
+        instanceOnly: true,
+        icon: (
+            <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            >
+                <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" />
+                <circle cx="12" cy="10" r="3" />
+            </svg>
+        ),
+    },
     {
         id: 'home',
         label: 'ホーム',
@@ -95,129 +119,6 @@ const TABS: { id: HudTabId; label: string; icon: React.ReactNode }[] = [
     },
 ];
 
-/** 各タブのスクロール領域。オーバーレイ表示時にカード内クリックで閉じないよう伝播を止める。 */
-const tabPanel = css({
-    width: 'full',
-    maxWidth: '730px',
-    mx: 'auto',
-    px: { base: '2', md: '0' },
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '6',
-    h: 'full',
-    overflowY: 'auto',
-    pb: '20px',
-});
-
-const cardBase = {
-    bg: 'surfaceAccent',
-    borderRadius: '24px',
-    p: { base: '4', md: '6' },
-    boxShadow: 'card',
-};
-
-const cardStyle = css(cardBase);
-
-const sectionHeading = css({ fontSize: 'xl', fontWeight: 'bold', mb: '4', color: 'text' });
-
-function HomeTab({ onJoinInstance }: { onJoinInstance: JoinInstanceHandler }) {
-    const { instances, loading, error, refreshInstances } = useInstances();
-
-    useEffect(() => {
-        void refreshInstances();
-    }, [refreshInstances]);
-
-    return (
-        <div className={tabPanel} onClick={(e) => e.stopPropagation()}>
-            <div className={cardStyle}>
-                <h2 className={sectionHeading}>オンラインのフレンド</h2>
-                <div
-                    className={css({
-                        p: '6',
-                        bg: 'secondary',
-                        borderRadius: '12px',
-                        textAlign: 'center',
-                        color: 'textMuted',
-                        fontSize: '15px',
-                    })}
-                >
-                    Coming Soon...
-                </div>
-            </div>
-
-            <div className={css(cardBase, { flex: 1 })}>
-                <h2 className={sectionHeading}>アクティブなインスタンス</h2>
-                {loading && instances.length === 0 ? (
-                    <div className={css({ textAlign: 'center', p: '4', color: 'textMuted' })}>読み込み中...</div>
-                ) : error ? (
-                    <div className={css({ p: '4', bg: 'errorBg', color: 'errorText', borderRadius: '8px' })}>
-                        {error}
-                    </div>
-                ) : instances.length === 0 ? (
-                    <div
-                        className={css({
-                            textAlign: 'center',
-                            p: '6',
-                            bg: 'secondary',
-                            borderRadius: '12px',
-                            color: 'textMuted',
-                        })}
-                    >
-                        アクティブなインスタンスはありません
-                    </div>
-                ) : (
-                    <div className={css({ display: 'flex', flexDirection: 'column', gap: '3' })}>
-                        {instances.map((instance) => (
-                            <InstanceCard
-                                key={instance.id}
-                                instance={instance}
-                                onJoin={(id) =>
-                                    onJoinInstance(id, instance.world.id, {
-                                        thumbnail: instance.world.thumbnail,
-                                        displayName: instance.world.displayName,
-                                    })
-                                }
-                            />
-                        ))}
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-}
-
-function FriendsTab() {
-    return (
-        <div className={tabPanel} onClick={(e) => e.stopPropagation()}>
-            <div className={cardStyle}>
-                <h2 className={sectionHeading}>フレンド一覧</h2>
-                <div
-                    className={css({
-                        p: '8',
-                        bg: 'secondary',
-                        borderRadius: '12px',
-                        textAlign: 'center',
-                        color: 'textMuted',
-                        fontSize: '15px',
-                    })}
-                >
-                    Coming Soon...
-                </div>
-            </div>
-        </div>
-    );
-}
-
-function ProfileTab({ onNavigate }: { onNavigate?: () => void }) {
-    return (
-        <div className={tabPanel} onClick={(e) => e.stopPropagation()}>
-            <div className={cardStyle}>
-                <UserProfileView onNavigate={onNavigate} />
-            </div>
-        </div>
-    );
-}
-
 interface HudTabsProps {
     onJoinInstance: JoinInstanceHandler;
     /** インスタンス内オーバーレイ表示時、現在参加中のインスタンスID */
@@ -230,17 +131,37 @@ interface HudTabsProps {
 
 /**
  * ロビーとインスタンス内オーバーレイで共通利用する HUD ナビゲーション。
- * ホーム / ワールド / フレンド / マイページを遷移なしのタブで切り替える。
+ * 現在地 / ホーム / ワールド / フレンド / マイページを遷移なしのタブで切り替える。
+ * タブバーは PC では上部、スマホでは下部に表示する。
  */
 export function HudTabs({ onJoinInstance, currentInstanceId, initialTab = 'home', onNavigate }: HudTabsProps) {
     const [activeTab, setActiveTab] = useState<HudTabId>(initialTab);
 
+    const visibleTabs = TABS.filter((tab) => !tab.instanceOnly || currentInstanceId);
+
     return (
         <>
-            <div className={css({ flex: 1, minH: 0, overflow: 'hidden', pb: '100px' })}>
-                {activeTab === 'home' && <HomeTab onJoinInstance={onJoinInstance} />}
+            <div
+                className={css({
+                    flex: 1,
+                    minH: 0,
+                    overflow: 'hidden',
+                    pb: { base: '100px', md: '24px' },
+                    pt: { base: '0', md: '96px' },
+                })}
+            >
+                {activeTab === 'instance' && currentInstanceId && (
+                    <InstanceTab
+                        currentInstanceId={currentInstanceId}
+                        onJoinInstance={onJoinInstance}
+                        onNavigate={onNavigate}
+                    />
+                )}
+                {activeTab === 'home' && (
+                    <HomeTab onJoinInstance={onJoinInstance} currentInstanceId={currentInstanceId} />
+                )}
                 {activeTab === 'worlds' && (
-                    <Lobby onJoinInstance={onJoinInstance} mode="modal" currentInstanceId={currentInstanceId} />
+                    <WorldsTab onJoinInstance={onJoinInstance} currentInstanceId={currentInstanceId} />
                 )}
                 {activeTab === 'friends' && <FriendsTab />}
                 {activeTab === 'profile' && <ProfileTab onNavigate={onNavigate} />}
@@ -249,12 +170,13 @@ export function HudTabs({ onJoinInstance, currentInstanceId, initialTab = 'home'
             <div
                 className={css({
                     position: 'fixed',
-                    bottom: { base: '20px', md: '32px' },
                     left: '50%',
                     transform: 'translateX(-50%)',
                     zIndex: 100,
                     width: 'calc(100% - 32px)',
                     maxWidth: '730px',
+                    bottom: { base: '20px', md: 'auto' },
+                    top: { base: 'auto', md: '16px' },
                 })}
                 onClick={(e) => e.stopPropagation()}
             >
@@ -269,7 +191,7 @@ export function HudTabs({ onJoinInstance, currentInstanceId, initialTab = 'home'
                         gap: '2',
                     })}
                 >
-                    {TABS.map((tab) => (
+                    {visibleTabs.map((tab) => (
                         <button
                             key={tab.id}
                             type="button"
