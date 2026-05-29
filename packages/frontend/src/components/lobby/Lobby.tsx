@@ -90,6 +90,11 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
 
     const scrollRef = useRef<HTMLDivElement>(null);
 
+    const selectedWorld = useMemo(
+        () => sortedWorlds.find((world) => world.id === selectedWorldId) ?? undefined,
+        [sortedWorlds, selectedWorldId],
+    );
+
     const handleSelectWorld = useCallback((worldId: string) => {
         setSelectedWorldId(worldId);
     }, []);
@@ -403,12 +408,13 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                                 </div>
                             </div>
                         )}
-                        {selectedWorldId && (
+                        {selectedWorldId && selectedWorld && (
                             <WorldDetailModal
                                 worldId={selectedWorldId}
                                 onClose={() => setSelectedWorldId(null)}
                                 onJoinInstance={onJoinInstance}
                                 currentInstanceId={currentInstanceId}
+                                initialWorld={selectedWorld}
                             />
                         )}
                     </div>

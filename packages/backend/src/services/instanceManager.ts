@@ -9,6 +9,7 @@ import type {
 } from '@ubichill/shared';
 import { DEFAULTS } from '@ubichill/shared';
 import bcrypt from 'bcryptjs';
+import { appConfig } from '../config';
 import { logger } from '../utils/logger';
 import { clearInstanceState, createEntity } from './instanceState';
 import { worldRegistry } from './worldRegistry';
@@ -57,6 +58,11 @@ function flattenGameObject(
  * インスタンスのライフサイクルを管理（DBベース）
  */
 class InstanceManager {
+    /**
+     * DBから取得した生レコードをフロントエンド用の公開データに変換
+     */
+    private emptyTimers = new Map<string, NodeJS.Timeout>();
+
     /**
      * 新しいインスタンスを作成
      */
@@ -207,15 +213,30 @@ class InstanceManager {
         const updated = await instanceRepository.updateUserCount(instanceId, delta);
         if (!updated) return -1;
 
-        // ユーザーが0になったらインスタンスを自動削除
+        // ユーザーが戻ってきたら削除タイマーをキャンセル
+        if (updated.currentUsers > 0) {
+            const timer = this.emptyTimers.get(instanceId);
+            if (timer) {
+                clearTimeout(timer);
+                this.emptyTimers.delete(instanceId);
+                logger.info(`インスタンス削除をキャンセル（ユーザー再参加）: ${instanceId}`);
+            }
+        }
+
+        // ユーザーが0になったら一定時間後にインスタンスを自動削除
         if (updated.currentUsers === 0) {
-            await instanceRepository.delete(instanceId);
+            const timeoutMs = appConfig.instance.emptyTimeoutMs;
+            const timer = setTimeout(async () => {
+                await instanceRepository.delete(instanceId);
 
-            // インスタンスのエンティティ状態をクリーンアップ
-            clearInstanceState(instanceId);
+                // インスタンスのエンティティ状態をクリーンアップ
+                clearInstanceState(instanceId);
 
-            logger.info(`インスタンス自動削除（ユーザー0）: ${instanceId}`);
-            return 0;
+                logger.info(`インスタンス自動削除（ユーザー0から${timeoutMs / 1000}秒経過）: ${instanceId}`);
+                this.emptyTimers.delete(instanceId);
+            }, timeoutMs);
+            
+            this.emptyTimers.set(instanceId, timer);
         }
 
         return updated.currentUsers;

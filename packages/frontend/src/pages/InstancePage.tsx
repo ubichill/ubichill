@@ -1,4 +1,4 @@
-import { useSocket, WorkerLoadingProvider } from '@ubichill/react';
+import { useSocket, useWorld, WorkerLoadingProvider } from '@ubichill/react';
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { InstanceHUD } from '@/components/hud/InstanceHUD';
@@ -16,6 +16,7 @@ export function InstancePage() {
     const { data: session, isPending } = useSession();
 
     const { isConnected, error, currentUser, joinWorld, leaveWorld } = useSocket();
+    const { resetWorld } = useWorld();
 
     const joinedIdRef = useRef<string | null>(null);
     const leaveWorldRef = useRef(leaveWorld);
@@ -31,8 +32,9 @@ export function InstancePage() {
     useEffect(() => {
         return () => {
             leaveWorldRef.current();
+            resetWorld();
         };
-    }, []);
+    }, [resetWorld]);
 
     useEffect(() => {
         if (isPending) return;
@@ -51,6 +53,7 @@ export function InstancePage() {
         const connectToNewInstance = async () => {
             if (joinedIdRef.current) {
                 await leaveWorldRef.current();
+                resetWorld();
             }
             if (cancelled) return;
 
@@ -73,11 +76,21 @@ export function InstancePage() {
 
             try {
                 const r = await fetch(`${API_BASE}/api/v1/instances/${id}`, { credentials: 'include' });
-                const instance = r.ok ? await r.json() : null;
+                if (!r.ok) {
+                    if (r.status === 404) {
+                        setLoadError('インスタンスが見つかりませんでした');
+                    } else if (r.status === 429) {
+                        setLoadError('アクセスが集中しています。しばらくしてから再試行してください');
+                    } else {
+                        setLoadError(`インスタンス情報の取得に失敗しました (${r.status})`);
+                    }
+                    return;
+                }
+                const instance = await r.json();
                 if (cancelled) return;
                 const worldId = instance?.world?.id;
                 if (!worldId) {
-                    setLoadError('インスタンスが見つかりませんでした');
+                    setLoadError('インスタンスのワールド情報が不正です');
                     return;
                 }
                 doJoin(worldId);
@@ -93,7 +106,7 @@ export function InstancePage() {
         return () => {
             cancelled = true;
         };
-    }, [session, isPending, navigate, id, location.state, joinWorld]);
+    }, [session, isPending, navigate, id, location.state, joinWorld, resetWorld]);
 
     const loading = useInstanceLoading({
         instanceId: id,
@@ -130,14 +143,16 @@ export function InstancePage() {
                     onReturnToLobby={() => navigate('/')}
                 />
             )}
-            <main>
-                <PluginRegistryProvider key={id} onStatusChange={setPlugins}>
-                    <WorkerLoadingProvider onStatusChange={setWorkers}>
-                        <InstanceRenderer />
-                    </WorkerLoadingProvider>
-                </PluginRegistryProvider>
-                <InstanceHUD />
-            </main>
+            {!loading.failed && currentUser != null && (
+                <main>
+                    <PluginRegistryProvider key={id} onStatusChange={setPlugins}>
+                        <WorkerLoadingProvider onStatusChange={setWorkers}>
+                            <InstanceRenderer />
+                        </WorkerLoadingProvider>
+                    </PluginRegistryProvider>
+                    <InstanceHUD />
+                </main>
+            )}
         </>
     );
 }

@@ -12,7 +12,8 @@ const envSchema = z.object({
     RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().finite().default(900000),
     // SPA は1画面の表示でも複数のAPIを呼ぶため、100/15分では即座に枯渇する。
     // 認証・バージョン・ヘルスは limiter から除外した上で、上限を現実的な値に引き上げる。
-    RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().finite().default(1000),
+    RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().finite().default(10000),
+    INSTANCE_EMPTY_TIMEOUT_MS: z.coerce.number().int().nonnegative().default(60000),
     DEBUG: z
         .string()
         .optional()
@@ -66,6 +67,9 @@ export const appConfig = {
         windowMs: parsedEnv.data.RATE_LIMIT_WINDOW_MS,
         maxRequests: parsedEnv.data.RATE_LIMIT_MAX_REQUESTS,
     },
+    instance: {
+        emptyTimeoutMs: parsedEnv.data.INSTANCE_EMPTY_TIMEOUT_MS,
+    },
     db: {
         databaseUrl: parsedEnv.data.DATABASE_URL,
         redisUrl: parsedEnv.data.REDIS_URL,
@@ -101,6 +105,7 @@ console.log(
 );
 console.log(`   レート制限: ${appConfig.rateLimit.maxRequests}リクエスト/${appConfig.rateLimit.windowMs / 1000}秒`);
 console.log(`   デバッグモード: ${appConfig.debug ? '有効' : '無効'}`);
+console.log(`   空インスタンス自動削除: ${appConfig.instance.emptyTimeoutMs / 1000}秒`);
 console.log('📦 DB設定:');
 console.log(`   DATABASE_URL: ${maskUrl(appConfig.db.databaseUrl)}`);
 console.log(`   REDIS_URL: ${maskUrl(appConfig.db.redisUrl)}`);

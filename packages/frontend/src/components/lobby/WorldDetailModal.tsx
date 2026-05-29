@@ -16,13 +16,14 @@ interface WorldDetailModalProps {
         worldData?: { thumbnail?: string; displayName?: string },
     ) => void;
     currentInstanceId?: string;
+    initialWorld?: Partial<WorldListItem> & { id: string; displayName: string; authorId?: string };
 }
 
-export function WorldDetailModal({ worldId, onClose, onJoinInstance, currentInstanceId }: WorldDetailModalProps) {
+export function WorldDetailModal({ worldId, onClose, onJoinInstance, currentInstanceId, initialWorld }: WorldDetailModalProps) {
     const navigate = useNavigate();
     const confirm = useConfirm();
     const { data: session } = useSession();
-    const [world, setWorld] = useState<WorldListItem | null>(null);
+    const [world, setWorld] = useState<Partial<WorldListItem> | null>(initialWorld ?? null);
     const [instances, setInstances] = useState<Instance[]>([]);
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
@@ -34,11 +35,15 @@ export function WorldDetailModal({ worldId, onClose, onJoinInstance, currentInst
         setLoading(true);
         setError(null);
 
+        const fetchWorld = initialWorld
+            ? Promise.resolve(initialWorld)
+            : fetch(`${API_BASE}/api/v1/worlds/${worldId}`, { credentials: 'include' }).then((r) => {
+                  if (!r.ok) throw new Error('World not found');
+                  return r.json() as Promise<WorldListItem>;
+              });
+
         Promise.all([
-            fetch(`${API_BASE}/api/v1/worlds/${worldId}`, { credentials: 'include' }).then((r) => {
-                if (!r.ok) throw new Error('World not found');
-                return r.json() as Promise<WorldListItem>;
-            }),
+            fetchWorld,
             fetch(`${API_BASE}/api/v1/instances?worldId=${encodeURIComponent(worldId)}`, {
                 credentials: 'include',
             }).then((r) => r.json() as Promise<{ instances: Instance[] }>),

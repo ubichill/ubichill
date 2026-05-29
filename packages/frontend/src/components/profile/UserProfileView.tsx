@@ -1,5 +1,5 @@
 import { LIMITS } from '@ubichill/shared';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { API_BASE } from '@/lib/api';
@@ -54,6 +54,11 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
     const [selectedWorldId, setSelectedWorldId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+
+    const selectedWorld = useMemo(
+        () => worlds.find((w) => w.id === selectedWorldId),
+        [worlds, selectedWorldId]
+    );
 
     const go = async (path: string) => {
         if (!(await confirm('このページに移動しますか？'))) return;
@@ -337,9 +342,15 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                 )}
             </section>
 
-            {selectedWorldId && (
+            {selectedWorldId && selectedWorld && (
                 <WorldDetailModal
                     worldId={selectedWorldId}
+                    initialWorld={{
+                        ...selectedWorld,
+                        description: selectedWorld.description ?? undefined,
+                        thumbnail: selectedWorld.thumbnail ?? undefined,
+                        authorId: profile?.id,
+                    }}
                     onClose={() => setSelectedWorldId(null)}
                     onJoinInstance={(instanceId, worldId, worldData) => {
                         if (onJoinInstance) {

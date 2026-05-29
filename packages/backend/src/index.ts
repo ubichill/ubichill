@@ -62,7 +62,7 @@ app.get('/health', (_req, res) => {
 const limiter = rateLimit({
     windowMs: appConfig.rateLimit.windowMs,
     max: appConfig.rateLimit.maxRequests,
-    message: 'このIPからのリクエストが多すぎます。しばらくしてから再試行してください。',
+    message: { error: 'このIPからのリクエストが多すぎます。しばらくしてから再試行してください。' },
     standardHeaders: true,
     legacyHeaders: false,
     skip: (req) =>
