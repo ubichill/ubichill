@@ -137,8 +137,6 @@ export function EditorPreview({
             environment,
             availableComponents: [],
             activePlugins,
-            snapshotRevision: 0,
-            hasSnapshot: true,
             // エディタは entity 操作を hook 経由で許可しない（編集はオーバーレイで definition を直接書き換える）
             createEntity: async () => null,
             patchEntity: () => {

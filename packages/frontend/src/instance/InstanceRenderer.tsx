@@ -1,114 +1,34 @@
 import type { WorkerPluginDefinition } from '@ubichill/sdk/react';
 import { isWorkerPlugin, useSocket, useWorld, WorkerPluginHost } from '@ubichill/sdk/react';
 import type { ComponentInstance } from '@ubichill/shared';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { usePluginRegistry } from '@/plugins/PluginRegistryContext';
 import { Z_INDEX } from '@/styles/layers';
 import { EntityRenderer } from './EntityRenderer';
 
-export interface WorkerLoadState {
-    required: number;
-    ready: number;
-    snapshotRevision: number;
-}
+const FALLBACK_ENTITY: ComponentInstance = {
+    id: '',
+    type: '',
+    ownerId: null,
+    lockedBy: null,
+    data: {},
+    transform: { x: 0, y: 0, z: 0, w: 0, h: 0, scale: 1, rotation: 0 },
+};
 
-interface InstanceRendererProps {
-    onWorkerLoadStateChange?: (state: WorkerLoadState) => void;
-}
-
-export const InstanceRenderer: React.FC<InstanceRendererProps> = ({ onWorkerLoadStateChange }) => {
+export const InstanceRenderer: React.FC = () => {
     const { isConnected } = useSocket();
-    const { entities, environment, snapshotRevision } = useWorld();
+    const { entities, environment } = useWorld();
     const { pluginMap } = usePluginRegistry();
-    const [readyWorkerIds, setReadyWorkerIds] = useState<Set<string>>(new Set());
 
     // フックは早期 return より前にすべて宣言する（Rules of Hooks）
-    const singletonEntries = useMemo(() => {
-        const entries: Array<{ definition: WorkerPluginDefinition; entity: ComponentInstance }> = [];
-        const seen = new Set<string>();
-        for (const entity of entities.values()) {
-            const plugin = pluginMap.get(entity.type);
-            if (!plugin || !isWorkerPlugin(plugin) || !plugin.singleton || seen.has(plugin.id)) continue;
-            entries.push({ definition: plugin as WorkerPluginDefinition, entity });
-            seen.add(plugin.id);
-        }
-        return entries;
-    }, [entities, pluginMap]);
-
-    const expectedWorkerIds = useMemo(() => {
-        const ids = new Set<string>();
-        let unresolvedPluginCount = 0;
-
-        for (const entity of entities.values()) {
-            const plugin = pluginMap.get(entity.type);
-            if (!plugin) {
-                unresolvedPluginCount += 1;
-                continue;
-            }
-            if (!isWorkerPlugin(plugin)) continue;
-            if (plugin.singleton) {
-                ids.add(`singleton:${plugin.id}`);
-            } else {
-                ids.add(entity.id);
-            }
-        }
-
-        return { ids, unresolvedPluginCount };
-    }, [entities, pluginMap]);
-
-    const handleWorkerReady = useCallback((workerId: string) => {
-        setReadyWorkerIds((prev) => {
-            if (prev.has(workerId)) return prev;
-            const next = new Set(prev);
-            next.add(workerId);
-            return next;
-        });
-    }, []);
-
-    useEffect(() => {
-        setReadyWorkerIds(() => {
-            snapshotRevision;
-            return new Set();
-        });
-    }, [snapshotRevision]);
-
-    useEffect(() => {
-        setReadyWorkerIds((prev) => {
-            let changed = false;
-            const next = new Set<string>();
-            for (const id of prev) {
-                if (expectedWorkerIds.ids.has(id)) {
-                    next.add(id);
-                } else {
-                    changed = true;
-                }
-            }
-            return changed ? next : prev;
-        });
-    }, [expectedWorkerIds]);
-
-    const readyCount = useMemo(() => {
-        let count = 0;
-        for (const id of expectedWorkerIds.ids) {
-            if (readyWorkerIds.has(id)) count += 1;
-        }
-        return count;
-    }, [expectedWorkerIds, readyWorkerIds]);
-
-    useEffect(() => {
-        onWorkerLoadStateChange?.({
-            required: expectedWorkerIds.ids.size + expectedWorkerIds.unresolvedPluginCount,
-            ready: readyCount,
-            snapshotRevision,
-        });
-    }, [expectedWorkerIds, readyCount, snapshotRevision, onWorkerLoadStateChange]);
+    const singletonWorkerPlugins = useMemo(
+        () => Array.from(pluginMap.values()).filter((p) => isWorkerPlugin(p) && p.singleton),
+        [pluginMap],
+    );
 
     const renderEntities = useMemo(
-        () =>
-            Array.from(entities.keys()).map((id) => (
-                <EntityRenderer key={id} entityId={id} onWorkerReady={handleWorkerReady} />
-            )),
-        [entities, handleWorkerReady],
+        () => Array.from(entities.keys()).map((id) => <EntityRenderer key={id} entityId={id} />),
+        [entities],
     );
 
     const { width: worldWidth, height: worldHeight } = environment.worldSize;
@@ -138,7 +58,9 @@ export const InstanceRenderer: React.FC<InstanceRendererProps> = ({ onWorkerLoad
                 }}
             >
                 {renderEntities}
-                {singletonEntries.map(({ definition: def, entity }) => {
+                {singletonWorkerPlugins.map((plugin) => {
+                    const def = plugin as WorkerPluginDefinition;
+                    const entity = Array.from(entities.values()).find((e) => e.type === def.id) ?? FALLBACK_ENTITY;
                     const { x, y, z, w, h } = entity.transform;
                     return (
                         <div
@@ -153,12 +75,7 @@ export const InstanceRenderer: React.FC<InstanceRendererProps> = ({ onWorkerLoad
                                 pointerEvents: 'none',
                             }}
                         >
-                            <WorkerPluginHost
-                                entityId={`singleton:${def.id}`}
-                                entity={entity}
-                                definition={def}
-                                onReady={handleWorkerReady}
-                            />
+                            <WorkerPluginHost entityId={`singleton:${def.id}`} entity={entity} definition={def} />
                         </div>
                     );
                 })}

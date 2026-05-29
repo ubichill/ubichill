@@ -35,10 +35,9 @@ export interface WorkerPluginHostProps {
     entityId: string;
     entity: ComponentInstance;
     definition: WorkerPluginDefinition;
-    onReady?: (componentInstanceId: string) => void;
 }
 
-export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, entity, definition, onReady }) => {
+export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, entity, definition }) => {
     const { users, currentUser, updatePosition, updateUser } = useSocket();
     const { entities } = useWorld();
     const hostDivRef = useRef<HTMLDivElement>(null);
@@ -96,11 +95,6 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
         pluginBase: definition.pluginBase,
         watchEntityTypes: definition.watchEntityTypes,
         initialEntities,
-        onReady: (info) => {
-            if (info.componentInstanceId) {
-                onReady?.(info.componentInstanceId);
-            }
-        },
         handlers: {
             ...canvasHandlers,
             ...mediaHandlers,

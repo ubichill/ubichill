@@ -1,4 +1,3 @@
-import type { Instance } from '@ubichill/shared';
 import { useNavigate } from 'react-router-dom';
 import { Lobby } from '@/components/lobby';
 import { type AccountMenuItem, LobbyAccountMenu } from '@/components/lobby/LobbyAccountMenu';
@@ -12,14 +11,8 @@ export function LobbyPage() {
 
     const userName = session?.user?.name ?? '';
 
-    const handleJoinInstance = (instance: Instance) => {
-        navigate(`/instance/${instance.id}`, {
-            state: {
-                worldId: instance.world.id,
-                worldName: instance.world.displayName,
-                worldThumbnail: instance.world.thumbnail,
-            },
-        });
+    const handleJoinInstance = (instanceId: string, worldId: string) => {
+        navigate(`/instance/${instanceId}`, { state: { worldId } });
     };
 
     const handleLogout = async () => {

@@ -185,8 +185,6 @@ export interface PluginHostManagerOptions<TPayloadMap extends Record<string, unk
     capabilities?: string[];
     maxExecutionTime?: number;
     onResourceLimitExceeded?: (reason: string) => void;
-    /** Worker が CMD_READY を返し、初期化キューをフラッシュした直後に呼ばれる */
-    onReady?: (info: PluginWorkerInfo) => void;
     tickFps?: number;
     disableAutoTick?: boolean;
     /** DOM 入力（マウス・キーボード）の自動収集を無効化する（デフォルト: false = 有効） */
@@ -479,10 +477,6 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
                     this.worker.postMessage(event);
                 }
                 this.eventQueue = [];
-                const info = PluginHostManager._registry.get(this._instanceKey);
-                if (info) {
-                    options.onReady?.(info);
-                }
                 return;
             }
             void this._handleCommand(e);

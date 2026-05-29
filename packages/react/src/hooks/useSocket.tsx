@@ -21,13 +21,7 @@ export interface SocketContextValue {
     users: Map<string, User>;
     currentUser: User | null;
     error: string | null;
-    joinWorld: (
-        name: string,
-        worldId: string,
-        instanceId: string,
-        onError?: (error: string) => void,
-        onJoined?: (response: { userId: string; instanceId?: string }) => void,
-    ) => void;
+    joinWorld: (name: string, worldId: string, instanceId: string, onError?: (error: string) => void) => void;
     leaveWorld: () => void;
     updatePosition: (position: CursorPosition, state?: CursorState) => void;
     updateStatus: (status: UserStatus) => void;
@@ -184,13 +178,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }, []);
 
     const joinWorld = useCallback(
-        (
-            name: string,
-            worldId: string,
-            instanceId: string,
-            onError?: (error: string) => void,
-            onJoined?: (response: { userId: string; instanceId?: string }) => void,
-        ) => {
+        (name: string, worldId: string, instanceId: string, onError?: (error: string) => void) => {
             // ソケットを初期化して接続
             const socket = initializeSocket();
 
@@ -206,7 +194,6 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 socket.emit('world:join', { worldId, instanceId, user: initialUser }, (response) => {
                     if (response.success && response.userId) {
                         setCurrentUser({ ...initialUser, id: response.userId });
-                        onJoined?.({ userId: response.userId, instanceId: response.instanceId });
                     } else {
                         const msg = response.error || 'Failed to join world';
                         setError(msg);
