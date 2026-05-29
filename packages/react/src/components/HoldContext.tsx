@@ -85,8 +85,20 @@ export const HoldProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return <HoldContext.Provider value={{ held, heldRef, handleGripCommand }}>{children}</HoldContext.Provider>;
 };
 
+/** プロバイダが無い時に返す no-op フォールバック */
+const NO_HOLD_CTX: HoldContextValue = {
+    held: null,
+    heldRef: { current: null },
+    handleGripCommand: () => {
+        /* no-op (HoldProvider 外で呼ばれた場合は何もしない) */
+    },
+};
+
+/**
+ * `HoldProvider` の外でも安全に使える。Provider が無い場合は no-op の状態を返す
+ * (例: WorldEditor の Preview で EntityRenderer を使うが grip は使わない、というケース)。
+ */
 export function useHold(): HoldContextValue {
     const ctx = useContext(HoldContext);
-    if (!ctx) throw new Error('useHold must be used within HoldProvider');
-    return ctx;
+    return ctx ?? NO_HOLD_CTX;
 }

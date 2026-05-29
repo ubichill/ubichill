@@ -1,1 +1,16 @@
 @layer reset, base, tokens, recipes, utilities;
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Ubi.grip / Gripable のホバースケール
+   ────────────────────────────────────────────────────────────────────────────
+   Worker 内の JSX は React state を持たないので :hover を JS で検知できない。
+   代わりに body 直下のグローバル CSS で `data-ubi-gripable` 属性を持つ要素を
+   ホバー検出する。スケール値はインスタンスごとに CSS 変数 (`--ubi-gripable-scale`)
+   で渡される。
+   ──────────────────────────────────────────────────────────────────────────── */
+button[data-ubi-gripable]:not(:disabled):hover {
+    transform: scale(var(--ubi-gripable-scale, 1));
+}
+button[data-ubi-gripable] {
+    will-change: transform;
+}

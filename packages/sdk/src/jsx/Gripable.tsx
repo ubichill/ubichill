@@ -6,9 +6,15 @@
  * 渡すだけで、以下が SDK 側で自動になる:
  *  - クリックで acquire / release (grip.toggle)
  *  - hover カーソル形状 (grab / grabbing)
- *  - hover 時の outline / scale
+ *  - hover 時の outline / scale (CSS :hover で本物のホバー)
  *  - 自分が持ってる時の opacity (= トレイ上で「持ち上げた」表現)
  *  - 他人が持ってる時の opacity + disabled
+ *
+ * **scale の仕組み**:
+ *  Worker の JSX には React state が無いので `onMouseEnter/Leave` で hover を
+ *  追えない。代わりに `data-ubi-gripable` 属性 + ホスト側グローバル CSS
+ *  (`button[data-ubi-gripable]:hover { transform: scale(var(--ubi-gripable-scale)) }`)
+ *  で OS / ブラウザに hover 検出を任せる。スケール値は CSS 変数で各インスタンスに渡す。
  *
  * ```tsx
  * const grip = Ubi.grip.exclusive({
@@ -40,30 +46,39 @@ export function Gripable({ grip, children, style }: GripableProps): VNode {
     const isMine = grip.isMine;
     const isBlocked = grip.isHeldByOther;
 
-    const hoverOpacity = isBlocked ? (opts.blockedByOther?.opacity ?? 0.35) : isMine ? (opts.held?.opacity ?? 0.5) : 1;
+    const stateOpacity = isBlocked ? (opts.blockedByOther?.opacity ?? 0.35) : isMine ? (opts.held?.opacity ?? 0.5) : 1;
     const cursor = isBlocked
         ? 'not-allowed'
         : isMine
           ? (opts.hover?.heldCursor ?? 'grabbing')
           : (opts.hover?.cursor ?? 'grab');
 
+    // hover.scale を CSS 変数で渡す (本物の :hover 検出はホスト側のグローバル CSS)。
+    // 自分が掴んでいる or 他人が掴んでいる時は scale を無効化 (= 1) して
+    // 「掴まれているもの」が更にデカくなる挙動を回避する。
+    const hoverScaleValue = !isMine && !isBlocked ? (opts.hover?.scale ?? 1) : 1;
+
+    // CSS variable は TS の CSSProperties が認識しないので Record で受ける。
+    // undefined を含まないことを保証するため厳密型に cast する。
+    const inlineStyle: Record<string, string | number> = {
+        ...(style ? Object.fromEntries(Object.entries(style).filter(([, v]) => v !== undefined)) : {}),
+        cursor,
+        opacity: stateOpacity,
+        background: 'transparent',
+        border: opts.hover?.outline ?? 'none',
+        padding: 0,
+        pointerEvents: 'auto',
+        transition: 'opacity 0.12s ease, transform 0.12s ease, outline-color 0.12s ease',
+        '--ubi-gripable-scale': String(hoverScaleValue),
+    } as Record<string, string | number>;
+
     return (
         <button
             type="button"
+            data-ubi-gripable
             disabled={isBlocked}
             onUbiClick={() => grip.toggle()}
-            style={{
-                ...style,
-                cursor,
-                opacity: hoverOpacity,
-                background: 'transparent',
-                border: opts.hover?.outline ?? 'none',
-                padding: 0,
-                pointerEvents: 'auto',
-                transition: 'opacity 0.12s ease, transform 0.12s ease, outline-color 0.12s ease',
-                // hover.scale は CSS :hover に流したいが現状 inline style では作れない。
-                // SDK レベルで CSS class を吐ける仕組みになるまでは scale はノーオペ。
-            }}
+            style={inlineStyle}
         >
             {children}
         </button>

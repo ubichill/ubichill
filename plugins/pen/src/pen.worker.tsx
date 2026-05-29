@@ -25,7 +25,7 @@ const grip = Ubi.grip.exclusive({
         cursor: 'grab',
         heldCursor: 'grabbing',
         outline: '2px solid currentColor',
-        scale: 1.05,
+        scale: 3,
     },
     held: { opacity: 0.4 },
     blockedByOther: { opacity: 0.35 },
