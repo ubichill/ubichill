@@ -102,12 +102,13 @@ export function InstancePage() {
     // Initial wait to ensure components are mounted and have a chance to register
     const [initialWaitDone, setInitialWaitDone] = useState(false);
     useEffect(() => {
+        setInitialWaitDone(false);
         if (!isConnected) return;
         const timer = setTimeout(() => {
             setInitialWaitDone(true);
         }, 100);
         return () => clearTimeout(timer);
-    }, [isConnected]);
+    }, [isConnected, id]);
 
     const isActuallyLoading =
         isPending ||
