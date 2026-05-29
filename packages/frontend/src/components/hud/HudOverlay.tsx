@@ -1,6 +1,7 @@
 import { useSocket } from '@ubichill/sdk/react';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { css } from '@/styled-system/css';
 import { type HudTabId, HudTabs } from './HudTabs';
 
@@ -20,6 +21,7 @@ interface HudOverlayProps {
  */
 export function HudOverlay({ onClose, currentInstanceId, initialTab = 'worlds' }: HudOverlayProps) {
     const navigate = useNavigate();
+    const confirm = useConfirm();
     const { leaveWorld } = useSocket();
 
     // フェードインアニメーション用の状態
@@ -43,24 +45,30 @@ export function HudOverlay({ onClose, currentInstanceId, initialTab = 'worlds' }
 
     // インスタンス参加ハンドラ — 確認後にナビゲーションで移動
     const handleJoinInstance = useCallback(
-        (instanceId: string, worldId: string, worldData?: { thumbnail?: string; displayName?: string }) => {
+        async (instanceId: string, worldId: string, worldData?: { thumbnail?: string; displayName?: string }) => {
             // 現在のインスタンスと同じ場合は閉じるだけ
             if (instanceId === currentInstanceId) {
                 onClose();
                 return;
             }
 
-            const confirmed = window.confirm('このインスタンスに移動しますか？現在のインスタンスから退出します。');
-            if (!confirmed) return;
+            if (!(await confirm('このインスタンスに移動しますか？現在のインスタンスから退出します。'))) return;
 
             // 確実に古いインスタンスから退出してから新しいインスタンスへ移動する
-            leaveWorld().then(() => {
-                navigate(`/instance/${instanceId}`, { state: { worldId, worldData } });
-                onClose();
-            });
+            await leaveWorld();
+            navigate(`/instance/${instanceId}`, { state: { worldId, worldData } });
+            onClose();
         },
-        [currentInstanceId, navigate, onClose, leaveWorld],
+        [currentInstanceId, navigate, onClose, leaveWorld, confirm],
     );
+
+    // ロビーへ戻る — 確認後に退出して遷移（ホーム/現在地タブのボタンから呼ばれる）
+    const handleReturnToLobby = useCallback(async () => {
+        if (!(await confirm('ロビーへ戻りますか？現在のインスタンスから退出します。'))) return;
+        await leaveWorld();
+        navigate('/');
+        onClose();
+    }, [confirm, leaveWorld, navigate, onClose]);
 
     return (
         // オーバーレイ背景 — ポップアップの周囲をクリックで閉じる
@@ -86,6 +94,7 @@ export function HudOverlay({ onClose, currentInstanceId, initialTab = 'worlds' }
                 currentInstanceId={currentInstanceId}
                 initialTab={initialTab}
                 onNavigate={onClose}
+                onReturnToLobby={() => void handleReturnToLobby()}
             />
         </div>
     );

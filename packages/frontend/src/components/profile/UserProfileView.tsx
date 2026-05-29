@@ -1,6 +1,7 @@
 import { LIMITS } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { API_BASE } from '@/lib/api';
 import { useSession } from '@/lib/auth-client';
 import { css } from '@/styled-system/css';
@@ -34,6 +35,7 @@ interface UserProfileViewProps {
  */
 export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
     const navigate = useNavigate();
+    const confirm = useConfirm();
     const { data: session, isPending } = useSession();
 
     const isMe = !userId;
@@ -45,7 +47,8 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
-    const go = (path: string) => {
+    const go = async (path: string) => {
+        if (!(await confirm('このページに移動しますか？'))) return;
         onNavigate?.();
         navigate(path);
     };
@@ -268,7 +271,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
                                 onDelete={
                                     isOwnPage
                                         ? async () => {
-                                              if (!window.confirm(`「${w.displayName}」を削除しますか?`)) return;
+                                              if (!(await confirm(`「${w.displayName}」を削除しますか?`))) return;
                                               const res = await fetch(`${API_BASE}/api/v1/worlds/${w.id}`, {
                                                   method: 'DELETE',
                                                   credentials: 'include',

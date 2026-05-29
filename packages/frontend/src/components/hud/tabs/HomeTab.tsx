@@ -8,9 +8,11 @@ interface HomeTabProps {
     onJoinInstance: JoinInstanceHandler;
     /** 現在参加中のインスタンスID（一覧で「参加中」表示にする） */
     currentInstanceId?: string;
+    /** ロビーへ戻る操作（インスタンス内のみ表示） */
+    onReturnToLobby?: () => void;
 }
 
-export function HomeTab({ onJoinInstance, currentInstanceId }: HomeTabProps) {
+export function HomeTab({ onJoinInstance, currentInstanceId, onReturnToLobby }: HomeTabProps) {
     const { instances, loading, error, refreshInstances } = useInstances();
 
     useEffect(() => {
@@ -19,6 +21,34 @@ export function HomeTab({ onJoinInstance, currentInstanceId }: HomeTabProps) {
 
     return (
         <div className={tabPanel} onClick={(e) => e.stopPropagation()}>
+            {onReturnToLobby && (
+                <button
+                    type="button"
+                    onClick={onReturnToLobby}
+                    className={css({
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        alignSelf: 'flex-start',
+                        px: '14px',
+                        py: '9px',
+                        bg: 'surfaceAccent',
+                        color: 'text',
+                        border: 'none',
+                        borderRadius: '12px',
+                        fontSize: '13px',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        boxShadow: 'card',
+                        _hover: { opacity: 0.9 },
+                    })}
+                >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M15 18l-6-6 6-6" />
+                    </svg>
+                    ロビーへ戻る
+                </button>
+            )}
             <div className={cardStyle}>
                 <h2 className={sectionHeading}>オンラインのフレンド</h2>
                 <div

@@ -19,6 +19,25 @@ interface TabDef {
 
 const TABS: TabDef[] = [
     {
+        id: 'home',
+        label: 'ホーム',
+        icon: (
+            <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            >
+                <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                <polyline points="9 22 9 12 15 12 15 22" />
+            </svg>
+        ),
+    },
+    {
         id: 'instance',
         label: '現在地',
         instanceOnly: true,
@@ -35,25 +54,6 @@ const TABS: TabDef[] = [
             >
                 <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" />
                 <circle cx="12" cy="10" r="3" />
-            </svg>
-        ),
-    },
-    {
-        id: 'home',
-        label: 'ホーム',
-        icon: (
-            <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-            >
-                <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                <polyline points="9 22 9 12 15 12 15 22" />
             </svg>
         ),
     },
@@ -127,6 +127,8 @@ interface HudTabsProps {
     initialTab?: HudTabId;
     /** タブ内から画面遷移する直前に呼ばれる（オーバーレイを閉じる用） */
     onNavigate?: () => void;
+    /** ロビーへ戻る操作（インスタンス内のみ。ホーム/現在地タブにボタンを出す） */
+    onReturnToLobby?: () => void;
 }
 
 /**
@@ -134,7 +136,13 @@ interface HudTabsProps {
  * 現在地 / ホーム / ワールド / フレンド / マイページを遷移なしのタブで切り替える。
  * タブバーは PC では上部、スマホでは下部に表示する。
  */
-export function HudTabs({ onJoinInstance, currentInstanceId, initialTab = 'home', onNavigate }: HudTabsProps) {
+export function HudTabs({
+    onJoinInstance,
+    currentInstanceId,
+    initialTab = 'home',
+    onNavigate,
+    onReturnToLobby,
+}: HudTabsProps) {
     const [activeTab, setActiveTab] = useState<HudTabId>(initialTab);
 
     const visibleTabs = TABS.filter((tab) => !tab.instanceOnly || currentInstanceId);
@@ -153,12 +161,16 @@ export function HudTabs({ onJoinInstance, currentInstanceId, initialTab = 'home'
                 {activeTab === 'instance' && currentInstanceId && (
                     <InstanceTab
                         currentInstanceId={currentInstanceId}
-                        onJoinInstance={onJoinInstance}
                         onNavigate={onNavigate}
+                        onReturnToLobby={onReturnToLobby}
                     />
                 )}
                 {activeTab === 'home' && (
-                    <HomeTab onJoinInstance={onJoinInstance} currentInstanceId={currentInstanceId} />
+                    <HomeTab
+                        onJoinInstance={onJoinInstance}
+                        currentInstanceId={currentInstanceId}
+                        onReturnToLobby={onReturnToLobby}
+                    />
                 )}
                 {activeTab === 'worlds' && (
                     <WorldsTab onJoinInstance={onJoinInstance} currentInstanceId={currentInstanceId} />

@@ -1,6 +1,7 @@
 import type { WorldListItem } from '@ubichill/shared';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { API_BASE } from '@/lib/api';
 import { useSession } from '@/lib/auth-client';
 import { css } from '@/styled-system/css';
@@ -61,7 +62,15 @@ interface LobbyProps {
 
 export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
     const navigate = useNavigate();
+    const confirm = useConfirm();
     const { data: session } = useSession();
+
+    const goConfirmed = useCallback(
+        async (path: string, message: string) => {
+            if (await confirm(message)) navigate(path);
+        },
+        [confirm, navigate],
+    );
     const { instances, worlds, loading, error, createInstance, refreshInstances, refreshWorlds } = useInstances();
     const [selectedWorldId, setSelectedWorldId] = useState<string | null>(null);
     const [creating, setCreating] = useState(false);
@@ -137,7 +146,7 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
             }
             setImportUrl('');
             setImportState('idle');
-            await refreshWorlds();
+            await refreshWorlds(true);
         } catch (e) {
             setImportError(e instanceof Error ? e.message : '取得失敗');
             setImportState('error');
@@ -350,7 +359,9 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                                 >
                                     <button
                                         type="button"
-                                        onClick={() => navigate('/worlds/new')}
+                                        onClick={() =>
+                                            void goConfirmed('/worlds/new', 'ワールド作成画面に移動しますか？')
+                                        }
                                         className={css({
                                             display: 'inline-flex',
                                             alignItems: 'center',
@@ -579,17 +590,22 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                                             {session && selectedWorld?.authorId === session.user.id && (
                                                 <button
                                                     type="button"
-                                                    onClick={() => navigate(`/world/${selectedWorld.id}/edit`)}
+                                                    onClick={() =>
+                                                        void goConfirmed(
+                                                            `/world/${selectedWorld.id}/edit`,
+                                                            'ワールドの編集画面に移動しますか？',
+                                                        )
+                                                    }
                                                     className={css({
                                                         padding: '10px 16px',
-                                                        backgroundColor: '#f59e0b',
-                                                        color: '#1a1200',
+                                                        backgroundColor: 'warning',
+                                                        color: 'primary',
                                                         border: 'none',
                                                         borderRadius: '10px',
                                                         fontSize: '14px',
                                                         fontWeight: '600',
                                                         cursor: 'pointer',
-                                                        _hover: { backgroundColor: '#d97706' },
+                                                        _hover: { opacity: 0.9 },
                                                     })}
                                                 >
                                                     ワールドを編集

@@ -3,14 +3,15 @@ import type { Instance } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useInstances } from '@/components/lobby/useInstances';
+import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { API_BASE } from '@/lib/api';
 import { css } from '@/styled-system/css';
-import { cardStyle, type JoinInstanceHandler, sectionHeading, tabPanel } from './shared';
+import { cardStyle, sectionHeading, tabPanel } from './shared';
 
 interface InstanceTabProps {
     currentInstanceId: string;
-    onJoinInstance: JoinInstanceHandler;
     onNavigate?: () => void;
+    onReturnToLobby?: () => void;
 }
 
 const actionButtonBase = {
@@ -32,10 +33,11 @@ const actionButtonBase = {
 
 /**
  * 現在参加中のインスタンスの詳細タブ。
- * 入り直し / 新規インスタンス作成 / (作者のみ)編集 と、参加者一覧を表示する。
+ * 入り直し / 新規インスタンス作成 / (作者のみ)編集 / ロビーへ戻る と、参加者一覧を表示する。
  */
-export function InstanceTab({ currentInstanceId, onJoinInstance, onNavigate }: InstanceTabProps) {
+export function InstanceTab({ currentInstanceId, onNavigate, onReturnToLobby }: InstanceTabProps) {
     const navigate = useNavigate();
+    const confirm = useConfirm();
     const { users, currentUser } = useSocket();
     const { createInstance } = useInstances();
 
@@ -60,20 +62,25 @@ export function InstanceTab({ currentInstanceId, onJoinInstance, onNavigate }: I
     const world = instance?.world ?? null;
     const isAuthor = !!world && !!currentUser && world.authorId === currentUser.id;
 
-    const handleReenter = () => {
+    const handleReenter = async () => {
+        if (!(await confirm('このインスタンスに入り直しますか？'))) return;
         // 同一インスタンスへの入り直しは join 処理を最初からやり直す必要があるためリロードする
         window.location.reload();
     };
 
     const handleCreateNew = async () => {
         if (!world || creating) return;
+        if (!(await confirm('新しいインスタンスを作成して移動しますか？'))) return;
         setCreating(true);
         try {
             const created = await createInstance({ worldId: world.id });
             if (created) {
-                onJoinInstance(created.id, created.world.id, {
-                    thumbnail: created.world.thumbnail,
-                    displayName: created.world.displayName,
+                onNavigate?.();
+                navigate(`/instance/${created.id}`, {
+                    state: {
+                        worldId: created.world.id,
+                        worldData: { thumbnail: created.world.thumbnail, displayName: created.world.displayName },
+                    },
                 });
             }
         } finally {
@@ -81,8 +88,9 @@ export function InstanceTab({ currentInstanceId, onJoinInstance, onNavigate }: I
         }
     };
 
-    const handleEdit = () => {
+    const handleEdit = async () => {
         if (!world) return;
+        if (!(await confirm('ワールドの編集画面に移動しますか？'))) return;
         onNavigate?.();
         navigate(`/world/${world.id}/edit`);
     };
@@ -162,13 +170,13 @@ export function InstanceTab({ currentInstanceId, onJoinInstance, onNavigate }: I
                 <div
                     className={css({
                         display: 'grid',
-                        gridTemplateColumns: { base: '1fr', sm: isAuthor ? '1fr 1fr 1fr' : '1fr 1fr' },
+                        gridTemplateColumns: { base: '1fr', sm: '1fr 1fr' },
                         gap: '2',
                     })}
                 >
                     <button
                         type="button"
-                        onClick={handleReenter}
+                        onClick={() => void handleReenter()}
                         className={css(actionButtonBase, { bg: 'secondary', color: 'text' })}
                     >
                         <svg
@@ -205,7 +213,7 @@ export function InstanceTab({ currentInstanceId, onJoinInstance, onNavigate }: I
                     {isAuthor && (
                         <button
                             type="button"
-                            onClick={handleEdit}
+                            onClick={() => void handleEdit()}
                             className={css(actionButtonBase, { bg: 'secondary', color: 'text' })}
                         >
                             <svg
@@ -220,6 +228,25 @@ export function InstanceTab({ currentInstanceId, onJoinInstance, onNavigate }: I
                                 <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
                             </svg>
                             編集
+                        </button>
+                    )}
+                    {onReturnToLobby && (
+                        <button
+                            type="button"
+                            onClick={onReturnToLobby}
+                            className={css(actionButtonBase, { bg: 'secondary', color: 'text' })}
+                        >
+                            <svg
+                                width="16"
+                                height="16"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                            >
+                                <path d="M15 18l-6-6 6-6" />
+                            </svg>
+                            ロビーへ戻る
                         </button>
                     )}
                 </div>

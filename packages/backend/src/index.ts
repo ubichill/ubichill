@@ -55,13 +55,21 @@ app.get('/health', (_req, res) => {
     res.json({ status: 'ok', timestamp: Date.now() });
 });
 
-// レート制限（/health は対象外）
+// レート制限
+// 認証(/api/auth)・バージョン・ヘルスは除外する。
+// 特に /api/auth はセッション確認で高頻度に叩かれるため、ここで 429 を返すと
+// 認証ループ（セッション失敗→/auth→再確認）に陥りバックエンドが実質ダウンする。
 const limiter = rateLimit({
     windowMs: appConfig.rateLimit.windowMs,
     max: appConfig.rateLimit.maxRequests,
     message: 'このIPからのリクエストが多すぎます。しばらくしてから再試行してください。',
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) =>
+        req.path === '/health' ||
+        req.path === '/api/version' ||
+        req.path.startsWith('/api/auth') ||
+        req.path.startsWith('/socket.io'),
 });
 app.use(limiter);
 

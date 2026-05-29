@@ -1,208 +1,72 @@
 import { useSocket } from '@ubichill/sdk/react';
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { css } from '@/styled-system/css';
 import { HudOverlay } from './HudOverlay';
-import type { HudTabId } from './HudTabs';
 
-const pillBase = {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    padding: '7px 12px',
-    backgroundColor: 'hudBg',
-    backdropFilter: 'blur(6px)',
-    borderRadius: '20px',
-    border: 'none',
-    cursor: 'pointer',
-    color: 'hudText',
-    fontSize: '13px',
-    fontWeight: '500',
-    transition: 'background-color 0.15s ease',
-    _hover: { backgroundColor: 'hudBgHover' },
-};
-
+/**
+ * インスタンス内の常時表示 HUD。
+ * Mac の Launchpad のようなグリッドアイコン1つで、押すとタブ付きオーバーレイを開く。
+ * ロビーへ戻る等の操作はオーバーレイ内のタブ（ホーム/現在地）に集約している。
+ */
 export function InstanceHUD() {
-    const navigate = useNavigate();
     const { id: instanceId } = useParams<{ id: string }>();
-    const { users, isConnected, currentUser, leaveWorld } = useSocket();
-    const [menuOpen, setMenuOpen] = useState(false);
-    /** オーバーレイで開くタブ。null のとき非表示 */
-    const [overlayTab, setOverlayTab] = useState<HudTabId | null>(null);
-
-    const userCount = users.size;
-    const myName = currentUser?.name ?? '';
-
-    const handleReturnToLobby = async () => {
-        setMenuOpen(false);
-        await leaveWorld();
-        navigate('/');
-    };
+    const { isConnected } = useSocket();
+    const [open, setOpen] = useState(false);
 
     return (
         <>
-            {/* 常時表示の HUD クラスタ（右上・縦並び）。上から アカウント / メニュー / 参加者 */}
-            <div
+            {/* Launchpad ボタン（右下固定） */}
+            <button
+                type="button"
+                onClick={() => setOpen(true)}
+                aria-label="メニューを開く"
                 className={css({
                     position: 'fixed',
-                    top: '12px',
-                    right: '12px',
+                    bottom: '20px',
+                    right: '20px',
+                    width: '52px',
+                    height: '52px',
                     display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'flex-end',
-                    gap: '8px',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: 'hudBg',
+                    backdropFilter: 'blur(8px)',
+                    borderRadius: '16px',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'hudText',
                     zIndex: 10000,
-                    pointerEvents: 'auto',
+                    boxShadow: '0 6px 20px rgba(0,0,0,0.35)',
+                    transition: 'background-color 0.15s ease, transform 0.15s ease',
+                    _hover: { backgroundColor: 'hudBgHover', transform: 'translateY(-2px)' },
                 })}
             >
-                {/* アカウント → マイページ */}
-                <button
-                    type="button"
-                    onClick={() => setOverlayTab('profile')}
-                    className={css({ ...pillBase, maxWidth: '200px' })}
-                    aria-label="マイページを開く"
-                >
-                    <span
-                        className={css({
-                            width: '22px',
-                            height: '22px',
-                            borderRadius: '50%',
-                            backgroundColor: 'hudAvatar',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '11px',
-                            fontWeight: '700',
-                            color: 'white',
-                            flexShrink: 0,
-                            textTransform: 'uppercase',
-                        })}
-                    >
-                        {myName.charAt(0) || '?'}
-                    </span>
-                    <span
-                        className={css({
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                        })}
-                    >
-                        {myName || 'マイページ'}
-                    </span>
-                </button>
-
-                {/* メニューを開く */}
-                <button
-                    type="button"
-                    onClick={() => setMenuOpen((o) => !o)}
-                    className={css(pillBase)}
-                    aria-label="メニューを開く"
-                    aria-expanded={menuOpen}
-                >
-                    <span className={css({ display: 'flex', flexDirection: 'column', gap: '3px' })}>
-                        {[0, 1, 2].map((i) => (
-                            <span
-                                key={i}
-                                className={css({
-                                    display: 'block',
-                                    width: '14px',
-                                    height: '2px',
-                                    backgroundColor: 'hudText',
-                                    borderRadius: '1px',
-                                })}
-                            />
-                        ))}
-                    </span>
-                    メニュー
-                </button>
-
-                {/* 参加者 → 現在地（インスタンス）タブ */}
-                <button
-                    type="button"
-                    onClick={() => setOverlayTab('instance')}
-                    className={css(pillBase)}
-                    aria-label="参加者を見る"
-                >
-                    <span
-                        className={css({
-                            width: '7px',
-                            height: '7px',
-                            borderRadius: '50%',
-                            flexShrink: 0,
-                            backgroundColor: isConnected ? 'hudStatusOn' : 'hudStatusOff',
-                        })}
-                    />
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                        <circle cx="9" cy="7" r="4" />
-                        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                    </svg>
-                    {userCount}
-                </button>
-            </div>
-
-            {/* メニューパネル（ロビーへ戻る等。ロビーは今後廃止予定） */}
-            {menuOpen && (
-                <>
-                    <div
-                        className={css({ position: 'fixed', inset: 0, zIndex: 10001 })}
-                        onClick={() => setMenuOpen(false)}
-                    />
-                    <div
-                        className={css({
-                            position: 'fixed',
-                            top: '52px',
-                            right: '12px',
-                            width: '220px',
-                            backgroundColor: 'hudPanel',
-                            backdropFilter: 'blur(12px)',
-                            borderRadius: '14px',
-                            border: '1px solid',
-                            borderColor: 'hudBorder',
-                            overflow: 'hidden',
-                            zIndex: 10002,
-                            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
-                            padding: '8px',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '2px',
-                        })}
-                    >
-                        <button
-                            type="button"
-                            onClick={() => void handleReturnToLobby()}
-                            className={css({
-                                width: 'full',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px',
-                                padding: '9px 12px',
-                                backgroundColor: 'transparent',
-                                border: 'none',
-                                borderRadius: '8px',
-                                cursor: 'pointer',
-                                color: 'hudTextAction',
-                                fontSize: '13px',
-                                fontWeight: '500',
-                                transition: 'background-color 0.12s ease',
-                                _hover: { backgroundColor: 'hudActionHover' },
-                            })}
-                        >
-                            <span className={css({ fontSize: '16px', lineHeight: 1 })}>←</span>
-                            ロビーへ戻る
-                        </button>
-                    </div>
-                </>
-            )}
-
-            {/* HUD オーバーレイ（現在地 / ホーム / ワールド / フレンド / マイページ） */}
-            {overlayTab && instanceId && (
-                <HudOverlay
-                    currentInstanceId={instanceId}
-                    initialTab={overlayTab}
-                    onClose={() => setOverlayTab(null)}
+                {/* 3x3 グリッドの Launchpad 風アイコン */}
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    {[4, 10.5, 17].flatMap((y) =>
+                        [4, 10.5, 17].map((x) => <rect key={`${x}-${y}`} x={x} y={y} width="3" height="3" rx="1" />),
+                    )}
+                </svg>
+                {/* 接続インジケーター */}
+                <span
+                    className={css({
+                        position: 'absolute',
+                        top: '6px',
+                        right: '6px',
+                        width: '8px',
+                        height: '8px',
+                        borderRadius: '50%',
+                        border: '1.5px solid',
+                        borderColor: 'hudBg',
+                        backgroundColor: isConnected ? 'hudStatusOn' : 'hudStatusOff',
+                    })}
                 />
+            </button>
+
+            {/* タブ付きオーバーレイ（ホーム / 現在地 / ワールド / フレンド / マイページ） */}
+            {open && instanceId && (
+                <HudOverlay currentInstanceId={instanceId} initialTab="home" onClose={() => setOpen(false)} />
             )}
         </>
     );

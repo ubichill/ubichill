@@ -1,25 +1,29 @@
 import { useNavigate } from 'react-router-dom';
 import { HudTabs } from '@/components/hud/HudTabs';
 import { type AccountMenuItem, LobbyAccountMenu } from '@/components/lobby/LobbyAccountMenu';
+import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { signOut, useSession } from '@/lib/auth-client';
 import { css } from '@/styled-system/css';
 import * as styles from '@/styles/styles';
 
 export function LobbyPage() {
     const navigate = useNavigate();
+    const confirm = useConfirm();
     const { data: session } = useSession();
 
     const userName = session?.user?.name ?? '';
 
-    const handleJoinInstance = (
+    const handleJoinInstance = async (
         instanceId: string,
         worldId: string,
         worldData?: { thumbnail?: string; displayName?: string },
     ) => {
+        if (!(await confirm('このインスタンスに参加しますか？'))) return;
         navigate(`/instance/${instanceId}`, { state: { worldId, worldData } });
     };
 
     const handleLogout = async () => {
+        if (!(await confirm('ログアウトしますか？'))) return;
         await signOut();
         navigate('/auth');
     };

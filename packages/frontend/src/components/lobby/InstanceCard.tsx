@@ -25,7 +25,7 @@ export function InstanceCard({ instance, onJoin, isCurrent = false }: InstanceCa
                 backgroundColor: isCurrent ? 'successBg' : 'surface',
                 borderRadius: '14px',
                 border: '1px solid',
-                borderColor: isCurrent ? '#8ad29b88' : 'border',
+                borderColor: isCurrent ? 'success' : 'border',
                 transition: 'background-color 0.16s ease',
                 _hover: {
                     backgroundColor: isCurrent ? 'successBg' : 'surfaceHover',
