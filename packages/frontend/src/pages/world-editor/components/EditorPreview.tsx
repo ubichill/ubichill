@@ -6,7 +6,7 @@ import {
     WorkerPluginHost,
     WorldContext,
     type WorldContextType,
-} from '@ubichill/sdk/react';
+} from '@ubichill/react';
 import type { ComponentInstance, InitialEntity, WorldDefinition, WorldEnvironmentData } from '@ubichill/shared';
 import type React from 'react';
 import { useMemo } from 'react';

@@ -1,4 +1,4 @@
-import { useSocket } from '@ubichill/sdk/react';
+import { useSocket } from '@ubichill/react';
 import { useState } from 'react';
 import { useParams } from 'react-router';
 import { css } from '@/styled-system/css';

@@ -1,4 +1,4 @@
-import { SocketProvider, WorldProvider } from '@ubichill/sdk/react';
+import { SocketProvider, WorldProvider } from '@ubichill/react';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AppRouter } from './router';

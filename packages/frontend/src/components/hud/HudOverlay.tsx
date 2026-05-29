@@ -1,4 +1,4 @@
-import { useSocket } from '@ubichill/sdk/react';
+import { useSocket } from '@ubichill/react';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useConfirm } from '@/components/ui/ConfirmProvider';

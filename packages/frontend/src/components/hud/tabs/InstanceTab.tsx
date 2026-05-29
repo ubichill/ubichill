@@ -1,4 +1,4 @@
-import { useSocket } from '@ubichill/sdk/react';
+import { useSocket } from '@ubichill/react';
 import type { Instance } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';

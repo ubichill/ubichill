@@ -7,13 +7,11 @@
     "types": "src/index.ts",
     "exports": {
         ".": "./src/index.ts",
-        "./react": "./src/react/index.ts",
         "./ui": "./src/ui/index.ts",
         "./jsx-runtime": "./src/jsx/jsx-runtime.ts"
     },
     "peerDependencies": {
         "@ubichill/engine": "workspace:*",
-        "@ubichill/react": "workspace:*",
         "@ubichill/shared": "workspace:*",
         "react": "^19.0.0"
     }

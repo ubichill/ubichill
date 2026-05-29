@@ -13,6 +13,7 @@
         "format": "biome format --write ."
     },
     "dependencies": {
+        "@ubichill/react": "workspace:*",
         "@ubichill/sdk": "workspace:*",
         "@ubichill/shared": "workspace:*",
         "better-auth": "^1.5.5",

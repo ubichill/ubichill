@@ -1,5 +1,5 @@
-import type { WidgetDefinition, WorkerPluginDefinition } from '@ubichill/sdk/react';
-import { isWorkerPlugin } from '@ubichill/sdk/react';
+import type { WidgetDefinition, WorkerPluginDefinition } from '@ubichill/react';
+import { isWorkerPlugin } from '@ubichill/react';
 import type React from 'react';
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { attachAvatarCursorHostBridge } from './avatarCursorHostBridge';

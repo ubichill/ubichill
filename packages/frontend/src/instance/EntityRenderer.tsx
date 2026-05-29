@@ -1,4 +1,4 @@
-import { isWorkerPlugin, useWorld, WorkerPluginHost } from '@ubichill/sdk/react';
+import { isWorkerPlugin, useWorld, WorkerPluginHost } from '@ubichill/react';
 import type React from 'react';
 import { usePluginRegistry } from '../plugins/PluginRegistryContext';
 

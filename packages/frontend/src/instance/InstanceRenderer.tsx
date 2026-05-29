@@ -1,5 +1,5 @@
-import type { WorkerPluginDefinition } from '@ubichill/sdk/react';
-import { isWorkerPlugin, useSocket, useWorld, WorkerPluginHost } from '@ubichill/sdk/react';
+import type { WorkerPluginDefinition } from '@ubichill/react';
+import { isWorkerPlugin, useSocket, useWorld, WorkerPluginHost } from '@ubichill/react';
 import type { ComponentInstance } from '@ubichill/shared';
 import { useMemo } from 'react';
 import { usePluginRegistry } from '@/plugins/PluginRegistryContext';
