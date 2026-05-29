@@ -2,6 +2,7 @@ import {
     isWorkerPlugin,
     SocketContext,
     type SocketContextValue,
+    useWorld,
     WorkerPluginHost,
     WorldContext,
     type WorldContextType,
