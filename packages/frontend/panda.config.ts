@@ -41,6 +41,7 @@ export default defineConfig({
                 colors: {
                     // メインカラー（ダークネイビー - ボタンやアクセントに使用）
                     primary: { value: '#1b2a44' },
+                    primaryHighlight: { value: '#4780e0' },
                     
                     // セカンダリカラー（ベージュ系 - カード背景などに使用）
                     secondary: { value: '#d4c4ab' },

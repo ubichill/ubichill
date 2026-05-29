@@ -299,7 +299,7 @@ export function Lobby({ onJoinInstance, mode = 'lobby', currentInstanceId }: Lob
                             minH: 0,
                             overflowY: 'auto',
                             overflowX: 'hidden',
-                            paddingBottom: '20px',
+                            paddingBottom: mode === 'modal' ? '20px' : '120px',
                             '&::-webkit-scrollbar': {
                                 width: '6px',
                             },
