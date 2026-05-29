@@ -150,6 +150,7 @@ class WorldRegistry {
                     thumbnail: e.thumbnail ?? undefined,
                     version: e.version,
                     capacity: e.capacity,
+                    authorId: rec?.authorId ?? SYSTEM_AUTHOR_ID,
                     createdAt: rec ? rec.createdAt.toISOString() : undefined,
                     updatedAt: rec ? rec.updatedAt.toISOString() : undefined,
                 };
@@ -168,6 +169,7 @@ class WorldRegistry {
                     thumbnail: def.spec.thumbnail,
                     version: r.version,
                     capacity: def.spec.capacity,
+                    authorId: r.authorId,
                     createdAt: r.createdAt.toISOString(),
                     updatedAt: r.updatedAt.toISOString(),
                 };
