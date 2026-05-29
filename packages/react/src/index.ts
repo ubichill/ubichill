@@ -1,9 +1,9 @@
-export { PluginUIMount } from './components/PluginUIMount';
 export type { HoldState } from './components/HoldContext';
 export { HoldProvider, useHold } from './components/HoldContext';
-export { heldEntitySyncRef } from './heldEntitySyncRef';
+export { PluginUIMount } from './components/PluginUIMount';
 export type { WorkerPluginHostProps } from './components/WorkerPluginHost';
 export { WorkerPluginHost } from './components/WorkerPluginHost';
+export { heldEntitySyncRef } from './heldEntitySyncRef';
 export { useCursorPosition } from './hooks/useCursorPosition';
 export { useEntity } from './hooks/useEntity';
 export { useObjectInteraction } from './hooks/useObjectInteraction';

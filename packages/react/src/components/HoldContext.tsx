@@ -9,7 +9,8 @@
  */
 
 import type { CmdGrip } from '@ubichill/shared';
-import React, { createContext, useCallback, useContext, useRef, useState } from 'react';
+import type React from 'react';
+import { createContext, useCallback, useContext, useRef, useState } from 'react';
 import { heldEntitySyncRef } from '../heldEntitySyncRef';
 
 export interface HoldState {
@@ -81,11 +82,7 @@ export const HoldProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     }, []);
 
-    return (
-        <HoldContext.Provider value={{ held, heldRef, handleGripCommand }}>
-            {children}
-        </HoldContext.Provider>
-    );
+    return <HoldContext.Provider value={{ held, heldRef, handleGripCommand }}>{children}</HoldContext.Provider>;
 };
 
 export function useHold(): HoldContextValue {

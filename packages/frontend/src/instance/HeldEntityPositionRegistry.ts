@@ -14,12 +14,9 @@
  *  3. subscribe は cleanup 時に返却された unsubscribe を呼ぶ
  */
 
-type DivRef = HTMLDivElement | null;
 type PositionListener = (viewportX: number, viewportY: number) => void;
 
 class HeldEntityPositionRegistryImpl {
-    /** entityId → DOM 要素の Map */
-    private readonly divs = new Map<string, DivRef>();
     /** entityId → リスナー（DOM 更新関数）の Map */
     private readonly listeners = new Map<string, Set<PositionListener>>();
 
@@ -29,15 +26,17 @@ class HeldEntityPositionRegistryImpl {
      * @returns unsubscribe 関数（cleanup で呼ぶ）
      */
     subscribe(entityId: string, listener: PositionListener): () => void {
-        if (!this.listeners.has(entityId)) {
-            this.listeners.set(entityId, new Set());
+        let set = this.listeners.get(entityId);
+        if (!set) {
+            set = new Set();
+            this.listeners.set(entityId, set);
         }
-        this.listeners.get(entityId)!.add(listener);
+        set.add(listener);
         return () => {
-            this.listeners.get(entityId)?.delete(listener);
-            if (this.listeners.get(entityId)?.size === 0) {
-                this.listeners.delete(entityId);
-            }
+            const cur = this.listeners.get(entityId);
+            if (!cur) return;
+            cur.delete(listener);
+            if (cur.size === 0) this.listeners.delete(entityId);
         };
     }
 

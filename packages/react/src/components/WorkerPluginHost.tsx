@@ -29,7 +29,7 @@ import {
 } from '../lib/entityScope';
 import type { WorkerPluginDefinition } from '../types';
 import { usePluginWorker } from '../usePluginWorker';
-import { HoldProvider, useHold } from './HoldContext';
+import { useHold } from './HoldContext';
 import { PluginUIMount } from './PluginUIMount';
 
 export interface WorkerPluginHostProps {
@@ -117,24 +117,24 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
                     targetType,
                 }),
             onGripCommand: (payload) => {
-                    handleGripCommand(payload);
-                    // persistent share: lockedBy をサーバー永続化
-                    if (payload.action === 'hold' && payload.share === 'persistent') {
-                        const myId = currentUserRef.current?.id ?? null;
-                        patchEntityRef.current(payload.entityId, {
-                            lockedBy: myId,
-                            data: { isHeld: true },
-                        });
-                        // user:update で heldEntityId を同期（cursor:move でも送るが初期値として）
-                        updateUserRef.current({ heldEntityId: payload.entityId });
-                    } else if (payload.action === 'release') {
-                        patchEntityRef.current(payload.entityId, {
-                            lockedBy: null,
-                            data: { isHeld: false },
-                        });
-                        updateUserRef.current({ heldEntityId: null });
-                    }
-                },
+                handleGripCommand(payload);
+                // persistent share: lockedBy をサーバー永続化
+                if (payload.action === 'hold' && payload.share === 'persistent') {
+                    const myId = currentUserRef.current?.id ?? null;
+                    patchEntityRef.current(payload.entityId, {
+                        lockedBy: myId,
+                        data: { isHeld: true },
+                    });
+                    // user:update で heldEntityId を同期（cursor:move でも送るが初期値として）
+                    updateUserRef.current({ heldEntityId: payload.entityId });
+                } else if (payload.action === 'release') {
+                    patchEntityRef.current(payload.entityId, {
+                        lockedBy: null,
+                        data: { isHeld: false },
+                    });
+                    updateUserRef.current({ heldEntityId: null });
+                }
+            },
             onMessage: (msg) => {
                 const m = msg as { type: string; payload: unknown };
                 if (m.type === 'position:update') {

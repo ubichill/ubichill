@@ -231,7 +231,12 @@ export interface ServerToClientEvents {
     'user:left': (userId: string) => void;
 
     /** ユーザーのカーソル位置更新 */
-    'cursor:moved': (data: { userId: string; position: CursorPosition; state?: CursorState; heldEntityId?: string | null }) => void;
+    'cursor:moved': (data: {
+        userId: string;
+        position: CursorPosition;
+        state?: CursorState;
+        heldEntityId?: string | null;
+    }) => void;
 
     /** ユーザーのステータス更新 */
     'status:changed': (data: { userId: string; status: UserStatus }) => void;

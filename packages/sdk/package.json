@@ -9,7 +9,8 @@
         ".": "./src/index.ts",
         "./react": "./src/react/index.ts",
         "./ui": "./src/ui/index.ts",
-        "./jsx-runtime": "./src/jsx/jsx-runtime.ts"
+        "./jsx-runtime": "./src/jsx/jsx-runtime.ts",
+        "./gripable": "./src/jsx/Gripable.tsx"
     },
     "peerDependencies": {
         "@ubichill/engine": "workspace:*",

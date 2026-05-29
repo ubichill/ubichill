@@ -1,8 +1,8 @@
 import { isWorkerPlugin, useHold, useSocket, useWorld, WorkerPluginHost } from '@ubichill/sdk/react';
 import type React from 'react';
 import { useEffect, useRef } from 'react';
-import { usePluginRegistry } from '../plugins/PluginRegistryContext';
 import { Z_INDEX } from '@/styles/layers';
+import { usePluginRegistry } from '../plugins/PluginRegistryContext';
 import { HeldEntityPositionRegistry } from './HeldEntityPositionRegistry';
 
 interface EntityRendererProps {
@@ -51,20 +51,23 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
     const { currentUser, users } = useSocket();
     const divRef = useRef<HTMLDivElement>(null);
 
-    const entity = entities.get(entityId)!;
-    const plugin = pluginMap.get(entity.type);
-    if (!plugin || !isWorkerPlugin(plugin)) return null;
+    // hook の呼び出し順序を Rules of Hooks に揃えるため、null guard は最後に行う。
+    // 途中の値は entity/plugin が無くてもデフォルトを保つように書く。
+    const entity = entities.get(entityId);
+    const plugin = entity ? pluginMap.get(entity.type) : null;
+    const isWorker = plugin !== undefined && plugin !== null && isWorkerPlugin(plugin);
 
     // 自分が持っているか
-    const isHeldByMe = held?.entityId === entityId;
+    const isHeldByMe = !!entity && held?.entityId === entityId;
     // 他ユーザーが持っているか（lockedBy が自分以外 + data.isHeld が true）
     const isHeldByOther =
+        !!entity &&
         !isHeldByMe &&
         entity.lockedBy !== null &&
         entity.lockedBy !== currentUser?.id &&
         (entity.data as Record<string, unknown>).isHeld === true;
 
-    const holderId = isHeldByOther ? entity.lockedBy : null;
+    const holderId = isHeldByOther && entity ? entity.lockedBy : null;
 
     // ── 自分が持っているとき: pointermove で直接 DOM 更新 ──────────────────
     useEffect(() => {
@@ -102,6 +105,7 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
     }, [isHeldByMe, entityId, held?.offsetX, held?.offsetY, heldRef]);
 
     // ── 他ユーザーが持っているとき: HeldEntityPositionRegistry で DOM 更新 ──
+    // biome-ignore lint/correctness/useExhaustiveDependencies: users は初期位置の参照だけに最新値を読む (subscribe 後は registry が逐次更新する)
     useEffect(() => {
         if (!isHeldByOther || !holderId) return;
         const div = divRef.current;
@@ -140,6 +144,9 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
             div.style.transition = '';
         };
     }, [isHeldByOther, holderId, entityId]); // users は意図的に除外（初期値のみ使用）
+
+    // null guard はすべての hook 呼び出しの後
+    if (!entity || !plugin || !isWorker) return null;
 
     // ── スタイル計算 ──────────────────────────────────────────────────────
     const workerPlugin = plugin; // isWorkerPlugin チェック済み

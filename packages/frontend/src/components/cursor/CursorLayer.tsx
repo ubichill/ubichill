@@ -27,8 +27,8 @@
 
 import { useSocket } from '@ubichill/sdk/react';
 import { useEffect } from 'react';
-import { useSession } from '@/lib/auth-client';
 import { HeldEntityPositionRegistry } from '@/instance/HeldEntityPositionRegistry';
+import { useSession } from '@/lib/auth-client';
 import { applyCursorStyles, removeCursorStyles } from './cursorImages';
 import { RemoteCursorsPortal } from './RemoteCursorsPortal';
 import { useBroadcastCursor } from './useBroadcastCursor';
@@ -80,7 +80,5 @@ export function CursorLayer() {
 
     // 自分のカーソル位置: OS コンポジタが描画するため JSX には何もない。
     // リモートユーザー分だけ JS で overlay する。
-    return isConnected && scrollEl ? (
-        <RemoteCursorsPortal scrollEl={scrollEl} users={users} selfId={selfId} />
-    ) : null;
+    return isConnected && scrollEl ? <RemoteCursorsPortal scrollEl={scrollEl} users={users} selfId={selfId} /> : null;
 }

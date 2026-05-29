@@ -32,10 +32,16 @@ export interface Grip {
     readonly holder: string | null;
     /** 自分が掴んでいるか */
     readonly isMine: boolean;
+    /** 他人が掴んでいるか */
+    readonly isHeldByOther: boolean;
+    /** 宣言時に渡された options (Gripable が hover/held のスタイルを引くのに使う、読み取り専用) */
+    readonly options: Readonly<GripOptions>;
     /** 掴む。1 ユーザー 1 つの制約を SDK が同タブ siblings に対して enforce する。 */
     acquire(): void;
     /** 離す */
     release(): void;
+    /** mode に応じて acquire / release を切替える (toggle 風の操作にそのまま使える) */
+    toggle(): void;
     /** 占有者の変化を監視。戻り関数で unregister。 */
     onChange(listener: (next: string | null, prev: string | null) => void): () => void;
 }
@@ -57,14 +63,34 @@ export interface GripOptions {
     mode?: 'manual' | 'toggle' | 'press';
 
     /**
-     * ホバー時・保持時のカーソル CSS cursor 値。
-     * ホストが entity wrapper の cursor style に適用する。
+     * ホバー時のカーソル形状 + 視覚効果。
+     * `<Gripable>` でラップしたとき自動適用される。
      */
     hover?: {
-        /** ホバー時のカーソル（デフォルト: 'grab'） */
+        /** ホバー時のカーソル CSS (デフォルト: 'grab') */
         cursor?: string;
-        /** 保持中のカーソル（デフォルト: 'grabbing'） */
+        /** 保持中のカーソル CSS (デフォルト: 'grabbing') */
         heldCursor?: string;
+        /** ホバー時の outline (例: '2px solid currentColor')。SDK が wrapper に適用 */
+        outline?: string;
+        /** ホバー時の scale (例: 1.05)。SDK が wrapper に transform で適用 */
+        scale?: number;
+    };
+
+    /**
+     * 自分が掴んでいる時のスタイル。`<Gripable>` でラップしたとき自動適用される。
+     */
+    held?: {
+        /** 自分が掴んでいる時の opacity (デフォルト: 0.5 — トレイ上で「持ち上げた」表現) */
+        opacity?: number;
+    };
+
+    /**
+     * 他人が掴んでいる時のスタイル。`<Gripable>` でラップしたとき自動適用される。
+     */
+    blockedByOther?: {
+        /** 他人が掴んでいる時の opacity (デフォルト: 0.35) */
+        opacity?: number;
     };
 
     /**
@@ -145,9 +171,10 @@ export function createGripModule(deps: GripModuleDeps): GripModule {
             // 占有者は top-level lockedBy として永続同期 (share='persistent' の場合のみ)
             // share が 'local' / 'presence' の場合はローカル専用（マーカーなし = ローカル専用）
             const inner = deps.state.define({
-                holder: share === 'persistent'
-                    ? deps.state.sync<string | null>(null, { topLevel: 'lockedBy' })
-                    : (null as string | null),
+                holder:
+                    share === 'persistent'
+                        ? deps.state.sync<string | null>(null, { topLevel: 'lockedBy' })
+                        : (null as string | null),
             });
 
             // ローカルでだけ持つ取得時刻。同時 click の調停に使う
@@ -157,6 +184,17 @@ export function createGripModule(deps: GripModuleDeps): GripModule {
 
             const listeners = new Set<(next: string | null, prev: string | null) => void>();
             inner.onChange('holder', (next, prev) => {
+                const me = deps.getMyUserId();
+                // ゴースト防止: 自分の hold が外的要因 (他人の emit による奪取・サーバー patch・
+                // entity:patched での lockedBy = null など) で外れた場合も、host (HoldContext) へ
+                // CMD_GRIP release を必ず送る。release() を経由しない release も漏らさず host に
+                // 伝えることで cursor 追従が居残るのを防ぐ。
+                if (prev === me && next !== me) {
+                    deps.sendGripCommand({
+                        action: 'release',
+                        entityId: deps.getEntityId() ?? deps.getComponentInstanceId() ?? '',
+                    });
+                }
                 for (const fn of listeners) fn(next as string | null, prev as string | null);
             });
 
@@ -185,6 +223,17 @@ export function createGripModule(deps: GripModuleDeps): GripModule {
                 get isMine() {
                     const me = deps.getMyUserId();
                     return me !== undefined && inner.local.holder === me;
+                },
+                get isHeldByOther() {
+                    const me = deps.getMyUserId();
+                    const h = inner.local.holder;
+                    return h !== null && h !== me;
+                },
+                options: opts,
+                toggle(): void {
+                    if (grip.isMine) grip.release();
+                    else if (!grip.isHeldByOther) grip.acquire();
+                    // 他人が持っているなら何もしない (visual で disabled に見えるはず)
                 },
                 acquire(): void {
                     const me = deps.getMyUserId();

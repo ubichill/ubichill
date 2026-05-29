@@ -321,7 +321,6 @@ export type CmdMediaDestroy = { type: 'MEDIA_DESTROY'; payload: { targetId: stri
 /** Ubi.media.setVisible(visible, targetId?) — video 要素の表示/非表示 */
 export type CmdMediaSetVisible = { type: 'MEDIA_SET_VISIBLE'; payload: { targetId: string; visible: boolean } };
 
-
 /**
  * Ubi.grip.exclusive() が hold/release/setHover の変化をホストに通知する。
  * Fire & Forget: capability 不要。
