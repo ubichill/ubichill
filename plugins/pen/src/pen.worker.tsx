@@ -19,18 +19,23 @@ const pen = Ubi.state.define({
 });
 
 // 「持って書ける」宣言。クリック / hover / 追従 / 1 本ルールは全部 SDK 任せ。
+// 持つと entity ごとカーソルに移動するので tray には残らない (= held.opacity 未指定で完全不透明)。
+// 「囲み」(outline) は明示しない → ペン本体の見た目だけが浮かぶ。
 const grip = Ubi.grip.exclusive({
     mode: 'toggle',
     hover: {
         cursor: 'grab',
         heldCursor: 'grabbing',
-        outline: '2px solid currentColor',
-        scale: 3,
+        scale: 1.15,
     },
-    held: { opacity: 0.4 },
     blockedByOther: { opacity: 0.35 },
     offset: { x: -24, y: 0 },
     share: 'persistent',
+});
+
+// tray クリック → 持っているペンを離して tray に戻す。
+PenEvents.on('pen:tray:release', () => {
+    if (grip.isMine) grip.release();
 });
 
 // 持ち / 離しに応じて自分の penColor を Host へ通知 (avatar カーソルの色変えなどに使う)

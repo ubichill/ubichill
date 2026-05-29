@@ -46,7 +46,10 @@ export function Gripable({ grip, children, style }: GripableProps): VNode {
     const isMine = grip.isMine;
     const isBlocked = grip.isHeldByOther;
 
-    const stateOpacity = isBlocked ? (opts.blockedByOther?.opacity ?? 0.35) : isMine ? (opts.held?.opacity ?? 0.5) : 1;
+    // 自分が掴んでいる時は entity ごとカーソルに移動する (EntityRenderer の fixed 配置)。
+    // ので元のスロットには「残らない」のがデフォルト = opacity 1。
+    // 「掴んでも元のスロットに薄く残す」UX が欲しいプラグインだけ held.opacity を明示する。
+    const stateOpacity = isBlocked ? (opts.blockedByOther?.opacity ?? 0.35) : isMine ? (opts.held?.opacity ?? 1) : 1;
     const cursor = isBlocked
         ? 'not-allowed'
         : isMine

@@ -1,29 +1,38 @@
 /**
- * pen:tray Worker — ペン置き場。
+ * pen:tray Worker — ペン置き場 (= 置ける場所 + 戻し場所)。
  *
- * **責務は最小: ペンを置ける場所 (背景パネル) の提供だけ**。
- *  - ペンの選択 / 持ち上げ / 線の太さ設定は pen.worker 側 (= ペン自身)
- *  - tray はペンの状態を一切知らない。視覚的な「ホルダー」を出すだけ
+ * **責務:**
+ *  - 背景パネルを描画してペンを「置ける場所」だと視覚的に伝える
+ *  - tray の空き領域をクリックされたら「持ってるペンを離して戻して」とブロードキャスト
+ *    → 各 pen.worker が自分が isMine なら release する
+ *  - ペンの状態 (color / strokeWidth / 選択) は一切持たない
  */
 
-const renderTray = (): void => {
-    Ubi.ui.render(
-        () => (
-            <div
-                style={{
-                    position: 'absolute',
-                    inset: '0',
-                    backgroundColor: 'rgba(245,245,247,0.92)',
-                    borderRadius: '12px',
-                    boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.06), 0 2px 8px rgba(0,0,0,0.08)',
-                    border: '1px solid rgba(0,0,0,0.08)',
-                    userSelect: 'none',
-                    pointerEvents: 'none',
-                }}
-            />
-        ),
-        'pen-tray',
-    );
-};
+import { PenEvents } from './events';
 
-renderTray();
+Ubi.ui.render(
+    () => (
+        <div
+            onUbiClick={() => {
+                // 世界中の pen:pen に「持ってるなら離して戻して」と通知。
+                // 自分が isMine の pen.worker だけが release() する。
+                PenEvents.emit('pen:tray:release', {}, { scope: 'world', targetType: 'pen:pen' });
+            }}
+            style={{
+                position: 'absolute',
+                inset: '0',
+                backgroundColor: 'rgba(245,245,247,0.92)',
+                borderRadius: '12px',
+                boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.06), 0 2px 8px rgba(0,0,0,0.08)',
+                border: '1px solid rgba(0,0,0,0.08)',
+                userSelect: 'none',
+                // ペンが乗っているスロット以外の領域でクリックを受け取りたいので auto。
+                // 個々の pen はその上に position:absolute で乗っており、ペンクリックは
+                // ペン側で stopPropagation 相当に拾うので tray のクリックには伝わらない。
+                pointerEvents: 'auto',
+                cursor: 'pointer',
+            }}
+        />
+    ),
+    'pen-tray',
+);

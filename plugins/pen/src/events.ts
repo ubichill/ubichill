@@ -29,6 +29,8 @@ export const PenEvents = Ubi.event.define<{
     'entity:pen:stroke': ComponentInstance<CanvasStrokeData>;
     // ── 自プラグイン: cross-user 描画イベント (broadcast) ──
     'pen:stroke_complete': CanvasStrokeData;
+    // ── 自プラグイン: tray クリック → 持っているペンを離す (world scope, targetType=pen:pen) ──
+    'pen:tray:release': Record<string, never>;
     // ── Host への通知: ユーザーペン色更新 (sendToHost) ──
     'user:update': { penColor: string | null };
 }>();
