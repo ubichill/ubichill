@@ -1,5 +1,5 @@
 import type { WorldListItem } from '@ubichill/shared';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE } from '@/lib/api';
 import { useSession } from '@/lib/auth-client';
@@ -79,31 +79,12 @@ export function Lobby({ onJoinInstance, mode = 'lobby', currentInstanceId }: Lob
 
     const sortedWorlds = useMemo(() => sortWorlds(worlds, sortKey), [worlds, sortKey]);
 
-    const [isRefreshing, setIsRefreshing] = useState(false);
-    const [pullOffset, setPullOffset] = useState(0);
-    const pullStartY = useRef(0);
-    const isPulling = useRef(false);
     const scrollRef = useRef<HTMLDivElement>(null);
-
-    const PULL_THRESHOLD = 60;
 
     const selectedWorld = useMemo(
         () => sortedWorlds.find((world) => world.id === selectedWorldId) ?? null,
         [sortedWorlds, selectedWorldId],
     );
-
-    const refreshCurrentView = useCallback(async () => {
-        setIsRefreshing(true);
-        try {
-            if (selectedWorldId) {
-                await refreshInstances(selectedWorldId);
-            } else {
-                await refreshWorlds();
-            }
-        } finally {
-            setIsRefreshing(false);
-        }
-    }, [selectedWorldId, refreshInstances, refreshWorlds]);
 
     const handleSelectWorld = useCallback(
         async (worldId: string) => {
@@ -134,58 +115,6 @@ export function Lobby({ onJoinInstance, mode = 'lobby', currentInstanceId }: Lob
             setCreating(false);
         }
     }, [selectedWorldId, creating, createInstance, onJoinInstance]);
-
-    const handleTouchStart = useCallback((e: React.TouchEvent) => {
-        if (scrollRef.current && scrollRef.current.scrollTop <= 0) {
-            pullStartY.current = e.touches[0].clientY;
-            isPulling.current = true;
-        }
-    }, []);
-
-    const handleTouchMove = useCallback((e: React.TouchEvent) => {
-        if (!isPulling.current) return;
-        const diff = e.touches[0].clientY - pullStartY.current;
-        if (diff > 0) {
-            setPullOffset(Math.min(diff * 0.4, 80));
-        }
-    }, []);
-
-    const handleTouchEnd = useCallback(async () => {
-        if (!isPulling.current) return;
-        isPulling.current = false;
-
-        if (pullOffset >= PULL_THRESHOLD) {
-            await refreshCurrentView();
-        }
-        setPullOffset(0);
-    }, [pullOffset, refreshCurrentView]);
-
-    const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-    const handleScroll = useCallback(
-        (e: React.UIEvent<HTMLDivElement>) => {
-            const target = e.currentTarget;
-            if (target.scrollTop === 0 && !isRefreshing) {
-                if (!scrollTimeoutRef.current) {
-                    scrollTimeoutRef.current = setTimeout(async () => {
-                        await refreshCurrentView();
-                        scrollTimeoutRef.current = null;
-                    }, 500);
-                }
-            } else if (scrollTimeoutRef.current) {
-                clearTimeout(scrollTimeoutRef.current);
-                scrollTimeoutRef.current = null;
-            }
-        },
-        [isRefreshing, refreshCurrentView],
-    );
-
-    useEffect(() => {
-        return () => {
-            if (scrollTimeoutRef.current) {
-                clearTimeout(scrollTimeoutRef.current);
-            }
-        };
-    }, []);
 
     const [importUrl, setImportUrl] = useState('');
     const [importState, setImportState] = useState<'idle' | 'loading' | 'error'>('idle');
@@ -364,41 +293,7 @@ export function Lobby({ onJoinInstance, mode = 'lobby', currentInstanceId }: Lob
                     )}
 
                     <div
-                        className={css({
-                            display: 'flex',
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                            overflow: 'hidden',
-                            flexShrink: 0,
-                            transition: 'height 0.2s ease',
-                        })}
-                        style={{
-                            height: isRefreshing ? 40 : pullOffset > 10 ? Math.min(pullOffset, 50) : 0,
-                        }}
-                    >
-                        <div
-                            className={css({
-                                width: '24px',
-                                height: '24px',
-                                border: '3px solid',
-                                borderColor: 'primarySubtle',
-                                borderTopColor: 'primary',
-                                borderRadius: '50%',
-                                animation: isRefreshing ? 'spin 0.8s linear infinite' : 'none',
-                            })}
-                            style={{
-                                transform: isRefreshing ? undefined : `rotate(${pullOffset * 3}deg)`,
-                                opacity: isRefreshing || pullOffset > 10 ? 1 : 0,
-                            }}
-                        />
-                    </div>
-
-                    <div
                         ref={scrollRef}
-                        onTouchStart={handleTouchStart}
-                        onTouchMove={handleTouchMove}
-                        onTouchEnd={handleTouchEnd}
-                        onScroll={handleScroll}
                         className={css({
                             flex: 1,
                             minH: 0,
@@ -417,7 +312,7 @@ export function Lobby({ onJoinInstance, mode = 'lobby', currentInstanceId }: Lob
                             },
                         })}
                     >
-                        {loading && !isRefreshing && (
+                        {loading && (
                             <div
                                 className={css({
                                     textAlign: 'center',
