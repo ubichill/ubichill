@@ -97,7 +97,7 @@ export function InstancePage() {
             setHasTimedOut(true);
         }, 10000);
         return () => clearTimeout(timer);
-    }, [isConnected, id]);
+    }, [isConnected]);
 
     // Initial wait to ensure components are mounted and have a chance to register
     const [initialWaitDone, setInitialWaitDone] = useState(false);
@@ -108,7 +108,7 @@ export function InstancePage() {
             setInitialWaitDone(true);
         }, 100);
         return () => clearTimeout(timer);
-    }, [isConnected, id]);
+    }, [isConnected]);
 
     const isActuallyLoading =
         isPending ||

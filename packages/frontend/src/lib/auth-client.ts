@@ -2,6 +2,7 @@ import { createAuthClient } from 'better-auth/react';
 import { getApiBase } from '@/lib/api';
 
 const API_BASE = getApiBase();
+
 export { API_BASE };
 
 export const authClient = createAuthClient({

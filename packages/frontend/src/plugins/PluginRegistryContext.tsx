@@ -110,7 +110,7 @@ async function loadWorkerPlugin(entityType: string): Promise<WorkerPluginDefinit
 
     const manifest = await fetchVersionedManifest(pluginName, index.version);
     const entry = manifest?.components?.[entityType];
-    if (!entry || !entry.workerUrl) return null;
+    if (!entry?.workerUrl) return null;
 
     const versionedBase = `${PLUGIN_BASE_URL}/${pluginName}/v${index.version}`;
     const workerUrl = `${versionedBase}/${entry.workerUrl.replace(/^\.\//, '')}`;

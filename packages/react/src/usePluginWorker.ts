@@ -11,15 +11,14 @@ import type {
 } from '@ubichill/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-export { PluginHostManager };
-export type { FetchOptions, FetchResult, PluginHostManagerOptions };
-
 export {
     createPluginFetchHandler,
     DEFAULT_ALLOWED_DOMAINS,
     isUrlAllowed,
     PRODUCTION_ALLOWED_DOMAINS,
 } from '@ubichill/sandbox';
+export type { FetchOptions, FetchResult, PluginHostManagerOptions };
+export { PluginHostManager };
 
 /**
  * usePluginWorker に渡すハンドラ定義。

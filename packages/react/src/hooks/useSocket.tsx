@@ -261,10 +261,21 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 resolve();
                 return;
             }
-            socket.emit('world:leave', () => {
+
+            let isDone = false;
+            const cleanupAndResolve = () => {
+                if (isDone) return;
+                isDone = true;
                 setUsers(new Map());
                 setCurrentUser(null);
                 resolve();
+            };
+
+            const timer = setTimeout(cleanupAndResolve, 3000);
+
+            socket.emit('world:leave', () => {
+                clearTimeout(timer);
+                cleanupAndResolve();
             });
         });
     }, [isConnected]);
