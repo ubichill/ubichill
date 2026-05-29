@@ -381,10 +381,7 @@ export function InstanceHUD() {
 
             {/* ワールド一覧モーダル */}
             {worldListOpen && instanceId && (
-                <WorldListModal
-                    currentInstanceId={instanceId}
-                    onClose={() => setWorldListOpen(false)}
-                />
+                <WorldListModal currentInstanceId={instanceId} onClose={() => setWorldListOpen(false)} />
             )}
         </>
     );

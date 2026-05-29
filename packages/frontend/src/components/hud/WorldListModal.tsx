@@ -45,9 +45,7 @@ export function WorldListModal({ onClose, currentInstanceId }: WorldListModalPro
                 return;
             }
 
-            const confirmed = window.confirm(
-                'このインスタンスに移動しますか？現在のインスタンスから退出します。',
-            );
+            const confirmed = window.confirm('このインスタンスに移動しますか？現在のインスタンスから退出します。');
             if (!confirmed) return;
 
             // ナビゲーションにより InstancePage の unmount→mount が発生し、
@@ -151,11 +149,7 @@ export function WorldListModal({ onClose, currentInstanceId }: WorldListModalPro
                         },
                     })}
                 >
-                    <Lobby
-                        onJoinInstance={handleJoinInstance}
-                        mode="modal"
-                        currentInstanceId={currentInstanceId}
-                    />
+                    <Lobby onJoinInstance={handleJoinInstance} mode="modal" currentInstanceId={currentInstanceId} />
                 </div>
             </div>
         </div>
