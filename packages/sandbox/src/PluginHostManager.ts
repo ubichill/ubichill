@@ -97,6 +97,7 @@ export type HostHandlers<TPayloadMap extends Record<string, unknown> = Record<st
     onDestroyEntity?: (id: string) => Promise<void>;
     onFetch?: (url: string, options?: FetchOptions) => Promise<FetchResult>;
     onMessage?: (msg: PluginWorkerMessage<TPayloadMap>) => void;
+    onReady?: () => void;
     onNetworkBroadcast?: (type: string, data: unknown) => void;
     onEventEmit?: (
         type: string,
@@ -473,6 +474,7 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
         this.worker.addEventListener('message', (e: MessageEvent<PluginGuestCommand>) => {
             if (e.data.type === 'CMD_READY') {
                 this.isInitialized = true;
+                this.handlers.onReady?.();
                 for (const event of this.eventQueue) {
                     this.worker.postMessage(event);
                 }

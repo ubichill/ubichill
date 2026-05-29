@@ -1,4 +1,4 @@
-import { useSocket } from '@ubichill/sdk/react';
+import { useSocket, WorkerLoadingProvider } from '@ubichill/sdk/react';
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { InstanceHUD } from '@/components/hud/InstanceHUD';
@@ -80,7 +80,34 @@ export function InstancePage() {
         };
     }, [session, isPending, navigate, id, location.state, joinWorld]);
 
-    const isActuallyLoading = isPending || connecting || (!isConnected && !error);
+    const [pendingPluginCount, setPendingPluginCount] = useState(0);
+    const [pendingWorkerCount, setPendingWorkerCount] = useState(0);
+    const [hasTimedOut, setHasTimedOut] = useState(false);
+
+    useEffect(() => {
+        if (!isConnected) return;
+        const timer = setTimeout(() => {
+            setHasTimedOut(true);
+        }, 10000);
+        return () => clearTimeout(timer);
+    }, [isConnected]);
+
+    // Initial wait to ensure components are mounted and have a chance to register
+    const [initialWaitDone, setInitialWaitDone] = useState(false);
+    useEffect(() => {
+        if (!isConnected) return;
+        const timer = setTimeout(() => {
+            setInitialWaitDone(true);
+        }, 100);
+        return () => clearTimeout(timer);
+    }, [isConnected]);
+
+    const isActuallyLoading =
+        isPending ||
+        connecting ||
+        (!isConnected && !error) ||
+        (isConnected && !hasTimedOut && (!initialWaitDone || pendingPluginCount > 0 || pendingWorkerCount > 0));
+
     const [showLoading, setShowLoading] = useState(true);
     const [isFadingOut, setIsFadingOut] = useState(false);
 
@@ -210,8 +237,10 @@ export function InstancePage() {
         <>
             {loadingScreen}
             <main>
-                <PluginRegistryProvider>
-                    <InstanceRenderer />
+                <PluginRegistryProvider key={id} onStatusChange={setPendingPluginCount}>
+                    <WorkerLoadingProvider onStatusChange={setPendingWorkerCount}>
+                        <InstanceRenderer />
+                    </WorkerLoadingProvider>
                 </PluginRegistryProvider>
                 <InstanceHUD />
             </main>
