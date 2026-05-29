@@ -277,9 +277,6 @@ importers:
       '@ubichill/shared':
         specifier: workspace:*
         version: link:../shared
-      react:
-        specifier: ^19.2.5
-        version: 19.2.5
 
   packages/shared:
     dependencies:
