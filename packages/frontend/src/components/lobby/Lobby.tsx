@@ -59,7 +59,7 @@ interface LobbyProps {
     currentInstanceId?: string;
 }
 
-export function Lobby({ onJoinInstance, mode = 'lobby', currentInstanceId }: LobbyProps) {
+export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
     const navigate = useNavigate();
     const { data: session } = useSession();
     const { instances, worlds, loading, error, createInstance, refreshInstances, refreshWorlds } = useInstances();
@@ -163,7 +163,7 @@ export function Lobby({ onJoinInstance, mode = 'lobby', currentInstanceId }: Lob
                 padding: { base: '8px 0 0', md: '16px 0 0' },
                 display: 'flex',
                 flexDirection: 'column',
-                height: mode === 'modal' ? '100%' : 'calc(100vh - 112px)',
+                height: '100%',
                 overflow: 'hidden',
             })}
         >
@@ -236,11 +236,14 @@ export function Lobby({ onJoinInstance, mode = 'lobby', currentInstanceId }: Lob
                         )}
                         <h1
                             className={css({
-                                fontSize: { base: '3xl', md: '4xl' },
+                                fontSize: { base: 'xl', sm: '2xl', md: '3xl' },
                                 fontWeight: '700',
                                 color: 'text',
                                 minW: 0,
                                 flex: 1,
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
                             })}
                         >
                             {selectedWorld ? selectedWorld.displayName : 'ワールド選択'}
@@ -299,7 +302,7 @@ export function Lobby({ onJoinInstance, mode = 'lobby', currentInstanceId }: Lob
                             minH: 0,
                             overflowY: 'auto',
                             overflowX: 'hidden',
-                            paddingBottom: mode === 'modal' ? '20px' : '120px',
+                            paddingBottom: '20px',
                             '&::-webkit-scrollbar': {
                                 width: '6px',
                             },

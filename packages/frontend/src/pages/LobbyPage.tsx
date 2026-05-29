@@ -100,7 +100,7 @@ function HomeTab({
                 gap: '6',
                 h: 'full',
                 overflowY: 'auto',
-                pb: '120px',
+                pb: '20px',
             })}
         >
             <div
@@ -192,7 +192,7 @@ function FriendsTab() {
                 gap: '6',
                 h: 'full',
                 overflowY: 'auto',
-                pb: '120px',
+                pb: '20px',
             })}
         >
             <div
@@ -271,7 +271,13 @@ export function LobbyPage() {
     return (
         <main
             className={styles.mainContainer}
-            style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}
+            style={{
+                display: 'flex',
+                flexDirection: 'column',
+                height: '100vh',
+                paddingBottom: '100px',
+                overflow: 'hidden',
+            }}
         >
             <div
                 className={css({
