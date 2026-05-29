@@ -53,6 +53,7 @@ export function WorldListModal({ onClose, currentInstanceId }: WorldListModalPro
             // ナビゲーションにより InstancePage の unmount→mount が発生し、
             // 既存の leaveWorld/joinWorld フローが自動的に実行される
             navigate(`/instance/${instanceId}`, { state: { worldId } });
+            onClose();
         },
         [currentInstanceId, navigate, onClose],
     );

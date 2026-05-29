@@ -17,7 +17,7 @@ export function InstancePage() {
     const { isConnected, error, joinWorld, leaveWorld } = useSocket();
 
     const [connecting, setConnecting] = useState(true);
-    const hasJoinedRef = useRef(false);
+    const joinedIdRef = useRef<string | null>(null);
     const leaveWorldRef = useRef(leaveWorld);
     leaveWorldRef.current = leaveWorld;
 
@@ -35,10 +35,15 @@ export function InstancePage() {
             return;
         }
 
-        if (hasJoinedRef.current) return;
         if (!id) return;
+        if (joinedIdRef.current === id) return;
 
-        hasJoinedRef.current = true;
+        if (joinedIdRef.current) {
+            leaveWorldRef.current();
+            setConnecting(true);
+        }
+
+        joinedIdRef.current = id;
 
         const onJoinError = () => navigate('/');
 
@@ -53,9 +58,12 @@ export function InstancePage() {
             doJoin(stateWorldId);
             return;
         }
+
+        let cancelled = false;
         fetch(`${API_BASE}/api/v1/instances/${id}`, { credentials: 'include' })
             .then((r) => (r.ok ? r.json() : null))
             .then((instance) => {
+                if (cancelled) return;
                 const worldId = instance?.world?.id;
                 if (!worldId) {
                     navigate('/');
@@ -63,7 +71,13 @@ export function InstancePage() {
                 }
                 doJoin(worldId);
             })
-            .catch(() => navigate('/'));
+            .catch(() => {
+                if (!cancelled) navigate('/');
+            });
+
+        return () => {
+            cancelled = true;
+        };
     }, [session, isPending, navigate, id, location.state, joinWorld]);
 
     if (isPending || connecting) {
