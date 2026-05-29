@@ -3,9 +3,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { API_BASE } from '@/lib/api';
-import { useSession } from '@/lib/auth-client';
 import { css } from '@/styled-system/css';
-import { InstanceCard } from './InstanceCard';
 import { useInstances } from './useInstances';
 import { WorldCard } from './WorldCard';
 import { WorldDetailModal } from './WorldDetailModal';
@@ -64,7 +62,6 @@ interface LobbyProps {
 export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
     const navigate = useNavigate();
     const confirm = useConfirm();
-    const { data: session } = useSession();
 
     const goConfirmed = useCallback(
         async (path: string, message: string) => {
@@ -127,8 +124,6 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
         }
     }, [importUrl, refreshWorlds]);
 
-
-
     return (
         <div
             className={css({
@@ -169,17 +164,17 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                         minH: 0,
                     })}
                 >
-                        <h1
-                            className={css({
-                                fontSize: { base: 'lg', sm: 'xl', md: 'xl' },
-                                fontWeight: '700',
-                                color: 'text',
-                                mb: '4',
-                                flexShrink: 0,
-                            })}
-                        >
-                            ワールド一覧
-                        </h1>
+                    <h1
+                        className={css({
+                            fontSize: { base: 'lg', sm: 'xl', md: 'xl' },
+                            fontWeight: '700',
+                            color: 'text',
+                            mb: '4',
+                            flexShrink: 0,
+                        })}
+                    >
+                        ワールド一覧
+                    </h1>
 
                     {error && (
                         <div

@@ -1,5 +1,5 @@
 import { UserProfileView } from '@/components/profile';
-import { cardStyle, tabPanel, type JoinInstanceHandler } from './shared';
+import { cardStyle, type JoinInstanceHandler, tabPanel } from './shared';
 
 export function ProfileTab({
     onNavigate,

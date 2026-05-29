@@ -235,7 +235,7 @@ class InstanceManager {
                 logger.info(`インスタンス自動削除（ユーザー0から${timeoutMs / 1000}秒経過）: ${instanceId}`);
                 this.emptyTimers.delete(instanceId);
             }, timeoutMs);
-            
+
             this.emptyTimers.set(instanceId, timer);
         }
 

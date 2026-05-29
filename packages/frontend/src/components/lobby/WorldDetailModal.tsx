@@ -19,7 +19,13 @@ interface WorldDetailModalProps {
     initialWorld?: Partial<WorldListItem> & { id: string; displayName: string; authorId?: string };
 }
 
-export function WorldDetailModal({ worldId, onClose, onJoinInstance, currentInstanceId, initialWorld }: WorldDetailModalProps) {
+export function WorldDetailModal({
+    worldId,
+    onClose,
+    onJoinInstance,
+    currentInstanceId,
+    initialWorld,
+}: WorldDetailModalProps) {
     const navigate = useNavigate();
     const confirm = useConfirm();
     const { data: session } = useSession();
@@ -65,7 +71,7 @@ export function WorldDetailModal({ worldId, onClose, onJoinInstance, currentInst
         return () => {
             cancelled = true;
         };
-    }, [worldId]);
+    }, [worldId, initialWorld]);
 
     const handleCreate = async () => {
         if (creating) return;
@@ -189,7 +195,14 @@ export function WorldDetailModal({ worldId, onClose, onJoinInstance, currentInst
                                         _hover: { borderColor: 'borderStrong' },
                                     })}
                                 >
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <svg
+                                        width="16"
+                                        height="16"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                    >
                                         <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
                                         <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
                                     </svg>
@@ -249,7 +262,16 @@ export function WorldDetailModal({ worldId, onClose, onJoinInstance, currentInst
                                     アクティブなインスタンス
                                 </h3>
                                 {instances.length === 0 ? (
-                                    <p className={css({ color: 'textMuted', fontSize: 'sm', textAlign: 'center', py: '4', bg: 'secondary', borderRadius: '12px' })}>
+                                    <p
+                                        className={css({
+                                            color: 'textMuted',
+                                            fontSize: 'sm',
+                                            textAlign: 'center',
+                                            py: '4',
+                                            bg: 'secondary',
+                                            borderRadius: '12px',
+                                        })}
+                                    >
                                         参加可能なインスタンスがありません
                                     </p>
                                 ) : (

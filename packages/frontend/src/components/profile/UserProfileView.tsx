@@ -1,11 +1,11 @@
 import { LIMITS } from '@ubichill/shared';
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { WorldDetailModal } from '@/components/lobby/WorldDetailModal';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { API_BASE } from '@/lib/api';
 import { useSession } from '@/lib/auth-client';
 import { css } from '@/styled-system/css';
-import { WorldDetailModal } from '@/components/lobby/WorldDetailModal';
 
 interface UserProfile {
     id: string;
@@ -55,10 +55,7 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
-    const selectedWorld = useMemo(
-        () => worlds.find((w) => w.id === selectedWorldId),
-        [worlds, selectedWorldId]
-    );
+    const selectedWorld = useMemo(() => worlds.find((w) => w.id === selectedWorldId), [worlds, selectedWorldId]);
 
     const go = async (path: string) => {
         if (!(await confirm('このページに移動しますか？'))) return;
