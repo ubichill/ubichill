@@ -2,6 +2,7 @@ import { useSocket } from '@ubichill/sdk/react';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lobby } from '@/components/lobby';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { css } from '@/styled-system/css';
 
 interface WorldListModalProps {
@@ -21,6 +22,11 @@ export function WorldListModal({ onClose, currentInstanceId }: WorldListModalPro
 
     // フェードインアニメーション用の状態
     const [visible, setVisible] = useState(false);
+    const [confirmingInstance, setConfirmingInstance] = useState<{
+        instanceId: string;
+        worldId: string;
+        worldData?: { thumbnail?: string; displayName?: string };
+    } | null>(null);
 
     useEffect(() => {
         // マウント直後にフェードイン開始
@@ -47,16 +53,9 @@ export function WorldListModal({ onClose, currentInstanceId }: WorldListModalPro
                 return;
             }
 
-            const confirmed = window.confirm('このインスタンスに移動しますか？現在のインスタンスから退出します。');
-            if (!confirmed) return;
-
-            // 確実に古いインスタンスから退出してから新しいインスタンスへ移動する
-            leaveWorld().then(() => {
-                navigate(`/instance/${instanceId}`, { state: { worldId, worldData } });
-                onClose();
-            });
+            setConfirmingInstance({ instanceId, worldId, worldData });
         },
-        [currentInstanceId, navigate, onClose, leaveWorld],
+        [currentInstanceId, onClose],
     );
 
     return (
@@ -155,6 +154,25 @@ export function WorldListModal({ onClose, currentInstanceId }: WorldListModalPro
                     <Lobby onJoinInstance={handleJoinInstance} mode="modal" currentInstanceId={currentInstanceId} />
                 </div>
             </div>
+
+            {/* 確認モーダル */}
+            <ConfirmModal
+                isOpen={confirmingInstance !== null}
+                message="このインスタンスに移動しますか？現在のインスタンスから退出します。"
+                onConfirm={() => {
+                    if (!confirmingInstance) return;
+                    leaveWorld().then(() => {
+                        navigate(`/instance/${confirmingInstance.instanceId}`, {
+                            state: {
+                                worldId: confirmingInstance.worldId,
+                                worldData: confirmingInstance.worldData,
+                            },
+                        });
+                        onClose();
+                    });
+                }}
+                onCancel={() => setConfirmingInstance(null)}
+            />
         </div>
     );
 }
