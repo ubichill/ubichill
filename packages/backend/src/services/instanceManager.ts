@@ -124,13 +124,18 @@ class InstanceManager {
             includeFull: options?.includeFull,
         });
 
-        const instances: Instance[] = [];
-        for (const dbInstance of dbInstances) {
+        type DbInstanceType = NonNullable<Awaited<ReturnType<typeof instanceRepository.findById>>>;
+        
+        const instancesPromises = (dbInstances as DbInstanceType[]).map(async (dbInstance: DbInstanceType) => {
             const world = await worldRegistry.getWorldByDbId(dbInstance.worldId);
             if (world) {
-                instances.push(this.toPublicInstance(dbInstance, world));
+                return this.toPublicInstance(dbInstance, world);
             }
-        }
+            return null;
+        });
+
+        const instancesResult = await Promise.all(instancesPromises);
+        const instances: Instance[] = instancesResult.filter((inst: Instance | null): inst is Instance => inst !== null);
 
         return instances;
     }
