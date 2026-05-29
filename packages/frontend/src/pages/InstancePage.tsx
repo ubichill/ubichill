@@ -45,31 +45,35 @@ export function InstancePage() {
         if (!id) return;
         if (joinedIdRef.current === id) return;
 
-        if (joinedIdRef.current) {
-            leaveWorldRef.current();
-        }
-
-        joinedIdRef.current = id;
-        setLoadError(null);
-
-        const doJoin = (worldId: string) => {
-            joinWorld(session.user.name, worldId, id, (msg) => {
-                // join 失敗は useSocket 側で error にも反映される。ここではデバッグ用にログのみ。
-                console.error('[InstancePage] world:join failed:', msg);
-            });
-        };
-
-        // ロビーから来た場合は state に worldId が入っている。直接 URL 時は API から解決する
-        const stateWorldId = (location.state as { worldId?: string } | null)?.worldId;
-        if (stateWorldId) {
-            doJoin(stateWorldId);
-            return;
-        }
-
         let cancelled = false;
-        fetch(`${API_BASE}/api/v1/instances/${id}`, { credentials: 'include' })
-            .then((r) => (r.ok ? r.json() : null))
-            .then((instance) => {
+
+        // 旧インスタンスからの退出完了を待ってから join する（レースコンディション防止）
+        const connectToNewInstance = async () => {
+            if (joinedIdRef.current) {
+                await leaveWorldRef.current();
+            }
+            if (cancelled) return;
+
+            joinedIdRef.current = id;
+            setLoadError(null);
+
+            const doJoin = (worldId: string) => {
+                joinWorld(session.user.name, worldId, id, (msg) => {
+                    // join 失敗は useSocket 側で error にも反映される。ここではデバッグ用にログのみ。
+                    console.error('[InstancePage] world:join failed:', msg);
+                });
+            };
+
+            // ロビーから来た場合は state に worldId が入っている。直接 URL 時は API から解決する
+            const stateWorldId = (location.state as { worldId?: string } | null)?.worldId;
+            if (stateWorldId) {
+                doJoin(stateWorldId);
+                return;
+            }
+
+            try {
+                const r = await fetch(`${API_BASE}/api/v1/instances/${id}`, { credentials: 'include' });
+                const instance = r.ok ? await r.json() : null;
                 if (cancelled) return;
                 const worldId = instance?.world?.id;
                 if (!worldId) {
@@ -77,12 +81,14 @@ export function InstancePage() {
                     return;
                 }
                 doJoin(worldId);
-            })
-            .catch((e) => {
+            } catch (e) {
                 if (cancelled) return;
                 console.error('[InstancePage] failed to resolve worldId:', e);
                 setLoadError('ワールド情報の取得に失敗しました');
-            });
+            }
+        };
+
+        void connectToNewInstance();
 
         return () => {
             cancelled = true;

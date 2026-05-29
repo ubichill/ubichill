@@ -110,7 +110,7 @@ async function loadWorkerPlugin(entityType: string): Promise<WorkerPluginDefinit
 
     const manifest = await fetchVersionedManifest(pluginName, index.version);
     const entry = manifest?.components?.[entityType];
-    if (!entry || !entry.workerUrl) return null;
+    if (!entry?.workerUrl) return null;
 
     const versionedBase = `${PLUGIN_BASE_URL}/${pluginName}/v${index.version}`;
     const workerUrl = `${versionedBase}/${entry.workerUrl.replace(/^\.\//, '')}`;
@@ -236,16 +236,19 @@ export const PluginRegistryProvider: React.FC<{
                     // フォールバック: 静的 PLUGIN_LOADERS（CE ベースの非 Worker プラグイン）
                     const loader = PLUGIN_LOADERS[entityType];
                     if (!loader) {
+                        loadingRef.current.delete(entityType);
                         return;
                     }
                     return loader()
                         .then(addPlugin)
                         .catch((err: unknown) => {
                             console.error(`[PluginRegistry] Failed to load plugin: ${entityType}`, err);
+                            loadingRef.current.delete(entityType);
                         });
                 })
                 .catch((err) => {
                     console.error(`[PluginRegistry] Failed to load plugin: ${entityType}`, err);
+                    loadingRef.current.delete(entityType);
                 })
                 .finally(() => {
                     setLoadCounts((c) => ({ ...c, completed: c.completed + 1 }));

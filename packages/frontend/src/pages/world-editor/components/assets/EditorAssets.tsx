@@ -240,7 +240,7 @@ function walkTree(nodes: AssetNode[], folders: string[]): AssetNode[] | null {
     let cur: AssetNode[] = nodes;
     for (const seg of folders) {
         const next = cur.find((n) => n.kind === 'folder' && n.name === seg);
-        if (!next || next.kind !== 'folder') return null;
+        if (next?.kind !== 'folder') return null;
         cur = next.children;
     }
     return cur;

@@ -134,7 +134,7 @@ class InstanceManager {
      */
     async verifyInstancePassword(instanceId: string, password: string): Promise<boolean> {
         const dbInstance = await instanceRepository.findById(instanceId);
-        if (!dbInstance || !dbInstance.passwordHash) {
+        if (!dbInstance?.passwordHash) {
             return false;
         }
         return bcrypt.compare(password, dbInstance.passwordHash);
