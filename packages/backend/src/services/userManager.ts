@@ -7,16 +7,37 @@ import type { CursorPosition, CursorState, User, UserStatus } from '@ubichill/sh
 export class UserManager {
     private users: Map<string, User> = new Map();
     private userWorlds: Map<string, string> = new Map(); // userId -> worldId
+    private worldUsers: Map<string, Set<string>> = new Map(); // worldId -> Set<userId>
 
     addUser(userId: string, worldId: string, user: User): void {
         this.users.set(userId, user);
         this.userWorlds.set(userId, worldId);
+
+        let usersInWorld = this.worldUsers.get(worldId);
+        if (!usersInWorld) {
+            usersInWorld = new Set();
+            this.worldUsers.set(worldId, usersInWorld);
+        }
+        usersInWorld.add(userId);
     }
 
     removeUser(userId: string): User | undefined {
         const user = this.users.get(userId);
+        const worldId = this.userWorlds.get(userId);
+
         this.users.delete(userId);
         this.userWorlds.delete(userId);
+
+        if (worldId) {
+            const usersInWorld = this.worldUsers.get(worldId);
+            if (usersInWorld) {
+                usersInWorld.delete(userId);
+                if (usersInWorld.size === 0) {
+                    this.worldUsers.delete(worldId);
+                }
+            }
+        }
+
         return user;
     }
 
@@ -29,9 +50,10 @@ export class UserManager {
      */
     getUsersByWorld(worldId: string): User[] {
         const worldUsers: User[] = [];
+        const userIds = this.worldUsers.get(worldId);
 
-        for (const [userId, userWorldId] of this.userWorlds.entries()) {
-            if (userWorldId === worldId) {
+        if (userIds) {
+            for (const userId of userIds) {
                 const user = this.users.get(userId);
                 if (user) {
                     worldUsers.push(user);
@@ -115,7 +137,7 @@ export class UserManager {
      * ワールド総数を取得
      */
     getWorldCount(): number {
-        return new Set(this.userWorlds.values()).size;
+        return this.worldUsers.size;
     }
 }
 

@@ -1,4 +1,4 @@
-import type { WidgetDefinition, WorkerPluginDefinition } from '@ubichill/sdk/react';
+import type { WidgetDefinition, WorkerPluginDefinition } from '@ubichill/react';
 
 type PluginLoader = () => Promise<WidgetDefinition | WorkerPluginDefinition>;
 

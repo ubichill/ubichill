@@ -29,6 +29,7 @@ import {
 } from '../lib/entityScope';
 import type { WorkerPluginDefinition } from '../types';
 import { usePluginWorker } from '../usePluginWorker';
+import { useWorkerLoading } from '../WorkerLoadingContext';
 import { PluginUIMount } from './PluginUIMount';
 
 export interface WorkerPluginHostProps {
@@ -41,6 +42,18 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
     const { users, currentUser, updatePosition, updateUser } = useSocket();
     const { entities } = useWorld();
     const hostDivRef = useRef<HTMLDivElement>(null);
+    const workerLoading = useWorkerLoading();
+
+    // Context changes immediately notify the parent via prop
+    const workerRegistrationRef = useRef<{ markReady: () => void; unregister: () => void } | null>(null);
+
+    useEffect(() => {
+        if (workerLoading) {
+            const reg = workerLoading.registerWorker();
+            workerRegistrationRef.current = reg;
+            return () => reg.unregister();
+        }
+    }, [workerLoading]);
 
     const updatePositionRef = useRef(updatePosition);
     const updateUserRef = useRef(updateUser);
@@ -99,6 +112,7 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
             ...canvasHandlers,
             ...mediaHandlers,
             ...worldHandlers,
+            onReady: () => workerRegistrationRef.current?.markReady(),
             onRender,
             onFetch,
             onNetworkBroadcast: (type, data) => onNetworkBroadcastRef.current?.(type, data),

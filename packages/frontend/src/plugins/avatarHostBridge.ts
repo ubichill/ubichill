@@ -11,7 +11,7 @@
  * cursor worker が自分のホスト（avatarCursorHostBridge）に sourceUrl を渡してフレームを取得する。
  */
 
-import type { WorkerPluginDefinition } from '@ubichill/sdk/react';
+import type { WorkerPluginDefinition } from '@ubichill/react';
 import { loadImage } from '@/lib/imageLoader';
 
 export function attachAvatarHostBridge(def: WorkerPluginDefinition): WorkerPluginDefinition {

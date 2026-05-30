@@ -1,6 +1,6 @@
 import type { WorldDefinition } from '@ubichill/shared';
 import { useCallback, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import yaml from 'yaml';
 import { API_BASE } from '@/lib/api';
 
@@ -67,7 +67,7 @@ export function useWorldEditorApi({ isEdit, worldId, definition, onSavedYamlChan
                 const data = (await res.json().catch(() => ({}))) as { error?: string };
                 throw new Error(data.error ?? `HTTP ${res.status}`);
             }
-            navigate('/user/me');
+            navigate('/');
         } catch (e) {
             setError(e instanceof Error ? e.message : '削除失敗');
             setSaving(false);

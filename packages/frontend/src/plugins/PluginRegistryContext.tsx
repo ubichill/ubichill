@@ -1,7 +1,7 @@
-import type { WidgetDefinition, WorkerPluginDefinition } from '@ubichill/sdk/react';
-import { isWorkerPlugin } from '@ubichill/sdk/react';
+import type { WidgetDefinition, WorkerPluginDefinition } from '@ubichill/react';
+import { isWorkerPlugin } from '@ubichill/react';
 import type React from 'react';
-import { createContext, useCallback, useContext, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { attachAvatarCursorHostBridge } from './avatarCursorHostBridge';
 import { attachAvatarHostBridge } from './avatarHostBridge';
 import { PLUGIN_LOADERS } from './registry';
@@ -110,7 +110,7 @@ async function loadWorkerPlugin(entityType: string): Promise<WorkerPluginDefinit
 
     const manifest = await fetchVersionedManifest(pluginName, index.version);
     const entry = manifest?.components?.[entityType];
-    if (!entry || !entry.workerUrl) return null;
+    if (!entry?.workerUrl) return null;
 
     const versionedBase = `${PLUGIN_BASE_URL}/${pluginName}/v${index.version}`;
     const workerUrl = `${versionedBase}/${entry.workerUrl.replace(/^\.\//, '')}`;
@@ -147,8 +147,16 @@ async function loadWorkerPlugin(entityType: string): Promise<WorkerPluginDefinit
 
 export type AnyPluginDefinition = WidgetDefinition | WorkerPluginDefinition;
 
+/** プラグイン（worker コード）のダウンロード進捗。total = 開始数 / completed = 完了数 */
+export interface PluginLoadingStatus {
+    completed: number;
+    total: number;
+}
+
 interface PluginRegistryContextType {
     pluginMap: Map<string, AnyPluginDefinition>;
+    /** フェッチ中のプラグイン数 */
+    pendingPluginCount: number;
     /** エンティティタイプを指定してプラグインを動的ロードする（未ロードの場合のみ実行） */
     loadPlugin: (entityType: string) => void;
 }
@@ -159,6 +167,7 @@ interface PluginRegistryContextType {
 
 const PluginRegistryContext = createContext<PluginRegistryContextType>({
     pluginMap: new Map(),
+    pendingPluginCount: 0,
     loadPlugin: () => {},
 });
 
@@ -166,8 +175,17 @@ const PluginRegistryContext = createContext<PluginRegistryContextType>({
 // Provider
 // ============================================
 
-export const PluginRegistryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const PluginRegistryProvider: React.FC<{
+    children: React.ReactNode;
+    onStatusChange?: (status: PluginLoadingStatus) => void;
+}> = ({ children, onStatusChange }) => {
     const [pluginMap, setPluginMap] = useState<Map<string, AnyPluginDefinition>>(new Map());
+    const [loadCounts, setLoadCounts] = useState<PluginLoadingStatus>({ completed: 0, total: 0 });
+    const pendingPluginCount = loadCounts.total - loadCounts.completed;
+
+    useEffect(() => {
+        onStatusChange?.(loadCounts);
+    }, [loadCounts, onStatusChange]);
     // ロード済み（またはロード中）のエンティティタイプを追跡して重複ロードを防ぐ
     const loadingRef = useRef(new Set<string>());
     // register() 呼び出し済みの plugin id を追跡（StrictMode での二重呼び出し防止）
@@ -207,6 +225,7 @@ export const PluginRegistryProvider: React.FC<{ children: React.ReactNode }> = (
         (entityType: string) => {
             if (loadingRef.current.has(entityType)) return;
             loadingRef.current.add(entityType);
+            setLoadCounts((c) => ({ ...c, total: c.total + 1 }));
 
             loadWorkerPlugin(entityType)
                 .then((def) => {
@@ -230,6 +249,9 @@ export const PluginRegistryProvider: React.FC<{ children: React.ReactNode }> = (
                 .catch((err) => {
                     console.error(`[PluginRegistry] Failed to load plugin: ${entityType}`, err);
                     loadingRef.current.delete(entityType);
+                })
+                .finally(() => {
+                    setLoadCounts((c) => ({ ...c, completed: c.completed + 1 }));
                 });
         },
         [addPlugin],
@@ -240,7 +262,9 @@ export const PluginRegistryProvider: React.FC<{ children: React.ReactNode }> = (
     // loadPlugin される。singleton も同じく entity が無ければ起動しない。
 
     return (
-        <PluginRegistryContext.Provider value={{ pluginMap, loadPlugin }}>{children}</PluginRegistryContext.Provider>
+        <PluginRegistryContext.Provider value={{ pluginMap, pendingPluginCount, loadPlugin }}>
+            {children}
+        </PluginRegistryContext.Provider>
     );
 };
 

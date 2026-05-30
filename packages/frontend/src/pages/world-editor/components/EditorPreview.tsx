@@ -2,10 +2,11 @@ import {
     isWorkerPlugin,
     SocketContext,
     type SocketContextValue,
+    useWorld,
     WorkerPluginHost,
     WorldContext,
     type WorldContextType,
-} from '@ubichill/sdk/react';
+} from '@ubichill/react';
 import type { ComponentInstance, InitialEntity, WorldDefinition, WorldEnvironmentData } from '@ubichill/shared';
 import type React from 'react';
 import { useMemo } from 'react';
@@ -163,7 +164,7 @@ export function EditorPreview({
             joinWorld: () => {
                 /* no-op */
             },
-            leaveWorld: () => {
+            leaveWorld: async () => {
                 /* no-op */
             },
             updatePosition: () => {
@@ -231,6 +232,7 @@ function PreviewStage({
     onBackgroundMouseDown?: () => void;
 }) {
     const { pluginMap } = usePluginRegistry();
+    const { activePlugins } = useWorld();
 
     const renderEntities = useMemo(
         () => Array.from(entities.keys()).map((id) => <EntityRenderer key={id} entityId={id} />),
@@ -238,8 +240,13 @@ function PreviewStage({
     );
 
     const singletonWorkerPlugins = useMemo(
-        () => Array.from(pluginMap.values()).filter((p) => isWorkerPlugin(p) && p.singleton),
-        [pluginMap],
+        () =>
+            Array.from(pluginMap.values()).filter((p) => {
+                if (!isWorkerPlugin(p) || !p.singleton) return false;
+                const pluginId = p.id.split(':')[0];
+                return pluginId ? activePlugins.includes(pluginId) : false;
+            }),
+        [pluginMap, activePlugins],
     );
 
     const { width, height } = environment.worldSize;

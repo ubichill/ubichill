@@ -1,4 +1,4 @@
-import { db, userRepository, users, worldRepository } from '@ubichill/db';
+import { db, userRepository, users, type WorldRecord, worldRepository } from '@ubichill/db';
 import type { WorldDefinition } from '@ubichill/shared';
 import { LIMITS } from '@ubichill/shared';
 import { eq } from 'drizzle-orm';
@@ -132,7 +132,7 @@ router.get('/me/worlds', requireAuth, async (req, res) => {
         return res.status(401).json({ error: 'Unauthorized' });
     }
     const records = await worldRepository.findByAuthorId(req.user.id);
-    const worlds = records.map((r) => {
+    const worlds = records.map((r: WorldRecord) => {
         const def = r.definition as WorldDefinition;
         return {
             id: r.name,
@@ -168,7 +168,7 @@ router.get('/:userId', async (req, res) => {
 // 他ユーザーが作成したワールド一覧（公開メタデータのみ）
 router.get('/:userId/worlds', async (req, res) => {
     const records = await worldRepository.findByAuthorId(req.params.userId);
-    const worlds = records.map((r) => {
+    const worlds = records.map((r: WorldRecord) => {
         const def = r.definition as WorldDefinition;
         return {
             id: r.name,

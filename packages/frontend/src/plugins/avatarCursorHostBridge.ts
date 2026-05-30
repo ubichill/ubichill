@@ -7,7 +7,7 @@
  * キャッシュ未存在の場合は loadImage() で新規取得する。
  */
 
-import type { WorkerPluginDefinition } from '@ubichill/sdk/react';
+import type { WorkerPluginDefinition } from '@ubichill/react';
 import { getCachedImage, loadImage } from '@/lib/imageLoader';
 
 export function attachAvatarCursorHostBridge(def: WorkerPluginDefinition): WorkerPluginDefinition {

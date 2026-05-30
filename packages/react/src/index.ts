@@ -16,3 +16,4 @@ export { type UseWorldPluginOptions, useWorldPlugin } from './hooks/useWorldPlug
 export type { WidgetDefinition, WorkerPluginDefinition } from './types';
 export { isWorkerPlugin } from './types';
 export * from './usePluginWorker';
+export * from './WorkerLoadingContext';

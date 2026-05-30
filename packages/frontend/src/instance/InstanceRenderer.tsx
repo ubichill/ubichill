@@ -1,5 +1,5 @@
-import type { WorkerPluginDefinition } from '@ubichill/sdk/react';
-import { isWorkerPlugin, useSocket, useWorld, WorkerPluginHost } from '@ubichill/sdk/react';
+import type { WorkerPluginDefinition } from '@ubichill/react';
+import { isWorkerPlugin, useSocket, useWorld, WorkerPluginHost } from '@ubichill/react';
 import type { ComponentInstance } from '@ubichill/shared';
 import { useMemo } from 'react';
 import { usePluginRegistry } from '@/plugins/PluginRegistryContext';
@@ -17,13 +17,18 @@ const FALLBACK_ENTITY: ComponentInstance = {
 
 export const InstanceRenderer: React.FC = () => {
     const { isConnected } = useSocket();
-    const { entities, environment } = useWorld();
+    const { entities, environment, activePlugins } = useWorld();
     const { pluginMap } = usePluginRegistry();
 
     // フックは早期 return より前にすべて宣言する（Rules of Hooks）
     const singletonWorkerPlugins = useMemo(
-        () => Array.from(pluginMap.values()).filter((p) => isWorkerPlugin(p) && p.singleton),
-        [pluginMap],
+        () =>
+            Array.from(pluginMap.values()).filter((p) => {
+                if (!isWorkerPlugin(p) || !p.singleton) return false;
+                const pluginId = p.id.split(':')[0];
+                return pluginId ? activePlugins.includes(pluginId) : false;
+            }),
+        [pluginMap, activePlugins],
     );
 
     const renderEntities = useMemo(

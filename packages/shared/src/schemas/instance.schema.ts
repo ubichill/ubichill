@@ -125,6 +125,10 @@ export const WorldListItemSchema = z.object({
         default: z.number(),
         max: z.number(),
     }),
+    /** ワールド作成者のユーザーID */
+    authorId: z.string().optional(),
+    createdAt: z.string().datetime().optional(),
+    updatedAt: z.string().datetime().optional(),
 });
 
 export type WorldListItem = z.infer<typeof WorldListItemSchema>;

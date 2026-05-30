@@ -254,6 +254,10 @@ export const auth = betterAuth({
             maxAge: 60 * 5, // 5 minutes
         },
     },
+    rateLimit: {
+        window: 60,
+        max: 5000,
+    },
     user: {
         additionalFields: {
             username: {

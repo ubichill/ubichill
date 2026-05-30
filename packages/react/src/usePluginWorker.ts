@@ -11,15 +11,14 @@ import type {
 } from '@ubichill/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-export { PluginHostManager };
-export type { FetchOptions, FetchResult, PluginHostManagerOptions };
-
 export {
     createPluginFetchHandler,
     DEFAULT_ALLOWED_DOMAINS,
     isUrlAllowed,
     PRODUCTION_ALLOWED_DOMAINS,
 } from '@ubichill/sandbox';
+export type { FetchOptions, FetchResult, PluginHostManagerOptions };
+export { PluginHostManager };
 
 /**
  * usePluginWorker に渡すハンドラ定義。
@@ -29,6 +28,7 @@ export {
  */
 export type PluginWorkerHandlers<TPayloadMap extends Record<string, unknown> = Record<string, unknown>> = {
     onMessage?: (msg: PluginWorkerMessage<TPayloadMap>) => void;
+    onReady?: () => void;
     onCommand?: (command: PluginGuestCommand) => void;
     /** Worker が Ubi.ui.render() / Ubi.ui.unmount() を呼ぶたびに発火する */
     onRender?: (targetId: string, vnode: VNode | null) => void;
@@ -140,6 +140,7 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
             initialEntities: initialEntitiesRef.current,
             handlers: {
                 onMessage: (msg) => handlersRef.current.onMessage?.(msg),
+                onReady: () => handlersRef.current.onReady?.(),
                 onCommand: (cmd) => handlersRef.current.onCommand?.(cmd),
                 onRender: (targetId, vnode) => handlersRef.current.onRender?.(targetId, vnode),
                 onCanvasFrame: (targetId, activeStroke, cursors) =>
