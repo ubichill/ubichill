@@ -21,8 +21,10 @@ const pen = Ubi.state.define({
 });
 
 // 「持って書ける」宣言。クリック / hover / 追従 / 1 本ルールは全部 SDK 任せ。
+// mode='manual': acquire は click で発火、release は明示的呼び出しのみ。
+// pen を持ったままどこかをクリックしても自分 click と判定されて release されないように。
 const grip = Ubi.grip.exclusive({
-    mode: 'toggle',
+    mode: 'manual',
     hover: {
         cursor: 'grab',
         heldCursor: 'grabbing',
@@ -31,6 +33,11 @@ const grip = Ubi.grip.exclusive({
     blockedByOther: { opacity: 0.35 },
     offset: { x: -18, y: -24 },
     share: 'persistent',
+});
+
+// tray クリック → 持っているペンを離して tray に戻す
+PenEvents.on('pen:tray:release', (coords) => {
+    if (grip.isMine) grip.release(coords);
 });
 
 // tray での太さ変更 → 自分が持っているペンなら太さを反映する
