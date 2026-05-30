@@ -31,7 +31,7 @@ const grip = Ubi.grip.exclusive({
         scale: 1.15,
     },
     blockedByOther: { opacity: 0.35 },
-    offset: { x: -16, y: -24 },
+    offset: { x: -18, y: -24 },
     share: 'persistent',
 });
 
@@ -78,6 +78,9 @@ function renderPen(): void {
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
+                        transform: grip.isMine ? 'rotate(-30deg)' : 'none',
+                        transformOrigin: 'bottom right',
+                        transition: 'transform 0.15s ease',
                     }}
                 >
                     <PenSvg color={color} />
