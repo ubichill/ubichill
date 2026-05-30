@@ -190,6 +190,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             // 接続後にワールドに参加
             const emitJoin = () => {
+                setError(null);
                 socket.emit('world:join', { worldId, instanceId, user: initialUser }, (response) => {
                     if (response.success && response.userId) {
                         setCurrentUser({ ...initialUser, id: response.userId });
@@ -272,10 +273,13 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const cleanupAndResolve = () => {
                 if (isDone) return;
                 isDone = true;
-                setUsers(new Map());
-                setCurrentUser(null);
                 resolve();
             };
+
+            // ローカルステートは同期的にクリアして、直後のマウス移動などによるイベント送信を防ぐ
+            setUsers(new Map());
+            setCurrentUser(null);
+            setError(null);
 
             const timer = setTimeout(cleanupAndResolve, 3000);
 
