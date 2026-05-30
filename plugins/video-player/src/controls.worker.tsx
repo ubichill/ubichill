@@ -357,14 +357,19 @@ function CtrlBtn({
     );
 }
 
-// ── イベント受信 ──────────────────────────────────────
+let isTrackInitialized = false;
+
 VPEvents.on('vp:track:current', ({ track, index, total }) => {
     const changed = state.local.currentTrack?.id !== track?.id;
     state.local.currentTrack = track;
     state.local.currentIndex = index;
     state.local.totalTracks = total;
+
     // トラックが変わったら共有時計をゼロから始める
-    if (changed) {
+    // (ただし、初期化時にサーバーの最新状態を受け取った直後の初回イベントではリセットしない)
+    if (!isTrackInitialized) {
+        isTrackInitialized = true;
+    } else if (changed) {
         state.batch(() => {
             state.local.baselineTime = 0;
             state.local.playEpoch = Date.now();
