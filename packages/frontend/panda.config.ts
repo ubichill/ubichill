@@ -22,6 +22,10 @@ export default defineConfig({
                     '0%': { transform: 'rotate(0deg)' },
                     '100%': { transform: 'rotate(360deg)' },
                 },
+                progress: {
+                    '0%': { transform: 'translateX(-100%)' },
+                    '100%': { transform: 'translateX(200%)' },
+                },
             },
             tokens: {
                 shadows: {
@@ -37,6 +41,7 @@ export default defineConfig({
                 colors: {
                     // メインカラー（ダークネイビー - ボタンやアクセントに使用）
                     primary: { value: '#1b2a44' },
+                    primaryHighlight: { value: '#4780e0' },
                     
                     // セカンダリカラー（ベージュ系 - カード背景などに使用）
                     secondary: { value: '#d4c4ab' },

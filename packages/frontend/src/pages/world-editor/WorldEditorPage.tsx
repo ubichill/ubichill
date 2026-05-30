@@ -1,6 +1,6 @@
 import type { EntityComponentDef, InitialEntity, WorldDefinition } from '@ubichill/shared';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router';
 import yaml from 'yaml';
 import { API_BASE } from '@/lib/api';
 import { useSession } from '@/lib/auth-client';

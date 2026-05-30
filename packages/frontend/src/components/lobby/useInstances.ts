@@ -9,8 +9,36 @@ interface UseInstancesReturn {
     loading: boolean;
     error: string | null;
     createInstance: (request: CreateInstanceRequest) => Promise<Instance | null>;
-    refreshInstances: () => Promise<void>;
-    refreshWorlds: () => Promise<void>;
+    refreshInstances: (worldId?: string) => Promise<void>;
+    refreshWorlds: (force?: boolean) => Promise<void>;
+}
+
+// ワールド一覧は変化が稀なため、モジュール単位で短時間キャッシュ＋同時リクエストの共有を行う。
+// useInstances を使う各タブがマウントの度に /api/v1/worlds を叩いて 429 を誘発するのを防ぐ。
+const WORLDS_TTL_MS = 30_000;
+let worldsCache: { data: WorldListItem[]; at: number } | null = null;
+let worldsInflight: Promise<WorldListItem[]> | null = null;
+
+async function fetchWorlds(force: boolean): Promise<WorldListItem[]> {
+    if (!force && worldsCache && Date.now() - worldsCache.at < WORLDS_TTL_MS) {
+        return worldsCache.data;
+    }
+    if (!force && worldsInflight) {
+        return worldsInflight;
+    }
+    const promise = (async () => {
+        const res = await fetch(`${API_BASE}/api/v1/worlds`, { credentials: 'include', cache: 'no-store' });
+        if (!res.ok) throw new Error('Failed to fetch worlds');
+        const data = (await res.json()) as { worlds: WorldListItem[] };
+        worldsCache = { data: data.worlds, at: Date.now() };
+        return data.worlds;
+    })();
+    worldsInflight = promise;
+    try {
+        return await promise;
+    } finally {
+        if (worldsInflight === promise) worldsInflight = null;
+    }
 }
 
 export function useInstances(): UseInstancesReturn {
@@ -19,11 +47,14 @@ export function useInstances(): UseInstancesReturn {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const refreshInstances = useCallback(async () => {
+    const refreshInstances = useCallback(async (worldId?: string) => {
         setLoading(true);
+        setError(null);
         try {
-            const res = await fetch(`${API_BASE}/api/v1/instances`, {
+            const query = worldId ? `?worldId=${encodeURIComponent(worldId)}` : '';
+            const res = await fetch(`${API_BASE}/api/v1/instances${query}`, {
                 credentials: 'include',
+                cache: 'no-store',
             });
             if (!res.ok) throw new Error('Failed to fetch instances');
             const data = await res.json();
@@ -35,15 +66,16 @@ export function useInstances(): UseInstancesReturn {
         }
     }, []);
 
-    const refreshWorlds = useCallback(async () => {
+    const refreshWorlds = useCallback(async (force = false) => {
+        // キャッシュヒット時はローディング表示を出さず即時反映
+        if (!force && worldsCache && Date.now() - worldsCache.at < WORLDS_TTL_MS) {
+            setWorlds(worldsCache.data);
+            return;
+        }
         setLoading(true);
+        setError(null);
         try {
-            const res = await fetch(`${API_BASE}/api/v1/worlds`, {
-                credentials: 'include',
-            });
-            if (!res.ok) throw new Error('Failed to fetch worlds');
-            const data = await res.json();
-            setWorlds(data.worlds);
+            setWorlds(await fetchWorlds(force));
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Unknown error');
         } finally {
@@ -77,9 +109,8 @@ export function useInstances(): UseInstancesReturn {
     }, []);
 
     useEffect(() => {
-        refreshInstances();
         refreshWorlds();
-    }, [refreshInstances, refreshWorlds]);
+    }, [refreshWorlds]);
 
     return {
         instances,

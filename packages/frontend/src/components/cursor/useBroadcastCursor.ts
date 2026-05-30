@@ -1,4 +1,4 @@
-import { heldEntitySyncRef, useSocket } from '@ubichill/sdk/react';
+import { heldEntitySyncRef, useSocket } from '@ubichill/react';
 import { useEffect, useRef } from 'react';
 
 /**

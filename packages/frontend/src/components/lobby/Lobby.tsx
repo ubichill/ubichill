@@ -1,150 +1,99 @@
 import type { WorldListItem } from '@ubichill/shared';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router';
+import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { API_BASE } from '@/lib/api';
 import { css } from '@/styled-system/css';
-import { InstanceCard } from './InstanceCard';
 import { useInstances } from './useInstances';
 import { WorldCard } from './WorldCard';
+import { WorldDetailModal } from './WorldDetailModal';
 
-type LobbyView = 'instances' | 'worlds';
+type SortKey = 'name_asc' | 'name_desc' | 'createdAt_desc' | 'createdAt_asc' | 'updatedAt_desc' | 'updatedAt_asc';
 
-interface LobbyProps {
-    onJoinInstance: (instanceId: string, worldId: string) => void;
+const SORT_LABELS: Record<SortKey, string> = {
+    name_asc: '名前：A→Z',
+    name_desc: '名前：Z→A',
+    createdAt_desc: '作成日：新しい順',
+    createdAt_asc: '作成日：古い順',
+    updatedAt_desc: '更新日：新しい順',
+    updatedAt_asc: '更新日：古い順',
+};
+
+const SORT_STORAGE_KEY = 'ubichill_world_sort';
+const DEFAULT_SORT: SortKey = 'updatedAt_desc';
+
+function sortWorlds(worlds: WorldListItem[], key: SortKey): WorldListItem[] {
+    return [...worlds].sort((a, b) => {
+        switch (key) {
+            case 'name_asc':
+                return a.displayName.localeCompare(b.displayName, 'ja');
+            case 'name_desc':
+                return b.displayName.localeCompare(a.displayName, 'ja');
+            case 'createdAt_desc':
+            case 'createdAt_asc': {
+                const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                return key === 'createdAt_desc' ? tb - ta : ta - tb;
+            }
+            case 'updatedAt_desc':
+            case 'updatedAt_asc': {
+                const ta = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+                const tb = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+                return key === 'updatedAt_desc' ? tb - ta : ta - tb;
+            }
+            default:
+                return 0;
+        }
+    });
 }
 
-export function Lobby({ onJoinInstance }: LobbyProps) {
-    const navigate = useNavigate();
-    const { instances, worlds, loading, error, refreshInstances, refreshWorlds } = useInstances();
-    const [view, setView] = useState<LobbyView>('instances');
-    const [orderedWorlds, setOrderedWorlds] = useState<WorldListItem[]>([]);
+interface LobbyProps {
+    onJoinInstance: (
+        instanceId: string,
+        worldId: string,
+        worldData?: { thumbnail?: string; displayName?: string },
+    ) => void;
+    /** モーダル表示モード。省略時は 'lobby' */
+    mode?: 'lobby' | 'modal';
+    /** モーダルモード時、現在参加中のインスタンスID */
+    currentInstanceId?: string;
+}
 
-    // Pull-to-refresh state
-    const [isRefreshing, setIsRefreshing] = useState(false);
-    const [pullOffset, setPullOffset] = useState(0);
-    const pullStartY = useRef(0);
-    const isPulling = useRef(false);
+export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
+    const navigate = useNavigate();
+    const confirm = useConfirm();
+
+    const goConfirmed = useCallback(
+        async (path: string, message: string) => {
+            if (await confirm(message)) navigate(path);
+        },
+        [confirm, navigate],
+    );
+    const { worlds, loading, error, refreshWorlds } = useInstances();
+    const [selectedWorldId, setSelectedWorldId] = useState<string | null>(null);
+
+    // ソートキーを localStorage で永続化
+    const [sortKey, setSortKey] = useState<SortKey>(() => {
+        const stored = localStorage.getItem(SORT_STORAGE_KEY);
+        return (stored as SortKey | null) ?? DEFAULT_SORT;
+    });
+
+    const handleSortChange = useCallback((key: SortKey) => {
+        setSortKey(key);
+        localStorage.setItem(SORT_STORAGE_KEY, key);
+    }, []);
+
+    const sortedWorlds = useMemo(() => sortWorlds(worlds, sortKey), [worlds, sortKey]);
+
     const scrollRef = useRef<HTMLDivElement>(null);
 
-    const PULL_THRESHOLD = 60;
-
-    // worlds が更新されたら順序を同期
-    useEffect(() => {
-        setOrderedWorlds(worlds);
-    }, [worlds]);
-
-    const handleMoveWorld = useCallback(
-        async (index: number, direction: -1 | 1) => {
-            const next = [...orderedWorlds];
-            const target = index + direction;
-            if (target < 0 || target >= next.length) return;
-            [next[index], next[target]] = [next[target], next[index]];
-            setOrderedWorlds(next);
-            try {
-                const res = await fetch(`${API_BASE}/api/v1/worlds/order`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'include',
-                    body: JSON.stringify({ order: next.map((w) => w.id) }),
-                });
-                if (!res.ok) throw new Error(`${res.status}`);
-            } catch {
-                // 失敗したら元に戻す
-                setOrderedWorlds(orderedWorlds);
-            }
-        },
-        [orderedWorlds],
+    const selectedWorld = useMemo(
+        () => sortedWorlds.find((world) => world.id === selectedWorldId) ?? undefined,
+        [sortedWorlds, selectedWorldId],
     );
 
-    // Refresh current view data
-    const refreshCurrentView = useCallback(async () => {
-        setIsRefreshing(true);
-        try {
-            if (view === 'instances') {
-                await refreshInstances();
-            } else {
-                await refreshWorlds();
-            }
-        } finally {
-            setIsRefreshing(false);
-        }
-    }, [view, refreshInstances, refreshWorlds]);
-
-    // Refresh data when switching tabs
-    const handleTabSwitch = useCallback(
-        async (newView: LobbyView) => {
-            if (newView === view) return;
-            setView(newView);
-            setIsRefreshing(true);
-            try {
-                if (newView === 'instances') {
-                    await refreshInstances();
-                } else {
-                    await refreshWorlds();
-                }
-            } finally {
-                setIsRefreshing(false);
-            }
-        },
-        [view, refreshInstances, refreshWorlds],
-    );
-
-    // Touch-based pull-to-refresh
-    const handleTouchStart = useCallback((e: React.TouchEvent) => {
-        if (scrollRef.current && scrollRef.current.scrollTop <= 0) {
-            pullStartY.current = e.touches[0].clientY;
-            isPulling.current = true;
-        }
-    }, []);
-
-    const handleTouchMove = useCallback((e: React.TouchEvent) => {
-        if (!isPulling.current) return;
-        const diff = e.touches[0].clientY - pullStartY.current;
-        if (diff > 0) {
-            // Dampen the pull distance
-            setPullOffset(Math.min(diff * 0.4, 80));
-        }
-    }, []);
-
-    const handleTouchEnd = useCallback(async () => {
-        if (!isPulling.current) return;
-        isPulling.current = false;
-
-        if (pullOffset >= PULL_THRESHOLD) {
-            await refreshCurrentView();
-        }
-        setPullOffset(0);
-    }, [pullOffset, refreshCurrentView]);
-
-    // Scroll-based refresh (desktop: scroll overscroll at top)
-    const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-    const handleScroll = useCallback(
-        (e: React.UIEvent<HTMLDivElement>) => {
-            const target = e.currentTarget;
-            if (target.scrollTop === 0 && !isRefreshing) {
-                if (!scrollTimeoutRef.current) {
-                    scrollTimeoutRef.current = setTimeout(async () => {
-                        await refreshCurrentView();
-                        scrollTimeoutRef.current = null;
-                    }, 500);
-                }
-            } else {
-                if (scrollTimeoutRef.current) {
-                    clearTimeout(scrollTimeoutRef.current);
-                    scrollTimeoutRef.current = null;
-                }
-            }
-        },
-        [isRefreshing, refreshCurrentView],
-    );
-
-    // Cleanup timeout on unmount
-    useEffect(() => {
-        return () => {
-            if (scrollTimeoutRef.current) {
-                clearTimeout(scrollTimeoutRef.current);
-            }
-        };
+    const handleSelectWorld = useCallback((worldId: string) => {
+        setSelectedWorldId(worldId);
     }, []);
 
     const [importUrl, setImportUrl] = useState('');
@@ -168,23 +117,12 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
             }
             setImportUrl('');
             setImportState('idle');
-            await refreshWorlds();
+            await refreshWorlds(true);
         } catch (e) {
             setImportError(e instanceof Error ? e.message : '取得失敗');
             setImportState('error');
         }
     }, [importUrl, refreshWorlds]);
-
-    const handleNavigateToWorld = (worldId: string) => {
-        navigate(`/world/${worldId}`);
-    };
-
-    const handleJoinInstance = (instanceId: string) => {
-        const instance = instances.find((i) => i.id === instanceId);
-        if (instance) {
-            onJoinInstance(instanceId, instance.world.id);
-        }
-    };
 
     return (
         <div
@@ -195,7 +133,7 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                 padding: { base: '8px 0 0', md: '16px 0 0' },
                 display: 'flex',
                 flexDirection: 'column',
-                height: 'calc(100vh - 112px)',
+                height: '100%',
                 overflow: 'hidden',
             })}
         >
@@ -211,6 +149,7 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                     flex: 1,
                     minH: 0,
                 })}
+                onClick={(e) => e.stopPropagation()}
             >
                 <div
                     className={css({
@@ -227,63 +166,15 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                 >
                     <h1
                         className={css({
-                            fontSize: { base: '3xl', md: '4xl' },
+                            fontSize: { base: 'lg', sm: 'xl', md: 'xl' },
                             fontWeight: '700',
                             color: 'text',
-                            mb: '4',
-                        })}
-                    >
-                        ワールド選択
-                    </h1>
-
-                    <div
-                        className={css({
-                            display: 'flex',
-                            gap: '3',
                             mb: '4',
                             flexShrink: 0,
                         })}
                     >
-                        <button
-                            type="button"
-                            onClick={() => handleTabSwitch('instances')}
-                            className={css({
-                                flex: 1,
-                                padding: '10px 14px',
-                                backgroundColor: view === 'instances' ? 'primary' : 'secondary',
-                                color: view === 'instances' ? 'textOnPrimary' : 'textMuted',
-                                border: 'none',
-                                borderRadius: '10px',
-                                fontSize: { base: 'xs', sm: 'sm' },
-                                fontWeight: '600',
-                                cursor: 'pointer',
-                                transition: 'opacity 0.16s ease',
-                                whiteSpace: 'nowrap',
-                                _hover: { opacity: 0.9 },
-                            })}
-                        >
-                            参加可能なインスタンス
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => handleTabSwitch('worlds')}
-                            className={css({
-                                flex: 1,
-                                padding: '10px 14px',
-                                backgroundColor: view === 'worlds' ? 'primary' : 'secondary',
-                                color: view === 'worlds' ? 'textOnPrimary' : 'textMuted',
-                                border: 'none',
-                                borderRadius: '10px',
-                                fontSize: { base: 'xs', sm: 'sm' },
-                                fontWeight: '600',
-                                cursor: 'pointer',
-                                transition: 'opacity 0.16s ease',
-                                _hover: { opacity: 0.9 },
-                            })}
-                        >
-                            新規作成
-                        </button>
-                    </div>
+                        ワールド一覧
+                    </h1>
 
                     {error && (
                         <div
@@ -302,39 +193,7 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                     )}
 
                     <div
-                        className={css({
-                            display: 'flex',
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                            overflow: 'hidden',
-                            flexShrink: 0,
-                            transition: 'height 0.2s ease',
-                        })}
-                        style={{ height: isRefreshing ? 40 : pullOffset > 10 ? Math.min(pullOffset, 50) : 0 }}
-                    >
-                        <div
-                            className={css({
-                                width: '24px',
-                                height: '24px',
-                                border: '3px solid',
-                                borderColor: 'primarySubtle',
-                                borderTopColor: 'primary',
-                                borderRadius: '50%',
-                                animation: isRefreshing ? 'spin 0.8s linear infinite' : 'none',
-                            })}
-                            style={{
-                                transform: isRefreshing ? undefined : `rotate(${pullOffset * 3}deg)`,
-                                opacity: isRefreshing || pullOffset > 10 ? 1 : 0,
-                            }}
-                        />
-                    </div>
-
-                    <div
                         ref={scrollRef}
-                        onTouchStart={handleTouchStart}
-                        onTouchMove={handleTouchMove}
-                        onTouchEnd={handleTouchEnd}
-                        onScroll={handleScroll}
                         className={css({
                             flex: 1,
                             minH: 0,
@@ -353,7 +212,7 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                             },
                         })}
                     >
-                        {loading && !isRefreshing && (
+                        {loading && (
                             <div
                                 className={css({
                                     textAlign: 'center',
@@ -365,76 +224,7 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                             </div>
                         )}
 
-                        {view === 'instances' && !loading && (
-                            <div className={css({ display: 'flex', flexDirection: 'column', gap: '3' })}>
-                                {instances.length === 0 ? (
-                                    <div
-                                        className={css({
-                                            textAlign: 'center',
-                                            padding: '56px 24px',
-                                            backgroundColor: 'secondary',
-                                            borderRadius: '14px',
-                                        })}
-                                    >
-                                        <div
-                                            className={css({
-                                                marginBottom: '14px',
-                                                display: 'flex',
-                                                justifyContent: 'center',
-                                            })}
-                                        >
-                                            <svg
-                                                width="44"
-                                                height="44"
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                strokeWidth="1.5"
-                                                className={css({ color: 'textSubtle' })}
-                                            >
-                                                <circle cx="12" cy="12" r="10" />
-                                                <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-                                            </svg>
-                                        </div>
-                                        <p
-                                            className={css({
-                                                fontSize: '15px',
-                                                color: 'textMuted',
-                                                marginBottom: '16px',
-                                            })}
-                                        >
-                                            参加可能なインスタンスがありません
-                                        </p>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleTabSwitch('worlds')}
-                                            className={css({
-                                                padding: '10px 20px',
-                                                backgroundColor: 'primary',
-                                                color: 'textOnPrimary',
-                                                border: 'none',
-                                                borderRadius: '10px',
-                                                fontSize: '14px',
-                                                fontWeight: '600',
-                                                cursor: 'pointer',
-                                            })}
-                                        >
-                                            新規作成
-                                        </button>
-                                    </div>
-                                ) : (
-                                    instances.map((instance) => (
-                                        <InstanceCard
-                                            key={instance.id}
-                                            instance={instance}
-                                            onJoin={handleJoinInstance}
-                                        />
-                                    ))
-                                )}
-                            </div>
-                        )}
-
-                        {view === 'worlds' && !loading && (
+                        {!loading && (
                             <div>
                                 <p
                                     className={css({
@@ -443,10 +233,9 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                                         marginBottom: '16px',
                                     })}
                                 >
-                                    テンプレートを選択して新しいワールドを作成します
+                                    ワールドを選択してインスタンスを作成または参加してください
                                 </p>
 
-                                {/* 自分でワールドを作る / マイページ */}
                                 <div
                                     className={css({
                                         display: 'flex',
@@ -457,7 +246,9 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                                 >
                                     <button
                                         type="button"
-                                        onClick={() => navigate('/worlds/new')}
+                                        onClick={() =>
+                                            void goConfirmed('/worlds/new', 'ワールド作成画面に移動しますか？')
+                                        }
                                         className={css({
                                             display: 'inline-flex',
                                             alignItems: 'center',
@@ -485,40 +276,8 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                                         </svg>
                                         自分でワールドを作る
                                     </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => navigate('/user/me')}
-                                        className={css({
-                                            display: 'inline-flex',
-                                            alignItems: 'center',
-                                            gap: '6px',
-                                            padding: '9px 16px',
-                                            backgroundColor: 'secondary',
-                                            color: 'text',
-                                            border: 'none',
-                                            borderRadius: '10px',
-                                            fontSize: '13px',
-                                            fontWeight: '600',
-                                            cursor: 'pointer',
-                                            _hover: { opacity: 0.9 },
-                                        })}
-                                    >
-                                        <svg
-                                            width="14"
-                                            height="14"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="2"
-                                        >
-                                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                                            <circle cx="12" cy="7" r="4" />
-                                        </svg>
-                                        マイページ
-                                    </button>
                                 </div>
 
-                                {/* URL インポート */}
                                 <div
                                     className={css({
                                         display: 'flex',
@@ -547,6 +306,7 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                                             color: 'text',
                                             fontSize: '13px',
                                             outline: 'none',
+                                            minW: 0,
                                             _focus: { borderColor: 'primary' },
                                             _placeholder: { color: 'textSubtle' },
                                         })}
@@ -584,6 +344,48 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                                     </p>
                                 )}
 
+                                {/* ワールドカードの直上にソートを配置 */}
+                                <div
+                                    className={css({
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        gap: '2',
+                                        marginBottom: '12px',
+                                    })}
+                                >
+                                    <span className={css({ fontSize: '13px', fontWeight: '600', color: 'text' })}>
+                                        ワールド一覧
+                                    </span>
+                                    <select
+                                        id="world-sort-select"
+                                        value={sortKey}
+                                        onChange={(e) => handleSortChange(e.target.value as SortKey)}
+                                        aria-label="ソート条件"
+                                        className={css({
+                                            fontSize: '12px',
+                                            color: 'textMuted',
+                                            bg: 'surface',
+                                            border: '1px solid',
+                                            borderColor: 'border',
+                                            borderRadius: '8px',
+                                            px: '8px',
+                                            py: '5px',
+                                            cursor: 'pointer',
+                                            outline: 'none',
+                                            flexShrink: 0,
+                                            _hover: { borderColor: 'borderStrong' },
+                                            _focus: { borderColor: 'primary' },
+                                        })}
+                                    >
+                                        {(Object.keys(SORT_LABELS) as SortKey[]).map((key) => (
+                                            <option key={key} value={key}>
+                                                {SORT_LABELS[key]}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
                                 <div
                                     className={css({
                                         display: 'grid',
@@ -591,19 +393,24 @@ export function Lobby({ onJoinInstance }: LobbyProps) {
                                         gap: '16px',
                                     })}
                                 >
-                                    {orderedWorlds.map((world, i) => (
+                                    {sortedWorlds.map((world) => (
                                         <WorldCard
                                             key={world.id}
                                             world={world}
-                                            onNavigate={handleNavigateToWorld}
-                                            onMoveUp={() => handleMoveWorld(i, -1)}
-                                            onMoveDown={() => handleMoveWorld(i, 1)}
-                                            isFirst={i === 0}
-                                            isLast={i === orderedWorlds.length - 1}
+                                            onNavigate={(worldId) => handleSelectWorld(worldId)}
                                         />
                                     ))}
                                 </div>
                             </div>
+                        )}
+                        {selectedWorldId && selectedWorld && (
+                            <WorldDetailModal
+                                worldId={selectedWorldId}
+                                onClose={() => setSelectedWorldId(null)}
+                                onJoinInstance={onJoinInstance}
+                                currentInstanceId={currentInstanceId}
+                                initialWorld={selectedWorld}
+                            />
                         )}
                     </div>
                 </div>

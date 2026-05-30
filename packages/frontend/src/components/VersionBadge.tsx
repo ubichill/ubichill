@@ -41,7 +41,7 @@ export function VersionBadge() {
     }, []);
 
     // development 環境でのみ表示
-    if (!info || info.environment !== 'development') return null;
+    if (info?.environment !== 'development') return null;
 
     const beShort = info.commitHash === 'unknown' ? 'local' : info.commitHash.slice(0, 7);
     const feShort = FE_COMMIT === 'unknown' ? 'local' : FE_COMMIT.slice(0, 7);

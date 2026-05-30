@@ -12,11 +12,16 @@ import {
     type WorldSnapshotPayload,
 } from '@ubichill/shared';
 import type { Socket } from 'socket.io';
+import { appConfig } from '../config';
 import { instanceManager } from '../services/instanceManager';
 import { createEntity, deleteEntity, getInstanceSnapshot, patchEntity } from '../services/instanceState';
 import { userManager } from '../services/userManager';
 import { worldRegistry } from '../services/worldRegistry';
 import { logger } from '../utils/logger';
+
+const disconnectTimers = new Map<string, NodeJS.Timeout>();
+const activeUserSockets = new Map<string, TypedSocket>();
+
 import {
     validateCursorPosition,
     validateCursorState,
@@ -112,15 +117,20 @@ export function handleWorldJoin(socket: TypedSocket) {
         // ID 統一: User.id = DB users.id (authUser.id)。socket.id は接続単位の別概念。
         const userId = authUser.id;
 
+        const timer = disconnectTimers.get(userId);
+        if (timer) {
+            clearTimeout(timer);
+            disconnectTimers.delete(userId);
+            logger.info(`✅ ユーザーが猶予期間内に再接続しました: ${userId}`);
+        }
+
         // 同一ユーザーが既に同じ accountId で参加済みの場合、旧接続を切断して入れ替える
         // （別タブで再接続したケース等）。userManager のキーが同じになるため必須。
         const existing = userManager.getUser(userId);
         if (existing) {
-            const sockets = await socket.nsp.fetchSockets();
-            for (const s of sockets) {
-                if (s.id !== socket.id && s.data.userId === userId) {
-                    s.disconnect(true);
-                }
+            const oldSocket = activeUserSockets.get(userId);
+            if (oldSocket && oldSocket.id !== socket.id) {
+                oldSocket.disconnect(true);
             }
             userManager.removeUser(userId);
         }
@@ -140,6 +150,8 @@ export function handleWorldJoin(socket: TypedSocket) {
         socket.data.userId = userId;
         socket.data.instanceId = effectiveInstanceId;
         socket.data.user = newUser;
+
+        activeUserSockets.set(userId, socket);
 
         await instanceManager.updateUserCount(effectiveInstanceId, 1);
 
@@ -304,10 +316,13 @@ export function handleUserUpdate(socket: TypedSocket) {
  * ワールド退出イベントを処理（SPA内でロビーに戻る場合など、ソケットを切断せずに退出するケース）
  */
 export function handleWorldLeave(socket: TypedSocket) {
-    return async () => {
+    return async (callback?: (response: { success: boolean }) => void) => {
         const instanceId = socket.data.instanceId;
         const userId = stableUserId(socket);
         const user = userId ? userManager.removeUser(userId) : undefined;
+        if (userId) {
+            activeUserSockets.delete(userId);
+        }
 
         if (instanceId) {
             await instanceManager.updateUserCount(instanceId, -1);
@@ -335,6 +350,8 @@ export function handleWorldLeave(socket: TypedSocket) {
 
         socket.data.instanceId = undefined;
         socket.data.user = undefined;
+
+        callback?.({ success: true });
     };
 }
 
@@ -345,39 +362,61 @@ export function handleDisconnect(socket: TypedSocket) {
     return async () => {
         const instanceId = socket.data.instanceId;
         const userId = stableUserId(socket);
-        const user = userId ? userManager.removeUser(userId) : undefined;
 
-        if (instanceId) {
-            await instanceManager.updateUserCount(instanceId, -1);
-        }
+        if (instanceId && userId) {
+            const user = userManager.getUser(userId);
+            if (!user) return; // 既に退出済み
 
-        if (instanceId && user && userId) {
-            const entities = getInstanceSnapshot(instanceId);
-            const userLockedEntities = entities.filter((e) => e.lockedBy === userId);
-
-            userLockedEntities.forEach((entity) => {
-                patchEntity(instanceId, entity.id, {
-                    lockedBy: null,
-                    data: { ...(entity.data as Record<string, unknown>), isHeld: false },
-                });
-
-                socket.to(instanceId).emit('entity:patched', {
-                    entityId: entity.id,
-                    patch: {
-                        lockedBy: null,
-                        data: { ...(entity.data as Record<string, unknown>), isHeld: false },
-                    },
-                });
-            });
-
-            if (userLockedEntities.length > 0) {
-                logger.info(
-                    `ユーザー ${user.name} がロックしていた ${userLockedEntities.length} 個のエンティティを解放しました`,
-                );
+            const existingTimer = disconnectTimers.get(userId);
+            if (existingTimer) {
+                clearTimeout(existingTimer);
             }
 
-            socket.to(instanceId).emit('user:left', userId);
-            logger.info(`👋 ユーザー「${user.name}」がインスタンス「${instanceId}」から退出しました`);
+            const timeoutMs = appConfig.instance.disconnectGracePeriodMs;
+            logger.info(
+                `🔄 ユーザーが切断しました (猶予期間開始 - ${timeoutMs / 1000}秒): ${socket.id.substring(0, 8)} (userId: ${userId})`,
+            );
+
+            const timer = setTimeout(async () => {
+                disconnectTimers.delete(userId);
+
+                const removedUser = userManager.removeUser(userId);
+                activeUserSockets.delete(userId);
+                if (!removedUser) return; // 他の手段（handleWorldLeave等）で既に削除された
+
+                await instanceManager.updateUserCount(instanceId, -1);
+
+                const entities = getInstanceSnapshot(instanceId);
+                const userLockedEntities = entities.filter((e) => e.lockedBy === userId);
+
+                userLockedEntities.forEach((entity) => {
+                    patchEntity(instanceId, entity.id, {
+                        lockedBy: null,
+                        data: { ...(entity.data as Record<string, unknown>), isHeld: false },
+                    });
+
+                    socket.nsp.to(instanceId).emit('entity:patched', {
+                        entityId: entity.id,
+                        patch: {
+                            lockedBy: null,
+                            data: { ...(entity.data as Record<string, unknown>), isHeld: false },
+                        },
+                    });
+                });
+
+                if (userLockedEntities.length > 0) {
+                    logger.info(
+                        `ユーザー ${removedUser.name} がロックしていた ${userLockedEntities.length} 個のエンティティを解放しました`,
+                    );
+                }
+
+                socket.nsp.to(instanceId).emit('user:left', userId);
+                logger.info(
+                    `👋 ユーザー「${removedUser.name}」がインスタンス「${instanceId}」から退出しました (タイムアウト)`,
+                );
+            }, timeoutMs);
+
+            disconnectTimers.set(userId, timer);
         } else {
             logger.info(`👋 ユーザーが切断しました: ${socket.id.substring(0, 8)}`);
         }
@@ -509,16 +548,11 @@ export function handleVideoPlayerSync(socket: TypedSocket) {
             return;
         }
 
-        const roomSockets = await socket.in(instanceId).fetchSockets();
-        const otherSockets = roomSockets.filter((s) => s.id !== socket.id);
-
         logger.debug('video-player:sync イベント受信:', {
             instanceId,
             syncData,
             fromSocketId: socket.id,
             fromUserId: socket.data.userId,
-            totalSocketsInRoom: roomSockets.length,
-            otherSocketsCount: otherSockets.length,
         });
 
         socket.to(instanceId).emit('video-player:sync', syncData);

@@ -25,7 +25,7 @@
  *    useHold() ではなくモジュールレベルの HeldEntityStateRef / HeldEntityPositionRegistry を使う
  */
 
-import { useSocket } from '@ubichill/sdk/react';
+import { useSocket } from '@ubichill/react';
 import { useEffect } from 'react';
 import { HeldEntityPositionRegistry } from '@/instance/HeldEntityPositionRegistry';
 import { useSession } from '@/lib/auth-client';

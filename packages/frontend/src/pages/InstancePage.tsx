@@ -1,12 +1,13 @@
-import { useSocket } from '@ubichill/sdk/react';
+import { useSocket, useWorld, WorkerLoadingProvider } from '@ubichill/react';
 import { useEffect, useRef, useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router';
 import { InstanceHUD } from '@/components/hud/InstanceHUD';
+import { InstanceLoadingScreen } from '@/instance/InstanceLoadingScreen';
 import { InstanceRenderer } from '@/instance/InstanceRenderer';
+import { useInstanceLoading } from '@/instance/useInstanceLoading';
 import { API_BASE } from '@/lib/api';
 import { useSession } from '@/lib/auth-client';
 import { PluginRegistryProvider } from '@/plugins/PluginRegistryContext';
-import { css } from '@/styled-system/css';
 
 export function InstancePage() {
     const navigate = useNavigate();
@@ -14,18 +15,26 @@ export function InstancePage() {
     const { id } = useParams<{ id: string }>();
     const { data: session, isPending } = useSession();
 
-    const { isConnected, error, joinWorld, leaveWorld } = useSocket();
+    const { isConnected, error, currentUser, joinWorld, leaveWorld } = useSocket();
+    const { resetWorld } = useWorld();
 
-    const [connecting, setConnecting] = useState(true);
-    const hasJoinedRef = useRef(false);
+    const joinedIdRef = useRef<string | null>(null);
     const leaveWorldRef = useRef(leaveWorld);
     leaveWorldRef.current = leaveWorld;
+
+    // ワールドID解決の失敗など、Socket 以外で起きるロードエラー
+    const [loadError, setLoadError] = useState<string | null>(null);
+
+    // プラグイン DL / ワーカー起動の進捗（各 Provider から通知される）
+    const [plugins, setPlugins] = useState({ completed: 0, total: 0 });
+    const [workers, setWorkers] = useState({ ready: 0, total: 0 });
 
     useEffect(() => {
         return () => {
             leaveWorldRef.current();
+            resetWorld();
         };
-    }, []);
+    }, [resetWorld]);
 
     useEffect(() => {
         if (isPending) return;
@@ -35,75 +44,115 @@ export function InstancePage() {
             return;
         }
 
-        if (hasJoinedRef.current) return;
         if (!id) return;
+        if (joinedIdRef.current === id) return;
 
-        hasJoinedRef.current = true;
+        let cancelled = false;
 
-        const onJoinError = () => navigate('/');
+        // 旧インスタンスからの退出完了を待ってから join する（レースコンディション防止）
+        const connectToNewInstance = async () => {
+            if (joinedIdRef.current) {
+                await leaveWorldRef.current();
+                resetWorld();
+            }
+            if (cancelled) return;
 
-        const doJoin = (worldId: string) => {
-            joinWorld(session.user.name, worldId, id, onJoinError);
-            setConnecting(false);
-        };
+            joinedIdRef.current = id;
+            setLoadError(null);
 
-        // ロビーから来た場合は state に worldId が入っている。直接 URL 時は API から解決する
-        const stateWorldId = (location.state as { worldId?: string } | null)?.worldId;
-        if (stateWorldId) {
-            doJoin(stateWorldId);
-            return;
-        }
-        fetch(`${API_BASE}/api/v1/instances/${id}`, { credentials: 'include' })
-            .then((r) => (r.ok ? r.json() : null))
-            .then((instance) => {
+            const doJoin = (worldId: string) => {
+                joinWorld(session.user.name, worldId, id, (msg) => {
+                    // join 失敗は useSocket 側で error にも反映される。ここではデバッグ用にログのみ。
+                    console.error('[InstancePage] world:join failed:', msg);
+                });
+            };
+
+            // ロビーから来た場合は state に worldId が入っている。直接 URL 時は API から解決する
+            const stateWorldId = (location.state as { worldId?: string } | null)?.worldId;
+            if (stateWorldId) {
+                doJoin(stateWorldId);
+                return;
+            }
+
+            try {
+                const r = await fetch(`${API_BASE}/api/v1/instances/${id}`, { credentials: 'include' });
+                if (!r.ok) {
+                    if (r.status === 404) {
+                        setLoadError('インスタンスが見つかりませんでした');
+                    } else if (r.status === 429) {
+                        setLoadError('アクセスが集中しています。しばらくしてから再試行してください');
+                    } else {
+                        setLoadError(`インスタンス情報の取得に失敗しました (${r.status})`);
+                    }
+                    return;
+                }
+                const instance = await r.json();
+                if (cancelled) return;
                 const worldId = instance?.world?.id;
                 if (!worldId) {
-                    navigate('/');
+                    setLoadError('インスタンスのワールド情報が不正です');
                     return;
                 }
                 doJoin(worldId);
-            })
-            .catch(() => navigate('/'));
-    }, [session, isPending, navigate, id, location.state, joinWorld]);
+            } catch (e) {
+                if (cancelled) return;
+                console.error('[InstancePage] failed to resolve worldId:', e);
+                setLoadError('ワールド情報の取得に失敗しました');
+            }
+        };
 
-    if (isPending || connecting) {
-        return (
-            <div className={css({ minH: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' })}>
-                <p>接続中...</p>
-            </div>
-        );
-    }
+        void connectToNewInstance();
 
-    if (error && !isConnected) {
-        return (
-            <div
-                className={css({
-                    minH: '100vh',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexDir: 'column',
-                    gap: 4,
-                })}
-            >
-                <p className={css({ color: 'red.500' })}>{error}</p>
-                <button
-                    type="button"
-                    onClick={() => navigate('/')}
-                    className={css({ padding: '8px 16px', bg: 'gray.200', rounded: 'md' })}
-                >
-                    ロビーへ
-                </button>
-            </div>
-        );
-    }
+        return () => {
+            cancelled = true;
+        };
+    }, [session, isPending, navigate, id, location.state, joinWorld, resetWorld]);
+
+    const loading = useInstanceLoading({
+        instanceId: id,
+        isAuthPending: isPending,
+        isConnected,
+        isJoined: currentUser != null,
+        error: error ?? loadError,
+        plugins,
+        workers,
+    });
+
+    // 失敗時は一定時間後に自動でロビーへ戻す（ロード画面で詰まらないように）
+    useEffect(() => {
+        if (!loading.failed) return;
+        console.warn('[InstancePage] load failed → returning to lobby:', loading.failureMessage);
+        const timer = setTimeout(() => navigate('/'), 5000);
+        return () => clearTimeout(timer);
+    }, [loading.failed, loading.failureMessage, navigate]);
+
+    const stateWorldData = (location.state as { worldData?: { thumbnail?: string; displayName?: string } } | null)
+        ?.worldData;
 
     return (
-        <main>
-            <PluginRegistryProvider>
-                <InstanceRenderer />
-            </PluginRegistryProvider>
-            <InstanceHUD />
-        </main>
+        <>
+            {loading.showScreen && (
+                <InstanceLoadingScreen
+                    worldName={stateWorldData?.displayName}
+                    thumbnail={stateWorldData?.thumbnail}
+                    progress={loading.progress}
+                    stages={loading.stages}
+                    fadingOut={loading.fadingOut}
+                    failed={loading.failed}
+                    failureMessage={loading.failureMessage}
+                    onReturnToLobby={() => navigate('/')}
+                />
+            )}
+            {!loading.failed && currentUser != null && (
+                <main>
+                    <PluginRegistryProvider key={id} onStatusChange={setPlugins}>
+                        <WorkerLoadingProvider onStatusChange={setWorkers}>
+                            <InstanceRenderer />
+                        </WorkerLoadingProvider>
+                    </PluginRegistryProvider>
+                    <InstanceHUD />
+                </main>
+            )}
+        </>
     );
 }
