@@ -42,10 +42,11 @@ Ubi.ui.render(
             <div
                 style={{
                     position: 'absolute',
-                    bottom: '12px',
-                    left: '50%',
-                    transform: 'translateX(-50%)',
+                    top: '0',
+                    left: '100%',
+                    marginLeft: '16px',
                     display: 'flex',
+                    flexDirection: 'column',
                     gap: '8px',
                     pointerEvents: 'none',
                 }}
@@ -61,9 +62,9 @@ Ubi.ui.render(
                             );
                         }}
                         style={{
-                            width: '32px',
-                            height: '32px',
-                            borderRadius: '8px',
+                            width: '40px',
+                            height: '40px',
+                            borderRadius: '50%',
                             border: '1px solid rgba(0,0,0,0.1)',
                             backgroundColor: 'white',
                             display: 'flex',
@@ -71,7 +72,7 @@ Ubi.ui.render(
                             justifyContent: 'center',
                             cursor: 'pointer',
                             pointerEvents: 'auto',
-                            boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
                         }}
                     >
                         <div

@@ -31,7 +31,7 @@ const grip = Ubi.grip.exclusive({
         scale: 1.15,
     },
     blockedByOther: { opacity: 0.35 },
-    offset: { x: -24, y: 0 },
+    offset: { x: -16, y: -24 },
     share: 'persistent',
 });
 
