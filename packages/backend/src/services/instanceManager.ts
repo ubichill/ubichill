@@ -125,7 +125,7 @@ class InstanceManager {
         });
 
         type DbInstanceType = NonNullable<Awaited<ReturnType<typeof instanceRepository.findById>>>;
-        
+
         const instancesPromises = (dbInstances as DbInstanceType[]).map(async (dbInstance: DbInstanceType) => {
             const world = await worldRegistry.getWorldByDbId(dbInstance.worldId);
             if (world) {
@@ -135,7 +135,9 @@ class InstanceManager {
         });
 
         const instancesResult = await Promise.all(instancesPromises);
-        const instances: Instance[] = instancesResult.filter((inst: Instance | null): inst is Instance => inst !== null);
+        const instances: Instance[] = instancesResult.filter(
+            (inst: Instance | null): inst is Instance => inst !== null,
+        );
 
         return instances;
     }

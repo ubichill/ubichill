@@ -3,6 +3,7 @@ import type { Instance } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useInstances } from '@/components/lobby/useInstances';
+import { WorldDetailModal } from '@/components/lobby/WorldDetailModal';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { API_BASE } from '@/lib/api';
 import { css } from '@/styled-system/css';
@@ -43,6 +44,18 @@ export function InstanceTab({ currentInstanceId, onNavigate, onReturnToLobby }: 
 
     const [instance, setInstance] = useState<Instance | null>(null);
     const [creating, setCreating] = useState(false);
+    const [showModal, setShowModal] = useState(false);
+
+    const handleJoinInstance = (
+        instanceId: string,
+        joinedWorldId: string,
+        worldData?: { thumbnail?: string; displayName?: string },
+    ) => {
+        onNavigate?.();
+        navigate(`/instance/${instanceId}`, {
+            state: { worldId: joinedWorldId, worldData },
+        });
+    };
 
     useEffect(() => {
         let cancelled = false;
@@ -101,7 +114,20 @@ export function InstanceTab({ currentInstanceId, onNavigate, onReturnToLobby }: 
         <div className={tabPanel} onClick={(e) => e.stopPropagation()}>
             {/* インスタンス概要 + アクション */}
             <div className={cardStyle}>
-                <div className={css({ display: 'flex', alignItems: 'center', gap: '4', mb: '5' })}>
+                <div
+                    className={css({
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4',
+                        mb: '5',
+                        cursor: 'pointer',
+                        transition: 'opacity 0.2s',
+                        _hover: { opacity: 0.8 },
+                    })}
+                    onClick={() => {
+                        if (world) setShowModal(true);
+                    }}
+                >
                     <div
                         className={css({
                             width: { base: '56px', md: '72px' },
@@ -316,6 +342,16 @@ export function InstanceTab({ currentInstanceId, onNavigate, onReturnToLobby }: 
                     ))}
                 </ul>
             </div>
+
+            {showModal && world && (
+                <WorldDetailModal
+                    worldId={world.id}
+                    currentInstanceId={currentInstanceId}
+                    initialWorld={world}
+                    onClose={() => setShowModal(false)}
+                    onJoinInstance={handleJoinInstance}
+                />
+            )}
         </div>
     );
 }
