@@ -232,12 +232,12 @@ export function createGripModule(deps: GripModuleDeps): GripModule {
                 options: opts,
                 toggle(): void {
                     if (mode === 'manual') {
-                        if (!grip.isMine && !grip.isHeldByOther) grip.acquire();
+                        if (!grip.isMine) grip.acquire();
                         return;
                     }
                     if (grip.isMine) grip.release();
-                    else if (!grip.isHeldByOther) grip.acquire();
-                    // 他人が持っているなら何もしない (visual で disabled に見えるはず)
+                    else grip.acquire();
+                    // ゴーストロック対策として、他人が持っている場合でも強制取得(steal)を許可
                 },
                 acquire(): void {
                     const me = deps.getMyUserId();
