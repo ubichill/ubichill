@@ -1,4 +1,4 @@
-import { instanceRepository } from '@ubichill/db';
+import { type InstanceRecord, instanceRepository } from '@ubichill/db';
 import type {
     ComponentInstance,
     CreateInstanceRequest,
@@ -257,7 +257,7 @@ class InstanceManager {
         if (!world) return [];
 
         const dbInstances = await instanceRepository.findByWorldId(world.dbId);
-        return dbInstances.map((dbInstance) => this.toPublicInstance(dbInstance, world));
+        return dbInstances.map((dbInstance: InstanceRecord) => this.toPublicInstance(dbInstance, world));
     }
 
     /**

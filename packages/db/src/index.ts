@@ -12,4 +12,40 @@ const connectionString = process.env.DATABASE_URL || 'postgresql://ubichill:pass
 export const client = postgres(connectionString, { prepare: false });
 export const db: PostgresJsDatabase<typeof schema> = drizzle(client, { schema });
 
-export * from './schema';
+export type { CreateInstanceInput, InstanceRecord, UpdateInstanceInput } from './repositories/instanceRepository';
+export type {
+    CreateWorldInput,
+    InsertWorldRecord,
+    UpdateWorldInput,
+    WorldRecord,
+} from './repositories/worldRepository';
+export {
+    accounts,
+    friendStatusEnum,
+    insertInstanceSchema,
+    insertUserFavoriteSchema,
+    insertUserFriendSchema,
+    insertUserSchema,
+    insertUserSettingsSchema,
+    insertWorldSchema,
+    instances,
+    instancesRelations,
+    selectInstanceSchema,
+    selectUserFavoriteSchema,
+    selectUserFriendSchema,
+    selectUserSchema,
+    selectUserSettingsSchema,
+    selectWorldSchema,
+    sessions,
+    userFavorites,
+    userFavoritesRelations,
+    userFriends,
+    userFriendsRelations,
+    userSettings,
+    userSettingsRelations,
+    users,
+    usersRelations,
+    verifications,
+    worlds,
+    worldsRelations,
+} from './schema';

@@ -136,7 +136,7 @@ class WorldRegistry {
     async listWorlds(): Promise<WorldListItem[]> {
         // DB レコードを全件取得し、name → record のマップを構築
         const allRecords = await worldRepository.findAll();
-        const dbRecordByName = new Map(allRecords.map((r) => [r.name, r]));
+        const dbRecordByName = new Map<string, WorldRecord>(allRecords.map((r: WorldRecord) => [r.name, r]));
 
         const localItems: WorldListItem[] = this._order
             .map((name) => this._fileIndex.get(name))
@@ -159,8 +159,8 @@ class WorldRegistry {
         // _fileIndex にないワールドを DB から補完（ユーザー作成ワールド）
         const knownNames = new Set(this._fileIndex.keys());
         const dbItems: WorldListItem[] = allRecords
-            .filter((r) => !knownNames.has(r.name))
-            .map((r) => {
+            .filter((r: WorldRecord) => !knownNames.has(r.name))
+            .map((r: WorldRecord) => {
                 const def = r.definition as WorldDefinition;
                 return {
                     id: r.name,
