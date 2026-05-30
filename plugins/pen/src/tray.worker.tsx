@@ -10,35 +10,82 @@
 
 import { PenEvents } from './events';
 
+const THICKNESS_OPTIONS = [2, 4, 8, 12];
+
 Ubi.ui.render(
     () => (
-        <div
-            onUbiClick={async () => {
-                if (!Ubi.componentInstanceId) return;
-                const tray = await Ubi.entity.get(Ubi.componentInstanceId);
-                if (!tray) return;
-                // ローカルの pen.worker に対して「トレイ座標にペンを置け」と通知
-                PenEvents.emit(
-                    'pen:tray:release',
-                    { x: tray.transform.x, y: tray.transform.y },
-                    { scope: 'world', targetType: 'pen:pen' },
-                );
-            }}
-            style={{
-                position: 'absolute',
-                inset: '0',
-                backgroundColor: 'rgba(245,245,247,0.92)',
-                borderRadius: '12px',
-                boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.06), 0 2px 8px rgba(0,0,0,0.08)',
-                border: '1px solid rgba(0,0,0,0.08)',
-                userSelect: 'none',
-                // ペンが乗っているスロット以外の領域でクリックを受け取りたいので auto。
-                // 個々の pen はその上に position:absolute で乗っており、ペンクリックは
-                // ペン側で stopPropagation 相当に拾うので tray のクリックには伝わらない。
-                pointerEvents: 'auto',
-                cursor: 'pointer',
-            }}
-        />
+        <div style={{ position: 'absolute', inset: '0', pointerEvents: 'none' }}>
+            <div
+                onUbiClick={async () => {
+                    if (!Ubi.componentInstanceId) return;
+                    const tray = await Ubi.entity.get(Ubi.componentInstanceId);
+                    if (!tray) return;
+                    // ローカルの pen.worker に対して「トレイ座標にペンを置け」と通知
+                    PenEvents.emit(
+                        'pen:tray:release',
+                        { x: tray.transform.x, y: tray.transform.y },
+                        { scope: 'world', targetType: 'pen:pen' },
+                    );
+                }}
+                style={{
+                    position: 'absolute',
+                    inset: '0',
+                    backgroundColor: 'rgba(245,245,247,0.92)',
+                    borderRadius: '12px',
+                    boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.06), 0 2px 8px rgba(0,0,0,0.08)',
+                    border: '1px solid rgba(0,0,0,0.08)',
+                    userSelect: 'none',
+                    pointerEvents: 'auto',
+                    cursor: 'pointer',
+                }}
+            />
+            <div
+                style={{
+                    position: 'absolute',
+                    bottom: '12px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    display: 'flex',
+                    gap: '8px',
+                    pointerEvents: 'none',
+                }}
+            >
+                {THICKNESS_OPTIONS.map((thickness) => (
+                    <button
+                        type="button"
+                        onUbiClick={() => {
+                            PenEvents.emit(
+                                'pen:tray:change_thickness',
+                                { thickness },
+                                { scope: 'world', targetType: 'pen:pen' },
+                            );
+                        }}
+                        style={{
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '8px',
+                            border: '1px solid rgba(0,0,0,0.1)',
+                            backgroundColor: 'white',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            pointerEvents: 'auto',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                        }}
+                    >
+                        <div
+                            style={{
+                                width: thickness,
+                                height: thickness,
+                                borderRadius: '50%',
+                                backgroundColor: '#1a1a1a',
+                            }}
+                        />
+                    </button>
+                ))}
+            </div>
+        </div>
     ),
     'pen-tray',
 );

@@ -2,12 +2,14 @@
  * pen:pen Worker — ペン本体。
  *
  * **責務はシンプル: 自分の見た目 + 持って書ける宣言だけ**。
- *  - hover / click → acquire / release / カーソル追従 / 1 ユーザー 1 本ルール:
+ *  - hover / click → acquire / カーソル追従 / 1 ユーザー 1 本ルール:
  *    すべて Ubi.grip + <Gripable> が SDK 側で自動処理する
- *  - 線の太さ調整は held 中だけ表示される小さなポップオーバー
+ *  - release は **tray クリックでのみ** 発火する (mode='manual')。
+ *    持ったままどこかをクリックしても release されない (pen は cursor 追従で
+ *    画面のどこにいても "pen をクリック" と判定されうるため toggle は NG)
  *  - ペン本体の状態 (color, strokeWidth) のみ永続同期
  *
- * tray はもうペンの状態を一切知らない (単なる置き場の枠)。
+ * 太さ調整 UI は pen-tray が持つ (tray.worker.tsx)。pen 自身は見た目だけ。
  */
 
 import { Gripable } from '@ubichill/sdk/gripable';
@@ -19,10 +21,10 @@ const pen = Ubi.state.define({
 });
 
 // 「持って書ける」宣言。クリック / hover / 追従 / 1 本ルールは全部 SDK 任せ。
-// 持つと entity ごとカーソルに移動するので tray には残らない (= held.opacity 未指定で完全不透明)。
-// 「囲み」(outline) は明示しない → ペン本体の見た目だけが浮かぶ。
+// mode='manual': acquire は click で発火、release は明示的呼び出しのみ。
+// pen を持ったままどこかをクリックしても自分 click と判定されて release されないように。
 const grip = Ubi.grip.exclusive({
-    mode: 'toggle',
+    mode: 'manual',
     hover: {
         cursor: 'grab',
         heldCursor: 'grabbing',
@@ -33,10 +35,15 @@ const grip = Ubi.grip.exclusive({
     share: 'persistent',
 });
 
-// tray クリック → ローカルのペンをトレイ座標に置く
-PenEvents.on('pen:tray:release', (data) => {
+// tray クリック → 持っているペンを離して tray に戻す
+PenEvents.on('pen:tray:release', () => {
+    if (grip.isMine) grip.release();
+});
+
+// tray での太さ変更 → 自分が持っているペンなら太さを反映する
+PenEvents.on('pen:tray:change_thickness', ({ thickness }) => {
     if (grip.isMine) {
-        grip.release({ x: data.x, y: data.y });
+        pen.local.strokeWidth = thickness;
     }
 });
 
@@ -48,76 +55,6 @@ grip.onChange((next, prev) => {
         PenEvents.sendToHost('user:update', { penColor: null });
     }
 });
-
-// ── 線の太さ調整ポップオーバー (held 中だけ表示) ────────────
-const SIZES = [2, 4, 8, 16] as const;
-
-function renderSizePopover(): void {
-    if (!grip.isMine) {
-        Ubi.ui.unmount('pen-size-popover');
-        return;
-    }
-    const current = pen.local.strokeWidth;
-    const color = pen.local.color;
-    Ubi.ui.render(
-        () => (
-            <div
-                style={{
-                    position: 'fixed',
-                    top: '24px',
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    display: 'flex',
-                    gap: '6px',
-                    padding: '6px 8px',
-                    background: 'rgba(255,255,255,0.96)',
-                    borderRadius: '24px',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
-                    border: '1px solid rgba(0,0,0,0.06)',
-                    pointerEvents: 'auto',
-                    zIndex: 10000,
-                }}
-            >
-                {SIZES.map((s) => {
-                    const isSelected = current === s;
-                    return (
-                        <button
-                            key={String(s)}
-                            type="button"
-                            title={`${s}px`}
-                            onUbiClick={() => {
-                                pen.local.strokeWidth = s;
-                            }}
-                            style={{
-                                width: '28px',
-                                height: '28px',
-                                borderRadius: '50%',
-                                border: isSelected ? `2px solid ${color}` : '2px solid rgba(0,0,0,0.12)',
-                                background: isSelected ? `${color}22` : 'transparent',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                padding: '0',
-                                transition: 'all 0.12s',
-                            }}
-                        >
-                            <div
-                                style={{
-                                    width: Math.min(s * 1.5, 14),
-                                    height: Math.min(s * 1.5, 14),
-                                    borderRadius: '50%',
-                                    background: isSelected ? color : 'rgba(0,0,0,0.4)',
-                                }}
-                            />
-                        </button>
-                    );
-                })}
-            </div>
-        ),
-        'pen-size-popover',
-    );
-}
 
 // ── ペン本体のレンダリング ──────────────────────────────────
 const PenSvg = ({ color }: { color: string }) => (
@@ -149,7 +86,6 @@ function renderPen(): void {
         ),
         'pen-button',
     );
-    renderSizePopover();
 }
 
 // 状態変化はすべて onChange で宣言的に再描画
