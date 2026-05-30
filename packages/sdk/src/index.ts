@@ -12,11 +12,9 @@
 export * from '@ubichill/engine';
 // プロトコル型（@ubichill/shared より選択的に re-export）
 export type {
-    AppAvatarDef,
     AvailableComponent,
     CanvasCursorData,
     CanvasStrokeData,
-    CmdAvatarSet,
     CmdCanvasCommitStroke,
     CmdCanvasFrame,
     CmdLog,
@@ -35,7 +33,6 @@ export type {
     ComponentInstance,
     CursorMovedCallback,
     CursorPosition,
-    CursorState,
     CustomEventCallback,
     EntityComponent,
     EntityEphemeralPayload,

@@ -21,42 +21,6 @@ export interface CursorPosition {
 }
 
 /**
- * カーソルの状態の定数配列（単一の情報源）
- * CSS cursor values + customized
- */
-export const CURSOR_STATES = ['default', 'pointer', 'text', 'wait', 'help', 'not-allowed', 'move', 'grabbing'] as const;
-
-/**
- * カーソルの状態 (CSS cursor values + customized)
- */
-export type CursorState = (typeof CURSOR_STATES)[number];
-
-/**
- * アプリケーション側で定義するアバター（カーソル）設定
- */
-export interface AvatarStateFrame {
-    url: string;
-    duration: number; // ms
-}
-
-export interface AvatarStateDef {
-    /** 最初のフレームの PNG data URL（サーバー送信・他ユーザーへの表示用） */
-    url: string;
-    hotspot: { x: number; y: number };
-    /**
-     * 元ファイルの URL（ANI/CUR/PNG）。
-     * cursor worker がアニメーションフレームをホストへ要求するときに使う。
-     * サーバー経由で他ユーザーへも配信されるため軽量な文字列に限る。
-     */
-    sourceUrl?: string;
-}
-
-export interface AppAvatarDef {
-    states: Partial<Record<CursorState, AvatarStateDef>>;
-    hideSystemCursor?: boolean;
-}
-
-/**
  * ユーザー情報
  *
  * 画像系フィールドは「プロフィール画像」と「カーソル画像」を別ものとして扱う:
@@ -71,10 +35,6 @@ export interface User {
     avatarUrl?: string;
     /** カーソル先端に重ねる画像 URL (avatarUrl とは別物・別に設定できる) */
     cursorUrl?: string | null;
-    /** @deprecated 旧 avatar plugin の多状態カーソル定義。新規開発では使わない。 */
-    avatar?: AppAvatarDef;
-    /** @deprecated 旧 avatar plugin が使っていた CSS cursor state。 */
-    cursorState?: CursorState;
     status: UserStatus;
     position: CursorPosition;
     lastActiveAt: number;
@@ -231,12 +191,7 @@ export interface ServerToClientEvents {
     'user:left': (userId: string) => void;
 
     /** ユーザーのカーソル位置更新 */
-    'cursor:moved': (data: {
-        userId: string;
-        position: CursorPosition;
-        state?: CursorState;
-        heldEntityId?: string | null;
-    }) => void;
+    'cursor:moved': (data: { userId: string; position: CursorPosition; heldEntityId?: string | null }) => void;
 
     /** ユーザーのステータス更新 */
     'status:changed': (data: { userId: string; status: UserStatus }) => void;
@@ -304,7 +259,7 @@ export interface ClientToServerEvents {
     'world:leave': (callback?: (response: { success: boolean }) => void) => void;
 
     /** カーソル位置を更新 */
-    'cursor:move': (data: { position: CursorPosition; state?: CursorState; heldEntityId?: string | null }) => void;
+    'cursor:move': (data: { position: CursorPosition; heldEntityId?: string | null }) => void;
 
     /** ステータスを更新 */
     'status:update': (status: UserStatus) => void;

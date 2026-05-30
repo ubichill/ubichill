@@ -8,7 +8,7 @@
  */
 
 import { PluginHostManager } from '@ubichill/sandbox';
-import type { ComponentInstance, CursorState } from '@ubichill/shared';
+import type { ComponentInstance } from '@ubichill/shared';
 import type React from 'react';
 import { useEffect, useMemo, useRef } from 'react';
 import { usePluginBroadcast } from '../hooks/usePluginBroadcast';
@@ -152,8 +152,8 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
             onMessage: (msg) => {
                 const m = msg as { type: string; payload: unknown };
                 if (m.type === 'position:update') {
-                    const { x, y, cursorState } = m.payload as { x: number; y: number; cursorState?: CursorState };
-                    updatePositionRef.current({ x, y }, cursorState);
+                    const { x, y } = m.payload as { x: number; y: number };
+                    updatePositionRef.current({ x, y });
                 } else if (m.type === 'user:update') {
                     updateUserRef.current(m.payload as Parameters<typeof updateUserRef.current>[0]);
                 } else {

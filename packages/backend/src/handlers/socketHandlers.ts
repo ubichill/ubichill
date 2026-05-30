@@ -1,7 +1,6 @@
 import {
     type ClientToServerEvents,
     type ComponentInstance,
-    type CursorState,
     DEFAULTS,
     type EntityEphemeralPayload,
     type EntityPatchPayload,
@@ -22,13 +21,7 @@ import { logger } from '../utils/logger';
 const disconnectTimers = new Map<string, NodeJS.Timeout>();
 const activeUserSockets = new Map<string, TypedSocket>();
 
-import {
-    validateCursorPosition,
-    validateCursorState,
-    validateUsername,
-    validateUserStatus,
-    validateWorldId,
-} from '../utils/validation';
+import { validateCursorPosition, validateUsername, validateUserStatus, validateWorldId } from '../utils/validation';
 
 type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents, InterServerEvents, SocketData>;
 
@@ -192,8 +185,8 @@ export function handleWorldJoin(socket: TypedSocket) {
  * カーソル移動イベントを処理
  */
 export function handleCursorMove(socket: TypedSocket) {
-    return (payload: { position: { x: number; y: number }; state?: CursorState; heldEntityId?: string | null }) => {
-        const { position, state, heldEntityId } = payload;
+    return (payload: { position: { x: number; y: number }; heldEntityId?: string | null }) => {
+        const { position, heldEntityId } = payload;
         const instanceId = socket.data.instanceId;
         if (!instanceId) {
             socket.emit('error', '最初にワールドに参加する必要があります');
@@ -207,25 +200,14 @@ export function handleCursorMove(socket: TypedSocket) {
             return;
         }
 
-        // カーソル状態を検証（存在する場合のみ）
-        let validatedState: CursorState | undefined;
-        if (state !== undefined) {
-            const stateValidation = validateCursorState(state);
-            if (!stateValidation.valid) {
-                socket.emit('error', stateValidation.error || '無効なカーソル状態です');
-                return;
-            }
-            validatedState = stateValidation.data;
-        }
-
         const userId = stableUserId(socket);
         if (!userId) {
             socket.emit('error', '認証が必要です');
             return;
         }
 
-        // 位置と状態を更新
-        const updated = userManager.updateUserPosition(userId, validation.data, validatedState);
+        // 位置を更新
+        const updated = userManager.updateUserPosition(userId, validation.data);
         if (!updated) {
             socket.emit('error', 'ユーザーが見つかりません');
             return;
@@ -242,7 +224,6 @@ export function handleCursorMove(socket: TypedSocket) {
         socket.to(instanceId).emit('cursor:moved', {
             userId,
             position: validation.data,
-            state: validatedState,
             ...(safeHeldEntityId !== undefined && { heldEntityId: safeHeldEntityId }),
         });
     };

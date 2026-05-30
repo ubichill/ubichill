@@ -52,7 +52,7 @@ export function useBroadcastCursor(scrollEl: HTMLElement | null, throttleMs = 50
             // (HoldProvider の外でも動作するようにするため React Context は使わない)
             const held = heldEntitySyncRef.get();
             const heldEntityId = held && held.share !== 'local' ? held.entityId : held === null ? null : undefined;
-            updatePositionRef.current({ x: v.x + sx, y: v.y + sy }, undefined, heldEntityId);
+            updatePositionRef.current({ x: v.x + sx, y: v.y + sy }, heldEntityId);
         };
 
         const onMove = (e: PointerEvent) => {

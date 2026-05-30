@@ -1,5 +1,5 @@
 // These types are imported from their source files to avoid circular dependency with index.ts
-import type { AppAvatarDef, ComponentInstance, CursorPosition, EntityPatchPayload, User } from '../index';
+import type { ComponentInstance, CursorPosition, EntityPatchPayload, User } from '../index';
 import type { VNode } from './vnode';
 
 /**
@@ -177,15 +177,6 @@ export type CmdUiShowToast = {
 export type CmdUiRender = {
     type: 'UI_RENDER';
     payload: { targetId: string; vnode: VNode | null };
-};
-
-/**
- * Ubi.avatar.set(appDef)
- * Fire & Forget: 自ユーザーのアバター（カーソル）設定を更新します。
- */
-export type CmdAvatarSet = {
-    type: 'AVATAR_SET';
-    payload: { appDef: AppAvatarDef };
 };
 
 /** Ubi.network.fetch() / onFetch ハンドラー共通のリクエストオプション */
@@ -378,7 +369,6 @@ export type PluginGuestCommand =
     | CmdEventEmit
     | CmdUiShowToast
     | CmdUiRender
-    | CmdAvatarSet
     | CmdNetFetch
     | CmdMediaLoad
     | CmdMediaPlay

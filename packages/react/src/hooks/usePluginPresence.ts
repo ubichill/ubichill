@@ -51,8 +51,8 @@ export function usePluginPresence(
                     const positionChanged = prevUser.position !== user.position;
                     const metaChanged =
                         prevUser.name !== user.name ||
-                        prevUser.avatar !== user.avatar ||
-                        prevUser.cursorState !== user.cursorState ||
+                        prevUser.avatarUrl !== user.avatarUrl ||
+                        prevUser.cursorUrl !== user.cursorUrl ||
                         prevUser.penColor !== user.penColor;
                     if (positionChanged) {
                         sendEvent({

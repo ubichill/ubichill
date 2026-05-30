@@ -1,7 +1,6 @@
 import {
     type ClientToServerEvents,
     type CursorPosition,
-    type CursorState,
     DEFAULTS,
     SERVER_CONFIG,
     type ServerToClientEvents,
@@ -23,7 +22,7 @@ export interface SocketContextValue {
     error: string | null;
     joinWorld: (name: string, worldId: string, instanceId: string, onError?: (error: string) => void) => void;
     leaveWorld: () => Promise<void>;
-    updatePosition: (position: CursorPosition, state?: CursorState, heldEntityId?: string | null) => void;
+    updatePosition: (position: CursorPosition, heldEntityId?: string | null) => void;
     updateStatus: (status: UserStatus) => void;
     updateUser: (patch: Partial<User>) => void;
 }
@@ -121,17 +120,16 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             });
         });
 
-        socket.on('cursor:moved', ({ userId, position, state, heldEntityId }) => {
+        socket.on('cursor:moved', ({ userId, position, heldEntityId }) => {
             setUsers((prev) => {
                 const user = prev.get(userId);
                 if (!user) return prev;
 
-                // 位置情報と状態を更新
+                // 位置情報を更新
                 const newMap = new Map(prev);
                 newMap.set(userId, {
                     ...user,
                     position,
-                    ...(state !== undefined && { cursorState: state }),
                     ...(heldEntityId !== undefined && { heldEntityId }),
                 });
                 return newMap;
@@ -214,13 +212,12 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     );
 
     const updatePosition = useCallback(
-        (position: CursorPosition, state?: CursorState, heldEntityId?: string | null) => {
+        (position: CursorPosition, heldEntityId?: string | null) => {
             const socket = socketRef.current;
             if (!socket || !isConnected) return;
 
             socket.emit('cursor:move', {
                 position,
-                state,
                 ...(heldEntityId !== undefined && { heldEntityId }),
             });
 
@@ -229,7 +226,6 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 setCurrentUser({
                     ...currentUser,
                     position,
-                    ...(state !== undefined && { cursorState: state }),
                     ...(heldEntityId !== undefined && { heldEntityId }),
                 });
             }

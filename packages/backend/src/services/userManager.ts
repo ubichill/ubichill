@@ -1,4 +1,4 @@
-import type { CursorPosition, CursorState, User, UserStatus } from '@ubichill/shared';
+import type { CursorPosition, User, UserStatus } from '@ubichill/shared';
 
 /**
  * ユーザー管理サービス
@@ -74,14 +74,11 @@ export class UserManager {
     /**
      * ユーザーのカーソル位置を更新
      */
-    updateUserPosition(userId: string, position: CursorPosition, state?: CursorState): boolean {
+    updateUserPosition(userId: string, position: CursorPosition): boolean {
         const user = this.users.get(userId);
         if (!user) return false;
 
         user.position = position;
-        if (state !== undefined) {
-            user.cursorState = state;
-        }
         user.lastActiveAt = Date.now();
         return true;
     }
@@ -108,12 +105,6 @@ export class UserManager {
         // 更新を許可するフィールドのみをホワイトリストで抽出
         const safePatch: Partial<User> = {};
 
-        if ('avatar' in patch && patch.avatar !== undefined) {
-            safePatch.avatar = patch.avatar;
-        }
-        if ('cursorState' in patch && patch.cursorState !== undefined) {
-            safePatch.cursorState = patch.cursorState;
-        }
         // penColor: ペンプラグインが設定・解除する（null も許可）
         if ('penColor' in patch) {
             safePatch.penColor = patch.penColor ?? null;
