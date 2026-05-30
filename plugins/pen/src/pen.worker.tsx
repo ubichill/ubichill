@@ -24,20 +24,17 @@ const pen = Ubi.state.define({
 // mode='manual': acquire は click で発火、release は明示的呼び出しのみ。
 // pen を持ったままどこかをクリックしても自分 click と判定されて release されないように。
 const grip = Ubi.grip.exclusive({
-    mode: 'manual',
+    mode: 'toggle',
     hover: {
         cursor: 'grab',
         heldCursor: 'grabbing',
+        outline: '2px solid currentColor',
         scale: 1.15,
     },
+    held: { opacity: 0.4 },
     blockedByOther: { opacity: 0.35 },
     offset: { x: -18, y: -24 },
     share: 'persistent',
-});
-
-// tray クリック → 持っているペンを離して tray に戻す
-PenEvents.on('pen:tray:release', () => {
-    if (grip.isMine) grip.release();
 });
 
 // tray での太さ変更 → 自分が持っているペンなら太さを反映する

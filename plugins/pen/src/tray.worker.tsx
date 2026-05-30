@@ -16,17 +16,6 @@ Ubi.ui.render(
     () => (
         <div style={{ position: 'absolute', inset: '0', pointerEvents: 'none' }}>
             <div
-                onUbiClick={async () => {
-                    if (!Ubi.componentInstanceId) return;
-                    const tray = await Ubi.entity.get(Ubi.componentInstanceId);
-                    if (!tray) return;
-                    // ローカルの pen.worker に対して「トレイ座標にペンを置け」と通知
-                    PenEvents.emit(
-                        'pen:tray:release',
-                        { x: tray.transform.x, y: tray.transform.y },
-                        { scope: 'world', targetType: 'pen:pen' },
-                    );
-                }}
                 style={{
                     position: 'absolute',
                     inset: '0',
@@ -35,8 +24,6 @@ Ubi.ui.render(
                     boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.06), 0 2px 8px rgba(0,0,0,0.08)',
                     border: '1px solid rgba(0,0,0,0.08)',
                     userSelect: 'none',
-                    pointerEvents: 'auto',
-                    cursor: 'pointer',
                 }}
             />
             <div

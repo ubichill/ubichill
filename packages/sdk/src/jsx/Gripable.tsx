@@ -70,7 +70,7 @@ export function Gripable({ grip, children, style }: GripableProps): VNode {
         background: 'transparent',
         border: opts.hover?.outline ?? 'none',
         padding: 0,
-        pointerEvents: isMine && opts.mode === 'manual' ? 'none' : 'auto',
+        pointerEvents: 'auto',
         transition: 'opacity 0.12s ease, transform 0.12s ease, outline-color 0.12s ease',
         '--ubi-gripable-scale': String(hoverScaleValue),
     } as Record<string, string | number>;
