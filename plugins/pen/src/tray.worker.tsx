@@ -27,7 +27,7 @@ Ubi.ui.render(
                         { scope: 'world', targetType: 'pen:pen' },
                     );
                 }}
-                onPointerDown={(e) => e.stopPropagation()}
+                onUbiPointerDown={() => {}}
                 style={{
                     position: 'absolute',
                     inset: '0',
@@ -62,7 +62,7 @@ Ubi.ui.render(
                                 { scope: 'world', targetType: 'pen:pen' },
                             );
                         }}
-                        onPointerDown={(e) => e.stopPropagation()}
+                        onUbiPointerDown={() => {}}
                         style={{
                             width: '40px',
                             height: '40px',
