@@ -72,7 +72,7 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
 
     const holderId = isHeldByOther && entity ? entity.lockedBy : null;
 
-    // ── 自分が持っているとき: pointermove で直接 DOM 更新 ──────────────────
+    // ── 自分が持っているとき: pointermove で CSS 変数のみ更新 (zIndex などは wrapperStyle 経由で React 管理) ──
     // biome-ignore lint/correctness/useExhaustiveDependencies: entity の transform.x/y のみ追跡したい (entity 全体を入れると毎更新で再 subscribe)
     useEffect(() => {
         if (!isHeldByMe || !entity) return;
@@ -80,9 +80,6 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
         if (!div) return;
         const baseX = entity.transform.x;
         const baseY = entity.transform.y;
-
-        div.style.zIndex = String(Z_INDEX.HELD_ENTITY);
-        div.style.pointerEvents = 'none';
 
         const onMove = (e: PointerEvent) => {
             const h = heldRef.current;
@@ -114,14 +111,13 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
         window.addEventListener('pointermove', onMove);
         return () => {
             window.removeEventListener('pointermove', onMove);
-            div.style.zIndex = '';
-            div.style.pointerEvents = '';
+            // CSS 変数だけクリア。zIndex / pointerEvents は wrapperStyle が React 経由で復元する
             div.style.removeProperty('--held-dx');
             div.style.removeProperty('--held-dy');
         };
     }, [isHeldByMe, entityId, held?.offsetX, held?.offsetY, heldRef, entity?.transform.x, entity?.transform.y]);
 
-    // ── 他ユーザーが持っているとき: HeldEntityPositionRegistry で DOM 更新 ──
+    // ── 他ユーザーが持っているとき: HeldEntityPositionRegistry で CSS 変数のみ更新 ──
     // biome-ignore lint/correctness/useExhaustiveDependencies: users / entity 全体は初期参照だけ。subscribe 後は registry が逐次更新するので deps では transform.x/y のみ追跡する
     useEffect(() => {
         if (!isHeldByOther || !holderId || !entity) return;
@@ -129,11 +125,6 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
         if (!div) return;
         const baseX = entity.transform.x;
         const baseY = entity.transform.y;
-
-        div.style.zIndex = String(Z_INDEX.HELD_ENTITY);
-        div.style.pointerEvents = 'none';
-        div.style.opacity = '0.85';
-        div.style.transition = 'transform 80ms linear';
 
         // 初期位置: 既知のユーザー座標から計算
         const holderUser = users.get(holderId);
@@ -152,10 +143,7 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
 
         return () => {
             unsub();
-            div.style.zIndex = '';
-            div.style.pointerEvents = '';
-            div.style.opacity = '';
-            div.style.transition = '';
+            // CSS 変数だけクリア。zIndex / opacity / transition は wrapperStyle が React 経由で復元する
             div.style.removeProperty('--held-dx');
             div.style.removeProperty('--held-dy');
         };
@@ -170,19 +158,24 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
     const { x, y, z, w, h, scale, rotation } = entity.transform;
     const sized = w > 0 && h > 0;
 
-    // held 中は useEffect で CSS変数を更新し、transform: translate() で直接スタイルを上書きする
-    // React の再描画によってインラインスタイルが上書きされても、CSS変数は保持されるためチラつかない
+    // hold 状態を wrapperStyle に直接反映する。命令的に div.style.zIndex を書き換えると、
+    // React が「前回 render と同じ値だから何もしない」と判断してリリース時に元の値が
+    // 復元されないバグ (zIndex が style から消える) が出るため、すべて React 管理下に置く。
+    // CSS 変数 (--held-dx/dy) のみ pointermove で imperative に更新する (60fps の都合)。
+    const heldZ = isHeldByMe || isHeldByOther ? Z_INDEX.HELD_ENTITY : (z ?? 0) || undefined;
     const wrapperStyle: React.CSSProperties = isCanvas
-        ? { position: 'absolute', inset: 0, zIndex: z || undefined, pointerEvents: 'none' }
+        ? { position: 'absolute', inset: 0, zIndex: heldZ, pointerEvents: 'none' }
         : {
               position: 'absolute',
               left: x,
               top: y,
-              zIndex: z || undefined,
+              zIndex: heldZ,
               width: w > 0 ? w : undefined,
               height: h > 0 ? h : undefined,
               overflow: sized ? 'hidden' : undefined,
               pointerEvents: 'none',
+              opacity: isHeldByOther ? 0.85 : undefined,
+              transition: isHeldByOther ? 'transform 80ms linear' : undefined,
               transform: `translate(var(--held-dx, 0px), var(--held-dy, 0px)) scale(${scale ?? 1}) rotate(${rotation ?? 0}deg)`,
               transformOrigin: '0 0',
           };
