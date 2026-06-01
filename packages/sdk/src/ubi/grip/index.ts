@@ -117,6 +117,16 @@ export interface GripOptions {
      * デフォルト: { x: -24, y: 0 }（カーソルの少し左）
      */
     offset?: { x?: number; y?: number };
+
+    /**
+     * acquire() 時に自エンティティの `transform.z` を「同じ Component type の最大値 + 1」に
+     * 自動更新し、視覚的に最前面に持ってくる。リリース後もその z 値は永続するので、
+     * 「最後に触ったペンが一番手前にある」みたいな UX が無料で手に入る。
+     * Figma / Sketch などの一般的な「持ったら手前」挙動と同じ。
+     *
+     * デフォルト: false (後方互換)
+     */
+    bringToFront?: boolean;
 }
 
 export type GripModuleDeps = {
@@ -134,6 +144,12 @@ export type GripModuleDeps = {
     listenMouseUp(cb: () => void): () => void;
     /** CMD_GRIP コマンドをホストへ送信する */
     sendGripCommand(payload: CmdGrip['payload']): void;
+    /**
+     * 自エンティティを「同じ Component type の最大 z + 1」に持ち上げる。
+     * `bringToFront: true` のときだけ acquire() で呼ばれる。
+     * 失敗 (= entity が見つからない等) は無視 (UX に直接影響しないため)。
+     */
+    bringToFront(): Promise<void>;
 };
 
 export type GripModule = {
@@ -278,6 +294,12 @@ export function createGripModule(deps: GripModuleDeps): GripModule {
                         slot,
                         share,
                     });
+
+                    // 持ったら最前面に: bringToFront=true なら transform.z を兄弟最大+1 に更新。
+                    // リリース後もこの z は永続するので「最後に触ったものが手前」UX になる。
+                    if (opts.bringToFront) {
+                        void deps.bringToFront();
+                    }
 
                     // press モード: mouseup で自動解放
                     if (mode === 'press') {

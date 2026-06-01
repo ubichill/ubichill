@@ -33,6 +33,9 @@ const grip = Ubi.grip.exclusive({
     blockedByOther: { opacity: 0.35 },
     offset: { x: -18, y: -24 },
     share: 'persistent',
+    // 持った時に他のペンより手前に。リリース後もこの z は永続するので
+    // 「最後に触ったペンが一番上」状態が保たれて子要素間の z が逆転しない
+    bringToFront: true,
 });
 
 // tray クリック → 持っているペンを離して tray に戻す
