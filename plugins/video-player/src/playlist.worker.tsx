@@ -5,7 +5,7 @@
  * Worker 間通信は `VPEvents` に閉じた型付き emit/on のみ。
  */
 
-import { VPEvents } from './events';
+import { VPEvents, VPTarget } from './events';
 import { PlaySmallIcon, TrashIcon } from './icons';
 import type { LoopMode, Track } from './types';
 
@@ -26,7 +26,7 @@ function emitCurrent(): void {
     const list = state.local.playlist;
     const idx = state.local.currentIndex;
     const track = list[idx] ?? null;
-    VPEvents.emit('vp:track:current', { track, index: idx, total: list.length }, { scope: 'siblings' });
+    VPEvents.emit('vp:track:current', { track, index: idx, total: list.length }, VPTarget.siblings);
 }
 
 function addTrack(track: Track): void {
@@ -75,7 +75,7 @@ function nextTrack(loop: LoopMode, shuffle: boolean): void {
     if (loop === 'all') {
         state.local.currentIndex = 0;
     } else {
-        VPEvents.emit('vp:playback:stop', {}, { scope: 'siblings', targetType: 'video-player:controls' });
+        VPEvents.emit('vp:playback:stop', {}, VPTarget.controls);
     }
 }
 

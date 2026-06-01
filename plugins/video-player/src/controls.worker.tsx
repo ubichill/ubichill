@@ -17,7 +17,7 @@
  */
 
 import type { Entity, System } from '@ubichill/sdk';
-import { VPEvents } from './events';
+import { VPEvents, VPTarget } from './events';
 import {
     PauseIcon,
     PlayIcon,
@@ -78,9 +78,7 @@ function buildTrackUrl(track: Track): string {
     return `${base}/${endpoint}/${track.id}`;
 }
 
-// ── screen / playlist へのエイリアス ─────────────────
-const screenTarget = { scope: 'siblings' as const, targetType: 'video-player:screen' };
-const playlistTarget = { scope: 'siblings' as const, targetType: 'video-player:playlist' };
+// ── screen / playlist へのエイリアス (events.ts に集約) ──
 
 /**
  * 共有時計の現在状態に合わせてローカル <video> を同期する。
@@ -95,10 +93,10 @@ function scheduleSyncVideo(): void {
         syncScheduled = false;
         const isLive = state.local.currentTrack?.mode === 'live';
         if (!isLive && state.local.duration > 0) {
-            VPEvents.emit('vp:media:seek', { time: currentTime() }, screenTarget);
+            VPEvents.emit('vp:media:seek', { time: currentTime() }, VPTarget.screen);
         }
-        if (state.local.isPlaying) VPEvents.emit('vp:media:play', {}, screenTarget);
-        else VPEvents.emit('vp:media:pause', {}, screenTarget);
+        if (state.local.isPlaying) VPEvents.emit('vp:media:play', {}, VPTarget.screen);
+        else VPEvents.emit('vp:media:pause', {}, VPTarget.screen);
     });
 }
 
@@ -126,10 +124,10 @@ const onPlayToggle = (): void => {
     }
 };
 const onPrev = (): void => {
-    VPEvents.emit('vp:track:prev', {}, playlistTarget);
+    VPEvents.emit('vp:track:prev', {}, VPTarget.playlist);
 };
 const onNext = (): void => {
-    VPEvents.emit('vp:track:next', { loop: state.local.loop, shuffle: state.local.shuffle }, playlistTarget);
+    VPEvents.emit('vp:track:next', { loop: state.local.loop, shuffle: state.local.shuffle }, VPTarget.playlist);
 };
 const onShuffleToggle = (): void => {
     state.local.shuffle = !state.local.shuffle;
@@ -150,7 +148,7 @@ state.onChange('isPlaying', () => {
 state.onChange('baselineTime', scheduleSyncVideo);
 state.onChange('playEpoch', scheduleSyncVideo);
 state.onChange('myVolume', (v) => {
-    VPEvents.emit('vp:media:volume', { volume: v }, screenTarget);
+    VPEvents.emit('vp:media:volume', { volume: v }, VPTarget.screen);
     render();
 });
 state.onChange('loop', render);
@@ -374,7 +372,7 @@ VPEvents.on('vp:track:current', ({ track, index, total }) => {
     render();
     // トラックが変わったら load (vp:media:loaded で seek + play に進む)
     if (changed && track) {
-        VPEvents.emit('vp:media:load', { url: buildTrackUrl(track), mode: track.mode }, screenTarget);
+        VPEvents.emit('vp:media:load', { url: buildTrackUrl(track), mode: track.mode }, VPTarget.screen);
     }
 });
 
@@ -390,7 +388,7 @@ VPEvents.on('vp:media:loaded', ({ duration }) => {
 
 VPEvents.on('vp:media:ended', () => {
     // 次トラックを playlist にリクエスト
-    VPEvents.emit('vp:track:next', { loop: state.local.loop, shuffle: state.local.shuffle }, playlistTarget);
+    VPEvents.emit('vp:track:next', { loop: state.local.loop, shuffle: state.local.shuffle }, VPTarget.playlist);
 });
 
 VPEvents.on('vp:playback:stop', () => {
@@ -418,4 +416,4 @@ Ubi.registerSystem(ClockSystem);
 // 初期化
 render();
 // 起動時に screen へ初期音量を通知 (起動順依存吸収)
-queueMicrotask(() => VPEvents.emit('vp:media:volume', { volume: state.local.myVolume }, screenTarget));
+queueMicrotask(() => VPEvents.emit('vp:media:volume', { volume: state.local.myVolume }, VPTarget.screen));

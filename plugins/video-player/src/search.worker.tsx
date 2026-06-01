@@ -6,7 +6,7 @@
  */
 
 import type { RpcNetFetchResult } from '@ubichill/sdk';
-import { VPEvents } from './events';
+import { VPEvents, VPTarget } from './events';
 import { SearchIcon, VideoIcon } from './icons';
 import type { SearchResult, Track } from './types';
 
@@ -26,9 +26,8 @@ const state = Ubi.state.define({
     isSearching: false,
 });
 
-const playlistTarget = { scope: 'siblings' as const, targetType: 'video-player:playlist' };
 const emitAddTrack = (track: Track): void => {
-    VPEvents.emit('vp:track:add', { track }, playlistTarget);
+    VPEvents.emit('vp:track:add', { track }, VPTarget.playlist);
 };
 
 const fmt = (sec: number): string => {
