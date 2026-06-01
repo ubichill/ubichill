@@ -19,10 +19,10 @@
  * (旧 avatar:cursor プラグインの役割)。
  *
  * 持っているエンティティの追従同期:
- *  - useBroadcastCursor が cursor:move 送信時に HeldEntityStateRef から heldEntityId を含める
+ *  - useBroadcastCursor が cursor:move 送信時に heldEntitySyncRef から heldEntityId を含める
  *  - cursor:moved を受信したら HeldEntityPositionRegistry.notify で EntityRenderer に伝達
  *  ※ CursorLayer は HoldProvider の外側（router レベル）で動くため、
- *    useHold() ではなくモジュールレベルの HeldEntityStateRef / HeldEntityPositionRegistry を使う
+ *    useHold() ではなくモジュールレベルの heldEntitySyncRef / HeldEntityPositionRegistry を使う
  */
 
 import { useSocket } from '@ubichill/react';

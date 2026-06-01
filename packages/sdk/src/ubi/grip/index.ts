@@ -232,7 +232,7 @@ export function createGripModule(deps: GripModuleDeps): GripModule {
                 options: opts,
                 toggle(): void {
                     if (mode === 'manual') {
-                        if (!grip.isMine && !grip.isHeldByOther) grip.acquire();
+                        if (!grip.isHeldByOther) grip.acquire();
                         return;
                     }
                     if (grip.isMine) grip.release();
@@ -248,6 +248,11 @@ export function createGripModule(deps: GripModuleDeps): GripModule {
                     // toggle モード: 既に自分が持っていたら release に切り替え
                     if (mode === 'toggle' && grip.isMine) {
                         grip.release();
+                        return;
+                    }
+
+                    // 他人が持っている場合は取得できない
+                    if (grip.isHeldByOther) {
                         return;
                     }
 
@@ -284,7 +289,7 @@ export function createGripModule(deps: GripModuleDeps): GripModule {
                     }
                 },
                 release(dropCoords?: { x: number; y: number }): void {
-                    const entityId = deps.getEntityId() ?? deps.getComponentInstanceId() ?? '';
+                    const entityId = deps.getComponentInstanceId() ?? '';
 
                     // press モードの mouseup listener をキャンセル
                     cancelMouseUp?.();

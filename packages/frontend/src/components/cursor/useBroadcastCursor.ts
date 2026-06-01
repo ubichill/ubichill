@@ -57,6 +57,11 @@ export function useBroadcastCursor(scrollEl: HTMLElement | null, throttleMs = 50
 
         const onMove = (e: PointerEvent) => {
             lastViewportRef.current = { x: e.clientX, y: e.clientY };
+            // EntityRenderer / HoldContext が hold 開始時の「最後に観測したマウス位置」を読むため、
+            // window 上のグローバルキャッシュも同時に更新する (両 module で重複しない単一情報源)
+            const w = window as Window & { _lastMouseX?: number; _lastMouseY?: number };
+            w._lastMouseX = e.clientX;
+            w._lastMouseY = e.clientY;
             send();
         };
 

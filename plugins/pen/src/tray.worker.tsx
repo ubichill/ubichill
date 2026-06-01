@@ -16,6 +16,8 @@ Ubi.ui.render(
     () => (
         <div style={{ position: 'absolute', inset: '0', pointerEvents: 'none' }}>
             <div
+                role="button"
+                tabIndex={0}
                 onUbiClick={async () => {
                     if (!Ubi.componentInstanceId) return;
                     const tray = await Ubi.entity.get(Ubi.componentInstanceId);

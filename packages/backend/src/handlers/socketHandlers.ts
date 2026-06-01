@@ -213,9 +213,9 @@ export function handleCursorMove(socket: TypedSocket) {
             return;
         }
 
-        // heldEntityId: 文字列なら最大64文字に制限してそのまま中継
+        // heldEntityId: 文字列なら 1〜64 文字を中継、null は中継、それ以外 (空文字 / undefined / 不正型) は無視
         const safeHeldEntityId =
-            typeof heldEntityId === 'string' && heldEntityId.length <= 64
+            typeof heldEntityId === 'string' && heldEntityId.length > 0 && heldEntityId.length <= 64
                 ? heldEntityId
                 : heldEntityId === null
                   ? null

@@ -167,7 +167,9 @@ export class UbiSDK {
                 return unsub;
             },
             sendGripCommand: (payload) => {
-                this._send({ type: 'CMD_GRIP', payload } as Parameters<typeof this._sendToHost>[0]);
+                // _send は OmitId<PluginGuestCommand> を受け取り内部で _sendToHost を呼ぶ。
+                // CmdGrip は fire-and-forget で id を持たないので OmitId<...> として直接渡せる。
+                this._send({ type: 'CMD_GRIP', payload });
             },
         });
     }

@@ -357,19 +357,18 @@ function CtrlBtn({
     );
 }
 
-let isTrackInitialized = false;
-
 VPEvents.on('vp:track:current', ({ track, index, total }) => {
-    const changed = state.local.currentTrack?.id !== track?.id;
+    const isFirstLoad = state.local.currentTrack == null;
+    const changed = !isFirstLoad && state.local.currentTrack.id !== track?.id;
+    const needLoad = state.local.currentTrack?.id !== track?.id;
+
     state.local.currentTrack = track;
     state.local.currentIndex = index;
     state.local.totalTracks = total;
 
-    // トラックが変わったら共有時計をゼロから始める
-    // (ただし、初期化時にサーバーの最新状態を受け取った直後の初回イベントではリセットしない)
-    if (!isTrackInitialized) {
-        isTrackInitialized = true;
-    } else if (changed) {
+    // トラックが変わった場合のみ共有時計をゼロから始める
+    // (ただしローカル初回ロード時はサーバーの最新状態を受け取っただけなのでリセットしない)
+    if (changed) {
         state.batch(() => {
             state.local.baselineTime = 0;
             state.local.playEpoch = Date.now();
@@ -377,8 +376,9 @@ VPEvents.on('vp:track:current', ({ track, index, total }) => {
         });
     }
     render();
-    // トラックが変わったら load (vp:media:loaded で seek + play に進む)
-    if (changed && track) {
+
+    // 初回ロードか、トラックが変わった場合は load
+    if (needLoad && track) {
         VPEvents.emit('vp:media:load', { url: buildTrackUrl(track), mode: track.mode }, screenTarget);
     }
 });
