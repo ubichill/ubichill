@@ -112,6 +112,16 @@ export type CmdReady = {
 };
 
 /**
+ * Worker の初期化が失敗したことを Host に通知します (構文エラー / 例外など)。
+ * Host はこれを受信してローディング状態を解除し、エラーを記録します。
+ * Fire & Forget (id なし)
+ */
+export type CmdInitFailed = {
+    type: 'CMD_INIT_FAILED';
+    payload: { error: string };
+};
+
+/**
  * Ubi.log(message, level?)
  * Fire & Forget: プラグイン Worker からホストへログを転送する。
  * capability 宣言不要（常に許可）。
@@ -354,6 +364,7 @@ export type CmdGrip = {
 /** Guest → Host コマンドのユニオン型 */
 export type PluginGuestCommand =
     | CmdReady
+    | CmdInitFailed
     | CmdLog
     | CmdSceneGetEntity
     | CmdSceneCreateEntity

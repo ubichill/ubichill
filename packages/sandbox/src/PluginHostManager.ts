@@ -99,6 +99,8 @@ export type HostHandlers<TPayloadMap extends Record<string, unknown> = Record<st
     onFetch?: (url: string, options?: FetchOptions) => Promise<FetchResult>;
     onMessage?: (msg: PluginWorkerMessage<TPayloadMap>) => void;
     onReady?: () => void;
+    /** Worker の初期化が失敗したとき (構文エラー等) に発火。Host はローディングを終了する */
+    onInitFailed?: (error: string) => void;
     onNetworkBroadcast?: (type: string, data: unknown) => void;
     onEventEmit?: (
         type: string,
@@ -487,6 +489,14 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
                     this.worker.postMessage(event);
                 }
                 this.eventQueue = [];
+                return;
+            }
+            // 初期化失敗: ロード状態は「完了」にして他のエンティティ表示を止めない (graceful degradation)。
+            // 失敗した worker は機能しないが、UI のローディングスピナーは止まる。
+            if (e.data.type === 'CMD_INIT_FAILED') {
+                console.error(`${this._logPrefix} 初期化失敗:`, e.data.payload.error);
+                this.handlers.onInitFailed?.(e.data.payload.error);
+                this.handlers.onReady?.(); // ロード終了として扱う (ハングを防ぐ)
                 return;
             }
             void this._handleCommand(e);

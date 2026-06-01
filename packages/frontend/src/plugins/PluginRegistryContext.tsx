@@ -126,6 +126,14 @@ async function loadWorkerPlugin(entityType: string): Promise<LoadResult> {
     try {
         const res = await fetch(workerUrl);
         if (!res.ok) return 'not-found';
+        // Vite の SPA fallback などで HTML が返ったとき (= worker file 404 で index.html が来る) は
+        // text/javascript を期待しているので拒否する。これが無いと plugin code に <!DOCTYPE html>
+        // が入って sandbox の new Function() が `Unexpected token '<'` で死ぬ。
+        const ct = res.headers.get('content-type') ?? '';
+        if (!ct.includes('javascript') && !ct.includes('text/plain') && ct !== '') {
+            console.warn(`[PluginRegistry] worker fetch returned non-JS content-type "${ct}" for ${entityType}`);
+            return 'not-found';
+        }
         workerCode = await res.text();
     } catch {
         return 'not-found';
