@@ -202,7 +202,9 @@ redis:
     repository: docker.io/bitnami/redis
     tag: 7.2.4-debian-11-r2
   auth:
-    enabled: false
+    enabled: true
+    password: ""
+    existingSecret: ""
   master:
     persistence:
       enabled: true

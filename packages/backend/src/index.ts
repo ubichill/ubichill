@@ -76,22 +76,18 @@ app.use(limiter);
 // JSONボディパーサー
 app.use(express.json());
 
-// バージョン情報エンドポイント（ビルド時のコミットハッシュを返す）
+// バージョン情報エンドポイント（ビルド時のコミットハッシュのみ返す。環境名は攻撃者に有用なため除外）
 app.get('/api/version', (_req, res) => {
     res.json({
         commitHash: process.env.COMMIT_HASH ?? 'unknown',
-        environment: appConfig.nodeEnv,
     });
 });
 
 import { toNodeHandler } from 'better-auth/node';
 
-// 認証APIのデバッグログ
+// 認証APIのデバッグログ（ボディはパスワード等を含むため出力しない）
 app.use('/api/auth', (req, _res, next) => {
     console.log(`🔐 Auth リクエスト: ${req.method} ${req.originalUrl}`);
-    if (req.method === 'POST') {
-        console.log(`   Body:`, JSON.stringify(req.body, null, 2));
-    }
     next();
 });
 

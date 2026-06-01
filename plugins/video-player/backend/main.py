@@ -1,8 +1,9 @@
 import asyncio
+import ipaddress
 import re
 import os
 from typing import Dict, Any
-from urllib.parse import urljoin, quote
+from urllib.parse import urljoin, quote, urlparse
 
 from fastapi import FastAPI, HTTPException, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -125,6 +126,7 @@ def _yt_info(video_id: str) -> dict:
 @app.get("/info/{video_id}")
 async def get_video_info(video_id: str, request: Request):
     """動画情報を取得"""
+    _validate_video_id(video_id)
     try:
         info = await asyncio.to_thread(_yt_info, video_id)
         base_url = f"{request.url.scheme}://{request.url.netloc}"
@@ -207,6 +209,7 @@ def _get_content_type_for_ts(content: bytes, original_type: str) -> str:
 @app.get("/thumbnail/{video_id}")
 async def get_thumbnail(video_id: str):
     """YouTubeサムネイルをプロキシ（CSP回避・同一オリジン配信）"""
+    _validate_video_id(video_id)
     thumbnail_url = f"https://i.ytimg.com/vi/{video_id}/mqdefault.jpg"
     try:
         async with httpx.AsyncClient(follow_redirects=True, timeout=10.0) as client:
@@ -225,9 +228,53 @@ async def get_thumbnail(video_id: str):
         return RedirectResponse(url=thumbnail_url, status_code=302)
 
 
+# SSRF対策: プロキシで許可するホストのパターン
+_ALLOWED_PROXY_HOSTS = re.compile(
+    r"^([\w-]+\.)*googlevideo\.com$"
+    r"|^([\w-]+\.)*youtube\.com$"
+    r"|^([\w-]+\.)*ytimg\.com$"
+    r"|^([\w-]+\.)*ggpht\.com$"
+)
+
+
+def _is_safe_proxy_url(url: str) -> bool:
+    """プロキシ先URLが安全かどうか検証（SSRF対策）"""
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return False
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+        # IPアドレスの直接指定を拒否（プライベートIP / メタデータエンドポイント対策）
+        try:
+            addr = ipaddress.ip_address(hostname)
+            if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved:
+                return False
+        except ValueError:
+            pass  # ホスト名の場合はパターンマッチで検証
+        if not _ALLOWED_PROXY_HOSTS.match(hostname):
+            return False
+        return True
+    except Exception:
+        return False
+
+
+# video_id バリデーション用正規表現（YouTubeのID形式: 英数字・ハイフン・アンダースコア 11文字）
+_VIDEO_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{6,20}$")
+
+
+def _validate_video_id(video_id: str) -> None:
+    """video_idが妥当な形式かどうか検証"""
+    if not _VIDEO_ID_PATTERN.match(video_id):
+        raise HTTPException(status_code=400, detail="Invalid video ID format")
+
+
 @app.get("/proxy")
 async def proxy_url(url: str, request: Request):
-    """任意のURLをプロキシ（HLSセグメント用）"""
+    """許可されたホストのURLのみをプロキシ（HLSセグメント用・SSRF対策済み）"""
+    if not _is_safe_proxy_url(url):
+        raise HTTPException(status_code=403, detail="Proxy target URL is not allowed")
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "Accept": "*/*",
@@ -253,7 +300,6 @@ async def proxy_url(url: str, request: Request):
                     content=content,
                     media_type="application/vnd.apple.mpegurl",
                     headers={
-                        "Access-Control-Allow-Origin": "*",
                         "Cache-Control": "no-cache",
                     },
                 )
@@ -269,7 +315,6 @@ async def proxy_url(url: str, request: Request):
                     content=response.content,
                     media_type=final_type,
                     headers={
-                        "Access-Control-Allow-Origin": "*",
                         "Cache-Control": "public, max-age=3600",
                     },
                 )
@@ -303,6 +348,7 @@ def _yt_live_url(video_id: str) -> str:
 @app.get("/live/{video_id}")
 async def stream_live(video_id: str, request: Request):
     """ライブストリーム配信（HLS最適化）"""
+    _validate_video_id(video_id)
     try:
         stream_url = await asyncio.to_thread(_yt_live_url, video_id)
         return await proxy_url(stream_url, request)
@@ -355,6 +401,7 @@ async def stream_video(video_id: str, request: Request):
     ライブと同様にサーバー側でプロキシして返す。
     Range ヘッダーを転送してシーク（seek）も動作させる。
     """
+    _validate_video_id(video_id)
     try:
         stream_url = await asyncio.to_thread(_yt_video_url, video_id)
         headers = {
@@ -375,7 +422,7 @@ async def stream_video(video_id: str, request: Request):
                 yield chunk
             await client.aclose()
 
-        res_headers: dict[str, str] = {"Access-Control-Allow-Origin": "*", "Accept-Ranges": "bytes"}
+        res_headers: dict[str, str] = {"Accept-Ranges": "bytes"}
         for key in ("content-length", "content-range", "content-type"):
             if key in upstream.headers:
                 res_headers[key] = upstream.headers[key]
