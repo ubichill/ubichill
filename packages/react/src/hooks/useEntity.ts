@@ -57,6 +57,8 @@ export const useEntity = <T = Record<string, unknown>>(
     socketRef.current = socket;
     isConnectedRef.current = isConnected;
     entityIdRef.current = entityId;
+    const currentUserIdRef = useRef(currentUser?.id);
+    currentUserIdRef.current = currentUser?.id;
 
     // throttled 関数はコンポーネントのライフタイムで一度だけ生成（安定参照）
     // Refs 経由で常に最新の socket / entityId を参照するため、依存配列は空でよい
@@ -64,7 +66,7 @@ export const useEntity = <T = Record<string, unknown>>(
     const syncStreamThrottle = useMemo<ThrottledFn>(
         () =>
             throttle((data: unknown) => {
-                if (!socketRef.current || !isConnectedRef.current) return;
+                if (!socketRef.current || !isConnectedRef.current || !currentUserIdRef.current) return;
                 socketRef.current.emit('entity:ephemeral', { entityId: entityIdRef.current, data });
             }, 50),
         [],

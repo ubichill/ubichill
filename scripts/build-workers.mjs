@@ -4,8 +4,8 @@
  * plugins/ 以下の plugin.json を自動探索し、Worker コードを esbuild でバンドルします。
  *
  * plugin.json の components フィールド（Stage 1 の現代的 ECS 形式）を読み取り、Worker をバンドルします。
- * Component キーは pluginId 抜きの単純名（例: "cursor"）で宣言し、
- * Runtime / ワールド YAML からは `${pluginId}:${componentName}`（例: "avatar:cursor"）で参照します。
+ * Component キーは pluginId 抜きの単純名（例: "screen"）で宣言し、
+ * Runtime / ワールド YAML からは `${pluginId}:${componentName}`（例: "video-player:screen"）で参照します。
  *
  * 出力物 (プラグインディレクトリ名を <name>、Component キーを <key> とする):
  *   dist/plugins/<name>/v<version>/<key>/index.js
@@ -18,7 +18,7 @@
  * Worker コード内では Ubi.pluginBase でバージョン付きアセットベースパスを参照できます。
  * Ubi.pluginBase は Host が EVT_LIFECYCLE_INIT 時に設定するランタイム値です。
  * 例: `${Ubi.pluginBase}/templates/manifest.json`
- *      → https://cdn.example.com/plugins/avatar/v1.0.0/templates/manifest.json
+ *      → https://cdn.example.com/plugins/video-player/v2.1.0/templates/manifest.json
  */
 
 import * as esbuild from 'esbuild';
