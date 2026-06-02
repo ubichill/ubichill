@@ -216,6 +216,11 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
                     key={targetId}
                     ref={getVideoRef(targetId)}
                     data-media-target={targetId}
+                    // preload="auto": ロード後すぐにバッファリングを開始 (デフォルト "metadata" は
+                    // duration だけ取って待機するので、再生開始時のもたつきが大きい)。
+                    // playsInline: モバイル Safari でフルスクリーン強制を防ぐ。
+                    preload="auto"
+                    playsInline
                     style={{
                         position: 'absolute',
                         inset: 0,

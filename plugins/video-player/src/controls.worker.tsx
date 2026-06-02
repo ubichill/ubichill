@@ -50,6 +50,9 @@ const state = Ubi.state.define({
     currentTrack: null as Track | null,
     currentIndex: 0,
     totalTracks: 0,
+    // ロード中フラグ: vp:media:load 発行から vp:media:loaded 受信まで true。
+    // シークバーをシマーアニメ化し、操作をブロックする。
+    isLoading: false,
 });
 
 // ── ヘルパー ────────────────────────────────────────
@@ -156,6 +159,7 @@ state.onChange('myVolume', (v) => {
 state.onChange('loop', render);
 state.onChange('shuffle', render);
 state.onChange('duration', render);
+state.onChange('isLoading', render);
 
 // ── レンダリング ──────────────────────────────────
 function render(): void {
@@ -163,12 +167,18 @@ function render(): void {
     const ct = currentTime();
     const progress = state.local.duration > 0 ? (ct / state.local.duration) * 100 : 0;
     const isLive = track?.mode === 'live';
+    const isLoading = state.local.isLoading;
     const volume = state.local.myVolume;
     const VolumeIcon =
         volume === 0 ? VolumeMuteIcon : volume < 0.3 ? VolumeLowIcon : volume < 0.7 ? VolumeMediumIcon : VolumeHighIcon;
     const LoopIconComp = state.local.loop === 'one' ? RepeatOneIcon : RepeatIcon;
     const isPlaying = state.local.isPlaying;
     const empty = state.local.totalTracks === 0;
+    // シークバーの背景: 読み込み中は shimmer グラデを動かす、それ以外は進捗バー。
+    const seekBackground = isLoading
+        ? 'linear-gradient(90deg, rgba(255,255,255,0.05) 0%, rgba(0,122,255,0.5) 50%, rgba(255,255,255,0.05) 100%)'
+        : `linear-gradient(to right, #007aff ${progress}%, rgba(255,255,255,0.2) ${progress}%)`;
+    const seekDisabled = isLoading || state.local.duration <= 0 || isLive;
 
     Ubi.ui.render(
         () => (
@@ -191,17 +201,19 @@ function render(): void {
                     min="0"
                     max={String(state.local.duration > 0 ? state.local.duration : 100)}
                     step="0.1"
-                    value={String(ct.toFixed(1))}
-                    disabled={state.local.duration <= 0 || isLive}
+                    value={String(isLoading ? 0 : ct.toFixed(1))}
+                    disabled={seekDisabled}
                     style={{
                         width: '100%',
                         height: '4px',
                         marginBottom: '8px',
                         display: 'block',
-                        cursor: state.local.duration <= 0 || isLive ? 'default' : 'pointer',
+                        cursor: seekDisabled ? 'default' : 'pointer',
                         accentColor: '#007aff',
                         appearance: 'none',
-                        background: `linear-gradient(to right, #007aff ${progress}%, rgba(255,255,255,0.2) ${progress}%)`,
+                        background: seekBackground,
+                        backgroundSize: isLoading ? '200% 100%' : '100% 100%',
+                        animation: isLoading ? 'ubichill-vp-loading 1.5s linear infinite' : 'none',
                         borderRadius: '2px',
                         outline: 'none',
                     }}
@@ -358,9 +370,14 @@ function CtrlBtn({
 }
 
 VPEvents.on('vp:track:current', ({ track, index, total }) => {
-    const isFirstLoad = state.local.currentTrack == null;
-    const changed = !isFirstLoad && state.local.currentTrack.id !== track?.id;
-    const needLoad = state.local.currentTrack?.id !== track?.id;
+    // 一度ローカル変数に取り出して TS の narrowing を効かせる (state.local.* の再アクセスは
+    // narrowing が剥がれて null 可能性が残る)
+    const prev = state.local.currentTrack;
+    const prevId = prev?.id ?? null;
+    const nextId = track?.id ?? null;
+    const isFirstLoad = prev === null;
+    const needLoad = prevId !== nextId;
+    const changed = !isFirstLoad && needLoad;
 
     state.local.currentTrack = track;
     state.local.currentIndex = index;
@@ -375,12 +392,14 @@ VPEvents.on('vp:track:current', ({ track, index, total }) => {
             state.local.duration = 0;
         });
     }
-    render();
 
-    // 初回ロードか、トラックが変わった場合は load
+    // 初回ロードか、トラックが変わった場合は load。シークバーは isLoading=true で
+    // シマー表示にし、ユーザー操作をブロック。vp:media:loaded で false に戻る。
     if (needLoad && track) {
+        state.local.isLoading = true;
         VPEvents.emit('vp:media:load', { url: buildTrackUrl(track), mode: track.mode }, screenTarget);
     }
+    render();
 });
 
 // 自 <video> 由来の時刻通知は共有時計モデルでは無視 (進行バーは共有時計から計算)。
@@ -388,7 +407,10 @@ VPEvents.on('vp:track:current', ({ track, index, total }) => {
 VPEvents.on('vp:media:time', () => {});
 
 VPEvents.on('vp:media:loaded', ({ duration }) => {
-    if (duration > 0) state.local.duration = duration;
+    state.batch(() => {
+        if (duration > 0) state.local.duration = duration;
+        state.local.isLoading = false; // ローディング解除 → シークバーが通常表示に戻る
+    });
     // 共有時計の現在位置にローカル <video> を合わせる (再生中ならそのまま、停止中なら baselineTime)
     scheduleSyncVideo();
 });
