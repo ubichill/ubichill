@@ -209,6 +209,7 @@ export function createGripModule(deps: GripModuleDeps): GripModule {
                     deps.sendGripCommand({
                         action: 'release',
                         entityId: deps.getComponentInstanceId() ?? '',
+                        share,
                     });
                 }
                 for (const fn of listeners) fn(next as string | null, prev as string | null);
@@ -323,6 +324,7 @@ export function createGripModule(deps: GripModuleDeps): GripModule {
                     deps.sendGripCommand({
                         action: 'release',
                         entityId,
+                        share,
                         dropX: dropCoords?.x,
                         dropY: dropCoords?.y,
                     });

@@ -353,6 +353,12 @@ export type CmdGrip = {
         | {
               action: 'release';
               entityId: string;
+              /**
+               * hold 時と同じ share。Host は share='persistent' のときだけ
+               * lockedBy / data.isHeld / data.heldOffset / user.heldEntityId のクリアを永続化する。
+               * (これがないと local/presence の grip が他人の persistent hold を吹き飛ばす)
+               */
+              share: 'local' | 'presence' | 'persistent';
               /** 離した際の着地X座標（指定があればマウス座標より優先される） */
               dropX?: number;
               /** 離した際の着地Y座標（指定があればマウス座標より優先される） */

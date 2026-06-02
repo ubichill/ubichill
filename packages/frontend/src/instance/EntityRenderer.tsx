@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import { Z_INDEX } from '@/styles/layers';
 import { usePluginRegistry } from '../plugins/PluginRegistryContext';
 import { HeldEntityPositionRegistry } from './HeldEntityPositionRegistry';
+import { readHeldOffset } from './heldOffset';
 
 interface EntityRendererProps {
     entityId: string;
@@ -126,11 +127,13 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
         const baseX = entity.transform.x;
         const baseY = entity.transform.y;
 
-        // 初期位置: 既知のユーザー座標から計算
+        // 初期位置: 既知のユーザー座標 + entity.data.heldOffset (grip 固有のオフセット) から計算。
+        // CursorLayer の notify と同じ共通ヘルパ readHeldOffset で読み、リモート表示のズレを防ぐ。
         const holderUser = users.get(holderId);
         if (holderUser) {
-            const targetX = holderUser.position.x - 24;
-            const targetY = holderUser.position.y;
+            const offset = readHeldOffset(entity);
+            const targetX = holderUser.position.x + offset.x;
+            const targetY = holderUser.position.y + offset.y;
             div.style.setProperty('--held-dx', `${targetX - baseX}px`);
             div.style.setProperty('--held-dy', `${targetY - baseY}px`);
         }

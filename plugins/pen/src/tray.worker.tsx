@@ -15,9 +15,8 @@ const THICKNESS_OPTIONS = [2, 4, 8, 12];
 Ubi.ui.render(
     () => (
         <div style={{ position: 'absolute', inset: '0', pointerEvents: 'none' }}>
-            <div
-                role="button"
-                tabIndex={0}
+            <button
+                type="button"
                 onUbiClick={async () => {
                     if (!Ubi.componentInstanceId) return;
                     const tray = await Ubi.entity.get(Ubi.componentInstanceId);
@@ -33,6 +32,7 @@ Ubi.ui.render(
                 style={{
                     position: 'absolute',
                     inset: '0',
+                    padding: 0,
                     backgroundColor: 'rgba(245,245,247,0.92)',
                     borderRadius: '12px',
                     boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.06), 0 2px 8px rgba(0,0,0,0.08)',

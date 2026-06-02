@@ -64,8 +64,17 @@ const STYLE_TAG_ID = 'ubichill-cursor-style';
  * `body` に基本 cursor を指定し、button / 入力欄に override する CSS を入れる。
  * セレクタが broader な場合 (`button`) はブラウザの cascade で自然に勝つ。
  */
+/**
+ * CSS `url("...")` の中身として安全に埋め込むために `"` / `\` / 改行をエスケープする。
+ * cursorUrl は user 入力に起源を持ち得るので、生の URL を style.textContent に流すと
+ * CSS injection (例: `");}body{display:none}` 等) が可能になる。最低限のエスケープで防ぐ。
+ */
+function escapeCssUrl(url: string): string {
+    return url.replace(/["\\\n\r]/g, '\\$&');
+}
+
 export function applyCursorStyles(arrowImageUrl?: string | null): void {
-    const arrowUri = arrowImageUrl ? `url("${arrowImageUrl}")` : svgToDataUri(ARROW_SVG);
+    const arrowUri = arrowImageUrl ? `url("${escapeCssUrl(arrowImageUrl)}")` : svgToDataUri(ARROW_SVG);
     const pointerUri = svgToDataUri(POINTER_SVG);
     const textUri = svgToDataUri(TEXT_SVG);
 

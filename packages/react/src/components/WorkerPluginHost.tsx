@@ -132,19 +132,23 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
                 }),
             onGripCommand: (payload) => {
                 handleGripCommand(payload);
-                // persistent share: lockedBy をサーバー永続化
+                // 永続化は share='persistent' のときだけ。
+                // share='local'/'presence' で持っているものは他クライアントには影響しないので、
+                // ここで lockedBy / heldEntityId を server に書くと、別人が persistent で持ってる
+                // 同 entity の状態を上書きしてしまう可能性がある (= Copilot 指摘の bug)。
                 if (payload.action === 'hold' && payload.share === 'persistent') {
                     const myId = currentUserRef.current?.id ?? null;
                     patchEntityRef.current(payload.entityId, {
                         lockedBy: myId,
-                        data: { isHeld: true },
+                        // heldOffset: リモートクライアントが追従先を計算するのに使う (CursorLayer +
+                        // EntityRenderer の初期位置)。grip ごとに違うオフセットを共通ソースから読めるように。
+                        data: { isHeld: true, heldOffset: { x: payload.offsetX, y: payload.offsetY } },
                     });
-                    // user:update で heldEntityId を同期（cursor:move でも送るが初期値として）
                     updateUserRef.current({ heldEntityId: payload.entityId });
-                } else if (payload.action === 'release') {
+                } else if (payload.action === 'release' && payload.share === 'persistent') {
                     patchEntityRef.current(payload.entityId, {
                         lockedBy: null,
-                        data: { isHeld: false },
+                        data: { isHeld: false, heldOffset: null },
                     });
                     updateUserRef.current({ heldEntityId: null });
                 }

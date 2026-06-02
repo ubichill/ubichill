@@ -25,9 +25,10 @@
  *    useHold() ではなくモジュールレベルの heldEntitySyncRef / HeldEntityPositionRegistry を使う
  */
 
-import { useSocket } from '@ubichill/react';
-import { useEffect } from 'react';
+import { useSocket, useWorld } from '@ubichill/react';
+import { useEffect, useRef } from 'react';
 import { HeldEntityPositionRegistry } from '@/instance/HeldEntityPositionRegistry';
+import { readHeldOffset } from '@/instance/heldOffset';
 import { useSession } from '@/lib/auth-client';
 import { applyCursorStyles, removeCursorStyles } from './cursorImages';
 import { RemoteCursorsPortal } from './RemoteCursorsPortal';
@@ -37,10 +38,18 @@ import { useScrollWorldEl } from './useScrollWorldEl';
 export function CursorLayer() {
     const session = useSession();
     const { users, currentUser, isConnected, socket } = useSocket();
+    const { entities } = useWorld();
     const scrollEl = useScrollWorldEl();
 
     const selfCursorUrl = currentUser?.cursorUrl ?? null;
     const selfId = currentUser?.id ?? session.data?.user?.id;
+
+    // socket イベントハンドラ内から「常に最新の entities」を読むための ref。
+    // socket.on を毎フレ再 subscribe するコストを避ける。
+    const entitiesRef = useRef(entities);
+    useEffect(() => {
+        entitiesRef.current = entities;
+    });
 
     // CSS cursor を注入 (user.cursorUrl が変わったら更新)
     useEffect(() => {
@@ -66,9 +75,11 @@ export function CursorLayer() {
             heldEntityId?: string | null;
         }) => {
             if (!heldEntityId || userId === selfId) return;
-            // オフセット: デフォルトで左側に -24px
-            // EntityRenderer は world 座標を期待するためそのまま渡す
-            HeldEntityPositionRegistry.notify(heldEntityId, position.x - 24, position.y);
+            // entity.data.heldOffset を grip per-entity の offset として読む (共通ヘルパ readHeldOffset)。
+            // 未設定なら DEFAULT_HELD_OFFSET ({ x: -24, y: 0 }) にフォールバック。
+            // EntityRenderer は world 座標を期待するためそのまま渡す。
+            const offset = readHeldOffset(entitiesRef.current.get(heldEntityId));
+            HeldEntityPositionRegistry.notify(heldEntityId, position.x + offset.x, position.y + offset.y);
         };
         socket.on('cursor:moved', handler);
         return () => {
