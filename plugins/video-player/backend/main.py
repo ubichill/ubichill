@@ -260,6 +260,40 @@ def _is_safe_proxy_url(url: str) -> bool:
         return False
 
 
+async def _safe_get(
+    client: httpx.AsyncClient,
+    url: str,
+    headers: dict,
+    max_redirects: int = 5,
+    stream: bool = False,
+):
+    """各リダイレクトホップを `_is_safe_proxy_url` で検証しながら GET する。
+
+    `follow_redirects=True` をそのまま使うと「許可ホストが 302 で内部 IP を返す」
+    ような SSRF が成立し得るため、ホップごとに自前で allowlist 検証する。
+    """
+    current_url = url
+    for _ in range(max_redirects + 1):
+        if not _is_safe_proxy_url(current_url):
+            raise HTTPException(status_code=403, detail="Redirect target URL is not allowed")
+        if stream:
+            req = client.build_request("GET", current_url, headers=headers)
+            response = await client.send(req, stream=True)
+        else:
+            response = await client.get(current_url, headers=headers)
+        if response.is_redirect:
+            next_url = response.headers.get("location")
+            if not next_url:
+                return response
+            # 相対 URL は現在 URL を base に展開
+            current_url = urljoin(current_url, next_url)
+            if stream:
+                await response.aclose()
+            continue
+        return response
+    raise HTTPException(status_code=508, detail="Too many redirects")
+
+
 # video_id バリデーション用正規表現（YouTubeのID形式: 英数字・ハイフン・アンダースコア 11文字）
 _VIDEO_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{6,20}$")
 
@@ -283,8 +317,9 @@ async def proxy_url(url: str, request: Request):
     }
 
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
-            response = await client.get(url, headers=headers)
+        # follow_redirects=False で自前のホップ検証を行う (リダイレクト先 SSRF 対策)
+        async with httpx.AsyncClient(follow_redirects=False, timeout=30.0) as client:
+            response = await _safe_get(client, url, headers)
             response.raise_for_status()
 
             content_type = response.headers.get(
@@ -404,6 +439,11 @@ async def stream_video(video_id: str, request: Request):
     _validate_video_id(video_id)
     try:
         stream_url = await asyncio.to_thread(_yt_video_url, video_id)
+        # SSRF defense in depth: yt-dlp 出力も allowlist 検証する
+        # (yt-dlp が予期せぬ URL を返すケースをカバー)
+        if not _is_safe_proxy_url(stream_url):
+            raise HTTPException(status_code=403, detail="Stream URL is not allowed")
+
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Accept": "*/*",
@@ -414,13 +454,17 @@ async def stream_video(video_id: str, request: Request):
         if range_header:
             headers["Range"] = range_header
 
-        client = httpx.AsyncClient(follow_redirects=True, timeout=60.0)
-        upstream = await client.get(stream_url, headers=headers)
+        # follow_redirects=False + 自前ホップ検証 (SSRF 対策)
+        client = httpx.AsyncClient(follow_redirects=False, timeout=60.0)
+        upstream = await _safe_get(client, stream_url, headers, stream=True)
 
         async def _iter():
-            async for chunk in upstream.aiter_bytes(65536):
-                yield chunk
-            await client.aclose()
+            try:
+                async for chunk in upstream.aiter_bytes(65536):
+                    yield chunk
+            finally:
+                await upstream.aclose()
+                await client.aclose()
 
         res_headers: dict[str, str] = {"Accept-Ranges": "bytes"}
         for key in ("content-length", "content-range", "content-type"):

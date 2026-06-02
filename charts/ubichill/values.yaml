@@ -102,9 +102,11 @@ backend:
     # Database and Redis connections set by templates
 
   # Secret environment variables (rendered as Secret)
+  # 必須シークレット — values の上書き or existingSecret を必ず指定すること。
+  # 空文字 / "replace-*" のような placeholder は template 側で fail-fast する。
   secretEnv:
-    BETTER_AUTH_SECRET: "replace-in-production"
-    RESEND_API_KEY: "replace-with-resend-key"
+    BETTER_AUTH_SECRET: ""
+    RESEND_API_KEY: ""
   
   # Existing secret containing the secrets (skips secretEnv creation and injects it)
   existingSecret: ""
@@ -237,9 +239,11 @@ postgresql:
     tag: "16-debian-12"
   auth:
     enablePostgresUser: true
-    postgresPassword: "password"
+    # password / postgresPassword は必ず deploy 時に上書きする (or existingSecret を使う)。
+    # 既定で空にしておき、template 側で fail-fast。"password" のような placeholder は禁止。
+    postgresPassword: ""
     username: "ubichill"
-    password: "password"
+    password: ""
     existingSecret: ""
     database: "ubichill"
   primary:
