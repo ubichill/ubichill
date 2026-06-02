@@ -46,9 +46,10 @@ export function usePluginBroadcast(
 
     return {
         onNetworkBroadcast: (type: string, data: unknown): void => {
+            if (!currentUserIdRef.current) return;
             socketRef.current?.emit('entity:ephemeral', {
                 entityId,
-                data: { type, userId: currentUserIdRef.current ?? '', data },
+                data: { type, userId: currentUserIdRef.current, data },
             });
         },
     };

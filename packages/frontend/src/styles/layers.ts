@@ -7,6 +7,8 @@
 export const Z_INDEX = {
     /** InstanceRenderer ラッパー（Plugin レイヤー全体を包むコンテナ） */
     INSTANCE_FRAME: 1000,
+    /** 持っているエンティティ（カーソルに追従するレイヤー） */
+    HELD_ENTITY: 9995,
     /** HUD 外枠（ツールバー等の常時表示コンテナ） */
     HUD: 10000,
     /** HUD 内パネル */

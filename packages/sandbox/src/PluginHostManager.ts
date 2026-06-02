@@ -81,6 +81,7 @@ const CMD_TO_HANDLER = {
     MEDIA_SET_VOLUME: 'onMediaSetVolume',
     MEDIA_DESTROY: 'onMediaDestroy',
     MEDIA_SET_VISIBLE: 'onMediaSetVisible',
+    CMD_GRIP: 'onGripCommand',
 } as const satisfies Partial<Record<string, keyof HostHandlers>>;
 
 // ============================================================
@@ -98,6 +99,8 @@ export type HostHandlers<TPayloadMap extends Record<string, unknown> = Record<st
     onFetch?: (url: string, options?: FetchOptions) => Promise<FetchResult>;
     onMessage?: (msg: PluginWorkerMessage<TPayloadMap>) => void;
     onReady?: () => void;
+    /** Worker の初期化が失敗したとき (構文エラー等) に発火。Host はローディングを終了する */
+    onInitFailed?: (error: string) => void;
     onNetworkBroadcast?: (type: string, data: unknown) => void;
     onEventEmit?: (
         type: string,
@@ -119,6 +122,8 @@ export type HostHandlers<TPayloadMap extends Record<string, unknown> = Record<st
         activeStroke: import('@ubichill/shared').CanvasStrokeData | null,
         cursors: import('@ubichill/shared').CanvasCursorData[],
     ) => void;
+    /** Worker が Ubi.grip の hold/release/setHover を呼んだときに発火する */
+    onGripCommand?: (payload: import('@ubichill/shared').CmdGrip['payload']) => void;
     /** Worker が Ubi.canvas.commitStroke() を呼んだときに発火する */
     onCanvasCommitStroke?: (targetId: string, stroke: import('@ubichill/shared').CanvasStrokeData) => void;
     /** Worker が Ubi.media.load() を呼んだときに発火する */
@@ -451,7 +456,12 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
         });
 
         if (options.capabilities) {
-            this.allowedCommands = new Set(['CMD_LOG']);
+            // CMD_LOG / CMD_READY / CMD_GRIP は capability 宣言なしで常に許可する。
+            // - CMD_LOG: デバッグログ（制限すると開発体験が著しく悪化）
+            // - CMD_READY: Worker の初期化通知（必須）
+            // - CMD_GRIP: SDK コアの「掴む」機能。capability 不要（pen.worker 等が普通に使う）
+            this.allowedCommands = new Set(['CMD_LOG', 'CMD_READY', 'CMD_GRIP']);
+
             for (const cap of options.capabilities) {
                 for (const cmd of CAPABILITY_COMMANDS[cap] ?? []) {
                     this.allowedCommands.add(cmd);
@@ -479,6 +489,14 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
                     this.worker.postMessage(event);
                 }
                 this.eventQueue = [];
+                return;
+            }
+            // 初期化失敗: ロード状態は「完了」にして他のエンティティ表示を止めない (graceful degradation)。
+            // 失敗した worker は機能しないが、UI のローディングスピナーは止まる。
+            if (e.data.type === 'CMD_INIT_FAILED') {
+                console.error(`${this._logPrefix} 初期化失敗:`, e.data.payload.error);
+                this.handlers.onInitFailed?.(e.data.payload.error);
+                this.handlers.onReady?.(); // ロード終了として扱う (ハングを防ぐ)
                 return;
             }
             void this._handleCommand(e);
@@ -701,6 +719,9 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
                     break;
                 case 'MEDIA_SET_VISIBLE':
                     this.handlers.onMediaSetVisible?.(command.payload.targetId, command.payload.visible);
+                    break;
+                case 'CMD_GRIP':
+                    this.handlers.onGripCommand?.(command.payload);
                     break;
                 case 'CMD_LOG': {
                     const { level, message } = command.payload;

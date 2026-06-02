@@ -43,7 +43,7 @@ export const WorldContext = createContext<WorldContextType | null>(null);
 // ============================================
 
 export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const { socket, isConnected } = useSocket();
+    const { socket, isConnected, currentUser } = useSocket();
     const [entities, setEntities] = useState<Map<string, ComponentInstance>>(new Map());
     const [ephemeralData, setEphemeralData] = useState<Map<string, unknown>>(new Map());
     const [environment, setEnvironment] = useState<WorldEnvironmentData>(DEFAULTS.WORLD_ENVIRONMENT);
@@ -143,7 +143,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             transform: ComponentInstance['transform'],
             data: T,
         ): Promise<ComponentInstance<T> | null> => {
-            if (!socket || !isConnected) return null;
+            if (!socket || !isConnected || !currentUser) return null;
 
             const payload = {
                 type,
@@ -172,12 +172,12 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 });
             });
         },
-        [socket, isConnected],
+        [socket, isConnected, currentUser],
     );
 
     const patchEntity = useCallback(
         (entityId: string, patch: EntityPatchPayload['patch']) => {
-            if (!socket || !isConnected) return;
+            if (!socket || !isConnected || !currentUser) return;
 
             setEntities((prev) => {
                 const entity = prev.get(entityId);
@@ -198,12 +198,12 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
             socket.emit('entity:patch', { entityId, patch });
         },
-        [socket, isConnected],
+        [socket, isConnected, currentUser],
     );
 
     const deleteEntity = useCallback(
         (entityId: string) => {
-            if (!socket || !isConnected) return;
+            if (!socket || !isConnected || !currentUser) return;
 
             setEntities((prev) => {
                 const newMap = new Map(prev);
@@ -213,7 +213,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
             socket.emit('entity:delete', entityId);
         },
-        [socket, isConnected],
+        [socket, isConnected, currentUser],
     );
 
     const resetWorld = useCallback(() => {

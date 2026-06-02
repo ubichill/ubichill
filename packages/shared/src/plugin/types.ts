@@ -1,5 +1,5 @@
 // These types are imported from their source files to avoid circular dependency with index.ts
-import type { AppAvatarDef, ComponentInstance, CursorPosition, EntityPatchPayload, User } from '../index';
+import type { ComponentInstance, CursorPosition, EntityPatchPayload, User } from '../index';
 import type { VNode } from './vnode';
 
 /**
@@ -112,6 +112,16 @@ export type CmdReady = {
 };
 
 /**
+ * Worker の初期化が失敗したことを Host に通知します (構文エラー / 例外など)。
+ * Host はこれを受信してローディング状態を解除し、エラーを記録します。
+ * Fire & Forget (id なし)
+ */
+export type CmdInitFailed = {
+    type: 'CMD_INIT_FAILED';
+    payload: { error: string };
+};
+
+/**
  * Ubi.log(message, level?)
  * Fire & Forget: プラグイン Worker からホストへログを転送する。
  * capability 宣言不要（常に許可）。
@@ -177,15 +187,6 @@ export type CmdUiShowToast = {
 export type CmdUiRender = {
     type: 'UI_RENDER';
     payload: { targetId: string; vnode: VNode | null };
-};
-
-/**
- * Ubi.avatar.set(appDef)
- * Fire & Forget: 自ユーザーのアバター（カーソル）設定を更新します。
- */
-export type CmdAvatarSet = {
-    type: 'AVATAR_SET';
-    payload: { appDef: AppAvatarDef };
 };
 
 /** Ubi.network.fetch() / onFetch ハンドラー共通のリクエストオプション */
@@ -321,9 +322,55 @@ export type CmdMediaDestroy = { type: 'MEDIA_DESTROY'; payload: { targetId: stri
 /** Ubi.media.setVisible(visible, targetId?) — video 要素の表示/非表示 */
 export type CmdMediaSetVisible = { type: 'MEDIA_SET_VISIBLE'; payload: { targetId: string; visible: boolean } };
 
+/**
+ * Ubi.grip.exclusive() が hold/release/setHover の変化をホストに通知する。
+ * Fire & Forget: capability 不要。
+ *
+ * action:
+ *  'hold'     — エンティティを持った。offset/slot でカーソル追従を開始する。
+ *  'release'  — エンティティを離した。カーソル追従を終了する。
+ *  'setHover' — ホバー時・保持時の CSS cursor style を設定する。
+ */
+export type CmdGrip = {
+    type: 'CMD_GRIP';
+    payload:
+        | {
+              action: 'hold';
+              /** 保持する ComponentInstance ID */
+              entityId: string;
+              /** カーソル位置からの X オフセット (px)。負値は左寄り */
+              offsetX: number;
+              /** カーソル位置からの Y オフセット (px) */
+              offsetY: number;
+              /**
+               * スロット名。現在は 'default' のみ実装。
+               * 将来: 'right-hand' / 'left-hand' でアバターアタッチポイント対応。
+               */
+              slot: string;
+              /** 同期範囲。share: 'local' ならホストは lockedBy パッチを送らない */
+              share: 'local' | 'presence' | 'persistent';
+          }
+        | {
+              action: 'release';
+              entityId: string;
+              /**
+               * hold 時と同じ share。Host は share='persistent' のときだけ
+               * lockedBy / data.isHeld / data.heldOffset / user.heldEntityId のクリアを永続化する。
+               * (これがないと local/presence の grip が他人の persistent hold を吹き飛ばす)
+               */
+              share: 'local' | 'presence' | 'persistent';
+              /** 離した際の着地X座標（指定があればマウス座標より優先される） */
+              dropX?: number;
+              /** 離した際の着地Y座標（指定があればマウス座標より優先される） */
+              dropY?: number;
+          }
+        | { action: 'setHover'; cursor: string; heldCursor: string };
+};
+
 /** Guest → Host コマンドのユニオン型 */
 export type PluginGuestCommand =
     | CmdReady
+    | CmdInitFailed
     | CmdLog
     | CmdSceneGetEntity
     | CmdSceneCreateEntity
@@ -339,7 +386,6 @@ export type PluginGuestCommand =
     | CmdEventEmit
     | CmdUiShowToast
     | CmdUiRender
-    | CmdAvatarSet
     | CmdNetFetch
     | CmdMediaLoad
     | CmdMediaPlay
@@ -347,7 +393,8 @@ export type PluginGuestCommand =
     | CmdMediaSeek
     | CmdMediaSetVolume
     | CmdMediaDestroy
-    | CmdMediaSetVisible;
+    | CmdMediaSetVisible
+    | CmdGrip;
 
 /** 後方互換エイリアス */
 export type PluginCommand = PluginGuestCommand;

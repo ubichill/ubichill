@@ -76,6 +76,8 @@ export type PluginWorkerHandlers<TPayloadMap extends Record<string, unknown> = R
     onUpdateEntity?: (id: string, patch: EntityPatchPayload) => Promise<void>;
     /** Worker が Ubi.world.destroyEntity() を呼んだときに発火する */
     onDestroyEntity?: (id: string) => Promise<void>;
+    /** Worker が Ubi.grip.exclusive() の hold/release/setHover を呼んだときに発火する */
+    onGripCommand?: (payload: import('@ubichill/shared').CmdGrip['payload']) => void;
     /** Worker が Ubi.network.fetch() を呼んだときに発火する */
     onFetch?: (url: string, options?: FetchOptions) => Promise<FetchResult>;
     /** Tick 送信直前に発火するパフォーマンスフック（setMetricHandler 登録時のみ） */
@@ -154,6 +156,7 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
                 onMediaSetVolume: (targetId, volume) => handlersRef.current.onMediaSetVolume?.(targetId, volume),
                 onMediaDestroy: (targetId) => handlersRef.current.onMediaDestroy?.(targetId),
                 onMediaSetVisible: (targetId, visible) => handlersRef.current.onMediaSetVisible?.(targetId, visible),
+                onGripCommand: (payload) => handlersRef.current.onGripCommand?.(payload),
                 onGetEntity: (id) => handlersRef.current.onGetEntity?.(id),
                 onQueryEntities: (entityType) => handlersRef.current.onQueryEntities?.(entityType) ?? [],
                 onNetworkBroadcast: (type, data) => handlersRef.current.onNetworkBroadcast?.(type, data),

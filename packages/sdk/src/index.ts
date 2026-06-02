@@ -12,11 +12,9 @@
 export * from '@ubichill/engine';
 // プロトコル型（@ubichill/shared より選択的に re-export）
 export type {
-    AppAvatarDef,
     AvailableComponent,
     CanvasCursorData,
     CanvasStrokeData,
-    CmdAvatarSet,
     CmdCanvasCommitStroke,
     CmdCanvasFrame,
     CmdLog,
@@ -35,7 +33,6 @@ export type {
     ComponentInstance,
     CursorMovedCallback,
     CursorPosition,
-    CursorState,
     CustomEventCallback,
     EntityComponent,
     EntityEphemeralPayload,
@@ -78,5 +75,7 @@ export type {
 // UbiSDK クラス + 型
 export { UbiSDK } from './ubi';
 export type { EmitOptions, EmitScope, EventRegistry } from './ubi/event';
-export type { Grip } from './ubi/grip';
+export type { Grip, GripOptions } from './ubi/grip';
 export type { EntityState, EntityStateFor, OmitId, UiRenderCostStat } from './ubi/types';
+// 宣言的 grip ラッパーは別 export path: '@ubichill/sdk/gripable'
+// (sandbox / 他の sub-package が JSX なしで型解決できるよう main entry から分離)

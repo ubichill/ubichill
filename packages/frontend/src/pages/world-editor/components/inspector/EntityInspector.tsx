@@ -749,13 +749,12 @@ function DeclaredInput({
     }
     if (spec.type === 'number') {
         return (
-            <input
-                type="number"
+            <NumberInput
                 value={typeof value === 'number' ? value : 0}
                 min={spec.min}
                 max={spec.max}
                 step={spec.step ?? 1}
-                onChange={(e) => onChange(Number.parseFloat(e.target.value) || 0)}
+                onChange={onChange}
                 className={inputStyle}
             />
         );
@@ -845,12 +844,7 @@ function CustomFieldRow({
                     <span className={css({ color: 'textMuted' })}>{value ? 'true' : 'false'}</span>
                 </label>
             ) : type === 'number' ? (
-                <input
-                    type="number"
-                    value={Number(value)}
-                    onChange={(e) => onChange(Number.parseFloat(e.target.value) || 0)}
-                    className={inputStyle}
-                />
+                <NumberInput value={Number(value)} onChange={onChange} className={inputStyle} />
             ) : type === 'string' ? (
                 <input
                     type="text"
@@ -1012,6 +1006,69 @@ function DataJsonField({ text, error, onChange }: { text: string; error: string;
 // 共通: NumField / Section / MiniTab / Chevron
 // ============================================
 
+/**
+ * 数値入力の共通基盤。
+ *  - **NaN を 0 に丸めない** (途中 "-" / "." / 空 で値が 0 にされない)
+ *  - 入力中はローカルテキスト state を保持し、有効な数値のときだけ親へ commit
+ *  - 親 (= 外部) からの value 変化はテキストへ同期 (例: ステージで drag したとき)
+ *  - blur 時は最後に commit した値へテキストを揃える (空のまま離れない)
+ */
+function NumberInput({
+    value,
+    onChange,
+    min,
+    max,
+    step,
+    className,
+}: {
+    value: number;
+    onChange: (v: number) => void;
+    min?: number;
+    max?: number;
+    step?: number;
+    className?: string;
+}) {
+    const [text, setText] = useState(String(value));
+    const lastEmittedRef = useRef(value);
+    useEffect(() => {
+        if (value !== lastEmittedRef.current) {
+            setText(String(value));
+            lastEmittedRef.current = value;
+        }
+    }, [value]);
+    const commit = (raw: string) => {
+        const n = Number.parseFloat(raw);
+        if (!Number.isFinite(n)) return; // 空 / "-" / "." 等は親に伝えない (タイプ継続を許す)
+        let v = n;
+        if (min !== undefined) v = Math.max(v, min);
+        if (max !== undefined) v = Math.min(v, max);
+        if (v !== lastEmittedRef.current) {
+            lastEmittedRef.current = v;
+            onChange(v);
+        }
+    };
+    return (
+        <input
+            type="number"
+            value={text}
+            min={min}
+            max={max}
+            step={step}
+            onChange={(e) => {
+                setText(e.target.value);
+                commit(e.target.value);
+            }}
+            onBlur={() => {
+                // 空のまま離れたら最後に commit した値を表示
+                if (text === '' || !Number.isFinite(Number.parseFloat(text))) {
+                    setText(String(lastEmittedRef.current));
+                }
+            }}
+            className={className}
+        />
+    );
+}
+
 function NumField({
     label,
     value,
@@ -1024,18 +1081,10 @@ function NumField({
     onChange: (v: number) => void;
 }) {
     return (
+        // biome-ignore lint/a11y/noLabelWithoutControl: NumberInput が input を内包している (label/input 関係は成立)
         <label className={css({ display: 'flex', flexDirection: 'column', gap: '1' })}>
             <span className={css({ fontSize: '11px', color: 'textMuted' })}>{label}</span>
-            <input
-                type="number"
-                value={value}
-                max={max}
-                onChange={(e) => {
-                    const parsed = Number.parseFloat(e.target.value) || 0;
-                    onChange(max !== undefined ? Math.min(parsed, max) : parsed);
-                }}
-                className={inputStyle}
-            />
+            <NumberInput value={value} max={max} onChange={onChange} className={inputStyle} />
         </label>
     );
 }

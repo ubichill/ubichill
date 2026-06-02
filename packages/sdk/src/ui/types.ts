@@ -5,7 +5,7 @@
  * React / Socket.IO には依存しない（注入されたコンテキストで受け取る）。
  */
 
-import type { ComponentInstance, CursorState, User } from '@ubichill/shared';
+import type { ComponentInstance, User } from '@ubichill/shared';
 
 // ============================================
 // Socket 抽象 (socket.io-client を直接依存しない)
@@ -82,7 +82,7 @@ export interface UbiInstanceContext {
     /** 自ユーザー情報を更新する */
     updateUser: (patch: Partial<User>) => void;
     /** カーソル位置を送信する */
-    updatePosition: (pos: { x: number; y: number }, cursorState: CursorState) => void;
+    updatePosition: (pos: { x: number; y: number }) => void;
 
     /** ワールド内の全エンティティ */
     entities: ReadonlyMap<string, ComponentInstance>;

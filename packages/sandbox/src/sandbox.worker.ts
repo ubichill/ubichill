@@ -123,5 +123,9 @@ self.addEventListener('message', (e: MessageEvent<PluginHostEvent>) => {
         console.log(`[Sandbox:${pluginId}] 初期化完了`);
     } catch (error) {
         console.error(`[Sandbox:${pluginId}] 初期化失敗:`, error);
+        // Host にも失敗を通知 → markReady (ロード完了扱い) でローディング表示が止まらないように。
+        // 失敗した plugin は機能しないが、他のエンティティの描画は阻害しない方針 (graceful degradation)。
+        const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+        securePostMessage({ type: 'CMD_INIT_FAILED', payload: { error: message } });
     }
 });

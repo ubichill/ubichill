@@ -8,7 +8,7 @@
  */
 
 import { PluginHostManager } from '@ubichill/sandbox';
-import type { ComponentInstance, CursorState } from '@ubichill/shared';
+import type { ComponentInstance } from '@ubichill/shared';
 import type React from 'react';
 import { useEffect, useMemo, useRef } from 'react';
 import { usePluginBroadcast } from '../hooks/usePluginBroadcast';
@@ -30,6 +30,7 @@ import {
 import type { WorkerPluginDefinition } from '../types';
 import { usePluginWorker } from '../usePluginWorker';
 import { useWorkerLoading } from '../WorkerLoadingContext';
+import { useHold } from './HoldContext';
 import { PluginUIMount } from './PluginUIMount';
 
 export interface WorkerPluginHostProps {
@@ -40,7 +41,8 @@ export interface WorkerPluginHostProps {
 
 export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, entity, definition }) => {
     const { users, currentUser, updatePosition, updateUser } = useSocket();
-    const { entities } = useWorld();
+    const { entities, patchEntity } = useWorld();
+    const { handleGripCommand } = useHold();
     const hostDivRef = useRef<HTMLDivElement>(null);
     const workerLoading = useWorkerLoading();
 
@@ -57,9 +59,13 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
 
     const updatePositionRef = useRef(updatePosition);
     const updateUserRef = useRef(updateUser);
+    const patchEntityRef = useRef(patchEntity);
+    const currentUserRef = useRef(currentUser);
     useEffect(() => {
         updatePositionRef.current = updatePosition;
         updateUserRef.current = updateUser;
+        patchEntityRef.current = patchEntity;
+        currentUserRef.current = currentUser;
     });
 
     // ── onNetworkBroadcast は usePluginWorker より後に確定するため ref で橋渡し ──
@@ -124,11 +130,34 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
                     scope,
                     targetType,
                 }),
+            onGripCommand: (payload) => {
+                handleGripCommand(payload);
+                // 永続化は share='persistent' のときだけ。
+                // share='local'/'presence' で持っているものは他クライアントには影響しないので、
+                // ここで lockedBy / heldEntityId を server に書くと、別人が persistent で持ってる
+                // 同 entity の状態を上書きしてしまう可能性がある (= Copilot 指摘の bug)。
+                if (payload.action === 'hold' && payload.share === 'persistent') {
+                    const myId = currentUserRef.current?.id ?? null;
+                    patchEntityRef.current(payload.entityId, {
+                        lockedBy: myId,
+                        // heldOffset: リモートクライアントが追従先を計算するのに使う (CursorLayer +
+                        // EntityRenderer の初期位置)。grip ごとに違うオフセットを共通ソースから読めるように。
+                        data: { isHeld: true, heldOffset: { x: payload.offsetX, y: payload.offsetY } },
+                    });
+                    updateUserRef.current({ heldEntityId: payload.entityId });
+                } else if (payload.action === 'release' && payload.share === 'persistent') {
+                    patchEntityRef.current(payload.entityId, {
+                        lockedBy: null,
+                        data: { isHeld: false, heldOffset: null },
+                    });
+                    updateUserRef.current({ heldEntityId: null });
+                }
+            },
             onMessage: (msg) => {
                 const m = msg as { type: string; payload: unknown };
                 if (m.type === 'position:update') {
-                    const { x, y, cursorState } = m.payload as { x: number; y: number; cursorState?: CursorState };
-                    updatePositionRef.current({ x, y }, cursorState);
+                    const { x, y } = m.payload as { x: number; y: number };
+                    updatePositionRef.current({ x, y });
                 } else if (m.type === 'user:update') {
                     updateUserRef.current(m.payload as Parameters<typeof updateUserRef.current>[0]);
                 } else {
@@ -187,6 +216,11 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
                     key={targetId}
                     ref={getVideoRef(targetId)}
                     data-media-target={targetId}
+                    // preload="auto": ロード後すぐにバッファリングを開始 (デフォルト "metadata" は
+                    // duration だけ取って待機するので、再生開始時のもたつきが大きい)。
+                    // playsInline: モバイル Safari でフルスクリーン強制を防ぐ。
+                    preload="auto"
+                    playsInline
                     style={{
                         position: 'absolute',
                         inset: 0,

@@ -348,12 +348,19 @@ def _yt_video_url(video_id: str) -> str:
 
 @app.get("/video/{video_id}")
 async def stream_video(video_id: str, request: Request):
-    """通常動画配信（ストリーミングプロキシ方式）
+    """通常動画配信（リアル ストリーミング プロキシ方式）
 
     YouTube CDN の URL はサーバー側 IP で署名されるため、
     ブラウザへ直接リダイレクトすると IP 不一致で拒否される。
     ライブと同様にサーバー側でプロキシして返す。
     Range ヘッダーを転送してシーク（seek）も動作させる。
+
+    実装ポイント:
+    - `client.send(stream=True)` でレスポンス body を **メモリにバッファせず** に
+      逐次転送する (旧実装は `client.get()` でフル body を RAM に読み込んでいた
+      = 巨大動画でメモリ爆発 + 最初のバイトが返るまで遅延が出る)
+    - チャンクサイズを 256KB に拡大して syscall / await の往復回数を削減
+    - timeout は読み取りに長めの値 (= 接続自体は短く、stream 中は長く)
     """
     try:
         stream_url = await asyncio.to_thread(_yt_video_url, video_id)
@@ -367,13 +374,20 @@ async def stream_video(video_id: str, request: Request):
         if range_header:
             headers["Range"] = range_header
 
-        client = httpx.AsyncClient(follow_redirects=True, timeout=60.0)
-        upstream = await client.get(stream_url, headers=headers)
+        timeout = httpx.Timeout(connect=10.0, read=60.0, write=10.0, pool=10.0)
+        client = httpx.AsyncClient(follow_redirects=True, timeout=timeout, http2=False)
+        req = client.build_request("GET", stream_url, headers=headers)
+        # stream=True: body は読み込まずヘッダーだけ取得 → 後で aiter_bytes で逐次転送
+        upstream = await client.send(req, stream=True)
 
         async def _iter():
-            async for chunk in upstream.aiter_bytes(65536):
-                yield chunk
-            await client.aclose()
+            try:
+                # 256KB ずつ転送: 64KB から 4 倍化、yield 回数を減らして throughput を上げる
+                async for chunk in upstream.aiter_bytes(262144):
+                    yield chunk
+            finally:
+                await upstream.aclose()
+                await client.aclose()
 
         res_headers: dict[str, str] = {"Access-Control-Allow-Origin": "*", "Accept-Ranges": "bytes"}
         for key in ("content-length", "content-range", "content-type"):
