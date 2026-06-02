@@ -256,7 +256,7 @@ export const auth = betterAuth({
     },
     rateLimit: {
         window: 60,
-        max: 5000,
+        max: 100,
     },
     user: {
         additionalFields: {
