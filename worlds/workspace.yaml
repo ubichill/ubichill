@@ -29,10 +29,6 @@ spec:
       source:
         type: repository
         path: "plugins/video-player"
-    - name: avatar
-      source:
-        type: repository
-        path: "plugins/avatar"
 
   initialEntities:
     # ── ペンキャンバス ───────────────────────────────────────────
@@ -67,29 +63,6 @@ spec:
             shuffle: false
             fetchDomains: []
 
-    # ── アバター ─────────────────────────────────────────────
-    - id: avatar-cursor
-      transform:
-        x: 0
-        y: 0
-        z: 10100
-        scale: 1
-        rotation: 0
-      components:
-        - type: "avatar:cursor"
-          data: {}
-
-    - id: avatar-settings
-      transform:
-        x: 20
-        y: 100
-        z: 9998
-        scale: 1
-        rotation: 0
-      components:
-        - type: "avatar:settings"
-          data: {}
-
     # ── ペントレイ ──────────────────────────────────────────────
     - id: pen-tray
       transform:
@@ -107,7 +80,7 @@ spec:
       transform:
         x: 0
         y: 0
-        z: 1
+        z: 1001
         scale: 1
         rotation: 0
       components:
@@ -120,7 +93,7 @@ spec:
       transform:
         x: 0
         y: 0
-        z: 2
+        z: 1002
         scale: 1
         rotation: 0
       components:
@@ -133,7 +106,7 @@ spec:
       transform:
         x: 0
         y: 0
-        z: 3
+        z: 1003
         scale: 1
         rotation: 0
       components:
@@ -146,7 +119,7 @@ spec:
       transform:
         x: 0
         y: 0
-        z: 4
+        z: 1004
         scale: 1
         rotation: 0
       components:
@@ -159,7 +132,7 @@ spec:
       transform:
         x: 0
         y: 0
-        z: 5
+        z: 1005
         scale: 1
         rotation: 0
       components:

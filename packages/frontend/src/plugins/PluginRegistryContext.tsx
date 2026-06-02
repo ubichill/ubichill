@@ -2,9 +2,6 @@ import type { WidgetDefinition, WorkerPluginDefinition } from '@ubichill/react';
 import { isWorkerPlugin } from '@ubichill/react';
 import type React from 'react';
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { attachAvatarCursorHostBridge } from './avatarCursorHostBridge';
-import { attachAvatarHostBridge } from './avatarHostBridge';
-import { PLUGIN_LOADERS } from './registry';
 
 // ============================================
 // plugin.json 自動ローダー
@@ -97,20 +94,30 @@ function fetchVersionedManifest(pluginName: string, version: string): Promise<Ve
 }
 
 /**
+ * loadWorkerPlugin の戻り値。
+ *  - 'data-only': manifest に宣言されているが workerUrl が無い純データ Component。
+ *    spawn して持ち回るだけのエンティティ (例: pen:stroke)。warning は出さない。
+ *  - 'not-found': manifest 取得失敗 / manifest に宣言されていない。古い YAML が
+ *    廃止プラグインを参照している可能性。warning を出して skip。
+ */
+type LoadResult = WorkerPluginDefinition | 'data-only' | 'not-found';
+
+/**
  * Component 型 (`pluginName:componentName`) から WorkerPluginDefinition を構築する。
  * 該当するプラグインがない or workerUrl が無いデータ専用 Component の場合は null。
  */
-async function loadWorkerPlugin(entityType: string): Promise<WorkerPluginDefinition | null> {
+async function loadWorkerPlugin(entityType: string): Promise<LoadResult> {
     const colonIdx = entityType.indexOf(':');
-    if (colonIdx === -1) return null; // entityType は必ずコロン形式
+    if (colonIdx === -1) return 'not-found'; // entityType は必ずコロン形式
 
     const pluginName = entityType.slice(0, colonIdx);
     const index = await fetchPluginIndex(pluginName);
-    if (!index?.version) return null;
+    if (!index?.version) return 'not-found';
 
     const manifest = await fetchVersionedManifest(pluginName, index.version);
     const entry = manifest?.components?.[entityType];
-    if (!entry?.workerUrl) return null;
+    if (!entry) return 'not-found';
+    if (!entry.workerUrl) return 'data-only';
 
     const versionedBase = `${PLUGIN_BASE_URL}/${pluginName}/v${index.version}`;
     const workerUrl = `${versionedBase}/${entry.workerUrl.replace(/^\.\//, '')}`;
@@ -118,10 +125,18 @@ async function loadWorkerPlugin(entityType: string): Promise<WorkerPluginDefinit
     let workerCode: string;
     try {
         const res = await fetch(workerUrl);
-        if (!res.ok) return null;
+        if (!res.ok) return 'not-found';
+        // Vite の SPA fallback などで HTML が返ったとき (= worker file 404 で index.html が来る) は
+        // text/javascript を期待しているので拒否する。これが無いと plugin code に <!DOCTYPE html>
+        // が入って sandbox の new Function() が `Unexpected token '<'` で死ぬ。
+        const ct = res.headers.get('content-type') ?? '';
+        if (!ct.includes('javascript') && !ct.includes('text/plain') && ct !== '') {
+            console.warn(`[PluginRegistry] worker fetch returned non-JS content-type "${ct}" for ${entityType}`);
+            return 'not-found';
+        }
         workerCode = await res.text();
     } catch {
-        return null;
+        return 'not-found';
     }
 
     const def: WorkerPluginDefinition = {
@@ -138,7 +153,7 @@ async function loadWorkerPlugin(entityType: string): Promise<WorkerPluginDefinit
         fetchDomains: entry.fetchDomains,
         pluginBase: versionedBase,
     };
-    return attachAvatarHostBridge(attachAvatarCursorHostBridge(def));
+    return def;
 }
 
 // ============================================
@@ -228,23 +243,23 @@ export const PluginRegistryProvider: React.FC<{
             setLoadCounts((c) => ({ ...c, total: c.total + 1 }));
 
             loadWorkerPlugin(entityType)
-                .then((def) => {
-                    if (def) {
-                        addPlugin(def);
+                .then((result) => {
+                    if (typeof result === 'object') {
+                        addPlugin(result);
                         return;
                     }
-                    // フォールバック: 静的 PLUGIN_LOADERS（CE ベースの非 Worker プラグイン）
-                    const loader = PLUGIN_LOADERS[entityType];
-                    if (!loader) {
+                    if (result === 'data-only') {
+                        // manifest に宣言されているがworkerなし。spawn して持ち回るだけのエンティティ
+                        // (例: pen:stroke)。Worker を起動しないし、警告も出さない。
                         loadingRef.current.delete(entityType);
                         return;
                     }
-                    return loader()
-                        .then(addPlugin)
-                        .catch((err: unknown) => {
-                            console.error(`[PluginRegistry] Failed to load plugin: ${entityType}`, err);
-                            loadingRef.current.delete(entityType);
-                        });
+                    // 'not-found': manifest が無い or 宣言されていない。古い YAML が削除済み
+                    // プラグインを参照している可能性。警告だけ出して silently 無視する。
+                    console.warn(
+                        `[PluginRegistry] component "${entityType}" のプラグインが見つかりませんでした。スキップします。`,
+                    );
+                    loadingRef.current.delete(entityType);
                 })
                 .catch((err) => {
                     console.error(`[PluginRegistry] Failed to load plugin: ${entityType}`, err);

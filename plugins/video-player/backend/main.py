@@ -429,12 +429,19 @@ def _yt_video_url(video_id: str) -> str:
 
 @app.get("/video/{video_id}")
 async def stream_video(video_id: str, request: Request):
-    """通常動画配信（ストリーミングプロキシ方式）
+    """通常動画配信（リアル ストリーミング プロキシ方式）
 
     YouTube CDN の URL はサーバー側 IP で署名されるため、
     ブラウザへ直接リダイレクトすると IP 不一致で拒否される。
     ライブと同様にサーバー側でプロキシして返す。
     Range ヘッダーを転送してシーク（seek）も動作させる。
+
+    実装ポイント:
+    - `client.send(stream=True)` でレスポンス body を **メモリにバッファせず** に
+      逐次転送する (旧実装は `client.get()` でフル body を RAM に読み込んでいた
+      = 巨大動画でメモリ爆発 + 最初のバイトが返るまで遅延が出る)
+    - チャンクサイズを 256KB に拡大して syscall / await の往復回数を削減
+    - timeout は読み取りに長めの値 (= 接続自体は短く、stream 中は長く)
     """
     _validate_video_id(video_id)
     try:
@@ -455,12 +462,15 @@ async def stream_video(video_id: str, request: Request):
             headers["Range"] = range_header
 
         # follow_redirects=False + 自前ホップ検証 (SSRF 対策)
-        client = httpx.AsyncClient(follow_redirects=False, timeout=60.0)
+        # 各ホップを _safe_get 経由で allowlist 検証 → 302 で内部 IP に飛ばされない
+        timeout = httpx.Timeout(connect=10.0, read=60.0, write=10.0, pool=10.0)
+        client = httpx.AsyncClient(follow_redirects=False, timeout=timeout, http2=False)
         upstream = await _safe_get(client, stream_url, headers, stream=True)
 
         async def _iter():
             try:
-                async for chunk in upstream.aiter_bytes(65536):
+                # 256KB ずつ転送: yield 回数を減らして throughput を稼ぐ
+                async for chunk in upstream.aiter_bytes(262144):
                     yield chunk
             finally:
                 await upstream.aclose()

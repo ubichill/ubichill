@@ -153,6 +153,48 @@ export class UbiSDK {
             getMyUserId: () => this.myUserId,
             getComponentInstanceId: () => this.componentInstanceId,
             getComponentType: () => this.componentType,
+            getEntityId: () => this.entityId,
+            listenMouseUp: (cb) => {
+                // input:mouse_up ECS イベントを one-shot で listen して press モードの自動解放に使う
+                let fired = false;
+                const events = this.event.define<{ [EcsEventType.INPUT_MOUSE_UP]: unknown }>();
+                const unsub = events.on(EcsEventType.INPUT_MOUSE_UP, () => {
+                    if (fired) return;
+                    fired = true;
+                    cb();
+                    unsub();
+                });
+                return unsub;
+            },
+            sendGripCommand: (payload) => {
+                // _send は OmitId<PluginGuestCommand> を受け取り内部で _sendToHost を呼ぶ。
+                // CmdGrip は fire-and-forget で id を持たないので OmitId<...> として直接渡せる。
+                this._send({ type: 'CMD_GRIP', payload });
+            },
+            bringToFront: async () => {
+                // 自エンティティの transform.z を「同じ Component type の最大 z + 1」に持ち上げる。
+                // ペンを持ったときに視覚的に手前に来て、リリース後もその位置 (z) が永続する。
+                const type = this.componentType;
+                const self = this.componentInstanceId;
+                if (!type || !self) return;
+                try {
+                    const siblings = await this.entity.query(type);
+                    let maxZ = 0;
+                    let myEntity: ComponentInstance | undefined;
+                    for (const s of siblings) {
+                        if (s.id === self) myEntity = s;
+                        if ((s.transform.z ?? 0) > maxZ) maxZ = s.transform.z ?? 0;
+                    }
+                    if (!myEntity) return;
+                    const myZ = myEntity.transform.z ?? 0;
+                    // 既に最前面なら更新しない (毎 click で z を無限に伸ばさない)
+                    if (myZ === maxZ) return;
+                    // 既存 transform を保ったまま z だけ更新 (patch.transform は完全な型を要求する)
+                    await this.entity(self).update({ transform: { ...myEntity.transform, z: maxZ + 1 } });
+                } catch {
+                    // entity.query / update の失敗は UX に影響しないので無視
+                }
+            },
         });
     }
 

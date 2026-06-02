@@ -1,7 +1,6 @@
 import {
     type ClientToServerEvents,
     type CursorPosition,
-    type CursorState,
     DEFAULTS,
     SERVER_CONFIG,
     type ServerToClientEvents,
@@ -23,7 +22,7 @@ export interface SocketContextValue {
     error: string | null;
     joinWorld: (name: string, worldId: string, instanceId: string, onError?: (error: string) => void) => void;
     leaveWorld: () => Promise<void>;
-    updatePosition: (position: CursorPosition, state?: CursorState) => void;
+    updatePosition: (position: CursorPosition, heldEntityId?: string | null) => void;
     updateStatus: (status: UserStatus) => void;
     updateUser: (patch: Partial<User>) => void;
 }
@@ -121,17 +120,17 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             });
         });
 
-        socket.on('cursor:moved', ({ userId, position, state }) => {
+        socket.on('cursor:moved', ({ userId, position, heldEntityId }) => {
             setUsers((prev) => {
                 const user = prev.get(userId);
                 if (!user) return prev;
 
-                // 位置情報と状態を更新
+                // 位置情報を更新
                 const newMap = new Map(prev);
                 newMap.set(userId, {
                     ...user,
                     position,
-                    ...(state !== undefined && { cursorState: state }),
+                    ...(heldEntityId !== undefined && { heldEntityId }),
                 });
                 return newMap;
             });
@@ -162,6 +161,10 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         });
 
         socket.on('error', (msg) => {
+            // Ignore "最初にワールドに参加する必要があります" errors if we're not joined
+            if (msg === '最初にワールドに参加する必要があります' && !currentUserRef.current) {
+                return;
+            }
             setError(msg);
         });
 
@@ -191,9 +194,12 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
             // 接続後にワールドに参加
             const emitJoin = () => {
+                setError(null);
                 socket.emit('world:join', { worldId, instanceId, user: initialUser }, (response) => {
                     if (response.success && response.userId) {
-                        setCurrentUser({ ...initialUser, id: response.userId });
+                        const newUser = { ...initialUser, id: response.userId };
+                        setCurrentUser(newUser);
+                        currentUserRef.current = newUser;
                     } else {
                         const msg = response.error || 'Failed to join world';
                         setError(msg);
@@ -213,38 +219,48 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     );
 
     const updatePosition = useCallback(
-        (position: CursorPosition, state?: CursorState) => {
+        (position: CursorPosition, heldEntityId?: string | null) => {
             const socket = socketRef.current;
-            if (!socket || !isConnected) return;
+            const current = currentUserRef.current;
+            if (!socket || !isConnected || !current) return;
 
-            socket.emit('cursor:move', { position, state });
+            socket.emit('cursor:move', {
+                position,
+                ...(heldEntityId !== undefined && { heldEntityId }),
+            });
 
-            if (currentUser) {
-                // ローカルのcurrentUserも更新
-                setCurrentUser({ ...currentUser, position, ...(state !== undefined && { cursorState: state }) });
-            }
+            // ローカルの currentUser も更新
+            const updated = {
+                ...current,
+                position,
+                ...(heldEntityId !== undefined && { heldEntityId }),
+            };
+            setCurrentUser(updated);
+            currentUserRef.current = updated;
         },
-        [isConnected, currentUser],
+        [isConnected],
     );
 
     const updateStatus = useCallback(
         (status: UserStatus) => {
             const socket = socketRef.current;
-            if (!socket || !isConnected) return;
+            const current = currentUserRef.current;
+            if (!socket || !isConnected || !current) return;
 
             socket.emit('status:update', status);
 
-            if (currentUser) {
-                setCurrentUser({ ...currentUser, status });
-            }
+            const updated = { ...current, status };
+            setCurrentUser(updated);
+            currentUserRef.current = updated;
         },
-        [isConnected, currentUser],
+        [isConnected],
     );
 
     const updateUser = useCallback(
         (patch: Partial<User>) => {
             const socket = socketRef.current;
-            if (!socket || !isConnected) return;
+            const current = currentUserRef.current;
+            if (!socket || !isConnected || !current) return;
 
             socket.emit('user:update', patch);
 
@@ -266,10 +282,14 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const cleanupAndResolve = () => {
                 if (isDone) return;
                 isDone = true;
-                setUsers(new Map());
-                setCurrentUser(null);
                 resolve();
             };
+
+            // ローカルステートは同期的にクリアして、直後のマウス移動などによるイベント送信を防ぐ
+            setUsers(new Map());
+            setCurrentUser(null);
+            currentUserRef.current = null;
+            setError(null);
 
             const timer = setTimeout(cleanupAndResolve, 3000);
 
