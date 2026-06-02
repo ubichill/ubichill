@@ -25,18 +25,14 @@
         "z": 5000
       },
       "dataFields": {},
-      "workerUrl": "./canvas/index.b694670e.js"
+      "workerUrl": "./canvas/index.6609dc40.js"
     },
     "pen:tray": {
       "capabilities": [
-        "scene:read",
-        "scene:update",
-        "ui:render"
+        "ui:render",
+        "net:emit",
+        "scene:read"
       ],
-      "watchEntityTypes": [
-        "pen:pen"
-      ],
-      "watchScope": "subtree",
       "defaultTransform": {
         "x": 20,
         "y": 20,
@@ -45,7 +41,7 @@
         "h": 240
       },
       "dataFields": {},
-      "workerUrl": "./tray/index.9b765bf6.js"
+      "workerUrl": "./tray/index.2a1103d7.js"
     },
     "pen:pen": {
       "capabilities": [
@@ -81,7 +77,10 @@
           "label": "線の太さ"
         }
       },
-      "workerUrl": "./pen/index.e0af9ecd.js"
+      "workerUrl": "./pen/index.15ea4091.js"
+    },
+    "pen:stroke": {
+      "dataFields": {}
     }
   },
   "assets": []
