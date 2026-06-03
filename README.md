@@ -1,6 +1,6 @@
 # Ubichill
-
-URLで起動しSocket.IOで同期する、ゼロトラスト型プラグイン動的ロード 2D メタバース基盤。
+![alt text](docs/image.png)
+URLで起動しSocket.IOでカーソルがアバターのように同期する、ゼロトラスト型プラグイン動的ロード 2D メタバース基盤。
 Vite ベースの完全 CSR、pnpm workspace モノリポ。
 
 ## クイックスタート
