@@ -27,6 +27,8 @@ interface EditorHierarchyProps {
     onCopyEntity: (path: EntityPath) => void;
     /** クリップボードから貼り付け (parentPath=null ならルート) */
     onPasteEntity: (parentPath: EntityPath | null) => void;
+    /** subtree をクローンして自分のすぐ下に sibling として配置 */
+    onDuplicateEntity: (path: EntityPath) => void;
     /** クリップボードに何か入っているか (paste メニューの有効/無効判定) */
     hasClipboard: boolean;
 }
@@ -53,6 +55,7 @@ export function EditorHierarchy({
     onEnterChild,
     onCopyEntity,
     onPasteEntity,
+    onDuplicateEntity,
     hasClipboard,
 }: EditorHierarchyProps) {
     // ドラッグ中にハイライトする drop ターゲットの key (path-key または ROOT_DROP_KEY)。
@@ -80,6 +83,10 @@ export function EditorHierarchy({
             onClick: () => onCopyEntity(path),
         },
         {
+            label: '複製',
+            onClick: () => onDuplicateEntity(path),
+        },
+        {
             label: '貼り付け (子として)',
             onClick: () => onPasteEntity(path),
             disabled: !hasClipboard,
@@ -96,6 +103,25 @@ export function EditorHierarchy({
             separatorAbove: true,
         },
     ];
+
+    // ルートメニュー (ヒエラルキーパネル本体の右クリック; 個別 Entity 行は別メニュー)
+    const buildRootMenuItems = (): EntityContextMenuItem[] => [
+        {
+            label: 'ルートに Entity を追加',
+            onClick: () => onCreateEmptyEntity(null),
+        },
+        {
+            label: 'ルートに貼り付け',
+            onClick: () => onPasteEntity(null),
+            disabled: !hasClipboard,
+        },
+    ];
+
+    // ヘッダー / パネル空白部の右クリック → ルートメニュー (EntityNode は stopPropagation 済)
+    const openRootMenu = (e: React.MouseEvent) => {
+        e.preventDefault();
+        setContextMenu({ path: [], x: e.clientX, y: e.clientY });
+    };
 
     const acceptRootDrag = (e: React.DragEvent) => {
         if (!e.dataTransfer.types.includes(ENTITY_DRAG_MIME)) return;
@@ -117,6 +143,7 @@ export function EditorHierarchy({
                 width: 'full',
                 height: 'full',
             })}
+            onContextMenu={openRootMenu}
         >
             <div
                 className={css({
@@ -191,12 +218,9 @@ export function EditorHierarchy({
                     e.stopPropagation();
                     onMoveEntity(fromKey.split('-').map(Number), null);
                 }}
-                onContextMenu={(e) => {
-                    // 空白部分の右クリック → ルートに貼り付け
-                    if (e.target !== e.currentTarget) return;
-                    e.preventDefault();
-                    setContextMenu({ path: [], x: e.clientX, y: e.clientY });
-                }}
+                // 個別 Entity 行は EntityNode 側で stopPropagation する。
+                // ここに届くのは「空白 / gap / padding 上の右クリック」と「aside 全体」だけ。
+                onContextMenu={openRootMenu}
             >
                 {entities.length === 0 ? (
                     <div
@@ -240,18 +264,7 @@ export function EditorHierarchy({
                 <EntityContextMenu
                     x={contextMenu.x}
                     y={contextMenu.y}
-                    items={
-                        contextMenu.path.length === 0
-                            ? [
-                                  // 空白部分のメニュー: ルートに貼り付けのみ
-                                  {
-                                      label: 'ルートに貼り付け',
-                                      onClick: () => onPasteEntity(null),
-                                      disabled: !hasClipboard,
-                                  },
-                              ]
-                            : buildMenuItems(contextMenu.path)
-                    }
+                    items={contextMenu.path.length === 0 ? buildRootMenuItems() : buildMenuItems(contextMenu.path)}
                     onClose={closeContextMenu}
                 />
             )}
