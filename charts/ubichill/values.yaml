@@ -239,7 +239,8 @@ postgresql:
     tag: "16-debian-12"
   auth:
     enablePostgresUser: true
-    # password / postgresPassword は必ず deploy 時に上書きする (or existingSecret を使う)。
+    # postgresPassword: 管理者 (postgres) ユーザーのパスワード。マイグレーション/管理用。
+    # password: アプリ用ユーザー (auth.username) のパスワード。**DATABASE_URL はこちらを使う**。
     # 既定で空にしておき、template 側で fail-fast。"password" のような placeholder は禁止。
     postgresPassword: ""
     username: "ubichill"
