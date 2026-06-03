@@ -6,10 +6,9 @@
  * 黒 16:9 の背景は host 側の <video> 要素が標準で持つ。
  */
 
-import { VPEvents } from './events';
+import { VPEvents, VPTarget } from './events';
 
 const TARGET = 'main';
-const controlsTarget = { scope: 'siblings' as const, targetType: 'video-player:controls' };
 
 // 動画要素は常時表示
 Ubi.media.setVisible(true, TARGET);
@@ -26,15 +25,15 @@ VPEvents.on('vp:media:volume', ({ volume }) => Ubi.media.setVolume(volume, TARGE
 // ── <video> 要素のイベント (Ubi.media SDK) → controls へ転送 ──
 VPEvents.on('media:timeUpdate', ({ targetId, currentTime, duration }) => {
     if (targetId !== TARGET) return;
-    VPEvents.emit('vp:media:time', { currentTime, duration }, controlsTarget);
+    VPEvents.emit('vp:media:time', { currentTime, duration }, VPTarget.controls);
 });
 VPEvents.on('media:loaded', ({ targetId, duration }) => {
     if (targetId !== TARGET) return;
-    VPEvents.emit('vp:media:loaded', { duration }, controlsTarget);
+    VPEvents.emit('vp:media:loaded', { duration }, VPTarget.controls);
 });
 VPEvents.on('media:ended', ({ targetId }) => {
     if (targetId !== TARGET) return;
-    VPEvents.emit('vp:media:ended', {}, controlsTarget);
+    VPEvents.emit('vp:media:ended', {}, VPTarget.controls);
 });
 VPEvents.on('media:error', ({ targetId, message }) => {
     if (targetId !== TARGET) return;

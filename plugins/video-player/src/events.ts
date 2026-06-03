@@ -7,11 +7,33 @@
  * `Ubi.event.define()` は呼び出し Worker 内に閉じた registry を作る (handlers は
  * Worker ローカル)。各 Worker が独立にこのモジュールを評価し、各々の Ubi 経由で
  * 新しいインスタンスを得る — シングルトンではない。
+ *
+ * ルーティングターゲット (VPTarget.*) もここに集約し、Worker 側で散在していた
+ * EmitOptions 定数を一元管理する。
  */
+
+import type { EmitOptions } from '@ubichill/sdk';
 
 import type { LoopMode, Track } from './types';
 
 type Empty = Record<string, never>;
+
+/**
+ * Worker 間 emit のルーティング先。
+ *
+ *   controls ──vp:media:*──▶ screen     (再生コマンド)
+ *   screen   ──vp:media:*──▶ controls   (DOM <video> 状態通知)
+ *   controls ──vp:track:*──▶ playlist   (トラック操作)
+ *   search   ──vp:track:add──▶ playlist (新規トラック追加)
+ *   playlist ──vp:track:current──▶ siblings (現トラック通知)
+ *   playlist ──vp:playback:stop──▶ controls (末尾到達)
+ */
+export const VPTarget = {
+    screen: { scope: 'siblings', targetType: 'video-player:screen' },
+    controls: { scope: 'siblings', targetType: 'video-player:controls' },
+    playlist: { scope: 'siblings', targetType: 'video-player:playlist' },
+    siblings: { scope: 'siblings' },
+} as const satisfies Record<string, EmitOptions>;
 
 export const VPEvents = Ubi.event.define<{
     // ── controls → screen (再生コマンド) ──
@@ -20,7 +42,7 @@ export const VPEvents = Ubi.event.define<{
     'vp:media:pause': Empty;
     'vp:media:seek': { time: number };
     'vp:media:volume': { volume: number };
-    // ── screen → controls (<video> 要素の状態通知) ──
+    // ── screen → controls (DOM <video> 状態通知) ──
     'vp:media:time': { currentTime: number; duration: number };
     'vp:media:loaded': { duration: number };
     'vp:media:ended': Empty;
