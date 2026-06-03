@@ -110,17 +110,21 @@ export function handleWorldJoin(socket: TypedSocket) {
         // ID 統一: User.id = DB users.id (authUser.id)。socket.id は接続単位の別概念。
         const userId = authUser.id;
 
-        // 再接続 or takeover かどうかを最初に確定させる。
-        // この 2 ケースでは DB の currentUsers は既に +1 されているので、もう一度 +1 してはいけない。
-        //   - reconnect: 切断 grace timer が走っている (DB は -1 されていない)
-        //   - takeover : userManager に既にエントリがあり、別 socket がアクティブ
+        // ── 旧セッションの状態を確定 ───────────────────────────────
+        // 「同 userId が既にどこかに居る/居た」を 3 軸で観測する:
+        //   - reconnectTimer: 切断 grace timer (= 直前まで在籍。DB は -1 されてない)
+        //   - existingUser: userManager 上のエントリ (= 今もアクティブな別 socket)
+        //   - prevInstanceId: 旧在籍 instance
+        // この情報から、新 effectiveInstanceId への遷移を「継続/移動/新規」に分岐する。
         const reconnectTimer = disconnectTimers.get(userId);
         if (reconnectTimer) {
             clearTimeout(reconnectTimer);
             disconnectTimers.delete(userId);
             logger.info(`✅ ユーザーが猶予期間内に再接続しました: ${userId}`);
         }
-        const alreadyCounted = reconnectTimer !== undefined || userManager.getUser(userId) !== undefined;
+        const existingUser = userManager.getUser(userId);
+        const prevInstanceId = userManager.getUserWorld(userId);
+        const hadPrevSession = reconnectTimer !== undefined || existingUser !== undefined;
 
         // 同一 userId で別 socket が既にアクティブな場合は、旧 socket を蹴る。
         // 旧 socket の handleDisconnect は「自分はもう現役じゃない」と気付いて no-op 化する
@@ -129,6 +133,34 @@ export function handleWorldJoin(socket: TypedSocket) {
         if (oldSocket && oldSocket.id !== socket.id) {
             oldSocket.disconnect(true);
         }
+
+        // 旧 instance と新 instance の関係で DB count 操作を決定:
+        //   - 同じ instance に居た (継続): 何もしない
+        //   - 別 instance に居た (移動): 旧 -1 + 新 +1。旧側ルームへ user:left も
+        //   - どこにも居ない (新規): 新 +1
+        const isContinuation = hadPrevSession && prevInstanceId === effectiveInstanceId;
+        const isInstanceMove = hadPrevSession && prevInstanceId !== undefined && prevInstanceId !== effectiveInstanceId;
+
+        // 旧 instance から離脱 (locked entity 解放 + user:left + ルーム退出 + DB -1)
+        if (isInstanceMove && prevInstanceId) {
+            const prevEntities = getInstanceSnapshot(prevInstanceId);
+            const userLockedEntities = prevEntities.filter((e) => e.lockedBy === userId);
+            userLockedEntities.forEach((entity) => {
+                patchEntity(prevInstanceId, entity.id, {
+                    lockedBy: null,
+                    data: { ...(entity.data as Record<string, unknown>), isHeld: false },
+                });
+                socket.nsp.to(prevInstanceId).emit('entity:patched', {
+                    entityId: entity.id,
+                    patch: { lockedBy: null, data: { ...(entity.data as Record<string, unknown>), isHeld: false } },
+                });
+            });
+            socket.leave(prevInstanceId);
+            socket.nsp.to(prevInstanceId).emit('user:left', userId);
+            await instanceManager.updateUserCount(prevInstanceId, -1);
+        }
+
+        // userManager を新 instance に切り替え
         userManager.removeUser(userId);
 
         const newUser: User = {
@@ -152,7 +184,8 @@ export function handleWorldJoin(socket: TypedSocket) {
         // ここで上書きした瞬間に旧 socket は「現役ではない」状態になる (= 死神タイマー化を阻止)。
         activeUserSockets.set(userId, socket);
 
-        if (!alreadyCounted) {
+        // 新 instance への +1: 継続 (同 instance 再接続/takeover) 以外で実行
+        if (!isContinuation) {
             await instanceManager.updateUserCount(effectiveInstanceId, 1);
         }
 
