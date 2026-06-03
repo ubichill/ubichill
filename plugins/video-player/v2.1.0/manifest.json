@@ -21,7 +21,7 @@
         "h": 360
       },
       "dataFields": {},
-      "workerUrl": "./screen/index.a0334b88.js"
+      "workerUrl": "./screen/index.86862d70.js"
     },
     "video-player:controls": {
       "capabilities": [
@@ -78,7 +78,7 @@
           "label": "API ベース URL"
         }
       },
-      "workerUrl": "./controls/index.fba84f45.js"
+      "workerUrl": "./controls/index.8bb38825.js"
     },
     "video-player:playlist": {
       "capabilities": [
@@ -111,7 +111,7 @@
           "label": "再生中インデックス"
         }
       },
-      "workerUrl": "./playlist/index.6d3179b4.js"
+      "workerUrl": "./playlist/index.0151978a.js"
     },
     "video-player:search": {
       "capabilities": [
@@ -129,7 +129,7 @@
         "h": 300
       },
       "dataFields": {},
-      "workerUrl": "./search/index.e190d409.js"
+      "workerUrl": "./search/index.d195d082.js"
     }
   },
   "assets": []
