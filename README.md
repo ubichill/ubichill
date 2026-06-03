@@ -101,16 +101,16 @@ sequenceDiagram
     participant R as usePluginUI
     participant D as VNodeRenderer / DOM
 
-    W->>W: Ubi.ui.render(() => &lt;button onUbiClick={fn}&gt;)
-    Note over W: jsx-runtime が関数をレジストリに登録<br/>VNode は {onUbiClick:"__h0"} に変換（プリミティブのみ）
+    W->>W: Ubi.ui.render(factory) — JSX で button + onUbiClick を返す
+    Note over W: jsx-runtime が関数をレジストリに登録<br/>VNode は onUbiClick:"__h0" 形式に変換（プリミティブのみ）
 
-    W->>H: postMessage({ type:"UI_RENDER", vnode })
+    W->>H: postMessage type:UI_RENDER, vnode
     H->>R: onRender("pen-palette", vnode)
     R->>D: renderVNode(vnode, container)
     Note over D: createElement — innerHTML 禁止<br/>href/src → sanitizeUrl()<br/>style → setProperty() で cssText 書き換え防止<br/>許可タグ外は無視
 
     D->>H: click イベント発火
-    H->>W: postMessage({ type:"EVT_UI_ACTION", handlerIndex:0 })
+    H->>W: postMessage type:EVT_UI_ACTION, handlerIndex:0
     W->>W: _callHandler("pen-palette", 0, detail)
     Note over W: クロージャが実行される<br/>penState.color = c
 ```
