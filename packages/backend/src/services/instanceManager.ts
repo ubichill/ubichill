@@ -277,6 +277,11 @@ class InstanceManager {
 
     /**
      * DB record から公開用のInstanceオブジェクトに変換
+     *
+     * **currentUsers / status は userManager (= 真の在籍) から導出する**:
+     * DB の currentUsers は delta 同期の中間状態でドリフトしうるため、API では
+     * 常にメモリ上の実在数を返す。DB 側の値は内部レコード兼 status の cache 用途で、
+     * 別経路 (reconcileUserCounts) で非同期に追従させる。
      */
     private toPublicInstance(
         dbInstance: Awaited<ReturnType<typeof instanceRepository.findById>> & object,
@@ -295,9 +300,13 @@ class InstanceManager {
             password: dbInstance.hasPassword,
         };
 
+        const truthCount = userManager.getUsersByWorld(dbInstance.id).length;
+        const derivedStatus: Instance['status'] =
+            truthCount >= dbInstance.maxUsers ? 'full' : truthCount === 0 ? 'closing' : 'active';
+
         return {
             id: dbInstance.id,
-            status: dbInstance.status,
+            status: derivedStatus,
             leaderId: dbInstance.leaderId,
             createdAt: dbInstance.createdAt.toISOString(),
             expiresAt: dbInstance.expiresAt?.toISOString() ?? null,
@@ -313,7 +322,7 @@ class InstanceManager {
 
             access,
             stats: {
-                currentUsers: dbInstance.currentUsers,
+                currentUsers: truthCount,
                 maxUsers: dbInstance.maxUsers,
             },
             connection: {
