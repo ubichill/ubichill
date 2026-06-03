@@ -119,8 +119,13 @@ const onPlayToggle = (): void => {
             state.local.isPlaying = false;
         });
     } else {
-        // play: clock を起動 (baselineTime はそのまま)
+        // play: clock を起動。終端 (or 超過) なら 0 に巻き戻してから再生
+        // (= ended 後の手動 play / 末尾までシークしてから play などに対応)
         state.batch(() => {
+            const dur = state.local.duration;
+            if (dur > 0 && state.local.baselineTime >= dur - 0.5) {
+                state.local.baselineTime = 0;
+            }
             state.local.playEpoch = Date.now();
             state.local.isPlaying = true;
         });
@@ -419,10 +424,22 @@ VPEvents.on('vp:media:ended', () => {
 });
 
 VPEvents.on('vp:playback:stop', () => {
-    // playlist が末尾到達 (loop='none') を通知してきた → 再生停止
+    // playlist が末尾到達 (loop='none') を通知してきた → 0 に巻き戻して停止
+    // (baselineTime を duration に固定すると次の Play で seekbar が max のまま再起動するため)
     state.batch(() => {
-        state.local.baselineTime = currentTime();
+        state.local.baselineTime = 0;
+        state.local.playEpoch = Date.now();
         state.local.isPlaying = false;
+    });
+});
+
+VPEvents.on('vp:track:replay', () => {
+    // playlist から同トラック replay 要求 (loop='one' or 単一トラック loop='all')。
+    // 共有時計を 0 から再起動し、isPlaying は維持 (= 自動継続再生)。
+    state.batch(() => {
+        state.local.baselineTime = 0;
+        state.local.playEpoch = Date.now();
+        if (!state.local.isPlaying) state.local.isPlaying = true;
     });
 });
 

@@ -110,23 +110,26 @@ export function handleWorldJoin(socket: TypedSocket) {
         // ID 統一: User.id = DB users.id (authUser.id)。socket.id は接続単位の別概念。
         const userId = authUser.id;
 
-        const timer = disconnectTimers.get(userId);
-        if (timer) {
-            clearTimeout(timer);
+        // 再接続 or takeover かどうかを最初に確定させる。
+        // この 2 ケースでは DB の currentUsers は既に +1 されているので、もう一度 +1 してはいけない。
+        //   - reconnect: 切断 grace timer が走っている (DB は -1 されていない)
+        //   - takeover : userManager に既にエントリがあり、別 socket がアクティブ
+        const reconnectTimer = disconnectTimers.get(userId);
+        if (reconnectTimer) {
+            clearTimeout(reconnectTimer);
             disconnectTimers.delete(userId);
             logger.info(`✅ ユーザーが猶予期間内に再接続しました: ${userId}`);
         }
+        const alreadyCounted = reconnectTimer !== undefined || userManager.getUser(userId) !== undefined;
 
-        // 同一ユーザーが既に同じ accountId で参加済みの場合、旧接続を切断して入れ替える
-        // （別タブで再接続したケース等）。userManager のキーが同じになるため必須。
-        const existing = userManager.getUser(userId);
-        if (existing) {
-            const oldSocket = activeUserSockets.get(userId);
-            if (oldSocket && oldSocket.id !== socket.id) {
-                oldSocket.disconnect(true);
-            }
-            userManager.removeUser(userId);
+        // 同一 userId で別 socket が既にアクティブな場合は、旧 socket を蹴る。
+        // 旧 socket の handleDisconnect は「自分はもう現役じゃない」と気付いて no-op 化する
+        // (= activeUserSockets が指す socket が自分でない、というガードで判定する)。
+        const oldSocket = activeUserSockets.get(userId);
+        if (oldSocket && oldSocket.id !== socket.id) {
+            oldSocket.disconnect(true);
         }
+        userManager.removeUser(userId);
 
         const newUser: User = {
             id: userId,
@@ -144,9 +147,14 @@ export function handleWorldJoin(socket: TypedSocket) {
         socket.data.instanceId = effectiveInstanceId;
         socket.data.user = newUser;
 
+        // activeUserSockets の差し替えは「旧 socket の disconnect ハンドラ」より後で良い:
+        // handleDisconnect は activeUserSockets.get(userId) === socket か否かで判定するため、
+        // ここで上書きした瞬間に旧 socket は「現役ではない」状態になる (= 死神タイマー化を阻止)。
         activeUserSockets.set(userId, socket);
 
-        await instanceManager.updateUserCount(effectiveInstanceId, 1);
+        if (!alreadyCounted) {
+            await instanceManager.updateUserCount(effectiveInstanceId, 1);
+        }
 
         const roomUsers = userManager.getUsersByWorld(effectiveInstanceId);
 
@@ -300,12 +308,32 @@ export function handleWorldLeave(socket: TypedSocket) {
     return async (callback?: (response: { success: boolean }) => void) => {
         const instanceId = socket.data.instanceId;
         const userId = stableUserId(socket);
+
+        // 旧 socket からの leave (= takeover 済み) は無視: 現役セッションを巻き込まないため
+        if (userId) {
+            const currentSocket = activeUserSockets.get(userId);
+            if (currentSocket && currentSocket !== socket) {
+                callback?.({ success: true });
+                return;
+            }
+        }
+
+        // grace timer が走っているなら止める (これから明示退出するので)
+        if (userId) {
+            const pending = disconnectTimers.get(userId);
+            if (pending) {
+                clearTimeout(pending);
+                disconnectTimers.delete(userId);
+            }
+        }
+
         const user = userId ? userManager.removeUser(userId) : undefined;
         if (userId) {
             activeUserSockets.delete(userId);
         }
 
-        if (instanceId) {
+        // 実際にメモリから誰かを消したときだけ DB を -1 する (二重デクリメント防止)
+        if (instanceId && user) {
             await instanceManager.updateUserCount(instanceId, -1);
         }
 
@@ -345,6 +373,15 @@ export function handleDisconnect(socket: TypedSocket) {
         const userId = stableUserId(socket);
 
         if (instanceId && userId) {
+            // takeover で蹴られた旧 socket の遺言処理を阻止する。
+            // activeUserSockets が指している socket が自分でないなら、自分はもう現役ではない
+            //  → grace timer を仕掛けてはならない (= 仕掛けるとアクティブセッションを殺す死神になる)。
+            const currentSocket = activeUserSockets.get(userId);
+            if (currentSocket && currentSocket !== socket) {
+                logger.info(`👻 takeover された旧 socket の disconnect: 無視 (userId: ${userId})`);
+                return;
+            }
+
             const user = userManager.getUser(userId);
             if (!user) return; // 既に退出済み
 
@@ -360,6 +397,15 @@ export function handleDisconnect(socket: TypedSocket) {
 
             const timer = setTimeout(async () => {
                 disconnectTimers.delete(userId);
+
+                // grace 中に別 socket で再接続して同 userId のセッションが復活している場合は何もしない
+                // (handleWorldJoin が disconnectTimers.delete を先にやってくれているので
+                //  通常は到達しないが、ここでも防衛しておく)
+                const liveSocket = activeUserSockets.get(userId);
+                if (liveSocket && liveSocket !== socket) {
+                    logger.info(`✅ grace timer 発火時に再接続済を検出: 削除を取消 (userId: ${userId})`);
+                    return;
+                }
 
                 const removedUser = userManager.removeUser(userId);
                 activeUserSockets.delete(userId);
