@@ -84,48 +84,6 @@ export const instanceRepository = {
         return results[0];
     },
 
-    async updateUserCount(id: string, delta: number): Promise<InstanceRecord | undefined> {
-        // 原子的に更新（greatest で 0 未満にならないようにする）
-        const results = await db
-            .update(instances)
-            .set({
-                currentUsers: sql`greatest(0, ${instances.currentUsers} + ${delta})`,
-                status: sql`
-                    case
-                        when greatest(0, ${instances.currentUsers} + ${delta}) >= ${instances.maxUsers} then 'full'::instance_status
-                        when greatest(0, ${instances.currentUsers} + ${delta}) = 0 then 'closing'::instance_status
-                        else 'active'::instance_status
-                    end
-                `,
-            })
-            .where(eq(instances.id, id))
-            .returning();
-        return results[0];
-    },
-
-    /**
-     * currentUsers を絶対値で上書きする (定期 reconciliation 用)。
-     * delta 方式と違って「真の値」が分かっている時に使う。status も整合させる。
-     */
-    async setUserCount(id: string, count: number): Promise<InstanceRecord | undefined> {
-        const safe = Math.max(0, Math.floor(count));
-        const results = await db
-            .update(instances)
-            .set({
-                currentUsers: safe,
-                status: sql`
-                    case
-                        when ${safe} >= ${instances.maxUsers} then 'full'::instance_status
-                        when ${safe} = 0 then 'closing'::instance_status
-                        else 'active'::instance_status
-                    end
-                `,
-            })
-            .where(eq(instances.id, id))
-            .returning();
-        return results[0];
-    },
-
     async delete(id: string): Promise<boolean> {
         const result = await db.delete(instances).where(eq(instances.id, id)).returning();
         return result.length > 0;

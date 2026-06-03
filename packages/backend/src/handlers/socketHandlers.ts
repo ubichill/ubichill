@@ -111,37 +111,25 @@ export function handleWorldJoin(socket: TypedSocket) {
         const userId = authUser.id;
 
         // ── 旧セッションの状態を確定 ───────────────────────────────
-        // 「同 userId が既にどこかに居る/居た」を 3 軸で観測する:
-        //   - reconnectTimer: 切断 grace timer (= 直前まで在籍。DB は -1 されてない)
-        //   - existingUser: userManager 上のエントリ (= 今もアクティブな別 socket)
-        //   - prevInstanceId: 旧在籍 instance
-        // この情報から、新 effectiveInstanceId への遷移を「継続/移動/新規」に分岐する。
+        // grace timer (切断後の猶予待ち) は無条件にキャンセルし、
+        // 旧 instance が分かるなら別 instance への移動かどうかを判定する。
         const reconnectTimer = disconnectTimers.get(userId);
         if (reconnectTimer) {
             clearTimeout(reconnectTimer);
             disconnectTimers.delete(userId);
             logger.info(`✅ ユーザーが猶予期間内に再接続しました: ${userId}`);
         }
-        const existingUser = userManager.getUser(userId);
         const prevInstanceId = userManager.getUserWorld(userId);
-        const hadPrevSession = reconnectTimer !== undefined || existingUser !== undefined;
 
         // 同一 userId で別 socket が既にアクティブな場合は、旧 socket を蹴る。
-        // 旧 socket の handleDisconnect は「自分はもう現役じゃない」と気付いて no-op 化する
-        // (= activeUserSockets が指す socket が自分でない、というガードで判定する)。
+        // 旧 socket の handleDisconnect は activeUserSockets ガードで no-op になる。
         const oldSocket = activeUserSockets.get(userId);
         if (oldSocket && oldSocket.id !== socket.id) {
             oldSocket.disconnect(true);
         }
 
-        // 旧 instance と新 instance の関係で DB count 操作を決定:
-        //   - 同じ instance に居た (継続): 何もしない
-        //   - 別 instance に居た (移動): 旧 -1 + 新 +1。旧側ルームへ user:left も
-        //   - どこにも居ない (新規): 新 +1
-        const isContinuation = hadPrevSession && prevInstanceId === effectiveInstanceId;
-        const isInstanceMove = hadPrevSession && prevInstanceId !== undefined && prevInstanceId !== effectiveInstanceId;
-
-        // 旧 instance から離脱 (locked entity 解放 + user:left + ルーム退出 + DB -1)
+        // 別 instance に居たなら、そこの後始末 (ロック解放 + user:left + ルーム退出 + emptyTimer 再評価)
+        const isInstanceMove = prevInstanceId !== undefined && prevInstanceId !== effectiveInstanceId;
         if (isInstanceMove && prevInstanceId) {
             const prevEntities = getInstanceSnapshot(prevInstanceId);
             const userLockedEntities = prevEntities.filter((e) => e.lockedBy === userId);
@@ -157,7 +145,7 @@ export function handleWorldJoin(socket: TypedSocket) {
             });
             socket.leave(prevInstanceId);
             socket.nsp.to(prevInstanceId).emit('user:left', userId);
-            await instanceManager.updateUserCount(prevInstanceId, -1);
+            instanceManager.syncEmptyTimer(prevInstanceId);
         }
 
         // userManager を新 instance に切り替え
@@ -184,10 +172,8 @@ export function handleWorldJoin(socket: TypedSocket) {
         // ここで上書きした瞬間に旧 socket は「現役ではない」状態になる (= 死神タイマー化を阻止)。
         activeUserSockets.set(userId, socket);
 
-        // 新 instance への +1: 継続 (同 instance 再接続/takeover) 以外で実行
-        if (!isContinuation) {
-            await instanceManager.updateUserCount(effectiveInstanceId, 1);
-        }
+        // emptyTimer が走っていたらキャンセル (userManager に人がいるので削除予約は不要)
+        instanceManager.syncEmptyTimer(effectiveInstanceId);
 
         const roomUsers = userManager.getUsersByWorld(effectiveInstanceId);
 
@@ -365,9 +351,9 @@ export function handleWorldLeave(socket: TypedSocket) {
             activeUserSockets.delete(userId);
         }
 
-        // 実際にメモリから誰かを消したときだけ DB を -1 する (二重デクリメント防止)
+        // 実際にメモリから誰かを消したときだけ emptyTimer 再評価
         if (instanceId && user) {
-            await instanceManager.updateUserCount(instanceId, -1);
+            instanceManager.syncEmptyTimer(instanceId);
         }
 
         if (instanceId && user && userId) {
@@ -444,7 +430,7 @@ export function handleDisconnect(socket: TypedSocket) {
                 activeUserSockets.delete(userId);
                 if (!removedUser) return; // 他の手段（handleWorldLeave等）で既に削除された
 
-                await instanceManager.updateUserCount(instanceId, -1);
+                instanceManager.syncEmptyTimer(instanceId);
 
                 const entities = getInstanceSnapshot(instanceId);
                 const userLockedEntities = entities.filter((e) => e.lockedBy === userId);

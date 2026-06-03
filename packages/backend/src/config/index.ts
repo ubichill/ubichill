@@ -15,8 +15,6 @@ const envSchema = z.object({
     RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().finite().default(10000),
     INSTANCE_EMPTY_TIMEOUT_MS: z.coerce.number().int().nonnegative().default(60000),
     DISCONNECT_GRACE_PERIOD_MS: z.coerce.number().int().nonnegative().default(15000),
-    // 参加人数 reconciliation の間隔。0 で無効化。
-    PARTICIPANT_RECONCILE_INTERVAL_MS: z.coerce.number().int().nonnegative().default(30000),
     DEBUG: z
         .string()
         .optional()
@@ -73,7 +71,6 @@ export const appConfig = {
     instance: {
         emptyTimeoutMs: parsedEnv.data.INSTANCE_EMPTY_TIMEOUT_MS,
         disconnectGracePeriodMs: parsedEnv.data.DISCONNECT_GRACE_PERIOD_MS,
-        participantReconcileIntervalMs: parsedEnv.data.PARTICIPANT_RECONCILE_INTERVAL_MS,
     },
     db: {
         databaseUrl: parsedEnv.data.DATABASE_URL,
