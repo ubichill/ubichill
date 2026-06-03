@@ -144,11 +144,41 @@ io.on('connection', (socket) => {
 });
 
 // ============================================
+// 参加人数 reconciliation (定期的な真値同期)
+// ============================================
+// delta ベースの +1/-1 で発生し得るドリフトを、低頻度で「真の値」に補正する安全網。
+// userManager (in-memory) を真実とし、DB.currentUsers を上書きする。
+let reconcileTimer: NodeJS.Timeout | undefined;
+function startParticipantReconciler() {
+    const interval = appConfig.instance.participantReconcileIntervalMs;
+    if (interval <= 0) {
+        console.log('🔁 参加人数 reconciliation: 無効 (PARTICIPANT_RECONCILE_INTERVAL_MS=0)');
+        return;
+    }
+    console.log(`🔁 参加人数 reconciliation: ${interval / 1000}秒ごとに同期`);
+    reconcileTimer = setInterval(() => {
+        instanceManager.reconcileUserCounts().catch((err) => {
+            console.error('❌ reconcileUserCounts でエラー:', err);
+        });
+    }, interval);
+    // テスト/開発時に process.exit を妨げないため
+    reconcileTimer.unref?.();
+}
+function stopParticipantReconciler() {
+    if (reconcileTimer) {
+        clearInterval(reconcileTimer);
+        reconcileTimer = undefined;
+    }
+}
+
+// ============================================
 // グレースフルシャットダウン
 // ============================================
 function setupGracefulShutdown() {
     const shutdown = (signal: string) => {
         console.log(`⚡ ${signal} 受信 — グレースフルシャットダウン開始`);
+
+        stopParticipantReconciler();
 
         // 新規 HTTP 接続を拒否し、既存リクエストの完了を待つ
         server.close(() => {
@@ -185,6 +215,7 @@ async function startServer() {
     }
 
     setupGracefulShutdown();
+    startParticipantReconciler();
 
     server.listen(appConfig.port, () => {
         console.log('');

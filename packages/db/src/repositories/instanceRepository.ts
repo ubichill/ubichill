@@ -103,6 +103,29 @@ export const instanceRepository = {
         return results[0];
     },
 
+    /**
+     * currentUsers を絶対値で上書きする (定期 reconciliation 用)。
+     * delta 方式と違って「真の値」が分かっている時に使う。status も整合させる。
+     */
+    async setUserCount(id: string, count: number): Promise<InstanceRecord | undefined> {
+        const safe = Math.max(0, Math.floor(count));
+        const results = await db
+            .update(instances)
+            .set({
+                currentUsers: safe,
+                status: sql`
+                    case
+                        when ${safe} >= ${instances.maxUsers} then 'full'::instance_status
+                        when ${safe} = 0 then 'closing'::instance_status
+                        else 'active'::instance_status
+                    end
+                `,
+            })
+            .where(eq(instances.id, id))
+            .returning();
+        return results[0];
+    },
+
     async delete(id: string): Promise<boolean> {
         const result = await db.delete(instances).where(eq(instances.id, id)).returning();
         return result.length > 0;

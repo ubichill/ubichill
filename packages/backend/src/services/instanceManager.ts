@@ -12,6 +12,7 @@ import bcrypt from 'bcryptjs';
 import { appConfig } from '../config';
 import { logger } from '../utils/logger';
 import { clearInstanceState, createEntity } from './instanceState';
+import { userManager } from './userManager';
 import { worldRegistry } from './worldRegistry';
 
 /**
@@ -327,6 +328,50 @@ class InstanceManager {
      */
     async cleanupAll(): Promise<number> {
         return instanceRepository.deleteAll();
+    }
+
+    /**
+     * 参加人数の reconciliation。userManager (真実) を元に DB の currentUsers を上書きする。
+     *
+     * 通常運用では handleWorldJoin / handleDisconnect / handleWorldLeave が delta で
+     * 同期しているが、レースやバグ起因でドリフトが残る可能性があるため、低頻度で
+     * 「真の値」に戻す安全網として動かす。
+     *
+     * 戻り値: 補正が発生した instance の数。
+     */
+    async reconcileUserCounts(): Promise<number> {
+        const dbInstances = await instanceRepository.findAll({ includeFull: true });
+        const fixes = await Promise.all(
+            dbInstances.map(async (dbInstance: InstanceRecord) => {
+                const truthCount = userManager.getUsersByWorld(dbInstance.id).length;
+                if (dbInstance.currentUsers === truthCount) return false;
+                await instanceRepository.setUserCount(dbInstance.id, truthCount);
+                logger.warn(
+                    `🔧 参加人数 reconciliation: ${dbInstance.id} (DB=${dbInstance.currentUsers} → 実=${truthCount})`,
+                );
+                if (truthCount > 0) {
+                    // 復活: 動いている emptyTimer をキャンセル (updateUserCount と同じ挙動)
+                    const t = this.emptyTimers.get(dbInstance.id);
+                    if (t) {
+                        clearTimeout(t);
+                        this.emptyTimers.delete(dbInstance.id);
+                        logger.info(`reconcile 復活でインスタンス削除をキャンセル: ${dbInstance.id}`);
+                    }
+                } else if (!this.emptyTimers.has(dbInstance.id)) {
+                    // 0 になった: emptyTimer に乗せる (delta 経路と同じ削除フロー)
+                    const timeoutMs = appConfig.instance.emptyTimeoutMs;
+                    const timer = setTimeout(async () => {
+                        await instanceRepository.delete(dbInstance.id);
+                        clearInstanceState(dbInstance.id);
+                        logger.info(`インスタンス自動削除（reconcile 後 ${timeoutMs / 1000}秒経過）: ${dbInstance.id}`);
+                        this.emptyTimers.delete(dbInstance.id);
+                    }, timeoutMs);
+                    this.emptyTimers.set(dbInstance.id, timer);
+                }
+                return true;
+            }),
+        );
+        return fixes.filter(Boolean).length;
     }
 }
 
