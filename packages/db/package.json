@@ -12,6 +12,13 @@
             "require": "./dist/index.js"
         }
     },
+    "bin": {
+        "ubichill-migrate": "./dist/migrate.js"
+    },
+    "files": [
+        "dist",
+        "drizzle"
+    ],
     "scripts": {
         "dev": "docker compose up -d && drizzle-kit studio",
         "build": "tsgo",
@@ -20,6 +27,8 @@
         "lint:fix": "biome check --write .",
         "generate": "drizzle-kit generate",
         "push": "drizzle-kit push",
+        "migrate": "node dist/migrate.js",
+        "migrate:dev": "tsx src/migrate.ts",
         "stop": "docker compose down"
     },
     "dependencies": {

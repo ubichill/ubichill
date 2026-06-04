@@ -31,12 +31,20 @@ worlds:
 backend:
   enabled: true
   replicaCount: 1
-  
+
+  # Drizzle migration を Helm hook (pre-install/pre-upgrade) で実行する設定。
+  # backend Deployment より先に走り、失敗すると ロールアウトが止まる (= 安全側)。
+  migrate:
+    enabled: true
+    backoffLimit: 2
+    ttlSecondsAfterFinished: 300
+    # resources を省略すると backend.resources を使う
+
   image:
     repository: "ubichill-backend"
     tag: "latest"
     pullPolicy: Always
-  
+
   service:
     type: ClusterIP
     port: 3001

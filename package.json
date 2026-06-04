@@ -13,6 +13,8 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "typecheck": "pnpm -r exec tsgo --noEmit",
+    "db:generate": "pnpm --filter @ubichill/db generate",
+    "db:migrate": "pnpm --filter @ubichill/db migrate:dev",
     "clean": "pnpm --filter \"./packages/*\" clean",
     "test": "echo \"No tests specified yet\" && exit 0"
   },
