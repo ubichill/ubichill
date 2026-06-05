@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://ubichill.youkan.uk/"><strong>ubichill.youkan.uk →</strong></a>
+  <a href="https://ubichill.youkan.uk/"><strong>ubichill.youkan.uk</strong></a>
 </p>
 
 <p align="center">
