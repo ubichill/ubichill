@@ -86,30 +86,59 @@ jobs:
           fi
           echo "tag=${NEXT}" >> $GITHUB_OUTPUT
 
-      - uses: dorny/paths-filter@v3
+      # ── 変更検知 ───────────────────────────────────────────────
+      # opened / reopened: PR base (= main 等) から累積 diff
+      # synchronize       : 前回 push の HEAD (event.before) との incremental diff
+      # こうすると「最初の PR open までは全変更を build、以降の追加コミットは
+      # 新規変更だけを build」になり、PR 内の無関係ファイル変更で再ビルドされない。
+      - name: Detect changed paths
         id: filter
         if: github.event_name == 'pull_request'
-        with:
-          # PR event の場合、paths-filter v3 が自動で base/head を取得する。
-          # base/ref を明示すると "ignored when triggered by pull request event" 警告が出るので渡さない。
-          # checkout fetch-depth=0 を上で取っているので、内部的にローカル git diff が使われる。
-          filters: |
-            backend:
-              - 'packages/backend/**'
-              - 'packages/shared/**'
-              - 'packages/db/**'
-              - 'Dockerfile'
-              - 'pnpm-lock.yaml'
-            frontend:
-              - 'packages/frontend/**'
-              - 'packages/shared/**'
-              - 'packages/sdk/**'
-              - 'plugins/**'
-              - 'scripts/build-workers.mjs'
-              - 'Dockerfile'
-              - 'pnpm-lock.yaml'
-            video-player:
-              - 'plugins/video-player/backend/**'
+        run: |
+          set -eo pipefail
+          ACTION="${{ github.event.action }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          BEFORE_SHA="${{ github.event.before }}"
+          PR_BASE_SHA="${{ github.event.pull_request.base.sha }}"
+
+          # synchronize かつ before が reachable なら incremental、それ以外は cumulative
+          if [[ "$ACTION" == "synchronize" && -n "$BEFORE_SHA" ]] \
+             && git cat-file -e "$BEFORE_SHA" 2>/dev/null; then
+            BASE_SHA="$BEFORE_SHA"
+            MODE="incremental (前回 push HEAD との差分)"
+          else
+            BASE_SHA="$PR_BASE_SHA"
+            MODE="cumulative (PR base からの差分)"
+          fi
+          echo "Mode: $MODE"
+          echo "Base: $BASE_SHA  Head: $HEAD_SHA"
+
+          CHANGED=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" || true)
+          echo "Changed files:"; echo "$CHANGED" | sed 's/^/  /'
+
+          backend=false; frontend=false; video_player=false
+          while IFS= read -r f; do
+            [[ -z "$f" ]] && continue
+            case "$f" in
+              packages/backend/*|packages/shared/*|packages/db/*|Dockerfile|pnpm-lock.yaml)
+                backend=true ;;
+            esac
+            case "$f" in
+              packages/frontend/*|packages/shared/*|packages/sdk/*|plugins/*|scripts/build-workers.mjs|Dockerfile|pnpm-lock.yaml)
+                frontend=true ;;
+            esac
+            case "$f" in
+              plugins/video-player/backend/*)
+                video_player=true ;;
+            esac
+          done <<< "$CHANGED"
+
+          {
+            echo "backend=$backend"
+            echo "frontend=$frontend"
+            echo "video-player=$video_player"
+          } >> "$GITHUB_OUTPUT"
+          echo "→ backend=$backend frontend=$frontend video-player=$video_player"
 
   # ── Docker ビルド（並列）────────────────────────────────────────────────
   # push to main  → 全イメージを latest タグでビルド
