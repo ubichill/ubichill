@@ -177,8 +177,8 @@ async function startServer() {
     await worldRegistry.initialize();
 
     // 起動時クリーンアップ: 前回の実行で残ったインスタンスを削除する。
-    // サーバーが再起動するとソケット接続が全て切断されるが、disconnect ハンドラは
-    // 実行されないため DB の currentUsers が 0 にならずインスタンスが残り続ける。
+    // サーバー再起動でメモリ上の userManager は失われるため、DB の instance レコードは
+    // 必ず孤児になる。pre-upgrade の migrate Job 通過後にここで一掃する。
     const cleaned = await instanceManager.cleanupAll();
     if (cleaned > 0) {
         console.log(`🧹 起動クリーンアップ: 孤立インスタンス ${cleaned} 件を削除しました`);
