@@ -176,12 +176,14 @@ async function startServer() {
     // システムユーザー初期化のみ（ワールドシードは行わない）
     await worldRegistry.initialize();
 
-    // 起動時クリーンアップ: 前回の実行で残ったインスタンスを削除する。
-    // サーバー再起動でメモリ上の userManager は失われるため、DB の instance レコードは
-    // 必ず孤児になる。pre-upgrade の migrate Job 通過後にここで一掃する。
-    const cleaned = await instanceManager.cleanupAll();
-    if (cleaned > 0) {
-        console.log(`🧹 起動クリーンアップ: 孤立インスタンス ${cleaned} 件を削除しました`);
+    // 起動時 warmup: 既存 DB インスタンスに emptyTimer を仕掛ける。
+    // emptyTimeoutMs 秒以内に world:join で戻ってきたクライアントは生存。
+    // 誰も戻らなければ自動削除されるので、孤児 instance のリークも防げる。
+    const warmed = await instanceManager.warmupEmptyTimers();
+    if (warmed > 0) {
+        console.log(
+            `🔁 起動 warmup: ${warmed} 件のインスタンスに ${appConfig.instance.emptyTimeoutMs / 1000}秒の再接続猶予を設定`,
+        );
     }
 
     setupGracefulShutdown();

@@ -318,10 +318,29 @@ class InstanceManager {
     }
 
     /**
-     * 全インスタンスを削除（サーバー起動時の孤立レコードクリーンアップ用）
+     * 全インスタンスを削除する管理用ヘルパー (テスト/手動運用用)。
+     * サーバー起動時には呼ばない (in-flight クライアントを救うため warmupEmptyTimers を使う)。
      */
     async cleanupAll(): Promise<number> {
         return instanceRepository.deleteAll();
+    }
+
+    /**
+     * サーバー起動時の warmup。既存 DB インスタンス全てに emptyTimer を仕掛ける。
+     *
+     * 再起動直後はメモリ (userManager) が空なので「全 instance が 0 人」と認識される。
+     * emptyTimeoutMs 以内に world:join で戻ってきたクライアントは syncEmptyTimer で
+     * タイマーをキャンセルされて生存。誰も戻らなければ自動削除される。
+     *
+     * 旧 cleanupAll() を起動時に呼んでいた頃は、Pod の rolling update のたびに既存
+     * instance が即消され「インスタンスが見つかりません」が出ていた。これを防ぐ。
+     */
+    async warmupEmptyTimers(): Promise<number> {
+        const dbInstances = await instanceRepository.findAll({ includeFull: true });
+        for (const inst of dbInstances) {
+            this.syncEmptyTimer(inst.id);
+        }
+        return dbInstances.length;
     }
 }
 
