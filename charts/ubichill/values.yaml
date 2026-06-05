@@ -262,10 +262,12 @@ postgresql:
   global:
     imageRegistry: ""
   # 同上: bitnami → bitnamilegacy への移行
+  # PG18 へ追従 (旧 PG16 の PVC は中身を読めないため、既存環境は
+  # `kubectl delete pvc data-<release>-postgresql-0` で初期化が必要)。
   image:
     registry: docker.io
     repository: bitnamilegacy/postgresql
-    tag: "16-debian-12"
+    tag: "18-debian-12"
   auth:
     enablePostgresUser: true
     # postgresPassword: 管理者 (postgres) ユーザーのパスワード。マイグレーション/管理用。
