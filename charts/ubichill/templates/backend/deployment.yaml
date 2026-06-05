@@ -70,11 +70,27 @@ spec:
         - name: http
           containerPort: {{ .Values.backend.service.targetPort }}
           protocol: TCP
+        {{- /*
+          ── 環境変数 ──
+          通常 env は ConfigMap (backend-config) と Secret (backend-secrets / existingSecret)
+          にまとめて envFrom で一括 mount する。
+          DATABASE_URL と WORLDS_REGISTRY_TOKEN だけは valueFrom や動的組立が要るので
+          env: に inline で残す。
+        */}}
+        envFrom:
+        - configMapRef:
+            name: {{ include "ubichill.fullname" . }}-backend-config
+        {{- if .Values.backend.existingSecret }}
+        - secretRef:
+            name: {{ .Values.backend.existingSecret }}
+        {{- else if .Values.backend.secretEnv }}
+        - secretRef:
+            name: {{ include "ubichill.fullname" . }}-backend-secrets
+        {{- end }}
         env:
-        {{- /* PostgreSQL connection configuration */}}
+        {{- /* PostgreSQL: DATABASE_URL は postgres password を含むため inline で組み立てる */}}
         {{- if .Values.postgresql.enabled }}
         {{- if .Values.postgresql.auth.existingSecret }}
-        {{- /* Use PostgreSQL's own existing secret */}}
         - name: PG_PASSWORD
           valueFrom:
             secretKeyRef:
@@ -83,40 +99,18 @@ spec:
         - name: DATABASE_URL
           value: "postgresql://{{ .Values.postgresql.auth.username | default "postgres" }}:$(PG_PASSWORD)@{{ include "ubichill.fullname" . }}-postgresql:{{ .Values.postgresql.primary.service.ports.postgresql | default 5432 }}/{{ .Values.postgresql.auth.database }}"
         {{- else }}
-        {{- /* Use password from values — fail-fast if未設定 (literal "password" のような fallback は SSRF/横展開リスクの元) */}}
-        {{- $pgPassword := .Values.postgresql.auth.password | default .Values.postgresql.auth.postgresPassword }}
-        {{- if not $pgPassword }}
-        {{- fail "postgresql.auth.password (or postgresql.auth.postgresPassword, or postgresql.auth.existingSecret) must be set" }}
+        {{- /*
+          DATABASE_URL は **アプリ用ユーザー** (auth.username, デフォルト ubichill) で繋ぐ。
+          bitnami postgresql サブチャートはこのユーザーを `auth.password` で作成するため、
+          ここで `auth.postgresPassword` (= 管理者 postgres のパスワード) にフォールバック
+          してはいけない (繋ぎに行くユーザーと作られるユーザーのパスワードがズレる)。
+        */}}
+        {{- if not .Values.postgresql.auth.password }}
+        {{- fail "postgresql.auth.password (アプリ用ユーザーのパスワード) を設定してください。postgresql.auth.existingSecret でも可。" }}
         {{- end }}
         - name: DATABASE_URL
-          value: "postgresql://{{ .Values.postgresql.auth.username | default "postgres" }}:{{ $pgPassword }}@{{ include "ubichill.fullname" . }}-postgresql:{{ .Values.postgresql.primary.service.ports.postgresql | default 5432 }}/{{ .Values.postgresql.auth.database }}"
+          value: "postgresql://{{ .Values.postgresql.auth.username | default "postgres" }}:{{ .Values.postgresql.auth.password }}@{{ include "ubichill.fullname" . }}-postgresql:{{ .Values.postgresql.primary.service.ports.postgresql | default 5432 }}/{{ .Values.postgresql.auth.database }}"
         {{- end }}
-        {{- end }}
-        {{- range $key, $value := .Values.backend.env }}
-        - name: {{ $key }}
-          value: {{ $value | quote }}
-        {{- end }}
-        {{- /* global.domain から CORS_ORIGIN / BETTER_AUTH_URL を自動導出（values で上書き可能） */}}
-        {{- if and .Values.global.domain (not (index .Values.backend.env "CORS_ORIGIN")) }}
-        - name: CORS_ORIGIN
-          value: {{ printf "https://%s" .Values.global.domain | quote }}
-        {{- end }}
-        {{- if and .Values.global.domain (not (index .Values.backend.env "BETTER_AUTH_URL")) }}
-        - name: BETTER_AUTH_URL
-          value: {{ printf "https://%s" .Values.global.domain | quote }}
-        {{- end }}
-        {{- if and (not .Values.backend.existingSecret) .Values.backend.secretEnv }}
-        {{- range $key, $value := .Values.backend.secretEnv }}
-        - name: {{ $key }}
-          valueFrom:
-            secretKeyRef:
-              name: {{ include "ubichill.fullname" $ }}-backend-secrets
-              key: {{ $key }}
-        {{- end }}
-        {{- end }}
-        {{- if .Values.worlds.registries }}
-        - name: WORLDS_REGISTRY_URLS
-          value: {{ .Values.worlds.registries | join "," | quote }}
         {{- end }}
         {{- if or .Values.worlds.registryToken .Values.worlds.existingTokenSecret }}
         - name: WORLDS_REGISTRY_TOKEN
@@ -124,21 +118,6 @@ spec:
             secretKeyRef:
               name: {{ .Values.worlds.existingTokenSecret | default (printf "%s-worlds-token" (include "ubichill.fullname" .)) }}
               key: token
-        {{- end }}
-        # Redis connection
-        {{- if .Values.redis.enabled }}
-        - name: REDIS_URL
-          value: "redis://{{ include "ubichill.fullname" . }}-redis-master:{{ .Values.redis.master.service.ports.redis | default 6379 }}"
-        {{- end }}
-        # WorldRegistry が index ファイルを書き出すための書き込み可能領域。
-        # worlds の実体は WORLDS_REGISTRY_URLS から URL 経由で取得するため、
-        # イメージのファイルをコピーする必要はない。
-        - name: WORLDS_DIR
-          value: /worlds-rw
-        {{- if .Values.backend.existingSecret }}
-        envFrom:
-        - secretRef:
-            name: {{ .Values.backend.existingSecret }}
         {{- end }}
         {{- if .Values.backend.healthcheck.enabled }}
         livenessProbe:

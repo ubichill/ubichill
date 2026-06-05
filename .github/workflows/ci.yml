@@ -20,6 +20,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Node 20 は GitHub Actions runner 上で deprecate された (2026-09-16 削除予定)。
+# 上位 actions は v5/v6 で Node 24 に対応済み。docker/* は依然として v3 (Node 20) のため、
+# workflow レベルで強制的に Node 24 にロードする。
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -28,21 +34,20 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      - name: Extract versions from package.json
+      - name: Extract Node version from package.json
         id: versions
         run: |
           echo "node=$(jq -r '.volta.node' package.json)" >> $GITHUB_OUTPUT
-          echo "pnpm=$(jq -r '.volta.pnpm' package.json)" >> $GITHUB_OUTPUT
 
+      # pnpm version は package.json の packageManager フィールドから自動検出
+      # (action-setup v4 は version 入力と packageManager の二重指定をエラーにする)
       - name: Install pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: ${{ steps.versions.outputs.pnpm }}
+        uses: pnpm/action-setup@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ steps.versions.outputs.node }}
           cache: "pnpm"
@@ -63,7 +68,7 @@ jobs:
       video-player: ${{ github.event_name == 'push' && 'true' || steps.filter.outputs.video-player }}
       next-version: ${{ steps.next-version.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -81,32 +86,18 @@ jobs:
           fi
           echo "tag=${NEXT}" >> $GITHUB_OUTPUT
 
-      - uses: dorny/paths-filter@v3
+      # ── 変更検知 ───────────────────────────────────────────────
+      # 実装は .github/scripts/detect-changed-paths.sh を参照。
+      # opened / reopened: PR base から cumulative、synchronize: 前回 push HEAD から incremental
+      - name: Detect changed paths
         id: filter
         if: github.event_name == 'pull_request'
-        with:
-          # base に commit SHA を渡すと paths-filter が GitHub diff API を使わず
-          # ローカル git diff (上の checkout fetch-depth=0 で確保済み) で算出する。
-          # 巨大 PR で diff API が "this diff is temporarily unavailable" を返すのを回避。
-          base: ${{ github.event.pull_request.base.sha }}
-          ref: ${{ github.event.pull_request.head.sha }}
-          filters: |
-            backend:
-              - 'packages/backend/**'
-              - 'packages/shared/**'
-              - 'packages/db/**'
-              - 'Dockerfile'
-              - 'pnpm-lock.yaml'
-            frontend:
-              - 'packages/frontend/**'
-              - 'packages/shared/**'
-              - 'packages/sdk/**'
-              - 'plugins/**'
-              - 'scripts/build-workers.mjs'
-              - 'Dockerfile'
-              - 'pnpm-lock.yaml'
-            video-player:
-              - 'plugins/video-player/backend/**'
+        env:
+          PR_ACTION: ${{ github.event.action }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BEFORE_SHA: ${{ github.event.before }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: .github/scripts/detect-changed-paths.sh
 
   # ── Docker ビルド（並列）────────────────────────────────────────────────
   # push to main  → 全イメージを latest タグでビルド
@@ -126,7 +117,7 @@ jobs:
       IMAGE_NAME: ubichill-backend
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
@@ -147,7 +138,7 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
@@ -179,7 +170,7 @@ jobs:
       IMAGE_NAME: ubichill-frontend
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
@@ -200,7 +191,7 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
@@ -233,7 +224,7 @@ jobs:
       IMAGE_NAME: video-player-backend
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
@@ -252,7 +243,7 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v6
         with:
           context: plugins/video-player/backend
           file: plugins/video-player/backend/Dockerfile
@@ -266,7 +257,12 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: false
 
-  # ── Force push to dev（PR ビルド完了後のみ）──────────────────────────────────
+  # ── Force push to dev ─────────────────────────────────────────────────────
+  # PR の変更内容に関わらず dev に push して ArgoCD に伝える:
+  #   - app コード変更 → 該当 build が走って image 更新 → ArgoCD が pull
+  #   - chart / world だけ変更 → image build は skip (filters に無いので) →
+  #     image は既存のまま、ArgoCD は新 chart を apply
+  # build が失敗してる場合だけ deploy しない (= image 不整合を避ける)
 
   deploy-dev:
     name: Force push to dev
@@ -276,19 +272,14 @@ jobs:
       github.event_name == 'pull_request' &&
       needs.build-backend.result    != 'failure' &&
       needs.build-frontend.result   != 'failure' &&
-      needs.build-video-player.result != 'failure' &&
-      (
-        needs.build-backend.result    == 'success' ||
-        needs.build-frontend.result   == 'success' ||
-        needs.build-video-player.result == 'success'
-      )
+      needs.build-video-player.result != 'failure'
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
@@ -297,7 +288,7 @@ jobs:
         run: git push --force origin HEAD:refs/heads/dev
 
       - name: Comment on PR (create or update)
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const marker = '<!-- sync-to-dev-bot -->';
@@ -365,7 +356,7 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Create and push git tag
         run: |

@@ -33,6 +33,7 @@ import {
     flattenForStage,
     getEntityAt,
     insertEntity,
+    insertEntityAfter,
     moveEntity,
     nextRootZ,
     pathKey,
@@ -315,6 +316,27 @@ export function WorldEditorPage() {
         [clipboard, definition.spec.initialEntities, updateEntities, selectEntity, selectComponent],
     );
 
+    // ── 複製 (Cmd+D 相当: subtree をクローンして自分の直後に sibling 挿入) ──
+    const handleDuplicateEntity = useCallback(
+        (path: EntityPath) => {
+            const source = getEntityAt(definition.spec.initialEntities, path);
+            if (!source) return;
+            const taken = collectEntityIds(definition.spec.initialEntities);
+            const cloned = cloneEntitySubtree(source, taken);
+            // ルート複製なら z を最前面に持ち上げる (元 entity と重なって見えなくなるのを避ける)
+            const placed =
+                path.length === 1
+                    ? { ...cloned, transform: { ...cloned.transform, z: nextRootZ(definition.spec.initialEntities) } }
+                    : cloned;
+            updateEntities((prev) => insertEntityAfter(prev, path, placed));
+            // 自分のすぐ下に出現するので sibling index = self + 1
+            const newPath = [...path.slice(0, -1), path[path.length - 1] + 1];
+            selectEntity(newPath);
+            selectComponent(null);
+        },
+        [definition.spec.initialEntities, updateEntities, selectEntity, selectComponent],
+    );
+
     const handleEnterChild = useCallback(
         (path: EntityPath) => {
             const parent = getEntityAt(definition.spec.initialEntities, path);
@@ -412,6 +434,7 @@ export function WorldEditorPage() {
                     onEnterChild={handleEnterChild}
                     onCopyEntity={handleCopyEntity}
                     onPasteEntity={handlePasteEntity}
+                    onDuplicateEntity={handleDuplicateEntity}
                     hasClipboard={clipboard.hasClipboard}
                 />
             </DockSlot>

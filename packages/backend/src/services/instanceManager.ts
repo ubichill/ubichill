@@ -12,6 +12,7 @@ import bcrypt from 'bcryptjs';
 import { appConfig } from '../config';
 import { logger } from '../utils/logger';
 import { clearInstanceState, createEntity } from './instanceState';
+import { userManager } from './userManager';
 import { worldRegistry } from './worldRegistry';
 
 /**
@@ -113,33 +114,23 @@ class InstanceManager {
 
     /**
      * インスタンス一覧を取得
+     *
+     * status / 人数は userManager から導出するため DB の status フィルタは信頼しない。
+     * 全件取って toPublicInstance で正しい値を計算し、includeFull=false なら ここで post-filter する。
      */
     async listInstances(options?: { tag?: string; worldId?: string; includeFull?: boolean }): Promise<Instance[]> {
         if (options?.worldId) {
             return this.findInstancesByWorld(options.worldId);
         }
-
-        const dbInstances = await instanceRepository.findAll({
-            tag: options?.tag,
-            includeFull: options?.includeFull,
-        });
-
-        type DbInstanceType = NonNullable<Awaited<ReturnType<typeof instanceRepository.findById>>>;
-
-        const instancesPromises = (dbInstances as DbInstanceType[]).map(async (dbInstance: DbInstanceType) => {
-            const world = await worldRegistry.getWorldByDbId(dbInstance.worldId);
-            if (world) {
-                return this.toPublicInstance(dbInstance, world);
-            }
-            return null;
-        });
-
-        const instancesResult = await Promise.all(instancesPromises);
-        const instances: Instance[] = instancesResult.filter(
-            (inst: Instance | null): inst is Instance => inst !== null,
+        const dbInstances = await instanceRepository.findAll({ tag: options?.tag, includeFull: true });
+        const mapped = await Promise.all(
+            dbInstances.map(async (db: InstanceRecord): Promise<Instance | null> => {
+                const world = await worldRegistry.getWorldByDbId(db.worldId);
+                return world ? this.toPublicInstance(db, world) : null;
+            }),
         );
-
-        return instances;
+        const instances: Instance[] = mapped.filter((i: Instance | null): i is Instance => i !== null);
+        return options?.includeFull ? instances : instances.filter((i: Instance) => i.status === 'active');
     }
 
     /**
@@ -213,40 +204,37 @@ class InstanceManager {
     }
 
     /**
-     * ユーザー数を更新
-     * @returns 更新後のユーザー数。インスタンスが見つからない場合は -1
+     * userManager の在籍変化通知。emptyTimer を真値に合わせる:
+     *   - 1 人以上いるなら走っている削除タイマーをキャンセル
+     *   - 0 人なら delete を予約 (発火直前にも再度真値を確認して見送る)
+     *
+     * DB の currentUsers は触らない (toPublicInstance が常に userManager から導出するため)。
+     * 旧 updateUserCount / reconcileUserCounts は不要になったので削除済。
      */
-    async updateUserCount(instanceId: string, delta: number): Promise<number> {
-        const updated = await instanceRepository.updateUserCount(instanceId, delta);
-        if (!updated) return -1;
-
-        // ユーザーが戻ってきたら削除タイマーをキャンセル
-        if (updated.currentUsers > 0) {
-            const timer = this.emptyTimers.get(instanceId);
-            if (timer) {
-                clearTimeout(timer);
+    syncEmptyTimer(instanceId: string): void {
+        const count = userManager.getUsersByWorld(instanceId).length;
+        const existing = this.emptyTimers.get(instanceId);
+        if (count > 0) {
+            if (existing) {
+                clearTimeout(existing);
                 this.emptyTimers.delete(instanceId);
-                logger.info(`インスタンス削除をキャンセル（ユーザー再参加）: ${instanceId}`);
             }
+            return;
         }
-
-        // ユーザーが0になったら一定時間後にインスタンスを自動削除
-        if (updated.currentUsers === 0) {
-            const timeoutMs = appConfig.instance.emptyTimeoutMs;
-            const timer = setTimeout(async () => {
-                await instanceRepository.delete(instanceId);
-
-                // インスタンスのエンティティ状態をクリーンアップ
-                clearInstanceState(instanceId);
-
-                logger.info(`インスタンス自動削除（ユーザー0から${timeoutMs / 1000}秒経過）: ${instanceId}`);
-                this.emptyTimers.delete(instanceId);
-            }, timeoutMs);
-
-            this.emptyTimers.set(instanceId, timer);
-        }
-
-        return updated.currentUsers;
+        if (existing) return; // 既に削除予約済
+        const timeoutMs = appConfig.instance.emptyTimeoutMs;
+        const timer = setTimeout(async () => {
+            this.emptyTimers.delete(instanceId);
+            // 削除直前の最終チェック (grace 中に再参加していれば見送る)
+            if (userManager.getUsersByWorld(instanceId).length > 0) {
+                logger.info(`インスタンス削除を取消（再参加検出）: ${instanceId}`);
+                return;
+            }
+            await instanceRepository.delete(instanceId);
+            clearInstanceState(instanceId);
+            logger.info(`インスタンス自動削除（${timeoutMs / 1000}秒経過）: ${instanceId}`);
+        }, timeoutMs);
+        this.emptyTimers.set(instanceId, timer);
     }
 
     /**
@@ -276,6 +264,9 @@ class InstanceManager {
 
     /**
      * DB record から公開用のInstanceオブジェクトに変換
+     *
+     * currentUsers / status は userManager (= 真の在籍) から導出する。
+     * DB の currentUsers は一切書き込まれず、参照もされない (将来的にスキーマ削除予定)。
      */
     private toPublicInstance(
         dbInstance: Awaited<ReturnType<typeof instanceRepository.findById>> & object,
@@ -294,9 +285,13 @@ class InstanceManager {
             password: dbInstance.hasPassword,
         };
 
+        const truthCount = userManager.getUsersByWorld(dbInstance.id).length;
+        const derivedStatus: Instance['status'] =
+            truthCount >= dbInstance.maxUsers ? 'full' : truthCount === 0 ? 'closing' : 'active';
+
         return {
             id: dbInstance.id,
-            status: dbInstance.status,
+            status: derivedStatus,
             leaderId: dbInstance.leaderId,
             createdAt: dbInstance.createdAt.toISOString(),
             expiresAt: dbInstance.expiresAt?.toISOString() ?? null,
@@ -312,7 +307,7 @@ class InstanceManager {
 
             access,
             stats: {
-                currentUsers: dbInstance.currentUsers,
+                currentUsers: truthCount,
                 maxUsers: dbInstance.maxUsers,
             },
             connection: {
@@ -323,10 +318,29 @@ class InstanceManager {
     }
 
     /**
-     * 全インスタンスを削除（サーバー起動時の孤立レコードクリーンアップ用）
+     * 全インスタンスを削除する管理用ヘルパー (テスト/手動運用用)。
+     * サーバー起動時には呼ばない (in-flight クライアントを救うため warmupEmptyTimers を使う)。
      */
     async cleanupAll(): Promise<number> {
         return instanceRepository.deleteAll();
+    }
+
+    /**
+     * サーバー起動時の warmup。既存 DB インスタンス全てに emptyTimer を仕掛ける。
+     *
+     * 再起動直後はメモリ (userManager) が空なので「全 instance が 0 人」と認識される。
+     * emptyTimeoutMs 以内に world:join で戻ってきたクライアントは syncEmptyTimer で
+     * タイマーをキャンセルされて生存。誰も戻らなければ自動削除される。
+     *
+     * 旧 cleanupAll() を起動時に呼んでいた頃は、Pod の rolling update のたびに既存
+     * instance が即消され「インスタンスが見つかりません」が出ていた。これを防ぐ。
+     */
+    async warmupEmptyTimers(): Promise<number> {
+        const dbInstances = await instanceRepository.findAll({ includeFull: true });
+        for (const inst of dbInstances) {
+            this.syncEmptyTimer(inst.id);
+        }
+        return dbInstances.length;
     }
 }
 

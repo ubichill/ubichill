@@ -12,6 +12,9 @@ concurrency:
   group: gh-pages-plugins
   cancel-in-progress: true
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 permissions:
   contents: write
 
@@ -20,21 +23,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      - name: Extract Versions from package.json
+      - name: Extract Node version from package.json
         id: versions
         run: |
           echo "node=$(jq -r '.volta.node' package.json)" >> $GITHUB_OUTPUT
-          echo "pnpm=$(jq -r '.volta.pnpm' package.json)" >> $GITHUB_OUTPUT
 
+      # pnpm version は package.json の packageManager フィールドから自動検出
       - name: Install pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: ${{ steps.versions.outputs.pnpm }}
+        uses: pnpm/action-setup@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ steps.versions.outputs.node }}
           cache: 'pnpm'

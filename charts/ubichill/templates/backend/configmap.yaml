@@ -1,0 +1,41 @@
+{{- if .Values.backend.enabled }}
+{{- /*
+  バックエンドの非機密 env を 1 つの ConfigMap にまとめる。Deployment 側からは
+  envFrom: configMapRef で一括 mount するため、deployment.yaml に env エントリが
+  たまらず一覧性が上がる。
+
+  ここに置くもの:
+    - values.yaml の backend.env (NODE_ENV / PORT / SKIP_EMAIL_VERIFICATION 等)
+    - global.domain から自動導出する CORS_ORIGIN / BETTER_AUTH_URL
+    - WORLDS_REGISTRY_URLS / WORLDS_DIR / REDIS_URL のような template 由来の値
+
+  ここに置かないもの:
+    - DATABASE_URL (postgres password を含むため deployment 側で valueFrom か文字列で組み立てる)
+    - 機密値 (backend.secretEnv → Secret)
+    - WORLDS_REGISTRY_TOKEN (secretKeyRef なので deployment 側に inline で残す)
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ubichill.fullname" . }}-backend-config
+  labels:
+    {{- include "ubichill.labels" . | nindent 4 }}
+data:
+  {{- range $k, $v := .Values.backend.env }}
+  {{ $k }}: {{ $v | toString | quote }}
+  {{- end }}
+  {{- /* global.domain から CORS_ORIGIN / BETTER_AUTH_URL を自動導出 (明示上書きされてなければ) */}}
+  {{- if and .Values.global.domain (not (hasKey .Values.backend.env "CORS_ORIGIN")) }}
+  CORS_ORIGIN: {{ printf "https://%s" .Values.global.domain | quote }}
+  {{- end }}
+  {{- if and .Values.global.domain (not (hasKey .Values.backend.env "BETTER_AUTH_URL")) }}
+  BETTER_AUTH_URL: {{ printf "https://%s" .Values.global.domain | quote }}
+  {{- end }}
+  {{- if .Values.worlds.registries }}
+  WORLDS_REGISTRY_URLS: {{ .Values.worlds.registries | join "," | quote }}
+  {{- end }}
+  {{- if .Values.redis.enabled }}
+  REDIS_URL: {{ printf "redis://%s-redis-master:%v" (include "ubichill.fullname" .) (.Values.redis.master.service.ports.redis | default 6379) | quote }}
+  {{- end }}
+  WORLDS_DIR: "/worlds-rw"
+{{- end }}

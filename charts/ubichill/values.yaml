@@ -2,7 +2,11 @@
 
 # Global settings
 global:
-  imageRegistry: "ghcr.io"
+  # ⚠ ここを設定すると bitnami subchart (postgresql/redis) にも leak し、
+  # docker.io/bitnamilegacy/* に対して `<global>/docker.io/...` のような壊れた URL を作る。
+  # ubichill 自身の image は backend.image.repository / frontend.image.repository に
+  # フルパス (ghcr.io/<owner>/...) を書く方針なので、global は空のまま。
+  imageRegistry: ""
   imagePullPolicy: Always
   # デプロイ時に必須。helm install 時に --set global.domain=example.com で指定する。
   # CORS_ORIGIN / BETTER_AUTH_URL / Ingress host はここから自動導出される。
@@ -31,12 +35,21 @@ worlds:
 backend:
   enabled: true
   replicaCount: 1
-  
+
+  # Drizzle migration を Helm hook (pre-install/pre-upgrade) で実行する設定。
+  # backend Deployment より先に走り、失敗すると ロールアウトが止まる (= 安全側)。
+  migrate:
+    enabled: true
+    backoffLimit: 2
+    ttlSecondsAfterFinished: 300
+    # resources を省略すると backend.resources を使う
+
   image:
-    repository: "ubichill-backend"
+    # 公式 ubichill org のイメージ。fork した場合は --set で上書きする。
+    repository: "ghcr.io/ubichill/ubichill-backend"
     tag: "latest"
     pullPolicy: Always
-  
+
   service:
     type: ClusterIP
     port: 3001
@@ -93,13 +106,24 @@ backend:
       timeoutSeconds: 3
       failureThreshold: 3
   
-  # Environment variables
-  # CORS_ORIGIN / BETTER_AUTH_URL は global.domain から自動導出される。
-  # 上書きが必要な場合のみここに記述する。
+  # Environment variables (非機密)
+  # ConfigMap (backend-config) に展開され envFrom で注入される。
+  #
+  # 自動導出される値:
+  #   CORS_ORIGIN, BETTER_AUTH_URL ← global.domain から組み立て (上書き可)
+  #   REDIS_URL                    ← redis subchart 名から組み立て
+  #   WORLDS_REGISTRY_URLS         ← worlds.registries から組み立て
+  #   WORLDS_DIR                   ← /worlds-rw 固定
+  #
+  # よく使う option (string で渡す。zod の transform が boolean に変換する):
+  #   SKIP_EMAIL_VERIFICATION: "true"   # OTP/メール送信を skip して直接登録 (dev 用)
+  #   TRUST_PROXY: "true"               # Ingress 経由で X-Forwarded-* を信用 (rate limit IP 正確化)
+  #   DEBUG: "true"                     # logger.debug を有効化
+  #   NODE_ENV: "development"           # OTP コードをログに出す等
   env:
     NODE_ENV: "production"
     PORT: "3001"
-    # Database and Redis connections set by templates
+    # Database / Redis / WORLDS_* は ConfigMap 側で自動導出する
 
   # Secret environment variables (rendered as Secret)
   # 必須シークレット — values の上書き or existingSecret を必ず指定すること。
@@ -131,10 +155,11 @@ frontend:
   replicaCount: 1
   
   image:
-    repository: "ubichill-frontend"
-    tag: "latest" 
+    # 公式 ubichill org のイメージ。fork した場合は --set で上書きする。
+    repository: "ghcr.io/ubichill/ubichill-frontend"
+    tag: "latest"
     pullPolicy: Always
-  
+
   service:
     type: ClusterIP
     port: 3000
@@ -199,10 +224,14 @@ redis:
   # Explicitly reset registry for this subchart to avoid inheriting 'ghcr.io' from global
   global:
     imageRegistry: ""
+  # Bitnami は 2025-08 に docker.io/bitnami/* の **version-pinned tags** を
+  # パージしたが、`latest` rolling tag は残っている (snapshot は bitnamilegacy
+  # に退避済だが 7.2.4-debian-11 などは pull 不可)。
+  # prod が `bitnami/redis:latest` で動いているので合わせる。
   image:
     registry: ""
     repository: docker.io/bitnami/redis
-    tag: 7.2.4-debian-11-r2
+    tag: latest
   auth:
     enabled: true
     password: ""
@@ -233,13 +262,20 @@ postgresql:
   enabled: true  # Enable if using PostgreSQL
   global:
     imageRegistry: ""
+  # bitnamilegacy には PG18 タグが存在しない (legacy snapshot 時点で PG18 未リリース)。
+  # `bitnami/postgresql:latest` は purge 対象外で残っているため、prod と同じく
+  # latest 追従とする。
+  # 注意: latest は将来 PG19+ にローリングする可能性あり。
+  # バージョン固定したければ bitnamilegacy/postgresql:17.6.0-debian-12-r4 が legacy 最新
+  # (ただし PG17 < 既存 PG18 PVC は読めないため PVC 再作成が必要)。
   image:
     registry: docker.io
     repository: bitnami/postgresql
-    tag: "16-debian-12"
+    tag: latest
   auth:
     enablePostgresUser: true
-    # password / postgresPassword は必ず deploy 時に上書きする (or existingSecret を使う)。
+    # postgresPassword: 管理者 (postgres) ユーザーのパスワード。マイグレーション/管理用。
+    # password: アプリ用ユーザー (auth.username) のパスワード。**DATABASE_URL はこちらを使う**。
     # 既定で空にしておき、template 側で fail-fast。"password" のような placeholder は禁止。
     postgresPassword: ""
     username: "ubichill"

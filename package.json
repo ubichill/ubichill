@@ -13,12 +13,14 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "typecheck": "pnpm -r exec tsgo --noEmit",
+    "db:generate": "pnpm --filter @ubichill/db generate",
+    "db:migrate": "pnpm --filter @ubichill/db migrate:dev",
     "clean": "pnpm --filter \"./packages/*\" clean",
     "test": "echo \"No tests specified yet\" && exit 0"
   },
   "volta": {
     "node": "25.9.0",
-    "pnpm": "10.33.0"
+    "pnpm": "10.33.2"
   },
   "pnpm": {
     "overrides": {

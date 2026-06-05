@@ -76,11 +76,17 @@ app.use(limiter);
 // JSONボディパーサー
 app.use(express.json());
 
-// バージョン情報エンドポイント（ビルド時のコミットハッシュのみ返す。環境名は攻撃者に有用なため除外）
+// バージョン情報エンドポイント。
+// production 以外なら environment 名も返す → フロントの VersionBadge は
+// この有無だけで表示 ON/OFF を判定する (= 表示制御は backend が source of truth)。
 app.get('/api/version', (_req, res) => {
-    res.json({
+    const response: Record<string, string> = {
         commitHash: process.env.COMMIT_HASH ?? 'unknown',
-    });
+    };
+    if (appConfig.nodeEnv !== 'production') {
+        response.environment = appConfig.nodeEnv;
+    }
+    res.json(response);
 });
 
 import { toNodeHandler } from 'better-auth/node';
@@ -176,12 +182,14 @@ async function startServer() {
     // システムユーザー初期化のみ（ワールドシードは行わない）
     await worldRegistry.initialize();
 
-    // 起動時クリーンアップ: 前回の実行で残ったインスタンスを削除する。
-    // サーバーが再起動するとソケット接続が全て切断されるが、disconnect ハンドラは
-    // 実行されないため DB の currentUsers が 0 にならずインスタンスが残り続ける。
-    const cleaned = await instanceManager.cleanupAll();
-    if (cleaned > 0) {
-        console.log(`🧹 起動クリーンアップ: 孤立インスタンス ${cleaned} 件を削除しました`);
+    // 起動時 warmup: 既存 DB インスタンスに emptyTimer を仕掛ける。
+    // emptyTimeoutMs 秒以内に world:join で戻ってきたクライアントは生存。
+    // 誰も戻らなければ自動削除されるので、孤児 instance のリークも防げる。
+    const warmed = await instanceManager.warmupEmptyTimers();
+    if (warmed > 0) {
+        console.log(
+            `🔁 起動 warmup: ${warmed} 件のインスタンスに ${appConfig.instance.emptyTimeoutMs / 1000}秒の再接続猶予を設定`,
+        );
     }
 
     setupGracefulShutdown();

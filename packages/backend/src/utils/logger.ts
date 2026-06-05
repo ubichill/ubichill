@@ -2,37 +2,25 @@ import { appConfig } from '../config';
 
 /**
  * ロガーユーティリティ
- * DEBUG環境変数がtrueの場合のみデバッグログを出力
+ * 全ログに ISO 8601 タイムスタンプを前置する (K8s ログ集約で時系列が追えるように)。
+ * DEBUG=true の時のみ debug ログを出力。
  */
 
+const ts = (): string => new Date().toISOString();
+
 export const logger = {
-    /**
-     * デバッグログ（DEBUG=trueの場合のみ出力）
-     */
     debug: (...args: unknown[]) => {
         if (appConfig.debug) {
-            console.log('[DEBUG]', ...args);
+            console.log(`[${ts()}] [DEBUG]`, ...args);
         }
     },
-
-    /**
-     * 情報ログ（常に出力）
-     */
     info: (...args: unknown[]) => {
-        console.log(...args);
+        console.log(`[${ts()}] [INFO]`, ...args);
     },
-
-    /**
-     * 警告ログ（常に出力）
-     */
     warn: (...args: unknown[]) => {
-        console.warn(...args);
+        console.warn(`[${ts()}] [WARN]`, ...args);
     },
-
-    /**
-     * エラーログ（常に出力）
-     */
     error: (...args: unknown[]) => {
-        console.error(...args);
+        console.error(`[${ts()}] [ERROR]`, ...args);
     },
 };

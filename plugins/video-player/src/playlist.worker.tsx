@@ -58,11 +58,16 @@ function nextTrack(loop: LoopMode, shuffle: boolean): void {
     const len = state.local.playlist.length;
     if (len === 0) return;
     if (loop === 'one') {
-        // 同じトラックを emit し直して screen に load を促す
-        emitCurrent();
+        // 同トラック replay: track 切替なしで controls に巻き戻し再生を依頼
+        VPEvents.emit('vp:track:replay', {}, VPTarget.controls);
         return;
     }
     if (shuffle) {
+        // 単一トラックなら shuffle してもインデックス不変 → replay として扱う
+        if (len === 1) {
+            VPEvents.emit('vp:track:replay', {}, VPTarget.controls);
+            return;
+        }
         state.local.currentIndex = Math.floor(Math.random() * len);
         return;
     }
@@ -71,9 +76,14 @@ function nextTrack(loop: LoopMode, shuffle: boolean): void {
         state.local.currentIndex = cur + 1;
         return;
     }
-    // 末尾に到達: loop='all' のみ先頭に戻る。'none' は停止 (controls 側で isPlaying=false に)
+    // 末尾に到達: loop='all' は先頭に戻る (単一トラックの場合は state 不変なので明示 replay)。
+    // loop='none' は停止 (controls 側で baselineTime=0 + isPlaying=false にリセット)。
     if (loop === 'all') {
-        state.local.currentIndex = 0;
+        if (len === 1) {
+            VPEvents.emit('vp:track:replay', {}, VPTarget.controls);
+        } else {
+            state.local.currentIndex = 0;
+        }
     } else {
         VPEvents.emit('vp:playback:stop', {}, VPTarget.controls);
     }

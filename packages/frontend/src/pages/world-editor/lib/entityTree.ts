@@ -43,6 +43,28 @@ export function insertEntity(
     return updateEntityAt(entities, parentPath, (p) => ({ ...p, children: [...(p.children ?? []), newEntity] }));
 }
 
+/**
+ * 既存の entity (siblingPath) の直後に新 entity を挿入する。
+ * 複製操作 (Cmd+D) で「自分のすぐ下に出現」する自然な挙動を実現するため。
+ */
+export function insertEntityAfter(
+    entities: InitialEntity[],
+    siblingPath: EntityPath,
+    newEntity: InitialEntity,
+): InitialEntity[] {
+    if (siblingPath.length === 0) return [...entities, newEntity];
+    if (siblingPath.length === 1) {
+        const idx = siblingPath[0];
+        return [...entities.slice(0, idx + 1), newEntity, ...entities.slice(idx + 1)];
+    }
+    const parentPath = siblingPath.slice(0, -1);
+    const idx = siblingPath[siblingPath.length - 1];
+    return updateEntityAt(entities, parentPath, (p) => {
+        const kids = p.children ?? [];
+        return { ...p, children: [...kids.slice(0, idx + 1), newEntity, ...kids.slice(idx + 1)] };
+    });
+}
+
 /** path 中で `oldIndex` 番目の Entity が削除されたとき、削除後の path を返す (関連しないなら null)。 */
 export function adjustPathAfterDelete(targetPath: EntityPath | null, deletedPath: EntityPath): EntityPath | null {
     if (!targetPath) return null;
