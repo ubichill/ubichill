@@ -25,16 +25,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Extract Versions from package.json
+      - name: Extract Node version from package.json
         id: versions
         run: |
           echo "node=$(jq -r '.volta.node' package.json)" >> $GITHUB_OUTPUT
-          echo "pnpm=$(jq -r '.volta.pnpm' package.json)" >> $GITHUB_OUTPUT
 
+      # pnpm version は package.json の packageManager フィールドから自動検出
       - name: Install pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: ${{ steps.versions.outputs.pnpm }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
