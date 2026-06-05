@@ -101,13 +101,24 @@ backend:
       timeoutSeconds: 3
       failureThreshold: 3
   
-  # Environment variables
-  # CORS_ORIGIN / BETTER_AUTH_URL は global.domain から自動導出される。
-  # 上書きが必要な場合のみここに記述する。
+  # Environment variables (非機密)
+  # ConfigMap (backend-config) に展開され envFrom で注入される。
+  #
+  # 自動導出される値:
+  #   CORS_ORIGIN, BETTER_AUTH_URL ← global.domain から組み立て (上書き可)
+  #   REDIS_URL                    ← redis subchart 名から組み立て
+  #   WORLDS_REGISTRY_URLS         ← worlds.registries から組み立て
+  #   WORLDS_DIR                   ← /worlds-rw 固定
+  #
+  # よく使う option (string で渡す。zod の transform が boolean に変換する):
+  #   SKIP_EMAIL_VERIFICATION: "true"   # OTP/メール送信を skip して直接登録 (dev 用)
+  #   TRUST_PROXY: "true"               # Ingress 経由で X-Forwarded-* を信用 (rate limit IP 正確化)
+  #   DEBUG: "true"                     # logger.debug を有効化
+  #   NODE_ENV: "development"           # OTP コードをログに出す等
   env:
     NODE_ENV: "production"
     PORT: "3001"
-    # Database and Redis connections set by templates
+    # Database / Redis / WORLDS_* は ConfigMap 側で自動導出する
 
   # Secret environment variables (rendered as Secret)
   # 必須シークレット — values の上書き or existingSecret を必ず指定すること。
