@@ -76,11 +76,17 @@ app.use(limiter);
 // JSONボディパーサー
 app.use(express.json());
 
-// バージョン情報エンドポイント（ビルド時のコミットハッシュのみ返す。環境名は攻撃者に有用なため除外）
+// バージョン情報エンドポイント。
+// production 以外なら environment 名も返す → フロントの VersionBadge は
+// この有無だけで表示 ON/OFF を判定する (= 表示制御は backend が source of truth)。
 app.get('/api/version', (_req, res) => {
-    res.json({
+    const response: Record<string, string> = {
         commitHash: process.env.COMMIT_HASH ?? 'unknown',
-    });
+    };
+    if (appConfig.nodeEnv !== 'production') {
+        response.environment = appConfig.nodeEnv;
+    }
+    res.json(response);
 });
 
 import { toNodeHandler } from 'better-auth/node';
