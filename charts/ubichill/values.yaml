@@ -224,13 +224,14 @@ redis:
   # Explicitly reset registry for this subchart to avoid inheriting 'ghcr.io' from global
   global:
     imageRegistry: ""
-  # Bitnami は 2025-08 に docker.io/bitnami/* の public free image を大量パージし、
-  # 旧タグは docker.io/bitnamilegacy/* に退避された。新規 free tag は基本提供されない方針。
-  # → bitnamilegacy リポを参照する (同じタグがそのまま残っている)。
+  # Bitnami は 2025-08 に docker.io/bitnami/* の **version-pinned tags** を
+  # パージしたが、`latest` rolling tag は残っている (snapshot は bitnamilegacy
+  # に退避済だが 7.2.4-debian-11 などは pull 不可)。
+  # prod が `bitnami/redis:latest` で動いているので合わせる。
   image:
     registry: ""
-    repository: docker.io/bitnamilegacy/redis
-    tag: 7.2.4-debian-11-r2
+    repository: docker.io/bitnami/redis
+    tag: latest
   auth:
     enabled: true
     password: ""
@@ -261,13 +262,16 @@ postgresql:
   enabled: true  # Enable if using PostgreSQL
   global:
     imageRegistry: ""
-  # 同上: bitnami → bitnamilegacy への移行
-  # PG18 へ追従 (旧 PG16 の PVC は中身を読めないため、既存環境は
-  # `kubectl delete pvc data-<release>-postgresql-0` で初期化が必要)。
+  # bitnamilegacy には PG18 タグが存在しない (legacy snapshot 時点で PG18 未リリース)。
+  # `bitnami/postgresql:latest` は purge 対象外で残っているため、prod と同じく
+  # latest 追従とする。
+  # 注意: latest は将来 PG19+ にローリングする可能性あり。
+  # バージョン固定したければ bitnamilegacy/postgresql:17.6.0-debian-12-r4 が legacy 最新
+  # (ただし PG17 < 既存 PG18 PVC は読めないため PVC 再作成が必要)。
   image:
     registry: docker.io
-    repository: bitnamilegacy/postgresql
-    tag: "18-debian-12"
+    repository: bitnami/postgresql
+    tag: latest
   auth:
     enablePostgresUser: true
     # postgresPassword: 管理者 (postgres) ユーザーのパスワード。マイグレーション/管理用。
