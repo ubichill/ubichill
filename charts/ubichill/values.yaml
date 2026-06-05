@@ -2,7 +2,11 @@
 
 # Global settings
 global:
-  imageRegistry: "ghcr.io"
+  # ⚠ ここを設定すると bitnami subchart (postgresql/redis) にも leak し、
+  # docker.io/bitnamilegacy/* に対して `<global>/docker.io/...` のような壊れた URL を作る。
+  # ubichill 自身の image は backend.image.repository / frontend.image.repository に
+  # フルパス (ghcr.io/<owner>/...) を書く方針なので、global は空のまま。
+  imageRegistry: ""
   imagePullPolicy: Always
   # デプロイ時に必須。helm install 時に --set global.domain=example.com で指定する。
   # CORS_ORIGIN / BETTER_AUTH_URL / Ingress host はここから自動導出される。
@@ -41,7 +45,8 @@ backend:
     # resources を省略すると backend.resources を使う
 
   image:
-    repository: "ubichill-backend"
+    # 公式 ubichill org のイメージ。fork した場合は --set で上書きする。
+    repository: "ghcr.io/ubichill/ubichill-backend"
     tag: "latest"
     pullPolicy: Always
 
@@ -150,10 +155,11 @@ frontend:
   replicaCount: 1
   
   image:
-    repository: "ubichill-frontend"
-    tag: "latest" 
+    # 公式 ubichill org のイメージ。fork した場合は --set で上書きする。
+    repository: "ghcr.io/ubichill/ubichill-frontend"
+    tag: "latest"
     pullPolicy: Always
-  
+
   service:
     type: ClusterIP
     port: 3000
@@ -218,9 +224,12 @@ redis:
   # Explicitly reset registry for this subchart to avoid inheriting 'ghcr.io' from global
   global:
     imageRegistry: ""
+  # Bitnami は 2025-08 に docker.io/bitnami/* の public free image を大量パージし、
+  # 旧タグは docker.io/bitnamilegacy/* に退避された。新規 free tag は基本提供されない方針。
+  # → bitnamilegacy リポを参照する (同じタグがそのまま残っている)。
   image:
     registry: ""
-    repository: docker.io/bitnami/redis
+    repository: docker.io/bitnamilegacy/redis
     tag: 7.2.4-debian-11-r2
   auth:
     enabled: true
@@ -252,9 +261,10 @@ postgresql:
   enabled: true  # Enable if using PostgreSQL
   global:
     imageRegistry: ""
+  # 同上: bitnami → bitnamilegacy への移行
   image:
     registry: docker.io
-    repository: bitnami/postgresql
+    repository: bitnamilegacy/postgresql
     tag: "16-debian-12"
   auth:
     enablePostgresUser: true
