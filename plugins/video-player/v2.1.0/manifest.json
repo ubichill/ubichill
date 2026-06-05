@@ -78,7 +78,7 @@
           "label": "API ベース URL"
         }
       },
-      "workerUrl": "./controls/index.8bb38825.js"
+      "workerUrl": "./controls/index.c9e6ac6c.js"
     },
     "video-player:playlist": {
       "capabilities": [
@@ -111,7 +111,7 @@
           "label": "再生中インデックス"
         }
       },
-      "workerUrl": "./playlist/index.0151978a.js"
+      "workerUrl": "./playlist/index.aabd1eb4.js"
     },
     "video-player:search": {
       "capabilities": [
