@@ -20,6 +20,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Node 20 は GitHub Actions runner 上で deprecate された (2026-09-16 削除予定)。
+# 上位 actions は v5/v6 で Node 24 に対応済み。docker/* は依然として v3 (Node 20) のため、
+# workflow レベルで強制的に Node 24 にロードする。
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -28,7 +34,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Extract versions from package.json
         id: versions
@@ -37,12 +43,12 @@ jobs:
           echo "pnpm=$(jq -r '.volta.pnpm' package.json)" >> $GITHUB_OUTPUT
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v3
+        uses: pnpm/action-setup@v4
         with:
           version: ${{ steps.versions.outputs.pnpm }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ steps.versions.outputs.node }}
           cache: "pnpm"
@@ -63,7 +69,7 @@ jobs:
       video-player: ${{ github.event_name == 'push' && 'true' || steps.filter.outputs.video-player }}
       next-version: ${{ steps.next-version.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -85,11 +91,9 @@ jobs:
         id: filter
         if: github.event_name == 'pull_request'
         with:
-          # base に commit SHA を渡すと paths-filter が GitHub diff API を使わず
-          # ローカル git diff (上の checkout fetch-depth=0 で確保済み) で算出する。
-          # 巨大 PR で diff API が "this diff is temporarily unavailable" を返すのを回避。
-          base: ${{ github.event.pull_request.base.sha }}
-          ref: ${{ github.event.pull_request.head.sha }}
+          # PR event の場合、paths-filter v3 が自動で base/head を取得する。
+          # base/ref を明示すると "ignored when triggered by pull request event" 警告が出るので渡さない。
+          # checkout fetch-depth=0 を上で取っているので、内部的にローカル git diff が使われる。
           filters: |
             backend:
               - 'packages/backend/**'
@@ -126,7 +130,7 @@ jobs:
       IMAGE_NAME: ubichill-backend
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
@@ -147,7 +151,7 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
@@ -179,7 +183,7 @@ jobs:
       IMAGE_NAME: ubichill-frontend
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
@@ -200,7 +204,7 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
@@ -233,7 +237,7 @@ jobs:
       IMAGE_NAME: video-player-backend
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
@@ -252,7 +256,7 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v6
         with:
           context: plugins/video-player/backend
           file: plugins/video-player/backend/Dockerfile
@@ -288,7 +292,7 @@ jobs:
       pull-requests: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
@@ -297,7 +301,7 @@ jobs:
         run: git push --force origin HEAD:refs/heads/dev
 
       - name: Comment on PR (create or update)
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const marker = '<!-- sync-to-dev-bot -->';
@@ -365,7 +369,7 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Create and push git tag
         run: |
