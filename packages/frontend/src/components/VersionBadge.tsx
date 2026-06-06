@@ -40,9 +40,8 @@ export function VersionBadge() {
             });
     }, []);
 
-    // backend が environment を返してきた時だけ表示 (production は環境名を返さない仕様)。
-    // 表示制御の真実は backend 側に集約する。
-    if (!info?.environment) return null;
+    // 本番では非表示、それ以外は出す。条件はこの 1 行だけ。
+    if (!info || info.environment === 'production') return null;
 
     const beShort = info.commitHash === 'unknown' ? 'local' : info.commitHash.slice(0, 7);
     const feShort = FE_COMMIT === 'unknown' ? 'local' : FE_COMMIT.slice(0, 7);
