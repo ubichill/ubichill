@@ -14,11 +14,11 @@ import {
     handleEntityDelete,
     handleEntityEphemeral,
     handleEntityPatch,
+    handleMediaStateRequest,
+    handleMediaStateResponse,
+    handleMediaSync,
     handleStatusUpdate,
     handleUserUpdate,
-    handleVideoPlayerStateRequest,
-    handleVideoPlayerStateResponse,
-    handleVideoPlayerSync,
     handleWorldJoin,
     handleWorldLeave,
 } from './handlers/socketHandlers';
@@ -139,10 +139,10 @@ io.on('connection', (socket) => {
     socket.on('entity:ephemeral', handleEntityEphemeral(socket));
     socket.on('entity:delete', handleEntityDelete(socket));
 
-    // Video Player同期
-    socket.on('video-player:sync', handleVideoPlayerSync(socket));
-    socket.on('video-player:state-request', handleVideoPlayerStateRequest(socket));
-    socket.on('video-player:state-response', handleVideoPlayerStateResponse(socket));
+    // メディア (動画/音声) peer 間同期
+    socket.on('media:sync', handleMediaSync(socket));
+    socket.on('media:state-request', handleMediaStateRequest(socket));
+    socket.on('media:state-response', handleMediaStateResponse(socket));
 });
 
 // ============================================

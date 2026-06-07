@@ -232,17 +232,18 @@ export interface ServerToClientEvents {
     'instance:closing': (reason: string) => void;
 
     // ============================================
-    // Video Player Events (Server -> Client)
+    // Media (video / audio etc.) ピア間同期 (Server -> Client)
+    // 任意のメディア系プラグインの「再生状態を peer 間で揃える」ためのルーム broadcast。
     // ============================================
 
-    /** 動画プレイヤーの状態同期 */
-    'video-player:sync': (data: { currentIndex: number; isPlaying: boolean; currentTime: number }) => void;
+    /** メディア再生状態の同期 */
+    'media:sync': (data: { currentIndex: number; isPlaying: boolean; currentTime: number }) => void;
 
-    /** 動画プレイヤーの再生状態リクエスト（参加時・Resync）*/
-    'video-player:state-request': (data: { fromSocketId: string }) => void;
+    /** 再生状態のリクエスト (参加時 / Resync で発火) */
+    'media:state-request': (data: { fromSocketId: string }) => void;
 
-    /** 動画プレイヤーの再生状態レスポンス */
-    'video-player:state-response': (data: { currentIndex: number; isPlaying: boolean; currentTime: number }) => void;
+    /** リクエストへの応答 (要求者だけに DM) */
+    'media:state-response': (data: { currentIndex: number; isPlaying: boolean; currentTime: number }) => void;
 }
 
 /**
@@ -287,17 +288,17 @@ export interface ClientToServerEvents {
     'entity:delete': (entityId: string) => void;
 
     // ============================================
-    // Video Player Events (Client -> Server)
+    // Media (video / audio etc.) ピア間同期 (Client -> Server)
     // ============================================
 
-    /** 動画プレイヤーの状態を同期 */
-    'video-player:sync': (data: { currentIndex: number; isPlaying: boolean; currentTime: number }) => void;
+    /** メディア再生状態を peer に流す */
+    'media:sync': (data: { currentIndex: number; isPlaying: boolean; currentTime: number }) => void;
 
-    /** 他のユーザーに現在の再生状態を要求 */
-    'video-player:state-request': () => void;
+    /** 他参加者に現在の再生状態を尋ねる */
+    'media:state-request': () => void;
 
-    /** 再生状態リクエストへの応答 */
-    'video-player:state-response': (data: {
+    /** リクエスト元への応答 */
+    'media:state-response': (data: {
         toSocketId: string;
         currentIndex: number;
         isPlaying: boolean;
