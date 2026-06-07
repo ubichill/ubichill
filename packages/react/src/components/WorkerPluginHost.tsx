@@ -7,7 +7,7 @@
  * - definition.onHostMessage を通じたカスタムメッセージのプラグイン側委譲
  */
 
-import { PluginHostManager } from '@ubichill/sandbox';
+import { routeEmit } from '@ubichill/sandbox';
 import type { ComponentInstance } from '@ubichill/shared';
 import type React from 'react';
 import { useEffect, useMemo, useRef } from 'react';
@@ -123,7 +123,7 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
             onFetch,
             onNetworkBroadcast: (type, data) => onNetworkBroadcastRef.current?.(type, data),
             onEventEmit: (type, data, scope, targetType, senderId) =>
-                PluginHostManager.routeEmit({
+                routeEmit({
                     senderComponentInstanceId: senderId,
                     type,
                     data,

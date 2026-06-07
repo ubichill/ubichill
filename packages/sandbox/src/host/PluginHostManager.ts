@@ -1,377 +1,33 @@
 /**
- * PluginHostManager — React 非依存のコアクラス。
+ * PluginHostManager — 1 つの Sandbox Worker のライフサイクルを管理する usecase 層。
  *
- * プラグイン Sandbox Worker のライフサイクル・TICK ループ・メッセージ処理を管理する。
- * ブラウザ（Web Worker ホスト）前提で動作し、React に依存しない。
+ * 担当:
+ *  - Worker の生成 / 初期化 / 破棄
+ *  - TICK ループ (rAF / visibility 切替で interval にフォールバック)
+ *  - Worker → Host コマンドの受信と HostHandlers への振り分け (capability gate 付き)
+ *  - Host → Worker イベント送信 (初期化前はキューに退避)
  *
- * React 環境では @ubichill/react の usePluginWorker 経由で使用することを推奨。
+ * 在籍簿は PluginRegistry、DOM 入力共有は SharedInputPool に委譲する。
+ * React 非依存。React 環境では @ubichill/react の usePluginWorker 経由で使う。
  */
-
-import type {
-    ComponentInstance,
-    EntityPatchPayload,
-    FetchOptions,
-    FetchResult,
-    InputFrameEvent,
-    PluginGuestCommand,
-    PluginHostEvent,
-    PluginWorkerMessage,
-    VNode,
-} from '@ubichill/shared';
-import { InputCollector } from './InputCollector';
+import type { PluginGuestCommand, PluginHostEvent, PluginWorkerMessage } from '@ubichill/shared';
+import { CAPABILITY_COMMANDS, CMD_TO_HANDLER } from './capability';
+import { getActiveWorkerCount, getWorker, registerWorker, unregisterWorker } from './PluginRegistry';
 import { isMetricEnabled, reportDiagnostic, reportMetric } from './pluginDiagnostics';
-
-// ============================================================
-// Capability 定義
-// ============================================================
-
-export const CAPABILITY_COMMANDS: Readonly<Record<string, readonly string[]>> = {
-    'scene:read': ['SCENE_GET_ENTITY', 'SCENE_QUERY_ENTITIES'],
-    'scene:update': [
-        'SCENE_CREATE_ENTITY',
-        'SCENE_UPDATE_ENTITY',
-        'SCENE_DESTROY_ENTITY',
-        'SCENE_SUBSCRIBE_ENTITY',
-        'SCENE_UNSUBSCRIBE_ENTITY',
-    ],
-    'net:fetch': ['NET_FETCH'],
-    'net:broadcast': ['NETWORK_BROADCAST'],
-    'net:host-message': ['NETWORK_SEND_TO_HOST'],
-    'net:emit': ['EVENT_EMIT'],
-    'ui:toast': ['UI_SHOW_TOAST'],
-    'ui:render': ['UI_RENDER'],
-    'avatar:set': ['AVATAR_SET'],
-    'canvas:draw': ['CANVAS_FRAME', 'CANVAS_COMMIT_STROKE'],
-    'video:control': [
-        'MEDIA_LOAD',
-        'MEDIA_PLAY',
-        'MEDIA_PAUSE',
-        'MEDIA_SEEK',
-        'MEDIA_SET_VOLUME',
-        'MEDIA_DESTROY',
-        'MEDIA_SET_VISIBLE',
-    ],
-};
-
-// ============================================================
-// コマンド → ハンドラー対応マップ（未接続検知用）
-// ============================================================
-
-/**
- * Worker コマンドとそれを処理する HostHandlers のキーの対応。
- * HostHandlers に新しいハンドラーを追加したらここにも追記する。
- */
-const CMD_TO_HANDLER = {
-    SCENE_GET_ENTITY: 'onGetEntity',
-    SCENE_QUERY_ENTITIES: 'onQueryEntities',
-    SCENE_CREATE_ENTITY: 'onCreateEntity',
-    SCENE_UPDATE_ENTITY: 'onUpdateEntity',
-    SCENE_DESTROY_ENTITY: 'onDestroyEntity',
-    NET_FETCH: 'onFetch',
-    NETWORK_SEND_TO_HOST: 'onMessage',
-    NETWORK_BROADCAST: 'onNetworkBroadcast',
-    EVENT_EMIT: 'onEventEmit',
-    UI_RENDER: 'onRender',
-    CANVAS_FRAME: 'onCanvasFrame',
-    CANVAS_COMMIT_STROKE: 'onCanvasCommitStroke',
-    MEDIA_LOAD: 'onMediaLoad',
-    MEDIA_PLAY: 'onMediaPlay',
-    MEDIA_PAUSE: 'onMediaPause',
-    MEDIA_SEEK: 'onMediaSeek',
-    MEDIA_SET_VOLUME: 'onMediaSetVolume',
-    MEDIA_DESTROY: 'onMediaDestroy',
-    MEDIA_SET_VISIBLE: 'onMediaSetVisible',
-    CMD_GRIP: 'onGripCommand',
-} as const satisfies Partial<Record<string, keyof HostHandlers>>;
-
-// ============================================================
-// 型定義
-// ============================================================
-
-export type { FetchOptions, FetchResult } from '@ubichill/shared';
-
-export type HostHandlers<TPayloadMap extends Record<string, unknown> = Record<string, unknown>> = {
-    onGetEntity?: (id: string) => ComponentInstance | undefined;
-    onQueryEntities?: (entityType: string) => ComponentInstance[];
-    onCreateEntity?: (entity: Omit<ComponentInstance, 'id'>) => Promise<ComponentInstance>;
-    onUpdateEntity?: (id: string, patch: EntityPatchPayload) => Promise<void>;
-    onDestroyEntity?: (id: string) => Promise<void>;
-    onFetch?: (url: string, options?: FetchOptions) => Promise<FetchResult>;
-    onMessage?: (msg: PluginWorkerMessage<TPayloadMap>) => void;
-    onReady?: () => void;
-    /** Worker の初期化が失敗したとき (構文エラー等) に発火。Host はローディングを終了する */
-    onInitFailed?: (error: string) => void;
-    onNetworkBroadcast?: (type: string, data: unknown) => void;
-    onEventEmit?: (
-        type: string,
-        data: unknown,
-        scope: 'siblings' | 'parent' | 'children' | 'subtree' | 'world',
-        targetType: string | undefined,
-        senderComponentInstanceId: string | undefined,
-    ) => void;
-    onCommand?: (command: PluginGuestCommand) => void;
-    /**
-     * Worker が Ubi.ui.render() を呼ぶたびに発火する。
-     * vnode が null の場合はアンマウント（Ubi.ui.unmount()）。
-     * VNodeRenderer で実 DOM に変換して描画する。
-     */
-    onRender?: (targetId: string, vnode: VNode | null) => void;
-    /** Worker が Ubi.canvas.frame() を呼んだときに発火する（毎フレーム） */
-    onCanvasFrame?: (
-        targetId: string,
-        activeStroke: import('@ubichill/shared').CanvasStrokeData | null,
-        cursors: import('@ubichill/shared').CanvasCursorData[],
-    ) => void;
-    /** Worker が Ubi.grip の hold/release/setHover を呼んだときに発火する */
-    onGripCommand?: (payload: import('@ubichill/shared').CmdGrip['payload']) => void;
-    /** Worker が Ubi.canvas.commitStroke() を呼んだときに発火する */
-    onCanvasCommitStroke?: (targetId: string, stroke: import('@ubichill/shared').CanvasStrokeData) => void;
-    /** Worker が Ubi.media.load() を呼んだときに発火する */
-    onMediaLoad?: (targetId: string, url: string, mediaType?: 'hls' | 'video' | 'auto') => void;
-    /** Worker が Ubi.media.play() を呼んだときに発火する */
-    onMediaPlay?: (targetId: string) => void;
-    /** Worker が Ubi.media.pause() を呼んだときに発火する */
-    onMediaPause?: (targetId: string) => void;
-    /** Worker が Ubi.media.seek() を呼んだときに発火する */
-    onMediaSeek?: (targetId: string, time: number) => void;
-    /** Worker が Ubi.media.setVolume() を呼んだときに発火する */
-    onMediaSetVolume?: (targetId: string, volume: number) => void;
-    /** Worker が Ubi.media.destroy() を呼んだときに発火する */
-    onMediaDestroy?: (targetId: string) => void;
-    /** Worker が Ubi.media.setVisible() を呼んだときに発火する */
-    onMediaSetVisible?: (targetId: string, visible: boolean) => void;
-    /**
-     * Worker が Ubi.log() を呼んだときに発火する。
-     * デフォルト実装は PluginHostManager が console[level] で出力する。
-     * オーバーライドして UI パネルに表示することも可能。
-     */
-    onLog?: (level: 'debug' | 'info' | 'warn' | 'error', message: string, pluginId?: string) => void;
-    /**
-     * Tick 送信直前に発火するパフォーマンスフック（setMetricHandler が登録済みの場合のみ）。
-     * deltaMs: rAF の実フレーム間隔。commandProcessingMs: 前Tickのホスト側コマンド処理累積時間。
-     */
-    onTickComplete?: (metric: import('./pluginDiagnostics').TickMetric) => void;
-};
-
-/**
- * スタティックレジストリに記録されるWorker情報。
- * `PluginHostManager.registry` から取得できる。
- */
-export interface PluginWorkerInfo {
-    readonly pluginId: string;
-    readonly componentInstanceId: string | undefined;
-    readonly entityId: string | undefined;
-    readonly parentEntityId: string | undefined;
-    readonly componentType: string | undefined;
-    readonly startedAt: number;
-    /** @internal クロス Worker emit のための直接送信ハンドル。 */
-    readonly _sendEvent: (event: PluginHostEvent) => void;
-}
-
-export interface PluginHostManagerOptions<TPayloadMap extends Record<string, unknown> = Record<string, unknown>> {
-    pluginCode: string;
-    worldId?: string;
-    myUserId?: string;
-    pluginId?: string;
-    /** Worker (= 1 Component インスタンス) を識別する flat ID。`Ubi.componentInstanceId` として参照可能。 */
-    componentInstanceId?: string;
-    /** 自 Worker が乗っている Entity (GameObject) の id。`Ubi.entityId` として参照可能。 */
-    entityId?: string;
-    /** 自 Entity の親 Entity の id。emit ルーティング (parent / subtree) で使用。 */
-    parentEntityId?: string;
-    /** この Worker が担当する Component 型 (`pluginId:componentName`)。Stage 2 で `Ubi.componentType` として公開予定。 */
-    componentType?: string;
-    /** プラグインアセットのベースURL（Worker で Ubi.pluginBase として参照可能） */
-    pluginBase?: string;
-    /** この Component が監視する他 Component 型一覧（plugin.json の watchEntityTypes）。SDK の state 自動同期に使用 */
-    watchEntityTypes?: string[];
-    /** Worker 起動時点で watchEntityTypes にマッチしている既存エンティティ。SDK がプラグインコード実行前に state.local へ同期反映する */
-    initialEntities?: ComponentInstance[];
-    handlers: HostHandlers<TPayloadMap>;
-    capabilities?: string[];
-    maxExecutionTime?: number;
-    onResourceLimitExceeded?: (reason: string) => void;
-    tickFps?: number;
-    disableAutoTick?: boolean;
-    /** DOM 入力（マウス・キーボード）の自動収集を無効化する（デフォルト: false = 有効） */
-    disableAutoInput?: boolean;
-}
-
-// ============================================================
-// PluginHostManager
-// ============================================================
+import {
+    acquireSharedInput,
+    collectSharedInputFor,
+    releaseSharedInput,
+    setSharedScrollElement,
+} from './SharedInputPool';
+import type { HostHandlers, PluginHostManagerOptions } from './types';
 
 export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Record<string, unknown>> {
-    // ============================================================
-    // スタティック定数
-    // ============================================================
     /** 非同期 RPC のタイムアウト (ms)。超過すると RPC エラーとして Worker に返す */
     static RPC_TIMEOUT_MS = 10_000;
     /** eventQueue の最大保持数。超過した場合は古いイベントを破棄する */
     static MAX_QUEUE_SIZE = 100;
 
-    // ============================================================
-    // スタティックレジストリ — アクティブWorkerの一覧と総数を外部から取得できる
-    // ============================================================
-    private static readonly _registry = new Map<string, PluginWorkerInfo>();
-    private static _sharedInputCollector: InputCollector | null = null;
-    private static _sharedInputRefCount = 0;
-    private static readonly _sharedInputCursor = new Map<string, number>();
-    private static readonly _sharedScrollElementByInstance = new Map<string, Element | null>();
-
-    private static _acquireSharedInput(instanceKey: string): void {
-        if (!PluginHostManager._sharedInputCollector) {
-            PluginHostManager._sharedInputCollector = new InputCollector();
-        }
-        PluginHostManager._sharedInputRefCount += 1;
-        PluginHostManager._sharedInputCursor.set(instanceKey, 0);
-        PluginHostManager._sharedScrollElementByInstance.set(instanceKey, null);
-    }
-
-    private static _releaseSharedInput(instanceKey: string): void {
-        PluginHostManager._sharedInputCursor.delete(instanceKey);
-        PluginHostManager._sharedScrollElementByInstance.delete(instanceKey);
-        PluginHostManager._applySharedScrollElement();
-
-        PluginHostManager._sharedInputRefCount = Math.max(0, PluginHostManager._sharedInputRefCount - 1);
-        if (PluginHostManager._sharedInputRefCount === 0) {
-            PluginHostManager._sharedInputCollector?.destroy();
-            PluginHostManager._sharedInputCollector = null;
-            PluginHostManager._sharedInputCursor.clear();
-            PluginHostManager._sharedScrollElementByInstance.clear();
-        }
-    }
-
-    private static _applySharedScrollElement(): void {
-        const collector = PluginHostManager._sharedInputCollector;
-        if (!collector) return;
-
-        let scrollElement: Element | null = null;
-        for (const candidate of PluginHostManager._sharedScrollElementByInstance.values()) {
-            if (candidate) {
-                scrollElement = candidate;
-                break;
-            }
-        }
-        collector.setScrollElement(scrollElement);
-    }
-
-    private static _setSharedScrollElement(instanceKey: string, el: Element | null): void {
-        if (!PluginHostManager._sharedInputCollector) return;
-        PluginHostManager._sharedScrollElementByInstance.set(instanceKey, el);
-        PluginHostManager._applySharedScrollElement();
-    }
-
-    private static _collectSharedInputFor(instanceKey: string): InputFrameEvent[] {
-        const collector = PluginHostManager._sharedInputCollector;
-        if (!collector) return [];
-
-        const lastSeq = PluginHostManager._sharedInputCursor.get(instanceKey) ?? 0;
-        const { events, lastSeq: nextSeq } = collector.collectSince(lastSeq);
-        PluginHostManager._sharedInputCursor.set(instanceKey, nextSeq);
-
-        let minSeq = Number.POSITIVE_INFINITY;
-        for (const seq of PluginHostManager._sharedInputCursor.values()) {
-            if (seq < minSeq) minSeq = seq;
-        }
-        if (Number.isFinite(minSeq)) {
-            collector.pruneEventsBefore(minSeq);
-        }
-
-        return events;
-    }
-
-    /** アクティブな全WorkerのInfo。読み取り専用。 */
-    static get registry(): ReadonlyMap<string, PluginWorkerInfo> {
-        return PluginHostManager._registry;
-    }
-
-    /** アクティブWorker総数 */
-    static get activeWorkerCount(): number {
-        return PluginHostManager._registry.size;
-    }
-
-    /**
-     * `Ubi.event.emit(type, data, { scope, targetType })` の受信側へのルーティング。
-     * sender 以外で scope + targetType に一致する Worker 全てに `EVT_CUSTOM` で配送する。
-     */
-    static routeEmit(args: {
-        senderComponentInstanceId: string | undefined;
-        type: string;
-        data: unknown;
-        scope: 'siblings' | 'parent' | 'children' | 'subtree' | 'world';
-        targetType: string | undefined;
-    }): void {
-        const { senderComponentInstanceId, type, data, scope, targetType } = args;
-        const all = Array.from(PluginHostManager._registry.values());
-        const sender = all.find((w) => w.componentInstanceId === senderComponentInstanceId);
-
-        const matchesScope = (w: PluginWorkerInfo): boolean => {
-            switch (scope) {
-                case 'siblings':
-                    // Entity 階層レベル: 同じ parent を持つ別 Entity の Component。
-                    // 空の wrapper Entity の下にある兄弟 Entity 同士の通信を可能にする。
-                    return (
-                        !!sender?.parentEntityId &&
-                        w.parentEntityId === sender.parentEntityId &&
-                        w.entityId !== sender.entityId
-                    );
-                case 'parent':
-                    return !!sender?.parentEntityId && w.entityId === sender.parentEntityId;
-                case 'children':
-                    return !!sender?.entityId && w.parentEntityId === sender.entityId;
-                case 'subtree':
-                    return !!sender?.entityId && PluginHostManager._isInSubtree(w, sender.entityId, all);
-                case 'world':
-                    return true;
-                default:
-                    return false;
-            }
-        };
-        const targets = all.filter((w) => {
-            if (w.componentInstanceId === senderComponentInstanceId) return false;
-            if (targetType && w.componentType !== targetType) return false;
-            return matchesScope(w);
-        });
-
-        for (const target of targets) {
-            target._sendEvent({
-                type: 'EVT_CUSTOM',
-                payload: { eventType: type, data },
-            });
-        }
-    }
-
-    /** w が rootEntityId をルートとする subtree (root + 子孫) に含まれるか。 */
-    private static _isInSubtree(w: PluginWorkerInfo, rootEntityId: string, all: PluginWorkerInfo[]): boolean {
-        if (w.entityId === rootEntityId) return true;
-        const parentOf = new Map<string, string | undefined>();
-        for (const info of all) {
-            if (info.entityId) parentOf.set(info.entityId, info.parentEntityId);
-        }
-        let cur: string | undefined = w.parentEntityId;
-        const seen = new Set<string>();
-        while (cur && !seen.has(cur)) {
-            if (cur === rootEntityId) return true;
-            seen.add(cur);
-            cur = parentOf.get(cur);
-        }
-        return false;
-    }
-
-    /**
-     * テスト用: スタティックレジストリをリセットする。
-     * テスト間でのレジストリ汚染を防ぐために使用する。
-     * プロダクションコードから呼び出してはいけない。
-     * @internal
-     */
-    static _resetForTests(): void {
-        PluginHostManager._registry.clear();
-    }
-
-    // ============================================================
-    // インスタンスフィールド
-    // ============================================================
     private worker: Worker;
     private handlers: HostHandlers<TPayloadMap>;
     private executionTimer: ReturnType<typeof setTimeout> | null = null;
@@ -401,10 +57,10 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
         if (isMetricEnabled()) {
             const metric = {
                 pluginId: this._pluginId,
-                componentInstanceId: PluginHostManager._registry.get(this._instanceKey)?.componentInstanceId,
+                componentInstanceId: getWorker(this._instanceKey)?.componentInstanceId,
                 deltaMs: deltaTime,
                 commandProcessingMs: this._currentTickCommandMs,
-                activeWorkerCount: PluginHostManager.activeWorkerCount,
+                activeWorkerCount: getActiveWorkerCount(),
                 timestamp: performance.now(),
             };
             reportMetric(metric);
@@ -445,7 +101,7 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
         this._pluginId = options.pluginId ?? 'unknown';
         this._logPrefix = options.pluginId ? `[PluginSandbox:${options.pluginId}]` : '[PluginSandbox]';
         this._instanceKey = `${this._pluginId}:${performance.now().toFixed(3)}:${Math.random().toString(36).slice(2)}`;
-        PluginHostManager._registry.set(this._instanceKey, {
+        registerWorker(this._instanceKey, {
             pluginId: this._pluginId,
             componentInstanceId: options.componentInstanceId,
             entityId: options.entityId,
@@ -480,7 +136,7 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
 
         // Vite の Worker 検出は new Worker(new URL(...)) の形式でないと機能しない
         // 変数に分離すると .ts がそのままアセットとして data:video/mp2t で埋め込まれてしまう
-        this.worker = new Worker(new URL('./sandbox.worker.ts', import.meta.url), { type: 'module' });
+        this.worker = new Worker(new URL('../worker/sandbox.worker.ts', import.meta.url), { type: 'module' });
         this.worker.addEventListener('message', (e: MessageEvent<PluginGuestCommand>) => {
             if (e.data.type === 'CMD_READY') {
                 this.isInitialized = true;
@@ -534,7 +190,7 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
         }
 
         if (this._autoInputEnabled) {
-            PluginHostManager._acquireSharedInput(this._instanceKey);
+            acquireSharedInput(this._instanceKey);
         }
     }
 
@@ -562,7 +218,7 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
         if (this.isInitialized) {
             // 入力イベントを Tick より先に送信（UbiSDK 側でキューに積まれ、同 Tick で処理される）
             if (this._autoInputEnabled) {
-                const inputEvents = PluginHostManager._collectSharedInputFor(this._instanceKey);
+                const inputEvents = collectSharedInputFor(this._instanceKey);
                 if (inputEvents.length > 0) {
                     this.sendEvent({ type: 'EVT_INPUT', payload: { events: inputEvents } });
                 }
@@ -679,7 +335,7 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
                         command.payload.data,
                         command.payload.scope,
                         command.payload.targetType,
-                        PluginHostManager._registry.get(this._instanceKey)?.componentInstanceId,
+                        getWorker(this._instanceKey)?.componentInstanceId,
                     );
                     break;
                 case 'UI_RENDER':
@@ -770,18 +426,18 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
     }
 
     /**
-     * Transferable オブジェクト（OffscreenCanvas 等）付きでイベントを送信する。
-     * Transferable は所有権が Worker に移るため、送信後は Host 側から使用できない。
-     */
-    /**
-     * ワールドスクロールを供給する要素を InputCollector に登録する。
+     * ワールドスクロールを供給する要素を SharedInputPool に登録する。
      * GenericPluginHost が [data-scroll-world] 要素を見つけたときに呼ぶ。
      */
     public setScrollElement(el: Element | null): void {
         if (!this._autoInputEnabled) return;
-        PluginHostManager._setSharedScrollElement(this._instanceKey, el);
+        setSharedScrollElement(this._instanceKey, el);
     }
 
+    /**
+     * Transferable オブジェクト（OffscreenCanvas 等）付きでイベントを送信する。
+     * Transferable は所有権が Worker に移るため、送信後は Host 側から使用できない。
+     */
     public sendEventWithTransfer(event: PluginHostEvent, transfer: Transferable[]): void {
         if (this.isInitialized) {
             this.worker.postMessage(event, transfer);
@@ -801,9 +457,9 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
         if (this.animationFrameId !== undefined) cancelAnimationFrame(this.animationFrameId);
         if (this.intervalId !== undefined) clearInterval(this.intervalId);
         if (this._autoInputEnabled) {
-            PluginHostManager._releaseSharedInput(this._instanceKey);
+            releaseSharedInput(this._instanceKey);
         }
         this.worker.terminate();
-        PluginHostManager._registry.delete(this._instanceKey);
+        unregisterWorker(this._instanceKey);
     }
 }
