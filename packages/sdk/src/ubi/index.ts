@@ -1,6 +1,7 @@
 import type { EcsWorld, System, WorkerEvent } from '@ubichill/engine';
 import { EcsEventType, EcsWorldImpl } from '@ubichill/engine';
 import {
+    CommandType,
     type ComponentInstance,
     type FetchOptions,
     type PluginGuestCommand,
@@ -171,7 +172,7 @@ export class UbiSDK {
             sendGripCommand: (payload) => {
                 // _send は OmitId<PluginGuestCommand> を受け取り内部で _sendToHost を呼ぶ。
                 // CmdGrip は fire-and-forget で id を持たないので OmitId<...> として直接渡せる。
-                this._send({ type: 'CMD_GRIP', payload });
+                this._send({ type: CommandType.CMD_GRIP, payload });
             },
             bringToFront: async () => {
                 // 自エンティティの transform.z を「同じ Component type の最大 z + 1」に持ち上げる。
@@ -204,7 +205,7 @@ export class UbiSDK {
 
     /** HTTP リクエスト (capability whitelist 経由)。 */
     public fetch(url: string, options?: FetchOptions): Promise<unknown> {
-        return this._rpc({ type: 'NET_FETCH', payload: { url, options } });
+        return this._rpc({ type: CommandType.NET_FETCH, payload: { url, options } });
     }
 
     // ── Transport ─────────────────────────────────────────────
@@ -250,7 +251,7 @@ export class UbiSDK {
     // ── Logging ───────────────────────────────────────────────
 
     public log(message: string, level: 'debug' | 'info' | 'warn' | 'error' = 'info'): void {
-        this._send({ type: 'CMD_LOG', payload: { level, message } });
+        this._send({ type: CommandType.CMD_LOG, payload: { level, message } });
     }
 
     // ── Sandbox lifecycle (@internal) ─────────────────────────

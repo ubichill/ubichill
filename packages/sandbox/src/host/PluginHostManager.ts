@@ -11,6 +11,8 @@
  * React 非依存。React 環境では @ubichill/react の usePluginWorker 経由で使う。
  */
 import {
+    CommandType,
+    HostEventType,
     type PluginGuestCommand,
     type PluginHostEvent,
     type PluginWorkerMessage,
@@ -143,7 +145,7 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
         // 変数に分離すると .ts がそのままアセットとして data:video/mp2t で埋め込まれてしまう
         this.worker = new Worker(new URL('../worker/sandbox.worker.ts', import.meta.url), { type: 'module' });
         this.worker.addEventListener('message', (e: MessageEvent<PluginGuestCommand>) => {
-            if (e.data.type === 'CMD_READY') {
+            if (e.data.type === CommandType.CMD_READY) {
                 this.isInitialized = true;
                 this.handlers.onReady?.();
                 for (const event of this.eventQueue) {
@@ -154,7 +156,7 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
             }
             // 初期化失敗: ロード状態は「完了」にして他のエンティティ表示を止めない (graceful degradation)。
             // 失敗した worker は機能しないが、UI のローディングスピナーは止まる。
-            if (e.data.type === 'CMD_INIT_FAILED') {
+            if (e.data.type === CommandType.CMD_INIT_FAILED) {
                 console.error(`${this._logPrefix} 初期化失敗:`, e.data.payload.error);
                 this.handlers.onInitFailed?.(e.data.payload.error);
                 this.handlers.onReady?.(); // ロード終了として扱う (ハングを防ぐ)
@@ -175,7 +177,7 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
 
         // EVT_LIFECYCLE_INIT は直接送信（キュー非経由: deadlock防止）
         this.worker.postMessage({
-            type: 'EVT_LIFECYCLE_INIT',
+            type: HostEventType.EVT_LIFECYCLE_INIT,
             payload: {
                 code: options.pluginCode,
                 worldId: options.worldId ?? '',
@@ -225,10 +227,10 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
             if (this._autoInputEnabled) {
                 const inputEvents = collectSharedInputFor(this._instanceKey);
                 if (inputEvents.length > 0) {
-                    this.sendEvent({ type: 'EVT_INPUT', payload: { events: inputEvents } });
+                    this.sendEvent({ type: HostEventType.EVT_INPUT, payload: { events: inputEvents } });
                 }
             }
-            this.sendEvent({ type: 'EVT_LIFECYCLE_TICK', payload: { deltaTime } });
+            this.sendEvent({ type: HostEventType.EVT_LIFECYCLE_TICK, payload: { deltaTime } });
         }
     }
 
@@ -274,7 +276,7 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
             });
             if (id) {
                 this.sendEvent({
-                    type: 'EVT_RPC_RESPONSE',
+                    type: HostEventType.EVT_RPC_RESPONSE,
                     id,
                     success: false,
                     error: message,
@@ -299,13 +301,13 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
         try {
             let result: unknown;
             switch (type) {
-                case 'SCENE_GET_ENTITY':
+                case CommandType.SCENE_GET_ENTITY:
                     result = this.handlers.onGetEntity?.(command.payload.id) ?? null;
                     break;
-                case 'SCENE_QUERY_ENTITIES':
+                case CommandType.SCENE_QUERY_ENTITIES:
                     result = this.handlers.onQueryEntities?.(command.payload.entityType) ?? [];
                     break;
-                case 'SCENE_CREATE_ENTITY':
+                case CommandType.SCENE_CREATE_ENTITY:
                     result = (
                         await this._withTimeout(
                             this.handlers.onCreateEntity?.(command.payload.entity) ?? Promise.resolve(undefined),
@@ -313,35 +315,35 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
                         )
                     )?.id;
                     break;
-                case 'SCENE_UPDATE_ENTITY':
+                case CommandType.SCENE_UPDATE_ENTITY:
                     await this._withTimeout(
                         this.handlers.onUpdateEntity?.(command.payload.id, command.payload.patch) ?? Promise.resolve(),
                         type,
                     );
                     break;
-                case 'SCENE_DESTROY_ENTITY':
+                case CommandType.SCENE_DESTROY_ENTITY:
                     await this._withTimeout(
                         this.handlers.onDestroyEntity?.(command.payload.id) ?? Promise.resolve(),
                         type,
                     );
                     break;
-                case 'NET_FETCH':
+                case CommandType.NET_FETCH:
                     result = await this._withTimeout(
                         this.handlers.onFetch?.(command.payload.url, command.payload.options) ??
                             Promise.resolve(undefined),
                         type,
                     );
                     break;
-                case 'NETWORK_SEND_TO_HOST':
+                case CommandType.NETWORK_SEND_TO_HOST:
                     this.handlers.onMessage?.({
                         type: command.payload.type,
                         payload: command.payload.data,
                     } as PluginWorkerMessage<TPayloadMap>);
                     break;
-                case 'NETWORK_BROADCAST':
+                case CommandType.NETWORK_BROADCAST:
                     this.handlers.onNetworkBroadcast?.(command.payload.type, command.payload.data);
                     break;
-                case 'EVENT_EMIT':
+                case CommandType.EVENT_EMIT:
                     this.handlers.onEventEmit?.(
                         command.payload.type,
                         command.payload.data,
@@ -350,48 +352,48 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
                         getWorker(this._instanceKey)?.componentInstanceId,
                     );
                     break;
-                case 'UI_RENDER':
+                case CommandType.UI_RENDER:
                     this.handlers.onRender?.(command.payload.targetId, command.payload.vnode);
                     break;
-                case 'CANVAS_FRAME':
+                case CommandType.CANVAS_FRAME:
                     this.handlers.onCanvasFrame?.(
                         command.payload.targetId,
                         command.payload.activeStroke,
                         command.payload.cursors,
                     );
                     break;
-                case 'CANVAS_COMMIT_STROKE':
+                case CommandType.CANVAS_COMMIT_STROKE:
                     this.handlers.onCanvasCommitStroke?.(command.payload.targetId, command.payload.stroke);
                     break;
-                case 'MEDIA_LOAD':
+                case CommandType.MEDIA_LOAD:
                     this.handlers.onMediaLoad?.(
                         command.payload.targetId,
                         command.payload.url,
                         command.payload.mediaType,
                     );
                     break;
-                case 'MEDIA_PLAY':
+                case CommandType.MEDIA_PLAY:
                     this.handlers.onMediaPlay?.(command.payload.targetId);
                     break;
-                case 'MEDIA_PAUSE':
+                case CommandType.MEDIA_PAUSE:
                     this.handlers.onMediaPause?.(command.payload.targetId);
                     break;
-                case 'MEDIA_SEEK':
+                case CommandType.MEDIA_SEEK:
                     this.handlers.onMediaSeek?.(command.payload.targetId, command.payload.time);
                     break;
-                case 'MEDIA_SET_VOLUME':
+                case CommandType.MEDIA_SET_VOLUME:
                     this.handlers.onMediaSetVolume?.(command.payload.targetId, command.payload.volume);
                     break;
-                case 'MEDIA_DESTROY':
+                case CommandType.MEDIA_DESTROY:
                     this.handlers.onMediaDestroy?.(command.payload.targetId);
                     break;
-                case 'MEDIA_SET_VISIBLE':
+                case CommandType.MEDIA_SET_VISIBLE:
                     this.handlers.onMediaSetVisible?.(command.payload.targetId, command.payload.visible);
                     break;
-                case 'CMD_GRIP':
+                case CommandType.CMD_GRIP:
                     this.handlers.onGripCommand?.(command.payload);
                     break;
-                case 'CMD_LOG': {
+                case CommandType.CMD_LOG: {
                     const { level, message } = command.payload;
                     if (this.handlers.onLog) {
                         this.handlers.onLog(level, message, this._logPrefix);
@@ -405,7 +407,7 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
                     break;
             }
             if (id) {
-                this.sendEvent({ type: 'EVT_RPC_RESPONSE', id, success: true, data: result });
+                this.sendEvent({ type: HostEventType.EVT_RPC_RESPONSE, id, success: true, data: result });
             }
         } catch (error) {
             if (id) {
@@ -414,7 +416,7 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
                 const errorCode = message.includes('RPC タイムアウト')
                     ? UbiErrorCode.RPC_TIMEOUT
                     : UbiErrorCode.RPC_HANDLER_ERROR;
-                this.sendEvent({ type: 'EVT_RPC_RESPONSE', id, success: false, error: message, errorCode });
+                this.sendEvent({ type: HostEventType.EVT_RPC_RESPONSE, id, success: false, error: message, errorCode });
             }
         } finally {
             if (_cmdStart > 0) {

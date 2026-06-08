@@ -1,3 +1,4 @@
+import { CommandType } from '@ubichill/shared';
 import type { SendFn } from '../types';
 
 export type MediaModule = {
@@ -13,13 +14,14 @@ export type MediaModule = {
 export function createMediaModule(send: SendFn): MediaModule {
     return {
         load: (url, targetId = 'default', mediaType) =>
-            send({ type: 'MEDIA_LOAD', payload: { targetId, url, mediaType } }),
-        play: (targetId = 'default') => send({ type: 'MEDIA_PLAY', payload: { targetId } }),
-        pause: (targetId = 'default') => send({ type: 'MEDIA_PAUSE', payload: { targetId } }),
-        seek: (time, targetId = 'default') => send({ type: 'MEDIA_SEEK', payload: { targetId, time } }),
-        setVolume: (volume, targetId = 'default') => send({ type: 'MEDIA_SET_VOLUME', payload: { targetId, volume } }),
-        destroy: (targetId = 'default') => send({ type: 'MEDIA_DESTROY', payload: { targetId } }),
+            send({ type: CommandType.MEDIA_LOAD, payload: { targetId, url, mediaType } }),
+        play: (targetId = 'default') => send({ type: CommandType.MEDIA_PLAY, payload: { targetId } }),
+        pause: (targetId = 'default') => send({ type: CommandType.MEDIA_PAUSE, payload: { targetId } }),
+        seek: (time, targetId = 'default') => send({ type: CommandType.MEDIA_SEEK, payload: { targetId, time } }),
+        setVolume: (volume, targetId = 'default') =>
+            send({ type: CommandType.MEDIA_SET_VOLUME, payload: { targetId, volume } }),
+        destroy: (targetId = 'default') => send({ type: CommandType.MEDIA_DESTROY, payload: { targetId } }),
         setVisible: (visible, targetId = 'default') =>
-            send({ type: 'MEDIA_SET_VISIBLE', payload: { targetId, visible } }),
+            send({ type: CommandType.MEDIA_SET_VISIBLE, payload: { targetId, visible } }),
     };
 }

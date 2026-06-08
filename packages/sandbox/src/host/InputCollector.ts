@@ -39,7 +39,7 @@
  * プラグイン開発者は Frontend コードを一切書かずに入力を受け取れる。
  */
 
-import type { InputFrameEvent } from '@ubichill/shared';
+import { InputEventType, type InputFrameEvent } from '@ubichill/shared';
 
 type SequencedInputFrameEvent = {
     seq: number;
@@ -130,7 +130,7 @@ export class InputCollector {
         this._cursorStyle = nextStyle;
         this._discreteEvents.push({
             seq: this._nextSeq(),
-            event: { type: 'CURSOR_STYLE', data: { style: nextStyle } },
+            event: { type: InputEventType.CURSOR_STYLE, data: { style: nextStyle } },
         });
     }
 
@@ -143,7 +143,7 @@ export class InputCollector {
             this._latestMousePos = {
                 seq: this._nextSeq(),
                 event: {
-                    type: 'MOUSE_MOVE',
+                    type: InputEventType.MOUSE_MOVE,
                     data: {
                         x: e.clientX + scrollLeft,
                         y: e.clientY + scrollTop,
@@ -172,7 +172,7 @@ export class InputCollector {
             this._discreteEvents.push({
                 seq: this._nextSeq(),
                 event: {
-                    type: 'CONTEXT_MENU',
+                    type: InputEventType.CONTEXT_MENU,
                     data: {
                         x: e.clientX + scrollLeft,
                         y: e.clientY + scrollTop,
@@ -193,7 +193,7 @@ export class InputCollector {
             this._discreteEvents.push({
                 seq: this._nextSeq(),
                 event: {
-                    type: 'MOUSE_DOWN',
+                    type: InputEventType.MOUSE_DOWN,
                     data: {
                         x: e.clientX + scrollLeft,
                         y: e.clientY + scrollTop,
@@ -214,7 +214,7 @@ export class InputCollector {
             this._discreteEvents.push({
                 seq: this._nextSeq(),
                 event: {
-                    type: 'MOUSE_UP',
+                    type: InputEventType.MOUSE_UP,
                     data: {
                         x: e.clientX + scrollLeft,
                         y: e.clientY + scrollTop,
@@ -230,7 +230,7 @@ export class InputCollector {
             this._discreteEvents.push({
                 seq: this._nextSeq(),
                 event: {
-                    type: 'KEY_DOWN',
+                    type: InputEventType.KEY_DOWN,
                     data: { key: e.key, code: e.code },
                 },
             });
@@ -240,7 +240,7 @@ export class InputCollector {
             this._discreteEvents.push({
                 seq: this._nextSeq(),
                 event: {
-                    type: 'KEY_UP',
+                    type: InputEventType.KEY_UP,
                     data: { key: e.key, code: e.code },
                 },
             });
@@ -250,7 +250,7 @@ export class InputCollector {
             this._latestResize = {
                 seq: this._nextSeq(),
                 event: {
-                    type: 'RESIZE',
+                    type: InputEventType.RESIZE,
                     data: { width: window.innerWidth, height: window.innerHeight },
                 },
             };
@@ -280,7 +280,7 @@ export class InputCollector {
                 this._latestScroll = {
                     seq: this._nextSeq(),
                     event: {
-                        type: 'SCROLL',
+                        type: InputEventType.SCROLL,
                         data: { x: el.scrollLeft, y: el.scrollTop },
                     },
                 };
@@ -290,7 +290,7 @@ export class InputCollector {
                     this._latestMousePos = {
                         seq: this._nextSeq(),
                         event: {
-                            type: 'MOUSE_MOVE',
+                            type: InputEventType.MOUSE_MOVE,
                             data: {
                                 x: this._lastViewportPos.x + el.scrollLeft,
                                 y: this._lastViewportPos.y + el.scrollTop,

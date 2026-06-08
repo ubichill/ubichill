@@ -11,6 +11,7 @@
  *
  * module スコープの singleton。複数 PluginHostManager が同一プロセスで共有する。
  */
+import { HostEventType } from '@ubichill/shared';
 import type { EmitScope, PluginWorkerInfo } from './types';
 
 const _registry = new Map<string, PluginWorkerInfo>();
@@ -85,7 +86,7 @@ export function routeEmit(args: {
     });
 
     for (const target of targets) {
-        target._sendEvent({ type: 'EVT_CUSTOM', payload: { eventType: type, data } });
+        target._sendEvent({ type: HostEventType.EVT_CUSTOM, payload: { eventType: type, data } });
     }
 }
 

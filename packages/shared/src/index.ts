@@ -400,6 +400,7 @@ export const SERVER_CONFIG = {
 // ============================================
 
 export * from './plugin/errors';
+export * from './plugin/protocol';
 export * from './plugin/types';
 export * from './plugin/vnode';
 export * from './schemas';

@@ -12,6 +12,7 @@
  */
 
 import type { System } from '@ubichill/engine';
+import { CommandType } from '@ubichill/shared';
 import type { SendFn } from '../types';
 
 /**
@@ -95,13 +96,13 @@ export function createEventModule(deps: EventModuleDeps): EventModule {
 
     const rawEmit = (type: string, data: unknown, options: EmitOptions): void =>
         send({
-            type: 'EVENT_EMIT',
+            type: CommandType.EVENT_EMIT,
             payload: { type, data, scope: options.scope, targetType: options.targetType },
         });
     const rawBroadcast = (type: string, data: unknown): void =>
-        send({ type: 'NETWORK_BROADCAST', payload: { type, data } });
+        send({ type: CommandType.NETWORK_BROADCAST, payload: { type, data } });
     const rawSendToHost = (type: string, data: unknown): void =>
-        send({ type: 'NETWORK_SEND_TO_HOST', payload: { type, data } });
+        send({ type: CommandType.NETWORK_SEND_TO_HOST, payload: { type, data } });
 
     return {
         sendToHost: rawSendToHost,

@@ -1,4 +1,4 @@
-import type { ComponentInstance, EntityPatchPayload, VNode } from '@ubichill/shared';
+import { CommandType, type ComponentInstance, type EntityPatchPayload, type VNode } from '@ubichill/shared';
 import type { EntityState, EntityStateFor, PresenceEntry, SendFn, StateBinding } from '../types';
 
 // ── スコープマーカー (このファイル内部のみ) ───────────────────────
@@ -200,7 +200,7 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
                 if (me) Object.assign(me.sharedState, pendingSharedWrites);
             }
             deps.send({
-                type: 'NETWORK_BROADCAST',
+                type: CommandType.NETWORK_BROADCAST,
                 payload: {
                     type: 'presence:sharedState',
                     data: { sharedState: { ...pendingSharedWrites } },
