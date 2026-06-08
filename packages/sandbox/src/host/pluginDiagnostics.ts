@@ -16,6 +16,8 @@
 // 診断 (Diagnostic)
 // ============================================================
 
+import type { UbiErrorCode } from '@ubichill/shared';
+
 export type DiagnosticLevel = 'warn' | 'error';
 
 export interface PluginDiagnostic {
@@ -23,27 +25,17 @@ export interface PluginDiagnostic {
     level: DiagnosticLevel;
     /** 発生元プラグインID */
     pluginId: string;
-    /** 機械可読なエラーコード */
+    /** 機械可読なエラーコード (統一エラー体系 UbiErrorCode) */
     code: DiagnosticCode;
     /** 人間可読なメッセージ */
     message: string;
 }
 
 /**
- * 診断コード一覧。
- * 新しい警告を追加するときはここに追記する。
+ * 診断コードは統一エラー体系 UbiErrorCode のサブセット。
+ * Host 内部の診断 (warn/error) で使うものに限定する。
  */
-export type DiagnosticCode =
-    /** Worker がコマンドを送ったが対応するハンドラーが未接続 */
-    | 'HANDLER_NOT_CONNECTED'
-    /** 宣言されていない capability を使用しようとした */
-    | 'CAPABILITY_VIOLATION'
-    /** 実行時間・メモリ制限を超過した */
-    | 'RESOURCE_LIMIT_EXCEEDED'
-    /** Tick のコマンド処理時間がフレーム予算を超過した */
-    | 'PERF_TICK_BUDGET_EXCEEDED'
-    /** アクティブ Worker 数が上限に達した */
-    | 'PERF_WORKER_LIMIT_REACHED';
+export type DiagnosticCode = UbiErrorCode;
 
 export type DiagnosticHandler = (diagnostic: PluginDiagnostic) => void;
 

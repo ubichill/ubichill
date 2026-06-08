@@ -1,5 +1,6 @@
 // These types are imported from their source files to avoid circular dependency with index.ts
 import type { ComponentInstance, CursorPosition, EntityPatchPayload, User } from '../index';
+import type { UbiErrorCode } from './errors';
 import type { VNode } from './vnode';
 
 /**
@@ -517,6 +518,8 @@ export type EvtRpcResponse = {
     success: boolean;
     data?: unknown;
     error?: string;
+    /** 失敗理由の machine-readable code。SDK が UbiError.code に載せてプラグインへ伝える。 */
+    errorCode?: UbiErrorCode;
 };
 
 /**

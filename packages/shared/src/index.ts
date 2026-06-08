@@ -399,6 +399,7 @@ export const SERVER_CONFIG = {
 // Re-export Schemas and Plugins
 // ============================================
 
+export * from './plugin/errors';
 export * from './plugin/types';
 export * from './plugin/vnode';
 export * from './schemas';

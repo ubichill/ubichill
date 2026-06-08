@@ -10,7 +10,12 @@
  * 在籍簿は PluginRegistry、DOM 入力共有は SharedInputPool に委譲する。
  * React 非依存。React 環境では @ubichill/react の usePluginWorker 経由で使う。
  */
-import type { PluginGuestCommand, PluginHostEvent, PluginWorkerMessage } from '@ubichill/shared';
+import {
+    type PluginGuestCommand,
+    type PluginHostEvent,
+    type PluginWorkerMessage,
+    UbiErrorCode,
+} from '@ubichill/shared';
 import { CAPABILITY_COMMANDS, CMD_TO_HANDLER } from './capability';
 import { getActiveWorkerCount, getWorker, registerWorker, unregisterWorker } from './PluginRegistry';
 import { isMetricEnabled, reportDiagnostic, reportMetric } from './pluginDiagnostics';
@@ -260,14 +265,21 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
         const id = 'id' in command ? (command as { id?: string }).id : undefined;
 
         if (!this._isCommandAllowed(type)) {
+            const message = `未宣言の capability コマンド: ${type}`;
             reportDiagnostic({
                 level: 'warn',
                 pluginId: this._pluginId,
-                code: 'CAPABILITY_VIOLATION',
-                message: `未宣言の capability コマンド: ${type}`,
+                code: UbiErrorCode.CAPABILITY_NOT_DECLARED,
+                message,
             });
             if (id) {
-                this.sendEvent({ type: 'EVT_RPC_RESPONSE', id, success: false, error: `capability 未宣言: ${type}` });
+                this.sendEvent({
+                    type: 'EVT_RPC_RESPONSE',
+                    id,
+                    success: false,
+                    error: message,
+                    errorCode: UbiErrorCode.CAPABILITY_NOT_DECLARED,
+                });
             }
             return;
         }
@@ -278,7 +290,7 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
             reportDiagnostic({
                 level: 'warn',
                 pluginId: this._pluginId,
-                code: 'HANDLER_NOT_CONNECTED',
+                code: UbiErrorCode.HANDLER_NOT_CONNECTED,
                 message: `コマンド ${type} に対するハンドラー ${handlerKey} が未接続です`,
             });
         }
@@ -398,7 +410,11 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
         } catch (error) {
             if (id) {
                 const message = error instanceof Error ? error.message : String(error);
-                this.sendEvent({ type: 'EVT_RPC_RESPONSE', id, success: false, error: message });
+                // RPC タイムアウトは _withTimeout が投げた専用メッセージで判別する
+                const errorCode = message.includes('RPC タイムアウト')
+                    ? UbiErrorCode.RPC_TIMEOUT
+                    : UbiErrorCode.RPC_HANDLER_ERROR;
+                this.sendEvent({ type: 'EVT_RPC_RESPONSE', id, success: false, error: message, errorCode });
             }
         } finally {
             if (_cmdStart > 0) {
@@ -417,7 +433,7 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
                 reportDiagnostic({
                     level: 'warn',
                     pluginId: this._pluginId,
-                    code: 'RESOURCE_LIMIT_EXCEEDED',
+                    code: UbiErrorCode.RESOURCE_LIMIT_EXCEEDED,
                     message: `eventQueue が上限 (${PluginHostManager.MAX_QUEUE_SIZE}) に達したため古いイベントを破棄しました`,
                 });
             }

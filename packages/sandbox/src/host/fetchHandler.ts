@@ -1,37 +1,42 @@
-import type { FetchOptions, FetchResult } from '@ubichill/shared';
+/**
+ * プラグインの Ubi.fetch を Host 側で実行するハンドラ。
+ *
+ * 2 系統:
+ *  - fetchDirect            : 相対 URL / プラグイン自身の origin 用。allowlist チェックなし。
+ *  - createPluginFetchHandler: 外部 URL 用。allowlist (https + ドメイン) でガードする。
+ *
+ * エラーは machine-readable な `code` を含む構造化 body で返すため、プラグイン側は
+ * `JSON.parse(res.body).error.code` で原因 (ドメイン拒否 / HTTPS必須 / …) を判別できる。
+ */
+import { type FetchOptions, type FetchResult, UbiErrorCode } from '@ubichill/shared';
+
+const LOG_PREFIX = '[FetchHandler]';
+
+/** HTTP ステータス (Host が合成して返すもの)。 */
+const HTTP_STATUS = {
+    FORBIDDEN: { status: 403, statusText: 'Forbidden' },
+    INTERNAL_ERROR: { status: 500, statusText: 'Internal Server Error' },
+} as const;
 
 /**
- * 相対 URL およびプラグインアセット origin への直接フェッチ。
- * ドメインホワイトリストチェックをスキップする。
+ * エラー時に FetchResult.body に JSON 文字列として入る構造。
+ * code は統一エラー体系 (UbiErrorCode) の FETCH_* を使う。
  */
-export async function fetchDirect(url: string, options?: FetchOptions): Promise<FetchResult> {
-    try {
-        const response = await fetch(url, {
-            method: options?.method ?? 'GET',
-            headers: options?.headers,
-            body: options?.body,
-        });
-        const headers: Record<string, string> = {};
-        response.headers.forEach((value, key) => {
-            headers[key] = value;
-        });
-        return {
-            ok: response.ok,
-            status: response.status,
-            statusText: response.statusText,
-            headers,
-            body: await response.text(),
-        };
-    } catch (error) {
-        return {
-            ok: false,
-            status: 500,
-            statusText: 'Internal Server Error',
-            headers: {},
-            body: JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
-        };
-    }
+export interface FetchErrorBody {
+    error: {
+        code: UbiErrorCode;
+        message: string;
+        /** FETCH_DOMAIN_NOT_ALLOWED のとき、許可されているドメイン一覧 */
+        allowedDomains?: string[];
+    };
 }
+
+// ============================================================
+// allowlist ポリシー
+//   NOTE: 本来これはアプリ固有のポリシーであり、consumer が
+//   createPluginFetchHandler(domains) に注入するのが理想。
+//   ここでは後方互換のためデフォルト値を提供している。
+// ============================================================
 
 export const PRODUCTION_ALLOWED_DOMAINS = ['api.github.com', 'cdn.jsdelivr.net', 'unpkg.com'];
 
@@ -46,63 +51,115 @@ export const DEMO_ALLOWED_DOMAINS = [
 
 export const DEFAULT_ALLOWED_DOMAINS = PRODUCTION_ALLOWED_DOMAINS;
 
-export function isUrlAllowed(url: string, allowedDomains: string[] = DEFAULT_ALLOWED_DOMAINS): boolean {
+// ============================================================
+// 内部ヘルパー (重複排除)
+// ============================================================
+
+/** Response → FetchResult の変換 (成功・HTTP エラー問わず素通し)。 */
+async function toFetchResult(response: Response): Promise<FetchResult> {
+    const headers: Record<string, string> = {};
+    response.headers.forEach((value, key) => {
+        headers[key] = value;
+    });
+    return {
+        ok: response.ok,
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+        body: await response.text(),
+    };
+}
+
+/** Host が合成するエラー FetchResult を作る。 */
+function errorResult(http: { status: number; statusText: string }, error: FetchErrorBody['error']): FetchResult {
+    return {
+        ok: false,
+        status: http.status,
+        statusText: http.statusText,
+        headers: {},
+        body: JSON.stringify({ error } satisfies FetchErrorBody),
+    };
+}
+
+/** 実際の fetch 実行 + 例外を NETWORK_ERROR の FetchResult に正規化。 */
+async function runFetch(url: string, options?: FetchOptions): Promise<FetchResult> {
     try {
-        const urlObj = new URL(url);
-        if (urlObj.protocol !== 'https:') {
-            console.warn(`[FetchHandler] HTTPS ではない URL は許可されていません: ${url}`);
-            return false;
-        }
-        const isAllowed = allowedDomains.some(
-            (domain) => urlObj.hostname === domain || urlObj.hostname.endsWith(`.${domain}`),
-        );
-        if (!isAllowed) {
-            console.warn(`[FetchHandler] ホワイトリストに含まれていないドメイン: ${urlObj.hostname}`);
-        }
-        return isAllowed;
+        const response = await fetch(url, {
+            method: options?.method ?? 'GET',
+            headers: options?.headers,
+            body: options?.body,
+        });
+        return await toFetchResult(response);
     } catch (error) {
-        console.error('[FetchHandler] 無効な URL:', url, error);
-        return false;
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error(`${LOG_PREFIX} フェッチ失敗: ${url}`, error);
+        return errorResult(HTTP_STATUS.INTERNAL_ERROR, { code: UbiErrorCode.FETCH_NETWORK_ERROR, message });
     }
 }
 
+// ============================================================
+// allowlist チェック (理由つき)
+// ============================================================
+
+type UrlCheck = { allowed: true } | { allowed: false; code: UbiErrorCode; message: string };
+
+/** URL が allowlist を満たすか、満たさないなら理由コードつきで返す。 */
+export function checkUrlAllowed(url: string, allowedDomains: string[] = DEFAULT_ALLOWED_DOMAINS): UrlCheck {
+    let urlObj: URL;
+    try {
+        urlObj = new URL(url);
+    } catch {
+        return { allowed: false, code: UbiErrorCode.FETCH_INVALID_URL, message: `URL として不正です: ${url}` };
+    }
+    if (urlObj.protocol !== 'https:') {
+        return {
+            allowed: false,
+            code: UbiErrorCode.FETCH_HTTPS_REQUIRED,
+            message: `https 以外は許可されていません: ${urlObj.protocol}//`,
+        };
+    }
+    const ok = allowedDomains.some((d) => urlObj.hostname === d || urlObj.hostname.endsWith(`.${d}`));
+    if (!ok) {
+        return {
+            allowed: false,
+            code: UbiErrorCode.FETCH_DOMAIN_NOT_ALLOWED,
+            message: `許可されていないドメインです: ${urlObj.hostname}`,
+        };
+    }
+    return { allowed: true };
+}
+
+/** boolean だけ欲しい既存呼び出し向けの薄いラッパー。 */
+export function isUrlAllowed(url: string, allowedDomains: string[] = DEFAULT_ALLOWED_DOMAINS): boolean {
+    return checkUrlAllowed(url, allowedDomains).allowed;
+}
+
+// ============================================================
+// 公開 API
+// ============================================================
+
+/**
+ * 相対 URL およびプラグインアセット origin への直接フェッチ。
+ * allowlist チェックをスキップする (呼び出し側で安全性を保証済みのケース用)。
+ */
+export async function fetchDirect(url: string, options?: FetchOptions): Promise<FetchResult> {
+    return runFetch(url, options);
+}
+
+/**
+ * 外部 URL 用フェッチハンドラ。allowlist を満たさない URL は理由コードつきで弾く。
+ */
 export function createPluginFetchHandler(allowedDomains: string[] = DEFAULT_ALLOWED_DOMAINS) {
     return async (url: string, options?: FetchOptions): Promise<FetchResult> => {
-        if (!isUrlAllowed(url, allowedDomains)) {
-            return {
-                ok: false,
-                status: 403,
-                statusText: 'Forbidden',
-                headers: {},
-                body: JSON.stringify({ error: 'このURLへのアクセスは許可されていません', allowedDomains }),
-            };
-        }
-        try {
-            const response = await fetch(url, {
-                method: options?.method ?? 'GET',
-                headers: options?.headers,
-                body: options?.body,
+        const check = checkUrlAllowed(url, allowedDomains);
+        if (!check.allowed) {
+            console.warn(`${LOG_PREFIX} ${check.message}`);
+            return errorResult(HTTP_STATUS.FORBIDDEN, {
+                code: check.code,
+                message: check.message,
+                ...(check.code === UbiErrorCode.FETCH_DOMAIN_NOT_ALLOWED && { allowedDomains }),
             });
-            const headers: Record<string, string> = {};
-            response.headers.forEach((value, key) => {
-                headers[key] = value;
-            });
-            return {
-                ok: response.ok,
-                status: response.status,
-                statusText: response.statusText,
-                headers,
-                body: await response.text(),
-            };
-        } catch (error) {
-            console.error('[FetchHandler] フェッチエラー:', error);
-            return {
-                ok: false,
-                status: 500,
-                statusText: 'Internal Server Error',
-                headers: {},
-                body: JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
-            };
         }
+        return runFetch(url, options);
     };
 }
