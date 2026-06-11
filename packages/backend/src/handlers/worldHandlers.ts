@@ -53,7 +53,9 @@ export function handleWorldJoin(socket: TypedSocket) {
         }
 
         // インスタンスの存在確認: 存在しない場合はエラー（自動再作成しない）
-        const instance = await instanceManager.getInstance(instanceId);
+        // 存在確認は world 解決に依存しない軽量版を使う
+        // (getWorldByDbId が一時的に失敗しても join できるようにするため)
+        const instance = await instanceManager.findInstanceForJoin(instanceId);
         if (!instance) {
             callback({ success: false, error: 'インスタンスが見つかりません。ロビーから参加してください。' });
             return;
@@ -69,7 +71,7 @@ export function handleWorldJoin(socket: TypedSocket) {
 
         const effectiveInstanceId = instance.id;
 
-        if (instance.access.password) {
+        if (instance.hasPassword) {
             if (!password) {
                 callback({ success: false, error: 'パスワードが必要です' });
                 return;

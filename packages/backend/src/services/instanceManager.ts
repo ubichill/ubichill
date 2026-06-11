@@ -109,6 +109,10 @@ class InstanceManager {
 
         logger.info(`インスタンス作成: ${dbInstance.id} (world: ${world.id})`);
 
+        // 誰も join しないまま放置された instance を自動削除するため emptyTimer を仕掛ける。
+        // (handleWorldJoin の syncEmptyTimer でキャンセルされる。join 失敗で永久に残るのを防ぐ)
+        this.syncEmptyTimer(dbInstance.id);
+
         return this.toPublicInstance(dbInstance, world);
     }
 
@@ -164,16 +168,34 @@ class InstanceManager {
     }
 
     /**
-     * インスタンスを取得
+     * インスタンスを取得 (公開用 Instance。world 解決が必要)。
+     * world が解決できないと undefined を返すため、join の存在確認には
+     * findInstanceForJoin を使うこと (world 不整合でも参加できるように)。
      */
     async getInstance(instanceId: string): Promise<Instance | undefined> {
         const dbInstance = await instanceRepository.findById(instanceId);
-        if (!dbInstance) return undefined;
+        if (!dbInstance) {
+            logger.debug(`getInstance: DB に instance がありません (id: ${instanceId})`);
+            return undefined;
+        }
 
         const world = await worldRegistry.getWorldByDbId(dbInstance.worldId);
-        if (!world) return undefined;
+        if (!world) {
+            logger.warn(`getInstance: world 解決失敗 (instanceId: ${instanceId}, worldId: ${dbInstance.worldId})`);
+            return undefined;
+        }
 
         return this.toPublicInstance(dbInstance, world);
+    }
+
+    /**
+     * join 用の軽量な存在確認。world 解決には依存しない。
+     * (getWorldByDbId が一時的に null でも参加できるようにするため、DB レコードだけ見る)
+     */
+    async findInstanceForJoin(instanceId: string): Promise<{ id: string; hasPassword: boolean } | undefined> {
+        const dbInstance = await instanceRepository.findById(instanceId);
+        if (!dbInstance) return undefined;
+        return { id: dbInstance.id, hasPassword: dbInstance.hasPassword };
     }
 
     /**
