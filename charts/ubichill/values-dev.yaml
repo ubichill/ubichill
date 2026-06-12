@@ -12,8 +12,12 @@ backend:
   replicaCount: 1  # Single replica for dev
   
   image:
-    repository: "ubichill-backend"
-    tag: "latest"
+    # ghcr フルパス (global.imageRegistry は "" のまま)。
+    repository: "ghcr.io/ubichill/ubichill-backend"
+    # dev ローリングタグ。argocd-image-updater が dev-<sha> に書き換える前提
+    # (allow-tags: regexp:^dev-[0-9a-f]+$ / update-strategy: newest-build 推奨)。
+    # latest は main 由来なので dev では使わない。
+    tag: "dev"
     pullPolicy: Always
   
   resources:
@@ -40,8 +44,9 @@ frontend:
   replicaCount: 1  # Single replica for dev
   
   image:
-    repository: "ubichill-frontend"
-    tag: "latest"
+    repository: "ghcr.io/ubichill/ubichill-frontend"
+    # dev ローリングタグ。image-updater が dev-<sha> に書き換える (latest は main 由来)
+    tag: "dev"
     pullPolicy: Always
   
   resources:
@@ -89,8 +94,9 @@ worlds:
 pluginBackends:
   - id: video-player
     image:
-      repository: ubichill-video-player-backend
-      tag: latest
+      repository: ghcr.io/ubichill/video-player-backend
+      # dev ローリングタグ。image-updater が dev-<sha> に書き換える (latest は main 由来)
+      tag: dev
     port: 8000
     pathPrefix: /plugins/video-player/api
     replicaCount: 1

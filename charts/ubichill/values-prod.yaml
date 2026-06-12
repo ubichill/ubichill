@@ -3,7 +3,9 @@
 
 # Production image registry
 global:
-  imageRegistry: "ghcr.io"
+  # 空のまま。各 image.repository に ghcr フルパスを書く方針 (default values.yaml と統一)。
+  # ここに ghcr.io を入れると bitnami subchart や フルパス指定済 image に二重前置されて壊れる。
+  imageRegistry: ""
   security:
     allowInsecureImages: true
 
@@ -12,8 +14,11 @@ backend:
   replicaCount: 1  # High availability disabled due to lack of multi-replica support
   
   image:
-    repository: "ubichill-backend"
-    tag: "stable"  # Use stable tags in production
+    repository: "ghcr.io/ubichill/ubichill-backend"
+    # CI が push-to-main で更新する latest ローリングタグ。
+    # image-updater は latest-<sha> を newest-build で追跡する想定 (allow-tags: ^latest-[0-9a-f]+$)。
+    # ("stable" は CI が push していないため使わない)
+    tag: "latest"
     pullPolicy: IfNotPresent
   
   resources:
@@ -43,8 +48,9 @@ frontend:
   replicaCount: 1  # High availability disabled due to lack of multi-replica support
   
   image:
-    repository: "ubichill-frontend"
-    tag: "stable"  # Use stable tags in production
+    repository: "ghcr.io/ubichill/ubichill-frontend"
+    # latest ローリングタグ (image-updater が latest-<sha> に書き換える前提)。"stable" は CI 未push
+    tag: "latest"
     pullPolicy: IfNotPresent
   
   resources:
@@ -109,7 +115,8 @@ pluginBackends:
   - id: video-player
     image:
       repository: ghcr.io/ubichill/video-player-backend
-      tag: stable
+      # latest ローリングタグ (image-updater が latest-<sha> に書き換える前提)。"stable" は CI 未push
+      tag: latest
     port: 8000
     pathPrefix: /plugins/video-player/api
     replicaCount: 1
