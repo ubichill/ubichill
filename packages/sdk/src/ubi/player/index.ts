@@ -8,6 +8,7 @@
  * - syncCursor(opts): 自分のカーソル位置を一定 throttle で host へ通知
  */
 
+import { CommandType } from '@ubichill/shared';
 import type { PresenceEntry, SendFn } from '../types';
 
 export interface PlayerInfo {
@@ -60,7 +61,7 @@ export function createPlayerModule(send: SendFn, getMyUserId: () => string | und
         if (now - lastPositionSent < positionSyncThrottleMs) return;
         lastPositionSent = now;
         send({
-            type: 'NETWORK_SEND_TO_HOST',
+            type: CommandType.NETWORK_SEND_TO_HOST,
             payload: {
                 type: 'position:update',
                 data: { x: worldX, y: worldY, sharedState: localSharedState },

@@ -1,11 +1,14 @@
 import type { EcsWorld, System, WorkerEvent } from '@ubichill/engine';
 import { EcsEventType, EcsWorldImpl } from '@ubichill/engine';
-import type {
-    ComponentInstance,
-    FetchOptions,
-    PluginGuestCommand,
-    PluginHostEvent,
-    PluginWorkerMessage,
+import {
+    CommandType,
+    type ComponentInstance,
+    type FetchOptions,
+    type PluginGuestCommand,
+    type PluginHostEvent,
+    type PluginWorkerMessage,
+    UbiError,
+    UbiErrorCode,
 } from '@ubichill/shared';
 import { _beginRender, _callHandler, _clearTarget } from '../jsx/jsx-runtime';
 import type { CanvasModule } from './canvas';
@@ -45,7 +48,7 @@ const INPUT_TYPE_MAP: Readonly<Record<string, string>> = {
 
 type PendingRequest = {
     resolve: (data: unknown) => void;
-    reject: (error: string) => void;
+    reject: (error: string, code?: UbiErrorCode) => void;
 };
 
 /**
@@ -169,7 +172,7 @@ export class UbiSDK {
             sendGripCommand: (payload) => {
                 // _send は OmitId<PluginGuestCommand> を受け取り内部で _sendToHost を呼ぶ。
                 // CmdGrip は fire-and-forget で id を持たないので OmitId<...> として直接渡せる。
-                this._send({ type: 'CMD_GRIP', payload });
+                this._send({ type: CommandType.CMD_GRIP, payload });
             },
             bringToFront: async () => {
                 // 自エンティティの transform.z を「同じ Component type の最大 z + 1」に持ち上げる。
@@ -202,7 +205,7 @@ export class UbiSDK {
 
     /** HTTP リクエスト (capability whitelist 経由)。 */
     public fetch(url: string, options?: FetchOptions): Promise<unknown> {
-        return this._rpc({ type: 'NET_FETCH', payload: { url, options } });
+        return this._rpc({ type: CommandType.NET_FETCH, payload: { url, options } });
     }
 
     // ── Transport ─────────────────────────────────────────────
@@ -217,16 +220,22 @@ export class UbiSDK {
             const timer = setTimeout(() => {
                 this._pendingRequests.delete(id);
                 const prefix = this.pluginId ? `[UbiSDK:${this.pluginId}]` : '[UbiSDK]';
-                reject(new Error(`${prefix} RPC タイムアウト (${this._rpcTimeout}ms): ${command.type}`));
+                reject(
+                    new UbiError(
+                        UbiErrorCode.RPC_TIMEOUT,
+                        `${prefix} RPC タイムアウト (${this._rpcTimeout}ms): ${command.type}`,
+                    ),
+                );
             }, this._rpcTimeout);
             this._pendingRequests.set(id, {
                 resolve: (data) => {
                     clearTimeout(timer);
                     resolve(data as T);
                 },
-                reject: (error) => {
+                reject: (error, code) => {
                     clearTimeout(timer);
-                    reject(new Error(error));
+                    // code があれば UbiError、無ければ通常 Error (後方互換)
+                    reject(code ? new UbiError(code, error) : new Error(error));
                 },
             });
             this._sendToHost({ ...command, id } as PluginGuestCommand);
@@ -242,7 +251,7 @@ export class UbiSDK {
     // ── Logging ───────────────────────────────────────────────
 
     public log(message: string, level: 'debug' | 'info' | 'warn' | 'error' = 'info'): void {
-        this._send({ type: 'CMD_LOG', payload: { level, message } });
+        this._send({ type: CommandType.CMD_LOG, payload: { level, message } });
     }
 
     // ── Sandbox lifecycle (@internal) ─────────────────────────
@@ -317,7 +326,7 @@ export class UbiSDK {
                     if (event.success) {
                         pending.resolve(event.data);
                     } else {
-                        pending.reject(event.error ?? 'Unknown RPC error');
+                        pending.reject(event.error ?? 'Unknown RPC error', event.errorCode);
                     }
                     this._pendingRequests.delete(event.id);
                 }

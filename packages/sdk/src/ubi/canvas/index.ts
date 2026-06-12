@@ -1,4 +1,4 @@
-import type { CanvasCursorData, CanvasStrokeData } from '@ubichill/shared';
+import { type CanvasCursorData, type CanvasStrokeData, CommandType } from '@ubichill/shared';
 import type { SendFn } from '../types';
 
 export type CanvasModule = {
@@ -14,13 +14,14 @@ export function createCanvasModule(send: SendFn): CanvasModule {
     return {
         frame: (targetId, options) =>
             send({
-                type: 'CANVAS_FRAME',
+                type: CommandType.CANVAS_FRAME,
                 payload: {
                     targetId,
                     activeStroke: options.activeStroke ?? null,
                     cursors: options.cursors ?? [],
                 },
             }),
-        commitStroke: (targetId, stroke) => send({ type: 'CANVAS_COMMIT_STROKE', payload: { targetId, stroke } }),
+        commitStroke: (targetId, stroke) =>
+            send({ type: CommandType.CANVAS_COMMIT_STROKE, payload: { targetId, stroke } }),
     };
 }

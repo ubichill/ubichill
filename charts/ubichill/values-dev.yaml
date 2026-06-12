@@ -12,8 +12,8 @@ backend:
   replicaCount: 1  # Single replica for dev
   
   image:
-    repository: "ubichill-backend"
-    tag: "latest"
+    repository: "ghcr.io/ubichill/ubichill-backend"
+    tag: "dev"
     pullPolicy: Always
   
   resources:
@@ -40,8 +40,8 @@ frontend:
   replicaCount: 1  # Single replica for dev
   
   image:
-    repository: "ubichill-frontend"
-    tag: "latest"
+    repository: "ghcr.io/ubichill/ubichill-frontend"
+    tag: "dev"
     pullPolicy: Always
   
   resources:
@@ -89,8 +89,8 @@ worlds:
 pluginBackends:
   - id: video-player
     image:
-      repository: ubichill-video-player-backend
-      tag: latest
+      repository: ghcr.io/ubichill/video-player-backend
+      tag: dev
     port: 8000
     pathPrefix: /plugins/video-player/api
     replicaCount: 1

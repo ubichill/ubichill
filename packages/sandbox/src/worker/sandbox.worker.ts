@@ -1,5 +1,5 @@
 import { UbiSDK } from '@ubichill/sdk';
-import type { PluginGuestCommand, PluginHostEvent } from '@ubichill/shared';
+import { CommandType, HostEventType, type PluginGuestCommand, type PluginHostEvent } from '@ubichill/shared';
 
 // IMPORTANT: Function コンストラクタを無効化する前に保存
 const SafeFunction = Function;
@@ -72,7 +72,7 @@ function checkDangerousPatterns(code: string): void {
 self.addEventListener('message', (e: MessageEvent<PluginHostEvent>) => {
     const event = e.data;
 
-    if (event.type !== 'EVT_LIFECYCLE_INIT') {
+    if (event.type !== HostEventType.EVT_LIFECYCLE_INIT) {
         Ubi._dispatchEvent(event);
         return;
     }
@@ -118,7 +118,7 @@ self.addEventListener('message', (e: MessageEvent<PluginHostEvent>) => {
         pluginFn(Ubi, _pluginConsole);
 
         // ACK: 初期化完了を Host に通知 → Host がキューをフラッシュする
-        securePostMessage({ type: 'CMD_READY' });
+        securePostMessage({ type: CommandType.CMD_READY });
 
         console.log(`[Sandbox:${pluginId}] 初期化完了`);
     } catch (error) {
@@ -126,6 +126,6 @@ self.addEventListener('message', (e: MessageEvent<PluginHostEvent>) => {
         // Host にも失敗を通知 → markReady (ロード完了扱い) でローディング表示が止まらないように。
         // 失敗した plugin は機能しないが、他のエンティティの描画は阻害しない方針 (graceful degradation)。
         const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
-        securePostMessage({ type: 'CMD_INIT_FAILED', payload: { error: message } });
+        securePostMessage({ type: CommandType.CMD_INIT_FAILED, payload: { error: message } });
     }
 });

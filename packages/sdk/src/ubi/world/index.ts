@@ -6,7 +6,7 @@
  * 呼ぶのは「自エンティティの transform.z を 1 回だけ読む」など稀なケースのみ。
  */
 
-import type { ComponentInstance, EntityPatchPayload } from '@ubichill/shared';
+import { CommandType, type ComponentInstance, type EntityPatchPayload } from '@ubichill/shared';
 import type { RpcFn, SendFn } from '../types';
 
 export type WorldModule = {
@@ -29,10 +29,11 @@ export type WorldModule = {
 export function createWorldModule(send: SendFn, rpc: RpcFn): WorldModule {
     void send;
     return {
-        get: (id) => rpc({ type: 'SCENE_GET_ENTITY', payload: { id } }),
-        query: (entityType) => rpc({ type: 'SCENE_QUERY_ENTITIES', payload: { entityType } }),
-        update: (id, patch) => rpc({ type: 'SCENE_UPDATE_ENTITY', payload: { id, patch: { entityId: id, patch } } }),
-        _createEntity: (entity) => rpc({ type: 'SCENE_CREATE_ENTITY', payload: { entity } }),
-        _destroyEntity: (id) => rpc({ type: 'SCENE_DESTROY_ENTITY', payload: { id } }),
+        get: (id) => rpc({ type: CommandType.SCENE_GET_ENTITY, payload: { id } }),
+        query: (entityType) => rpc({ type: CommandType.SCENE_QUERY_ENTITIES, payload: { entityType } }),
+        update: (id, patch) =>
+            rpc({ type: CommandType.SCENE_UPDATE_ENTITY, payload: { id, patch: { entityId: id, patch } } }),
+        _createEntity: (entity) => rpc({ type: CommandType.SCENE_CREATE_ENTITY, payload: { entity } }),
+        _destroyEntity: (id) => rpc({ type: CommandType.SCENE_DESTROY_ENTITY, payload: { id } }),
     };
 }

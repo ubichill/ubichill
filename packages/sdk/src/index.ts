@@ -72,6 +72,8 @@ export type {
     WorldEntity,
     WorldEnvironmentData,
 } from '@ubichill/shared';
+// 統一エラー体系: プラグインは UbiError / UbiErrorCode で失敗理由を判別できる
+export { UbiError, UbiErrorCode } from '@ubichill/shared';
 // UbiSDK クラス + 型
 export { UbiSDK } from './ubi';
 export type { EmitOptions, EmitScope, EventRegistry } from './ubi/event';

@@ -3,7 +3,7 @@
 
 # Production image registry
 global:
-  imageRegistry: "ghcr.io"
+  imageRegistry: ""
   security:
     allowInsecureImages: true
 
@@ -12,8 +12,8 @@ backend:
   replicaCount: 1  # High availability disabled due to lack of multi-replica support
   
   image:
-    repository: "ubichill-backend"
-    tag: "stable"  # Use stable tags in production
+    repository: "ghcr.io/ubichill/ubichill-backend"
+    tag: "latest"
     pullPolicy: IfNotPresent
   
   resources:
@@ -43,8 +43,8 @@ frontend:
   replicaCount: 1  # High availability disabled due to lack of multi-replica support
   
   image:
-    repository: "ubichill-frontend"
-    tag: "stable"  # Use stable tags in production
+    repository: "ghcr.io/ubichill/ubichill-frontend"
+    tag: "latest"
     pullPolicy: IfNotPresent
   
   resources:
@@ -109,7 +109,7 @@ pluginBackends:
   - id: video-player
     image:
       repository: ghcr.io/ubichill/video-player-backend
-      tag: stable
+      tag: latest
     port: 8000
     pathPrefix: /plugins/video-player/api
     replicaCount: 1

@@ -1,4 +1,4 @@
-import type { VNode } from '@ubichill/shared';
+import { CommandType, type VNode } from '@ubichill/shared';
 import type { SendFn, UiRenderCostStat } from '../types';
 
 type UiRenderStatEntry = {
@@ -44,7 +44,7 @@ export function createUiModule(
     const flushUiRenderQueue = (): void => {
         if (uiRenderQueue.size === 0) return;
         for (const [targetId, vnode] of uiRenderQueue) {
-            send({ type: 'UI_RENDER', payload: { targetId, vnode } });
+            send({ type: CommandType.UI_RENDER, payload: { targetId, vnode } });
         }
         uiRenderQueue.clear();
     };
@@ -100,7 +100,7 @@ export function createUiModule(
     };
 
     return {
-        showToast: (text) => send({ type: 'UI_SHOW_TOAST', payload: { text } }),
+        showToast: (text) => send({ type: CommandType.UI_SHOW_TOAST, payload: { text } }),
         render: (factory, targetId = 'default') => renderUi(factory, targetId),
         renderEntity: (entityId, componentName, factory) =>
             renderUi(factory, buildEntityTargetId(entityId, componentName), { entityId, componentName }),

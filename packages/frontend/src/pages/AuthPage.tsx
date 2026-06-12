@@ -326,6 +326,7 @@ export function AuthPage() {
                             onChange={(e) => setEmail(e.target.value)}
                             placeholder="example@email.com"
                             className={inputStyle}
+                            autoComplete="email"
                             required
                         />
                     </div>
@@ -341,6 +342,7 @@ export function AuthPage() {
                             onChange={(e) => setPassword(e.target.value)}
                             placeholder="8文字以上"
                             className={inputStyle}
+                            autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                             minLength={8}
                             required
                         />
