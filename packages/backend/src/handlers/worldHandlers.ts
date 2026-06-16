@@ -123,13 +123,13 @@ export function handleWorldJoin(socket: TypedSocket) {
             oldSocket.disconnect(true);
         }
 
-        // 別 instance に居たなら、そこの後始末 (ロック解放 + user:left + ルーム退出 + emptyTimer 再評価)
+        // 別 instance に居たなら、そこの後始末 (ロック解放 + user:left + ルーム退出)。
+        // 空になった instance の削除は instanceReaper の定期スイープが回収する。
         const isInstanceMove = prevInstanceId !== undefined && prevInstanceId !== effectiveInstanceId;
         if (isInstanceMove && prevInstanceId) {
             releaseUserLocks(socket, prevInstanceId, userId);
             socket.leave(prevInstanceId);
             socket.nsp.to(prevInstanceId).emit('user:left', userId);
-            instanceManager.syncEmptyTimer(prevInstanceId);
         }
 
         // userManager を新 instance に切り替え
@@ -155,9 +155,6 @@ export function handleWorldJoin(socket: TypedSocket) {
         // handleDisconnect は activeUserSockets.get(userId) === socket か否かで判定するため、
         // ここで上書きした瞬間に旧 socket は「現役ではない」状態になる (= 死神タイマー化を阻止)。
         activeUserSockets.set(userId, socket);
-
-        // emptyTimer が走っていたらキャンセル (userManager に人がいるので削除予約は不要)
-        instanceManager.syncEmptyTimer(effectiveInstanceId);
 
         const roomUsers = userManager.getUsersByWorld(effectiveInstanceId);
 
@@ -204,11 +201,7 @@ export function handleWorldLeave(socket: TypedSocket) {
             activeUserSockets.delete(userId);
         }
 
-        // 実際にメモリから誰かを消したときだけ emptyTimer 再評価
-        if (instanceId && user) {
-            instanceManager.syncEmptyTimer(instanceId);
-        }
-
+        // 空になった instance の削除は instanceReaper の定期スイープが回収する。
         if (instanceId && user && userId) {
             socket.leave(instanceId);
             releaseUserLocks(socket, instanceId, userId);
@@ -271,8 +264,7 @@ export function handleDisconnect(socket: TypedSocket) {
             activeUserSockets.delete(userId);
             if (!removedUser) return; // 他の手段（handleWorldLeave等）で既に削除された
 
-            instanceManager.syncEmptyTimer(instanceId);
-
+            // 空になった instance の削除は instanceReaper の定期スイープが回収する。
             const releasedCount = releaseUserLocks(socket, instanceId, userId);
             if (releasedCount > 0) {
                 logger.info(

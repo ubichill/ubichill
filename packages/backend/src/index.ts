@@ -27,7 +27,7 @@ import { socketAuthMiddleware } from './middleware/socketAuth';
 import { router as instancesRouter } from './routes/instances';
 import { router as usersRouter } from './routes/users';
 import { router as worldsRouter } from './routes/worlds';
-import { instanceManager } from './services/instanceManager';
+import { instanceReaper } from './services/instanceReaper';
 import { worldRegistry } from './services/worldRegistry';
 
 // Expressアプリを初期化
@@ -152,6 +152,9 @@ function setupGracefulShutdown() {
     const shutdown = (signal: string) => {
         console.log(`⚡ ${signal} 受信 — グレースフルシャットダウン開始`);
 
+        // 定期スイープを止める
+        instanceReaper.stop();
+
         // 新規 HTTP 接続を拒否し、既存リクエストの完了を待つ
         server.close(() => {
             console.log('✅ HTTP サーバー停止完了');
@@ -178,15 +181,10 @@ async function startServer() {
     // システムユーザー初期化のみ（ワールドシードは行わない）
     await worldRegistry.initialize();
 
-    // 起動時 warmup: 既存 DB インスタンスに emptyTimer を仕掛ける。
-    // emptyTimeoutMs 秒以内に world:join で戻ってきたクライアントは生存。
-    // 誰も戻らなければ自動削除されるので、孤児 instance のリークも防げる。
-    const warmed = await instanceManager.warmupEmptyTimers();
-    if (warmed > 0) {
-        console.log(
-            `🔁 起動 warmup: ${warmed} 件のインスタンスに ${appConfig.instance.emptyTimeoutMs / 1000}秒の再接続猶予を設定`,
-        );
-    }
+    // 空インスタンスの掃除（reaper）を起動。DB を定期スイープし、在席0かつ
+    // 作成から猶予経過した instance を削除する。インメモリのタイマー状態に依存しないため、
+    // 再起動をまたいでも孤児 instance（closing のまま残る行）が確実に回収される。
+    instanceReaper.start();
 
     setupGracefulShutdown();
 
