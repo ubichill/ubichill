@@ -185,7 +185,12 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
 
     return (
         <div ref={divRef} style={wrapperStyle}>
-            <WorkerPluginHost entityId={entityId} entity={entity} definition={workerPlugin} />
+            {/* key に component 型を含める: エディタの entityId は位置ベース (`edit-0-0-c0`) で、
+                編集・並べ替えで同じ id の type が screen ⇄ controls と入れ替わることがある。
+                key を型に紐付けないと WorkerPluginHost が再利用され、前の worker が描画した
+                UI (vnodes) が残って「screen なのに controls の UI」になる。型が変われば
+                remount して worker と UI 状態をクリーンに作り直す。 */}
+            <WorkerPluginHost key={workerPlugin.id} entityId={entityId} entity={entity} definition={workerPlugin} />
         </div>
     );
 };
