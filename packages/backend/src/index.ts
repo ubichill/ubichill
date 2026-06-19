@@ -29,6 +29,7 @@ import { router as usersRouter } from './routes/users';
 import { router as worldsRouter } from './routes/worlds';
 import { instanceReaper } from './services/instanceReaper';
 import { worldRegistry } from './services/worldRegistry';
+import { logger } from './utils/logger';
 
 // Expressアプリを初期化
 const app = express();
@@ -92,6 +93,36 @@ app.use('/api/auth', (req, _res, next) => {
     console.log(`🔐 Auth リクエスト: ${req.method} ${req.originalUrl}`);
     next();
 });
+
+// get-session が null を返す根本原因を切り分けるための診断ログ (debug 時のみ)。
+//   - cookie 自体が届いていない → Cookie 属性 (Secure/SameSite/domain) の問題
+//   - cookie はあるのに null   → バックエンド/DB 側でセッション検証に失敗
+// の二択を 1 リクエストで確定させる。
+if (appConfig.debug) {
+    app.use('/api/auth', async (req, _res, next) => {
+        if (req.method === 'GET' && req.path.includes('get-session')) {
+            try {
+                const headers = new Headers();
+                for (const [k, v] of Object.entries(req.headers)) {
+                    if (typeof v === 'string') headers.set(k, v);
+                    else if (Array.isArray(v)) headers.set(k, v.join(', '));
+                }
+                const cookieNames = (req.headers.cookie ?? '')
+                    .split(';')
+                    .map((c) => c.trim().split('=')[0])
+                    .filter((n) => n && (n.includes('better-auth') || n.includes('session')));
+                const session = await auth.api.getSession({ headers });
+                logger.debug(
+                    `[get-session 診断] auth-cookies=[${cookieNames.join(', ') || 'なし'}] ` +
+                        `result=${session ? `user:${session.user.id.slice(0, 8)}` : 'NULL'}`,
+                );
+            } catch (err) {
+                logger.warn('[get-session 診断] getSession が例外を投げました:', err);
+            }
+        }
+        next();
+    });
+}
 
 // 認証API（Better Auth）- CORSとプリフライトを確実に処理するため、先に配置
 app.use('/api/auth', toNodeHandler(auth));
