@@ -10,6 +10,11 @@ interface VersionInfo {
 // ビルド時に埋め込まれたフロントエンドのコミットハッシュ
 const FE_COMMIT = import.meta.env.VITE_COMMIT_HASH ?? 'unknown';
 
+// ビルド時に埋め込まれる環境名。表示/非表示の判定はこれ「だけ」で決める。
+// バックエンド (/api/version) 不達でも dev では確実にバッジを出すため、
+// API レスポンスには依存しない。未設定 (ローカル pnpm dev) は development 扱い。
+const FE_ENVIRONMENT = (import.meta.env.VITE_ENVIRONMENT as string | undefined) ?? 'development';
+
 const REPO = 'https://github.com/ubichill/ubichill';
 
 function CommitLink({ hash, short }: { hash: string; short: string }) {
@@ -32,18 +37,24 @@ export function VersionBadge() {
     const [info, setInfo] = useState<VersionInfo | null>(null);
 
     useEffect(() => {
+        // BE のコミット/環境を「補強情報」として取得するだけ（表示判定には使わない）。
         fetch(`${getApiBase()}/api/version`)
-            .then((r) => r.json())
-            .then((data: VersionInfo) => setInfo(data))
+            .then((r) => (r.ok ? (r.json() as Promise<VersionInfo>) : null))
+            .then((data) => {
+                if (data) setInfo(data);
+            })
             .catch(() => {
-                /* 取得できない場合は非表示 */
+                /* 取得できなくてもバッジは出す（FE_ENVIRONMENT で判定済み） */
             });
     }, []);
 
-    // 本番では非表示、それ以外は出す。条件はこの 1 行だけ。
-    if (!info || info.environment === 'production') return null;
+    // 本番ビルドのみ非表示。dev / local は API 不達でも確実に表示する。
+    if (FE_ENVIRONMENT === 'production') return null;
 
-    const beShort = info.commitHash === 'unknown' ? 'local' : info.commitHash.slice(0, 7);
+    // 表示する環境名は BE の値があれば優先、無ければビルド時の FE 環境名。
+    const environment = info?.environment ?? FE_ENVIRONMENT;
+    const beCommit = info?.commitHash ?? 'unknown';
+    const beShort = beCommit === 'unknown' ? 'local' : beCommit.slice(0, 7);
     const feShort = FE_COMMIT === 'unknown' ? 'local' : FE_COMMIT.slice(0, 7);
 
     return (
@@ -76,7 +87,7 @@ export function VersionBadge() {
                         flexShrink: 0,
                     })}
                 />
-                <span>{info.environment}</span>
+                <span>{environment}</span>
             </div>
             <div>
                 <span className={css({ color: 'rgba(255,255,255,0.5)' })}>FE </span>
@@ -84,7 +95,7 @@ export function VersionBadge() {
             </div>
             <div>
                 <span className={css({ color: 'rgba(255,255,255,0.5)' })}>BE </span>
-                <CommitLink hash={info.commitHash} short={beShort} />
+                <CommitLink hash={beCommit} short={beShort} />
             </div>
         </div>
     );

@@ -202,6 +202,7 @@ jobs:
             PNPM_VERSION=${{ steps.versions.outputs.pnpm }}
             COMMIT_HASH=${{ steps.versions.outputs.short-sha }}
             VITE_COMMIT_HASH=${{ steps.versions.outputs.short-sha }}
+            VITE_ENVIRONMENT=${{ github.event_name == 'push' && 'production' || 'development' }}
           tags: |
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ github.event_name == 'push' && 'latest' || 'dev' }}
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ github.event_name == 'push' && 'latest' || 'dev' }}-${{ steps.versions.outputs.short-sha }}
