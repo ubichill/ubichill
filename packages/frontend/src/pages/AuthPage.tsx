@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
-import { API_BASE, registerWithOTP, resendOTP, signIn, useSession, verifyOTPAndRegister } from '@/lib/auth-client';
+import { API_BASE, registerWithOTP, resendOTP, signIn, verifyOTPAndRegister } from '@/lib/auth-client';
+import { useSession } from '@/lib/session';
 import { css } from '@/styled-system/css';
 import { flex, vstack } from '@/styled-system/patterns';
 

@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Navigate, useLocation } from 'react-router';
-import { authClient, useSession } from '@/lib/auth-client';
+import { authClient } from '@/lib/auth-client';
+import { useSession } from '@/lib/session';
 
 interface ProtectedRouteProps {
     children: ReactNode;

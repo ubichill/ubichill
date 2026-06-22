@@ -29,7 +29,7 @@ import { useSocket, useWorld } from '@ubichill/react';
 import { useEffect, useRef } from 'react';
 import { HeldEntityPositionRegistry } from '@/instance/HeldEntityPositionRegistry';
 import { readHeldOffset } from '@/instance/heldOffset';
-import { useSession } from '@/lib/auth-client';
+import { useSession } from '@/lib/session';
 import { applyCursorStyles, removeCursorStyles } from './cursorImages';
 import { RemoteCursorsPortal } from './RemoteCursorsPortal';
 import { useBroadcastCursor } from './useBroadcastCursor';

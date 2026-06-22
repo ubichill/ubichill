@@ -2,7 +2,7 @@ import type { Instance, WorldListItem } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { API_BASE } from '@/lib/api';
-import { useSession } from '@/lib/auth-client';
+import { useSession } from '@/lib/session';
 import { css } from '@/styled-system/css';
 
 /**
