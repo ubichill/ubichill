@@ -97,40 +97,6 @@ if (appConfig.debug) {
     });
 }
 
-// get-session が null を返す根本原因を切り分けるための診断ログ (debug 時のみ)。
-//   - cookie 自体が届いていない → Cookie 属性 (Secure/SameSite/domain) の問題
-//   - cookie はあるのに null   → バックエンド/DB 側でセッション検証に失敗
-// の二択を 1 リクエストで確定させる。
-if (appConfig.debug) {
-    app.use('/api/auth', async (req, _res, next) => {
-        if (req.method === 'GET' && req.path.includes('get-session')) {
-            try {
-                const headers = new Headers();
-                for (const [k, v] of Object.entries(req.headers)) {
-                    if (typeof v === 'string') headers.set(k, v);
-                    else if (Array.isArray(v)) headers.set(k, v.join(', '));
-                }
-                const cookieNames = (req.headers.cookie ?? '')
-                    .split(';')
-                    .map((c) => c.trim().split('=')[0])
-                    .filter((n) => n && (n.includes('better-auth') || n.includes('session')));
-                // 通常 (cache 優先) と DB 強制 (disableCookieCache) の両方を引いて比較する。
-                // cached=user かつ db=NULL なら「DB のセッション参照が常に失敗 → cache 切れで落ちる」が確定。
-                const session = await auth.api.getSession({ headers });
-                const dbSession = await auth.api.getSession({ headers, query: { disableCookieCache: true } });
-                logger.debug(
-                    `[get-session 診断] auth-cookies=[${cookieNames.join(', ') || 'なし'}] ` +
-                        `cached=${session ? `user:${session.user.id.slice(0, 8)}` : 'NULL'} ` +
-                        `db=${dbSession ? `user:${dbSession.user.id.slice(0, 8)}` : 'NULL'}`,
-                );
-            } catch (err) {
-                logger.warn('[get-session 診断] getSession が例外を投げました:', err);
-            }
-        }
-        next();
-    });
-}
-
 // 認証API（Better Auth）- CORSとプリフライトを確実に処理するため、先に配置
 app.use('/api/auth', toNodeHandler(auth));
 
