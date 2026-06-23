@@ -184,8 +184,11 @@ export function usePluginMedia(
             entry.hls = null;
         }
         _attachListeners(targetId, video);
-        const useHls =
-            mediaType === 'hls' || (mediaType !== 'video' && (url.includes('.m3u8') || url.includes('/live/')));
+        // Host は特定プラグインの URL 体系を知らない。HLS かどうかは
+        //   - プラグインが明示する mediaType==='hls'
+        //   - もしくは標準の .m3u8 拡張子
+        // だけで判定する（旧 '/live/' のような video-player 固有判定は持たない）。
+        const useHls = mediaType === 'hls' || (mediaType !== 'video' && url.includes('.m3u8'));
         if (useHls && Hls.isSupported()) {
             const hls = new Hls({
                 enableWorker: true,
