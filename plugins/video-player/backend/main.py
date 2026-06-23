@@ -2,7 +2,8 @@ import asyncio
 import ipaddress
 import re
 import os
-from typing import Dict, Any
+import time
+from typing import Dict, Any, Optional, Tuple
 from urllib.parse import urljoin, quote, urlparse
 
 from fastapi import FastAPI, HTTPException, Response, Request
@@ -427,25 +428,65 @@ def _yt_video_url(video_id: str) -> str:
     return stream_url
 
 
+# 解決済み googlevideo URL の TTL キャッシュ。
+# /video は 1 レスポンスを小さく頭打ちする (短いセグメント化) ため、1 本の動画で
+# range リクエストが何度も来る。毎回 yt-dlp を回すと遅く YouTube にも叩かれるので、
+# 署名付き URL を再利用する。googlevideo URL は数時間有効なので TTL は短めの 1 時間。
+_video_url_cache: Dict[str, Tuple[str, float]] = {}
+_VIDEO_URL_TTL = 60 * 60  # 1 hour
+# 1 レスポンスの最大バイト数。これを超える range 要求はこのサイズに丸めて返し、
+# ブラウザに続きを別リクエストで取りに来させる (= HTTP レベルの短いセグメント)。
+# 1 本の長い 206 ストリームが転送途中で QUIC アイドルタイムアウトするのを防ぐ。
+_SEGMENT_BYTES = 4 * 1024 * 1024  # 4MB
+
+
+async def _resolve_video_url(video_id: str) -> str:
+    """解決済み URL をキャッシュ付きで返す。"""
+    now = time.time()
+    cached = _video_url_cache.get(video_id)
+    if cached and cached[1] > now:
+        return cached[0]
+    url = await asyncio.to_thread(_yt_video_url, video_id)
+    # 肥大防止: 期限切れを掃除
+    if len(_video_url_cache) > 256:
+        for k in [k for k, (_, exp) in _video_url_cache.items() if exp <= now]:
+            _video_url_cache.pop(k, None)
+    _video_url_cache[video_id] = (url, now + _VIDEO_URL_TTL)
+    return url
+
+
+def _capped_range(range_header: Optional[str]) -> str:
+    """受信 Range を解析し、1 レスポンスを _SEGMENT_BYTES 以下に丸めた Range 文字列を返す。"""
+    start = 0
+    req_end: Optional[int] = None
+    if range_header:
+        m = re.match(r"bytes=(\d+)-(\d*)", range_header)
+        if m:
+            start = int(m.group(1))
+            req_end = int(m.group(2)) if m.group(2) else None
+    cap_end = start + _SEGMENT_BYTES - 1
+    end = cap_end if req_end is None else min(req_end, cap_end)
+    return f"bytes={start}-{end}"
+
+
 @app.get("/video/{video_id}")
 async def stream_video(video_id: str, request: Request):
-    """通常動画配信（リアル ストリーミング プロキシ方式）
+    """通常動画配信（短いセグメント化プロキシ方式）
 
     YouTube CDN の URL はサーバー側 IP で署名されるため、
     ブラウザへ直接リダイレクトすると IP 不一致で拒否される。
-    ライブと同様にサーバー側でプロキシして返す。
-    Range ヘッダーを転送してシーク（seek）も動作させる。
+    サーバー側でプロキシして返し、Range ヘッダーでシーク（seek）も動作させる。
 
     実装ポイント:
-    - `client.send(stream=True)` でレスポンス body を **メモリにバッファせず** に
-      逐次転送する (旧実装は `client.get()` でフル body を RAM に読み込んでいた
-      = 巨大動画でメモリ爆発 + 最初のバイトが返るまで遅延が出る)
-    - チャンクサイズを 256KB に拡大して syscall / await の往復回数を削減
-    - timeout は読み取りに長めの値 (= 接続自体は短く、stream 中は長く)
+    - **1 レスポンスを _SEGMENT_BYTES に頭打ち**する。ブラウザは続きを別の range
+      リクエストで取りに来るので、長い 206 ストリームが転送途中に QUIC アイドル
+      タイムアウトで切れる問題を防ぐ (HLS の短いセグメントと同等の効果)。
+    - range ごとに yt-dlp を回さないよう、解決済み URL を TTL キャッシュする。
+    - `client.send(stream=True)` で body をメモリに溜めず逐次転送する。
     """
     _validate_video_id(video_id)
     try:
-        stream_url = await asyncio.to_thread(_yt_video_url, video_id)
+        stream_url = await _resolve_video_url(video_id)
         # SSRF defense in depth: yt-dlp 出力も allowlist 検証する
         # (yt-dlp が予期せぬ URL を返すケースをカバー)
         if not _is_safe_proxy_url(stream_url):
@@ -456,16 +497,19 @@ async def stream_video(video_id: str, request: Request):
             "Accept": "*/*",
             "Referer": "https://www.youtube.com/",
             "Origin": "https://www.youtube.com",
+            # 常に範囲指定して 1 レスポンスを頭打ちする (短いセグメント化)
+            "Range": _capped_range(request.headers.get("range")),
         }
-        range_header = request.headers.get("range")
-        if range_header:
-            headers["Range"] = range_header
 
         # follow_redirects=False + 自前ホップ検証 (SSRF 対策)
         # 各ホップを _safe_get 経由で allowlist 検証 → 302 で内部 IP に飛ばされない
         timeout = httpx.Timeout(connect=10.0, read=60.0, write=10.0, pool=10.0)
         client = httpx.AsyncClient(follow_redirects=False, timeout=timeout, http2=False)
         upstream = await _safe_get(client, stream_url, headers, stream=True)
+
+        # 署名切れ等で弾かれたらキャッシュを捨てて、次リクエストで再解決させる
+        if upstream.status_code in (403, 410):
+            _video_url_cache.pop(video_id, None)
 
         async def _iter():
             try:
