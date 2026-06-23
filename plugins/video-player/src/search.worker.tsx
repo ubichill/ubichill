@@ -296,6 +296,10 @@ function render(): void {
                                 <img
                                     src={r.thumbnail}
                                     alt=""
+                                    loading="lazy"
+                                    decoding="async"
+                                    width="32"
+                                    height="32"
                                     style={{
                                         width: '32px',
                                         height: '32px',

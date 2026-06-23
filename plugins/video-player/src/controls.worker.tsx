@@ -229,6 +229,9 @@ function render(): void {
                             <img
                                 src={track.thumbnail}
                                 alt=""
+                                decoding="async"
+                                width="36"
+                                height="36"
                                 style={{
                                     width: '36px',
                                     height: '36px',
