@@ -123,17 +123,25 @@ export function useInstanceLoading({
     const activeIndex = order.findIndex((id) => !stageDone[id]);
     const complete = activeIndex === -1;
 
-    // 失敗判定（一度確定したら latch する）
+    // 失敗判定（一度確定したら latch する）。
+    // タイムアウトでロビーに戻すのは「まだ join できていない（=本当に入れていない）」
+    // 場合だけにする。join 済みなら instance には入れているので、プラグイン/ワーカーが
+    // 25 秒で揃わなくても（例: 動画ストリームの QUIC アイドルタイムアウトで worker が
+    // ready を返さない等）ロビーに蹴り返さず、そのまま入室を維持する。
     useEffect(() => {
         if (failureMessage) return;
         if (error && !isJoined) {
             setFailureMessage(error);
-        } else if (timedOut && !complete) {
+        } else if (timedOut && !complete && !isJoined) {
             setFailureMessage('インスタンスへの接続がタイムアウトしました');
         }
     }, [error, isJoined, timedOut, complete, failureMessage]);
 
     const failed = failureMessage !== null;
+
+    // join 済みで時間切れになったら、未完了の段階があってもロード画面を畳んで入室する
+    // （グレースフルに入れる。残りの worker はバックグラウンドで読み込み続ける）。
+    const done = complete || (timedOut && isJoined);
 
     // フェードアウト制御
     useEffect(() => {
@@ -142,14 +150,14 @@ export function useInstanceLoading({
             setFadingOut(false);
             return;
         }
-        if (complete) {
+        if (done) {
             setFadingOut(true);
             const timer = setTimeout(() => setShowScreen(false), 500);
             return () => clearTimeout(timer);
         }
         setShowScreen(true);
         setFadingOut(false);
-    }, [complete, failed]);
+    }, [done, failed]);
 
     // 進捗（重み付け）— auth10 / connect20 / join20 / plugins25 / workers25
     const detailFraction = (completed: number, total: number, joined: boolean) => {
