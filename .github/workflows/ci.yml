@@ -250,6 +250,8 @@ jobs:
           file: plugins/video-player/backend/Dockerfile
           target: production
           push: true
+          build-args: |
+            YTDLP_REFRESH=${{ steps.versions.outputs.short-sha }}
           tags: |
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ github.event_name == 'push' && 'latest' || 'dev' }}
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ github.event_name == 'push' && 'latest' || 'dev' }}-${{ steps.versions.outputs.short-sha }}
