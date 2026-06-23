@@ -20,12 +20,24 @@ import { userManager } from './userManager';
  *
  * 「作成直後の猶予 (birth grace)」:
  *   - createInstance した本人が join する前に消されると world:join が
- *     「インスタンスが見つかりません」で失敗する。これを防ぐため
- *     `createdAt + emptyTimeoutMs` を過ぎるまでは在席0でも削除しない。
- *   - createdAt は DB の値なので再起動をまたいでも grace が正しく効く。
+ *     「インスタンスが見つかりません」で失敗する。これを防ぐため、作成から
+ *     emptyTimeoutMs を過ぎるまでは在席0でも削除しない。
+ *   - 生成時刻は **createInstance が markCreated() で記録したプロセス内の時刻**を最優先で使う。
+ *     DB の created_at は `timestamp`(タイムゾーン無し) で、postgres-js の解釈次第で
+ *     getTime() が実時刻からズレ得るため、作りたて instance の猶予判定をこれに頼ると
+ *     誤って即削除してしまう（= join で not found）。プロセス内時刻なら確実。
+ *   - markCreated 記録が無い instance（再起動前に作られた / warmup 対象）は DB の
+ *     created_at にフォールバックする（それらは十分古いので判定ズレても実害が小さい）。
  */
 class InstanceReaper {
     private timer: NodeJS.Timeout | null = null;
+    /** instanceId → このプロセスで作成した時刻 (ms)。birth grace 判定に使う。 */
+    private bornAt = new Map<string, number>();
+
+    /** createInstance から呼ぶ: このプロセスでの生成時刻を記録する。 */
+    markCreated(instanceId: string): void {
+        this.bornAt.set(instanceId, Date.now());
+    }
 
     /** 定期スイープを開始（多重起動はガード）。 */
     start(): void {
@@ -59,16 +71,25 @@ class InstanceReaper {
         const graceMs = appConfig.instance.emptyTimeoutMs;
         const now = Date.now();
         const all = await instanceRepository.findAll({ includeFull: true });
+        const liveIds = new Set(all.map((inst) => inst.id));
+
+        // DB から消えた instance の生成時刻記録を掃除（メモリリーク防止）
+        for (const id of this.bornAt.keys()) {
+            if (!liveIds.has(id)) this.bornAt.delete(id);
+        }
 
         const reapable = all.filter((inst) => {
             const isEmpty = userManager.getUsersByWorld(inst.id).length === 0;
-            const isPastGrace = now - inst.createdAt.getTime() >= graceMs;
+            // 生成時刻はプロセス内記録を最優先。無ければ DB の created_at にフォールバック。
+            const bornMs = this.bornAt.get(inst.id) ?? inst.createdAt.getTime();
+            const isPastGrace = now - bornMs >= graceMs;
             return isEmpty && isPastGrace;
         });
 
         for (const inst of reapable) {
             await instanceRepository.delete(inst.id);
             clearInstanceState(inst.id);
+            this.bornAt.delete(inst.id);
             logger.info(`インスタンス自動削除（在席0・猶予経過）: ${inst.id}`);
         }
 
