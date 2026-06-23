@@ -47,6 +47,12 @@ export interface InstanceLoadingState {
 const TIMEOUT_MS = 25000;
 /** join 直後にプラグイン登録を待つ猶予（シーン受信→loadPlugin までのラグを吸収）。 */
 const GRACE_MS = 600;
+/**
+ * join 後にプラグイン/ワーカーの完了を待つ上限。これを過ぎたら揃っていなくても入室する。
+ * プラグイン（例: 動画 worker が QUIC アイドルで ready を返さない）に入室をブロックさせないため、
+ * 待ち時間を短く頭打ちにする。速く揃えば従来通り滑らかにフェードする。
+ */
+const WORKER_WAIT_MS = 8000;
 
 const STAGE_LABELS: Record<StageId, string> = {
     auth: '認証',
@@ -72,6 +78,8 @@ export function useInstanceLoading({
 }: UseInstanceLoadingParams): InstanceLoadingState {
     const [graceDone, setGraceDone] = useState(false);
     const [timedOut, setTimedOut] = useState(false);
+    // join 後 WORKER_WAIT_MS を超えても worker が揃わなかったら、待たずに入室する
+    const [workerWaitPassed, setWorkerWaitPassed] = useState(false);
     const [failureMessage, setFailureMessage] = useState<string | null>(null);
     const [showScreen, setShowScreen] = useState(true);
     const [fadingOut, setFadingOut] = useState(false);
@@ -87,6 +95,7 @@ export function useInstanceLoading({
         maxProgressRef.current = 0;
         setGraceDone(false);
         setTimedOut(false);
+        setWorkerWaitPassed(false);
         setFailureMessage(null);
         setShowScreen(true);
         setFadingOut(false);
@@ -95,17 +104,23 @@ export function useInstanceLoading({
         return () => clearTimeout(timer);
     }, [instanceId]);
 
-    // join 後の猶予タイマー（プラグインが登録される時間を確保）
+    // join 後の猶予タイマー（プラグインが登録される時間を確保）と、
+    // worker を待つ上限タイマー（上限超過で待たずに入室する）。
     useEffect(() => {
         if (!isJoined) {
             joinedAtRef.current = null;
             setGraceDone(false);
+            setWorkerWaitPassed(false);
             return;
         }
         if (joinedAtRef.current !== null) return;
         joinedAtRef.current = Date.now();
-        const timer = setTimeout(() => setGraceDone(true), GRACE_MS);
-        return () => clearTimeout(timer);
+        const graceTimer = setTimeout(() => setGraceDone(true), GRACE_MS);
+        const workerWaitTimer = setTimeout(() => setWorkerWaitPassed(true), WORKER_WAIT_MS);
+        return () => {
+            clearTimeout(graceTimer);
+            clearTimeout(workerWaitTimer);
+        };
     }, [isJoined]);
 
     const pluginsPending = plugins.total - plugins.completed;
@@ -139,9 +154,12 @@ export function useInstanceLoading({
 
     const failed = failureMessage !== null;
 
-    // join 済みで時間切れになったら、未完了の段階があってもロード画面を畳んで入室する
-    // （グレースフルに入れる。残りの worker はバックグラウンドで読み込み続ける）。
-    const done = complete || (timedOut && isJoined);
+    // join 済みなら、プラグイン/ワーカーの完了を待たずに入室する条件を緩める:
+    //   - worker 待ち上限を過ぎた（プラグインに入室をブロックさせない）
+    //   - もしくは全体タイムアウトに達した
+    // いずれもロビーには戻さず、ロード画面を畳んで入室を維持する。
+    // 残りの worker はバックグラウンドで読み込み続け、準備でき次第 UI に現れる。
+    const done = complete || (isJoined && (workerWaitPassed || timedOut));
 
     // フェードアウト制御
     useEffect(() => {
