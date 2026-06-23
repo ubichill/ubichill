@@ -37,22 +37,22 @@ export function VersionBadge() {
     const [info, setInfo] = useState<VersionInfo | null>(null);
 
     useEffect(() => {
-        // BE のコミット/環境を「補強情報」として取得するだけ（表示判定には使わない）。
-        fetch(`${getApiBase()}/api/version`)
+        // BE のコミット/環境を取得（cache: no-store で Cloudflare 等のキャッシュを迂回）。
+        fetch(`${getApiBase()}/api/version`, { cache: 'no-store' })
             .then((r) => (r.ok ? (r.json() as Promise<VersionInfo>) : null))
             .then((data) => {
                 if (data) setInfo(data);
             })
             .catch(() => {
-                /* 取得できなくてもバッジは出す（FE_ENVIRONMENT で判定済み） */
+                /* 取得できなくても build-time の判定でバッジは出せる */
             });
     }, []);
 
-    // 本番ビルドのみ非表示。dev / local は API 不達でも確実に表示する。
-    if (FE_ENVIRONMENT === 'production') return null;
-
-    // 表示する環境名は BE の値があれば優先、無ければビルド時の FE 環境名。
+    // 環境名は API(runtime の真実) を最優先、無ければ build-time の値。
+    // 「本番」と確定できたときだけ非表示。dev / local / 不明 は表示する
+    //   （API が environment を返さない / 不達でも、FE_ENVIRONMENT 既定の development で出る）。
     const environment = info?.environment ?? FE_ENVIRONMENT;
+    if (environment === 'production') return null;
     const beCommit = info?.commitHash ?? 'unknown';
     const beShort = beCommit === 'unknown' ? 'local' : beCommit.slice(0, 7);
     const feShort = FE_COMMIT === 'unknown' ? 'local' : FE_COMMIT.slice(0, 7);

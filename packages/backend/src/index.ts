@@ -80,6 +80,8 @@ app.use(express.json());
 // バージョン情報エンドポイント。常に commitHash + environment を返す。
 // 表示制御 (本番では出さない) はフロント側で environment === 'production' を見て行う。
 app.get('/api/version', (_req, res) => {
+    // Cloudflare 等に古い応答をキャッシュさせない（commit/environment が即反映されるように）
+    res.set('Cache-Control', 'no-store');
     res.json({
         commitHash: process.env.COMMIT_HASH ?? 'unknown',
         environment: appConfig.nodeEnv,
