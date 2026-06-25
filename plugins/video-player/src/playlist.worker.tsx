@@ -8,6 +8,7 @@
 import { VPEvents, VPTarget } from './events';
 import { PlaySmallIcon, TrashIcon } from './icons';
 import type { LoopMode, Track } from './types';
+import { thumbnailUrl } from './youtube';
 
 const state = Ubi.state.define({
     playlist: Ubi.state.sync([] as Track[], {
@@ -163,7 +164,7 @@ function render(): void {
                                 onUbiClick={() => selectTrack(i)}
                             >
                                 <img
-                                    src={t.thumbnail}
+                                    src={t.thumbnail || thumbnailUrl(t.id)}
                                     alt=""
                                     loading="lazy"
                                     decoding="async"

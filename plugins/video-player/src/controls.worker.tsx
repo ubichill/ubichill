@@ -32,6 +32,7 @@ import {
     VolumeMuteIcon,
 } from './icons';
 import type { LoopMode, Track } from './types';
+import { extractVideoId, thumbnailUrl } from './youtube';
 
 const DEFAULT_API_BASE = '/plugins/video-player/api';
 
@@ -74,20 +75,6 @@ function currentTime(): number {
     const advanced = state.local.baselineTime + (Date.now() - state.local.playEpoch) / 1000;
     if (state.local.duration > 0) return Math.min(advanced, state.local.duration);
     return advanced;
-}
-
-/**
- * 入力が YouTube の URL でも生の動画 ID でも、動画 ID を取り出す。
- * エディタで playlist に URL を貼ってそのまま再生できるようにするため。
- * 対応: watch?v=、youtu.be/、/live/・/embed/・/shorts/。
- */
-function extractVideoId(input: string): string {
-    const s = (input ?? '').trim();
-    const m =
-        /[?&]v=([\w-]{6,20})/.exec(s) ??
-        /youtu\.be\/([\w-]{6,20})/.exec(s) ??
-        /youtube\.com\/(?:live|embed|shorts)\/([\w-]{6,20})/.exec(s);
-    return m ? m[1] : s;
 }
 
 function buildTrackUrl(track: Track): string {
@@ -182,6 +169,8 @@ state.onChange('isLoading', render);
 // ── レンダリング ──────────────────────────────────
 function render(): void {
     const track = state.local.currentTrack;
+    // サムネ: 検索由来は thumbnail を持つ。URL/ID 直書きのトラックは id から導出する。
+    const thumb = track ? track.thumbnail || thumbnailUrl(track.id) : '';
     const ct = currentTime();
     const progress = state.local.duration > 0 ? (ct / state.local.duration) * 100 : 0;
     const isLive = track?.mode === 'live';
@@ -240,9 +229,9 @@ function render(): void {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
                     {/* 左: トラック情報 */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1', minWidth: '0' }}>
-                        {track?.thumbnail && (
+                        {thumb && (
                             <img
-                                src={track.thumbnail}
+                                src={thumb}
                                 alt=""
                                 decoding="async"
                                 width="36"

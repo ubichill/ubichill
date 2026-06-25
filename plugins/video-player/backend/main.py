@@ -50,14 +50,33 @@ class YTDLPLogger:
         print(f"yt-dlp error: {msg}")
 
 
-# yt-dlpの設定
-YDL_OPTS = {
-    "quiet": True,
-    "no_warnings": True,
-    "logger": YTDLPLogger(),
-    "extract_flat": False,
-    "format": "best[height<=720][ext=mp4]/best[height<=720]/best[ext=mp4]/best",
-}
+def _base_ydl_opts() -> Dict[str, Any]:
+    """全 yt-dlp 呼び出し共通の基本設定。
+
+    YouTube は近年データセンター IP を bot 判定して
+    「Sign in to confirm you're not a bot」を返すことがある。確実な回避は
+    cookies の提供なので、env で渡せるようにしている:
+
+    - YTDLP_COOKIES_FILE        : Netscape 形式 cookies.txt のパス（マウント推奨）
+    - YTDLP_COOKIES_FROM_BROWSER : 'chrome' 等（ブラウザがある環境向け。コンテナでは不可）
+    - YTDLP_PLAYER_CLIENT        : 'ios,web' 等。extractor の player_client を上書き
+                                   （cookies 無しで通る client を試したいとき）
+    """
+    opts: Dict[str, Any] = {
+        "quiet": True,
+        "no_warnings": True,
+        "logger": YTDLPLogger(),
+    }
+    cookiefile = os.getenv("YTDLP_COOKIES_FILE")
+    if cookiefile:
+        opts["cookiefile"] = cookiefile
+    from_browser = os.getenv("YTDLP_COOKIES_FROM_BROWSER")
+    if from_browser:
+        opts["cookiesfrombrowser"] = (from_browser,)
+    player_client = os.getenv("YTDLP_PLAYER_CLIENT")
+    if player_client:
+        opts["extractor_args"] = {"youtube": {"player_client": player_client.split(",")}}
+    return opts
 
 
 @app.get("/")
@@ -69,9 +88,7 @@ def _yt_search(q: str, limit: int) -> list:
     # ライブ配信を除外するために多めに取得してフィルタリング
     fetch_limit = limit * 3
     search_opts: Dict[str, Any] = {
-        "quiet": True,
-        "no_warnings": True,
-        "logger": YTDLPLogger(),
+        **_base_ydl_opts(),
         "extract_flat": True,
         "playlist_items": f"1:{fetch_limit}",
     }
@@ -114,12 +131,7 @@ async def search_tracks(q: str, limit: int = 10):
 
 
 def _yt_info(video_id: str) -> dict:
-    ydl_opts: Dict[str, Any] = {
-        "quiet": True,
-        "no_warnings": True,
-        "logger": YTDLPLogger(),
-        "extract_flat": False,
-    }
+    ydl_opts: Dict[str, Any] = {**_base_ydl_opts(), "extract_flat": False}
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         return ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
 
@@ -366,9 +378,7 @@ async def proxy_url(url: str, request: Request):
 def _yt_live_url(video_id: str) -> str:
     youtube_url = f"https://www.youtube.com/watch?v={video_id}"
     stream_opts: Dict[str, Any] = {
-        "quiet": True,
-        "no_warnings": True,
-        "logger": YTDLPLogger(),
+        **_base_ydl_opts(),
         "format": "95/96/best[height<=720]/best",
         "youtube_include_dash_manifest": False,
         "hls_prefer_native": False,
@@ -414,9 +424,7 @@ async def stream_live(video_id: str, request: Request):
 def _yt_video_url(video_id: str) -> str:
     youtube_url = f"https://www.youtube.com/watch?v={video_id}"
     stream_opts: Dict[str, Any] = {
-        "quiet": True,
-        "no_warnings": True,
-        "logger": YTDLPLogger(),
+        **_base_ydl_opts(),
         "format": "best[height<=720][ext=mp4]/best[height<=720]/best",
         "youtube_include_dash_manifest": False,
     }
