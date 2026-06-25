@@ -11,6 +11,7 @@ import { routeEmit } from '@ubichill/sandbox';
 import type { ComponentInstance } from '@ubichill/shared';
 import type React from 'react';
 import { useEffect, useMemo, useRef } from 'react';
+import { editorSchemaRegistry } from '../editorSchemaRegistry';
 import { usePluginBroadcast } from '../hooks/usePluginBroadcast';
 import { usePluginCanvas } from '../hooks/usePluginCanvas';
 import { usePluginEntitySync } from '../hooks/usePluginEntitySync';
@@ -120,6 +121,8 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
             ...worldHandlers,
             onReady: () => workerRegistrationRef.current?.markReady(),
             onRender,
+            // worker が報告した Inspector 用スキーマをレジストリへ。World エディタが参照する。
+            onEditorSchema: (componentType, schema) => editorSchemaRegistry.set(componentType, schema),
             onFetch,
             onNetworkBroadcast: (type, data) => onNetworkBroadcastRef.current?.(type, data),
             onEventEmit: (type, data, scope, targetType, senderId) =>

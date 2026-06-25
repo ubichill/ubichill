@@ -123,7 +123,7 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
             // - CMD_LOG: デバッグログ（制限すると開発体験が著しく悪化）
             // - CMD_READY: Worker の初期化通知（必須）
             // - CMD_GRIP: SDK コアの「掴む」機能。capability 不要（pen.worker 等が普通に使う）
-            this.allowedCommands = new Set(['CMD_LOG', 'CMD_READY', 'CMD_GRIP']);
+            this.allowedCommands = new Set(['CMD_LOG', 'CMD_READY', 'CMD_GRIP', 'EDITOR_SCHEMA']);
 
             for (const cap of options.capabilities) {
                 for (const cmd of CAPABILITY_COMMANDS[cap] ?? []) {
@@ -354,6 +354,9 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
                     break;
                 case CommandType.UI_RENDER:
                     this.handlers.onRender?.(command.payload.targetId, command.payload.vnode);
+                    break;
+                case CommandType.EDITOR_SCHEMA:
+                    this.handlers.onEditorSchema?.(command.payload.componentType, command.payload.schema);
                     break;
                 case CommandType.CANVAS_FRAME:
                     this.handlers.onCanvasFrame?.(

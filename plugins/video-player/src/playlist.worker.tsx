@@ -10,8 +10,15 @@ import { PlaySmallIcon, TrashIcon } from './icons';
 import type { LoopMode, Track } from './types';
 
 const state = Ubi.state.define({
-    playlist: Ubi.state.sync([] as Track[]),
-    currentIndex: Ubi.state.sync(0),
+    playlist: Ubi.state.sync([] as Track[], {
+        label: 'プレイリスト',
+        item: {
+            title: { type: 'string', label: 'タイトル' },
+            id: { type: 'string', label: '動画ID / URL' },
+            mode: { type: 'enum', options: ['video', 'live'], default: 'video', label: '種別' },
+        },
+    }),
+    currentIndex: Ubi.state.sync(0, { editable: false }),
 });
 
 const fmt = (sec: number): string => {

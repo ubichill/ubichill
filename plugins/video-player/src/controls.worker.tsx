@@ -37,15 +37,16 @@ const DEFAULT_API_BASE = '/plugins/video-player/api';
 
 const state = Ubi.state.define({
     // ── 共有 + 永続 ──
-    isPlaying: Ubi.state.sync(false),
-    baselineTime: Ubi.state.sync(0),
-    playEpoch: Ubi.state.sync(0),
-    duration: Ubi.state.sync(0),
-    loop: Ubi.state.sync<LoopMode>('none'),
-    shuffle: Ubi.state.sync(false),
-    apiBase: Ubi.state.sync(DEFAULT_API_BASE),
+    // ── 共有 + 永続。runtime 専用は editable:false で Inspector から除外 ──
+    isPlaying: Ubi.state.sync(false, { editable: false }),
+    baselineTime: Ubi.state.sync(0, { editable: false }),
+    playEpoch: Ubi.state.sync(0, { editable: false }),
+    duration: Ubi.state.sync(0, { editable: false }),
+    loop: Ubi.state.sync<LoopMode>('none', { label: 'ループ', options: ['none', 'one', 'all'] }),
+    shuffle: Ubi.state.sync(false, { label: 'シャッフル' }),
+    apiBase: Ubi.state.sync(DEFAULT_API_BASE, { label: 'API ベース URL' }),
     // ── 共有 + 永続 (per-user) ──
-    myVolume: Ubi.state.sync(0.7, { perUser: true }),
+    myVolume: Ubi.state.sync(0.7, { perUser: true, editable: false }),
     // ── ローカル ──
     currentTrack: null as Track | null,
     currentIndex: 0,

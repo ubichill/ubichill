@@ -45,6 +45,8 @@ export type HostHandlers<TPayloadMap extends Record<string, unknown> = Record<st
         senderComponentInstanceId: string | undefined,
     ) => void;
     onCommand?: (command: PluginGuestCommand) => void;
+    /** Worker 起動時に Ubi.state から導出した Inspector 用スキーマを報告する */
+    onEditorSchema?: (componentType: string, schema: Record<string, unknown>) => void;
     /**
      * Worker が Ubi.ui.render() を呼ぶたびに発火する。
      * vnode が null の場合はアンマウント（Ubi.ui.unmount()）。

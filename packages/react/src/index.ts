@@ -3,6 +3,7 @@ export { HoldProvider, useHold } from './components/HoldContext';
 export { PluginUIMount } from './components/PluginUIMount';
 export type { WorkerPluginHostProps } from './components/WorkerPluginHost';
 export { WorkerPluginHost } from './components/WorkerPluginHost';
+export { editorSchemaRegistry, useEditorSchema } from './editorSchemaRegistry';
 export { heldEntitySyncRef } from './heldEntitySyncRef';
 export { useCursorPosition } from './hooks/useCursorPosition';
 export { useEntity } from './hooks/useEntity';

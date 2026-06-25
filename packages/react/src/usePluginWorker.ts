@@ -32,6 +32,8 @@ export type PluginWorkerHandlers<TPayloadMap extends Record<string, unknown> = R
     onCommand?: (command: PluginGuestCommand) => void;
     /** Worker が Ubi.ui.render() / Ubi.ui.unmount() を呼ぶたびに発火する */
     onRender?: (targetId: string, vnode: VNode | null) => void;
+    /** Worker 起動時に Ubi.state から導出した Inspector 用スキーマを報告する */
+    onEditorSchema?: (componentType: string, schema: Record<string, unknown>) => void;
     /** Worker が Ubi.canvas.frame() を呼んだときに発火する（毎フレーム） */
     onCanvasFrame?: (
         targetId: string,
@@ -145,6 +147,7 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
                 onReady: () => handlersRef.current.onReady?.(),
                 onCommand: (cmd) => handlersRef.current.onCommand?.(cmd),
                 onRender: (targetId, vnode) => handlersRef.current.onRender?.(targetId, vnode),
+                onEditorSchema: (componentType, schema) => handlersRef.current.onEditorSchema?.(componentType, schema),
                 onCanvasFrame: (targetId, activeStroke, cursors) =>
                     handlersRef.current.onCanvasFrame?.(targetId, activeStroke, cursors),
                 onCanvasCommitStroke: (targetId, stroke) =>

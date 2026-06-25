@@ -63,5 +63,6 @@ export const CMD_TO_HANDLER = {
     [CommandType.MEDIA_SET_VOLUME]: 'onMediaSetVolume',
     [CommandType.MEDIA_DESTROY]: 'onMediaDestroy',
     [CommandType.MEDIA_SET_VISIBLE]: 'onMediaSetVisible',
+    [CommandType.EDITOR_SCHEMA]: 'onEditorSchema',
     [CommandType.CMD_GRIP]: 'onGripCommand',
 } as const satisfies Partial<Record<string, keyof HostHandlers>>;

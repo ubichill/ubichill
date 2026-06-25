@@ -1,3 +1,4 @@
+import { useEditorSchema } from '@ubichill/react';
 import type { EntityComponentDef, InitialEntity } from '@ubichill/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { css } from '@/styled-system/css';
@@ -29,6 +30,12 @@ export function ComponentCard({
     onDelete,
 }: ComponentCardProps) {
     const [expanded, setExpanded] = useState(initiallyExpanded);
+
+    // 編集可能パラメータの正本は worker の Ubi.state（起動時にホストへ報告）。
+    // プレビューで worker が走ると registry に届くのでそれを最優先。届くまでは
+    // マニフェスト由来の dataFields をフォールバックに使う。
+    const runtimeSchema = useEditorSchema(component.type) as DataFields | undefined;
+    const fields = runtimeSchema ?? dataFields;
 
     useEffect(() => {
         if (initiallyExpanded) setExpanded(true);
@@ -94,7 +101,7 @@ export function ComponentCard({
                     <ComponentDataEditor
                         component={component}
                         componentIndex={componentIndex}
-                        dataFields={dataFields}
+                        dataFields={fields}
                         onChange={onChange}
                     />
                 </div>

@@ -133,6 +133,17 @@ export type CmdLog = {
 };
 
 /**
+ * Worker 起動時に Ubi.state の定義から導出した「エディタ Inspector 用スキーマ」を
+ * Host に報告する。Host はこれを componentType ごとに保持し、World エディタの
+ * Inspector が型付き入力（配列の追加/削除含む）を描画するのに使う。
+ * capability 宣言不要（常に許可）。schema は DataFields 互換の緩い形で運ぶ。
+ */
+export type CmdEditorSchema = {
+    type: 'EDITOR_SCHEMA';
+    payload: { componentType: string; schema: Record<string, unknown> };
+};
+
+/**
  * Ubi.network.sendToHost(type, data)
  * Fire & Forget: 自分の Host (React) にだけメッセージを送ります。
  * 他のユーザーには届きません。onMessage ハンドラで受け取ります。
@@ -373,6 +384,7 @@ export type PluginGuestCommand =
     | CmdReady
     | CmdInitFailed
     | CmdLog
+    | CmdEditorSchema
     | CmdSceneGetEntity
     | CmdSceneCreateEntity
     | CmdSceneUpdateEntity
