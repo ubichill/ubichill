@@ -7,8 +7,9 @@
 
 import { VPEvents, VPTarget } from './events';
 import { PlaySmallIcon, TrashIcon } from './icons';
+import { formatTime } from './lib/playback';
+import { thumbnailUrl } from './lib/youtube';
 import type { LoopMode, Track } from './types';
-import { thumbnailUrl } from './youtube';
 
 const state = Ubi.state.define({
     playlist: Ubi.state.sync([] as Track[], {
@@ -25,13 +26,6 @@ const state = Ubi.state.define({
     }),
     currentIndex: Ubi.state.sync(0, { editable: false }),
 });
-
-const fmt = (sec: number): string => {
-    if (!Number.isFinite(sec) || sec <= 0) return '0:00';
-    const m = Math.floor(sec / 60);
-    const s = Math.floor(sec % 60);
-    return `${m}:${s.toString().padStart(2, '0')}`;
-};
 
 /** 現トラックを siblings に通知。 */
 function emitCurrent(): void {
@@ -202,7 +196,7 @@ function render(): void {
                                         {t.title}
                                     </div>
                                     <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.6)' }}>
-                                        {t.duration > 0 ? fmt(t.duration) : t.mode === 'live' ? 'LIVE' : '--:--'}
+                                        {t.duration > 0 ? formatTime(t.duration) : t.mode === 'live' ? 'LIVE' : '--:--'}
                                     </div>
                                 </div>
                                 {i === cur && (

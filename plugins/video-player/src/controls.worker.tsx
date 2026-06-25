@@ -31,8 +31,9 @@ import {
     VolumeMediumIcon,
     VolumeMuteIcon,
 } from './icons';
+import { computeCurrentTime, formatTime, isClockOverrun } from './lib/playback';
+import { extractVideoId, thumbnailUrl } from './lib/youtube';
 import type { LoopMode, Track } from './types';
-import { extractVideoId, thumbnailUrl } from './youtube';
 
 const DEFAULT_API_BASE = '/plugins/video-player/api';
 
@@ -58,23 +59,9 @@ const state = Ubi.state.define({
 });
 
 // ── ヘルパー ────────────────────────────────────────
-const fmt = (sec: number): string => {
-    if (!Number.isFinite(sec) || sec <= 0) return '0:00';
-    const m = Math.floor(sec / 60);
-    const s = Math.floor(sec % 60);
-    return `${m}:${s.toString().padStart(2, '0')}`;
-};
-
-/**
- * 共有時計から現在の再生位置 (秒) を算出する純関数。
- * 全ユーザーが同じ baselineTime / playEpoch / isPlaying から計算するため、
- * Date.now() のクロックスキューが無視できる範囲なら位置は揃う。
- */
+// 共有時計の現在位置。計算ロジックは lib/playback に集約（state を渡すだけ）。
 function currentTime(): number {
-    if (!state.local.isPlaying) return state.local.baselineTime;
-    const advanced = state.local.baselineTime + (Date.now() - state.local.playEpoch) / 1000;
-    if (state.local.duration > 0) return Math.min(advanced, state.local.duration);
-    return advanced;
+    return computeCurrentTime(state.local);
 }
 
 function buildTrackUrl(track: Track): string {
@@ -259,8 +246,12 @@ function render(): void {
                                 {track ? track.title || track.id : '---'}
                             </div>
                             <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.6)' }}>
-                                {fmt(ct)} /{' '}
-                                {state.local.duration > 0 ? fmt(state.local.duration) : isLive ? 'LIVE' : '--:--'}
+                                {formatTime(ct)} /{' '}
+                                {state.local.duration > 0
+                                    ? formatTime(state.local.duration)
+                                    : isLive
+                                      ? 'LIVE'
+                                      : '--:--'}
                             </div>
                         </div>
                     </div>
@@ -427,12 +418,9 @@ VPEvents.on('vp:media:loaded', ({ duration }) => {
         // シーク先が終端を突き抜けて「再生されない」状態になる。
         // duration が判明したこのタイミングで、生の経過位置が duration を超えていたら
         // 先頭から再生し直す（進行中インスタンスへの正当な join は範囲内なので影響なし）。
-        if (state.local.isPlaying && duration > 0) {
-            const rawPos = state.local.baselineTime + (Date.now() - state.local.playEpoch) / 1000;
-            if (rawPos > duration) {
-                state.local.baselineTime = 0;
-                state.local.playEpoch = Date.now();
-            }
+        if (isClockOverrun(state.local)) {
+            state.local.baselineTime = 0;
+            state.local.playEpoch = Date.now();
         }
     });
     // 共有時計の現在位置にローカル <video> を合わせる (再生中ならそのまま、停止中なら baselineTime)
