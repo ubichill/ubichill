@@ -420,6 +420,20 @@ VPEvents.on('vp:media:loaded', ({ duration }) => {
     state.batch(() => {
         if (duration > 0) state.local.duration = duration;
         state.local.isLoading = false; // ローディング解除 → シークバーが通常表示に戻る
+
+        // 不正な共有時計の補正:
+        // 新規作成インスタンスは playEpoch が stale (例: 0) のまま isPlaying=true で
+        // 始まることがある。その場合 baselineTime + 経過 が duration を遥かに超え、
+        // シーク先が終端を突き抜けて「再生されない」状態になる。
+        // duration が判明したこのタイミングで、生の経過位置が duration を超えていたら
+        // 先頭から再生し直す（進行中インスタンスへの正当な join は範囲内なので影響なし）。
+        if (state.local.isPlaying && duration > 0) {
+            const rawPos = state.local.baselineTime + (Date.now() - state.local.playEpoch) / 1000;
+            if (rawPos > duration) {
+                state.local.baselineTime = 0;
+                state.local.playEpoch = Date.now();
+            }
+        }
     });
     // 共有時計の現在位置にローカル <video> を合わせる (再生中ならそのまま、停止中なら baselineTime)
     scheduleSyncVideo();
