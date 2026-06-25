@@ -97,12 +97,10 @@ pluginBackends:
     env:
       ROOT_PATH: /plugins/video-player/api
       CORS_ORIGINS: "*"
-      # YouTube の bot 判定（"Sign in to confirm you're not a bot"）対策。
-      # まずは player_client の切替で回避を試す。ダメなら cookies を使う（下記）。
-      YTDLP_PLAYER_CLIENT: "default,tv,ios"
-      # 確実な回避は cookies。Netscape 形式 cookies.txt を Secret 等でマウントし、
-      # そのパスを指定する（マウントは別途 volume 設定が必要）:
-      # YTDLP_COOKIES_FILE: /secrets/youtube-cookies.txt
+      # YouTube の bot 判定（"Sign in to confirm you're not a bot"）が出る場合の回避策（任意）。
+      # 通常は不要（多くは VPN/データセンター IP が原因。住宅 IP なら出ない）。出るときだけ有効化:
+      #   YTDLP_PLAYER_CLIENT: "default,tv,ios"   # extractor の client を切替で回避を試す
+      #   YTDLP_COOKIES_FILE: /secrets/youtube-cookies.txt  # 確実。cookies.txt を volume マウントして指定
     resources:
       limits:
         cpu: 500m
