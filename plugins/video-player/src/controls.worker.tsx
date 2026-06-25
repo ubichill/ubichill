@@ -76,10 +76,24 @@ function currentTime(): number {
     return advanced;
 }
 
+/**
+ * 入力が YouTube の URL でも生の動画 ID でも、動画 ID を取り出す。
+ * エディタで playlist に URL を貼ってそのまま再生できるようにするため。
+ * 対応: watch?v=、youtu.be/、/live/・/embed/・/shorts/。
+ */
+function extractVideoId(input: string): string {
+    const s = (input ?? '').trim();
+    const m =
+        /[?&]v=([\w-]{6,20})/.exec(s) ??
+        /youtu\.be\/([\w-]{6,20})/.exec(s) ??
+        /youtube\.com\/(?:live|embed|shorts)\/([\w-]{6,20})/.exec(s);
+    return m ? m[1] : s;
+}
+
 function buildTrackUrl(track: Track): string {
     const base = state.local.apiBase.trim() || DEFAULT_API_BASE;
     const endpoint = track.mode === 'live' ? 'live' : 'video';
-    return `${base}/${endpoint}/${track.id}`;
+    return `${base}/${endpoint}/${extractVideoId(track.id)}`;
 }
 
 // ── screen / playlist へのエイリアス (events.ts に集約) ──

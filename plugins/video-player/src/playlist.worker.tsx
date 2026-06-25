@@ -14,7 +14,11 @@ const state = Ubi.state.define({
         label: 'プレイリスト',
         item: {
             title: { type: 'string', label: 'タイトル' },
-            id: { type: 'string', label: '動画ID / URL' },
+            id: {
+                type: 'string',
+                label: 'YouTube URL / 動画ID',
+                placeholder: 'https://youtu.be/... または 動画ID',
+            },
             mode: { type: 'enum', options: ['video', 'live'], default: 'video', label: '種別' },
         },
     }),
