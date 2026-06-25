@@ -63,18 +63,25 @@ export function DataFormFields({ data, dataFields, onChange }: DataFormFieldsPro
                         borderColor: 'border',
                     })}
                 >
-                    {declaredKeys.length > 0 && (
-                        <span
-                            className={css({
-                                fontSize: '11px',
-                                color: 'textSubtle',
-                                fontWeight: '600',
-                                textTransform: 'uppercase',
-                                letterSpacing: '0.04em',
-                            })}
-                        >
-                            カスタム
+                    {dataFields !== undefined ? (
+                        // 既知コンポーネント: 宣言に無いキー = このコンポーネントは使わない（削除推奨）
+                        <span className={css({ fontSize: '11px', color: 'warning', fontWeight: '600' })}>
+                            このコンポーネントが使わない data（削除推奨）
                         </span>
+                    ) : (
+                        declaredKeys.length > 0 && (
+                            <span
+                                className={css({
+                                    fontSize: '11px',
+                                    color: 'textSubtle',
+                                    fontWeight: '600',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.04em',
+                                })}
+                            >
+                                カスタム
+                            </span>
+                        )
                     )}
                     {customKeys.map((key) => (
                         <CustomFieldRow

@@ -102,6 +102,7 @@ export function EntityInspector({
                             component={c}
                             componentIndex={ci}
                             dataFields={availableKinds.find((k) => k.kind === c.type)?.dataFields}
+                            known={availableKinds.some((k) => k.kind === c.type)}
                             initiallyExpanded={ci === initiallyExpandedComponentIndex}
                             onChange={onChange}
                             onDelete={() => onDeleteComponent(ci)}

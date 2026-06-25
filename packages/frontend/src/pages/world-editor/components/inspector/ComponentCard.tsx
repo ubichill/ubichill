@@ -12,10 +12,15 @@ interface ComponentCardProps {
     component: EntityComponentDef;
     componentIndex: number;
     dataFields?: DataFields;
+    /** このコンポーネント型が既知（マニフェストに存在）か。既知なら未宣言キーの追加を禁止する。 */
+    known: boolean;
     initiallyExpanded: boolean;
     onChange: (updater: (prev: InitialEntity) => InitialEntity) => void;
     onDelete: () => void;
 }
+
+/** 既知だがスキーマを持たない（= 編集可能設定が無い）コンポーネント用の空スキーマ（参照固定）。 */
+const EMPTY_SCHEMA: DataFields = {};
 
 /**
  * 1 Component のアコーディオン Card。
@@ -25,6 +30,7 @@ export function ComponentCard({
     component,
     componentIndex,
     dataFields,
+    known,
     initiallyExpanded,
     onChange,
     onDelete,
@@ -34,8 +40,10 @@ export function ComponentCard({
     // 編集可能パラメータの正本は worker の Ubi.state（起動時にホストへ報告）。
     // プレビューで worker が走ると registry に届くのでそれを最優先。届くまでは
     // マニフェスト由来の dataFields をフォールバックに使う。
+    // 既知コンポーネントでスキーマが無い場合は空スキーマ（= 自由なキー追加を禁止）。
+    // 未知コンポーネントのみ undefined（自由入力可）にする。
     const runtimeSchema = useEditorSchema(component.type) as DataFields | undefined;
-    const fields = runtimeSchema ?? dataFields;
+    const fields = runtimeSchema ?? dataFields ?? (known ? EMPTY_SCHEMA : undefined);
 
     useEffect(() => {
         if (initiallyExpanded) setExpanded(true);
