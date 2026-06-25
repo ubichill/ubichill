@@ -37,8 +37,11 @@ export function VersionBadge() {
     const [info, setInfo] = useState<VersionInfo | null>(null);
 
     useEffect(() => {
-        // BE のコミット/環境を取得（cache: no-store で Cloudflare 等のキャッシュを迂回）。
-        fetch(`${getApiBase()}/api/version`, { cache: 'no-store' })
+        // BE のコミット/環境を取得。cache:'no-store' はブラウザ向けの指示で、
+        // Cloudflare 等の中間 CDN は URL 単位のキャッシュを別に持つため古い応答
+        // ({"commitHash":"<旧>"}) を返し得る。クエリに毎回違う値を付けて URL を
+        // ユニーク化し、確実に CDN キャッシュミス→オリジン取得にする。
+        fetch(`${getApiBase()}/api/version?t=${Date.now()}`, { cache: 'no-store' })
             .then((r) => (r.ok ? (r.json() as Promise<VersionInfo>) : null))
             .then((data) => {
                 if (data) setInfo(data);
