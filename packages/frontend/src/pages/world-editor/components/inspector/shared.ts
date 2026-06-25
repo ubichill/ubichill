@@ -51,5 +51,7 @@ export function defaultForType(spec: DataFieldSpec): unknown {
             return spec.options[0] ?? '';
         case 'json':
             return null;
+        case 'array':
+            return [];
     }
 }

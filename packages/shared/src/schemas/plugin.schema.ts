@@ -65,6 +65,15 @@ export const ComponentDataFieldSpecSchema = z.discriminatedUnion('type', [
         label: z.string().optional(),
         help: z.string().optional(),
     }),
+    z.object({
+        type: z.literal('array'),
+        default: z.array(z.unknown()).optional(),
+        // item は要素1つ分の field 仕様マップ（フロントの DataFields と同形）。
+        // 再帰 zod を避けるため item は緩く受け、厳密な型はフロントの DataFieldSpec が担う。
+        item: z.record(z.string(), z.unknown()),
+        label: z.string().optional(),
+        help: z.string().optional(),
+    }),
 ]);
 
 export type ComponentDataFieldSpec = z.infer<typeof ComponentDataFieldSpecSchema>;

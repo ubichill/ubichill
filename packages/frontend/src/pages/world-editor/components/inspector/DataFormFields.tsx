@@ -248,7 +248,140 @@ function DeclaredInput({
             </select>
         );
     }
+    if (spec.type === 'array') {
+        return <ArrayField spec={spec} value={value} onChange={onChange} />;
+    }
     return <MiniJsonEditor value={value} onChange={onChange} />;
+}
+
+// ============================================
+// 配列フィールド: item スキーマで各要素を編集 + 行の追加/削除
+// ============================================
+
+type ArraySpec = Extract<DataFieldSpec, { type: 'array' }>;
+
+function ArrayField({ spec, value, onChange }: { spec: ArraySpec; value: unknown; onChange: (v: unknown) => void }) {
+    const items = Array.isArray(value) ? (value as Record<string, unknown>[]) : [];
+    const itemEntries = Object.entries(spec.item);
+
+    const makeNewItem = (): Record<string, unknown> => {
+        const obj: Record<string, unknown> = {};
+        for (const [k, s] of itemEntries) obj[k] = s.default ?? defaultForType(s);
+        return obj;
+    };
+    const replace = (next: Record<string, unknown>[]) => onChange(next);
+    const updateItem = (i: number, next: Record<string, unknown>) =>
+        replace(items.map((it, idx) => (idx === i ? next : it)));
+    const removeItem = (i: number) => replace(items.filter((_, idx) => idx !== i));
+    const moveItem = (i: number, dir: -1 | 1) => {
+        const j = i + dir;
+        if (j < 0 || j >= items.length) return;
+        const copy = items.slice();
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+        replace(copy);
+    };
+
+    return (
+        <div className={css({ display: 'flex', flexDirection: 'column', gap: '6px' })}>
+            {items.map((item, i) => (
+                <div
+                    key={i}
+                    className={css({
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '6px',
+                        padding: '8px',
+                        borderRadius: '8px',
+                        border: '1px solid',
+                        borderColor: 'border',
+                        bg: 'backgroundSubtle',
+                    })}
+                >
+                    <div className={css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between' })}>
+                        <span className={css({ fontSize: '11px', color: 'textSubtle', fontWeight: '600' })}>
+                            #{i + 1}
+                        </span>
+                        <div className={css({ display: 'flex', gap: '4px' })}>
+                            <ArrayRowBtn label="↑" title="上へ" onClick={() => moveItem(i, -1)} disabled={i === 0} />
+                            <ArrayRowBtn
+                                label="↓"
+                                title="下へ"
+                                onClick={() => moveItem(i, 1)}
+                                disabled={i === items.length - 1}
+                            />
+                            <ArrayRowBtn label="×" title="削除" danger onClick={() => removeItem(i)} />
+                        </div>
+                    </div>
+                    {itemEntries.map(([k, s]) => (
+                        <div key={k} className={css({ display: 'flex', flexDirection: 'column', gap: '2px' })}>
+                            <span className={css({ fontSize: '11px', color: 'textMuted' })}>{s.label ?? k}</span>
+                            <DeclaredInput
+                                spec={s}
+                                value={k in item ? item[k] : (s.default ?? defaultForType(s))}
+                                onChange={(v) => updateItem(i, { ...item, [k]: v })}
+                            />
+                        </div>
+                    ))}
+                </div>
+            ))}
+            <button
+                type="button"
+                onClick={() => replace([...items, makeNewItem()])}
+                className={css({
+                    padding: '6px 10px',
+                    bg: 'transparent',
+                    color: 'primary',
+                    border: '1px dashed',
+                    borderColor: 'primary',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    _hover: { bg: 'primarySubtle' },
+                })}
+            >
+                ＋ 追加
+            </button>
+        </div>
+    );
+}
+
+function ArrayRowBtn({
+    label,
+    title,
+    onClick,
+    disabled,
+    danger,
+}: {
+    label: string;
+    title: string;
+    onClick: () => void;
+    disabled?: boolean;
+    danger?: boolean;
+}) {
+    return (
+        <button
+            type="button"
+            title={title}
+            onClick={onClick}
+            disabled={disabled}
+            className={css({
+                padding: '2px 7px',
+                bg: 'transparent',
+                color: danger ? 'errorText' : 'textMuted',
+                border: '1px solid',
+                borderColor: 'border',
+                borderRadius: '5px',
+                fontSize: '11px',
+                cursor: 'pointer',
+                opacity: disabled ? 0.4 : 1,
+                _hover: { borderColor: danger ? 'errorLight' : 'primary' },
+                _disabled: { cursor: 'not-allowed' },
+            })}
+        >
+            {label}
+        </button>
+    );
 }
 
 // ============================================

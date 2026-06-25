@@ -19,7 +19,9 @@ export type DataFieldSpec =
     | { type: 'color'; default?: string; label?: string; help?: string }
     | { type: 'url'; default?: string; placeholder?: string; label?: string; help?: string }
     | { type: 'enum'; default?: string; options: string[]; label?: string; help?: string }
-    | { type: 'json'; default?: unknown; label?: string; help?: string };
+    | { type: 'json'; default?: unknown; label?: string; help?: string }
+    // 配列: 各要素を item スキーマで編集する。エディタは「行リスト＋追加/削除」で描画する。
+    | { type: 'array'; default?: unknown[]; item: DataFields; label?: string; help?: string };
 
 export type DataFields = Record<string, DataFieldSpec>;
 

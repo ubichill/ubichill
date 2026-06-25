@@ -35,10 +35,14 @@
       "defaultTransform": { "x": 0, "y": 440, "z": 198, "w": 310, "h": 300 },
       "dataFields": {
         "playlist": {
-          "type": "json",
+          "type": "array",
           "default": [],
           "label": "プレイリスト",
-          "help": "{ id, title, mode: 'live' | 'video' } の配列"
+          "item": {
+            "title": { "type": "string", "label": "タイトル" },
+            "id": { "type": "string", "label": "動画ID / URL" },
+            "mode": { "type": "enum", "default": "video", "options": ["video", "live"], "label": "種別" }
+          }
         },
         "currentIndex": { "type": "number", "default": 0, "label": "再生中インデックス" }
       }
