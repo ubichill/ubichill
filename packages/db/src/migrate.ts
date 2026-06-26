@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
@@ -37,7 +37,7 @@ async function baselineIfNeeded(client: postgres.Sql): Promise<void> {
             SELECT FROM information_schema.tables
             WHERE table_schema = 'public' AND table_name = 'users'
         ) AS exists
-    `.then(r => r[0].exists);
+    `.then((r) => r[0].exists);
 
     if (!schemaExists) return;
 
@@ -46,20 +46,21 @@ async function baselineIfNeeded(client: postgres.Sql): Promise<void> {
             SELECT FROM information_schema.tables
             WHERE table_schema = 'drizzle' AND table_name = '__drizzle_migrations'
         ) AS exists
-    `.then(r => r[0].exists);
+    `.then((r) => r[0].exists);
 
     const migrationCount = trackingExists
-        ? await client<[{ count: string }]>`SELECT COUNT(*) AS count FROM drizzle.__drizzle_migrations`
-            .then(r => Number(r[0].count))
+        ? await client<[{ count: string }]>`SELECT COUNT(*) AS count FROM drizzle.__drizzle_migrations`.then((r) =>
+              Number(r[0].count),
+          )
         : 0;
 
     if (migrationCount > 0) return;
 
     console.log('⚠️  Existing schema detected without migration tracking. Running baseline...');
 
-    const journal = JSON.parse(
-        readFileSync(join(migrationsFolder, 'meta', '_journal.json'), 'utf-8')
-    ) as { entries: JournalEntry[] };
+    const journal = JSON.parse(readFileSync(join(migrationsFolder, 'meta', '_journal.json'), 'utf-8')) as {
+        entries: JournalEntry[];
+    };
 
     await client`CREATE SCHEMA IF NOT EXISTS drizzle`;
     await client`
