@@ -38,9 +38,14 @@ import type { LoopMode, Track } from './types';
 const DEFAULT_API_BASE = '/plugins/video-player/api';
 
 const state = Ubi.state.define({
-    // ── 共有 + 永続 ──
     // ── 共有 + 永続。runtime 専用は editable:false で Inspector から除外 ──
-    isPlaying: Ubi.state.sync(false, { editable: false }),
+    // isPlaying は「作成時に自動再生するか」の初期値として編集可。true なら
+    // インスタンス作成時に先頭から再生が始まる（vp:media:loaded のクロック補正で
+    // stale な playEpoch をリセットして 0 から再生する）。
+    isPlaying: Ubi.state.sync(false, {
+        label: '作成時に自動再生',
+        help: 'オンにすると、インスタンス作成時にプレイリスト先頭から再生を開始します',
+    }),
     baselineTime: Ubi.state.sync(0, { editable: false }),
     playEpoch: Ubi.state.sync(0, { editable: false }),
     duration: Ubi.state.sync(0, { editable: false }),
