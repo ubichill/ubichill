@@ -408,10 +408,6 @@ VPEvents.on('vp:track:current', ({ track, index, total }) => {
     render();
 });
 
-// 自 <video> 由来の時刻通知は共有時計モデルでは無視 (進行バーは共有時計から計算)。
-// 必要になれば drift 検出に使う。
-VPEvents.on('vp:media:time', () => {});
-
 VPEvents.on('vp:media:loaded', ({ duration }) => {
     state.batch(() => {
         if (duration > 0) state.local.duration = duration;

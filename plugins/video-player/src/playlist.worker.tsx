@@ -235,7 +235,6 @@ state.onChange('currentIndex', render);
 
 // ── イベント受信 ──────────────────────────────────────
 VPEvents.on('vp:track:add', ({ track }) => addTrack(track));
-VPEvents.on('vp:track:remove', ({ index }) => removeTrack(index));
 VPEvents.on('vp:track:next', ({ loop, shuffle }) => nextTrack(loop, shuffle));
 VPEvents.on('vp:track:prev', () => prevTrack());
 

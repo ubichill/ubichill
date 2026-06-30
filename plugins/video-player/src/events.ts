@@ -43,13 +43,11 @@ export const VPEvents = Ubi.event.define<{
     'vp:media:seek': { time: number };
     'vp:media:volume': { volume: number };
     // ── screen → controls (DOM <video> 状態通知) ──
-    'vp:media:time': { currentTime: number; duration: number };
     'vp:media:loaded': { duration: number };
     'vp:media:ended': Empty;
     // ── controls → playlist (トラック操作) ──
     'vp:track:next': { loop: LoopMode; shuffle: boolean };
     'vp:track:prev': Empty;
-    'vp:track:remove': { index: number };
     // ── playlist → siblings (現トラック通知) ──
     'vp:track:current': { track: Track | null; index: number; total: number };
     // ── search → playlist (新規トラック追加) ──
@@ -59,7 +57,6 @@ export const VPEvents = Ubi.event.define<{
     // ── playlist → controls (同トラック replay: loop='one' or 単一トラック loop='all') ──
     'vp:track:replay': Empty;
     // ── Ubi.media SDK 由来 (DOM <video> イベント) ──
-    'media:timeUpdate': { targetId: string; currentTime: number; duration: number };
     'media:loaded': { targetId: string; duration: number };
     'media:ended': { targetId: string };
     'media:error': { targetId: string; message: string };

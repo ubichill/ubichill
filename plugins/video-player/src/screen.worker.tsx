@@ -23,10 +23,8 @@ VPEvents.on('vp:media:seek', ({ time }) => Ubi.media.seek(time, TARGET));
 VPEvents.on('vp:media:volume', ({ volume }) => Ubi.media.setVolume(volume, TARGET));
 
 // ── <video> 要素のイベント (Ubi.media SDK) → controls へ転送 ──
-VPEvents.on('media:timeUpdate', ({ targetId, currentTime, duration }) => {
-    if (targetId !== TARGET) return;
-    VPEvents.emit('vp:media:time', { currentTime, duration }, VPTarget.controls);
-});
+// 進捗(currentTime)は controls の共有時計から算出するため timeUpdate は転送しない
+// （毎フレームのワーカー間通信を避ける）。loaded / ended / error のみ転送する。
 VPEvents.on('media:loaded', ({ targetId, duration }) => {
     if (targetId !== TARGET) return;
     VPEvents.emit('vp:media:loaded', { duration }, VPTarget.controls);
