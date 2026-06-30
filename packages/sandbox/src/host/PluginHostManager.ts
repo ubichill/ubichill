@@ -393,6 +393,9 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
                 case CommandType.MEDIA_SET_VISIBLE:
                     this.handlers.onMediaSetVisible?.(command.payload.targetId, command.payload.visible);
                     break;
+                case CommandType.MEDIA_SET_DEVICE_CONTROL:
+                    this.handlers.onMediaSetDeviceControl?.(command.payload.targetId, command.payload.enabled);
+                    break;
                 case CommandType.CMD_GRIP:
                     this.handlers.onGripCommand?.(command.payload);
                     break;

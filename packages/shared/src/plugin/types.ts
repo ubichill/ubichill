@@ -335,6 +335,18 @@ export type CmdMediaDestroy = { type: 'MEDIA_DESTROY'; payload: { targetId: stri
 export type CmdMediaSetVisible = { type: 'MEDIA_SET_VISIBLE'; payload: { targetId: string; visible: boolean } };
 
 /**
+ * Ubi.media.setDeviceControl(enabled, targetId?) — デバイス由来の再生操作の許可。
+ *
+ * enabled=false（既定）: OS メディアキー / ロック画面 / PiP / リモート再生からの
+ *   再生・一時停止を無効化し、再生制御をプラグイン命令（Ubi.media.play/pause）のみに限定する。
+ * enabled=true: デバイス操作と PiP を解放する（プラグインが明示的に許可した場合のみ）。
+ */
+export type CmdMediaSetDeviceControl = {
+    type: 'MEDIA_SET_DEVICE_CONTROL';
+    payload: { targetId: string; enabled: boolean };
+};
+
+/**
  * Ubi.grip.exclusive() が hold/release/setHover の変化をホストに通知する。
  * Fire & Forget: capability 不要。
  *
@@ -407,6 +419,7 @@ export type PluginGuestCommand =
     | CmdMediaSetVolume
     | CmdMediaDestroy
     | CmdMediaSetVisible
+    | CmdMediaSetDeviceControl
     | CmdGrip;
 
 /** 後方互換エイリアス */

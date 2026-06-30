@@ -56,6 +56,8 @@ export type PluginWorkerHandlers<TPayloadMap extends Record<string, unknown> = R
     onMediaDestroy?: (targetId: string) => void;
     /** Worker が Ubi.media.setVisible() を呼んだときに発火する */
     onMediaSetVisible?: (targetId: string, visible: boolean) => void;
+    /** Worker が Ubi.media.setDeviceControl() を呼んだときに発火する */
+    onMediaSetDeviceControl?: (targetId: string, enabled: boolean) => void;
     /** Worker が Ubi.world.getEntity(id) を呼んだときに発火する */
     onGetEntity?: (id: string) => import('@ubichill/shared').ComponentInstance | undefined;
     /** Worker が Ubi.world.queryEntities(type) を呼んだときに発火する */
@@ -159,6 +161,8 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
                 onMediaSetVolume: (targetId, volume) => handlersRef.current.onMediaSetVolume?.(targetId, volume),
                 onMediaDestroy: (targetId) => handlersRef.current.onMediaDestroy?.(targetId),
                 onMediaSetVisible: (targetId, visible) => handlersRef.current.onMediaSetVisible?.(targetId, visible),
+                onMediaSetDeviceControl: (targetId, enabled) =>
+                    handlersRef.current.onMediaSetDeviceControl?.(targetId, enabled),
                 onGripCommand: (payload) => handlersRef.current.onGripCommand?.(payload),
                 onGetEntity: (id) => handlersRef.current.onGetEntity?.(id),
                 onQueryEntities: (entityType) => handlersRef.current.onQueryEntities?.(entityType) ?? [],

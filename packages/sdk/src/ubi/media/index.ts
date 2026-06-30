@@ -9,6 +9,11 @@ export type MediaModule = {
     setVolume(volume: number, targetId?: string): void;
     destroy(targetId?: string): void;
     setVisible(visible: boolean, targetId?: string): void;
+    /**
+     * デバイス由来（OS メディアキー / ロック画面 / PiP / リモート再生）の再生操作を許可するか。
+     * 既定は false（=プラグイン命令 play/pause のみ受け付け、デバイス操作は無効化）。
+     */
+    setDeviceControl(enabled: boolean, targetId?: string): void;
 };
 
 export function createMediaModule(send: SendFn): MediaModule {
@@ -23,5 +28,7 @@ export function createMediaModule(send: SendFn): MediaModule {
         destroy: (targetId = 'default') => send({ type: CommandType.MEDIA_DESTROY, payload: { targetId } }),
         setVisible: (visible, targetId = 'default') =>
             send({ type: CommandType.MEDIA_SET_VISIBLE, payload: { targetId, visible } }),
+        setDeviceControl: (enabled, targetId = 'default') =>
+            send({ type: CommandType.MEDIA_SET_DEVICE_CONTROL, payload: { targetId, enabled } }),
     };
 }

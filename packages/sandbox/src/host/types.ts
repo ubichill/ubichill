@@ -73,6 +73,8 @@ export type HostHandlers<TPayloadMap extends Record<string, unknown> = Record<st
     onMediaDestroy?: (targetId: string) => void;
     /** Worker が Ubi.media.setVisible() を呼んだときに発火する */
     onMediaSetVisible?: (targetId: string, visible: boolean) => void;
+    /** Worker が Ubi.media.setDeviceControl() を呼んだときに発火する */
+    onMediaSetDeviceControl?: (targetId: string, enabled: boolean) => void;
     /**
      * Worker が Ubi.log() を呼んだときに発火する。
      * デフォルト実装は PluginHostManager が console[level] で出力する。

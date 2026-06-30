@@ -41,6 +41,7 @@ export const CommandType = {
     MEDIA_SET_VOLUME: 'MEDIA_SET_VOLUME',
     MEDIA_DESTROY: 'MEDIA_DESTROY',
     MEDIA_SET_VISIBLE: 'MEDIA_SET_VISIBLE',
+    MEDIA_SET_DEVICE_CONTROL: 'MEDIA_SET_DEVICE_CONTROL',
     // editor (worker → host: Inspector 用スキーマ報告。capability 不要)
     EDITOR_SCHEMA: 'EDITOR_SCHEMA',
     // core

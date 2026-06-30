@@ -36,6 +36,7 @@ export const CAPABILITY_COMMANDS: Readonly<Record<string, readonly string[]>> = 
         CommandType.MEDIA_SET_VOLUME,
         CommandType.MEDIA_DESTROY,
         CommandType.MEDIA_SET_VISIBLE,
+        CommandType.MEDIA_SET_DEVICE_CONTROL,
     ],
 };
 
@@ -63,6 +64,7 @@ export const CMD_TO_HANDLER = {
     [CommandType.MEDIA_SET_VOLUME]: 'onMediaSetVolume',
     [CommandType.MEDIA_DESTROY]: 'onMediaDestroy',
     [CommandType.MEDIA_SET_VISIBLE]: 'onMediaSetVisible',
+    [CommandType.MEDIA_SET_DEVICE_CONTROL]: 'onMediaSetDeviceControl',
     [CommandType.EDITOR_SCHEMA]: 'onEditorSchema',
     [CommandType.CMD_GRIP]: 'onGripCommand',
 } as const satisfies Partial<Record<string, keyof HostHandlers>>;
