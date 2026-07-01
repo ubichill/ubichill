@@ -153,7 +153,7 @@ function DeclaredFieldRow({
                     ↻
                 </button>
             </div>
-            <DeclaredInput spec={spec} value={value} onChange={onChange} />
+            <DeclaredInput spec={spec} value={value} onChange={onChange} name={fieldKey} />
             {spec.help && <span className={css({ fontSize: '10px', color: 'textSubtle' })}>{spec.help}</span>}
         </div>
     );
@@ -163,16 +163,19 @@ function DeclaredInput({
     spec,
     value,
     onChange,
+    name,
 }: {
     spec: DataFieldSpec;
     value: unknown;
     onChange: (v: unknown) => void;
+    name?: string;
 }) {
     if (spec.type === 'string') {
         const s = String(value ?? '');
         if (spec.multiline) {
             return (
                 <textarea
+                    name={name}
                     value={s}
                     onChange={(e) => onChange(e.target.value)}
                     placeholder={spec.placeholder}
@@ -184,6 +187,7 @@ function DeclaredInput({
         return (
             <input
                 type="text"
+                name={name}
                 value={s}
                 onChange={(e) => onChange(e.target.value)}
                 placeholder={spec.placeholder}
@@ -195,6 +199,7 @@ function DeclaredInput({
         return (
             <input
                 type="url"
+                name={name}
                 value={String(value ?? '')}
                 onChange={(e) => onChange(e.target.value)}
                 placeholder={spec.placeholder ?? 'https://...'}
@@ -211,6 +216,7 @@ function DeclaredInput({
                 step={spec.step ?? 1}
                 onChange={onChange}
                 className={inputStyle}
+                name={name}
             />
         );
     }
@@ -218,17 +224,22 @@ function DeclaredInput({
         const v = Boolean(value);
         return (
             <label className={css({ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '12px' })}>
-                <input type="checkbox" checked={v} onChange={(e) => onChange(e.target.checked)} />
+                <input type="checkbox" name={name} checked={v} onChange={(e) => onChange(e.target.checked)} />
                 <span className={css({ color: 'textMuted' })}>{v ? 'true' : 'false'}</span>
             </label>
         );
     }
     if (spec.type === 'color') {
-        return <ColorInput value={value} onChange={onChange} />;
+        return <ColorInput value={value} onChange={onChange} name={name} />;
     }
     if (spec.type === 'enum') {
         return (
-            <select value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} className={inputStyle}>
+            <select
+                name={name}
+                value={String(value ?? '')}
+                onChange={(e) => onChange(e.target.value)}
+                className={inputStyle}
+            >
                 {spec.options.map((o) => (
                     <option key={o} value={o}>
                         {o}
@@ -238,9 +249,9 @@ function DeclaredInput({
         );
     }
     if (spec.type === 'array') {
-        return <ArrayField spec={spec} value={value} onChange={onChange} />;
+        return <ArrayField spec={spec} value={value} onChange={onChange} name={name} />;
     }
-    return <MiniJsonEditor value={value} onChange={onChange} />;
+    return <MiniJsonEditor value={value} onChange={onChange} name={name} />;
 }
 
 // ============================================
@@ -249,7 +260,17 @@ function DeclaredInput({
 
 type ArraySpec = Extract<DataFieldSpec, { type: 'array' }>;
 
-function ArrayField({ spec, value, onChange }: { spec: ArraySpec; value: unknown; onChange: (v: unknown) => void }) {
+function ArrayField({
+    spec,
+    value,
+    onChange,
+    name,
+}: {
+    spec: ArraySpec;
+    value: unknown;
+    onChange: (v: unknown) => void;
+    name?: string;
+}) {
     const items = Array.isArray(value) ? (value as Record<string, unknown>[]) : [];
     const itemEntries = Object.entries(spec.item);
 
@@ -308,6 +329,7 @@ function ArrayField({ spec, value, onChange }: { spec: ArraySpec; value: unknown
                                 spec={s}
                                 value={k in item ? item[k] : (s.default ?? defaultForType(s))}
                                 onChange={(v) => updateItem(i, { ...item, [k]: v })}
+                                name={`${name ?? 'item'}-${i}-${k}`}
                             />
                         </div>
                     ))}
@@ -414,22 +436,28 @@ function CustomFieldRow({
             </span>
             {type === 'boolean' ? (
                 <label className={css({ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px' })}>
-                    <input type="checkbox" checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)} />
+                    <input
+                        type="checkbox"
+                        name={fieldKey}
+                        checked={Boolean(value)}
+                        onChange={(e) => onChange(e.target.checked)}
+                    />
                     <span className={css({ color: 'textMuted' })}>{value ? 'true' : 'false'}</span>
                 </label>
             ) : type === 'number' ? (
-                <NumberInput value={Number(value)} onChange={onChange} className={inputStyle} />
+                <NumberInput value={Number(value)} onChange={onChange} className={inputStyle} name={fieldKey} />
             ) : type === 'color' ? (
-                <ColorInput value={value} onChange={onChange} />
+                <ColorInput value={value} onChange={onChange} name={fieldKey} />
             ) : type === 'string' ? (
                 <input
                     type="text"
+                    name={fieldKey}
                     value={String(value)}
                     onChange={(e) => onChange(e.target.value)}
                     className={inputStyle}
                 />
             ) : (
-                <MiniJsonEditor value={value} onChange={onChange} />
+                <MiniJsonEditor value={value} onChange={onChange} name={fieldKey} />
             )}
             <button
                 type="button"
@@ -457,7 +485,7 @@ function CustomFieldRow({
 // 小型 JSON エディタ (object/array 値用)
 // ============================================
 
-function MiniJsonEditor({ value, onChange }: { value: unknown; onChange: (v: unknown) => void }) {
+function MiniJsonEditor({ value, onChange, name }: { value: unknown; onChange: (v: unknown) => void; name?: string }) {
     const [text, setText] = useState(() => JSON.stringify(value, null, 2));
     const [err, setErr] = useState('');
     useEffect(() => {
@@ -467,6 +495,7 @@ function MiniJsonEditor({ value, onChange }: { value: unknown; onChange: (v: unk
     return (
         <div className={css({ display: 'flex', flexDirection: 'column', gap: '2px' })}>
             <textarea
+                name={name}
                 value={text}
                 onChange={(e) => {
                     setText(e.target.value);
@@ -517,6 +546,7 @@ function AddFieldRow({ existing, onAdd }: { existing: Set<string>; onAdd: (name:
         >
             <input
                 type="text"
+                name="new-field-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 onKeyDown={(e) => {
@@ -528,7 +558,12 @@ function AddFieldRow({ existing, onAdd }: { existing: Set<string>; onAdd: (name:
                 placeholder="フィールド名"
                 className={inputStyle}
             />
-            <select value={type} onChange={(e) => setType(e.target.value as typeof type)} className={inputStyle}>
+            <select
+                name="new-field-type"
+                value={type}
+                onChange={(e) => setType(e.target.value as typeof type)}
+                className={inputStyle}
+            >
                 <option value="string">文字列</option>
                 <option value="number">数値</option>
                 <option value="boolean">真偽値</option>

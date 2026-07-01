@@ -56,10 +56,12 @@ function buildFieldSpec(defaultValue: unknown, meta: EditorFieldMeta): Record<st
     return spec;
 }
 
-function inferFieldType(v: unknown): 'string' | 'number' | 'boolean' | 'json' {
+function inferFieldType(v: unknown): 'string' | 'number' | 'boolean' | 'color' | 'json' {
     if (typeof v === 'boolean') return 'boolean';
     if (typeof v === 'number') return 'number';
-    if (typeof v === 'string') return 'string';
+    // hex カラー (#rgb / #rrggbb) の default はカラーピッカーとして扱う。
+    // 明示したい場合は Ubi.state.sync(v, { type: 'color' | 'string' }) で上書き可能。
+    if (typeof v === 'string') return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(v) ? 'color' : 'string';
     return 'json';
 }
 

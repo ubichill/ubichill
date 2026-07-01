@@ -17,6 +17,7 @@ export function NumberInput({
     max,
     step,
     className,
+    name,
 }: {
     value: number;
     onChange: (v: number) => void;
@@ -24,6 +25,7 @@ export function NumberInput({
     max?: number;
     step?: number;
     className?: string;
+    name?: string;
 }) {
     const [text, setText] = useState(String(value));
     const lastEmittedRef = useRef(value);
@@ -47,6 +49,7 @@ export function NumberInput({
     return (
         <input
             type="number"
+            name={name}
             value={text}
             min={min}
             max={max}
@@ -75,13 +78,22 @@ export function isHexColor(v: unknown): v is string {
  * スウォッチは hex のときだけ実色を表示し、それ以外は黒にフォールバック（テキスト側は
  * 生値を保持するので "red" 等の非 hex も編集できる）。宣言済み color / hex なカスタム値の両方で使う。
  */
-export function ColorInput({ value, onChange }: { value: unknown; onChange: (v: string) => void }) {
+export function ColorInput({
+    value,
+    onChange,
+    name,
+}: {
+    value: unknown;
+    onChange: (v: string) => void;
+    name?: string;
+}) {
     const raw = typeof value === 'string' ? value : '';
     const swatch = isHexColor(raw) ? raw : '#000000';
     return (
         <div className={css({ display: 'flex', gap: '6px', alignItems: 'center' })}>
             <input
                 type="color"
+                name={name ? `${name}-picker` : undefined}
                 value={swatch}
                 onChange={(e) => onChange(e.target.value)}
                 className={css({
@@ -94,7 +106,13 @@ export function ColorInput({ value, onChange }: { value: unknown; onChange: (v: 
                     flexShrink: 0,
                 })}
             />
-            <input type="text" value={raw} onChange={(e) => onChange(e.target.value)} className={inputStyle} />
+            <input
+                type="text"
+                name={name}
+                value={raw}
+                onChange={(e) => onChange(e.target.value)}
+                className={inputStyle}
+            />
         </div>
     );
 }
