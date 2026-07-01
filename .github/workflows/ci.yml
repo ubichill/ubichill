@@ -101,19 +101,22 @@ jobs:
         run: .github/scripts/detect-changed-paths.sh
 
   # ── Docker ビルド（並列）────────────────────────────────────────────────
-  # push to main → 全イメージを :latest / :sha-<sha> / :<version> でビルド
-  # PR           → 変更検知でフィルタし :pr-<番号>（PR の最新）/ :sha-<sha>（不変）でビルド
-  #   いずれも immutable な :sha-<sha> を必ず付与。共有の可変 :dev タグは廃止し、
+  # push to main       → 変更のあったイメージを :latest / :sha-<sha> / :<version> で
+  # PR + preview ラベル → 3イメージ全部を :pr-<番号> / :sha-<sha> でビルド
+  #   （プレビュー環境はフルスタックが要るため detect-changes で絞らず全部作る）
+  # ラベル無しの PR      → ビルドしない（lint / typecheck のみ）
+  #   いずれも immutable な :sha-<sha> を付与。共有の可変 :dev タグは廃止し、
   #   デプロイ（PR ごとの環境など）は GitOps 側がこれらのタグを参照する。
 
   build-backend:
     name: Build and push Backend image
     needs: [lint, detect-changes]
     if: >
-      (github.event_name == 'push' ||
-        contains(github.event.pull_request.labels.*.name, 'preview')) &&
-      needs.detect-changes.outputs.backend == 'true' &&
-      github.event.pull_request.user.login != 'dependabot[bot]'
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      (
+        (github.event_name == 'push' && needs.detect-changes.outputs.backend == 'true') ||
+        (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'preview'))
+      )
     runs-on: ubuntu-latest
     permissions:
       packages: write
@@ -166,10 +169,11 @@ jobs:
     name: Build and push Frontend image
     needs: [lint, detect-changes]
     if: >
-      (github.event_name == 'push' ||
-        contains(github.event.pull_request.labels.*.name, 'preview')) &&
-      needs.detect-changes.outputs.frontend == 'true' &&
-      github.event.pull_request.user.login != 'dependabot[bot]'
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      (
+        (github.event_name == 'push' && needs.detect-changes.outputs.frontend == 'true') ||
+        (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'preview'))
+      )
     runs-on: ubuntu-latest
     permissions:
       packages: write
@@ -224,10 +228,11 @@ jobs:
     name: Build and push Video Player image
     needs: [lint, detect-changes]
     if: >
-      (github.event_name == 'push' ||
-        contains(github.event.pull_request.labels.*.name, 'preview')) &&
-      needs.detect-changes.outputs.video-player == 'true' &&
-      github.event.pull_request.user.login != 'dependabot[bot]'
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      (
+        (github.event_name == 'push' && needs.detect-changes.outputs.video-player == 'true') ||
+        (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'preview'))
+      )
     runs-on: ubuntu-latest
     permissions:
       packages: write
