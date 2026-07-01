@@ -72,6 +72,14 @@ spec:
             - { name: frontend.image.tag, value: "pr-{{ .number }}" }
             # plugin backend も PR タグへ（values-dev の pluginBackends[0]）
             - { name: pluginBackends[0].image.tag, value: "pr-{{ .number }}" }
+            # プレビューは development 扱いに（/api/version の environment・バージョンバッジ・
+            # dev 挙動が有効になる）。base values.yaml の既定は production のため明示上書き必須。
+            - { name: backend.env.NODE_ENV, value: "development" }
+            # Cloudflare ingress 経由なので X-Forwarded-* を信用（secure cookie / rate limit IP）
+            - { name: backend.env.TRUST_PROXY, value: "true" }
+            # better-auth の trustedOrigins は明示オリジンに。values-dev.yaml の CORS_ORIGIN="*"
+            # を per-PR の単一オリジンで上書きする（"*" 依存を避ける）。
+            - { name: backend.env.CORS_ORIGIN, value: "https://pr-{{ .number }}.<your-domain>" }
             # メール認証を完全にスキップ → RESEND_API_KEY はそもそも不要（設定しない）
             - { name: backend.env.SKIP_EMAIL_VERIFICATION, value: "true" }
             # ここだけ必須: postgres は空だと chart が fail-fast（DB は実在）。使い捨てダミーでよい。
@@ -90,6 +98,9 @@ spec:
 ```
 
 要件・注意:
+- **`/api/version` が `environment:"production"` を返す場合**は `values-dev.yaml` が読めていない
+  （＝base の `NODE_ENV:"production"` のまま）サイン。`valueFiles: ["values-dev.yaml"]`（pluginBackends・
+  worlds レジストリもここから来る）と上の `backend.env.NODE_ENV=development` 上書きを確認する。
 - **シークレット**: プレビューに**本番 secret は不要**。`SKIP_EMAIL_VERIFICATION=true` で
   メール送信をスキップするため `RESEND_API_KEY` は不要（コードが Resend を呼ぶ前に return）。
   `BETTER_AUTH_SECRET` は chart が自動生成するが churn 回避のため上記で決定的ダミーを固定。
