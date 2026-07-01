@@ -70,14 +70,14 @@ spec:
             - { name: frontend.image.tag, value: "pr-{{ .number }}" }
             # plugin backend も PR タグへ（values-dev の pluginBackends[0]）
             - { name: pluginBackends[0].image.tag, value: "pr-{{ .number }}" }
-            # メール認証を完全にスキップ（RESEND_API_KEY 不要になる）
+            # メール認証を完全にスキップ → RESEND_API_KEY はそもそも不要（設定しない）
             - { name: backend.env.SKIP_EMAIL_VERIFICATION, value: "true" }
-            # 本番 secret は使わない。DB/Redis は使い捨てダミー（postgres は未設定だと chart が fail-fast）
+            # ここだけ必須: postgres は空だと chart が fail-fast（DB は実在）。使い捨てダミーでよい。
             - { name: postgresql.auth.password, value: "preview-only" }
             - { name: redis.auth.password,       value: "preview-only" }
-            # BETTER_AUTH_SECRET は未設定でも chart が自動生成するが、randAlphaNum で
-            # render 毎に変わり ArgoCD が毎回 Secret 差分→再同期→セッションリセットになる。
-            # PR ごとに決定的なダミーを固定して churn を防ぐ（本番秘密ではない）。
+            # 任意（削除可）: BETTER_AUTH_SECRET は未設定でも chart が自動生成する。
+            # ただし randAlphaNum は render 毎に変わり ArgoCD が Secret を再同期→セッション
+            # リセットになる。churn を避けたい場合だけ PR ごとの決定的ダミーを固定する。
             - { name: backend.secretEnv.BETTER_AUTH_SECRET, value: "preview-pr-{{ .number }}-not-a-secret" }
       destination:
         server: https://kubernetes.default.svc
