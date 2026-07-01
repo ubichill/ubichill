@@ -20,8 +20,7 @@
         "w": 640,
         "h": 360
       },
-      "dataFields": {},
-      "workerUrl": "./screen/index.86862d70.js"
+      "workerUrl": "./screen/index.a22273f1.js"
     },
     "video-player:controls": {
       "capabilities": [
@@ -41,44 +40,7 @@
         "w": 640,
         "h": 60
       },
-      "dataFields": {
-        "isPlaying": {
-          "type": "boolean",
-          "default": false,
-          "label": "再生中"
-        },
-        "currentTime": {
-          "type": "number",
-          "default": 0,
-          "label": "現在時刻 (秒)"
-        },
-        "duration": {
-          "type": "number",
-          "default": 0,
-          "label": "総再生時間 (秒)"
-        },
-        "loop": {
-          "type": "enum",
-          "default": "none",
-          "options": [
-            "none",
-            "one",
-            "all"
-          ],
-          "label": "ループ"
-        },
-        "shuffle": {
-          "type": "boolean",
-          "default": false,
-          "label": "シャッフル"
-        },
-        "apiBase": {
-          "type": "string",
-          "default": "/plugins/video-player/api",
-          "label": "API ベース URL"
-        }
-      },
-      "workerUrl": "./controls/index.c9e6ac6c.js"
+      "workerUrl": "./controls/index.a9f5ef46.js"
     },
     "video-player:playlist": {
       "capabilities": [
@@ -98,20 +60,7 @@
         "w": 310,
         "h": 300
       },
-      "dataFields": {
-        "playlist": {
-          "type": "json",
-          "default": [],
-          "label": "プレイリスト",
-          "help": "{ id, title, mode: 'live' | 'video' } の配列"
-        },
-        "currentIndex": {
-          "type": "number",
-          "default": 0,
-          "label": "再生中インデックス"
-        }
-      },
-      "workerUrl": "./playlist/index.aabd1eb4.js"
+      "workerUrl": "./playlist/index.6eeb3138.js"
     },
     "video-player:search": {
       "capabilities": [
@@ -128,8 +77,7 @@
         "w": 310,
         "h": 300
       },
-      "dataFields": {},
-      "workerUrl": "./search/index.d195d082.js"
+      "workerUrl": "./search/index.6383ce1f.js"
     }
   },
   "assets": []
