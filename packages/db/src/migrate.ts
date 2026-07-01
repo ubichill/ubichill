@@ -95,7 +95,7 @@ async function waitForPostgres(connectionString: string, maxAttempts = 30): Prom
             await client.end({ timeout: 1 }).catch(() => undefined);
             if (i === maxAttempts) throw new Error(`PostgreSQL not ready after ${maxAttempts} attempts`);
             console.log(`⏳ Waiting for PostgreSQL... (${i}/${maxAttempts})`);
-            await new Promise(r => setTimeout(r, 2000));
+            await new Promise((r) => setTimeout(r, 2000));
         }
     }
     throw new Error('unreachable');
