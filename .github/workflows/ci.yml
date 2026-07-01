@@ -159,6 +159,7 @@ jobs:
           tags: |
             ${{ github.event_name == 'push' && format('{0}/{1}/{2}:latest', env.REGISTRY, github.repository_owner, env.IMAGE_NAME) || '' }}
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:sha-${{ steps.versions.outputs.short-sha }}
+            ${{ github.event_name == 'pull_request' && format('{0}/{1}/{2}:sha-{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, github.event.pull_request.head.sha) || '' }}
             ${{ github.event_name == 'pull_request' && format('{0}/{1}/{2}:pr-{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, github.event.pull_request.number) || '' }}
             ${{ github.event_name == 'push' && format('{0}/{1}/{2}:{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, steps.versions.outputs.next-version) || '' }}
           cache-from: type=gha
@@ -218,6 +219,7 @@ jobs:
           tags: |
             ${{ github.event_name == 'push' && format('{0}/{1}/{2}:latest', env.REGISTRY, github.repository_owner, env.IMAGE_NAME) || '' }}
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:sha-${{ steps.versions.outputs.short-sha }}
+            ${{ github.event_name == 'pull_request' && format('{0}/{1}/{2}:sha-{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, github.event.pull_request.head.sha) || '' }}
             ${{ github.event_name == 'pull_request' && format('{0}/{1}/{2}:pr-{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, github.event.pull_request.number) || '' }}
             ${{ github.event_name == 'push' && format('{0}/{1}/{2}:{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, steps.versions.outputs.next-version) || '' }}
           cache-from: type=gha
@@ -271,6 +273,7 @@ jobs:
           tags: |
             ${{ github.event_name == 'push' && format('{0}/{1}/{2}:latest', env.REGISTRY, github.repository_owner, env.IMAGE_NAME) || '' }}
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:sha-${{ steps.versions.outputs.short-sha }}
+            ${{ github.event_name == 'pull_request' && format('{0}/{1}/{2}:sha-{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, github.event.pull_request.head.sha) || '' }}
             ${{ github.event_name == 'pull_request' && format('{0}/{1}/{2}:pr-{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, github.event.pull_request.number) || '' }}
             ${{ github.event_name == 'push' && format('{0}/{1}/{2}:{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, steps.versions.outputs.next-version) || '' }}
           cache-from: type=gha
