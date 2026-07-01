@@ -120,6 +120,7 @@ backend:
   #   TRUST_PROXY: "true"               # Ingress 経由で X-Forwarded-* を信用 (rate limit IP 正確化)
   #   DEBUG: "true"                     # logger.debug を有効化
   #   NODE_ENV: "development"           # OTP コードをログに出す等
+  #   MAIL_FROM: "Ubichill <noreply@your-domain.example>"  # 認証メールの送信元 (Resend で検証済みのドメイン)。未設定なら resend.dev サンドボックス送信元
   env:
     NODE_ENV: "production"
     PORT: "3001"

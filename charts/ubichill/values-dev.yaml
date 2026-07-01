@@ -13,7 +13,9 @@ backend:
   
   image:
     repository: "ghcr.io/ubichill/ubichill-backend"
-    tag: "dev"
+    # 既定は最新公開イメージ。PR プレビュー環境では GitOps(ArgoCD ApplicationSet) が
+    # image.tag を :pr-<番号> / :sha-<sha> に上書きする（共有の :dev タグは廃止済み）。
+    tag: "latest"
     pullPolicy: Always
   
   resources:
@@ -41,7 +43,8 @@ frontend:
   
   image:
     repository: "ghcr.io/ubichill/ubichill-frontend"
-    tag: "dev"
+    # 既定は最新公開イメージ。PR プレビューは GitOps が :pr-<番号> / :sha-<sha> に上書き。
+    tag: "latest"
     pullPolicy: Always
   
   resources:
@@ -90,7 +93,7 @@ pluginBackends:
   - id: video-player
     image:
       repository: ghcr.io/ubichill/video-player-backend
-      tag: dev
+      tag: latest
     port: 8000
     pathPrefix: /plugins/video-player/api
     replicaCount: 1

@@ -14,6 +14,10 @@ function getResend(): Resend {
     return _resend;
 }
 
+// 認証メールの送信元。組織固有ドメインを直書きせず env で差し替え可能にする
+// （OSS としてセルフホスト時に自分の検証済みドメインを使えるように）。
+const MAIL_FROM = process.env.MAIL_FROM ?? 'Ubichill <onboarding@resend.dev>';
+
 // 仮登録データを保持（メモリ内、本番ではRedisなどを使用）
 interface PendingRegistration {
     email: string;
@@ -113,7 +117,7 @@ export async function createPendingRegistration(
     }
     try {
         const result = await getResend().emails.send({
-            from: 'Ubichill <noreply@youkan.uk>',
+            from: MAIL_FROM,
             to: email,
             subject: `【Ubichill】${username} さんの認証コード`,
             text: `${username} さん、Ubichill へようこそ！
@@ -201,7 +205,7 @@ export async function resendOTP(email: string): Promise<{ success: boolean; erro
     }
     try {
         await getResend().emails.send({
-            from: 'Ubichill <noreply@youkan.uk>',
+            from: MAIL_FROM,
             to: email,
             subject: `【Ubichill】${pending.username} さんの認証コード（再送信）`,
             text: `${pending.username} さん

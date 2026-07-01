@@ -38,8 +38,10 @@ URL を開くだけでカーソルがアバターになる、軽量な 2D メタ
 
 | 環境 | URL | 反映トリガー |
 |---|---|---|
-| Production | <https://ubichill.youkan.uk/> | `main` への merge → `latest` タグで自動デプロイ |
-| Dev (PR preview) | <https://ubichill-dev.youkan.uk/> | `main` 向け PR の push → `dev` ブランチ経由で自動デプロイ |
+| Production | <https://ubichill.youkan.uk/> | `main` への merge → `:latest` / `:sha-<sha>` イメージで自動デプロイ |
+| PR プレビュー | PR ごとに払い出し | PR push → `:pr-<番号>` / `:sha-<sha>` イメージをビルド。各 PR の環境は GitOps（ArgoCD 等）側で生成する |
+
+> イメージは GHCR（`ghcr.io/<owner>/ubichill-{backend,frontend}`）に push される。デプロイ先のドメインや secret は本リポジトリには含めず、GitOps/Helm values 側で注入する（`global.domain` や `MAIL_FROM` 等）。
 
 ## 自分のサーバーで動かす
 
