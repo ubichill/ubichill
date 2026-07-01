@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { css } from '@/styled-system/css';
 import type { DataFieldSpec, DataFields } from '../../hooks/useAvailableEntityKinds';
-import { NumberInput } from './primitives';
+import { ColorInput, NumberInput } from './primitives';
 import { defaultForType, detectType, inputStyle, textareaStyle } from './shared';
 
 interface DataFormFieldsProps {
@@ -224,25 +224,7 @@ function DeclaredInput({
         );
     }
     if (spec.type === 'color') {
-        const v = typeof value === 'string' ? value : '#000000';
-        return (
-            <div className={css({ display: 'flex', gap: '6px', alignItems: 'center' })}>
-                <input
-                    type="color"
-                    value={v}
-                    onChange={(e) => onChange(e.target.value)}
-                    className={css({
-                        width: '40px',
-                        height: '32px',
-                        borderRadius: '6px',
-                        border: '1px solid',
-                        borderColor: 'border',
-                        cursor: 'pointer',
-                    })}
-                />
-                <input type="text" value={v} onChange={(e) => onChange(e.target.value)} className={inputStyle} />
-            </div>
-        );
+        return <ColorInput value={value} onChange={onChange} />;
     }
     if (spec.type === 'enum') {
         return (
@@ -437,6 +419,8 @@ function CustomFieldRow({
                 </label>
             ) : type === 'number' ? (
                 <NumberInput value={Number(value)} onChange={onChange} className={inputStyle} />
+            ) : type === 'color' ? (
+                <ColorInput value={value} onChange={onChange} />
             ) : type === 'string' ? (
                 <input
                     type="text"

@@ -29,8 +29,8 @@ export const textareaStyle = css({
     _focus: { borderColor: 'primary' },
 });
 
-export function detectType(v: unknown): 'string' | 'number' | 'boolean' | 'json' {
-    if (typeof v === 'string') return 'string';
+export function detectType(v: unknown): 'string' | 'number' | 'boolean' | 'color' | 'json' {
+    if (typeof v === 'string') return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(v) ? 'color' : 'string';
     if (typeof v === 'number') return 'number';
     if (typeof v === 'boolean') return 'boolean';
     return 'json';

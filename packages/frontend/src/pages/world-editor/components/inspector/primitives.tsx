@@ -65,6 +65,40 @@ export function NumberInput({
     );
 }
 
+/** `#rgb` / `#rrggbb` 形式か。カラーピッカー(<input type=color>)で扱える値の判定に使う。 */
+export function isHexColor(v: unknown): v is string {
+    return typeof v === 'string' && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(v);
+}
+
+/**
+ * 色入力: スウォッチ(<input type=color>) + 生テキストの2点セット。
+ * スウォッチは hex のときだけ実色を表示し、それ以外は黒にフォールバック（テキスト側は
+ * 生値を保持するので "red" 等の非 hex も編集できる）。宣言済み color / hex なカスタム値の両方で使う。
+ */
+export function ColorInput({ value, onChange }: { value: unknown; onChange: (v: string) => void }) {
+    const raw = typeof value === 'string' ? value : '';
+    const swatch = isHexColor(raw) ? raw : '#000000';
+    return (
+        <div className={css({ display: 'flex', gap: '6px', alignItems: 'center' })}>
+            <input
+                type="color"
+                value={swatch}
+                onChange={(e) => onChange(e.target.value)}
+                className={css({
+                    width: '40px',
+                    height: '32px',
+                    borderRadius: '6px',
+                    border: '1px solid',
+                    borderColor: 'border',
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                })}
+            />
+            <input type="text" value={raw} onChange={(e) => onChange(e.target.value)} className={inputStyle} />
+        </div>
+    );
+}
+
 export function NumField({
     label,
     value,
