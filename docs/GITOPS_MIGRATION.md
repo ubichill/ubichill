@@ -63,32 +63,23 @@ spec:
         path: charts/ubichill
         helm:
           releaseName: "ubichill-pr-{{ .number }}"
+          # values-dev.yaml をベースに使う。これで NODE_ENV=development / CORS_ORIGIN="*"
+          # （better-auth は "*" を全オリジン許可として扱う）/ TRUST_PROXY / BETTER_AUTH_SECRET /
+          # pluginBackends(video-player) / worlds レジストリ まで揃う。
           valueFiles: ["values-dev.yaml"]
+          # per-PR で上書きが要るのは「環境ごとに変わる値」だけ。
           parameters:
-            # ★ 必ず単一階層サブドメインにする（サブサブドメイン pr-N.dev.<domain> は不可）。
-            #   Cloudflare universal SSL / *.<domain> ワイルドカードは1階層しかカバーしないため。
+            # ★ 単一階層サブドメイン必須（サブサブドメイン pr-N.dev.<domain> は TLS 不可）
             - { name: global.domain,     value: "pr-{{ .number }}.<your-domain>" }
+            # values-dev は :latest。PR のイメージに差し替える
             - { name: backend.image.tag,  value: "pr-{{ .number }}" }
             - { name: frontend.image.tag, value: "pr-{{ .number }}" }
-            # plugin backend も PR タグへ（values-dev の pluginBackends[0]）
             - { name: pluginBackends[0].image.tag, value: "pr-{{ .number }}" }
-            # プレビューは development 扱いに（/api/version の environment・バージョンバッジ・
-            # dev 挙動が有効になる）。base values.yaml の既定は production のため明示上書き必須。
-            - { name: backend.env.NODE_ENV, value: "development" }
-            # Cloudflare ingress 経由なので X-Forwarded-* を信用（secure cookie / rate limit IP）
-            - { name: backend.env.TRUST_PROXY, value: "true" }
-            # better-auth の trustedOrigins は明示オリジンに。values-dev.yaml の CORS_ORIGIN="*"
-            # を per-PR の単一オリジンで上書きする（"*" 依存を避ける）。
-            - { name: backend.env.CORS_ORIGIN, value: "https://pr-{{ .number }}.<your-domain>" }
-            # メール認証を完全にスキップ → RESEND_API_KEY はそもそも不要（設定しない）
-            - { name: backend.env.SKIP_EMAIL_VERIFICATION, value: "true" }
-            # ここだけ必須: postgres は空だと chart が fail-fast（DB は実在）。使い捨てダミーでよい。
+            # values-dev は postgres パスワードを持たない & chart が空だと fail-fast → 使い捨てダミー必須
             - { name: postgresql.auth.password, value: "preview-only" }
-            - { name: redis.auth.password,       value: "preview-only" }
-            # 任意（削除可）: BETTER_AUTH_SECRET は未設定でも chart が自動生成する。
-            # ただし randAlphaNum は render 毎に変わり ArgoCD が Secret を再同期→セッション
-            # リセットになる。churn を避けたい場合だけ PR ごとの決定的ダミーを固定する。
-            - { name: backend.secretEnv.BETTER_AUTH_SECRET, value: "preview-pr-{{ .number }}-not-a-secret" }
+            # 任意: 登録(sign-up)もテストするなら。values-dev は SKIP を持たず RESEND がダミーキーの
+            # ため、これが無いと OTP メール送信で登録が失敗する。ログインだけなら不要。
+            - { name: backend.env.SKIP_EMAIL_VERIFICATION, value: "true" }
       destination:
         server: https://kubernetes.default.svc
         namespace: "preview-pr-{{ .number }}"
@@ -99,12 +90,13 @@ spec:
 
 要件・注意:
 - **`/api/version` が `environment:"production"` を返す場合**は `values-dev.yaml` が読めていない
-  （＝base の `NODE_ENV:"production"` のまま）サイン。`valueFiles: ["values-dev.yaml"]`（pluginBackends・
-  worlds レジストリもここから来る）と上の `backend.env.NODE_ENV=development` 上書きを確認する。
-- **シークレット**: プレビューに**本番 secret は不要**。`SKIP_EMAIL_VERIFICATION=true` で
-  メール送信をスキップするため `RESEND_API_KEY` は不要（コードが Resend を呼ぶ前に return）。
-  `BETTER_AUTH_SECRET` は chart が自動生成するが churn 回避のため上記で決定的ダミーを固定。
-  `postgresql.auth.password` だけは chart が fail-fast するのでダミー必須。
+  （＝base の `NODE_ENV:"production"` のまま）サイン。`valueFiles: ["values-dev.yaml"]` が効いていれば
+  `NODE_ENV:"development"` になり development 表示になる。
+- **シークレット/オリジン**: values-dev がプレビュー向けに `CORS_ORIGIN:"*"`（better-auth は `"*"` を
+  全オリジン許可として扱う→ `INVALID_ORIGIN` にならない）・`BETTER_AUTH_SECRET:"dev-secret-key"`・
+  `RESEND_API_KEY:"dev-resend-key"` を持つため、**本番 secret は不要**。per-PR で足すのは
+  `postgresql.auth.password`（values-dev 未設定＋chart fail-fast）だけ。メール送信は
+  `SKIP_EMAIL_VERIFICATION=true`（任意）で回避。
 - **ドメインは単一階層サブドメイン必須**（例 `pr-105.youkan.uk`）。`pr-105.dev.youkan.uk` の
   ようなサブサブドメインは不可（`*.youkan.uk` の1階層しか TLS がカバーされない）。
   DNS/TLS は Cloudflare ingress 側で解決するため、別途ワイルドカード証明書の用意は不要。
