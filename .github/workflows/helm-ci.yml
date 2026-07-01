@@ -1,0 +1,79 @@
+name: Helm Chart CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "charts/**"
+      - ".github/workflows/helm-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  validate:
+    name: Validate Helm chart
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "v3.14.0"
+
+      - name: Add Helm repositories
+        run: |
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm repo update
+
+      - name: Build chart dependencies
+        run: helm dependency build charts/ubichill
+
+      - name: Lint chart with dev values
+        run: |
+          helm lint charts/ubichill \
+            -f charts/ubichill/values-dev.yaml \
+            --set global.domain=dev.example.test \
+            --set postgresql.auth.postgresPassword=test-postgres-password \
+            --set postgresql.auth.password=test-app-password \
+            --set redis.auth.password=test-redis-password
+
+      - name: Lint chart with production values
+        run: |
+          helm lint charts/ubichill \
+            -f charts/ubichill/values-prod.yaml \
+            --set global.domain=prod.example.test \
+            --set backend.secretEnv.BETTER_AUTH_SECRET=test-better-auth-secret \
+            --set backend.secretEnv.RESEND_API_KEY=test-resend-api-key \
+            --set postgresql.auth.postgresPassword=test-postgres-password \
+            --set postgresql.auth.password=test-app-password \
+            --set redis.auth.password=test-redis-password
+
+      - name: Render chart with dev values
+        run: |
+          helm template ubichill-dev charts/ubichill \
+            -f charts/ubichill/values-dev.yaml \
+            --set global.domain=dev.example.test \
+            --set postgresql.auth.postgresPassword=test-postgres-password \
+            --set postgresql.auth.password=test-app-password \
+            --set redis.auth.password=test-redis-password \
+            > /tmp/ubichill-dev.yaml
+
+      - name: Render chart with production values
+        run: |
+          helm template ubichill-prod charts/ubichill \
+            -f charts/ubichill/values-prod.yaml \
+            --set global.domain=prod.example.test \
+            --set backend.secretEnv.BETTER_AUTH_SECRET=test-better-auth-secret \
+            --set backend.secretEnv.RESEND_API_KEY=test-resend-api-key \
+            --set postgresql.auth.postgresPassword=test-postgres-password \
+            --set postgresql.auth.password=test-app-password \
+            --set redis.auth.password=test-redis-password \
+            > /tmp/ubichill-prod.yaml
