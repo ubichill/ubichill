@@ -79,6 +79,7 @@ export function TagsEditor({ tags, onChange }: TagsEditorProps) {
             <div className={css({ display: 'grid', gridTemplateColumns: '1fr auto', gap: '6px' })}>
                 <input
                     type="text"
+                    name="entity-tag-input"
                     value={draft}
                     onChange={(e) => {
                         setDraft(e.target.value);

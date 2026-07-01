@@ -189,6 +189,7 @@ function DataJsonField({ text, error, onChange }: { text: string; error: string;
     return (
         <div className={css({ display: 'flex', flexDirection: 'column', gap: '2px' })}>
             <textarea
+                name="component-data-json"
                 value={text}
                 onChange={(e) => onChange(e.target.value)}
                 rows={8}
@@ -250,7 +251,12 @@ export function ComponentPicker({ availableKinds, onAdd }: ComponentPickerProps)
                 borderRadius: '4px',
             })}
         >
-            <select value={type} onChange={(e) => setType(e.target.value)} className={inputStyle}>
+            <select
+                name="add-component-type"
+                value={type}
+                onChange={(e) => setType(e.target.value)}
+                className={inputStyle}
+            >
                 <option value="">+ コンポーネントを選択...</option>
                 {candidates.map((k) => (
                     <option key={k} value={k}>

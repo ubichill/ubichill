@@ -38,6 +38,7 @@ export function EntityHeader({ entity, onDelete, onRename }: EntityHeaderProps) 
                     <input
                         ref={inputRef}
                         type="text"
+                        name="entity-id"
                         value={draft}
                         onChange={(e) => setDraft(e.target.value)}
                         onBlur={commit}
