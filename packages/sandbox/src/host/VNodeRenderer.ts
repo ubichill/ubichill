@@ -219,6 +219,12 @@ function isAllowedAttr(key: string): boolean {
         case 'href':
         case 'src':
         case 'alt':
+        // 画像の軽量化・レイアウト安定用（プラグインがサムネ等で使う）
+        case 'loading':
+        case 'decoding':
+        case 'width':
+        case 'height':
+        case 'referrerpolicy':
         case 'colspan':
         case 'rowspan':
         case 'for':
@@ -260,8 +266,10 @@ function isAllowedAttr(key: string): boolean {
 // 差分追跡 (WeakMap — 要素が GC されると自動解放)
 // ============================================================
 
-/** 前回セットした属性キー集合（style は除く） */
-const _prevAttrs = new WeakMap<Element, Set<string>>();
+/** 前回セットした属性 key→value（style は除く）。値が変わらない属性は setAttribute を
+ *  スキップするために値まで覚える。これにより再レンダーのたびに img の src を再設定して
+ *  同じ画像が読み直される（チラつき/無駄な再取得）のを防ぐ。 */
+const _prevAttrs = new WeakMap<Element, Map<string, string>>();
 
 /** バインド済みイベントハンドラ {eventType → {handlerIdx, listener}} */
 const _prevHandlers = new WeakMap<Element, Map<string, { idx: number; fn: EventListener }>>();
@@ -289,8 +297,14 @@ function _makeListener(idx: number, eventType: string, sendAction: SendAction): 
 // ============================================================
 
 function _patchProps(el: Element, newProps: Record<string, unknown>, sendAction: SendAction, inSvg: boolean): void {
-    const prevAttrs = _prevAttrs.get(el) ?? new Set<string>();
-    const nextAttrs = new Set<string>();
+    const prevAttrs = _prevAttrs.get(el) ?? new Map<string, string>();
+    const nextAttrs = new Map<string, string>();
+
+    // 値が前回と同じなら setAttribute しない（img.src の再設定による再ロードを防ぐ）。
+    const applyAttr = (attrKey: string, value: string): void => {
+        if (prevAttrs.get(attrKey) !== value) el.setAttribute(attrKey, value);
+        nextAttrs.set(attrKey, value);
+    };
 
     let prevHandlers = _prevHandlers.get(el);
     if (!prevHandlers) {
@@ -334,24 +348,23 @@ function _patchProps(el: Element, newProps: Record<string, unknown>, sendAction:
         // 通常属性
         if (inSvg) {
             const attrKey = SVG_CAMEL_ATTRS.has(key) ? key : camelToHyphen(key);
-            el.setAttribute(attrKey, String(val));
-            nextAttrs.add(attrKey);
+            applyAttr(attrKey, String(val));
         } else {
             const attrKey = key === 'class' ? 'class' : key;
             if (isAllowedAttr(key)) {
                 if (key === 'href' || key === 'src') {
                     const safe = sanitizeUrl(String(val));
                     if (safe !== null) {
-                        el.setAttribute(attrKey, safe);
-                        nextAttrs.add(attrKey);
+                        applyAttr(attrKey, safe);
                     }
                 } else if (key === 'value' && el instanceof HTMLInputElement) {
                     // フォーカス中の <input> は value 属性を上書きしない（入力中の文字を保護）
-                    if (document.activeElement !== el) {
-                        el.setAttribute('value', String(val));
-                        (el as HTMLInputElement).value = String(val);
+                    const sv = String(val);
+                    if (document.activeElement !== el && prevAttrs.get('value') !== sv) {
+                        el.setAttribute('value', sv);
+                        (el as HTMLInputElement).value = sv;
                     }
-                    nextAttrs.add('value');
+                    nextAttrs.set('value', sv);
                 } else if (key === 'checked' && el instanceof HTMLInputElement) {
                     (el as HTMLInputElement).checked = Boolean(val);
                 } else if (
@@ -364,19 +377,17 @@ function _patchProps(el: Element, newProps: Record<string, unknown>, sendAction:
                     // Boolean 属性: 値に関わらず存在するだけで有効になるため、
                     // truthy の場合のみセットし、falsy の場合はセットしない（prevAttrs の掃除で削除される）
                     if (val) {
-                        el.setAttribute(attrKey, '');
-                        nextAttrs.add(attrKey);
+                        applyAttr(attrKey, '');
                     }
                 } else {
-                    el.setAttribute(attrKey, String(val));
-                    nextAttrs.add(attrKey);
+                    applyAttr(attrKey, String(val));
                 }
             }
         }
     }
 
     // 前回あって今回ない属性を削除
-    for (const attr of prevAttrs) {
+    for (const attr of prevAttrs.keys()) {
         if (!nextAttrs.has(attr)) el.removeAttribute(attr);
     }
     _prevAttrs.set(el, nextAttrs);

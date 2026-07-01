@@ -87,13 +87,12 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             setError(`Connection error: ${err.message}`);
             setIsConnected(false);
 
-            // 未認証の場合は再接続を止めてログインページへリダイレクト
-            if (err.message === 'Unauthorized') {
-                socket.disconnect(); // 再接続を防止
-                if (typeof window !== 'undefined') {
-                    window.location.href = '/auth';
-                }
-            }
+            // ここでは強制リダイレクトしない。dev のクロスオリジン構成では
+            // バックエンド再起動などの一過性エラーが Unauthorized として届くことがあり、
+            // それで /auth に飛ばすと「勝手にログアウト」に見える。
+            // 認証の真偽判定は useSession / ProtectedRoute に一本化し、
+            // socket は自動再接続に任せる（セッションが本当に切れていれば
+            // ProtectedRoute が画面遷移し、その際に socket もクリーンアップされる）。
         });
 
         socket.on('users:update', (updatedUsers) => {

@@ -10,6 +10,11 @@ interface VersionInfo {
 // ビルド時に埋め込まれたフロントエンドのコミットハッシュ
 const FE_COMMIT = import.meta.env.VITE_COMMIT_HASH ?? 'unknown';
 
+// ビルド時に埋め込まれる環境名。表示/非表示の判定はこれ「だけ」で決める。
+// バックエンド (/api/version) 不達でも dev では確実にバッジを出すため、
+// API レスポンスには依存しない。未設定 (ローカル pnpm dev) は development 扱い。
+const FE_ENVIRONMENT = (import.meta.env.VITE_ENVIRONMENT as string | undefined) ?? 'development';
+
 const REPO = 'https://github.com/ubichill/ubichill';
 
 function CommitLink({ hash, short }: { hash: string; short: string }) {
@@ -32,19 +37,27 @@ export function VersionBadge() {
     const [info, setInfo] = useState<VersionInfo | null>(null);
 
     useEffect(() => {
-        fetch(`${getApiBase()}/api/version`)
-            .then((r) => r.json())
-            .then((data: VersionInfo) => setInfo(data))
+        // BE のコミット/環境を取得。cache:'no-store' はブラウザ向けの指示で、
+        // Cloudflare 等の中間 CDN は URL 単位のキャッシュを別に持つため古い応答
+        // ({"commitHash":"<旧>"}) を返し得る。クエリに毎回違う値を付けて URL を
+        // ユニーク化し、確実に CDN キャッシュミス→オリジン取得にする。
+        fetch(`${getApiBase()}/api/version?t=${Date.now()}`, { cache: 'no-store' })
+            .then((r) => (r.ok ? (r.json() as Promise<VersionInfo>) : null))
+            .then((data) => {
+                if (data) setInfo(data);
+            })
             .catch(() => {
-                /* 取得できない場合は非表示 */
+                /* 取得できなくても build-time の判定でバッジは出せる */
             });
     }, []);
 
-    // backend が environment を返してきた時だけ表示 (production は環境名を返さない仕様)。
-    // 表示制御の真実は backend 側に集約する。
-    if (!info?.environment) return null;
-
-    const beShort = info.commitHash === 'unknown' ? 'local' : info.commitHash.slice(0, 7);
+    // 環境名は API(runtime の真実) を最優先、無ければ build-time の値。
+    // 「本番」と確定できたときだけ非表示。dev / local / 不明 は表示する
+    //   （API が environment を返さない / 不達でも、FE_ENVIRONMENT 既定の development で出る）。
+    const environment = info?.environment ?? FE_ENVIRONMENT;
+    if (environment === 'production') return null;
+    const beCommit = info?.commitHash ?? 'unknown';
+    const beShort = beCommit === 'unknown' ? 'local' : beCommit.slice(0, 7);
     const feShort = FE_COMMIT === 'unknown' ? 'local' : FE_COMMIT.slice(0, 7);
 
     return (
@@ -77,7 +90,7 @@ export function VersionBadge() {
                         flexShrink: 0,
                     })}
                 />
-                <span>{info.environment}</span>
+                <span>{environment}</span>
             </div>
             <div>
                 <span className={css({ color: 'rgba(255,255,255,0.5)' })}>FE </span>
@@ -85,7 +98,7 @@ export function VersionBadge() {
             </div>
             <div>
                 <span className={css({ color: 'rgba(255,255,255,0.5)' })}>BE </span>
-                <CommitLink hash={info.commitHash} short={beShort} />
+                <CommitLink hash={beCommit} short={beShort} />
             </div>
         </div>
     );

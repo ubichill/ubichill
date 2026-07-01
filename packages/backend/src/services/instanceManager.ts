@@ -9,8 +9,8 @@ import type {
 } from '@ubichill/shared';
 import { DEFAULTS } from '@ubichill/shared';
 import bcrypt from 'bcryptjs';
-import { appConfig } from '../config';
 import { logger } from '../utils/logger';
+import { instanceReaper } from './instanceReaper';
 import { clearInstanceState, createEntity } from './instanceState';
 import { userManager } from './userManager';
 import { worldRegistry } from './worldRegistry';
@@ -56,14 +56,10 @@ function flattenGameObject(
 
 /**
  * インスタンスマネージャー
- * インスタンスのライフサイクルを管理（DBベース）
+ * インスタンスの CRUD と公開データ変換を担う（DBベース）。
+ * 空インスタンスの掃除（寿命管理）は責務を分離し instanceReaper が担当する。
  */
 class InstanceManager {
-    /**
-     * DBから取得した生レコードをフロントエンド用の公開データに変換
-     */
-    private emptyTimers = new Map<string, NodeJS.Timeout>();
-
     /**
      * 新しいインスタンスを作成
      */
@@ -108,6 +104,11 @@ class InstanceManager {
         }
 
         logger.info(`インスタンス作成: ${dbInstance.id} (world: ${world.id})`);
+
+        // 空インスタンスの掃除は instanceReaper が定期スイープで担う。
+        // 生成時刻をプロセス内に記録し、birth grace を DB タイムスタンプ解釈に依存せず
+        // 確実に効かせる（作成者が join する前に消されて not found になるのを防ぐ）。
+        instanceReaper.markCreated(dbInstance.id);
 
         return this.toPublicInstance(dbInstance, world);
     }
@@ -164,16 +165,38 @@ class InstanceManager {
     }
 
     /**
-     * インスタンスを取得
+     * インスタンスを取得 (公開用 Instance。world 解決が必要)。
+     * world が解決できないと undefined を返すため、join の存在確認には
+     * findInstanceForJoin を使うこと (world 不整合でも参加できるように)。
      */
     async getInstance(instanceId: string): Promise<Instance | undefined> {
         const dbInstance = await instanceRepository.findById(instanceId);
-        if (!dbInstance) return undefined;
+        if (!dbInstance) {
+            logger.debug(`getInstance: DB に instance がありません (id: ${instanceId})`);
+            return undefined;
+        }
 
         const world = await worldRegistry.getWorldByDbId(dbInstance.worldId);
-        if (!world) return undefined;
+        if (!world) {
+            logger.warn(`getInstance: world 解決失敗 (instanceId: ${instanceId}, worldId: ${dbInstance.worldId})`);
+            return undefined;
+        }
 
         return this.toPublicInstance(dbInstance, world);
+    }
+
+    /**
+     * join 用の軽量な存在確認。world 解決には依存しない。
+     * (getWorldByDbId が一時的に null でも参加できるようにするため、DB レコードだけ見る)
+     */
+    async findInstanceForJoin(instanceId: string): Promise<{ id: string; hasPassword: boolean } | undefined> {
+        const dbInstance = await instanceRepository.findById(instanceId);
+        if (!dbInstance) {
+            // join が「見つかりません」で失敗する唯一の地点。原因切り分け用に必ずログを残す。
+            logger.warn(`findInstanceForJoin: DB に instance がありません (id: ${instanceId})`);
+            return undefined;
+        }
+        return { id: dbInstance.id, hasPassword: dbInstance.hasPassword };
     }
 
     /**
@@ -201,40 +224,6 @@ class InstanceManager {
         logger.info(`インスタンス終了: ${instanceId}`);
 
         return { success: true };
-    }
-
-    /**
-     * userManager の在籍変化通知。emptyTimer を真値に合わせる:
-     *   - 1 人以上いるなら走っている削除タイマーをキャンセル
-     *   - 0 人なら delete を予約 (発火直前にも再度真値を確認して見送る)
-     *
-     * DB の currentUsers は触らない (toPublicInstance が常に userManager から導出するため)。
-     * 旧 updateUserCount / reconcileUserCounts は不要になったので削除済。
-     */
-    syncEmptyTimer(instanceId: string): void {
-        const count = userManager.getUsersByWorld(instanceId).length;
-        const existing = this.emptyTimers.get(instanceId);
-        if (count > 0) {
-            if (existing) {
-                clearTimeout(existing);
-                this.emptyTimers.delete(instanceId);
-            }
-            return;
-        }
-        if (existing) return; // 既に削除予約済
-        const timeoutMs = appConfig.instance.emptyTimeoutMs;
-        const timer = setTimeout(async () => {
-            this.emptyTimers.delete(instanceId);
-            // 削除直前の最終チェック (grace 中に再参加していれば見送る)
-            if (userManager.getUsersByWorld(instanceId).length > 0) {
-                logger.info(`インスタンス削除を取消（再参加検出）: ${instanceId}`);
-                return;
-            }
-            await instanceRepository.delete(instanceId);
-            clearInstanceState(instanceId);
-            logger.info(`インスタンス自動削除（${timeoutMs / 1000}秒経過）: ${instanceId}`);
-        }, timeoutMs);
-        this.emptyTimers.set(instanceId, timer);
     }
 
     /**
@@ -319,28 +308,9 @@ class InstanceManager {
 
     /**
      * 全インスタンスを削除する管理用ヘルパー (テスト/手動運用用)。
-     * サーバー起動時には呼ばない (in-flight クライアントを救うため warmupEmptyTimers を使う)。
      */
     async cleanupAll(): Promise<number> {
         return instanceRepository.deleteAll();
-    }
-
-    /**
-     * サーバー起動時の warmup。既存 DB インスタンス全てに emptyTimer を仕掛ける。
-     *
-     * 再起動直後はメモリ (userManager) が空なので「全 instance が 0 人」と認識される。
-     * emptyTimeoutMs 以内に world:join で戻ってきたクライアントは syncEmptyTimer で
-     * タイマーをキャンセルされて生存。誰も戻らなければ自動削除される。
-     *
-     * 旧 cleanupAll() を起動時に呼んでいた頃は、Pod の rolling update のたびに既存
-     * instance が即消され「インスタンスが見つかりません」が出ていた。これを防ぐ。
-     */
-    async warmupEmptyTimers(): Promise<number> {
-        const dbInstances = await instanceRepository.findAll({ includeFull: true });
-        for (const inst of dbInstances) {
-            this.syncEmptyTimer(inst.id);
-        }
-        return dbInstances.length;
     }
 }
 

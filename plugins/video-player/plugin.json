@@ -9,47 +9,28 @@
       "mediaTargets": ["main"],
       "watchEntityTypes": [],
       "watchScope": "entity",
-      "defaultTransform": { "x": 0, "y": 0, "z": 2, "w": 640, "h": 360 },
-      "dataFields": {}
+      "defaultTransform": { "x": 0, "y": 0, "z": 2, "w": 640, "h": 360 }
     },
     "controls": {
       "src": "./src/controls.worker.tsx",
       "capabilities": ["ui:render", "scene:read", "scene:update", "net:emit"],
       "watchEntityTypes": ["video-player:controls"],
       "watchScope": "entity",
-      "defaultTransform": { "x": 0, "y": 370, "z": 198, "w": 640, "h": 60 },
-      "dataFields": {
-        "isPlaying": { "type": "boolean", "default": false, "label": "再生中" },
-        "currentTime": { "type": "number", "default": 0, "label": "現在時刻 (秒)" },
-        "duration": { "type": "number", "default": 0, "label": "総再生時間 (秒)" },
-        "loop": { "type": "enum", "default": "none", "options": ["none", "one", "all"], "label": "ループ" },
-        "shuffle": { "type": "boolean", "default": false, "label": "シャッフル" },
-        "apiBase": { "type": "string", "default": "/plugins/video-player/api", "label": "API ベース URL" }
-      }
+      "defaultTransform": { "x": 0, "y": 370, "z": 198, "w": 640, "h": 60 }
     },
     "playlist": {
       "src": "./src/playlist.worker.tsx",
       "capabilities": ["ui:render", "scene:read", "scene:update", "net:emit"],
       "watchEntityTypes": ["video-player:playlist"],
       "watchScope": "entity",
-      "defaultTransform": { "x": 0, "y": 440, "z": 198, "w": 310, "h": 300 },
-      "dataFields": {
-        "playlist": {
-          "type": "json",
-          "default": [],
-          "label": "プレイリスト",
-          "help": "{ id, title, mode: 'live' | 'video' } の配列"
-        },
-        "currentIndex": { "type": "number", "default": 0, "label": "再生中インデックス" }
-      }
+      "defaultTransform": { "x": 0, "y": 440, "z": 198, "w": 310, "h": 300 }
     },
     "search": {
       "src": "./src/search.worker.tsx",
       "capabilities": ["ui:render", "net:fetch", "net:emit"],
       "watchEntityTypes": [],
       "watchScope": "entity",
-      "defaultTransform": { "x": 330, "y": 440, "z": 198, "w": 310, "h": 300 },
-      "dataFields": {}
+      "defaultTransform": { "x": 330, "y": 440, "z": 198, "w": 310, "h": 300 }
     }
   }
 }

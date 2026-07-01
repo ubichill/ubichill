@@ -1,4 +1,4 @@
-import type { ComponentInstance, EntityPatchPayload, VNode } from '@ubichill/shared';
+import { CommandType, type ComponentInstance, type EntityPatchPayload, type VNode } from '@ubichill/shared';
 import type { EntityState, EntityStateFor, PresenceEntry, SendFn, StateBinding } from '../types';
 
 // ── スコープマーカー (このファイル内部のみ) ───────────────────────
@@ -10,6 +10,59 @@ interface ScopeMarker<T = unknown> {
     readonly [UBI_STATE_SCOPE]: StateScope;
     readonly value: T;
     readonly topLevelKey?: 'lockedBy' | 'ownerId';
+    /** World エディタ Inspector 用メタ（sync の options から拾う） */
+    readonly editor?: EditorFieldMeta;
+}
+
+/**
+ * World エディタの Inspector に出す「編集可能パラメータ」のメタ。
+ * 型(type)は省略時に default 値から推論する。配列は item に要素のフィールド定義を書く。
+ */
+export interface EditorFieldMeta {
+    /** false ならエディタに出さない（実行時専用の state） */
+    editable?: boolean;
+    label?: string;
+    help?: string;
+    type?: 'string' | 'number' | 'boolean' | 'color' | 'url' | 'enum' | 'json' | 'array';
+    options?: string[];
+    /** type:'array' の要素1つ分のフィールド定義（{ key: { type, label, default, ... } }） */
+    item?: Record<string, EditorFieldMeta & { default?: unknown }>;
+    multiline?: boolean;
+    placeholder?: string;
+    min?: number;
+    max?: number;
+    step?: number;
+}
+
+/** default 値と meta から、エディタが解釈する field spec（DataFields 互換）を組み立てる。 */
+function buildFieldSpec(defaultValue: unknown, meta: EditorFieldMeta): Record<string, unknown> {
+    const type = meta.type ?? (meta.options ? 'enum' : meta.item ? 'array' : inferFieldType(defaultValue));
+    const spec: Record<string, unknown> = { type, default: defaultValue };
+    if (meta.label !== undefined) spec.label = meta.label;
+    if (meta.help !== undefined) spec.help = meta.help;
+    if (meta.options !== undefined) spec.options = meta.options;
+    if (meta.placeholder !== undefined) spec.placeholder = meta.placeholder;
+    if (meta.multiline !== undefined) spec.multiline = meta.multiline;
+    if (meta.min !== undefined) spec.min = meta.min;
+    if (meta.max !== undefined) spec.max = meta.max;
+    if (meta.step !== undefined) spec.step = meta.step;
+    if (meta.item !== undefined) {
+        const item: Record<string, unknown> = {};
+        for (const [k, m] of Object.entries(meta.item)) {
+            item[k] = buildFieldSpec(m.default, m);
+        }
+        spec.item = item;
+    }
+    return spec;
+}
+
+function inferFieldType(v: unknown): 'string' | 'number' | 'boolean' | 'color' | 'json' {
+    if (typeof v === 'boolean') return 'boolean';
+    if (typeof v === 'number') return 'number';
+    // hex カラー (#rgb / #rrggbb) の default はカラーピッカーとして扱う。
+    // 明示したい場合は Ubi.state.sync(v, { type: 'color' | 'string' }) で上書き可能。
+    if (typeof v === 'string') return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(v) ? 'color' : 'string';
+    return 'json';
 }
 
 function isScopeMarker(v: unknown): v is ScopeMarker {
@@ -21,7 +74,7 @@ const TOP_LEVEL_KEYS = new Set(['lockedBy', 'ownerId']);
 
 // ── 公開オプション ───────────────────────────────────────────
 
-export interface SyncOptions {
+export interface SyncOptions extends EditorFieldMeta {
     /** ユーザーごとに独立した値 (旧: persistMine)。 */
     perUser?: boolean;
     /** 揮発性 (旧: shared)。DB に保存されず退出時に消える。 */
@@ -94,6 +147,8 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
         const scopes = new Map<string, StateScope | 'local'>();
         const topLevelMap = new Map<string, 'lockedBy' | 'ownerId'>(); // schema key → top-level field name
         const defaults: Record<string, unknown> = {};
+        // エディタ Inspector 用スキーマ（state を正本にホストへ報告する）
+        const editorSchema: Record<string, unknown> = {};
         for (const key of Object.keys(schema)) {
             const raw = (schema as Record<string, unknown>)[key];
             if (isScopeMarker(raw)) {
@@ -102,10 +157,24 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
                 if (raw[UBI_STATE_SCOPE] === 'topLevel' && raw.topLevelKey) {
                     topLevelMap.set(key, raw.topLevelKey);
                 }
+                // 同期フィールドは既定で Inspector に出す（editable:false で除外）。
+                // top-level (lockedBy/ownerId) は内部用なので出さない。
+                if (raw[UBI_STATE_SCOPE] !== 'topLevel' && raw.editor?.editable !== false) {
+                    editorSchema[key] = buildFieldSpec(raw.value, raw.editor ?? {});
+                }
             } else {
                 scopes.set(key, 'local');
                 defaults[key] = raw;
             }
+        }
+
+        // 起動時に1回、エディタ用スキーマをホストへ報告する（World エディタの Inspector が使う）。
+        const componentTypeForSchema = deps.getComponentType();
+        if (componentTypeForSchema && Object.keys(editorSchema).length > 0) {
+            deps.send({
+                type: 'EDITOR_SCHEMA',
+                payload: { componentType: componentTypeForSchema, schema: editorSchema },
+            });
         }
 
         const local: Record<string, unknown> = { ...defaults };
@@ -200,7 +269,7 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
                 if (me) Object.assign(me.sharedState, pendingSharedWrites);
             }
             deps.send({
-                type: 'NETWORK_BROADCAST',
+                type: CommandType.NETWORK_BROADCAST,
                 payload: {
                     type: 'presence:sharedState',
                     data: { sharedState: { ...pendingSharedWrites } },
@@ -399,6 +468,7 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
                 [UBI_STATE_SCOPE]: scope,
                 value: defaultValue,
                 topLevelKey: options?.topLevel,
+                editor: options,
             };
             return marker as unknown as T;
         },

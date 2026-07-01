@@ -32,6 +32,8 @@ export type PluginWorkerHandlers<TPayloadMap extends Record<string, unknown> = R
     onCommand?: (command: PluginGuestCommand) => void;
     /** Worker が Ubi.ui.render() / Ubi.ui.unmount() を呼ぶたびに発火する */
     onRender?: (targetId: string, vnode: VNode | null) => void;
+    /** Worker 起動時に Ubi.state から導出した Inspector 用スキーマを報告する */
+    onEditorSchema?: (componentType: string, schema: Record<string, unknown>) => void;
     /** Worker が Ubi.canvas.frame() を呼んだときに発火する（毎フレーム） */
     onCanvasFrame?: (
         targetId: string,
@@ -54,6 +56,8 @@ export type PluginWorkerHandlers<TPayloadMap extends Record<string, unknown> = R
     onMediaDestroy?: (targetId: string) => void;
     /** Worker が Ubi.media.setVisible() を呼んだときに発火する */
     onMediaSetVisible?: (targetId: string, visible: boolean) => void;
+    /** Worker が Ubi.media.setDeviceControl() を呼んだときに発火する */
+    onMediaSetDeviceControl?: (targetId: string, enabled: boolean) => void;
     /** Worker が Ubi.world.getEntity(id) を呼んだときに発火する */
     onGetEntity?: (id: string) => import('@ubichill/shared').ComponentInstance | undefined;
     /** Worker が Ubi.world.queryEntities(type) を呼んだときに発火する */
@@ -145,6 +149,7 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
                 onReady: () => handlersRef.current.onReady?.(),
                 onCommand: (cmd) => handlersRef.current.onCommand?.(cmd),
                 onRender: (targetId, vnode) => handlersRef.current.onRender?.(targetId, vnode),
+                onEditorSchema: (componentType, schema) => handlersRef.current.onEditorSchema?.(componentType, schema),
                 onCanvasFrame: (targetId, activeStroke, cursors) =>
                     handlersRef.current.onCanvasFrame?.(targetId, activeStroke, cursors),
                 onCanvasCommitStroke: (targetId, stroke) =>
@@ -156,6 +161,8 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
                 onMediaSetVolume: (targetId, volume) => handlersRef.current.onMediaSetVolume?.(targetId, volume),
                 onMediaDestroy: (targetId) => handlersRef.current.onMediaDestroy?.(targetId),
                 onMediaSetVisible: (targetId, visible) => handlersRef.current.onMediaSetVisible?.(targetId, visible),
+                onMediaSetDeviceControl: (targetId, enabled) =>
+                    handlersRef.current.onMediaSetDeviceControl?.(targetId, enabled),
                 onGripCommand: (payload) => handlersRef.current.onGripCommand?.(payload),
                 onGetEntity: (id) => handlersRef.current.onGetEntity?.(id),
                 onQueryEntities: (entityType) => handlersRef.current.onQueryEntities?.(entityType) ?? [],

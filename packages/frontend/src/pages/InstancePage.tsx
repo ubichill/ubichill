@@ -6,7 +6,7 @@ import { InstanceLoadingScreen } from '@/instance/InstanceLoadingScreen';
 import { InstanceRenderer } from '@/instance/InstanceRenderer';
 import { useInstanceLoading } from '@/instance/useInstanceLoading';
 import { API_BASE } from '@/lib/api';
-import { useSession } from '@/lib/auth-client';
+import { useSession } from '@/lib/session';
 import { PluginRegistryProvider } from '@/plugins/PluginRegistryContext';
 
 export function InstancePage() {

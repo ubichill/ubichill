@@ -32,6 +32,7 @@ export function WorldInfoForm({ draft, onChange }: WorldInfoFormProps) {
             <Field label="表示名（日本語可）" required>
                 <input
                     type="text"
+                    name="world-displayName"
                     value={spec.displayName}
                     onChange={(e) => onUpdateSpec({ displayName: e.target.value })}
                     maxLength={1000}
@@ -41,6 +42,7 @@ export function WorldInfoForm({ draft, onChange }: WorldInfoFormProps) {
             </Field>
             <Field label="説明">
                 <textarea
+                    name="world-description"
                     value={spec.description ?? ''}
                     onChange={(e) => onUpdateSpec({ description: e.target.value || undefined })}
                     maxLength={1000}
@@ -52,6 +54,7 @@ export function WorldInfoForm({ draft, onChange }: WorldInfoFormProps) {
             <Field label="サムネイル URL">
                 <input
                     type="url"
+                    name="world-thumbnail"
                     value={spec.thumbnail ?? ''}
                     onChange={(e) => onUpdateSpec({ thumbnail: e.target.value || undefined })}
                     placeholder="https://..."
@@ -61,6 +64,7 @@ export function WorldInfoForm({ draft, onChange }: WorldInfoFormProps) {
             <Field label="バージョン">
                 <input
                     type="text"
+                    name="world-version"
                     value={definition.metadata.version}
                     onChange={(e) => onUpdateMetadata({ version: e.target.value })}
                     placeholder="1.0.0"
@@ -72,6 +76,7 @@ export function WorldInfoForm({ draft, onChange }: WorldInfoFormProps) {
                     <input
                         type="number"
                         min={1}
+                        name="world-capacity-default"
                         value={spec.capacity.default}
                         onChange={(e) =>
                             onUpdateSpec({
@@ -88,6 +93,7 @@ export function WorldInfoForm({ draft, onChange }: WorldInfoFormProps) {
                     <input
                         type="number"
                         min={1}
+                        name="world-capacity-max"
                         value={spec.capacity.max}
                         onChange={(e) =>
                             onUpdateSpec({
@@ -106,6 +112,7 @@ export function WorldInfoForm({ draft, onChange }: WorldInfoFormProps) {
                     <input
                         type="number"
                         min={100}
+                        name="world-size-width"
                         value={env.worldSize?.width ?? 2000}
                         onChange={(e) =>
                             onUpdateSpec({
@@ -125,6 +132,7 @@ export function WorldInfoForm({ draft, onChange }: WorldInfoFormProps) {
                     <input
                         type="number"
                         min={100}
+                        name="world-size-height"
                         value={env.worldSize?.height ?? 1500}
                         onChange={(e) =>
                             onUpdateSpec({
@@ -145,6 +153,7 @@ export function WorldInfoForm({ draft, onChange }: WorldInfoFormProps) {
                 <div className={css({ display: 'flex', gap: '8px', alignItems: 'center' })}>
                     <input
                         type="color"
+                        name="world-bgColor-picker"
                         value={env.backgroundColor ?? '#F0F8FF'}
                         onChange={(e) =>
                             onUpdateSpec({
@@ -162,6 +171,7 @@ export function WorldInfoForm({ draft, onChange }: WorldInfoFormProps) {
                     />
                     <input
                         type="text"
+                        name="world-bgColor"
                         value={env.backgroundColor ?? '#F0F8FF'}
                         onChange={(e) => onUpdateSpec({ environment: { ...env, backgroundColor: e.target.value } })}
                         pattern="^#[0-9A-Fa-f]{6}$"

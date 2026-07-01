@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router';
 import { WorldDetailModal } from '@/components/lobby/WorldDetailModal';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { API_BASE } from '@/lib/api';
-import { useSession } from '@/lib/auth-client';
+import { useSession } from '@/lib/session';
 import { css } from '@/styled-system/css';
 
 interface UserProfile {

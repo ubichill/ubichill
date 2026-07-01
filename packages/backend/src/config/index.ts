@@ -14,6 +14,8 @@ const envSchema = z.object({
     // 認証・バージョン・ヘルスは limiter から除外した上で、上限を現実的な値に引き上げる。
     RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().finite().default(10000),
     INSTANCE_EMPTY_TIMEOUT_MS: z.coerce.number().int().nonnegative().default(60000),
+    // 空インスタンス掃除（reaper）の実行間隔。再起動耐性のため定期スイープ方式を採る。
+    INSTANCE_REAP_INTERVAL_MS: z.coerce.number().int().positive().default(30000),
     DISCONNECT_GRACE_PERIOD_MS: z.coerce.number().int().nonnegative().default(15000),
     DEBUG: z
         .string()
@@ -70,6 +72,7 @@ export const appConfig = {
     },
     instance: {
         emptyTimeoutMs: parsedEnv.data.INSTANCE_EMPTY_TIMEOUT_MS,
+        reapIntervalMs: parsedEnv.data.INSTANCE_REAP_INTERVAL_MS,
         disconnectGracePeriodMs: parsedEnv.data.DISCONNECT_GRACE_PERIOD_MS,
     },
     db: {

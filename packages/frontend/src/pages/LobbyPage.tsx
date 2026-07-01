@@ -2,7 +2,8 @@ import { useNavigate } from 'react-router';
 import { HudTabs } from '@/components/hud/HudTabs';
 import { type AccountMenuItem, LobbyAccountMenu } from '@/components/lobby/LobbyAccountMenu';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
-import { signOut, useSession } from '@/lib/auth-client';
+import { signOut } from '@/lib/auth-client';
+import { useSession } from '@/lib/session';
 import { css } from '@/styled-system/css';
 import * as styles from '@/styles/styles';
 

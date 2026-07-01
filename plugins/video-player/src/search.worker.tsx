@@ -8,6 +8,8 @@
 import type { RpcNetFetchResult } from '@ubichill/sdk';
 import { VPEvents, VPTarget } from './events';
 import { SearchIcon, VideoIcon } from './icons';
+import { formatTime } from './lib/playback';
+import { parseVideoId, thumbnailUrl } from './lib/youtube';
 import type { SearchResult, Track } from './types';
 
 const DEFAULT_API_BASE = '/plugins/video-player/api';
@@ -30,27 +32,7 @@ const emitAddTrack = (track: Track): void => {
     VPEvents.emit('vp:track:add', { track }, VPTarget.playlist);
 };
 
-const fmt = (sec: number): string => {
-    if (!Number.isFinite(sec) || sec <= 0) return '0:00';
-    const m = Math.floor(sec / 60);
-    const s = Math.floor(sec % 60);
-    return `${m}:${s.toString().padStart(2, '0')}`;
-};
-
 const apiBase = (): string => state.local.apiBase.trim() || DEFAULT_API_BASE;
-
-const extractYouTubeId = (url: string): string | null => {
-    const patterns = [
-        /(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/,
-        /youtube\.com\/embed\/([\w-]+)/,
-        /^([\w-]{11})$/,
-    ];
-    for (const p of patterns) {
-        const m = url.match(p);
-        if (m) return m[1];
-    }
-    return null;
-};
 
 // ── アクション ──────────────────────────────────────
 const setMode = (m: 'live' | 'video'): void => {
@@ -67,7 +49,7 @@ const setQuery = (v: string): void => {
 };
 
 const addFromUrl = async (): Promise<void> => {
-    const videoId = extractYouTubeId(state.local.urlInput.trim());
+    const videoId = parseVideoId(state.local.urlInput);
     if (!videoId) return;
     state.local.isSearching = true;
     render();
@@ -76,7 +58,7 @@ const addFromUrl = async (): Promise<void> => {
     emitAddTrack({
         id: videoId,
         title: info.title ?? state.local.urlInput,
-        thumbnail: info.thumbnail ?? `https://i.ytimg.com/vi/${videoId}/default.jpg`,
+        thumbnail: info.thumbnail ?? thumbnailUrl(videoId),
         duration: info.duration ?? 0,
         mode: state.local.selectedMode,
     });
@@ -296,6 +278,10 @@ function render(): void {
                                 <img
                                     src={r.thumbnail}
                                     alt=""
+                                    loading="lazy"
+                                    decoding="async"
+                                    width="32"
+                                    height="32"
                                     style={{
                                         width: '32px',
                                         height: '32px',
@@ -317,7 +303,7 @@ function render(): void {
                                         {r.title}
                                     </div>
                                     <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.6)' }}>
-                                        {fmt(r.duration)}
+                                        {formatTime(r.duration)}
                                     </div>
                                 </div>
                                 <button

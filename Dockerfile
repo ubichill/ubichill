@@ -46,6 +46,11 @@ ENV VITE_BACKEND_URL=${VITE_BACKEND_URL}
 ARG VITE_COMMIT_HASH=unknown
 ENV VITE_COMMIT_HASH=${VITE_COMMIT_HASH}
 
+# 環境名（dev/prod の判定用）。未指定時は production 扱いにして、
+# 本番でうっかりバージョンバッジが出ないよう安全側に倒す。
+ARG VITE_ENVIRONMENT=production
+ENV VITE_ENVIRONMENT=${VITE_ENVIRONMENT}
+
 ARG COMMIT_HASH=unknown
 ENV COMMIT_HASH=${COMMIT_HASH}
 

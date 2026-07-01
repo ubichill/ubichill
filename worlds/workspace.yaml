@@ -54,14 +54,8 @@ spec:
         rotation: 0
       components:
         - type: "video-player:screen"
-          data:
-            playlist: []
-            currentIndex: 0
-            isPlaying: false
-            currentTime: 0
-            loop: "none"
-            shuffle: false
-            fetchDomains: []
+          # screen はステートレス（表示専任）。編集可能な data は持たない。
+          data: {}
 
     # ── ペントレイ ──────────────────────────────────────────────
     - id: pen-tray

@@ -29,6 +29,10 @@ interface MediaEntry {
     video: HTMLVideoElement;
     hls: Hls | null;
     visible: boolean;
+    /** host が意図している再生状態。null=未指定。デバイス操作の差し戻し判定に使う。 */
+    intendedPlaying: boolean | null;
+    /** デバイス由来（メディアキー/ロック画面/PiP）の操作を許可するか。既定 false=ロック。 */
+    deviceControl: boolean;
 }
 
 /**
@@ -42,6 +46,7 @@ interface PendingMedia {
     seek?: number;
     volume?: number;
     visible?: boolean;
+    deviceControl?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -59,6 +64,7 @@ export interface UsePluginMediaResult {
         | 'onMediaSetVolume'
         | 'onMediaDestroy'
         | 'onMediaSetVisible'
+        | 'onMediaSetDeviceControl'
     >;
     /** targetId → visible のマップ（GenericPluginHost が <video> の display を制御するため） */
     mediaVisibilityRef: React.RefObject<Map<string, boolean>>;
@@ -74,7 +80,17 @@ export function usePluginMedia(
     const pendingRef = useRef<Map<string, PendingMedia>>(new Map());
     // 各 targetId のリスナーをまとめて解除できるよう保持
     const listenersRef = useRef<
-        Map<string, { timeupdate: () => void; ended: () => void; error: () => void; loadedmetadata: () => void }>
+        Map<
+            string,
+            {
+                timeupdate: () => void;
+                ended: () => void;
+                error: () => void;
+                loadedmetadata: () => void;
+                play: () => void;
+                pause: () => void;
+            }
+        >
     >(new Map());
     const stableRefCallbacksRef = useRef<Map<string, (el: HTMLVideoElement | null) => void>>(new Map());
 
@@ -99,8 +115,17 @@ export function usePluginMedia(
                     if (existing) {
                         existing.video = el;
                     } else {
-                        mediaEntriesRef.current.set(targetId, { video: el, hls: null, visible: false });
+                        mediaEntriesRef.current.set(targetId, {
+                            video: el,
+                            hls: null,
+                            visible: false,
+                            intendedPlaying: null,
+                            deviceControl: false,
+                        });
                     }
+                    // 既定はデバイス操作ロック（PiP/リモート再生を無効化）。
+                    // 再マウント時は entry に保持済みの設定を維持する。
+                    _applyDeviceControl(targetId, mediaEntriesRef.current.get(targetId)?.deviceControl ?? false);
                     // mount 前に溜まったコマンドをここで適用（race 吸収）
                     _drainPending(targetId);
                 } else {
@@ -134,6 +159,7 @@ export function usePluginMedia(
         if (p.seek !== undefined) _applySeek(targetId, p.seek);
         if (p.volume !== undefined) _applyVolume(targetId, p.volume);
         if (p.visible !== undefined) _applyVisible(targetId, p.visible);
+        if (p.deviceControl !== undefined) _applyDeviceControl(targetId, p.deviceControl);
         if (p.play === true) _applyPlay(targetId);
         else if (p.play === false) _applyPause(targetId);
     };
@@ -146,6 +172,8 @@ export function usePluginMedia(
             video.removeEventListener('ended', old.ended);
             video.removeEventListener('error', old.error);
             video.removeEventListener('loadedmetadata', old.loadedmetadata);
+            video.removeEventListener('play', old.play);
+            video.removeEventListener('pause', old.pause);
         }
 
         const timeupdate = () => {
@@ -168,11 +196,27 @@ export function usePluginMedia(
             });
         };
 
+        // デバイス操作の差し戻し: deviceControl=false のとき、host の意図と食い違う
+        // ネイティブ play/pause（OS メディアキー・ロック画面・PiP 等）を即座に元へ戻す。
+        const play = () => {
+            const entry = mediaEntriesRef.current.get(targetId);
+            if (!entry || entry.deviceControl) return;
+            if (entry.intendedPlaying === false) video.pause();
+        };
+        const pause = () => {
+            const entry = mediaEntriesRef.current.get(targetId);
+            if (!entry || entry.deviceControl) return;
+            // 末尾到達(ended)による pause は差し戻さない（再生し直してしまうため）。
+            if (entry.intendedPlaying === true && !video.ended) video.play().catch(() => undefined);
+        };
+
         video.addEventListener('timeupdate', timeupdate);
         video.addEventListener('ended', ended);
         video.addEventListener('error', error);
         video.addEventListener('loadedmetadata', loadedmetadata);
-        listenersRef.current.set(targetId, { timeupdate, ended, error, loadedmetadata });
+        video.addEventListener('play', play);
+        video.addEventListener('pause', pause);
+        listenersRef.current.set(targetId, { timeupdate, ended, error, loadedmetadata, play, pause });
     };
 
     const _applyLoad = (targetId: string, url: string, mediaType: 'hls' | 'video' | 'auto' | undefined): void => {
@@ -184,8 +228,11 @@ export function usePluginMedia(
             entry.hls = null;
         }
         _attachListeners(targetId, video);
-        const useHls =
-            mediaType === 'hls' || (mediaType !== 'video' && (url.includes('.m3u8') || url.includes('/live/')));
+        // Host は特定プラグインの URL 体系を知らない。HLS かどうかは
+        //   - プラグインが明示する mediaType==='hls'
+        //   - もしくは標準の .m3u8 拡張子
+        // だけで判定する（旧 '/live/' のような video-player 固有判定は持たない）。
+        const useHls = mediaType === 'hls' || (mediaType !== 'video' && url.includes('.m3u8'));
         if (useHls && Hls.isSupported()) {
             const hls = new Hls({
                 enableWorker: true,
@@ -223,14 +270,52 @@ export function usePluginMedia(
     };
 
     const _applyPlay = (targetId: string): void => {
-        mediaEntriesRef.current
-            .get(targetId)
-            ?.video.play()
-            .catch(() => undefined);
+        const entry = mediaEntriesRef.current.get(targetId);
+        if (!entry) return;
+        // 差し戻し判定より先に意図を更新する（自前の play で pause ガードが誤発火しないように）。
+        entry.intendedPlaying = true;
+        entry.video.play().catch(() => undefined);
     };
 
     const _applyPause = (targetId: string): void => {
-        mediaEntriesRef.current.get(targetId)?.video.pause();
+        const entry = mediaEntriesRef.current.get(targetId);
+        if (!entry) return;
+        entry.intendedPlaying = false;
+        entry.video.pause();
+    };
+
+    /**
+     * デバイス由来の再生操作の許可/禁止を <video> に反映する。
+     * 禁止(false)時: PiP/リモート再生を無効化し、OS メディアセッションのハンドラを no-op で奪う。
+     * 許可(true)時: それらを解放する。
+     */
+    const _applyDeviceControl = (targetId: string, enabled: boolean): void => {
+        const entry = mediaEntriesRef.current.get(targetId);
+        if (!entry) return;
+        entry.deviceControl = enabled;
+        const { video } = entry;
+        video.disablePictureInPicture = !enabled;
+        // disableRemotePlayback は型に無いブラウザ拡張属性なので属性で設定する。
+        if (enabled) {
+            video.removeAttribute('disableremoteplayback');
+            video.removeAttribute('controlsList');
+        } else {
+            video.setAttribute('disableremoteplayback', '');
+            video.setAttribute('controlsList', 'nodownload noplaybackrate noremoteplayback');
+        }
+
+        const ms = typeof navigator !== 'undefined' ? navigator.mediaSession : undefined;
+        if (!ms) return;
+        // ロック時は OS 側の再生トグルを無効化（no-op で奪う）。許可時は既定へ戻す。
+        const lock = enabled ? null : () => undefined;
+        const actions: MediaSessionAction[] = ['play', 'pause', 'stop', 'previoustrack', 'nexttrack'];
+        for (const action of actions) {
+            try {
+                ms.setActionHandler(action, lock);
+            } catch {
+                // 一部ブラウザは未対応の action で例外を投げる。無視してよい。
+            }
+        }
     };
 
     const _applySeek = (targetId: string, time: number): void => {
@@ -307,6 +392,14 @@ export function usePluginMedia(
                 return;
             }
             _applyVisible(targetId, visible);
+        },
+
+        onMediaSetDeviceControl: (targetId, enabled) => {
+            if (!mediaEntriesRef.current.has(targetId)) {
+                _getPending(targetId).deviceControl = enabled;
+                return;
+            }
+            _applyDeviceControl(targetId, enabled);
         },
     };
 

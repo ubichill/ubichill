@@ -1,5 +1,6 @@
 // These types are imported from their source files to avoid circular dependency with index.ts
 import type { ComponentInstance, CursorPosition, EntityPatchPayload, User } from '../index';
+import type { UbiErrorCode } from './errors';
 import type { VNode } from './vnode';
 
 /**
@@ -129,6 +130,17 @@ export type CmdInitFailed = {
 export type CmdLog = {
     type: 'CMD_LOG';
     payload: { level: 'debug' | 'info' | 'warn' | 'error'; message: string };
+};
+
+/**
+ * Worker 起動時に Ubi.state の定義から導出した「エディタ Inspector 用スキーマ」を
+ * Host に報告する。Host はこれを componentType ごとに保持し、World エディタの
+ * Inspector が型付き入力（配列の追加/削除含む）を描画するのに使う。
+ * capability 宣言不要（常に許可）。schema は DataFields 互換の緩い形で運ぶ。
+ */
+export type CmdEditorSchema = {
+    type: 'EDITOR_SCHEMA';
+    payload: { componentType: string; schema: Record<string, unknown> };
 };
 
 /**
@@ -323,6 +335,18 @@ export type CmdMediaDestroy = { type: 'MEDIA_DESTROY'; payload: { targetId: stri
 export type CmdMediaSetVisible = { type: 'MEDIA_SET_VISIBLE'; payload: { targetId: string; visible: boolean } };
 
 /**
+ * Ubi.media.setDeviceControl(enabled, targetId?) — デバイス由来の再生操作の許可。
+ *
+ * enabled=false（既定）: OS メディアキー / ロック画面 / PiP / リモート再生からの
+ *   再生・一時停止を無効化し、再生制御をプラグイン命令（Ubi.media.play/pause）のみに限定する。
+ * enabled=true: デバイス操作と PiP を解放する（プラグインが明示的に許可した場合のみ）。
+ */
+export type CmdMediaSetDeviceControl = {
+    type: 'MEDIA_SET_DEVICE_CONTROL';
+    payload: { targetId: string; enabled: boolean };
+};
+
+/**
  * Ubi.grip.exclusive() が hold/release/setHover の変化をホストに通知する。
  * Fire & Forget: capability 不要。
  *
@@ -372,6 +396,7 @@ export type PluginGuestCommand =
     | CmdReady
     | CmdInitFailed
     | CmdLog
+    | CmdEditorSchema
     | CmdSceneGetEntity
     | CmdSceneCreateEntity
     | CmdSceneUpdateEntity
@@ -394,6 +419,7 @@ export type PluginGuestCommand =
     | CmdMediaSetVolume
     | CmdMediaDestroy
     | CmdMediaSetVisible
+    | CmdMediaSetDeviceControl
     | CmdGrip;
 
 /** 後方互換エイリアス */
@@ -517,6 +543,8 @@ export type EvtRpcResponse = {
     success: boolean;
     data?: unknown;
     error?: string;
+    /** 失敗理由の machine-readable code。SDK が UbiError.code に載せてプラグインへ伝える。 */
+    errorCode?: UbiErrorCode;
 };
 
 /**

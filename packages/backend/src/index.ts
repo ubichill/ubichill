@@ -14,11 +14,11 @@ import {
     handleEntityDelete,
     handleEntityEphemeral,
     handleEntityPatch,
+    handleMediaStateRequest,
+    handleMediaStateResponse,
+    handleMediaSync,
     handleStatusUpdate,
     handleUserUpdate,
-    handleVideoPlayerStateRequest,
-    handleVideoPlayerStateResponse,
-    handleVideoPlayerSync,
     handleWorldJoin,
     handleWorldLeave,
 } from './handlers/socketHandlers';
@@ -27,8 +27,9 @@ import { socketAuthMiddleware } from './middleware/socketAuth';
 import { router as instancesRouter } from './routes/instances';
 import { router as usersRouter } from './routes/users';
 import { router as worldsRouter } from './routes/worlds';
-import { instanceManager } from './services/instanceManager';
+import { instanceReaper } from './services/instanceReaper';
 import { worldRegistry } from './services/worldRegistry';
+import { logger } from './utils/logger';
 
 // Expressアプリを初期化
 const app = express();
@@ -76,26 +77,27 @@ app.use(limiter);
 // JSONボディパーサー
 app.use(express.json());
 
-// バージョン情報エンドポイント。
-// production 以外なら environment 名も返す → フロントの VersionBadge は
-// この有無だけで表示 ON/OFF を判定する (= 表示制御は backend が source of truth)。
+// バージョン情報エンドポイント。常に commitHash + environment を返す。
+// 表示制御 (本番では出さない) はフロント側で environment === 'production' を見て行う。
 app.get('/api/version', (_req, res) => {
-    const response: Record<string, string> = {
+    // Cloudflare 等に古い応答をキャッシュさせない（commit/environment が即反映されるように）
+    res.set('Cache-Control', 'no-store');
+    res.json({
         commitHash: process.env.COMMIT_HASH ?? 'unknown',
-    };
-    if (appConfig.nodeEnv !== 'production') {
-        response.environment = appConfig.nodeEnv;
-    }
-    res.json(response);
+        environment: appConfig.nodeEnv,
+    });
 });
 
 import { toNodeHandler } from 'better-auth/node';
 
-// 認証APIのデバッグログ（ボディはパスワード等を含むため出力しない）
-app.use('/api/auth', (req, _res, next) => {
-    console.log(`🔐 Auth リクエスト: ${req.method} ${req.originalUrl}`);
-    next();
-});
+// 認証APIのデバッグログ（ボディはパスワード等を含むため出力しない）。
+// console.log だと本番でも全 auth リクエストを吐いてしまうため debug 時のみに絞る。
+if (appConfig.debug) {
+    app.use('/api/auth', (req, _res, next) => {
+        logger.debug(`🔐 Auth リクエスト: ${req.method} ${req.originalUrl}`);
+        next();
+    });
+}
 
 // 認証API（Better Auth）- CORSとプリフライトを確実に処理するため、先に配置
 app.use('/api/auth', toNodeHandler(auth));
@@ -143,10 +145,10 @@ io.on('connection', (socket) => {
     socket.on('entity:ephemeral', handleEntityEphemeral(socket));
     socket.on('entity:delete', handleEntityDelete(socket));
 
-    // Video Player同期
-    socket.on('video-player:sync', handleVideoPlayerSync(socket));
-    socket.on('video-player:state-request', handleVideoPlayerStateRequest(socket));
-    socket.on('video-player:state-response', handleVideoPlayerStateResponse(socket));
+    // メディア (動画/音声) peer 間同期
+    socket.on('media:sync', handleMediaSync(socket));
+    socket.on('media:state-request', handleMediaStateRequest(socket));
+    socket.on('media:state-response', handleMediaStateResponse(socket));
 });
 
 // ============================================
@@ -155,6 +157,9 @@ io.on('connection', (socket) => {
 function setupGracefulShutdown() {
     const shutdown = (signal: string) => {
         console.log(`⚡ ${signal} 受信 — グレースフルシャットダウン開始`);
+
+        // 定期スイープを止める
+        instanceReaper.stop();
 
         // 新規 HTTP 接続を拒否し、既存リクエストの完了を待つ
         server.close(() => {
@@ -182,15 +187,10 @@ async function startServer() {
     // システムユーザー初期化のみ（ワールドシードは行わない）
     await worldRegistry.initialize();
 
-    // 起動時 warmup: 既存 DB インスタンスに emptyTimer を仕掛ける。
-    // emptyTimeoutMs 秒以内に world:join で戻ってきたクライアントは生存。
-    // 誰も戻らなければ自動削除されるので、孤児 instance のリークも防げる。
-    const warmed = await instanceManager.warmupEmptyTimers();
-    if (warmed > 0) {
-        console.log(
-            `🔁 起動 warmup: ${warmed} 件のインスタンスに ${appConfig.instance.emptyTimeoutMs / 1000}秒の再接続猶予を設定`,
-        );
-    }
+    // 空インスタンスの掃除（reaper）を起動。DB を定期スイープし、在席0かつ
+    // 作成から猶予経過した instance を削除する。インメモリのタイマー状態に依存しないため、
+    // 再起動をまたいでも孤児 instance（closing のまま残る行）が確実に回収される。
+    instanceReaper.start();
 
     setupGracefulShutdown();
 

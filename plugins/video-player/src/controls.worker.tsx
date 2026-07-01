@@ -31,21 +31,29 @@ import {
     VolumeMediumIcon,
     VolumeMuteIcon,
 } from './icons';
+import { computeCurrentTime, formatTime, isClockOverrun } from './lib/playback';
+import { extractVideoId, thumbnailUrl } from './lib/youtube';
 import type { LoopMode, Track } from './types';
 
 const DEFAULT_API_BASE = '/plugins/video-player/api';
 
 const state = Ubi.state.define({
-    // ── 共有 + 永続 ──
-    isPlaying: Ubi.state.sync(false),
-    baselineTime: Ubi.state.sync(0),
-    playEpoch: Ubi.state.sync(0),
-    duration: Ubi.state.sync(0),
-    loop: Ubi.state.sync<LoopMode>('none'),
-    shuffle: Ubi.state.sync(false),
-    apiBase: Ubi.state.sync(DEFAULT_API_BASE),
+    // ── 共有 + 永続。runtime 専用は editable:false で Inspector から除外 ──
+    // isPlaying は「作成時に自動再生するか」の初期値として編集可。true なら
+    // インスタンス作成時に先頭から再生が始まる（vp:media:loaded のクロック補正で
+    // stale な playEpoch をリセットして 0 から再生する）。
+    isPlaying: Ubi.state.sync(false, {
+        label: '作成時に自動再生',
+        help: 'オンにすると、インスタンス作成時にプレイリスト先頭から再生を開始します',
+    }),
+    baselineTime: Ubi.state.sync(0, { editable: false }),
+    playEpoch: Ubi.state.sync(0, { editable: false }),
+    duration: Ubi.state.sync(0, { editable: false }),
+    loop: Ubi.state.sync<LoopMode>('none', { label: 'ループ', options: ['none', 'one', 'all'] }),
+    shuffle: Ubi.state.sync(false, { label: 'シャッフル' }),
+    apiBase: Ubi.state.sync(DEFAULT_API_BASE, { label: 'API ベース URL' }),
     // ── 共有 + 永続 (per-user) ──
-    myVolume: Ubi.state.sync(0.7, { perUser: true }),
+    myVolume: Ubi.state.sync(0.7, { perUser: true, editable: false }),
     // ── ローカル ──
     currentTrack: null as Track | null,
     currentIndex: 0,
@@ -56,29 +64,15 @@ const state = Ubi.state.define({
 });
 
 // ── ヘルパー ────────────────────────────────────────
-const fmt = (sec: number): string => {
-    if (!Number.isFinite(sec) || sec <= 0) return '0:00';
-    const m = Math.floor(sec / 60);
-    const s = Math.floor(sec % 60);
-    return `${m}:${s.toString().padStart(2, '0')}`;
-};
-
-/**
- * 共有時計から現在の再生位置 (秒) を算出する純関数。
- * 全ユーザーが同じ baselineTime / playEpoch / isPlaying から計算するため、
- * Date.now() のクロックスキューが無視できる範囲なら位置は揃う。
- */
+// 共有時計の現在位置。計算ロジックは lib/playback に集約（state を渡すだけ）。
 function currentTime(): number {
-    if (!state.local.isPlaying) return state.local.baselineTime;
-    const advanced = state.local.baselineTime + (Date.now() - state.local.playEpoch) / 1000;
-    if (state.local.duration > 0) return Math.min(advanced, state.local.duration);
-    return advanced;
+    return computeCurrentTime(state.local);
 }
 
 function buildTrackUrl(track: Track): string {
     const base = state.local.apiBase.trim() || DEFAULT_API_BASE;
     const endpoint = track.mode === 'live' ? 'live' : 'video';
-    return `${base}/${endpoint}/${track.id}`;
+    return `${base}/${endpoint}/${extractVideoId(track.id)}`;
 }
 
 // ── screen / playlist へのエイリアス (events.ts に集約) ──
@@ -167,6 +161,8 @@ state.onChange('isLoading', render);
 // ── レンダリング ──────────────────────────────────
 function render(): void {
     const track = state.local.currentTrack;
+    // サムネ: 検索由来は thumbnail を持つ。URL/ID 直書きのトラックは id から導出する。
+    const thumb = track ? track.thumbnail || thumbnailUrl(track.id) : '';
     const ct = currentTime();
     const progress = state.local.duration > 0 ? (ct / state.local.duration) * 100 : 0;
     const isLive = track?.mode === 'live';
@@ -225,10 +221,13 @@ function render(): void {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
                     {/* 左: トラック情報 */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1', minWidth: '0' }}>
-                        {track?.thumbnail && (
+                        {thumb && (
                             <img
-                                src={track.thumbnail}
+                                src={thumb}
                                 alt=""
+                                decoding="async"
+                                width="36"
+                                height="36"
                                 style={{
                                     width: '36px',
                                     height: '36px',
@@ -252,8 +251,12 @@ function render(): void {
                                 {track ? track.title || track.id : '---'}
                             </div>
                             <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.6)' }}>
-                                {fmt(ct)} /{' '}
-                                {state.local.duration > 0 ? fmt(state.local.duration) : isLive ? 'LIVE' : '--:--'}
+                                {formatTime(ct)} /{' '}
+                                {state.local.duration > 0
+                                    ? formatTime(state.local.duration)
+                                    : isLive
+                                      ? 'LIVE'
+                                      : '--:--'}
                             </div>
                         </div>
                     </div>
@@ -405,14 +408,21 @@ VPEvents.on('vp:track:current', ({ track, index, total }) => {
     render();
 });
 
-// 自 <video> 由来の時刻通知は共有時計モデルでは無視 (進行バーは共有時計から計算)。
-// 必要になれば drift 検出に使う。
-VPEvents.on('vp:media:time', () => {});
-
 VPEvents.on('vp:media:loaded', ({ duration }) => {
     state.batch(() => {
         if (duration > 0) state.local.duration = duration;
         state.local.isLoading = false; // ローディング解除 → シークバーが通常表示に戻る
+
+        // 不正な共有時計の補正:
+        // 新規作成インスタンスは playEpoch が stale (例: 0) のまま isPlaying=true で
+        // 始まることがある。その場合 baselineTime + 経過 が duration を遥かに超え、
+        // シーク先が終端を突き抜けて「再生されない」状態になる。
+        // duration が判明したこのタイミングで、生の経過位置が duration を超えていたら
+        // 先頭から再生し直す（進行中インスタンスへの正当な join は範囲内なので影響なし）。
+        if (isClockOverrun(state.local)) {
+            state.local.baselineTime = 0;
+            state.local.playEpoch = Date.now();
+        }
     });
     // 共有時計の現在位置にローカル <video> を合わせる (再生中ならそのまま、停止中なら baselineTime)
     scheduleSyncVideo();

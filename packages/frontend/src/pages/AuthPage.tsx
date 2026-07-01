@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
-import { API_BASE, registerWithOTP, resendOTP, signIn, useSession, verifyOTPAndRegister } from '@/lib/auth-client';
+import { API_BASE, registerWithOTP, resendOTP, signIn, verifyOTPAndRegister } from '@/lib/auth-client';
+import { useSession } from '@/lib/session';
 import { css } from '@/styled-system/css';
 import { flex, vstack } from '@/styled-system/patterns';
 
@@ -326,6 +327,7 @@ export function AuthPage() {
                             onChange={(e) => setEmail(e.target.value)}
                             placeholder="example@email.com"
                             className={inputStyle}
+                            autoComplete="email"
                             required
                         />
                     </div>
@@ -341,6 +343,7 @@ export function AuthPage() {
                             onChange={(e) => setPassword(e.target.value)}
                             placeholder="8文字以上"
                             className={inputStyle}
+                            autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                             minLength={8}
                             required
                         />

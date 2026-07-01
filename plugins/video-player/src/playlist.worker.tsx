@@ -7,19 +7,25 @@
 
 import { VPEvents, VPTarget } from './events';
 import { PlaySmallIcon, TrashIcon } from './icons';
+import { formatTime } from './lib/playback';
+import { thumbnailUrl } from './lib/youtube';
 import type { LoopMode, Track } from './types';
 
 const state = Ubi.state.define({
-    playlist: Ubi.state.sync([] as Track[]),
-    currentIndex: Ubi.state.sync(0),
+    playlist: Ubi.state.sync([] as Track[], {
+        label: 'プレイリスト',
+        item: {
+            title: { type: 'string', label: 'タイトル' },
+            id: {
+                type: 'string',
+                label: 'YouTube URL / 動画ID',
+                placeholder: 'https://youtu.be/... または 動画ID',
+            },
+            mode: { type: 'enum', options: ['video', 'live'], default: 'video', label: '種別' },
+        },
+    }),
+    currentIndex: Ubi.state.sync(0, { editable: false }),
 });
-
-const fmt = (sec: number): string => {
-    if (!Number.isFinite(sec) || sec <= 0) return '0:00';
-    const m = Math.floor(sec / 60);
-    const s = Math.floor(sec % 60);
-    return `${m}:${s.toString().padStart(2, '0')}`;
-};
 
 /** 現トラックを siblings に通知。 */
 function emitCurrent(): void {
@@ -152,8 +158,12 @@ function render(): void {
                                 onUbiClick={() => selectTrack(i)}
                             >
                                 <img
-                                    src={t.thumbnail}
+                                    src={t.thumbnail || thumbnailUrl(t.id)}
                                     alt=""
+                                    loading="lazy"
+                                    decoding="async"
+                                    width="32"
+                                    height="32"
                                     style={{
                                         width: '32px',
                                         height: '32px',
@@ -186,7 +196,7 @@ function render(): void {
                                         {t.title}
                                     </div>
                                     <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.6)' }}>
-                                        {t.duration > 0 ? fmt(t.duration) : t.mode === 'live' ? 'LIVE' : '--:--'}
+                                        {t.duration > 0 ? formatTime(t.duration) : t.mode === 'live' ? 'LIVE' : '--:--'}
                                     </div>
                                 </div>
                                 {i === cur && (
@@ -225,7 +235,6 @@ state.onChange('currentIndex', render);
 
 // ── イベント受信 ──────────────────────────────────────
 VPEvents.on('vp:track:add', ({ track }) => addTrack(track));
-VPEvents.on('vp:track:remove', ({ index }) => removeTrack(index));
 VPEvents.on('vp:track:next', ({ loop, shuffle }) => nextTrack(loop, shuffle));
 VPEvents.on('vp:track:prev', () => prevTrack());
 

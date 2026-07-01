@@ -9,20 +9,22 @@ interface UseWorldEditorApiArgs {
     worldId?: string;
     definition: WorldDefinition;
     onSavedYamlChange: (text: string) => void;
+    /** エラーメッセージの通知先 (ページ側で集約管理する) */
+    onError: (msg: string) => void;
 }
 
 /**
  * ワールドの保存・削除・インスタンス作成 API 呼び出しを集約する hook。
- * 状態は saving / error の 2 つだけ。成功時は呼び出し元の savedYaml も更新する。
+ * 状態は saving のみ。エラーは onError 経由で外部へ通知する。
+ * 成功時は呼び出し元の savedYaml も更新する。
  */
-export function useWorldEditorApi({ isEdit, worldId, definition, onSavedYamlChange }: UseWorldEditorApiArgs) {
+export function useWorldEditorApi({ isEdit, worldId, definition, onSavedYamlChange, onError }: UseWorldEditorApiArgs) {
     const navigate = useNavigate();
     const [saving, setSaving] = useState(false);
-    const [error, setError] = useState('');
 
     const save = useCallback(async () => {
         setSaving(true);
-        setError('');
+        onError('');
         try {
             const text = yaml.stringify(definition);
             const url =
@@ -47,17 +49,17 @@ export function useWorldEditorApi({ isEdit, worldId, definition, onSavedYamlChan
             // 編集モード: dirty=false にするため savedYaml を更新
             onSavedYamlChange(text);
         } catch (e) {
-            setError(e instanceof Error ? e.message : '保存失敗');
+            onError(e instanceof Error ? e.message : '保存失敗');
         } finally {
             setSaving(false);
         }
-    }, [definition, isEdit, worldId, navigate, onSavedYamlChange]);
+    }, [definition, isEdit, worldId, navigate, onSavedYamlChange, onError]);
 
     const remove = useCallback(async () => {
         if (!worldId) return;
         if (!window.confirm('このワールドを削除しますか？この操作は取り消せません。')) return;
         setSaving(true);
-        setError('');
+        onError('');
         try {
             const res = await fetch(`${API_BASE}/api/v1/worlds/${worldId}`, {
                 method: 'DELETE',
@@ -69,15 +71,15 @@ export function useWorldEditorApi({ isEdit, worldId, definition, onSavedYamlChan
             }
             navigate('/');
         } catch (e) {
-            setError(e instanceof Error ? e.message : '削除失敗');
+            onError(e instanceof Error ? e.message : '削除失敗');
             setSaving(false);
         }
-    }, [worldId, navigate]);
+    }, [worldId, navigate, onError]);
 
     const createInstance = useCallback(async () => {
         if (!worldId) return;
         setSaving(true);
-        setError('');
+        onError('');
         try {
             const res = await fetch(`${API_BASE}/api/v1/instances`, {
                 method: 'POST',
@@ -92,10 +94,10 @@ export function useWorldEditorApi({ isEdit, worldId, definition, onSavedYamlChan
             const inst = (await res.json()) as { id: string };
             navigate(`/instance/${inst.id}`, { state: { worldId } });
         } catch (e) {
-            setError(e instanceof Error ? e.message : 'インスタンス作成失敗');
+            onError(e instanceof Error ? e.message : 'インスタンス作成失敗');
             setSaving(false);
         }
-    }, [worldId, navigate]);
+    }, [worldId, navigate, onError]);
 
-    return { saving, error, setError, save, remove, createInstance };
+    return { saving, save, remove, createInstance };
 }

@@ -12,8 +12,8 @@ backend:
   replicaCount: 1  # Single replica for dev
   
   image:
-    repository: "ubichill-backend"
-    tag: "latest"
+    repository: "ghcr.io/ubichill/ubichill-backend"
+    tag: "dev"
     pullPolicy: Always
   
   resources:
@@ -40,8 +40,8 @@ frontend:
   replicaCount: 1  # Single replica for dev
   
   image:
-    repository: "ubichill-frontend"
-    tag: "latest"
+    repository: "ghcr.io/ubichill/ubichill-frontend"
+    tag: "dev"
     pullPolicy: Always
   
   resources:
@@ -89,14 +89,18 @@ worlds:
 pluginBackends:
   - id: video-player
     image:
-      repository: ubichill-video-player-backend
-      tag: latest
+      repository: ghcr.io/ubichill/video-player-backend
+      tag: dev
     port: 8000
     pathPrefix: /plugins/video-player/api
     replicaCount: 1
     env:
       ROOT_PATH: /plugins/video-player/api
       CORS_ORIGINS: "*"
+      # YouTube の bot 判定（"Sign in to confirm you're not a bot"）が出る場合の回避策（任意）。
+      # 通常は不要（多くは VPN/データセンター IP が原因。住宅 IP なら出ない）。出るときだけ有効化:
+      #   YTDLP_PLAYER_CLIENT: "default,tv,ios"   # extractor の client を切替で回避を試す
+      #   YTDLP_COOKIES_FILE: /secrets/youtube-cookies.txt  # 確実。cookies.txt を volume マウントして指定
     resources:
       limits:
         cpu: 500m
