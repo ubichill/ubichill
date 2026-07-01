@@ -92,7 +92,7 @@ spec:
   メール送信をスキップするため `RESEND_API_KEY` は不要（コードが Resend を呼ぶ前に return）。
   `BETTER_AUTH_SECRET` は chart が自動生成するが churn 回避のため上記で決定的ダミーを固定。
   `postgresql.auth.password` だけは chart が fail-fast するのでダミー必須。
-- **ワイルドカード DNS `*.dev.<your-domain>`** が必要（`pr-<番号>.dev...`）。
+- **ワイルドカード DNS が必要な場合もあるが、今回はcloudflare ingressを使うため不要
 - PR クローズで generator の対象から外れ、Application ごと自動削除される。
 - **DB 隔離**: 上記は PR ごとに postgres を立てる（`postgresql.enabled` は values-dev 既定）。
   共有 PG に PR 別 DB 名を切る方式でも可。プレビュー終了で破棄する運用に。
