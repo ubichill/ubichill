@@ -77,6 +77,9 @@ spec:
             - { name: pluginBackends[0].image.tag, value: "pr-{{ .number }}" }
             # values-dev は postgres パスワードを持たない & chart が空だと fail-fast → 使い捨てダミー必須
             - { name: postgresql.auth.password, value: "preview-only" }
+            # preview の DB は完全 ephemeral に（既定は 10Gi PVC）。PR クローズ後の孤児 PVC を防ぎ
+            # フットプリントも削減。データはプレビュー終了で消えてよい。
+            - { name: postgresql.primary.persistence.enabled, value: "false" }
             # 任意: 登録(sign-up)もテストするなら。values-dev は SKIP を持たず RESEND がダミーキーの
             # ため、これが無いと OTP メール送信で登録が失敗する。ログインだけなら不要。
             - { name: backend.env.SKIP_EMAIL_VERIFICATION, value: "true" }
@@ -101,8 +104,10 @@ spec:
   ようなサブサブドメインは不可（`*.youkan.uk` の1階層しか TLS がカバーされない）。
   DNS/TLS は Cloudflare ingress 側で解決するため、別途ワイルドカード証明書の用意は不要。
 - PR クローズで generator の対象から外れ、Application ごと自動削除される。
-- **DB 隔離**: 上記は PR ごとに postgres を立てる（`postgresql.enabled` は values-dev 既定）。
-  共有 PG に PR 別 DB 名を切る方式でも可。プレビュー終了で破棄する運用に。
+- **DB**: PR ごとに専用 postgres が namespace 内に立つ（`postgresql.enabled=true`）。スキーマは
+  migrate-job（Helm `pre-install/pre-upgrade` フック = ArgoCD PreSync）が backend より先に適用。
+  DATABASE_URL は release 名から namespace-local の `-postgresql` を指すので PR 間で完全隔離。
+  **persistence は false に上書き**（ephemeral）して PR クローズ時の孤児 PVC を防ぐこと。
 - `<your-domain>` と `github-token`（repo read 権限）を GitOps 側で設定する。
 
 ## 3. 参考
