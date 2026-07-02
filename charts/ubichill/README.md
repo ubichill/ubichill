@@ -1,156 +1,96 @@
-# Ubichill Helm Charts
+# Ubichill Helm Chart
 
-本リポジトリのHelmチャートを使用してUbichillアプリケーションとプラグインをKubernetesにデプロイできます。
+Ubichill（Frontend + Backend + Redis + PostgreSQL + プラグインバックエンド）を Kubernetes に
+デプロイするための単一 Helm チャートです。プラグインのバックエンド（例: video-player の yt-dlp）は
+別チャートではなく、この chart の `pluginBackends` で一緒にデプロイします。
 
-## 📦 利用可能なチャート
+## クイックスタート
 
-- **ubichill** - メインアプリケーション (Frontend + Backend + Redis + PostgreSQL)
-- **video-player** - Video Playerプラグイン (yt-dlp backend)
-
-## 🚀 クイックスタート
-
-### 1. Helmリポジトリ追加
 ```bash
 helm repo add ubichill https://ubichill.github.io/ubichill
 helm repo update
+
+helm install ubichill ubichill/ubichill \
+  --namespace ubichill --create-namespace \
+  --set global.domain=<your-domain> \
+  --set backend.secretEnv.BETTER_AUTH_SECRET=<random-secret>
 ```
 
-### 2. 本体アプリケーションのデプロイ
-```bash
-# 開発環境
-helm install ubichill-dev ubichill/ubichill \
-  --values https://raw.githubusercontent.com/ubichill/ubichill/main/charts/ubichill/values-dev.yaml \
-  --namespace ubichill --create-namespace
+- `global.domain` から **Ingress ホスト / `CORS_ORIGIN` / `BETTER_AUTH_URL`** が導出される（必須）。
+- DB は同梱の PostgreSQL がパスワードを自動生成するため指定不要（自前 DB を使うなら
+  `postgresql.auth.password` か `postgresql.auth.existingSecret`）。スキーマは backend Pod の
+  **migrate init container** が起動時に適用する。
+- メール認証を使うなら `backend.secretEnv.RESEND_API_KEY` と `backend.env.MAIL_FROM`、
+  使わないなら `backend.env.SKIP_EMAIL_VERIFICATION=true`。
 
-# 本番環境
-helm install ubichill-prod ubichill/ubichill \
-  --values https://raw.githubusercontent.com/ubichill/ubichill/main/charts/ubichill/values-prod.yaml \
-  --namespace ubichill --create-namespace
-```
+環境別 values の例は [`values-dev.yaml`](values-dev.yaml) / [`values-prod.yaml`](values-prod.yaml) を参照。
 
-### 3. Video Playerプラグインのデプロイ
-```bash
-# 開発環境
-helm install video-player-dev ubichill/video-player \
-  --values https://raw.githubusercontent.com/ubichill/ubichill/main/charts/video-player/values-dev.yaml \
-  --namespace ubichill
-
-# 本番環境  
-helm install video-player-prod ubichill/video-player \
-  --values https://raw.githubusercontent.com/ubichill/ubichill/main/charts/video-player/values-prod.yaml \
-  --namespace ubichill
-```
-
-## ⚙️ カスタマイゼーション
-
-### Ubichill メインアプリケーション
-
-主要な設定項目：
+## 主な設定
 
 ```yaml
+global:
+  domain: "example.com"          # 必須。Ingress host / CORS / auth URL の元
+  imagePullPolicy: Always
+
 backend:
-  replicaCount: 3
   image:
-    repository: "ubichill-backend"
-    tag: "stable"
-  autoscaling:
-    enabled: true
-    minReplicas: 2
-    maxReplicas: 8
+    repository: ghcr.io/ubichill/ubichill-backend
+    tag: latest                  # 本番は :vX.Y.Z など不変タグ推奨
+  existingSecret: ""             # BETTER_AUTH_SECRET / RESEND_API_KEY をまとめた Secret
+  env:
+    SKIP_EMAIL_VERIFICATION: "false"
+    MAIL_FROM: "Ubichill <noreply@example.com>"
 
 frontend:
-  replicaCount: 3
   image:
-    repository: "ubichill-frontend" 
-    tag: "stable"
+    repository: ghcr.io/ubichill/ubichill-frontend
+    tag: latest
 
 redis:
-  enabled: true  # 共有キャッシュ
-
+  enabled: true                  # 共有キャッシュ
 postgresql:
-  enabled: true  # 本番環境では推奨
+  enabled: true                  # 同梱 PostgreSQL（persistence.enabled で永続/揮発を切替）
+
+# プラグインバックエンド（この chart 内でデプロイ）
+pluginBackends:
+  - id: video-player
+    image:
+      repository: ghcr.io/ubichill/video-player-backend
+      tag: latest
+    port: 8000
+    pathPrefix: /plugins/video-player/api
 ```
 
-### Video Player プラグイン
+## 開発・検証
 
-主要な設定項目：
-
-```yaml
-backend:
-  replicaCount: 2
-  image:
-    repository: "ubichill-video-player-backend"
-    tag: "latest"
-  
-  # 内部スケーリングAPI (オプション)
-  env:
-    INTERNAL_API_TOKEN: "your-secret-token"
-```
-
-## 🔧 開発者向け
-
-### ローカル開発
 ```bash
-# チャートをローカルで使用
 git clone https://github.com/ubichill/ubichill
 cd ubichill
 
-# 開発環境デプロイ
-helm install ubichill-dev ./charts/ubichill -f charts/ubichill/values-dev.yaml
-helm install video-player-dev ./charts/video-player -f charts/video-player/values-dev.yaml
+# 依存 subchart（bitnami postgresql / redis）を取得
+helm dependency build charts/ubichill
+
+# lint / テンプレート確認（必須値はダミーで注入）
+helm lint charts/ubichill -f charts/ubichill/values-dev.yaml --set global.domain=dev.example
+helm template t charts/ubichill -f charts/ubichill/values-dev.yaml --set global.domain=dev.example
 ```
 
-### チャートのテスト
-```bash
-# バリデーション
-helm lint charts/ubichill/
-helm lint charts/video-player/
+CI でも PR 時に `charts/**` の lint / template を検証する（[helm-ci.yml](../../.github/workflows/helm-ci.yml)）。
 
-# テンプレート確認
-helm template test-release charts/ubichill/ -f charts/ubichill/values-dev.yaml
-```
-
-## 🏗️ アーキテクチャ
+## アーキテクチャ
 
 ```
-┌─────────────────────────────────────────────┐
-│                 Kubernetes                   │
-│  ┌─────────────────────────────────────────┐ │
-│  │           Ubichill Namespace           │ │
-│  │                                       │ │
-│  │  ┌──────────────┐  ┌─────────────────┐ │ │
-│  │  │   Frontend   │  │     Backend     │ │ │
-│  │  │   (Next.js)  │◄─┤   (Node.js)    │ │ │
-│  │  └──────────────┘  └─────────────────┘ │ │
-│  │           │                │          │ │
-│  │           └─────────┬──────┘          │ │
-│  │                     ▼                 │ │
-│  │  ┌─────────────────────────────────────┐ │ │
-│  │  │          Shared Redis              │ │ │
-│  │  │        (Cross-Plugin Cache)        │ │ │
-│  │  └─────────────────────────────────────┘ │ │
-│  │                     ▲                 │ │
-│  │  ┌─────────────────────────────────────┐ │ │
-│  │  │       Video Player Plugin         │ │ │
-│  │  │        (yt-dlp Backend)           │ │ │
-│  │  └─────────────────────────────────────┘ │ │
-│  │                                       │ │
-│  │  ┌─────────────────────────────────────┐ │ │
-│  │  │         PostgreSQL                │ │ │
-│  │  │      (Optional - Production)      │ │ │
-│  │  └─────────────────────────────────────┘ │ │
-│  └─────────────────────────────────────────┘ │
-└─────────────────────────────────────────────┘
+Kubernetes (namespace)
+├── frontend   … Vite CSR（React）を nginx で配信。/api・/socket.io は backend へ proxy
+├── backend    … Node.js + Socket.IO。起動時に migrate init container が DB スキーマ適用
+├── pluginBackends[] … 各プラグインの API（例: video-player = yt-dlp backend）
+├── redis      … 共有キャッシュ
+└── postgresql … アプリ DB（同梱 or 外部）
 ```
 
-## 🤝 コントリビューション
+デプロイ先のドメインや secret は本リポジトリには含めず、GitOps / Helm values 側で注入する。
 
-1. フォークしてください
-2. フィーチャーブランチを作成：`git checkout -b feature/amazing-feature`
-3. 変更をコミット：`git commit -m 'Add amazing feature'`
-4. プッシュ：`git push origin feature/amazing-feature`
-5. プルリクエストを作成
+## コントリビューション / ライセンス
 
-## 📝 ライセンス
-
-このプロジェクトは MIT ライセンスの下で公開されています。
+コントリビューション手順はリポジトリルートの [README](../../README.md) と（追加予定の）`CONTRIBUTING.md` を参照。
+ライセンスはリポジトリルートの `LICENSE` に従います。
