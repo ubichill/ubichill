@@ -75,8 +75,8 @@ spec:
             - { name: backend.image.tag,  value: "pr-{{ .number }}" }
             - { name: frontend.image.tag, value: "pr-{{ .number }}" }
             - { name: pluginBackends[0].image.tag, value: "pr-{{ .number }}" }
-            # values-dev は postgres パスワードを持たない & chart が空だと fail-fast → 使い捨てダミー必須
-            - { name: postgresql.auth.password, value: "preview-only" }
+            # postgres パスワードは設定不要: bitnami が生成した <release>-postgresql Secret を
+            # backend / migrate init container が runtime に読む（平文 password / fail-fast は廃止済み）。
             # preview の DB は完全 ephemeral に（既定は 10Gi PVC）。PR クローズ後の孤児 PVC を防ぎ
             # フットプリントも削減。データはプレビュー終了で消えてよい。
             - { name: postgresql.primary.persistence.enabled, value: "false" }
@@ -97,15 +97,15 @@ spec:
   `NODE_ENV:"development"` になり development 表示になる。
 - **シークレット/オリジン**: values-dev がプレビュー向けに `CORS_ORIGIN:"*"`（better-auth は `"*"` を
   全オリジン許可として扱う→ `INVALID_ORIGIN` にならない）・`BETTER_AUTH_SECRET:"dev-secret-key"`・
-  `RESEND_API_KEY:"dev-resend-key"` を持つため、**本番 secret は不要**。per-PR で足すのは
-  `postgresql.auth.password`（values-dev 未設定＋chart fail-fast）だけ。メール送信は
-  `SKIP_EMAIL_VERIFICATION=true`（任意）で回避。
+  `RESEND_API_KEY:"dev-resend-key"` を持つため、**本番 secret は不要**。postgres パスワードも bitnami
+  生成 Secret を runtime に読むので**設定不要**。per-PR で足すのは image tag / global.domain /
+  （任意）`SKIP_EMAIL_VERIFICATION=true` くらい。
 - **ドメインは単一階層サブドメイン必須**（例 `pr-105.ubichill.com`）。`pr-105.dev.ubichill.com` の
   ようなサブサブドメインは不可（`*.ubichill.com` の1階層しか TLS がカバーされない）。
   DNS/TLS は Cloudflare ingress 側で解決するため、別途ワイルドカード証明書の用意は不要。
 - PR クローズで generator の対象から外れ、Application ごと自動削除される。
 - **DB**: PR ごとに専用 postgres が namespace 内に立つ（`postgresql.enabled=true`）。スキーマは
-  migrate-job（Helm `pre-install/pre-upgrade` フック = ArgoCD PreSync）が backend より先に適用。
+  backend Pod の **migrate init container** が起動時に適用（`backend.migrate.enabled=false` で旧 Job は無効）。
   DATABASE_URL は release 名から namespace-local の `-postgresql` を指すので PR 間で完全隔離。
   **persistence は false に上書き**（ephemeral）して PR クローズ時の孤児 PVC を防ぐこと。
 - `<your-domain>` と `github-token`（repo read 権限）を GitOps 側で設定する。
