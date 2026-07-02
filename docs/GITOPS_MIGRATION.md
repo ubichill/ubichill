@@ -100,8 +100,8 @@ spec:
   `RESEND_API_KEY:"dev-resend-key"` を持つため、**本番 secret は不要**。per-PR で足すのは
   `postgresql.auth.password`（values-dev 未設定＋chart fail-fast）だけ。メール送信は
   `SKIP_EMAIL_VERIFICATION=true`（任意）で回避。
-- **ドメインは単一階層サブドメイン必須**（例 `pr-105.youkan.uk`）。`pr-105.dev.youkan.uk` の
-  ようなサブサブドメインは不可（`*.youkan.uk` の1階層しか TLS がカバーされない）。
+- **ドメインは単一階層サブドメイン必須**（例 `pr-105.ubichill.com`）。`pr-105.dev.ubichill.com` の
+  ようなサブサブドメインは不可（`*.ubichill.com` の1階層しか TLS がカバーされない）。
   DNS/TLS は Cloudflare ingress 側で解決するため、別途ワイルドカード証明書の用意は不要。
 - PR クローズで generator の対象から外れ、Application ごと自動削除される。
 - **DB**: PR ごとに専用 postgres が namespace 内に立つ（`postgresql.enabled=true`）。スキーマは
