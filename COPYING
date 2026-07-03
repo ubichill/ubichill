@@ -1,0 +1,41 @@
+Unless otherwise stated this repository is
+Copyright © 2026 Youkan and contributors
+
+And is distributed under The GNU Affero General Public License Version 3, you should have received a copy of the license file as LICENSE.
+----------------------------------------------------------------------
+ADDITIONAL PERMISSIONS UNDER GNU AGPL v3 SECTION 7 (Plugin Exception)
+
+1. Plugin Exception
+As a special exception to the GNU Affero General Public License version 3 ("AGPL v3"), the copyright holders of Ubichill grant you permission to link, load, or combine the Ubichill core application with independent plugins. You may license and distribute such independent plugins under terms of your choice (including closed-source, proprietary, or commercial licenses), provided that the plugin meets the conditions of "Plugin Independence" defined in Section 2. The Ubichill core application itself remains fully subject to the AGPL v3.
+
+2. Plugin Independence
+To qualify for this exception, a plugin must be considered an "independent plugin" by satisfying all of the following criteria:
+a) It must be distributed independently of the Ubichill core.
+b) It must interact with the Ubichill core solely through the documented public Plugin API or stable public extension interfaces.
+c) It must not require modifications to the Ubichill core source code to function (e.g., core modification mods are not covered by this exception).
+
+3. No Warranty for Plugins
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE COPYRIGHT HOLDERS DISCLAIM ALL WARRANTIES REGARDING THIRD-PARTY PLUGINS. Ubichill makes no warranty regarding the security, functionality, or confidentiality (including protection of plugin source code) of dynamically loaded plugins. Any user or server operator who loads, links, or executes a third-party plugin does so entirely at their own risk. The copyright holders shall not be liable for any damages, data loss, or security breaches resulting from the use of such plugins.
+
+======================================================================
+【日本語訳】
+
+特に明記されていない限り、本リポジトリの著作権は以下の通りです。
+Copyright © 2026 ようかん and contributors
+
+本プロジェクトは The GNU Affero General Public License Version 3 の下で配布されます。ライセンスの全文は同梱の `LICENSE` ファイルを参照してください。
+
+----------------------------------------------------------------------
+GNU AGPL v3 第7条に基づく追加的許可（プラグイン例外条項）
+
+1. プラグインの例外
+GNU Affero General Public License version 3（以下「AGPL v3」）への特別な例外として、Ubichillの著作権者は、Ubichillのコアアプリケーションと独立したプラグインをリンク、読み込み、または結合する許可を付与します。プラグインが第2項で定義される「プラグインの独立性」の条件を満たす限り、当該プラグインを任意の条件（クローズドソース、プロプライエタリ、または商用ライセンスを含む）でライセンスおよび配布することができます。Ubichillのコアアプリケーション自体は、引き続き完全にAGPL v3の対象となります。
+
+2. プラグインの独立性
+この例外の対象となる「独立したプラグイン」とみなされるためには、以下のすべての基準を満たす必要があります：
+a) Ubichillのコアから独立して配布されていること。
+b) 文書化された公開Plugin API、または安定した公開拡張インターフェースのみを通じてUbichillのコアと相互作用すること。
+c) 機能するためにUbichillのコアソースコードの変更を必要としないこと（例：コアを書き換えるModは本例外の対象外です）。
+
+3. プラグインに関する無保証
+適用される法律で認められる最大限の範囲において、著作権者はサードパーティ製プラグインに関する一切の保証を否認します。Ubichillは、動的に読み込まれるプラグインのセキュリティ、機能性、または機密性（プラグインのソースコードの保護を含む）について、いかなる保証も行いません。サードパーティ製プラグインを読み込み、リンクし、または実行するすべてのユーザーおよびサーバー運用者は、完全に自己責任においてこれを行うものとします。著作権者は、当該プラグインの使用から生じるいかなる損害、データ損失、またはセキュリティ侵害についても責任を負いません。
