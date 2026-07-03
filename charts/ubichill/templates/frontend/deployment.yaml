@@ -14,9 +14,9 @@ spec:
       component: frontend
   template:
     metadata:
-      annotations:
-        # Force pod restart on chart upgrade
-        rollme: {{ randAlphaNum 5 | quote }}
+      # frontend は ConfigMap を持たず env は pod template に直接展開されるため、
+      # 値の変更はそのまま rollout を誘発する。コード更新は image tag の変化で rollout。
+      # （randAlphaNum は render 毎に変わり ArgoCD が常時 OutOfSync になるため使わない）
       labels:
         {{- include "ubichill.selectorLabels" . | nindent 8 }}
         component: frontend

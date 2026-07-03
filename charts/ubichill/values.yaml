@@ -36,10 +36,10 @@ backend:
   enabled: true
   replicaCount: 1
 
-  # Drizzle migration を Helm hook (pre-install/pre-upgrade) で実行する設定。
-  # backend Deployment より先に走り、失敗すると ロールアウトが止まる (= 安全側)。
+  # Drizzle migration は backend Deployment の init container として実行される（デフォルト）。
+  # この Job hook は廃止予定。後方互換のため残しているが enabled: false がデフォルト。
   migrate:
-    enabled: true
+    enabled: false
     backoffLimit: 2
     ttlSecondsAfterFinished: 300
     # resources を省略すると backend.resources を使う
@@ -120,6 +120,7 @@ backend:
   #   TRUST_PROXY: "true"               # Ingress 経由で X-Forwarded-* を信用 (rate limit IP 正確化)
   #   DEBUG: "true"                     # logger.debug を有効化
   #   NODE_ENV: "development"           # OTP コードをログに出す等
+  #   MAIL_FROM: "Ubichill <noreply@your-domain.example>"  # 認証メールの送信元 (Resend で検証済みのドメイン)。未設定なら resend.dev サンドボックス送信元
   env:
     NODE_ENV: "production"
     PORT: "3001"

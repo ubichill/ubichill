@@ -1,4 +1,4 @@
-apiVersion: ubichill.youkan.uk/v1alpha1
+apiVersion: ubichill.com/v1alpha1
 kind: Avatar
 metadata:
   name: character_oji_03_blue_brown

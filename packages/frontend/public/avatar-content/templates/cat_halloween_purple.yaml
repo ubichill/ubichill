@@ -1,4 +1,4 @@
-apiVersion: ubichill.youkan.uk/v1alpha1
+apiVersion: ubichill.com/v1alpha1
 kind: Avatar
 metadata:
   name: cat_halloween_purple

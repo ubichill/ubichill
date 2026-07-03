@@ -85,10 +85,27 @@ async function baselineIfNeeded(client: postgres.Sql): Promise<void> {
     console.log('✅ Baseline complete.');
 }
 
+async function waitForPostgres(connectionString: string, maxAttempts = 30): Promise<postgres.Sql> {
+    for (let i = 1; i <= maxAttempts; i++) {
+        const client = postgres(connectionString, { max: 1, prepare: false, connect_timeout: 5 });
+        try {
+            await client`SELECT 1`;
+            return client;
+        } catch {
+            await client.end({ timeout: 1 }).catch(() => undefined);
+            if (i === maxAttempts) throw new Error(`PostgreSQL not ready after ${maxAttempts} attempts`);
+            console.log(`⏳ Waiting for PostgreSQL... (${i}/${maxAttempts})`);
+            await new Promise((r) => setTimeout(r, 2000));
+        }
+    }
+    throw new Error('unreachable');
+}
+
 async function main(): Promise<void> {
     console.log(`🔄 Drizzle migrate: ${migrationsFolder}`);
-    const client = postgres(connectionString as string, { max: 1, prepare: false });
+    let client: postgres.Sql | undefined;
     try {
+        client = await waitForPostgres(connectionString as string);
         await baselineIfNeeded(client);
         const db = drizzle(client);
         await migrate(db, { migrationsFolder });
@@ -97,7 +114,7 @@ async function main(): Promise<void> {
         console.error('❌ Migration failed:', err);
         process.exitCode = 1;
     } finally {
-        await client.end({ timeout: 5 });
+        await client?.end({ timeout: 5 });
     }
 }
 

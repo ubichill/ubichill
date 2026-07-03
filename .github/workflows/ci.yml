@@ -9,7 +9,8 @@ on:
       - ".vscode/**"
       - ".gitignore"
   pull_request:
-    types: [opened, synchronize, reopened]
+    # labeled: `preview` ラベル付与で PR プレビュー用イメージビルドを走らせる
+    types: [opened, synchronize, reopened, labeled]
     paths-ignore:
       - "**.md"
       - "docs/**"
@@ -100,15 +101,22 @@ jobs:
         run: .github/scripts/detect-changed-paths.sh
 
   # ── Docker ビルド（並列）────────────────────────────────────────────────
-  # push to main  → 全イメージを latest タグでビルド
-  # PR to main    → 変更検知でフィルタし dev タグでビルド
+  # push to main       → 変更のあったイメージを :latest / :sha-<sha> / :<version> で
+  # PR + preview ラベル → 3イメージ全部を :pr-<番号> / :sha-<sha> でビルド
+  #   （プレビュー環境はフルスタックが要るため detect-changes で絞らず全部作る）
+  # ラベル無しの PR      → ビルドしない（lint / typecheck のみ）
+  #   いずれも immutable な :sha-<sha> を付与。共有の可変 :dev タグは廃止し、
+  #   デプロイ（PR ごとの環境など）は GitOps 側がこれらのタグを参照する。
 
   build-backend:
     name: Build and push Backend image
     needs: [lint, detect-changes]
     if: >
-      needs.detect-changes.outputs.backend == 'true' &&
-      github.event.pull_request.user.login != 'dependabot[bot]'
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      (
+        (github.event_name == 'push' && needs.detect-changes.outputs.backend == 'true') ||
+        (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'preview'))
+      )
     runs-on: ubuntu-latest
     permissions:
       packages: write
@@ -149,8 +157,10 @@ jobs:
             PNPM_VERSION=${{ steps.versions.outputs.pnpm }}
             COMMIT_HASH=${{ steps.versions.outputs.short-sha }}
           tags: |
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ github.event_name == 'push' && 'latest' || 'dev' }}
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ github.event_name == 'push' && 'latest' || 'dev' }}-${{ steps.versions.outputs.short-sha }}
+            ${{ github.event_name == 'push' && format('{0}/{1}/{2}:latest', env.REGISTRY, github.repository_owner, env.IMAGE_NAME) || '' }}
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:sha-${{ steps.versions.outputs.short-sha }}
+            ${{ github.event_name == 'pull_request' && format('{0}/{1}/{2}:sha-{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, github.event.pull_request.head.sha) || '' }}
+            ${{ github.event_name == 'pull_request' && format('{0}/{1}/{2}:pr-{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, github.event.pull_request.number) || '' }}
             ${{ github.event_name == 'push' && format('{0}/{1}/{2}:{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, steps.versions.outputs.next-version) || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -160,8 +170,11 @@ jobs:
     name: Build and push Frontend image
     needs: [lint, detect-changes]
     if: >
-      needs.detect-changes.outputs.frontend == 'true' &&
-      github.event.pull_request.user.login != 'dependabot[bot]'
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      (
+        (github.event_name == 'push' && needs.detect-changes.outputs.frontend == 'true') ||
+        (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'preview'))
+      )
     runs-on: ubuntu-latest
     permissions:
       packages: write
@@ -204,8 +217,10 @@ jobs:
             VITE_COMMIT_HASH=${{ steps.versions.outputs.short-sha }}
             VITE_ENVIRONMENT=${{ github.event_name == 'push' && 'production' || 'development' }}
           tags: |
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ github.event_name == 'push' && 'latest' || 'dev' }}
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ github.event_name == 'push' && 'latest' || 'dev' }}-${{ steps.versions.outputs.short-sha }}
+            ${{ github.event_name == 'push' && format('{0}/{1}/{2}:latest', env.REGISTRY, github.repository_owner, env.IMAGE_NAME) || '' }}
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:sha-${{ steps.versions.outputs.short-sha }}
+            ${{ github.event_name == 'pull_request' && format('{0}/{1}/{2}:sha-{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, github.event.pull_request.head.sha) || '' }}
+            ${{ github.event_name == 'pull_request' && format('{0}/{1}/{2}:pr-{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, github.event.pull_request.number) || '' }}
             ${{ github.event_name == 'push' && format('{0}/{1}/{2}:{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, steps.versions.outputs.next-version) || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -215,8 +230,11 @@ jobs:
     name: Build and push Video Player image
     needs: [lint, detect-changes]
     if: >
-      needs.detect-changes.outputs.video-player == 'true' &&
-      github.event.pull_request.user.login != 'dependabot[bot]'
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      (
+        (github.event_name == 'push' && needs.detect-changes.outputs.video-player == 'true') ||
+        (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'preview'))
+      )
     runs-on: ubuntu-latest
     permissions:
       packages: write
@@ -253,90 +271,14 @@ jobs:
           build-args: |
             YTDLP_REFRESH=${{ steps.versions.outputs.short-sha }}
           tags: |
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ github.event_name == 'push' && 'latest' || 'dev' }}
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ github.event_name == 'push' && 'latest' || 'dev' }}-${{ steps.versions.outputs.short-sha }}
+            ${{ github.event_name == 'push' && format('{0}/{1}/{2}:latest', env.REGISTRY, github.repository_owner, env.IMAGE_NAME) || '' }}
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:sha-${{ steps.versions.outputs.short-sha }}
+            ${{ github.event_name == 'pull_request' && format('{0}/{1}/{2}:sha-{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, github.event.pull_request.head.sha) || '' }}
+            ${{ github.event_name == 'pull_request' && format('{0}/{1}/{2}:pr-{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, github.event.pull_request.number) || '' }}
             ${{ github.event_name == 'push' && format('{0}/{1}/{2}:{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, steps.versions.outputs.next-version) || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false
-
-  # ── Force push to dev ─────────────────────────────────────────────────────
-  # PR の変更内容に関わらず dev に push して ArgoCD に伝える:
-  #   - app コード変更 → 該当 build が走って image 更新 → ArgoCD が pull
-  #   - chart / world だけ変更 → image build は skip (filters に無いので) →
-  #     image は既存のまま、ArgoCD は新 chart を apply
-  # build が失敗してる場合だけ deploy しない (= image 不整合を避ける)
-
-  deploy-dev:
-    name: Force push to dev
-    needs: [build-backend, build-frontend, build-video-player]
-    if: >
-      always() && !cancelled() &&
-      github.event_name == 'pull_request' &&
-      needs.build-backend.result    != 'failure' &&
-      needs.build-frontend.result   != 'failure' &&
-      needs.build-video-player.result != 'failure'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-
-      - name: Force push to dev
-        run: git push --force origin HEAD:refs/heads/dev
-
-      - name: Comment on PR (create or update)
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const marker = '<!-- sync-to-dev-bot -->';
-            const sha = context.payload.pull_request.head.sha.slice(0, 7);
-            const branch = context.payload.pull_request.head.ref;
-            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-
-            const body = [
-              marker,
-              '### Dev環境へのデプロイが開始されました',
-              '',
-              `| 項目 | 値 |`,
-              `|------|-----|`,
-              `| ブランチ | \`${branch}\` → \`dev\` |`,
-              `| コミット | \`${sha}\` |`,
-              `| Dev環境 | https://ubichill-dev.youkan.uk/ |`,
-              `| Actionログ | [確認する](${runUrl}) |`,
-              '',
-              '**デプロイ完了まで数分かかります。** ArgoCDがイメージの更新を検知してからK8sへ反映されます。',
-              'デプロイ後にDev環境のバッジ（画面右下）でコミットハッシュを確認してください。',
-            ].join('\n');
-
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
-
-            const existing = comments.find(c => c.body.includes(marker));
-
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existing.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body,
-              });
-            }
 
   # ── git タグ付け（push to main のビルド完了後）──────────────────────────────
 

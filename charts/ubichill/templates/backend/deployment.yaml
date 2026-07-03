@@ -20,8 +20,11 @@ spec:
   template:
     metadata:
       annotations:
-        # Force pod restart on chart upgrade
-        rollme: {{ randAlphaNum 5 | quote }}
+        # config/secret が変わったときだけ pod を再起動する（決定的な checksum）。
+        # randAlphaNum は render 毎に変わり ArgoCD が常時 OutOfSync になるため使わない。
+        # コード更新は image tag（:sha-<sha> 等）の変化で自然に rollout される。
+        checksum/config: {{ include (print $.Template.BasePath "/backend/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/backend/secret.yaml") . | sha256sum }}
       labels:
         {{- include "ubichill.selectorLabels" . | nindent 8 }}
         component: backend
@@ -55,6 +58,40 @@ spec:
       serviceAccountName: {{ include "ubichill.serviceAccountName.backend" . }}
       securityContext:
         {{- toYaml .Values.backend.podSecurityContext | nindent 8 }}
+      initContainers:
+      - name: migrate
+        image: {{ include "ubichill.backend.image" . }}
+        imagePullPolicy: {{ .Values.backend.image.pullPolicy | default .Values.global.imagePullPolicy }}
+        command: ["node", "node_modules/@ubichill/db/dist/migrate.js"]
+        # backend 本体と同じ config/secret を読む。外部 DB (postgresql.enabled=false) では
+        # DATABASE_URL をここ (backend.env / secretEnv / existingSecret) から受け取る。
+        envFrom:
+        - configMapRef:
+            name: {{ include "ubichill.fullname" . }}-backend-config
+        {{- if .Values.backend.existingSecret }}
+        - secretRef:
+            name: {{ .Values.backend.existingSecret }}
+        {{- else if .Values.backend.secretEnv }}
+        - secretRef:
+            name: {{ include "ubichill.fullname" . }}-backend-secrets
+        {{- end }}
+        env:
+        {{- if .Values.postgresql.enabled }}
+        - name: PG_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              {{- if .Values.postgresql.auth.existingSecret }}
+              name: {{ .Values.postgresql.auth.existingSecret }}
+              key: {{ .Values.postgresql.auth.secretKeys.userPasswordKey | default (.Values.postgresql.auth.secretKeys.adminPasswordKey | default "password") }}
+              {{- else }}
+              name: {{ include "ubichill.fullname" . }}-postgresql
+              key: password
+              {{- end }}
+        - name: DATABASE_URL
+          value: "postgresql://{{ .Values.postgresql.auth.username | default "postgres" }}:$(PG_PASSWORD)@{{ include "ubichill.fullname" . }}-postgresql:{{ .Values.postgresql.primary.service.ports.postgresql | default 5432 }}/{{ .Values.postgresql.auth.database }}"
+        {{- end }}
+        resources:
+          {{- toYaml (.Values.backend.migrate.resources | default .Values.backend.resources) | nindent 10 }}
       containers:
       - name: backend
         securityContext:
@@ -90,27 +127,24 @@ spec:
         env:
         {{- /* PostgreSQL: DATABASE_URL は postgres password を含むため inline で組み立てる */}}
         {{- if .Values.postgresql.enabled }}
-        {{- if .Values.postgresql.auth.existingSecret }}
+        {{- /*
+          DATABASE_URL はアプリ用ユーザー (auth.username) で接続する。
+          - existingSecret あり: そのシークレットの userPasswordKey からパスワードを読む
+          - なし: bitnami postgresql サブチャートが生成したシークレットの password キーを使う
+          どちらも runtime に Secret から読むため Helm template 時にパスワード不要。
+        */}}
         - name: PG_PASSWORD
           valueFrom:
             secretKeyRef:
+              {{- if .Values.postgresql.auth.existingSecret }}
               name: {{ .Values.postgresql.auth.existingSecret }}
-              key: {{ .Values.postgresql.auth.secretKeys.adminPasswordKey | default "postgres-password" }}
+              key: {{ .Values.postgresql.auth.secretKeys.userPasswordKey | default (.Values.postgresql.auth.secretKeys.adminPasswordKey | default "password") }}
+              {{- else }}
+              name: {{ include "ubichill.fullname" . }}-postgresql
+              key: password
+              {{- end }}
         - name: DATABASE_URL
           value: "postgresql://{{ .Values.postgresql.auth.username | default "postgres" }}:$(PG_PASSWORD)@{{ include "ubichill.fullname" . }}-postgresql:{{ .Values.postgresql.primary.service.ports.postgresql | default 5432 }}/{{ .Values.postgresql.auth.database }}"
-        {{- else }}
-        {{- /*
-          DATABASE_URL は **アプリ用ユーザー** (auth.username, デフォルト ubichill) で繋ぐ。
-          bitnami postgresql サブチャートはこのユーザーを `auth.password` で作成するため、
-          ここで `auth.postgresPassword` (= 管理者 postgres のパスワード) にフォールバック
-          してはいけない (繋ぎに行くユーザーと作られるユーザーのパスワードがズレる)。
-        */}}
-        {{- if not .Values.postgresql.auth.password }}
-        {{- fail "postgresql.auth.password (アプリ用ユーザーのパスワード) を設定してください。postgresql.auth.existingSecret でも可。" }}
-        {{- end }}
-        - name: DATABASE_URL
-          value: "postgresql://{{ .Values.postgresql.auth.username | default "postgres" }}:{{ .Values.postgresql.auth.password }}@{{ include "ubichill.fullname" . }}-postgresql:{{ .Values.postgresql.primary.service.ports.postgresql | default 5432 }}/{{ .Values.postgresql.auth.database }}"
-        {{- end }}
         {{- end }}
         {{- if or .Values.worlds.registryToken .Values.worlds.existingTokenSecret }}
         - name: WORLDS_REGISTRY_TOKEN

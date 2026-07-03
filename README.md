@@ -10,7 +10,9 @@
 </p>
 
 <p align="center">
-  <a href="https://ubichill.youkan.uk/"><strong>ubichill.youkan.uk</strong></a>
+  <a href="https://ubichill.com/"><strong>ubichill.com</strong></a>（紹介）
+  ・
+  <a href="https://app.ubichill.com/"><strong>アプリを開く</strong></a>
 </p>
 
 <p align="center">
@@ -36,19 +38,28 @@ URL を開くだけでカーソルがアバターになる、軽量な 2D メタ
 
 ## 環境
 
-| 環境 | URL | 反映トリガー |
+| 用途 | URL | 反映トリガー |
 |---|---|---|
-| Production | <https://ubichill.youkan.uk/> | `main` への merge → `latest` タグで自動デプロイ |
-| Dev (PR preview) | <https://ubichill-dev.youkan.uk/> | `main` 向け PR の push → `dev` ブランチ経由で自動デプロイ |
+| ホーム（紹介サイト） | <https://ubichill.com/> | 別途（アプリ本体とは分離） |
+| Production（アプリ本体） | <https://app.ubichill.com/> | `main` への merge → `:latest` / `:sha-<sha>` イメージで自動デプロイ |
+| PR プレビュー | `pr-<番号>.ubichill.com` | PR に `preview` ラベル付与 → `:pr-<番号>` / `:sha-<sha>` をビルドし、GitOps（ArgoCD ApplicationSet）が PR ごとに払い出す |
+
+> イメージは GHCR（`ghcr.io/<owner>/ubichill-{backend,frontend}`）に push される。デプロイ先のドメインや secret は本リポジトリには含めず、GitOps/Helm values 側で注入する（`global.domain` や `MAIL_FROM` 等）。
 
 ## 自分のサーバーで動かす
 
 ```bash
 helm repo add ubichill https://ubichill.github.io/ubichill
 helm install ubichill ubichill/ubichill -n ubichill --create-namespace \
-  --set postgresql.auth.password=<set-a-password> \
+  --set global.domain=<your-domain> \
   --set backend.secretEnv.BETTER_AUTH_SECRET=<random-secret>
 ```
+
+`global.domain` から Ingress ホスト / `CORS_ORIGIN` / `BETTER_AUTH_URL` が導出される。
+DB は同梱の PostgreSQL がパスワードを自動生成するので指定不要（自前 DB を使うなら
+`postgresql.auth.password` か `postgresql.auth.existingSecret` を指定）。メール認証を使うなら
+`backend.secretEnv.RESEND_API_KEY` と `backend.env.MAIL_FROM`、使わないなら
+`backend.env.SKIP_EMAIL_VERIFICATION=true` を設定する。
 
 詳細は [Helm Chart README](charts/ubichill/README.md) と [Troubleshooting](docs/Troubleshooting.md)。
 

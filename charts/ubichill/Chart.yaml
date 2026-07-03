@@ -26,5 +26,5 @@ dependencies:
     version: "16.4.3"
     repository: "https://charts.bitnami.com/bitnami"
     condition: postgresql.enabled
-  # video-player は独立した Helm チャート（charts/video-player）として別途デプロイする。
-  # 例: helm install video-player ./charts/video-player -f ./charts/video-player/values-dev.yaml
+  # プラグインバックエンド（video-player の yt-dlp など）はこの chart の `pluginBackends`
+  # で一緒にデプロイする（別チャートではない）。values の pluginBackends[] を参照。
