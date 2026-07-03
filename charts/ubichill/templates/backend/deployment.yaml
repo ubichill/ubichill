@@ -63,6 +63,18 @@ spec:
         image: {{ include "ubichill.backend.image" . }}
         imagePullPolicy: {{ .Values.backend.image.pullPolicy | default .Values.global.imagePullPolicy }}
         command: ["node", "node_modules/@ubichill/db/dist/migrate.js"]
+        # backend 本体と同じ config/secret を読む。外部 DB (postgresql.enabled=false) では
+        # DATABASE_URL をここ (backend.env / secretEnv / existingSecret) から受け取る。
+        envFrom:
+        - configMapRef:
+            name: {{ include "ubichill.fullname" . }}-backend-config
+        {{- if .Values.backend.existingSecret }}
+        - secretRef:
+            name: {{ .Values.backend.existingSecret }}
+        {{- else if .Values.backend.secretEnv }}
+        - secretRef:
+            name: {{ include "ubichill.fullname" . }}-backend-secrets
+        {{- end }}
         env:
         {{- if .Values.postgresql.enabled }}
         - name: PG_PASSWORD
