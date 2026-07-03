@@ -1,50 +1,55 @@
 # コントリビューションガイド
 
 Ubichill への貢献ありがとうございます。バグ報告・提案は Issue、変更は Pull Request で歓迎します。
+コーディング規約の詳細は [CLAUDE.md](CLAUDE.md) にまとまっているので、ここでは**設計思想**を共有します。
 
-## 開発環境
+## 設計思想
 
-- 必要: Node（バージョンは `package.json` の `volta` を参照）/ pnpm / Docker
-- セットアップ: `pnpm install`
-- 開発サーバー（Docker 含む）: `pnpm dev`
-- プラグイン Worker のバンドル: `pnpm build:workers`
-- Lint（**コミット前に必須**）: `pnpm lint` / 自動整形 `pnpm lint:fix`
-- 型チェック: `pnpm typecheck`
+### 基盤（コア）とプラグインを分ける
 
-## コーディング規約（抜粋 — 詳細は [CLAUDE.md](CLAUDE.md)）
+- **コアがやること**: プラグインを安全に動かす基盤、ユーザーの同期処理、認証、ワールドの
+  ロード・編集の土台。つまり「みんなが共通で必要とする仕組み」。
+- **プラグインがやること**: 具体的な機能（ペン・動画・付箋…）。**機能はコアに足さず、
+  プラグインで実装する**のが原則です。コアは薄く汎用に保ちます。
 
-- **named export のみ**。default export と `any` 型は禁止。
-- スタイリング: Host 本体（`packages/frontend`）は **PandaCSS** のみ。`style` ではなく
-  `className`、色は `tokens.colors` を使う（ハードコード禁止）。レイアウトは `css()`、
-  共通部品は `cva()`。
-- **UI に絵文字を使わない**（アイコンは SVG）。
-- 関数型・宣言的に書く（`let` を避け純粋関数で処理）。
-- 責務分離を徹底し、神クラス/関数を作らない。
-- プラグインは **`@ubichill/sdk` のみに依存**する（Host / 本体との直接結合は禁止）。
-- パッケージ責務: `@ubichill/engine`(純 ECS) / `@ubichill/sandbox`(隔離実行) /
-  `@ubichill/react`(Host Hooks) / `@ubichill/sdk`(プラグイン API)。
+### ワールド作成は「誰でも」、プラグイン開発は「エンジニア向け」
+
+- **ワールド作成/編集画面**は非エンジニアでも直感的に使えることを目指します（迷わない UI）。
+- **プラグイン開発**はエンジニア向け。SDK は**内部をできるだけ隠蔽**し、少ないコードで
+  書けるようにしつつ、**自由度・拡張性**を損なわないバランスを狙います。
+
+### 宣言的に、副作用と状態依存を避ける
+
+- ロジックは**宣言的**に書く。命令的な手続きや、暗黙の**副作用・可変状態への依存**を避ける。
+- プラグインの状態は `Ubi.state` に集約し、純粋関数で組み立てる（`let` を避ける）。
+
+### 過度な DRY / 複雑化を避ける
+
+- 「共通化のための共通化」や早すぎる抽象化はしない。**まず素直で読みやすいこと**を優先。
+- 重複が“痛み”になってから畳む。将来の仮定でレイヤーを増やさない。
+
+## 開発の始め方
+
+```bash
+pnpm install
+pnpm dev            # 開発サーバー（Docker 含む）
+pnpm lint           # コミット前に必須（自動整形は pnpm lint:fix）
+pnpm typecheck
+pnpm build:workers  # プラグイン Worker のバンドル
+```
+
+規約（named export のみ / `any` 禁止 / PandaCSS / SVG アイコン 等）は [CLAUDE.md](CLAUDE.md) を参照。
 
 ## ブランチ / コミット / PR
 
-- `main` から作業ブランチを切る（例: `feat/...`, `fix/...`, `chore/...`）。
-- コミットメッセージ・PR は**日本語**で、[Conventional Commits](https://www.conventionalcommits.org/)
-  （`feat:` / `fix:` / `docs:` / `refactor:` / `chore:` など）に従う。
-- CI（lint / typecheck）を通すこと。
-- レビューを受けてマージ（squash merge 推奨）。
+- `main` から作業ブランチを切る（`feat/...` / `fix/...` / `chore/...`）。
+- コミット・PR は**日本語**、[Conventional Commits](https://www.conventionalcommits.org/)。
+- CI（lint / typecheck）を通す。squash merge 推奨。
+- **プレビュー環境**: メンテナが PR に `preview` ラベルを付けると、`pr-<番号>.ubichill.com` に
+  PR ごとのプレビューが払い出されます（未検証コードを勝手にデプロイしないためラベル制）。
 
-### プレビュー環境
+## ライセンス / 行動規範
 
-メンテナが PR に **`preview` ラベル**を付けると、CI が PR ごとの immutable イメージ
-（`:pr-<番号>` / `:sha-<sha>`）をビルドし、GitOps（ArgoCD ApplicationSet）が
-`pr-<番号>.ubichill.com` にプレビューを払い出します。外部フォークの未検証コードを
-勝手にデプロイしないため、ラベルはメンテナが付与します。
-
-## ライセンス / 貢献の同意
-
-本プロジェクトは **AGPL-3.0**（コアアプリケーション）＋**プラグイン例外**で配布されます
-（[COPYING](COPYING) / [LICENSE](LICENSE) 参照）。Pull Request を提出することで、あなたの貢献が
-同ライセンスの下で配布されることに同意したものとみなします。
-
-## 行動規範
-
-参加者は [行動規範](CODE_OF_CONDUCT.md) に従ってください。
+- 本プロジェクトは **AGPL-3.0**（＋プラグイン例外、[COPYING](COPYING) / [LICENSE](LICENSE)）。
+  PR 提出をもって同ライセンスでの配布に同意したものとみなします。
+- 参加者は [行動規範](CODE_OF_CONDUCT.md) に従ってください。
