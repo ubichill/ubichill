@@ -1,0 +1,20 @@
+Unless otherwise stated this repository is
+Copyright © 2026 Youkan and contributors
+
+And is distributed under The GNU Affero General Public License Version 3, you should have received a copy of the license file as LICENSE.
+
+----------------------------------------------------------------------
+ADDITIONAL PERMISSIONS UNDER GNU AGPL v3 SECTION 7 (Plugin Exception)
+
+1. External Plugin Exception
+As a special exception to the GNU Affero General Public License version 3 ("AGPL v3"), the copyright holders of Ubichill grant you permission to dynamically load, link, and execute independent third-party plugins hosted via external URLs. 
+You may license and distribute such independent plugins under terms of your choice (including closed-source, proprietary, or commercial licenses), provided that they remain separate from the core Ubichill source code and interact with it solely through the designated dynamic loading mechanisms. The core Ubichill application itself remains fully subject to the AGPL v3.
+
+2. Disclaimer of Liability for Third-Party Plugins
+Ubichill provides the capability to load external plugins strictly on an "AS IS" basis. The copyright holders and developers of Ubichill assume absolutely no responsibility or liability for the security, behavior, data handling, privacy compliance, or legality of any third-party plugins. 
+By loading, enabling, or utilizing any external plugin, the server operator and end-users explicitly agree that the Ubichill developers shall not be held liable for any damages, data loss, security breaches, or legal issues arising from the use of such plugins.
+
+3. Plugin Intellectual Property and Best Effort Protection
+The Ubichill core project strives to provide a secure execution environment to protect the intellectual property of plugin developers (e.g., encapsulating backend API/Socket.io logic). However, due to the inherent nature of web technologies, frontend plugins executed via client-side Web Workers may currently expose their built code to end-users. 
+While the Ubichill developers are committed to improving obfuscation and protection mechanisms in the future, we cannot guarantee absolute secrecy of dynamically loaded code. Plugin developers acknowledge these technical realities. The Ubichill developers shall not be legally liable for any intellectual property theft, code leakage, or reverse engineering of external plugins.
+----------------------------------------------------------------------
