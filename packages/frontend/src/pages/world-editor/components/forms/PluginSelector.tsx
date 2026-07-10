@@ -1,29 +1,11 @@
 import type { WorldDefinition } from '@ubichill/shared';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
+import { SETTINGS_KEYS, useSetting } from '@/lib/settings';
 import { css } from '@/styled-system/css';
 import { type AvailablePlugin, pluginToDependency, useAvailablePlugins } from '../../hooks/useAvailablePlugins';
 
-const REGISTRY_URLS_STORAGE_KEY = 'world-editor:registry-urls';
-
-function loadStoredRegistryUrls(): string[] {
-    try {
-        const raw = localStorage.getItem(REGISTRY_URLS_STORAGE_KEY);
-        if (!raw) return [];
-        const parsed = JSON.parse(raw) as unknown;
-        if (!Array.isArray(parsed)) return [];
-        return parsed.filter((v): v is string => typeof v === 'string');
-    } catch {
-        return [];
-    }
-}
-
-function saveStoredRegistryUrls(urls: string[]) {
-    try {
-        localStorage.setItem(REGISTRY_URLS_STORAGE_KEY, JSON.stringify(urls));
-    } catch {
-        /* localStorage 失敗時は無視 */
-    }
-}
+const isStringArray = (value: unknown): value is string[] =>
+    Array.isArray(value) && value.every((v) => typeof v === 'string');
 
 interface PluginSelectorProps {
     definition: WorldDefinition;
@@ -37,15 +19,11 @@ interface PluginSelectorProps {
  * - レジストリ URL を追加できる（localStorage に保存）
  */
 export function PluginSelector({ definition, onUpdateSpec }: PluginSelectorProps) {
-    const [registryUrls, setRegistryUrls] = useState<string[]>(() => loadStoredRegistryUrls());
+    const [registryUrls, setRegistryUrls] = useSetting<string[]>(SETTINGS_KEYS.editorRegistryUrls, [], isStringArray);
     const [registryInput, setRegistryInput] = useState('');
     const [registryError, setRegistryError] = useState('');
 
     const { plugins, loading } = useAvailablePlugins(registryUrls);
-
-    useEffect(() => {
-        saveStoredRegistryUrls(registryUrls);
-    }, [registryUrls]);
 
     const dependencies = definition.spec.dependencies ?? [];
     const checkedNames = new Set(dependencies.map((d) => d.name));
@@ -77,11 +55,14 @@ export function PluginSelector({ definition, onUpdateSpec }: PluginSelectorProps
         setRegistryUrls((prev) => [...prev, trimmed]);
         setRegistryInput('');
         setRegistryError('');
-    }, [registryInput, registryUrls]);
+    }, [registryInput, registryUrls, setRegistryUrls]);
 
-    const handleRemoveRegistry = useCallback((url: string) => {
-        setRegistryUrls((prev) => prev.filter((u) => u !== url));
-    }, []);
+    const handleRemoveRegistry = useCallback(
+        (url: string) => {
+            setRegistryUrls((prev) => prev.filter((u) => u !== url));
+        },
+        [setRegistryUrls],
+    );
 
     // 既に依存にあるが、利用可能リストに無い（未知のプラグイン）も表示する
     const knownIds = new Set(plugins.map((p) => p.id));
