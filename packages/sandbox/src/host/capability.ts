@@ -133,6 +133,14 @@ export const CAPABILITY_RISK: Readonly<Record<string, CapabilityRisk>> = Object.
 );
 
 /**
+ * コマンド → それを許可する capability の逆引き（カタログ由来の派生ビュー）。
+ * on-demand 認可ゲートが「このコマンドはどの権限に属するか」を引くのに使う。
+ */
+export const COMMAND_TO_CAPABILITY: Readonly<Record<string, string>> = Object.fromEntries(
+    Object.entries(CAPABILITY_CATALOG).flatMap(([cap, spec]) => spec.commands.map((cmd) => [cmd, cap] as const)),
+);
+
+/**
  * capability の危険度を返す。未知の capability は最も危険な dangerous として扱い、
  * 「知らない権限は既定で承認を要求する」フェイルセーフを保証する。
  */

@@ -19,10 +19,12 @@ export {
     type CapabilityInfo,
     type CapabilityRisk,
     type CapabilitySpec,
+    COMMAND_TO_CAPABILITY,
     describeCapability,
     getCapabilityRisk,
     listCapabilities,
 } from './host/capability';
+export { type CapabilityGate, type CapabilityGateOptions, createCapabilityGate } from './host/capabilityGate';
 // ── infra: fetch / 診断 / DOM 描画 ──
 export * from './host/fetchHandler';
 // ── usecase: 個々の Worker のライフサイクル ──

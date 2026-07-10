@@ -19,6 +19,7 @@ import {
     UbiErrorCode,
 } from '@ubichill/shared';
 import { buildAllowedCommands, CMD_TO_HANDLER } from './capability';
+import { type CapabilityGate, createCapabilityGate } from './capabilityGate';
 import { getActiveWorkerCount, getWorker, registerWorker, unregisterWorker } from './PluginRegistry';
 import { isMetricEnabled, reportDiagnostic, reportMetric } from './pluginDiagnostics';
 import {
@@ -41,7 +42,10 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
     private onResourceLimitExceeded?: (reason: string) => void;
     private isInitialized = false;
     private eventQueue: PluginHostEvent[] = [];
-    private allowedCommands: Set<string> | null;
+    /** capability ゲート（許可判定を委譲）。 */
+    private readonly _gate: CapabilityGate;
+    /** on-demand 認可モードか（拒否時のエラーコード区別に使う）。 */
+    private readonly _onDemand: boolean;
     private readonly _logPrefix: string;
     private readonly _pluginId: string;
     private readonly _instanceKey: string;
@@ -118,10 +122,16 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
             _sendEvent: (event) => this.sendEvent(event),
         });
 
-        // capability ゲートの allowlist を構築する（コア + 宣言 capability に対応するコマンド）。
-        // capabilities 未指定でも default-deny（コアコマンドのみ許可）になる。
-        // allowAllCapabilities は信頼済み first-party や開発用の明示的なエスケープハッチ。
-        this.allowedCommands = options.allowAllCapabilities ? null : buildAllowedCommands(options.capabilities);
+        // capability ゲートを構築する。
+        // - authorizeCapability あり: on-demand（初回アクセス時にユーザーへ問い合わせ）。
+        // - なし: 宣言 capability からの静的 allowlist（capabilities 未指定でも default-deny）。
+        // - allowAllCapabilities: 全許可の明示的エスケープハッチ（信頼済み first-party / 開発用）。
+        this._onDemand = !options.allowAllCapabilities && !!options.authorizeCapability;
+        this._gate = createCapabilityGate({
+            allowAll: options.allowAllCapabilities,
+            allowedCommands: buildAllowedCommands(options.capabilities),
+            authorizeCapability: options.allowAllCapabilities ? undefined : options.authorizeCapability,
+        });
 
         const fps = options.tickFps ?? 60;
         this.intervalMs = fps > 0 ? 1000 / fps : 0;
@@ -245,32 +255,21 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
         ]);
     }
 
-    private _isCommandAllowed(type: string): boolean {
-        if (this.allowedCommands === null) return true;
-        return this.allowedCommands.has(type);
-    }
-
     private async _handleCommand(e: MessageEvent<PluginGuestCommand>): Promise<void> {
         const command = e.data;
         const { type } = command;
         const id = 'id' in command ? (command as { id?: string }).id : undefined;
 
-        if (!this._isCommandAllowed(type)) {
-            const message = `未宣言の capability コマンド: ${type}`;
-            reportDiagnostic({
-                level: 'warn',
-                pluginId: this._pluginId,
-                code: UbiErrorCode.CAPABILITY_NOT_DECLARED,
-                message,
-            });
+        const allowed = await this._gate.authorize(type);
+        if (!allowed) {
+            // on-demand モードはユーザー拒否、静的モードは未宣言。エラーコードで区別する。
+            const errorCode = this._onDemand ? UbiErrorCode.CAPABILITY_DENIED : UbiErrorCode.CAPABILITY_NOT_DECLARED;
+            const message = this._onDemand
+                ? `権限が許可されていません: ${type}`
+                : `未宣言の capability コマンド: ${type}`;
+            reportDiagnostic({ level: 'warn', pluginId: this._pluginId, code: errorCode, message });
             if (id) {
-                this.sendEvent({
-                    type: HostEventType.EVT_RPC_RESPONSE,
-                    id,
-                    success: false,
-                    error: message,
-                    errorCode: UbiErrorCode.CAPABILITY_NOT_DECLARED,
-                });
+                this.sendEvent({ type: HostEventType.EVT_RPC_RESPONSE, id, success: false, error: message, errorCode });
             }
             return;
         }
