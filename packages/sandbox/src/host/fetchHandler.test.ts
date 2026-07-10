@@ -1,7 +1,45 @@
 import { UbiErrorCode } from '@ubichill/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FetchErrorBody } from './fetchHandler';
-import { checkUrlAllowed, createPluginFetchHandler, isUrlAllowed } from './fetchHandler';
+import { checkUrlAllowed, createPluginFetchHandler, isUrlAllowed, resolvePluginAssetUrl } from './fetchHandler';
+
+describe('resolvePluginAssetUrl（プラグインアセット領域への限定）', () => {
+    const base = 'https://cdn.example.com/plugins/pen/v2';
+
+    it('相対 URL を pluginBase 配下に解決する', () => {
+        expect(resolvePluginAssetUrl('./stroke.json', base)).toBe('https://cdn.example.com/plugins/pen/v2/stroke.json');
+        expect(resolvePluginAssetUrl('data/x.png', base)).toBe('https://cdn.example.com/plugins/pen/v2/data/x.png');
+    });
+
+    it('ホスト内部 API を狙う先頭スラッシュ URL は領域外として null（抜け道を塞ぐ）', () => {
+        expect(resolvePluginAssetUrl('/api/v1/instances', base)).toBeNull();
+    });
+
+    it('ディレクトリトラバーサルで base を抜ける URL は null', () => {
+        expect(resolvePluginAssetUrl('../../secret', base)).toBeNull();
+        expect(resolvePluginAssetUrl('../other-plugin/x', base)).toBeNull();
+    });
+
+    it('別 origin の絶対 URL は null（外部として allowlist 検査に回す）', () => {
+        expect(resolvePluginAssetUrl('https://api.github.com/x', base)).toBeNull();
+    });
+
+    it('pluginBase と同一 origin でも領域外パスは null', () => {
+        expect(resolvePluginAssetUrl('https://cdn.example.com/api/x', base)).toBeNull();
+    });
+
+    it('pluginBase が未指定なら常に null', () => {
+        expect(resolvePluginAssetUrl('./x.json', undefined)).toBeNull();
+        expect(resolvePluginAssetUrl('./x.json', '')).toBeNull();
+    });
+
+    it('プラグインが同一 origin ホストから配信されていても /api は領域外で null', () => {
+        // 例: dev で plugins が host と同一 origin に置かれるケース
+        const localBase = 'http://localhost:5173/plugins/pen/v2';
+        expect(resolvePluginAssetUrl('/api/v1/instances', localBase)).toBeNull();
+        expect(resolvePluginAssetUrl('./asset.js', localBase)).toBe('http://localhost:5173/plugins/pen/v2/asset.js');
+    });
+});
 
 describe('checkUrlAllowed', () => {
     const domains = ['api.github.com'];

@@ -147,6 +147,36 @@ export async function fetchDirect(url: string, options?: FetchOptions): Promise<
 }
 
 /**
+ * プラグイン自身のアセット領域への fetch かを判定し、絶対 URL に解決する。
+ *
+ * 相対 URL は pluginBase を基準に解決し、**pluginBase 配下 (同一 origin かつパス接頭辞一致)**
+ * に収まる場合のみ解決済み URL を返す。ホストの `/api` などプラグイン領域外や、
+ * `../` によるディレクトリトラバーサルで抜けた URL、pluginBase 不明の場合は null を返す。
+ *
+ * これにより「相対 URL でホスト内部 API を credential 付きで叩く」抜け道を塞ぐ。
+ * null が返った URL は呼び出し側でドメイン allowlist 検査に回す。
+ */
+export function resolvePluginAssetUrl(url: string, pluginBase: string | undefined): string | null {
+    if (!pluginBase) return null;
+    let base: URL;
+    try {
+        // 末尾スラッシュを付けてディレクトリとして解決させる (最後のセグメントを basename 扱いしない)
+        base = new URL(pluginBase.endsWith('/') ? pluginBase : `${pluginBase}/`);
+    } catch {
+        return null;
+    }
+    let resolved: URL;
+    try {
+        resolved = new URL(url, base);
+    } catch {
+        return null;
+    }
+    if (resolved.origin !== base.origin) return null;
+    if (!resolved.pathname.startsWith(base.pathname)) return null;
+    return resolved.href;
+}
+
+/**
  * 外部 URL 用フェッチハンドラ。allowlist を満たさない URL は理由コードつきで弾く。
  */
 export function createPluginFetchHandler(allowedDomains: string[] = DEFAULT_ALLOWED_DOMAINS) {
