@@ -12,10 +12,16 @@
 export {
     ALWAYS_ALLOWED_COMMANDS,
     buildAllowedCommands,
+    CAPABILITY_CATALOG,
     CAPABILITY_COMMANDS,
     CAPABILITY_RISK,
+    type Capability,
+    type CapabilityInfo,
     type CapabilityRisk,
+    type CapabilitySpec,
+    describeCapability,
     getCapabilityRisk,
+    listCapabilities,
 } from './host/capability';
 // ── infra: fetch / 診断 / DOM 描画 ──
 export * from './host/fetchHandler';

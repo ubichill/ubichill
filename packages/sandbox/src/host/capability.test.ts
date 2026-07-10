@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
     ALWAYS_ALLOWED_COMMANDS,
     buildAllowedCommands,
+    CAPABILITY_CATALOG,
     CAPABILITY_COMMANDS,
     CAPABILITY_RISK,
+    describeCapability,
     getCapabilityRisk,
+    listCapabilities,
 } from './capability';
 
 describe('getCapabilityRisk', () => {
@@ -18,11 +21,45 @@ describe('getCapabilityRisk', () => {
         expect(getCapabilityRisk('unknown:power')).toBe('dangerous');
         expect(getCapabilityRisk('')).toBe('dangerous');
     });
+});
 
-    it('カタログの全 capability に危険度が定義されている', () => {
-        for (const cap of Object.keys(CAPABILITY_COMMANDS)) {
-            expect(CAPABILITY_RISK[cap], `${cap} に危険度が未定義`).toBeDefined();
+describe('CAPABILITY_CATALOG（単一の真実の源）', () => {
+    it('全エントリが risk/commands/label/description を揃えている', () => {
+        for (const [cap, spec] of Object.entries(CAPABILITY_CATALOG)) {
+            expect(['safe', 'sensitive', 'dangerous'], `${cap} の risk が不正`).toContain(spec.risk);
+            expect(spec.commands.length, `${cap} に commands が無い`).toBeGreaterThan(0);
+            expect(spec.label.length, `${cap} に label が無い`).toBeGreaterThan(0);
+            expect(spec.description.length, `${cap} に description が無い`).toBeGreaterThan(0);
         }
+    });
+
+    it('派生ビュー CAPABILITY_COMMANDS / CAPABILITY_RISK がカタログと一致する', () => {
+        for (const [cap, spec] of Object.entries(CAPABILITY_CATALOG)) {
+            expect(CAPABILITY_COMMANDS[cap]).toEqual(spec.commands);
+            expect(CAPABILITY_RISK[cap]).toBe(spec.risk);
+        }
+        expect(Object.keys(CAPABILITY_COMMANDS).sort()).toEqual(Object.keys(CAPABILITY_CATALOG).sort());
+    });
+});
+
+describe('describeCapability / listCapabilities（見える化）', () => {
+    it('既知の capability を known=true で説明する', () => {
+        const info = describeCapability('net:fetch');
+        expect(info).toMatchObject({ capability: 'net:fetch', risk: 'dangerous', known: true });
+        expect(info.label).not.toBe('');
+        expect(info.description).not.toBe('');
+    });
+
+    it('未知の capability も known=false・dangerous で必ず説明を返す', () => {
+        const info = describeCapability('mystery:power');
+        expect(info).toMatchObject({ capability: 'mystery:power', risk: 'dangerous', known: false });
+        expect(info.description.length).toBeGreaterThan(0);
+    });
+
+    it('listCapabilities はカタログ全件を返す', () => {
+        const all = listCapabilities();
+        expect(all).toHaveLength(Object.keys(CAPABILITY_CATALOG).length);
+        expect(all.every((c) => c.known)).toBe(true);
     });
 });
 
