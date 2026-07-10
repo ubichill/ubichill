@@ -122,7 +122,16 @@ export interface PluginHostManagerOptions<TPayloadMap extends Record<string, unk
     /** Worker 起動時点で watchEntityTypes にマッチしている既存エンティティ。SDK がプラグインコード実行前に state.local へ同期反映する */
     initialEntities?: ComponentInstance[];
     handlers: HostHandlers<TPayloadMap>;
+    /**
+     * この Worker に付与する capability（`宣言 ∩ ユーザー承認` で解決済みのものを渡す）。
+     * 未指定でも default-deny（コアコマンドのみ許可）で全許可はしない。
+     */
     capabilities?: string[];
+    /**
+     * capability ゲートを完全に無効化し全コマンドを許可する明示的エスケープハッチ。
+     * 信頼済み first-party プラグインや開発用途のみ。通常は未指定（= ゲート有効）。
+     */
+    allowAllCapabilities?: boolean;
     maxExecutionTime?: number;
     onResourceLimitExceeded?: (reason: string) => void;
     tickFps?: number;

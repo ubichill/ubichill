@@ -18,7 +18,7 @@ import {
     type PluginWorkerMessage,
     UbiErrorCode,
 } from '@ubichill/shared';
-import { CAPABILITY_COMMANDS, CMD_TO_HANDLER } from './capability';
+import { buildAllowedCommands, CMD_TO_HANDLER } from './capability';
 import { getActiveWorkerCount, getWorker, registerWorker, unregisterWorker } from './PluginRegistry';
 import { isMetricEnabled, reportDiagnostic, reportMetric } from './pluginDiagnostics';
 import {
@@ -118,21 +118,10 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
             _sendEvent: (event) => this.sendEvent(event),
         });
 
-        if (options.capabilities) {
-            // CMD_LOG / CMD_READY / CMD_GRIP は capability 宣言なしで常に許可する。
-            // - CMD_LOG: デバッグログ（制限すると開発体験が著しく悪化）
-            // - CMD_READY: Worker の初期化通知（必須）
-            // - CMD_GRIP: SDK コアの「掴む」機能。capability 不要（pen.worker 等が普通に使う）
-            this.allowedCommands = new Set(['CMD_LOG', 'CMD_READY', 'CMD_GRIP', 'EDITOR_SCHEMA']);
-
-            for (const cap of options.capabilities) {
-                for (const cmd of CAPABILITY_COMMANDS[cap] ?? []) {
-                    this.allowedCommands.add(cmd);
-                }
-            }
-        } else {
-            this.allowedCommands = null;
-        }
+        // capability ゲートの allowlist を構築する（コア + 宣言 capability に対応するコマンド）。
+        // capabilities 未指定でも default-deny（コアコマンドのみ許可）になる。
+        // allowAllCapabilities は信頼済み first-party や開発用の明示的なエスケープハッチ。
+        this.allowedCommands = options.allowAllCapabilities ? null : buildAllowedCommands(options.capabilities);
 
         const fps = options.tickFps ?? 60;
         this.intervalMs = fps > 0 ? 1000 / fps : 0;

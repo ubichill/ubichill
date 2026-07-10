@@ -8,12 +8,30 @@
  *   worker/ … Worker (guest) 側の隔離実行環境エントリ
  */
 
+// ── 権限: capability カタログ / 危険度 / ユーザーポリシー解決 ──
+export {
+    ALWAYS_ALLOWED_COMMANDS,
+    buildAllowedCommands,
+    CAPABILITY_COMMANDS,
+    CAPABILITY_RISK,
+    type CapabilityRisk,
+    getCapabilityRisk,
+} from './host/capability';
 // ── infra: fetch / 診断 / DOM 描画 ──
 export * from './host/fetchHandler';
 // ── usecase: 個々の Worker のライフサイクル ──
 export { PluginHostManager } from './host/PluginHostManager';
 // ── repository: 在籍簿 + emit ルーティング ──
 export { getActiveWorkerCount, resetRegistryForTests, routeEmit } from './host/PluginRegistry';
+export {
+    DEFAULT_PERMISSION_POLICY,
+    type PermissionDecision,
+    type PermissionPolicy,
+    type ResolvedCapabilities,
+    resolveCapabilities,
+    resolveFetchDomains,
+    type TierMode,
+} from './host/permissionPolicy';
 export * from './host/pluginDiagnostics';
 // ── 型 ──
 export type {

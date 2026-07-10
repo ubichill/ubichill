@@ -41,6 +41,64 @@ export const CAPABILITY_COMMANDS: Readonly<Record<string, readonly string[]>> = 
 };
 
 /**
+ * capability の危険度ティア。
+ * - safe      : ワールド内で完結し外部副作用・情報流出が無い。常に自動許可。
+ * - sensitive : ワールド状態を書き換えるが外部へは出ない。既定許可（ユーザー設定で要承認に変更可）。
+ * - dangerous : 外部通信など情報流出/外部API操作のリスク。既定で明示承認を要求。
+ */
+export type CapabilityRisk = 'safe' | 'sensitive' | 'dangerous';
+
+/** capability → 危険度ティア。カタログに無い capability は dangerous 扱い（フェイルセーフ）。 */
+export const CAPABILITY_RISK: Readonly<Record<string, CapabilityRisk>> = {
+    'scene:read': 'safe',
+    'ui:toast': 'safe',
+    'ui:render': 'safe',
+    'net:emit': 'safe',
+    'scene:update': 'sensitive',
+    'net:broadcast': 'sensitive',
+    'canvas:draw': 'sensitive',
+    'video:control': 'sensitive',
+    'avatar:set': 'sensitive',
+    'net:host-message': 'dangerous',
+    'net:fetch': 'dangerous',
+};
+
+/**
+ * capability の危険度を返す。未知の capability は最も危険な dangerous として扱い、
+ * 「知らない権限は既定で承認を要求する」フェイルセーフを保証する。
+ */
+export function getCapabilityRisk(capability: string): CapabilityRisk {
+    return CAPABILITY_RISK[capability] ?? 'dangerous';
+}
+
+/**
+ * capability 宣言の有無に関わらず常に許可するコアコマンド。
+ * - CMD_LOG      : デバッグログ（制限すると開発体験が著しく悪化）
+ * - CMD_READY    : Worker の初期化通知（必須）
+ * - CMD_GRIP     : SDK コアの「掴む」機能（pen.worker 等が普通に使う）
+ * - EDITOR_SCHEMA: エディタ用スキーマ通知
+ */
+export const ALWAYS_ALLOWED_COMMANDS: readonly string[] = ['CMD_LOG', 'CMD_READY', 'CMD_GRIP', 'EDITOR_SCHEMA'];
+
+/**
+ * 宣言された capability から、許可する Worker コマンドの allowlist を構築する。
+ *
+ * - `capabilities` が undefined でもコアコマンドのみの default-deny になる（全許可はしない）。
+ * - 未知の capability は対応コマンドを持たないため単に無視される（コマンドは増えない）。
+ *
+ * これが唯一の allowlist 生成経路であり、PluginHostManager の capability ゲートはこの結果に従う。
+ */
+export function buildAllowedCommands(capabilities: readonly string[] | undefined): Set<string> {
+    const allowed = new Set<string>(ALWAYS_ALLOWED_COMMANDS);
+    for (const cap of capabilities ?? []) {
+        for (const cmd of CAPABILITY_COMMANDS[cap] ?? []) {
+            allowed.add(cmd);
+        }
+    }
+    return allowed;
+}
+
+/**
  * Worker コマンドとそれを処理する HostHandlers のキーの対応。
  * HostHandlers に新しいハンドラーを追加したらここにも追記する。
  */
