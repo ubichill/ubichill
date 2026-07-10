@@ -112,10 +112,19 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
 
     const handlersRef = useRef<PluginWorkerHandlers<TPayloadMap>>(options.handlers ?? {});
     const onResourceLimitExceededRef = useRef(options.onResourceLimitExceeded);
+    // authorizeCapability は識別子が変わっても Worker を作り直さないよう ref 経由で最新を読む。
+    // on-demand モードにするかは「渡されているか」(hasAuthorize) だけで決める。
+    const authorizeCapabilityRef = useRef(options.authorizeCapability);
+    const hasAuthorize = !!options.authorizeCapability;
+    const stableAuthorize = useCallback(
+        (capability: string) => authorizeCapabilityRef.current?.(capability) ?? false,
+        [],
+    );
 
     useEffect(() => {
         handlersRef.current = options.handlers ?? {};
         onResourceLimitExceededRef.current = options.onResourceLimitExceeded;
+        authorizeCapabilityRef.current = options.authorizeCapability;
     });
 
     // initialEntities は「Worker 起動時点のスナップショット」であって
@@ -135,6 +144,7 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
             parentEntityId: options.parentEntityId,
             componentType: options.componentType,
             capabilities: options.capabilities,
+            authorizeCapability: hasAuthorize ? stableAuthorize : undefined,
             maxExecutionTime: options.maxExecutionTime,
             tickFps: options.tickFps,
             disableAutoTick: options.disableAutoTick,
@@ -205,6 +215,8 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
         options.parentEntityId,
         options.componentType,
         options.capabilities,
+        hasAuthorize,
+        stableAuthorize,
         options.maxExecutionTime,
         options.tickFps,
         options.disableAutoTick,

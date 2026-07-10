@@ -32,6 +32,7 @@ import type { WorkerPluginDefinition } from '../types';
 import { usePluginWorker } from '../usePluginWorker';
 import { useWorkerLoading } from '../WorkerLoadingContext';
 import { useHold } from './HoldContext';
+import { useUbiPermissions } from './PermissionContext';
 import { PluginUIMount } from './PluginUIMount';
 
 export interface WorkerPluginHostProps {
@@ -44,6 +45,15 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
     const { users, currentUser, updatePosition, updateUser } = useSocket();
     const { entities, patchEntity } = useWorld();
     const { handleGripCommand } = useHold();
+    const permissions = useUbiPermissions();
+
+    // on-demand 認可: Provider があるときだけ authorizeCapability を渡す（無い場合は
+    // 宣言 capability の静的判定にフォールバック）。pluginId 束縛済みで identity 安定。
+    const pluginId = definition.id;
+    const authorizeCapability = useMemo(
+        () => (permissions ? (capability: string) => permissions.authorizeCapability(pluginId, capability) : undefined),
+        [permissions, pluginId],
+    );
     const hostDivRef = useRef<HTMLDivElement>(null);
     const workerLoading = useWorkerLoading();
 
@@ -111,6 +121,7 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
         parentEntityId: entity.parentEntityId,
         componentType: entity.type,
         capabilities: definition.capabilities,
+        authorizeCapability,
         myUserId: currentUser?.id,
         pluginBase: definition.pluginBase,
         watchEntityTypes: definition.watchEntityTypes,
