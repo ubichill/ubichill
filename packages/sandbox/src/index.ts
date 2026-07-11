@@ -37,7 +37,6 @@ export {
     type PermissionPolicy,
     type ResolvedCapabilities,
     resolveCapabilities,
-    resolveFetchDomains,
     type TierMode,
 } from './host/permissionPolicy';
 export * from './host/pluginDiagnostics';

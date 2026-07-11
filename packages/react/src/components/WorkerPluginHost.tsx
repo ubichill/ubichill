@@ -86,7 +86,7 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
     const { getCanvasRef, canvasHandlers } = usePluginCanvas(definition, hostDivRef);
     const { vnodes, onRender, sendAction, sendEventRef } = usePluginUI();
     const { getVideoRef, mediaHandlers } = usePluginMedia(definition, sendEventRef);
-    const onFetch = usePluginFetch(definition, entity);
+    const onFetch = usePluginFetch(definition);
     const worldHandlers = usePluginWorld(definition.watchScope ?? 'subtree', entity.entityId);
 
     // ── Worker 起動時点の watchEntityTypes マッチ分を抽出 ──────────────

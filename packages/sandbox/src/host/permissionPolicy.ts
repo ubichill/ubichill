@@ -28,8 +28,8 @@ export interface PermissionPolicy {
     readonly tierDefaults: Readonly<Record<CapabilityRisk, TierMode>>;
     /** プラグイン別に記憶済みの確定判断: pluginId -> capability -> decision。tierDefaults を上書きする。 */
     readonly grants: Readonly<Record<string, Readonly<Record<string, PermissionDecision>>>>;
-    /** ユーザーがグローバルに許可した fetch ドメイン（suffix マッチ）。 */
-    readonly allowedFetchDomains: readonly string[];
+    /** プラグイン別に記憶済みの fetch ドメイン判断: pluginId -> hostname -> decision。 */
+    readonly fetchGrants: Readonly<Record<string, Readonly<Record<string, PermissionDecision>>>>;
 }
 
 /**
@@ -39,7 +39,7 @@ export interface PermissionPolicy {
 export const DEFAULT_PERMISSION_POLICY: PermissionPolicy = {
     tierDefaults: { safe: 'allow', sensitive: 'allow', dangerous: 'ask' },
     grants: {},
-    allowedFetchDomains: [],
+    fetchGrants: {},
 };
 
 /** capability 解決の結果。 */
@@ -85,35 +85,4 @@ export function resolveCapabilities(
     }
 
     return { granted, pending, denied };
-}
-
-/**
- * fetch の実効許可ドメインを解決する。
- *
- * 候補ドメイン（plugin.json の fetchDomains + ワールド設定）のうち、
- * ユーザーがグローバルに許可済み (allowedFetchDomains) または
- * プラグイン別に `net:fetch` を allow したものだけを通す。
- *
- * `net:fetch` capability 自体がプラグイン別に deny されている場合は空を返す（一切許可しない）。
- */
-export function resolveFetchDomains(
-    candidateDomains: readonly string[],
-    policy: PermissionPolicy,
-    pluginId: string,
-): string[] {
-    const fetchDecision = policy.grants[pluginId]?.['net:fetch'];
-    if (fetchDecision === 'deny') return [];
-
-    // プラグイン別に net:fetch が allow されているなら、候補ドメインを全面的に信頼する。
-    // そうでなければユーザーがグローバル許可したドメインとの積集合に絞る。
-    if (fetchDecision === 'allow') {
-        return dedupe(candidateDomains);
-    }
-
-    const allowed = new Set(policy.allowedFetchDomains);
-    return dedupe(candidateDomains.filter((d) => allowed.has(d)));
-}
-
-function dedupe(items: readonly string[]): string[] {
-    return [...new Set(items)];
 }

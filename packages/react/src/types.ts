@@ -62,12 +62,6 @@ export interface WorkerPluginDefinition {
      */
     mediaTargets?: string[];
     /**
-     * Ubi.network.fetch() で許可する追加ドメインのリスト。
-     * デフォルトの PRODUCTION_ALLOWED_DOMAINS に追記される形で適用される。
-     * 例: ["api.example.com", "cdn.example.com"]
-     */
-    fetchDomains?: string[];
-    /**
      * プラグインアセットのベースURL（Worker で Ubi.pluginBase として参照可能）。
      * PluginRegistryContext が plugin.json のバージョンから自動計算して設定する。
      */

@@ -49,8 +49,17 @@ export function PermissionPromptModal() {
     const permissions = useUbiPermissions();
     if (!permissions || !permissions.pendingPrompt) return null;
 
-    const { pluginId, capability } = permissions.pendingPrompt;
-    const info = describeCapability(capability);
+    const prompt = permissions.pendingPrompt;
+    // capability プロンプトと fetch ドメインプロンプトで表示内容を切り替える。
+    const info =
+        prompt.kind === 'fetch'
+            ? {
+                  risk: 'dangerous' as const,
+                  label: '外部への通信',
+                  description: `${prompt.domain} へ通信しようとしています。`,
+              }
+            : describeCapability(prompt.capability);
+    const pluginId = prompt.pluginId;
     const risk = RISK_META[info.risk];
 
     return (

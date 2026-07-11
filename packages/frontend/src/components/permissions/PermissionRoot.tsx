@@ -19,7 +19,8 @@ function isPermissionPolicy(value: unknown): value is PermissionPolicy {
         v.tierDefaults !== null &&
         typeof v.grants === 'object' &&
         v.grants !== null &&
-        Array.isArray(v.allowedFetchDomains)
+        typeof v.fetchGrants === 'object' &&
+        v.fetchGrants !== null
     );
 }
 

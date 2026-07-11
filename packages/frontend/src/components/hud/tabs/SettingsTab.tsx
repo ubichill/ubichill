@@ -97,9 +97,12 @@ export function SettingsTab() {
         );
     }
 
-    const { policy, setTierDefaults, revokeGrant } = permissions;
+    const { policy, setTierDefaults, revokeGrant, revokeFetchGrant } = permissions;
     const currentLevel = matchShieldLevel(policy.tierDefaults);
-    const pluginIds = Object.keys(policy.grants).filter((id) => Object.keys(policy.grants[id]).length > 0);
+    // capability grant または fetch ドメイン grant を持つプラグインの和集合。
+    const pluginIds = [...new Set([...Object.keys(policy.grants), ...Object.keys(policy.fetchGrants)])].filter(
+        (id) => Object.keys(policy.grants[id] ?? {}).length > 0 || Object.keys(policy.fetchGrants[id] ?? {}).length > 0,
+    );
 
     return (
         <div className={tabPanel} onClick={(e) => e.stopPropagation()}>
@@ -204,7 +207,10 @@ export function SettingsTab() {
                                     </span>
                                     <button
                                         type="button"
-                                        onClick={() => revokeGrant(pluginId)}
+                                        onClick={() => {
+                                            revokeGrant(pluginId);
+                                            revokeFetchGrant(pluginId);
+                                        }}
                                         className={css({
                                             px: '3',
                                             py: '1',
@@ -222,7 +228,7 @@ export function SettingsTab() {
                                     </button>
                                 </div>
                                 <div className={css({ display: 'flex', flexDirection: 'column', gap: '2' })}>
-                                    {Object.entries(policy.grants[pluginId]).map(([capability, decision]) => {
+                                    {Object.entries(policy.grants[pluginId] ?? {}).map(([capability, decision]) => {
                                         const info = describeCapability(capability);
                                         return (
                                             <div
@@ -295,6 +301,69 @@ export function SettingsTab() {
                                             </div>
                                         );
                                     })}
+                                    {/* fetch 許可ドメイン */}
+                                    {Object.entries(policy.fetchGrants[pluginId] ?? {}).map(([domain, decision]) => (
+                                        <div
+                                            key={`fetch:${domain}`}
+                                            className={css({
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '3',
+                                                py: '2',
+                                            })}
+                                        >
+                                            <div className={css({ flex: 1, minW: 0 })}>
+                                                <div
+                                                    className={css({ display: 'flex', alignItems: 'center', gap: '2' })}
+                                                >
+                                                    <span
+                                                        className={css({
+                                                            fontSize: '13px',
+                                                            fontWeight: '600',
+                                                            color: 'text',
+                                                        })}
+                                                    >
+                                                        {domain}
+                                                    </span>
+                                                    <RiskBadge risk="dangerous" />
+                                                </div>
+                                                <div
+                                                    className={css({ fontSize: '11px', color: 'textMuted', mt: '0.5' })}
+                                                >
+                                                    外部への通信
+                                                </div>
+                                            </div>
+                                            <span
+                                                className={css({
+                                                    fontSize: '11px',
+                                                    fontWeight: '700',
+                                                    color: decision === 'allow' ? 'successText' : 'errorText',
+                                                    flexShrink: 0,
+                                                })}
+                                            >
+                                                {DECISION_LABEL[decision]}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => revokeFetchGrant(pluginId, domain)}
+                                                className={css({
+                                                    px: '2',
+                                                    py: '1',
+                                                    borderRadius: '6px',
+                                                    border: 'none',
+                                                    cursor: 'pointer',
+                                                    fontSize: '11px',
+                                                    fontWeight: '600',
+                                                    bg: 'secondary',
+                                                    color: 'text',
+                                                    flexShrink: 0,
+                                                    _hover: { opacity: 0.8 },
+                                                })}
+                                            >
+                                                取り消す
+                                            </button>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
                         ))}
