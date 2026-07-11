@@ -81,6 +81,41 @@ function listFilesRecursive(rootDir, currentDir = rootDir) {
     return out;
 }
 
+// ============================================================
+// capability 自動検出（静的解析）
+// ============================================================
+
+/**
+ * バンドル済み Worker コードから使用中の Ubi API を静的検出し、capability を推定する。
+ *
+ * これは **情報表示（マニフェスト）用の over-approximate な推定**であり、セキュリティ境界
+ * ではない。実際の enforcement は実行時ゲート + ユーザー承認（PluginHostManager）で行われ、
+ * 検出漏れ（動的アクセス・完全な分割代入など）は実行時に必ず拾われる。よって過剰申告寄り。
+ *
+ * capability 名は sandbox の CAPABILITY_CATALOG と一致させること
+ * （packages/sandbox/src/host/capability.ts）。
+ */
+const CAPABILITY_DETECTORS = [
+    { cap: 'net:fetch', test: (c) => /\bUbi\.fetch\b/.test(c) },
+    { cap: 'ui:render', test: (c) => /\bUbi\.ui\b/.test(c) },
+    { cap: 'ui:toast', test: (c) => /\.showToast\s*\(/.test(c) },
+    // entity / state はどちらも読み書きしうるため read/update を両方申告（over-approx）
+    { cap: 'scene:read', test: (c) => /\bUbi\.(entity|state)\b/.test(c) },
+    { cap: 'scene:update', test: (c) => /\bUbi\.(entity|state)\b/.test(c) },
+    { cap: 'net:emit', test: (c) => /\bUbi\.event\b/.test(c) },
+    { cap: 'net:broadcast', test: (c) => /\.broadcast\s*\(/.test(c) },
+    { cap: 'net:host-message', test: (c) => /\.sendToHost\s*\(/.test(c) },
+    { cap: 'canvas:draw', test: (c) => /\bUbi\.canvas\b/.test(c) },
+    { cap: 'video:control', test: (c) => /\bUbi\.media\b/.test(c) },
+];
+
+/** バンドル済みコードから capability 一覧を検出する（ソート済み・重複なし）。 */
+export function detectCapabilities(code) {
+    return CAPABILITY_DETECTORS.filter((d) => d.test(code))
+        .map((d) => d.cap)
+        .sort();
+}
+
 async function bundleWorker(entryPath, tsconfig, defines) {
     const result = await esbuild.build({
         entryPoints: [entryPath],
@@ -192,11 +227,24 @@ export async function buildWorker(pluginJsonPath) {
         cleanOldBundles(publicComponentDir, outFilename);
         writeFileSync(join(publicComponentDir, outFilename), code, 'utf-8');
 
-        // workerUrl を明示、src（ビルド時のみ）は除去
-        const { src: _src, ...runtimeMeta } = typeof componentEntry === 'string' ? {} : componentEntry;
-        versionedComponents[componentType] = { ...runtimeMeta, workerUrl: `./${componentName}/${outFilename}` };
+        // capability をコードから自動検出。手書き宣言があれば和集合（override / 補完）。
+        // 手書きは静的解析で漏れる動的アクセス等の補完に使える。
+        const detected = detectCapabilities(code);
+        const handAuthored = Array.isArray(componentEntry.capabilities) ? componentEntry.capabilities : [];
+        const capabilities = [...new Set([...detected, ...handAuthored])].sort();
 
-        console.log(`✅ [${componentType}] /plugins/${pluginDirName}/v${version}/${componentName}/${outFilename}`);
+        // workerUrl を明示、src（ビルド時のみ）は除去。capabilities は自動生成値で上書き。
+        const { src: _src, ...runtimeMeta } = typeof componentEntry === 'string' ? {} : componentEntry;
+        versionedComponents[componentType] = {
+            ...runtimeMeta,
+            capabilities,
+            workerUrl: `./${componentName}/${outFilename}`,
+        };
+
+        console.log(
+            `✅ [${componentType}] /plugins/${pluginDirName}/v${version}/${componentName}/${outFilename}` +
+                ` [caps: ${capabilities.join(', ') || 'none'}]`,
+        );
     }
 
     // assets/ をバージョン固定パスにコピー（Worker は Ubi.pluginBase で参照）
