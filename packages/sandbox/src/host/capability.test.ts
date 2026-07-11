@@ -17,6 +17,11 @@ describe('getCapabilityRisk', () => {
         expect(getCapabilityRisk('net:fetch')).toBe('dangerous');
     });
 
+    it('net:host-message は内部通知なので sensitive（外部通信の dangerous ではない）', () => {
+        // 既定シールドで確認プロンプトを出さないための分類。net:fetch のみ dangerous。
+        expect(getCapabilityRisk('net:host-message')).toBe('sensitive');
+    });
+
     it('未知の capability は dangerous 扱い（フェイルセーフ）', () => {
         expect(getCapabilityRisk('unknown:power')).toBe('dangerous');
         expect(getCapabilityRisk('')).toBe('dangerous');

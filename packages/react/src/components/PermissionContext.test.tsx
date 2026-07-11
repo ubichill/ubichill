@@ -79,7 +79,7 @@ describe('PermissionProvider.authorizeCapability', () => {
     it('ティア既定を ask にすると sensitive も承認待ちになる', () => {
         const ctx = setup();
         act(() => {
-            ctx.current.setTierDefault('sensitive', 'ask');
+            ctx.current.setTierDefaults({ safe: 'allow', sensitive: 'ask', dangerous: 'ask' });
         });
         act(() => {
             void ctx.current.authorizeCapability('plugin-a', 'scene:update');

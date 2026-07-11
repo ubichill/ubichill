@@ -40,8 +40,8 @@ export interface PermissionContextValue {
     pendingPrompt: PermissionPromptRequest | null;
     /** 表示中プロンプトへのユーザー応答。UI が呼ぶ。 */
     resolvePrompt(decision: PermissionDecision): void;
-    /** ティア既定モードを変更する（設定画面用）。 */
-    setTierDefault(risk: CapabilityRisk, mode: TierMode): void;
+    /** ティア既定モードをまとめて置き換える（設定画面のシールドレベル用）。 */
+    setTierDefaults(defaults: Record<CapabilityRisk, TierMode>): void;
     /** 記憶済みの判断を取り消す（設定画面用）。capability 省略でプラグイン全体。 */
     revokeGrant(pluginId: string, capability?: string): void;
 }
@@ -143,9 +143,9 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
         [showNext],
     );
 
-    const setTierDefault = useCallback(
-        (risk: CapabilityRisk, mode: TierMode) => {
-            setPolicy((prev) => ({ ...prev, tierDefaults: { ...prev.tierDefaults, [risk]: mode } }));
+    const setTierDefaults = useCallback(
+        (defaults: Record<CapabilityRisk, TierMode>) => {
+            setPolicy((prev) => ({ ...prev, tierDefaults: defaults }));
         },
         [setPolicy],
     );
@@ -169,8 +169,8 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
     );
 
     const value = useMemo<PermissionContextValue>(
-        () => ({ policy, authorizeCapability, pendingPrompt, resolvePrompt, setTierDefault, revokeGrant }),
-        [policy, authorizeCapability, pendingPrompt, resolvePrompt, setTierDefault, revokeGrant],
+        () => ({ policy, authorizeCapability, pendingPrompt, resolvePrompt, setTierDefaults, revokeGrant }),
+        [policy, authorizeCapability, pendingPrompt, resolvePrompt, setTierDefaults, revokeGrant],
     );
 
     return <PermissionContext.Provider value={value}>{children}</PermissionContext.Provider>;

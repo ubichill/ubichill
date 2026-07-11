@@ -106,10 +106,12 @@ export const CAPABILITY_CATALOG = {
         description: 'あなたのアバター表示を変更する',
     },
     'net:host-message': {
-        risk: 'dangerous',
+        // アプリ本体（ホスト）への片道通知（タブ内ローカル）。外部通信ではないため sensitive。
+        // 例: プラグインが自分のプレイヤー状態（アバター・ペン色など）の更新をホストに依頼する。
+        risk: 'sensitive',
         commands: [CommandType.NETWORK_SEND_TO_HOST],
-        label: 'ホストへの直接送信',
-        description: 'アプリ本体（ホスト）へ直接メッセージを送る',
+        label: 'ホストへの通知',
+        description: 'アプリ本体にプレイヤー状態（アバター等）の更新を依頼する',
     },
     'net:fetch': {
         risk: 'dangerous',
