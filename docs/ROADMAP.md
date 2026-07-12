@@ -66,6 +66,9 @@ ubi deploy              # GitHub Pages / 任意ホストへ公開
 
 ### Phase 4 — 真正性と隔離強化（将来）
 
+- **隔離単位を信頼境界（プラグイン）に揃える**: 現状の「1 Component = 1 Worker」を見直し、
+  「1 プラグイン = 1 Worker」への統合 / Worker プーリングを検討。権限 grant は既に pluginId 単位
+  であり、`PERF_WORKER_LIMIT_REACHED` のスケール問題も動機。
 - プラグインの署名・ハッシュ検証（ロード時の改竄検知）
 - WASM / QuickJS によるハード隔離（`new Function` ベースの限界を解消）
 - メソッド → 必要権限を SDK の JSDoc / docs として開発者に公開

@@ -7,8 +7,13 @@
 > `Ubi.state.persistent / persistMine / shared / topLevel → Ubi.state.sync(value, options)`。
 >
 > **安定度の目安**:
-> - 🟢 **コア設計思想** (1 Component = 1 Worker / Ubi.state による宣言的同期 / `watchScope` 階層スコープ /
+> - 🟢 **コア設計思想** (Ubi.state による宣言的同期 / `watchScope` 階層スコープ /
 >   `Ubi.event.emit` クロス Worker) は確定済み。これは変えない方針
+> - 🟡 **隔離の単位** — 現状は「1 Component = 1 Worker」だが**確定ではない**。信頼境界は本来
+>   **プラグイン (mod) 単位**であるべき（ユーザーはプラグインを単位に信頼/不信を判断し、権限の
+>   grant も既に pluginId 単位で記憶している）。コンポーネント数に比例して Worker が増える
+>   スケール問題 (`PERF_WORKER_LIMIT_REACHED`) もあるため、将来「1 プラグイン = 1 Worker」への
+>   統合や Worker プーリングに変わり得る。プラグインコードはこの粒度に依存しないこと
 > - 🟡 **ネームスペース構造** (`Ubi.state` / `.entity` / `.event` / `.ui` / `.media` / `.canvas` / `.player`) は
 >   役割分担として合理的だが、追加/分割/rename はあり得る
 > - 🔴 **個別メソッド名** (`Ubi.entity().spawn` 等) は使い込みで変わる可能性
