@@ -1,16 +1,22 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
 /**
  * ワークスペース全体のテスト設定。
  * 各パッケージの src 配下 `*.test.ts` を対象にする（純粋ロジック中心なので node 環境）。
  * ワークスペースの `@ubichill/*` 参照は各 tsconfig の paths と同じくソースへ解決する。
+ *
+ * パス解決は fileURLToPath で行う。`new URL(...).pathname` は Windows で `/C:/...` になり
+ * alias 解決が壊れるため使わない（OS 依存を吸収）。
  */
+const srcPath = (rel: string): string => fileURLToPath(new URL(rel, import.meta.url));
+
 export default defineConfig({
     resolve: {
         alias: {
-            '@ubichill/shared': new URL('./packages/shared/src/index.ts', import.meta.url).pathname,
-            '@ubichill/engine': new URL('./packages/engine/src/index.ts', import.meta.url).pathname,
-            '@ubichill/sdk': new URL('./packages/sdk/src/index.ts', import.meta.url).pathname,
+            '@ubichill/shared': srcPath('./packages/shared/src/index.ts'),
+            '@ubichill/engine': srcPath('./packages/engine/src/index.ts'),
+            '@ubichill/sdk': srcPath('./packages/sdk/src/index.ts'),
         },
     },
     test: {

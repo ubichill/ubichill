@@ -123,7 +123,8 @@ export interface PluginHostManagerOptions<TPayloadMap extends Record<string, unk
     initialEntities?: ComponentInstance[];
     handlers: HostHandlers<TPayloadMap>;
     /**
-     * この Worker に付与する capability（`宣言 ∩ ユーザー承認` で解決済みのものを渡す）。
+     * 静的モード（authorizeCapability 未指定）のときに許可する capability 一覧。
+     * on-demand モードでは authorizeCapability 側が判定するためこの一覧は使われない。
      * 未指定でも default-deny（コアコマンドのみ許可）で全許可はしない。
      */
     capabilities?: string[];

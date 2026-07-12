@@ -1,13 +1,17 @@
-// 権限ポリシーのヘルパー/型を再エクスポート（frontend は sandbox に直接依存しないため）。
+// 権限ポリシーのヘルパー/型・診断ハンドラを再エクスポート（frontend は sandbox に直接依存しないため）。
 export {
     type CapabilityInfo,
     type CapabilityRisk,
     DEFAULT_PERMISSION_POLICY,
+    type DiagnosticLevel,
     describeCapability,
     getCapabilityRisk,
     listCapabilities,
     type PermissionDecision,
     type PermissionPolicy,
+    type PluginDiagnostic,
+    resetDiagnosticHandler,
+    setDiagnosticHandler,
     type TierMode,
 } from '@ubichill/sandbox';
 export type { HoldState } from './components/HoldContext';

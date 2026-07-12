@@ -15,12 +15,7 @@
  * PermissionProvider が無い環境（エディタ Preview 等）では外部 fetch は拒否する。
  */
 
-import {
-    createPluginFetchHandler,
-    fetchDirect,
-    resolvePluginAssetUrl,
-    resolvePluginNamespaceUrl,
-} from '@ubichill/sandbox';
+import { fetchDirect, reportDiagnostic, resolvePluginAssetUrl, resolvePluginNamespaceUrl } from '@ubichill/sandbox';
 import { type FetchOptions, type FetchResult, UbiErrorCode } from '@ubichill/shared';
 import { useMemo } from 'react';
 import { useUbiPermissions } from '../components/PermissionContext';
@@ -51,6 +46,12 @@ export function usePluginFetch(
 
         const appOrigin = typeof window === 'undefined' ? undefined : window.location.origin;
 
+        // 拒否は必ず診断に出す（console.warn 既定 + UI ハンドラでトースト化）。沈黙させない。
+        const deny = (code: UbiErrorCode, message: string): FetchResult => {
+            reportDiagnostic({ level: 'warn', pluginId, code, message });
+            return forbidden(code, message);
+        };
+
         return async (url: string, options?: FetchOptions): Promise<FetchResult> => {
             // 1. 自分のアセット（pluginBase 配下）/ 2. 自分の公開名前空間 /plugins/<id>/ は承認不要。
             const ownUrl =
@@ -64,13 +65,13 @@ export function usePluginFetch(
             try {
                 resolved = new URL(url, appOrigin);
             } catch {
-                return forbidden(UbiErrorCode.FETCH_INVALID_URL, `URL として不正です: ${url}`);
+                return deny(UbiErrorCode.FETCH_INVALID_URL, `URL として不正です: ${url}`);
             }
 
             // 3. アプリ本体オリジンのうち自分の領域以外（コア /api・他プラグイン）は禁止。
             //    本体コア API・認証 cookie を保護する。
             if (appOrigin && resolved.origin === appOrigin) {
-                return forbidden(
+                return deny(
                     UbiErrorCode.FETCH_DOMAIN_NOT_ALLOWED,
                     'アプリ本体のコア API へのアクセスは許可されていません',
                 );
@@ -80,19 +81,22 @@ export function usePluginFetch(
             const hostname = resolved.hostname;
             if (!authorizeFetchDomain) {
                 // 権限コンテキスト不在（Preview 等）では外部 fetch を許可しない。
-                return forbidden(UbiErrorCode.FETCH_DOMAIN_NOT_ALLOWED, '権限コンテキストが無いため外部通信できません');
+                return deny(UbiErrorCode.FETCH_DOMAIN_NOT_ALLOWED, '権限コンテキストが無いため外部通信できません');
             }
 
             const allowed = await authorizeFetchDomain(pluginId, hostname);
             if (!allowed) {
-                return forbidden(
-                    UbiErrorCode.FETCH_DOMAIN_NOT_ALLOWED,
-                    `ユーザーが ${hostname} への通信を許可していません`,
-                );
+                return deny(UbiErrorCode.FETCH_DOMAIN_NOT_ALLOWED, `ユーザーが ${hostname} への通信を許可していません`);
             }
 
-            // 承認済みドメインに限定して実行（https 必須・ホスト名一致は共通ロジックで検査）。
-            return createPluginFetchHandler([hostname])(url, options);
+            // 承認済み: 承認したホスト名そのものに完全一致・https 必須で実行（suffix マッチはしない）。
+            if (resolved.protocol !== 'https:') {
+                return deny(
+                    UbiErrorCode.FETCH_HTTPS_REQUIRED,
+                    `https 以外は許可されていません: ${resolved.protocol}//`,
+                );
+            }
+            return fetchDirect(resolved.href, options);
         };
     }, [definition.id, definition.pluginBase, authorizeFetchDomain]);
 }
