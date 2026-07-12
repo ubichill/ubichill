@@ -44,7 +44,9 @@ export function usePluginFetch(
     const authorizeFetchDomain = permissions?.authorizeFetchDomain;
 
     return useMemo(() => {
-        const pluginId = definition.id;
+        // definition.id は "plugin:component" 形式。名前空間・fetch 承認はプラグイン単位なので
+        // ":" の前（プラグイン名）を使う。例: "video-player:search" → "video-player"。
+        const pluginId = definition.id.split(':')[0];
         const pluginBase = definition.pluginBase;
 
         const appOrigin = typeof window === 'undefined' ? undefined : window.location.origin;

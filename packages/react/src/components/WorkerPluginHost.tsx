@@ -49,7 +49,9 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
 
     // on-demand 認可: Provider があるときだけ authorizeCapability を渡す（無い場合は
     // 宣言 capability の静的判定にフォールバック）。pluginId 束縛済みで identity 安定。
-    const pluginId = definition.id;
+    // definition.id は "plugin:component" 形式。信頼境界はプラグイン単位なので ":" の前を使う
+    // （同一プラグインの全コンポーネントで許可を共有する）。
+    const pluginId = definition.id.split(':')[0];
     const authorizeCapability = useMemo(
         () => (permissions ? (capability: string) => permissions.authorizeCapability(pluginId, capability) : undefined),
         [permissions, pluginId],
