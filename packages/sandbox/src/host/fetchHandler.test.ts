@@ -1,7 +1,50 @@
 import { UbiErrorCode } from '@ubichill/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FetchErrorBody } from './fetchHandler';
-import { checkUrlAllowed, createPluginFetchHandler, isUrlAllowed, resolvePluginAssetUrl } from './fetchHandler';
+import {
+    checkUrlAllowed,
+    createPluginFetchHandler,
+    isUrlAllowed,
+    resolvePluginAssetUrl,
+    resolvePluginNamespaceUrl,
+} from './fetchHandler';
+
+describe('resolvePluginNamespaceUrl（プラグイン自身の公開名前空間 /plugins/<id>/）', () => {
+    const origin = 'http://localhost:3000';
+
+    it('自分の公開領域 /plugins/<id>/ 配下（api 含む）を許可する', () => {
+        expect(resolvePluginNamespaceUrl('/plugins/video-player/api/search?q=x', 'video-player', origin)).toBe(
+            'http://localhost:3000/plugins/video-player/api/search?q=x',
+        );
+    });
+
+    it('コアの /api/v1 は名前空間外で null（本体 API 叩きは塞いだまま）', () => {
+        expect(resolvePluginNamespaceUrl('/api/v1/instances', 'video-player', origin)).toBeNull();
+    });
+
+    it('他プラグインの名前空間は null（cross-plugin 禁止）', () => {
+        expect(resolvePluginNamespaceUrl('/plugins/pen/api/steal', 'video-player', origin)).toBeNull();
+    });
+
+    it('prefix が同じ別プラグイン (pen-evil) には一致しない', () => {
+        expect(resolvePluginNamespaceUrl('/plugins/pen-evil/x', 'pen', origin)).toBeNull();
+    });
+
+    it('../ での名前空間脱出は null', () => {
+        expect(resolvePluginNamespaceUrl('/plugins/video-player/../../api/v1/x', 'video-player', origin)).toBeNull();
+    });
+
+    it('別オリジンの絶対 URL は null', () => {
+        expect(
+            resolvePluginNamespaceUrl('https://evil.example.com/plugins/video-player/api', 'video-player', origin),
+        ).toBeNull();
+    });
+
+    it('pluginId / appOrigin 未指定は null', () => {
+        expect(resolvePluginNamespaceUrl('/plugins/x/api', undefined, origin)).toBeNull();
+        expect(resolvePluginNamespaceUrl('/plugins/x/api', 'x', undefined)).toBeNull();
+    });
+});
 
 describe('resolvePluginAssetUrl（プラグインアセット領域への限定）', () => {
     const base = 'https://cdn.example.com/plugins/pen/v2';

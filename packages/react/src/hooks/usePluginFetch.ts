@@ -5,15 +5,22 @@
  *
  * 責務（普遍的なポリシー・特定プラグインに依存しない）:
  * 1. 自分のアセット（pluginBase 配下・CDN でも可）→ fetchDirect（承認不要）。
- * 2. アプリ本体オリジン（同一オリジン）→ **一律禁止**。コアの /api や認証 cookie を保護するため、
- *    プラグインはアプリ本体を fetch できない。バックエンドは別ドメインにして #3 を通すこと。
- * 3. 外部ドメイン → ドメイン単位の on-demand 承認（PermissionProvider.authorizeFetchDomain）。
+ * 2. 自分の公開名前空間 /plugins/<pluginId>/（アプリ本体オリジン上。専用バックエンド含む）
+ *    → fetchDirect（承認不要）。全プラグイン共通の配信規約なので普遍的。
+ * 3. アプリ本体オリジンのそれ以外（コア /api、他プラグインの領域）→ **禁止**。
+ *    本体コア API・認証 cookie を保護する。
+ * 4. 外部ドメイン → ドメイン単位の on-demand 承認（PermissionProvider.authorizeFetchDomain）。
  *    ユーザーが許可したドメインのみ通す。開発者はドメインを宣言しない。https 必須は維持。
  *
  * PermissionProvider が無い環境（エディタ Preview 等）では外部 fetch は拒否する。
  */
 
-import { createPluginFetchHandler, fetchDirect, resolvePluginAssetUrl } from '@ubichill/sandbox';
+import {
+    createPluginFetchHandler,
+    fetchDirect,
+    resolvePluginAssetUrl,
+    resolvePluginNamespaceUrl,
+} from '@ubichill/sandbox';
 import { type FetchOptions, type FetchResult, UbiErrorCode } from '@ubichill/shared';
 import { useMemo } from 'react';
 import { useUbiPermissions } from '../components/PermissionContext';
@@ -43,10 +50,11 @@ export function usePluginFetch(
         const appOrigin = typeof window === 'undefined' ? undefined : window.location.origin;
 
         return async (url: string, options?: FetchOptions): Promise<FetchResult> => {
-            // 1. 自分のアセット（pluginBase 配下・CDN でも可）は承認不要。
-            const assetUrl = resolvePluginAssetUrl(url, pluginBase);
-            if (assetUrl !== null) {
-                return fetchDirect(assetUrl, options);
+            // 1. 自分のアセット（pluginBase 配下）/ 2. 自分の公開名前空間 /plugins/<id>/ は承認不要。
+            const ownUrl =
+                resolvePluginAssetUrl(url, pluginBase) ?? resolvePluginNamespaceUrl(url, pluginId, appOrigin);
+            if (ownUrl !== null) {
+                return fetchDirect(ownUrl, options);
             }
 
             // URL を解決（相対はアプリ本体オリジン基準）。
@@ -57,16 +65,16 @@ export function usePluginFetch(
                 return forbidden(UbiErrorCode.FETCH_INVALID_URL, `URL として不正です: ${url}`);
             }
 
-            // 2. アプリ本体オリジンへの fetch は一律禁止（コア /api・認証 cookie を保護）。
-            //    プラグインのバックエンドは別ドメインにして #3 のドメイン承認を通すこと。
+            // 3. アプリ本体オリジンのうち自分の領域以外（コア /api・他プラグイン）は禁止。
+            //    本体コア API・認証 cookie を保護する。
             if (appOrigin && resolved.origin === appOrigin) {
                 return forbidden(
                     UbiErrorCode.FETCH_DOMAIN_NOT_ALLOWED,
-                    'アプリ本体への通信は許可されていません（プラグインのバックエンドは別ドメインにしてください）',
+                    'アプリ本体のコア API へのアクセスは許可されていません',
                 );
             }
 
-            // 3. 外部ドメイン: ドメイン単位でユーザー承認を得る。
+            // 4. 外部ドメイン: ドメイン単位でユーザー承認を得る。
             const hostname = resolved.hostname;
             if (!authorizeFetchDomain) {
                 // 権限コンテキスト不在（Preview 等）では外部 fetch を許可しない。

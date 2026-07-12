@@ -177,6 +177,34 @@ export function resolvePluginAssetUrl(url: string, pluginBase: string | undefine
 }
 
 /**
+ * プラグイン自身の「公開名前空間」への fetch かを判定し、絶対 URL に解決する。
+ *
+ * プラグインはアプリ本体に載って **`/plugins/<pluginId>/…`** で公開される（assets も、
+ * 専用バックエンド例: `/plugins/video-player/api` も）。ここはプラグイン自身の領域なので
+ * 承認不要で通す。全プラグイン共通の配信規約なので普遍的（特定プラグインの特例ではない）。
+ *
+ * - `appOrigin` はアプリ本体のオリジン（例: `window.location.origin`）。
+ * - コアの `/api/v1/…`・他プラグインの名前空間・別オリジン・`../` 脱出は null
+ *   （＝ここでは通さない）。本体コア API を叩く抜け道は塞いだまま。
+ */
+export function resolvePluginNamespaceUrl(
+    url: string,
+    pluginId: string | undefined,
+    appOrigin: string | undefined,
+): string | null {
+    if (!pluginId || !appOrigin) return null;
+    let resolved: URL;
+    try {
+        resolved = new URL(url, appOrigin);
+    } catch {
+        return null;
+    }
+    if (resolved.origin !== appOrigin) return null;
+    if (!resolved.pathname.startsWith(`/plugins/${pluginId}/`)) return null;
+    return resolved.href;
+}
+
+/**
  * 外部 URL 用フェッチハンドラ。allowlist を満たさない URL は理由コードつきで弾く。
  */
 export function createPluginFetchHandler(allowedDomains: string[] = DEFAULT_ALLOWED_DOMAINS) {
