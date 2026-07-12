@@ -1,161 +1,217 @@
-apiVersion: ubichill.com/v1alpha1
 kind: World
-metadata:
-  name: default
-  version: "1.0.0"
-  author:
-    name: "Ubichill Team"
 spec:
-  displayName: "デフォルトワールド"
-  description: "Ubichill のデフォルトコラボレーションスペース"
-  thumbnail: "https://images.unsplash.com/photo-1519389950473-47ba0277781c?w=400&h=200&fit=crop&q=80"
-
   capacity:
-    default: 10
     max: 20
-
+    default: 10
+  displayName: ちるわ
+  description: "公式のチルワールド"
+  thumbnail: "https://i0.wp.com/game-pile.com/wp-content/uploads/fbe2e41743a5255912ac5c4a9d944a5f.jpg?ssl=1"
   environment:
-    backgroundColor: "#F0F8FF"
     worldSize:
       width: 2000
       height: 1500
-
-  # パッケージ依存関係
+    backgroundColor: "#F0F8FF"
   dependencies:
-    - name: pen
-      source:
-        type: repository
-        path: "plugins/pen"
     - name: video-player
       source:
+        path: plugins/video-player
         type: repository
-        path: "plugins/video-player"
-
-  # 初期 GameObject（id + transform + components[]）
-  #
-  # ── z-index レイヤー構成 ──────────────────────────────────────
-  # transform.z が GenericPluginHost の CSS zIndex に直接対応する。
-  # pointer-events: none のプラグインは視覚的に上にあっても UI 操作を妨げない。
-  # カーソル/ネームプレートはプラグインではなく本体 (packages/frontend) が描画する。
-  #
-  #  z= 5000  pen:canvas           描画レイヤー
-  #  z= 1001  pen:pen              ペン本体（tray より前面でクリック可）
-  #  z= 1000  pen:tray             ペントレイ UI（背景の枠のみ）
-  #  z=  200  video-player:controls / playlist / search   コントロール UI 群
-  #  z=    2  video-player:screen  動画表示（黒 16:9 背景・親 Entity）
-  # ─────────────────────────────────────────────────────────────
-
+    - name: pen
+      source:
+        path: plugins/pen
+        type: repository
+    - name: avatar
+      source:
+        path: plugins/avatar
+        type: repository
   initialEntities:
-    # ── ペンキャンバス ───────────────────────────────────────────
-    - id: pen-canvas
-      transform:
-        x: 0
-        y: 0
-        z: 5000
-        scale: 1
-        rotation: 0
-      components:
-        - type: "pen:canvas"
-          data: {}
-
-    # ── ビデオ: 空 wrapper (components なし) + 4 つの兄弟 children ──
-    # コンポーネント間は Ubi.event.emit (scope='siblings') で通信する。
-    # 各子の state は entity.data に分離 (playlist は playlist Entity、再生状態は controls Entity)。
     - id: video-player
-      transform: { x: 800, y: 60, z: 2, scale: 1, rotation: 0 }
-      components: []
+      tags: []
       children:
-        - id: video-screen
-          transform: { x: 0, y: 0, z: 2, w: 640, h: 360, scale: 1, rotation: 0 }
+        - id: video-player-screen
+          tags: []
+          children: []
+          transform:
+            h: 613
+            w: 1060
+            x: 25
+            y: 21
+            z: 2
+            scale: 1
+            rotation: 0
           components:
-            - type: "video-player:screen"
-              data: {}
-        - id: video-controls
-          transform: { x: 0, y: 370, z: 198, w: 640, h: 60, scale: 1, rotation: 0 }
-          components:
-            - type: "video-player:controls"
-              data:
+            - data:
+                loop: none
+                apiBase: /plugins/video-player/api
+                shuffle: false
+                duration: 0
+                playlist: []
                 isPlaying: false
                 currentTime: 0
-                duration: 0
-                loop: "none"
-                shuffle: false
-                apiBase: "/plugins/video-player/api"
-        - id: video-playlist
-          transform: { x: 0, y: 440, z: 198, w: 310, h: 300, scale: 1, rotation: 0 }
-          components:
-            - type: "video-player:playlist"
-              data:
-                playlist:
-                  - id: "jfKfPfyJRdk"
-                    title: "lofi hip hop radio - beats to relax/study to"
-                    thumbnail: "https://i.ytimg.com/vi/jfKfPfyJRdk/default.jpg"
-                    duration: 0
-                    mode: "live"
                 currentIndex: 0
-        - id: video-search
-          transform: { x: 330, y: 440, z: 198, w: 310, h: 300, scale: 1, rotation: 0 }
+              type: video-player:screen
+        - id: video-player-controls
+          tags: []
+          children: []
+          transform:
+            h: 100
+            w: 740
+            x: 20
+            y: 653
+            z: 200
+            scale: 1
+            rotation: 0
           components:
-            - type: "video-player:search"
-              data: {}
-
-    # ── ペントレイ A (暖色): tray は容器、pen:pen は独立 Entity ────
-    # tray はもうペンを管理しない。各 pen:pen が自分で表示・選択を扱う。
-    # 階層上は children に置くが、座標は world 座標 (絶対位置)。
-    - id: pen-tray-warm
+            - data: {}
+              type: video-player:controls
+        - id: playlist
+          tags: []
+          children: []
+          transform:
+            h: 610
+            w: 322
+            x: 1095
+            y: 37
+            z: 1
+            scale: 1
+            rotation: 0
+          components:
+            - data:
+                playlist:
+                  - id: https://www.youtube.com/watch?v=w3vt4U13QYM&t=45s
+                    mode: video
+                    title: 原神ASMR／睡眠用BGM🎧ナヒーダと雫の音。@ヴァナラーナ｜リラックス・安眠・作業用
+              type: video-player:playlist
+        - id: search
+          tags: []
+          children: []
+          transform:
+            h: 617
+            w: 379
+            x: 1433
+            y: 33
+            z: 1
+            scale: 1
+            rotation: 0
+          components:
+            - data: {}
+              type: video-player:search
       transform:
-        x: 20
-        y: 20
-        z: 1000
-        w: 60
-        h: 240
+        h: 781
+        w: 1847
+        x: 84
+        y: 93
+        z: 3
+        scale: 1
+        rotation: 0
+      components: []
+    - id: pentray
+      tags: []
+      children:
+        - id: pen
+          tags: []
+          children: []
+          transform:
+            h: 48
+            w: 55
+            x: 9
+            y: 7
+            z: 6
+            scale: 1
+            rotation: 0
+          components:
+            - data:
+                color: "#93bcf0"
+                strokeWidth: 4
+              type: pen:pen
+        - id: pen2
+          tags: []
+          children: []
+          transform:
+            h: 57
+            w: 57
+            x: 76
+            y: 6
+            z: 6
+            scale: 1
+            rotation: 0
+          components:
+            - data:
+                color: "#1a1a1a"
+                strokeWidth: 4
+              type: pen:pen
+      transform:
+        h: 67
+        w: 266
+        x: 609
+        y: 17
+        z: 4
         scale: 1
         rotation: 0
       components:
-        - type: "pen:tray"
-          data: {}
-      children:
-        - id: pen-black
-          transform: { x: 32, y: 32, z: 1001, w: 36, h: 48, scale: 1, rotation: 0 }
-          components:
-            - type: "pen:pen"
-              data: { color: "#1a1a1a", strokeWidth: 4 }
-        - id: pen-red
-          transform: { x: 32, y: 92, z: 1001, w: 36, h: 48, scale: 1, rotation: 0 }
-          components:
-            - type: "pen:pen"
-              data: { color: "#e63946", strokeWidth: 4 }
-        - id: pen-yellow
-          transform: { x: 32, y: 152, z: 1001, w: 36, h: 48, scale: 1, rotation: 0 }
-          components:
-            - type: "pen:pen"
-              data: { color: "#e9c46a", strokeWidth: 4 }
-
-    # ── ペントレイ B (寒色) ────────────────────────────────────────────
-    - id: pen-tray-cool
+        - data: {}
+          type: pen:tray
+    - id: pen-canvas
+      tags: []
+      children: []
       transform:
-        x: 100
-        y: 20
-        z: 1000
-        w: 60
-        h: 180
+        x: 530
+        y: 49
+        z: 60
         scale: 1
         rotation: 0
       components:
-        - type: "pen:tray"
-          data: {}
+        - data: {}
+          type: pen:canvas
+    - id: pentray2
+      tags: []
       children:
-        - id: pen-blue
-          transform: { x: 112, y: 32, z: 1001, w: 36, h: 48, scale: 1, rotation: 0 }
+        - id: pen-copy
+          tags: []
+          children: []
+          transform:
+            h: 48
+            w: 55
+            x: 9
+            y: 14
+            z: 6
+            scale: 1
+            rotation: 0
           components:
-            - type: "pen:pen"
-              data: { color: "#457b9d", strokeWidth: 4 }
-        - id: pen-green
-          transform: { x: 112, y: 92, z: 1001, w: 36, h: 48, scale: 1, rotation: 0 }
+            - data:
+                color: "#93bcf0"
+                strokeWidth: 4
+              type: pen:pen
+        - id: pen-copy-2
+          tags: []
+          children: []
+          transform:
+            h: 48
+            w: 55
+            x: 64
+            y: 14
+            z: 6
+            scale: 1
+            rotation: 0
           components:
-            - type: "pen:pen"
-              data: { color: "#2a9d8f", strokeWidth: 4 }
-
-  permissions:
-    allowGuestCreate: true
-    allowGuestDelete: false
+            - data:
+                color: "#44474b"
+                strokeWidth: 4
+              type: pen:pen
+      transform:
+        h: 75
+        w: 175
+        x: 1004
+        y: 8
+        z: 7
+        scale: 1
+        rotation: 0
+      components:
+        - data: {}
+          type: pen:tray
+metadata:
+  name: qddq511a3y2su8bq7gsf2
+  author:
+    name: devようかん
+  version: 1.0.0
+apiVersion: ubichill.com/v1alpha1
