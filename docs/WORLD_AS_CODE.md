@@ -90,11 +90,10 @@ spec:
   # フロントエンドコンポーネント（npm パッケージまたは URL）
   frontend: ./dist/frontend.js
 
-  # Host 側に要求する権限
-  capabilities:
-    - scene:read
-    - scene:update
-    - net:fetch
+  # 要求する権限は宣言不要。使用している Ubi API からビルド時に自動生成され、
+  # 実際の許可は実行時にユーザーが危険度ティア別に承認する（on-demand）。
+  # ここに手書きした場合は自動生成結果への補完（override）として扱う。
+  # 例（自動生成される内容）: scene:read / scene:update / net:fetch …
 ```
 
 ### Avatar（カーソル定義）

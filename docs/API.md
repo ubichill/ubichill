@@ -94,7 +94,7 @@ await Ubi.entity.get<T>(id)                        // id で取得
 await Ubi.entity.spawn(entity)                     // 親を明示指定して自由 spawn
 
 // ──── その他 ──────────────────────────────────────────
-await Ubi.fetch(url, options?)                     // HTTP (capability whitelist 経由)
+await Ubi.fetch(url, options?)                     // HTTP (外部はドメインごとにユーザー承認)
 Ubi.registerSystem((entities, dt, events) => {...}) // ECS System 登録
 Ubi.log(message, level?)                           // ログ ('debug' | 'info' | 'warn' | 'error')
 
@@ -268,22 +268,40 @@ const entity = useEntity(entityId)
 
 ---
 
-## Capability ホワイトリスト
+## 権限 (Capability) — 自動生成 + on-demand 承認
 
-`plugin.json` の `capabilities` に含まれないコマンドは Host 側でブロックされる。
+**プラグイン開発者は権限を宣言しない。** 使用している `Ubi.*` API からビルド時に capability を
+自動生成し（`build-workers.mjs` の静的解析。情報表示用のマニフェスト）、実際の許可は
+**実行時にユーザーが承認**する。ゼロトラストで、信頼境界は Worker→Host の postMessage 一点。
 
-| capability | 有効になる API |
-|---|---|
-| `net:send` | `Ubi.event.sendToHost` / `MyEvents.sendToHost` |
-| `net:broadcast` | `Ubi.event.broadcast` / `MyEvents.broadcast` (`Ubi.state.sync({ ephemeral: true })` も内部で使用) |
-| `net:fetch` | `Ubi.fetch` |
-| `scene:read` | `Ubi.entity.get` / `Ubi.entity.query` |
-| `scene:update` | `Ubi.entity().update/destroy/spawn` / `Ubi.entity(id).update/destroy` / `Ubi.entity.spawn` / `Ubi.state.sync` の書き込み全般 |
-| `net:emit` | `Ubi.event.emit` / `MyEvents.emit` (クロス Worker 配送) |
-| `ui:render` | `Ubi.ui.render` |
-| `ui:toast` | `Ubi.ui.showToast` |
-| `canvas:draw` | `Ubi.canvas.*` |
-| `video:control` | `Ubi.media.*` |
+- **危険度ティア**: 🟢 `safe`（常に許可・ユーザーには見せない）/ 🟡 `sensitive`（既定で許可）/
+  🔴 `dangerous`（既定で承認必須）。
+- **同意モデルは on-demand**: プラグインがその権限を初めて使う瞬間に確認ダイアログを出す
+  （ブラウザのカメラ許可風）。決定はユーザー所有ポリシー（localStorage）に記憶され次回から無音。
+- **fetch はドメイン単位**: `net:fetch` 自体は capability レベルでは常に通し、実際の通信は
+  **接続先ホスト名ごとにユーザー承認**する（自プラグインのアセット領域は承認不要）。
+- **シールドレベル**（設定画面）: なし / 確認（既定・危険のみ確認）/ 厳格な確認（注意も確認）/ 拒否。
+- enforcement は単一ゲート。未承認コマンドは拒否（RPC は `CAPABILITY_DENIED`、
+  静的モードの未宣言は `CAPABILITY_NOT_DECLARED`）。
+
+各 API が要求する capability と危険度（この表が「メソッド → 必要権限」の正）:
+
+| capability | 危険度 | 要求する API |
+|---|---|---|
+| `net:fetch` | 🔴 dangerous | `Ubi.fetch`（外部通信。ドメインごとに承認） |
+| `scene:update` | 🟡 sensitive | `Ubi.entity().update/destroy/spawn` / `Ubi.entity(id).update/destroy` / `Ubi.entity.spawn` / `Ubi.state.sync` の書き込み全般 |
+| `net:broadcast` | 🟡 sensitive | `Ubi.event.broadcast` / `MyEvents.broadcast`（`Ubi.state.sync({ ephemeral: true })` も内部で使用） |
+| `net:host-message` | 🟡 sensitive | `Ubi.event.sendToHost` / `MyEvents.sendToHost`（ホストへの片道通知＝自プレイヤー状態更新等） |
+| `canvas:draw` | 🟡 sensitive | `Ubi.canvas.*` |
+| `video:control` | 🟡 sensitive | `Ubi.media.*` |
+| `avatar:set` | 🟡 sensitive | アバター表示の変更 |
+| `scene:read` | 🟢 safe | `Ubi.entity.get` / `Ubi.entity.query` |
+| `net:emit` | 🟢 safe | `Ubi.event.emit` / `MyEvents.emit`（クロス Worker 配送） |
+| `ui:render` | 🟢 safe | `Ubi.ui.render` |
+| `ui:toast` | 🟢 safe | `Ubi.ui.showToast` |
+
+> capability カタログ（危険度・コマンド対応・表示情報）の単一の真実の源は
+> [`packages/sandbox/src/host/capability.ts`](../packages/sandbox/src/host/capability.ts) の `CAPABILITY_CATALOG`。
 
 ---
 
