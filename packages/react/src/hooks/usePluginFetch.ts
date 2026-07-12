@@ -3,11 +3,12 @@
  *
  * Worker の NET_FETCH コマンドを処理するフェッチハンドラを構築する。
  *
- * 責務:
- * - プラグイン自身のアセット領域（pluginBase 配下）→ fetchDirect（承認不要）。
- * - 外部 URL → ドメイン単位の on-demand 承認（PermissionProvider.authorizeFetchDomain）。
- *   ユーザーが許可したドメインのみ通す。プラグイン開発者はドメインを宣言しない
- *   （旧 plugin.json fetchDomains は廃止）。https 必須は維持。
+ * 責務（普遍的なポリシー・特定プラグインに依存しない）:
+ * 1. 自分のアセット（pluginBase 配下・CDN でも可）→ fetchDirect（承認不要）。
+ * 2. アプリ本体オリジン（同一オリジン）→ **一律禁止**。コアの /api や認証 cookie を保護するため、
+ *    プラグインはアプリ本体を fetch できない。バックエンドは別ドメインにして #3 を通すこと。
+ * 3. 外部ドメイン → ドメイン単位の on-demand 承認（PermissionProvider.authorizeFetchDomain）。
+ *    ユーザーが許可したドメインのみ通す。開発者はドメインを宣言しない。https 必須は維持。
  *
  * PermissionProvider が無い環境（エディタ Preview 等）では外部 fetch は拒否する。
  */
@@ -39,21 +40,34 @@ export function usePluginFetch(
         const pluginId = definition.id;
         const pluginBase = definition.pluginBase;
 
+        const appOrigin = typeof window === 'undefined' ? undefined : window.location.origin;
+
         return async (url: string, options?: FetchOptions): Promise<FetchResult> => {
-            // 1. プラグイン自身のアセット（pluginBase 配下）は承認不要。
+            // 1. 自分のアセット（pluginBase 配下・CDN でも可）は承認不要。
             const assetUrl = resolvePluginAssetUrl(url, pluginBase);
             if (assetUrl !== null) {
                 return fetchDirect(assetUrl, options);
             }
 
-            // 2. 外部 URL: ドメイン単位でユーザー承認を得る。
-            let hostname: string;
+            // URL を解決（相対はアプリ本体オリジン基準）。
+            let resolved: URL;
             try {
-                hostname = new URL(url).hostname;
+                resolved = new URL(url, appOrigin);
             } catch {
                 return forbidden(UbiErrorCode.FETCH_INVALID_URL, `URL として不正です: ${url}`);
             }
 
+            // 2. アプリ本体オリジンへの fetch は一律禁止（コア /api・認証 cookie を保護）。
+            //    プラグインのバックエンドは別ドメインにして #3 のドメイン承認を通すこと。
+            if (appOrigin && resolved.origin === appOrigin) {
+                return forbidden(
+                    UbiErrorCode.FETCH_DOMAIN_NOT_ALLOWED,
+                    'アプリ本体への通信は許可されていません（プラグインのバックエンドは別ドメインにしてください）',
+                );
+            }
+
+            // 3. 外部ドメイン: ドメイン単位でユーザー承認を得る。
+            const hostname = resolved.hostname;
             if (!authorizeFetchDomain) {
                 // 権限コンテキスト不在（Preview 等）では外部 fetch を許可しない。
                 return forbidden(UbiErrorCode.FETCH_DOMAIN_NOT_ALLOWED, '権限コンテキストが無いため外部通信できません');
@@ -67,7 +81,7 @@ export function usePluginFetch(
                 );
             }
 
-            // 3. 承認済みドメインに限定して実行（https 必須・ホスト名一致は共通ロジックで検査）。
+            // 承認済みドメインに限定して実行（https 必須・ホスト名一致は共通ロジックで検査）。
             return createPluginFetchHandler([hostname])(url, options);
         };
     }, [definition.id, definition.pluginBase, authorizeFetchDomain]);
