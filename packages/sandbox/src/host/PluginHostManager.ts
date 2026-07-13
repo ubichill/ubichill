@@ -18,7 +18,7 @@ import {
     type PluginWorkerMessage,
     UbiErrorCode,
 } from '@ubichill/shared';
-import { buildAllowedCommands, CMD_TO_HANDLER } from './capability';
+import { buildAllowedCommands, CMD_TO_HANDLER, COMMAND_TO_CAPABILITY } from './capability';
 import { type CapabilityGate, createCapabilityGate } from './capabilityGate';
 import { getActiveWorkerCount, getWorker, registerWorker, unregisterWorker } from './PluginRegistry';
 import { isMetricEnabled, reportDiagnostic, reportMetric } from './pluginDiagnostics';
@@ -267,7 +267,15 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
             const message = this._onDemand
                 ? `権限が許可されていません: ${type}`
                 : `未宣言の capability コマンド: ${type}`;
-            reportDiagnostic({ level: 'warn', pluginId: this._pluginId, code: errorCode, message });
+            // 拒否をクリックで許可に変えられるよう、コマンドが属する capability を retry に載せる。
+            const capability = COMMAND_TO_CAPABILITY[type];
+            reportDiagnostic({
+                level: 'warn',
+                pluginId: this._pluginId,
+                code: errorCode,
+                message,
+                ...(this._onDemand && capability ? { retry: { pluginId: this._pluginId, capability } } : {}),
+            });
             if (id) {
                 this.sendEvent({ type: HostEventType.EVT_RPC_RESPONSE, id, success: false, error: message, errorCode });
             }

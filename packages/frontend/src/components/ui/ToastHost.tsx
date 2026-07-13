@@ -59,6 +59,30 @@ export function ToastHost() {
                         })}
                     >
                         <span className={css({ flex: 1, minW: 0, wordBreak: 'break-word' })}>{toast.message}</span>
+                        {toast.action && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    toast.action?.run();
+                                    dismissToast(toast.id);
+                                }}
+                                className={css({
+                                    flexShrink: 0,
+                                    px: '3',
+                                    py: '1',
+                                    borderRadius: '8px',
+                                    border: 'none',
+                                    bg: 'primary',
+                                    color: 'textOnPrimary',
+                                    fontSize: '12px',
+                                    fontWeight: '700',
+                                    cursor: 'pointer',
+                                    _hover: { bg: 'primaryHover' },
+                                })}
+                            >
+                                {toast.action.label}
+                            </button>
+                        )}
                         <button
                             type="button"
                             onClick={() => dismissToast(toast.id)}

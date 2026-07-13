@@ -54,6 +54,10 @@ export interface PermissionContextValue {
     pendingPrompt: PermissionPromptRequest | null;
     /** 表示中プロンプトへのユーザー応答。 */
     resolvePrompt(outcome: PromptOutcome): void;
+    /** capability を許可として記録する（拒否トーストの「許可」ボタン等から。既存の deny を上書き）。 */
+    grantCapability(pluginId: string, capability: string): void;
+    /** fetch ドメインを許可として記録する（拒否トーストの「許可」ボタン等から）。 */
+    grantFetchDomain(pluginId: string, domain: string): void;
     /** ティア既定モードをまとめて置き換える（設定画面のシールドレベル用）。 */
     setTierDefaults(defaults: Record<CapabilityRisk, TierMode>): void;
     /** 記憶済みの capability 判断を取り消す。capability 省略でプラグイン全体。 */
@@ -223,6 +227,29 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
         [showNext],
     );
 
+    const grantCapability = useCallback(
+        (pluginId: string, capability: string) => {
+            setPolicy((prev) => ({
+                ...prev,
+                grants: { ...prev.grants, [pluginId]: { ...(prev.grants[pluginId] ?? {}), [capability]: 'allow' } },
+            }));
+        },
+        [setPolicy],
+    );
+
+    const grantFetchDomain = useCallback(
+        (pluginId: string, domain: string) => {
+            setPolicy((prev) => ({
+                ...prev,
+                fetchGrants: {
+                    ...prev.fetchGrants,
+                    [pluginId]: { ...(prev.fetchGrants[pluginId] ?? {}), [domain]: 'allow' },
+                },
+            }));
+        },
+        [setPolicy],
+    );
+
     const setTierDefaults = useCallback(
         (defaults: Record<CapabilityRisk, TierMode>) => {
             setPolicy((prev) => ({ ...prev, tierDefaults: defaults }));
@@ -274,6 +301,8 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
             authorizeFetchDomain,
             pendingPrompt,
             resolvePrompt,
+            grantCapability,
+            grantFetchDomain,
             setTierDefaults,
             revokeGrant,
             revokeFetchGrant,
@@ -285,6 +314,8 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
             authorizeFetchDomain,
             pendingPrompt,
             resolvePrompt,
+            grantCapability,
+            grantFetchDomain,
             setTierDefaults,
             revokeGrant,
             revokeFetchGrant,

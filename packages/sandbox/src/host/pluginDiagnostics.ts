@@ -29,6 +29,11 @@ export interface PluginDiagnostic {
     code: DiagnosticCode;
     /** 人間可読なメッセージ */
     message: string;
+    /**
+     * 拒否を「クリックで許可」に変えるための再承認情報（UI が「許可」ボタンを出す）。
+     * pluginId は "plugin:component" 形式のことがあるので、消費側で ":" 前に正規化する。
+     */
+    retry?: { pluginId: string; capability: string } | { pluginId: string; domain: string };
 }
 
 /**

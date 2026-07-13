@@ -4,26 +4,13 @@
  * ポリシーは settings 層 (localStorage) で永続化する。@ubichill/react の
  * PermissionProvider は保存に非依存なので、初期値の読み込みと変更時の保存をここで橋渡しする。
  */
-import {
-    DEFAULT_PERMISSION_POLICY,
-    type PermissionPolicy,
-    PermissionProvider,
-    resetDiagnosticHandler,
-    setDiagnosticHandler,
-} from '@ubichill/react';
-import { UbiErrorCode } from '@ubichill/shared';
+import { DEFAULT_PERMISSION_POLICY, type PermissionPolicy, PermissionProvider } from '@ubichill/react';
 import type React from 'react';
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { ToastHost } from '@/components/ui/ToastHost';
 import { readSetting, SETTINGS_KEYS, writeSetting } from '@/lib/settings';
-import { pushToast } from '@/lib/toast';
 import { PermissionPromptModal } from './PermissionPromptModal';
-
-/** ユーザーに見せる価値のある拒否コード（権限系）。 */
-const USER_FACING_DENIAL = new Set<UbiErrorCode>([
-    UbiErrorCode.CAPABILITY_DENIED,
-    UbiErrorCode.FETCH_DOMAIN_NOT_ALLOWED,
-]);
+import { PermissionToastBridge } from './PermissionToastBridge';
 
 /** localStorage から読んだ値が PermissionPolicy の形をしているかの緩い検証。 */
 function isPermissionPolicy(value: unknown): value is PermissionPolicy {
@@ -53,22 +40,12 @@ export const PermissionRoot: React.FC<{ children: React.ReactNode }> = ({ childr
         writeSetting(SETTINGS_KEYS.permissionPolicy, policy);
     }, []);
 
-    // 診断（権限拒否など）を console 出力（既定維持）＋ユーザー向けトーストに橋渡しする。
-    // 拒否が沈黙しないための可視化。
-    useEffect(() => {
-        setDiagnosticHandler(({ level, pluginId, code, message }) => {
-            console[level](`[Plugin:${pluginId}] [${code}] ${message}`);
-            if (USER_FACING_DENIAL.has(code)) {
-                pushToast(message, 'warn');
-            }
-        });
-        return () => resetDiagnosticHandler();
-    }, []);
-
     return (
         <PermissionProvider initialPolicy={initialPolicy} onPolicyChange={handlePolicyChange}>
             {children}
             <PermissionPromptModal />
+            {/* 診断→トースト橋渡し（拒否の可視化＋「許可」ボタン）。Provider 内で許可操作にアクセス。 */}
+            <PermissionToastBridge />
             <ToastHost />
         </PermissionProvider>
     );

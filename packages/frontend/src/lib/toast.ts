@@ -8,10 +8,17 @@
 
 export type ToastLevel = 'info' | 'warn' | 'error';
 
+/** トーストに付けられる操作ボタン（例: 拒否を「許可」に変える）。 */
+export interface ToastAction {
+    label: string;
+    run: () => void;
+}
+
 export interface ToastItem {
     id: number;
     message: string;
     level: ToastLevel;
+    action?: ToastAction;
 }
 
 const AUTO_DISMISS_MS = 5000;
@@ -43,13 +50,13 @@ export function dismissToast(id: number): void {
     emit();
 }
 
-export function pushToast(message: string, level: ToastLevel = 'info'): void {
+export function pushToast(message: string, level: ToastLevel = 'info', action?: ToastAction): void {
     const now = Date.now();
     const last = _recent.get(message) ?? 0;
     if (now - last < DEDUP_MS) return; // 直近の同一メッセージは抑制
     _recent.set(message, now);
 
-    const item: ToastItem = { id: _seq++, message, level };
+    const item: ToastItem = { id: _seq++, message, level, action };
     _toasts = [..._toasts, item];
     emit();
     setTimeout(() => dismissToast(item.id), AUTO_DISMISS_MS);

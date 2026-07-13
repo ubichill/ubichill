@@ -135,6 +135,37 @@ describe('authorizeFetchDomain（ドメイン単位・今回だけ/次回以降/
     });
 });
 
+describe('grantCapability / grantFetchDomain（拒否トーストの「許可」ボタン用）', () => {
+    it('拒否済み capability を許可に上書きできる', async () => {
+        const ctx = setup();
+        // まず拒否
+        let done: Promise<void> = Promise.resolve();
+        act(() => {
+            done = ctx.current.authorizePlugin('p', ['mystery:power']);
+        });
+        act(() => ctx.current.resolvePrompt('deny'));
+        await act(async () => {
+            await done;
+        });
+        expect(ctx.current.authorizeCapability('p', 'mystery:power')).toBe(false);
+        // 「許可」で上書き
+        act(() => ctx.current.grantCapability('p', 'mystery:power'));
+        expect(ctx.current.authorizeCapability('p', 'mystery:power')).toBe(true);
+    });
+
+    it('拒否済み fetch ドメインを許可に上書きできる', async () => {
+        const ctx = setup();
+        let p: boolean | Promise<boolean> = true;
+        act(() => {
+            p = ctx.current.authorizeFetchDomain('vp', 'api.example.com');
+        });
+        act(() => ctx.current.resolvePrompt('deny'));
+        await expect(p).resolves.toBe(false);
+        act(() => ctx.current.grantFetchDomain('vp', 'api.example.com'));
+        expect(ctx.current.authorizeFetchDomain('vp', 'api.example.com')).toBe(true);
+    });
+});
+
 describe('取り消し', () => {
     it('revokeGrant / revokeFetchGrant で記憶を消せる', async () => {
         const onChange = vi.fn();

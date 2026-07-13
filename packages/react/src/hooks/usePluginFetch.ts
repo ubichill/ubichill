@@ -47,8 +47,15 @@ export function usePluginFetch(
         const appOrigin = typeof window === 'undefined' ? undefined : window.location.origin;
 
         // 拒否は必ず診断に出す（console.warn 既定 + UI ハンドラでトースト化）。沈黙させない。
-        const deny = (code: UbiErrorCode, message: string): FetchResult => {
-            reportDiagnostic({ level: 'warn', pluginId, code, message });
+        // domain を渡すと拒否トーストに「許可」ボタン（クリックでそのドメインを許可）が付く。
+        const deny = (code: UbiErrorCode, message: string, domain?: string): FetchResult => {
+            reportDiagnostic({
+                level: 'warn',
+                pluginId,
+                code,
+                message,
+                ...(domain ? { retry: { pluginId, domain } } : {}),
+            });
             return forbidden(code, message);
         };
 
@@ -86,7 +93,11 @@ export function usePluginFetch(
 
             const allowed = await authorizeFetchDomain(pluginId, hostname);
             if (!allowed) {
-                return deny(UbiErrorCode.FETCH_DOMAIN_NOT_ALLOWED, `ユーザーが ${hostname} への通信を許可していません`);
+                return deny(
+                    UbiErrorCode.FETCH_DOMAIN_NOT_ALLOWED,
+                    `ユーザーが ${hostname} への通信を許可していません`,
+                    hostname,
+                );
             }
 
             // 承認済み: 承認したホスト名そのものに完全一致・https 必須で実行（suffix マッチはしない）。
