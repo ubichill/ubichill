@@ -57,9 +57,10 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
         [permissions, pluginId],
     );
 
-    // 読み込み時に要求 capability をまとめて承認してもらい、**承認が済むまで Worker を実行しない**。
+    // 読み込み時に要求 capability をまとめて承認してもらい、**決定が済むまで Worker を実行しない**。
     // ダウンロード済みコードは保持されるが、実行（Worker 生成）は enabled=true になってから。
-    // Provider 不在（エディタ Preview 等）は即実行。拒否されたら実行しない。
+    // 決定後は許可/拒否どちらでも実行する（拒否した権限は実行時ゲートが個別に拒否）。
+    // Provider 不在（エディタ Preview 等）は即実行。
     const authorizePlugin = permissions?.authorizePlugin;
     const declaredCapabilities = definition.capabilities;
     const [enabled, setEnabled] = useState(false);
@@ -70,8 +71,8 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
         }
         let cancelled = false;
         setEnabled(false);
-        authorizePlugin(pluginId, declaredCapabilities ?? []).then((proceed) => {
-            if (!cancelled) setEnabled(proceed);
+        authorizePlugin(pluginId, declaredCapabilities ?? []).then(() => {
+            if (!cancelled) setEnabled(true); // 決定後は許可/拒否とも実行
         });
         return () => {
             cancelled = true;

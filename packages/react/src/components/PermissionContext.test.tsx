@@ -40,7 +40,7 @@ describe('authorizePlugin（読み込み時の一括承認）', () => {
 
     it('承認が要る capability をまとめて 1 プロンプトに提示し、許可で全て grant する', async () => {
         const ctx = setup();
-        let done: Promise<boolean> = Promise.resolve(true);
+        let done: Promise<void> = Promise.resolve();
         act(() => {
             done = ctx.current.authorizePlugin('p', ['scene:read', 'mystery:power', 'other:danger']);
         });
@@ -64,7 +64,7 @@ describe('authorizePlugin（読み込み時の一括承認）', () => {
 
     it('拒否すると全て deny として記憶される', async () => {
         const ctx = setup();
-        let done: Promise<boolean> = Promise.resolve(true);
+        let done: Promise<void> = Promise.resolve();
         act(() => {
             done = ctx.current.authorizePlugin('p', ['mystery:power']);
         });

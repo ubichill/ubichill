@@ -40,11 +40,12 @@ export interface PermissionContextValue {
     authorizeCapability(pluginId: string, capability: string): boolean;
     /**
      * プラグイン読み込み時に、要求 capability のうち承認が要るものを 1 つのダイアログで一括承認する。
-     * 承認が不要（safe/sensitive 既定許可・既決）なら即 true で解決する。
-     * @returns プラグインを実行してよいか（true=許可 or 承認不要 / false=ユーザーが拒否）。
-     *   呼び出し側はこれで Worker の実行開始を判断する（拒否なら実行しない）。
+     * 承認が不要（safe/sensitive 既定許可・既決）なら即解決する。
+     * **ユーザーが決定した時点で解決する**（許可でも拒否でも）。呼び出し側はこれを待って Worker の
+     * 実行を開始する（＝確認前は実行しない。拒否した権限は実行時ゲートが個別に拒否するだけで、
+     * プラグイン自体は決定後に動く）。
      */
-    authorizePlugin(pluginId: string, capabilities: readonly string[]): Promise<boolean>;
+    authorizePlugin(pluginId: string, capabilities: readonly string[]): Promise<void>;
     /**
      * fetch 先ドメインの承認。ask のときはドメインごとにプロンプト（今回だけ/次回以降も許可/拒否）。
      */
@@ -80,7 +81,7 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
     onPolicyChangeRef.current = onPolicyChange;
 
     const queueRef = useRef<PromptItem[]>([]);
-    const inFlightPluginRef = useRef(new Map<string, Promise<boolean>>());
+    const inFlightPluginRef = useRef(new Map<string, Promise<void>>());
     const inFlightFetchRef = useRef(new Map<string, Promise<boolean>>());
     const [pendingPrompt, setPendingPrompt] = useState<PermissionPromptRequest | null>(null);
 
@@ -117,9 +118,9 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
         return current.tierDefaults[getCapabilityRisk(capability)] === 'allow';
     }, []);
 
-    // 読み込み時の一括承認。実行してよいか（proceed）を返す。
+    // 読み込み時の一括承認。ユーザーが決定した時点で解決する（許可でも拒否でも）。
     const authorizePlugin = useCallback(
-        (pluginId: string, capabilities: readonly string[]): Promise<boolean> => {
+        (pluginId: string, capabilities: readonly string[]): Promise<void> => {
             const current = policyRef.current;
             const pluginGrants = current.grants[pluginId] ?? {};
             // 承認が必要 = fetch 以外・未決・ティアが ask のもの。
@@ -127,20 +128,20 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
                 (cap) =>
                     cap !== 'net:fetch' && !pluginGrants[cap] && current.tierDefaults[getCapabilityRisk(cap)] === 'ask',
             );
-            if (pending.length === 0) return Promise.resolve(true); // 承認不要 → 実行してよい
+            if (pending.length === 0) return Promise.resolve(); // 承認不要 → 即実行可
 
             const key = `plugin::${pluginId}`;
             const existing = inFlightPluginRef.current.get(key);
             if (existing) return existing;
 
-            const promise = new Promise<boolean>((resolve) => {
+            const promise = new Promise<void>((resolve) => {
                 queueRef.current.push({
                     kind: 'plugin',
                     pluginId,
                     capabilities: pending.map((cap) => ({ capability: cap, risk: getCapabilityRisk(cap) })),
                     resolve: (outcome) => {
-                        const allowed = outcome === 'allow';
-                        const decision: PermissionDecision = allowed ? 'allow' : 'deny';
+                        // 拒否した権限は実行時ゲートが個別に拒否する。プラグイン自体は決定後に動く。
+                        const decision: PermissionDecision = outcome === 'allow' ? 'allow' : 'deny';
                         setPolicy((prev) => ({
                             ...prev,
                             grants: {
@@ -151,7 +152,7 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
                                 },
                             },
                         }));
-                        resolve(allowed); // 許可なら実行、拒否なら実行しない
+                        resolve();
                     },
                 });
                 if (queueRef.current.length === 1) showNext();
