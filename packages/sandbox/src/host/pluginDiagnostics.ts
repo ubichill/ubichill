@@ -61,9 +61,29 @@ export function resetDiagnosticHandler(): void {
     _diagnosticHandler = _defaultDiagnosticHandler;
 }
 
-/** PluginHostManager 内部から呼ぶ診断レポート関数 */
+/**
+ * 同一診断（pluginId+code+message）の連投を抑制する窓 (ms)。
+ * 拒否コマンドを毎フレーム送るプラグインで console/トーストが洪水になるのを防ぐ。
+ */
+const DIAGNOSTIC_THROTTLE_MS = 3000;
+const _recentDiagnostics = new Map<string, number>();
+
+/** PluginHostManager 内部から呼ぶ診断レポート関数（同一診断はレート制限する）。 */
 export function reportDiagnostic(diagnostic: PluginDiagnostic): void {
+    const key = `${diagnostic.pluginId}:${diagnostic.code}:${diagnostic.message}`;
+    const now = Date.now();
+    const last = _recentDiagnostics.get(key);
+    if (last !== undefined && now - last < DIAGNOSTIC_THROTTLE_MS) return; // 直近に同一診断あり → 抑制
+
+    // Map の無制限成長を防ぐ（distinct メッセージ数は少ないが念のため）。
+    if (_recentDiagnostics.size > 200) _recentDiagnostics.clear();
+    _recentDiagnostics.set(key, now);
     _diagnosticHandler(diagnostic);
+}
+
+/** テスト用: レート制限の記録をリセットする。 */
+export function resetDiagnosticThrottleForTests(): void {
+    _recentDiagnostics.clear();
 }
 
 // ============================================================

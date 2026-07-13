@@ -101,6 +101,11 @@ export type UsePluginWorkerOptions<TPayloadMap extends Record<string, unknown> =
     'handlers'
 > & {
     handlers?: PluginWorkerHandlers<TPayloadMap>;
+    /**
+     * false の間は Worker を生成・実行しない（コードのダウンロードは済んでいても実行しない）。
+     * 権限承認が済むまで実行を遅延させるために使う。既定 true。
+     */
+    enabled?: boolean;
 };
 
 export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Record<string, unknown>>(
@@ -136,6 +141,9 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
     });
 
     useEffect(() => {
+        // enabled=false の間は実行しない（承認待ち等）。ダウンロード済みコードは pluginCode に
+        // 保持されているだけで、Worker 生成＝実行はここでしか起きない。
+        if (options.enabled === false) return;
         const manager = new PluginHostManager<TPayloadMap>({
             pluginCode: options.pluginCode,
             pluginId: options.pluginId,
@@ -208,6 +216,7 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
             managerRef.current = null;
         };
     }, [
+        options.enabled,
         options.pluginCode,
         options.pluginId,
         options.componentInstanceId,

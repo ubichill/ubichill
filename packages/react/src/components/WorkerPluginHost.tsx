@@ -10,7 +10,7 @@
 import { routeEmit } from '@ubichill/sandbox';
 import type { ComponentInstance } from '@ubichill/shared';
 import type React from 'react';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { editorSchemaRegistry } from '../editorSchemaRegistry';
 import { usePluginBroadcast } from '../hooks/usePluginBroadcast';
 import { usePluginCanvas } from '../hooks/usePluginCanvas';
@@ -57,12 +57,25 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
         [permissions, pluginId],
     );
 
-    // 読み込み時に、このプラグインの要求 capability をまとめて承認してもらう（実行時ではなく）。
-    // 承認が不要なら即解決し何も表示しない。承認結果は grant に記憶され実行時ゲートが読む。
+    // 読み込み時に要求 capability をまとめて承認してもらい、**承認が済むまで Worker を実行しない**。
+    // ダウンロード済みコードは保持されるが、実行（Worker 生成）は enabled=true になってから。
+    // Provider 不在（エディタ Preview 等）は即実行。拒否されたら実行しない。
     const authorizePlugin = permissions?.authorizePlugin;
     const declaredCapabilities = definition.capabilities;
+    const [enabled, setEnabled] = useState(false);
     useEffect(() => {
-        void authorizePlugin?.(pluginId, declaredCapabilities ?? []);
+        if (!authorizePlugin) {
+            setEnabled(true);
+            return;
+        }
+        let cancelled = false;
+        setEnabled(false);
+        authorizePlugin(pluginId, declaredCapabilities ?? []).then((proceed) => {
+            if (!cancelled) setEnabled(proceed);
+        });
+        return () => {
+            cancelled = true;
+        };
     }, [authorizePlugin, pluginId, declaredCapabilities]);
     const hostDivRef = useRef<HTMLDivElement>(null);
     const workerLoading = useWorkerLoading();
@@ -71,12 +84,14 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
     const workerRegistrationRef = useRef<{ markReady: () => void; unregister: () => void } | null>(null);
 
     useEffect(() => {
-        if (workerLoading) {
+        // 実行が始まる（enabled）ときだけロード対象に数える。承認待ち/拒否のプラグインで
+        // ワールドのロード表示がハングしないようにする。
+        if (workerLoading && enabled) {
             const reg = workerLoading.registerWorker();
             workerRegistrationRef.current = reg;
             return () => reg.unregister();
         }
-    }, [workerLoading]);
+    }, [workerLoading, enabled]);
 
     const updatePositionRef = useRef(updatePosition);
     const updateUserRef = useRef(updateUser);
@@ -132,6 +147,7 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
         componentType: entity.type,
         capabilities: definition.capabilities,
         authorizeCapability,
+        enabled,
         myUserId: currentUser?.id,
         pluginBase: definition.pluginBase,
         watchEntityTypes: definition.watchEntityTypes,
