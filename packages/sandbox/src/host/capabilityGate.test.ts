@@ -46,52 +46,32 @@ describe('createCapabilityGate — on-demand モード', () => {
         expect(authorize).not.toHaveBeenCalled();
     });
 
-    it('コマンドの属する capability をコールバックに問い合わせる', async () => {
+    it('コマンドの属する capability をコールバックに問い合わせ、結果をそのまま返す', () => {
         const authorize = vi.fn((cap: string) => cap === 'net:fetch');
         const gate = createCapabilityGate({ authorizeCapability: authorize });
-        await expect(gate.authorize('NET_FETCH')).resolves.toBe(true);
+        expect(gate.authorize('NET_FETCH')).toBe(true);
         expect(authorize).toHaveBeenCalledWith('net:fetch');
     });
 
-    it('拒否された capability のコマンドは false になる', async () => {
+    it('拒否された capability のコマンドは false になる', () => {
         const gate = createCapabilityGate({ authorizeCapability: () => false });
-        await expect(gate.authorize('NET_FETCH')).resolves.toBe(false);
+        expect(gate.authorize('NET_FETCH')).toBe(false);
     });
 
-    it('同じ capability は一度だけ問い合わせ、結果をキャッシュする（二重プロンプト防止）', async () => {
-        const authorize = vi.fn(() => true);
-        const gate = createCapabilityGate({ authorizeCapability: authorize });
-        // 同 capability に属する 2 コマンド（video:control）を連続で
-        await Promise.all([gate.authorize('MEDIA_PLAY'), gate.authorize('MEDIA_PAUSE')]);
-        await gate.authorize('MEDIA_SEEK');
-        expect(authorize).toHaveBeenCalledTimes(1);
+    it('キャッシュせず毎回評価する（承認が deny→allow に変われば次は許可される）', () => {
+        let granted = false;
+        const gate = createCapabilityGate({ authorizeCapability: () => granted });
+        expect(gate.authorize('SCENE_UPDATE_ENTITY')).toBe(false); // 承認前
+        granted = true; // 読み込み時の一括承認で許可された想定
+        expect(gate.authorize('SCENE_UPDATE_ENTITY')).toBe(true); // キャッシュされていないので反映
     });
 
-    it('承認待ち中に来た同 capability の複数コマンドは 1 本のプロンプトに集約される', async () => {
-        let resolveConsent: (v: boolean) => void = () => {};
-        const authorize = vi.fn(
-            () =>
-                new Promise<boolean>((resolve) => {
-                    resolveConsent = resolve;
-                }),
-        );
-        const gate = createCapabilityGate({ authorizeCapability: authorize });
-        const p1 = gate.authorize('MEDIA_PLAY');
-        const p2 = gate.authorize('MEDIA_PAUSE');
-        // authorize はマイクロタスク遅延で呼ばれるため一度フラッシュしてから検証する
-        await new Promise((r) => setTimeout(r, 0));
-        expect(authorize).toHaveBeenCalledTimes(1); // 2 コマンド来ても問い合わせは 1 回だけ
-        resolveConsent(true);
-        await expect(Promise.all([p1, p2])).resolves.toEqual([true, true]);
-        expect(authorize).toHaveBeenCalledTimes(1);
-    });
-
-    it('コールバックが throw したら安全側（拒否）に倒す', async () => {
+    it('コールバックが throw したら安全側（拒否）に倒す', () => {
         const gate = createCapabilityGate({
             authorizeCapability: () => {
                 throw new Error('boom');
             },
         });
-        await expect(gate.authorize('NET_FETCH')).resolves.toBe(false);
+        expect(gate.authorize('NET_FETCH')).toBe(false);
     });
 });

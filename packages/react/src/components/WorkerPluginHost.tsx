@@ -56,6 +56,14 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
         () => (permissions ? (capability: string) => permissions.authorizeCapability(pluginId, capability) : undefined),
         [permissions, pluginId],
     );
+
+    // 読み込み時に、このプラグインの要求 capability をまとめて承認してもらう（実行時ではなく）。
+    // 承認が不要なら即解決し何も表示しない。承認結果は grant に記憶され実行時ゲートが読む。
+    const authorizePlugin = permissions?.authorizePlugin;
+    const declaredCapabilities = definition.capabilities;
+    useEffect(() => {
+        void authorizePlugin?.(pluginId, declaredCapabilities ?? []);
+    }, [authorizePlugin, pluginId, declaredCapabilities]);
     const hostDivRef = useRef<HTMLDivElement>(null);
     const workerLoading = useWorkerLoading();
 

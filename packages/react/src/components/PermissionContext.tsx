@@ -1,18 +1,15 @@
 /**
- * PermissionContext — プラグイン権限の on-demand 承認をユーザー側で司るコンテキスト。
+ * PermissionContext — プラグイン権限をユーザー側で司るコンテキスト。
  *
- * 責務:
- *  - ユーザー所有の権限ポリシー (PermissionPolicy) を保持する。
- *  - `authorizeCapability(pluginId, capability)` … capability 単位の on-demand 承認。
- *    PluginHostManager のゲートから呼ばれる。safe/sensitive は既定で許可、dangerous(ask) は
- *    承認プロンプトをキューして待つ。決定は grants に記憶し次回から無音にする。
- *  - `authorizeFetchDomain(pluginId, domain)` … fetch は「どのドメインへ通信するか」が本質的な
- *    リスクなので capability ではなくドメイン単位で承認する。dangerous ティアの既定
- *    （シールドレベル）に従い、ask ならドメインごとにプロンプトして fetchGrants に記憶する。
- *  - `pendingPrompt` / `resolvePrompt` で UI 層（PandaCSS モーダル）とやり取りする。
+ * 同意モデル:
+ *  - **capability は「プラグイン読み込み時」に一括承認**（`authorizePlugin`）。実行時ではないので
+ *    描画のような高頻度コマンドが承認待ちで保留＝RPC タイムアウトになることが無い。
+ *  - 実行時ゲート（`authorizeCapability`）は**プロンプトを出さず即時に許可判定だけ**する
+ *    （読み込み時に確定済みの grant / ティア既定を読むだけ）。
+ *  - **fetch はドメイン単位で on-demand 承認**（`authorizeFetchDomain`）。ドメインは読み込み時に
+ *    不明なため。プロンプトは「今回だけ / 次回以降も許可 / 拒否」の 3 択（Claude Code 風）。
  *
- * 保存 (localStorage 等) はこのパッケージの責務外。`initialPolicy` で初期値を受け取り、
- * `onPolicyChange` で変更を通知するので、consumer (frontend) が settings 層で永続化する。
+ * 保存はこのパッケージの責務外。`initialPolicy` / `onPolicyChange` で consumer が永続化する。
  */
 import {
     type CapabilityRisk,
@@ -25,46 +22,50 @@ import {
 import type React from 'react';
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 
-/** 承認プロンプト 1 件の要求内容（UI が表示する）。 */
+/** 承認プロンプト。プラグイン一括（capability 群）と fetch ドメインの 2 種。 */
 export type PermissionPromptRequest =
-    | { kind: 'capability'; pluginId: string; capability: string }
+    | { kind: 'plugin'; pluginId: string; capabilities: { capability: string; risk: CapabilityRisk }[] }
     | { kind: 'fetch'; pluginId: string; domain: string };
+
+/** プロンプトへのユーザー応答。plugin は allow/deny、fetch は once/always/deny。 */
+export type PromptOutcome = 'allow' | 'deny' | 'once' | 'always';
 
 export interface PermissionContextValue {
     /** 現在のポリシー（設定画面が参照）。 */
     policy: PermissionPolicy;
     /**
-     * capability を認可してよいか判定する。PluginHostManager の on-demand ゲートに渡す。
-     * ask のときは承認プロンプトを出し、ユーザー応答まで解決しない Promise を返す。
-     * `net:fetch` は常に true（fetch の承認はドメイン単位で authorizeFetchDomain が行う）。
+     * 実行時ゲート用の即時判定（プロンプトを出さない）。
+     * net:fetch は常に true（fetch はドメイン単位で別途承認）。ask 未決や deny は false。
      */
-    authorizeCapability(pluginId: string, capability: string): boolean | Promise<boolean>;
+    authorizeCapability(pluginId: string, capability: string): boolean;
     /**
-     * fetch 先ドメインを認可してよいか判定する。dangerous ティアの既定（シールドレベル）に従い、
-     * ask ならドメインごとに承認プロンプトを出す。決定は fetchGrants に記憶する。
+     * プラグイン読み込み時に、要求 capability のうち承認が要るものを 1 つのダイアログで一括承認する。
+     * 承認が不要（safe/sensitive 既定許可・既決）なら即解決する。
+     */
+    authorizePlugin(pluginId: string, capabilities: readonly string[]): Promise<void>;
+    /**
+     * fetch 先ドメインの承認。ask のときはドメインごとにプロンプト（今回だけ/次回以降も許可/拒否）。
      */
     authorizeFetchDomain(pluginId: string, domain: string): boolean | Promise<boolean>;
     /** 表示中の承認プロンプト（null = 無し）。UI が読む。 */
     pendingPrompt: PermissionPromptRequest | null;
-    /** 表示中プロンプトへのユーザー応答。UI が呼ぶ。 */
-    resolvePrompt(decision: PermissionDecision): void;
+    /** 表示中プロンプトへのユーザー応答。 */
+    resolvePrompt(outcome: PromptOutcome): void;
     /** ティア既定モードをまとめて置き換える（設定画面のシールドレベル用）。 */
     setTierDefaults(defaults: Record<CapabilityRisk, TierMode>): void;
-    /** 記憶済みの capability 判断を取り消す（設定画面用）。capability 省略でプラグイン全体。 */
+    /** 記憶済みの capability 判断を取り消す。capability 省略でプラグイン全体。 */
     revokeGrant(pluginId: string, capability?: string): void;
-    /** 記憶済みの fetch ドメイン判断を取り消す（設定画面用）。domain 省略でプラグイン全体。 */
+    /** 記憶済みの fetch ドメイン判断を取り消す。domain 省略でプラグイン全体。 */
     revokeFetchGrant(pluginId: string, domain?: string): void;
 }
 
-type PromptItem = PermissionPromptRequest & { resolve(allow: boolean): void };
+type PromptItem = PermissionPromptRequest & { resolve(outcome: PromptOutcome): void };
 
 const PermissionContext = createContext<PermissionContextValue | null>(null);
 
 export interface PermissionProviderProps {
     children: React.ReactNode;
-    /** 永続化された初期ポリシー（無ければ既定）。 */
     initialPolicy?: PermissionPolicy;
-    /** ポリシー変更時に呼ばれる（consumer が永続化する）。 */
     onPolicyChange?: (policy: PermissionPolicy) => void;
 }
 
@@ -76,9 +77,9 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
     const onPolicyChangeRef = useRef(onPolicyChange);
     onPolicyChangeRef.current = onPolicyChange;
 
-    // 承認待ちキュー（1 件ずつ表示）と、同一要求の同時発生を束ねる in-flight マップ。
     const queueRef = useRef<PromptItem[]>([]);
-    const inFlightRef = useRef(new Map<string, Promise<boolean>>());
+    const inFlightPluginRef = useRef(new Map<string, Promise<void>>());
+    const inFlightFetchRef = useRef(new Map<string, Promise<boolean>>());
     const [pendingPrompt, setPendingPrompt] = useState<PermissionPromptRequest | null>(null);
 
     const showNext = useCallback(() => {
@@ -88,8 +89,8 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
             return;
         }
         setPendingPrompt(
-            next.kind === 'capability'
-                ? { kind: 'capability', pluginId: next.pluginId, capability: next.capability }
+            next.kind === 'plugin'
+                ? { kind: 'plugin', pluginId: next.pluginId, capabilities: next.capabilities }
                 : { kind: 'fetch', pluginId: next.pluginId, domain: next.domain },
         );
     }, []);
@@ -103,58 +104,60 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
         });
     }, []);
 
-    /** プロンプトをキューに積み、応答を待つ Promise を返す（同一 key は 1 本に集約）。 */
-    const enqueuePrompt = useCallback(
-        (key: string, request: PermissionPromptRequest, onDecide: (allow: boolean) => void): Promise<boolean> => {
-            const existing = inFlightRef.current.get(key);
+    // 実行時ゲート: プロンプトを出さず即時判定のみ。
+    const authorizeCapability = useCallback((pluginId: string, capability: string): boolean => {
+        if (capability === 'net:fetch') return true; // fetch はドメイン単位で別途承認
+        const current = policyRef.current;
+        const recorded = current.grants[pluginId]?.[capability];
+        if (recorded === 'allow') return true;
+        if (recorded === 'deny') return false;
+        // ask 未決 / deny は false（承認は読み込み時の authorizePlugin で確定する）
+        return current.tierDefaults[getCapabilityRisk(capability)] === 'allow';
+    }, []);
+
+    // 読み込み時の一括承認。
+    const authorizePlugin = useCallback(
+        (pluginId: string, capabilities: readonly string[]): Promise<void> => {
+            const current = policyRef.current;
+            const pluginGrants = current.grants[pluginId] ?? {};
+            // 承認が必要 = fetch 以外・未決・ティアが ask のもの。
+            const pending = [...new Set(capabilities)].filter(
+                (cap) =>
+                    cap !== 'net:fetch' && !pluginGrants[cap] && current.tierDefaults[getCapabilityRisk(cap)] === 'ask',
+            );
+            if (pending.length === 0) return Promise.resolve();
+
+            const key = `plugin::${pluginId}`;
+            const existing = inFlightPluginRef.current.get(key);
             if (existing) return existing;
 
-            const promise = new Promise<boolean>((resolve) => {
+            const promise = new Promise<void>((resolve) => {
                 queueRef.current.push({
-                    ...request,
-                    resolve: (allow) => {
-                        onDecide(allow);
-                        resolve(allow);
+                    kind: 'plugin',
+                    pluginId,
+                    capabilities: pending.map((cap) => ({ capability: cap, risk: getCapabilityRisk(cap) })),
+                    resolve: (outcome) => {
+                        const decision: PermissionDecision = outcome === 'allow' ? 'allow' : 'deny';
+                        setPolicy((prev) => ({
+                            ...prev,
+                            grants: {
+                                ...prev.grants,
+                                [pluginId]: {
+                                    ...(prev.grants[pluginId] ?? {}),
+                                    ...Object.fromEntries(pending.map((cap) => [cap, decision])),
+                                },
+                            },
+                        }));
+                        resolve();
                     },
                 });
                 if (queueRef.current.length === 1) showNext();
-            }).finally(() => inFlightRef.current.delete(key));
+            }).finally(() => inFlightPluginRef.current.delete(key));
 
-            inFlightRef.current.set(key, promise);
+            inFlightPluginRef.current.set(key, promise);
             return promise;
         },
-        [showNext],
-    );
-
-    const authorizeCapability = useCallback(
-        (pluginId: string, capability: string): boolean | Promise<boolean> => {
-            // fetch は capability ではなくドメイン単位で承認する（authorizeFetchDomain）。
-            // よって net:fetch は capability ゲートを常に通す。
-            if (capability === 'net:fetch') return true;
-
-            const current = policyRef.current;
-            const recorded = current.grants[pluginId]?.[capability];
-            if (recorded === 'allow') return true;
-            if (recorded === 'deny') return false;
-
-            const mode = current.tierDefaults[getCapabilityRisk(capability)];
-            if (mode === 'allow') return true;
-            if (mode === 'deny') return false;
-
-            return enqueuePrompt(
-                `cap::${pluginId}::${capability}`,
-                { kind: 'capability', pluginId, capability },
-                (allow) =>
-                    setPolicy((prev) => ({
-                        ...prev,
-                        grants: {
-                            ...prev.grants,
-                            [pluginId]: { ...(prev.grants[pluginId] ?? {}), [capability]: allow ? 'allow' : 'deny' },
-                        },
-                    })),
-            );
-        },
-        [enqueuePrompt, setPolicy],
+        [setPolicy, showNext],
     );
 
     const authorizeFetchDomain = useCallback(
@@ -164,28 +167,53 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
             if (recorded === 'allow') return true;
             if (recorded === 'deny') return false;
 
-            // fetch の危険度は dangerous ティア（シールドレベル）で決まる。
             const mode = current.tierDefaults[getCapabilityRisk('net:fetch')];
             if (mode === 'allow') return true; // シールド「なし」
             if (mode === 'deny') return false; // シールド「拒否」
 
-            return enqueuePrompt(`fetch::${pluginId}::${domain}`, { kind: 'fetch', pluginId, domain }, (allow) =>
+            const key = `${pluginId}::${domain}`;
+            const existing = inFlightFetchRef.current.get(key);
+            if (existing) return existing;
+
+            const persist = (d: PermissionDecision) =>
                 setPolicy((prev) => ({
                     ...prev,
                     fetchGrants: {
                         ...prev.fetchGrants,
-                        [pluginId]: { ...(prev.fetchGrants[pluginId] ?? {}), [domain]: allow ? 'allow' : 'deny' },
+                        [pluginId]: { ...(prev.fetchGrants[pluginId] ?? {}), [domain]: d },
                     },
-                })),
-            );
+                }));
+
+            const promise = new Promise<boolean>((resolve) => {
+                queueRef.current.push({
+                    kind: 'fetch',
+                    pluginId,
+                    domain,
+                    resolve: (outcome) => {
+                        if (outcome === 'always') {
+                            persist('allow');
+                            resolve(true);
+                        } else if (outcome === 'deny') {
+                            persist('deny');
+                            resolve(false);
+                        } else {
+                            resolve(true); // 'once' / 'allow' → 今回だけ許可（記憶しない）
+                        }
+                    },
+                });
+                if (queueRef.current.length === 1) showNext();
+            }).finally(() => inFlightFetchRef.current.delete(key));
+
+            inFlightFetchRef.current.set(key, promise);
+            return promise;
         },
-        [enqueuePrompt, setPolicy],
+        [setPolicy, showNext],
     );
 
     const resolvePrompt = useCallback(
-        (decision: PermissionDecision) => {
+        (outcome: PromptOutcome) => {
             const item = queueRef.current.shift();
-            item?.resolve(decision === 'allow');
+            item?.resolve(outcome);
             showNext();
         },
         [showNext],
@@ -238,6 +266,7 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
         () => ({
             policy,
             authorizeCapability,
+            authorizePlugin,
             authorizeFetchDomain,
             pendingPrompt,
             resolvePrompt,
@@ -248,6 +277,7 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
         [
             policy,
             authorizeCapability,
+            authorizePlugin,
             authorizeFetchDomain,
             pendingPrompt,
             resolvePrompt,
@@ -261,7 +291,7 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
 };
 
 /**
- * 権限コンテキストを取得する。Provider が無い環境（例: エディタ Preview）では null を返し、
+ * 権限コンテキストを取得する。Provider が無い環境（エディタ Preview 等）では null を返し、
  * その場合 WorkerPluginHost は on-demand を使わず宣言 capability の静的判定にフォールバックする。
  */
 export function useUbiPermissions(): PermissionContextValue | null {

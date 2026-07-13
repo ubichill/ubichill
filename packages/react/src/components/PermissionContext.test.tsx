@@ -14,179 +14,152 @@ function setup(onPolicyChange?: (p: PermissionPolicy) => void) {
     return result as { current: NonNullable<typeof result.current> };
 }
 
-describe('authorizeCapability', () => {
-    it('safe / sensitive は既定で同期的に許可し、プロンプトを出さない', () => {
+describe('authorizeCapability（実行時ゲート・プロンプトを出さない）', () => {
+    it('safe / sensitive は既定で許可、net:fetch は常に許可', () => {
         const ctx = setup();
-        expect(ctx.current.authorizeCapability('plugin-a', 'scene:read')).toBe(true);
-        expect(ctx.current.authorizeCapability('plugin-a', 'scene:update')).toBe(true);
-        expect(ctx.current.pendingPrompt).toBeNull();
+        expect(ctx.current.authorizeCapability('p', 'scene:read')).toBe(true); // safe
+        expect(ctx.current.authorizeCapability('p', 'scene:update')).toBe(true); // sensitive(既定allow)
+        expect(ctx.current.authorizeCapability('p', 'net:fetch')).toBe(true); // ドメイン側で判定
+        expect(ctx.current.pendingPrompt).toBeNull(); // 一切プロンプトを出さない
     });
 
-    it('net:fetch は capability レベルでは常に許可（承認はドメイン単位）', () => {
+    it('ask 未決の危険 capability は false（承認は authorizePlugin で確定）', () => {
         const ctx = setup();
-        expect(ctx.current.authorizeCapability('plugin-a', 'net:fetch')).toBe(true);
-        expect(ctx.current.pendingPrompt).toBeNull();
-    });
-
-    it('危険な capability（未知含む）は承認プロンプトを出し、許可するまで解決しない', async () => {
-        const onChange = vi.fn();
-        const ctx = setup(onChange);
-
-        let promise: boolean | Promise<boolean> = false;
-        act(() => {
-            promise = ctx.current.authorizeCapability('plugin-a', 'mystery:power'); // 未知 → dangerous
-        });
-        expect(ctx.current.pendingPrompt).toEqual({
-            kind: 'capability',
-            pluginId: 'plugin-a',
-            capability: 'mystery:power',
-        });
-
-        act(() => {
-            ctx.current.resolvePrompt('allow');
-        });
-        await expect(promise).resolves.toBe(true);
-        expect(ctx.current.pendingPrompt).toBeNull();
-        expect(onChange).toHaveBeenCalled();
-        // 記憶され再プロンプトなし
-        expect(ctx.current.authorizeCapability('plugin-a', 'mystery:power')).toBe(true);
-    });
-
-    it('拒否すると false を返し記憶される', async () => {
-        const ctx = setup();
-        let promise: boolean | Promise<boolean> = true;
-        act(() => {
-            promise = ctx.current.authorizeCapability('plugin-a', 'mystery:power');
-        });
-        act(() => {
-            ctx.current.resolvePrompt('deny');
-        });
-        await expect(promise).resolves.toBe(false);
-        expect(ctx.current.authorizeCapability('plugin-a', 'mystery:power')).toBe(false);
-    });
-
-    it('setTierDefaults で sensitive を ask にすると sensitive も承認待ちになる', () => {
-        const ctx = setup();
-        act(() => {
-            ctx.current.setTierDefaults({ safe: 'allow', sensitive: 'ask', dangerous: 'ask' });
-        });
-        act(() => {
-            void ctx.current.authorizeCapability('plugin-a', 'scene:update');
-        });
-        expect(ctx.current.pendingPrompt).toEqual({
-            kind: 'capability',
-            pluginId: 'plugin-a',
-            capability: 'scene:update',
-        });
-    });
-
-    it('revokeGrant で記憶した判断を取り消せる', async () => {
-        const ctx = setup();
-        let promise: boolean | Promise<boolean> = false;
-        act(() => {
-            promise = ctx.current.authorizeCapability('plugin-a', 'mystery:power');
-        });
-        act(() => {
-            ctx.current.resolvePrompt('allow');
-        });
-        await promise;
-        expect(ctx.current.authorizeCapability('plugin-a', 'mystery:power')).toBe(true);
-
-        act(() => {
-            ctx.current.revokeGrant('plugin-a', 'mystery:power');
-        });
-        act(() => {
-            void ctx.current.authorizeCapability('plugin-a', 'mystery:power');
-        });
-        expect(ctx.current.pendingPrompt).toEqual({
-            kind: 'capability',
-            pluginId: 'plugin-a',
-            capability: 'mystery:power',
-        });
+        expect(ctx.current.authorizeCapability('p', 'mystery:power')).toBe(false); // 未知→dangerous→ask未決
     });
 });
 
-describe('authorizeFetchDomain', () => {
-    it('既定（確認シールド）はドメインごとにプロンプトを出し、許可するまで解決しない', async () => {
+describe('authorizePlugin（読み込み時の一括承認）', () => {
+    it('承認が要らなければプロンプトを出さず即解決する', async () => {
         const ctx = setup();
-        let promise: boolean | Promise<boolean> = false;
-        act(() => {
-            promise = ctx.current.authorizeFetchDomain('plugin-a', 'api.example.com');
+        await act(async () => {
+            await ctx.current.authorizePlugin('p', ['scene:read', 'scene:update', 'net:emit']);
         });
-        expect(ctx.current.pendingPrompt).toEqual({ kind: 'fetch', pluginId: 'plugin-a', domain: 'api.example.com' });
-
-        act(() => {
-            ctx.current.resolvePrompt('allow');
-        });
-        await expect(promise).resolves.toBe(true);
-        // 記憶され再プロンプトなし
-        expect(ctx.current.authorizeFetchDomain('plugin-a', 'api.example.com')).toBe(true);
-    });
-
-    it('拒否したドメインは false を返し記憶される', async () => {
-        const ctx = setup();
-        let promise: boolean | Promise<boolean> = true;
-        act(() => {
-            promise = ctx.current.authorizeFetchDomain('plugin-a', 'evil.example.com');
-        });
-        act(() => {
-            ctx.current.resolvePrompt('deny');
-        });
-        await expect(promise).resolves.toBe(false);
-        expect(ctx.current.authorizeFetchDomain('plugin-a', 'evil.example.com')).toBe(false);
-    });
-
-    it('シールド「なし」（dangerous=allow）は全ドメインを即許可・プロンプトなし', () => {
-        const ctx = setup();
-        act(() => {
-            ctx.current.setTierDefaults({ safe: 'allow', sensitive: 'allow', dangerous: 'allow' });
-        });
-        expect(ctx.current.authorizeFetchDomain('plugin-a', 'api.example.com')).toBe(true);
         expect(ctx.current.pendingPrompt).toBeNull();
     });
 
-    it('シールド「拒否」（dangerous=deny）は全ドメインを即拒否', () => {
+    it('承認が要る capability をまとめて 1 プロンプトに提示し、許可で全て grant する', async () => {
         const ctx = setup();
+        let done: Promise<void> = Promise.resolve();
         act(() => {
-            ctx.current.setTierDefaults({ safe: 'allow', sensitive: 'deny', dangerous: 'deny' });
+            done = ctx.current.authorizePlugin('p', ['scene:read', 'mystery:power', 'other:danger']);
         });
-        expect(ctx.current.authorizeFetchDomain('plugin-a', 'api.example.com')).toBe(false);
+        // safe(scene:read) は除外、危険2つが1プロンプトに束ねられる
+        expect(ctx.current.pendingPrompt).toEqual({
+            kind: 'plugin',
+            pluginId: 'p',
+            capabilities: [
+                { capability: 'mystery:power', risk: 'dangerous' },
+                { capability: 'other:danger', risk: 'dangerous' },
+            ],
+        });
+        act(() => ctx.current.resolvePrompt('allow'));
+        await act(async () => {
+            await done;
+        });
+        expect(ctx.current.authorizeCapability('p', 'mystery:power')).toBe(true);
+        expect(ctx.current.authorizeCapability('p', 'other:danger')).toBe(true);
+        expect(ctx.current.pendingPrompt).toBeNull();
     });
 
-    it('別ドメインは独立して承認される', async () => {
+    it('拒否すると全て deny として記憶される', async () => {
         const ctx = setup();
-        let p1: boolean | Promise<boolean> = false;
+        let done: Promise<void> = Promise.resolve();
         act(() => {
-            p1 = ctx.current.authorizeFetchDomain('plugin-a', 'a.example.com');
+            done = ctx.current.authorizePlugin('p', ['mystery:power']);
         });
-        act(() => {
-            ctx.current.resolvePrompt('allow');
+        act(() => ctx.current.resolvePrompt('deny'));
+        await act(async () => {
+            await done;
         });
-        await p1;
-        // a は許可済み・同期 true、b は未判断なので新たにプロンプト
-        expect(ctx.current.authorizeFetchDomain('plugin-a', 'a.example.com')).toBe(true);
-        act(() => {
-            void ctx.current.authorizeFetchDomain('plugin-a', 'b.example.com');
-        });
-        expect(ctx.current.pendingPrompt).toEqual({ kind: 'fetch', pluginId: 'plugin-a', domain: 'b.example.com' });
+        expect(ctx.current.authorizeCapability('p', 'mystery:power')).toBe(false);
     });
 
-    it('revokeFetchGrant で記憶を取り消せる', async () => {
+    it('sensitive を strict(ask) にすると sensitive も一括承認の対象になる', () => {
         const ctx = setup();
-        let promise: boolean | Promise<boolean> = false;
+        act(() => ctx.current.setTierDefaults({ safe: 'allow', sensitive: 'ask', dangerous: 'ask' }));
         act(() => {
-            promise = ctx.current.authorizeFetchDomain('plugin-a', 'api.example.com');
+            void ctx.current.authorizePlugin('p', ['scene:update']);
         });
+        expect(ctx.current.pendingPrompt).toMatchObject({ kind: 'plugin', pluginId: 'p' });
+    });
+});
+
+describe('authorizeFetchDomain（ドメイン単位・今回だけ/次回以降/拒否）', () => {
+    it('既定はドメインごとにプロンプト。「次回以降も許可」で記憶される', async () => {
+        const ctx = setup();
+        let p: boolean | Promise<boolean> = false;
         act(() => {
-            ctx.current.resolvePrompt('allow');
+            p = ctx.current.authorizeFetchDomain('vp', 'api.example.com');
         });
-        await promise;
+        expect(ctx.current.pendingPrompt).toEqual({ kind: 'fetch', pluginId: 'vp', domain: 'api.example.com' });
+        act(() => ctx.current.resolvePrompt('always'));
+        await expect(p).resolves.toBe(true);
+        // 記憶され、次回は同期 true
+        expect(ctx.current.authorizeFetchDomain('vp', 'api.example.com')).toBe(true);
+    });
+
+    it('「今回だけ」は true を返すが記憶しない（次回また聞く）', async () => {
+        const ctx = setup();
+        let p: boolean | Promise<boolean> = false;
         act(() => {
-            ctx.current.revokeFetchGrant('plugin-a', 'api.example.com');
+            p = ctx.current.authorizeFetchDomain('vp', 'api.example.com');
         });
+        act(() => ctx.current.resolvePrompt('once'));
+        await expect(p).resolves.toBe(true);
+        // 記憶されていないので再度プロンプト
         act(() => {
-            void ctx.current.authorizeFetchDomain('plugin-a', 'api.example.com');
+            void ctx.current.authorizeFetchDomain('vp', 'api.example.com');
         });
-        expect(ctx.current.pendingPrompt).toEqual({ kind: 'fetch', pluginId: 'plugin-a', domain: 'api.example.com' });
+        expect(ctx.current.pendingPrompt).toEqual({ kind: 'fetch', pluginId: 'vp', domain: 'api.example.com' });
+    });
+
+    it('「拒否」は false を返し記憶される', async () => {
+        const ctx = setup();
+        let p: boolean | Promise<boolean> = true;
+        act(() => {
+            p = ctx.current.authorizeFetchDomain('vp', 'evil.example.com');
+        });
+        act(() => ctx.current.resolvePrompt('deny'));
+        await expect(p).resolves.toBe(false);
+        expect(ctx.current.authorizeFetchDomain('vp', 'evil.example.com')).toBe(false);
+    });
+
+    it('シールド「なし」は全ドメイン即許可、「拒否」は全ドメイン即拒否', () => {
+        const ctx = setup();
+        act(() => ctx.current.setTierDefaults({ safe: 'allow', sensitive: 'allow', dangerous: 'allow' }));
+        expect(ctx.current.authorizeFetchDomain('vp', 'api.example.com')).toBe(true);
+        expect(ctx.current.pendingPrompt).toBeNull();
+        act(() => ctx.current.setTierDefaults({ safe: 'allow', sensitive: 'deny', dangerous: 'deny' }));
+        expect(ctx.current.authorizeFetchDomain('vp', 'api.example.com')).toBe(false);
+    });
+});
+
+describe('取り消し', () => {
+    it('revokeGrant / revokeFetchGrant で記憶を消せる', async () => {
+        const onChange = vi.fn();
+        const ctx = setup(onChange);
+        // capability を許可 → 取り消し
+        act(() => {
+            void ctx.current.authorizePlugin('p', ['mystery:power']);
+        });
+        act(() => ctx.current.resolvePrompt('allow'));
+        expect(ctx.current.authorizeCapability('p', 'mystery:power')).toBe(true);
+        act(() => ctx.current.revokeGrant('p', 'mystery:power'));
+        expect(ctx.current.authorizeCapability('p', 'mystery:power')).toBe(false);
+        // fetch を許可 → 取り消し
+        let fp: boolean | Promise<boolean> = false;
+        act(() => {
+            fp = ctx.current.authorizeFetchDomain('p', 'api.example.com');
+        });
+        act(() => ctx.current.resolvePrompt('always'));
+        await fp;
+        expect(ctx.current.authorizeFetchDomain('p', 'api.example.com')).toBe(true);
+        act(() => ctx.current.revokeFetchGrant('p', 'api.example.com'));
+        act(() => {
+            void ctx.current.authorizeFetchDomain('p', 'api.example.com');
+        });
+        expect(ctx.current.pendingPrompt).toMatchObject({ kind: 'fetch', domain: 'api.example.com' });
+        expect(onChange).toHaveBeenCalled();
     });
 });

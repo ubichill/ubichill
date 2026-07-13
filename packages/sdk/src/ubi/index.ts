@@ -67,6 +67,9 @@ type PendingRequest = {
  *   Ubi.log(msg, level)
  */
 export class UbiSDK {
+    /** fetch はドメイン初回承認でユーザー応答待ちになるため長めのタイムアウトにする。 */
+    static readonly FETCH_RPC_TIMEOUT_MS = 120_000;
+
     // ── RPC ──────────────────────────────────────────────────
     private _commandCounter = 0;
     private _pendingRequests = new Map<string, PendingRequest>();
@@ -203,9 +206,12 @@ export class UbiSDK {
 
     // ── Top-level shortcuts ──────────────────────────────────
 
-    /** HTTP リクエスト (capability whitelist 経由)。 */
+    /**
+     * HTTP リクエスト（Host 側でドメイン承認を経由）。
+     * ドメインの初回承認はユーザーの応答待ちになるため、通常 RPC より長いタイムアウトを使う。
+     */
     public fetch(url: string, options?: FetchOptions): Promise<unknown> {
-        return this._rpc({ type: CommandType.NET_FETCH, payload: { url, options } });
+        return this._rpc({ type: CommandType.NET_FETCH, payload: { url, options } }, UbiSDK.FETCH_RPC_TIMEOUT_MS);
     }
 
     // ── Transport ─────────────────────────────────────────────
@@ -214,7 +220,7 @@ export class UbiSDK {
         this._sendToHost(command as PluginGuestCommand);
     }
 
-    private _rpc<T>(command: OmitId<PluginGuestCommand>): Promise<T> {
+    private _rpc<T>(command: OmitId<PluginGuestCommand>, timeoutMs = this._rpcTimeout): Promise<T> {
         const id = `rpc_${this._commandCounter++}`;
         return new Promise<T>((resolve, reject) => {
             const timer = setTimeout(() => {
@@ -223,10 +229,10 @@ export class UbiSDK {
                 reject(
                     new UbiError(
                         UbiErrorCode.RPC_TIMEOUT,
-                        `${prefix} RPC タイムアウト (${this._rpcTimeout}ms): ${command.type}`,
+                        `${prefix} RPC タイムアウト (${timeoutMs}ms): ${command.type}`,
                     ),
                 );
-            }, this._rpcTimeout);
+            }, timeoutMs);
             this._pendingRequests.set(id, {
                 resolve: (data) => {
                     clearTimeout(timer);
