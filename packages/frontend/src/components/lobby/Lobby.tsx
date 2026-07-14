@@ -3,6 +3,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { API_BASE } from '@/lib/api';
+import { SETTINGS_KEYS, useSetting } from '@/lib/settings';
 import { css } from '@/styled-system/css';
 import { useInstances } from './useInstances';
 import { WorldCard } from './WorldCard';
@@ -19,8 +20,9 @@ const SORT_LABELS: Record<SortKey, string> = {
     updatedAt_asc: '更新日：古い順',
 };
 
-const SORT_STORAGE_KEY = 'ubichill_world_sort';
 const DEFAULT_SORT: SortKey = 'updatedAt_desc';
+
+const isSortKey = (value: unknown): value is SortKey => typeof value === 'string' && value in SORT_LABELS;
 
 function sortWorlds(worlds: WorldListItem[], key: SortKey): WorldListItem[] {
     return [...worlds].sort((a, b) => {
@@ -73,15 +75,7 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
     const [selectedWorldId, setSelectedWorldId] = useState<string | null>(null);
 
     // ソートキーを localStorage で永続化
-    const [sortKey, setSortKey] = useState<SortKey>(() => {
-        const stored = localStorage.getItem(SORT_STORAGE_KEY);
-        return (stored as SortKey | null) ?? DEFAULT_SORT;
-    });
-
-    const handleSortChange = useCallback((key: SortKey) => {
-        setSortKey(key);
-        localStorage.setItem(SORT_STORAGE_KEY, key);
-    }, []);
+    const [sortKey, handleSortChange] = useSetting<SortKey>(SETTINGS_KEYS.lobbySortKey, DEFAULT_SORT, isSortKey);
 
     const sortedWorlds = useMemo(() => sortWorlds(worlds, sortKey), [worlds, sortKey]);
 

@@ -2,7 +2,7 @@
     "compilerOptions": {
         "target": "ES2025",
         "lib": ["ES2025", "WebWorker", "DOM"],
-        "module": "ES2025",
+        "module": "esnext",
         "moduleResolution": "bundler",
         "strict": true,
         "skipLibCheck": true,

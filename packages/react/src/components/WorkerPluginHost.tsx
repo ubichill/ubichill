@@ -10,7 +10,7 @@
 import { routeEmit } from '@ubichill/sandbox';
 import type { ComponentInstance } from '@ubichill/shared';
 import type React from 'react';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { editorSchemaRegistry } from '../editorSchemaRegistry';
 import { usePluginBroadcast } from '../hooks/usePluginBroadcast';
 import { usePluginCanvas } from '../hooks/usePluginCanvas';
@@ -32,6 +32,7 @@ import type { WorkerPluginDefinition } from '../types';
 import { usePluginWorker } from '../usePluginWorker';
 import { useWorkerLoading } from '../WorkerLoadingContext';
 import { useHold } from './HoldContext';
+import { useUbiPermissions } from './PermissionContext';
 import { PluginUIMount } from './PluginUIMount';
 
 export interface WorkerPluginHostProps {
@@ -44,6 +45,39 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
     const { users, currentUser, updatePosition, updateUser } = useSocket();
     const { entities, patchEntity } = useWorld();
     const { handleGripCommand } = useHold();
+    const permissions = useUbiPermissions();
+
+    // on-demand 認可: Provider があるときだけ authorizeCapability を渡す（無い場合は
+    // 宣言 capability の静的判定にフォールバック）。pluginId 束縛済みで identity 安定。
+    // definition.id は "plugin:component" 形式。信頼境界はプラグイン単位なので ":" の前を使う
+    // （同一プラグインの全コンポーネントで許可を共有する）。
+    const pluginId = definition.id.split(':')[0];
+    const authorizeCapability = useMemo(
+        () => (permissions ? (capability: string) => permissions.authorizeCapability(pluginId, capability) : undefined),
+        [permissions, pluginId],
+    );
+
+    // 読み込み時に要求 capability をまとめて承認してもらい、**決定が済むまで Worker を実行しない**。
+    // ダウンロード済みコードは保持されるが、実行（Worker 生成）は enabled=true になってから。
+    // 決定後は許可/拒否どちらでも実行する（拒否した権限は実行時ゲートが個別に拒否）。
+    // Provider 不在（エディタ Preview 等）は即実行。
+    const authorizePlugin = permissions?.authorizePlugin;
+    const declaredCapabilities = definition.capabilities;
+    const [enabled, setEnabled] = useState(false);
+    useEffect(() => {
+        if (!authorizePlugin) {
+            setEnabled(true);
+            return;
+        }
+        let cancelled = false;
+        setEnabled(false);
+        authorizePlugin(pluginId, declaredCapabilities ?? []).then(() => {
+            if (!cancelled) setEnabled(true); // 決定後は許可/拒否とも実行
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [authorizePlugin, pluginId, declaredCapabilities]);
     const hostDivRef = useRef<HTMLDivElement>(null);
     const workerLoading = useWorkerLoading();
 
@@ -51,12 +85,14 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
     const workerRegistrationRef = useRef<{ markReady: () => void; unregister: () => void } | null>(null);
 
     useEffect(() => {
-        if (workerLoading) {
+        // 実行が始まる（enabled）ときだけロード対象に数える。承認待ち/拒否のプラグインで
+        // ワールドのロード表示がハングしないようにする。
+        if (workerLoading && enabled) {
             const reg = workerLoading.registerWorker();
             workerRegistrationRef.current = reg;
             return () => reg.unregister();
         }
-    }, [workerLoading]);
+    }, [workerLoading, enabled]);
 
     const updatePositionRef = useRef(updatePosition);
     const updateUserRef = useRef(updateUser);
@@ -76,7 +112,7 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
     const { getCanvasRef, canvasHandlers } = usePluginCanvas(definition, hostDivRef);
     const { vnodes, onRender, sendAction, sendEventRef } = usePluginUI();
     const { getVideoRef, mediaHandlers } = usePluginMedia(definition, sendEventRef);
-    const onFetch = usePluginFetch(definition, entity);
+    const onFetch = usePluginFetch(definition);
     const worldHandlers = usePluginWorld(definition.watchScope ?? 'subtree', entity.entityId);
 
     // ── Worker 起動時点の watchEntityTypes マッチ分を抽出 ──────────────
@@ -111,6 +147,8 @@ export const WorkerPluginHost: React.FC<WorkerPluginHostProps> = ({ entityId, en
         parentEntityId: entity.parentEntityId,
         componentType: entity.type,
         capabilities: definition.capabilities,
+        authorizeCapability,
+        enabled,
         myUserId: currentUser?.id,
         pluginBase: definition.pluginBase,
         watchEntityTypes: definition.watchEntityTypes,

@@ -5,7 +5,6 @@
   "components": {
     "screen": {
       "src": "./src/screen.worker.tsx",
-      "capabilities": ["video:control", "net:emit"],
       "mediaTargets": ["main"],
       "watchEntityTypes": [],
       "watchScope": "entity",
@@ -13,21 +12,18 @@
     },
     "controls": {
       "src": "./src/controls.worker.tsx",
-      "capabilities": ["ui:render", "scene:read", "scene:update", "net:emit"],
       "watchEntityTypes": ["video-player:controls"],
       "watchScope": "entity",
       "defaultTransform": { "x": 0, "y": 370, "z": 198, "w": 640, "h": 60 }
     },
     "playlist": {
       "src": "./src/playlist.worker.tsx",
-      "capabilities": ["ui:render", "scene:read", "scene:update", "net:emit"],
       "watchEntityTypes": ["video-player:playlist"],
       "watchScope": "entity",
       "defaultTransform": { "x": 0, "y": 440, "z": 198, "w": 310, "h": 300 }
     },
     "search": {
       "src": "./src/search.worker.tsx",
-      "capabilities": ["ui:render", "net:fetch", "net:emit"],
       "watchEntityTypes": [],
       "watchScope": "entity",
       "defaultTransform": { "x": 330, "y": 440, "z": 198, "w": 310, "h": 300 }

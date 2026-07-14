@@ -5,7 +5,6 @@
   "components": {
     "canvas": {
       "src": "./src/canvas.worker.ts",
-      "capabilities": ["scene:read", "scene:update", "ui:render", "net:broadcast", "canvas:draw"],
       "canvasTargets": ["drawing"],
       "watchEntityTypes": ["pen:stroke", "pen:pen"],
       "watchScope": "world",
@@ -14,13 +13,11 @@
     },
     "tray": {
       "src": "./src/tray.worker.tsx",
-      "capabilities": ["ui:render", "net:emit", "scene:read"],
       "defaultTransform": { "x": 20, "y": 20, "z": 1000, "w": 60, "h": 240 },
       "dataFields": {}
     },
     "pen": {
       "src": "./src/pen.worker.tsx",
-      "capabilities": ["scene:read", "scene:update", "ui:render", "net:host-message", "net:emit"],
       "watchEntityTypes": ["pen:pen"],
       "watchScope": "entity",
       "defaultTransform": { "x": 0, "y": 0, "z": 1, "w": 36, "h": 48 },

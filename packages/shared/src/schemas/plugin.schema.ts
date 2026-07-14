@@ -94,7 +94,6 @@ export const ComponentManifestEntrySchema = z.object({
     capabilities: z.array(z.string()).optional(),
     canvasTargets: z.array(z.string()).optional(),
     mediaTargets: z.array(z.string()).optional(),
-    fetchDomains: z.array(z.string()).optional(),
     watchEntityTypes: z.array(z.string()).optional(),
     watchScope: z.enum(['entity', 'subtree', 'parent', 'world']).optional(),
     thumbnail: z.string().optional(),

@@ -3,48 +3,111 @@
  *
  * Worker の NET_FETCH コマンドを処理するフェッチハンドラを構築する。
  *
- * 責務:
- * - 相対 URL（/、./）→ fetchDirect（ドメインチェックをスキップ）
- * - pluginBase origin からの URL → fetchDirect（CDN アセット取得を許可）
- * - 外部 URL → createPluginFetchHandler（ドメインホワイトリストで検査）
+ * 責務（普遍的なポリシー・特定プラグインに依存しない）:
+ * 1. 自分のアセット（pluginBase 配下・CDN でも可）→ fetchDirect（承認不要）。
+ * 2. 自分の公開名前空間 /plugins/<pluginId>/（アプリ本体オリジン上。専用バックエンド含む）
+ *    → fetchDirect（承認不要）。全プラグイン共通の配信規約なので普遍的。
+ * 3. アプリ本体オリジンのそれ以外（コア /api、他プラグインの領域）→ **禁止**。
+ *    本体コア API・認証 cookie を保護する。
+ * 4. 外部ドメイン → ドメイン単位の on-demand 承認（PermissionProvider.authorizeFetchDomain）。
+ *    ユーザーが許可したドメインのみ通す。開発者はドメインを宣言しない。https 必須は維持。
  *
- * 許可ドメインの優先順位:
- *   1. plugin.json の fetchDomains（プラグイン発行者が制御）
- *   2. entity.data.fetchDomains（ワールド作成者が制御・外部バックエンド用）
+ * PermissionProvider が無い環境（エディタ Preview 等）では外部 fetch は拒否する。
  */
 
-import { createPluginFetchHandler, fetchDirect } from '@ubichill/sandbox';
-import type { ComponentInstance, FetchOptions, FetchResult } from '@ubichill/shared';
+import { fetchDirect, reportDiagnostic, resolvePluginAssetUrl, resolvePluginNamespaceUrl } from '@ubichill/sandbox';
+import { type FetchOptions, type FetchResult, UbiErrorCode } from '@ubichill/shared';
 import { useMemo } from 'react';
+import { useUbiPermissions } from '../components/PermissionContext';
 import type { WorkerPluginDefinition } from '../types';
+
+/** Host が合成する拒否レスポンス。 */
+function forbidden(code: UbiErrorCode, message: string): FetchResult {
+    return {
+        ok: false,
+        status: 403,
+        statusText: 'Forbidden',
+        headers: {},
+        body: JSON.stringify({ error: { code, message } }),
+    };
+}
 
 export function usePluginFetch(
     definition: WorkerPluginDefinition,
-    entity: ComponentInstance,
 ): (url: string, options?: FetchOptions) => Promise<FetchResult> {
-    const entityFetchDomains = useMemo(() => {
-        const raw = (entity.data as Record<string, unknown>).fetchDomains;
-        return Array.isArray(raw) ? (raw as string[]) : [];
-    }, [entity.data]);
+    const permissions = useUbiPermissions();
+    const authorizeFetchDomain = permissions?.authorizeFetchDomain;
 
     return useMemo(() => {
-        const mergedDomains = [...(definition.fetchDomains ?? []), ...entityFetchDomains];
-        const externalHandler = createPluginFetchHandler(mergedDomains);
-        const pluginBaseOrigin = (() => {
-            try {
-                return definition.pluginBase ? new URL(definition.pluginBase).origin : null;
-            } catch {
-                return null;
-            }
-        })();
-        return (url: string, options?: FetchOptions): Promise<FetchResult> => {
-            if (url.startsWith('/') || url.startsWith('./')) {
-                return fetchDirect(url, options);
-            }
-            if (pluginBaseOrigin && url.startsWith(pluginBaseOrigin)) {
-                return fetchDirect(url, options);
-            }
-            return externalHandler(url, options);
+        // definition.id は "plugin:component" 形式。名前空間・fetch 承認はプラグイン単位なので
+        // ":" の前（プラグイン名）を使う。例: "video-player:search" → "video-player"。
+        const pluginId = definition.id.split(':')[0];
+        const pluginBase = definition.pluginBase;
+
+        const appOrigin = typeof window === 'undefined' ? undefined : window.location.origin;
+
+        // 拒否は必ず診断に出す（console.warn 既定 + UI ハンドラでトースト化）。沈黙させない。
+        // domain を渡すと拒否トーストに「許可」ボタン（クリックでそのドメインを許可）が付く。
+        const deny = (code: UbiErrorCode, message: string, domain?: string): FetchResult => {
+            reportDiagnostic({
+                level: 'warn',
+                pluginId,
+                code,
+                message,
+                ...(domain ? { retry: { pluginId, domain } } : {}),
+            });
+            return forbidden(code, message);
         };
-    }, [definition.fetchDomains, definition.pluginBase, entityFetchDomains]);
+
+        return async (url: string, options?: FetchOptions): Promise<FetchResult> => {
+            // 1. 自分のアセット（pluginBase 配下）/ 2. 自分の公開名前空間 /plugins/<id>/ は承認不要。
+            const ownUrl =
+                resolvePluginAssetUrl(url, pluginBase) ?? resolvePluginNamespaceUrl(url, pluginId, appOrigin);
+            if (ownUrl !== null) {
+                return fetchDirect(ownUrl, options);
+            }
+
+            // URL を解決（相対はアプリ本体オリジン基準）。
+            let resolved: URL;
+            try {
+                resolved = new URL(url, appOrigin);
+            } catch {
+                return deny(UbiErrorCode.FETCH_INVALID_URL, `URL として不正です: ${url}`);
+            }
+
+            // 3. アプリ本体オリジンのうち自分の領域以外（コア /api・他プラグイン）は禁止。
+            //    本体コア API・認証 cookie を保護する。
+            if (appOrigin && resolved.origin === appOrigin) {
+                return deny(
+                    UbiErrorCode.FETCH_DOMAIN_NOT_ALLOWED,
+                    'アプリ本体のコア API へのアクセスは許可されていません',
+                );
+            }
+
+            // 4. 外部ドメイン: ドメイン単位でユーザー承認を得る。
+            const hostname = resolved.hostname;
+            if (!authorizeFetchDomain) {
+                // 権限コンテキスト不在（Preview 等）では外部 fetch を許可しない。
+                return deny(UbiErrorCode.FETCH_DOMAIN_NOT_ALLOWED, '権限コンテキストが無いため外部通信できません');
+            }
+
+            const allowed = await authorizeFetchDomain(pluginId, hostname);
+            if (!allowed) {
+                return deny(
+                    UbiErrorCode.FETCH_DOMAIN_NOT_ALLOWED,
+                    `ユーザーが ${hostname} への通信を許可していません`,
+                    hostname,
+                );
+            }
+
+            // 承認済み: 承認したホスト名そのものに完全一致・https 必須で実行（suffix マッチはしない）。
+            if (resolved.protocol !== 'https:') {
+                return deny(
+                    UbiErrorCode.FETCH_HTTPS_REQUIRED,
+                    `https 以外は許可されていません: ${resolved.protocol}//`,
+                );
+            }
+            return fetchDirect(resolved.href, options);
+        };
+    }, [definition.id, definition.pluginBase, authorizeFetchDomain]);
 }

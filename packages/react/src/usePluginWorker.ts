@@ -101,6 +101,11 @@ export type UsePluginWorkerOptions<TPayloadMap extends Record<string, unknown> =
     'handlers'
 > & {
     handlers?: PluginWorkerHandlers<TPayloadMap>;
+    /**
+     * false の間は Worker を生成・実行しない（コードのダウンロードは済んでいても実行しない）。
+     * 権限承認が済むまで実行を遅延させるために使う。既定 true。
+     */
+    enabled?: boolean;
 };
 
 export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Record<string, unknown>>(
@@ -112,10 +117,19 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
 
     const handlersRef = useRef<PluginWorkerHandlers<TPayloadMap>>(options.handlers ?? {});
     const onResourceLimitExceededRef = useRef(options.onResourceLimitExceeded);
+    // authorizeCapability は識別子が変わっても Worker を作り直さないよう ref 経由で最新を読む。
+    // on-demand モードにするかは「渡されているか」(hasAuthorize) だけで決める。
+    const authorizeCapabilityRef = useRef(options.authorizeCapability);
+    const hasAuthorize = !!options.authorizeCapability;
+    const stableAuthorize = useCallback(
+        (capability: string) => authorizeCapabilityRef.current?.(capability) ?? false,
+        [],
+    );
 
     useEffect(() => {
         handlersRef.current = options.handlers ?? {};
         onResourceLimitExceededRef.current = options.onResourceLimitExceeded;
+        authorizeCapabilityRef.current = options.authorizeCapability;
     });
 
     // initialEntities は「Worker 起動時点のスナップショット」であって
@@ -127,6 +141,9 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
     });
 
     useEffect(() => {
+        // enabled=false の間は実行しない（承認待ち等）。ダウンロード済みコードは pluginCode に
+        // 保持されているだけで、Worker 生成＝実行はここでしか起きない。
+        if (options.enabled === false) return;
         const manager = new PluginHostManager<TPayloadMap>({
             pluginCode: options.pluginCode,
             pluginId: options.pluginId,
@@ -135,6 +152,7 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
             parentEntityId: options.parentEntityId,
             componentType: options.componentType,
             capabilities: options.capabilities,
+            authorizeCapability: hasAuthorize ? stableAuthorize : undefined,
             maxExecutionTime: options.maxExecutionTime,
             tickFps: options.tickFps,
             disableAutoTick: options.disableAutoTick,
@@ -198,6 +216,7 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
             managerRef.current = null;
         };
     }, [
+        options.enabled,
         options.pluginCode,
         options.pluginId,
         options.componentInstanceId,
@@ -205,6 +224,8 @@ export function usePluginWorker<TPayloadMap extends Record<string, unknown> = Re
         options.parentEntityId,
         options.componentType,
         options.capabilities,
+        hasAuthorize,
+        stableAuthorize,
         options.maxExecutionTime,
         options.tickFps,
         options.disableAutoTick,

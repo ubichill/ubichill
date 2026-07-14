@@ -17,7 +17,8 @@
     "db:generate": "pnpm --filter @ubichill/db generate",
     "db:migrate": "pnpm --filter @ubichill/db migrate:dev",
     "clean": "pnpm --filter \"./packages/*\" clean",
-    "test": "echo \"No tests specified yet\" && exit 0"
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "volta": {
     "node": "25.9.0",
@@ -36,13 +37,17 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.13",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^22.13.4",
     "@typescript/native-preview": "7.0.0-dev.20260421.2",
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
     "esbuild": "^0.28.0",
+    "jsdom": "^29.1.1",
     "kill-port": "^2.0.1",
     "nodemon": "^3.1.11",
-    "turbo": "^2.8.3"
+    "turbo": "^2.8.3",
+    "vitest": "^4.1.10"
   }
 }

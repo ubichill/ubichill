@@ -14,6 +14,8 @@ export const UbiErrorCode = {
     // ── capability ──
     /** plugin.json で宣言されていない capability のコマンドを使った */
     CAPABILITY_NOT_DECLARED: 'CAPABILITY_NOT_DECLARED',
+    /** ユーザーがこの権限を拒否した (on-demand 承認で deny を選択、またはポリシーで deny) */
+    CAPABILITY_DENIED: 'CAPABILITY_DENIED',
 
     // ── RPC ──
     /** RPC が時間内に応答しなかった */
