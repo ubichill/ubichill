@@ -4,13 +4,6 @@
   "version": "2.0.0",
   "components": {
     "pen:canvas": {
-      "capabilities": [
-        "scene:read",
-        "scene:update",
-        "ui:render",
-        "net:broadcast",
-        "canvas:draw"
-      ],
       "canvasTargets": [
         "drawing"
       ],
@@ -25,14 +18,16 @@
         "z": 5000
       },
       "dataFields": {},
+      "capabilities": [
+        "canvas:draw",
+        "net:broadcast",
+        "net:emit",
+        "scene:read",
+        "scene:update"
+      ],
       "workerUrl": "./canvas/index.6609dc40.js"
     },
     "pen:tray": {
-      "capabilities": [
-        "ui:render",
-        "net:emit",
-        "scene:read"
-      ],
       "defaultTransform": {
         "x": 20,
         "y": 20,
@@ -41,16 +36,15 @@
         "h": 240
       },
       "dataFields": {},
+      "capabilities": [
+        "net:emit",
+        "scene:read",
+        "scene:update",
+        "ui:render"
+      ],
       "workerUrl": "./tray/index.2a1103d7.js"
     },
     "pen:pen": {
-      "capabilities": [
-        "scene:read",
-        "scene:update",
-        "ui:render",
-        "net:host-message",
-        "net:emit"
-      ],
       "watchEntityTypes": [
         "pen:pen"
       ],
@@ -77,6 +71,13 @@
           "label": "線の太さ"
         }
       },
+      "capabilities": [
+        "net:emit",
+        "net:host-message",
+        "scene:read",
+        "scene:update",
+        "ui:render"
+      ],
       "workerUrl": "./pen/index.15ea4091.js"
     },
     "pen:stroke": {

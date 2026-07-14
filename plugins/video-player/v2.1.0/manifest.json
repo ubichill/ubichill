@@ -4,10 +4,6 @@
   "version": "2.1.0",
   "components": {
     "video-player:screen": {
-      "capabilities": [
-        "video:control",
-        "net:emit"
-      ],
       "mediaTargets": [
         "main"
       ],
@@ -20,15 +16,13 @@
         "w": 640,
         "h": 360
       },
+      "capabilities": [
+        "net:emit",
+        "video:control"
+      ],
       "workerUrl": "./screen/index.a22273f1.js"
     },
     "video-player:controls": {
-      "capabilities": [
-        "ui:render",
-        "scene:read",
-        "scene:update",
-        "net:emit"
-      ],
       "watchEntityTypes": [
         "video-player:controls"
       ],
@@ -40,15 +34,15 @@
         "w": 640,
         "h": 60
       },
+      "capabilities": [
+        "net:emit",
+        "scene:read",
+        "scene:update",
+        "ui:render"
+      ],
       "workerUrl": "./controls/index.a9f5ef46.js"
     },
     "video-player:playlist": {
-      "capabilities": [
-        "ui:render",
-        "scene:read",
-        "scene:update",
-        "net:emit"
-      ],
       "watchEntityTypes": [
         "video-player:playlist"
       ],
@@ -60,14 +54,15 @@
         "w": 310,
         "h": 300
       },
+      "capabilities": [
+        "net:emit",
+        "scene:read",
+        "scene:update",
+        "ui:render"
+      ],
       "workerUrl": "./playlist/index.6eeb3138.js"
     },
     "video-player:search": {
-      "capabilities": [
-        "ui:render",
-        "net:fetch",
-        "net:emit"
-      ],
       "watchEntityTypes": [],
       "watchScope": "entity",
       "defaultTransform": {
@@ -77,6 +72,13 @@
         "w": 310,
         "h": 300
       },
+      "capabilities": [
+        "net:emit",
+        "net:fetch",
+        "scene:read",
+        "scene:update",
+        "ui:render"
+      ],
       "workerUrl": "./search/index.6383ce1f.js"
     }
   },
