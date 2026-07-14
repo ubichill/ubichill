@@ -47,11 +47,11 @@ while IFS= read -r f; do
             backend=true ;;
     esac
     case "${f}" in
-        packages/frontend/*|packages/shared/*|packages/sdk/*|plugins/*|scripts/build-workers.mjs|Dockerfile|pnpm-lock.yaml)
+        packages/frontend/*|packages/shared/*|packages/sdk/*|mods/*|scripts/build-workers.mjs|Dockerfile|pnpm-lock.yaml)
             frontend=true ;;
     esac
     case "${f}" in
-        plugins/video-player/backend/*)
+        mods/video-player/backend/*)
             video_player=true ;;
     esac
 done <<< "${CHANGED}"

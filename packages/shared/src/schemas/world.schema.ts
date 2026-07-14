@@ -95,15 +95,15 @@ export const WorldCapacitySchema = z.object({
 //
 // 設計:
 // - Entity (GameObject) は id + transform のみを持つ「箱」
-// - Component (`<plugin>:<name>`) が振る舞いを配布する
+// - Component (`<mod>:<name>`) が振る舞いを配布する
 // - 1 Entity に複数の Component を載せられる
 // ============================================
 
 /**
- * Component 型識別子: `pluginId:componentName` 形式。
+ * Component 型識別子: `modId:componentName` 形式。
  * 例: `pen:tray`, `video-player:videoSurface`
  */
-export const ComponentTypeSchema = z.string().regex(/^[a-z0-9-]+:[a-zA-Z0-9_-]+$/, 'Must be "pluginId:componentName"');
+export const ComponentTypeSchema = z.string().regex(/^[a-z0-9-]+:[a-zA-Z0-9_-]+$/, 'Must be "modId:componentName"');
 
 /**
  * Entity に載る 1 つの Component。

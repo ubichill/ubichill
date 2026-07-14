@@ -1,10 +1,10 @@
 import { UbiSDK } from '@ubichill/sdk';
-import { CommandType, HostEventType, type PluginGuestCommand, type PluginHostEvent } from '@ubichill/shared';
+import { CommandType, HostEventType, type ModGuestCommand, type ModHostEvent } from '@ubichill/shared';
 
 // IMPORTANT: Function コンストラクタを無効化する前に保存
 const SafeFunction = Function;
 
-const nullifyGlobals = (): ((cmd: PluginGuestCommand) => void) => {
+const nullifyGlobals = (): ((cmd: ModGuestCommand) => void) => {
     const dangerousGlobals = [
         'fetch',
         'XMLHttpRequest',
@@ -69,7 +69,7 @@ function checkDangerousPatterns(code: string): void {
     }
 }
 
-self.addEventListener('message', (e: MessageEvent<PluginHostEvent>) => {
+self.addEventListener('message', (e: MessageEvent<ModHostEvent>) => {
     const event = e.data;
 
     if (event.type !== HostEventType.EVT_LIFECYCLE_INIT) {
@@ -82,20 +82,20 @@ self.addEventListener('message', (e: MessageEvent<PluginHostEvent>) => {
     Ubi.componentInstanceId = event.payload.componentInstanceId;
     Ubi.entityId = event.payload.entityId;
     Ubi.componentType = event.payload.componentType;
-    Ubi.pluginBase = event.payload.pluginBase ?? '';
+    Ubi.modBase = event.payload.modBase ?? '';
     Ubi.watchEntityTypes = event.payload.watchEntityTypes ?? [];
-    // state.define がプラグインコード実行前にこのスナップショットを同期反映する
+    // state.define がmodコード実行前にこのスナップショットを同期反映する
     Ubi._setInitialEntities(event.payload.initialEntities ?? []);
 
-    const pluginId = event.payload.pluginId ?? event.payload.worldId ?? 'unknown';
-    Ubi.pluginId = pluginId;
+    const modId = event.payload.modId ?? event.payload.worldId ?? 'unknown';
+    Ubi.modId = modId;
 
     try {
         // SECURITY NOTE: 本番環境では静的解析・コード署名・CSP・将来的に QuickJS+WASM への移行を推奨
         checkDangerousPatterns(event.payload.code);
 
-        // プラグインの console.log 等を Ubi.log へリダイレクト（グローバル console をシャドウ）
-        const _pluginConsole = {
+        // modの console.log 等を Ubi.log へリダイレクト（グローバル console をシャドウ）
+        const _modConsole = {
             log: (...args: unknown[]) => Ubi.log(args.map(String).join(' '), 'info'),
             info: (...args: unknown[]) => Ubi.log(args.map(String).join(' '), 'info'),
             warn: (...args: unknown[]) => Ubi.log(args.map(String).join(' '), 'warn'),
@@ -103,28 +103,28 @@ self.addEventListener('message', (e: MessageEvent<PluginHostEvent>) => {
             debug: (...args: unknown[]) => Ubi.log(args.map(String).join(' '), 'debug'),
         };
 
-        const pluginFn = new SafeFunction(
+        const modFn = new SafeFunction(
             'Ubi',
             'console',
             `"use strict";
             try {
                 ${event.payload.code}
             } catch (err) {
-                console.error("[Sandbox:${pluginId}] プラグイン実行エラー", err);
+                console.error("[Sandbox:${modId}] mod実行エラー", err);
                 throw err;
             }`,
         );
 
-        pluginFn(Ubi, _pluginConsole);
+        modFn(Ubi, _modConsole);
 
         // ACK: 初期化完了を Host に通知 → Host がキューをフラッシュする
         securePostMessage({ type: CommandType.CMD_READY });
 
-        console.log(`[Sandbox:${pluginId}] 初期化完了`);
+        console.log(`[Sandbox:${modId}] 初期化完了`);
     } catch (error) {
-        console.error(`[Sandbox:${pluginId}] 初期化失敗:`, error);
+        console.error(`[Sandbox:${modId}] 初期化失敗:`, error);
         // Host にも失敗を通知 → markReady (ロード完了扱い) でローディング表示が止まらないように。
-        // 失敗した plugin は機能しないが、他のエンティティの描画は阻害しない方針 (graceful degradation)。
+        // 失敗した mod は機能しないが、他のエンティティの描画は阻害しない方針 (graceful degradation)。
         const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
         securePostMessage({ type: CommandType.CMD_INIT_FAILED, payload: { error: message } });
     }

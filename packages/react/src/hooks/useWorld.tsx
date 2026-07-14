@@ -19,7 +19,7 @@ export interface WorldContextType {
     ephemeralData: Map<string, unknown>;
     environment: WorldEnvironmentData;
     availableComponents: AvailableComponent[];
-    activePlugins: string[];
+    activeMods: string[];
     createEntity: <T = Record<string, unknown>>(
         type: string,
         transform: ComponentInstance['transform'],
@@ -48,7 +48,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const [ephemeralData, setEphemeralData] = useState<Map<string, unknown>>(new Map());
     const [environment, setEnvironment] = useState<WorldEnvironmentData>(DEFAULTS.WORLD_ENVIRONMENT);
     const [availableComponents, setAvailableComponents] = useState<AvailableComponent[]>([]);
-    const [activePlugins, setActivePlugins] = useState<string[]>([]);
+    const [activeMods, setActiveMods] = useState<string[]>([]);
 
     useEffect(() => {
         if (!socket) return;
@@ -62,7 +62,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             setEntities(newMap);
             setEnvironment(payload.environment);
             setAvailableComponents(payload.availableComponents);
-            setActivePlugins(payload.activePlugins || []);
+            setActiveMods(payload.activeMods || []);
         };
 
         // エンティティ作成を受信
@@ -221,7 +221,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setEphemeralData(new Map());
         setEnvironment(DEFAULTS.WORLD_ENVIRONMENT);
         setAvailableComponents([]);
-        setActivePlugins([]);
+        setActiveMods([]);
     }, []);
 
     const contextValue: WorldContextType = useMemo(
@@ -230,7 +230,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             ephemeralData,
             environment,
             availableComponents,
-            activePlugins,
+            activeMods,
             createEntity,
             patchEntity,
             deleteEntity,
@@ -242,7 +242,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             ephemeralData,
             environment,
             availableComponents,
-            activePlugins,
+            activeMods,
             createEntity,
             patchEntity,
             deleteEntity,

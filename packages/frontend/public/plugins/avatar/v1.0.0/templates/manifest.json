@@ -1,0 +1,47 @@
+[
+    {
+        "id": "character_oji_03_blue_brown",
+        "name": "Character Oji 03 Blue Brown",
+        "directory": "character_oji_03_blue_brown",
+        "mappings": {
+            "default": "normal_select.cur",
+            "pointer": "link_select.cur",
+            "text": "text_select.cur",
+            "wait": "busy.cur",
+            "help": "help.cur",
+            "not-allowed": "unavailable.cur",
+            "move": "move.cur",
+            "grabbing": "move.cur"
+        }
+    },
+    {
+        "id": "character_tenshi_gold",
+        "name": "Character Tenshi Gold",
+        "directory": "character_tenshi_gold",
+        "mappings": {
+            "default": "normal_select.cur",
+            "pointer": "link_select.cur",
+            "text": "text_select.cur",
+            "wait": "busy.cur",
+            "help": "help.cur",
+            "not-allowed": "unavailable.cur",
+            "move": "move.cur",
+            "grabbing": "move.cur"
+        }
+    },
+    {
+        "id": "cat_halloween_purple",
+        "name": "Cat Halloween Purple",
+        "directory": "cat_halloween_purple",
+        "mappings": {
+            "default": "normal_select.cur",
+            "pointer": "link_select.cur",
+            "text": "text_select.cur",
+            "wait": "busy.cur",
+            "help": "help.cur",
+            "not-allowed": "unavailable.cur",
+            "move": "move.cur",
+            "grabbing": "move.cur"
+        }
+    }
+]

@@ -4,7 +4,7 @@ import { useSyncExternalStore } from 'react';
  * Worker が起動時に報告する「Inspector 用スキーマ」を componentType ごとに保持するレジストリ。
  *
  * 経緯:
- *   編集可能パラメータの定義を plugin.json の dataFields ではなく Ubi.state（worker）に
+ *   編集可能パラメータの定義を mod.json の dataFields ではなく Ubi.state（worker）に
  *   一本化したため、エディタはマニフェストではなく「走っている worker が報告したスキーマ」を
  *   使う。World エディタのプレビューは各エンティティの worker を実走させるので、その過程で
  *   ここにスキーマが溜まり、Inspector が型付き入力（配列の追加/削除含む）を描画する。

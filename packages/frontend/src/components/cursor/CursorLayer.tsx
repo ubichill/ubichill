@@ -16,7 +16,7 @@
  * └──────────────────────────────────────────────────────────────────────┘
  *
  * 自分のカーソル位置は pointermove + scroll の両方をトリガに socket 配信
- * (旧 avatar:cursor プラグインの役割)。
+ * (旧 avatar:cursor modの役割)。
  *
  * 持っているエンティティの追従同期:
  *  - useBroadcastCursor が cursor:move 送信時に heldEntitySyncRef から heldEntityId を含める

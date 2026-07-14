@@ -23,7 +23,7 @@
 import type { ComponentInstance, EntityPatchPayload } from '@ubichill/shared';
 import type { WorldModule } from '../world';
 
-/** entityId 未指定時の自動採番: `${pluginId}-${componentName}-<short uuid>` 形式の人間可読 id。 */
+/** entityId 未指定時の自動採番: `${modId}-${componentName}-<short uuid>` 形式の人間可読 id。 */
 function autoEntityId(type: string): string {
     const safe = type.replace(/[^a-z0-9]/gi, '-').toLowerCase();
     const uuid = (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : '').slice(0, 8);

@@ -1,0 +1,78 @@
+name: Publish Mods to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mods/**'
+      - 'scripts/build-workers.mjs'
+  workflow_dispatch:
+
+concurrency:
+  group: gh-pages-mods
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Extract Node version from package.json
+        id: versions
+        run: |
+          echo "node=$(jq -r '.volta.node' package.json)" >> $GITHUB_OUTPUT
+
+      # pnpm version は package.json の packageManager フィールドから自動検出
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ steps.versions.outputs.node }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build mod workers
+        # dist/mods/ に各modのバンドルが出力される
+        run: pnpm build:workers
+
+      - name: Checkout gh-pages branch (worktree)
+        run: |
+          git fetch origin gh-pages --depth=1 2>/dev/null || true
+          git worktree add /tmp/gh-pages gh-pages 2>/dev/null || \
+            (git worktree add --orphan /tmp/gh-pages gh-pages-deploy && \
+             cd /tmp/gh-pages && git checkout --orphan gh-pages && git rm -rf . 2>/dev/null || true)
+
+      - name: Sync mods to gh-pages
+        run: |
+          # dist/mods/ を gh-pages の mods/ ディレクトリにコピー
+          # Helm charts インデックスは charts/ に別途配置されるため競合しない
+          mkdir -p /tmp/gh-pages/mods
+          cp -r dist/mods/. /tmp/gh-pages/mods/
+          echo "✅ Mods synced to gh-pages/mods/"
+          ls -la /tmp/gh-pages/mods/
+
+      - name: Commit and push to gh-pages
+        working-directory: /tmp/gh-pages
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add mods/
+          if git diff --cached --quiet; then
+            echo "No changes to mods, skipping commit"
+          else
+            git commit -m "chore(mods): modバンドルを更新 (${GITHUB_SHA::7})"
+            git push origin HEAD:gh-pages --force
+            echo "✅ Mods published to GitHub Pages"
+          fi

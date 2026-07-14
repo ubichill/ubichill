@@ -7,9 +7,9 @@
 export const SETTINGS_KEYS = {
     /** ロビーのワールド並び替えキー。 */
     lobbySortKey: 'ubichill_world_sort',
-    /** ワールドエディタでユーザーが追加したプラグインレジストリ URL 一覧。 */
+    /** ワールドエディタでユーザーが追加したmodレジストリ URL 一覧。 */
     editorRegistryUrls: 'world-editor:registry-urls',
-    /** プラグイン権限ポリシー（ティア既定・プラグイン別 grant・fetch ドメイン）。 */
+    /** mod権限ポリシー（ティア既定・mod別 grant・fetch ドメイン）。 */
     permissionPolicy: 'ubichill:permission-policy',
 } as const;
 

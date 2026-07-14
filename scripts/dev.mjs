@@ -62,34 +62,34 @@ async function main() {
         process.exit(1);
     }
 
-    // Build plugin workers (TypeScript → JS bundle → .gen.ts)
-    console.log('🔨 Building plugin workers...');
+    // Build mod workers (TypeScript → JS bundle → .gen.ts)
+    console.log('🔨 Building mod workers...');
     const buildWorkers = spawnSync(process.execPath, ['scripts/build-workers.mjs'], { stdio: 'inherit' });
     if (buildWorkers.status !== 0) {
-        console.error('Failed to build plugin workers.');
+        console.error('Failed to build mod workers.');
         process.exit(1);
     }
 
-    // Start plugins
-    console.log('🚀 Starting Docker plugins...');
-    const startPlugins = spawnSync(process.execPath, ['scripts/start-plugins.mjs', 'up', '-d'], { stdio: 'inherit' });
-    if (startPlugins.status !== 0) {
-        console.error('Failed to start plugins.');
-        // Don't exit here, maybe we can run without plugins or user can fix it
+    // Start mods
+    console.log('🚀 Starting Docker mods...');
+    const startMods = spawnSync(process.execPath, ['scripts/start-mods.mjs', 'up', '-d'], { stdio: 'inherit' });
+    if (startMods.status !== 0) {
+        console.error('Failed to start mods.');
+        // Don't exit here, maybe we can run without mods or user can fix it
     }
 
-    // Plugin port health check: 各プラグインのバックエンドポートが正しく応答しているか検証する。
+    // Mod port health check: 各modのバックエンドポートが正しく応答しているか検証する。
     // Docker がポートを占有していても、ホスト側に別プロセスが先に bind していると
     // Vite プロキシがそちらへ届いてしまうため、Content-Type で判定する。
     //
     // 初回起動は image build + uvicorn の cold start で数十秒かかるので、
     // 1.5 秒間隔で最大 30 秒ポーリング (=20 回) する。
-    const pluginChecks = [
+    const modChecks = [
         { name: 'video-player', url: 'http://localhost:8000/', expectedContentType: 'application/json' },
     ];
     const HEALTHCHECK_MAX_TRIES = 20;
     const HEALTHCHECK_INTERVAL_MS = 1500;
-    for (const { name, url, expectedContentType } of pluginChecks) {
+    for (const { name, url, expectedContentType } of modChecks) {
         let lastError = '';
         let lastContentType = '';
         let succeeded = false;
@@ -98,12 +98,12 @@ async function main() {
                 const res = await fetch(url);
                 lastContentType = res.headers.get('content-type') ?? '';
                 if (lastContentType.includes(expectedContentType)) {
-                    console.log(`[plugin:${name}] バックエンド OK (${url})`);
+                    console.log(`[mod:${name}] バックエンド OK (${url})`);
                     succeeded = true;
                     break;
                 }
                 // Content-Type 不一致は別プロセス占有の可能性大 → 即報告 (リトライ不要)
-                console.warn(`\n⚠️  [plugin:${name}] ポート競合の可能性があります`);
+                console.warn(`\n⚠️  [mod:${name}] ポート競合の可能性があります`);
                 console.warn(`   ${url} が "${lastContentType}" を返しています（期待値: ${expectedContentType}）`);
                 console.warn(`   同じポートを使用している別プロセスを確認してください:`);
                 console.warn(`   lsof -i :${new URL(url).port || 80}\n`);
@@ -115,9 +115,9 @@ async function main() {
             }
         }
         if (!succeeded) {
-            console.warn(`\n⚠️  [plugin:${name}] バックエンドに接続できません: ${url}`);
+            console.warn(`\n⚠️  [mod:${name}] バックエンドに接続できません: ${url}`);
             console.warn(`   ${HEALTHCHECK_MAX_TRIES * HEALTHCHECK_INTERVAL_MS / 1000}s 待っても応答なし (${lastError})`);
-            console.warn(`   Docker コンテナのログを確認: docker compose -f plugins/${name}/docker-compose.yml logs\n`);
+            console.warn(`   Docker コンテナのログを確認: docker compose -f mods/${name}/docker-compose.yml logs\n`);
         }
     }
 
@@ -126,8 +126,8 @@ async function main() {
     const cleanup = () => {
         if (isCleaning) return;
         isCleaning = true;
-        console.log('\n🛑 Stopping Docker plugins...');
-        spawnSync(process.execPath, ['scripts/start-plugins.mjs', 'down'], { stdio: 'inherit' });
+        console.log('\n🛑 Stopping Docker mods...');
+        spawnSync(process.execPath, ['scripts/start-mods.mjs', 'down'], { stdio: 'inherit' });
         console.log('🛑 Stopping database...');
         spawnSync('docker', ['compose', '-f', 'packages/db/docker-compose.yml', 'down'], { stdio: 'inherit', shell: true });
 

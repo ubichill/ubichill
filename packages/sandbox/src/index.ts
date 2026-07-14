@@ -1,7 +1,7 @@
 /**
  * @ubichill/sandbox — Host-side entry point.
  *
- * Worker 管理・隔離実行のホスト API。プラグイン向け API は @ubichill/sdk から。
+ * Worker 管理・隔離実行のホスト API。mod向け API は @ubichill/sdk から。
  *
  * 構成:
  *   host/   … main thread 側 (Worker 管理 / DOM 描画 / 入力収集 / fetch)
@@ -28,9 +28,10 @@ export { type CapabilityGate, type CapabilityGateOptions, createCapabilityGate }
 // ── infra: fetch / 診断 / DOM 描画 ──
 export * from './host/fetchHandler';
 // ── usecase: 個々の Worker のライフサイクル ──
-export { PluginHostManager } from './host/PluginHostManager';
+export { ModHostManager } from './host/ModHostManager';
 // ── repository: 在籍簿 + emit ルーティング ──
-export { getActiveWorkerCount, resetRegistryForTests, routeEmit } from './host/PluginRegistry';
+export { getActiveWorkerCount, resetRegistryForTests, routeEmit } from './host/ModRegistry';
+export * from './host/modDiagnostics';
 export {
     capabilityNeedsConsent,
     DEFAULT_PERMISSION_POLICY,
@@ -43,13 +44,12 @@ export {
     resolveFetchDecision,
     type TierMode,
 } from './host/permissionPolicy';
-export * from './host/pluginDiagnostics';
 // ── 型 ──
 export type {
     FetchOptions,
     FetchResult,
     HostHandlers,
-    PluginHostManagerOptions,
-    PluginWorkerInfo,
+    ModHostManagerOptions,
+    ModWorkerInfo,
 } from './host/types';
 export { renderVNode } from './host/VNodeRenderer';

@@ -343,20 +343,20 @@ tolerations: []
 # Node selector (optional)
 nodeSelector: {}
 
-# Plugin backends (optional)
-# 任意のプラグインバックエンドコンテナを起動する設定。
+# Mod backends (optional)
+# 任意のmodバックエンドコンテナを起動する設定。
 # 各エントリは Deployment + Service + Ingress ルールを自動生成する。
 # 例:
-# pluginBackends:
+# modBackends:
 #   - id: video-player
 #     image:
 #       repository: ghcr.io/yourorg/video-player-backend
 #       tag: latest
 #     port: 8000
-#     pathPrefix: /plugins/video-player/api
+#     pathPrefix: /mods/video-player/api
 #     replicaCount: 1
 #     env:
-#       ROOT_PATH: /plugins/video-player/api
+#       ROOT_PATH: /mods/video-player/api
 #       CORS_ORIGINS: "*"
 #     resources:
 #       limits:
@@ -365,7 +365,7 @@ nodeSelector: {}
 #       requests:
 #         cpu: 100m
 #         memory: 128Mi
-pluginBackends: []
+modBackends: []
 
 # Monitoring and observability
 monitoring:

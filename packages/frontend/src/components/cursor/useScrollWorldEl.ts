@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react';
  * - InstancePage 等でマウント後に出てくるので route 切替で生え変わる
  * - 見つからない (= ロビーや editor 外) ときは null
  * - MutationObserver で document.body の subtree 変化を購読するが、
- *   plugin の VNode レンダリングで頻繁に発火するので **rAF でデバウンス** している。
+ *   mod の VNode レンダリングで頻繁に発火するので **rAF でデバウンス** している。
  *   1 フレーム内の連続変化は 1 回の querySelector に集約され、同じ要素なら
  *   setState は呼ばずに React の bailout (= 再 render なし) に任せる。
  */

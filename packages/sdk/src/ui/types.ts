@@ -1,7 +1,7 @@
 /**
  * @ubichill/sdk/ui — Custom Elements 向けコンテキスト型定義
  *
- * プラグイン開発者はこのモジュールから UbiWidget / UbiSingleton を継承して UI を実装する。
+ * mod開発者はこのモジュールから UbiWidget / UbiSingleton を継承して UI を実装する。
  * React / Socket.IO には依存しない（注入されたコンテキストで受け取る）。
  */
 
@@ -63,7 +63,7 @@ export interface UbiEntityContext<TData = unknown, TEphemeral = unknown> {
     /** ワールド内の全ユーザー */
     users: ReadonlyMap<string, User>;
 
-    /** Socket.IO クライアント（プラグイン固有のソケットイベントに使用） */
+    /** Socket.IO クライアント（mod固有のソケットイベントに使用） */
     socket: SocketLike | null;
 }
 
@@ -100,6 +100,6 @@ export interface UbiInstanceContext {
     /** エンティティにエフェメラルデータをブロードキャスト */
     broadcastEphemeral: (entityId: string, data: unknown) => void;
 
-    /** Socket.IO クライアント（プラグイン固有のソケットイベントに使用） */
+    /** Socket.IO クライアント（mod固有のソケットイベントに使用） */
     socket: SocketLike | null;
 }

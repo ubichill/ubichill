@@ -11,7 +11,7 @@ export type MediaModule = {
     setVisible(visible: boolean, targetId?: string): void;
     /**
      * デバイス由来（OS メディアキー / ロック画面 / PiP / リモート再生）の再生操作を許可するか。
-     * 既定は false（=プラグイン命令 play/pause のみ受け付け、デバイス操作は無効化）。
+     * 既定は false（=mod命令 play/pause のみ受け付け、デバイス操作は無効化）。
      */
     setDeviceControl(enabled: boolean, targetId?: string): void;
 };

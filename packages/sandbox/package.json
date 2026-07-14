@@ -1,7 +1,7 @@
 {
     "name": "@ubichill/sandbox",
     "version": "1.0.0",
-    "description": "Plugin sandbox: Worker isolation layer for Ubichill. Keeps UI thread free.",
+    "description": "Mod sandbox: Worker isolation layer for Ubichill. Keeps UI thread free.",
     "main": "src/index.ts",
     "types": "src/index.ts",
     "exports": {

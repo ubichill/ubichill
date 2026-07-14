@@ -291,16 +291,16 @@ export async function sendWorldSnapshot(socket: TypedSocket, instanceId: string,
     const entities = getInstanceSnapshot(instanceId);
     const environment = await instanceManager.getWorldEnvironment(worldId);
     const world = await worldRegistry.getWorld(worldId);
-    const activePlugins = world?.dependencies?.map((d) => d.name) || [];
+    const activeMods = world?.dependencies?.map((d) => d.name) || [];
 
     const snapshotPayload: WorldSnapshotPayload = {
         entities,
         availableComponents: [],
-        activePlugins,
+        activeMods,
         environment,
     };
     socket.emit('world:snapshot', snapshotPayload);
     logger.debug(
-        `ワールドスナップショット送信: ${entities.length}件のエンティティ, plugins: ${activePlugins.length} (instanceId: ${instanceId})`,
+        `ワールドスナップショット送信: ${entities.length}件のエンティティ, mods: ${activeMods.length} (instanceId: ${instanceId})`,
     );
 }

@@ -4,9 +4,9 @@ import {
     CommandType,
     type ComponentInstance,
     type FetchOptions,
-    type PluginGuestCommand,
-    type PluginHostEvent,
-    type PluginWorkerMessage,
+    type ModGuestCommand,
+    type ModHostEvent,
+    type ModWorkerMessage,
     UbiError,
     UbiErrorCode,
 } from '@ubichill/shared';
@@ -31,7 +31,7 @@ import { createUiModule } from './ui';
 import type { WorldModule } from './world';
 import { createWorldModule } from './world';
 
-export type { OmitId, PluginWorkerMessage, UiRenderCostStat };
+export type { OmitId, ModWorkerMessage, UiRenderCostStat };
 
 /** EVT_INPUT の type 文字列マッピング（毎フレーム再生成を回避） */
 const INPUT_TYPE_MAP: Readonly<Record<string, string>> = {
@@ -52,7 +52,7 @@ type PendingRequest = {
 };
 
 /**
- * Ubichill Plugin SDK のメインクラス。Sandbox Worker 内では `Ubi` として注入される。
+ * Ubichill Mod SDK のメインクラス。Sandbox Worker 内では `Ubi` として注入される。
  *
  * Public API surface:
  *   Ubi.state.*     — 宣言的リアクティブ状態 (sync の options で挙動切替)
@@ -74,7 +74,7 @@ export class UbiSDK {
     private _commandCounter = 0;
     private _pendingRequests = new Map<string, PendingRequest>();
     private _rpcTimeout: number;
-    private readonly _sendToHost: (cmd: PluginGuestCommand) => void;
+    private readonly _sendToHost: (cmd: ModGuestCommand) => void;
 
     // ── ECS ──────────────────────────────────────────────────
     private _pendingWorkerEvents: WorkerEvent[] = [];
@@ -85,17 +85,17 @@ export class UbiSDK {
     private _pendingStateFlushes = new Set<() => void>();
     private _initialEntities: ComponentInstance[] = [];
 
-    // ── Plugin identity (sandbox.worker.ts が設定) ──────────
+    // ── Mod identity (sandbox.worker.ts が設定) ──────────
     public worldId?: string;
     public myUserId?: string;
-    public pluginId?: string;
+    public modId?: string;
     /** 自 Worker (= 1 Component インスタンス) を識別する flat ID。 */
     public componentInstanceId?: string;
     /** 自 Worker が乗っている Entity (GameObject) の id。Pure ECS 用語の Entity に対応。 */
     public entityId?: string;
-    /** 自 Worker の Component 型 (`pluginId:componentName`) */
+    /** 自 Worker の Component 型 (`modId:componentName`) */
     public componentType?: string;
-    public pluginBase = '';
+    public modBase = '';
     public watchEntityTypes: string[] = [];
 
     // ── Public API modules ───────────────────────────────────
@@ -107,16 +107,16 @@ export class UbiSDK {
     public readonly player: PlayerModule;
     public readonly entity: EntityModule;
     public readonly grip: GripModule;
-    /** @internal Ubi.state / Ubi.entity の実装で使用。プラグインからは Ubi.entity 経由で操作する。 */
+    /** @internal Ubi.state / Ubi.entity の実装で使用。modからは Ubi.entity 経由で操作する。 */
     private readonly _world: WorldModule;
 
-    constructor(postMessage: (cmd: PluginGuestCommand) => void, options?: { rpcTimeout?: number }) {
+    constructor(postMessage: (cmd: ModGuestCommand) => void, options?: { rpcTimeout?: number }) {
         this._sendToHost = postMessage;
         this._rpcTimeout = options?.rpcTimeout ?? 10_000;
         this._local = new EcsWorldImpl();
 
-        const send = (cmd: OmitId<PluginGuestCommand>): void => this._send(cmd);
-        const rpc = <T>(cmd: OmitId<PluginGuestCommand>): Promise<T> => this._rpc<T>(cmd);
+        const send = (cmd: OmitId<ModGuestCommand>): void => this._send(cmd);
+        const rpc = <T>(cmd: OmitId<ModGuestCommand>): Promise<T> => this._rpc<T>(cmd);
 
         this.player = createPlayerModule(send, () => this.myUserId);
         this.ui = createUiModule(send, () => this._isTicking, _beginRender, _clearTarget);
@@ -126,7 +126,7 @@ export class UbiSDK {
             updateEntity: (id, patch) => this._world.update(id, patch),
             getMyUserId: () => this.myUserId,
             getEntityId: () => this.entityId,
-            getPluginId: () => this.pluginId,
+            getModId: () => this.modId,
             getComponentType: () => this.componentType,
             getWatchEntityTypes: () => this.watchEntityTypes,
             getPresenceUsers: () => this.player.getPresenceUsers(),
@@ -173,7 +173,7 @@ export class UbiSDK {
                 return unsub;
             },
             sendGripCommand: (payload) => {
-                // _send は OmitId<PluginGuestCommand> を受け取り内部で _sendToHost を呼ぶ。
+                // _send は OmitId<ModGuestCommand> を受け取り内部で _sendToHost を呼ぶ。
                 // CmdGrip は fire-and-forget で id を持たないので OmitId<...> として直接渡せる。
                 this._send({ type: CommandType.CMD_GRIP, payload });
             },
@@ -216,16 +216,16 @@ export class UbiSDK {
 
     // ── Transport ─────────────────────────────────────────────
 
-    private _send(command: OmitId<PluginGuestCommand>): void {
-        this._sendToHost(command as PluginGuestCommand);
+    private _send(command: OmitId<ModGuestCommand>): void {
+        this._sendToHost(command as ModGuestCommand);
     }
 
-    private _rpc<T>(command: OmitId<PluginGuestCommand>, timeoutMs = this._rpcTimeout): Promise<T> {
+    private _rpc<T>(command: OmitId<ModGuestCommand>, timeoutMs = this._rpcTimeout): Promise<T> {
         const id = `rpc_${this._commandCounter++}`;
         return new Promise<T>((resolve, reject) => {
             const timer = setTimeout(() => {
                 this._pendingRequests.delete(id);
-                const prefix = this.pluginId ? `[UbiSDK:${this.pluginId}]` : '[UbiSDK]';
+                const prefix = this.modId ? `[UbiSDK:${this.modId}]` : '[UbiSDK]';
                 reject(
                     new UbiError(
                         UbiErrorCode.RPC_TIMEOUT,
@@ -244,7 +244,7 @@ export class UbiSDK {
                     reject(code ? new UbiError(code, error) : new Error(error));
                 },
             });
-            this._sendToHost({ ...command, id } as PluginGuestCommand);
+            this._sendToHost({ ...command, id } as ModGuestCommand);
         });
     }
 
@@ -268,7 +268,7 @@ export class UbiSDK {
     }
 
     /** @internal sandbox.worker.ts から全ホストイベントをここに流す */
-    public _dispatchEvent(event: PluginHostEvent): void {
+    public _dispatchEvent(event: ModHostEvent): void {
         switch (event.type) {
             case 'EVT_LIFECYCLE_TICK': {
                 try {

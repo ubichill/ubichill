@@ -1,7 +1,7 @@
 /**
- * @ubichill/sdk — Plugin developer public API
+ * @ubichill/sdk — Mod developer public API
  *
- * プラグイン開発者はここから import するだけで完結する。
+ * mod開発者はここから import するだけで完結する。
  * 内部実装は @ubichill/engine / @ubichill/sandbox に分離されている。
  *
  * Worker-safe（React・DOM 非依存）。
@@ -56,11 +56,11 @@ export type {
     InputMouseMoveData,
     InputMouseUpData,
     InputScrollData,
-    PluginCommand,
-    PluginEvent,
-    PluginGuestCommand,
-    PluginHostEvent,
-    PluginWorkerMessage,
+    ModCommand,
+    ModEvent,
+    ModGuestCommand,
+    ModHostEvent,
+    ModWorkerMessage,
     RpcCreateEntityResult,
     RpcGetEntityResult,
     RpcNetFetchResult,
@@ -72,7 +72,7 @@ export type {
     WorldEntity,
     WorldEnvironmentData,
 } from '@ubichill/shared';
-// 統一エラー体系: プラグインは UbiError / UbiErrorCode で失敗理由を判別できる
+// 統一エラー体系: modは UbiError / UbiErrorCode で失敗理由を判別できる
 export { UbiError, UbiErrorCode } from '@ubichill/shared';
 // UbiSDK クラス + 型
 export { UbiSDK } from './ubi';

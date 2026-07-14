@@ -3,8 +3,8 @@
 # ----------------------------------------
 node_modules
 packages/*/node_modules
-plugins/*/node_modules
-plugins/*/frontend/node_modules
+mods/*/node_modules
+mods/*/frontend/node_modules
 
 # ----------------------------------------
 # ビルド成果物（SKIP_BUILD=true 時は CI から受け取るため除外）
@@ -45,6 +45,6 @@ docs/
 .git
 .gitignore
 
-# plugins/ は現状フロントエンドのワークスペースパッケージとして必須
+# mods/ は現状フロントエンドのワークスペースパッケージとして必須
 # 将来的にプラグインを外部プラグインとして動的にするとき除外
-# plugins/
+# mods/

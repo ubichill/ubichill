@@ -219,7 +219,7 @@ function isAllowedAttr(key: string): boolean {
         case 'href':
         case 'src':
         case 'alt':
-        // 画像の軽量化・レイアウト安定用（プラグインがサムネ等で使う）
+        // 画像の軽量化・レイアウト安定用（modがサムネ等で使う）
         case 'loading':
         case 'decoding':
         case 'width':

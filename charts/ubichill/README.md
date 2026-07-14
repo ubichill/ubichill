@@ -1,8 +1,8 @@
 # Ubichill Helm Chart
 
-Ubichill（Frontend + Backend + Redis + PostgreSQL + プラグインバックエンド）を Kubernetes に
-デプロイするための単一 Helm チャートです。プラグインのバックエンド（例: video-player の yt-dlp）は
-別チャートではなく、この chart の `pluginBackends` で一緒にデプロイします。
+Ubichill（Frontend + Backend + Redis + PostgreSQL + modバックエンド）を Kubernetes に
+デプロイするための単一 Helm チャートです。modのバックエンド（例: video-player の yt-dlp）は
+別チャートではなく、この chart の `modBackends` で一緒にデプロイします。
 
 ## クイックスタート
 
@@ -51,14 +51,14 @@ redis:
 postgresql:
   enabled: true                  # 同梱 PostgreSQL（persistence.enabled で永続/揮発を切替）
 
-# プラグインバックエンド（この chart 内でデプロイ）
-pluginBackends:
+# modバックエンド（この chart 内でデプロイ）
+modBackends:
   - id: video-player
     image:
       repository: ghcr.io/ubichill/video-player-backend
       tag: latest
     port: 8000
-    pathPrefix: /plugins/video-player/api
+    pathPrefix: /mods/video-player/api
 ```
 
 ## 開発・検証
@@ -83,7 +83,7 @@ CI でも PR 時に `charts/**` の lint / template を検証する（[helm-ci.y
 Kubernetes (namespace)
 ├── frontend   … Vite CSR（React）を nginx で配信。/api・/socket.io は backend へ proxy
 ├── backend    … Node.js + Socket.IO。起動時に migrate init container が DB スキーマ適用
-├── pluginBackends[] … 各プラグインの API（例: video-player = yt-dlp backend）
+├── modBackends[] … 各modの API（例: video-player = yt-dlp backend）
 ├── redis      … 共有キャッシュ
 └── postgresql … アプリ DB（同梱 or 外部）
 ```

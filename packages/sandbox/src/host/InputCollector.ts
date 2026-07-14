@@ -35,8 +35,8 @@
  * - React re-render で DOM が差し替わっても追従できる
  * - スクロール時にも elementFromPoint で再チェックする
  *
- * PluginHostManager が内部で保持し、_sendTick() の直前に collectSince() を呼ぶ。
- * プラグイン開発者は Frontend コードを一切書かずに入力を受け取れる。
+ * ModHostManager が内部で保持し、_sendTick() の直前に collectSince() を呼ぶ。
+ * mod開発者は Frontend コードを一切書かずに入力を受け取れる。
  */
 
 import { InputEventType, type InputFrameEvent } from '@ubichill/shared';
@@ -59,11 +59,11 @@ const POINTER_SELECTOR =
     'label';
 
 /**
- * クリック対象が plugin UI 要素（button, input, a 等）の場合 true を返す。
+ * クリック対象が mod UI 要素（button, input, a 等）の場合 true を返す。
  *
  * トレイや設定パネル上の mousedown/mouseup はドローイング入力として
  * 全 Worker へ転送しない。これにより「UI パネルをクリックすると誤描画される」
- * 問題をプラグインごとの対応なしに解決する。
+ * 問題をmodごとの対応なしに解決する。
  * mousemove はカーソル追跡に必要なため対象外。
  */
 function _isInteractiveTarget(target: EventTarget | null): boolean {

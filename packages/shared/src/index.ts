@@ -39,7 +39,7 @@ export interface User {
     position: CursorPosition;
     lastActiveAt: number;
     isMenuOpen?: boolean;
-    /** 現在持っているペンの色（ペンプラグインが設定・解除する） */
+    /** 現在持っているペンの色（ペンmodが設定・解除する） */
     penColor?: string | null;
     /**
      * 現在持っているエンティティの ComponentInstance ID。
@@ -101,7 +101,7 @@ export interface ComponentInstance<T = unknown> {
  * Entity (GameObject) に載る 1 つの Component。
  */
 export interface EntityComponent<T = unknown> {
-    type: string; // "pluginId:componentName"
+    type: string; // "modId:componentName"
     data: T;
 }
 
@@ -142,10 +142,10 @@ export interface EntityEphemeralPayload {
 
 /**
  * 利用可能な Component（ツールバー用）。
- * 1 component = 1 振る舞い。`id` は `pluginId:componentName` 形式。
+ * 1 component = 1 振る舞い。`id` は `modId:componentName` 形式。
  */
 export interface AvailableComponent {
-    id: string; // "pluginId:componentName"
+    id: string; // "modId:componentName"
     displayName: string;
     icon?: string;
     defaults?: Record<string, unknown>;
@@ -168,8 +168,8 @@ export interface WorldEnvironmentData {
 export interface WorldSnapshotPayload {
     entities: ComponentInstance[];
     availableComponents: AvailableComponent[];
-    /** アクティブなプラグインIDのリスト */
-    activePlugins: string[];
+    /** アクティブなmodIDのリスト */
+    activeMods: string[];
     environment: WorldEnvironmentData;
 }
 
@@ -233,7 +233,7 @@ export interface ServerToClientEvents {
 
     // ============================================
     // Media (video / audio etc.) ピア間同期 (Server -> Client)
-    // 任意のメディア系プラグインの「再生状態を peer 間で揃える」ためのルーム broadcast。
+    // 任意のメディア系modの「再生状態を peer 間で揃える」ためのルーム broadcast。
     // ============================================
 
     /** メディア再生状態の同期 */
@@ -396,11 +396,11 @@ export const SERVER_CONFIG = {
 } as const;
 
 // ============================================
-// Re-export Schemas and Plugins
+// Re-export Schemas and Mods
 // ============================================
 
-export * from './plugin/errors';
-export * from './plugin/protocol';
-export * from './plugin/types';
-export * from './plugin/vnode';
+export * from './mod/errors';
+export * from './mod/protocol';
+export * from './mod/types';
+export * from './mod/vnode';
 export * from './schemas';

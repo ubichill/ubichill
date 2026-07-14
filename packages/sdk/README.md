@@ -1,10 +1,10 @@
 # @ubichill/sdk
 
-Ubichill Plugin SDK - プラグイン開発のための公式 SDK
+Ubichill Mod SDK - mod開発のための公式 SDK
 
 ## 概要
 
-`@ubichill/sdk` は、Ubichill プラグインを開発するための統合された SDK です。hooks、型定義、ユーティリティなど、プラグイン開発に必要なすべての機能を提供します。
+`@ubichill/sdk` は、Ubichill modを開発するための統合された SDK です。hooks、型定義、ユーティリティなど、mod開発に必要なすべての機能を提供します。
 
 ## インストール
 
@@ -28,7 +28,7 @@ pnpm add @ubichill/sdk
 
 ### 型定義
 
-- **`WidgetDefinition<T>`** - プラグインウィジェットの定義
+- **`WidgetDefinition<T>`** - modウィジェットの定義
 - **`WorldEntity<T>`** - エンティティの型
 - **`User`** - ユーザーの型
 - その他の共有型
@@ -39,7 +39,7 @@ pnpm add @ubichill/sdk
 
 ## 使用例
 
-### 基本的なプラグインの作成
+### 基本的なmodの作成
 
 ```typescript
 import { 
@@ -61,10 +61,10 @@ const MyWidget: React.FC<WidgetProps> = ({ entity, update }) => {
   );
 };
 
-// プラグイン定義
-export const myPluginDefinition: WidgetDefinition = {
-  id: 'my:plugin',
-  name: 'My Plugin',
+// mod定義
+export const myModDefinition: WidgetDefinition = {
+  id: 'my:mod',
+  name: 'My Mod',
   icon: <MyIcon />,
   defaultSize: { w: 200, h: 200 },
   defaultData: {},
@@ -87,7 +87,7 @@ const MyTray: React.FC = () => {
   );
 };
 
-export const myPluginDefinition: WidgetDefinition = {
+export const myModDefinition: WidgetDefinition = {
   // ... 他の設定
   Component: MyWidget,
   SingletonComponent: MyTray, // 自動的にレンダリングされます
@@ -142,13 +142,13 @@ const MyWidget = ({ entity }) => {
 };
 ```
 
-## プラグイン開発ガイド
+## mod開発ガイド
 
-### 1. プラグインプロジェクトの作成
+### 1. modプロジェクトの作成
 
 ```bash
-mkdir plugins/my-plugin
-cd plugins/my-plugin
+mkdir mods/my-mod
+cd mods/my-mod
 mkdir frontend
 cd frontend
 pnpm init
@@ -158,7 +158,7 @@ pnpm init
 
 ```json
 {
-  "name": "@ubichill/plugin-my-plugin",
+  "name": "@ubichill/mod-my-mod",
   "version": "1.0.0",
   "main": "src/index.ts",
   "peerDependencies": {
@@ -176,9 +176,9 @@ pnpm init
 import type { WidgetDefinition } from '@ubichill/sdk';
 import { MyWidget } from './MyWidget';
 
-export const myPluginDefinition: WidgetDefinition = {
-  id: 'my:plugin',
-  name: 'My Plugin',
+export const myModDefinition: WidgetDefinition = {
+  id: 'my:mod',
+  name: 'My Mod',
   icon: <MyIcon />,
   defaultSize: { w: 200, h: 200 },
   defaultData: {},
@@ -190,25 +190,25 @@ export const myPluginDefinition: WidgetDefinition = {
 
 ```typescript
 // src/index.ts
-export { myPluginDefinition } from './definition';
+export { myModDefinition } from './definition';
 export { MyWidget } from './MyWidget';
 ```
 
-### 5. プラグインの登録
+### 5. modの登録
 
 ```typescript
-// packages/frontend/src/plugins/registry.ts
-import { myPluginDefinition } from '@ubichill/plugin-my-plugin';
+// packages/frontend/src/mods/registry.ts
+import { myModDefinition } from '@ubichill/mod-my-mod';
 
-export const INSTALLED_PLUGINS = [
-  // ...既存のプラグイン
-  myPluginDefinition,
+export const INSTALLED_MODS = [
+  // ...既存のmod
+  myModDefinition,
 ];
 ```
 
 ## API リファレンス
 
-詳細な API ドキュメントは [SDK.md](../../frontend/src/plugins/SDK.md) を参照してください。
+詳細な API ドキュメントは [SDK.md](../../frontend/src/mods/SDK.md) を参照してください。
 
 ## ライセンス
 

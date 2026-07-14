@@ -1,24 +1,24 @@
 /**
  * build-workers.mjs
  *
- * plugins/ 以下の plugin.json を自動探索し、Worker コードを esbuild でバンドルします。
+ * mods/ 以下の mod.json を自動探索し、Worker コードを esbuild でバンドルします。
  *
- * plugin.json の components フィールド（Stage 1 の現代的 ECS 形式）を読み取り、Worker をバンドルします。
- * Component キーは pluginId 抜きの単純名（例: "screen"）で宣言し、
- * Runtime / ワールド YAML からは `${pluginId}:${componentName}`（例: "video-player:screen"）で参照します。
+ * mod.json の components フィールド（Stage 1 の現代的 ECS 形式）を読み取り、Worker をバンドルします。
+ * Component キーは modId 抜きの単純名（例: "screen"）で宣言し、
+ * Runtime / ワールド YAML からは `${modId}:${componentName}`（例: "video-player:screen"）で参照します。
  *
- * 出力物 (プラグインディレクトリ名を <name>、Component キーを <key> とする):
- *   dist/plugins/<name>/v<version>/<key>/index.js
- *   dist/plugins/<name>/v<version>/manifest.json
- *   public/plugins/<name>/v<version>/<key>/index.js
- *   public/plugins/<name>/v<version>/manifest.json
- *   public/plugins/<name>/v<version>/  ← assets/ もここにコピー（バージョン固定）
- *   public/plugins/<name>/plugin.json  ← ローダー用エイリアス（最新バージョン）
+ * 出力物 (modディレクトリ名を <name>、Component キーを <key> とする):
+ *   dist/mods/<name>/v<version>/<key>/index.js
+ *   dist/mods/<name>/v<version>/manifest.json
+ *   public/mods/<name>/v<version>/<key>/index.js
+ *   public/mods/<name>/v<version>/manifest.json
+ *   public/mods/<name>/v<version>/  ← assets/ もここにコピー（バージョン固定）
+ *   public/mods/<name>/mod.json  ← ローダー用エイリアス（最新バージョン）
  *
- * Worker コード内では Ubi.pluginBase でバージョン付きアセットベースパスを参照できます。
- * Ubi.pluginBase は Host が EVT_LIFECYCLE_INIT 時に設定するランタイム値です。
- * 例: `${Ubi.pluginBase}/templates/manifest.json`
- *      → https://cdn.example.com/plugins/video-player/v2.1.0/templates/manifest.json
+ * Worker コード内では Ubi.modBase でバージョン付きアセットベースパスを参照できます。
+ * Ubi.modBase は Host が EVT_LIFECYCLE_INIT 時に設定するランタイム値です。
+ * 例: `${Ubi.modBase}/templates/manifest.json`
+ *      → https://cdn.example.com/mods/video-player/v2.1.0/templates/manifest.json
  */
 
 import * as esbuild from 'esbuild';
@@ -30,9 +30,9 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
 
-// --dist-dir=<path> で出力先を上書き可能（デフォルト: dist/plugins/）
+// --dist-dir=<path> で出力先を上書き可能（デフォルト: dist/mods/）
 const distDirArg = process.argv.slice(2).find((a) => a.startsWith('--dist-dir='));
-const distPluginsDir = distDirArg ? join(root, distDirArg.split('=')[1]) : join(root, 'dist', 'plugins');
+const distModsDir = distDirArg ? join(root, distDirArg.split('=')[1]) : join(root, 'dist', 'mods');
 
 // ============================================================
 // ヘルパー関数
@@ -89,7 +89,7 @@ function listFilesRecursive(rootDir, currentDir = rootDir) {
  * バンドル済み Worker コードから使用中の Ubi API を静的検出し、capability を推定する。
  *
  * これは **情報表示（マニフェスト）用の over-approximate な推定**であり、セキュリティ境界
- * ではない。実際の enforcement は実行時ゲート + ユーザー承認（PluginHostManager）で行われ、
+ * ではない。実際の enforcement は実行時ゲート + ユーザー承認（ModHostManager）で行われ、
  * 検出漏れ（動的アクセス・完全な分割代入など）は実行時に必ず拾われる。よって過剰申告寄り。
  *
  * capability 名は sandbox の CAPABILITY_CATALOG と一致させること
@@ -134,16 +134,16 @@ async function bundleWorker(entryPath, tsconfig, defines) {
 }
 
 // ============================================================
-// plugin.json の自動探索
+// mod.json の自動探索
 // ============================================================
 
-function findPluginJsonFiles(pluginsDir) {
+function findModJsonFiles(modsDir) {
     const results = [];
-    for (const pluginName of readdirSync(pluginsDir, { withFileTypes: true })) {
-        if (!pluginName.isDirectory()) continue;
-        const pluginJsonPath = join(pluginsDir, pluginName.name, 'plugin.json');
-        if (existsSync(pluginJsonPath)) {
-            results.push(pluginJsonPath);
+    for (const modName of readdirSync(modsDir, { withFileTypes: true })) {
+        if (!modName.isDirectory()) continue;
+        const modJsonPath = join(modsDir, modName.name, 'mod.json');
+        if (existsSync(modJsonPath)) {
+            results.push(modJsonPath);
         }
     }
     return results;
@@ -153,28 +153,28 @@ function findPluginJsonFiles(pluginsDir) {
 // ビルド
 // ============================================================
 
-export async function buildWorker(pluginJsonPath) {
-    const pluginDir = dirname(pluginJsonPath);
-    const pluginJson = JSON.parse(readFileSync(pluginJsonPath, 'utf-8'));
+export async function buildWorker(modJsonPath) {
+    const modDir = dirname(modJsonPath);
+    const modJson = JSON.parse(readFileSync(modJsonPath, 'utf-8'));
 
-    const pluginId = pluginJson.id;
-    const pluginDirName = basename(pluginDir);
-    const version = pluginJson.version;
-    const publicPluginDir = join(root, 'packages', 'frontend', 'public', 'plugins', pluginDirName);
-    const publicVersionDir = join(publicPluginDir, `v${version}`);
-    const distVersionDir = join(distPluginsDir, pluginDirName, `v${version}`);
+    const modId = modJson.id;
+    const modDirName = basename(modDir);
+    const version = modJson.version;
+    const publicModDir = join(root, 'packages', 'frontend', 'public', 'mods', modDirName);
+    const publicVersionDir = join(publicModDir, `v${version}`);
+    const distVersionDir = join(distModsDir, modDirName, `v${version}`);
 
     // tsconfig 検索
-    const rootTsconfig = join(pluginDir, 'tsconfig.json');
+    const rootTsconfig = join(modDir, 'tsconfig.json');
     const tsconfig = existsSync(rootTsconfig) ? rootTsconfig : undefined;
 
     // ── ルート index（npm の "latest" pointer 相当） ──────────────────
     // バージョンへのポインタのみ。エンティティ詳細はバージョン付きマニフェストに分離。
-    const rootIndex = JSON.stringify({ id: pluginId, name: pluginJson.name, version }, null, 2);
-    mkdirSync(publicPluginDir, { recursive: true });
-    writeFileSync(join(publicPluginDir, 'plugin.json'), rootIndex, 'utf-8');
-    mkdirSync(join(distPluginsDir, pluginDirName), { recursive: true });
-    writeFileSync(join(distPluginsDir, pluginDirName, 'plugin.json'), rootIndex, 'utf-8');
+    const rootIndex = JSON.stringify({ id: modId, name: modJson.name, version }, null, 2);
+    mkdirSync(publicModDir, { recursive: true });
+    writeFileSync(join(publicModDir, 'mod.json'), rootIndex, 'utf-8');
+    mkdirSync(join(distModsDir, modDirName), { recursive: true });
+    writeFileSync(join(distModsDir, modDirName, 'mod.json'), rootIndex, 'utf-8');
 
     // ── バージョン付きマニフェスト（ランタイム用・src なし・workerUrl 明示） ──
     // src はビルド時のみ必要なため除去。workerUrl でロード先を明示する。
@@ -182,9 +182,9 @@ export async function buildWorker(pluginJsonPath) {
     mkdirSync(publicVersionDir, { recursive: true });
 
     // ── components 形式 (Stage 1: 現代的 ECS) ───────────────────
-    const componentEntries = pluginJson.components;
+    const componentEntries = modJson.components;
     if (!componentEntries || typeof componentEntries !== 'object') {
-        console.warn(`⚠️  [${pluginId}] components フィールドが見つかりません。スキップします。`);
+        console.warn(`⚠️  [${modId}] components フィールドが見つかりません。スキップします。`);
         return;
     }
 
@@ -192,8 +192,8 @@ export async function buildWorker(pluginJsonPath) {
     const versionedComponents = {};
 
     for (const [componentName, componentEntry] of Object.entries(componentEntries)) {
-        // ワールド YAML / runtime からは "pluginId:componentName" で参照する
-        const componentType = `${pluginId}:${componentName}`;
+        // ワールド YAML / runtime からは "modId:componentName" で参照する
+        const componentType = `${modId}:${componentName}`;
         const workerRelPath = typeof componentEntry === 'string' ? componentEntry : componentEntry?.src;
         if (!workerRelPath) {
             // src なし = データ専用 Component。worker をビルドせず manifest にメタだけ記録する。
@@ -203,7 +203,7 @@ export async function buildWorker(pluginJsonPath) {
             continue;
         }
 
-        const entryPath = join(pluginDir, workerRelPath);
+        const entryPath = join(modDir, workerRelPath);
         if (!existsSync(entryPath)) {
             console.error(`❌ [${componentType}] エントリが見つかりません: ${entryPath}`);
             continue;
@@ -242,25 +242,25 @@ export async function buildWorker(pluginJsonPath) {
         };
 
         console.log(
-            `✅ [${componentType}] /plugins/${pluginDirName}/v${version}/${componentName}/${outFilename}` +
+            `✅ [${componentType}] /mods/${modDirName}/v${version}/${componentName}/${outFilename}` +
                 ` [caps: ${capabilities.join(', ') || 'none'}]`,
         );
     }
 
-    // assets/ をバージョン固定パスにコピー（Worker は Ubi.pluginBase で参照）
-    const assetsSrcDir = join(pluginDir, 'assets');
+    // assets/ をバージョン固定パスにコピー（Worker は Ubi.modBase で参照）
+    const assetsSrcDir = join(modDir, 'assets');
     let assetFiles = [];
     if (existsSync(assetsSrcDir)) {
         copyDirRecursive(assetsSrcDir, publicVersionDir);
         copyDirRecursive(assetsSrcDir, distVersionDir);
         assetFiles = listFilesRecursive(assetsSrcDir);
-        console.log(`✅ [${pluginId}] assets → /plugins/${pluginDirName}/v${version}/ (${assetFiles.length} files)`);
+        console.log(`✅ [${modId}] assets → /mods/${modDirName}/v${version}/ (${assetFiles.length} files)`);
     }
 
     const versionedManifest = JSON.stringify(
         {
-            id: pluginId,
-            name: pluginJson.name,
+            id: modId,
+            name: modJson.name,
             version,
             components: versionedComponents,
             assets: assetFiles,
@@ -277,55 +277,55 @@ export async function buildWorker(pluginJsonPath) {
 // ============================================================
 
 /**
- * 全プラグインの index.json を作成する。
- * エディタ等でローカル利用可能プラグインの一覧を取得するために使う。
- * 各エントリは { id, name, version, kinds[] } 形式（plugin.json + バージョン付き manifest を集約）。
+ * 全modの index.json を作成する。
+ * エディタ等でローカル利用可能modの一覧を取得するために使う。
+ * 各エントリは { id, name, version, kinds[] } 形式（mod.json + バージョン付き manifest を集約）。
  */
-function writePluginIndex(pluginJsonFiles) {
+function writeModIndex(modJsonFiles) {
     const entries = [];
-    for (const pluginJsonPath of pluginJsonFiles) {
-        const pluginJson = JSON.parse(readFileSync(pluginJsonPath, 'utf-8'));
-        const pluginId = pluginJson.id;
-        const pluginDirName = basename(dirname(pluginJsonPath));
-        // Component 型は "pluginId:componentName" 形式に展開
-        const components = pluginJson.components
-            ? Object.keys(pluginJson.components).map((name) => `${pluginId}:${name}`)
+    for (const modJsonPath of modJsonFiles) {
+        const modJson = JSON.parse(readFileSync(modJsonPath, 'utf-8'));
+        const modId = modJson.id;
+        const modDirName = basename(dirname(modJsonPath));
+        // Component 型は "modId:componentName" 形式に展開
+        const components = modJson.components
+            ? Object.keys(modJson.components).map((name) => `${modId}:${name}`)
             : [];
         entries.push({
-            id: pluginId,
-            name: pluginJson.name ?? pluginId,
-            version: pluginJson.version,
+            id: modId,
+            name: modJson.name ?? modId,
+            version: modJson.version,
             // dependencies に追加する際の repository path
-            repositoryPath: `plugins/${pluginDirName}`,
+            repositoryPath: `mods/${modDirName}`,
             components,
         });
     }
     const json = JSON.stringify(entries, null, 2);
-    const publicIndexPath = join(root, 'packages', 'frontend', 'public', 'plugins', 'index.json');
-    const distIndexPath = join(distPluginsDir, 'index.json');
+    const publicIndexPath = join(root, 'packages', 'frontend', 'public', 'mods', 'index.json');
+    const distIndexPath = join(distModsDir, 'index.json');
     writeFileSync(publicIndexPath, json, 'utf-8');
     writeFileSync(distIndexPath, json, 'utf-8');
-    console.log(`📋 plugin index: ${entries.length} entries → public/plugins/index.json, dist/plugins/index.json`);
+    console.log(`📋 mod index: ${entries.length} entries → public/mods/index.json, dist/mods/index.json`);
 }
 
 async function main() {
-    console.log('🔨 Building plugin workers...');
-    const pluginsDir = join(root, 'plugins');
-    const pluginJsonFiles = findPluginJsonFiles(pluginsDir);
+    console.log('🔨 Building mod workers...');
+    const modsDir = join(root, 'mods');
+    const modJsonFiles = findModJsonFiles(modsDir);
 
-    if (pluginJsonFiles.length === 0) {
-        console.warn('⚠️  plugin.json が見つかりません');
+    if (modJsonFiles.length === 0) {
+        console.warn('⚠️  mod.json が見つかりません');
         return;
     }
 
-    for (const pluginJsonPath of pluginJsonFiles) {
-        await buildWorker(pluginJsonPath);
+    for (const modJsonPath of modJsonFiles) {
+        await buildWorker(modJsonPath);
     }
 
-    writePluginIndex(pluginJsonFiles);
+    writeModIndex(modJsonFiles);
 
     console.log('🎉 All workers built.');
-    console.log(`📦 CDN 配布用: dist/plugins/`);
+    console.log(`📦 CDN 配布用: dist/mods/`);
 }
 
 // スクリプトとして直接実行された場合のみ main() を走らせる。

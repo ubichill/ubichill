@@ -36,7 +36,7 @@ describe('detectCapabilities（Ubi API の静的検出）', () => {
         expect(detectCapabilities('const x = 1 + 2; console.log(x);')).toEqual([]);
     });
 
-    it('emit だけのプラグインは host-message / broadcast を申告しない（過剰にならない）', () => {
+    it('emit だけのmodは host-message / broadcast を申告しない（過剰にならない）', () => {
         const caps = detectCapabilities('Ubi.event.emit("tick", {});');
         expect(caps).toContain('net:emit');
         expect(caps).not.toContain('net:broadcast');

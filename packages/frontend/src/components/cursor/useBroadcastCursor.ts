@@ -4,8 +4,8 @@ import { useEffect, useRef } from 'react';
 /**
  * 自分のカーソル位置を socket 経由で他ユーザーに配信する。
  *
- * 旧 avatar:cursor プラグインの `Ubi.player.syncCursor` がやっていた役割を
- * 本体に取り込んだもの。プラグインが消えても他人から自分の位置が見える。
+ * 旧 avatar:cursor modの `Ubi.player.syncCursor` がやっていた役割を
+ * 本体に取り込んだもの。modが消えても他人から自分の位置が見える。
  *
  * **自己完結**: 内部で pointermove + scroll を addEventListener する。
  * React state は使わない (= 親が再 render しない)。

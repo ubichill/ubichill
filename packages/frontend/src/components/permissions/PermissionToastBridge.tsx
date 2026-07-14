@@ -22,15 +22,15 @@ export function PermissionToastBridge() {
     permissionsRef.current = permissions;
 
     useEffect(() => {
-        setDiagnosticHandler(({ level, pluginId, code, message, retry }) => {
-            console[level](`[Plugin:${pluginId}] [${code}] ${message}`);
+        setDiagnosticHandler(({ level, modId, code, message, retry }) => {
+            console[level](`[Mod:${modId}] [${code}] ${message}`);
             if (!USER_FACING_DENIAL.has(code)) return;
 
             const p = permissionsRef.current;
             let action: ToastAction | undefined;
             if (p && retry) {
-                // retry.pluginId は "plugin:component" のことがあるので ":" 前に正規化。
-                const name = retry.pluginId.split(':')[0];
+                // retry.modId は "mod:component" のことがあるので ":" 前に正規化。
+                const name = retry.modId.split(':')[0];
                 action =
                     'capability' in retry
                         ? { label: '許可', run: () => p.grantCapability(name, retry.capability) }

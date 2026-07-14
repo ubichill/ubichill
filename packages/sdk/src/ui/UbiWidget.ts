@@ -4,7 +4,7 @@ import type { UbiEntityContext } from './types';
  * エンティティウィジェット基底クラス。
  *
  * Host (EntityRenderer) が `el.ubiCtx = ctx` でコンテキストを注入する。
- * プラグイン開発者は onUpdate を実装して描画を行う。
+ * mod開発者は onUpdate を実装して描画を行う。
  *
  * @example
  * ```ts

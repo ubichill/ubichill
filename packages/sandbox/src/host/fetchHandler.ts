@@ -1,11 +1,11 @@
 /**
- * プラグインの Ubi.fetch を Host 側で実行するハンドラ。
+ * modの Ubi.fetch を Host 側で実行するハンドラ。
  *
  * 2 系統:
- *  - fetchDirect            : 相対 URL / プラグイン自身の origin 用。allowlist チェックなし。
- *  - createPluginFetchHandler: 外部 URL 用。allowlist (https + ドメイン) でガードする。
+ *  - fetchDirect            : 相対 URL / mod自身の origin 用。allowlist チェックなし。
+ *  - createModFetchHandler: 外部 URL 用。allowlist (https + ドメイン) でガードする。
  *
- * エラーは machine-readable な `code` を含む構造化 body で返すため、プラグイン側は
+ * エラーは machine-readable な `code` を含む構造化 body で返すため、mod側は
  * `JSON.parse(res.body).error.code` で原因 (ドメイン拒否 / HTTPS必須 / …) を判別できる。
  */
 import { type FetchOptions, type FetchResult, UbiErrorCode } from '@ubichill/shared';
@@ -34,7 +34,7 @@ export interface FetchErrorBody {
 // ============================================================
 // allowlist ポリシー
 //   NOTE: 本来これはアプリ固有のポリシーであり、consumer が
-//   createPluginFetchHandler(domains) に注入するのが理想。
+//   createModFetchHandler(domains) に注入するのが理想。
 //   ここでは後方互換のためデフォルト値を提供している。
 // ============================================================
 
@@ -139,7 +139,7 @@ export function isUrlAllowed(url: string, allowedDomains: string[] = DEFAULT_ALL
 // ============================================================
 
 /**
- * 相対 URL およびプラグインアセット origin への直接フェッチ。
+ * 相対 URL およびmodアセット origin への直接フェッチ。
  * allowlist チェックをスキップする (呼び出し側で安全性を保証済みのケース用)。
  */
 export async function fetchDirect(url: string, options?: FetchOptions): Promise<FetchResult> {
@@ -147,21 +147,21 @@ export async function fetchDirect(url: string, options?: FetchOptions): Promise<
 }
 
 /**
- * プラグイン自身のアセット領域への fetch かを判定し、絶対 URL に解決する。
+ * mod自身のアセット領域への fetch かを判定し、絶対 URL に解決する。
  *
- * 相対 URL は pluginBase を基準に解決し、**pluginBase 配下 (同一 origin かつパス接頭辞一致)**
- * に収まる場合のみ解決済み URL を返す。ホストの `/api` などプラグイン領域外や、
- * `../` によるディレクトリトラバーサルで抜けた URL、pluginBase 不明の場合は null を返す。
+ * 相対 URL は modBase を基準に解決し、**modBase 配下 (同一 origin かつパス接頭辞一致)**
+ * に収まる場合のみ解決済み URL を返す。ホストの `/api` などmod領域外や、
+ * `../` によるディレクトリトラバーサルで抜けた URL、modBase 不明の場合は null を返す。
  *
  * これにより「相対 URL でホスト内部 API を credential 付きで叩く」抜け道を塞ぐ。
  * null が返った URL は呼び出し側でドメイン allowlist 検査に回す。
  */
-export function resolvePluginAssetUrl(url: string, pluginBase: string | undefined): string | null {
-    if (!pluginBase) return null;
+export function resolveModAssetUrl(url: string, modBase: string | undefined): string | null {
+    if (!modBase) return null;
     let base: URL;
     try {
         // 末尾スラッシュを付けてディレクトリとして解決させる (最後のセグメントを basename 扱いしない)
-        base = new URL(pluginBase.endsWith('/') ? pluginBase : `${pluginBase}/`);
+        base = new URL(modBase.endsWith('/') ? modBase : `${modBase}/`);
     } catch {
         return null;
     }
@@ -177,22 +177,22 @@ export function resolvePluginAssetUrl(url: string, pluginBase: string | undefine
 }
 
 /**
- * プラグイン自身の「公開名前空間」への fetch かを判定し、絶対 URL に解決する。
+ * mod自身の「公開名前空間」への fetch かを判定し、絶対 URL に解決する。
  *
- * プラグインはアプリ本体に載って **`/plugins/<pluginId>/…`** で公開される（assets も、
- * 専用バックエンド例: `/plugins/video-player/api` も）。ここはプラグイン自身の領域なので
- * 承認不要で通す。全プラグイン共通の配信規約なので普遍的（特定プラグインの特例ではない）。
+ * modはアプリ本体に載って **`/mods/<modId>/…`** で公開される（assets も、
+ * 専用バックエンド例: `/mods/video-player/api` も）。ここはmod自身の領域なので
+ * 承認不要で通す。全mod共通の配信規約なので普遍的（特定modの特例ではない）。
  *
  * - `appOrigin` はアプリ本体のオリジン（例: `window.location.origin`）。
- * - コアの `/api/v1/…`・他プラグインの名前空間・別オリジン・`../` 脱出は null
+ * - コアの `/api/v1/…`・他modの名前空間・別オリジン・`../` 脱出は null
  *   （＝ここでは通さない）。本体コア API を叩く抜け道は塞いだまま。
  */
-export function resolvePluginNamespaceUrl(
+export function resolveModNamespaceUrl(
     url: string,
-    pluginId: string | undefined,
+    modId: string | undefined,
     appOrigin: string | undefined,
 ): string | null {
-    if (!pluginId || !appOrigin) return null;
+    if (!modId || !appOrigin) return null;
     let resolved: URL;
     try {
         resolved = new URL(url, appOrigin);
@@ -200,14 +200,14 @@ export function resolvePluginNamespaceUrl(
         return null;
     }
     if (resolved.origin !== appOrigin) return null;
-    if (!resolved.pathname.startsWith(`/plugins/${pluginId}/`)) return null;
+    if (!resolved.pathname.startsWith(`/mods/${modId}/`)) return null;
     return resolved.href;
 }
 
 /**
  * 外部 URL 用フェッチハンドラ。allowlist を満たさない URL は理由コードつきで弾く。
  */
-export function createPluginFetchHandler(allowedDomains: string[] = DEFAULT_ALLOWED_DOMAINS) {
+export function createModFetchHandler(allowedDomains: string[] = DEFAULT_ALLOWED_DOMAINS) {
     return async (url: string, options?: FetchOptions): Promise<FetchResult> => {
         const check = checkUrlAllowed(url, allowedDomains);
         if (!check.allowed) {

@@ -75,6 +75,6 @@ export const EcsEventType = {
     /** OffscreenCanvas のリサイズ通知。payload: { targetId: string; width: number; height: number } */
     CANVAS_RESIZE: 'canvas:resize',
     // 旧 HOST_MESSAGE は廃止。Host → Worker のメッセージは sendToWorker(type, payload) で送られた
-    // type がそのまま event.type になる (WorkerPluginHost で展開)。プラグイン側は
+    // type がそのまま event.type になる (WorkerModHost で展開)。mod側は
     // `Ubi.event.define()` で宣言した on(type, ...) でフラットに受け取る。
 } as const;

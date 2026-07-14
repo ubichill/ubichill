@@ -1,12 +1,12 @@
 /**
  * capabilityGate — Worker コマンドを許可してよいか判定する capability ゲート。
  *
- * PluginHostManager から分離した純粋なロジック（Worker/DOM 非依存）。単体テスト可能。
+ * ModHostManager から分離した純粋なロジック（Worker/DOM 非依存）。単体テスト可能。
  *
  * モードは 3 つ:
  *  - allowAll  : 全コマンド許可（信頼済み first-party / 開発用エスケープハッチ）。
  *  - dynamic   : authorizeCapability コールバックが判断源。**毎回評価する（キャッシュしない）**。
- *                承認はプラグイン読み込み時に別途まとめて確定するため、ここは即時の許可判定だけを行い、
+ *                承認はmod読み込み時に別途まとめて確定するため、ここは即時の許可判定だけを行い、
  *                プロンプトや保留はしない（＝コマンドを握らないので RPC タイムアウトを招かない）。
  *  - static    : 構築時の allowlist（Set）で判定。
  *

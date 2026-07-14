@@ -105,7 +105,7 @@ export class UserManager {
         // 更新を許可するフィールドのみをホワイトリストで抽出
         const safePatch: Partial<User> = {};
 
-        // penColor: ペンプラグインが設定・解除する（null も許可）
+        // penColor: ペンmodが設定・解除する（null も許可）
         if ('penColor' in patch) {
             safePatch.penColor = patch.penColor ?? null;
         }

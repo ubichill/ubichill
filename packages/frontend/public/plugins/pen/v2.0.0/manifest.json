@@ -1,0 +1,88 @@
+{
+  "id": "pen",
+  "name": "Pen",
+  "version": "2.0.0",
+  "components": {
+    "pen:canvas": {
+      "canvasTargets": [
+        "drawing"
+      ],
+      "watchEntityTypes": [
+        "pen:stroke",
+        "pen:pen"
+      ],
+      "watchScope": "world",
+      "defaultTransform": {
+        "x": 0,
+        "y": 0,
+        "z": 5000
+      },
+      "dataFields": {},
+      "capabilities": [
+        "canvas:draw",
+        "net:broadcast",
+        "net:emit",
+        "scene:read",
+        "scene:update"
+      ],
+      "workerUrl": "./canvas/index.6609dc40.js"
+    },
+    "pen:tray": {
+      "defaultTransform": {
+        "x": 20,
+        "y": 20,
+        "z": 1000,
+        "w": 60,
+        "h": 240
+      },
+      "dataFields": {},
+      "capabilities": [
+        "net:emit",
+        "scene:read",
+        "scene:update",
+        "ui:render"
+      ],
+      "workerUrl": "./tray/index.2a1103d7.js"
+    },
+    "pen:pen": {
+      "watchEntityTypes": [
+        "pen:pen"
+      ],
+      "watchScope": "entity",
+      "defaultTransform": {
+        "x": 0,
+        "y": 0,
+        "z": 1,
+        "w": 36,
+        "h": 48
+      },
+      "dataFields": {
+        "color": {
+          "type": "color",
+          "default": "#1a1a1a",
+          "label": "ペンの色"
+        },
+        "strokeWidth": {
+          "type": "number",
+          "default": 4,
+          "min": 1,
+          "max": 30,
+          "step": 1,
+          "label": "線の太さ"
+        }
+      },
+      "capabilities": [
+        "net:emit",
+        "net:host-message",
+        "scene:read",
+        "scene:update",
+        "ui:render"
+      ],
+      "workerUrl": "./pen/index.15ea4091.js"
+    },
+    "pen:stroke": {
+      "dataFields": {}
+    }
+  },
+  "assets": []
+}

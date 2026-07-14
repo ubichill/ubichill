@@ -1,6 +1,6 @@
 import type { WorldDefinition } from '@ubichill/shared';
 import { css } from '@/styled-system/css';
-import { PluginSelector } from './PluginSelector';
+import { ModSelector } from './ModSelector';
 
 interface WorldInfoFormProps {
     /** 編集中の draft definition。親 (WorldEditorPage) が状態を持ち、モーダルの footer の「適用」ボタンで反映する。 */
@@ -10,7 +10,7 @@ interface WorldInfoFormProps {
 
 /**
  * ワールド情報モーダルの中身（staging）。
- * displayName / description / thumbnail / version / capacity / worldSize / 背景色 / 使用プラグイン。
+ * displayName / description / thumbnail / version / capacity / worldSize / 背景色 / 使用mod。
  *
  * フィールドの編集は draft の更新のみで、外側の definition には反映しない。
  * 「適用」ボタンが押されたタイミングで親が draft → definition へ移し替える。
@@ -180,7 +180,7 @@ export function WorldInfoForm({ draft, onChange }: WorldInfoFormProps) {
                 </div>
             </Field>
 
-            <PluginSelector definition={definition} onUpdateSpec={onUpdateSpec} />
+            <ModSelector definition={definition} onUpdateSpec={onUpdateSpec} />
         </div>
     );
 }

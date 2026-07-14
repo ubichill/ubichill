@@ -7,7 +7,7 @@ import { InstanceRenderer } from '@/instance/InstanceRenderer';
 import { useInstanceLoading } from '@/instance/useInstanceLoading';
 import { API_BASE } from '@/lib/api';
 import { useSession } from '@/lib/session';
-import { PluginRegistryProvider } from '@/plugins/PluginRegistryContext';
+import { ModRegistryProvider } from '@/mods/ModRegistryContext';
 
 export function InstancePage() {
     const navigate = useNavigate();
@@ -25,8 +25,8 @@ export function InstancePage() {
     // ワールドID解決の失敗など、Socket 以外で起きるロードエラー
     const [loadError, setLoadError] = useState<string | null>(null);
 
-    // プラグイン DL / ワーカー起動の進捗（各 Provider から通知される）
-    const [plugins, setPlugins] = useState({ completed: 0, total: 0 });
+    // mod DL / ワーカー起動の進捗（各 Provider から通知される）
+    const [mods, setMods] = useState({ completed: 0, total: 0 });
     const [workers, setWorkers] = useState({ ready: 0, total: 0 });
 
     useEffect(() => {
@@ -114,7 +114,7 @@ export function InstancePage() {
         isConnected,
         isJoined: currentUser != null,
         error: error ?? loadError,
-        plugins,
+        mods,
         workers,
     });
 
@@ -145,11 +145,11 @@ export function InstancePage() {
             )}
             {!loading.failed && currentUser != null && (
                 <main>
-                    <PluginRegistryProvider key={id} onStatusChange={setPlugins}>
+                    <ModRegistryProvider key={id} onStatusChange={setMods}>
                         <WorkerLoadingProvider onStatusChange={setWorkers}>
                             <InstanceRenderer />
                         </WorkerLoadingProvider>
-                    </PluginRegistryProvider>
+                    </ModRegistryProvider>
                     <InstanceHUD />
                 </main>
             )}

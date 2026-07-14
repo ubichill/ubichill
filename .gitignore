@@ -47,7 +47,7 @@ coverage/
 *.gen.ts
 
 # Build pipeline outputs (pnpm build:workers で生成)
-packages/frontend/public/plugins/
+packages/frontend/public/mods/
 CODE_STUDY.md
 
 # Antigravity CLI

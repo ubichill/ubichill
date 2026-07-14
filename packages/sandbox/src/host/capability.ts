@@ -1,5 +1,5 @@
 /**
- * capability カタログ — プラグイン権限の単一の真実の源 (single source of truth)。
+ * capability カタログ — mod権限の単一の真実の源 (single source of truth)。
  *
  * 1 つの capability につき「危険度・許可コマンド・ユーザー向けの見える化情報 (label/description)」を
  * 1 箇所にまとめる。危険度マップとコマンドマップを別々に持つと同期漏れが起きるため、
@@ -107,7 +107,7 @@ export const CAPABILITY_CATALOG = {
     },
     'net:host-message': {
         // アプリ本体（ホスト）への片道通知（タブ内ローカル）。外部通信ではないため sensitive。
-        // 例: プラグインが自分のプレイヤー状態（アバター・ペン色など）の更新をホストに依頼する。
+        // 例: modが自分のプレイヤー状態（アバター・ペン色など）の更新をホストに依頼する。
         risk: 'sensitive',
         commands: [CommandType.NETWORK_SEND_TO_HOST],
         label: 'ホストへの通知',
@@ -198,7 +198,7 @@ export const ALWAYS_ALLOWED_COMMANDS: readonly string[] = ['CMD_LOG', 'CMD_READY
  * - `capabilities` が undefined でもコアコマンドのみの default-deny になる（全許可はしない）。
  * - 未知の capability は対応コマンドを持たないため単に無視される（コマンドは増えない）。
  *
- * これが唯一の allowlist 生成経路であり、PluginHostManager の capability ゲートはこの結果に従う。
+ * これが唯一の allowlist 生成経路であり、ModHostManager の capability ゲートはこの結果に従う。
  */
 export function buildAllowedCommands(capabilities: readonly string[] | undefined): Set<string> {
     const allowed = new Set<string>(ALWAYS_ALLOWED_COMMANDS);

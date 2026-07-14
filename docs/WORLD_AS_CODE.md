@@ -45,15 +45,15 @@ spec:
       width: 2000
       height: 1500
 
-  # インストールするプラグイン
-  plugins:
+  # インストールするmod
+  mods:
     - name: pen
-      src: https://yourname.github.io/pen-plugin
+      src: https://yourname.github.io/pen-mod
       config:          # 作者のみ編集可能な初期値
         strokeWidth: 3
 
     - name: avatar
-      src: https://ubichill.github.io/avatar-plugin
+      src: https://ubichill.github.io/avatar-mod
 
   # ワールド起動時の初期エンティティ
   initialEntities:
@@ -65,23 +65,23 @@ spec:
     allowGuestDelete: false
 ```
 
-### Package（プラグイン定義）
+### Package（mod定義）
 
-プラグイン作者が `plugin.json` ではなく将来的に `package.yaml` として公開する形式。
+mod作者が `mod.json` ではなく将来的に `package.yaml` として公開する形式。
 `ubi deploy` がこれを読んで GitHub Pages 等にデプロイする。
 
 ```yaml
 apiVersion: ubichill.com/v1alpha1
 kind: Package
 metadata:
-  name: pen-plugin
+  name: pen-mod
   version: "1.2.0"
   author:
     name: yourname
     url: https://github.com/yourname
 spec:
   displayName: "ペンツール"
-  description: "ドローイング用プラグイン"
+  description: "ドローイング用mod"
   license: "MIT"
 
   # Worker エントリポイント（esbuild でバンドルされた JS）
@@ -142,20 +142,20 @@ spec:
 
 ---
 
-## プラグイン配布
+## mod配布
 
-プラグインは URL ベースで配布する。GitHub Pages / 任意 CDN が使える。
+modは URL ベースで配布する。GitHub Pages / 任意 CDN が使える。
 
 ```yaml
-plugins:
+mods:
   - name: pen
-    src: https://yourname.github.io/pen-plugin   # GitHub Pages
+    src: https://yourname.github.io/pen-mod   # GitHub Pages
   - name: custom
-    src: https://cdn.example.com/my-plugin       # 任意ホスティング
+    src: https://cdn.example.com/my-mod       # 任意ホスティング
 ```
 
 `src` の URL から Worker JS と Frontend JS を取得する。
-セキュリティ上、取得時に Content-Type 検証と `plugin.json` のチェックサム照合を行う（実装予定）。
+セキュリティ上、取得時に Content-Type 検証と `mod.json` のチェックサム照合を行う（実装予定）。
 
 ---
 
