@@ -134,12 +134,11 @@ export interface PluginHostManagerOptions<TPayloadMap extends Record<string, unk
      */
     allowAllCapabilities?: boolean;
     /**
-     * on-demand 認可コールバック。渡すと capability ゲートは静的 allowlist ではなく
-     * この関数を判断源にする（初回アクセス時に呼ばれ、結果は capability 単位でキャッシュ）。
-     * safe/sensitive は即 true を返し、dangerous は承認 UI を出して待つ、といった実装を注入する。
+     * 認可コールバック。渡すと capability ゲートは静的 allowlist ではなくこの関数を判断源にする。
+     * **同期で即時判定**する（承認は読み込み時に確定済み・実行時は保留しない）。
      * 未指定なら従来通り `capabilities` からの静的 allowlist で判定する。
      */
-    authorizeCapability?: (capability: string) => boolean | Promise<boolean>;
+    authorizeCapability?: (capability: string) => boolean;
     maxExecutionTime?: number;
     onResourceLimitExceeded?: (reason: string) => void;
     tickFps?: number;

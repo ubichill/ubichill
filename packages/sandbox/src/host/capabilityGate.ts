@@ -15,8 +15,8 @@
 import { ALWAYS_ALLOWED_COMMANDS, COMMAND_TO_CAPABILITY } from './capability';
 
 export interface CapabilityGate {
-    /** コマンドを許可してよいか判定する（dynamic モードでも即時の boolean を想定）。 */
-    authorize(commandType: string): boolean | Promise<boolean>;
+    /** コマンドを許可してよいか即時判定する（同期・高頻度コマンドでもオーバーヘッドなし）。 */
+    authorize(commandType: string): boolean;
 }
 
 export interface CapabilityGateOptions {
@@ -25,17 +25,17 @@ export interface CapabilityGateOptions {
     /** 静的 allowlist（authorizeCapability 未指定時の判断源）。 */
     allowedCommands?: ReadonlySet<string>;
     /**
-     * 認可コールバック（指定時は静的 allowlist より優先）。
+     * 認可コールバック（指定時は静的 allowlist より優先）。同期で即時判定する。
      * 承認状態は後から変わりうる（読み込み時の一括承認で deny→allow）ため、**キャッシュせず毎回呼ぶ**。
      */
-    authorizeCapability?: (capability: string) => boolean | Promise<boolean>;
+    authorizeCapability?: (capability: string) => boolean;
 }
 
 const ALWAYS_ALLOWED = new Set<string>(ALWAYS_ALLOWED_COMMANDS);
 
 export function createCapabilityGate(options: CapabilityGateOptions): CapabilityGate {
     return {
-        authorize(commandType) {
+        authorize(commandType): boolean {
             if (options.allowAll) return true;
             if (ALWAYS_ALLOWED.has(commandType)) return true;
 

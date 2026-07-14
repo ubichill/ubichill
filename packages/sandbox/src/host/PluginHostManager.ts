@@ -260,7 +260,7 @@ export class PluginHostManager<TPayloadMap extends Record<string, unknown> = Rec
         const { type } = command;
         const id = 'id' in command ? (command as { id?: string }).id : undefined;
 
-        const allowed = await this._gate.authorize(type);
+        const allowed = this._gate.authorize(type); // 同期・即時（高頻度コマンドでも await なし）
         if (!allowed) {
             // on-demand モードはユーザー拒否、静的モードは未宣言。エラーコードで区別する。
             const errorCode = this._onDemand ? UbiErrorCode.CAPABILITY_DENIED : UbiErrorCode.CAPABILITY_NOT_DECLARED;

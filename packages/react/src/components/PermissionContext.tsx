@@ -13,10 +13,13 @@
  */
 import {
     type CapabilityRisk,
+    capabilityNeedsConsent,
     DEFAULT_PERMISSION_POLICY,
     getCapabilityRisk,
+    isCapabilityGranted,
     type PermissionDecision,
     type PermissionPolicy,
+    resolveFetchDecision,
     type TierMode,
 } from '@ubichill/sandbox';
 import type React from 'react';
@@ -111,27 +114,18 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
         });
     }, []);
 
-    // 実行時ゲート: プロンプトを出さず即時判定のみ。
-    const authorizeCapability = useCallback((pluginId: string, capability: string): boolean => {
-        if (capability === 'net:fetch') return true; // fetch はドメイン単位で別途承認
-        const current = policyRef.current;
-        const recorded = current.grants[pluginId]?.[capability];
-        if (recorded === 'allow') return true;
-        if (recorded === 'deny') return false;
-        // ask 未決 / deny は false（承認は読み込み時の authorizePlugin で確定する）
-        return current.tierDefaults[getCapabilityRisk(capability)] === 'allow';
-    }, []);
+    // 実行時ゲート: プロンプトを出さず即時判定のみ（純粋関数に委譲）。
+    const authorizeCapability = useCallback(
+        (pluginId: string, capability: string): boolean => isCapabilityGranted(policyRef.current, pluginId, capability),
+        [],
+    );
 
     // 読み込み時の一括承認。ユーザーが決定した時点で解決する（許可でも拒否でも）。
     const authorizePlugin = useCallback(
         (pluginId: string, capabilities: readonly string[]): Promise<void> => {
             const current = policyRef.current;
-            const pluginGrants = current.grants[pluginId] ?? {};
-            // 承認が必要 = fetch 以外・未決・ティアが ask のもの。
-            const pending = [...new Set(capabilities)].filter(
-                (cap) =>
-                    cap !== 'net:fetch' && !pluginGrants[cap] && current.tierDefaults[getCapabilityRisk(cap)] === 'ask',
-            );
+            // 承認が必要な capability（純粋関数で判定）。
+            const pending = [...new Set(capabilities)].filter((cap) => capabilityNeedsConsent(current, pluginId, cap));
             if (pending.length === 0) return Promise.resolve(); // 承認不要 → 即実行可
 
             const key = `plugin::${pluginId}`;
@@ -170,14 +164,10 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
 
     const authorizeFetchDomain = useCallback(
         (pluginId: string, domain: string): boolean | Promise<boolean> => {
-            const current = policyRef.current;
-            const recorded = current.fetchGrants[pluginId]?.[domain];
-            if (recorded === 'allow') return true;
-            if (recorded === 'deny') return false;
-
-            const mode = current.tierDefaults[getCapabilityRisk('net:fetch')];
-            if (mode === 'allow') return true; // シールド「なし」
-            if (mode === 'deny') return false; // シールド「拒否」
+            // 確定判定は純粋関数に委譲。ask のときだけプロンプトを出す。
+            const decision = resolveFetchDecision(policyRef.current, pluginId, domain);
+            if (decision === 'allow') return true;
+            if (decision === 'deny') return false;
 
             const key = `${pluginId}::${domain}`;
             const existing = inFlightFetchRef.current.get(key);

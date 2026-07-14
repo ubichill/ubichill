@@ -86,3 +86,41 @@ export function resolveCapabilities(
 
     return { granted, pending, denied };
 }
+
+/**
+ * capability が「今この瞬間」許可されているか（純粋・即時判定。実行時ゲート用）。
+ * - `net:fetch` は capability レベルでは常に許可（外部通信の可否はドメイン単位で別途判定する）。
+ * - プラグイン別の確定判断 (grants) > ティア既定。ask 未決 / deny は false（＝未付与）。
+ */
+export function isCapabilityGranted(policy: PermissionPolicy, pluginId: string, capability: string): boolean {
+    if (capability === 'net:fetch') return true;
+    const recorded = policy.grants[pluginId]?.[capability];
+    if (recorded === 'allow') return true;
+    if (recorded === 'deny') return false;
+    return policy.tierDefaults[getCapabilityRisk(capability)] === 'allow';
+}
+
+/** capability が読み込み時の一括承認で「確認が必要」か（純粋）。ask 未決のもの。 */
+export function capabilityNeedsConsent(policy: PermissionPolicy, pluginId: string, capability: string): boolean {
+    if (capability === 'net:fetch') return false; // fetch はドメイン単位で別途
+    if (policy.grants[pluginId]?.[capability]) return false; // 既決 (allow/deny)
+    return policy.tierDefaults[getCapabilityRisk(capability)] === 'ask';
+}
+
+/** fetch ドメイン判定の結果。allow/deny は確定、ask はユーザー承認が必要。 */
+export type FetchDecision = 'allow' | 'deny' | 'ask';
+
+/**
+ * fetch 先ドメインの「今この瞬間」の判定（純粋）。
+ * - プラグイン別の記憶 (fetchGrants) > dangerous ティア既定（＝シールドレベル）。
+ * - none(allow) は全許可、拒否(deny) は全拒否、確認(ask) はドメインごとにユーザー承認が必要。
+ */
+export function resolveFetchDecision(policy: PermissionPolicy, pluginId: string, domain: string): FetchDecision {
+    const recorded = policy.fetchGrants[pluginId]?.[domain];
+    if (recorded === 'allow') return 'allow';
+    if (recorded === 'deny') return 'deny';
+    const mode = policy.tierDefaults[getCapabilityRisk('net:fetch')];
+    if (mode === 'allow') return 'allow';
+    if (mode === 'deny') return 'deny';
+    return 'ask';
+}

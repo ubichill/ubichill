@@ -32,11 +32,15 @@ export { PluginHostManager } from './host/PluginHostManager';
 // ── repository: 在籍簿 + emit ルーティング ──
 export { getActiveWorkerCount, resetRegistryForTests, routeEmit } from './host/PluginRegistry';
 export {
+    capabilityNeedsConsent,
     DEFAULT_PERMISSION_POLICY,
+    type FetchDecision,
+    isCapabilityGranted,
     type PermissionDecision,
     type PermissionPolicy,
     type ResolvedCapabilities,
     resolveCapabilities,
+    resolveFetchDecision,
     type TierMode,
 } from './host/permissionPolicy';
 export * from './host/pluginDiagnostics';

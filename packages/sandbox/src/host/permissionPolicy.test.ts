@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PERMISSION_POLICY, type PermissionPolicy, resolveCapabilities } from './permissionPolicy';
+import {
+    capabilityNeedsConsent,
+    DEFAULT_PERMISSION_POLICY,
+    isCapabilityGranted,
+    type PermissionPolicy,
+    resolveCapabilities,
+    resolveFetchDecision,
+} from './permissionPolicy';
 
 /** テスト用にポリシーを部分上書きするヘルパー。 */
 function policy(overrides: Partial<PermissionPolicy> = {}): PermissionPolicy {
@@ -65,5 +72,65 @@ describe('resolveCapabilities（ティア既定の変更）', () => {
         const p = policy({ tierDefaults: { safe: 'deny', sensitive: 'allow', dangerous: 'ask' } });
         const r = resolveCapabilities(['scene:read'], p, 'plugin-a');
         expect(r.denied).toEqual(['scene:read']);
+    });
+});
+
+describe('isCapabilityGranted（実行時ゲート・純粋）', () => {
+    it('net:fetch は常に許可（capability レベル）', () => {
+        expect(isCapabilityGranted(DEFAULT_PERMISSION_POLICY, 'p', 'net:fetch')).toBe(true);
+    });
+    it('safe/sensitive は既定許可、ask 未決の危険は false', () => {
+        expect(isCapabilityGranted(DEFAULT_PERMISSION_POLICY, 'p', 'scene:read')).toBe(true);
+        expect(isCapabilityGranted(DEFAULT_PERMISSION_POLICY, 'p', 'scene:update')).toBe(true);
+        expect(isCapabilityGranted(DEFAULT_PERMISSION_POLICY, 'p', 'mystery:power')).toBe(false);
+    });
+    it('grant が最優先（deny なら safe でも false / allow なら未決でも true）', () => {
+        expect(isCapabilityGranted(policy({ grants: { p: { 'scene:read': 'deny' } } }), 'p', 'scene:read')).toBe(false);
+        expect(isCapabilityGranted(policy({ grants: { p: { 'mystery:power': 'allow' } } }), 'p', 'mystery:power')).toBe(
+            true,
+        );
+    });
+});
+
+describe('capabilityNeedsConsent（読み込み時に確認が要るか・純粋）', () => {
+    it('ask 未決のみ true。net:fetch と既決は false', () => {
+        expect(capabilityNeedsConsent(DEFAULT_PERMISSION_POLICY, 'p', 'mystery:power')).toBe(true);
+        expect(capabilityNeedsConsent(DEFAULT_PERMISSION_POLICY, 'p', 'scene:read')).toBe(false); // safe
+        expect(capabilityNeedsConsent(DEFAULT_PERMISSION_POLICY, 'p', 'net:fetch')).toBe(false); // ドメイン単位
+        expect(
+            capabilityNeedsConsent(policy({ grants: { p: { 'mystery:power': 'deny' } } }), 'p', 'mystery:power'),
+        ).toBe(false); // 既決
+    });
+});
+
+describe('resolveFetchDecision（fetch ドメイン判定・純粋）', () => {
+    it('既定（確認）は ask、記憶があればそれが優先', () => {
+        expect(resolveFetchDecision(DEFAULT_PERMISSION_POLICY, 'p', 'api.example.com')).toBe('ask');
+        expect(
+            resolveFetchDecision(
+                policy({ fetchGrants: { p: { 'api.example.com': 'allow' } } }),
+                'p',
+                'api.example.com',
+            ),
+        ).toBe('allow');
+        expect(
+            resolveFetchDecision(policy({ fetchGrants: { p: { 'api.example.com': 'deny' } } }), 'p', 'api.example.com'),
+        ).toBe('deny');
+    });
+    it('シールド「なし」は allow、「拒否」は deny', () => {
+        expect(
+            resolveFetchDecision(
+                policy({ tierDefaults: { safe: 'allow', sensitive: 'allow', dangerous: 'allow' } }),
+                'p',
+                'x.com',
+            ),
+        ).toBe('allow');
+        expect(
+            resolveFetchDecision(
+                policy({ tierDefaults: { safe: 'allow', sensitive: 'deny', dangerous: 'deny' } }),
+                'p',
+                'x.com',
+            ),
+        ).toBe('deny');
     });
 });
