@@ -1,0 +1,14 @@
+{
+    "name": "@ubichill/ui-renderer",
+    "version": "1.0.0",
+    "description": "VNode→DOM renderer and DOM input collector for Ubichill host. Framework-agnostic (no React).",
+    "sideEffects": false,
+    "main": "src/index.ts",
+    "types": "src/index.ts",
+    "exports": {
+        ".": "./src/index.ts"
+    },
+    "peerDependencies": {
+        "@ubichill/shared": "workspace:*"
+    }
+}

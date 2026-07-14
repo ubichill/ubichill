@@ -18,16 +18,16 @@ import {
     type ModWorkerMessage,
     UbiErrorCode,
 } from '@ubichill/shared';
-import { buildAllowedCommands, CMD_TO_HANDLER, COMMAND_TO_CAPABILITY } from './capability';
-import { type CapabilityGate, createCapabilityGate } from './capabilityGate';
-import { getActiveWorkerCount, getWorker, registerWorker, unregisterWorker } from './ModRegistry';
-import { isMetricEnabled, reportDiagnostic, reportMetric } from './modDiagnostics';
 import {
     acquireSharedInput,
     collectSharedInputFor,
     releaseSharedInput,
     setSharedScrollElement,
-} from './SharedInputPool';
+} from '@ubichill/ui-renderer';
+import { buildAllowedCommands, CMD_TO_HANDLER, COMMAND_TO_CAPABILITY } from './capability';
+import { type CapabilityGate, createCapabilityGate } from './capabilityGate';
+import { getActiveWorkerCount, getWorker, registerWorker, unregisterWorker } from './ModRegistry';
+import { isMetricEnabled, reportDiagnostic, reportMetric } from './modDiagnostics';
 import type { HostHandlers, ModHostManagerOptions } from './types';
 
 export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record<string, unknown>> {

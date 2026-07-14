@@ -31,6 +31,9 @@
       ],
       "@ubichill/shared": [
         "../shared/src/index.ts"
+      ],
+      "@ubichill/ui-renderer": [
+        "../ui-renderer/src/index.ts"
       ]
     }
   },

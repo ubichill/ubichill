@@ -8,6 +8,7 @@
     "@ubichill/engine": "workspace:*",
     "@ubichill/sandbox": "workspace:*",
     "@ubichill/shared": "workspace:*",
+    "@ubichill/ui-renderer": "workspace:*",
     "react": "^19.0.0",
     "socket.io-client": "^4.8.3"
   },

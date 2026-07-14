@@ -52,4 +52,3 @@ export type {
     ModHostManagerOptions,
     ModWorkerInfo,
 } from './host/types';
-export { renderVNode } from './host/VNodeRenderer';

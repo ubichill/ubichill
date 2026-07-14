@@ -246,6 +246,9 @@ importers:
       '@ubichill/shared':
         specifier: workspace:*
         version: link:../shared
+      '@ubichill/ui-renderer':
+        specifier: workspace:*
+        version: link:../ui-renderer
       hls.js:
         specifier: ^1.6.15
         version: 1.6.15
@@ -280,6 +283,9 @@ importers:
       '@ubichill/shared':
         specifier: workspace:*
         version: link:../shared
+      '@ubichill/ui-renderer':
+        specifier: workspace:*
+        version: link:../ui-renderer
 
   packages/sdk:
     dependencies:
@@ -302,6 +308,12 @@ importers:
       tsc-watch:
         specifier: ^7.2.0
         version: 7.2.0(typescript@6.0.3)
+
+  packages/ui-renderer:
+    dependencies:
+      '@ubichill/shared':
+        specifier: workspace:*
+        version: link:../shared
 
 packages:
 

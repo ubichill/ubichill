@@ -17,6 +17,7 @@ export default defineConfig({
             '@ubichill/shared': srcPath('./packages/shared/src/index.ts'),
             '@ubichill/engine': srcPath('./packages/engine/src/index.ts'),
             '@ubichill/sdk': srcPath('./packages/sdk/src/index.ts'),
+            '@ubichill/ui-renderer': srcPath('./packages/ui-renderer/src/index.ts'),
         },
     },
     test: {

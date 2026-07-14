@@ -1,5 +1,5 @@
 /**
- * VNodeRenderer の実装は @ubichill/sandbox に置いてある。
- * @ubichill/react が sandbox に依存しているため、ここでは re-export のみ。
+ * VNodeRenderer の実装は @ubichill/ui-renderer に置いてある（ホスト側の VNode→DOM 描画）。
+ * ここでは re-export のみ。
  */
-export { renderVNode } from '@ubichill/sandbox';
+export { renderVNode } from '@ubichill/ui-renderer';

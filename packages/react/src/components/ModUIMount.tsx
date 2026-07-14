@@ -1,5 +1,5 @@
-import { renderVNode } from '@ubichill/sandbox';
 import type { VNode } from '@ubichill/shared';
+import { renderVNode } from '@ubichill/ui-renderer';
 import { useLayoutEffect, useRef } from 'react';
 
 interface ModUIMountProps {
