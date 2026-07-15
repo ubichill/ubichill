@@ -10,14 +10,7 @@
  * 在籍簿は ModRegistry、DOM 入力共有は SharedInputPool に委譲する。
  * React 非依存。React 環境では @ubichill/react の useModWorker 経由で使う。
  */
-import {
-    CommandType,
-    HostEventType,
-    type ModGuestCommand,
-    type ModHostEvent,
-    type ModWorkerMessage,
-    UbiErrorCode,
-} from '@ubichill/shared';
+import { CommandType, HostEventType, type ModGuestCommand, type ModHostEvent, UbiErrorCode } from '@ubichill/shared';
 import {
     acquireSharedInput,
     collectSharedInputFor,
@@ -26,8 +19,10 @@ import {
 } from '@ubichill/ui-renderer';
 import { buildAllowedCommands, CMD_TO_HANDLER, COMMAND_TO_CAPABILITY } from './capability';
 import { type CapabilityGate, createCapabilityGate } from './capabilityGate';
+import { type CommandContext, dispatchCommand, RpcTimeoutError } from './commandDispatch';
 import { getActiveWorkerCount, getWorker, registerWorker, unregisterWorker } from './ModRegistry';
 import { isMetricEnabled, reportDiagnostic, reportMetric } from './modDiagnostics';
+import { TickController } from './TickController';
 import type { HostHandlers, ModHostManagerOptions } from './types';
 
 export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record<string, unknown>> {
@@ -46,24 +41,21 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
     private readonly _gate: CapabilityGate;
     /** on-demand 認可モードか（拒否時のエラーコード区別に使う）。 */
     private readonly _onDemand: boolean;
+    /** commandDispatch に渡すコンテキスト（毎コマンド再生成しない）。 */
+    private readonly _commandContext: CommandContext<TPayloadMap>;
     private readonly _logPrefix: string;
     private readonly _modId: string;
     private readonly _instanceKey: string;
     /** 現Tickにホスト側でコマンド処理に要した累積時間 (ms) */
     private _currentTickCommandMs = 0;
 
-    private animationFrameId?: number;
-    private intervalId?: ReturnType<typeof setInterval>;
-    private lastTime = performance.now();
-    private readonly intervalMs: number;
     private readonly tickEnabled: boolean;
     private readonly _autoInputEnabled: boolean;
+    /** Tick 生成（rAF / background interval）は TickController に委譲。tickEnabled のときのみ生成。 */
+    private readonly _tick?: TickController;
 
-    // Arrow fields: bind 済みのため毎フレーム bind() しない（GC ゼロ）
-    private readonly _animate = (time: number): void => {
-        const deltaTime = time - this.lastTime;
-        this.lastTime = time;
-
+    /** 1 Tick 分の処理: メトリクス通知 + Worker への Tick 送信。TickController から呼ばれる。 */
+    private _onTick(deltaTime: number): void {
         // メトリクスが有効なときのみ計測・通知
         if (isMetricEnabled()) {
             const metric = {
@@ -78,33 +70,8 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
             this.handlers.onTickComplete?.(metric);
         }
         this._currentTickCommandMs = 0;
-
         this._sendTick(deltaTime);
-        this.animationFrameId = requestAnimationFrame(this._animate);
-    };
-
-    private readonly _intervalTick = (): void => {
-        const now = performance.now();
-        this._sendTick(now - this.lastTime);
-        this.lastTime = now;
-    };
-
-    private readonly _onVisibilityChange = (): void => {
-        this.lastTime = performance.now();
-        if (!document.hidden) {
-            if (this.intervalId !== undefined) {
-                clearInterval(this.intervalId);
-                this.intervalId = undefined;
-            }
-            this.animationFrameId = requestAnimationFrame(this._animate);
-        } else {
-            if (this.animationFrameId !== undefined) {
-                cancelAnimationFrame(this.animationFrameId);
-                this.animationFrameId = undefined;
-            }
-            this.intervalId = setInterval(this._intervalTick, this.intervalMs);
-        }
-    };
+    }
 
     constructor(options: ModHostManagerOptions<TPayloadMap>) {
         this.handlers = options.handlers;
@@ -133,10 +100,20 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
             authorizeCapability: options.allowAllCapabilities ? undefined : options.authorizeCapability,
         });
 
+        this._commandContext = {
+            handlers: this.handlers,
+            withTimeout: (promise, cmdType) => this._withTimeout(promise, cmdType),
+            senderComponentInstanceId: () => getWorker(this._instanceKey)?.componentInstanceId,
+            logPrefix: this._logPrefix,
+        };
+
         const fps = options.tickFps ?? 60;
-        this.intervalMs = fps > 0 ? 1000 / fps : 0;
+        const intervalMs = fps > 0 ? 1000 / fps : 0;
         this.tickEnabled = !options.disableAutoTick && fps > 0;
         this._autoInputEnabled = this.tickEnabled && !options.disableAutoInput;
+        this._tick = this.tickEnabled
+            ? new TickController({ intervalMs, onTick: (deltaMs) => this._onTick(deltaMs) })
+            : undefined;
 
         const maxExecutionTime = options.maxExecutionTime ?? 0;
 
@@ -191,9 +168,7 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
             },
         });
 
-        if (this.tickEnabled) {
-            this._startTickLoop();
-        }
+        this._tick?.start();
 
         if (this._autoInputEnabled) {
             acquireSharedInput(this._instanceKey);
@@ -209,15 +184,6 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
             throw new Error(`[ModHostManager] modコードの取得に失敗: ${res.status} ${url}`);
         }
         return new ModHostManager<TPayloadMap>({ ...options, modCode: await res.text() });
-    }
-
-    private _startTickLoop(): void {
-        document.addEventListener('visibilitychange', this._onVisibilityChange);
-        if (!document.hidden) {
-            this.animationFrameId = requestAnimationFrame(this._animate);
-        } else {
-            this.intervalId = setInterval(this._intervalTick, this.intervalMs);
-        }
     }
 
     private _sendTick(deltaTime: number): void {
@@ -248,7 +214,10 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
             promise,
             new Promise<never>((_, reject) =>
                 setTimeout(
-                    () => reject(new Error(`RPC タイムアウト (${ModHostManager.RPC_TIMEOUT_MS}ms): ${cmdType}`)),
+                    () =>
+                        reject(
+                            new RpcTimeoutError(`RPC タイムアウト (${ModHostManager.RPC_TIMEOUT_MS}ms): ${cmdType}`),
+                        ),
                     ModHostManager.RPC_TIMEOUT_MS,
                 ),
             ),
@@ -295,129 +264,17 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
 
         const _cmdStart = isMetricEnabled() ? performance.now() : 0;
         try {
-            let result: unknown;
-            switch (type) {
-                case CommandType.SCENE_GET_ENTITY:
-                    result = this.handlers.onGetEntity?.(command.payload.id) ?? null;
-                    break;
-                case CommandType.SCENE_QUERY_ENTITIES:
-                    result = this.handlers.onQueryEntities?.(command.payload.entityType) ?? [];
-                    break;
-                case CommandType.SCENE_CREATE_ENTITY:
-                    result = (
-                        await this._withTimeout(
-                            this.handlers.onCreateEntity?.(command.payload.entity) ?? Promise.resolve(undefined),
-                            type,
-                        )
-                    )?.id;
-                    break;
-                case CommandType.SCENE_UPDATE_ENTITY:
-                    await this._withTimeout(
-                        this.handlers.onUpdateEntity?.(command.payload.id, command.payload.patch) ?? Promise.resolve(),
-                        type,
-                    );
-                    break;
-                case CommandType.SCENE_DESTROY_ENTITY:
-                    await this._withTimeout(
-                        this.handlers.onDestroyEntity?.(command.payload.id) ?? Promise.resolve(),
-                        type,
-                    );
-                    break;
-                case CommandType.NET_FETCH:
-                    result = await this._withTimeout(
-                        this.handlers.onFetch?.(command.payload.url, command.payload.options) ??
-                            Promise.resolve(undefined),
-                        type,
-                    );
-                    break;
-                case CommandType.NETWORK_SEND_TO_HOST:
-                    this.handlers.onMessage?.({
-                        type: command.payload.type,
-                        payload: command.payload.data,
-                    } as ModWorkerMessage<TPayloadMap>);
-                    break;
-                case CommandType.NETWORK_BROADCAST:
-                    this.handlers.onNetworkBroadcast?.(command.payload.type, command.payload.data);
-                    break;
-                case CommandType.EVENT_EMIT:
-                    this.handlers.onEventEmit?.(
-                        command.payload.type,
-                        command.payload.data,
-                        command.payload.scope,
-                        command.payload.targetType,
-                        getWorker(this._instanceKey)?.componentInstanceId,
-                    );
-                    break;
-                case CommandType.UI_RENDER:
-                    this.handlers.onRender?.(command.payload.targetId, command.payload.vnode);
-                    break;
-                case CommandType.EDITOR_SCHEMA:
-                    this.handlers.onEditorSchema?.(command.payload.componentType, command.payload.schema);
-                    break;
-                case CommandType.CANVAS_FRAME:
-                    this.handlers.onCanvasFrame?.(
-                        command.payload.targetId,
-                        command.payload.activeStroke,
-                        command.payload.cursors,
-                    );
-                    break;
-                case CommandType.CANVAS_COMMIT_STROKE:
-                    this.handlers.onCanvasCommitStroke?.(command.payload.targetId, command.payload.stroke);
-                    break;
-                case CommandType.MEDIA_LOAD:
-                    this.handlers.onMediaLoad?.(
-                        command.payload.targetId,
-                        command.payload.url,
-                        command.payload.mediaType,
-                    );
-                    break;
-                case CommandType.MEDIA_PLAY:
-                    this.handlers.onMediaPlay?.(command.payload.targetId);
-                    break;
-                case CommandType.MEDIA_PAUSE:
-                    this.handlers.onMediaPause?.(command.payload.targetId);
-                    break;
-                case CommandType.MEDIA_SEEK:
-                    this.handlers.onMediaSeek?.(command.payload.targetId, command.payload.time);
-                    break;
-                case CommandType.MEDIA_SET_VOLUME:
-                    this.handlers.onMediaSetVolume?.(command.payload.targetId, command.payload.volume);
-                    break;
-                case CommandType.MEDIA_DESTROY:
-                    this.handlers.onMediaDestroy?.(command.payload.targetId);
-                    break;
-                case CommandType.MEDIA_SET_VISIBLE:
-                    this.handlers.onMediaSetVisible?.(command.payload.targetId, command.payload.visible);
-                    break;
-                case CommandType.MEDIA_SET_DEVICE_CONTROL:
-                    this.handlers.onMediaSetDeviceControl?.(command.payload.targetId, command.payload.enabled);
-                    break;
-                case CommandType.CMD_GRIP:
-                    this.handlers.onGripCommand?.(command.payload);
-                    break;
-                case CommandType.CMD_LOG: {
-                    const { level, message } = command.payload;
-                    if (this.handlers.onLog) {
-                        this.handlers.onLog(level, message, this._logPrefix);
-                    } else {
-                        console[level](`${this._logPrefix} ${message}`);
-                    }
-                    break;
-                }
-                default:
-                    this.handlers.onCommand?.(command);
-                    break;
-            }
+            // コマンドの振り分けは commandDispatch に委譲（新コマンドはそちらに 1 case 足す）。
+            const result = await dispatchCommand(command, this._commandContext);
             if (id) {
                 this.sendEvent({ type: HostEventType.EVT_RPC_RESPONSE, id, success: true, data: result });
             }
         } catch (error) {
             if (id) {
                 const message = error instanceof Error ? error.message : String(error);
-                // RPC タイムアウトは _withTimeout が投げた専用メッセージで判別する
-                const errorCode = message.includes('RPC タイムアウト')
-                    ? UbiErrorCode.RPC_TIMEOUT
-                    : UbiErrorCode.RPC_HANDLER_ERROR;
+                // タイムアウトは専用エラー型で判別する（メッセージ文字列に依存しない）。
+                const errorCode =
+                    error instanceof RpcTimeoutError ? UbiErrorCode.RPC_TIMEOUT : UbiErrorCode.RPC_HANDLER_ERROR;
                 this.sendEvent({ type: HostEventType.EVT_RPC_RESPONSE, id, success: false, error: message, errorCode });
             }
         } finally {
@@ -471,11 +328,7 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
             clearTimeout(this.executionTimer);
             this.executionTimer = null;
         }
-        if (this.tickEnabled) {
-            document.removeEventListener('visibilitychange', this._onVisibilityChange);
-        }
-        if (this.animationFrameId !== undefined) cancelAnimationFrame(this.animationFrameId);
-        if (this.intervalId !== undefined) clearInterval(this.intervalId);
+        this._tick?.stop();
         if (this._autoInputEnabled) {
             releaseSharedInput(this._instanceKey);
         }
