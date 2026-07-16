@@ -2,14 +2,14 @@
 
 ---
 
-## Ubicrate CLI（`ubi`）
+## `ubi mod` CLI
 
 Helm のようにmodをパッケージ化し、GitHub Pages 等で公開できるエコシステム基盤。
 
 ```
-ubi create my-mod    # プロジェクト雛形生成
-ubi build               # Worker + Frontend をバンドル
-ubi deploy              # GitHub Pages / 任意ホストへ公開
+ubi mod create my-mod   # プロジェクト雛形生成
+ubi mod build           # Worker + Frontend をバンドル
+ubi mod deploy          # GitHub Pages / 任意ホストへ公開
 ```
 
 ### Phase 1 — 規約・型定義（✅ 完了）
@@ -23,12 +23,12 @@ ubi deploy              # GitHub Pages / 任意ホストへ公開
 - `build-workers.mjs`（esbuild）で Worker JS をバンドル
 - TypeScript → IIFE 文字列として Sandbox に渡せる形式に変換
 
-### Phase 3 — `ubi create`（次のブランチで実装）
+### Phase 3 — `ubi mod create`（次のブランチで実装）
 
 動的mod読み込み対応と同時に実装する。
 
 - プロジェクト雛形生成コマンド
-- `package.yaml` スキーマ実装
+- `mod.json` スキーマ実装
 - GitHub Pages への公開フロー
 
 ### Phase 4 — ホットリロード
@@ -88,4 +88,4 @@ ubi deploy              # GitHub Pages / 任意ホストへ公開
 | mod署名・改竄検知 | 将来 | 権限・セキュリティ Phase 4 |
 | WebGL レンダリング | 将来 | wallpaper engine 相当の表現 |
 | WASM サンドボックス（QuickJS） | 将来 | ハード隔離。権限・セキュリティ Phase 4 |
-| modマーケットプレイス | 将来 | Ubicrate Phase 5 |
+| modマーケットプレイス | 将来 | `ubi mod` Phase 5 |

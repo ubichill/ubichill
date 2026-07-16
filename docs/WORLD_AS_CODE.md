@@ -68,7 +68,7 @@ spec:
 ### Package（mod定義）
 
 mod作者が `mod.json` ではなく将来的に `package.yaml` として公開する形式。
-`ubi deploy` がこれを読んで GitHub Pages 等にデプロイする。
+`ubi mod deploy` がこれを読んで GitHub Pages 等にデプロイする。
 
 ```yaml
 apiVersion: ubichill.com/v1alpha1
