@@ -1,5 +1,12 @@
 import { UbiSDK } from '@ubichill/sdk';
-import { CommandType, HostEventType, type ModGuestCommand, type ModHostEvent } from '@ubichill/shared';
+import {
+    CommandType,
+    checkProtocolCompatibility,
+    HostEventType,
+    type ModGuestCommand,
+    type ModHostEvent,
+    PROTOCOL_VERSION,
+} from '@ubichill/shared';
 
 // IMPORTANT: Function コンストラクタを無効化する前に保存
 const SafeFunction = Function;
@@ -90,6 +97,12 @@ self.addEventListener('message', (e: MessageEvent<ModHostEvent>) => {
     const modId = event.payload.modId ?? event.payload.worldId ?? 'unknown';
     Ubi.modId = modId;
 
+    // Host が古すぎて mod が使う機能を欠く恐れがあれば、mod 開発者にログで知らせる。
+    const compat = checkProtocolCompatibility(event.payload.protocolVersion ?? 0, PROTOCOL_VERSION);
+    if (compat.level !== 'ok' && compat.message) {
+        Ubi.log(compat.message, compat.level === 'incompatible' ? 'error' : 'warn');
+    }
+
     try {
         // SECURITY NOTE: 本番環境では静的解析・コード署名・CSP・将来的に QuickJS+WASM への移行を推奨
         checkDangerousPatterns(event.payload.code);
@@ -118,7 +131,7 @@ self.addEventListener('message', (e: MessageEvent<ModHostEvent>) => {
         modFn(Ubi, _modConsole);
 
         // ACK: 初期化完了を Host に通知 → Host がキューをフラッシュする
-        securePostMessage({ type: CommandType.CMD_READY });
+        securePostMessage({ type: CommandType.CMD_READY, payload: { protocolVersion: PROTOCOL_VERSION } });
 
         console.log(`[Sandbox:${modId}] 初期化完了`);
     } catch (error) {

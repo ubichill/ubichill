@@ -12,6 +12,77 @@
  *   InputEventType — EVT_INPUT.payload.events[].type の入力サブイベント
  */
 
+/**
+ * modプロトコル（Guest(SDK) ↔ Host(Sandbox) のメッセージ契約）のバージョン。
+ *
+ * SDK は独立配布されるため「古い SDK で作られた mod」と「新しい Host」が
+ * 通信する状況が必ず起きる。両者は初期化時に互いのバージョンを名乗り、
+ * {@link checkProtocolCompatibility} で不一致を検出して開発者に警告する。
+ *
+ * ## 進化ルール（後方互換の生命線）
+ * - `CommandType` / `HostEventType` / `InputEventType` の値は **削除・改名しない**（追加のみ）。
+ *   値は文字列なので並べ替えは安全。ペイロードのフィールドは **optional でのみ** 追加する。
+ * - 上記を守る「加算的変更」のたびに {@link PROTOCOL_VERSION} を +1 する。
+ * - やむを得ず互換を壊す変更をしたときだけ {@link MIN_COMPATIBLE_PROTOCOL_VERSION} を上げる。
+ *
+ * 加算的進化である限り、あるバージョン V の実装は V 以下のすべてを理解できる。
+ * したがって危険なのは「mod (guest) が Host より新しい」ケースだけ（Host が未対応の
+ * コマンドを mod が使う恐れがある）。逆（古い mod × 新しい Host）は常に動く。
+ */
+export const PROTOCOL_VERSION = 1;
+
+/**
+ * これ未満のバージョンで作られた mod とは互換性がない下限。
+ *
+ * 現時点で破壊的変更はまだ無いため 0 = 「未バージョン管理時代（version 未名乗り）の
+ * 旧 mod も含めて全部互換」。将来やむなく互換を壊す変更を入れたときに、
+ * PROTOCOL_VERSION と一緒にこの値も引き上げる（そのとき旧 mod が incompatible になる）。
+ */
+export const MIN_COMPATIBLE_PROTOCOL_VERSION = 0;
+
+export type ProtocolCompatibilityLevel =
+    /** 完全互換。 */
+    | 'ok'
+    /** 通信は成立するが、mod が使う新機能を Host が持たない恐れ（Host が古い）。 */
+    | 'degraded'
+    /** 破壊的変更をまたいでおり通信不能。mod の再ビルドが必要。 */
+    | 'incompatible';
+
+export interface ProtocolCompatibility {
+    level: ProtocolCompatibilityLevel;
+    hostVersion: number;
+    guestVersion: number;
+    /** degraded / incompatible のときの人間向け説明。 */
+    message?: string;
+}
+
+/**
+ * Host と Guest(mod/SDK) のプロトコルバージョン整合性を判定する純関数。
+ * Host 側・Guest 側どちらからでも同じ関数で評価できる（自分の版と相手の版を渡す）。
+ *
+ * @param hostVersion   Host(Sandbox) のプロトコルバージョン
+ * @param guestVersion  Guest(mod/SDK) のプロトコルバージョン（未名乗り＝旧世代は 0 を渡す）
+ */
+export function checkProtocolCompatibility(hostVersion: number, guestVersion: number): ProtocolCompatibility {
+    if (guestVersion < MIN_COMPATIBLE_PROTOCOL_VERSION) {
+        return {
+            level: 'incompatible',
+            hostVersion,
+            guestVersion,
+            message: `この mod はプロトコル v${guestVersion} 用ですが、Host は v${MIN_COMPATIBLE_PROTOCOL_VERSION} 以上を要求します（破壊的変更あり）。mod を最新 SDK で再ビルドしてください。`,
+        };
+    }
+    if (hostVersion < guestVersion) {
+        return {
+            level: 'degraded',
+            hostVersion,
+            guestVersion,
+            message: `この mod はプロトコル v${guestVersion} 用で、Host は v${hostVersion} です。mod が使う新しい機能は動作しない可能性があります。Host（本体）の更新を推奨します。`,
+        };
+    }
+    return { level: 'ok', hostVersion, guestVersion };
+}
+
 /** Guest (Worker) → Host コマンド。 */
 export const CommandType = {
     // scene (ECS)

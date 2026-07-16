@@ -110,6 +110,11 @@ export type CmdSceneUnsubscribeEntity = {
  */
 export type CmdReady = {
     type: 'CMD_READY';
+    /**
+     * mod をビルドした SDK のプロトコルバージョン。Host はこれと自分の版を突き合わせ、
+     * 非互換なら診断を出す。旧世代 SDK は payload 自体を送らない（Host 側で 0 扱い）。
+     */
+    payload?: { protocolVersion: number };
 };
 
 /**
@@ -453,6 +458,11 @@ export type ModCommand = ModGuestCommand;
 export type EvtLifecycleInit = {
     type: 'EVT_LIFECYCLE_INIT';
     payload: {
+        /**
+         * Host(Sandbox) のプロトコルバージョン。Guest(SDK) はこれと自分の版を突き合わせ、
+         * Host が古すぎる場合に警告する。旧世代 Host は送らない（Guest 側で 0 扱い）。
+         */
+        protocolVersion?: number;
         worldId: string;
         myUserId: string;
         code: string;

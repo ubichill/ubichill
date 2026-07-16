@@ -40,6 +40,8 @@ export const UbiErrorCode = {
     WORKER_INIT_FAILED: 'WORKER_INIT_FAILED',
     /** 禁止された危険パターン (eval / Function 等) を検出した */
     SECURITY_PATTERN_DETECTED: 'SECURITY_PATTERN_DETECTED',
+    /** mod (SDK) と Host のプロトコルバージョンが非互換、または機能欠落の恐れがある */
+    PROTOCOL_VERSION_MISMATCH: 'PROTOCOL_VERSION_MISMATCH',
 
     // ── resource / perf (Host 内部の診断用) ──
     /** 実行時間・キュー長などのリソース制限を超過した */

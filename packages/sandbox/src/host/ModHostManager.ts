@@ -10,7 +10,15 @@
  * 在籍簿は ModRegistry、DOM 入力共有は SharedInputPool に委譲する。
  * React 非依存。React 環境では @ubichill/react の useModWorker 経由で使う。
  */
-import { CommandType, HostEventType, type ModGuestCommand, type ModHostEvent, UbiErrorCode } from '@ubichill/shared';
+import {
+    CommandType,
+    checkProtocolCompatibility,
+    HostEventType,
+    type ModGuestCommand,
+    type ModHostEvent,
+    PROTOCOL_VERSION,
+    UbiErrorCode,
+} from '@ubichill/shared';
 import {
     acquireSharedInput,
     collectSharedInputFor,
@@ -122,6 +130,7 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
         this.worker = new Worker(new URL('../worker/sandbox.worker.ts', import.meta.url), { type: 'module' });
         this.worker.addEventListener('message', (e: MessageEvent<ModGuestCommand>) => {
             if (e.data.type === CommandType.CMD_READY) {
+                this._checkProtocolVersion(e.data.payload?.protocolVersion ?? 0);
                 this.isInitialized = true;
                 this.handlers.onReady?.();
                 for (const event of this.eventQueue) {
@@ -155,6 +164,7 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
         this.worker.postMessage({
             type: HostEventType.EVT_LIFECYCLE_INIT,
             payload: {
+                protocolVersion: PROTOCOL_VERSION,
                 code: options.modCode,
                 worldId: options.worldId ?? '',
                 myUserId: options.myUserId ?? '',
@@ -197,6 +207,21 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
             }
             this.sendEvent({ type: HostEventType.EVT_LIFECYCLE_TICK, payload: { deltaTime } });
         }
+    }
+
+    /**
+     * mod (SDK) が名乗ったプロトコルバージョンを Host の版と突き合わせ、
+     * 非互換 / 機能欠落の恐れがあれば診断を出す（開発者が原因に即到達できるように）。
+     */
+    private _checkProtocolVersion(guestVersion: number): void {
+        const result = checkProtocolCompatibility(PROTOCOL_VERSION, guestVersion);
+        if (result.level === 'ok') return;
+        reportDiagnostic({
+            level: result.level === 'incompatible' ? 'error' : 'warn',
+            modId: this._modId,
+            code: UbiErrorCode.PROTOCOL_VERSION_MISMATCH,
+            message: result.message ?? 'プロトコルバージョンが一致しません',
+        });
     }
 
     private _terminateWithReason(reason: string): void {
