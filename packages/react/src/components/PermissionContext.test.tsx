@@ -33,7 +33,7 @@ describe('authorizeMod（読み込み時の一括承認）', () => {
     it('承認が要らなければプロンプトを出さず即解決する', async () => {
         const ctx = setup();
         await act(async () => {
-            await ctx.current.authorizeMod('p', ['scene:read', 'scene:update', 'net:emit']);
+            await ctx.current.authorizeMod('p', ['scene:read', 'scene:update', 'event:emit']);
         });
         expect(ctx.current.pendingPrompt).toBeNull();
     });

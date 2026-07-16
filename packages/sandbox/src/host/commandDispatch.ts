@@ -32,7 +32,7 @@ export interface CommandContext<TPayloadMap extends Record<string, unknown> = Re
 
 /**
  * コマンドを対応する HostHandler に振り分けて実行する。
- * RPC の戻り値（SCENE_CREATE の id / NET_FETCH の結果 / SCENE_GET・QUERY の値）を返す。
+ * RPC の戻り値（SCENE_CREATE の id / NETWORK_FETCH の結果 / SCENE_GET・QUERY の値）を返す。
  */
 export async function dispatchCommand<TPayloadMap extends Record<string, unknown>>(
     command: ModGuestCommand,
@@ -60,7 +60,7 @@ export async function dispatchCommand<TPayloadMap extends Record<string, unknown
         case CommandType.SCENE_DESTROY_ENTITY:
             await withTimeout(handlers.onDestroyEntity?.(command.payload.id) ?? Promise.resolve(), command.type);
             return undefined;
-        case CommandType.NET_FETCH:
+        case CommandType.NETWORK_FETCH:
             return withTimeout(
                 handlers.onFetch?.(command.payload.url, command.payload.options) ?? Promise.resolve(undefined),
                 command.type,

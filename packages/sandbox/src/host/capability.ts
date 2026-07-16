@@ -54,7 +54,7 @@ export const CAPABILITY_CATALOG = {
         label: 'UI の描画',
         description: '自身の UI をワールド内に描画する',
     },
-    'net:emit': {
+    'event:emit': {
         risk: 'safe',
         commands: [CommandType.EVENT_EMIT],
         label: 'ワールド内イベント送信',
@@ -72,7 +72,7 @@ export const CAPABILITY_CATALOG = {
         label: 'シーンの変更',
         description: 'ワールド内のオブジェクトを作成・変更・削除する',
     },
-    'net:broadcast': {
+    'event:broadcast': {
         risk: 'sensitive',
         commands: [CommandType.NETWORK_BROADCAST],
         label: 'ブロードキャスト',
@@ -84,7 +84,7 @@ export const CAPABILITY_CATALOG = {
         label: 'キャンバス描画',
         description: '共有キャンバスに線・図形を描く',
     },
-    'video:control': {
+    'media:control': {
         risk: 'sensitive',
         commands: [
             CommandType.MEDIA_LOAD,
@@ -105,7 +105,7 @@ export const CAPABILITY_CATALOG = {
         label: 'アバターの変更',
         description: 'あなたのアバター表示を変更する',
     },
-    'net:host-message': {
+    'host:message': {
         // アプリ本体（ホスト）への片道通知（タブ内ローカル）。外部通信ではないため sensitive。
         // 例: modが自分のプレイヤー状態（アバター・ペン色など）の更新をホストに依頼する。
         risk: 'sensitive',
@@ -115,7 +115,7 @@ export const CAPABILITY_CATALOG = {
     },
     'net:fetch': {
         risk: 'dangerous',
-        commands: [CommandType.NET_FETCH],
+        commands: [CommandType.NETWORK_FETCH],
         label: '外部通信 (fetch)',
         description: '外部サーバーへ HTTP 通信する（許可したドメインのみ）',
     },
@@ -220,7 +220,7 @@ export const CMD_TO_HANDLER = {
     [CommandType.SCENE_CREATE_ENTITY]: 'onCreateEntity',
     [CommandType.SCENE_UPDATE_ENTITY]: 'onUpdateEntity',
     [CommandType.SCENE_DESTROY_ENTITY]: 'onDestroyEntity',
-    [CommandType.NET_FETCH]: 'onFetch',
+    [CommandType.NETWORK_FETCH]: 'onFetch',
     [CommandType.NETWORK_SEND_TO_HOST]: 'onMessage',
     [CommandType.NETWORK_BROADCAST]: 'onNetworkBroadcast',
     [CommandType.EVENT_EMIT]: 'onEventEmit',

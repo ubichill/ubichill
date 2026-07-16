@@ -29,7 +29,7 @@ mod は必要な権限を `mod.json` の `capabilities` で宣言する（ビル
 | `scene:read` | シーンの読み取り | ワールド内のオブジェクト情報を読み取る | `SCENE_GET_ENTITY`<br>`SCENE_QUERY_ENTITIES` |
 | `ui:toast` | 通知の表示 | 画面に一時的な通知（トースト）を表示する | `UI_SHOW_TOAST` |
 | `ui:render` | UI の描画 | 自身の UI をワールド内に描画する | `UI_RENDER` |
-| `net:emit` | ワールド内イベント送信 | 同じワールド内の他コンポーネントへイベントを送る | `EVENT_EMIT` |
+| `event:emit` | ワールド内イベント送信 | 同じワールド内の他コンポーネントへイベントを送る | `EVENT_EMIT` |
 
 ### sensitive（要注意）
 
@@ -38,11 +38,11 @@ mod は必要な権限を `mod.json` の `capabilities` で宣言する（ビル
 | capability | ラベル | 説明 | 許可されるコマンド |
 | --- | --- | --- | --- |
 | `scene:update` | シーンの変更 | ワールド内のオブジェクトを作成・変更・削除する | `SCENE_CREATE_ENTITY`<br>`SCENE_UPDATE_ENTITY`<br>`SCENE_DESTROY_ENTITY`<br>`SCENE_SUBSCRIBE_ENTITY`<br>`SCENE_UNSUBSCRIBE_ENTITY` |
-| `net:broadcast` | ブロードキャスト | ワールド内の全参加者へメッセージを一斉送信する | `NETWORK_BROADCAST` |
+| `event:broadcast` | ブロードキャスト | ワールド内の全参加者へメッセージを一斉送信する | `NETWORK_BROADCAST` |
 | `canvas:draw` | キャンバス描画 | 共有キャンバスに線・図形を描く | `CANVAS_FRAME`<br>`CANVAS_COMMIT_STROKE` |
-| `video:control` | メディア再生の制御 | 動画・音声の読み込みと再生（再生/停止/シーク/音量）を操作する | `MEDIA_LOAD`<br>`MEDIA_PLAY`<br>`MEDIA_PAUSE`<br>`MEDIA_SEEK`<br>`MEDIA_SET_VOLUME`<br>`MEDIA_DESTROY`<br>`MEDIA_SET_VISIBLE`<br>`MEDIA_SET_DEVICE_CONTROL` |
+| `media:control` | メディア再生の制御 | 動画・音声の読み込みと再生（再生/停止/シーク/音量）を操作する | `MEDIA_LOAD`<br>`MEDIA_PLAY`<br>`MEDIA_PAUSE`<br>`MEDIA_SEEK`<br>`MEDIA_SET_VOLUME`<br>`MEDIA_DESTROY`<br>`MEDIA_SET_VISIBLE`<br>`MEDIA_SET_DEVICE_CONTROL` |
 | `avatar:set` | アバターの変更 | あなたのアバター表示を変更する | `AVATAR_SET` |
-| `net:host-message` | ホストへの通知 | アプリ本体にプレイヤー状態（アバター等）の更新を依頼する | `NETWORK_SEND_TO_HOST` |
+| `host:message` | ホストへの通知 | アプリ本体にプレイヤー状態（アバター等）の更新を依頼する | `NETWORK_SEND_TO_HOST` |
 
 ### dangerous（危険）
 
@@ -50,7 +50,7 @@ mod は必要な権限を `mod.json` の `capabilities` で宣言する（ビル
 
 | capability | ラベル | 説明 | 許可されるコマンド |
 | --- | --- | --- | --- |
-| `net:fetch` | 外部通信 (fetch) | 外部サーバーへ HTTP 通信する（許可したドメインのみ） | `NET_FETCH` |
+| `net:fetch` | 外部通信 (fetch) | 外部サーバーへ HTTP 通信する（許可したドメインのみ） | `NETWORK_FETCH` |
 
 ## プロトコルバージョン
 

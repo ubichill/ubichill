@@ -1,7 +1,7 @@
 /**
  * useModFetch
  *
- * Worker の NET_FETCH コマンドを処理するフェッチハンドラを構築する。
+ * Worker の NETWORK_FETCH コマンドを処理するフェッチハンドラを構築する。
  *
  * 責務（普遍的なポリシー・特定modに依存しない）:
  * 1. 自分のアセット（modBase 配下・CDN でも可）→ fetchDirect（承認不要）。

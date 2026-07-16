@@ -222,7 +222,7 @@ export class UbiSDK {
      * ドメインの初回承認はユーザーの応答待ちになるため、通常 RPC より長いタイムアウトを使う。
      */
     public fetch(url: string, options?: FetchOptions): Promise<unknown> {
-        return this._rpc({ type: CommandType.NET_FETCH, payload: { url, options } }, UbiSDK.FETCH_RPC_TIMEOUT_MS);
+        return this._rpc({ type: CommandType.NETWORK_FETCH, payload: { url, options } }, UbiSDK.FETCH_RPC_TIMEOUT_MS);
     }
 
     // ── Transport ─────────────────────────────────────────────

@@ -5,7 +5,7 @@ import { createCapabilityGate } from './capabilityGate';
 describe('createCapabilityGate — allowAll モード', () => {
     it('全コマンドを許可する', () => {
         const gate = createCapabilityGate({ allowAll: true });
-        expect(gate.authorize('NET_FETCH')).toBe(true);
+        expect(gate.authorize('NETWORK_FETCH')).toBe(true);
         expect(gate.authorize('SCENE_UPDATE_ENTITY')).toBe(true);
         expect(gate.authorize('CMD_LOG')).toBe(true);
     });
@@ -15,7 +15,7 @@ describe('createCapabilityGate — 静的モード（allowlist）', () => {
     it('宣言 capability のコマンドを許可し、それ以外を拒否する', () => {
         const gate = createCapabilityGate({ allowedCommands: buildAllowedCommands(['scene:read']) });
         expect(gate.authorize('SCENE_GET_ENTITY')).toBe(true);
-        expect(gate.authorize('NET_FETCH')).toBe(false);
+        expect(gate.authorize('NETWORK_FETCH')).toBe(false);
     });
 
     it('コアコマンドは allowlist が空でも許可する', () => {
@@ -26,7 +26,7 @@ describe('createCapabilityGate — 静的モード（allowlist）', () => {
 
     it('allowlist 未指定なら（コア以外は）全拒否 default-deny', () => {
         const gate = createCapabilityGate({});
-        expect(gate.authorize('NET_FETCH')).toBe(false);
+        expect(gate.authorize('NETWORK_FETCH')).toBe(false);
         expect(gate.authorize('CMD_LOG')).toBe(true); // コアのみ通る
     });
 });
@@ -49,13 +49,13 @@ describe('createCapabilityGate — on-demand モード', () => {
     it('コマンドの属する capability をコールバックに問い合わせ、結果をそのまま返す', () => {
         const authorize = vi.fn((cap: string) => cap === 'net:fetch');
         const gate = createCapabilityGate({ authorizeCapability: authorize });
-        expect(gate.authorize('NET_FETCH')).toBe(true);
+        expect(gate.authorize('NETWORK_FETCH')).toBe(true);
         expect(authorize).toHaveBeenCalledWith('net:fetch');
     });
 
     it('拒否された capability のコマンドは false になる', () => {
         const gate = createCapabilityGate({ authorizeCapability: () => false });
-        expect(gate.authorize('NET_FETCH')).toBe(false);
+        expect(gate.authorize('NETWORK_FETCH')).toBe(false);
     });
 
     it('キャッシュせず毎回評価する（承認が deny→allow に変われば次は許可される）', () => {
@@ -72,6 +72,6 @@ describe('createCapabilityGate — on-demand モード', () => {
                 throw new Error('boom');
             },
         });
-        expect(gate.authorize('NET_FETCH')).toBe(false);
+        expect(gate.authorize('NETWORK_FETCH')).toBe(false);
     });
 });

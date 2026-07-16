@@ -17,9 +17,9 @@ describe('getCapabilityRisk', () => {
         expect(getCapabilityRisk('net:fetch')).toBe('dangerous');
     });
 
-    it('net:host-message は内部通知なので sensitive（外部通信の dangerous ではない）', () => {
+    it('host:message は内部通知なので sensitive（外部通信の dangerous ではない）', () => {
         // 既定シールドで確認プロンプトを出さないための分類。net:fetch のみ dangerous。
-        expect(getCapabilityRisk('net:host-message')).toBe('sensitive');
+        expect(getCapabilityRisk('host:message')).toBe('sensitive');
     });
 
     it('未知の capability は dangerous 扱い（フェイルセーフ）', () => {
@@ -73,7 +73,7 @@ describe('buildAllowedCommands', () => {
         const allowed = buildAllowedCommands(undefined);
         expect([...allowed].sort()).toEqual([...ALWAYS_ALLOWED_COMMANDS].sort());
         // 宣言していない外部通信コマンドは決して含まれない
-        expect(allowed.has('NET_FETCH')).toBe(false);
+        expect(allowed.has('NETWORK_FETCH')).toBe(false);
     });
 
     it('空配列でもコアコマンドのみ許可する', () => {
@@ -83,7 +83,7 @@ describe('buildAllowedCommands', () => {
 
     it('宣言 capability に対応するコマンドを追加する', () => {
         const allowed = buildAllowedCommands(['net:fetch']);
-        expect(allowed.has('NET_FETCH')).toBe(true);
+        expect(allowed.has('NETWORK_FETCH')).toBe(true);
         // コアコマンドは常に含まれる
         expect(allowed.has('CMD_LOG')).toBe(true);
     });

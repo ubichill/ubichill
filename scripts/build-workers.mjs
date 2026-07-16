@@ -102,11 +102,11 @@ const CAPABILITY_DETECTORS = [
     // entity / state はどちらも読み書きしうるため read/update を両方申告（over-approx）
     { cap: 'scene:read', test: (c) => /\bUbi\.(entity|state)\b/.test(c) },
     { cap: 'scene:update', test: (c) => /\bUbi\.(entity|state)\b/.test(c) },
-    { cap: 'net:emit', test: (c) => /\bUbi\.event\b/.test(c) },
-    { cap: 'net:broadcast', test: (c) => /\.broadcast\s*\(/.test(c) },
-    { cap: 'net:host-message', test: (c) => /\.sendToHost\s*\(/.test(c) },
+    { cap: 'event:emit', test: (c) => /\bUbi\.event\b/.test(c) },
+    { cap: 'event:broadcast', test: (c) => /\.broadcast\s*\(/.test(c) },
+    { cap: 'host:message', test: (c) => /\.sendToHost\s*\(/.test(c) },
     { cap: 'canvas:draw', test: (c) => /\bUbi\.canvas\b/.test(c) },
-    { cap: 'video:control', test: (c) => /\bUbi\.media\b/.test(c) },
+    { cap: 'media:control', test: (c) => /\bUbi\.media\b/.test(c) },
 ];
 
 /** バンドル済みコードから capability 一覧を検出する（ソート済み・重複なし）。 */

@@ -162,7 +162,7 @@ export type CmdNetworkSendToHost = {
  * Ubi.network.broadcast(type, data)
  * Fire & Forget: ワールド内の全ユーザーに揮発性データを送ります。
  * DB には保存されません。他ユーザーの Worker に ECS イベントとして届きます。
- * capability: 'net:broadcast' が必要です。
+ * capability: 'event:broadcast' が必要です。
  */
 export type CmdNetworkBroadcast = {
     type: 'NETWORK_BROADCAST';
@@ -173,7 +173,7 @@ export type CmdNetworkBroadcast = {
  * Ubi.event.emit(type, data, { scope, targetType })
  * Fire & Forget: 同 tab 内の他 Worker (siblings / parent / children / world スコープ) に
  * Component type フィルタ付きで type 付きイベントを送る。受信側は WorkerEvent として届く。
- * capability: 'net:emit' が必要。
+ * capability: 'event:emit' が必要。
  */
 export type CmdEventEmit = {
     type: 'EVENT_EMIT';
@@ -227,8 +227,8 @@ export type FetchResult = {
  * ホワイトリストされたURLに対してHTTPリクエストを送信します。
  * セキュリティのため、ホスト側でURL検証を行います。
  */
-export type CmdNetFetch = {
-    type: 'NET_FETCH';
+export type CmdNetworkFetch = {
+    type: 'NETWORK_FETCH';
     payload: { url: string; options?: FetchOptions };
     id: string; // RPC
 };
@@ -314,7 +314,7 @@ export type CmdCanvasCommitStroke = {
  * Ubi.media.load(url, targetId?, mediaType?)
  * Fire & Forget: Host に指定 URL のメディアを読み込ませる。
  * mediaType が 'hls' の場合 Hls.js を使用。'auto' は URL から自動判定。
- * capability: 'video:control' が必要。
+ * capability: 'media:control' が必要。
  */
 export type CmdMediaLoad = {
     type: 'MEDIA_LOAD';
@@ -416,7 +416,7 @@ export type ModGuestCommand =
     | CmdEventEmit
     | CmdUiShowToast
     | CmdUiRender
-    | CmdNetFetch
+    | CmdNetworkFetch
     | CmdMediaLoad
     | CmdMediaPlay
     | CmdMediaPause
@@ -758,5 +758,5 @@ export type RpcCreateEntityResult = string; // 作成されたエンティティ
 /** SCENE_UPDATE_ENTITY / SCENE_DESTROY_ENTITY の戻り値 */
 /** SCENE_UPDATE_ENTITY / SCENE_DESTROY_ENTITY は void を返します */
 
-/** NET_FETCH の戻り値（FetchResult の後方互換エイリアス） */
-export type RpcNetFetchResult = FetchResult;
+/** NETWORK_FETCH の戻り値（FetchResult のエイリアス） */
+export type RpcNetworkFetchResult = FetchResult;

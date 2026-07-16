@@ -84,7 +84,7 @@ grip.release()                      // 離す
 grip.holder                         // string | null
 grip.isMine                         // boolean
 grip.onChange((next, prev) => ...)  // 占有者の変化を監視
-// 必要 capability: 'scene:update' (lockedBy 同期) + 'net:emit' (世界横断の調停 emit)
+// 必要 capability: 'scene:update' (lockedBy 同期) + 'event:emit' (世界横断の調停 emit)
 
 // ──── エンティティ (callable + static) ──────────────────
 Ubi.entity()                                       // SelfEntityRef (自分自身)
@@ -306,13 +306,13 @@ const entity = useEntity(entityId)
 |---|---|---|
 | `net:fetch` | 🔴 dangerous | `Ubi.fetch`（外部通信。ドメインごとに承認） |
 | `scene:update` | 🟡 sensitive | `Ubi.entity().update/destroy/spawn` / `Ubi.entity(id).update/destroy` / `Ubi.entity.spawn` / `Ubi.state.sync` の書き込み全般 |
-| `net:broadcast` | 🟡 sensitive | `Ubi.event.broadcast` / `MyEvents.broadcast`（`Ubi.state.sync({ ephemeral: true })` も内部で使用） |
-| `net:host-message` | 🟡 sensitive | `Ubi.event.sendToHost` / `MyEvents.sendToHost`（ホストへの片道通知＝自プレイヤー状態更新等） |
+| `event:broadcast` | 🟡 sensitive | `Ubi.event.broadcast` / `MyEvents.broadcast`（`Ubi.state.sync({ ephemeral: true })` も内部で使用） |
+| `host:message` | 🟡 sensitive | `Ubi.event.sendToHost` / `MyEvents.sendToHost`（ホストへの片道通知＝自プレイヤー状態更新等） |
 | `canvas:draw` | 🟡 sensitive | `Ubi.canvas.*` |
-| `video:control` | 🟡 sensitive | `Ubi.media.*` |
+| `media:control` | 🟡 sensitive | `Ubi.media.*` |
 | `avatar:set` | 🟡 sensitive | アバター表示の変更 |
 | `scene:read` | 🟢 safe | `Ubi.entity.get` / `Ubi.entity.query` |
-| `net:emit` | 🟢 safe | `Ubi.event.emit` / `MyEvents.emit`（クロス Worker 配送） |
+| `event:emit` | 🟢 safe | `Ubi.event.emit` / `MyEvents.emit`（クロス Worker 配送） |
 | `ui:render` | 🟢 safe | `Ubi.ui.render` |
 | `ui:toast` | 🟢 safe | `Ubi.ui.showToast` |
 
