@@ -118,7 +118,11 @@ spec:
 ## mod の読み込み
 
 ワールドは `spec.mods[].src` に書かれた URL から mod を読み込む。配布方法（GitHub Pages /
-CDN・versioned manifest・チェックサム照合）は mod 側の関心事なので [MOD.md](./MOD.md#配布) を参照。
+CDN・versioned manifest）は mod 側の関心事なので [MOD.md](./MOD.md#配布) を参照。
+
+依存する mod は **ロックファイルで内容ハッシュ（integrity）ごと固定**する（world owner が所有）。
+URL のドメイン乗っ取りや CDN 改竄で「同じバージョンの別物」が配信されても、ハッシュ不一致で
+実行を拒否できる。詳細は [MOD.md（バージョンと lock）](./MOD.md#バージョンと-lock)。
 
 ---
 

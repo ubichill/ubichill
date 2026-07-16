@@ -70,16 +70,43 @@ mod 開発者は権限を宣言しない。使用している `Ubi.*` API から
 
 ## バージョンと lock
 
-- `version` は **SemVer**。runtime のアセットはバージョン付きパス（`/mods/<id>/v<version>/…`）で
-  固定配信されるため、あるワールドが読み込む mod は再現性を持つ。
-- **現状 mod は自己完結**で、mod → mod の依存関係は持たない。Component 間の連携は
-  `Ubi.event`（scope / targetType）による**疎結合**で行い、相手が居なければ優雅に劣化する
-  （ハードな依存解決はしない）。
-- **依存が必要になった場合の方針（構想）**: ワールドが依存する mod のバージョンを
-  ロックファイルで固定する（`package-lock` 相当）。ただしゼロトラストのため
-  **capability は依存間で継承しない**（各 mod は独立ロード＋各自の承認）。
-- **プロトコル互換**: mod は SDK 経由で Host と通信する。SDK と Host は独立更新されるため、
-  初期化時に `PROTOCOL_VERSION` を突き合わせて非互換を検出する（→ [CAPABILITIES.md](./CAPABILITIES.md#プロトコルバージョン)）。
+mod は URL で動的に読み込まれるため、**バージョン番号を固定するだけでは不十分**。
+同じ `version` でも、URL のドメインが乗っ取られたり CDN 上の内容が差し替えられれば
+「同じバージョンの別物（悪意あるコード）」が配信され得る。
+
+そこで **`package-lock` / SRI 相当の内容ハッシュで固定する**（構想）:
+
+- ワールドが依存する各 mod を **`{ id, version, url, integrity: "sha384-…" }`** としてロックファイルに記録する。
+- 読み込み時、Host は取得した mod の内容ハッシュを計算し、ロック値と照合する。
+  **不一致なら実行しない**（改竄・乗っ取りを検出）。
+- `version` は **SemVer**。runtime アセットはバージョン付きパス（`/mods/<id>/v<version>/…`）で
+  固定配信されるが、その内容もハッシュで縛ることで「バージョンは同じだが中身が変わった」を弾く。
+- lock の更新は**明示的な再ロック時のみ**。それ以外は承認済みの内容と bit 単位で同一であることが保証される。
+
+**lock が守るもの / 守らないもの**（役割の分離）:
+
+| | 担当 |
+| --- | --- |
+| **内容整合性（integrity）**: 承認したものと同一のコードか | ← lock（本節） |
+| **信頼性（trust）**: そもそも承認してよい mod か | ← capability 同意（[CAPABILITIES.md](./CAPABILITIES.md)） |
+
+lock は「最初から悪意ある mod」は防げない（それは capability 同意とレビューの領分）。
+lock が防ぐのは「一度承認した mod が、後から URL 乗っ取り・CDN 改竄ですり替わる」こと。
+ロックファイルはワールドが依存する mod 群を固定するもので、world owner が所有する
+（→ [WORLD_AS_CODE.md](./WORLD_AS_CODE.md)）。
+
+### 依存関係
+
+現状 mod は自己完結で、mod → mod の依存は持たない。Component 間の連携は `Ubi.event`
+（scope / targetType）の**疎結合**で行い、相手が居なければ優雅に劣化する（ハードな依存解決はしない）。
+将来 mod → mod 依存を入れる場合も、ゼロトラストのため **capability は依存間で継承しない**
+（各 mod は独立ロード＋各自の承認＋各自の integrity 照合）。
+
+### プロトコル互換
+
+mod は SDK 経由で Host と通信する。SDK と Host は独立更新されるため、初期化時に
+`PROTOCOL_VERSION` を突き合わせて非互換を検出する
+（→ [CAPABILITIES.md](./CAPABILITIES.md#プロトコルバージョン)）。
 
 ---
 
@@ -95,5 +122,6 @@ mods:
     src: https://cdn.example.com/my-mod       # 任意ホスティング
 ```
 
-`src` から versioned manifest と Worker JS を取得する。取得時に Content-Type 検証と
-`mod.json` のチェックサム照合を行う（実装予定）。
+`src` から versioned manifest と Worker JS を取得する。取得時に Content-Type 検証と、
+ロックファイルの `integrity` ハッシュ照合を行う（→ [バージョンと lock](#バージョンと-lock)。実装予定）。
+これにより、同一 URL・同一バージョンでも内容がすり替わっていれば検出できる。
