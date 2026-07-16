@@ -95,18 +95,23 @@ function listFilesRecursive(rootDir, currentDir = rootDir) {
  * capability 名は sandbox の CAPABILITY_CATALOG と一致させること
  * （packages/sandbox/src/host/capability.ts）。
  */
-const CAPABILITY_DETECTORS = [
-    { cap: 'net:fetch', test: (c) => /\bUbi\.fetch\b/.test(c) },
-    { cap: 'ui:render', test: (c) => /\bUbi\.ui\b/.test(c) },
-    { cap: 'ui:toast', test: (c) => /\.showToast\s*\(/.test(c) },
+// api: どの Ubi API を使うとこの capability が付くかの人間向けヒント（ドキュメント生成が参照）。
+export const CAPABILITY_DETECTORS = [
+    { cap: 'net:fetch', api: 'Ubi.fetch', test: (c) => /\bUbi\.fetch\b/.test(c) },
+    { cap: 'ui:render', api: 'Ubi.ui.render', test: (c) => /\bUbi\.ui\b/.test(c) },
+    { cap: 'ui:toast', api: 'Ubi.ui.showToast', test: (c) => /\.showToast\s*\(/.test(c) },
     // entity / state はどちらも読み書きしうるため read/update を両方申告（over-approx）
-    { cap: 'scene:read', test: (c) => /\bUbi\.(entity|state)\b/.test(c) },
-    { cap: 'scene:update', test: (c) => /\bUbi\.(entity|state)\b/.test(c) },
-    { cap: 'event:emit', test: (c) => /\bUbi\.event\b/.test(c) },
-    { cap: 'event:broadcast', test: (c) => /\.broadcast\s*\(/.test(c) },
-    { cap: 'host:message', test: (c) => /\.sendToHost\s*\(/.test(c) },
-    { cap: 'canvas:draw', test: (c) => /\bUbi\.canvas\b/.test(c) },
-    { cap: 'media:control', test: (c) => /\bUbi\.media\b/.test(c) },
+    { cap: 'scene:read', api: 'Ubi.entity.get / query, Ubi.state 読み取り', test: (c) => /\bUbi\.(entity|state)\b/.test(c) },
+    {
+        cap: 'scene:update',
+        api: 'Ubi.entity().update/spawn/destroy, Ubi.state.sync 書き込み',
+        test: (c) => /\bUbi\.(entity|state)\b/.test(c),
+    },
+    { cap: 'event:emit', api: 'Ubi.event.emit', test: (c) => /\bUbi\.event\b/.test(c) },
+    { cap: 'event:broadcast', api: 'Ubi.event.broadcast', test: (c) => /\.broadcast\s*\(/.test(c) },
+    { cap: 'host:message', api: 'Ubi.event.sendToHost', test: (c) => /\.sendToHost\s*\(/.test(c) },
+    { cap: 'canvas:draw', api: 'Ubi.canvas.*', test: (c) => /\bUbi\.canvas\b/.test(c) },
+    { cap: 'media:control', api: 'Ubi.media.*', test: (c) => /\bUbi\.media\b/.test(c) },
 ];
 
 /** バンドル済みコードから capability 一覧を検出する（ソート済み・重複なし）。 */

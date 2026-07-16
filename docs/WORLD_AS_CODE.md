@@ -65,36 +65,9 @@ spec:
     allowGuestDelete: false
 ```
 
-### Package（mod定義）
-
-mod作者が `mod.json` ではなく将来的に `package.yaml` として公開する形式。
-`ubi mod deploy` がこれを読んで GitHub Pages 等にデプロイする。
-
-```yaml
-apiVersion: ubichill.com/v1alpha1
-kind: Package
-metadata:
-  name: pen-mod
-  version: "1.2.0"
-  author:
-    name: yourname
-    url: https://github.com/yourname
-spec:
-  displayName: "ペンツール"
-  description: "ドローイング用mod"
-  license: "MIT"
-
-  # Worker エントリポイント（esbuild でバンドルされた JS）
-  worker: ./dist/worker.js
-
-  # フロントエンドコンポーネント（npm パッケージまたは URL）
-  frontend: ./dist/frontend.js
-
-  # 要求する権限は宣言不要。使用している Ubi API からビルド時に自動生成され、
-  # 実際の許可は実行時にユーザーが危険度ティア別に承認する（on-demand）。
-  # ここに手書きした場合は自動生成結果への補完（override）として扱う。
-  # 例（自動生成される内容）: scene:read / scene:update / net:fetch …
-```
+> **mod の定義（`mod.json`）は [MOD.md](./MOD.md) を参照。** ワールドは複数の mod を URL から
+> 読み込んで構成する。ワールド YAML はどの mod を入れるか（`spec.mods`）だけを宣言し、
+> 各 mod の中身（Component・権限・配布形式）は mod 側の関心事として分離している。
 
 ### Avatar（カーソル定義）
 
@@ -136,32 +109,22 @@ spec:
 
 ## 認証・所有権
 
-- YAML を `ubi deploy` したユーザーが **owner**（PostgreSQL レコードに `ownerId` を保存）
+- YAML を `ubi mod deploy` したユーザーが **owner**（PostgreSQL レコードに `ownerId` を保存）
 - `config` など作者専用フィールドの更新は `ownerId` 一致チェックで保護
 - 将来的に OAuth（GitHub 等）と連携予定
 
 ---
 
-## mod配布
+## mod の読み込み
 
-modは URL ベースで配布する。GitHub Pages / 任意 CDN が使える。
-
-```yaml
-mods:
-  - name: pen
-    src: https://yourname.github.io/pen-mod   # GitHub Pages
-  - name: custom
-    src: https://cdn.example.com/my-mod       # 任意ホスティング
-```
-
-`src` の URL から Worker JS と Frontend JS を取得する。
-セキュリティ上、取得時に Content-Type 検証と `mod.json` のチェックサム照合を行う（実装予定）。
+ワールドは `spec.mods[].src` に書かれた URL から mod を読み込む。配布方法（GitHub Pages /
+CDN・versioned manifest・チェックサム照合）は mod 側の関心事なので [MOD.md](./MOD.md#配布) を参照。
 
 ---
 
 ## バリデーション
 
-`ubi deploy` 実行時にサーバー側で以下を検証する。
+ワールド YAML を `ubi mod deploy` した際、サーバー側で以下を検証する。
 
 | チェック | 目的 |
 |---|---|

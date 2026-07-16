@@ -273,51 +273,16 @@ const entity = useEntity(entityId)
 
 ---
 
-## 権限 (Capability) — 自動生成 + 読み込み時の一括承認
+## 権限 (Capability)
 
 **mod開発者は権限を宣言しない。** 使用している `Ubi.*` API からビルド時に capability を
-自動生成し（`build-workers.mjs` の静的解析。マニフェストに記録）、実際の許可は
-**ユーザーが承認**する。ゼロトラストで、信頼境界は Worker→Host の postMessage 一点。
+自動生成し、実際の許可はユーザーが読み込み時に一括承認する。ゼロトラストで、信頼境界は
+Worker→Host の postMessage 一点。
 
-- **危険度ティア**: 🟢 `safe`（常に許可・ユーザーには見せない）/ 🟡 `sensitive`（既定で許可）/
-  🔴 `dangerous`（既定で承認必須）。
-- **同意モデルは「mod読み込み時に一括承認」**: mod（の Worker）が読み込まれた時点で、
-  要求 capability のうち承認が要るものを **1 つのダイアログでまとめて**許可/拒否する（実行時ではない）。
-  ワールド読み込み時ではなくmod読み込み時なので、途中で追加したmodも同様に処理される。
-  **決定が済むまで Worker は実行しない**（コードのダウンロードのみ）ため「確認前に動く」ことがない。
-  決定後は許可/拒否のどちらでも Worker は動き、拒否した権限は実行時ゲートが個別に拒否する
-  （mod丸ごと停止にはしない）。実行時ゲートは**プロンプトを出さず即時に許可判定だけ**行う
-  （承認待ちでコマンドを保留しない＝高頻度 RPC がタイムアウトしない）。決定は localStorage に記憶。
-  拒否コマンドの診断は 3 秒レート制限で console/トーストが溢れない。
-- **fetch はドメイン単位で on-demand**（ドメインは読み込み時に不明なため）: `net:fetch` は
-  capability ゲートを常に通し、実際の通信は**接続先ホスト名ごと**に「今回だけ / 次回以降も許可 /
-  拒否」の 3 択で承認（Claude Code 風）。ポリシーは普遍的:
-  ① 自modのアセット領域 (modBase 配下) は承認不要 /
-  ② 自modの公開名前空間 `/mods/<modId>/`（アプリ本体オリジン上・専用バックエンド含む）も承認不要 /
-  ③ アプリ本体オリジンのそれ以外（コア `/api`・他mod領域）は**禁止**（本体 API・認証 cookie 保護）/
-  ④ それ以外の外部ドメインはドメイン単位で承認。
-- **シールドレベル**（設定画面）: なし / 確認（既定・危険のみ確認）/ 厳格な確認（注意も確認）/ 拒否。
-- enforcement は単一ゲート。未承認コマンドは拒否（RPC は `CAPABILITY_DENIED`）。拒否は必ず
-  console 診断＋ユーザー向けトーストに出るため沈黙しない。
-
-各 API が要求する capability と危険度（この表が「メソッド → 必要権限」の正）:
-
-| capability | 危険度 | 要求する API |
-|---|---|---|
-| `net:fetch` | 🔴 dangerous | `Ubi.fetch`（外部通信。ドメインごとに承認） |
-| `scene:update` | 🟡 sensitive | `Ubi.entity().update/destroy/spawn` / `Ubi.entity(id).update/destroy` / `Ubi.entity.spawn` / `Ubi.state.sync` の書き込み全般 |
-| `event:broadcast` | 🟡 sensitive | `Ubi.event.broadcast` / `MyEvents.broadcast`（`Ubi.state.sync({ ephemeral: true })` も内部で使用） |
-| `host:message` | 🟡 sensitive | `Ubi.event.sendToHost` / `MyEvents.sendToHost`（ホストへの片道通知＝自プレイヤー状態更新等） |
-| `canvas:draw` | 🟡 sensitive | `Ubi.canvas.*` |
-| `media:control` | 🟡 sensitive | `Ubi.media.*` |
-| `avatar:set` | 🟡 sensitive | アバター表示の変更 |
-| `scene:read` | 🟢 safe | `Ubi.entity.get` / `Ubi.entity.query` |
-| `event:emit` | 🟢 safe | `Ubi.event.emit` / `MyEvents.emit`（クロス Worker 配送） |
-| `ui:render` | 🟢 safe | `Ubi.ui.render` |
-| `ui:toast` | 🟢 safe | `Ubi.ui.showToast` |
-
-> capability カタログ（危険度・コマンド対応・表示情報）の単一の真実の源は
-> [`packages/sandbox/src/host/capability.ts`](../packages/sandbox/src/host/capability.ts) の `CAPABILITY_CATALOG`。
+権限の全一覧（危険度・発生元 API・許可コマンド）と同意モデル（読み込み時一括承認・fetch の
+ドメイン単位 on-demand・シールドレベル）の詳細は **[CAPABILITIES.md](./CAPABILITIES.md)** を参照。
+この doc は唯一の定義元 [`capability.ts`](../packages/sandbox/src/host/capability.ts) の
+`CAPABILITY_CATALOG` から自動生成される（`pnpm docs:capabilities`）。
 
 ---
 
