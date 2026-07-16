@@ -86,8 +86,11 @@ export class UbiSDK {
     private _initialEntities: ComponentInstance[] = [];
 
     // ── Mod identity (sandbox.worker.ts が設定) ──────────
+    /** この mod が動いているワールドの id。 */
     public worldId?: string;
+    /** 自分（このクライアント）のユーザー id。`player.for` 等で自他を判定するのに使う。 */
     public myUserId?: string;
+    /** この mod（配布単位）の id。 */
     public modId?: string;
     /** 自 Worker (= 1 Component インスタンス) を識別する flat ID。 */
     public componentInstanceId?: string;
@@ -99,13 +102,21 @@ export class UbiSDK {
     public watchEntityTypes: string[] = [];
 
     // ── Public API modules ───────────────────────────────────
+    /** 宣言的リアクティブ状態。`define` でスキーマを作り `sync` で同期範囲（共有/永続/ユーザー別）を指定する。 */
     public readonly state: StateModule;
+    /** イベント送受信。`sendToHost`（本体へ）/`broadcast`（他ユーザーへ）/`emit`（同タブ内他Worker）と型付き `define`。 */
     public readonly event: EventModule;
+    /** UI 描画。`render` で VNode を描き、`showToast` で通知を出す。 */
     public readonly ui: UiModule;
+    /** メディア再生。動画/音声/HLS の読み込みと再生/停止/シーク/音量。 */
     public readonly media: MediaModule;
+    /** 共有キャンバス描画。`frame` で描画フレーム、`commitStroke` でストローク確定。 */
     public readonly canvas: CanvasModule;
+    /** プレイヤー情報。`others`/`all` で参加者、`scroll` でスクロール位置、`syncCursor` でカーソル同期。 */
     public readonly player: PlayerModule;
+    /** エンティティ操作。`Ubi.entity()` で自身、`Ubi.entity(id)` で他を参照し、`query`/`get`/`spawn` で操作する。 */
     public readonly entity: EntityModule;
+    /** 「掴む」操作。ペン等のドラッグ/press ライフサイクルを宣言的に扱う。 */
     public readonly grip: GripModule;
     /** @internal Ubi.state / Ubi.entity の実装で使用。modからは Ubi.entity 経由で操作する。 */
     private readonly _world: WorldModule;
@@ -250,12 +261,20 @@ export class UbiSDK {
 
     // ── ECS ───────────────────────────────────────────────────
 
+    /**
+     * ECS System を登録する。毎フレーム `(world, deltaTime, events)` で呼ばれる。
+     * mod のロジックの実行単位で、`events` には入力・イベント・エンティティ更新が届く。
+     */
     public registerSystem(system: System): void {
         this._local.registerSystem(system);
     }
 
     // ── Logging ───────────────────────────────────────────────
 
+    /**
+     * Host のコンソール/診断へログを出す。mod 内の `console.log` もここへリダイレクトされる。
+     * @param level 既定は `'info'`。
+     */
     public log(message: string, level: 'debug' | 'info' | 'warn' | 'error' = 'info'): void {
         this._send({ type: CommandType.CMD_LOG, payload: { level, message } });
     }
