@@ -1,5 +1,5 @@
 module.exports = {
-    mods: {
+    plugins: {
         '@pandacss/dev/postcss': {},
     },
 };

@@ -5,7 +5,7 @@
  * 変更があった場合に該当modのワーカーのみ再ビルドします。
  */
 
-import { existsSync, readFileSync, readdirSync, statSync, watch } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, watch } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildWorker } from './build-workers.mjs';
@@ -77,12 +77,7 @@ for (const entry of readdirSync(modsDir, { withFileTypes: true })) {
         for (const workerEntry of Object.values(modJson.workers)) {
             const workerRelPath = typeof workerEntry === 'string' ? workerEntry : workerEntry?.src;
             if (!workerRelPath) continue;
-            // src のディレクトリ部分を監視対象に追加
-            const srcFile = join(modsDir, entry.name, workerRelPath);
-            const srcDir = srcFile.includes('/src/') || srcFile.includes('\\src\\')
-                ? srcFile.substring(0, srcFile.lastIndexOf('/src/') + 4).replace(/\\/g, '/')
-                : dirname(srcFile);
-            // modディレクトリ配下の src/ を監視
+            // modディレクトリ配下の src/ を監視（worker の実体はこの配下にある）
             const modSrcDir = join(modsDir, entry.name, 'src');
             if (existsSync(modSrcDir)) watchDirs.add(modSrcDir);
         }
