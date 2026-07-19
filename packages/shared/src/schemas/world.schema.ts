@@ -68,6 +68,43 @@ export const AuthorSchema = z.object({
 });
 
 // ============================================
+// World Source（provenance / 由来）
+// ワールドは URL で識別される。source はその URL が
+// 「どこ由来か」を示すメタデータ（フェデレーション用）。
+// ============================================
+
+export const WorldSourceKind = {
+    /** 本体（このインスタンス）がホストするワールド */
+    Local: 'local',
+    /** GitHub 上の YAML / ディレクトリ */
+    GitHub: 'github',
+    /** 設定されたレジストリ由来 */
+    Registry: 'registry',
+    /** 別の ubichill インスタンス由来 */
+    RemoteInstance: 'remote-instance',
+    /** 任意の外部 URL */
+    Url: 'url',
+} as const;
+
+export const WorldSourceSchema = z.object({
+    kind: z.enum([
+        WorldSourceKind.Local,
+        WorldSourceKind.GitHub,
+        WorldSourceKind.Registry,
+        WorldSourceKind.RemoteInstance,
+        WorldSourceKind.Url,
+    ]),
+    /** ワールド YAML を取得できる正規 URL（＝ワールドの一意キー） */
+    url: z.string().url(),
+    /** 由来レジストリの表示名（例: "ubichill official"） */
+    registryName: z.string().optional(),
+    /** 由来 ubichill インスタンスの base URL（フェデレーション時） */
+    originInstance: z.string().url().optional(),
+});
+
+export type WorldSource = z.infer<typeof WorldSourceSchema>;
+
+// ============================================
 // World Environment（環境設定）
 // ============================================
 
@@ -267,9 +304,14 @@ export type WorldCreateInput = z.infer<typeof WorldCreateInputSchema>;
 // ============================================
 
 export const ResolvedWorldSchema = z.object({
+    /** ワールドの一意キー＝正規 URL（instances/favorites はこれで参照する）。 */
+    url: z.string().url(),
+    /** 由来メタデータ（provenance）。 */
+    source: WorldSourceSchema,
     id: z.string(), // 人間が読める識別子（name）
-    dbId: z.string(), // DBの実際のID（nanoid、外部キー用）
-    authorId: z.string(), // 作成者のユーザーID
+    /** @deprecated P3 の instances.worldRef 移行で撤去予定。本体作成ワールドの DB nanoid。 */
+    dbId: z.string().optional(),
+    authorId: z.string().optional(), // 本体作成ワールドのユーザーID（外部ワールドは無い場合あり）
     authorName: z.string().optional(), // YAML metadata.author.name
     version: z.string(),
     displayName: z.string(),
