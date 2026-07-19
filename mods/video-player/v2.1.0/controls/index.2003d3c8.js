@@ -1,0 +1,493 @@
+"use strict";
+(() => {
+  // mods/video-player/src/events.ts
+  var VPTarget = {
+    screen: { scope: "siblings", targetType: "video-player:screen" },
+    controls: { scope: "siblings", targetType: "video-player:controls" },
+    playlist: { scope: "siblings", targetType: "video-player:playlist" },
+    siblings: { scope: "siblings" }
+  };
+  var VPEvents = Ubi.event.define();
+
+  // packages/sdk/src/jsx/jsx-runtime.ts
+  var Fragment = "ubichill:fragment";
+  var _SHARED_KEY = "__ubichill_jsx_state";
+  function _getState() {
+    const g = globalThis;
+    if (!g[_SHARED_KEY]) {
+      g[_SHARED_KEY] = {
+        handlersMap: /* @__PURE__ */ new Map(),
+        currentTargetId: "default",
+        handlerIdx: 0
+      };
+    }
+    return g[_SHARED_KEY];
+  }
+  function serializeProps(rawProps) {
+    const result = {};
+    for (const key of Object.keys(rawProps)) {
+      if (key === "children") continue;
+      const val = rawProps[key];
+      if (key.startsWith("onUbi") && typeof val === "function") {
+        const s = _getState();
+        const handlers = s.handlersMap.get(s.currentTargetId);
+        if (handlers) {
+          const idx = s.handlerIdx++;
+          handlers[idx] = val;
+          result[key] = `__h${idx}`;
+        }
+      } else if (val !== void 0) {
+        result[key] = val;
+      }
+    }
+    return result;
+  }
+  function flattenChildren(raw) {
+    if (!Array.isArray(raw)) return [raw];
+    const out = [];
+    for (const item of raw) {
+      if (Array.isArray(item)) {
+        for (const sub of item) out.push(sub);
+      } else {
+        out.push(item);
+      }
+    }
+    return out;
+  }
+  function makeVNode(type, props, children, key) {
+    if (typeof type === "function") {
+      const childProp = children.length === 1 ? children[0] : children.length === 0 ? void 0 : children;
+      const result = type({ ...props, children: childProp });
+      return result ?? { type: Fragment, props: {}, children: [], key: null };
+    }
+    return { type, props: serializeProps(props), children, key: key ?? null };
+  }
+  function jsx(type, props, key) {
+    const { children, ...rest } = props;
+    return makeVNode(type, rest, children !== void 0 ? flattenChildren(children) : [], key);
+  }
+  function jsxs(type, props, key) {
+    const { children, ...rest } = props;
+    return makeVNode(type, rest, children ?? [], key);
+  }
+
+  // mods/video-player/src/icons.tsx
+  var PlayIcon = ({ size = 24 }) => /* @__PURE__ */ jsx("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "currentColor", children: /* @__PURE__ */ jsx("path", { d: "M8 5v14l11-7z" }) });
+  var PauseIcon = ({ size = 24 }) => /* @__PURE__ */ jsx("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "currentColor", children: /* @__PURE__ */ jsx("path", { d: "M6 19h4V5H6v14zm8-14v14h4V5h-4z" }) });
+  var SkipPrevIcon = ({ size = 24 }) => /* @__PURE__ */ jsx("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "currentColor", children: /* @__PURE__ */ jsx("path", { d: "M6 6h2v12H6zm3.5 6l8.5 6V6z" }) });
+  var SkipNextIcon = ({ size = 24 }) => /* @__PURE__ */ jsx("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "currentColor", children: /* @__PURE__ */ jsx("path", { d: "M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" }) });
+  var RepeatIcon = ({ size = 16 }) => /* @__PURE__ */ jsx("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "currentColor", children: /* @__PURE__ */ jsx("path", { d: "M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z" }) });
+  var RepeatOneIcon = ({ size = 16 }) => /* @__PURE__ */ jsx("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "currentColor", children: /* @__PURE__ */ jsx("path", { d: "M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4zm-4-2V9h-1l-2 1v1h1.5v4H13z" }) });
+  var ShuffleIcon = ({ size = 16 }) => /* @__PURE__ */ jsx("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "currentColor", children: /* @__PURE__ */ jsx("path", { d: "M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z" }) });
+  var VolumeHighIcon = ({ size = 16 }) => /* @__PURE__ */ jsx("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "currentColor", children: /* @__PURE__ */ jsx("path", { d: "M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" }) });
+  var VolumeMediumIcon = ({ size = 16 }) => /* @__PURE__ */ jsx("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "currentColor", children: /* @__PURE__ */ jsx("path", { d: "M18.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM5 9v6h4l5 5V4L9 9H5z" }) });
+  var VolumeLowIcon = ({ size = 16 }) => /* @__PURE__ */ jsx("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "currentColor", children: /* @__PURE__ */ jsx("path", { d: "M7 9v6h4l5 5V4l-5 5H7z" }) });
+  var VolumeMuteIcon = ({ size = 16 }) => /* @__PURE__ */ jsx("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "currentColor", children: /* @__PURE__ */ jsx("path", { d: "M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z" }) });
+
+  // mods/video-player/src/lib/playback.ts
+  function computeCurrentTime(c, now = Date.now()) {
+    if (!c.isPlaying) return c.baselineTime;
+    const advanced = c.baselineTime + (now - c.playEpoch) / 1e3;
+    return c.duration > 0 ? Math.min(advanced, c.duration) : advanced;
+  }
+  function isClockOverrun(c, now = Date.now()) {
+    if (!c.isPlaying || c.duration <= 0) return false;
+    const raw = c.baselineTime + (now - c.playEpoch) / 1e3;
+    return raw > c.duration;
+  }
+  function formatTime(sec) {
+    if (!Number.isFinite(sec) || sec <= 0) return "0:00";
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  }
+
+  // mods/video-player/src/lib/youtube.ts
+  var URL_PATTERNS = [
+    /[?&]v=([\w-]{6,20})/,
+    /youtu\.be\/([\w-]{6,20})/,
+    /youtube\.com\/(?:live|embed|shorts)\/([\w-]{6,20})/
+  ];
+  var RAW_ID_RE = /^[\w-]{6,20}$/;
+  function parseVideoId(input) {
+    const s = (input ?? "").trim();
+    if (!s) return null;
+    for (const re of URL_PATTERNS) {
+      const m = re.exec(s);
+      if (m) return m[1];
+    }
+    return RAW_ID_RE.test(s) ? s : null;
+  }
+  function extractVideoId(input) {
+    return parseVideoId(input) ?? (input ?? "").trim();
+  }
+  function thumbnailUrl(idOrUrl) {
+    const id = parseVideoId(idOrUrl);
+    return id ? `https://i.ytimg.com/vi/${id}/mqdefault.jpg` : "";
+  }
+
+  // mods/video-player/src/controls.worker.tsx
+  var DEFAULT_API_BASE = "/mods/video-player/api";
+  var state = Ubi.state.define({
+    // ── 共有 + 永続。runtime 専用は editable:false で Inspector から除外 ──
+    // isPlaying は「作成時に自動再生するか」の初期値として編集可。true なら
+    // インスタンス作成時に先頭から再生が始まる（vp:media:loaded のクロック補正で
+    // stale な playEpoch をリセットして 0 から再生する）。
+    isPlaying: Ubi.state.sync(false, {
+      label: "\u4F5C\u6210\u6642\u306B\u81EA\u52D5\u518D\u751F",
+      help: "\u30AA\u30F3\u306B\u3059\u308B\u3068\u3001\u30A4\u30F3\u30B9\u30BF\u30F3\u30B9\u4F5C\u6210\u6642\u306B\u30D7\u30EC\u30A4\u30EA\u30B9\u30C8\u5148\u982D\u304B\u3089\u518D\u751F\u3092\u958B\u59CB\u3057\u307E\u3059"
+    }),
+    baselineTime: Ubi.state.sync(0, { editable: false }),
+    playEpoch: Ubi.state.sync(0, { editable: false }),
+    duration: Ubi.state.sync(0, { editable: false }),
+    loop: Ubi.state.sync("none", { label: "\u30EB\u30FC\u30D7", options: ["none", "one", "all"] }),
+    shuffle: Ubi.state.sync(false, { label: "\u30B7\u30E3\u30C3\u30D5\u30EB" }),
+    apiBase: Ubi.state.sync(DEFAULT_API_BASE, { label: "API \u30D9\u30FC\u30B9 URL" }),
+    // ── 共有 + 永続 (per-user) ──
+    myVolume: Ubi.state.sync(0.7, { perUser: true, editable: false }),
+    // ── ローカル ──
+    currentTrack: null,
+    currentIndex: 0,
+    totalTracks: 0,
+    // ロード中フラグ: vp:media:load 発行から vp:media:loaded 受信まで true。
+    // シークバーをシマーアニメ化し、操作をブロックする。
+    isLoading: false
+  });
+  function currentTime() {
+    return computeCurrentTime(state.local);
+  }
+  function buildTrackUrl(track) {
+    const base = state.local.apiBase.trim() || DEFAULT_API_BASE;
+    const endpoint = track.mode === "live" ? "live" : "video";
+    return `${base}/${endpoint}/${extractVideoId(track.id)}`;
+  }
+  var syncScheduled = false;
+  function scheduleSyncVideo() {
+    if (syncScheduled) return;
+    syncScheduled = true;
+    queueMicrotask(() => {
+      syncScheduled = false;
+      const isLive = state.local.currentTrack?.mode === "live";
+      if (!isLive && state.local.duration > 0) {
+        VPEvents.emit("vp:media:seek", { time: currentTime() }, VPTarget.screen);
+      }
+      if (state.local.isPlaying) VPEvents.emit("vp:media:play", {}, VPTarget.screen);
+      else VPEvents.emit("vp:media:pause", {}, VPTarget.screen);
+    });
+  }
+  var onSeek = (time) => {
+    state.batch(() => {
+      state.local.baselineTime = time;
+      if (state.local.isPlaying) state.local.playEpoch = Date.now();
+    });
+  };
+  var onPlayToggle = () => {
+    if (state.local.isPlaying) {
+      state.batch(() => {
+        state.local.baselineTime = currentTime();
+        state.local.isPlaying = false;
+      });
+    } else {
+      state.batch(() => {
+        const dur = state.local.duration;
+        if (dur > 0 && state.local.baselineTime >= dur - 0.5) {
+          state.local.baselineTime = 0;
+        }
+        state.local.playEpoch = Date.now();
+        state.local.isPlaying = true;
+      });
+    }
+  };
+  var onPrev = () => {
+    VPEvents.emit("vp:track:prev", {}, VPTarget.playlist);
+  };
+  var onNext = () => {
+    VPEvents.emit("vp:track:next", { loop: state.local.loop, shuffle: state.local.shuffle }, VPTarget.playlist);
+  };
+  var onShuffleToggle = () => {
+    state.local.shuffle = !state.local.shuffle;
+  };
+  var onLoopCycle = () => {
+    state.local.loop = state.local.loop === "none" ? "all" : state.local.loop === "all" ? "one" : "none";
+  };
+  var onVolumeChange = (v) => {
+    state.local.myVolume = v;
+  };
+  state.onChange("isPlaying", () => {
+    scheduleSyncVideo();
+    render();
+  });
+  state.onChange("baselineTime", scheduleSyncVideo);
+  state.onChange("playEpoch", scheduleSyncVideo);
+  state.onChange("myVolume", (v) => {
+    VPEvents.emit("vp:media:volume", { volume: v }, VPTarget.screen);
+    render();
+  });
+  state.onChange("loop", render);
+  state.onChange("shuffle", render);
+  state.onChange("duration", render);
+  state.onChange("isLoading", render);
+  function render() {
+    const track = state.local.currentTrack;
+    const thumb = track ? track.thumbnail || thumbnailUrl(track.id) : "";
+    const ct = currentTime();
+    const progress = state.local.duration > 0 ? ct / state.local.duration * 100 : 0;
+    const isLive = track?.mode === "live";
+    const isLoading = state.local.isLoading;
+    const volume = state.local.myVolume;
+    const VolumeIcon = volume === 0 ? VolumeMuteIcon : volume < 0.3 ? VolumeLowIcon : volume < 0.7 ? VolumeMediumIcon : VolumeHighIcon;
+    const LoopIconComp = state.local.loop === "one" ? RepeatOneIcon : RepeatIcon;
+    const isPlaying = state.local.isPlaying;
+    const empty = state.local.totalTracks === 0;
+    const seekBackground = isLoading ? "linear-gradient(90deg, rgba(255,255,255,0.05) 0%, rgba(0,122,255,0.5) 50%, rgba(255,255,255,0.05) 100%)" : `linear-gradient(to right, #007aff ${progress}%, rgba(255,255,255,0.2) ${progress}%)`;
+    const seekDisabled = isLoading || state.local.duration <= 0 || isLive;
+    Ubi.ui.render(
+      () => /* @__PURE__ */ jsxs(
+        "div",
+        {
+          style: {
+            position: "absolute",
+            inset: "0",
+            background: "#1a1a1a",
+            borderRadius: "12px",
+            padding: "8px 12px",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            fontFamily: "system-ui, -apple-system, sans-serif",
+            userSelect: "none",
+            pointerEvents: "auto"
+          },
+          children: [
+            /* @__PURE__ */ jsx(
+              "input",
+              {
+                type: "range",
+                min: "0",
+                max: String(state.local.duration > 0 ? state.local.duration : 100),
+                step: "0.1",
+                value: String(isLoading ? 0 : ct.toFixed(1)),
+                disabled: seekDisabled,
+                style: {
+                  width: "100%",
+                  height: "4px",
+                  marginBottom: "8px",
+                  display: "block",
+                  cursor: seekDisabled ? "default" : "pointer",
+                  accentColor: "#007aff",
+                  appearance: "none",
+                  background: seekBackground,
+                  backgroundSize: isLoading ? "200% 100%" : "100% 100%",
+                  animation: isLoading ? "ubichill-vp-loading 1.5s linear infinite" : "none",
+                  borderRadius: "2px",
+                  outline: "none"
+                },
+                onUbiInput: (val) => onSeek(Number.parseFloat(String(val)))
+              }
+            ),
+            /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }, children: [
+              /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px", flex: "1", minWidth: "0" }, children: [
+                thumb && /* @__PURE__ */ jsx(
+                  "img",
+                  {
+                    src: thumb,
+                    alt: "",
+                    decoding: "async",
+                    width: "36",
+                    height: "36",
+                    style: {
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "4px",
+                      objectFit: "cover",
+                      flexShrink: "0"
+                    }
+                  }
+                ),
+                /* @__PURE__ */ jsxs("div", { style: { display: "flex", flexDirection: "column", minWidth: "0" }, children: [
+                  /* @__PURE__ */ jsx(
+                    "div",
+                    {
+                      style: {
+                        fontSize: "12px",
+                        fontWeight: "600",
+                        color: "#fff",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis"
+                      },
+                      children: track ? track.title || track.id : "---"
+                    }
+                  ),
+                  /* @__PURE__ */ jsxs("div", { style: { fontSize: "10px", color: "rgba(255,255,255,0.6)" }, children: [
+                    formatTime(ct),
+                    " /",
+                    " ",
+                    state.local.duration > 0 ? formatTime(state.local.duration) : isLive ? "LIVE" : "--:--"
+                  ] })
+                ] })
+              ] }),
+              /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", gap: "8px" }, children: [
+                /* @__PURE__ */ jsx(CtrlBtn, { disabled: empty, onClick: onPrev, children: /* @__PURE__ */ jsx(SkipPrevIcon, { size: 18 }) }),
+                /* @__PURE__ */ jsx(
+                  "button",
+                  {
+                    type: "button",
+                    disabled: empty,
+                    style: {
+                      background: "#007aff",
+                      border: "none",
+                      color: "#fff",
+                      cursor: empty ? "not-allowed" : "pointer",
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "50%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      boxShadow: "0 2px 8px rgba(0,122,255,0.3)",
+                      opacity: empty ? "0.5" : "1"
+                    },
+                    onUbiClick: onPlayToggle,
+                    children: isPlaying ? /* @__PURE__ */ jsx(PauseIcon, { size: 20 }) : /* @__PURE__ */ jsx(PlayIcon, { size: 20 })
+                  }
+                ),
+                /* @__PURE__ */ jsx(CtrlBtn, { disabled: empty, onClick: onNext, children: /* @__PURE__ */ jsx(SkipNextIcon, { size: 18 }) })
+              ] }),
+              /* @__PURE__ */ jsxs(
+                "div",
+                {
+                  style: {
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    flex: "1",
+                    justifyContent: "flex-end"
+                  },
+                  children: [
+                    /* @__PURE__ */ jsx(CtrlBtn, { active: state.local.shuffle, onClick: onShuffleToggle, children: /* @__PURE__ */ jsx(ShuffleIcon, { size: 16 }) }),
+                    /* @__PURE__ */ jsx(CtrlBtn, { active: state.local.loop !== "none", onClick: onLoopCycle, children: /* @__PURE__ */ jsx(LoopIconComp, { size: 16 }) }),
+                    /* @__PURE__ */ jsx("span", { style: { color: "rgba(255,255,255,0.8)", display: "flex", alignItems: "center" }, children: /* @__PURE__ */ jsx(VolumeIcon, { size: 16 }) }),
+                    /* @__PURE__ */ jsx(
+                      "input",
+                      {
+                        type: "range",
+                        min: "0",
+                        max: "1",
+                        step: "0.01",
+                        value: String(volume),
+                        style: {
+                          width: "60px",
+                          height: "3px",
+                          background: "rgba(255,255,255,0.2)",
+                          borderRadius: "2px",
+                          outline: "none",
+                          cursor: "pointer",
+                          appearance: "none",
+                          accentColor: "#007aff"
+                        },
+                        onUbiInput: (val) => onVolumeChange(Number.parseFloat(String(val)))
+                      }
+                    )
+                  ]
+                }
+              )
+            ] })
+          ]
+        }
+      ),
+      "controls"
+    );
+  }
+  function CtrlBtn({
+    children,
+    onClick,
+    disabled = false,
+    active = false
+  }) {
+    return /* @__PURE__ */ jsx(
+      "button",
+      {
+        type: "button",
+        disabled,
+        style: {
+          background: "transparent",
+          border: "none",
+          cursor: disabled ? "not-allowed" : "pointer",
+          padding: "6px",
+          borderRadius: "6px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: "0",
+          color: disabled ? "rgba(255,255,255,0.3)" : active ? "#007aff" : "rgba(255,255,255,0.8)",
+          opacity: disabled ? "0.3" : "1"
+        },
+        onUbiClick: onClick,
+        children
+      }
+    );
+  }
+  VPEvents.on("vp:track:current", ({ track, index, total }) => {
+    const prev = state.local.currentTrack;
+    const prevId = prev?.id ?? null;
+    const nextId = track?.id ?? null;
+    const isFirstLoad = prev === null;
+    const needLoad = prevId !== nextId;
+    const changed = !isFirstLoad && needLoad;
+    state.local.currentTrack = track;
+    state.local.currentIndex = index;
+    state.local.totalTracks = total;
+    if (changed) {
+      state.batch(() => {
+        state.local.baselineTime = 0;
+        state.local.playEpoch = Date.now();
+        state.local.duration = 0;
+      });
+    }
+    if (needLoad && track) {
+      state.local.isLoading = true;
+      VPEvents.emit("vp:media:load", { url: buildTrackUrl(track), mode: track.mode }, VPTarget.screen);
+    }
+    render();
+  });
+  VPEvents.on("vp:media:loaded", ({ duration }) => {
+    state.batch(() => {
+      if (duration > 0) state.local.duration = duration;
+      state.local.isLoading = false;
+      if (isClockOverrun(state.local)) {
+        state.local.baselineTime = 0;
+        state.local.playEpoch = Date.now();
+      }
+    });
+    scheduleSyncVideo();
+  });
+  VPEvents.on("vp:media:ended", () => {
+    VPEvents.emit("vp:track:next", { loop: state.local.loop, shuffle: state.local.shuffle }, VPTarget.playlist);
+  });
+  VPEvents.on("vp:playback:stop", () => {
+    state.batch(() => {
+      state.local.baselineTime = 0;
+      state.local.playEpoch = Date.now();
+      state.local.isPlaying = false;
+    });
+  });
+  VPEvents.on("vp:track:replay", () => {
+    state.batch(() => {
+      state.local.baselineTime = 0;
+      state.local.playEpoch = Date.now();
+      if (!state.local.isPlaying) state.local.isPlaying = true;
+    });
+  });
+  var accumulator = { ms: 0 };
+  var ClockSystem = (_e, dt) => {
+    if (!state.local.isPlaying) return;
+    accumulator.ms += dt;
+    if (accumulator.ms >= 100) {
+      accumulator.ms = 0;
+      render();
+    }
+  };
+  Ubi.registerSystem(ClockSystem);
+  render();
+  queueMicrotask(() => VPEvents.emit("vp:media:volume", { volume: state.local.myVolume }, VPTarget.screen));
+})();
