@@ -79,6 +79,10 @@ class InstanceManager {
         }
 
         // DBにインスタンスを作成（world.dbIdを使用）
+        // NOTE(P3): instances.worldRef 移行後は URL 参照へ置換する。現状は DB 登録済みワールドのみ instance 化可。
+        if (!world.dbId) {
+            throw new Error(`ワールド ${world.id} は DB 未登録のためインスタンスを作成できません`);
+        }
         const dbInstance = await instanceRepository.create({
             worldId: world.dbId,
             leaderId,
@@ -231,7 +235,7 @@ class InstanceManager {
      */
     async findInstancesByWorld(worldId: string): Promise<Instance[]> {
         const world = await worldRegistry.getWorld(worldId);
-        if (!world) return [];
+        if (!world?.dbId) return [];
 
         const dbInstances = await instanceRepository.findByWorldId(world.dbId);
         return dbInstances.map((dbInstance: InstanceRecord) => this.toPublicInstance(dbInstance, world));
@@ -264,7 +268,7 @@ class InstanceManager {
             version: string;
             displayName: string;
             thumbnail?: string;
-            authorId: string;
+            authorId?: string;
             authorName?: string;
         },
     ): Instance {
@@ -290,7 +294,8 @@ class InstanceManager {
                 version: world.version,
                 displayName: world.displayName,
                 thumbnail: world.thumbnail,
-                authorId: world.authorId,
+                // DB 由来ワールドは常に authorId を持つ（dbId ガード済み）。フォールバックは型都合。
+                authorId: world.authorId ?? '',
                 authorName: world.authorName,
             },
 

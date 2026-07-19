@@ -86,7 +86,8 @@ postgresql:
 # Worlds registry for development
 worlds:
   registries:
-    - https://raw.githubusercontent.com/ubichill/ubichill/dev/worlds/worlds.json
+    # GitHub ディレクトリ（tree URL）を Contents API で列挙する。worlds.json は不要。
+    - https://github.com/ubichill/ubichill/tree/dev/worlds
 
 # Mod backends for development
 modBackends:
