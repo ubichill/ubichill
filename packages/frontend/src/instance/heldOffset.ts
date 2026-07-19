@@ -1,7 +1,7 @@
 /**
  * heldOffset — 「掴んでいるエンティティとカーソルの相対オフセット」の単一情報源。
  *
- * Worker (grip.acquire) が CMD_GRIP hold で送ってきた offsetX/Y は、WorkerPluginHost が
+ * Worker (grip.acquire) が CMD_GRIP hold で送ってきた offsetX/Y は、WorkerModHost が
  * `entity.data.heldOffset` に書く (share='persistent' のときのみ)。
  * リモート側 (CursorLayer の cursor:moved 受信 / EntityRenderer の初期位置計算) は
  * このフィールドから読むことで、grip ごとに違うオフセット (pen は -18/-24、別 grip は別の値)

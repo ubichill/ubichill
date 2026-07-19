@@ -11,7 +11,7 @@
  * Reliable な状態同期は Ubi.state.sync を使うこと。
  */
 
-import type { System } from '@ubichill/engine';
+import type { System } from '@ubichill/ecs';
 import { CommandType } from '@ubichill/shared';
 import type { SendFn } from '../types';
 
@@ -28,7 +28,7 @@ export type EmitScope = 'siblings' | 'parent' | 'children' | 'subtree' | 'world'
 export interface EmitOptions {
     /** どの範囲の Worker を対象にするか。 */
     scope: EmitScope;
-    /** 受信側 Component type フィルタ (`"pluginId:componentName"`)。省略時は scope 内の全 Component。 */
+    /** 受信側 Component type フィルタ (`"modId:componentName"`)。省略時は scope 内の全 Component。 */
     targetType?: string;
 }
 

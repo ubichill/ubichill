@@ -24,11 +24,13 @@ export {
     ComponentDataFieldSpecSchema,
     type ComponentManifestEntry,
     ComponentManifestEntrySchema,
-    type PluginManifest,
-    PluginManifestSchema,
-    type PluginVersionedManifest,
-    PluginVersionedManifestSchema,
-} from './plugin.schema';
+    type ModManifest,
+    ModManifestSchema,
+    type ModVersionedManifest,
+    ModVersionedManifestSchema,
+    type VersionedComponentManifestEntry,
+    VersionedComponentManifestEntrySchema,
+} from './mod.schema';
 export {
     AuthorSchema,
     type ComponentType,

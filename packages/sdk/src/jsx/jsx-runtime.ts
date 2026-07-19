@@ -22,7 +22,7 @@ export const Fragment = 'ubichill:fragment' as const;
 // ============================================================
 
 /**
- * sandbox（Vite バンドル）とプラグイン（esbuild バンドル）は同一 Worker 内でそれぞれ
+ * sandbox（Vite バンドル）とmod（esbuild バンドル）は同一 Worker 内でそれぞれ
  * この jsx-runtime の別インスタンスを持つ。
  * モジュールローカル変数では状態が分離してしまうため、globalThis に共有状態を置き、
  * どのインスタンスからでも同じオブジェクトを参照する。

@@ -2,8 +2,8 @@
  * Host (main thread) 側の型定義。
  *
  * - HostHandlers          : Worker からのコマンドを受ける Host 側コールバック群
- * - PluginWorkerInfo      : PluginRegistry が保持する 1 Worker のメタ情報
- * - PluginHostManagerOptions : PluginHostManager の生成オプション
+ * - ModWorkerInfo      : ModRegistry が保持する 1 Worker のメタ情報
+ * - ModHostManagerOptions : ModHostManager の生成オプション
  */
 import type {
     CanvasCursorData,
@@ -13,16 +13,16 @@ import type {
     EntityPatchPayload,
     FetchOptions,
     FetchResult,
-    PluginGuestCommand,
-    PluginHostEvent,
-    PluginWorkerMessage,
+    ModGuestCommand,
+    ModHostEvent,
+    ModWorkerMessage,
     VNode,
 } from '@ubichill/shared';
-import type { TickMetric } from './pluginDiagnostics';
+import type { TickMetric } from './modDiagnostics';
 
 export type { FetchOptions, FetchResult } from '@ubichill/shared';
 
-/** emit のルーティング scope。PluginRegistry.routeEmit と HostHandlers.onEventEmit で共有。 */
+/** emit のルーティング scope。ModRegistry.routeEmit と HostHandlers.onEventEmit で共有。 */
 export type EmitScope = 'siblings' | 'parent' | 'children' | 'subtree' | 'world';
 
 export type HostHandlers<TPayloadMap extends Record<string, unknown> = Record<string, unknown>> = {
@@ -32,7 +32,7 @@ export type HostHandlers<TPayloadMap extends Record<string, unknown> = Record<st
     onUpdateEntity?: (id: string, patch: EntityPatchPayload) => Promise<void>;
     onDestroyEntity?: (id: string) => Promise<void>;
     onFetch?: (url: string, options?: FetchOptions) => Promise<FetchResult>;
-    onMessage?: (msg: PluginWorkerMessage<TPayloadMap>) => void;
+    onMessage?: (msg: ModWorkerMessage<TPayloadMap>) => void;
     onReady?: () => void;
     /** Worker の初期化が失敗したとき (構文エラー等) に発火。Host はローディングを終了する */
     onInitFailed?: (error: string) => void;
@@ -44,7 +44,7 @@ export type HostHandlers<TPayloadMap extends Record<string, unknown> = Record<st
         targetType: string | undefined,
         senderComponentInstanceId: string | undefined,
     ) => void;
-    onCommand?: (command: PluginGuestCommand) => void;
+    onCommand?: (command: ModGuestCommand) => void;
     /** Worker 起動時に Ubi.state から導出した Inspector 用スキーマを報告する */
     onEditorSchema?: (componentType: string, schema: Record<string, unknown>) => void;
     /**
@@ -77,10 +77,10 @@ export type HostHandlers<TPayloadMap extends Record<string, unknown> = Record<st
     onMediaSetDeviceControl?: (targetId: string, enabled: boolean) => void;
     /**
      * Worker が Ubi.log() を呼んだときに発火する。
-     * デフォルト実装は PluginHostManager が console[level] で出力する。
+     * デフォルト実装は ModHostManager が console[level] で出力する。
      * オーバーライドして UI パネルに表示することも可能。
      */
-    onLog?: (level: 'debug' | 'info' | 'warn' | 'error', message: string, pluginId?: string) => void;
+    onLog?: (level: 'debug' | 'info' | 'warn' | 'error', message: string, modId?: string) => void;
     /**
      * Tick 送信直前に発火するパフォーマンスフック（setMetricHandler が登録済みの場合のみ）。
      * deltaMs: rAF の実フレーム間隔。commandProcessingMs: 前Tickのホスト側コマンド処理累積時間。
@@ -89,37 +89,37 @@ export type HostHandlers<TPayloadMap extends Record<string, unknown> = Record<st
 };
 
 /**
- * PluginRegistry に記録される 1 Worker のメタ情報。
+ * ModRegistry に記録される 1 Worker のメタ情報。
  */
-export interface PluginWorkerInfo {
-    readonly pluginId: string;
+export interface ModWorkerInfo {
+    readonly modId: string;
     readonly componentInstanceId: string | undefined;
     readonly entityId: string | undefined;
     readonly parentEntityId: string | undefined;
     readonly componentType: string | undefined;
     readonly startedAt: number;
     /** @internal クロス Worker emit のための直接送信ハンドル。 */
-    readonly _sendEvent: (event: PluginHostEvent) => void;
+    readonly _sendEvent: (event: ModHostEvent) => void;
 }
 
-export interface PluginHostManagerOptions<TPayloadMap extends Record<string, unknown> = Record<string, unknown>> {
-    pluginCode: string;
+export interface ModHostManagerOptions<TPayloadMap extends Record<string, unknown> = Record<string, unknown>> {
+    modCode: string;
     worldId?: string;
     myUserId?: string;
-    pluginId?: string;
+    modId?: string;
     /** Worker (= 1 Component インスタンス) を識別する flat ID。`Ubi.componentInstanceId` として参照可能。 */
     componentInstanceId?: string;
     /** 自 Worker が乗っている Entity (GameObject) の id。`Ubi.entityId` として参照可能。 */
     entityId?: string;
     /** 自 Entity の親 Entity の id。emit ルーティング (parent / subtree) で使用。 */
     parentEntityId?: string;
-    /** この Worker が担当する Component 型 (`pluginId:componentName`)。 */
+    /** この Worker が担当する Component 型 (`modId:componentName`)。 */
     componentType?: string;
-    /** プラグインアセットのベースURL（Worker で Ubi.pluginBase として参照可能） */
-    pluginBase?: string;
-    /** この Component が監視する他 Component 型一覧（plugin.json の watchEntityTypes）。SDK の state 自動同期に使用 */
+    /** modアセットのベースURL（Worker で Ubi.modBase として参照可能） */
+    modBase?: string;
+    /** この Component が監視する他 Component 型一覧（mod.json の watchEntityTypes）。SDK の state 自動同期に使用 */
     watchEntityTypes?: string[];
-    /** Worker 起動時点で watchEntityTypes にマッチしている既存エンティティ。SDK がプラグインコード実行前に state.local へ同期反映する */
+    /** Worker 起動時点で watchEntityTypes にマッチしている既存エンティティ。SDK がmodコード実行前に state.local へ同期反映する */
     initialEntities?: ComponentInstance[];
     handlers: HostHandlers<TPayloadMap>;
     /**
@@ -130,7 +130,7 @@ export interface PluginHostManagerOptions<TPayloadMap extends Record<string, unk
     capabilities?: string[];
     /**
      * capability ゲートを完全に無効化し全コマンドを許可する明示的エスケープハッチ。
-     * 信頼済み first-party プラグインや開発用途のみ。通常は未指定（= ゲート有効）。
+     * 信頼済み first-party modや開発用途のみ。通常は未指定（= ゲート有効）。
      */
     allowAllCapabilities?: boolean;
     /**

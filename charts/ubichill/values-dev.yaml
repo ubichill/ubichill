@@ -88,17 +88,17 @@ worlds:
   registries:
     - https://raw.githubusercontent.com/ubichill/ubichill/dev/worlds/worlds.json
 
-# Plugin backends for development
-pluginBackends:
+# Mod backends for development
+modBackends:
   - id: video-player
     image:
       repository: ghcr.io/ubichill/video-player-backend
       tag: latest
     port: 8000
-    pathPrefix: /plugins/video-player/api
+    pathPrefix: /mods/video-player/api
     replicaCount: 1
     env:
-      ROOT_PATH: /plugins/video-player/api
+      ROOT_PATH: /mods/video-player/api
       CORS_ORIGINS: "*"
       # YouTube の bot 判定（"Sign in to confirm you're not a bot"）が出る場合の回避策（任意）。
       # 通常は不要（多くは VPN/データセンター IP が原因。住宅 IP なら出ない）。出るときだけ有効化:

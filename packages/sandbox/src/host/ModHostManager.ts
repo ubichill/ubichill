@@ -1,0 +1,365 @@
+/**
+ * ModHostManager — 1 つの Sandbox Worker のライフサイクルを管理する usecase 層。
+ *
+ * 担当:
+ *  - Worker の生成 / 初期化 / 破棄
+ *  - TICK ループ (rAF / visibility 切替で interval にフォールバック)
+ *  - Worker → Host コマンドの受信と HostHandlers への振り分け (capability gate 付き)
+ *  - Host → Worker イベント送信 (初期化前はキューに退避)
+ *
+ * 在籍簿は ModRegistry、DOM 入力共有は SharedInputPool に委譲する。
+ * React 非依存。React 環境では @ubichill/react の useModWorker 経由で使う。
+ */
+import {
+    buildAllowedCommands,
+    COMMAND_TO_CAPABILITY,
+    CommandType,
+    checkProtocolCompatibility,
+    HostEventType,
+    type ModGuestCommand,
+    type ModHostEvent,
+    PROTOCOL_VERSION,
+    UbiErrorCode,
+} from '@ubichill/shared';
+import {
+    acquireSharedInput,
+    collectSharedInputFor,
+    releaseSharedInput,
+    setSharedScrollElement,
+} from '@ubichill/ui-renderer';
+import { type CapabilityGate, createCapabilityGate } from './capabilityGate';
+import { type CommandContext, dispatchCommand, RpcTimeoutError } from './commandDispatch';
+import { CMD_TO_HANDLER } from './commandHandlers';
+import { getActiveWorkerCount, getWorker, registerWorker, unregisterWorker } from './ModRegistry';
+import { isMetricEnabled, reportDiagnostic, reportMetric } from './modDiagnostics';
+import { TickController } from './TickController';
+import type { HostHandlers, ModHostManagerOptions } from './types';
+
+export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record<string, unknown>> {
+    /** 非同期 RPC のタイムアウト (ms)。超過すると RPC エラーとして Worker に返す */
+    static RPC_TIMEOUT_MS = 10_000;
+    /** eventQueue の最大保持数。超過した場合は古いイベントを破棄する */
+    static MAX_QUEUE_SIZE = 100;
+
+    private worker: Worker;
+    private handlers: HostHandlers<TPayloadMap>;
+    private executionTimer: ReturnType<typeof setTimeout> | null = null;
+    private onResourceLimitExceeded?: (reason: string) => void;
+    private isInitialized = false;
+    private eventQueue: ModHostEvent[] = [];
+    /** capability ゲート（許可判定を委譲）。 */
+    private readonly _gate: CapabilityGate;
+    /** on-demand 認可モードか（拒否時のエラーコード区別に使う）。 */
+    private readonly _onDemand: boolean;
+    /** commandDispatch に渡すコンテキスト（毎コマンド再生成しない）。 */
+    private readonly _commandContext: CommandContext<TPayloadMap>;
+    private readonly _logPrefix: string;
+    private readonly _modId: string;
+    private readonly _instanceKey: string;
+    /** 現Tickにホスト側でコマンド処理に要した累積時間 (ms) */
+    private _currentTickCommandMs = 0;
+
+    private readonly tickEnabled: boolean;
+    private readonly _autoInputEnabled: boolean;
+    /** Tick 生成（rAF / background interval）は TickController に委譲。tickEnabled のときのみ生成。 */
+    private readonly _tick?: TickController;
+
+    /** 1 Tick 分の処理: メトリクス通知 + Worker への Tick 送信。TickController から呼ばれる。 */
+    private _onTick(deltaTime: number): void {
+        // メトリクスが有効なときのみ計測・通知
+        if (isMetricEnabled()) {
+            const metric = {
+                modId: this._modId,
+                componentInstanceId: getWorker(this._instanceKey)?.componentInstanceId,
+                deltaMs: deltaTime,
+                commandProcessingMs: this._currentTickCommandMs,
+                activeWorkerCount: getActiveWorkerCount(),
+                timestamp: performance.now(),
+            };
+            reportMetric(metric);
+            this.handlers.onTickComplete?.(metric);
+        }
+        this._currentTickCommandMs = 0;
+        this._sendTick(deltaTime);
+    }
+
+    constructor(options: ModHostManagerOptions<TPayloadMap>) {
+        this.handlers = options.handlers;
+        this.onResourceLimitExceeded = options.onResourceLimitExceeded;
+        this._modId = options.modId ?? 'unknown';
+        this._logPrefix = options.modId ? `[ModSandbox:${options.modId}]` : '[ModSandbox]';
+        this._instanceKey = `${this._modId}:${performance.now().toFixed(3)}:${Math.random().toString(36).slice(2)}`;
+        registerWorker(this._instanceKey, {
+            modId: this._modId,
+            componentInstanceId: options.componentInstanceId,
+            entityId: options.entityId,
+            parentEntityId: options.parentEntityId,
+            componentType: options.componentType,
+            startedAt: performance.now(),
+            _sendEvent: (event) => this.sendEvent(event),
+        });
+
+        // capability ゲートを構築する。
+        // - authorizeCapability あり: on-demand（初回アクセス時にユーザーへ問い合わせ）。
+        // - なし: 宣言 capability からの静的 allowlist（capabilities 未指定でも default-deny）。
+        // - allowAllCapabilities: 全許可の明示的エスケープハッチ（信頼済み first-party / 開発用）。
+        this._onDemand = !options.allowAllCapabilities && !!options.authorizeCapability;
+        this._gate = createCapabilityGate({
+            allowAll: options.allowAllCapabilities,
+            allowedCommands: buildAllowedCommands(options.capabilities),
+            authorizeCapability: options.allowAllCapabilities ? undefined : options.authorizeCapability,
+        });
+
+        this._commandContext = {
+            handlers: this.handlers,
+            withTimeout: (promise, cmdType) => this._withTimeout(promise, cmdType),
+            senderComponentInstanceId: () => getWorker(this._instanceKey)?.componentInstanceId,
+            logPrefix: this._logPrefix,
+        };
+
+        const fps = options.tickFps ?? 60;
+        const intervalMs = fps > 0 ? 1000 / fps : 0;
+        this.tickEnabled = !options.disableAutoTick && fps > 0;
+        this._autoInputEnabled = this.tickEnabled && !options.disableAutoInput;
+        this._tick = this.tickEnabled
+            ? new TickController({ intervalMs, onTick: (deltaMs) => this._onTick(deltaMs) })
+            : undefined;
+
+        const maxExecutionTime = options.maxExecutionTime ?? 0;
+
+        // Vite の Worker 検出は new Worker(new URL(...)) の形式でないと機能しない
+        // 変数に分離すると .ts がそのままアセットとして data:video/mp2t で埋め込まれてしまう
+        this.worker = new Worker(new URL('../worker/sandbox.worker.ts', import.meta.url), { type: 'module' });
+        this.worker.addEventListener('message', (e: MessageEvent<ModGuestCommand>) => {
+            if (e.data.type === CommandType.CMD_READY) {
+                this._checkProtocolVersion(e.data.payload?.protocolVersion ?? 0);
+                this.isInitialized = true;
+                this.handlers.onReady?.();
+                for (const event of this.eventQueue) {
+                    this.worker.postMessage(event);
+                }
+                this.eventQueue = [];
+                return;
+            }
+            // 初期化失敗: ロード状態は「完了」にして他のエンティティ表示を止めない (graceful degradation)。
+            // 失敗した worker は機能しないが、UI のローディングスピナーは止まる。
+            if (e.data.type === CommandType.CMD_INIT_FAILED) {
+                console.error(`${this._logPrefix} 初期化失敗:`, e.data.payload.error);
+                this.handlers.onInitFailed?.(e.data.payload.error);
+                this.handlers.onReady?.(); // ロード終了として扱う (ハングを防ぐ)
+                return;
+            }
+            void this._handleCommand(e);
+        });
+
+        this.worker.onerror = (e) => {
+            console.error(`${this._logPrefix} Worker エラー:`, e);
+        };
+
+        if (maxExecutionTime > 0) {
+            this.executionTimer = setTimeout(() => {
+                this._terminateWithReason(`最大実行時間 (${maxExecutionTime}ms) を超過しました`);
+            }, maxExecutionTime);
+        }
+
+        // EVT_LIFECYCLE_INIT は直接送信（キュー非経由: deadlock防止）
+        this.worker.postMessage({
+            type: HostEventType.EVT_LIFECYCLE_INIT,
+            payload: {
+                protocolVersion: PROTOCOL_VERSION,
+                code: options.modCode,
+                worldId: options.worldId ?? '',
+                myUserId: options.myUserId ?? '',
+                modId: options.modId,
+                componentInstanceId: options.componentInstanceId,
+                entityId: options.entityId,
+                componentType: options.componentType,
+                modBase: options.modBase,
+                watchEntityTypes: options.watchEntityTypes,
+                initialEntities: options.initialEntities,
+            },
+        });
+
+        this._tick?.start();
+
+        if (this._autoInputEnabled) {
+            acquireSharedInput(this._instanceKey);
+        }
+    }
+
+    static async fromUrl<TPayloadMap extends Record<string, unknown> = Record<string, unknown>>(
+        url: string,
+        options: Omit<ModHostManagerOptions<TPayloadMap>, 'modCode'>,
+    ): Promise<ModHostManager<TPayloadMap>> {
+        const res = await fetch(url);
+        if (!res.ok) {
+            throw new Error(`[ModHostManager] modコードの取得に失敗: ${res.status} ${url}`);
+        }
+        return new ModHostManager<TPayloadMap>({ ...options, modCode: await res.text() });
+    }
+
+    private _sendTick(deltaTime: number): void {
+        if (this.isInitialized) {
+            // 入力イベントを Tick より先に送信（UbiSDK 側でキューに積まれ、同 Tick で処理される）
+            if (this._autoInputEnabled) {
+                const inputEvents = collectSharedInputFor(this._instanceKey);
+                if (inputEvents.length > 0) {
+                    this.sendEvent({ type: HostEventType.EVT_INPUT, payload: { events: inputEvents } });
+                }
+            }
+            this.sendEvent({ type: HostEventType.EVT_LIFECYCLE_TICK, payload: { deltaTime } });
+        }
+    }
+
+    /**
+     * mod (SDK) が名乗ったプロトコルバージョンを Host の版と突き合わせ、
+     * 非互換 / 機能欠落の恐れがあれば診断を出す（開発者が原因に即到達できるように）。
+     */
+    private _checkProtocolVersion(guestVersion: number): void {
+        const result = checkProtocolCompatibility(PROTOCOL_VERSION, guestVersion);
+        if (result.level === 'ok') return;
+        reportDiagnostic({
+            level: result.level === 'incompatible' ? 'error' : 'warn',
+            modId: this._modId,
+            code: UbiErrorCode.PROTOCOL_VERSION_MISMATCH,
+            message: result.message ?? 'プロトコルバージョンが一致しません',
+        });
+    }
+
+    private _terminateWithReason(reason: string): void {
+        console.warn(`${this._logPrefix} リソース制限超過: ${reason}`);
+        this.onResourceLimitExceeded?.(reason);
+        this.destroy();
+    }
+
+    /**
+     * Promise にタイムアウトを付加する。
+     * RPC_TIMEOUT_MS 以内に解決しない場合は reject する。
+     */
+    private _withTimeout<T>(promise: Promise<T>, cmdType: string): Promise<T> {
+        return Promise.race([
+            promise,
+            new Promise<never>((_, reject) =>
+                setTimeout(
+                    () =>
+                        reject(
+                            new RpcTimeoutError(`RPC タイムアウト (${ModHostManager.RPC_TIMEOUT_MS}ms): ${cmdType}`),
+                        ),
+                    ModHostManager.RPC_TIMEOUT_MS,
+                ),
+            ),
+        ]);
+    }
+
+    private async _handleCommand(e: MessageEvent<ModGuestCommand>): Promise<void> {
+        const command = e.data;
+        const { type } = command;
+        const id = 'id' in command ? (command as { id?: string }).id : undefined;
+
+        const allowed = this._gate.authorize(type); // 同期・即時（高頻度コマンドでも await なし）
+        if (!allowed) {
+            // on-demand モードはユーザー拒否、静的モードは未宣言。エラーコードで区別する。
+            const errorCode = this._onDemand ? UbiErrorCode.CAPABILITY_DENIED : UbiErrorCode.CAPABILITY_NOT_DECLARED;
+            const message = this._onDemand
+                ? `権限が許可されていません: ${type}`
+                : `未宣言の capability コマンド: ${type}`;
+            // 拒否をクリックで許可に変えられるよう、コマンドが属する capability を retry に載せる。
+            const capability = COMMAND_TO_CAPABILITY[type];
+            reportDiagnostic({
+                level: 'warn',
+                modId: this._modId,
+                code: errorCode,
+                message,
+                ...(this._onDemand && capability ? { retry: { modId: this._modId, capability } } : {}),
+            });
+            if (id) {
+                this.sendEvent({ type: HostEventType.EVT_RPC_RESPONSE, id, success: false, error: message, errorCode });
+            }
+            return;
+        }
+
+        // ハンドラー未接続チェック（接続漏れを早期検知）
+        const handlerKey = (CMD_TO_HANDLER as Record<string, keyof HostHandlers>)[type];
+        if (handlerKey && !this.handlers[handlerKey]) {
+            reportDiagnostic({
+                level: 'warn',
+                modId: this._modId,
+                code: UbiErrorCode.HANDLER_NOT_CONNECTED,
+                message: `コマンド ${type} に対するハンドラー ${handlerKey} が未接続です`,
+            });
+        }
+
+        const _cmdStart = isMetricEnabled() ? performance.now() : 0;
+        try {
+            // コマンドの振り分けは commandDispatch に委譲（新コマンドはそちらに 1 case 足す）。
+            const result = await dispatchCommand(command, this._commandContext);
+            if (id) {
+                this.sendEvent({ type: HostEventType.EVT_RPC_RESPONSE, id, success: true, data: result });
+            }
+        } catch (error) {
+            if (id) {
+                const message = error instanceof Error ? error.message : String(error);
+                // タイムアウトは専用エラー型で判別する（メッセージ文字列に依存しない）。
+                const errorCode =
+                    error instanceof RpcTimeoutError ? UbiErrorCode.RPC_TIMEOUT : UbiErrorCode.RPC_HANDLER_ERROR;
+                this.sendEvent({ type: HostEventType.EVT_RPC_RESPONSE, id, success: false, error: message, errorCode });
+            }
+        } finally {
+            if (_cmdStart > 0) {
+                this._currentTickCommandMs += performance.now() - _cmdStart;
+            }
+        }
+    }
+
+    public sendEvent(event: ModHostEvent): void {
+        if (this.isInitialized) {
+            this.worker.postMessage(event);
+        } else {
+            if (this.eventQueue.length >= ModHostManager.MAX_QUEUE_SIZE) {
+                // 初期化前に大量イベントが積まれた場合、最も古いものを破棄する
+                this.eventQueue.shift();
+                reportDiagnostic({
+                    level: 'warn',
+                    modId: this._modId,
+                    code: UbiErrorCode.RESOURCE_LIMIT_EXCEEDED,
+                    message: `eventQueue が上限 (${ModHostManager.MAX_QUEUE_SIZE}) に達したため古いイベントを破棄しました`,
+                });
+            }
+            this.eventQueue.push(event);
+        }
+    }
+
+    /**
+     * ワールドスクロールを供給する要素を SharedInputPool に登録する。
+     * GenericModHost が [data-scroll-world] 要素を見つけたときに呼ぶ。
+     */
+    public setScrollElement(el: Element | null): void {
+        if (!this._autoInputEnabled) return;
+        setSharedScrollElement(this._instanceKey, el);
+    }
+
+    /**
+     * Transferable オブジェクト（OffscreenCanvas 等）付きでイベントを送信する。
+     * Transferable は所有権が Worker に移るため、送信後は Host 側から使用できない。
+     */
+    public sendEventWithTransfer(event: ModHostEvent, transfer: Transferable[]): void {
+        if (this.isInitialized) {
+            this.worker.postMessage(event, transfer);
+        }
+        // 未初期化時は Transferable をキューに積めないため無視
+        // （canvas.request() は init 後に呼ばれるため実運用では発生しない）
+    }
+
+    public destroy(): void {
+        if (this.executionTimer) {
+            clearTimeout(this.executionTimer);
+            this.executionTimer = null;
+        }
+        this._tick?.stop();
+        if (this._autoInputEnabled) {
+            releaseSharedInput(this._instanceKey);
+        }
+        this.worker.terminate();
+        unregisterWorker(this._instanceKey);
+    }
+}

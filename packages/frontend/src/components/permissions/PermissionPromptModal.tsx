@@ -1,6 +1,6 @@
 /**
  * PermissionPromptModal — 権限承認モーダル。2 種類のプロンプトを表示する。
- *  - plugin: プラグイン読み込み時、要求 capability 群をまとめて許可/拒否。
+ *  - mod: mod読み込み時、要求 capability 群をまとめて許可/拒否。
  *  - fetch : 外部通信の初回、ドメインを「今回だけ / 次回以降も許可 / 拒否」（Claude Code 風）。
  */
 import { type CapabilityRisk, describeCapability, useUbiPermissions } from '@ubichill/react';
@@ -127,7 +127,7 @@ export function PermissionPromptModal() {
                         <ShieldIcon risk="dangerous" />
                         <div className={css({ display: 'flex', flexDirection: 'column', gap: '2px' })}>
                             <span className={css({ fontSize: '11px', fontWeight: '600', color: 'textMuted' })}>
-                                「{prompt.pluginId}」が外部通信を要求
+                                「{prompt.modId}」が外部通信を要求
                             </span>
                             <span className={css({ fontSize: '16px', fontWeight: '700', color: 'text' })}>
                                 {prompt.domain}
@@ -135,7 +135,7 @@ export function PermissionPromptModal() {
                         </div>
                     </div>
                     <p className={css({ fontSize: '13px', color: 'textMuted', lineHeight: '1.6' })}>
-                        このプラグインが <strong>{prompt.domain}</strong> へ通信しようとしています。
+                        このmodが <strong>{prompt.domain}</strong> へ通信しようとしています。
                     </p>
                     <div className={css({ display: 'flex', flexDirection: 'column', gap: '2' })}>
                         <button type="button" onClick={() => resolvePrompt('always')} className={primaryBtn}>
@@ -155,7 +155,7 @@ export function PermissionPromptModal() {
         );
     }
 
-    // kind === 'plugin'
+    // kind === 'mod'
     const infos = prompt.capabilities.map((c) => describeCapability(c.capability));
     const topRisk = infos.reduce<CapabilityRisk>(
         (acc, i) => (RISK_ORDER[i.risk] > RISK_ORDER[acc] ? i.risk : acc),
@@ -169,10 +169,10 @@ export function PermissionPromptModal() {
                     <ShieldIcon risk={topRisk} />
                     <div className={css({ display: 'flex', flexDirection: 'column', gap: '2px' })}>
                         <span className={css({ fontSize: '11px', fontWeight: '600', color: 'textMuted' })}>
-                            プラグインが権限を要求
+                            modが権限を要求
                         </span>
                         <span className={css({ fontSize: '17px', fontWeight: '700', color: 'text' })}>
-                            {prompt.pluginId}
+                            {prompt.modId}
                         </span>
                     </div>
                 </div>
@@ -199,7 +199,7 @@ export function PermissionPromptModal() {
                 </div>
 
                 <p className={css({ fontSize: '12px', color: 'textMuted', lineHeight: '1.5' })}>
-                    許可すると、このプラグインは以後これらの権限を使えます。あとから設定でいつでも取り消せます。
+                    許可すると、このmodは以後これらの権限を使えます。あとから設定でいつでも取り消せます。
                 </p>
 
                 <div className={css({ display: 'flex', gap: '12px' })}>

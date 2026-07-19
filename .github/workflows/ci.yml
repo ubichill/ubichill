@@ -264,8 +264,8 @@ jobs:
 
       - uses: docker/build-push-action@v7
         with:
-          context: plugins/video-player/backend
-          file: plugins/video-player/backend/Dockerfile
+          context: mods/video-player/backend
+          file: mods/video-player/backend/Dockerfile
           target: production
           push: true
           build-args: |

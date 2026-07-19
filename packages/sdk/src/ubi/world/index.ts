@@ -1,7 +1,7 @@
 /**
  * Ubi.world — エンティティ CRUD の内部 API。
  *
- * 通常のプラグインからは `Ubi.spawn` / `Ubi.destroy` などのトップレベル shortcut や
+ * 通常のmodからは `Ubi.spawn` / `Ubi.destroy` などのトップレベル shortcut や
  * `Ubi.state.persistent` の自動同期を使うことを推奨。直接 `Ubi.world.query` を
  * 呼ぶのは「自エンティティの transform.z を 1 回だけ読む」など稀なケースのみ。
  */

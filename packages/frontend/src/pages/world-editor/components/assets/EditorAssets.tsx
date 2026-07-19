@@ -1,41 +1,41 @@
 import { Fragment, type ReactNode, useMemo, useState } from 'react';
 import { css } from '@/styled-system/css';
 import type { AvailableEntityKind } from '../../hooks/useAvailableEntityKinds';
-import { type AssetNode, usePluginAssets } from '../../hooks/usePluginAssets';
+import { type AssetNode, useModAssets } from '../../hooks/useModAssets';
 import { COMPONENT_DRAG_MIME } from '../../lib/dnd';
 
 interface EditorAssetsProps {
     kinds: AvailableEntityKind[];
     loading: boolean;
-    /** YAML の dependencies で参照されているプラグイン名一覧 */
-    pluginNames: string[];
+    /** YAML の dependencies で参照されているmod名一覧 */
+    modNames: string[];
 }
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg|avif)$/i;
 const CURSOR_EXT = /\.(cur|ani|ico)$/i;
 const VIDEO_EXT = /\.(mp4|webm|mov)$/i;
 
-/** ナビゲーション位置: [] = ルート（プラグイン一覧）、[plugin, ...folder] = 中。 */
+/** ナビゲーション位置: [] = ルート（mod一覧）、[mod, ...folder] = 中。 */
 type Path = string[];
 
-export function EditorAssets({ kinds, loading, pluginNames }: EditorAssetsProps) {
-    const { treesByPlugin } = usePluginAssets(pluginNames);
+export function EditorAssets({ kinds, loading, modNames }: EditorAssetsProps) {
+    const { treesByMod } = useModAssets(modNames);
     const [path, setPath] = useState<Path>([]);
 
-    const componentsByPlugin = useMemo(() => {
+    const componentsByMod = useMemo(() => {
         const map = new Map<string, AvailableEntityKind[]>();
         for (const k of kinds) {
-            const arr = map.get(k.pluginName) ?? [];
+            const arr = map.get(k.modName) ?? [];
             arr.push(k);
-            map.set(k.pluginName, arr);
+            map.set(k.modName, arr);
         }
         return map;
     }, [kinds]);
 
     // 現在表示するエントリ
     const entries = useMemo(
-        () => buildEntries(path, pluginNames, componentsByPlugin, treesByPlugin),
-        [path, pluginNames, componentsByPlugin, treesByPlugin],
+        () => buildEntries(path, modNames, componentsByMod, treesByMod),
+        [path, modNames, componentsByMod, treesByMod],
     );
 
     return (
@@ -75,8 +75,8 @@ export function EditorAssets({ kinds, loading, pluginNames }: EditorAssetsProps)
                             textAlign: 'center',
                         })}
                     >
-                        {path.length === 0 && pluginNames.length === 0
-                            ? '「ワールド情報」モーダルからプラグインを追加してください'
+                        {path.length === 0 && modNames.length === 0
+                            ? '「ワールド情報」モーダルからmodを追加してください'
                             : '(空)'}
                     </div>
                 ) : (
@@ -85,7 +85,7 @@ export function EditorAssets({ kinds, loading, pluginNames }: EditorAssetsProps)
                             key={e.key}
                             entry={e}
                             onOpen={() => {
-                                if (e.kind === 'plugin') setPath([e.name]);
+                                if (e.kind === 'mod') setPath([e.name]);
                                 else if (e.kind === 'folder') setPath([...path, e.name]);
                             }}
                         />
@@ -179,52 +179,52 @@ function Crumb({ label, active, onClick }: { label: string; active: boolean; onC
 // ============================================
 
 type Entry =
-    | { kind: 'plugin'; key: string; name: string }
+    | { kind: 'mod'; key: string; name: string }
     | { kind: 'folder'; key: string; name: string }
     | {
           kind: 'component';
           key: string;
           name: string;
           componentType: string;
-          pluginName: string;
+          modName: string;
           thumbnailUrl?: string;
       }
     | { kind: 'file'; key: string; name: string; url: string };
 
 function buildEntries(
     path: Path,
-    pluginNames: string[],
-    componentsByPlugin: Map<string, AvailableEntityKind[]>,
-    treesByPlugin: Map<string, AssetNode[]>,
+    modNames: string[],
+    componentsByMod: Map<string, AvailableEntityKind[]>,
+    treesByMod: Map<string, AssetNode[]>,
 ): Entry[] {
     if (path.length === 0) {
-        return pluginNames.map((p) => ({ kind: 'plugin', key: `plugin:${p}`, name: p }));
+        return modNames.map((p) => ({ kind: 'mod', key: `mod:${p}`, name: p }));
     }
-    const [pluginName, ...rest] = path;
-    // プラグイン直下: Components フォルダ + Files フォルダ (実体があるときのみ)
+    const [modName, ...rest] = path;
+    // mod直下: Components フォルダ + Files フォルダ (実体があるときのみ)
     if (rest.length === 0) {
-        const comps = componentsByPlugin.get(pluginName) ?? [];
-        const tree = treesByPlugin.get(pluginName) ?? [];
+        const comps = componentsByMod.get(modName) ?? [];
+        const tree = treesByMod.get(modName) ?? [];
         const out: Entry[] = [];
         if (comps.length > 0) out.push({ kind: 'folder', key: 'folder:Components', name: 'Components' });
         if (tree.length > 0) out.push({ kind: 'folder', key: 'folder:Files', name: 'Files' });
         return out;
     }
     if (rest[0] === 'Components') {
-        const comps = componentsByPlugin.get(pluginName) ?? [];
+        const comps = componentsByMod.get(modName) ?? [];
         return comps.map((c) => ({
             kind: 'component',
             key: `comp:${c.kind}`,
             name: c.kind.split(':').slice(1).join(':') || c.kind,
             componentType: c.kind,
-            pluginName,
+            modName,
             thumbnailUrl: c.thumbnailUrl,
         }));
     }
     if (rest[0] === 'Files') {
-        // path = [plugin, "Files", folder1, folder2, ...]
+        // path = [mod, "Files", folder1, folder2, ...]
         const folderPath = rest.slice(1);
-        const tree = treesByPlugin.get(pluginName) ?? [];
+        const tree = treesByMod.get(modName) ?? [];
         const node = walkTree(tree, folderPath);
         if (!node) return [];
         return node.map((n) =>
@@ -251,7 +251,7 @@ function walkTree(nodes: AssetNode[], folders: string[]): AssetNode[] | null {
 // ============================================
 
 function EntryTile({ entry, onOpen }: { entry: Entry; onOpen: () => void }) {
-    if (entry.kind === 'plugin' || entry.kind === 'folder') {
+    if (entry.kind === 'mod' || entry.kind === 'folder') {
         return (
             <button
                 type="button"
@@ -260,7 +260,7 @@ function EntryTile({ entry, onOpen }: { entry: Entry; onOpen: () => void }) {
                 title={entry.name}
                 className={tileButtonStyle}
             >
-                {entry.kind === 'plugin' ? <PluginFolderIcon /> : <FolderIcon />}
+                {entry.kind === 'mod' ? <ModFolderIcon /> : <FolderIcon />}
                 <span className={tileLabelStyle}>{entry.name}</span>
             </button>
         );
@@ -447,7 +447,7 @@ function FolderIcon() {
     );
 }
 
-function PluginFolderIcon() {
+function ModFolderIcon() {
     return (
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="#1b2a44" />

@@ -213,7 +213,7 @@ export function WorldEditorPage() {
                 <EditorAssets
                     kinds={kinds}
                     loading={kindsLoading}
-                    pluginNames={(definition.spec.dependencies ?? []).map((d) => d.name)}
+                    modNames={(definition.spec.dependencies ?? []).map((d) => d.name)}
                 />
             </DockSlot>
 

@@ -34,8 +34,9 @@
             "@ubichill/sdk/react": [
                 "../sdk/src/react/index.ts"
             ],
-            "@ubichill/engine": ["../engine/src/index.ts"],
+            "@ubichill/ecs": ["../ecs/src/index.ts"],
             "@ubichill/sandbox": ["../sandbox/src/index.ts"],
+            "@ubichill/ui-renderer": ["../ui-renderer/src/index.ts"],
             "@ubichill/react": ["../react/src/index.ts"],
             "@ubichill/shared": ["../shared/src/index.ts"]
         },

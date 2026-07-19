@@ -1,55 +1,27 @@
 /**
  * @ubichill/sandbox — Host-side entry point.
  *
- * Worker 管理・隔離実行のホスト API。プラグイン向け API は @ubichill/sdk から。
+ * Worker 管理・隔離実行のホスト API。mod向け API は @ubichill/sdk から。
  *
  * 構成:
  *   host/   … main thread 側 (Worker 管理 / DOM 描画 / 入力収集 / fetch)
  *   worker/ … Worker (guest) 側の隔離実行環境エントリ
  */
 
-// ── 権限: capability カタログ / 危険度 / ユーザーポリシー解決 ──
-export {
-    ALWAYS_ALLOWED_COMMANDS,
-    buildAllowedCommands,
-    CAPABILITY_CATALOG,
-    CAPABILITY_COMMANDS,
-    CAPABILITY_RISK,
-    type Capability,
-    type CapabilityInfo,
-    type CapabilityRisk,
-    type CapabilitySpec,
-    COMMAND_TO_CAPABILITY,
-    describeCapability,
-    getCapabilityRisk,
-    listCapabilities,
-} from './host/capability';
+// ── 権限の enforcement ゲート（実行時判定）。カタログ/ポリシーの「知識」は @ubichill/shared へ移設済み ──
 export { type CapabilityGate, type CapabilityGateOptions, createCapabilityGate } from './host/capabilityGate';
 // ── infra: fetch / 診断 / DOM 描画 ──
 export * from './host/fetchHandler';
 // ── usecase: 個々の Worker のライフサイクル ──
-export { PluginHostManager } from './host/PluginHostManager';
+export { ModHostManager } from './host/ModHostManager';
 // ── repository: 在籍簿 + emit ルーティング ──
-export { getActiveWorkerCount, resetRegistryForTests, routeEmit } from './host/PluginRegistry';
-export {
-    capabilityNeedsConsent,
-    DEFAULT_PERMISSION_POLICY,
-    type FetchDecision,
-    isCapabilityGranted,
-    type PermissionDecision,
-    type PermissionPolicy,
-    type ResolvedCapabilities,
-    resolveCapabilities,
-    resolveFetchDecision,
-    type TierMode,
-} from './host/permissionPolicy';
-export * from './host/pluginDiagnostics';
+export { getActiveWorkerCount, resetRegistryForTests, routeEmit } from './host/ModRegistry';
+export * from './host/modDiagnostics';
 // ── 型 ──
 export type {
     FetchOptions,
     FetchResult,
     HostHandlers,
-    PluginHostManagerOptions,
-    PluginWorkerInfo,
+    ModHostManagerOptions,
+    ModWorkerInfo,
 } from './host/types';
-export { renderVNode } from './host/VNodeRenderer';

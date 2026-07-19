@@ -14,15 +14,15 @@ spec:
   dependencies:
     - name: video-player
       source:
-        path: plugins/video-player
+        path: mods/video-player
         type: repository
     - name: pen
       source:
-        path: plugins/pen
+        path: mods/pen
         type: repository
     - name: avatar
       source:
-        path: plugins/avatar
+        path: mods/avatar
         type: repository
   initialEntities:
     - id: video-player
@@ -42,7 +42,7 @@ spec:
           components:
             - data:
                 loop: none
-                apiBase: /plugins/video-player/api
+                apiBase: /mods/video-player/api
                 shuffle: false
                 duration: 0
                 playlist: []

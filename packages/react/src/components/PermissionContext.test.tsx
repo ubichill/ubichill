@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, renderHook } from '@testing-library/react';
-import type { PermissionPolicy } from '@ubichill/sandbox';
+import type { PermissionPolicy } from '@ubichill/shared';
 import type React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { PermissionProvider, useUbiPermissions } from './PermissionContext';
@@ -23,17 +23,17 @@ describe('authorizeCapability（実行時ゲート・プロンプトを出さな
         expect(ctx.current.pendingPrompt).toBeNull(); // 一切プロンプトを出さない
     });
 
-    it('ask 未決の危険 capability は false（承認は authorizePlugin で確定）', () => {
+    it('ask 未決の危険 capability は false（承認は authorizeMod で確定）', () => {
         const ctx = setup();
         expect(ctx.current.authorizeCapability('p', 'mystery:power')).toBe(false); // 未知→dangerous→ask未決
     });
 });
 
-describe('authorizePlugin（読み込み時の一括承認）', () => {
+describe('authorizeMod（読み込み時の一括承認）', () => {
     it('承認が要らなければプロンプトを出さず即解決する', async () => {
         const ctx = setup();
         await act(async () => {
-            await ctx.current.authorizePlugin('p', ['scene:read', 'scene:update', 'net:emit']);
+            await ctx.current.authorizeMod('p', ['scene:read', 'scene:update', 'event:emit']);
         });
         expect(ctx.current.pendingPrompt).toBeNull();
     });
@@ -42,12 +42,12 @@ describe('authorizePlugin（読み込み時の一括承認）', () => {
         const ctx = setup();
         let done: Promise<void> = Promise.resolve();
         act(() => {
-            done = ctx.current.authorizePlugin('p', ['scene:read', 'mystery:power', 'other:danger']);
+            done = ctx.current.authorizeMod('p', ['scene:read', 'mystery:power', 'other:danger']);
         });
         // safe(scene:read) は除外、危険2つが1プロンプトに束ねられる
         expect(ctx.current.pendingPrompt).toEqual({
-            kind: 'plugin',
-            pluginId: 'p',
+            kind: 'mod',
+            modId: 'p',
             capabilities: [
                 { capability: 'mystery:power', risk: 'dangerous' },
                 { capability: 'other:danger', risk: 'dangerous' },
@@ -66,7 +66,7 @@ describe('authorizePlugin（読み込み時の一括承認）', () => {
         const ctx = setup();
         let done: Promise<void> = Promise.resolve();
         act(() => {
-            done = ctx.current.authorizePlugin('p', ['mystery:power']);
+            done = ctx.current.authorizeMod('p', ['mystery:power']);
         });
         act(() => ctx.current.resolvePrompt('deny'));
         await act(async () => {
@@ -79,9 +79,9 @@ describe('authorizePlugin（読み込み時の一括承認）', () => {
         const ctx = setup();
         act(() => ctx.current.setTierDefaults({ safe: 'allow', sensitive: 'ask', dangerous: 'ask' }));
         act(() => {
-            void ctx.current.authorizePlugin('p', ['scene:update']);
+            void ctx.current.authorizeMod('p', ['scene:update']);
         });
-        expect(ctx.current.pendingPrompt).toMatchObject({ kind: 'plugin', pluginId: 'p' });
+        expect(ctx.current.pendingPrompt).toMatchObject({ kind: 'mod', modId: 'p' });
     });
 });
 
@@ -92,7 +92,7 @@ describe('authorizeFetchDomain（ドメイン単位・今回だけ/次回以降/
         act(() => {
             p = ctx.current.authorizeFetchDomain('vp', 'api.example.com');
         });
-        expect(ctx.current.pendingPrompt).toEqual({ kind: 'fetch', pluginId: 'vp', domain: 'api.example.com' });
+        expect(ctx.current.pendingPrompt).toEqual({ kind: 'fetch', modId: 'vp', domain: 'api.example.com' });
         act(() => ctx.current.resolvePrompt('always'));
         await expect(p).resolves.toBe(true);
         // 記憶され、次回は同期 true
@@ -111,7 +111,7 @@ describe('authorizeFetchDomain（ドメイン単位・今回だけ/次回以降/
         act(() => {
             void ctx.current.authorizeFetchDomain('vp', 'api.example.com');
         });
-        expect(ctx.current.pendingPrompt).toEqual({ kind: 'fetch', pluginId: 'vp', domain: 'api.example.com' });
+        expect(ctx.current.pendingPrompt).toEqual({ kind: 'fetch', modId: 'vp', domain: 'api.example.com' });
     });
 
     it('「拒否」は false を返し記憶される', async () => {
@@ -141,7 +141,7 @@ describe('grantCapability / grantFetchDomain（拒否トーストの「許可」
         // まず拒否
         let done: Promise<void> = Promise.resolve();
         act(() => {
-            done = ctx.current.authorizePlugin('p', ['mystery:power']);
+            done = ctx.current.authorizeMod('p', ['mystery:power']);
         });
         act(() => ctx.current.resolvePrompt('deny'));
         await act(async () => {
@@ -172,7 +172,7 @@ describe('取り消し', () => {
         const ctx = setup(onChange);
         // capability を許可 → 取り消し
         act(() => {
-            void ctx.current.authorizePlugin('p', ['mystery:power']);
+            void ctx.current.authorizeMod('p', ['mystery:power']);
         });
         act(() => ctx.current.resolvePrompt('allow'));
         expect(ctx.current.authorizeCapability('p', 'mystery:power')).toBe(true);

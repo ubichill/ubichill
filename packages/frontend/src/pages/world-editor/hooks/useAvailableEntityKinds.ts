@@ -2,7 +2,7 @@ import type { WorldDefinition } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 
 /**
- * プラグインの data フィールド宣言。インスペクタで「必ず表示する」フィールドの仕様。
+ * modの data フィールド宣言。インスペクタで「必ず表示する」フィールドの仕様。
  */
 export type DataFieldSpec =
     | { type: 'string'; default?: string; multiline?: boolean; placeholder?: string; label?: string; help?: string }
@@ -26,17 +26,17 @@ export type DataFieldSpec =
 export type DataFields = Record<string, DataFieldSpec>;
 
 /**
- * プラグインの manifest から取得できる、エディタで配置可能なエンティティ種別。
+ * modの manifest から取得できる、エディタで配置可能なエンティティ種別。
  */
 export interface AvailableEntityKind {
-    pluginName: string;
-    kind: string; // "pluginName:entityKey"
+    modName: string;
+    kind: string; // "modName:entityKey"
     singleton?: boolean;
     canvasTargets?: string[];
     mediaTargets?: string[];
     /** デフォルトでサイズが必要そうかの推定（mediaTargets / canvasTargets を持つ場合は持たせる） */
     suggestSize: boolean;
-    /** プラグインが推奨する初期 transform（部分指定可） */
+    /** modが推奨する初期 transform（部分指定可） */
     defaultTransform?: Partial<{
         x: number;
         y: number;
@@ -52,7 +52,7 @@ export interface AvailableEntityKind {
     thumbnailUrl?: string;
 }
 
-interface PluginIndex {
+interface ModIndex {
     id: string;
     version: string;
 }
@@ -72,20 +72,20 @@ interface VersionedManifest {
     components?: Record<string, VersionedManifestComponent>;
 }
 
-const PLUGIN_BASE_URL: string = (() => {
-    const envUrl = (import.meta.env.VITE_PLUGIN_CDN_URL as string | undefined) ?? '';
+const MOD_BASE_URL: string = (() => {
+    const envUrl = (import.meta.env.VITE_MOD_CDN_URL as string | undefined) ?? '';
     if (envUrl) return envUrl.replace(/\/$/, '');
-    return '/plugins';
+    return '/mods';
 })();
 
-const indexCache = new Map<string, Promise<PluginIndex | null>>();
+const indexCache = new Map<string, Promise<ModIndex | null>>();
 const manifestCache = new Map<string, Promise<VersionedManifest | null>>();
 
-function fetchIndex(name: string): Promise<PluginIndex | null> {
+function fetchIndex(name: string): Promise<ModIndex | null> {
     let p = indexCache.get(name);
     if (!p) {
-        p = fetch(`${PLUGIN_BASE_URL}/${name}/plugin.json`, { cache: 'no-store' })
-            .then((r) => (r.ok ? (r.json() as Promise<PluginIndex>) : null))
+        p = fetch(`${MOD_BASE_URL}/${name}/mod.json`, { cache: 'no-store' })
+            .then((r) => (r.ok ? (r.json() as Promise<ModIndex>) : null))
             .catch(() => null);
         indexCache.set(name, p);
     }
@@ -96,7 +96,7 @@ function fetchManifest(name: string, version: string): Promise<VersionedManifest
     const key = `${name}@${version}`;
     let p = manifestCache.get(key);
     if (!p) {
-        p = fetch(`${PLUGIN_BASE_URL}/${name}/v${version}/manifest.json`)
+        p = fetch(`${MOD_BASE_URL}/${name}/v${version}/manifest.json`)
             .then((r) => (r.ok ? (r.json() as Promise<VersionedManifest>) : null))
             .catch(() => null);
         manifestCache.set(key, p);
@@ -105,7 +105,7 @@ function fetchManifest(name: string, version: string): Promise<VersionedManifest
 }
 
 /**
- * WorldDefinition の dependencies に登録された各プラグインの manifest を読み、
+ * WorldDefinition の dependencies に登録された各modの manifest を読み、
  * 配置可能な entity kind 一覧を返す。
  */
 export function useAvailableEntityKinds(definition: WorldDefinition | null): {
@@ -135,9 +135,9 @@ export function useAvailableEntityKinds(definition: WorldDefinition | null): {
                 if (!idx?.version) return [];
                 const manifest = await fetchManifest(dep.name, idx.version);
                 const components = manifest?.components ?? {};
-                const versionedBase = `${PLUGIN_BASE_URL}/${dep.name}/v${idx.version}`;
+                const versionedBase = `${MOD_BASE_URL}/${dep.name}/v${idx.version}`;
                 return Object.entries(components).map(([kind, meta]) => ({
-                    pluginName: dep.name,
+                    modName: dep.name,
                     kind,
                     singleton: meta.singleton,
                     canvasTargets: meta.canvasTargets,

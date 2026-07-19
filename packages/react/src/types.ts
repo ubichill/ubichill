@@ -1,38 +1,38 @@
 /**
- * プラグインが Host (PluginRegistry) に渡す定義オブジェクト（Custom Elements ベース）。
+ * modが Host (ModRegistry) に渡す定義オブジェクト（Custom Elements ベース）。
  *
  * React コンポーネントではなく Custom Elements タグ名で宣言する。
  * Host は elementTag で CE を生成し、コンテキストを注入する。
  */
 export interface WidgetDefinition {
-    /** プラグイン識別子（plugin.json の id と一致） */
+    /** mod識別子（mod.json の id と一致） */
     id: string;
     /** 表示名 */
     name: string;
     /** エンティティごとに描画される Custom Elements タグ名 */
     elementTag: string;
     /**
-     * このプラグインの Custom Elements を customElements.define する関数。
-     * PluginRegistry がプラグインロード後に一度だけ呼び出す。
+     * このmodの Custom Elements を customElements.define する関数。
+     * ModRegistry がmodロード後に一度だけ呼び出す。
      */
     register: () => void;
 }
 
 /**
- * Worker のみで動作するゼロトラストプラグインの定義。
+ * Worker のみで動作するゼロトラストmodの定義。
  *
  * Custom Elements / React コンポーネントを一切持たず、
  * 描画はすべて Worker 内の ECS System が担う（OffscreenCanvas / VNode）。
- * Host は GenericPluginHost でサンドボックス・通信のみを提供する。
+ * Host は GenericModHost でサンドボックス・通信のみを提供する。
  */
-export interface WorkerPluginDefinition {
-    /** プラグイン識別子（plugin.json の id と一致） */
+export interface WorkerModDefinition {
+    /** mod識別子（mod.json の id と一致） */
     id: string;
     /** 表示名 */
     name: string;
     /** esbuild でバンドルされた Worker 実行コード文字列 */
     workerCode: string;
-    /** plugin.json の capabilities（未指定: 全許可） */
+    /** mod.json の capabilities（未指定: 全許可） */
     capabilities?: string[];
     /**
      * Host が生成して Worker へ Transferable 転送する OffscreenCanvas のターゲット名リスト。
@@ -53,7 +53,7 @@ export interface WorkerPluginDefinition {
      * 'world'   : ワールド全体。
      */
     watchScope?: 'entity' | 'subtree' | 'parent' | 'world';
-    /** プラグインアセット相対パスのサムネ画像 (エディタ表示用)。 */
+    /** modアセット相対パスのサムネ画像 (エディタ表示用)。 */
     thumbnail?: string;
     /**
      * Host が生成して Worker が操作する <video> 要素のターゲット名リスト。
@@ -62,10 +62,10 @@ export interface WorkerPluginDefinition {
      */
     mediaTargets?: string[];
     /**
-     * プラグインアセットのベースURL（Worker で Ubi.pluginBase として参照可能）。
-     * PluginRegistryContext が plugin.json のバージョンから自動計算して設定する。
+     * modアセットのベースURL（Worker で Ubi.modBase として参照可能）。
+     * ModRegistryContext が mod.json のバージョンから自動計算して設定する。
      */
-    pluginBase?: string;
+    modBase?: string;
     /**
      * true の場合、エンティティごとではなくワールド参加中に 1 つだけ起動される。
      * Host は EVT_PLAYER_JOINED / EVT_PLAYER_LEFT / EVT_PLAYER_CURSOR_MOVED を
@@ -76,7 +76,7 @@ export interface WorkerPluginDefinition {
     /**
      * Worker が `Ubi.network.sendToHost(type, payload)` で送ったカスタムメッセージのホスト側ハンドラ。
      * `api.updateUser` でユーザー状態を更新、`api.sendToWorker` で Worker へ返答できる。
-     * プラグイン固有のホスト処理をここに記述することで InstanceRenderer との結合を断ち切る。
+     * mod固有のホスト処理をここに記述することで InstanceRenderer との結合を断ち切る。
      */
     onHostMessage?: (
         type: string,
@@ -88,7 +88,7 @@ export interface WorkerPluginDefinition {
     ) => void;
 }
 
-/** 型ガード: WorkerPluginDefinition かどうか判定する */
-export function isWorkerPlugin(def: WidgetDefinition | WorkerPluginDefinition): def is WorkerPluginDefinition {
+/** 型ガード: WorkerModDefinition かどうか判定する */
+export function isWorkerMod(def: WidgetDefinition | WorkerModDefinition): def is WorkerModDefinition {
     return 'workerCode' in def;
 }

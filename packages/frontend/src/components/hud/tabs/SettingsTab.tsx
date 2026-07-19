@@ -1,9 +1,9 @@
 /**
- * SettingsTab — ユーザー設定画面。現状はプラグイン権限の管理。
+ * SettingsTab — ユーザー設定画面。現状はmod権限の管理。
  *
  * - シールドレベル（なし / 確認 / 厳格な確認 / 拒否）を選ぶと、危険度ティアの既定が決まる。
  *   安全な権限は常に許可でユーザーには見せない（判断が不要なため）。
- * - プラグインごとに記憶済みの許可/拒否を危険度つきで確認し、取り消す。
+ * - modごとに記憶済みの許可/拒否を危険度つきで確認し、取り消す。
  *
  * 権限状態は @ubichill/react の PermissionProvider（main.tsx でマウント）から取得する。
  */
@@ -99,8 +99,8 @@ export function SettingsTab() {
 
     const { policy, setTierDefaults, revokeGrant, revokeFetchGrant } = permissions;
     const currentLevel = matchShieldLevel(policy.tierDefaults);
-    // capability grant または fetch ドメイン grant を持つプラグインの和集合。
-    const pluginIds = [...new Set([...Object.keys(policy.grants), ...Object.keys(policy.fetchGrants)])].filter(
+    // capability grant または fetch ドメイン grant を持つmodの和集合。
+    const modIds = [...new Set([...Object.keys(policy.grants), ...Object.keys(policy.fetchGrants)])].filter(
         (id) => Object.keys(policy.grants[id] ?? {}).length > 0 || Object.keys(policy.fetchGrants[id] ?? {}).length > 0,
     );
 
@@ -108,9 +108,9 @@ export function SettingsTab() {
         <div className={tabPanel} onClick={(e) => e.stopPropagation()}>
             {/* ── シールドレベル ── */}
             <div className={cardStyle}>
-                <h2 className={sectionHeading}>プラグインの安全レベル</h2>
+                <h2 className={sectionHeading}>modの安全レベル</h2>
                 <p className={css({ fontSize: '13px', color: 'textMuted', mb: '5', lineHeight: '1.6' })}>
-                    プラグインが権限を使うときの確認の厳しさです。厳しくするほど、プラグインが権限を使う前に確認します。
+                    modが権限を使うときの確認の厳しさです。厳しくするほど、modが権限を使う前に確認します。
                 </p>
                 <div className={css({ display: 'flex', flexDirection: 'column', gap: '2' })}>
                     {SHIELD_LEVELS.map((level) => {
@@ -174,10 +174,10 @@ export function SettingsTab() {
                 </div>
             </div>
 
-            {/* ── プラグインごとの許可 ── */}
+            {/* ── modごとの許可 ── */}
             <div className={cardStyle}>
-                <h2 className={sectionHeading}>プラグインごとの許可</h2>
-                {pluginIds.length === 0 ? (
+                <h2 className={sectionHeading}>modごとの許可</h2>
+                {modIds.length === 0 ? (
                     <div
                         className={css({
                             p: '6',
@@ -188,12 +188,12 @@ export function SettingsTab() {
                             fontSize: '14px',
                         })}
                     >
-                        まだ許可・拒否を記憶したプラグインはありません。
+                        まだ許可・拒否を記憶したmodはありません。
                     </div>
                 ) : (
                     <div className={css({ display: 'flex', flexDirection: 'column', gap: '4' })}>
-                        {pluginIds.map((pluginId) => (
-                            <div key={pluginId} className={css({ p: '3', bg: 'surface', borderRadius: '12px' })}>
+                        {modIds.map((modId) => (
+                            <div key={modId} className={css({ p: '3', bg: 'surface', borderRadius: '12px' })}>
                                 <div
                                     className={css({
                                         display: 'flex',
@@ -203,13 +203,13 @@ export function SettingsTab() {
                                     })}
                                 >
                                     <span className={css({ fontSize: '15px', fontWeight: '700', color: 'text' })}>
-                                        {pluginId}
+                                        {modId}
                                     </span>
                                     <button
                                         type="button"
                                         onClick={() => {
-                                            revokeGrant(pluginId);
-                                            revokeFetchGrant(pluginId);
+                                            revokeGrant(modId);
+                                            revokeFetchGrant(modId);
                                         }}
                                         className={css({
                                             px: '3',
@@ -228,7 +228,7 @@ export function SettingsTab() {
                                     </button>
                                 </div>
                                 <div className={css({ display: 'flex', flexDirection: 'column', gap: '2' })}>
-                                    {Object.entries(policy.grants[pluginId] ?? {}).map(([capability, decision]) => {
+                                    {Object.entries(policy.grants[modId] ?? {}).map(([capability, decision]) => {
                                         const info = describeCapability(capability);
                                         return (
                                             <div
@@ -281,7 +281,7 @@ export function SettingsTab() {
                                                 </span>
                                                 <button
                                                     type="button"
-                                                    onClick={() => revokeGrant(pluginId, capability)}
+                                                    onClick={() => revokeGrant(modId, capability)}
                                                     className={css({
                                                         px: '2',
                                                         py: '1',
@@ -302,7 +302,7 @@ export function SettingsTab() {
                                         );
                                     })}
                                     {/* fetch 許可ドメイン */}
-                                    {Object.entries(policy.fetchGrants[pluginId] ?? {}).map(([domain, decision]) => (
+                                    {Object.entries(policy.fetchGrants[modId] ?? {}).map(([domain, decision]) => (
                                         <div
                                             key={`fetch:${domain}`}
                                             className={css({
@@ -345,7 +345,7 @@ export function SettingsTab() {
                                             </span>
                                             <button
                                                 type="button"
-                                                onClick={() => revokeFetchGrant(pluginId, domain)}
+                                                onClick={() => revokeFetchGrant(modId, domain)}
                                                 className={css({
                                                     px: '2',
                                                     py: '1',

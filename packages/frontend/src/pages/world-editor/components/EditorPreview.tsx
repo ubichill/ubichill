@@ -1,9 +1,9 @@
 import {
-    isWorkerPlugin,
+    isWorkerMod,
     SocketContext,
     type SocketContextValue,
     useWorld,
-    WorkerPluginHost,
+    WorkerModHost,
     WorldContext,
     type WorldContextType,
 } from '@ubichill/react';
@@ -11,7 +11,7 @@ import type { ComponentInstance, InitialEntity, WorldDefinition, WorldEnvironmen
 import type React from 'react';
 import { useMemo } from 'react';
 import { EntityRenderer } from '@/instance/EntityRenderer';
-import { PluginRegistryProvider, usePluginRegistry } from '@/plugins/PluginRegistryContext';
+import { ModRegistryProvider, useModRegistry } from '@/mods/ModRegistryContext';
 
 const FALLBACK_ENTITY: ComponentInstance = {
     id: '',
@@ -40,19 +40,19 @@ interface EditorPreviewProps {
     overlay?: React.ReactNode;
     /** true なら親コンテナの 100% を埋める。false なら 70vh の固定高さ。 */
     fillContainer?: boolean;
-    /** 編集ローカルに非表示にするエンティティの index 集合（プラグインの実体描画も止める） */
+    /** 編集ローカルに非表示にするエンティティの index 集合（modの実体描画も止める） */
     hiddenIndices?: Set<number>;
     /** > 0 のとき world 領域に grid 線 (px) を描画する。 */
     gridStep?: number;
-    /** プレビュー領域の背景（プラグイン UI なし）クリック時のハンドラ */
+    /** プレビュー領域の背景（mod UI なし）クリック時のハンドラ */
     onBackgroundMouseDown?: () => void;
 }
 
 /**
- * インスタンスページと同じ仕組み（SocketContext + WorldContext + PluginRegistry）でワールドを描画するが、
+ * インスタンスページと同じ仕組み（SocketContext + WorldContext + ModRegistry）でワールドを描画するが、
  * Socket 接続なしで definition から直接 entities を構築する。
  *
- * - プラグインは実際に Worker で動作する（pen tray, video controls などの本物の UI が見える）
+ * - modは実際に Worker で動作する（pen tray, video controls などの本物の UI が見える）
  * - 各 entity wrapper は pointer-events: none を維持する（既存の EntityRenderer 仕様）
  * - 編集オーバーレイは `overlay` で渡し、その上に重ねる（pointer-events: auto を持つ）
  */
@@ -118,7 +118,7 @@ export function EditorPreview({
         return map;
     }, [definition.spec.initialEntities, hiddenIndices]);
 
-    const activePlugins = useMemo(() => {
+    const activeMods = useMemo(() => {
         const set = new Set<string>();
         const walk = (e: InitialEntity) => {
             for (const c of e.components) {
@@ -137,7 +137,7 @@ export function EditorPreview({
             ephemeralData: new Map(),
             environment,
             availableComponents: [],
-            activePlugins,
+            activeMods,
             // エディタは entity 操作を hook 経由で許可しない（編集はオーバーレイで definition を直接書き換える）
             createEntity: async () => null,
             patchEntity: () => {
@@ -151,7 +151,7 @@ export function EditorPreview({
             },
             isConnected: true,
         }),
-        [entities, environment, activePlugins],
+        [entities, environment, activeMods],
     );
 
     const socketValue: SocketContextValue = useMemo(
@@ -191,7 +191,7 @@ export function EditorPreview({
                 height: fillContainer ? '100%' : '70vh',
                 backgroundColor: environment.backgroundColor,
                 borderRadius: fillContainer ? 0 : 12,
-                // プラグインが大きな z-index (例: avatar:cursor=10100) を持つので、
+                // modが大きな z-index (例: avatar:cursor=10100) を持つので、
                 // プレビュー外（ヒエラルキー / インスペクタ / アセット等）に漏れて
                 // それらを覆わないよう、独立したスタッキングコンテキストに閉じ込める。
                 isolation: 'isolate',
@@ -199,7 +199,7 @@ export function EditorPreview({
         >
             <SocketContext.Provider value={socketValue}>
                 <WorldContext.Provider value={worldValue}>
-                    <PluginRegistryProvider>
+                    <ModRegistryProvider>
                         <PreviewStage
                             entities={entities}
                             environment={environment}
@@ -207,7 +207,7 @@ export function EditorPreview({
                             gridStep={gridStep}
                             onBackgroundMouseDown={onBackgroundMouseDown}
                         />
-                    </PluginRegistryProvider>
+                    </ModRegistryProvider>
                 </WorldContext.Provider>
             </SocketContext.Provider>
         </div>
@@ -216,7 +216,7 @@ export function EditorPreview({
 
 /**
  * world 座標系の絶対配置レイヤー。
- * 既存の EntityRenderer / WorkerPluginHost をそのまま使ってプラグインを動作させる。
+ * 既存の EntityRenderer / WorkerModHost をそのまま使ってmodを動作させる。
  */
 function PreviewStage({
     entities,
@@ -231,22 +231,22 @@ function PreviewStage({
     gridStep?: number;
     onBackgroundMouseDown?: () => void;
 }) {
-    const { pluginMap } = usePluginRegistry();
-    const { activePlugins } = useWorld();
+    const { modMap } = useModRegistry();
+    const { activeMods } = useWorld();
 
     const renderEntities = useMemo(
         () => Array.from(entities.keys()).map((id) => <EntityRenderer key={id} entityId={id} />),
         [entities],
     );
 
-    const singletonWorkerPlugins = useMemo(
+    const singletonWorkerMods = useMemo(
         () =>
-            Array.from(pluginMap.values()).filter((p) => {
-                if (!isWorkerPlugin(p) || !p.singleton) return false;
-                const pluginId = p.id.split(':')[0];
-                return pluginId ? activePlugins.includes(pluginId) : false;
+            Array.from(modMap.values()).filter((p) => {
+                if (!isWorkerMod(p) || !p.singleton) return false;
+                const modId = p.id.split(':')[0];
+                return modId ? activeMods.includes(modId) : false;
             }),
-        [pluginMap, activePlugins],
+        [modMap, activeMods],
     );
 
     const { width, height } = environment.worldSize;
@@ -284,13 +284,13 @@ function PreviewStage({
                 }}
             />
             {renderEntities}
-            {singletonWorkerPlugins.map((plugin) => {
-                if (!isWorkerPlugin(plugin)) return null;
-                const entity = Array.from(entities.values()).find((e) => e.type === plugin.id) ?? FALLBACK_ENTITY;
+            {singletonWorkerMods.map((mod) => {
+                if (!isWorkerMod(mod)) return null;
+                const entity = Array.from(entities.values()).find((e) => e.type === mod.id) ?? FALLBACK_ENTITY;
                 const { x, y, z, w, h } = entity.transform;
                 return (
                     <div
-                        key={plugin.id}
+                        key={mod.id}
                         style={{
                             position: 'absolute',
                             left: x,
@@ -301,7 +301,7 @@ function PreviewStage({
                             pointerEvents: 'none',
                         }}
                     >
-                        <WorkerPluginHost entityId={`singleton:${plugin.id}`} entity={entity} definition={plugin} />
+                        <WorkerModHost entityId={`singleton:${mod.id}`} entity={entity} definition={mod} />
                     </div>
                 );
             })}

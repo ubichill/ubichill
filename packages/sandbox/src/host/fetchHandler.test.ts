@@ -3,84 +3,84 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FetchErrorBody } from './fetchHandler';
 import {
     checkUrlAllowed,
-    createPluginFetchHandler,
+    createModFetchHandler,
     isUrlAllowed,
-    resolvePluginAssetUrl,
-    resolvePluginNamespaceUrl,
+    resolveModAssetUrl,
+    resolveModNamespaceUrl,
 } from './fetchHandler';
 
-describe('resolvePluginNamespaceUrl（プラグイン自身の公開名前空間 /plugins/<id>/）', () => {
+describe('resolveModNamespaceUrl（mod自身の公開名前空間 /mods/<id>/）', () => {
     const origin = 'http://localhost:3000';
 
-    it('自分の公開領域 /plugins/<id>/ 配下（api 含む）を許可する', () => {
-        expect(resolvePluginNamespaceUrl('/plugins/video-player/api/search?q=x', 'video-player', origin)).toBe(
-            'http://localhost:3000/plugins/video-player/api/search?q=x',
+    it('自分の公開領域 /mods/<id>/ 配下（api 含む）を許可する', () => {
+        expect(resolveModNamespaceUrl('/mods/video-player/api/search?q=x', 'video-player', origin)).toBe(
+            'http://localhost:3000/mods/video-player/api/search?q=x',
         );
     });
 
     it('コアの /api/v1 は名前空間外で null（本体 API 叩きは塞いだまま）', () => {
-        expect(resolvePluginNamespaceUrl('/api/v1/instances', 'video-player', origin)).toBeNull();
+        expect(resolveModNamespaceUrl('/api/v1/instances', 'video-player', origin)).toBeNull();
     });
 
-    it('他プラグインの名前空間は null（cross-plugin 禁止）', () => {
-        expect(resolvePluginNamespaceUrl('/plugins/pen/api/steal', 'video-player', origin)).toBeNull();
+    it('他modの名前空間は null（cross-mod 禁止）', () => {
+        expect(resolveModNamespaceUrl('/mods/pen/api/steal', 'video-player', origin)).toBeNull();
     });
 
-    it('prefix が同じ別プラグイン (pen-evil) には一致しない', () => {
-        expect(resolvePluginNamespaceUrl('/plugins/pen-evil/x', 'pen', origin)).toBeNull();
+    it('prefix が同じ別mod (pen-evil) には一致しない', () => {
+        expect(resolveModNamespaceUrl('/mods/pen-evil/x', 'pen', origin)).toBeNull();
     });
 
     it('../ での名前空間脱出は null', () => {
-        expect(resolvePluginNamespaceUrl('/plugins/video-player/../../api/v1/x', 'video-player', origin)).toBeNull();
+        expect(resolveModNamespaceUrl('/mods/video-player/../../api/v1/x', 'video-player', origin)).toBeNull();
     });
 
     it('別オリジンの絶対 URL は null', () => {
         expect(
-            resolvePluginNamespaceUrl('https://evil.example.com/plugins/video-player/api', 'video-player', origin),
+            resolveModNamespaceUrl('https://evil.example.com/mods/video-player/api', 'video-player', origin),
         ).toBeNull();
     });
 
-    it('pluginId / appOrigin 未指定は null', () => {
-        expect(resolvePluginNamespaceUrl('/plugins/x/api', undefined, origin)).toBeNull();
-        expect(resolvePluginNamespaceUrl('/plugins/x/api', 'x', undefined)).toBeNull();
+    it('modId / appOrigin 未指定は null', () => {
+        expect(resolveModNamespaceUrl('/mods/x/api', undefined, origin)).toBeNull();
+        expect(resolveModNamespaceUrl('/mods/x/api', 'x', undefined)).toBeNull();
     });
 });
 
-describe('resolvePluginAssetUrl（プラグインアセット領域への限定）', () => {
-    const base = 'https://cdn.example.com/plugins/pen/v2';
+describe('resolveModAssetUrl（modアセット領域への限定）', () => {
+    const base = 'https://cdn.example.com/mods/pen/v2';
 
-    it('相対 URL を pluginBase 配下に解決する', () => {
-        expect(resolvePluginAssetUrl('./stroke.json', base)).toBe('https://cdn.example.com/plugins/pen/v2/stroke.json');
-        expect(resolvePluginAssetUrl('data/x.png', base)).toBe('https://cdn.example.com/plugins/pen/v2/data/x.png');
+    it('相対 URL を modBase 配下に解決する', () => {
+        expect(resolveModAssetUrl('./stroke.json', base)).toBe('https://cdn.example.com/mods/pen/v2/stroke.json');
+        expect(resolveModAssetUrl('data/x.png', base)).toBe('https://cdn.example.com/mods/pen/v2/data/x.png');
     });
 
     it('ホスト内部 API を狙う先頭スラッシュ URL は領域外として null（抜け道を塞ぐ）', () => {
-        expect(resolvePluginAssetUrl('/api/v1/instances', base)).toBeNull();
+        expect(resolveModAssetUrl('/api/v1/instances', base)).toBeNull();
     });
 
     it('ディレクトリトラバーサルで base を抜ける URL は null', () => {
-        expect(resolvePluginAssetUrl('../../secret', base)).toBeNull();
-        expect(resolvePluginAssetUrl('../other-plugin/x', base)).toBeNull();
+        expect(resolveModAssetUrl('../../secret', base)).toBeNull();
+        expect(resolveModAssetUrl('../other-mod/x', base)).toBeNull();
     });
 
     it('別 origin の絶対 URL は null（外部として allowlist 検査に回す）', () => {
-        expect(resolvePluginAssetUrl('https://api.github.com/x', base)).toBeNull();
+        expect(resolveModAssetUrl('https://api.github.com/x', base)).toBeNull();
     });
 
-    it('pluginBase と同一 origin でも領域外パスは null', () => {
-        expect(resolvePluginAssetUrl('https://cdn.example.com/api/x', base)).toBeNull();
+    it('modBase と同一 origin でも領域外パスは null', () => {
+        expect(resolveModAssetUrl('https://cdn.example.com/api/x', base)).toBeNull();
     });
 
-    it('pluginBase が未指定なら常に null', () => {
-        expect(resolvePluginAssetUrl('./x.json', undefined)).toBeNull();
-        expect(resolvePluginAssetUrl('./x.json', '')).toBeNull();
+    it('modBase が未指定なら常に null', () => {
+        expect(resolveModAssetUrl('./x.json', undefined)).toBeNull();
+        expect(resolveModAssetUrl('./x.json', '')).toBeNull();
     });
 
-    it('プラグインが同一 origin ホストから配信されていても /api は領域外で null', () => {
-        // 例: dev で plugins が host と同一 origin に置かれるケース
-        const localBase = 'http://localhost:5173/plugins/pen/v2';
-        expect(resolvePluginAssetUrl('/api/v1/instances', localBase)).toBeNull();
-        expect(resolvePluginAssetUrl('./asset.js', localBase)).toBe('http://localhost:5173/plugins/pen/v2/asset.js');
+    it('modが同一 origin ホストから配信されていても /api は領域外で null', () => {
+        // 例: dev で mods が host と同一 origin に置かれるケース
+        const localBase = 'http://localhost:5173/mods/pen/v2';
+        expect(resolveModAssetUrl('/api/v1/instances', localBase)).toBeNull();
+        expect(resolveModAssetUrl('./asset.js', localBase)).toBe('http://localhost:5173/mods/pen/v2/asset.js');
     });
 });
 
@@ -119,14 +119,14 @@ describe('checkUrlAllowed', () => {
     });
 });
 
-describe('createPluginFetchHandler', () => {
+describe('createModFetchHandler', () => {
     afterEach(() => {
         vi.restoreAllMocks();
     });
 
     it('未許可ドメインは fetch を呼ばず 403 を返す', async () => {
         const spy = vi.spyOn(globalThis, 'fetch');
-        const handler = createPluginFetchHandler(['api.github.com']);
+        const handler = createModFetchHandler(['api.github.com']);
         const res = await handler('https://evil.example.com/steal');
 
         expect(spy).not.toHaveBeenCalled();
@@ -134,13 +134,13 @@ describe('createPluginFetchHandler', () => {
         expect(res.status).toBe(403);
         const body = JSON.parse(res.body) as FetchErrorBody;
         expect(body.error.code).toBe(UbiErrorCode.FETCH_DOMAIN_NOT_ALLOWED);
-        // 拒否時は許可ドメイン一覧を返し、プラグイン側が理由を判別できる
+        // 拒否時は許可ドメイン一覧を返し、mod側が理由を判別できる
         expect(body.error.allowedDomains).toEqual(['api.github.com']);
     });
 
     it('許可ドメインは実 fetch を実行して結果を返す', async () => {
         vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('hello', { status: 200, statusText: 'OK' }));
-        const handler = createPluginFetchHandler(['api.github.com']);
+        const handler = createModFetchHandler(['api.github.com']);
         const res = await handler('https://api.github.com/ok');
 
         expect(res.ok).toBe(true);

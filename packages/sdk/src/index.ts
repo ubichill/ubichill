@@ -1,15 +1,15 @@
 /**
- * @ubichill/sdk — Plugin developer public API
+ * @ubichill/sdk — Mod developer public API
  *
- * プラグイン開発者はここから import するだけで完結する。
- * 内部実装は @ubichill/engine / @ubichill/sandbox に分離されている。
+ * mod開発者はここから import するだけで完結する。
+ * 内部実装は @ubichill/ecs / @ubichill/sandbox に分離されている。
  *
  * Worker-safe（React・DOM 非依存）。
- * React / Host 側 API は '@ubichill/sdk/react' から。
+ * React / Host 側 API は Host パッケージ（@ubichill/react）に分離されている。
  */
 
 // ECS + メッセージング型
-export * from '@ubichill/engine';
+export * from '@ubichill/ecs';
 // プロトコル型（@ubichill/shared より選択的に re-export）
 export type {
     AvailableComponent,
@@ -18,8 +18,8 @@ export type {
     CmdCanvasCommitStroke,
     CmdCanvasFrame,
     CmdLog,
-    CmdNetFetch,
     CmdNetworkBroadcast,
+    CmdNetworkFetch,
     CmdNetworkSendToHost,
     CmdReady,
     CmdSceneCreateEntity,
@@ -56,14 +56,14 @@ export type {
     InputMouseMoveData,
     InputMouseUpData,
     InputScrollData,
-    PluginCommand,
-    PluginEvent,
-    PluginGuestCommand,
-    PluginHostEvent,
-    PluginWorkerMessage,
+    ModCommand,
+    ModEvent,
+    ModGuestCommand,
+    ModHostEvent,
+    ModWorkerMessage,
     RpcCreateEntityResult,
     RpcGetEntityResult,
-    RpcNetFetchResult,
+    RpcNetworkFetchResult,
     TickCallback,
     User,
     UserJoinedCallback,
@@ -72,9 +72,10 @@ export type {
     WorldEntity,
     WorldEnvironmentData,
 } from '@ubichill/shared';
-// 統一エラー体系: プラグインは UbiError / UbiErrorCode で失敗理由を判別できる
+// 統一エラー体系: modは UbiError / UbiErrorCode で失敗理由を判別できる
 export { UbiError, UbiErrorCode } from '@ubichill/shared';
-// UbiSDK クラス + 型
+export type { Player, State, Ubi, Ui } from './ubi';
+// UbiSDK クラス（実装） + mod 向け公開型
 export { UbiSDK } from './ubi';
 export type { EmitOptions, EmitScope, EventRegistry } from './ubi/event';
 export type { Grip, GripOptions } from './ubi/grip';

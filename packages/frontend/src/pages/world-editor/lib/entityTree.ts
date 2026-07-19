@@ -110,7 +110,7 @@ export function buildUniqueEntityId(seed: string, taken: Iterable<string>): stri
  *   "foo-bar"  + ["foo-bar"]      → "foo-bar2"
  *   "hoge"     + ["hoge","hoge2"] → "hoge3"
  *
- * `buildUniqueEntityId` (`hoge-2` 形式) は plugin から spawn される ECS Entity
+ * `buildUniqueEntityId` (`hoge-2` 形式) は mod から spawn される ECS Entity
  * 識別子向けで kebab を強制するため、ユーザー rename 用とは別。
  */
 export function ensureUniqueName(desired: string, taken: Iterable<string>): string {

@@ -1,8 +1,8 @@
-import type { WorkerPluginDefinition } from '@ubichill/react';
-import { HoldProvider, isWorkerPlugin, useSocket, useWorld, WorkerPluginHost } from '@ubichill/react';
+import type { WorkerModDefinition } from '@ubichill/react';
+import { HoldProvider, isWorkerMod, useSocket, useWorld, WorkerModHost } from '@ubichill/react';
 import type { ComponentInstance } from '@ubichill/shared';
 import { useMemo } from 'react';
-import { usePluginRegistry } from '@/plugins/PluginRegistryContext';
+import { useModRegistry } from '@/mods/ModRegistryContext';
 import { Z_INDEX } from '@/styles/layers';
 import { EntityRenderer } from './EntityRenderer';
 
@@ -17,18 +17,18 @@ const FALLBACK_ENTITY: ComponentInstance = {
 
 export const InstanceRenderer: React.FC = () => {
     const { isConnected } = useSocket();
-    const { entities, environment, activePlugins } = useWorld();
-    const { pluginMap } = usePluginRegistry();
+    const { entities, environment, activeMods } = useWorld();
+    const { modMap } = useModRegistry();
 
     // フックは早期 return より前にすべて宣言する（Rules of Hooks）
-    const singletonWorkerPlugins = useMemo(
+    const singletonWorkerMods = useMemo(
         () =>
-            Array.from(pluginMap.values()).filter((p) => {
-                if (!isWorkerPlugin(p) || !p.singleton) return false;
-                const pluginId = p.id.split(':')[0];
-                return pluginId ? activePlugins.includes(pluginId) : false;
+            Array.from(modMap.values()).filter((p) => {
+                if (!isWorkerMod(p) || !p.singleton) return false;
+                const modId = p.id.split(':')[0];
+                return modId ? activeMods.includes(modId) : false;
             }),
-        [pluginMap, activePlugins],
+        [modMap, activeMods],
     );
 
     const renderEntities = useMemo(
@@ -64,8 +64,8 @@ export const InstanceRenderer: React.FC = () => {
                     }}
                 >
                     {renderEntities}
-                    {singletonWorkerPlugins.map((plugin) => {
-                        const def = plugin as WorkerPluginDefinition;
+                    {singletonWorkerMods.map((mod) => {
+                        const def = mod as WorkerModDefinition;
                         const entity = Array.from(entities.values()).find((e) => e.type === def.id) ?? FALLBACK_ENTITY;
                         const { x, y, z, w, h } = entity.transform;
                         return (
@@ -81,7 +81,7 @@ export const InstanceRenderer: React.FC = () => {
                                     pointerEvents: 'none',
                                 }}
                             >
-                                <WorkerPluginHost entityId={`singleton:${def.id}`} entity={entity} definition={def} />
+                                <WorkerModHost entityId={`singleton:${def.id}`} entity={entity} definition={def} />
                             </div>
                         );
                     })}

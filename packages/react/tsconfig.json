@@ -16,14 +16,17 @@
     "jsx": "react-jsx",
     "declaration": true,
     "paths": {
-      "@ubichill/engine": [
-        "../engine/src/index.ts"
+      "@ubichill/ecs": [
+        "../ecs/src/index.ts"
       ],
       "@ubichill/sandbox": [
         "../sandbox/src/index.ts"
       ],
       "@ubichill/shared": [
         "../shared/src/index.ts"
+      ],
+      "@ubichill/ui-renderer": [
+        "../ui-renderer/src/index.ts"
       ]
     }
   },

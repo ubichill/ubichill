@@ -7,9 +7,10 @@
   "packageManager": "pnpm@10.33.2",
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "docker:up": "node scripts/start-plugins.mjs up -d",
-    "docker:down": "node scripts/start-plugins.mjs down",
+    "docker:up": "node scripts/start-mods.mjs up -d",
+    "docker:down": "node scripts/start-mods.mjs down",
     "build:workers": "node scripts/build-workers.mjs",
+    "docs:capabilities": "node scripts/gen-capability-docs.mjs",
     "build": "node scripts/build-workers.mjs && turbo build",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",

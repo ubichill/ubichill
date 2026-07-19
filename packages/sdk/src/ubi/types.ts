@@ -1,11 +1,11 @@
-import type { PluginGuestCommand, VNode } from '@ubichill/shared';
+import type { ModGuestCommand, VNode } from '@ubichill/shared';
 
 export type { VNode };
 
 export type OmitId<T> = T extends unknown ? Omit<T, 'id'> : never;
 
-export type SendFn = (cmd: OmitId<PluginGuestCommand>) => void;
-export type RpcFn = <T>(cmd: OmitId<PluginGuestCommand>) => Promise<T>;
+export type SendFn = (cmd: OmitId<ModGuestCommand>) => void;
+export type RpcFn = <T>(cmd: OmitId<ModGuestCommand>) => Promise<T>;
 
 export type UiRenderCostStat = {
     targetId: string;

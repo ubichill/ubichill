@@ -1,8 +1,8 @@
-import { isWorkerPlugin, useHold, useSocket, useWorld, WorkerPluginHost } from '@ubichill/react';
+import { isWorkerMod, useHold, useSocket, useWorld, WorkerModHost } from '@ubichill/react';
 import type React from 'react';
 import { useEffect, useRef } from 'react';
 import { Z_INDEX } from '@/styles/layers';
-import { usePluginRegistry } from '../plugins/PluginRegistryContext';
+import { useModRegistry } from '../mods/ModRegistryContext';
 import { HeldEntityPositionRegistry } from './HeldEntityPositionRegistry';
 import { readHeldOffset } from './heldOffset';
 
@@ -11,7 +11,7 @@ interface EntityRendererProps {
 }
 
 /**
- * Worker プラグイン エンティティ用ホスト。
+ * Worker mod エンティティ用ホスト。
  *
  * 通常: useSocket を購読しないことでカーソル移動などの再レンダーを避ける。
  *
@@ -19,27 +19,27 @@ interface EntityRendererProps {
  *  - 自分が持っている: pointermove を直接 listen して div.style を更新（React 再レンダーなし）
  *  - 他ユーザーが持っている: HeldEntityPositionRegistry から通知を受けて div.style を更新
  *
- * いずれも既存の WorkerPluginHost (= Worker プロセス) はそのまま使うため、
+ * いずれも既存の WorkerModHost (= Worker プロセス) はそのまま使うため、
  * 新しい Worker は起動しない。DOM ノードの position を変えるだけ。
  */
 export const EntityRenderer: React.FC<EntityRendererProps> = ({ entityId }) => {
     const { entities } = useWorld();
-    const { pluginMap, loadPlugin } = usePluginRegistry();
+    const { modMap, loadMod } = useModRegistry();
 
     const entity = entities.get(entityId);
     const entityType = entity?.type;
-    const plugin = entityType ? pluginMap.get(entityType) : undefined;
+    const mod = entityType ? modMap.get(entityType) : undefined;
 
     // avoid starting network loads during render — schedule via effect
     useEffect(() => {
-        if (entityType && !plugin) loadPlugin(entityType);
-    }, [plugin, entityType, loadPlugin]);
+        if (entityType && !mod) loadMod(entityType);
+    }, [mod, entityType, loadMod]);
 
     if (!entity) return null;
-    if (!plugin) return null;
-    if (!isWorkerPlugin(plugin)) return null;
+    if (!mod) return null;
+    if (!isWorkerMod(mod)) return null;
     // singleton は InstanceRenderer 側で起動するためここではスキップ
-    if (plugin.singleton) return null;
+    if (mod.singleton) return null;
 
     return <EntityRendererInner entityId={entityId} />;
 };
@@ -50,16 +50,16 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({ entityId }) => {
  */
 const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
     const { entities } = useWorld();
-    const { pluginMap } = usePluginRegistry();
+    const { modMap } = useModRegistry();
     const { held, heldRef } = useHold();
     const { currentUser, users } = useSocket();
     const divRef = useRef<HTMLDivElement>(null);
 
     // hook の呼び出し順序を Rules of Hooks に揃えるため、null guard は最後に行う。
-    // 途中の値は entity/plugin が無くてもデフォルトを保つように書く。
+    // 途中の値は entity/mod が無くてもデフォルトを保つように書く。
     const entity = entities.get(entityId);
-    const plugin = entity ? pluginMap.get(entity.type) : null;
-    const isWorker = plugin !== undefined && plugin !== null && isWorkerPlugin(plugin);
+    const mod = entity ? modMap.get(entity.type) : null;
+    const isWorker = mod !== undefined && mod !== null && isWorkerMod(mod);
 
     // 自分が持っているか
     const isHeldByMe = !!entity && held?.entityId === entityId;
@@ -153,11 +153,11 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
     }, [isHeldByOther, holderId, entityId, entity?.transform.x, entity?.transform.y]); // users は意図的に除外（初期値のみ使用）
 
     // null guard はすべての hook 呼び出しの後
-    if (!entity || !plugin || !isWorker) return null;
+    if (!entity || !mod || !isWorker) return null;
 
     // ── スタイル計算 ──────────────────────────────────────────────────────
-    const workerPlugin = plugin; // isWorkerPlugin チェック済み
-    const isCanvas = (workerPlugin.canvasTargets?.length ?? 0) > 0;
+    const workerMod = mod; // isWorkerMod チェック済み
+    const isCanvas = (workerMod.canvasTargets?.length ?? 0) > 0;
     const { x, y, z, w, h, scale, rotation } = entity.transform;
     const sized = w > 0 && h > 0;
 
@@ -187,10 +187,10 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
         <div ref={divRef} style={wrapperStyle}>
             {/* key に component 型を含める: エディタの entityId は位置ベース (`edit-0-0-c0`) で、
                 編集・並べ替えで同じ id の type が screen ⇄ controls と入れ替わることがある。
-                key を型に紐付けないと WorkerPluginHost が再利用され、前の worker が描画した
+                key を型に紐付けないと WorkerModHost が再利用され、前の worker が描画した
                 UI (vnodes) が残って「screen なのに controls の UI」になる。型が変われば
                 remount して worker と UI 状態をクリーンに作り直す。 */}
-            <WorkerPluginHost key={workerPlugin.id} entityId={entityId} entity={entity} definition={workerPlugin} />
+            <WorkerModHost key={workerMod.id} entityId={entityId} entity={entity} definition={workerMod} />
         </div>
     );
 };

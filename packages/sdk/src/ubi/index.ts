@@ -1,12 +1,12 @@
-import type { EcsWorld, System, WorkerEvent } from '@ubichill/engine';
-import { EcsEventType, EcsWorldImpl } from '@ubichill/engine';
+import type { EcsWorld, System, WorkerEvent } from '@ubichill/ecs';
+import { EcsEventType, EcsWorldImpl } from '@ubichill/ecs';
 import {
     CommandType,
     type ComponentInstance,
     type FetchOptions,
-    type PluginGuestCommand,
-    type PluginHostEvent,
-    type PluginWorkerMessage,
+    type ModGuestCommand,
+    type ModHostEvent,
+    type ModWorkerMessage,
     UbiError,
     UbiErrorCode,
 } from '@ubichill/shared';
@@ -31,7 +31,31 @@ import { createUiModule } from './ui';
 import type { WorldModule } from './world';
 import { createWorldModule } from './world';
 
-export type { OmitId, PluginWorkerMessage, UiRenderCostStat };
+export type { OmitId, ModWorkerMessage, UiRenderCostStat };
+
+// ── mod 向け公開サーフェス ───────────────────────────────────
+// 規約: `_`接頭のメンバは「内部」。mod に見せる型からは一律で除く。
+// `Omit` はメソッドのジェネリクス（例: state.sync<T>）を保持するので安全。
+
+/** `Ubi.ui` の公開面（内部レンダーキュー操作 `_*` を含まない）。 */
+export type Ui = Omit<UiModule, `_${string}`>;
+/** `Ubi.player` の公開面（イベントハンドラ等の内部アクセサ `_*` を含まない）。 */
+export type Player = Omit<PlayerModule, `_${string}`>;
+/** `Ubi.state` の公開面（バインディング列挙 `_*` を含まない）。 */
+export type State = Omit<StateModule, `_${string}`>;
+
+/**
+ * mod 開発者に見せる `Ubi` グローバルの型。
+ *
+ * `sandbox.worker.ts` は実体として {@link UbiSDK} を注入するが、mod からは
+ * 内部ライフサイクル（`_dispatchEvent` 等）やモジュール内部メソッド（`_`接頭）を
+ * 触れないよう、この公開型のみを `import('@ubichill/sdk').Ubi` で参照する。
+ */
+export type Ubi = Omit<UbiSDK, `_${string}` | 'ui' | 'player' | 'state'> & {
+    readonly ui: Ui;
+    readonly player: Player;
+    readonly state: State;
+};
 
 /** EVT_INPUT の type 文字列マッピング（毎フレーム再生成を回避） */
 const INPUT_TYPE_MAP: Readonly<Record<string, string>> = {
@@ -52,7 +76,7 @@ type PendingRequest = {
 };
 
 /**
- * Ubichill Plugin SDK のメインクラス。Sandbox Worker 内では `Ubi` として注入される。
+ * Ubichill Mod SDK のメインクラス。Sandbox Worker 内では `Ubi` として注入される。
  *
  * Public API surface:
  *   Ubi.state.*     — 宣言的リアクティブ状態 (sync の options で挙動切替)
@@ -74,7 +98,7 @@ export class UbiSDK {
     private _commandCounter = 0;
     private _pendingRequests = new Map<string, PendingRequest>();
     private _rpcTimeout: number;
-    private readonly _sendToHost: (cmd: PluginGuestCommand) => void;
+    private readonly _sendToHost: (cmd: ModGuestCommand) => void;
 
     // ── ECS ──────────────────────────────────────────────────
     private _pendingWorkerEvents: WorkerEvent[] = [];
@@ -85,38 +109,49 @@ export class UbiSDK {
     private _pendingStateFlushes = new Set<() => void>();
     private _initialEntities: ComponentInstance[] = [];
 
-    // ── Plugin identity (sandbox.worker.ts が設定) ──────────
+    // ── Mod identity (sandbox.worker.ts が設定) ──────────
+    /** この mod が動いているワールドの id。 */
     public worldId?: string;
+    /** 自分（このクライアント）のユーザー id。`player.for` 等で自他を判定するのに使う。 */
     public myUserId?: string;
-    public pluginId?: string;
+    /** この mod（配布単位）の id。 */
+    public modId?: string;
     /** 自 Worker (= 1 Component インスタンス) を識別する flat ID。 */
     public componentInstanceId?: string;
     /** 自 Worker が乗っている Entity (GameObject) の id。Pure ECS 用語の Entity に対応。 */
     public entityId?: string;
-    /** 自 Worker の Component 型 (`pluginId:componentName`) */
+    /** 自 Worker の Component 型 (`modId:componentName`) */
     public componentType?: string;
-    public pluginBase = '';
+    public modBase = '';
     public watchEntityTypes: string[] = [];
 
     // ── Public API modules ───────────────────────────────────
+    /** 宣言的リアクティブ状態。`define` でスキーマを作り `sync` で同期範囲（共有/永続/ユーザー別）を指定する。 */
     public readonly state: StateModule;
+    /** イベント送受信。`sendToHost`（本体へ）/`broadcast`（他ユーザーへ）/`emit`（同タブ内他Worker）と型付き `define`。 */
     public readonly event: EventModule;
+    /** UI 描画。`render` で VNode を描き、`showToast` で通知を出す。 */
     public readonly ui: UiModule;
+    /** メディア再生。動画/音声/HLS の読み込みと再生/停止/シーク/音量。 */
     public readonly media: MediaModule;
+    /** 共有キャンバス描画。`frame` で描画フレーム、`commitStroke` でストローク確定。 */
     public readonly canvas: CanvasModule;
+    /** プレイヤー情報。`others`/`all` で参加者、`scroll` でスクロール位置、`syncCursor` でカーソル同期。 */
     public readonly player: PlayerModule;
+    /** エンティティ操作。`Ubi.entity()` で自身、`Ubi.entity(id)` で他を参照し、`query`/`get`/`spawn` で操作する。 */
     public readonly entity: EntityModule;
+    /** 「掴む」操作。ペン等のドラッグ/press ライフサイクルを宣言的に扱う。 */
     public readonly grip: GripModule;
-    /** @internal Ubi.state / Ubi.entity の実装で使用。プラグインからは Ubi.entity 経由で操作する。 */
+    /** @internal Ubi.state / Ubi.entity の実装で使用。modからは Ubi.entity 経由で操作する。 */
     private readonly _world: WorldModule;
 
-    constructor(postMessage: (cmd: PluginGuestCommand) => void, options?: { rpcTimeout?: number }) {
+    constructor(postMessage: (cmd: ModGuestCommand) => void, options?: { rpcTimeout?: number }) {
         this._sendToHost = postMessage;
         this._rpcTimeout = options?.rpcTimeout ?? 10_000;
         this._local = new EcsWorldImpl();
 
-        const send = (cmd: OmitId<PluginGuestCommand>): void => this._send(cmd);
-        const rpc = <T>(cmd: OmitId<PluginGuestCommand>): Promise<T> => this._rpc<T>(cmd);
+        const send = (cmd: OmitId<ModGuestCommand>): void => this._send(cmd);
+        const rpc = <T>(cmd: OmitId<ModGuestCommand>): Promise<T> => this._rpc<T>(cmd);
 
         this.player = createPlayerModule(send, () => this.myUserId);
         this.ui = createUiModule(send, () => this._isTicking, _beginRender, _clearTarget);
@@ -126,14 +161,14 @@ export class UbiSDK {
             updateEntity: (id, patch) => this._world.update(id, patch),
             getMyUserId: () => this.myUserId,
             getEntityId: () => this.entityId,
-            getPluginId: () => this.pluginId,
+            getModId: () => this.modId,
             getComponentType: () => this.componentType,
             getWatchEntityTypes: () => this.watchEntityTypes,
-            getPresenceUsers: () => this.player.getPresenceUsers(),
-            getLocalSharedState: () => this.player.getLocalSharedState(),
-            getScrollX: () => this.player.getScrollX(),
-            getScrollY: () => this.player.getScrollY(),
-            getForEachUserComponents: () => this.player.getForEachUserComponents(),
+            getPresenceUsers: () => this.player._getPresenceUsers(),
+            getLocalSharedState: () => this.player._getLocalSharedState(),
+            getScrollX: () => this.player._getScrollX(),
+            getScrollY: () => this.player._getScrollY(),
+            getForEachUserComponents: () => this.player._getForEachUserComponents(),
             registerPendingFlush: (fn) => this._pendingStateFlushes.add(fn),
             getInitialEntities: () => this._initialEntities,
             beginRender: _beginRender,
@@ -173,7 +208,7 @@ export class UbiSDK {
                 return unsub;
             },
             sendGripCommand: (payload) => {
-                // _send は OmitId<PluginGuestCommand> を受け取り内部で _sendToHost を呼ぶ。
+                // _send は OmitId<ModGuestCommand> を受け取り内部で _sendToHost を呼ぶ。
                 // CmdGrip は fire-and-forget で id を持たないので OmitId<...> として直接渡せる。
                 this._send({ type: CommandType.CMD_GRIP, payload });
             },
@@ -211,21 +246,21 @@ export class UbiSDK {
      * ドメインの初回承認はユーザーの応答待ちになるため、通常 RPC より長いタイムアウトを使う。
      */
     public fetch(url: string, options?: FetchOptions): Promise<unknown> {
-        return this._rpc({ type: CommandType.NET_FETCH, payload: { url, options } }, UbiSDK.FETCH_RPC_TIMEOUT_MS);
+        return this._rpc({ type: CommandType.NETWORK_FETCH, payload: { url, options } }, UbiSDK.FETCH_RPC_TIMEOUT_MS);
     }
 
     // ── Transport ─────────────────────────────────────────────
 
-    private _send(command: OmitId<PluginGuestCommand>): void {
-        this._sendToHost(command as PluginGuestCommand);
+    private _send(command: OmitId<ModGuestCommand>): void {
+        this._sendToHost(command as ModGuestCommand);
     }
 
-    private _rpc<T>(command: OmitId<PluginGuestCommand>, timeoutMs = this._rpcTimeout): Promise<T> {
+    private _rpc<T>(command: OmitId<ModGuestCommand>, timeoutMs = this._rpcTimeout): Promise<T> {
         const id = `rpc_${this._commandCounter++}`;
         return new Promise<T>((resolve, reject) => {
             const timer = setTimeout(() => {
                 this._pendingRequests.delete(id);
-                const prefix = this.pluginId ? `[UbiSDK:${this.pluginId}]` : '[UbiSDK]';
+                const prefix = this.modId ? `[UbiSDK:${this.modId}]` : '[UbiSDK]';
                 reject(
                     new UbiError(
                         UbiErrorCode.RPC_TIMEOUT,
@@ -244,18 +279,26 @@ export class UbiSDK {
                     reject(code ? new UbiError(code, error) : new Error(error));
                 },
             });
-            this._sendToHost({ ...command, id } as PluginGuestCommand);
+            this._sendToHost({ ...command, id } as ModGuestCommand);
         });
     }
 
     // ── ECS ───────────────────────────────────────────────────
 
+    /**
+     * ECS System を登録する。毎フレーム `(world, deltaTime, events)` で呼ばれる。
+     * mod のロジックの実行単位で、`events` には入力・イベント・エンティティ更新が届く。
+     */
     public registerSystem(system: System): void {
         this._local.registerSystem(system);
     }
 
     // ── Logging ───────────────────────────────────────────────
 
+    /**
+     * Host のコンソール/診断へログを出す。mod 内の `console.log` もここへリダイレクトされる。
+     * @param level 既定は `'info'`。
+     */
     public log(message: string, level: 'debug' | 'info' | 'warn' | 'error' = 'info'): void {
         this._send({ type: CommandType.CMD_LOG, payload: { level, message } });
     }
@@ -268,7 +311,7 @@ export class UbiSDK {
     }
 
     /** @internal sandbox.worker.ts から全ホストイベントをここに流す */
-    public _dispatchEvent(event: PluginHostEvent): void {
+    public _dispatchEvent(event: ModHostEvent): void {
         switch (event.type) {
             case 'EVT_LIFECYCLE_TICK': {
                 try {
@@ -287,7 +330,7 @@ export class UbiSDK {
             }
             case 'EVT_PLAYER_JOINED': {
                 const { user } = event.payload;
-                this.player.handlePlayerJoined(user);
+                this.player._handlePlayerJoined(user);
                 this._pendingWorkerEvents.push({
                     type: EcsEventType.PLAYER_JOINED,
                     payload: user,
@@ -297,8 +340,8 @@ export class UbiSDK {
             }
             case 'EVT_PLAYER_LEFT': {
                 const { userId } = event.payload;
-                this.player.handlePlayerLeft(userId);
-                for (const componentName of this.player.getForEachUserComponents()) {
+                this.player._handlePlayerLeft(userId);
+                for (const componentName of this.player._getForEachUserComponents()) {
                     this.ui._unmountUi(this.ui._buildEntityTargetId(`user:${userId}`, componentName));
                 }
                 this._pendingWorkerEvents.push({
@@ -311,7 +354,7 @@ export class UbiSDK {
             case 'EVT_PLAYER_CURSOR_MOVED': {
                 const { userId, position } = event.payload;
                 const incoming = (event.payload as { sharedState?: Record<string, unknown> }).sharedState;
-                this.player.handleCursorMoved(userId, position, incoming);
+                this.player._handleCursorMoved(userId, position, incoming);
                 this._pendingWorkerEvents.push({
                     type: EcsEventType.PLAYER_CURSOR_MOVED,
                     payload: { userId, position },
@@ -349,7 +392,7 @@ export class UbiSDK {
                 const entity = event.payload.entity as ComponentInstance | undefined;
                 const entityType = event.payload.entityType;
                 if (entity) {
-                    for (const binding of this.state.getStateBindings()) {
+                    for (const binding of this.state._getStateBindings()) {
                         if (binding.watchType !== entityType) continue;
                         const existingId = binding.getTargetId();
                         if (!existingId) {
@@ -371,7 +414,7 @@ export class UbiSDK {
             case 'EVT_NETWORK_BROADCAST':
                 if (event.payload.type === 'presence:sharedState') {
                     const d = event.payload.data as { sharedState: Record<string, unknown> };
-                    this.player.handlePresenceSharedState(event.payload.userId, d.sharedState);
+                    this.player._handlePresenceSharedState(event.payload.userId, d.sharedState);
                 } else {
                     this._pendingWorkerEvents.push({
                         type: event.payload.type,
@@ -385,10 +428,10 @@ export class UbiSDK {
                 for (const inputEvent of event.payload.events) {
                     if (inputEvent.type === 'SCROLL') {
                         const d = inputEvent.data as { x: number; y: number };
-                        this.player.handleScrollInput(d.x, d.y, now);
+                        this.player._handleScrollInput(d.x, d.y, now);
                     } else if (inputEvent.type === 'MOUSE_MOVE') {
                         const d = inputEvent.data as { viewportX: number; viewportY: number };
-                        this.player.handleMouseMoveInput(d.viewportX, d.viewportY, now);
+                        this.player._handleMouseMoveInput(d.viewportX, d.viewportY, now);
                     }
                     this._pendingWorkerEvents.push({
                         type: INPUT_TYPE_MAP[inputEvent.type],

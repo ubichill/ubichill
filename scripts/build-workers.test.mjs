@@ -20,27 +20,27 @@ describe('detectCapabilities（Ubi API の静的検出）', () => {
         expect(caps).toContain('scene:update');
     });
 
-    it('.broadcast( から net:broadcast、.sendToHost( から net:host-message を検出する', () => {
+    it('.broadcast( から event:broadcast、.sendToHost( から host:message を検出する', () => {
         const caps = detectCapabilities('Ubi.event.broadcast("x", {}); Ubi.event.sendToHost("user:update", {});');
-        expect(caps).toContain('net:broadcast');
-        expect(caps).toContain('net:host-message');
-        expect(caps).toContain('net:emit');
+        expect(caps).toContain('event:broadcast');
+        expect(caps).toContain('host:message');
+        expect(caps).toContain('event:emit');
     });
 
-    it('Ubi.canvas → canvas:draw、Ubi.media → video:control', () => {
+    it('Ubi.canvas → canvas:draw、Ubi.media → media:control', () => {
         expect(detectCapabilities('Ubi.canvas.frame();')).toContain('canvas:draw');
-        expect(detectCapabilities('Ubi.media.play("t");')).toContain('video:control');
+        expect(detectCapabilities('Ubi.media.play("t");')).toContain('media:control');
     });
 
     it('Ubi API を使わないコードは空配列を返す', () => {
         expect(detectCapabilities('const x = 1 + 2; console.log(x);')).toEqual([]);
     });
 
-    it('emit だけのプラグインは host-message / broadcast を申告しない（過剰にならない）', () => {
+    it('emit だけのmodは host-message / broadcast を申告しない（過剰にならない）', () => {
         const caps = detectCapabilities('Ubi.event.emit("tick", {});');
-        expect(caps).toContain('net:emit');
-        expect(caps).not.toContain('net:broadcast');
-        expect(caps).not.toContain('net:host-message');
+        expect(caps).toContain('event:emit');
+        expect(caps).not.toContain('event:broadcast');
+        expect(caps).not.toContain('host:message');
     });
 
     it('結果はソート済み・重複なし', () => {

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 export type StageStatus = 'pending' | 'active' | 'done' | 'error';
 
-export type StageId = 'auth' | 'connect' | 'join' | 'plugins' | 'workers';
+export type StageId = 'auth' | 'connect' | 'join' | 'mods' | 'workers';
 
 export interface LoadingStage {
     id: StageId;
@@ -23,8 +23,8 @@ interface UseInstanceLoadingParams {
     isJoined: boolean;
     /** Socket / join のエラー文字列 */
     error: string | null;
-    /** プラグイン（worker コード）ダウンロード進捗 */
-    plugins: { completed: number; total: number };
+    /** mod（worker コード）ダウンロード進捗 */
+    mods: { completed: number; total: number };
     /** ワーカー起動進捗 */
     workers: { ready: number; total: number };
 }
@@ -45,11 +45,11 @@ export interface InstanceLoadingState {
 
 /** 接続〜起動までの全体タイムアウト。これを超えたら失敗扱いでロビーへ戻す。 */
 const TIMEOUT_MS = 25000;
-/** join 直後にプラグイン登録を待つ猶予（シーン受信→loadPlugin までのラグを吸収）。 */
+/** join 直後にmod登録を待つ猶予（シーン受信→loadMod までのラグを吸収）。 */
 const GRACE_MS = 600;
 /**
- * join 後にプラグイン/ワーカーの完了を待つ上限。これを過ぎたら揃っていなくても入室する。
- * プラグイン（例: 動画 worker が QUIC アイドルで ready を返さない）に入室をブロックさせないため、
+ * join 後にmod/ワーカーの完了を待つ上限。これを過ぎたら揃っていなくても入室する。
+ * mod（例: 動画 worker が QUIC アイドルで ready を返さない）に入室をブロックさせないため、
  * 待ち時間を短く頭打ちにする。速く揃えば従来通り滑らかにフェードする。
  */
 const WORKER_WAIT_MS = 8000;
@@ -58,7 +58,7 @@ const STAGE_LABELS: Record<StageId, string> = {
     auth: '認証',
     connect: 'サーバーへ接続',
     join: 'ワールドに参加',
-    plugins: 'プラグインのダウンロード',
+    mods: 'modのダウンロード',
     workers: 'ワーカーの初期化',
 };
 
@@ -73,7 +73,7 @@ export function useInstanceLoading({
     isConnected,
     isJoined,
     error,
-    plugins,
+    mods,
     workers,
 }: UseInstanceLoadingParams): InstanceLoadingState {
     const [graceDone, setGraceDone] = useState(false);
@@ -104,7 +104,7 @@ export function useInstanceLoading({
         return () => clearTimeout(timer);
     }, [instanceId]);
 
-    // join 後の猶予タイマー（プラグインが登録される時間を確保）と、
+    // join 後の猶予タイマー（modが登録される時間を確保）と、
     // worker を待つ上限タイマー（上限超過で待たずに入室する）。
     useEffect(() => {
         if (!isJoined) {
@@ -123,24 +123,24 @@ export function useInstanceLoading({
         };
     }, [isJoined]);
 
-    const pluginsPending = plugins.total - plugins.completed;
+    const modsPending = mods.total - mods.completed;
     const workersPending = workers.total - workers.ready;
 
     const stageDone: Record<StageId, boolean> = {
         auth: !isAuthPending,
         connect: !isAuthPending && isConnected,
         join: isConnected && isJoined,
-        plugins: isJoined && graceDone && pluginsPending <= 0,
+        mods: isJoined && graceDone && modsPending <= 0,
         workers: isJoined && graceDone && workersPending <= 0,
     };
 
-    const order: StageId[] = ['auth', 'connect', 'join', 'plugins', 'workers'];
+    const order: StageId[] = ['auth', 'connect', 'join', 'mods', 'workers'];
     const activeIndex = order.findIndex((id) => !stageDone[id]);
     const complete = activeIndex === -1;
 
     // 失敗判定（一度確定したら latch する）。
     // タイムアウトでロビーに戻すのは「まだ join できていない（=本当に入れていない）」
-    // 場合だけにする。join 済みなら instance には入れているので、プラグイン/ワーカーが
+    // 場合だけにする。join 済みなら instance には入れているので、mod/ワーカーが
     // 25 秒で揃わなくても（例: 動画ストリームの QUIC アイドルタイムアウトで worker が
     // ready を返さない等）ロビーに蹴り返さず、そのまま入室を維持する。
     useEffect(() => {
@@ -154,8 +154,8 @@ export function useInstanceLoading({
 
     const failed = failureMessage !== null;
 
-    // join 済みなら、プラグイン/ワーカーの完了を待たずに入室する条件を緩める:
-    //   - worker 待ち上限を過ぎた（プラグインに入室をブロックさせない）
+    // join 済みなら、mod/ワーカーの完了を待たずに入室する条件を緩める:
+    //   - worker 待ち上限を過ぎた（modに入室をブロックさせない）
     //   - もしくは全体タイムアウトに達した
     // いずれもロビーには戻さず、ロード画面を畳んで入室を維持する。
     // 残りの worker はバックグラウンドで読み込み続け、準備でき次第 UI に現れる。
@@ -177,7 +177,7 @@ export function useInstanceLoading({
         setFadingOut(false);
     }, [done, failed]);
 
-    // 進捗（重み付け）— auth10 / connect20 / join20 / plugins25 / workers25
+    // 進捗（重み付け）— auth10 / connect20 / join20 / mods25 / workers25
     const detailFraction = (completed: number, total: number, joined: boolean) => {
         if (total > 0) return completed / total;
         return joined ? 1 : 0;
@@ -186,7 +186,7 @@ export function useInstanceLoading({
         (stageDone.auth ? 10 : 0) +
         (stageDone.connect ? 20 : 0) +
         (stageDone.join ? 20 : 0) +
-        (stageDone.plugins ? 25 : isJoined ? detailFraction(plugins.completed, plugins.total, graceDone) * 25 : 0) +
+        (stageDone.mods ? 25 : isJoined ? detailFraction(mods.completed, mods.total, graceDone) * 25 : 0) +
         (stageDone.workers ? 25 : isJoined ? detailFraction(workers.ready, workers.total, graceDone) * 25 : 0);
     maxProgressRef.current = Math.max(maxProgressRef.current, Math.min(100, rawProgress));
     const progress = Math.round(maxProgressRef.current);
@@ -200,8 +200,8 @@ export function useInstanceLoading({
                   : 'active'
               : 'pending';
         const detail =
-            id === 'plugins' && plugins.total > 0
-                ? `${plugins.completed} / ${plugins.total}`
+            id === 'mods' && mods.total > 0
+                ? `${mods.completed} / ${mods.total}`
                 : id === 'workers' && workers.total > 0
                   ? `${workers.ready} / ${workers.total}`
                   : undefined;

@@ -97,7 +97,7 @@ export type StateModuleDeps = {
     updateEntity(id: string, patch: EntityPatchPayload['patch']): Promise<void>;
     getMyUserId(): string | undefined;
     getEntityId(): string | undefined;
-    getPluginId(): string | undefined;
+    getModId(): string | undefined;
     getComponentType(): string | undefined;
     getWatchEntityTypes(): string[];
     getPresenceUsers(): Map<string, PresenceEntry>;
@@ -135,7 +135,7 @@ export type StateModule = {
      */
     sync<T>(defaultValue: T, options?: SyncOptions): T;
     define<T extends Record<string, unknown>>(schema: T): EntityState<T>;
-    getStateBindings(): StateBinding[];
+    _getStateBindings(): StateBinding[];
 };
 
 // ── ファクトリ ────────────────────────────────────────────────────
@@ -190,7 +190,7 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
         }
 
         // 同期対象 ComponentInstance の解決
-        const watchType = deps.getWatchEntityTypes()[0] ?? deps.getPluginId() ?? '';
+        const watchType = deps.getWatchEntityTypes()[0] ?? deps.getModId() ?? '';
         const ownGameObjectId = deps.getEntityId();
         const componentType = deps.getComponentType();
         let targetEntityId: string | null = null;
@@ -352,7 +352,7 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
             }
         };
 
-        // プラグインコード実行前に初期エンティティを同期反映 (data + top-level)
+        // modコード実行前に初期エンティティを同期反映 (data + top-level)
         if (initialEntity) applyEntity(initialEntity);
         else if (initialData) applyEntityData(initialData);
 
@@ -473,6 +473,6 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
             return marker as unknown as T;
         },
         define,
-        getStateBindings: () => stateBindings,
+        _getStateBindings: () => stateBindings,
     };
 }

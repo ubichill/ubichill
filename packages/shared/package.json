@@ -12,15 +12,15 @@
             "import": "./dist/index.js",
             "require": "./dist/index.js"
         },
-        "./plugin/vnode": {
-            "types": "./dist/plugin/vnode.d.ts",
-            "import": "./dist/plugin/vnode.js",
-            "require": "./dist/plugin/vnode.js"
+        "./mod/vnode": {
+            "types": "./dist/mod/vnode.d.ts",
+            "import": "./dist/mod/vnode.js",
+            "require": "./dist/mod/vnode.js"
         },
-        "./plugin/types": {
-            "types": "./dist/plugin/types.d.ts",
-            "import": "./dist/plugin/types.js",
-            "require": "./dist/plugin/types.js"
+        "./mod/types": {
+            "types": "./dist/mod/types.d.ts",
+            "import": "./dist/mod/types.js",
+            "require": "./dist/mod/types.js"
         }
     },
     "scripts": {

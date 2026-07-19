@@ -12,7 +12,7 @@ interface DataFormFieldsProps {
 
 /**
  * Component の `data` を編集する「フォーム」タブ。
- * - dataFields が plugin から宣言されていればその spec で typed input
+ * - dataFields が mod から宣言されていればその spec で typed input
  * - 宣言外のキーは「カスタム」セクションに分けて表示
  * - dataFields 未宣言のコンポーネントは自由にキー追加できる
  */
@@ -98,7 +98,7 @@ export function DataFormFields({ data, dataFields, onChange }: DataFormFieldsPro
             {declaredKeys.length === 0 && customKeys.length === 0 && (
                 <div className={css({ fontSize: '12px', color: 'textSubtle' })}>
                     {dataFields === undefined
-                        ? 'プラグインが data フィールドを宣言していません。下から自由にキーを追加できます（プラグインが読まない可能性があります）。'
+                        ? 'modが data フィールドを宣言していません。下から自由にキーを追加できます（modが読まない可能性があります）。'
                         : 'このコンポーネントはデータを必要としません。'}
                 </div>
             )}
