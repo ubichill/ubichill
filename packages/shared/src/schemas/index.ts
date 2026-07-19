@@ -28,6 +28,8 @@ export {
     ModManifestSchema,
     type ModVersionedManifest,
     ModVersionedManifestSchema,
+    type VersionedComponentManifestEntry,
+    VersionedComponentManifestEntrySchema,
 } from './mod.schema';
 export {
     AuthorSchema,

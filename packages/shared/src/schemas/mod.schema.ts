@@ -79,8 +79,8 @@ export const ComponentDataFieldSpecSchema = z.discriminatedUnion('type', [
 export type ComponentDataFieldSpec = z.infer<typeof ComponentDataFieldSpecSchema>;
 
 /**
- * Component manifest エントリ。
- * - `src` (build) / `workerUrl` (runtime) どちらも無いものはデータ専用。
+ * Component manifest の共通メタ（worker の指し方 = `src` / `workerUrl` を除く）。
+ * ソース形式と runtime versioned 形式で共有する。
  * - `watchScope`:
  *   - 'entity'   : 自 GameObject 内のみ
  *   - 'subtree'  : 自 GameObject + その子孫 (default、Unity の GetComponentsInChildren 相当)
@@ -88,9 +88,7 @@ export type ComponentDataFieldSpec = z.infer<typeof ComponentDataFieldSpecSchema
  *   - 'world'    : ワールド全体
  * - `thumbnail`: アセット相対パス。エディタで Component カードに表示するプレビュー画像。
  */
-export const ComponentManifestEntrySchema = z.object({
-    src: z.string().optional(),
-    workerUrl: z.string().optional(),
+const ComponentManifestMetaSchema = z.object({
     capabilities: z.array(z.string()).optional(),
     canvasTargets: z.array(z.string()).optional(),
     mediaTargets: z.array(z.string()).optional(),
@@ -102,7 +100,25 @@ export const ComponentManifestEntrySchema = z.object({
     displayName: z.string().optional(),
 });
 
+/**
+ * ソース `mod.json` の Component エントリ。worker は `src`（TS パス、build 時）で指す。
+ * `src` を持たないものはデータ専用 Component。
+ */
+export const ComponentManifestEntrySchema = ComponentManifestMetaSchema.extend({
+    src: z.string().optional(),
+});
+
 export type ComponentManifestEntry = z.infer<typeof ComponentManifestEntrySchema>;
+
+/**
+ * runtime versioned manifest の Component エントリ。worker は `workerUrl`（ビルド済み JS URL）で指す。
+ * build-workers が `src` を除去し `workerUrl` を付与して生成する（`src` は持たない）。
+ */
+export const VersionedComponentManifestEntrySchema = ComponentManifestMetaSchema.extend({
+    workerUrl: z.string().optional(),
+});
+
+export type VersionedComponentManifestEntry = z.infer<typeof VersionedComponentManifestEntrySchema>;
 
 /**
  * `mods/<name>/mod.json` のソース形式。
@@ -118,14 +134,14 @@ export const ModManifestSchema = z.object({
 export type ModManifest = z.infer<typeof ModManifestSchema>;
 
 /**
- * versioned manifest（runtime 用）。
- * `src` を持たず `workerUrl` のみ。
+ * versioned manifest（runtime 用）。ソース形式と違い、各 Component は `src` ではなく
+ * `workerUrl`（ビルド済み JS の URL）で worker を指す。
  */
 export const ModVersionedManifestSchema = z.object({
     id: z.string(),
     name: z.string().optional(),
     version: z.string(),
-    components: z.record(z.string(), ComponentManifestEntrySchema).default({}),
+    components: z.record(z.string(), VersionedComponentManifestEntrySchema).default({}),
 });
 
 export type ModVersionedManifest = z.infer<typeof ModVersionedManifestSchema>;
