@@ -17,7 +17,7 @@
             "@ubichill/sdk/jsx-runtime": ["../../packages/sdk/src/jsx/jsx-runtime.ts"],
             "@ubichill/sdk/gripable": ["../../packages/sdk/src/jsx/Gripable.tsx"],
             "@ubichill/sdk/*": ["../../packages/sdk/src/*"],
-            "@ubichill/engine": ["../../packages/engine/src/index.ts"],
+            "@ubichill/ecs": ["../../packages/ecs/src/index.ts"],
             "@ubichill/sandbox": ["../../packages/sandbox/src/index.ts"],
             "@ubichill/sandbox/host": ["../../packages/sandbox/src/host/index.ts"],
             "@ubichill/react": ["../../packages/react/src/index.ts"],

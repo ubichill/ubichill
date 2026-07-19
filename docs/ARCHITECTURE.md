@@ -43,7 +43,7 @@ Entity == GameObject、Worker 1 つ = Component インスタンス 1 つ。
 
 | パッケージ | 責務 | 依存禁止 |
 |---|---|---|
-| `@ubichill/engine` | 純粋 ECS（Entity / Component / System / Query） | React・DOM・Worker・Network |
+| `@ubichill/ecs` | 純粋 ECS（Entity / Component / System / Query） | React・DOM・Worker・Network |
 | `@ubichill/sandbox` | Worker ライフサイクル・Tick ループ・入力収集 | React |
 | `@ubichill/react` | React Hooks 群（useModWorker / useEntity 等） | — |
 | `@ubichill/sdk` | mod開発者向け公開 API（Ubi） | `@ubichill/shared` などの内部パッケージ |
@@ -62,7 +62,7 @@ modは ECS System として実装し、毎フレーム `entities` / `deltaTime` 
 - **System**: 毎フレーム全 Entity を走査して処理を行う関数
 - **Query**: 特定 Component を持つ Entity を絞り込むキャッシュ付きフィルタ
 
-ECS は `@ubichill/engine` で完結し、ネットワーク・DOM を一切知らない。
+ECS は `@ubichill/ecs` で完結し、ネットワーク・DOM を一切知らない。
 
 ---
 
@@ -165,7 +165,7 @@ fetch は接続先ドメインごとに承認する。詳細は [`API.md`](./API
 |---|---|---|
 | InputCollector MOUSE_MOVE デデュプ | `packages/sandbox` | フレームあたり mousemove を 1 件に集約（O(1)） |
 | rAF バインドレス arrow field | `packages/sandbox` | 毎フレームの `bind()` アロケーション排除 |
-| ECS エンティティ配列 dirty flag キャッシュ | `packages/engine` | エンティティ変化なし時の tick を O(1) に |
+| ECS エンティティ配列 dirty flag キャッシュ | `packages/ecs` | エンティティ変化なし時の tick を O(1) に |
 | useCursorPosition DOM 直接書き込み | `packages/react` | カーソル 60fps 更新で React re-render ゼロ |
 | useEntity shallow equality | `packages/react` | `JSON.stringify` 比較を O(k) に置き換え |
 
