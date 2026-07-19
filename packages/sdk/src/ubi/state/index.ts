@@ -135,7 +135,7 @@ export type StateModule = {
      */
     sync<T>(defaultValue: T, options?: SyncOptions): T;
     define<T extends Record<string, unknown>>(schema: T): EntityState<T>;
-    getStateBindings(): StateBinding[];
+    _getStateBindings(): StateBinding[];
 };
 
 // ── ファクトリ ────────────────────────────────────────────────────
@@ -473,6 +473,6 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
             return marker as unknown as T;
         },
         define,
-        getStateBindings: () => stateBindings,
+        _getStateBindings: () => stateBindings,
     };
 }

@@ -26,23 +26,23 @@ export type PlayerModule = {
     scroll(): { readonly x: number; readonly y: number };
     syncCursor(options?: { throttleMs?: number }): void;
     // ── Internal accessors (state module + UbiSDK から使用) ──
-    getPresenceUsers(): Map<string, PresenceEntry>;
-    getLocalSharedState(): Record<string, unknown>;
-    getScrollX(): number;
-    getScrollY(): number;
-    getForEachUserComponents(): Set<string>;
+    _getPresenceUsers(): Map<string, PresenceEntry>;
+    _getLocalSharedState(): Record<string, unknown>;
+    _getScrollX(): number;
+    _getScrollY(): number;
+    _getForEachUserComponents(): Set<string>;
     // ── Event handlers (_dispatchEvent から呼ばれる) ──────
-    handlePlayerJoined(user: {
+    _handlePlayerJoined(user: {
         id: string;
         position?: { x: number; y: number };
         avatar?: unknown;
         cursorState?: unknown;
     }): void;
-    handlePlayerLeft(userId: string): void;
-    handleCursorMoved(userId: string, position: { x: number; y: number }, sharedState?: Record<string, unknown>): void;
-    handleScrollInput(x: number, y: number, now: number): void;
-    handleMouseMoveInput(viewportX: number, viewportY: number, now: number): void;
-    handlePresenceSharedState(userId: string, sharedState: Record<string, unknown>): void;
+    _handlePlayerLeft(userId: string): void;
+    _handleCursorMoved(userId: string, position: { x: number; y: number }, sharedState?: Record<string, unknown>): void;
+    _handleScrollInput(x: number, y: number, now: number): void;
+    _handleMouseMoveInput(viewportX: number, viewportY: number, now: number): void;
+    _handlePresenceSharedState(userId: string, sharedState: Record<string, unknown>): void;
 };
 
 export function createPlayerModule(send: SendFn, getMyUserId: () => string | undefined): PlayerModule {
@@ -97,13 +97,13 @@ export function createPlayerModule(send: SendFn, getMyUserId: () => string | und
             positionSyncThrottleMs = options?.throttleMs ?? 50;
         },
 
-        getPresenceUsers: () => presenceUsers,
-        getLocalSharedState: () => localSharedState,
-        getScrollX: () => scrollX,
-        getScrollY: () => scrollY,
-        getForEachUserComponents: () => forEachUserComponents,
+        _getPresenceUsers: () => presenceUsers,
+        _getLocalSharedState: () => localSharedState,
+        _getScrollX: () => scrollX,
+        _getScrollY: () => scrollY,
+        _getForEachUserComponents: () => forEachUserComponents,
 
-        handlePlayerJoined: (user) => {
+        _handlePlayerJoined: (user) => {
             const existing = presenceUsers.get(user.id);
             const sharedState: Record<string, unknown> = { ...(existing?.sharedState ?? {}) };
             if (user.avatar !== undefined) sharedState.avatar = user.avatar;
@@ -115,27 +115,27 @@ export function createPlayerModule(send: SendFn, getMyUserId: () => string | und
                 sharedState,
             });
         },
-        handlePlayerLeft: (userId) => {
+        _handlePlayerLeft: (userId) => {
             presenceUsers.delete(userId);
         },
-        handleCursorMoved: (userId, position, sharedState) => {
+        _handleCursorMoved: (userId, position, sharedState) => {
             const entry = presenceUsers.get(userId);
             if (!entry) return;
             entry.worldX = position.x;
             entry.worldY = position.y;
             if (sharedState) Object.assign(entry.sharedState, sharedState);
         },
-        handleScrollInput: (x, y, now) => {
+        _handleScrollInput: (x, y, now) => {
             scrollX = x;
             scrollY = y;
             trySendPosition(localViewportX + x, localViewportY + y, now);
         },
-        handleMouseMoveInput: (viewportX, viewportY, now) => {
+        _handleMouseMoveInput: (viewportX, viewportY, now) => {
             localViewportX = viewportX;
             localViewportY = viewportY;
             trySendPosition(viewportX + scrollX, viewportY + scrollY, now);
         },
-        handlePresenceSharedState: (userId, sharedState) => {
+        _handlePresenceSharedState: (userId, sharedState) => {
             const entry = presenceUsers.get(userId);
             if (entry) Object.assign(entry.sharedState, sharedState);
         },

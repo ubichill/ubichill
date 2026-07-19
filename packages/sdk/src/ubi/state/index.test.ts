@@ -186,7 +186,7 @@ describe('createStateModule / applyEntityData + for', () => {
         const state = mod.define({ score: mod.sync(0) });
         const listener = vi.fn();
         state.onChange('score', listener);
-        mod.getStateBindings()[0].applyEntityData({ score: 7 });
+        mod._getStateBindings()[0].applyEntityData({ score: 7 });
         expect(state.local.score).toBe(7);
         expect(listener).toHaveBeenCalledWith(7, 0);
     });
@@ -207,7 +207,7 @@ describe('createStateModule / applyEntityData + for', () => {
         const { deps } = makeDeps();
         const mod = createStateModule(deps);
         const state = mod.define({ volume: mod.sync(0.5, { perUser: true }) });
-        mod.getStateBindings()[0].applyEntityData({ 'volume:u2': 0.9 });
+        mod._getStateBindings()[0].applyEntityData({ 'volume:u2': 0.9 });
         // 他人分は local を汚さない
         expect(state.local.volume).toBe(0.5);
         expect(state.for('u2').volume).toBe(0.9);

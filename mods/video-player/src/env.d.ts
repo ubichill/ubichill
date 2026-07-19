@@ -5,4 +5,4 @@
  * import 文を書くとモジュール扱いになってグローバルに効かないため、
  * inline import type を使う。
  */
-declare const Ubi: import('@ubichill/sdk').UbiSDK;
+declare const Ubi: import('@ubichill/sdk').Ubi;

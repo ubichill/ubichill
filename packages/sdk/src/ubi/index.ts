@@ -33,6 +33,30 @@ import { createWorldModule } from './world';
 
 export type { OmitId, ModWorkerMessage, UiRenderCostStat };
 
+// ── mod 向け公開サーフェス ───────────────────────────────────
+// 規約: `_`接頭のメンバは「内部」。mod に見せる型からは一律で除く。
+// `Omit` はメソッドのジェネリクス（例: state.sync<T>）を保持するので安全。
+
+/** `Ubi.ui` の公開面（内部レンダーキュー操作 `_*` を含まない）。 */
+export type Ui = Omit<UiModule, `_${string}`>;
+/** `Ubi.player` の公開面（イベントハンドラ等の内部アクセサ `_*` を含まない）。 */
+export type Player = Omit<PlayerModule, `_${string}`>;
+/** `Ubi.state` の公開面（バインディング列挙 `_*` を含まない）。 */
+export type State = Omit<StateModule, `_${string}`>;
+
+/**
+ * mod 開発者に見せる `Ubi` グローバルの型。
+ *
+ * `sandbox.worker.ts` は実体として {@link UbiSDK} を注入するが、mod からは
+ * 内部ライフサイクル（`_dispatchEvent` 等）やモジュール内部メソッド（`_`接頭）を
+ * 触れないよう、この公開型のみを `import('@ubichill/sdk').Ubi` で参照する。
+ */
+export type Ubi = Omit<UbiSDK, `_${string}` | 'ui' | 'player' | 'state'> & {
+    readonly ui: Ui;
+    readonly player: Player;
+    readonly state: State;
+};
+
 /** EVT_INPUT の type 文字列マッピング（毎フレーム再生成を回避） */
 const INPUT_TYPE_MAP: Readonly<Record<string, string>> = {
     MOUSE_MOVE: EcsEventType.INPUT_MOUSE_MOVE,
@@ -140,11 +164,11 @@ export class UbiSDK {
             getModId: () => this.modId,
             getComponentType: () => this.componentType,
             getWatchEntityTypes: () => this.watchEntityTypes,
-            getPresenceUsers: () => this.player.getPresenceUsers(),
-            getLocalSharedState: () => this.player.getLocalSharedState(),
-            getScrollX: () => this.player.getScrollX(),
-            getScrollY: () => this.player.getScrollY(),
-            getForEachUserComponents: () => this.player.getForEachUserComponents(),
+            getPresenceUsers: () => this.player._getPresenceUsers(),
+            getLocalSharedState: () => this.player._getLocalSharedState(),
+            getScrollX: () => this.player._getScrollX(),
+            getScrollY: () => this.player._getScrollY(),
+            getForEachUserComponents: () => this.player._getForEachUserComponents(),
             registerPendingFlush: (fn) => this._pendingStateFlushes.add(fn),
             getInitialEntities: () => this._initialEntities,
             beginRender: _beginRender,
@@ -306,7 +330,7 @@ export class UbiSDK {
             }
             case 'EVT_PLAYER_JOINED': {
                 const { user } = event.payload;
-                this.player.handlePlayerJoined(user);
+                this.player._handlePlayerJoined(user);
                 this._pendingWorkerEvents.push({
                     type: EcsEventType.PLAYER_JOINED,
                     payload: user,
@@ -316,8 +340,8 @@ export class UbiSDK {
             }
             case 'EVT_PLAYER_LEFT': {
                 const { userId } = event.payload;
-                this.player.handlePlayerLeft(userId);
-                for (const componentName of this.player.getForEachUserComponents()) {
+                this.player._handlePlayerLeft(userId);
+                for (const componentName of this.player._getForEachUserComponents()) {
                     this.ui._unmountUi(this.ui._buildEntityTargetId(`user:${userId}`, componentName));
                 }
                 this._pendingWorkerEvents.push({
@@ -330,7 +354,7 @@ export class UbiSDK {
             case 'EVT_PLAYER_CURSOR_MOVED': {
                 const { userId, position } = event.payload;
                 const incoming = (event.payload as { sharedState?: Record<string, unknown> }).sharedState;
-                this.player.handleCursorMoved(userId, position, incoming);
+                this.player._handleCursorMoved(userId, position, incoming);
                 this._pendingWorkerEvents.push({
                     type: EcsEventType.PLAYER_CURSOR_MOVED,
                     payload: { userId, position },
@@ -368,7 +392,7 @@ export class UbiSDK {
                 const entity = event.payload.entity as ComponentInstance | undefined;
                 const entityType = event.payload.entityType;
                 if (entity) {
-                    for (const binding of this.state.getStateBindings()) {
+                    for (const binding of this.state._getStateBindings()) {
                         if (binding.watchType !== entityType) continue;
                         const existingId = binding.getTargetId();
                         if (!existingId) {
@@ -390,7 +414,7 @@ export class UbiSDK {
             case 'EVT_NETWORK_BROADCAST':
                 if (event.payload.type === 'presence:sharedState') {
                     const d = event.payload.data as { sharedState: Record<string, unknown> };
-                    this.player.handlePresenceSharedState(event.payload.userId, d.sharedState);
+                    this.player._handlePresenceSharedState(event.payload.userId, d.sharedState);
                 } else {
                     this._pendingWorkerEvents.push({
                         type: event.payload.type,
@@ -404,10 +428,10 @@ export class UbiSDK {
                 for (const inputEvent of event.payload.events) {
                     if (inputEvent.type === 'SCROLL') {
                         const d = inputEvent.data as { x: number; y: number };
-                        this.player.handleScrollInput(d.x, d.y, now);
+                        this.player._handleScrollInput(d.x, d.y, now);
                     } else if (inputEvent.type === 'MOUSE_MOVE') {
                         const d = inputEvent.data as { viewportX: number; viewportY: number };
-                        this.player.handleMouseMoveInput(d.viewportX, d.viewportY, now);
+                        this.player._handleMouseMoveInput(d.viewportX, d.viewportY, now);
                     }
                     this._pendingWorkerEvents.push({
                         type: INPUT_TYPE_MAP[inputEvent.type],
