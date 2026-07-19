@@ -5,7 +5,7 @@
 
 mod は必要な権限を `mod.json` の `capabilities` で宣言する（ビルド時に静的解析で自動補完もされる）。
 宣言していない権限のコマンドは **default-deny** で拒否される。ここは唯一の定義元
-[`packages/sandbox/src/host/capability.ts`](../packages/sandbox/src/host/capability.ts) から生成している。
+[`packages/shared/src/mod/capability.ts`](../packages/shared/src/mod/capability.ts) から生成している。
 
 - 定義済み capability: **11** 件（🟢 4 / 🟡 6 / 🔴 1）
 - 未知の権限は安全側に倒して **dangerous** として扱われる（承認必須）。

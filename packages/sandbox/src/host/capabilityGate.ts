@@ -12,7 +12,7 @@
  *
  * コアコマンド（ALWAYS_ALLOWED_COMMANDS）は capability 宣言なしで常に許可する。
  */
-import { ALWAYS_ALLOWED_COMMANDS, COMMAND_TO_CAPABILITY } from './capability';
+import { ALWAYS_ALLOWED_COMMANDS, COMMAND_TO_CAPABILITY } from '@ubichill/shared';
 
 export interface CapabilityGate {
     /** コマンドを許可してよいか即時判定する（同期・高頻度コマンドでもオーバーヘッドなし）。 */

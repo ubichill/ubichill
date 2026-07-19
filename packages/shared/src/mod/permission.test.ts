@@ -6,7 +6,7 @@ import {
     type PermissionPolicy,
     resolveCapabilities,
     resolveFetchDecision,
-} from './permissionPolicy';
+} from './permission';
 
 /** テスト用にポリシーを部分上書きするヘルパー。 */
 function policy(overrides: Partial<PermissionPolicy> = {}): PermissionPolicy {

@@ -4,7 +4,7 @@
  * 権限（capability）ドキュメントを単一の真実源から自動生成する。
  *
  * 生成物: docs/CAPABILITIES.md
- * 出所  : packages/sandbox/src/host/capability.ts の CAPABILITY_CATALOG
+ * 出所  : packages/shared/src/mod/capability.ts の CAPABILITY_CATALOG
  *         + packages/shared の PROTOCOL_VERSION（プロトコル互換ルール）
  *
  * mod 開発者が「どの権限で何ができるか・危険度・既定の許可挙動」を迷わず確認でき、
@@ -24,14 +24,11 @@ const root = join(__dirname, '..');
 // capability → それを付ける Ubi API のヒント（静的検出ルール由来。build-workers.mjs が正）。
 const API_BY_CAP = Object.fromEntries(CAPABILITY_DETECTORS.map((d) => [d.cap, d.api]));
 
-// カタログ + プロトコル定数を 1 バンドルに集約して data URL 経由で読み込む。
-// @ubichill/shared は sandbox パッケージ配下に symlink されているため、
-// resolveDir を sandbox にして bare import を解決させる（capability.ts は絶対パス指定）。
+// カタログ + プロトコル定数を @ubichill/shared から 1 バンドルに集約して data URL 経由で読み込む。
+// @ubichill/shared は sandbox パッケージ配下に symlink されているため resolveDir を sandbox にする。
 const sandboxDir = join(root, 'packages', 'sandbox');
-const capabilityPath = join(sandboxDir, 'src', 'host', 'capability.ts');
 const entry = `
-export { CAPABILITY_CATALOG } from ${JSON.stringify(capabilityPath)};
-export { PROTOCOL_VERSION, MIN_COMPATIBLE_PROTOCOL_VERSION } from '@ubichill/shared';
+export { CAPABILITY_CATALOG, PROTOCOL_VERSION, MIN_COMPATIBLE_PROTOCOL_VERSION } from '@ubichill/shared';
 `;
 
 const { outputFiles } = await esbuild.build({
@@ -99,7 +96,7 @@ const md = `<!-- このファイルは scripts/gen-capability-docs.mjs による
 
 mod は必要な権限を \`mod.json\` の \`capabilities\` で宣言する（ビルド時に静的解析で自動補完もされる）。
 宣言していない権限のコマンドは **default-deny** で拒否される。ここは唯一の定義元
-[\`packages/sandbox/src/host/capability.ts\`](../packages/sandbox/src/host/capability.ts) から生成している。
+[\`packages/shared/src/mod/capability.ts\`](../packages/shared/src/mod/capability.ts) から生成している。
 
 - 定義済み capability: **${total}** 件（🟢 ${countByRisk('safe')} / 🟡 ${countByRisk('sensitive')} / 🔴 ${countByRisk('dangerous')}）
 - 未知の権限は安全側に倒して **dangerous** として扱われる（承認必須）。

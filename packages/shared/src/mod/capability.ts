@@ -5,11 +5,12 @@
  * 1 箇所にまとめる。危険度マップとコマンドマップを別々に持つと同期漏れが起きるため、
  * 派生ビュー (CAPABILITY_COMMANDS / CAPABILITY_RISK) はここから機械的に生成する。
  *
- * - コマンド名は shared の CommandType カタログを参照する (文字列の散在防止)。
- * - CMD_TO_HANDLER はコマンド → HostHandlers キーの対応 (ハンドラー接続漏れの早期検知用)。
+ * - コマンド名は CommandType カタログを参照する (文字列の散在防止)。
+ *
+ * ここは Worker/DOM に非依存の純粋な「共有知識」なので shared に置く。
+ * 実行時の enforcement (capabilityGate) は host 側 (@ubichill/sandbox) が担う。
  */
-import { CommandType } from '@ubichill/shared';
-import type { HostHandlers } from './types';
+import { CommandType } from './protocol';
 
 /**
  * capability の危険度ティア。
@@ -209,32 +210,3 @@ export function buildAllowedCommands(capabilities: readonly string[] | undefined
     }
     return allowed;
 }
-
-/**
- * Worker コマンドとそれを処理する HostHandlers のキーの対応。
- * HostHandlers に新しいハンドラーを追加したらここにも追記する。
- */
-export const CMD_TO_HANDLER = {
-    [CommandType.SCENE_GET_ENTITY]: 'onGetEntity',
-    [CommandType.SCENE_QUERY_ENTITIES]: 'onQueryEntities',
-    [CommandType.SCENE_CREATE_ENTITY]: 'onCreateEntity',
-    [CommandType.SCENE_UPDATE_ENTITY]: 'onUpdateEntity',
-    [CommandType.SCENE_DESTROY_ENTITY]: 'onDestroyEntity',
-    [CommandType.NETWORK_FETCH]: 'onFetch',
-    [CommandType.NETWORK_SEND_TO_HOST]: 'onMessage',
-    [CommandType.NETWORK_BROADCAST]: 'onNetworkBroadcast',
-    [CommandType.EVENT_EMIT]: 'onEventEmit',
-    [CommandType.UI_RENDER]: 'onRender',
-    [CommandType.CANVAS_FRAME]: 'onCanvasFrame',
-    [CommandType.CANVAS_COMMIT_STROKE]: 'onCanvasCommitStroke',
-    [CommandType.MEDIA_LOAD]: 'onMediaLoad',
-    [CommandType.MEDIA_PLAY]: 'onMediaPlay',
-    [CommandType.MEDIA_PAUSE]: 'onMediaPause',
-    [CommandType.MEDIA_SEEK]: 'onMediaSeek',
-    [CommandType.MEDIA_SET_VOLUME]: 'onMediaSetVolume',
-    [CommandType.MEDIA_DESTROY]: 'onMediaDestroy',
-    [CommandType.MEDIA_SET_VISIBLE]: 'onMediaSetVisible',
-    [CommandType.MEDIA_SET_DEVICE_CONTROL]: 'onMediaSetDeviceControl',
-    [CommandType.EDITOR_SCHEMA]: 'onEditorSchema',
-    [CommandType.CMD_GRIP]: 'onGripCommand',
-} as const satisfies Partial<Record<string, keyof HostHandlers>>;

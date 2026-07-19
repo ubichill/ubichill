@@ -21,7 +21,7 @@ import {
     type PermissionPolicy,
     resolveFetchDecision,
     type TierMode,
-} from '@ubichill/sandbox';
+} from '@ubichill/shared';
 import type React from 'react';
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 

@@ -1,19 +1,23 @@
-// 権限ポリシーのヘルパー/型・診断ハンドラを再エクスポート（frontend は sandbox に直接依存しないため）。
+// 権限の「知識」（カタログ/危険度/ポリシー）は @ubichill/shared から再エクスポート。
+
+// 診断ハンドラは host（sandbox）側の関心。frontend は react 経由で受け取る。
+export {
+    type DiagnosticLevel,
+    type ModDiagnostic,
+    resetDiagnosticHandler,
+    setDiagnosticHandler,
+} from '@ubichill/sandbox';
 export {
     type CapabilityInfo,
     type CapabilityRisk,
     DEFAULT_PERMISSION_POLICY,
-    type DiagnosticLevel,
     describeCapability,
     getCapabilityRisk,
     listCapabilities,
-    type ModDiagnostic,
     type PermissionDecision,
     type PermissionPolicy,
-    resetDiagnosticHandler,
-    setDiagnosticHandler,
     type TierMode,
-} from '@ubichill/sandbox';
+} from '@ubichill/shared';
 export type { HoldState } from './components/HoldContext';
 export { HoldProvider, useHold } from './components/HoldContext';
 export { ModUIMount } from './components/ModUIMount';

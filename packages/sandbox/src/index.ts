@@ -8,22 +8,7 @@
  *   worker/ … Worker (guest) 側の隔離実行環境エントリ
  */
 
-// ── 権限: capability カタログ / 危険度 / ユーザーポリシー解決 ──
-export {
-    ALWAYS_ALLOWED_COMMANDS,
-    buildAllowedCommands,
-    CAPABILITY_CATALOG,
-    CAPABILITY_COMMANDS,
-    CAPABILITY_RISK,
-    type Capability,
-    type CapabilityInfo,
-    type CapabilityRisk,
-    type CapabilitySpec,
-    COMMAND_TO_CAPABILITY,
-    describeCapability,
-    getCapabilityRisk,
-    listCapabilities,
-} from './host/capability';
+// ── 権限の enforcement ゲート（実行時判定）。カタログ/ポリシーの「知識」は @ubichill/shared へ移設済み ──
 export { type CapabilityGate, type CapabilityGateOptions, createCapabilityGate } from './host/capabilityGate';
 // ── infra: fetch / 診断 / DOM 描画 ──
 export * from './host/fetchHandler';
@@ -32,18 +17,6 @@ export { ModHostManager } from './host/ModHostManager';
 // ── repository: 在籍簿 + emit ルーティング ──
 export { getActiveWorkerCount, resetRegistryForTests, routeEmit } from './host/ModRegistry';
 export * from './host/modDiagnostics';
-export {
-    capabilityNeedsConsent,
-    DEFAULT_PERMISSION_POLICY,
-    type FetchDecision,
-    isCapabilityGranted,
-    type PermissionDecision,
-    type PermissionPolicy,
-    type ResolvedCapabilities,
-    resolveCapabilities,
-    resolveFetchDecision,
-    type TierMode,
-} from './host/permissionPolicy';
 // ── 型 ──
 export type {
     FetchOptions,

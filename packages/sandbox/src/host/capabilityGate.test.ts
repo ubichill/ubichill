@@ -1,5 +1,5 @@
+import { buildAllowedCommands } from '@ubichill/shared';
 import { describe, expect, it, vi } from 'vitest';
-import { buildAllowedCommands } from './capability';
 import { createCapabilityGate } from './capabilityGate';
 
 describe('createCapabilityGate — allowAll モード', () => {

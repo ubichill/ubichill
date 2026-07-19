@@ -92,8 +92,8 @@ function listFilesRecursive(rootDir, currentDir = rootDir) {
  * ではない。実際の enforcement は実行時ゲート + ユーザー承認（ModHostManager）で行われ、
  * 検出漏れ（動的アクセス・完全な分割代入など）は実行時に必ず拾われる。よって過剰申告寄り。
  *
- * capability 名は sandbox の CAPABILITY_CATALOG と一致させること
- * （packages/sandbox/src/host/capability.ts）。
+ * capability 名は shared の CAPABILITY_CATALOG と一致させること
+ * （packages/shared/src/mod/capability.ts）。
  */
 // api: どの Ubi API を使うとこの capability が付くかの人間向けヒント（ドキュメント生成が参照）。
 export const CAPABILITY_DETECTORS = [

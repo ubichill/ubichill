@@ -11,6 +11,8 @@
  * React 非依存。React 環境では @ubichill/react の useModWorker 経由で使う。
  */
 import {
+    buildAllowedCommands,
+    COMMAND_TO_CAPABILITY,
     CommandType,
     checkProtocolCompatibility,
     HostEventType,
@@ -25,9 +27,9 @@ import {
     releaseSharedInput,
     setSharedScrollElement,
 } from '@ubichill/ui-renderer';
-import { buildAllowedCommands, CMD_TO_HANDLER, COMMAND_TO_CAPABILITY } from './capability';
 import { type CapabilityGate, createCapabilityGate } from './capabilityGate';
 import { type CommandContext, dispatchCommand, RpcTimeoutError } from './commandDispatch';
+import { CMD_TO_HANDLER } from './commandHandlers';
 import { getActiveWorkerCount, getWorker, registerWorker, unregisterWorker } from './ModRegistry';
 import { isMetricEnabled, reportDiagnostic, reportMetric } from './modDiagnostics';
 import { TickController } from './TickController';

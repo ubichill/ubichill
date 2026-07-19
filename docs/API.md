@@ -281,7 +281,7 @@ Worker→Host の postMessage 一点。
 
 権限の全一覧（危険度・発生元 API・許可コマンド）と同意モデル（読み込み時一括承認・fetch の
 ドメイン単位 on-demand・シールドレベル）の詳細は **[CAPABILITIES.md](./CAPABILITIES.md)** を参照。
-この doc は唯一の定義元 [`capability.ts`](../packages/sandbox/src/host/capability.ts) の
+この doc は唯一の定義元 [`capability.ts`](../packages/shared/src/mod/capability.ts) の
 `CAPABILITY_CATALOG` から自動生成される（`pnpm docs:capabilities`）。
 
 ---

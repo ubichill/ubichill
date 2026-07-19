@@ -399,7 +399,9 @@ export const SERVER_CONFIG = {
 // Re-export Schemas and Mods
 // ============================================
 
+export * from './mod/capability';
 export * from './mod/errors';
+export * from './mod/permission';
 export * from './mod/protocol';
 export * from './mod/types';
 export * from './mod/vnode';
