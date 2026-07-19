@@ -7,7 +7,6 @@
     "types": "src/index.ts",
     "exports": {
         ".": "./src/index.ts",
-        "./ui": "./src/ui/index.ts",
         "./jsx-runtime": "./src/jsx/jsx-runtime.ts",
         "./gripable": "./src/jsx/Gripable.tsx"
     },

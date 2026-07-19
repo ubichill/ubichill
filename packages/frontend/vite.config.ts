@@ -41,8 +41,6 @@ export default defineConfig({
             '@styled-system': resolve(__dirname, 'styled-system'),
             '@styles': resolve(__dirname, 'src/styles'),
             // サブパスを先に定義しないと親エイリアスが優先されてしまう
-            '@ubichill/sdk/react': resolve(__dirname, '../sdk/src/react/index.ts'),
-            '@ubichill/sdk/ui': resolve(__dirname, '../sdk/src/ui/index.ts'),
             '@ubichill/sdk': resolve(__dirname, '../sdk/src/index.ts'),
             '@ubichill/sandbox': resolve(__dirname, '../sandbox/src/index.ts'),
             '@ubichill/ui-renderer': resolve(__dirname, '../ui-renderer/src/index.ts'),
