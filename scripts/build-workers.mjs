@@ -100,12 +100,14 @@ export const CAPABILITY_DETECTORS = [
     { cap: 'net:fetch', api: 'Ubi.fetch', test: (c) => /\bUbi\.fetch\b/.test(c) },
     { cap: 'ui:render', api: 'Ubi.ui.render', test: (c) => /\bUbi\.ui\b/.test(c) },
     { cap: 'ui:toast', api: 'Ubi.ui.showToast', test: (c) => /\.showToast\s*\(/.test(c) },
-    // entity / state はどちらも読み書きしうるため read/update を両方申告（over-approx）
+    // scene:read は entity/state を触れば付くベースライン。
     { cap: 'scene:read', api: 'Ubi.entity.get / query, Ubi.state 読み取り', test: (c) => /\bUbi\.(entity|state)\b/.test(c) },
+    // scene:update は書き込み系 API（update/spawn/destroy/state.sync）を使うときだけ付く。
+    // 読み取り専用 mod に update 権限を過剰申告しないための絞り込み（依然 over-approx 寄り）。
     {
         cap: 'scene:update',
         api: 'Ubi.entity().update/spawn/destroy, Ubi.state.sync 書き込み',
-        test: (c) => /\bUbi\.(entity|state)\b/.test(c),
+        test: (c) => /\.(update|spawn|destroy|sync)\s*\(/.test(c),
     },
     { cap: 'event:emit', api: 'Ubi.event.emit', test: (c) => /\bUbi\.event\b/.test(c) },
     { cap: 'event:broadcast', api: 'Ubi.event.broadcast', test: (c) => /\.broadcast\s*\(/.test(c) },
