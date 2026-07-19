@@ -1,5 +1,5 @@
-import type { EcsWorld, System, WorkerEvent } from '@ubichill/engine';
-import { EcsEventType, EcsWorldImpl } from '@ubichill/engine';
+import type { EcsWorld, System, WorkerEvent } from '@ubichill/ecs';
+import { EcsEventType, EcsWorldImpl } from '@ubichill/ecs';
 import {
     CommandType,
     type ComponentInstance,

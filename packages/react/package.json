@@ -5,7 +5,7 @@
   "main": "src/index.ts",
   "types": "src/index.ts",
   "peerDependencies": {
-    "@ubichill/engine": "workspace:*",
+    "@ubichill/ecs": "workspace:*",
     "@ubichill/sandbox": "workspace:*",
     "@ubichill/shared": "workspace:*",
     "@ubichill/ui-renderer": "workspace:*",

@@ -169,7 +169,7 @@ importers:
         specifier: ^4.21.0
         version: 4.21.0
 
-  packages/engine: {}
+  packages/ecs: {}
 
   packages/frontend:
     dependencies:
@@ -237,9 +237,9 @@ importers:
 
   packages/react:
     dependencies:
-      '@ubichill/engine':
+      '@ubichill/ecs':
         specifier: workspace:*
-        version: link:../engine
+        version: link:../ecs
       '@ubichill/sandbox':
         specifier: workspace:*
         version: link:../sandbox
@@ -274,9 +274,9 @@ importers:
 
   packages/sandbox:
     dependencies:
-      '@ubichill/engine':
+      '@ubichill/ecs':
         specifier: workspace:*
-        version: link:../engine
+        version: link:../ecs
       '@ubichill/sdk':
         specifier: workspace:*
         version: link:../sdk
@@ -289,9 +289,9 @@ importers:
 
   packages/sdk:
     dependencies:
-      '@ubichill/engine':
+      '@ubichill/ecs':
         specifier: workspace:*
-        version: link:../engine
+        version: link:../ecs
       '@ubichill/shared':
         specifier: workspace:*
         version: link:../shared

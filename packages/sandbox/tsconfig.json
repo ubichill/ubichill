@@ -14,8 +14,8 @@
     "resolveJsonModule": true,
     "declaration": true,
     "paths": {
-      "@ubichill/engine": [
-        "../engine/src/index.ts"
+      "@ubichill/ecs": [
+        "../ecs/src/index.ts"
       ],
       "@ubichill/shared": [
         "../shared/src/index.ts"

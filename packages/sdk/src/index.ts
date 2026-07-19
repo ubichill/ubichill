@@ -2,14 +2,14 @@
  * @ubichill/sdk — Mod developer public API
  *
  * mod開発者はここから import するだけで完結する。
- * 内部実装は @ubichill/engine / @ubichill/sandbox に分離されている。
+ * 内部実装は @ubichill/ecs / @ubichill/sandbox に分離されている。
  *
  * Worker-safe（React・DOM 非依存）。
  * React / Host 側 API は '@ubichill/sdk/react' から。
  */
 
 // ECS + メッセージング型
-export * from '@ubichill/engine';
+export * from '@ubichill/ecs';
 // プロトコル型（@ubichill/shared より選択的に re-export）
 export type {
     AvailableComponent,

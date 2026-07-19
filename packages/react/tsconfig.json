@@ -16,8 +16,8 @@
     "jsx": "react-jsx",
     "declaration": true,
     "paths": {
-      "@ubichill/engine": [
-        "../engine/src/index.ts"
+      "@ubichill/ecs": [
+        "../ecs/src/index.ts"
       ],
       "@ubichill/sandbox": [
         "../sandbox/src/index.ts"

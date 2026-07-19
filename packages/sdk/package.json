@@ -12,7 +12,7 @@
         "./gripable": "./src/jsx/Gripable.tsx"
     },
     "peerDependencies": {
-        "@ubichill/engine": "workspace:*",
+        "@ubichill/ecs": "workspace:*",
         "@ubichill/shared": "workspace:*"
     }
 }

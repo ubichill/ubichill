@@ -1,4 +1,4 @@
-import type { System } from '@ubichill/engine';
+import type { System } from '@ubichill/ecs';
 import { CommandType } from '@ubichill/shared';
 import { describe, expect, it, vi } from 'vitest';
 import type { OmitId } from '../types';

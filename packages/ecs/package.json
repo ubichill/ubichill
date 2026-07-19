@@ -1,5 +1,5 @@
 {
-    "name": "@ubichill/engine",
+    "name": "@ubichill/ecs",
     "version": "1.0.0",
     "description": "Pure ECS engine and mod protocol types for Ubichill. No React, no DOM.",
     "sideEffects": false,

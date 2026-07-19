@@ -11,7 +11,7 @@
  * Reliable な状態同期は Ubi.state.sync を使うこと。
  */
 
-import type { System } from '@ubichill/engine';
+import type { System } from '@ubichill/ecs';
 import { CommandType } from '@ubichill/shared';
 import type { SendFn } from '../types';
 
