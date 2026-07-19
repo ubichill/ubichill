@@ -121,25 +121,67 @@ export async function resolveWorldFromUrl(url: string, source: WorldSource): Pro
 
 type GitHubContentEntry = { name: string; type: 'file' | 'dir'; download_url: string | null };
 
-/** GitHub tree URL を Contents API で列挙し、各 YAML の raw URL を返す。 */
+/**
+ * Contents API の ETag キャッシュ。
+ * GitHub は `If-None-Match` に対する 304 応答をレート制限にカウントしないため、
+ * 変更が無い限り列挙は実質タダになる（60/時の枠を守る主要な対策）。
+ */
+const contentsCache = new Map<string, { etag: string; urls: string[] }>();
+
+/** GitHub tree URL を Contents API で列挙し、各 YAML の raw URL を返す（ETag 条件付き＋制限時フォールバック）。 */
 async function enumerateGitHubDir(owner: string, repo: string, ref: string, path: string): Promise<string[]> {
     const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${encodeURIComponent(ref)}`;
     const headers: Record<string, string> = { Accept: 'application/vnd.github+json' };
     const token = registryToken();
     if (token) headers.Authorization = `Bearer ${token}`;
+    const cached = contentsCache.get(apiUrl);
+    if (cached) headers['If-None-Match'] = cached.etag;
+
     const res = await fetch(apiUrl, { headers });
+
+    // 304: 未変更。レート制限を消費しない。キャッシュを返す。
+    if (res.status === 304 && cached) return cached.urls;
+
+    // 403/429 のレート制限: キャッシュがあれば維持して列挙を落とさない。
+    if ((res.status === 403 || res.status === 429) && res.headers.get('x-ratelimit-remaining') === '0') {
+        if (cached) {
+            console.warn(`⚠ GitHub API レート制限中。キャッシュで継続: ${apiUrl}`);
+            return cached.urls;
+        }
+        throw new Error(`GitHub API レート制限（キャッシュ無し）: ${apiUrl}`);
+    }
+
     if (!res.ok) throw new Error(`GitHub Contents API ${res.status}: ${apiUrl}`);
+
     const entries = (await res.json()) as GitHubContentEntry[];
-    return entries
+    const urls = entries
         .filter((e) => e.type === 'file' && YAML_EXT_RE.test(e.name) && e.download_url)
         .map((e) => e.download_url as string);
+    const etag = res.headers.get('etag');
+    if (etag) contentsCache.set(apiUrl, { etag, urls });
+    return urls;
+}
+
+/**
+ * CDN 配信のインデックス JSON（API 不使用）を読み、ワールド URL 群へ展開する。
+ * 配布者が生成した `[{ file }] | [{ url }]` を想定。`file` は JSON の URL 基準で解決。
+ */
+async function enumerateIndexJson(indexUrl: string): Promise<{ url: string; source: WorldSource }[]> {
+    const text = await fetchText(indexUrl);
+    const list = JSON.parse(text) as Array<{ file?: string; url?: string }>;
+    const base = indexUrl.slice(0, indexUrl.lastIndexOf('/') + 1);
+    return list
+        .map((e) => e.url ?? (e.file ? `${base}${e.file}` : undefined))
+        .filter((u): u is string => typeof u === 'string')
+        .map((url) => ({ url, source: { kind: WorldSourceKind.Registry, url, registryName: indexUrl } }));
 }
 
 /**
  * レジストリソース URL を個々のワールド URL＋source に展開する。
- * - GitHub tree URL → Contents API 列挙（kind: github）
+ * - GitHub tree URL → Contents API 列挙（ETag キャッシュ、kind: github）
+ * - インデックス JSON URL → CDN 取得（API 不使用、kind: registry）
  * - 直 YAML URL → 単一（kind: github or url）
- * - 他インスタンス base（/api/... を含む一覧 API）→ その一覧を kind: remote-instance で展開
+ * - 他インスタンス一覧 API → kind: remote-instance で展開
  */
 export async function enumerateSource(sourceUrl: string): Promise<{ url: string; source: WorldSource }[]> {
     const tree = GITHUB_TREE_RE.exec(sourceUrl);
@@ -150,6 +192,11 @@ export async function enumerateSource(sourceUrl: string): Promise<{ url: string;
             url,
             source: { kind: WorldSourceKind.GitHub, url, registryName: `${owner}/${repo}` },
         }));
+    }
+
+    // インデックス JSON（配布者が生成、CDN 配信で API 不使用の抜け道）
+    if (/\.json$/i.test(sourceUrl)) {
+        return enumerateIndexJson(sourceUrl);
     }
 
     if (YAML_EXT_RE.test(sourceUrl)) {
