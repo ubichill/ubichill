@@ -64,6 +64,33 @@ interface WorldStore {
 ### listWorlds
 メモリの official/registry 索引（DB 非依存）＋ WorldStore のユーザーワールド。各要素に `source` と著者を含める。
 
+## Discovery レイヤ（将来像・core とは別レイヤ）
+
+「ワールド＝URL」である以上、discovery（探す）は自前インフラを持たず**オープンウェブ＋既存検索エンジンに委譲**できる。
+レジストリも検索も「ワールド URL を見つける手段（discovery アダプタ）」の違いにすぎない、と統一する：
+
+```
+GitHub tree / index JSON / インスタンス連合 / Web検索  →  すべて「ワールド URL」を返すだけ
+```
+
+### 中立性の原則
+- **GitHub / Google など特定サービスへの依存は core に持ち込まない。** core（URL で解決して入る）は検索・レジストリがゼロでも動く。
+- discovery は差し替え可能なアダプタに閉じ込める（GitHub Contents API をアダプタ化したのと同じ扱い）。
+- レジストリの**正規形式は index JSON（任意の CDN/S3/Web で配信可）とインスタンス連合**。GitHub Contents API は便利アダプタの一つ。
+
+### Web 検索 discovery（案）
+検索エンジンに拾わせるには、ワールドが**クロール可能なページ＋構造化メタ**を持つ必要がある：
+1. **公開ワールドページ** `/worlds/:id`（人間＆クローラ向け HTML、「ubichill で開く」ボタン）。インスタンスホストのワールドは自動で得られる。
+   - `raw.githubusercontent.com` は `X-Robots-Tag: none` でインデックス拒否 → GitHub raw 直は SEO 向きでない。インスタンス配信ページが本命。
+2. **構造化データ**: OGP（共有リッチプレビュー）＋ JSON-LD/Schema.org ＋「ubichill world」マーカー（検索で world 絞り込み用）。
+3. **sitemap.xml / canonical**。
+4. **アプリ内検索**は discovery プロバイダ（Google Programmable Search Engine 等）を薄くラップ。または Web 検索へのディープリンク。
+
+### 注意点
+- 依存のすり替え防止（Google 依存を core に入れない）。即時性なし（インデックス遅延、作成直後は自インスタンス一覧で担保）。公開ワールドのみ対象。ランキングは検索エンジン依存。CSE 無料枠 100 クエリ/日。
+
+**第一歩**: 公開ワールドページ＋OGP/JSON-LD/sitemap（P2/P3 のフロント作業と相性が良い独立タスク）。core（P1/P3）はこの構想の影響を受けない。
+
 ## 段階（すべて本ブランチ）
 
 - **P1**: shared 型（WorldSource / WorldRef、ResolvedWorld・WorldListItem 拡張）。worldResolver（URL 解決＋GitHub Contents API＋キャッシュ）。worldRegistry を resolver ベースへ書き換え、official/registry をメモリ索引化（DB upsert 廃止）。worlds.json 廃止。
