@@ -52,6 +52,9 @@ class WorldRegistry {
 
     /** DB ユーザーワールドの解決キャッシュ */
     private readonly _resolvedCache = new Map<string, ResolvedWorld>();
+    /** 外部（他インスタンス/URL）ワールドの解決キャッシュ（連合、TTL 付き） */
+    private readonly _remoteCache = new Map<string, { at: number; world: ResolvedWorld }>();
+    private static readonly REMOTE_TTL_MS = 5 * 60 * 1000;
 
     // biome-ignore lint/correctness/noUnusedPrivateClassMembers: watcher は起動後も参照保持が必要
     private _watcher: ReturnType<typeof fs.watch> | null = null;
@@ -146,26 +149,66 @@ class WorldRegistry {
     }
 
     /**
+     * id または URL でワールドを解決する。instance 作成の入口。
+     * - `http(s)://` → URL 解決（自ホスト or 外部＝連合）
+     * - それ以外 → id（メモリ索引 or DB）
+     */
+    async resolveRef(idOrUrl: string): Promise<ResolvedWorld | undefined> {
+        return /^https?:\/\//i.test(idOrUrl) ? this.getWorldByUrl(idOrUrl) : this.getWorld(idOrUrl);
+    }
+
+    /**
      * URL（＝ワールドの一意キー）でワールドを取得する。instances/favorites が参照する。
-     * official/registry はメモリ索引、本体ホストのユーザーワールドは self URL から id を得て DB 解決。
+     * official/registry はメモリ索引、自ホストのユーザーワールドは self URL から id を得て DB 解決、
+     * 他ホストの URL は on-demand 取得（連合、TTL キャッシュ）。
      */
     async getWorldByUrl(url: string): Promise<ResolvedWorld | undefined> {
         for (const w of this._index.values()) {
             if (w.url === url) return w;
         }
-        const id = this._idFromSelfUrl(url);
-        if (id) return this.getWorld(id);
-        return undefined;
+        const selfId = this._idFromSelfUrl(url);
+        if (selfId) return this.getWorld(selfId);
+        return this._resolveRemote(url);
     }
 
-    /** self URL（`.../api/v1/worlds/{id}` または旧 `.../{id}/yaml`）から id を取り出す。それ以外は undefined。 */
+    /** self URL（自ホストの `.../api/v1/worlds/{id}`、旧 `.../{id}/yaml` 可）から id を取り出す。他ホストは undefined。 */
     private _idFromSelfUrl(url: string): string | undefined {
         try {
-            const m = /^\/api\/v1\/worlds\/(.+?)(?:\/yaml)?$/.exec(new URL(url).pathname);
+            const u = new URL(url);
+            if (u.origin !== new URL(this._publicBaseUrl).origin) return undefined;
+            const m = /^\/api\/v1\/worlds\/(.+?)(?:\/yaml)?$/.exec(u.pathname);
             return m?.[1];
         } catch {
             return undefined;
         }
+    }
+
+    /** 外部（他インスタンス/任意 URL）のワールドをその場で解決する（連合）。TTL キャッシュ。 */
+    private async _resolveRemote(url: string): Promise<ResolvedWorld | undefined> {
+        const cached = this._remoteCache.get(url);
+        if (cached && Date.now() - cached.at < WorldRegistry.REMOTE_TTL_MS) return cached.world;
+        try {
+            const world = await resolveWorldFromUrl(url, this._externalSource(url));
+            this._remoteCache.set(url, { at: Date.now(), world });
+            return world;
+        } catch (err) {
+            console.error(`❌ 外部ワールド解決失敗: ${url}`, err);
+            return cached?.world;
+        }
+    }
+
+    /** 外部 URL から provenance（source）を推定する。 */
+    private _externalSource(url: string): WorldSource {
+        try {
+            const u = new URL(url);
+            if (/^\/api\/v1\/worlds\//.test(u.pathname)) {
+                return { kind: WorldSourceKind.RemoteInstance, url, originInstance: u.origin };
+            }
+            if (u.hostname.includes('github')) return { kind: WorldSourceKind.GitHub, url };
+        } catch {
+            // fallthrough
+        }
+        return { kind: WorldSourceKind.Url, url };
     }
 
     /** 内部用：生の DB レコードを取得 */

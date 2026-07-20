@@ -64,7 +64,8 @@ class InstanceManager {
      * 新しいインスタンスを作成
      */
     async createInstance(request: CreateInstanceRequest, leaderId: string): Promise<Instance | { error: string }> {
-        const world = await worldRegistry.getWorld(request.worldId);
+        // worldId は id でも URL でもよい（URL の場合は自ホスト/外部＝連合を解決する）
+        const world = await worldRegistry.resolveRef(request.worldId);
         if (!world) {
             return { error: `World not found: ${request.worldId}` };
         }

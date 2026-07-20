@@ -40,7 +40,9 @@ export function toRawGitHubUrl(url: string): string {
 
 /** サイズ上限付きで URL からテキストを取得する。 */
 async function fetchText(url: string): Promise<string> {
-    const headers: Record<string, string> = {};
+    // 他 ubichill インスタンスの /api/v1/worlds/:id は content negotiation で YAML を返す。
+    // raw GitHub 等は Accept を無視してファイルを返すので、常に yaml を要求して問題ない。
+    const headers: Record<string, string> = { Accept: 'application/yaml, text/yaml, */*' };
     const token = registryToken();
     if (token && (url.includes('github') || url.includes('githubusercontent'))) {
         headers.Authorization = `Bearer ${token}`;
