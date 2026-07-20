@@ -3,6 +3,7 @@ import path from 'node:path';
 import { userRepository, type WorldRecord, worldRepository } from '@ubichill/db';
 import {
     ENV_KEYS,
+    LIMITS,
     type ResolvedWorld,
     SERVER_CONFIG,
     type WorldCreateInput,
@@ -43,6 +44,8 @@ class WorldRegistry {
 
     /** official + registry の解決済みワールド（id=metadata.name → ResolvedWorld） */
     private _index = new Map<string, ResolvedWorld>();
+    /** url → id の逆引き（getWorldByUrl を O(1) に） */
+    private _urlIndex = new Map<string, string>();
     /** official + registry の生定義（id → WorldDefinition）。URL 配信/フェデレーション用 */
     private _defByName = new Map<string, WorldDefinition>();
     /** ローカル id → YAML ファイルパス（reload / watch 用） */
@@ -87,6 +90,11 @@ class WorldRegistry {
     // ================================================================
 
     async initialize(): Promise<void> {
+        if (process.env.NODE_ENV === 'production' && !process.env[ENV_KEYS.PUBLIC_BASE_URL]) {
+            console.warn(
+                `⚠ ${ENV_KEYS.PUBLIC_BASE_URL} が未設定です。ワールドの正規 URL が ${SERVER_CONFIG.DEV_URL} になり連合が壊れます。`,
+            );
+        }
         await userRepository.ensureSystemUser(SYSTEM_AUTHOR_ID);
         await this._migrateLegacyDbRecords();
         await this._scanLocal();
@@ -163,9 +171,8 @@ class WorldRegistry {
      * 他ホストの URL は on-demand 取得（連合、TTL キャッシュ）。
      */
     async getWorldByUrl(url: string): Promise<ResolvedWorld | undefined> {
-        for (const w of this._index.values()) {
-            if (w.url === url) return w;
-        }
+        const indexedId = this._urlIndex.get(url);
+        if (indexedId) return this._index.get(indexedId);
         const selfId = this._idFromSelfUrl(url);
         if (selfId) return this.getWorld(selfId);
         return this._resolveRemote(url);
@@ -289,13 +296,21 @@ class WorldRegistry {
      * URL からワールドを取り込む（DB へ upsert）。
      * GitHub tree URL / レジストリ URL の場合は全エントリを一括取得する。
      */
-    async importFromUrl(url: string): Promise<ResolvedWorld[]> {
+    async importFromUrl(url: string, authorId: string): Promise<ResolvedWorld[]> {
         const sources = await enumerateSource(url).catch(() => [{ url, source: { kind: WorldSourceKind.Url, url } }]);
+        // 取り込みは DB コピー。取り込んだユーザーの所有物として上限内に収める
+        // （外部ワールドを DB を増やさず使うだけなら連合＝URL 直参照を使う）。
+        const owned = await worldRepository.countByAuthorId(authorId);
+        if (owned + sources.length > LIMITS.MAX_WORLDS_PER_USER) {
+            throw new Error(
+                `取り込み上限を超えます（所有 ${owned} + 取り込み ${sources.length} > ${LIMITS.MAX_WORLDS_PER_USER}）`,
+            );
+        }
         const settled = await Promise.allSettled(
             sources.map(async ({ url: worldUrl, source }) => {
                 const resolved = await resolveWorldFromUrl(worldUrl, source);
                 const record = await worldRepository.upsertByName({
-                    authorId: SYSTEM_AUTHOR_ID,
+                    authorId,
                     name: resolved.id,
                     version: resolved.version,
                     definition: this._toDefinition(resolved),
@@ -361,6 +376,7 @@ class WorldRegistry {
 
     private async _scanLocal(): Promise<void> {
         this._index.clear();
+        this._urlIndex.clear();
         this._defByName.clear();
         this._fileByName.clear();
         const nextOrder: string[] = [];
@@ -398,6 +414,7 @@ class WorldRegistry {
                 authorId: SYSTEM_AUTHOR_ID,
             });
             this._index.set(id, resolved);
+            this._urlIndex.set(resolved.url, id);
             this._defByName.set(id, def);
             this._fileByName.set(id, filePath);
             return resolved;
@@ -436,6 +453,7 @@ class WorldRegistry {
         if (!fs.existsSync(filePath)) {
             const id = [...this._fileByName.entries()].find(([, f]) => path.basename(f) === filename)?.[0];
             if (id) {
+                this._urlIndex.delete(this.selfWorldUrl(id));
                 this._index.delete(id);
                 this._defByName.delete(id);
                 this._fileByName.delete(id);

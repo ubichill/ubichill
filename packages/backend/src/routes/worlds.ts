@@ -29,13 +29,17 @@ router.post('/reload', requireAuth, async (_req, res) => {
  * body: { url: string }
  */
 router.post('/import', requireAuth, async (req, res) => {
+    if (!req.user) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+    }
     const { url } = req.body as { url?: unknown };
     if (typeof url !== 'string' || !url.startsWith('http')) {
         res.status(400).json({ error: 'url が不正です' });
         return;
     }
     try {
-        const worlds = await worldRegistry.importFromUrl(url);
+        const worlds = await worldRegistry.importFromUrl(url, req.user.id);
         res.json({
             success: true,
             worlds: worlds.map((w) => ({ id: w.id, displayName: w.displayName, version: w.version })),
