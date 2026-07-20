@@ -99,11 +99,8 @@ postgresql:
         memory: 512Mi
         cpu: 200m
 
-# Worlds
-# official ワールドはイメージにバンドルした worlds/ をそのまま使う（main の worlds/ が official）。
-# registries は外部/コミュニティ由来のワールドを取り込みたいときにだけ URL を足す。
-worlds:
-  registries: []
+# Worlds: official はバンドルした worlds/（main の内容）を使う。
+# 外部ワールドは実行時に URL で on-demand 参照する（連合）。起動時 seed は無し。
 
 # Mod backends for production
 modBackends:

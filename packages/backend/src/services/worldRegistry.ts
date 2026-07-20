@@ -15,7 +15,7 @@ import {
 import { customAlphabet } from 'nanoid';
 import yaml from 'yaml';
 import { migrateLegacyWorldYaml } from './worldMigration';
-import { definitionToResolved, enumerateSource, resolveWorld, resolveWorldFromUrl } from './worldResolver';
+import { definitionToResolved, enumerateSource, resolveWorldFromUrl } from './worldResolver';
 
 // KebabCaseId 互換の lowercase + 数字のみ。21文字で十分な衝突耐性を確保。
 const generateWorldId = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 21);
@@ -30,8 +30,8 @@ const SYSTEM_AUTHOR_ID = '00000000-0000-0000-0000-000000000000';
  * ワールドレジストリ（URL ネイティブ）
  *
  * - ワールドの一意キーは URL（{@link ResolvedWorld.url}）。
- * - official（ローカル `worlds/*.yaml`）と外部レジストリは worldResolver で解決し、
- *   `_index`（メモリ）に保持する。worlds.json は使わない。
+ * - official はイメージにバンドルした `worlds/*.yaml` を worldResolver で解決し `_index`（メモリ）に保持。
+ *   worlds.json や起動時の registry seed は使わない（外部ワールドは URL で on-demand 参照する）。
  * - ユーザー作成ワールドは DB に保持（P2 で storage 抽象へ）。
  * - ファイル監視で `worlds/` の YAML 変更を自動反映する。
  *
@@ -40,7 +40,6 @@ const SYSTEM_AUTHOR_ID = '00000000-0000-0000-0000-000000000000';
  */
 class WorldRegistry {
     private readonly worldsDir: string;
-    private readonly registrySources: string[];
 
     /** official + registry の解決済みワールド（id=metadata.name → ResolvedWorld） */
     private _index = new Map<string, ResolvedWorld>();
@@ -57,20 +56,12 @@ class WorldRegistry {
     // biome-ignore lint/correctness/noUnusedPrivateClassMembers: watcher は起動後も参照保持が必要
     private _watcher: ReturnType<typeof fs.watch> | null = null;
     private readonly _debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
-    private _lastRegistrySeedAt = 0;
-    private static readonly REGISTRY_SEED_INTERVAL_MS = 60 * 60 * 1000;
 
     constructor() {
         const envWorldsDir = process.env[ENV_KEYS.WORLDS_DIR];
         this.worldsDir = envWorldsDir
             ? path.resolve(envWorldsDir)
             : path.resolve(process.cwd(), SERVER_CONFIG.WORLDS_DIR_DEFAULT);
-
-        const urlsEnv = process.env[ENV_KEYS.WORLDS_REGISTRY_URLS] ?? '';
-        this.registrySources = urlsEnv
-            .split(',')
-            .map((u) => u.trim())
-            .filter(Boolean);
     }
 
     // ── URL ヘルパー ─────────────────────────────────────────
@@ -97,18 +88,6 @@ class WorldRegistry {
         await this._migrateLegacyDbRecords();
         await this._scanLocal();
         this._startWatcher();
-        if (this.registrySources.length > 0) {
-            const hasWorlds = (await worldRepository.findAll()).length > 0;
-            if (hasWorlds) {
-                void this._seedFromRegistries().catch((err) => {
-                    console.error('❌ 外部レジストリ更新失敗:', err);
-                });
-            } else {
-                await this._seedFromRegistries().catch((err) => {
-                    console.error('❌ 外部レジストリ取得失敗:', err);
-                });
-            }
-        }
         console.log('👤 システムユーザーを確認しました');
     }
 
@@ -359,7 +338,7 @@ class WorldRegistry {
         console.log(`📋 ローカル worlds/ から ${this._index.size} ワールドを読み込みました`);
     }
 
-    /** 1 つのローカル YAML を解決し、DB へ upsert して索引に載せる。失敗時は null。 */
+    /** 1 つのローカル YAML を解決してメモリ索引に載せる（DB 非依存）。失敗時は undefined。 */
     private async _indexLocalFile(filePath: string): Promise<ResolvedWorld | undefined> {
         try {
             const content = fs.readFileSync(filePath, 'utf-8');
@@ -427,51 +406,6 @@ class WorldRegistry {
         if (!resolved) return;
         if (!this._order.includes(resolved.id)) this._order.push(resolved.id);
         console.log(`✅ ワールド自動リロード: ${resolved.id} (v${resolved.version})`);
-    }
-
-    // ================================================================
-    // プライベート: 外部レジストリ
-    // ================================================================
-
-    private async _seedFromRegistries(): Promise<void> {
-        const now = Date.now();
-        if (now - this._lastRegistrySeedAt < WorldRegistry.REGISTRY_SEED_INTERVAL_MS) return;
-        this._lastRegistrySeedAt = now;
-
-        const sources = (
-            await Promise.allSettled(
-                this.registrySources.map(async (sourceUrl) => {
-                    const expanded = await enumerateSource(sourceUrl);
-                    console.log(`📋 レジストリ ${sourceUrl}: ${expanded.length}件`);
-                    return expanded;
-                }),
-            )
-        ).flatMap((r) => {
-            if (r.status === 'rejected') console.error('❌ レジストリ列挙失敗:', r.reason);
-            return r.status === 'fulfilled' ? r.value : [];
-        });
-
-        await Promise.allSettled(
-            sources.map(async ({ url, source }) => {
-                try {
-                    await this._seedWorld(url, source);
-                } catch (err) {
-                    console.error(`❌ ワールド取得失敗: ${url}`, err);
-                }
-            }),
-        );
-    }
-
-    private async _seedWorld(url: string, source: WorldSource): Promise<void> {
-        const { definition, resolved } = await resolveWorld(url, source);
-        // 同バージョンが既に索引にあればスキップ
-        const existing = this._index.get(resolved.id);
-        if (existing?.version === resolved.version) return;
-        // registry ワールドも DB に持たずメモリ索引のみ
-        this._index.set(resolved.id, resolved);
-        this._defByName.set(resolved.id, definition);
-        if (!this._order.includes(resolved.id)) this._order.push(resolved.id);
-        console.log(`   📄 ${resolved.id} (v${resolved.version}) - ${url}`);
     }
 
     // ================================================================

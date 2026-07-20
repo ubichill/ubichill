@@ -35,9 +35,6 @@ data:
   {{- if and .Values.global.domain (not (hasKey .Values.backend.env "PUBLIC_BASE_URL")) }}
   PUBLIC_BASE_URL: {{ printf "https://%s" .Values.global.domain | quote }}
   {{- end }}
-  {{- if .Values.worlds.registries }}
-  WORLDS_REGISTRY_URLS: {{ .Values.worlds.registries | join "," | quote }}
-  {{- end }}
   {{- if .Values.redis.enabled }}
   REDIS_URL: {{ printf "redis://%s-redis-master:%v" (include "ubichill.fullname" .) (.Values.redis.master.service.ports.redis | default 6379) | quote }}
   {{- end }}

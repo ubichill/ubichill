@@ -83,12 +83,8 @@ postgresql:
   global:
     imageRegistry: ""
 
-# Worlds
-# official ワールドはイメージにバンドルした worlds/ をそのまま使う（per-PR プレビューでは
-# その PR ブランチの worlds/ が official になる）。registries は外部/コミュニティ由来の
-# ワールドを取り込みたいときにだけ URL を足す（GitHub tree URL / index JSON / 他インスタンス）。
-worlds:
-  registries: []
+# Worlds: official はバンドルした worlds/（per-PR ではその PR ブランチの内容）を使う。
+# 外部ワールドは実行時に URL で on-demand 参照する（連合）。起動時 seed は無し。
 
 # Mod backends for development
 modBackends:

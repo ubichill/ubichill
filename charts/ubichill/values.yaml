@@ -18,15 +18,12 @@ global:
     allowInsecureImages: true
 
 # Worlds configuration
-# ワールド定義は URL レジストリから取得する（ConfigMap 不要）
+# ワールド
+# official ワールドはイメージにバンドルした worlds/ を使う（起動時の registry seed は廃止）。
+# 外部/他インスタンスのワールドは実行時に URL で on-demand 解決・入室する（連合）。
 worlds:
-  # ワールド YAML を取得するURL一覧（カンマ区切りで環境変数に渡される）
-  # GitHub tree URL を指定すると GitHub Contents API で自動解決する
-  # 例: https://github.com/ubichill/ubichill/tree/main/worlds
-  # 例: https://raw.githubusercontent.com/ubichill/ubichill/main/worlds/default.yaml
-  registries: []
-  # プライベートリポジトリの場合はトークンを設定（Secret として注入される）
-  # 本番環境では registryToken に直書きせず existingTokenSecret を使うことを推奨
+  # 外部の private リポジトリ等から on-demand 取得する際の GitHub トークン（Secret として注入）
+  # 本番では registryToken 直書きより existingTokenSecret を推奨
   registryToken: ""
   # 既存の Secret を使う場合（key: token が必要）。設定すると registryToken の Secret 生成をスキップ
   existingTokenSecret: ""
