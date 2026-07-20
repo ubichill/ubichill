@@ -17,6 +17,7 @@ import {
     type InitialEntity,
     LIMITS,
     type ResolvedWorld,
+    type WorldDefinition,
     WorldDefinitionSchema,
     type WorldSource,
     WorldSourceKind,
@@ -60,12 +61,26 @@ export function definitionToResolved(
     source: WorldSource,
     extra?: { authorId?: string },
 ): ResolvedWorld {
+    return mapToResolved(validateWorldDefinition(parsed, url), url, source, extra);
+}
+
+/** unknown をパース・マイグレーション・検証して WorldDefinition にする（不正は throw）。 */
+export function validateWorldDefinition(parsed: unknown, url: string): WorldDefinition {
     const result = WorldDefinitionSchema.safeParse(migrateLegacyWorldYaml(parsed));
     if (!result.success) {
         const issue = result.error.issues[0];
         throw new Error(`ワールド定義が無効です (${url}): ${issue?.path.join('.') ?? ''} ${issue?.message ?? ''}`);
     }
-    const def = result.data;
+    return result.data;
+}
+
+/** 検証済み WorldDefinition を ResolvedWorld に写像する（純粋）。 */
+function mapToResolved(
+    def: WorldDefinition,
+    url: string,
+    source: WorldSource,
+    extra?: { authorId?: string },
+): ResolvedWorld {
     const env = def.spec.environment ?? {
         backgroundColor: DEFAULTS.WORLD_ENVIRONMENT.backgroundColor,
         worldSize: DEFAULTS.WORLD_ENVIRONMENT.worldSize,
@@ -113,6 +128,16 @@ export async function resolveWorldFromUrl(url: string, source: WorldSource): Pro
     const text = await fetchText(fetchUrl);
     // 正規 URL は元の（人間が貼れる）URL を維持する
     return resolveWorldFromYaml(text, url, source);
+}
+
+/** URL を取得し、生定義（配信用）と ResolvedWorld（一覧/入室用）の両方を返す。 */
+export async function resolveWorld(
+    url: string,
+    source: WorldSource,
+): Promise<{ definition: WorldDefinition; resolved: ResolvedWorld }> {
+    const text = await fetchText(toRawGitHubUrl(url));
+    const definition = validateWorldDefinition(yaml.parse(text), url);
+    return { definition, resolved: definitionToResolved(definition, url, source) };
 }
 
 // ============================================================

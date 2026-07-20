@@ -15,7 +15,7 @@ import {
 import { customAlphabet } from 'nanoid';
 import yaml from 'yaml';
 import { migrateLegacyWorldYaml } from './worldMigration';
-import { definitionToResolved, enumerateSource, resolveWorldFromUrl } from './worldResolver';
+import { definitionToResolved, enumerateSource, resolveWorld, resolveWorldFromUrl } from './worldResolver';
 
 // KebabCaseId 互換の lowercase + 数字のみ。21文字で十分な衝突耐性を確保。
 const generateWorldId = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 21);
@@ -44,6 +44,8 @@ class WorldRegistry {
 
     /** official + registry の解決済みワールド（id=metadata.name → ResolvedWorld） */
     private _index = new Map<string, ResolvedWorld>();
+    /** official + registry の生定義（id → WorldDefinition）。URL 配信/フェデレーション用 */
+    private _defByName = new Map<string, WorldDefinition>();
     /** ローカル id → YAML ファイルパス（reload / watch 用） */
     private _fileByName = new Map<string, string>();
     /** 表示順（in-memory。永続化は ordering→DB の別タスク） */
@@ -192,6 +194,17 @@ class WorldRegistry {
         return worldRepository.findByName(worldId);
     }
 
+    /**
+     * ワールドの生定義（WorldDefinition）を返す。URL 配信・フェデレーション用。
+     * official/registry はメモリの生定義、ユーザー作成は DB レコードから。
+     */
+    async getWorldDefinition(worldId: string): Promise<WorldDefinition | undefined> {
+        const mem = this._defByName.get(worldId);
+        if (mem) return mem;
+        const record = await worldRepository.findByName(worldId);
+        return record ? (record.definition as WorldDefinition) : undefined;
+    }
+
     // ---- CRUD（ユーザー操作） ----------------------------------------
 
     async createWorld(authorId: string, definition: WorldDefinition): Promise<ResolvedWorld> {
@@ -326,6 +339,7 @@ class WorldRegistry {
 
     private async _scanLocal(): Promise<void> {
         this._index.clear();
+        this._defByName.clear();
         this._fileByName.clear();
         const nextOrder: string[] = [];
         if (!fs.existsSync(this.worldsDir)) {
@@ -362,6 +376,7 @@ class WorldRegistry {
                 authorId: SYSTEM_AUTHOR_ID,
             });
             this._index.set(id, resolved);
+            this._defByName.set(id, def);
             this._fileByName.set(id, filePath);
             return resolved;
         } catch (err) {
@@ -400,6 +415,7 @@ class WorldRegistry {
             const id = [...this._fileByName.entries()].find(([, f]) => path.basename(f) === filename)?.[0];
             if (id) {
                 this._index.delete(id);
+                this._defByName.delete(id);
                 this._fileByName.delete(id);
                 this._order = this._order.filter((n) => n !== id);
                 console.log(`🗑  ワールド削除を検知: ${id}`);
@@ -447,12 +463,13 @@ class WorldRegistry {
     }
 
     private async _seedWorld(url: string, source: WorldSource): Promise<void> {
-        const resolved = await resolveWorldFromUrl(url, source);
+        const { definition, resolved } = await resolveWorld(url, source);
         // 同バージョンが既に索引にあればスキップ
         const existing = this._index.get(resolved.id);
         if (existing?.version === resolved.version) return;
         // registry ワールドも DB に持たずメモリ索引のみ
         this._index.set(resolved.id, resolved);
+        this._defByName.set(resolved.id, definition);
         if (!this._order.includes(resolved.id)) this._order.push(resolved.id);
         console.log(`   📄 ${resolved.id} (v${resolved.version}) - ${url}`);
     }

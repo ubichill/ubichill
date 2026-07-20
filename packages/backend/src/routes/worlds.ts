@@ -231,25 +231,20 @@ router.get('/:worldId/definition', requireAuth, async (req, res) => {
 
 /**
  * GET /api/v1/worlds/:worldId/yaml
- * ワールドの定義を YAML テキストで取得（YAMLエディタ用、作成者のみ）
+ * ワールドの定義を YAML テキストで取得する。
+ *
+ * これは「ワールド＝URL」の**正規 URL**（{@link ResolvedWorld.url}）が指す先であり、
+ * official/registry/ユーザー作成を問わず**公開**で配信する（フェデレーション＝他インスタンスや
+ * クローラが URL でワールド実体を取得できるようにするため）。編集用の保存は PUT 側で認可する。
  */
-router.get('/:worldId/yaml', requireAuth, async (req, res) => {
+router.get('/:worldId/yaml', optionalAuth, async (req, res) => {
     try {
-        if (!req.user) {
-            res.status(401).json({ error: 'Unauthorized' });
-            return;
-        }
-        const record = await worldRegistry.getWorldRecord(req.params.worldId as string);
-        if (!record) {
+        const def = await worldRegistry.getWorldDefinition(req.params.worldId as string);
+        if (!def) {
             res.status(404).json({ error: 'World not found' });
             return;
         }
-        if (record.authorId !== req.user.id) {
-            res.status(403).json({ error: 'Forbidden: Only the author can view the raw YAML' });
-            return;
-        }
-        const text = yaml.stringify(record.definition);
-        res.type('text/yaml').send(text);
+        res.type('text/yaml').send(yaml.stringify(def));
     } catch (error) {
         console.error('ワールドYAML取得エラー:', error);
         res.status(500).json({ error: 'Internal server error' });
