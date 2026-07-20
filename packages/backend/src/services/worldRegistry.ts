@@ -133,7 +133,7 @@ class WorldRegistry {
             });
 
         // 索引に無い DB レコード（ユーザー作成ワールド）を補完
-        const known = new Set(Array.from(this._index.keys()));
+        const known = new Set(this._index.keys());
         const dbItems: WorldListItem[] = allRecords
             .filter((r: WorldRecord) => !known.has(r.name))
             .map((r: WorldRecord) => this._toListItem(this._resolveWorld(r), r));
@@ -171,7 +171,7 @@ class WorldRegistry {
      * official/registry はメモリ索引、本体ホストのユーザーワールドは self URL から id を得て DB 解決。
      */
     async getWorldByUrl(url: string): Promise<ResolvedWorld | undefined> {
-        for (const w of Array.from(this._index.values())) {
+        for (const w of this._index.values()) {
             if (w.url === url) return w;
         }
         const id = this._idFromSelfUrl(url);
@@ -412,7 +412,7 @@ class WorldRegistry {
 
         // ファイル削除
         if (!fs.existsSync(filePath)) {
-            const id = Array.from(this._fileByName.entries()).find(([, f]) => path.basename(f) === filename)?.[0];
+            const id = [...this._fileByName.entries()].find(([, f]) => path.basename(f) === filename)?.[0];
             if (id) {
                 this._index.delete(id);
                 this._defByName.delete(id);
