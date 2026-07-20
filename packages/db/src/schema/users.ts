@@ -93,12 +93,11 @@ export const userFavorites = pgTable(
         userId: text('user_id')
             .notNull()
             .references(() => users.id, { onDelete: 'cascade' }),
-        worldId: varchar('world_id', { length: 21 })
-            .notNull()
-            .references(() => worlds.id, { onDelete: 'cascade' }),
+        // ワールド参照＝正規 URL（worlds.id への FK を廃止。official/外部ワールドは DB に無い）
+        worldRef: text('world_ref').notNull(),
         createdAt: timestamp('created_at').defaultNow().notNull(),
     },
-    (table) => [primaryKey({ columns: [table.userId, table.worldId] })],
+    (table) => [primaryKey({ columns: [table.userId, table.worldRef] })],
 );
 
 export const usersRelations = relations(users, ({ one, many }) => ({
@@ -134,8 +133,5 @@ export const userFavoritesRelations = relations(userFavorites, ({ one }) => ({
         fields: [userFavorites.userId],
         references: [users.id],
     }),
-    world: one(worlds, {
-        fields: [userFavorites.worldId],
-        references: [worlds.id],
-    }),
+    // world は URL 参照（worldRef）になったため drizzle リレーションは持たない
 }));

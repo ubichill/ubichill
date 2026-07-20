@@ -78,13 +78,9 @@ class InstanceManager {
             passwordHash = await bcrypt.hash(request.access.password, 10);
         }
 
-        // DBにインスタンスを作成（world.dbIdを使用）
-        // NOTE(P3): instances.worldRef 移行後は URL 参照へ置換する。現状は DB 登録済みワールドのみ instance 化可。
-        if (!world.dbId) {
-            throw new Error(`ワールド ${world.id} は DB 未登録のためインスタンスを作成できません`);
-        }
+        // DBにインスタンスを作成（ワールドは URL で参照する。official/外部ワールドも instance 化可）
         const dbInstance = await instanceRepository.create({
-            worldId: world.dbId,
+            worldRef: world.url,
             leaderId,
             accessType: request.access?.type ?? 'public',
             accessTags: request.access?.tags ?? [],
@@ -130,7 +126,7 @@ class InstanceManager {
         const dbInstances = await instanceRepository.findAll({ tag: options?.tag, includeFull: true });
         const mapped = await Promise.all(
             dbInstances.map(async (db: InstanceRecord): Promise<Instance | null> => {
-                const world = await worldRegistry.getWorldByDbId(db.worldId);
+                const world = await worldRegistry.getWorldByUrl(db.worldRef);
                 return world ? this.toPublicInstance(db, world) : null;
             }),
         );
@@ -180,9 +176,9 @@ class InstanceManager {
             return undefined;
         }
 
-        const world = await worldRegistry.getWorldByDbId(dbInstance.worldId);
+        const world = await worldRegistry.getWorldByUrl(dbInstance.worldRef);
         if (!world) {
-            logger.warn(`getInstance: world 解決失敗 (instanceId: ${instanceId}, worldId: ${dbInstance.worldId})`);
+            logger.warn(`getInstance: world 解決失敗 (instanceId: ${instanceId}, worldRef: ${dbInstance.worldRef})`);
             return undefined;
         }
 
@@ -235,9 +231,9 @@ class InstanceManager {
      */
     async findInstancesByWorld(worldId: string): Promise<Instance[]> {
         const world = await worldRegistry.getWorld(worldId);
-        if (!world?.dbId) return [];
+        if (!world) return [];
 
-        const dbInstances = await instanceRepository.findByWorldId(world.dbId);
+        const dbInstances = await instanceRepository.findByWorldRef(world.url);
         return dbInstances.map((dbInstance: InstanceRecord) => this.toPublicInstance(dbInstance, world));
     }
 
@@ -294,7 +290,7 @@ class InstanceManager {
                 version: world.version,
                 displayName: world.displayName,
                 thumbnail: world.thumbnail,
-                // DB 由来ワールドは常に authorId を持つ（dbId ガード済み）。フォールバックは型都合。
+                // 本体作成ワールドは authorId を持つ。外部/official ワールドは空（provenance は source 側）。
                 authorId: world.authorId ?? '',
                 authorName: world.authorName,
             },

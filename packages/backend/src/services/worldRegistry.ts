@@ -35,8 +35,8 @@ const SYSTEM_AUTHOR_ID = '00000000-0000-0000-0000-000000000000';
  * - ユーザー作成ワールドは DB に保持（P2 で storage 抽象へ）。
  * - ファイル監視で `worlds/` の YAML 変更を自動反映する。
  *
- * NOTE(P3): 現状は instances が `worlds.id`(dbId) を参照するため、official/registry も
- * DB へ upsert して dbId を維持している。instances.worldRef 移行後に upsert を外す。
+ * instances/favorites はワールドを URL（{@link ResolvedWorld.url}）で参照するため、
+ * official/registry を DB に持つ必要はない（メモリ索引のみ）。
  */
 class WorldRegistry {
     private readonly worldsDir: string;
@@ -164,10 +164,27 @@ class WorldRegistry {
         return !!(await worldRepository.findByName(worldId));
     }
 
-    /** DB UUID でワールドを取得（インスタンスマネージャー用、P3 で worldRef へ移行予定）。 */
-    async getWorldByDbId(dbId: string): Promise<ResolvedWorld | undefined> {
-        const record = await worldRepository.findById(dbId);
-        return record ? this._resolveWorld(record) : undefined;
+    /**
+     * URL（＝ワールドの一意キー）でワールドを取得する。instances/favorites が参照する。
+     * official/registry はメモリ索引、本体ホストのユーザーワールドは self URL から id を得て DB 解決。
+     */
+    async getWorldByUrl(url: string): Promise<ResolvedWorld | undefined> {
+        for (const w of this._index.values()) {
+            if (w.url === url) return w;
+        }
+        const id = this._idFromSelfUrl(url);
+        if (id) return this.getWorld(id);
+        return undefined;
+    }
+
+    /** self URL（`.../api/v1/worlds/{id}/yaml`）から id を取り出す。それ以外は undefined。 */
+    private _idFromSelfUrl(url: string): string | undefined {
+        try {
+            const m = /^\/api\/v1\/worlds\/(.+)\/yaml$/.exec(new URL(url).pathname);
+            return m?.[1];
+        } catch {
+            return undefined;
+        }
     }
 
     /** 内部用：生の DB レコードを取得 */
@@ -248,9 +265,10 @@ class WorldRegistry {
                     version: resolved.version,
                     definition: this._toDefinition(resolved),
                 });
-                const withDbId = { ...resolved, dbId: record.id };
-                this._resolvedCache.set(resolved.id, withDbId);
-                return withDbId;
+                // 本体 DB に取り込んだので self URL の local ワールドとして解決し直す
+                const imported = this._resolveWorld(record);
+                this._resolvedCache.set(imported.id, imported);
+                return imported;
             }),
         );
         const errors = settled.filter((r) => r.status === 'rejected').map((r) => (r as PromiseRejectedResult).reason);
@@ -339,19 +357,10 @@ class WorldRegistry {
             }
             const def = result.data;
             const id = def.metadata.name;
-            // DB へ upsert（instances が dbId 参照のため。P3 で撤去）
-            const record = await worldRepository.upsertByName({
+            // official ワールドは DB に持たずメモリ索引のみ（DB 依存の排除）
+            const resolved = definitionToResolved(parsed, this.selfWorldUrl(id), this.localSource(id), {
                 authorId: SYSTEM_AUTHOR_ID,
-                name: id,
-                version: def.metadata.version,
-                definition: def,
             });
-            const resolved: ResolvedWorld = {
-                ...definitionToResolved(parsed, this.selfWorldUrl(id), this.localSource(id), {
-                    authorId: record.authorId,
-                }),
-                dbId: record.id,
-            };
             this._index.set(id, resolved);
             this._fileByName.set(id, filePath);
             return resolved;
@@ -442,15 +451,8 @@ class WorldRegistry {
         // 同バージョンが既に索引にあればスキップ
         const existing = this._index.get(resolved.id);
         if (existing?.version === resolved.version) return;
-        // DB へ upsert（P3 で撤去）
-        const record = await worldRepository.upsertByName({
-            authorId: SYSTEM_AUTHOR_ID,
-            name: resolved.id,
-            version: resolved.version,
-            definition: this._toDefinition(resolved),
-        });
-        const withDbId: ResolvedWorld = { ...resolved, dbId: record.id };
-        this._index.set(resolved.id, withDbId);
+        // registry ワールドも DB に持たずメモリ索引のみ
+        this._index.set(resolved.id, resolved);
         if (!this._order.includes(resolved.id)) this._order.push(resolved.id);
         console.log(`   📄 ${resolved.id} (v${resolved.version}) - ${url}`);
     }
@@ -486,7 +488,6 @@ class WorldRegistry {
                 authorId: record.authorId,
             }),
             id: record.name,
-            dbId: record.id,
         };
     }
 

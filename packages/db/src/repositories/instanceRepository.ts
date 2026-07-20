@@ -6,7 +6,8 @@ export type InstanceRecord = typeof instances.$inferSelect;
 
 export interface CreateInstanceInput {
     id?: string;
-    worldId: string;
+    /** ワールド参照＝正規 URL（worlds.id への FK は廃止） */
+    worldRef: string;
     leaderId: string;
     accessType?: 'public' | 'friend_plus' | 'friend_only' | 'invite_only';
     accessTags?: string[];
@@ -27,8 +28,8 @@ export const instanceRepository = {
         return results[0];
     },
 
-    async findByWorldId(worldId: string): Promise<InstanceRecord[]> {
-        return db.select().from(instances).where(eq(instances.worldId, worldId));
+    async findByWorldRef(worldRef: string): Promise<InstanceRecord[]> {
+        return db.select().from(instances).where(eq(instances.worldRef, worldRef));
     },
 
     async findByLeaderId(leaderId: string): Promise<InstanceRecord[]> {
@@ -60,7 +61,7 @@ export const instanceRepository = {
             .insert(instances)
             .values({
                 id: input.id,
-                worldId: input.worldId,
+                worldRef: input.worldRef,
                 leaderId: input.leaderId,
                 accessType: input.accessType ?? 'public',
                 accessTags: input.accessTags ?? [],

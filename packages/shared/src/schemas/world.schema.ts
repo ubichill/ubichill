@@ -309,8 +309,6 @@ export const ResolvedWorldSchema = z.object({
     /** 由来メタデータ（provenance）。 */
     source: WorldSourceSchema,
     id: z.string(), // 人間が読める識別子（name）
-    /** @deprecated P3 の instances.worldRef 移行で撤去予定。本体作成ワールドの DB nanoid。 */
-    dbId: z.string().optional(),
     authorId: z.string().optional(), // 本体作成ワールドのユーザーID（外部ワールドは無い場合あり）
     authorName: z.string().optional(), // YAML metadata.author.name
     version: z.string(),
