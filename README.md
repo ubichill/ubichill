@@ -18,7 +18,7 @@
 <p align="center">
   <a href="docs/ARCHITECTURE.md">Architecture</a>
   ・
-  <a href="docs/WORLD_AS_CODE.md">World as Code</a>
+  <a href="docs/worlds/WORLD_AS_CODE.md">World as Code</a>
   ・
   <a href="docs/API.md">API</a>
   ・
