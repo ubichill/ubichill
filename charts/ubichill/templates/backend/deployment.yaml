@@ -92,6 +92,17 @@ spec:
         {{- end }}
         resources:
           {{- toYaml (.Values.backend.migrate.resources | default .Values.backend.resources) | nindent 10 }}
+      # イメージにバンドルした official ワールド (/app/worlds) を書き込み可能な WORLDS_DIR(/worlds-rw) へ複製する。
+      # これが無いと /worlds-rw(emptyDir) が空のままで、バンドルした official ワールドが読み込まれない。
+      - name: seed-worlds
+        image: {{ include "ubichill.backend.image" . }}
+        imagePullPolicy: {{ .Values.backend.image.pullPolicy | default .Values.global.imagePullPolicy }}
+        command: ["sh", "-c", "cp -a /app/worlds/. /worlds-rw/ 2>/dev/null || true"]
+        volumeMounts:
+        - name: worlds-rw
+          mountPath: /worlds-rw
+        resources:
+          {{- toYaml (.Values.backend.migrate.resources | default .Values.backend.resources) | nindent 10 }}
       containers:
       - name: backend
         securityContext:
