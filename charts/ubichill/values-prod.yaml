@@ -99,11 +99,11 @@ postgresql:
         memory: 512Mi
         cpu: 200m
 
-# Worlds registry for production
+# Worlds
+# official ワールドはイメージにバンドルした worlds/ をそのまま使う（main の worlds/ が official）。
+# registries は外部/コミュニティ由来のワールドを取り込みたいときにだけ URL を足す。
 worlds:
-  registries:
-    # GitHub ディレクトリ（tree URL）を Contents API で列挙する。worlds.json は不要。
-    - https://github.com/ubichill/ubichill/tree/main/worlds
+  registries: []
 
 # Mod backends for production
 modBackends:
