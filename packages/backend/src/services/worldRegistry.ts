@@ -72,7 +72,7 @@ class WorldRegistry {
 
     /** 本体がホストするワールドの正規 URL（＝一意キー）。 */
     private selfWorldUrl(id: string): string {
-        return `${this._publicBaseUrl}/api/v1/worlds/${id}/yaml`;
+        return `${this._publicBaseUrl}/api/v1/worlds/${id}`;
     }
 
     private localSource(id: string): WorldSource {
@@ -158,10 +158,10 @@ class WorldRegistry {
         return undefined;
     }
 
-    /** self URL（`.../api/v1/worlds/{id}/yaml`）から id を取り出す。それ以外は undefined。 */
+    /** self URL（`.../api/v1/worlds/{id}` または旧 `.../{id}/yaml`）から id を取り出す。それ以外は undefined。 */
     private _idFromSelfUrl(url: string): string | undefined {
         try {
-            const m = /^\/api\/v1\/worlds\/(.+)\/yaml$/.exec(new URL(url).pathname);
+            const m = /^\/api\/v1\/worlds\/(.+?)(?:\/yaml)?$/.exec(new URL(url).pathname);
             return m?.[1];
         } catch {
             return undefined;

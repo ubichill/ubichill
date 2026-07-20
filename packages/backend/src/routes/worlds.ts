@@ -102,18 +102,31 @@ router.post('/:worldId/reload', requireAuth, async (req, res) => {
 
 /**
  * GET /api/v1/worlds/:worldId
- * ワールドテンプレート詳細を取得（認証必須）
+ * ワールドの**正規 URL**（{@link ResolvedWorld.url}）。content negotiation で返す形式を切り替える:
+ *   - 既定 / `Accept: application/json` → ResolvedWorld(JSON)（フロント詳細表示用）
+ *   - `Accept` が yaml を含む または `?format=yaml` → WorldDefinition(YAML)（連合/クローラ/エディタ用、公開）
+ * official/ユーザー作成を問わず公開で配信する（他インスタンスが URL でワールド実体を取得できるように）。
  */
 router.get('/:worldId', optionalAuth, async (req, res) => {
     try {
         const worldId = req.params.worldId as string;
-        const world = await worldRegistry.getWorld(worldId);
+        const wantsYaml = req.query.format === 'yaml' || /ya?ml/i.test(req.get('accept') ?? '');
 
+        if (wantsYaml) {
+            const def = await worldRegistry.getWorldDefinition(worldId);
+            if (!def) {
+                res.status(404).json({ error: 'World not found' });
+                return;
+            }
+            res.type('text/yaml').send(yaml.stringify(def));
+            return;
+        }
+
+        const world = await worldRegistry.getWorld(worldId);
         if (!world) {
             res.status(404).json({ error: 'World not found' });
             return;
         }
-
         res.json(world);
     } catch (error) {
         console.error('ワールド取得エラー:', error);
