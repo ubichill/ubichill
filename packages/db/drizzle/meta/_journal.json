@@ -8,6 +8,13 @@
       "when": 1772529395128,
       "tag": "0000_init_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784533530530,
+      "tag": "0001_sweet_trish_tilby",
+      "breakpoints": true
     }
   ]
 }

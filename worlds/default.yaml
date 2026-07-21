@@ -210,7 +210,7 @@ spec:
         - data: {}
           type: pen:tray
 metadata:
-  name: qddq511a3y2su8bq7gsf2
+  name: default
   author:
     name: devようかん
   version: 1.0.0

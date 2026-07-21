@@ -64,7 +64,8 @@ class InstanceManager {
      * 新しいインスタンスを作成
      */
     async createInstance(request: CreateInstanceRequest, leaderId: string): Promise<Instance | { error: string }> {
-        const world = await worldRegistry.getWorld(request.worldId);
+        // worldId は id でも URL でもよい（URL の場合は自ホスト/外部＝連合を解決する）
+        const world = await worldRegistry.resolveRef(request.worldId);
         if (!world) {
             return { error: `World not found: ${request.worldId}` };
         }
@@ -78,9 +79,9 @@ class InstanceManager {
             passwordHash = await bcrypt.hash(request.access.password, 10);
         }
 
-        // DBにインスタンスを作成（world.dbIdを使用）
+        // DBにインスタンスを作成（ワールドは URL で参照する。official/外部ワールドも instance 化可）
         const dbInstance = await instanceRepository.create({
-            worldId: world.dbId,
+            worldRef: world.url,
             leaderId,
             accessType: request.access?.type ?? 'public',
             accessTags: request.access?.tags ?? [],
@@ -126,7 +127,7 @@ class InstanceManager {
         const dbInstances = await instanceRepository.findAll({ tag: options?.tag, includeFull: true });
         const mapped = await Promise.all(
             dbInstances.map(async (db: InstanceRecord): Promise<Instance | null> => {
-                const world = await worldRegistry.getWorldByDbId(db.worldId);
+                const world = await worldRegistry.getWorldByUrl(db.worldRef);
                 return world ? this.toPublicInstance(db, world) : null;
             }),
         );
@@ -176,9 +177,9 @@ class InstanceManager {
             return undefined;
         }
 
-        const world = await worldRegistry.getWorldByDbId(dbInstance.worldId);
+        const world = await worldRegistry.getWorldByUrl(dbInstance.worldRef);
         if (!world) {
-            logger.warn(`getInstance: world 解決失敗 (instanceId: ${instanceId}, worldId: ${dbInstance.worldId})`);
+            logger.warn(`getInstance: world 解決失敗 (instanceId: ${instanceId}, worldRef: ${dbInstance.worldRef})`);
             return undefined;
         }
 
@@ -233,7 +234,7 @@ class InstanceManager {
         const world = await worldRegistry.getWorld(worldId);
         if (!world) return [];
 
-        const dbInstances = await instanceRepository.findByWorldId(world.dbId);
+        const dbInstances = await instanceRepository.findByWorldRef(world.url);
         return dbInstances.map((dbInstance: InstanceRecord) => this.toPublicInstance(dbInstance, world));
     }
 
@@ -264,7 +265,7 @@ class InstanceManager {
             version: string;
             displayName: string;
             thumbnail?: string;
-            authorId: string;
+            authorId?: string;
             authorName?: string;
         },
     ): Instance {
@@ -290,7 +291,8 @@ class InstanceManager {
                 version: world.version,
                 displayName: world.displayName,
                 thumbnail: world.thumbnail,
-                authorId: world.authorId,
+                // 本体作成ワールドは authorId を持つ。外部/official ワールドは空（provenance は source 側）。
+                authorId: world.authorId ?? '',
                 authorName: world.authorName,
             },
 

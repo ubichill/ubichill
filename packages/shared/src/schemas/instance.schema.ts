@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { WorldSourceSchema } from './world.schema';
 
 // ============================================
 // Access Type（アクセス種別）
@@ -116,6 +117,10 @@ export type ListInstancesQuery = z.infer<typeof ListInstancesQuerySchema>;
  * ワールド一覧レスポンス（簡易版）
  */
 export const WorldListItemSchema = z.object({
+    /** ワールドの一意キー＝正規 URL。 */
+    url: z.string().url(),
+    /** 由来メタデータ（provenance）。 */
+    source: WorldSourceSchema,
     id: z.string(),
     displayName: z.string(),
     description: z.string().optional(),
@@ -125,8 +130,10 @@ export const WorldListItemSchema = z.object({
         default: z.number(),
         max: z.number(),
     }),
-    /** ワールド作成者のユーザーID */
+    /** ワールド作成者のユーザーID（本体作成のみ） */
     authorId: z.string().optional(),
+    /** ワールド作成者の表示名（YAML metadata.author.name 由来） */
+    authorName: z.string().optional(),
     createdAt: z.string().datetime().optional(),
     updatedAt: z.string().datetime().optional(),
 });

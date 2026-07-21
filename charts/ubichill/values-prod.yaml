@@ -99,10 +99,8 @@ postgresql:
         memory: 512Mi
         cpu: 200m
 
-# Worlds registry for production
-worlds:
-  registries:
-    - https://raw.githubusercontent.com/ubichill/ubichill/main/worlds/worlds.json
+# Worlds: official はバンドルした worlds/（main の内容）を使う。
+# 外部ワールドは実行時に URL で on-demand 参照する（連合）。起動時 seed は無し。
 
 # Mod backends for production
 modBackends:

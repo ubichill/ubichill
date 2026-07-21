@@ -371,6 +371,9 @@ export const ENV_KEYS = {
     /** ワールドレジストリ認証トークン（プライベートリポジトリ向け） */
     WORLDS_REGISTRY_TOKEN: 'WORLDS_REGISTRY_TOKEN',
 
+    /** 本体の外部到達 base URL。ローカル/ユーザー作成ワールドの正規 URL 生成に使う */
+    PUBLIC_BASE_URL: 'PUBLIC_BASE_URL',
+
     /** バックエンドAPI URL（フロントエンド用、Next.js の NEXT_PUBLIC_ プレフィックス） */
     API_URL: 'NEXT_PUBLIC_API_URL',
 } as const;

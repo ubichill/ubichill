@@ -58,4 +58,7 @@ export {
     type WorldEnvironment,
     WorldEnvironmentSchema,
     WorldPermissionsSchema,
+    type WorldSource,
+    WorldSourceKind,
+    WorldSourceSchema,
 } from './world.schema';

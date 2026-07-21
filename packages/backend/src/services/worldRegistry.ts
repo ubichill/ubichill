@@ -2,19 +2,21 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { userRepository, type WorldRecord, worldRepository } from '@ubichill/db';
 import {
-    DEFAULTS,
     ENV_KEYS,
-    type InitialEntity,
+    LIMITS,
     type ResolvedWorld,
     SERVER_CONFIG,
     type WorldCreateInput,
     type WorldDefinition,
     WorldDefinitionSchema,
     type WorldListItem,
+    type WorldSource,
+    WorldSourceKind,
 } from '@ubichill/shared';
 import { customAlphabet } from 'nanoid';
 import yaml from 'yaml';
 import { migrateLegacyWorldYaml } from './worldMigration';
+import { definitionToResolved, enumerateSource, resolveWorldFromUrl } from './worldResolver';
 
 // KebabCaseId 互換の lowercase + 数字のみ。21文字で十分な衝突耐性を確保。
 const generateWorldId = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 21);
@@ -23,79 +25,64 @@ const generateWorldId = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 2
 
 const SYSTEM_AUTHOR_ID = '00000000-0000-0000-0000-000000000000';
 
-const GITHUB_BLOB_RE = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/;
-
-function toRawUrl(url: string): string {
-    const m = GITHUB_BLOB_RE.exec(url);
-    if (m) return `https://raw.githubusercontent.com/${m[1]}/${m[2]}/${m[3]}/${m[4]}`;
-    return url;
-}
-
-async function resolveWorldsJsonUrls(jsonUrl: string): Promise<string[]> {
-    const res = await fetch(jsonUrl);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const base = jsonUrl.slice(0, jsonUrl.lastIndexOf('/') + 1);
-    const index = (await res.json()) as Array<{ file: string }>;
-    return index.filter((e) => e.file).map((e) => `${base}${e.file}`);
-}
-
-// ── worlds.json インデックス型 ────────────────────────────────────
-
-/**
- * worlds.json の各エントリ。
- * YAML をパースせずにワールド一覧を返すために必要な表示メタデータを保持する。
- */
-export type WorldIndexEntry = {
-    name: string;
-    file: string;
-    displayName: string;
-    description?: string | null;
-    thumbnail?: string | null;
-    version: string;
-    capacity: { default: number; max: number };
-};
-
 // ── WorldRegistry ─────────────────────────────────────────────────
 
 /**
- * ワールドレジストリ（worlds.json インデックス + 遅延ロード版）
+ * ワールドレジストリ（URL ネイティブ）
  *
- * - worlds.json = 表示用メタデータのインデックス（O(1) 参照・並べ替え対応）
- * - getWorld() = 初回アクセス時のみ YAML をパース（インスタンス作成時など）
- * - ファイル監視 = worlds/ 配下の YAML 変更を自動検知して再ロード（ボタン不要）
+ * - ワールドの一意キーは URL（{@link ResolvedWorld.url}）。
+ * - official はイメージにバンドルした `worlds/*.yaml` を worldResolver で解決し `_index`（メモリ）に保持。
+ *   worlds.json や起動時の registry seed は使わない（外部ワールドは URL で on-demand 参照する）。
+ * - ユーザー作成ワールドは DB に保持（P2 で storage 抽象へ）。
+ * - ファイル監視で `worlds/` の YAML 変更を自動反映する。
+ *
+ * instances/favorites はワールドを URL（{@link ResolvedWorld.url}）で参照するため、
+ * official/registry を DB に持つ必要はない（メモリ索引のみ）。
  */
 class WorldRegistry {
     private readonly worldsDir: string;
-    private readonly registryUrls: string[];
 
-    /** worlds.json から構築した name → entry マップ */
-    private _fileIndex = new Map<string, WorldIndexEntry>();
-    /** worlds.json の表示順 */
+    /** official + registry の解決済みワールド（id=metadata.name → ResolvedWorld） */
+    private _index = new Map<string, ResolvedWorld>();
+    /** url → id の逆引き（getWorldByUrl を O(1) に） */
+    private _urlIndex = new Map<string, string>();
+    /** official + registry の生定義（id → WorldDefinition）。URL 配信/フェデレーション用 */
+    private _defByName = new Map<string, WorldDefinition>();
+    /** ローカル id → YAML ファイルパス（reload / watch 用） */
+    private _fileByName = new Map<string, string>();
+    /** 表示順（in-memory。永続化は ordering→DB の別タスク） */
     private _order: string[] = [];
 
-    /** フルリゾルブ済みキャッシュ */
+    /** DB ユーザーワールドの解決キャッシュ */
     private readonly _resolvedCache = new Map<string, ResolvedWorld>();
+    /** 外部（他インスタンス/URL）ワールドの解決キャッシュ（連合、TTL 付き） */
+    private readonly _remoteCache = new Map<string, { at: number; world: ResolvedWorld }>();
+    private static readonly REMOTE_TTL_MS = 5 * 60 * 1000;
 
-    /** ファイル監視ハンドラ（close 用に保持） */
     // biome-ignore lint/correctness/noUnusedPrivateClassMembers: watcher は起動後も参照保持が必要
     private _watcher: ReturnType<typeof fs.watch> | null = null;
     private readonly _debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
-    /** 外部レジストリの最終取得時刻（レート制限対策） */
-    private _lastRegistrySeedAt = 0;
-    /** 外部レジストリの最小再取得間隔 ms（デフォルト: 1時間） */
-    private static readonly REGISTRY_SEED_INTERVAL_MS = 60 * 60 * 1000;
 
     constructor() {
         const envWorldsDir = process.env[ENV_KEYS.WORLDS_DIR];
         this.worldsDir = envWorldsDir
             ? path.resolve(envWorldsDir)
             : path.resolve(process.cwd(), SERVER_CONFIG.WORLDS_DIR_DEFAULT);
+    }
 
-        const urlsEnv = process.env[ENV_KEYS.WORLDS_REGISTRY_URLS] ?? '';
-        this.registryUrls = urlsEnv
-            .split(',')
-            .map((u) => u.trim())
-            .filter(Boolean);
+    // ── URL ヘルパー ─────────────────────────────────────────
+
+    private get _publicBaseUrl(): string {
+        return (process.env[ENV_KEYS.PUBLIC_BASE_URL] || SERVER_CONFIG.DEV_URL).replace(/\/$/, '');
+    }
+
+    /** 本体がホストするワールドの正規 URL（＝一意キー）。 */
+    private selfWorldUrl(id: string): string {
+        return `${this._publicBaseUrl}/api/v1/worlds/${id}`;
+    }
+
+    private localSource(id: string): WorldSource {
+        return { kind: WorldSourceKind.Local, url: this.selfWorldUrl(id), registryName: 'this instance' };
     }
 
     // ================================================================
@@ -103,23 +90,15 @@ class WorldRegistry {
     // ================================================================
 
     async initialize(): Promise<void> {
+        if (process.env.NODE_ENV === 'production' && !process.env[ENV_KEYS.PUBLIC_BASE_URL]) {
+            console.warn(
+                `⚠ ${ENV_KEYS.PUBLIC_BASE_URL} が未設定です。ワールドの正規 URL が ${SERVER_CONFIG.DEV_URL} になり連合が壊れます。`,
+            );
+        }
         await userRepository.ensureSystemUser(SYSTEM_AUTHOR_ID);
         await this._migrateLegacyDbRecords();
-        await this._loadIndex();
+        await this._scanLocal();
         this._startWatcher();
-        if (this.registryUrls.length > 0) {
-            // DB に既存ワールドがあればバックグラウンドで更新チェック、なければブロックして初期投入
-            const hasWorlds = (await worldRepository.findAll()).length > 0;
-            if (hasWorlds) {
-                void this._seedFromRegistries().catch((err) => {
-                    console.error('❌ 外部レジストリ更新失敗:', err);
-                });
-            } else {
-                await this._seedFromRegistries().catch((err) => {
-                    console.error('❌ 外部レジストリ取得失敗:', err);
-                });
-            }
-        }
         console.log('👤 システムユーザーを確認しました');
     }
 
@@ -129,92 +108,130 @@ class WorldRegistry {
 
     /**
      * ワールド一覧を返す。
-     * ローカルワールドは worlds.json から直接返す（YAML パース不要）。
-     * ユーザー作成ワールドは DB から補完する。
-     * DB の createdAt/updatedAt をすべてのワールドに付与する。
+     * official/registry はメモリ索引から、ユーザー作成ワールドは DB から補完する。
      */
     async listWorlds(): Promise<WorldListItem[]> {
-        // DB レコードを全件取得し、name → record のマップを構築
         const allRecords = await worldRepository.findAll();
         const dbRecordByName = new Map<string, WorldRecord>(allRecords.map((r: WorldRecord) => [r.name, r]));
 
-        const localItems: WorldListItem[] = this._order
-            .map((name) => this._fileIndex.get(name))
-            .filter((e): e is WorldIndexEntry => !!e)
-            .map((e) => {
-                const rec = dbRecordByName.get(e.name);
-                return {
-                    id: e.name,
-                    displayName: e.displayName,
-                    description: e.description ?? undefined,
-                    thumbnail: e.thumbnail ?? undefined,
-                    version: e.version,
-                    capacity: e.capacity,
-                    authorId: rec?.authorId ?? SYSTEM_AUTHOR_ID,
-                    createdAt: rec ? rec.createdAt.toISOString() : undefined,
-                    updatedAt: rec ? rec.updatedAt.toISOString() : undefined,
-                };
+        const indexItems: WorldListItem[] = this._order
+            .map((id) => this._index.get(id))
+            .filter((w): w is ResolvedWorld => !!w)
+            .map((w) => {
+                const rec = dbRecordByName.get(w.id);
+                return this._toListItem(w, rec);
             });
 
-        // _fileIndex にないワールドを DB から補完（ユーザー作成ワールド）
-        const knownNames = new Set(this._fileIndex.keys());
+        // 索引に無い DB レコード（ユーザー作成ワールド）を補完
+        const known = new Set(this._index.keys());
         const dbItems: WorldListItem[] = allRecords
-            .filter((r: WorldRecord) => !knownNames.has(r.name))
-            .map((r: WorldRecord) => {
-                const def = r.definition as WorldDefinition;
-                return {
-                    id: r.name,
-                    displayName: def.spec.displayName,
-                    description: def.spec.description,
-                    thumbnail: def.spec.thumbnail,
-                    version: r.version,
-                    capacity: def.spec.capacity,
-                    authorId: r.authorId,
-                    createdAt: r.createdAt.toISOString(),
-                    updatedAt: r.updatedAt.toISOString(),
-                };
-            });
+            .filter((r: WorldRecord) => !known.has(r.name))
+            .map((r: WorldRecord) => this._toListItem(this._resolveWorld(r), r));
 
-        return [...localItems, ...dbItems];
+        return [...indexItems, ...dbItems];
     }
 
     /**
-     * 単一ワールドをフル解決して返す（インスタンス作成時などに使用）。
-     * ローカルワールドは初回アクセス時のみ YAML をパースして DB に upsert する。
+     * 単一ワールドをフル解決して返す。
+     * official/registry はメモリ索引、ユーザー作成は DB から。
+     * @param worldId ワールド id（metadata.name）
      */
     async getWorld(worldId: string): Promise<ResolvedWorld | undefined> {
+        const indexed = this._index.get(worldId);
+        if (indexed) return indexed;
+
         if (this._resolvedCache.has(worldId)) return this._resolvedCache.get(worldId);
 
-        const entry = this._fileIndex.get(worldId);
-        if (entry) {
-            return this._loadWorldFromFile(entry);
-        }
-
-        // ユーザー作成ワールドを DB から取得
         const record = await worldRepository.findByName(worldId);
         if (record) {
             const resolved = this._resolveWorld(record);
             this._resolvedCache.set(worldId, resolved);
             return resolved;
         }
-
         return undefined;
     }
 
     async hasWorld(worldId: string): Promise<boolean> {
-        if (this._fileIndex.has(worldId)) return true;
+        if (this._index.has(worldId)) return true;
         return !!(await worldRepository.findByName(worldId));
     }
 
-    /** DB UUID でワールドを取得（インスタンスマネージャー用） */
-    async getWorldByDbId(dbId: string): Promise<ResolvedWorld | undefined> {
-        const record = await worldRepository.findById(dbId);
-        return record ? this._resolveWorld(record) : undefined;
+    /**
+     * id または URL でワールドを解決する。instance 作成の入口。
+     * - `http(s)://` → URL 解決（自ホスト or 外部＝連合）
+     * - それ以外 → id（メモリ索引 or DB）
+     */
+    async resolveRef(idOrUrl: string): Promise<ResolvedWorld | undefined> {
+        return /^https?:\/\//i.test(idOrUrl) ? this.getWorldByUrl(idOrUrl) : this.getWorld(idOrUrl);
+    }
+
+    /**
+     * URL（＝ワールドの一意キー）でワールドを取得する。instances/favorites が参照する。
+     * official/registry はメモリ索引、自ホストのユーザーワールドは self URL から id を得て DB 解決、
+     * 他ホストの URL は on-demand 取得（連合、TTL キャッシュ）。
+     */
+    async getWorldByUrl(url: string): Promise<ResolvedWorld | undefined> {
+        const indexedId = this._urlIndex.get(url);
+        if (indexedId) return this._index.get(indexedId);
+        const selfId = this._idFromSelfUrl(url);
+        if (selfId) return this.getWorld(selfId);
+        return this._resolveRemote(url);
+    }
+
+    /** self URL（自ホストの `.../api/v1/worlds/{id}`、旧 `.../{id}/yaml` 可）から id を取り出す。他ホストは undefined。 */
+    private _idFromSelfUrl(url: string): string | undefined {
+        try {
+            const u = new URL(url);
+            if (u.origin !== new URL(this._publicBaseUrl).origin) return undefined;
+            const m = /^\/api\/v1\/worlds\/(.+?)(?:\/yaml)?$/.exec(u.pathname);
+            return m?.[1];
+        } catch {
+            return undefined;
+        }
+    }
+
+    /** 外部（他インスタンス/任意 URL）のワールドをその場で解決する（連合）。TTL キャッシュ。 */
+    private async _resolveRemote(url: string): Promise<ResolvedWorld | undefined> {
+        const cached = this._remoteCache.get(url);
+        if (cached && Date.now() - cached.at < WorldRegistry.REMOTE_TTL_MS) return cached.world;
+        try {
+            const world = await resolveWorldFromUrl(url, this._externalSource(url));
+            this._remoteCache.set(url, { at: Date.now(), world });
+            return world;
+        } catch (err) {
+            console.error(`❌ 外部ワールド解決失敗: ${url}`, err);
+            return cached?.world;
+        }
+    }
+
+    /** 外部 URL から provenance（source）を推定する。 */
+    private _externalSource(url: string): WorldSource {
+        try {
+            const u = new URL(url);
+            if (/^\/api\/v1\/worlds\//.test(u.pathname)) {
+                return { kind: WorldSourceKind.RemoteInstance, url, originInstance: u.origin };
+            }
+            if (u.hostname.includes('github')) return { kind: WorldSourceKind.GitHub, url };
+        } catch {
+            // fallthrough
+        }
+        return { kind: WorldSourceKind.Url, url };
     }
 
     /** 内部用：生の DB レコードを取得 */
     async getWorldRecord(worldId: string): Promise<WorldRecord | undefined> {
         return worldRepository.findByName(worldId);
+    }
+
+    /**
+     * ワールドの生定義（WorldDefinition）を返す。URL 配信・フェデレーション用。
+     * official/registry はメモリの生定義、ユーザー作成は DB レコードから。
+     */
+    async getWorldDefinition(worldId: string): Promise<WorldDefinition | undefined> {
+        const mem = this._defByName.get(worldId);
+        if (mem) return mem;
+        const record = await worldRepository.findByName(worldId);
+        return record ? (record.definition as WorldDefinition) : undefined;
     }
 
     // ---- CRUD（ユーザー操作） ----------------------------------------
@@ -233,8 +250,7 @@ class WorldRegistry {
 
     /**
      * フォーム入力からワールドを作成する。
-     * - metadata.name はサーバー側で nanoid 生成（ユーザーの日本語名は displayName 側に入る）
-     * - author.name はセッションのユーザー名で補完
+     * metadata.name はサーバー側で nanoid 生成、author はセッションのユーザー名で補完。
      */
     async createFromInput(
         authorId: string,
@@ -256,7 +272,7 @@ class WorldRegistry {
 
     /**
      * YAML テキストからワールドを作成する。
-     * metadata.name は無視してサーバー側で再生成し、所有権を確実に作成者に紐付ける。
+     * metadata.name は無視してサーバー側で再生成し、所有権を作成者に紐付ける。
      */
     async createFromYaml(authorId: string, authorDisplayName: string, yamlText: string): Promise<ResolvedWorld> {
         const parsed = migrateLegacyWorldYaml(yaml.parse(yamlText) as unknown);
@@ -277,30 +293,32 @@ class WorldRegistry {
     }
 
     /**
-     * URL または GitHub blob URL からワールドを取り込む。
-     * worlds.json 形式の場合は全エントリを一括取得する。
-     * 既存ワールドは上書き（upsert）される。
+     * URL からワールドを取り込む（DB へ upsert）。
+     * GitHub tree URL / レジストリ URL の場合は全エントリを一括取得する。
      */
-    async importFromUrl(url: string): Promise<ResolvedWorld[]> {
-        const rawUrl = toRawUrl(url);
-        const yamlUrls = rawUrl.endsWith('.json') ? await resolveWorldsJsonUrls(rawUrl) : [rawUrl];
+    async importFromUrl(url: string, authorId: string): Promise<ResolvedWorld[]> {
+        const sources = await enumerateSource(url).catch(() => [{ url, source: { kind: WorldSourceKind.Url, url } }]);
+        // 取り込みは DB コピー。取り込んだユーザーの所有物として上限内に収める
+        // （外部ワールドを DB を増やさず使うだけなら連合＝URL 直参照を使う）。
+        const owned = await worldRepository.countByAuthorId(authorId);
+        if (owned + sources.length > LIMITS.MAX_WORLDS_PER_USER) {
+            throw new Error(
+                `取り込み上限を超えます（所有 ${owned} + 取り込み ${sources.length} > ${LIMITS.MAX_WORLDS_PER_USER}）`,
+            );
+        }
         const settled = await Promise.allSettled(
-            yamlUrls.map(async (yamlUrl) => {
-                const res = await fetch(yamlUrl);
-                if (!res.ok) throw new Error(`HTTP ${res.status}: ${yamlUrl}`);
-                const parsed = migrateLegacyWorldYaml(yaml.parse(await res.text()) as unknown);
-                const result = WorldDefinitionSchema.safeParse(parsed);
-                if (!result.success) throw new Error(`不正なワールド定義: ${yamlUrl}`);
-                const def = result.data;
+            sources.map(async ({ url: worldUrl, source }) => {
+                const resolved = await resolveWorldFromUrl(worldUrl, source);
                 const record = await worldRepository.upsertByName({
-                    authorId: SYSTEM_AUTHOR_ID,
-                    name: def.metadata.name,
-                    version: def.metadata.version,
-                    definition: def,
+                    authorId,
+                    name: resolved.id,
+                    version: resolved.version,
+                    definition: this._toDefinition(resolved),
                 });
-                const resolved = this._resolveWorld(record);
-                this._resolvedCache.set(resolved.id, resolved);
-                return resolved;
+                // 本体 DB に取り込んだので self URL の local ワールドとして解決し直す
+                const imported = this._resolveWorld(record);
+                this._resolvedCache.set(imported.id, imported);
+                return imported;
             }),
         );
         const errors = settled.filter((r) => r.status === 'rejected').map((r) => (r as PromiseRejectedResult).reason);
@@ -332,109 +350,77 @@ class WorldRegistry {
     /** 全件リロード（緊急用・SIGUSR2 などから呼ばれる） */
     async reloadWorlds(): Promise<void> {
         this._resolvedCache.clear();
-        await this._buildIndexFromScan();
+        await this._scanLocal();
         console.log('✅ ワールド定義を全件再読み込みしました');
     }
 
     /** 特定ワールドのみリロード（API から呼ばれる） */
     async reloadWorld(worldId: string): Promise<boolean> {
-        const entry = this._fileIndex.get(worldId);
-        if (!entry) return false;
-        await this._onYamlChanged(entry.file);
+        const file = this._fileByName.get(worldId);
+        if (!file) return false;
+        await this._onYamlChanged(path.basename(file));
         return true;
     }
 
-    /**
-     * ワールドの表示順を変更し worlds.json を保存する。
-     * @param order 新しい worldId の順序配列
-     */
+    /** ワールドの表示順を変更する（in-memory）。 */
     async reorderWorlds(order: string[]): Promise<void> {
         const known = new Set(this._order);
         const filtered = order.filter((n) => known.has(n));
         const rest = this._order.filter((n) => !filtered.includes(n));
         this._order = [...filtered, ...rest];
-        this._saveIndex();
     }
 
     // ================================================================
-    // プライベート: インデックス管理
+    // プライベート: ローカルスキャン
     // ================================================================
 
-    private get _indexPath(): string {
-        return path.join(this.worldsDir, 'worlds.json');
-    }
-
-    private async _loadIndex(): Promise<void> {
-        if (fs.existsSync(this._indexPath)) {
-            try {
-                const content = fs.readFileSync(this._indexPath, 'utf-8');
-                const entries = JSON.parse(content) as WorldIndexEntry[];
-                this._fileIndex.clear();
-                this._order = [];
-                for (const entry of entries) {
-                    this._fileIndex.set(entry.name, entry);
-                    this._order.push(entry.name);
-                }
-                console.log(`📋 worlds.json から ${entries.length} ワールドを読み込みました`);
-                return;
-            } catch (err) {
-                console.warn('⚠ worlds.json 読み込み失敗、スキャンにフォールバック:', err);
-            }
+    private async _scanLocal(): Promise<void> {
+        this._index.clear();
+        this._urlIndex.clear();
+        this._defByName.clear();
+        this._fileByName.clear();
+        const nextOrder: string[] = [];
+        if (!fs.existsSync(this.worldsDir)) {
+            this._order = nextOrder;
+            return;
         }
-        // worlds.json がない場合はスキャンして作成
-        await this._buildIndexFromScan();
-    }
-
-    private async _buildIndexFromScan(): Promise<void> {
-        if (!fs.existsSync(this.worldsDir)) return;
-        const files = fs
-            .readdirSync(this.worldsDir)
-            .filter((f) => (f.endsWith('.yaml') || f.endsWith('.yml')) && f !== 'worlds.json');
-
-        const entries: WorldIndexEntry[] = [];
+        const files = fs.readdirSync(this.worldsDir).filter((f) => /\.(ya?ml)$/.test(f));
         for (const file of files) {
-            const entry = this._parseYamlToEntry(path.join(this.worldsDir, file), file);
-            if (entry) entries.push(entry);
+            const filePath = path.join(this.worldsDir, file);
+            const resolved = await this._indexLocalFile(filePath);
+            if (resolved) nextOrder.push(resolved.id);
         }
-
-        // 既存の順序を維持しつつ新規エントリを末尾に追加
-        const existingOrder = new Map(this._order.map((name, i) => [name, i]));
-        entries.sort((a, b) => (existingOrder.get(a.name) ?? 999) - (existingOrder.get(b.name) ?? 999));
-
-        this._fileIndex.clear();
-        this._order = [];
-        for (const entry of entries) {
-            this._fileIndex.set(entry.name, entry);
-            this._order.push(entry.name);
-        }
-        this._saveIndex();
-        console.log(`📋 スキャンから ${entries.length} ワールドの worlds.json を作成しました`);
+        // 既存の順序を優先しつつ新規を末尾へ
+        const prev = new Map(this._order.map((id, i) => [id, i]));
+        nextOrder.sort((a, b) => (prev.get(a) ?? 999) - (prev.get(b) ?? 999));
+        this._order = nextOrder;
+        console.log(`📋 ローカル worlds/ から ${this._index.size} ワールドを読み込みました`);
     }
 
-    private _saveIndex(): void {
-        if (!fs.existsSync(this.worldsDir)) return;
-        const entries = this._order.map((name) => this._fileIndex.get(name)).filter((e): e is WorldIndexEntry => !!e);
-        fs.writeFileSync(this._indexPath, JSON.stringify(entries, null, 2), 'utf-8');
-    }
-
-    private _parseYamlToEntry(filePath: string, fileName: string): WorldIndexEntry | null {
+    /** 1 つのローカル YAML を解決してメモリ索引に載せる（DB 非依存）。失敗時は undefined。 */
+    private async _indexLocalFile(filePath: string): Promise<ResolvedWorld | undefined> {
         try {
             const content = fs.readFileSync(filePath, 'utf-8');
             const parsed = migrateLegacyWorldYaml(yaml.parse(content) as unknown);
             const result = WorldDefinitionSchema.safeParse(parsed);
-            if (!result.success) return null;
+            if (!result.success) {
+                console.warn(`⚠  ${path.basename(filePath)}: バリデーションエラー（スキップ）`);
+                return undefined;
+            }
             const def = result.data;
-            return {
-                name: def.metadata.name,
-                file: fileName,
-                displayName: def.spec.displayName,
-                description: def.spec.description ?? null,
-                thumbnail: def.spec.thumbnail ?? null,
-                version: def.metadata.version,
-                capacity: def.spec.capacity,
-            };
-        } catch {
-            return null;
+            const id = def.metadata.name;
+            // official ワールドは DB に持たずメモリ索引のみ（DB 依存の排除）
+            const resolved = definitionToResolved(parsed, this.selfWorldUrl(id), this.localSource(id), {
+                authorId: SYSTEM_AUTHOR_ID,
+            });
+            this._index.set(id, resolved);
+            this._urlIndex.set(resolved.url, id);
+            this._defByName.set(id, def);
+            this._fileByName.set(id, filePath);
+            return resolved;
+        } catch (err) {
+            console.error(`❌ ローカルワールド読み込み失敗: ${filePath}`, err);
+            return undefined;
         }
     }
 
@@ -445,7 +431,7 @@ class WorldRegistry {
     private _startWatcher(): void {
         if (!fs.existsSync(this.worldsDir)) return;
         this._watcher = fs.watch(this.worldsDir, (_event, filename) => {
-            if (!filename || !/\.(yaml|yml)$/.test(filename) || filename === 'worlds.json') return;
+            if (!filename || !/\.(ya?ml)$/.test(filename)) return;
             const key = filename;
             const prev = this._debounceTimers.get(key);
             if (prev) clearTimeout(prev);
@@ -465,138 +451,28 @@ class WorldRegistry {
 
         // ファイル削除
         if (!fs.existsSync(filePath)) {
-            const entry = [...this._fileIndex.values()].find((e) => e.file === filename);
-            if (entry) {
-                this._fileIndex.delete(entry.name);
-                this._order = this._order.filter((n) => n !== entry.name);
-                this._resolvedCache.delete(entry.name);
-                this._saveIndex();
-                console.log(`🗑  ワールド削除を検知: ${entry.name}`);
+            const id = [...this._fileByName.entries()].find(([, f]) => path.basename(f) === filename)?.[0];
+            if (id) {
+                this._urlIndex.delete(this.selfWorldUrl(id));
+                this._index.delete(id);
+                this._defByName.delete(id);
+                this._fileByName.delete(id);
+                this._order = this._order.filter((n) => n !== id);
+                console.log(`🗑  ワールド削除を検知: ${id}`);
             }
             return;
         }
 
-        const newEntry = this._parseYamlToEntry(filePath, filename);
-        if (!newEntry) {
-            console.warn(`⚠  ${filename}: バリデーションエラー（スキップ）`);
-            return;
-        }
-
-        const isNew = !this._fileIndex.has(newEntry.name);
-        if (isNew) this._order.push(newEntry.name);
-        this._fileIndex.set(newEntry.name, newEntry);
-        this._resolvedCache.delete(newEntry.name);
-
-        // DB も更新（インスタンスマネージャーが参照するため）
-        try {
-            const content = fs.readFileSync(filePath, 'utf-8');
-            const parsed = WorldDefinitionSchema.safeParse(migrateLegacyWorldYaml(yaml.parse(content) as unknown));
-            if (!parsed.success) throw new Error(`YAML parse failed: ${newEntry.name}`);
-            const def = parsed.data;
-            await worldRepository.upsertByName({
-                authorId: SYSTEM_AUTHOR_ID,
-                name: def.metadata.name,
-                version: def.metadata.version,
-                definition: def,
-            });
-        } catch (err) {
-            console.error(`❌ DB upsert 失敗: ${newEntry.name}`, err);
-        }
-
-        this._saveIndex();
-        console.log(`✅ ワールド自動リロード: ${newEntry.name} (v${newEntry.version})`);
+        const resolved = await this._indexLocalFile(filePath);
+        if (!resolved) return;
+        if (!this._order.includes(resolved.id)) this._order.push(resolved.id);
+        console.log(`✅ ワールド自動リロード: ${resolved.id} (v${resolved.version})`);
     }
 
     // ================================================================
-    // プライベート: YAML 遅延ロード
+    // プライベート: 変換ヘルパー
     // ================================================================
 
-    private async _loadWorldFromFile(entry: WorldIndexEntry): Promise<ResolvedWorld> {
-        const filePath = path.join(this.worldsDir, entry.file);
-        const content = fs.readFileSync(filePath, 'utf-8');
-        const parsed = migrateLegacyWorldYaml(yaml.parse(content) as unknown);
-        const result = WorldDefinitionSchema.safeParse(parsed);
-        if (!result.success) {
-            throw new Error(`ワールド定義が無効: ${entry.name}`);
-        }
-        const def = result.data;
-        const record = await worldRepository.upsertByName({
-            authorId: SYSTEM_AUTHOR_ID,
-            name: def.metadata.name,
-            version: def.metadata.version,
-            definition: def,
-        });
-        const resolved = this._resolveWorld(record);
-        this._resolvedCache.set(entry.name, resolved);
-        return resolved;
-    }
-
-    // ================================================================
-    // プライベート: 外部レジストリ
-    // ================================================================
-
-    private async _seedFromRegistries(): Promise<void> {
-        const now = Date.now();
-        if (now - this._lastRegistrySeedAt < WorldRegistry.REGISTRY_SEED_INTERVAL_MS) {
-            return;
-        }
-        this._lastRegistrySeedAt = now;
-
-        const allYamlUrls = (
-            await Promise.allSettled(
-                this.registryUrls.map(async (registryUrl) => {
-                    if (registryUrl.endsWith('.json')) {
-                        const urls = await resolveWorldsJsonUrls(registryUrl);
-                        console.log(`📋 worlds.json レジストリ: ${urls.length}件`);
-                        return urls;
-                    }
-                    return [registryUrl];
-                }),
-            )
-        ).flatMap((r) => {
-            if (r.status === 'rejected') console.error('❌ レジストリ取得失敗:', r.reason);
-            return r.status === 'fulfilled' ? r.value : [];
-        });
-
-        await Promise.allSettled(
-            allYamlUrls.map(async (url) => {
-                try {
-                    await this._seedWorldFromUrl(url);
-                } catch (err) {
-                    console.error(`❌ ワールド取得失敗: ${url}`, err);
-                }
-            }),
-        );
-    }
-
-    private async _seedWorldFromUrl(url: string): Promise<void> {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const content = await res.text();
-        const parsed = migrateLegacyWorldYaml(yaml.parse(content) as unknown);
-        const result = WorldDefinitionSchema.safeParse(parsed);
-        if (!result.success) throw new Error(`Validation failed: ${url}`);
-        const def = result.data;
-        // 同バージョンが既に DB にある場合はスキップ
-        const existing = await worldRepository.findByName(def.metadata.name);
-        if (existing?.version === def.metadata.version) return;
-        await worldRepository.upsertByName({
-            authorId: SYSTEM_AUTHOR_ID,
-            name: def.metadata.name,
-            version: def.metadata.version,
-            definition: def,
-        });
-        console.log(`   📄 ${def.metadata.name} (v${def.metadata.version}) - ${url}`);
-    }
-
-    // ================================================================
-    // プライベート: 解決ヘルパー
-    // ================================================================
-
-    /**
-     * 起動時に DB の全ワールドレコードを Stage 1 新スキーマへ正規化する。
-     * 既に新形式のレコードは no-op、legacy 形式のみ upsert で書き戻す。
-     */
     private async _migrateLegacyDbRecords(): Promise<void> {
         const all = await worldRepository.findAll();
         let migrated = 0;
@@ -616,36 +492,54 @@ class WorldRegistry {
         }
     }
 
+    /** DB レコード → ResolvedWorld（ユーザー作成ワールド。source=local self URL）。 */
     private _resolveWorld(record: WorldRecord): ResolvedWorld {
         const def = record.definition as WorldDefinition;
-        const env = def.spec.environment ?? {
-            backgroundColor: DEFAULTS.WORLD_ENVIRONMENT.backgroundColor,
-            worldSize: DEFAULTS.WORLD_ENVIRONMENT.worldSize,
-        };
-        const normalizeEntity = (e: InitialEntity): InitialEntity => ({
-            id: e.id,
-            transform: e.transform,
-            components: e.components.map((c) => ({ type: c.type, data: c.data ?? {} })),
-            tags: e.tags ?? [],
-            children: (e.children ?? []).map(normalizeEntity),
-        });
-        const initialEntities: InitialEntity[] = def.spec.initialEntities.map(normalizeEntity);
         return {
+            ...definitionToResolved(def, this.selfWorldUrl(record.name), this.localSource(record.name), {
+                authorId: record.authorId,
+            }),
             id: record.name,
-            dbId: record.id,
-            authorId: record.authorId,
-            authorName: def.metadata.author?.name,
-            version: record.version,
-            displayName: def.spec.displayName,
-            description: def.spec.description,
-            thumbnail: def.spec.thumbnail,
-            environment: {
-                backgroundColor: env.backgroundColor ?? DEFAULTS.WORLD_ENVIRONMENT.backgroundColor,
-                worldSize: env.worldSize ?? DEFAULTS.WORLD_ENVIRONMENT.worldSize,
+        };
+    }
+
+    /** ResolvedWorld → WorldDefinition（DB 保存用）。 */
+    private _toDefinition(w: ResolvedWorld): WorldDefinition {
+        return {
+            apiVersion: 'ubichill.com/v1alpha1',
+            kind: 'World',
+            metadata: {
+                name: w.id,
+                version: w.version,
+                author: w.authorName ? { name: w.authorName } : undefined,
             },
-            capacity: def.spec.capacity,
-            dependencies: def.spec.dependencies?.map((d) => ({ name: d.name, source: d.source })),
-            initialEntities,
+            spec: {
+                displayName: w.displayName,
+                description: w.description,
+                thumbnail: w.thumbnail,
+                capacity: w.capacity,
+                environment: w.environment,
+                dependencies: w.dependencies,
+                initialEntities: w.initialEntities,
+            },
+        };
+    }
+
+    /** ResolvedWorld(+DB record) → WorldListItem。 */
+    private _toListItem(w: ResolvedWorld, rec?: WorldRecord): WorldListItem {
+        return {
+            url: w.url,
+            source: w.source,
+            id: w.id,
+            displayName: w.displayName,
+            description: w.description,
+            thumbnail: w.thumbnail,
+            version: w.version,
+            capacity: w.capacity,
+            authorId: rec?.authorId ?? w.authorId,
+            authorName: w.authorName,
+            createdAt: rec ? rec.createdAt.toISOString() : undefined,
+            updatedAt: rec ? rec.updatedAt.toISOString() : undefined,
         };
     }
 }

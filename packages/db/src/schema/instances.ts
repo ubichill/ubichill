@@ -2,7 +2,6 @@ import { relations } from 'drizzle-orm';
 import { boolean, index, integer, jsonb, pgEnum, pgTable, text, timestamp, varchar } from 'drizzle-orm/pg-core';
 import { nanoid } from 'nanoid';
 import { users } from './users';
-import { worlds } from './worlds';
 
 export const instanceStatusEnum = pgEnum('instance_status', ['active', 'full', 'closing']);
 export const instanceAccessTypeEnum = pgEnum('instance_access_type', [
@@ -18,9 +17,8 @@ export const instances = pgTable(
         id: varchar('id', { length: 21 })
             .$defaultFn(() => nanoid())
             .primaryKey(),
-        worldId: varchar('world_id', { length: 21 })
-            .notNull()
-            .references(() => worlds.id, { onDelete: 'cascade' }),
+        // ワールド参照＝正規 URL（worlds.id への FK を廃止。official/外部ワールドは DB に無い）
+        worldRef: text('world_ref').notNull(),
         leaderId: text('leader_id')
             .notNull()
             .references(() => users.id, { onDelete: 'cascade' }),
@@ -36,17 +34,14 @@ export const instances = pgTable(
         passwordHash: varchar('password_hash', { length: 255 }),
     },
     (table) => [
-        index('instances_world_id_idx').on(table.worldId),
+        index('instances_world_ref_idx').on(table.worldRef),
         index('instances_status_idx').on(table.status),
         index('instances_leader_id_idx').on(table.leaderId),
     ],
 );
 
 export const instancesRelations = relations(instances, ({ one }) => ({
-    world: one(worlds, {
-        fields: [instances.worldId],
-        references: [worlds.id],
-    }),
+    // world は URL 参照（worldRef）になったため drizzle リレーションは持たない
     leader: one(users, {
         fields: [instances.leaderId],
         references: [users.id],
