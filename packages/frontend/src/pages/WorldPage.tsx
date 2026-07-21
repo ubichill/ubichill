@@ -45,6 +45,32 @@ export function WorldPage() {
             .finally(() => setLoading(false));
     }, [worldId]);
 
+    // クライアント側メタ（タブ名 + JS 実行するクローラ向け）。
+    // リンクプレビュー bot 向けの OGP は nginx→backend の /world/:id が担う。
+    useEffect(() => {
+        if (!world) return;
+        const prevTitle = document.title;
+        document.title = `${world.displayName} — ubichill`;
+        const setMeta = (attr: 'name' | 'property', key: string, content: string) => {
+            const sel = `meta[${attr}="${key}"]`;
+            let el = document.head.querySelector<HTMLMetaElement>(sel);
+            if (!el) {
+                el = document.createElement('meta');
+                el.setAttribute(attr, key);
+                document.head.appendChild(el);
+            }
+            el.setAttribute('content', content);
+        };
+        const desc = world.description ?? `${world.displayName} — ubichill のワールド`;
+        setMeta('name', 'description', desc);
+        setMeta('property', 'og:title', world.displayName);
+        setMeta('property', 'og:description', desc);
+        if (world.thumbnail) setMeta('property', 'og:image', world.thumbnail);
+        return () => {
+            document.title = prevTitle;
+        };
+    }, [world]);
+
     const requireAuthThenGo = (next: () => void) => {
         if (isPending) return;
         if (!session) {
