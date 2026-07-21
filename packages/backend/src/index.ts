@@ -26,7 +26,6 @@ import { auth } from './lib/auth';
 import { socketAuthMiddleware } from './middleware/socketAuth';
 import { router as instancesRouter } from './routes/instances';
 import { router as usersRouter } from './routes/users';
-import { router as worldPagesRouter } from './routes/worldPages';
 import { router as worldsRouter } from './routes/worlds';
 import { instanceReaper } from './services/instanceReaper';
 import { worldRegistry } from './services/worldRegistry';
@@ -109,8 +108,6 @@ app.use('/api/auth', toNodeHandler(auth));
 app.use('/api/v1/worlds', worldsRouter);
 app.use('/api/v1/instances', instancesRouter);
 app.use('/api/v1/users', usersRouter);
-// 公開ワールドページ（bot/クローラ向け OGP/JSON-LD。nginx が bot だけをここへ回す）
-app.use('/world', worldPagesRouter);
 
 // HTTPサーバーを作成
 const server = http.createServer(app);

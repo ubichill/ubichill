@@ -1,0 +1,121 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { ENV_KEYS, SERVER_CONFIG } from '@ubichill/shared';
+import express from 'express';
+
+/**
+ * BFF（Backend For Frontend）— フロント配信層。
+ *
+ * - SPA（Vite ビルド）を配信する。
+ * - `/world/:id` は core API からワールド情報を取り、index.html の <head> に
+ *   OGP / Twitter / JSON-LD を注入して返す（bot も人間も同一 HTML＝UA 判定・クローキング不要）。
+ * - core backend は `/api` `/socket.io`（Ingress が直接ルーティング）でドメイン API に純化。
+ */
+
+const PORT = Number(process.env.PORT ?? 3000);
+/** Vite ビルド成果物。Docker では BFF と同じイメージに同梱する。 */
+const DIST = process.env.FRONTEND_DIST
+    ? path.resolve(process.env.FRONTEND_DIST)
+    : path.resolve(__dirname, '../../frontend/dist');
+/** core backend の内部到達 URL（サーバー間で world メタを取得する）。 */
+const CORE_API_URL = (process.env.CORE_API_URL || SERVER_CONFIG.DEV_URL).replace(/\/$/, '');
+/** 外部公開 base URL（og:url / canonical 用）。 */
+const PUBLIC_BASE_URL = (process.env[ENV_KEYS.PUBLIC_BASE_URL] || `http://localhost:${PORT}`).replace(/\/$/, '');
+
+const app = express();
+
+function esc(s: string): string {
+    return s
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function readIndexHtml(): string {
+    return fs.readFileSync(path.join(DIST, 'index.html'), 'utf-8');
+}
+
+/** index.html の <head> に meta を注入する（既存 <title> は置換）。 */
+function renderShell(metaTags: string): string {
+    return readIndexHtml()
+        .replace(/<title>.*?<\/title>/i, '')
+        .replace('</head>', `${metaTags}\n</head>`);
+}
+
+type WorldMeta = { displayName?: string; description?: string; thumbnail?: string; authorName?: string };
+
+// 公開ワールドページ: OGP/JSON-LD を注入した SPA シェルを全員に返す。
+app.get('/world/:worldId', async (req, res) => {
+    const worldId = req.params.worldId;
+    try {
+        const r = await fetch(`${CORE_API_URL}/api/v1/worlds/${encodeURIComponent(worldId)}`, {
+            headers: { Accept: 'application/json' },
+        });
+        if (!r.ok) {
+            // 見つからなくても SPA を返す（クライアント側で 404 表示）
+            res.type('html').send(readIndexHtml());
+            return;
+        }
+        const w = (await r.json()) as WorldMeta;
+        const name = w.displayName ?? worldId;
+        const desc = w.description ?? `${name} — ubichill のワールド`;
+        const url = `${PUBLIC_BASE_URL}/world/${encodeURIComponent(worldId)}`;
+        const image = w.thumbnail ?? '';
+        const jsonLd = JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'CreativeWork',
+            name,
+            description: desc,
+            url,
+            ...(image ? { image } : {}),
+            ...(w.authorName ? { author: { '@type': 'Person', name: w.authorName } } : {}),
+        });
+        const tags = [
+            `<title>${esc(name)} — ubichill</title>`,
+            `<meta name="description" content="${esc(desc)}">`,
+            `<link rel="canonical" href="${esc(url)}">`,
+            '<meta property="og:type" content="website">',
+            '<meta property="og:site_name" content="ubichill">',
+            `<meta property="og:title" content="${esc(name)}">`,
+            `<meta property="og:description" content="${esc(desc)}">`,
+            `<meta property="og:url" content="${esc(url)}">`,
+            image ? `<meta property="og:image" content="${esc(image)}">` : '',
+            `<meta name="twitter:card" content="${image ? 'summary_large_image' : 'summary'}">`,
+            `<meta name="twitter:title" content="${esc(name)}">`,
+            `<meta name="twitter:description" content="${esc(desc)}">`,
+            image ? `<meta name="twitter:image" content="${esc(image)}">` : '',
+            `<script type="application/ld+json">${jsonLd}</script>`,
+        ]
+            .filter(Boolean)
+            .join('\n');
+        res.type('html').send(renderShell(tags));
+    } catch (err) {
+        console.error('OGP 生成失敗:', err);
+        res.type('html').send(readIndexHtml());
+    }
+});
+
+// 静的アセット（/mods は no-cache、ハッシュ付きは immutable）
+app.use(
+    express.static(DIST, {
+        index: false,
+        setHeaders: (res, filePath) => {
+            if (filePath.includes(`${path.sep}mods${path.sep}`)) {
+                res.setHeader('Cache-Control', 'public, no-cache');
+            } else if (/\.[0-9a-f]{8,}\.\w+$/i.test(filePath)) {
+                res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+            }
+        },
+    }),
+);
+
+// SPA フォールバック（Express 5 は `'*'` パス不可のため最終 middleware で index.html を返す）
+app.use((_req, res) => {
+    res.type('html').send(readIndexHtml());
+});
+
+app.listen(PORT, () => {
+    console.log(`🌐 BFF listening on :${PORT} (dist=${DIST}, core=${CORE_API_URL})`);
+});
