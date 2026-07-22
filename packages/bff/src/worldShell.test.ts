@@ -36,7 +36,8 @@ describe('renderWorldShell', () => {
 
         expect(html).toContain('テストワールド');
         expect(html).toContain('これはテストです');
-        expect(html).toContain('参加可能なインスタンスがありません');
+        expect(html).toContain('参加までのステップ');
+        expect(html).toContain('ubichill とは？');
         expect(html).toContain('data-world-shell');
     });
 
@@ -57,6 +58,24 @@ describe('renderWorldShell', () => {
         expect(html).toContain('alt="サムネイル付き"');
     });
 
+    it('メタ情報バッジをレンダリングする', () => {
+        const html = renderWorldShell({
+            world: {
+                id: 'meta-world',
+                displayName: 'メタ情報付き',
+                authorName: 'Alice',
+                ...baseWorld,
+            },
+            instances: [],
+            publicBaseUrl: 'https://example.com',
+            coreApiUrl: 'https://api.example.com',
+        });
+
+        expect(html).toContain('作成者: Alice');
+        expect(html).toContain('v1.0.0');
+        expect(html).toContain('最大 20 人');
+    });
+
     it('インスタンス一覧をレンダリングする', () => {
         const html = renderWorldShell({
             world: {
@@ -69,8 +88,9 @@ describe('renderWorldShell', () => {
             coreApiUrl: 'https://api.example.com',
         });
 
-        expect(html).toContain('参加者 3 / 10');
-        expect(html).not.toContain('参加可能なインスタンスがありません');
+        expect(html).toContain('参加可能なインスタンス');
+        expect(html).toContain('3 / 10 人');
+        expect(html).toContain('現在 3 人が遊んでいます');
     });
 
     it('world が undefined の場合もクラッシュしない', () => {
@@ -82,6 +102,7 @@ describe('renderWorldShell', () => {
         });
 
         expect(html).toContain('data-world-shell');
+        expect(html).toContain('ubichill とは？');
     });
 
     it('XSS 対策：特殊文字をエスケープする', () => {
@@ -90,6 +111,7 @@ describe('renderWorldShell', () => {
                 id: 'xss-world',
                 displayName: '<script>alert(1)</script>',
                 description: '" onclick="alert(2)',
+                authorName: 'Bob<script>',
                 ...baseWorld,
             },
             instances: [],
@@ -100,5 +122,6 @@ describe('renderWorldShell', () => {
         expect(html).not.toContain('<script>alert(1)</script>');
         expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
         expect(html).not.toContain('" onclick="alert(2)');
+        expect(html).not.toContain('Bob<script>');
     });
 });
