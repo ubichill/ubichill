@@ -24,6 +24,8 @@ const PUBLIC_BASE_URL = (process.env[ENV_KEYS.PUBLIC_BASE_URL] || `http://localh
 
 const app = express();
 
+type WorldMeta = { displayName?: string; description?: string; thumbnail?: string; authorName?: string };
+
 function esc(s: string): string {
     return s
         .replace(/&/g, '&amp;')
@@ -33,8 +35,31 @@ function esc(s: string): string {
         .replace(/'/g, '&#39;');
 }
 
+/** index.html はデプロイ毎に不変なので一度だけ読んでキャッシュする（ホットパス）。 */
+let _indexHtml: string | undefined;
 function readIndexHtml(): string {
-    return fs.readFileSync(path.join(DIST, 'index.html'), 'utf-8');
+    if (_indexHtml === undefined) {
+        _indexHtml = fs.readFileSync(path.join(DIST, 'index.html'), 'utf-8');
+    }
+    return _indexHtml;
+}
+
+/** core が詰まっても BFF がハングしないよう、タイムアウト付きで world メタを取得する。 */
+async function fetchWorldMeta(worldId: string): Promise<WorldMeta | undefined> {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 3000);
+    try {
+        const r = await fetch(`${CORE_API_URL}/api/v1/worlds/${encodeURIComponent(worldId)}`, {
+            headers: { Accept: 'application/json' },
+            signal: ac.signal,
+        });
+        if (!r.ok) return undefined;
+        return (await r.json()) as WorldMeta;
+    } catch {
+        return undefined; // タイムアウト/失敗時は素の SPA を返す（後段で処理）
+    } finally {
+        clearTimeout(timer);
+    }
 }
 
 /** index.html の <head> に meta を注入する（既存 <title> は置換）。 */
@@ -44,21 +69,16 @@ function renderShell(metaTags: string): string {
         .replace('</head>', `${metaTags}\n</head>`);
 }
 
-type WorldMeta = { displayName?: string; description?: string; thumbnail?: string; authorName?: string };
-
 // 公開ワールドページ: OGP/JSON-LD を注入した SPA シェルを全員に返す。
 app.get('/world/:worldId', async (req, res) => {
     const worldId = req.params.worldId;
     try {
-        const r = await fetch(`${CORE_API_URL}/api/v1/worlds/${encodeURIComponent(worldId)}`, {
-            headers: { Accept: 'application/json' },
-        });
-        if (!r.ok) {
-            // 見つからなくても SPA を返す（クライアント側で 404 表示）
+        const w = await fetchWorldMeta(worldId);
+        if (!w) {
+            // 見つからない/取得失敗時も SPA を返す（クライアント側で表示）
             res.type('html').send(readIndexHtml());
             return;
         }
-        const w = (await r.json()) as WorldMeta;
         const name = w.displayName ?? worldId;
         const desc = w.description ?? `${name} — ubichill のワールド`;
         const url = `${PUBLIC_BASE_URL}/world/${encodeURIComponent(worldId)}`;
