@@ -173,17 +173,23 @@ export function WorldPage() {
             <main
                 className={css({
                     flex: 1,
+                    width: 'full',
+                    maxW: '5xl',
+                    mx: 'auto',
                     display: 'flex',
                     flexDir: 'column',
-                    alignItems: 'center',
                     gap: 8,
                     p: { base: 4, md: 8 },
                 })}
             >
+                {/* 大サムネ + タイトル + 作成者 + 主要バッジ + 参加導線 */}
                 <HeroSection world={world} instances={instances} onCreate={handleCreate} creating={creating} />
-                <HowToSection />
-                {instances.length > 0 && <InstancesSection instances={instances} onJoin={handleJoin} />}
-                <AboutSection />
+                {/* 説明 + 詳細情報（VRChat のワールド情報に相当。ここを優先表示） */}
+                <DetailsSection world={world} />
+                {/* 参加可能なインスタンス */}
+                <InstancesSection instances={instances} onJoin={handleJoin} />
+                {/* ubichill の説明・参加方法は最下部に控えめに置く */}
+                <AboutFooter />
             </main>
         </div>
     );
@@ -231,69 +237,73 @@ interface HeroSectionProps {
 function HeroSection({ world, instances, onCreate, creating }: HeroSectionProps) {
     const totalCurrentUsers = instances.reduce((sum, i) => sum + i.stats.currentUsers, 0);
     return (
-        <section
-            className={css({
-                width: 'full',
-                maxW: '3xl',
-                display: 'flex',
-                flexDir: 'column',
-                alignItems: 'center',
-                gap: 6,
-                textAlign: 'center',
-            })}
-        >
-            {world?.thumbnail && (
-                <img
-                    src={world.thumbnail}
-                    alt={world.displayName}
-                    className={css({
-                        width: 'full',
-                        maxW: 'md',
-                        height: { base: '200px', md: '260px' },
-                        objectFit: 'cover',
-                        borderRadius: '2xl',
-                        boxShadow: 'card',
-                    })}
-                />
-            )}
+        <section className={css({ width: 'full', display: 'flex', flexDir: 'column', gap: 5 })}>
+            {/* 大きなサムネイル（16:9・全幅） */}
+            <div
+                className={css({
+                    width: 'full',
+                    aspectRatio: '16 / 9',
+                    maxH: '460px',
+                    borderRadius: '2xl',
+                    overflow: 'hidden',
+                    bg: 'surface',
+                    border: '1px solid',
+                    borderColor: 'border',
+                    boxShadow: 'card',
+                })}
+            >
+                {world?.thumbnail ? (
+                    <img
+                        src={world.thumbnail}
+                        alt={world.displayName}
+                        className={css({ width: 'full', height: 'full', objectFit: 'cover' })}
+                    />
+                ) : (
+                    <div
+                        className={css({
+                            width: 'full',
+                            height: 'full',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'textSubtle',
+                        })}
+                    >
+                        No thumbnail
+                    </div>
+                )}
+            </div>
 
-            <div className={css({ display: 'flex', flexDir: 'column', gap: 3, alignItems: 'center' })}>
+            {/* タイトル + 作成者 + バッジ */}
+            <div className={css({ display: 'flex', flexDir: 'column', gap: 3 })}>
                 <h1
                     className={css({
-                        fontSize: { base: '3xl', md: '4xl' },
+                        fontSize: { base: '2xl', md: '4xl' },
                         fontWeight: '800',
                         color: 'text',
                         lineHeight: '1.2',
+                        wordBreak: 'break-word',
                     })}
                 >
                     {world?.displayName ?? 'ワールド'}
                 </h1>
-                {world?.description && (
-                    <p className={css({ color: 'textMuted', fontSize: 'lg', maxW: 'lg', lineHeight: '1.6' })}>
-                        {world.description}
+                {world?.authorName && (
+                    <p className={css({ color: 'textMuted', fontSize: 'md' })}>
+                        作成者: <span className={css({ color: 'text', fontWeight: '600' })}>{world.authorName}</span>
                     </p>
                 )}
+                <div
+                    className={css({ display: 'flex', gap: 3, flexWrap: 'wrap', color: 'textSubtle', fontSize: 'sm' })}
+                >
+                    {world?.source && <MetaBadge icon="globe" label={sourceLabel(world.source)} />}
+                    {world?.version && <MetaBadge icon="tag" label={`v${world.version}`} />}
+                    {world?.capacity && <MetaBadge icon="users" label={`最大 ${world.capacity.max} 人`} />}
+                    {totalCurrentUsers > 0 && <MetaBadge icon="activity" label={`${totalCurrentUsers} 人が接続中`} />}
+                </div>
             </div>
 
-            <div
-                className={css({
-                    display: 'flex',
-                    gap: 4,
-                    flexWrap: 'wrap',
-                    justifyContent: 'center',
-                    color: 'textSubtle',
-                    fontSize: 'sm',
-                })}
-            >
-                {world?.authorName && <MetaBadge icon="user" label={`作成者: ${world.authorName}`} />}
-                {world?.version && <MetaBadge icon="tag" label={`v${world.version}`} />}
-                {world?.capacity && <MetaBadge icon="users" label={`最大 ${world.capacity.max} 人`} />}
-                {instances.length > 0 && (
-                    <MetaBadge icon="activity" label={`現在 ${totalCurrentUsers} 人が遊んでいます`} />
-                )}
-            </div>
-
-            <div className={css({ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'center' })}>
+            {/* 参加導線 */}
+            <div className={css({ display: 'flex', gap: 4, flexWrap: 'wrap' })}>
                 <button
                     type="button"
                     onClick={onCreate}
@@ -314,7 +324,7 @@ function HeroSection({ world, instances, onCreate, creating }: HeroSectionProps)
                         _disabled: { opacity: 0.6, cursor: 'not-allowed', transform: 'none' },
                     })}
                 >
-                    {creating ? '作成中...' : '新しいインスタンスを作成'}
+                    {creating ? '作成中...' : 'このワールドに入る'}
                 </button>
                 <a
                     href="/"
@@ -340,8 +350,108 @@ function HeroSection({ world, instances, onCreate, creating }: HeroSectionProps)
     );
 }
 
-function MetaBadge({ icon, label }: { icon: 'user' | 'tag' | 'users' | 'activity'; label: string }) {
+/** WorldSource から人間向けの由来ラベルを作る。 */
+function sourceLabel(source: WorldListItem['source']): string {
+    switch (source.kind) {
+        case 'local':
+            return 'このインスタンス';
+        case 'github':
+            return source.registryName ? `GitHub: ${source.registryName}` : 'GitHub';
+        case 'remote-instance':
+            return source.originInstance ? `外部: ${new URL(source.originInstance).host}` : '外部インスタンス';
+        case 'registry':
+            return source.registryName ?? 'レジストリ';
+        default:
+            return '外部 URL';
+    }
+}
+
+/** ISO 文字列を YYYY/MM/DD に整形（不正値は空）。 */
+function formatDate(iso?: string): string {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** VRChat の「World Info / Details」相当。説明と詳細情報を優先的に見せる。 */
+function DetailsSection({ world }: { world: WorldListItem | null }) {
+    if (!world) return null;
+    const rows: Array<{ label: string; value: string }> = [
+        world.authorName ? { label: '作成者', value: world.authorName } : null,
+        { label: 'バージョン', value: `v${world.version}` },
+        world.capacity ? { label: 'キャパシティ', value: `${world.capacity.default}〜${world.capacity.max} 人` } : null,
+        { label: '由来', value: sourceLabel(world.source) },
+        formatDate(world.createdAt) ? { label: '公開日', value: formatDate(world.createdAt) } : null,
+        formatDate(world.updatedAt) ? { label: '更新日', value: formatDate(world.updatedAt) } : null,
+    ].filter((r): r is { label: string; value: string } => r !== null);
+
+    return (
+        <section
+            className={css({
+                width: 'full',
+                display: 'grid',
+                gridTemplateColumns: { base: '1fr', md: '2fr 1fr' },
+                gap: 6,
+                alignItems: 'start',
+            })}
+        >
+            <div>
+                <h2 className={css({ fontSize: 'lg', fontWeight: '700', color: 'text', mb: 3 })}>説明</h2>
+                <p className={css({ color: 'textMuted', lineHeight: '1.8', whiteSpace: 'pre-wrap' })}>
+                    {world.description || '説明はありません。'}
+                </p>
+            </div>
+            <div
+                className={css({
+                    bg: 'surface',
+                    border: '1px solid',
+                    borderColor: 'border',
+                    borderRadius: 'xl',
+                    p: 5,
+                    boxShadow: 'card',
+                })}
+            >
+                <h2 className={css({ fontSize: 'md', fontWeight: '700', color: 'text', mb: 3 })}>詳細</h2>
+                <dl className={css({ display: 'flex', flexDir: 'column', gap: 3 })}>
+                    {rows.map((r) => (
+                        <div
+                            key={r.label}
+                            className={css({
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                gap: 4,
+                                fontSize: 'sm',
+                            })}
+                        >
+                            <dt className={css({ color: 'textSubtle' })}>{r.label}</dt>
+                            <dd className={css({ color: 'text', fontWeight: '500', textAlign: 'right' })}>{r.value}</dd>
+                        </div>
+                    ))}
+                </dl>
+            </div>
+        </section>
+    );
+}
+
+function MetaBadge({ icon, label }: { icon: 'user' | 'tag' | 'users' | 'activity' | 'globe'; label: string }) {
     const iconSvg = {
+        globe: (
+            <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            >
+                <circle cx="12" cy="12" r="10" />
+                <path d="M2 12h20" />
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10Z" />
+            </svg>
+        ),
         user: (
             <svg
                 width="16"
@@ -424,60 +534,6 @@ function MetaBadge({ icon, label }: { icon: 'user' | 'tag' | 'users' | 'activity
     );
 }
 
-function HowToSection() {
-    const steps = [
-        { title: 'アカウントを作る', body: '無料で登録。Google/GitHub でも OK。' },
-        { title: 'インスタンスを作成', body: 'このページの「新しいインスタンスを作成」で部屋を作る。' },
-        { title: 'ワールドに入る', body: 'ブラウザだけで即座に参加。招待 URL で友達も呼べる。' },
-    ];
-    return (
-        <section className={css({ width: 'full', maxW: '3xl' })}>
-            <h2 className={css({ fontSize: 'xl', fontWeight: '700', color: 'text', mb: 4, textAlign: 'center' })}>
-                参加までのステップ
-            </h2>
-            <div
-                className={css({ display: 'grid', gridTemplateColumns: { base: '1fr', md: 'repeat(3, 1fr)' }, gap: 4 })}
-            >
-                {steps.map((step, idx) => (
-                    <div
-                        key={step.title}
-                        className={css({
-                            p: 5,
-                            bg: 'surface',
-                            borderRadius: 'xl',
-                            border: '1px solid',
-                            borderColor: 'border',
-                            boxShadow: 'card',
-                        })}
-                    >
-                        <span
-                            className={css({
-                                display: 'inline-flex',
-                                width: '28px',
-                                height: '28px',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                borderRadius: 'full',
-                                bg: 'primary',
-                                color: 'textOnPrimary',
-                                fontSize: 'sm',
-                                fontWeight: '700',
-                                mb: 3,
-                            })}
-                        >
-                            {idx + 1}
-                        </span>
-                        <h3 className={css({ fontSize: 'md', fontWeight: '700', color: 'text', mb: 2 })}>
-                            {step.title}
-                        </h3>
-                        <p className={css({ fontSize: 'sm', color: 'textMuted', lineHeight: '1.6' })}>{step.body}</p>
-                    </div>
-                ))}
-            </div>
-        </section>
-    );
-}
-
 interface InstancesSectionProps {
     instances: Instance[];
     onJoin: (instanceId: string) => void;
@@ -485,10 +541,13 @@ interface InstancesSectionProps {
 
 function InstancesSection({ instances, onJoin }: InstancesSectionProps) {
     return (
-        <section className={css({ width: 'full', maxW: '3xl' })}>
-            <h2 className={css({ fontSize: 'xl', fontWeight: '700', color: 'text', mb: 4, textAlign: 'center' })}>
-                参加可能なインスタンス
-            </h2>
+        <section className={css({ width: 'full' })}>
+            <h2 className={css({ fontSize: 'lg', fontWeight: '700', color: 'text', mb: 4 })}>参加可能なインスタンス</h2>
+            {instances.length === 0 && (
+                <p className={css({ color: 'textMuted', fontSize: 'sm' })}>
+                    現在アクティブなインスタンスはありません。「このワールドに入る」で新しく作成できます。
+                </p>
+            )}
             <div className={css({ display: 'flex', flexDir: 'column', gap: 3 })}>
                 {instances.map((i) => (
                     <button
@@ -533,72 +592,26 @@ function InstancesSection({ instances, onJoin }: InstancesSectionProps) {
     );
 }
 
-function AboutSection() {
+/** ubichill 自体の説明・参加方法。ワールド情報より優先度は低いので最下部に控えめに置く。 */
+function AboutFooter() {
     return (
-        <section className={css({ width: 'full', maxW: '3xl', py: 6 })}>
-            <div
-                className={css({
-                    p: { base: 5, md: 8 },
-                    bg: 'surface',
-                    borderRadius: '2xl',
-                    border: '1px solid',
-                    borderColor: 'border',
-                    boxShadow: 'card',
-                })}
-            >
-                <h2 className={css({ fontSize: 'xl', fontWeight: '700', color: 'text', mb: 3 })}>ubichill とは？</h2>
-                <p className={css({ color: 'textMuted', lineHeight: '1.8', mb: 4 })}>
-                    ubichill は、URL からワールドを読み込み、ブラウザだけで即座に参加できる 2D
-                    メタバース基盤です。自分だけの部屋（インスタンス）を作って、
-                    友達やコミュニティと同じ空間を共有できます。
-                </p>
-                <div
-                    className={css({ display: 'flex', gap: 4, flexWrap: 'wrap', color: 'textSubtle', fontSize: 'sm' })}
-                >
-                    <span className={css({ display: 'flex', alignItems: 'center', gap: 2 })}>
-                        <svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                        >
-                            <circle cx="12" cy="12" r="10" />
-                            <path d="m9 12 2 2 4-4" />
-                        </svg>
-                        ブラウザだけで参加
-                    </span>
-                    <span className={css({ display: 'flex', alignItems: 'center', gap: 2 })}>
-                        <svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                        >
-                            <circle cx="12" cy="12" r="10" />
-                            <path d="m9 12 2 2 4-4" />
-                        </svg>
-                        外部ワールドも URL で遊べる
-                    </span>
-                    <span className={css({ display: 'flex', alignItems: 'center', gap: 2 })}>
-                        <svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                        >
-                            <circle cx="12" cy="12" r="10" />
-                            <path d="m9 12 2 2 4-4" />
-                        </svg>
-                        リアルタイムカーソル同期
-                    </span>
-                </div>
-            </div>
+        <section
+            className={css({
+                width: 'full',
+                mt: 4,
+                pt: 6,
+                borderTop: '1px solid',
+                borderColor: 'border',
+                color: 'textSubtle',
+                fontSize: 'sm',
+                lineHeight: '1.7',
+            })}
+        >
+            <p>
+                <span className={css({ fontWeight: '700', color: 'textMuted' })}>ubichill</span> は URL
+                からワールドを読み込み、ブラウザだけで即座に参加できる 2D メタバース基盤です。
+                「このワールドに入る」を押すと自分の部屋（インスタンス）を作って参加できます（要ログイン）。
+            </p>
         </section>
     );
 }
