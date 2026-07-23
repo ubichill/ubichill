@@ -1,6 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { userRepository, type WorldRecord, worldRepository } from '@ubichill/db';
+import {
+    type FederationPeerRecord,
+    federationPeerRepository,
+    userRepository,
+    type WorldRecord,
+    worldRepository,
+} from '@ubichill/db';
 import {
     ENV_KEYS,
     LIMITS,
@@ -16,7 +22,7 @@ import {
 import { customAlphabet } from 'nanoid';
 import yaml from 'yaml';
 import { migrateLegacyWorldYaml } from './worldMigration';
-import { definitionToResolved, enumerateSource, resolveWorldFromUrl } from './worldResolver';
+import { definitionToResolved, enumerateSource, normalizeWorldUrl, resolveWorldFromUrl } from './worldResolver';
 
 // KebabCaseId 互換の lowercase + 数字のみ。21文字で十分な衝突耐性を確保。
 const generateWorldId = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 21);
@@ -59,6 +65,12 @@ class WorldRegistry {
     private readonly _remoteCache = new Map<string, { at: number; world: ResolvedWorld }>();
     private static readonly REMOTE_TTL_MS = 5 * 60 * 1000;
 
+    /** フォロー中の連合ピア（他 ubichill インスタンス） */
+    private _peers: FederationPeerRecord[] = [];
+    /** ピアごとのワールド一覧キャッシュ（TTL 付き） */
+    private readonly _peerWorldCache = new Map<string, { at: number; worlds: WorldListItem[] }>();
+    private static readonly PEER_WORLD_TTL_MS = 5 * 60 * 1000;
+
     // biome-ignore lint/correctness/noUnusedPrivateClassMembers: watcher は起動後も参照保持が必要
     private _watcher: ReturnType<typeof fs.watch> | null = null;
     private readonly _debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -99,7 +111,29 @@ class WorldRegistry {
         await this._migrateLegacyDbRecords();
         await this._scanLocal();
         this._startWatcher();
+        await this._loadPeers();
         console.log('👤 システムユーザーを確認しました');
+    }
+
+    /** フォロー中の連合ピアを DB から読み込む。環境変数 WORLDS_FEDERATION_PEERS からの新規追加も行う。 */
+    private async _loadPeers(): Promise<void> {
+        this._peers = await federationPeerRepository.findAll();
+        const envPeers = (process.env.WORLDS_FEDERATION_PEERS ?? '')
+            .split(',')
+            .map((u) => u.trim().replace(/\/$/, ''))
+            .filter((u) => u.startsWith('http'));
+        for (const baseUrl of envPeers) {
+            const exists = this._peers.some((p) => p.baseUrl === baseUrl);
+            if (!exists) {
+                try {
+                    const peer = await federationPeerRepository.create({ baseUrl });
+                    this._peers.push(peer);
+                    console.log(`🌐 連合ピアを追加: ${baseUrl}`);
+                } catch (err) {
+                    console.warn(`⚠ 連合ピア追加失敗 (${baseUrl}):`, err);
+                }
+            }
+        }
     }
 
     // ================================================================
@@ -108,9 +142,22 @@ class WorldRegistry {
 
     /**
      * ワールド一覧を返す。
-     * official/registry はメモリ索引から、ユーザー作成ワールドは DB から補完する。
+     * - `local`: official/registry + ユーザー作成（自インスタンス）
+     * - `global`: フォロー中の連合ピアから取得したワールド
+     * - `all`: 両方（デフォルト）
      */
-    async listWorlds(): Promise<WorldListItem[]> {
+    async listWorlds(scope: 'local' | 'global' | 'all' = 'all'): Promise<WorldListItem[]> {
+        const localItems = await this._listLocalWorlds();
+        if (scope === 'local') return localItems;
+
+        const globalItems = await this._listGlobalWorlds();
+        if (scope === 'global') return globalItems;
+
+        return [...localItems, ...globalItems];
+    }
+
+    /** 自インスタンスのワールド一覧。 */
+    private async _listLocalWorlds(): Promise<WorldListItem[]> {
         const allRecords = await worldRepository.findAll();
         const dbRecordByName = new Map<string, WorldRecord>(allRecords.map((r: WorldRecord) => [r.name, r]));
 
@@ -122,13 +169,46 @@ class WorldRegistry {
                 return this._toListItem(w, rec);
             });
 
-        // 索引に無い DB レコード（ユーザー作成ワールド）を補完
         const known = new Set(this._index.keys());
         const dbItems: WorldListItem[] = allRecords
             .filter((r: WorldRecord) => !known.has(r.name))
             .map((r: WorldRecord) => this._toListItem(this._resolveWorld(r), r));
 
         return [...indexItems, ...dbItems];
+    }
+
+    /** 連合ピアから取得したワールド一覧。メモリキャッシュ（TTL）付き。 */
+    private async _listGlobalWorlds(): Promise<WorldListItem[]> {
+        const results = await Promise.allSettled(this._peers.map((peer) => this._fetchPeerWorlds(peer)));
+        return results.flatMap((r) => (r.status === 'fulfilled' ? r.value : []));
+    }
+
+    /** 単一ピアのワールド一覧を取得する。キャッシュが有効ならそれを返す。 */
+    private async _fetchPeerWorlds(peer: FederationPeerRecord): Promise<WorldListItem[]> {
+        const cached = this._peerWorldCache.get(peer.baseUrl);
+        if (cached && Date.now() - cached.at < WorldRegistry.PEER_WORLD_TTL_MS) {
+            return cached.worlds;
+        }
+        try {
+            const res = await fetch(`${peer.baseUrl}/api/v1/worlds`, {
+                headers: { Accept: 'application/json' },
+                signal: AbortSignal.timeout(5000),
+            });
+            if (!res.ok) {
+                console.warn(`⚠ ピア ${peer.baseUrl} からの一覧取得失敗: HTTP ${res.status}`);
+                return cached?.worlds ?? [];
+            }
+            const data = (await res.json()) as { worlds?: WorldListItem[] };
+            const worlds = (data.worlds ?? []).map((w) => ({
+                ...w,
+                source: { kind: WorldSourceKind.RemoteInstance, url: w.url, originInstance: peer.baseUrl },
+            }));
+            this._peerWorldCache.set(peer.baseUrl, { at: Date.now(), worlds });
+            return worlds;
+        } catch (err) {
+            console.warn(`⚠ ピア ${peer.baseUrl} との通信失敗:`, err);
+            return cached?.worlds ?? [];
+        }
     }
 
     /**
@@ -171,11 +251,13 @@ class WorldRegistry {
      * 他ホストの URL は on-demand 取得（連合、TTL キャッシュ）。
      */
     async getWorldByUrl(url: string): Promise<ResolvedWorld | undefined> {
-        const indexedId = this._urlIndex.get(url);
+        // 人間向け共有 URL（.../world/:id）も受け付ける（機械 URL へ正規化）。
+        const norm = normalizeWorldUrl(url);
+        const indexedId = this._urlIndex.get(norm);
         if (indexedId) return this._index.get(indexedId);
-        const selfId = this._idFromSelfUrl(url);
+        const selfId = this._idFromSelfUrl(norm);
         if (selfId) return this.getWorld(selfId);
-        return this._resolveRemote(url);
+        return this._resolveRemote(norm);
     }
 
     /** self URL（自ホストの `.../api/v1/worlds/{id}`、旧 `.../{id}/yaml` 可）から id を取り出す。他ホストは undefined。 */
@@ -232,6 +314,36 @@ class WorldRegistry {
         if (mem) return mem;
         const record = await worldRepository.findByName(worldId);
         return record ? (record.definition as WorldDefinition) : undefined;
+    }
+
+    // ---- 連合ピア管理（フォロー） ----------------------------------
+
+    /** 他 ubichill インスタンスをフォローする。 */
+    async followPeer(baseUrl: string, displayName?: string): Promise<FederationPeerRecord> {
+        const normalized = baseUrl.trim().replace(/\/$/, '');
+        if (!/^https?:\/\//i.test(normalized)) {
+            throw new Error('baseUrl は http:// または https:// で始まる必要があります');
+        }
+        const existing = await federationPeerRepository.findByBaseUrl(normalized);
+        if (existing) return existing;
+        const peer = await federationPeerRepository.create({ baseUrl: normalized, displayName });
+        this._peers.push(peer);
+        return peer;
+    }
+
+    /** フォローを解除する。 */
+    async unfollowPeer(peerId: string): Promise<boolean> {
+        const success = await federationPeerRepository.delete(peerId);
+        if (success) {
+            this._peers = this._peers.filter((p) => p.id !== peerId);
+            this._peerWorldCache.delete(peerId);
+        }
+        return success;
+    }
+
+    /** フォロー中のピア一覧を返す。 */
+    async listPeers(): Promise<FederationPeerRecord[]> {
+        return [...this._peers];
     }
 
     // ---- CRUD（ユーザー操作） ----------------------------------------
