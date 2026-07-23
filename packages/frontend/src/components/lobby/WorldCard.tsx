@@ -93,6 +93,26 @@ export function WorldCard({ world, onNavigate }: WorldCardProps) {
                     {world.capacity.default}〜{world.capacity.max}人
                 </span>
                 <span>v{world.version}</span>
+                {world.source.originInstance && (
+                    <span
+                        className={css({
+                            ml: 'auto',
+                            px: '6px',
+                            py: '2px',
+                            bg: 'primarySubtle',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            color: 'textMuted',
+                            maxWidth: '140px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                        })}
+                        title={world.source.originInstance}
+                    >
+                        {world.source.originInstance.replace(/^https?:\/\//, '')}
+                    </span>
+                )}
             </div>
         </button>
     );

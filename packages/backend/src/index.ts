@@ -24,6 +24,7 @@ import {
 } from './handlers/socketHandlers';
 import { auth } from './lib/auth';
 import { socketAuthMiddleware } from './middleware/socketAuth';
+import { router as federationRouter } from './routes/federation';
 import { router as instancesRouter } from './routes/instances';
 import { router as usersRouter } from './routes/users';
 import { router as worldsRouter } from './routes/worlds';
@@ -108,6 +109,7 @@ app.use('/api/auth', toNodeHandler(auth));
 app.use('/api/v1/worlds', worldsRouter);
 app.use('/api/v1/instances', instancesRouter);
 app.use('/api/v1/users', usersRouter);
+app.use('/api/v1/federation', federationRouter);
 
 // HTTPサーバーを作成
 const server = http.createServer(app);

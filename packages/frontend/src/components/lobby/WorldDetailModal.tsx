@@ -48,9 +48,10 @@ export function WorldDetailModal({
                   return r.json() as Promise<WorldListItem>;
               });
 
+        const worldRef = initialWorld?.url ?? worldId;
         Promise.all([
             fetchWorld,
-            fetch(`${API_BASE}/api/v1/instances?worldId=${encodeURIComponent(worldId)}`, {
+            fetch(`${API_BASE}/api/v1/instances?worldId=${encodeURIComponent(worldRef)}`, {
                 credentials: 'include',
             }).then((r) => r.json() as Promise<{ instances: Instance[] }>),
         ])
@@ -77,12 +78,13 @@ export function WorldDetailModal({
         if (creating) return;
         setCreating(true);
         setError(null);
+        const worldRef = world?.url ?? worldId;
         try {
             const res = await fetch(`${API_BASE}/api/v1/instances`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
-                body: JSON.stringify({ worldId }),
+                body: JSON.stringify({ worldId: worldRef }),
             });
             if (!res.ok) {
                 const data = (await res.json()) as { error?: string };

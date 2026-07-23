@@ -1,5 +1,5 @@
 import type { WorldListItem } from '@ubichill/shared';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { API_BASE } from '@/lib/api';
@@ -71,13 +71,15 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
         },
         [confirm, navigate],
     );
-    const { worlds, loading, error, refreshWorlds } = useInstances();
+    const { worlds, globalWorlds, loading, error, refreshWorlds, refreshGlobalWorlds } = useInstances();
+    const [tab, setTab] = useState<'local' | 'global'>('local');
     const [selectedWorldId, setSelectedWorldId] = useState<string | null>(null);
 
     // ソートキーを localStorage で永続化
     const [sortKey, handleSortChange] = useSetting<SortKey>(SETTINGS_KEYS.lobbySortKey, DEFAULT_SORT, isSortKey);
 
-    const sortedWorlds = useMemo(() => sortWorlds(worlds, sortKey), [worlds, sortKey]);
+    const activeWorlds = tab === 'local' ? worlds : globalWorlds;
+    const sortedWorlds = useMemo(() => sortWorlds(activeWorlds, sortKey), [activeWorlds, sortKey]);
 
     const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -89,6 +91,12 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
     const handleSelectWorld = useCallback((worldId: string) => {
         setSelectedWorldId(worldId);
     }, []);
+
+    useEffect(() => {
+        if (tab === 'global') {
+            void refreshGlobalWorlds();
+        }
+    }, [tab, refreshGlobalWorlds]);
 
     const [importUrl, setImportUrl] = useState('');
     const [importState, setImportState] = useState<'idle' | 'loading' | 'error'>('idle');
@@ -158,17 +166,71 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                         minH: 0,
                     })}
                 >
-                    <h1
+                    <div
                         className={css({
-                            fontSize: { base: 'lg', sm: 'xl', md: 'xl' },
-                            fontWeight: '700',
-                            color: 'text',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
                             mb: '4',
                             flexShrink: 0,
                         })}
                     >
-                        ワールド一覧
-                    </h1>
+                        <h1
+                            className={css({
+                                fontSize: { base: 'lg', sm: 'xl', md: 'xl' },
+                                fontWeight: '700',
+                                color: 'text',
+                            })}
+                        >
+                            ワールド一覧
+                        </h1>
+                        <div
+                            className={css({
+                                display: 'flex',
+                                gap: '4px',
+                                bg: 'surface',
+                                p: '4px',
+                                borderRadius: '10px',
+                                border: '1px solid',
+                                borderColor: 'border',
+                            })}
+                        >
+                            <button
+                                type="button"
+                                onClick={() => setTab('local')}
+                                className={css({
+                                    px: '12px',
+                                    py: '6px',
+                                    borderRadius: '8px',
+                                    border: 'none',
+                                    fontSize: '13px',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                    bg: tab === 'local' ? 'primary' : 'transparent',
+                                    color: tab === 'local' ? 'textOnPrimary' : 'textMuted',
+                                })}
+                            >
+                                ローカル
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setTab('global')}
+                                className={css({
+                                    px: '12px',
+                                    py: '6px',
+                                    borderRadius: '8px',
+                                    border: 'none',
+                                    fontSize: '13px',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                    bg: tab === 'global' ? 'primary' : 'transparent',
+                                    color: tab === 'global' ? 'textOnPrimary' : 'textMuted',
+                                })}
+                            >
+                                グローバル
+                            </button>
+                        </div>
+                    </div>
 
                     {error && (
                         <div
@@ -227,115 +289,121 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                                         marginBottom: '16px',
                                     })}
                                 >
-                                    ワールドを選択してインスタンスを作成または参加してください
+                                    {tab === 'local'
+                                        ? 'このサーバーのワールドを選択して、インスタンスを作成または参加してください'
+                                        : 'フォロー中の他サーバーのワールドを選択して遊びましょう'}
                                 </p>
 
-                                <div
-                                    className={css({
-                                        display: 'flex',
-                                        gap: '8px',
-                                        marginBottom: '16px',
-                                        flexWrap: 'wrap',
-                                    })}
-                                >
-                                    <button
-                                        type="button"
-                                        onClick={() =>
-                                            void goConfirmed('/worlds/new', 'ワールド作成画面に移動しますか？')
-                                        }
-                                        className={css({
-                                            display: 'inline-flex',
-                                            alignItems: 'center',
-                                            gap: '6px',
-                                            padding: '9px 16px',
-                                            backgroundColor: 'primary',
-                                            color: 'textOnPrimary',
-                                            border: 'none',
-                                            borderRadius: '10px',
-                                            fontSize: '13px',
-                                            fontWeight: '600',
-                                            cursor: 'pointer',
-                                            _hover: { opacity: 0.9 },
-                                        })}
-                                    >
-                                        <svg
-                                            width="14"
-                                            height="14"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="2"
+                                {tab === 'local' && (
+                                    <>
+                                        <div
+                                            className={css({
+                                                display: 'flex',
+                                                gap: '8px',
+                                                marginBottom: '16px',
+                                                flexWrap: 'wrap',
+                                            })}
                                         >
-                                            <path d="M12 5v14M5 12h14" />
-                                        </svg>
-                                        自分でワールドを作る
-                                    </button>
-                                </div>
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    void goConfirmed('/worlds/new', 'ワールド作成画面に移動しますか？')
+                                                }
+                                                className={css({
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px',
+                                                    padding: '9px 16px',
+                                                    backgroundColor: 'primary',
+                                                    color: 'textOnPrimary',
+                                                    border: 'none',
+                                                    borderRadius: '10px',
+                                                    fontSize: '13px',
+                                                    fontWeight: '600',
+                                                    cursor: 'pointer',
+                                                    _hover: { opacity: 0.9 },
+                                                })}
+                                            >
+                                                <svg
+                                                    width="14"
+                                                    height="14"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    strokeWidth="2"
+                                                >
+                                                    <path d="M12 5v14M5 12h14" />
+                                                </svg>
+                                                自分でワールドを作る
+                                            </button>
+                                        </div>
 
-                                <div
-                                    className={css({
-                                        display: 'flex',
-                                        gap: '8px',
-                                        marginBottom: '20px',
-                                    })}
-                                >
-                                    <input
-                                        type="url"
-                                        value={importUrl}
-                                        onChange={(e) => {
-                                            setImportUrl(e.target.value);
-                                            setImportState('idle');
-                                        }}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter') void handleImport();
-                                        }}
-                                        placeholder="GitHub URL または YAML URL を入力"
-                                        className={css({
-                                            flex: 1,
-                                            padding: '9px 12px',
-                                            borderRadius: '10px',
-                                            border: '1.5px solid',
-                                            borderColor: importState === 'error' ? 'errorText' : 'border',
-                                            backgroundColor: 'surface',
-                                            color: 'text',
-                                            fontSize: '13px',
-                                            outline: 'none',
-                                            minW: 0,
-                                            _focus: { borderColor: 'primary' },
-                                            _placeholder: { color: 'textSubtle' },
-                                        })}
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => void handleImport()}
-                                        disabled={importState === 'loading' || !importUrl.trim()}
-                                        className={css({
-                                            padding: '9px 16px',
-                                            backgroundColor: 'primary',
-                                            color: 'textOnPrimary',
-                                            border: 'none',
-                                            borderRadius: '10px',
-                                            fontSize: '13px',
-                                            fontWeight: '600',
-                                            cursor: 'pointer',
-                                            whiteSpace: 'nowrap',
-                                            _disabled: { opacity: 0.5, cursor: 'not-allowed' },
-                                        })}
-                                    >
-                                        {importState === 'loading' ? '取得中...' : '読み込む'}
-                                    </button>
-                                </div>
-                                {importState === 'error' && (
-                                    <p
-                                        className={css({
-                                            fontSize: '12px',
-                                            color: 'errorText',
-                                            marginBottom: '12px',
-                                            marginTop: '-12px',
-                                        })}
-                                    >
-                                        {importError}
-                                    </p>
+                                        <div
+                                            className={css({
+                                                display: 'flex',
+                                                gap: '8px',
+                                                marginBottom: '20px',
+                                            })}
+                                        >
+                                            <input
+                                                type="url"
+                                                value={importUrl}
+                                                onChange={(e) => {
+                                                    setImportUrl(e.target.value);
+                                                    setImportState('idle');
+                                                }}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') void handleImport();
+                                                }}
+                                                placeholder="GitHub URL または YAML URL を入力"
+                                                className={css({
+                                                    flex: 1,
+                                                    padding: '9px 12px',
+                                                    borderRadius: '10px',
+                                                    border: '1.5px solid',
+                                                    borderColor: importState === 'error' ? 'errorText' : 'border',
+                                                    backgroundColor: 'surface',
+                                                    color: 'text',
+                                                    fontSize: '13px',
+                                                    outline: 'none',
+                                                    minW: 0,
+                                                    _focus: { borderColor: 'primary' },
+                                                    _placeholder: { color: 'textSubtle' },
+                                                })}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => void handleImport()}
+                                                disabled={importState === 'loading' || !importUrl.trim()}
+                                                className={css({
+                                                    padding: '9px 16px',
+                                                    backgroundColor: 'primary',
+                                                    color: 'textOnPrimary',
+                                                    border: 'none',
+                                                    borderRadius: '10px',
+                                                    fontSize: '13px',
+                                                    fontWeight: '600',
+                                                    cursor: 'pointer',
+                                                    whiteSpace: 'nowrap',
+                                                    _disabled: { opacity: 0.5, cursor: 'not-allowed' },
+                                                })}
+                                            >
+                                                {importState === 'loading' ? '取得中...' : '読み込む'}
+                                            </button>
+                                        </div>
+                                        {importState === 'error' && (
+                                            <p
+                                                className={css({
+                                                    fontSize: '12px',
+                                                    color: 'errorText',
+                                                    marginBottom: '12px',
+                                                    marginTop: '-12px',
+                                                })}
+                                            >
+                                                {importError}
+                                            </p>
+                                        )}
+                                    </>
                                 )}
 
                                 {/* ワールドカードの直上にソートを配置 */}

@@ -52,11 +52,15 @@ router.post('/import', requireAuth, async (req, res) => {
 
 /**
  * GET /api/v1/worlds
- * ワールドテンプレート一覧を取得（認証必須）
+ * ワールドテンプレート一覧を取得（認証必須）。
+ * クエリ `?scope=local|global|all` でローカル/連合/すべてを切り替え（デフォルト all）。
  */
-router.get('/', optionalAuth, async (_req, res) => {
+router.get('/', optionalAuth, async (req, res) => {
     try {
-        const worlds = await worldRegistry.listWorlds();
+        const scopeParam = req.query.scope;
+        const scope: 'local' | 'global' | 'all' =
+            scopeParam === 'local' || scopeParam === 'global' ? scopeParam : 'all';
+        const worlds = await worldRegistry.listWorlds(scope);
         res.json({ worlds });
     } catch (error) {
         console.error('ワールド一覧取得エラー:', error);
