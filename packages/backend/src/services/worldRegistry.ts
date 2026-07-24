@@ -20,6 +20,7 @@ import {
 } from '@ubichill/shared';
 import { customAlphabet } from 'nanoid';
 import yaml from 'yaml';
+import { assertPublicUrl, safeFetch } from './safeFetch';
 import { migrateLegacyWorldYaml } from './worldMigration';
 import { definitionToResolved, normalizeWorldUrl, resolveWorldFromUrl } from './worldResolver';
 
@@ -189,7 +190,7 @@ class WorldRegistry {
             return cached.worlds;
         }
         try {
-            const res = await fetch(`${peer.baseUrl}/api/v1/worlds`, {
+            const res = await safeFetch(`${peer.baseUrl}/api/v1/worlds`, {
                 headers: { Accept: 'application/json' },
                 signal: AbortSignal.timeout(5000),
             });
@@ -323,6 +324,8 @@ class WorldRegistry {
         if (!/^https?:\/\//i.test(normalized)) {
             throw new Error('baseUrl は http:// または https:// で始まる必要があります');
         }
+        // SSRF 対策: 内部/loopback/メタデータ等のホストはフォロー登録させない。
+        await assertPublicUrl(normalized);
         const existing = await federationPeerRepository.findByBaseUrl(normalized);
         if (existing) return existing;
         const peer = await federationPeerRepository.create({ baseUrl: normalized, displayName });

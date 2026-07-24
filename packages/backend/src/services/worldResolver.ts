@@ -23,6 +23,7 @@ import {
     WorldSourceKind,
 } from '@ubichill/shared';
 import yaml from 'yaml';
+import { safeFetch } from './safeFetch';
 import { migrateLegacyWorldYaml } from './worldMigration';
 
 const GITHUB_BLOB_RE = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/;
@@ -47,7 +48,7 @@ async function fetchText(url: string): Promise<string> {
     if (token && (url.includes('github') || url.includes('githubusercontent'))) {
         headers.Authorization = `Bearer ${token}`;
     }
-    const res = await fetch(url, { headers });
+    const res = await safeFetch(url, { headers });
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${url}`);
     const text = await res.text();
     if (text.length > LIMITS.MAX_YAML_SIZE) {
@@ -164,7 +165,7 @@ async function enumerateGitHubDir(owner: string, repo: string, ref: string, path
     const cached = contentsCache.get(apiUrl);
     if (cached) headers['If-None-Match'] = cached.etag;
 
-    const res = await fetch(apiUrl, { headers });
+    const res = await safeFetch(apiUrl, { headers });
 
     // 304: 未変更。レート制限を消費しない。キャッシュを返す。
     if (res.status === 304 && cached) return cached.urls;
@@ -267,7 +268,7 @@ export async function enumerateSource(sourceUrl: string): Promise<{ url: string;
     }
 
     // 他 ubichill インスタンスのワールド一覧 API とみなす（{ worlds: WorldListItem[] } を返す想定）
-    const res = await fetch(sourceUrl, { headers: { Accept: 'application/json' } });
+    const res = await safeFetch(sourceUrl, { headers: { Accept: 'application/json' } });
     if (!res.ok) throw new Error(`レジストリ列挙に失敗 HTTP ${res.status}: ${sourceUrl}`);
     const body = (await res.json()) as { worlds?: Array<{ url?: string }> };
     const base = new URL(sourceUrl).origin;
