@@ -1,5 +1,5 @@
 import { useSocket } from '@ubichill/react';
-import type { Instance } from '@ubichill/shared';
+import { type Instance, worldSourceLabel } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useInstances } from '@/components/lobby/useInstances';
@@ -74,6 +74,14 @@ export function InstanceTab({ currentInstanceId, onNavigate, onReturnToLobby }: 
 
     const world = instance?.world ?? null;
     const isAuthor = !!world && !!currentUser && world.authorId === currentUser.id;
+
+    const detailRows: Array<{ label: string; value: string }> = world
+        ? [
+              world.authorName ? { label: '作成者', value: world.authorName } : null,
+              world.version ? { label: 'バージョン', value: `v${world.version}` } : null,
+              world.source ? { label: '由来', value: worldSourceLabel(world.source) } : null,
+          ].filter((r): r is { label: string; value: string } => r !== null)
+        : [];
 
     const handleReenter = async () => {
         if (!(await confirm('このインスタンスに入り直しますか？'))) return;
@@ -277,6 +285,62 @@ export function InstanceTab({ currentInstanceId, onNavigate, onReturnToLobby }: 
                     )}
                 </div>
             </div>
+
+            {/* ワールド詳細（説明・情報・使用 mod）。リモートワールドでも instance.world から表示できる */}
+            {world && (world.description || detailRows.length > 0 || (world.mods && world.mods.length > 0)) && (
+                <div className={cardStyle}>
+                    <h2 className={sectionHeading}>ワールド詳細</h2>
+                    <div className={css({ display: 'flex', flexDirection: 'column', gap: '3' })}>
+                        {world.description && (
+                            <p className={css({ color: 'textMuted', fontSize: '13px', lineHeight: '1.7' })}>
+                                {world.description}
+                            </p>
+                        )}
+                        {detailRows.length > 0 && (
+                            <dl className={css({ display: 'flex', flexDirection: 'column', gap: '2' })}>
+                                {detailRows.map((r) => (
+                                    <div
+                                        key={r.label}
+                                        className={css({
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            fontSize: '12px',
+                                        })}
+                                    >
+                                        <dt className={css({ color: 'textSubtle' })}>{r.label}</dt>
+                                        <dd className={css({ color: 'text', fontWeight: '500' })}>{r.value}</dd>
+                                    </div>
+                                ))}
+                            </dl>
+                        )}
+                        {world.mods && world.mods.length > 0 && (
+                            <div>
+                                <p className={css({ fontSize: '11px', color: 'textSubtle', mb: '1.5' })}>使用 mod</p>
+                                <div className={css({ display: 'flex', gap: '1.5', flexWrap: 'wrap' })}>
+                                    {world.mods.map((m) => (
+                                        <span
+                                            key={m.id}
+                                            className={css({
+                                                px: '2',
+                                                py: '1',
+                                                bg: 'secondary',
+                                                borderRadius: '4px',
+                                                fontSize: '11px',
+                                                color: 'textMuted',
+                                            })}
+                                        >
+                                            {m.id}
+                                            {m.version && (
+                                                <span className={css({ color: 'textSubtle' })}> v{m.version}</span>
+                                            )}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* 参加者一覧 */}
             <div className={cardStyle}>

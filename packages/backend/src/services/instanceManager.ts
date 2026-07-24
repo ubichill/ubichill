@@ -6,6 +6,7 @@ import type {
     Instance,
     InstanceAccess,
     WorldEnvironmentData,
+    WorldMod,
     WorldSource,
 } from '@ubichill/shared';
 import { DEFAULTS } from '@ubichill/shared';
@@ -265,10 +266,12 @@ class InstanceManager {
             id: string;
             version: string;
             displayName: string;
+            description?: string;
             thumbnail?: string;
             authorId?: string;
             authorName?: string;
             source?: WorldSource;
+            mods?: WorldMod[];
         },
     ): Instance {
         const access: InstanceAccess = {
@@ -292,11 +295,13 @@ class InstanceManager {
                 id: world.id,
                 version: world.version,
                 displayName: world.displayName,
+                description: world.description,
                 thumbnail: world.thumbnail,
                 // 本体作成ワールドは authorId を持つ。外部/official ワールドは空（provenance は source 側）。
                 authorId: world.authorId ?? '',
                 authorName: world.authorName,
                 source: world.source,
+                mods: world.mods ?? [],
             },
 
             access,

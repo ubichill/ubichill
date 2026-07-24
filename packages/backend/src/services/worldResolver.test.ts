@@ -98,6 +98,13 @@ spec:
             - { type: "video-player:screen" }
 `;
         const resolved = resolveWorldFromYaml(yaml, url, source);
-        expect([...resolved.mods].sort()).toEqual(['avatar', 'pen', 'video-player']);
+        expect(
+            resolved.mods
+                .map((m) => m.id)
+                .slice()
+                .sort(),
+        ).toEqual(['avatar', 'pen', 'video-player']);
+        // dependency 由来の avatar は version 宣言が無いので undefined
+        expect(resolved.mods.find((m) => m.id === 'avatar')?.version).toBeUndefined();
     });
 });

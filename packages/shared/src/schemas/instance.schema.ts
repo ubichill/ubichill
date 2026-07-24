@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { WorldSourceSchema } from './world.schema';
+import { WorldModSchema, WorldSourceSchema } from './world.schema';
 
 // ============================================
 // Access Type（アクセス種別）
@@ -64,12 +64,15 @@ export const InstanceSchema = z.object({
         id: z.string(),
         version: z.string(),
         displayName: z.string(),
+        description: z.string().optional(),
         thumbnail: z.string().optional(),
         authorId: z.string(),
         /** ワールド作成者の表示名（YAML metadata.author.name または DB users.name） */
         authorName: z.string().optional(),
         /** どのサーバー/由来のワールドか（provenance）。一覧・詳細で origin を明示する。 */
         source: WorldSourceSchema.optional(),
+        /** 使用 mod（リモートワールドでも instance に載せて詳細で表示できるようにする）。 */
+        mods: z.array(WorldModSchema).default([]),
     }),
 
     access: InstanceAccessSchema,
@@ -136,8 +139,8 @@ export const WorldListItemSchema = z.object({
     authorId: z.string().optional(),
     /** ワールド作成者の表示名（YAML metadata.author.name 由来） */
     authorName: z.string().optional(),
-    /** このワールドが使う mod id 一覧。 */
-    mods: z.array(z.string()).default([]),
+    /** このワールドが使う mod 一覧。 */
+    mods: z.array(WorldModSchema).default([]),
     createdAt: z.string().datetime().optional(),
     updatedAt: z.string().datetime().optional(),
 });

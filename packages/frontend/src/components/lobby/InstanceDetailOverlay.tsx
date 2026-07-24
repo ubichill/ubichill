@@ -1,6 +1,5 @@
 import { type Instance, type WorldListItem, worldSourceLabel } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router';
 import { API_BASE } from '@/lib/api';
 import { css } from '@/styled-system/css';
 
@@ -22,26 +21,26 @@ function formatDate(iso?: string): string {
 
 /**
  * インスタンス詳細のオーバーレイ。**ルート遷移せず**（インスタンス内で見たまま）開く。
- * 左: サムネ＋ワールド情報（説明・詳細・使用 mod）、右: そのワールドの他インスタンス一覧。
- * ワールドの公開詳細ページ（ログイン不要）へは「ワールド詳細」で遷移する。
+ * 左: サムネ＋ワールド情報（説明・詳細・使用 mod）＋新規インスタンス作成、右: 同ワールドの他インスタンス一覧。
+ * mod/説明は instance.world から表示するのでリモートワールドでも見れる。詳細(capacity/日付)はローカルは fetch で補う。
  */
 export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstanceId }: InstanceDetailOverlayProps) {
-    const navigate = useNavigate();
-    const worldRef = instance.world.source?.url;
-    // instance.world は最小情報なので、フル情報（説明/キャパ/mod/日付）を取得して補う。
+    const worldRef = instance.world.source?.url ?? instance.world.id;
+    // instance.world（mods/description/source を含む）を初期値にし、ローカルはフル情報で補う。
     const [world, setWorld] = useState<Partial<WorldListItem>>(instance.world);
     const [siblings, setSiblings] = useState<Instance[]>([instance]);
+    const [creating, setCreating] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         let cancelled = false;
         void fetch(`${API_BASE}/api/v1/worlds/${encodeURIComponent(instance.world.id)}`, { credentials: 'include' })
             .then((r) => (r.ok ? (r.json() as Promise<WorldListItem>) : null))
             .then((w) => {
-                if (!cancelled && w) setWorld(w);
+                if (!cancelled && w) setWorld((prev) => ({ ...prev, ...w }));
             })
             .catch(() => undefined);
-        const q = encodeURIComponent(worldRef ?? instance.world.id);
-        void fetch(`${API_BASE}/api/v1/instances?worldId=${q}`, { credentials: 'include' })
+        void fetch(`${API_BASE}/api/v1/instances?worldId=${encodeURIComponent(worldRef)}`, { credentials: 'include' })
             .then((r) => (r.ok ? (r.json() as Promise<{ instances: Instance[] }>) : null))
             .then((data) => {
                 if (!cancelled && data?.instances?.length) setSiblings(data.instances);
@@ -51,6 +50,30 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
             cancelled = true;
         };
     }, [instance.world.id, worldRef]);
+
+    const handleCreate = async () => {
+        if (creating) return;
+        setCreating(true);
+        setError(null);
+        try {
+            const res = await fetch(`${API_BASE}/api/v1/instances`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ worldId: worldRef }),
+            });
+            if (!res.ok) {
+                const data = (await res.json()) as { error?: string };
+                throw new Error(data.error ?? 'インスタンスの作成に失敗しました');
+            }
+            const created = (await res.json()) as Instance;
+            onJoin(created.id);
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'インスタンスの作成に失敗しました');
+        } finally {
+            setCreating(false);
+        }
+    };
 
     const detailRows: Array<{ label: string; value: string }> = [
         world.authorName ? { label: '作成者', value: world.authorName } : null,
@@ -94,7 +117,7 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
                     gridTemplateColumns: { base: '1fr', md: '3fr 2fr' },
                 })}
             >
-                {/* 左: サムネ + ワールド情報 + mod */}
+                {/* 左: サムネ + ワールド情報 + mod + 作成 */}
                 <div className={css({ display: 'flex', flexDir: 'column' })}>
                     <div
                         className={css({
@@ -117,23 +140,9 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
                         )}
                     </div>
                     <div className={css({ p: '5', display: 'flex', flexDir: 'column', gap: '3' })}>
-                        <button
-                            type="button"
-                            onClick={() => navigate(`/world/${instance.world.id}`)}
-                            className={css({
-                                textAlign: 'left',
-                                bg: 'transparent',
-                                border: 'none',
-                                p: 0,
-                                cursor: 'pointer',
-                                fontSize: 'lg',
-                                fontWeight: 'bold',
-                                color: 'text',
-                                _hover: { textDecoration: 'underline' },
-                            })}
-                        >
+                        <h2 className={css({ fontSize: 'lg', fontWeight: 'bold', color: 'text' })}>
                             {world.displayName}
-                        </button>
+                        </h2>
                         {world.description && (
                             <p className={css({ color: 'textMuted', fontSize: 'sm', lineHeight: '1.6' })}>
                                 {world.description}
@@ -160,7 +169,7 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
                                 <div className={css({ display: 'flex', gap: '1.5', flexWrap: 'wrap' })}>
                                     {world.mods.map((m) => (
                                         <span
-                                            key={m}
+                                            key={m.id}
                                             className={css({
                                                 px: '2',
                                                 py: '1',
@@ -170,7 +179,10 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
                                                 color: 'textMuted',
                                             })}
                                         >
-                                            {m}
+                                            {m.id}
+                                            {m.version && (
+                                                <span className={css({ color: 'textSubtle' })}> v{m.version}</span>
+                                            )}
                                         </span>
                                     ))}
                                 </div>
@@ -178,20 +190,24 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
                         )}
                         <button
                             type="button"
-                            onClick={() => navigate(`/world/${instance.world.id}`)}
+                            onClick={handleCreate}
+                            disabled={creating}
                             className={css({
-                                alignSelf: 'flex-start',
-                                fontSize: 'xs',
-                                color: 'primary',
-                                bg: 'transparent',
+                                mt: '1',
+                                py: '3',
+                                bg: 'primary',
+                                color: 'textOnPrimary',
                                 border: 'none',
+                                borderRadius: '10px',
+                                fontWeight: '600',
                                 cursor: 'pointer',
-                                textDecoration: 'underline',
-                                p: 0,
+                                _hover: { opacity: 0.9 },
+                                _disabled: { opacity: 0.6, cursor: 'not-allowed' },
                             })}
                         >
-                            ワールド詳細ページを開く
+                            {creating ? '作成中...' : '新しいインスタンスを作成'}
                         </button>
+                        {error && <p className={css({ color: 'errorText', fontSize: 'xs' })}>{error}</p>}
                     </div>
                 </div>
 

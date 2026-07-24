@@ -80,7 +80,7 @@ export function renderWorldShell({ world, instances, publicBaseUrl }: ShellData)
             ? `<div style="margin-top:16px;"><p style="font-size:12px;color:#8a7e6d;margin:0 0 8px 0;">使用 mod</p><div style="display:flex;gap:6px;flex-wrap:wrap;">${world.mods
                   .map(
                       (m) =>
-                          `<span style="padding:4px 8px;background:#faf6f0;border:1px solid #cebca2;border-radius:4px;font-size:12px;color:#5e6a82;">${esc(m)}</span>`,
+                          `<span style="padding:4px 8px;background:#faf6f0;border:1px solid #cebca2;border-radius:4px;font-size:12px;color:#5e6a82;">${esc(m.id)}${m.version ? ` <span style="color:#8a7e6d;">v${esc(m.version)}</span>` : ''}</span>`,
                   )
                   .join('')}</div></div>`
             : '';

@@ -329,6 +329,19 @@ export const WorldCreateInputSchema = z.object({
 export type WorldCreateInput = z.infer<typeof WorldCreateInputSchema>;
 
 // ============================================
+// World Mod（ワールドが使う mod）
+// ============================================
+
+export const WorldModSchema = z.object({
+    /** mod id（component 型 `modId:name` の modId、または dependency 名）。 */
+    id: z.string(),
+    /** バージョン（dependency に宣言があれば。component 由来のみだと不明）。 */
+    version: z.string().optional(),
+});
+
+export type WorldMod = z.infer<typeof WorldModSchema>;
+
+// ============================================
 // Resolved World（解決済みワールド）
 // ============================================
 
@@ -348,8 +361,8 @@ export const ResolvedWorldSchema = z.object({
     capacity: WorldCapacitySchema,
     dependencies: z.array(DependencySchema).optional(),
     initialEntities: z.array(InitialEntitySchema),
-    /** このワールドが使う mod id 一覧（initialEntities の component 型と dependencies から算出）。 */
-    mods: z.array(z.string()).default([]),
+    /** このワールドが使う mod 一覧（component 型と dependencies から算出。version は dependency 宣言由来）。 */
+    mods: z.array(WorldModSchema).default([]),
 });
 
 export type ResolvedWorld = z.infer<typeof ResolvedWorldSchema>;

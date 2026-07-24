@@ -419,7 +419,7 @@ function DetailsSection({ world }: { world: WorldListItem | null }) {
                         <div className={css({ display: 'flex', gap: 2, flexWrap: 'wrap' })}>
                             {world.mods.map((m) => (
                                 <span
-                                    key={m}
+                                    key={m.id}
                                     className={css({
                                         px: 2,
                                         py: 1,
@@ -429,7 +429,8 @@ function DetailsSection({ world }: { world: WorldListItem | null }) {
                                         color: 'textMuted',
                                     })}
                                 >
-                                    {m}
+                                    {m.id}
+                                    {m.version && <span className={css({ color: 'textSubtle' })}> v{m.version}</span>}
                                 </span>
                             ))}
                         </div>

@@ -19,6 +19,7 @@ import {
     type ResolvedWorld,
     type WorldDefinition,
     WorldDefinitionSchema,
+    type WorldMod,
     type WorldSource,
     WorldSourceKind,
 } from '@ubichill/shared';
@@ -117,19 +118,29 @@ function mapToResolved(
     };
 }
 
-/** 初期エンティティの component 型（modId:name）と dependencies から使用 mod id を重複なく集める。 */
-function collectMods(entities: InitialEntity[], dependencies?: Array<{ name: string }>): string[] {
-    const mods = new Set<string>();
+/**
+ * 初期エンティティの component 型（modId:name）と dependencies から使用 mod を重複なく集める。
+ * version は dependency 宣言（source.version）由来。component 由来のみだと version は不明。
+ */
+function collectMods(
+    entities: InitialEntity[],
+    dependencies?: Array<{ name: string; source?: { version?: string } }>,
+): WorldMod[] {
+    const versionByName = new Map<string, string | undefined>();
+    for (const d of dependencies ?? []) versionByName.set(d.name, d.source?.version);
+
+    const ids = new Set<string>();
     const walk = (e: InitialEntity): void => {
         for (const c of e.components) {
             const modId = c.type.split(':')[0];
-            if (modId) mods.add(modId);
+            if (modId) ids.add(modId);
         }
         for (const child of e.children ?? []) walk(child);
     };
     for (const e of entities) walk(e);
-    for (const d of dependencies ?? []) mods.add(d.name);
-    return [...mods];
+    for (const name of versionByName.keys()) ids.add(name);
+
+    return [...ids].map((id) => ({ id, version: versionByName.get(id) }));
 }
 
 /** YAML テキストから ResolvedWorld を作る。 */
