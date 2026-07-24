@@ -15,6 +15,13 @@
       "when": 1784533530530,
       "tag": "0001_sweet_trish_tilby",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784782608630,
+      "tag": "0002_steep_bug",
+      "breakpoints": true
     }
   ]
 }

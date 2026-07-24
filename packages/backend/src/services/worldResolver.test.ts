@@ -1,6 +1,6 @@
 import { WorldSourceKind } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
-import { definitionToResolved, resolveWorldFromYaml, toRawGitHubUrl } from './worldResolver';
+import { definitionToResolved, normalizeWorldUrl, resolveWorldFromYaml, toRawGitHubUrl } from './worldResolver';
 
 const VALID_YAML = `
 apiVersion: ubichill.com/v1alpha1
@@ -29,6 +29,26 @@ describe('toRawGitHubUrl', () => {
     it('blob 以外の URL はそのまま返す', () => {
         const url = 'https://example.com/world.yaml';
         expect(toRawGitHubUrl(url)).toBe(url);
+    });
+});
+
+describe('normalizeWorldUrl', () => {
+    it('共有 URL(.../world/:id) を機械 URL に正規化する', () => {
+        expect(normalizeWorldUrl('https://h.example/world/abc')).toBe('https://h.example/api/v1/worlds/abc');
+    });
+    it('機械 URL はそのまま、/yaml は除去する', () => {
+        expect(normalizeWorldUrl('https://h.example/api/v1/worlds/abc')).toBe('https://h.example/api/v1/worlds/abc');
+        expect(normalizeWorldUrl('https://h.example/api/v1/worlds/abc/yaml')).toBe(
+            'https://h.example/api/v1/worlds/abc',
+        );
+    });
+    it('ワールド一覧(.../api/v1/worlds) やその他 URL は変えない', () => {
+        expect(normalizeWorldUrl('https://h.example/api/v1/worlds')).toBe('https://h.example/api/v1/worlds');
+        const raw = 'https://raw.githubusercontent.com/o/r/main/worlds/x.yaml';
+        expect(normalizeWorldUrl(raw)).toBe(raw);
+    });
+    it('不正な文字列は入力を返す', () => {
+        expect(normalizeWorldUrl('not a url')).toBe('not a url');
     });
 });
 

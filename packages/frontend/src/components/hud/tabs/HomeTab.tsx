@@ -1,5 +1,7 @@
-import { useEffect } from 'react';
+import type { Instance } from '@ubichill/shared';
+import { useEffect, useState } from 'react';
 import { InstanceCard } from '@/components/lobby/InstanceCard';
+import { InstanceDetailOverlay } from '@/components/lobby/InstanceDetailOverlay';
 import { useInstances } from '@/components/lobby/useInstances';
 import { css } from '@/styled-system/css';
 import { cardBase, cardStyle, type JoinInstanceHandler, sectionHeading, tabPanel } from './shared';
@@ -14,6 +16,7 @@ interface HomeTabProps {
 
 export function HomeTab({ onJoinInstance, currentInstanceId, onReturnToLobby }: HomeTabProps) {
     const { instances, loading, error, refreshInstances } = useInstances();
+    const [detailInstance, setDetailInstance] = useState<Instance | null>(null);
 
     useEffect(() => {
         void refreshInstances();
@@ -92,17 +95,27 @@ export function HomeTab({ onJoinInstance, currentInstanceId, onReturnToLobby }: 
                                 key={instance.id}
                                 instance={instance}
                                 isCurrent={instance.id === currentInstanceId}
-                                onJoin={(id) =>
-                                    onJoinInstance(id, instance.world.id, {
-                                        thumbnail: instance.world.thumbnail,
-                                        displayName: instance.world.displayName,
-                                    })
-                                }
+                                onOpenDetail={() => setDetailInstance(instance)}
                             />
                         ))}
                     </div>
                 )}
             </div>
+
+            {detailInstance && (
+                <InstanceDetailOverlay
+                    instance={detailInstance}
+                    isCurrent={detailInstance.id === currentInstanceId}
+                    onClose={() => setDetailInstance(null)}
+                    onJoin={(id) => {
+                        onJoinInstance(id, detailInstance.world.id, {
+                            thumbnail: detailInstance.world.thumbnail,
+                            displayName: detailInstance.world.displayName,
+                        });
+                        setDetailInstance(null);
+                    }}
+                />
+            )}
         </div>
     );
 }

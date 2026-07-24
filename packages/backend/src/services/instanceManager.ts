@@ -6,6 +6,7 @@ import type {
     Instance,
     InstanceAccess,
     WorldEnvironmentData,
+    WorldSource,
 } from '@ubichill/shared';
 import { DEFAULTS } from '@ubichill/shared';
 import bcrypt from 'bcryptjs';
@@ -267,6 +268,7 @@ class InstanceManager {
             thumbnail?: string;
             authorId?: string;
             authorName?: string;
+            source?: WorldSource;
         },
     ): Instance {
         const access: InstanceAccess = {
@@ -294,6 +296,7 @@ class InstanceManager {
                 // 本体作成ワールドは authorId を持つ。外部/official ワールドは空（provenance は source 側）。
                 authorId: world.authorId ?? '',
                 authorName: world.authorName,
+                source: world.source,
             },
 
             access,

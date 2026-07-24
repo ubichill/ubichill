@@ -104,6 +104,35 @@ export const WorldSourceSchema = z.object({
 
 export type WorldSource = z.infer<typeof WorldSourceSchema>;
 
+/**
+ * ワールドの canonical URL（機械: `.../api/v1/worlds/:id`）や共有 URL から、
+ * ユーザーに配る**共有 URL**（`.../world/:id`）を作る。共有・コピーはこちらを使う。
+ * ubichill ホストでない任意 URL（GitHub raw 等）はそのまま返す。
+ */
+export function worldShareUrl(url: string): string {
+    const m = /^(https?:\/\/[^/]+)\/(?:api\/v1\/worlds|world)\/([^/?#]+)/.exec(url);
+    return m ? `${m[1]}/world/${m[2]}` : url;
+}
+
+/** ワールドの由来（どのサーバー/レジストリか）を人間向けラベルにする。UI の origin バッジ用。 */
+export function worldSourceLabel(source: WorldSource): string {
+    switch (source.kind) {
+        case WorldSourceKind.Local:
+            return 'このインスタンス';
+        case WorldSourceKind.GitHub:
+            return source.registryName ? `GitHub: ${source.registryName}` : 'GitHub';
+        case WorldSourceKind.RemoteInstance: {
+            // shared は DOM/Node 非依存なので URL は使わず host 部分を素の文字列処理で取り出す。
+            const host = source.originInstance?.replace(/^https?:\/\//i, '').replace(/[/?#].*$/, '');
+            return host || '外部インスタンス';
+        }
+        case WorldSourceKind.Registry:
+            return source.registryName ?? 'レジストリ';
+        default:
+            return '外部 URL';
+    }
+}
+
 // ============================================
 // World Environment（環境設定）
 // ============================================

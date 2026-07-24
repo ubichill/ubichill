@@ -23,6 +23,7 @@ import {
     WorldSourceKind,
 } from '@ubichill/shared';
 import yaml from 'yaml';
+import { safeFetch } from './safeFetch';
 import { migrateLegacyWorldYaml } from './worldMigration';
 
 const GITHUB_BLOB_RE = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/;
@@ -47,7 +48,7 @@ async function fetchText(url: string): Promise<string> {
     if (token && (url.includes('github') || url.includes('githubusercontent'))) {
         headers.Authorization = `Bearer ${token}`;
     }
-    const res = await fetch(url, { headers });
+    const res = await safeFetch(url, { headers });
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${url}`);
     const text = await res.text();
     if (text.length > LIMITS.MAX_YAML_SIZE) {
@@ -164,7 +165,7 @@ async function enumerateGitHubDir(owner: string, repo: string, ref: string, path
     const cached = contentsCache.get(apiUrl);
     if (cached) headers['If-None-Match'] = cached.etag;
 
-    const res = await fetch(apiUrl, { headers });
+    const res = await safeFetch(apiUrl, { headers });
 
     // 304: 未変更。レート制限を消費しない。キャッシュを返す。
     if (res.status === 304 && cached) return cached.urls;
@@ -204,13 +205,48 @@ async function enumerateIndexJson(indexUrl: string): Promise<{ url: string; sour
 }
 
 /**
+ * 人間向けの共有 URL（`.../world/:id`）を機械 URL（`.../api/v1/worlds/:id`）に正規化する。
+ * ユーザーはブラウザに見えている共有 URL をコピーするのが自然なので、それをそのまま受け付ける。
+ * 既に機械 URL ならそのまま返す（`/yaml` サフィックスは除去）。単一ワールド URL でなければ入力を返す。
+ */
+export function normalizeWorldUrl(input: string): string {
+    try {
+        const u = new URL(input);
+        const share = /^\/world\/([^/]+)\/?$/.exec(u.pathname);
+        if (share) return `${u.origin}/api/v1/worlds/${share[1]}`;
+        const api = /^\/api\/v1\/worlds\/([^/]+?)(?:\/yaml)?\/?$/.exec(u.pathname);
+        if (api) return `${u.origin}/api/v1/worlds/${api[1]}`;
+        return input;
+    } catch {
+        return input;
+    }
+}
+
+/** URL が単一ワールド（`.../api/v1/worlds/:id`）を指すか。 */
+function isSingleWorldUrl(url: string): boolean {
+    try {
+        return /^\/api\/v1\/worlds\/[^/]+$/.test(new URL(url).pathname);
+    } catch {
+        return false;
+    }
+}
+
+/**
  * レジストリソース URL を個々のワールド URL＋source に展開する。
+ * - 共有/機械の単一ワールド URL（.../world/:id, .../api/v1/worlds/:id）→ 単一（kind: remote-instance）
  * - GitHub tree URL → Contents API 列挙（ETag キャッシュ、kind: github）
  * - インデックス JSON URL → CDN 取得（API 不使用、kind: registry）
  * - 直 YAML URL → 単一（kind: github or url）
  * - 他インスタンス一覧 API → kind: remote-instance で展開
  */
 export async function enumerateSource(sourceUrl: string): Promise<{ url: string; source: WorldSource }[]> {
+    // 共有 URL を機械 URL へ正規化し、単一ワールドなら1件だけ返す。
+    const single = normalizeWorldUrl(sourceUrl);
+    if (isSingleWorldUrl(single)) {
+        const origin = new URL(single).origin;
+        return [{ url: single, source: { kind: WorldSourceKind.RemoteInstance, url: single, originInstance: origin } }];
+    }
+
     const tree = GITHUB_TREE_RE.exec(sourceUrl);
     if (tree) {
         const [, owner, repo, ref, path] = tree;
@@ -232,7 +268,7 @@ export async function enumerateSource(sourceUrl: string): Promise<{ url: string;
     }
 
     // 他 ubichill インスタンスのワールド一覧 API とみなす（{ worlds: WorldListItem[] } を返す想定）
-    const res = await fetch(sourceUrl, { headers: { Accept: 'application/json' } });
+    const res = await safeFetch(sourceUrl, { headers: { Accept: 'application/json' } });
     if (!res.ok) throw new Error(`レジストリ列挙に失敗 HTTP ${res.status}: ${sourceUrl}`);
     const body = (await res.json()) as { worlds?: Array<{ url?: string }> };
     const base = new URL(sourceUrl).origin;

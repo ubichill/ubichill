@@ -68,6 +68,8 @@ export const InstanceSchema = z.object({
         authorId: z.string(),
         /** ワールド作成者の表示名（YAML metadata.author.name または DB users.name） */
         authorName: z.string().optional(),
+        /** どのサーバー/由来のワールドか（provenance）。一覧・詳細で origin を明示する。 */
+        source: WorldSourceSchema.optional(),
     }),
 
     access: InstanceAccessSchema,

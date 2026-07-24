@@ -1,4 +1,4 @@
-import type { WorldListItem } from '@ubichill/shared';
+import { type WorldListItem, worldSourceLabel } from '@ubichill/shared';
 import { css } from '@/styled-system/css';
 
 interface WorldCardProps {
@@ -93,6 +93,25 @@ export function WorldCard({ world, onNavigate }: WorldCardProps) {
                     {world.capacity.default}〜{world.capacity.max}人
                 </span>
                 <span>v{world.version}</span>
+                {/* どのサーバー/由来のワールドか（このインスタンス / GitHub / 外部ホスト等） */}
+                <span
+                    className={css({
+                        ml: 'auto',
+                        px: '6px',
+                        py: '2px',
+                        bg: 'primarySubtle',
+                        borderRadius: '4px',
+                        fontSize: '11px',
+                        color: 'textMuted',
+                        maxWidth: '160px',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                    })}
+                    title={world.source.originInstance ?? world.source.url}
+                >
+                    {worldSourceLabel(world.source)}
+                </span>
             </div>
         </button>
     );

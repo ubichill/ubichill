@@ -21,6 +21,7 @@ WORKDIR /app
 
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY packages/backend/package.json        ./packages/backend/package.json
+COPY packages/bff/package.json            ./packages/bff/package.json
 COPY packages/db/package.json             ./packages/db/package.json
 COPY packages/ecs/package.json            ./packages/ecs/package.json
 COPY packages/frontend/package.json       ./packages/frontend/package.json
@@ -58,7 +59,8 @@ RUN pnpm run build
 
 # inject-workspace-packages=true: pnpm deploy がシンボリックリンクではなく実ファイルをコピーする
 RUN echo "inject-workspace-packages=true" > .npmrc \
-    && pnpm --filter="@ubichill/backend" --prod deploy --ignore-scripts /app/deploy-backend
+    && pnpm --filter="@ubichill/backend" --prod deploy --ignore-scripts /app/deploy-backend \
+    && pnpm --filter="@ubichill/bff" --prod deploy --ignore-scripts /app/deploy-bff
 
 # ==========================================
 # backend-runner: Express API サーバー
@@ -82,21 +84,25 @@ EXPOSE 3001
 CMD ["node", "dist/index.js"]
 
 # ==========================================
-# frontend-runner: nginx で SPA を配信
+# frontend-runner: BFF（Node/Express）で SPA を配信
 #
-# try_files で「SPA ルート委譲」と「存在しないアセットの 404」を分離する。
-# static-web-server の SERVER_FALLBACK_PAGE と異なり、
-# .js/.css 等のファイルが存在しない場合は正しく 404 を返す。
+# 静的配信に加え、/world/:id で core API から取得したワールド情報を index.html の
+# <head> に OGP/JSON-LD として注入する（Web 検索・SNS リンクプレビュー対応）。
+# core backend はドメイン API に純化し、/api・/socket.io は Ingress が直接ルーティングする。
 # ==========================================
-FROM nginxinc/nginx-unprivileged:alpine AS frontend-runner
+FROM node:${NODE_VERSION}-alpine AS frontend-runner
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+ENV NODE_ENV=production
 
-COPY --from=builder /app/packages/frontend/dist /usr/share/nginx/html
-# テンプレートを配置すると nginx エントリポイントが起動時に envsubst を実行し
-# /etc/nginx/conf.d/default.conf を生成する
-COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+USER node
+COPY --from=builder --chown=node:node /app/deploy-bff .
+COPY --from=builder --chown=node:node /app/packages/frontend/dist ./frontend-dist
 
-# デフォルト値。docker-compose や K8s で上書きする
-ENV BACKEND_HOST=backend
-ENV BACKEND_PORT=3001
+# BFF が配信する SPA の場所。core API の内部到達先は CORE_API_URL（compose/K8s で設定）。
+ENV FRONTEND_DIST=/app/frontend-dist
+ENV PORT=3000
+ENV CORE_API_URL=http://backend:3001
 
 EXPOSE 3000
+CMD ["node", "dist/index.js"]

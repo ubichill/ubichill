@@ -23,40 +23,20 @@ router.post('/reload', requireAuth, async (_req, res) => {
     }
 });
 
-/**
- * POST /api/v1/worlds/import
- * URL または GitHub blob URL からワールドを取り込む（認証必須）
- * body: { url: string }
- */
-router.post('/import', requireAuth, async (req, res) => {
-    if (!req.user) {
-        res.status(401).json({ error: 'Unauthorized' });
-        return;
-    }
-    const { url } = req.body as { url?: unknown };
-    if (typeof url !== 'string' || !url.startsWith('http')) {
-        res.status(400).json({ error: 'url が不正です' });
-        return;
-    }
-    try {
-        const worlds = await worldRegistry.importFromUrl(url, req.user.id);
-        res.json({
-            success: true,
-            worlds: worlds.map((w) => ({ id: w.id, displayName: w.displayName, version: w.version })),
-        });
-    } catch (error) {
-        const message = error instanceof Error ? error.message : '取得失敗';
-        res.status(422).json({ error: message });
-    }
-});
+// NOTE: 旧 POST /worlds/import（DB コピー型）は廃止。外部/リモートワールドは
+// コピーせず、共有 URL で入る（POST /instances に URL を渡す）か、ピアをフォローして参照する。
 
 /**
  * GET /api/v1/worlds
- * ワールドテンプレート一覧を取得（認証必須）
+ * ワールドテンプレート一覧を取得（認証必須）。
+ * クエリ `?scope=local|global|all` でローカル/連合/すべてを切り替え（デフォルト all）。
  */
-router.get('/', optionalAuth, async (_req, res) => {
+router.get('/', optionalAuth, async (req, res) => {
     try {
-        const worlds = await worldRegistry.listWorlds();
+        const scopeParam = req.query.scope;
+        const scope: 'local' | 'global' | 'all' =
+            scopeParam === 'local' || scopeParam === 'global' ? scopeParam : 'all';
+        const worlds = await worldRegistry.listWorlds(scope);
         res.json({ worlds });
     } catch (error) {
         console.error('ワールド一覧取得エラー:', error);
