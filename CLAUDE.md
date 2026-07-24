@@ -1,5 +1,5 @@
 # ubichill
-Viteベースの完全CSR。URLで起動しSocket.IOで同期する、ゼロトラスト型のmod動的ロード2Dメタバース基盤。
+Viteベースの完全CSR。URLで起動しSocket.IOで同期する、ゼロトラスト型のmod動的ロード2Dメタバース基盤。webの思想を持ち中央集権を避ける
 
 ## コマンド
 - `pnpm dev`: 開発サーバー・Docker実行
