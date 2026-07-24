@@ -3,14 +3,13 @@ import { css } from '@/styled-system/css';
 
 interface InstanceCardProps {
     instance: Instance;
-    onJoin: (instanceId: string) => void;
     /** 現在参加中のインスタンスかどうか */
     isCurrent?: boolean;
-    /** 行クリックで開くワールド詳細（省略時は行クリック無効） */
+    /** カードクリックで開くインスタンス詳細（省略時はクリック無効） */
     onOpenDetail?: () => void;
 }
 
-export function InstanceCard({ instance, onJoin, isCurrent = false, onOpenDetail }: InstanceCardProps) {
+export function InstanceCard({ instance, isCurrent = false, onOpenDetail }: InstanceCardProps) {
     const statusColors: Record<string, string> = {
         active: '#8ad29b', // success token value
         full: '#f1c86c', // warning token value
@@ -157,15 +156,16 @@ export function InstanceCard({ instance, onJoin, isCurrent = false, onOpenDetail
                     </div>
                 </div>
             </div>
+            {/* 参加ボタンは廃止。カード全体クリックでインスタンス詳細を開き、そこから入る。 */}
             {isCurrent ? (
                 <span
                     className={css({
-                        padding: { base: '8px 14px', md: '10px 18px' },
+                        padding: { base: '6px 12px', md: '8px 14px' },
                         backgroundColor: '#8ad29b1a',
                         color: '#8ad29b',
                         border: '1px solid #8ad29b44',
                         borderRadius: '10px',
-                        fontSize: '14px',
+                        fontSize: '13px',
                         fontWeight: '600',
                         whiteSpace: 'nowrap',
                     })}
@@ -173,35 +173,18 @@ export function InstanceCard({ instance, onJoin, isCurrent = false, onOpenDetail
                     参加中
                 </span>
             ) : (
-                <button
-                    type="button"
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        onJoin(instance.id);
-                    }}
-                    disabled={instance.status === 'full' || instance.status === 'closing'}
-                    className={css({
-                        padding: { base: '8px 14px', md: '10px 18px' },
-                        backgroundColor: 'primary',
-                        color: 'textOnPrimary',
-                        border: 'none',
-                        borderRadius: '10px',
-                        fontSize: '14px',
-                        fontWeight: '600',
-                        cursor: 'pointer',
-                        transition: 'opacity 0.16s ease',
-                        _hover: {
-                            opacity: 0.9,
-                        },
-                        _disabled: {
-                            backgroundColor: 'primarySubtle',
-                            color: 'textSubtle',
-                            cursor: 'not-allowed',
-                        },
-                    })}
+                <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    aria-hidden="true"
+                    className={css({ color: 'textSubtle', flexShrink: 0 })}
                 >
-                    参加
-                </button>
+                    <path d="M9 18l6-6-6-6" />
+                </svg>
             )}
         </div>
     );
