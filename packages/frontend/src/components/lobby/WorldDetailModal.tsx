@@ -1,4 +1,4 @@
-import type { Instance, WorldListItem } from '@ubichill/shared';
+import { type Instance, type WorldListItem, worldSourceLabel } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
@@ -104,7 +104,8 @@ export function WorldDetailModal({
     };
 
     const handleCopyUrl = () => {
-        const url = `${window.location.origin}/world/${worldId}`;
+        // 共有 URL はワールドの canonical URL（リモートは origin のもの）。無ければ自ホストにフォールバック。
+        const url = world?.url ?? `${window.location.origin}/world/${worldId}`;
         void navigator.clipboard.writeText(url);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
@@ -171,6 +172,23 @@ export function WorldDetailModal({
                                     <p className={css({ color: 'textMuted', fontSize: 'sm', lineHeight: '1.5' })}>
                                         {world.description}
                                     </p>
+                                )}
+                                {world?.source && (
+                                    <span
+                                        className={css({
+                                            display: 'inline-block',
+                                            mt: '2',
+                                            px: '6px',
+                                            py: '2px',
+                                            bg: 'primarySubtle',
+                                            borderRadius: '4px',
+                                            fontSize: '11px',
+                                            color: 'textMuted',
+                                        })}
+                                        title={world.source.originInstance ?? world.source.url}
+                                    >
+                                        {worldSourceLabel(world.source)}
+                                    </span>
                                 )}
                             </div>
 

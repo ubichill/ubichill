@@ -32,8 +32,44 @@ export function InstanceCard({ instance, onJoin, isCurrent = false }: InstanceCa
                 },
             })}
         >
-            <div className={css({ display: 'flex', alignItems: 'center', gap: { base: '3', md: '4' } })}>
-                <div>
+            <div className={css({ display: 'flex', alignItems: 'center', gap: { base: '3', md: '4' }, minW: 0 })}>
+                {/* ワールドサムネイル（インスタンス一覧でも一目で分かるように） */}
+                <div
+                    className={css({
+                        width: { base: '44px', md: '56px' },
+                        height: { base: '44px', md: '56px' },
+                        borderRadius: '10px',
+                        overflow: 'hidden',
+                        flexShrink: 0,
+                        backgroundColor: 'secondary',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                    })}
+                >
+                    {instance.world.thumbnail ? (
+                        <img
+                            src={instance.world.thumbnail}
+                            alt={instance.world.displayName}
+                            className={css({ width: '100%', height: '100%', objectFit: 'cover' })}
+                        />
+                    ) : (
+                        <svg
+                            width="20"
+                            height="20"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            aria-hidden="true"
+                            className={css({ color: 'textSubtle' })}
+                        >
+                            <circle cx="12" cy="12" r="10" />
+                            <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                        </svg>
+                    )}
+                </div>
+                <div className={css({ minW: 0 })}>
                     <h3
                         className={css({
                             fontSize: { base: '14px', md: '16px' },
