@@ -71,7 +71,7 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
         },
         [confirm, navigate],
     );
-    const { worlds, globalWorlds, loading, error, refreshWorlds, refreshGlobalWorlds } = useInstances();
+    const { worlds, globalWorlds, loading, error, refreshGlobalWorlds } = useInstances();
     const [tab, setTab] = useState<'local' | 'global'>('local');
     const [selectedWorldId, setSelectedWorldId] = useState<string | null>(null);
 
@@ -102,29 +102,31 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
     const [importState, setImportState] = useState<'idle' | 'loading' | 'error'>('idle');
     const [importError, setImportError] = useState('');
 
+    // 共有 URL を貼って「入る」。外部/リモートワールドはコピーせず、その場でインスタンスを作る。
     const handleImport = useCallback(async () => {
         if (!importUrl.trim()) return;
         setImportState('loading');
         setImportError('');
         try {
-            const res = await fetch(`${API_BASE}/api/v1/worlds/import`, {
+            const res = await fetch(`${API_BASE}/api/v1/instances`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
-                body: JSON.stringify({ url: importUrl.trim() }),
+                body: JSON.stringify({ worldId: importUrl.trim() }),
             });
             if (!res.ok) {
                 const data = (await res.json()) as { error?: string };
                 throw new Error(data.error ?? `${res.status}`);
             }
+            const instance = (await res.json()) as { id: string };
             setImportUrl('');
             setImportState('idle');
-            await refreshWorlds(true);
+            navigate(`/instance/${instance.id}`);
         } catch (e) {
-            setImportError(e instanceof Error ? e.message : '取得失敗');
+            setImportError(e instanceof Error ? e.message : '入室に失敗しました');
             setImportState('error');
         }
-    }, [importUrl, refreshWorlds]);
+    }, [importUrl, navigate]);
 
     return (
         <div
@@ -355,7 +357,7 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                                                 onKeyDown={(e) => {
                                                     if (e.key === 'Enter') void handleImport();
                                                 }}
-                                                placeholder="GitHub URL または YAML URL を入力"
+                                                placeholder="ワールドの共有 URL を貼り付け（例: https://.../world/xxxx）"
                                                 className={css({
                                                     flex: 1,
                                                     padding: '9px 12px',
@@ -388,7 +390,7 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                                                     _disabled: { opacity: 0.5, cursor: 'not-allowed' },
                                                 })}
                                             >
-                                                {importState === 'loading' ? '取得中...' : '読み込む'}
+                                                {importState === 'loading' ? '入室中...' : 'URL で入る'}
                                             </button>
                                         </div>
                                         {importState === 'error' && (

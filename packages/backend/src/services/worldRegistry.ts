@@ -9,7 +9,6 @@ import {
 } from '@ubichill/db';
 import {
     ENV_KEYS,
-    LIMITS,
     type ResolvedWorld,
     SERVER_CONFIG,
     type WorldCreateInput,
@@ -22,7 +21,7 @@ import {
 import { customAlphabet } from 'nanoid';
 import yaml from 'yaml';
 import { migrateLegacyWorldYaml } from './worldMigration';
-import { definitionToResolved, enumerateSource, normalizeWorldUrl, resolveWorldFromUrl } from './worldResolver';
+import { definitionToResolved, normalizeWorldUrl, resolveWorldFromUrl } from './worldResolver';
 
 // KebabCaseId 互換の lowercase + 数字のみ。21文字で十分な衝突耐性を確保。
 const generateWorldId = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 21);
@@ -404,39 +403,8 @@ class WorldRegistry {
         return this.createWorld(authorId, def);
     }
 
-    /**
-     * URL からワールドを取り込む（DB へ upsert）。
-     * GitHub tree URL / レジストリ URL の場合は全エントリを一括取得する。
-     */
-    async importFromUrl(url: string, authorId: string): Promise<ResolvedWorld[]> {
-        const sources = await enumerateSource(url).catch(() => [{ url, source: { kind: WorldSourceKind.Url, url } }]);
-        // 取り込みは DB コピー。取り込んだユーザーの所有物として上限内に収める
-        // （外部ワールドを DB を増やさず使うだけなら連合＝URL 直参照を使う）。
-        const owned = await worldRepository.countByAuthorId(authorId);
-        if (owned + sources.length > LIMITS.MAX_WORLDS_PER_USER) {
-            throw new Error(
-                `取り込み上限を超えます（所有 ${owned} + 取り込み ${sources.length} > ${LIMITS.MAX_WORLDS_PER_USER}）`,
-            );
-        }
-        const settled = await Promise.allSettled(
-            sources.map(async ({ url: worldUrl, source }) => {
-                const resolved = await resolveWorldFromUrl(worldUrl, source);
-                const record = await worldRepository.upsertByName({
-                    authorId,
-                    name: resolved.id,
-                    version: resolved.version,
-                    definition: this._toDefinition(resolved),
-                });
-                // 本体 DB に取り込んだので self URL の local ワールドとして解決し直す
-                const imported = this._resolveWorld(record);
-                this._resolvedCache.set(imported.id, imported);
-                return imported;
-            }),
-        );
-        const errors = settled.filter((r) => r.status === 'rejected').map((r) => (r as PromiseRejectedResult).reason);
-        if (errors.length > 0) throw new Error(errors.map((e: unknown) => String(e)).join(', '));
-        return settled.map((r) => (r as PromiseFulfilledResult<ResolvedWorld>).value);
-    }
+    // NOTE: 外部/リモートのワールドは DB にコピーしない（＝連合は参照のみ）。
+    // 単発で入るなら resolveRef(URL)→instance 作成、永続的に見たいならピアをフォローする。
 
     async updateWorld(worldId: string, definition: WorldDefinition): Promise<ResolvedWorld | undefined> {
         const existing = await worldRepository.findByName(worldId);
@@ -612,28 +580,6 @@ class WorldRegistry {
                 authorId: record.authorId,
             }),
             id: record.name,
-        };
-    }
-
-    /** ResolvedWorld → WorldDefinition（DB 保存用）。 */
-    private _toDefinition(w: ResolvedWorld): WorldDefinition {
-        return {
-            apiVersion: 'ubichill.com/v1alpha1',
-            kind: 'World',
-            metadata: {
-                name: w.id,
-                version: w.version,
-                author: w.authorName ? { name: w.authorName } : undefined,
-            },
-            spec: {
-                displayName: w.displayName,
-                description: w.description,
-                thumbnail: w.thumbnail,
-                capacity: w.capacity,
-                environment: w.environment,
-                dependencies: w.dependencies,
-                initialEntities: w.initialEntities,
-            },
         };
     }
 
