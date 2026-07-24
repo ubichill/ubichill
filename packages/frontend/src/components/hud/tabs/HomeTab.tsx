@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useNavigate } from 'react-router';
 import { InstanceCard } from '@/components/lobby/InstanceCard';
 import { useInstances } from '@/components/lobby/useInstances';
 import { css } from '@/styled-system/css';
@@ -13,6 +14,7 @@ interface HomeTabProps {
 }
 
 export function HomeTab({ onJoinInstance, currentInstanceId, onReturnToLobby }: HomeTabProps) {
+    const navigate = useNavigate();
     const { instances, loading, error, refreshInstances } = useInstances();
 
     useEffect(() => {
@@ -92,6 +94,7 @@ export function HomeTab({ onJoinInstance, currentInstanceId, onReturnToLobby }: 
                                 key={instance.id}
                                 instance={instance}
                                 isCurrent={instance.id === currentInstanceId}
+                                onOpenDetail={() => navigate(`/world/${instance.world.id}`)}
                                 onJoin={(id) =>
                                     onJoinInstance(id, instance.world.id, {
                                         thumbnail: instance.world.thumbnail,

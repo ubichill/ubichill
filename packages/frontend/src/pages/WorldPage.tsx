@@ -324,7 +324,7 @@ function HeroSection({ world, instances, onCreate, creating }: HeroSectionProps)
                         _disabled: { opacity: 0.6, cursor: 'not-allowed', transform: 'none' },
                     })}
                 >
-                    {creating ? '作成中...' : 'このワールドに入る'}
+                    {creating ? '作成中...' : 'インスタンスを作成'}
                 </button>
                 <a
                     href="/"
@@ -529,7 +529,7 @@ function InstancesSection({ instances, onJoin }: InstancesSectionProps) {
             <h2 className={css({ fontSize: 'lg', fontWeight: '700', color: 'text', mb: 4 })}>参加可能なインスタンス</h2>
             {instances.length === 0 && (
                 <p className={css({ color: 'textMuted', fontSize: 'sm' })}>
-                    現在アクティブなインスタンスはありません。「このワールドに入る」で新しく作成できます。
+                    現在アクティブなインスタンスはありません。「インスタンスを作成」で新しく作成できます。
                 </p>
             )}
             <div className={css({ display: 'flex', flexDir: 'column', gap: 3 })}>
@@ -594,7 +594,7 @@ function AboutFooter() {
             <p>
                 <span className={css({ fontWeight: '700', color: 'textMuted' })}>ubichill</span> は URL
                 からワールドを読み込み、ブラウザだけで即座に参加できる 2D メタバース基盤です。
-                「このワールドに入る」を押すと自分の部屋（インスタンス）を作って参加できます（要ログイン）。
+                「インスタンスを作成」を押すと自分の部屋（インスタンス）を作って参加できます（要ログイン）。
             </p>
         </section>
     );

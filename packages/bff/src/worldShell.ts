@@ -91,7 +91,7 @@ export function renderWorldShell({ world, instances, publicBaseUrl }: ShellData)
     const instancesBlock =
         instances.length > 0
             ? `<div style="display:flex;flex-direction:column;gap:12px;">${instanceItems}</div>`
-            : '<p style="color:#5e6a82;font-size:14px;margin:0;">現在アクティブなインスタンスはありません。「このワールドに入る」で新しく作成できます。</p>';
+            : '<p style="color:#5e6a82;font-size:14px;margin:0;">現在アクティブなインスタンスはありません。「インスタンスを作成」で新しく作成できます。</p>';
 
     return `
         <div data-world-shell style="min-height:100vh;display:flex;flex-direction:column;background:#faf6f0;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
@@ -113,7 +113,7 @@ export function renderWorldShell({ world, instances, publicBaseUrl }: ShellData)
                         <div style="display:flex;gap:12px;flex-wrap:wrap;">${metaBadges}</div>
                     </div>
                     <div style="display:flex;gap:16px;flex-wrap:wrap;">
-                        <button type="button" disabled style="padding:16px 32px;background:#1b2a44;color:#f8f3ea;border-radius:16px;font-weight:700;font-size:18px;border:none;opacity:0.6;cursor:not-allowed;">このワールドに入る</button>
+                        <button type="button" disabled style="padding:16px 32px;background:#1b2a44;color:#f8f3ea;border-radius:16px;font-weight:700;font-size:18px;border:none;opacity:0.6;cursor:not-allowed;">インスタンスを作成</button>
                         <a href="${escAttr(publicBaseUrl)}/" style="padding:16px 32px;background:#f5ecdf;color:#1b2a44;border-radius:16px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;border:1px solid #cebca2;">ロビーへ戻る</a>
                     </div>
                 </section>
@@ -135,7 +135,7 @@ export function renderWorldShell({ world, instances, publicBaseUrl }: ShellData)
                 </section>
 
                 <section style="margin-top:16px;padding-top:24px;border-top:1px solid #cebca2;color:#8a7e6d;font-size:14px;line-height:1.7;">
-                    <p style="margin:0;"><span style="font-weight:700;color:#5e6a82;">ubichill</span> は URL からワールドを読み込み、ブラウザだけで即座に参加できる 2D メタバース基盤です。「このワールドに入る」で自分の部屋（インスタンス）を作って参加できます（要ログイン）。</p>
+                    <p style="margin:0;"><span style="font-weight:700;color:#5e6a82;">ubichill</span> は URL からワールドを読み込み、ブラウザだけで即座に参加できる 2D メタバース基盤です。「インスタンスを作成」で自分の部屋（インスタンス）を作って参加できます（要ログイン）。</p>
                 </section>
             </main>
         </div>
