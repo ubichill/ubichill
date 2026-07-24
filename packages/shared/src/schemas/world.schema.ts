@@ -348,6 +348,8 @@ export const ResolvedWorldSchema = z.object({
     capacity: WorldCapacitySchema,
     dependencies: z.array(DependencySchema).optional(),
     initialEntities: z.array(InitialEntitySchema),
+    /** このワールドが使う mod id 一覧（initialEntities の component 型と dependencies から算出）。 */
+    mods: z.array(z.string()).default([]),
 });
 
 export type ResolvedWorld = z.infer<typeof ResolvedWorldSchema>;

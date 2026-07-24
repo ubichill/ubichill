@@ -75,4 +75,29 @@ describe('definitionToResolved / resolveWorldFromYaml', () => {
     it('不正な定義は例外を投げる', () => {
         expect(() => definitionToResolved({ kind: 'World' }, url, source)).toThrow();
     });
+
+    it('initialEntities の component 型と dependencies から mods を重複なく算出する', () => {
+        const yaml = `
+apiVersion: ubichill.com/v1alpha1
+kind: World
+metadata: { name: mod-world, version: 1.0.0 }
+spec:
+  displayName: mod
+  dependencies:
+    - { name: avatar, source: { type: url, url: "https://x/avatar" } }
+  initialEntities:
+    - id: a
+      transform: { x: 0, y: 0 }
+      components:
+        - { type: "pen:tray" }
+        - { type: "pen:pen" }
+      children:
+        - id: b
+          transform: { x: 0, y: 0 }
+          components:
+            - { type: "video-player:screen" }
+`;
+        const resolved = resolveWorldFromYaml(yaml, url, source);
+        expect([...resolved.mods].sort()).toEqual(['avatar', 'pen', 'video-player']);
+    });
 });

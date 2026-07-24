@@ -12,6 +12,7 @@ const baseWorld = {
     source: { kind: 'local' as const, url: 'https://example.com/world/test-world' },
     version: '1.0.0',
     capacity: { default: 10, max: 20 },
+    mods: [],
 };
 
 describe('renderWorldShell', () => {

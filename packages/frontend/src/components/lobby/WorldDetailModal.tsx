@@ -341,7 +341,7 @@ export function WorldDetailModal({
             {detailInstance && (
                 <InstanceDetailOverlay
                     instance={detailInstance}
-                    isCurrent={detailInstance.id === currentInstanceId}
+                    currentInstanceId={currentInstanceId}
                     onClose={() => setDetailInstance(null)}
                     onJoin={(id) => {
                         onJoinInstance(id, detailInstance.world.id, {

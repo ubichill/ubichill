@@ -136,6 +136,8 @@ export const WorldListItemSchema = z.object({
     authorId: z.string().optional(),
     /** ワールド作成者の表示名（YAML metadata.author.name 由来） */
     authorName: z.string().optional(),
+    /** このワールドが使う mod id 一覧。 */
+    mods: z.array(z.string()).default([]),
     createdAt: z.string().datetime().optional(),
     updatedAt: z.string().datetime().optional(),
 });

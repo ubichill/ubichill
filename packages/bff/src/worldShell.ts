@@ -75,6 +75,16 @@ export function renderWorldShell({ world, instances, publicBaseUrl }: ShellData)
         )
         .join('\n');
 
+    const modsHtml =
+        world?.mods && world.mods.length > 0
+            ? `<div style="margin-top:16px;"><p style="font-size:12px;color:#8a7e6d;margin:0 0 8px 0;">使用 mod</p><div style="display:flex;gap:6px;flex-wrap:wrap;">${world.mods
+                  .map(
+                      (m) =>
+                          `<span style="padding:4px 8px;background:#faf6f0;border:1px solid #cebca2;border-radius:4px;font-size:12px;color:#5e6a82;">${esc(m)}</span>`,
+                  )
+                  .join('')}</div></div>`
+            : '';
+
     const instanceItems = instances
         .map(
             (i) => `
@@ -126,6 +136,7 @@ export function renderWorldShell({ world, instances, publicBaseUrl }: ShellData)
                     <div style="background:#f5ecdf;border:1px solid #cebca2;border-radius:16px;padding:20px;box-shadow:0 8px 24px rgba(27,42,68,0.08);">
                         <h2 style="font-size:16px;font-weight:700;color:#1b2a44;margin:0 0 12px 0;">詳細</h2>
                         <div style="display:flex;flex-direction:column;gap:12px;">${detailRows}</div>
+                        ${modsHtml}
                     </div>
                 </section>
 

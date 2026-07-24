@@ -413,6 +413,28 @@ function DetailsSection({ world }: { world: WorldListItem | null }) {
                         </div>
                     ))}
                 </dl>
+                {world.mods && world.mods.length > 0 && (
+                    <div className={css({ mt: 4 })}>
+                        <p className={css({ fontSize: 'xs', color: 'textSubtle', mb: 2 })}>使用 mod</p>
+                        <div className={css({ display: 'flex', gap: 2, flexWrap: 'wrap' })}>
+                            {world.mods.map((m) => (
+                                <span
+                                    key={m}
+                                    className={css({
+                                        px: 2,
+                                        py: 1,
+                                        bg: 'secondary',
+                                        borderRadius: 'md',
+                                        fontSize: 'xs',
+                                        color: 'textMuted',
+                                    })}
+                                >
+                                    {m}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
         </section>
     );

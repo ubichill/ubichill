@@ -599,6 +599,7 @@ class WorldRegistry {
             capacity: w.capacity,
             authorId: rec?.authorId ?? w.authorId,
             authorName: w.authorName,
+            mods: w.mods,
             createdAt: rec ? rec.createdAt.toISOString() : undefined,
             updatedAt: rec ? rec.updatedAt.toISOString() : undefined,
         };

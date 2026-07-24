@@ -95,6 +95,7 @@ function mapToResolved(
         tags: e.tags ?? [],
         children: (e.children ?? []).map(normalizeEntity),
     });
+    const initialEntities = def.spec.initialEntities.map(normalizeEntity);
     return {
         url,
         source,
@@ -111,8 +112,24 @@ function mapToResolved(
         },
         capacity: def.spec.capacity,
         dependencies: def.spec.dependencies?.map((d) => ({ name: d.name, source: d.source })),
-        initialEntities: def.spec.initialEntities.map(normalizeEntity),
+        initialEntities,
+        mods: collectMods(initialEntities, def.spec.dependencies),
     };
+}
+
+/** 初期エンティティの component 型（modId:name）と dependencies から使用 mod id を重複なく集める。 */
+function collectMods(entities: InitialEntity[], dependencies?: Array<{ name: string }>): string[] {
+    const mods = new Set<string>();
+    const walk = (e: InitialEntity): void => {
+        for (const c of e.components) {
+            const modId = c.type.split(':')[0];
+            if (modId) mods.add(modId);
+        }
+        for (const child of e.children ?? []) walk(child);
+    };
+    for (const e of entities) walk(e);
+    for (const d of dependencies ?? []) mods.add(d.name);
+    return [...mods];
 }
 
 /** YAML テキストから ResolvedWorld を作る。 */
