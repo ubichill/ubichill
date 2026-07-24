@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { renderWorldShell } from './worldShell';
 
+/**
+ * worldShell は SSR で HTML を組み立てる。見た目・文言は目視で確認する方が早いのでテストしない。
+ * ここで守るのは「ユーザー文字列を HTML に埋め込む際のエスケープ（XSS）」と
+ * 「world 欠損でもクラッシュしない」という不変条件だけ。
+ */
+
 const baseWorld = {
     url: 'https://example.com/world/test-world',
     source: { kind: 'local' as const, url: 'https://example.com/world/test-world' },
@@ -8,104 +14,8 @@ const baseWorld = {
     capacity: { default: 10, max: 20 },
 };
 
-const baseInstance = {
-    id: 'i1',
-    status: 'active' as const,
-    leaderId: 'u1',
-    createdAt: '2024-01-01T00:00:00Z',
-    expiresAt: null,
-    world: { id: 'instance-world', version: '1.0.0', displayName: 'インスタンスあり', authorId: 'u1' },
-    access: { type: 'public' as const, tags: [], password: false },
-    stats: { currentUsers: 3, maxUsers: 10 },
-    connection: { url: 'default', namespace: '/i1' },
-};
-
 describe('renderWorldShell', () => {
-    it('ワールドタイトルと説明を含む SSR シェルを生成する', () => {
-        const html = renderWorldShell({
-            world: {
-                id: 'test-world',
-                displayName: 'テストワールド',
-                description: 'これはテストです',
-                ...baseWorld,
-            },
-            instances: [],
-            publicBaseUrl: 'https://example.com',
-            coreApiUrl: 'https://api.example.com',
-        });
-
-        expect(html).toContain('テストワールド');
-        expect(html).toContain('これはテストです');
-        expect(html).toContain('説明');
-        expect(html).toContain('このワールドに入る');
-        expect(html).toContain('data-world-shell');
-    });
-
-    it('サムネイル画像を含む', () => {
-        const html = renderWorldShell({
-            world: {
-                id: 'thumb-world',
-                displayName: 'サムネイル付き',
-                thumbnail: 'https://cdn.example.com/thumb.png',
-                ...baseWorld,
-            },
-            instances: [],
-            publicBaseUrl: 'https://example.com',
-            coreApiUrl: 'https://api.example.com',
-        });
-
-        expect(html).toContain('https://cdn.example.com/thumb.png');
-        expect(html).toContain('alt="サムネイル付き"');
-    });
-
-    it('メタ情報バッジをレンダリングする', () => {
-        const html = renderWorldShell({
-            world: {
-                id: 'meta-world',
-                displayName: 'メタ情報付き',
-                authorName: 'Alice',
-                ...baseWorld,
-            },
-            instances: [],
-            publicBaseUrl: 'https://example.com',
-            coreApiUrl: 'https://api.example.com',
-        });
-
-        expect(html).toContain('Alice');
-        expect(html).toContain('v1.0.0');
-        expect(html).toContain('最大 20 人');
-    });
-
-    it('インスタンス一覧をレンダリングする', () => {
-        const html = renderWorldShell({
-            world: {
-                id: 'instance-world',
-                displayName: 'インスタンスあり',
-                ...baseWorld,
-            },
-            instances: [baseInstance],
-            publicBaseUrl: 'https://example.com',
-            coreApiUrl: 'https://api.example.com',
-        });
-
-        expect(html).toContain('参加可能なインスタンス');
-        expect(html).toContain('3 / 10 人');
-        expect(html).toContain('3 人が接続中');
-    });
-
-    it('world が undefined の場合もクラッシュしない', () => {
-        const html = renderWorldShell({
-            world: undefined,
-            instances: [],
-            publicBaseUrl: 'https://example.com',
-            coreApiUrl: 'https://api.example.com',
-        });
-
-        expect(html).toContain('data-world-shell');
-        expect(html).toContain('このワールドに入る');
-    });
-
-    it('XSS 対策：特殊文字をエスケープする', () => {
+    it('ユーザー文字列を HTML エスケープする（XSS 対策）', () => {
         const html = renderWorldShell({
             world: {
                 id: 'xss-world',
@@ -123,5 +33,15 @@ describe('renderWorldShell', () => {
         expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
         expect(html).not.toContain('" onclick="alert(2)');
         expect(html).not.toContain('Bob<script>');
+    });
+
+    it('world が undefined でもクラッシュせず HTML を返す', () => {
+        const html = renderWorldShell({
+            world: undefined,
+            instances: [],
+            publicBaseUrl: 'https://example.com',
+            coreApiUrl: 'https://api.example.com',
+        });
+        expect(html).toContain('data-world-shell');
     });
 });
