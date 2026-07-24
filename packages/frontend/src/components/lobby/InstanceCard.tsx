@@ -6,9 +6,11 @@ interface InstanceCardProps {
     onJoin: (instanceId: string) => void;
     /** 現在参加中のインスタンスかどうか */
     isCurrent?: boolean;
+    /** 行クリックで開くワールド詳細（省略時は行クリック無効） */
+    onOpenDetail?: () => void;
 }
 
-export function InstanceCard({ instance, onJoin, isCurrent = false }: InstanceCardProps) {
+export function InstanceCard({ instance, onJoin, isCurrent = false, onOpenDetail }: InstanceCardProps) {
     const statusColors: Record<string, string> = {
         active: '#8ad29b', // success token value
         full: '#f1c86c', // warning token value
@@ -17,6 +19,19 @@ export function InstanceCard({ instance, onJoin, isCurrent = false }: InstanceCa
 
     return (
         <div
+            onClick={onOpenDetail}
+            onKeyDown={
+                onOpenDetail
+                    ? (e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              onOpenDetail();
+                          }
+                      }
+                    : undefined
+            }
+            role={onOpenDetail ? 'button' : undefined}
+            tabIndex={onOpenDetail ? 0 : undefined}
             className={css({
                 display: 'flex',
                 alignItems: 'center',
@@ -27,6 +42,7 @@ export function InstanceCard({ instance, onJoin, isCurrent = false }: InstanceCa
                 border: '1px solid',
                 borderColor: isCurrent ? 'success' : 'border',
                 transition: 'background-color 0.16s ease',
+                cursor: onOpenDetail ? 'pointer' : 'default',
                 _hover: {
                     backgroundColor: isCurrent ? 'successBg' : 'surfaceHover',
                 },
@@ -159,7 +175,10 @@ export function InstanceCard({ instance, onJoin, isCurrent = false }: InstanceCa
             ) : (
                 <button
                     type="button"
-                    onClick={() => onJoin(instance.id)}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onJoin(instance.id);
+                    }}
                     disabled={instance.status === 'full' || instance.status === 'closing'}
                     className={css({
                         padding: { base: '8px 14px', md: '10px 18px' },

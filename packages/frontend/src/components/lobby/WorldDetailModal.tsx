@@ -1,4 +1,4 @@
-import { type Instance, type WorldListItem, worldSourceLabel } from '@ubichill/shared';
+import { type Instance, type WorldListItem, worldShareUrl, worldSourceLabel } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
@@ -104,8 +104,9 @@ export function WorldDetailModal({
     };
 
     const handleCopyUrl = () => {
-        // 共有 URL はワールドの canonical URL（リモートは origin のもの）。無ければ自ホストにフォールバック。
-        const url = world?.url ?? `${window.location.origin}/world/${worldId}`;
+        // ユーザーに配る共有 URL（.../world/:id）。canonical(機械URL) からも共有形へ変換。
+        // リモートワールドは origin サーバーの共有 URL になる。無ければ自ホストにフォールバック。
+        const url = world?.url ? worldShareUrl(world.url) : `${window.location.origin}/world/${worldId}`;
         void navigator.clipboard.writeText(url);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
@@ -165,9 +166,29 @@ export function WorldDetailModal({
                                 />
                             )}
                             <div>
-                                <h1 className={css({ fontSize: 'xl', fontWeight: 'bold', color: 'text', mb: '1' })}>
+                                {/* ワールド名クリックで詳細ページ(/world/:id)へ遷移 */}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        navigate(`/world/${world?.id ?? worldId}`);
+                                        onClose();
+                                    }}
+                                    className={css({
+                                        display: 'block',
+                                        textAlign: 'left',
+                                        bg: 'transparent',
+                                        border: 'none',
+                                        p: 0,
+                                        cursor: 'pointer',
+                                        fontSize: 'xl',
+                                        fontWeight: 'bold',
+                                        color: 'text',
+                                        mb: '1',
+                                        _hover: { textDecoration: 'underline' },
+                                    })}
+                                >
                                     {world?.displayName ?? worldId}
-                                </h1>
+                                </button>
                                 {world?.description && (
                                     <p className={css({ color: 'textMuted', fontSize: 'sm', lineHeight: '1.5' })}>
                                         {world.description}
@@ -301,6 +322,10 @@ export function WorldDetailModal({
                                                 key={i.id}
                                                 instance={i}
                                                 isCurrent={i.id === currentInstanceId}
+                                                onOpenDetail={() => {
+                                                    navigate(`/world/${i.world.id}`);
+                                                    onClose();
+                                                }}
                                                 onJoin={(id) => {
                                                     onJoinInstance(id, i.world.id, {
                                                         thumbnail: i.world.thumbnail,
