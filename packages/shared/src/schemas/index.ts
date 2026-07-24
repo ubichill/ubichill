@@ -61,4 +61,5 @@ export {
     type WorldSource,
     WorldSourceKind,
     WorldSourceSchema,
+    worldSourceLabel,
 } from './world.schema';

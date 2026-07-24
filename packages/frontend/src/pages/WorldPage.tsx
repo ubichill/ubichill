@@ -1,4 +1,4 @@
-import type { Instance, WorldListItem } from '@ubichill/shared';
+import { type Instance, type WorldListItem, worldSourceLabel } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { API_BASE } from '@/lib/api';
@@ -295,7 +295,7 @@ function HeroSection({ world, instances, onCreate, creating }: HeroSectionProps)
                 <div
                     className={css({ display: 'flex', gap: 3, flexWrap: 'wrap', color: 'textSubtle', fontSize: 'sm' })}
                 >
-                    {world?.source && <MetaBadge icon="globe" label={sourceLabel(world.source)} />}
+                    {world?.source && <MetaBadge icon="globe" label={worldSourceLabel(world.source)} />}
                     {world?.version && <MetaBadge icon="tag" label={`v${world.version}`} />}
                     {world?.capacity && <MetaBadge icon="users" label={`最大 ${world.capacity.max} 人`} />}
                     {totalCurrentUsers > 0 && <MetaBadge icon="activity" label={`${totalCurrentUsers} 人が接続中`} />}
@@ -350,22 +350,6 @@ function HeroSection({ world, instances, onCreate, creating }: HeroSectionProps)
     );
 }
 
-/** WorldSource から人間向けの由来ラベルを作る。 */
-function sourceLabel(source: WorldListItem['source']): string {
-    switch (source.kind) {
-        case 'local':
-            return 'このインスタンス';
-        case 'github':
-            return source.registryName ? `GitHub: ${source.registryName}` : 'GitHub';
-        case 'remote-instance':
-            return source.originInstance ? `外部: ${new URL(source.originInstance).host}` : '外部インスタンス';
-        case 'registry':
-            return source.registryName ?? 'レジストリ';
-        default:
-            return '外部 URL';
-    }
-}
-
 /** ISO 文字列を YYYY/MM/DD に整形（不正値は空）。 */
 function formatDate(iso?: string): string {
     if (!iso) return '';
@@ -381,7 +365,7 @@ function DetailsSection({ world }: { world: WorldListItem | null }) {
         world.authorName ? { label: '作成者', value: world.authorName } : null,
         { label: 'バージョン', value: `v${world.version}` },
         world.capacity ? { label: 'キャパシティ', value: `${world.capacity.default}〜${world.capacity.max} 人` } : null,
-        { label: '由来', value: sourceLabel(world.source) },
+        { label: '由来', value: worldSourceLabel(world.source) },
         formatDate(world.createdAt) ? { label: '公開日', value: formatDate(world.createdAt) } : null,
         formatDate(world.updatedAt) ? { label: '更新日', value: formatDate(world.updatedAt) } : null,
     ].filter((r): r is { label: string; value: string } => r !== null);

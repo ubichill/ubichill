@@ -9,7 +9,7 @@
  * インラインスタイルで再現する。
  */
 
-import type { Instance, WorldListItem } from '@ubichill/shared';
+import { type Instance, type WorldListItem, worldSourceLabel } from '@ubichill/shared';
 
 interface ShellData {
     world: WorldListItem | undefined;
@@ -30,26 +30,6 @@ function escAttr(s: string): string {
  * ワールドページの SSR シェル HTML を生成する。
  * @returns ルート要素の HTML（<div id="root"> 内に配置する）
  */
-/** WorldSource から人間向けの由来ラベルを作る（WorldPage.tsx と同義）。 */
-function sourceLabel(source: WorldListItem['source']): string {
-    switch (source.kind) {
-        case 'local':
-            return 'このインスタンス';
-        case 'github':
-            return source.registryName ? `GitHub: ${source.registryName}` : 'GitHub';
-        case 'remote-instance':
-            try {
-                return source.originInstance ? `外部: ${new URL(source.originInstance).host}` : '外部インスタンス';
-            } catch {
-                return '外部インスタンス';
-            }
-        case 'registry':
-            return source.registryName ?? 'レジストリ';
-        default:
-            return '外部 URL';
-    }
-}
-
 function formatDate(iso?: string): string {
     if (!iso) return '';
     const d = new Date(iso);
@@ -66,7 +46,7 @@ export function renderWorldShell({ world, instances, publicBaseUrl }: ShellData)
     const badge = (icon: string, label: string): string =>
         `<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;background:#f5ecdf;border-radius:9999px;border:1px solid #cebca2;font-size:13px;">${icon} ${esc(label)}</span>`;
     const metaBadges = [
-        world ? badge(globeIcon(), sourceLabel(world.source)) : '',
+        world ? badge(globeIcon(), worldSourceLabel(world.source)) : '',
         world?.version ? badge(tagIcon(), `v${world.version}`) : '',
         world?.capacity ? badge(usersIcon(), `最大 ${world.capacity.max} 人`) : '',
         totalCurrentUsers > 0 ? badge(activityIcon(), `${totalCurrentUsers} 人が接続中`) : '',
@@ -84,7 +64,7 @@ export function renderWorldShell({ world, instances, publicBaseUrl }: ShellData)
         world?.capacity
             ? { label: 'キャパシティ', value: `${world.capacity.default}〜${world.capacity.max} 人` }
             : null,
-        world ? { label: '由来', value: sourceLabel(world.source) } : null,
+        world ? { label: '由来', value: worldSourceLabel(world.source) } : null,
         formatDate(world?.createdAt) ? { label: '公開日', value: formatDate(world?.createdAt) } : null,
         formatDate(world?.updatedAt) ? { label: '更新日', value: formatDate(world?.updatedAt) } : null,
     ]

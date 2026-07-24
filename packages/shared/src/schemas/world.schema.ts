@@ -104,6 +104,25 @@ export const WorldSourceSchema = z.object({
 
 export type WorldSource = z.infer<typeof WorldSourceSchema>;
 
+/** ワールドの由来（どのサーバー/レジストリか）を人間向けラベルにする。UI の origin バッジ用。 */
+export function worldSourceLabel(source: WorldSource): string {
+    switch (source.kind) {
+        case WorldSourceKind.Local:
+            return 'このインスタンス';
+        case WorldSourceKind.GitHub:
+            return source.registryName ? `GitHub: ${source.registryName}` : 'GitHub';
+        case WorldSourceKind.RemoteInstance: {
+            // shared は DOM/Node 非依存なので URL は使わず host 部分を素の文字列処理で取り出す。
+            const host = source.originInstance?.replace(/^https?:\/\//i, '').replace(/[/?#].*$/, '');
+            return host || '外部インスタンス';
+        }
+        case WorldSourceKind.Registry:
+            return source.registryName ?? 'レジストリ';
+        default:
+            return '外部 URL';
+    }
+}
+
 // ============================================
 // World Environment（環境設定）
 // ============================================
