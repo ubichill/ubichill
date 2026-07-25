@@ -1,4 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
+import { favoriteRepository } from './favoriteRepository';
+import { userRepository } from './userRepository';
 
 /**
  * favoriteRepository の DB 統合テスト。DATABASE_URL がある時だけ走る。
@@ -10,12 +12,7 @@ const SYS = '00000000-0000-0000-0000-000000000000';
 const REF = 'https://example.com/api/v1/worlds/fav-test';
 
 describe.skipIf(!RUN)('favoriteRepository (DB統合)', () => {
-    let favoriteRepository: typeof import('./favoriteRepository').favoriteRepository;
-    let userRepository: typeof import('./userRepository').userRepository;
-
     beforeAll(async () => {
-        ({ favoriteRepository } = await import('./favoriteRepository'));
-        ({ userRepository } = await import('./userRepository'));
         await userRepository.ensureSystemUser(SYS);
         await favoriteRepository.remove(SYS, REF); // クリーンスタート
     });

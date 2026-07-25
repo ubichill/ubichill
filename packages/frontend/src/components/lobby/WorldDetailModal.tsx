@@ -5,6 +5,7 @@ import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { API_BASE } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { css } from '@/styled-system/css';
+import { FavoriteButton } from './FavoriteButton';
 import { InstanceCard } from './InstanceCard';
 import { InstanceDetailOverlay } from './InstanceDetailOverlay';
 
@@ -178,29 +179,39 @@ export function WorldDetailModal({
                                     />
                                 )}
                                 <div>
-                                    {/* ワールド名クリックで詳細ページ(/world/:id)へ遷移 */}
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            navigate(`/world/${world?.id ?? worldId}`);
-                                            onClose();
-                                        }}
+                                    <div
                                         className={css({
-                                            display: 'block',
-                                            textAlign: 'left',
-                                            bg: 'transparent',
-                                            border: 'none',
-                                            p: 0,
-                                            cursor: 'pointer',
-                                            fontSize: 'xl',
-                                            fontWeight: 'bold',
-                                            color: 'text',
+                                            display: 'flex',
+                                            alignItems: 'flex-start',
+                                            justifyContent: 'space-between',
+                                            gap: '2',
                                             mb: '1',
-                                            _hover: { textDecoration: 'underline' },
                                         })}
                                     >
-                                        {world?.displayName ?? worldId}
-                                    </button>
+                                        {/* ワールド名クリックで詳細ページ(/world/:id)へ遷移 */}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                navigate(`/world/${world?.id ?? worldId}`);
+                                                onClose();
+                                            }}
+                                            className={css({
+                                                display: 'block',
+                                                textAlign: 'left',
+                                                bg: 'transparent',
+                                                border: 'none',
+                                                p: 0,
+                                                cursor: 'pointer',
+                                                fontSize: 'xl',
+                                                fontWeight: 'bold',
+                                                color: 'text',
+                                                _hover: { textDecoration: 'underline' },
+                                            })}
+                                        >
+                                            {world?.displayName ?? worldId}
+                                        </button>
+                                        {world?.url && <FavoriteButton worldRef={world.url} />}
+                                    </div>
                                     {world?.description && (
                                         <p className={css({ color: 'textMuted', fontSize: 'sm', lineHeight: '1.5' })}>
                                             {world.description}

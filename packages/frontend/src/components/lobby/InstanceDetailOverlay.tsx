@@ -1,8 +1,8 @@
-import { type Instance, type WorldListItem, worldOriginDomain } from '@ubichill/shared';
+import { type Instance, type WorldListItem, worldOriginDomain, worldShareUrl } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { API_BASE } from '@/lib/api';
 import { css } from '@/styled-system/css';
-import { useFavorites } from './useFavorites';
+import { FavoriteButton } from './FavoriteButton';
 
 interface InstanceDetailOverlayProps {
     instance: Instance;
@@ -31,7 +31,6 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
     const [siblings, setSiblings] = useState<Instance[]>([instance]);
     const [creating, setCreating] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const { isFavorite, toggle: toggleFavorite } = useFavorites();
 
     useEffect(() => {
         let cancelled = false;
@@ -81,7 +80,11 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
         }
     };
 
-    const favorited = isFavorite(worldRef);
+    // ワールド詳細ページの共有 URL（別タブで開く）。ローカルはフロント origin、リモートは origin サーバー。
+    const shareUrl =
+        world.source?.kind === 'local' || !world.url
+            ? `${window.location.origin}/world/${instance.world.id}`
+            : worldShareUrl(world.url);
     const originDomain = world.source ? worldOriginDomain(world.source) : null;
     const isCurrent = selected.id === currentInstanceId;
     const isFull = selected.status === 'full';
@@ -150,9 +153,39 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
                     </div>
                     <div className={css({ p: '5', display: 'flex', flexDir: 'column', gap: '4' })}>
                         <div>
-                            <h2 className={css({ fontSize: 'lg', fontWeight: 'bold', color: 'text' })}>
+                            {/* ワールド名クリックでワールド詳細ページを別タブで開く（現インスタンスから離脱しない）。 */}
+                            <a
+                                href={shareUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="ワールド詳細を新しいタブで開く"
+                                className={css({
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '1.5',
+                                    fontSize: 'lg',
+                                    fontWeight: 'bold',
+                                    color: 'text',
+                                    textDecoration: 'none',
+                                    _hover: { color: 'primary', textDecoration: 'underline' },
+                                })}
+                            >
                                 {world.displayName}
-                            </h2>
+                                <svg
+                                    width="15"
+                                    height="15"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    aria-hidden="true"
+                                    className={css({ color: 'textSubtle', flexShrink: 0 })}
+                                >
+                                    <path d="M15 3h6v6" />
+                                    <path d="M10 14 21 3" />
+                                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                </svg>
+                            </a>
                             {originDomain && (
                                 <p
                                     className={css({
@@ -324,40 +357,7 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
                                 borderColor: 'border',
                             })}
                         >
-                            <button
-                                type="button"
-                                onClick={() => void toggleFavorite(worldRef)}
-                                aria-pressed={favorited}
-                                className={css({
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    gap: '2',
-                                    py: '2.5',
-                                    bg: 'secondary',
-                                    color: favorited ? 'warning' : 'text',
-                                    border: '1px solid',
-                                    borderColor: 'border',
-                                    borderRadius: '10px',
-                                    fontSize: 'sm',
-                                    fontWeight: '600',
-                                    cursor: 'pointer',
-                                    _hover: { opacity: 0.9 },
-                                })}
-                            >
-                                <svg
-                                    width="16"
-                                    height="16"
-                                    viewBox="0 0 24 24"
-                                    fill={favorited ? 'currentColor' : 'none'}
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    aria-hidden="true"
-                                >
-                                    <path d="M11.48 3.5a.56.56 0 0 1 1.04 0l2.36 5.14 5.6.62c.5.05.7.68.32 1.02l-4.17 3.8 1.15 5.5a.56.56 0 0 1-.83.6L12 17.9l-4.94 2.88a.56.56 0 0 1-.83-.6l1.15-5.5-4.17-3.8a.56.56 0 0 1 .32-1.02l5.6-.62 2.35-5.14Z" />
-                                </svg>
-                                {favorited ? 'お気に入り済み' : 'お気に入りに追加'}
-                            </button>
+                            <FavoriteButton worldRef={worldRef} variant="labeled" />
                             <button
                                 type="button"
                                 onClick={handleCreate}
