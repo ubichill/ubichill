@@ -2,6 +2,7 @@ import { type Instance, type WorldListItem, worldOriginDomain } from '@ubichill/
 import { useEffect, useState } from 'react';
 import { API_BASE } from '@/lib/api';
 import { css } from '@/styled-system/css';
+import { useFavorites } from './useFavorites';
 
 interface InstanceDetailOverlayProps {
     instance: Instance;
@@ -28,6 +29,9 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
     // instance.world（mods/description/source を含む）を初期値にし、ローカルはフル情報で補う。
     const [world, setWorld] = useState<Partial<WorldListItem>>(instance.world);
     const [siblings, setSiblings] = useState<Instance[]>([instance]);
+    const [creating, setCreating] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const { isFavorite, toggle: toggleFavorite } = useFavorites();
 
     useEffect(() => {
         let cancelled = false;
@@ -53,6 +57,31 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
         };
     }, [instance.id, instance.world.id, worldRef]);
 
+    const handleCreate = async () => {
+        if (creating) return;
+        setCreating(true);
+        setError(null);
+        try {
+            const res = await fetch(`${API_BASE}/api/v1/instances`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ worldId: worldRef }),
+            });
+            if (!res.ok) {
+                const data = (await res.json()) as { error?: string };
+                throw new Error(data.error ?? 'インスタンスの作成に失敗しました');
+            }
+            const created = (await res.json()) as Instance;
+            onJoin(created.id);
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'インスタンスの作成に失敗しました');
+        } finally {
+            setCreating(false);
+        }
+    };
+
+    const favorited = isFavorite(worldRef);
     const originDomain = world.source ? worldOriginDomain(world.source) : null;
     const isCurrent = selected.id === currentInstanceId;
     const isFull = selected.status === 'full';
@@ -283,6 +312,89 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
                                 )}
                             </div>
                         )}
+
+                        {/* スクロール先の副次アクション（お気に入り・新規インスタンス作成） */}
+                        <div
+                            className={css({
+                                display: 'flex',
+                                flexDir: 'column',
+                                gap: '2',
+                                pt: '3',
+                                borderTop: '1px solid',
+                                borderColor: 'border',
+                            })}
+                        >
+                            <button
+                                type="button"
+                                onClick={() => void toggleFavorite(worldRef)}
+                                aria-pressed={favorited}
+                                className={css({
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '2',
+                                    py: '2.5',
+                                    bg: 'secondary',
+                                    color: favorited ? 'warning' : 'text',
+                                    border: '1px solid',
+                                    borderColor: 'border',
+                                    borderRadius: '10px',
+                                    fontSize: 'sm',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                    _hover: { opacity: 0.9 },
+                                })}
+                            >
+                                <svg
+                                    width="16"
+                                    height="16"
+                                    viewBox="0 0 24 24"
+                                    fill={favorited ? 'currentColor' : 'none'}
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    aria-hidden="true"
+                                >
+                                    <path d="M11.48 3.5a.56.56 0 0 1 1.04 0l2.36 5.14 5.6.62c.5.05.7.68.32 1.02l-4.17 3.8 1.15 5.5a.56.56 0 0 1-.83.6L12 17.9l-4.94 2.88a.56.56 0 0 1-.83-.6l1.15-5.5-4.17-3.8a.56.56 0 0 1 .32-1.02l5.6-.62 2.35-5.14Z" />
+                                </svg>
+                                {favorited ? 'お気に入り済み' : 'お気に入りに追加'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleCreate}
+                                disabled={creating}
+                                className={css({
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '2',
+                                    py: '2.5',
+                                    bg: 'secondary',
+                                    color: 'text',
+                                    border: '1px solid',
+                                    borderColor: 'border',
+                                    borderRadius: '10px',
+                                    fontSize: 'sm',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                    _hover: { opacity: 0.9 },
+                                    _disabled: { opacity: 0.6, cursor: 'not-allowed' },
+                                })}
+                            >
+                                <svg
+                                    width="16"
+                                    height="16"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    aria-hidden="true"
+                                >
+                                    <path d="M12 5v14M5 12h14" />
+                                </svg>
+                                {creating ? '作成中...' : 'このワールドで新しいインスタンスを作成'}
+                            </button>
+                            {error && <p className={css({ color: 'errorText', fontSize: 'xs' })}>{error}</p>}
+                        </div>
                     </div>
                 </div>
 

@@ -1,4 +1,4 @@
-import { db, userRepository, users, type WorldRecord, worldRepository } from '@ubichill/db';
+import { db, favoriteRepository, userRepository, users, type WorldRecord, worldRepository } from '@ubichill/db';
 import type { WorldDefinition } from '@ubichill/shared';
 import { LIMITS } from '@ubichill/shared';
 import { eq } from 'drizzle-orm';
@@ -149,6 +149,41 @@ router.get('/me/worlds', requireAuth, async (req, res) => {
         limit: LIMITS.MAX_WORLDS_PER_USER,
         remaining: Math.max(0, LIMITS.MAX_WORLDS_PER_USER - worlds.length),
     });
+});
+
+// お気に入りワールドの worldRef 一覧
+router.get('/me/favorites', requireAuth, async (req, res) => {
+    if (!req.user) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const worldRefs = await favoriteRepository.list(req.user.id);
+    return res.json({ worldRefs });
+});
+
+// お気に入りに追加（worldRef＝ワールドの正規 URL）
+router.post('/me/favorites', requireAuth, async (req, res) => {
+    if (!req.user) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const worldRef = req.body?.worldRef;
+    if (typeof worldRef !== 'string' || worldRef.length === 0) {
+        return res.status(400).json({ error: 'worldRef は必須です' });
+    }
+    await favoriteRepository.add(req.user.id, worldRef);
+    return res.status(204).send();
+});
+
+// お気に入りから削除
+router.delete('/me/favorites', requireAuth, async (req, res) => {
+    if (!req.user) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const worldRef = req.body?.worldRef;
+    if (typeof worldRef !== 'string' || worldRef.length === 0) {
+        return res.status(400).json({ error: 'worldRef は必須です' });
+    }
+    await favoriteRepository.remove(req.user.id, worldRef);
+    return res.status(204).send();
 });
 
 // 公開プロフィール（他ユーザー閲覧用）
