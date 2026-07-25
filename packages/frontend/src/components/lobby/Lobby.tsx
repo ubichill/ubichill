@@ -5,6 +5,7 @@ import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { API_BASE } from '@/lib/api';
 import { SETTINGS_KEYS, useSetting } from '@/lib/settings';
 import { css } from '@/styled-system/css';
+import { useFavorites } from './useFavorites';
 import { useInstances } from './useInstances';
 import { WorldCard } from './WorldCard';
 import { WorldDetailModal } from './WorldDetailModal';
@@ -72,13 +73,20 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
         [confirm, navigate],
     );
     const { worlds, globalWorlds, loading, error, refreshGlobalWorlds } = useInstances();
-    const [tab, setTab] = useState<'local' | 'global'>('local');
+    const { favorites } = useFavorites();
+    const [tab, setTab] = useState<'local' | 'global' | 'favorites'>('local');
     const [selectedWorldId, setSelectedWorldId] = useState<string | null>(null);
 
     // ソートキーを localStorage で永続化
     const [sortKey, handleSortChange] = useSetting<SortKey>(SETTINGS_KEYS.lobbySortKey, DEFAULT_SORT, isSortKey);
 
-    const activeWorlds = tab === 'local' ? worlds : globalWorlds;
+    // お気に入りは local/global 両方の和集合を url で重複排除し、favorites に含まれるものだけ。
+    const favoriteWorlds = useMemo(() => {
+        const byUrl = new Map<string, WorldListItem>();
+        for (const w of [...worlds, ...globalWorlds]) byUrl.set(w.url, w);
+        return [...byUrl.values()].filter((w) => favorites.has(w.url));
+    }, [worlds, globalWorlds, favorites]);
+    const activeWorlds = tab === 'local' ? worlds : tab === 'global' ? globalWorlds : favoriteWorlds;
     const sortedWorlds = useMemo(() => sortWorlds(activeWorlds, sortKey), [activeWorlds, sortKey]);
 
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -93,7 +101,8 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
     }, []);
 
     useEffect(() => {
-        if (tab === 'global') {
+        // お気に入りには他サーバーのワールドも含まれ得るので global も読み込む。
+        if (tab === 'global' || tab === 'favorites') {
             void refreshGlobalWorlds();
         }
     }, [tab, refreshGlobalWorlds]);
@@ -231,6 +240,37 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                             >
                                 グローバル
                             </button>
+                            <button
+                                type="button"
+                                onClick={() => setTab('favorites')}
+                                className={css({
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    px: '12px',
+                                    py: '6px',
+                                    borderRadius: '8px',
+                                    border: 'none',
+                                    fontSize: '13px',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                    bg: tab === 'favorites' ? 'primary' : 'transparent',
+                                    color: tab === 'favorites' ? 'textOnPrimary' : 'textMuted',
+                                })}
+                            >
+                                <svg
+                                    width="14"
+                                    height="14"
+                                    viewBox="0 0 24 24"
+                                    fill={tab === 'favorites' ? 'currentColor' : 'none'}
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    aria-hidden="true"
+                                >
+                                    <path d="M11.48 3.5a.56.56 0 0 1 1.04 0l2.36 5.14 5.6.62c.5.05.7.68.32 1.02l-4.17 3.8 1.15 5.5a.56.56 0 0 1-.83.6L12 17.9l-4.94 2.88a.56.56 0 0 1-.83-.6l1.15-5.5-4.17-3.8a.56.56 0 0 1 .32-1.02l5.6-.62 2.35-5.14Z" />
+                                </svg>
+                                お気に入り
+                            </button>
                         </div>
                     </div>
 
@@ -293,7 +333,9 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                                 >
                                     {tab === 'local'
                                         ? 'このサーバーのワールドを選択して、インスタンスを作成または参加してください'
-                                        : 'フォロー中の他サーバーのワールドを選択して遊びましょう'}
+                                        : tab === 'global'
+                                          ? 'フォロー中の他サーバーのワールドを選択して遊びましょう'
+                                          : 'お気に入りに追加したワールドの一覧です'}
                                 </p>
 
                                 {tab === 'local' && (
@@ -449,6 +491,19 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                                         ))}
                                     </select>
                                 </div>
+
+                                {tab === 'favorites' && sortedWorlds.length === 0 && (
+                                    <p
+                                        className={css({
+                                            textAlign: 'center',
+                                            py: '32px',
+                                            color: 'textSubtle',
+                                            fontSize: '13px',
+                                        })}
+                                    >
+                                        お気に入りはまだありません。ワールドの星マークから追加できます。
+                                    </p>
+                                )}
 
                                 <div
                                     className={css({
