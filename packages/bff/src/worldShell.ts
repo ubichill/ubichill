@@ -10,20 +10,13 @@
  */
 
 import { type Instance, type WorldListItem, worldSourceLabel } from '@ubichill/shared';
+import { esc } from './html';
 
 interface ShellData {
     world: WorldListItem | undefined;
     instances: Instance[];
     publicBaseUrl: string;
     coreApiUrl: string;
-}
-
-function esc(s: string): string {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function escAttr(s: string): string {
-    return esc(s).replace(/'/g, '&#39;');
 }
 
 /**
@@ -55,7 +48,7 @@ export function renderWorldShell({ world, instances, publicBaseUrl }: ShellData)
         .join('\n');
 
     const thumbnail = thumbnailUrl
-        ? `<img src="${escAttr(thumbnailUrl)}" alt="${escAttr(title)}" style="width:100%;height:100%;object-fit:cover;" />`
+        ? `<img src="${esc(thumbnailUrl)}" alt="${esc(title)}" style="width:100%;height:100%;object-fit:cover;" />`
         : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#8a7e6d;">No thumbnail</div>';
 
     const detailRows = [
@@ -106,8 +99,8 @@ export function renderWorldShell({ world, instances, publicBaseUrl }: ShellData)
     return `
         <div data-world-shell style="min-height:100vh;display:flex;flex-direction:column;background:#faf6f0;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
             <header style="width:100%;padding:16px 32px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #cebca2;background:#f5ecdf;">
-                <a href="${escAttr(publicBaseUrl)}/" style="display:flex;align-items:center;gap:12px;text-decoration:none;color:#1b2a44;">
-                    <img src="${escAttr(publicBaseUrl)}/icon.png" alt="" style="width:32px;height:32px;border-radius:8px;" />
+                <a href="${esc(publicBaseUrl)}/" style="display:flex;align-items:center;gap:12px;text-decoration:none;color:#1b2a44;">
+                    <img src="${esc(publicBaseUrl)}/icon.png" alt="" style="width:32px;height:32px;border-radius:8px;" />
                     <span style="font-size:20px;font-weight:700;">ubichill</span>
                 </a>
             </header>
@@ -124,7 +117,7 @@ export function renderWorldShell({ world, instances, publicBaseUrl }: ShellData)
                     </div>
                     <div style="display:flex;gap:16px;flex-wrap:wrap;">
                         <button type="button" disabled style="padding:16px 32px;background:#1b2a44;color:#f8f3ea;border-radius:16px;font-weight:700;font-size:18px;border:none;opacity:0.6;cursor:not-allowed;">インスタンスを作成</button>
-                        <a href="${escAttr(publicBaseUrl)}/" style="padding:16px 32px;background:#f5ecdf;color:#1b2a44;border-radius:16px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;border:1px solid #cebca2;">ロビーへ戻る</a>
+                        <a href="${esc(publicBaseUrl)}/" style="padding:16px 32px;background:#f5ecdf;color:#1b2a44;border-radius:16px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;border:1px solid #cebca2;">ロビーへ戻る</a>
                     </div>
                 </section>
 

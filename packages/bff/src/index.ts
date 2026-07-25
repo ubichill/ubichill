@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { ENV_KEYS, type Instance, SERVER_CONFIG, type WorldListItem } from '@ubichill/shared';
 import express from 'express';
+import { esc, escJsonForScript } from './html';
 import { renderWorldShell } from './worldShell';
 
 /**
@@ -27,15 +28,6 @@ const PUBLIC_BASE_URL = (process.env[ENV_KEYS.PUBLIC_BASE_URL] || `http://localh
 const ENABLE_CRAWL = process.env.NODE_ENV === 'production';
 
 const app = express();
-
-function esc(s: string): string {
-    return s
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
 
 /** index.html はデプロイ毎に不変なので一度だけ読んでキャッシュする（ホットパス）。 */
 let _indexHtml: string | undefined;
@@ -77,12 +69,16 @@ async function fetchWorldPageData(worldId: string): Promise<WorldPageData> {
     return { world, instances: instancesRes?.instances ?? [] };
 }
 
-/** index.html の <head> に meta を注入し、<body> 内の root 要素に SSR シェルを注入する。 */
+/**
+ * index.html の <head> に meta を注入し、<body> 内の root 要素に SSR シェルを注入する。
+ * 置換値は関数リプレーサで渡す。文字列リプレーサだと metaTags/bodyShell 内の `$&` `$'`
+ * などが String.replace に特殊解釈され、HTML が壊れる/意図しない断片が混入するため。
+ */
 function renderShell(metaTags: string, bodyShell: string): string {
     return readIndexHtml()
         .replace(/<title>.*?<\/title>/i, '')
-        .replace('</head>', `${metaTags}\n</head>`)
-        .replace(/<div id="root"><\/div>/, `<div id="root">${bodyShell}</div>`);
+        .replace('</head>', () => `${metaTags}\n</head>`)
+        .replace(/<div id="root"><\/div>/, () => `<div id="root">${bodyShell}</div>`);
 }
 
 // 公開ワールドページ: OGP/JSON-LD/SSR シェルを注入した SPA シェルを全員に返す。
@@ -126,7 +122,7 @@ app.get('/world/:worldId', async (req, res) => {
             image ? `<meta name="twitter:image" content="${esc(image)}">` : '',
             image ? `<meta name="twitter:image:alt" content="${esc(name)}">` : '',
             ENABLE_CRAWL ? '' : '<meta name="robots" content="noindex, nofollow">',
-            `<script type="application/ld+json">${jsonLd}</script>`,
+            `<script type="application/ld+json">${escJsonForScript(jsonLd)}</script>`,
         ]
             .filter(Boolean)
             .join('\n');
