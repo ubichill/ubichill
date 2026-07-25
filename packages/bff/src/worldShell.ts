@@ -7,10 +7,27 @@
  * frontend は `createRoot` により起動後にこのシェルを上書きするため、
  * 視覚的なフラッシュを抑えるべく WorldPage.tsx と同等のレイアウトを
  * インラインスタイルで再現する。
+ *
+ * BFF は Node/Express で PandaCSS ランタイムを持てないため、ここは
+ * ハイドレーション前の一時表示に限りパレットを複製する。意図が読めるよう
+ * 生の hex を散らさず `C` に名前付けする。frontend のトークンと乖離したら
+ * ここも追従する（一時シェルなので厳密一致は不要）。
  */
 
 import { type Instance, type WorldListItem, worldSourceLabel } from '@ubichill/shared';
 import { esc } from './html';
+
+/** SSR シェル専用パレット（frontend の PandaCSS トークンの近似複製）。 */
+const C = {
+    pageBg: '#faf6f0',
+    surface: '#f5ecdf',
+    border: '#cebca2',
+    text: '#1b2a44',
+    textMuted: '#5e6a82',
+    textSubtle: '#8a7e6d',
+    onPrimary: '#f8f3ea',
+    shadow: 'rgba(27,42,68,0.08)',
+} as const;
 
 interface ShellData {
     world: WorldListItem | undefined;
@@ -19,10 +36,6 @@ interface ShellData {
     coreApiUrl: string;
 }
 
-/**
- * ワールドページの SSR シェル HTML を生成する。
- * @returns ルート要素の HTML（<div id="root"> 内に配置する）
- */
 function formatDate(iso?: string): string {
     if (!iso) return '';
     const d = new Date(iso);
@@ -30,15 +43,16 @@ function formatDate(iso?: string): string {
     return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
 }
 
-export function renderWorldShell({ world, instances, publicBaseUrl }: ShellData): string {
-    const worldId = world?.id ?? '';
-    const title = world?.displayName ?? worldId;
-    const thumbnailUrl = world?.thumbnail;
-    const totalCurrentUsers = instances.reduce((sum, i) => sum + i.stats.currentUsers, 0);
+// ============================================================
+// セクション断片ビルダ（各セクションを小さく分離してデバッグしやすく）
+// ============================================================
 
-    const badge = (icon: string, label: string): string =>
-        `<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;background:#f5ecdf;border-radius:9999px;border:1px solid #cebca2;font-size:13px;">${icon} ${esc(label)}</span>`;
-    const metaBadges = [
+function badge(icon: string, label: string): string {
+    return `<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;background:${C.surface};border-radius:9999px;border:1px solid ${C.border};font-size:13px;">${icon} ${esc(label)}</span>`;
+}
+
+function metaBadgesFragment(world: WorldListItem | undefined, totalCurrentUsers: number): string {
+    return [
         world ? badge(globeIcon(), worldSourceLabel(world.source)) : '',
         world?.version ? badge(tagIcon(), `v${world.version}`) : '',
         world?.capacity ? badge(usersIcon(), `最大 ${world.capacity.max} 人`) : '',
@@ -46,12 +60,16 @@ export function renderWorldShell({ world, instances, publicBaseUrl }: ShellData)
     ]
         .filter(Boolean)
         .join('\n');
+}
 
-    const thumbnail = thumbnailUrl
+function thumbnailFragment(thumbnailUrl: string | undefined, title: string): string {
+    return thumbnailUrl
         ? `<img src="${esc(thumbnailUrl)}" alt="${esc(title)}" style="width:100%;height:100%;object-fit:cover;" />`
-        : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#8a7e6d;">No thumbnail</div>';
+        : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:${C.textSubtle};">No thumbnail</div>`;
+}
 
-    const detailRows = [
+function detailRowsFragment(world: WorldListItem | undefined): string {
+    return [
         world?.authorName ? { label: '作成者', value: world.authorName } : null,
         world ? { label: 'バージョン', value: `v${world.version}` } : null,
         world?.capacity
@@ -64,87 +82,125 @@ export function renderWorldShell({ world, instances, publicBaseUrl }: ShellData)
         .filter((r): r is { label: string; value: string } => r !== null)
         .map(
             (r) =>
-                `<div style="display:flex;justify-content:space-between;gap:16px;font-size:14px;"><span style="color:#8a7e6d;">${esc(r.label)}</span><span style="color:#1b2a44;font-weight:500;text-align:right;">${esc(r.value)}</span></div>`,
+                `<div style="display:flex;justify-content:space-between;gap:16px;font-size:14px;"><span style="color:${C.textSubtle};">${esc(r.label)}</span><span style="color:${C.text};font-weight:500;text-align:right;">${esc(r.value)}</span></div>`,
         )
         .join('\n');
+}
 
-    const modsHtml =
-        world?.mods && world.mods.length > 0
-            ? `<div style="margin-top:16px;"><p style="font-size:12px;color:#8a7e6d;margin:0 0 8px 0;">使用 mod</p><div style="display:flex;gap:6px;flex-wrap:wrap;">${world.mods
-                  .map(
-                      (m) =>
-                          `<span style="padding:4px 8px;background:#faf6f0;border:1px solid #cebca2;border-radius:4px;font-size:12px;color:#5e6a82;">${esc(m.id)}${m.version ? ` <span style="color:#8a7e6d;">v${esc(m.version)}</span>` : ''}</span>`,
-                  )
-                  .join('')}</div></div>`
-            : '';
+function modsFragment(world: WorldListItem | undefined): string {
+    if (!world?.mods || world.mods.length === 0) return '';
+    const chips = world.mods
+        .map(
+            (m) =>
+                `<span style="padding:4px 8px;background:${C.pageBg};border:1px solid ${C.border};border-radius:4px;font-size:12px;color:${C.textMuted};">${esc(m.id)}${m.version ? ` <span style="color:${C.textSubtle};">v${esc(m.version)}</span>` : ''}</span>`,
+        )
+        .join('');
+    return `<div style="margin-top:16px;"><p style="font-size:12px;color:${C.textSubtle};margin:0 0 8px 0;">使用 mod</p><div style="display:flex;gap:6px;flex-wrap:wrap;">${chips}</div></div>`;
+}
 
-    const instanceItems = instances
+function instancesFragment(instances: Instance[]): string {
+    if (instances.length === 0) {
+        return `<p style="color:${C.textMuted};font-size:14px;margin:0;">現在アクティブなインスタンスはありません。「インスタンスを作成」で新しく作成できます。</p>`;
+    }
+    const items = instances
         .map(
             (i) => `
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:16px;background:#f5ecdf;border:1px solid #cebca2;border-radius:16px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:16px;background:${C.surface};border:1px solid ${C.border};border-radius:16px;">
                     <div style="display:flex;flex-direction:column;gap:4px;">
-                        <span style="font-size:14px;font-weight:600;color:#1b2a44;">${i.status === 'full' ? '満員' : '参加可能'}</span>
-                        <span style="font-size:12px;color:#5e6a82;">${i.access.type === 'public' ? '公開' : '限定'}${i.access.password ? ' · パスワードあり' : ''}</span>
+                        <span style="font-size:14px;font-weight:600;color:${C.text};">${i.status === 'full' ? '満員' : '参加可能'}</span>
+                        <span style="font-size:12px;color:${C.textMuted};">${i.access.type === 'public' ? '公開' : '限定'}${i.access.password ? ' · パスワードあり' : ''}</span>
                     </div>
-                    <span style="font-size:14px;color:#5e6a82;font-weight:500;">${i.stats.currentUsers} / ${i.stats.maxUsers} 人</span>
+                    <span style="font-size:14px;color:${C.textMuted};font-weight:500;">${i.stats.currentUsers} / ${i.stats.maxUsers} 人</span>
                 </div>`,
         )
         .join('\n');
+    return `<div style="display:flex;flex-direction:column;gap:12px;">${items}</div>`;
+}
 
-    const instancesBlock =
-        instances.length > 0
-            ? `<div style="display:flex;flex-direction:column;gap:12px;">${instanceItems}</div>`
-            : '<p style="color:#5e6a82;font-size:14px;margin:0;">現在アクティブなインスタンスはありません。「インスタンスを作成」で新しく作成できます。</p>';
-
+function headerFragment(publicBaseUrl: string): string {
     return `
-        <div data-world-shell style="min-height:100vh;display:flex;flex-direction:column;background:#faf6f0;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-            <header style="width:100%;padding:16px 32px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #cebca2;background:#f5ecdf;">
-                <a href="${esc(publicBaseUrl)}/" style="display:flex;align-items:center;gap:12px;text-decoration:none;color:#1b2a44;">
+            <header style="width:100%;padding:16px 32px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid ${C.border};background:${C.surface};">
+                <a href="${esc(publicBaseUrl)}/" style="display:flex;align-items:center;gap:12px;text-decoration:none;color:${C.text};">
                     <img src="${esc(publicBaseUrl)}/icon.png" alt="" style="width:32px;height:32px;border-radius:8px;" />
                     <span style="font-size:20px;font-weight:700;">ubichill</span>
                 </a>
-            </header>
+            </header>`;
+}
 
-            <main style="flex:1;width:100%;max-width:1024px;margin:0 auto;display:flex;flex-direction:column;gap:32px;padding:32px 16px;">
+function heroFragment(
+    world: WorldListItem | undefined,
+    title: string,
+    thumbnailUrl: string | undefined,
+    totalCurrentUsers: number,
+    publicBaseUrl: string,
+): string {
+    return `
                 <section style="display:flex;flex-direction:column;gap:20px;">
-                    <div style="width:100%;aspect-ratio:16 / 9;max-height:460px;border-radius:24px;overflow:hidden;background:#f5ecdf;border:1px solid #cebca2;box-shadow:0 8px 24px rgba(27,42,68,0.08);">
-                        ${thumbnail}
+                    <div style="width:100%;aspect-ratio:16 / 9;max-height:460px;border-radius:24px;overflow:hidden;background:${C.surface};border:1px solid ${C.border};box-shadow:0 8px 24px ${C.shadow};">
+                        ${thumbnailFragment(thumbnailUrl, title)}
                     </div>
                     <div style="display:flex;flex-direction:column;gap:12px;">
-                        <h1 style="font-size:36px;font-weight:800;color:#1b2a44;line-height:1.2;margin:0;word-break:break-word;">${esc(title)}</h1>
-                        ${world?.authorName ? `<p style="color:#5e6a82;font-size:16px;margin:0;">作成者: <span style="color:#1b2a44;font-weight:600;">${esc(world.authorName)}</span></p>` : ''}
-                        <div style="display:flex;gap:12px;flex-wrap:wrap;">${metaBadges}</div>
+                        <h1 style="font-size:36px;font-weight:800;color:${C.text};line-height:1.2;margin:0;word-break:break-word;">${esc(title)}</h1>
+                        ${world?.authorName ? `<p style="color:${C.textMuted};font-size:16px;margin:0;">作成者: <span style="color:${C.text};font-weight:600;">${esc(world.authorName)}</span></p>` : ''}
+                        <div style="display:flex;gap:12px;flex-wrap:wrap;">${metaBadgesFragment(world, totalCurrentUsers)}</div>
                     </div>
                     <div style="display:flex;gap:16px;flex-wrap:wrap;">
-                        <button type="button" disabled style="padding:16px 32px;background:#1b2a44;color:#f8f3ea;border-radius:16px;font-weight:700;font-size:18px;border:none;opacity:0.6;cursor:not-allowed;">インスタンスを作成</button>
-                        <a href="${esc(publicBaseUrl)}/" style="padding:16px 32px;background:#f5ecdf;color:#1b2a44;border-radius:16px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;border:1px solid #cebca2;">ロビーへ戻る</a>
+                        <button type="button" disabled style="padding:16px 32px;background:${C.text};color:${C.onPrimary};border-radius:16px;font-weight:700;font-size:18px;border:none;opacity:0.6;cursor:not-allowed;">インスタンスを作成</button>
+                        <a href="${esc(publicBaseUrl)}/" style="padding:16px 32px;background:${C.surface};color:${C.text};border-radius:16px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;border:1px solid ${C.border};">ロビーへ戻る</a>
                     </div>
-                </section>
+                </section>`;
+}
 
+function detailsFragment(world: WorldListItem | undefined): string {
+    return `
                 <section style="display:grid;grid-template-columns:2fr 1fr;gap:24px;align-items:start;">
                     <div>
-                        <h2 style="font-size:18px;font-weight:700;color:#1b2a44;margin:0 0 12px 0;">説明</h2>
-                        <p style="color:#5e6a82;line-height:1.8;margin:0;white-space:pre-wrap;">${world?.description ? esc(world.description) : '説明はありません。'}</p>
+                        <h2 style="font-size:18px;font-weight:700;color:${C.text};margin:0 0 12px 0;">説明</h2>
+                        <p style="color:${C.textMuted};line-height:1.8;margin:0;white-space:pre-wrap;">${world?.description ? esc(world.description) : '説明はありません。'}</p>
                     </div>
-                    <div style="background:#f5ecdf;border:1px solid #cebca2;border-radius:16px;padding:20px;box-shadow:0 8px 24px rgba(27,42,68,0.08);">
-                        <h2 style="font-size:16px;font-weight:700;color:#1b2a44;margin:0 0 12px 0;">詳細</h2>
-                        <div style="display:flex;flex-direction:column;gap:12px;">${detailRows}</div>
-                        ${modsHtml}
+                    <div style="background:${C.surface};border:1px solid ${C.border};border-radius:16px;padding:20px;box-shadow:0 8px 24px ${C.shadow};">
+                        <h2 style="font-size:16px;font-weight:700;color:${C.text};margin:0 0 12px 0;">詳細</h2>
+                        <div style="display:flex;flex-direction:column;gap:12px;">${detailRowsFragment(world)}</div>
+                        ${modsFragment(world)}
                     </div>
-                </section>
+                </section>`;
+}
 
+function footerFragment(): string {
+    return `
+                <section style="margin-top:16px;padding-top:24px;border-top:1px solid ${C.border};color:${C.textSubtle};font-size:14px;line-height:1.7;">
+                    <p style="margin:0;"><span style="font-weight:700;color:${C.textMuted};">ubichill</span> は URL からワールドを読み込み、ブラウザだけで即座に参加できる 2D メタバース基盤です。「インスタンスを作成」で自分の部屋（インスタンス）を作って参加できます（要ログイン）。</p>
+                </section>`;
+}
+
+/**
+ * ワールドページの SSR シェル HTML を生成する。
+ * @returns ルート要素の HTML（<div id="root"> 内に配置する）
+ */
+export function renderWorldShell({ world, instances, publicBaseUrl }: ShellData): string {
+    const title = world?.displayName ?? world?.id ?? '';
+    const thumbnailUrl = world?.thumbnail;
+    const totalCurrentUsers = instances.reduce((sum, i) => sum + i.stats.currentUsers, 0);
+
+    return `
+        <div data-world-shell style="min-height:100vh;display:flex;flex-direction:column;background:${C.pageBg};font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+            ${headerFragment(publicBaseUrl)}
+            <main style="flex:1;width:100%;max-width:1024px;margin:0 auto;display:flex;flex-direction:column;gap:32px;padding:32px 16px;">
+                ${heroFragment(world, title, thumbnailUrl, totalCurrentUsers, publicBaseUrl)}
+                ${detailsFragment(world)}
                 <section>
-                    <h2 style="font-size:18px;font-weight:700;color:#1b2a44;margin:0 0 16px 0;">参加可能なインスタンス</h2>
-                    ${instancesBlock}
+                    <h2 style="font-size:18px;font-weight:700;color:${C.text};margin:0 0 16px 0;">参加可能なインスタンス</h2>
+                    ${instancesFragment(instances)}
                 </section>
-
-                <section style="margin-top:16px;padding-top:24px;border-top:1px solid #cebca2;color:#8a7e6d;font-size:14px;line-height:1.7;">
-                    <p style="margin:0;"><span style="font-weight:700;color:#5e6a82;">ubichill</span> は URL からワールドを読み込み、ブラウザだけで即座に参加できる 2D メタバース基盤です。「インスタンスを作成」で自分の部屋（インスタンス）を作って参加できます（要ログイン）。</p>
-                </section>
+                ${footerFragment()}
             </main>
         </div>
     `.trim();
 }
+
+// ============================================================
+// アイコン（インライン SVG）
+// ============================================================
 
 function globeIcon(): string {
     return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10Z"/></svg>';
