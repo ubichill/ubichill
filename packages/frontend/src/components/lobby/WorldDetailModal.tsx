@@ -111,7 +111,7 @@ export function WorldDetailModal({
         // ローカルの world.url はバックエンドの PUBLIC_BASE_URL（dev では :3001）で構築されるため、
         // フロントの origin（:3000）を使うことで正しい共有 URL を生成する。
         const url =
-            world?.source.kind === 'local'
+            world?.source?.kind === 'local'
                 ? `${window.location.origin}/world/${worldId}`
                 : world?.url
                   ? worldShareUrl(world.url)

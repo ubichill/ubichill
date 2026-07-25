@@ -114,6 +114,20 @@ export function worldShareUrl(url: string): string {
     return m ? `${m[1]}/world/${m[2]}` : url;
 }
 
+/**
+ * ワールドの由来ドメインを返す。ローカル（このインスタンス）は null。
+ * リモート/外部は host 部分（例 `example.com`）。
+ * インスタンス詳細で「どのサーバー由来か」を名前の下に小さく出す用途。
+ * 将来はサーバー設定のマーク＋名を出すが、今はドメインのみ。
+ */
+export function worldOriginDomain(source: WorldSource): string | null {
+    if (source.kind === WorldSourceKind.Local) return null;
+    // shared は DOM/Node 非依存なので URL は使わず素の文字列処理で host を取り出す。
+    const base = source.originInstance ?? source.url;
+    const host = base.replace(/^https?:\/\//i, '').replace(/[/?#].*$/, '');
+    return host || null;
+}
+
 /** ワールドの由来（どのサーバー/レジストリか）を人間向けラベルにする。UI の origin バッジ用。 */
 export function worldSourceLabel(source: WorldSource): string {
     switch (source.kind) {

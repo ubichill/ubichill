@@ -1,5 +1,5 @@
 import { useSocket } from '@ubichill/react';
-import { type Instance, worldSourceLabel } from '@ubichill/shared';
+import { type Instance, worldOriginDomain } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useInstances } from '@/components/lobby/useInstances';
@@ -75,11 +75,12 @@ export function InstanceTab({ currentInstanceId, onNavigate, onReturnToLobby }: 
     const world = instance?.world ?? null;
     const isAuthor = !!world && !!currentUser && world.authorId === currentUser.id;
 
+    // 由来はローカルなら出さない（リモートのみ後述のドメイン表示）。detail 行には含めない。
+    const originDomain = world?.source ? worldOriginDomain(world.source) : null;
     const detailRows: Array<{ label: string; value: string }> = world
         ? [
               world.authorName ? { label: '作成者', value: world.authorName } : null,
               world.version ? { label: 'バージョン', value: `v${world.version}` } : null,
-              world.source ? { label: '由来', value: worldSourceLabel(world.source) } : null,
           ].filter((r): r is { label: string; value: string } => r !== null)
         : [];
 
@@ -195,6 +196,33 @@ export function InstanceTab({ currentInstanceId, onNavigate, onReturnToLobby }: 
                         >
                             {world?.displayName ?? '読み込み中...'}
                         </h2>
+                        {originDomain && (
+                            <p
+                                className={css({
+                                    fontSize: '11px',
+                                    color: 'textSubtle',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '1',
+                                    mt: '0.5',
+                                })}
+                            >
+                                <svg
+                                    width="11"
+                                    height="11"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    aria-hidden="true"
+                                >
+                                    <circle cx="12" cy="12" r="10" />
+                                    <path d="M2 12h20" />
+                                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10Z" />
+                                </svg>
+                                {originDomain}
+                            </p>
+                        )}
                         <p className={css({ fontSize: '12px', color: 'textMuted', mt: '1' })}>
                             {participants.length} 人が参加中
                         </p>
