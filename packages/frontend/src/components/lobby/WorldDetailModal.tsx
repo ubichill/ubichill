@@ -107,8 +107,15 @@ export function WorldDetailModal({
 
     const handleCopyUrl = () => {
         // ユーザーに配る共有 URL（.../world/:id）。canonical(機械URL) からも共有形へ変換。
-        // リモートワールドは origin サーバーの共有 URL になる。無ければ自ホストにフォールバック。
-        const url = world?.url ? worldShareUrl(world.url) : `${window.location.origin}/world/${worldId}`;
+        // ローカルワールドは window.location.origin を使い、リモートは origin サーバーの共有 URL を使う。
+        // ローカルの world.url はバックエンドの PUBLIC_BASE_URL（dev では :3001）で構築されるため、
+        // フロントの origin（:3000）を使うことで正しい共有 URL を生成する。
+        const url =
+            world?.source.kind === 'local'
+                ? `${window.location.origin}/world/${worldId}`
+                : world?.url
+                  ? worldShareUrl(world.url)
+                  : `${window.location.origin}/world/${worldId}`;
         void navigator.clipboard.writeText(url);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
