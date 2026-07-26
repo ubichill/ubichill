@@ -1,5 +1,6 @@
-import type { WorldListItem } from '@ubichill/shared';
+import { type WorldListItem, worldSourceLabel } from '@ubichill/shared';
 import { css } from '@/styled-system/css';
+import { FavoriteButton } from './FavoriteButton';
 
 interface WorldCardProps {
     world: WorldListItem;
@@ -49,51 +50,76 @@ const metaStyle = css({
 
 export function WorldCard({ world, onNavigate }: WorldCardProps) {
     return (
-        <button type="button" onClick={() => onNavigate(world.id)} className={cardStyle}>
-            <div
-                className={css({
-                    width: '100%',
-                    height: '100px',
-                    borderRadius: '8px',
-                    marginBottom: '12px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '32px',
-                    position: 'relative',
-                    overflow: 'hidden',
-                    backgroundColor: world.thumbnail ? 'transparent' : 'secondary',
-                })}
-            >
-                {world.thumbnail ? (
-                    <img
-                        src={world.thumbnail}
-                        alt={world.displayName}
-                        className={css({ objectFit: 'cover', width: '100%', height: '100%' })}
-                    />
-                ) : (
-                    <svg
-                        width="32"
-                        height="32"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                        className={css({ color: 'textSubtle' })}
+        <div className={css({ position: 'relative', width: '100%' })}>
+            {/* カード（button）の外側に置く。button の入れ子は不正なため兄弟として重ねる。 */}
+            <div className={css({ position: 'absolute', top: '10px', right: '10px', zIndex: 1 })}>
+                <FavoriteButton worldRef={world.url} />
+            </div>
+            <button type="button" onClick={() => onNavigate(world.id)} className={cardStyle}>
+                <div
+                    className={css({
+                        width: '100%',
+                        height: '100px',
+                        borderRadius: '8px',
+                        marginBottom: '12px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '32px',
+                        position: 'relative',
+                        overflow: 'hidden',
+                        backgroundColor: world.thumbnail ? 'transparent' : 'secondary',
+                    })}
+                >
+                    {world.thumbnail ? (
+                        <img
+                            src={world.thumbnail}
+                            alt={world.displayName}
+                            className={css({ objectFit: 'cover', width: '100%', height: '100%' })}
+                        />
+                    ) : (
+                        <svg
+                            width="32"
+                            height="32"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            className={css({ color: 'textSubtle' })}
+                        >
+                            <circle cx="12" cy="12" r="10" />
+                            <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                        </svg>
+                    )}
+                </div>
+                <h3 className={titleStyle}>{world.displayName}</h3>
+                {world.description && <p className={descriptionStyle}>{world.description}</p>}
+                <div className={metaStyle}>
+                    <span>
+                        {world.capacity.default}〜{world.capacity.max}人
+                    </span>
+                    <span>v{world.version}</span>
+                    {/* どのサーバー/由来のワールドか（このインスタンス / GitHub / 外部ホスト等） */}
+                    <span
+                        className={css({
+                            ml: 'auto',
+                            px: '6px',
+                            py: '2px',
+                            bg: 'primarySubtle',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            color: 'textMuted',
+                            maxWidth: '160px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                        })}
+                        title={world.source.originInstance ?? world.source.url}
                     >
-                        <circle cx="12" cy="12" r="10" />
-                        <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-                    </svg>
-                )}
-            </div>
-            <h3 className={titleStyle}>{world.displayName}</h3>
-            {world.description && <p className={descriptionStyle}>{world.description}</p>}
-            <div className={metaStyle}>
-                <span>
-                    {world.capacity.default}〜{world.capacity.max}人
-                </span>
-                <span>v{world.version}</span>
-            </div>
-        </button>
+                        {worldSourceLabel(world.source)}
+                    </span>
+                </div>
+            </button>
+        </div>
     );
 }

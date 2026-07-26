@@ -104,6 +104,49 @@ export const WorldSourceSchema = z.object({
 
 export type WorldSource = z.infer<typeof WorldSourceSchema>;
 
+/**
+ * ワールドの canonical URL（機械: `.../api/v1/worlds/:id`）や共有 URL から、
+ * ユーザーに配る**共有 URL**（`.../world/:id`）を作る。共有・コピーはこちらを使う。
+ * ubichill ホストでない任意 URL（GitHub raw 等）はそのまま返す。
+ */
+export function worldShareUrl(url: string): string {
+    const m = /^(https?:\/\/[^/]+)\/(?:api\/v1\/worlds|world)\/([^/?#]+)/.exec(url);
+    return m ? `${m[1]}/world/${m[2]}` : url;
+}
+
+/**
+ * ワールドの由来ドメインを返す。ローカル（このインスタンス）は null。
+ * リモート/外部は host 部分（例 `example.com`）。
+ * インスタンス詳細で「どのサーバー由来か」を名前の下に小さく出す用途。
+ * 将来はサーバー設定のマーク＋名を出すが、今はドメインのみ。
+ */
+export function worldOriginDomain(source: WorldSource): string | null {
+    if (source.kind === WorldSourceKind.Local) return null;
+    // shared は DOM/Node 非依存なので URL は使わず素の文字列処理で host を取り出す。
+    const base = source.originInstance ?? source.url;
+    const host = base.replace(/^https?:\/\//i, '').replace(/[/?#].*$/, '');
+    return host || null;
+}
+
+/** ワールドの由来（どのサーバー/レジストリか）を人間向けラベルにする。UI の origin バッジ用。 */
+export function worldSourceLabel(source: WorldSource): string {
+    switch (source.kind) {
+        case WorldSourceKind.Local:
+            return 'このインスタンス';
+        case WorldSourceKind.GitHub:
+            return source.registryName ? `GitHub: ${source.registryName}` : 'GitHub';
+        case WorldSourceKind.RemoteInstance: {
+            // shared は DOM/Node 非依存なので URL は使わず host 部分を素の文字列処理で取り出す。
+            const host = source.originInstance?.replace(/^https?:\/\//i, '').replace(/[/?#].*$/, '');
+            return host || '外部インスタンス';
+        }
+        case WorldSourceKind.Registry:
+            return source.registryName ?? 'レジストリ';
+        default:
+            return '外部 URL';
+    }
+}
+
 // ============================================
 // World Environment（環境設定）
 // ============================================
@@ -300,6 +343,19 @@ export const WorldCreateInputSchema = z.object({
 export type WorldCreateInput = z.infer<typeof WorldCreateInputSchema>;
 
 // ============================================
+// World Mod（ワールドが使う mod）
+// ============================================
+
+export const WorldModSchema = z.object({
+    /** mod id（component 型 `modId:name` の modId、または dependency 名）。 */
+    id: z.string(),
+    /** バージョン（dependency に宣言があれば。component 由来のみだと不明）。 */
+    version: z.string().optional(),
+});
+
+export type WorldMod = z.infer<typeof WorldModSchema>;
+
+// ============================================
 // Resolved World（解決済みワールド）
 // ============================================
 
@@ -319,6 +375,8 @@ export const ResolvedWorldSchema = z.object({
     capacity: WorldCapacitySchema,
     dependencies: z.array(DependencySchema).optional(),
     initialEntities: z.array(InitialEntitySchema),
+    /** このワールドが使う mod 一覧（component 型と dependencies から算出。version は dependency 宣言由来）。 */
+    mods: z.array(WorldModSchema).default([]),
 });
 
 export type ResolvedWorld = z.infer<typeof ResolvedWorldSchema>;

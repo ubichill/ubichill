@@ -6,11 +6,13 @@ import { API_BASE } from '@/lib/api';
 interface UseInstancesReturn {
     instances: Instance[];
     worlds: WorldListItem[];
+    globalWorlds: WorldListItem[];
     loading: boolean;
     error: string | null;
     createInstance: (request: CreateInstanceRequest) => Promise<Instance | null>;
     refreshInstances: (worldId?: string) => Promise<void>;
     refreshWorlds: (force?: boolean) => Promise<void>;
+    refreshGlobalWorlds: (force?: boolean) => Promise<void>;
 }
 
 // ワールド一覧は変化が稀なため、モジュール単位で短時間キャッシュ＋同時リクエストの共有を行う。
@@ -18,32 +20,52 @@ interface UseInstancesReturn {
 const WORLDS_TTL_MS = 30_000;
 let worldsCache: { data: WorldListItem[]; at: number } | null = null;
 let worldsInflight: Promise<WorldListItem[]> | null = null;
+let globalWorldsCache: { data: WorldListItem[]; at: number } | null = null;
+let globalWorldsInflight: Promise<WorldListItem[]> | null = null;
 
-async function fetchWorlds(force: boolean): Promise<WorldListItem[]> {
-    if (!force && worldsCache && Date.now() - worldsCache.at < WORLDS_TTL_MS) {
-        return worldsCache.data;
+async function fetchWorlds(scope: 'all' | 'local' | 'global', force: boolean): Promise<WorldListItem[]> {
+    const isGlobal = scope === 'global';
+    const cache = isGlobal ? globalWorldsCache : worldsCache;
+    const inflight = isGlobal ? globalWorldsInflight : worldsInflight;
+
+    if (!force && cache && Date.now() - cache.at < WORLDS_TTL_MS) {
+        return cache.data;
     }
-    if (!force && worldsInflight) {
-        return worldsInflight;
+    if (!force && inflight) {
+        return inflight;
     }
     const promise = (async () => {
-        const res = await fetch(`${API_BASE}/api/v1/worlds`, { credentials: 'include', cache: 'no-store' });
+        const res = await fetch(`${API_BASE}/api/v1/worlds?scope=${scope}`, {
+            credentials: 'include',
+            cache: 'no-store',
+        });
         if (!res.ok) throw new Error('Failed to fetch worlds');
         const data = (await res.json()) as { worlds: WorldListItem[] };
-        worldsCache = { data: data.worlds, at: Date.now() };
+        const entry = { data: data.worlds, at: Date.now() };
+        if (isGlobal) {
+            globalWorldsCache = entry;
+        } else {
+            worldsCache = entry;
+        }
         return data.worlds;
     })();
-    worldsInflight = promise;
+    if (isGlobal) {
+        globalWorldsInflight = promise;
+    } else {
+        worldsInflight = promise;
+    }
     try {
         return await promise;
     } finally {
-        if (worldsInflight === promise) worldsInflight = null;
+        if (isGlobal && globalWorldsInflight === promise) globalWorldsInflight = null;
+        if (!isGlobal && worldsInflight === promise) worldsInflight = null;
     }
 }
 
 export function useInstances(): UseInstancesReturn {
     const [instances, setInstances] = useState<Instance[]>([]);
     const [worlds, setWorlds] = useState<WorldListItem[]>([]);
+    const [globalWorlds, setGlobalWorlds] = useState<WorldListItem[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -75,7 +97,23 @@ export function useInstances(): UseInstancesReturn {
         setLoading(true);
         setError(null);
         try {
-            setWorlds(await fetchWorlds(force));
+            setWorlds(await fetchWorlds('all', force));
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Unknown error');
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    const refreshGlobalWorlds = useCallback(async (force = false) => {
+        if (!force && globalWorldsCache && Date.now() - globalWorldsCache.at < WORLDS_TTL_MS) {
+            setGlobalWorlds(globalWorldsCache.data);
+            return;
+        }
+        setLoading(true);
+        setError(null);
+        try {
+            setGlobalWorlds(await fetchWorlds('global', force));
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Unknown error');
         } finally {
@@ -115,10 +153,12 @@ export function useInstances(): UseInstancesReturn {
     return {
         instances,
         worlds,
+        globalWorlds,
         loading,
         error,
         createInstance,
         refreshInstances,
         refreshWorlds,
+        refreshGlobalWorlds,
     };
 }

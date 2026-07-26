@@ -3,12 +3,13 @@ import { css } from '@/styled-system/css';
 
 interface InstanceCardProps {
     instance: Instance;
-    onJoin: (instanceId: string) => void;
     /** 現在参加中のインスタンスかどうか */
     isCurrent?: boolean;
+    /** カードクリックで開くインスタンス詳細（省略時はクリック無効） */
+    onOpenDetail?: () => void;
 }
 
-export function InstanceCard({ instance, onJoin, isCurrent = false }: InstanceCardProps) {
+export function InstanceCard({ instance, isCurrent = false, onOpenDetail }: InstanceCardProps) {
     const statusColors: Record<string, string> = {
         active: '#8ad29b', // success token value
         full: '#f1c86c', // warning token value
@@ -17,6 +18,19 @@ export function InstanceCard({ instance, onJoin, isCurrent = false }: InstanceCa
 
     return (
         <div
+            onClick={onOpenDetail}
+            onKeyDown={
+                onOpenDetail
+                    ? (e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              onOpenDetail();
+                          }
+                      }
+                    : undefined
+            }
+            role={onOpenDetail ? 'button' : undefined}
+            tabIndex={onOpenDetail ? 0 : undefined}
             className={css({
                 display: 'flex',
                 alignItems: 'center',
@@ -27,13 +41,50 @@ export function InstanceCard({ instance, onJoin, isCurrent = false }: InstanceCa
                 border: '1px solid',
                 borderColor: isCurrent ? 'success' : 'border',
                 transition: 'background-color 0.16s ease',
+                cursor: onOpenDetail ? 'pointer' : 'default',
                 _hover: {
                     backgroundColor: isCurrent ? 'successBg' : 'surfaceHover',
                 },
             })}
         >
-            <div className={css({ display: 'flex', alignItems: 'center', gap: { base: '3', md: '4' } })}>
-                <div>
+            <div className={css({ display: 'flex', alignItems: 'center', gap: { base: '3', md: '4' }, minW: 0 })}>
+                {/* ワールドサムネイル（インスタンス一覧でも一目で分かるように） */}
+                <div
+                    className={css({
+                        width: { base: '44px', md: '56px' },
+                        height: { base: '44px', md: '56px' },
+                        borderRadius: '10px',
+                        overflow: 'hidden',
+                        flexShrink: 0,
+                        backgroundColor: 'secondary',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                    })}
+                >
+                    {instance.world.thumbnail ? (
+                        <img
+                            src={instance.world.thumbnail}
+                            alt={instance.world.displayName}
+                            className={css({ width: '100%', height: '100%', objectFit: 'cover' })}
+                        />
+                    ) : (
+                        <svg
+                            width="20"
+                            height="20"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            aria-hidden="true"
+                            className={css({ color: 'textSubtle' })}
+                        >
+                            <circle cx="12" cy="12" r="10" />
+                            <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                        </svg>
+                    )}
+                </div>
+                <div className={css({ minW: 0 })}>
                     <h3
                         className={css({
                             fontSize: { base: '14px', md: '16px' },
@@ -105,15 +156,16 @@ export function InstanceCard({ instance, onJoin, isCurrent = false }: InstanceCa
                     </div>
                 </div>
             </div>
+            {/* 参加ボタンは廃止。カード全体クリックでインスタンス詳細を開き、そこから入る。 */}
             {isCurrent ? (
                 <span
                     className={css({
-                        padding: { base: '8px 14px', md: '10px 18px' },
+                        padding: { base: '6px 12px', md: '8px 14px' },
                         backgroundColor: '#8ad29b1a',
                         color: '#8ad29b',
                         border: '1px solid #8ad29b44',
                         borderRadius: '10px',
-                        fontSize: '14px',
+                        fontSize: '13px',
                         fontWeight: '600',
                         whiteSpace: 'nowrap',
                     })}
@@ -121,32 +173,18 @@ export function InstanceCard({ instance, onJoin, isCurrent = false }: InstanceCa
                     参加中
                 </span>
             ) : (
-                <button
-                    type="button"
-                    onClick={() => onJoin(instance.id)}
-                    disabled={instance.status === 'full' || instance.status === 'closing'}
-                    className={css({
-                        padding: { base: '8px 14px', md: '10px 18px' },
-                        backgroundColor: 'primary',
-                        color: 'textOnPrimary',
-                        border: 'none',
-                        borderRadius: '10px',
-                        fontSize: '14px',
-                        fontWeight: '600',
-                        cursor: 'pointer',
-                        transition: 'opacity 0.16s ease',
-                        _hover: {
-                            opacity: 0.9,
-                        },
-                        _disabled: {
-                            backgroundColor: 'primarySubtle',
-                            color: 'textSubtle',
-                            cursor: 'not-allowed',
-                        },
-                    })}
+                <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    aria-hidden="true"
+                    className={css({ color: 'textSubtle', flexShrink: 0 })}
                 >
-                    参加
-                </button>
+                    <path d="M9 18l6-6-6-6" />
+                </svg>
             )}
         </div>
     );

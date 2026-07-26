@@ -2,6 +2,8 @@ import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from './schema';
 
+export { favoriteRepository } from './repositories/favoriteRepository';
+export { federationPeerRepository } from './repositories/federationPeerRepository';
 export { instanceRepository } from './repositories/instanceRepository';
 export { userRepository } from './repositories/userRepository';
 export { worldRepository } from './repositories/worldRepository';
@@ -12,6 +14,10 @@ const connectionString = process.env.DATABASE_URL || 'postgresql://ubichill:pass
 export const client = postgres(connectionString, { prepare: false });
 export const db: PostgresJsDatabase<typeof schema> = drizzle(client, { schema });
 
+export type {
+    CreateFederationPeerInput,
+    FederationPeerRecord,
+} from './repositories/federationPeerRepository';
 export type { CreateInstanceInput, InstanceRecord, UpdateInstanceInput } from './repositories/instanceRepository';
 export type {
     CreateWorldInput,

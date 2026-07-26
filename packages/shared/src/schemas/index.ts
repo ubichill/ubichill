@@ -57,8 +57,13 @@ export {
     WorldDefinitionSchema,
     type WorldEnvironment,
     WorldEnvironmentSchema,
+    type WorldMod,
+    WorldModSchema,
     WorldPermissionsSchema,
     type WorldSource,
     WorldSourceKind,
     WorldSourceSchema,
+    worldOriginDomain,
+    worldShareUrl,
+    worldSourceLabel,
 } from './world.schema';
