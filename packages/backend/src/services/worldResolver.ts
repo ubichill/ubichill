@@ -115,6 +115,7 @@ function mapToResolved(
         dependencies: def.spec.dependencies?.map((d) => ({ name: d.name, source: d.source })),
         initialEntities,
         mods: collectMods(initialEntities, def.spec.dependencies),
+        lock: def.spec.lock,
     };
 }
 

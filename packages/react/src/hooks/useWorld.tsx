@@ -3,6 +3,7 @@ import type {
     ComponentInstance,
     EntityEphemeralPayload,
     EntityPatchPayload,
+    ModLock,
     WorldEnvironmentData,
     WorldSnapshotPayload,
 } from '@ubichill/shared';
@@ -20,6 +21,10 @@ export interface WorldContextType {
     environment: WorldEnvironmentData;
     availableComponents: AvailableComponent[];
     activeMods: string[];
+    /** ワールドに焼かれた mod 完全性ロック（あれば）。mod ローダーの hash 照合に使う。 */
+    modLock?: ModLock;
+    /** ワールドの provenance kind（local/github/...）。lock enforcement の分岐に使う。 */
+    worldSourceKind?: string;
     createEntity: <T = Record<string, unknown>>(
         type: string,
         transform: ComponentInstance['transform'],
@@ -49,6 +54,8 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const [environment, setEnvironment] = useState<WorldEnvironmentData>(DEFAULTS.WORLD_ENVIRONMENT);
     const [availableComponents, setAvailableComponents] = useState<AvailableComponent[]>([]);
     const [activeMods, setActiveMods] = useState<string[]>([]);
+    const [modLock, setModLock] = useState<ModLock | undefined>(undefined);
+    const [worldSourceKind, setWorldSourceKind] = useState<string | undefined>(undefined);
 
     useEffect(() => {
         if (!socket) return;
@@ -63,6 +70,8 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             setEnvironment(payload.environment);
             setAvailableComponents(payload.availableComponents);
             setActiveMods(payload.activeMods || []);
+            setModLock(payload.lock);
+            setWorldSourceKind(payload.sourceKind);
         };
 
         // エンティティ作成を受信
@@ -222,6 +231,8 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setEnvironment(DEFAULTS.WORLD_ENVIRONMENT);
         setAvailableComponents([]);
         setActiveMods([]);
+        setModLock(undefined);
+        setWorldSourceKind(undefined);
     }, []);
 
     const contextValue: WorldContextType = useMemo(
@@ -231,6 +242,8 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             environment,
             availableComponents,
             activeMods,
+            modLock,
+            worldSourceKind,
             createEntity,
             patchEntity,
             deleteEntity,
@@ -243,6 +256,8 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             environment,
             availableComponents,
             activeMods,
+            modLock,
+            worldSourceKind,
             createEntity,
             patchEntity,
             deleteEntity,

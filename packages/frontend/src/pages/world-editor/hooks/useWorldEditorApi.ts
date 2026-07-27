@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router';
 import yaml from 'yaml';
 import { API_BASE } from '@/lib/api';
+import { buildWorldLock } from '@/mods/buildWorldLock';
 
 interface UseWorldEditorApiArgs {
     isEdit: boolean;
@@ -26,7 +27,11 @@ export function useWorldEditorApi({ isEdit, worldId, definition, onSavedYamlChan
         setSaving(true);
         onError('');
         try {
-            const text = yaml.stringify(definition);
+            // 保存時に mod 完全性ロックを焼き込む。外部公開時、そのワールドを読む側は
+            // この hash と照合して差し替え mod の実行を拒否できる（配布者を信頼しない）。
+            const lock = await buildWorldLock(definition);
+            const locked: WorldDefinition = { ...definition, spec: { ...definition.spec, lock } };
+            const text = yaml.stringify(locked);
             const url =
                 isEdit && worldId ? `${API_BASE}/api/v1/worlds/${worldId}/yaml` : `${API_BASE}/api/v1/worlds/yaml`;
             const method = isEdit ? 'PUT' : 'POST';

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ModLockSchema } from './modLock.schema';
 
 // ============================================
 // 定数
@@ -314,6 +315,9 @@ export const WorldDefinitionSchema = z.object({
         dependencies: z.array(DependencySchema).optional(),
         initialEntities: InitialEntitiesSchema,
         permissions: WorldPermissionsSchema.optional(),
+        // mod 完全性ロック（保存時に焼き込む）。外部 provenance のワールドでは
+        // ロード時にこの hash と照合し、不一致 mod の実行を拒否する。
+        lock: ModLockSchema.optional(),
     }),
 });
 
@@ -377,6 +381,8 @@ export const ResolvedWorldSchema = z.object({
     initialEntities: z.array(InitialEntitySchema),
     /** このワールドが使う mod 一覧（component 型と dependencies から算出。version は dependency 宣言由来）。 */
     mods: z.array(WorldModSchema).default([]),
+    /** mod 完全性ロック（あれば）。ロード時の hash 照合・capability 天井に使う。 */
+    lock: ModLockSchema.optional(),
 });
 
 export type ResolvedWorld = z.infer<typeof ResolvedWorldSchema>;

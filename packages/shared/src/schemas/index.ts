@@ -31,6 +31,16 @@ export {
     type VersionedComponentManifestEntry,
     VersionedComponentManifestEntrySchema,
 } from './mod.schema';
+// Mod Lock スキーマ
+export {
+    IntegritySchema,
+    type ModLock,
+    type ModLockComponent,
+    ModLockComponentSchema,
+    type ModLockEntry,
+    ModLockEntrySchema,
+    ModLockSchema,
+} from './modLock.schema';
 export {
     AuthorSchema,
     type ComponentType,
