@@ -9,6 +9,7 @@ import {
 } from '@ubichill/db';
 import {
     ENV_KEYS,
+    type ModLock,
     type ResolvedWorld,
     SERVER_CONFIG,
     type WorldCreateInput,
@@ -350,12 +351,13 @@ class WorldRegistry {
 
     // ---- CRUD（ユーザー操作） ----------------------------------------
 
-    async createWorld(authorId: string, definition: WorldDefinition): Promise<ResolvedWorld> {
+    async createWorld(authorId: string, definition: WorldDefinition, lock?: ModLock | null): Promise<ResolvedWorld> {
         const record = await worldRepository.create({
             authorId,
             name: definition.metadata.name,
             version: definition.metadata.version,
             definition,
+            lock: lock ?? null,
         });
         const resolved = this._resolveWorld(record);
         this._resolvedCache.set(resolved.id, resolved);
@@ -388,13 +390,21 @@ class WorldRegistry {
      * YAML テキストからワールドを作成する。
      * metadata.name は無視してサーバー側で再生成し、所有権を作成者に紐付ける。
      */
-    async createFromYaml(authorId: string, authorDisplayName: string, yamlText: string): Promise<ResolvedWorld> {
+    async createFromYaml(
+        authorId: string,
+        authorDisplayName: string,
+        yamlText: string,
+        lock?: ModLock | null,
+    ): Promise<ResolvedWorld> {
         const parsed = migrateLegacyWorldYaml(yaml.parse(yamlText) as unknown);
         const result = WorldDefinitionSchema.safeParse(parsed);
         if (!result.success) {
             const issue = result.error.issues[0];
             throw new Error(`YAML が不正です: ${issue?.path.join('.') ?? ''} ${issue?.message ?? ''}`);
         }
+        // 人間が書く definition と lock は分離保存する。埋め込み spec.lock が来ても
+        // 別カラム保存へ寄せ、definition からは落とす（fallback は別配信できない外部用）。
+        const { lock: embeddedLock, ...cleanSpec } = result.data.spec;
         const def: WorldDefinition = {
             ...result.data,
             metadata: {
@@ -402,19 +412,26 @@ class WorldRegistry {
                 name: generateWorldId(),
                 author: result.data.metadata.author ?? { name: authorDisplayName },
             },
+            spec: cleanSpec,
         };
-        return this.createWorld(authorId, def);
+        return this.createWorld(authorId, def, lock ?? embeddedLock ?? null);
     }
 
     // NOTE: 外部/リモートのワールドは DB にコピーしない（＝連合は参照のみ）。
     // 単発で入るなら resolveRef(URL)→instance 作成、永続的に見たいならピアをフォローする。
 
-    async updateWorld(worldId: string, definition: WorldDefinition): Promise<ResolvedWorld | undefined> {
+    async updateWorld(
+        worldId: string,
+        definition: WorldDefinition,
+        lock?: ModLock | null,
+    ): Promise<ResolvedWorld | undefined> {
         const existing = await worldRepository.findByName(worldId);
         if (!existing) return undefined;
+        const { lock: embeddedLock, ...cleanSpec } = definition.spec;
         const updated = await worldRepository.update(existing.id, {
             version: definition.metadata.version,
-            definition,
+            definition: { ...definition, spec: cleanSpec },
+            lock: lock ?? embeddedLock ?? null,
         });
         if (!updated) return undefined;
         const resolved = this._resolveWorld(updated);
@@ -581,9 +598,20 @@ class WorldRegistry {
         return {
             ...definitionToResolved(def, this.selfWorldUrl(record.name), this.localSource(record.name), {
                 authorId: record.authorId,
+                lock: record.lock ?? undefined,
             }),
             id: record.name,
         };
+    }
+
+    /**
+     * ワールドの mod ロックを返す（兄弟エンドポイント /worlds/:id/lock 用）。
+     * DB ユーザーワールドは別カラム、official（ファイル）は解決済み ResolvedWorld.lock から。
+     */
+    async getWorldLock(worldId: string): Promise<ModLock | undefined> {
+        const record = await worldRepository.findByName(worldId);
+        if (record) return record.lock ?? undefined;
+        return this._index.get(worldId)?.lock;
     }
 
     /** ResolvedWorld(+DB record) → WorldListItem。 */

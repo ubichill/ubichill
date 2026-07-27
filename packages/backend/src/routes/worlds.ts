@@ -1,11 +1,23 @@
 import { worldRepository } from '@ubichill/db';
-import { LIMITS, WorldCreateInputSchema, WorldDefinitionSchema } from '@ubichill/shared';
+import { LIMITS, type ModLock, ModLockSchema, WorldCreateInputSchema, WorldDefinitionSchema } from '@ubichill/shared';
 import { Router } from 'express';
 import yaml from 'yaml';
 import { optionalAuth, requireAuth } from '../middleware/auth';
 import { worldRegistry } from '../services/worldRegistry';
 
 const router = Router();
+
+/**
+ * リクエスト body の `lock` を検証する。
+ * - undefined/null → undefined（lock 無しで保存）
+ * - 妥当な ModLock → その値
+ * - それ以外 → 'invalid'（呼び出し側が 400 を返す）
+ */
+function parseOptionalLock(input: unknown): ModLock | undefined | 'invalid' {
+    if (input === undefined || input === null) return undefined;
+    const parsed = ModLockSchema.safeParse(input);
+    return parsed.success ? parsed.data : 'invalid';
+}
 
 /**
  * POST /api/v1/worlds/reload
@@ -171,13 +183,19 @@ router.post('/yaml', requireAuth, async (req, res) => {
             return;
         }
 
-        const { yaml: yamlText } = req.body as { yaml?: unknown };
+        const { yaml: yamlText, lock: lockInput } = req.body as { yaml?: unknown; lock?: unknown };
         if (typeof yamlText !== 'string' || yamlText.length === 0) {
             res.status(400).json({ error: 'yaml フィールドが必要です' });
             return;
         }
         if (yamlText.length > LIMITS.MAX_YAML_SIZE) {
             res.status(413).json({ error: `YAML が大きすぎます（最大 ${LIMITS.MAX_YAML_SIZE} bytes）` });
+            return;
+        }
+        // lock は definition とは別に受け取り別カラム保存する（人間 YAML はクリーンに保つ）。
+        const lock = parseOptionalLock(lockInput);
+        if (lock === 'invalid') {
+            res.status(400).json({ error: 'lock フィールドが不正です' });
             return;
         }
 
@@ -190,7 +208,7 @@ router.post('/yaml', requireAuth, async (req, res) => {
             return;
         }
 
-        const world = await worldRegistry.createFromYaml(req.user.id, req.user.name, yamlText);
+        const world = await worldRegistry.createFromYaml(req.user.id, req.user.name, yamlText, lock);
         res.status(201).json(world);
     } catch (error) {
         const message = error instanceof Error ? error.message : 'YAML 解析に失敗しました';
@@ -249,6 +267,28 @@ router.get('/:worldId/yaml', optionalAuth, async (req, res) => {
 });
 
 /**
+ * GET /api/v1/worlds/:worldId/lock
+ * ワールドの mod 完全性ロックを返す（兄弟ファイル配信）。
+ *
+ * lock は人間が書く YAML には埋めず、この公開エンドポイントで別配信する。
+ * 他インスタンス/クローラが正規 URL から {@link lockUrlFor} で導出して取得する。
+ * lock 未設定のワールドは 404（＝外部 provenance ではロード側で lock-missing 拒否になる）。
+ */
+router.get('/:worldId/lock', optionalAuth, async (req, res) => {
+    try {
+        const lock = await worldRegistry.getWorldLock(req.params.worldId as string);
+        if (!lock) {
+            res.status(404).json({ error: 'Lock not found' });
+            return;
+        }
+        res.json(lock);
+    } catch (error) {
+        console.error('ワールドlock取得エラー:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
  * PUT /api/v1/worlds/:worldId/yaml
  * YAML テキストでワールド定義を更新（認証必須、作成者のみ）
  * body: { yaml: string }
@@ -274,13 +314,18 @@ router.put('/:worldId/yaml', requireAuth, async (req, res) => {
             return;
         }
 
-        const { yaml: yamlText } = req.body as { yaml?: unknown };
+        const { yaml: yamlText, lock: lockInput } = req.body as { yaml?: unknown; lock?: unknown };
         if (typeof yamlText !== 'string' || yamlText.length === 0) {
             res.status(400).json({ error: 'yaml フィールドが必要です' });
             return;
         }
         if (yamlText.length > LIMITS.MAX_YAML_SIZE) {
             res.status(413).json({ error: `YAML が大きすぎます（最大 ${LIMITS.MAX_YAML_SIZE} bytes）` });
+            return;
+        }
+        const lock = parseOptionalLock(lockInput);
+        if (lock === 'invalid') {
+            res.status(400).json({ error: 'lock フィールドが不正です' });
             return;
         }
 
@@ -300,7 +345,7 @@ router.put('/:worldId/yaml', requireAuth, async (req, res) => {
             metadata: { ...result.data.metadata, name: worldId },
         };
 
-        const updated = await worldRegistry.updateWorld(worldId, definition);
+        const updated = await worldRegistry.updateWorld(worldId, definition, lock);
         if (!updated) {
             res.status(404).json({ error: 'World not found' });
             return;

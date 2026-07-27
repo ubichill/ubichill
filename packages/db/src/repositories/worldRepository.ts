@@ -1,4 +1,4 @@
-import type { WorldDefinition } from '@ubichill/shared';
+import type { ModLock, WorldDefinition } from '@ubichill/shared';
 import { count, eq } from 'drizzle-orm';
 import { db } from '../index';
 import { worlds } from '../schema';
@@ -8,12 +8,15 @@ export interface CreateWorldInput {
     name: string;
     version: string;
     definition: WorldDefinition;
+    /** mod 完全性ロック（definition とは別カラムに保存）。 */
+    lock?: ModLock | null;
 }
 
 export interface UpdateWorldInput {
     name?: string;
     version?: string;
     definition?: WorldDefinition;
+    lock?: ModLock | null;
 }
 
 export type WorldRecord = typeof worlds.$inferSelect;
@@ -73,6 +76,7 @@ export const worldRepository = {
                 name: input.name,
                 version: input.version,
                 definition: input.definition,
+                lock: input.lock ?? null,
             })
             .returning();
         return results[0];
@@ -110,6 +114,7 @@ export const worldRepository = {
             const updated = await this.update(existing.id, {
                 version: input.version,
                 definition: input.definition,
+                lock: input.lock ?? null,
             });
             // updateは既存レコードを更新するので、必ずWorldRecordが返る
             if (!updated) {
