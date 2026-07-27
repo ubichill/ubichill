@@ -10,6 +10,7 @@ import {
 import {
     ENV_KEYS,
     type ModLock,
+    ModLockSchema,
     type ResolvedWorld,
     SERVER_CONFIG,
     type WorldCreateInput,
@@ -509,9 +510,12 @@ class WorldRegistry {
             }
             const def = result.data;
             const id = def.metadata.name;
+            // 兄弟 `<name>.lock.json` があれば読み込む（分離方針＝YAML には埋めない）。
+            const lock = this._readSiblingLock(filePath);
             // official ワールドは DB に持たずメモリ索引のみ（DB 依存の排除）
             const resolved = definitionToResolved(parsed, this.selfWorldUrl(id), this.localSource(id), {
                 authorId: SYSTEM_AUTHOR_ID,
+                lock,
             });
             this._index.set(id, resolved);
             this._urlIndex.set(resolved.url, id);
@@ -520,6 +524,18 @@ class WorldRegistry {
             return resolved;
         } catch (err) {
             console.error(`❌ ローカルワールド読み込み失敗: ${filePath}`, err);
+            return undefined;
+        }
+    }
+
+    /** official ワールド YAML の兄弟 `<name>.lock.json` を読む（fs 版 sibling lock）。無ければ undefined。 */
+    private _readSiblingLock(worldFilePath: string): ModLock | undefined {
+        const lockPath = worldFilePath.replace(/\.ya?ml$/i, '.lock.json');
+        if (!fs.existsSync(lockPath)) return undefined;
+        try {
+            const parsed = ModLockSchema.safeParse(JSON.parse(fs.readFileSync(lockPath, 'utf-8')));
+            return parsed.success ? parsed.data : undefined;
+        } catch {
             return undefined;
         }
     }

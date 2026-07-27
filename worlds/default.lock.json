@@ -1,0 +1,88 @@
+{
+  "lockVersion": 1,
+  "mods": {
+    "video-player": {
+      "id": "video-player",
+      "version": "2.1.0",
+      "manifestIntegrity": "sha256-n/Psv+OO+P0SpeMbnb3CqOhM1QmQNxsSx120cyHcSiM=",
+      "components": {
+        "video-player:screen": {
+          "workerUrl": "./screen/index.62113a7f.js",
+          "integrity": "sha256-YhE6fy4AgW9YrkyS9IskyHLQl4oTMGK2pMVQpnfFaXg=",
+          "capabilities": [
+            "event:emit",
+            "media:control"
+          ]
+        },
+        "video-player:controls": {
+          "workerUrl": "./controls/index.2003d3c8.js",
+          "integrity": "sha256-IAPTyL0KeK9106SCqGbGR4fA4rbgEdSMq8Zu4hWG6v0=",
+          "capabilities": [
+            "event:emit",
+            "scene:read",
+            "scene:update",
+            "ui:render"
+          ]
+        },
+        "video-player:playlist": {
+          "workerUrl": "./playlist/index.87ad116c.js",
+          "integrity": "sha256-h60RbFbVhwD9/ShpdJTSO4jsa5LV10ogXqZ5DgerUQQ=",
+          "capabilities": [
+            "event:emit",
+            "scene:read",
+            "scene:update",
+            "ui:render"
+          ]
+        },
+        "video-player:search": {
+          "workerUrl": "./search/index.2ee59a37.js",
+          "integrity": "sha256-LuWaN/t3EpXrOvMr22v3E7Fr6L68TtuIP370U+a4lXs=",
+          "capabilities": [
+            "event:emit",
+            "net:fetch",
+            "scene:read",
+            "ui:render"
+          ]
+        }
+      }
+    },
+    "pen": {
+      "id": "pen",
+      "version": "2.0.0",
+      "manifestIntegrity": "sha256-yVAPiusOupC8E4wb2Lp1ZJ1y0v4sD7GW1jpLrkmUFUg=",
+      "components": {
+        "pen:canvas": {
+          "workerUrl": "./canvas/index.d6c19ea7.js",
+          "integrity": "sha256-1sGepxPaSyfjACiKHtdbo1o5MSgvngRXFwHc4KshmKs=",
+          "capabilities": [
+            "canvas:draw",
+            "event:broadcast",
+            "event:emit",
+            "scene:read",
+            "scene:update"
+          ]
+        },
+        "pen:tray": {
+          "workerUrl": "./tray/index.2269a184.js",
+          "integrity": "sha256-ImmhhD102fBdy1YsXy0DRLletNEfknEKladn/6RKVGs=",
+          "capabilities": [
+            "event:emit",
+            "scene:read",
+            "ui:render"
+          ]
+        },
+        "pen:pen": {
+          "workerUrl": "./pen/index.49e3f16d.js",
+          "integrity": "sha256-SePxbRm9teVrsUtO0ZB74oglL7mB6U3m3H4AOmf1JGw=",
+          "capabilities": [
+            "event:emit",
+            "host:message",
+            "scene:read",
+            "scene:update",
+            "ui:render"
+          ]
+        }
+      }
+    }
+  }
+}
