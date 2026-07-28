@@ -13,6 +13,7 @@
  */
 
 import {
+    collectModIds,
     DEFAULTS,
     type InitialEntity,
     LIMITS,
@@ -171,16 +172,8 @@ function collectMods(
     const versionByName = new Map<string, string | undefined>();
     for (const d of dependencies ?? []) versionByName.set(d.name, d.source?.version);
 
-    const ids = new Set<string>();
-    const walk = (e: InitialEntity): void => {
-        for (const c of e.components) {
-            const modId = c.type.split(':')[0];
-            if (modId) ids.add(modId);
-        }
-        for (const child of e.children ?? []) walk(child);
-    };
-    for (const e of entities) walk(e);
-    for (const name of versionByName.keys()) ids.add(name);
+    // entity 走査は shared の collectModIds に一本化。dependency 宣言分を足す。
+    const ids = new Set<string>([...collectModIds(entities), ...versionByName.keys()]);
 
     return [...ids].map((id) => ({ id, version: versionByName.get(id) }));
 }

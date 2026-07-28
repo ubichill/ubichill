@@ -4,22 +4,11 @@
  * 各 mod がビルド時に出力した `v<ver>/lock.json`（ModLockEntry）を集めて {@link ModLock} を作る。
  * 取得の transport（HTTP / fs）は `getLockEntry` 注入で分離する。frontend は HTTP、CLI は fs。
  */
-import { type InitialEntity, type ModLock, type ModLockEntry, ModLockEntrySchema } from '@ubichill/shared';
+import { type ModLock, type ModLockEntry, ModLockEntrySchema } from '@ubichill/shared';
 import type { FetchLike } from './types';
 
-/** initialEntities ツリーを辿り、使用 mod の modId を重複なく集める純関数。 */
-export function collectModIds(entities: InitialEntity[]): string[] {
-    const ids = new Set<string>();
-    const walk = (e: InitialEntity): void => {
-        for (const c of e.components) {
-            const modId = c.type.split(':')[0];
-            if (modId) ids.add(modId);
-        }
-        for (const child of e.children ?? []) walk(child);
-    };
-    for (const e of entities) walk(e);
-    return [...ids];
-}
+// modId 収集ロジックは shared に一本化（backend collectMods と共有）。利便のため再エクスポート。
+export { collectModIds } from '@ubichill/shared';
 
 /** modId → その mod の lock.json 断片（ModLockEntry）。取得不能なら null。 */
 export type LockEntryGetter = (modId: string) => Promise<ModLockEntry | null>;

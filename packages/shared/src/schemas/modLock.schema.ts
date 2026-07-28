@@ -16,8 +16,12 @@ import { z } from 'zod';
 // バスティング用途のまま温存し、lock はフル sha256 を別途保持する。
 // ============================================
 
-/** integrity 文字列（`sha256-<base64>`）。 */
-export const IntegritySchema = z.string().regex(/^sha256-[A-Za-z0-9+/]+=*$/, 'Must be "sha256-<base64>"');
+/**
+ * integrity 文字列（`sha256-<base64>`）。
+ * sha256 は 32 byte ＝ 標準 base64 で必ず 43 文字 + `=` 1 個（計 44）になるため長さも固定する。
+ * 任意長を許すと `sha256-AAAA` のような不正値を弾けない。
+ */
+export const IntegritySchema = z.string().regex(/^sha256-[A-Za-z0-9+/]{43}=$/, 'Must be "sha256-<base64(32byte)>"');
 
 /**
  * lock された 1 つの Component。

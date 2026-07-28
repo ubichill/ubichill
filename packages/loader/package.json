@@ -6,9 +6,7 @@
     "main": "src/index.ts",
     "types": "src/index.ts",
     "dependencies": {
-        "@ubichill/shared": "workspace:*"
-    },
-    "devDependencies": {
+        "@ubichill/shared": "workspace:*",
         "yaml": "^2.5.0"
     }
 }

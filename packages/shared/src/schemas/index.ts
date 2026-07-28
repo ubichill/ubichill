@@ -45,6 +45,7 @@ export {
     AuthorSchema,
     type ComponentType,
     ComponentTypeSchema,
+    collectModIds,
     type EntityComponentDef,
     EntityComponentSchema,
     type EntityTag,

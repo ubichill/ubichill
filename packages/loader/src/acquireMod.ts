@@ -53,6 +53,12 @@ export interface AcquireModOptions {
 const defaultFetch: FetchLike = (input, init) => fetch(input, init as RequestInit) as unknown as ReturnType<FetchLike>;
 
 // ── module スコープのキャッシュ（baseUrl+mod で分離）─────────────
+// インスタンス跨ぎで意図的に共有する（同じ mod を複数ワールドで使い回すため）。TTL は持たない:
+//  - manifest は `baseUrl::mod@version` キー。version が変われば別キー＝新規取得になる。
+//  - HTTP レベルの陳腐化は `{ cache: 'no-store' }` で迂回する。
+//  - worker バイト列はキャッシュしない（毎回取得し hash 照合する）。
+// 開発中に同一 version のまま mod を作り直した場合のみ古い index/manifest を掴むので、
+// その時は resetAcquireCaches() で明示的にクリアする。
 const modIndexCache = new Map<string, Promise<VersionedModJson | null>>();
 const manifestCache = new Map<string, Promise<FetchedManifest | null>>();
 
@@ -101,7 +107,9 @@ async function fetchWorkerBytes(workerUrl: string, entityType: string, f: FetchL
     try {
         const res = await f(workerUrl);
         if (!res.ok) return null;
-        // SPA fallback で index.html が返ると sandbox の new Function() が壊れるため拒否。
+        // 許可するのは javascript / text-plain / 空 のみ。それ以外（SPA fallback の text/html や
+        // 誤って返る application/json 等）は拒否する。HTML/JSON が worker コードに混ざると
+        // sandbox の new Function() が構文エラーで死ぬため、ここで弾く。
         const ct = res.headers.get('content-type') ?? '';
         if (!ct.includes('javascript') && !ct.includes('text/plain') && ct !== '') {
             console.warn(`[loader] worker fetch が非 JS content-type "${ct}" を返した: ${entityType}`);

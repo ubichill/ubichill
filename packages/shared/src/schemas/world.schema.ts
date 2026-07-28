@@ -268,6 +268,24 @@ export const InitialEntitiesSchema = z
         }
     });
 
+/**
+ * initialEntities ツリー（子孫含む）を走査し、使用 mod の modId を重複なく集める純関数。
+ * component 型 `modId:componentName` の modId 部分を拾う。
+ * loader（lock 構築）と backend（collectMods）が共有する単一の走査ロジック。
+ */
+export function collectModIds(entities: InitialEntity[]): string[] {
+    const ids = new Set<string>();
+    const walk = (e: InitialEntity): void => {
+        for (const c of e.components) {
+            const modId = c.type.split(':')[0];
+            if (modId) ids.add(modId);
+        }
+        for (const child of e.children ?? []) walk(child);
+    };
+    for (const e of entities) walk(e);
+    return [...ids];
+}
+
 // ============================================
 // World Permissions（権限設定）
 // ============================================

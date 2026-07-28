@@ -265,7 +265,6 @@ importers:
       '@ubichill/shared':
         specifier: workspace:*
         version: link:../shared
-    devDependencies:
       yaml:
         specifier: ^2.5.0
         version: 2.8.2

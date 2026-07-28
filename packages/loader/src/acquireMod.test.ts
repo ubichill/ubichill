@@ -140,6 +140,21 @@ describe('acquireMod', () => {
         expect(r).toBe('data-only');
     });
 
+    it('lockEntry はあるが対象 component が lock に無い + 外部 → lock-missing 拒否', async () => {
+        // mod（pen）の lock はあるが components が空＝この entity の hash が固定されていない。
+        // manifest には entity が存在するので取得は進むが、lock 未記載として拒否されるべき。
+        const r = await acquireMod(TYPE, {
+            baseUrl: BASE,
+            lock: {
+                lockVersion: 1,
+                mods: { [MOD]: { id: MOD, version: VER, manifestIntegrity: sri(manifestJson), components: {} } },
+            },
+            sourceKind: 'github',
+            fetchImpl: fakeFetch(goodRoutes()),
+        });
+        expect(r).toEqual({ rejected: 'lock-missing' });
+    });
+
     it('コロンを含まない entityType は not-found', async () => {
         const r = await acquireMod('nocolon', { baseUrl: BASE, sourceKind: 'local', fetchImpl: fakeFetch({}) });
         expect(r).toBe('not-found');
