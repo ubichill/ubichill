@@ -12,6 +12,10 @@ overrides:
 importers:
 
   .:
+    dependencies:
+      '@ubichill/shared':
+        specifier: workspace:*
+        version: link:packages/shared
     devDependencies:
       '@biomejs/biome':
         specifier: ^2.3.13

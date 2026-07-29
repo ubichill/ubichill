@@ -169,16 +169,24 @@ function findModJsonFiles(modsDir) {
 // ビルド
 // ============================================================
 
-export async function buildWorker(modJsonPath) {
+/**
+ * @param modJsonPath mod.json への絶対パス
+ * @param options.publicModsDir frontend 配信用 mods/ の出力先（既定: packages/frontend/public/mods）。
+ *   結合テストが実リポジトリを汚さず一時ディレクトリへビルドできるよう注入可能にしている。
+ * @param options.distModsDir CDN 配布用 dist/mods/ の出力先（既定: モジュールスコープの distModsDir）。
+ */
+export async function buildWorker(modJsonPath, options = {}) {
     const modDir = dirname(modJsonPath);
     const modJson = JSON.parse(readFileSync(modJsonPath, 'utf-8'));
 
     const modId = modJson.id;
     const modDirName = basename(modDir);
     const version = modJson.version;
-    const publicModDir = join(root, 'packages', 'frontend', 'public', 'mods', modDirName);
+    const publicModsDir = options.publicModsDir ?? join(root, 'packages', 'frontend', 'public', 'mods');
+    const distModsDirResolved = options.distModsDir ?? distModsDir;
+    const publicModDir = join(publicModsDir, modDirName);
     const publicVersionDir = join(publicModDir, `v${version}`);
-    const distVersionDir = join(distModsDir, modDirName, `v${version}`);
+    const distVersionDir = join(distModsDirResolved, modDirName, `v${version}`);
 
     // tsconfig 検索
     const rootTsconfig = join(modDir, 'tsconfig.json');
@@ -189,8 +197,8 @@ export async function buildWorker(modJsonPath) {
     const rootIndex = JSON.stringify({ id: modId, name: modJson.name, version }, null, 2);
     mkdirSync(publicModDir, { recursive: true });
     writeFileSync(join(publicModDir, 'mod.json'), rootIndex, 'utf-8');
-    mkdirSync(join(distModsDir, modDirName), { recursive: true });
-    writeFileSync(join(distModsDir, modDirName, 'mod.json'), rootIndex, 'utf-8');
+    mkdirSync(join(distModsDirResolved, modDirName), { recursive: true });
+    writeFileSync(join(distModsDirResolved, modDirName, 'mod.json'), rootIndex, 'utf-8');
 
     // ── バージョン付きマニフェスト（ランタイム用・src なし・workerUrl 明示） ──
     // src はビルド時のみ必要なため除去。workerUrl でロード先を明示する。

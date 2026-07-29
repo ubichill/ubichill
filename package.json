@@ -11,6 +11,7 @@
     "docker:down": "node scripts/start-mods.mjs down",
     "build:workers": "node scripts/build-workers.mjs",
     "gen:lock": "tsx packages/loader/src/cli.ts",
+    "verify:mod-locks": "node scripts/verify-mod-locks.mjs",
     "docs:capabilities": "node scripts/gen-capability-docs.mjs",
     "build": "node scripts/build-workers.mjs && turbo build",
     "lint": "biome check .",
@@ -36,6 +37,9 @@
       "esbuild",
       "sharp"
     ]
+  },
+  "dependencies": {
+    "@ubichill/shared": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.13",
