@@ -1,4 +1,4 @@
-import { WorldDefinitionSchema } from '@ubichill/shared';
+import { ModLockSchema, WorldDefinitionSchema } from '@ubichill/shared';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { z } from 'zod';
 
@@ -36,10 +36,12 @@ export const selectFederationPeerSchema = createSelectSchema(federationPeers);
 // worlds
 export const insertWorldSchema = createInsertSchema(worlds, {
     definition: WorldDefinitionSchema,
+    lock: ModLockSchema.optional().nullable(),
 });
 
 export const selectWorldSchema = createSelectSchema(worlds, {
     definition: WorldDefinitionSchema,
+    lock: ModLockSchema.nullable(),
 });
 
 // instances

@@ -1,5 +1,6 @@
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { detectCapabilities } from './build-workers.mjs';
+import { detectCapabilities, sriOf } from './build-workers.mjs';
 
 describe('detectCapabilities（Ubi API の静的検出）', () => {
     it('Ubi.fetch から net:fetch を検出する', () => {
@@ -46,5 +47,23 @@ describe('detectCapabilities（Ubi API の静的検出）', () => {
     it('結果はソート済み・重複なし', () => {
         const caps = detectCapabilities('Ubi.entity.self; Ubi.entity.query(); Ubi.ui.render();');
         expect(caps).toEqual([...new Set(caps)].sort());
+    });
+});
+
+describe('sriOf（lock integrity 生成）', () => {
+    it('sha256-<base64> 形式を返す', () => {
+        expect(sriOf('hello')).toMatch(/^sha256-[A-Za-z0-9+/]+=*$/);
+    });
+
+    it('ロード側と同一バイト列の hash に一致する（utf-8, base64）', () => {
+        const code = 'const x = "日本語も含む";';
+        // フロントは fetch した生バイト列（utf-8）を crypto.subtle で hash する。
+        // 同じバイト列を Buffer 経由で hash した値と一致しなければ照合が破綻する。
+        const expected = `sha256-${createHash('sha256').update(Buffer.from(code, 'utf-8')).digest('base64')}`;
+        expect(sriOf(code)).toBe(expected);
+    });
+
+    it('1 バイトの差分で integrity が変わる（差し替え検知）', () => {
+        expect(sriOf('abc')).not.toBe(sriOf('abd'));
     });
 });

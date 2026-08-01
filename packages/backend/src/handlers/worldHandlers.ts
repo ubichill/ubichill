@@ -298,6 +298,10 @@ export async function sendWorldSnapshot(socket: TypedSocket, instanceId: string,
         availableComponents: [],
         activeMods,
         environment,
+        // mod 完全性ロックと provenance をクライアントへ渡す。外部ワールドは
+        // クライアント側のロード時に lock と hash 照合して不一致 mod を拒否する。
+        lock: world?.lock,
+        sourceKind: world?.source.kind,
     };
     socket.emit('world:snapshot', snapshotPayload);
     logger.debug(

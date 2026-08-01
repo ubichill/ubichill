@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ModLockSchema } from './modLock.schema';
 
 // ============================================
 // 定数
@@ -267,6 +268,24 @@ export const InitialEntitiesSchema = z
         }
     });
 
+/**
+ * initialEntities ツリー（子孫含む）を走査し、使用 mod の modId を重複なく集める純関数。
+ * component 型 `modId:componentName` の modId 部分を拾う。
+ * loader（lock 構築）と backend（collectMods）が共有する単一の走査ロジック。
+ */
+export function collectModIds(entities: InitialEntity[]): string[] {
+    const ids = new Set<string>();
+    const walk = (e: InitialEntity): void => {
+        for (const c of e.components) {
+            const modId = c.type.split(':')[0];
+            if (modId) ids.add(modId);
+        }
+        for (const child of e.children ?? []) walk(child);
+    };
+    for (const e of entities) walk(e);
+    return [...ids];
+}
+
 // ============================================
 // World Permissions（権限設定）
 // ============================================
@@ -314,6 +333,9 @@ export const WorldDefinitionSchema = z.object({
         dependencies: z.array(DependencySchema).optional(),
         initialEntities: InitialEntitiesSchema,
         permissions: WorldPermissionsSchema.optional(),
+        // mod 完全性ロック（保存時に焼き込む）。外部 provenance のワールドでは
+        // ロード時にこの hash と照合し、不一致 mod の実行を拒否する。
+        lock: ModLockSchema.optional(),
     }),
 });
 
@@ -377,6 +399,8 @@ export const ResolvedWorldSchema = z.object({
     initialEntities: z.array(InitialEntitySchema),
     /** このワールドが使う mod 一覧（component 型と dependencies から算出。version は dependency 宣言由来）。 */
     mods: z.array(WorldModSchema).default([]),
+    /** mod 完全性ロック（あれば）。ロード時の hash 照合・capability 天井に使う。 */
+    lock: ModLockSchema.optional(),
 });
 
 export type ResolvedWorld = z.infer<typeof ResolvedWorldSchema>;

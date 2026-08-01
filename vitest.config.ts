@@ -15,6 +15,7 @@ export default defineConfig({
     resolve: {
         alias: {
             '@ubichill/shared': srcPath('./packages/shared/src/index.ts'),
+            '@ubichill/loader': srcPath('./packages/loader/src/index.ts'),
             '@ubichill/ecs': srcPath('./packages/ecs/src/index.ts'),
             '@ubichill/sdk': srcPath('./packages/sdk/src/index.ts'),
             '@ubichill/ui-renderer': srcPath('./packages/ui-renderer/src/index.ts'),

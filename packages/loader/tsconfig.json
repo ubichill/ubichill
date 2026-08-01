@@ -1,0 +1,15 @@
+{
+    "compilerOptions": {
+        "target": "ES2025",
+        "lib": ["ES2025", "DOM"],
+        "types": ["node"],
+        "strict": true,
+        "noEmit": true,
+        "module": "esnext",
+        "moduleResolution": "bundler",
+        "esModuleInterop": true,
+        "resolveJsonModule": true,
+        "declaration": true
+    },
+    "include": ["src/**/*.ts"]
+}

@@ -123,6 +123,15 @@ export function detectCapabilities(code) {
         .sort();
 }
 
+/**
+ * バイト列（utf-8 文字列）の Subresource Integrity 文字列 `sha256-<base64>` を返す。
+ * shared の formatIntegrity と同一規約。ロード側（crypto.subtle）が同じバイト列を
+ * hash して照合するため、書き出す文字列そのものを渡すこと。
+ */
+export function sriOf(text) {
+    return `sha256-${createHash('sha256').update(text, 'utf-8').digest('base64')}`;
+}
+
 async function bundleWorker(entryPath, tsconfig, defines) {
     const result = await esbuild.build({
         entryPoints: [entryPath],
@@ -160,16 +169,24 @@ function findModJsonFiles(modsDir) {
 // ビルド
 // ============================================================
 
-export async function buildWorker(modJsonPath) {
+/**
+ * @param modJsonPath mod.json への絶対パス
+ * @param options.publicModsDir frontend 配信用 mods/ の出力先（既定: packages/frontend/public/mods）。
+ *   結合テストが実リポジトリを汚さず一時ディレクトリへビルドできるよう注入可能にしている。
+ * @param options.distModsDir CDN 配布用 dist/mods/ の出力先（既定: モジュールスコープの distModsDir）。
+ */
+export async function buildWorker(modJsonPath, options = {}) {
     const modDir = dirname(modJsonPath);
     const modJson = JSON.parse(readFileSync(modJsonPath, 'utf-8'));
 
     const modId = modJson.id;
     const modDirName = basename(modDir);
     const version = modJson.version;
-    const publicModDir = join(root, 'packages', 'frontend', 'public', 'mods', modDirName);
+    const publicModsDir = options.publicModsDir ?? join(root, 'packages', 'frontend', 'public', 'mods');
+    const distModsDirResolved = options.distModsDir ?? distModsDir;
+    const publicModDir = join(publicModsDir, modDirName);
     const publicVersionDir = join(publicModDir, `v${version}`);
-    const distVersionDir = join(distModsDir, modDirName, `v${version}`);
+    const distVersionDir = join(distModsDirResolved, modDirName, `v${version}`);
 
     // tsconfig 検索
     const rootTsconfig = join(modDir, 'tsconfig.json');
@@ -180,8 +197,8 @@ export async function buildWorker(modJsonPath) {
     const rootIndex = JSON.stringify({ id: modId, name: modJson.name, version }, null, 2);
     mkdirSync(publicModDir, { recursive: true });
     writeFileSync(join(publicModDir, 'mod.json'), rootIndex, 'utf-8');
-    mkdirSync(join(distModsDir, modDirName), { recursive: true });
-    writeFileSync(join(distModsDir, modDirName, 'mod.json'), rootIndex, 'utf-8');
+    mkdirSync(join(distModsDirResolved, modDirName), { recursive: true });
+    writeFileSync(join(distModsDirResolved, modDirName, 'mod.json'), rootIndex, 'utf-8');
 
     // ── バージョン付きマニフェスト（ランタイム用・src なし・workerUrl 明示） ──
     // src はビルド時のみ必要なため除去。workerUrl でロード先を明示する。
@@ -197,6 +214,8 @@ export async function buildWorker(modJsonPath) {
 
     // バージョン付きマニフェスト用 components（src 除去・workerUrl 追加、フル型キー化）
     const versionedComponents = {};
+    // lock.json 用 components（worker を持つ Component のみ。integrity=フル sha256）。
+    const lockComponents = {};
 
     for (const [componentName, componentEntry] of Object.entries(componentEntries)) {
         // ワールド YAML / runtime からは "modId:componentName" で参照する
@@ -242,10 +261,19 @@ export async function buildWorker(modJsonPath) {
 
         // workerUrl を明示、src（ビルド時のみ）は除去。capabilities は自動生成値で上書き。
         const { src: _src, ...runtimeMeta } = typeof componentEntry === 'string' ? {} : componentEntry;
+        const workerUrl = `./${componentName}/${outFilename}`;
         versionedComponents[componentType] = {
             ...runtimeMeta,
             capabilities,
-            workerUrl: `./${componentName}/${outFilename}`,
+            workerUrl,
+        };
+
+        // lock: worker バイト列のフル sha256 + capability 天井を固定する。
+        // integrity はロード側が同一バイト列（書き出す code そのもの）を hash して照合する。
+        lockComponents[componentType] = {
+            workerUrl,
+            integrity: sriOf(code),
+            capabilities,
         };
 
         console.log(
@@ -277,6 +305,23 @@ export async function buildWorker(modJsonPath) {
     );
     writeFileSync(join(distVersionDir, 'manifest.json'), versionedManifest, 'utf-8');
     writeFileSync(join(publicVersionDir, 'manifest.json'), versionedManifest, 'utf-8');
+
+    // ── lock.json（ModLockEntry 形状）─────────────────────────────
+    // ワールド保存時にこの断片を取り込み spec.lock に固定する。
+    // manifestIntegrity は上で書き出した manifest 文字列そのものの hash。
+    const lock = JSON.stringify(
+        {
+            id: modId,
+            version,
+            manifestIntegrity: sriOf(versionedManifest),
+            components: lockComponents,
+        },
+        null,
+        2,
+    );
+    writeFileSync(join(distVersionDir, 'lock.json'), lock, 'utf-8');
+    writeFileSync(join(publicVersionDir, 'lock.json'), lock, 'utf-8');
+    console.log(`🔒 [${modId}] lock.json (${Object.keys(lockComponents).length} components)`);
 }
 
 // ============================================================

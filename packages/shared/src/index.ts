@@ -1,3 +1,5 @@
+import type { ModLock } from './schemas/modLock.schema';
+
 // ============================================
 // User Types
 // ============================================
@@ -171,6 +173,10 @@ export interface WorldSnapshotPayload {
     /** アクティブなmodIDのリスト */
     activeMods: string[];
     environment: WorldEnvironmentData;
+    /** ワールドに焼かれた mod 完全性ロック（あれば）。ロード時の hash 照合に使う。 */
+    lock?: ModLock;
+    /** ワールドの provenance kind（local/github/...）。lock enforcement の分岐に使う。 */
+    sourceKind?: string;
 }
 
 // ============================================
@@ -404,6 +410,7 @@ export const SERVER_CONFIG = {
 
 export * from './mod/capability';
 export * from './mod/errors';
+export * from './mod/modLock';
 export * from './mod/permission';
 export * from './mod/protocol';
 export * from './mod/types';

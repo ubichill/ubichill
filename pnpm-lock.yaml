@@ -12,6 +12,10 @@ overrides:
 importers:
 
   .:
+    dependencies:
+      '@ubichill/shared':
+        specifier: workspace:*
+        version: link:packages/shared
     devDependencies:
       '@biomejs/biome':
         specifier: ^2.3.13
@@ -195,6 +199,9 @@ importers:
 
   packages/frontend:
     dependencies:
+      '@ubichill/loader':
+        specifier: workspace:*
+        version: link:../loader
       '@ubichill/react':
         specifier: workspace:*
         version: link:../react
@@ -256,6 +263,15 @@ importers:
       vite:
         specifier: ^8.0.10
         version: 8.0.10(@types/node@22.19.7)(esbuild@0.28.0)(tsx@4.21.0)(yaml@2.8.2)
+
+  packages/loader:
+    dependencies:
+      '@ubichill/shared':
+        specifier: workspace:*
+        version: link:../shared
+      yaml:
+        specifier: ^2.5.0
+        version: 2.8.2
 
   packages/react:
     dependencies:

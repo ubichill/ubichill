@@ -13,9 +13,12 @@
  */
 
 import {
+    collectModIds,
     DEFAULTS,
     type InitialEntity,
     LIMITS,
+    type ModLock,
+    ModLockSchema,
     type ResolvedWorld,
     type WorldDefinition,
     WorldDefinitionSchema,
@@ -63,9 +66,47 @@ export function definitionToResolved(
     parsed: unknown,
     url: string,
     source: WorldSource,
-    extra?: { authorId?: string },
+    extra?: { authorId?: string; lock?: ModLock },
 ): ResolvedWorld {
     return mapToResolved(validateWorldDefinition(parsed, url), url, source, extra);
+}
+
+/**
+ * ワールド URL から mod ロックの兄弟 URL を導出する。
+ * lock は YAML に埋めず別配信するため、解決側はここが指す先を best-effort で取りに行く。
+ * - ubichill 機械 URL `.../api/v1/worlds/:id`(`/yaml`可) → `.../api/v1/worlds/:id/lock`
+ * - 直 YAML URL `*.yaml` / `*.yml`（GitHub raw 等）→ 拡張子を `.lock.json` に置換
+ * - それ以外 → null（兄弟なし。埋め込み `spec.lock` フォールバックに委ねる）
+ */
+export function lockUrlFor(worldUrl: string): string | null {
+    try {
+        const u = new URL(worldUrl);
+        const api = /^(\/api\/v1\/worlds\/[^/]+?)(?:\/yaml)?\/?$/.exec(u.pathname);
+        if (api) return `${u.origin}${api[1]}/lock`;
+        if (/\.ya?ml$/i.test(u.pathname)) {
+            return `${u.origin}${u.pathname.replace(/\.ya?ml$/i, '.lock.json')}${u.search}`;
+        }
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * 兄弟 URL から mod ロックを best-effort で取得する。取得不能・不正は undefined。
+ * 失敗しても解決自体は続行し、埋め込み `spec.lock` フォールバックに委ねる。
+ */
+async function fetchSiblingLock(worldUrl: string): Promise<ModLock | undefined> {
+    const lockUrl = lockUrlFor(worldUrl);
+    if (!lockUrl) return undefined;
+    try {
+        const res = await safeFetch(lockUrl, { headers: { Accept: 'application/json' } });
+        if (!res.ok) return undefined;
+        const parsed = ModLockSchema.safeParse(await res.json());
+        return parsed.success ? parsed.data : undefined;
+    } catch {
+        return undefined;
+    }
 }
 
 /** unknown をパース・マイグレーション・検証して WorldDefinition にする（不正は throw）。 */
@@ -83,7 +124,7 @@ function mapToResolved(
     def: WorldDefinition,
     url: string,
     source: WorldSource,
-    extra?: { authorId?: string },
+    extra?: { authorId?: string; lock?: ModLock },
 ): ResolvedWorld {
     const env = def.spec.environment ?? {
         backgroundColor: DEFAULTS.WORLD_ENVIRONMENT.backgroundColor,
@@ -115,6 +156,8 @@ function mapToResolved(
         dependencies: def.spec.dependencies?.map((d) => ({ name: d.name, source: d.source })),
         initialEntities,
         mods: collectMods(initialEntities, def.spec.dependencies),
+        // 別配信の lock（兄弟ファイル / DB カラム）を優先し、無ければ埋め込みフォールバック。
+        lock: extra?.lock ?? def.spec.lock,
     };
 }
 
@@ -129,16 +172,8 @@ function collectMods(
     const versionByName = new Map<string, string | undefined>();
     for (const d of dependencies ?? []) versionByName.set(d.name, d.source?.version);
 
-    const ids = new Set<string>();
-    const walk = (e: InitialEntity): void => {
-        for (const c of e.components) {
-            const modId = c.type.split(':')[0];
-            if (modId) ids.add(modId);
-        }
-        for (const child of e.children ?? []) walk(child);
-    };
-    for (const e of entities) walk(e);
-    for (const name of versionByName.keys()) ids.add(name);
+    // entity 走査は shared の collectModIds に一本化。dependency 宣言分を足す。
+    const ids = new Set<string>([...collectModIds(entities), ...versionByName.keys()]);
 
     return [...ids].map((id) => ({ id, version: versionByName.get(id) }));
 }
@@ -156,9 +191,10 @@ export function resolveWorldFromYaml(
 /** URL を取得して ResolvedWorld に解決する（外部/他インスタンス用）。 */
 export async function resolveWorldFromUrl(url: string, source: WorldSource): Promise<ResolvedWorld> {
     const fetchUrl = toRawGitHubUrl(url);
-    const text = await fetchText(fetchUrl);
+    // 本体 YAML と兄弟 lock を並行取得（lock は best-effort・失敗しても続行）。
+    const [text, lock] = await Promise.all([fetchText(fetchUrl), fetchSiblingLock(url)]);
     // 正規 URL は元の（人間が貼れる）URL を維持する
-    return resolveWorldFromYaml(text, url, source);
+    return definitionToResolved(yaml.parse(text), url, source, { lock });
 }
 
 /** URL を取得し、生定義（配信用）と ResolvedWorld（一覧/入室用）の両方を返す。 */
@@ -166,9 +202,9 @@ export async function resolveWorld(
     url: string,
     source: WorldSource,
 ): Promise<{ definition: WorldDefinition; resolved: ResolvedWorld }> {
-    const text = await fetchText(toRawGitHubUrl(url));
+    const [text, lock] = await Promise.all([fetchText(toRawGitHubUrl(url)), fetchSiblingLock(url)]);
     const definition = validateWorldDefinition(yaml.parse(text), url);
-    return { definition, resolved: definitionToResolved(definition, url, source) };
+    return { definition, resolved: definitionToResolved(definition, url, source, { lock }) };
 }
 
 // ============================================================

@@ -1,0 +1,12 @@
+{
+    "name": "@ubichill/loader",
+    "version": "1.0.0",
+    "description": "mod の取得・完全性検証・ロック構築。browser+Node 両対応・React/DOM 非依存。frontend と CLI が共有する。",
+    "sideEffects": false,
+    "main": "src/index.ts",
+    "types": "src/index.ts",
+    "dependencies": {
+        "@ubichill/shared": "workspace:*",
+        "yaml": "^2.5.0"
+    }
+}

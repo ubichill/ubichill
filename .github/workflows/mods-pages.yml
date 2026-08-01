@@ -47,6 +47,11 @@ jobs:
         # dist/mods/ に各modのバンドルが出力される
         run: pnpm build:workers
 
+      # 公開前の fail-closed ゲート: lock.json の integrity が実際に配布するバイト列と
+      # 一致するか独立に再計算して突き合わせる。ズレていれば公開を止める。
+      - name: Verify mod locks
+        run: node scripts/verify-mod-locks.mjs
+
       - name: Checkout gh-pages branch (worktree)
         run: |
           git fetch origin gh-pages --depth=1 2>/dev/null || true

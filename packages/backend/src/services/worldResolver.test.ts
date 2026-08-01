@@ -1,6 +1,12 @@
 import { WorldSourceKind } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
-import { definitionToResolved, normalizeWorldUrl, resolveWorldFromYaml, toRawGitHubUrl } from './worldResolver';
+import {
+    definitionToResolved,
+    lockUrlFor,
+    normalizeWorldUrl,
+    resolveWorldFromYaml,
+    toRawGitHubUrl,
+} from './worldResolver';
 
 const VALID_YAML = `
 apiVersion: ubichill.com/v1alpha1
@@ -49,6 +55,26 @@ describe('normalizeWorldUrl', () => {
     });
     it('不正な文字列は入力を返す', () => {
         expect(normalizeWorldUrl('not a url')).toBe('not a url');
+    });
+});
+
+describe('lockUrlFor（mod ロックの兄弟 URL 導出）', () => {
+    it('機械 URL(.../api/v1/worlds/:id) → .../lock', () => {
+        expect(lockUrlFor('https://h.example/api/v1/worlds/abc')).toBe('https://h.example/api/v1/worlds/abc/lock');
+    });
+    it('/yaml サフィックス付きでも同じ lock URL を導出する', () => {
+        expect(lockUrlFor('https://h.example/api/v1/worlds/abc/yaml')).toBe('https://h.example/api/v1/worlds/abc/lock');
+    });
+    it('直 YAML URL は拡張子を .lock.json に置換（GitHub raw 等）', () => {
+        expect(lockUrlFor('https://raw.githubusercontent.com/o/r/main/worlds/x.yaml')).toBe(
+            'https://raw.githubusercontent.com/o/r/main/worlds/x.lock.json',
+        );
+        expect(lockUrlFor('https://cdn.example/foo.yml')).toBe('https://cdn.example/foo.lock.json');
+    });
+    it('ワールド一覧や兄弟を導出できない URL は null（埋め込みフォールバックに委ねる）', () => {
+        expect(lockUrlFor('https://h.example/api/v1/worlds')).toBeNull();
+        expect(lockUrlFor('https://example.com/some/page')).toBeNull();
+        expect(lockUrlFor('not a url')).toBeNull();
     });
 });
 
