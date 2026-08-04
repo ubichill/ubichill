@@ -2,15 +2,15 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { buildJs, buildPackageJson, ENTRIES } from './build-sdk.mjs';
+import { buildJs, buildPackageJson, ENTRIES } from './build.mjs';
 
 // このファイルは高速なチェックのみ（buildJs は esbuild で ~数十ms）。
 // buildDts（TS Compiler API フルコンパイル、実測20秒級・不可避）を要するテストは
-// scripts/build-sdk.dts.verify.mjs に分離した（vitest の既定 include には引っ掛からない
+// build.dts.verify.mjs に分離した（vitest の既定 include には引っ掛からない
 // ファイル名にして、通常の `pnpm test`/開発ループを重くしない。CI/検証時に明示的に走らせる）。
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const sdkLicensePath = join(__dirname, '..', 'packages', 'sdk', 'LICENSE');
+const sdkLicensePath = join(__dirname, 'LICENSE');
 const INDEX_ENTRY = ENTRIES.find((e) => e.name === 'index');
 
 describe('buildJs（SDK 完全バンドル）', () => {
@@ -44,7 +44,7 @@ describe('buildPackageJson', () => {
         expect(pkg.files).toContain('LICENSE');
     });
 
-    it('packages/sdk/LICENSE が実在し MIT 表記を含む（build:sdk が dist-npm へコピーする実体）', () => {
+    it('packages/sdk/LICENSE が実在し MIT 表記を含む（build.mjs が dist-npm へコピーする実体）', () => {
         expect(existsSync(sdkLicensePath), 'packages/sdk/LICENSE が見つからない').toBe(true);
         expect(readFileSync(sdkLicensePath, 'utf-8')).toContain('MIT License');
     });

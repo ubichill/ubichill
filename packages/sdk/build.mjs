@@ -1,8 +1,13 @@
 /**
- * build-sdk.mjs
+ * build.mjs
  *
  * `@ubichill/sdk`（ワークスペース内パッケージ、名前は不変）を npm 公開用の
  * 自己完結パッケージ `ubichill`（unscoped）としてビルドする。
+ *
+ * 他パッケージ（shared/db 等）と同様、パッケージ自身が自分のビルド方法を持つ
+ * （`pnpm --filter @ubichill/sdk build`、または `pnpm build:sdk`）。旧 scripts/build-sdk.mjs
+ * から移設（CLI等の公開物を将来 sdk パッケージ内に置けるよう、repo-root の scripts/ には
+ * 汎用ではない単発ロジックを置かない方針に揃えた）。
  *
  * 設計方針:
  * - ワークスペース内の名前・全参照（mods 配下各 tsconfig の paths, sandbox.worker.ts の import,
@@ -13,15 +18,15 @@
  *   （CommandType/UbiError/UbiErrorCode、zod 不使用）のみと確認済み。esbuild で
  *   `external: []`（何も外部化しない）で完全バンドルし、公開パッケージの
  *   `dependencies` をゼロにする。
- * - 型定義: SDK の公開型は `@ubichill/ecs` を丸ごと re-export + `@ubichill/shared` から
- *   55件超を re-export しており、手でローカル型に書き直すのは非現実的。加えて実験で
+ * - 型定義: SDK の公開型は `@ubichill/ecs` を丸ごと re-export + `@ubichill/shared` の
+ *   複数サブパスから re-export しており、手でローカル型に書き直すのは非現実的。加えて実験で
  *   確認済み: 未インストールの外部モジュールを指す型参照は、使われていない型でも
  *   TypeScript が解決を試みて即エラーになる（TS2307）。よって dts-bundle-generator で
  *   `@ubichill/ecs`/`@ubichill/shared` の使用型を実際にインライン展開し、外部モジュール
  *   指定子の残らない単一 .d.ts を生成する。生成後に `from '@ubichill` が残っていないかを
  *   grep で検証し、残っていればビルドを失敗させる（fail-closed）。
  *
- * 使い方: node scripts/build-sdk.mjs [--out-dir=dist-npm]
+ * 使い方: node build.mjs [--out-dir=dist-npm]（cwd は packages/sdk/ 前提）
  */
 import { generateDtsBundle } from 'dts-bundle-generator';
 import * as esbuild from 'esbuild';
@@ -29,13 +34,11 @@ import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = join(__dirname, '..');
-const sdkDir = join(root, 'packages', 'sdk');
+const sdkDir = dirname(fileURLToPath(import.meta.url));
 const sdkTsconfig = join(sdkDir, 'tsconfig.json');
 
 const outDirArg = process.argv.slice(2).find((a) => a.startsWith('--out-dir='));
-const outDir = outDirArg ? join(root, outDirArg.split('=')[1]) : join(root, 'dist-npm');
+const outDir = outDirArg ? join(sdkDir, outDirArg.split('=')[1]) : join(sdkDir, 'dist-npm');
 
 /** 公開する 3 エントリ（SDK の package.json exports と対応）。 */
 export const ENTRIES = [
@@ -61,9 +64,7 @@ export function buildDts(entry) {
     // 残っていたら公開できないパッケージが生成されたことになる。手動確認済みの実験
     // （TS2307）の再発防止。JSDoc コメント中の `{@link import('@ubichill/sdk')...}` 等の
     // 文章的参照は型解決に関与しないため対象外（行頭が `import`/`export` のコード行のみ検査）。
-    const leaked = dts
-        .split('\n')
-        .filter((line) => /^\s*(import|export)\b.*['"]@ubichill\//.test(line));
+    const leaked = dts.split('\n').filter((line) => /^\s*(import|export)\b.*['"]@ubichill\//.test(line));
     if (leaked.length > 0) {
         throw new Error(
             `[build-sdk] ${entry.name}.d.ts に未解決の @ubichill/* 参照が残っている（inline失敗）:\n` +

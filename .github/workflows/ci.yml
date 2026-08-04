@@ -113,7 +113,7 @@ jobs:
 
       # SDK型定義バンドルの検証（buildDts = TS Compiler API フルコンパイル、実測20秒級）。
       # 開発ループを重くしないためファイル名を *.test.mjs にせず既定のvitest includeから
-      # 除外している（scripts/build-sdk.dts.verify.mjs 冒頭コメント参照）。CIでは明示的に実行する。
+      # 除外している（packages/sdk/build.dts.verify.mjs 冒頭コメント参照）。CIでは明示的に実行する。
       - name: Verify SDK type bundle
         run: pnpm verify:sdk-types
 

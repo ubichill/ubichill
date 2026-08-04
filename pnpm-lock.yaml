@@ -38,9 +38,6 @@ importers:
       cross-env:
         specifier: ^10.1.0
         version: 10.1.0
-      dts-bundle-generator:
-        specifier: ^9.5.1
-        version: 9.5.1
       esbuild:
         specifier: 0.28.0
         version: 0.28.0
@@ -336,6 +333,16 @@ importers:
       '@ubichill/shared':
         specifier: workspace:*
         version: link:../shared
+    devDependencies:
+      dts-bundle-generator:
+        specifier: ^9.5.1
+        version: 9.5.1
+      esbuild:
+        specifier: 0.28.0
+        version: 0.28.0
+      rimraf:
+        specifier: ^6.0.1
+        version: 6.1.2
 
   packages/shared:
     dependencies:

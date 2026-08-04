@@ -13,5 +13,14 @@
     "peerDependencies": {
         "@ubichill/ecs": "workspace:*",
         "@ubichill/shared": "workspace:*"
+    },
+    "scripts": {
+        "build": "node build.mjs",
+        "clean": "rimraf dist-npm"
+    },
+    "devDependencies": {
+        "dts-bundle-generator": "^9.5.1",
+        "esbuild": "^0.28.0",
+        "rimraf": "^6.0.1"
     }
 }

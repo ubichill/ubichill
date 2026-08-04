@@ -13,14 +13,18 @@
  *
  * ファイル名を意図的に `*.test.mjs` にしていない（vitest.config.ts の include に引っ掛からない
  * ようにし、通常の `pnpm test`/開発ループを重くしない）。CI・リリース前検証で明示的に実行する:
- *   pnpm exec vitest run scripts/build-sdk.dts.verify.mjs
+ *   pnpm verify:sdk-types
+ *
+ * 注意: execFileSync で `node_modules/.bin/tsgo` を repo ルート基準の相対パスで呼ぶため、
+ * このファイル自体は packages/sdk/ 配下だが、実行は常に repo ルートから
+ * （`pnpm verify:sdk-types` → `vitest run --config vitest.sdk-verify.config.ts`）想定。
  */
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { buildDts, buildJs, buildPackageJson, ENTRIES } from './build-sdk.mjs';
+import { buildDts, buildJs, buildPackageJson, ENTRIES } from './build.mjs';
 
 const INDEX_ENTRY = ENTRIES.find((e) => e.name === 'index');
 

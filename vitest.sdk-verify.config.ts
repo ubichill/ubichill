@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config';
 import baseConfig from './vitest.config';
 
 /**
- * SDK 型定義バンドルの重い検証（scripts/build-sdk.dts.verify.mjs）専用の設定。
+ * SDK 型定義バンドルの重い検証（packages/sdk/build.dts.verify.mjs）専用の設定。
  *
  * このファイルは意図的に vitest.config.ts の既定 include（*.test.mjs）に引っ掛からない
  * 名前にしている（通常の `pnpm test` を重くしないため）。`pnpm verify:sdk-types` から
@@ -15,6 +15,6 @@ export default defineConfig({
     resolve: baseConfig.resolve,
     test: {
         environment: 'node',
-        include: ['scripts/build-sdk.dts.verify.mjs'],
+        include: ['packages/sdk/build.dts.verify.mjs'],
     },
 });

@@ -39,7 +39,10 @@ export default defineConfig({
     },
     test: {
         environment: 'node',
-        include: ['packages/**/src/**/*.test.{ts,tsx}', 'scripts/**/*.test.mjs'],
-        exclude: ['**/node_modules/**', '**/dist/**'],
+        // packages/*/*.test.mjs: パッケージ自身が持つビルドツール（例: packages/sdk/build.mjs）の
+        // テスト。src/ 配下ではなくパッケージルート直下に置く（ビルドスクリプト自体は
+        // ランタイムソースではないため）。
+        include: ['packages/**/src/**/*.test.{ts,tsx}', 'packages/*/*.test.mjs', 'scripts/**/*.test.mjs'],
+        exclude: ['**/node_modules/**', '**/dist/**', '**/dist-npm/**'],
     },
 });
