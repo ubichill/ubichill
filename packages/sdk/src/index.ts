@@ -10,9 +10,30 @@
 
 // ECS + メッセージング型
 export * from '@ubichill/ecs';
-// プロトコル型（@ubichill/shared より選択的に re-export）
+// プロトコル型（@ubichill/shared より選択的に re-export）。
+// barrel（'@ubichill/shared'）ではなく個別サブパスから import する: barrel は
+// schemas/* の zod スキーマ群を抱えており、経由すると SDK の型定義バンドル生成
+// （dts-bundle-generator）が実測で約80倍遅くなる（21秒 → 250ms、mod/entities.ts 参照）。
 export type {
     AvailableComponent,
+    ComponentInstance,
+    CursorPosition,
+    EntityComponent,
+    EntityEphemeralPayload,
+    EntityPatchPayload,
+    User,
+    UserStatus,
+    WorldEntity,
+    WorldEnvironmentData,
+} from '@ubichill/shared/mod/entities';
+// 統一エラー体系: modは UbiError / UbiErrorCode で失敗理由を判別できる
+export { UbiError, UbiErrorCode } from '@ubichill/shared/mod/errors';
+// このSDKが対応するワイヤープロトコルのバージョン（Host側 @ubichill/sandbox が実行時に
+// ハンドシェイクする値と同じ定数）。SDKのnpm semverはこの値と自動連動しないため、
+// mod開発者が「このSDKでビルドしたmodがどのHostバージョンと噛み合うか」を確認する
+// 目安として公開する。実際の互換性チェックは Host 側の checkProtocolCompatibility が担う。
+export { PROTOCOL_VERSION } from '@ubichill/shared/mod/protocol';
+export type {
     CanvasCursorData,
     CanvasStrokeData,
     CmdCanvasCommitStroke,
@@ -30,13 +51,8 @@ export type {
     CmdSceneUnsubscribeEntity,
     CmdSceneUpdateEntity,
     CmdUiShowToast,
-    ComponentInstance,
     CursorMovedCallback,
-    CursorPosition,
     CustomEventCallback,
-    EntityComponent,
-    EntityEphemeralPayload,
-    EntityPatchPayload,
     EntityUpdatedCallback,
     EvtCustom,
     EvtInput,
@@ -65,19 +81,9 @@ export type {
     RpcGetEntityResult,
     RpcNetworkFetchResult,
     TickCallback,
-    User,
     UserJoinedCallback,
     UserLeftCallback,
-    UserStatus,
-    WorldEntity,
-    WorldEnvironmentData,
-} from '@ubichill/shared';
-// 統一エラー体系: modは UbiError / UbiErrorCode で失敗理由を判別できる
-// このSDKが対応するワイヤープロトコルのバージョン（Host側 @ubichill/sandbox が実行時に
-// ハンドシェイクする値と同じ定数）。SDKのnpm semverはこの値と自動連動しないため、
-// mod開発者が「このSDKでビルドしたmodがどのHostバージョンと噛み合うか」を確認する
-// 目安として公開する。実際の互換性チェックは Host 側の checkProtocolCompatibility が担う。
-export { PROTOCOL_VERSION, UbiError, UbiErrorCode } from '@ubichill/shared';
+} from '@ubichill/shared/mod/types';
 export type { Player, State, Ubi, Ui } from './ubi';
 // UbiSDK クラス（実装） + mod 向け公開型
 export { UbiSDK } from './ubi';

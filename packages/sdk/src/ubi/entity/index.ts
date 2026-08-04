@@ -20,7 +20,7 @@
  * ```
  */
 
-import type { ComponentInstance, EntityPatchPayload } from '@ubichill/shared';
+import type { ComponentInstance, EntityPatchPayload } from '@ubichill/shared/mod/entities';
 import type { WorldModule } from '../world';
 
 /** entityId 未指定時の自動採番: `${modId}-${componentName}-<short uuid>` 形式の人間可読 id。 */

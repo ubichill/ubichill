@@ -2,8 +2,7 @@
   "compilerOptions": {
     "target": "ES2025",
     "lib": [
-      "dom",
-      "dom.iterable",
+      "webworker",
       "esnext"
     ],
     "skipLibCheck": true,
@@ -22,18 +21,6 @@
       ],
       "@ubichill/ecs": [
         "../ecs/src/index.ts"
-      ],
-      "@ubichill/sandbox": [
-        "../sandbox/src/index.ts"
-      ],
-      "@ubichill/react": [
-        "../react/src/index.ts"
-      ],
-      "@ubichill/shared": [
-        "../shared/src/index.ts"
-      ],
-      "@ubichill/ui-renderer": [
-        "../ui-renderer/src/index.ts"
       ]
     }
   },

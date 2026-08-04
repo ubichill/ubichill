@@ -6,7 +6,8 @@
  * 呼ぶのは「自エンティティの transform.z を 1 回だけ読む」など稀なケースのみ。
  */
 
-import { CommandType, type ComponentInstance, type EntityPatchPayload } from '@ubichill/shared';
+import type { ComponentInstance, EntityPatchPayload } from '@ubichill/shared/mod/entities';
+import { CommandType } from '@ubichill/shared/mod/protocol';
 import type { RpcFn, SendFn } from '../types';
 
 export type WorldModule = {

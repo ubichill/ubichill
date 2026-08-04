@@ -1,4 +1,5 @@
-import { type CanvasCursorData, type CanvasStrokeData, CommandType } from '@ubichill/shared';
+import { CommandType } from '@ubichill/shared/mod/protocol';
+import type { CanvasCursorData, CanvasStrokeData } from '@ubichill/shared/mod/types';
 import type { SendFn } from '../types';
 
 export type CanvasModule = {

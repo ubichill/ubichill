@@ -21,6 +21,21 @@
             "types": "./dist/mod/types.d.ts",
             "import": "./dist/mod/types.js",
             "require": "./dist/mod/types.js"
+        },
+        "./mod/protocol": {
+            "types": "./dist/mod/protocol.d.ts",
+            "import": "./dist/mod/protocol.js",
+            "require": "./dist/mod/protocol.js"
+        },
+        "./mod/errors": {
+            "types": "./dist/mod/errors.d.ts",
+            "import": "./dist/mod/errors.js",
+            "require": "./dist/mod/errors.js"
+        },
+        "./mod/entities": {
+            "types": "./dist/mod/entities.d.ts",
+            "import": "./dist/mod/entities.js",
+            "require": "./dist/mod/entities.js"
         }
     },
     "scripts": {

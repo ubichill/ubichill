@@ -13,6 +13,7 @@
     "build:sdk": "node scripts/build-sdk.mjs",
     "gen:lock": "tsx packages/loader/src/cli.ts",
     "verify:mod-locks": "node scripts/verify-mod-locks.mjs",
+    "verify:sdk-types": "vitest run --config vitest.sdk-verify.config.ts",
     "docs:capabilities": "node scripts/gen-capability-docs.mjs",
     "build": "pnpm --filter @ubichill/shared build && node scripts/build-workers.mjs && turbo build",
     "lint": "biome check .",

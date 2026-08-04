@@ -1,5 +1,5 @@
 import type { System } from '@ubichill/ecs';
-import { CommandType } from '@ubichill/shared';
+import { CommandType } from '@ubichill/shared/mod/protocol';
 import { describe, expect, it, vi } from 'vitest';
 import type { OmitId } from '../types';
 import { createEventModule, type EventModuleDeps } from './index';

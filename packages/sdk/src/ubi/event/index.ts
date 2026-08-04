@@ -12,7 +12,7 @@
  */
 
 import type { System } from '@ubichill/ecs';
-import { CommandType } from '@ubichill/shared';
+import { CommandType } from '@ubichill/shared/mod/protocol';
 import type { SendFn } from '../types';
 
 /**

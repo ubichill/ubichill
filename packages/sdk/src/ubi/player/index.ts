@@ -8,7 +8,7 @@
  * - syncCursor(opts): 自分のカーソル位置を一定 throttle で host へ通知
  */
 
-import { CommandType } from '@ubichill/shared';
+import { CommandType } from '@ubichill/shared/mod/protocol';
 import type { PresenceEntry, SendFn } from '../types';
 
 export interface PlayerInfo {

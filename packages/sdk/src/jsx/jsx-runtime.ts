@@ -10,7 +10,7 @@
  * UbiSDK が _callHandler(n) を呼んで元の関数を起動する。
  */
 
-import type { VNode, VNodeChild, VNodeProps, VNodeType } from '@ubichill/shared';
+import type { VNode, VNodeChild, VNodeProps, VNodeType } from '@ubichill/shared/mod/vnode';
 
 // @ubichill/shared の index.ts は Zod スキーマをまとめて re-export するため
 // `export { FRAGMENT } from '@ubichill/shared'` にすると Worker バンドルに Zod が混入する。

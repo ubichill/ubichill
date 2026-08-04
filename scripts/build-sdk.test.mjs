@@ -1,57 +1,31 @@
-import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { buildDts, buildJs, buildPackageJson, ENTRIES } from './build-sdk.mjs';
+import { buildJs, buildPackageJson, ENTRIES } from './build-sdk.mjs';
+
+// このファイルは高速なチェックのみ（buildJs は esbuild で ~数十ms）。
+// buildDts（TS Compiler API フルコンパイル、実測20秒級・不可避）を要するテストは
+// scripts/build-sdk.dts.verify.mjs に分離した（vitest の既定 include には引っ掛からない
+// ファイル名にして、通常の `pnpm test`/開発ループを重くしない。CI/検証時に明示的に走らせる）。
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const sdkLicensePath = join(__dirname, '..', 'packages', 'sdk', 'LICENSE');
 const INDEX_ENTRY = ENTRIES.find((e) => e.name === 'index');
 
-// buildJs（esbuild）/ buildDts（TS Compiler API フルコンパイル）はともに重い。
-// ファイル全体で 1 回だけ計算し、全 describe で再利用する（再計算のたびタイムアウトしうる）。
-// ローカル実測 ~22s だが CI ランナーは数倍遅いことがあるため、90s の余裕を持たせる。
-let indexJs;
-let indexDts;
-beforeAll(async () => {
-    indexJs = await buildJs(INDEX_ENTRY);
-    indexDts = buildDts(INDEX_ENTRY);
-}, 90000);
-
 describe('buildJs（SDK 完全バンドル）', () => {
+    let code;
+    beforeAll(async () => {
+        code = await buildJs(INDEX_ENTRY);
+    });
+
     it('zod / Host専用スキーマが混入しない（ecs全体 + shared一部シンボルのみ実行時依存）', () => {
-        expect(indexJs).not.toMatch(/ZodObject|ZodString|ZodError/);
-        expect(indexJs).not.toMatch(/WorldDefinitionSchema|CAPABILITY_CATALOG|PermissionPolicy/);
+        expect(code).not.toMatch(/ZodObject|ZodString|ZodError/);
+        expect(code).not.toMatch(/WorldDefinitionSchema|CAPABILITY_CATALOG|PermissionPolicy/);
     });
 
     it('UbiSDK が実際にバンドルされている', () => {
-        expect(indexJs).toMatch(/UbiSDK/);
-    });
-});
-
-describe('buildDts（型定義バンドル・fail-closed）', () => {
-    it('@ubichill/ecs, @ubichill/shared への import/export 文が残らない', () => {
-        // ここが本題: 未使用の型でも外部モジュール指定子が残っていると consumer 側の
-        // tsc が TS2307 で即エラーになることを実験で確認済み（このテストはその再発防止）。
-        const codeLines = indexDts.split('\n').filter((l) => /^\s*(import|export)\b/.test(l));
-        for (const line of codeLines) {
-            expect(line, `import/export 文に外部 @ubichill/* 参照が残っている: ${line}`).not.toMatch(
-                /['"]@ubichill\//,
-            );
-        }
-    });
-
-    it("JSDocコメント中の自己参照（{@link import('@ubichill/sdk')...}）は誤検知しない", () => {
-        // buildDts 自体のガードが誤検知しないことを確認（コメント行は import/export 文ではない）。
-        expect(indexDts).toContain("import('@ubichill/sdk')"); // コメント中に実在する自己参照
-    });
-
-    it('ecs由来・shared由来の型が実際にインライン展開され中身がある', () => {
-        // System(ecs) / ComponentInstance(shared) の実体定義がインライン化されていること
-        expect(indexDts).toMatch(/\bSystem\b/);
-        expect(indexDts).toMatch(/\bComponentInstance\b/);
+        expect(code).toMatch(/UbiSDK/);
     });
 });
 
@@ -74,58 +48,4 @@ describe('buildPackageJson', () => {
         expect(existsSync(sdkLicensePath), 'packages/sdk/LICENSE が見つからない').toBe(true);
         expect(readFileSync(sdkLicensePath, 'utf-8')).toContain('MIT License');
     });
-});
-
-describe('統合検証: @ubichill/ecs・@ubichill/shared が存在しない環境でも型チェックが通る', () => {
-    it(
-        'ビルド済みパッケージを未インストール環境に置いても tsc がエラーを出さない',
-        () => {
-            const tmp = mkdtempSync(join(tmpdir(), 'ubichill-sdk-consumer-'));
-            try {
-                const pkgDir = join(tmp, 'node_modules', 'ubichill');
-                mkdirSync(pkgDir, { recursive: true });
-
-                writeFileSync(join(pkgDir, 'index.js'), indexJs, 'utf-8');
-                writeFileSync(join(pkgDir, 'index.d.ts'), indexDts, 'utf-8');
-                writeFileSync(join(pkgDir, 'package.json'), buildPackageJson(), 'utf-8');
-
-                writeFileSync(
-                    join(tmp, 'use.ts'),
-                    [
-                        "import type { System, ComponentInstance } from 'ubichill';",
-                        "import { UbiSDK, PROTOCOL_VERSION } from 'ubichill';",
-                        'declare const sys: System;',
-                        'declare const ci: ComponentInstance;',
-                        'console.log(sys, ci, PROTOCOL_VERSION);',
-                        'const sdk = new UbiSDK((d: unknown) => console.log(d));',
-                        'console.log(sdk);',
-                    ].join('\n'),
-                    'utf-8',
-                );
-                writeFileSync(
-                    join(tmp, 'tsconfig.json'),
-                    JSON.stringify({
-                        compilerOptions: {
-                            strict: true,
-                            noEmit: true,
-                            module: 'esnext',
-                            moduleResolution: 'bundler',
-                            skipLibCheck: false,
-                        },
-                        include: ['use.ts'],
-                    }),
-                    'utf-8',
-                );
-
-                const tsgoBin = join(process.cwd(), 'node_modules', '.bin', 'tsgo');
-                // 失敗時は execFileSync が非ゼロ終了で throw する。stdio 'pipe' でエラー本文を拾う。
-                expect(() =>
-                    execFileSync(tsgoBin, ['--noEmit', '-p', '.'], { cwd: tmp, stdio: 'pipe' }),
-                ).not.toThrow();
-            } finally {
-                rmSync(tmp, { recursive: true, force: true });
-            }
-        },
-        60000,
-    );
 });

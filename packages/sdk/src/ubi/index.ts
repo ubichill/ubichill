@@ -1,15 +1,9 @@
 import type { EcsWorld, System, WorkerEvent } from '@ubichill/ecs';
 import { EcsEventType, EcsWorldImpl } from '@ubichill/ecs';
-import {
-    CommandType,
-    type ComponentInstance,
-    type FetchOptions,
-    type ModGuestCommand,
-    type ModHostEvent,
-    type ModWorkerMessage,
-    UbiError,
-    UbiErrorCode,
-} from '@ubichill/shared';
+import type { ComponentInstance } from '@ubichill/shared/mod/entities';
+import { UbiError, UbiErrorCode } from '@ubichill/shared/mod/errors';
+import { CommandType } from '@ubichill/shared/mod/protocol';
+import type { FetchOptions, ModGuestCommand, ModHostEvent, ModWorkerMessage } from '@ubichill/shared/mod/types';
 import { _beginRender, _callHandler, _clearTarget } from '../jsx/jsx-runtime';
 import type { CanvasModule } from './canvas';
 import { createCanvasModule } from './canvas';
