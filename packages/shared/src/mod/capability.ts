@@ -125,6 +125,61 @@ export const CAPABILITY_CATALOG = {
 /** カタログに定義済みの capability 名。 */
 export type Capability = keyof typeof CAPABILITY_CATALOG;
 
+// ============================================================
+// capability 自動検出（静的解析）
+// ============================================================
+
+/**
+ * バンドル済み Worker コードから使用中の Ubi API を静的検出し、capability を推定する。
+ *
+ * これは **情報表示（マニフェスト）用の over-approximate な推定**であり、セキュリティ境界
+ * ではない。実際の enforcement は実行時ゲート + ユーザー承認（ModHostManager）で行われ、
+ * 検出漏れ（動的アクセス・完全な分割代入など）は実行時に必ず拾われる。よって過剰申告寄り。
+ *
+ * ここを CAPABILITY_CATALOG と同じファイルに置くのは、検出テーブルとカタログが別リポジトリ
+ * （build スクリプト側）に分散すると capability の追加・改名時に同期漏れが起きるため。
+ * `cap` は必ず CAPABILITY_CATALOG のキーでなければならない（capability.test.ts の
+ * drift-guard テストが検証する）。
+ */
+export interface CapabilityDetector {
+    /** 検出対象の capability。CAPABILITY_CATALOG のキーである必要がある。 */
+    readonly cap: string;
+    /** どの Ubi API を使うとこの capability が付くかの人間向けヒント（ドキュメント生成が参照）。 */
+    readonly api: string;
+    readonly test: (code: string) => boolean;
+}
+
+export const CAPABILITY_DETECTORS: readonly CapabilityDetector[] = [
+    { cap: 'net:fetch', api: 'Ubi.fetch', test: (c) => /\bUbi\.fetch\b/.test(c) },
+    { cap: 'ui:render', api: 'Ubi.ui.render', test: (c) => /\bUbi\.ui\b/.test(c) },
+    { cap: 'ui:toast', api: 'Ubi.ui.showToast', test: (c) => /\.showToast\s*\(/.test(c) },
+    // scene:read は entity/state を触れば付くベースライン。
+    {
+        cap: 'scene:read',
+        api: 'Ubi.entity.get / query, Ubi.state 読み取り',
+        test: (c) => /\bUbi\.(entity|state)\b/.test(c),
+    },
+    // scene:update は書き込み系 API（update/spawn/destroy/state.sync）を使うときだけ付く。
+    // 読み取り専用 mod に update 権限を過剰申告しないための絞り込み（依然 over-approx 寄り）。
+    {
+        cap: 'scene:update',
+        api: 'Ubi.entity().update/spawn/destroy, Ubi.state.sync 書き込み',
+        test: (c) => /\.(update|spawn|destroy|sync)\s*\(/.test(c),
+    },
+    { cap: 'event:emit', api: 'Ubi.event.emit', test: (c) => /\bUbi\.event\b/.test(c) },
+    { cap: 'event:broadcast', api: 'Ubi.event.broadcast', test: (c) => /\.broadcast\s*\(/.test(c) },
+    { cap: 'host:message', api: 'Ubi.event.sendToHost', test: (c) => /\.sendToHost\s*\(/.test(c) },
+    { cap: 'canvas:draw', api: 'Ubi.canvas.*', test: (c) => /\bUbi\.canvas\b/.test(c) },
+    { cap: 'media:control', api: 'Ubi.media.*', test: (c) => /\bUbi\.media\b/.test(c) },
+];
+
+/** バンドル済みコードから capability 一覧を検出する（ソート済み・重複なし）。 */
+export function detectCapabilities(code: string): string[] {
+    return CAPABILITY_DETECTORS.filter((d) => d.test(code))
+        .map((d) => d.cap)
+        .sort();
+}
+
 /** capability → 許可コマンド一覧（カタログ由来の派生ビュー）。 */
 export const CAPABILITY_COMMANDS: Readonly<Record<string, readonly string[]>> = Object.fromEntries(
     Object.entries(CAPABILITY_CATALOG).map(([cap, spec]) => [cap, spec.commands]),

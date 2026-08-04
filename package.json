@@ -13,7 +13,7 @@
     "gen:lock": "tsx packages/loader/src/cli.ts",
     "verify:mod-locks": "node scripts/verify-mod-locks.mjs",
     "docs:capabilities": "node scripts/gen-capability-docs.mjs",
-    "build": "node scripts/build-workers.mjs && turbo build",
+    "build": "pnpm --filter @ubichill/shared build && node scripts/build-workers.mjs && turbo build",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "typecheck": "pnpm -r exec tsgo --noEmit",

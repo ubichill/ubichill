@@ -87,8 +87,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # typecheck はパッケージ間参照が dist 経由のため、shared/db は事前ビルドが要る。
-      # vitest は resolve.alias でソースへ直結するため build 不要（DB統合テストも
-      # DATABASE_URL 未設定時は describe.skipIf で db import 自体をスキップする）。
+      # vitest 自体は resolve.alias で shared/ecs/sdk/ui-renderer/loader をソースへ直結するため
+      # build 不要（DB統合テストも DATABASE_URL 未設定時は describe.skipIf でスキップ）。
+      # ただし後段の build-workers.mjs は plain node 実行で @ubichill/shared を dist 経由で
+      # import するため、このステップがそれより前に無いと解決に失敗する。
       - name: Build shared & db
         run: |
           pnpm --filter @ubichill/shared build

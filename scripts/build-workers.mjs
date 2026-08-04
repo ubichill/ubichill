@@ -21,11 +21,16 @@
  *      → https://cdn.example.com/mods/video-player/v2.1.0/templates/manifest.json
  */
 
+import { CAPABILITY_DETECTORS, detectCapabilities } from '@ubichill/shared';
 import * as esbuild from 'esbuild';
 import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+// capability 検出テーブルは @ubichill/shared に一本化（CAPABILITY_CATALOG と同じファイル）。
+// ここから re-export し、既存の import 元（build-workers.test.mjs 等）との互換を保つ。
+export { CAPABILITY_DETECTORS, detectCapabilities };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
@@ -79,48 +84,6 @@ function listFilesRecursive(rootDir, currentDir = rootDir) {
         }
     }
     return out;
-}
-
-// ============================================================
-// capability 自動検出（静的解析）
-// ============================================================
-
-/**
- * バンドル済み Worker コードから使用中の Ubi API を静的検出し、capability を推定する。
- *
- * これは **情報表示（マニフェスト）用の over-approximate な推定**であり、セキュリティ境界
- * ではない。実際の enforcement は実行時ゲート + ユーザー承認（ModHostManager）で行われ、
- * 検出漏れ（動的アクセス・完全な分割代入など）は実行時に必ず拾われる。よって過剰申告寄り。
- *
- * capability 名は shared の CAPABILITY_CATALOG と一致させること
- * （packages/shared/src/mod/capability.ts）。
- */
-// api: どの Ubi API を使うとこの capability が付くかの人間向けヒント（ドキュメント生成が参照）。
-export const CAPABILITY_DETECTORS = [
-    { cap: 'net:fetch', api: 'Ubi.fetch', test: (c) => /\bUbi\.fetch\b/.test(c) },
-    { cap: 'ui:render', api: 'Ubi.ui.render', test: (c) => /\bUbi\.ui\b/.test(c) },
-    { cap: 'ui:toast', api: 'Ubi.ui.showToast', test: (c) => /\.showToast\s*\(/.test(c) },
-    // scene:read は entity/state を触れば付くベースライン。
-    { cap: 'scene:read', api: 'Ubi.entity.get / query, Ubi.state 読み取り', test: (c) => /\bUbi\.(entity|state)\b/.test(c) },
-    // scene:update は書き込み系 API（update/spawn/destroy/state.sync）を使うときだけ付く。
-    // 読み取り専用 mod に update 権限を過剰申告しないための絞り込み（依然 over-approx 寄り）。
-    {
-        cap: 'scene:update',
-        api: 'Ubi.entity().update/spawn/destroy, Ubi.state.sync 書き込み',
-        test: (c) => /\.(update|spawn|destroy|sync)\s*\(/.test(c),
-    },
-    { cap: 'event:emit', api: 'Ubi.event.emit', test: (c) => /\bUbi\.event\b/.test(c) },
-    { cap: 'event:broadcast', api: 'Ubi.event.broadcast', test: (c) => /\.broadcast\s*\(/.test(c) },
-    { cap: 'host:message', api: 'Ubi.event.sendToHost', test: (c) => /\.sendToHost\s*\(/.test(c) },
-    { cap: 'canvas:draw', api: 'Ubi.canvas.*', test: (c) => /\bUbi\.canvas\b/.test(c) },
-    { cap: 'media:control', api: 'Ubi.media.*', test: (c) => /\bUbi\.media\b/.test(c) },
-];
-
-/** バンドル済みコードから capability 一覧を検出する（ソート済み・重複なし）。 */
-export function detectCapabilities(code) {
-    return CAPABILITY_DETECTORS.filter((d) => d.test(code))
-        .map((d) => d.cap)
-        .sort();
 }
 
 /**
@@ -332,8 +295,14 @@ export async function buildWorker(modJsonPath, options = {}) {
  * 全modの index.json を作成する。
  * エディタ等でローカル利用可能modの一覧を取得するために使う。
  * 各エントリは { id, name, version, kinds[] } 形式（mod.json + バージョン付き manifest を集約）。
+ *
+ * @param options.publicModsDir / options.distModsDir は buildWorker と同じ注入。
+ *   結合テストや将来の外部CLIが実リポジトリを汚さず一時ディレクトリへ書けるようにする。
  */
-function writeModIndex(modJsonFiles) {
+function writeModIndex(modJsonFiles, options = {}) {
+    const publicModsDir = options.publicModsDir ?? join(root, 'packages', 'frontend', 'public', 'mods');
+    const distModsDirResolved = options.distModsDir ?? distModsDir;
+
     const entries = [];
     for (const modJsonPath of modJsonFiles) {
         const modJson = JSON.parse(readFileSync(modJsonPath, 'utf-8'));
@@ -353,16 +322,24 @@ function writeModIndex(modJsonFiles) {
         });
     }
     const json = JSON.stringify(entries, null, 2);
-    const publicIndexPath = join(root, 'packages', 'frontend', 'public', 'mods', 'index.json');
-    const distIndexPath = join(distModsDir, 'index.json');
+    const publicIndexPath = join(publicModsDir, 'index.json');
+    const distIndexPath = join(distModsDirResolved, 'index.json');
+    mkdirSync(publicModsDir, { recursive: true });
+    mkdirSync(distModsDirResolved, { recursive: true });
     writeFileSync(publicIndexPath, json, 'utf-8');
     writeFileSync(distIndexPath, json, 'utf-8');
     console.log(`📋 mod index: ${entries.length} entries → public/mods/index.json, dist/mods/index.json`);
 }
 
-async function main() {
+/**
+ * @param options.modsDir mod.json を探索するディレクトリ（既定: <root>/mods）。
+ * @param options.publicModsDir / options.distModsDir は buildWorker/writeModIndex に注入。
+ *   すべて既定値は現行のリポジトリ内固定パスと同じ（後方互換）。将来 mod を外部リポジトリに
+ *   切り出した際、そのリポジトリから `--mods-dir=` 等で指し示せるようにするための一般化。
+ */
+export async function buildAllWorkers(options = {}) {
     console.log('🔨 Building mod workers...');
-    const modsDir = join(root, 'mods');
+    const modsDir = options.modsDir ?? join(root, 'mods');
     const modJsonFiles = findModJsonFiles(modsDir);
 
     if (modJsonFiles.length === 0) {
@@ -371,13 +348,24 @@ async function main() {
     }
 
     for (const modJsonPath of modJsonFiles) {
-        await buildWorker(modJsonPath);
+        await buildWorker(modJsonPath, options);
     }
 
-    writeModIndex(modJsonFiles);
+    writeModIndex(modJsonFiles, options);
 
     console.log('🎉 All workers built.');
-    console.log(`📦 CDN 配布用: dist/mods/`);
+    console.log(`📦 CDN 配布用: ${options.distModsDir ?? distModsDir}`);
+}
+
+async function main() {
+    const argv = process.argv.slice(2);
+    const modsDirArg = argv.find((a) => a.startsWith('--mods-dir='));
+    const publicModsDirArg = argv.find((a) => a.startsWith('--public-mods-dir='));
+
+    await buildAllWorkers({
+        modsDir: modsDirArg ? join(root, modsDirArg.split('=')[1]) : undefined,
+        publicModsDir: publicModsDirArg ? join(root, publicModsDirArg.split('=')[1]) : undefined,
+    });
 }
 
 // スクリプトとして直接実行された場合のみ main() を走らせる。
