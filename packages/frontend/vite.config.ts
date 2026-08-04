@@ -34,20 +34,44 @@ export default defineConfig({
         // React が 2 つ bundle され、フックが null になる ("Cannot read properties of null (reading 'useRef')").
         // 同じインスタンスを使うよう強制する。
         dedupe: ['react', 'react-dom'],
-        alias: {
+        // 配列 + 完全一致の正規表現（`^...$`）で指定する。plain object 形式の alias は
+        // prefix マッチしてしまい、サブパス（例: @ubichill/shared/mod/errors）が意図せず
+        // 親エイリアス（@ubichill/shared）に食われて壊れる（vitest.config.ts と同じ理由。
+        // sandbox の worker バンドル時に実測: "../shared/src/index.ts/mod/errors" という
+        // 壊れたパスで解決が失敗した）。
+        alias: [
             // @/styled-system/* → styled-system/* (src/ 外)、@/ より先に定義
-            '@/styled-system': resolve(__dirname, 'styled-system'),
-            '@': resolve(__dirname, 'src'),
-            '@styled-system': resolve(__dirname, 'styled-system'),
-            '@styles': resolve(__dirname, 'src/styles'),
-            // サブパスを先に定義しないと親エイリアスが優先されてしまう
-            '@ubichill/sdk': resolve(__dirname, '../sdk/src/index.ts'),
-            '@ubichill/sandbox': resolve(__dirname, '../sandbox/src/index.ts'),
-            '@ubichill/ui-renderer': resolve(__dirname, '../ui-renderer/src/index.ts'),
-            '@ubichill/ecs': resolve(__dirname, '../ecs/src/index.ts'),
-            '@ubichill/react': resolve(__dirname, '../react/src/index.ts'),
-            '@ubichill/shared': resolve(__dirname, '../shared/src/index.ts'),
-        },
+            { find: /^@\/styled-system/, replacement: resolve(__dirname, 'styled-system') },
+            { find: /^@\//, replacement: `${resolve(__dirname, 'src')}/` },
+            { find: /^@styled-system/, replacement: resolve(__dirname, 'styled-system') },
+            { find: /^@styles/, replacement: resolve(__dirname, 'src/styles') },
+            { find: /^@ubichill\/sdk$/, replacement: resolve(__dirname, '../sdk/src/index.ts') },
+            { find: /^@ubichill\/sandbox$/, replacement: resolve(__dirname, '../sandbox/src/index.ts') },
+            { find: /^@ubichill\/ui-renderer$/, replacement: resolve(__dirname, '../ui-renderer/src/index.ts') },
+            { find: /^@ubichill\/ecs$/, replacement: resolve(__dirname, '../ecs/src/index.ts') },
+            { find: /^@ubichill\/react$/, replacement: resolve(__dirname, '../react/src/index.ts') },
+            { find: /^@ubichill\/shared$/, replacement: resolve(__dirname, '../shared/src/index.ts') },
+            {
+                find: /^@ubichill\/shared\/mod\/entities$/,
+                replacement: resolve(__dirname, '../shared/src/mod/entities.ts'),
+            },
+            {
+                find: /^@ubichill\/shared\/mod\/protocol$/,
+                replacement: resolve(__dirname, '../shared/src/mod/protocol.ts'),
+            },
+            {
+                find: /^@ubichill\/shared\/mod\/errors$/,
+                replacement: resolve(__dirname, '../shared/src/mod/errors.ts'),
+            },
+            {
+                find: /^@ubichill\/shared\/mod\/vnode$/,
+                replacement: resolve(__dirname, '../shared/src/mod/vnode.ts'),
+            },
+            {
+                find: /^@ubichill\/shared\/mod\/types$/,
+                replacement: resolve(__dirname, '../shared/src/mod/types.ts'),
+            },
+        ],
     },
     server: {
         port: 3000,
