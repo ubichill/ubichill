@@ -9,8 +9,8 @@
  * 返す LoadedMod は React/DOM 非依存の中立表現。Host が WorkerModDefinition にマップする。
  */
 import { type ModLock, requiresLock, resolveLockedMod } from '@ubichill/shared';
-import { sriOf } from './integrity';
-import type { AcquireResult, FetchLike, LoadedMod } from './types';
+import { sriOf } from './integrity.ts';
+import type { AcquireResult, FetchLike, LoadedMod } from './types.ts';
 
 /** versioned manifest の Component 定義（build 時の src は含まない）。 */
 interface WorkerMetaObject {

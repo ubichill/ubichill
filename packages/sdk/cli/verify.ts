@@ -1,37 +1,24 @@
 /**
- * verify-mod-locks.mjs
- *
- * build-workers.mjs が出力した lock.json 群を「配布前」に検証する fail-closed ゲート。
+ * `ubichill build` が出力した lock.json 群を「配布前」に検証する fail-closed ゲート
+ * （`ubichill verify`）。
  *
  * ここで検証するのは、build 側が生成した lock の integrity が「実際に配布されるバイト列」と
- * 一致しているか。build-workers.mjs 自身の hash 計算にバグがあっても単体テストはフェイク値を
- * 使うため気づけない。ここは実ファイルシステム上の生成物を独立に再ハッシュして突き合わせる、
+ * 一致しているか。build 側の hash 計算にバグがあっても単体テストはフェイク値を使うため
+ * 気づけない。ここは実ファイルシステム上の生成物を独立に再ハッシュして突き合わせる、
  * 唯一の「実際に配布する物」に対するチェック。
- *
- * - GitHub Pages 公開ワークフロー（mods-pages.yml）が push 前に実行し、不一致なら公開を止める。
- * - 通常 CI（ci.yml）も build:workers 直後に実行し、PR 段階で壊れたビルドを検知する。
- *
- * 使い方: node scripts/verify-mod-locks.mjs [--dist-dir=dist/mods]
  */
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, resolve } from 'node:path';
 import { ModLockEntrySchema } from '@ubichill/shared';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = join(__dirname, '..');
-
-const distDirArg = process.argv.slice(2).find((a) => a.startsWith('--dist-dir='));
-const distModsDir = distDirArg ? join(root, distDirArg.split('=')[1]) : join(root, 'dist', 'mods');
-
-function sriOf(buffer) {
+function sriOf(buffer: Buffer): string {
     return `sha256-${createHash('sha256').update(buffer).digest('base64')}`;
 }
 
 /** 1 mod のディレクトリを検証する。問題があれば文字列配列で返す（空なら OK）。 */
-function verifyModDir(modDir, modDirName) {
-    const errors = [];
+function verifyModDir(modDir: string, modDirName: string): string[] {
+    const errors: string[] = [];
     for (const versionDirName of readdirSync(modDir).filter((n) => /^v/.test(n))) {
         const versionDir = join(modDir, versionDirName);
         const lockPath = join(versionDir, 'lock.json');
@@ -74,24 +61,28 @@ function verifyModDir(modDir, modDirName) {
     return errors;
 }
 
-function main() {
-    if (!existsSync(distModsDir)) {
-        console.error(`❌ ${distModsDir} が存在しません（先に pnpm build:workers を実行してください）`);
-        process.exit(1);
+/** `distDir` 配下の全 mod の lock.json を検証し、エラー一覧を返す（空なら OK）。 */
+export function verifyAllModLocks(distDir: string): string[] {
+    if (!existsSync(distDir)) {
+        return [`${distDir} が存在しません（先に ubichill build を実行してください）`];
     }
-
-    const modDirNames = readdirSync(distModsDir, { withFileTypes: true })
+    const modDirNames = readdirSync(distDir, { withFileTypes: true })
         .filter((e) => e.isDirectory())
         .map((e) => e.name);
-
-    const allErrors = modDirNames.flatMap((name) => verifyModDir(join(distModsDir, name), name));
-
-    if (allErrors.length > 0) {
-        console.error(`❌ mod lock 検証失敗 (${allErrors.length} 件):`);
-        for (const e of allErrors) console.error(`  - ${e}`);
-        process.exit(1);
-    }
-    console.log(`✅ mod lock 検証OK (${modDirNames.length} mods)`);
+    return modDirNames.flatMap((name) => verifyModDir(join(distDir, name), name));
 }
 
-main();
+/**
+ * `argv`（サブコマンド名を除いた残り引数）から検証を実行する。
+ * `--dist-dir=` 既定は `<cwd>/dist/mods`。エラーがあれば throw（fail-closed）。
+ */
+export async function runVerify(argv: string[]): Promise<void> {
+    const distDirArg = argv.find((a) => a.startsWith('--dist-dir='))?.slice('--dist-dir='.length);
+    const distDir = distDirArg ? resolve(distDirArg) : join(process.cwd(), 'dist', 'mods');
+
+    const errors = verifyAllModLocks(distDir);
+    if (errors.length > 0) {
+        throw new Error(`mod lock 検証失敗 (${errors.length} 件):\n${errors.map((e) => `  - ${e}`).join('\n')}`);
+    }
+    console.log(`✅ mod lock 検証OK (${distDir})`);
+}

@@ -89,7 +89,7 @@ jobs:
       # typecheck はパッケージ間参照が dist 経由のため、shared/db は事前ビルドが要る。
       # vitest 自体は resolve.alias で shared/ecs/sdk/ui-renderer/loader をソースへ直結するため
       # build 不要（DB統合テストも DATABASE_URL 未設定時は describe.skipIf でスキップ）。
-      # ただし後段の build-workers.mjs は plain node 実行で @ubichill/shared を dist 経由で
+      # ただし後段の packages/sdk/cli/build.ts は plain node 実行で @ubichill/shared を dist 経由で
       # import するため、このステップがそれより前に無いと解決に失敗する。
       - name: Build shared & db
         run: |
@@ -104,12 +104,12 @@ jobs:
 
       # 実際に mod をビルドし、lock.json の integrity が生成バイト列と一致するか検証する。
       # 単体テストはフェイク値で hash 規約の一致を確認するだけなので、実ビルドでの
-      # fail-closed 検証は別枠で必要（scripts/verify-mod-locks.mjs 参照）。
+      # fail-closed 検証は別枠で必要（packages/sdk/cli/verify.ts 参照）。
       - name: Build mod workers
         run: pnpm build:workers
 
       - name: Verify mod locks
-        run: node scripts/verify-mod-locks.mjs
+        run: pnpm verify:mod-locks
 
       # SDK型定義バンドルの検証（buildDts = TS Compiler API フルコンパイル、実測20秒級）。
       # 開発ループを重くしないためファイル名を *.test.mjs にせず既定のvitest includeから

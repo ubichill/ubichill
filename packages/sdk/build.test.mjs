@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { buildJs, buildPackageJson, ENTRIES } from './build.mjs';
+import { buildCliJs, buildJs, buildPackageJson, ENTRIES } from './build.mjs';
 
 // このファイルは高速なチェックのみ（buildJs は esbuild で ~数十ms）。
 // buildDts（TS Compiler API フルコンパイル、実測20秒級・不可避）を要するテストは
@@ -30,10 +30,13 @@ describe('buildJs（SDK 完全バンドル）', () => {
 });
 
 describe('buildPackageJson', () => {
-    it('unscoped 名 "ubichill" で dependencies が空の自己完結パッケージになる', () => {
+    it('unscoped 名 "ubichill" で import surface は自己完結、bin（CLI）だけ real dependency を持つ', () => {
         const pkg = JSON.parse(buildPackageJson());
         expect(pkg.name).toBe('ubichill');
-        expect(pkg.dependencies).toEqual({});
+        // esbuild/yaml は cli.js 側だけが external にしている実行時依存（bundleすると
+        // Dynamic require エラーで実行時に落ちるため、real dependency として残す必要がある）。
+        expect(pkg.dependencies).toEqual({ esbuild: '^0.28.0', yaml: '^2.5.0' });
+        expect(pkg.bin).toEqual({ ubichill: './cli.js' });
         expect(pkg.version).toMatch(/^\d+\.\d+\.\d+$/);
         // Host本体（AGPL-3.0-only）とは別に MIT（外部mod開発者が自分のコードへ組み込みやすいよう）
         expect(pkg.license).toBe('MIT');
@@ -47,5 +50,33 @@ describe('buildPackageJson', () => {
     it('packages/sdk/LICENSE が実在し MIT 表記を含む（build.mjs が dist-npm へコピーする実体）', () => {
         expect(existsSync(sdkLicensePath), 'packages/sdk/LICENSE が見つからない').toBe(true);
         expect(readFileSync(sdkLicensePath, 'utf-8')).toContain('MIT License');
+    });
+});
+
+describe('buildCliJs（CLI 完全バンドル、esbuild/yaml のみ external）', () => {
+    let code;
+    beforeAll(async () => {
+        code = await buildCliJs();
+    });
+
+    it('shebang が1行だけ（二重shebangはNodeのESM実行時にSyntaxErrorになるため実測済みで禁止）', () => {
+        const lines = code.split('\n');
+        expect(lines[0]).toBe('#!/usr/bin/env node');
+        expect(lines[1]).not.toMatch(/^#!/);
+    });
+
+    it('esbuild/yaml は bundle されず import 文で外部化されている（native binary/動的requireの解決崩壊を防ぐ）', () => {
+        expect(code).toMatch(/from ["']esbuild["']/);
+        expect(code).toMatch(/from ["']yaml["']/);
+        // esbuild本体のソース（native binaryをrequireするコード等）が混入していないことの傍証
+        expect(code).not.toMatch(/Dynamic require of/);
+    });
+
+    it('build/lock/verify サブコマンドが実際にバンドルされている', () => {
+        expect(code).toMatch(/runBuild/);
+        // lock サブコマンドの実体は @ubichill/loader の runGenLock（lock.ts が `as runLock` で
+        // re-export するが、bundle後は元の宣言名 runGenLock に解決される。実測済み）。
+        expect(code).toMatch(/runGenLock/);
+        expect(code).toMatch(/runVerify/);
     });
 });

@@ -1,49 +1,38 @@
 /**
- * build-workers.mjs
+ * mod.json を自動探索し、Worker コードを esbuild でバンドルする（`ubichill build`）。
  *
- * mods/ 以下の mod.json を自動探索し、Worker コードを esbuild でバンドルします。
- *
- * mod.json の components フィールド（Stage 1 の現代的 ECS 形式）を読み取り、Worker をバンドルします。
+ * mod.json の components フィールド（Stage 1 の現代的 ECS 形式）を読み取り、Worker をバンドルする。
  * Component キーは modId 抜きの単純名（例: "screen"）で宣言し、
- * Runtime / ワールド YAML からは `${modId}:${componentName}`（例: "video-player:screen"）で参照します。
+ * Runtime / ワールド YAML からは `${modId}:${componentName}`（例: "video-player:screen"）で参照する。
  *
- * 出力物 (modディレクトリ名を <name>、Component キーを <key> とする):
- *   dist/mods/<name>/v<version>/<key>/index.js
- *   dist/mods/<name>/v<version>/manifest.json
- *   public/mods/<name>/v<version>/<key>/index.js
- *   public/mods/<name>/v<version>/manifest.json
- *   public/mods/<name>/v<version>/  ← assets/ もここにコピー（バージョン固定）
- *   public/mods/<name>/mod.json  ← ローダー用エイリアス（最新バージョン）
+ * 出力物（modディレクトリ名を <name>、Component キーを <key> とする）:
+ *   <distDir>/<name>/v<version>/<key>/index.<hash>.js
+ *   <distDir>/<name>/v<version>/manifest.json
+ *   <distDir>/<name>/v<version>/lock.json
+ *   <publicDir>/<name>/v<version>/...（同内容。二重出力先が要る Host 向け、無指定なら distDir と同じ）
+ *   <publicDir>/<name>/mod.json  ← ローダー用エイリアス（最新バージョン）
  *
- * Worker コード内では Ubi.modBase でバージョン付きアセットベースパスを参照できます。
- * Ubi.modBase は Host が EVT_LIFECYCLE_INIT 時に設定するランタイム値です。
- * 例: `${Ubi.modBase}/templates/manifest.json`
- *      → https://cdn.example.com/mods/video-player/v2.1.0/templates/manifest.json
+ * Worker コード内では Ubi.modBase でバージョン付きアセットベースパスを参照できる。
+ * Ubi.modBase は Host が EVT_LIFECYCLE_INIT 時に設定するランタイム値。
+ *
+ * デフォルトは全て `process.cwd()` 相対（このリポジトリ固有のパスは一切ハードコードしない、
+ * 外部 mod 開発者が任意のディレクトリで `ubichill build` を実行できるようにするため）。
+ * このリポジトリ自身の実運用パス（`packages/frontend/public/mods` 等）は呼び出し側
+ * （ルート package.json の `build:workers` script）が `--public-dir=` 等で明示指定する。
  */
-
 import { CAPABILITY_DETECTORS, detectCapabilities } from '@ubichill/shared';
 import * as esbuild from 'esbuild';
 import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { basename, dirname, join, resolve } from 'node:path';
 
-// capability 検出テーブルは @ubichill/shared に一本化（CAPABILITY_CATALOG と同じファイル）。
-// ここから re-export し、既存の import 元（build-workers.test.mjs 等）との互換を保つ。
 export { CAPABILITY_DETECTORS, detectCapabilities };
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = join(__dirname, '..');
-
-// --dist-dir=<path> で出力先を上書き可能（デフォルト: dist/mods/）
-const distDirArg = process.argv.slice(2).find((a) => a.startsWith('--dist-dir='));
-const distModsDir = distDirArg ? join(root, distDirArg.split('=')[1]) : join(root, 'dist', 'mods');
 
 // ============================================================
 // ヘルパー関数
 // ============================================================
 
-function copyDirRecursive(src, dest) {
+function copyDirRecursive(src: string, dest: string): void {
     mkdirSync(dest, { recursive: true });
     for (const entry of readdirSync(src, { withFileTypes: true })) {
         const srcPath = join(src, entry.name);
@@ -61,7 +50,7 @@ function copyDirRecursive(src, dest) {
  * manifest が古いバンドルを参照していたブラウザキャッシュを段階的に剥がせる
  * ように 1 つだけ残してもよいが、CDN を汚さないため keepFilename 以外は削除。
  */
-function cleanOldBundles(dir, keepFilename) {
+function cleanOldBundles(dir: string, keepFilename: string): void {
     if (!existsSync(dir)) return;
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
         if (!entry.isFile()) continue;
@@ -72,9 +61,9 @@ function cleanOldBundles(dir, keepFilename) {
 }
 
 /** ディレクトリ内の全ファイルをルートからの相対パスで列挙する純関数。 */
-function listFilesRecursive(rootDir, currentDir = rootDir) {
+function listFilesRecursive(rootDir: string, currentDir: string = rootDir): string[] {
     if (!existsSync(currentDir)) return [];
-    const out = [];
+    const out: string[] = [];
     for (const entry of readdirSync(currentDir, { withFileTypes: true })) {
         const abs = join(currentDir, entry.name);
         if (entry.isDirectory()) {
@@ -91,11 +80,11 @@ function listFilesRecursive(rootDir, currentDir = rootDir) {
  * shared の formatIntegrity と同一規約。ロード側（crypto.subtle）が同じバイト列を
  * hash して照合するため、書き出す文字列そのものを渡すこと。
  */
-export function sriOf(text) {
+export function sriOf(text: string): string {
     return `sha256-${createHash('sha256').update(text, 'utf-8').digest('base64')}`;
 }
 
-async function bundleWorker(entryPath, tsconfig, defines) {
+async function bundleWorker(entryPath: string, tsconfig: string | undefined): Promise<string> {
     const result = await esbuild.build({
         entryPoints: [entryPath],
         bundle: true,
@@ -107,7 +96,6 @@ async function bundleWorker(entryPath, tsconfig, defines) {
         write: false,
         minify: false,
         tsconfig,
-        define: defines,
     });
     return result.outputFiles[0].text;
 }
@@ -116,8 +104,8 @@ async function bundleWorker(entryPath, tsconfig, defines) {
 // mod.json の自動探索
 // ============================================================
 
-function findModJsonFiles(modsDir) {
-    const results = [];
+function findModJsonFiles(modsDir: string): string[] {
+    const results: string[] = [];
     for (const modName of readdirSync(modsDir, { withFileTypes: true })) {
         if (!modName.isDirectory()) continue;
         const modJsonPath = join(modsDir, modName.name, 'mod.json');
@@ -132,24 +120,33 @@ function findModJsonFiles(modsDir) {
 // ビルド
 // ============================================================
 
-/**
- * @param modJsonPath mod.json への絶対パス
- * @param options.publicModsDir frontend 配信用 mods/ の出力先（既定: packages/frontend/public/mods）。
- *   結合テストが実リポジトリを汚さず一時ディレクトリへビルドできるよう注入可能にしている。
- * @param options.distModsDir CDN 配布用 dist/mods/ の出力先（既定: モジュールスコープの distModsDir）。
- */
-export async function buildWorker(modJsonPath, options = {}) {
+export interface BuildOptions {
+    /** mod.json を探索するディレクトリ（既定: process.cwd()）。 */
+    modsDir?: string;
+    /** frontend 配信用の出力先（既定: distDir と同じ）。二重出力先が要る Host 向け。 */
+    publicModsDir?: string;
+    /** CDN 配布用の出力先（既定: `<cwd>/dist/mods`）。 */
+    distModsDir?: string;
+}
+
+function resolveDirs(options: BuildOptions): { distModsDir: string; publicModsDir: string } {
+    const distModsDir = options.distModsDir ?? join(process.cwd(), 'dist', 'mods');
+    const publicModsDir = options.publicModsDir ?? distModsDir;
+    return { distModsDir, publicModsDir };
+}
+
+/** @param modJsonPath mod.json への絶対パス */
+export async function buildWorker(modJsonPath: string, options: BuildOptions = {}): Promise<void> {
     const modDir = dirname(modJsonPath);
     const modJson = JSON.parse(readFileSync(modJsonPath, 'utf-8'));
 
     const modId = modJson.id;
     const modDirName = basename(modDir);
     const version = modJson.version;
-    const publicModsDir = options.publicModsDir ?? join(root, 'packages', 'frontend', 'public', 'mods');
-    const distModsDirResolved = options.distModsDir ?? distModsDir;
+    const { distModsDir, publicModsDir } = resolveDirs(options);
     const publicModDir = join(publicModsDir, modDirName);
     const publicVersionDir = join(publicModDir, `v${version}`);
-    const distVersionDir = join(distModsDirResolved, modDirName, `v${version}`);
+    const distVersionDir = join(distModsDir, modDirName, `v${version}`);
 
     // tsconfig 検索
     const rootTsconfig = join(modDir, 'tsconfig.json');
@@ -160,8 +157,8 @@ export async function buildWorker(modJsonPath, options = {}) {
     const rootIndex = JSON.stringify({ id: modId, name: modJson.name, version }, null, 2);
     mkdirSync(publicModDir, { recursive: true });
     writeFileSync(join(publicModDir, 'mod.json'), rootIndex, 'utf-8');
-    mkdirSync(join(distModsDirResolved, modDirName), { recursive: true });
-    writeFileSync(join(distModsDirResolved, modDirName, 'mod.json'), rootIndex, 'utf-8');
+    mkdirSync(join(distModsDir, modDirName), { recursive: true });
+    writeFileSync(join(distModsDir, modDirName, 'mod.json'), rootIndex, 'utf-8');
 
     // ── バージョン付きマニフェスト（ランタイム用・src なし・workerUrl 明示） ──
     // src はビルド時のみ必要なため除去。workerUrl でロード先を明示する。
@@ -176,11 +173,13 @@ export async function buildWorker(modJsonPath, options = {}) {
     }
 
     // バージョン付きマニフェスト用 components（src 除去・workerUrl 追加、フル型キー化）
-    const versionedComponents = {};
+    const versionedComponents: Record<string, unknown> = {};
     // lock.json 用 components（worker を持つ Component のみ。integrity=フル sha256）。
-    const lockComponents = {};
+    const lockComponents: Record<string, unknown> = {};
 
-    for (const [componentName, componentEntry] of Object.entries(componentEntries)) {
+    for (const [componentName, componentEntry] of Object.entries(
+        componentEntries as Record<string, string | Record<string, unknown>>,
+    )) {
         // ワールド YAML / runtime からは "modId:componentName" で参照する
         const componentType = `${modId}:${componentName}`;
         const workerRelPath = typeof componentEntry === 'string' ? componentEntry : componentEntry?.src;
@@ -192,13 +191,13 @@ export async function buildWorker(modJsonPath, options = {}) {
             continue;
         }
 
-        const entryPath = join(modDir, workerRelPath);
+        const entryPath = join(modDir, workerRelPath as string);
         if (!existsSync(entryPath)) {
             console.error(`❌ [${componentType}] エントリが見つかりません: ${entryPath}`);
             continue;
         }
 
-        const code = await bundleWorker(entryPath, tsconfig, {});
+        const code = await bundleWorker(entryPath, tsconfig);
 
         // コンテンツハッシュ（8文字）でキャッシュバスティング
         const hash = createHash('sha256').update(code).digest('hex').slice(0, 8);
@@ -219,7 +218,9 @@ export async function buildWorker(modJsonPath, options = {}) {
         // capability をコードから自動検出。手書き宣言があれば和集合（override / 補完）。
         // 手書きは静的解析で漏れる動的アクセス等の補完に使える。
         const detected = detectCapabilities(code);
-        const handAuthored = Array.isArray(componentEntry.capabilities) ? componentEntry.capabilities : [];
+        const handAuthored = Array.isArray((componentEntry as Record<string, unknown>).capabilities)
+            ? ((componentEntry as Record<string, unknown>).capabilities as string[])
+            : [];
         const capabilities = [...new Set([...detected, ...handAuthored])].sort();
 
         // workerUrl を明示、src（ビルド時のみ）は除去。capabilities は自動生成値で上書き。
@@ -240,19 +241,19 @@ export async function buildWorker(modJsonPath, options = {}) {
         };
 
         console.log(
-            `✅ [${componentType}] /mods/${modDirName}/v${version}/${componentName}/${outFilename}` +
+            `✅ [${componentType}] ${modDirName}/v${version}/${componentName}/${outFilename}` +
                 ` [caps: ${capabilities.join(', ') || 'none'}]`,
         );
     }
 
     // assets/ をバージョン固定パスにコピー（Worker は Ubi.modBase で参照）
     const assetsSrcDir = join(modDir, 'assets');
-    let assetFiles = [];
+    let assetFiles: string[] = [];
     if (existsSync(assetsSrcDir)) {
         copyDirRecursive(assetsSrcDir, publicVersionDir);
         copyDirRecursive(assetsSrcDir, distVersionDir);
         assetFiles = listFilesRecursive(assetsSrcDir);
-        console.log(`✅ [${modId}] assets → /mods/${modDirName}/v${version}/ (${assetFiles.length} files)`);
+        console.log(`✅ [${modId}] assets → ${modDirName}/v${version}/ (${assetFiles.length} files)`);
     }
 
     const versionedManifest = JSON.stringify(
@@ -287,24 +288,15 @@ export async function buildWorker(modJsonPath, options = {}) {
     console.log(`🔒 [${modId}] lock.json (${Object.keys(lockComponents).length} components)`);
 }
 
-// ============================================================
-// エントリーポイント
-// ============================================================
-
 /**
  * 全modの index.json を作成する。
  * エディタ等でローカル利用可能modの一覧を取得するために使う。
- * 各エントリは { id, name, version, kinds[] } 形式（mod.json + バージョン付き manifest を集約）。
- *
- * @param options.publicModsDir / options.distModsDir は buildWorker と同じ注入。
- *   結合テストや将来の外部CLIが実リポジトリを汚さず一時ディレクトリへ書けるようにする。
+ * 各エントリは { id, name, version, components[], repositoryPath } 形式。
  */
-function writeModIndex(modJsonFiles, options = {}) {
-    const publicModsDir = options.publicModsDir ?? join(root, 'packages', 'frontend', 'public', 'mods');
-    const distModsDirResolved = options.distModsDir ?? distModsDir;
+function writeModIndex(modJsonFiles: string[], options: BuildOptions = {}): void {
+    const { distModsDir, publicModsDir } = resolveDirs(options);
 
-    const entries = [];
-    for (const modJsonPath of modJsonFiles) {
+    const entries = modJsonFiles.map((modJsonPath) => {
         const modJson = JSON.parse(readFileSync(modJsonPath, 'utf-8'));
         const modId = modJson.id;
         const modDirName = basename(dirname(modJsonPath));
@@ -312,70 +304,51 @@ function writeModIndex(modJsonFiles, options = {}) {
         const components = modJson.components
             ? Object.keys(modJson.components).map((name) => `${modId}:${name}`)
             : [];
-        entries.push({
+        return {
             id: modId,
             name: modJson.name ?? modId,
             version: modJson.version,
             // dependencies に追加する際の repository path
-            repositoryPath: `mods/${modDirName}`,
+            repositoryPath: modDirName,
             components,
-        });
-    }
+        };
+    });
     const json = JSON.stringify(entries, null, 2);
-    const publicIndexPath = join(publicModsDir, 'index.json');
-    const distIndexPath = join(distModsDirResolved, 'index.json');
     mkdirSync(publicModsDir, { recursive: true });
-    mkdirSync(distModsDirResolved, { recursive: true });
-    writeFileSync(publicIndexPath, json, 'utf-8');
-    writeFileSync(distIndexPath, json, 'utf-8');
-    console.log(`📋 mod index: ${entries.length} entries → public/mods/index.json, dist/mods/index.json`);
+    mkdirSync(distModsDir, { recursive: true });
+    writeFileSync(join(publicModsDir, 'index.json'), json, 'utf-8');
+    writeFileSync(join(distModsDir, 'index.json'), json, 'utf-8');
+    console.log(`📋 mod index: ${entries.length} entries`);
 }
 
 /**
- * @param options.modsDir mod.json を探索するディレクトリ（既定: <root>/mods）。
- * @param options.publicModsDir / options.distModsDir は buildWorker/writeModIndex に注入。
- *   すべて既定値は現行のリポジトリ内固定パスと同じ（後方互換）。将来 mod を外部リポジトリに
- *   切り出した際、そのリポジトリから `--mods-dir=` 等で指し示せるようにするための一般化。
+ * `argv`（サブコマンド名を除いた残り引数）から全ての mod をビルドする。
+ * `--mods-dir=` / `--public-mods-dir=` / `--dist-dir=` はすべて未指定なら
+ * `process.cwd()` 基準（このリポジトリ固有のパスはライブラリ既定にしない）。
  */
-export async function buildAllWorkers(options = {}) {
-    console.log('🔨 Building mod workers...');
-    const modsDir = options.modsDir ?? join(root, 'mods');
+export async function runBuild(argv: string[]): Promise<void> {
+    const argValue = (name: string): string | undefined => argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
+
+    const modsDir = argValue('mods-dir') ? resolve(argValue('mods-dir') as string) : process.cwd();
+    const distModsDir = argValue('dist-dir') ? resolve(argValue('dist-dir') as string) : undefined;
+    const publicModsDir = argValue('public-mods-dir') ? resolve(argValue('public-mods-dir') as string) : undefined;
+
+    console.log('🔨 Building mods...');
     const modJsonFiles = findModJsonFiles(modsDir);
 
     if (modJsonFiles.length === 0) {
-        console.warn('⚠️  mod.json が見つかりません');
+        console.warn(`⚠️  mod.json が見つかりません（${modsDir}）`);
         return;
     }
 
+    const options: BuildOptions = { publicModsDir, distModsDir };
     for (const modJsonPath of modJsonFiles) {
         await buildWorker(modJsonPath, options);
     }
 
     writeModIndex(modJsonFiles, options);
 
-    console.log('🎉 All workers built.');
-    console.log(`📦 CDN 配布用: ${options.distModsDir ?? distModsDir}`);
-}
-
-async function main() {
-    const argv = process.argv.slice(2);
-    const modsDirArg = argv.find((a) => a.startsWith('--mods-dir='));
-    const publicModsDirArg = argv.find((a) => a.startsWith('--public-mods-dir='));
-
-    await buildAllWorkers({
-        modsDir: modsDirArg ? join(root, modsDirArg.split('=')[1]) : undefined,
-        publicModsDir: publicModsDirArg ? join(root, publicModsDirArg.split('=')[1]) : undefined,
-    });
-}
-
-// スクリプトとして直接実行された場合のみ main() を走らせる。
-// `watch-workers.mjs` が import { buildWorker } から取ってきたとき、main() が
-// 副作用として呼ばれて二重ビルドになるのを防ぐ。
-// パス比較は fileURLToPath で URL → 実パスに正規化 (スペース・Windows 対応)。
-const isMain = process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1];
-if (isMain) {
-    main().catch((err) => {
-        console.error('❌ Worker build failed:', err);
-        process.exit(1);
-    });
+    const { distModsDir: resolvedDist } = resolveDirs(options);
+    console.log('🎉 All mods built.');
+    console.log(`📦 出力先: ${resolvedDist}`);
 }

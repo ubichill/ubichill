@@ -5,12 +5,16 @@
       "webworker",
       "esnext"
     ],
+    "types": [
+      "node"
+    ],
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "react-jsx",
@@ -25,7 +29,8 @@
     }
   },
   "include": [
-    "src"
+    "src",
+    "cli"
   ],
   "exclude": [
     "node_modules"

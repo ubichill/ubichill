@@ -47,6 +47,9 @@ export const ENTRIES = [
     { name: 'gripable', srcPath: join(sdkDir, 'src', 'jsx', 'Gripable.tsx') },
 ];
 
+/** `ubichill` の bin エントリ（mod開発者向け CLI）。型surfaceではないので .d.ts は生成しない。 */
+const CLI_ENTRY = { name: 'cli', srcPath: join(sdkDir, 'cli', 'index.ts') };
+
 /** ecs 全体 + shared の使用シンボルをインライン展開し、外部参照の無い単一 .d.ts を作る。 */
 export function buildDts(entry) {
     const [dts] = generateDtsBundle(
@@ -91,6 +94,33 @@ export async function buildJs(entry) {
     return result.outputFiles[0].text;
 }
 
+/**
+ * CLI 用バンドル（Node専用、self-contained）。
+ * shebang は entry (`cli/index.ts`) 自身の先頭行を esbuild が自動的に出力先頭へ保持するため、
+ * ここで banner として付け直すと二重になり Node の shebang 剥がし（先頭行のみ対象）が
+ * 効かなくなって SyntaxError になる（実測済み）。banner は指定しない。
+ *
+ * `esbuild`/`yaml` は external 必須: 両者とも内部で CJS 由来の動的 require（`fs`/`process`
+ * の require）を行うコードパスを持ち、単一 ESM ファイルへバンドルすると `Dynamic require of
+ * "..." is not supported` で実行時に落ちる（実測済み）。よって CLI_RUNTIME_DEPENDENCIES として
+ * 公開パッケージの `dependencies` に real dependency として残す。
+ */
+const CLI_RUNTIME_DEPENDENCIES = { esbuild: '^0.28.0', yaml: '^2.5.0' };
+
+export async function buildCliJs() {
+    const result = await esbuild.build({
+        entryPoints: [CLI_ENTRY.srcPath],
+        bundle: true,
+        format: 'esm',
+        platform: 'node',
+        target: 'node22',
+        write: false,
+        minify: false,
+        external: Object.keys(CLI_RUNTIME_DEPENDENCIES),
+    });
+    return result.outputFiles[0].text;
+}
+
 export function buildPackageJson() {
     const sdkPackageJson = JSON.parse(readFileSync(join(sdkDir, 'package.json'), 'utf-8'));
 
@@ -108,15 +138,18 @@ export function buildPackageJson() {
             sideEffects: false,
             main: './index.js',
             types: './index.d.ts',
+            bin: { ubichill: './cli.js' },
             exports: {
                 '.': { types: './index.d.ts', import: './index.js' },
                 './jsx-runtime': { types: './jsx-runtime.d.ts', import: './jsx-runtime.js' },
                 './gripable': { types: './gripable.d.ts', import: './gripable.js' },
             },
             files: ['*.js', '*.d.ts', 'LICENSE'],
-            // 実行時依存はビルド時に esbuild で完全バンドル済み（@ubichill/ecs 全体 +
-            // @ubichill/shared の一部シンボル）。公開パッケージは依存ゼロ。
-            dependencies: {},
+            // import surface（index/jsx-runtime/gripable）の実行時依存はビルド時に esbuild で
+            // 完全バンドル済み（@ubichill/ecs 全体 + @ubichill/shared の一部シンボル）。
+            // bin（cli.js）だけが esbuild を external にしているため、real dependency として残す
+            // （CLI_RUNTIME_DEPENDENCIES 参照）。
+            dependencies: CLI_RUNTIME_DEPENDENCIES,
         },
         null,
         2,
@@ -136,6 +169,10 @@ async function main() {
         writeFileSync(join(outDir, `${entry.name}.d.ts`), dts, 'utf-8');
         console.log(`✅ ${entry.name}.d.ts (${dts.length} bytes, 外部@ubichill参照なし)`);
     }
+
+    const cliJs = await buildCliJs();
+    writeFileSync(join(outDir, 'cli.js'), cliJs, { encoding: 'utf-8', mode: 0o755 });
+    console.log(`✅ cli.js (${cliJs.length} bytes)`);
 
     writeFileSync(join(outDir, 'package.json'), buildPackageJson(), 'utf-8');
     console.log(`📦 ${outDir}/package.json (name: "ubichill")`);

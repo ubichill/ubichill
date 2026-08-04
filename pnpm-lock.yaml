@@ -330,6 +330,9 @@ importers:
       '@ubichill/ecs':
         specifier: workspace:*
         version: link:../ecs
+      '@ubichill/loader':
+        specifier: workspace:*
+        version: link:../loader
       '@ubichill/shared':
         specifier: workspace:*
         version: link:../shared

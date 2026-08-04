@@ -32,6 +32,10 @@ export default defineConfig({
             { find: /^@ubichill\/shared\/mod\/vnode$/, replacement: srcPath('./packages/shared/src/mod/vnode.ts') },
             { find: /^@ubichill\/shared\/mod\/types$/, replacement: srcPath('./packages/shared/src/mod/types.ts') },
             { find: /^@ubichill\/loader$/, replacement: srcPath('./packages/loader/src/index.ts') },
+            {
+                find: /^@ubichill\/loader\/gen-lock$/,
+                replacement: srcPath('./packages/loader/src/genLock.ts'),
+            },
             { find: /^@ubichill\/ecs$/, replacement: srcPath('./packages/ecs/src/index.ts') },
             { find: /^@ubichill\/sdk$/, replacement: srcPath('./packages/sdk/src/index.ts') },
             { find: /^@ubichill\/ui-renderer$/, replacement: srcPath('./packages/ui-renderer/src/index.ts') },
@@ -39,10 +43,10 @@ export default defineConfig({
     },
     test: {
         environment: 'node',
-        // packages/*/*.test.mjs: パッケージ自身が持つビルドツール（例: packages/sdk/build.mjs）の
-        // テスト。src/ 配下ではなくパッケージルート直下に置く（ビルドスクリプト自体は
-        // ランタイムソースではないため）。
-        include: ['packages/**/src/**/*.test.{ts,tsx}', 'packages/*/*.test.mjs', 'scripts/**/*.test.mjs'],
+        // packages 配下はどこにテストファイルがあっても拾う（src/ 限定にしない。
+        // 例: packages/sdk/build.test.mjs, packages/sdk/cli/build.test.ts はビルドツール自身の
+        // テストで src/ 配下ではない）。
+        include: ['packages/**/*.test.{ts,tsx,mjs}', 'scripts/**/*.test.mjs'],
         exclude: ['**/node_modules/**', '**/dist/**', '**/dist-npm/**'],
     },
 });

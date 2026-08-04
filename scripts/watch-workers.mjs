@@ -8,7 +8,7 @@
 import { existsSync, readFileSync, readdirSync, watch } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildWorker } from './build-workers.mjs';
+import { buildWorker } from '../packages/sdk/cli/build.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
@@ -26,7 +26,10 @@ function scheduleRebuild(modJsonPath, modId) {
             timers.delete(modId);
             console.log(`[workers] 🔄 ${modId} changed, rebuilding...`);
             try {
-                await buildWorker(modJsonPath);
+                await buildWorker(modJsonPath, {
+                    publicModsDir: join(root, 'packages', 'frontend', 'public', 'mods'),
+                    distModsDir: join(root, 'dist', 'mods'),
+                });
                 console.log(`[workers] ✅ ${modId} rebuilt`);
             } catch (err) {
                 console.error(`[workers] ❌ ${modId} build failed:`, err.message);
