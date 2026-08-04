@@ -12,6 +12,6 @@
     },
     "dependencies": {
         "@ubichill/shared": "workspace:*",
-        "yaml": "^2.5.0"
+        "yaml": "^2.9.0"
     }
 }
