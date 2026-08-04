@@ -15,7 +15,7 @@
  *  - CMD_GRIP_HOLD/RELEASE でホストに通知 → EntityRenderer がカーソル追従描画を担う
  */
 
-import type { CmdGrip } from '@ubichill/shared';
+import type { CmdGrip } from '@ubichill/shared/mod/types';
 import type { EventModule } from '../event';
 import type { StateModule } from '../state';
 

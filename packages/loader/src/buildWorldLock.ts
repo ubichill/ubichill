@@ -5,7 +5,7 @@
  * 取得の transport（HTTP / fs）は `getLockEntry` 注入で分離する。frontend は HTTP、CLI は fs。
  */
 import { type ModLock, type ModLockEntry, ModLockEntrySchema } from '@ubichill/shared';
-import type { FetchLike } from './types';
+import type { FetchLike } from './types.ts';
 
 // modId 収集ロジックは shared に一本化（backend collectMods と共有）。利便のため再エクスポート。
 export { collectModIds } from '@ubichill/shared';

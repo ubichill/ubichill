@@ -1,5 +1,6 @@
-// These types are imported from their source files to avoid circular dependency with index.ts
-import type { ComponentInstance, CursorPosition, EntityPatchPayload, User } from '../index';
+// entities.ts から直接 import する（index.ts の barrel は schemas/* の zod スキーマを抱えており、
+// 経由すると SDK 側の型定義バンドル生成が大幅に遅くなるため避ける。entities.ts 参照）。
+import type { ComponentInstance, CursorPosition, EntityPatchPayload, User } from './entities';
 import type { UbiErrorCode } from './errors';
 import type { VNode } from './vnode';
 

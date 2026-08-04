@@ -1,4 +1,4 @@
-import { CommandType } from '@ubichill/shared';
+import { CommandType } from '@ubichill/shared/mod/protocol';
 import type { SendFn } from '../types';
 
 export type MediaModule = {

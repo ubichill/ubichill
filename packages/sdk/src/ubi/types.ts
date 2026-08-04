@@ -1,4 +1,5 @@
-import type { ModGuestCommand, VNode } from '@ubichill/shared';
+import type { ModGuestCommand } from '@ubichill/shared/mod/types';
+import type { VNode } from '@ubichill/shared/mod/vnode';
 
 export type { VNode };
 

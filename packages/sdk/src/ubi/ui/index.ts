@@ -1,4 +1,5 @@
-import { CommandType, type VNode } from '@ubichill/shared';
+import { CommandType } from '@ubichill/shared/mod/protocol';
+import type { VNode } from '@ubichill/shared/mod/vnode';
 import type { SendFn, UiRenderCostStat } from '../types';
 
 type UiRenderStatEntry = {

@@ -1,4 +1,6 @@
-import { CommandType, type ComponentInstance, type EntityPatchPayload, type VNode } from '@ubichill/shared';
+import type { ComponentInstance, EntityPatchPayload } from '@ubichill/shared/mod/entities';
+import { CommandType } from '@ubichill/shared/mod/protocol';
+import type { VNode } from '@ubichill/shared/mod/vnode';
 import type { EntityState, EntityStateFor, PresenceEntry, SendFn, StateBinding } from '../types';
 
 // ── スコープマーカー (このファイル内部のみ) ───────────────────────

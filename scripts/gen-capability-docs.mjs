@@ -16,12 +16,12 @@ import * as esbuild from 'esbuild';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CAPABILITY_DETECTORS } from './build-workers.mjs';
+import { CAPABILITY_DETECTORS } from '@ubichill/shared';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
 
-// capability → それを付ける Ubi API のヒント（静的検出ルール由来。build-workers.mjs が正）。
+// capability → それを付ける Ubi API のヒント（静的検出ルール由来。@ubichill/shared が正）。
 const API_BY_CAP = Object.fromEntries(CAPABILITY_DETECTORS.map((d) => [d.cap, d.api]));
 
 // カタログ + プロトコル定数を @ubichill/shared から 1 バンドルに集約して data URL 経由で読み込む。

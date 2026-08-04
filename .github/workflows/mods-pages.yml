@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - 'mods/**'
-      - 'scripts/build-workers.mjs'
+      - 'packages/sdk/cli/**'
   workflow_dispatch:
 
 concurrency:
@@ -43,7 +43,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
 
-      # build-workers.mjs は capability 検出テーブルを @ubichill/shared から import するため、
+      # packages/sdk/cli/build.ts は capability 検出テーブルを @ubichill/shared から import するため、
       # ビルド済み dist が先に無いと解決に失敗する。
       - name: Build shared package
         run: pnpm --filter @ubichill/shared build
@@ -55,7 +55,7 @@ jobs:
       # 公開前の fail-closed ゲート: lock.json の integrity が実際に配布するバイト列と
       # 一致するか独立に再計算して突き合わせる。ズレていれば公開を止める。
       - name: Verify mod locks
-        run: node scripts/verify-mod-locks.mjs
+        run: pnpm verify:mod-locks
 
       - name: Checkout gh-pages branch (worktree)
         run: |

@@ -31,7 +31,7 @@
  * ```
  */
 
-import type { VNode, VNodeChild } from '@ubichill/shared';
+import type { VNode, VNodeChild } from '@ubichill/shared/mod/vnode';
 import type { Grip } from '../ubi/grip';
 
 interface GripableProps {

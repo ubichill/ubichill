@@ -1,4 +1,5 @@
-import { CommandType, type ComponentInstance } from '@ubichill/shared';
+import type { ComponentInstance } from '@ubichill/shared/mod/entities';
+import { CommandType } from '@ubichill/shared/mod/protocol';
 import { describe, expect, it, vi } from 'vitest';
 import type { OmitId } from '../types';
 import { createStateModule, type StateModuleDeps } from './index';

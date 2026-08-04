@@ -13,17 +13,40 @@ const srcPath = (rel: string): string => fileURLToPath(new URL(rel, import.meta.
 
 export default defineConfig({
     resolve: {
-        alias: {
-            '@ubichill/shared': srcPath('./packages/shared/src/index.ts'),
-            '@ubichill/loader': srcPath('./packages/loader/src/index.ts'),
-            '@ubichill/ecs': srcPath('./packages/ecs/src/index.ts'),
-            '@ubichill/sdk': srcPath('./packages/sdk/src/index.ts'),
-            '@ubichill/ui-renderer': srcPath('./packages/ui-renderer/src/index.ts'),
-        },
+        // 配列 + 完全一致の正規表現（`^...$`）で指定する。plain object 形式の alias は
+        // 実装によっては prefix マッチしてしまい、サブパス（例: @ubichill/shared/mod/protocol）が
+        // 意図せず親エイリアス（@ubichill/shared）に食われて壊れるケースがあったため。
+        alias: [
+            { find: /^@ubichill\/shared$/, replacement: srcPath('./packages/shared/src/index.ts') },
+            // shared のサブパスエクスポート（barrel 経由で schemas/* の zod まで読み込むと
+            // dts-bundle-generator が極端に遅くなるため、SDK 側は個別サブパスを直接 import する）。
+            {
+                find: /^@ubichill\/shared\/mod\/entities$/,
+                replacement: srcPath('./packages/shared/src/mod/entities.ts'),
+            },
+            {
+                find: /^@ubichill\/shared\/mod\/protocol$/,
+                replacement: srcPath('./packages/shared/src/mod/protocol.ts'),
+            },
+            { find: /^@ubichill\/shared\/mod\/errors$/, replacement: srcPath('./packages/shared/src/mod/errors.ts') },
+            { find: /^@ubichill\/shared\/mod\/vnode$/, replacement: srcPath('./packages/shared/src/mod/vnode.ts') },
+            { find: /^@ubichill\/shared\/mod\/types$/, replacement: srcPath('./packages/shared/src/mod/types.ts') },
+            { find: /^@ubichill\/loader$/, replacement: srcPath('./packages/loader/src/index.ts') },
+            {
+                find: /^@ubichill\/loader\/gen-lock$/,
+                replacement: srcPath('./packages/loader/src/genLock.ts'),
+            },
+            { find: /^@ubichill\/ecs$/, replacement: srcPath('./packages/ecs/src/index.ts') },
+            { find: /^@ubichill\/sdk$/, replacement: srcPath('./packages/sdk/src/index.ts') },
+            { find: /^@ubichill\/ui-renderer$/, replacement: srcPath('./packages/ui-renderer/src/index.ts') },
+        ],
     },
     test: {
         environment: 'node',
-        include: ['packages/**/src/**/*.test.{ts,tsx}', 'scripts/**/*.test.mjs'],
-        exclude: ['**/node_modules/**', '**/dist/**'],
+        // packages 配下はどこにテストファイルがあっても拾う（src/ 限定にしない。
+        // 例: packages/sdk/build.test.mjs, packages/sdk/cli/build.test.ts はビルドツール自身の
+        // テストで src/ 配下ではない）。
+        include: ['packages/**/*.test.{ts,tsx,mjs}', 'scripts/**/*.test.mjs'],
+        exclude: ['**/node_modules/**', '**/dist/**', '**/dist-npm/**'],
     },
 });

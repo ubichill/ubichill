@@ -15,7 +15,7 @@ Viteベースの完全CSR。URLで起動しSocket.IOで同期する、ゼロト�
 - テストを書くこと。htmlなどコンテンツのテストは不要でロジックのテストを書くことで少し意地悪なテストをして。それと副作用やdb依存などを減らすことでテストしやすくして
 - **スタイリング境界**:
   - Host本体 (`packages/frontend`) は **PandaCSS** のみ使用（`tokens.colors`使用必須、ハードコード禁止）。
-- 他のファイルを確認して後方互換性などを全く担保せずに常に新しいロジックを書くこと
+- Host内部の実装は後方互換性に囚われず常に最適・最新のロジックにリファクタリングすること。ただし、`@ubichill/sdk` の公開APIおよび `PROTOCOL_VERSION` はセマンティックバージョニングに従い破壊的変更を慎重に管理すること。
 - **styleではなくclassName**
 - コンポーネント実装では、レイアウトは css()、共通部品は cva() で切り分ける
 
@@ -29,7 +29,7 @@ modは `@ubichill/sdk` のみに依存する。Host/本体との直接結合は�
 - `@ubichill/react`: Host向けReact Hooks群。
 - `@ubichill/ui-renderer`: VNode→DOM 描画・入力収集（host/guest 両側で共用）。
 - `@ubichill/frontend`: Host クライアントアプリ本体（UI + Socket/セッション/ルーティング/mod レジストリ）。
-- `@ubichill/sdk`: mod開発者向けAPI。
+- `@ubichill/sdk`: mod開発者向けAPI。`@ubichill/shared` や `@ubichill/ecs` の必要な定数・型・計算ロジックを内部にインラインバンドルし、外部依存ゼロ（zero-dependency）で提供する。
 
 ## ubisdkについては`@ubichill/sdk`を確認すること
 ubi.uiなどでmodが操作できる

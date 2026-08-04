@@ -64,7 +64,17 @@ async function main() {
 
     // Build mod workers (TypeScript → JS bundle → .gen.ts)
     console.log('🔨 Building mod workers...');
-    const buildWorkers = spawnSync(process.execPath, ['scripts/build-workers.mjs'], { stdio: 'inherit' });
+    const buildWorkers = spawnSync(
+        process.execPath,
+        [
+            'packages/sdk/cli/index.ts',
+            'build',
+            '--mods-dir=mods',
+            '--public-mods-dir=packages/frontend/public/mods',
+            '--dist-dir=dist/mods',
+        ],
+        { stdio: 'inherit' },
+    );
     if (buildWorkers.status !== 0) {
         console.error('Failed to build mod workers.');
         process.exit(1);
