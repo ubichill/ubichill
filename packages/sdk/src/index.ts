@@ -73,7 +73,11 @@ export type {
     WorldEnvironmentData,
 } from '@ubichill/shared';
 // 統一エラー体系: modは UbiError / UbiErrorCode で失敗理由を判別できる
-export { UbiError, UbiErrorCode } from '@ubichill/shared';
+// このSDKが対応するワイヤープロトコルのバージョン（Host側 @ubichill/sandbox が実行時に
+// ハンドシェイクする値と同じ定数）。SDKのnpm semverはこの値と自動連動しないため、
+// mod開発者が「このSDKでビルドしたmodがどのHostバージョンと噛み合うか」を確認する
+// 目安として公開する。実際の互換性チェックは Host 側の checkProtocolCompatibility が担う。
+export { PROTOCOL_VERSION, UbiError, UbiErrorCode } from '@ubichill/shared';
 export type { Player, State, Ubi, Ui } from './ubi';
 // UbiSDK クラス（実装） + mod 向け公開型
 export { UbiSDK } from './ubi';

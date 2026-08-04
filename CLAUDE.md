@@ -29,7 +29,7 @@ modは `@ubichill/sdk` のみに依存する。Host/本体との直接結合は�
 - `@ubichill/react`: Host向けReact Hooks群。
 - `@ubichill/ui-renderer`: VNode→DOM 描画・入力収集（host/guest 両側で共用）。
 - `@ubichill/frontend`: Host クライアントアプリ本体（UI + Socket/セッション/ルーティング/mod レジストリ）。
-- `@ubichill/sdk`: mod開発者向けAPI。
+- `@ubichill/sdk`: mod開発者向けAPI。`@ubichill/shared` や `@ubichill/ecs` の必要な定数・型・計算ロジックを内部にインラインバンドルし、外部依存ゼロ（zero-dependency）で提供する。
 
 ## ubisdkについては`@ubichill/sdk`を確認すること
 ubi.uiなどでmodが操作できる
