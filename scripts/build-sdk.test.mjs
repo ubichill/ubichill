@@ -12,12 +12,13 @@ const INDEX_ENTRY = ENTRIES.find((e) => e.name === 'index');
 
 // buildJs（esbuild）/ buildDts（TS Compiler API フルコンパイル）はともに重い。
 // ファイル全体で 1 回だけ計算し、全 describe で再利用する（再計算のたびタイムアウトしうる）。
+// ローカル実測 ~22s だが CI ランナーは数倍遅いことがあるため、90s の余裕を持たせる。
 let indexJs;
 let indexDts;
 beforeAll(async () => {
     indexJs = await buildJs(INDEX_ENTRY);
     indexDts = buildDts(INDEX_ENTRY);
-}, 30000);
+}, 90000);
 
 describe('buildJs（SDK 完全バンドル）', () => {
     it('zod / Host専用スキーマが混入しない（ecs全体 + shared一部シンボルのみ実行時依存）', () => {
@@ -125,6 +126,6 @@ describe('統合検証: @ubichill/ecs・@ubichill/shared が存在しない環�
                 rmSync(tmp, { recursive: true, force: true });
             }
         },
-        30000,
+        60000,
     );
 });
