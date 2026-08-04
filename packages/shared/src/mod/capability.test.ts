@@ -4,8 +4,10 @@ import {
     buildAllowedCommands,
     CAPABILITY_CATALOG,
     CAPABILITY_COMMANDS,
+    CAPABILITY_DETECTORS,
     CAPABILITY_RISK,
     describeCapability,
+    detectCapabilities,
     getCapabilityRisk,
     listCapabilities,
 } from './capability';
@@ -44,6 +46,71 @@ describe('CAPABILITY_CATALOG（単一の真実の源）', () => {
             expect(CAPABILITY_RISK[cap]).toBe(spec.risk);
         }
         expect(Object.keys(CAPABILITY_COMMANDS).sort()).toEqual(Object.keys(CAPABILITY_CATALOG).sort());
+    });
+});
+
+describe('CAPABILITY_DETECTORS（カタログとの drift-guard）', () => {
+    it('全 detector の cap は CAPABILITY_CATALOG に実在する（typo・削除漏れの検知）', () => {
+        const knownCaps = new Set(Object.keys(CAPABILITY_CATALOG));
+        for (const d of CAPABILITY_DETECTORS) {
+            expect(knownCaps.has(d.cap), `detector "${d.cap}" が CAPABILITY_CATALOG に存在しない`).toBe(true);
+        }
+    });
+
+    it('detectCapabilities が返す capability も必ずカタログに実在する', () => {
+        const knownCaps = new Set(Object.keys(CAPABILITY_CATALOG));
+        const detected = detectCapabilities('Ubi.fetch(); Ubi.ui.render(); Ubi.canvas.frame(); Ubi.media.play();');
+        for (const cap of detected) {
+            expect(knownCaps.has(cap), `detectCapabilities が未知の capability "${cap}" を返した`).toBe(true);
+        }
+    });
+});
+
+describe('detectCapabilities（Ubi API の静的検出）', () => {
+    it('Ubi.fetch から net:fetch を検出する', () => {
+        expect(detectCapabilities('const r = await Ubi.fetch("https://api.example.com");')).toContain('net:fetch');
+    });
+
+    it('Ubi.ui.render から ui:render を検出する', () => {
+        expect(detectCapabilities('Ubi.ui.render(() => <div/>);')).toContain('ui:render');
+    });
+
+    it('.showToast( から ui:toast を検出する', () => {
+        expect(detectCapabilities('Ubi.ui.showToast("hi");')).toContain('ui:toast');
+    });
+
+    it('Ubi.entity / Ubi.state から scene:read と scene:update を検出する（over-approx）', () => {
+        const caps = detectCapabilities('const e = Ubi.entity.self; Ubi.state.sync({});');
+        expect(caps).toContain('scene:read');
+        expect(caps).toContain('scene:update');
+    });
+
+    it('.broadcast( から event:broadcast、.sendToHost( から host:message を検出する', () => {
+        const caps = detectCapabilities('Ubi.event.broadcast("x", {}); Ubi.event.sendToHost("user:update", {});');
+        expect(caps).toContain('event:broadcast');
+        expect(caps).toContain('host:message');
+        expect(caps).toContain('event:emit');
+    });
+
+    it('Ubi.canvas → canvas:draw、Ubi.media → media:control', () => {
+        expect(detectCapabilities('Ubi.canvas.frame();')).toContain('canvas:draw');
+        expect(detectCapabilities('Ubi.media.play("t");')).toContain('media:control');
+    });
+
+    it('Ubi API を使わないコードは空配列を返す', () => {
+        expect(detectCapabilities('const x = 1 + 2; console.log(x);')).toEqual([]);
+    });
+
+    it('emit だけのmodは host-message / broadcast を申告しない（過剰にならない）', () => {
+        const caps = detectCapabilities('Ubi.event.emit("tick", {});');
+        expect(caps).toContain('event:emit');
+        expect(caps).not.toContain('event:broadcast');
+        expect(caps).not.toContain('host:message');
+    });
+
+    it('結果はソート済み・重複なし', () => {
+        const caps = detectCapabilities('Ubi.entity.self; Ubi.entity.query(); Ubi.ui.render();');
+        expect(caps).toEqual([...new Set(caps)].sort());
     });
 });
 

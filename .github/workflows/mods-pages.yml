@@ -43,6 +43,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
 
+      # build-workers.mjs は capability 検出テーブルを @ubichill/shared から import するため、
+      # ビルド済み dist が先に無いと解決に失敗する。
+      - name: Build shared package
+        run: pnpm --filter @ubichill/shared build
+
       - name: Build mod workers
         # dist/mods/ に各modのバンドルが出力される
         run: pnpm build:workers
