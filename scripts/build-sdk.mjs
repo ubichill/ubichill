@@ -25,7 +25,7 @@
  */
 import { generateDtsBundle } from 'dts-bundle-generator';
 import * as esbuild from 'esbuild';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -92,14 +92,16 @@ export async function buildJs(entry) {
 
 export function buildPackageJson() {
     const sdkPackageJson = JSON.parse(readFileSync(join(sdkDir, 'package.json'), 'utf-8'));
-    const rootPackageJson = JSON.parse(readFileSync(join(root, 'package.json'), 'utf-8'));
 
     return JSON.stringify(
         {
             name: 'ubichill',
             version: sdkPackageJson.version,
             description: sdkPackageJson.description,
-            license: rootPackageJson.license,
+            // モノレポ本体（Host/backend/frontend）は AGPL-3.0-only だが、SDK は外部mod開発者が
+            // 自分のコード（ライセンス不問）に組み込むためのライブラリなので、コピーレフトの
+            // 継承を避け MIT にする（packages/sdk/LICENSE、リポジトリ本体とは別ファイル）。
+            license: 'MIT',
             repository: { type: 'git', url: 'git+https://github.com/ubichill/ubichill.git' },
             type: 'module',
             sideEffects: false,
@@ -136,6 +138,10 @@ async function main() {
 
     writeFileSync(join(outDir, 'package.json'), buildPackageJson(), 'utf-8');
     console.log(`📦 ${outDir}/package.json (name: "ubichill")`);
+
+    copyFileSync(join(sdkDir, 'LICENSE'), join(outDir, 'LICENSE'));
+    console.log(`📄 ${outDir}/LICENSE (MIT)`);
+
     console.log('🎉 SDK publish package built.');
 }
 

@@ -1,10 +1,13 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { buildDts, buildJs, buildPackageJson, ENTRIES } from './build-sdk.mjs';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const sdkLicensePath = join(__dirname, '..', 'packages', 'sdk', 'LICENSE');
 const INDEX_ENTRY = ENTRIES.find((e) => e.name === 'index');
 
 // buildJs（esbuild）/ buildDts（TS Compiler API フルコンパイル）はともに重い。
@@ -57,10 +60,18 @@ describe('buildPackageJson', () => {
         expect(pkg.name).toBe('ubichill');
         expect(pkg.dependencies).toEqual({});
         expect(pkg.version).toMatch(/^\d+\.\d+\.\d+$/);
-        expect(pkg.license).toBeTruthy();
+        // Host本体（AGPL-3.0-only）とは別に MIT（外部mod開発者が自分のコードへ組み込みやすいよう）
+        expect(pkg.license).toBe('MIT');
         expect(pkg.exports['.'].import).toBe('./index.js');
         expect(pkg.exports['./jsx-runtime'].import).toBe('./jsx-runtime.js');
         expect(pkg.exports['./gripable'].import).toBe('./gripable.js');
+        // package.json の files に LICENSE が入っている以上、実体が無いと publish が壊れる
+        expect(pkg.files).toContain('LICENSE');
+    });
+
+    it('packages/sdk/LICENSE が実在し MIT 表記を含む（build:sdk が dist-npm へコピーする実体）', () => {
+        expect(existsSync(sdkLicensePath), 'packages/sdk/LICENSE が見つからない').toBe(true);
+        expect(readFileSync(sdkLicensePath, 'utf-8')).toContain('MIT License');
     });
 });
 
