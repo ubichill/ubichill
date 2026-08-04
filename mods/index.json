@@ -3,7 +3,7 @@
     "id": "pen",
     "name": "Pen",
     "version": "2.0.0",
-    "repositoryPath": "mods/pen",
+    "repositoryPath": "pen",
     "components": [
       "pen:canvas",
       "pen:tray",
@@ -15,7 +15,7 @@
     "id": "video-player",
     "name": "VideoPlayer",
     "version": "2.1.0",
-    "repositoryPath": "mods/video-player",
+    "repositoryPath": "video-player",
     "components": [
       "video-player:screen",
       "video-player:controls",
