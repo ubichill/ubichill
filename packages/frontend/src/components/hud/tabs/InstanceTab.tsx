@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router';
 import { useInstances } from '@/components/lobby/useInstances';
 import { WorldDetailModal } from '@/components/lobby/WorldDetailModal';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
-import { API_BASE } from '@/lib/api';
+import { fetchInstance } from '@/lib/instancesApi';
 import { css } from '@/styled-system/css';
 import { cardStyle, sectionHeading, tabPanel } from './shared';
 
@@ -59,10 +59,9 @@ export function InstanceTab({ currentInstanceId, onNavigate, onReturnToLobby }: 
 
     useEffect(() => {
         let cancelled = false;
-        fetch(`${API_BASE}/api/v1/instances/${currentInstanceId}`, { credentials: 'include' })
-            .then((r) => (r.ok ? (r.json() as Promise<Instance>) : null))
+        fetchInstance(currentInstanceId)
             .then((data) => {
-                if (!cancelled && data) setInstance(data);
+                if (!cancelled) setInstance(data);
             })
             .catch(() => {
                 /* 取得失敗時はアクション一部のみ非表示 */

@@ -2,7 +2,7 @@ import type { WorldListItem } from '@ubichill/shared';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
-import { API_BASE } from '@/lib/api';
+import { createInstance } from '@/lib/instancesApi';
 import { SETTINGS_KEYS, useSetting } from '@/lib/settings';
 import { css } from '@/styled-system/css';
 import { useFavorites } from './useFavorites';
@@ -117,17 +117,7 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
         setImportState('loading');
         setImportError('');
         try {
-            const res = await fetch(`${API_BASE}/api/v1/instances`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ worldId: importUrl.trim() }),
-            });
-            if (!res.ok) {
-                const data = (await res.json()) as { error?: string };
-                throw new Error(data.error ?? `${res.status}`);
-            }
-            const instance = (await res.json()) as { id: string };
+            const instance = await createInstance(importUrl.trim());
             setImportUrl('');
             setImportState('idle');
             navigate(`/instance/${instance.id}`);

@@ -1,6 +1,6 @@
 import { type Instance, type WorldListItem, worldOriginDomain, worldShareUrl } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
-import { API_BASE } from '@/lib/api';
+import { createInstance, fetchInstances, fetchWorld } from '@/lib/instancesApi';
 import { css } from '@/styled-system/css';
 import { FavoriteButton } from './FavoriteButton';
 
@@ -34,19 +34,17 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
 
     useEffect(() => {
         let cancelled = false;
-        void fetch(`${API_BASE}/api/v1/worlds/${encodeURIComponent(instance.world.id)}`, { credentials: 'include' })
-            .then((r) => (r.ok ? (r.json() as Promise<WorldListItem>) : null))
+        void fetchWorld(instance.world.id)
             .then((w) => {
-                if (!cancelled && w) setWorld((prev) => ({ ...prev, ...w }));
+                if (!cancelled) setWorld((prev) => ({ ...prev, ...w }));
             })
             .catch(() => undefined);
-        void fetch(`${API_BASE}/api/v1/instances?worldId=${encodeURIComponent(worldRef)}`, { credentials: 'include' })
-            .then((r) => (r.ok ? (r.json() as Promise<{ instances: Instance[] }>) : null))
-            .then((data) => {
-                if (!cancelled && data?.instances?.length) {
-                    setSiblings(data.instances);
+        void fetchInstances(worldRef)
+            .then((instances) => {
+                if (!cancelled && instances.length) {
+                    setSiblings(instances);
                     // 主役インスタンスの最新 stats に追従する。
-                    const fresh = data.instances.find((i) => i.id === instance.id);
+                    const fresh = instances.find((i) => i.id === instance.id);
                     if (fresh) setSelected(fresh);
                 }
             })
@@ -61,17 +59,7 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
         setCreating(true);
         setError(null);
         try {
-            const res = await fetch(`${API_BASE}/api/v1/instances`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ worldId: worldRef }),
-            });
-            if (!res.ok) {
-                const data = (await res.json()) as { error?: string };
-                throw new Error(data.error ?? 'インスタンスの作成に失敗しました');
-            }
-            const created = (await res.json()) as Instance;
+            const created = await createInstance(worldRef);
             onJoin(created.id);
         } catch (e) {
             setError(e instanceof Error ? e.message : 'インスタンスの作成に失敗しました');
