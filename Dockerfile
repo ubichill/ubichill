@@ -25,10 +25,12 @@ COPY packages/bff/package.json            ./packages/bff/package.json
 COPY packages/db/package.json             ./packages/db/package.json
 COPY packages/ecs/package.json            ./packages/ecs/package.json
 COPY packages/frontend/package.json       ./packages/frontend/package.json
+COPY packages/loader/package.json         ./packages/loader/package.json
 COPY packages/react/package.json          ./packages/react/package.json
 COPY packages/sandbox/package.json        ./packages/sandbox/package.json
 COPY packages/sdk/package.json            ./packages/sdk/package.json
 COPY packages/shared/package.json         ./packages/shared/package.json
+COPY packages/ui-renderer/package.json    ./packages/ui-renderer/package.json
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile --ignore-scripts
 
