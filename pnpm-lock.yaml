@@ -210,7 +210,7 @@ importers:
         version: link:../react
       '@ubichill/sdk':
         specifier: workspace:*
-        version: link:../sdk/dist-npm
+        version: link:../sdk
       '@ubichill/shared':
         specifier: workspace:*
         version: link:../shared
@@ -320,7 +320,7 @@ importers:
         version: link:../ecs
       '@ubichill/sdk':
         specifier: workspace:*
-        version: link:../sdk/dist-npm
+        version: link:../sdk
       '@ubichill/shared':
         specifier: workspace:*
         version: link:../shared
@@ -349,7 +349,6 @@ importers:
       rimraf:
         specifier: ^6.0.1
         version: 6.1.2
-    publishDirectory: dist-npm
 
   packages/shared:
     dependencies:

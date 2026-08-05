@@ -22,9 +22,11 @@ frontend/sandbox/react（`@ubichill/sdk` に依存し `updateInternalDependencie
    （対話式で変更内容とバージョン種別 patch/minor/major を選ぶ、`.changeset/*.md` が生成される）
 2. PRをmainにマージすると `.github/workflows/release-sdk.yml` が自動で
    「Version Packages」PR（`packages/sdk/package.json` の version bump + CHANGELOG.md）を開く
-3. その「Version Packages」PRをマージすると、同ワークフローが `pnpm build:sdk` で
-   `dist-npm/` を最新バージョンで再生成し、`changeset publish`（`publishConfig.directory`
-   経由）で npm registry へ公開する
+3. その「Version Packages」PRをマージすると、同ワークフローが `packages/sdk/publish.mjs`
+   （`pnpm build:sdk` で `dist-npm/` を最新バージョンで再生成し `npm publish` する自前
+   スクリプト）で npm registry へ公開する。`changeset publish` の `publishConfig.directory`
+   ルーティングは使わない（pnpmがworkspace内の @ubichill/sdk 参照先を全てdist-npmに固定して
+   しまい開発時のソース解決が壊れるため。詳細は `packages/sdk/publish.mjs` 冒頭コメント参照）
 
 ### 認証: npm trusted publishing（OIDC、長期トークン不要）
 

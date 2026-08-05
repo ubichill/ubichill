@@ -7,8 +7,17 @@ name: Release ubichill (npm)
 # 運用: PRに `.changeset/*.md`（`pnpm changeset` で対話的に作成）を含めてmainにマージすると、
 # このワークフローが「Version Packages」PR（version bump + CHANGELOG.md 更新）を自動で開く。
 # そのPRをマージすると（=これ以上 .changeset/*.md が無い状態でmainにpushされると）、
-# このワークフローが `pnpm build:sdk` でdist-npmを再生成し、`changeset publish` で
-# npm registry へ公開する（packages/sdk の publishConfig.directory=dist-npm を参照）。
+# このワークフローが `packages/sdk/publish.mjs`（`pnpm build:sdk` でdist-npmを再生成し
+# `npm publish` する自前スクリプト）で公開する。
+#
+# `changeset publish`（package.json の publishConfig.directory によるルーティング）は
+# 使わない: publishConfig.directory を設定すると pnpm が workspace 内で @ubichill/sdk を
+# 参照する全パッケージ（sandbox/frontend/react等）のリンク先をそのdirectory（npm publish
+# 専用の変換済み成果物）に固定してしまい、通常の開発時のソース解決が壊れる（実測:
+# dist-npmが無い状態だと全パッケージのtypecheckが `Cannot find module '@ubichill/sdk'`
+# で失敗する）。publish.mjs はCHANGESETS_OUTPUTにgit-tagイベントを書き込むことで、
+# changesets/actionが通常のchangeset publishと同様にgitタグ/GitHub Releaseを作成できる
+# ようにしている（詳細はpublish.mjs冒頭コメント参照）。
 #
 # 認証は npm trusted publishing（OIDC、GitHub Actions↔npmの信頼関係、長期トークン不要）。
 # 前提（要 手動で1回だけ実施）:
@@ -77,12 +86,7 @@ jobs:
         uses: changesets/action@v1
         with:
           # Version Packages PR が既に無い状態（＝マージ済み）のときだけ実行される。
-          # dist-npm を最新のバージョンで再生成してから、publishConfig.directory 経由で
-          # そこから publish する（packages/sdk/package.json の name はワークスペース内部名
-          # "@ubichill/sdk" のままだが、dist-npm/package.json は build.mjs が "ubichill" に
-          # 書き換える。publish 対象は publishConfig.directory 側なので実際に registry へ
-          # 出るのは "ubichill" という名前）。
-          publish: pnpm build:sdk && pnpm changeset publish
+          publish: node packages/sdk/publish.mjs
           version: pnpm changeset version
           commit: 'chore: version packages'
           title: 'chore: version packages'
