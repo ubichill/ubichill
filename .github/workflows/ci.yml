@@ -68,6 +68,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+        with:
+          # check-drift.mjs が直近publishタグ(ubichill@*)をworktreeでビルド・比較するため、
+          # タグと履歴が必要（デフォルトのshallow checkoutでは見えない）。
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Extract Node version from package.json
         id: versions
@@ -129,6 +134,13 @@ jobs:
           npm install --no-save
           node -e "import('./index.js').then(m => { if (!m.UbiSDK) throw new Error('UbiSDK not exported'); })"
           node cli.js verify --dist-dir=../../../dist/mods
+
+      # sdk がインライン展開する shared/ecs/loader（private、changesets管理対象外）だけを
+      # 変更してsdk向けのchangesetを付け忘れた場合、npm公開物の内容が変わるのにバージョンが
+      # 上がらない事故になる。直近publishタグ(ubichill@*)時点とHEADでsdkを2回ビルドして
+      # バイト内容を比較し、version不変のままビルド結果が変わっていればfail-closedで止める。
+      - name: Check for undetected SDK build drift (shared/ecs/loader changes without a changeset)
+        run: node packages/sdk/check-drift.mjs
 
   # 変更検知: PR 時はパスフィルタ、push to main では全て true を返す。
   detect-changes:
