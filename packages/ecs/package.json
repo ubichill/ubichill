@@ -1,6 +1,7 @@
 {
     "name": "@ubichill/ecs",
     "version": "1.0.0",
+    "private": true,
     "description": "Pure ECS engine and mod protocol types for Ubichill. No React, no DOM.",
     "sideEffects": false,
     "main": "src/index.ts",

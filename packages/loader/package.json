@@ -1,6 +1,7 @@
 {
     "name": "@ubichill/loader",
     "version": "1.0.0",
+    "private": true,
     "description": "mod の取得・完全性検証・ロック構築。browser+Node 両対応・React/DOM 非依存。frontend と CLI が共有する。",
     "type": "module",
     "sideEffects": false,

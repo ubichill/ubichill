@@ -139,12 +139,15 @@ export function buildPackageJson() {
             main: './index.js',
             types: './index.d.ts',
             bin: { ubichill: './cli.js' },
+            // CLI（cli.js）は esbuild で target: 'node22' にビルドしている。import surface は
+            // それより緩い es2020 だが、同一パッケージなので engines は CLI 側の要件に揃える。
+            engines: { node: '>=22' },
             exports: {
                 '.': { types: './index.d.ts', import: './index.js' },
                 './jsx-runtime': { types: './jsx-runtime.d.ts', import: './jsx-runtime.js' },
                 './gripable': { types: './gripable.d.ts', import: './gripable.js' },
             },
-            files: ['*.js', '*.d.ts', 'LICENSE'],
+            files: ['*.js', '*.d.ts', 'LICENSE', 'README.md'],
             // import surface（index/jsx-runtime/gripable）の実行時依存はビルド時に esbuild で
             // 完全バンドル済み（@ubichill/ecs 全体 + @ubichill/shared の一部シンボル）。
             // bin（cli.js）だけが esbuild を external にしているため、real dependency として残す
@@ -179,6 +182,9 @@ async function main() {
 
     copyFileSync(join(sdkDir, 'LICENSE'), join(outDir, 'LICENSE'));
     console.log(`📄 ${outDir}/LICENSE (MIT)`);
+
+    copyFileSync(join(sdkDir, 'README.md'), join(outDir, 'README.md'));
+    console.log(`📄 ${outDir}/README.md`);
 
     console.log('🎉 SDK publish package built.');
 }

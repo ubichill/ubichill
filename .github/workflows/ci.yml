@@ -117,6 +117,19 @@ jobs:
       - name: Verify SDK type bundle
         run: pnpm verify:sdk-types
 
+      # `pnpm build:sdk` が生成する npm 公開物（ubichill パッケージ）が実際にインストール・
+      # 実行可能かを確認する fail-closed ゲート。build.test.mjs はコード内容のみの高速チェックで、
+      # 「npm install した実体が動くか」は見ていない（実測: esbuild/yaml を external にせず
+      # バンドルすると動的requireで実行時に落ちる、shebangを二重に付けるとSyntaxErrorになる、
+      # という2つの回帰をこの手順を手動で踏んで初めて見つけた）。
+      - name: Build & smoke-test npm publish package
+        run: |
+          pnpm build:sdk
+          cd packages/sdk/dist-npm
+          npm install --no-save
+          node -e "import('./index.js').then(m => { if (!m.UbiSDK) throw new Error('UbiSDK not exported'); })"
+          node cli.js verify --dist-dir=../../../dist/mods
+
   # 変更検知: PR 時はパスフィルタ、push to main では全て true を返す。
   detect-changes:
     name: Detect changed packages

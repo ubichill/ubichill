@@ -1,7 +1,11 @@
 {
     "name": "@ubichill/sdk",
-    "version": "1.0.0",
-    "description": "Ubichill Mod SDK — UbiSDK runtime and public API for mod developers.",
+    "version": "0.1.0",
+    "description": "ubichill mod SDK (UbiSDK runtime + public API) and CLI (build/lock/verify) for mod developers.",
+    "publishConfig": {
+        "access": "public",
+        "directory": "dist-npm"
+    },
     "type": "module",
     "sideEffects": false,
     "main": "src/index.ts",
