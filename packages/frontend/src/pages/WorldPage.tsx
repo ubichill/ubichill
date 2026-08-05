@@ -1,7 +1,7 @@
 import { type Instance, type WorldListItem, worldSourceLabel } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { API_BASE } from '@/lib/api';
+import { createInstance, fetchInstances, fetchWorld } from '@/lib/instancesApi';
 import { useSession } from '@/lib/session';
 import { css } from '@/styled-system/css';
 
@@ -33,18 +33,10 @@ export function WorldPage() {
         setLoading(true);
         setError(null);
 
-        Promise.all([
-            fetch(`${API_BASE}/api/v1/worlds/${worldId}`, { credentials: 'include' }).then((r) => {
-                if (!r.ok) throw new Error('World not found');
-                return r.json() as Promise<WorldListItem>;
-            }),
-            fetch(`${API_BASE}/api/v1/instances?worldId=${encodeURIComponent(worldId)}`, {
-                credentials: 'include',
-            }).then((r) => r.json() as Promise<{ instances: Instance[] }>),
-        ])
+        Promise.all([fetchWorld(worldId), fetchInstances(worldId)])
             .then(([worldData, instancesData]) => {
                 setWorld(worldData);
-                setInstances(instancesData.instances ?? []);
+                setInstances(instancesData);
             })
             .catch((e: unknown) => setError(e instanceof Error ? e.message : 'データの取得に失敗しました'))
             .finally(() => setLoading(false));
@@ -98,17 +90,7 @@ export function WorldPage() {
         setCreating(true);
         setError(null);
         try {
-            const res = await fetch(`${API_BASE}/api/v1/instances`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ worldId }),
-            });
-            if (!res.ok) {
-                const data = (await res.json()) as { error?: string };
-                throw new Error(data.error ?? 'インスタンスの作成に失敗しました');
-            }
-            const instance = (await res.json()) as Instance;
+            const instance = await createInstance(worldId);
             navigate(`/instance/${instance.id}`, { state: { worldId } });
         } catch (e: unknown) {
             setError(e instanceof Error ? e.message : 'インスタンスの作成に失敗しました');

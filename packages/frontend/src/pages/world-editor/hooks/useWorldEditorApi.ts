@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router';
 import yaml from 'yaml';
 import { API_BASE } from '@/lib/api';
+import { createInstance as createInstanceApi } from '@/lib/instancesApi';
 import { buildWorldLock } from '@/mods/buildWorldLock';
 
 interface UseWorldEditorApiArgs {
@@ -87,17 +88,7 @@ export function useWorldEditorApi({ isEdit, worldId, definition, onSavedYamlChan
         setSaving(true);
         onError('');
         try {
-            const res = await fetch(`${API_BASE}/api/v1/instances`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ worldId }),
-            });
-            if (!res.ok) {
-                const data = (await res.json().catch(() => ({}))) as { error?: string };
-                throw new Error(data.error ?? `HTTP ${res.status}`);
-            }
-            const inst = (await res.json()) as { id: string };
+            const inst = await createInstanceApi(worldId);
             navigate(`/instance/${inst.id}`, { state: { worldId } });
         } catch (e) {
             onError(e instanceof Error ? e.message : 'インスタンス作成失敗');

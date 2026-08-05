@@ -2,7 +2,7 @@ import { type Instance, type WorldListItem, worldShareUrl, worldSourceLabel } fr
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
-import { API_BASE } from '@/lib/api';
+import { createInstance, fetchInstances, fetchWorld } from '@/lib/instancesApi';
 import { useSession } from '@/lib/session';
 import { css } from '@/styled-system/css';
 import { FavoriteButton } from './FavoriteButton';
@@ -44,24 +44,13 @@ export function WorldDetailModal({
         setLoading(true);
         setError(null);
 
-        const fetchWorld = initialWorld
-            ? Promise.resolve(initialWorld)
-            : fetch(`${API_BASE}/api/v1/worlds/${worldId}`, { credentials: 'include' }).then((r) => {
-                  if (!r.ok) throw new Error('World not found');
-                  return r.json() as Promise<WorldListItem>;
-              });
-
+        const worldPromise = initialWorld ? Promise.resolve(initialWorld) : fetchWorld(worldId);
         const worldRef = initialWorld?.url ?? worldId;
-        Promise.all([
-            fetchWorld,
-            fetch(`${API_BASE}/api/v1/instances?worldId=${encodeURIComponent(worldRef)}`, {
-                credentials: 'include',
-            }).then((r) => r.json() as Promise<{ instances: Instance[] }>),
-        ])
+        Promise.all([worldPromise, fetchInstances(worldRef)])
             .then(([worldData, instancesData]) => {
                 if (cancelled) return;
                 setWorld(worldData);
-                setInstances(instancesData.instances ?? []);
+                setInstances(instancesData);
             })
             .catch((e: unknown) => {
                 if (cancelled) return;
@@ -83,17 +72,7 @@ export function WorldDetailModal({
         setError(null);
         const worldRef = world?.url ?? worldId;
         try {
-            const res = await fetch(`${API_BASE}/api/v1/instances`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ worldId: worldRef }),
-            });
-            if (!res.ok) {
-                const data = (await res.json()) as { error?: string };
-                throw new Error(data.error ?? 'インスタンスの作成に失敗しました');
-            }
-            const instance = (await res.json()) as Instance;
+            const instance = await createInstance(worldRef);
             onJoinInstance(instance.id, instance.world.id, {
                 thumbnail: instance.world.thumbnail,
                 displayName: instance.world.displayName,

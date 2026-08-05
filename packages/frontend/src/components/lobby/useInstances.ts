@@ -2,6 +2,7 @@ import type { CreateInstanceRequest, Instance, WorldListItem } from '@ubichill/s
 import { useCallback, useEffect, useState } from 'react';
 
 import { API_BASE } from '@/lib/api';
+import { createInstance as createInstanceApi, fetchInstances } from '@/lib/instancesApi';
 
 interface UseInstancesReturn {
     instances: Instance[];
@@ -73,14 +74,7 @@ export function useInstances(): UseInstancesReturn {
         setLoading(true);
         setError(null);
         try {
-            const query = worldId ? `?worldId=${encodeURIComponent(worldId)}` : '';
-            const res = await fetch(`${API_BASE}/api/v1/instances${query}`, {
-                credentials: 'include',
-                cache: 'no-store',
-            });
-            if (!res.ok) throw new Error('Failed to fetch instances');
-            const data = await res.json();
-            setInstances(data.instances);
+            setInstances(await fetchInstances(worldId));
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Unknown error');
         } finally {
@@ -125,17 +119,7 @@ export function useInstances(): UseInstancesReturn {
         setLoading(true);
         setError(null);
         try {
-            const res = await fetch(`${API_BASE}/api/v1/instances`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(request),
-                credentials: 'include',
-            });
-            if (!res.ok) {
-                const data = await res.json();
-                throw new Error(data.error || 'Failed to create instance');
-            }
-            const instance = await res.json();
+            const instance = await createInstanceApi(request);
             setInstances((prev) => [...prev, instance]);
             return instance;
         } catch (err) {
