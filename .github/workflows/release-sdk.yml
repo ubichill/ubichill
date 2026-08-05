@@ -9,6 +9,14 @@ name: Release ubichill (npm)
 # そのPRをマージすると（=これ以上 .changeset/*.md が無い状態でmainにpushされると）、
 # このワークフローが `pnpm build:sdk` でdist-npmを再生成し、`changeset publish` で
 # npm registry へ公開する（packages/sdk の publishConfig.directory=dist-npm を参照）。
+#
+# 認証は npm trusted publishing（OIDC、GitHub Actions↔npmの信頼関係、長期トークン不要）。
+# 前提（要 手動で1回だけ実施）:
+#   1. 初回のみ、このワークフローとは別に（ローカル or 一時トークンで）`ubichill@0.1.0` を
+#      1回 publish する（npmはまだ存在しないパッケージにTrusted Publisherを設定できないため）。
+#   2. npmjs.com → ubichillパッケージの Settings → Trusted Publisher → GitHub Actions で
+#      Organization/Repository/Workflow filename（このファイル名 "release-sdk.yml"）を登録する。
+#   3. 以降はこのワークフローの id-token: write 権限だけで publish できる（NPM_TOKEN不要）。
 on:
   push:
     branches: [main]
@@ -27,6 +35,8 @@ concurrency:
 permissions:
   contents: write
   pull-requests: write
+  # npm trusted publishing (OIDC) が GitHub Actions の ID トークンを要求するために必須。
+  id-token: write
 
 jobs:
   release:
@@ -53,6 +63,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # trusted publishing は npm CLI 11.5.1 以上が必須（実測: Node同梱npmが古いと
+      # OIDCトークン交換ロジック自体が存在せず、通常のトークン認証を要求されて失敗する）。
+      - name: Ensure npm >= 11.5.1 (required for OIDC trusted publishing)
+        run: npm install -g npm@latest && npm --version
+
       # sdk が実行時に inline する ecs/shared の最新ソースを確実に見る（型検証のため）。
       - name: Build shared package
         run: pnpm --filter @ubichill/shared build
@@ -73,5 +88,7 @@ jobs:
           title: 'chore: version packages'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # NPM_TOKEN/NODE_AUTH_TOKEN は意図的に設定しない。OIDC (id-token: write) だけで
+          # 認証する。空文字でも .npmrc に _authToken 行が残ると npm がOIDCより先に
+          # トークン認証を試みて失敗するケースが報告されているため、変数自体を渡さない。
+          NPM_CONFIG_PROVENANCE: 'true'

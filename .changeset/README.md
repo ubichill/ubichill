@@ -9,9 +9,11 @@ We have a quick list of common questions to get you started engaging with this p
 
 ## このリポジトリでの運用（ubichill npm公開専用）
 
-`config.json` の `ignore` で全ての内部専用パッケージ（backend/frontend/db/bff/sandbox/react/
-loader/ui-renderer/shared/ecs）を除外している。バージョン管理・npm公開の対象は
-**`packages/sdk`（npm公開名は `ubichill`）だけ**。
+内部専用パッケージ（backend/db/bff/shared/ecs/loader/ui-renderer）は `private: true` で
+自動的にバージョン管理・公開の対象外になる。`config.json` の `ignore` にはそれに加えて
+frontend/sandbox/react（`@ubichill/sdk` に依存し `updateInternalDependencies` で
+連鎖バージョンアップされてしまうため明示的に除外）を指定している。
+結果、バージョン管理・npm公開の対象は**`packages/sdk`（npm公開名は `ubichill`）だけ**。
 
 このリポジトリ全体の Docker image リリースタグ（`v0.0.N`、`.github/workflows/ci.yml`の
 `Tag release`ジョブが push to main で自動採番）とは**完全に無関係**。混同しないこと。
@@ -23,4 +25,16 @@ loader/ui-renderer/shared/ecs）を除外している。バージョン管理・
 3. その「Version Packages」PRをマージすると、同ワークフローが `pnpm build:sdk` で
    `dist-npm/` を最新バージョンで再生成し、`changeset publish`（`publishConfig.directory`
    経由）で npm registry へ公開する
-4. 公開には GitHub Secrets の `NPM_TOKEN`（npmjs.com の Automation token）が必要
+
+### 認証: npm trusted publishing（OIDC、長期トークン不要）
+
+`release-sdk.yml` は `NPM_TOKEN` を使わず、GitHub Actions の OIDC（`id-token: write`）で
+npm と認証する。**ただし初回publishだけは例外**（npmは一度も公開されていないパッケージに
+Trusted Publisherを設定できないため）:
+
+1. **初回のみ**手動（ローカルの `npm login` または一時的な Automation token）で
+   `ubichill@0.1.0` を1回だけ publish する
+   （`pnpm build:sdk && cd packages/sdk/dist-npm && npm publish --access public`）
+2. npmjs.com → `ubichill` パッケージ → Settings → **Trusted Publisher** → GitHub Actions で
+   Organization=`ubichill` / Repository=`ubichill` / Workflow filename=`release-sdk.yml` を登録
+3. これ以降のリリースは `NPM_TOKEN` シークレット無しで完全に自動公開される
