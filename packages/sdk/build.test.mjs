@@ -37,19 +37,28 @@ describe('buildPackageJson', () => {
         // Dynamic require エラーで実行時に落ちるため、real dependency として残す必要がある）。
         expect(pkg.dependencies).toEqual({ esbuild: '^0.28.0', yaml: '^2.5.0' });
         expect(pkg.bin).toEqual({ ubichill: './cli.js' });
+        expect(pkg.engines).toEqual({ node: '>=22' });
         expect(pkg.version).toMatch(/^\d+\.\d+\.\d+$/);
         // Host本体（AGPL-3.0-only）とは別に MIT（外部mod開発者が自分のコードへ組み込みやすいよう）
         expect(pkg.license).toBe('MIT');
         expect(pkg.exports['.'].import).toBe('./index.js');
         expect(pkg.exports['./jsx-runtime'].import).toBe('./jsx-runtime.js');
         expect(pkg.exports['./gripable'].import).toBe('./gripable.js');
-        // package.json の files に LICENSE が入っている以上、実体が無いと publish が壊れる
+        // package.json の files に LICENSE/README.md が入っている以上、実体が無いと publish が壊れる
         expect(pkg.files).toContain('LICENSE');
+        expect(pkg.files).toContain('README.md');
     });
 
     it('packages/sdk/LICENSE が実在し MIT 表記を含む（build.mjs が dist-npm へコピーする実体）', () => {
         expect(existsSync(sdkLicensePath), 'packages/sdk/LICENSE が見つからない').toBe(true);
         expect(readFileSync(sdkLicensePath, 'utf-8')).toContain('MIT License');
+    });
+
+    it('packages/sdk/README.md は実際に存在するAPI（Ubi.state/Ubi.entity等）を説明している（旧README.mdは削除済みのuseWorld/useSocket等を紹介していた）', () => {
+        const readme = readFileSync(join(__dirname, 'README.md'), 'utf-8');
+        expect(readme).toMatch(/Ubi\.state/);
+        expect(readme).toMatch(/Ubi\.entity/);
+        expect(readme).not.toMatch(/useWorld|useSocket|WorldProvider|SocketProvider/);
     });
 });
 

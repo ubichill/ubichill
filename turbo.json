@@ -9,6 +9,14 @@
                 "dist/**"
             ]
         },
+        "@ubichill/sdk#build": {
+            "dependsOn": [
+                "^build"
+            ],
+            "outputs": [
+                "dist-npm/**"
+            ]
+        },
         "dev": {
             "dependsOn": [
                 "^build"

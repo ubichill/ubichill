@@ -1,0 +1,98 @@
+name: Release ubichill (npm)
+
+# 既存の CI の "Tag release" ジョブ（push to main で v0.0.N を自動採番するDocker imageの
+# バージョニング）とは完全に独立している。ubichill（npm）のバージョンは
+# packages/sdk/package.json の version のみが真実源で、Changesets が管理する。
+#
+# 運用: PRに `.changeset/*.md`（`pnpm changeset` で対話的に作成）を含めてmainにマージすると、
+# このワークフローが「Version Packages」PR（version bump + CHANGELOG.md 更新）を自動で開く。
+# そのPRをマージすると（=これ以上 .changeset/*.md が無い状態でmainにpushされると）、
+# このワークフローが `packages/sdk/publish.mjs`（`pnpm build:sdk` でdist-npmを再生成し
+# `npm publish` する自前スクリプト）で公開する。
+#
+# `changeset publish`（package.json の publishConfig.directory によるルーティング）は
+# 使わない: publishConfig.directory を設定すると pnpm が workspace 内で @ubichill/sdk を
+# 参照する全パッケージ（sandbox/frontend/react等）のリンク先をそのdirectory（npm publish
+# 専用の変換済み成果物）に固定してしまい、通常の開発時のソース解決が壊れる（実測:
+# dist-npmが無い状態だと全パッケージのtypecheckが `Cannot find module '@ubichill/sdk'`
+# で失敗する）。publish.mjs はCHANGESETS_OUTPUTにgit-tagイベントを書き込むことで、
+# changesets/actionが通常のchangeset publishと同様にgitタグ/GitHub Releaseを作成できる
+# ようにしている（詳細はpublish.mjs冒頭コメント参照）。
+#
+# 認証は npm trusted publishing（OIDC、GitHub Actions↔npmの信頼関係、長期トークン不要）。
+# 前提（要 手動で1回だけ実施）:
+#   1. 初回のみ、このワークフローとは別に（ローカル or 一時トークンで）`ubichill@0.1.0` を
+#      1回 publish する（npmはまだ存在しないパッケージにTrusted Publisherを設定できないため）。
+#   2. npmjs.com → ubichillパッケージの Settings → Trusted Publisher → GitHub Actions で
+#      Organization/Repository/Workflow filename（このファイル名 "release-sdk.yml"）を登録する。
+#   3. 以降はこのワークフローの id-token: write 権限だけで publish できる（NPM_TOKEN不要）。
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.changeset/**'
+      - 'packages/sdk/**'
+      - 'packages/ecs/**'
+      - 'packages/shared/**'
+      - 'packages/loader/**'
+  workflow_dispatch: {}
+
+concurrency:
+  group: release-sdk
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  # npm trusted publishing (OIDC) が GitHub Actions の ID トークンを要求するために必須。
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Extract Node version from package.json
+        id: versions
+        run: echo "node=$(jq -r '.volta.node' package.json)" >> $GITHUB_OUTPUT
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ steps.versions.outputs.node }}
+          cache: 'pnpm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # trusted publishing は npm CLI 11.5.1 以上が必須（実測: Node同梱npmが古いと
+      # OIDCトークン交換ロジック自体が存在せず、通常のトークン認証を要求されて失敗する）。
+      - name: Ensure npm >= 11.5.1 (required for OIDC trusted publishing)
+        run: npm install -g npm@latest && npm --version
+
+      # sdk が実行時に inline する ecs/shared の最新ソースを確実に見る（型検証のため）。
+      - name: Build shared package
+        run: pnpm --filter @ubichill/shared build
+
+      - name: Create Release Pull Request or Publish
+        id: changesets
+        uses: changesets/action@v1
+        with:
+          # Version Packages PR が既に無い状態（＝マージ済み）のときだけ実行される。
+          publish: node packages/sdk/publish.mjs
+          version: pnpm changeset version
+          commit: 'chore: version packages'
+          title: 'chore: version packages'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # NPM_TOKEN/NODE_AUTH_TOKEN は意図的に設定しない。OIDC (id-token: write) だけで
+          # 認証する。空文字でも .npmrc に _authToken 行が残ると npm がOIDCより先に
+          # トークン認証を試みて失敗するケースが報告されているため、変数自体を渡さない。
+          NPM_CONFIG_PROVENANCE: 'true'

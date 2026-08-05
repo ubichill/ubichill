@@ -68,6 +68,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+        with:
+          # check-drift.mjs が直近publishタグ(ubichill@*)をworktreeでビルド・比較するため、
+          # タグと履歴が必要（デフォルトのshallow checkoutでは見えない）。
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Extract Node version from package.json
         id: versions
@@ -116,6 +121,26 @@ jobs:
       # 除外している（packages/sdk/build.dts.verify.mjs 冒頭コメント参照）。CIでは明示的に実行する。
       - name: Verify SDK type bundle
         run: pnpm verify:sdk-types
+
+      # `pnpm build:sdk` が生成する npm 公開物（ubichill パッケージ）が実際にインストール・
+      # 実行可能かを確認する fail-closed ゲート。build.test.mjs はコード内容のみの高速チェックで、
+      # 「npm install した実体が動くか」は見ていない（実測: esbuild/yaml を external にせず
+      # バンドルすると動的requireで実行時に落ちる、shebangを二重に付けるとSyntaxErrorになる、
+      # という2つの回帰をこの手順を手動で踏んで初めて見つけた）。
+      - name: Build & smoke-test npm publish package
+        run: |
+          pnpm build:sdk
+          cd packages/sdk/dist-npm
+          npm install --no-save
+          node -e "import('./index.js').then(m => { if (!m.UbiSDK) throw new Error('UbiSDK not exported'); })"
+          node cli.js verify --dist-dir=../../../dist/mods
+
+      # sdk がインライン展開する shared/ecs/loader（private、changesets管理対象外）だけを
+      # 変更してsdk向けのchangesetを付け忘れた場合、npm公開物の内容が変わるのにバージョンが
+      # 上がらない事故になる。直近publishタグ(ubichill@*)時点とHEADでsdkを2回ビルドして
+      # バイト内容を比較し、version不変のままビルド結果が変わっていればfail-closedで止める。
+      - name: Check for undetected SDK build drift (shared/ecs/loader changes without a changeset)
+        run: node packages/sdk/check-drift.mjs
 
   # 変更検知: PR 時はパスフィルタ、push to main では全て true を返す。
   detect-changes:

@@ -1,215 +1,85 @@
-# @ubichill/sdk
+# ubichill
 
-Ubichill Mod SDK - mod開発のための公式 SDK
+[ubichill](https://github.com/ubichill/ubichill) 用の mod 開発SDK + CLI。npm パッケージ名は
+`ubichill`（unscoped）。ワークスペース内の実装は `@ubichill/sdk` という名前だが、公開物は
+`ubichill` としてビルドされる。
 
-## 概要
-
-`@ubichill/sdk` は、Ubichill modを開発するための統合された SDK です。hooks、型定義、ユーティリティなど、mod開発に必要なすべての機能を提供します。
+ubichill は「URLで起動し、Socket.IO で同期する、ゼロトラスト型のmod動的ロード2Dメタバース基盤」。
+mod は Web Worker 内で動く独立したサンドボックスで、Host本体には直接アクセスできない。
+`Ubi` グローバル（このSDKが注入する）経由でのみ Host とやり取りする。
 
 ## インストール
 
 ```bash
-pnpm add @ubichill/sdk
+npm install ubichill
+# or
+pnpm add ubichill
 ```
 
-## 主な機能
+## SDK: mod を書く
 
-### Hooks
+mod の Worker コード内では `Ubi` グローバル（型は `import('ubichill').Ubi`）が使える。
+DOM/React には依存しない（`ubichill/gripable` だけ JSX を使う）。
 
-- **`useWorld()`** - ワールド全体の状態管理
-- **`useSocket()`** - Socket.IO 接続管理
-- **`useEntity(entityId, options?)`** - 特定のエンティティの操作
-- **`useObjectInteraction()`** - オブジェクトとのインタラクション管理
+```tsx
+// mods/my-mod/src/counter.worker.tsx（jsxImportSource: "ubichill" を tsconfig で指定）
+const counter = Ubi.state.define({
+    count: Ubi.state.sync(0), // 共有 + 永続。ホスト再起動後も保持される
+});
 
-### Providers
-
-- **`WorldProvider`** - ワールドコンテキストを提供
-- **`SocketProvider`** - ソケット接続を提供
-
-### 型定義
-
-- **`WidgetDefinition<T>`** - modウィジェットの定義
-- **`WorldEntity<T>`** - エンティティの型
-- **`User`** - ユーザーの型
-- その他の共有型
-
-### 定数
-
-- **`Z_INDEX`** - UI レイヤーの z-index 値
-
-## 使用例
-
-### 基本的なmodの作成
-
-```typescript
-import { 
-  useWorld, 
-  useSocket, 
-  useEntity,
-  Z_INDEX,
-  type WidgetDefinition 
-} from '@ubichill/sdk';
-
-// ウィジェットコンポーネント
-const MyWidget: React.FC<WidgetProps> = ({ entity, update }) => {
-  const { currentUser } = useSocket();
-  
-  return (
-    <div style={{ zIndex: Z_INDEX.WIDGET_BASE }}>
-      {/* ウィジェットの UI */}
-    </div>
-  );
-};
-
-// mod定義
-export const myModDefinition: WidgetDefinition = {
-  id: 'my:mod',
-  name: 'My Mod',
-  icon: <MyIcon />,
-  defaultSize: { w: 200, h: 200 },
-  defaultData: {},
-  Component: MyWidget,
-};
+function render(): void {
+    Ubi.ui.render(() => <button onClick={() => counter.local.count++}>count: {counter.local.count}</button>, 'counter-root');
+}
+counter.onChange('count', render);
+render();
 ```
 
-### SingletonComponent の使用
+主要なネームスペース（詳細は `Ubi` 型の docstring を参照）:
 
-```typescript
-// トレイなどのシングルトン UI
-const MyTray: React.FC = () => {
-  const { currentUser } = useSocket();
-  const { entities } = useWorld();
-  
-  return (
-    <div style={{ zIndex: Z_INDEX.UI_TRAY }}>
-      {/* トレイの UI */}
-    </div>
-  );
-};
+| namespace | 用途 |
+| --- | --- |
+| `Ubi.state` | 宣言的リアクティブ状態。`define`/`sync` で共有・永続・ユーザー別を選ぶ |
+| `Ubi.event` | `sendToHost`（本体へ）/ `broadcast`（他ユーザーへ）/ `emit`（同タブ内他Worker） |
+| `Ubi.entity` | エンティティ操作。`Ubi.entity()`＝自分、`Ubi.entity(id)`＝他、`query`/`get`/`spawn` |
+| `Ubi.ui` | VNode描画（`render`）・トースト通知（`showToast`） |
+| `Ubi.grip` | 「掴む/離す」操作の宣言的ライフサイクル（ドラッグ系UIに使う） |
+| `Ubi.canvas` | 共有キャンバス描画（`frame`/`commitStroke`） |
+| `Ubi.player` | 参加者情報・スクロール位置・カーソル同期 |
+| `Ubi.media` | 動画/音声/HLSの読み込みと再生制御 |
+| `Ubi.fetch(url)` | HTTP リクエスト（ドメイン単位でユーザー承認を経由） |
+| `Ubi.registerSystem(fn)` | ECS System登録（毎フレーム呼ばれる） |
 
-export const myModDefinition: WidgetDefinition = {
-  // ... 他の設定
-  Component: MyWidget,
-  SingletonComponent: MyTray, // 自動的にレンダリングされます
-};
-```
+- 権限（capability）はビルド時に使用APIから自動検出され、`mod.json`で宣言したものと和集合される。
+  一覧・危険度は [`docs/CAPABILITIES.md`](https://github.com/ubichill/ubichill/blob/main/docs/CAPABILITIES.md)。
+- Worker→Host のワイヤープロトコルバージョンは `PROTOCOL_VERSION`（npm semverとは連動しない）。
 
-### エンティティの操作
+### JSX（オプション）
 
-```typescript
-const MyComponent = () => {
-  const { createEntity, patchEntity, deleteEntity } = useWorld();
-  
-  // エンティティの作成
-  const handleCreate = async () => {
-    const entity = await createEntity('my:type', 
-      { x: 100, y: 100, width: 200, height: 200, rotation: 0 },
-      { customData: 'value' }
-    );
-  };
-  
-  // エンティティの更新
-  const handleUpdate = () => {
-    patchEntity(entityId, {
-      transform: { x: 150, y: 150 }
-    });
-  };
-  
-  // エンティティの削除
-  const handleDelete = () => {
-    deleteEntity(entityId);
-  };
-};
-```
+`ubichill/jsx-runtime` を使えば `.tsx` で Worker UI を書ける（tsconfig の `jsxImportSource` に
+`ubichill` を指定）。ドラッグ操作をJSXで宣言するための `<Gripable>` は `ubichill/gripable`。
 
-### リアルタイム同期
+## CLI: mod をビルド・配布する
 
-```typescript
-const MyWidget = ({ entity }) => {
-  const { syncState, syncStream } = useEntity(entity.id);
-  
-  // 状態を同期（Reliable）
-  const handleMove = (x: number, y: number) => {
-    syncState({
-      transform: { x, y }
-    });
-  };
-  
-  // ストリームデータを送信（Volatile、間引き付き）
-  const handleDraw = (data: DrawingData) => {
-    syncStream(data);
-  };
-};
-```
-
-## mod開発ガイド
-
-### 1. modプロジェクトの作成
+このパッケージは `ubichill` コマンド（`build`/`lock`/`verify`）も提供する。
 
 ```bash
-mkdir mods/my-mod
-cd mods/my-mod
-mkdir frontend
-cd frontend
-pnpm init
+npx ubichill build  [--mods-dir=<dir>] [--public-mods-dir=<dir>] [--dist-dir=<dir>]
+npx ubichill lock   <world.yaml> [--mods-dir=<dir>] [--base-url=<url>] [--out=<path>]
+npx ubichill verify [--dist-dir=<dir>]
 ```
 
-### 2. package.json の設定
-
-```json
-{
-  "name": "@ubichill/mod-my-mod",
-  "version": "1.0.0",
-  "main": "src/index.ts",
-  "peerDependencies": {
-    "@ubichill/sdk": "workspace:*",
-    "@ubichill/shared": "workspace:*",
-    "react": "^19.0.0"
-  }
-}
-```
-
-### 3. WidgetDefinition の実装
-
-```typescript
-// src/definition.tsx
-import type { WidgetDefinition } from '@ubichill/sdk';
-import { MyWidget } from './MyWidget';
-
-export const myModDefinition: WidgetDefinition = {
-  id: 'my:mod',
-  name: 'My Mod',
-  icon: <MyIcon />,
-  defaultSize: { w: 200, h: 200 },
-  defaultData: {},
-  Component: MyWidget,
-};
-```
-
-### 4. エクスポート
-
-```typescript
-// src/index.ts
-export { myModDefinition } from './definition';
-export { MyWidget } from './MyWidget';
-```
-
-### 5. modの登録
-
-```typescript
-// packages/frontend/src/mods/registry.ts
-import { myModDefinition } from '@ubichill/mod-my-mod';
-
-export const INSTALLED_MODS = [
-  // ...既存のmod
-  myModDefinition,
-];
-```
-
-## API リファレンス
-
-詳細な API ドキュメントは [SDK.md](../../frontend/src/mods/SDK.md) を参照してください。
+- **`build`**: `<mods-dir>` 配下の各 `mod.json` を自動探索し、Component の Worker コードを
+  esbuild でバンドルする。出力ごとに `manifest.json`（ランタイム用）と `lock.json`
+  （バイト列のSubresource Integrity + capability 天井）を生成する。既定は全て `process.cwd()`
+  相対（`--mods-dir` 既定はcwd自身、`--dist-dir`/`--public-mods-dir` 既定は `<cwd>/dist/mods`）。
+- **`verify`**: `build` の出力を fail-closed で再検証する。`lock.json` の integrity が
+  実際に配布するバイト列と一致するかを独立に再計算して突き合わせ、ズレていれば非ゼロ終了する。
+  CI の配布前ゲートに使う想定。
+- **`lock`**: ワールド定義（YAML）が参照する mod の `lock.json` 断片を集約し、
+  兄弟ファイル `<world>.lock.json` に書き出す。ホストはこのロックでmodの完全性
+  （hash固定 + 権限天井）を強制する。
 
 ## ライセンス
 
-MIT
+MIT。ubichill 本体（Host/backend/frontend、AGPL-3.0-only）とは別ライセンス
+（mod開発者が自分のコードへライセンス不問で組み込めるようにするため）。
