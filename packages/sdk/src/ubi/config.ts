@@ -45,12 +45,7 @@ export interface SelectDataField extends BaseDataField {
     options: readonly { value: string; label: string }[];
 }
 
-export type DataField =
-    | ColorDataField
-    | NumberDataField
-    | TextDataField
-    | BooleanDataField
-    | SelectDataField;
+export type DataField = ColorDataField | NumberDataField | TextDataField | BooleanDataField | SelectDataField;
 
 /**
  * Worker ファイル内で export するコンポーネント構成宣言。

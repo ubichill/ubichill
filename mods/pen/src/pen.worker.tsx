@@ -12,9 +12,9 @@
  * 太さ調整 UI は pen-tray が持つ (tray.worker.tsx)。pen 自身は見た目だけ。
  */
 
+import type { ComponentConfig } from '@ubichill/sdk';
 import { Gripable } from '@ubichill/sdk/gripable';
 import { PenEvents } from './events';
-import type { ComponentConfig } from '@ubichill/sdk';
 
 export const config: ComponentConfig = {
     watchEntityTypes: ['pen:pen'],

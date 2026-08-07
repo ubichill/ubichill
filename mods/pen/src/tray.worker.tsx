@@ -8,8 +8,8 @@
  *  - ペンの状態 (color / strokeWidth / 選択) は一切持たない
  */
 
-import { PenEvents } from './events';
 import type { ComponentConfig } from '@ubichill/sdk';
+import { PenEvents } from './events';
 
 export const config: ComponentConfig = {
     defaultTransform: { x: 20, y: 20, z: 1000, w: 60, h: 240 },
