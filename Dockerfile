@@ -25,6 +25,7 @@ COPY packages/bff/package.json            ./packages/bff/package.json
 COPY packages/db/package.json             ./packages/db/package.json
 COPY packages/ecs/package.json            ./packages/ecs/package.json
 COPY packages/frontend/package.json       ./packages/frontend/package.json
+COPY packages/loader/package.json         ./packages/loader/package.json
 COPY packages/react/package.json          ./packages/react/package.json
 COPY packages/sandbox/package.json        ./packages/sandbox/package.json
 COPY packages/sdk/package.json            ./packages/sdk/package.json
