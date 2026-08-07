@@ -84,7 +84,7 @@ export type {
     UserJoinedCallback,
     UserLeftCallback,
 } from '@ubichill/shared/mod/types';
-export type { Player, State, Ubi, Ui } from './ubi';
+export type { DataField, DataFieldType, ComponentConfig } from './ubi/config';
 // UbiSDK クラス（実装） + mod 向け公開型
 export { UbiSDK } from './ubi';
 export type { EmitOptions, EmitScope, EventRegistry } from './ubi/event';

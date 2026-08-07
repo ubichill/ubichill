@@ -7,7 +7,7 @@
  * ビルド→保存→ロードの契約を自動テストとして固定する。
  *
  * リポジトリの実ファイル（packages/frontend/public/mods）は汚さず、一時ディレクトリへビルドする
- * （buildWorker の publicModsDir/distModsDir 注入を利用）。
+ * （buildMod の publicModsDir/distModsDir 注入を利用）。
  */
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -15,11 +15,11 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { acquireMod, buildWorldLock, createHttpLockEntryGetter, resetAcquireCaches } from '@ubichill/loader';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { buildWorker } from './build.ts';
+import { buildMod } from './build.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, '..', '..', '..');
-const penModJson = join(repoRoot, 'mods', 'pen', 'mod.json');
+const penModDir = join(repoRoot, 'mods', 'pen');
 
 interface FakeFetchResponse {
     ok: boolean;
@@ -57,16 +57,23 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
     let distDir: string;
     let workerFilePath: string;
     let manifestFilePath: string;
+    const modId = 'pen';
+    const version = '2.0.0';
 
     beforeAll(async () => {
         publicDir = mkdtempSync(join(tmpdir(), 'ubichill-mod-public-'));
         distDir = mkdtempSync(join(tmpdir(), 'ubichill-mod-dist-'));
-        await buildWorker(penModJson, { publicModsDir: publicDir, distModsDir: distDir });
+        await buildMod(penModDir, {
+            distDir: join(distDir, modId),
+            publicDir: join(publicDir, modId),
+        });
 
-        const lockEntry = JSON.parse(readFileSync(join(publicDir, 'pen', 'v2.0.0', 'lock.json'), 'utf-8'));
+        const lockEntry = JSON.parse(
+            readFileSync(join(publicDir, modId, `v${version}`, 'lock.json'), 'utf-8'),
+        );
         const relWorkerUrl = lockEntry.components['pen:canvas'].workerUrl.replace(/^\.\//, '');
-        workerFilePath = join(publicDir, 'pen', 'v2.0.0', relWorkerUrl);
-        manifestFilePath = join(publicDir, 'pen', 'v2.0.0', 'manifest.json');
+        workerFilePath = join(publicDir, modId, `v${version}`, relWorkerUrl);
+        manifestFilePath = join(publicDir, modId, `v${version}`, 'manifest.json');
     });
 
     afterAll(() => {
@@ -77,7 +84,7 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
     afterEach(() => resetAcquireCaches());
 
     it('実ビルド成果物は無改変なら verified、capabilities は lock 天井と一致する', async () => {
-        const lock = await buildWorldLock(['pen'], createHttpLockEntryGetter(publicDir, fsFetch));
+        const lock = await buildWorldLock([modId], createHttpLockEntryGetter(publicDir, fsFetch));
         const result = await acquireMod('pen:canvas', {
             baseUrl: publicDir,
             lock,
@@ -93,7 +100,7 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
     });
 
     it('worker バイト列を1バイト改竄すると外部 provenance では integrity-mismatch で拒否される', async () => {
-        const lock = await buildWorldLock(['pen'], createHttpLockEntryGetter(publicDir, fsFetch));
+        const lock = await buildWorldLock([modId], createHttpLockEntryGetter(publicDir, fsFetch));
         const original = readFileSync(workerFilePath);
         writeFileSync(workerFilePath, Buffer.concat([original, Buffer.from(' ')]));
         try {
@@ -110,7 +117,7 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
     });
 
     it('manifest.json を改竄すると外部 provenance では manifest-mismatch で拒否される', async () => {
-        const lock = await buildWorldLock(['pen'], createHttpLockEntryGetter(publicDir, fsFetch));
+        const lock = await buildWorldLock([modId], createHttpLockEntryGetter(publicDir, fsFetch));
         const original = readFileSync(manifestFilePath);
         writeFileSync(manifestFilePath, Buffer.concat([original, Buffer.from(' ')]));
         try {
@@ -127,7 +134,7 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
     });
 
     it('local provenance は同じ改竄でも警告続行し、manifest 由来の capabilities で読み込む', async () => {
-        const lock = await buildWorldLock(['pen'], createHttpLockEntryGetter(publicDir, fsFetch));
+        const lock = await buildWorldLock([modId], createHttpLockEntryGetter(publicDir, fsFetch));
         const original = readFileSync(workerFilePath);
         writeFileSync(workerFilePath, Buffer.concat([original, Buffer.from(' ')]));
         try {

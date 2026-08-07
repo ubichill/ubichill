@@ -1,0 +1,82 @@
+/**
+ * ComponentConfig — Worker コード内でコンポーネントのメタデータを宣言するための型。
+ *
+ * 各 Worker ファイルで `export const config = { ... } satisfies ComponentConfig` を
+ * 記述することで、ビルドツールがメタデータを自動抽出する。
+ *
+ * dataFields の値は Inspector での UI 定義として使用される。
+ */
+
+/** Inspector で編集可能なフィールドの型 */
+export type DataFieldType = 'color' | 'number' | 'text' | 'boolean' | 'select';
+
+/** 全データフィールド共通の基底 */
+export interface BaseDataField {
+    /** Inspector で表示されるラベル */
+    label?: string;
+}
+
+export interface ColorDataField extends BaseDataField {
+    type: 'color';
+    default: string;
+}
+
+export interface NumberDataField extends BaseDataField {
+    type: 'number';
+    default: number;
+    min?: number;
+    max?: number;
+    step?: number;
+}
+
+export interface TextDataField extends BaseDataField {
+    type: 'text';
+    default: string;
+}
+
+export interface BooleanDataField extends BaseDataField {
+    type: 'boolean';
+    default: boolean;
+}
+
+export interface SelectDataField extends BaseDataField {
+    type: 'select';
+    default: string;
+    options: readonly { value: string; label: string }[];
+}
+
+export type DataField =
+    | ColorDataField
+    | NumberDataField
+    | TextDataField
+    | BooleanDataField
+    | SelectDataField;
+
+/**
+ * Worker ファイル内で export するコンポーネント構成宣言。
+ * 各コンポーネント固有のメタデータをここに集約し、mod.json との二重管理を排除する。
+ */
+export interface ComponentConfig {
+    /** Inspector で表示する UI 定義 */
+    dataFields?: Record<string, DataField>;
+    /** 同期の可視範囲 */
+    watchScope?: 'entity' | 'subtree' | 'parent' | 'world';
+    /** 監視するエンティティタイプ */
+    watchEntityTypes?: readonly string[];
+    /** デフォルトのトランスフォーム */
+    defaultTransform?: Record<string, unknown>;
+    /** コンポーネントが要求する権限の明示的なリスト */
+    capabilities?: readonly string[];
+    /** キャンバスターゲット */
+    canvasTargets?: readonly string[];
+    /** メディアターゲット */
+    mediaTargets?: readonly string[];
+    /** サムネイル画像のURL */
+    thumbnail?: string;
+    /** シングルトン（1ワールドに1つまで） */
+    singleton?: boolean;
+    /** コンポーネントの説明 */
+    description?: string;
+    /** data-only コンポーネント（Worker を持たない） */
+    dataOnly?: boolean;
+}

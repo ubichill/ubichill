@@ -18,6 +18,14 @@
 
 import type { Entity, System } from '@ubichill/sdk';
 import { VPEvents, VPTarget } from './events';
+import type { ComponentConfig } from '@ubichill/sdk';
+
+export const config: ComponentConfig = {
+    watchEntityTypes: ['video-player:controls'],
+    watchScope: 'entity',
+    defaultTransform: { x: 0, y: 370, z: 198, w: 640, h: 60 },
+    capabilities: ['event:emit', 'scene:read', 'scene:update', 'ui:render'],
+};
 import {
     PauseIcon,
     PlayIcon,

@@ -9,6 +9,12 @@
  */
 
 import { PenEvents } from './events';
+import type { ComponentConfig } from '@ubichill/sdk';
+
+export const config: ComponentConfig = {
+    defaultTransform: { x: 20, y: 20, z: 1000, w: 60, h: 240 },
+    capabilities: ['event:emit', 'scene:read', 'ui:render'],
+};
 
 const THICKNESS_OPTIONS = [2, 4, 8, 12];
 

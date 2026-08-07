@@ -1,14 +1,14 @@
 /**
  * watch-workers.mjs
  *
- * mods/＊/worker/src 以下のファイル変更を監視し、
+ * mods/＊/src 以下のファイル変更を監視し、
  * 変更があった場合に該当modのワーカーのみ再ビルドします。
  */
 
 import { existsSync, readFileSync, readdirSync, watch } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildWorker } from '../packages/sdk/cli/build.ts';
+import { buildMod } from '../packages/sdk/cli/build.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
@@ -18,7 +18,7 @@ const modsDir = join(root, 'mods');
 const DEBOUNCE_MS = 300;
 const timers = new Map();
 
-function scheduleRebuild(modJsonPath, modId) {
+function scheduleRebuild(modDir, modId) {
     if (timers.has(modId)) clearTimeout(timers.get(modId));
     timers.set(
         modId,
@@ -26,9 +26,11 @@ function scheduleRebuild(modJsonPath, modId) {
             timers.delete(modId);
             console.log(`[workers] 🔄 ${modId} changed, rebuilding...`);
             try {
-                await buildWorker(modJsonPath, {
-                    publicModsDir: join(root, 'packages', 'frontend', 'public', 'mods'),
-                    distModsDir: join(root, 'dist', 'mods'),
+                const modDistDir = join(root, 'dist', 'mods', modId);
+                const modPublicDir = join(root, 'packages', 'frontend', 'public', 'mods', modId);
+                await buildMod(modDir, {
+                    distDir: modDistDir,
+                    publicDir: modPublicDir,
                 });
                 console.log(`[workers] ✅ ${modId} rebuilt`);
             } catch (err) {
@@ -60,39 +62,25 @@ console.log('[workers] 👀 Watching worker sources...');
 
 for (const entry of readdirSync(modsDir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
-    const modJsonPath = join(modsDir, entry.name, 'mod.json');
-    if (!existsSync(modJsonPath)) continue;
+    const modDir = join(modsDir, entry.name);
+    const pkgJsonPath = join(modDir, 'package.json');
+    if (!existsSync(pkgJsonPath)) continue;
 
-    const modJson = JSON.parse(readFileSync(modJsonPath, 'utf-8'));
-    const modId = modJson.id;
+    const pkg = JSON.parse(readFileSync(pkgJsonPath, 'utf-8'));
+    const modId = pkg.ubichill?.id ?? pkg.name?.replace(/^@ubichill\/(?:mod-)?/, '') ?? entry.name;
 
-    // 監視対象のディレクトリを収集（重複排除）
-    const watchDirs = new Set();
+    // 監視対象: src/ ディレクトリ
+    const srcDir = join(modDir, 'src');
+    if (!existsSync(srcDir)) continue;
 
-    // ── 単一エントリ形式: entry.worker ──
-    if (modJson.entry?.worker) {
-        const workerSrcDir = join(modsDir, entry.name, 'worker', 'src');
-        if (existsSync(workerSrcDir)) watchDirs.add(workerSrcDir);
-    }
+    watchRecursive(srcDir, () => {
+        scheduleRebuild(modDir, modId);
+    });
 
-    // ── 複数エントリ形式: workers ──
-    if (modJson.workers && typeof modJson.workers === 'object') {
-        for (const workerEntry of Object.values(modJson.workers)) {
-            const workerRelPath = typeof workerEntry === 'string' ? workerEntry : workerEntry?.src;
-            if (!workerRelPath) continue;
-            // modディレクトリ配下の src/ を監視（worker の実体はこの配下にある）
-            const modSrcDir = join(modsDir, entry.name, 'src');
-            if (existsSync(modSrcDir)) watchDirs.add(modSrcDir);
-        }
-    }
+    // package.json 変更も監視（version/id の変更を検知）
+    watch(pkgJsonPath, () => {
+        scheduleRebuild(modDir, modId);
+    });
 
-    if (watchDirs.size === 0) continue;
-
-    for (const watchDir of watchDirs) {
-        watchRecursive(watchDir, () => {
-            scheduleRebuild(modJsonPath, modId);
-        });
-        const relDir = watchDir.replace(modsDir + '/', '');
-        console.log(`[workers]   watching ${relDir}`);
-    }
+    console.log(`[workers]   watching ${entry.name}/src + package.json`);
 }
