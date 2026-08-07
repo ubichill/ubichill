@@ -125,12 +125,9 @@ PenEvents.on('entity:pen:pen', (pen) => {
 
     // ── リモート保持の追跡 ─────────────────────────────────
     // この pen が以前どのリモートユーザーに紐付いていたら一旦消す
-    for (const [userId, info] of remoteHeld) {
-        if (info.penId === pen.id) {
-            remoteHeld.delete(userId);
-            break;
-        }
-    }
+    remoteHeld.forEach((info, userId) => {
+        if (info.penId === pen.id) remoteHeld.delete(userId);
+    });
     // 現在リモートユーザーが持っているなら登録
     if (pen.lockedBy && pen.lockedBy !== Ubi.myUserId) {
         remoteHeld.set(pen.lockedBy, {

@@ -7,5 +7,3 @@ export const config: ComponentConfig = {
     defaultTransform: { x: 0, y: 0, z: 2, w: 640, h: 360 },
     capabilities: ['media:control'],
 };
-
-Ubi.media.ready();
