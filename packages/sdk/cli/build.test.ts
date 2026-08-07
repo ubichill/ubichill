@@ -10,6 +10,7 @@
  * （buildMod の publicModsDir/distModsDir 注入を利用）。
  */
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -57,6 +58,8 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
     let distDir: string;
     let workerFilePath: string;
     let manifestFilePath: string;
+    let manifest: Record<string, unknown>;
+    let lockEntry: Record<string, unknown>;
     const modId = 'pen';
     const version = '2.0.0';
 
@@ -68,12 +71,15 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
             publicDir: join(publicDir, modId),
         });
 
-        const lockEntry = JSON.parse(
+        const manifestPath = join(publicDir, modId, `v${version}`, 'manifest.json');
+        manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+        manifestFilePath = manifestPath;
+        lockEntry = JSON.parse(
             readFileSync(join(publicDir, modId, `v${version}`, 'lock.json'), 'utf-8'),
-        );
-        const relWorkerUrl = lockEntry.components['pen:canvas'].workerUrl.replace(/^\.\//, '');
+        ) as Record<string, unknown>;
+        const lockComps = lockEntry.components as Record<string, { workerUrl: string }>;
+        const relWorkerUrl = lockComps['pen:canvas'].workerUrl.replace(/^\.\//, '');
         workerFilePath = join(publicDir, modId, `v${version}`, relWorkerUrl);
-        manifestFilePath = join(publicDir, modId, `v${version}`, 'manifest.json');
     });
 
     afterAll(() => {
@@ -82,6 +88,42 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
     });
 
     afterEach(() => resetAcquireCaches());
+
+    it('manifest に pen:pen の dataFields（color, strokeWidth）が出力される', () => {
+        const comp = (manifest.components as Record<string, Record<string, unknown>>)['pen:pen'];
+        expect(comp, 'pen:pen が manifest に存在しない').toBeDefined();
+        const fields = comp.dataFields as Record<string, Record<string, unknown>>;
+        expect(fields.color.type).toBe('color');
+        expect(fields.color.default).toBe('#1a1a1a');
+        expect(fields.strokeWidth.type).toBe('number');
+        expect(fields.strokeWidth.default).toBe(4);
+    });
+
+    it('manifest に pen:canvas の canvasTargets が出力される', () => {
+        const comp = (manifest.components as Record<string, Record<string, unknown>>)['pen:canvas'];
+        expect(comp.canvasTargets).toEqual(['drawing']);
+    });
+
+    it('manifest に全3コンポーネント（pen:pen, pen:canvas, pen:tray）が列挙される', () => {
+        const comps = manifest.components as Record<string, unknown>;
+        expect(Object.keys(comps).sort()).toEqual(['pen:canvas', 'pen:pen', 'pen:tray']);
+    });
+
+    it('lock.json の各コンポーネント integrity が実 worker ファイルと一致する', () => {
+        const lockComps = lockEntry.components as Record<string, { workerUrl: string; integrity: string }>;
+        for (const [, comp] of Object.entries(lockComps)) {
+            const path = join(publicDir, modId, `v${version}`, comp.workerUrl.replace(/^\.\//, ''));
+            const bytes = readFileSync(path, 'utf-8');
+            const hash = 'sha256-' + createHash('sha256').update(bytes).digest('base64');
+            expect(comp.integrity).toBe(hash);
+        }
+    });
+
+    it('実ビルドの manifestIntegrity が実 manifest ファイルと一致する', () => {
+        const bytes = readFileSync(manifestFilePath, 'utf-8');
+        const hash = 'sha256-' + createHash('sha256').update(bytes).digest('base64');
+        expect(lockEntry.manifestIntegrity).toBe(hash);
+    });
 
     it('実ビルド成果物は無改変なら verified、capabilities は lock 天井と一致する', async () => {
         const lock = await buildWorldLock([modId], createHttpLockEntryGetter(publicDir, fsFetch));
