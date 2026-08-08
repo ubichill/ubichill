@@ -1,6 +1,6 @@
 {
   "id": "pen",
-  "name": "Pen",
+  "name": "pen",
   "version": "2.0.0",
   "components": {
     "pen:canvas": {
@@ -17,7 +17,6 @@
         "y": 0,
         "z": 5000
       },
-      "dataFields": {},
       "capabilities": [
         "canvas:draw",
         "event:broadcast",
@@ -25,23 +24,7 @@
         "scene:read",
         "scene:update"
       ],
-      "workerUrl": "./canvas/index.d6c19ea7.js"
-    },
-    "pen:tray": {
-      "defaultTransform": {
-        "x": 20,
-        "y": 20,
-        "z": 1000,
-        "w": 60,
-        "h": 240
-      },
-      "dataFields": {},
-      "capabilities": [
-        "event:emit",
-        "scene:read",
-        "ui:render"
-      ],
-      "workerUrl": "./tray/index.2269a184.js"
+      "workerUrl": "./canvas/index.678c7678.js"
     },
     "pen:pen": {
       "watchEntityTypes": [
@@ -77,10 +60,22 @@
         "scene:update",
         "ui:render"
       ],
-      "workerUrl": "./pen/index.49e3f16d.js"
+      "workerUrl": "./pen/index.a112fa19.js"
     },
-    "pen:stroke": {
-      "dataFields": {}
+    "pen:tray": {
+      "defaultTransform": {
+        "x": 20,
+        "y": 20,
+        "z": 1000,
+        "w": 60,
+        "h": 240
+      },
+      "capabilities": [
+        "event:emit",
+        "scene:read",
+        "ui:render"
+      ],
+      "workerUrl": "./tray/index.1a07ce58.js"
     }
   },
   "assets": []
