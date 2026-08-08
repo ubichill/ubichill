@@ -49,7 +49,7 @@ render();
 | `Ubi.fetch(url)` | HTTP リクエスト（ドメイン単位でユーザー承認を経由） |
 | `Ubi.registerSystem(fn)` | ECS System登録（毎フレーム呼ばれる） |
 
-- 権限（capability）はビルド時に使用APIから自動検出され、`mod.json`で宣言したものと和集合される。
+- 権限（capability）はビルド時に使用APIから自動検出され、`export const config` で宣言したものと和集合される。
   一覧・危険度は [`docs/CAPABILITIES.md`](https://github.com/ubichill/ubichill/blob/main/docs/CAPABILITIES.md)。
 - Worker→Host のワイヤープロトコルバージョンは `PROTOCOL_VERSION`（npm semverとは連動しない）。
 
@@ -86,6 +86,29 @@ npx ubichill verify [--dist-dir=<dir>]
 - **`lock`**: ワールド定義（YAML）が参照する mod の `lock.json` 断片を集約し、
   兄弟ファイル `<world>.lock.json` に書き出す。ホストはこのロックでmodの完全性
   （hash固定 + 権限天井）を強制する。
+
+### 型チェックを `build` の前段に入れる
+
+`ubichill build` は esbuild で bundle するだけで型チェックは行わない。`import` 先の
+パッケージ名間違いや `ComponentConfig` のフィールド名間違いは、放置すると esbuild の
+bundle エラー（unresolved import 等）としてしか出てこず、原因が分かりにくい。
+`package.json` に `typescript` を devDependency として追加し、`build` の前に
+`tsc --noEmit` を挟むと、エディタの型チェックと同じ内容がコマンドラインでも早い段階で
+（bundleを試みる前に）分かる。
+
+```json
+{
+    "devDependencies": { "typescript": "^5.9.0" },
+    "scripts": {
+        "typecheck": "tsc --noEmit",
+        "build": "npm run typecheck && ubichill build"
+    }
+}
+```
+
+`tsconfig.json` の `target`/`lib` は `ubichill build` が esbuild に渡す `target: 'es2022'`
+と合わせておく（`ES2022` 以外、特に未リリースの target を指定すると安定版 `typescript` が
+解釈できずエラーになる）。
 
 ## ライセンス
 
