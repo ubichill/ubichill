@@ -5,7 +5,7 @@ type Dependency = NonNullable<WorldDefinition['spec']['dependencies']>[number];
 
 /**
  * 利用可能modの 1 エントリ。
- * - ローカル: `repositoryPath` を持つ → dependencies の source.type='repository' に変換
+ * - ローカル（`sourceLabel === 'local'`）: dependencies の source.type='local' に変換
  * - リモート: `baseUrl` を持つ → dependencies の source.type='url' に変換
  */
 export interface AvailableMod {
@@ -14,11 +14,9 @@ export interface AvailableMod {
     version: string;
     /** Component 型 (`modId:componentName`) 一覧 */
     components: string[];
-    /** ローカルmodのみ */
-    repositoryPath?: string;
     /** リモート（レジストリ） */
     baseUrl?: string;
-    /** どこから来たか（UI 表示用） */
+    /** どこから来たか（UI 表示用。'local' ならこのインスタンスの mods-dir） */
     sourceLabel: string;
 }
 
@@ -27,7 +25,6 @@ interface RawIndexEntry {
     name?: string;
     version: string;
     components?: string[];
-    repositoryPath?: string;
     baseUrl?: string;
 }
 
@@ -52,7 +49,6 @@ async function fetchRegistry(url: string, sourceLabel: string): Promise<Availabl
                 name: e.name ?? e.id,
                 version: e.version,
                 components: e.components ?? [],
-                repositoryPath: e.repositoryPath,
                 // リモートエントリ baseUrl が無い場合は registry URL のディレクトリを採用
                 baseUrl: e.baseUrl ?? (sourceLabel === 'local' ? undefined : baseUrl),
                 sourceLabel,
@@ -120,12 +116,8 @@ export function useAvailableMods(registryUrls: string[]): {
  * AvailableMod から WorldDefinition の dependencies エントリを構築する。
  */
 export function modToDependency(p: AvailableMod): Dependency {
-    if (p.repositoryPath) {
-        return { name: p.id, source: { type: 'repository', path: p.repositoryPath } };
-    }
     if (p.baseUrl) {
         return { name: p.id, source: { type: 'url', url: p.baseUrl, version: p.version } };
     }
-    // フォールバック: name のみで repository
-    return { name: p.id, source: { type: 'repository', path: `mods/${p.id}` } };
+    return { name: p.id, source: { type: 'local' } };
 }

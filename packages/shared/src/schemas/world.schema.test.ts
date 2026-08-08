@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type WorldSource, WorldSourceKind, worldOriginDomain } from './world.schema';
+import { DependencySourceSchema, type WorldSource, WorldSourceKind, worldOriginDomain } from './world.schema';
 
 describe('worldOriginDomain', () => {
     it('ローカルは null（何も出さない）', () => {
@@ -32,5 +32,32 @@ describe('worldOriginDomain', () => {
             }),
         ).toBe('raw.githubusercontent.com');
         expect(worldOriginDomain({ kind: WorldSourceKind.Url, url: 'http://example.com/w.yaml' })).toBe('example.com');
+    });
+});
+
+describe('DependencySourceSchema', () => {
+    it('type: local をそのまま受け付ける', () => {
+        expect(DependencySourceSchema.parse({ type: 'local' })).toEqual({ type: 'local' });
+    });
+
+    it('type: url + url を受け付ける', () => {
+        expect(DependencySourceSchema.parse({ type: 'url', url: 'https://example.com/mods' })).toEqual({
+            type: 'url',
+            url: 'https://example.com/mods',
+        });
+    });
+
+    it('後方互換: 旧 type: repository は local に変換される（既存ワールドの読み込みを壊さない）', () => {
+        expect(DependencySourceSchema.parse({ type: 'repository', path: 'mods/pen' })).toEqual({ type: 'local' });
+    });
+
+    it('未知の余剰プロパティ（旧 path 等）は無視される', () => {
+        const parsed = DependencySourceSchema.parse({ type: 'local', path: 'mods/pen', extra: 'x' });
+        expect(parsed).not.toHaveProperty('path');
+        expect(parsed).not.toHaveProperty('extra');
+    });
+
+    it('type: npm は廃止済みで拒否される', () => {
+        expect(() => DependencySourceSchema.parse({ type: 'npm' })).toThrow();
     });
 });
