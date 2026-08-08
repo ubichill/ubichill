@@ -26,7 +26,10 @@ function createInitialDefinition(): WorldDefinition {
             },
             dependencies: [
                 { name: 'pen', source: { type: 'repository', path: 'mods/pen' } },
-                { name: 'video-player', source: { type: 'repository', path: 'mods/video-player' } },
+                {
+                    name: 'video-player',
+                    source: { type: 'url', url: 'https://p-nasimonan.github.io/ubichill-videoplayer' },
+                },
             ],
             initialEntities: [],
         },
