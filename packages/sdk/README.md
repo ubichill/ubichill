@@ -101,10 +101,14 @@ bundle エラー（unresolved import 等）としてしか出てこず、原因�
     "devDependencies": { "typescript": "^5.9.0" },
     "scripts": {
         "typecheck": "tsc --noEmit",
-        "build": "npm run typecheck && ubichill build"
+        "build": "npm run typecheck && npx ubichill build"
     }
 }
 ```
+
+（pnpm を使う場合は `pnpm typecheck && pnpm exec ubichill build`。`npm run`/`npx` と `pnpm` を
+混在させると、`pnpm build` 経由で実行しても内部で実際に npm/npx が起動し、無関係な
+npm 自身の更新通知等が出ることがある。使っているパッケージマネージャに揃えること。）
 
 `tsconfig.json` の `target`/`lib` は `ubichill build` が esbuild に渡す `target: 'es2022'`
 と合わせておく（`ES2022` 以外、特に未リリースの target を指定すると安定版 `typescript` が

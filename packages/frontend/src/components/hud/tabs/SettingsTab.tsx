@@ -1,14 +1,16 @@
 /**
- * SettingsTab — ユーザー設定画面。現状はmod権限の管理。
+ * SettingsTab — ユーザー設定画面。mod権限の管理 + 外部modレジストリの管理。
  *
  * - シールドレベル（なし / 確認 / 厳格な確認 / 拒否）を選ぶと、危険度ティアの既定が決まる。
  *   安全な権限は常に許可でユーザーには見せない（判断が不要なため）。
  * - modごとに記憶済みの許可/拒否を危険度つきで確認し、取り消す。
+ * - 外部modレジストリの追加/削除/エクスポート/インポート（ModRegistrySection）。
  *
  * 権限状態は @ubichill/react の PermissionProvider（main.tsx でマウント）から取得する。
  */
 import { type CapabilityRisk, describeCapability, type TierMode, useUbiPermissions } from '@ubichill/react';
 import { css } from '@/styled-system/css';
+import { ModRegistrySection } from './ModRegistrySection';
 import { cardStyle, sectionHeading, tabPanel } from './shared';
 
 type ShieldLevelId = 'none' | 'standard' | 'strict' | 'block';
@@ -370,6 +372,8 @@ export function SettingsTab() {
                     </div>
                 )}
             </div>
+
+            <ModRegistrySection />
         </div>
     );
 }
