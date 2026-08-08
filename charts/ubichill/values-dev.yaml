@@ -90,7 +90,7 @@ postgresql:
 modBackends:
   - id: video-player
     image:
-      repository: ghcr.io/ubichill/video-player-backend
+      repository: ghcr.io/p-nasimonan/video-player-backend
       tag: latest
     port: 8000
     pathPrefix: /mods/video-player/api
