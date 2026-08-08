@@ -1,8 +1,8 @@
 import type { WorldDefinition } from '@ubichill/shared';
 import { useCallback, useState } from 'react';
+import { type AvailableMod, modToDependency, useAvailableMods } from '@/lib/mods/useAvailableMods';
 import { SETTINGS_KEYS, useSetting } from '@/lib/settings';
 import { css } from '@/styled-system/css';
-import { type AvailableMod, modToDependency, useAvailableMods } from '../../hooks/useAvailableMods';
 
 const isStringArray = (value: unknown): value is string[] =>
     Array.isArray(value) && value.every((v) => typeof v === 'string');
