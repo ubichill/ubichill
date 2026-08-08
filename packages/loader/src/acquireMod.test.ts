@@ -159,4 +159,26 @@ describe('acquireMod', () => {
         const r = await acquireMod('nocolon', { baseUrl: BASE, sourceKind: 'local', fetchImpl: fakeFetch({}) });
         expect(r).toBe('not-found');
     });
+
+    it('lock.baseUrl がある mod は既定の baseUrl ではなくそちらから取得する', async () => {
+        const OTHER = 'https://other-host.test/mods';
+        const otherWorkerUrlAbs = `${OTHER}/${MOD}/v${VER}/canvas/index.abc.js`;
+        const otherManifestUrlAbs = `${OTHER}/${MOD}/v${VER}/manifest.json`;
+
+        const lockWithBaseUrl: ModLock = { ...lock(), mods: { [MOD]: { ...lock().mods[MOD], baseUrl: OTHER } } };
+
+        const r = await acquireMod(TYPE, {
+            baseUrl: BASE, // これは使われないはず
+            lock: lockWithBaseUrl,
+            sourceKind: 'github',
+            fetchImpl: fakeFetch({
+                [otherManifestUrlAbs]: { body: manifestJson },
+                [otherWorkerUrlAbs]: { body: WORKER_CODE, contentType: 'text/javascript' },
+            }),
+        });
+        expect(typeof r === 'object' && 'workerCode' in r).toBe(true);
+        if (typeof r === 'object' && 'workerCode' in r) {
+            expect(r.modBase).toBe(`${OTHER}/${MOD}/v${VER}`);
+        }
+    });
 });

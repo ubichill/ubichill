@@ -50,6 +50,11 @@ export const ModLockEntrySchema = z.object({
     manifestIntegrity: IntegritySchema,
     /** `modId:componentName` → lock 済み Component。 */
     components: z.record(z.string(), ModLockComponentSchema).default({}),
+    /**
+     * この mod だけの取得元 URL（末尾スラッシュなし）。世界の他 mod と別ホストに
+     * 配布されている場合のみ設定する。未設定ならホスト側の既定 baseUrl を使う。
+     */
+    baseUrl: z.string().url().optional(),
 });
 
 export type ModLockEntry = z.infer<typeof ModLockEntrySchema>;
