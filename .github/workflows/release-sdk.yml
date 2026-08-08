@@ -72,10 +72,19 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # trusted publishing は npm CLI 11.5.1 以上が必須（実測: Node同梱npmが古いと
-      # OIDCトークン交換ロジック自体が存在せず、通常のトークン認証を要求されて失敗する）。
+      # npm@latest への強制アップグレードは Node の奇数(Current)ラインで EBADENGINE になるため行わない。
       - name: Ensure npm >= 11.5.1 (required for OIDC trusted publishing)
-        run: npm install -g npm@latest && npm --version
+        run: |
+          node -e '
+            const required = "11.5.1";
+            const current = require("node:child_process").execSync("npm --version").toString().trim();
+            const toParts = (v) => v.split(".").map(Number);
+            const [cm, cn, cp] = toParts(current);
+            const [rm, rn, rp] = toParts(required);
+            const ok = cm > rm || (cm === rm && (cn > rn || (cn === rn && cp >= rp)));
+            console.log(`npm ${current} (required >= ${required}): ${ok ? "OK" : "FAIL"}`);
+            if (!ok) process.exit(1);
+          '
 
       # sdk が実行時に inline する ecs/shared の最新ソースを確実に見る（型検証のため）。
       - name: Build shared package
