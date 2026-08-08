@@ -4,7 +4,7 @@
     "video-player": {
       "id": "video-player",
       "version": "2.0.0",
-      "manifestIntegrity": "sha256-dZErrhj7RaYR1MsCSyoPLLy6sG+DLE53ngjvKxu7H4Q=",
+      "manifestIntegrity": "sha256-4PwSrCeStG8umK93ZZfGdbeuheW1MAFw/NvKCQI7RN8=",
       "components": {
         "video-player:controls": {
           "workerUrl": "./controls/index.ef95e0fb.js",
@@ -27,8 +27,8 @@
           ]
         },
         "video-player:screen": {
-          "workerUrl": "./screen/index.3f09391e.js",
-          "integrity": "sha256-Pwk5HquUWNpdHZSIy2cT2wPoNvbtfdY+95t840tkKiA=",
+          "workerUrl": "./screen/index.9ba2bbc4.js",
+          "integrity": "sha256-m6K7xD82cmu+Uihj8a4PQnHablfTmyPhdOhHNJv+d30=",
           "capabilities": [
             "event:emit",
             "media:control"
