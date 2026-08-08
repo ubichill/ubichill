@@ -18,8 +18,7 @@ spec:
         url: https://p-nasimonan.github.io/ubichill-videoplayer
     - name: pen
       source:
-        path: mods/pen
-        type: repository
+        type: local
   initialEntities:
     - id: video-player
       tags: []

@@ -25,7 +25,7 @@ function createInitialDefinition(): WorldDefinition {
                 worldSize: { width: 2000, height: 1500 },
             },
             dependencies: [
-                { name: 'pen', source: { type: 'repository', path: 'mods/pen' } },
+                { name: 'pen', source: { type: 'local' } },
                 {
                     name: 'video-player',
                     source: { type: 'url', url: 'https://p-nasimonan.github.io/ubichill-videoplayer' },

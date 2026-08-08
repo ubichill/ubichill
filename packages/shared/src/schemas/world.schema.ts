@@ -299,9 +299,15 @@ export const WorldPermissionsSchema = z.object({
 // World Dependencies（依存関係）
 // ============================================
 
+// `type` はビルド時にどこから mod を取得するかを表す:
+//  - 'local': このワールドをビルドする側のローカル mods ディレクトリから fs で解決する
+//    （モノレポ内 mod 用。`path` はビルド時に一切参照されない装飾的フィールドだったため廃止）。
+//  - 'url'  : 指定した URL から mod の lock.json 断片を個別に取得する（外部 mod 用。
+//    `ubichill lock` がここから `ModLockEntry.baseUrl` を焼き込む）。
+// 'repository'（旧名。'local' と同義）は既存ワールドの後方互換のためだけに読み取りを許可する
+// （新規に書き出す側は必ず 'local' を使う）。'npm' は実装されたことがないため廃止。
 export const DependencySourceSchema = z.object({
-    type: z.enum(['repository', 'npm', 'url']),
-    path: z.string().optional(),
+    type: z.enum(['local', 'url', 'repository']).transform((v) => (v === 'repository' ? 'local' : v)),
     url: z.string().url().optional(),
     version: z.string().optional(),
 });
