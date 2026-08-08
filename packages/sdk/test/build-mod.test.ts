@@ -370,6 +370,28 @@ describe('buildMod（新規mod作成パイプライン）', () => {
         expect(distPointer).toEqual({ id: 'pointer', name: 'pointer', version: '1.0.0' });
         expect(publicPointer).toEqual(distPointer);
     });
+
+    it('index.json（1件だけのレジストリ）が distDir と publicDir の両方に出力される', async () => {
+        const fixture: ModFixture = {
+            packageJson: { name: '@ubichill/mod-registry', version: '1.0.0' },
+            files: {
+                'main.worker.ts': [
+                    'import type { ComponentConfig } from "@ubichill/sdk";',
+                    'export const config: ComponentConfig = {};',
+                ].join('\n'),
+            },
+        };
+
+        const { modDir, distDir, publicDir } = buildFixture(fixture);
+        const entry = await buildMod(modDir, { distDir, publicDir });
+
+        expect(entry).toEqual({ id: 'registry', name: 'registry', version: '1.0.0', components: ['registry:main'] });
+
+        const distIndex = JSON.parse(readFileSync(join(distDir, 'index.json'), 'utf-8'));
+        const publicIndex = JSON.parse(readFileSync(join(publicDir, 'index.json'), 'utf-8'));
+        expect(distIndex).toEqual([entry]);
+        expect(publicIndex).toEqual([entry]);
+    });
 });
 
 describe('runBuild（CLI エントリポイント: 単一mod repo vs モノレポの自動判別）', () => {
@@ -422,6 +444,36 @@ describe('runBuild（CLI エントリポイント: 単一mod repo vs モノレ�
             readFileSync(join(workspaceDir, 'dist', 'mods', 'sub-mod', 'v1.0.0', 'manifest.json'), 'utf-8'),
         );
         expect(manifest.id).toBe('sub-mod');
+    });
+
+    it('モノレポ一括ビルドでは全 mod を集約した index.json がバッチルートに出力される', async () => {
+        const workspaceDir = mkdtempSync(join(tmpdir(), 'ubichill-workspace-multi-'));
+        tmpDirs.push(workspaceDir);
+        writeFileSync(join(workspaceDir, 'package.json'), JSON.stringify({ name: 'workspace-root' }), 'utf-8');
+
+        for (const modName of ['alpha', 'beta']) {
+            const modDir = join(workspaceDir, 'mods', modName);
+            mkdirSync(join(modDir, 'src'), { recursive: true });
+            writeFileSync(
+                join(modDir, 'package.json'),
+                JSON.stringify({ name: `@ubichill/mod-${modName}`, version: '1.0.0' }),
+                'utf-8',
+            );
+            writeFileSync(
+                join(modDir, 'src', 'main.worker.ts'),
+                ['import type { ComponentConfig } from "@ubichill/sdk";', 'export const config: ComponentConfig = {};'].join(
+                    '\n',
+                ),
+                'utf-8',
+            );
+        }
+
+        process.chdir(workspaceDir);
+        await runBuild([]);
+
+        const index = JSON.parse(readFileSync(join(workspaceDir, 'dist', 'mods', 'index.json'), 'utf-8'));
+        expect(index.map((e) => e.id).sort()).toEqual(['alpha', 'beta']);
+        expect(index.find((e) => e.id === 'alpha').components).toEqual(['alpha:main']);
     });
 
     it('package.json が無く mods/ も無い場合はエラーを throw する', async () => {

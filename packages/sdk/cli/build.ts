@@ -305,8 +305,16 @@ function readPackageJson(modDir: string): { id: string; name: string; version: s
     return { id, name, version };
 }
 
+/** `index.json`（レジストリ一覧）の1エントリ。World Editor の「レジストリ URL を追加」機能が読む形。 */
+export interface ModIndexEntry {
+    id: string;
+    name: string;
+    version: string;
+    components: string[];
+}
+
 /** @param modDir mod のルートディレクトリへの絶対パス */
-export async function buildMod(modDir: string, options: BuildOptions = {}): Promise<void> {
+export async function buildMod(modDir: string, options: BuildOptions = {}): Promise<ModIndexEntry> {
     const { id, name, version } = readPackageJson(modDir);
     const { distDir, publicDir } = resolveDirs({ ...options, modDir });
 
@@ -452,6 +460,16 @@ export async function buildMod(modDir: string, options: BuildOptions = {}): Prom
     writeFileSync(join(distVersionDir, 'lock.json'), lock, 'utf-8');
     writeFileSync(join(publicVersionDir, 'lock.json'), lock, 'utf-8');
     console.log(`🔒 [${id}] lock.json (${Object.keys(lockComponents).length} components)`);
+
+    // ── index.json（この mod 単体をレジストリとして公開する）────────────
+    // World Editor の「レジストリ URL を追加」機能は index.json（一覧）を期待する。
+    // 外部 mod は単体でも「1件だけのレジストリ」として同じ形で公開できるようにする。
+    const indexEntry: ModIndexEntry = { id, name, version, components: Object.keys(versionedComponents) };
+    const indexJson = JSON.stringify([indexEntry], null, 2);
+    writeFileSync(join(distDir, 'index.json'), indexJson, 'utf-8');
+    writeFileSync(join(publicDir, 'index.json'), indexJson, 'utf-8');
+
+    return indexEntry;
 }
 
 /**
@@ -467,6 +485,7 @@ async function runBatchBuild(modsDirArg: string, args: string[]): Promise<void> 
     const distDir = argValue('--dist-dir=') ?? join(process.cwd(), 'dist', 'mods');
     const publicDir = argValue('--public-mods-dir=') ?? distDir;
 
+    const indexEntries: ModIndexEntry[] = [];
     for (const entry of readdirSync(modsDir, { withFileTypes: true })) {
         if (!entry.isDirectory()) continue;
         const modDir = join(modsDir, entry.name);
@@ -478,8 +497,17 @@ async function runBatchBuild(modsDirArg: string, args: string[]): Promise<void> 
         const modPublicDir = join(publicDir, id);
 
         console.log(`\n🔨 [${entry.name}] building...`);
-        await buildMod(modDir, { distDir: modDistDir, publicDir: modPublicDir });
+        indexEntries.push(await buildMod(modDir, { distDir: modDistDir, publicDir: modPublicDir }));
     }
+
+    // ── index.json（このモノレポが持つ全 mod のレジストリ一覧）───────────
+    // World Editor の「使用する mod」一覧はこの index.json（バッチのルート）を読む。
+    mkdirSync(distDir, { recursive: true });
+    mkdirSync(publicDir, { recursive: true });
+    const aggregateIndexJson = JSON.stringify(indexEntries, null, 2);
+    writeFileSync(join(distDir, 'index.json'), aggregateIndexJson, 'utf-8');
+    writeFileSync(join(publicDir, 'index.json'), aggregateIndexJson, 'utf-8');
+    console.log(`\n📇 index.json (${indexEntries.length} mods)`);
 }
 
 /**
