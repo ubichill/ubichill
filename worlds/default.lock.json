@@ -3,20 +3,12 @@
   "mods": {
     "video-player": {
       "id": "video-player",
-      "version": "2.1.0",
-      "manifestIntegrity": "sha256-n/Psv+OO+P0SpeMbnb3CqOhM1QmQNxsSx120cyHcSiM=",
+      "version": "2.0.0",
+      "manifestIntegrity": "sha256-dZErrhj7RaYR1MsCSyoPLLy6sG+DLE53ngjvKxu7H4Q=",
       "components": {
-        "video-player:screen": {
-          "workerUrl": "./screen/index.62113a7f.js",
-          "integrity": "sha256-YhE6fy4AgW9YrkyS9IskyHLQl4oTMGK2pMVQpnfFaXg=",
-          "capabilities": [
-            "event:emit",
-            "media:control"
-          ]
-        },
         "video-player:controls": {
-          "workerUrl": "./controls/index.2003d3c8.js",
-          "integrity": "sha256-IAPTyL0KeK9106SCqGbGR4fA4rbgEdSMq8Zu4hWG6v0=",
+          "workerUrl": "./controls/index.ef95e0fb.js",
+          "integrity": "sha256-75Xg+xxBm5a59t6xjFIwmDYgQ2EpiWvMPUhjHQIWtKc=",
           "capabilities": [
             "event:emit",
             "scene:read",
@@ -25,8 +17,8 @@
           ]
         },
         "video-player:playlist": {
-          "workerUrl": "./playlist/index.87ad116c.js",
-          "integrity": "sha256-h60RbFbVhwD9/ShpdJTSO4jsa5LV10ogXqZ5DgerUQQ=",
+          "workerUrl": "./playlist/index.5be0c08b.js",
+          "integrity": "sha256-W+DAi1FCfA7yZ/2r0ApcAw65y+QELkHA+iyT8Jbk7lo=",
           "capabilities": [
             "event:emit",
             "scene:read",
@@ -34,9 +26,17 @@
             "ui:render"
           ]
         },
+        "video-player:screen": {
+          "workerUrl": "./screen/index.3f09391e.js",
+          "integrity": "sha256-Pwk5HquUWNpdHZSIy2cT2wPoNvbtfdY+95t840tkKiA=",
+          "capabilities": [
+            "event:emit",
+            "media:control"
+          ]
+        },
         "video-player:search": {
-          "workerUrl": "./search/index.2ee59a37.js",
-          "integrity": "sha256-LuWaN/t3EpXrOvMr22v3E7Fr6L68TtuIP370U+a4lXs=",
+          "workerUrl": "./search/index.bf9a11f1.js",
+          "integrity": "sha256-v5oR8dv0xZRZiccWc9W9i5+K8qBXACy0J5/vNz4G+po=",
           "capabilities": [
             "event:emit",
             "net:fetch",
@@ -49,11 +49,11 @@
     "pen": {
       "id": "pen",
       "version": "2.0.0",
-      "manifestIntegrity": "sha256-yVAPiusOupC8E4wb2Lp1ZJ1y0v4sD7GW1jpLrkmUFUg=",
+      "manifestIntegrity": "sha256-nd7sUSEuI286tavb1U9ttzVLJh+r8vIaDF902MKy/Vw=",
       "components": {
         "pen:canvas": {
-          "workerUrl": "./canvas/index.d6c19ea7.js",
-          "integrity": "sha256-1sGepxPaSyfjACiKHtdbo1o5MSgvngRXFwHc4KshmKs=",
+          "workerUrl": "./canvas/index.678c7678.js",
+          "integrity": "sha256-Z4x2eNxBPBCw+Z6nVhFcv0FyB9RAZIK6msojWXxXkGE=",
           "capabilities": [
             "canvas:draw",
             "event:broadcast",
@@ -62,23 +62,23 @@
             "scene:update"
           ]
         },
-        "pen:tray": {
-          "workerUrl": "./tray/index.2269a184.js",
-          "integrity": "sha256-ImmhhD102fBdy1YsXy0DRLletNEfknEKladn/6RKVGs=",
-          "capabilities": [
-            "event:emit",
-            "scene:read",
-            "ui:render"
-          ]
-        },
         "pen:pen": {
-          "workerUrl": "./pen/index.49e3f16d.js",
-          "integrity": "sha256-SePxbRm9teVrsUtO0ZB74oglL7mB6U3m3H4AOmf1JGw=",
+          "workerUrl": "./pen/index.a112fa19.js",
+          "integrity": "sha256-oRL6GVTL0jNSfgUtVCuN+7maZh2epdaOCkycAtb8rKk=",
           "capabilities": [
             "event:emit",
             "host:message",
             "scene:read",
             "scene:update",
+            "ui:render"
+          ]
+        },
+        "pen:tray": {
+          "workerUrl": "./tray/index.1a07ce58.js",
+          "integrity": "sha256-GgfOWGPX/S9c3lZhfP5RX7S6Dv8V2mhNBsm16LiC/FQ=",
+          "capabilities": [
+            "event:emit",
+            "scene:read",
             "ui:render"
           ]
         }

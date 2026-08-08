@@ -6,7 +6,15 @@
  * 黒 16:9 の背景は host 側の <video> 要素が標準で持つ。
  */
 
+import type { ComponentConfig } from '@ubichill/sdk';
 import { VPEvents, VPTarget } from './events';
+
+export const config: ComponentConfig = {
+    mediaTargets: ['main'],
+    watchEntityTypes: [],
+    watchScope: 'entity',
+    defaultTransform: { x: 0, y: 0, z: 2, w: 640, h: 360 },
+};
 
 const TARGET = 'main';
 

@@ -12,8 +12,20 @@
  * 太さ調整 UI は pen-tray が持つ (tray.worker.tsx)。pen 自身は見た目だけ。
  */
 
+import type { ComponentConfig } from '@ubichill/sdk';
 import { Gripable } from '@ubichill/sdk/gripable';
 import { PenEvents } from './events';
+
+export const config: ComponentConfig = {
+    watchEntityTypes: ['pen:pen'],
+    watchScope: 'entity',
+    defaultTransform: { x: 0, y: 0, z: 1, w: 36, h: 48 },
+    dataFields: {
+        color: { type: 'color', default: '#1a1a1a', label: 'ペンの色' },
+        strokeWidth: { type: 'number', default: 4, min: 1, max: 30, step: 1, label: '線の太さ' },
+    },
+    capabilities: ['event:emit', 'host:message', 'scene:read', 'scene:update', 'ui:render'],
+};
 
 const pen = Ubi.state.define({
     color: Ubi.state.sync('#1a1a1a'),

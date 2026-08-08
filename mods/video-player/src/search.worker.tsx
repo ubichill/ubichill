@@ -5,9 +5,17 @@
  * 検索クエリ / 結果 / 入力中フラグはローカル状態。
  */
 
-import type { RpcNetworkFetchResult } from '@ubichill/sdk';
+import type { ComponentConfig, RpcNetworkFetchResult } from '@ubichill/sdk';
 import { VPEvents, VPTarget } from './events';
 import { SearchIcon, VideoIcon } from './icons';
+
+export const config: ComponentConfig = {
+    watchEntityTypes: [],
+    watchScope: 'entity',
+    defaultTransform: { x: 330, y: 440, z: 198, w: 310, h: 300 },
+    capabilities: ['event:emit', 'net:fetch', 'scene:read', 'ui:render'],
+};
+
 import { formatTime } from './lib/playback';
 import { parseVideoId, thumbnailUrl } from './lib/youtube';
 import type { SearchResult, Track } from './types';

@@ -1,36 +1,213 @@
 /**
- * mod.json を自動探索し、Worker コードを esbuild でバンドルする（`ubichill build`）。
- *
- * mod.json の components フィールド（Stage 1 の現代的 ECS 形式）を読み取り、Worker をバンドルする。
- * Component キーは modId 抜きの単純名（例: "screen"）で宣言し、
- * Runtime / ワールド YAML からは `${modId}:${componentName}`（例: "video-player:screen"）で参照する。
- *
- * 出力物（modディレクトリ名を <name>、Component キーを <key> とする）:
- *   <distDir>/<name>/v<version>/<key>/index.<hash>.js
- *   <distDir>/<name>/v<version>/manifest.json
- *   <distDir>/<name>/v<version>/lock.json
- *   <publicDir>/<name>/v<version>/...（同内容。二重出力先が要る Host 向け、無指定なら distDir と同じ）
- *   <publicDir>/<name>/mod.json  ← ローダー用エイリアス（最新バージョン）
- *
- * Worker コード内では Ubi.modBase でバージョン付きアセットベースパスを参照できる。
- * Ubi.modBase は Host が EVT_LIFECYCLE_INIT 時に設定するランタイム値。
- *
- * デフォルトは全て `process.cwd()` 相対（このリポジトリ固有のパスは一切ハードコードしない、
- * 外部 mod 開発者が任意のディレクトリで `ubichill build` を実行できるようにするため）。
- * このリポジトリ自身の実運用パス（`packages/frontend/public/mods` 等）は呼び出し側
- * （ルート package.json の `build:workers` script）が `--public-dir=` 等で明示指定する。
+ * CLI ビルドツールのコア — mod.json を廃止し、package.json + Worker コード内の
+ * `export const config` を元にマニフェスト・lock.json を自動生成する。
  */
-import { CAPABILITY_DETECTORS, detectCapabilities } from '@ubichill/shared';
+import { detectCapabilities } from '@ubichill/shared';
 import * as esbuild from 'esbuild';
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import { basename, join, resolve } from 'node:path';
 
-export { CAPABILITY_DETECTORS, detectCapabilities };
+/** Worker ファイルからコンポーネント名を導出 (ex: `canvas.worker.ts` → `canvas`, `sub/dir/canvas.worker.ts` → `sub-dir-canvas`) */
+function componentNameFromFile(file: string): string {
+    return file.replace(/\.worker\.[jt]sx?$/, '').split(/[\\/]/).join('-');
+}
+
+/** src/ 以下の *.worker.ts(x) を再帰的にスキャン */
+function findWorkerFiles(srcDir: string): string[] {
+    const results: string[] = [];
+    function walk(dir: string) {
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+            const p = join(dir, entry.name);
+            if (entry.isDirectory()) {
+                walk(p);
+            } else if (entry.isFile() && /\.worker\.[jt]sx?$/.test(entry.name)) {
+                results.push(p);
+            }
+        }
+    }
+    walk(srcDir);
+    return results;
+}
+
+/** `export const config =` のあるファイルのみを Worker として扱う */
+function isWorkerFile(path: string): boolean {
+    const code = readFileSync(path, 'utf-8');
+    return /export\s+const\s+config\s*(?::\s*[^=]+)?\s*=/.test(code);
+}
 
 // ============================================================
-// ヘルパー関数
+// config リテラルの安全な抽出
 // ============================================================
+//
+// `export const config = { ... }` の値を取得するために、かつては
+// `new Function("return " + literal)()` で実際に JS として実行していたが、
+// Worker ソース（＝信頼できない mod 開発者のコードもあり得る）をビルド
+// プロセス上で任意実行することになり、ゼロトラスト方針に反する。
+// 代わりに JSON 互換のリテラル（object/array/string/number/boolean/null）
+// のみを受け付ける再帰下降パーサーで抽出する。関数呼び出しや識別子参照は
+// 構文エラーとして拒否され、実行されることはない。
+
+type ParsePos = { i: number };
+
+function skipTrivia(src: string, pos: ParsePos): void {
+    for (;;) {
+        const c = src[pos.i];
+        if (c === ' ' || c === '\t' || c === '\n' || c === '\r') {
+            pos.i++;
+            continue;
+        }
+        if (c === '/' && src[pos.i + 1] === '/') {
+            while (pos.i < src.length && src[pos.i] !== '\n') pos.i++;
+            continue;
+        }
+        if (c === '/' && src[pos.i + 1] === '*') {
+            pos.i += 2;
+            while (pos.i < src.length && !(src[pos.i] === '*' && src[pos.i + 1] === '/')) pos.i++;
+            pos.i += 2;
+            continue;
+        }
+        break;
+    }
+}
+
+function isIdentChar(c: string | undefined): boolean {
+    return !!c && /[A-Za-z0-9_$]/.test(c);
+}
+
+function parseKeyword(src: string, pos: ParsePos, word: string): boolean {
+    if (!src.startsWith(word, pos.i) || isIdentChar(src[pos.i + word.length])) return false;
+    pos.i += word.length;
+    return true;
+}
+
+function parseString(src: string, pos: ParsePos): string {
+    const quote = src[pos.i];
+    pos.i++;
+    let out = '';
+    while (pos.i < src.length && src[pos.i] !== quote) {
+        if (src[pos.i] === '\\') {
+            const esc = src[pos.i + 1];
+            const map: Record<string, string> = { n: '\n', t: '\t', r: '\r', '"': '"', "'": "'", '\\': '\\', '`': '`' };
+            out += map[esc] ?? esc ?? '';
+            pos.i += 2;
+        } else {
+            out += src[pos.i];
+            pos.i++;
+        }
+    }
+    if (src[pos.i] !== quote) throw new Error(`config: 閉じられていない文字列 (pos ${pos.i})`);
+    pos.i++;
+    return out;
+}
+
+function parseNumber(src: string, pos: ParsePos): number {
+    const m = /^-?\d+(\.\d+)?([eE][+-]?\d+)?/.exec(src.slice(pos.i));
+    if (!m) throw new Error(`config: 不正な数値リテラル (pos ${pos.i})`);
+    pos.i += m[0].length;
+    return Number(m[0]);
+}
+
+function parseKey(src: string, pos: ParsePos): string {
+    const c = src[pos.i];
+    if (c === '"' || c === "'") return parseString(src, pos);
+    const m = /^[A-Za-z_$][A-Za-z0-9_$]*/.exec(src.slice(pos.i));
+    if (!m) throw new Error(`config: 不正なプロパティ名 (pos ${pos.i})`);
+    pos.i += m[0].length;
+    return m[0];
+}
+
+function parseArray(src: string, pos: ParsePos): unknown[] {
+    pos.i++; // '['
+    const arr: unknown[] = [];
+    skipTrivia(src, pos);
+    if (src[pos.i] === ']') {
+        pos.i++;
+        return arr;
+    }
+    for (;;) {
+        arr.push(parseValue(src, pos));
+        skipTrivia(src, pos);
+        if (src[pos.i] === ',') {
+            pos.i++;
+            skipTrivia(src, pos);
+            if (src[pos.i] === ']') {
+                pos.i++;
+                break;
+            }
+            continue;
+        }
+        if (src[pos.i] === ']') {
+            pos.i++;
+            break;
+        }
+        throw new Error(`config: ',' または ']' が必要 (pos ${pos.i})`);
+    }
+    return arr;
+}
+
+function parseObject(src: string, pos: ParsePos): Record<string, unknown> {
+    pos.i++; // '{'
+    const obj: Record<string, unknown> = {};
+    skipTrivia(src, pos);
+    if (src[pos.i] === '}') {
+        pos.i++;
+        return obj;
+    }
+    for (;;) {
+        skipTrivia(src, pos);
+        const key = parseKey(src, pos);
+        skipTrivia(src, pos);
+        if (src[pos.i] !== ':') throw new Error(`config: ':' が必要 (pos ${pos.i})`);
+        pos.i++;
+        obj[key] = parseValue(src, pos);
+        skipTrivia(src, pos);
+        if (src[pos.i] === ',') {
+            pos.i++;
+            skipTrivia(src, pos);
+            if (src[pos.i] === '}') {
+                pos.i++;
+                break;
+            }
+            continue;
+        }
+        if (src[pos.i] === '}') {
+            pos.i++;
+            break;
+        }
+        throw new Error(`config: ',' または '}' が必要 (pos ${pos.i})`);
+    }
+    return obj;
+}
+
+function parseValue(src: string, pos: ParsePos): unknown {
+    skipTrivia(src, pos);
+    const c = src[pos.i];
+    if (c === '{') return parseObject(src, pos);
+    if (c === '[') return parseArray(src, pos);
+    if (c === '"' || c === "'") return parseString(src, pos);
+    if (parseKeyword(src, pos, 'true')) return true;
+    if (parseKeyword(src, pos, 'false')) return false;
+    if (parseKeyword(src, pos, 'null')) return null;
+    if (c === '-' || (c >= '0' && c <= '9')) return parseNumber(src, pos);
+    throw new Error(`config: 未対応のトークン (pos ${pos.i}): ${JSON.stringify(src.slice(pos.i, pos.i + 20))}`);
+}
+
+/** `export const config =` の内容を JSON 互換リテラルとしてのみ抽出する（コード実行なし）。 */
+function extractConfigFromCode(code: string): Record<string, unknown> | null {
+    const startMatch = code.match(/export\s+const\s+config\s*(?::\s*[^=]+)?\s*=\s*/);
+    if (startMatch?.index === undefined) return null;
+    const startIdx = startMatch.index + startMatch[0].length;
+    const rest = code.slice(startIdx);
+    try {
+        const pos: ParsePos = { i: 0 };
+        const value = parseValue(rest, pos);
+        if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+        return value as Record<string, unknown>;
+    } catch {
+        return null;
+    }
+}
 
 function copyDirRecursive(src: string, dest: string): void {
     mkdirSync(dest, { recursive: true });
@@ -40,80 +217,58 @@ function copyDirRecursive(src: string, dest: string): void {
         if (entry.isDirectory()) {
             copyDirRecursive(srcPath, destPath);
         } else {
-            copyFileSync(srcPath, destPath);
+            writeFileSync(destPath, readFileSync(srcPath));
         }
     }
 }
 
-/**
- * Component ディレクトリから古いハッシュ付きバンドル (`index.*.js`) を削除する。
- * manifest が古いバンドルを参照していたブラウザキャッシュを段階的に剥がせる
- * ように 1 つだけ残してもよいが、CDN を汚さないため keepFilename 以外は削除。
- */
 function cleanOldBundles(dir: string, keepFilename: string): void {
-    if (!existsSync(dir)) return;
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        if (!entry.isFile()) continue;
-        if (entry.name === keepFilename) continue;
-        if (!/^index\.[a-f0-9]+\.js$/.test(entry.name)) continue;
-        rmSync(join(dir, entry.name));
+        if (entry.isFile() && entry.name !== keepFilename && entry.name.startsWith('index.')) {
+            const p = join(dir, entry.name);
+            try {
+                unlinkSync(p);
+            } catch {
+                // ignore
+            }
+        }
     }
 }
 
-/** ディレクトリ内の全ファイルをルートからの相対パスで列挙する純関数。 */
-function listFilesRecursive(rootDir: string, currentDir: string = rootDir): string[] {
-    if (!existsSync(currentDir)) return [];
+function listFilesRecursive(dir: string): string[] {
     const out: string[] = [];
-    for (const entry of readdirSync(currentDir, { withFileTypes: true })) {
-        const abs = join(currentDir, entry.name);
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const abs = join(dir, entry.name);
         if (entry.isDirectory()) {
-            out.push(...listFilesRecursive(rootDir, abs));
+            out.push(...listFilesRecursive(abs));
         } else {
-            out.push(abs.slice(rootDir.length + 1).split('\\').join('/'));
+            out.push(abs);
         }
     }
     return out;
 }
 
-/**
- * バイト列（utf-8 文字列）の Subresource Integrity 文字列 `sha256-<base64>` を返す。
- * shared の formatIntegrity と同一規約。ロード側（crypto.subtle）が同じバイト列を
- * hash して照合するため、書き出す文字列そのものを渡すこと。
- */
-export function sriOf(text: string): string {
-    return `sha256-${createHash('sha256').update(text, 'utf-8').digest('base64')}`;
+function sriOf(text: string): string {
+    const hash = createHash('sha256').update(text).digest('base64');
+    return `sha256-${hash}`;
 }
 
-async function bundleWorker(entryPath: string, tsconfig: string | undefined): Promise<string> {
+async function bundleWorker(entryPath: string, tsconfig?: string): Promise<string> {
     const result = await esbuild.build({
         entryPoints: [entryPath],
         bundle: true,
         format: 'iife',
         platform: 'browser',
-        target: 'es2020',
+        target: 'es2022',
         jsx: 'automatic',
         jsxImportSource: '@ubichill/sdk',
         write: false,
-        minify: false,
+        minify: true,
         tsconfig,
     });
-    return result.outputFiles[0].text;
-}
-
-// ============================================================
-// mod.json の自動探索
-// ============================================================
-
-function findModJsonFiles(modsDir: string): string[] {
-    const results: string[] = [];
-    for (const modName of readdirSync(modsDir, { withFileTypes: true })) {
-        if (!modName.isDirectory()) continue;
-        const modJsonPath = join(modsDir, modName.name, 'mod.json');
-        if (existsSync(modJsonPath)) {
-            results.push(modJsonPath);
-        }
-    }
-    return results;
+    const out = result.outputFiles?.[0];
+    if (!out) throw new Error(`esbuild failed for ${entryPath}`);
+    return out.text;
 }
 
 // ============================================================
@@ -121,32 +276,39 @@ function findModJsonFiles(modsDir: string): string[] {
 // ============================================================
 
 export interface BuildOptions {
-    /** mod.json を探索するディレクトリ（既定: process.cwd()）。 */
-    modsDir?: string;
-    /** frontend 配信用の出力先（既定: distDir と同じ）。二重出力先が要る Host 向け。 */
-    publicModsDir?: string;
-    /** CDN 配布用の出力先（既定: `<cwd>/dist/mods`）。 */
-    distModsDir?: string;
+    /** mod のソースディレクトリ（既定: process.cwd()）。 */
+    modDir?: string;
+    /** フロントエンド配信用の出力先（既定: distDir と同じ）。 */
+    publicDir?: string;
+    /** CDN 配布用の出力先（既定: `<modDir>/dist`）。 */
+    distDir?: string;
 }
 
-function resolveDirs(options: BuildOptions): { distModsDir: string; publicModsDir: string } {
-    const distModsDir = options.distModsDir ?? join(process.cwd(), 'dist', 'mods');
-    const publicModsDir = options.publicModsDir ?? distModsDir;
-    return { distModsDir, publicModsDir };
+function resolveDirs(options: BuildOptions): { distDir: string; publicDir: string } {
+    const distDir = options.distDir ?? join(options.modDir ?? process.cwd(), 'dist');
+    const publicDir = options.publicDir ?? distDir;
+    return { distDir, publicDir };
 }
 
-/** @param modJsonPath mod.json への絶対パス */
-export async function buildWorker(modJsonPath: string, options: BuildOptions = {}): Promise<void> {
-    const modDir = dirname(modJsonPath);
-    const modJson = JSON.parse(readFileSync(modJsonPath, 'utf-8'));
+function readPackageJson(modDir: string): { id: string; name: string; version: string } {
+    const path = join(modDir, 'package.json');
+    if (!existsSync(path)) {
+        throw new Error(`package.json not found in ${modDir}`);
+    }
+    const pkg = JSON.parse(readFileSync(path, 'utf-8'));
+    const id = pkg.ubichill?.id ?? pkg.name?.replace(/^@ubichill\/(?:mod-)?/, '') ?? basename(modDir);
+    const name = pkg.ubichill?.name ?? pkg.description ?? id;
+    const version = pkg.version;
+    if (!version) {
+        throw new Error(`package.json に version が必要です: ${path}`);
+    }
+    return { id, name, version };
+}
 
-    const modId = modJson.id;
-    const modDirName = basename(modDir);
-    const version = modJson.version;
-    const { distModsDir, publicModsDir } = resolveDirs(options);
-    const publicModDir = join(publicModsDir, modDirName);
-    const publicVersionDir = join(publicModDir, `v${version}`);
-    const distVersionDir = join(distModsDir, modDirName, `v${version}`);
+/** @param modDir mod のルートディレクトリへの絶対パス */
+export async function buildMod(modDir: string, options: BuildOptions = {}): Promise<void> {
+    const { id, name, version } = readPackageJson(modDir);
+    const { distDir, publicDir } = resolveDirs({ ...options, modDir });
 
     // tsconfig 検索
     const rootTsconfig = join(modDir, 'tsconfig.json');
@@ -154,50 +316,36 @@ export async function buildWorker(modJsonPath: string, options: BuildOptions = {
 
     // ── ルート index（npm の "latest" pointer 相当） ──────────────────
     // バージョンへのポインタのみ。エンティティ詳細はバージョン付きマニフェストに分離。
-    const rootIndex = JSON.stringify({ id: modId, name: modJson.name, version }, null, 2);
-    mkdirSync(publicModDir, { recursive: true });
-    writeFileSync(join(publicModDir, 'mod.json'), rootIndex, 'utf-8');
-    mkdirSync(join(distModsDir, modDirName), { recursive: true });
-    writeFileSync(join(distModsDir, modDirName, 'mod.json'), rootIndex, 'utf-8');
+    const rootIndex = JSON.stringify({ id, name, version }, null, 2);
+    mkdirSync(publicDir, { recursive: true });
+    mkdirSync(distDir, { recursive: true });
+    writeFileSync(join(publicDir, 'mod.json'), rootIndex, 'utf-8');
+    writeFileSync(join(distDir, 'mod.json'), rootIndex, 'utf-8');
 
-    // ── バージョン付きマニフェスト（ランタイム用・src なし・workerUrl 明示） ──
-    // src はビルド時のみ必要なため除去。workerUrl でロード先を明示する。
+    const publicVersionDir = join(publicDir, `v${version}`);
+    const distVersionDir = join(distDir, `v${version}`);
     mkdirSync(distVersionDir, { recursive: true });
     mkdirSync(publicVersionDir, { recursive: true });
 
-    // ── components 形式 (Stage 1: 現代的 ECS) ───────────────────
-    const componentEntries = modJson.components;
-    if (!componentEntries || typeof componentEntries !== 'object') {
-        console.warn(`⚠️  [${modId}] components フィールドが見つかりません。スキップします。`);
-        return;
-    }
+    // ── Worker 自動探索 ───────────────────────────────────────
+    const srcDir = join(modDir, 'src');
+    const workerFiles = findWorkerFiles(srcDir);
 
-    // バージョン付きマニフェスト用 components（src 除去・workerUrl 追加、フル型キー化）
     const versionedComponents: Record<string, unknown> = {};
-    // lock.json 用 components（worker を持つ Component のみ。integrity=フル sha256）。
     const lockComponents: Record<string, unknown> = {};
 
-    for (const [componentName, componentEntry] of Object.entries(
-        componentEntries as Record<string, string | Record<string, unknown>>,
-    )) {
-        // ワールド YAML / runtime からは "modId:componentName" で参照する
-        const componentType = `${modId}:${componentName}`;
-        const workerRelPath = typeof componentEntry === 'string' ? componentEntry : componentEntry?.src;
-        if (!workerRelPath) {
-            // src なし = データ専用 Component。worker をビルドせず manifest にメタだけ記録する。
-            const meta = typeof componentEntry === 'string' ? {} : componentEntry;
-            versionedComponents[componentType] = { ...meta };
-            console.log(`📋 [${componentType}] data-only (no worker)`);
+    for (const workerPath of workerFiles) {
+        const relPath = workerPath.replace(srcDir + '/', '');
+        const componentName = componentNameFromFile(relPath);
+        const componentType = `${id}:${componentName}`;
+
+        // `export const config` を持つファイルのみを処理する
+        if (!isWorkerFile(workerPath)) {
+            console.log(`📋 [${componentType}] skipped (no export const config)`);
             continue;
         }
 
-        const entryPath = join(modDir, workerRelPath as string);
-        if (!existsSync(entryPath)) {
-            console.error(`❌ [${componentType}] エントリが見つかりません: ${entryPath}`);
-            continue;
-        }
-
-        const code = await bundleWorker(entryPath, tsconfig);
+        const code = await bundleWorker(workerPath, tsconfig);
 
         // コンテンツハッシュ（8文字）でキャッシュバスティング
         const hash = createHash('sha256').update(code).digest('hex').slice(0, 8);
@@ -215,25 +363,45 @@ export async function buildWorker(modJsonPath: string, options: BuildOptions = {
         cleanOldBundles(publicComponentDir, outFilename);
         writeFileSync(join(publicComponentDir, outFilename), code, 'utf-8');
 
-        // capability をコードから自動検出。手書き宣言があれば和集合（override / 補完）。
-        // 手書きは静的解析で漏れる動的アクセス等の補完に使える。
+        // capability をコードから自動検出。
         const detected = detectCapabilities(code);
-        const handAuthored = Array.isArray((componentEntry as Record<string, unknown>).capabilities)
-            ? ((componentEntry as Record<string, unknown>).capabilities as string[])
-            : [];
-        const capabilities = [...new Set([...detected, ...handAuthored])].sort();
 
-        // workerUrl を明示、src（ビルド時のみ）は除去。capabilities は自動生成値で上書き。
-        const { src: _src, ...runtimeMeta } = typeof componentEntry === 'string' ? {} : componentEntry;
+        // config からメタデータを取得
+        const srcCode = readFileSync(workerPath, 'utf-8');
+        const config = extractConfigFromCode(srcCode);
+        const declaredCapabilities = Array.isArray(config?.capabilities)
+            ? (config.capabilities as string[])
+            : [];
+
+        // 宣言された capability と検出結果を突き合わせて警告
+        const undetected = declaredCapabilities.filter((cap) => !detected.includes(cap));
+        const excess = detected.filter((cap) => !declaredCapabilities.includes(cap));
+        if (undetected.length > 0) {
+            console.warn(
+                `⚠️  [${componentType}] 検出されない宣言: ${undetected.join(', ')} (静的解析では検出されず。動的アクセス等の可能性)`,
+            );
+        }
+        if (excess.length > 0) {
+            console.warn(
+                `⚠️  [${componentType}] 過剰検出: ${excess.join(', ')} (config.capabilities に宣言なし)`,
+            );
+        }
+
+        // マニフェスト用: 検出結果と宣言の和集合（セキュリティ的に過剰許可より安全）
+        const capabilitySet = new Set<string>();
+        for (const cap of detected) capabilitySet.add(cap);
+        for (const cap of declaredCapabilities) capabilitySet.add(cap);
+        const capabilities = Array.from(capabilitySet).sort();
+
         const workerUrl = `./${componentName}/${outFilename}`;
+        const { capabilities: _ignoredCaps, workerUrl: _ignoredUrl, ...restConfig } = config ?? {};
         versionedComponents[componentType] = {
-            ...runtimeMeta,
+            ...restConfig,
             capabilities,
             workerUrl,
         };
 
         // lock: worker バイト列のフル sha256 + capability 天井を固定する。
-        // integrity はロード側が同一バイト列（書き出す code そのもの）を hash して照合する。
         lockComponents[componentType] = {
             workerUrl,
             integrity: sriOf(code),
@@ -241,7 +409,7 @@ export async function buildWorker(modJsonPath: string, options: BuildOptions = {
         };
 
         console.log(
-            `✅ [${componentType}] ${modDirName}/v${version}/${componentName}/${outFilename}` +
+            `✅ [${componentType}] ${componentName}/${outFilename}` +
                 ` [caps: ${capabilities.join(', ') || 'none'}]`,
         );
     }
@@ -252,14 +420,14 @@ export async function buildWorker(modJsonPath: string, options: BuildOptions = {
     if (existsSync(assetsSrcDir)) {
         copyDirRecursive(assetsSrcDir, publicVersionDir);
         copyDirRecursive(assetsSrcDir, distVersionDir);
-        assetFiles = listFilesRecursive(assetsSrcDir);
-        console.log(`✅ [${modId}] assets → ${modDirName}/v${version}/ (${assetFiles.length} files)`);
+        assetFiles = listFilesRecursive(assetsSrcDir).map((p) => p.replace(assetsSrcDir + '/', ''));
+        console.log(`✅ [${id}] assets → v${version}/ (${assetFiles.length} files)`);
     }
 
     const versionedManifest = JSON.stringify(
         {
-            id: modId,
-            name: modJson.name,
+            id,
+            name,
             version,
             components: versionedComponents,
             assets: assetFiles,
@@ -271,11 +439,9 @@ export async function buildWorker(modJsonPath: string, options: BuildOptions = {
     writeFileSync(join(publicVersionDir, 'manifest.json'), versionedManifest, 'utf-8');
 
     // ── lock.json（ModLockEntry 形状）─────────────────────────────
-    // ワールド保存時にこの断片を取り込み spec.lock に固定する。
-    // manifestIntegrity は上で書き出した manifest 文字列そのものの hash。
     const lock = JSON.stringify(
         {
-            id: modId,
+            id,
             version,
             manifestIntegrity: sriOf(versionedManifest),
             components: lockComponents,
@@ -285,70 +451,66 @@ export async function buildWorker(modJsonPath: string, options: BuildOptions = {
     );
     writeFileSync(join(distVersionDir, 'lock.json'), lock, 'utf-8');
     writeFileSync(join(publicVersionDir, 'lock.json'), lock, 'utf-8');
-    console.log(`🔒 [${modId}] lock.json (${Object.keys(lockComponents).length} components)`);
+    console.log(`🔒 [${id}] lock.json (${Object.keys(lockComponents).length} components)`);
 }
 
 /**
- * 全modの index.json を作成する。
- * エディタ等でローカル利用可能modの一覧を取得するために使う。
- * 各エントリは { id, name, version, components[], repositoryPath } 形式。
+ * 複数 mod を一括ビルド（モノレポ用）。`modsDir` 配下の各サブディレクトリを
+ * 個別の mod として扱い、それぞれ `buildMod` する。
  */
-function writeModIndex(modJsonFiles: string[], options: BuildOptions = {}): void {
-    const { distModsDir, publicModsDir } = resolveDirs(options);
+async function runBatchBuild(modsDirArg: string, args: string[]): Promise<void> {
+    const argValue = (flag: string): string | undefined =>
+        args.find((a) => a.startsWith(flag))?.slice(flag.length);
 
-    const entries = modJsonFiles.map((modJsonPath) => {
-        const modJson = JSON.parse(readFileSync(modJsonPath, 'utf-8'));
-        const modId = modJson.id;
-        const modDirName = basename(dirname(modJsonPath));
-        // Component 型は "modId:componentName" 形式に展開
-        const components = modJson.components
-            ? Object.keys(modJson.components).map((name) => `${modId}:${name}`)
-            : [];
-        return {
-            id: modId,
-            name: modJson.name ?? modId,
-            version: modJson.version,
-            // dependencies に追加する際の repository path
-            repositoryPath: modDirName,
-            components,
-        };
-    });
-    const json = JSON.stringify(entries, null, 2);
-    mkdirSync(publicModsDir, { recursive: true });
-    mkdirSync(distModsDir, { recursive: true });
-    writeFileSync(join(publicModsDir, 'index.json'), json, 'utf-8');
-    writeFileSync(join(distModsDir, 'index.json'), json, 'utf-8');
-    console.log(`📋 mod index: ${entries.length} entries`);
+    // esbuild は呼び出しごとに絶対パスを要求するため、相対指定を早期に解決しておく。
+    const modsDir = resolve(modsDirArg);
+    const distDir = argValue('--dist-dir=') ?? join(process.cwd(), 'dist', 'mods');
+    const publicDir = argValue('--public-mods-dir=') ?? distDir;
+
+    for (const entry of readdirSync(modsDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const modDir = join(modsDir, entry.name);
+        const pkgJsonPath = join(modDir, 'package.json');
+        if (!existsSync(pkgJsonPath)) continue;
+
+        const { id } = readPackageJson(modDir);
+        const modDistDir = join(distDir, id);
+        const modPublicDir = join(publicDir, id);
+
+        console.log(`\n🔨 [${entry.name}] building...`);
+        await buildMod(modDir, { distDir: modDistDir, publicDir: modPublicDir });
+    }
 }
 
 /**
- * `argv`（サブコマンド名を除いた残り引数）から全ての mod をビルドする。
- * `--mods-dir=` / `--public-mods-dir=` / `--dist-dir=` はすべて未指定なら
- * `process.cwd()` 基準（このリポジトリ固有のパスはライブラリ既定にしない）。
+ * `ubichill build` のエントリポイント。
+ *
+ * 通常（外部 mod リポジトリ）は cwd 自体が 1 つの mod のルートであるとみなし、
+ * `buildMod(cwd)` を実行する。`mods/` ディレクトリ（モノレポの複数 mod 構成）が
+ * 存在する場合、または `--mods-dir=` が明示された場合のみ一括ビルドに切り替える。
  */
-export async function runBuild(argv: string[]): Promise<void> {
-    const argValue = (name: string): string | undefined => argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
+export async function runBuild(args: string[]): Promise<void> {
+    const argValue = (flag: string): string | undefined =>
+        args.find((a) => a.startsWith(flag))?.slice(flag.length);
 
-    const modsDir = argValue('mods-dir') ? resolve(argValue('mods-dir') as string) : process.cwd();
-    const distModsDir = argValue('dist-dir') ? resolve(argValue('dist-dir') as string) : undefined;
-    const publicModsDir = argValue('public-mods-dir') ? resolve(argValue('public-mods-dir') as string) : undefined;
-
-    console.log('🔨 Building mods...');
-    const modJsonFiles = findModJsonFiles(modsDir);
-
-    if (modJsonFiles.length === 0) {
-        console.warn(`⚠️  mod.json が見つかりません（${modsDir}）`);
+    const modsDirArg = argValue('--mods-dir=');
+    const modsDir = modsDirArg ?? 'mods';
+    if (modsDirArg !== undefined || existsSync(modsDir)) {
+        await runBatchBuild(modsDir, args);
         return;
     }
 
-    const options: BuildOptions = { publicModsDir, distModsDir };
-    for (const modJsonPath of modJsonFiles) {
-        await buildWorker(modJsonPath, options);
+    // 単一 mod ビルド（外部リポジトリでの標準フロー）: cwd をそのまま modDir とする。
+    const modDir = process.cwd();
+    if (!existsSync(join(modDir, 'package.json'))) {
+        throw new Error(
+            'package.json が見つかりません。mod のルートディレクトリで実行するか、' +
+                '複数 mod をまとめてビルドする場合は --mods-dir=<dir> を指定してください。',
+        );
     }
+    const distDir = argValue('--dist-dir=') ?? join(modDir, 'dist');
+    const publicDir = argValue('--public-mods-dir=') ?? distDir;
 
-    writeModIndex(modJsonFiles, options);
-
-    const { distModsDir: resolvedDist } = resolveDirs(options);
-    console.log('🎉 All mods built.');
-    console.log(`📦 出力先: ${resolvedDist}`);
+    console.log(`🔨 [${basename(modDir)}] building...`);
+    await buildMod(modDir, { distDir, publicDir });
 }

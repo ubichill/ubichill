@@ -5,8 +5,17 @@
  * Worker 間通信は `VPEvents` に閉じた型付き emit/on のみ。
  */
 
+import type { ComponentConfig } from '@ubichill/sdk';
 import { VPEvents, VPTarget } from './events';
 import { PlaySmallIcon, TrashIcon } from './icons';
+
+export const config: ComponentConfig = {
+    watchEntityTypes: ['video-player:playlist'],
+    watchScope: 'entity',
+    defaultTransform: { x: 0, y: 440, z: 198, w: 310, h: 300 },
+    capabilities: ['event:emit', 'scene:read', 'scene:update', 'ui:render'],
+};
+
 import { formatTime } from './lib/playback';
 import { thumbnailUrl } from './lib/youtube';
 import type { LoopMode, Track } from './types';

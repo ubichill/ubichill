@@ -16,8 +16,16 @@
  * Worker 間通信は VPEvents (型付き) のみ。
  */
 
-import type { Entity, System } from '@ubichill/sdk';
+import type { ComponentConfig, Entity, System } from '@ubichill/sdk';
 import { VPEvents, VPTarget } from './events';
+
+export const config: ComponentConfig = {
+    watchEntityTypes: ['video-player:controls'],
+    watchScope: 'entity',
+    defaultTransform: { x: 0, y: 370, z: 198, w: 640, h: 60 },
+    capabilities: ['event:emit', 'scene:read', 'scene:update', 'ui:render'],
+};
+
 import {
     PauseIcon,
     PlayIcon,

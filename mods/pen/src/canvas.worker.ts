@@ -11,8 +11,16 @@
  * pen:stroke は描いたペン Entity の子として生成される (parentEntityId = heldPen.entityId)。
  */
 
-import type { CanvasStrokeData, Entity, System } from '@ubichill/sdk';
+import type { CanvasStrokeData, ComponentConfig, Entity, System } from '@ubichill/sdk';
 import { PenEvents } from './events';
+
+export const config: ComponentConfig = {
+    canvasTargets: ['drawing'],
+    watchEntityTypes: ['pen:stroke', 'pen:pen'],
+    watchScope: 'world',
+    defaultTransform: { x: 0, y: 0, z: 5000 },
+    capabilities: ['canvas:draw', 'event:broadcast', 'event:emit', 'scene:read', 'scene:update'],
+};
 
 // ────────────────────────────────────────────────────────────────
 // 定数
@@ -117,12 +125,9 @@ PenEvents.on('entity:pen:pen', (pen) => {
 
     // ── リモート保持の追跡 ─────────────────────────────────
     // この pen が以前どのリモートユーザーに紐付いていたら一旦消す
-    for (const [userId, info] of remoteHeld) {
-        if (info.penId === pen.id) {
-            remoteHeld.delete(userId);
-            break;
-        }
-    }
+    remoteHeld.forEach((info, userId) => {
+        if (info.penId === pen.id) remoteHeld.delete(userId);
+    });
     // 現在リモートユーザーが持っているなら登録
     if (pen.lockedBy && pen.lockedBy !== Ubi.myUserId) {
         remoteHeld.set(pen.lockedBy, {
