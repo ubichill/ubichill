@@ -40,7 +40,8 @@ interface FetchedManifest {
 }
 
 export interface AcquireModOptions {
-    /** mod のベース URL（例: `/mods` or 外部 CDN）。末尾スラッシュなし。 */
+    /** mod の既定ベース URL（例: `/mods` or 外部 CDN）。末尾スラッシュなし。lock 側に
+     * `baseUrl` があればそちらを優先する（mod 毎に別ホストから配布されている場合）。 */
     baseUrl: string;
     /** ワールドに焼かれた mod 完全性ロック（無い場合あり）。 */
     lock?: ModLock;
@@ -131,7 +132,7 @@ async function fetchWorkerBytes(workerUrl: string, entityType: string, f: FetchL
  * lock 天井、それ以外は manifest 由来。
  */
 export async function acquireMod(entityType: string, opts: AcquireModOptions): Promise<AcquireResult> {
-    const { baseUrl, lock, sourceKind } = opts;
+    const { lock, sourceKind } = opts;
     const f = opts.fetchImpl ?? defaultFetch;
 
     const colonIdx = entityType.indexOf(':');
@@ -142,6 +143,9 @@ export async function acquireMod(entityType: string, opts: AcquireModOptions): P
 
     // 外部 provenance で lock 記載が無いなら、fetch する前に拒否する。
     if (!lockEntry && requiresLock(sourceKind)) return { rejected: 'lock-missing' };
+
+    // この mod だけ別ホストから配布されている場合、lock.baseUrl を既定より優先する。
+    const baseUrl = lockEntry?.baseUrl ?? opts.baseUrl;
 
     // version は lock を最優先で固定（無ければ最新ポインタ）。
     const version = lockEntry?.version ?? (await fetchModIndex(baseUrl, modName, f))?.version;

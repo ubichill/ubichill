@@ -5,9 +5,12 @@
  * 直接実行の入口は持たない（純粋なライブラリ関数）。CLI としての実行は
  * `packages/sdk/cli`（`ubichill lock` サブコマンド）に一本化されている。
  *
- * getLockEntry の transport:
- *   - 既定/`--mods-dir`: ローカルの mods ディレクトリ（`ubichill build` 出力）から fs 読取。
- *   - `--base-url`     : HTTP 取得（外部 CDN 上の mod を固定する場合）。
+ * getLockEntry の transport（mod 毎に切り替わる）:
+ *   - world YAML の `dependencies[].source` が `type: url` の mod        → その `url` から HTTP 取得
+ *     （`ModLockEntry.baseUrl` に焼き込み、実行時 acquireMod がその mod だけ別ホストから読む）。
+ *   - `--base-url` 指定時、上記以外の mod                                → その URL から HTTP 取得。
+ *   - それ以外（既定 / `--mods-dir`）                                    → ローカルの mods ディレクトリ
+ *     （`ubichill build` 出力）から fs 読取。
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -53,7 +56,20 @@ export async function runGenLock(argv: string[]): Promise<void> {
     const modsDir = argValue(argv, 'mods-dir')
         ? resolve(argValue(argv, 'mods-dir') as string)
         : join(process.cwd(), 'mods');
-    const getLockEntry = baseUrl ? createHttpLockEntryGetter(baseUrl) : createFsLockEntryGetter(modsDir);
+    const defaultGetLockEntry = baseUrl ? createHttpLockEntryGetter(baseUrl) : createFsLockEntryGetter(modsDir);
+
+    // dependencies[].source.type === 'url' の mod だけ、そのURLから個別に取得し baseUrl を焼き込む。
+    const urlSourceByModId = new Map(
+        (def.spec.dependencies ?? [])
+            .filter((d) => d.source.type === 'url' && d.source.url)
+            .map((d) => [d.name, d.source.url as string]),
+    );
+    const getLockEntry: LockEntryGetter = async (modId) => {
+        const modUrl = urlSourceByModId.get(modId);
+        if (!modUrl) return defaultGetLockEntry(modId);
+        const entry = await createHttpLockEntryGetter(modUrl)(modId);
+        return entry ? { ...entry, baseUrl: modUrl } : null;
+    };
 
     const lock = await buildWorldLock(modIds, getLockEntry);
 
