@@ -64,7 +64,6 @@ frontend:
   
   env:
     NODE_ENV: "production"
-    # Video Player URL: /mod/video-player にフォールバック (設定不要)
 
 # Production Redis with persistence
 redis:
@@ -101,26 +100,6 @@ postgresql:
 
 # Worlds: official はバンドルした worlds/（main の内容）を使う。
 # 外部ワールドは実行時に URL で on-demand 参照する（連合）。起動時 seed は無し。
-
-# Mod backends for production
-modBackends:
-  - id: video-player
-    image:
-      repository: ghcr.io/p-nasimonan/video-player-backend
-      tag: latest
-    port: 8000
-    pathPrefix: /mods/video-player/api
-    replicaCount: 1
-    env:
-      ROOT_PATH: /mods/video-player/api
-      # CORS_ORIGINS は global.domain から自動注入される。上書きが必要な場合のみ設定
-    resources:
-      limits:
-        cpu: 1000m
-        memory: 1Gi
-      requests:
-        cpu: 200m
-        memory: 256Mi
 
 # Enable monitoring in production
 monitoring:

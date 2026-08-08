@@ -42,7 +42,7 @@ spec:
           components:
             - data:
                 loop: none
-                apiBase: /mods/video-player/api
+                apiBase: https://videoplayer.youkan.uk
                 shuffle: false
                 duration: 0
                 playlist: []

@@ -44,16 +44,6 @@ spec:
     - host: {{ .host | quote }}
       http:
         paths:
-          {{/* modバックエンドのパスを最初に置く（より具体的なパスを優先） */}}
-          {{- range $.Values.modBackends }}
-          - path: {{ .pathPrefix }}
-            pathType: Prefix
-            backend:
-              service:
-                name: {{ include "ubichill.fullname" $ }}-mod-{{ .id }}
-                port:
-                  number: {{ .port }}
-          {{- end }}
           {{- range .paths }}
           - path: {{ .path }}
             {{- if .pathType }}
@@ -77,15 +67,6 @@ spec:
     - host: {{ .Values.global.domain | quote }}
       http:
         paths:
-          {{- range .Values.modBackends }}
-          - path: {{ .pathPrefix }}
-            pathType: Prefix
-            backend:
-              service:
-                name: {{ include "ubichill.fullname" $ }}-mod-{{ .id }}
-                port:
-                  number: {{ .port }}
-          {{- end }}
           - path: /api
             pathType: Prefix
             backend:
