@@ -60,7 +60,7 @@
         "event:emit",
         "media:control"
       ],
-      "workerUrl": "./screen/index.3f09391e.js"
+      "workerUrl": "./screen/index.9ba2bbc4.js"
     },
     "video-player:search": {
       "watchEntityTypes": [],
