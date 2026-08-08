@@ -14,8 +14,8 @@ spec:
   dependencies:
     - name: video-player
       source:
-        path: mods/video-player
-        type: repository
+        type: url
+        url: https://p-nasimonan.github.io/ubichill-videoplayer
     - name: pen
       source:
         path: mods/pen
@@ -42,7 +42,7 @@ spec:
           components:
             - data:
                 loop: none
-                apiBase: /mods/video-player/api
+                apiBase: https://videoplayer.youkan.uk
                 shuffle: false
                 duration: 0
                 playlist: []

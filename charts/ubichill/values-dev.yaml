@@ -86,30 +86,6 @@ postgresql:
 # Worlds: official はバンドルした worlds/（per-PR ではその PR ブランチの内容）を使う。
 # 外部ワールドは実行時に URL で on-demand 参照する（連合）。起動時 seed は無し。
 
-# Mod backends for development
-modBackends:
-  - id: video-player
-    image:
-      repository: ghcr.io/ubichill/video-player-backend
-      tag: latest
-    port: 8000
-    pathPrefix: /mods/video-player/api
-    replicaCount: 1
-    env:
-      ROOT_PATH: /mods/video-player/api
-      CORS_ORIGINS: "*"
-      # YouTube の bot 判定（"Sign in to confirm you're not a bot"）が出る場合の回避策（任意）。
-      # 通常は不要（多くは VPN/データセンター IP が原因。住宅 IP なら出ない）。出るときだけ有効化:
-      #   YTDLP_PLAYER_CLIENT: "default,tv,ios"   # extractor の client を切替で回避を試す
-      #   YTDLP_COOKIES_FILE: /secrets/youtube-cookies.txt  # 確実。cookies.txt を volume マウントして指定
-    resources:
-      limits:
-        cpu: 500m
-        memory: 512Mi
-      requests:
-        cpu: 100m
-        memory: 128Mi
-
 # Ingress configuration for development
 ingress:
   enabled: true

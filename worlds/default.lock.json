@@ -4,11 +4,11 @@
     "video-player": {
       "id": "video-player",
       "version": "2.0.0",
-      "manifestIntegrity": "sha256-4PwSrCeStG8umK93ZZfGdbeuheW1MAFw/NvKCQI7RN8=",
+      "manifestIntegrity": "sha256-T2aDk567uH4NdhjseZsE+quMbcsHoVoxZ6c1nRb8/Xk=",
       "components": {
         "video-player:controls": {
-          "workerUrl": "./controls/index.ef95e0fb.js",
-          "integrity": "sha256-75Xg+xxBm5a59t6xjFIwmDYgQ2EpiWvMPUhjHQIWtKc=",
+          "workerUrl": "./controls/index.df7e878e.js",
+          "integrity": "sha256-336HjudQx/HbmMDTrKfFG+M0ctUGSYqwXtae558nZ1o=",
           "capabilities": [
             "event:emit",
             "scene:read",
@@ -17,8 +17,8 @@
           ]
         },
         "video-player:playlist": {
-          "workerUrl": "./playlist/index.5be0c08b.js",
-          "integrity": "sha256-W+DAi1FCfA7yZ/2r0ApcAw65y+QELkHA+iyT8Jbk7lo=",
+          "workerUrl": "./playlist/index.c6800a91.js",
+          "integrity": "sha256-xoAKkTF8VRkI1X9fJCOnNZevzWZV+tePEIGu2qMgnVg=",
           "capabilities": [
             "event:emit",
             "scene:read",
@@ -35,8 +35,8 @@
           ]
         },
         "video-player:search": {
-          "workerUrl": "./search/index.bf9a11f1.js",
-          "integrity": "sha256-v5oR8dv0xZRZiccWc9W9i5+K8qBXACy0J5/vNz4G+po=",
+          "workerUrl": "./search/index.e84c8040.js",
+          "integrity": "sha256-6EyAQIaupa/om/akjQoPCn6A/sIvm95dWsePP/A1gK0=",
           "capabilities": [
             "event:emit",
             "net:fetch",
@@ -44,7 +44,8 @@
             "ui:render"
           ]
         }
-      }
+      },
+      "baseUrl": "https://p-nasimonan.github.io/ubichill-videoplayer"
     },
     "pen": {
       "id": "pen",

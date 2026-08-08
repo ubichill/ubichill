@@ -26,5 +26,3 @@ dependencies:
     version: "16.4.3"
     repository: "https://charts.bitnami.com/bitnami"
     condition: postgresql.enabled
-  # modバックエンド（video-player の yt-dlp など）はこの chart の `modBackends`
-  # で一緒にデプロイする（別チャートではない）。values の modBackends[] を参照。

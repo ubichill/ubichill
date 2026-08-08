@@ -1,8 +1,9 @@
 # Ubichill Helm Chart
 
-Ubichill（Frontend + Backend + Redis + PostgreSQL + modバックエンド）を Kubernetes に
+Ubichill（Frontend + Backend + Redis + PostgreSQL）を Kubernetes に
 デプロイするための単一 Helm チャートです。modのバックエンド（例: video-player の yt-dlp）は
-別チャートではなく、この chart の `modBackends` で一緒にデプロイします。
+各mod自身が独立してホストし、この chart はデプロイしません（Host は mod のバックエンドと直接
+通信しない。mod の worker が自分のバックエンドへ絶対 URL で直接 fetch する）。
 
 ## クイックスタート
 
@@ -50,15 +51,6 @@ redis:
   enabled: true                  # 共有キャッシュ
 postgresql:
   enabled: true                  # 同梱 PostgreSQL（persistence.enabled で永続/揮発を切替）
-
-# modバックエンド（この chart 内でデプロイ）
-modBackends:
-  - id: video-player
-    image:
-      repository: ghcr.io/ubichill/video-player-backend
-      tag: latest
-    port: 8000
-    pathPrefix: /mods/video-player/api
 ```
 
 ## 開発・検証
@@ -83,7 +75,6 @@ CI でも PR 時に `charts/**` の lint / template を検証する（[helm-ci.y
 Kubernetes (namespace)
 ├── frontend   … Vite CSR（React）を nginx で配信。/api・/socket.io は backend へ proxy
 ├── backend    … Node.js + Socket.IO。起動時に migrate init container が DB スキーマ適用
-├── modBackends[] … 各modの API（例: video-player = yt-dlp backend）
 ├── redis      … 共有キャッシュ
 └── postgresql … アプリ DB（同梱 or 外部）
 ```

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# PR の変更パスを検知し、backend / frontend / video-player の build 要否を判定する。
+# PR の変更パスを検知し、backend / frontend の build 要否を判定する。
 #
 # 呼び出し: GitHub Actions の "Detect changed paths" step から実行される。
 # 環境変数:
@@ -17,7 +17,6 @@
 # 出力 (GITHUB_OUTPUT):
 #   backend       = true|false
 #   frontend      = true|false
-#   video-player  = true|false
 set -eo pipefail
 
 if [[ "${PR_ACTION:-}" == "synchronize" && -n "${PR_BEFORE_SHA:-}" ]] \
@@ -38,7 +37,6 @@ echo "${CHANGED}" | sed 's/^/  /'
 
 backend=false
 frontend=false
-video_player=false
 
 while IFS= read -r f; do
     [[ -z "${f}" ]] && continue
@@ -50,16 +48,11 @@ while IFS= read -r f; do
         packages/frontend/*|packages/shared/*|packages/sdk/*|mods/*|scripts/build-workers.mjs|Dockerfile|pnpm-lock.yaml)
             frontend=true ;;
     esac
-    case "${f}" in
-        mods/video-player/backend/*)
-            video_player=true ;;
-    esac
 done <<< "${CHANGED}"
 
 {
     echo "backend=${backend}"
     echo "frontend=${frontend}"
-    echo "video-player=${video_player}"
 } >> "${GITHUB_OUTPUT}"
 
-echo "→ backend=${backend} frontend=${frontend} video-player=${video_player}"
+echo "→ backend=${backend} frontend=${frontend}"
