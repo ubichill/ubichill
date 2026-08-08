@@ -7,8 +7,6 @@
   "packageManager": "pnpm@10.33.2",
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "docker:up": "node scripts/start-mods.mjs up -d",
-    "docker:down": "node scripts/start-mods.mjs down",
     "build:workers": "node packages/sdk/cli/index.ts build --mods-dir=mods --public-mods-dir=packages/frontend/public/mods --dist-dir=dist/mods",
     "build:sdk": "pnpm --filter @ubichill/sdk build",
     "gen:lock": "node packages/sdk/cli/index.ts lock --mods-dir=packages/frontend/public/mods",
