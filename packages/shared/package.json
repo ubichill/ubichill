@@ -39,8 +39,8 @@
         }
     },
     "scripts": {
-        "dev": "nodemon --watch src --ext ts --exec \"tsgo && node ../../scripts/touch.mjs dist/.build_done\"",
-        "build": "tsgo",
+        "dev": "nodemon --watch src --ext ts --exec \"tsc && node ../../scripts/touch.mjs dist/.build_done\"",
+        "build": "tsc",
         "clean": "rimraf dist"
     },
     "devDependencies": {

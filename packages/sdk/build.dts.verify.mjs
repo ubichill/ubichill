@@ -15,7 +15,7 @@
  * ようにし、通常の `pnpm test`/開発ループを重くしない）。CI・リリース前検証で明示的に実行する:
  *   pnpm verify:sdk-types
  *
- * 注意: execFileSync で `node_modules/.bin/tsgo` を repo ルート基準の相対パスで呼ぶため、
+ * 注意: execFileSync で `node_modules/.bin/tsc` を repo ルート基準の相対パスで呼ぶため、
  * このファイル自体は packages/sdk/ 配下だが、実行は常に repo ルートから
  * （`pnpm verify:sdk-types` → `vitest run --config vitest.sdk-verify.config.ts`）想定。
  */
@@ -100,10 +100,10 @@ describe('統合検証: @ubichill/ecs・@ubichill/shared が存在しない環�
                     'utf-8',
                 );
 
-                const tsgoBin = join(process.cwd(), 'node_modules', '.bin', 'tsgo');
+                const tscBin = join(process.cwd(), 'node_modules', '.bin', 'tsc');
                 // 失敗時は execFileSync が非ゼロ終了で throw する。stdio 'pipe' でエラー本文を拾う。
                 expect(() =>
-                    execFileSync(tsgoBin, ['--noEmit', '-p', '.'], { cwd: tmp, stdio: 'pipe' }),
+                    execFileSync(tscBin, ['--noEmit', '-p', '.'], { cwd: tmp, stdio: 'pipe' }),
                 ).not.toThrow();
             } finally {
                 rmSync(tmp, { recursive: true, force: true });

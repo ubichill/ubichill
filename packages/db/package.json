@@ -21,7 +21,7 @@
     ],
     "scripts": {
         "dev": "docker compose up -d && drizzle-kit studio",
-        "build": "tsgo",
+        "build": "tsc",
         "clean": "rimraf dist",
         "lint": "biome check .",
         "lint:fix": "biome check --write .",
