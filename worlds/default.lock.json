@@ -4,7 +4,7 @@
     "video-player": {
       "id": "video-player",
       "version": "2.0.0",
-      "manifestIntegrity": "sha256-cWv77Yj+5kp5L7HILON0N2maSKZTBMrnzU03FndPo4Y=",
+      "manifestIntegrity": "sha256-dZErrhj7RaYR1MsCSyoPLLy6sG+DLE53ngjvKxu7H4Q=",
       "components": {
         "video-player:controls": {
           "workerUrl": "./controls/index.ef95e0fb.js",
@@ -27,9 +27,12 @@
           ]
         },
         "video-player:screen": {
-          "workerUrl": "./screen/index.979e4d1b.js",
-          "integrity": "sha256-l55NG2RRRJnMuaOsL5/7gR7GF/9NH9gtM0fzT8io4Q0=",
-          "capabilities": []
+          "workerUrl": "./screen/index.3f09391e.js",
+          "integrity": "sha256-Pwk5HquUWNpdHZSIy2cT2wPoNvbtfdY+95t840tkKiA=",
+          "capabilities": [
+            "event:emit",
+            "media:control"
+          ]
         },
         "video-player:search": {
           "workerUrl": "./search/index.bf9a11f1.js",
@@ -46,7 +49,7 @@
     "pen": {
       "id": "pen",
       "version": "2.0.0",
-      "manifestIntegrity": "sha256-JC+s/pdTgWmRBLzc93pqhChQT0eCX7ku+GMeKCusMJs=",
+      "manifestIntegrity": "sha256-nd7sUSEuI286tavb1U9ttzVLJh+r8vIaDF902MKy/Vw=",
       "components": {
         "pen:canvas": {
           "workerUrl": "./canvas/index.678c7678.js",

@@ -8,9 +8,9 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 
-/** Worker ファイルからコンポーネント名を導出 (ex: `canvas.worker.ts` → `canvas`) */
+/** Worker ファイルからコンポーネント名を導出 (ex: `canvas.worker.ts` → `canvas`, `sub/dir/canvas.worker.ts` → `sub-dir-canvas`) */
 function componentNameFromFile(file: string): string {
-    return file.replace(/\.worker\.[jt]sx?$/, '');
+    return file.replace(/\.worker\.[jt]sx?$/, '').split(/[\\/]/).join('-');
 }
 
 /** src/ 以下の *.worker.ts(x) を再帰的にスキャン */
@@ -36,29 +36,174 @@ function isWorkerFile(path: string): boolean {
     return /export\s+const\s+config\s*(?::\s*[^=]+)?\s*=/.test(code);
 }
 
-/** `export const config =` の内容を brace-counting で抽出する簡易解析。
- * ネストした `{}` を含む config（dataFields, defaultTransform 等）にも対応。 */
+// ============================================================
+// config リテラルの安全な抽出
+// ============================================================
+//
+// `export const config = { ... }` の値を取得するために、かつては
+// `new Function("return " + literal)()` で実際に JS として実行していたが、
+// Worker ソース（＝信頼できない mod 開発者のコードもあり得る）をビルド
+// プロセス上で任意実行することになり、ゼロトラスト方針に反する。
+// 代わりに JSON 互換のリテラル（object/array/string/number/boolean/null）
+// のみを受け付ける再帰下降パーサーで抽出する。関数呼び出しや識別子参照は
+// 構文エラーとして拒否され、実行されることはない。
+
+type ParsePos = { i: number };
+
+function skipTrivia(src: string, pos: ParsePos): void {
+    for (;;) {
+        const c = src[pos.i];
+        if (c === ' ' || c === '\t' || c === '\n' || c === '\r') {
+            pos.i++;
+            continue;
+        }
+        if (c === '/' && src[pos.i + 1] === '/') {
+            while (pos.i < src.length && src[pos.i] !== '\n') pos.i++;
+            continue;
+        }
+        if (c === '/' && src[pos.i + 1] === '*') {
+            pos.i += 2;
+            while (pos.i < src.length && !(src[pos.i] === '*' && src[pos.i + 1] === '/')) pos.i++;
+            pos.i += 2;
+            continue;
+        }
+        break;
+    }
+}
+
+function isIdentChar(c: string | undefined): boolean {
+    return !!c && /[A-Za-z0-9_$]/.test(c);
+}
+
+function parseKeyword(src: string, pos: ParsePos, word: string): boolean {
+    if (!src.startsWith(word, pos.i) || isIdentChar(src[pos.i + word.length])) return false;
+    pos.i += word.length;
+    return true;
+}
+
+function parseString(src: string, pos: ParsePos): string {
+    const quote = src[pos.i];
+    pos.i++;
+    let out = '';
+    while (pos.i < src.length && src[pos.i] !== quote) {
+        if (src[pos.i] === '\\') {
+            const esc = src[pos.i + 1];
+            const map: Record<string, string> = { n: '\n', t: '\t', r: '\r', '"': '"', "'": "'", '\\': '\\', '`': '`' };
+            out += map[esc] ?? esc ?? '';
+            pos.i += 2;
+        } else {
+            out += src[pos.i];
+            pos.i++;
+        }
+    }
+    if (src[pos.i] !== quote) throw new Error(`config: 閉じられていない文字列 (pos ${pos.i})`);
+    pos.i++;
+    return out;
+}
+
+function parseNumber(src: string, pos: ParsePos): number {
+    const m = /^-?\d+(\.\d+)?([eE][+-]?\d+)?/.exec(src.slice(pos.i));
+    if (!m) throw new Error(`config: 不正な数値リテラル (pos ${pos.i})`);
+    pos.i += m[0].length;
+    return Number(m[0]);
+}
+
+function parseKey(src: string, pos: ParsePos): string {
+    const c = src[pos.i];
+    if (c === '"' || c === "'") return parseString(src, pos);
+    const m = /^[A-Za-z_$][A-Za-z0-9_$]*/.exec(src.slice(pos.i));
+    if (!m) throw new Error(`config: 不正なプロパティ名 (pos ${pos.i})`);
+    pos.i += m[0].length;
+    return m[0];
+}
+
+function parseArray(src: string, pos: ParsePos): unknown[] {
+    pos.i++; // '['
+    const arr: unknown[] = [];
+    skipTrivia(src, pos);
+    if (src[pos.i] === ']') {
+        pos.i++;
+        return arr;
+    }
+    for (;;) {
+        arr.push(parseValue(src, pos));
+        skipTrivia(src, pos);
+        if (src[pos.i] === ',') {
+            pos.i++;
+            skipTrivia(src, pos);
+            if (src[pos.i] === ']') {
+                pos.i++;
+                break;
+            }
+            continue;
+        }
+        if (src[pos.i] === ']') {
+            pos.i++;
+            break;
+        }
+        throw new Error(`config: ',' または ']' が必要 (pos ${pos.i})`);
+    }
+    return arr;
+}
+
+function parseObject(src: string, pos: ParsePos): Record<string, unknown> {
+    pos.i++; // '{'
+    const obj: Record<string, unknown> = {};
+    skipTrivia(src, pos);
+    if (src[pos.i] === '}') {
+        pos.i++;
+        return obj;
+    }
+    for (;;) {
+        skipTrivia(src, pos);
+        const key = parseKey(src, pos);
+        skipTrivia(src, pos);
+        if (src[pos.i] !== ':') throw new Error(`config: ':' が必要 (pos ${pos.i})`);
+        pos.i++;
+        obj[key] = parseValue(src, pos);
+        skipTrivia(src, pos);
+        if (src[pos.i] === ',') {
+            pos.i++;
+            skipTrivia(src, pos);
+            if (src[pos.i] === '}') {
+                pos.i++;
+                break;
+            }
+            continue;
+        }
+        if (src[pos.i] === '}') {
+            pos.i++;
+            break;
+        }
+        throw new Error(`config: ',' または '}' が必要 (pos ${pos.i})`);
+    }
+    return obj;
+}
+
+function parseValue(src: string, pos: ParsePos): unknown {
+    skipTrivia(src, pos);
+    const c = src[pos.i];
+    if (c === '{') return parseObject(src, pos);
+    if (c === '[') return parseArray(src, pos);
+    if (c === '"' || c === "'") return parseString(src, pos);
+    if (parseKeyword(src, pos, 'true')) return true;
+    if (parseKeyword(src, pos, 'false')) return false;
+    if (parseKeyword(src, pos, 'null')) return null;
+    if (c === '-' || (c >= '0' && c <= '9')) return parseNumber(src, pos);
+    throw new Error(`config: 未対応のトークン (pos ${pos.i}): ${JSON.stringify(src.slice(pos.i, pos.i + 20))}`);
+}
+
+/** `export const config =` の内容を JSON 互換リテラルとしてのみ抽出する（コード実行なし）。 */
 function extractConfigFromCode(code: string): Record<string, unknown> | null {
     const startMatch = code.match(/export\s+const\s+config\s*(?::\s*[^=]+)?\s*=\s*/);
     if (startMatch?.index === undefined) return null;
     const startIdx = startMatch.index + startMatch[0].length;
-    const trimmed = code.slice(startIdx).trimStart();
-    if (!trimmed.startsWith('{')) return null;
-
-    let depth = 0;
-    let endIdx = -1;
-    for (let i = 0; i < trimmed.length; i++) {
-        if (trimmed[i] === '{') depth++;
-        else if (trimmed[i] === '}') {
-            depth--;
-            if (depth === 0) { endIdx = i + 1; break; }
-        }
-    }
-    if (endIdx === -1) return null;
-
-    const objLiteral = trimmed.slice(0, endIdx);
+    const rest = code.slice(startIdx);
     try {
-        return new Function(`return ${objLiteral}`)() as Record<string, unknown>;
+        const pos: ParsePos = { i: 0 };
+        const value = parseValue(rest, pos);
+        if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+        return value as Record<string, unknown>;
     } catch {
         return null;
     }
@@ -115,7 +260,7 @@ async function bundleWorker(entryPath: string, tsconfig?: string): Promise<strin
         format: 'iife',
         platform: 'browser',
         target: 'es2022',
-        jsx: 'transform',
+        jsx: 'automatic',
         jsxImportSource: '@ubichill/sdk',
         write: false,
         minify: true,
@@ -163,7 +308,7 @@ function readPackageJson(modDir: string): { id: string; name: string; version: s
 /** @param modDir mod のルートディレクトリへの絶対パス */
 export async function buildMod(modDir: string, options: BuildOptions = {}): Promise<void> {
     const { id, name, version } = readPackageJson(modDir);
-    const { distDir, publicDir } = resolveDirs(options);
+    const { distDir, publicDir } = resolveDirs({ ...options, modDir });
 
     // tsconfig 検索
     const rootTsconfig = join(modDir, 'tsconfig.json');
@@ -173,7 +318,9 @@ export async function buildMod(modDir: string, options: BuildOptions = {}): Prom
     // バージョンへのポインタのみ。エンティティ詳細はバージョン付きマニフェストに分離。
     const rootIndex = JSON.stringify({ id, name, version }, null, 2);
     mkdirSync(publicDir, { recursive: true });
+    mkdirSync(distDir, { recursive: true });
     writeFileSync(join(publicDir, 'mod.json'), rootIndex, 'utf-8');
+    writeFileSync(join(distDir, 'mod.json'), rootIndex, 'utf-8');
 
     const publicVersionDir = join(publicDir, `v${version}`);
     const distVersionDir = join(distDir, `v${version}`);
@@ -227,11 +374,11 @@ export async function buildMod(modDir: string, options: BuildOptions = {}): Prom
             : [];
 
         // 宣言された capability と検出結果を突き合わせて警告
-        const missing = declaredCapabilities.filter((cap) => !detected.includes(cap));
+        const undetected = declaredCapabilities.filter((cap) => !detected.includes(cap));
         const excess = detected.filter((cap) => !declaredCapabilities.includes(cap));
-        if (missing.length > 0) {
+        if (undetected.length > 0) {
             console.warn(
-                `⚠️  [${componentType}] 宣言漏れ: ${missing.join(', ')} (コード中に検出されず)`,
+                `⚠️  [${componentType}] 検出されない宣言: ${undetected.join(', ')} (静的解析では検出されず。動的アクセス等の可能性)`,
             );
         }
         if (excess.length > 0) {
@@ -247,10 +394,11 @@ export async function buildMod(modDir: string, options: BuildOptions = {}): Prom
         const capabilities = Array.from(capabilitySet).sort();
 
         const workerUrl = `./${componentName}/${outFilename}`;
+        const { capabilities: _ignoredCaps, workerUrl: _ignoredUrl, ...restConfig } = config ?? {};
         versionedComponents[componentType] = {
+            ...restConfig,
             capabilities,
             workerUrl,
-            ...(config ?? {}),
         };
 
         // lock: worker バイト列のフル sha256 + capability 天井を固定する。
@@ -307,13 +455,15 @@ export async function buildMod(modDir: string, options: BuildOptions = {}): Prom
 }
 
 /**
- * 全 mod を一括ビルド（モノレポ用）。
+ * 複数 mod を一括ビルド（モノレポ用）。`modsDir` 配下の各サブディレクトリを
+ * 個別の mod として扱い、それぞれ `buildMod` する。
  */
-export async function runBuild(args: string[]): Promise<void> {
+async function runBatchBuild(modsDirArg: string, args: string[]): Promise<void> {
     const argValue = (flag: string): string | undefined =>
         args.find((a) => a.startsWith(flag))?.slice(flag.length);
 
-    const modsDir = argValue('--mods-dir=') ?? 'mods';
+    // esbuild は呼び出しごとに絶対パスを要求するため、相対指定を早期に解決しておく。
+    const modsDir = resolve(modsDirArg);
     const distDir = argValue('--dist-dir=') ?? join(process.cwd(), 'dist', 'mods');
     const publicDir = argValue('--public-mods-dir=') ?? distDir;
 
@@ -330,4 +480,37 @@ export async function runBuild(args: string[]): Promise<void> {
         console.log(`\n🔨 [${entry.name}] building...`);
         await buildMod(modDir, { distDir: modDistDir, publicDir: modPublicDir });
     }
+}
+
+/**
+ * `ubichill build` のエントリポイント。
+ *
+ * 通常（外部 mod リポジトリ）は cwd 自体が 1 つの mod のルートであるとみなし、
+ * `buildMod(cwd)` を実行する。`mods/` ディレクトリ（モノレポの複数 mod 構成）が
+ * 存在する場合、または `--mods-dir=` が明示された場合のみ一括ビルドに切り替える。
+ */
+export async function runBuild(args: string[]): Promise<void> {
+    const argValue = (flag: string): string | undefined =>
+        args.find((a) => a.startsWith(flag))?.slice(flag.length);
+
+    const modsDirArg = argValue('--mods-dir=');
+    const modsDir = modsDirArg ?? 'mods';
+    if (modsDirArg !== undefined || existsSync(modsDir)) {
+        await runBatchBuild(modsDir, args);
+        return;
+    }
+
+    // 単一 mod ビルド（外部リポジトリでの標準フロー）: cwd をそのまま modDir とする。
+    const modDir = process.cwd();
+    if (!existsSync(join(modDir, 'package.json'))) {
+        throw new Error(
+            'package.json が見つかりません。mod のルートディレクトリで実行するか、' +
+                '複数 mod をまとめてビルドする場合は --mods-dir=<dir> を指定してください。',
+        );
+    }
+    const distDir = argValue('--dist-dir=') ?? join(modDir, 'dist');
+    const publicDir = argValue('--public-mods-dir=') ?? distDir;
+
+    console.log(`🔨 [${basename(modDir)}] building...`);
+    await buildMod(modDir, { distDir, publicDir });
 }

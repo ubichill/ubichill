@@ -18,12 +18,19 @@ const modsDir = join(root, 'mods');
 const DEBOUNCE_MS = 300;
 const timers = new Map();
 
-function scheduleRebuild(modDir, modId) {
-    if (timers.has(modId)) clearTimeout(timers.get(modId));
+function readModId(modDir, fallback) {
+    const pkg = JSON.parse(readFileSync(join(modDir, 'package.json'), 'utf-8'));
+    return pkg.ubichill?.id ?? pkg.name?.replace(/^@ubichill\/(?:mod-)?/, '') ?? fallback;
+}
+
+function scheduleRebuild(modDir, entryName) {
+    if (timers.has(modDir)) clearTimeout(timers.get(modDir));
     timers.set(
-        modId,
+        modDir,
         setTimeout(async () => {
-            timers.delete(modId);
+            timers.delete(modDir);
+            // package.json は変更されている可能性があるため再読込する（version/id 変更を反映）
+            const modId = readModId(modDir, entryName);
             console.log(`[workers] 🔄 ${modId} changed, rebuilding...`);
             try {
                 const modDistDir = join(root, 'dist', 'mods', modId);
@@ -66,20 +73,17 @@ for (const entry of readdirSync(modsDir, { withFileTypes: true })) {
     const pkgJsonPath = join(modDir, 'package.json');
     if (!existsSync(pkgJsonPath)) continue;
 
-    const pkg = JSON.parse(readFileSync(pkgJsonPath, 'utf-8'));
-    const modId = pkg.ubichill?.id ?? pkg.name?.replace(/^@ubichill\/(?:mod-)?/, '') ?? entry.name;
-
     // 監視対象: src/ ディレクトリ
     const srcDir = join(modDir, 'src');
     if (!existsSync(srcDir)) continue;
 
     watchRecursive(srcDir, () => {
-        scheduleRebuild(modDir, modId);
+        scheduleRebuild(modDir, entry.name);
     });
 
-    // package.json 変更も監視（version/id の変更を検知）
+    // package.json 変更も監視（version/id の変更を検知。rebuild 時に再読込する）
     watch(pkgJsonPath, () => {
-        scheduleRebuild(modDir, modId);
+        scheduleRebuild(modDir, entry.name);
     });
 
     console.log(`[workers]   watching ${entry.name}/src + package.json`);

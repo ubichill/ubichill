@@ -13,11 +13,12 @@
  * - 同名コンポーネントの重複排除
  */
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { buildMod } from '../cli/build.ts';
+import { buildMod, runBuild } from '../cli/build.ts';
 
 function sriOf(text: string): string {
     return `sha256-${createHash('sha256').update(text).digest('base64')}`;
@@ -28,11 +29,21 @@ interface ModFixture {
     files: Record<string, string>;
 }
 
+// packages/sdk/test/build-mod.test.ts から見た @ubichill/sdk パッケージ本体（jsx-runtime の解決用）
+const SDK_PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+
 /** 一時ディレクトリに fixture を書き込んでパスを返す */
 function setupFixture(fixture: ModFixture): string {
     const safeName = String(fixture.packageJson.name ?? 'unknown').replace(/[@/]/g, '-');
     const dir = mkdtempSync(join(tmpdir(), `ubichill-mod-test-${safeName}-`));
     writeFileSync(join(dir, 'package.json'), JSON.stringify(fixture.packageJson, null, 2), 'utf-8');
+
+    // 実際の mod repo が pnpm workspace のシンボリックリンクで @ubichill/sdk を解決するのと同じ状態を再現する。
+    // これにより jsx:'automatic' (jsxImportSource: '@ubichill/sdk') が実プロジェクトと同様に解決できる。
+    const scopeDir = join(dir, 'node_modules', '@ubichill');
+    mkdirSync(scopeDir, { recursive: true });
+    symlinkSync(SDK_PACKAGE_ROOT, join(scopeDir, 'sdk'), 'dir');
+
     const srcDir = join(dir, 'src');
     for (const [relPath, content] of Object.entries(fixture.files)) {
         const segments = relPath.split('/');
@@ -263,5 +274,161 @@ describe('buildMod（新規mod作成パイプライン）', () => {
 
         expect(readFileSync(join(distDir, 'v1.0.0', 'icon.svg'), 'utf-8')).toBe('<svg></svg>');
         expect(readFileSync(join(distDir, 'v1.0.0', 'sounds/click.mp3'), 'utf-8')).toBe('fake');
+    });
+
+    it('config 内の文字列に閉じ波括弧 "}" が含まれていても正しく抽出される（brace-counting不使用の確認）', async () => {
+        const fixture: ModFixture = {
+            packageJson: { name: '@ubichill/mod-braces', version: '1.0.0' },
+            files: {
+                'main.worker.ts': [
+                    'import type { ComponentConfig } from "@ubichill/sdk";',
+                    'export const config: ComponentConfig = {',
+                    '    description: "書式は { color: red } のように書く",',
+                    '    dataFields: {',
+                    '        label: { type: "text", default: "a}b{c", label: "ラベル" },',
+                    '    },',
+                    '};',
+                ].join('\n'),
+            },
+        };
+
+        const { modDir, distDir, publicDir } = buildFixture(fixture);
+        await buildMod(modDir, { distDir, publicDir });
+
+        const manifest = JSON.parse(readFileSync(join(distDir, 'v1.0.0', 'manifest.json'), 'utf-8'));
+        const comp = (manifest.components as Record<string, Record<string, unknown>>)['braces:main'];
+        expect(comp.description).toBe('書式は { color: red } のように書く');
+        const fields = comp.dataFields as Record<string, Record<string, unknown>>;
+        expect(fields.label.default).toBe('a}b{c');
+    });
+
+    it('config に関数呼び出し等の実行可能な式を埋め込んでもビルド時に実行されない（任意コード実行の防止）', async () => {
+        const fixture: ModFixture = {
+            packageJson: { name: '@ubichill/mod-unsafe', version: '1.0.0' },
+            files: {
+                'main.worker.ts': [
+                    'import type { ComponentConfig } from "@ubichill/sdk";',
+                    // biome-ignore lint: テスト用に意図的に危険な式を埋め込む
+                    'export const config: ComponentConfig = { capabilities: (() => { globalThis.__pwned = true; return ["ui:render"]; })() };',
+                ].join('\n'),
+            },
+        };
+
+        const { modDir, distDir, publicDir } = buildFixture(fixture);
+        await buildMod(modDir, { distDir, publicDir });
+
+        expect((globalThis as Record<string, unknown>).__pwned).toBeUndefined();
+
+        const manifest = JSON.parse(readFileSync(join(distDir, 'v1.0.0', 'manifest.json'), 'utf-8'));
+        const comp = (manifest.components as Record<string, Record<string, unknown>>)['unsafe:main'];
+        // 実行できない式は config 抽出全体が失敗するため、宣言側は空。コード検出のみが capabilities に載る。
+        expect(comp.capabilities).toEqual([]);
+    });
+
+    it('config に capabilities/workerUrl キーがあっても manifest 側の計算済みの値が上書きされない', async () => {
+        const fixture: ModFixture = {
+            packageJson: { name: '@ubichill/mod-override', version: '1.0.0' },
+            files: {
+                'main.worker.ts': [
+                    'import type { ComponentConfig } from "@ubichill/sdk";',
+                    'export const config: ComponentConfig = {',
+                    '    capabilities: [],',
+                    '    workerUrl: "./evil/index.js",',
+                    '};',
+                    'Ubi.entity.self;',
+                ].join('\n'),
+            },
+        };
+
+        const { modDir, distDir, publicDir } = buildFixture(fixture);
+        await buildMod(modDir, { distDir, publicDir });
+
+        const manifest = JSON.parse(readFileSync(join(distDir, 'v1.0.0', 'manifest.json'), 'utf-8'));
+        const comp = (manifest.components as Record<string, Record<string, unknown>>)['override:main'];
+        // scene:read はコードから検出されるため、config の capabilities: [] で上書きされてはいけない
+        expect(comp.capabilities).toContain('scene:read');
+        // workerUrl は実際にバンドルされた出力を指す必要があり、config の偽の値で上書きされてはいけない
+        expect(comp.workerUrl).toMatch(/^\.\/main\/index\.[0-9a-f]{8}\.js$/);
+    });
+
+    it('mod.json（latest pointer）が distDir と publicDir の両方に出力される', async () => {
+        const fixture: ModFixture = {
+            packageJson: { name: '@ubichill/mod-pointer', version: '1.0.0' },
+            files: {
+                'main.worker.ts': [
+                    'import type { ComponentConfig } from "@ubichill/sdk";',
+                    'export const config: ComponentConfig = {};',
+                ].join('\n'),
+            },
+        };
+
+        const { modDir, distDir, publicDir } = buildFixture(fixture);
+        await buildMod(modDir, { distDir, publicDir });
+
+        const distPointer = JSON.parse(readFileSync(join(distDir, 'mod.json'), 'utf-8'));
+        const publicPointer = JSON.parse(readFileSync(join(publicDir, 'mod.json'), 'utf-8'));
+        expect(distPointer).toEqual({ id: 'pointer', name: 'pointer', version: '1.0.0' });
+        expect(publicPointer).toEqual(distPointer);
+    });
+});
+
+describe('runBuild（CLI エントリポイント: 単一mod repo vs モノレポの自動判別）', () => {
+    const tmpDirs: string[] = [];
+    const originalCwd = process.cwd();
+
+    afterAll(() => {
+        process.chdir(originalCwd);
+        for (const d of tmpDirs) rmSync(d, { recursive: true, force: true });
+    });
+
+    it('mods/ ディレクトリが無い場合、cwd 自体を単一 mod として <cwd>/dist にビルドする（外部 mod repo の標準フロー）', async () => {
+        const repoDir = setupFixture({
+            packageJson: { name: '@ubichill/mod-solo', version: '1.0.0' },
+            files: {
+                'main.worker.ts': [
+                    'import type { ComponentConfig } from "@ubichill/sdk";',
+                    'export const config: ComponentConfig = {};',
+                ].join('\n'),
+            },
+        });
+        tmpDirs.push(repoDir);
+
+        process.chdir(repoDir);
+        await runBuild([]);
+
+        const manifest = JSON.parse(readFileSync(join(repoDir, 'dist', 'v1.0.0', 'manifest.json'), 'utf-8'));
+        expect(manifest.id).toBe('solo');
+        expect(Object.keys(manifest.components)).toContain('solo:main');
+    });
+
+    it('mods/ ディレクトリが存在する場合はモノレポの一括ビルドに切り替わる', async () => {
+        const workspaceDir = mkdtempSync(join(tmpdir(), 'ubichill-workspace-'));
+        tmpDirs.push(workspaceDir);
+        writeFileSync(join(workspaceDir, 'package.json'), JSON.stringify({ name: 'workspace-root' }), 'utf-8');
+
+        const modsDir = join(workspaceDir, 'mods', 'sub-mod');
+        mkdirSync(join(modsDir, 'src'), { recursive: true });
+        writeFileSync(join(modsDir, 'package.json'), JSON.stringify({ name: '@ubichill/mod-sub-mod', version: '1.0.0' }), 'utf-8');
+        writeFileSync(
+            join(modsDir, 'src', 'main.worker.ts'),
+            ['import type { ComponentConfig } from "@ubichill/sdk";', 'export const config: ComponentConfig = {};'].join('\n'),
+            'utf-8',
+        );
+
+        process.chdir(workspaceDir);
+        await runBuild([]);
+
+        const manifest = JSON.parse(
+            readFileSync(join(workspaceDir, 'dist', 'mods', 'sub-mod', 'v1.0.0', 'manifest.json'), 'utf-8'),
+        );
+        expect(manifest.id).toBe('sub-mod');
+    });
+
+    it('package.json が無く mods/ も無い場合はエラーを throw する', async () => {
+        const emptyDir = mkdtempSync(join(tmpdir(), 'ubichill-empty-'));
+        tmpDirs.push(emptyDir);
+
+        process.chdir(emptyDir);
+        await expect(runBuild([])).rejects.toThrow('package.json が見つかりません');
     });
 });

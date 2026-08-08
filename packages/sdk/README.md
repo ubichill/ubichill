@@ -68,10 +68,18 @@ npx ubichill lock   <world.yaml> [--mods-dir=<dir>] [--base-url=<url>] [--out=<p
 npx ubichill verify [--dist-dir=<dir>]
 ```
 
-- **`build`**: `<mods-dir>` 配下の各 `mod.json` を自動探索し、Component の Worker コードを
-  esbuild でバンドルする。出力ごとに `manifest.json`（ランタイム用）と `lock.json`
-  （バイト列のSubresource Integrity + capability 天井）を生成する。既定は全て `process.cwd()`
-  相対（`--mods-dir` 既定はcwd自身、`--dist-dir`/`--public-mods-dir` 既定は `<cwd>/dist/mods`）。
+- **`build`**: `src/**/*.worker.ts(x)` のうち `export const config` を持つファイルを Component
+  として esbuild でバンドルする。id/name/version は `package.json` から、Component ごとの
+  メタデータ（`watchScope`/`dataFields`/`capabilities` 等）は各 Worker ファイル内の
+  `export const config` から取得する（`mod.json` は廃止）。出力ごとに `manifest.json`
+  （ランタイム用）と `lock.json`（バイト列のSubresource Integrity + capability 天井）を生成する。
+  - **単一 mod（既定・外部リポジトリでの標準フロー）**: `mods/` ディレクトリが存在しない場合、
+    cwd 自体を 1 つの mod のルートとみなし、`<cwd>/dist` にビルドする。外部で mod を開発する
+    ときはリポジトリのルートで package.json + src/ を用意して `npx ubichill build` を叩くだけでよい。
+  - **モノレポの一括ビルド**: cwd に `mods/` ディレクトリがある場合、または `--mods-dir=<dir>` を
+    明示した場合は、その配下の各サブディレクトリを個別の mod として一括ビルドする
+    （このリポジトリの `pnpm build:workers` はこちらを使う）。既定の出力先は
+    `--dist-dir`/`--public-mods-dir` ともに `<cwd>/dist/mods`。
 - **`verify`**: `build` の出力を fail-closed で再検証する。`lock.json` の integrity が
   実際に配布するバイト列と一致するかを独立に再計算して突き合わせ、ズレていれば非ゼロ終了する。
   CI の配布前ゲートに使う想定。
