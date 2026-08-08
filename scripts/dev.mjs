@@ -80,21 +80,11 @@ async function main() {
         process.exit(1);
     }
 
-    // Start mods
-    console.log('🚀 Starting Docker mods...');
-    const startMods = spawnSync(process.execPath, ['scripts/start-mods.mjs', 'up', '-d'], { stdio: 'inherit' });
-    if (startMods.status !== 0) {
-        console.error('Failed to start mods.');
-        // Don't exit here, maybe we can run without mods or user can fix it
-    }
-
     // Cleanup function
     let isCleaning = false;
     const cleanup = () => {
         if (isCleaning) return;
         isCleaning = true;
-        console.log('\n🛑 Stopping Docker mods...');
-        spawnSync(process.execPath, ['scripts/start-mods.mjs', 'down'], { stdio: 'inherit' });
         console.log('🛑 Stopping database...');
         spawnSync('docker', ['compose', '-f', 'packages/db/docker-compose.yml', 'down'], { stdio: 'inherit', shell: true });
 

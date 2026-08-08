@@ -20,10 +20,6 @@ spec:
       source:
         path: mods/pen
         type: repository
-    - name: avatar
-      source:
-        path: mods/avatar
-        type: repository
   initialEntities:
     - id: video-player
       tags: []
