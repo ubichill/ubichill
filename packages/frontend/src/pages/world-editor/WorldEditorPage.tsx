@@ -65,14 +65,18 @@ export function WorldEditorPage() {
         [definition.spec.initialEntities],
     );
 
-    const handleSave = useCallback(() => {
-        if (!definition.spec.displayName.trim()) {
-            setError('表示名は必須です。「ワールド情報」から入力してください');
-            modals.openInfo();
+    // コントロールパネルの「作成/保存」: draft を definition へ適用しつつ、その draft を
+    // そのまま保存対象として渡す（setDefinition の反映は次の render まで届かないため）。
+    const handlePublish = useCallback(() => {
+        const draft = modals.infoDraft;
+        if (!draft) return;
+        if (!draft.spec.displayName.trim()) {
+            setError('表示名は必須です');
             return;
         }
-        void editorApi.save();
-    }, [definition.spec.displayName, editorApi, modals]);
+        modals.applyInfo();
+        void editorApi.save(draft);
+    }, [modals, editorApi]);
 
     if (isPending || !session) return <CenteredMessage text="読み込み中..." />;
     if (loading) return <CenteredMessage text="ワールドを読み込み中..." />;
@@ -109,9 +113,8 @@ export function WorldEditorPage() {
                     dirty={dirty}
                     snapEnabled={mobile.snapEnabled}
                     onToggleSnap={mobile.toggleSnap}
-                    onOpenInfo={modals.openInfo}
+                    onOpenControlPanel={modals.openInfo}
                     onOpenYaml={modals.openYaml}
-                    onSave={handleSave}
                     onDelete={isEdit ? editorApi.remove : undefined}
                     onCreateInstance={isEdit ? editorApi.createInstance : undefined}
                 />
@@ -248,12 +251,17 @@ export function WorldEditorPage() {
             <Modal
                 open={modals.openModal === 'info'}
                 onClose={modals.cancelInfo}
-                title="ワールド情報"
-                width="640px"
+                title="コントロールパネル"
+                width="960px"
                 footer={
                     <>
                         <ModalSecondaryButton onClick={modals.cancelInfo}>キャンセル</ModalSecondaryButton>
-                        <ModalPrimaryButton onClick={modals.applyInfo}>適用</ModalPrimaryButton>
+                        <ModalPrimaryButton
+                            onClick={handlePublish}
+                            disabled={editorApi.saving || !modals.infoDraft?.spec.displayName.trim()}
+                        >
+                            {editorApi.saving ? '保存中...' : isEdit ? '保存' : '作成'}
+                        </ModalPrimaryButton>
                     </>
                 }
             >

@@ -9,11 +9,11 @@ interface WorldInfoFormProps {
 }
 
 /**
- * ワールド情報モーダルの中身（staging）。
+ * コントロールパネル（ワールド情報 + mod管理 + 公開）の中身（staging）。
  * displayName / description / thumbnail / version / capacity / worldSize / 背景色 / 使用mod。
  *
  * フィールドの編集は draft の更新のみで、外側の definition には反映しない。
- * 「適用」ボタンが押されたタイミングで親が draft → definition へ移し替える。
+ * 「作成/保存」ボタンが押されたタイミングで親が draft → definition へ移し替えつつ保存する。
  */
 export function WorldInfoForm({ draft, onChange }: WorldInfoFormProps) {
     const definition = draft;

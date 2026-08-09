@@ -12,9 +12,9 @@ interface EditorHeaderProps {
     /** ON のときドラッグ / リサイズをグリッド + ワールド範囲で snap/clamp する */
     snapEnabled: boolean;
     onToggleSnap: () => void;
-    onOpenInfo: () => void;
+    /** コントロールパネル（ワールド情報・mod管理・公開）を開く */
+    onOpenControlPanel: () => void;
     onOpenYaml: () => void;
-    onSave: () => void;
     onDelete?: () => void;
     /** 編集モードかつ未変更時に有効。クリックでこのワールドの新インスタンスを作成して参加する */
     onCreateInstance?: () => void;
@@ -28,9 +28,8 @@ export function EditorHeader({
     dirty,
     snapEnabled,
     onToggleSnap,
-    onOpenInfo,
+    onOpenControlPanel,
     onOpenYaml,
-    onSave,
     onDelete,
     onCreateInstance,
 }: EditorHeaderProps) {
@@ -42,9 +41,6 @@ export function EditorHeader({
         setMenuOpen(false);
         action();
     }, []);
-
-    const saveLabel = saving ? '保存中...' : isEdit ? '保存' : '作成';
-    const saveDisabled = saving || (isEdit && !dirty);
 
     return (
         <header
@@ -100,10 +96,6 @@ export function EditorHeader({
                     <GridIcon />
                     スナップ
                 </button>
-                <button type="button" onClick={onOpenInfo} className={editorButton({ intent: 'secondary' })}>
-                    <InfoIcon />
-                    ワールド情報
-                </button>
                 <button type="button" onClick={onOpenYaml} className={editorButton({ intent: 'secondary' })}>
                     <FileIcon />
                     YAML
@@ -120,12 +112,11 @@ export function EditorHeader({
                 )}
                 <button
                     type="button"
-                    onClick={onSave}
-                    disabled={saveDisabled}
-                    title={isEdit && !dirty ? '未変更' : undefined}
+                    onClick={onOpenControlPanel}
                     className={editorButton({ intent: 'primary', size: 'lg' })}
                 >
-                    {saveLabel}
+                    <InfoIcon />
+                    コントロールパネル
                 </button>
                 {isEdit && !dirty && onCreateInstance && (
                     <button
@@ -177,13 +168,6 @@ export function EditorHeader({
                         </button>
                         <button
                             type="button"
-                            onClick={() => runMenuAction(onOpenInfo)}
-                            className={editorButton({ intent: 'menu', size: 'menu' })}
-                        >
-                            ワールド情報
-                        </button>
-                        <button
-                            type="button"
                             onClick={() => runMenuAction(onOpenYaml)}
                             className={editorButton({ intent: 'menu', size: 'menu' })}
                         >
@@ -201,12 +185,10 @@ export function EditorHeader({
                         )}
                         <button
                             type="button"
-                            onClick={() => runMenuAction(onSave)}
-                            disabled={saveDisabled}
-                            title={isEdit && !dirty ? '未変更' : undefined}
+                            onClick={() => runMenuAction(onOpenControlPanel)}
                             className={editorButton({ intent: 'menuPrimary', size: 'menu' })}
                         >
-                            {saveLabel}
+                            コントロールパネル
                         </button>
                         {isEdit && !dirty && onCreateInstance && (
                             <button
