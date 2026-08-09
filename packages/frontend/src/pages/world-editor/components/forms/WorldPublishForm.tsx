@@ -1,21 +1,24 @@
 import type { WorldDefinition } from '@ubichill/shared';
 import { css } from '@/styled-system/css';
-import { ModSelector } from './ModSelector';
+import { UsedModsList } from './UsedModsList';
 
-interface WorldInfoFormProps {
-    /** 編集中の draft definition。親 (WorldEditorPage) が状態を持ち、モーダルの footer の「適用」ボタンで反映する。 */
+interface WorldPublishFormProps {
+    /** 編集中の draft definition。親 (WorldEditorPage) が状態を持ち、コントロールパネルの「作成/保存」で反映する。 */
     draft: WorldDefinition;
     onChange: (next: WorldDefinition) => void;
 }
 
 /**
- * コントロールパネル（ワールド情報 + mod管理 + 公開）の中身（staging）。
- * displayName / description / thumbnail / version / capacity / worldSize / 背景色 / 使用mod。
+ * コントロールパネルの「ワールド公開」タブの中身（staging）。
+ * displayName / description / thumbnail / version / capacity / worldSize / 背景色。
+ *
+ * mod の追加/削除やレジストリ管理はここでは行わない（「mod管理」タブの責務）。
+ * ここでは使用中mod を読み取り専用で見せるだけ — エディタ本体はmod管理をしないという分離のため。
  *
  * フィールドの編集は draft の更新のみで、外側の definition には反映しない。
  * 「作成/保存」ボタンが押されたタイミングで親が draft → definition へ移し替えつつ保存する。
  */
-export function WorldInfoForm({ draft, onChange }: WorldInfoFormProps) {
+export function WorldPublishForm({ draft, onChange }: WorldPublishFormProps) {
     const definition = draft;
     const onUpdateSpec = (patch: Partial<WorldDefinition['spec']>) =>
         onChange({ ...draft, spec: { ...draft.spec, ...patch } });
@@ -180,7 +183,9 @@ export function WorldInfoForm({ draft, onChange }: WorldInfoFormProps) {
                 </div>
             </Field>
 
-            <ModSelector definition={definition} onUpdateSpec={onUpdateSpec} />
+            <Field label="使用中のmod">
+                <UsedModsList dependencies={spec.dependencies ?? []} />
+            </Field>
         </div>
     );
 }

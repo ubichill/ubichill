@@ -3,10 +3,12 @@ import { useNavigate, useParams } from 'react-router';
 import { useSession } from '@/lib/session';
 import { css } from '@/styled-system/css';
 import { EditorAssets } from './components/assets/EditorAssets';
+import { ControlPanelTabs } from './components/ControlPanelTabs';
 import { DockSlot } from './components/DockSlot';
 import { EditorHeader } from './components/EditorHeader';
 import { EditorStage } from './components/EditorStage';
-import { WorldInfoForm } from './components/forms/WorldInfoForm';
+import { ModSelector } from './components/forms/ModSelector';
+import { WorldPublishForm } from './components/forms/WorldPublishForm';
 import { YamlEditorForm } from './components/forms/YamlEditorForm';
 import { EditorHierarchy } from './components/hierarchy/EditorHierarchy';
 import { EntityInspector } from './components/inspector/EntityInspector';
@@ -68,13 +70,13 @@ export function WorldEditorPage() {
     // コントロールパネルの「作成/保存」: draft を definition へ適用しつつ、その draft を
     // そのまま保存対象として渡す（setDefinition の反映は次の render まで届かないため）。
     const handlePublish = useCallback(() => {
-        const draft = modals.infoDraft;
+        const draft = modals.draft;
         if (!draft) return;
         if (!draft.spec.displayName.trim()) {
             setError('表示名は必須です');
             return;
         }
-        modals.applyInfo();
+        modals.applyControlPanel();
         void editorApi.save(draft);
     }, [modals, editorApi]);
 
@@ -113,8 +115,7 @@ export function WorldEditorPage() {
                     dirty={dirty}
                     snapEnabled={mobile.snapEnabled}
                     onToggleSnap={mobile.toggleSnap}
-                    onOpenControlPanel={modals.openInfo}
-                    onOpenYaml={modals.openYaml}
+                    onOpenControlPanel={() => modals.openControlPanel()}
                     onDelete={isEdit ? editorApi.remove : undefined}
                     onCreateInstance={isEdit ? editorApi.createInstance : undefined}
                 />
@@ -249,49 +250,43 @@ export function WorldEditorPage() {
             )}
 
             <Modal
-                open={modals.openModal === 'info'}
-                onClose={modals.cancelInfo}
+                open={modals.open}
+                onClose={modals.closeControlPanel}
                 title="コントロールパネル"
                 width="960px"
                 footer={
                     <>
-                        <ModalSecondaryButton onClick={modals.cancelInfo}>キャンセル</ModalSecondaryButton>
+                        <ModalSecondaryButton onClick={modals.closeControlPanel}>キャンセル</ModalSecondaryButton>
                         <ModalPrimaryButton
                             onClick={handlePublish}
-                            disabled={editorApi.saving || !modals.infoDraft?.spec.displayName.trim()}
+                            disabled={editorApi.saving || !modals.draft?.spec.displayName.trim()}
                         >
                             {editorApi.saving ? '保存中...' : isEdit ? '保存' : '作成'}
                         </ModalPrimaryButton>
                     </>
                 }
             >
-                {modals.infoDraft && <WorldInfoForm draft={modals.infoDraft} onChange={modals.setInfoDraft} />}
-            </Modal>
-
-            <Modal
-                open={modals.openModal === 'yaml'}
-                onClose={modals.cancelYaml}
-                title="YAML 編集"
-                width="800px"
-                footer={
-                    <>
-                        <ModalSecondaryButton onClick={modals.cancelYaml}>キャンセル</ModalSecondaryButton>
-                        <ModalPrimaryButton
-                            onClick={modals.applyYaml}
-                            disabled={!!modals.yamlDraftError}
-                            title={modals.yamlDraftError || undefined}
-                        >
-                            適用
-                        </ModalPrimaryButton>
-                    </>
-                }
-            >
-                <YamlEditorForm
-                    yamlText={modals.yamlDraft}
-                    yamlDirty={!!modals.yamlDraftError}
-                    onChange={modals.changeYamlDraft}
-                    onFileUpload={modals.uploadYamlFile}
-                />
+                <ControlPanelTabs active={modals.activeTab} onChange={modals.switchTab} />
+                {modals.draft && modals.activeTab === 'publish' && (
+                    <WorldPublishForm draft={modals.draft} onChange={modals.setDraft} />
+                )}
+                {modals.draft && modals.activeTab === 'mods' && (
+                    <ModSelector
+                        definition={modals.draft}
+                        onUpdateSpec={(patch) => {
+                            const draft = modals.draft;
+                            if (draft) modals.setDraft({ ...draft, spec: { ...draft.spec, ...patch } });
+                        }}
+                    />
+                )}
+                {modals.activeTab === 'yaml' && (
+                    <YamlEditorForm
+                        yamlText={modals.yamlText}
+                        yamlDirty={!!modals.yamlError}
+                        onChange={modals.changeYamlText}
+                        onFileUpload={modals.uploadYamlFile}
+                    />
+                )}
             </Modal>
         </div>
     );

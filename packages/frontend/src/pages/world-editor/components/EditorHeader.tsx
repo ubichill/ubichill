@@ -12,9 +12,8 @@ interface EditorHeaderProps {
     /** ON のときドラッグ / リサイズをグリッド + ワールド範囲で snap/clamp する */
     snapEnabled: boolean;
     onToggleSnap: () => void;
-    /** コントロールパネル（ワールド情報・mod管理・公開）を開く */
+    /** コントロールパネル（ワールド公開・mod管理・YAML）を開く */
     onOpenControlPanel: () => void;
-    onOpenYaml: () => void;
     onDelete?: () => void;
     /** 編集モードかつ未変更時に有効。クリックでこのワールドの新インスタンスを作成して参加する */
     onCreateInstance?: () => void;
@@ -29,7 +28,6 @@ export function EditorHeader({
     snapEnabled,
     onToggleSnap,
     onOpenControlPanel,
-    onOpenYaml,
     onDelete,
     onCreateInstance,
 }: EditorHeaderProps) {
@@ -96,10 +94,6 @@ export function EditorHeader({
                     <GridIcon />
                     スナップ
                 </button>
-                <button type="button" onClick={onOpenYaml} className={editorButton({ intent: 'secondary' })}>
-                    <FileIcon />
-                    YAML
-                </button>
                 {isEdit && onDelete && (
                     <button
                         type="button"
@@ -165,13 +159,6 @@ export function EditorHeader({
                             className={editorButton({ intent: 'menu', size: 'menu' })}
                         >
                             スナップ: {snapEnabled ? 'ON' : 'OFF'}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => runMenuAction(onOpenYaml)}
-                            className={editorButton({ intent: 'menu', size: 'menu' })}
-                        >
-                            YAML
                         </button>
                         {isEdit && onDelete && (
                             <button
@@ -241,15 +228,6 @@ function InfoIcon() {
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="12" cy="12" r="10" />
             <path d="M12 16v-4M12 8h.01" />
-        </svg>
-    );
-}
-
-function FileIcon() {
-    return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
         </svg>
     );
 }
