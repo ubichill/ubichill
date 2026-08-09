@@ -25,6 +25,20 @@ const sdkDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(sdkDir, '..', '..');
 const dryRun = process.argv.includes('--dry-run');
 
+/** 指定バージョンが既にレジストリに公開済みか（`npm view` は該当バージョンが無いと非ゼロ終了する）。 */
+export function isAlreadyPublished(name, version) {
+    try {
+        const out = execFileSync('npm', ['view', `${name}@${version}`, 'version'], {
+            cwd: repoRoot,
+            encoding: 'utf-8',
+            stdio: ['ignore', 'pipe', 'ignore'],
+        }).trim();
+        return out === version;
+    } catch {
+        return false;
+    }
+}
+
 async function main() {
     const { name, version } = JSON.parse(readFileSync(join(sdkDir, 'package.json'), 'utf-8'));
 
@@ -37,6 +51,15 @@ async function main() {
         throw new Error(
             `version mismatch: ${name}@${version}（ソース） != ${published.name}@${published.version}（dist-npm）`,
         );
+    }
+
+    // changesets/action は「pending changeset が無い」限り毎回このスクリプトを呼ぶため、
+    // sdk本体のバージョンを上げないREADME更新等（packages/sdk/**へのpush）でも実行される。
+    // すでに公開済みのバージョンへ npm publish すると常にエラーになるため、fail せず
+    // skip する（このバージョンのタグ/Releaseは直前の成功時に作成済みのはず）。
+    if (!dryRun && isAlreadyPublished(published.name, published.version)) {
+        console.log(`⏭️  ${published.name}@${published.version} は既に公開済み。npm publish をスキップする。`);
+        return;
     }
 
     if (dryRun) {
@@ -54,7 +77,10 @@ async function main() {
     }
 }
 
-main().catch((err) => {
-    console.error('❌ SDK publish failed:', err);
-    process.exit(1);
-});
+const isMain = process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1];
+if (isMain) {
+    main().catch((err) => {
+        console.error('❌ SDK publish failed:', err);
+        process.exit(1);
+    });
+}
