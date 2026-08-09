@@ -1,8 +1,9 @@
 import type { WorldDefinition } from '@ubichill/shared';
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import { type AvailableMod, modToDependency, useAvailableMods } from '@/lib/mods/useAvailableMods';
 import { SETTINGS_KEYS, useSetting } from '@/lib/settings';
 import { css } from '@/styled-system/css';
+import { RegistryUrlManager } from './RegistryUrlManager';
 
 const isStringArray = (value: unknown): value is string[] =>
     Array.isArray(value) && value.every((v) => typeof v === 'string');
@@ -16,12 +17,10 @@ interface ModSelectorProps {
  * フォームタブ内で使う「使用するmod」セクション。
  * - ローカル + ユーザー追加レジストリから利用可能mod一覧を取得
  * - チェックボックスで dependencies に add/remove
- * - レジストリ URL を追加できる（localStorage に保存）
+ * - レジストリ URL の追加/削除/エクスポート/インポート（RegistryUrlManager）
  */
 export function ModSelector({ definition, onUpdateSpec }: ModSelectorProps) {
     const [registryUrls, setRegistryUrls] = useSetting<string[]>(SETTINGS_KEYS.editorRegistryUrls, [], isStringArray);
-    const [registryInput, setRegistryInput] = useState('');
-    const [registryError, setRegistryError] = useState('');
 
     const { mods, loading } = useAvailableMods(registryUrls);
 
@@ -37,31 +36,6 @@ export function ModSelector({ definition, onUpdateSpec }: ModSelectorProps) {
             }
         },
         [checkedNames, dependencies, onUpdateSpec],
-    );
-
-    const handleAddRegistry = useCallback(() => {
-        const trimmed = registryInput.trim();
-        if (!trimmed) return;
-        try {
-            new URL(trimmed);
-        } catch {
-            setRegistryError('URL の形式が不正です');
-            return;
-        }
-        if (registryUrls.includes(trimmed)) {
-            setRegistryError('既に追加されています');
-            return;
-        }
-        setRegistryUrls((prev) => [...prev, trimmed]);
-        setRegistryInput('');
-        setRegistryError('');
-    }, [registryInput, registryUrls, setRegistryUrls]);
-
-    const handleRemoveRegistry = useCallback(
-        (url: string) => {
-            setRegistryUrls((prev) => prev.filter((u) => u !== url));
-        },
-        [setRegistryUrls],
     );
 
     // 既に依存にあるが、利用可能リストに無い（未知のmod）も表示する
@@ -218,115 +192,7 @@ export function ModSelector({ definition, onUpdateSpec }: ModSelectorProps) {
                 </div>
             )}
 
-            {/* レジストリ URL の追加 */}
-            <div
-                className={css({
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '6px',
-                    bg: 'background',
-                    borderRadius: '10px',
-                    p: '10px 12px',
-                    border: '1px solid',
-                    borderColor: 'border',
-                })}
-            >
-                <span className={css({ fontSize: '12px', color: 'textMuted', fontWeight: '600' })}>
-                    レジストリ URL を追加（外部mod）
-                </span>
-                <div className={css({ display: 'flex', gap: '6px' })}>
-                    <input
-                        type="url"
-                        value={registryInput}
-                        onChange={(e) => {
-                            setRegistryInput(e.target.value);
-                            setRegistryError('');
-                        }}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                                e.preventDefault();
-                                handleAddRegistry();
-                            }
-                        }}
-                        placeholder="https://example.com/mods/index.json"
-                        className={css({
-                            flex: 1,
-                            padding: '6px 10px',
-                            borderRadius: '8px',
-                            border: '1.5px solid',
-                            borderColor: registryError ? 'errorText' : 'border',
-                            bg: 'surface',
-                            color: 'text',
-                            fontSize: '12px',
-                            outline: 'none',
-                            _focus: { borderColor: 'primary' },
-                        })}
-                    />
-                    <button
-                        type="button"
-                        onClick={handleAddRegistry}
-                        disabled={!registryInput.trim()}
-                        className={css({
-                            padding: '6px 14px',
-                            bg: 'primary',
-                            color: 'textOnPrimary',
-                            border: 'none',
-                            borderRadius: '8px',
-                            fontSize: '12px',
-                            fontWeight: '600',
-                            cursor: 'pointer',
-                            _disabled: { opacity: 0.5, cursor: 'not-allowed' },
-                            _hover: { opacity: 0.9 },
-                        })}
-                    >
-                        追加
-                    </button>
-                </div>
-                {registryError && (
-                    <span className={css({ fontSize: '11px', color: 'errorText' })}>{registryError}</span>
-                )}
-                {registryUrls.length > 0 && (
-                    <div className={css({ display: 'flex', flexDirection: 'column', gap: '4px', mt: '2px' })}>
-                        {registryUrls.map((u) => (
-                            <div
-                                key={u}
-                                className={css({
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between',
-                                    fontSize: '12px',
-                                    color: 'textMuted',
-                                    gap: '6px',
-                                })}
-                            >
-                                <span
-                                    className={css({
-                                        flex: 1,
-                                        overflow: 'hidden',
-                                        textOverflow: 'ellipsis',
-                                        whiteSpace: 'nowrap',
-                                    })}
-                                >
-                                    {u}
-                                </span>
-                                <button
-                                    type="button"
-                                    onClick={() => handleRemoveRegistry(u)}
-                                    className={css({
-                                        fontSize: '11px',
-                                        color: 'errorText',
-                                        bg: 'transparent',
-                                        border: 'none',
-                                        cursor: 'pointer',
-                                    })}
-                                >
-                                    削除
-                                </button>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
+            <RegistryUrlManager registryUrls={registryUrls} onChange={setRegistryUrls} />
         </div>
     );
 }
