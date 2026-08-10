@@ -1,5 +1,6 @@
 import type { WorldDefinition } from '@ubichill/shared';
 import { css } from '@/styled-system/css';
+import { PanelSection } from '../PanelSection';
 import { UsedModsList } from './UsedModsList';
 
 interface WorldPublishFormProps {
@@ -31,161 +32,169 @@ export function WorldPublishForm({ draft, onChange }: WorldPublishFormProps) {
     };
 
     return (
-        <div className={css({ display: 'flex', flexDirection: 'column', gap: '4' })}>
-            <Field label="表示名（日本語可）" required>
-                <input
-                    type="text"
-                    name="world-displayName"
-                    value={spec.displayName}
-                    onChange={(e) => onUpdateSpec({ displayName: e.target.value })}
-                    maxLength={1000}
-                    placeholder="例: ぼくのワールド"
-                    className={inputStyle}
-                />
-            </Field>
-            <Field label="説明">
-                <textarea
-                    name="world-description"
-                    value={spec.description ?? ''}
-                    onChange={(e) => onUpdateSpec({ description: e.target.value || undefined })}
-                    maxLength={1000}
-                    rows={3}
-                    placeholder="このワールドについての説明"
-                    className={inputStyle}
-                />
-            </Field>
-            <Field label="サムネイル URL">
-                <input
-                    type="url"
-                    name="world-thumbnail"
-                    value={spec.thumbnail ?? ''}
-                    onChange={(e) => onUpdateSpec({ thumbnail: e.target.value || undefined })}
-                    placeholder="https://..."
-                    className={inputStyle}
-                />
-            </Field>
-            <Field label="バージョン">
-                <input
-                    type="text"
-                    name="world-version"
-                    value={definition.metadata.version}
-                    onChange={(e) => onUpdateMetadata({ version: e.target.value })}
-                    placeholder="1.0.0"
-                    className={inputStyle}
-                />
-            </Field>
-            <div className={css({ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4' })}>
-                <Field label="標準キャパシティ">
-                    <input
-                        type="number"
-                        min={1}
-                        name="world-capacity-default"
-                        value={spec.capacity.default}
-                        onChange={(e) =>
-                            onUpdateSpec({
-                                capacity: {
-                                    ...spec.capacity,
-                                    default: Number.parseInt(e.target.value, 10) || 1,
-                                },
-                            })
-                        }
-                        className={inputStyle}
-                    />
-                </Field>
-                <Field label="最大キャパシティ">
-                    <input
-                        type="number"
-                        min={1}
-                        name="world-capacity-max"
-                        value={spec.capacity.max}
-                        onChange={(e) =>
-                            onUpdateSpec({
-                                capacity: {
-                                    ...spec.capacity,
-                                    max: Number.parseInt(e.target.value, 10) || 1,
-                                },
-                            })
-                        }
-                        className={inputStyle}
-                    />
-                </Field>
-            </div>
-            <div className={css({ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4' })}>
-                <Field label="ワールド幅">
-                    <input
-                        type="number"
-                        min={100}
-                        name="world-size-width"
-                        value={env.worldSize?.width ?? 2000}
-                        onChange={(e) =>
-                            onUpdateSpec({
-                                environment: {
-                                    ...env,
-                                    worldSize: {
-                                        ...(env.worldSize ?? { width: 2000, height: 1500 }),
-                                        width: Number.parseInt(e.target.value, 10) || 100,
-                                    },
-                                },
-                            })
-                        }
-                        className={inputStyle}
-                    />
-                </Field>
-                <Field label="ワールド高さ">
-                    <input
-                        type="number"
-                        min={100}
-                        name="world-size-height"
-                        value={env.worldSize?.height ?? 1500}
-                        onChange={(e) =>
-                            onUpdateSpec({
-                                environment: {
-                                    ...env,
-                                    worldSize: {
-                                        ...(env.worldSize ?? { width: 2000, height: 1500 }),
-                                        height: Number.parseInt(e.target.value, 10) || 100,
-                                    },
-                                },
-                            })
-                        }
-                        className={inputStyle}
-                    />
-                </Field>
-            </div>
-            <Field label="背景色">
-                <div className={css({ display: 'flex', gap: '8px', alignItems: 'center' })}>
-                    <input
-                        type="color"
-                        name="world-bgColor-picker"
-                        value={env.backgroundColor ?? '#F0F8FF'}
-                        onChange={(e) =>
-                            onUpdateSpec({
-                                environment: { ...env, backgroundColor: e.target.value.toUpperCase() },
-                            })
-                        }
-                        className={css({
-                            width: '48px',
-                            height: '36px',
-                            borderRadius: '8px',
-                            border: '1px solid',
-                            borderColor: 'border',
-                            cursor: 'pointer',
-                        })}
-                    />
+        <div className={css({ display: 'flex', flexDirection: 'column', gap: '3' })}>
+            <PanelSection title="ワールド情報">
+                <Field label="表示名（日本語可）" required>
                     <input
                         type="text"
-                        name="world-bgColor"
-                        value={env.backgroundColor ?? '#F0F8FF'}
-                        onChange={(e) => onUpdateSpec({ environment: { ...env, backgroundColor: e.target.value } })}
-                        pattern="^#[0-9A-Fa-f]{6}$"
+                        name="world-displayName"
+                        value={spec.displayName}
+                        onChange={(e) => onUpdateSpec({ displayName: e.target.value })}
+                        maxLength={1000}
+                        placeholder="例: ぼくのワールド"
                         className={inputStyle}
                     />
-                </div>
-            </Field>
+                </Field>
+                <Field label="説明">
+                    <textarea
+                        name="world-description"
+                        value={spec.description ?? ''}
+                        onChange={(e) => onUpdateSpec({ description: e.target.value || undefined })}
+                        maxLength={1000}
+                        rows={3}
+                        placeholder="このワールドについての説明"
+                        className={inputStyle}
+                    />
+                </Field>
+                <Field label="バージョン">
+                    <input
+                        type="text"
+                        name="world-version"
+                        value={definition.metadata.version}
+                        onChange={(e) => onUpdateMetadata({ version: e.target.value })}
+                        placeholder="1.0.0"
+                        className={inputStyle}
+                    />
+                </Field>
+            </PanelSection>
 
-            <Field label="使用中のmod">
+            <PanelSection title="サムネイル">
+                <Field label="サムネイル URL">
+                    <input
+                        type="url"
+                        name="world-thumbnail"
+                        value={spec.thumbnail ?? ''}
+                        onChange={(e) => onUpdateSpec({ thumbnail: e.target.value || undefined })}
+                        placeholder="https://..."
+                        className={inputStyle}
+                    />
+                </Field>
+            </PanelSection>
+
+            <PanelSection title="ワールド設定">
+                <div className={css({ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4' })}>
+                    <Field label="標準キャパシティ">
+                        <input
+                            type="number"
+                            min={1}
+                            name="world-capacity-default"
+                            value={spec.capacity.default}
+                            onChange={(e) =>
+                                onUpdateSpec({
+                                    capacity: {
+                                        ...spec.capacity,
+                                        default: Number.parseInt(e.target.value, 10) || 1,
+                                    },
+                                })
+                            }
+                            className={inputStyle}
+                        />
+                    </Field>
+                    <Field label="最大キャパシティ">
+                        <input
+                            type="number"
+                            min={1}
+                            name="world-capacity-max"
+                            value={spec.capacity.max}
+                            onChange={(e) =>
+                                onUpdateSpec({
+                                    capacity: {
+                                        ...spec.capacity,
+                                        max: Number.parseInt(e.target.value, 10) || 1,
+                                    },
+                                })
+                            }
+                            className={inputStyle}
+                        />
+                    </Field>
+                </div>
+                <div className={css({ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4' })}>
+                    <Field label="ワールド幅">
+                        <input
+                            type="number"
+                            min={100}
+                            name="world-size-width"
+                            value={env.worldSize?.width ?? 2000}
+                            onChange={(e) =>
+                                onUpdateSpec({
+                                    environment: {
+                                        ...env,
+                                        worldSize: {
+                                            ...(env.worldSize ?? { width: 2000, height: 1500 }),
+                                            width: Number.parseInt(e.target.value, 10) || 100,
+                                        },
+                                    },
+                                })
+                            }
+                            className={inputStyle}
+                        />
+                    </Field>
+                    <Field label="ワールド高さ">
+                        <input
+                            type="number"
+                            min={100}
+                            name="world-size-height"
+                            value={env.worldSize?.height ?? 1500}
+                            onChange={(e) =>
+                                onUpdateSpec({
+                                    environment: {
+                                        ...env,
+                                        worldSize: {
+                                            ...(env.worldSize ?? { width: 2000, height: 1500 }),
+                                            height: Number.parseInt(e.target.value, 10) || 100,
+                                        },
+                                    },
+                                })
+                            }
+                            className={inputStyle}
+                        />
+                    </Field>
+                </div>
+                <Field label="背景色">
+                    <div className={css({ display: 'flex', gap: '8px', alignItems: 'center' })}>
+                        <input
+                            type="color"
+                            name="world-bgColor-picker"
+                            value={env.backgroundColor ?? '#F0F8FF'}
+                            onChange={(e) =>
+                                onUpdateSpec({
+                                    environment: { ...env, backgroundColor: e.target.value.toUpperCase() },
+                                })
+                            }
+                            className={css({
+                                width: '48px',
+                                height: '36px',
+                                borderRadius: '8px',
+                                border: '1px solid',
+                                borderColor: 'border',
+                                cursor: 'pointer',
+                            })}
+                        />
+                        <input
+                            type="text"
+                            name="world-bgColor"
+                            value={env.backgroundColor ?? '#F0F8FF'}
+                            onChange={(e) => onUpdateSpec({ environment: { ...env, backgroundColor: e.target.value } })}
+                            pattern="^#[0-9A-Fa-f]{6}$"
+                            className={inputStyle}
+                        />
+                    </div>
+                </Field>
+            </PanelSection>
+
+            <PanelSection title="使用中のmod" defaultOpen={false}>
                 <UsedModsList dependencies={spec.dependencies ?? []} />
-            </Field>
+            </PanelSection>
         </div>
     );
 }
