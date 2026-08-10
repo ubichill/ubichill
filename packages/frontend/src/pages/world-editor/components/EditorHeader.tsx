@@ -12,10 +12,8 @@ interface EditorHeaderProps {
     /** ON のときドラッグ / リサイズをグリッド + ワールド範囲で snap/clamp する */
     snapEnabled: boolean;
     onToggleSnap: () => void;
-    onOpenInfo: () => void;
-    onOpenYaml: () => void;
-    onSave: () => void;
-    onDelete?: () => void;
+    /** コントロールパネル（ワールド公開・mod管理・YAML）を開く。削除はコントロールパネル最下部のDanger Zoneへ移した */
+    onOpenControlPanel: () => void;
     /** 編集モードかつ未変更時に有効。クリックでこのワールドの新インスタンスを作成して参加する */
     onCreateInstance?: () => void;
 }
@@ -28,10 +26,7 @@ export function EditorHeader({
     dirty,
     snapEnabled,
     onToggleSnap,
-    onOpenInfo,
-    onOpenYaml,
-    onSave,
-    onDelete,
+    onOpenControlPanel,
     onCreateInstance,
 }: EditorHeaderProps) {
     const navigate = useNavigate();
@@ -42,9 +37,6 @@ export function EditorHeader({
         setMenuOpen(false);
         action();
     }, []);
-
-    const saveLabel = saving ? '保存中...' : isEdit ? '保存' : '作成';
-    const saveDisabled = saving || (isEdit && !dirty);
 
     return (
         <header
@@ -100,32 +92,13 @@ export function EditorHeader({
                     <GridIcon />
                     スナップ
                 </button>
-                <button type="button" onClick={onOpenInfo} className={editorButton({ intent: 'secondary' })}>
-                    <InfoIcon />
-                    ワールド情報
-                </button>
-                <button type="button" onClick={onOpenYaml} className={editorButton({ intent: 'secondary' })}>
-                    <FileIcon />
-                    YAML
-                </button>
-                {isEdit && onDelete && (
-                    <button
-                        type="button"
-                        onClick={onDelete}
-                        disabled={saving}
-                        className={editorButton({ intent: 'danger' })}
-                    >
-                        削除
-                    </button>
-                )}
                 <button
                     type="button"
-                    onClick={onSave}
-                    disabled={saveDisabled}
-                    title={isEdit && !dirty ? '未変更' : undefined}
+                    onClick={onOpenControlPanel}
                     className={editorButton({ intent: 'primary', size: 'lg' })}
                 >
-                    {saveLabel}
+                    <InfoIcon />
+                    コントロールパネル
                 </button>
                 {isEdit && !dirty && onCreateInstance && (
                     <button
@@ -177,36 +150,10 @@ export function EditorHeader({
                         </button>
                         <button
                             type="button"
-                            onClick={() => runMenuAction(onOpenInfo)}
-                            className={editorButton({ intent: 'menu', size: 'menu' })}
-                        >
-                            ワールド情報
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => runMenuAction(onOpenYaml)}
-                            className={editorButton({ intent: 'menu', size: 'menu' })}
-                        >
-                            YAML
-                        </button>
-                        {isEdit && onDelete && (
-                            <button
-                                type="button"
-                                onClick={() => runMenuAction(onDelete)}
-                                disabled={saving}
-                                className={editorButton({ intent: 'menuDanger', size: 'menu' })}
-                            >
-                                削除
-                            </button>
-                        )}
-                        <button
-                            type="button"
-                            onClick={() => runMenuAction(onSave)}
-                            disabled={saveDisabled}
-                            title={isEdit && !dirty ? '未変更' : undefined}
+                            onClick={() => runMenuAction(onOpenControlPanel)}
                             className={editorButton({ intent: 'menuPrimary', size: 'menu' })}
                         >
-                            {saveLabel}
+                            コントロールパネル
                         </button>
                         {isEdit && !dirty && onCreateInstance && (
                             <button
@@ -259,15 +206,6 @@ function InfoIcon() {
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="12" cy="12" r="10" />
             <path d="M12 16v-4M12 8h.01" />
-        </svg>
-    );
-}
-
-function FileIcon() {
-    return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
         </svg>
     );
 }

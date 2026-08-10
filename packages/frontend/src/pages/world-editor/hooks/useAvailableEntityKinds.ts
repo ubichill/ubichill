@@ -81,22 +81,29 @@ const MOD_BASE_URL: string = (() => {
 const indexCache = new Map<string, Promise<ModIndex | null>>();
 const manifestCache = new Map<string, Promise<VersionedManifest | null>>();
 
-function fetchIndex(name: string): Promise<ModIndex | null> {
-    let p = indexCache.get(name);
+/** `source.type === 'url'` の mod は自身の `source.url` を base にする（グローバル `MOD_BASE_URL` はローカルmod専用）。 */
+function resolveBase(dep: NonNullable<WorldDefinition['spec']['dependencies']>[number]): string {
+    if (dep.source.type === 'url' && dep.source.url) return dep.source.url.replace(/\/$/, '');
+    return MOD_BASE_URL;
+}
+
+function fetchIndex(base: string, name: string): Promise<ModIndex | null> {
+    const key = `${base}/${name}`;
+    let p = indexCache.get(key);
     if (!p) {
-        p = fetch(`${MOD_BASE_URL}/${name}/mod.json`, { cache: 'no-store' })
+        p = fetch(`${base}/${name}/mod.json`, { cache: 'no-store' })
             .then((r) => (r.ok ? (r.json() as Promise<ModIndex>) : null))
             .catch(() => null);
-        indexCache.set(name, p);
+        indexCache.set(key, p);
     }
     return p;
 }
 
-function fetchManifest(name: string, version: string): Promise<VersionedManifest | null> {
-    const key = `${name}@${version}`;
+function fetchManifest(base: string, name: string, version: string): Promise<VersionedManifest | null> {
+    const key = `${base}/${name}@${version}`;
     let p = manifestCache.get(key);
     if (!p) {
-        p = fetch(`${MOD_BASE_URL}/${name}/v${version}/manifest.json`)
+        p = fetch(`${base}/${name}/v${version}/manifest.json`)
             .then((r) => (r.ok ? (r.json() as Promise<VersionedManifest>) : null))
             .catch(() => null);
         manifestCache.set(key, p);
@@ -131,11 +138,12 @@ export function useAvailableEntityKinds(definition: WorldDefinition | null): {
         setLoading(true);
         Promise.all(
             deps.map(async (dep) => {
-                const idx = await fetchIndex(dep.name);
+                const base = resolveBase(dep);
+                const idx = await fetchIndex(base, dep.name);
                 if (!idx?.version) return [];
-                const manifest = await fetchManifest(dep.name, idx.version);
+                const manifest = await fetchManifest(base, dep.name, idx.version);
                 const components = manifest?.components ?? {};
-                const versionedBase = `${MOD_BASE_URL}/${dep.name}/v${idx.version}`;
+                const versionedBase = `${base}/${dep.name}/v${idx.version}`;
                 return Object.entries(components).map(([kind, meta]) => ({
                     modName: dep.name,
                     kind,

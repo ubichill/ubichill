@@ -3,10 +3,12 @@ import { useNavigate, useParams } from 'react-router';
 import { useSession } from '@/lib/session';
 import { css } from '@/styled-system/css';
 import { EditorAssets } from './components/assets/EditorAssets';
+import { ControlPanelTabs } from './components/ControlPanelTabs';
 import { DockSlot } from './components/DockSlot';
 import { EditorHeader } from './components/EditorHeader';
 import { EditorStage } from './components/EditorStage';
-import { WorldInfoForm } from './components/forms/WorldInfoForm';
+import { ModSelector } from './components/forms/ModSelector';
+import { WorldPublishForm } from './components/forms/WorldPublishForm';
 import { YamlEditorForm } from './components/forms/YamlEditorForm';
 import { EditorHierarchy } from './components/hierarchy/EditorHierarchy';
 import { EntityInspector } from './components/inspector/EntityInspector';
@@ -14,6 +16,7 @@ import { MobileLeftHandle } from './components/MobileLeftHandle';
 import { MobileRightHandle } from './components/MobileRightHandle';
 import { Modal } from './components/Modal';
 import { ModalPrimaryButton, ModalSecondaryButton } from './components/ModalButtons';
+import { PanelSection } from './components/PanelSection';
 import { useAvailableEntityKinds } from './hooks/useAvailableEntityKinds';
 import { useDefinition } from './hooks/useDefinition';
 import { useEditorModals } from './hooks/useEditorModals';
@@ -65,14 +68,18 @@ export function WorldEditorPage() {
         [definition.spec.initialEntities],
     );
 
-    const handleSave = useCallback(() => {
-        if (!definition.spec.displayName.trim()) {
-            setError('表示名は必須です。「ワールド情報」から入力してください');
-            modals.openInfo();
+    // コントロールパネルの「作成/保存」: draft を definition へ適用しつつ、その draft を
+    // そのまま保存対象として渡す（setDefinition の反映は次の render まで届かないため）。
+    const handlePublish = useCallback(() => {
+        const draft = modals.draft;
+        if (!draft) return;
+        if (!draft.spec.displayName.trim()) {
+            setError('表示名は必須です');
             return;
         }
-        void editorApi.save();
-    }, [definition.spec.displayName, editorApi, modals]);
+        modals.applyControlPanel();
+        void editorApi.save(draft);
+    }, [modals, editorApi]);
 
     if (isPending || !session) return <CenteredMessage text="読み込み中..." />;
     if (loading) return <CenteredMessage text="ワールドを読み込み中..." />;
@@ -109,10 +116,7 @@ export function WorldEditorPage() {
                     dirty={dirty}
                     snapEnabled={mobile.snapEnabled}
                     onToggleSnap={mobile.toggleSnap}
-                    onOpenInfo={modals.openInfo}
-                    onOpenYaml={modals.openYaml}
-                    onSave={handleSave}
-                    onDelete={isEdit ? editorApi.remove : undefined}
+                    onOpenControlPanel={() => modals.openControlPanel()}
                     onCreateInstance={isEdit ? editorApi.createInstance : undefined}
                 />
             </div>
@@ -210,11 +214,7 @@ export function WorldEditorPage() {
             </DockSlot>
 
             <DockSlot area="bottom" mobileVisible={true}>
-                <EditorAssets
-                    kinds={kinds}
-                    loading={kindsLoading}
-                    modNames={(definition.spec.dependencies ?? []).map((d) => d.name)}
-                />
+                <EditorAssets kinds={kinds} loading={kindsLoading} dependencies={definition.spec.dependencies ?? []} />
             </DockSlot>
 
             {!mobile.leftOpen && <MobileLeftHandle onClick={mobile.openLeft} />}
@@ -246,44 +246,74 @@ export function WorldEditorPage() {
             )}
 
             <Modal
-                open={modals.openModal === 'info'}
-                onClose={modals.cancelInfo}
-                title="ワールド情報"
-                width="640px"
+                open={modals.open}
+                onClose={modals.closeControlPanel}
+                title="コントロールパネル"
+                width="960px"
                 footer={
                     <>
-                        <ModalSecondaryButton onClick={modals.cancelInfo}>キャンセル</ModalSecondaryButton>
-                        <ModalPrimaryButton onClick={modals.applyInfo}>適用</ModalPrimaryButton>
-                    </>
-                }
-            >
-                {modals.infoDraft && <WorldInfoForm draft={modals.infoDraft} onChange={modals.setInfoDraft} />}
-            </Modal>
-
-            <Modal
-                open={modals.openModal === 'yaml'}
-                onClose={modals.cancelYaml}
-                title="YAML 編集"
-                width="800px"
-                footer={
-                    <>
-                        <ModalSecondaryButton onClick={modals.cancelYaml}>キャンセル</ModalSecondaryButton>
+                        <ModalSecondaryButton onClick={modals.closeControlPanel}>キャンセル</ModalSecondaryButton>
                         <ModalPrimaryButton
-                            onClick={modals.applyYaml}
-                            disabled={!!modals.yamlDraftError}
-                            title={modals.yamlDraftError || undefined}
+                            onClick={handlePublish}
+                            disabled={editorApi.saving || !modals.draft?.spec.displayName.trim()}
                         >
-                            適用
+                            {editorApi.saving ? '保存中...' : isEdit ? '保存' : '作成'}
                         </ModalPrimaryButton>
                     </>
                 }
             >
-                <YamlEditorForm
-                    yamlText={modals.yamlDraft}
-                    yamlDirty={!!modals.yamlDraftError}
-                    onChange={modals.changeYamlDraft}
-                    onFileUpload={modals.uploadYamlFile}
-                />
+                <ControlPanelTabs active={modals.activeTab} onChange={modals.switchTab} />
+                {modals.draft && modals.activeTab === 'publish' && (
+                    <WorldPublishForm draft={modals.draft} onChange={modals.setDraft} />
+                )}
+                {modals.draft && modals.activeTab === 'mods' && (
+                    <ModSelector
+                        definition={modals.draft}
+                        onUpdateSpec={(patch) => {
+                            const draft = modals.draft;
+                            if (draft) modals.setDraft({ ...draft, spec: { ...draft.spec, ...patch } });
+                        }}
+                    />
+                )}
+                {modals.activeTab === 'yaml' && (
+                    <YamlEditorForm
+                        yamlText={modals.yamlText}
+                        yamlDirty={!!modals.yamlError}
+                        onChange={modals.changeYamlText}
+                        onFileUpload={modals.uploadYamlFile}
+                    />
+                )}
+
+                {isEdit && (
+                    <div className={css({ mt: '4' })}>
+                        <PanelSection title="Danger Zone" defaultOpen={false}>
+                            <p className={css({ fontSize: '13px', color: 'textMuted' })}>
+                                このワールドを削除します。この操作は取り消せません。
+                            </p>
+                            <button
+                                type="button"
+                                onClick={editorApi.remove}
+                                disabled={editorApi.saving}
+                                className={css({
+                                    alignSelf: 'flex-start',
+                                    padding: '8px 16px',
+                                    bg: 'errorBg',
+                                    color: 'errorText',
+                                    border: '1px solid',
+                                    borderColor: 'errorLight',
+                                    borderRadius: '8px',
+                                    fontSize: '13px',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                    _disabled: { opacity: 0.5, cursor: 'not-allowed' },
+                                    _hover: { opacity: 0.9 },
+                                })}
+                            >
+                                このワールドを削除
+                            </button>
+                        </PanelSection>
+                    </div>
+                )}
             </Modal>
         </div>
     );

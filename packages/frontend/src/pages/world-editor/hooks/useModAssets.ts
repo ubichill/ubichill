@@ -1,8 +1,11 @@
+import type { WorldDefinition } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 
 export type AssetNode =
     | { kind: 'folder'; name: string; children: AssetNode[] }
     | { kind: 'file'; name: string; path: string; url: string };
+
+type Dependency = NonNullable<WorldDefinition['spec']['dependencies']>[number];
 
 interface ModIndex {
     id: string;
@@ -24,24 +27,31 @@ const MOD_BASE_URL: string = (() => {
 const indexCache = new Map<string, Promise<ModIndex | null>>();
 const manifestCache = new Map<string, Promise<VersionedManifest | null>>();
 
-function fetchIndex(name: string): Promise<ModIndex | null> {
-    let p = indexCache.get(name);
+/** `source.type === 'url'` の mod は自身の `source.url` を base にする（グローバル `MOD_BASE_URL` はローカルmod専用）。 */
+function resolveBase(dep: Dependency): string {
+    if (dep.source.type === 'url' && dep.source.url) return dep.source.url.replace(/\/$/, '');
+    return MOD_BASE_URL;
+}
+
+function fetchIndex(base: string, name: string): Promise<ModIndex | null> {
+    const key = `${base}/${name}`;
+    let p = indexCache.get(key);
     if (!p) {
-        p = fetch(`${MOD_BASE_URL}/${name}/mod.json`, { cache: 'no-store' })
+        p = fetch(`${base}/${name}/mod.json`, { cache: 'no-store' })
             .then((r) => (r.ok ? (r.json() as Promise<ModIndex>) : null))
             .catch(() => null);
-        indexCache.set(name, p);
+        indexCache.set(key, p);
     }
     return p;
 }
 
-function fetchManifest(name: string, version: string): Promise<VersionedManifest | null> {
-    const key = `${name}@${version}`;
+function fetchManifest(base: string, name: string, version: string): Promise<VersionedManifest | null> {
+    const key = `${base}/${name}@${version}`;
     let p = manifestCache.get(key);
     if (!p) {
         // cache: 'no-store' — manifest はビルド毎に workerUrl のハッシュや
         // assets リストが変わるため、ブラウザキャッシュを必ず迂回する。
-        p = fetch(`${MOD_BASE_URL}/${name}/v${version}/manifest.json`, { cache: 'no-store' })
+        p = fetch(`${base}/${name}/v${version}/manifest.json`, { cache: 'no-store' })
             .then((r) => (r.ok ? (r.json() as Promise<VersionedManifest>) : null))
             .catch(() => null);
         manifestCache.set(key, p);
@@ -86,30 +96,34 @@ function buildAssetTree(paths: string[], base: string): AssetNode[] {
 }
 
 /** mod manifest の `assets` をフォルダツリーとして取得する。 */
-export function useModAssets(modNames: string[]): {
+export function useModAssets(dependencies: Dependency[]): {
     treesByMod: Map<string, AssetNode[]>;
     loading: boolean;
 } {
     const [treesByMod, setTreesByMod] = useState<Map<string, AssetNode[]>>(new Map());
     const [loading, setLoading] = useState(false);
 
-    const key = [...modNames].sort().join(',');
+    const key = dependencies
+        .map((d) => d.name)
+        .sort()
+        .join(',');
 
     // biome-ignore lint/correctness/useExhaustiveDependencies: key で deps を安定化
     useEffect(() => {
-        if (modNames.length === 0) {
+        if (dependencies.length === 0) {
             setTreesByMod(new Map());
             return;
         }
         let cancelled = false;
         setLoading(true);
         Promise.all(
-            modNames.map(async (name): Promise<[string, AssetNode[]]> => {
-                const idx = await fetchIndex(name);
-                if (!idx?.version) return [name, []];
-                const manifest = await fetchManifest(name, idx.version);
-                const base = `${MOD_BASE_URL}/${name}/v${idx.version}`;
-                return [name, buildAssetTree(manifest?.assets ?? [], base)];
+            dependencies.map(async (dep): Promise<[string, AssetNode[]]> => {
+                const base0 = resolveBase(dep);
+                const idx = await fetchIndex(base0, dep.name);
+                if (!idx?.version) return [dep.name, []];
+                const manifest = await fetchManifest(base0, dep.name, idx.version);
+                const base = `${base0}/${dep.name}/v${idx.version}`;
+                return [dep.name, buildAssetTree(manifest?.assets ?? [], base)];
             }),
         )
             .then((results) => {
