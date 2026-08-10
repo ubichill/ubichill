@@ -16,6 +16,7 @@ import { MobileLeftHandle } from './components/MobileLeftHandle';
 import { MobileRightHandle } from './components/MobileRightHandle';
 import { Modal } from './components/Modal';
 import { ModalPrimaryButton, ModalSecondaryButton } from './components/ModalButtons';
+import { PanelSection } from './components/PanelSection';
 import { useAvailableEntityKinds } from './hooks/useAvailableEntityKinds';
 import { useDefinition } from './hooks/useDefinition';
 import { useEditorModals } from './hooks/useEditorModals';
@@ -116,7 +117,6 @@ export function WorldEditorPage() {
                     snapEnabled={mobile.snapEnabled}
                     onToggleSnap={mobile.toggleSnap}
                     onOpenControlPanel={() => modals.openControlPanel()}
-                    onDelete={isEdit ? editorApi.remove : undefined}
                     onCreateInstance={isEdit ? editorApi.createInstance : undefined}
                 />
             </div>
@@ -214,11 +214,7 @@ export function WorldEditorPage() {
             </DockSlot>
 
             <DockSlot area="bottom" mobileVisible={true}>
-                <EditorAssets
-                    kinds={kinds}
-                    loading={kindsLoading}
-                    modNames={(definition.spec.dependencies ?? []).map((d) => d.name)}
-                />
+                <EditorAssets kinds={kinds} loading={kindsLoading} dependencies={definition.spec.dependencies ?? []} />
             </DockSlot>
 
             {!mobile.leftOpen && <MobileLeftHandle onClick={mobile.openLeft} />}
@@ -286,6 +282,37 @@ export function WorldEditorPage() {
                         onChange={modals.changeYamlText}
                         onFileUpload={modals.uploadYamlFile}
                     />
+                )}
+
+                {isEdit && (
+                    <div className={css({ mt: '4' })}>
+                        <PanelSection title="Danger Zone" defaultOpen={false}>
+                            <p className={css({ fontSize: '13px', color: 'textMuted' })}>
+                                このワールドを削除します。この操作は取り消せません。
+                            </p>
+                            <button
+                                type="button"
+                                onClick={editorApi.remove}
+                                disabled={editorApi.saving}
+                                className={css({
+                                    alignSelf: 'flex-start',
+                                    padding: '8px 16px',
+                                    bg: 'errorBg',
+                                    color: 'errorText',
+                                    border: '1px solid',
+                                    borderColor: 'errorLight',
+                                    borderRadius: '8px',
+                                    fontSize: '13px',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                    _disabled: { opacity: 0.5, cursor: 'not-allowed' },
+                                    _hover: { opacity: 0.9 },
+                                })}
+                            >
+                                このワールドを削除
+                            </button>
+                        </PanelSection>
+                    </div>
                 )}
             </Modal>
         </div>

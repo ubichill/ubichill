@@ -12,9 +12,8 @@ interface EditorHeaderProps {
     /** ON のときドラッグ / リサイズをグリッド + ワールド範囲で snap/clamp する */
     snapEnabled: boolean;
     onToggleSnap: () => void;
-    /** コントロールパネル（ワールド公開・mod管理・YAML）を開く */
+    /** コントロールパネル（ワールド公開・mod管理・YAML）を開く。削除はコントロールパネル最下部のDanger Zoneへ移した */
     onOpenControlPanel: () => void;
-    onDelete?: () => void;
     /** 編集モードかつ未変更時に有効。クリックでこのワールドの新インスタンスを作成して参加する */
     onCreateInstance?: () => void;
 }
@@ -28,7 +27,6 @@ export function EditorHeader({
     snapEnabled,
     onToggleSnap,
     onOpenControlPanel,
-    onDelete,
     onCreateInstance,
 }: EditorHeaderProps) {
     const navigate = useNavigate();
@@ -94,16 +92,6 @@ export function EditorHeader({
                     <GridIcon />
                     スナップ
                 </button>
-                {isEdit && onDelete && (
-                    <button
-                        type="button"
-                        onClick={onDelete}
-                        disabled={saving}
-                        className={editorButton({ intent: 'danger' })}
-                    >
-                        削除
-                    </button>
-                )}
                 <button
                     type="button"
                     onClick={onOpenControlPanel}
@@ -160,16 +148,6 @@ export function EditorHeader({
                         >
                             スナップ: {snapEnabled ? 'ON' : 'OFF'}
                         </button>
-                        {isEdit && onDelete && (
-                            <button
-                                type="button"
-                                onClick={() => runMenuAction(onDelete)}
-                                disabled={saving}
-                                className={editorButton({ intent: 'menuDanger', size: 'menu' })}
-                            >
-                                削除
-                            </button>
-                        )}
                         <button
                             type="button"
                             onClick={() => runMenuAction(onOpenControlPanel)}

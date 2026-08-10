@@ -1,14 +1,17 @@
+import type { WorldDefinition } from '@ubichill/shared';
 import { Fragment, type ReactNode, useMemo, useState } from 'react';
 import { css } from '@/styled-system/css';
 import type { AvailableEntityKind } from '../../hooks/useAvailableEntityKinds';
 import { type AssetNode, useModAssets } from '../../hooks/useModAssets';
 import { COMPONENT_DRAG_MIME } from '../../lib/dnd';
 
+type Dependency = NonNullable<WorldDefinition['spec']['dependencies']>[number];
+
 interface EditorAssetsProps {
     kinds: AvailableEntityKind[];
     loading: boolean;
-    /** YAML の dependencies で参照されているmod名一覧 */
-    modNames: string[];
+    /** YAML の dependencies（アセット取得先の per-mod base URL 解決に使う） */
+    dependencies: Dependency[];
 }
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg|avif)$/i;
@@ -18,8 +21,9 @@ const VIDEO_EXT = /\.(mp4|webm|mov)$/i;
 /** ナビゲーション位置: [] = ルート（mod一覧）、[mod, ...folder] = 中。 */
 type Path = string[];
 
-export function EditorAssets({ kinds, loading, modNames }: EditorAssetsProps) {
-    const { treesByMod } = useModAssets(modNames);
+export function EditorAssets({ kinds, loading, dependencies }: EditorAssetsProps) {
+    const { treesByMod } = useModAssets(dependencies);
+    const modNames = useMemo(() => dependencies.map((d) => d.name), [dependencies]);
     const [path, setPath] = useState<Path>([]);
 
     const componentsByMod = useMemo(() => {
