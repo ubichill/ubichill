@@ -1,5 +1,6 @@
 import { CommandType } from '@ubichill/shared/mod/protocol';
 import type { VNode } from '@ubichill/shared/mod/vnode';
+import { beginTrackingReads, endTrackingReads, type KeyDescriptor } from '../reactiveTracking';
 import type { SendFn, UiRenderCostStat } from '../types';
 
 type UiRenderStatEntry = {
@@ -18,7 +19,9 @@ export type UiModule = {
     /** 画面に一時的な通知（トースト）を表示する。 */
     showToast(text: string): void;
     /**
-     * 自 Component の UI を描画する。`factory` は VNode を返す関数で、状態変化のたびに再評価される。
+     * 自 Component の UI を描画する。`factory` 実行中に読んだ `Ubi.state` のキーを
+     * 自動で追跡し、そのキーが変わったときだけ `factory` を再実行して再描画する
+     * （読まなかったキーの変化では再描画しない。明示的な `onChange` での再呼び出しは不要）。
      * @param targetId 複数 UI を描き分けるときの識別子（省略時は `'default'`）。
      */
     render(factory: () => VNode, targetId?: string): void;
@@ -54,6 +57,18 @@ export function createUiModule(
     const uiTargetScope = new Map<string, { entityId: string; componentName: string }>();
     const uiRenderStats = new Map<string, UiRenderStatEntry>();
     let uiFlushScheduled = false;
+
+    // ── 自動再描画: targetId ごとに「前回の factory() 実行で読まれた state キー」を覚え、
+    // 差分だけ subscribe/unsubscribe する（読むキーが変わらない限り再登録しない）。
+    const uiAutoDeps = new Map<string, Set<KeyDescriptor>>();
+
+    const reconcileAutoDeps = (targetId: string, next: Set<KeyDescriptor>, rerun: () => void): void => {
+        const prev = uiAutoDeps.get(targetId);
+        if (prev) for (const d of prev) if (!next.has(d)) d.unsubscribe(targetId);
+        for (const d of next) if (!prev?.has(d)) d.subscribe(targetId, rerun);
+        if (next.size > 0) uiAutoDeps.set(targetId, next);
+        else uiAutoDeps.delete(targetId);
+    };
 
     const flushUiRenderQueue = (): void => {
         if (uiRenderQueue.size === 0) return;
@@ -103,13 +118,22 @@ export function createUiModule(
     ): void => {
         const start = performance.now();
         beginRender(targetId);
-        const vnode = factory();
+        beginTrackingReads();
+        let vnode: VNode;
+        try {
+            vnode = factory();
+        } finally {
+            // 今回読まれた state キーが変わったときだけ再登録する（`Ubi.state` 側が
+            // 変化時にこの rerun を呼び直し、そのたびに依存が最新化される）。
+            reconcileAutoDeps(targetId, endTrackingReads(), () => renderUi(factory, targetId, scope));
+        }
         recordUiRenderCost(targetId, performance.now() - start, scope);
         queueUiRender(targetId, vnode);
     };
 
     const unmountUi = (targetId: string): void => {
         clearTarget(targetId);
+        reconcileAutoDeps(targetId, new Set(), () => {});
         queueUiRender(targetId, null);
     };
 

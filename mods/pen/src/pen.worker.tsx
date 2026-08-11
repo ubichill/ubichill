@@ -82,10 +82,11 @@ const PenSvg = ({ color }: { color: string }) => (
 );
 
 function renderPen(): void {
-    const color = pen.local.color;
+    // factory() 内で読んだ pen.local.* キーは自動で依存追跡される。
+    // strokeWidth はここでは読んでいないので、変わっても再描画されない。
     Ubi.ui.render(
         () => (
-            <Gripable grip={grip} style={{ color, width: '36px', height: '48px' }}>
+            <Gripable grip={grip} style={{ color: pen.local.color, width: '36px', height: '48px' }}>
                 <div
                     style={{
                         width: '100%',
@@ -98,7 +99,7 @@ function renderPen(): void {
                         transition: 'transform 0.15s ease',
                     }}
                 >
-                    <PenSvg color={color} />
+                    <PenSvg color={pen.local.color} />
                 </div>
             </Gripable>
         ),
@@ -106,10 +107,8 @@ function renderPen(): void {
     );
 }
 
-// 状態変化はすべて onChange で宣言的に再描画
-pen.onChange('color', renderPen);
-pen.onChange('strokeWidth', renderPen);
+// grip.isMine は Ubi.state ではないので自動追跡の対象外。明示的に結線する。
 grip.onChange(renderPen);
 
-// 初期 1 回レンダー
+// 初期 1 回レンダー。以降 color の変化は自動で再描画される（onChange の手動結線は不要）。
 renderPen();

@@ -1,6 +1,7 @@
 import type { ComponentInstance, EntityPatchPayload } from '@ubichill/shared/mod/entities';
 import { CommandType } from '@ubichill/shared/mod/protocol';
 import type { VNode } from '@ubichill/shared/mod/vnode';
+import { type KeyDescriptor, recordRead } from '../reactiveTracking';
 import type { EntityState, EntityStateFor, PresenceEntry, SendFn, StateBinding } from '../types';
 
 // ── スコープマーカー (このファイル内部のみ) ───────────────────────
@@ -183,6 +184,39 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
         const perUserPersistMine = new Map<string, Record<string, unknown>>();
         const listeners = new Map<string, Set<(next: unknown, prev: unknown) => void>>();
 
+        // ── Ubi.ui.render の自動再描画用: キーごとに安定した KeyDescriptor を使い回す ──
+        // (render 側は「前回読んだ descriptor の集合」と比較するだけで済むように、
+        // 同じキーには常に同じ descriptor オブジェクトを返す)
+        const autoListeners = new Map<string, Map<string, () => void>>(); // key -> targetId -> rerun
+        const keyDescriptors = new Map<string, KeyDescriptor>();
+        const getDescriptor = (key: string): KeyDescriptor => {
+            let d = keyDescriptors.get(key);
+            if (!d) {
+                d = {
+                    subscribe: (targetId, onInvalidate) => {
+                        let byTarget = autoListeners.get(key);
+                        if (!byTarget) {
+                            byTarget = new Map();
+                            autoListeners.set(key, byTarget);
+                        }
+                        byTarget.set(targetId, onInvalidate);
+                    },
+                    unsubscribe: (targetId) => {
+                        autoListeners.get(key)?.delete(targetId);
+                    },
+                };
+                keyDescriptors.set(key, d);
+            }
+            return d;
+        };
+        /** 値変化を、手動 onChange リスナーと自動再描画リスナーの両方へ通知する。 */
+        const notify = (key: string, next: unknown, prev: unknown): void => {
+            const set = listeners.get(key);
+            if (set) for (const fn of set) fn(next, prev);
+            const auto = autoListeners.get(key);
+            if (auto) for (const cb of auto.values()) cb();
+        };
+
         // shared フィールドを localSharedState にシード
         const localSharedState = deps.getLocalSharedState();
         for (const [key, scope] of scopes) {
@@ -237,9 +271,7 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
                 }
                 return;
             }
-            const set = listeners.get(key);
-            if (!set) return;
-            for (const fn of set) fn(next, prev);
+            notify(key, next, prev);
         };
 
         const runBatch = (fn: () => void): void => {
@@ -253,9 +285,7 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
                     batchedFires.clear();
                     for (const [key, { prev, next }] of entries) {
                         if (prev === next) continue;
-                        const set = listeners.get(key);
-                        if (!set) continue;
-                        for (const fn of set) fn(next, prev);
+                        notify(key, next, prev);
                     }
                 }
             }
@@ -370,7 +400,13 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
 
         // local は Proxy — 書き込みでスコープに応じた flush を予約
         const proxy = new Proxy(local, {
-            get: (target, prop) => (typeof prop === 'string' ? target[prop] : undefined),
+            get: (target, prop) => {
+                if (typeof prop !== 'string') return undefined;
+                // Ubi.ui.render の factory() 実行中であれば、このキーを依存として記録する
+                // （render 側が実行後に diff して自動 subscribe/unsubscribe する）。
+                recordRead(getDescriptor(prop));
+                return target[prop];
+            },
             set: (target, prop, value) => {
                 if (typeof prop !== 'string') return false;
                 const prev = target[prop];
