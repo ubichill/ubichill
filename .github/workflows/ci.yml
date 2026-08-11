@@ -59,6 +59,13 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      # .changeset/*.md のフロントマターが実ワークスペースのpackage.json名と一致するかを
+      # PR時点で検証する。ここを飛ばすと不一致は push to main 後の changeset-release/main
+      # ジョブでのみ発覚し、リリースフローがブロックされるまで気づけない
+      # （実際に発生: "ubichill" と書いてしまい実パッケージ名 "@ubichill/sdk" と不一致）。
+      - name: Validate changesets
+        run: npx changeset status
+
   test:
     name: Test & Typecheck
     runs-on: ubuntu-latest
