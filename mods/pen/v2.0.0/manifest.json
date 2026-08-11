@@ -24,7 +24,7 @@
         "scene:read",
         "scene:update"
       ],
-      "workerUrl": "./canvas/index.678c7678.js"
+      "workerUrl": "./canvas/index.18b57e0a.js"
     },
     "pen:pen": {
       "watchEntityTypes": [
@@ -60,7 +60,7 @@
         "scene:update",
         "ui:render"
       ],
-      "workerUrl": "./pen/index.a112fa19.js"
+      "workerUrl": "./pen/index.bfbc2188.js"
     },
     "pen:tray": {
       "defaultTransform": {
@@ -75,7 +75,7 @@
         "scene:read",
         "ui:render"
       ],
-      "workerUrl": "./tray/index.1a07ce58.js"
+      "workerUrl": "./tray/index.e54709da.js"
     }
   },
   "assets": []
