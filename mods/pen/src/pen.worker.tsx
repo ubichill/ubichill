@@ -81,35 +81,28 @@ const PenSvg = ({ color }: { color: string }) => (
     </svg>
 );
 
-function renderPen(): void {
-    const color = pen.local.color;
-    Ubi.ui.render(
-        () => (
-            <Gripable grip={grip} style={{ color, width: '36px', height: '48px' }}>
-                <div
-                    style={{
-                        width: '100%',
-                        height: '100%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        transform: grip.isMine ? 'rotate(-30deg)' : 'none',
-                        transformOrigin: 'bottom right',
-                        transition: 'transform 0.15s ease',
-                    }}
-                >
-                    <PenSvg color={color} />
-                </div>
-            </Gripable>
-        ),
-        'pen-button',
+// export default = このComponentの唯一のUI。ビルド時にバンドルされ、Sandbox が起動時に
+// 一度だけ自動で Ubi.ui.render(default) する（手動の初期呼び出しは不要）。
+// ここで読む pen.local.color / grip.isMine（内部的に Ubi.state 経由）は自動で依存追跡され、
+// 変化時だけ自動的に再実行される。onChange の手動結線は不要（strokeWidth はここで読んで
+// いないので、変わっても再描画されない）。
+export default function PenView() {
+    return (
+        <Gripable grip={grip} style={{ color: pen.local.color, width: '36px', height: '48px' }}>
+            <div
+                style={{
+                    width: '100%',
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transform: grip.isMine ? 'rotate(-30deg)' : 'none',
+                    transformOrigin: 'bottom right',
+                    transition: 'transform 0.15s ease',
+                }}
+            >
+                <PenSvg color={pen.local.color} />
+            </div>
+        </Gripable>
     );
 }
-
-// 状態変化はすべて onChange で宣言的に再描画
-pen.onChange('color', renderPen);
-pen.onChange('strokeWidth', renderPen);
-grip.onChange(renderPen);
-
-// 初期 1 回レンダー
-renderPen();

@@ -18,8 +18,8 @@ export const config: ComponentConfig = {
 
 const THICKNESS_OPTIONS = [2, 4, 8, 12];
 
-Ubi.ui.render(
-    () => (
+export default function TrayView() {
+    return (
         <div style={{ position: 'absolute', inset: '0', pointerEvents: 'none' }}>
             <button
                 type="button"
@@ -97,6 +97,5 @@ Ubi.ui.render(
                 ))}
             </div>
         </div>
-    ),
-    'pen-tray',
-);
+    );
+}

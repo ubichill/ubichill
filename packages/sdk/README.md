@@ -27,11 +27,12 @@ const counter = Ubi.state.define({
     count: Ubi.state.sync(0), // 共有 + 永続。ホスト再起動後も保持される
 });
 
-function render(): void {
-    Ubi.ui.render(() => <button onClick={() => counter.local.count++}>count: {counter.local.count}</button>, 'counter-root');
+// export default = このWorkerのUI。ビルド時にバンドルされ、初回のみ自動で描画される。
+// この中で読んだ Ubi.state のキー（ここでは count）は自動で依存追跡され、
+// 変化時だけ自動的に再実行される（onChange での手動結線・初期呼び出しは不要）。
+export default function Counter() {
+    return <button onClick={() => counter.local.count++}>count: {counter.local.count}</button>;
 }
-counter.onChange('count', render);
-render();
 ```
 
 主要なネームスペース（詳細は `Ubi` 型の docstring を参照）:

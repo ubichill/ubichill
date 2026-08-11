@@ -47,6 +47,15 @@ export type EntityStateFor<T extends Record<string, unknown>> = {
 
 export interface EntityState<T extends Record<string, unknown>> {
     readonly local: T;
+    /**
+     * 指定ユーザーから見た state のスナップショットを返す。
+     *
+     * **注意（自動追跡の対象外）**: `local` はキー読み取りごとに `Ubi.ui.render` の依存追跡
+     * を行う Proxy だが、`for()` の戻り値は毎回組み立てるプレーンオブジェクトなので、
+     * `render()` の factory 内で `state.for(id).xxx` を読んでも自動再描画のトリガーには
+     * ならない。他ユーザー分の値をリアクティブに描画したい場合は {@link renderForEachUser}
+     * を使うこと（プレゼンス変化ごとに明示的に全ユーザー分を再評価する）。
+     */
     for(userId: string): EntityStateFor<T>;
     onChange<K extends keyof T & string>(key: K, listener: (next: T[K], prev: T[K]) => void): void;
     renderForEachUser(componentName: string, factory: (state: EntityStateFor<T>) => VNode | null): void;

@@ -48,6 +48,7 @@ function makeDeps(overrides: Partial<StateModuleDeps> = {}): { deps: StateModule
         getForEachUserComponents: () => new Set(),
         registerPendingFlush: (fn) => flushes.add(fn),
         getInitialEntities: () => initialEntities,
+        trackRead: () => {},
         beginRender: () => {},
         queueUiRender: () => {},
         unmountUi: () => {},

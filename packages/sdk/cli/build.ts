@@ -2,7 +2,7 @@
  * CLI ビルドツールのコア — mod.json を廃止し、package.json + Worker コード内の
  * `export const config` を元にマニフェスト・lock.json を自動生成する。
  */
-import { detectCapabilities } from '@ubichill/shared';
+import { detectCapabilities, MOD_EXPORTS_GLOBAL_NAME } from '@ubichill/shared';
 import * as esbuild from 'esbuild';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -258,6 +258,7 @@ async function bundleWorker(entryPath: string, tsconfig?: string): Promise<strin
         entryPoints: [entryPath],
         bundle: true,
         format: 'iife',
+        globalName: MOD_EXPORTS_GLOBAL_NAME,
         platform: 'browser',
         target: 'es2022',
         jsx: 'automatic',
@@ -371,12 +372,14 @@ export async function buildMod(modDir: string, options: BuildOptions = {}): Prom
         cleanOldBundles(publicComponentDir, outFilename);
         writeFileSync(join(publicComponentDir, outFilename), code, 'utf-8');
 
-        // capability をコードから自動検出。
-        const detected = detectCapabilities(code);
-
         // config からメタデータを取得
         const srcCode = readFileSync(workerPath, 'utf-8');
         const config = extractConfigFromCode(srcCode);
+
+        // capability をコードから自動検出。
+        // `export default`（ui:render の自動マウント対象）は globalName バンドル後には
+        // 文字列として残らないため、生ソース（srcCode）も検出対象に含める。
+        const detected = detectCapabilities(`${code}\n${srcCode}`);
         const declaredCapabilities = Array.isArray(config?.capabilities)
             ? (config.capabilities as string[])
             : [];

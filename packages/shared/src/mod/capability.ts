@@ -151,7 +151,12 @@ export interface CapabilityDetector {
 
 export const CAPABILITY_DETECTORS: readonly CapabilityDetector[] = [
     { cap: 'net:fetch', api: 'Ubi.fetch', test: (c) => /\bUbi\.fetch\b/.test(c) },
-    { cap: 'ui:render', api: 'Ubi.ui.render', test: (c) => /\bUbi\.ui\b/.test(c) },
+    // `export default` は sandbox.worker.ts が自動で Ubi.ui.render() する対象（明示呼び出し不要）。
+    {
+        cap: 'ui:render',
+        api: 'Ubi.ui.render / export default',
+        test: (c) => /\bUbi\.ui\b/.test(c) || /\bexport\s+default\b/.test(c),
+    },
     { cap: 'ui:toast', api: 'Ubi.ui.showToast', test: (c) => /\.showToast\s*\(/.test(c) },
     // scene:read は entity/state を触れば付くベースライン。
     {
