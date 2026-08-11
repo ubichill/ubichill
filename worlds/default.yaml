@@ -37,7 +37,6 @@ spec:
           components:
             - data:
                 loop: none
-                apiBase: https://videoplayer.youkan.uk
                 shuffle: false
                 duration: 0
                 playlist: []
@@ -57,7 +56,8 @@ spec:
             scale: 1
             rotation: 0
           components:
-            - data: {}
+            - data:
+                apiBase: https://videoplayer.youkan.uk
               type: video-player:controls
         - id: playlist
           tags: []
