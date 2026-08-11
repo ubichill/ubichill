@@ -1,6 +1,6 @@
 import { CommandType } from '@ubichill/shared/mod/protocol';
 import type { VNode } from '@ubichill/shared/mod/vnode';
-import { beginTrackingReads, endTrackingReads, type KeyDescriptor } from '../reactiveTracking';
+import type { KeyDescriptor, ReadTracker } from '../reactiveTracking';
 import type { SendFn, UiRenderCostStat } from '../types';
 
 type UiRenderStatEntry = {
@@ -52,7 +52,9 @@ export function createUiModule(
     getIsTicking: () => boolean,
     beginRender: (targetId: string) => void,
     clearTarget: (targetId: string) => void,
+    readTracker: ReadTracker,
 ): UiModule {
+    const { beginTrackingReads, endTrackingReads } = readTracker;
     const uiRenderQueue = new Map<string, VNode | null>();
     const uiTargetScope = new Map<string, { entityId: string; componentName: string }>();
     const uiRenderStats = new Map<string, UiRenderStatEntry>();

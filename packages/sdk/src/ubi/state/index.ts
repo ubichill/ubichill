@@ -1,7 +1,7 @@
 import type { ComponentInstance, EntityPatchPayload } from '@ubichill/shared/mod/entities';
 import { CommandType } from '@ubichill/shared/mod/protocol';
 import type { VNode } from '@ubichill/shared/mod/vnode';
-import { type KeyDescriptor, recordRead } from '../reactiveTracking';
+import type { KeyDescriptor } from '../reactiveTracking';
 import type { EntityState, EntityStateFor, PresenceEntry, SendFn, StateBinding } from '../types';
 
 // ── スコープマーカー (このファイル内部のみ) ───────────────────────
@@ -110,6 +110,8 @@ export type StateModuleDeps = {
     getForEachUserComponents(): Set<string>;
     registerPendingFlush(fn: () => void): void;
     getInitialEntities(): ComponentInstance[];
+    /** `Ubi.ui.render` の factory() 実行中であれば、このキーを依存として記録する（reactiveTracking）。 */
+    trackRead(descriptor: KeyDescriptor): void;
     beginRender(targetId: string): void;
     queueUiRender(targetId: string, vnode: VNode | null): void;
     unmountUi(targetId: string): void;
@@ -404,7 +406,7 @@ export function createStateModule(deps: StateModuleDeps): StateModule {
                 if (typeof prop !== 'string') return undefined;
                 // Ubi.ui.render の factory() 実行中であれば、このキーを依存として記録する
                 // （render 側が実行後に diff して自動 subscribe/unsubscribe する）。
-                recordRead(getDescriptor(prop));
+                deps.trackRead(getDescriptor(prop));
                 return target[prop];
             },
             set: (target, prop, value) => {

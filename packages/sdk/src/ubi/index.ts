@@ -17,6 +17,7 @@ import type { MediaModule } from './media';
 import { createMediaModule } from './media';
 import type { PlayerModule } from './player';
 import { createPlayerModule } from './player';
+import { createReadTracker } from './reactiveTracking';
 import type { StateModule } from './state';
 import { createStateModule } from './state';
 import type { OmitId, UiRenderCostStat } from './types';
@@ -147,8 +148,12 @@ export class UbiSDK {
         const send = (cmd: OmitId<ModGuestCommand>): void => this._send(cmd);
         const rpc = <T>(cmd: OmitId<ModGuestCommand>): Promise<T> => this._rpc<T>(cmd);
 
+        // Ubi.ui.render の自動再描画（依存追跡）用。ui/state 両モジュールで共有する1個だけ
+        // 生成し deps 経由で配る（モジュール単一状態にしない — reactiveTracking.ts の docstring 参照）。
+        const readTracker = createReadTracker();
+
         this.player = createPlayerModule(send, () => this.myUserId);
-        this.ui = createUiModule(send, () => this._isTicking, _beginRender, _clearTarget);
+        this.ui = createUiModule(send, () => this._isTicking, _beginRender, _clearTarget, readTracker);
         this._world = createWorldModule(send, rpc);
         this.state = createStateModule({
             send,
@@ -165,6 +170,7 @@ export class UbiSDK {
             getForEachUserComponents: () => this.player._getForEachUserComponents(),
             registerPendingFlush: (fn) => this._pendingStateFlushes.add(fn),
             getInitialEntities: () => this._initialEntities,
+            trackRead: readTracker.recordRead,
             beginRender: _beginRender,
             queueUiRender: (targetId, vnode) => this.ui._queueUiRender(targetId, vnode),
             unmountUi: (targetId) => this.ui._unmountUi(targetId),

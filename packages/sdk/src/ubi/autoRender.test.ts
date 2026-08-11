@@ -7,6 +7,7 @@ import type { ComponentInstance } from '@ubichill/shared/mod/entities';
 import { describe, expect, it, vi } from 'vitest';
 import { createEventModule } from './event';
 import { createGripModule } from './grip';
+import { createReadTracker } from './reactiveTracking';
 import { createStateModule, type StateModuleDeps } from './state';
 import { createUiModule } from './ui';
 
@@ -16,12 +17,14 @@ function makeHarness() {
         { id: 'ent-1', type: 'thing', entityId: 'go-1', data: {} } as ComponentInstance,
     ];
     const isTicking = false;
+    const readTracker = createReadTracker();
 
     const ui = createUiModule(
         (cmd) => sent.push(cmd),
         () => isTicking,
         () => {},
         () => {},
+        readTracker,
     );
 
     const deps: StateModuleDeps = {
@@ -39,6 +42,7 @@ function makeHarness() {
         getForEachUserComponents: () => new Set(),
         registerPendingFlush: () => {},
         getInitialEntities: () => initialEntities,
+        trackRead: readTracker.recordRead,
         beginRender: () => {},
         queueUiRender: ui._queueUiRender,
         unmountUi: ui._unmountUi,
@@ -59,11 +63,13 @@ function makeHarness() {
 function makeGripHarness() {
     const sent: unknown[] = [];
     const isTicking = false;
+    const readTracker = createReadTracker();
     const ui = createUiModule(
         (cmd) => sent.push(cmd),
         () => isTicking,
         () => {},
         () => {},
+        readTracker,
     );
     const deps: StateModuleDeps = {
         send: (cmd) => sent.push(cmd),
@@ -80,6 +86,7 @@ function makeGripHarness() {
         getForEachUserComponents: () => new Set(),
         registerPendingFlush: () => {},
         getInitialEntities: () => [],
+        trackRead: readTracker.recordRead,
         beginRender: () => {},
         queueUiRender: ui._queueUiRender,
         unmountUi: ui._unmountUi,
@@ -186,14 +193,15 @@ describe('Ubi.ui.render の自動再描画', () => {
         expect(sent.filter((c) => (c as { type?: string }).type === 'UI_RENDER')).toHaveLength(0);
     });
 
-    it('明示的な onChange 併用は害にならない（重複呼び出しでも最終送信は最新値の1件）', async () => {
+    it('明示的な onChange 併用は害にならない（postMessage は最新値の1件だが、factory自体は重複実行される）', async () => {
         const { ui, state, sent } = makeHarness();
         const s = state.define({ color: state.sync('#fff') });
-        const render = () =>
-            ui.render(() => ({ type: 'div', props: { color: s.local.color }, children: [] }) as never, 'target');
+        const factory = vi.fn(() => ({ type: 'div', props: { color: s.local.color }, children: [] }) as never);
+        const render = () => ui.render(factory, 'target');
         s.onChange('color', render); // 旧パターン: 手動で結線したままでも動く
         render();
         await Promise.resolve();
+        factory.mockClear();
         sent.length = 0;
 
         s.local.color = '#abc';
@@ -204,6 +212,11 @@ describe('Ubi.ui.render の自動再描画', () => {
         // postMessage は最終的に1回にまとまる。
         expect(renders).toHaveLength(1);
         expect(lastRenderedVNode(sent, 'target')).toEqual({ type: 'div', props: { color: '#abc' }, children: [] });
+        // ただし postMessage が1回に集約されるのは queueUiRender の Map 上書きの効果であり、
+        // factory 自体は「手動 onChange」と「自動追跡」の両方から呼ばれるため2回実行される。
+        // factory に副作用がある場合は問題になり得るため、この新パターン移行後は手動 onChange
+        // を削除するのが正しい（pen.worker.tsx で実施した対応）。
+        expect(factory).toHaveBeenCalledTimes(2);
     });
 
     it('factory の呼び出し回数でも確認する（無関係なキー変化では再実行されない）', async () => {
@@ -243,5 +256,58 @@ describe('Ubi.ui.render の自動再描画', () => {
         g.release();
         await Promise.resolve();
         expect(lastRenderedVNode(sent, 'target')).toEqual({ type: 'div', props: { held: false }, children: [] });
+    });
+
+    it('grip.holder / grip.isHeldByOther も同じ Proxy 経路を読むため自動追跡される', async () => {
+        const { ui, grip, state, sent } = makeGripHarness();
+        // acquire する側 (me) と、それを観測する側 (別 targetId で isHeldByOther/holder を見る) を
+        // 同じ grip インスタンスに対して張る。実際の「他人が持っている」を再現するため、
+        // 保持者を送り主の視点ではなく、この grip.holder が返す生の値で検証する。
+        const g = grip.exclusive({ mode: 'manual', bringToFront: false });
+        const factory = vi.fn(
+            () =>
+                ({
+                    type: 'div',
+                    props: { holder: g.holder, heldByOther: g.isHeldByOther },
+                    children: [],
+                }) as never,
+        );
+
+        ui.render(factory, 'target');
+        await Promise.resolve();
+        expect(lastRenderedVNode(sent, 'target')).toEqual({
+            type: 'div',
+            props: { holder: null, heldByOther: false },
+            children: [],
+        });
+
+        sent.length = 0;
+        g.acquire(); // acquire するのは自分 (me) なので isHeldByOther は false のまま、holder だけ変わる
+        await Promise.resolve();
+        expect(lastRenderedVNode(sent, 'target')).toEqual({
+            type: 'div',
+            props: { holder: 'me', heldByOther: false },
+            children: [],
+        });
+
+        sent.length = 0;
+        g.release();
+        await Promise.resolve();
+        expect(lastRenderedVNode(sent, 'target')).toEqual({
+            type: 'div',
+            props: { holder: null, heldByOther: false },
+            children: [],
+        });
+
+        // 他ユーザーが掴んだ場合（ホストからの entity 更新を模す）は isHeldByOther が true になる。
+        sent.length = 0;
+        const [binding] = state._getStateBindings();
+        binding?.applyEntity({ id: 'grip-entity', type: 'thing', lockedBy: 'other-user' } as ComponentInstance);
+        await Promise.resolve();
+        expect(lastRenderedVNode(sent, 'target')).toEqual({
+            type: 'div',
+            props: { holder: 'other-user', heldByOther: true },
+            children: [],
+        });
     });
 });

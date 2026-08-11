@@ -7,27 +7,39 @@
  * 前回の集合との差分だけ subscribe/unsubscribe することで「読んだキーが変わった時だけ
  * 再実行される」を実現する（React 等の動的依存追跡と同じ発想）。
  *
- * ここにはスタック（同期実行中の「いま追跡中か」を覚えるだけの薄い状態）以外の
- * ロジックは置かない。実際の購読先（listeners）は各 state インスタンス側が持つ。
+ * `createReadTracker()` はスタック（同期実行中の「いま追跡中か」を覚えるだけの薄い状態）
+ * のみを持つファクトリ。モジュールレベルのシングルトンにしない理由: `UbiSDK` は
+ * インスタンスごとに独立した Worker（別 JS realm）で動くため実害は無いが、1つの JS realm に
+ * 複数の `UbiSDK`（テストハーネス等）を作るケースで状態を共有してしまうのは設計として
+ * 不必要な結合。`Ubi.ui`/`Ubi.state` と同じ deps 注入の作法に合わせ、`UbiSDK` の
+ * コンストラクタで1個だけ生成し、両モジュールに配る。
  */
 export interface KeyDescriptor {
     subscribe(targetId: string, onInvalidate: () => void): void;
     unsubscribe(targetId: string): void;
 }
 
-const trackingStack: Set<KeyDescriptor>[] = [];
-
-/** 追跡を開始する（ネスト呼び出しに備えてスタックを使う）。 */
-export function beginTrackingReads(): void {
-    trackingStack.push(new Set());
+export interface ReadTracker {
+    /** 追跡を開始する（ネスト呼び出しに備えてスタックを使う）。 */
+    beginTrackingReads(): void;
+    /** 追跡中であれば、読まれた descriptor を記録する（追跡中でなければ何もしない）。 */
+    recordRead(descriptor: KeyDescriptor): void;
+    /** 追跡を終え、今回読まれた descriptor の集合を返す。 */
+    endTrackingReads(): Set<KeyDescriptor>;
 }
 
-/** 追跡中であれば、読まれた descriptor を記録する（追跡中でなければ何もしない）。 */
-export function recordRead(descriptor: KeyDescriptor): void {
-    trackingStack[trackingStack.length - 1]?.add(descriptor);
-}
+export function createReadTracker(): ReadTracker {
+    const trackingStack: Set<KeyDescriptor>[] = [];
 
-/** 追跡を終え、今回読まれた descriptor の集合を返す。 */
-export function endTrackingReads(): Set<KeyDescriptor> {
-    return trackingStack.pop() ?? new Set();
+    return {
+        beginTrackingReads(): void {
+            trackingStack.push(new Set());
+        },
+        recordRead(descriptor: KeyDescriptor): void {
+            trackingStack[trackingStack.length - 1]?.add(descriptor);
+        },
+        endTrackingReads(): Set<KeyDescriptor> {
+            return trackingStack.pop() ?? new Set();
+        },
+    };
 }
