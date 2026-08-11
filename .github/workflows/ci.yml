@@ -36,6 +36,18 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+        with:
+          # changeset status が「main からどこで分岐したか」を見るのに履歴が必要
+          # （既定のshallow checkoutだとPRブランチの単一commitしか無く
+          # "Failed to find where HEAD diverged from main" で落ちる）。
+          fetch-depth: 0
+
+      # actions/checkout はチェックアウト対象ブランチのみの制限付き fetch refspec を張るため、
+      # fetch-depth: 0 だけでは origin/main という参照自体が作られない
+      # （実測: refspec が `+refs/heads/<このブランチ>:refs/remotes/origin/<このブランチ>` に
+      # 制限されており、他ブランチは一切フェッチされない）。明示的に origin/main を取得する。
+      - name: Fetch main for changeset diff base
+        run: git fetch origin main:refs/remotes/origin/main
 
       - name: Extract Node version from package.json
         id: versions
@@ -58,6 +70,15 @@ jobs:
 
       - name: Lint
         run: pnpm lint
+
+      # .changeset/*.md のフロントマターが実ワークスペースのpackage.json名と一致するかを
+      # PR時点で検証する。ここを飛ばすと不一致は push to main 後の changeset-release/main
+      # ジョブでのみ発覚し、リリースフローがブロックされるまで気づけない
+      # （実際に発生: "ubichill" と書いてしまい実パッケージ名 "@ubichill/sdk" と不一致）。
+      # --since=origin/main で明示する: ローカルに "main" ブランチが無くても
+      # (このジョブではPRブランチしかcheckoutしていない) origin/main の参照だけで解決できる。
+      - name: Validate changesets
+        run: npx changeset status --since=origin/main
 
   test:
     name: Test & Typecheck
