@@ -5,6 +5,8 @@
  */
 import type { ComponentInstance } from '@ubichill/shared/mod/entities';
 import { describe, expect, it, vi } from 'vitest';
+import { createEventModule } from './event';
+import { createGripModule } from './grip';
 import { createStateModule, type StateModuleDeps } from './state';
 import { createUiModule } from './ui';
 
@@ -46,6 +48,58 @@ function makeHarness() {
     const state = createStateModule(deps);
 
     return { ui, state, sent };
+}
+
+/**
+ * grip.isMine 等が state 経由で自動追跡されることを確認するためのハーネス。
+ * getInitialEntities を空にする: makeHarness の fixture entity (type: 'thing') は
+ * grip 内部の state.define({ holder }) の watchType マッチ対象とは無関係だが、
+ * 同じ type 名でマッチしてしまうと holder の初期値（null）が意図せず上書きされてしまうため。
+ */
+function makeGripHarness() {
+    const sent: unknown[] = [];
+    const isTicking = false;
+    const ui = createUiModule(
+        (cmd) => sent.push(cmd),
+        () => isTicking,
+        () => {},
+        () => {},
+    );
+    const deps: StateModuleDeps = {
+        send: (cmd) => sent.push(cmd),
+        updateEntity: async () => {},
+        getMyUserId: () => 'me',
+        getEntityId: () => undefined,
+        getModId: () => 'mod',
+        getComponentType: () => undefined,
+        getWatchEntityTypes: () => [],
+        getPresenceUsers: () => new Map(),
+        getLocalSharedState: () => ({}),
+        getScrollX: () => 0,
+        getScrollY: () => 0,
+        getForEachUserComponents: () => new Set(),
+        registerPendingFlush: () => {},
+        getInitialEntities: () => [],
+        beginRender: () => {},
+        queueUiRender: ui._queueUiRender,
+        unmountUi: ui._unmountUi,
+        recordUiRenderCost: ui._recordUiRenderCost,
+        buildEntityTargetId: ui._buildEntityTargetId,
+    };
+    const state = createStateModule(deps);
+    const event = createEventModule({ send: () => {}, registerSystem: () => {} });
+    const grip = createGripModule({
+        state,
+        event,
+        getMyUserId: () => 'me',
+        getComponentInstanceId: () => 'self-1',
+        getComponentType: () => 'thing',
+        getEntityId: () => 'go-1',
+        listenMouseUp: () => () => {},
+        sendGripCommand: () => {},
+        bringToFront: async () => {},
+    });
+    return { ui, state, grip, sent };
 }
 
 /** UI_RENDER で送られた vnode のうち、直近1件を返す。 */
@@ -168,5 +222,26 @@ describe('Ubi.ui.render の自動再描画', () => {
         s.local.color = '#000';
         await Promise.resolve();
         expect(factory).toHaveBeenCalledTimes(2); // 読んだキーなので再実行される
+    });
+
+    it('grip.isMine は内部で Ubi.state を読むため、明示的な grip.onChange なしでも自動再描画される', async () => {
+        const { ui, grip, sent } = makeGripHarness();
+        const g = grip.exclusive({ mode: 'manual', bringToFront: false });
+        const factory = vi.fn(() => ({ type: 'div', props: { held: g.isMine }, children: [] }) as never);
+
+        // grip.onChange は一切呼ばない。factory 内で g.isMine を読むだけで依存追跡される。
+        ui.render(factory, 'target');
+        await Promise.resolve();
+        expect(lastRenderedVNode(sent, 'target')).toEqual({ type: 'div', props: { held: false }, children: [] });
+
+        sent.length = 0;
+        g.acquire();
+        await Promise.resolve();
+        expect(lastRenderedVNode(sent, 'target')).toEqual({ type: 'div', props: { held: true }, children: [] });
+
+        sent.length = 0;
+        g.release();
+        await Promise.resolve();
+        expect(lastRenderedVNode(sent, 'target')).toEqual({ type: 'div', props: { held: false }, children: [] });
     });
 });

@@ -392,6 +392,41 @@ describe('buildMod（新規mod作成パイプライン）', () => {
         expect(distIndex).toEqual([entry]);
         expect(publicIndex).toEqual([entry]);
     });
+
+    it('export default function は globalName 経由でバンドルから取り出せる（sandbox.worker.ts の自動マウント前提）', async () => {
+        const fixture: ModFixture = {
+            packageJson: { name: '@ubichill/mod-default-export', version: '1.0.0' },
+            files: {
+                'view.worker.tsx': [
+                    'import type { ComponentConfig } from "@ubichill/sdk";',
+                    '',
+                    'export const config: ComponentConfig = {',
+                    '    watchScope: "entity",',
+                    '    capabilities: ["ui:render"],',
+                    '};',
+                    '',
+                    'export default function View() {',
+                    '    return <div>hello from default export</div>;',
+                    '}',
+                ].join('\n'),
+            },
+        };
+
+        const { modDir, distDir, publicDir } = buildFixture(fixture);
+        await buildMod(modDir, { distDir, publicDir });
+
+        const lock = JSON.parse(readFileSync(join(distDir, 'v1.0.0', 'lock.json'), 'utf-8'));
+        const workerRelPath = (lock.components['default-export:view'].workerUrl as string).replace(/^\.\//, '');
+        const workerPath = join(distDir, 'v1.0.0', workerRelPath);
+        const workerCode = readFileSync(workerPath, 'utf-8');
+
+        // globalName でバンドルの exports が公開され、.default に関数が入っていることを、
+        // 実際にそのコードを評価して確認する（sandbox.worker.ts と同じ前提の検証）。
+        const exported = new Function(
+            `${workerCode}\nreturn typeof __ubichillModuleExports !== "undefined" ? __ubichillModuleExports : undefined;`,
+        )() as { default?: unknown } | undefined;
+        expect(typeof exported?.default).toBe('function');
+    });
 });
 
 describe('runBuild（CLI エントリポイント: 単一mod repo vs モノレポの自動判別）', () => {

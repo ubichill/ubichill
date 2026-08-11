@@ -3,6 +3,7 @@ import {
     CommandType,
     checkProtocolCompatibility,
     HostEventType,
+    MOD_EXPORTS_GLOBAL_NAME,
     type ModGuestCommand,
     type ModHostEvent,
     PROTOCOL_VERSION,
@@ -122,6 +123,9 @@ self.addEventListener('message', (e: MessageEvent<ModHostEvent>) => {
             `"use strict";
             try {
                 ${event.payload.code}
+                if (typeof ${MOD_EXPORTS_GLOBAL_NAME} !== "undefined" && ${MOD_EXPORTS_GLOBAL_NAME} && typeof ${MOD_EXPORTS_GLOBAL_NAME}.default === "function") {
+                    Ubi.ui.render(${MOD_EXPORTS_GLOBAL_NAME}.default, "default");
+                }
             } catch (err) {
                 console.error("[Sandbox:${modId}] mod実行エラー", err);
                 throw err;
