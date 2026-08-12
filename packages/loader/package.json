@@ -9,7 +9,8 @@
     "types": "src/index.ts",
     "exports": {
         ".": "./src/index.ts",
-        "./gen-lock": "./src/genLock.ts"
+        "./install-dependencies": "./src/installDependencies.ts",
+        "./update-dependencies": "./src/updateDependencies.ts"
     },
     "dependencies": {
         "@ubichill/shared": "workspace:*",

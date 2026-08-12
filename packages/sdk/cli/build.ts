@@ -306,12 +306,54 @@ function readPackageJson(modDir: string): { id: string; name: string; version: s
     return { id, name, version };
 }
 
+/** `index.json` エントリが持つバージョン履歴の1件。 */
+export interface ModVersionSummary {
+    version: string;
+    components: string[];
+}
+
 /** `index.json`（レジストリ一覧）の1エントリ。World Editor の「レジストリ URL を追加」機能が読む形。 */
 export interface ModIndexEntry {
     id: string;
     name: string;
     version: string;
     components: string[];
+    /** 過去にビルドした全バージョンの履歴（新しい順）。World Editor のバージョン選択に使う。 */
+    versions: ModVersionSummary[];
+}
+
+/** semver (x.y.z) の降順比較。 */
+function compareSemVerDesc(a: string, b: string): number {
+    const pa = a.split('.').map(Number);
+    const pb = b.split('.').map(Number);
+    for (let i = 0; i < 3; i++) {
+        if (pa[i] !== pb[i]) return pb[i] - pa[i];
+    }
+    return 0;
+}
+
+/**
+ * 既存の `index.json`（あれば）から対象 mod のバージョン履歴を読み出す。
+ * `versions` フィールドが無い旧形式のファイルは、その1件を履歴の起点として扱う
+ * （初回アップグレード時に直前のバージョンを失わないため）。
+ */
+function readExistingVersions(indexPath: string, id: string): ModVersionSummary[] {
+    if (!existsSync(indexPath)) return [];
+    try {
+        const entries = JSON.parse(readFileSync(indexPath, 'utf-8')) as ModIndexEntry[];
+        const existing = entries.find((e) => e.id === id);
+        if (!existing) return [];
+        if (existing.versions) return existing.versions;
+        return existing.version ? [{ version: existing.version, components: existing.components }] : [];
+    } catch {
+        return [];
+    }
+}
+
+/** 既存のバージョン履歴に今回の版をマージする（同一版は上書き、新しい順にソート）。 */
+function mergeVersionHistory(existing: ModVersionSummary[], next: ModVersionSummary): ModVersionSummary[] {
+    const withoutNext = existing.filter((v) => v.version !== next.version);
+    return [...withoutNext, next].sort((a, b) => compareSemVerDesc(a.version, b.version));
 }
 
 /** @param modDir mod のルートディレクトリへの絶対パス */
@@ -467,7 +509,12 @@ export async function buildMod(modDir: string, options: BuildOptions = {}): Prom
     // ── index.json（この mod 単体をレジストリとして公開する）────────────
     // World Editor の「レジストリ URL を追加」機能は index.json（一覧）を期待する。
     // 外部 mod は単体でも「1件だけのレジストリ」として同じ形で公開できるようにする。
-    const indexEntry: ModIndexEntry = { id, name, version, components: Object.keys(versionedComponents) };
+    // トップレベルの id/name/version/components は常に「現行最新」（既存の外部消費者との
+    // 後方互換のため）。versions は過去にビルドした全バージョンの履歴（新しい順）。
+    const components = Object.keys(versionedComponents);
+    const existingVersions = readExistingVersions(join(distDir, 'index.json'), id);
+    const versions = mergeVersionHistory(existingVersions, { version, components });
+    const indexEntry: ModIndexEntry = { id, name, version, components, versions };
     const indexJson = JSON.stringify([indexEntry], null, 2);
     writeFileSync(join(distDir, 'index.json'), indexJson, 'utf-8');
     writeFileSync(join(publicDir, 'index.json'), indexJson, 'utf-8');

@@ -60,4 +60,21 @@ describe('DependencySourceSchema', () => {
     it('type: npm は廃止済みで拒否される', () => {
         expect(() => DependencySourceSchema.parse({ type: 'npm' })).toThrow();
     });
+
+    it('version は完全一致 (x.y.z) を受け付ける', () => {
+        expect(DependencySourceSchema.parse({ type: 'local', version: '1.2.3' })).toEqual({
+            type: 'local',
+            version: '1.2.3',
+        });
+    });
+
+    it('version は省略可能（常に最新を追う）', () => {
+        expect(DependencySourceSchema.parse({ type: 'local' })).toEqual({ type: 'local' });
+    });
+
+    it('semver レンジ指定 (^, ~) は拒否される', () => {
+        expect(() => DependencySourceSchema.parse({ type: 'local', version: '^1.2.3' })).toThrow();
+        expect(() => DependencySourceSchema.parse({ type: 'local', version: '~1.2.3' })).toThrow();
+        expect(() => DependencySourceSchema.parse({ type: 'local', version: 'latest' })).toThrow();
+    });
 });

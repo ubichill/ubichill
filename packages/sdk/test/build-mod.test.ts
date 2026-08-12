@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { afterAll, describe, expect, it } from 'vitest';
-import { buildMod, runBuild } from '../cli/build.ts';
+import { buildMod, type ModIndexEntry, runBuild } from '../cli/build.ts';
 
 function sriOf(text: string): string {
     return `sha256-${createHash('sha256').update(text).digest('base64')}`;
@@ -385,11 +385,48 @@ describe('buildMod（新規mod作成パイプライン）', () => {
         const { modDir, distDir, publicDir } = buildFixture(fixture);
         const entry = await buildMod(modDir, { distDir, publicDir });
 
-        expect(entry).toEqual({ id: 'registry', name: 'registry', version: '1.0.0', components: ['registry:main'] });
+        expect(entry).toEqual({
+            id: 'registry',
+            name: 'registry',
+            version: '1.0.0',
+            components: ['registry:main'],
+            versions: [{ version: '1.0.0', components: ['registry:main'] }],
+        });
 
         const distIndex = JSON.parse(readFileSync(join(distDir, 'index.json'), 'utf-8'));
         const publicIndex = JSON.parse(readFileSync(join(publicDir, 'index.json'), 'utf-8'));
         expect(distIndex).toEqual([entry]);
+        expect(publicIndex).toEqual([entry]);
+    });
+
+    it('再ビルドで version が上がると index.json の versions に旧バージョンが履歴として残る（新しい順）', async () => {
+        const fixtureV1: ModFixture = {
+            packageJson: { name: '@ubichill/mod-history', version: '1.0.0' },
+            files: {
+                'main.worker.ts': [
+                    'import type { ComponentConfig } from "@ubichill/sdk";',
+                    'export const config: ComponentConfig = {};',
+                ].join('\n'),
+            },
+        };
+        const { modDir, distDir, publicDir } = buildFixture(fixtureV1);
+        await buildMod(modDir, { distDir, publicDir });
+
+        // package.json の version だけ上げて再ビルド（同一 distDir/publicDir へ出力）
+        writeFileSync(
+            join(modDir, 'package.json'),
+            JSON.stringify({ name: '@ubichill/mod-history', version: '2.0.0' }),
+            'utf-8',
+        );
+        const entry = await buildMod(modDir, { distDir, publicDir });
+
+        expect(entry.version).toBe('2.0.0');
+        expect(entry.versions).toEqual([
+            { version: '2.0.0', components: ['history:main'] },
+            { version: '1.0.0', components: ['history:main'] },
+        ]);
+
+        const publicIndex = JSON.parse(readFileSync(join(publicDir, 'index.json'), 'utf-8'));
         expect(publicIndex).toEqual([entry]);
     });
 
@@ -506,9 +543,11 @@ describe('runBuild（CLI エントリポイント: 単一mod repo vs モノレ�
         process.chdir(workspaceDir);
         await runBuild([]);
 
-        const index = JSON.parse(readFileSync(join(workspaceDir, 'dist', 'mods', 'index.json'), 'utf-8'));
+        const index = JSON.parse(
+            readFileSync(join(workspaceDir, 'dist', 'mods', 'index.json'), 'utf-8'),
+        ) as ModIndexEntry[];
         expect(index.map((e) => e.id).sort()).toEqual(['alpha', 'beta']);
-        expect(index.find((e) => e.id === 'alpha').components).toEqual(['alpha:main']);
+        expect(index.find((e) => e.id === 'alpha')?.components).toEqual(['alpha:main']);
     });
 
     it('package.json が無く mods/ も無い場合はエラーを throw する', async () => {

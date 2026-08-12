@@ -81,11 +81,10 @@ describe('buildCliJs（CLI 完全バンドル、esbuild/yaml のみ external）'
         expect(code).not.toMatch(/Dynamic require of/);
     });
 
-    it('build/lock/verify サブコマンドが実際にバンドルされている', () => {
+    it('build/install/update/verify サブコマンドが実際にバンドルされている', () => {
         expect(code).toMatch(/runBuild/);
-        // lock サブコマンドの実体は @ubichill/loader の runGenLock（lock.ts が `as runLock` で
-        // re-export するが、bundle後は元の宣言名 runGenLock に解決される。実測済み）。
-        expect(code).toMatch(/runGenLock/);
+        expect(code).toMatch(/runInstall/);
+        expect(code).toMatch(/runUpdate/);
         expect(code).toMatch(/runVerify/);
     });
 });

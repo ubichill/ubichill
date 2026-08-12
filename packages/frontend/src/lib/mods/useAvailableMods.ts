@@ -8,12 +8,20 @@ type Dependency = NonNullable<WorldDefinition['spec']['dependencies']>[number];
  * - ローカル（`sourceLabel === 'local'`）: dependencies の source.type='local' に変換
  * - リモート: `baseUrl` を持つ → dependencies の source.type='url' に変換
  */
+/** index.json が持つバージョン履歴の1件。 */
+export interface ModVersionSummary {
+    version: string;
+    components: string[];
+}
+
 export interface AvailableMod {
     id: string;
     name: string;
     version: string;
     /** Component 型 (`modId:componentName`) 一覧 */
     components: string[];
+    /** 過去にビルドされた全バージョン（新しい順）。旧形式の index.json では undefined。 */
+    versions?: ModVersionSummary[];
     /** リモート（レジストリ） */
     baseUrl?: string;
     /** どこから来たか（UI 表示用。'local' ならこのインスタンスの mods-dir） */
@@ -25,6 +33,7 @@ interface RawIndexEntry {
     name?: string;
     version: string;
     components?: string[];
+    versions?: ModVersionSummary[];
     baseUrl?: string;
 }
 
@@ -49,6 +58,7 @@ async function fetchRegistry(url: string, sourceLabel: string): Promise<Availabl
                 name: e.name ?? e.id,
                 version: e.version,
                 components: e.components ?? [],
+                versions: e.versions,
                 // リモートエントリ baseUrl が無い場合は registry URL のディレクトリを採用
                 baseUrl: e.baseUrl ?? (sourceLabel === 'local' ? undefined : baseUrl),
                 sourceLabel,
@@ -114,10 +124,12 @@ export function useAvailableMods(registryUrls: string[]): {
 
 /**
  * AvailableMod から WorldDefinition の dependencies エントリを構築する。
+ * `version` を明示すればそのバージョンで pin する（Editor のバージョン選択/更新用）。
+ * 省略時、url ソースは選択時点の最新版で pin、local ソースは常に最新を追う（pinしない）。
  */
-export function modToDependency(p: AvailableMod): Dependency {
+export function modToDependency(p: AvailableMod, version?: string): Dependency {
     if (p.baseUrl) {
-        return { name: p.id, source: { type: 'url', url: p.baseUrl, version: p.version } };
+        return { name: p.id, source: { type: 'url', url: p.baseUrl, version: version ?? p.version } };
     }
-    return { name: p.id, source: { type: 'local' } };
+    return { name: p.id, source: { type: 'local', ...(version ? { version } : {}) } };
 }

@@ -309,13 +309,16 @@ export const WorldPermissionsSchema = z.object({
 export const DependencySourceSchema = z.object({
     type: z.enum(['local', 'url', 'repository']).transform((v) => (v === 'repository' ? 'local' : v)),
     url: z.string().url().optional(),
-    version: z.string().optional(),
+    // 完全一致 (x.y.z) のみ許可。省略時は `ubichill install`/`update` が常に最新版を解決する。
+    version: SemVer.optional(),
 });
+export type DependencySource = z.infer<typeof DependencySourceSchema>;
 
 export const DependencySchema = z.object({
     name: z.string(),
     source: DependencySourceSchema,
 });
+export type Dependency = z.infer<typeof DependencySchema>;
 
 // ============================================
 // World Definition（ワールド定義 CRD）

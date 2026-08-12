@@ -39,6 +39,15 @@ export function ModSelector({ definition, onUpdateSpec }: ModSelectorProps) {
         [checkedNames, dependencies, onUpdateSpec],
     );
 
+    const handleVersionChange = useCallback(
+        (p: AvailableMod, version: string) => {
+            onUpdateSpec({
+                dependencies: dependencies.map((d) => (d.name === p.id ? modToDependency(p, version) : d)),
+            });
+        },
+        [dependencies, onUpdateSpec],
+    );
+
     // 既に依存にあるが、利用可能リストに無い（未知のmod）も表示する
     const knownIds = new Set(mods.map((p) => p.id));
     const unknownDeps = dependencies.filter((d) => !knownIds.has(d.name));
@@ -56,79 +65,142 @@ export function ModSelector({ definition, onUpdateSpec }: ModSelectorProps) {
                 >
                     {mods.map((p) => {
                         const checked = checkedNames.has(p.id);
+                        const dep = dependencies.find((d) => d.name === p.id);
+                        const pinnedVersion = dep?.source.version;
+                        const hasVersionHistory = (p.versions?.length ?? 0) > 1;
+                        const isOutdated = !!pinnedVersion && pinnedVersion !== p.version;
                         return (
-                            <button
-                                type="button"
+                            <div
                                 key={`${p.sourceLabel}:${p.id}`}
-                                onClick={() => handleToggle(p)}
                                 className={css({
                                     display: 'flex',
-                                    alignItems: 'flex-start',
-                                    gap: '8px',
+                                    flexDirection: 'column',
+                                    gap: '6px',
                                     p: '10px 12px',
                                     bg: checked ? 'primarySubtle' : 'background',
                                     border: '1.5px solid',
                                     borderColor: checked ? 'primary' : 'border',
                                     borderRadius: '10px',
-                                    textAlign: 'left',
-                                    cursor: 'pointer',
                                     _hover: { borderColor: 'borderStrong' },
                                 })}
                             >
-                                <span
+                                <button
+                                    type="button"
+                                    onClick={() => handleToggle(p)}
                                     className={css({
-                                        flexShrink: 0,
-                                        width: '16px',
-                                        height: '16px',
-                                        borderRadius: '4px',
-                                        border: '2px solid',
-                                        borderColor: checked ? 'primary' : 'border',
-                                        bg: checked ? 'primary' : 'transparent',
-                                        color: 'textOnPrimary',
                                         display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        mt: '2px',
+                                        alignItems: 'flex-start',
+                                        gap: '8px',
+                                        textAlign: 'left',
+                                        cursor: 'pointer',
+                                        bg: 'transparent',
+                                        border: 'none',
+                                        p: '0',
+                                        width: '100%',
                                     })}
                                 >
-                                    {checked && (
-                                        <svg
-                                            width="10"
-                                            height="10"
-                                            viewBox="0 0 12 12"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="2"
-                                        >
-                                            <path d="M2 6l3 3 5-6" />
-                                        </svg>
-                                    )}
-                                </span>
-                                <div className={css({ flex: 1, minWidth: 0 })}>
-                                    <div
+                                    <span
                                         className={css({
-                                            fontSize: '14px',
-                                            fontWeight: '600',
-                                            color: 'text',
-                                        })}
-                                    >
-                                        {p.name}
-                                    </div>
-                                    <div className={css({ fontSize: '11px', color: 'textSubtle', mt: '2px' })}>
-                                        v{p.version} · {p.components.length} components
-                                    </div>
-                                    <div
-                                        className={css({
-                                            fontSize: '10px',
-                                            color: 'textSubtle',
+                                            flexShrink: 0,
+                                            width: '16px',
+                                            height: '16px',
+                                            borderRadius: '4px',
+                                            border: '2px solid',
+                                            borderColor: checked ? 'primary' : 'border',
+                                            bg: checked ? 'primary' : 'transparent',
+                                            color: 'textOnPrimary',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
                                             mt: '2px',
-                                            opacity: 0.8,
                                         })}
                                     >
-                                        {p.sourceLabel === 'local' ? 'ローカル' : p.sourceLabel}
+                                        {checked && (
+                                            <svg
+                                                width="10"
+                                                height="10"
+                                                viewBox="0 0 12 12"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                strokeWidth="2"
+                                            >
+                                                <path d="M2 6l3 3 5-6" />
+                                            </svg>
+                                        )}
+                                    </span>
+                                    <div className={css({ flex: 1, minWidth: 0 })}>
+                                        <div
+                                            className={css({
+                                                fontSize: '14px',
+                                                fontWeight: '600',
+                                                color: 'text',
+                                            })}
+                                        >
+                                            {p.name}
+                                        </div>
+                                        <div className={css({ fontSize: '11px', color: 'textSubtle', mt: '2px' })}>
+                                            v{p.version} · {p.components.length} components
+                                        </div>
+                                        <div
+                                            className={css({
+                                                fontSize: '10px',
+                                                color: 'textSubtle',
+                                                mt: '2px',
+                                                opacity: 0.8,
+                                            })}
+                                        >
+                                            {p.sourceLabel === 'local' ? 'ローカル' : p.sourceLabel}
+                                        </div>
                                     </div>
-                                </div>
-                            </button>
+                                </button>
+
+                                {checked && hasVersionHistory && (
+                                    <div
+                                        className={css({
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            pl: '24px',
+                                        })}
+                                    >
+                                        <select
+                                            value={pinnedVersion ?? p.version}
+                                            onChange={(e) => handleVersionChange(p, e.target.value)}
+                                            className={css({
+                                                fontSize: '11px',
+                                                p: '2px 6px',
+                                                borderRadius: '6px',
+                                                border: '1px solid',
+                                                borderColor: 'border',
+                                                bg: 'background',
+                                                color: 'text',
+                                            })}
+                                        >
+                                            {(p.versions ?? []).map((v) => (
+                                                <option key={v.version} value={v.version}>
+                                                    v{v.version}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {isOutdated && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleVersionChange(p, p.version)}
+                                                className={css({
+                                                    fontSize: '11px',
+                                                    color: 'primary',
+                                                    bg: 'transparent',
+                                                    border: 'none',
+                                                    cursor: 'pointer',
+                                                    textDecoration: 'underline',
+                                                })}
+                                            >
+                                                最新 (v{p.version}) に更新
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                         );
                     })}
                     {!loading && mods.length === 0 && (

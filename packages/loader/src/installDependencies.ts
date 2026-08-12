@@ -1,13 +1,15 @@
 /**
- * ロック生成ロジック（Node 専用）。ワールド YAML から mod 完全性ロックを生成し、
+ * 依存解決＋ロック生成ロジック（Node 専用）。ワールド YAML から mod 完全性ロックを生成し、
  * 兄弟ファイル `<world>.lock.json` に書き出す（分離方針＝YAML には埋めない）。
  *
  * 直接実行の入口は持たない（純粋なライブラリ関数）。CLI としての実行は
- * `packages/sdk/cli`（`ubichill lock` サブコマンド）に一本化されている。
+ * `packages/sdk/cli`（`ubichill install` サブコマンド）に一本化されている。
  *
- * getLockEntry の transport（mod 毎に切り替わる）:
+ * getLockEntry の transport（mod 毎に切り替わる、`createDependencyAwareLockEntryGetter` が振り分け）:
  *   - world YAML の `dependencies[].source` が `type: url` の mod        → その `url` から HTTP 取得
  *     （`ModLockEntry.baseUrl` に焼き込み、実行時 acquireMod がその mod だけ別ホストから読む）。
+ *   - `dependencies[].source.version` が pin されている mod              → 最新ポインタを経由せず
+ *     そのバージョンを直接取得する。
  *   - `--base-url` 指定時、上記以外の mod                                → その URL から HTTP 取得。
  *   - それ以外（既定 / `--mods-dir`）                                    → ローカルの mods ディレクトリ
  *     （`ubichill build` 出力）から fs 読取。
@@ -16,19 +18,31 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { type ModLockEntry, ModLockEntrySchema, WorldDefinitionSchema } from '@ubichill/shared';
 import yaml from 'yaml';
-import { buildWorldLock, collectModIds, createHttpLockEntryGetter, type LockEntryGetter } from './buildWorldLock.ts';
+import {
+    buildWorldLock,
+    collectModIds,
+    createDependencyAwareLockEntryGetter,
+    createHttpLockEntryGetter,
+    type LockEntryGetter,
+} from './buildWorldLock.ts';
 
 function argValue(argv: string[], name: string): string | undefined {
     const hit = argv.find((a) => a.startsWith(`--${name}=`));
     return hit?.slice(name.length + 3);
 }
 
-/** mods ディレクトリ（`ubichill build` 出力）から lock.json 断片を fs で読む getter。 */
+/**
+ * mods ディレクトリ（`ubichill build` 出力）から lock.json 断片を fs で読む getter。
+ * `pinnedVersion` が無ければ `mod.json`（最新ポインタ）から version を引く。
+ */
 function createFsLockEntryGetter(modsDir: string): LockEntryGetter {
-    return async (modId) => {
-        const indexPath = join(modsDir, modId, 'mod.json');
-        if (!existsSync(indexPath)) return null;
-        const { version } = JSON.parse(readFileSync(indexPath, 'utf-8')) as { version?: string };
+    return async (modId, pinnedVersion) => {
+        let version = pinnedVersion;
+        if (!version) {
+            const indexPath = join(modsDir, modId, 'mod.json');
+            if (!existsSync(indexPath)) return null;
+            version = (JSON.parse(readFileSync(indexPath, 'utf-8')) as { version?: string }).version;
+        }
         if (!version) return null;
         const lockPath = join(modsDir, modId, `v${version}`, 'lock.json');
         if (!existsSync(lockPath)) return null;
@@ -38,15 +52,16 @@ function createFsLockEntryGetter(modsDir: string): LockEntryGetter {
 }
 
 /**
- * `argv`（サブコマンド名を除いた残り引数）からロックを生成する。
+ * `argv`（サブコマンド名を除いた残り引数）から依存を解決しロックを生成する。
  * 使い方: `<world.yaml> [--mods-dir=<dir>] [--base-url=<url>] [--out=<path>]`。
+ * `dependencies[].source.version` が pin されていればそのバージョンを固定して取得する。
  * `--mods-dir` 既定は `process.cwd()` 直下の `mods`（Host固有パスをライブラリ既定にしない。
  * このリポジトリでの実運用パス `packages/frontend/public/mods` は呼び出し側が明示指定する）。
  */
-export async function runGenLock(argv: string[]): Promise<void> {
+export async function runInstall(argv: string[]): Promise<void> {
     const worldPath = argv.find((a) => !a.startsWith('--'));
     if (!worldPath) {
-        throw new Error('usage: ubichill lock <world.yaml> [--mods-dir=<dir>] [--base-url=<url>] [--out=<path>]');
+        throw new Error('usage: ubichill install <world.yaml> [--mods-dir=<dir>] [--base-url=<url>] [--out=<path>]');
     }
 
     const def = WorldDefinitionSchema.parse(yaml.parse(readFileSync(worldPath, 'utf-8')));
@@ -56,20 +71,8 @@ export async function runGenLock(argv: string[]): Promise<void> {
     const modsDir = argValue(argv, 'mods-dir')
         ? resolve(argValue(argv, 'mods-dir') as string)
         : join(process.cwd(), 'mods');
-    const defaultGetLockEntry = baseUrl ? createHttpLockEntryGetter(baseUrl) : createFsLockEntryGetter(modsDir);
-
-    // dependencies[].source.type === 'url' の mod だけ、そのURLから個別に取得し baseUrl を焼き込む。
-    const urlSourceByModId = new Map(
-        (def.spec.dependencies ?? [])
-            .filter((d) => d.source.type === 'url' && d.source.url)
-            .map((d) => [d.name, d.source.url as string]),
-    );
-    const getLockEntry: LockEntryGetter = async (modId) => {
-        const modUrl = urlSourceByModId.get(modId);
-        if (!modUrl) return defaultGetLockEntry(modId);
-        const entry = await createHttpLockEntryGetter(modUrl)(modId);
-        return entry ? { ...entry, baseUrl: modUrl } : null;
-    };
+    const fallbackGetter = baseUrl ? createHttpLockEntryGetter(baseUrl) : createFsLockEntryGetter(modsDir);
+    const getLockEntry = createDependencyAwareLockEntryGetter(def.spec.dependencies, fallbackGetter);
 
     const lock = await buildWorldLock(modIds, getLockEntry);
 
