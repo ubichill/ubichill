@@ -50,7 +50,7 @@ export function UsedModsList({ dependencies }: UsedModsListProps) {
                         })}
                     >
                         {d.source.type === 'local' ? 'ローカル' : d.source.url}
-                        {d.source.version ? ` · v${d.source.version}` : ''}
+                        {d.source.version !== 'latest' ? ` · v${d.source.version}` : ''}
                     </div>
                 </div>
             ))}

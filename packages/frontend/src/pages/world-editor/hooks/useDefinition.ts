@@ -25,10 +25,14 @@ function createInitialDefinition(): WorldDefinition {
                 worldSize: { width: 2000, height: 1500 },
             },
             dependencies: [
-                { name: 'pen', source: { type: 'local' } },
+                { name: 'pen', source: { type: 'local', version: 'latest' } },
                 {
                     name: 'video-player',
-                    source: { type: 'url', url: 'https://p-nasimonan.github.io/ubichill-videoplayer' },
+                    source: {
+                        type: 'url',
+                        url: 'https://p-nasimonan.github.io/ubichill-videoplayer',
+                        version: 'latest',
+                    },
                 },
             ],
             initialEntities: [],

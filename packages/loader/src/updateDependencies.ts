@@ -3,7 +3,7 @@
  * mod について現行最新 version を調べ、異なれば YAML を書き換えてから
  * ロックを再生成する（`ubichill update`）。
  *
- * version を pin していない mod（常に最新を追う設定）は YAML を書き換えず、
+ * `source.version: 'latest'`（既定・常に最新を追う）の mod は YAML を書き換えず、
  * ロック再生成だけ行う（＝lock 断片が現行最新のもので上書きされる）。
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -51,7 +51,7 @@ export async function runUpdate(argv: string[]): Promise<void> {
     const bumps: string[] = [];
 
     for (const dep of targets) {
-        if (!dep.source.version) continue; // 常に最新を追う設定は書き換え不要
+        if (dep.source.version === 'latest') continue; // 常に最新を追う設定は書き換え不要
         const latest =
             dep.source.type === 'url' && dep.source.url
                 ? await resolveLatestVersion(dep.source.url, dep.name)

@@ -138,7 +138,7 @@ describe('createDependencyAwareLockEntryGetter', () => {
             'https://cdn.example.test/video-player/mod.json': { id: 'video-player', version: '2.0.0' },
             'https://cdn.example.test/video-player/v2.0.0/lock.json': lockEntry('video-player'),
         });
-        const dependencies = [dep('video-player', { type: 'url', url: 'https://cdn.example.test' })];
+        const dependencies = [dep('video-player', { type: 'url', url: 'https://cdn.example.test', version: 'latest' })];
         const fallback = async () => null;
         const getter = createDependencyAwareLockEntryGetter(dependencies, fallback, f);
 
@@ -157,6 +157,19 @@ describe('createDependencyAwareLockEntryGetter', () => {
 
         await getter('pen');
         expect(seen).toEqual(['1.2.3']);
+    });
+
+    it("source.version: 'latest'（既定）は pin なしとして fallbackGetter に委譲する", async () => {
+        const dependencies = [dep('pen', { type: 'local', version: 'latest' })];
+        const seen: Array<string | undefined> = [];
+        const fallback = async (id: string, version?: string) => {
+            seen.push(version);
+            return id === 'pen' ? lockEntry('pen') : null;
+        };
+        const getter = createDependencyAwareLockEntryGetter(dependencies, fallback);
+
+        await getter('pen');
+        expect(seen).toEqual([undefined]);
     });
 
     it('依存に載っていない mod は fallbackGetter にそのまま委譲する（version 未指定）', async () => {

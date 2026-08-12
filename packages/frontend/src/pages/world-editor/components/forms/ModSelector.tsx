@@ -66,9 +66,9 @@ export function ModSelector({ definition, onUpdateSpec }: ModSelectorProps) {
                     {mods.map((p) => {
                         const checked = checkedNames.has(p.id);
                         const dep = dependencies.find((d) => d.name === p.id);
-                        const pinnedVersion = dep?.source.version;
-                        const hasVersionHistory = (p.versions?.length ?? 0) > 1;
-                        const isOutdated = !!pinnedVersion && pinnedVersion !== p.version;
+                        // 'latest'（既定・常に最新を追う）か、pin された具体的なバージョンかのどちらか。
+                        const pinnedVersion = dep?.source.version ?? 'latest';
+                        const isOutdated = pinnedVersion !== 'latest' && pinnedVersion !== p.version;
                         return (
                             <div
                                 key={`${p.sourceLabel}:${p.id}`}
@@ -154,7 +154,7 @@ export function ModSelector({ definition, onUpdateSpec }: ModSelectorProps) {
                                     </div>
                                 </button>
 
-                                {checked && hasVersionHistory && (
+                                {checked && (
                                     <div
                                         className={css({
                                             display: 'flex',
@@ -164,7 +164,7 @@ export function ModSelector({ definition, onUpdateSpec }: ModSelectorProps) {
                                         })}
                                     >
                                         <select
-                                            value={pinnedVersion ?? p.version}
+                                            value={pinnedVersion}
                                             onChange={(e) => handleVersionChange(p, e.target.value)}
                                             className={css({
                                                 fontSize: '11px',
@@ -176,6 +176,7 @@ export function ModSelector({ definition, onUpdateSpec }: ModSelectorProps) {
                                                 color: 'text',
                                             })}
                                         >
+                                            <option value="latest">latest（自動追従）</option>
                                             {(p.versions ?? []).map((v) => (
                                                 <option key={v.version} value={v.version}>
                                                     v{v.version}

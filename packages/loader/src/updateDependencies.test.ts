@@ -94,6 +94,15 @@ describe('runUpdate', () => {
         expect(readFileSync(worldPath, 'utf-8')).toBe(before);
     });
 
+    it("source.version: 'latest'（常に最新を追う）は書き換え対象にしない", async () => {
+        writeWorld(worldPath, 'latest');
+        const before = readFileSync(worldPath, 'utf-8');
+
+        await runUpdate([worldPath, `--mods-dir=${modsDir}`]);
+
+        expect(readFileSync(worldPath, 'utf-8')).toBe(before);
+    });
+
     it('modName を指定すると、そのmod以外は更新対象にしない', async () => {
         // pen 以外の未 pin 依存を追加しても pen だけが対象になることを、対象外指定で確認する
         await runUpdate([worldPath, 'other-mod', `--mods-dir=${modsDir}`]);

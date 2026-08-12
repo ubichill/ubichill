@@ -68,7 +68,8 @@ export async function resolveLatestVersion(
 /**
  * world の `dependencies[].source` を尊重する {@link LockEntryGetter} ラッパー。
  *  - `type: 'url'` の mod は `source.url` から個別に取得し `baseUrl` を焼き込む。
- *  - `source.version` が pin されていればそのバージョンを直接取得する（最新ポインタを経由しない）。
+ *  - `source.version` が具体的な値（'latest' 以外）で pin されていればそのバージョンを直接取得する
+ *    （最新ポインタを経由しない）。'latest'（省略時の既定）は pin なしとして扱う。
  *  - それ以外は `fallbackGetter`（既定の transport）にそのまま委譲する。
  *
  * CLI(`installDependencies.ts`) と frontend(`buildWorldLock.ts`) の重複していたロジックを一本化。
@@ -81,10 +82,11 @@ export function createDependencyAwareLockEntryGetter(
     const byModId = new Map((dependencies ?? []).map((d) => [d.name, d.source]));
     return async (modId) => {
         const source = byModId.get(modId);
+        const pinnedVersion = source && source.version !== 'latest' ? source.version : undefined;
         if (source?.type === 'url' && source.url) {
-            const entry = await createHttpLockEntryGetter(source.url, fetchImpl)(modId, source.version);
+            const entry = await createHttpLockEntryGetter(source.url, fetchImpl)(modId, pinnedVersion);
             return entry ? { ...entry, baseUrl: source.url } : null;
         }
-        return fallbackGetter(modId, source?.version);
+        return fallbackGetter(modId, pinnedVersion);
     };
 }

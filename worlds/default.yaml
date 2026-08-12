@@ -16,9 +16,11 @@ spec:
       source:
         type: url
         url: https://p-nasimonan.github.io/ubichill-videoplayer
+        version: latest
     - name: pen
       source:
         type: local
+        version: latest
   initialEntities:
     - id: video-player
       tags: []
