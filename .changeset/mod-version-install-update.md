@@ -8,4 +8,4 @@
 - `ubichill update <world.yaml> [<modName>]`: pin済みバージョンが古ければ最新へ world.yaml を書き換え（コメント/フォーマットは保持）、lock を再生成する。
 - `ubichill build` が出力する `index.json` に、過去にビルドした全バージョンの履歴（`versions`）を追加した（トップレベルの `id`/`name`/`version`/`components` は従来通り現行最新のまま）。
 
-`DependencySourceSchema.version` は `SemVer`（`x.y.z`）で検証されるようになった（`^`/`~` などのレンジ指定は非対応）。
+`DependencySourceSchema.version` は `SemVer`（`x.y.z`）または明示的な `'latest'` のどちらかで検証されるようになった（`^`/`~` などのレンジ指定は非対応）。省略時も解決後は必ず `'latest'` になる（zod default）ため、「省略＝常に最新を追う」という暗黙の意味を読み手が推測する必要がない。
