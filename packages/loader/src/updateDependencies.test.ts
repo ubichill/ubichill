@@ -103,6 +103,17 @@ describe('runUpdate', () => {
         expect(readFileSync(worldPath, 'utf-8')).toBe(before);
     });
 
+    it('--mods-dir が world.yaml より前に置かれても、lock 再生成に引き継がれる', async () => {
+        const outPath = worldPath.replace(/\.ya?ml$/i, '.lock.json');
+        // 引数の順序を入れ替える（フラグが先）。runUpdate→runInstall の引き継ぎで
+        // 落ちていないか（--mods-dir が失われて既定の process.cwd()/mods を見に行き
+        // pen が見つからなくならないか）を確認する。
+        await runUpdate([`--mods-dir=${modsDir}`, worldPath]);
+
+        const lock = JSON.parse(readFileSync(outPath, 'utf-8')) as ModLock;
+        expect(lock.mods.pen.version).toBe('2.0.0');
+    });
+
     it('modName を指定すると、そのmod以外は更新対象にしない', async () => {
         // pen 以外の未 pin 依存を追加しても pen だけが対象になることを、対象外指定で確認する
         await runUpdate([worldPath, 'other-mod', `--mods-dir=${modsDir}`]);

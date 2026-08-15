@@ -183,4 +183,18 @@ describe('createDependencyAwareLockEntryGetter', () => {
         await getter('pen');
         expect(seen).toEqual([undefined]);
     });
+
+    it('返す getter 自体が受け取った pinnedVersionOverride を優先する（合成用途で無視されない）', async () => {
+        const dependencies = [dep('pen', { type: 'local', version: 'latest' })];
+        const seen: Array<string | undefined> = [];
+        const fallback = async (id: string, version?: string) => {
+            seen.push(version);
+            return id === 'pen' ? lockEntry('pen') : null;
+        };
+        const getter = createDependencyAwareLockEntryGetter(dependencies, fallback);
+
+        // dependencies 側は 'latest'（pin なし）だが、呼び出し側が明示的に override すればそちらが勝つ
+        await getter('pen', '9.9.9');
+        expect(seen).toEqual(['9.9.9']);
+    });
 });

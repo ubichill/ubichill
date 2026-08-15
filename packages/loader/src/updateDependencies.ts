@@ -72,5 +72,7 @@ export async function runUpdate(argv: string[]): Promise<void> {
 
     // world.yaml の内容に関わらず lock は常に再生成する
     // （version 未 pin の mod の lock 断片も最新へ更新するため）。
-    await runInstall([worldPath, ...argv.slice(1).filter((a) => a.startsWith('--'))]);
+    // argv は既にサブコマンド名を除いた引数列なので slice せず、フラグをそのまま引き継ぐ
+    // （--mods-dir 等が world.yaml より前に置かれても取りこぼさない）。
+    await runInstall([worldPath, ...argv.filter((a) => a.startsWith('--'))]);
 }

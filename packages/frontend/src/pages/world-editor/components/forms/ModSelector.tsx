@@ -164,6 +164,7 @@ export function ModSelector({ definition, onUpdateSpec }: ModSelectorProps) {
                                         })}
                                     >
                                         <select
+                                            aria-label={`バージョン (${p.name})`}
                                             value={pinnedVersion}
                                             onChange={(e) => handleVersionChange(p, e.target.value)}
                                             className={css({

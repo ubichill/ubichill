@@ -80,9 +80,10 @@ export function createDependencyAwareLockEntryGetter(
     fetchImpl?: FetchLike,
 ): LockEntryGetter {
     const byModId = new Map((dependencies ?? []).map((d) => [d.name, d.source]));
-    return async (modId) => {
+    return async (modId, pinnedVersionOverride) => {
         const source = byModId.get(modId);
-        const pinnedVersion = source && source.version !== 'latest' ? source.version : undefined;
+        const pinnedVersion =
+            pinnedVersionOverride ?? (source && source.version !== 'latest' ? source.version : undefined);
         if (source?.type === 'url' && source.url) {
             const entry = await createHttpLockEntryGetter(source.url, fetchImpl)(modId, pinnedVersion);
             return entry ? { ...entry, baseUrl: source.url } : null;
