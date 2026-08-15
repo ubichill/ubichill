@@ -26,6 +26,7 @@ import { useMobilePanels } from './hooks/useMobilePanels';
 import { useWorldEditorApi } from './hooks/useWorldEditorApi';
 import { SNAP_STEP } from './lib/dragHelpers';
 import { flattenForStage, getEntityAt, updateEntityAt } from './lib/entityTree';
+import { editorButton } from './recipes/button';
 
 export function WorldEditorPage() {
     const { worldId } = useParams<{ worldId?: string }>();
@@ -80,6 +81,31 @@ export function WorldEditorPage() {
         modals.applyControlPanel();
         void editorApi.save(draft);
     }, [modals, editorApi]);
+
+    // Cmd/Ctrl+S での保存: コントロールパネルが開いていれば draft を、閉じていれば
+    // entity 編集等で既に更新済みの definition をそのまま保存する。
+    const handleSave = useCallback(() => {
+        if (modals.open) {
+            handlePublish();
+            return;
+        }
+        if (!definition.spec.displayName.trim()) {
+            setError('表示名は必須です');
+            return;
+        }
+        void editorApi.save();
+    }, [modals.open, handlePublish, definition, editorApi]);
+
+    useEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 's') return;
+            e.preventDefault();
+            if (editorApi.saving) return;
+            handleSave();
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [handleSave, editorApi.saving]);
 
     if (isPending || !session) return <CenteredMessage text="読み込み中..." />;
     if (loading) return <CenteredMessage text="ワールドを読み込み中..." />;
@@ -251,15 +277,30 @@ export function WorldEditorPage() {
                 title="コントロールパネル"
                 width="960px"
                 footer={
-                    <>
-                        <ModalSecondaryButton onClick={modals.closeControlPanel}>キャンセル</ModalSecondaryButton>
-                        <ModalPrimaryButton
-                            onClick={handlePublish}
-                            disabled={editorApi.saving || !modals.draft?.spec.displayName.trim()}
-                        >
-                            {editorApi.saving ? '保存中...' : isEdit ? '保存' : '作成'}
-                        </ModalPrimaryButton>
-                    </>
+                    <div className={css({ display: 'flex', width: '100%', justifyContent: 'space-between' })}>
+                        <div>
+                            {isEdit && !dirty && (
+                                <button
+                                    type="button"
+                                    onClick={editorApi.createInstance}
+                                    disabled={editorApi.saving}
+                                    title="このワールドで新しいインスタンスを作って参加する"
+                                    className={editorButton({ intent: 'success' })}
+                                >
+                                    ▶ インスタンス作成
+                                </button>
+                            )}
+                        </div>
+                        <div className={css({ display: 'flex', gap: '8px' })}>
+                            <ModalSecondaryButton onClick={modals.closeControlPanel}>キャンセル</ModalSecondaryButton>
+                            <ModalPrimaryButton
+                                onClick={handlePublish}
+                                disabled={editorApi.saving || !modals.draft?.spec.displayName.trim()}
+                            >
+                                {editorApi.saving ? '保存中...' : isEdit ? '保存' : '作成'}
+                            </ModalPrimaryButton>
+                        </div>
+                    </div>
                 }
             >
                 <ControlPanelTabs active={modals.activeTab} onChange={modals.switchTab} />
