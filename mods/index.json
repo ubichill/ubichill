@@ -7,6 +7,16 @@
       "pen:canvas",
       "pen:pen",
       "pen:tray"
+    ],
+    "versions": [
+      {
+        "version": "2.0.0",
+        "components": [
+          "pen:canvas",
+          "pen:pen",
+          "pen:tray"
+        ]
+      }
     ]
   }
 ]
