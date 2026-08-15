@@ -24,50 +24,45 @@ export function useWorldEditorApi({ isEdit, worldId, definition, onSavedYamlChan
     const navigate = useNavigate();
     const [saving, setSaving] = useState(false);
 
-    // overrideDefinition: コントロールパネルで draft を適用した直後は setDefinition の反映が
-    // 次の render まで届かないため、保存対象を明示的に渡せるようにする（React state の
-    // 非同期更新タイミングに依存しないため）。
-    const save = useCallback(
-        async (overrideDefinition?: WorldDefinition) => {
-            const target = overrideDefinition ?? definition;
-            setSaving(true);
-            onError('');
-            try {
-                // 保存時に mod 完全性ロックを計算する。lock は人間が書く YAML には埋めず、
-                // body の別フィールドで送ってサーバ側の別カラムに保存する（YAML はクリーンに保つ）。
-                // 外部公開時、そのワールドを読む側は兄弟エンドポイントの lock と hash 照合して
-                // 差し替え mod の実行を拒否できる（配布者を信頼しない）。
-                const lock = await buildWorldLock(target);
-                const text = yaml.stringify(target);
-                const url =
-                    isEdit && worldId ? `${API_BASE}/api/v1/worlds/${worldId}/yaml` : `${API_BASE}/api/v1/worlds/yaml`;
-                const method = isEdit ? 'PUT' : 'POST';
-                const res = await fetch(url, {
-                    method,
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'include',
-                    body: JSON.stringify({ yaml: text, lock }),
-                });
-                if (!res.ok) {
-                    const data = (await res.json().catch(() => ({}))) as { error?: string };
-                    throw new Error(data.error ?? `HTTP ${res.status}`);
-                }
-                // 新規作成: サーバー生成の worldId で編集画面に遷移して以降は dirty 解消できる状態に
-                if (!isEdit) {
-                    const created = (await res.json()) as { id: string };
-                    navigate(`/world/${created.id}/edit`, { replace: true });
-                    return;
-                }
-                // 編集モード: dirty=false にするため savedYaml を更新
-                onSavedYamlChange(text);
-            } catch (e) {
-                onError(e instanceof Error ? e.message : '保存失敗');
-            } finally {
-                setSaving(false);
+    const save = useCallback(async (): Promise<boolean> => {
+        setSaving(true);
+        onError('');
+        try {
+            // 保存時に mod 完全性ロックを計算する。lock は人間が書く YAML には埋めず、
+            // body の別フィールドで送ってサーバ側の別カラムに保存する（YAML はクリーンに保つ）。
+            // 外部公開時、そのワールドを読む側は兄弟エンドポイントの lock と hash 照合して
+            // 差し替え mod の実行を拒否できる（配布者を信頼しない）。
+            const lock = await buildWorldLock(definition);
+            const text = yaml.stringify(definition);
+            const url =
+                isEdit && worldId ? `${API_BASE}/api/v1/worlds/${worldId}/yaml` : `${API_BASE}/api/v1/worlds/yaml`;
+            const method = isEdit ? 'PUT' : 'POST';
+            const res = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ yaml: text, lock }),
+            });
+            if (!res.ok) {
+                const data = (await res.json().catch(() => ({}))) as { error?: string };
+                throw new Error(data.error ?? `HTTP ${res.status}`);
             }
-        },
-        [definition, isEdit, worldId, navigate, onSavedYamlChange, onError],
-    );
+            // 新規作成: サーバー生成の worldId で編集画面に遷移して以降は dirty 解消できる状態に
+            if (!isEdit) {
+                const created = (await res.json()) as { id: string };
+                navigate(`/world/${created.id}/edit`, { replace: true });
+                return true;
+            }
+            // 編集モード: dirty=false にするため savedYaml を更新
+            onSavedYamlChange(text);
+            return true;
+        } catch (e) {
+            onError(e instanceof Error ? e.message : '保存失敗');
+            return false;
+        } finally {
+            setSaving(false);
+        }
+    }, [definition, isEdit, worldId, navigate, onSavedYamlChange, onError]);
 
     const remove = useCallback(async () => {
         if (!worldId) return;

@@ -1,20 +1,29 @@
 import { useCallback, useState } from 'react';
-import { useNavigate } from 'react-router';
 import { css } from '@/styled-system/css';
 import { editorButton } from '../recipes/button';
 
 interface EditorHeaderProps {
     title: string;
+    /** 保存されていない変更があるか。true の間はタイトルに * を表示する */
+    dirty: boolean;
     /** ON のときドラッグ / リサイズをグリッド + ワールド範囲で snap/clamp する */
     snapEnabled: boolean;
     onToggleSnap: () => void;
-    /** コントロールパネル（ワールド公開・mod管理・YAML）を開く。削除はコントロールパネル最下部のDanger Zoneへ移した */
+    /** 戻るボタン押下時（未保存時は呼び出し側で確認モーダルを出す） */
+    onBack: () => void;
+    /** コントロールパネル（ワールド情報・mod管理・YAML）を開く。削除はコントロールパネル最下部のDanger Zoneへ移した */
     onOpenControlPanel: () => void;
 }
 
 /** エディタ画面のトップバー。Unity 風: 左に戻る・タイトル、右にアクション群。 */
-export function EditorHeader({ title, snapEnabled, onToggleSnap, onOpenControlPanel }: EditorHeaderProps) {
-    const navigate = useNavigate();
+export function EditorHeader({
+    title,
+    dirty,
+    snapEnabled,
+    onToggleSnap,
+    onBack,
+    onOpenControlPanel,
+}: EditorHeaderProps) {
     const [menuOpen, setMenuOpen] = useState(false);
 
     const closeMenu = useCallback(() => setMenuOpen(false), []);
@@ -39,7 +48,7 @@ export function EditorHeader({ title, snapEnabled, onToggleSnap, onOpenControlPa
         >
             <button
                 type="button"
-                onClick={() => navigate(-1)}
+                onClick={onBack}
                 aria-label="戻る"
                 title="戻る"
                 className={editorButton({ intent: 'icon', size: 'iconSm' })}
@@ -59,6 +68,11 @@ export function EditorHeader({ title, snapEnabled, onToggleSnap, onOpenControlPa
                 })}
             >
                 {title}
+                {dirty && (
+                    <span title="未保存の変更があります" className={css({ color: 'primaryHighlight', ml: '2px' })}>
+                        *
+                    </span>
+                )}
             </div>
             <div
                 className={css({

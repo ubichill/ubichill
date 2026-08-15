@@ -2,7 +2,7 @@ import { type WorldDefinition, WorldDefinitionSchema } from '@ubichill/shared';
 import { useCallback, useState } from 'react';
 import yaml from 'yaml';
 
-export type ControlPanelTab = 'info' | 'publish' | 'mods' | 'yaml';
+export type ControlPanelTab = 'info' | 'mods' | 'yaml';
 
 interface UseEditorModalsArgs {
     definition: WorldDefinition;
@@ -14,7 +14,7 @@ interface UseEditorModalsArgs {
  * コントロールパネルの開閉・タブ・YAML バッファを集約する hook。
  *
  * 設計:
- * - フォーム（ワールド情報 / 公開設定 / mod管理）は親の `definition` を直接更新する。
+ * - フォーム（ワールド情報 / mod管理）は親の `definition` を直接更新する。
  *   この hook は staging draft を持たない（閉じても破棄される編集が無い）。
  * - サーバーへの保存はこの hook の責務ではなく、呼び出し元（WorldEditorPage）が
  *   「閉じる」や「Cmd/Ctrl+S」で `useWorldEditorApi.save` を呼ぶ。

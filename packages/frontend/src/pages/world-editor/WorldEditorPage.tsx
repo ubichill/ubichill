@@ -9,7 +9,6 @@ import { EditorHeader } from './components/EditorHeader';
 import { EditorStage } from './components/EditorStage';
 import { ModSelector } from './components/forms/ModSelector';
 import { WorldInfoForm } from './components/forms/WorldInfoForm';
-import { WorldPermissionsForm } from './components/forms/WorldPermissionsForm';
 import { YamlEditorForm } from './components/forms/YamlEditorForm';
 import { EditorHierarchy } from './components/hierarchy/EditorHierarchy';
 import { EntityInspector } from './components/inspector/EntityInspector';
@@ -38,6 +37,7 @@ export function WorldEditorPage() {
     // ── ページ全体で共有する error trough ──────────────────────────
     // useDefinition / useWorldEditorApi 両方から書き込まれ、画面下のトーストで表示する
     const [error, setError] = useState('');
+    const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
 
     const { definition, setDefinition, setSavedYaml, loading, dirty, updateEntities } = useDefinition({
         isEdit,
@@ -71,17 +71,21 @@ export function WorldEditorPage() {
     );
 
     // サーバーへ保存する共通処理。フォームが definition を直接更新しているため draft を介さず保存する。
-    const handleSave = useCallback(() => {
+    const persist = useCallback(async (): Promise<boolean> => {
         if (modals.activeTab === 'yaml' && modals.yamlError) {
             setError(modals.yamlError);
-            return;
+            return false;
         }
         if (!definition.spec.displayName.trim()) {
             setError('表示名は必須です');
-            return;
+            return false;
         }
-        void editorApi.save();
+        return editorApi.save();
     }, [definition, editorApi, modals.activeTab, modals.yamlError]);
+
+    const handleSave = useCallback(() => {
+        void persist();
+    }, [persist]);
 
     // コントロールパネルを閉じる。編集モードでは未保存の変更を保存してから閉じる。
     // 新規作成時は閉じるだけで破棄する（作成は「作成」ボタン or Cmd/Ctrl+S）。
@@ -95,6 +99,23 @@ export function WorldEditorPage() {
         }
         modals.closeControlPanel();
     }, [isEdit, dirty, editorApi, modals.activeTab, modals.yamlError, modals.closeControlPanel]);
+
+    // 戻るボタン。未保存なら確認モーダルを出す。
+    const handleBack = useCallback(() => {
+        if (dirty) setLeaveConfirmOpen(true);
+        else navigate(-1);
+    }, [dirty, navigate]);
+
+    const handleDiscardAndLeave = useCallback(() => {
+        setLeaveConfirmOpen(false);
+        navigate(-1);
+    }, [navigate]);
+
+    const handleSaveAndLeave = useCallback(async () => {
+        setLeaveConfirmOpen(false);
+        const ok = await persist();
+        if (ok && isEdit) navigate(-1);
+    }, [persist, isEdit, navigate]);
 
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
@@ -137,8 +158,10 @@ export function WorldEditorPage() {
             <div className={css({ gridArea: 'header' })}>
                 <EditorHeader
                     title={title}
+                    dirty={dirty}
                     snapEnabled={mobile.snapEnabled}
                     onToggleSnap={mobile.toggleSnap}
+                    onBack={handleBack}
                     onOpenControlPanel={() => modals.openControlPanel()}
                 />
             </div>
@@ -309,16 +332,6 @@ export function WorldEditorPage() {
             >
                 <ControlPanelTabs active={modals.activeTab} onChange={modals.switchTab} />
                 {modals.activeTab === 'info' && <WorldInfoForm definition={definition} onChange={setDefinition} />}
-                {modals.activeTab === 'publish' && (
-                    <WorldPermissionsForm
-                        permissions={
-                            definition.spec.permissions ?? { allowGuestCreate: false, allowGuestDelete: false }
-                        }
-                        onChange={(next) =>
-                            setDefinition((prev) => ({ ...prev, spec: { ...prev.spec, permissions: next } }))
-                        }
-                    />
-                )}
                 {modals.activeTab === 'mods' && (
                     <ModSelector
                         dependencies={definition.spec.dependencies ?? []}
@@ -366,6 +379,44 @@ export function WorldEditorPage() {
                         </PanelSection>
                     </div>
                 )}
+            </Modal>
+
+            <Modal
+                open={leaveConfirmOpen}
+                onClose={() => setLeaveConfirmOpen(false)}
+                title="未保存の変更があります"
+                width="440px"
+                footer={
+                    <div className={css({ display: 'flex', gap: '8px', width: '100%' })}>
+                        <button
+                            type="button"
+                            onClick={() => setLeaveConfirmOpen(false)}
+                            className={editorButton({ intent: 'secondary' })}
+                        >
+                            キャンセル
+                        </button>
+                        <div className={css({ marginLeft: 'auto', display: 'flex', gap: '8px' })}>
+                            <button
+                                type="button"
+                                onClick={handleDiscardAndLeave}
+                                className={editorButton({ intent: 'danger' })}
+                            >
+                                破棄して戻る
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleSaveAndLeave}
+                                className={editorButton({ intent: 'primary' })}
+                            >
+                                {isEdit ? '保存して戻る' : '作成'}
+                            </button>
+                        </div>
+                    </div>
+                }
+            >
+                <p className={css({ fontSize: '14px', color: 'textMuted', lineHeight: '1.6' })}>
+                    変更が保存されていません。保存せずに戻ると変更が失われます。
+                </p>
             </Modal>
         </div>
     );
