@@ -2,7 +2,8 @@ import { css } from '@/styled-system/css';
 import type { ControlPanelTab } from '../hooks/useEditorModals';
 
 const TABS: { id: ControlPanelTab; label: string }[] = [
-    { id: 'publish', label: 'ワールド公開' },
+    { id: 'info', label: 'ワールド情報' },
+    { id: 'publish', label: '公開設定' },
     { id: 'mods', label: 'mod管理' },
     { id: 'yaml', label: 'YAML' },
 ];

@@ -1,7 +1,4 @@
-import type { WorldDefinition } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
-
-type Dependency = NonNullable<WorldDefinition['spec']['dependencies']>[number];
 
 /**
  * 利用可能modの 1 エントリ。
@@ -120,17 +117,4 @@ export function useAvailableMods(registryUrls: string[]): {
     }, [urlsKey]);
 
     return { mods, loading };
-}
-
-/**
- * AvailableMod から WorldDefinition の dependencies エントリを構築する。
- * `version` を明示すればそのバージョンで pin する（Editor のバージョン選択/更新用）。
- * 省略時は 'latest'（常に最新を追う）を明示的に書く。「省略＝最新追従」という暗黙の意味を
- * YAML 上に残さないため、常にどちらかの値を持たせる。
- */
-export function modToDependency(p: AvailableMod, version: string = 'latest'): Dependency {
-    if (p.baseUrl) {
-        return { name: p.id, source: { type: 'url', url: p.baseUrl, version } };
-    }
-    return { name: p.id, source: { type: 'local', version } };
 }

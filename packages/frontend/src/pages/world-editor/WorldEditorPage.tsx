@@ -8,7 +8,8 @@ import { DockSlot } from './components/DockSlot';
 import { EditorHeader } from './components/EditorHeader';
 import { EditorStage } from './components/EditorStage';
 import { ModSelector } from './components/forms/ModSelector';
-import { WorldPublishForm } from './components/forms/WorldPublishForm';
+import { WorldInfoForm } from './components/forms/WorldInfoForm';
+import { WorldPermissionsForm } from './components/forms/WorldPermissionsForm';
 import { YamlEditorForm } from './components/forms/YamlEditorForm';
 import { EditorHierarchy } from './components/hierarchy/EditorHierarchy';
 import { EntityInspector } from './components/inspector/EntityInspector';
@@ -69,24 +70,10 @@ export function WorldEditorPage() {
         [definition.spec.initialEntities],
     );
 
-    // コントロールパネルの「作成/保存」: draft を definition へ適用しつつ、その draft を
-    // そのまま保存対象として渡す（setDefinition の反映は次の render まで届かないため）。
-    const handlePublish = useCallback(() => {
-        const draft = modals.draft;
-        if (!draft) return;
-        if (!draft.spec.displayName.trim()) {
-            setError('表示名は必須です');
-            return;
-        }
-        modals.applyControlPanel();
-        void editorApi.save(draft);
-    }, [modals, editorApi]);
-
-    // Cmd/Ctrl+S での保存: コントロールパネルが開いていれば draft を、閉じていれば
-    // entity 編集等で既に更新済みの definition をそのまま保存する。
+    // サーバーへ保存する共通処理。フォームが definition を直接更新しているため draft を介さず保存する。
     const handleSave = useCallback(() => {
-        if (modals.open) {
-            handlePublish();
+        if (modals.activeTab === 'yaml' && modals.yamlError) {
+            setError(modals.yamlError);
             return;
         }
         if (!definition.spec.displayName.trim()) {
@@ -94,7 +81,20 @@ export function WorldEditorPage() {
             return;
         }
         void editorApi.save();
-    }, [modals.open, handlePublish, definition, editorApi]);
+    }, [definition, editorApi, modals.activeTab, modals.yamlError]);
+
+    // コントロールパネルを閉じる。編集モードでは未保存の変更を保存してから閉じる。
+    // 新規作成時は閉じるだけで破棄する（作成は「作成」ボタン or Cmd/Ctrl+S）。
+    const handleCloseControlPanel = useCallback(() => {
+        if (isEdit) {
+            if (modals.activeTab === 'yaml' && modals.yamlError) {
+                setError(modals.yamlError);
+                return;
+            }
+            if (dirty) void editorApi.save();
+        }
+        modals.closeControlPanel();
+    }, [isEdit, dirty, editorApi, modals.activeTab, modals.yamlError, modals.closeControlPanel]);
 
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
@@ -137,13 +137,9 @@ export function WorldEditorPage() {
             <div className={css({ gridArea: 'header' })}>
                 <EditorHeader
                     title={title}
-                    isEdit={isEdit}
-                    saving={editorApi.saving}
-                    dirty={dirty}
                     snapEnabled={mobile.snapEnabled}
                     onToggleSnap={mobile.toggleSnap}
                     onOpenControlPanel={() => modals.openControlPanel()}
-                    onCreateInstance={isEdit ? editorApi.createInstance : undefined}
                 />
             </div>
 
@@ -273,9 +269,10 @@ export function WorldEditorPage() {
 
             <Modal
                 open={modals.open}
-                onClose={modals.closeControlPanel}
+                onClose={handleCloseControlPanel}
                 title="コントロールパネル"
                 width="960px"
+                height="680px"
                 footer={
                     <div className={css({ display: 'flex', width: '100%', justifyContent: 'space-between' })}>
                         <div>
@@ -292,28 +289,42 @@ export function WorldEditorPage() {
                             )}
                         </div>
                         <div className={css({ display: 'flex', gap: '8px' })}>
-                            <ModalSecondaryButton onClick={modals.closeControlPanel}>キャンセル</ModalSecondaryButton>
-                            <ModalPrimaryButton
-                                onClick={handlePublish}
-                                disabled={editorApi.saving || !modals.draft?.spec.displayName.trim()}
-                            >
-                                {editorApi.saving ? '保存中...' : isEdit ? '保存' : '作成'}
-                            </ModalPrimaryButton>
+                            {isEdit ? (
+                                <ModalPrimaryButton onClick={handleCloseControlPanel}>
+                                    {dirty ? '保存して閉じる' : '閉じる'}
+                                </ModalPrimaryButton>
+                            ) : (
+                                <>
+                                    <ModalSecondaryButton onClick={modals.closeControlPanel}>
+                                        キャンセル
+                                    </ModalSecondaryButton>
+                                    <ModalPrimaryButton onClick={handleSave} disabled={editorApi.saving}>
+                                        {editorApi.saving ? '作成中...' : '作成'}
+                                    </ModalPrimaryButton>
+                                </>
+                            )}
                         </div>
                     </div>
                 }
             >
                 <ControlPanelTabs active={modals.activeTab} onChange={modals.switchTab} />
-                {modals.draft && modals.activeTab === 'publish' && (
-                    <WorldPublishForm draft={modals.draft} onChange={modals.setDraft} />
+                {modals.activeTab === 'info' && <WorldInfoForm definition={definition} onChange={setDefinition} />}
+                {modals.activeTab === 'publish' && (
+                    <WorldPermissionsForm
+                        permissions={
+                            definition.spec.permissions ?? { allowGuestCreate: false, allowGuestDelete: false }
+                        }
+                        onChange={(next) =>
+                            setDefinition((prev) => ({ ...prev, spec: { ...prev.spec, permissions: next } }))
+                        }
+                    />
                 )}
-                {modals.draft && modals.activeTab === 'mods' && (
+                {modals.activeTab === 'mods' && (
                     <ModSelector
-                        definition={modals.draft}
-                        onUpdateSpec={(patch) => {
-                            const draft = modals.draft;
-                            if (draft) modals.setDraft({ ...draft, spec: { ...draft.spec, ...patch } });
-                        }}
+                        dependencies={definition.spec.dependencies ?? []}
+                        onCommitDependencies={(next) =>
+                            setDefinition((prev) => ({ ...prev, spec: { ...prev.spec, dependencies: next } }))
+                        }
                     />
                 )}
                 {modals.activeTab === 'yaml' && (

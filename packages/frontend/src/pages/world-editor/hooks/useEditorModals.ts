@@ -2,33 +2,33 @@ import { type WorldDefinition, WorldDefinitionSchema } from '@ubichill/shared';
 import { useCallback, useState } from 'react';
 import yaml from 'yaml';
 
-export type ControlPanelTab = 'publish' | 'mods' | 'yaml';
+export type ControlPanelTab = 'info' | 'publish' | 'mods' | 'yaml';
 
 interface UseEditorModalsArgs {
     definition: WorldDefinition;
+    /** definition を直接更新する（single source of truth）。YAML タブの parse 成功時のみ使う。 */
     onCommit: (next: WorldDefinition) => void;
 }
 
 /**
- * コントロールパネル（ワールド公開 / mod管理 / YAML の3タブ）の開閉・staging draft を集約する hook。
+ * コントロールパネルの開閉・タブ・YAML バッファを集約する hook。
  *
  * 設計:
- * - 3タブは単一の `draft`（WorldDefinition）を共有する。「作成/保存」ボタンでのみ
- *   `onCommit(draft)` を通じて外側の definition を更新する。
- * - YAML タブはテキスト編集用の別バッファ（yamlText）を持つが、有効な YAML であれば
- *   即座に draft へ反映する（タブを切り替えても他タブに反映されるように）。
- * - 「キャンセル」または背景クリックで draft は破棄。
+ * - フォーム（ワールド情報 / 公開設定 / mod管理）は親の `definition` を直接更新する。
+ *   この hook は staging draft を持たない（閉じても破棄される編集が無い）。
+ * - サーバーへの保存はこの hook の責務ではなく、呼び出し元（WorldEditorPage）が
+ *   「閉じる」や「Cmd/Ctrl+S」で `useWorldEditorApi.save` を呼ぶ。
+ * - YAML タブはテキスト用バッファ（yamlText）を持ち、有効な YAML の間だけ `onCommit` で
+ *   definition へ反映する（途中の構文エラーは適用せず表示のみ）。
  */
 export function useEditorModals({ definition, onCommit }: UseEditorModalsArgs) {
     const [open, setOpen] = useState(false);
-    const [activeTab, setActiveTab] = useState<ControlPanelTab>('publish');
-    const [draft, setDraft] = useState<WorldDefinition | null>(null);
+    const [activeTab, setActiveTab] = useState<ControlPanelTab>('info');
     const [yamlText, setYamlText] = useState('');
     const [yamlError, setYamlError] = useState('');
 
     const openControlPanel = useCallback(
-        (tab: ControlPanelTab = 'publish') => {
-            setDraft(definition);
+        (tab: ControlPanelTab = 'info') => {
             setYamlText(yaml.stringify(definition));
             setYamlError('');
             setActiveTab(tab);
@@ -38,38 +38,39 @@ export function useEditorModals({ definition, onCommit }: UseEditorModalsArgs) {
     );
 
     const closeControlPanel = useCallback(() => {
-        setDraft(null);
         setOpen(false);
     }, []);
 
-    // タブ切り替え時: YAML タブに入る際は draft の最新状態からテキストを作り直す
-    // （他タブでのフィールド編集を YAML 表示に反映するため。逆方向は changeYamlText 側で処理）。
+    // YAML タブに入る際は definition の最新状態からテキストを作り直す（他タブでの編集を反映）。
     const switchTab = useCallback(
         (tab: ControlPanelTab) => {
-            if (tab === 'yaml' && draft) {
-                setYamlText(yaml.stringify(draft));
+            if (tab === 'yaml') {
+                setYamlText(yaml.stringify(definition));
                 setYamlError('');
             }
             setActiveTab(tab);
         },
-        [draft],
+        [definition],
     );
 
-    const changeYamlText = useCallback((text: string) => {
-        setYamlText(text);
-        try {
-            const parsed = yaml.parse(text) as unknown;
-            const result = WorldDefinitionSchema.safeParse(parsed);
-            if (result.success) {
-                setDraft(result.data);
-                setYamlError('');
-            } else {
-                setYamlError(result.error.issues[0]?.message ?? 'スキーマ違反');
+    const changeYamlText = useCallback(
+        (text: string) => {
+            setYamlText(text);
+            try {
+                const parsed = yaml.parse(text) as unknown;
+                const result = WorldDefinitionSchema.safeParse(parsed);
+                if (result.success) {
+                    onCommit(result.data);
+                    setYamlError('');
+                } else {
+                    setYamlError(result.error.issues[0]?.message ?? 'スキーマ違反');
+                }
+            } catch (e) {
+                setYamlError(e instanceof Error ? e.message : 'YAML parse error');
             }
-        } catch (e) {
-            setYamlError(e instanceof Error ? e.message : 'YAML parse error');
-        }
-    }, []);
+        },
+        [onCommit],
+    );
 
     const uploadYamlFile = useCallback(
         async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -86,20 +87,12 @@ export function useEditorModals({ definition, onCommit }: UseEditorModalsArgs) {
         [changeYamlText],
     );
 
-    const applyControlPanel = useCallback(() => {
-        if (draft) onCommit(draft);
-        closeControlPanel();
-    }, [draft, onCommit, closeControlPanel]);
-
     return {
         open,
         activeTab,
         switchTab,
-        draft,
-        setDraft,
         openControlPanel,
         closeControlPanel,
-        applyControlPanel,
         yamlText,
         yamlError,
         changeYamlText,

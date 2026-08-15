@@ -1,8 +1,10 @@
-import type { WorldDefinition } from '@ubichill/shared';
-import { useCallback } from 'react';
-import { type AvailableMod, modToDependency, useAvailableMods } from '@/lib/mods/useAvailableMods';
+import type { Dependency } from '@ubichill/shared';
+import { useMemo, useState } from 'react';
+import { type AvailableMod, useAvailableMods } from '@/lib/mods/useAvailableMods';
 import { SETTINGS_KEYS, useSetting } from '@/lib/settings';
 import { css } from '@/styled-system/css';
+import { computeModDiff, type ModSelectionEntry, selectionToDependencies } from '../../lib/modSelection';
+import { editorButton } from '../../recipes/button';
 import { PanelSection } from '../PanelSection';
 import { RegistryUrlManager } from './RegistryUrlManager';
 
@@ -10,52 +12,58 @@ const isStringArray = (value: unknown): value is string[] =>
     Array.isArray(value) && value.every((v) => typeof v === 'string');
 
 interface ModSelectorProps {
-    definition: WorldDefinition;
-    onUpdateSpec: (patch: Partial<WorldDefinition['spec']>) => void;
+    /** 現在 definition に登録済みの依存（インストール済み mod）。 */
+    dependencies: Dependency[];
+    /** インストール確定時に dependencies を置き換える。 */
+    onCommitDependencies: (next: Dependency[]) => void;
 }
 
 /**
- * フォームタブ内で使う「使用するmod」セクション。
- * - ローカル + ユーザー追加レジストリから利用可能mod一覧を取得
- * - チェックボックスで dependencies に add/remove
- * - レジストリ URL の追加/削除/エクスポート/インポート（RegistryUrlManager）
+ * 「mod管理」タブ。チェック/バージョン選択はローカルの選択状態に留め、
+ * 「インストール」ボタンで初めて definition へ反映する。
+ * 反映前に追加/削除/更新の差分と、外部 URL 由来 mod のセキュリティ注記を表示する。
  */
-export function ModSelector({ definition, onUpdateSpec }: ModSelectorProps) {
+export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorProps) {
     const [registryUrls, setRegistryUrls] = useSetting<string[]>(SETTINGS_KEYS.editorRegistryUrls, [], isStringArray);
-
     const { mods, loading } = useAvailableMods(registryUrls);
 
-    const dependencies = definition.spec.dependencies ?? [];
-    const checkedNames = new Set(dependencies.map((d) => d.name));
-
-    const handleToggle = useCallback(
-        (p: AvailableMod) => {
-            if (checkedNames.has(p.id)) {
-                onUpdateSpec({ dependencies: dependencies.filter((d) => d.name !== p.id) });
-            } else {
-                onUpdateSpec({ dependencies: [...dependencies, modToDependency(p)] });
-            }
-        },
-        [checkedNames, dependencies, onUpdateSpec],
+    // 選択状態。タブを開くたびに現在の dependencies から初期化される（staging は保持しない）。
+    const [selected, setSelected] = useState<ModSelectionEntry[]>(() =>
+        dependencies.map((d) => ({
+            id: d.name,
+            version: d.source.version,
+            baseUrl: d.source.type === 'url' ? d.source.url : undefined,
+        })),
     );
 
-    const handleVersionChange = useCallback(
-        (p: AvailableMod, version: string) => {
-            onUpdateSpec({
-                dependencies: dependencies.map((d) => (d.name === p.id ? modToDependency(p, version) : d)),
-            });
-        },
-        [dependencies, onUpdateSpec],
-    );
+    const nextDependencies = useMemo(() => selectionToDependencies(selected), [selected]);
+    const diff = useMemo(() => computeModDiff(dependencies, nextDependencies), [dependencies, nextDependencies]);
+    const hasDiff = diff.added.length > 0 || diff.removed.length > 0 || diff.updated.length > 0;
 
-    // 既に依存にあるが、利用可能リストに無い（未知のmod）も表示する
-    const knownIds = new Set(mods.map((p) => p.id));
-    const unknownDeps = dependencies.filter((d) => !knownIds.has(d.name));
+    const knownIds = new Set(mods.map((m) => m.id));
+    // 読み込み中は mod 一覧が空のため、既存の依存を「未知」と誤判定しない。
+    const unknownSelected = loading ? [] : selected.filter((e) => !knownIds.has(e.id));
+
+    const upsertSelected = (entry: ModSelectionEntry) =>
+        setSelected((prev) => {
+            const exists = prev.some((e) => e.id === entry.id);
+            return exists ? prev.map((e) => (e.id === entry.id ? entry : e)) : [...prev, entry];
+        });
+    const removeSelected = (id: string) => setSelected((prev) => prev.filter((e) => e.id !== id));
+
+    const handleToggle = (p: AvailableMod) => {
+        const existing = selected.find((e) => e.id === p.id);
+        if (existing) removeSelected(p.id);
+        else upsertSelected({ id: p.id, version: 'latest', baseUrl: p.baseUrl });
+    };
+
+    const handleVersionChange = (p: AvailableMod, version: string) => {
+        upsertSelected({ id: p.id, version, baseUrl: p.baseUrl });
+    };
 
     return (
         <div className={css({ display: 'flex', flexDirection: 'column', gap: '3' })}>
             <PanelSection title={loading ? '使用するmod (読み込み中...)' : '使用するmod'}>
-                {/* mod一覧（チェックボックス） */}
                 <div
                     className={css({
                         display: 'grid',
@@ -64,10 +72,9 @@ export function ModSelector({ definition, onUpdateSpec }: ModSelectorProps) {
                     })}
                 >
                     {mods.map((p) => {
-                        const checked = checkedNames.has(p.id);
-                        const dep = dependencies.find((d) => d.name === p.id);
-                        // 'latest'（既定・常に最新を追う）か、pin された具体的なバージョンかのどちらか。
-                        const pinnedVersion = dep?.source.version ?? 'latest';
+                        const selectedEntry = selected.find((e) => e.id === p.id);
+                        const checked = !!selectedEntry;
+                        const pinnedVersion = selectedEntry?.version ?? 'latest';
                         const isOutdated = pinnedVersion !== 'latest' && pinnedVersion !== p.version;
                         return (
                             <div
@@ -141,16 +148,7 @@ export function ModSelector({ definition, onUpdateSpec }: ModSelectorProps) {
                                         <div className={css({ fontSize: '11px', color: 'textSubtle', mt: '2px' })}>
                                             v{p.version} · {p.components.length} components
                                         </div>
-                                        <div
-                                            className={css({
-                                                fontSize: '10px',
-                                                color: 'textSubtle',
-                                                mt: '2px',
-                                                opacity: 0.8,
-                                            })}
-                                        >
-                                            {p.sourceLabel === 'local' ? 'ローカル' : p.sourceLabel}
-                                        </div>
+                                        <SourceLabel mod={p} />
                                     </div>
                                 </button>
 
@@ -212,8 +210,7 @@ export function ModSelector({ definition, onUpdateSpec }: ModSelectorProps) {
                     )}
                 </div>
 
-                {/* 未知のmod（YAML で直接追加されたもの） */}
-                {unknownDeps.length > 0 && (
+                {unknownSelected.length > 0 && (
                     <div
                         className={css({
                             bg: 'background',
@@ -224,14 +221,15 @@ export function ModSelector({ definition, onUpdateSpec }: ModSelectorProps) {
                             display: 'flex',
                             flexDirection: 'column',
                             gap: '4px',
+                            mt: '3',
                         })}
                     >
                         <span className={css({ fontSize: '11px', color: 'textSubtle', fontWeight: '600' })}>
                             その他の依存（未知のmod）
                         </span>
-                        {unknownDeps.map((d) => (
+                        {unknownSelected.map((e) => (
                             <div
-                                key={d.name}
+                                key={e.id}
                                 className={css({
                                     display: 'flex',
                                     alignItems: 'center',
@@ -240,12 +238,10 @@ export function ModSelector({ definition, onUpdateSpec }: ModSelectorProps) {
                                     color: 'text',
                                 })}
                             >
-                                <span>{d.name}</span>
+                                <span>{e.id}</span>
                                 <button
                                     type="button"
-                                    onClick={() =>
-                                        onUpdateSpec({ dependencies: dependencies.filter((x) => x.name !== d.name) })
-                                    }
+                                    onClick={() => removeSelected(e.id)}
                                     className={css({
                                         fontSize: '11px',
                                         color: 'errorText',
@@ -262,9 +258,81 @@ export function ModSelector({ definition, onUpdateSpec }: ModSelectorProps) {
                 )}
             </PanelSection>
 
+            <PanelSection title="インストール差分">
+                {hasDiff ? (
+                    <div className={css({ display: 'flex', flexDirection: 'column', gap: '2' })}>
+                        {diff.added.map((d) => (
+                            <DiffRow key={`add:${d.name}`} kind="追加" dependency={d} />
+                        ))}
+                        {diff.removed.map((d) => (
+                            <DiffRow key={`remove:${d.name}`} kind="削除" dependency={d} />
+                        ))}
+                        {diff.updated.map(({ from, to }) => (
+                            <DiffRow
+                                key={`update:${to.name}`}
+                                kind="更新"
+                                dependency={to}
+                                fromVersion={from.source.version}
+                            />
+                        ))}
+                    </div>
+                ) : (
+                    <p className={css({ fontSize: '13px', color: 'textMuted' })}>変更はありません</p>
+                )}
+                <div className={css({ mt: '3', display: 'flex', justifyContent: 'flex-end' })}>
+                    <button
+                        type="button"
+                        onClick={() => onCommitDependencies(nextDependencies)}
+                        disabled={!hasDiff}
+                        className={editorButton({ intent: 'success' })}
+                    >
+                        インストール
+                    </button>
+                </div>
+            </PanelSection>
+
             <PanelSection title="レジストリ管理" defaultOpen={false}>
                 <RegistryUrlManager registryUrls={registryUrls} onChange={setRegistryUrls} />
             </PanelSection>
+        </div>
+    );
+}
+
+function SourceLabel({ mod }: { mod: AvailableMod }) {
+    const isLocal = mod.sourceLabel === 'local';
+    return (
+        <div className={css({ fontSize: '10px', mt: '2px', opacity: 0.85 })}>
+            {isLocal ? (
+                <span className={css({ color: 'textSubtle' })}>ローカル</span>
+            ) : (
+                <span className={css({ color: 'errorText' })}>外部 URL（要確認）</span>
+            )}
+        </div>
+    );
+}
+
+function DiffRow({
+    kind,
+    dependency,
+    fromVersion,
+}: {
+    kind: '追加' | '削除' | '更新';
+    dependency: Dependency;
+    fromVersion?: string;
+}) {
+    const color = kind === '追加' ? 'successText' : kind === '削除' ? 'errorText' : 'text';
+    const external = dependency.source.type === 'url';
+    return (
+        <div className={css({ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '13px' })}>
+            <span className={css({ color, fontWeight: '600' })}>
+                {kind}: {dependency.name}
+                {fromVersion
+                    ? ` (v${fromVersion} → v${dependency.source.version})`
+                    : ` · v${dependency.source.version}`}
+            </span>
+            <span className={css({ fontSize: '11px', color: external ? 'errorText' : 'textSubtle' })}>
+                {external ? `外部 URL: ${dependency.source.url} — 実行前に内容を確認してください` : 'ローカル mod'}
+            </span>
         </div>
     );
 }

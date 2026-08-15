@@ -5,30 +5,15 @@ import { editorButton } from '../recipes/button';
 
 interface EditorHeaderProps {
     title: string;
-    isEdit: boolean;
-    saving: boolean;
-    /** 編集中で未保存の変更があるか。true の間は「インスタンス作成」ボタンを出さない */
-    dirty: boolean;
     /** ON のときドラッグ / リサイズをグリッド + ワールド範囲で snap/clamp する */
     snapEnabled: boolean;
     onToggleSnap: () => void;
     /** コントロールパネル（ワールド公開・mod管理・YAML）を開く。削除はコントロールパネル最下部のDanger Zoneへ移した */
     onOpenControlPanel: () => void;
-    /** 編集モードかつ未変更時に有効。クリックでこのワールドの新インスタンスを作成して参加する */
-    onCreateInstance?: () => void;
 }
 
 /** エディタ画面のトップバー。Unity 風: 左に戻る・タイトル、右にアクション群。 */
-export function EditorHeader({
-    title,
-    isEdit,
-    saving,
-    dirty,
-    snapEnabled,
-    onToggleSnap,
-    onOpenControlPanel,
-    onCreateInstance,
-}: EditorHeaderProps) {
+export function EditorHeader({ title, snapEnabled, onToggleSnap, onOpenControlPanel }: EditorHeaderProps) {
     const navigate = useNavigate();
     const [menuOpen, setMenuOpen] = useState(false);
 
@@ -100,17 +85,6 @@ export function EditorHeader({
                     <InfoIcon />
                     コントロールパネル
                 </button>
-                {isEdit && !dirty && onCreateInstance && (
-                    <button
-                        type="button"
-                        onClick={onCreateInstance}
-                        disabled={saving}
-                        title="このワールドで新しいインスタンスを作って参加する"
-                        className={editorButton({ intent: 'success' })}
-                    >
-                        ▶ インスタンス作成
-                    </button>
-                )}
             </div>
             <div className={css({ display: { base: 'inline-flex', md: 'none' }, position: 'relative' })}>
                 <button
@@ -155,17 +129,6 @@ export function EditorHeader({
                         >
                             コントロールパネル
                         </button>
-                        {isEdit && !dirty && onCreateInstance && (
-                            <button
-                                type="button"
-                                onClick={() => runMenuAction(onCreateInstance)}
-                                disabled={saving}
-                                title="このワールドで新しいインスタンスを作って参加する"
-                                className={editorButton({ intent: 'menu', size: 'menu' })}
-                            >
-                                インスタンス作成
-                            </button>
-                        )}
                         <div className={css({ height: '1px', bg: 'border', margin: '6px 2px' })} />
                         <button
                             type="button"
