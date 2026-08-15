@@ -130,7 +130,7 @@ spec:
                 .slice()
                 .sort(),
         ).toEqual(['avatar', 'pen', 'video-player']);
-        // dependency 由来の avatar は version 宣言が無いので undefined
-        expect(resolved.mods.find((m) => m.id === 'avatar')?.version).toBeUndefined();
+        // dependency 由来の avatar は version 宣言が無いので既定の 'latest'（常に最新を追う）になる
+        expect(resolved.mods.find((m) => m.id === 'avatar')?.version).toBe('latest');
     });
 });

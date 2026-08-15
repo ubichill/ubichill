@@ -33,8 +33,12 @@ export default defineConfig({
             { find: /^@ubichill\/shared\/mod\/types$/, replacement: srcPath('./packages/shared/src/mod/types.ts') },
             { find: /^@ubichill\/loader$/, replacement: srcPath('./packages/loader/src/index.ts') },
             {
-                find: /^@ubichill\/loader\/gen-lock$/,
-                replacement: srcPath('./packages/loader/src/genLock.ts'),
+                find: /^@ubichill\/loader\/install-dependencies$/,
+                replacement: srcPath('./packages/loader/src/installDependencies.ts'),
+            },
+            {
+                find: /^@ubichill\/loader\/update-dependencies$/,
+                replacement: srcPath('./packages/loader/src/updateDependencies.ts'),
             },
             { find: /^@ubichill\/ecs$/, replacement: srcPath('./packages/ecs/src/index.ts') },
             { find: /^@ubichill\/sdk$/, replacement: srcPath('./packages/sdk/src/index.ts') },

@@ -1,30 +1,25 @@
 import type { WorldDefinition } from '@ubichill/shared';
 import { css } from '@/styled-system/css';
 import { PanelSection } from '../PanelSection';
-import { UsedModsList } from './UsedModsList';
 
-interface WorldPublishFormProps {
-    /** 編集中の draft definition。親 (WorldEditorPage) が状態を持ち、コントロールパネルの「作成/保存」で反映する。 */
-    draft: WorldDefinition;
+interface WorldInfoFormProps {
+    /** 編集中の definition。親 (WorldEditorPage) が状態を持ち、ここでは直接更新する。 */
+    definition: WorldDefinition;
     onChange: (next: WorldDefinition) => void;
 }
 
 /**
- * コントロールパネルの「ワールド公開」タブの中身（staging）。
- * displayName / description / thumbnail / version / capacity / worldSize / 背景色。
+ * コントロールパネルの「ワールド情報」タブの中身。
+ * displayName / description / version / thumbnail / capacity / worldSize / 背景色。
  *
- * mod の追加/削除やレジストリ管理はここでは行わない（「mod管理」タブの責務）。
- * ここでは使用中mod を読み取り専用で見せるだけ — エディタ本体はmod管理をしないという分離のため。
- *
- * フィールドの編集は draft の更新のみで、外側の definition には反映しない。
- * 「作成/保存」ボタンが押されたタイミングで親が draft → definition へ移し替えつつ保存する。
+ * 編集は親の definition を直接更新する（即時反映・ローカル）。サーバーへの保存は
+ * 「閉じる」「Cmd/Ctrl+S」で行う。公開設定・mod 管理はそれぞれ別タブの責務。
  */
-export function WorldPublishForm({ draft, onChange }: WorldPublishFormProps) {
-    const definition = draft;
+export function WorldInfoForm({ definition, onChange }: WorldInfoFormProps) {
     const onUpdateSpec = (patch: Partial<WorldDefinition['spec']>) =>
-        onChange({ ...draft, spec: { ...draft.spec, ...patch } });
+        onChange({ ...definition, spec: { ...definition.spec, ...patch } });
     const onUpdateMetadata = (patch: Partial<WorldDefinition['metadata']>) =>
-        onChange({ ...draft, metadata: { ...draft.metadata, ...patch } });
+        onChange({ ...definition, metadata: { ...definition.metadata, ...patch } });
     const spec = definition.spec;
     const env = spec.environment ?? {
         backgroundColor: '#F0F8FF',
@@ -190,10 +185,6 @@ export function WorldPublishForm({ draft, onChange }: WorldPublishFormProps) {
                         />
                     </div>
                 </Field>
-            </PanelSection>
-
-            <PanelSection title="使用中のmod" defaultOpen={false}>
-                <UsedModsList dependencies={spec.dependencies ?? []} />
             </PanelSection>
         </div>
     );

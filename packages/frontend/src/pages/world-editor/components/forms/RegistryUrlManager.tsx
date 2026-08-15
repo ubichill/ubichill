@@ -77,7 +77,7 @@ export function RegistryUrlManager({ registryUrls, onChange }: RegistryUrlManage
                     }
                     const merged = new Set(registryUrls);
                     for (const url of parsed.registryUrls) merged.add(url);
-                    onChange([...merged]);
+                    onChange(Array.from(merged));
                     setError('');
                 })
                 .catch(() => setError('インポートファイルの読み込みに失敗しました'));

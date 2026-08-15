@@ -49,9 +49,10 @@ spec:
 
   # 依存する mod の入手元ヒント（任意）。実際にどの Component を載せるかは
   # initialEntities の component type で決まる。
+  # version は 'latest'（常に最新を追う。省略時もこれになる）か、完全一致 (x.y.z) の pin のどちらか。
   dependencies:
     - name: pen
-      source: { type: url, url: "https://yourname.github.io/pen-mod" }
+      source: { type: url, url: "https://yourname.github.io/pen-mod", version: latest }
 
   # ワールド起動時の初期エンティティ（Entity=箱、component が振る舞いを配布）
   initialEntities:

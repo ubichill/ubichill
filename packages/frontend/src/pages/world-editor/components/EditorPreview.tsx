@@ -7,10 +7,17 @@ import {
     WorldContext,
     type WorldContextType,
 } from '@ubichill/react';
-import type { ComponentInstance, InitialEntity, WorldDefinition, WorldEnvironmentData } from '@ubichill/shared';
+import type {
+    ComponentInstance,
+    InitialEntity,
+    ModLock,
+    WorldDefinition,
+    WorldEnvironmentData,
+} from '@ubichill/shared';
 import type React from 'react';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { EntityRenderer } from '@/instance/EntityRenderer';
+import { buildWorldLock } from '@/mods/buildWorldLock';
 import { ModRegistryProvider, useModRegistry } from '@/mods/ModRegistryContext';
 
 const FALLBACK_ENTITY: ComponentInstance = {
@@ -131,6 +138,30 @@ export function EditorPreview({
         return Array.from(set);
     }, [definition.spec.initialEntities]);
 
+    // `type: url` の依存（外部mod）は lock.mods[].baseUrl 経由でしか baseUrl を解決できない
+    // （acquireMod の既定 baseUrl は自ホストの /mods 固定）。編集中は保存済み lock を持たないため、
+    // dependencies から都度プレビュー用の lock を組み立てて解決できるようにする。
+    // entities のドラッグ操作等で definition 自体は頻繁に変わるため、ref で最新値だけ参照し、
+    // 実際の再構築は dependencies が変わった時だけに絞る（fetch storm を防ぐ）。
+    const dependencies = definition.spec.dependencies;
+    const definitionRef = useRef(definition);
+    definitionRef.current = definition;
+    const [previewLock, setPreviewLock] = useState<ModLock | undefined>(undefined);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: dependencies は再構築のトリガーとして意図的に指定（definitionは常にrefで最新参照するため不要）
+    useEffect(() => {
+        let cancelled = false;
+        buildWorldLock(definitionRef.current)
+            .then((lock) => {
+                if (!cancelled) setPreviewLock(lock);
+            })
+            .catch(() => {
+                /* プレビューなので取得失敗は無視（ModRegistry側で not-found として警告される） */
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [dependencies]);
+
     const worldValue: WorldContextType = useMemo(
         () => ({
             entities,
@@ -199,7 +230,7 @@ export function EditorPreview({
         >
             <SocketContext.Provider value={socketValue}>
                 <WorldContext.Provider value={worldValue}>
-                    <ModRegistryProvider>
+                    <ModRegistryProvider lock={previewLock}>
                         <PreviewStage
                             entities={entities}
                             environment={environment}

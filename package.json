@@ -9,7 +9,7 @@
     "dev": "node scripts/dev.mjs",
     "build:workers": "node packages/sdk/cli/index.ts build --mods-dir=mods --public-mods-dir=packages/frontend/public/mods --dist-dir=dist/mods",
     "build:sdk": "pnpm --filter @ubichill/sdk build",
-    "gen:lock": "node packages/sdk/cli/index.ts lock --mods-dir=packages/frontend/public/mods",
+    "gen:install": "node packages/sdk/cli/index.ts install --mods-dir=packages/frontend/public/mods",
     "verify:mod-locks": "node packages/sdk/cli/index.ts verify --dist-dir=dist/mods",
     "verify:sdk-types": "vitest run --config vitest.sdk-verify.config.ts",
     "docs:capabilities": "node scripts/gen-capability-docs.mjs",

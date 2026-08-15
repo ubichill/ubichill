@@ -24,13 +24,7 @@ function createInitialDefinition(): WorldDefinition {
                 backgroundColor: '#F0F8FF',
                 worldSize: { width: 2000, height: 1500 },
             },
-            dependencies: [
-                { name: 'pen', source: { type: 'local' } },
-                {
-                    name: 'video-player',
-                    source: { type: 'url', url: 'https://p-nasimonan.github.io/ubichill-videoplayer' },
-                },
-            ],
+            dependencies: [],
             initialEntities: [],
         },
     };

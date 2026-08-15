@@ -8,7 +8,7 @@ import { DockSlot } from './components/DockSlot';
 import { EditorHeader } from './components/EditorHeader';
 import { EditorStage } from './components/EditorStage';
 import { ModSelector } from './components/forms/ModSelector';
-import { WorldPublishForm } from './components/forms/WorldPublishForm';
+import { WorldInfoForm } from './components/forms/WorldInfoForm';
 import { YamlEditorForm } from './components/forms/YamlEditorForm';
 import { EditorHierarchy } from './components/hierarchy/EditorHierarchy';
 import { EntityInspector } from './components/inspector/EntityInspector';
@@ -26,6 +26,7 @@ import { useMobilePanels } from './hooks/useMobilePanels';
 import { useWorldEditorApi } from './hooks/useWorldEditorApi';
 import { SNAP_STEP } from './lib/dragHelpers';
 import { flattenForStage, getEntityAt, updateEntityAt } from './lib/entityTree';
+import { editorButton } from './recipes/button';
 
 export function WorldEditorPage() {
     const { worldId } = useParams<{ worldId?: string }>();
@@ -36,6 +37,7 @@ export function WorldEditorPage() {
     // ── ページ全体で共有する error trough ──────────────────────────
     // useDefinition / useWorldEditorApi 両方から書き込まれ、画面下のトーストで表示する
     const [error, setError] = useState('');
+    const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
 
     const { definition, setDefinition, setSavedYaml, loading, dirty, updateEntities } = useDefinition({
         isEdit,
@@ -68,18 +70,63 @@ export function WorldEditorPage() {
         [definition.spec.initialEntities],
     );
 
-    // コントロールパネルの「作成/保存」: draft を definition へ適用しつつ、その draft を
-    // そのまま保存対象として渡す（setDefinition の反映は次の render まで届かないため）。
-    const handlePublish = useCallback(() => {
-        const draft = modals.draft;
-        if (!draft) return;
-        if (!draft.spec.displayName.trim()) {
-            setError('表示名は必須です');
-            return;
+    // サーバーへ保存する共通処理。フォームが definition を直接更新しているため draft を介さず保存する。
+    const persist = useCallback(async (): Promise<boolean> => {
+        if (modals.activeTab === 'yaml' && modals.yamlError) {
+            setError(modals.yamlError);
+            return false;
         }
-        modals.applyControlPanel();
-        void editorApi.save(draft);
-    }, [modals, editorApi]);
+        if (!definition.spec.displayName.trim()) {
+            setError('表示名は必須です');
+            return false;
+        }
+        return editorApi.save();
+    }, [definition, editorApi, modals.activeTab, modals.yamlError]);
+
+    const handleSave = useCallback(() => {
+        void persist();
+    }, [persist]);
+
+    // コントロールパネルを閉じる。編集モードでは未保存の変更を保存してから閉じる。
+    // 新規作成時は閉じるだけで破棄する（作成は「作成」ボタン or Cmd/Ctrl+S）。
+    const handleCloseControlPanel = useCallback(() => {
+        if (isEdit) {
+            if (modals.activeTab === 'yaml' && modals.yamlError) {
+                setError(modals.yamlError);
+                return;
+            }
+            if (dirty) void editorApi.save();
+        }
+        modals.closeControlPanel();
+    }, [isEdit, dirty, editorApi, modals.activeTab, modals.yamlError, modals.closeControlPanel]);
+
+    // 戻るボタン。未保存なら確認モーダルを出す。
+    const handleBack = useCallback(() => {
+        if (dirty) setLeaveConfirmOpen(true);
+        else navigate(-1);
+    }, [dirty, navigate]);
+
+    const handleDiscardAndLeave = useCallback(() => {
+        setLeaveConfirmOpen(false);
+        navigate(-1);
+    }, [navigate]);
+
+    const handleSaveAndLeave = useCallback(async () => {
+        setLeaveConfirmOpen(false);
+        const ok = await persist();
+        if (ok && isEdit) navigate(-1);
+    }, [persist, isEdit, navigate]);
+
+    useEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 's') return;
+            e.preventDefault();
+            if (editorApi.saving) return;
+            handleSave();
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [handleSave, editorApi.saving]);
 
     if (isPending || !session) return <CenteredMessage text="読み込み中..." />;
     if (loading) return <CenteredMessage text="ワールドを読み込み中..." />;
@@ -111,13 +158,11 @@ export function WorldEditorPage() {
             <div className={css({ gridArea: 'header' })}>
                 <EditorHeader
                     title={title}
-                    isEdit={isEdit}
-                    saving={editorApi.saving}
                     dirty={dirty}
                     snapEnabled={mobile.snapEnabled}
                     onToggleSnap={mobile.toggleSnap}
+                    onBack={handleBack}
                     onOpenControlPanel={() => modals.openControlPanel()}
-                    onCreateInstance={isEdit ? editorApi.createInstance : undefined}
                 />
             </div>
 
@@ -247,32 +292,52 @@ export function WorldEditorPage() {
 
             <Modal
                 open={modals.open}
-                onClose={modals.closeControlPanel}
+                onClose={handleCloseControlPanel}
                 title="コントロールパネル"
                 width="960px"
+                height="680px"
                 footer={
-                    <>
-                        <ModalSecondaryButton onClick={modals.closeControlPanel}>キャンセル</ModalSecondaryButton>
-                        <ModalPrimaryButton
-                            onClick={handlePublish}
-                            disabled={editorApi.saving || !modals.draft?.spec.displayName.trim()}
-                        >
-                            {editorApi.saving ? '保存中...' : isEdit ? '保存' : '作成'}
-                        </ModalPrimaryButton>
-                    </>
+                    <div className={css({ display: 'flex', width: '100%', justifyContent: 'space-between' })}>
+                        <div>
+                            {isEdit && !dirty && (
+                                <button
+                                    type="button"
+                                    onClick={editorApi.createInstance}
+                                    disabled={editorApi.saving}
+                                    title="このワールドで新しいインスタンスを作って参加する"
+                                    className={editorButton({ intent: 'success' })}
+                                >
+                                    ▶ インスタンス作成
+                                </button>
+                            )}
+                        </div>
+                        <div className={css({ display: 'flex', gap: '8px' })}>
+                            {isEdit ? (
+                                <ModalPrimaryButton onClick={handleCloseControlPanel}>
+                                    {dirty ? '保存して閉じる' : '閉じる'}
+                                </ModalPrimaryButton>
+                            ) : (
+                                <>
+                                    <ModalSecondaryButton onClick={modals.closeControlPanel}>
+                                        キャンセル
+                                    </ModalSecondaryButton>
+                                    <ModalPrimaryButton onClick={handleSave} disabled={editorApi.saving}>
+                                        {editorApi.saving ? '作成中...' : '作成'}
+                                    </ModalPrimaryButton>
+                                </>
+                            )}
+                        </div>
+                    </div>
                 }
             >
                 <ControlPanelTabs active={modals.activeTab} onChange={modals.switchTab} />
-                {modals.draft && modals.activeTab === 'publish' && (
-                    <WorldPublishForm draft={modals.draft} onChange={modals.setDraft} />
-                )}
-                {modals.draft && modals.activeTab === 'mods' && (
+                {modals.activeTab === 'info' && <WorldInfoForm definition={definition} onChange={setDefinition} />}
+                {modals.activeTab === 'mods' && (
                     <ModSelector
-                        definition={modals.draft}
-                        onUpdateSpec={(patch) => {
-                            const draft = modals.draft;
-                            if (draft) modals.setDraft({ ...draft, spec: { ...draft.spec, ...patch } });
-                        }}
+                        dependencies={definition.spec.dependencies ?? []}
+                        onCommitDependencies={(next) =>
+                            setDefinition((prev) => ({ ...prev, spec: { ...prev.spec, dependencies: next } }))
+                        }
                     />
                 )}
                 {modals.activeTab === 'yaml' && (
@@ -314,6 +379,44 @@ export function WorldEditorPage() {
                         </PanelSection>
                     </div>
                 )}
+            </Modal>
+
+            <Modal
+                open={leaveConfirmOpen}
+                onClose={() => setLeaveConfirmOpen(false)}
+                title="未保存の変更があります"
+                width="440px"
+                footer={
+                    <div className={css({ display: 'flex', gap: '8px', width: '100%' })}>
+                        <button
+                            type="button"
+                            onClick={() => setLeaveConfirmOpen(false)}
+                            className={editorButton({ intent: 'secondary' })}
+                        >
+                            キャンセル
+                        </button>
+                        <div className={css({ marginLeft: 'auto', display: 'flex', gap: '8px' })}>
+                            <button
+                                type="button"
+                                onClick={handleDiscardAndLeave}
+                                className={editorButton({ intent: 'danger' })}
+                            >
+                                破棄して戻る
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleSaveAndLeave}
+                                className={editorButton({ intent: 'primary' })}
+                            >
+                                {isEdit ? '保存して戻る' : '作成'}
+                            </button>
+                        </div>
+                    </div>
+                }
+            >
+                <p className={css({ fontSize: '14px', color: 'textMuted', lineHeight: '1.6' })}>
+                    変更が保存されていません。保存せずに戻ると変更が失われます。
+                </p>
             </Modal>
         </div>
     );

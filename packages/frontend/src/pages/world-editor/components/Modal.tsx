@@ -8,14 +8,16 @@ interface ModalProps {
     children: React.ReactNode;
     /** モーダル幅 (CSS) */
     width?: string;
+    /** モーダル高さ (CSS)。指定すると固定高になり、コンテンツ領域がスクロールする。 */
+    height?: string;
     /** 下部のアクション領域（適用 / キャンセル等） */
     footer?: React.ReactNode;
 }
 
 /**
- * 共通モーダル。背景クリック・ESCキーで閉じる。
+ * 共通モーダル。ESC キーでのみ閉じる（背景クリックでは閉じない）。
  */
-export function Modal({ open, onClose, title, children, width = '640px', footer }: ModalProps) {
+export function Modal({ open, onClose, title, children, width = '640px', height, footer }: ModalProps) {
     useEffect(() => {
         if (!open) return;
         const onKey = (e: KeyboardEvent) => {
@@ -29,7 +31,6 @@ export function Modal({ open, onClose, title, children, width = '640px', footer 
 
     return (
         <div
-            onClick={onClose}
             className={css({
                 position: 'fixed',
                 inset: 0,
@@ -43,11 +44,11 @@ export function Modal({ open, onClose, title, children, width = '640px', footer 
             })}
         >
             <div
-                onClick={(e) => e.stopPropagation()}
                 role="dialog"
                 aria-modal="true"
                 className={css({
                     width,
+                    ...(height ? { height } : {}),
                     maxWidth: '94vw',
                     maxHeight: '90vh',
                     bg: 'background',
