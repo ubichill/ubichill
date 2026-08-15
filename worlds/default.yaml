@@ -15,7 +15,7 @@ spec:
     - name: video-player
       source:
         type: url
-        url: https://p-nasimonan.github.io/ubichill-videoplayer
+        url: https://ieyoukan.github.io/ubichill-videoplayer
         version: latest
     - name: pen
       source:
