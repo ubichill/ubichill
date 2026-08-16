@@ -16,7 +16,7 @@
     "build": "pnpm --filter @ubichill/shared build && pnpm build:workers && turbo build",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "typecheck": "turbo run typecheck",
+    "typecheck": "pnpm -r --parallel exec tsc --noEmit",
     "db:generate": "pnpm --filter @ubichill/db generate",
     "db:migrate": "pnpm --filter @ubichill/db migrate:dev",
     "clean": "pnpm --filter \"./packages/*\" clean",

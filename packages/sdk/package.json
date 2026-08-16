@@ -20,7 +20,6 @@
     },
     "scripts": {
         "build": "node build.mjs",
-        "typecheck": "tsc --noEmit",
         "clean": "rimraf dist-npm"
     },
     "devDependencies": {

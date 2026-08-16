@@ -5,9 +5,6 @@
     "description": "Mod sandbox: Worker isolation layer for Ubichill. Keeps UI thread free.",
     "main": "src/index.ts",
     "types": "src/index.ts",
-    "scripts": {
-        "typecheck": "tsc --noEmit"
-    },
     "exports": {
         ".": "./src/index.ts"
     },
