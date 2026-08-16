@@ -312,14 +312,27 @@ export type CmdCanvasCommitStroke = {
 // ─── Media Commands (Guest → Host) ──────────────────────────────────────────
 
 /**
- * Ubi.media.load(url, targetId?, mediaType?)
+ * Ubi.media.load(url, targetId?, mediaType?, kind?)
  * Fire & Forget: Host に指定 URL のメディアを読み込ませる。
- * mediaType が 'hls' の場合 Hls.js を使用。'auto' は URL から自動判定。
+ *
+ * mediaType は「読み込み方式」(輸送層) を指定する。'hls' なら Hls.js、
+ * 'video' ならネイティブ、'auto' は URL から自動判定。
+ *
+ * kind は「メディアの種別」(音声/動画) を指定する。デバイス由来の再生操作と
+ * バックグラウンド再生の既定挙動を決める（省略時は 'video'）。
+ *   - 'audio': 音声。デバイス操作を既定で許可し、バックグラウンドでも再生を継続する。
+ *   - 'video': 動画。デバイス操作は明示許可（setDeviceControl）までロックする。
+ *
  * capability: 'media:control' が必要。
  */
 export type CmdMediaLoad = {
     type: 'MEDIA_LOAD';
-    payload: { targetId: string; url: string; mediaType?: 'hls' | 'video' | 'auto' };
+    payload: {
+        targetId: string;
+        url: string;
+        mediaType?: 'hls' | 'video' | 'auto';
+        kind?: 'audio' | 'video';
+    };
 };
 
 /** Ubi.media.play(targetId?) — 再生開始 */

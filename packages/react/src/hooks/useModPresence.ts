@@ -52,8 +52,7 @@ export function useModPresence(
                     const metaChanged =
                         prevUser.name !== user.name ||
                         prevUser.avatarUrl !== user.avatarUrl ||
-                        prevUser.cursorUrl !== user.cursorUrl ||
-                        prevUser.penColor !== user.penColor;
+                        prevUser.cursorUrl !== user.cursorUrl;
                     if (positionChanged) {
                         sendEvent({
                             type: 'EVT_PLAYER_CURSOR_MOVED',

@@ -60,7 +60,12 @@ export type HostHandlers<TPayloadMap extends Record<string, unknown> = Record<st
     /** Worker が Ubi.canvas.commitStroke() を呼んだときに発火する */
     onCanvasCommitStroke?: (targetId: string, stroke: CanvasStrokeData) => void;
     /** Worker が Ubi.media.load() を呼んだときに発火する */
-    onMediaLoad?: (targetId: string, url: string, mediaType?: 'hls' | 'video' | 'auto') => void;
+    onMediaLoad?: (
+        targetId: string,
+        url: string,
+        mediaType?: 'hls' | 'video' | 'auto',
+        kind?: 'audio' | 'video',
+    ) => void;
     /** Worker が Ubi.media.play() を呼んだときに発火する */
     onMediaPlay?: (targetId: string) => void;
     /** Worker が Ubi.media.pause() を呼んだときに発火する */

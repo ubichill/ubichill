@@ -18,7 +18,6 @@ import {
     handleMediaStateResponse,
     handleMediaSync,
     handleStatusUpdate,
-    handleUserUpdate,
     handleWorldJoin,
     handleWorldLeave,
 } from './handlers/socketHandlers';
@@ -138,7 +137,6 @@ io.on('connection', (socket) => {
     socket.on('world:leave', handleWorldLeave(socket));
     socket.on('cursor:move', handleCursorMove(socket));
     socket.on('status:update', handleStatusUpdate(socket));
-    socket.on('user:update', handleUserUpdate(socket));
     socket.on('disconnect', handleDisconnect(socket));
 
     // UEP (Ubichill Entity Protocol) イベントハンドラー

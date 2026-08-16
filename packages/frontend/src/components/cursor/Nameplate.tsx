@@ -14,13 +14,11 @@ interface NameplateProps {
     name: string;
     /** プロフィール画像 URL。未指定時はデフォルト SVG。 */
     avatarUrl?: string | null;
-    /** デフォルトアバターのアクセント色 (penColor 等から借りる)。 */
-    accentColor?: string | null;
 }
 
 const AVATAR_SIZE = 22;
 
-export function Nameplate({ name, avatarUrl, accentColor }: NameplateProps) {
+export function Nameplate({ name, avatarUrl }: NameplateProps) {
     return (
         <div
             style={{
@@ -66,7 +64,7 @@ export function Nameplate({ name, avatarUrl, accentColor }: NameplateProps) {
                         draggable={false}
                     />
                 ) : (
-                    <DefaultAvatar size={AVATAR_SIZE - 4} color={accentColor ?? '#5b8def'} />
+                    <DefaultAvatar size={AVATAR_SIZE - 4} color="#5b8def" />
                 )}
             </span>
             {name}

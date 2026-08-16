@@ -8,9 +8,9 @@ import { z } from 'zod';
 // ユーザー名のバリデーション: 1-50文字（日本語を含む全ての文字を許可）
 export const usernameSchema = z
     .string()
+    .trim()
     .min(1, 'ユーザー名は1文字以上である必要があります')
-    .max(50, 'ユーザー名は50文字以下である必要があります')
-    .trim();
+    .max(50, 'ユーザー名は50文字以下である必要があります');
 
 // ワールドIDのバリデーション: 英数字、ハイフン、アンダースコアのみ
 export const worldIdSchema = z
@@ -26,7 +26,7 @@ export const cursorPositionSchema = z.object({
 }) satisfies z.ZodType<CursorPosition>;
 
 // ユーザーステータスのバリデーション
-export const userStatusSchema = z.enum(['online', 'away', 'busy', 'offline']) satisfies z.ZodType<UserStatus>;
+export const userStatusSchema = z.enum(['online', 'busy', 'dnd', 'away', 'offline']) satisfies z.ZodType<UserStatus>;
 
 /**
  * バリデーションヘルパー関数

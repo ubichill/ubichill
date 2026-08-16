@@ -62,15 +62,6 @@ PenEvents.on('pen:tray:change_thickness', ({ thickness }) => {
     }
 });
 
-// 持ち / 離しに応じて自分の penColor を Host へ通知 (avatar カーソルの色変えなどに使う)
-grip.onChange((next, prev) => {
-    if (next === Ubi.myUserId && prev !== Ubi.myUserId) {
-        PenEvents.sendToHost('user:update', { penColor: pen.local.color });
-    } else if (prev === Ubi.myUserId && next !== Ubi.myUserId) {
-        PenEvents.sendToHost('user:update', { penColor: null });
-    }
-});
-
 // ── ペン本体のレンダリング ──────────────────────────────────
 const PenSvg = ({ color }: { color: string }) => (
     <svg width="18" height="32" viewBox="0 0 18 32" style={{ display: 'block' }}>

@@ -89,7 +89,7 @@ const RemoteCursor = memo(function RemoteCursor({ user }: { user: User }) {
                     />
                 </svg>
             )}
-            <Nameplate name={user.name} avatarUrl={user.avatarUrl} accentColor={user.penColor ?? null} />
+            <Nameplate name={user.name} avatarUrl={user.avatarUrl} />
         </div>
     );
 });

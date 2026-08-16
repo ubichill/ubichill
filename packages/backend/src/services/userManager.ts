@@ -96,36 +96,6 @@ export class UserManager {
     }
 
     /**
-     * ユーザー情報を更新（汎用）
-     */
-    updateUser(userId: string, patch: Partial<User>): User | null {
-        const user = this.users.get(userId);
-        if (!user) return null;
-
-        // 更新を許可するフィールドのみをホワイトリストで抽出
-        const safePatch: Partial<User> = {};
-
-        // penColor: ペンmodが設定・解除する（null も許可）
-        if ('penColor' in patch) {
-            safePatch.penColor = patch.penColor ?? null;
-        }
-        // heldEntityId: Ubi.grip が hold/release 時に更新する（null も許可）
-        if ('heldEntityId' in patch) {
-            safePatch.heldEntityId = patch.heldEntityId ?? null;
-        }
-
-        // オブジェクトを更新
-        const updatedUser = {
-            ...user,
-            ...safePatch,
-            lastActiveAt: Date.now(),
-        };
-
-        this.users.set(userId, updatedUser);
-        return updatedUser;
-    }
-
-    /**
      * ユーザー総数を取得
      */
     getUserCount(): number {

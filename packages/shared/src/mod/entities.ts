@@ -49,25 +49,6 @@ export interface User {
     status: UserStatus;
     position: CursorPosition;
     lastActiveAt: number;
-    isMenuOpen?: boolean;
-    /** 現在持っているペンの色（ペンmodが設定・解除する） */
-    penColor?: string | null;
-    /**
-     * 現在持っているエンティティの ComponentInstance ID。
-     * Ubi.grip.exclusive() が hold/release 時に更新する。
-     * share: 'local' の場合は送信しないため null のまま。
-     */
-    heldEntityId?: string | null;
-}
-
-/**
- * 絵文字イベント
- */
-export interface EmojiEvent {
-    userId: string;
-    emoji: string;
-    position: CursorPosition;
-    timestamp: number;
 }
 
 // ============================================

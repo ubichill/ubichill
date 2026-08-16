@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import type { ComponentInstance } from '@ubichill/shared';
-import { logger } from '../utils/logger';
 
 /**
  * インスタンスごとの flat ComponentInstance 状態を管理するインメモリストア。
@@ -11,6 +10,8 @@ import { logger } from '../utils/logger';
  *   GameObject の flatten は `instanceManager` 側で行う。
  * - バックエンドは「土管」として動作し、data の中身を解釈しない。
  * - 各インスタンスは独立したエンティティ空間を持つ。
+ *
+ * 純粋なデータ操作のみを担い、logger 等の副作用を持たない（テスト容易性のため）。
  */
 
 // instanceId → entityId → ComponentInstance のネストした Map
@@ -21,7 +22,6 @@ function getInstanceEntityMap(instanceId: string): Map<string, ComponentInstance
     if (!state) {
         state = new Map();
         instanceStates.set(instanceId, state);
-        logger.debug(`インスタンス ${instanceId} のエンティティ状態を初期化しました`);
     }
     return state;
 }
@@ -46,22 +46,23 @@ export function createEntity(instanceId: string, input: CreateEntityInput): Comp
     const { id, ...rest } = input;
     const entity: ComponentInstance = { ...rest, id: id ?? randomUUID() };
     state.set(entity.id, entity);
-    logger.debug(`エンティティ作成: ${entity.id} (type: ${entity.type}, instance: ${instanceId})`);
     return entity;
 }
 
 /**
  * エンティティを部分更新（transform / data は深くマージ）。
+ * transform は部分更新を許す（未指定のフィールドは既存値を維持）。
  */
 export function patchEntity(
     instanceId: string,
     entityId: string,
-    patch: Partial<Omit<ComponentInstance, 'id' | 'type'>>,
+    patch: Partial<Omit<ComponentInstance, 'id' | 'type' | 'transform'>> & {
+        transform?: Partial<ComponentInstance['transform']>;
+    },
 ): ComponentInstance | null {
     const state = getInstanceEntityMap(instanceId);
     const entity = state.get(entityId);
     if (!entity) {
-        logger.debug(`パッチ対象のエンティティが見つかりません: ${entityId}`);
         return null;
     }
     const updated: ComponentInstance = {
@@ -73,7 +74,6 @@ export function patchEntity(
             : entity.data,
     };
     state.set(entityId, updated);
-    logger.debug(`エンティティ更新: ${entityId}`);
     return updated;
 }
 
@@ -82,9 +82,7 @@ export function patchEntity(
  */
 export function deleteEntity(instanceId: string, entityId: string): boolean {
     const state = getInstanceEntityMap(instanceId);
-    const deleted = state.delete(entityId);
-    logger.debug(deleted ? `エンティティ削除: ${entityId}` : `削除対象のエンティティが見つかりません: ${entityId}`);
-    return deleted;
+    return state.delete(entityId);
 }
 
 /**
@@ -99,5 +97,4 @@ export function getEntity(instanceId: string, entityId: string): ComponentInstan
  */
 export function clearInstanceState(instanceId: string): void {
     instanceStates.delete(instanceId);
-    logger.debug(`インスタンス ${instanceId} のエンティティ状態をクリアしました`);
 }

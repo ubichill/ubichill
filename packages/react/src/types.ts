@@ -75,14 +75,13 @@ export interface WorkerModDefinition {
     singleton?: boolean;
     /**
      * Worker が `Ubi.network.sendToHost(type, payload)` で送ったカスタムメッセージのホスト側ハンドラ。
-     * `api.updateUser` でユーザー状態を更新、`api.sendToWorker` で Worker へ返答できる。
+     * `api.sendToWorker` で Worker へ返答できる。
      * mod固有のホスト処理をここに記述することで InstanceRenderer との結合を断ち切る。
      */
     onHostMessage?: (
         type: string,
         payload: unknown,
         api: {
-            updateUser: (patch: unknown) => void;
             sendToWorker: (type: string, payload: unknown) => void;
         },
     ) => void;
