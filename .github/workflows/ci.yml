@@ -81,14 +81,134 @@ jobs:
         run: npx changeset status --since=origin/main
 
   test:
-    name: Test & Typecheck
+    name: Test
     runs-on: ubuntu-latest
     permissions:
       contents: read
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+
+      - name: Extract Node version from package.json
+        id: versions
+        run: |
+          echo "node=$(jq -r '.volta.node' package.json)" >> $GITHUB_OUTPUT
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ steps.versions.outputs.node }}
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # vitest 自体は resolve.alias で shared/ecs/sdk/ui-renderer/loader をソースへ直結するため
+      # 通常は build 不要。ただし SDK のビルド系テスト（build.test.mjs 等）は esbuild 経由で
+      # @ubichill/shared を node_modules → dist で解決するため、shared/dist は事前に必要。
+      - name: Build shared
+        run: pnpm --filter @ubichill/shared build
+
+      - name: Test
+        run: pnpm exec vitest run
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Extract Node version from package.json
+        id: versions
+        run: |
+          echo "node=$(jq -r '.volta.node' package.json)" >> $GITHUB_OUTPUT
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ steps.versions.outputs.node }}
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # typecheck はパッケージ間参照が dist 経由のため、shared/db は事前ビルドが要る。
+      # それ以外は turbo が全パッケージの `tsc --noEmit` を並列実行する（旧: pnpm -r 直列）。
+      - name: Build shared & db
+        run: |
+          pnpm --filter @ubichill/shared build
+          pnpm --filter @ubichill/db build
+
+      - name: Typecheck (turbo)
+        run: pnpm exec turbo run typecheck
+
+  verify-mods:
+    name: Verify mods & npm package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Extract Node version from package.json
+        id: versions
+        run: |
+          echo "node=$(jq -r '.volta.node' package.json)" >> $GITHUB_OUTPUT
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ steps.versions.outputs.node }}
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # build:workers / build:sdk は CLI を plain node で実行し @ubichill/shared を
+      # dist 経由で import するため、shared を先にビルドする。
+      - name: Build shared
+        run: pnpm --filter @ubichill/shared build
+
+      # 実際に mod をビルドし、lock.json の integrity が生成バイト列と一致するか検証する。
+      - name: Build mod workers
+        run: pnpm build:workers
+
+      - name: Verify mod locks
+        run: pnpm verify:mod-locks
+
+      # `pnpm build:sdk` が生成する npm 公開物（ubichill パッケージ）が実際にインストール・
+      # 実行可能かを確認する fail-closed ゲート。
+      - name: Build npm publish package
+        run: pnpm build:sdk
+
+      - name: Smoke-test npm publish package
+        run: |
+          cd packages/sdk/dist-npm
+          npm install --no-save
+          node -e "import('./index.js').then(m => { if (!m.UbiSDK) throw new Error('UbiSDK not exported'); })"
+          node cli.js verify --dist-dir=../../../dist/mods
+
+  verify-sdk:
+    name: Verify SDK types & drift
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v5
         with:
           # check-drift.mjs が直近publishタグ(ubichill@*)をworktreeでビルド・比較するため、
           # タグと履歴が必要（デフォルトのshallow checkoutでは見えない）。
@@ -112,55 +232,17 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # typecheck はパッケージ間参照が dist 経由のため、shared/db は事前ビルドが要る。
-      # vitest 自体は resolve.alias で shared/ecs/sdk/ui-renderer/loader をソースへ直結するため
-      # build 不要（DB統合テストも DATABASE_URL 未設定時は describe.skipIf でスキップ）。
-      # ただし後段の packages/sdk/cli/build.ts は plain node 実行で @ubichill/shared を dist 経由で
-      # import するため、このステップがそれより前に無いと解決に失敗する。
-      - name: Build shared & db
-        run: |
-          pnpm --filter @ubichill/shared build
-          pnpm --filter @ubichill/db build
-
-      - name: Test
-        run: pnpm exec vitest run
-
-      - name: Typecheck
-        run: pnpm typecheck
-
-      # 実際に mod をビルドし、lock.json の integrity が生成バイト列と一致するか検証する。
-      # 単体テストはフェイク値で hash 規約の一致を確認するだけなので、実ビルドでの
-      # fail-closed 検証は別枠で必要（packages/sdk/cli/verify.ts 参照）。
-      - name: Build mod workers
-        run: pnpm build:workers
-
-      - name: Verify mod locks
-        run: pnpm verify:mod-locks
+      # buildDts は @ubichill/shared を dist 経由で解決するため shared を先にビルド。
+      - name: Build shared
+        run: pnpm --filter @ubichill/shared build
 
       # SDK型定義バンドルの検証（buildDts = TS Compiler API フルコンパイル、実測20秒級）。
-      # 開発ループを重くしないためファイル名を *.test.mjs にせず既定のvitest includeから
-      # 除外している（packages/sdk/build.dts.verify.mjs 冒頭コメント参照）。CIでは明示的に実行する。
       - name: Verify SDK type bundle
         run: pnpm verify:sdk-types
 
-      # `pnpm build:sdk` が生成する npm 公開物（ubichill パッケージ）が実際にインストール・
-      # 実行可能かを確認する fail-closed ゲート。build.test.mjs はコード内容のみの高速チェックで、
-      # 「npm install した実体が動くか」は見ていない（実測: esbuild/yaml を external にせず
-      # バンドルすると動的requireで実行時に落ちる、shebangを二重に付けるとSyntaxErrorになる、
-      # という2つの回帰をこの手順を手動で踏んで初めて見つけた）。
-      - name: Build & smoke-test npm publish package
-        run: |
-          pnpm build:sdk
-          cd packages/sdk/dist-npm
-          npm install --no-save
-          node -e "import('./index.js').then(m => { if (!m.UbiSDK) throw new Error('UbiSDK not exported'); })"
-          node cli.js verify --dist-dir=../../../dist/mods
-
-      # sdk がインライン展開する shared/ecs/loader（private、changesets管理対象外）だけを
-      # 変更してsdk向けのchangesetを付け忘れた場合、npm公開物の内容が変わるのにバージョンが
-      # 上がらない事故になる。直近publishタグ(ubichill@*)時点とHEADでsdkを2回ビルドして
-      # バイト内容を比較し、version不変のままビルド結果が変わっていればfail-closedで止める。
-      - name: Check for undetected SDK build drift (shared/ecs/loader changes without a changeset)
+      # sdk がインライン展開する shared/ecs/loader を変更して sdk 向け changeset を
+      # 付け忘れた場合の fail-closed 検査。
+      - name: Check for undetected SDK build drift
         run: node packages/sdk/check-drift.mjs
 
   # 変更検知: PR 時はパスフィルタ、push to main では全て true を返す。
@@ -213,7 +295,7 @@ jobs:
 
   build-backend:
     name: Build and push Backend image
-    needs: [lint, test, detect-changes]
+    needs: [lint, test, typecheck, verify-mods, verify-sdk, detect-changes]
     if: >
       github.event.pull_request.user.login != 'dependabot[bot]' &&
       (
@@ -271,7 +353,7 @@ jobs:
 
   build-frontend:
     name: Build and push Frontend image
-    needs: [lint, test, detect-changes]
+    needs: [lint, test, typecheck, verify-mods, verify-sdk, detect-changes]
     if: >
       github.event.pull_request.user.login != 'dependabot[bot]' &&
       (

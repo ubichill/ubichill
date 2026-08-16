@@ -12,6 +12,9 @@
         "./install-dependencies": "./src/installDependencies.ts",
         "./update-dependencies": "./src/updateDependencies.ts"
     },
+    "scripts": {
+        "typecheck": "tsc --noEmit"
+    },
     "dependencies": {
         "@ubichill/shared": "workspace:*",
         "yaml": "^2.9.0"

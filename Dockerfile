@@ -35,9 +35,25 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile --ignore-scripts
 
 # ==========================================
-# builder: ソースコピー → ビルド
+# builder-backend: backend に必要な最小ビルド
 # ==========================================
-FROM deps AS builder
+FROM deps AS builder-backend
+WORKDIR /app
+
+COPY . .
+
+RUN pnpm --filter @ubichill/shared build \
+    && pnpm --filter @ubichill/db build \
+    && pnpm --filter @ubichill/backend build
+
+# inject-workspace-packages=true: pnpm deploy がシンボリックリンクではなく実ファイルをコピーする
+RUN echo "inject-workspace-packages=true" > .npmrc \
+    && pnpm --filter="@ubichill/backend" --prod deploy --ignore-scripts /app/deploy-backend
+
+# ==========================================
+# builder-frontend: SPA + BFF に必要な最小ビルド
+# ==========================================
+FROM deps AS builder-frontend
 WORKDIR /app
 
 COPY . .
@@ -57,11 +73,14 @@ ENV VITE_ENVIRONMENT=${VITE_ENVIRONMENT}
 ARG COMMIT_HASH=unknown
 ENV COMMIT_HASH=${COMMIT_HASH}
 
-RUN pnpm run build
+# build:workers が packages/frontend/public/mods へ mod を配置し、続く vite build が
+# public/ を dist/ へコピーする。順序が重要。
+RUN pnpm --filter @ubichill/shared build \
+    && pnpm build:workers \
+    && pnpm --filter @ubichill/frontend build \
+    && pnpm --filter @ubichill/bff build
 
-# inject-workspace-packages=true: pnpm deploy がシンボリックリンクではなく実ファイルをコピーする
 RUN echo "inject-workspace-packages=true" > .npmrc \
-    && pnpm --filter="@ubichill/backend" --prod deploy --ignore-scripts /app/deploy-backend \
     && pnpm --filter="@ubichill/bff" --prod deploy --ignore-scripts /app/deploy-bff
 
 # ==========================================
@@ -76,8 +95,8 @@ ARG COMMIT_HASH=unknown
 ENV COMMIT_HASH=${COMMIT_HASH}
 
 USER node
-COPY --from=builder --chown=node:node /app/deploy-backend .
-COPY --from=builder --chown=node:node /app/worlds ./worlds
+COPY --from=builder-backend --chown=node:node /app/deploy-backend .
+COPY --from=builder-backend --chown=node:node /app/worlds ./worlds
 
 # コンテナ内の絶対パス。k8s で ConfigMap/PVC をマウントする場合は WORLDS_DIR で上書きする
 ENV WORLDS_DIR=/app/worlds
@@ -98,8 +117,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 USER node
-COPY --from=builder --chown=node:node /app/deploy-bff .
-COPY --from=builder --chown=node:node /app/packages/frontend/dist ./frontend-dist
+COPY --from=builder-frontend --chown=node:node /app/deploy-bff .
+COPY --from=builder-frontend --chown=node:node /app/packages/frontend/dist ./frontend-dist
 
 # BFF が配信する SPA の場所。core API の内部到達先は CORE_API_URL（compose/K8s で設定）。
 ENV FRONTEND_DIST=/app/frontend-dist
