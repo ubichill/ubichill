@@ -350,7 +350,6 @@ jobs:
             ${{ github.event_name == 'pull_request' && format('{0}/{1}/{2}:pr-{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, github.event.pull_request.number) || '' }}
             ${{ github.event_name == 'push' && format('{0}/{1}/{2}:{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, steps.versions.outputs.next-version) || '' }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
           provenance: false
 
   build-frontend:
@@ -410,7 +409,6 @@ jobs:
             ${{ github.event_name == 'pull_request' && format('{0}/{1}/{2}:pr-{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, github.event.pull_request.number) || '' }}
             ${{ github.event_name == 'push' && format('{0}/{1}/{2}:{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, steps.versions.outputs.next-version) || '' }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
           provenance: false
 
   # ── git タグ付け（push to main のビルド完了後）──────────────────────────────
