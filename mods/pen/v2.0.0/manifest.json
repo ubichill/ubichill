@@ -60,7 +60,7 @@
         "scene:update",
         "ui:render"
       ],
-      "workerUrl": "./pen/index.bfbc2188.js"
+      "workerUrl": "./pen/index.45a30565.js"
     },
     "pen:tray": {
       "defaultTransform": {
