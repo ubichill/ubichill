@@ -1,5 +1,5 @@
 ---
-"@ubichill/shared": minor
+"@ubichill/shared": patch
 ---
 
 `shared` レイヤーから mod 固有の概念を排除した。

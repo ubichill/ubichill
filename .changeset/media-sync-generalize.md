@@ -1,5 +1,5 @@
 ---
-"@ubichill/shared": minor
+"@ubichill/shared": patch
 "@ubichill/backend": patch
 "@ubichill/sdk": minor
 ---
