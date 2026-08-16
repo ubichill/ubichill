@@ -29,9 +29,11 @@ interface MediaEntry {
     video: HTMLVideoElement;
     hls: Hls | null;
     visible: boolean;
+    /** メディア種別。audio=バックグラウンド再生可・デバイス制御既定ON、video=既定OFF。 */
+    kind: 'audio' | 'video';
     /** host が意図している再生状態。null=未指定。デバイス操作の差し戻し判定に使う。 */
     intendedPlaying: boolean | null;
-    /** デバイス由来（メディアキー/ロック画面/PiP）の操作を許可するか。既定 false=ロック。 */
+    /** デバイス由来（メディアキー/ロック画面/PiP）の操作を許可するか。kind から既定値を導く。 */
     deviceControl: boolean;
 }
 
@@ -41,7 +43,7 @@ interface MediaEntry {
  * mod側に race の存在を意識させないためのバッファ。
  */
 interface PendingMedia {
-    load?: { url: string; mediaType: 'hls' | 'video' | 'auto' | undefined };
+    load?: { url: string; mediaType: 'hls' | 'video' | 'auto' | undefined; kind?: 'audio' | 'video' };
     play?: boolean; // true: play, false: pause
     seek?: number;
     volume?: number;
@@ -119,6 +121,7 @@ export function useModMedia(
                             video: el,
                             hls: null,
                             visible: false,
+                            kind: 'video',
                             intendedPlaying: null,
                             deviceControl: false,
                         });
@@ -155,7 +158,7 @@ export function useModMedia(
         const p = pendingRef.current.get(targetId);
         if (!p) return;
         pendingRef.current.delete(targetId);
-        if (p.load) _applyLoad(targetId, p.load.url, p.load.mediaType);
+        if (p.load) _applyLoad(targetId, p.load.url, p.load.mediaType, p.load.kind);
         if (p.seek !== undefined) _applySeek(targetId, p.seek);
         if (p.volume !== undefined) _applyVolume(targetId, p.volume);
         if (p.visible !== undefined) _applyVisible(targetId, p.visible);
@@ -219,10 +222,19 @@ export function useModMedia(
         listenersRef.current.set(targetId, { timeupdate, ended, error, loadedmetadata, play, pause });
     };
 
-    const _applyLoad = (targetId: string, url: string, mediaType: 'hls' | 'video' | 'auto' | undefined): void => {
+    const _applyLoad = (
+        targetId: string,
+        url: string,
+        mediaType: 'hls' | 'video' | 'auto' | undefined,
+        kind?: 'audio' | 'video',
+    ): void => {
         const entry = mediaEntriesRef.current.get(targetId);
         if (!entry) return;
         const { video } = entry;
+        entry.kind = kind ?? 'video';
+        // audio はデバイス操作を既定で許可（ロック画面/メディアキーで再生継続・制御できる）。
+        // video は明示許可（setDeviceControl(true)）までロック。
+        _applyDeviceControl(targetId, entry.kind === 'audio');
         if (entry.hls) {
             entry.hls.destroy();
             entry.hls = null;
@@ -274,6 +286,7 @@ export function useModMedia(
         if (!entry) return;
         // 差し戻し判定より先に意図を更新する（自前の play で pause ガードが誤発火しないように）。
         entry.intendedPlaying = true;
+        _syncMediaSessionPlaybackState(entry);
         entry.video.play().catch(() => undefined);
     };
 
@@ -281,7 +294,18 @@ export function useModMedia(
         const entry = mediaEntriesRef.current.get(targetId);
         if (!entry) return;
         entry.intendedPlaying = false;
+        _syncMediaSessionPlaybackState(entry);
         entry.video.pause();
+    };
+
+    /**
+     * デバイス制御が有効な media session に「今再生中か」を報告する。
+     * これにより OS はバックグラウンドタブ/ロック画面でも再生継続を許可する。
+     */
+    const _syncMediaSessionPlaybackState = (entry: MediaEntry): void => {
+        const ms = typeof navigator !== 'undefined' ? navigator.mediaSession : undefined;
+        if (!ms || !entry.deviceControl) return;
+        ms.playbackState = entry.intendedPlaying === true ? 'playing' : 'paused';
     };
 
     /**
@@ -293,6 +317,7 @@ export function useModMedia(
         const entry = mediaEntriesRef.current.get(targetId);
         if (!entry) return;
         entry.deviceControl = enabled;
+        _syncMediaSessionPlaybackState(entry);
         const { video } = entry;
         video.disablePictureInPicture = !enabled;
         // disableRemotePlayback は型に無いブラウザ拡張属性なので属性で設定する。
@@ -337,12 +362,12 @@ export function useModMedia(
     };
 
     const mediaHandlers: UseModMediaResult['mediaHandlers'] = {
-        onMediaLoad: (targetId, url, mediaType) => {
+        onMediaLoad: (targetId, url, mediaType, kind) => {
             if (!mediaEntriesRef.current.has(targetId)) {
-                _getPending(targetId).load = { url, mediaType };
+                _getPending(targetId).load = { url, mediaType, kind };
                 return;
             }
-            _applyLoad(targetId, url, mediaType);
+            _applyLoad(targetId, url, mediaType, kind);
         },
 
         onMediaPlay: (targetId) => {

@@ -39,6 +39,24 @@ export interface WorldSnapshotPayload {
 }
 
 // ============================================
+// Media sync
+// ============================================
+
+/**
+ * メディアの再生状態を peer 間で同期するための状態。
+ * 旧 `{ currentIndex, isPlaying, currentTime }` は動画プレイリスト前提だったため、
+ * 「何を再生しているか」を mod 定義の mediaId で一般化し、動画/音声/配信を問わず扱える。
+ */
+export interface MediaSyncState {
+    /** 再生対象メディアの識別子（プレイリスト index を一般化。mod が内容ごとに決める）。 */
+    mediaId: string;
+    isPlaying: boolean;
+    currentTime: number;
+    duration?: number;
+    playbackRate?: number;
+}
+
+// ============================================
 // Socket.io Event Types
 // ============================================
 
@@ -99,13 +117,13 @@ export interface ServerToClientEvents {
     // ============================================
 
     /** メディア再生状態の同期 */
-    'media:sync': (data: { currentIndex: number; isPlaying: boolean; currentTime: number }) => void;
+    'media:sync': (data: MediaSyncState) => void;
 
     /** 再生状態のリクエスト (参加時 / Resync で発火) */
     'media:state-request': (data: { fromSocketId: string }) => void;
 
     /** リクエストへの応答 (要求者だけに DM) */
-    'media:state-response': (data: { currentIndex: number; isPlaying: boolean; currentTime: number }) => void;
+    'media:state-response': (data: MediaSyncState) => void;
 }
 
 /**
@@ -151,18 +169,13 @@ export interface ClientToServerEvents {
     // ============================================
 
     /** メディア再生状態を peer に流す */
-    'media:sync': (data: { currentIndex: number; isPlaying: boolean; currentTime: number }) => void;
+    'media:sync': (data: MediaSyncState) => void;
 
     /** 他参加者に現在の再生状態を尋ねる */
     'media:state-request': () => void;
 
     /** リクエスト元への応答 */
-    'media:state-response': (data: {
-        toSocketId: string;
-        currentIndex: number;
-        isPlaying: boolean;
-        currentTime: number;
-    }) => void;
+    'media:state-response': (data: MediaSyncState & { toSocketId: string }) => void;
 }
 
 /**
