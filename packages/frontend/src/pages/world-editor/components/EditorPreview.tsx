@@ -204,9 +204,6 @@ export function EditorPreview({
             updateStatus: () => {
                 /* no-op */
             },
-            updateUser: () => {
-                /* no-op */
-            },
         }),
         [],
     );

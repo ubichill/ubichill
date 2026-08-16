@@ -61,9 +61,6 @@ export interface ServerToClientEvents {
     /** ユーザーのステータス更新 */
     'status:changed': (data: { userId: string; status: UserStatus }) => void;
 
-    /** ユーザー情報の更新 */
-    'user:updated': (user: User) => void;
-
     /** エラー通知 */
     error: (message: string) => void;
 
@@ -129,9 +126,6 @@ export interface ClientToServerEvents {
 
     /** ステータスを更新 */
     'status:update': (status: UserStatus) => void;
-
-    /** ユーザー情報を更新 */
-    'user:update': (patch: Partial<User>) => void;
 
     // ============================================
     // UEP Events (Client -> Server)

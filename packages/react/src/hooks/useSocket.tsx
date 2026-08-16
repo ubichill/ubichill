@@ -24,7 +24,6 @@ export interface SocketContextValue {
     leaveWorld: () => Promise<void>;
     updatePosition: (position: CursorPosition, heldEntityId?: string | null) => void;
     updateStatus: (status: UserStatus) => void;
-    updateUser: (patch: Partial<User>) => void;
 }
 
 export const SocketContext = createContext<SocketContextValue | null>(null);
@@ -119,18 +118,14 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             });
         });
 
-        socket.on('cursor:moved', ({ userId, position, heldEntityId }) => {
+        socket.on('cursor:moved', ({ userId, position }) => {
             setUsers((prev) => {
                 const user = prev.get(userId);
                 if (!user) return prev;
 
                 // 位置情報を更新
                 const newMap = new Map(prev);
-                newMap.set(userId, {
-                    ...user,
-                    position,
-                    ...(heldEntityId !== undefined && { heldEntityId }),
-                });
+                newMap.set(userId, { ...user, position });
                 return newMap;
             });
         });
@@ -143,20 +138,6 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 newMap.set(userId, { ...user, status });
                 return newMap;
             });
-        });
-
-        socket.on('user:updated', (updatedUser) => {
-            setUsers((prev) => {
-                const newMap = new Map(prev);
-                newMap.set(updatedUser.id, updatedUser);
-                return newMap;
-            });
-
-            // 自分の情報が更新された場合はcurrentUserも更新
-            const current = currentUserRef.current;
-            if (current && current.id === updatedUser.id) {
-                setCurrentUser(updatedUser);
-            }
         });
 
         socket.on('error', (msg) => {
@@ -229,11 +210,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             });
 
             // ローカルの currentUser も更新
-            const updated = {
-                ...current,
-                position,
-                ...(heldEntityId !== undefined && { heldEntityId }),
-            };
+            const updated = { ...current, position };
             setCurrentUser(updated);
             currentUserRef.current = updated;
         },
@@ -251,20 +228,6 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const updated = { ...current, status };
             setCurrentUser(updated);
             currentUserRef.current = updated;
-        },
-        [isConnected],
-    );
-
-    const updateUser = useCallback(
-        (patch: Partial<User>) => {
-            const socket = socketRef.current;
-            const current = currentUserRef.current;
-            if (!socket || !isConnected || !current) return;
-
-            socket.emit('user:update', patch);
-
-            // 楽観的更新はせず、サーバーからの user:updated イベントを待つ
-            // (サーバー側でのバリデーションや正規化を反映するため)
         },
         [isConnected],
     );
@@ -309,7 +272,6 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         leaveWorld,
         updatePosition,
         updateStatus,
-        updateUser,
     };
 
     return <SocketContext.Provider value={value}>{children}</SocketContext.Provider>;

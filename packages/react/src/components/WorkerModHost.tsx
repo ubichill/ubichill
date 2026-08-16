@@ -42,7 +42,7 @@ export interface WorkerModHostProps {
 }
 
 export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, definition }) => {
-    const { users, currentUser, updatePosition, updateUser } = useSocket();
+    const { users, currentUser, updatePosition } = useSocket();
     const { entities, patchEntity } = useWorld();
     const { handleGripCommand } = useHold();
     const permissions = useUbiPermissions();
@@ -95,12 +95,10 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
     }, [workerLoading, enabled]);
 
     const updatePositionRef = useRef(updatePosition);
-    const updateUserRef = useRef(updateUser);
     const patchEntityRef = useRef(patchEntity);
     const currentUserRef = useRef(currentUser);
     useEffect(() => {
         updatePositionRef.current = updatePosition;
-        updateUserRef.current = updateUser;
         patchEntityRef.current = patchEntity;
         currentUserRef.current = currentUser;
     });
@@ -185,13 +183,11 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
                         // EntityRenderer の初期位置)。grip ごとに違うオフセットを共通ソースから読めるように。
                         data: { isHeld: true, heldOffset: { x: payload.offsetX, y: payload.offsetY } },
                     });
-                    updateUserRef.current({ heldEntityId: payload.entityId });
                 } else if (payload.action === 'release' && payload.share === 'persistent') {
                     patchEntityRef.current(payload.entityId, {
                         lockedBy: null,
                         data: { isHeld: false, heldOffset: null },
                     });
-                    updateUserRef.current({ heldEntityId: null });
                 }
             },
             onMessage: (msg) => {
@@ -199,17 +195,9 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
                 if (m.type === 'position:update') {
                     const { x, y } = m.payload as { x: number; y: number };
                     updatePositionRef.current({ x, y });
-                } else if (m.type === 'user:update') {
-                    updateUserRef.current(m.payload as Parameters<typeof updateUserRef.current>[0]);
                 } else {
                     definition.onHostMessage?.(m.type, m.payload, {
-                        updateUser: (patch) =>
-                            updateUserRef.current(patch as Parameters<typeof updateUserRef.current>[0]),
                         sendToWorker: (type, payload) =>
-                            // 旧仕様: eventType: 'host:message', data: { type, payload } という入れ子だったが
-                            // Worker 側で常に switch(payload.type) を書かされる二度手間だったので、
-                            // type を eventType に直接昇格させて Worker は Ubi.event.on(type, ...) で
-                            // フラットに受けられるようにした。
                             sendEventRef.current?.({
                                 type: 'EVT_CUSTOM',
                                 payload: { eventType: type, data: payload },

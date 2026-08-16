@@ -9,5 +9,5 @@
  */
 export { handleEntityCreate, handleEntityDelete, handleEntityEphemeral, handleEntityPatch } from './entityHandlers';
 export { handleMediaStateRequest, handleMediaStateResponse, handleMediaSync } from './mediaHandlers';
-export { handleCursorMove, handleStatusUpdate, handleUserUpdate } from './userHandlers';
+export { handleCursorMove, handleStatusUpdate } from './userHandlers';
 export { handleDisconnect, handleWorldJoin, handleWorldLeave, sendWorldSnapshot } from './worldHandlers';

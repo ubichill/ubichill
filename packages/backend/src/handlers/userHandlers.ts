@@ -2,9 +2,7 @@
  * ユーザー個別の状態更新ハンドラ群。
  *  - cursor:move    : カーソル位置を peer に中継 (heldEntityId の中継含む)
  *  - status:update  : online/away/busy 等の status 切替
- *  - user:update    : ホワイトリスト経由の汎用ユーザー情報パッチ (penColor/heldEntityId など)
  */
-import type { User } from '@ubichill/shared';
 import { userManager } from '../services/userManager';
 import { validateCursorPosition, validateUserStatus } from '../utils/validation';
 import { stableUserId, type TypedSocket } from './_shared';
@@ -82,29 +80,5 @@ export function handleStatusUpdate(socket: TypedSocket) {
             userId,
             status: validation.data,
         });
-    };
-}
-
-export function handleUserUpdate(socket: TypedSocket) {
-    return (patch: Partial<User>) => {
-        const instanceId = socket.data.instanceId;
-        if (!instanceId) {
-            socket.emit('error', '最初にワールドに参加する必要があります');
-            return;
-        }
-
-        const userId = stableUserId(socket);
-        if (!userId) {
-            socket.emit('error', '認証が必要です');
-            return;
-        }
-
-        const updatedUser = userManager.updateUser(userId, patch);
-        if (!updatedUser) {
-            socket.emit('error', 'ユーザーが見つかりません');
-            return;
-        }
-
-        socket.nsp.to(instanceId).emit('user:updated', updatedUser);
     };
 }

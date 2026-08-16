@@ -51,24 +51,6 @@ describe('UserManager', () => {
         expect(m.getUser('1')?.status).toBe('busy');
     });
 
-    it('updateUser は penColor / heldEntityId のみ許可し、他フィールドは無視する', () => {
-        const m = new UserManager();
-        m.addUser('1', 'w1', makeUser('1'));
-        const updated = m.updateUser('1', { penColor: '#fff', heldEntityId: 'e1', name: 'HACKED' });
-        expect(updated?.penColor).toBe('#fff');
-        expect(updated?.heldEntityId).toBe('e1');
-        expect(updated?.name).toBe('u1'); // name はホワイトリスト外
-    });
-
-    it('updateUser は null で penColor / heldEntityId を解除できる', () => {
-        const m = new UserManager();
-        const u = { ...makeUser('1'), penColor: '#000', heldEntityId: 'e1' };
-        m.addUser('1', 'w1', u);
-        m.updateUser('1', { penColor: null, heldEntityId: null });
-        expect(m.getUser('1')?.penColor).toBeNull();
-        expect(m.getUser('1')?.heldEntityId).toBeNull();
-    });
-
     it('getUserCount は総ユーザー数を返す', () => {
         const m = new UserManager();
         m.addUser('1', 'w1', makeUser('1'));

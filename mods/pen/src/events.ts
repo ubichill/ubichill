@@ -33,6 +33,4 @@ export const PenEvents = Ubi.event.define<{
     'pen:tray:release': { x: number; y: number };
     // ── 自mod: tray で太さを変更 ──
     'pen:tray:change_thickness': { thickness: number };
-    // ── Host への通知: ユーザーペン色更新 (sendToHost) ──
-    'user:update': { penColor: string | null };
 }>();
