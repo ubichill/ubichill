@@ -10,9 +10,9 @@
 </p>
 
 <p align="center">
-  <a href="https://ubichill.com/"><strong>ubichill.com</strong></a>（紹介）
+  <a href="https://hub.ubichill.com/"><strong>ホーム・ドキュメント</strong></a>
   ・
-  <a href="https://app.ubichill.com/"><strong>アプリを開く</strong></a>
+  <a href="https://ubichill.com/"><strong>アプリを開く</strong></a>
 </p>
 
 <p align="center">
@@ -40,8 +40,8 @@ URL を開くだけでカーソルがアバターになる、軽量な 2D メタ
 
 | 用途 | URL | 反映トリガー |
 |---|---|---|
-| ホーム（紹介サイト） | <https://ubichill.com/> | 別途（アプリ本体とは分離） |
-| Production（アプリ本体） | <https://app.ubichill.com/> | `main` への merge → `:latest` / `:sha-<sha>` イメージで自動デプロイ |
+| ホーム・ドキュメント | <https://hub.ubichill.com/> | 別途（アプリ本体とは分離） |
+| Production（アプリ本体） | <https://ubichill.com/> | `main` への merge → `:latest` / `:sha-<sha>` イメージで自動デプロイ |
 | PR プレビュー | `pr-<番号>.ubichill.com` | PR に `preview` ラベル付与 → `:pr-<番号>` / `:sha-<sha>` をビルドし、GitOps（ArgoCD ApplicationSet）が PR ごとに払い出す |
 
 > イメージは GHCR（`ghcr.io/<owner>/ubichill-{backend,frontend}`）に push される。デプロイ先のドメインや secret は本リポジトリには含めず、GitOps/Helm values 側で注入する（`global.domain` や `MAIL_FROM` 等）。
