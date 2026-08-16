@@ -295,7 +295,9 @@ jobs:
 
   build-backend:
     name: Build and push Backend image
-    needs: [lint, test, typecheck, verify-mods, verify-sdk, detect-changes]
+    # verify-mods / verify-sdk は SDK npm 公開物の検証であり、Docker イメージには不要。
+    # これらを待たずに lint/test/typecheck 通過後すぐイメージビルドを開始する（並列化）。
+    needs: [lint, test, typecheck, detect-changes]
     if: >
       github.event.pull_request.user.login != 'dependabot[bot]' &&
       (
@@ -353,7 +355,7 @@ jobs:
 
   build-frontend:
     name: Build and push Frontend image
-    needs: [lint, test, typecheck, verify-mods, verify-sdk, detect-changes]
+    needs: [lint, test, typecheck, detect-changes]
     if: >
       github.event.pull_request.user.login != 'dependabot[bot]' &&
       (
@@ -415,12 +417,15 @@ jobs:
 
   tag-release:
     name: Tag release
-    needs: [detect-changes, build-backend, build-frontend]
+    # push to main のリリースタグは SDK 検証（verify-mods/verify-sdk）も通過してから打つ。
+    needs: [detect-changes, build-backend, build-frontend, verify-mods, verify-sdk]
     if: >
       always() && !cancelled() &&
       github.event_name == 'push' && github.ref == 'refs/heads/main' &&
       needs.build-backend.result    != 'failure' &&
       needs.build-frontend.result   != 'failure' &&
+      needs.verify-mods.result      != 'failure' &&
+      needs.verify-sdk.result       != 'failure' &&
       (
         needs.build-backend.result    == 'success' ||
         needs.build-frontend.result   == 'success'

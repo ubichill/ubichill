@@ -32,7 +32,7 @@ COPY packages/sdk/package.json            ./packages/sdk/package.json
 COPY packages/shared/package.json         ./packages/shared/package.json
 COPY packages/ui-renderer/package.json    ./packages/ui-renderer/package.json
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    pnpm install --frozen-lockfile --ignore-scripts
+    pnpm install --frozen-lockfile --ignore-scripts --store-dir=/pnpm/store
 
 # ==========================================
 # builder-backend: backend に必要な最小ビルド
@@ -47,7 +47,9 @@ RUN pnpm --filter @ubichill/shared build \
     && pnpm --filter @ubichill/backend build
 
 # inject-workspace-packages=true: pnpm deploy がシンボリックリンクではなく実ファイルをコピーする
-RUN echo "inject-workspace-packages=true" > .npmrc \
+# store-dir を deps と同じキャッシュマウントに向け、deploy の再ダウンロードを防ぐ。
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+    printf 'inject-workspace-packages=true\nstore-dir=/pnpm/store\n' > .npmrc \
     && pnpm --filter="@ubichill/backend" --prod deploy --ignore-scripts /app/deploy-backend
 
 # ==========================================
@@ -80,7 +82,8 @@ RUN pnpm --filter @ubichill/shared build \
     && pnpm --filter @ubichill/frontend build \
     && pnpm --filter @ubichill/bff build
 
-RUN echo "inject-workspace-packages=true" > .npmrc \
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+    printf 'inject-workspace-packages=true\nstore-dir=/pnpm/store\n' > .npmrc \
     && pnpm --filter="@ubichill/bff" --prod deploy --ignore-scripts /app/deploy-bff
 
 # ==========================================
