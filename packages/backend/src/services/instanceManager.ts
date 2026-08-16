@@ -1,8 +1,6 @@
 import { type InstanceRecord, instanceRepository } from '@ubichill/db';
 import type {
-    ComponentInstance,
     CreateInstanceRequest,
-    InitialEntity,
     Instance,
     InstanceAccess,
     WorldEnvironmentData,
@@ -12,49 +10,11 @@ import type {
 import { DEFAULTS } from '@ubichill/shared';
 import bcrypt from 'bcryptjs';
 import { logger } from '../utils/logger';
+import { flattenGameObject } from './flattenGameObject';
 import { instanceReaper } from './instanceReaper';
 import { clearInstanceState, createEntity } from './instanceState';
 import { userManager } from './userManager';
 import { worldRegistry } from './worldRegistry';
-
-/**
- * GameObject ツリーを 1 Component = 1 ComponentInstance に展開する純関数。
- * 子 Entity の transform.x/y は親基準の相対座標 → 親 origin を加算して絶対化する。
- * w/h は未指定 (undefined) なら 0 を入れて「サイズ未指定 = 自然サイズ尊重」を表す。
- */
-function flattenGameObject(
-    gameObject: InitialEntity,
-    parentOrigin: { x: number; y: number; z: number } = { x: 0, y: 0, z: 0 },
-    parentEntityId?: string,
-): Array<Omit<ComponentInstance, 'id'> & { id: string }> {
-    const t = gameObject.transform;
-    const absX = parentOrigin.x + t.x;
-    const absY = parentOrigin.y + t.y;
-    const absZ = parentOrigin.z + (t.z ?? 0);
-    const transform: ComponentInstance['transform'] = {
-        x: absX,
-        y: absY,
-        z: absZ,
-        w: t.w ?? 0,
-        h: t.h ?? 0,
-        scale: t.scale ?? 1,
-        rotation: t.rotation ?? 0,
-    };
-    const own = (gameObject.components ?? []).map((c, i) => ({
-        id: `${gameObject.id}::${i}`,
-        type: c.type,
-        entityId: gameObject.id,
-        parentEntityId,
-        ownerId: null,
-        lockedBy: null,
-        transform,
-        data: c.data ?? {},
-    }));
-    const fromChildren = (gameObject.children ?? []).flatMap((child) =>
-        flattenGameObject(child, { x: absX, y: absY, z: absZ }, gameObject.id),
-    );
-    return [...own, ...fromChildren];
-}
 
 /**
  * インスタンスマネージャー
