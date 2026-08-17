@@ -26,17 +26,10 @@ export interface EditorFieldMeta {
     editable?: boolean;
     label?: string;
     help?: string;
-    type?:
-        | 'string'
-        | 'number'
-        | 'boolean'
-        | 'color'
-        | 'url'
-        | 'enum'
-        | 'json'
-        | 'array'
-        | 'entityRef'
-        | 'entityRefArray';
+    // entityRef/entityRefArray はここには無い。他 Entity への参照は manifest の
+    // `dataFields` に宣言する（実行時の declaredTargets 算出に必要で、state 由来の
+    // 型推論では配線できないため）。state 側で宣言しても Inspector に出ない。
+    type?: 'string' | 'number' | 'boolean' | 'color' | 'url' | 'enum' | 'json' | 'array';
     options?: string[];
     /** type:'array' の要素1つ分のフィールド定義（{ key: { type, label, default, ... } }） */
     item?: Record<string, EditorFieldMeta & { default?: unknown }>;

@@ -23,8 +23,8 @@ export interface ModSelectionEntry {
 export function selectionToDependencies(entries: readonly ModSelectionEntry[]): Dependency[] {
     return entries.map((entry) =>
         entry.baseUrl
-            ? { name: entry.id, source: { type: 'url' as const, url: entry.baseUrl, version: entry.version } }
-            : { name: entry.id, source: { type: 'local' as const, version: entry.version } },
+            ? { name: entry.id, source: { url: entry.baseUrl, version: entry.version } }
+            : { name: entry.id, source: { version: entry.version } },
     );
 }
 
@@ -46,9 +46,7 @@ export interface ModDiff {
 }
 
 const dependencyEquals = (a: Dependency, b: Dependency): boolean =>
-    a.source.type === b.source.type &&
-    (a.source.url ?? undefined) === (b.source.url ?? undefined) &&
-    a.source.version === b.source.version;
+    (a.source.url ?? undefined) === (b.source.url ?? undefined) && a.source.version === b.source.version;
 
 /** 現在の依存と次の依存の差分（追加/削除/更新）を計算する。 */
 export function computeModDiff(current: readonly Dependency[], next: readonly Dependency[]): ModDiff {

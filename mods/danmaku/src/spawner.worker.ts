@@ -38,7 +38,9 @@ const ARENA_HALF_H = 200;
 const WORLD_MARGIN = 40; // これを超えて出た弾は削除
 
 const spawner = Ubi.state.define({
-    target: Ubi.state.sync<string | null>(null, { type: 'entityRef', label: '狙う相手 (プレイヤー)' }),
+    // target は entityRef だが、その型・Inspector 表示は manifest の `config.dataFields.target`
+    // で宣言する。state 側は同期（persistent）だけ行い、Editor スキーマには出さない。
+    target: Ubi.state.sync<string | null>(null, { editable: false }),
     bulletsPerSecond: Ubi.state.sync(2, { type: 'number', min: 0.5, max: 10, step: 0.5, label: '発射レート (発/秒)' }),
     bulletSpeed: Ubi.state.sync(120, { type: 'number', min: 20, max: 400, step: 10, label: '弾速 (px/秒)' }),
     // 実行時の内部状態。Inspector には出さず canvas 兄弟への公開専用。

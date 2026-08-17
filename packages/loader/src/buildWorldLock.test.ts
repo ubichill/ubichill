@@ -133,12 +133,12 @@ describe('createDependencyAwareLockEntryGetter', () => {
         return { name, source };
     }
 
-    it('type: url の依存は source.url から個別取得し baseUrl を焼き込む', async () => {
+    it('url のある依存は source.url から個別取得し baseUrl を焼き込む', async () => {
         const f = fakeFetch({
             'https://cdn.example.test/video-player/mod.json': { id: 'video-player', version: '2.0.0' },
             'https://cdn.example.test/video-player/v2.0.0/lock.json': lockEntry('video-player'),
         });
-        const dependencies = [dep('video-player', { type: 'url', url: 'https://cdn.example.test', version: 'latest' })];
+        const dependencies = [dep('video-player', { url: 'https://cdn.example.test', version: 'latest' })];
         const fallback = async () => null;
         const getter = createDependencyAwareLockEntryGetter(dependencies, fallback, f);
 
@@ -147,7 +147,7 @@ describe('createDependencyAwareLockEntryGetter', () => {
     });
 
     it('source.version が pin されている mod は fallbackGetter にそのバージョンを渡す', async () => {
-        const dependencies = [dep('pen', { type: 'local', version: '1.2.3' })];
+        const dependencies = [dep('pen', { version: '1.2.3' })];
         const seen: Array<string | undefined> = [];
         const fallback = async (id: string, version?: string) => {
             seen.push(version);
@@ -160,7 +160,7 @@ describe('createDependencyAwareLockEntryGetter', () => {
     });
 
     it("source.version: 'latest'（既定）は pin なしとして fallbackGetter に委譲する", async () => {
-        const dependencies = [dep('pen', { type: 'local', version: 'latest' })];
+        const dependencies = [dep('pen', { version: 'latest' })];
         const seen: Array<string | undefined> = [];
         const fallback = async (id: string, version?: string) => {
             seen.push(version);
@@ -185,7 +185,7 @@ describe('createDependencyAwareLockEntryGetter', () => {
     });
 
     it('返す getter 自体が受け取った pinnedVersionOverride を優先する（合成用途で無視されない）', async () => {
-        const dependencies = [dep('pen', { type: 'local', version: 'latest' })];
+        const dependencies = [dep('pen', { version: 'latest' })];
         const seen: Array<string | undefined> = [];
         const fallback = async (id: string, version?: string) => {
             seen.push(version);

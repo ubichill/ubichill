@@ -101,9 +101,6 @@ export type ComponentDataFieldSpec = z.infer<typeof ComponentDataFieldSpecSchema
  *   - 'parent'   : 自 GameObject + その祖先 (子から親の Component を読む場合に使用)
  *   - 'world'    : ワールド全体
  * - `thumbnail`: アセット相対パス。エディタで Component カードに表示するプレビュー画像。
- * - `renderKind`: この Component が View をどう描画するか。未指定ならロジックのみ（見た目なし）。
- *   'jsx' (Ubi.ui.render の VNode) / 'canvas' (Canvas2D) / 'threejs' (WebGL ライブラリ)。
- *   エディタはこれでプレビュー表示を出し分ける。
  */
 const ComponentManifestMetaSchema = z.object({
     capabilities: z.array(z.string()).optional(),
@@ -115,7 +112,6 @@ const ComponentManifestMetaSchema = z.object({
     defaultTransform: TransformSchema.partial().optional(),
     dataFields: z.record(z.string(), ComponentDataFieldSpecSchema).optional(),
     displayName: z.string().optional(),
-    renderKind: z.enum(['jsx', 'canvas', 'threejs']).optional(),
 });
 
 /**

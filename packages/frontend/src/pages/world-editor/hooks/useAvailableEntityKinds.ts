@@ -54,8 +54,8 @@ export interface AvailableEntityKind {
     dataFields?: DataFields;
     /** Component アイコン URL (アセットブラウザ表示用)。manifest の `thumbnail` を versioned base で絶対化済み。 */
     thumbnailUrl?: string;
-    /** View の描画方式。未指定ならロジックのみ（見た目なし）として扱う。 */
-    renderKind?: 'jsx' | 'canvas' | 'threejs';
+    /** 見た目の描画方式。manifest の canvasTargets / ui:render capability から自動判定。 */
+    viewKind: 'jsx' | 'canvas' | 'logic';
 }
 
 interface ModIndex {
@@ -67,10 +67,10 @@ interface VersionedManifestComponent {
     singleton?: boolean;
     canvasTargets?: string[];
     mediaTargets?: string[];
+    capabilities?: string[];
     defaultTransform?: AvailableEntityKind['defaultTransform'];
     dataFields?: DataFields;
     thumbnail?: string;
-    renderKind?: 'jsx' | 'canvas' | 'threejs';
 }
 
 interface VersionedManifest {
@@ -88,10 +88,23 @@ const MOD_BASE_URL: string = (() => {
 const indexCache = new Map<string, Promise<ModIndex | null>>();
 const manifestCache = new Map<string, Promise<VersionedManifest | null>>();
 
-/** `source.type === 'url'` の mod は自身の `source.url` を base にする（グローバル `MOD_BASE_URL` はローカルmod専用）。 */
+/** `source.url` がある mod は自身の `source.url` を base にする（無ければローカル `MOD_BASE_URL`）。 */
 function resolveBase(dep: NonNullable<WorldDefinition['spec']['dependencies']>[number]): string {
-    if (dep.source.type === 'url' && dep.source.url) return dep.source.url.replace(/\/$/, '');
+    if (dep.source.url) return dep.source.url.replace(/\/$/, '');
     return MOD_BASE_URL;
+}
+
+/**
+ * 見た目の描画方式を manifest の実体（canvasTargets / ui:render capability）から自動判定する。
+ * 明示的な renderKind 宣言は持たず、「何を使っているか」で決める。
+ *  - canvasTargets があれば Canvas2D（WebGL 含む）
+ *  - ui:render capability（`export default` / Ubi.ui.render）があれば jsx（VNode）
+ *  - どちらも無ければロジックのみ（見た目なし）
+ */
+function deriveViewKind(meta: VersionedManifestComponent): 'jsx' | 'canvas' | 'logic' {
+    if (meta.canvasTargets?.length) return 'canvas';
+    if (meta.capabilities?.includes('ui:render')) return 'jsx';
+    return 'logic';
 }
 
 function fetchIndex(base: string, name: string): Promise<ModIndex | null> {
@@ -161,7 +174,7 @@ export function useAvailableEntityKinds(definition: WorldDefinition | null): {
                     defaultTransform: meta.defaultTransform,
                     dataFields: meta.dataFields,
                     thumbnailUrl: meta.thumbnail ? `${versionedBase}/${meta.thumbnail}` : undefined,
-                    renderKind: meta.renderKind,
+                    viewKind: deriveViewKind(meta),
                 }));
             }),
         )

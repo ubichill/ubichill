@@ -16,7 +16,6 @@ export const config: ComponentConfig = {
     watchScope: 'entity',
     defaultTransform: { x: 0, y: 0, z: 5000 },
     capabilities: ['canvas:draw'],
-    renderKind: 'canvas',
     description: '兄弟の danmaku:spawner が持つ弾のリストを Canvas2D で描画する。',
 };
 

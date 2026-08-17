@@ -6,7 +6,7 @@ import type { AvailableEntityKind, DataFields } from '../../hooks/useAvailableEn
 import { COMPONENT_DRAG_MIME } from '../../lib/dnd';
 import { DataFormFields } from './DataFormFields';
 import { Chevron, LogicOnlyBadge, MiniTab, NumField, RenderKindBadge, Section } from './primitives';
-import { inputStyle, textareaStyle } from './shared';
+import { inputStyle, mergeDataFields, textareaStyle } from './shared';
 
 interface ComponentCardProps {
     component: EntityComponentDef;
@@ -14,8 +14,8 @@ interface ComponentCardProps {
     dataFields?: DataFields;
     /** このコンポーネント型が既知（マニフェストに存在）か。既知なら未宣言キーの追加を禁止する。 */
     known: boolean;
-    /** View の描画方式。未指定（未知コンポーネント含む）はロジックのみ扱い。 */
-    renderKind?: 'jsx' | 'canvas' | 'threejs';
+    /** 見た目の描画方式（canvasTargets / ui:render capability から自動判定）。'logic' は見た目なし。 */
+    viewKind?: 'jsx' | 'canvas' | 'logic';
     /** entityRef/entityRefArray フィールドの D&D 解決に使うワールド全体の Entity ツリー。 */
     allEntities?: InitialEntity[];
     initiallyExpanded: boolean;
@@ -35,7 +35,7 @@ export function ComponentCard({
     componentIndex,
     dataFields,
     known,
-    renderKind,
+    viewKind,
     allEntities,
     initiallyExpanded,
     onChange,
@@ -44,12 +44,16 @@ export function ComponentCard({
     const [expanded, setExpanded] = useState(initiallyExpanded);
 
     // 編集可能パラメータの正本は worker の Ubi.state（起動時にホストへ報告）。
-    // プレビューで worker が走ると registry に届くのでそれを最優先。届くまでは
-    // マニフェスト由来の dataFields をフォールバックに使う。
+    // プレビューで worker が走ると registry に届くのでそれを優先しつつ、manifest 由来の
+    // dataFields と合成する。entityRef/entityRefArray は manifest 専用なので、state の
+    // 型推論で上書きされないよう mergeDataFields が守る。
     // 既知コンポーネントでスキーマが無い場合は空スキーマ（= 自由なキー追加を禁止）。
     // 未知コンポーネントのみ undefined（自由入力可）にする。
     const runtimeSchema = useEditorSchema(component.type) as DataFields | undefined;
-    const fields = runtimeSchema ?? dataFields ?? (known ? EMPTY_SCHEMA : undefined);
+    const fields = useMemo(
+        () => mergeDataFields(dataFields, runtimeSchema) ?? (known ? EMPTY_SCHEMA : undefined),
+        [dataFields, runtimeSchema, known],
+    );
 
     useEffect(() => {
         if (initiallyExpanded) setExpanded(true);
@@ -77,7 +81,7 @@ export function ComponentCard({
                 })}
             >
                 <Chevron open={expanded} />
-                {renderKind ? <RenderKindBadge kind={renderKind} /> : <LogicOnlyBadge />}
+                {viewKind === 'jsx' || viewKind === 'canvas' ? <RenderKindBadge kind={viewKind} /> : <LogicOnlyBadge />}
                 <span className={css({ flex: 1, fontSize: '13px', fontWeight: '600', color: 'text' })}>
                     {component.type}
                 </span>

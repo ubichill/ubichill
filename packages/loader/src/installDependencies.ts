@@ -6,7 +6,7 @@
  * `packages/sdk/cli`（`ubichill install` サブコマンド）に一本化されている。
  *
  * getLockEntry の transport（mod 毎に切り替わる、`createDependencyAwareLockEntryGetter` が振り分け）:
- *   - world YAML の `dependencies[].source` が `type: url` の mod        → その `url` から HTTP 取得
+ *   - world YAML の `dependencies[].source` に `url` がある mod → その `url` から HTTP 取得
  *     （`ModLockEntry.baseUrl` に焼き込み、実行時 acquireMod がその mod だけ別ホストから読む）。
  *   - `dependencies[].source.version` が pin されている mod              → 最新ポインタを経由せず
  *     そのバージョンを直接取得する。

@@ -106,7 +106,7 @@ export function EntityInspector({
                             componentIndex={ci}
                             dataFields={availableKinds.find((k) => k.kind === c.type)?.dataFields}
                             known={availableKinds.some((k) => k.kind === c.type)}
-                            renderKind={availableKinds.find((k) => k.kind === c.type)?.renderKind}
+                            viewKind={availableKinds.find((k) => k.kind === c.type)?.viewKind}
                             allEntities={allEntities}
                             initiallyExpanded={ci === initiallyExpandedComponentIndex}
                             onChange={onChange}

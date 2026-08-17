@@ -14,7 +14,6 @@ export const config: ComponentConfig = {
     watchScope: 'entity',
     defaultTransform: { x: 0, y: 0, z: 10, w: 20, h: 20 },
     capabilities: ['scene:read', 'scene:update', 'ui:render', 'event:emit'],
-    renderKind: 'jsx',
     description: '矢印キーで移動する自機。Zキーで弾を発射しspawnerの弾を避ける。',
 };
 

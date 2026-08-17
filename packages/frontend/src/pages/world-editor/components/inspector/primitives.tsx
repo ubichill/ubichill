@@ -189,14 +189,13 @@ export function LogicOnlyBadge() {
     );
 }
 
-const RENDER_KIND_LABEL: Record<'jsx' | 'canvas' | 'threejs', string> = {
+const RENDER_KIND_LABEL: Record<'jsx' | 'canvas', string> = {
     jsx: '見た目あり（jsx / VNode）',
     canvas: '見た目あり（Canvas2D）',
-    threejs: '見た目あり（three.js / WebGL）',
 };
 
-/** View を持つ Component を、描画方式 (renderKind) ごとに異なるアイコンで示すバッジ。 */
-export function RenderKindBadge({ kind }: { kind: 'jsx' | 'canvas' | 'threejs' }) {
+/** View を持つ Component を、描画方式ごとに異なるアイコンで示すバッジ（canvas/jsx は自動判定）。 */
+export function RenderKindBadge({ kind }: { kind: 'jsx' | 'canvas' }) {
     const label = RENDER_KIND_LABEL[kind];
     return (
         <svg
@@ -222,7 +221,6 @@ export function RenderKindBadge({ kind }: { kind: 'jsx' | 'canvas' | 'threejs' }
                     <path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
                 </>
             )}
-            {kind === 'threejs' && <path d="M12 2l9 5v10l-9 5-9-5V7l9-5z M12 2v20 M3 7l9 5 9-5" />}
         </svg>
     );
 }

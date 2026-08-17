@@ -32,7 +32,7 @@ export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorP
         dependencies.map((d) => ({
             id: d.name,
             version: d.source.version,
-            baseUrl: d.source.type === 'url' ? d.source.url : undefined,
+            baseUrl: d.source.url,
         })),
     );
 
@@ -321,7 +321,7 @@ function DiffRow({
     fromVersion?: string;
 }) {
     const color = kind === '追加' ? 'successText' : kind === '削除' ? 'errorText' : 'text';
-    const external = dependency.source.type === 'url';
+    const external = dependency.source.url !== undefined;
     return (
         <div className={css({ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '13px' })}>
             <span className={css({ color, fontWeight: '600' })}>

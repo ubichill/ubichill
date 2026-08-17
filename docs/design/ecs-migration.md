@@ -251,9 +251,10 @@ Entity の transform をそのまま継承する（後方互換）。Editor の 
 
 ### 9.2 見た目 / ロジックの緩い区分
 
-型を厳密に分けるのではなく、mod の manifest に `hasPreview: boolean` という軽量フラグを追加した。
-`Ubi.ui.render` で見た目を持つ Component は `hasPreview: true` を宣言し、Editor はこれでプレビュー
-バッジの表示を出し分ける（未指定はロジックのみ扱い）。
+mod の manifest に描画方式を明示的に宣言させるのではなく、**実際に使っているものから自動判定**する。
+`canvasTargets` があれば Canvas2D（WebGL 含む）、`ui:render` capability（`export default` / `Ubi.ui.render`）
+があれば jsx（VNode）、どちらも無ければロジックのみ（見た目なし）として Editor がバッジを出し分ける。
+「書かなくても使ってる方で分かる」ため、mod 開発者は描画方式を宣言する必要がない。
 
 ### 9.3 entityRef / entityRefArray — 明示的クロス Entity ターゲティング
 
@@ -262,6 +263,10 @@ Component の data フィールドに `entityRef`（単体）/ `entityRefArray`�
 セットされる。これにより「1 つの UI Component が複数 Entity の見た目を動かす」「ロジック
 Component が UI Component を駆動する」といった構成を、mod 側のコードではなく Editor 上の
 宣言的な配線として組めるようになった。
+
+`entityRef`/`entityRefArray` は manifest の `dataFields` への宣言が必須で、
+`Ubi.state.sync(..., { type: 'entityRef' })` のような state 側宣言は禁止する（state 側は
+`editable: false` で同期のみ行い、Editor 表示と `declaredTargets` は manifest の宣言に従う）。
 
 manifest の `dataFields` はこれまで versioned manifest（Editor の HTTP fetch）止まりで、
 実行時の Host 層（`WorkerModHost`/`ModHostManager`）には**届く前に握り潰されていた**
@@ -277,7 +282,7 @@ mod が任意の entityId に書き込める状態で、「勝手に他の mod �
 直結していた。
 
 `onUpdateEntity`/`onDestroyEntity` に、読み取りと同じ `isVisibleInScope` ベースの許可判定を
-追加した（純関数 `canWriteGameObject`、`packages/react/src/lib/entityScope.ts`）。scope 外への
+追加した（純関数 `isAccessible`、`packages/react/src/lib/entityScope.ts`）。scope 外への
 書き込みは拒否されるが、9.3 の `entityRef`/`entityRefArray` フィールドで明示的にワイヤリングされた
 entityId は `declaredTargets` として例外的に許可する。`WorkerModHost` が Worker 起動時に
 `definition.dataFields` と `entity.data` の実値から `declaredTargets` を算出し、`useModWorld` に渡す。

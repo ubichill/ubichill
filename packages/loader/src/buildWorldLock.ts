@@ -67,7 +67,7 @@ export async function resolveLatestVersion(
 
 /**
  * world の `dependencies[].source` を尊重する {@link LockEntryGetter} ラッパー。
- *  - `type: 'url'` の mod は `source.url` から個別に取得し `baseUrl` を焼き込む。
+ *  - `source.url` がある mod はその URL から個別に取得し `baseUrl` を焼き込む。
  *  - `source.version` が具体的な値（'latest' 以外）で pin されていればそのバージョンを直接取得する
  *    （最新ポインタを経由しない）。'latest'（省略時の既定）は pin なしとして扱う。
  *  - それ以外は `fallbackGetter`（既定の transport）にそのまま委譲する。
@@ -84,7 +84,7 @@ export function createDependencyAwareLockEntryGetter(
         const source = byModId.get(modId);
         const pinnedVersion =
             pinnedVersionOverride ?? (source && source.version !== 'latest' ? source.version : undefined);
-        if (source?.type === 'url' && source.url) {
+        if (source?.url) {
             const entry = await createHttpLockEntryGetter(source.url, fetchImpl)(modId, pinnedVersion);
             return entry ? { ...entry, baseUrl: source.url } : null;
         }

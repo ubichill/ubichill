@@ -52,10 +52,9 @@ export async function runUpdate(argv: string[]): Promise<void> {
 
     for (const dep of targets) {
         if (dep.source.version === 'latest') continue; // 常に最新を追う設定は書き換え不要
-        const latest =
-            dep.source.type === 'url' && dep.source.url
-                ? await resolveLatestVersion(dep.source.url, dep.name)
-                : resolveLocalLatestVersion(modsDir, dep.name);
+        const latest = dep.source.url
+            ? await resolveLatestVersion(dep.source.url, dep.name)
+            : resolveLocalLatestVersion(modsDir, dep.name);
         if (!latest || latest === dep.source.version) continue;
 
         const depIndex = (def.spec.dependencies ?? []).indexOf(dep);

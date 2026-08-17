@@ -36,56 +36,49 @@ describe('worldOriginDomain', () => {
 });
 
 describe('DependencySourceSchema', () => {
-    it('type: local をそのまま受け付ける（version は省略時 "latest" が補われる）', () => {
-        expect(DependencySourceSchema.parse({ type: 'local' })).toEqual({ type: 'local', version: 'latest' });
+    it('url なし（ローカル）を受け付ける（version は省略時 "latest" が補われる）', () => {
+        expect(DependencySourceSchema.parse({})).toEqual({ version: 'latest' });
     });
 
-    it('type: url + url を受け付ける', () => {
-        expect(DependencySourceSchema.parse({ type: 'url', url: 'https://example.com/mods' })).toEqual({
-            type: 'url',
+    it('url あり（外部 mod）を受け付ける', () => {
+        expect(DependencySourceSchema.parse({ url: 'https://example.com/mods' })).toEqual({
             url: 'https://example.com/mods',
             version: 'latest',
         });
     });
 
-    it('後方互換: 旧 type: repository は local に変換される（既存ワールドの読み込みを壊さない）', () => {
+    it('旧 type は余剰プロパティとして無視される（url の有無で同じ結果になる）', () => {
+        expect(DependencySourceSchema.parse({ type: 'local' })).toEqual({ version: 'latest' });
+        expect(DependencySourceSchema.parse({ type: 'url', url: 'https://example.com/mods' })).toEqual({
+            url: 'https://example.com/mods',
+            version: 'latest',
+        });
         expect(DependencySourceSchema.parse({ type: 'repository', path: 'mods/pen' })).toEqual({
-            type: 'local',
             version: 'latest',
         });
     });
 
     it('未知の余剰プロパティ（旧 path 等）は無視される', () => {
-        const parsed = DependencySourceSchema.parse({ type: 'local', path: 'mods/pen', extra: 'x' });
+        const parsed = DependencySourceSchema.parse({ path: 'mods/pen', extra: 'x' });
         expect(parsed).not.toHaveProperty('path');
         expect(parsed).not.toHaveProperty('extra');
     });
 
-    it('type: npm は廃止済みで拒否される', () => {
-        expect(() => DependencySourceSchema.parse({ type: 'npm' })).toThrow();
-    });
-
     it('version は完全一致 (x.y.z) を受け付ける', () => {
-        expect(DependencySourceSchema.parse({ type: 'local', version: '1.2.3' })).toEqual({
-            type: 'local',
-            version: '1.2.3',
-        });
+        expect(DependencySourceSchema.parse({ version: '1.2.3' })).toEqual({ version: '1.2.3' });
     });
 
     it('version は省略可能だが、解決後は必ず "latest" が明示される（暗黙の最新追従を残さない）', () => {
-        expect(DependencySourceSchema.parse({ type: 'local' })).toEqual({ type: 'local', version: 'latest' });
+        expect(DependencySourceSchema.parse({})).toEqual({ version: 'latest' });
     });
 
     it('version: "latest" を明示的に指定できる（常に最新を追う、を意図が読める形で書ける）', () => {
-        expect(DependencySourceSchema.parse({ type: 'local', version: 'latest' })).toEqual({
-            type: 'local',
-            version: 'latest',
-        });
+        expect(DependencySourceSchema.parse({ version: 'latest' })).toEqual({ version: 'latest' });
     });
 
     it('semver レンジ指定 (^, ~) は拒否される（"latest" 以外の非semver文字列は不可）', () => {
-        expect(() => DependencySourceSchema.parse({ type: 'local', version: '^1.2.3' })).toThrow();
-        expect(() => DependencySourceSchema.parse({ type: 'local', version: '~1.2.3' })).toThrow();
-        expect(() => DependencySourceSchema.parse({ type: 'local', version: 'stable' })).toThrow();
+        expect(() => DependencySourceSchema.parse({ version: '^1.2.3' })).toThrow();
+        expect(() => DependencySourceSchema.parse({ version: '~1.2.3' })).toThrow();
+        expect(() => DependencySourceSchema.parse({ version: 'stable' })).toThrow();
     });
 });

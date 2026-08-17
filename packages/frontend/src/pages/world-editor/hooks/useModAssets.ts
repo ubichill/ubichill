@@ -27,9 +27,9 @@ const MOD_BASE_URL: string = (() => {
 const indexCache = new Map<string, Promise<ModIndex | null>>();
 const manifestCache = new Map<string, Promise<VersionedManifest | null>>();
 
-/** `source.type === 'url'` の mod は自身の `source.url` を base にする（グローバル `MOD_BASE_URL` はローカルmod専用）。 */
+/** `source.url` がある mod は自身の `source.url` を base にする（無ければローカル `MOD_BASE_URL`）。 */
 function resolveBase(dep: Dependency): string {
-    if (dep.source.type === 'url' && dep.source.url) return dep.source.url.replace(/\/$/, '');
+    if (dep.source.url) return dep.source.url.replace(/\/$/, '');
     return MOD_BASE_URL;
 }
 

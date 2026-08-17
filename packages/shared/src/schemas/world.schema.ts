@@ -305,15 +305,11 @@ export const WorldPermissionsSchema = z.object({
 // World Dependencies（依存関係）
 // ============================================
 
-// `type` はビルド時にどこから mod を取得するかを表す:
-//  - 'local': このワールドをビルドする側のローカル mods ディレクトリから fs で解決する
-//    （モノレポ内 mod 用。`path` はビルド時に一切参照されない装飾的フィールドだったため廃止）。
-//  - 'url'  : 指定した URL から mod の lock.json 断片を個別に取得する（外部 mod 用。
-//    `ubichill lock` がここから `ModLockEntry.baseUrl` を焼き込む）。
-// 'repository'（旧名。'local' と同義）は既存ワールドの後方互換のためだけに読み取りを許可する
-// （新規に書き出す側は必ず 'local' を使う）。'npm' は実装されたことがないため廃止。
+// `url` があれば外部 mod（GitHub Pages 等）をその URL から取得し、無ければローカル
+// （public mods / MOD_BASE_URL）から解決する。`type` ディスクリミネータは廃止し、web の思想
+// （すべて URL で識別）に合わせて `url` の有無で判定する。旧 `type: 'local' | 'url' | 'repository'`
+// は余剰プロパティとして無視され、`url` の有無で同じ結果になるため後方互換は保たれる。
 export const DependencySourceSchema = z.object({
-    type: z.enum(['local', 'url', 'repository']).transform((v) => (v === 'repository' ? 'local' : v)),
     url: z.string().url().optional(),
     // 完全一致 (x.y.z) の pin か、明示的な 'latest'（常に最新版を追う）のどちらか。
     // 省略時も 'latest' として扱う（既存ワールドとの後方互換）が、解決後は必ずどちらかの値になるため

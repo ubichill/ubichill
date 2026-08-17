@@ -150,7 +150,7 @@ export function EditorPreview({
         return Array.from(set);
     }, [definition.spec.initialEntities]);
 
-    // `type: url` の依存（外部mod）は lock.mods[].baseUrl 経由でしか baseUrl を解決できない
+    // `source.url` のある依存（外部mod）は lock.mods[].baseUrl 経由でしか baseUrl を解決できない
     // （acquireMod の既定 baseUrl は自ホストの /mods 固定）。編集中は保存済み lock を持たないため、
     // dependencies から都度プレビュー用の lock を組み立てて解決できるようにする。
     // entities のドラッグ操作等で definition 自体は頻繁に変わるため、ref で最新値だけ参照し、
