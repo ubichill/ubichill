@@ -1,34 +1,24 @@
 /**
  * danmaku mod Worker 間通信の単一スキーマ。
  *
- * - on()   : emit / SDK 由来 (input:* / entity:* など) を受信
+ * - on()   : emit / SDK 由来 (input:* など) を受信
  * - emit() : 同 tab 内の他 Worker へ scope + targetType を指定して送信
  */
 
-import type { ComponentInstance, InputKeyDownData, InputKeyUpData } from '@ubichill/sdk';
+import type { InputKeyDownData, InputKeyUpData } from '@ubichill/sdk';
 
-/** スポナーが管理する 1 発の弾。 */
+/** 自機が撃った弾（danmaku:canvas がローカルでシミュレーション・描画する）。 */
 export interface Bullet {
-    id: string;
     x: number;
     y: number;
     vx: number;
     vy: number;
 }
 
-export interface SpawnerData {
-    bullets?: Bullet[];
-    playerShots?: Bullet[];
-}
-
 export const DanmakuEvents = Ubi.event.define<{
     // ── SDK 由来: キー入力 (input:*) ──
     'input:key_down': InputKeyDownData;
     'input:key_up': InputKeyUpData;
-    // ── SDK 由来: Entity watch (entity:<componentType>) ──
-    'entity:danmaku:spawner': ComponentInstance<SpawnerData> | undefined;
-    // ── 自mod: スポナー → プレイヤーへの被弾通知 (emit, scope:'world') ──
-    'danmaku:hit': Record<string, never>;
-    // ── 自mod: プレイヤー → スポナーへの自機弾発射通知 (emit, scope:'world') ──
+    // ── 自mod: 自機 → canvas への発射通知 (emit, scope:'world', targetType:'danmaku:canvas') ──
     'danmaku:shoot': { x: number; y: number };
 }>();

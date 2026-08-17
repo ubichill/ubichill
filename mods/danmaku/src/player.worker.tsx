@@ -2,9 +2,9 @@
  * danmaku:player Worker — 自機。
  *
  * 矢印キーで移動し、自分の transform を `Ubi.entity().update` で書き換える(自分自身への
- * 書き込みなので watchScope 制限には掛からない)。被弾は spawner から `Ubi.event.emit`
- * (scope:'world', targetType:'danmaku:player') で通知され、短時間だけ赤く点滅する。
- * Z キーで spawner 狙いの自機弾を発射する (`danmaku:shoot` を emit)。
+ * 書き込みなので watchScope 制限には掛からない)。Z キーで上方向に弾を撃つ。
+ * 弾のシミュレーション・描画は danmaku:canvas が担う（自機は発射通知を emit するだけ）。
+ * 狙う対象は無い — 弾は自機から出るだけ。
  */
 
 import type { ComponentConfig, ComponentInstance } from '@ubichill/sdk';
@@ -14,7 +14,7 @@ export const config: ComponentConfig = {
     watchScope: 'entity',
     defaultTransform: { x: 0, y: 0, z: 10, w: 20, h: 20 },
     capabilities: ['scene:read', 'scene:update', 'ui:render', 'event:emit'],
-    description: '矢印キーで移動する自機。Zキーで弾を発射しspawnerの弾を避ける。',
+    description: '矢印キーで移動し、Zキーで上方向に弾を撃つ自機。',
 };
 
 const SPEED = 160; // px/秒
@@ -25,11 +25,6 @@ const SPEED = 160; // px/秒
 const ARENA_HALF_W = 220;
 const ARENA_HALF_H = 160;
 const SHOOT_INTERVAL = 0.15; // 秒 (Z 押しっぱなし時の連射間隔)
-
-const player = Ubi.state.define({
-    // ローカル専用 (同期不要): 被弾フラッシュの表示切替だけに使う
-    hit: false,
-});
 
 const pressed = new Set<string>();
 let transform: ComponentInstance['transform'] | null = null;
@@ -49,13 +44,6 @@ if (Ubi.componentInstanceId) {
 
 DanmakuEvents.on('input:key_down', ({ code }) => pressed.add(code));
 DanmakuEvents.on('input:key_up', ({ code }) => pressed.delete(code));
-
-DanmakuEvents.on('danmaku:hit', () => {
-    player.local.hit = true;
-    setTimeout(() => {
-        player.local.hit = false;
-    }, 200);
-});
 
 Ubi.registerSystem((_entities, deltaTime) => {
     if (!transform || !spawnOrigin) return;
@@ -84,10 +72,11 @@ Ubi.registerSystem((_entities, deltaTime) => {
     shootCooldown -= deltaTime;
     if (pressed.has('KeyZ') && shootCooldown <= 0) {
         shootCooldown = SHOOT_INTERVAL;
+        // 自機の先端（中央上）から上方向に撃つ。狙う対象は無い。
         DanmakuEvents.emit(
             'danmaku:shoot',
-            { x: transform.x + 10, y: transform.y + 10 },
-            { scope: 'world', targetType: 'danmaku:spawner' },
+            { x: transform.x + 10, y: transform.y },
+            { scope: 'world', targetType: 'danmaku:canvas' },
         );
     }
 });
@@ -100,7 +89,7 @@ export default function PlayerView() {
                 width: '20px',
                 height: '20px',
                 borderRadius: '50%',
-                background: player.local.hit ? '#ff4d4f' : '#4d9dff',
+                background: '#4d9dff',
                 border: '2px solid rgba(255,255,255,0.85)',
                 boxShadow: '0 0 6px rgba(0,0,0,0.4)',
             }}
