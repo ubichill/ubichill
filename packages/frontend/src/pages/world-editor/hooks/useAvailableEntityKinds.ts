@@ -21,7 +21,11 @@ export type DataFieldSpec =
     | { type: 'enum'; default?: string; options: string[]; label?: string; help?: string }
     | { type: 'json'; default?: unknown; label?: string; help?: string }
     // 配列: 各要素を item スキーマで編集する。エディタは「行リスト＋追加/削除」で描画する。
-    | { type: 'array'; default?: unknown[]; item: DataFields; label?: string; help?: string };
+    | { type: 'array'; default?: unknown[]; item: DataFields; label?: string; help?: string }
+    // 他 Entity（単体）への参照。値は entityId。Hierarchy からの D&D で指定する。
+    | { type: 'entityRef'; default?: string; label?: string; help?: string }
+    // 他 Entity（複数）への参照。値は entityId の配列。
+    | { type: 'entityRefArray'; default?: string[]; label?: string; help?: string };
 
 export type DataFields = Record<string, DataFieldSpec>;
 
@@ -50,6 +54,8 @@ export interface AvailableEntityKind {
     dataFields?: DataFields;
     /** Component アイコン URL (アセットブラウザ表示用)。manifest の `thumbnail` を versioned base で絶対化済み。 */
     thumbnailUrl?: string;
+    /** View の描画方式。未指定ならロジックのみ（見た目なし）として扱う。 */
+    renderKind?: 'jsx' | 'canvas' | 'threejs';
 }
 
 interface ModIndex {
@@ -64,6 +70,7 @@ interface VersionedManifestComponent {
     defaultTransform?: AvailableEntityKind['defaultTransform'];
     dataFields?: DataFields;
     thumbnail?: string;
+    renderKind?: 'jsx' | 'canvas' | 'threejs';
 }
 
 interface VersionedManifest {
@@ -154,6 +161,7 @@ export function useAvailableEntityKinds(definition: WorldDefinition | null): {
                     defaultTransform: meta.defaultTransform,
                     dataFields: meta.dataFields,
                     thumbnailUrl: meta.thumbnail ? `${versionedBase}/${meta.thumbnail}` : undefined,
+                    renderKind: meta.renderKind,
                 }));
             }),
         )

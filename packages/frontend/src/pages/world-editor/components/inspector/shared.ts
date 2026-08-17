@@ -53,5 +53,9 @@ export function defaultForType(spec: DataFieldSpec): unknown {
             return null;
         case 'array':
             return [];
+        case 'entityRef':
+            return null;
+        case 'entityRefArray':
+            return [];
     }
 }

@@ -1,3 +1,5 @@
+import type { ComponentDataFieldSpec } from '@ubichill/shared';
+
 /**
  * modが Host (ModRegistry) に渡す定義オブジェクト（Custom Elements ベース）。
  *
@@ -55,6 +57,11 @@ export interface WorkerModDefinition {
     watchScope?: 'entity' | 'subtree' | 'parent' | 'world';
     /** modアセット相対パスのサムネ画像 (エディタ表示用)。 */
     thumbnail?: string;
+    /**
+     * Inspector 用の data フィールド宣言。type = 'entityRef'/'entityRefArray' のフィールドは
+     * Host が起動時に entity.data の実値から declaredTargets を算出するのに使う。
+     */
+    dataFields?: Record<string, ComponentDataFieldSpec>;
     /**
      * Host が生成して Worker が操作する <video> 要素のターゲット名リスト。
      * Worker は `Ubi.media.load(url, targetId)` で再生を指示する。

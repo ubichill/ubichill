@@ -188,10 +188,16 @@ export const ComponentTypeSchema = z.string().regex(/^[a-z0-9-]+:[a-zA-Z0-9_-]+$
 
 /**
  * Entity に載る 1 つの Component。
+ *
+ * `transform` は Entity 自体の transform に対する上書き。x/y は Entity 位置からの
+ * 相対オフセット（子 Entity の x/y と同じ考え方）、w/h/z/rotation/scale は上書き値。
+ * 省略時は Entity の transform をそのまま継承する（後方互換）。
+ * 同一 Entity に複数 Component を載せたとき、互いの占有領域が衝突しないようにするための機構。
  */
 export const EntityComponentSchema = z.object({
     type: ComponentTypeSchema,
     data: z.record(z.string(), z.unknown()).default({}),
+    transform: TransformSchema.partial().optional(),
 });
 
 /**

@@ -81,6 +81,15 @@ npx ubichill verify [--dist-dir=<dir>]
     明示した場合は、その配下の各サブディレクトリを個別の mod として一括ビルドする
     （このリポジトリの `pnpm build:workers` はこちらを使う）。既定の出力先は
     `--dist-dir`/`--public-mods-dir` ともに `<cwd>/dist/mods`。
+  - **バージョン履歴 (`index.json` の `versions`)**: World Editor の「mod のバージョンを選ぶ」
+    ドロップダウンは `index.json` の `versions` 配列から選択肢を作る。ローカルの
+    `dist/index.json`（直前ビルドの成果物）があればそこから履歴を引き継ぐが、CI の
+    クリーンチェックアウトのように毎回まっさらな状態でビルドする場合はこれが空になり、
+    「latest」しか選べなくなってしまう。`package.json` に `"homepage"` を公開先の registry URL
+    （例: GitHub Pages の `https://<user>.github.io/<repo>/`）にしておくと、`build` が
+    ビルド前に `<homepage>/index.json` を取得して履歴を補う（mod 開発者が意識する必要はない）。
+    `homepage` を使いたくない場合は `npx ubichill build --registry-url=<url>` で明示できる。
+    取得に失敗しても（未公開・オフライン等）ビルド自体は失敗しない。
 - **`verify`**: `build` の出力を fail-closed で再検証する。`lock.json` の integrity が
   実際に配布するバイト列と一致するかを独立に再計算して突き合わせ、ズレていれば非ゼロ終了する。
   CI の配布前ゲートに使う想定。

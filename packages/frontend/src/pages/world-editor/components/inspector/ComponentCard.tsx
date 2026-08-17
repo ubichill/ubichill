@@ -5,7 +5,7 @@ import { css } from '@/styled-system/css';
 import type { AvailableEntityKind, DataFields } from '../../hooks/useAvailableEntityKinds';
 import { COMPONENT_DRAG_MIME } from '../../lib/dnd';
 import { DataFormFields } from './DataFormFields';
-import { Chevron, MiniTab } from './primitives';
+import { Chevron, LogicOnlyBadge, MiniTab, NumField, RenderKindBadge, Section } from './primitives';
 import { inputStyle, textareaStyle } from './shared';
 
 interface ComponentCardProps {
@@ -14,6 +14,10 @@ interface ComponentCardProps {
     dataFields?: DataFields;
     /** このコンポーネント型が既知（マニフェストに存在）か。既知なら未宣言キーの追加を禁止する。 */
     known: boolean;
+    /** View の描画方式。未指定（未知コンポーネント含む）はロジックのみ扱い。 */
+    renderKind?: 'jsx' | 'canvas' | 'threejs';
+    /** entityRef/entityRefArray フィールドの D&D 解決に使うワールド全体の Entity ツリー。 */
+    allEntities?: InitialEntity[];
     initiallyExpanded: boolean;
     onChange: (updater: (prev: InitialEntity) => InitialEntity) => void;
     onDelete: () => void;
@@ -31,6 +35,8 @@ export function ComponentCard({
     componentIndex,
     dataFields,
     known,
+    renderKind,
+    allEntities,
     initiallyExpanded,
     onChange,
     onDelete,
@@ -71,6 +77,7 @@ export function ComponentCard({
                 })}
             >
                 <Chevron open={expanded} />
+                {renderKind ? <RenderKindBadge kind={renderKind} /> : <LogicOnlyBadge />}
                 <span className={css({ flex: 1, fontSize: '13px', fontWeight: '600', color: 'text' })}>
                     {component.type}
                 </span>
@@ -106,15 +113,86 @@ export function ComponentCard({
                         bg: 'surface',
                     })}
                 >
+                    <ComponentTransformEditor
+                        component={component}
+                        componentIndex={componentIndex}
+                        onChange={onChange}
+                    />
                     <ComponentDataEditor
                         component={component}
                         componentIndex={componentIndex}
                         dataFields={fields}
+                        allEntities={allEntities}
                         onChange={onChange}
                     />
                 </div>
             )}
         </div>
+    );
+}
+
+// ============================================
+// Component 単位の transform 上書き
+// ============================================
+
+type TransformOverride = NonNullable<EntityComponentDef['transform']>;
+
+/**
+ * 同一 Entity 上の他 Component と占有領域(位置/サイズ)が衝突しないよう、
+ * この Component だけの transform 上書きを編集する。未指定なら Entity 全体の transform を継承する。
+ */
+function ComponentTransformEditor({
+    component,
+    componentIndex,
+    onChange,
+}: {
+    component: EntityComponentDef;
+    componentIndex: number;
+    onChange: (updater: (prev: InitialEntity) => InitialEntity) => void;
+}) {
+    const override = component.transform;
+    const setOverride = (next: TransformOverride | undefined) => {
+        onChange((prev) => ({
+            ...prev,
+            components: prev.components.map((c, i) => (i === componentIndex ? { ...c, transform: next } : c)),
+        }));
+    };
+    const patch = (p: Partial<TransformOverride>) => setOverride({ ...override, ...p });
+
+    return (
+        <Section label="位置 / サイズ">
+            <label
+                className={css({
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '2',
+                    fontSize: '11px',
+                    color: 'textMuted',
+                    cursor: 'pointer',
+                })}
+            >
+                <input
+                    type="checkbox"
+                    checked={override !== undefined}
+                    onChange={(e) => setOverride(e.target.checked ? {} : undefined)}
+                />
+                このComponentだけ個別に指定する（Entity全体のtransformを継承しない）
+            </label>
+            {override !== undefined && (
+                <div className={css({ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '2' })}>
+                    <NumField label="X (Entity基準の相対)" value={override.x ?? 0} onChange={(v) => patch({ x: v })} />
+                    <NumField label="Y (Entity基準の相対)" value={override.y ?? 0} onChange={(v) => patch({ y: v })} />
+                    <NumField label="W" value={override.w ?? 0} onChange={(v) => patch({ w: v || undefined })} />
+                    <NumField label="H" value={override.h ?? 0} onChange={(v) => patch({ h: v || undefined })} />
+                    <NumField label="Z" value={override.z ?? 0} onChange={(v) => patch({ z: v })} />
+                    <NumField
+                        label="Rotation"
+                        value={override.rotation ?? 0}
+                        onChange={(v) => patch({ rotation: v })}
+                    />
+                </div>
+            )}
+        </Section>
     );
 }
 
@@ -126,11 +204,13 @@ function ComponentDataEditor({
     component,
     componentIndex,
     dataFields,
+    allEntities,
     onChange,
 }: {
     component: EntityComponentDef;
     componentIndex: number;
     dataFields?: DataFields;
+    allEntities?: InitialEntity[];
     onChange: (updater: (prev: InitialEntity) => InitialEntity) => void;
 }) {
     const [dataTab, setDataTab] = useState<'form' | 'json'>('form');
@@ -159,7 +239,7 @@ function ComponentDataEditor({
                 <MiniTab active={dataTab === 'json'} onClick={() => setDataTab('json')} label="JSON" />
             </div>
             {dataTab === 'form' ? (
-                <DataFormFields data={data} dataFields={dataFields} onChange={setData} />
+                <DataFormFields data={data} dataFields={dataFields} allEntities={allEntities} onChange={setData} />
             ) : (
                 <DataJsonField
                     text={jsonText}

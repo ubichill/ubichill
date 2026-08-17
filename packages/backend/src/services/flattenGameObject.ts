@@ -23,16 +23,30 @@ export function flattenGameObject(
         scale: t.scale ?? 1,
         rotation: t.rotation ?? 0,
     };
-    const own = (gameObject.components ?? []).map((c, i) => ({
-        id: `${gameObject.id}::${i}`,
-        type: c.type,
-        entityId: gameObject.id,
-        parentEntityId,
-        ownerId: null,
-        lockedBy: null,
-        transform,
-        data: c.data ?? {},
-    }));
+    const own = (gameObject.components ?? []).map((c, i) => {
+        const ct = c.transform;
+        const componentTransform: ComponentInstance['transform'] = ct
+            ? {
+                  x: absX + (ct.x ?? 0),
+                  y: absY + (ct.y ?? 0),
+                  z: ct.z ?? transform.z,
+                  w: ct.w ?? transform.w,
+                  h: ct.h ?? transform.h,
+                  scale: ct.scale ?? transform.scale,
+                  rotation: ct.rotation ?? transform.rotation,
+              }
+            : transform;
+        return {
+            id: `${gameObject.id}::${i}`,
+            type: c.type,
+            entityId: gameObject.id,
+            parentEntityId,
+            ownerId: null,
+            lockedBy: null,
+            transform: componentTransform,
+            data: c.data ?? {},
+        };
+    });
     const fromChildren = (gameObject.children ?? []).flatMap((child) =>
         flattenGameObject(child, { x: absX, y: absY, z: absZ }, gameObject.id),
     );

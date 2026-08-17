@@ -45,7 +45,34 @@ export interface SelectDataField extends BaseDataField {
     options: readonly { value: string; label: string }[];
 }
 
-export type DataField = ColorDataField | NumberDataField | TextDataField | BooleanDataField | SelectDataField;
+/** 他 Entity 単体への参照。値は entityId（World Editor で D&D 指定）。 */
+export interface EntityRefDataField extends BaseDataField {
+    type: 'entityRef';
+    default?: string;
+}
+
+/** 他 Entity 複数への参照。値は entityId の配列。 */
+export interface EntityRefArrayDataField extends BaseDataField {
+    type: 'entityRefArray';
+    default?: string[];
+}
+
+export type DataField =
+    | ColorDataField
+    | NumberDataField
+    | TextDataField
+    | BooleanDataField
+    | SelectDataField
+    | EntityRefDataField
+    | EntityRefArrayDataField;
+
+/**
+ * この Component が View をどう描画するか。未指定 = ロジックのみ（見た目なし）。
+ * - 'jsx'     : Ubi.jsx / Ubi.ui.render で VNode を返す（Host が Shadow DOM に変換）
+ * - 'canvas'  : OffscreenCanvas に Canvas2D で直接描画
+ * - 'threejs' : three.js 等 WebGL ライブラリで OffscreenCanvas に描画
+ */
+export type RenderKind = 'jsx' | 'canvas' | 'threejs';
 
 /**
  * Worker ファイル内で export するコンポーネント構成宣言。
@@ -74,4 +101,6 @@ export interface ComponentConfig {
     description?: string;
     /** data-only コンポーネント（Worker を持たない） */
     dataOnly?: boolean;
+    /** View の描画方式。未指定ならロジックのみ（見た目なし）としてエディタに表示される。 */
+    renderKind?: RenderKind;
 }

@@ -74,3 +74,26 @@ export function isVisibleInScope(
     if (scope === 'entity') return e.entityId === rootGameObjectId;
     return !!e.entityId && (scopedIds?.has(e.entityId) ?? false);
 }
+
+/**
+ * 解決済みの ComponentInstance に対し、読み取り/書き込み/削除を許可するかを判定する純関数。
+ *
+ * `Ubi.entity(id).get/update/destroy` のような、任意 id (= componentInstanceId) を直接指定できる
+ * escape hatch から watchScope 外への無制限アクセスを防ぐために使う。scope 内なら常に許可、
+ * scope 外でも `declaredTargets` (mod が entityRef/entityRefArray フィールドで明示的にワイヤリング
+ * した GameObject id 集合、= ComponentInstance.entityId) に含まれていれば許可する。
+ *
+ * 呼び出し側は先に `entities.get(id)` (componentInstanceId キー) で対象を解決してから渡すこと。
+ * `id` 自体は ComponentInstance.entityId (GameObject id) とは別の識別子空間なので、
+ * この関数の中で id から entities を検索し直してはいけない。
+ */
+export function isAccessible(
+    e: ComponentInstance,
+    scope: WatchScope,
+    rootGameObjectId: string | undefined,
+    scopedIds: Set<string> | null,
+    declaredTargets?: Set<string>,
+): boolean {
+    if (isVisibleInScope(e, scope, rootGameObjectId, scopedIds)) return true;
+    return !!e.entityId && (declaredTargets?.has(e.entityId) ?? false);
+}

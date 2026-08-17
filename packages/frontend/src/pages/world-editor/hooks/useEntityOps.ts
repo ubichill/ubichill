@@ -116,7 +116,14 @@ export function useEntityOps({
                     if (spec.default !== undefined) initialData[name] = spec.default;
                 }
             }
-            const newComponent: EntityComponentDef = { type: componentType, data: initialData };
+            // Entity には既に他 Component が乗っている可能性があるため、この Component 固有の
+            // transform として defaultTransform を持たせる。Entity 全体の transform は書き換えない
+            // (他 Component の占有領域を壊さないため)。
+            const newComponent: EntityComponentDef = {
+                type: componentType,
+                data: initialData,
+                ...(kind?.defaultTransform ? { transform: kind.defaultTransform } : {}),
+            };
             updateEntities((prev) =>
                 updateEntityAt(prev, path, (e) => ({ ...e, components: [...e.components, newComponent] })),
             );

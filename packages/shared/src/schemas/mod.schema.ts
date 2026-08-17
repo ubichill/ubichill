@@ -74,6 +74,20 @@ export const ComponentDataFieldSpecSchema = z.discriminatedUnion('type', [
         label: z.string().optional(),
         help: z.string().optional(),
     }),
+    // 他 Entity（単体）への参照。値は entityId。World Editor で Hierarchy からの D&D で指定する。
+    z.object({
+        type: z.literal('entityRef'),
+        default: z.string().optional(),
+        label: z.string().optional(),
+        help: z.string().optional(),
+    }),
+    // 他 Entity（複数）への参照。値は entityId の配列。
+    z.object({
+        type: z.literal('entityRefArray'),
+        default: z.array(z.string()).optional(),
+        label: z.string().optional(),
+        help: z.string().optional(),
+    }),
 ]);
 
 export type ComponentDataFieldSpec = z.infer<typeof ComponentDataFieldSpecSchema>;
@@ -87,6 +101,9 @@ export type ComponentDataFieldSpec = z.infer<typeof ComponentDataFieldSpecSchema
  *   - 'parent'   : 自 GameObject + その祖先 (子から親の Component を読む場合に使用)
  *   - 'world'    : ワールド全体
  * - `thumbnail`: アセット相対パス。エディタで Component カードに表示するプレビュー画像。
+ * - `renderKind`: この Component が View をどう描画するか。未指定ならロジックのみ（見た目なし）。
+ *   'jsx' (Ubi.ui.render の VNode) / 'canvas' (Canvas2D) / 'threejs' (WebGL ライブラリ)。
+ *   エディタはこれでプレビュー表示を出し分ける。
  */
 const ComponentManifestMetaSchema = z.object({
     capabilities: z.array(z.string()).optional(),
@@ -98,6 +115,7 @@ const ComponentManifestMetaSchema = z.object({
     defaultTransform: TransformSchema.partial().optional(),
     dataFields: z.record(z.string(), ComponentDataFieldSpecSchema).optional(),
     displayName: z.string().optional(),
+    renderKind: z.enum(['jsx', 'canvas', 'threejs']).optional(),
 });
 
 /**

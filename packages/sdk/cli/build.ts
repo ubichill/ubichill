@@ -283,6 +283,14 @@ export interface BuildOptions {
     publicDir?: string;
     /** CDN 配布用の出力先（既定: `<modDir>/dist`）。 */
     distDir?: string;
+    /**
+     * 公開済み registry（`index.json` を配信している URL）。バージョン履歴を継続するために
+     * ビルド前に取得する。省略時は `package.json` の `homepage` を使う（CI のクリーン
+     * チェックアウトでもバージョン履歴が失われないようにする、mod 開発者側の追加設定は不要）。
+     */
+    registryUrl?: string;
+    /** テスト注入用の fetch 実装。既定はグローバル `fetch`。 */
+    fetchImpl?: typeof fetch;
 }
 
 function resolveDirs(options: BuildOptions): { distDir: string; publicDir: string } {
@@ -291,7 +299,7 @@ function resolveDirs(options: BuildOptions): { distDir: string; publicDir: strin
     return { distDir, publicDir };
 }
 
-function readPackageJson(modDir: string): { id: string; name: string; version: string } {
+function readPackageJson(modDir: string): { id: string; name: string; version: string; homepage?: string } {
     const path = join(modDir, 'package.json');
     if (!existsSync(path)) {
         throw new Error(`package.json not found in ${modDir}`);
@@ -303,7 +311,7 @@ function readPackageJson(modDir: string): { id: string; name: string; version: s
     if (!version) {
         throw new Error(`package.json に version が必要です: ${path}`);
     }
-    return { id, name, version };
+    return { id, name, version, homepage: typeof pkg.homepage === 'string' ? pkg.homepage : undefined };
 }
 
 /** `index.json` エントリが持つバージョン履歴の1件。 */
@@ -356,10 +364,50 @@ function mergeVersionHistory(existing: ModVersionSummary[], next: ModVersionSumm
     return [...withoutNext, next].sort((a, b) => compareSemVerDesc(a.version, b.version));
 }
 
+/** 2つのバージョン履歴配列を統合する（同一版は後者を優先、新しい順にソート）。 */
+function mergeVersionArrays(a: ModVersionSummary[], b: ModVersionSummary[]): ModVersionSummary[] {
+    const byVersion = new Map<string, ModVersionSummary>();
+    for (const v of a) byVersion.set(v.version, v);
+    for (const v of b) byVersion.set(v.version, v);
+    return [...byVersion.values()].sort((x, y) => compareSemVerDesc(x.version, y.version));
+}
+
+/**
+ * リモートの `index.json`（GitHub Pages 等、外部 mod リポジトリが公開している registry）から
+ * 過去のバージョン履歴を取得する純粋な補助関数。
+ *
+ * CI のクリーンチェックアウトではローカルに前回ビルドの `dist/index.json` が残らないため、
+ * `readExistingVersions` だけでは履歴が毎回失われ、World Editor のバージョン選択が
+ * 「latest」しか出せなくなる。`package.json` の `homepage`（または `--registry-url=`）を
+ * 起点にリモートの履歴を取得し、mod 開発者が意識しなくても複数バージョンが積み上がるようにする。
+ *
+ * ネットワーク障害・未公開（404）・不正な JSON はすべて空配列として無視する
+ * （ビルド自体を失敗させない）。
+ */
+async function fetchRemoteVersions(
+    registryUrl: string,
+    id: string,
+    fetchImpl: typeof fetch = fetch,
+): Promise<ModVersionSummary[]> {
+    const base = registryUrl.replace(/\/$/, '');
+    try {
+        const res = await fetchImpl(`${base}/index.json`, { signal: AbortSignal.timeout(5000) });
+        if (!res.ok) return [];
+        const entries = (await res.json()) as ModIndexEntry[];
+        const existing = entries.find((e) => e.id === id);
+        if (!existing) return [];
+        if (existing.versions) return existing.versions;
+        return existing.version ? [{ version: existing.version, components: existing.components }] : [];
+    } catch {
+        return [];
+    }
+}
+
 /** @param modDir mod のルートディレクトリへの絶対パス */
 export async function buildMod(modDir: string, options: BuildOptions = {}): Promise<ModIndexEntry> {
-    const { id, name, version } = readPackageJson(modDir);
+    const { id, name, version, homepage } = readPackageJson(modDir);
     const { distDir, publicDir } = resolveDirs({ ...options, modDir });
+    const registryUrl = options.registryUrl ?? homepage;
 
     // tsconfig 検索
     const rootTsconfig = join(modDir, 'tsconfig.json');
@@ -511,8 +559,18 @@ export async function buildMod(modDir: string, options: BuildOptions = {}): Prom
     // 外部 mod は単体でも「1件だけのレジストリ」として同じ形で公開できるようにする。
     // トップレベルの id/name/version/components は常に「現行最新」（既存の外部消費者との
     // 後方互換のため）。versions は過去にビルドした全バージョンの履歴（新しい順）。
+    //
+    // ローカルの `dist/index.json`（直前ビルドの成果物）に加え、`registryUrl`（既定は
+    // package.json の homepage）から公開済み index.json を取得して履歴を補う。CI の
+    // クリーンチェックアウトではローカル履歴が毎回失われるため、これが無いと
+    // 「latest」以外のバージョンが World Editor から選べなくなる。
     const components = Object.keys(versionedComponents);
-    const existingVersions = readExistingVersions(join(distDir, 'index.json'), id);
+    const localVersions = readExistingVersions(join(distDir, 'index.json'), id);
+    const remoteVersions = registryUrl ? await fetchRemoteVersions(registryUrl, id, options.fetchImpl) : [];
+    if (registryUrl && remoteVersions.length > 0) {
+        console.log(`🌐 [${id}] registry からバージョン履歴を取得 (${registryUrl}): ${remoteVersions.length}件`);
+    }
+    const existingVersions = mergeVersionArrays(localVersions, remoteVersions);
     const versions = mergeVersionHistory(existingVersions, { version, components });
     const indexEntry: ModIndexEntry = { id, name, version, components, versions };
     const indexJson = JSON.stringify([indexEntry], null, 2);
@@ -588,7 +646,8 @@ export async function runBuild(args: string[]): Promise<void> {
     }
     const distDir = argValue('--dist-dir=') ?? join(modDir, 'dist');
     const publicDir = argValue('--public-mods-dir=') ?? distDir;
+    const registryUrl = argValue('--registry-url=');
 
     console.log(`🔨 [${basename(modDir)}] building...`);
-    await buildMod(modDir, { distDir, publicDir });
+    await buildMod(modDir, { distDir, publicDir, registryUrl });
 }

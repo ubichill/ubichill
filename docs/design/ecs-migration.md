@@ -95,7 +95,7 @@ Worker への配信時に flat ビュー (`ComponentInstance`) に展開する�
 | `Ubi.event.broadcast(type, data)` | ❌ (Socket.IO `socket.to(room)`) | ✅ 同 entity を見てる他ユーザーの Worker | クロスユーザー揮発性同期 |
 | `Ubi.event.sendToHost(type, data)` | ✅ 自 Worker → 自 Host のみ | ❌ | host bridge |
 | `Ubi.event.emit(type, data, { scope, targetType })` | ✅ 同 tab 内の他 Worker (scope + type 絞り込み) | ❌ | クロス Component コマンド |
-| `Ubi.entity(id).update(patch)` | ✅ 全 watcher に entity:type で届く | ✅ Reliable State | 他エンティティの書き換え (escape hatch) |
+| `Ubi.entity(id).update(patch)` | ✅ (ただし watchScope 内 または entityRef で明示配線された id のみ、Stage 5 参照) | ✅ Reliable State | 他エンティティの書き換え (escape hatch) |
 | `Ubi.state.local.<key> = v` | ✅ onChange で全 watcher | ✅ sync 設定なら | 一番自然な自エンティティ書き換え経路 |
 
 ---
@@ -171,7 +171,7 @@ pen-canvas Entity (pen:canvas Worker)     ← 入力 + canvas 描画
 1. **各 Component が自前 UI を持つ** — 「親が子を一括描画」は避ける
 2. **階層 = ECS 親子** — pen:pen が tray Entity の child
 3. **設定 UI は親 Component に集約** — tray が pen の strokeWidth UI を持つ
-4. **書き込みは `Ubi.state.local.x = v`** で完結 — `Ubi.entity().update` / `Ubi.entity(id).update` は escape hatch
+4. **書き込みは `Ubi.state.local.x = v`** で完結 — `Ubi.entity().update` / `Ubi.entity(id).update` は escape hatch (Stage 5 で watchScope + entityRef 宣言に制限)
 5. **新規 Entity は `Ubi.entity().spawn(child)`** (自分の子) または `Ubi.entity.spawn(...)` (parent 明示)
 
 ---
@@ -226,3 +226,61 @@ Ubi.entity.spawn(entity)          // 親を明示指定して spawn
 - 依存関係宣言 (`requires` フィールド) + Editor 警告
 - Editor の兄弟順序 D&D (before / middle / after drop zone)
 - Component UI のサムネイル化 (一度レンダーした VNode を画像化キャッシュ)
+
+---
+
+## 9. Stage 5: 複数 Component 配置の安全化 + 明示的ターゲティング
+
+「同一 Entity に複数 Component を配置できるようにしたい」という要望を調査した結果、
+**その機能自体は Stage 1 から既に存在していた**（`EntityComponentSchema` は配列、Editor にも追加/削除 UI がある）。
+実際に壊れていたのは以下の 2 点で、Stage 5 はこれを解消する。
+
+### 9.1 Component 単位の transform 上書き
+
+`flattenGameObject` は同一 GameObject の全 Component に**同じ transform オブジェクト**を配布していた。
+tray (`w:60,h:240`) が乗った Entity に後から pen 等を追加すると、その Component 固有の
+`defaultTransform` は無視され tray の transform を押し付けられていた（例: tray のクリック領域が
+Entity 全体を専有し、後から追加した Component の見た目・当たり判定を破壊する）。
+
+`EntityComponentSchema` に `transform: TransformSchema.partial().optional()` を追加し、
+`flattenGameObject` で Entity の transform と Component 固有の上書きをマージするようにした。
+x/y は Entity 位置からの相対オフセットとして加算、w/h/z/rotation/scale は上書き。未指定なら
+Entity の transform をそのまま継承する（後方互換）。Editor の Component 追加時
+(`handleAddComponentToEntity`) は、追加する mod の `defaultTransform` をこの Component 固有の
+`transform` に書き込むようにし、Entity 全体の transform は書き換えない。
+
+### 9.2 見た目 / ロジックの緩い区分
+
+型を厳密に分けるのではなく、mod の manifest に `hasPreview: boolean` という軽量フラグを追加した。
+`Ubi.ui.render` で見た目を持つ Component は `hasPreview: true` を宣言し、Editor はこれでプレビュー
+バッジの表示を出し分ける（未指定はロジックのみ扱い）。
+
+### 9.3 entityRef / entityRefArray — 明示的クロス Entity ターゲティング
+
+Component の data フィールドに `entityRef`（単体）/ `entityRefArray`（複数）という新しい型を追加した。
+値は entityId (群) で、World Editor の Inspector 上で Hierarchy から Entity を D&D すると
+セットされる。これにより「1 つの UI Component が複数 Entity の見た目を動かす」「ロジック
+Component が UI Component を駆動する」といった構成を、mod 側のコードではなく Editor 上の
+宣言的な配線として組めるようになった。
+
+manifest の `dataFields` はこれまで versioned manifest（Editor の HTTP fetch）止まりで、
+実行時の Host 層（`WorkerModHost`/`ModHostManager`）には**届く前に握り潰されていた**
+(`packages/loader/src/acquireMod.ts` が読み取っても `LoadedMod` に詰め替えていなかった)。
+Stage 5 でこの配線を通した: `acquireMod.ts` → `LoadedMod.dataFields` → `toWorkerModDefinition()`
+→ `WorkerModDefinition.dataFields`。
+
+### 9.4 escape hatch の watchScope 制限
+
+`Ubi.entity(id).update` が叩く `onUpdateEntity`（`useModWorld.ts`）は、読み取り系
+(`onGetEntity`/`onQueryEntities`) と違い `watchScope` のチェックを一切していなかった。任意の
+mod が任意の entityId に書き込める状態で、「勝手に他の mod が干渉してくる」という懸念に
+直結していた。
+
+`onUpdateEntity`/`onDestroyEntity` に、読み取りと同じ `isVisibleInScope` ベースの許可判定を
+追加した（純関数 `canWriteGameObject`、`packages/react/src/lib/entityScope.ts`）。scope 外への
+書き込みは拒否されるが、9.3 の `entityRef`/`entityRefArray` フィールドで明示的にワイヤリングされた
+entityId は `declaredTargets` として例外的に許可する。`WorkerModHost` が Worker 起動時に
+`definition.dataFields` と `entity.data` の実値から `declaredTargets` を算出し、`useModWorld` に渡す。
+
+これにより、クロス Entity 操作は「scope 内」か「Editor で明示的に配線された entityRef」の
+どちらかを経由する必要があり、mod が無宣言のまま任意の entityId を書き換えることはできなくなった。

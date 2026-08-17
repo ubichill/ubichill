@@ -72,4 +72,43 @@ describe('flattenGameObject', () => {
     it('component が無い Entity は空配列を返す', () => {
         expect(flattenGameObject(makeEntity())).toEqual([]);
     });
+
+    it('component 固有の transform 上書きが無ければ Entity の transform をそのまま継承する', () => {
+        const result = flattenGameObject(
+            makeEntity({
+                transform: { x: 10, y: 20, z: 5, w: 60, h: 240, scale: 1, rotation: 0 },
+                components: [
+                    { type: 'pen:tray', data: {} },
+                    { type: 'pen:pen', data: {} },
+                ],
+            }),
+        );
+        expect(result[0].transform).toEqual(result[1].transform);
+        expect(result[1].transform.w).toBe(60);
+        expect(result[1].transform.h).toBe(240);
+    });
+
+    it('component 固有の transform 上書きがあれば w/h/z/rotation/scale を上書きし、x/y は Entity 位置からの相対オフセットとして加算する', () => {
+        const result = flattenGameObject(
+            makeEntity({
+                transform: { x: 10, y: 20, z: 5, w: 60, h: 240, scale: 1, rotation: 0 },
+                components: [
+                    { type: 'pen:tray', data: {} },
+                    { type: 'pen:pen', data: {}, transform: { x: 2, y: 3, w: 36, h: 48 } },
+                ],
+            }),
+        );
+        const pen = result[1];
+        expect(pen.transform.x).toBe(12); // 10 + 2
+        expect(pen.transform.y).toBe(23); // 20 + 3
+        expect(pen.transform.w).toBe(36);
+        expect(pen.transform.h).toBe(48);
+        // z/rotation/scale は上書き指定が無いので Entity 側を継承する
+        expect(pen.transform.z).toBe(5);
+        expect(pen.transform.rotation).toBe(0);
+        expect(pen.transform.scale).toBe(1);
+        // tray 側は上書きしていないので Entity の transform をそのまま持つ
+        expect(result[0].transform.w).toBe(60);
+        expect(result[0].transform.h).toBe(240);
+    });
 });

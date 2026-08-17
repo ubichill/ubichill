@@ -26,7 +26,17 @@ export interface EditorFieldMeta {
     editable?: boolean;
     label?: string;
     help?: string;
-    type?: 'string' | 'number' | 'boolean' | 'color' | 'url' | 'enum' | 'json' | 'array';
+    type?:
+        | 'string'
+        | 'number'
+        | 'boolean'
+        | 'color'
+        | 'url'
+        | 'enum'
+        | 'json'
+        | 'array'
+        | 'entityRef'
+        | 'entityRefArray';
     options?: string[];
     /** type:'array' の要素1つ分のフィールド定義（{ key: { type, label, default, ... } }） */
     item?: Record<string, EditorFieldMeta & { default?: unknown }>;

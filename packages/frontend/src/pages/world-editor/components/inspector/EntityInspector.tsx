@@ -11,6 +11,8 @@ interface EntityInspectorProps {
     /** Hierarchy 等から渡される「最初に展開しておく Component の index」。 */
     initiallyExpandedComponentIndex: number | null;
     availableKinds: AvailableEntityKind[];
+    /** entityRef/entityRefArray フィールドの D&D 解決に使うワールド全体の Entity ツリー。 */
+    allEntities: InitialEntity[];
     /** true なら子 Entity (transform は親基準の相対座標) */
     isChild: boolean;
     /** W/H の上限として使うワールドサイズ。 */
@@ -30,6 +32,7 @@ export function EntityInspector({
     entity,
     initiallyExpandedComponentIndex,
     availableKinds,
+    allEntities,
     isChild,
     worldSize,
     onChange,
@@ -103,6 +106,8 @@ export function EntityInspector({
                             componentIndex={ci}
                             dataFields={availableKinds.find((k) => k.kind === c.type)?.dataFields}
                             known={availableKinds.some((k) => k.kind === c.type)}
+                            renderKind={availableKinds.find((k) => k.kind === c.type)?.renderKind}
+                            allEntities={allEntities}
                             initiallyExpanded={ci === initiallyExpandedComponentIndex}
                             onChange={onChange}
                             onDelete={() => onDeleteComponent(ci)}

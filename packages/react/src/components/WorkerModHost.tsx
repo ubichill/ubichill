@@ -111,7 +111,29 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
     const { vnodes, onRender, sendAction, sendEventRef } = useModUI();
     const { getVideoRef, mediaHandlers } = useModMedia(definition, sendEventRef);
     const onFetch = useModFetch(definition);
-    const worldHandlers = useModWorld(definition.watchScope ?? 'subtree', entity.entityId);
+
+    // entityRef/entityRefArray として宣言されたフィールドの実値 (entity.data) から、
+    // watchScope 外でも書き込みを許可する対象 GameObject id を算出する。
+    const declaredTargets = useMemo(() => {
+        const fields = definition.dataFields;
+        if (!fields) return undefined;
+        const data = (entity.data ?? {}) as Record<string, unknown>;
+        const ids = new Set<string>();
+        for (const [key, spec] of Object.entries(fields)) {
+            if (spec.type === 'entityRef') {
+                const v = data[key];
+                if (typeof v === 'string') ids.add(v);
+            } else if (spec.type === 'entityRefArray') {
+                const v = data[key];
+                if (Array.isArray(v)) {
+                    for (const item of v) if (typeof item === 'string') ids.add(item);
+                }
+            }
+        }
+        return ids.size > 0 ? ids : undefined;
+    }, [definition.dataFields, entity.data]);
+
+    const worldHandlers = useModWorld(definition.watchScope ?? 'subtree', entity.entityId, declaredTargets);
 
     // ── Worker 起動時点の watchEntityTypes マッチ分を抽出 ──────────────
     // watchScope='subtree' (default) は自 GameObject + 子孫 の Component を可視。

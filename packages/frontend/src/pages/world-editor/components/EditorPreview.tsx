@@ -103,6 +103,18 @@ export function EditorPreview({
             };
             entity.components.forEach((c, ci) => {
                 const id = `edit-${pathPrefix.join('-')}-c${ci}`;
+                const ct = c.transform;
+                const componentTransform: ComponentInstance['transform'] = ct
+                    ? {
+                          x: absX + (ct.x ?? 0),
+                          y: absY + (ct.y ?? 0),
+                          z: ct.z ?? transform.z,
+                          w: ct.w ?? transform.w,
+                          h: ct.h ?? transform.h,
+                          scale: ct.scale ?? transform.scale,
+                          rotation: ct.rotation ?? transform.rotation,
+                      }
+                    : transform;
                 map.set(id, {
                     id,
                     type: c.type,
@@ -111,7 +123,7 @@ export function EditorPreview({
                     ownerId: null,
                     lockedBy: null,
                     data: (c.data as Record<string, unknown> | undefined) ?? {},
-                    transform,
+                    transform: componentTransform,
                 });
             });
             entity.children?.forEach((child, childIdx) => {

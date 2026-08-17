@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { acquireMod, buildWorldLock, createHttpLockEntryGetter, resetAcquireCaches } from '@ubichill/loader';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildMod } from './build.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -190,5 +190,90 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
         } finally {
             writeFileSync(workerFilePath, original);
         }
+    });
+});
+
+describe('リモート registry からのバージョン履歴マージ（CI クリーンチェックアウト対策）', () => {
+    let publicDir: string;
+    let distDir: string;
+
+    beforeEach(() => {
+        publicDir = mkdtempSync(join(tmpdir(), 'ubichill-mod-public-'));
+        distDir = mkdtempSync(join(tmpdir(), 'ubichill-mod-dist-'));
+    });
+
+    afterEach(() => {
+        rmSync(publicDir, { recursive: true, force: true });
+        rmSync(distDir, { recursive: true, force: true });
+    });
+
+    /** `${url}/index.json` にだけ固定レスポンスを返すフェイク fetch。それ以外は 404。 */
+    function fakeRegistryFetch(remoteIndex: unknown): typeof fetch {
+        return (async (input: string | URL) => {
+            const url = String(input);
+            if (url.endsWith('/index.json')) {
+                return {
+                    ok: true,
+                    json: async () => remoteIndex,
+                } as Response;
+            }
+            return { ok: false, json: async () => null } as Response;
+        }) as typeof fetch;
+    }
+
+    it('registryUrl の index.json にある versions 履歴を、今回ビルド分とマージする', async () => {
+        const remoteIndex = [
+            {
+                id: 'pen',
+                name: 'pen',
+                version: '1.9.0',
+                components: ['pen:pen'],
+                versions: [
+                    { version: '1.9.0', components: ['pen:pen'] },
+                    { version: '1.8.0', components: ['pen:pen'] },
+                ],
+            },
+        ];
+        const entry = await buildMod(penModDir, {
+            distDir: join(distDir, 'pen'),
+            publicDir: join(publicDir, 'pen'),
+            registryUrl: 'https://example.com/registry',
+            fetchImpl: fakeRegistryFetch(remoteIndex),
+        });
+
+        const versionNumbers = entry.versions.map((v) => v.version);
+        // リモート履歴 (1.9.0 / 1.8.0) + 今回ビルドした現行版 (2.0.0) が新しい順で揃う
+        expect(versionNumbers).toEqual(['2.0.0', '1.9.0', '1.8.0']);
+    });
+
+    it('registryUrl への fetch が失敗しても（オフライン/404）ビルドは成功する', async () => {
+        const failingFetch: typeof fetch = async () => {
+            throw new Error('network down');
+        };
+        const entry = await buildMod(penModDir, {
+            distDir: join(distDir, 'pen'),
+            publicDir: join(publicDir, 'pen'),
+            registryUrl: 'https://example.com/registry',
+            fetchImpl: failingFetch,
+        });
+
+        expect(entry.versions.map((v) => v.version)).toEqual(['2.0.0']);
+    });
+
+    it('registryUrl 未指定なら fetch を一切呼ばず、ローカル履歴のみでビルドする', async () => {
+        let called = false;
+        const spyFetch: typeof fetch = (async () => {
+            called = true;
+            return { ok: false, json: async () => null } as Response;
+        }) as typeof fetch;
+
+        const entry = await buildMod(penModDir, {
+            distDir: join(distDir, 'pen'),
+            publicDir: join(publicDir, 'pen'),
+            fetchImpl: spyFetch,
+        });
+
+        expect(called).toBe(false);
+        expect(entry.versions.map((v) => v.version)).toEqual(['2.0.0']);
     });
 });
