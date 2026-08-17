@@ -302,7 +302,9 @@ function EntityDropZone({
             onDragOver={(e) => {
                 if (!e.dataTransfer.types.includes(ENTITY_DRAG_MIME)) return;
                 e.preventDefault();
-                e.dataTransfer.dropEffect = 'link';
+                // ドラッグ元（Hierarchy の EntityNode）は effectAllowed='move' なので、
+                // 'link' を指定すると非互換となりブラウザがドロップを拒否する。'move' に合わせる。
+                e.dataTransfer.dropEffect = 'move';
                 setDragOver(true);
             }}
             onDragLeave={() => setDragOver(false)}
