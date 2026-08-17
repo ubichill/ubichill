@@ -14,12 +14,10 @@ spec:
   dependencies:
     - name: video-player
       source:
-        type: url
         url: https://ieyoukan.github.io/ubichill-videoplayer
         version: latest
     - name: pen
       source:
-        type: local
         version: latest
   initialEntities:
     - id: video-player
