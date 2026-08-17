@@ -69,6 +69,16 @@ export interface EntityTransform {
 }
 
 /**
+ * Component を1つも持たない GameObject（座標だけのマーカー/スポーン地点/矩形など）に対して
+ * `flattenGameObject` が発行する予約済み ComponentInstance.type。
+ *
+ * Worker を持たないため、実際に mod を解決しようとしてはいけない
+ * (Host 側は `loadMod` をスキップする)。`Ubi.entity.query`/`get` からは
+ * 通常の ComponentInstance と同じように transform/entityId が見える。
+ */
+export const EMPTY_ENTITY_TYPE = '__entity__';
+
+/**
  * Worker 互換の flat エンティティ。
  *
  * 1 GameObject 上の 1 Component に 1:1 で対応する。GameObject の hierarchy は

@@ -1,4 +1,4 @@
-import type { InitialEntity } from '@ubichill/shared';
+import { EMPTY_ENTITY_TYPE, type InitialEntity } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
 import { flattenGameObject } from './flattenGameObject';
 
@@ -69,8 +69,12 @@ describe('flattenGameObject', () => {
         expect(child?.parentEntityId).toBe('parent');
     });
 
-    it('component が無い Entity は空配列を返す', () => {
-        expect(flattenGameObject(makeEntity())).toEqual([]);
+    it('component が無い Entity は EMPTY_ENTITY_TYPE の ComponentInstance を1件返す', () => {
+        const result = flattenGameObject(makeEntity());
+        expect(result).toHaveLength(1);
+        expect(result[0].type).toBe(EMPTY_ENTITY_TYPE);
+        expect(result[0].id).toBe('root::0');
+        expect(result[0].entityId).toBe('root');
     });
 
     it('component 固有の transform 上書きが無ければ Entity の transform をそのまま継承する', () => {
