@@ -1,0 +1,65 @@
+apiVersion: ubichill.com/v1alpha1
+kind: World
+metadata:
+  name: danmaku
+  author:
+    name: devようかん
+  version: 1.0.0
+spec:
+  displayName: 弾幕シューティング
+  description: "矢印キーで移動、自動で弾を撃つ弾幕シューティングのデモ"
+  environment:
+    worldSize:
+      width: 800
+      height: 600
+    backgroundColor: "#0b1020"
+  dependencies:
+    - name: danmaku
+      source:
+        version: latest
+  initialEntities:
+    - id: arena
+      tags: []
+      children: []
+      transform:
+        x: 80
+        y: 60
+        z: 1
+        w: 640
+        h: 480
+        scale: 1
+        rotation: 0
+      components:
+        - type: danmaku:wall
+          data: {}
+    - id: ship
+      tags: []
+      children: []
+      transform:
+        x: 390
+        y: 480
+        z: 10
+        w: 20
+        h: 20
+        scale: 1
+        rotation: 0
+      components:
+        - type: danmaku:player
+          data:
+            wall: arena
+            speed: 200
+            fireRate: 8
+            bulletSpeed: 360
+            autoFire: true
+    - id: field
+      tags: []
+      children: []
+      transform:
+        x: 0
+        y: 0
+        z: 5000
+        scale: 1
+        rotation: 0
+      components:
+        - type: danmaku:canvas
+          data: {}

@@ -1,0 +1,35 @@
+{
+  "lockVersion": 1,
+  "mods": {
+    "danmaku": {
+      "id": "danmaku",
+      "version": "1.0.0",
+      "manifestIntegrity": "sha256-m7LxIpBlnni+UL1TQYHYee4tNiV2Jj79CfVX2xgXWJI=",
+      "components": {
+        "danmaku:canvas": {
+          "workerUrl": "./canvas/index.c838a35b.js",
+          "integrity": "sha256-yDijWy8aCP3LaZb6Oeep4u2HJDX1kj1kkHpl4c9OI00=",
+          "capabilities": [
+            "canvas:draw",
+            "event:emit"
+          ]
+        },
+        "danmaku:player": {
+          "workerUrl": "./player/index.d4875c5e.js",
+          "integrity": "sha256-1IdcXi3L2X21/YtxkBjRkfsBKwcWLjWpOJmygc0BG6c=",
+          "capabilities": [
+            "event:emit",
+            "scene:read",
+            "scene:update",
+            "ui:render"
+          ]
+        },
+        "danmaku:wall": {
+          "workerUrl": "./wall/index.e90c6b56.js",
+          "integrity": "sha256-6QxrVp8R8Fy15ZWOpIKOP7ix6jCBx6o3zGPQ8yf0u6k=",
+          "capabilities": []
+        }
+      }
+    }
+  }
+}
