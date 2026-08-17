@@ -7,13 +7,18 @@
  * dataFields の値は Inspector での UI 定義として使用される。
  */
 
-/** Inspector で編集可能なフィールドの型 */
-export type DataFieldType = 'color' | 'number' | 'text' | 'boolean' | 'select';
+/**
+ * Inspector で編集可能なフィールドの型。
+ * `@ubichill/shared` の `ComponentDataFieldSpecSchema`（manifest 検証）・
+ * `Ubi.state.sync` の `EditorFieldMeta` と型名を揃えている（string/enum 系）。
+ */
+export type DataFieldType = 'string' | 'number' | 'boolean' | 'color' | 'url' | 'enum' | 'json' | 'array';
 
 /** 全データフィールド共通の基底 */
 export interface BaseDataField {
     /** Inspector で表示されるラベル */
     label?: string;
+    help?: string;
 }
 
 export interface ColorDataField extends BaseDataField {
@@ -29,20 +34,40 @@ export interface NumberDataField extends BaseDataField {
     step?: number;
 }
 
-export interface TextDataField extends BaseDataField {
-    type: 'text';
-    default: string;
+export interface StringDataField extends BaseDataField {
+    type: 'string';
+    default?: string;
+    multiline?: boolean;
+    placeholder?: string;
 }
 
 export interface BooleanDataField extends BaseDataField {
     type: 'boolean';
-    default: boolean;
+    default?: boolean;
 }
 
-export interface SelectDataField extends BaseDataField {
-    type: 'select';
-    default: string;
-    options: readonly { value: string; label: string }[];
+export interface UrlDataField extends BaseDataField {
+    type: 'url';
+    default?: string;
+    placeholder?: string;
+}
+
+export interface EnumDataField extends BaseDataField {
+    type: 'enum';
+    default?: string;
+    options: readonly string[];
+}
+
+export interface JsonDataField extends BaseDataField {
+    type: 'json';
+    default?: unknown;
+}
+
+export interface ArrayDataField extends BaseDataField {
+    type: 'array';
+    default?: unknown[];
+    /** 要素1つ分のフィールド定義（{ key: { type, label, default, ... } }） */
+    item: Record<string, DataField>;
 }
 
 /** 他 Entity 単体への参照。値は entityId（World Editor で D&D 指定）。 */
@@ -60,9 +85,12 @@ export interface EntityRefArrayDataField extends BaseDataField {
 export type DataField =
     | ColorDataField
     | NumberDataField
-    | TextDataField
+    | StringDataField
     | BooleanDataField
-    | SelectDataField
+    | UrlDataField
+    | EnumDataField
+    | JsonDataField
+    | ArrayDataField
     | EntityRefDataField
     | EntityRefArrayDataField;
 
