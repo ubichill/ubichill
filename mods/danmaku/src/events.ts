@@ -18,6 +18,7 @@ export interface Bullet {
 
 export interface SpawnerData {
     bullets?: Bullet[];
+    playerShots?: Bullet[];
 }
 
 export const DanmakuEvents = Ubi.event.define<{
@@ -28,4 +29,6 @@ export const DanmakuEvents = Ubi.event.define<{
     'entity:danmaku:spawner': ComponentInstance<SpawnerData> | undefined;
     // ── 自mod: スポナー → プレイヤーへの被弾通知 (emit, scope:'world') ──
     'danmaku:hit': Record<string, never>;
+    // ── 自mod: プレイヤー → スポナーへの自機弾発射通知 (emit, scope:'world') ──
+    'danmaku:shoot': { x: number; y: number };
 }>();

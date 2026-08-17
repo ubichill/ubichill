@@ -29,11 +29,12 @@ const PLAYER_TYPE = 'danmaku:player';
 const HIT_RADIUS = 14;
 const PLAYER_POLL_INTERVAL = 0.2; // 秒 (プレイヤー位置の再取得間隔)
 const BULLET_PUBLISH_INTERVAL = 0.15; // 秒 (兄弟への state 公開間隔)
-// ワールドの既定サイズ (DEFAULTS.WORLD_ENVIRONMENT.worldSize) に合わせる。
-// player.worker.tsx と同じ理由で、狭い値だと spawner 自体の既定配置よりも
-// 内側になってしまい、生成した弾が初回 tick で即座に削除されてしまう。
-const WORLD_W = 2000;
-const WORLD_H = 1500;
+const PLAYER_SHOT_SPEED = 200; // px/秒 (自機弾)
+// ワールド全体ではなく「自身(spawner)の初期配置」を中心とした相対範囲で弾の
+// 生存域を作る。player.worker.tsx の可動域 (±220/160) と同じ理由で、絶対座標の
+// ワールドサイズに依存すると Editor 上での配置場所によって挙動が変わってしまう。
+const ARENA_HALF_W = 260;
+const ARENA_HALF_H = 200;
 const WORLD_MARGIN = 40; // これを超えて出た弾は削除
 
 const spawner = Ubi.state.define({
@@ -42,15 +43,18 @@ const spawner = Ubi.state.define({
     bulletSpeed: Ubi.state.sync(120, { type: 'number', min: 20, max: 400, step: 10, label: '弾速 (px/秒)' }),
     // 実行時の内部状態。Inspector には出さず canvas 兄弟への公開専用。
     bullets: Ubi.state.sync<Bullet[]>([], { editable: false }),
+    playerShots: Ubi.state.sync<Bullet[]>([], { editable: false }),
 });
 
 let origin: { x: number; y: number } | null = null;
 let playerPos: { x: number; y: number } | null = null;
 let simBullets: Bullet[] = [];
+let simPlayerShots: Bullet[] = [];
 let spawnTimer = 0;
 let playerPollTimer = 0;
 let publishTimer = 0;
 let nextBulletId = 0;
+let nextShotId = 0;
 
 if (Ubi.componentInstanceId) {
     Ubi.entity
@@ -96,8 +100,35 @@ function checkHit(): boolean {
     return simBullets.length < before;
 }
 
+/** OOB (自身の初期配置からの相対範囲外) の弾を取り除く純関数。 */
+function cullOutOfBounds(bullets: Bullet[], center: { x: number; y: number }): Bullet[] {
+    return bullets.filter(
+        (b) =>
+            b.x > center.x - ARENA_HALF_W - WORLD_MARGIN &&
+            b.x < center.x + ARENA_HALF_W + WORLD_MARGIN &&
+            b.y > center.y - ARENA_HALF_H - WORLD_MARGIN &&
+            b.y < center.y + ARENA_HALF_H + WORLD_MARGIN,
+    );
+}
+
+// Z キー押下で player.worker.tsx から届く自機弾。狙う相手 (spawner 自身) へ向けて飛ばす。
+DanmakuEvents.on('danmaku:shoot', ({ x, y }) => {
+    if (!origin) return;
+    const dx = origin.x - x;
+    const dy = origin.y - y;
+    const len = Math.hypot(dx, dy) || 1;
+    simPlayerShots.push({
+        id: `s${nextShotId++}`,
+        x,
+        y,
+        vx: (dx / len) * PLAYER_SHOT_SPEED,
+        vy: (dy / len) * PLAYER_SHOT_SPEED,
+    });
+});
+
 Ubi.registerSystem((_entities, deltaTime) => {
     if (!origin) return;
+    const spawnerOrigin = origin;
 
     playerPollTimer += deltaTime;
     if (playerPollTimer >= PLAYER_POLL_INTERVAL) {
@@ -112,15 +143,17 @@ Ubi.registerSystem((_entities, deltaTime) => {
         spawnBullet();
     }
 
-    simBullets = simBullets
-        .map((b) => ({ ...b, x: b.x + b.vx * deltaTime, y: b.y + b.vy * deltaTime }))
-        .filter(
-            (b) =>
-                b.x > -WORLD_MARGIN &&
-                b.x < WORLD_W + WORLD_MARGIN &&
-                b.y > -WORLD_MARGIN &&
-                b.y < WORLD_H + WORLD_MARGIN,
-        );
+    simBullets = cullOutOfBounds(
+        simBullets.map((b) => ({ ...b, x: b.x + b.vx * deltaTime, y: b.y + b.vy * deltaTime })),
+        spawnerOrigin,
+    );
+
+    simPlayerShots = cullOutOfBounds(
+        simPlayerShots
+            .map((s) => ({ ...s, x: s.x + s.vx * deltaTime, y: s.y + s.vy * deltaTime }))
+            .filter((s) => Math.hypot(s.x - spawnerOrigin.x, s.y - spawnerOrigin.y) > HIT_RADIUS), // 命中したら消える
+        spawnerOrigin,
+    );
 
     if (checkHit()) {
         DanmakuEvents.emit('danmaku:hit', {}, { scope: 'world', targetType: 'danmaku:player' });
@@ -130,5 +163,6 @@ Ubi.registerSystem((_entities, deltaTime) => {
     if (publishTimer >= BULLET_PUBLISH_INTERVAL) {
         publishTimer = 0;
         spawner.local.bullets = simBullets;
+        spawner.local.playerShots = simPlayerShots;
     }
 });

@@ -23,14 +23,19 @@ export const config: ComponentConfig = {
 const CANVAS_TARGET = 'field';
 
 let bulletPoints: Array<{ x: number; y: number }> = [];
+let playerShotPoints: Array<{ x: number; y: number }> = [];
 
 DanmakuEvents.on('entity:danmaku:spawner', (spawner) => {
     bulletPoints = (spawner?.data.bullets ?? []).map((b) => ({ x: b.x, y: b.y }));
+    playerShotPoints = (spawner?.data.playerShots ?? []).map((b) => ({ x: b.x, y: b.y }));
 });
 
 Ubi.registerSystem(() => {
     Ubi.canvas.frame(CANVAS_TARGET, {
         activeStroke: null,
-        cursors: bulletPoints.map((p) => ({ x: p.x, y: p.y, color: 'crimson', size: 8 })),
+        cursors: [
+            ...bulletPoints.map((p) => ({ x: p.x, y: p.y, color: 'crimson', size: 8 })),
+            ...playerShotPoints.map((p) => ({ x: p.x, y: p.y, color: 'dodgerblue', size: 6 })),
+        ],
     });
 });
