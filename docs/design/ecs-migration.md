@@ -244,8 +244,8 @@ Entity 全体を専有し、後から追加した Component の見た目・当�
 
 `EntityComponentSchema` に `transform: TransformSchema.partial().optional()` を追加し、
 `flattenGameObject` で Entity の transform と Component 固有の上書きをマージするようにした。
-x/y は Entity 位置からの相対オフセットとして加算、w/h/z/rotation/scale は上書き。未指定なら
-Entity の transform をそのまま継承する（後方互換）。Editor の Component 追加時
+全フィールド（x/y/z/w/h/rotation/scale）を上書きし、未指定なら Entity の transform をそのまま
+継承する（後方互換）。Editor の Component 追加時
 (`handleAddComponentToEntity`) は、追加する mod の `defaultTransform` をこの Component 固有の
 `transform` に書き込むようにし、Entity 全体の transform は書き換えない。
 

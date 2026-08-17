@@ -184,8 +184,8 @@ function ComponentTransformEditor({
             </label>
             {override !== undefined && (
                 <div className={css({ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '2' })}>
-                    <NumField label="X (Entity基準の相対)" value={override.x ?? 0} onChange={(v) => patch({ x: v })} />
-                    <NumField label="Y (Entity基準の相対)" value={override.y ?? 0} onChange={(v) => patch({ y: v })} />
+                    <NumField label="X (絶対)" value={override.x ?? 0} onChange={(v) => patch({ x: v })} />
+                    <NumField label="Y (絶対)" value={override.y ?? 0} onChange={(v) => patch({ y: v })} />
                     <NumField label="W" value={override.w ?? 0} onChange={(v) => patch({ w: v || undefined })} />
                     <NumField label="H" value={override.h ?? 0} onChange={(v) => patch({ h: v || undefined })} />
                     <NumField label="Z" value={override.z ?? 0} onChange={(v) => patch({ z: v })} />

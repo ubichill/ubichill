@@ -88,7 +88,7 @@ describe('flattenGameObject', () => {
         expect(result[1].transform.h).toBe(240);
     });
 
-    it('component 固有の transform 上書きがあれば w/h/z/rotation/scale を上書きし、x/y は Entity 位置からの相対オフセットとして加算する', () => {
+    it('component 固有の transform 上書きがあれば全フィールドを上書きする（x/y も絶対値で上書き）', () => {
         const result = flattenGameObject(
             makeEntity({
                 transform: { x: 10, y: 20, z: 5, w: 60, h: 240, scale: 1, rotation: 0 },
@@ -99,8 +99,8 @@ describe('flattenGameObject', () => {
             }),
         );
         const pen = result[1];
-        expect(pen.transform.x).toBe(12); // 10 + 2
-        expect(pen.transform.y).toBe(23); // 20 + 3
+        expect(pen.transform.x).toBe(2); // 上書き（10 + 2 ではない）
+        expect(pen.transform.y).toBe(3); // 上書き（20 + 3 ではない）
         expect(pen.transform.w).toBe(36);
         expect(pen.transform.h).toBe(48);
         // z/rotation/scale は上書き指定が無いので Entity 側を継承する

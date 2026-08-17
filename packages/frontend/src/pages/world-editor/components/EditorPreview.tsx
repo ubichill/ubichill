@@ -106,8 +106,8 @@ export function EditorPreview({
                 const ct = c.transform;
                 const componentTransform: ComponentInstance['transform'] = ct
                     ? {
-                          x: absX + (ct.x ?? 0),
-                          y: absY + (ct.y ?? 0),
+                          x: ct.x ?? transform.x,
+                          y: ct.y ?? transform.y,
                           z: ct.z ?? transform.z,
                           w: ct.w ?? transform.w,
                           h: ct.h ?? transform.h,
