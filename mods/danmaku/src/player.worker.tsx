@@ -2,9 +2,11 @@
  * danmaku:player Worker — 自機。
  *
  * 矢印キーで移動し、自分の transform を `Ubi.entity().update` で書き換える(自分自身への
- * 書き込みなので watchScope 制限には掛からない)。Z キーで上方向に弾を撃つ。
+ * 書き込みなので watchScope 制限には掛からない)。Z キー（または自動連射）で上方向に弾を撃つ。
  * 弾のシミュレーション・描画は danmaku:canvas が担う（自機は発射通知を emit するだけ）。
- * 狙う対象は無い — 弾は自機から出るだけ。
+ *
+ * UdonScript の public 変数のように、速度 / 発射レート / 弾速 / 自動連射 を Inspector で
+ * 設定できる（config.dataFields + Ubi.state.sync）。
  */
 
 import type { ComponentConfig, ComponentInstance } from '@ubichill/sdk';
@@ -12,19 +14,31 @@ import { DanmakuEvents } from './events';
 
 export const config: ComponentConfig = {
     watchScope: 'entity',
-    defaultTransform: { x: 0, y: 0, z: 10, w: 20, h: 20 },
+    // x/y は指定しない（Entity の位置を継承）。w/h/z だけ上書きする。
+    defaultTransform: { z: 10, w: 20, h: 20 },
+    dataFields: {
+        speed: { type: 'number', default: 160, min: 20, max: 600, step: 10, label: '移動速度 (px/秒)' },
+        fireRate: { type: 'number', default: 6, min: 1, max: 30, step: 1, label: '発射レート (発/秒)' },
+        bulletSpeed: { type: 'number', default: 320, min: 50, max: 1000, step: 10, label: '弾速 (px/秒)' },
+        autoFire: { type: 'boolean', default: false, label: '自動連射' },
+    },
     capabilities: ['scene:read', 'scene:update', 'ui:render', 'event:emit'],
-    description: '矢印キーで移動し、Zキーで上方向に弾を撃つ自機。',
+    description: '矢印キーで移動し、Zキー（または自動）で上方向に弾を撃つ自機。',
 };
 
-const SPEED = 160; // px/秒
 // ワールド全体ではなく「自機の初期配置」を中心とした相対範囲で可動域を作る。
 // ワールドは Editor 上でどこにでも配置できる大きなキャンバスなので、絶対座標で
 // クランプすると (a) 初期位置がワールド中央から離れているほど即座に境界へスナップする、
 // (b) 可動域がビューポートよりずっと広くなり画面外に出て見失う、という問題が起きる。
 const ARENA_HALF_W = 220;
 const ARENA_HALF_H = 160;
-const SHOOT_INTERVAL = 0.15; // 秒 (Z 押しっぱなし時の連射間隔)
+
+const player = Ubi.state.define({
+    speed: Ubi.state.sync(160, { type: 'number', min: 20, max: 600, step: 10, label: '移動速度 (px/秒)' }),
+    fireRate: Ubi.state.sync(6, { type: 'number', min: 1, max: 30, step: 1, label: '発射レート (発/秒)' }),
+    bulletSpeed: Ubi.state.sync(320, { type: 'number', min: 50, max: 1000, step: 10, label: '弾速 (px/秒)' }),
+    autoFire: Ubi.state.sync(false, { type: 'boolean', label: '自動連射' }),
+});
 
 const pressed = new Set<string>();
 let transform: ComponentInstance['transform'] | null = null;
@@ -48,6 +62,9 @@ DanmakuEvents.on('input:key_up', ({ code }) => pressed.delete(code));
 Ubi.registerSystem((_entities, deltaTime) => {
     if (!transform || !spawnOrigin) return;
 
+    // deltaTime はミリ秒（Host の TickController が経過 ms を渡す）なので秒に変換する。
+    const dt = deltaTime / 1000;
+
     let dx = 0;
     let dy = 0;
     if (pressed.has('ArrowLeft')) dx -= 1;
@@ -57,11 +74,11 @@ Ubi.registerSystem((_entities, deltaTime) => {
     if (dx !== 0 || dy !== 0) {
         const len = Math.hypot(dx, dy) || 1;
         transform.x = Math.min(
-            Math.max(transform.x + (dx / len) * SPEED * deltaTime, spawnOrigin.x - ARENA_HALF_W),
+            Math.max(transform.x + (dx / len) * player.local.speed * dt, spawnOrigin.x - ARENA_HALF_W),
             spawnOrigin.x + ARENA_HALF_W,
         );
         transform.y = Math.min(
-            Math.max(transform.y + (dy / len) * SPEED * deltaTime, spawnOrigin.y - ARENA_HALF_H),
+            Math.max(transform.y + (dy / len) * player.local.speed * dt, spawnOrigin.y - ARENA_HALF_H),
             spawnOrigin.y + ARENA_HALF_H,
         );
         Ubi.entity()
@@ -69,13 +86,14 @@ Ubi.registerSystem((_entities, deltaTime) => {
             .catch((err: unknown) => Ubi.log(`[danmaku:player] 移動の反映に失敗: ${String(err)}`, 'warn'));
     }
 
-    shootCooldown -= deltaTime;
-    if (pressed.has('KeyZ') && shootCooldown <= 0) {
-        shootCooldown = SHOOT_INTERVAL;
-        // 自機の先端（中央上）から上方向に撃つ。狙う対象は無い。
+    shootCooldown -= dt;
+    const wantsShoot = player.local.autoFire || pressed.has('KeyZ');
+    if (wantsShoot && shootCooldown <= 0) {
+        shootCooldown = 1 / Math.max(player.local.fireRate, 0.1);
+        // 自機の先端（中央上）から上方向に撃つ。弾速は Inspector の設定値を使う。
         DanmakuEvents.emit(
             'danmaku:shoot',
-            { x: transform.x + 10, y: transform.y },
+            { x: transform.x + 10, y: transform.y, speed: player.local.bulletSpeed },
             { scope: 'world', targetType: 'danmaku:canvas' },
         );
     }

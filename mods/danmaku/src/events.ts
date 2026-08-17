@@ -20,5 +20,5 @@ export const DanmakuEvents = Ubi.event.define<{
     'input:key_down': InputKeyDownData;
     'input:key_up': InputKeyUpData;
     // ── 自mod: 自機 → canvas への発射通知 (emit, scope:'world', targetType:'danmaku:canvas') ──
-    'danmaku:shoot': { x: number; y: number };
+    'danmaku:shoot': { x: number; y: number; speed: number };
 }>();
