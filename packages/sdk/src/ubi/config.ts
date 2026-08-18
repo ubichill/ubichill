@@ -70,16 +70,24 @@ export interface ArrayDataField extends BaseDataField {
     item: Record<string, DataField>;
 }
 
-/** 他 Entity 単体への参照。値は entityId（World Editor で D&D 指定）。 */
+/**
+ * 他 Entity 単体への参照。値は entityId（World Editor で D&D 指定）。
+ *
+ * `access` は参照先への操作権限: 'read'（既定・省略可）は読み取りのみ、
+ * 'write' は自身への読み書きと同様に参照先への transform/data 更新も許可する。
+ * 削除はこの参照からは決して許可されない（watchScope で見える Entity のみ削除可）。
+ */
 export interface EntityRefDataField extends BaseDataField {
     type: 'entityRef';
     default?: string;
+    access?: 'read' | 'write';
 }
 
-/** 他 Entity 複数への参照。値は entityId の配列。 */
+/** 他 Entity 複数への参照。値は entityId の配列。`access` の意味は {@link EntityRefDataField} と同じ。 */
 export interface EntityRefArrayDataField extends BaseDataField {
     type: 'entityRefArray';
     default?: string[];
+    access?: 'read' | 'write';
 }
 
 export type DataField =

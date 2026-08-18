@@ -75,16 +75,19 @@ export const ComponentDataFieldSpecSchema = z.discriminatedUnion('type', [
         help: z.string().optional(),
     }),
     // 他 Entity（単体）への参照。値は entityId。World Editor で Hierarchy からの D&D で指定する。
+    // access: 'read'（既定）は読み取りのみ、'write' は参照先への更新も許可する。削除は不可。
     z.object({
         type: z.literal('entityRef'),
         default: z.string().optional(),
+        access: z.enum(['read', 'write']).optional(),
         label: z.string().optional(),
         help: z.string().optional(),
     }),
-    // 他 Entity（複数）への参照。値は entityId の配列。
+    // 他 Entity（複数）への参照。値は entityId の配列。access の意味は entityRef と同じ。
     z.object({
         type: z.literal('entityRefArray'),
         default: z.array(z.string()).optional(),
+        access: z.enum(['read', 'write']).optional(),
         label: z.string().optional(),
         help: z.string().optional(),
     }),

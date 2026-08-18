@@ -23,9 +23,10 @@ export type DataFieldSpec =
     // 配列: 各要素を item スキーマで編集する。エディタは「行リスト＋追加/削除」で描画する。
     | { type: 'array'; default?: unknown[]; item: DataFields; label?: string; help?: string }
     // 他 Entity（単体）への参照。値は entityId。Hierarchy からの D&D で指定する。
-    | { type: 'entityRef'; default?: string; label?: string; help?: string }
+    // access: 'read'（既定）は読み取りのみ、'write' は参照先への更新も許可する。
+    | { type: 'entityRef'; default?: string; access?: 'read' | 'write'; label?: string; help?: string }
     // 他 Entity（複数）への参照。値は entityId の配列。
-    | { type: 'entityRefArray'; default?: string[]; label?: string; help?: string };
+    | { type: 'entityRefArray'; default?: string[]; access?: 'read' | 'write'; label?: string; help?: string };
 
 export type DataFields = Record<string, DataFieldSpec>;
 

@@ -1,6 +1,36 @@
-import type { ComponentInstance } from '@ubichill/shared';
+import type { ComponentDataFieldSpec, ComponentInstance } from '@ubichill/shared';
 
 export type WatchScope = 'entity' | 'subtree' | 'parent' | 'world';
+
+/**
+ * entityRef/entityRefArray フィールドの実値 (entity.data) から、watchScope 外でも
+ * 許可する対象 GameObject id を読み取り用・書き込み用に分けて求める純関数。
+ *
+ * - 読み取り (`read`): access に関わらず全 entityRef/entityRefArray の参照先を含む
+ *   (「Inspector で参照した」なら見えるのは自然なため)。
+ * - 書き込み (`write`): `access: 'write'` を明示したフィールドの参照先のみ。
+ *
+ * 削除はどちらの集合からも許可されない設計（呼び出し側で watchScope のみ判定すること）。
+ */
+export function computeDeclaredEntityRefTargets(
+    dataFields: Record<string, ComponentDataFieldSpec> | undefined,
+    data: Record<string, unknown>,
+): { read: Set<string>; write: Set<string> } {
+    const read = new Set<string>();
+    const write = new Set<string>();
+    if (!dataFields) return { read, write };
+    for (const [key, spec] of Object.entries(dataFields)) {
+        if (spec.type !== 'entityRef' && spec.type !== 'entityRefArray') continue;
+        const v = data[key];
+        const values = spec.type === 'entityRef' ? (typeof v === 'string' ? [v] : []) : Array.isArray(v) ? v : [];
+        for (const id of values) {
+            if (typeof id !== 'string') continue;
+            read.add(id);
+            if (spec.access === 'write') write.add(id);
+        }
+    }
+    return { read, write };
+}
 
 /** entityId → parentEntityId のマップを純関数で構築する。 */
 function buildParentOfMap(entities: Iterable<ComponentInstance>): Map<string, string | undefined> {

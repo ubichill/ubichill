@@ -1,6 +1,11 @@
-import type { ComponentInstance } from '@ubichill/shared';
+import type { ComponentDataFieldSpec, ComponentInstance } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
-import { collectAncestorGameObjectIds, collectSubtreeGameObjectIds, isAccessible } from './entityScope';
+import {
+    collectAncestorGameObjectIds,
+    collectSubtreeGameObjectIds,
+    computeDeclaredEntityRefTargets,
+    isAccessible,
+} from './entityScope';
 
 function makeInstance(overrides: Partial<ComponentInstance> = {}): ComponentInstance {
     return {
@@ -66,5 +71,45 @@ describe('isAccessible', () => {
         const scopedIds = collectSubtreeGameObjectIds([spawner, player], 'spawner');
         expect(isAccessible(player, 'entity', 'spawner', scopedIds)).toBe(false);
         expect(isAccessible(player, 'entity', 'spawner', scopedIds, new Set(['player']))).toBe(true);
+    });
+});
+
+describe('computeDeclaredEntityRefTargets', () => {
+    it('access 未指定 (既定 read) の entityRef は read のみに含む', () => {
+        const fields: Record<string, ComponentDataFieldSpec> = {
+            target: { type: 'entityRef', label: '狙う相手' },
+        };
+        const { read, write } = computeDeclaredEntityRefTargets(fields, { target: 'player' });
+        expect(read.has('player')).toBe(true);
+        expect(write.has('player')).toBe(false);
+    });
+
+    it("access: 'write' の entityRef は read にも write にも含む", () => {
+        const fields: Record<string, ComponentDataFieldSpec> = {
+            target: { type: 'entityRef', access: 'write', label: '操作対象' },
+        };
+        const { read, write } = computeDeclaredEntityRefTargets(fields, { target: 'door' });
+        expect(read.has('door')).toBe(true);
+        expect(write.has('door')).toBe(true);
+    });
+
+    it('entityRefArray は配列内の全 id を集める', () => {
+        const fields: Record<string, ComponentDataFieldSpec> = {
+            targets: { type: 'entityRefArray', access: 'write', label: '対象一覧' },
+        };
+        const { read, write } = computeDeclaredEntityRefTargets(fields, { targets: ['a', 'b'] });
+        expect([...read].sort()).toEqual(['a', 'b']);
+        expect([...write].sort()).toEqual(['a', 'b']);
+    });
+
+    it('dataFields/data が無ければ空集合を返す', () => {
+        expect(computeDeclaredEntityRefTargets(undefined, {})).toEqual({ read: new Set(), write: new Set() });
+    });
+
+    it('entityRef 以外のフィールド (number 等) は無視する', () => {
+        const fields: Record<string, ComponentDataFieldSpec> = { speed: { type: 'number', default: 1 } };
+        const { read, write } = computeDeclaredEntityRefTargets(fields, { speed: 5 });
+        expect(read.size).toBe(0);
+        expect(write.size).toBe(0);
     });
 });
