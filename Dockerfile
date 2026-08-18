@@ -22,6 +22,7 @@ WORKDIR /app
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY packages/backend/package.json        ./packages/backend/package.json
 COPY packages/bff/package.json            ./packages/bff/package.json
+COPY packages/core-components/package.json ./packages/core-components/package.json
 COPY packages/db/package.json             ./packages/db/package.json
 COPY packages/ecs/package.json            ./packages/ecs/package.json
 COPY packages/frontend/package.json       ./packages/frontend/package.json
