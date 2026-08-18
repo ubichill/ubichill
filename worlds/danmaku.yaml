@@ -36,6 +36,15 @@ spec:
             fireRate: 8
             bulletSpeed: 360
             autoFire: true
+        - id: body-collider
+          type: core:collider
+          data:
+            shape: rect
+            size: { w: 20, h: 20 }
+            offset: { x: 0, y: 0 }
+            isTrigger: false
+            layer: player
+            mask: [wall]
     - id: field
       tags: []
       children: []
@@ -48,3 +57,90 @@ spec:
       components:
         - type: danmaku:canvas
           data: {}
+    # 見た目は danmaku:wall、衝突はHost標準の core:collider。
+    # 同じEntityへ載せるため、ワールド作者はUIと物理形状を別々に差し替えられる。
+    - id: wall-top
+      tags: []
+      children: []
+      transform: { x: 80, y: 80, z: 20, w: 640, h: 20, scale: 1, rotation: 0 }
+      components:
+        - id: view
+          type: danmaku:wall
+          data: {}
+        - id: collider
+          type: core:collider
+          data:
+            shape: rect
+            size: { w: 640, h: 20 }
+            offset: { x: 0, y: 0 }
+            isTrigger: false
+            layer: wall
+            mask: [player, bullet]
+    - id: wall-bottom
+      tags: []
+      children: []
+      transform: { x: 80, y: 500, z: 20, w: 640, h: 20, scale: 1, rotation: 0 }
+      components:
+        - id: view
+          type: danmaku:wall
+          data: {}
+        - id: collider
+          type: core:collider
+          data:
+            shape: rect
+            size: { w: 640, h: 20 }
+            offset: { x: 0, y: 0 }
+            isTrigger: false
+            layer: wall
+            mask: [player, bullet]
+    - id: wall-left
+      tags: []
+      children: []
+      transform: { x: 80, y: 100, z: 20, w: 20, h: 400, scale: 1, rotation: 0 }
+      components:
+        - id: view
+          type: danmaku:wall
+          data: {}
+        - id: collider
+          type: core:collider
+          data:
+            shape: rect
+            size: { w: 20, h: 400 }
+            offset: { x: 0, y: 0 }
+            isTrigger: false
+            layer: wall
+            mask: [player, bullet]
+    - id: wall-right
+      tags: []
+      children: []
+      transform: { x: 700, y: 100, z: 20, w: 20, h: 400, scale: 1, rotation: 0 }
+      components:
+        - id: view
+          type: danmaku:wall
+          data: {}
+        - id: collider
+          type: core:collider
+          data:
+            shape: rect
+            size: { w: 20, h: 400 }
+            offset: { x: 0, y: 0 }
+            isTrigger: false
+            layer: wall
+            mask: [player, bullet]
+    - id: wall-center
+      tags: []
+      children: []
+      transform: { x: 300, y: 300, z: 20, w: 200, h: 20, scale: 1, rotation: 0 }
+      components:
+        - id: view
+          type: danmaku:wall
+          data: {}
+        - id: collider
+          type: core:collider
+          data:
+            shape: rect
+            size: { w: 200, h: 20 }
+            offset: { x: 0, y: 0 }
+            isTrigger: false
+            layer: wall
+            mask: [player, bullet]

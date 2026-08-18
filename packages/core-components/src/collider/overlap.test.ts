@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { containsPoint, overlaps, resolveColliderGeometry } from './overlap';
+import { containsPoint, matchesCollisionLayers, overlaps, resolveColliderGeometry } from './overlap';
 import { ColliderDataSchema } from './schema';
 
 describe('core:collider geometry', () => {
@@ -20,5 +20,29 @@ describe('core:collider geometry', () => {
         expect(overlaps(rect, { shape: 'circle', x: 12, y: 5, radius: 2 })).toBe(true);
         expect(overlaps(rect, { shape: 'circle', x: 13, y: 5, radius: 2 })).toBe(false);
         expect(containsPoint(rect, { x: 10, y: 10 })).toBe(true);
+    });
+
+    it('layer/mask は双方が許可した組み合わせだけ接触させる', () => {
+        const player = ColliderDataSchema.parse({
+            shape: 'rect',
+            size: { w: 20, h: 20 },
+            layer: 'player',
+            mask: ['wall'],
+        });
+        const wall = ColliderDataSchema.parse({
+            shape: 'rect',
+            size: { w: 20, h: 20 },
+            layer: 'wall',
+            mask: ['player'],
+        });
+        const sensor = ColliderDataSchema.parse({
+            shape: 'rect',
+            size: { w: 20, h: 20 },
+            layer: 'sensor',
+            mask: ['player'],
+        });
+
+        expect(matchesCollisionLayers(player, wall)).toBe(true);
+        expect(matchesCollisionLayers(player, sensor)).toBe(false);
     });
 });

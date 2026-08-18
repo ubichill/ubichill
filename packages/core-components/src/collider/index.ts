@@ -1,5 +1,5 @@
-export { containsPoint, overlaps, resolveColliderGeometry } from './overlap';
-export { CircleColliderSchema, ColliderDataSchema, RectColliderSchema } from './schema';
+export { containsPoint, matchesCollisionLayers, overlaps, resolveColliderGeometry } from './overlap.js';
+export { CircleColliderSchema, ColliderDataSchema, RectColliderSchema } from './schema.js';
 export type {
     CircleCollider,
     CircleGeometry,
@@ -9,4 +9,4 @@ export type {
     RectCollider,
     RectGeometry,
     Vec2,
-} from './types';
+} from './types.js';

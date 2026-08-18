@@ -1,13 +1,8 @@
-import { ColliderDataSchema } from './collider/schema';
+import { ColliderDataSchema } from './collider/schema.js';
+import { CORE_COMPONENT_TYPES, type CoreComponentType } from './public.js';
 
-export * from './collider';
-
-/** Hostが信頼して同梱する予約済みComponent型。外部modとしては解決しない。 */
-export const CORE_COMPONENT_TYPES = {
-    collider: 'core:collider',
-} as const;
-
-export type CoreComponentType = (typeof CORE_COMPONENT_TYPES)[keyof typeof CORE_COMPONENT_TYPES];
+export * from './collider/index.js';
+export * from './public.js';
 
 export function isCoreComponentType(type: string): type is CoreComponentType {
     return Object.values(CORE_COMPONENT_TYPES).includes(type as CoreComponentType);

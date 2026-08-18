@@ -1,4 +1,4 @@
-import type { CircleGeometry, ColliderData, ColliderGeometry, ColliderTransform, RectGeometry } from './types';
+import type { CircleGeometry, ColliderData, ColliderGeometry, ColliderTransform, RectGeometry } from './types.js';
 
 /** Entity transform とCollider dataからワールド座標の形状を解決する。rotationは物理層追加まで扱わない。 */
 export function resolveColliderGeometry(transform: ColliderTransform, collider: ColliderData): ColliderGeometry {
@@ -16,6 +16,11 @@ export function overlaps(a: ColliderGeometry, b: ColliderGeometry): boolean {
         return b.shape === 'rect' ? overlapsRectRect(a, b) : overlapsRectCircle(a, b);
     }
     return b.shape === 'circle' ? overlapsCircleCircle(a, b) : overlapsRectCircle(b, a);
+}
+
+/** 双方の layer/mask が互いを許可しているときだけ接触対象とする。 */
+export function matchesCollisionLayers(a: ColliderData, b: ColliderData): boolean {
+    return a.mask.includes(b.layer) && b.mask.includes(a.layer);
 }
 
 export function containsPoint(collider: ColliderGeometry, point: { x: number; y: number }): boolean {

@@ -14,6 +14,12 @@
     "resolveJsonModule": true,
     "declaration": true,
     "paths": {
+      "@ubichill/core-components": [
+        "../core-components/src/index.ts"
+      ],
+      "@ubichill/core-components/public": [
+        "../core-components/src/public.ts"
+      ],
       "@ubichill/ecs": [
         "../ecs/src/index.ts"
       ],

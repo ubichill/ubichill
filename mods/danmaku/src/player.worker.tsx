@@ -9,11 +9,14 @@
  * 設定できる（config.dataFields + Ubi.state.sync）。
  */
 
-import type { ComponentConfig, ComponentInstance } from '@ubichill/sdk';
+import { CORE_COMPONENT_TYPES, type ColliderData, type ComponentConfig, type ComponentInstance } from '@ubichill/sdk';
+import { type ColliderInstance, collidesWithSolid, PLAYER_COLLIDER } from './collision';
 import { DanmakuEvents } from './events';
 
 export const config: ComponentConfig = {
-    watchScope: 'entity',
+    // Host管理のdata-only Colliderだけをworld全体から読む。UIや他modの内部状態は購読しない。
+    watchScope: 'world',
+    watchEntityTypes: ['core:collider'],
     // x/y は指定しない（Entity の位置を継承）。w/h/z だけ上書きする。
     defaultTransform: { z: 10, w: 20, h: 20 },
     dataFields: {
@@ -35,15 +38,22 @@ const player = Ubi.state.define({
 
 const pressed = new Set<string>();
 let transform: ComponentInstance['transform'] | null = null;
+let collider: ColliderData = PLAYER_COLLIDER;
+let worldColliders: ColliderInstance[] = [];
 let shootCooldown = 0;
 
 if (Ubi.componentInstanceId) {
-    Ubi.entity
-        .get(Ubi.componentInstanceId)
-        .then((self) => {
+    Promise.all([
+        Ubi.entity.get(Ubi.componentInstanceId),
+        Ubi.entity.query<ColliderData>(CORE_COMPONENT_TYPES.collider),
+    ])
+        .then(([self, colliders]) => {
             if (self) transform = { ...self.transform };
+            worldColliders = colliders;
+            const ownCollider = colliders.find((candidate) => candidate.entityId === Ubi.entityId);
+            if (ownCollider) collider = ownCollider.data;
         })
-        .catch((err: unknown) => Ubi.log(`[danmaku:player] 初期位置の取得に失敗: ${String(err)}`, 'warn'));
+        .catch((err: unknown) => Ubi.log(`[danmaku:player] 初期状態の取得に失敗: ${String(err)}`, 'warn'));
 }
 
 DanmakuEvents.on('input:key_down', ({ code }) => pressed.add(code));
@@ -63,8 +73,14 @@ Ubi.registerSystem((_entities, deltaTime) => {
     if (pressed.has('ArrowDown')) dy += 1;
     if (dx !== 0 || dy !== 0) {
         const len = Math.hypot(dx, dy) || 1;
-        transform.x += (dx / len) * player.local.speed * dt;
-        transform.y += (dy / len) * player.local.speed * dt;
+        const moveX = (dx / len) * player.local.speed * dt;
+        const moveY = (dy / len) * player.local.speed * dt;
+
+        // 軸ごとに判定することで、斜め入力で壁に当たっても壁沿いに滑れる。
+        const nextX = { ...transform, x: transform.x + moveX };
+        if (!collidesWithSolid(nextX, collider, worldColliders, Ubi.entityId)) transform.x = nextX.x;
+        const nextY = { ...transform, y: transform.y + moveY };
+        if (!collidesWithSolid(nextY, collider, worldColliders, Ubi.entityId)) transform.y = nextY.y;
         Ubi.entity()
             .update({ transform })
             .catch((err: unknown) => Ubi.log(`[danmaku:player] 移動の反映に失敗: ${String(err)}`, 'warn'));
@@ -83,21 +99,18 @@ Ubi.registerSystem((_entities, deltaTime) => {
     }
 });
 
-// Shadow DOM の中間ラッパーが高さ auto のため、% 指定は高さが潰れる (pen mod と同様に px 固定にする)。
 export default function PlayerView() {
     return (
         <div
             style={{
-                // EntityRenderer の 20x20 の枠内に border も含めて収める。
-                // content-box の 20px + 左右上下 border だと実寸が 24x24 になり、
-                // 親の overflow:hidden で右端と下端が欠けて見える。
                 width: '100%',
                 height: '100%',
                 boxSizing: 'border-box',
                 borderRadius: '50%',
                 background: '#4d9dff',
                 border: '2px solid rgba(255,255,255,0.85)',
-                boxShadow: '0 0 6px rgba(0,0,0,0.4)',
+                // Entity transform はclipではないため、光彩は当たり判定の外へ描ける。
+                boxShadow: '0 0 12px rgba(56,189,248,.95), 0 0 6px rgba(0,0,0,.5)',
             }}
         />
     );

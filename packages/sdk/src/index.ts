@@ -8,6 +8,16 @@
  * React / Host 側 API は Host パッケージ（@ubichill/react）に分離されている。
  */
 
+// Host標準のdata-only Component。modは予約型を生成・更新できないが、公開された
+// 型と純粋なgeometry関数を使ってHostから渡されたColliderを高速に判定できる。
+export {
+    CORE_COMPONENT_TYPES,
+    type ColliderData,
+    type ColliderGeometry,
+    matchesCollisionLayers,
+    overlaps,
+    resolveColliderGeometry,
+} from '@ubichill/core-components/public';
 // ECS + メッセージング型
 export * from '@ubichill/ecs';
 // プロトコル型（@ubichill/shared より選択的に re-export）。

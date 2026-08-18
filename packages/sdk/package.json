@@ -16,6 +16,7 @@
         "@ubichill/shared": "workspace:*"
     },
     "dependencies": {
+        "@ubichill/core-components": "workspace:*",
         "@ubichill/loader": "workspace:*"
     },
     "scripts": {

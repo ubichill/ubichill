@@ -338,6 +338,9 @@ importers:
 
   packages/sdk:
     dependencies:
+      '@ubichill/core-components':
+        specifier: workspace:*
+        version: link:../core-components
       '@ubichill/ecs':
         specifier: workspace:*
         version: link:../ecs
