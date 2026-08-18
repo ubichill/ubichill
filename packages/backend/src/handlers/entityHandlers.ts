@@ -78,6 +78,12 @@ export function handleEntityCreate(socket: TypedSocket) {
         payload: Omit<ComponentInstance, 'id'>,
         callback: (response: { success: boolean; entity?: ComponentInstance; error?: string }) => void,
     ) => {
+        // Socket.IO のackはプロトコル上必須でも、任意クライアントは省略できる。
+        // undefinedを呼び出してハンドラを例外終了させない。
+        if (typeof callback !== 'function') {
+            reject(socket, 'entity:create にはack callbackが必要です');
+            return;
+        }
         const instanceId = socket.data.instanceId;
         if (!instanceId) {
             callback({ success: false, error: '最初にワールドに参加する必要があります' });

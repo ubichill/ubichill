@@ -49,6 +49,13 @@ describe('entityHandlers 認可', () => {
             );
         });
 
+        it('ack callback を省略した不正Socket入力でも例外を投げない', () => {
+            const socket = makeSocket('user-a');
+
+            expect(() => handleEntityCreate(socket)(baseEntity(), undefined as never)).not.toThrow();
+            expect(socket.emit).toHaveBeenCalledWith('error', expect.stringContaining('callback'));
+        });
+
         it('予約済み core Component のruntime生成を拒否する', () => {
             const socket = makeSocket('user-a');
             const callback = vi.fn();
