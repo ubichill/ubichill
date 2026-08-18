@@ -100,7 +100,7 @@ await Ubi.entity.spawn(entity)                     // 親を明示指定して�
 
 // ──── その他 ──────────────────────────────────────────
 await Ubi.fetch(url, options?)                     // HTTP (外部はドメインごとにユーザー承認)
-Ubi.registerSystem((entities, dt, events) => {...}) // ECS System 登録
+Ubi.registerSystem((entities, deltaTimeMs, events) => {...}) // ECS System 登録。deltaTimeMs はミリ秒（秒ではない）
 Ubi.log(message, level?)                           // ログ ('debug' | 'info' | 'warn' | 'error')
 
 // ──── 読み取り専用プロパティ (初期化後に自動セット) ──────

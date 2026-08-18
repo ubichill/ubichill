@@ -116,11 +116,23 @@ export function useEntityOps({
                     if (spec.default !== undefined) initialData[name] = spec.default;
                 }
             }
-            const newComponent: EntityComponentDef = { type: componentType, data: initialData };
+            // Entity には既に他 Component が乗っている可能性があるため、この Component 固有の
+            // transform として defaultTransform を持たせる。Entity 全体の transform は書き換えない
+            // (他 Component の占有領域を壊さないため)。
+            const target = getEntityAt(definition.spec.initialEntities, path);
+            // Component の並べ替え・挿入・削除で他 Component の flat id が変わらないよう、
+            // 追加時点で永続 id を採番しておく（componentType の名前部分から kebab-case で一意に）。
+            const idSeed = componentType.split(':').pop() || componentType;
+            const takenIds = (target?.components ?? []).map((c) => c.id).filter((id): id is string => !!id);
+            const newComponent: EntityComponentDef = {
+                id: buildUniqueEntityId(idSeed, takenIds),
+                type: componentType,
+                data: initialData,
+                ...(kind?.defaultTransform ? { transform: kind.defaultTransform } : {}),
+            };
             updateEntities((prev) =>
                 updateEntityAt(prev, path, (e) => ({ ...e, components: [...e.components, newComponent] })),
             );
-            const target = getEntityAt(definition.spec.initialEntities, path);
             selection.selectEntity(path);
             selection.selectComponent(target?.components.length ?? 0);
         },

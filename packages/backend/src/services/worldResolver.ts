@@ -133,7 +133,7 @@ function mapToResolved(
     const normalizeEntity = (e: InitialEntity): InitialEntity => ({
         id: e.id,
         transform: e.transform,
-        components: e.components.map((c) => ({ type: c.type, data: c.data ?? {} })),
+        components: e.components.map((c) => ({ type: c.type, data: c.data ?? {}, transform: c.transform })),
         tags: e.tags ?? [],
         children: (e.children ?? []).map(normalizeEntity),
     });

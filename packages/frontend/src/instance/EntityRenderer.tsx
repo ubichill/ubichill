@@ -1,4 +1,5 @@
 import { isWorkerMod, useHold, useSocket, useWorld, WorkerModHost } from '@ubichill/react';
+import { EMPTY_ENTITY_TYPE } from '@ubichill/shared';
 import type React from 'react';
 import { useEffect, useRef } from 'react';
 import { Z_INDEX } from '@/styles/layers';
@@ -32,7 +33,8 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({ entityId }) => {
 
     // avoid starting network loads during render — schedule via effect
     useEffect(() => {
-        if (entityType && !mod) loadMod(entityType);
+        // EMPTY_ENTITY_TYPE は Worker を持たないマーカー用の予約型なので mod 解決を試みない
+        if (entityType && entityType !== EMPTY_ENTITY_TYPE && !mod) loadMod(entityType);
     }, [mod, entityType, loadMod]);
 
     if (!entity) return null;

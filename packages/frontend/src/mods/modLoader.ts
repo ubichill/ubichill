@@ -37,6 +37,7 @@ function toWorkerModDefinition(m: LoadedMod): WorkerModDefinition {
         thumbnail: m.thumbnail,
         mediaTargets: m.mediaTargets,
         modBase: m.modBase,
+        dataFields: m.dataFields,
     };
 }
 

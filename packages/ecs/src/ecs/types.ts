@@ -18,7 +18,8 @@ export interface Entity {
     readonly _componentNames: Set<string>;
 }
 
-export type System = (entities: Entity[], deltaTime: number, events: WorkerEvent[]) => void;
+/** @param deltaTimeMs 前回tickからの経過時間（ミリ秒）。秒単位の速度計算には `/ 1000` が必要。 */
+export type System = (entities: Entity[], deltaTimeMs: number, events: WorkerEvent[]) => void;
 
 export interface Query {
     execute(): Entity[];
@@ -30,7 +31,8 @@ export interface EcsWorld {
     createEntity(id: string): Entity;
     getEntity(id: string): Entity | null;
     query(componentNames: string[]): Query;
-    tick(deltaTime: number, events?: WorkerEvent[]): void;
+    /** @param deltaTimeMs 前回tickからの経過時間（ミリ秒） */
+    tick(deltaTimeMs: number, events?: WorkerEvent[]): void;
     dispatch(event: WorkerEvent): void;
     clear(): void;
 }

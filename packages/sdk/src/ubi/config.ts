@@ -7,13 +7,18 @@
  * dataFields の値は Inspector での UI 定義として使用される。
  */
 
-/** Inspector で編集可能なフィールドの型 */
-export type DataFieldType = 'color' | 'number' | 'text' | 'boolean' | 'select';
+/**
+ * Inspector で編集可能なフィールドの型。
+ * `@ubichill/shared` の `ComponentDataFieldSpecSchema`（manifest 検証）・
+ * `Ubi.state.sync` の `EditorFieldMeta` と型名を揃えている（string/enum 系）。
+ */
+export type DataFieldType = 'string' | 'number' | 'boolean' | 'color' | 'url' | 'enum' | 'json' | 'array';
 
 /** 全データフィールド共通の基底 */
 export interface BaseDataField {
     /** Inspector で表示されるラベル */
     label?: string;
+    help?: string;
 }
 
 export interface ColorDataField extends BaseDataField {
@@ -29,23 +34,73 @@ export interface NumberDataField extends BaseDataField {
     step?: number;
 }
 
-export interface TextDataField extends BaseDataField {
-    type: 'text';
-    default: string;
+export interface StringDataField extends BaseDataField {
+    type: 'string';
+    default?: string;
+    multiline?: boolean;
+    placeholder?: string;
 }
 
 export interface BooleanDataField extends BaseDataField {
     type: 'boolean';
-    default: boolean;
+    default?: boolean;
 }
 
-export interface SelectDataField extends BaseDataField {
-    type: 'select';
-    default: string;
-    options: readonly { value: string; label: string }[];
+export interface UrlDataField extends BaseDataField {
+    type: 'url';
+    default?: string;
+    placeholder?: string;
 }
 
-export type DataField = ColorDataField | NumberDataField | TextDataField | BooleanDataField | SelectDataField;
+export interface EnumDataField extends BaseDataField {
+    type: 'enum';
+    default?: string;
+    options: readonly string[];
+}
+
+export interface JsonDataField extends BaseDataField {
+    type: 'json';
+    default?: unknown;
+}
+
+export interface ArrayDataField extends BaseDataField {
+    type: 'array';
+    default?: unknown[];
+    /** 要素1つ分のフィールド定義（{ key: { type, label, default, ... } }） */
+    item: Record<string, DataField>;
+}
+
+/**
+ * 他 Entity 単体への参照。値は entityId（World Editor で D&D 指定）。
+ *
+ * `access` は参照先への操作権限: 'read'（既定・省略可）は読み取りのみ、
+ * 'write' は自身への読み書きと同様に参照先への transform/data 更新も許可する。
+ * 削除はこの参照からは決して許可されない（watchScope で見える Entity のみ削除可）。
+ */
+export interface EntityRefDataField extends BaseDataField {
+    type: 'entityRef';
+    default?: string;
+    access?: 'read' | 'write';
+}
+
+/** 他 Entity 複数への参照。値は entityId の配列。`access` の意味は {@link EntityRefDataField} と同じ。 */
+export interface EntityRefArrayDataField extends BaseDataField {
+    type: 'entityRefArray';
+    default?: string[];
+    access?: 'read' | 'write';
+}
+
+export type DataField =
+    | ColorDataField
+    | NumberDataField
+    | StringDataField
+    | BooleanDataField
+    | UrlDataField
+    | EnumDataField
+    | JsonDataField
+    | ArrayDataField
+    | EntityRefDataField
+    | EntityRefArrayDataField;
 
 /**
  * Worker ファイル内で export するコンポーネント構成宣言。

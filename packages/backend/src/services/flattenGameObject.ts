@@ -1,9 +1,13 @@
-import type { ComponentInstance, InitialEntity } from '@ubichill/shared';
+import { type ComponentInstance, EMPTY_ENTITY_TYPE, type InitialEntity } from '@ubichill/shared';
 
 /**
  * GameObject ツリーを 1 Component = 1 ComponentInstance に展開する純関数。
  * 子 Entity の transform.x/y は親基準の相対座標 → 親 origin を加算して絶対化する。
  * w/h は未指定 (undefined) なら 0 を入れて「サイズ未指定 = 自然サイズ尊重」を表す。
+ *
+ * Component を1つも持たない GameObject（座標だけのマーカー等）も、
+ * `EMPTY_ENTITY_TYPE` を type に持つ ComponentInstance を1件発行することで
+ * `Ubi.entity.query`/`get`・entityRef から参照できるようにする。
  */
 export function flattenGameObject(
     gameObject: InitialEntity,
@@ -23,16 +27,48 @@ export function flattenGameObject(
         scale: t.scale ?? 1,
         rotation: t.rotation ?? 0,
     };
-    const own = (gameObject.components ?? []).map((c, i) => ({
-        id: `${gameObject.id}::${i}`,
-        type: c.type,
-        entityId: gameObject.id,
-        parentEntityId,
-        ownerId: null,
-        lockedBy: null,
-        transform,
-        data: c.data ?? {},
-    }));
+    const components = gameObject.components ?? [];
+    const own =
+        components.length === 0
+            ? [
+                  {
+                      id: `${gameObject.id}::0`,
+                      type: EMPTY_ENTITY_TYPE,
+                      entityId: gameObject.id,
+                      parentEntityId,
+                      ownerId: null,
+                      lockedBy: null,
+                      transform,
+                      data: {},
+                  },
+              ]
+            : components.map((c, i) => {
+                  const ct = c.transform;
+                  const componentTransform: ComponentInstance['transform'] = ct
+                      ? {
+                            x: ct.x ?? transform.x,
+                            y: ct.y ?? transform.y,
+                            z: ct.z ?? transform.z,
+                            w: ct.w ?? transform.w,
+                            h: ct.h ?? transform.h,
+                            scale: ct.scale ?? transform.scale,
+                            rotation: ct.rotation ?? transform.rotation,
+                        }
+                      : transform;
+                  return {
+                      // 永続 id (c.id) があればそれを使い、並べ替え・挿入・削除をしても他
+                      // Component の flat id が変わらないようにする。省略時 (旧データ) は
+                      // 従来通り index フォールバックにする。
+                      id: `${gameObject.id}::${c.id ?? i}`,
+                      type: c.type,
+                      entityId: gameObject.id,
+                      parentEntityId,
+                      ownerId: null,
+                      lockedBy: null,
+                      transform: componentTransform,
+                      data: c.data ?? {},
+                  };
+              });
     const fromChildren = (gameObject.children ?? []).flatMap((child) =>
         flattenGameObject(child, { x: absX, y: absY, z: absZ }, gameObject.id),
     );

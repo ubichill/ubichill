@@ -2,10 +2,10 @@ import type { Dependency } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
 import { computeModDiff, modToDependency, selectionToDependencies } from './modSelection';
 
-const local = (name: string, version = 'latest'): Dependency => ({ name, source: { type: 'local', version } });
+const local = (name: string, version = 'latest'): Dependency => ({ name, source: { version } });
 const url = (name: string, u: string, version = 'latest'): Dependency => ({
     name,
-    source: { type: 'url', url: u, version },
+    source: { url: u, version },
 });
 
 describe('selectionToDependencies', () => {

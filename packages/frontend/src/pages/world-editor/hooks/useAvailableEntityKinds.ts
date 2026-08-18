@@ -21,7 +21,12 @@ export type DataFieldSpec =
     | { type: 'enum'; default?: string; options: string[]; label?: string; help?: string }
     | { type: 'json'; default?: unknown; label?: string; help?: string }
     // 配列: 各要素を item スキーマで編集する。エディタは「行リスト＋追加/削除」で描画する。
-    | { type: 'array'; default?: unknown[]; item: DataFields; label?: string; help?: string };
+    | { type: 'array'; default?: unknown[]; item: DataFields; label?: string; help?: string }
+    // 他 Entity（単体）への参照。値は entityId。Hierarchy からの D&D で指定する。
+    // access: 'read'（既定）は読み取りのみ、'write' は参照先への更新も許可する。
+    | { type: 'entityRef'; default?: string; access?: 'read' | 'write'; label?: string; help?: string }
+    // 他 Entity（複数）への参照。値は entityId の配列。
+    | { type: 'entityRefArray'; default?: string[]; access?: 'read' | 'write'; label?: string; help?: string };
 
 export type DataFields = Record<string, DataFieldSpec>;
 
@@ -50,6 +55,8 @@ export interface AvailableEntityKind {
     dataFields?: DataFields;
     /** Component アイコン URL (アセットブラウザ表示用)。manifest の `thumbnail` を versioned base で絶対化済み。 */
     thumbnailUrl?: string;
+    /** 見た目の描画方式。manifest の canvasTargets / ui:render capability から自動判定。 */
+    viewKind: 'jsx' | 'canvas' | 'logic';
 }
 
 interface ModIndex {
@@ -61,6 +68,7 @@ interface VersionedManifestComponent {
     singleton?: boolean;
     canvasTargets?: string[];
     mediaTargets?: string[];
+    capabilities?: string[];
     defaultTransform?: AvailableEntityKind['defaultTransform'];
     dataFields?: DataFields;
     thumbnail?: string;
@@ -81,10 +89,23 @@ const MOD_BASE_URL: string = (() => {
 const indexCache = new Map<string, Promise<ModIndex | null>>();
 const manifestCache = new Map<string, Promise<VersionedManifest | null>>();
 
-/** `source.type === 'url'` の mod は自身の `source.url` を base にする（グローバル `MOD_BASE_URL` はローカルmod専用）。 */
+/** `source.url` がある mod は自身の `source.url` を base にする（無ければローカル `MOD_BASE_URL`）。 */
 function resolveBase(dep: NonNullable<WorldDefinition['spec']['dependencies']>[number]): string {
-    if (dep.source.type === 'url' && dep.source.url) return dep.source.url.replace(/\/$/, '');
+    if (dep.source.url) return dep.source.url.replace(/\/$/, '');
     return MOD_BASE_URL;
+}
+
+/**
+ * 見た目の描画方式を manifest の実体（canvasTargets / ui:render capability）から自動判定する。
+ * 明示的な renderKind 宣言は持たず、「何を使っているか」で決める。
+ *  - canvasTargets があれば Canvas2D（WebGL 含む）
+ *  - ui:render capability（`export default` / Ubi.ui.render）があれば jsx（VNode）
+ *  - どちらも無ければロジックのみ（見た目なし）
+ */
+function deriveViewKind(meta: VersionedManifestComponent): 'jsx' | 'canvas' | 'logic' {
+    if (meta.canvasTargets?.length) return 'canvas';
+    if (meta.capabilities?.includes('ui:render')) return 'jsx';
+    return 'logic';
 }
 
 function fetchIndex(base: string, name: string): Promise<ModIndex | null> {
@@ -154,6 +175,7 @@ export function useAvailableEntityKinds(definition: WorldDefinition | null): {
                     defaultTransform: meta.defaultTransform,
                     dataFields: meta.dataFields,
                     thumbnailUrl: meta.thumbnail ? `${versionedBase}/${meta.thumbnail}` : undefined,
+                    viewKind: deriveViewKind(meta),
                 }));
             }),
         )

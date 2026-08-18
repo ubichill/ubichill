@@ -221,6 +221,7 @@ export function WorldEditorPage() {
                         entity={selectedEntity}
                         initiallyExpandedComponentIndex={selection.selectedComponentIndex}
                         availableKinds={kinds}
+                        allEntities={definition.spec.initialEntities}
                         isChild={selection.selectedPath.length > 1}
                         worldSize={mobile.snapEnabled ? definition.spec.environment?.worldSize : undefined}
                         onChange={(updater) => {

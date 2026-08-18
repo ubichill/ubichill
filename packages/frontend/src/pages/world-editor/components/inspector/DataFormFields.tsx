@@ -1,12 +1,17 @@
-import { useEffect, useMemo, useState } from 'react';
+import type { InitialEntity } from '@ubichill/shared';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { css } from '@/styled-system/css';
 import type { DataFieldSpec, DataFields } from '../../hooks/useAvailableEntityKinds';
+import { ENTITY_DRAG_MIME } from '../../lib/dnd';
+import { resolveEntityIdByPathKey } from '../../lib/entityTree';
 import { ColorInput, NumberInput } from './primitives';
 import { defaultForType, detectType, inputStyle, textareaStyle } from './shared';
 
 interface DataFormFieldsProps {
     data: Record<string, unknown>;
     dataFields?: DataFields;
+    /** entityRef/entityRefArray フィールドで、Hierarchy からの D&D を entityId に解決するために使う。 */
+    allEntities?: InitialEntity[];
     onChange: (next: Record<string, unknown>) => void;
 }
 
@@ -16,7 +21,7 @@ interface DataFormFieldsProps {
  * - 宣言外のキーは「カスタム」セクションに分けて表示
  * - dataFields 未宣言のコンポーネントは自由にキー追加できる
  */
-export function DataFormFields({ data, dataFields, onChange }: DataFormFieldsProps) {
+export function DataFormFields({ data, dataFields, allEntities, onChange }: DataFormFieldsProps) {
     const setField = (key: string, value: unknown) => onChange({ ...data, [key]: value });
     const deleteField = (key: string) => {
         const next = { ...data };
@@ -44,6 +49,7 @@ export function DataFormFields({ data, dataFields, onChange }: DataFormFieldsPro
                                 fieldKey={key}
                                 spec={spec}
                                 value={value}
+                                allEntities={allEntities}
                                 onChange={(v) => setField(key, v)}
                                 onReset={() => setField(key, spec.default ?? defaultForType(spec))}
                             />
@@ -118,12 +124,14 @@ function DeclaredFieldRow({
     fieldKey,
     spec,
     value,
+    allEntities,
     onChange,
     onReset,
 }: {
     fieldKey: string;
     spec: DataFieldSpec;
     value: unknown;
+    allEntities?: InitialEntity[];
     onChange: (v: unknown) => void;
     onReset: () => void;
 }) {
@@ -153,7 +161,7 @@ function DeclaredFieldRow({
                     ↻
                 </button>
             </div>
-            <DeclaredInput spec={spec} value={value} onChange={onChange} name={fieldKey} />
+            <DeclaredInput spec={spec} value={value} allEntities={allEntities} onChange={onChange} name={fieldKey} />
             {spec.help && <span className={css({ fontSize: '10px', color: 'textSubtle' })}>{spec.help}</span>}
         </div>
     );
@@ -162,11 +170,13 @@ function DeclaredFieldRow({
 function DeclaredInput({
     spec,
     value,
+    allEntities,
     onChange,
     name,
 }: {
     spec: DataFieldSpec;
     value: unknown;
+    allEntities?: InitialEntity[];
     onChange: (v: unknown) => void;
     name?: string;
 }) {
@@ -249,9 +259,164 @@ function DeclaredInput({
         );
     }
     if (spec.type === 'array') {
-        return <ArrayField spec={spec} value={value} onChange={onChange} name={name} />;
+        return <ArrayField spec={spec} value={value} allEntities={allEntities} onChange={onChange} name={name} />;
+    }
+    if (spec.type === 'entityRef') {
+        return (
+            <EntityRefField
+                value={typeof value === 'string' ? value : null}
+                allEntities={allEntities}
+                onChange={onChange}
+            />
+        );
+    }
+    if (spec.type === 'entityRefArray') {
+        return (
+            <EntityRefArrayField
+                value={Array.isArray(value) ? (value as unknown[]).filter((v) => typeof v === 'string') : []}
+                allEntities={allEntities}
+                onChange={onChange}
+            />
+        );
     }
     return <MiniJsonEditor value={value} onChange={onChange} name={name} />;
+}
+
+// ============================================
+// entityRef / entityRefArray: Hierarchy からの D&D で他 Entity の id を指定する
+// ============================================
+
+/** Hierarchy から D&D された Entity 行を entityId に解決し、指定された数だけ受け取る drop zone。 */
+function EntityDropZone({
+    allEntities,
+    onDropEntityId,
+    children,
+}: {
+    allEntities?: InitialEntity[];
+    onDropEntityId: (entityId: string) => void;
+    children: ReactNode;
+}) {
+    const [dragOver, setDragOver] = useState(false);
+    return (
+        <div
+            onDragOver={(e) => {
+                if (!e.dataTransfer.types.includes(ENTITY_DRAG_MIME)) return;
+                e.preventDefault();
+                // ドラッグ元（Hierarchy の EntityNode）は effectAllowed='move' なので、
+                // 'link' を指定すると非互換となりブラウザがドロップを拒否する。'move' に合わせる。
+                e.dataTransfer.dropEffect = 'move';
+                setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+                const key = e.dataTransfer.getData(ENTITY_DRAG_MIME);
+                setDragOver(false);
+                if (!key || !allEntities) return;
+                e.preventDefault();
+                const entityId = resolveEntityIdByPathKey(allEntities, key);
+                if (entityId) onDropEntityId(entityId);
+            }}
+            className={css({
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px',
+                padding: '8px',
+                borderRadius: '6px',
+                border: '1px dashed',
+                borderColor: dragOver ? 'primary' : 'border',
+                bg: dragOver ? 'primarySubtle' : 'backgroundSubtle',
+            })}
+        >
+            {children}
+        </div>
+    );
+}
+
+function EntityRefChip({ entityId, onRemove }: { entityId: string; onRemove: () => void }) {
+    return (
+        <span
+            className={css({
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '2px 8px',
+                borderRadius: '999px',
+                bg: 'surface',
+                border: '1px solid',
+                borderColor: 'border',
+                fontSize: '11px',
+                color: 'text',
+            })}
+        >
+            {entityId}
+            <button
+                type="button"
+                onClick={onRemove}
+                title="参照を解除"
+                className={css({ bg: 'transparent', border: 'none', color: 'errorText', cursor: 'pointer', p: 0 })}
+            >
+                ×
+            </button>
+        </span>
+    );
+}
+
+function EntityRefField({
+    value,
+    allEntities,
+    onChange,
+}: {
+    value: string | null;
+    allEntities?: InitialEntity[];
+    onChange: (v: unknown) => void;
+}) {
+    return (
+        <EntityDropZone allEntities={allEntities} onDropEntityId={(id) => onChange(id)}>
+            {value ? (
+                <EntityRefChip entityId={value} onRemove={() => onChange(null)} />
+            ) : (
+                <span className={css({ fontSize: '11px', color: 'textSubtle' })}>
+                    Hierarchy から Entity をドラッグ＆ドロップして指定
+                </span>
+            )}
+        </EntityDropZone>
+    );
+}
+
+function EntityRefArrayField({
+    value,
+    allEntities,
+    onChange,
+}: {
+    value: string[];
+    allEntities?: InitialEntity[];
+    onChange: (v: unknown) => void;
+}) {
+    return (
+        <EntityDropZone
+            allEntities={allEntities}
+            onDropEntityId={(id) => {
+                if (value.includes(id)) return;
+                onChange([...value, id]);
+            }}
+        >
+            {value.length > 0 ? (
+                <div className={css({ display: 'flex', flexWrap: 'wrap', gap: '4px' })}>
+                    {value.map((id) => (
+                        <EntityRefChip
+                            key={id}
+                            entityId={id}
+                            onRemove={() => onChange(value.filter((v) => v !== id))}
+                        />
+                    ))}
+                </div>
+            ) : (
+                <span className={css({ fontSize: '11px', color: 'textSubtle' })}>
+                    Hierarchy から複数の Entity をドラッグ＆ドロップして指定
+                </span>
+            )}
+        </EntityDropZone>
+    );
 }
 
 // ============================================
@@ -263,11 +428,13 @@ type ArraySpec = Extract<DataFieldSpec, { type: 'array' }>;
 function ArrayField({
     spec,
     value,
+    allEntities,
     onChange,
     name,
 }: {
     spec: ArraySpec;
     value: unknown;
+    allEntities?: InitialEntity[];
     onChange: (v: unknown) => void;
     name?: string;
 }) {
@@ -328,6 +495,7 @@ function ArrayField({
                             <DeclaredInput
                                 spec={s}
                                 value={k in item ? item[k] : (s.default ?? defaultForType(s))}
+                                allEntities={allEntities}
                                 onChange={(v) => updateItem(i, { ...item, [k]: v })}
                                 name={`${name ?? 'item'}-${i}-${k}`}
                             />

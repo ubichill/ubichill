@@ -52,7 +52,7 @@ spec:
   # version は 'latest'（常に最新を追う。省略時もこれになる）か、完全一致 (x.y.z) の pin のどちらか。
   dependencies:
     - name: pen
-      source: { type: url, url: "https://yourname.github.io/pen-mod", version: latest }
+      source: { url: "https://yourname.github.io/pen-mod", version: latest }
 
   # ワールド起動時の初期エンティティ（Entity=箱、component が振る舞いを配布）
   initialEntities:

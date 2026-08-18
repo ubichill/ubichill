@@ -169,6 +169,62 @@ export function MiniTab({ active, onClick, label }: { active: boolean; onClick: 
     );
 }
 
+/** ロジックのみの Component（Ubi.ui.render を呼ばず見た目を持たない）を示すバッジ。 */
+export function LogicOnlyBadge() {
+    return (
+        <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            className={css({ color: 'textSubtle', flexShrink: 0 })}
+            aria-label="ロジックのみ（見た目なし）"
+        >
+            <title>ロジックのみ（見た目なし）</title>
+            <circle cx="12" cy="12" r="3" />
+            <path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" />
+        </svg>
+    );
+}
+
+const RENDER_KIND_LABEL: Record<'jsx' | 'canvas', string> = {
+    jsx: '見た目あり（jsx / VNode）',
+    canvas: '見た目あり（Canvas2D）',
+};
+
+/** View を持つ Component を、描画方式ごとに異なるアイコンで示すバッジ（canvas/jsx は自動判定）。 */
+export function RenderKindBadge({ kind }: { kind: 'jsx' | 'canvas' }) {
+    const label = RENDER_KIND_LABEL[kind];
+    return (
+        <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            className={css({ color: 'textSubtle', flexShrink: 0 })}
+            aria-label={label}
+        >
+            <title>{label}</title>
+            {kind === 'jsx' && (
+                <>
+                    <rect x="3" y="4" width="18" height="14" rx="2" />
+                    <path d="M3 15l4.5-4.5a2 2 0 0 1 2.8 0L14 14l1.5-1.5a2 2 0 0 1 2.8 0L21 15" />
+                </>
+            )}
+            {kind === 'canvas' && (
+                <>
+                    <rect x="3" y="3" width="18" height="18" rx="1" />
+                    <path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
+                </>
+            )}
+        </svg>
+    );
+}
+
 export function Chevron({ open }: { open: boolean }) {
     return (
         <svg

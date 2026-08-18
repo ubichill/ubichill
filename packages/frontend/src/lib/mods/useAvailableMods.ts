@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 
 /**
  * 利用可能modの 1 エントリ。
- * - ローカル（`sourceLabel === 'local'`）: dependencies の source.type='local' に変換
- * - リモート: `baseUrl` を持つ → dependencies の source.type='url' に変換
+ * - ローカル（`sourceLabel === 'local'`）: dependencies の source.url なし に変換
+ * - リモート: `baseUrl` を持つ → dependencies の source.url に変換
  */
 /** index.json が持つバージョン履歴の1件。 */
 export interface ModVersionSummary {

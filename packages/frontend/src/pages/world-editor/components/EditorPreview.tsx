@@ -103,6 +103,18 @@ export function EditorPreview({
             };
             entity.components.forEach((c, ci) => {
                 const id = `edit-${pathPrefix.join('-')}-c${ci}`;
+                const ct = c.transform;
+                const componentTransform: ComponentInstance['transform'] = ct
+                    ? {
+                          x: ct.x ?? transform.x,
+                          y: ct.y ?? transform.y,
+                          z: ct.z ?? transform.z,
+                          w: ct.w ?? transform.w,
+                          h: ct.h ?? transform.h,
+                          scale: ct.scale ?? transform.scale,
+                          rotation: ct.rotation ?? transform.rotation,
+                      }
+                    : transform;
                 map.set(id, {
                     id,
                     type: c.type,
@@ -111,7 +123,7 @@ export function EditorPreview({
                     ownerId: null,
                     lockedBy: null,
                     data: (c.data as Record<string, unknown> | undefined) ?? {},
-                    transform,
+                    transform: componentTransform,
                 });
             });
             entity.children?.forEach((child, childIdx) => {
@@ -138,7 +150,7 @@ export function EditorPreview({
         return Array.from(set);
     }, [definition.spec.initialEntities]);
 
-    // `type: url` の依存（外部mod）は lock.mods[].baseUrl 経由でしか baseUrl を解決できない
+    // `source.url` のある依存（外部mod）は lock.mods[].baseUrl 経由でしか baseUrl を解決できない
     // （acquireMod の既定 baseUrl は自ホストの /mods 固定）。編集中は保存済み lock を持たないため、
     // dependencies から都度プレビュー用の lock を組み立てて解決できるようにする。
     // entities のドラッグ操作等で definition 自体は頻繁に変わるため、ref で最新値だけ参照し、

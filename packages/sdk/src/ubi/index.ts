@@ -286,8 +286,11 @@ export class UbiSDK {
     // ── ECS ───────────────────────────────────────────────────
 
     /**
-     * ECS System を登録する。毎フレーム `(world, deltaTime, events)` で呼ばれる。
+     * ECS System を登録する。毎フレーム `(entities, deltaTimeMs, events)` で呼ばれる。
      * mod のロジックの実行単位で、`events` には入力・イベント・エンティティ更新が届く。
+     *
+     * `deltaTimeMs` は前回tickからの経過時間で**ミリ秒**単位（秒ではない）。
+     * 秒基準の速度計算をする場合は `deltaTimeMs / 1000` に変換すること。
      */
     public registerSystem(system: System): void {
         this._local.registerSystem(system);

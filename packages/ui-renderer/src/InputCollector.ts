@@ -58,6 +58,9 @@ const POINTER_SELECTOR =
     'input[type="checkbox"], input[type="radio"], input[type="range"], input[type="file"],' +
     'label';
 
+/** ゲーム入力に使うキー。ブラウザのデフォルトスクロールを止める対象。 */
+const SCROLL_PREVENT_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space']);
+
 /**
  * クリック対象が mod UI 要素（button, input, a 等）の場合 true を返す。
  *
@@ -227,6 +230,12 @@ export class InputCollector {
         };
 
         this._onKeyDown = (e: KeyboardEvent) => {
+            // 矢印キー・スペースはゲーム入力なので、スクロール可能なワールドコンテナの
+            // デフォルトスクロールを止める（自機移動で画面が動くのを防ぐ）。
+            // テキスト入力中（input/textarea 等）はタイピング操作を尊重して止めない。
+            if (SCROLL_PREVENT_KEYS.has(e.code) && !_isInteractiveTarget(e.target)) {
+                e.preventDefault();
+            }
             this._discreteEvents.push({
                 seq: this._nextSeq(),
                 event: {

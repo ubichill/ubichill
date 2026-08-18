@@ -8,6 +8,7 @@
  *
  * 返す LoadedMod は React/DOM 非依存の中立表現。Host が WorkerModDefinition にマップする。
  */
+import type { ComponentDataFieldSpec } from '@ubichill/shared';
 import { type ModLock, requiresLock, resolveLockedMod } from '@ubichill/shared';
 import { sriOf } from './integrity.ts';
 import type { AcquireResult, FetchLike, LoadedMod } from './types.ts';
@@ -193,6 +194,7 @@ export async function acquireMod(entityType: string, opts: AcquireModOptions): P
         mediaTargets: entry.mediaTargets,
         singleton: entry.singleton,
         thumbnail: entry.thumbnail,
+        dataFields: entry.dataFields as Record<string, ComponentDataFieldSpec> | undefined,
     };
     return loaded;
 }

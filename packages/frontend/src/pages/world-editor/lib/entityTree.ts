@@ -141,6 +141,7 @@ export function cloneEntitySubtree(entity: InitialEntity, taken: Iterable<string
             components: e.components.map((c) => ({
                 type: c.type,
                 data: structuredClone(c.data) as Record<string, unknown>,
+                ...(c.transform ? { transform: { ...c.transform } } : {}),
             })),
             tags: [...e.tags],
             children: (e.children ?? []).map(cloneRecursive),
@@ -163,6 +164,12 @@ export function collectEntityIds(entities: InitialEntity[]): string[] {
 }
 
 export const pathKey = (p: EntityPath): string => p.join('-');
+
+/** `ENTITY_DRAG_MIME` が運ぶ pathKey から、ドロップされた Entity の id を解決する。 */
+export function resolveEntityIdByPathKey(entities: InitialEntity[], key: string): string | null {
+    const path = key.split('-').map(Number);
+    return getEntityAt(entities, path)?.id ?? null;
+}
 
 /** path とその全祖先 path のキーを返す。子の非表示判定に使う。 */
 export function pathAndAncestorKeys(path: EntityPath): string[] {

@@ -1,7 +1,7 @@
 /**
  * runInstall（`ubichill install`）の per-mod ソース切り替えを検証する。
  *
- * dependencies[].source.type === 'url' の mod だけ、そのURLから個別取得し
+ * dependencies[].source.url がある mod だけ、そのURLから個別取得し
  * ModLockEntry.baseUrl に焼き込まれる（他ホストに配布された mod を acquireMod が
  * 正しく見つけられるようにする）ことを確認する。それ以外の mod は従来通り
  * --mods-dir 配下の fs から読む。dependencies[].source.version が pin されている
@@ -37,14 +37,14 @@ describe('runInstall', () => {
         vi.unstubAllGlobals();
     });
 
-    it('type: url の依存だけそのURLから取得し baseUrl を焼き込む。他は --mods-dir の fs から読む', async () => {
+    it('url のある依存だけそのURLから取得し baseUrl を焼き込む。他は --mods-dir の fs から読む', async () => {
         // ローカル mod（pen）: --mods-dir 配下に配置
         const modsDir = join(dir, 'mods');
         mkdirSync(join(modsDir, 'pen', 'v1.0.0'), { recursive: true });
         writeFileSync(join(modsDir, 'pen', 'mod.json'), JSON.stringify({ id: 'pen', version: '1.0.0' }));
         writeFileSync(join(modsDir, 'pen', 'v1.0.0', 'lock.json'), lockEntryJson('pen', '1.0.0'));
 
-        // リモート mod（video-player）: dependencies[].source.type = 'url' 経由で取得
+        // リモート mod（video-player）: dependencies[].source.url 経由で取得
         vi.stubGlobal(
             'fetch',
             vi.fn(async (url: string) => {
@@ -72,12 +72,9 @@ describe('runInstall', () => {
                 '  dependencies:',
                 '    - name: video-player',
                 '      source:',
-                `        type: url`,
                 `        url: ${REMOTE_BASE}`,
                 '    - name: pen',
-                '      source:',
-                '        type: repository',
-                '        path: mods/pen',
+                '      source: {}',
                 '  initialEntities:',
                 '    - id: e1',
                 '      tags: []',
@@ -129,7 +126,6 @@ describe('runInstall', () => {
                 '  dependencies:',
                 '    - name: pen',
                 '      source:',
-                '        type: local',
                 '        version: 1.0.0',
                 '  initialEntities:',
                 '    - id: e1',

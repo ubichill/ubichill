@@ -59,7 +59,7 @@ initialEntities:
 
 ## その他の `spec` フィールド（任意）
 
-- `dependencies[]`：`{ name, source: { type: 'repository'|'npm'|'url', path?/url?/version? } }`。mod の入手元ヒント。
+- `dependencies[]`：`{ name, source: { url?, version? } }`。`url` があれば外部 mod（GitHub Pages 等）をその URL から取得し、無ければローカル（public mods）から解決する。mod の入手元ヒント。
 - `permissions`：`{ allowGuestCreate: bool, allowGuestDelete: bool }`。
 
 ## 連合（他インスタンス／外部ホスト）
