@@ -306,7 +306,13 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
                 />
             ))}
             {Array.from(vnodes.entries()).map(([targetId, vnode]) => (
-                <ModUIMount key={targetId} targetId={targetId} vnode={vnode} sendAction={sendAction} />
+                <ModUIMount
+                    key={targetId}
+                    targetId={targetId}
+                    vnode={vnode}
+                    sendAction={sendAction}
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+                />
             ))}
         </div>
     );

@@ -117,6 +117,7 @@ export default function PlayerView() {
                 height: '100%',
                 boxSizing: 'border-box',
                 borderRadius: '50%',
+                pointerEvents: 'auto',
                 background: '#4d9dff',
                 border: '3px solid rgba(255,255,255,0.9)',
                 // Entity transform はclipではないため、光彩は当たり判定の外へ描ける。
