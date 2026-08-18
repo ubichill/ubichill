@@ -88,8 +88,12 @@ export default function PlayerView() {
     return (
         <div
             style={{
-                width: '20px',
-                height: '20px',
+                // EntityRenderer の 20x20 の枠内に border も含めて収める。
+                // content-box の 20px + 左右上下 border だと実寸が 24x24 になり、
+                // 親の overflow:hidden で右端と下端が欠けて見える。
+                width: '100%',
+                height: '100%',
+                boxSizing: 'border-box',
                 borderRadius: '50%',
                 background: '#4d9dff',
                 border: '2px solid rgba(255,255,255,0.85)',
