@@ -1,0 +1,69 @@
+{
+  "id": "danmaku",
+  "name": "danmaku",
+  "version": "1.0.0",
+  "components": {
+    "danmaku:canvas": {
+      "canvasTargets": [
+        "field"
+      ],
+      "defaultTransform": {
+        "z": 5000
+      },
+      "description": "自機が撃った弾を Canvas2D で描画する。",
+      "capabilities": [
+        "canvas:draw",
+        "event:emit"
+      ],
+      "workerUrl": "./canvas/index.c838a35b.js"
+    },
+    "danmaku:player": {
+      "watchScope": "entity",
+      "defaultTransform": {
+        "z": 10,
+        "w": 20,
+        "h": 20
+      },
+      "dataFields": {
+        "speed": {
+          "type": "number",
+          "default": 160,
+          "min": 20,
+          "max": 600,
+          "step": 10,
+          "label": "移動速度 (px/秒)"
+        },
+        "fireRate": {
+          "type": "number",
+          "default": 6,
+          "min": 1,
+          "max": 30,
+          "step": 1,
+          "label": "発射レート (発/秒)"
+        },
+        "bulletSpeed": {
+          "type": "number",
+          "default": 320,
+          "min": 50,
+          "max": 1000,
+          "step": 10,
+          "label": "弾速 (px/秒)"
+        },
+        "autoFire": {
+          "type": "boolean",
+          "default": false,
+          "label": "自動連射"
+        }
+      },
+      "description": "矢印キーで移動し、Zキー（または自動）で上方向に弾を撃つ自機。",
+      "capabilities": [
+        "event:emit",
+        "scene:read",
+        "scene:update",
+        "ui:render"
+      ],
+      "workerUrl": "./player/index.7cd3a32e.js"
+    }
+  },
+  "assets": []
+}
