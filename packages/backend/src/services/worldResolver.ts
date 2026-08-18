@@ -128,12 +128,13 @@ function mapToResolved(
 ): ResolvedWorld {
     const env = def.spec.environment ?? {
         backgroundColor: DEFAULTS.WORLD_ENVIRONMENT.backgroundColor,
+        movementMode: DEFAULTS.WORLD_ENVIRONMENT.movementMode,
         worldSize: DEFAULTS.WORLD_ENVIRONMENT.worldSize,
     };
     const normalizeEntity = (e: InitialEntity): InitialEntity => ({
         id: e.id,
         transform: e.transform,
-        components: e.components.map((c) => ({ type: c.type, data: c.data ?? {}, transform: c.transform })),
+        components: e.components.map((c) => ({ id: c.id, type: c.type, data: c.data ?? {}, transform: c.transform })),
         tags: e.tags ?? [],
         children: (e.children ?? []).map(normalizeEntity),
     });
@@ -150,6 +151,7 @@ function mapToResolved(
         thumbnail: def.spec.thumbnail,
         environment: {
             backgroundColor: env.backgroundColor ?? DEFAULTS.WORLD_ENVIRONMENT.backgroundColor,
+            movementMode: env.movementMode ?? 'mouse',
             worldSize: env.worldSize ?? DEFAULTS.WORLD_ENVIRONMENT.worldSize,
         },
         capacity: def.spec.capacity,

@@ -154,6 +154,9 @@ export function worldSourceLabel(source: WorldSource): string {
 
 export const WorldEnvironmentSchema = z.object({
     backgroundColor: HexColor.default('#F0F8FF'),
+    // 'mouse'(既定) はマウス追従・自由スクロール(現状維持)。'keyboard' は矢印キーで
+    // アバターを動かしカメラが追従する、worldSize が実際にクランプされるゲーム向けモード。
+    movementMode: z.enum(['mouse', 'keyboard']).default('mouse'),
     worldSize: z
         .object({
             width: z.number().positive().default(2000),

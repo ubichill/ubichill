@@ -222,6 +222,7 @@ export const DEFAULTS = {
     /** デフォルトのワールド環境 */
     WORLD_ENVIRONMENT: {
         backgroundColor: '#F0F8FF',
+        movementMode: 'mouse',
         worldSize: { width: 2000, height: 1500 },
     } as WorldEnvironmentData,
 } as const;

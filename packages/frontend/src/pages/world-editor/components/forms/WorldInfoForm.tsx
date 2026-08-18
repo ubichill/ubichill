@@ -23,6 +23,7 @@ export function WorldInfoForm({ definition, onChange }: WorldInfoFormProps) {
     const spec = definition.spec;
     const env = spec.environment ?? {
         backgroundColor: '#F0F8FF',
+        movementMode: 'mouse' as const,
         worldSize: { width: 2000, height: 1500 },
     };
 
@@ -113,6 +114,21 @@ export function WorldInfoForm({ definition, onChange }: WorldInfoFormProps) {
                         />
                     </Field>
                 </div>
+                <Field label="移動方式">
+                    <select
+                        name="world-movement-mode"
+                        value={env.movementMode ?? 'mouse'}
+                        onChange={(e) =>
+                            onUpdateSpec({
+                                environment: { ...env, movementMode: e.target.value as 'mouse' | 'keyboard' },
+                            })
+                        }
+                        className={inputStyle}
+                    >
+                        <option value="mouse">マウス（既定・自由スクロール）</option>
+                        <option value="keyboard">キーボード（ゲーム向け・カメラ追従）</option>
+                    </select>
+                </Field>
                 <div className={css({ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4' })}>
                     <Field label="ワールド幅">
                         <input

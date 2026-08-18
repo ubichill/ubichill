@@ -22,6 +22,7 @@ function createInitialDefinition(): WorldDefinition {
             capacity: { default: 10, max: 20 },
             environment: {
                 backgroundColor: '#F0F8FF',
+                movementMode: 'mouse',
                 worldSize: { width: 2000, height: 1500 },
             },
             dependencies: [],

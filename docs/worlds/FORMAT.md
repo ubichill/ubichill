@@ -28,9 +28,15 @@ spec:
     max: 20                 # 上限人数
   environment:              # 任意
     backgroundColor: "#F0F8FF"   # HEX
+    movementMode: mouse      # mouse(既定) | keyboard
     worldSize: { width: 2000, height: 1500 }
   initialEntities: []       # 後述（既定 []）
 ```
+
+### `environment.movementMode` と `worldSize`
+
+- `mouse`（既定）: 自分の位置はマウス追従（`pointermove` + ネイティブスクロール）。`worldSize` はスクロールコンテナの初期サイズのヒントに過ぎず、移動やスクロールを強制的に制限することは無い。
+- `keyboard`: 矢印キーでアバター自身を動かし、カメラ(スクロール位置)がアバターへ追従する（ゲーム向け）。このモードでのみ `worldSize` がカメラのパン可能範囲として実際にクランプされる。
 
 ## `spec.initialEntities`（ECS 配置）
 

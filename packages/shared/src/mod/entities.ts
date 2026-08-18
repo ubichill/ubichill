@@ -158,5 +158,13 @@ export interface AvailableComponent {
  */
 export interface WorldEnvironmentData {
     backgroundColor: string;
+    /**
+     * `worldSize` はこのフィールドの意味を決める。
+     * - 'mouse'（既定）: 自分の位置はマウス追従。worldSize はスクロールコンテナの
+     *   初期サイズのヒントに過ぎず、強制力は無い。
+     * - 'keyboard': 矢印キーでアバター自身を動かし、カメラ(スクロール位置)が追従する。
+     *   このモードでのみ worldSize がカメラのパン可能範囲として実際にクランプされる。
+     */
+    movementMode?: 'mouse' | 'keyboard';
     worldSize: { width: number; height: number };
 }
