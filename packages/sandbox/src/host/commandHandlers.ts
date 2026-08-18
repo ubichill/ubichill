@@ -29,4 +29,5 @@ export const CMD_TO_HANDLER = {
     [CommandType.MEDIA_SET_DEVICE_CONTROL]: 'onMediaSetDeviceControl',
     [CommandType.EDITOR_SCHEMA]: 'onEditorSchema',
     [CommandType.CMD_GRIP]: 'onGripCommand',
+    [CommandType.CMD_RIDE]: 'onRideCommand',
 } as const satisfies Partial<Record<string, keyof HostHandlers>>;

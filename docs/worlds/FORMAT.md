@@ -28,15 +28,15 @@ spec:
     max: 20                 # 上限人数
   environment:              # 任意
     backgroundColor: "#F0F8FF"   # HEX
-    movementMode: mouse      # mouse(既定) | keyboard
     worldSize: { width: 2000, height: 1500 }
   initialEntities: []       # 後述（既定 []）
 ```
 
-### `environment.movementMode` と `worldSize`
+### `environment.worldSize` と `Ubi.ride`
 
-- `mouse`（既定）: 自分の位置はマウス追従（`pointermove` + ネイティブスクロール）。`worldSize` はスクロールコンテナの初期サイズのヒントに過ぎず、移動やスクロールを強制的に制限することは無い。
-- `keyboard`: 矢印キーでアバター自身を動かし、カメラ(スクロール位置)がアバターへ追従する（ゲーム向け）。このモードでのみ `worldSize` がカメラのパン可能範囲として実際にクランプされる。
+既定では自分の位置はマウス追従（`pointermove` + ネイティブスクロール）で、`worldSize` はスクロールコンテナの初期サイズのヒントに過ぎず強制力は無い。
+
+乗り物 Entity を持つ mod が `Ubi.ride.exclusive()` を宣言すると、ユーザーがそれに乗っている間だけアバターが OS カーソルから切り離され、矢印キーでの移動＋カメラ追従（このときだけ `worldSize` がパン可能範囲としてクランプされる）に切り替わる。降りると通常のマウス追従に戻る。マウス操作とキーボード操作はワールド単位の排他設定ではなく、乗車状態によって動的に切り替わる。
 
 ## `spec.initialEntities`（ECS 配置）
 

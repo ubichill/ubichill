@@ -1,0 +1,31 @@
+/**
+ * ridingSyncRef — 現在「乗って」いる乗り物の状態をモジュールレベルで保持するシングルトン。
+ *
+ * 目的:
+ *  - RideContext は InstanceRenderer 内の RideProvider ツリーに閉じている。
+ *  - useBroadcastCursor / useKeyboardMovement は RideProvider の外側（router レベル）で動く
+ *    (heldEntitySyncRef と同じ制約。詳細はそちらの docstring 参照)。
+ *  - React Context を越えて riding 状態を伝えるため、module-level の変数を使う。
+ *
+ * 更新タイミング:
+ *  - RideContext.handleRideCommand が CMD_RIDE を受け取ったとき、内部で set() を呼ぶ。
+ *
+ * 読み取り:
+ *  - useBroadcastCursor が cursor:move を送る直前に get() で読む(乗車中は送らない)。
+ *  - useKeyboardMovement の requestAnimationFrame ループが毎フレーム get() で読む。
+ */
+
+export interface RidingSyncState {
+    entityId: string;
+}
+
+let _state: RidingSyncState | null = null;
+
+export const ridingSyncRef = {
+    get(): RidingSyncState | null {
+        return _state;
+    },
+    set(state: RidingSyncState | null): void {
+        _state = state;
+    },
+};

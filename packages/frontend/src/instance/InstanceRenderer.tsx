@@ -1,5 +1,5 @@
 import type { WorkerModDefinition } from '@ubichill/react';
-import { HoldProvider, isWorkerMod, useSocket, useWorld, WorkerModHost } from '@ubichill/react';
+import { HoldProvider, isWorkerMod, RideProvider, useSocket, useWorld, WorkerModHost } from '@ubichill/react';
 import type { ComponentInstance } from '@ubichill/shared';
 import { useMemo } from 'react';
 import { useModRegistry } from '@/mods/ModRegistryContext';
@@ -43,50 +43,53 @@ export const InstanceRenderer: React.FC = () => {
     }
 
     return (
-        <HoldProvider>
-            <div
-                data-scroll-world
-                style={{
-                    position: 'fixed',
-                    inset: 0,
-                    overflow: 'auto',
-                    backgroundColor: environment.backgroundColor,
-                    zIndex: Z_INDEX.INSTANCE_FRAME,
-                }}
-            >
+        <RideProvider>
+            <HoldProvider>
                 <div
+                    data-scroll-world
                     style={{
-                        position: 'relative',
-                        width: worldWidth,
-                        height: worldHeight,
-                        minWidth: '100%',
-                        minHeight: '100%',
+                        position: 'fixed',
+                        inset: 0,
+                        overflow: 'auto',
+                        backgroundColor: environment.backgroundColor,
+                        zIndex: Z_INDEX.INSTANCE_FRAME,
                     }}
                 >
-                    {renderEntities}
-                    {singletonWorkerMods.map((mod) => {
-                        const def = mod as WorkerModDefinition;
-                        const entity = Array.from(entities.values()).find((e) => e.type === def.id) ?? FALLBACK_ENTITY;
-                        const { x, y, z, w, h } = entity.transform;
-                        return (
-                            <div
-                                key={def.id}
-                                style={{
-                                    position: 'absolute',
-                                    left: x,
-                                    top: y,
-                                    zIndex: z || undefined,
-                                    width: w > 0 ? w : undefined,
-                                    height: h > 0 ? h : undefined,
-                                    pointerEvents: 'none',
-                                }}
-                            >
-                                <WorkerModHost entityId={`singleton:${def.id}`} entity={entity} definition={def} />
-                            </div>
-                        );
-                    })}
+                    <div
+                        style={{
+                            position: 'relative',
+                            width: worldWidth,
+                            height: worldHeight,
+                            minWidth: '100%',
+                            minHeight: '100%',
+                        }}
+                    >
+                        {renderEntities}
+                        {singletonWorkerMods.map((mod) => {
+                            const def = mod as WorkerModDefinition;
+                            const entity =
+                                Array.from(entities.values()).find((e) => e.type === def.id) ?? FALLBACK_ENTITY;
+                            const { x, y, z, w, h } = entity.transform;
+                            return (
+                                <div
+                                    key={def.id}
+                                    style={{
+                                        position: 'absolute',
+                                        left: x,
+                                        top: y,
+                                        zIndex: z || undefined,
+                                        width: w > 0 ? w : undefined,
+                                        height: h > 0 ? h : undefined,
+                                        pointerEvents: 'none',
+                                    }}
+                                >
+                                    <WorkerModHost entityId={`singleton:${def.id}`} entity={entity} definition={def} />
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
-            </div>
-        </HoldProvider>
+            </HoldProvider>
+        </RideProvider>
     );
 };

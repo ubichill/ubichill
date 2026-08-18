@@ -127,6 +127,9 @@ export async function dispatchCommand<TPayloadMap extends Record<string, unknown
         case CommandType.CMD_GRIP:
             handlers.onGripCommand?.(command.payload);
             return undefined;
+        case CommandType.CMD_RIDE:
+            handlers.onRideCommand?.(command.payload);
+            return undefined;
         case CommandType.CMD_LOG: {
             const { level, message } = command.payload;
             if (handlers.onLog) {

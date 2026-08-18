@@ -208,7 +208,6 @@ class InstanceManager {
         if (world) {
             return {
                 backgroundColor: world.environment.backgroundColor,
-                movementMode: world.environment.movementMode,
                 worldSize: world.environment.worldSize,
             };
         }

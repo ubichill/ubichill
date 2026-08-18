@@ -27,6 +27,8 @@ export type {
     PermissionProviderProps,
 } from './components/PermissionContext';
 export { PermissionProvider, useUbiPermissions } from './components/PermissionContext';
+export type { RidingState } from './components/RideContext';
+export { RideProvider, useRide } from './components/RideContext';
 export type { WorkerModHostProps } from './components/WorkerModHost';
 export { WorkerModHost } from './components/WorkerModHost';
 export { editorSchemaRegistry, useEditorSchema } from './editorSchemaRegistry';
@@ -43,6 +45,7 @@ export { SocketContext, SocketProvider, useSocket } from './hooks/useSocket';
 export type { WorldContextType } from './hooks/useWorld';
 export { useWorld, WorldContext, WorldProvider } from './hooks/useWorld';
 export { type UseWorldModOptions, useWorldMod } from './hooks/useWorldMod';
+export { ridingSyncRef } from './ridingSyncRef';
 export type { WidgetDefinition, WorkerModDefinition } from './types';
 export { isWorkerMod } from './types';
 export * from './useModWorker';

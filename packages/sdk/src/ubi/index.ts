@@ -18,6 +18,8 @@ import { createMediaModule } from './media';
 import type { PlayerModule } from './player';
 import { createPlayerModule } from './player';
 import { createReadTracker } from './reactiveTracking';
+import type { RideModule } from './ride';
+import { createRideModule } from './ride';
 import type { StateModule } from './state';
 import { createStateModule } from './state';
 import type { OmitId, UiRenderCostStat } from './types';
@@ -137,6 +139,8 @@ export class UbiSDK {
     public readonly entity: EntityModule;
     /** 「掴む」操作。ペン等のドラッグ/press ライフサイクルを宣言的に扱う。 */
     public readonly grip: GripModule;
+    /** 「乗る」操作。乗り物 Entity を宣言的に扱う。乗車中は自分のアバターがキーボード移動+カメラ追従に切り替わる。 */
+    public readonly ride: RideModule;
     /** @internal Ubi.state / Ubi.entity の実装で使用。modからは Ubi.entity 経由で操作する。 */
     private readonly _world: WorldModule;
 
@@ -235,6 +239,14 @@ export class UbiSDK {
                 } catch {
                     // entity.query / update の失敗は UX に影響しないので無視
                 }
+            },
+        });
+        this.ride = createRideModule({
+            state: this.state,
+            getMyUserId: () => this.myUserId,
+            getComponentInstanceId: () => this.componentInstanceId,
+            sendRideCommand: (payload) => {
+                this._send({ type: CommandType.CMD_RIDE, payload });
             },
         });
     }

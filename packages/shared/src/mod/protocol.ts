@@ -128,6 +128,7 @@ export const CommandType = {
     EDITOR_SCHEMA: 'EDITOR_SCHEMA',
     // core
     CMD_GRIP: 'CMD_GRIP',
+    CMD_RIDE: 'CMD_RIDE',
     CMD_LOG: 'CMD_LOG',
     CMD_READY: 'CMD_READY',
     CMD_INIT_FAILED: 'CMD_INIT_FAILED',

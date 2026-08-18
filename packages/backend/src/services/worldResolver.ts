@@ -128,7 +128,6 @@ function mapToResolved(
 ): ResolvedWorld {
     const env = def.spec.environment ?? {
         backgroundColor: DEFAULTS.WORLD_ENVIRONMENT.backgroundColor,
-        movementMode: DEFAULTS.WORLD_ENVIRONMENT.movementMode,
         worldSize: DEFAULTS.WORLD_ENVIRONMENT.worldSize,
     };
     const normalizeEntity = (e: InitialEntity): InitialEntity => ({
@@ -151,7 +150,6 @@ function mapToResolved(
         thumbnail: def.spec.thumbnail,
         environment: {
             backgroundColor: env.backgroundColor ?? DEFAULTS.WORLD_ENVIRONMENT.backgroundColor,
-            movementMode: env.movementMode ?? 'mouse',
             worldSize: env.worldSize ?? DEFAULTS.WORLD_ENVIRONMENT.worldSize,
         },
         capacity: def.spec.capacity,
@@ -175,10 +173,7 @@ function collectMods(
     for (const d of dependencies ?? []) versionByName.set(d.name, d.source?.version);
 
     // entity 走査は shared の collectModIds に一本化。dependency 宣言分を足す。
-    const ids = new Set<string>([
-        ...Array.from(collectModIds(entities)),
-        ...Array.from(versionByName.keys()),
-    ]);
+    const ids = new Set<string>([...Array.from(collectModIds(entities)), ...Array.from(versionByName.keys())]);
 
     return Array.from(ids).map((id) => ({ id, version: versionByName.get(id) }));
 }

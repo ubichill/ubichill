@@ -87,6 +87,8 @@ export type ModWorkerHandlers<TPayloadMap extends Record<string, unknown> = Reco
     onDestroyEntity?: (id: string) => Promise<void>;
     /** Worker が Ubi.grip.exclusive() の hold/release/setHover を呼んだときに発火する */
     onGripCommand?: (payload: import('@ubichill/shared').CmdGrip['payload']) => void;
+    /** Worker が Ubi.ride.exclusive() の mount/dismount を呼んだときに発火する */
+    onRideCommand?: (payload: import('@ubichill/shared').CmdRide['payload']) => void;
     /** Worker が Ubi.network.fetch() を呼んだときに発火する */
     onFetch?: (url: string, options?: FetchOptions) => Promise<FetchResult>;
     /** Tick 送信直前に発火するパフォーマンスフック（setMetricHandler 登録時のみ） */

@@ -33,7 +33,6 @@ import { useSession } from '@/lib/session';
 import { applyCursorStyles, removeCursorStyles } from './cursorImages';
 import { RemoteCursorsPortal } from './RemoteCursorsPortal';
 import { useBroadcastCursor } from './useBroadcastCursor';
-import { useCameraFollow } from './useCameraFollow';
 import { useKeyboardMovement } from './useKeyboardMovement';
 import { useScrollWorldEl } from './useScrollWorldEl';
 
@@ -63,20 +62,14 @@ export function CursorLayer() {
     // HeldEntityStateRef 経由で heldEntityId を cursor:move に含める
     useBroadcastCursor(scrollEl);
 
-    // movementMode: 'keyboard' のワールドでのみ有効(既定 'mouse' では何もしない)。
-    // 矢印キーで自分の position を動かし(useKeyboardMovement)、カメラをその position へ
-    // 追従させる(useCameraFollow)。worldSize がクランプ範囲として使われる唯一の経路。
+    // 「乗って」いる間だけ有効(Ubi.ride 経由、ridingSyncRef で判定)。
+    // 矢印キーで自分の position を動かし、カメラをそこへ追従させる。
+    // worldSize がクランプ範囲として使われるのはこの間だけ。
     const currentUserRef = useRef(currentUser);
     useEffect(() => {
         currentUserRef.current = currentUser;
     });
-    useKeyboardMovement(
-        environment.movementMode,
-        environment.worldSize,
-        () => currentUserRef.current?.position,
-        updatePosition,
-    );
-    useCameraFollow(environment.movementMode, scrollEl, currentUser?.position, environment.worldSize);
+    useKeyboardMovement(scrollEl, environment.worldSize, () => currentUserRef.current?.position, updatePosition);
 
     // cursor:moved を受信したら HeldEntityPositionRegistry に通知する
     // → EntityRenderer が DOM を直接更新して追従を実現する（React 再レンダーなし）

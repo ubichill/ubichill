@@ -9,6 +9,7 @@ import type {
     CanvasCursorData,
     CanvasStrokeData,
     CmdGrip,
+    CmdRide,
     ComponentInstance,
     EntityPatchPayload,
     FetchOptions,
@@ -57,6 +58,8 @@ export type HostHandlers<TPayloadMap extends Record<string, unknown> = Record<st
     onCanvasFrame?: (targetId: string, activeStroke: CanvasStrokeData | null, cursors: CanvasCursorData[]) => void;
     /** Worker が Ubi.grip の hold/release/setHover を呼んだときに発火する */
     onGripCommand?: (payload: CmdGrip['payload']) => void;
+    /** Worker が Ubi.ride の mount/dismount を呼んだときに発火する */
+    onRideCommand?: (payload: CmdRide['payload']) => void;
     /** Worker が Ubi.canvas.commitStroke() を呼んだときに発火する */
     onCanvasCommitStroke?: (targetId: string, stroke: CanvasStrokeData) => void;
     /** Worker が Ubi.media.load() を呼んだときに発火する */

@@ -35,6 +35,7 @@ import { useWorkerLoading } from '../WorkerLoadingContext';
 import { useHold } from './HoldContext';
 import { ModUIMount } from './ModUIMount';
 import { useUbiPermissions } from './PermissionContext';
+import { useRide } from './RideContext';
 
 export interface WorkerModHostProps {
     entityId: string;
@@ -46,6 +47,7 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
     const { users, currentUser, updatePosition } = useSocket();
     const { entities, patchEntity } = useWorld();
     const { handleGripCommand } = useHold();
+    const { handleRideCommand } = useRide();
     const permissions = useUbiPermissions();
 
     // on-demand 認可: Provider があるときだけ authorizeCapability を渡す（無い場合は
@@ -209,6 +211,12 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
                         data: { isHeld: false, heldOffset: null },
                     });
                 }
+            },
+            onRideCommand: (payload) => {
+                // lockedBy 自体は Ubi.ride の state.sync が自 Entity への RPC で永続化する。
+                // ここでは「前に乗っていた乗り物があれば自動で降ろす」等、ユーザー単位の
+                // 排他制御を RideContext に委譲する。
+                handleRideCommand(payload);
             },
             onMessage: (msg) => {
                 const m = msg as { type: string; payload: unknown };
