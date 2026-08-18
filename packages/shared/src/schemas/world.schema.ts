@@ -194,6 +194,13 @@ export const ComponentTypeSchema = z.string().regex(/^[a-z0-9-]+:[a-zA-Z0-9_-]+$
  * 同一 Entity に複数 Component を載せたとき、互いの占有領域が衝突しないようにするための機構。
  */
 export const EntityComponentSchema = z.object({
+    /**
+     * Entity 内で永続する Component の識別子（省略時は配列 index 由来のフォールバック）。
+     * 明示すると、Component の並べ替え・挿入・削除をしても他 Component の
+     * flat id (`${entityId}::${id}`) が変わらない。新規に Component を追加する際は
+     * World Editor が自動採番する。
+     */
+    id: KebabCaseId.optional(),
     type: ComponentTypeSchema,
     data: z.record(z.string(), z.unknown()).default({}),
     transform: TransformSchema.partial().optional(),

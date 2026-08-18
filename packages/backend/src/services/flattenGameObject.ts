@@ -56,7 +56,10 @@ export function flattenGameObject(
                         }
                       : transform;
                   return {
-                      id: `${gameObject.id}::${i}`,
+                      // 永続 id (c.id) があればそれを使い、並べ替え・挿入・削除をしても他
+                      // Component の flat id が変わらないようにする。省略時 (旧データ) は
+                      // 従来通り index フォールバックにする。
+                      id: `${gameObject.id}::${c.id ?? i}`,
                       type: c.type,
                       entityId: gameObject.id,
                       parentEntityId,

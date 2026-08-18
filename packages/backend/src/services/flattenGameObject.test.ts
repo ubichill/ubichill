@@ -28,6 +28,41 @@ describe('flattenGameObject', () => {
         expect(result[0].data).toEqual({ color: '#000' });
     });
 
+    it('component.id (永続id) があればそれを flat id に使う（index フォールバックしない）', () => {
+        const result = flattenGameObject(
+            makeEntity({
+                components: [
+                    { id: 'health', type: 'core:health', data: {} },
+                    { type: 'core:tag', data: {} }, // id 省略 → index フォールバック
+                ],
+            }),
+        );
+        expect(result.map((e) => e.id)).toEqual(['root::health', 'root::1']);
+    });
+
+    it('component.id があると、他 component の並べ替え・追加をしても flat id が変わらない', () => {
+        const before = flattenGameObject(
+            makeEntity({
+                components: [
+                    { id: 'a', type: 'x:a', data: {} },
+                    { id: 'b', type: 'x:b', data: {} },
+                ],
+            }),
+        );
+        // 先頭に新しい component を挿入（index ベースなら既存2件のindexがずれる）
+        const after = flattenGameObject(
+            makeEntity({
+                components: [
+                    { id: 'new', type: 'x:new', data: {} },
+                    { id: 'a', type: 'x:a', data: {} },
+                    { id: 'b', type: 'x:b', data: {} },
+                ],
+            }),
+        );
+        expect(before.find((e) => e.type === 'x:a')?.id).toBe(after.find((e) => e.type === 'x:a')?.id);
+        expect(before.find((e) => e.type === 'x:b')?.id).toBe(after.find((e) => e.type === 'x:b')?.id);
+    });
+
     it('複数 component を複数 ComponentInstance に展開する', () => {
         const result = flattenGameObject(
             makeEntity({
