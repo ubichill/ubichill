@@ -10,7 +10,7 @@ export type ColliderInstance = ComponentInstance<ColliderData>;
 
 export const PLAYER_COLLIDER: ColliderData = {
     shape: 'rect',
-    size: { w: 20, h: 20 },
+    size: 'entity',
     offset: { x: 0, y: 0 },
     isTrigger: false,
     layer: 'player',
@@ -19,7 +19,7 @@ export const PLAYER_COLLIDER: ColliderData = {
 
 export const BULLET_COLLIDER: ColliderData = {
     shape: 'circle',
-    radius: 3,
+    radius: 4,
     offset: { x: 0, y: 0 },
     isTrigger: true,
     layer: 'bullet',

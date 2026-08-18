@@ -25,15 +25,15 @@
  *    useHold() ではなくモジュールレベルの heldEntitySyncRef / HeldEntityPositionRegistry を使う
  */
 
-import { useSocket, useWorld } from '@ubichill/react';
-import { useEffect, useRef } from 'react';
+import { ridingSyncRef, useSocket, useWorld } from '@ubichill/react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { HeldEntityPositionRegistry } from '@/instance/HeldEntityPositionRegistry';
 import { readHeldOffset } from '@/instance/heldOffset';
 import { useSession } from '@/lib/session';
 import { applyCursorStyles, removeCursorStyles } from './cursorImages';
 import { RemoteCursorsPortal } from './RemoteCursorsPortal';
 import { useBroadcastCursor } from './useBroadcastCursor';
-import { useKeyboardMovement } from './useKeyboardMovement';
+import { riddenTransformPosition, useKeyboardMovement } from './useKeyboardMovement';
 import { useScrollWorldEl } from './useScrollWorldEl';
 
 export function CursorLayer() {
@@ -44,6 +44,7 @@ export function CursorLayer() {
 
     const selfCursorUrl = currentUser?.cursorUrl ?? null;
     const selfId = currentUser?.id ?? session.data?.user?.id;
+    const riding = useSyncExternalStore(ridingSyncRef.subscribe, ridingSyncRef.get, ridingSyncRef.get);
 
     // socket イベントハンドラ内から「常に最新の entities」を読むための ref。
     // socket.on を毎フレ再 subscribe するコストを避ける。
@@ -54,9 +55,9 @@ export function CursorLayer() {
 
     // CSS cursor を注入 (user.cursorUrl が変わったら更新)
     useEffect(() => {
-        applyCursorStyles(selfCursorUrl);
+        applyCursorStyles(selfCursorUrl, riding !== null);
         return removeCursorStyles;
-    }, [selfCursorUrl]);
+    }, [selfCursorUrl, riding]);
 
     // 自分のカーソル位置を他人へブロードキャスト (インスタンス参加中のみ実効)
     // HeldEntityStateRef 経由で heldEntityId を cursor:move に含める
@@ -65,11 +66,16 @@ export function CursorLayer() {
     // 「乗って」いる間だけ有効(Ubi.ride 経由、ridingSyncRef で判定)。
     // 矢印キーで自分の position を動かし、カメラをそこへ追従させる。
     // worldSize がクランプ範囲として使われるのはこの間だけ。
-    const currentUserRef = useRef(currentUser);
-    useEffect(() => {
-        currentUserRef.current = currentUser;
-    });
-    useKeyboardMovement(scrollEl, environment.worldSize, () => currentUserRef.current?.position, updatePosition);
+    useKeyboardMovement(
+        scrollEl,
+        environment.worldSize,
+        (componentInstanceId) => {
+            const ridden = entitiesRef.current.get(componentInstanceId);
+            if (!ridden) return undefined;
+            return riddenTransformPosition(ridden.transform);
+        },
+        updatePosition,
+    );
 
     // cursor:moved を受信したら HeldEntityPositionRegistry に通知する
     // → EntityRenderer が DOM を直接更新して追従を実現する（React 再レンダーなし）

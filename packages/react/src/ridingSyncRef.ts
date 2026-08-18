@@ -20,12 +20,19 @@ export interface RidingSyncState {
 }
 
 let _state: RidingSyncState | null = null;
+const listeners = new Set<() => void>();
 
 export const ridingSyncRef = {
     get(): RidingSyncState | null {
         return _state;
     },
     set(state: RidingSyncState | null): void {
+        if (_state?.entityId === state?.entityId) return;
         _state = state;
+        for (const listener of listeners) listener();
+    },
+    subscribe(listener: () => void): () => void {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
     },
 };

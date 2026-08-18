@@ -6,7 +6,8 @@ export function resolveColliderGeometry(transform: ColliderTransform, collider: 
     const x = transform.x + collider.offset.x * scale;
     const y = transform.y + collider.offset.y * scale;
     if (collider.shape === 'rect') {
-        return { shape: 'rect', x, y, w: collider.size.w * scale, h: collider.size.h * scale };
+        const size = collider.size === 'entity' ? { w: transform.w ?? 0, h: transform.h ?? 0 } : collider.size;
+        return { shape: 'rect', x, y, w: size.w * scale, h: size.h * scale };
     }
     return { shape: 'circle', x, y, radius: collider.radius * scale };
 }

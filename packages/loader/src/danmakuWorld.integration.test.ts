@@ -45,7 +45,7 @@ describe('worlds/danmaku.yaml collision smoke test', () => {
         const colliders = colliderInstances();
         expect(
             collidesWithSolid(
-                { x: 90, y: 400, z: 10, w: 20, h: 20, scale: 1, rotation: 0 },
+                { x: 70, y: 400, z: 10, w: 32, h: 32, scale: 1, rotation: 0 },
                 PLAYER_COLLIDER,
                 colliders,
                 'ship',

@@ -1,10 +1,15 @@
 import { ridingSyncRef } from '@ubichill/react';
-import type { CursorPosition } from '@ubichill/shared';
+import type { CursorPosition, EntityTransform } from '@ubichill/shared';
 import { useEffect, useRef } from 'react';
 import { computeCameraScroll } from './useCameraFollow';
 
 const SPEED = 220; // px/秒
 const MOVE_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']);
+
+/** 乗り物Entityの左上座標から、ユーザー/カメラが追従する中心座標を求める。 */
+export function riddenTransformPosition(transform: EntityTransform): CursorPosition {
+    return { x: transform.x + transform.w / 2, y: transform.y + transform.h / 2 };
+}
 
 /**
  * 押下中キーの集合から次の position を積分する純関数。`worldSize` の範囲に clamp する。
@@ -33,24 +38,19 @@ export function integrateKeyboardMovement(
 }
 
 /**
- * 「乗って」いる間(`ridingSyncRef` が non-null)だけ、矢印キーの押下状態から自分の
- * position (アバター自身の世界内絶対座標) を毎フレーム積分して動かし、カメラ
- * (スクロール位置)をそこへ追従させる。
+ * 「乗って」いる間(`ridingSyncRef` が non-null)だけ、自分のpositionとカメラを
+ * 乗り物Entityの中心へ追従させる。移動そのものは矢印入力を受け取る乗り物Workerが担う。
  *
  * `ridingSyncRef` は `RideProvider`(router 内層)を跨いで読む必要があるため、
  * React state/props ではなくモジュールレベルの値を毎フレーム直接ポーリングする
  * (`useBroadcastCursor` が `heldEntitySyncRef` を読むのと同じ設計)。
  *
- * - `useBroadcastCursor` と同じ「自己完結・React state を持たない」スタイル。
- *   move 判定は Set で持ち、位置更新は requestAnimationFrame ループのみで行う。
- * - 更新後の position は既存の `updatePosition`(= `cursor:move` socket イベント)で
- *   配信する。マウス経由かキーボード経由かはサーバー側は関知しない。
- * - `worldSize` の範囲に clamp する。乗車中のみ、これが `worldSize` の実質的な強制力になる。
+ * これにより、Colliderで止まった乗り物とユーザー座標が別々に積分されてずれることがない。
  */
 export function useKeyboardMovement(
     scrollEl: HTMLElement | null,
     worldSize: { width: number; height: number },
-    getPosition: () => CursorPosition | undefined,
+    getRiddenPosition: (componentInstanceId: string) => CursorPosition | undefined,
     updatePosition: (position: CursorPosition, heldEntityId?: string | null) => void,
 ): void {
     const scrollElRef = useRef(scrollEl);
@@ -63,63 +63,59 @@ export function useKeyboardMovement(
         worldSizeRef.current = worldSize;
     }, [worldSize]);
 
-    const getPositionRef = useRef(getPosition);
+    const getRiddenPositionRef = useRef(getRiddenPosition);
     const updatePositionRef = useRef(updatePosition);
     useEffect(() => {
-        getPositionRef.current = getPosition;
+        getRiddenPositionRef.current = getRiddenPosition;
         updatePositionRef.current = updatePosition;
     });
 
     useEffect(() => {
-        const pressed = new Set<string>();
         const onKeyDown = (e: KeyboardEvent) => {
             if (!MOVE_KEYS.has(e.key)) return;
             if (!ridingSyncRef.get()) return; // 乗車中でなければ矢印キーは素通し(ページスクロール等)
-            pressed.add(e.key);
             e.preventDefault();
         };
-        const onKeyUp = (e: KeyboardEvent) => {
-            pressed.delete(e.key);
-        };
         window.addEventListener('keydown', onKeyDown);
-        window.addEventListener('keyup', onKeyUp);
 
         let rafId = 0;
-        let lastTs = 0;
-        const tick = (ts: number) => {
+        let lastSent: CursorPosition | null = null;
+        let lastRideId: string | null = null;
+        const tick = () => {
             rafId = requestAnimationFrame(tick);
-            const deltaSec = lastTs ? (ts - lastTs) / 1000 : 0;
-            lastTs = ts;
-            if (!ridingSyncRef.get()) return;
+            const ride = ridingSyncRef.get();
+            if (!ride) {
+                lastRideId = null;
+                lastSent = null;
+                return;
+            }
+            if (lastRideId !== ride.entityId) {
+                lastRideId = ride.entityId;
+                lastSent = null;
+            }
+            const position = getRiddenPositionRef.current(ride.entityId);
+            if (!position) return;
 
-            const current = getPositionRef.current();
-            if (!current) return;
-
-            if (pressed.size > 0) {
-                const next = integrateKeyboardMovement(current, pressed, worldSizeRef.current, deltaSec);
-                if (next !== current) updatePositionRef.current(next);
+            if (!lastSent || lastSent.x !== position.x || lastSent.y !== position.y) {
+                lastSent = position;
+                updatePositionRef.current(position);
             }
 
-            // 乗車中は毎フレーム、現在位置にカメラを追従させる(キー入力の有無に関わらず、
-            // mount 直後にも一度アバターへ視点を合わせたいため)。
+            // mount直後や停止中も、viewport変更へ追従できるよう毎フレーム計算する。
             const scrollEl = scrollElRef.current;
             if (scrollEl) {
-                const latest = getPositionRef.current();
-                if (latest) {
-                    const { scrollLeft, scrollTop } = computeCameraScroll(latest, worldSizeRef.current, {
-                        width: scrollEl.clientWidth,
-                        height: scrollEl.clientHeight,
-                    });
-                    scrollEl.scrollLeft = scrollLeft;
-                    scrollEl.scrollTop = scrollTop;
-                }
+                const { scrollLeft, scrollTop } = computeCameraScroll(position, worldSizeRef.current, {
+                    width: scrollEl.clientWidth,
+                    height: scrollEl.clientHeight,
+                });
+                scrollEl.scrollLeft = scrollLeft;
+                scrollEl.scrollTop = scrollTop;
             }
         };
         rafId = requestAnimationFrame(tick);
 
         return () => {
             window.removeEventListener('keydown', onKeyDown);
-            window.removeEventListener('keyup', onKeyUp);
             cancelAnimationFrame(rafId);
         };
     }, []);

@@ -36,7 +36,8 @@ export interface ColliderBase {
 
 export interface RectCollider extends ColliderBase {
     shape: 'rect';
-    size: { w: number; h: number };
+    /** `entity` は同じEntityのtransform.w/hを使い、UI寸法とCollider寸法を共有する。 */
+    size: { w: number; h: number } | 'entity';
 }
 
 export interface CircleCollider extends ColliderBase {
@@ -51,5 +52,7 @@ export type ColliderData = RectCollider | CircleCollider;
 export interface ColliderTransform {
     x: number;
     y: number;
+    w?: number;
+    h?: number;
     scale?: number;
 }

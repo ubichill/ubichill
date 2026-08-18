@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { integrateKeyboardMovement } from './useKeyboardMovement';
+import { integrateKeyboardMovement, riddenTransformPosition } from './useKeyboardMovement';
 
 const WORLD = { width: 2000, height: 1500 };
 
@@ -42,5 +42,14 @@ describe('integrateKeyboardMovement', () => {
     it('相殺するキー(Left+Right)は移動しない', () => {
         const current = { x: 100, y: 100 };
         expect(integrateKeyboardMovement(current, new Set(['ArrowLeft', 'ArrowRight']), WORLD, 1)).toBe(current);
+    });
+});
+
+describe('riddenTransformPosition', () => {
+    it('自機Entityの中心へカーソル座標を乗せる', () => {
+        expect(riddenTransformPosition({ x: 384, y: 464, z: 10, w: 32, h: 32, scale: 1, rotation: 0 })).toEqual({
+            x: 400,
+            y: 480,
+        });
     });
 });

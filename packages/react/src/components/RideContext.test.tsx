@@ -31,6 +31,17 @@ describe('RideContext / handleRideCommand', () => {
         expect(patchEntity).not.toHaveBeenCalled();
     });
 
+    it('ridingSyncRef subscriberへ乗降を通知する', () => {
+        const listener = vi.fn();
+        const unsubscribe = ridingSyncRef.subscribe(listener);
+        ridingSyncRef.set({ entityId: 'vehicle-1' });
+        ridingSyncRef.set(null);
+        unsubscribe();
+        ridingSyncRef.set({ entityId: 'vehicle-2' });
+
+        expect(listener).toHaveBeenCalledTimes(2);
+    });
+
     it('dismount で riding state を null に戻す', () => {
         const { result } = setup();
         act(() => result.current.handleRideCommand({ action: 'mount', entityId: 'vehicle-1' }));

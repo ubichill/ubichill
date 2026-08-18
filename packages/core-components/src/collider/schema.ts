@@ -16,7 +16,7 @@ const CommonColliderSchema = z.object({
 
 export const RectColliderSchema = CommonColliderSchema.extend({
     shape: z.literal('rect'),
-    size: z.object({ w: z.number().positive(), h: z.number().positive() }).strict(),
+    size: z.union([z.object({ w: z.number().positive(), h: z.number().positive() }).strict(), z.literal('entity')]),
 }).strict();
 
 export const CircleColliderSchema = CommonColliderSchema.extend({

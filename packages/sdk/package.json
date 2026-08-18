@@ -20,6 +20,7 @@
         "@ubichill/loader": "workspace:*"
     },
     "scripts": {
+        "prebuild": "pnpm --filter @ubichill/core-components build",
         "build": "node build.mjs",
         "clean": "rimraf dist-npm"
     },

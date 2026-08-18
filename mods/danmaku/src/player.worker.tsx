@@ -18,7 +18,7 @@ export const config: ComponentConfig = {
     watchScope: 'world',
     watchEntityTypes: ['core:collider'],
     // x/y は指定しない（Entity の位置を継承）。w/h/z だけ上書きする。
-    defaultTransform: { z: 10, w: 20, h: 20 },
+    defaultTransform: { z: 10, w: 32, h: 32 },
     dataFields: {
         speed: { type: 'number', default: 160, min: 20, max: 600, step: 10, label: '移動速度 (px/秒)' },
         fireRate: { type: 'number', default: 6, min: 1, max: 30, step: 1, label: '発射レート (発/秒)' },
@@ -26,7 +26,7 @@ export const config: ComponentConfig = {
         autoFire: { type: 'boolean', default: false, label: '自動連射' },
     },
     capabilities: ['scene:read', 'scene:update', 'ui:render', 'event:emit'],
-    description: '矢印キーで移動し、Zキー（または自動）で上方向に弾を撃つ自機。',
+    description: 'クリックで搭乗。矢印キーで移動し、Zキー（または自動）で射撃、Escapeで降りる自機。',
 };
 
 const player = Ubi.state.define({
@@ -35,12 +35,14 @@ const player = Ubi.state.define({
     bulletSpeed: Ubi.state.sync(320, { type: 'number', min: 50, max: 1000, step: 10, label: '弾速 (px/秒)' }),
     autoFire: Ubi.state.sync(false, { type: 'boolean', label: '自動連射' }),
 });
+const ride = Ubi.ride.exclusive();
 
 const pressed = new Set<string>();
 let transform: ComponentInstance['transform'] | null = null;
 let collider: ColliderData = PLAYER_COLLIDER;
 let worldColliders: ColliderInstance[] = [];
 let shootCooldown = 0;
+ride.onChange(() => pressed.clear());
 
 if (Ubi.componentInstanceId) {
     Promise.all([
@@ -56,11 +58,18 @@ if (Ubi.componentInstanceId) {
         .catch((err: unknown) => Ubi.log(`[danmaku:player] 初期状態の取得に失敗: ${String(err)}`, 'warn'));
 }
 
-DanmakuEvents.on('input:key_down', ({ code }) => pressed.add(code));
+DanmakuEvents.on('input:key_down', ({ code }) => {
+    if (code === 'Escape' && ride.isMine) {
+        pressed.clear();
+        ride.release();
+        return;
+    }
+    pressed.add(code);
+});
 DanmakuEvents.on('input:key_up', ({ code }) => pressed.delete(code));
 
 Ubi.registerSystem((_entities, deltaTime) => {
-    if (!transform) return;
+    if (!transform || !ride.isMine) return;
 
     // deltaTime はミリ秒（Host の TickController が経過 ms を渡す）なので秒に変換する。
     const dt = deltaTime / 1000;
@@ -93,7 +102,7 @@ Ubi.registerSystem((_entities, deltaTime) => {
         // 自機の先端（中央上）から上方向に撃つ。弾速は Inspector の設定値を使う。
         DanmakuEvents.emit(
             'danmaku:shoot',
-            { x: transform.x + 10, y: transform.y, speed: player.local.bulletSpeed },
+            { x: transform.x + transform.w / 2, y: transform.y, speed: player.local.bulletSpeed },
             { scope: 'world', targetType: 'danmaku:canvas' },
         );
     }
@@ -102,15 +111,19 @@ Ubi.registerSystem((_entities, deltaTime) => {
 export default function PlayerView() {
     return (
         <div
+            onUbiClick={() => ride.toggle()}
             style={{
                 width: '100%',
                 height: '100%',
                 boxSizing: 'border-box',
                 borderRadius: '50%',
                 background: '#4d9dff',
-                border: '2px solid rgba(255,255,255,0.85)',
+                border: '3px solid rgba(255,255,255,0.9)',
                 // Entity transform はclipではないため、光彩は当たり判定の外へ描ける。
-                boxShadow: '0 0 12px rgba(56,189,248,.95), 0 0 6px rgba(0,0,0,.5)',
+                boxShadow: ride.isMine
+                    ? '0 0 18px rgba(250,204,21,.95), 0 0 8px rgba(56,189,248,.95)'
+                    : '0 0 12px rgba(56,189,248,.95), 0 0 6px rgba(0,0,0,.5)',
+                cursor: ride.isMine ? 'none' : 'pointer',
             }}
         />
     );

@@ -51,6 +51,6 @@ Ubi.registerSystem((_entities, deltaTime) => {
 
     Ubi.canvas.frame(CANVAS_TARGET, {
         activeStroke: null,
-        cursors: bullets.map((b) => ({ x: b.x, y: b.y, color: 'dodgerblue', size: 6 })),
+        cursors: bullets.map((b) => ({ x: b.x, y: b.y, color: 'dodgerblue', size: 8 })),
     });
 });

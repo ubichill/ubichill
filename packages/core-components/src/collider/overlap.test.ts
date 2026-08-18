@@ -14,6 +14,17 @@ describe('core:collider geometry', () => {
         });
     });
 
+    it('size: entity はUIと同じEntity transformのw/hを使う', () => {
+        const collider = ColliderDataSchema.parse({ shape: 'rect', size: 'entity' });
+        expect(resolveColliderGeometry({ x: 10, y: 20, w: 32, h: 28, scale: 1 }, collider)).toEqual({
+            shape: 'rect',
+            x: 10,
+            y: 20,
+            w: 32,
+            h: 28,
+        });
+    });
+
     it('rect / circle / mixed の接触を判定する', () => {
         const rect = { shape: 'rect', x: 0, y: 0, w: 10, h: 10 } as const;
         expect(overlaps(rect, { shape: 'rect', x: 9, y: 9, w: 2, h: 2 })).toBe(true);

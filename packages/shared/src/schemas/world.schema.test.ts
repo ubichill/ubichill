@@ -106,6 +106,11 @@ describe('core:collider world validation', () => {
         expect(collectModIds(input)).toEqual([]);
     });
 
+    it('rectのsize: entityでUIとColliderのEntity寸法共有を許可する', () => {
+        const input = [entity({ type: 'core:collider', data: { shape: 'rect', size: 'entity' } })];
+        expect(() => InitialEntitiesSchema.parse(input)).not.toThrow();
+    });
+
     it('未知のcore namespaceと不正なCollider dataを拒否する', () => {
         expect(() => InitialEntitiesSchema.parse([entity({ type: 'core:unknown', data: {} })])).toThrow();
         expect(() =>
