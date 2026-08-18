@@ -160,8 +160,6 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 data,
                 ownerId: socket.id || '',
                 lockedBy: null,
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
             } as unknown as Omit<ComponentInstance, 'id'>;
 
             return new Promise((resolve) => {

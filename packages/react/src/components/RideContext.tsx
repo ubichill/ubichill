@@ -9,11 +9,26 @@
  *    ridingSyncRef にも同期する(HoldContext/heldEntitySyncRef と同じパターン)
  */
 
-import type { CmdRide } from '@ubichill/shared';
+import type { CmdRide, InputFrameEvent } from '@ubichill/shared';
 import type React from 'react';
 import { createContext, useCallback, useContext, useRef, useState } from 'react';
 import { useWorld } from '../hooks/useWorld';
 import { ridingSyncRef } from '../ridingSyncRef';
+
+const RIDE_MOVEMENT_CODES = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']);
+
+/**
+ * 乗車中は矢印キーの押下だけを乗り物Workerへフォーカスする。
+ * KEY_UP は全Workerへ渡すため、乗車直前に押されていたキーを他modが保持し続けない。
+ */
+export function filterRideInput(
+    events: InputFrameEvent[],
+    riding: RidingState | null,
+    componentInstanceId: string,
+): InputFrameEvent[] {
+    if (!riding || riding.entityId === componentInstanceId) return events;
+    return events.filter((event) => event.type !== 'KEY_DOWN' || !RIDE_MOVEMENT_CODES.has(event.data.code));
+}
 
 export interface RidingState {
     /** 乗っている乗り物の ComponentInstance ID */

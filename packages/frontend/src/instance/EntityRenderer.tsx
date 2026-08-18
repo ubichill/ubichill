@@ -1,3 +1,4 @@
+import { isCoreComponentType } from '@ubichill/core-components';
 import { isWorkerMod, useHold, useSocket, useWorld, WorkerModHost } from '@ubichill/react';
 import { EMPTY_ENTITY_TYPE } from '@ubichill/shared';
 import type React from 'react';
@@ -33,11 +34,13 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({ entityId }) => {
 
     // avoid starting network loads during render — schedule via effect
     useEffect(() => {
-        // EMPTY_ENTITY_TYPE は Worker を持たないマーカー用の予約型なので mod 解決を試みない
-        if (entityType && entityType !== EMPTY_ENTITY_TYPE && !mod) loadMod(entityType);
+        // EMPTY_ENTITY_TYPE と core:* はWorkerを持たないbuilt-inなのでmod解決を試みない。
+        if (entityType && entityType !== EMPTY_ENTITY_TYPE && !isCoreComponentType(entityType) && !mod)
+            loadMod(entityType);
     }, [mod, entityType, loadMod]);
 
     if (!entity) return null;
+    if (isCoreComponentType(entity.type)) return null;
     if (!mod) return null;
     if (!isWorkerMod(mod)) return null;
     // singleton は InstanceRenderer 側で起動するためここではスキップ

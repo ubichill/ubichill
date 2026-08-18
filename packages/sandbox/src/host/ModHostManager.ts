@@ -61,6 +61,9 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
 
     private readonly tickEnabled: boolean;
     private readonly _autoInputEnabled: boolean;
+    private readonly _filterInputEvents?: (
+        events: import('@ubichill/shared').InputFrameEvent[],
+    ) => import('@ubichill/shared').InputFrameEvent[];
     /** Tick 生成（rAF / background interval）は TickController に委譲。tickEnabled のときのみ生成。 */
     private readonly _tick?: TickController;
 
@@ -121,6 +124,7 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
         const intervalMs = fps > 0 ? 1000 / fps : 0;
         this.tickEnabled = !options.disableAutoTick && fps > 0;
         this._autoInputEnabled = this.tickEnabled && !options.disableAutoInput;
+        this._filterInputEvents = options.filterInputEvents;
         this._tick = this.tickEnabled
             ? new TickController({ intervalMs, onTick: (deltaMs) => this._onTick(deltaMs) })
             : undefined;
@@ -202,7 +206,9 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
         if (this.isInitialized) {
             // 入力イベントを Tick より先に送信（UbiSDK 側でキューに積まれ、同 Tick で処理される）
             if (this._autoInputEnabled) {
-                const inputEvents = collectSharedInputFor(this._instanceKey);
+                const inputEvents =
+                    this._filterInputEvents?.(collectSharedInputFor(this._instanceKey)) ??
+                    collectSharedInputFor(this._instanceKey);
                 if (inputEvents.length > 0) {
                     this.sendEvent({ type: HostEventType.EVT_INPUT, payload: { events: inputEvents } });
                 }

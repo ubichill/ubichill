@@ -29,7 +29,8 @@
  * したがって危険なのは「mod (guest) が Host より新しい」ケースだけ（Host が未対応の
  * コマンドを mod が使う恐れがある）。逆（古い mod × 新しい Host）は常に動く。
  */
-export const PROTOCOL_VERSION = 1;
+// v2: CMD_RIDE を追加。新SDKの ride mod を旧Hostへ載せた場合に degraded と判定する。
+export const PROTOCOL_VERSION = 2;
 
 /**
  * これ未満のバージョンで作られた mod とは互換性がない下限。

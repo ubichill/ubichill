@@ -3,7 +3,7 @@ import { act, renderHook } from '@testing-library/react';
 import type React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ridingSyncRef } from '../ridingSyncRef';
-import { RideProvider, useRide } from './RideContext';
+import { filterRideInput, RideProvider, useRide } from './RideContext';
 
 const patchEntity = vi.fn();
 
@@ -56,5 +56,22 @@ describe('RideContext / handleRideCommand', () => {
         act(() => result.current.handleRideCommand({ action: 'dismount', entityId: 'vehicle-2' }));
 
         expect(result.current.riding).toEqual({ entityId: 'vehicle-1' });
+    });
+});
+
+describe('filterRideInput', () => {
+    const arrowDown = { type: 'KEY_DOWN', data: { key: 'ArrowLeft', code: 'ArrowLeft' } } as const;
+    const arrowUp = { type: 'KEY_UP', data: { key: 'ArrowLeft', code: 'ArrowLeft' } } as const;
+    const keyDown = { type: 'KEY_DOWN', data: { key: 'z', code: 'KeyZ' } } as const;
+
+    it('乗車中の矢印キー押下は乗り物Workerだけに渡す', () => {
+        const events = [arrowDown, arrowUp, keyDown];
+        expect(filterRideInput(events, { entityId: 'vehicle-1' }, 'other')).toEqual([arrowUp, keyDown]);
+        expect(filterRideInput(events, { entityId: 'vehicle-1' }, 'vehicle-1')).toEqual(events);
+    });
+
+    it('未乗車なら全入力をそのまま渡す', () => {
+        const events = [arrowDown, arrowUp];
+        expect(filterRideInput(events, null, 'other')).toBe(events);
     });
 });

@@ -1,3 +1,4 @@
+import { isCoreComponentNamespace, isCoreComponentType, validateCoreComponentData } from '@ubichill/core-components';
 import { z } from 'zod';
 import { ModLockSchema } from './modLock.schema';
 
@@ -193,18 +194,35 @@ export const ComponentTypeSchema = z.string().regex(/^[a-z0-9-]+:[a-zA-Z0-9_-]+$
  * （x/y/z/w/h/rotation/scale）を上書きし、省略時は Entity の transform をそのまま継承する（後方互換）。
  * 同一 Entity に複数 Component を載せたとき、互いの占有領域が衝突しないようにするための機構。
  */
-export const EntityComponentSchema = z.object({
-    /**
-     * Entity 内で永続する Component の識別子（省略時は配列 index 由来のフォールバック）。
-     * 明示すると、Component の並べ替え・挿入・削除をしても他 Component の
-     * flat id (`${entityId}::${id}`) が変わらない。新規に Component を追加する際は
-     * World Editor が自動採番する。
-     */
-    id: KebabCaseId.optional(),
-    type: ComponentTypeSchema,
-    data: z.record(z.string(), z.unknown()).default({}),
-    transform: TransformSchema.partial().optional(),
-});
+export const EntityComponentSchema = z
+    .object({
+        /**
+         * Entity 内で永続する Component の識別子（省略時は配列 index 由来のフォールバック）。
+         * 明示すると、Component の並べ替え・挿入・削除をしても他 Component の
+         * flat id (`${entityId}::${id}`) が変わらない。新規に Component を追加する際は
+         * World Editor が自動採番する。
+         */
+        id: KebabCaseId.optional(),
+        type: ComponentTypeSchema,
+        data: z.record(z.string(), z.unknown()).default({}),
+        transform: TransformSchema.partial().optional(),
+    })
+    .superRefine((component, ctx) => {
+        if (isCoreComponentNamespace(component.type) && !isCoreComponentType(component.type)) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['type'],
+                message: `未知の予約済み core Component "${component.type}" です`,
+            });
+            return;
+        }
+        if (!isCoreComponentType(component.type)) return;
+        const result = validateCoreComponentData(component.type, component.data);
+        if (result.success) return;
+        for (const issue of result.error.issues) {
+            ctx.addIssue({ ...issue, path: ['data', ...issue.path] });
+        }
+    });
 
 /**
  * Entity (GameObject) に付与する自由なタグ。
@@ -289,6 +307,7 @@ export function collectModIds(entities: InitialEntity[]): string[] {
     const ids = new Set<string>();
     const walk = (e: InitialEntity): void => {
         for (const c of e.components) {
+            if (isCoreComponentType(c.type)) continue;
             const modId = c.type.split(':')[0];
             if (modId) ids.add(modId);
         }

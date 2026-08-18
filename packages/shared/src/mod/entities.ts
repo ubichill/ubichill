@@ -78,6 +78,11 @@ export interface EntityTransform {
  */
 export const EMPTY_ENTITY_TYPE = '__entity__';
 
+/** `core:*` は本体同梱のdata-only Component用予約namespace。 */
+export function isCoreComponentNamespace(type: string): boolean {
+    return type.startsWith('core:');
+}
+
 /**
  * Worker 互換の flat エンティティ。
  *

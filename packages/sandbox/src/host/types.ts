@@ -14,6 +14,7 @@ import type {
     EntityPatchPayload,
     FetchOptions,
     FetchResult,
+    InputFrameEvent,
     ModGuestCommand,
     ModHostEvent,
     ModWorkerMessage,
@@ -57,9 +58,9 @@ export type HostHandlers<TPayloadMap extends Record<string, unknown> = Record<st
     /** Worker が Ubi.canvas.frame() を呼んだときに発火する（毎フレーム） */
     onCanvasFrame?: (targetId: string, activeStroke: CanvasStrokeData | null, cursors: CanvasCursorData[]) => void;
     /** Worker が Ubi.grip の hold/release/setHover を呼んだときに発火する */
-    onGripCommand?: (payload: CmdGrip['payload']) => void;
+    onGripCommand?: (payload: CmdGrip['payload'], senderComponentInstanceId: string | undefined) => void;
     /** Worker が Ubi.ride の mount/dismount を呼んだときに発火する */
-    onRideCommand?: (payload: CmdRide['payload']) => void;
+    onRideCommand?: (payload: CmdRide['payload'], senderComponentInstanceId: string | undefined) => void;
     /** Worker が Ubi.canvas.commitStroke() を呼んだときに発火する */
     onCanvasCommitStroke?: (targetId: string, stroke: CanvasStrokeData) => void;
     /** Worker が Ubi.media.load() を呼んだときに発火する */
@@ -153,4 +154,9 @@ export interface ModHostManagerOptions<TPayloadMap extends Record<string, unknow
     disableAutoTick?: boolean;
     /** DOM 入力（マウス・キーボード）の自動収集を無効化する（デフォルト: false = 有効） */
     disableAutoInput?: boolean;
+    /**
+     * Worker へ渡す直前の入力イベントを絞り込む。入力フォーカスなどHost側のポリシー用。
+     * InputCollector は共有したままなので、他Workerの入力配送には影響しない。
+     */
+    filterInputEvents?: (events: InputFrameEvent[]) => InputFrameEvent[];
 }

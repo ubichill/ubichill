@@ -125,10 +125,10 @@ export async function dispatchCommand<TPayloadMap extends Record<string, unknown
             handlers.onMediaSetDeviceControl?.(command.payload.targetId, command.payload.enabled);
             return undefined;
         case CommandType.CMD_GRIP:
-            handlers.onGripCommand?.(command.payload);
+            handlers.onGripCommand?.(command.payload, ctx.senderComponentInstanceId());
             return undefined;
         case CommandType.CMD_RIDE:
-            handlers.onRideCommand?.(command.payload);
+            handlers.onRideCommand?.(command.payload, ctx.senderComponentInstanceId());
             return undefined;
         case CommandType.CMD_LOG: {
             const { level, message } = command.payload;
