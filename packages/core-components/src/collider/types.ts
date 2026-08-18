@@ -48,6 +48,26 @@ export interface CircleCollider extends ColliderBase {
 
 export type ColliderData = RectCollider | CircleCollider;
 
+/**
+ * EditorやHostが新しいColliderを作る際の安全な初期値。
+ * rectはEntityのtransform寸法を共有するため、見た目と当たり判定が自然に一致する。
+ */
+export function createDefaultColliderData(): RectCollider;
+export function createDefaultColliderData(shape: 'rect'): RectCollider;
+export function createDefaultColliderData(shape: 'circle'): CircleCollider;
+export function createDefaultColliderData(shape: ColliderData['shape']): ColliderData;
+export function createDefaultColliderData(shape: ColliderData['shape'] = 'rect'): ColliderData {
+    const common: ColliderBase = {
+        offset: { x: 0, y: 0 },
+        isTrigger: false,
+        layer: 'default',
+        mask: ['default'],
+    };
+    return shape === 'circle'
+        ? { ...common, shape: 'circle', radius: 32 }
+        : { ...common, shape: 'rect', size: 'entity' };
+}
+
 /** geometry を解決するのに必要なEntity transformの部分集合。 */
 export interface ColliderTransform {
     x: number;

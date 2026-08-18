@@ -16,3 +16,4 @@ export type {
     RectGeometry,
     Vec2,
 } from './collider/types.js';
+export { createDefaultColliderData } from './collider/types.js';

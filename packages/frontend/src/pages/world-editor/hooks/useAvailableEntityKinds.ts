@@ -1,3 +1,4 @@
+import { CORE_COMPONENT_TYPES, createDefaultColliderData } from '@ubichill/core-components';
 import type { WorldDefinition } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 
@@ -53,11 +54,24 @@ export interface AvailableEntityKind {
     }>;
     /** インスペクタで必ず表示する data フィールドの宣言 */
     dataFields?: DataFields;
+    /** Component追加時にそのまま使うdata。dataFieldsの単純な既定値では表せない組み込みComponent向け。 */
+    defaultData?: Record<string, unknown>;
     /** Component アイコン URL (アセットブラウザ表示用)。manifest の `thumbnail` を versioned base で絶対化済み。 */
     thumbnailUrl?: string;
     /** 見た目の描画方式。manifest の canvasTargets / ui:render capability から自動判定。 */
     viewKind: 'jsx' | 'canvas' | 'logic';
 }
+
+/** modのインストール有無に関係なく、Hostが必ず提供する組み込みComponent。 */
+export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
+    {
+        modName: 'core',
+        kind: CORE_COMPONENT_TYPES.collider,
+        suggestSize: true,
+        defaultData: { ...createDefaultColliderData() },
+        viewKind: 'logic',
+    },
+];
 
 interface ModIndex {
     id: string;
@@ -140,7 +154,7 @@ export function useAvailableEntityKinds(definition: WorldDefinition | null): {
     kinds: AvailableEntityKind[];
     loading: boolean;
 } {
-    const [kinds, setKinds] = useState<AvailableEntityKind[]>([]);
+    const [kinds, setKinds] = useState<AvailableEntityKind[]>(CORE_ENTITY_KINDS);
     const [loading, setLoading] = useState(false);
 
     const depKey = (definition?.spec.dependencies ?? [])
@@ -152,7 +166,7 @@ export function useAvailableEntityKinds(definition: WorldDefinition | null): {
     useEffect(() => {
         const deps = definition?.spec.dependencies ?? [];
         if (deps.length === 0) {
-            setKinds([]);
+            setKinds(CORE_ENTITY_KINDS);
             return;
         }
         let cancelled = false;
@@ -181,11 +195,11 @@ export function useAvailableEntityKinds(definition: WorldDefinition | null): {
         )
             .then((results) => {
                 if (cancelled) return;
-                setKinds(results.flat());
+                setKinds([...CORE_ENTITY_KINDS, ...results.flat()]);
             })
             .catch(() => {
                 if (cancelled) return;
-                setKinds([]);
+                setKinds(CORE_ENTITY_KINDS);
             })
             .finally(() => {
                 if (cancelled) return;

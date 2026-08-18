@@ -10,3 +10,4 @@ export type {
     RectGeometry,
     Vec2,
 } from './types.js';
+export { createDefaultColliderData } from './types.js';

@@ -1,9 +1,11 @@
+import { CORE_COMPONENT_TYPES } from '@ubichill/core-components';
 import { useEditorSchema } from '@ubichill/react';
 import type { EntityComponentDef, InitialEntity } from '@ubichill/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { css } from '@/styled-system/css';
 import type { AvailableEntityKind, DataFields } from '../../hooks/useAvailableEntityKinds';
 import { COMPONENT_DRAG_MIME } from '../../lib/dnd';
+import { ColliderDataFields } from './ColliderDataFields';
 import { DataFormFields } from './DataFormFields';
 import { Chevron, LogicOnlyBadge, MiniTab, NumField, RenderKindBadge, Section } from './primitives';
 import { inputStyle, mergeDataFields, textareaStyle } from './shared';
@@ -246,7 +248,11 @@ function ComponentDataEditor({
                 <MiniTab active={dataTab === 'json'} onClick={() => setDataTab('json')} label="JSON" />
             </div>
             {dataTab === 'form' ? (
-                <DataFormFields data={data} dataFields={dataFields} allEntities={allEntities} onChange={setData} />
+                component.type === CORE_COMPONENT_TYPES.collider ? (
+                    <ColliderDataFields data={data} onChange={setData} />
+                ) : (
+                    <DataFormFields data={data} dataFields={dataFields} allEntities={allEntities} onChange={setData} />
+                )
             ) : (
                 <DataJsonField
                     text={jsonText}

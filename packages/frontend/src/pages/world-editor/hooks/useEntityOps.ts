@@ -110,7 +110,7 @@ export function useEntityOps({
     const handleAddComponentToEntity = useCallback(
         (path: EntityPath, componentType: string) => {
             const kind = kinds.find((k) => k.kind === componentType);
-            const initialData: Record<string, unknown> = {};
+            const initialData: Record<string, unknown> = kind?.defaultData ? structuredClone(kind.defaultData) : {};
             if (kind?.dataFields) {
                 for (const [name, spec] of Object.entries(kind.dataFields)) {
                     if (spec.default !== undefined) initialData[name] = spec.default;
