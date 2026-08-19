@@ -183,16 +183,22 @@ jobs:
         run: pnpm --filter @ubichill/shared build
 
       # 実際に mod をビルドし、lock.json の integrity が生成バイト列と一致するか検証する。
+      # worlds/*.lock.json（mod 完全性ロック、pnpm-lock.yaml と同じくコミット対象）もここで
+      # 自動再生成される（build:workers の最終ステップ）。
       - name: Build mod workers
         run: pnpm build:workers
 
       - name: Verify mod locks
         run: pnpm verify:mod-locks
 
-      # worlds/*.lock.json（mod のソース変更で再ビルドハッシュが変わっても手動 `ubichill install`
-      # を忘れると陳腐化する）が、直前にビルドした mod と一致しているかを検証する。
-      - name: Verify world locks
-        run: pnpm verify:world-locks
+      # 再生成した worlds/*.lock.json がコミット済みの内容と一致するか（= コミットし忘れが無いか）
+      # を git diff で検証する。frozen-lockfile チェックと同じパターン。
+      - name: Verify world locks are committed
+        run: |
+          if ! git diff --exit-code -- worlds/; then
+            echo "::error::worlds/*.lock.json が古いままコミットされています。'pnpm build:workers' を実行し、再生成された worlds/*.lock.json をコミットしてください。"
+            exit 1
+          fi
 
       # `pnpm build:sdk` が生成する npm 公開物（ubichill パッケージ）が実際にインストール・
       # 実行可能かを確認する fail-closed ゲート。
