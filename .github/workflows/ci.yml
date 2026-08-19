@@ -189,6 +189,11 @@ jobs:
       - name: Verify mod locks
         run: pnpm verify:mod-locks
 
+      # worlds/*.lock.json（mod のソース変更で再ビルドハッシュが変わっても手動 `ubichill install`
+      # を忘れると陳腐化する）が、直前にビルドした mod と一致しているかを検証する。
+      - name: Verify world locks
+        run: pnpm verify:world-locks
+
       # `pnpm build:sdk` が生成する npm 公開物（ubichill パッケージ）が実際にインストール・
       # 実行可能かを確認する fail-closed ゲート。
       - name: Build npm publish package

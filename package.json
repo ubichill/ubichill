@@ -11,6 +11,7 @@
     "build:sdk": "pnpm --filter @ubichill/sdk build",
     "gen:install": "node packages/sdk/cli/index.ts install --mods-dir=packages/frontend/public/mods",
     "verify:mod-locks": "node packages/sdk/cli/index.ts verify --dist-dir=dist/mods",
+    "verify:world-locks": "node scripts/check-world-locks.mjs",
     "verify:sdk-types": "vitest run --config vitest.sdk-verify.config.ts",
     "docs:capabilities": "node scripts/gen-capability-docs.mjs",
     "build": "pnpm --filter @ubichill/shared build && pnpm build:workers && turbo build",
