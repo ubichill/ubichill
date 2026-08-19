@@ -41,7 +41,7 @@ export function useBroadcastCursor(scrollEl: HTMLElement | null, throttleMs = 50
 
     useEffect(() => {
         const send = () => {
-            // 乗車中はアバターがOSカーソルから切り離される(= useKeyboardMovement が
+            // 乗車中はアバターがOSカーソルから切り離される(= useRideFollow が
             // position を専有する)ため、マウス位置のブロードキャストを止める。
             if (ridingSyncRef.get()) return;
             const v = lastViewportRef.current;

@@ -3,7 +3,7 @@
  *
  * 目的:
  *  - RideContext は InstanceRenderer 内の RideProvider ツリーに閉じている。
- *  - useBroadcastCursor / useKeyboardMovement は RideProvider の外側（router レベル）で動く
+ *  - useBroadcastCursor / useRideFollow は RideProvider の外側（router レベル）で動く
  *    (heldEntitySyncRef と同じ制約。詳細はそちらの docstring 参照)。
  *  - React Context を越えて riding 状態を伝えるため、module-level の変数を使う。
  *
@@ -12,7 +12,7 @@
  *
  * 読み取り:
  *  - useBroadcastCursor が cursor:move を送る直前に get() で読む(乗車中は送らない)。
- *  - useKeyboardMovement の requestAnimationFrame ループが毎フレーム get() で読む。
+ *  - useRideFollow の requestAnimationFrame ループが毎フレーム get() で読む。
  */
 
 export interface RidingSyncState {

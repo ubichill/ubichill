@@ -47,7 +47,7 @@ export function integrateKeyboardMovement(
  *
  * これにより、Colliderで止まった乗り物とユーザー座標が別々に積分されてずれることがない。
  */
-export function useKeyboardMovement(
+export function useRideFollow(
     scrollEl: HTMLElement | null,
     worldSize: { width: number; height: number },
     getRiddenPosition: (componentInstanceId: string) => CursorPosition | undefined,

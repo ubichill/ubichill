@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { integrateKeyboardMovement, riddenTransformPosition } from './useKeyboardMovement';
+import { integrateKeyboardMovement, riddenTransformPosition } from './useRideFollow';
 
 const WORLD = { width: 2000, height: 1500 };
 

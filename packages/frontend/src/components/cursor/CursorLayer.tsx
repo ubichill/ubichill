@@ -33,7 +33,7 @@ import { useSession } from '@/lib/session';
 import { applyCursorStyles, removeCursorStyles } from './cursorImages';
 import { RemoteCursorsPortal } from './RemoteCursorsPortal';
 import { useBroadcastCursor } from './useBroadcastCursor';
-import { riddenTransformPosition, useKeyboardMovement } from './useKeyboardMovement';
+import { riddenTransformPosition, useRideFollow } from './useRideFollow';
 import { useScrollWorldEl } from './useScrollWorldEl';
 
 export function CursorLayer() {
@@ -66,7 +66,7 @@ export function CursorLayer() {
     // 「乗って」いる間だけ有効(Ubi.ride 経由、ridingSyncRef で判定)。
     // 矢印キーで自分の position を動かし、カメラをそこへ追従させる。
     // worldSize がクランプ範囲として使われるのはこの間だけ。
-    useKeyboardMovement(
+    useRideFollow(
         scrollEl,
         environment.worldSize,
         (componentInstanceId) => {

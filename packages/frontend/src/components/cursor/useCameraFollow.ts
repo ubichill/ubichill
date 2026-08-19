@@ -5,7 +5,7 @@ import type { CursorPosition } from '@ubichill/shared';
  * `worldSize` の範囲でクランプするため、ワールド端に近づくとそこで止まる
  * (worldSize がカメラのパン可能範囲として意味を持つのはこの計算のみ)。
  *
- * 呼び出し元: `useKeyboardMovement` の requestAnimationFrame ループ
+ * 呼び出し元: `useRideFollow` の requestAnimationFrame ループ
  * (乗車中のみ、毎フレーム呼ばれる)。
  */
 export function computeCameraScroll(
