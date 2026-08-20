@@ -114,7 +114,14 @@ async function fetchWorkerBytes(workerUrl: string, entityType: string, f: FetchL
         // sandbox の new Function() が構文エラーで死ぬため、ここで弾く。
         const ct = res.headers.get('content-type') ?? '';
         if (!ct.includes('javascript') && !ct.includes('text/plain') && ct !== '') {
-            console.warn(`[loader] worker fetch が非 JS content-type "${ct}" を返した: ${entityType}`);
+            // よくある原因: worlds/*.lock.json が古い workerUrl を指しており、mod 再ビルドで
+            // 実ファイルが無くなった結果、開発サーバーの SPA fallback (index.html) が返っている。
+            // `ubichill install <world.yaml>` で worlds/*.lock.json を再生成すれば直る。
+            console.warn(
+                `[loader] worker fetch が非 JS content-type "${ct}" を返した: ${entityType} ` +
+                    `(url: ${workerUrl})。worlds/*.lock.json が古い可能性があります → ` +
+                    `\`ubichill install <world.yaml>\` で再生成してください`,
+            );
             return null;
         }
         const bytes = await res.arrayBuffer();
@@ -176,7 +183,10 @@ export async function acquireMod(entityType: string, opts: AcquireModOptions): P
     if (verdict.status === 'rejected') {
         // 外部は拒否。local は「壊れているかも」警告のみで従来通り続行する。
         if (requiresLock(sourceKind)) return { rejected: verdict.reason };
-        console.warn(`[loader] lock 不一致 (${verdict.reason}) だが local のため続行: ${entityType}`);
+        console.warn(
+            `[loader] lock 不一致 (${verdict.reason}) だが local のため続行: ${entityType}。` +
+                `worlds/*.lock.json が古い可能性があります → \`ubichill install <world.yaml>\` で再生成してください`,
+        );
     }
 
     // capability 天井: verified は lock 由来のみ、それ以外は manifest 由来（従来挙動）。

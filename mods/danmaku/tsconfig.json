@@ -13,6 +13,8 @@
         "jsxImportSource": "@ubichill/sdk",
         "paths": {
             "@/*": ["./src/*"],
+            "@ubichill/core-components": ["../../packages/core-components/src/index.ts"],
+            "@ubichill/core-components/public": ["../../packages/core-components/src/public.ts"],
             "@ubichill/sdk": ["../../packages/sdk/src/index.ts"],
             "@ubichill/sdk/jsx-runtime": ["../../packages/sdk/src/jsx/jsx-runtime.ts"],
             "@ubichill/sdk/gripable": ["../../packages/sdk/src/jsx/Gripable.tsx"],

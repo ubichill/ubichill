@@ -4,6 +4,7 @@ import type {
     EntityPatchPayload,
     FetchOptions,
     FetchResult,
+    InputFrameEvent,
     ModGuestCommand,
     ModHostEvent,
     ModWorkerMessage,
@@ -86,7 +87,15 @@ export type ModWorkerHandlers<TPayloadMap extends Record<string, unknown> = Reco
     /** Worker が Ubi.world.destroyEntity() を呼んだときに発火する */
     onDestroyEntity?: (id: string) => Promise<void>;
     /** Worker が Ubi.grip.exclusive() の hold/release/setHover を呼んだときに発火する */
-    onGripCommand?: (payload: import('@ubichill/shared').CmdGrip['payload']) => void;
+    onGripCommand?: (
+        payload: import('@ubichill/shared').CmdGrip['payload'],
+        senderComponentInstanceId: string | undefined,
+    ) => void;
+    /** Worker が Ubi.ride.exclusive() の mount/dismount を呼んだときに発火する */
+    onRideCommand?: (
+        payload: import('@ubichill/shared').CmdRide['payload'],
+        senderComponentInstanceId: string | undefined,
+    ) => void;
     /** Worker が Ubi.network.fetch() を呼んだときに発火する */
     onFetch?: (url: string, options?: FetchOptions) => Promise<FetchResult>;
     /** Tick 送信直前に発火するパフォーマンスフック（setMetricHandler 登録時のみ） */
@@ -125,6 +134,7 @@ export function useModWorker<TPayloadMap extends Record<string, unknown> = Recor
     // authorizeCapability は識別子が変わっても Worker を作り直さないよう ref 経由で最新を読む。
     // on-demand モードにするかは「渡されているか」(hasAuthorize) だけで決める。
     const authorizeCapabilityRef = useRef(options.authorizeCapability);
+    const filterInputEventsRef = useRef(options.filterInputEvents);
     const hasAuthorize = !!options.authorizeCapability;
     const stableAuthorize = useCallback(
         (capability: string) => authorizeCapabilityRef.current?.(capability) ?? false,
@@ -135,6 +145,7 @@ export function useModWorker<TPayloadMap extends Record<string, unknown> = Recor
         handlersRef.current = options.handlers ?? {};
         onResourceLimitExceededRef.current = options.onResourceLimitExceeded;
         authorizeCapabilityRef.current = options.authorizeCapability;
+        filterInputEventsRef.current = options.filterInputEvents;
     });
 
     // initialEntities は「Worker 起動時点のスナップショット」であって
@@ -162,6 +173,8 @@ export function useModWorker<TPayloadMap extends Record<string, unknown> = Recor
             tickFps: options.tickFps,
             disableAutoTick: options.disableAutoTick,
             disableAutoInput: options.disableAutoInput,
+            // 入力フォーカスの変更でWorkerを再起動しないよう、最新のcallbackをref経由で読む。
+            filterInputEvents: (events: InputFrameEvent[]) => filterInputEventsRef.current?.(events) ?? events,
             worldId: options.worldId,
             myUserId: options.myUserId,
             modBase: options.modBase,
@@ -187,7 +200,8 @@ export function useModWorker<TPayloadMap extends Record<string, unknown> = Recor
                 onMediaSetVisible: (targetId, visible) => handlersRef.current.onMediaSetVisible?.(targetId, visible),
                 onMediaSetDeviceControl: (targetId, enabled) =>
                     handlersRef.current.onMediaSetDeviceControl?.(targetId, enabled),
-                onGripCommand: (payload) => handlersRef.current.onGripCommand?.(payload),
+                onGripCommand: (payload, senderId) => handlersRef.current.onGripCommand?.(payload, senderId),
+                onRideCommand: (payload, senderId) => handlersRef.current.onRideCommand?.(payload, senderId),
                 onGetEntity: (id) => handlersRef.current.onGetEntity?.(id),
                 onQueryEntities: (entityType) => handlersRef.current.onQueryEntities?.(entityType) ?? [],
                 onNetworkBroadcast: (type, data) => handlersRef.current.onNetworkBroadcast?.(type, data),

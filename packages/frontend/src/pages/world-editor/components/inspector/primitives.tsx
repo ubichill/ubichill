@@ -18,6 +18,7 @@ export function NumberInput({
     step,
     className,
     name,
+    id,
 }: {
     value: number;
     onChange: (v: number) => void;
@@ -26,6 +27,7 @@ export function NumberInput({
     step?: number;
     className?: string;
     name?: string;
+    id?: string;
 }) {
     const [text, setText] = useState(String(value));
     const lastEmittedRef = useRef(value);
@@ -50,6 +52,7 @@ export function NumberInput({
         <input
             type="number"
             name={name}
+            id={id}
             value={text}
             min={min}
             max={max}

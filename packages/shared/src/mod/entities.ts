@@ -78,6 +78,11 @@ export interface EntityTransform {
  */
 export const EMPTY_ENTITY_TYPE = '__entity__';
 
+/** `core:*` は本体同梱のdata-only Component用予約namespace。 */
+export function isCoreComponentNamespace(type: string): boolean {
+    return type.startsWith('core:');
+}
+
 /**
  * Worker 互換の flat エンティティ。
  *
@@ -158,5 +163,11 @@ export interface AvailableComponent {
  */
 export interface WorldEnvironmentData {
     backgroundColor: string;
+    /**
+     * mod が `Ubi.ride.exclusive()` を宣言した Entity に乗っている間だけ、その
+     * ユーザーのアバターがキーボード移動 + カメラ追従になる(`packages/react` の
+     * `RideContext`/`ridingSyncRef` 参照)。乗っていない間は worldSize は
+     * スクロールコンテナの初期サイズのヒントに過ぎず、強制力は無い。
+     */
     worldSize: { width: number; height: number };
 }

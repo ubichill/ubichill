@@ -73,7 +73,7 @@ function escapeCssUrl(url: string): string {
     return url.replace(/["\\\n\r]/g, '\\$&');
 }
 
-export function applyCursorStyles(arrowImageUrl?: string | null): void {
+export function applyCursorStyles(arrowImageUrl?: string | null, hidden = false): void {
     const arrowUri = arrowImageUrl ? `url("${escapeCssUrl(arrowImageUrl)}")` : svgToDataUri(ARROW_SVG);
     const pointerUri = svgToDataUri(POINTER_SVG);
     const textUri = svgToDataUri(TEXT_SVG);
@@ -86,7 +86,9 @@ export function applyCursorStyles(arrowImageUrl?: string | null): void {
     }
     // セレクタは「ホバー時に pointer/text を出してほしい代表的な要素」を網羅。
     // ARIA role や input type 別の指定で input[type=button] が text にならないようにする。
-    style.textContent = `
+    style.textContent = hidden
+        ? `body, body * { cursor: none !important; }`
+        : `
         body {
             cursor: ${arrowUri} ${ARROW_HOTSPOT.x} ${ARROW_HOTSPOT.y}, default;
         }

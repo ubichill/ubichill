@@ -10,7 +10,12 @@
         "allowImportingTsExtensions": true,
         "esModuleInterop": true,
         "resolveJsonModule": true,
-        "declaration": true
+        "declaration": true,
+        "paths": {
+            "@ubichill/sdk": ["../sdk/src/index.ts"],
+            "@ubichill/core-components/public": ["../core-components/src/public.ts"],
+            "@ubichill/ecs": ["../ecs/src/index.ts"]
+        }
     },
     "include": ["src/**/*.ts"]
 }

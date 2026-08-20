@@ -1,4 +1,4 @@
-import { heldEntitySyncRef, useSocket } from '@ubichill/react';
+import { heldEntitySyncRef, ridingSyncRef, useSocket } from '@ubichill/react';
 import { useEffect, useRef } from 'react';
 
 /**
@@ -41,6 +41,9 @@ export function useBroadcastCursor(scrollEl: HTMLElement | null, throttleMs = 50
 
     useEffect(() => {
         const send = () => {
+            // 乗車中はアバターがOSカーソルから切り離される(= useRideFollow が
+            // position を専有する)ため、マウス位置のブロードキャストを止める。
+            if (ridingSyncRef.get()) return;
             const v = lastViewportRef.current;
             if (!v || !currentUserIdRef.current) return;
             const now = Date.now();

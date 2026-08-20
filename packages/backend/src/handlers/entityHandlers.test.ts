@@ -8,7 +8,7 @@ vi.mock('../utils/logger', () => ({ logger: { debug: vi.fn(), info: vi.fn(), war
 
 import { clearInstanceState, createEntity, getEntity } from '../services/instanceState';
 import type { TypedSocket } from './_shared';
-import { handleEntityCreate, handleEntityDelete, handleEntityPatch } from './entityHandlers';
+import { handleEntityCreate, handleEntityDelete, handleEntityEphemeral, handleEntityPatch } from './entityHandlers';
 
 const INSTANCE_ID = 'instance-1';
 
@@ -48,14 +48,68 @@ describe('entityHandlers 認可', () => {
                 expect.objectContaining({ success: true, entity: expect.objectContaining({ ownerId: 'user-a' }) }),
             );
         });
+
+        it('ack callback を省略した不正Socket入力でも例外を投げない', () => {
+            const socket = makeSocket('user-a');
+
+            expect(() => handleEntityCreate(socket)(baseEntity(), undefined as never)).not.toThrow();
+            expect(socket.emit).toHaveBeenCalledWith('error', expect.stringContaining('callback'));
+        });
+
+        it('予約済み core Component のruntime生成を拒否する', () => {
+            const socket = makeSocket('user-a');
+            const callback = vi.fn();
+            handleEntityCreate(socket)({ ...baseEntity(), type: 'core:collider' }, callback);
+
+            expect(callback).toHaveBeenCalledWith(
+                expect.objectContaining({ success: false, error: expect.stringContaining('core') }),
+            );
+        });
+
+        it('攻撃者が id を混ぜても既存エンティティを上書きできない', () => {
+            const victim = createEntity(INSTANCE_ID, { ...baseEntity(), id: 'victim', ownerId: 'user-b' });
+            const attacker = makeSocket('user-a');
+            const callback = vi.fn();
+
+            handleEntityCreate(attacker)({ ...baseEntity(), id: victim.id, data: { pwned: true } } as never, callback);
+
+            expect(callback).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
+            expect(getEntity(INSTANCE_ID, victim.id)).toEqual(victim);
+        });
+
+        it('作成 payload の lockedBy を信用せず null にする', () => {
+            const socket = makeSocket('user-a');
+            const callback = vi.fn();
+
+            handleEntityCreate(socket)({ ...baseEntity(), lockedBy: 'victim-user' }, callback);
+
+            expect(callback).toHaveBeenCalledWith(
+                expect.objectContaining({ success: true, entity: expect.objectContaining({ lockedBy: null }) }),
+            );
+        });
+
+        it('内部用の空 Entity 型を Socket から作成できない', () => {
+            const socket = makeSocket('user-a');
+            const callback = vi.fn();
+
+            handleEntityCreate(socket)({ ...baseEntity(), type: '__entity__' }, callback);
+
+            expect(callback).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
+        });
+
+        it('巨大な data を拒否する', () => {
+            const socket = makeSocket('user-a');
+            const callback = vi.fn();
+
+            handleEntityCreate(socket)({ ...baseEntity(), data: { value: 'x'.repeat(70 * 1024) } }, callback);
+
+            expect(callback).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
+        });
     });
 
     describe('handleEntityPatch', () => {
         it('他ユーザーが lock 中のエンティティは更新を拒否する', () => {
-            const owner = makeSocket('user-a');
-            const callback = vi.fn();
-            handleEntityCreate(owner)({ ...baseEntity(), id: 'e1', lockedBy: 'user-a' } as never, callback);
-            const entity = (callback.mock.calls[0]?.[0] as { entity: ComponentInstance }).entity;
+            const entity = createEntity(INSTANCE_ID, { ...baseEntity(), id: 'e1', lockedBy: 'user-a' });
 
             const attacker = makeSocket('user-b');
             handleEntityPatch(attacker)({
@@ -93,6 +147,56 @@ describe('entityHandlers 認可', () => {
 
             expect(getEntity(INSTANCE_ID, entity.id)?.lockedBy).toBeNull();
         });
+
+        it('core Component のruntime更新を拒否する', () => {
+            const entity = createEntity(INSTANCE_ID, { ...baseEntity(), type: 'core:collider', ownerId: null });
+            const socket = makeSocket('user-a');
+
+            handleEntityPatch(socket)({ entityId: entity.id, patch: { data: { shape: 'circle' } } });
+
+            expect(socket.emit).toHaveBeenCalledWith('error', expect.stringContaining('core'));
+            expect(getEntity(INSTANCE_ID, entity.id)?.data).toEqual({});
+        });
+
+        it.each([
+            'id',
+            'type',
+            'entityId',
+            'parentEntityId',
+        ] as const)('実行時に混入した immutable field %s を拒否する', (field) => {
+            const entity = createEntity(INSTANCE_ID, { ...baseEntity(), ownerId: 'user-a' });
+            const socket = makeSocket('user-a');
+            const before = getEntity(INSTANCE_ID, entity.id);
+
+            handleEntityPatch(socket)({
+                entityId: entity.id,
+                patch: { [field]: field === 'type' ? 'core:collider' : 'forged-id' } as never,
+            });
+
+            expect(socket.emit).toHaveBeenCalledWith('error', expect.stringContaining('変更できません'));
+            expect(getEntity(INSTANCE_ID, entity.id)).toEqual(before);
+        });
+    });
+
+    describe('handleEntityEphemeral', () => {
+        it('存在しない entity を送信元にした spoof を拒否する', () => {
+            const socket = makeSocket('user-a');
+
+            handleEntityEphemeral(socket)({ entityId: 'not-found', data: { type: 'spoof' } });
+
+            expect(socket.emit).toHaveBeenCalledWith('error', expect.stringContaining('見つかりません'));
+            expect(socket.to).not.toHaveBeenCalled();
+        });
+
+        it('巨大な ephemeral payload を broadcast しない', () => {
+            const entity = createEntity(INSTANCE_ID, baseEntity());
+            const socket = makeSocket('user-a');
+
+            handleEntityEphemeral(socket)({ entityId: entity.id, data: 'x'.repeat(40 * 1024) });
+
+            expect(socket.emit).toHaveBeenCalledWith('error', expect.stringContaining('大きすぎます'));
+            expect(socket.to).not.toHaveBeenCalled();
+        });
     });
 
     describe('handleEntityDelete', () => {
@@ -122,6 +226,16 @@ describe('entityHandlers 認可', () => {
             handleEntityDelete(owner)(entity.id);
 
             expect(getEntity(INSTANCE_ID, entity.id)).toBeUndefined();
+        });
+
+        it('core Component のruntime削除を拒否する', () => {
+            const entity = createEntity(INSTANCE_ID, { ...baseEntity(), type: 'core:collider', ownerId: 'user-a' });
+            const socket = makeSocket('user-a');
+
+            handleEntityDelete(socket)(entity.id);
+
+            expect(socket.emit).toHaveBeenCalledWith('error', expect.stringContaining('core'));
+            expect(getEntity(INSTANCE_ID, entity.id)).toBeDefined();
         });
     });
 });

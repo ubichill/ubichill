@@ -159,6 +159,16 @@ importers:
         specifier: ^4.21.0
         version: 4.21.0
 
+  packages/core-components:
+    dependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      rimraf:
+        specifier: ^6.0.1
+        version: 6.1.2
+
   packages/db:
     dependencies:
       '@ubichill/shared':
@@ -197,6 +207,9 @@ importers:
 
   packages/frontend:
     dependencies:
+      '@ubichill/core-components':
+        specifier: workspace:*
+        version: link:../core-components
       '@ubichill/loader':
         specifier: workspace:*
         version: link:../loader
@@ -325,6 +338,9 @@ importers:
 
   packages/sdk:
     dependencies:
+      '@ubichill/core-components':
+        specifier: workspace:*
+        version: link:../core-components
       '@ubichill/ecs':
         specifier: workspace:*
         version: link:../ecs
@@ -347,6 +363,9 @@ importers:
 
   packages/shared:
     dependencies:
+      '@ubichill/core-components':
+        specifier: workspace:*
+        version: link:../core-components
       zod:
         specifier: ^4.4.3
         version: 4.4.3

@@ -410,6 +410,20 @@ export type CmdGrip = {
         | { action: 'setHover'; cursor: string; heldCursor: string };
 };
 
+/**
+ * `Ubi.ride` プリミティブがホストへ送るコマンド。
+ * Fire & Forget: capability 不要。
+ *
+ * action:
+ *  'mount'    — Entity に乗った。ホストはこのユーザーの操作方式をキーボード移動 +
+ *               カメラ追従に切り替え、既に乗っていた乗り物があれば自動で降ろす。
+ *  'dismount' — 降りた。マウス追従の操作方式に戻す。
+ */
+export type CmdRide = {
+    type: 'CMD_RIDE';
+    payload: { action: 'mount'; entityId: string } | { action: 'dismount'; entityId: string };
+};
+
 /** Guest → Host コマンドのユニオン型 */
 export type ModGuestCommand =
     | CmdReady
@@ -439,7 +453,8 @@ export type ModGuestCommand =
     | CmdMediaDestroy
     | CmdMediaSetVisible
     | CmdMediaSetDeviceControl
-    | CmdGrip;
+    | CmdGrip
+    | CmdRide;
 
 /** 後方互換エイリアス */
 export type ModCommand = ModGuestCommand;

@@ -32,6 +32,12 @@ spec:
   initialEntities: []       # 後述（既定 []）
 ```
 
+### `environment.worldSize` と `Ubi.ride`
+
+既定では自分の位置はマウス追従（`pointermove` + ネイティブスクロール）で、`worldSize` はスクロールコンテナの初期サイズのヒントに過ぎず強制力は無い。
+
+乗り物 Entity を持つ mod が `Ubi.ride.exclusive()` を宣言すると、ユーザーがそれに乗っている間だけアバターが OS カーソルから切り離され、矢印キーでの移動＋カメラ追従（このときだけ `worldSize` がパン可能範囲としてクランプされる）に切り替わる。降りると通常のマウス追従に戻る。マウス操作とキーボード操作はワールド単位の排他設定ではなく、乗車状態によって動的に切り替わる。
+
 ## `spec.initialEntities`（ECS 配置）
 
 ワールドの中身は Entity（＝GameObject）の木で表す。

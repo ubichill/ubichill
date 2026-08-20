@@ -7,10 +7,12 @@
   "packageManager": "pnpm@10.33.2",
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "build:workers": "node packages/sdk/cli/index.ts build --mods-dir=mods --public-mods-dir=packages/frontend/public/mods --dist-dir=dist/mods",
+    "build:workers": "node packages/sdk/cli/index.ts build --mods-dir=mods --public-mods-dir=packages/frontend/public/mods --dist-dir=dist/mods && pnpm gen:world-locks",
     "build:sdk": "pnpm --filter @ubichill/sdk build",
     "gen:install": "node packages/sdk/cli/index.ts install --mods-dir=packages/frontend/public/mods",
+    "gen:world-locks": "node scripts/world-locks.mjs",
     "verify:mod-locks": "node packages/sdk/cli/index.ts verify --dist-dir=dist/mods",
+    "verify:world-locks": "node scripts/world-locks.mjs --check",
     "verify:sdk-types": "vitest run --config vitest.sdk-verify.config.ts",
     "docs:capabilities": "node scripts/gen-capability-docs.mjs",
     "build": "pnpm --filter @ubichill/shared build && pnpm build:workers && turbo build",

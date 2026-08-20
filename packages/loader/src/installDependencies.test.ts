@@ -8,7 +8,7 @@
  * mod は、最新ポインタ（mod.json）を経由せずそのバージョンを直接取得する。
  */
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ModLock } from '@ubichill/shared';
@@ -33,6 +33,7 @@ describe('runInstall', () => {
     });
 
     afterEach(() => {
+        process.exitCode = 0;
         rmSync(dir, { recursive: true, force: true });
         vi.unstubAllGlobals();
     });
@@ -144,5 +145,91 @@ describe('runInstall', () => {
 
         const lock = JSON.parse(readFileSync(outPath, 'utf-8')) as ModLock;
         expect(lock.mods.pen.version).toBe('1.0.0');
+    });
+
+    describe('--check', () => {
+        function writeSinglePenWorld(worldPath: string): void {
+            writeFileSync(
+                worldPath,
+                [
+                    'apiVersion: ubichill.com/v1alpha1',
+                    'kind: World',
+                    'metadata:',
+                    '  name: test-world',
+                    '  version: 1.0.0',
+                    'spec:',
+                    '  displayName: test',
+                    '  dependencies:',
+                    '    - name: pen',
+                    '      source: {}',
+                    '  initialEntities:',
+                    '    - id: e1',
+                    '      tags: []',
+                    '      children: []',
+                    '      transform: { x: 0, y: 0, z: 0, scale: 1, rotation: 0 }',
+                    '      components:',
+                    '        - data: {}',
+                    '          type: pen:pen',
+                ].join('\n'),
+                'utf-8',
+            );
+        }
+
+        function setUpPenMod(modsDir: string): void {
+            mkdirSync(join(modsDir, 'pen', 'v1.0.0'), { recursive: true });
+            writeFileSync(join(modsDir, 'pen', 'mod.json'), JSON.stringify({ id: 'pen', version: '1.0.0' }));
+            writeFileSync(join(modsDir, 'pen', 'v1.0.0', 'lock.json'), lockEntryJson('pen', '1.0.0'));
+        }
+
+        it('ロックファイルが無ければ検証失敗として exitCode を立て、書き込みはしない', async () => {
+            const modsDir = join(dir, 'mods');
+            setUpPenMod(modsDir);
+            const worldPath = join(dir, 'world.yaml');
+            writeSinglePenWorld(worldPath);
+            const outPath = join(dir, 'world.lock.json');
+
+            const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+            await runInstall([worldPath, `--mods-dir=${modsDir}`, `--out=${outPath}`, '--check']);
+
+            expect(process.exitCode).toBe(1);
+            expect(existsSync(outPath)).toBe(false);
+            expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('install'));
+            process.exitCode = 0;
+            errorSpy.mockRestore();
+        });
+
+        it('現在の mod ビルドと一致していれば exitCode を立てない', async () => {
+            const modsDir = join(dir, 'mods');
+            setUpPenMod(modsDir);
+            const worldPath = join(dir, 'world.yaml');
+            writeSinglePenWorld(worldPath);
+            const outPath = join(dir, 'world.lock.json');
+
+            await runInstall([worldPath, `--mods-dir=${modsDir}`, `--out=${outPath}`]);
+            process.exitCode = 0;
+            await runInstall([worldPath, `--mods-dir=${modsDir}`, `--out=${outPath}`, '--check']);
+
+            expect(process.exitCode).toBe(0);
+        });
+
+        it('mod 再ビルドでハッシュが変わった(陳腐化した)ロックは検証失敗になる', async () => {
+            const modsDir = join(dir, 'mods');
+            setUpPenMod(modsDir);
+            const worldPath = join(dir, 'world.yaml');
+            writeSinglePenWorld(worldPath);
+            const outPath = join(dir, 'world.lock.json');
+
+            await runInstall([worldPath, `--mods-dir=${modsDir}`, `--out=${outPath}`]);
+            process.exitCode = 0;
+
+            // mod を再ビルドしたが world 側の lock は再生成し忘れた、という状況を再現する。
+            writeFileSync(join(modsDir, 'pen', 'v1.0.0', 'lock.json'), lockEntryJson('pen', '1.0.0-rebuilt'));
+
+            const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+            await runInstall([worldPath, `--mods-dir=${modsDir}`, `--out=${outPath}`, '--check']);
+
+            expect(process.exitCode).toBe(1);
+            errorSpy.mockRestore();
+        });
     });
 });

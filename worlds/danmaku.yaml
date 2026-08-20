@@ -7,7 +7,7 @@ metadata:
   version: 1.0.0
 spec:
   displayName: 弾幕シューティング
-  description: "矢印キーで移動、自動で弾を撃つ弾幕シューティングのデモ"
+  description: "自機をクリックして搭乗。矢印キーで移動・自動射撃、Escapeで降りる弾幕シューティングのデモ"
   environment:
     worldSize:
       width: 800
@@ -22,11 +22,11 @@ spec:
       tags: []
       children: []
       transform:
-        x: 390
-        y: 480
+        x: 384
+        y: 464
         z: 10
-        w: 20
-        h: 20
+        w: 32
+        h: 32
         scale: 1
         rotation: 0
       components:
@@ -36,6 +36,15 @@ spec:
             fireRate: 8
             bulletSpeed: 360
             autoFire: true
+        - id: body-collider
+          type: core:collider
+          data:
+            shape: rect
+            size: entity
+            offset: { x: 0, y: 0 }
+            isTrigger: false
+            layer: player
+            mask: [wall]
     - id: field
       tags: []
       children: []
@@ -48,3 +57,90 @@ spec:
       components:
         - type: danmaku:canvas
           data: {}
+    # 見た目は danmaku:wall、衝突はHost標準の core:collider。
+    # 同じEntityへ載せるため、ワールド作者はUIと物理形状を別々に差し替えられる。
+    - id: wall-top
+      tags: []
+      children: []
+      transform: { x: 60, y: 60, z: 20, w: 680, h: 28, scale: 1, rotation: 0 }
+      components:
+        - id: view
+          type: danmaku:wall
+          data: {}
+        - id: collider
+          type: core:collider
+          data:
+            shape: rect
+            size: entity
+            offset: { x: 0, y: 0 }
+            isTrigger: false
+            layer: wall
+            mask: [player, bullet]
+    - id: wall-bottom
+      tags: []
+      children: []
+      transform: { x: 60, y: 512, z: 20, w: 680, h: 28, scale: 1, rotation: 0 }
+      components:
+        - id: view
+          type: danmaku:wall
+          data: {}
+        - id: collider
+          type: core:collider
+          data:
+            shape: rect
+            size: entity
+            offset: { x: 0, y: 0 }
+            isTrigger: false
+            layer: wall
+            mask: [player, bullet]
+    - id: wall-left
+      tags: []
+      children: []
+      transform: { x: 60, y: 88, z: 20, w: 28, h: 424, scale: 1, rotation: 0 }
+      components:
+        - id: view
+          type: danmaku:wall
+          data: {}
+        - id: collider
+          type: core:collider
+          data:
+            shape: rect
+            size: entity
+            offset: { x: 0, y: 0 }
+            isTrigger: false
+            layer: wall
+            mask: [player, bullet]
+    - id: wall-right
+      tags: []
+      children: []
+      transform: { x: 712, y: 88, z: 20, w: 28, h: 424, scale: 1, rotation: 0 }
+      components:
+        - id: view
+          type: danmaku:wall
+          data: {}
+        - id: collider
+          type: core:collider
+          data:
+            shape: rect
+            size: entity
+            offset: { x: 0, y: 0 }
+            isTrigger: false
+            layer: wall
+            mask: [player, bullet]
+    - id: wall-center
+      tags: []
+      children: []
+      transform: { x: 280, y: 292, z: 20, w: 240, h: 28, scale: 1, rotation: 0 }
+      components:
+        - id: view
+          type: danmaku:wall
+          data: {}
+        - id: collider
+          type: core:collider
+          data:
+            shape: rect
+            size: entity
+            offset: { x: 0, y: 0 }
+            isTrigger: false
+            layer: wall
+            mask: [player, bullet]

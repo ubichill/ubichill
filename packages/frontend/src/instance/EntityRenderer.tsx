@@ -1,3 +1,4 @@
+import { isCoreComponentType } from '@ubichill/core-components';
 import { isWorkerMod, useHold, useSocket, useWorld, WorkerModHost } from '@ubichill/react';
 import { EMPTY_ENTITY_TYPE } from '@ubichill/shared';
 import type React from 'react';
@@ -33,11 +34,13 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({ entityId }) => {
 
     // avoid starting network loads during render — schedule via effect
     useEffect(() => {
-        // EMPTY_ENTITY_TYPE は Worker を持たないマーカー用の予約型なので mod 解決を試みない
-        if (entityType && entityType !== EMPTY_ENTITY_TYPE && !mod) loadMod(entityType);
+        // EMPTY_ENTITY_TYPE と core:* はWorkerを持たないbuilt-inなのでmod解決を試みない。
+        if (entityType && entityType !== EMPTY_ENTITY_TYPE && !isCoreComponentType(entityType) && !mod)
+            loadMod(entityType);
     }, [mod, entityType, loadMod]);
 
     if (!entity) return null;
+    if (isCoreComponentType(entity.type)) return null;
     if (!mod) return null;
     if (!isWorkerMod(mod)) return null;
     // singleton は InstanceRenderer 側で起動するためここではスキップ
@@ -161,7 +164,6 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
     const workerMod = mod; // isWorkerMod チェック済み
     const isCanvas = (workerMod.canvasTargets?.length ?? 0) > 0;
     const { x, y, z, w, h, scale, rotation } = entity.transform;
-    const sized = w > 0 && h > 0;
 
     // hold 状態を wrapperStyle に直接反映する。命令的に div.style.zIndex を書き換えると、
     // React が「前回 render と同じ値だから何もしない」と判断してリリース時に元の値が
@@ -177,7 +179,9 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
               zIndex: heldZ,
               width: w > 0 ? w : undefined,
               height: h > 0 ? h : undefined,
-              overflow: sized ? 'hidden' : undefined,
+              // Entity の transform は配置・基準サイズであって描画のマスクではない。
+              // clip が必要な Panel / ScrollView 等の mod は JSX 側でその要素自身に
+              // overflow: 'hidden' / 'auto' を指定する。
               pointerEvents: 'none',
               opacity: isHeldByOther ? 0.85 : undefined,
               transition: isHeldByOther ? 'transform 80ms linear' : undefined,

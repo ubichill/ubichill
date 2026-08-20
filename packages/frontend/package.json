@@ -13,6 +13,7 @@
         "format": "biome format --write ."
     },
     "dependencies": {
+        "@ubichill/core-components": "workspace:*",
         "@ubichill/loader": "workspace:*",
         "@ubichill/react": "workspace:*",
         "@ubichill/sdk": "workspace:*",

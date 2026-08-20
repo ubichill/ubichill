@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { DependencySourceSchema, type WorldSource, WorldSourceKind, worldOriginDomain } from './world.schema';
+import {
+    collectModIds,
+    DependencySourceSchema,
+    InitialEntitiesSchema,
+    type InitialEntity,
+    type WorldSource,
+    WorldSourceKind,
+    worldOriginDomain,
+} from './world.schema';
 
 describe('worldOriginDomain', () => {
     it('ローカルは null（何も出さない）', () => {
@@ -80,5 +88,35 @@ describe('DependencySourceSchema', () => {
         expect(() => DependencySourceSchema.parse({ version: '^1.2.3' })).toThrow();
         expect(() => DependencySourceSchema.parse({ version: '~1.2.3' })).toThrow();
         expect(() => DependencySourceSchema.parse({ version: 'stable' })).toThrow();
+    });
+});
+
+describe('core:collider world validation', () => {
+    const entity = (component: InitialEntity['components'][number]): InitialEntity => ({
+        id: 'player',
+        transform: { x: 0, y: 0, z: 0, scale: 1, rotation: 0 },
+        components: [component],
+        tags: [],
+        children: [],
+    });
+
+    it('有効なbuilt-in colliderを受け付け、mod依存として収集しない', async () => {
+        const input = [entity({ type: 'core:collider', data: { shape: 'rect', size: { w: 20, h: 10 } } })];
+        expect(InitialEntitiesSchema.parse(input)).toEqual(input);
+        expect(collectModIds(input)).toEqual([]);
+    });
+
+    it('rectのsize: entityでUIとColliderのEntity寸法共有を許可する', () => {
+        const input = [entity({ type: 'core:collider', data: { shape: 'rect', size: 'entity' } })];
+        expect(() => InitialEntitiesSchema.parse(input)).not.toThrow();
+    });
+
+    it('未知のcore namespaceと不正なCollider dataを拒否する', () => {
+        expect(() => InitialEntitiesSchema.parse([entity({ type: 'core:unknown', data: {} })])).toThrow();
+        expect(() =>
+            InitialEntitiesSchema.parse([
+                entity({ type: 'core:collider', data: { shape: 'rect', size: { w: -1, h: 1 } } }),
+            ]),
+        ).toThrow();
     });
 });

@@ -36,6 +36,8 @@
                 "../sdk/src/react/index.ts"
             ],
             "@ubichill/ecs": ["../ecs/src/index.ts"],
+            "@ubichill/core-components": ["../core-components/src/index.ts"],
+            "@ubichill/core-components/public": ["../core-components/src/public.ts"],
             "@ubichill/sandbox": ["../sandbox/src/index.ts"],
             "@ubichill/ui-renderer": ["../ui-renderer/src/index.ts"],
             "@ubichill/react": ["../react/src/index.ts"],

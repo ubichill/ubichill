@@ -8,6 +8,16 @@
  * React / Host 側 API は Host パッケージ（@ubichill/react）に分離されている。
  */
 
+// Host標準のdata-only Component。modは予約型を生成・更新できないが、公開された
+// 型と純粋なgeometry関数を使ってHostから渡されたColliderを高速に判定できる。
+export {
+    CORE_COMPONENT_TYPES,
+    type ColliderData,
+    type ColliderGeometry,
+    matchesCollisionLayers,
+    overlaps,
+    resolveColliderGeometry,
+} from '@ubichill/core-components/public';
 // ECS + メッセージング型
 export * from '@ubichill/ecs';
 // プロトコル型（@ubichill/shared より選択的に re-export）。
@@ -90,6 +100,7 @@ export { UbiSDK } from './ubi';
 export type { ComponentConfig, DataField, DataFieldType } from './ubi/config';
 export type { EmitOptions, EmitScope, EventRegistry } from './ubi/event';
 export type { Grip, GripOptions } from './ubi/grip';
+export type { Ride } from './ubi/ride';
 export type { EntityState, EntityStateFor, OmitId, UiRenderCostStat } from './ubi/types';
 // 宣言的 grip ラッパーは別 export path: '@ubichill/sdk/gripable'
 // (sandbox / 他の sub-package が JSX なしで型解決できるよう main entry から分離)

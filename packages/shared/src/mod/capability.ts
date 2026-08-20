@@ -249,9 +249,16 @@ export function listCapabilities(): CapabilityInfo[] {
  * - CMD_LOG      : デバッグログ（制限すると開発体験が著しく悪化）
  * - CMD_READY    : Worker の初期化通知（必須）
  * - CMD_GRIP     : SDK コアの「掴む」機能（pen.worker 等が普通に使う）
+ * - CMD_RIDE     : SDK コアの「乗る」機能（乗り物 mod が普通に使う）
  * - EDITOR_SCHEMA: エディタ用スキーマ通知
  */
-export const ALWAYS_ALLOWED_COMMANDS: readonly string[] = ['CMD_LOG', 'CMD_READY', 'CMD_GRIP', 'EDITOR_SCHEMA'];
+export const ALWAYS_ALLOWED_COMMANDS: readonly string[] = [
+    'CMD_LOG',
+    'CMD_READY',
+    'CMD_GRIP',
+    'CMD_RIDE',
+    'EDITOR_SCHEMA',
+];
 
 /**
  * 宣言された capability から、許可する Worker コマンドの allowlist を構築する。

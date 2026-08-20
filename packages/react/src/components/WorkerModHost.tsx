@@ -8,9 +8,9 @@
  */
 
 import { routeEmit } from '@ubichill/sandbox';
-import type { ComponentInstance } from '@ubichill/shared';
+import type { ComponentInstance, InputFrameEvent } from '@ubichill/shared';
 import type React from 'react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { editorSchemaRegistry } from '../editorSchemaRegistry';
 import { useModBroadcast } from '../hooks/useModBroadcast';
 import { useModCanvas } from '../hooks/useModCanvas';
@@ -22,6 +22,7 @@ import { useModUI } from '../hooks/useModUI';
 import { useModWorld } from '../hooks/useModWorld';
 import { useSocket } from '../hooks/useSocket';
 import { useWorld } from '../hooks/useWorld';
+import { isOwnComponentCommand } from '../lib/commandSecurity';
 import {
     collectAncestorGameObjectIds,
     collectSubtreeGameObjectIds,
@@ -29,12 +30,14 @@ import {
     isVisibleInScope,
     type WatchScope,
 } from '../lib/entityScope';
+import { ridingSyncRef } from '../ridingSyncRef';
 import type { WorkerModDefinition } from '../types';
 import { useModWorker } from '../useModWorker';
 import { useWorkerLoading } from '../WorkerLoadingContext';
 import { useHold } from './HoldContext';
 import { ModUIMount } from './ModUIMount';
 import { useUbiPermissions } from './PermissionContext';
+import { filterRideInput, useRide } from './RideContext';
 
 export interface WorkerModHostProps {
     entityId: string;
@@ -46,6 +49,7 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
     const { users, currentUser, updatePosition } = useSocket();
     const { entities, patchEntity } = useWorld();
     const { handleGripCommand } = useHold();
+    const { handleRideCommand } = useRide();
     const permissions = useUbiPermissions();
 
     // on-demand 認可: Provider があるときだけ authorizeCapability を渡す（無い場合は
@@ -112,6 +116,10 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
     const { vnodes, onRender, sendAction, sendEventRef } = useModUI();
     const { getVideoRef, mediaHandlers } = useModMedia(definition, sendEventRef);
     const onFetch = useModFetch(definition);
+    const filterInputEvents = useCallback(
+        (events: InputFrameEvent[]) => filterRideInput(events, ridingSyncRef.get(), entityId),
+        [entityId],
+    );
 
     // entityRef/entityRefArray として宣言されたフィールドの実値 (entity.data) から、
     // watchScope 外でも許可する対象 GameObject id を算出する（詳細は computeDeclaredEntityRefTargets 参照）。
@@ -171,6 +179,7 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
         modBase: definition.modBase,
         watchEntityTypes: definition.watchEntityTypes,
         initialEntities,
+        filterInputEvents,
         handlers: {
             ...canvasHandlers,
             ...mediaHandlers,
@@ -189,13 +198,20 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
                     scope,
                     targetType,
                 }),
-            onGripCommand: (payload) => {
+            onGripCommand: (payload, senderId) => {
+                if (payload.action !== 'setHover' && !isOwnComponentCommand(senderId, payload.entityId, entityId)) {
+                    return;
+                }
+                if (payload.action === 'setHover' && senderId !== entityId) return;
                 handleGripCommand(payload);
                 // 永続化は share='persistent' のときだけ。
                 // share='local'/'presence' で持っているものは他クライアントには影響しないので、
                 // ここで lockedBy / heldEntityId を server に書くと、別人が persistent で持ってる
                 // 同 entity の状態を上書きしてしまう可能性がある (= Copilot 指摘の bug)。
-                if (payload.action === 'hold' && payload.share === 'persistent') {
+                const canPersist = authorizeCapability
+                    ? authorizeCapability('scene:update')
+                    : (definition.capabilities?.includes('scene:update') ?? false);
+                if (payload.action === 'hold' && payload.share === 'persistent' && canPersist) {
                     const myId = currentUserRef.current?.id ?? null;
                     patchEntityRef.current(payload.entityId, {
                         lockedBy: myId,
@@ -203,12 +219,19 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
                         // EntityRenderer の初期位置)。grip ごとに違うオフセットを共通ソースから読めるように。
                         data: { isHeld: true, heldOffset: { x: payload.offsetX, y: payload.offsetY } },
                     });
-                } else if (payload.action === 'release' && payload.share === 'persistent') {
+                } else if (payload.action === 'release' && payload.share === 'persistent' && canPersist) {
                     patchEntityRef.current(payload.entityId, {
                         lockedBy: null,
                         data: { isHeld: false, heldOffset: null },
                     });
                 }
+            },
+            onRideCommand: (payload, senderId) => {
+                if (!isOwnComponentCommand(senderId, payload.entityId, entityId)) return;
+                // lockedBy 自体は Ubi.ride の state.sync が自 Entity への RPC で永続化する。
+                // ここでは「前に乗っていた乗り物があれば自動で降ろす」等、ユーザー単位の
+                // 排他制御を RideContext に委譲する。
+                handleRideCommand(payload);
             },
             onMessage: (msg) => {
                 const m = msg as { type: string; payload: unknown };
@@ -282,8 +305,14 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
                     }}
                 />
             ))}
-            {[...vnodes.entries()].map(([targetId, vnode]) => (
-                <ModUIMount key={targetId} targetId={targetId} vnode={vnode} sendAction={sendAction} />
+            {Array.from(vnodes.entries()).map(([targetId, vnode]) => (
+                <ModUIMount
+                    key={targetId}
+                    targetId={targetId}
+                    vnode={vnode}
+                    sendAction={sendAction}
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+                />
             ))}
         </div>
     );

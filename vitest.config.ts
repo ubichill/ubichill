@@ -17,6 +17,14 @@ export default defineConfig({
         // 実装によっては prefix マッチしてしまい、サブパス（例: @ubichill/shared/mod/protocol）が
         // 意図せず親エイリアス（@ubichill/shared）に食われて壊れるケースがあったため。
         alias: [
+            {
+                find: /^@ubichill\/core-components$/,
+                replacement: srcPath('./packages/core-components/src/index.ts'),
+            },
+            {
+                find: /^@ubichill\/core-components\/public$/,
+                replacement: srcPath('./packages/core-components/src/public.ts'),
+            },
             { find: /^@ubichill\/shared$/, replacement: srcPath('./packages/shared/src/index.ts') },
             // shared のサブパスエクスポート（barrel 経由で schemas/* の zod まで読み込むと
             // dts-bundle-generator が極端に遅くなるため、SDK 側は個別サブパスを直接 import する）。
@@ -50,7 +58,7 @@ export default defineConfig({
         // packages 配下はどこにテストファイルがあっても拾う（src/ 限定にしない。
         // 例: packages/sdk/build.test.mjs, packages/sdk/cli/build.test.ts はビルドツール自身の
         // テストで src/ 配下ではない）。
-        include: ['packages/**/*.test.{ts,tsx,mjs}', 'scripts/**/*.test.mjs'],
+        include: ['packages/**/*.test.{ts,tsx,mjs}', 'mods/**/*.test.{ts,tsx,mjs}', 'scripts/**/*.test.mjs'],
         exclude: ['**/node_modules/**', '**/dist/**', '**/dist-npm/**'],
     },
 });

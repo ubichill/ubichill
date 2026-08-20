@@ -53,15 +53,22 @@ function createFsLockEntryGetter(modsDir: string): LockEntryGetter {
 
 /**
  * `argv`（サブコマンド名を除いた残り引数）から依存を解決しロックを生成する。
- * 使い方: `<world.yaml> [--mods-dir=<dir>] [--base-url=<url>] [--out=<path>]`。
+ * 使い方: `<world.yaml> [--mods-dir=<dir>] [--base-url=<url>] [--out=<path>] [--check]`。
  * `dependencies[].source.version` が pin されていればそのバージョンを固定して取得する。
  * `--mods-dir` 既定は `process.cwd()` 直下の `mods`（Host固有パスをライブラリ既定にしない。
  * このリポジトリでの実運用パス `packages/frontend/public/mods` は呼び出し側が明示指定する）。
+ *
+ * `--check`: ファイルを書き換えず、現在の mod ビルドから再計算したロックと既存ファイルを
+ * 比較するだけ（CI 用の drift 検出）。不一致 or ファイル不在なら `process.exitCode = 1` にして返す
+ * （throw すると CLI 側の `❌` プレフィックス付きスタックトレースになり、CI ログとしては
+ * ノイズになるため、意図した「検証失敗」はここで exitCode だけ立てて素直に終える）。
  */
 export async function runInstall(argv: string[]): Promise<void> {
     const worldPath = argv.find((a) => !a.startsWith('--'));
     if (!worldPath) {
-        throw new Error('usage: ubichill install <world.yaml> [--mods-dir=<dir>] [--base-url=<url>] [--out=<path>]');
+        throw new Error(
+            'usage: ubichill install <world.yaml> [--mods-dir=<dir>] [--base-url=<url>] [--out=<path>] [--check]',
+        );
     }
 
     const def = WorldDefinitionSchema.parse(yaml.parse(readFileSync(worldPath, 'utf-8')));
@@ -75,12 +82,28 @@ export async function runInstall(argv: string[]): Promise<void> {
     const getLockEntry = createDependencyAwareLockEntryGetter(def.spec.dependencies, fallbackGetter);
 
     const lock = await buildWorldLock(modIds, getLockEntry);
-
+    const nextJson = `${JSON.stringify(lock, null, 2)}\n`;
     const outPath = argValue(argv, 'out') ?? worldPath.replace(/\.ya?ml$/i, '.lock.json');
-    writeFileSync(outPath, `${JSON.stringify(lock, null, 2)}\n`, 'utf-8');
 
     const lockedIds = Object.keys(lock.mods);
     const missing = modIds.filter((id) => !lockedIds.includes(id));
+
+    if (argv.includes('--check')) {
+        const current = existsSync(outPath) ? readFileSync(outPath, 'utf-8') : null;
+        if (current !== nextJson) {
+            console.error(
+                `❌ ${outPath} が現在の mod ビルドと一致しません（陳腐化 or 未生成）。` +
+                    `\`node packages/sdk/cli/index.ts install ${worldPath} --mods-dir=${modsDir}\` で再生成してください。`,
+            );
+            process.exitCode = 1;
+            return;
+        }
+        if (missing.length > 0) console.warn(`⚠️  lock 断片が見つからない mod: ${missing.join(', ')}（除外）`);
+        console.log(`✅ ${outPath} は現在の mod ビルドと一致しています (${lockedIds.length}/${modIds.length} mods)`);
+        return;
+    }
+
+    writeFileSync(outPath, nextJson, 'utf-8');
     console.log(`🔒 ${outPath} (${lockedIds.length}/${modIds.length} mods)`);
     if (missing.length > 0) console.warn(`⚠️  lock 断片が見つからない mod: ${missing.join(', ')}（除外）`);
 }

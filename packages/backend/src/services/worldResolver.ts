@@ -133,7 +133,7 @@ function mapToResolved(
     const normalizeEntity = (e: InitialEntity): InitialEntity => ({
         id: e.id,
         transform: e.transform,
-        components: e.components.map((c) => ({ type: c.type, data: c.data ?? {}, transform: c.transform })),
+        components: e.components.map((c) => ({ id: c.id, type: c.type, data: c.data ?? {}, transform: c.transform })),
         tags: e.tags ?? [],
         children: (e.children ?? []).map(normalizeEntity),
     });
@@ -173,9 +173,9 @@ function collectMods(
     for (const d of dependencies ?? []) versionByName.set(d.name, d.source?.version);
 
     // entity 走査は shared の collectModIds に一本化。dependency 宣言分を足す。
-    const ids = new Set<string>([...collectModIds(entities), ...versionByName.keys()]);
+    const ids = new Set<string>([...Array.from(collectModIds(entities)), ...Array.from(versionByName.keys())]);
 
-    return [...ids].map((id) => ({ id, version: versionByName.get(id) }));
+    return Array.from(ids).map((id) => ({ id, version: versionByName.get(id) }));
 }
 
 /** YAML テキストから ResolvedWorld を作る。 */
