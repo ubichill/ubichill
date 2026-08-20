@@ -1,6 +1,6 @@
 {
     "name": "@ubichill/backend",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "private": true,
     "description": "Backend server for Ubichill",
     "main": "dist/index.js",

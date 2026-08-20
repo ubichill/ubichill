@@ -1,6 +1,6 @@
 {
     "name": "@ubichill/bff",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "private": true,
     "description": "BFF: SPA 配信 + OGP/JSON-LD メタ注入（フロント配信層）。core backend はドメイン API に純化。",
     "main": "dist/index.js",
