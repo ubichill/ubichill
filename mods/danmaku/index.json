@@ -5,14 +5,16 @@
     "version": "1.0.0",
     "components": [
       "danmaku:canvas",
-      "danmaku:player"
+      "danmaku:player",
+      "danmaku:wall"
     ],
     "versions": [
       {
         "version": "1.0.0",
         "components": [
           "danmaku:canvas",
-          "danmaku:player"
+          "danmaku:player",
+          "danmaku:wall"
         ]
       }
     ]
