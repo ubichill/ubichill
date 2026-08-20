@@ -1,5 +1,16 @@
 # @ubichill/ui-renderer
 
+## 2.0.0
+
+### Patch Changes
+
+- Updated dependencies [988f2c8]
+- Updated dependencies [7c89fcb]
+- Updated dependencies [7c89fcb]
+- Updated dependencies [7c89fcb]
+- Updated dependencies [7c89fcb]
+  - @ubichill/shared@1.1.0
+
 ## 1.0.1
 
 ### Patch Changes
