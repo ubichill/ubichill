@@ -71,6 +71,9 @@ export function Gripable({ grip, children, style }: GripableProps): VNode {
         border: opts.hover?.outline ?? 'none',
         padding: 0,
         pointerEvents: isMine && opts.mode === 'manual' ? 'none' : 'auto',
+        // タッチでの掴み移動中にブラウザ標準のスクロール/ピンチズームが発火して
+        // ドラッグ操作と競合するのを防ぐ（PC のマウス操作には影響しない）。
+        touchAction: 'none',
         transition: 'opacity 0.12s ease, transform 0.12s ease, outline-color 0.12s ease',
         '--ubi-gripable-scale': String(hoverScaleValue),
     } as Record<string, string | number>;

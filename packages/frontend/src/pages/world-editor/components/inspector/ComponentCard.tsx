@@ -165,8 +165,34 @@ function ComponentTransformEditor({
     };
     const patch = (p: Partial<TransformOverride>) => setOverride({ ...override, ...p });
 
+    const setOverlay = (next: boolean) => {
+        onChange((prev) => ({
+            ...prev,
+            components: prev.components.map((c, i) =>
+                i === componentIndex ? { ...c, overlay: next || undefined } : c,
+            ),
+        }));
+    };
+
     return (
         <Section label="位置 / サイズ">
+            <label
+                className={css({
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '2',
+                    fontSize: '11px',
+                    color: 'textMuted',
+                    cursor: 'pointer',
+                })}
+            >
+                <input
+                    type="checkbox"
+                    checked={component.overlay ?? false}
+                    onChange={(e) => setOverlay(e.target.checked)}
+                />
+                画面固定（ワールドスクロールの影響を受けない画面座標として描画する）
+            </label>
             <label
                 className={css({
                     display: 'flex',

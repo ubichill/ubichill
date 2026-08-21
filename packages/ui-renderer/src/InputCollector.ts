@@ -74,6 +74,11 @@ function _isInteractiveTarget(target: EventTarget | null): boolean {
     return target.closest('button, input, select, textarea, a[href], [role="button"], label') !== null;
 }
 
+/** PointerEvent.pointerType はブラウザ定義の string。mod へは既知の3値のみ渡す。 */
+function _normalizePointerType(pointerType: string): 'mouse' | 'pen' | 'touch' {
+    return pointerType === 'pen' || pointerType === 'touch' ? pointerType : 'mouse';
+}
+
 export class InputCollector {
     /** フレーム内の最新マウス位置（上書きデデュプ） */
     private _latestMousePos: SequencedInputFrameEvent | null = null;
@@ -96,6 +101,9 @@ export class InputCollector {
     /** 直近のマウスボタン状態。スクロール由来の MOUSE_MOVE に正確な buttons を埋める。 */
     private _currentButtons = 0;
 
+    /** 直近のポインタ種別。スクロール由来の MOUSE_MOVE に引き継ぐ。 */
+    private _lastPointerType: 'mouse' | 'pen' | 'touch' = 'mouse';
+
     /** elementFromPoint で追跡している最新の cursor スタイル */
     private _cursorStyle = 'default';
 
@@ -105,9 +113,9 @@ export class InputCollector {
     /** スクロール量を供給するスクロール要素 */
     private _scrollEl: Element | null = null;
 
-    private readonly _onMouseMove: (e: MouseEvent) => void;
-    private readonly _onMouseDown: (e: MouseEvent) => void;
-    private readonly _onMouseUp: (e: MouseEvent) => void;
+    private readonly _onMouseMove: (e: PointerEvent) => void;
+    private readonly _onMouseDown: (e: PointerEvent) => void;
+    private readonly _onMouseUp: (e: PointerEvent) => void;
     private readonly _onKeyDown: (e: KeyboardEvent) => void;
     private readonly _onKeyUp: (e: KeyboardEvent) => void;
     private readonly _onContextMenu: (e: MouseEvent) => void;
@@ -138,11 +146,12 @@ export class InputCollector {
     }
 
     constructor() {
-        this._onMouseMove = (e: MouseEvent) => {
+        this._onMouseMove = (e: PointerEvent) => {
             const scrollLeft = this._scrollEl?.scrollLeft ?? 0;
             const scrollTop = this._scrollEl?.scrollTop ?? 0;
             this._lastViewportPos = { x: e.clientX, y: e.clientY };
             this._currentButtons = e.buttons;
+            this._lastPointerType = _normalizePointerType(e.pointerType);
             this._latestMousePos = {
                 seq: this._nextSeq(),
                 event: {
@@ -153,6 +162,7 @@ export class InputCollector {
                         viewportX: e.clientX,
                         viewportY: e.clientY,
                         buttons: e.buttons,
+                        pointerType: _normalizePointerType(e.pointerType),
                     },
                 },
             };
@@ -187,7 +197,7 @@ export class InputCollector {
         };
 
         // 離散イベント: UI 要素上は無視、それ以外は全件保持
-        this._onMouseDown = (e: MouseEvent) => {
+        this._onMouseDown = (e: PointerEvent) => {
             if (_isInteractiveTarget(e.target)) return;
             const scrollLeft = this._scrollEl?.scrollLeft ?? 0;
             const scrollTop = this._scrollEl?.scrollTop ?? 0;
@@ -203,12 +213,13 @@ export class InputCollector {
                         viewportX: e.clientX,
                         viewportY: e.clientY,
                         button: e.button,
+                        pointerType: _normalizePointerType(e.pointerType),
                     },
                 },
             });
         };
 
-        this._onMouseUp = (e: MouseEvent) => {
+        this._onMouseUp = (e: PointerEvent) => {
             if (_isInteractiveTarget(e.target)) return;
             const scrollLeft = this._scrollEl?.scrollLeft ?? 0;
             const scrollTop = this._scrollEl?.scrollTop ?? 0;
@@ -224,6 +235,7 @@ export class InputCollector {
                         viewportX: e.clientX,
                         viewportY: e.clientY,
                         button: e.button,
+                        pointerType: _normalizePointerType(e.pointerType),
                     },
                 },
             });
@@ -265,9 +277,9 @@ export class InputCollector {
             };
         };
 
-        window.addEventListener('mousemove', this._onMouseMove);
-        window.addEventListener('mousedown', this._onMouseDown);
-        window.addEventListener('mouseup', this._onMouseUp);
+        window.addEventListener('pointermove', this._onMouseMove);
+        window.addEventListener('pointerdown', this._onMouseDown);
+        window.addEventListener('pointerup', this._onMouseUp);
         window.addEventListener('keydown', this._onKeyDown);
         window.addEventListener('keyup', this._onKeyUp);
         window.addEventListener('contextmenu', this._onContextMenu);
@@ -306,6 +318,7 @@ export class InputCollector {
                                 viewportX: this._lastViewportPos.x,
                                 viewportY: this._lastViewportPos.y,
                                 buttons: this._currentButtons,
+                                pointerType: this._lastPointerType,
                             },
                         },
                     };
@@ -371,9 +384,9 @@ export class InputCollector {
     }
 
     public destroy(): void {
-        window.removeEventListener('mousemove', this._onMouseMove);
-        window.removeEventListener('mousedown', this._onMouseDown);
-        window.removeEventListener('mouseup', this._onMouseUp);
+        window.removeEventListener('pointermove', this._onMouseMove);
+        window.removeEventListener('pointerdown', this._onMouseDown);
+        window.removeEventListener('pointerup', this._onMouseUp);
         window.removeEventListener('keydown', this._onKeyDown);
         window.removeEventListener('keyup', this._onKeyUp);
         window.removeEventListener('contextmenu', this._onContextMenu);

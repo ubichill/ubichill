@@ -50,7 +50,7 @@
     "pen": {
       "id": "pen",
       "version": "2.0.0",
-      "manifestIntegrity": "sha256-z5uZGYlzabOUSowHkls7FrMA3kT6HizfHevowGZXC0w=",
+      "manifestIntegrity": "sha256-Y97Ib24YI1Vyx14Inri5v+GlVd5rSwQabepypWdlA7E=",
       "components": {
         "pen:canvas": {
           "workerUrl": "./canvas/index.18b57e0a.js",
@@ -64,8 +64,8 @@
           ]
         },
         "pen:pen": {
-          "workerUrl": "./pen/index.45a30565.js",
-          "integrity": "sha256-RaMFZXqbOkfE5ZlcY3Ly0g8ZWgCOVDh7XZVwN5vJFKk=",
+          "workerUrl": "./pen/index.6de0920a.js",
+          "integrity": "sha256-beCSCoOr3F1HBVa1JmEszFYYNyWooj96deJUmbaPBeU=",
           "capabilities": [
             "event:emit",
             "host:message",

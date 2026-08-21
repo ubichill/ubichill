@@ -206,6 +206,13 @@ export const EntityComponentSchema = z
         type: ComponentTypeSchema,
         data: z.record(z.string(), z.unknown()).default({}),
         transform: TransformSchema.partial().optional(),
+        /**
+         * true の場合、この Component の transform.x/y をワールド座標ではなく画面（ビューポート）座標
+         * として描画する（ワールドスクロールの影響を受けない固定オーバーレイ / HUD）。
+         * mod の manifest (`config.overlay`) は Component 追加時の既定値としてのみ使い、
+         * 追加後はここで Entity ごとに上書きできる。
+         */
+        overlay: z.boolean().optional(),
     })
     .superRefine((component, ctx) => {
         if (isCoreComponentNamespace(component.type) && !isCoreComponentType(component.type)) {

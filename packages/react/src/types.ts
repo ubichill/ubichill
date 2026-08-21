@@ -81,6 +81,11 @@ export interface WorkerModDefinition {
      */
     singleton?: boolean;
     /**
+     * true の場合、Entity の transform.x/y をワールド座標ではなく画面（ビューポート）座標として扱う。
+     * ワールドのスクロールに影響されない固定オーバーレイ（仮想パッド等のHUD）として描画される。
+     */
+    overlay?: boolean;
+    /**
      * Worker が `Ubi.network.sendToHost(type, payload)` で送ったカスタムメッセージのホスト側ハンドラ。
      * `api.sendToWorker` で Worker へ返答できる。
      * mod固有のホスト処理をここに記述することで InstanceRenderer との結合を断ち切る。

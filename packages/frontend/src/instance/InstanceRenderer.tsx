@@ -31,9 +31,25 @@ export const InstanceRenderer: React.FC = () => {
         [modMap, activeMods],
     );
 
+    // overlay: true の Entity は画面固定 HUD として、ワールドスクロールの外側に描画する。
+    // Entity ごとの値 (World Editor の Inspector で上書き可能) が正本で、mod の manifest 側の
+    // overlay は Component 追加時の既定値としてのみ使う（EntityInspector/ComponentCard 側で反映）。
+    const { worldEntityIds, overlayEntityIds } = useMemo(() => {
+        const world: string[] = [];
+        const overlay: string[] = [];
+        for (const [id, entity] of entities) {
+            (entity.overlay ? overlay : world).push(id);
+        }
+        return { worldEntityIds: world, overlayEntityIds: overlay };
+    }, [entities]);
+
     const renderEntities = useMemo(
-        () => Array.from(entities.keys()).map((id) => <EntityRenderer key={id} entityId={id} />),
-        [entities],
+        () => worldEntityIds.map((id) => <EntityRenderer key={id} entityId={id} />),
+        [worldEntityIds],
+    );
+    const renderOverlayEntities = useMemo(
+        () => overlayEntityIds.map((id) => <EntityRenderer key={id} entityId={id} />),
+        [overlayEntityIds],
     );
 
     const { width: worldWidth, height: worldHeight } = environment.worldSize;
@@ -88,6 +104,18 @@ export const InstanceRenderer: React.FC = () => {
                             );
                         })}
                     </div>
+                </div>
+                {/* overlay: true の Entity 専用レイヤー。data-scroll-world の外側に置くことで
+                    スクロール座標の影響を受けない画面固定 HUD として振る舞う。 */}
+                <div
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        zIndex: Z_INDEX.ENTITY_OVERLAY,
+                        pointerEvents: 'none',
+                    }}
+                >
+                    {renderOverlayEntities}
                 </div>
             </HoldProvider>
         </RideProvider>

@@ -21,6 +21,8 @@ export interface LoadedMod {
     mediaTargets?: string[];
     singleton?: boolean;
     thumbnail?: string;
+    /** true なら画面固定オーバーレイ（Host が transform.x/y をワールド座標ではなく画面座標として描画）。 */
+    overlay?: boolean;
     /** Inspector 用の data フィールド宣言（entityRef 等）。Host が declaredTargets 算出に使う。 */
     dataFields?: Record<string, ComponentDataFieldSpec>;
 }

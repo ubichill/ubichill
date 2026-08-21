@@ -35,6 +35,17 @@ import { isMetricEnabled, reportDiagnostic, reportMetric } from './modDiagnostic
 import { TickController } from './TickController';
 import type { HostHandlers, ModHostManagerOptions } from './types';
 
+/**
+ * Host環境でタッチ/ペン等の低精度ポインタが使えるか。mod へ `Ubi.hasCoarsePointer` として伝える。
+ * `(pointer: coarse)` は「主ポインタ」だけを見るため、マウスが主ポインタのタッチ対応PC/
+ * ハイブリッド端末では false になってしまう。`(any-pointer: coarse)` も併せて見ることで、
+ * 「タッチ入力が利用可能か」を判定する（主ポインタがマウスでも仮想パッドを出す）。
+ */
+function hasCoarsePointer(): boolean {
+    if (typeof window === 'undefined' || !window.matchMedia) return false;
+    return window.matchMedia('(pointer: coarse)').matches || window.matchMedia('(any-pointer: coarse)').matches;
+}
+
 export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record<string, unknown>> {
     /** 非同期 RPC のタイムアウト (ms)。超過すると RPC エラーとして Worker に返す */
     static RPC_TIMEOUT_MS = 10_000;
@@ -181,6 +192,7 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
                 modBase: options.modBase,
                 watchEntityTypes: options.watchEntityTypes,
                 initialEntities: options.initialEntities,
+                hasCoarsePointer: hasCoarsePointer(),
             },
         });
 

@@ -170,12 +170,17 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
     // 復元されないバグ (zIndex が style から消える) が出るため、すべて React 管理下に置く。
     // CSS 変数 (--held-dx/dy) のみ pointermove で imperative に更新する (60fps の都合)。
     const heldZ = isHeldByMe || isHeldByOther ? Z_INDEX.HELD_ENTITY : (z ?? 0) || undefined;
+    // overlay Entity は画面サイズに依存する。x/y が負値なら「右/下端からの距離」として
+    // 解釈することで、横画面などビューポートが低い/狭い環境でも画面外に出ないようにする
+    // (例: y: -160 は常に画面下端から160pxの位置)。
+    const anchorX = entity.overlay && x < 0 ? { right: -x } : { left: x };
+    const anchorY = entity.overlay && y < 0 ? { bottom: -y } : { top: y };
     const wrapperStyle: React.CSSProperties = isCanvas
         ? { position: 'absolute', inset: 0, zIndex: heldZ, pointerEvents: 'none' }
         : {
               position: 'absolute',
-              left: x,
-              top: y,
+              ...anchorX,
+              ...anchorY,
               zIndex: heldZ,
               width: w > 0 ? w : undefined,
               height: h > 0 ? h : undefined,

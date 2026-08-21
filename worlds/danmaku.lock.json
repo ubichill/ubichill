@@ -4,11 +4,11 @@
     "danmaku": {
       "id": "danmaku",
       "version": "1.0.0",
-      "manifestIntegrity": "sha256-OOGhSD7qO7HmK2FYo6MN14s6fQcl6a+vmg4sQyntE2Q=",
+      "manifestIntegrity": "sha256-Gjd3ep1qQ2TlAIt4d95nDoA9YDg851TwAyhJCU1DIcY=",
       "components": {
         "danmaku:canvas": {
-          "workerUrl": "./canvas/index.0a8d1c33.js",
-          "integrity": "sha256-Co0cM1hvFOWh0793SLtLmE/N1fFDu979+QMG0ILh6Dc=",
+          "workerUrl": "./canvas/index.a792bd3f.js",
+          "integrity": "sha256-p5K9P92noCP7e/7G0mXrr+EMaVrUQTbe7pivVJKiClY=",
           "capabilities": [
             "canvas:draw",
             "event:emit",
@@ -16,8 +16,8 @@
           ]
         },
         "danmaku:player": {
-          "workerUrl": "./player/index.33fe5de7.js",
-          "integrity": "sha256-M/5d58z1ro2hey2cBGUSVktpi9RMPJEE7Qz3h1KLA6Y=",
+          "workerUrl": "./player/index.0b70e03f.js",
+          "integrity": "sha256-C3DgPxFziG+eCSgTtEe4ZIO0ut4UfTDM+PpfAll5FN0=",
           "capabilities": [
             "event:emit",
             "scene:read",
@@ -29,6 +29,23 @@
           "workerUrl": "./wall/index.8074af9d.js",
           "integrity": "sha256-gHSvnbc2K/oeCzVsbux+RQ9Pf1N9/Hl/3sEhHd3xzDU=",
           "capabilities": [
+            "ui:render"
+          ]
+        }
+      }
+    },
+    "mobile-controller": {
+      "id": "mobile-controller",
+      "version": "1.0.0",
+      "manifestIntegrity": "sha256-1ZbMlLKh0uuyuj6dPXtoZFb4E5WVY8pNuoToN+fKKzA=",
+      "components": {
+        "mobile-controller:controller": {
+          "workerUrl": "./controller/index.7a3a54c3.js",
+          "integrity": "sha256-ejpUww9Aj9+v/l5cAKwMEie6plTkbP1GV9jOyCTIMxI=",
+          "capabilities": [
+            "event:emit",
+            "scene:read",
+            "scene:update",
             "ui:render"
           ]
         }

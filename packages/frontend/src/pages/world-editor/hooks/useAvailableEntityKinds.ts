@@ -60,6 +60,8 @@ export interface AvailableEntityKind {
     thumbnailUrl?: string;
     /** 見た目の描画方式。manifest の canvasTargets / ui:render capability から自動判定。 */
     viewKind: 'jsx' | 'canvas' | 'logic';
+    /** true なら画面固定オーバーレイ（transform.x/y はワールド座標ではなく画面座標）。 */
+    overlay?: boolean;
 }
 
 /** modのインストール有無に関係なく、Hostが必ず提供する組み込みComponent。 */
@@ -86,6 +88,7 @@ interface VersionedManifestComponent {
     defaultTransform?: AvailableEntityKind['defaultTransform'];
     dataFields?: DataFields;
     thumbnail?: string;
+    overlay?: boolean;
 }
 
 interface VersionedManifest {
@@ -190,6 +193,7 @@ export function useAvailableEntityKinds(definition: WorldDefinition | null): {
                     dataFields: meta.dataFields,
                     thumbnailUrl: meta.thumbnail ? `${versionedBase}/${meta.thumbnail}` : undefined,
                     viewKind: deriveViewKind(meta),
+                    overlay: meta.overlay,
                 }));
             }),
         )

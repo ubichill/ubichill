@@ -92,6 +92,7 @@ self.addEventListener('message', (e: MessageEvent<ModHostEvent>) => {
     Ubi.componentType = event.payload.componentType;
     Ubi.modBase = event.payload.modBase ?? '';
     Ubi.watchEntityTypes = event.payload.watchEntityTypes ?? [];
+    Ubi.hasCoarsePointer = event.payload.hasCoarsePointer ?? false;
     // state.define がmodコード実行前にこのスナップショットを同期反映する
     Ubi._setInitialEntities(event.payload.initialEntities ?? []);
 
