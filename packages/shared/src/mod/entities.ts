@@ -100,6 +100,8 @@ export interface ComponentInstance<T = unknown> {
     parentEntityId?: string;
     ownerId: string | null;
     lockedBy: string | null;
+    /** true なら transform.x/y を画面座標として描画する（ワールドスクロールの影響を受けない固定オーバーレイ）。 */
+    overlay?: boolean;
     transform: EntityTransform;
     data: T;
 }

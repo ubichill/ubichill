@@ -17,6 +17,9 @@ spec:
     - name: danmaku
       source:
         version: latest
+    - name: mobile-controller
+      source:
+        version: latest
   initialEntities:
     - id: ship
       tags: []
@@ -45,6 +48,17 @@ spec:
             isTrigger: false
             layer: player
             mask: [wall]
+        # タッチ/ペン環境向けの仮想パッド。ship (danmaku:player) と同じEntityに載せることで
+        # scope:'subtree' の mobile:key_down/up が届く。overlay:true + 個別transformで
+        # ワールド座標ではなく画面固定(左下)の位置に描画する。
+        # y は負値 = 画面下端からの距離 (EntityRenderer の overlay 用アンカー規約)。
+        # 固定pxではなく画面下端基準にすることで、横画面など縦が低い端末でも画面外に出ない。
+        - id: mobile-pad
+          type: mobile-controller:controller
+          overlay: true
+          transform: { x: 24, y: -160, z: 2000, w: 240, h: 140 }
+          data:
+            targetType: danmaku:player
     - id: field
       tags: []
       children: []

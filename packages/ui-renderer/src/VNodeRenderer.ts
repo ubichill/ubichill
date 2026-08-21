@@ -285,6 +285,10 @@ function _makeListener(idx: number, eventType: string, sendAction: SendAction): 
             detail = t.type === 'checkbox' || t.type === 'radio' ? t.checked : t.value;
         } else if (t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement) {
             detail = t.value;
+        } else if (e instanceof PointerEvent) {
+            // mod UI ボタン (onUbiPointerDown/Up) からもタッチ/ペン/マウスの区別と、
+            // 同じボタンへの複数タッチ (マルチタッチ) を pointerId で識別できるようにする。
+            detail = { pointerType: e.pointerType, pointerId: e.pointerId };
         } else {
             detail = (e as CustomEvent).detail ?? null;
         }

@@ -222,12 +222,8 @@ export function EditorPreview({
 
     return (
         <div
-            onMouseDown={(e) => {
-                if (e.target === e.currentTarget) onBackgroundMouseDown?.();
-            }}
             style={{
                 position: 'relative',
-                overflow: 'auto',
                 height: fillContainer ? '100%' : '70vh',
                 backgroundColor: environment.backgroundColor,
                 borderRadius: fillContainer ? 0 : 12,
@@ -240,16 +236,50 @@ export function EditorPreview({
             <SocketContext.Provider value={socketValue}>
                 <WorldContext.Provider value={worldValue}>
                     <ModRegistryProvider lock={previewLock}>
-                        <PreviewStage
-                            entities={entities}
-                            environment={environment}
-                            overlay={overlay}
-                            gridStep={gridStep}
-                            onBackgroundMouseDown={onBackgroundMouseDown}
-                        />
+                        {/* ワールド座標系のスクロール領域。overlay: true の Entity はここに置かない
+                            （実行時の InstanceRenderer と同様、スクロールの影響を受けない別レイヤーにする）。 */}
+                        <div
+                            onMouseDown={(e) => {
+                                if (e.target === e.currentTarget) onBackgroundMouseDown?.();
+                            }}
+                            style={{ position: 'absolute', inset: 0, overflow: 'auto' }}
+                        >
+                            <PreviewStage
+                                entities={entities}
+                                environment={environment}
+                                overlay={overlay}
+                                gridStep={gridStep}
+                                onBackgroundMouseDown={onBackgroundMouseDown}
+                            />
+                        </div>
+                        {/* overlay: true の Entity 専用レイヤー。上のスクロール領域の外側に置くことで
+                            実行画面 (InstanceRenderer の ENTITY_OVERLAY レイヤー) と配置が一致する。 */}
+                        <EditorOverlayStage entities={entities} />
                     </ModRegistryProvider>
                 </WorldContext.Provider>
             </SocketContext.Provider>
+        </div>
+    );
+}
+
+/**
+ * overlay: true の Entity だけを、ワールドスクロール領域の外側（画面固定）に描画する。
+ * 実行時の InstanceRenderer.tsx における ENTITY_OVERLAY レイヤーのプレビュー相当。
+ */
+function EditorOverlayStage({ entities }: { entities: Map<string, ComponentInstance> }) {
+    const overlayEntityIds = useMemo(
+        () =>
+            Array.from(entities.entries())
+                .filter(([, e]) => e.overlay)
+                .map(([id]) => id),
+        [entities],
+    );
+    if (overlayEntityIds.length === 0) return null;
+    return (
+        <div style={{ position: 'absolute', inset: 0, zIndex: 99000, pointerEvents: 'none' }}>
+            {overlayEntityIds.map((id) => (
+                <EntityRenderer key={id} entityId={id} />
+            ))}
         </div>
     );
 }
@@ -274,8 +304,12 @@ function PreviewStage({
     const { modMap } = useModRegistry();
     const { activeMods } = useWorld();
 
+    // overlay: true の Entity は EditorOverlayStage (スクロール領域外) が描画するのでここでは除外する。
     const renderEntities = useMemo(
-        () => Array.from(entities.keys()).map((id) => <EntityRenderer key={id} entityId={id} />),
+        () =>
+            Array.from(entities.entries())
+                .filter(([, e]) => !e.overlay)
+                .map(([id]) => <EntityRenderer key={id} entityId={id} />),
         [entities],
     );
 

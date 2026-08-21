@@ -129,4 +129,10 @@ export interface ComponentConfig {
     description?: string;
     /** data-only コンポーネント（Worker を持たない） */
     dataOnly?: boolean;
+    /**
+     * true の場合、Entity の transform.x/y をワールド座標ではなく画面（ビューポート）座標として扱い、
+     * ワールドのスクロールに影響されない固定オーバーレイ（HUD）として描画する。
+     * 仮想パッド・常時表示スコア表示等に使う。
+     */
+    overlay?: boolean;
 }

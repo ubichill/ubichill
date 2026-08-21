@@ -38,6 +38,7 @@ function toWorkerModDefinition(m: LoadedMod): WorkerModDefinition {
         mediaTargets: m.mediaTargets,
         modBase: m.modBase,
         dataFields: m.dataFields,
+        overlay: m.overlay,
     };
 }
 

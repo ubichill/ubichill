@@ -511,6 +511,13 @@ export type EvtLifecycleInit = {
          * Worker 互換 view（flat ComponentInstance）として渡る。
          */
         initialEntities?: ComponentInstance[];
+        /**
+         * Host環境がタッチ/ペン等の低精度ポインタ (`matchMedia('(pointer: coarse)')`) かどうか。
+         * `Ubi.hasCoarsePointer` として公開し、mod がスマホ向けの入力UI（仮想パッド等）を
+         * 出し分けるためのヒントに使う。ユーザー環境依存のUAスニッフィングではなく
+         * ブラウザの pointer メディア特性に基づく判定。
+         */
+        hasCoarsePointer?: boolean;
     };
 };
 
@@ -656,17 +663,33 @@ export type InputMouseMoveData = {
     viewportX: number;
     viewportY: number;
     buttons: number;
+    /** 発生元デバイス（PointerEvent.pointerType）。「書く」ペンと「持つ」タッチ/マウスをmod側で区別するために使う。 */
+    pointerType: 'mouse' | 'pen' | 'touch';
 };
 /**
  * マウスボタン押下データ。
  * x/y はワールド座標、viewportX/viewportY はビューポート座標。
  */
-export type InputMouseDownData = { x: number; y: number; viewportX: number; viewportY: number; button: number };
+export type InputMouseDownData = {
+    x: number;
+    y: number;
+    viewportX: number;
+    viewportY: number;
+    button: number;
+    pointerType: 'mouse' | 'pen' | 'touch';
+};
 /**
  * マウスボタン解放データ。
  * x/y はワールド座標、viewportX/viewportY はビューポート座標。
  */
-export type InputMouseUpData = { x: number; y: number; viewportX: number; viewportY: number; button: number };
+export type InputMouseUpData = {
+    x: number;
+    y: number;
+    viewportX: number;
+    viewportY: number;
+    button: number;
+    pointerType: 'mouse' | 'pen' | 'touch';
+};
 /** キーボード押下データ */
 export type InputKeyDownData = { key: string; code: string };
 /** キーボード解放データ */

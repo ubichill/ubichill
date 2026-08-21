@@ -25,6 +25,7 @@ interface WorkerMetaObject {
     mediaTargets?: string[];
     defaultTransform?: Record<string, unknown>;
     dataFields?: Record<string, unknown>;
+    overlay?: boolean;
 }
 
 interface VersionedModJson {
@@ -205,6 +206,7 @@ export async function acquireMod(entityType: string, opts: AcquireModOptions): P
         singleton: entry.singleton,
         thumbnail: entry.thumbnail,
         dataFields: entry.dataFields as Record<string, ComponentDataFieldSpec> | undefined,
+        overlay: entry.overlay,
     };
     return loaded;
 }

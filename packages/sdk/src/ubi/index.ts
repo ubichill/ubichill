@@ -121,6 +121,8 @@ export class UbiSDK {
     public componentType?: string;
     public modBase = '';
     public watchEntityTypes: string[] = [];
+    /** Host環境がタッチ/ペン等の低精度ポインタか (`matchMedia('(pointer: coarse)')`)。スマホ向け入力UIの出し分けに使う。 */
+    public hasCoarsePointer = false;
 
     // ── Public API modules ───────────────────────────────────
     /** 宣言的リアクティブ状態。`define` でスキーマを作り `sync` で同期範囲（共有/永続/ユーザー別）を指定する。 */
