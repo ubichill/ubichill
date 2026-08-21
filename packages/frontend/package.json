@@ -18,7 +18,7 @@
         "@ubichill/react": "workspace:*",
         "@ubichill/sdk": "workspace:*",
         "@ubichill/shared": "workspace:*",
-        "better-auth": "^1.6.25",
+        "better-auth": "^1.7.0",
         "icojs": "^1.0.0",
         "lodash.throttle": "^4.1.1",
         "perfect-freehand": "^1.2.3",
