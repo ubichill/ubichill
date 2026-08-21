@@ -14,7 +14,7 @@
     "socket.io-client": "^4.8.3"
   },
   "dependencies": {
-    "hls.js": "^1.6.16",
+    "hls.js": "^1.7.0",
     "lodash.throttle": "^4.1.1"
   },
   "devDependencies": {
