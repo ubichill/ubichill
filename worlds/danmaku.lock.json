@@ -37,11 +37,11 @@
     "mobile-controller": {
       "id": "mobile-controller",
       "version": "1.0.0",
-      "manifestIntegrity": "sha256-1ZbMlLKh0uuyuj6dPXtoZFb4E5WVY8pNuoToN+fKKzA=",
+      "manifestIntegrity": "sha256-8R7XKxZO6yAEaPvEVpRKVMmGvzxJjounzT1UoZH+9NE=",
       "components": {
         "mobile-controller:controller": {
-          "workerUrl": "./controller/index.7a3a54c3.js",
-          "integrity": "sha256-ejpUww9Aj9+v/l5cAKwMEie6plTkbP1GV9jOyCTIMxI=",
+          "workerUrl": "./controller/index.a295f58c.js",
+          "integrity": "sha256-opX1jKITALOYvZbEqTZbQwq7gXTs40Yd8FeJhcJLAtM=",
           "capabilities": [
             "event:emit",
             "scene:read",

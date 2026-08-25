@@ -130,7 +130,7 @@ export function useEntityOps({
                 data: initialData,
                 ...(kind?.defaultTransform ? { transform: kind.defaultTransform } : {}),
                 // mod の manifest (config.overlay) は追加時点の既定値。以降は Inspector で Entity ごとに上書きできる。
-                ...(kind?.overlay ? { overlay: true } : {}),
+                ...(kind?.overlay ? { overlay: kind.overlay } : {}),
             };
             updateEntities((prev) =>
                 updateEntityAt(prev, path, (e) => ({ ...e, components: [...e.components, newComponent] })),

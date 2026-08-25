@@ -130,10 +130,11 @@ function mapToResolved(
         backgroundColor: DEFAULTS.WORLD_ENVIRONMENT.backgroundColor,
         worldSize: DEFAULTS.WORLD_ENVIRONMENT.worldSize,
     };
+    // 省略可能フィールドの既定値を埋めるだけの正規化。フィールドを列挙して組み直すと
+    // スキーマに増えた項目(overlay 等)を黙って捨ててしまうため、必ずスプレッドで引き継ぐ。
     const normalizeEntity = (e: InitialEntity): InitialEntity => ({
-        id: e.id,
-        transform: e.transform,
-        components: e.components.map((c) => ({ id: c.id, type: c.type, data: c.data ?? {}, transform: c.transform })),
+        ...e,
+        components: e.components.map((c) => ({ ...c, data: c.data ?? {} })),
         tags: e.tags ?? [],
         children: (e.children ?? []).map(normalizeEntity),
     });

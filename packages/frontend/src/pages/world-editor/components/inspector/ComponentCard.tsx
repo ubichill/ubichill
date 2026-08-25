@@ -1,6 +1,12 @@
 import { CORE_COMPONENT_TYPES } from '@ubichill/core-components';
 import { useEditorSchema } from '@ubichill/react';
-import type { EntityComponentDef, InitialEntity } from '@ubichill/shared';
+import {
+    type EntityComponentDef,
+    type InitialEntity,
+    OVERLAY_ANCHORS,
+    type OverlayAnchor,
+    resolveOverlayAnchor,
+} from '@ubichill/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { css } from '@/styled-system/css';
 import type { AvailableEntityKind, DataFields } from '../../hooks/useAvailableEntityKinds';
@@ -27,6 +33,13 @@ interface ComponentCardProps {
 
 /** 既知だがスキーマを持たない（= 編集可能設定が無い）コンポーネント用の空スキーマ（参照固定）。 */
 const EMPTY_SCHEMA: DataFields = {};
+
+const OVERLAY_ANCHOR_LABELS: Record<OverlayAnchor, string> = {
+    'top-left': '左上',
+    'top-right': '右上',
+    'bottom-left': '左下',
+    'bottom-right': '右下',
+};
 
 /**
  * 1 Component のアコーディオン Card。
@@ -165,14 +178,13 @@ function ComponentTransformEditor({
     };
     const patch = (p: Partial<TransformOverride>) => setOverride({ ...override, ...p });
 
-    const setOverlay = (next: boolean) => {
+    const setOverlay = (next: EntityComponentDef['overlay']) => {
         onChange((prev) => ({
             ...prev,
-            components: prev.components.map((c, i) =>
-                i === componentIndex ? { ...c, overlay: next || undefined } : c,
-            ),
+            components: prev.components.map((c, i) => (i === componentIndex ? { ...c, overlay: next } : c)),
         }));
     };
+    const overlayAnchor = resolveOverlayAnchor(component.overlay);
 
     return (
         <Section label="位置 / サイズ">
@@ -188,11 +200,37 @@ function ComponentTransformEditor({
             >
                 <input
                     type="checkbox"
-                    checked={component.overlay ?? false}
-                    onChange={(e) => setOverlay(e.target.checked)}
+                    checked={overlayAnchor !== null}
+                    onChange={(e) => setOverlay(e.target.checked ? 'top-left' : undefined)}
                 />
-                画面固定（ワールドスクロールの影響を受けない画面座標として描画する）
+                画面固定（ワールドスクロールの影響を受けないHUDとして描画する）
             </label>
+            {overlayAnchor !== null && (
+                <label
+                    className={css({
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '2',
+                        fontSize: '11px',
+                        color: 'textMuted',
+                        pl: '4',
+                    })}
+                >
+                    基準にする画面の角
+                    <select
+                        name="overlay-anchor"
+                        value={overlayAnchor}
+                        onChange={(e) => setOverlay(e.target.value as OverlayAnchor)}
+                        className={inputStyle}
+                    >
+                        {OVERLAY_ANCHORS.map((a) => (
+                            <option key={a} value={a}>
+                                {OVERLAY_ANCHOR_LABELS[a]}
+                            </option>
+                        ))}
+                    </select>
+                </label>
+            )}
             <label
                 className={css({
                     display: 'flex',

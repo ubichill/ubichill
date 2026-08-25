@@ -133,4 +133,40 @@ spec:
         // dependency 由来の avatar は version 宣言が無いので既定の 'latest'（常に最新を追う）になる
         expect(resolved.mods.find((m) => m.id === 'avatar')?.version).toBe('latest');
     });
+
+    // 正規化(normalizeEntity)がフィールドを列挙して組み直していると、スキーマに増えた
+    // Component の項目を黙って落としてしまう。実際に overlay がここで消え、YAML に書いても
+    // HUD が画面固定にならないバグが出たので、代表的な省略可能フィールドを回帰テストで守る。
+    it('Component の省略可能フィールド(id / transform 上書き / overlay)を正規化で落とさない', () => {
+        const yaml = `
+apiVersion: ubichill.com/v1alpha1
+kind: World
+metadata: { name: overlay-world, version: 1.0.0 }
+spec:
+  displayName: overlay
+  initialEntities:
+    - id: ship
+      transform: { x: 0, y: 0 }
+      components:
+        - id: pad
+          type: "mobile-controller:controller"
+          overlay: bottom-left
+          transform: { x: 24, y: 24, w: 240, h: 140 }
+        - { type: "pen:tray", overlay: true }
+        - { type: "danmaku:wall" }
+      children:
+        - id: child
+          transform: { x: 0, y: 0 }
+          components:
+            - { type: "pen:pen", overlay: top-right }
+`;
+        const [ship] = resolveWorldFromYaml(yaml, url, source).initialEntities;
+        expect(ship.components[0].id).toBe('pad');
+        expect(ship.components[0].overlay).toBe('bottom-left');
+        expect(ship.components[0].transform).toMatchObject({ x: 24, y: 24, w: 240, h: 140 });
+        expect(ship.components[1].overlay).toBe(true);
+        expect(ship.components[2].overlay).toBeUndefined();
+        // 子 Entity も同じ正規化を再帰的に通るので、そこでも落ちないこと
+        expect(ship.children[0].components[0].overlay).toBe('top-right');
+    });
 });

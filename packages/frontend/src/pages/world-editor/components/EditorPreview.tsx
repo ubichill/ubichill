@@ -122,6 +122,9 @@ export function EditorPreview({
                     parentEntityId,
                     ownerId: null,
                     lockedBy: null,
+                    // 実行時 (flattenGameObject) と同じく画面固定フラグを引き継ぐ。
+                    // 落とすと EditorOverlayStage が一致せず、編集画面だけスクロールしてしまう。
+                    overlay: c.overlay,
                     data: (c.data as Record<string, unknown> | undefined) ?? {},
                     transform: componentTransform,
                 });

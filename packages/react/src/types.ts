@@ -1,4 +1,4 @@
-import type { ComponentDataFieldSpec } from '@ubichill/shared';
+import type { ComponentDataFieldSpec, OverlayAnchor } from '@ubichill/shared';
 
 /**
  * modが Host (ModRegistry) に渡す定義オブジェクト（Custom Elements ベース）。
@@ -81,10 +81,10 @@ export interface WorkerModDefinition {
      */
     singleton?: boolean;
     /**
-     * true の場合、Entity の transform.x/y をワールド座標ではなく画面（ビューポート）座標として扱う。
-     * ワールドのスクロールに影響されない固定オーバーレイ（仮想パッド等のHUD）として描画される。
+     * 画面固定オーバーレイ（HUD）の既定値。基準の角を指定すると transform.x/y をその角からの
+     * 距離として扱い、ワールドスクロールに影響されない。`true` は `'top-left'` と同義。
      */
-    overlay?: boolean;
+    overlay?: boolean | OverlayAnchor;
     /**
      * Worker が `Ubi.network.sendToHost(type, payload)` で送ったカスタムメッセージのホスト側ハンドラ。
      * `api.sendToWorker` で Worker へ返答できる。

@@ -150,4 +150,22 @@ describe('flattenGameObject', () => {
         expect(result[0].transform.w).toBe(60);
         expect(result[0].transform.h).toBe(240);
     });
+
+    // overlay は「画面固定HUDとして描画するか」を Host のレンダラへ伝える唯一の経路なので、
+    // ここで落ちると mod 側からは原因が全く見えないまま HUD がワールド座標へ流れる。
+    it('overlay（画面固定の基準の角）を ComponentInstance へ引き継ぐ', () => {
+        const result = flattenGameObject(
+            makeEntity({
+                components: [
+                    { type: 'mobile-controller:controller', data: {}, overlay: 'bottom-left' },
+                    { type: 'pen:tray', data: {}, overlay: true },
+                    { type: 'danmaku:wall', data: {} },
+                ],
+            }),
+        );
+        expect(result[0].overlay).toBe('bottom-left');
+        expect(result[1].overlay).toBe(true);
+        // 指定が無い Component に overlay を勝手に生やさない（ワールド座標のままであるべき）
+        expect(result[2].overlay).toBeUndefined();
+    });
 });

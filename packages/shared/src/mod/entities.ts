@@ -78,6 +78,21 @@ export interface EntityTransform {
  */
 export const EMPTY_ENTITY_TYPE = '__entity__';
 
+/**
+ * 画面固定オーバーレイ（`overlay`）の基準となる画面の角。
+ * transform.x/y はこの角からの距離（常に正の値）として解釈される。
+ * 例: `'bottom-left'` + `{ x: 24, y: 24 }` は画面左下から 24px の位置。
+ * 画面サイズに依存しないので、縦/横/タブレットいずれでも画面内に収まる。
+ */
+export const OVERLAY_ANCHORS = ['top-left', 'top-right', 'bottom-left', 'bottom-right'] as const;
+export type OverlayAnchor = (typeof OVERLAY_ANCHORS)[number];
+
+/** `overlay` 値から基準の角を解決する（`true` は `'top-left'`、未指定/false は null）。 */
+export function resolveOverlayAnchor(overlay: boolean | OverlayAnchor | undefined): OverlayAnchor | null {
+    if (!overlay) return null;
+    return overlay === true ? 'top-left' : overlay;
+}
+
 /** `core:*` は本体同梱のdata-only Component用予約namespace。 */
 export function isCoreComponentNamespace(type: string): boolean {
     return type.startsWith('core:');
@@ -100,8 +115,12 @@ export interface ComponentInstance<T = unknown> {
     parentEntityId?: string;
     ownerId: string | null;
     lockedBy: string | null;
-    /** true なら transform.x/y を画面座標として描画する（ワールドスクロールの影響を受けない固定オーバーレイ）。 */
-    overlay?: boolean;
+    /**
+     * 画面固定オーバーレイ（HUD）として描画するか。指定すると transform.x/y をワールド座標ではなく
+     * 「基準にした画面の角からの距離」として解釈し、ワールドスクロールの影響を受けなくなる。
+     * `true` は `'top-left'` と同義。
+     */
+    overlay?: boolean | OverlayAnchor;
     transform: EntityTransform;
     data: T;
 }

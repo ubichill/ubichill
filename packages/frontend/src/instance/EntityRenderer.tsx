@@ -1,6 +1,6 @@
 import { isCoreComponentType } from '@ubichill/core-components';
 import { isWorkerMod, useHold, useSocket, useWorld, WorkerModHost } from '@ubichill/react';
-import { EMPTY_ENTITY_TYPE } from '@ubichill/shared';
+import { EMPTY_ENTITY_TYPE, resolveOverlayAnchor } from '@ubichill/shared';
 import type React from 'react';
 import { useEffect, useRef } from 'react';
 import { Z_INDEX } from '@/styles/layers';
@@ -170,11 +170,11 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
     // 復元されないバグ (zIndex が style から消える) が出るため、すべて React 管理下に置く。
     // CSS 変数 (--held-dx/dy) のみ pointermove で imperative に更新する (60fps の都合)。
     const heldZ = isHeldByMe || isHeldByOther ? Z_INDEX.HELD_ENTITY : (z ?? 0) || undefined;
-    // overlay Entity は画面サイズに依存する。x/y が負値なら「右/下端からの距離」として
-    // 解釈することで、横画面などビューポートが低い/狭い環境でも画面外に出ないようにする
-    // (例: y: -160 は常に画面下端から160pxの位置)。
-    const anchorX = entity.overlay && x < 0 ? { right: -x } : { left: x };
-    const anchorY = entity.overlay && y < 0 ? { bottom: -y } : { top: y };
+    // overlay Entity は x/y を「基準の角からの距離」として解釈する。画面サイズを前提にした
+    // 絶対座標にしないことで、縦/横/タブレットいずれのビューポートでも画面内に収まる。
+    const overlayAnchor = resolveOverlayAnchor(entity.overlay);
+    const anchorX = overlayAnchor?.endsWith('right') ? { right: x } : { left: x };
+    const anchorY = overlayAnchor?.startsWith('bottom') ? { bottom: y } : { top: y };
     const wrapperStyle: React.CSSProperties = isCanvas
         ? { position: 'absolute', inset: 0, zIndex: heldZ, pointerEvents: 'none' }
         : {

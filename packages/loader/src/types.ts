@@ -1,4 +1,4 @@
-import type { ComponentDataFieldSpec, LockRejectReason } from '@ubichill/shared';
+import type { ComponentDataFieldSpec, LockRejectReason, OverlayAnchor } from '@ubichill/shared';
 
 /**
  * 取得・検証済みの mod（React/DOM 非依存の中立表現）。
@@ -21,8 +21,8 @@ export interface LoadedMod {
     mediaTargets?: string[];
     singleton?: boolean;
     thumbnail?: string;
-    /** true なら画面固定オーバーレイ（Host が transform.x/y をワールド座標ではなく画面座標として描画）。 */
-    overlay?: boolean;
+    /** 画面固定オーバーレイの既定値（基準の角。`true` は `'top-left'`）。Component 追加時の初期値。 */
+    overlay?: boolean | OverlayAnchor;
     /** Inspector 用の data フィールド宣言（entityRef 等）。Host が declaredTargets 算出に使う。 */
     dataFields?: Record<string, ComponentDataFieldSpec>;
 }

@@ -1,5 +1,5 @@
 import { CORE_COMPONENT_TYPES, createDefaultColliderData } from '@ubichill/core-components';
-import type { WorldDefinition } from '@ubichill/shared';
+import type { OverlayAnchor, WorldDefinition } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 
 /**
@@ -60,8 +60,8 @@ export interface AvailableEntityKind {
     thumbnailUrl?: string;
     /** 見た目の描画方式。manifest の canvasTargets / ui:render capability から自動判定。 */
     viewKind: 'jsx' | 'canvas' | 'logic';
-    /** true なら画面固定オーバーレイ（transform.x/y はワールド座標ではなく画面座標）。 */
-    overlay?: boolean;
+    /** 画面固定オーバーレイの既定値（基準の角。`true` は `top-left`）。 */
+    overlay?: boolean | OverlayAnchor;
 }
 
 /** modのインストール有無に関係なく、Hostが必ず提供する組み込みComponent。 */
@@ -88,7 +88,7 @@ interface VersionedManifestComponent {
     defaultTransform?: AvailableEntityKind['defaultTransform'];
     dataFields?: DataFields;
     thumbnail?: string;
-    overlay?: boolean;
+    overlay?: boolean | OverlayAnchor;
 }
 
 interface VersionedManifest {

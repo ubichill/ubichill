@@ -1,5 +1,6 @@
 import { isCoreComponentNamespace, isCoreComponentType, validateCoreComponentData } from '@ubichill/core-components';
 import { z } from 'zod';
+import { OVERLAY_ANCHORS } from '../mod/entities';
 import { ModLockSchema } from './modLock.schema';
 
 // ============================================
@@ -207,12 +208,14 @@ export const EntityComponentSchema = z
         data: z.record(z.string(), z.unknown()).default({}),
         transform: TransformSchema.partial().optional(),
         /**
-         * true の場合、この Component の transform.x/y をワールド座標ではなく画面（ビューポート）座標
-         * として描画する（ワールドスクロールの影響を受けない固定オーバーレイ / HUD）。
+         * 画面固定オーバーレイ（HUD）として描画するか。指定すると transform.x/y をワールド座標では
+         * なく「基準にした画面の角からの距離」として解釈し、ワールドスクロールの影響を受けなくなる。
+         * 角を明示できるので、縦/横/タブレットいずれの画面サイズでも画面内に収まる
+         * (例: `bottom-left` + `{x: 24, y: 24}` は常に画面左下)。`true` は `top-left` と同義。
          * mod の manifest (`config.overlay`) は Component 追加時の既定値としてのみ使い、
          * 追加後はここで Entity ごとに上書きできる。
          */
-        overlay: z.boolean().optional(),
+        overlay: z.union([z.boolean(), z.enum(OVERLAY_ANCHORS)]).optional(),
     })
     .superRefine((component, ctx) => {
         if (isCoreComponentNamespace(component.type) && !isCoreComponentType(component.type)) {

@@ -5,11 +5,10 @@
  * 他コンポーネント（danmaku:player 等）へ `mobile:key_down` / `mobile:key_up`
  * として通知するだけ。自機の移動ロジックやcollider判定は一切持たない。
  *
- * `config.overlay: true` により transform.x/y はワールド座標ではなく画面（ビューポート）座標
- * として解釈される（Host: EntityRenderer + InstanceRenderer の overlay レイヤー）。
- * 自機がワールド内を移動してもパッドは画面上の同じ位置に留まる。
- * y（および x）が負値の場合は画面下端（右端）からの距離として解釈されるので、
- * 縦の低い横画面でも画面外に出ないよう既定値は下端基準にしている。
+ * `config.overlay: 'bottom-left'` により transform.x/y はワールド座標ではなく「画面左下の角からの
+ * 距離」として解釈される（Host: EntityRenderer + InstanceRenderer の overlay レイヤー）。
+ * 自機がワールド内を移動してもパッドは画面上の同じ位置に留まり、画面サイズにも依存しないので
+ * 縦・横・タブレットのいずれでも画面内に収まる。
  *
  * 使い方: World Editor で danmaku:player と同じ Entity にこのコンポーネントを
  * 追加する（scope: 'subtree' で同Entity上のComponentへ配送するため）。
@@ -19,9 +18,9 @@ import type { ComponentConfig } from '@ubichill/sdk';
 import { MobileControllerEvents } from './events';
 
 export const config: ComponentConfig = {
-    defaultTransform: { x: 24, y: -160, z: 2000, w: 240, h: 140 },
+    defaultTransform: { x: 24, y: 24, z: 2000, w: 240, h: 140 },
     capabilities: ['event:emit', 'ui:render', 'scene:read', 'scene:update'],
-    overlay: true,
+    overlay: 'bottom-left',
     description: 'タッチ/ペン環境で自機を操作する画面固定の仮想パッド（矢印キー + 射撃ボタン相当）。',
 };
 
