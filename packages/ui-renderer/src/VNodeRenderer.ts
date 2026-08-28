@@ -286,9 +286,18 @@ function _makeListener(idx: number, eventType: string, sendAction: SendAction): 
         } else if (t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement) {
             detail = t.value;
         } else if (e instanceof PointerEvent) {
-            // mod UI ボタン (onUbiPointerDown/Up) からもタッチ/ペン/マウスの区別と、
-            // 同じボタンへの複数タッチ (マルチタッチ) を pointerId で識別できるようにする。
-            detail = { pointerType: e.pointerType, pointerId: e.pointerId };
+            // mod UI (onUbiPointerDown/Move/Up) にポインタ種別・pointerId(マルチタッチの識別)と、
+            // 「要素の左上を原点とするローカル座標」+ 要素サイズを渡す。要素の画面上の位置を
+            // mod が知らなくても、要素内の相対位置だけで仮想スティック等を実装できる。
+            const rect = (e.currentTarget as Element | null)?.getBoundingClientRect();
+            detail = {
+                pointerType: e.pointerType,
+                pointerId: e.pointerId,
+                x: rect ? e.clientX - rect.left : 0,
+                y: rect ? e.clientY - rect.top : 0,
+                width: rect?.width ?? 0,
+                height: rect?.height ?? 0,
+            };
         } else {
             detail = (e as CustomEvent).detail ?? null;
         }

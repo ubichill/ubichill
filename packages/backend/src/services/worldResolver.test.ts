@@ -153,6 +153,7 @@ spec:
           overlay: bottom-left
           transform: { x: 24, y: 24, w: 240, h: 140 }
         - { type: "pen:tray", overlay: true }
+        - { type: "video-player:screen", overlay: fill }
         - { type: "danmaku:wall" }
       children:
         - id: child
@@ -165,7 +166,8 @@ spec:
         expect(ship.components[0].overlay).toBe('bottom-left');
         expect(ship.components[0].transform).toMatchObject({ x: 24, y: 24, w: 240, h: 140 });
         expect(ship.components[1].overlay).toBe(true);
-        expect(ship.components[2].overlay).toBeUndefined();
+        expect(ship.components[2].overlay).toBe('fill');
+        expect(ship.components[3].overlay).toBeUndefined();
         // 子 Entity も同じ正規化を再帰的に通るので、そこでも落ちないこと
         expect(ship.children[0].components[0].overlay).toBe('top-right');
     });

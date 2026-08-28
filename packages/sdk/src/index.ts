@@ -91,6 +91,7 @@ export type {
     RpcGetEntityResult,
     RpcNetworkFetchResult,
     TickCallback,
+    UiPointerActionDetail,
     UserJoinedCallback,
     UserLeftCallback,
 } from '@ubichill/shared/mod/types';

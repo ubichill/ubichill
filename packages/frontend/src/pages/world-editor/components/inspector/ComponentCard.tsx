@@ -3,9 +3,9 @@ import { useEditorSchema } from '@ubichill/react';
 import {
     type EntityComponentDef,
     type InitialEntity,
-    OVERLAY_ANCHORS,
-    type OverlayAnchor,
-    resolveOverlayAnchor,
+    OVERLAY_MODES,
+    type OverlayMode,
+    resolveOverlayMode,
 } from '@ubichill/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { css } from '@/styled-system/css';
@@ -34,11 +34,12 @@ interface ComponentCardProps {
 /** 既知だがスキーマを持たない（= 編集可能設定が無い）コンポーネント用の空スキーマ（参照固定）。 */
 const EMPTY_SCHEMA: DataFields = {};
 
-const OVERLAY_ANCHOR_LABELS: Record<OverlayAnchor, string> = {
-    'top-left': '左上',
-    'top-right': '右上',
-    'bottom-left': '左下',
-    'bottom-right': '右下',
+const OVERLAY_MODE_LABELS: Record<(typeof OVERLAY_MODES)[number], string> = {
+    'top-left': '左上を基準',
+    'top-right': '右上を基準',
+    'bottom-left': '左下を基準',
+    'bottom-right': '右下を基準',
+    fill: '画面全体（配置はmod側が決める）',
 };
 
 /**
@@ -184,7 +185,7 @@ function ComponentTransformEditor({
             components: prev.components.map((c, i) => (i === componentIndex ? { ...c, overlay: next } : c)),
         }));
     };
-    const overlayAnchor = resolveOverlayAnchor(component.overlay);
+    const overlayMode = resolveOverlayMode(component.overlay);
 
     return (
         <Section label="位置 / サイズ">
@@ -200,12 +201,12 @@ function ComponentTransformEditor({
             >
                 <input
                     type="checkbox"
-                    checked={overlayAnchor !== null}
+                    checked={overlayMode !== null}
                     onChange={(e) => setOverlay(e.target.checked ? 'top-left' : undefined)}
                 />
                 画面固定（ワールドスクロールの影響を受けないHUDとして描画する）
             </label>
-            {overlayAnchor !== null && (
+            {overlayMode !== null && (
                 <label
                     className={css({
                         display: 'flex',
@@ -216,16 +217,16 @@ function ComponentTransformEditor({
                         pl: '4',
                     })}
                 >
-                    基準にする画面の角
+                    画面上の位置
                     <select
                         name="overlay-anchor"
-                        value={overlayAnchor}
-                        onChange={(e) => setOverlay(e.target.value as OverlayAnchor)}
+                        value={overlayMode}
+                        onChange={(e) => setOverlay(e.target.value as OverlayMode)}
                         className={inputStyle}
                     >
-                        {OVERLAY_ANCHORS.map((a) => (
-                            <option key={a} value={a}>
-                                {OVERLAY_ANCHOR_LABELS[a]}
+                        {OVERLAY_MODES.map((m) => (
+                            <option key={m} value={m}>
+                                {OVERLAY_MODE_LABELS[m]}
                             </option>
                         ))}
                     </select>

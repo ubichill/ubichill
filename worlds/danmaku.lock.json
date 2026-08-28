@@ -4,11 +4,11 @@
     "danmaku": {
       "id": "danmaku",
       "version": "1.0.0",
-      "manifestIntegrity": "sha256-Gjd3ep1qQ2TlAIt4d95nDoA9YDg851TwAyhJCU1DIcY=",
+      "manifestIntegrity": "sha256-NIAsje6dYoKf2NQ7ieC7Zl9tW9JNZIUcbaUPp1gwb90=",
       "components": {
         "danmaku:canvas": {
-          "workerUrl": "./canvas/index.a792bd3f.js",
-          "integrity": "sha256-p5K9P92noCP7e/7G0mXrr+EMaVrUQTbe7pivVJKiClY=",
+          "workerUrl": "./canvas/index.767fc813.js",
+          "integrity": "sha256-dn/IE0t3x12nvPHLPYmfqPKpj3L4men4fyVwH3bkP+8=",
           "capabilities": [
             "canvas:draw",
             "event:emit",
@@ -16,8 +16,8 @@
           ]
         },
         "danmaku:player": {
-          "workerUrl": "./player/index.0b70e03f.js",
-          "integrity": "sha256-C3DgPxFziG+eCSgTtEe4ZIO0ut4UfTDM+PpfAll5FN0=",
+          "workerUrl": "./player/index.d5aea573.js",
+          "integrity": "sha256-1a6lc1Dht3TvpEITv9323efR6KXyj41Ip6PCF1sfKQU=",
           "capabilities": [
             "event:emit",
             "scene:read",
@@ -37,11 +37,11 @@
     "mobile-controller": {
       "id": "mobile-controller",
       "version": "1.0.0",
-      "manifestIntegrity": "sha256-8R7XKxZO6yAEaPvEVpRKVMmGvzxJjounzT1UoZH+9NE=",
+      "manifestIntegrity": "sha256-v1Mh8lflb0rtMyATRDRWVsHzj8vonZtQF2pcgahviiw=",
       "components": {
         "mobile-controller:controller": {
-          "workerUrl": "./controller/index.a295f58c.js",
-          "integrity": "sha256-opX1jKITALOYvZbEqTZbQwq7gXTs40Yd8FeJhcJLAtM=",
+          "workerUrl": "./controller/index.a7e6fb90.js",
+          "integrity": "sha256-p+b7kAg2y9MZl7/bWlpNbojQKea8DjWfD7pVzR5guvU=",
           "capabilities": [
             "event:emit",
             "scene:read",

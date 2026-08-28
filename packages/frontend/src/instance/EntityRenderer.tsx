@@ -1,6 +1,6 @@
 import { isCoreComponentType } from '@ubichill/core-components';
 import { isWorkerMod, useHold, useSocket, useWorld, WorkerModHost } from '@ubichill/react';
-import { EMPTY_ENTITY_TYPE, resolveOverlayAnchor } from '@ubichill/shared';
+import { EMPTY_ENTITY_TYPE, OVERLAY_FILL, resolveOverlayMode } from '@ubichill/shared';
 import type React from 'react';
 import { useEffect, useRef } from 'react';
 import { Z_INDEX } from '@/styles/layers';
@@ -172,31 +172,35 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
     const heldZ = isHeldByMe || isHeldByOther ? Z_INDEX.HELD_ENTITY : (z ?? 0) || undefined;
     // overlay Entity は x/y を「基準の角からの距離」として解釈する。画面サイズを前提にした
     // 絶対座標にしないことで、縦/横/タブレットいずれのビューポートでも画面内に収まる。
-    const overlayAnchor = resolveOverlayAnchor(entity.overlay);
+    const overlayMode = resolveOverlayMode(entity.overlay);
+    // overlay: 'fill' は画面全体を覆う HUD レイヤー。1つの Component で「左下にスティック・
+    // 右下にボタン」のように画面の複数箇所へ配置できる（mod 側が自前の絶対配置で置く）。
+    // transform の x/y/w/h は使わない（Component の w/h は Entity 側を継承してしまうため、
+    // サイズの有無から暗黙に判定するのではなく明示指定にしている）。
+    const isFullScreenOverlay = overlayMode === OVERLAY_FILL;
+    const overlayAnchor = isFullScreenOverlay ? null : overlayMode;
     const anchorX = overlayAnchor?.endsWith('right') ? { right: x } : { left: x };
     const anchorY = overlayAnchor?.startsWith('bottom') ? { bottom: y } : { top: y };
-    // iOS は長押しで「コピー / 調べる」callout を出し、mod の長押し操作を奪う。
-    // contextmenu の抑止(InputCollector)だけでは消えないので mod UI 全体で切っておく。
-    // mod 側の対応は不要（テキスト選択自体は残すので、選択させたい mod も壊れない）。
     const wrapperStyle: React.CSSProperties = isCanvas
-        ? { position: 'absolute', inset: 0, zIndex: heldZ, pointerEvents: 'none', WebkitTouchCallout: 'none' }
-        : {
-              position: 'absolute',
-              ...anchorX,
-              ...anchorY,
-              zIndex: heldZ,
-              WebkitTouchCallout: 'none',
-              width: w > 0 ? w : undefined,
-              height: h > 0 ? h : undefined,
-              // Entity の transform は配置・基準サイズであって描画のマスクではない。
-              // clip が必要な Panel / ScrollView 等の mod は JSX 側でその要素自身に
-              // overflow: 'hidden' / 'auto' を指定する。
-              pointerEvents: 'none',
-              opacity: isHeldByOther ? 0.85 : undefined,
-              transition: isHeldByOther ? 'transform 80ms linear' : undefined,
-              transform: `translate(var(--held-dx, 0px), var(--held-dy, 0px)) scale(${scale ?? 1}) rotate(${rotation ?? 0}deg)`,
-              transformOrigin: '0 0',
-          };
+        ? { position: 'absolute', inset: 0, zIndex: heldZ, pointerEvents: 'none' }
+        : isFullScreenOverlay
+          ? { position: 'absolute', inset: 0, zIndex: heldZ, pointerEvents: 'none' }
+          : {
+                position: 'absolute',
+                ...anchorX,
+                ...anchorY,
+                zIndex: heldZ,
+                width: w > 0 ? w : undefined,
+                height: h > 0 ? h : undefined,
+                // Entity の transform は配置・基準サイズであって描画のマスクではない。
+                // clip が必要な Panel / ScrollView 等の mod は JSX 側でその要素自身に
+                // overflow: 'hidden' / 'auto' を指定する。
+                pointerEvents: 'none',
+                opacity: isHeldByOther ? 0.85 : undefined,
+                transition: isHeldByOther ? 'transform 80ms linear' : undefined,
+                transform: `translate(var(--held-dx, 0px), var(--held-dy, 0px)) scale(${scale ?? 1}) rotate(${rotation ?? 0}deg)`,
+                transformOrigin: '0 0',
+            };
 
     return (
         <div ref={divRef} style={wrapperStyle}>

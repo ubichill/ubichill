@@ -63,6 +63,7 @@ export const InstanceRenderer: React.FC = () => {
             <HoldProvider>
                 <div
                     data-scroll-world
+                    data-ubi-mod-surface
                     style={{
                         position: 'fixed',
                         inset: 0,
@@ -108,6 +109,7 @@ export const InstanceRenderer: React.FC = () => {
                 {/* overlay: true の Entity 専用レイヤー。data-scroll-world の外側に置くことで
                     スクロール座標の影響を受けない画面固定 HUD として振る舞う。 */}
                 <div
+                    data-ubi-mod-surface
                     style={{
                         position: 'fixed',
                         inset: 0,

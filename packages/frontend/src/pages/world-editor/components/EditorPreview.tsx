@@ -245,6 +245,7 @@ export function EditorPreview({
                             onMouseDown={(e) => {
                                 if (e.target === e.currentTarget) onBackgroundMouseDown?.();
                             }}
+                            data-ubi-mod-surface
                             style={{ position: 'absolute', inset: 0, overflow: 'auto' }}
                         >
                             <PreviewStage
@@ -279,7 +280,7 @@ function EditorOverlayStage({ entities }: { entities: Map<string, ComponentInsta
     );
     if (overlayEntityIds.length === 0) return null;
     return (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 99000, pointerEvents: 'none' }}>
+        <div data-ubi-mod-surface style={{ position: 'absolute', inset: 0, zIndex: 99000, pointerEvents: 'none' }}>
             {overlayEntityIds.map((id) => (
                 <EntityRenderer key={id} entityId={id} />
             ))}

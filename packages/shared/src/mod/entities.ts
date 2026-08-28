@@ -87,8 +87,26 @@ export const EMPTY_ENTITY_TYPE = '__entity__';
 export const OVERLAY_ANCHORS = ['top-left', 'top-right', 'bottom-left', 'bottom-right'] as const;
 export type OverlayAnchor = (typeof OVERLAY_ANCHORS)[number];
 
-/** `overlay` 値から基準の角を解決する（`true` は `'top-left'`、未指定/false は null）。 */
-export function resolveOverlayAnchor(overlay: boolean | OverlayAnchor | undefined): OverlayAnchor | null {
+/**
+ * 画面全体を覆う HUD レイヤーにする指定。transform の x/y/w/h は無視され（z のみ有効）、
+ * mod が自前の絶対配置で画面の好きな場所に置ける。
+ * 「左下にスティック・右下にボタン」のように1 Component で複数箇所へ配置したいときに使う。
+ */
+export const OVERLAY_FILL = 'fill';
+
+/** `overlay` に指定できる文字列（角 4 種 + 画面全体）。 */
+export const OVERLAY_MODES = [...OVERLAY_ANCHORS, OVERLAY_FILL] as const;
+
+/** `overlay` に指定できる値。`true` は `'top-left'` と同義。 */
+export type OverlayMode = boolean | (typeof OVERLAY_MODES)[number];
+
+/**
+ * `overlay` 値を描画モードへ正規化する。
+ *  - `'fill'`            … 画面全体を覆う HUD レイヤー
+ *  - `OverlayAnchor`     … その角を基準に transform.x/y を距離として配置
+ *  - `null`              … 画面固定しない（通常のワールド座標）
+ */
+export function resolveOverlayMode(overlay: OverlayMode | undefined): OverlayAnchor | typeof OVERLAY_FILL | null {
     if (!overlay) return null;
     return overlay === true ? 'top-left' : overlay;
 }
@@ -116,11 +134,11 @@ export interface ComponentInstance<T = unknown> {
     ownerId: string | null;
     lockedBy: string | null;
     /**
-     * 画面固定オーバーレイ（HUD）として描画するか。指定すると transform.x/y をワールド座標ではなく
-     * 「基準にした画面の角からの距離」として解釈し、ワールドスクロールの影響を受けなくなる。
-     * `true` は `'top-left'` と同義。
+     * 画面固定オーバーレイ（HUD）として描画するか。角を指定すると transform.x/y をワールド座標では
+     * なく「その角からの距離」として解釈し、ワールドスクロールの影響を受けなくなる。
+     * `'fill'` は画面全体を覆うレイヤー。`true` は `'top-left'` と同義。
      */
-    overlay?: boolean | OverlayAnchor;
+    overlay?: OverlayMode;
     transform: EntityTransform;
     data: T;
 }

@@ -8,7 +8,7 @@
  *
  * 返す LoadedMod は React/DOM 非依存の中立表現。Host が WorkerModDefinition にマップする。
  */
-import type { ComponentDataFieldSpec, OverlayAnchor } from '@ubichill/shared';
+import type { ComponentDataFieldSpec, OverlayMode } from '@ubichill/shared';
 import { type ModLock, requiresLock, resolveLockedMod } from '@ubichill/shared';
 import { sriOf } from './integrity.ts';
 import type { AcquireResult, FetchLike, LoadedMod } from './types.ts';
@@ -25,7 +25,7 @@ interface WorkerMetaObject {
     mediaTargets?: string[];
     defaultTransform?: Record<string, unknown>;
     dataFields?: Record<string, unknown>;
-    overlay?: boolean | OverlayAnchor;
+    overlay?: OverlayMode;
 }
 
 interface VersionedModJson {

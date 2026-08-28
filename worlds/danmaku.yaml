@@ -48,14 +48,15 @@ spec:
             isTrigger: false
             layer: player
             mask: [wall]
-        # タッチ/ペン環境向けの仮想パッド。ship (danmaku:player) と同じEntityに載せることで
+        # タッチ/ペン環境向けの仮想コントローラ。ship (danmaku:player) と同じEntityに載せることで
         # scope:'subtree' の mobile:key_down/up が届く。
-        # overlay に画面の角を指定すると x/y はワールド座標ではなく「その角からの距離」になり、
-        # ワールドスクロールにも画面サイズにも影響されない (縦/横/タブレットいずれでも画面内)。
+        # overlay: fill = ワールドスクロールの影響を受けない、画面全体を覆う HUD レイヤー。
+        # スティック(左下)/ボタン(右下)の配置は mod 側が持つので、縦/横/タブレットでも画面内に収まる。
+        # 角を基準に置きたい場合は overlay: bottom-left 等を指定し、x/y をその角からの距離にする。
         - id: mobile-pad
           type: mobile-controller:controller
-          overlay: bottom-left
-          transform: { x: 24, y: 24, z: 2000, w: 240, h: 140 }
+          overlay: fill
+          transform: { x: 0, y: 0, z: 2000 }
           data:
             targetType: danmaku:player
     - id: field

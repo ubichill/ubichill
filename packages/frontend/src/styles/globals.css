@@ -1,6 +1,28 @@
 @layer reset, base, tokens, recipes, utilities;
 
 /* ────────────────────────────────────────────────────────────────────────────
+   mod 描画面 (ワールド + 画面固定 HUD) の長押しジェスチャ抑止
+   ────────────────────────────────────────────────────────────────────────────
+   スマホは「長押しでテキスト選択を開始する」ときにハプティクス(バイブ)を鳴らす。
+   contextmenu を preventDefault してもこの振動は止まらないので、選択そのものを
+   無効化する必要がある。ワールド内はゲーム操作が主で選択の必要が薄いため、
+   mod 描画面 (`data-ubi-mod-surface`) 全体で切る。
+   テキスト入力欄だけは編集・貼り付けのため選択を戻す。
+   ──────────────────────────────────────────────────────────────────────────── */
+[data-ubi-mod-surface] {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+[data-ubi-mod-surface] input,
+[data-ubi-mod-surface] textarea,
+[data-ubi-mod-surface] [contenteditable] {
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
    Ubi.grip / Gripable のホバースケール
    ────────────────────────────────────────────────────────────────────────────
    Worker 内の JSX は React state を持たないので :hover を JS で検知できない。
