@@ -1,0 +1,37 @@
+---
+"@ubichill/shared": minor
+"@ubichill/sdk": minor
+"@ubichill/ui-renderer": minor
+"@ubichill/loader": patch
+"@ubichill/backend": patch
+---
+
+スマホ/タブレットのタッチ操作に対応した。
+
+**入力**: 入力収集を PointerEvent 化し、各入力イベントに `pointerType`(mouse/pen/touch)を、
+mod へ `Ubi.hasCoarsePointer`(タッチ/ペンが使えるか。`any-pointer: coarse` も見るのでマウス併用の
+ハイブリッド端末でも true)を公開した。mod 開発者はこの 1 つの真偽値を見るだけで、見た目と
+ロジックの出し分けに集中できる。mod UI のポインタイベント detail には要素のローカル座標と
+要素サイズを渡す(`UiPointerActionDetail`)ので、要素の画面位置やビューポートサイズを知らなくても
+仮想スティックのようなドラッグ操作を実装できる。
+
+**画面固定オーバーレイ**: `ComponentConfig.overlay` / `EntityComponentSchema.overlay` を追加。
+画面の角(`top-left` 等)を指定すると transform.x/y を「その角からの距離」として解釈するので、
+画面サイズ(縦/横/タブレット)に依存せず HUD が画面内に収まる。`fill` は画面全体を覆うレイヤーで、
+1 Component で「左下にスティック・右下にボタン」のように複数箇所へ配置できる。
+manifest の値は Component 追加時の既定値で、以降は World Editor の Inspector で Entity ごとに
+上書きできる。
+
+**長押し対策**: タッチ/ペンの長押しで出るネイティブのコンテキストメニューを抑止し(テキスト入力欄は
+貼り付けのため除外)、mod 描画面ではテキスト選択も無効化した。選択ジェスチャがハプティクス(バイブ)の
+発生源なので、これを切らないと「どこを押しても振動する」状態が止まらない。
+
+**ドラッグの取り合い**: 何かを持っている間(`Ubi.grip`)はワールドのスクロールコンテナを
+`touch-action: none` にして、指のドラッグを mod の操作として扱う。既定ではブラウザがパン
+(スクロール)と解釈して `pointercancel` を発火させ、ペンで描く操作が最初の一筆で途切れていた。
+
+**バグ修正**: `worldResolver` の正規化が Component のフィールドを列挙して組み直していたため、
+スキーマに追加した項目(overlay)を黙って落としていた。また入力座標をワールド座標へ直すための
+スクロール量供給元の登録がマウント時一度だけで、Worker 再生成(`myUserId` 確定・権限承認)で
+失われ、スクロール後に描いた線が指の位置からスクロール量だけずれていた。overlay Entity を
+掴んだときの座標系のずれも修正した。
