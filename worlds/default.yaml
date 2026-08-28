@@ -100,6 +100,10 @@ spec:
         scale: 1
         rotation: 0
       components: []
+    # 画面固定のペン置き場。overlay を付けると transform が画面座標(左上からの距離)になり、
+    # ワールドをどこまでスクロールしても・スマホの狭い画面でも必ず手元に残る。
+    # 親のトレイと子のペンすべてに同じ overlay を指定して、座標系を揃える必要がある
+    # (子 Entity の座標は親からの相対で、flatten 時に親原点と合成されるため)。
     - id: pentray
       tags: []
       children:
@@ -119,6 +123,7 @@ spec:
                 color: "#93bcf0"
                 strokeWidth: 4
               type: pen:pen
+              overlay: top-left
         - id: pen2
           tags: []
           children: []
@@ -135,17 +140,19 @@ spec:
                 color: "#1a1a1a"
                 strokeWidth: 4
               type: pen:pen
+              overlay: top-left
       transform:
         h: 67
         w: 266
-        x: 609
-        y: 17
+        x: 16
+        y: 16
         z: 4
         scale: 1
         rotation: 0
       components:
         - data: {}
           type: pen:tray
+          overlay: top-left
     - id: pen-canvas
       tags: []
       children: []

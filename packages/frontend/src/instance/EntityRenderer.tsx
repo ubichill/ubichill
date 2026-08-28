@@ -12,6 +12,12 @@ interface EntityRendererProps {
     entityId: string;
 }
 
+/** ワールドのスクロール量。overlay(画面座標) と world 座標の変換に使う。 */
+function readWorldScroll(): { x: number; y: number } {
+    const el = document.querySelector('[data-scroll-world]') as HTMLElement | null;
+    return { x: el?.scrollLeft ?? 0, y: el?.scrollTop ?? 0 };
+}
+
 /**
  * Worker mod エンティティ用ホスト。
  *
@@ -65,6 +71,8 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
     const entity = entities.get(entityId);
     const mod = entity ? modMap.get(entity.type) : null;
     const isWorker = mod !== undefined && mod !== null && isWorkerMod(mod);
+    // overlay Entity は transform が画面座標。掴み追従の座標変換で分岐に使う。
+    const isOverlayEntity = resolveOverlayMode(entity?.overlay) !== null;
 
     // 自分が持っているか
     const isHeldByMe = !!entity && held?.entityId === entityId;
@@ -91,11 +99,11 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
             const h = heldRef.current;
             if (!h || h.entityId !== entityId) return;
 
-            const scrollEl = document.querySelector('[data-scroll-world]') as HTMLElement | null;
-            const sx = scrollEl?.scrollLeft ?? 0;
-            const sy = scrollEl?.scrollTop ?? 0;
-            const targetX = e.clientX + sx + h.offsetX;
-            const targetY = e.clientY + sy + h.offsetY;
+            // overlay Entity の transform は画面座標なので、ワールド座標へ変換する
+            // スクロール量を足してはいけない（足すとスクロール分ずれて指から離れる）。
+            const scroll = isOverlayEntity ? { x: 0, y: 0 } : readWorldScroll();
+            const targetX = e.clientX + scroll.x + h.offsetX;
+            const targetY = e.clientY + scroll.y + h.offsetY;
 
             div.style.setProperty('--held-dx', `${targetX - baseX}px`);
             div.style.setProperty('--held-dy', `${targetY - baseY}px`);
@@ -105,11 +113,9 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
         const initOffsetX = held?.offsetX ?? -24;
         const initOffsetY = held?.offsetY ?? 0;
         const w = window as Window & { _lastMouseX?: number; _lastMouseY?: number };
-        const scrollEl = document.querySelector('[data-scroll-world]') as HTMLElement | null;
-        const sx = scrollEl?.scrollLeft ?? 0;
-        const sy = scrollEl?.scrollTop ?? 0;
-        const initialX = (w._lastMouseX ?? 0) + sx + initOffsetX;
-        const initialY = (w._lastMouseY ?? 0) + sy + initOffsetY;
+        const initScroll = isOverlayEntity ? { x: 0, y: 0 } : readWorldScroll();
+        const initialX = (w._lastMouseX ?? 0) + initScroll.x + initOffsetX;
+        const initialY = (w._lastMouseY ?? 0) + initScroll.y + initOffsetY;
 
         div.style.setProperty('--held-dx', `${initialX - baseX}px`);
         div.style.setProperty('--held-dy', `${initialY - baseY}px`);
@@ -121,7 +127,16 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
             div.style.removeProperty('--held-dx');
             div.style.removeProperty('--held-dy');
         };
-    }, [isHeldByMe, entityId, held?.offsetX, held?.offsetY, heldRef, entity?.transform.x, entity?.transform.y]);
+    }, [
+        isHeldByMe,
+        entityId,
+        held?.offsetX,
+        held?.offsetY,
+        heldRef,
+        entity?.transform.x,
+        entity?.transform.y,
+        isOverlayEntity,
+    ]);
 
     // ── 他ユーザーが持っているとき: HeldEntityPositionRegistry で CSS 変数のみ更新 ──
     // biome-ignore lint/correctness/useExhaustiveDependencies: users / entity 全体は初期参照だけ。subscribe 後は registry が逐次更新するので deps では transform.x/y のみ追跡する
@@ -143,10 +158,13 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
             div.style.setProperty('--held-dy', `${targetY - baseY}px`);
         }
 
-        // Registry に登録: cursor:moved で座標が更新されるたびに呼ばれる
+        // Registry に登録: cursor:moved で座標が更新されるたびに呼ばれる。
+        // 座標はワールド系で届くため、overlay Entity では自分のスクロール量を引いて画面座標へ直す
+        // (相手のビューポート/スクロールは分からないので、あくまで自分の画面での近似表示)。
         const unsub = HeldEntityPositionRegistry.subscribe(entityId, (worldX, worldY) => {
-            div.style.setProperty('--held-dx', `${worldX - baseX}px`);
-            div.style.setProperty('--held-dy', `${worldY - baseY}px`);
+            const scroll = isOverlayEntity ? readWorldScroll() : { x: 0, y: 0 };
+            div.style.setProperty('--held-dx', `${worldX - scroll.x - baseX}px`);
+            div.style.setProperty('--held-dy', `${worldY - scroll.y - baseY}px`);
         });
 
         return () => {
@@ -155,7 +173,7 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
             div.style.removeProperty('--held-dx');
             div.style.removeProperty('--held-dy');
         };
-    }, [isHeldByOther, holderId, entityId, entity?.transform.x, entity?.transform.y]); // users は意図的に除外（初期値のみ使用）
+    }, [isHeldByOther, holderId, entityId, entity?.transform.x, entity?.transform.y, isOverlayEntity]); // users は意図的に除外（初期値のみ使用）
 
     // null guard はすべての hook 呼び出しの後
     if (!entity || !mod || !isWorker) return null;
