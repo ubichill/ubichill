@@ -94,11 +94,15 @@ export const HoldProvider: React.FC<{ children: React.ReactNode }> = ({ children
                             });
                         }
                     }
-                }
 
-                heldRef.current = null;
-                setHeld(null);
-                heldEntitySyncRef.set(null);
+                    // 解放したのが「今持っているもの」だったときだけ hold 状態を畳む。
+                    // 持ち替え (A を持ったまま B を掴む) では B の hold が先に届き、その後で
+                    // A の release が届く。ここを無条件に畳むと B の追従だけが止まり、
+                    // worker 側は掴んだままなので「追従しないのに操作はできる」状態になる。
+                    heldRef.current = null;
+                    setHeld(null);
+                    heldEntitySyncRef.set(null);
+                }
             } else if (payload.action === 'setHover') {
                 // hold より前に届くことがあるので pending に保存
                 pendingHoverRef.current = { cursor: payload.cursor, heldCursor: payload.heldCursor };
