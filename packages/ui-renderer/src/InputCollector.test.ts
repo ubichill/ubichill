@@ -6,10 +6,25 @@ import { InputCollector } from './InputCollector';
  * jsdom は PointerEvent を実装していないため、必要な範囲だけ MouseEvent で代用する。
  * `pointerType` は InputCollector が読む唯一の PointerEvent 固有プロパティ。
  */
-function pointerDown(target: Element, pointerType: 'mouse' | 'pen' | 'touch'): void {
-    const e = new MouseEvent('pointerdown', { bubbles: true, clientX: 10, clientY: 10 });
+function pointerDown(target: Element, pointerType: 'mouse' | 'pen' | 'touch', clientX = 10, clientY = 10): void {
+    const e = new MouseEvent('pointerdown', { bubbles: true, clientX, clientY });
     Object.defineProperty(e, 'pointerType', { value: pointerType });
     target.dispatchEvent(e);
+}
+
+function pointerMove(target: Element, clientX: number, clientY: number): void {
+    const e = new MouseEvent('pointermove', { bubbles: true, clientX, clientY, buttons: 1 });
+    Object.defineProperty(e, 'pointerType', { value: 'touch' });
+    target.dispatchEvent(e);
+}
+
+/** jsdom はレイアウトを持たないので scrollLeft/Top を差し替えたスクロール要素を作る。 */
+function makeScrollEl(scrollLeft: number, scrollTop: number): Element {
+    const el = document.createElement('div');
+    Object.defineProperty(el, 'scrollLeft', { value: scrollLeft, configurable: true });
+    Object.defineProperty(el, 'scrollTop', { value: scrollTop, configurable: true });
+    document.body.appendChild(el);
+    return el;
 }
 
 /** 長押し/右クリックで発火する contextmenu。preventDefault されたかを返す。 */
@@ -23,6 +38,9 @@ let collector: InputCollector | null = null;
 
 function setup(html: string): Element {
     document.body.innerHTML = html;
+    // jsdom は elementFromPoint を実装していない。CURSOR_STYLE 検出でのみ使われるので、
+    // 座標変換のテストでは「直下に要素なし」を返すスタブで十分。
+    document.elementFromPoint = () => null;
     collector = new InputCollector();
     const el = document.body.firstElementChild;
     if (!el) throw new Error('テスト対象の要素がない');
@@ -118,5 +136,48 @@ describe('InputCollector: pointerType の伝播', () => {
         const { events } = collector?.collectSince(0) ?? { events: [] };
         const down = events.find((ev) => ev.type === 'MOUSE_DOWN');
         expect(down?.data).toMatchObject({ pointerType: 'mouse' });
+    });
+});
+
+// ワールドがスクロールされている状態で「クリックした場所」と「描かれる場所」が一致するかは
+// この座標変換だけで決まる。ここが崩れると、スクロール量だけずれた位置に線が描かれる。
+describe('InputCollector: ワールド座標への変換（スクロール量の加算）', () => {
+    it('スクロール要素を登録すると x/y にスクロール量が乗り、viewportX/Y は素の座標のまま', () => {
+        const div = setup('<div>world</div>');
+        collector?.setScrollElement(makeScrollEl(300, 120));
+
+        pointerDown(div, 'touch', 40, 50);
+        const { events } = collector?.collectSince(0) ?? { events: [] };
+        const down = events.find((ev) => ev.type === 'MOUSE_DOWN');
+        expect(down?.data).toMatchObject({ x: 340, y: 170, viewportX: 40, viewportY: 50 });
+    });
+
+    it('MOUSE_MOVE も同じ変換を通る（ストロークの各点がずれない）', () => {
+        const div = setup('<div>world</div>');
+        collector?.setScrollElement(makeScrollEl(300, 120));
+
+        pointerMove(div, 40, 50);
+        const { events } = collector?.collectSince(0) ?? { events: [] };
+        const move = events.find((ev) => ev.type === 'MOUSE_MOVE');
+        expect(move?.data).toMatchObject({ x: 340, y: 170, viewportX: 40, viewportY: 50 });
+    });
+
+    it('スクロール要素が未登録だとスクロール量が 0 扱いになる（登録漏れが座標ずれになる）', () => {
+        const div = setup('<div>world</div>');
+        pointerDown(div, 'touch', 40, 50);
+        const { events } = collector?.collectSince(0) ?? { events: [] };
+        const down = events.find((ev) => ev.type === 'MOUSE_DOWN');
+        // ワールド座標がビューポート座標と同じになってしまう = スクロール分ずれる
+        expect(down?.data).toMatchObject({ x: 40, y: 50 });
+    });
+
+    it('登録を外すとスクロール量の加算も止まる', () => {
+        const div = setup('<div>world</div>');
+        collector?.setScrollElement(makeScrollEl(300, 120));
+        collector?.setScrollElement(null);
+
+        pointerDown(div, 'touch', 40, 50);
+        const { events } = collector?.collectSince(0) ?? { events: [] };
+        expect(events.find((ev) => ev.type === 'MOUSE_DOWN')?.data).toMatchObject({ x: 40, y: 50 });
     });
 });
