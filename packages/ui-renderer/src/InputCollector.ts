@@ -177,6 +177,16 @@ export class InputCollector {
 
         // CONTEXT_MENU: 右クリックメニューを抑制し離散イベントとして積む（UI 要素は除外）
         this._onContextMenu = (e: MouseEvent) => {
+            // タッチ/ペンの長押しは「右クリックしたい」意図ではないので、ネイティブメニューを
+            // 抑止して mod へも流さない。メニューが開くとブラウザが pointercancel を発火し、
+            // 指を離していないのにボタンが解放されて操作が破綻する（仮想パッド等）。
+            // ただしテキスト入力欄では貼り付け等のネイティブメニューが必要なので残す。
+            if (this._lastPointerType !== 'mouse') {
+                const target = e.target;
+                const isTextTarget = target instanceof Element && target.closest(TEXT_SELECTOR) !== null;
+                if (!isTextTarget) e.preventDefault();
+                return;
+            }
             if (_isInteractiveTarget(e.target)) return;
             e.preventDefault();
             const scrollLeft = this._scrollEl?.scrollLeft ?? 0;
@@ -198,6 +208,9 @@ export class InputCollector {
 
         // 離散イベント: UI 要素上は無視、それ以外は全件保持
         this._onMouseDown = (e: PointerEvent) => {
+            // ポインタ種別は早期 return より前に記録する。指を動かさない長押しでは pointermove が
+            // 来ないため、ここで記録しないと contextmenu 側でタッチかどうか判定できない。
+            this._lastPointerType = _normalizePointerType(e.pointerType);
             if (_isInteractiveTarget(e.target)) return;
             const scrollLeft = this._scrollEl?.scrollLeft ?? 0;
             const scrollTop = this._scrollEl?.scrollTop ?? 0;

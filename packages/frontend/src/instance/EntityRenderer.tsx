@@ -175,13 +175,17 @@ const EntityRendererInner: React.FC<EntityRendererProps> = ({ entityId }) => {
     const overlayAnchor = resolveOverlayAnchor(entity.overlay);
     const anchorX = overlayAnchor?.endsWith('right') ? { right: x } : { left: x };
     const anchorY = overlayAnchor?.startsWith('bottom') ? { bottom: y } : { top: y };
+    // iOS は長押しで「コピー / 調べる」callout を出し、mod の長押し操作を奪う。
+    // contextmenu の抑止(InputCollector)だけでは消えないので mod UI 全体で切っておく。
+    // mod 側の対応は不要（テキスト選択自体は残すので、選択させたい mod も壊れない）。
     const wrapperStyle: React.CSSProperties = isCanvas
-        ? { position: 'absolute', inset: 0, zIndex: heldZ, pointerEvents: 'none' }
+        ? { position: 'absolute', inset: 0, zIndex: heldZ, pointerEvents: 'none', WebkitTouchCallout: 'none' }
         : {
               position: 'absolute',
               ...anchorX,
               ...anchorY,
               zIndex: heldZ,
+              WebkitTouchCallout: 'none',
               width: w > 0 ? w : undefined,
               height: h > 0 ? h : undefined,
               // Entity の transform は配置・基準サイズであって描画のマスクではない。
