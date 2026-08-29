@@ -1,0 +1,18 @@
+[
+  {
+    "id": "mobile-controller",
+    "name": "mobile-controller",
+    "version": "1.0.0",
+    "components": [
+      "mobile-controller:controller"
+    ],
+    "versions": [
+      {
+        "version": "1.0.0",
+        "components": [
+          "mobile-controller:controller"
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,24 @@
+{
+  "id": "mobile-controller",
+  "name": "mobile-controller",
+  "version": "1.0.0",
+  "components": {
+    "mobile-controller:controller": {
+      "defaultTransform": {
+        "x": 0,
+        "y": 0,
+        "z": 2000
+      },
+      "overlay": "fill",
+      "description": "タッチ/ペン環境で操作する画面固定コントローラ（仮想スティック + アクションボタン）。",
+      "capabilities": [
+        "event:emit",
+        "scene:read",
+        "scene:update",
+        "ui:render"
+      ],
+      "workerUrl": "./controller/index.a7e6fb90.js"
+    }
+  },
+  "assets": []
+}
