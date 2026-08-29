@@ -3,7 +3,7 @@
  *
  * ペンの選択ロジックは pen:pen Worker 側で完結している。canvas は:
  *   1. ワールド全体の pen:pen を watch して「自分のユーザーが保持中のペン」を 1 本特定
- *   2. マウス入力で stroke を組み立て
+ *   2. pen:pen から届くペン先座標 (pen:draw:*) で stroke を組み立て
  *   3. 完成 stroke を canvas にコミット + broadcast + pen:stroke Entity として永続化
  *   4. canvas frame に active stroke と全ユーザーぶんのペンカーソルを描画
  *      (リモートユーザーが保持中のペンも presence の worldX/Y で位置同期される)
@@ -42,8 +42,6 @@ const draw = Ubi.state.define({
     strokeWidth: 4,
     isDrawing: false,
     currentStroke: [] as Array<[x: number, y: number, pressure: number]>,
-    cursorX: 0,
-    cursorY: 0,
 });
 
 // ────────────────────────────────────────────────────────────────
@@ -138,23 +136,23 @@ PenEvents.on('entity:pen:pen', (pen) => {
     }
 });
 
-PenEvents.on('input:mouse_move', ({ x, y, buttons }) => {
+// 座標は「ペン先の位置」として pen:pen から届く（カーソル位置ではない）。
+// どこから線が出るかはペンの形状と持ち方で決まり、それを知っているのはペン本体だけなので、
+// canvas は受け取った点をそのまま線にする。
+PenEvents.on('pen:draw:down', ({ x, y }) => {
     if (draw.local.heldPenId === null) return;
-    draw.local.cursorX = x;
-    draw.local.cursorY = y;
-    if (draw.local.isDrawing && buttons & 1) draw.local.currentStroke.push([x, y, 1]);
-});
-
-PenEvents.on('input:mouse_down', ({ x, y, button }) => {
-    if (draw.local.heldPenId === null || button !== 0) return;
     draw.batch(() => {
         draw.local.isDrawing = true;
         draw.local.currentStroke = [[x, y, 1]];
     });
 });
 
-PenEvents.on('input:mouse_up', ({ button }) => {
-    if (draw.local.heldPenId === null || button !== 0) return;
+PenEvents.on('pen:draw:move', ({ x, y }) => {
+    if (!draw.local.isDrawing) return;
+    draw.local.currentStroke.push([x, y, 1]);
+});
+
+PenEvents.on('pen:draw:up', () => {
     draw.local.isDrawing = false;
 });
 
@@ -171,7 +169,7 @@ PenEvents.on('entity:pen:stroke', (entity) => {
     }
 });
 
-// マウス up で stroke が確定したらコミット + 永続化
+// pen:draw:up で stroke が確定したらコミット + 永続化
 const flushCompletedStroke = (): void => {
     if (draw.local.isDrawing || draw.local.currentStroke.length <= 1) return;
     const strokeData: CanvasStrokeData = {
