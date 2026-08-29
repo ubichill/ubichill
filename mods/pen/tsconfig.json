@@ -11,14 +11,23 @@
         "resolveJsonModule": true,
         "jsx": "react-jsx",
         "jsxImportSource": "ubichill",
-        // mod が import してよいのは公開パッケージ `ubichill` だけ。参照先も npm に出るビルド済み
-        // 成果物 (dist-npm) に向けることで、外部の mod 作者とまったく同じ型で検査される
-        // (SDK のソースを見ると、公開 d.ts には現れない内部依存まで解決できてしまう)。
-        // 事前に `pnpm build:sdk` が必要。
+        // mod が import してよいのは npm 公開パッケージ `ubichill` だけ。ここに並ぶ 3 つが
+        // 公開パッケージの exports と 1:1 で対応する。
+        // ワイルドカード (`ubichill/*`) は置かないこと。SDK の内部ファイルへ直接 import できて
+        // しまい、リポジトリ内では通るのに npm 経由の mod では解決できない壊れ方をする。
+        //
+        // 参照先は SDK のソース。公開物 (dist-npm) を指すと `pnpm build:sdk` を先に済ませないと
+        // mod のビルドもテストも通らなくなる（ビルド順の依存が全体に伝播する）ため、
+        // 「公開 API から漏れていないか」は CI 側の import ガードで担保する。
+        // core-components はその SDK ソースが内部で使っているだけで、mod から import してよい
+        // ものではない（公開版はインライン化済みの依存ゼロ d.ts）。
         "paths": {
             "@/*": ["./src/*"],
-            "ubichill": ["../../packages/sdk/dist-npm"],
-            "ubichill/*": ["../../packages/sdk/dist-npm/*"]
+            "ubichill": ["../../packages/sdk/src/index.ts"],
+            "ubichill/jsx-runtime": ["../../packages/sdk/src/jsx/jsx-runtime.ts"],
+            "ubichill/gripable": ["../../packages/sdk/src/jsx/Gripable.tsx"],
+            "@ubichill/core-components": ["../../packages/core-components/src/index.ts"],
+            "@ubichill/core-components/public": ["../../packages/core-components/src/public.ts"]
         }
     },
     "include": ["src/**/*.ts", "src/**/*.tsx"],

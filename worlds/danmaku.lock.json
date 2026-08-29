@@ -4,21 +4,20 @@
     "danmaku": {
       "id": "danmaku",
       "version": "1.0.0",
-      "manifestIntegrity": "sha256-yIJEUiTCbNABPEqBb1mE6jU5U8y64kvg7CEtQAJNcjo=",
+      "manifestIntegrity": "sha256-NIAsje6dYoKf2NQ7ieC7Zl9tW9JNZIUcbaUPp1gwb90=",
       "components": {
         "danmaku:canvas": {
-          "workerUrl": "./canvas/index.beb1b928.js",
-          "integrity": "sha256-vrG5KKsHIKNzciovUVy+2TPbbka1bFxl/Y3Zu7JfhWg=",
+          "workerUrl": "./canvas/index.767fc813.js",
+          "integrity": "sha256-dn/IE0t3x12nvPHLPYmfqPKpj3L4men4fyVwH3bkP+8=",
           "capabilities": [
             "canvas:draw",
             "event:emit",
-            "scene:read",
-            "scene:update"
+            "scene:read"
           ]
         },
         "danmaku:player": {
-          "workerUrl": "./player/index.ae516719.js",
-          "integrity": "sha256-rlFnGYWXtWZWzo0WSTnVhXR9AqqmpmOW117fR+SFD9I=",
+          "workerUrl": "./player/index.d5aea573.js",
+          "integrity": "sha256-1a6lc1Dht3TvpEITv9323efR6KXyj41Ip6PCF1sfKQU=",
           "capabilities": [
             "event:emit",
             "scene:read",
@@ -27,8 +26,8 @@
           ]
         },
         "danmaku:wall": {
-          "workerUrl": "./wall/index.27d019b2.js",
-          "integrity": "sha256-J9AZssftfLZ3Q5u9qMGeIzWcQtDurhUBcqU0CdhfnqU=",
+          "workerUrl": "./wall/index.8074af9d.js",
+          "integrity": "sha256-gHSvnbc2K/oeCzVsbux+RQ9Pf1N9/Hl/3sEhHd3xzDU=",
           "capabilities": [
             "ui:render"
           ]
@@ -38,11 +37,11 @@
     "mobile-controller": {
       "id": "mobile-controller",
       "version": "1.0.0",
-      "manifestIntegrity": "sha256-EKJqFEayDsThClZJGDq7jap57c2zoaiydc+8q40s/Gw=",
+      "manifestIntegrity": "sha256-v1Mh8lflb0rtMyATRDRWVsHzj8vonZtQF2pcgahviiw=",
       "components": {
         "mobile-controller:controller": {
-          "workerUrl": "./controller/index.e1d232f9.js",
-          "integrity": "sha256-4dIy+QlmyRcPCGh0dKBvffqQ4dKoxEWgRVPxltUisRg=",
+          "workerUrl": "./controller/index.a7e6fb90.js",
+          "integrity": "sha256-p+b7kAg2y9MZl7/bWlpNbojQKea8DjWfD7pVzR5guvU=",
           "capabilities": [
             "event:emit",
             "scene:read",
