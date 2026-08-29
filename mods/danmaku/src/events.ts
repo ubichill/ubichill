@@ -19,6 +19,10 @@ export const DanmakuEvents = Ubi.event.define<{
     // ── SDK 由来: キー入力 (input:*) ──
     'input:key_down': InputKeyDownData;
     'input:key_up': InputKeyUpData;
+    // ── mobile-controller mod 由来: 仮想パッドのボタン押下/解放 (同Entity, scope:'subtree') ──
+    // 実装は import せず、鍵入力と同じ shape の規約でのみ結合する (zero-trust)。
+    'mobile:key_down': { code: string };
+    'mobile:key_up': { code: string };
     // ── 自mod: 自機 → canvas への発射通知 (emit, scope:'world', targetType:'danmaku:canvas') ──
     'danmaku:shoot': { x: number; y: number; speed: number };
 }>();

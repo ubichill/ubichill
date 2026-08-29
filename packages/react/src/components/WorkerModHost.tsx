@@ -257,11 +257,17 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
     const { onNetworkBroadcast } = useModBroadcast(entityId, sendEvent);
     onNetworkBroadcastRef.current = onNetworkBroadcast;
 
+    // ワールドのスクロール量の供給元を登録する。入力座標をワールド座標へ直すのに使う。
+    // workerRevision を deps に入れるのが重要: Worker が作り直されると新しい instanceKey で
+    // 登録が null に戻るため、再登録しないとスクロール量が 0 として扱われ、
+    // スクロール後に描いた線が指の位置からスクロール量だけずれる。
+    // myUserId(接続後に確定) や enabled(権限承認後) の変化で Worker は実際に作り直される。
+    // biome-ignore lint/correctness/useExhaustiveDependencies: workerRevision は effect 内で読まないが、Worker 再生成を検知して再登録するためのトリガーとして必要。
     useEffect(() => {
         const el = document.querySelector('[data-scroll-world]');
         if (el) setScrollElement(el);
         return () => setScrollElement(null);
-    }, [setScrollElement]);
+    }, [setScrollElement, workerRevision]);
 
     useModPresence(definition, users, sendEvent, workerRevision);
     useModEntitySync(definition, entities, sendEvent, workerRevision, entity.entityId);

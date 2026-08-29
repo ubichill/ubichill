@@ -1,5 +1,5 @@
 import { CORE_COMPONENT_TYPES, createDefaultColliderData } from '@ubichill/core-components';
-import type { WorldDefinition } from '@ubichill/shared';
+import type { OverlayMode, WorldDefinition } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 
 /**
@@ -60,6 +60,8 @@ export interface AvailableEntityKind {
     thumbnailUrl?: string;
     /** 見た目の描画方式。manifest の canvasTargets / ui:render capability から自動判定。 */
     viewKind: 'jsx' | 'canvas' | 'logic';
+    /** 画面固定オーバーレイの既定値（基準の角。`true` は `top-left`）。 */
+    overlay?: OverlayMode;
 }
 
 /** modのインストール有無に関係なく、Hostが必ず提供する組み込みComponent。 */
@@ -86,6 +88,7 @@ interface VersionedManifestComponent {
     defaultTransform?: AvailableEntityKind['defaultTransform'];
     dataFields?: DataFields;
     thumbnail?: string;
+    overlay?: OverlayMode;
 }
 
 interface VersionedManifest {
@@ -190,6 +193,7 @@ export function useAvailableEntityKinds(definition: WorldDefinition | null): {
                     dataFields: meta.dataFields,
                     thumbnailUrl: meta.thumbnail ? `${versionedBase}/${meta.thumbnail}` : undefined,
                     viewKind: deriveViewKind(meta),
+                    overlay: meta.overlay,
                 }));
             }),
         )

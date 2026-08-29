@@ -199,6 +199,11 @@ export function createGripModule(deps: GripModuleDeps): GripModule {
             let cancelMouseUp: (() => void) | null = null;
 
             const listeners = new Set<(next: string | null, prev: string | null) => void>();
+            // release(dropCoords) が指定した戻り先。holder の変化を検知する下の onChange が
+            // CMD_GRIP release の「唯一の送信元」で、そこから読む。
+            // release() 側でも別に送ると、先に届いた座標なしの release で host 側の hold 状態が
+            // 消え、後から届く座標付き release が捨てられて戻り先が反映されない。
+            let pendingDrop: { x: number; y: number } | undefined;
             inner.onChange('holder', (next, prev) => {
                 const me = deps.getMyUserId();
                 // ゴースト防止: 自分の hold が外的要因 (他人の emit による奪取・サーバー patch・
@@ -210,7 +215,10 @@ export function createGripModule(deps: GripModuleDeps): GripModule {
                         action: 'release',
                         entityId: deps.getComponentInstanceId() ?? '',
                         share,
+                        dropX: pendingDrop?.x,
+                        dropY: pendingDrop?.y,
                     });
+                    pendingDrop = undefined;
                 }
                 for (const fn of listeners) fn(next as string | null, prev as string | null);
             });
@@ -312,22 +320,17 @@ export function createGripModule(deps: GripModuleDeps): GripModule {
                     }
                 },
                 release(dropCoords?: { x: number; y: number }): void {
-                    const entityId = deps.getComponentInstanceId() ?? '';
-
                     // press モードの mouseup listener をキャンセル
                     cancelMouseUp?.();
                     cancelMouseUp = null;
 
+                    // holder を落とすと onChange が同期で発火し、そこで CMD_GRIP release が
+                    // 1 度だけ送られる (ホストは EntityRenderer のカーソル追従を終了し、
+                    // dropCoords があればそこへ Entity を移動する)。
+                    pendingDrop = dropCoords;
                     inner.local.holder = null;
-
-                    // ホストへ CMD_GRIP release を送信 → EntityRenderer がカーソル追従終了
-                    deps.sendGripCommand({
-                        action: 'release',
-                        entityId,
-                        share,
-                        dropX: dropCoords?.x,
-                        dropY: dropCoords?.y,
-                    });
+                    // 既に holder が null で onChange が発火しなかった場合に持ち越さない
+                    pendingDrop = undefined;
                 },
                 onChange(listener): () => void {
                     listeners.add(listener);

@@ -1,4 +1,4 @@
-import type { ComponentDataFieldSpec, LockRejectReason } from '@ubichill/shared';
+import type { ComponentDataFieldSpec, LockRejectReason, OverlayMode } from '@ubichill/shared';
 
 /**
  * 取得・検証済みの mod（React/DOM 非依存の中立表現）。
@@ -21,6 +21,8 @@ export interface LoadedMod {
     mediaTargets?: string[];
     singleton?: boolean;
     thumbnail?: string;
+    /** 画面固定オーバーレイの既定値（角 / `'fill'`。`true` は `'top-left'`）。Component 追加時の初期値。 */
+    overlay?: OverlayMode;
     /** Inspector 用の data フィールド宣言（entityRef 等）。Host が declaredTargets 算出に使う。 */
     dataFields?: Record<string, ComponentDataFieldSpec>;
 }

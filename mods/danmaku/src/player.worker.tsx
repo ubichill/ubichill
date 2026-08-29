@@ -37,12 +37,20 @@ const player = Ubi.state.define({
 });
 const ride = Ubi.ride.exclusive();
 
-const pressed = new Set<string>();
+// 入力元ごとに別の Set で持つ。同じ Set を共有すると、キーボードで押しっぱなしの間に
+// 仮想パッドの同じボタンを押して離しただけでキーボード側の入力まで消えてしまう
+// （逆方向も同様）。判定は isDown() で両方の Set を OR する。
+const keyboardPressed = new Set<string>();
+const padPressed = new Set<string>();
+const isDown = (code: string): boolean => keyboardPressed.has(code) || padPressed.has(code);
 let transform: ComponentInstance['transform'] | null = null;
 let collider: ColliderData = PLAYER_COLLIDER;
 let worldColliders: ColliderInstance[] = [];
 let shootCooldown = 0;
-ride.onChange(() => pressed.clear());
+ride.onChange(() => {
+    keyboardPressed.clear();
+    padPressed.clear();
+});
 
 if (Ubi.componentInstanceId) {
     Promise.all([
@@ -60,13 +68,20 @@ if (Ubi.componentInstanceId) {
 
 DanmakuEvents.on('input:key_down', ({ code }) => {
     if (code === 'Escape' && ride.isMine) {
-        pressed.clear();
+        keyboardPressed.clear();
+        padPressed.clear();
         ride.release();
         return;
     }
-    pressed.add(code);
+    keyboardPressed.add(code);
 });
-DanmakuEvents.on('input:key_up', ({ code }) => pressed.delete(code));
+DanmakuEvents.on('input:key_up', ({ code }) => keyboardPressed.delete(code));
+
+// mobile-controller:controller（同Entity上の仮想パッド）からのボタン押下/解放。
+// キーボードとは別の Set に書くので、片方の解放がもう片方の入力を消さない
+// （mobile-controller 側でも pointerId ベースの参照カウントでマルチタッチを吸収している）。
+DanmakuEvents.on('mobile:key_down', ({ code }) => padPressed.add(code));
+DanmakuEvents.on('mobile:key_up', ({ code }) => padPressed.delete(code));
 
 Ubi.registerSystem((_entities, deltaTime) => {
     if (!transform || !ride.isMine) return;
@@ -76,10 +91,10 @@ Ubi.registerSystem((_entities, deltaTime) => {
 
     let dx = 0;
     let dy = 0;
-    if (pressed.has('ArrowLeft')) dx -= 1;
-    if (pressed.has('ArrowRight')) dx += 1;
-    if (pressed.has('ArrowUp')) dy -= 1;
-    if (pressed.has('ArrowDown')) dy += 1;
+    if (isDown('ArrowLeft')) dx -= 1;
+    if (isDown('ArrowRight')) dx += 1;
+    if (isDown('ArrowUp')) dy -= 1;
+    if (isDown('ArrowDown')) dy += 1;
     if (dx !== 0 || dy !== 0) {
         const len = Math.hypot(dx, dy) || 1;
         const moveX = (dx / len) * player.local.speed * dt;
@@ -96,7 +111,7 @@ Ubi.registerSystem((_entities, deltaTime) => {
     }
 
     shootCooldown -= dt;
-    const wantsShoot = player.local.autoFire || pressed.has('KeyZ');
+    const wantsShoot = player.local.autoFire || isDown('KeyZ');
     if (wantsShoot && shootCooldown <= 0) {
         shootCooldown = 1 / Math.max(player.local.fireRate, 0.1);
         // 自機の先端（中央上）から上方向に撃つ。弾速は Inspector の設定値を使う。

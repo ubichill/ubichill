@@ -511,6 +511,13 @@ export type EvtLifecycleInit = {
          * Worker 互換 view（flat ComponentInstance）として渡る。
          */
         initialEntities?: ComponentInstance[];
+        /**
+         * Host環境がタッチ/ペン等の低精度ポインタ (`matchMedia('(pointer: coarse)')`) かどうか。
+         * `Ubi.hasCoarsePointer` として公開し、mod がスマホ向けの入力UI（仮想パッド等）を
+         * 出し分けるためのヒントに使う。ユーザー環境依存のUAスニッフィングではなく
+         * ブラウザの pointer メディア特性に基づく判定。
+         */
+        hasCoarsePointer?: boolean;
     };
 };
 
@@ -656,17 +663,33 @@ export type InputMouseMoveData = {
     viewportX: number;
     viewportY: number;
     buttons: number;
+    /** 発生元デバイス（PointerEvent.pointerType）。「書く」ペンと「持つ」タッチ/マウスをmod側で区別するために使う。 */
+    pointerType: 'mouse' | 'pen' | 'touch';
 };
 /**
  * マウスボタン押下データ。
  * x/y はワールド座標、viewportX/viewportY はビューポート座標。
  */
-export type InputMouseDownData = { x: number; y: number; viewportX: number; viewportY: number; button: number };
+export type InputMouseDownData = {
+    x: number;
+    y: number;
+    viewportX: number;
+    viewportY: number;
+    button: number;
+    pointerType: 'mouse' | 'pen' | 'touch';
+};
 /**
  * マウスボタン解放データ。
  * x/y はワールド座標、viewportX/viewportY はビューポート座標。
  */
-export type InputMouseUpData = { x: number; y: number; viewportX: number; viewportY: number; button: number };
+export type InputMouseUpData = {
+    x: number;
+    y: number;
+    viewportX: number;
+    viewportY: number;
+    button: number;
+    pointerType: 'mouse' | 'pen' | 'touch';
+};
 /** キーボード押下データ */
 export type InputKeyDownData = { key: string; code: string };
 /** キーボード解放データ */
@@ -686,6 +709,28 @@ export type InputScrollData = { x: number; y: number };
 export type InputResizeData = { width: number; height: number };
 /** カーソルスタイルデータ */
 export type InputCursorStyleData = { style: string };
+
+/**
+ * mod UI の `onUbiPointerDown` / `onUbiPointerMove` / `onUbiPointerUp` 等に渡される detail。
+ *
+ * 座標は「そのハンドラを付けた要素の左上を原点とするローカル座標」で、要素サイズも一緒に渡す。
+ * ビューポート座標や要素の画面上の位置を mod 側が知らなくても、要素内での相対位置
+ * （例: 仮想スティックの中心からのベクトル）だけで完結できるようにするため。
+ *
+ * タッチ/ペンは pointerdown した要素へ暗黙的にポインタキャプチャされるので、指が要素の外へ
+ * 出ても pointermove / pointerup は同じ要素に届き続ける（ドラッグ操作をそのまま実装できる）。
+ */
+export type UiPointerActionDetail = {
+    pointerType: 'mouse' | 'pen' | 'touch';
+    /** 同時に触れている指を区別する id。マルチタッチの取り違えを防ぐのに使う。 */
+    pointerId: number;
+    /** 要素の左上を原点とするローカル座標。要素外へ出ると負値や width/height 超過になる。 */
+    x: number;
+    y: number;
+    /** ハンドラを付けた要素の実サイズ（中心の算出などに使う）。 */
+    width: number;
+    height: number;
+};
 
 /** 1フレーム内の入力イベント1件 */
 export type InputFrameEvent =

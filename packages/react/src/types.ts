@@ -1,4 +1,4 @@
-import type { ComponentDataFieldSpec } from '@ubichill/shared';
+import type { ComponentDataFieldSpec, OverlayMode } from '@ubichill/shared';
 
 /**
  * modが Host (ModRegistry) に渡す定義オブジェクト（Custom Elements ベース）。
@@ -80,6 +80,11 @@ export interface WorkerModDefinition {
      * Worker は Ubi.network.sendToHost() で位置・ステータス更新を Host へ送れる。
      */
     singleton?: boolean;
+    /**
+     * 画面固定オーバーレイ（HUD）の既定値。角を指定すると transform.x/y をその角からの距離として
+     * 扱い、ワールドスクロールに影響されない。`'fill'` は画面全体。`true` は `'top-left'` と同義。
+     */
+    overlay?: OverlayMode;
     /**
      * Worker が `Ubi.network.sendToHost(type, payload)` で送ったカスタムメッセージのホスト側ハンドラ。
      * `api.sendToWorker` で Worker へ返答できる。

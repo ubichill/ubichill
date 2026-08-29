@@ -3,13 +3,14 @@
  *
  * **責務:**
  *  - 背景パネルを描画してペンを「置ける場所」だと視覚的に伝える
- *  - tray の空き領域をクリックされたら「持ってるペンを離して戻して」とブロードキャスト
+ *  - tray の空き領域をクリックされたら「持ってるペンを離して**その位置に**置け」と通知
  *    → 各 pen.worker が自分が isMine なら release する
  *  - ペンの状態 (color / strokeWidth / 選択) は一切持たない
  */
 
-import type { ComponentConfig } from '@ubichill/sdk';
+import type { ComponentConfig, UiPointerActionDetail } from '@ubichill/sdk';
 import { PenEvents } from './events';
+import { dropPointInTray } from './trayDrop';
 
 export const config: ComponentConfig = {
     defaultTransform: { x: 20, y: 20, z: 1000, w: 60, h: 240 },
@@ -17,6 +18,9 @@ export const config: ComponentConfig = {
 };
 
 const THICKNESS_OPTIONS = [2, 4, 8, 12];
+
+/** クリックした場所にペンを置くための、トレイ内ローカル座標 (pointerdown で記録)。 */
+let lastPressed: { x: number; y: number; width: number; height: number } | null = null;
 
 export default function TrayView() {
     return (
@@ -27,14 +31,26 @@ export default function TrayView() {
                     if (!Ubi.componentInstanceId) return;
                     const tray = await Ubi.entity.get(Ubi.componentInstanceId);
                     if (!tray) return;
-                    // ローカルの pen.worker に対して「トレイ座標にペンを置け」と通知
-                    PenEvents.emit(
-                        'pen:tray:release',
-                        { x: tray.transform.x, y: tray.transform.y },
-                        { scope: 'world', targetType: 'pen:pen' },
-                    );
+                    const pressed = lastPressed;
+                    // トレイのどこを押したかは pointerdown で受け取ったローカル座標で分かる。
+                    // 取れなかった場合だけトレイ原点にフォールバックする。
+                    const drop = pressed
+                        ? dropPointInTray(
+                              {
+                                  x: tray.transform.x,
+                                  y: tray.transform.y,
+                                  w: pressed.width || tray.transform.w,
+                                  h: pressed.height || tray.transform.h,
+                              },
+                              pressed,
+                          )
+                        : { x: tray.transform.x, y: tray.transform.y };
+                    // ローカルの pen.worker に対して「押した位置にペンを置け」と通知
+                    PenEvents.emit('pen:tray:release', drop, { scope: 'world', targetType: 'pen:pen' });
                 }}
-                onUbiPointerDown={() => {}}
+                onUbiPointerDown={(detail: UiPointerActionDetail) => {
+                    lastPressed = { x: detail.x, y: detail.y, width: detail.width, height: detail.height };
+                }}
                 style={{
                     position: 'absolute',
                     inset: '0',

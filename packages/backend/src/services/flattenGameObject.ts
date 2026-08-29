@@ -65,6 +65,7 @@ export function flattenGameObject(
                       parentEntityId,
                       ownerId: null,
                       lockedBy: null,
+                      overlay: c.overlay,
                       transform: componentTransform,
                       data: c.data ?? {},
                   };

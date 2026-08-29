@@ -129,4 +129,12 @@ export interface ComponentConfig {
     description?: string;
     /** data-only コンポーネント（Worker を持たない） */
     dataOnly?: boolean;
+    /**
+     * 画面固定オーバーレイ（HUD）として描画するか。角を指定すると transform.x/y をワールド座標では
+     * なく「その角からの距離」として扱い、ワールドのスクロールに影響されなくなる（画面サイズ非依存）。
+     * `'fill'` は画面全体を覆うレイヤーで、mod が自前の絶対配置で好きな場所に置ける
+     * （左下にスティック・右下にボタン等）。`true` は `'top-left'` と同義。
+     * 仮想パッド・常時表示スコア表示等に使う。World Editor で Entity ごとに上書きできる既定値。
+     */
+    overlay?: boolean | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'fill';
 }

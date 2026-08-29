@@ -15,6 +15,7 @@
 import type { ComponentConfig } from '@ubichill/sdk';
 import { Gripable } from '@ubichill/sdk/gripable';
 import { PenEvents } from './events';
+import { GRIP_OFFSET, HELD_ROTATION_DEG, PEN_BOX, strokePointFor } from './penTip';
 
 export const config: ComponentConfig = {
     watchEntityTypes: ['pen:pen'],
@@ -43,16 +44,48 @@ const grip = Ubi.grip.exclusive({
         scale: 1.15,
     },
     blockedByOther: { opacity: 0.35 },
-    offset: { x: -18, y: -24 },
+    // どう持つか。線がどこから出るかはこの値と独立に penTip が決めるので、
+    // ここを変えても線はペン先から出る（既定はペン先が指の位置に来る持ち方）。
+    offset: GRIP_OFFSET,
     share: 'persistent',
     // 持った時に他のペンより手前に。リリース後もこの z は永続するので
     // 「最後に触ったペンが一番上」状態が保たれて子要素間の z が逆転しない
     bringToFront: true,
 });
 
-// tray クリック → 持っているペンを離して tray に戻す
+// tray クリック → 持っているペンを離して tray のクリック位置に置く
 PenEvents.on('pen:tray:release', (coords) => {
     if (grip.isMine) grip.release(coords);
+});
+
+// ── 描画点の送出 ──────────────────────────────────────────
+// ペンの形状・持ち方を知っているのはペン本体だけなので、ペン先の座標はここで求めて canvas へ送る。
+// canvas 側がカーソル座標から描くと、持ち方や見た目を変えた瞬間に線とペン先がずれる。
+const toCanvas = { scope: 'world', targetType: 'pen:canvas' } as const;
+let isDrawing = false;
+
+PenEvents.on('input:mouse_down', ({ x, y, button }) => {
+    if (!grip.isMine || button !== 0) return;
+    isDrawing = true;
+    PenEvents.emit('pen:draw:down', strokePointFor({ x, y }), toCanvas);
+});
+
+PenEvents.on('input:mouse_move', ({ x, y, buttons }) => {
+    if (!isDrawing || !grip.isMine || !(buttons & 1)) return;
+    PenEvents.emit('pen:draw:move', strokePointFor({ x, y }), toCanvas);
+});
+
+PenEvents.on('input:mouse_up', ({ button }) => {
+    if (!isDrawing || button !== 0) return;
+    isDrawing = false;
+    PenEvents.emit('pen:draw:up', {}, toCanvas);
+});
+
+// 手放したら描画も止める（離した瞬間に線が伸び続けないように）
+grip.onChange(() => {
+    if (grip.isMine || !isDrawing) return;
+    isDrawing = false;
+    PenEvents.emit('pen:draw:up', {}, toCanvas);
 });
 
 // tray での太さ変更 → 自分が持っているペンなら太さを反映する
@@ -79,7 +112,7 @@ const PenSvg = ({ color }: { color: string }) => (
 // いないので、変わっても再描画されない）。
 export default function PenView() {
     return (
-        <Gripable grip={grip} style={{ color: pen.local.color, width: '36px', height: '48px' }}>
+        <Gripable grip={grip} style={{ color: pen.local.color, width: `${PEN_BOX.w}px`, height: `${PEN_BOX.h}px` }}>
             <div
                 style={{
                     width: '100%',
@@ -87,7 +120,7 @@ export default function PenView() {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    transform: grip.isMine ? 'rotate(-30deg)' : 'none',
+                    transform: grip.isMine ? `rotate(${HELD_ROTATION_DEG}deg)` : 'none',
                     transformOrigin: 'bottom right',
                     transition: 'transform 0.15s ease',
                 }}

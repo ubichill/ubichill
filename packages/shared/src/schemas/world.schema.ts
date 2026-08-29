@@ -1,5 +1,6 @@
 import { isCoreComponentNamespace, isCoreComponentType, validateCoreComponentData } from '@ubichill/core-components';
 import { z } from 'zod';
+import { OVERLAY_MODES } from '../mod/entities';
 import { ModLockSchema } from './modLock.schema';
 
 // ============================================
@@ -206,6 +207,17 @@ export const EntityComponentSchema = z
         type: ComponentTypeSchema,
         data: z.record(z.string(), z.unknown()).default({}),
         transform: TransformSchema.partial().optional(),
+        /**
+         * 画面固定オーバーレイ（HUD）として描画するか。角(`top-left` 等)を指定すると transform.x/y を
+         * ワールド座標ではなく「その角からの距離」として解釈し、ワールドスクロールの影響を受けなくなる。
+         * 画面サイズに依存しないので縦/横/タブレットいずれでも画面内に収まる
+         * (例: `bottom-left` + `{x: 24, y: 24}` は常に画面左下)。
+         * `fill` は画面全体を覆うレイヤーで、transform の x/y/w/h は無視され mod が自前で配置する。
+         * `true` は `top-left` と同義。
+         * mod の manifest (`config.overlay`) は Component 追加時の既定値としてのみ使い、
+         * 追加後はここで Entity ごとに上書きできる。
+         */
+        overlay: z.union([z.boolean(), z.enum(OVERLAY_MODES)]).optional(),
     })
     .superRefine((component, ctx) => {
         if (isCoreComponentNamespace(component.type) && !isCoreComponentType(component.type)) {

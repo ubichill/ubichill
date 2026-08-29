@@ -7,6 +7,8 @@
 export const Z_INDEX = {
     /** InstanceRenderer ラッパー（Mod レイヤー全体を包むコンテナ） */
     INSTANCE_FRAME: 1000,
+    /** 画面固定オーバーレイエンティティ（config.overlay: true）のレイヤー。ワールドスクロールの影響を受けない。 */
+    ENTITY_OVERLAY: 9990,
     /** 持っているエンティティ（カーソルに追従するレイヤー） */
     HELD_ENTITY: 9995,
     /** HUD 外枠（ツールバー等の常時表示コンテナ） */
