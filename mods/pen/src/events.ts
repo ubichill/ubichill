@@ -12,7 +12,7 @@ import type {
     InputMouseDownData,
     InputMouseMoveData,
     InputMouseUpData,
-} from '@ubichill/sdk';
+} from 'ubichill';
 
 interface PenPenData {
     color?: string;

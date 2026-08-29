@@ -253,6 +253,15 @@ function sriOf(text: string): string {
     return `sha256-${hash}`;
 }
 
+/**
+ * mod から見た SDK の名前。npm で公開しているパッケージ名で、mod のソース・tsconfig の
+ * `jsxImportSource` もこれに揃える。
+ *
+ * ここをワークスペース名 (`@ubichill/sdk`) にしてはいけない。その名前はこのリポジトリの外には
+ * 存在しないので、公開 CLI を使う mod 作者の JSX ビルドが解決できずに失敗する。
+ */
+const PUBLIC_PACKAGE_NAME = 'ubichill';
+
 async function bundleWorker(entryPath: string, tsconfig?: string): Promise<string> {
     const result = await esbuild.build({
         entryPoints: [entryPath],
@@ -262,7 +271,7 @@ async function bundleWorker(entryPath: string, tsconfig?: string): Promise<strin
         platform: 'browser',
         target: 'es2022',
         jsx: 'automatic',
-        jsxImportSource: '@ubichill/sdk',
+        jsxImportSource: PUBLIC_PACKAGE_NAME,
         write: false,
         minify: true,
         tsconfig,

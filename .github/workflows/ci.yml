@@ -212,6 +212,16 @@ jobs:
           node -e "import('./index.js').then(m => { if (!m.UbiSDK) throw new Error('UbiSDK not exported'); })"
           node cli.js verify --dist-dir=../../../dist/mods
 
+      # mods/* は pnpm workspace の外なので `pnpm -r exec tsc` (typecheck ジョブ) に含まれない。
+      # ここで明示的に型検査する。参照先は build:sdk が出した dist-npm なので、外部の mod 作者と
+      # まったく同じ公開型で検査され、公開 API から漏れた型の使用がここで落ちる。
+      - name: Typecheck mods against published SDK types
+        run: |
+          for dir in mods/*/; do
+            echo "== $dir"
+            pnpm exec tsc --noEmit -p "$dir"
+          done
+
   verify-sdk:
     name: Verify SDK types & drift
     runs-on: ubuntu-latest

@@ -1,4 +1,4 @@
-import type { ColliderData, ComponentInstance } from '@ubichill/sdk';
+import type { ColliderData, ComponentInstance } from 'ubichill';
 import { describe, expect, it } from 'vitest';
 import { bulletTouchesCollider, collidesWithSolid, PLAYER_COLLIDER } from './collision';
 

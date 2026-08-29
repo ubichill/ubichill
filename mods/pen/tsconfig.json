@@ -10,15 +10,15 @@
         "esModuleInterop": true,
         "resolveJsonModule": true,
         "jsx": "react-jsx",
-        "jsxImportSource": "@ubichill/sdk",
+        "jsxImportSource": "ubichill",
+        // mod が import してよいのは公開パッケージ `ubichill` だけ。参照先も npm に出るビルド済み
+        // 成果物 (dist-npm) に向けることで、外部の mod 作者とまったく同じ型で検査される
+        // (SDK のソースを見ると、公開 d.ts には現れない内部依存まで解決できてしまう)。
+        // 事前に `pnpm build:sdk` が必要。
         "paths": {
             "@/*": ["./src/*"],
-            "@ubichill/core-components": ["../../packages/core-components/src/index.ts"],
-            "@ubichill/core-components/public": ["../../packages/core-components/src/public.ts"],
-            "@ubichill/sdk": ["../../packages/sdk/src/index.ts"],
-            "@ubichill/sdk/jsx-runtime": ["../../packages/sdk/src/jsx/jsx-runtime.ts"],
-            "@ubichill/sdk/gripable": ["../../packages/sdk/src/jsx/Gripable.tsx"],
-            "@ubichill/sdk/*": ["../../packages/sdk/src/*"]
+            "ubichill": ["../../packages/sdk/dist-npm"],
+            "ubichill/*": ["../../packages/sdk/dist-npm/*"]
         }
     },
     "include": ["src/**/*.ts", "src/**/*.tsx"],

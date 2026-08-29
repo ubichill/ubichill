@@ -13,6 +13,9 @@
         "declaration": true,
         "paths": {
             "@ubichill/sdk": ["../sdk/src/index.ts"],
+            // mods/danmaku の純ロジックを読む統合テストがあるため、mod 側が使う公開名も解決する。
+            // loader は mod ではないので参照先はソースでよい (dist-npm のビルドに依存させない)。
+            "ubichill": ["../sdk/src/index.ts"],
             "@ubichill/core-components/public": ["../core-components/src/public.ts"],
             "@ubichill/ecs": ["../ecs/src/index.ts"]
         }

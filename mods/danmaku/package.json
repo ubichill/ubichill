@@ -8,7 +8,7 @@
         ".": "./src/index.ts"
     },
     "peerDependencies": {
-        "@ubichill/sdk": "workspace:*"
+        "ubichill": "*"
     },
     "scripts": {
         "lint": "biome check src/"
