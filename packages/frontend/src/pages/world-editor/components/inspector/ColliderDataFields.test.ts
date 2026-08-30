@@ -1,4 +1,5 @@
-import { ColliderDataSchema, createDefaultColliderData } from '@ubichill/core-components';
+import { ColliderDataSchema } from '@ubichill/core-components';
+import { createDefaultColliderData } from '@ubichill/runtime';
 import { describe, expect, it } from 'vitest';
 import { normalizeColliderForEditor } from './colliderEditorData';
 

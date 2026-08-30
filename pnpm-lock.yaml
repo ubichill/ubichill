@@ -321,6 +321,8 @@ importers:
         specifier: ^19.2.3
         version: 19.2.3(@types/react@19.2.14)
 
+  packages/runtime: {}
+
   packages/sandbox:
     dependencies:
       '@ubichill/ecs':
@@ -347,6 +349,9 @@ importers:
       '@ubichill/loader':
         specifier: workspace:*
         version: link:../loader
+      '@ubichill/runtime':
+        specifier: workspace:*
+        version: link:../runtime
       '@ubichill/shared':
         specifier: workspace:*
         version: link:../shared

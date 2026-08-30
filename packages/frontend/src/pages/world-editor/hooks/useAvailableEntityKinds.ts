@@ -1,4 +1,5 @@
-import { CORE_COMPONENT_TYPES, createDefaultColliderData } from '@ubichill/core-components';
+import { CORE_COMPONENT_TYPES } from '@ubichill/core-components';
+import { createDefaultColliderData } from '@ubichill/runtime';
 import type { OverlayMode, WorldDefinition } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 

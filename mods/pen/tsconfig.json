@@ -16,17 +16,15 @@
         // ワイルドカード (`ubichill/*`) は置かないこと。SDK の内部ファイルへ直接 import できて
         // しまい、リポジトリ内では通るのに npm 経由の mod では解決できない壊れ方をする。
         //
-        // 参照先は SDK のソース。公開物 (dist-npm) を指すと `pnpm build:sdk` を先に済ませないと
-        // mod のビルドもテストも通らなくなる（ビルド順の依存が全体に伝播する）ため、
-        // 「公開 API から漏れていないか」は CI 側の import ガードで担保する。
-        // core-components はその SDK ソースが内部で使っているだけで、mod から import してよい
-        // ものではない（公開版はインライン化済みの依存ゼロ d.ts）。
+        // runtime は SDK のソースが型を借りているだけで、mod から import してよいものではない
+        // （公開版はインライン化済みの依存ゼロ d.ts なので外部の mod には現れない）。
+        // 実際に import していないことは CI のガードで検査している。
         "paths": {
             "@/*": ["./src/*"],
             "ubichill": ["../../packages/sdk/src/index.ts"],
             "ubichill/jsx-runtime": ["../../packages/sdk/src/jsx/jsx-runtime.ts"],
             "ubichill/gripable": ["../../packages/sdk/src/jsx/Gripable.tsx"],
-            "@ubichill/core-components": ["../../packages/core-components/src/index.ts"],
+            "@ubichill/runtime": ["../../packages/runtime/src/index.ts"],
             "@ubichill/core-components/public": ["../../packages/core-components/src/public.ts"]
         }
     },

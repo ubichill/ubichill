@@ -22,6 +22,7 @@
       "@ubichill/ecs": [
         "../ecs/src/index.ts"
       ],
+      "@ubichill/runtime": ["../runtime/src/index.ts"],
       "@ubichill/core-components": [
         "../core-components/src/index.ts"
       ],
