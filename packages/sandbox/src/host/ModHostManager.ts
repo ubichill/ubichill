@@ -32,7 +32,7 @@ import { type CommandContext, dispatchCommand, RpcTimeoutError } from './command
 import { CMD_TO_HANDLER } from './commandHandlers';
 import { getActiveWorkerCount, getWorker, registerWorker, unregisterWorker } from './ModRegistry';
 import { isMetricEnabled, reportDiagnostic, reportMetric } from './modDiagnostics';
-import { TickController } from './TickController';
+import { subscribeWorkerTick, unsubscribeWorkerTick } from './SimulationLoop';
 import type { HostHandlers, ModHostManagerOptions } from './types';
 
 /**
@@ -75,10 +75,9 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
     private readonly _filterInputEvents?: (
         events: import('@ubichill/shared').InputFrameEvent[],
     ) => import('@ubichill/shared').InputFrameEvent[];
-    /** Tick 生成（rAF / background interval）は TickController に委譲。tickEnabled のときのみ生成。 */
-    private readonly _tick?: TickController;
+    /** Tick はワールド共通の SimulationLoop から受け取る（Worker ごとに rAF を持たない）。 */
 
-    /** 1 Tick 分の処理: メトリクス通知 + Worker への Tick 送信。TickController から呼ばれる。 */
+    /** 1 Tick 分の処理: メトリクス通知 + Worker への Tick 送信。SimulationLoop から呼ばれる。 */
     private _onTick(deltaTime: number): void {
         // メトリクスが有効なときのみ計測・通知
         if (isMetricEnabled()) {
@@ -131,14 +130,12 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
             logPrefix: this._logPrefix,
         };
 
+        // tickFps は「tick を回すかどうか」の判定にのみ使う。実際の刻みはワールド共通の
+        // SimulationLoop が持つので、Worker ごとに間隔を変えることはできない。
         const fps = options.tickFps ?? 60;
-        const intervalMs = fps > 0 ? 1000 / fps : 0;
         this.tickEnabled = !options.disableAutoTick && fps > 0;
         this._autoInputEnabled = this.tickEnabled && !options.disableAutoInput;
         this._filterInputEvents = options.filterInputEvents;
-        this._tick = this.tickEnabled
-            ? new TickController({ intervalMs, onTick: (deltaMs) => this._onTick(deltaMs) })
-            : undefined;
 
         const maxExecutionTime = options.maxExecutionTime ?? 0;
 
@@ -196,7 +193,11 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
             },
         });
 
-        this._tick?.start();
+        // ワールド共通のループへ相乗りする。tick の順序は登録順で確定し、
+        // どれか 1 つが例外を投げても他の Worker の時間は止まらない（dispatcher 側で隔離）。
+        if (this.tickEnabled) {
+            subscribeWorkerTick(this._instanceKey, (deltaMs) => this._onTick(deltaMs));
+        }
 
         if (this._autoInputEnabled) {
             acquireSharedInput(this._instanceKey);
@@ -373,7 +374,7 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
             clearTimeout(this.executionTimer);
             this.executionTimer = null;
         }
-        this._tick?.stop();
+        unsubscribeWorkerTick(this._instanceKey);
         if (this._autoInputEnabled) {
             releaseSharedInput(this._instanceKey);
         }

@@ -15,7 +15,7 @@ export * from './host/fetchHandler';
 // ── usecase: 個々の Worker のライフサイクル ──
 export { ModHostManager } from './host/ModHostManager';
 // ── repository: 在籍簿 + emit ルーティング ──
-export { getActiveWorkerCount, resetRegistryForTests, routeEmit } from './host/ModRegistry';
+export { deliverToEntity, getActiveWorkerCount, resetRegistryForTests, routeEmit } from './host/ModRegistry';
 export * from './host/modDiagnostics';
 // ── 型 ──
 export type {
@@ -25,3 +25,11 @@ export type {
     ModHostManagerOptions,
     ModWorkerInfo,
 } from './host/types';
+export {
+    COLLISION_ENTER_EVENT,
+    COLLISION_EXIT_EVENT,
+    type CollisionEventData,
+    startWorldSimulation,
+    stopWorldSimulation,
+    type WorldSimulationOptions,
+} from './host/worldSimulation';
