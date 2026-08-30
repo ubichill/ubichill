@@ -16,7 +16,7 @@
  * （`scope: 'subtree'` で同 Entity 上の Component へ配送するため）。
  * `Ubi.hasCoarsePointer` が false（マウス/トラックパッド環境）のときは何も描画しない。
  */
-import type { ComponentConfig, UiPointerActionDetail } from '@ubichill/sdk';
+import type { ComponentConfig, UiPointerActionDetail } from 'ubichill';
 import { MobileControllerEvents } from './events';
 import { diffDirections, resolveStick } from './stick';
 

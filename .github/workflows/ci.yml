@@ -212,6 +212,26 @@ jobs:
           node -e "import('./index.js').then(m => { if (!m.UbiSDK) throw new Error('UbiSDK not exported'); })"
           node cli.js verify --dist-dir=../../../dist/mods
 
+      # mods/* は pnpm workspace の外なので `pnpm -r exec tsc` (typecheck ジョブ) に含まれない。
+      # ここで明示的に型検査する。
+      - name: Typecheck mods
+        run: |
+          for dir in mods/*/; do
+            echo "== $dir"
+            pnpm exec tsc --noEmit -p "$dir"
+          done
+
+      # mod は npm 公開パッケージ `ubichill` にだけ依存する。tsconfig の paths は SDK ソースを
+      # 指しており、その解決のために内部パッケージ (@ubichill/*) も引けてしまうので、
+      # 「実際に import していないこと」はここで直接検査する。
+      # これを許すと、リポジトリ内では通るのに npm 経由の mod では解決できない mod が生まれる。
+      - name: Ensure mods only import the public SDK package
+        run: |
+          if grep -rn --include='*.ts' --include='*.tsx' "from '@ubichill/\|from \"@ubichill/\|import('@ubichill/" mods/*/src; then
+            echo "::error::mod が内部パッケージ (@ubichill/*) を import しています。公開パッケージ 'ubichill' だけを使ってください。"
+            exit 1
+          fi
+
   verify-sdk:
     name: Verify SDK types & drift
     runs-on: ubuntu-latest

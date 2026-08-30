@@ -1,4 +1,4 @@
-import { type ColliderData, createDefaultColliderData } from '@ubichill/core-components';
+import { type ColliderData, createDefaultColliderData } from '@ubichill/runtime';
 import { useId } from 'react';
 import { css } from '@/styled-system/css';
 import { normalizeColliderForEditor } from './colliderEditorData';

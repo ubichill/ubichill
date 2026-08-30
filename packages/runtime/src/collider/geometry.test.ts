@@ -1,10 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import { containsPoint, matchesCollisionLayers, overlaps, resolveColliderGeometry } from './overlap';
-import { ColliderDataSchema } from './schema';
+import { containsPoint, matchesCollisionLayers, overlaps, resolveColliderGeometry } from './geometry';
+import type { ColliderData } from './types';
+
+/**
+ * 幾何計算は Zod に依存しない純粋な層なので、テストでも値を直接組み立てる。
+ * スキーマの既定値やバリデーションは core-components 側の責務。
+ */
+function rect(overrides: Partial<Extract<ColliderData, { shape: 'rect' }>> = {}): ColliderData {
+    return {
+        shape: 'rect',
+        size: 'entity',
+        offset: { x: 0, y: 0 },
+        isTrigger: true,
+        layer: 'default',
+        mask: ['default'],
+        ...overrides,
+    };
+}
 
 describe('core:collider geometry', () => {
     it('Entity transform + offset から矩形geometryを解決する', () => {
-        const collider = ColliderDataSchema.parse({ shape: 'rect', offset: { x: 2, y: 3 }, size: { w: 10, h: 20 } });
+        const collider = rect({ offset: { x: 2, y: 3 }, size: { w: 10, h: 20 } });
         expect(resolveColliderGeometry({ x: 10, y: 20, scale: 2 }, collider)).toEqual({
             shape: 'rect',
             x: 14,
@@ -15,7 +31,7 @@ describe('core:collider geometry', () => {
     });
 
     it('size: entity はUIと同じEntity transformのw/hを使う', () => {
-        const collider = ColliderDataSchema.parse({ shape: 'rect', size: 'entity' });
+        const collider = rect({ size: 'entity' });
         expect(resolveColliderGeometry({ x: 10, y: 20, w: 32, h: 28, scale: 1 }, collider)).toEqual({
             shape: 'rect',
             x: 10,
@@ -34,24 +50,9 @@ describe('core:collider geometry', () => {
     });
 
     it('layer/mask は双方が許可した組み合わせだけ接触させる', () => {
-        const player = ColliderDataSchema.parse({
-            shape: 'rect',
-            size: { w: 20, h: 20 },
-            layer: 'player',
-            mask: ['wall'],
-        });
-        const wall = ColliderDataSchema.parse({
-            shape: 'rect',
-            size: { w: 20, h: 20 },
-            layer: 'wall',
-            mask: ['player'],
-        });
-        const sensor = ColliderDataSchema.parse({
-            shape: 'rect',
-            size: { w: 20, h: 20 },
-            layer: 'sensor',
-            mask: ['player'],
-        });
+        const player = rect({ layer: 'player', mask: ['wall'] });
+        const wall = rect({ layer: 'wall', mask: ['player'] });
+        const sensor = rect({ layer: 'sensor', mask: ['player'] });
 
         expect(matchesCollisionLayers(player, wall)).toBe(true);
         expect(matchesCollisionLayers(player, sensor)).toBe(false);

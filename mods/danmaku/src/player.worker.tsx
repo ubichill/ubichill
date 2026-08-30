@@ -9,7 +9,7 @@
  * 設定できる（config.dataFields + Ubi.state.sync）。
  */
 
-import { CORE_COMPONENT_TYPES, type ColliderData, type ComponentConfig, type ComponentInstance } from '@ubichill/sdk';
+import { CORE_COMPONENT_TYPES, type ColliderData, type ComponentConfig, type ComponentInstance } from 'ubichill';
 import { type ColliderInstance, collidesWithSolid, PLAYER_COLLIDER } from './collision';
 import { DanmakuEvents } from './events';
 

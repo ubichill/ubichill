@@ -10,15 +10,22 @@
         "esModuleInterop": true,
         "resolveJsonModule": true,
         "jsx": "react-jsx",
-        "jsxImportSource": "@ubichill/sdk",
+        "jsxImportSource": "ubichill",
+        // mod が import してよいのは npm 公開パッケージ `ubichill` だけ。ここに並ぶ 3 つが
+        // 公開パッケージの exports と 1:1 で対応する。
+        // ワイルドカード (`ubichill/*`) は置かないこと。SDK の内部ファイルへ直接 import できて
+        // しまい、リポジトリ内では通るのに npm 経由の mod では解決できない壊れ方をする。
+        //
+        // runtime は SDK のソースが型を借りているだけで、mod から import してよいものではない
+        // （公開版はインライン化済みの依存ゼロ d.ts なので外部の mod には現れない）。
+        // 実際に import していないことは CI のガードで検査している。
         "paths": {
             "@/*": ["./src/*"],
-            "@ubichill/core-components": ["../../packages/core-components/src/index.ts"],
-            "@ubichill/core-components/public": ["../../packages/core-components/src/public.ts"],
-            "@ubichill/sdk": ["../../packages/sdk/src/index.ts"],
-            "@ubichill/sdk/jsx-runtime": ["../../packages/sdk/src/jsx/jsx-runtime.ts"],
-            "@ubichill/sdk/gripable": ["../../packages/sdk/src/jsx/Gripable.tsx"],
-            "@ubichill/sdk/*": ["../../packages/sdk/src/*"]
+            "ubichill": ["../../packages/sdk/src/index.ts"],
+            "ubichill/jsx-runtime": ["../../packages/sdk/src/jsx/jsx-runtime.ts"],
+            "ubichill/gripable": ["../../packages/sdk/src/jsx/Gripable.tsx"],
+            "@ubichill/runtime": ["../../packages/runtime/src/index.ts"],
+            "@ubichill/core-components/public": ["../../packages/core-components/src/public.ts"]
         }
     },
     "include": ["src/**/*.ts", "src/**/*.tsx"],

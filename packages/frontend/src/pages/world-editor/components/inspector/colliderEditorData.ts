@@ -1,4 +1,4 @@
-import { type ColliderData, createDefaultColliderData } from '@ubichill/core-components';
+import { type ColliderData, createDefaultColliderData } from '@ubichill/runtime';
 
 function finiteNumber(value: unknown, fallback: number): number {
     return typeof value === 'number' && Number.isFinite(value) ? value : fallback;

@@ -17,7 +17,8 @@
     },
     "dependencies": {
         "@ubichill/core-components": "workspace:*",
-        "@ubichill/loader": "workspace:*"
+        "@ubichill/loader": "workspace:*",
+        "@ubichill/runtime": "workspace:*"
     },
     "scripts": {
         "prebuild": "pnpm --filter @ubichill/core-components build",

@@ -11,7 +11,7 @@
  * pen:stroke は描いたペン Entity の子として生成される (parentEntityId = heldPen.entityId)。
  */
 
-import type { CanvasStrokeData, ComponentConfig, Entity, System } from '@ubichill/sdk';
+import type { CanvasStrokeData, ComponentConfig, Entity, System } from 'ubichill';
 import { PenEvents } from './events';
 
 export const config: ComponentConfig = {

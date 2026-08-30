@@ -1,4 +1,4 @@
-import type { ComponentConfig } from '@ubichill/sdk';
+import type { ComponentConfig } from 'ubichill';
 
 export const config: ComponentConfig = {
     capabilities: ['ui:render'],

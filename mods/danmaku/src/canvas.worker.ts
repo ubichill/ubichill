@@ -6,7 +6,7 @@
  * 弾は揮発的な見た目なので DB 同期はしない（この worker 内で完結）。
  */
 
-import { CORE_COMPONENT_TYPES, type ColliderData, type ComponentConfig } from '@ubichill/sdk';
+import { CORE_COMPONENT_TYPES, type ColliderData, type ComponentConfig } from 'ubichill';
 import { bulletTouchesCollider, type ColliderInstance } from './collision';
 import { type Bullet, DanmakuEvents } from './events';
 

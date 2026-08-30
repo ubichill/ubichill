@@ -5,7 +5,7 @@
  * - emit() : 同 tab 内の他 Worker へ scope + targetType を指定して送信
  */
 
-import type { InputKeyDownData, InputKeyUpData } from '@ubichill/sdk';
+import type { InputKeyDownData, InputKeyUpData } from 'ubichill';
 
 /** 自機が撃った弾（danmaku:canvas がローカルでシミュレーション・描画する）。 */
 export interface Bullet {

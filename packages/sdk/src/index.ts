@@ -8,18 +8,19 @@
  * React / Host 側 API は Host パッケージ（@ubichill/react）に分離されている。
  */
 
-// Host標準のdata-only Component。modは予約型を生成・更新できないが、公開された
-// 型と純粋なgeometry関数を使ってHostから渡されたColliderを高速に判定できる。
+// Host 組み込み Component の予約型名。データ形式そのものは Host が検証する。
+export { CORE_COMPONENT_TYPES } from '@ubichill/core-components/public';
+// ECS + メッセージング型
+export * from '@ubichill/ecs';
+// Collider の型と幾何計算は「実行時の振る舞い」なので runtime が持つ。
+// SDK が Component の実装パッケージに依存しないよう、ここから取る。
 export {
-    CORE_COMPONENT_TYPES,
     type ColliderData,
     type ColliderGeometry,
     matchesCollisionLayers,
     overlaps,
     resolveColliderGeometry,
-} from '@ubichill/core-components/public';
-// ECS + メッセージング型
-export * from '@ubichill/ecs';
+} from '@ubichill/runtime';
 // プロトコル型（@ubichill/shared より選択的に re-export）。
 // barrel（'@ubichill/shared'）ではなく個別サブパスから import する: barrel は
 // schemas/* の zod スキーマ群を抱えており、経由すると SDK の型定義バンドル生成

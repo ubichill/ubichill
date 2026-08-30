@@ -4,7 +4,7 @@ import {
     matchesCollisionLayers,
     overlaps,
     resolveColliderGeometry,
-} from '@ubichill/sdk';
+} from 'ubichill';
 
 export type ColliderInstance = ComponentInstance<ColliderData>;
 

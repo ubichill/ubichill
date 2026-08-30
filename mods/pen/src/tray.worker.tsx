@@ -8,7 +8,7 @@
  *  - ペンの状態 (color / strokeWidth / 選択) は一切持たない
  */
 
-import type { ComponentConfig, UiPointerActionDetail } from '@ubichill/sdk';
+import type { ComponentConfig, UiPointerActionDetail } from 'ubichill';
 import { PenEvents } from './events';
 import { dropPointInTray } from './trayDrop';
 

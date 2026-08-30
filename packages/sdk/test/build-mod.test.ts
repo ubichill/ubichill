@@ -29,8 +29,10 @@ interface ModFixture {
     files: Record<string, string>;
 }
 
-// packages/sdk/test/build-mod.test.ts から見た @ubichill/sdk パッケージ本体（jsx-runtime の解決用）
+// SDK パッケージ本体（jsx-runtime の解決用）。
 const SDK_PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+/** mod から見た SDK の名前。npm 公開名で、mod のソースも CLI の jsxImportSource もこれに揃う。 */
+const PUBLIC_PACKAGE_NAME = 'ubichill';
 
 /** 一時ディレクトリに fixture を書き込んでパスを返す */
 function setupFixture(fixture: ModFixture): string {
@@ -38,11 +40,12 @@ function setupFixture(fixture: ModFixture): string {
     const dir = mkdtempSync(join(tmpdir(), `ubichill-mod-test-${safeName}-`));
     writeFileSync(join(dir, 'package.json'), JSON.stringify(fixture.packageJson, null, 2), 'utf-8');
 
-    // 実際の mod repo が pnpm workspace のシンボリックリンクで @ubichill/sdk を解決するのと同じ状態を再現する。
-    // これにより jsx:'automatic' (jsxImportSource: '@ubichill/sdk') が実プロジェクトと同様に解決できる。
-    const scopeDir = join(dir, 'node_modules', '@ubichill');
-    mkdirSync(scopeDir, { recursive: true });
-    symlinkSync(SDK_PACKAGE_ROOT, join(scopeDir, 'sdk'), 'dir');
+    // `npm i ubichill` した mod プロジェクトと同じ解決状態を再現する。
+    // これにより jsx:'automatic' (jsxImportSource: 'ubichill') が実プロジェクトと同様に解決でき、
+    // 「リポジトリ内のワークスペース名でしかビルドできない」状態をこのテストが検出できる。
+    const modulesDir = join(dir, 'node_modules');
+    mkdirSync(modulesDir, { recursive: true });
+    symlinkSync(SDK_PACKAGE_ROOT, join(modulesDir, PUBLIC_PACKAGE_NAME), 'dir');
 
     const srcDir = join(dir, 'src');
     for (const [relPath, content] of Object.entries(fixture.files)) {
@@ -85,7 +88,7 @@ describe('buildMod（新規mod作成パイプライン）', () => {
             packageJson: { name: '@ubichill/mod-simple', version: '1.0.0', description: 'Simple test mod' },
             files: {
                 'main.worker.tsx': [
-                    'import type { ComponentConfig } from "@ubichill/sdk";',
+                    'import type { ComponentConfig } from "ubichill";',
                     '',
                     'export const config: ComponentConfig = {',
                     '    watchScope: "entity",',
@@ -132,7 +135,7 @@ describe('buildMod（新規mod作成パイプライン）', () => {
             packageJson: { name: '@ubichill/mod-with-fields', version: '2.0.0' },
             files: {
                 'editor.worker.tsx': [
-                    'import type { ComponentConfig } from "@ubichill/sdk";',
+                    'import type { ComponentConfig } from "ubichill";',
                     '',
                     'export const config: ComponentConfig = {',
                     '    watchScope: "entity",',
@@ -171,17 +174,17 @@ describe('buildMod（新規mod作成パイプライン）', () => {
             packageJson: { name: '@ubichill/mod-multi', version: '1.0.0' },
             files: {
                 'panel.worker.tsx': [
-                    'import type { ComponentConfig } from "@ubichill/sdk";',
+                    'import type { ComponentConfig } from "ubichill";',
                     'export const config: ComponentConfig = { capabilities: ["ui:render"] };',
                     'Ubi.ui.render(() => <div>A</div>, "panel");',
                 ].join('\n'),
                 'toolbar.worker.tsx': [
-                    'import type { ComponentConfig } from "@ubichill/sdk";',
+                    'import type { ComponentConfig } from "ubichill";',
                     'export const config: ComponentConfig = { capabilities: ["ui:render", "scene:read"] };',
                     'Ubi.ui.render(() => <div>B</div>, "toolbar");',
                 ].join('\n'),
                 'status.worker.ts': [
-                    'import type { ComponentConfig } from "@ubichill/sdk";',
+                    'import type { ComponentConfig } from "ubichill";',
                     'export const config: ComponentConfig = { capabilities: ["scene:read"] };',
                     'const e = Ubi.entity.self;',
                 ].join('\n'),
@@ -205,7 +208,7 @@ describe('buildMod（新規mod作成パイプライン）', () => {
             packageJson: { name: '@ubichill/mod-skip', version: '1.0.0' },
             files: {
                 'valid.worker.ts': [
-                    'import type { ComponentConfig } from "@ubichill/sdk";',
+                    'import type { ComponentConfig } from "ubichill";',
                     'export const config: ComponentConfig = { capabilities: [] };',
                 ].join('\n'),
                 'no_config.worker.ts': [
@@ -229,7 +232,7 @@ describe('buildMod（新規mod作成パイプライン）', () => {
             packageJson: { name: '@ubichill/mod-noversion' },
             files: {
                 'main.worker.ts': [
-                    'import type { ComponentConfig } from "@ubichill/sdk";',
+                    'import type { ComponentConfig } from "ubichill";',
                     'export const config: ComponentConfig = {};',
                 ].join('\n'),
             },
@@ -253,7 +256,7 @@ describe('buildMod（新規mod作成パイプライン）', () => {
         const srcDir = join(modDir, 'src');
         mkdirSync(srcDir, { recursive: true });
         writeFileSync(join(modDir, 'src', 'main.worker.ts'), [
-            'import type { ComponentConfig } from "@ubichill/sdk";',
+            'import type { ComponentConfig } from "ubichill";',
             'export const config: ComponentConfig = {};',
         ].join('\n'), 'utf-8');
 
@@ -281,7 +284,7 @@ describe('buildMod（新規mod作成パイプライン）', () => {
             packageJson: { name: '@ubichill/mod-braces', version: '1.0.0' },
             files: {
                 'main.worker.ts': [
-                    'import type { ComponentConfig } from "@ubichill/sdk";',
+                    'import type { ComponentConfig } from "ubichill";',
                     'export const config: ComponentConfig = {',
                     '    description: "書式は { color: red } のように書く",',
                     '    dataFields: {',
@@ -307,7 +310,7 @@ describe('buildMod（新規mod作成パイプライン）', () => {
             packageJson: { name: '@ubichill/mod-unsafe', version: '1.0.0' },
             files: {
                 'main.worker.ts': [
-                    'import type { ComponentConfig } from "@ubichill/sdk";',
+                    'import type { ComponentConfig } from "ubichill";',
                     // biome-ignore lint: テスト用に意図的に危険な式を埋め込む
                     'export const config: ComponentConfig = { capabilities: (() => { globalThis.__pwned = true; return ["ui:render"]; })() };',
                 ].join('\n'),
@@ -330,7 +333,7 @@ describe('buildMod（新規mod作成パイプライン）', () => {
             packageJson: { name: '@ubichill/mod-override', version: '1.0.0' },
             files: {
                 'main.worker.ts': [
-                    'import type { ComponentConfig } from "@ubichill/sdk";',
+                    'import type { ComponentConfig } from "ubichill";',
                     'export const config: ComponentConfig = {',
                     '    capabilities: [],',
                     '    workerUrl: "./evil/index.js",',
@@ -356,7 +359,7 @@ describe('buildMod（新規mod作成パイプライン）', () => {
             packageJson: { name: '@ubichill/mod-pointer', version: '1.0.0' },
             files: {
                 'main.worker.ts': [
-                    'import type { ComponentConfig } from "@ubichill/sdk";',
+                    'import type { ComponentConfig } from "ubichill";',
                     'export const config: ComponentConfig = {};',
                 ].join('\n'),
             },
@@ -376,7 +379,7 @@ describe('buildMod（新規mod作成パイプライン）', () => {
             packageJson: { name: '@ubichill/mod-registry', version: '1.0.0' },
             files: {
                 'main.worker.ts': [
-                    'import type { ComponentConfig } from "@ubichill/sdk";',
+                    'import type { ComponentConfig } from "ubichill";',
                     'export const config: ComponentConfig = {};',
                 ].join('\n'),
             },
@@ -404,7 +407,7 @@ describe('buildMod（新規mod作成パイプライン）', () => {
             packageJson: { name: '@ubichill/mod-history', version: '1.0.0' },
             files: {
                 'main.worker.ts': [
-                    'import type { ComponentConfig } from "@ubichill/sdk";',
+                    'import type { ComponentConfig } from "ubichill";',
                     'export const config: ComponentConfig = {};',
                 ].join('\n'),
             },
@@ -435,7 +438,7 @@ describe('buildMod（新規mod作成パイプライン）', () => {
             packageJson: { name: '@ubichill/mod-default-export', version: '1.0.0' },
             files: {
                 'view.worker.tsx': [
-                    'import type { ComponentConfig } from "@ubichill/sdk";',
+                    'import type { ComponentConfig } from "ubichill";',
                     '',
                     'export const config: ComponentConfig = {',
                     '    watchScope: "entity",',
@@ -480,7 +483,7 @@ describe('runBuild（CLI エントリポイント: 単一mod repo vs モノレ�
             packageJson: { name: '@ubichill/mod-solo', version: '1.0.0' },
             files: {
                 'main.worker.ts': [
-                    'import type { ComponentConfig } from "@ubichill/sdk";',
+                    'import type { ComponentConfig } from "ubichill";',
                     'export const config: ComponentConfig = {};',
                 ].join('\n'),
             },
@@ -505,7 +508,7 @@ describe('runBuild（CLI エントリポイント: 単一mod repo vs モノレ�
         writeFileSync(join(modsDir, 'package.json'), JSON.stringify({ name: '@ubichill/mod-sub-mod', version: '1.0.0' }), 'utf-8');
         writeFileSync(
             join(modsDir, 'src', 'main.worker.ts'),
-            ['import type { ComponentConfig } from "@ubichill/sdk";', 'export const config: ComponentConfig = {};'].join('\n'),
+            ['import type { ComponentConfig } from "ubichill";', 'export const config: ComponentConfig = {};'].join('\n'),
             'utf-8',
         );
 
@@ -533,7 +536,7 @@ describe('runBuild（CLI エントリポイント: 単一mod repo vs モノレ�
             );
             writeFileSync(
                 join(modDir, 'src', 'main.worker.ts'),
-                ['import type { ComponentConfig } from "@ubichill/sdk";', 'export const config: ComponentConfig = {};'].join(
+                ['import type { ComponentConfig } from "ubichill";', 'export const config: ComponentConfig = {};'].join(
                     '\n',
                 ),
                 'utf-8',

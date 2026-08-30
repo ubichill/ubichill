@@ -49,7 +49,13 @@ export default defineConfig({
                 replacement: srcPath('./packages/loader/src/updateDependencies.ts'),
             },
             { find: /^@ubichill\/ecs$/, replacement: srcPath('./packages/ecs/src/index.ts') },
+            { find: /^@ubichill\/runtime$/, replacement: srcPath('./packages/runtime/src/index.ts') },
             { find: /^@ubichill\/sdk$/, replacement: srcPath('./packages/sdk/src/index.ts') },
+            // mod から見た公開名。mod のソースは npm 公開名で import するため、テストでも解決する。
+            // テストはソースを見る（dist-npm のビルド有無に左右されないようにする）。
+            { find: /^ubichill$/, replacement: srcPath('./packages/sdk/src/index.ts') },
+            { find: /^ubichill\/jsx-runtime$/, replacement: srcPath('./packages/sdk/src/jsx/jsx-runtime.ts') },
+            { find: /^ubichill\/gripable$/, replacement: srcPath('./packages/sdk/src/jsx/Gripable.tsx') },
             { find: /^@ubichill\/ui-renderer$/, replacement: srcPath('./packages/ui-renderer/src/index.ts') },
         ],
     },

@@ -50,11 +50,11 @@
     "pen": {
       "id": "pen",
       "version": "2.0.0",
-      "manifestIntegrity": "sha256-2vjGsZ5VbZDOpQnqplZLe/inYbqgM88Gg0JpVOSfHAA=",
+      "manifestIntegrity": "sha256-lsfA15mq+kOyhIWsrGipe4q6jop/MGopZ49xvVL4GLA=",
       "components": {
         "pen:canvas": {
-          "workerUrl": "./canvas/index.ae8b47a9.js",
-          "integrity": "sha256-rotHqQoM4Fmz23sjOgIaq+azFiQsJdcH4ztnA50t0JI=",
+          "workerUrl": "./canvas/index.582a78a7.js",
+          "integrity": "sha256-WCp4p1jc0TxXHUa2KVNsRiWE75OVVUIVt3dxg0fs7nk=",
           "capabilities": [
             "canvas:draw",
             "event:broadcast",
@@ -64,8 +64,8 @@
           ]
         },
         "pen:pen": {
-          "workerUrl": "./pen/index.8285db3b.js",
-          "integrity": "sha256-goXbOwzdErtTw5E2F9+7jF/u94+sVhHIoC4x9mpucE8=",
+          "workerUrl": "./pen/index.df9fd0ce.js",
+          "integrity": "sha256-35/QzsPErsw3pAuSFloob0fDOWOD8wI30tjff/zdqng=",
           "capabilities": [
             "event:emit",
             "host:message",
@@ -75,8 +75,8 @@
           ]
         },
         "pen:tray": {
-          "workerUrl": "./tray/index.9bfc00b7.js",
-          "integrity": "sha256-m/wAt91scAxFh707F9js51tmT67odeHUEvf5fSZEmIQ=",
+          "workerUrl": "./tray/index.3102effe.js",
+          "integrity": "sha256-MQLv/usuBVrfzoWbILDSSn2mZa/aQ/2SLVJEi2/WwaY=",
           "capabilities": [
             "event:emit",
             "scene:read",
