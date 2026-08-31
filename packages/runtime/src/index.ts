@@ -21,7 +21,9 @@ export type {
     Vec2,
 } from './collider/types.js';
 export { createDefaultColliderData } from './collider/types.js';
-export type { ColliderInstance, CollisionEvents, Contact } from './collision/contacts.js';
-export { contactKey, detectContacts, diffContacts } from './collision/contacts.js';
+export type { ColliderInstance, CollisionEvents, Contact, ContactCandidate } from './collision/contacts.js';
+export { canContact, contactKey, detectContacts, diffContacts } from './collision/contacts.js';
+export type { OverlapProbe } from './collision/query.js';
+export { findOverlapping, isOverlapping } from './collision/query.js';
 export type { CollisionTracker } from './collision/tracker.js';
 export { createCollisionTracker } from './collision/tracker.js';
