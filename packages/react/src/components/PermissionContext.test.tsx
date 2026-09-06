@@ -85,57 +85,74 @@ describe('authorizeMod（読み込み時の一括承認）', () => {
     });
 });
 
-describe('authorizeFetchDomain（ドメイン単位・今回だけ/次回以降/拒否）', () => {
+describe('authorizeExternalDomain（fetch・メディア共通のドメイン許可）', () => {
+    it('同じmod・ドメインの同時要求は1つの確認にまとめる', async () => {
+        const ctx = setup();
+        let fetchRequest: boolean | Promise<boolean> = false;
+        let mediaRequest: boolean | Promise<boolean> = false;
+        act(() => {
+            fetchRequest = ctx.current.authorizeExternalDomain('vp', 'media.example.com');
+            mediaRequest = ctx.current.authorizeExternalDomain('vp', 'media.example.com');
+        });
+
+        expect(fetchRequest).toBe(mediaRequest);
+        expect(ctx.current.pendingPrompt).toEqual({ kind: 'external', modId: 'vp', domain: 'media.example.com' });
+        act(() => ctx.current.resolvePrompt('once'));
+        await expect(fetchRequest).resolves.toBe(true);
+        await expect(mediaRequest).resolves.toBe(true);
+        expect(ctx.current.pendingPrompt).toBeNull();
+    });
+
     it('既定はドメインごとにプロンプト。「次回以降も許可」で記憶される', async () => {
         const ctx = setup();
         let p: boolean | Promise<boolean> = false;
         act(() => {
-            p = ctx.current.authorizeFetchDomain('vp', 'api.example.com');
+            p = ctx.current.authorizeExternalDomain('vp', 'api.example.com');
         });
-        expect(ctx.current.pendingPrompt).toEqual({ kind: 'fetch', modId: 'vp', domain: 'api.example.com' });
+        expect(ctx.current.pendingPrompt).toEqual({ kind: 'external', modId: 'vp', domain: 'api.example.com' });
         act(() => ctx.current.resolvePrompt('always'));
         await expect(p).resolves.toBe(true);
         // 記憶され、次回は同期 true
-        expect(ctx.current.authorizeFetchDomain('vp', 'api.example.com')).toBe(true);
+        expect(ctx.current.authorizeExternalDomain('vp', 'api.example.com')).toBe(true);
     });
 
     it('「今回だけ」は true を返すが記憶しない（次回また聞く）', async () => {
         const ctx = setup();
         let p: boolean | Promise<boolean> = false;
         act(() => {
-            p = ctx.current.authorizeFetchDomain('vp', 'api.example.com');
+            p = ctx.current.authorizeExternalDomain('vp', 'api.example.com');
         });
         act(() => ctx.current.resolvePrompt('once'));
         await expect(p).resolves.toBe(true);
         // 記憶されていないので再度プロンプト
         act(() => {
-            void ctx.current.authorizeFetchDomain('vp', 'api.example.com');
+            void ctx.current.authorizeExternalDomain('vp', 'api.example.com');
         });
-        expect(ctx.current.pendingPrompt).toEqual({ kind: 'fetch', modId: 'vp', domain: 'api.example.com' });
+        expect(ctx.current.pendingPrompt).toEqual({ kind: 'external', modId: 'vp', domain: 'api.example.com' });
     });
 
     it('「拒否」は false を返し記憶される', async () => {
         const ctx = setup();
         let p: boolean | Promise<boolean> = true;
         act(() => {
-            p = ctx.current.authorizeFetchDomain('vp', 'evil.example.com');
+            p = ctx.current.authorizeExternalDomain('vp', 'evil.example.com');
         });
         act(() => ctx.current.resolvePrompt('deny'));
         await expect(p).resolves.toBe(false);
-        expect(ctx.current.authorizeFetchDomain('vp', 'evil.example.com')).toBe(false);
+        expect(ctx.current.authorizeExternalDomain('vp', 'evil.example.com')).toBe(false);
     });
 
     it('シールド「なし」は全ドメイン即許可、「拒否」は全ドメイン即拒否', () => {
         const ctx = setup();
         act(() => ctx.current.setTierDefaults({ safe: 'allow', sensitive: 'allow', dangerous: 'allow' }));
-        expect(ctx.current.authorizeFetchDomain('vp', 'api.example.com')).toBe(true);
+        expect(ctx.current.authorizeExternalDomain('vp', 'api.example.com')).toBe(true);
         expect(ctx.current.pendingPrompt).toBeNull();
         act(() => ctx.current.setTierDefaults({ safe: 'allow', sensitive: 'deny', dangerous: 'deny' }));
-        expect(ctx.current.authorizeFetchDomain('vp', 'api.example.com')).toBe(false);
+        expect(ctx.current.authorizeExternalDomain('vp', 'api.example.com')).toBe(false);
     });
 });
 
-describe('grantCapability / grantFetchDomain（拒否トーストの「許可」ボタン用）', () => {
+describe('grantCapability / grantExternalDomain（拒否トーストの「許可」ボタン用）', () => {
     it('拒否済み capability を許可に上書きできる', async () => {
         const ctx = setup();
         // まず拒否
@@ -153,21 +170,21 @@ describe('grantCapability / grantFetchDomain（拒否トーストの「許可」
         expect(ctx.current.authorizeCapability('p', 'mystery:power')).toBe(true);
     });
 
-    it('拒否済み fetch ドメインを許可に上書きできる', async () => {
+    it('拒否済み外部通信ドメインを許可に上書きできる', async () => {
         const ctx = setup();
         let p: boolean | Promise<boolean> = true;
         act(() => {
-            p = ctx.current.authorizeFetchDomain('vp', 'api.example.com');
+            p = ctx.current.authorizeExternalDomain('vp', 'api.example.com');
         });
         act(() => ctx.current.resolvePrompt('deny'));
         await expect(p).resolves.toBe(false);
-        act(() => ctx.current.grantFetchDomain('vp', 'api.example.com'));
-        expect(ctx.current.authorizeFetchDomain('vp', 'api.example.com')).toBe(true);
+        act(() => ctx.current.grantExternalDomain('vp', 'api.example.com'));
+        expect(ctx.current.authorizeExternalDomain('vp', 'api.example.com')).toBe(true);
     });
 });
 
 describe('取り消し', () => {
-    it('revokeGrant / revokeFetchGrant で記憶を消せる', async () => {
+    it('revokeGrant / revokeExternalGrant で記憶を消せる', async () => {
         const onChange = vi.fn();
         const ctx = setup(onChange);
         // capability を許可 → 取り消し
@@ -178,19 +195,19 @@ describe('取り消し', () => {
         expect(ctx.current.authorizeCapability('p', 'mystery:power')).toBe(true);
         act(() => ctx.current.revokeGrant('p', 'mystery:power'));
         expect(ctx.current.authorizeCapability('p', 'mystery:power')).toBe(false);
-        // fetch を許可 → 取り消し
+        // 外部通信ドメインを許可 → 取り消し
         let fp: boolean | Promise<boolean> = false;
         act(() => {
-            fp = ctx.current.authorizeFetchDomain('p', 'api.example.com');
+            fp = ctx.current.authorizeExternalDomain('p', 'api.example.com');
         });
         act(() => ctx.current.resolvePrompt('always'));
         await fp;
-        expect(ctx.current.authorizeFetchDomain('p', 'api.example.com')).toBe(true);
-        act(() => ctx.current.revokeFetchGrant('p', 'api.example.com'));
+        expect(ctx.current.authorizeExternalDomain('p', 'api.example.com')).toBe(true);
+        act(() => ctx.current.revokeExternalGrant('p', 'api.example.com'));
         act(() => {
-            void ctx.current.authorizeFetchDomain('p', 'api.example.com');
+            void ctx.current.authorizeExternalDomain('p', 'api.example.com');
         });
-        expect(ctx.current.pendingPrompt).toMatchObject({ kind: 'fetch', domain: 'api.example.com' });
+        expect(ctx.current.pendingPrompt).toMatchObject({ kind: 'external', domain: 'api.example.com' });
         expect(onChange).toHaveBeenCalled();
     });
 });

@@ -100,9 +100,9 @@ export function SettingsTab() {
         );
     }
 
-    const { policy, setTierDefaults, revokeGrant, revokeFetchGrant } = permissions;
+    const { policy, setTierDefaults, revokeGrant, revokeExternalGrant } = permissions;
     const currentLevel = matchShieldLevel(policy.tierDefaults);
-    // capability grant または fetch ドメイン grant を持つmodの和集合。
+    // capability grant または外部通信ドメイン grant を持つmodの和集合。
     const modIds = [...new Set([...Object.keys(policy.grants), ...Object.keys(policy.fetchGrants)])].filter(
         (id) => Object.keys(policy.grants[id] ?? {}).length > 0 || Object.keys(policy.fetchGrants[id] ?? {}).length > 0,
     );
@@ -212,7 +212,7 @@ export function SettingsTab() {
                                         type="button"
                                         onClick={() => {
                                             revokeGrant(modId);
-                                            revokeFetchGrant(modId);
+                                            revokeExternalGrant(modId);
                                         }}
                                         className={css({
                                             px: '3',
@@ -304,7 +304,7 @@ export function SettingsTab() {
                                             </div>
                                         );
                                     })}
-                                    {/* fetch 許可ドメイン */}
+                                    {/* fetch・動画・音声で共有する外部通信許可ドメイン */}
                                     {Object.entries(policy.fetchGrants[modId] ?? {}).map(([domain, decision]) => (
                                         <div
                                             key={`fetch:${domain}`}
@@ -333,7 +333,7 @@ export function SettingsTab() {
                                                 <div
                                                     className={css({ fontSize: '11px', color: 'textMuted', mt: '0.5' })}
                                                 >
-                                                    外部への通信
+                                                    外部通信（データ・動画・音声で共通）
                                                 </div>
                                             </div>
                                             <span
@@ -348,7 +348,7 @@ export function SettingsTab() {
                                             </span>
                                             <button
                                                 type="button"
-                                                onClick={() => revokeFetchGrant(modId, domain)}
+                                                onClick={() => revokeExternalGrant(modId, domain)}
                                                 className={css({
                                                     px: '2',
                                                     py: '1',

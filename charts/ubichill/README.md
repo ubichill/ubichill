@@ -1,9 +1,6 @@
 # Ubichill Helm Chart
 
-Ubichill（Frontend + Backend + Redis + PostgreSQL）を Kubernetes に
-デプロイするための単一 Helm チャートです。modのバックエンド（例: video-player の yt-dlp）は
-各mod自身が独立してホストし、この chart はデプロイしません（Host は mod のバックエンドと直接
-通信しない。mod の worker が自分のバックエンドへ絶対 URL で直接 fetch する）。
+Ubichill（Frontend + Backend + Redis + PostgreSQL）を Kubernetes にデプロイするための単一 Helm チャートです。第三者 mod のバックエンドは各 mod の運営者が独立してホストし、この chart はデプロイしません（Host は mod のバックエンドと直接通信せず、mod の worker が、ユーザーから許可された場合に限り、自分のバックエンドへ直接 fetch します）。
 
 ## クイックスタート
 

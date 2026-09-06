@@ -83,14 +83,6 @@ export default defineConfig({
     },
     server: {
         port: 3000,
-        proxy: {
-            // video-player mod 専用バックエンド (Python/FastAPI, port 8000)
-            '/mods/video-player/api': {
-                target: 'http://localhost:8000',
-                changeOrigin: true,
-                rewrite: (path) => path.replace(/^\/mods\/video-player\/api/, ''),
-            },
-        },
     },
     build: {
         target: 'es2025',

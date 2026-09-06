@@ -9,7 +9,7 @@ export const SETTINGS_KEYS = {
     lobbySortKey: 'ubichill_world_sort',
     /** ユーザーが追加したmodレジストリ URL 一覧（設定タブ・ワールドエディタで共有）。 */
     editorRegistryUrls: 'world-editor:registry-urls',
-    /** mod権限ポリシー（ティア既定・mod別 grant・fetch ドメイン）。 */
+    /** mod権限ポリシー（ティア既定・mod別 grant・外部通信ドメイン）。 */
     permissionPolicy: 'ubichill:permission-policy',
 } as const;
 

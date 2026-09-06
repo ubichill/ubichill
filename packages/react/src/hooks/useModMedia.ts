@@ -16,12 +16,14 @@
  *   EVT_MEDIA_LOADED       — loadedmetadata (duration が確定)
  */
 
+import { reportDiagnostic } from '@ubichill/sandbox';
 import type { ModHostEvent } from '@ubichill/shared';
 import Hls from 'hls.js';
 import type React from 'react';
 import { useEffect, useRef } from 'react';
 import type { WorkerModDefinition } from '../types';
 import type { ModWorkerHandlers } from '../useModWorker';
+import { useExternalUrlAuthorization } from './useExternalUrlAuthorization';
 
 // ── 内部状態 ──────────────────────────────────────────────────
 
@@ -73,7 +75,7 @@ export interface UseModMediaResult {
 }
 
 export function useModMedia(
-    _definition: WorkerModDefinition,
+    definition: WorkerModDefinition,
     sendEventRef: React.RefObject<((event: ModHostEvent) => void) | null>,
 ): UseModMediaResult {
     const mediaEntriesRef = useRef<Map<string, MediaEntry>>(new Map());
@@ -95,6 +97,10 @@ export function useModMedia(
         >
     >(new Map());
     const stableRefCallbacksRef = useRef<Map<string, (el: HTMLVideoElement | null) => void>>(new Map());
+    const loadRevisionRef = useRef<Map<string, number>>(new Map());
+    const authorizingLoadRef = useRef<Map<string, number>>(new Map());
+    const authorizeUrl = useExternalUrlAuthorization(definition);
+    const modId = definition.id.split(':')[0];
 
     // アンマウント時のクリーンアップ
     useEffect(() => {
@@ -362,16 +368,32 @@ export function useModMedia(
     };
 
     const mediaHandlers: UseModMediaResult['mediaHandlers'] = {
-        onMediaLoad: (targetId, url, mediaType, kind) => {
-            if (!mediaEntriesRef.current.has(targetId)) {
-                _getPending(targetId).load = { url, mediaType, kind };
+        onMediaLoad: async (targetId, url, mediaType, kind) => {
+            const revision = (loadRevisionRef.current.get(targetId) ?? 0) + 1;
+            loadRevisionRef.current.set(targetId, revision);
+            authorizingLoadRef.current.set(targetId, revision);
+            const access = await authorizeUrl(url);
+            // 許可待ちの間に同じ target へ新しい load が来た場合、古い要求は適用しない。
+            if (loadRevisionRef.current.get(targetId) !== revision) return;
+            authorizingLoadRef.current.delete(targetId);
+            if (!access.allowed) {
+                pendingRef.current.delete(targetId);
+                reportDiagnostic({
+                    level: 'warn',
+                    modId,
+                    code: access.code,
+                    message: `メディアを読み込めません: ${access.message}`,
+                    ...(access.domain ? { retry: { modId, domain: access.domain } } : {}),
+                });
                 return;
             }
-            _applyLoad(targetId, url, mediaType, kind);
+            // 許可待ち中に届いた play/seek 等と順序を保つため、load も同じ保留キューへ入れる。
+            _getPending(targetId).load = { url: access.url, mediaType, kind };
+            if (mediaEntriesRef.current.has(targetId)) _drainPending(targetId);
         },
 
         onMediaPlay: (targetId) => {
-            if (!mediaEntriesRef.current.has(targetId)) {
+            if (authorizingLoadRef.current.has(targetId) || !mediaEntriesRef.current.has(targetId)) {
                 _getPending(targetId).play = true;
                 return;
             }
@@ -379,7 +401,7 @@ export function useModMedia(
         },
 
         onMediaPause: (targetId) => {
-            if (!mediaEntriesRef.current.has(targetId)) {
+            if (authorizingLoadRef.current.has(targetId) || !mediaEntriesRef.current.has(targetId)) {
                 _getPending(targetId).play = false;
                 return;
             }
@@ -387,7 +409,7 @@ export function useModMedia(
         },
 
         onMediaSeek: (targetId, time) => {
-            if (!mediaEntriesRef.current.has(targetId)) {
+            if (authorizingLoadRef.current.has(targetId) || !mediaEntriesRef.current.has(targetId)) {
                 _getPending(targetId).seek = time;
                 return;
             }
@@ -395,7 +417,7 @@ export function useModMedia(
         },
 
         onMediaSetVolume: (targetId, volume) => {
-            if (!mediaEntriesRef.current.has(targetId)) {
+            if (authorizingLoadRef.current.has(targetId) || !mediaEntriesRef.current.has(targetId)) {
                 _getPending(targetId).volume = volume;
                 return;
             }
@@ -403,6 +425,8 @@ export function useModMedia(
         },
 
         onMediaDestroy: (targetId) => {
+            loadRevisionRef.current.set(targetId, (loadRevisionRef.current.get(targetId) ?? 0) + 1);
+            authorizingLoadRef.current.delete(targetId);
             pendingRef.current.delete(targetId);
             const entry = mediaEntriesRef.current.get(targetId);
             if (!entry) return;
@@ -412,7 +436,7 @@ export function useModMedia(
         },
 
         onMediaSetVisible: (targetId, visible) => {
-            if (!mediaEntriesRef.current.has(targetId)) {
+            if (authorizingLoadRef.current.has(targetId) || !mediaEntriesRef.current.has(targetId)) {
                 _getPending(targetId).visible = visible;
                 return;
             }
@@ -420,7 +444,7 @@ export function useModMedia(
         },
 
         onMediaSetDeviceControl: (targetId, enabled) => {
-            if (!mediaEntriesRef.current.has(targetId)) {
+            if (authorizingLoadRef.current.has(targetId) || !mediaEntriesRef.current.has(targetId)) {
                 _getPending(targetId).deviceControl = enabled;
                 return;
             }

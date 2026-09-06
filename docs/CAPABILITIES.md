@@ -50,7 +50,7 @@ mod は必要な権限を `mod.json` の `capabilities` で宣言する（ビル
 | --- | --- | --- | --- | --- |
 | `scene:read` | シーンの読み取り | `Ubi.entity.get / query, Ubi.state 読み取り` | ワールド内のオブジェクト情報を読み取る | `SCENE_GET_ENTITY`<br>`SCENE_QUERY_ENTITIES` |
 | `ui:toast` | 通知の表示 | `Ubi.ui.showToast` | 画面に一時的な通知（トースト）を表示する | `UI_SHOW_TOAST` |
-| `ui:render` | UI の描画 | `Ubi.ui.render` | 自身の UI をワールド内に描画する | `UI_RENDER` |
+| `ui:render` | UI の描画 | `Ubi.ui.render / export default` | 自身の UI をワールド内に描画する | `UI_RENDER` |
 | `event:emit` | ワールド内イベント送信 | `Ubi.event.emit` | 同じワールド内の他コンポーネントへイベントを送る | `EVENT_EMIT` |
 
 ### sensitive（要注意）
@@ -62,7 +62,7 @@ mod は必要な権限を `mod.json` の `capabilities` で宣言する（ビル
 | `scene:update` | シーンの変更 | `Ubi.entity().update/spawn/destroy, Ubi.state.sync 書き込み` | ワールド内のオブジェクトを作成・変更・削除する | `SCENE_CREATE_ENTITY`<br>`SCENE_UPDATE_ENTITY`<br>`SCENE_DESTROY_ENTITY`<br>`SCENE_SUBSCRIBE_ENTITY`<br>`SCENE_UNSUBSCRIBE_ENTITY` |
 | `event:broadcast` | ブロードキャスト | `Ubi.event.broadcast` | ワールド内の全参加者へメッセージを一斉送信する | `NETWORK_BROADCAST` |
 | `canvas:draw` | キャンバス描画 | `Ubi.canvas.*` | 共有キャンバスに線・図形を描く | `CANVAS_FRAME`<br>`CANVAS_COMMIT_STROKE` |
-| `media:control` | メディア再生の制御 | `Ubi.media.*` | 動画・音声の読み込みと再生（再生/停止/シーク/音量）を操作する | `MEDIA_LOAD`<br>`MEDIA_PLAY`<br>`MEDIA_PAUSE`<br>`MEDIA_SEEK`<br>`MEDIA_SET_VOLUME`<br>`MEDIA_DESTROY`<br>`MEDIA_SET_VISIBLE`<br>`MEDIA_SET_DEVICE_CONTROL` |
+| `media:control` | メディア再生の制御 | `Ubi.media.*` | 動画・音声を操作する（外部URLの読み込みには共通のドメイン許可も必要） | `MEDIA_LOAD`<br>`MEDIA_PLAY`<br>`MEDIA_PAUSE`<br>`MEDIA_SEEK`<br>`MEDIA_SET_VOLUME`<br>`MEDIA_DESTROY`<br>`MEDIA_SET_VISIBLE`<br>`MEDIA_SET_DEVICE_CONTROL` |
 | `avatar:set` | アバターの変更 | （自動検出対象外） | あなたのアバター表示を変更する | `AVATAR_SET` |
 | `host:message` | ホストへの通知 | `Ubi.event.sendToHost` | アプリ本体にプレイヤー状態（アバター等）の更新を依頼する | `NETWORK_SEND_TO_HOST` |
 
@@ -80,7 +80,7 @@ SDK（mod）と Host（本体）は独立して更新されるため、初期化
 名乗り合い、非互換を検出して警告する（詳細は
 [`packages/shared/src/mod/protocol.ts`](../packages/shared/src/mod/protocol.ts)）。
 
-- 現在の `PROTOCOL_VERSION`: **1**
+- 現在の `PROTOCOL_VERSION`: **2**
 - 互換可能な最小バージョン `MIN_COMPATIBLE_PROTOCOL_VERSION`: **0**
 
 進化ルール（後方互換の生命線）:
