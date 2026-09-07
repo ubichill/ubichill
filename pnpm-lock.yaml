@@ -216,6 +216,9 @@ importers:
       '@ubichill/react':
         specifier: workspace:*
         version: link:../react
+      '@ubichill/runtime':
+        specifier: workspace:*
+        version: link:../runtime
       '@ubichill/sdk':
         specifier: workspace:*
         version: link:../sdk
