@@ -50,11 +50,12 @@ describe('core:collider geometry', () => {
     });
 
     it('layer/mask は双方が許可した組み合わせだけ接触させる', () => {
-        const player = rect({ layer: 'player', mask: ['wall'] });
-        const wall = rect({ layer: 'wall', mask: ['player'] });
-        const sensor = rect({ layer: 'sensor', mask: ['player'] });
+        const body = rect({ layer: 'body', mask: ['terrain'] });
+        const terrain = rect({ layer: 'terrain', mask: ['body'] });
+        // 片側からしか相手を指していない層とは接触しない
+        const oneWay = rect({ layer: 'one-way', mask: ['body'] });
 
-        expect(matchesCollisionLayers(player, wall)).toBe(true);
-        expect(matchesCollisionLayers(player, sensor)).toBe(false);
+        expect(matchesCollisionLayers(body, terrain)).toBe(true);
+        expect(matchesCollisionLayers(body, oneWay)).toBe(false);
     });
 });

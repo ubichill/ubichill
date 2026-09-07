@@ -96,7 +96,7 @@ export async function dispatchCommand<TPayloadMap extends Record<string, unknown
             handlers.onCanvasCommitStroke?.(command.payload.targetId, command.payload.stroke);
             return undefined;
         case CommandType.MEDIA_LOAD:
-            handlers.onMediaLoad?.(
+            await handlers.onMediaLoad?.(
                 command.payload.targetId,
                 command.payload.url,
                 command.payload.mediaType,

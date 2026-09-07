@@ -90,6 +90,18 @@ export function routeEmit(args: {
     }
 }
 
+/**
+ * 指定 Entity 上で動いている全 Worker へ、`Ubi.event` と同じ経路でイベントを届ける。
+ * Host が確定させた事実（衝突など）を mod へ渡すのに使う。mod 側は emit と区別せず
+ * `events.on(eventType)` で受け取れるので、専用のプロトコルを増やさずに済む。
+ */
+export function deliverToEntity(entityId: string, eventType: string, data: unknown): void {
+    for (const worker of _registry.values()) {
+        if (worker.entityId !== entityId) continue;
+        worker._sendEvent({ type: HostEventType.EVT_CUSTOM, payload: { eventType, data } });
+    }
+}
+
 /** w が rootEntityId をルートとする subtree (root + 子孫) に含まれるか。 */
 function _isInSubtree(w: ModWorkerInfo, rootEntityId: string, all: ModWorkerInfo[]): boolean {
     if (w.entityId === rootEntityId) return true;

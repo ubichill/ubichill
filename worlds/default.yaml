@@ -5,101 +5,16 @@ spec:
     default: 10
   displayName: ちるわ
   description: "公式のチルワールド"
-  thumbnail: "https://i0.wp.com/game-pile.com/wp-content/uploads/fbe2e41743a5255912ac5c4a9d944a5f.jpg?ssl=1"
   environment:
     worldSize:
       width: 2000
       height: 1500
     backgroundColor: "#F0F8FF"
   dependencies:
-    - name: video-player
-      source:
-        url: https://ieyoukan.github.io/ubichill-videoplayer
-        version: latest
     - name: pen
       source:
         version: latest
   initialEntities:
-    - id: video-player
-      tags: []
-      children:
-        - id: video-player-screen
-          tags: []
-          children: []
-          transform:
-            h: 613
-            w: 1060
-            x: 25
-            y: 21
-            z: 2
-            scale: 1
-            rotation: 0
-          components:
-            - data:
-                loop: none
-                shuffle: false
-                duration: 0
-                playlist: []
-                isPlaying: false
-                currentTime: 0
-                currentIndex: 0
-              type: video-player:screen
-        - id: video-player-controls
-          tags: []
-          children: []
-          transform:
-            h: 100
-            w: 740
-            x: 20
-            y: 653
-            z: 200
-            scale: 1
-            rotation: 0
-          components:
-            - data:
-                apiBase: https://videoplayer.youkan.uk
-              type: video-player:controls
-        - id: playlist
-          tags: []
-          children: []
-          transform:
-            h: 610
-            w: 322
-            x: 1095
-            y: 37
-            z: 1
-            scale: 1
-            rotation: 0
-          components:
-            - data:
-                playlist:
-                  - id: https://www.youtube.com/watch?v=w3vt4U13QYM&t=45s
-                    mode: video
-                    title: 原神ASMR／睡眠用BGM🎧ナヒーダと雫の音。@ヴァナラーナ｜リラックス・安眠・作業用
-              type: video-player:playlist
-        - id: search
-          tags: []
-          children: []
-          transform:
-            h: 617
-            w: 379
-            x: 1433
-            y: 33
-            z: 1
-            scale: 1
-            rotation: 0
-          components:
-            - data: {}
-              type: video-player:search
-      transform:
-        h: 781
-        w: 1847
-        x: 84
-        y: 93
-        z: 3
-        scale: 1
-        rotation: 0
-      components: []
     # 画面固定のペン置き場。overlay を付けると transform が画面座標(左上からの距離)になり、
     # ワールドをどこまでスクロールしても・スマホの狭い画面でも必ず手元に残る。
     # 親のトレイと子のペンすべてに同じ overlay を指定して、座標系を揃える必要がある

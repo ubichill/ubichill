@@ -34,7 +34,7 @@ export function PermissionToastBridge() {
                 action =
                     'capability' in retry
                         ? { label: '許可', run: () => p.grantCapability(name, retry.capability) }
-                        : { label: '許可', run: () => p.grantFetchDomain(name, retry.domain) };
+                        : { label: '許可', run: () => p.grantExternalDomain(name, retry.domain) };
             }
             pushToast(message, 'warn', action);
         });

@@ -1,7 +1,7 @@
 /**
  * PermissionPromptModal — 権限承認モーダル。2 種類のプロンプトを表示する。
  *  - mod: mod読み込み時、要求 capability 群をまとめて許可/拒否。
- *  - fetch : 外部通信の初回、ドメインを「今回だけ / 次回以降も許可 / 拒否」（Claude Code 風）。
+ *  - external: fetch・動画・音声を問わず、外部通信の初回にドメインを確認する。
  */
 import { type CapabilityRisk, describeCapability, useUbiPermissions } from '@ubichill/react';
 import { css } from '@/styled-system/css';
@@ -119,7 +119,7 @@ export function PermissionPromptModal() {
     const prompt = permissions.pendingPrompt;
     const { resolvePrompt } = permissions;
 
-    if (prompt.kind === 'fetch') {
+    if (prompt.kind === 'external') {
         return (
             <div className={overlay} style={overlayStyle}>
                 <div className={panel}>
@@ -135,7 +135,8 @@ export function PermissionPromptModal() {
                         </div>
                     </div>
                     <p className={css({ fontSize: '13px', color: 'textMuted', lineHeight: '1.6' })}>
-                        このmodが <strong>{prompt.domain}</strong> へ通信しようとしています。
+                        このmodが <strong>{prompt.domain}</strong>{' '}
+                        へ通信しようとしています。許可はデータ取得・動画・音声で共通です。
                     </p>
                     <div className={css({ display: 'flex', flexDirection: 'column', gap: '2' })}>
                         <button type="button" onClick={() => resolvePrompt('always')} className={primaryBtn}>

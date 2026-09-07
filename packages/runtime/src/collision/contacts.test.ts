@@ -50,25 +50,26 @@ describe('detectContacts', () => {
 
     // 見た目用と当たり判定用の Collider を同じ GameObject に載せることがあるため。
     it('同じ GameObject 上の Collider 同士は接触扱いしない', () => {
-        const contacts = detectContacts([box('a', 0, 0, { entityId: 'ship' }), box('b', 1, 1, { entityId: 'ship' })]);
+        const contacts = detectContacts([box('a', 0, 0, { entityId: 'obj-1' }), box('b', 1, 1, { entityId: 'obj-1' })]);
         expect(contacts).toEqual([]);
     });
 
     it('GameObject が違えば重なりを検出する', () => {
-        const contacts = detectContacts([box('a', 0, 0, { entityId: 'ship' }), box('b', 1, 1, { entityId: 'wall' })]);
+        const contacts = detectContacts([box('a', 0, 0, { entityId: 'obj-1' }), box('b', 1, 1, { entityId: 'obj-2' })]);
         expect(keys(contacts)).toEqual(['a b']);
     });
 
     it('layer/mask が片方でも噛み合わなければ接触しない', () => {
-        const bullet = box('bullet', 0, 0, { layer: 'bullet', mask: ['wall'] });
-        const player = box('player', 1, 1, { layer: 'player', mask: ['wall'] });
-        expect(detectContacts([bullet, player])).toEqual([]);
+        // 片側だけが相手を対象にしていても接触しない（mask は双方向に噛み合う必要がある）
+        const probe = box('probe', 0, 0, { layer: 'probe', mask: ['terrain'] });
+        const other = box('other', 1, 1, { layer: 'other', mask: ['terrain'] });
+        expect(detectContacts([probe, other])).toEqual([]);
     });
 
     it('layer/mask が双方向に噛み合えば接触する', () => {
-        const bullet = box('bullet', 0, 0, { layer: 'bullet', mask: ['wall'] });
-        const wall = box('wall', 1, 1, { layer: 'wall', mask: ['bullet'] });
-        expect(keys(detectContacts([bullet, wall]))).toEqual(['bullet wall']);
+        const probe = box('probe', 0, 0, { layer: 'probe', mask: ['terrain'] });
+        const terrain = box('terrain', 1, 1, { layer: 'terrain', mask: ['probe'] });
+        expect(keys(detectContacts([probe, terrain]))).toEqual(['probe terrain']);
     });
 
     // isTrigger は「押し戻すか」の話で「触れたか」の話ではないので、検出結果からは除外しない。
@@ -105,8 +106,8 @@ describe('contactKey', () => {
 
     // id は kebab-case + `::` しか含まないので、区切りに使う文字が id 内に現れてはいけない。
     it('区切り文字が id と混ざらない', () => {
-        const key = contactKey({ a: 'ship::0', b: 'wall::1' });
-        expect(key.split('|')).toEqual(['ship::0', 'wall::1']);
+        const key = contactKey({ a: 'obj-1::0', b: 'obj-2::1' });
+        expect(key.split('|')).toEqual(['obj-1::0', 'obj-2::1']);
     });
 });
 

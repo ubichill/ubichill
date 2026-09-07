@@ -98,7 +98,7 @@ export const CAPABILITY_CATALOG = {
             CommandType.MEDIA_SET_DEVICE_CONTROL,
         ],
         label: 'メディア再生の制御',
-        description: '動画・音声の読み込みと再生（再生/停止/シーク/音量）を操作する',
+        description: '動画・音声を操作する（外部URLの読み込みには共通のドメイン許可も必要）',
     },
     'avatar:set': {
         risk: 'sensitive',

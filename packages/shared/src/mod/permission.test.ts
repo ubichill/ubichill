@@ -5,7 +5,7 @@ import {
     isCapabilityGranted,
     type PermissionPolicy,
     resolveCapabilities,
-    resolveFetchDecision,
+    resolveExternalDomainDecision,
 } from './permission';
 
 /** テスト用にポリシーを部分上書きするヘルパー。 */
@@ -99,30 +99,34 @@ describe('capabilityNeedsConsent（読み込み時に確認が要るか・純粋
     });
 });
 
-describe('resolveFetchDecision（fetch ドメイン判定・純粋）', () => {
+describe('resolveExternalDomainDecision（外部通信ドメイン判定・純粋）', () => {
     it('既定（確認）は ask、記憶があればそれが優先', () => {
-        expect(resolveFetchDecision(DEFAULT_PERMISSION_POLICY, 'p', 'api.example.com')).toBe('ask');
+        expect(resolveExternalDomainDecision(DEFAULT_PERMISSION_POLICY, 'p', 'api.example.com')).toBe('ask');
         expect(
-            resolveFetchDecision(
+            resolveExternalDomainDecision(
                 policy({ fetchGrants: { p: { 'api.example.com': 'allow' } } }),
                 'p',
                 'api.example.com',
             ),
         ).toBe('allow');
         expect(
-            resolveFetchDecision(policy({ fetchGrants: { p: { 'api.example.com': 'deny' } } }), 'p', 'api.example.com'),
+            resolveExternalDomainDecision(
+                policy({ fetchGrants: { p: { 'api.example.com': 'deny' } } }),
+                'p',
+                'api.example.com',
+            ),
         ).toBe('deny');
     });
     it('シールド「なし」は allow、「拒否」は deny', () => {
         expect(
-            resolveFetchDecision(
+            resolveExternalDomainDecision(
                 policy({ tierDefaults: { safe: 'allow', sensitive: 'allow', dangerous: 'allow' } }),
                 'p',
                 'x.com',
             ),
         ).toBe('allow');
         expect(
-            resolveFetchDecision(
+            resolveExternalDomainDecision(
                 policy({ tierDefaults: { safe: 'allow', sensitive: 'deny', dangerous: 'deny' } }),
                 'p',
                 'x.com',

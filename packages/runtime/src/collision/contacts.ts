@@ -48,6 +48,24 @@ function normalize(x: string, y: string): Contact {
     return x < y ? { a: x, b: y } : { a: y, b: x };
 }
 
+/** 接触判定の相手として成立するか（形は見ない、関係だけを見る）。 */
+export interface ContactCandidate {
+    /** 乗っている GameObject の id。同じ GameObject 上の collider 同士は対象外。 */
+    entityId?: string;
+    data: ColliderData;
+}
+
+/**
+ * 2 つの collider が「そもそも接触を判定する相手同士か」を返す。
+ *
+ * 判定するのは関係だけで、`isTrigger` は見ない。トリガーかどうかは押し戻すかの話であって
+ * 触れたかの話ではないので、押し戻す/すり抜けるの解釈は受け手（mod）に委ねる。
+ */
+export function canContact(a: ContactCandidate, b: ContactCandidate): boolean {
+    if (a.entityId !== undefined && a.entityId === b.entityId) return false;
+    return matchesCollisionLayers(a.data, b.data);
+}
+
 /**
  * 現在フレームで接触している組をすべて返す。
  *
@@ -64,8 +82,7 @@ export function detectContacts(colliders: readonly ColliderInstance[]): Contact[
     const geometries = colliders.map((c) => resolveColliderGeometry(c.transform, c.data));
     return colliders.flatMap((a, i) =>
         colliders.slice(i + 1).flatMap((b, j) => {
-            if (a.entityId !== undefined && a.entityId === b.entityId) return [];
-            if (!matchesCollisionLayers(a.data, b.data)) return [];
+            if (!canContact(a, b)) return [];
             const geometryB = geometries[i + 1 + j];
             const geometryA = geometries[i];
             if (!geometryA || !geometryB || !overlaps(geometryA, geometryB)) return [];

@@ -3,7 +3,7 @@ import type { SendFn } from '../types';
 
 export type MediaModule = {
     /**
-     * メディアを読み込む。
+     * メディアを読み込む。外部URLは Ubi.fetch と共通のドメイン許可をHost側で要求する。
      * @param targetId  複数プレイヤーを描き分けるときの識別子（省略時は `'default'`）。
      * @param mediaType 読み込み方式（輸送層）。`'hls'`（ライブ配信）/`'video'`（ネイティブ）/`'auto'`（拡張子から推定）。
      * @param kind      メディア種別。`'audio'` はデバイス操作を既定で許可しバックグラウンド再生を継続、

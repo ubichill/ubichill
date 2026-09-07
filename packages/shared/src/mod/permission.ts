@@ -28,7 +28,7 @@ export interface PermissionPolicy {
     readonly tierDefaults: Readonly<Record<CapabilityRisk, TierMode>>;
     /** mod別に記憶済みの確定判断: modId -> capability -> decision。tierDefaults を上書きする。 */
     readonly grants: Readonly<Record<string, Readonly<Record<string, PermissionDecision>>>>;
-    /** mod別に記憶済みの fetch ドメイン判断: modId -> hostname -> decision。 */
+    /** mod別・ドメイン別の外部通信許可。フィールド名は保存済み設定との互換性のため維持。 */
     readonly fetchGrants: Readonly<Record<string, Readonly<Record<string, PermissionDecision>>>>;
 }
 
@@ -107,15 +107,19 @@ export function capabilityNeedsConsent(policy: PermissionPolicy, modId: string, 
     return policy.tierDefaults[getCapabilityRisk(capability)] === 'ask';
 }
 
-/** fetch ドメイン判定の結果。allow/deny は確定、ask はユーザー承認が必要。 */
-export type FetchDecision = 'allow' | 'deny' | 'ask';
+/** 外部通信ドメイン判定の結果。allow/deny は確定、ask はユーザー承認が必要。 */
+export type ExternalDomainDecision = 'allow' | 'deny' | 'ask';
 
 /**
- * fetch 先ドメインの「今この瞬間」の判定（純粋）。
+ * fetch・動画・音声で共有する外部ドメインの「今この瞬間」の判定（純粋）。
  * - mod別の記憶 (fetchGrants) > dangerous ティア既定（＝シールドレベル）。
  * - none(allow) は全許可、拒否(deny) は全拒否、確認(ask) はドメインごとにユーザー承認が必要。
  */
-export function resolveFetchDecision(policy: PermissionPolicy, modId: string, domain: string): FetchDecision {
+export function resolveExternalDomainDecision(
+    policy: PermissionPolicy,
+    modId: string,
+    domain: string,
+): ExternalDomainDecision {
     const recorded = policy.fetchGrants[modId]?.[domain];
     if (recorded === 'allow') return 'allow';
     if (recorded === 'deny') return 'deny';
@@ -124,3 +128,8 @@ export function resolveFetchDecision(policy: PermissionPolicy, modId: string, do
     if (mode === 'deny') return 'deny';
     return 'ask';
 }
+
+/** @deprecated `resolveExternalDomainDecision` を使用してください。 */
+export type FetchDecision = ExternalDomainDecision;
+/** @deprecated `resolveExternalDomainDecision` を使用してください。 */
+export const resolveFetchDecision = resolveExternalDomainDecision;

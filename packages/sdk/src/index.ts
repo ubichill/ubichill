@@ -17,7 +17,12 @@ export * from '@ubichill/ecs';
 export {
     type ColliderData,
     type ColliderGeometry,
+    type ColliderInstance,
+    canContact,
+    findOverlapping,
+    isOverlapping,
     matchesCollisionLayers,
+    type OverlapProbe,
     overlaps,
     resolveColliderGeometry,
 } from '@ubichill/runtime';

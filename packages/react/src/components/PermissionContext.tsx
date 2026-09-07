@@ -6,7 +6,7 @@
  *    描画のような高頻度コマンドが承認待ちで保留＝RPC タイムアウトになることが無い。
  *  - 実行時ゲート（`authorizeCapability`）は**プロンプトを出さず即時に許可判定だけ**する
  *    （読み込み時に確定済みの grant / ティア既定を読むだけ）。
- *  - **fetch はドメイン単位で on-demand 承認**（`authorizeFetchDomain`）。ドメインは読み込み時に
+ *  - **外部通信はドメイン単位で on-demand 承認**（`authorizeExternalDomain`）。ドメインは読み込み時に
  *    不明なため。プロンプトは「今回だけ / 次回以降も許可 / 拒否」の 3 択（Claude Code 風）。
  *
  * 保存はこのパッケージの責務外。`initialPolicy` / `onPolicyChange` で consumer が永続化する。
@@ -19,16 +19,16 @@ import {
     isCapabilityGranted,
     type PermissionDecision,
     type PermissionPolicy,
-    resolveFetchDecision,
+    resolveExternalDomainDecision,
     type TierMode,
 } from '@ubichill/shared';
 import type React from 'react';
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 
-/** 承認プロンプト。mod一括（capability 群）と fetch ドメインの 2 種。 */
+/** 承認プロンプト。mod一括（capability 群）と外部通信ドメインの 2 種。 */
 export type PermissionPromptRequest =
     | { kind: 'mod'; modId: string; capabilities: { capability: string; risk: CapabilityRisk }[] }
-    | { kind: 'fetch'; modId: string; domain: string };
+    | { kind: 'external'; modId: string; domain: string };
 
 /** プロンプトへのユーザー応答。mod は allow/deny、fetch は once/always/deny。 */
 export type PromptOutcome = 'allow' | 'deny' | 'once' | 'always';
@@ -38,7 +38,8 @@ export interface PermissionContextValue {
     policy: PermissionPolicy;
     /**
      * 実行時ゲート用の即時判定（プロンプトを出さない）。
-     * net:fetch は常に true（fetch はドメイン単位で別途承認）。ask 未決や deny は false。
+     * net:fetch は常に true（外部通信はfetch・メディア共通でドメイン単位に別途承認）。
+     * ask 未決や deny は false。
      */
     authorizeCapability(modId: string, capability: string): boolean;
     /**
@@ -50,8 +51,11 @@ export interface PermissionContextValue {
      */
     authorizeMod(modId: string, capabilities: readonly string[]): Promise<void>;
     /**
-     * fetch 先ドメインの承認。ask のときはドメインごとにプロンプト（今回だけ/次回以降も許可/拒否）。
+     * fetch・動画・音声で共有する外部ドメイン承認。
+     * ask のときはドメインごとにプロンプト（今回だけ/次回以降も許可/拒否）。
      */
+    authorizeExternalDomain(modId: string, domain: string): boolean | Promise<boolean>;
+    /** @deprecated `authorizeExternalDomain` を使用してください。 */
     authorizeFetchDomain(modId: string, domain: string): boolean | Promise<boolean>;
     /** 表示中の承認プロンプト（null = 無し）。UI が読む。 */
     pendingPrompt: PermissionPromptRequest | null;
@@ -59,13 +63,17 @@ export interface PermissionContextValue {
     resolvePrompt(outcome: PromptOutcome): void;
     /** capability を許可として記録する（拒否トーストの「許可」ボタン等から。既存の deny を上書き）。 */
     grantCapability(modId: string, capability: string): void;
-    /** fetch ドメインを許可として記録する（拒否トーストの「許可」ボタン等から）。 */
+    /** 外部通信ドメインを許可として記録する（拒否トーストの「許可」ボタン等から）。 */
+    grantExternalDomain(modId: string, domain: string): void;
+    /** @deprecated `grantExternalDomain` を使用してください。 */
     grantFetchDomain(modId: string, domain: string): void;
     /** ティア既定モードをまとめて置き換える（設定画面のシールドレベル用）。 */
     setTierDefaults(defaults: Record<CapabilityRisk, TierMode>): void;
     /** 記憶済みの capability 判断を取り消す。capability 省略でmod全体。 */
     revokeGrant(modId: string, capability?: string): void;
-    /** 記憶済みの fetch ドメイン判断を取り消す。domain 省略でmod全体。 */
+    /** 記憶済みの外部通信ドメイン判断を取り消す。domain 省略でmod全体。 */
+    revokeExternalGrant(modId: string, domain?: string): void;
+    /** @deprecated `revokeExternalGrant` を使用してください。 */
     revokeFetchGrant(modId: string, domain?: string): void;
 }
 
@@ -89,7 +97,7 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
 
     const queueRef = useRef<PromptItem[]>([]);
     const inFlightModRef = useRef(new Map<string, Promise<void>>());
-    const inFlightFetchRef = useRef(new Map<string, Promise<boolean>>());
+    const inFlightExternalRef = useRef(new Map<string, Promise<boolean>>());
     const [pendingPrompt, setPendingPrompt] = useState<PermissionPromptRequest | null>(null);
 
     const showNext = useCallback(() => {
@@ -101,7 +109,7 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
         setPendingPrompt(
             next.kind === 'mod'
                 ? { kind: 'mod', modId: next.modId, capabilities: next.capabilities }
-                : { kind: 'fetch', modId: next.modId, domain: next.domain },
+                : { kind: 'external', modId: next.modId, domain: next.domain },
         );
     }, []);
 
@@ -162,15 +170,15 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
         [setPolicy, showNext],
     );
 
-    const authorizeFetchDomain = useCallback(
+    const authorizeExternalDomain = useCallback(
         (modId: string, domain: string): boolean | Promise<boolean> => {
             // 確定判定は純粋関数に委譲。ask のときだけプロンプトを出す。
-            const decision = resolveFetchDecision(policyRef.current, modId, domain);
+            const decision = resolveExternalDomainDecision(policyRef.current, modId, domain);
             if (decision === 'allow') return true;
             if (decision === 'deny') return false;
 
             const key = `${modId}::${domain}`;
-            const existing = inFlightFetchRef.current.get(key);
+            const existing = inFlightExternalRef.current.get(key);
             if (existing) return existing;
 
             const persist = (d: PermissionDecision) =>
@@ -184,7 +192,7 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
 
             const promise = new Promise<boolean>((resolve) => {
                 queueRef.current.push({
-                    kind: 'fetch',
+                    kind: 'external',
                     modId,
                     domain,
                     resolve: (outcome) => {
@@ -200,9 +208,9 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
                     },
                 });
                 if (queueRef.current.length === 1) showNext();
-            }).finally(() => inFlightFetchRef.current.delete(key));
+            }).finally(() => inFlightExternalRef.current.delete(key));
 
-            inFlightFetchRef.current.set(key, promise);
+            inFlightExternalRef.current.set(key, promise);
             return promise;
         },
         [setPolicy, showNext],
@@ -227,7 +235,7 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
         [setPolicy],
     );
 
-    const grantFetchDomain = useCallback(
+    const grantExternalDomain = useCallback(
         (modId: string, domain: string) => {
             setPolicy((prev) => ({
                 ...prev,
@@ -265,7 +273,7 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
         [setPolicy],
     );
 
-    const revokeFetchGrant = useCallback(
+    const revokeExternalGrant = useCallback(
         (modId: string, domain?: string) => {
             setPolicy((prev) => {
                 const modFetch = prev.fetchGrants[modId];
@@ -288,27 +296,30 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
             policy,
             authorizeCapability,
             authorizeMod,
-            authorizeFetchDomain,
+            authorizeExternalDomain,
+            authorizeFetchDomain: authorizeExternalDomain,
             pendingPrompt,
             resolvePrompt,
             grantCapability,
-            grantFetchDomain,
+            grantExternalDomain,
+            grantFetchDomain: grantExternalDomain,
             setTierDefaults,
             revokeGrant,
-            revokeFetchGrant,
+            revokeExternalGrant,
+            revokeFetchGrant: revokeExternalGrant,
         }),
         [
             policy,
             authorizeCapability,
             authorizeMod,
-            authorizeFetchDomain,
+            authorizeExternalDomain,
             pendingPrompt,
             resolvePrompt,
             grantCapability,
-            grantFetchDomain,
+            grantExternalDomain,
             setTierDefaults,
             revokeGrant,
-            revokeFetchGrant,
+            revokeExternalGrant,
         ],
     );
 

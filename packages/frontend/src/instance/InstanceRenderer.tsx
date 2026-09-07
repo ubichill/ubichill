@@ -1,5 +1,14 @@
 import type { WorkerModDefinition } from '@ubichill/react';
-import { HoldProvider, isWorkerMod, RideProvider, useHold, useSocket, useWorld, WorkerModHost } from '@ubichill/react';
+import {
+    HoldProvider,
+    isWorkerMod,
+    RideProvider,
+    useHold,
+    useSocket,
+    useWorld,
+    useWorldSimulation,
+    WorkerModHost,
+} from '@ubichill/react';
 import type { ComponentInstance } from '@ubichill/shared';
 import { useMemo } from 'react';
 import { useModRegistry } from '@/mods/ModRegistryContext';
@@ -34,6 +43,10 @@ const InstanceSurface: React.FC = () => {
     const { entities, environment, activeMods } = useWorld();
     const { modMap } = useModRegistry();
     const { held } = useHold();
+
+    // ワールドの進行（collider の接触判定）を Host の単一ループに載せる。
+    // これにより mod 側は判定ループを書かずに collision:enter / collision:exit を受け取れる。
+    useWorldSimulation(entities);
 
     // フックは早期 return より前にすべて宣言する（Rules of Hooks）
     const singletonWorkerMods = useMemo(

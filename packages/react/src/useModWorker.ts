@@ -49,7 +49,7 @@ export type ModWorkerHandlers<TPayloadMap extends Record<string, unknown> = Reco
         url: string,
         mediaType?: 'hls' | 'video' | 'auto',
         kind?: 'audio' | 'video',
-    ) => void;
+    ) => void | Promise<void>;
     /** Worker が Ubi.media.play() を呼んだときに発火する */
     onMediaPlay?: (targetId: string) => void;
     /** Worker が Ubi.media.pause() を呼んだときに発火する */

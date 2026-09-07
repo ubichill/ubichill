@@ -46,6 +46,30 @@ describe('dispatchCommand', () => {
         expect(onEventEmit).toHaveBeenCalledWith('x', 1, 'world', undefined, 'sender-1');
     });
 
+    it('MEDIA_LOAD はドメイン確認を含む非同期ハンドラの完了を待つ', async () => {
+        let release!: () => void;
+        const pending = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        const onMediaLoad = vi.fn(() => pending);
+        let completed = false;
+        const dispatched = dispatchCommand(
+            {
+                type: CommandType.MEDIA_LOAD,
+                payload: { targetId: 'screen', url: 'https://media.example.com/video.mp4' },
+            } as ModGuestCommand,
+            makeCtx({ onMediaLoad }),
+        ).then(() => {
+            completed = true;
+        });
+
+        await Promise.resolve();
+        expect(completed).toBe(false);
+        release();
+        await dispatched;
+        expect(onMediaLoad).toHaveBeenCalledWith('screen', 'https://media.example.com/video.mp4', undefined, undefined);
+    });
+
     it.each([
         [CommandType.CMD_GRIP, { action: 'release', entityId: 'victim', share: 'persistent' }, 'onGripCommand'],
         [CommandType.CMD_RIDE, { action: 'mount', entityId: 'victim' }, 'onRideCommand'],
