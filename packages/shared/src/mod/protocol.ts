@@ -29,8 +29,8 @@
  * したがって危険なのは「mod (guest) が Host より新しい」ケースだけ（Host が未対応の
  * コマンドを mod が使う恐れがある）。逆（古い mod × 新しい Host）は常に動く。
  */
-// v2: CMD_RIDE を追加。新SDKの ride mod を旧Hostへ載せた場合に degraded と判定する。
-export const PROTOCOL_VERSION = 2;
+// v3: MediaSource / MediaState / loadId と EVT_MEDIA_STATE を追加。
+export const PROTOCOL_VERSION = 3;
 
 /**
  * これ未満のバージョンで作られた mod とは互換性がない下限。
@@ -153,6 +153,7 @@ export const HostEventType = {
     EVT_MEDIA_ERROR: 'EVT_MEDIA_ERROR',
     EVT_MEDIA_LOADED: 'EVT_MEDIA_LOADED',
     EVT_MEDIA_TIME_UPDATE: 'EVT_MEDIA_TIME_UPDATE',
+    EVT_MEDIA_STATE: 'EVT_MEDIA_STATE',
     EVT_UI_ACTION: 'EVT_UI_ACTION',
 } as const;
 export type HostEventType = (typeof HostEventType)[keyof typeof HostEventType];

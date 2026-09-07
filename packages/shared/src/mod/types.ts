@@ -28,7 +28,7 @@ export type ModWorkerMessage<TPayloadMap extends Record<string, unknown> = Recor
 // TODO: Ideally, we should move the base types out of index.ts into, e.g., 'schemas' or 'types.ts' in shared root.
 
 // ============================================
-// Ubichill Mod Protocol v2
+// Ubichill Mod Protocol v3
 //
 // 【設計原則】
 //  - Mod (Worker) は UI を持たない。描画はすべて Host (React) が担う。
@@ -311,14 +311,125 @@ export type CmdCanvasCommitStroke = {
 
 // ─── Media Commands (Guest → Host) ──────────────────────────────────────────
 
+/** Host がメディアを読み込む方式。provider 固有の概念は持たない。 */
+export type MediaSourceType = 'hls' | 'file' | 'auto';
+
+/** 再生元。id は同じメディアを複数 client で照合する安定識別子。 */
+export interface MediaSource {
+    url: string;
+    type?: MediaSourceType;
+    id?: string;
+}
+
+/** 画像を表示するか、音声としてバックグラウンド再生するか。 */
+export type MediaPresentation = 'audio' | 'video';
+
+/** local=この client のみ、shared=同じワールドインスタンスで正規タイムラインを共有。 */
+export type MediaSyncMode = 'local' | 'shared';
+
+/** 新しいオブジェクト形式の Ubi.media.load() 引数。 */
+export interface MediaLoadOptions {
+    source: MediaSource;
+    targetId?: string;
+    presentation?: MediaPresentation;
+    sync?: MediaSyncMode;
+    deviceControl?: boolean;
+}
+
+export type MediaStatus =
+    | 'idle'
+    | 'loading'
+    | 'ready'
+    | 'playing'
+    | 'paused'
+    | 'buffering'
+    | 'seeking'
+    | 'ended'
+    | 'error';
+
+export interface MediaTimeRange {
+    start: number;
+    end: number;
+}
+
+/** mod へ公開する構造化エラー。 */
+export interface MediaError {
+    code: string;
+    message: string;
+    fatal: boolean;
+}
+
+/** loadedmetadata 時点で確定したメタデータ。live の duration は null。 */
+export interface MediaMetadata {
+    duration: number | null;
+    videoWidth: number;
+    videoHeight: number;
+    isLive: boolean;
+    seekable: MediaTimeRange[];
+}
+
+export type MediaTimelinePhase = 'paused' | 'playing' | 'ended';
+
+/** Server が revision と server time を付与する正規再生タイムライン。 */
+export interface MediaTimeline {
+    sessionId: string;
+    mediaId: string;
+    phase: MediaTimelinePhase;
+    anchorTime: number;
+    anchorServerTime: number;
+    playbackRate: number;
+    duration: number | null;
+    revision: number;
+    updatedBy: string;
+}
+
+/** Client から Server へ送る意図。Server は時刻と revision を決める。 */
+export interface MediaTimelineIntent {
+    sessionId: string;
+    mediaId: string;
+    action: 'load' | 'play' | 'pause' | 'seek' | 'ended' | 'metadata';
+    position?: number;
+    duration?: number | null;
+    playbackRate?: number;
+    expectedRevision?: number;
+}
+
+export type MediaTimelineResult =
+    | { success: true; timeline: MediaTimeline | null; serverTime: number }
+    | { success: false; error: string; timeline: MediaTimeline | null; serverTime: number };
+
+/** Host 側の単一状態機械から mod へ通知するスナップショット。 */
+export interface MediaState {
+    targetId: string;
+    loadId: string | null;
+    source: MediaSource | null;
+    presentation: MediaPresentation;
+    sync: MediaSyncMode;
+    status: MediaStatus;
+    currentTime: number;
+    /** shared 再生での Server 正規位置。local では null。 */
+    timelineTime: number | null;
+    duration: number | null;
+    playbackRate: number;
+    volume: number;
+    muted: boolean;
+    isLive: boolean;
+    seekable: MediaTimeRange[];
+    buffered: MediaTimeRange[];
+    error: MediaError | null;
+    timeline: MediaTimeline | null;
+    /** Host がこの snapshot を観測した epoch milliseconds。 */
+    observedAt: number;
+}
+
 /**
- * Ubi.media.load(url, targetId?, mediaType?, kind?)
- * Fire & Forget: Host に指定 URL のメディアを読み込ませる。
+ * Ubi.media.load({ source, targetId?, presentation?, sync? })
+ * Host に指定 source を読み込ませ、SDK は照合用 loadId を返す。
  *
- * mediaType は「読み込み方式」(輸送層) を指定する。'hls' なら Hls.js、
+ * source.type は「読み込み方式」(輸送層) を指定する。'hls' なら Hls.js、
  * 'video' ならネイティブ、'auto' は URL から自動判定。
  *
- * kind は「メディアの種別」(音声/動画) を指定する。デバイス由来の再生操作と
+ * presentation は「提示方法」(音声/動画) を指定する。デバイス由来の再生操作と
  * バックグラウンド再生の既定挙動を決める（省略時は 'video'）。
  *   - 'audio': 音声。デバイス操作を既定で許可し、バックグラウンドでも再生を継続する。
  *   - 'video': 動画。デバイス操作は明示許可（setDeviceControl）までロックする。
@@ -329,9 +440,18 @@ export type CmdMediaLoad = {
     type: 'MEDIA_LOAD';
     payload: {
         targetId: string;
+        /** @deprecated source.url を使用する。旧 Host 互換のため SDK v3 も送信する。 */
         url: string;
+        /** @deprecated source.type を使用する。 */
         mediaType?: 'hls' | 'video' | 'auto';
+        /** @deprecated presentation を使用する。 */
         kind?: 'audio' | 'video';
+        /** 新 API。旧 Host 互換のため url/mediaType/kind も同時に送る。 */
+        source?: MediaSource;
+        presentation?: MediaPresentation;
+        loadId?: string;
+        sync?: MediaSyncMode;
+        deviceControl?: boolean;
     };
 };
 
@@ -755,20 +875,29 @@ export type EvtInput = {
 
 // ─── Media Events (Host → Guest) ────────────────────────────────────────────
 
-/** 再生位置の定期通知 */
+/** @deprecated EVT_MEDIA_STATE を使用する。 */
 export type EvtMediaTimeUpdate = {
     type: 'EVT_MEDIA_TIME_UPDATE';
-    payload: { targetId: string; currentTime: number; duration: number };
+    payload: { targetId: string; currentTime: number; duration: number; loadId?: string };
 };
 
-/** 再生終了通知 */
-export type EvtMediaEnded = { type: 'EVT_MEDIA_ENDED'; payload: { targetId: string } };
+/** @deprecated EVT_MEDIA_STATE の status/timeline.phase を使用する。 */
+export type EvtMediaEnded = { type: 'EVT_MEDIA_ENDED'; payload: { targetId: string; loadId?: string } };
 
-/** メディアエラー通知 */
-export type EvtMediaError = { type: 'EVT_MEDIA_ERROR'; payload: { targetId: string; message: string } };
+/** @deprecated EVT_MEDIA_STATE の error を使用する。 */
+export type EvtMediaError = {
+    type: 'EVT_MEDIA_ERROR';
+    payload: { targetId: string; message: string; loadId?: string; error?: MediaError };
+};
 
-/** メタデータ読み込み完了通知 (duration が確定) */
-export type EvtMediaLoaded = { type: 'EVT_MEDIA_LOADED'; payload: { targetId: string; duration: number } };
+/** @deprecated EVT_MEDIA_STATE の status/duration/seekable を使用する。 */
+export type EvtMediaLoaded = {
+    type: 'EVT_MEDIA_LOADED';
+    payload: { targetId: string; duration: number; loadId?: string; metadata?: MediaMetadata };
+};
+
+/** Host media state machine の正規 snapshot。 */
+export type EvtMediaState = { type: 'EVT_MEDIA_STATE'; payload: MediaState };
 
 /** Host → Guest イベントのユニオン型 */
 export type ModHostEvent =
@@ -787,7 +916,8 @@ export type ModHostEvent =
     | EvtMediaTimeUpdate
     | EvtMediaEnded
     | EvtMediaError
-    | EvtMediaLoaded;
+    | EvtMediaLoaded
+    | EvtMediaState;
 
 /** 後方互換エイリアス */
 export type ModEvent = ModHostEvent;

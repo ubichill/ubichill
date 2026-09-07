@@ -17,6 +17,8 @@ import {
     handleMediaStateRequest,
     handleMediaStateResponse,
     handleMediaSync,
+    handleMediaTimelineGet,
+    handleMediaTimelineUpdate,
     handleStatusUpdate,
     handleWorldJoin,
     handleWorldLeave,
@@ -149,6 +151,8 @@ io.on('connection', (socket) => {
     socket.on('media:sync', handleMediaSync(socket));
     socket.on('media:state-request', handleMediaStateRequest(socket));
     socket.on('media:state-response', handleMediaStateResponse(socket));
+    socket.on('media:timeline:update', handleMediaTimelineUpdate(socket));
+    socket.on('media:timeline:get', handleMediaTimelineGet(socket));
 });
 
 // ============================================

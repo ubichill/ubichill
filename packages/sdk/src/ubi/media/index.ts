@@ -1,38 +1,84 @@
 import { CommandType } from '@ubichill/shared/mod/protocol';
+import type { MediaLoadOptions, MediaPresentation, MediaSourceType, MediaState } from '@ubichill/shared/mod/types';
 import type { SendFn } from '../types';
 
 export type MediaModule = {
-    /**
-     * メディアを読み込む。外部URLは Ubi.fetch と共通のドメイン許可をHost側で要求する。
-     * @param targetId  複数プレイヤーを描き分けるときの識別子（省略時は `'default'`）。
-     * @param mediaType 読み込み方式（輸送層）。`'hls'`（ライブ配信）/`'video'`（ネイティブ）/`'auto'`（拡張子から推定）。
-     * @param kind      メディア種別。`'audio'` はデバイス操作を既定で許可しバックグラウンド再生を継続、
-     *                  `'video'`（既定）はデバイス操作を明示許可までロックする。
-     */
-    load(url: string, targetId?: string, mediaType?: 'hls' | 'video' | 'auto', kind?: 'audio' | 'video'): void;
-    /** 再生を開始する（省略時は `'default'`）。 */
+    /** メディアを読み込み、イベント照合用の loadId を返す。 */
+    load(options: MediaLoadOptions): string;
+    /** @deprecated オブジェクト形式 `load({ source, ... })` を使用する。 */
+    load(url: string, targetId?: string, mediaType?: 'hls' | 'video' | 'auto', kind?: MediaPresentation): string;
+    /** Host から最後に通知された状態。未通知なら null。 */
+    getState(targetId?: string): MediaState | null;
     play(targetId?: string): void;
-    /** 再生を一時停止する。 */
     pause(targetId?: string): void;
-    /** 再生位置を秒単位でシークする。 */
     seek(time: number, targetId?: string): void;
-    /** 音量を 0〜1 で設定する。 */
     setVolume(volume: number, targetId?: string): void;
-    /** プレイヤーを破棄してリソースを解放する。 */
     destroy(targetId?: string): void;
-    /** プレイヤーの表示/非表示を切り替える（読み込み状態は保持）。 */
     setVisible(visible: boolean, targetId?: string): void;
-    /**
-     * デバイス由来（OS メディアキー / ロック画面 / PiP / リモート再生）の再生操作を許可するか。
-     * 既定は false（=mod命令 play/pause のみ受け付け、デバイス操作は無効化）。
-     */
     setDeviceControl(enabled: boolean, targetId?: string): void;
+    /** @internal Host event から SDK cache を更新。 */
+    _handleState(state: MediaState): void;
 };
 
+let loadCounter = 0;
+
+function nextLoadId(): string {
+    loadCounter = (loadCounter + 1) % Number.MAX_SAFE_INTEGER;
+    return `media_${Date.now().toString(36)}_${loadCounter.toString(36)}`;
+}
+
+function legacyType(type: MediaSourceType | undefined): 'hls' | 'video' | 'auto' | undefined {
+    return type === 'file' ? 'video' : type;
+}
+
 export function createMediaModule(send: SendFn): MediaModule {
+    const states = new Map<string, MediaState>();
+
+    function load(options: MediaLoadOptions): string;
+    function load(
+        url: string,
+        targetId?: string,
+        mediaType?: 'hls' | 'video' | 'auto',
+        kind?: MediaPresentation,
+    ): string;
+    function load(
+        input: MediaLoadOptions | string,
+        legacyTargetId = 'default',
+        mediaType?: 'hls' | 'video' | 'auto',
+        kind?: MediaPresentation,
+    ): string {
+        const options: MediaLoadOptions =
+            typeof input === 'string'
+                ? {
+                      source: { url: input, type: mediaType === 'video' ? 'file' : mediaType },
+                      targetId: legacyTargetId,
+                      presentation: kind,
+                  }
+                : input;
+        const targetId = options.targetId ?? 'default';
+        const presentation = options.presentation ?? 'video';
+        const loadId = nextLoadId();
+        send({
+            type: CommandType.MEDIA_LOAD,
+            payload: {
+                // 旧 Host 互換 field も送る。
+                targetId,
+                url: options.source.url,
+                mediaType: legacyType(options.source.type),
+                kind: presentation,
+                source: options.source,
+                presentation,
+                loadId,
+                sync: options.sync ?? 'local',
+                deviceControl: options.deviceControl,
+            },
+        });
+        return loadId;
+    }
+
     return {
-        load: (url, targetId = 'default', mediaType, kind) =>
-            send({ type: CommandType.MEDIA_LOAD, payload: { targetId, url, mediaType, kind } }),
+        load,
+        getState: (targetId = 'default') => states.get(targetId) ?? null,
         play: (targetId = 'default') => send({ type: CommandType.MEDIA_PLAY, payload: { targetId } }),
         pause: (targetId = 'default') => send({ type: CommandType.MEDIA_PAUSE, payload: { targetId } }),
         seek: (time, targetId = 'default') => send({ type: CommandType.MEDIA_SEEK, payload: { targetId, time } }),
@@ -43,5 +89,6 @@ export function createMediaModule(send: SendFn): MediaModule {
             send({ type: CommandType.MEDIA_SET_VISIBLE, payload: { targetId, visible } }),
         setDeviceControl: (enabled, targetId = 'default') =>
             send({ type: CommandType.MEDIA_SET_DEVICE_CONTROL, payload: { targetId, enabled } }),
+        _handleState: (state) => states.set(state.targetId, state),
     };
 }

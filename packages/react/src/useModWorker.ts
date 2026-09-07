@@ -5,6 +5,7 @@ import type {
     FetchOptions,
     FetchResult,
     InputFrameEvent,
+    MediaLoadOptions,
     ModGuestCommand,
     ModHostEvent,
     ModWorkerMessage,
@@ -49,6 +50,7 @@ export type ModWorkerHandlers<TPayloadMap extends Record<string, unknown> = Reco
         url: string,
         mediaType?: 'hls' | 'video' | 'auto',
         kind?: 'audio' | 'video',
+        options?: MediaLoadOptions & { loadId: string },
     ) => void | Promise<void>;
     /** Worker が Ubi.media.play() を呼んだときに発火する */
     onMediaPlay?: (targetId: string) => void;
@@ -190,8 +192,8 @@ export function useModWorker<TPayloadMap extends Record<string, unknown> = Recor
                     handlersRef.current.onCanvasFrame?.(targetId, activeStroke, cursors),
                 onCanvasCommitStroke: (targetId, stroke) =>
                     handlersRef.current.onCanvasCommitStroke?.(targetId, stroke),
-                onMediaLoad: (targetId, url, mediaType, kind) =>
-                    handlersRef.current.onMediaLoad?.(targetId, url, mediaType, kind),
+                onMediaLoad: (targetId, url, mediaType, kind, options) =>
+                    handlersRef.current.onMediaLoad?.(targetId, url, mediaType, kind, options),
                 onMediaPlay: (targetId) => handlersRef.current.onMediaPlay?.(targetId),
                 onMediaPause: (targetId) => handlersRef.current.onMediaPause?.(targetId),
                 onMediaSeek: (targetId, time) => handlersRef.current.onMediaSeek?.(targetId, time),

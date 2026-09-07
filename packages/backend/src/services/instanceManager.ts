@@ -13,6 +13,7 @@ import { logger } from '../utils/logger';
 import { flattenGameObject } from './flattenGameObject';
 import { instanceReaper } from './instanceReaper';
 import { clearInstanceState, createEntity } from './instanceState';
+import { clearMediaTimelines } from './mediaTimelineState';
 import { userManager } from './userManager';
 import { worldRegistry } from './worldRegistry';
 
@@ -183,6 +184,7 @@ class InstanceManager {
 
         // インスタンスのエンティティ状態をクリーンアップ
         clearInstanceState(instanceId);
+        clearMediaTimelines(instanceId);
 
         logger.info(`インスタンス終了: ${instanceId}`);
 

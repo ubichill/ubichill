@@ -489,6 +489,14 @@ export class UbiSDK {
                     timestamp: Date.now(),
                 });
                 break;
+            case 'EVT_MEDIA_STATE':
+                this.media._handleState(event.payload);
+                this._pendingWorkerEvents.push({
+                    type: 'media:stateChange',
+                    payload: event.payload,
+                    timestamp: event.payload.observedAt,
+                });
+                break;
         }
     }
 }

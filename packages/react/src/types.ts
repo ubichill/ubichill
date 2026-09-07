@@ -64,8 +64,9 @@ export interface WorkerModDefinition {
     dataFields?: Record<string, ComponentDataFieldSpec>;
     /**
      * Host が生成して Worker が操作する <video> 要素のターゲット名リスト。
-     * Worker は `Ubi.media.load(url, targetId)` で再生を指示する。
-     * 受け取れるイベント: media:timeUpdate / media:ended / media:error / media:loaded
+     * Worker は `Ubi.media.load({ source, targetId })` で再生を指示する。
+     * 状態は `media:stateChange` / `Ubi.media.getState()` で参照する。
+     * 個別の media:loaded/timeUpdate/ended/error は deprecated 互換イベント。
      */
     mediaTargets?: string[];
     /**

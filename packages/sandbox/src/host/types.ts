@@ -15,6 +15,7 @@ import type {
     FetchOptions,
     FetchResult,
     InputFrameEvent,
+    MediaLoadOptions,
     ModGuestCommand,
     ModHostEvent,
     ModWorkerMessage,
@@ -69,6 +70,7 @@ export type HostHandlers<TPayloadMap extends Record<string, unknown> = Record<st
         url: string,
         mediaType?: 'hls' | 'video' | 'auto',
         kind?: 'audio' | 'video',
+        options?: MediaLoadOptions & { loadId: string },
     ) => void | Promise<void>;
     /** Worker が Ubi.media.play() を呼んだときに発火する */
     onMediaPlay?: (targetId: string) => void;
