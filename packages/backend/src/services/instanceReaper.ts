@@ -2,6 +2,7 @@ import { instanceRepository } from '@ubichill/db';
 import { appConfig } from '../config';
 import { logger } from '../utils/logger';
 import { clearInstanceState } from './instanceState';
+import { clearMediaTimelines } from './mediaTimelineState';
 import { userManager } from './userManager';
 
 /**
@@ -89,6 +90,7 @@ class InstanceReaper {
         for (const inst of reapable) {
             await instanceRepository.delete(inst.id);
             clearInstanceState(inst.id);
+            clearMediaTimelines(inst.id);
             this.bornAt.delete(inst.id);
             logger.info(`インスタンス自動削除（在席0・猶予経過）: ${inst.id}`);
         }

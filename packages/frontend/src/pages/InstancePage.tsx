@@ -5,7 +5,6 @@ import { InstanceHUD } from '@/components/hud/InstanceHUD';
 import { InstanceLoadingScreen } from '@/instance/InstanceLoadingScreen';
 import { InstanceRenderer } from '@/instance/InstanceRenderer';
 import { useInstanceLoading } from '@/instance/useInstanceLoading';
-import { API_BASE } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { ModRegistryProvider } from '@/mods/ModRegistryContext';
 
@@ -60,45 +59,11 @@ export function InstancePage() {
             joinedIdRef.current = id;
             setLoadError(null);
 
-            const doJoin = (worldId: string) => {
-                joinWorld(session.user.name, worldId, id, (msg) => {
-                    // join 失敗は useSocket 側で error にも反映される。ここではデバッグ用にログのみ。
-                    console.error('[InstancePage] world:join failed:', msg);
-                });
-            };
-
-            // ロビーから来た場合は state に worldId が入っている。直接 URL 時は API から解決する
-            const stateWorldId = (location.state as { worldId?: string } | null)?.worldId;
-            if (stateWorldId) {
-                doJoin(stateWorldId);
-                return;
-            }
-
-            try {
-                const r = await fetch(`${API_BASE}/api/v1/instances/${id}`, { credentials: 'include' });
-                if (!r.ok) {
-                    if (r.status === 404) {
-                        setLoadError('インスタンスが見つかりませんでした');
-                    } else if (r.status === 429) {
-                        setLoadError('アクセスが集中しています。しばらくしてから再試行してください');
-                    } else {
-                        setLoadError(`インスタンス情報の取得に失敗しました (${r.status})`);
-                    }
-                    return;
-                }
-                const instance = await r.json();
-                if (cancelled) return;
-                const worldId = instance?.world?.id;
-                if (!worldId) {
-                    setLoadError('インスタンスのワールド情報が不正です');
-                    return;
-                }
-                doJoin(worldId);
-            } catch (e) {
-                if (cancelled) return;
-                console.error('[InstancePage] failed to resolve worldId:', e);
-                setLoadError('ワールド情報の取得に失敗しました');
-            }
+            // ワールドは backend が instanceId -> DB worldRef から権威的に解決する。
+            // location.state や API 応答の短い worldId を使うと、外部 YAML の URL/lock が失われる。
+            joinWorld(session.user.name, id, (msg) => {
+                console.error('[InstancePage] world:join failed:', msg);
+            });
         };
 
         void connectToNewInstance();
@@ -106,7 +71,7 @@ export function InstancePage() {
         return () => {
             cancelled = true;
         };
-    }, [session, isPending, navigate, id, location.state, joinWorld, resetWorld]);
+    }, [session, isPending, navigate, id, joinWorld, resetWorld]);
 
     const loading = useInstanceLoading({
         instanceId: id,

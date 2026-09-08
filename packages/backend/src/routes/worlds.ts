@@ -57,6 +57,33 @@ router.get('/', optionalAuth, async (req, res) => {
 });
 
 /**
+ * GET /api/v1/worlds/resolve?url=https://.../world.yaml
+ *
+ * 任意の公開ワールド URL を登録・フォローせず、その場で解決する。
+ * 実際の取得は worldRegistry -> safeFetch を通るため、SSRF 防止と外部 lock 検証の境界は
+ * インスタンス作成時と共通になる。
+ */
+router.get('/resolve', optionalAuth, async (req, res) => {
+    const url = typeof req.query.url === 'string' ? req.query.url.trim() : '';
+    if (!/^https?:\/\//i.test(url)) {
+        res.status(400).json({ error: 'http(s) のワールドURLが必要です' });
+        return;
+    }
+    try {
+        const world = await worldRegistry.resolveRef(url);
+        if (!world) {
+            res.status(404).json({ error: 'World not found' });
+            return;
+        }
+        res.set('Cache-Control', 'no-store');
+        res.json(world);
+    } catch (error) {
+        console.error(`外部ワールド取得エラー: ${url}`, error);
+        res.status(400).json({ error: '外部ワールドを取得できませんでした' });
+    }
+});
+
+/**
  * PUT /api/v1/worlds/order
  * ワールドの表示順を更新（認証必須）
  * body: { order: string[] }  ワールドIDの配列

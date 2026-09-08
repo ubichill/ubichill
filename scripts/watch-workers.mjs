@@ -5,6 +5,7 @@
  * 変更があった場合に該当modのワーカーのみ再ビルドします。
  */
 
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, watch } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,6 +14,7 @@ import { buildMod } from '../packages/sdk/cli/build.ts';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
 const modsDir = join(root, 'mods');
+const worldLocksScript = join(root, 'scripts', 'world-locks.mjs');
 
 // デバウンス: 連続変更時に過剰リビルドを防ぐ
 const DEBOUNCE_MS = 300;
@@ -39,7 +41,11 @@ function scheduleRebuild(modDir, entryName) {
                     distDir: modDistDir,
                     publicDir: modPublicDir,
                 });
-                console.log(`[workers] ✅ ${modId} rebuilt`);
+                // Worker URL/integrity changes must become visible atomically with
+                // the rebuilt public files. The backend watches these lock files and
+                // reloads the corresponding official world definition.
+                execFileSync(process.execPath, [worldLocksScript], { cwd: root, stdio: 'inherit' });
+                console.log(`[workers] ✅ ${modId} rebuilt; world locks regenerated`);
             } catch (err) {
                 console.error(`[workers] ❌ ${modId} build failed:`, err.message);
             }

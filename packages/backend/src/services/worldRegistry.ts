@@ -547,19 +547,34 @@ class WorldRegistry {
     private _startWatcher(): void {
         if (!fs.existsSync(this.worldsDir)) return;
         this._watcher = fs.watch(this.worldsDir, (_event, filename) => {
-            if (!filename || !/\.(ya?ml)$/.test(filename)) return;
-            const key = filename;
+            if (!filename) return;
+
+            // A world lock is intentionally stored next to (not inside) its YAML.
+            // Re-index the YAML when either half changes so a running dev backend
+            // never keeps serving worker URLs from the previous build.
+            let yamlFilename: string | undefined;
+            if (/\.ya?ml$/.test(filename)) {
+                yamlFilename = filename;
+            } else if (/\.lock\.json$/.test(filename)) {
+                const trackedFile = [...this._fileByName.values()].find(
+                    (filePath) => path.basename(filePath).replace(/\.ya?ml$/i, '.lock.json') === filename,
+                );
+                yamlFilename = trackedFile ? path.basename(trackedFile) : filename.replace(/\.lock\.json$/, '.yaml');
+            }
+            if (!yamlFilename) return;
+
+            const key = yamlFilename;
             const prev = this._debounceTimers.get(key);
             if (prev) clearTimeout(prev);
             this._debounceTimers.set(
                 key,
                 setTimeout(() => {
                     this._debounceTimers.delete(key);
-                    void this._onYamlChanged(filename);
+                    void this._onYamlChanged(yamlFilename);
                 }, 300),
             );
         });
-        console.log('👁  worlds/ を監視中（変更時に自動リロード）');
+        console.log('👁  worlds/ の YAML / lock を監視中（変更時に自動リロード）');
     }
 
     private async _onYamlChanged(filename: string): Promise<void> {

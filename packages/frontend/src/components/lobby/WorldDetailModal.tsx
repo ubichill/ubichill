@@ -94,7 +94,7 @@ export function WorldDetailModal({
             world?.source?.kind === 'local'
                 ? `${window.location.origin}/world/${worldId}`
                 : world?.url
-                  ? worldShareUrl(world.url)
+                  ? worldShareUrl(world.url, window.location.origin)
                   : `${window.location.origin}/world/${worldId}`;
         void navigator.clipboard.writeText(url);
         setCopied(true);
@@ -171,7 +171,11 @@ export function WorldDetailModal({
                                         <button
                                             type="button"
                                             onClick={() => {
-                                                navigate(`/world/${world?.id ?? worldId}`);
+                                                const target =
+                                                    world?.source?.kind === 'local' || !world?.url
+                                                        ? `/world/${world?.id ?? worldId}`
+                                                        : worldShareUrl(world.url, window.location.origin);
+                                                navigate(target.replace(window.location.origin, ''));
                                                 onClose();
                                             }}
                                             className={css({

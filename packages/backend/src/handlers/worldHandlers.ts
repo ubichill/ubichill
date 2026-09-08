@@ -5,14 +5,14 @@
  *  - disconnect        : ソケット切断 (grace period → 自動退出)
  *  - sendWorldSnapshot : 任意のタイミングでスナップショットを再送
  */
-import { DEFAULTS, type User, type WorldSnapshotPayload } from '@ubichill/shared';
+import { DEFAULTS, type ResolvedWorld, type User, type WorldSnapshotPayload } from '@ubichill/shared';
 import { appConfig } from '../config';
 import { instanceManager } from '../services/instanceManager';
 import { getInstanceSnapshot, patchEntity } from '../services/instanceState';
 import { userManager } from '../services/userManager';
 import { worldRegistry } from '../services/worldRegistry';
 import { logger } from '../utils/logger';
-import { validateUsername, validateWorldId } from '../utils/validation';
+import { validateUsername } from '../utils/validation';
 import { activeUserSockets, disconnectTimers, stableUserId, type TypedSocket } from './_shared';
 
 /**
@@ -40,7 +40,7 @@ export function handleWorldJoin(socket: TypedSocket) {
             instanceId,
             password,
             user,
-        }: { worldId: string; instanceId: string; password?: string; user: Omit<User, 'id'> },
+        }: { worldId?: string; instanceId: string; password?: string; user: Omit<User, 'id'> },
         callback: (response: { success: boolean; userId?: string; instanceId?: string; error?: string }) => void,
     ) => {
         logger.debug('world:join イベント受信:', { worldId, instanceId, user, socketId: socket.id });
@@ -61,12 +61,22 @@ export function handleWorldJoin(socket: TypedSocket) {
             return;
         }
 
+        // worldId はクライアントが自由に指定できる旧ヒントなので、解決・認可には使わない。
+        // インスタンス作成時に検証して DB へ保存した worldRef を唯一の正規参照にする。
+        // これにより外部 YAML も登録/フォロー無しで、再接続や共有 URL 入室を含めて同じ
+        // provenance・lock を復元できる。
+        const world = await worldRegistry.getWorldByUrl(instance.worldRef);
+        if (!world) {
+            callback({ success: false, error: 'ワールドファイルを取得できませんでした' });
+            return;
+        }
+
         // インスタンスはDBに存在するが、サーバー再起動でインメモリ状態が消えた場合は
         // 初期エンティティを再配置する
         const existingEntities = getInstanceSnapshot(instance.id);
         if (existingEntities.length === 0) {
-            await instanceManager.reinitializeEntities(instance.id, worldId);
-            logger.info(`🔄 ワールド状態を再初期化しました: ${instance.id} (worldId: ${worldId})`);
+            await instanceManager.reinitializeEntities(instance.id, world);
+            logger.info(`🔄 ワールド状態を再初期化しました: ${instance.id} (worldRef: ${instance.worldRef})`);
         }
 
         const effectiveInstanceId = instance.id;
@@ -81,14 +91,6 @@ export function handleWorldJoin(socket: TypedSocket) {
                 callback({ success: false, error: 'パスワードが正しくありません' });
                 return;
             }
-        }
-
-        // ワールドIDを検証
-        const worldValidation = validateWorldId(worldId);
-        if (!worldValidation.valid) {
-            logger.debug('ワールドID検証失敗:', worldValidation.error);
-            callback({ success: false, error: worldValidation.error });
-            return;
         }
 
         // 表示名: クライアント指定があれば優先（ニックネーム機能）、なければ DB の名前を使用
@@ -163,7 +165,7 @@ export function handleWorldJoin(socket: TypedSocket) {
 
         socket.emit('users:update', roomUsers);
 
-        await sendWorldSnapshot(socket, effectiveInstanceId, worldValidation.data);
+        await sendWorldSnapshot(socket, effectiveInstanceId, world);
 
         socket.to(effectiveInstanceId).emit('user:joined', newUser);
 
@@ -285,23 +287,21 @@ export function handleDisconnect(socket: TypedSocket) {
 /**
  * ワールドスナップショットを送信。
  * @param instanceId Socket.IO ルームキー兼エンティティ状態キー
- * @param worldId ワールド定義取得用の worldId
+ * @param world DB の worldRef からサーバー側で解決済みのワールド
  */
-export async function sendWorldSnapshot(socket: TypedSocket, instanceId: string, worldId: string): Promise<void> {
+export async function sendWorldSnapshot(socket: TypedSocket, instanceId: string, world: ResolvedWorld): Promise<void> {
     const entities = getInstanceSnapshot(instanceId);
-    const environment = await instanceManager.getWorldEnvironment(worldId);
-    const world = await worldRegistry.getWorld(worldId);
-    const activeMods = world?.dependencies?.map((d) => d.name) || [];
+    const activeMods = world.dependencies?.map((d) => d.name) || [];
 
     const snapshotPayload: WorldSnapshotPayload = {
         entities,
         availableComponents: [],
         activeMods,
-        environment,
+        environment: world.environment,
         // mod 完全性ロックと provenance をクライアントへ渡す。外部ワールドは
         // クライアント側のロード時に lock と hash 照合して不一致 mod を拒否する。
-        lock: world?.lock,
-        sourceKind: world?.source.kind,
+        lock: world.lock,
+        sourceKind: world.source.kind,
     };
     socket.emit('world:snapshot', snapshotPayload);
     logger.debug(

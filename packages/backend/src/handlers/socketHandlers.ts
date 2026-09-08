@@ -8,6 +8,12 @@
  *   mediaHandlers  — メディア (動画 / 音声) の peer 間同期
  */
 export { handleEntityCreate, handleEntityDelete, handleEntityEphemeral, handleEntityPatch } from './entityHandlers';
-export { handleMediaStateRequest, handleMediaStateResponse, handleMediaSync } from './mediaHandlers';
+export {
+    handleMediaStateRequest,
+    handleMediaStateResponse,
+    handleMediaSync,
+    handleMediaTimelineGet,
+    handleMediaTimelineUpdate,
+} from './mediaHandlers';
 export { handleCursorMove, handleStatusUpdate } from './userHandlers';
 export { handleDisconnect, handleWorldJoin, handleWorldLeave, sendWorldSnapshot } from './worldHandlers';

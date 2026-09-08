@@ -95,14 +95,36 @@ export async function dispatchCommand<TPayloadMap extends Record<string, unknown
         case CommandType.CANVAS_COMMIT_STROKE:
             handlers.onCanvasCommitStroke?.(command.payload.targetId, command.payload.stroke);
             return undefined;
-        case CommandType.MEDIA_LOAD:
-            await handlers.onMediaLoad?.(
-                command.payload.targetId,
-                command.payload.url,
-                command.payload.mediaType,
-                command.payload.kind,
-            );
+        case CommandType.MEDIA_LOAD: {
+            const options =
+                command.payload.source && command.payload.loadId
+                    ? {
+                          source: command.payload.source,
+                          targetId: command.payload.targetId,
+                          presentation: command.payload.presentation ?? command.payload.kind,
+                          sync: command.payload.sync,
+                          deviceControl: command.payload.deviceControl,
+                          loadId: command.payload.loadId,
+                      }
+                    : undefined;
+            if (options) {
+                await handlers.onMediaLoad?.(
+                    command.payload.targetId,
+                    command.payload.url,
+                    command.payload.mediaType,
+                    command.payload.kind,
+                    options,
+                );
+            } else {
+                await handlers.onMediaLoad?.(
+                    command.payload.targetId,
+                    command.payload.url,
+                    command.payload.mediaType,
+                    command.payload.kind,
+                );
+            }
             return undefined;
+        }
         case CommandType.MEDIA_PLAY:
             handlers.onMediaPlay?.(command.payload.targetId);
             return undefined;

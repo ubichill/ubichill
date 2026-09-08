@@ -7,7 +7,23 @@ import {
     type WorldSource,
     WorldSourceKind,
     worldOriginDomain,
+    worldShareUrl,
 } from './world.schema';
+
+describe('worldShareUrl', () => {
+    it('外部 YAML は閲覧中の Ubichill 上の共有 URL で包める', () => {
+        const raw = 'https://raw.githubusercontent.com/o/r/main/worlds/chillwa.yaml';
+        expect(worldShareUrl(raw, 'https://ubichill.example/')).toBe(
+            `https://ubichill.example/world?url=${encodeURIComponent(raw)}`,
+        );
+    });
+
+    it('viewerOrigin なしの旧呼び出しは従来形式を維持する', () => {
+        expect(worldShareUrl('https://peer.example/api/v1/worlds/chillwa')).toBe('https://peer.example/world/chillwa');
+        const raw = 'https://raw.githubusercontent.com/o/r/main/worlds/chillwa.yaml';
+        expect(worldShareUrl(raw)).toBe(raw);
+    });
+});
 
 describe('worldOriginDomain', () => {
     it('ローカルは null（何も出さない）', () => {

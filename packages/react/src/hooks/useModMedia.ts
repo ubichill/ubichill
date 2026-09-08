@@ -1,64 +1,51 @@
-/**
- * useModMedia
- *
- * Worker の media.* コマンド（MEDIA_LOAD / MEDIA_PLAY / … / MEDIA_SET_VISIBLE）を受け取り、
- * ホスト側 HTMLVideoElement + Hls.js で再生を管理する。
- *
- * 設計原則:
- * - Worker はステートレス（Ubi.media.* を呼ぶだけ）
- * - Host がすべての video 要素 / Hls インスタンスを所有
- * - `Ubi.canvas.*` と同じパターン：定義 → ref → handlers の 3 点セット
- *
- * Events sent back to Worker:
- *   EVT_MEDIA_TIME_UPDATE  — timeupdate (約1秒ごと)
- *   EVT_MEDIA_ENDED        — ended
- *   EVT_MEDIA_ERROR        — error
- *   EVT_MEDIA_LOADED       — loadedmetadata (duration が確定)
- */
-
+/** Host-owned media runtime: DOM/HLS lifecycle, state snapshots, and optional shared timeline. */
 import { reportDiagnostic } from '@ubichill/sandbox';
-import type { ModHostEvent } from '@ubichill/shared';
+import type {
+    MediaError,
+    MediaLoadOptions,
+    MediaMetadata,
+    MediaSource,
+    MediaState,
+    MediaTimeline,
+    MediaTimelineIntent,
+    MediaTimelineResult,
+    ModHostEvent,
+} from '@ubichill/shared';
 import Hls from 'hls.js';
 import type React from 'react';
 import { useEffect, useRef } from 'react';
 import type { WorkerModDefinition } from '../types';
 import type { ModWorkerHandlers } from '../useModWorker';
 import { useExternalUrlAuthorization } from './useExternalUrlAuthorization';
+import { useSocket } from './useSocket';
 
-// ── 内部状態 ──────────────────────────────────────────────────
+type ResolvedLoad = MediaLoadOptions & { targetId: string; loadId: string };
 
 interface MediaEntry {
     video: HTMLVideoElement;
     hls: Hls | null;
+    state: MediaState;
     visible: boolean;
-    /** メディア種別。audio=バックグラウンド再生可・デバイス制御既定ON、video=既定OFF。 */
-    kind: 'audio' | 'video';
-    /** host が意図している再生状態。null=未指定。デバイス操作の差し戻し判定に使う。 */
     intendedPlaying: boolean | null;
-    /** デバイス由来（メディアキー/ロック画面/PiP）の操作を許可するか。kind から既定値を導く。 */
     deviceControl: boolean;
+    ready: boolean;
+    destroyed: boolean;
+    cleanupListeners: (() => void) | null;
+    serverOffsetMs: number;
+    timelineQueue: Promise<void>;
 }
 
-/**
- * <video> 要素がまだ mount されていないタイミングで Worker が media.* を叩いてきたときに
- * ホスト側で保留しておく「最新の意図」。mount されたら一度だけ適用する。
- * mod側に race の存在を意識させないためのバッファ。
- */
 interface PendingMedia {
-    load?: { url: string; mediaType: 'hls' | 'video' | 'auto' | undefined; kind?: 'audio' | 'video' };
-    play?: boolean; // true: play, false: pause
+    load?: ResolvedLoad;
+    play?: boolean;
     seek?: number;
     volume?: number;
     visible?: boolean;
     deviceControl?: boolean;
 }
 
-// ─────────────────────────────────────────────────────────────
-
 export interface UseModMediaResult {
-    /** <video> 要素の ref コールバック。JSX の ref prop に直接渡す */
     getVideoRef: (targetId: string) => (el: HTMLVideoElement | null) => void;
-    /** useModWorker の handlers に spread する */
     mediaHandlers: Pick<
         ModWorkerHandlers,
         | 'onMediaLoad'
@@ -70,187 +57,417 @@ export interface UseModMediaResult {
         | 'onMediaSetVisible'
         | 'onMediaSetDeviceControl'
     >;
-    /** targetId → visible のマップ（GenericModHost が <video> の display を制御するため） */
     mediaVisibilityRef: React.RefObject<Map<string, boolean>>;
+}
+
+function durationOf(video: HTMLVideoElement): number | null {
+    return Number.isFinite(video.duration) && video.duration >= 0 ? video.duration : null;
+}
+
+function rangesOf(ranges: TimeRanges): Array<{ start: number; end: number }> {
+    const result: Array<{ start: number; end: number }> = [];
+    for (let index = 0; index < ranges.length; index++) {
+        result.push({ start: ranges.start(index), end: ranges.end(index) });
+    }
+    return result;
+}
+
+function metadataOf(video: HTMLVideoElement): MediaMetadata {
+    const duration = durationOf(video);
+    return {
+        duration,
+        videoWidth: video.videoWidth,
+        videoHeight: video.videoHeight,
+        isLive: duration === null,
+        seekable: rangesOf(video.seekable),
+    };
+}
+
+function initialState(targetId: string): MediaState {
+    return {
+        targetId,
+        loadId: null,
+        source: null,
+        presentation: 'video',
+        sync: 'local',
+        status: 'idle',
+        currentTime: 0,
+        timelineTime: null,
+        duration: null,
+        playbackRate: 1,
+        volume: 1,
+        muted: false,
+        isLive: false,
+        seekable: [],
+        buffered: [],
+        error: null,
+        timeline: null,
+        observedAt: Date.now(),
+    };
+}
+
+function domMediaError(video: HTMLVideoElement): MediaError {
+    const code = video.error?.code;
+    const names: Record<number, string> = {
+        1: 'aborted',
+        2: 'network',
+        3: 'decode',
+        4: 'source_not_supported',
+    };
+    return {
+        code: code ? (names[code] ?? `dom_${code}`) : 'unknown',
+        message: video.error?.message ?? 'Unknown media error',
+        fatal: true,
+    };
 }
 
 export function useModMedia(
     definition: WorkerModDefinition,
     sendEventRef: React.RefObject<((event: ModHostEvent) => void) | null>,
+    syncScopeId: string = definition.id,
 ): UseModMediaResult {
+    const { socket } = useSocket();
+    const socketRef = useRef(socket);
+    socketRef.current = socket;
     const mediaEntriesRef = useRef<Map<string, MediaEntry>>(new Map());
     const mediaVisibilityRef = useRef<Map<string, boolean>>(new Map());
-    // mount 前に来たコマンドを保持するバッファ（targetId → 最後の意図のみ保持）
     const pendingRef = useRef<Map<string, PendingMedia>>(new Map());
-    // 各 targetId のリスナーをまとめて解除できるよう保持
-    const listenersRef = useRef<
-        Map<
-            string,
-            {
-                timeupdate: () => void;
-                ended: () => void;
-                error: () => void;
-                loadedmetadata: () => void;
-                play: () => void;
-                pause: () => void;
-            }
-        >
-    >(new Map());
     const stableRefCallbacksRef = useRef<Map<string, (el: HTMLVideoElement | null) => void>>(new Map());
     const loadRevisionRef = useRef<Map<string, number>>(new Map());
     const authorizingLoadRef = useRef<Map<string, number>>(new Map());
+    const acceptTimelineRef = useRef<(timeline: MediaTimeline) => void>(() => undefined);
+    const requestTimelineRef = useRef<(entry: MediaEntry) => void>(() => undefined);
+    const emitTimelineTickRef = useRef<() => void>(() => undefined);
     const authorizeUrl = useExternalUrlAuthorization(definition);
     const modId = definition.id.split(':')[0];
 
-    // アンマウント時のクリーンアップ
-    useEffect(() => {
-        return () => {
-            for (const entry of mediaEntriesRef.current.values()) {
-                _destroyEntry(entry);
+    const sessionIdFor = (targetId: string): string => `${definition.id}:${syncScopeId}:${targetId}`;
+
+    const timelineTime = (entry: MediaEntry, now = Date.now()): number | null => {
+        const timeline = entry.state.timeline;
+        if (!timeline) return null;
+        const serverNow = now + entry.serverOffsetMs;
+        const elapsed = timeline.phase === 'playing' ? Math.max(0, serverNow - timeline.anchorServerTime) / 1000 : 0;
+        const value = timeline.anchorTime + elapsed * timeline.playbackRate;
+        return timeline.duration === null ? Math.max(0, value) : Math.min(timeline.duration, Math.max(0, value));
+    };
+
+    const emitState = (entry: MediaEntry, patch: Partial<MediaState> = {}): void => {
+        if (entry.destroyed) return;
+        const { video } = entry;
+        const next: MediaState = {
+            ...entry.state,
+            ...patch,
+            currentTime: Number.isFinite(video.currentTime) ? video.currentTime : entry.state.currentTime,
+            duration: Object.hasOwn(patch, 'duration')
+                ? (patch.duration ?? null)
+                : (durationOf(video) ?? entry.state.duration),
+            playbackRate: video.playbackRate,
+            volume: video.volume,
+            muted: video.muted,
+            seekable: rangesOf(video.seekable),
+            buffered: rangesOf(video.buffered),
+            observedAt: Date.now(),
+        };
+        next.isLive = next.duration === null && video.readyState >= HTMLMediaElement.HAVE_METADATA;
+        entry.state = next;
+        next.timelineTime = timelineTime(entry, next.observedAt);
+        sendEventRef.current?.({ type: 'EVT_MEDIA_STATE', payload: { ...next } });
+    };
+
+    const emitError = (entry: MediaEntry, error: MediaError): void => {
+        emitState(entry, { status: 'error', error });
+        sendEventRef.current?.({
+            type: 'EVT_MEDIA_ERROR',
+            payload: {
+                targetId: entry.state.targetId,
+                loadId: entry.state.loadId ?? undefined,
+                message: error.message,
+                error,
+            },
+        });
+    };
+
+    const syncMediaSessionPlaybackState = (entry: MediaEntry): void => {
+        const mediaSession = typeof navigator !== 'undefined' ? navigator.mediaSession : undefined;
+        if (!mediaSession || !entry.deviceControl) return;
+        mediaSession.playbackState = entry.intendedPlaying === true ? 'playing' : 'paused';
+    };
+
+    const applyDeviceControl = (entry: MediaEntry, enabled: boolean): void => {
+        entry.deviceControl = enabled;
+        syncMediaSessionPlaybackState(entry);
+        if (enabled) {
+            entry.video.removeAttribute('disableremoteplayback');
+            entry.video.removeAttribute('controlsList');
+        } else {
+            entry.video.setAttribute('disableremoteplayback', '');
+            entry.video.setAttribute('controlsList', 'nodownload noplaybackrate noremoteplayback');
+        }
+        entry.video.disablePictureInPicture = !enabled;
+        const mediaSession = typeof navigator !== 'undefined' ? navigator.mediaSession : undefined;
+        if (!mediaSession) return;
+        const handler = enabled ? null : () => undefined;
+        for (const action of ['play', 'pause', 'stop', 'previoustrack', 'nexttrack'] as MediaSessionAction[]) {
+            try {
+                mediaSession.setActionHandler(action, handler);
+            } catch {
+                // Browser support differs by action.
             }
-            mediaEntriesRef.current.clear();
-            listenersRef.current.clear();
-        };
-    }, []);
-
-    const getVideoRef = (targetId: string): ((el: HTMLVideoElement | null) => void) => {
-        let cb = stableRefCallbacksRef.current.get(targetId);
-        if (!cb) {
-            cb = (el: HTMLVideoElement | null) => {
-                if (el) {
-                    // 既存エントリの video を更新（Worker再作成時の再マウント対応）
-                    const existing = mediaEntriesRef.current.get(targetId);
-                    if (existing) {
-                        existing.video = el;
-                    } else {
-                        mediaEntriesRef.current.set(targetId, {
-                            video: el,
-                            hls: null,
-                            visible: false,
-                            kind: 'video',
-                            intendedPlaying: null,
-                            deviceControl: false,
-                        });
-                    }
-                    // 既定はデバイス操作ロック（PiP/リモート再生を無効化）。
-                    // 再マウント時は entry に保持済みの設定を維持する。
-                    _applyDeviceControl(targetId, mediaEntriesRef.current.get(targetId)?.deviceControl ?? false);
-                    // mount 前に溜まったコマンドをここで適用（race 吸収）
-                    _drainPending(targetId);
-                } else {
-                    const entry = mediaEntriesRef.current.get(targetId);
-                    if (entry) {
-                        _destroyEntry(entry);
-                        mediaEntriesRef.current.delete(targetId);
-                    }
-                    listenersRef.current.delete(targetId);
-                }
-            };
-            stableRefCallbacksRef.current.set(targetId, cb);
         }
-        return cb;
     };
 
-    const _getPending = (targetId: string): PendingMedia => {
-        let p = pendingRef.current.get(targetId);
-        if (!p) {
-            p = {};
-            pendingRef.current.set(targetId, p);
-        }
-        return p;
-    };
-
-    const _drainPending = (targetId: string): void => {
-        const p = pendingRef.current.get(targetId);
-        if (!p) return;
-        pendingRef.current.delete(targetId);
-        if (p.load) _applyLoad(targetId, p.load.url, p.load.mediaType, p.load.kind);
-        if (p.seek !== undefined) _applySeek(targetId, p.seek);
-        if (p.volume !== undefined) _applyVolume(targetId, p.volume);
-        if (p.visible !== undefined) _applyVisible(targetId, p.visible);
-        if (p.deviceControl !== undefined) _applyDeviceControl(targetId, p.deviceControl);
-        if (p.play === true) _applyPlay(targetId);
-        else if (p.play === false) _applyPause(targetId);
-    };
-
-    const _attachListeners = (targetId: string, video: HTMLVideoElement): void => {
-        // 旧リスナーを先に外す
-        const old = listenersRef.current.get(targetId);
-        if (old) {
-            video.removeEventListener('timeupdate', old.timeupdate);
-            video.removeEventListener('ended', old.ended);
-            video.removeEventListener('error', old.error);
-            video.removeEventListener('loadedmetadata', old.loadedmetadata);
-            video.removeEventListener('play', old.play);
-            video.removeEventListener('pause', old.pause);
-        }
-
-        const timeupdate = () => {
-            sendEventRef.current?.({
-                type: 'EVT_MEDIA_TIME_UPDATE',
-                payload: { targetId, currentTime: video.currentTime, duration: video.duration || 0 },
+    const applyPlay = (entry: MediaEntry): void => {
+        entry.intendedPlaying = true;
+        syncMediaSessionPlaybackState(entry);
+        void entry.video.play().catch((cause: unknown) => {
+            emitError(entry, {
+                code: 'play_rejected',
+                message: cause instanceof Error ? cause.message : '再生を開始できません',
+                fatal: false,
             });
+        });
+    };
+
+    const applyPause = (entry: MediaEntry): void => {
+        entry.intendedPlaying = false;
+        syncMediaSessionPlaybackState(entry);
+        entry.video.pause();
+    };
+
+    const applySeek = (entry: MediaEntry, time: number): void => {
+        if (!Number.isFinite(time) || time < 0 || entry.state.isLive) return;
+        entry.video.currentTime = entry.state.duration === null ? time : Math.min(entry.state.duration, time);
+    };
+
+    const acceptTimeline = (
+        entry: MediaEntry,
+        timeline: MediaTimeline,
+        serverTime?: number,
+        midpoint?: number,
+    ): void => {
+        if (entry.state.sync !== 'shared' || timeline.sessionId !== sessionIdFor(entry.state.targetId)) return;
+        const mediaId = entry.state.source?.id ?? entry.state.source?.url;
+        if (!mediaId || timeline.mediaId !== mediaId) return;
+        if (serverTime !== undefined && midpoint !== undefined) entry.serverOffsetMs = serverTime - midpoint;
+        if (entry.state.timeline && timeline.revision < entry.state.timeline.revision) return;
+        entry.state = { ...entry.state, timeline };
+        const expected = timelineTime(entry);
+        if (
+            entry.ready &&
+            expected !== null &&
+            !entry.state.isLive &&
+            Math.abs(entry.video.currentTime - expected) > 1.25
+        ) {
+            applySeek(entry, expected);
+        }
+        if (entry.ready) {
+            if (timeline.phase === 'playing') applyPlay(entry);
+            else applyPause(entry);
+        }
+        emitState(entry);
+    };
+
+    const publishTimeline = (
+        entry: MediaEntry,
+        action: MediaTimelineIntent['action'],
+        extra: Partial<MediaTimelineIntent> = {},
+    ): void => {
+        if (entry.state.sync !== 'shared' || !entry.state.source) return;
+        const mediaId = entry.state.source.id ?? entry.state.source.url;
+        entry.timelineQueue = entry.timelineQueue.then(
+            () =>
+                new Promise<void>((resolve) => {
+                    const activeSocket = socketRef.current;
+                    if (!activeSocket?.connected || entry.destroyed) {
+                        resolve();
+                        return;
+                    }
+                    const sentAt = Date.now();
+                    const intent: MediaTimelineIntent = {
+                        sessionId: sessionIdFor(entry.state.targetId),
+                        mediaId,
+                        action,
+                        ...(action !== 'load' && entry.state.timeline
+                            ? { expectedRevision: entry.state.timeline.revision }
+                            : {}),
+                        ...extra,
+                    };
+                    let settled = false;
+                    const timer = setTimeout(() => {
+                        if (settled) return;
+                        settled = true;
+                        resolve();
+                    }, 5_000);
+                    activeSocket.emit('media:timeline:update', intent, (result: MediaTimelineResult) => {
+                        if (settled) return;
+                        settled = true;
+                        clearTimeout(timer);
+                        const receivedAt = Date.now();
+                        if (result.timeline)
+                            acceptTimeline(entry, result.timeline, result.serverTime, (sentAt + receivedAt) / 2);
+                        resolve();
+                    });
+                }),
+        );
+    };
+
+    const requestTimeline = (entry: MediaEntry): void => {
+        if (entry.state.sync !== 'shared') return;
+        entry.timelineQueue = entry.timelineQueue.then(
+            () =>
+                new Promise<void>((resolve) => {
+                    const activeSocket = socketRef.current;
+                    if (!activeSocket?.connected || entry.destroyed) {
+                        resolve();
+                        return;
+                    }
+                    const sentAt = Date.now();
+                    let settled = false;
+                    const timer = setTimeout(() => {
+                        if (settled) return;
+                        settled = true;
+                        resolve();
+                    }, 5_000);
+                    activeSocket.emit(
+                        'media:timeline:get',
+                        { sessionId: sessionIdFor(entry.state.targetId) },
+                        (result: MediaTimelineResult) => {
+                            if (settled) return;
+                            settled = true;
+                            clearTimeout(timer);
+                            const receivedAt = Date.now();
+                            if (result.timeline)
+                                acceptTimeline(entry, result.timeline, result.serverTime, (sentAt + receivedAt) / 2);
+                            resolve();
+                        },
+                    );
+                }),
+        );
+    };
+    requestTimelineRef.current = requestTimeline;
+
+    const attachListeners = (entry: MediaEntry): void => {
+        entry.cleanupListeners?.();
+        const { video } = entry;
+        const on = <K extends keyof HTMLMediaElementEventMap>(name: K, listener: () => void): void => {
+            video.addEventListener(name, listener);
+            cleanups.push(() => video.removeEventListener(name, listener));
         };
-        const ended = () => {
-            sendEventRef.current?.({ type: 'EVT_MEDIA_ENDED', payload: { targetId } });
-        };
-        const error = () => {
-            const msg = video.error?.message ?? 'Unknown media error';
-            sendEventRef.current?.({ type: 'EVT_MEDIA_ERROR', payload: { targetId, message: msg } });
-        };
-        const loadedmetadata = () => {
+        const cleanups: Array<() => void> = [];
+
+        on('loadedmetadata', () => {
+            entry.ready = true;
+            const metadata = metadataOf(video);
+            emitState(entry, { status: 'ready', duration: metadata.duration, isLive: metadata.isLive, error: null });
             sendEventRef.current?.({
                 type: 'EVT_MEDIA_LOADED',
-                payload: { targetId, duration: video.duration || 0 },
+                payload: {
+                    targetId: entry.state.targetId,
+                    loadId: entry.state.loadId ?? undefined,
+                    duration: metadata.duration ?? 0,
+                    metadata,
+                },
             });
+            if (entry.state.sync === 'shared') {
+                publishTimeline(entry, 'metadata', { duration: metadata.duration });
+                if (entry.state.timeline) acceptTimeline(entry, entry.state.timeline);
+            }
+        });
+        on('durationchange', () => emitState(entry));
+        on('timeupdate', () => {
+            emitState(entry);
+            sendEventRef.current?.({
+                type: 'EVT_MEDIA_TIME_UPDATE',
+                payload: {
+                    targetId: entry.state.targetId,
+                    loadId: entry.state.loadId ?? undefined,
+                    currentTime: video.currentTime,
+                    duration: durationOf(video) ?? 0,
+                },
+            });
+        });
+        on('playing', () => emitState(entry, { status: 'playing', error: null }));
+        on('waiting', () => emitState(entry, { status: 'buffering' }));
+        on('stalled', () => emitState(entry, { status: 'buffering' }));
+        on('seeking', () => emitState(entry, { status: 'seeking' }));
+        on('seeked', () => emitState(entry, { status: video.paused ? 'paused' : 'playing' }));
+        on('volumechange', () => emitState(entry));
+        on('play', () => {
+            if (!entry.deviceControl && entry.intendedPlaying === false) {
+                video.pause();
+                return;
+            }
+            if (entry.deviceControl) entry.intendedPlaying = true;
+            emitState(entry, { status: 'playing', error: null });
+        });
+        on('pause', () => {
+            if (!entry.deviceControl && entry.intendedPlaying === true && !video.ended) {
+                void video.play().catch(() => undefined);
+                return;
+            }
+            if (entry.deviceControl) entry.intendedPlaying = false;
+            if (!video.ended) emitState(entry, { status: 'paused' });
+        });
+        on('ended', () => {
+            entry.intendedPlaying = false;
+            emitState(entry, { status: 'ended' });
+            sendEventRef.current?.({
+                type: 'EVT_MEDIA_ENDED',
+                payload: { targetId: entry.state.targetId, loadId: entry.state.loadId ?? undefined },
+            });
+            publishTimeline(entry, 'ended', { position: durationOf(video) ?? video.currentTime });
+        });
+        on('error', () => emitError(entry, domMediaError(video)));
+        entry.cleanupListeners = () => {
+            for (const cleanup of cleanups) cleanup();
         };
-
-        // デバイス操作の差し戻し: deviceControl=false のとき、host の意図と食い違う
-        // ネイティブ play/pause（OS メディアキー・ロック画面・PiP 等）を即座に元へ戻す。
-        const play = () => {
-            const entry = mediaEntriesRef.current.get(targetId);
-            if (!entry || entry.deviceControl) return;
-            if (entry.intendedPlaying === false) video.pause();
-        };
-        const pause = () => {
-            const entry = mediaEntriesRef.current.get(targetId);
-            if (!entry || entry.deviceControl) return;
-            // 末尾到達(ended)による pause は差し戻さない（再生し直してしまうため）。
-            if (entry.intendedPlaying === true && !video.ended) video.play().catch(() => undefined);
-        };
-
-        video.addEventListener('timeupdate', timeupdate);
-        video.addEventListener('ended', ended);
-        video.addEventListener('error', error);
-        video.addEventListener('loadedmetadata', loadedmetadata);
-        video.addEventListener('play', play);
-        video.addEventListener('pause', pause);
-        listenersRef.current.set(targetId, { timeupdate, ended, error, loadedmetadata, play, pause });
     };
 
-    const _applyLoad = (
-        targetId: string,
-        url: string,
-        mediaType: 'hls' | 'video' | 'auto' | undefined,
-        kind?: 'audio' | 'video',
-    ): void => {
-        const entry = mediaEntriesRef.current.get(targetId);
-        if (!entry) return;
-        const { video } = entry;
-        entry.kind = kind ?? 'video';
-        // audio はデバイス操作を既定で許可（ロック画面/メディアキーで再生継続・制御できる）。
-        // video は明示許可（setDeviceControl(true)）までロック。
-        _applyDeviceControl(targetId, entry.kind === 'audio');
+    const createEntry = (targetId: string, video: HTMLVideoElement): MediaEntry => {
+        const entry: MediaEntry = {
+            video,
+            hls: null,
+            state: initialState(targetId),
+            visible: false,
+            intendedPlaying: null,
+            deviceControl: false,
+            ready: false,
+            destroyed: false,
+            cleanupListeners: null,
+            serverOffsetMs: 0,
+            timelineQueue: Promise.resolve(),
+        };
+        attachListeners(entry);
+        applyDeviceControl(entry, false);
+        return entry;
+    };
+
+    const applyLoad = (entry: MediaEntry, request: ResolvedLoad): void => {
+        entry.ready = false;
+        entry.intendedPlaying = null;
         if (entry.hls) {
             entry.hls.destroy();
             entry.hls = null;
         }
-        _attachListeners(targetId, video);
-        // Host は特定modの URL 体系を知らない。HLS かどうかは
-        //   - modが明示する mediaType==='hls'
-        //   - もしくは標準の .m3u8 拡張子
-        // だけで判定する（旧 '/live/' のような video-player 固有判定は持たない）。
-        const useHls = mediaType === 'hls' || (mediaType !== 'video' && url.includes('.m3u8'));
+        entry.video.pause();
+        entry.video.removeAttribute('src');
+        entry.video.load();
+        const source: MediaSource = { ...request.source };
+        entry.state = {
+            ...initialState(request.targetId),
+            loadId: request.loadId,
+            source,
+            presentation: request.presentation ?? 'video',
+            sync: request.sync ?? 'local',
+            status: 'loading',
+            volume: entry.video.volume,
+            muted: entry.video.muted,
+        };
+        applyDeviceControl(entry, request.deviceControl ?? entry.state.presentation === 'audio');
+        emitState(entry, { status: 'loading' });
+
+        const useHls = source.type === 'hls' || (source.type !== 'file' && source.url.includes('.m3u8'));
         if (useHls && Hls.isSupported()) {
             const hls = new Hls({
                 enableWorker: true,
@@ -261,123 +478,157 @@ export function useModMedia(
                 liveMaxLatencyDuration: 15,
                 backBufferLength: 0,
             });
-            hls.loadSource(url);
-            hls.attachMedia(video);
-            hls.on(Hls.Events.ERROR, (_evt, data) => {
-                if (data.fatal) {
-                    if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-                        hls.startLoad();
-                    } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-                        hls.recoverMediaError();
-                    } else {
-                        hls.destroy();
-                    }
-                    sendEventRef.current?.({
-                        type: 'EVT_MEDIA_ERROR',
-                        payload: { targetId, message: data.details },
-                    });
-                }
+            const loadId = request.loadId;
+            hls.on(Hls.Events.ERROR, (_event, data) => {
+                if (!data.fatal || entry.state.loadId !== loadId) return;
+                if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
+                else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+                else hls.destroy();
+                emitError(entry, { code: `hls_${data.type}_${data.details}`, message: data.details, fatal: true });
             });
+            hls.loadSource(source.url);
+            hls.attachMedia(entry.video);
             entry.hls = hls;
-        } else if (useHls && (video as HTMLVideoElement).canPlayType('application/vnd.apple.mpegurl')) {
-            video.src = url;
         } else {
-            video.src = url;
-            video.load();
+            entry.video.src = source.url;
+            entry.video.load();
         }
+        // 遅参加 client は Server snapshot を先に受け、その後 idempotent load で未作成時だけ初期化する。
+        requestTimeline(entry);
+        publishTimeline(entry, 'load');
     };
 
-    const _applyPlay = (targetId: string): void => {
-        const entry = mediaEntriesRef.current.get(targetId);
-        if (!entry) return;
-        // 差し戻し判定より先に意図を更新する（自前の play で pause ガードが誤発火しないように）。
-        entry.intendedPlaying = true;
-        _syncMediaSessionPlaybackState(entry);
-        entry.video.play().catch(() => undefined);
+    const getPending = (targetId: string): PendingMedia => {
+        let pending = pendingRef.current.get(targetId);
+        if (!pending) {
+            pending = {};
+            pendingRef.current.set(targetId, pending);
+        }
+        return pending;
     };
 
-    const _applyPause = (targetId: string): void => {
+    const drainPending = (targetId: string): void => {
+        const pending = pendingRef.current.get(targetId);
         const entry = mediaEntriesRef.current.get(targetId);
-        if (!entry) return;
-        entry.intendedPlaying = false;
-        _syncMediaSessionPlaybackState(entry);
+        if (!pending || !entry) return;
+        pendingRef.current.delete(targetId);
+        if (pending.load) applyLoad(entry, pending.load);
+        if (pending.seek !== undefined) applySeek(entry, pending.seek);
+        if (pending.volume !== undefined) {
+            entry.video.volume = Math.max(0, Math.min(1, pending.volume));
+        }
+        if (pending.visible !== undefined) {
+            entry.visible = pending.visible;
+            entry.video.style.display = pending.visible ? 'block' : 'none';
+            mediaVisibilityRef.current.set(targetId, pending.visible);
+        }
+        if (pending.deviceControl !== undefined) applyDeviceControl(entry, pending.deviceControl);
+        if (pending.play === true) applyPlay(entry);
+        else if (pending.play === false) applyPause(entry);
+    };
+
+    const destroyEntry = (entry: MediaEntry): void => {
+        entry.destroyed = true;
+        entry.cleanupListeners?.();
+        entry.cleanupListeners = null;
+        entry.hls?.destroy();
+        entry.hls = null;
         entry.video.pause();
+        entry.video.removeAttribute('src');
+        entry.video.load();
     };
 
-    /**
-     * デバイス制御が有効な media session に「今再生中か」を報告する。
-     * これにより OS はバックグラウンドタブ/ロック画面でも再生継続を許可する。
-     */
-    const _syncMediaSessionPlaybackState = (entry: MediaEntry): void => {
-        const ms = typeof navigator !== 'undefined' ? navigator.mediaSession : undefined;
-        if (!ms || !entry.deviceControl) return;
-        ms.playbackState = entry.intendedPlaying === true ? 'playing' : 'paused';
+    acceptTimelineRef.current = (timeline) => {
+        for (const entry of mediaEntriesRef.current.values()) acceptTimeline(entry, timeline);
     };
-
-    /**
-     * デバイス由来の再生操作の許可/禁止を <video> に反映する。
-     * 禁止(false)時: PiP/リモート再生を無効化し、OS メディアセッションのハンドラを no-op で奪う。
-     * 許可(true)時: それらを解放する。
-     */
-    const _applyDeviceControl = (targetId: string, enabled: boolean): void => {
-        const entry = mediaEntriesRef.current.get(targetId);
-        if (!entry) return;
-        entry.deviceControl = enabled;
-        _syncMediaSessionPlaybackState(entry);
-        const { video } = entry;
-        video.disablePictureInPicture = !enabled;
-        // disableRemotePlayback は型に無いブラウザ拡張属性なので属性で設定する。
-        if (enabled) {
-            video.removeAttribute('disableremoteplayback');
-            video.removeAttribute('controlsList');
-        } else {
-            video.setAttribute('disableremoteplayback', '');
-            video.setAttribute('controlsList', 'nodownload noplaybackrate noremoteplayback');
-        }
-
-        const ms = typeof navigator !== 'undefined' ? navigator.mediaSession : undefined;
-        if (!ms) return;
-        // ロック時は OS 側の再生トグルを無効化（no-op で奪う）。許可時は既定へ戻す。
-        const lock = enabled ? null : () => undefined;
-        const actions: MediaSessionAction[] = ['play', 'pause', 'stop', 'previoustrack', 'nexttrack'];
-        for (const action of actions) {
-            try {
-                ms.setActionHandler(action, lock);
-            } catch {
-                // 一部ブラウザは未対応の action で例外を投げる。無視してよい。
-            }
+    emitTimelineTickRef.current = () => {
+        for (const entry of mediaEntriesRef.current.values()) {
+            if (entry.state.timeline?.phase === 'playing') emitState(entry);
         }
     };
 
-    const _applySeek = (targetId: string, time: number): void => {
-        const video = mediaEntriesRef.current.get(targetId)?.video;
-        if (video) video.currentTime = time;
+    const getVideoRef = (targetId: string): ((el: HTMLVideoElement | null) => void) => {
+        let callback = stableRefCallbacksRef.current.get(targetId);
+        if (!callback) {
+            callback = (element) => {
+                const existing = mediaEntriesRef.current.get(targetId);
+                if (element) {
+                    if (existing) destroyEntry(existing);
+                    const entry = createEntry(targetId, element);
+                    mediaEntriesRef.current.set(targetId, entry);
+                    // getState() が load 前から一貫して使えるよう、mount 時に idle snapshot を先行通知する。
+                    emitState(entry);
+                    drainPending(targetId);
+                } else if (existing) {
+                    destroyEntry(existing);
+                    mediaEntriesRef.current.delete(targetId);
+                }
+            };
+            stableRefCallbacksRef.current.set(targetId, callback);
+        }
+        return callback;
     };
 
-    const _applyVolume = (targetId: string, volume: number): void => {
-        const video = mediaEntriesRef.current.get(targetId)?.video;
-        if (video) video.volume = Math.max(0, Math.min(1, volume));
-    };
+    useEffect(() => {
+        if (!socket) return;
+        const onTimeline = (timeline: MediaTimeline): void => acceptTimelineRef.current(timeline);
+        const refreshTimelines = (): void => {
+            for (const entry of mediaEntriesRef.current.values()) requestTimelineRef.current(entry);
+        };
+        socket.on('media:timeline', onTimeline);
+        socket.on('connect', refreshTimelines);
+        if (socket.connected) refreshTimelines();
+        return () => {
+            socket.off('media:timeline', onTimeline);
+            socket.off('connect', refreshTimelines);
+        };
+    }, [socket]);
 
-    const _applyVisible = (targetId: string, visible: boolean): void => {
-        const entry = mediaEntriesRef.current.get(targetId);
-        if (!entry) return;
-        entry.visible = visible;
-        entry.video.style.display = visible ? 'block' : 'none';
-        mediaVisibilityRef.current.set(targetId, visible);
-    };
+    useEffect(() => {
+        const timer = setInterval(() => emitTimelineTickRef.current(), 250);
+        return () => clearInterval(timer);
+    }, []);
+
+    // destroyEntry は MediaEntry 以外の render 値を参照しない。unmount 時のみ破棄する。
+    // biome-ignore lint/correctness/useExhaustiveDependencies: cleanup must not run on ordinary rerenders
+    useEffect(
+        () => () => {
+            for (const entry of mediaEntriesRef.current.values()) destroyEntry(entry);
+            mediaEntriesRef.current.clear();
+        },
+        [],
+    );
 
     const mediaHandlers: UseModMediaResult['mediaHandlers'] = {
-        onMediaLoad: async (targetId, url, mediaType, kind) => {
+        onMediaLoad: async (targetId, url, mediaType, kind, options) => {
             const revision = (loadRevisionRef.current.get(targetId) ?? 0) + 1;
             loadRevisionRef.current.set(targetId, revision);
             authorizingLoadRef.current.set(targetId, revision);
-            const access = await authorizeUrl(url);
-            // 許可待ちの間に同じ target へ新しい load が来た場合、古い要求は適用しない。
+            const request: ResolvedLoad = options
+                ? { ...options, targetId }
+                : {
+                      source: { url, type: mediaType === 'video' ? 'file' : mediaType },
+                      targetId,
+                      presentation: kind ?? 'video',
+                      sync: 'local',
+                      loadId: `legacy_${targetId}_${revision}`,
+                  };
+            const access = await authorizeUrl(request.source.url);
             if (loadRevisionRef.current.get(targetId) !== revision) return;
             authorizingLoadRef.current.delete(targetId);
             if (!access.allowed) {
                 pendingRef.current.delete(targetId);
+                const entry = mediaEntriesRef.current.get(targetId);
+                if (entry) {
+                    entry.state = {
+                        ...entry.state,
+                        loadId: request.loadId,
+                        source: request.source,
+                        presentation: request.presentation ?? 'video',
+                        sync: request.sync ?? 'local',
+                    };
+                    emitError(entry, { code: access.code, message: access.message, fatal: true });
+                }
                 reportDiagnostic({
                     level: 'warn',
                     modId,
@@ -387,84 +638,73 @@ export function useModMedia(
                 });
                 return;
             }
-            // 許可待ち中に届いた play/seek 等と順序を保つため、load も同じ保留キューへ入れる。
-            _getPending(targetId).load = { url: access.url, mediaType, kind };
-            if (mediaEntriesRef.current.has(targetId)) _drainPending(targetId);
+            getPending(targetId).load = { ...request, source: { ...request.source, url: access.url } };
+            if (mediaEntriesRef.current.has(targetId)) drainPending(targetId);
         },
-
         onMediaPlay: (targetId) => {
-            if (authorizingLoadRef.current.has(targetId) || !mediaEntriesRef.current.has(targetId)) {
-                _getPending(targetId).play = true;
+            const entry = mediaEntriesRef.current.get(targetId);
+            if (authorizingLoadRef.current.has(targetId) || !entry) {
+                getPending(targetId).play = true;
                 return;
             }
-            _applyPlay(targetId);
+            applyPlay(entry);
+            publishTimeline(entry, 'play');
         },
-
         onMediaPause: (targetId) => {
-            if (authorizingLoadRef.current.has(targetId) || !mediaEntriesRef.current.has(targetId)) {
-                _getPending(targetId).play = false;
+            const entry = mediaEntriesRef.current.get(targetId);
+            if (authorizingLoadRef.current.has(targetId) || !entry) {
+                getPending(targetId).play = false;
                 return;
             }
-            _applyPause(targetId);
+            applyPause(entry);
+            publishTimeline(entry, 'pause');
         },
-
         onMediaSeek: (targetId, time) => {
-            if (authorizingLoadRef.current.has(targetId) || !mediaEntriesRef.current.has(targetId)) {
-                _getPending(targetId).seek = time;
+            const entry = mediaEntriesRef.current.get(targetId);
+            if (authorizingLoadRef.current.has(targetId) || !entry) {
+                getPending(targetId).seek = time;
                 return;
             }
-            _applySeek(targetId, time);
+            applySeek(entry, time);
+            publishTimeline(entry, 'seek', { position: time });
         },
-
         onMediaSetVolume: (targetId, volume) => {
-            if (authorizingLoadRef.current.has(targetId) || !mediaEntriesRef.current.has(targetId)) {
-                _getPending(targetId).volume = volume;
+            const entry = mediaEntriesRef.current.get(targetId);
+            if (authorizingLoadRef.current.has(targetId) || !entry) {
+                getPending(targetId).volume = volume;
                 return;
             }
-            _applyVolume(targetId, volume);
+            entry.video.volume = Math.max(0, Math.min(1, volume));
         },
-
         onMediaDestroy: (targetId) => {
             loadRevisionRef.current.set(targetId, (loadRevisionRef.current.get(targetId) ?? 0) + 1);
             authorizingLoadRef.current.delete(targetId);
             pendingRef.current.delete(targetId);
             const entry = mediaEntriesRef.current.get(targetId);
             if (!entry) return;
-            _destroyEntry(entry);
+            emitState(entry, { status: 'idle', source: null, loadId: null, timeline: null, timelineTime: null });
+            destroyEntry(entry);
             mediaEntriesRef.current.delete(targetId);
-            listenersRef.current.delete(targetId);
         },
-
         onMediaSetVisible: (targetId, visible) => {
-            if (authorizingLoadRef.current.has(targetId) || !mediaEntriesRef.current.has(targetId)) {
-                _getPending(targetId).visible = visible;
+            const entry = mediaEntriesRef.current.get(targetId);
+            if (authorizingLoadRef.current.has(targetId) || !entry) {
+                getPending(targetId).visible = visible;
                 return;
             }
-            _applyVisible(targetId, visible);
+            entry.visible = visible;
+            entry.video.style.display = visible ? 'block' : 'none';
+            mediaVisibilityRef.current.set(targetId, visible);
         },
-
         onMediaSetDeviceControl: (targetId, enabled) => {
-            if (authorizingLoadRef.current.has(targetId) || !mediaEntriesRef.current.has(targetId)) {
-                _getPending(targetId).deviceControl = enabled;
+            const entry = mediaEntriesRef.current.get(targetId);
+            if (authorizingLoadRef.current.has(targetId) || !entry) {
+                getPending(targetId).deviceControl = enabled;
                 return;
             }
-            _applyDeviceControl(targetId, enabled);
+            applyDeviceControl(entry, enabled);
         },
     };
 
     return { getVideoRef, mediaHandlers, mediaVisibilityRef };
-}
-
-// ─────────────────────────────────────────────────────────────
-// ヘルパー
-// ─────────────────────────────────────────────────────────────
-
-function _destroyEntry(entry: MediaEntry): void {
-    if (entry.hls) {
-        entry.hls.destroy();
-        entry.hls = null;
-    }
-    entry.video.pause();
-    entry.video.src = '';
-    entry.video.load();
 }

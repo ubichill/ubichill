@@ -16,6 +16,7 @@
         "@ubichill/core-components": "workspace:*",
         "@ubichill/loader": "workspace:*",
         "@ubichill/react": "workspace:*",
+        "@ubichill/runtime": "workspace:*",
         "@ubichill/sdk": "workspace:*",
         "@ubichill/shared": "workspace:*",
         "better-auth": "^1.6.25",

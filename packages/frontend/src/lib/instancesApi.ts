@@ -12,8 +12,11 @@ async function readErrorMessage(res: Response, fallback: string): Promise<string
     return data.error ?? fallback;
 }
 
-export async function fetchWorld(worldId: string): Promise<WorldListItem> {
-    const res = await fetch(`${API_BASE}/api/v1/worlds/${worldId}`, { credentials: 'include' });
+export async function fetchWorld(worldRef: string): Promise<WorldListItem> {
+    const path = /^https?:\/\//i.test(worldRef)
+        ? `/api/v1/worlds/resolve?url=${encodeURIComponent(worldRef)}`
+        : `/api/v1/worlds/${encodeURIComponent(worldRef)}`;
+    const res = await fetch(`${API_BASE}${path}`, { credentials: 'include', cache: 'no-store' });
     if (!res.ok) throw new Error('World not found');
     return res.json() as Promise<WorldListItem>;
 }

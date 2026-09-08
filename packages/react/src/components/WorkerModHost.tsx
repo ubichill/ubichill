@@ -114,7 +114,7 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
     // ── サブ hooks ─────────────────────────────────────────────────
     const { getCanvasRef, canvasHandlers } = useModCanvas(definition, hostDivRef);
     const { vnodes, onRender, sendAction, sendEventRef } = useModUI();
-    const { getVideoRef, mediaHandlers } = useModMedia(definition, sendEventRef);
+    const { getVideoRef, mediaHandlers } = useModMedia(definition, sendEventRef, entity.entityId ?? entityId);
     const onFetch = useModFetch(definition);
     const filterInputEvents = useCallback(
         (events: InputFrameEvent[]) => filterRideInput(events, ridingSyncRef.get(), entityId),

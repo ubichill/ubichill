@@ -110,9 +110,16 @@ export type WorldSource = z.infer<typeof WorldSourceSchema>;
 /**
  * ワールドの canonical URL（機械: `.../api/v1/worlds/:id`）や共有 URL から、
  * ユーザーに配る**共有 URL**（`.../world/:id`）を作る。共有・コピーはこちらを使う。
- * ubichill ホストでない任意 URL（GitHub raw 等）はそのまま返す。
+ * `viewerOrigin` がある場合、外部 URL は現在の Ubichill の `/world?url=...` で包む。
+ * これにより配布元サーバーの登録・フォロー無しで、YAML URL を共有ページとして開ける。
+ * `viewerOrigin` が無い従来呼び出しでは、ubichill ホストでない任意 URL（GitHub raw 等）は
+ * そのまま返す。
  */
-export function worldShareUrl(url: string): string {
+export function worldShareUrl(url: string, viewerOrigin?: string): string {
+    if (viewerOrigin) {
+        const origin = viewerOrigin.replace(/\/$/, '');
+        return `${origin}/world?url=${encodeURIComponent(url)}`;
+    }
     const m = /^(https?:\/\/[^/]+)\/(?:api\/v1\/worlds|world)\/([^/?#]+)/.exec(url);
     return m ? `${m[1]}/world/${m[2]}` : url;
 }

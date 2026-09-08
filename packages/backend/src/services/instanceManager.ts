@@ -3,6 +3,7 @@ import type {
     CreateInstanceRequest,
     Instance,
     InstanceAccess,
+    ResolvedWorld,
     WorldEnvironmentData,
     WorldMod,
     WorldSource,
@@ -13,6 +14,7 @@ import { logger } from '../utils/logger';
 import { flattenGameObject } from './flattenGameObject';
 import { instanceReaper } from './instanceReaper';
 import { clearInstanceState, createEntity } from './instanceState';
+import { clearMediaTimelines } from './mediaTimelineState';
 import { userManager } from './userManager';
 import { worldRegistry } from './worldRegistry';
 
@@ -112,9 +114,8 @@ class InstanceManager {
      * サーバー再起動後にインメモリのエンティティ状態が失われた場合、
      * ワールド定義の initialEntities からインスタンスエンティティを再配置する。
      */
-    async reinitializeEntities(instanceId: string, worldId: string): Promise<void> {
-        const world = await worldRegistry.getWorld(worldId);
-        if (!world?.initialEntities?.length) return;
+    async reinitializeEntities(instanceId: string, world: ResolvedWorld): Promise<void> {
+        if (!world.initialEntities.length) return;
         let placed = 0;
         for (const gameObject of world.initialEntities) {
             for (const flat of flattenGameObject(gameObject)) {
@@ -152,14 +153,16 @@ class InstanceManager {
      * join 用の軽量な存在確認。world 解決には依存しない。
      * (getWorldByDbId が一時的に null でも参加できるようにするため、DB レコードだけ見る)
      */
-    async findInstanceForJoin(instanceId: string): Promise<{ id: string; hasPassword: boolean } | undefined> {
+    async findInstanceForJoin(
+        instanceId: string,
+    ): Promise<{ id: string; hasPassword: boolean; worldRef: string } | undefined> {
         const dbInstance = await instanceRepository.findById(instanceId);
         if (!dbInstance) {
             // join が「見つかりません」で失敗する唯一の地点。原因切り分け用に必ずログを残す。
             logger.warn(`findInstanceForJoin: DB に instance がありません (id: ${instanceId})`);
             return undefined;
         }
-        return { id: dbInstance.id, hasPassword: dbInstance.hasPassword };
+        return { id: dbInstance.id, hasPassword: dbInstance.hasPassword, worldRef: dbInstance.worldRef };
     }
 
     /**
@@ -183,6 +186,7 @@ class InstanceManager {
 
         // インスタンスのエンティティ状態をクリーンアップ
         clearInstanceState(instanceId);
+        clearMediaTimelines(instanceId);
 
         logger.info(`インスタンス終了: ${instanceId}`);
 
@@ -192,8 +196,8 @@ class InstanceManager {
     /**
      * ワールドIDからインスタンスを検索（既存インスタンスへの参加用）
      */
-    async findInstancesByWorld(worldId: string): Promise<Instance[]> {
-        const world = await worldRegistry.getWorld(worldId);
+    async findInstancesByWorld(worldRef: string): Promise<Instance[]> {
+        const world = await worldRegistry.resolveRef(worldRef);
         if (!world) return [];
 
         const dbInstances = await instanceRepository.findByWorldRef(world.url);

@@ -193,7 +193,7 @@ export function resolveWorldFromYaml(
 export async function resolveWorldFromUrl(url: string, source: WorldSource): Promise<ResolvedWorld> {
     const fetchUrl = toRawGitHubUrl(url);
     // 本体 YAML と兄弟 lock を並行取得（lock は best-effort・失敗しても続行）。
-    const [text, lock] = await Promise.all([fetchText(fetchUrl), fetchSiblingLock(url)]);
+    const [text, lock] = await Promise.all([fetchText(fetchUrl), fetchSiblingLock(fetchUrl)]);
     // 正規 URL は元の（人間が貼れる）URL を維持する
     return definitionToResolved(yaml.parse(text), url, source, { lock });
 }
@@ -203,7 +203,8 @@ export async function resolveWorld(
     url: string,
     source: WorldSource,
 ): Promise<{ definition: WorldDefinition; resolved: ResolvedWorld }> {
-    const [text, lock] = await Promise.all([fetchText(toRawGitHubUrl(url)), fetchSiblingLock(url)]);
+    const fetchUrl = toRawGitHubUrl(url);
+    const [text, lock] = await Promise.all([fetchText(fetchUrl), fetchSiblingLock(fetchUrl)]);
     const definition = validateWorldDefinition(yaml.parse(text), url);
     return { definition, resolved: definitionToResolved(definition, url, source, { lock }) };
 }

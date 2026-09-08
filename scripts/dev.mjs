@@ -62,19 +62,11 @@ async function main() {
         process.exit(1);
     }
 
-    // Build mod workers (TypeScript → JS bundle → .gen.ts)
-    console.log('🔨 Building mod workers...');
-    const buildWorkers = spawnSync(
-        process.execPath,
-        [
-            'packages/sdk/cli/index.ts',
-            'build',
-            '--mods-dir=mods',
-            '--public-mods-dir=packages/frontend/public/mods',
-            '--dist-dir=dist/mods',
-        ],
-        { stdio: 'inherit' },
-    );
+    // Build mod workers and regenerate the world locks from the exact output.
+    // `pnpm build:workers` is the single canonical pipeline; duplicating only the
+    // worker-build half here leaves worlds/*.lock.json pointing at old hashes.
+    console.log('🔨 Building mod workers and world locks...');
+    const buildWorkers = spawnSync('pnpm', ['build:workers'], { stdio: 'inherit', shell: true });
     if (buildWorkers.status !== 0) {
         console.error('Failed to build mod workers.');
         process.exit(1);

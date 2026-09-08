@@ -49,6 +49,7 @@ export default defineConfig({
             { find: /^@ubichill\/sandbox$/, replacement: resolve(__dirname, '../sandbox/src/index.ts') },
             { find: /^@ubichill\/ui-renderer$/, replacement: resolve(__dirname, '../ui-renderer/src/index.ts') },
             { find: /^@ubichill\/ecs$/, replacement: resolve(__dirname, '../ecs/src/index.ts') },
+            { find: /^@ubichill\/runtime$/, replacement: resolve(__dirname, '../runtime/src/index.ts') },
             {
                 find: /^@ubichill\/core-components$/,
                 replacement: resolve(__dirname, '../core-components/src/index.ts'),

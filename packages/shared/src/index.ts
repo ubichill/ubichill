@@ -15,6 +15,7 @@ import type {
     UserStatus,
     WorldEnvironmentData,
 } from './mod/entities';
+import type { MediaTimeline, MediaTimelineIntent, MediaTimelineResult } from './mod/types';
 
 // ============================================
 // World Snapshot (拡張版)
@@ -46,6 +47,7 @@ export interface WorldSnapshotPayload {
  * メディアの再生状態を peer 間で同期するための状態。
  * 旧 `{ currentIndex, isPlaying, currentTime }` は動画プレイリスト前提だったため、
  * 「何を再生しているか」を mod 定義の mediaId で一般化し、動画/音声/配信を問わず扱える。
+ * @deprecated revision 競合を解決できないため MediaTimeline / media:timeline:* を使用する。
  */
 export interface MediaSyncState {
     /** 再生対象メディアの識別子（プレイリスト index を一般化。mod が内容ごとに決める）。 */
@@ -116,14 +118,17 @@ export interface ServerToClientEvents {
     // 任意のメディア系modの「再生状態を peer 間で揃える」ためのルーム broadcast。
     // ============================================
 
-    /** メディア再生状態の同期 */
+    /** @deprecated media:timeline を使用する。 */
     'media:sync': (data: MediaSyncState) => void;
 
-    /** 再生状態のリクエスト (参加時 / Resync で発火) */
+    /** @deprecated media:timeline:get を使用する。 */
     'media:state-request': (data: { fromSocketId: string }) => void;
 
-    /** リクエストへの応答 (要求者だけに DM) */
+    /** @deprecated media:timeline:get の callback を使用する。 */
     'media:state-response': (data: MediaSyncState) => void;
+
+    /** revision 付き正規タイムラインの更新通知。 */
+    'media:timeline': (data: MediaTimeline) => void;
 }
 
 /**
@@ -132,7 +137,16 @@ export interface ServerToClientEvents {
 export interface ClientToServerEvents {
     /** ワールドに参加 */
     'world:join': (
-        data: { worldId: string; instanceId: string; password?: string; user: Omit<User, 'id'> },
+        data: {
+            /**
+             * @deprecated ワールドはサーバーが instanceId から解決する。
+             * 旧クライアントとの wire 互換のため受理するが、認可・解決には使用しない。
+             */
+            worldId?: string;
+            instanceId: string;
+            password?: string;
+            user: Omit<User, 'id'>;
+        },
         callback: (response: { success: boolean; userId?: string; instanceId?: string; error?: string }) => void,
     ) => void;
 
@@ -168,14 +182,20 @@ export interface ClientToServerEvents {
     // Media (video / audio etc.) ピア間同期 (Client -> Server)
     // ============================================
 
-    /** メディア再生状態を peer に流す */
+    /** @deprecated media:timeline:update を使用する。 */
     'media:sync': (data: MediaSyncState) => void;
 
-    /** 他参加者に現在の再生状態を尋ねる */
+    /** @deprecated media:timeline:get を使用する。 */
     'media:state-request': () => void;
 
-    /** リクエスト元への応答 */
+    /** @deprecated media:timeline:get の callback を使用する。 */
     'media:state-response': (data: MediaSyncState & { toSocketId: string }) => void;
+
+    /** 再生意図を Server の正規タイムラインへ適用。 */
+    'media:timeline:update': (data: MediaTimelineIntent, callback: (result: MediaTimelineResult) => void) => void;
+
+    /** 遅参加/再接続時に現在の正規タイムラインを取得。 */
+    'media:timeline:get': (data: { sessionId: string }, callback: (result: MediaTimelineResult) => void) => void;
 }
 
 /**
