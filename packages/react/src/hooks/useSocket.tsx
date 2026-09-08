@@ -14,13 +14,19 @@ import { io, type Socket } from 'socket.io-client';
 // Socket type definition
 type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
+export interface JoinWorld {
+    (name: string, instanceId: string, onError?: (error: string) => void): void;
+    /** @deprecated worldId は不要。`joinWorld(name, instanceId, onError)` を使用する。 */
+    (name: string, worldId: string, instanceId: string, onError?: (error: string) => void): void;
+}
+
 export interface SocketContextValue {
     socket: AppSocket | null;
     isConnected: boolean;
     users: Map<string, User>;
     currentUser: User | null;
     error: string | null;
-    joinWorld: (name: string, worldId: string, instanceId: string, onError?: (error: string) => void) => void;
+    joinWorld: JoinWorld;
     leaveWorld: () => Promise<void>;
     updatePosition: (position: CursorPosition, heldEntityId?: string | null) => void;
     updateStatus: (status: UserStatus) => void;
@@ -161,7 +167,16 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }, []);
 
     const joinWorld = useCallback(
-        (name: string, worldId: string, instanceId: string, onError?: (error: string) => void) => {
+        (
+            name: string,
+            instanceIdOrLegacyWorldId: string,
+            instanceIdOrOnError?: string | ((error: string) => void),
+            legacyOnError?: (error: string) => void,
+        ) => {
+            const isLegacyCall = typeof instanceIdOrOnError === 'string';
+            const instanceId = isLegacyCall ? instanceIdOrOnError : instanceIdOrLegacyWorldId;
+            const onError = isLegacyCall ? legacyOnError : instanceIdOrOnError;
+            const legacyWorldId = isLegacyCall ? instanceIdOrLegacyWorldId : undefined;
             // ソケットを初期化して接続
             const socket = initializeSocket();
 
@@ -175,17 +190,21 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             // 接続後にワールドに参加
             const emitJoin = () => {
                 setError(null);
-                socket.emit('world:join', { worldId, instanceId, user: initialUser }, (response) => {
-                    if (response.success && response.userId) {
-                        const newUser = { ...initialUser, id: response.userId };
-                        setCurrentUser(newUser);
-                        currentUserRef.current = newUser;
-                    } else {
-                        const msg = response.error || 'Failed to join world';
-                        setError(msg);
-                        onError?.(msg);
-                    }
-                });
+                socket.emit(
+                    'world:join',
+                    { instanceId, user: initialUser, ...(legacyWorldId ? { worldId: legacyWorldId } : {}) },
+                    (response) => {
+                        if (response.success && response.userId) {
+                            const newUser = { ...initialUser, id: response.userId };
+                            setCurrentUser(newUser);
+                            currentUserRef.current = newUser;
+                        } else {
+                            const msg = response.error || 'Failed to join world';
+                            setError(msg);
+                            onError?.(msg);
+                        }
+                    },
+                );
             };
 
             if (socket.connected) {
@@ -196,7 +215,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }
         },
         [initializeSocket],
-    );
+    ) as JoinWorld;
 
     const updatePosition = useCallback(
         (position: CursorPosition, heldEntityId?: string | null) => {

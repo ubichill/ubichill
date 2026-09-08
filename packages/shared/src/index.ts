@@ -137,7 +137,16 @@ export interface ServerToClientEvents {
 export interface ClientToServerEvents {
     /** ワールドに参加 */
     'world:join': (
-        data: { worldId: string; instanceId: string; password?: string; user: Omit<User, 'id'> },
+        data: {
+            /**
+             * @deprecated ワールドはサーバーが instanceId から解決する。
+             * 旧クライアントとの wire 互換のため受理するが、認可・解決には使用しない。
+             */
+            worldId?: string;
+            instanceId: string;
+            password?: string;
+            user: Omit<User, 'id'>;
+        },
         callback: (response: { success: boolean; userId?: string; instanceId?: string; error?: string }) => void,
     ) => void;
 

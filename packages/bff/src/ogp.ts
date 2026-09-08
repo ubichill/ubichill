@@ -12,6 +12,8 @@ interface MetaInput {
     world: WorldListItem | undefined;
     worldId: string;
     publicBaseUrl: string;
+    /** 外部 YAML の `/world?url=...` など、ID形式以外の正規共有URL。 */
+    pageUrl?: string;
     /** 本番以外は noindex を付与する。 */
     enableCrawl: boolean;
 }
@@ -40,10 +42,10 @@ export function buildJsonLd(world: WorldListItem | undefined, name: string, desc
  * <head> に注入する meta/link/script タグ群を組み立てる。
  * @returns 改行区切りの HTML 文字列
  */
-export function buildMetaTags({ world, worldId, publicBaseUrl, enableCrawl }: MetaInput): string {
+export function buildMetaTags({ world, worldId, publicBaseUrl, pageUrl, enableCrawl }: MetaInput): string {
     const name = world?.displayName ?? worldId;
     const desc = world?.description ?? `${name} — ubichill のワールド`;
-    const url = `${publicBaseUrl}/world/${encodeURIComponent(worldId)}`;
+    const url = pageUrl ?? `${publicBaseUrl}/world/${encodeURIComponent(worldId)}`;
     const image = world?.thumbnail ?? '';
 
     return [

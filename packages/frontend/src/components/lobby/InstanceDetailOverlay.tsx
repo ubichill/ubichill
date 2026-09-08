@@ -72,7 +72,7 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
     const shareUrl =
         world.source?.kind === 'local' || !world.url
             ? `${window.location.origin}/world/${instance.world.id}`
-            : worldShareUrl(world.url);
+            : worldShareUrl(world.url, window.location.origin);
     const originDomain = world.source ? worldOriginDomain(world.source) : null;
     const isCurrent = selected.id === currentInstanceId;
     const isFull = selected.status === 'full';

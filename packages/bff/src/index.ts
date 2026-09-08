@@ -62,10 +62,13 @@ interface WorldPageData {
     instances: Instance[];
 }
 
-async function fetchWorldPageData(worldId: string): Promise<WorldPageData> {
-    const world = await fetchJson<WorldListItem>(`${CORE_API_URL}/api/v1/worlds/${encodeURIComponent(worldId)}`);
+async function fetchWorldPageData(worldRef: string): Promise<WorldPageData> {
+    const worldPath = /^https?:\/\//i.test(worldRef)
+        ? `/api/v1/worlds/resolve?url=${encodeURIComponent(worldRef)}`
+        : `/api/v1/worlds/${encodeURIComponent(worldRef)}`;
+    const world = await fetchJson<WorldListItem>(`${CORE_API_URL}${worldPath}`);
     const instancesRes = await fetchJson<{ instances: Instance[] }>(
-        `${CORE_API_URL}/api/v1/instances?worldId=${encodeURIComponent(worldId)}`,
+        `${CORE_API_URL}/api/v1/instances?worldId=${encodeURIComponent(worldRef)}`,
     );
     return { world, instances: instancesRes?.instances ?? [] };
 }
@@ -81,6 +84,38 @@ function renderShell(metaTags: string, bodyShell: string): string {
         .replace('</head>', () => `${metaTags}\n</head>`)
         .replace(/<div id="root"><\/div>/, () => `<div id="root">${bodyShell}</div>`);
 }
+
+/** 外部 YAML の共有ページ。ワールド/サーバーの事前登録は不要。 */
+app.get('/world', async (req, res) => {
+    const worldRef = typeof req.query.url === 'string' ? req.query.url.trim() : '';
+    if (!/^https?:\/\//i.test(worldRef)) {
+        res.status(400).type('html').send(readIndexHtml());
+        return;
+    }
+    try {
+        const { world, instances } = await fetchWorldPageData(worldRef);
+        const pageUrl = `${PUBLIC_BASE_URL}/world?url=${encodeURIComponent(worldRef)}`;
+        const worldId = world?.id ?? 'external-world';
+        const tags = buildMetaTags({
+            world,
+            worldId,
+            publicBaseUrl: PUBLIC_BASE_URL,
+            pageUrl,
+            // 外部ファイルは閲覧・共有できるが、本体が公式コンテンツとして検索登録しない。
+            enableCrawl: false,
+        });
+        const bodyShell = renderWorldShell({
+            world,
+            instances,
+            publicBaseUrl: PUBLIC_BASE_URL,
+            coreApiUrl: CORE_API_URL,
+        });
+        res.type('html').send(renderShell(tags, bodyShell));
+    } catch (err) {
+        console.error('外部ワールド OGP/SSR 生成失敗:', err);
+        res.type('html').send(readIndexHtml());
+    }
+});
 
 // 公開ワールドページ: OGP/JSON-LD/SSR シェルを注入した SPA シェルを全員に返す。
 app.get('/world/:worldId', async (req, res) => {

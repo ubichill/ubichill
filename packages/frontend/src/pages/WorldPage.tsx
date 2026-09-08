@@ -1,6 +1,6 @@
 import { type Instance, type WorldListItem, worldSourceLabel } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import { createInstance, fetchInstances, fetchWorld } from '@/lib/instancesApi';
 import { useSession } from '@/lib/session';
 import { css } from '@/styled-system/css';
@@ -17,7 +17,11 @@ import { css } from '@/styled-system/css';
 
 export function WorldPage() {
     const navigate = useNavigate();
+    const location = useLocation();
     const { worldId } = useParams<{ worldId: string }>();
+    const [searchParams] = useSearchParams();
+    const externalUrl = searchParams.get('url')?.trim();
+    const worldRef = externalUrl || worldId;
     const { data: session, isPending } = useSession();
 
     const [world, setWorld] = useState<WorldListItem | null>(null);
@@ -28,19 +32,23 @@ export function WorldPage() {
 
     // 公開ページ: 未認証でも閲覧可能。参加・作成時にだけ認証を要求する。
     useEffect(() => {
-        if (!worldId) return;
+        if (!worldRef) {
+            setError('ワールドURLが指定されていません');
+            setLoading(false);
+            return;
+        }
 
         setLoading(true);
         setError(null);
 
-        Promise.all([fetchWorld(worldId), fetchInstances(worldId)])
+        Promise.all([fetchWorld(worldRef), fetchInstances(worldRef)])
             .then(([worldData, instancesData]) => {
                 setWorld(worldData);
                 setInstances(instancesData);
             })
             .catch((e: unknown) => setError(e instanceof Error ? e.message : 'データの取得に失敗しました'))
             .finally(() => setLoading(false));
-    }, [worldId]);
+    }, [worldRef]);
 
     // クライアント側メタ（タブ名 + JS 実行するクローラ向け）。
     // リンクプレビュー bot 向けの OGP は BFF が担う。
@@ -71,27 +79,27 @@ export function WorldPage() {
     const requireAuthThenGo = (next: () => void) => {
         if (isPending) return;
         if (!session) {
-            navigate('/auth', { state: { from: `/world/${worldId}` }, replace: false });
+            navigate('/auth', { state: { from: `${location.pathname}${location.search}` }, replace: false });
             return;
         }
         next();
     };
 
     const handleJoin = (instanceId: string) => {
-        requireAuthThenGo(() => navigate(`/instance/${instanceId}`, { state: { worldId } }));
+        requireAuthThenGo(() => navigate(`/instance/${instanceId}`));
     };
 
     const handleCreate = async () => {
-        if (!worldId || creating) return;
+        if (!worldRef || creating) return;
         if (!session) {
-            navigate('/auth', { state: { from: `/world/${worldId}` }, replace: false });
+            navigate('/auth', { state: { from: `${location.pathname}${location.search}` }, replace: false });
             return;
         }
         setCreating(true);
         setError(null);
         try {
-            const instance = await createInstance(worldId);
-            navigate(`/instance/${instance.id}`, { state: { worldId } });
+            const instance = await createInstance(worldRef);
+            navigate(`/instance/${instance.id}`);
         } catch (e: unknown) {
             setError(e instanceof Error ? e.message : 'インスタンスの作成に失敗しました');
         } finally {

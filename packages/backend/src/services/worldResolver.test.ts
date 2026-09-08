@@ -71,6 +71,10 @@ describe('lockUrlFor（mod ロックの兄弟 URL 導出）', () => {
         );
         expect(lockUrlFor('https://cdn.example/foo.yml')).toBe('https://cdn.example/foo.lock.json');
     });
+    it('GitHub blob URL は raw 化してから兄弟 lock を解決できる', () => {
+        const blob = 'https://github.com/o/r/blob/main/worlds/x.yaml';
+        expect(lockUrlFor(toRawGitHubUrl(blob))).toBe('https://raw.githubusercontent.com/o/r/main/worlds/x.lock.json');
+    });
     it('ワールド一覧や兄弟を導出できない URL は null（埋め込みフォールバックに委ねる）', () => {
         expect(lockUrlFor('https://h.example/api/v1/worlds')).toBeNull();
         expect(lockUrlFor('https://example.com/some/page')).toBeNull();

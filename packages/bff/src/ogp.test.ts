@@ -67,4 +67,18 @@ describe('buildMetaTags', () => {
         expect(tags).not.toContain('og:image');
         expect(tags).toContain('content="summary"');
     });
+
+    it('外部ワールド共有URLをcanonicalとog:urlに使用する', () => {
+        const pageUrl =
+            'https://ubichill.example/world?url=https%3A%2F%2Fraw.githubusercontent.com%2Fo%2Fr%2Fmain%2Fw.yaml';
+        const tags = buildMetaTags({
+            world: baseWorld,
+            worldId: 'w1',
+            publicBaseUrl: 'https://ubichill.example',
+            pageUrl,
+            enableCrawl: true,
+        });
+        expect(tags).toContain(`<link rel="canonical" href="${pageUrl}">`);
+        expect(tags).toContain(`<meta property="og:url" content="${pageUrl}">`);
+    });
 });
