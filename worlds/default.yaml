@@ -3,8 +3,8 @@ spec:
   capacity:
     max: 20
     default: 10
-  displayName: ちるわ
-  description: "公式のチルワールド"
+  displayName: Ubichill Home
+  description: "Ubichill公式のホームワールド"
   environment:
     worldSize:
       width: 2000
