@@ -104,6 +104,80 @@ describe('runInstall', () => {
         expect(lock.mods.pen.baseUrl).toBeUndefined();
     });
 
+    it('全dependencyにsource.urlがあればfallback指定なしでportableなlockを作る', async () => {
+        const firstBase = 'https://mods-a.example.test';
+        const secondBase = 'https://mods-b.example.test';
+        vi.stubGlobal(
+            'fetch',
+            vi.fn(async (url: string) => {
+                const match = /^(https:\/\/mods-[ab]\.example\.test)\/([^/]+)\/mod\.json$/.exec(url);
+                if (match) return { ok: true, json: async () => ({ id: match[2], version: '1.0.0' }) };
+                const lockMatch = /^(https:\/\/mods-[ab]\.example\.test)\/([^/]+)\/v1\.0\.0\/lock\.json$/.exec(url);
+                if (lockMatch) {
+                    return { ok: true, json: async () => JSON.parse(lockEntryJson(lockMatch[2], '1.0.0')) };
+                }
+                return { ok: false, json: async () => null };
+            }),
+        );
+
+        const worldPath = join(dir, 'world.yaml');
+        writeFileSync(
+            worldPath,
+            [
+                'apiVersion: ubichill.com/v1alpha1',
+                'kind: World',
+                'metadata: { name: portable, version: 1.0.0 }',
+                'spec:',
+                '  displayName: portable',
+                '  dependencies:',
+                '    - name: first',
+                `      source: { url: ${firstBase}, version: latest }`,
+                '    - name: second',
+                `      source: { url: ${secondBase}, version: latest }`,
+                '  initialEntities:',
+                '    - id: root',
+                '      transform: { x: 0, y: 0, z: 0, scale: 1, rotation: 0 }',
+                '      components:',
+                '        - { type: first:main, data: {} }',
+                '        - { type: second:main, data: {} }',
+            ].join('\n'),
+            'utf-8',
+        );
+
+        const outPath = join(dir, 'world.lock.json');
+        await runInstall([worldPath, `--out=${outPath}`]);
+
+        const lock = JSON.parse(readFileSync(outPath, 'utf-8')) as ModLock;
+        expect(lock.mods.first.baseUrl).toBe(firstBase);
+        expect(lock.mods.second.baseUrl).toBe(secondBase);
+    });
+
+    it('解決できないdependencyがあれば部分lockを書かず失敗する', async () => {
+        const worldPath = join(dir, 'world.yaml');
+        writeFileSync(
+            worldPath,
+            [
+                'apiVersion: ubichill.com/v1alpha1',
+                'kind: World',
+                'metadata: { name: missing, version: 1.0.0 }',
+                'spec:',
+                '  displayName: missing',
+                '  initialEntities:',
+                '    - id: root',
+                '      transform: { x: 0, y: 0, z: 0, scale: 1, rotation: 0 }',
+                '      components:',
+                '        - { type: missing:main, data: {} }',
+            ].join('\n'),
+            'utf-8',
+        );
+
+        const outPath = join(dir, 'world.lock.json');
+        await runInstall([worldPath, `--out=${outPath}`]);
+
+        expect(process.exitCode).toBe(1);
+        expect(existsSync(outPath)).toBe(false);
+    });
+
     it('dependencies[].source.version が pin されていれば、mod.json の最新ではなく指定バージョンを lock する', async () => {
         const modsDir = join(dir, 'mods');
         mkdirSync(join(modsDir, 'pen', 'v1.0.0'), { recursive: true });

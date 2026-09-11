@@ -13,6 +13,10 @@
  *   - `--base-url` 指定時、上記以外の mod                                → その URL から HTTP 取得。
  *   - それ以外（既定 / `--mods-dir`）                                    → ローカルの mods ディレクトリ
  *     （`ubichill build` 出力）から fs 読取。
+ *
+ * 外部配布する world は dependency ごとに `source.url` を書くのが標準。これにより
+ * `ubichill install world.yaml` だけで、別レジストリの mod を混在させた portable な lock を作れる。
+ * `--base-url` / `--mods-dir` は URL 未指定 dependency の fallback（単一レジストリやHostモノレポ用）。
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -55,8 +59,8 @@ function createFsLockEntryGetter(modsDir: string): LockEntryGetter {
  * `argv`（サブコマンド名を除いた残り引数）から依存を解決しロックを生成する。
  * 使い方: `<world.yaml> [--mods-dir=<dir>] [--base-url=<url>] [--out=<path>] [--check]`。
  * `dependencies[].source.version` が pin されていればそのバージョンを固定して取得する。
- * `--mods-dir` 既定は `process.cwd()` 直下の `mods`（Host固有パスをライブラリ既定にしない。
- * このリポジトリでの実運用パス `packages/frontend/public/mods` は呼び出し側が明示指定する）。
+ * `--mods-dir` 既定は `process.cwd()` 直下の `mods`。ただし外部 world の標準フローでは
+ * `dependencies[].source.url` が優先されるため、この暗黙値は参照されない。
  *
  * `--check`: ファイルを書き換えず、現在の mod ビルドから再計算したロックと既存ファイルを
  * 比較するだけ（CI 用の drift 検出）。不一致 or ファイル不在なら `process.exitCode = 1` にして返す
@@ -88,6 +92,23 @@ export async function runInstall(argv: string[]): Promise<void> {
     const lockedIds = Object.keys(lock.mods);
     const missing = modIds.filter((id) => !lockedIds.includes(id));
 
+    // 不完全な lock は外部 provenance で実行時拒否されるうえ、コミットされると原因が分かりにくい。
+    // 成功扱いで部分 lock を書かず、dependency.source.url または明示 fallback を要求する。
+    if (missing.length > 0) {
+        const fallbackHint = baseUrl
+            ? `--base-url=${baseUrl}`
+            : argv.some((a) => a.startsWith('--mods-dir='))
+              ? `--mods-dir=${modsDir}`
+              : '既定の ./mods';
+        console.error(
+            `❌ lock を取得できない mod: ${missing.join(', ')}。` +
+                `外部 mod は world.yaml の dependencies[].source.url を指定してください` +
+                `（現在の fallback: ${fallbackHint}）。`,
+        );
+        process.exitCode = 1;
+        return;
+    }
+
     if (argv.includes('--check')) {
         const current = existsSync(outPath) ? readFileSync(outPath, 'utf-8') : null;
         if (current !== nextJson) {
@@ -98,12 +119,10 @@ export async function runInstall(argv: string[]): Promise<void> {
             process.exitCode = 1;
             return;
         }
-        if (missing.length > 0) console.warn(`⚠️  lock 断片が見つからない mod: ${missing.join(', ')}（除外）`);
         console.log(`✅ ${outPath} は現在の mod ビルドと一致しています (${lockedIds.length}/${modIds.length} mods)`);
         return;
     }
 
     writeFileSync(outPath, nextJson, 'utf-8');
     console.log(`🔒 ${outPath} (${lockedIds.length}/${modIds.length} mods)`);
-    if (missing.length > 0) console.warn(`⚠️  lock 断片が見つからない mod: ${missing.join(', ')}（除外）`);
 }

@@ -97,6 +97,15 @@ describe('definitionToResolved / resolveWorldFromYaml', () => {
         expect(resolved.capacity).toEqual({ default: 8, max: 16 });
     });
 
+    it('背景色だけ指定したenvironmentへ既定worldSizeを補完してsnapshot用データにする', () => {
+        const yaml = VALID_YAML.replace('  capacity:', '  environment:\n    backgroundColor: "#123456"\n  capacity:');
+        const resolved = resolveWorldFromYaml(yaml, url, source);
+        expect(resolved.environment).toEqual({
+            backgroundColor: '#123456',
+            worldSize: { width: 2000, height: 1500 },
+        });
+    });
+
     it('extra.authorId を反映する', () => {
         const resolved = resolveWorldFromYaml(VALID_YAML, url, source, { authorId: 'user-1' });
         expect(resolved.authorId).toBe('user-1');

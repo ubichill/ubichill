@@ -96,6 +96,24 @@ npx ubichill verify [--dist-dir=<dir>]
 - **`lock`**: ワールド定義（YAML）が参照する mod の `lock.json` 断片を集約し、
   兄弟ファイル `<world>.lock.json` に書き出す。ホストはこのロックでmodの完全性
   （hash固定 + 権限天井）を強制する。
+  - 外部配布するワールドでは、各 dependency の `source.url` にmodレジストリURLを書く。
+    その場合は `npx ubichill install world.yaml` だけでよく、`--base-url`は不要。
+  - `--base-url`は、URLを持たない複数dependencyを同じHTTPレジストリから取得する場合の
+    一括fallback。`--mods-dir`はUbichill本体などローカルModを同時開発する場合のfallback。
+  - lockを取得できないdependencyが1つでもあれば、不完全なlockを書かず非ゼロ終了する。
+
+```yaml
+spec:
+  dependencies:
+    - name: example-mod
+      source:
+        url: https://example.github.io/example-mod
+        version: latest
+```
+
+```bash
+npx ubichill install world.yaml
+```
 
 ### 型チェックを `build` の前段に入れる
 
