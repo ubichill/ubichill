@@ -107,6 +107,28 @@ function initialState(targetId: string): MediaState {
     };
 }
 
+export interface TimelinePlaybackCorrection {
+    seekTime: number | null;
+    playbackRate: number;
+}
+
+/** Server の正規時計へ実動画を追従させる。小さな差は速度、大きな差と停止中の差は seek で直す。 */
+export function planTimelinePlaybackCorrection(
+    phase: MediaTimeline['phase'],
+    expectedTime: number,
+    currentTime: number,
+    canonicalRate: number,
+): TimelinePlaybackCorrection {
+    const drift = expectedTime - currentTime;
+    if (phase !== 'playing') {
+        return { seekTime: Math.abs(drift) >= 0.04 ? expectedTime : null, playbackRate: canonicalRate };
+    }
+    if (Math.abs(drift) >= 0.75) return { seekTime: expectedTime, playbackRate: canonicalRate };
+    if (Math.abs(drift) < 0.12) return { seekTime: null, playbackRate: canonicalRate };
+    const adjustment = Math.max(-0.05, Math.min(0.05, drift * 0.1));
+    return { seekTime: null, playbackRate: canonicalRate * (1 + adjustment) };
+}
+
 function domMediaError(video: HTMLVideoElement): MediaError {
     const code = video.error?.code;
     const names: Record<number, string> = {
@@ -222,6 +244,10 @@ export function useModMedia(
         const intentRevision = ++entry.playbackIntentRevision;
         entry.intendedPlaying = true;
         syncMediaSessionPlaybackState(entry);
+        emitState(entry, {
+            status: entry.video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA ? 'playing' : 'buffering',
+            error: null,
+        });
         void entry.video.play().catch((cause: unknown) => {
             // play() は、その Promise が未解決の間に pause()/load() が呼ばれると reject する。
             // それは現在の再生意図に対する失敗ではないため media:error に昇格しない。
@@ -241,11 +267,29 @@ export function useModMedia(
         entry.intendedPlaying = false;
         syncMediaSessionPlaybackState(entry);
         entry.video.pause();
+        if (!entry.video.ended) emitState(entry, { status: 'paused' });
     };
 
     const applySeek = (entry: MediaEntry, time: number): void => {
         if (!Number.isFinite(time) || time < 0 || entry.state.isLive) return;
         entry.video.currentTime = entry.state.duration === null ? time : Math.min(entry.state.duration, time);
+    };
+
+    const reconcileTimelinePlayback = (entry: MediaEntry): void => {
+        const timeline = entry.state.timeline;
+        if (!entry.ready || !timeline || entry.state.isLive) return;
+        const expected = timelineTime(entry);
+        if (expected === null) return;
+        const correction = planTimelinePlaybackCorrection(
+            timeline.phase,
+            expected,
+            entry.video.currentTime,
+            timeline.playbackRate,
+        );
+        if (correction.seekTime !== null) applySeek(entry, correction.seekTime);
+        if (Math.abs(entry.video.playbackRate - correction.playbackRate) >= 0.001) {
+            entry.video.playbackRate = correction.playbackRate;
+        }
     };
 
     const acceptTimeline = (
@@ -260,20 +304,12 @@ export function useModMedia(
         if (serverTime !== undefined && midpoint !== undefined) entry.serverOffsetMs = serverTime - midpoint;
         if (entry.state.timeline && timeline.revision < entry.state.timeline.revision) return;
         entry.state = { ...entry.state, timeline };
-        const expected = timelineTime(entry);
-        if (
-            entry.ready &&
-            expected !== null &&
-            !entry.state.isLive &&
-            Math.abs(entry.video.currentTime - expected) > 1.25
-        ) {
-            applySeek(entry, expected);
-        }
         if (entry.ready) {
             if (timeline.phase === 'playing') applyPlay(entry);
             else applyPause(entry);
+            reconcileTimelinePlayback(entry);
         }
-        emitState(entry);
+        emitState(entry, timeline.phase === 'ended' ? { status: 'ended' } : {});
     };
 
     const publishTimeline = (
@@ -554,7 +590,10 @@ export function useModMedia(
     };
     emitTimelineTickRef.current = () => {
         for (const entry of mediaEntriesRef.current.values()) {
-            if (entry.state.timeline?.phase === 'playing') emitState(entry);
+            if (entry.state.timeline?.phase === 'playing') {
+                reconcileTimelinePlayback(entry);
+                emitState(entry);
+            }
         }
     };
 
