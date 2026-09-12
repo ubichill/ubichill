@@ -27,6 +27,7 @@ interface MediaEntry {
     state: MediaState;
     visible: boolean;
     intendedPlaying: boolean | null;
+    playbackIntentRevision: number;
     deviceControl: boolean;
     ready: boolean;
     destroyed: boolean;
@@ -218,9 +219,15 @@ export function useModMedia(
     };
 
     const applyPlay = (entry: MediaEntry): void => {
+        const intentRevision = ++entry.playbackIntentRevision;
         entry.intendedPlaying = true;
         syncMediaSessionPlaybackState(entry);
         void entry.video.play().catch((cause: unknown) => {
+            // play() は、その Promise が未解決の間に pause()/load() が呼ばれると reject する。
+            // それは現在の再生意図に対する失敗ではないため media:error に昇格しない。
+            if (entry.destroyed || entry.intendedPlaying !== true || entry.playbackIntentRevision !== intentRevision) {
+                return;
+            }
             emitError(entry, {
                 code: 'play_rejected',
                 message: cause instanceof Error ? cause.message : '再生を開始できません',
@@ -230,6 +237,7 @@ export function useModMedia(
     };
 
     const applyPause = (entry: MediaEntry): void => {
+        entry.playbackIntentRevision++;
         entry.intendedPlaying = false;
         syncMediaSessionPlaybackState(entry);
         entry.video.pause();
@@ -431,6 +439,7 @@ export function useModMedia(
             state: initialState(targetId),
             visible: false,
             intendedPlaying: null,
+            playbackIntentRevision: 0,
             deviceControl: false,
             ready: false,
             destroyed: false,
@@ -445,6 +454,7 @@ export function useModMedia(
 
     const applyLoad = (entry: MediaEntry, request: ResolvedLoad): void => {
         entry.ready = false;
+        entry.playbackIntentRevision++;
         entry.intendedPlaying = null;
         if (entry.hls) {
             entry.hls.destroy();
@@ -529,6 +539,7 @@ export function useModMedia(
 
     const destroyEntry = (entry: MediaEntry): void => {
         entry.destroyed = true;
+        entry.playbackIntentRevision++;
         entry.cleanupListeners?.();
         entry.cleanupListeners = null;
         entry.hls?.destroy();

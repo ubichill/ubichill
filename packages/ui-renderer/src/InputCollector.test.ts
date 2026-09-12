@@ -139,6 +139,39 @@ describe('InputCollector: pointerType の伝播', () => {
     });
 });
 
+describe('InputCollector: フォーム入力とワールドキー入力の分離', () => {
+    it('input で入力した空白をワールドへ転送せず、ブラウザ既定動作も妨げない', () => {
+        const input = setup('<input type="search" />');
+        const down = new KeyboardEvent('keydown', {
+            key: ' ',
+            code: 'Space',
+            bubbles: true,
+            cancelable: true,
+        });
+        input.dispatchEvent(down);
+        input.dispatchEvent(new KeyboardEvent('keyup', { key: ' ', code: 'Space', bubbles: true }));
+
+        expect(down.defaultPrevented).toBe(false);
+        const { events } = collector?.collectSince(0) ?? { events: [] };
+        expect(events.filter((event) => event.type === 'KEY_DOWN' || event.type === 'KEY_UP')).toEqual([]);
+    });
+
+    it('ワールドで押したキーは input にフォーカスが移っても KEY_UP を転送する', () => {
+        const world = setup('<div><input type="text" /></div>');
+        const input = world.querySelector('input');
+        if (!input) throw new Error('input がない');
+
+        world.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', code: 'KeyW', bubbles: true }));
+        input.dispatchEvent(new KeyboardEvent('keyup', { key: 'w', code: 'KeyW', bubbles: true }));
+
+        const { events } = collector?.collectSince(0) ?? { events: [] };
+        expect(events.filter((event) => event.type === 'KEY_DOWN' || event.type === 'KEY_UP')).toEqual([
+            { type: 'KEY_DOWN', data: { key: 'w', code: 'KeyW' } },
+            { type: 'KEY_UP', data: { key: 'w', code: 'KeyW' } },
+        ]);
+    });
+});
+
 // ワールドがスクロールされている状態で「クリックした場所」と「描かれる場所」が一致するかは
 // この座標変換だけで決まる。ここが崩れると、スクロール量だけずれた位置に線が描かれる。
 describe('InputCollector: ワールド座標への変換（スクロール量の加算）', () => {

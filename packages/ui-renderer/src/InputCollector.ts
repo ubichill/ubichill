@@ -89,6 +89,9 @@ export class InputCollector {
     /** フレーム内の最新リサイズ状態（上書きデデュプ） */
     private _latestResize: SequencedInputFrameEvent | null = null;
 
+    /** ワールドへ KEY_DOWN を転送したキー。入力欄由来のキーを隔離しつつ解放漏れを防ぐ。 */
+    private readonly _forwardedKeyCodes = new Set<string>();
+
     /** クリック・キーなどの離散イベント（すべて保持） */
     private _discreteEvents: SequencedInputFrameEvent[] = [];
 
@@ -255,12 +258,15 @@ export class InputCollector {
         };
 
         this._onKeyDown = (e: KeyboardEvent) => {
+            // フォームへのタイピングは UI の責務。ワールド/全 Worker へ配ると、空白や矢印が
+            // mod の操作と競合し、入力欄のフォーカスや値が壊れることがある。
+            if (_isInteractiveTarget(e.target)) return;
             // 矢印キー・スペースはゲーム入力なので、スクロール可能なワールドコンテナの
             // デフォルトスクロールを止める（自機移動で画面が動くのを防ぐ）。
-            // テキスト入力中（input/textarea 等）はタイピング操作を尊重して止めない。
-            if (SCROLL_PREVENT_KEYS.has(e.code) && !_isInteractiveTarget(e.target)) {
+            if (SCROLL_PREVENT_KEYS.has(e.code)) {
                 e.preventDefault();
             }
+            this._forwardedKeyCodes.add(e.code);
             this._discreteEvents.push({
                 seq: this._nextSeq(),
                 event: {
@@ -271,6 +277,9 @@ export class InputCollector {
         };
 
         this._onKeyUp = (e: KeyboardEvent) => {
+            // KEY_DOWN をワールドへ渡していないキーの KEY_UP も隔離する。一方、押下後に
+            // input へフォーカスが移った場合は解放を渡し、移動キーが固まるのを防ぐ。
+            if (!this._forwardedKeyCodes.delete(e.code)) return;
             this._discreteEvents.push({
                 seq: this._nextSeq(),
                 event: {
