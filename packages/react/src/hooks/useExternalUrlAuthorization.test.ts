@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { authorizeExternalUrl } from './useExternalUrlAuthorization';
+import { authorizeExternalUrl } from '../lib/externalUrlAuthorization';
 
 const base = {
     modBase: 'https://mods.example.com/sample/v1/',

@@ -3,8 +3,9 @@ import { act, renderHook } from '@testing-library/react';
 import type { ModHostEvent } from '@ubichill/shared';
 import type React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { planTimelinePlaybackCorrection } from '../media/timelineSync';
 import type { WorkerModDefinition } from '../types';
-import { planTimelinePlaybackCorrection, useModMedia } from './useModMedia';
+import { useModMedia } from './useModMedia';
 
 vi.mock('./useSocket', () => ({ useSocket: () => ({ socket: null }) }));
 vi.mock('./useExternalUrlAuthorization', () => ({
