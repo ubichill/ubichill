@@ -7,15 +7,15 @@ description: 開発環境のセットアップと起動
 
 ## 前提条件
 
-- Node.js (v18+)
-- pnpm (v8+)
+- [mise](https://mise.jdx.dev/)（Node / pnpm は `package.json` で固定）
 - Docker (オプション)
 
 ## 手順
 
-1. 依存関係のインストール
+1. ツールと依存関係のインストール
    ```bash
    // turbo
+   mise install
    pnpm install
    ```
 

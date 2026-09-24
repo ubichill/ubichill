@@ -1,16 +1,16 @@
-ARG NODE_VERSION=22
-ARG PNPM_VERSION=10.29.3
+# package.json の devEngines.runtime.version と揃える（base ステージで一致を検証し、ズレたらビルドを落とす）
+ARG NODE_VERSION=25.9.0
 
 # ==========================================
 # base: pnpm + bookworm-slim
 # ==========================================
 FROM node:${NODE_VERSION}-bookworm-slim AS base
-ARG PNPM_VERSION
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-RUN npm install -g --force corepack@latest \
-    && corepack enable \
-    && corepack prepare pnpm@${PNPM_VERSION} --activate
+# Node 25 以降は corepack が同梱されないため、packageManager の pnpm を直接入れる
+COPY package.json /tmp/package.json
+RUN node -e 'const want = require("/tmp/package.json").devEngines.runtime.version; if (process.versions.node !== want) { console.error(`NODE_VERSION (${process.versions.node}) が package.json の devEngines.runtime.version (${want}) と一致しません`); process.exit(1); }' \
+    && npm install -g "$(node -p "require('/tmp/package.json').packageManager")"
 
 # ==========================================
 # deps: package.json のみ先行コピー → pnpm install

@@ -1,0 +1,7 @@
+# Node / pnpm のバージョンの真実源は package.json（devEngines.runtime / packageManager）。
+# mise はそれを読んで導入するだけで、ここにバージョンは書かない。
+[settings]
+idiomatic_version_file_enable_tools = ["node", "pnpm"]
+
+[env]
+_.path = ["{{config_root}}/node_modules/.bin"]

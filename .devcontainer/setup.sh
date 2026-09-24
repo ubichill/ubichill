@@ -6,18 +6,15 @@ sudo chown vscode:vscode .
 [ -d node_modules ] || mkdir node_modules
 sudo chown vscode:vscode node_modules
 
-# 2. Volta & pnpmのセットアップ
-export VOLTA_HOME="$HOME/.volta"
-export PATH="$VOLTA_HOME/bin:$PATH"
+# 2. mise のセットアップ (Node / pnpm のバージョンは package.json で固定)
+export PATH="$HOME/.local/bin:$PATH"
 
-if ! command -v volta &> /dev/null; then
-    curl https://get.volta.sh | bash
+if ! command -v mise &> /dev/null; then
+    curl https://mise.run | sh
 fi
 
-# zshrcにVoltaのパスを設定
-if ! grep -q "VOLTA_HOME" "$HOME/.zshrc"; then
-    echo 'export VOLTA_HOME="$HOME/.volta"' >> "$HOME/.zshrc"
-    echo 'export PATH="$VOLTA_HOME/bin:$PATH"' >> "$HOME/.zshrc"
+if ! grep -q "mise activate" "$HOME/.zshrc"; then
+    echo 'eval "$(~/.local/bin/mise activate zsh)"' >> "$HOME/.zshrc"
 fi
 
 # 3. zshプラグインのセットアップ (Oh My Zshは導入済み前提)
@@ -40,6 +37,6 @@ fi
 sed -i 's/^ZSH_THEME=.*/ZSH_THEME="agnoster"/' "$HOME/.zshrc"
 
 # 4. パッケージインストール
-volta install node
-volta install pnpm
-pnpm install
+mise trust
+mise install
+mise exec -- pnpm install
