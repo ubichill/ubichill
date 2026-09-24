@@ -30,7 +30,7 @@ Ubichill への貢献ありがとうございます。バグ報告・提案は I
 
 ## 開発の始め方
 
-前提: [mise](https://mise.jdx.dev/) と Docker。Node / pnpm のバージョンは `mise.toml` が真実源。
+前提: [mise](https://mise.jdx.dev/) と Docker。Node / pnpm のバージョンは `package.json`（`devEngines.runtime` / `packageManager`）が真実源。
 
 ```bash
 mise install        # Node / pnpm を導入（mise.lock でチェックサム検証）

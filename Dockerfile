@@ -1,16 +1,16 @@
-# 既定値は mise.toml と揃える（CI は mise.toml から build-arg で渡す）
-ARG NODE_VERSION=25.9.0
-ARG PNPM_VERSION=10.33.2
+# 既定値は持たせない（package.json の devEngines.runtime.version とのズレを防ぐ）。
+# docker build --build-arg NODE_VERSION=$(jq -r .devEngines.runtime.version package.json) .
+ARG NODE_VERSION
 
 # ==========================================
 # base: pnpm + bookworm-slim
 # ==========================================
 FROM node:${NODE_VERSION}-bookworm-slim AS base
-ARG PNPM_VERSION
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-# Node 25 以降は corepack が同梱されないため pnpm を直接入れる
-RUN npm install -g pnpm@${PNPM_VERSION}
+# Node 25 以降は corepack が同梱されないため、packageManager の pnpm を直接入れる
+COPY package.json /tmp/package.json
+RUN npm install -g "$(node -p "require('/tmp/package.json').packageManager")"
 
 # ==========================================
 # deps: package.json のみ先行コピー → pnpm install

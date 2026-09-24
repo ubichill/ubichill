@@ -6,7 +6,7 @@ sudo chown vscode:vscode .
 [ -d node_modules ] || mkdir node_modules
 sudo chown vscode:vscode node_modules
 
-# 2. mise のセットアップ (Node / pnpm のバージョンは mise.toml で固定)
+# 2. mise のセットアップ (Node / pnpm のバージョンは package.json で固定)
 export PATH="$HOME/.local/bin:$PATH"
 
 if ! command -v mise &> /dev/null; then

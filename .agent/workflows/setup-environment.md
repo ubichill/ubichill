@@ -7,7 +7,7 @@ description: 開発環境のセットアップと起動
 
 ## 前提条件
 
-- [mise](https://mise.jdx.dev/)（Node / pnpm は `mise.toml` で固定）
+- [mise](https://mise.jdx.dev/)（Node / pnpm は `package.json` で固定）
 - Docker (オプション)
 
 ## 手順

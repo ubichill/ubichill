@@ -1,5 +1,5 @@
 name: Setup toolchain
-description: mise.toml / mise.lock の Node・pnpm を導入し、pnpm store をキャッシュして依存を入れる
+description: package.json 指定の Node・pnpm を mise (mise.lock) で導入し、pnpm store をキャッシュして依存を入れる
 
 inputs:
   install-args:

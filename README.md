@@ -65,10 +65,11 @@ DB は同梱の PostgreSQL がパスワードを自動生成するので指定�
 
 ## ローカル開発
 
-Node / pnpm のバージョンは [mise](https://mise.jdx.dev/) で管理する（`mise.toml`）。
+Node / pnpm のバージョンは `package.json`（`devEngines.runtime` / `packageManager`）で固定し、[mise](https://mise.jdx.dev/) がそれを読んで導入する。
+`pnpm` 経由のスクリプトは lock 済みの Node で実行されるため、手元の Node がずれていても CI と同じになる。
 
 ```bash
-mise install      # mise.toml / mise.lock の Node・pnpm を導入
+mise install      # package.json の Node・pnpm を導入（mise.lock でチェックサム検証）
 pnpm install
 pnpm dev          # PostgreSQL (Docker) + Backend (3001) + Frontend (3000)
 ```

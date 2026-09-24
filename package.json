@@ -5,6 +5,13 @@
   "description": "2D metaverse-style work sharing web application",
   "license": "AGPL-3.0-only",
   "packageManager": "pnpm@10.33.2",
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "25.9.0",
+      "onFail": "download"
+    }
+  },
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "build:workers": "node packages/sdk/cli/index.ts build --mods-dir=mods --public-mods-dir=packages/frontend/public/mods --dist-dir=dist/mods && pnpm gen:world-locks",
