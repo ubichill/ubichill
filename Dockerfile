@@ -1,6 +1,5 @@
-# 既定値は持たせない（package.json の devEngines.runtime.version とのズレを防ぐ）。
-# docker build --build-arg NODE_VERSION=$(jq -r .devEngines.runtime.version package.json) .
-ARG NODE_VERSION
+# package.json の devEngines.runtime.version と揃える（base ステージで一致を検証し、ズレたらビルドを落とす）
+ARG NODE_VERSION=25.9.0
 
 # ==========================================
 # base: pnpm + bookworm-slim
@@ -10,7 +9,8 @@ ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 # Node 25 以降は corepack が同梱されないため、packageManager の pnpm を直接入れる
 COPY package.json /tmp/package.json
-RUN npm install -g "$(node -p "require('/tmp/package.json').packageManager")"
+RUN node -e 'const want = require("/tmp/package.json").devEngines.runtime.version; if (process.versions.node !== want) { console.error(`NODE_VERSION (${process.versions.node}) が package.json の devEngines.runtime.version (${want}) と一致しません`); process.exit(1); }' \
+    && npm install -g "$(node -p "require('/tmp/package.json').packageManager")"
 
 # ==========================================
 # deps: package.json のみ先行コピー → pnpm install

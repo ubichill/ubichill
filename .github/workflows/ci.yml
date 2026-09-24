@@ -273,7 +273,6 @@ jobs:
       - name: Extract versions
         id: versions
         run: |
-          echo "node=$(jq -r '.devEngines.runtime.version' package.json)" >> $GITHUB_OUTPUT
           SHA="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
           echo "short-sha=$(echo "$SHA" | cut -c1-7)" >> $GITHUB_OUTPUT
           echo "next-version=${{ needs.detect-changes.outputs.next-version }}" >> $GITHUB_OUTPUT
@@ -293,7 +292,6 @@ jobs:
           target: backend-runner
           push: true
           build-args: |
-            NODE_VERSION=${{ steps.versions.outputs.node }}
             COMMIT_HASH=${{ steps.versions.outputs.short-sha }}
           tags: |
             ${{ github.event_name == 'push' && format('{0}/{1}/{2}:latest', env.REGISTRY, github.repository_owner, env.IMAGE_NAME) || '' }}
@@ -329,7 +327,6 @@ jobs:
       - name: Extract versions
         id: versions
         run: |
-          echo "node=$(jq -r '.devEngines.runtime.version' package.json)" >> $GITHUB_OUTPUT
           SHA="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
           echo "short-sha=$(echo "$SHA" | cut -c1-7)" >> $GITHUB_OUTPUT
           echo "next-version=${{ needs.detect-changes.outputs.next-version }}" >> $GITHUB_OUTPUT
@@ -349,7 +346,6 @@ jobs:
           target: frontend-runner
           push: true
           build-args: |
-            NODE_VERSION=${{ steps.versions.outputs.node }}
             COMMIT_HASH=${{ steps.versions.outputs.short-sha }}
             VITE_COMMIT_HASH=${{ steps.versions.outputs.short-sha }}
             VITE_ENVIRONMENT=${{ github.event_name == 'push' && 'production' || 'development' }}
