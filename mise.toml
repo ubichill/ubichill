@@ -1,0 +1,8 @@
+# Node / pnpm のバージョンの真実源。CI (.github/actions/setup) と Docker の build-arg もここから読む。
+# pnpm は package.json の packageManager とも一致させること（pnpm 自身がこれを検証する）。
+[tools]
+node = "25.9.0"
+pnpm = "10.33.2"
+
+[env]
+_.path = ["{{config_root}}/node_modules/.bin"]

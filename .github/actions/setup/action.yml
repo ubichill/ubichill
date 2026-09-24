@@ -1,0 +1,29 @@
+name: Setup toolchain
+description: mise.toml / mise.lock の Node・pnpm を導入し、pnpm store をキャッシュして依存を入れる
+
+inputs:
+  install-args:
+    description: "`pnpm install --frozen-lockfile` に追加する引数"
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    # mise.lock があると --locked 付きで入るため、ツールのバイナリもチェックサム検証される。
+    - uses: jdx/mise-action@v4
+
+    - name: Resolve pnpm store path
+      id: pnpm-store
+      shell: bash
+      run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+    - uses: actions/cache@v6
+      with:
+        path: ${{ steps.pnpm-store.outputs.path }}
+        key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: pnpm-store-${{ runner.os }}-
+
+    - name: Install dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile --prefer-offline ${{ inputs.install-args }}

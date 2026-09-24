@@ -25,23 +25,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Extract Node version from package.json
-        id: versions
-        run: |
-          echo "node=$(jq -r '.volta.node' package.json)" >> $GITHUB_OUTPUT
-
-      # pnpm version は package.json の packageManager フィールドから自動検出
-      - name: Install pnpm
-        uses: pnpm/action-setup@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
+      - uses: ./.github/actions/setup
         with:
-          node-version: ${{ steps.versions.outputs.node }}
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts
+          install-args: --ignore-scripts
 
       # packages/sdk/cli/build.ts は capability 検出テーブルを @ubichill/shared から import するため、
       # ビルド済み dist が先に無いと解決に失敗する。

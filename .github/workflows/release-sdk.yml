@@ -55,22 +55,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Extract Node version from package.json
-        id: versions
-        run: echo "node=$(jq -r '.volta.node' package.json)" >> $GITHUB_OUTPUT
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: ${{ steps.versions.outputs.node }}
-          cache: 'pnpm'
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup
 
       # npm@latest への強制アップグレードは Node の奇数(Current)ラインで EBADENGINE になるため行わない。
       - name: Ensure npm >= 11.5.1 (required for OIDC trusted publishing)
@@ -105,3 +90,4 @@ jobs:
           # 認証する。空文字でも .npmrc に _authToken 行が残ると npm がOIDCより先に
           # トークン認証を試みて失敗するケースが報告されているため、変数自体を渡さない。
           NPM_CONFIG_PROVENANCE: 'true'
+          NPM_CONFIG_REGISTRY: 'https://registry.npmjs.org/'
