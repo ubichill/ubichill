@@ -1,12 +1,7 @@
 {
+    "extends": "../../tsconfig.base.json",
     "compilerOptions": {
-        "target": "ES2025",
         "module": "commonjs",
-        "lib": ["ES2025"],
-        "strict": true,
-        "esModuleInterop": true,
-        "skipLibCheck": true,
-        "forceConsistentCasingInFileNames": true,
         "outDir": "./dist",
         "rootDir": "./src"
     },

@@ -1,5 +1,5 @@
 # package.json の devEngines.runtime.version と揃える（base ステージで一致を検証し、ズレたらビルドを落とす）
-ARG NODE_VERSION=25.9.0
+ARG NODE_VERSION=26.10.0
 
 # ==========================================
 # base: pnpm + bookworm-slim
@@ -43,9 +43,7 @@ WORKDIR /app
 
 COPY . .
 
-RUN pnpm --filter @ubichill/shared build \
-    && pnpm --filter @ubichill/db build \
-    && pnpm --filter @ubichill/backend build
+RUN pnpm turbo build --filter=@ubichill/backend
 
 # inject-workspace-packages=true: pnpm deploy がシンボリックリンクではなく実ファイルをコピーする
 # store-dir を deps と同じキャッシュマウントに向け、deploy の再ダウンロードを防ぐ。
@@ -78,7 +76,7 @@ ENV COMMIT_HASH=${COMMIT_HASH}
 
 # build:workers が packages/frontend/public/mods へ mod を配置し、続く vite build が
 # public/ を dist/ へコピーする。順序が重要。
-RUN pnpm --filter @ubichill/shared build \
+RUN pnpm turbo build --filter=@ubichill/shared \
     && pnpm build:workers \
     && pnpm --filter @ubichill/frontend build \
     && pnpm --filter @ubichill/bff build

@@ -10,7 +10,8 @@
         "preview": "vite preview",
         "lint": "biome check .",
         "lint:fix": "biome check --write .",
-        "format": "biome format --write ."
+        "format": "biome format --write .",
+        "typecheck": "tsc --noEmit"
     },
     "dependencies": {
         "@ubichill/core-components": "workspace:*",
@@ -19,24 +20,25 @@
         "@ubichill/runtime": "workspace:*",
         "@ubichill/sdk": "workspace:*",
         "@ubichill/shared": "workspace:*",
-        "better-auth": "^1.6.25",
-        "icojs": "^1.0.0",
-        "lodash.throttle": "^4.1.1",
+        "better-auth": "catalog:",
+        "icojs": "^1.0.1",
+        "lodash.throttle": "catalog:",
         "perfect-freehand": "^1.2.3",
-        "react": "^19.2.5",
-        "react-dom": "^19.2.5",
+        "react": "catalog:",
+        "react-dom": "catalog:",
         "react-router": "8.3.0",
-        "socket.io-client": "^4.8.3",
+        "socket.io-client": "catalog:",
         "upng-js": "^2.1.0",
-        "yaml": "^2.9.0"
+        "yaml": "catalog:"
     },
     "devDependencies": {
-        "@pandacss/dev": "^1.8.1",
-        "@types/lodash.throttle": "^4.1.9",
-        "@types/node": "^22",
-        "@types/react": "^19",
-        "@types/react-dom": "^19",
-        "@vitejs/plugin-react": "^6.0.1",
-        "vite": "^8.0.10"
+        "@pandacss/dev": "^1.12.1",
+        "@types/lodash.throttle": "catalog:",
+        "@types/node": "catalog:",
+        "@types/react": "catalog:",
+        "@types/react-dom": "catalog:",
+        "@vitejs/plugin-react": "^6.1.1",
+        "typescript": "catalog:",
+        "vite": "^8.3.1"
     }
 }

@@ -20,12 +20,14 @@
     },
     "scripts": {
         "build": "tsc",
-        "clean": "rimraf dist"
+        "clean": "rimraf dist",
+        "typecheck": "tsc --noEmit"
     },
     "dependencies": {
-        "zod": "^4.4.3"
+        "zod": "catalog:"
     },
     "devDependencies": {
-        "rimraf": "^6.0.1"
+        "rimraf": "catalog:",
+        "typescript": "catalog:"
     }
 }

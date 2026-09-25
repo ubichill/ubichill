@@ -29,20 +29,22 @@
         "push": "drizzle-kit push",
         "migrate": "node dist/migrate.js",
         "migrate:dev": "tsx src/migrate.ts",
-        "stop": "docker compose down"
+        "stop": "docker compose down",
+        "typecheck": "tsc --noEmit"
     },
     "dependencies": {
         "@ubichill/shared": "workspace:*",
-        "drizzle-orm": "^0.45.2",
+        "drizzle-orm": "catalog:",
         "drizzle-zod": "^0.8.3",
-        "nanoid": "^5.1.7",
+        "nanoid": "catalog:",
         "postgres": "^3.4.9",
-        "zod": "^4.4.3"
+        "zod": "catalog:"
     },
     "devDependencies": {
-        "@types/node": "^22.13.4",
-        "drizzle-kit": "^0.31.9",
-        "rimraf": "^6.0.1",
-        "tsx": "^4.21.0"
+        "@types/node": "catalog:",
+        "drizzle-kit": "^0.31.11",
+        "rimraf": "catalog:",
+        "tsx": "catalog:",
+        "typescript": "catalog:"
     }
 }

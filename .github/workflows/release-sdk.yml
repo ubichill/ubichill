@@ -73,7 +73,7 @@ jobs:
 
       # sdk が実行時に inline する ecs/shared の最新ソースを確実に見る（型検証のため）。
       - name: Build shared package
-        run: pnpm --filter @ubichill/shared build
+        run: pnpm turbo build --filter=@ubichill/shared
 
       - name: Create Release Pull Request or Publish
         id: changesets

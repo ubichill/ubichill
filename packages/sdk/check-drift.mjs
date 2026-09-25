@@ -67,7 +67,7 @@ function main() {
     // @ubichill/shared は dist/ 経由で解決される（package.json の main/exports 参照）ため、
     // sdk のビルド前に必ず再ビルドしないと shared のソース変更が反映されない（実測: これを
     // やらないと shared だけ変えても drift を検出できず、この検査自体が無意味になる）。
-    sh('pnpm', ['--filter', '@ubichill/shared', 'build']);
+    sh('pnpm', ['turbo', 'build', '--filter=@ubichill/shared']);
     sh('pnpm', ['build:sdk']);
     const currentHash = hashDistNpm(join(sdkDir, 'dist-npm'));
 
@@ -76,8 +76,8 @@ function main() {
     try {
         sh('git', ['worktree', 'add', '--detach', worktreeDir, tag]);
         sh('pnpm', ['install', '--frozen-lockfile'], { cwd: worktreeDir });
-        sh('pnpm', ['--filter', '@ubichill/shared', 'build'], { cwd: worktreeDir });
-        sh('pnpm', ['--filter', '@ubichill/sdk', 'build'], { cwd: worktreeDir });
+        sh('pnpm', ['turbo', 'build', '--filter=@ubichill/shared'], { cwd: worktreeDir });
+        sh('pnpm', ['turbo', 'build', '--filter=@ubichill/sdk'], { cwd: worktreeDir });
         const publishedHash = hashDistNpm(join(worktreeDir, 'packages', 'sdk', 'dist-npm'));
 
         if (currentHash !== publishedHash) {

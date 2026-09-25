@@ -16,31 +16,40 @@ import * as esbuild from 'esbuild';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CAPABILITY_DETECTORS } from '@ubichill/shared';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
 
+/**
+ * @ubichill/shared の必要な定数を 1 バンドルに集約し、data URL 経由で読み込む。
+ * ルートはワークスペースを束ねるだけで各パッケージに依存しないため、shared を依存に持つ
+ * sandbox パッケージを起点に解決する。
+ */
+async function loadShared() {
+    const { outputFiles } = await esbuild.build({
+        stdin: {
+            contents: `export {
+                CAPABILITY_CATALOG,
+                CAPABILITY_DETECTORS,
+                PROTOCOL_VERSION,
+                MIN_COMPATIBLE_PROTOCOL_VERSION,
+            } from '@ubichill/shared';`,
+            resolveDir: join(root, 'packages', 'sandbox'),
+            loader: 'ts',
+        },
+        bundle: true,
+        format: 'esm',
+        platform: 'node',
+        write: false,
+    });
+    return import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString('base64')}`);
+}
+
+const { CAPABILITY_CATALOG, CAPABILITY_DETECTORS, PROTOCOL_VERSION, MIN_COMPATIBLE_PROTOCOL_VERSION } =
+    await loadShared();
+
 // capability → それを付ける Ubi API のヒント（静的検出ルール由来。@ubichill/shared が正）。
 const API_BY_CAP = Object.fromEntries(CAPABILITY_DETECTORS.map((d) => [d.cap, d.api]));
-
-// カタログ + プロトコル定数を @ubichill/shared から 1 バンドルに集約して data URL 経由で読み込む。
-// @ubichill/shared は sandbox パッケージ配下に symlink されているため resolveDir を sandbox にする。
-const sandboxDir = join(root, 'packages', 'sandbox');
-const entry = `
-export { CAPABILITY_CATALOG, PROTOCOL_VERSION, MIN_COMPATIBLE_PROTOCOL_VERSION } from '@ubichill/shared';
-`;
-
-const { outputFiles } = await esbuild.build({
-    stdin: { contents: entry, resolveDir: sandboxDir, loader: 'ts' },
-    bundle: true,
-    format: 'esm',
-    platform: 'node',
-    write: false,
-});
-
-const dataUrl = `data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString('base64')}`;
-const { CAPABILITY_CATALOG, PROTOCOL_VERSION, MIN_COMPATIBLE_PROTOCOL_VERSION } = await import(dataUrl);
 
 // ── 危険度メタ（表示順と説明。capability.ts の CapabilityRisk と対応）────────
 const RISK_META = {

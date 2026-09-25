@@ -1,38 +1,15 @@
 {
-  "compilerOptions": {
-    "target": "ES2025",
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
-    "strict": true,
-    "noEmit": true,
-    "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "declaration": true,
-    "paths": {
-      "@ubichill/runtime": ["../runtime/src/index.ts"],
-      "@ubichill/core-components": [
-        "../core-components/src/index.ts"
-      ],
-      "@ubichill/core-components/public": [
-        "../core-components/src/public.ts"
-      ],
-      "@ubichill/ecs": [
-        "../ecs/src/index.ts"
-      ],
-      "@ubichill/shared": [
-        "../shared/src/index.ts"
-      ],
-      "@ubichill/ui-renderer": [
-        "../ui-renderer/src/index.ts"
-      ]
-    }
-  },
-  "include": [
-    "src/**/*.ts"
-  ]
+    "extends": "../../tsconfig.bundler.json",
+    "compilerOptions": {
+        "lib": ["ES2025", "DOM"],
+        "paths": {
+            "@ubichill/runtime": ["../runtime/src/index.ts"],
+            "@ubichill/core-components": ["../core-components/src/index.ts"],
+            "@ubichill/core-components/public": ["../core-components/src/public.ts"],
+            "@ubichill/ecs": ["../ecs/src/index.ts"],
+            "@ubichill/shared": ["../shared/src/index.ts"],
+            "@ubichill/ui-renderer": ["../ui-renderer/src/index.ts"]
+        }
+    },
+    "include": ["src/**/*.ts"]
 }

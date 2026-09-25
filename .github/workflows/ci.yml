@@ -78,7 +78,7 @@ jobs:
       # 通常は build 不要。ただし SDK のビルド系テスト（build.test.mjs 等）は esbuild 経由で
       # @ubichill/shared を node_modules → dist で解決するため、shared/dist は事前に必要。
       - name: Build shared
-        run: pnpm --filter @ubichill/shared build
+        run: pnpm turbo build --filter=@ubichill/shared
 
       - name: Test
         run: pnpm exec vitest run
@@ -94,15 +94,9 @@ jobs:
 
       - uses: ./.github/actions/setup
 
-      # typecheck はパッケージ間参照が dist 経由のため、shared/db は事前ビルドが要る。
-      # それ以外は `pnpm -r --parallel exec` で全パッケージの `tsc --noEmit` を並列実行する。
-      - name: Build shared & db
-        run: |
-          pnpm --filter @ubichill/shared build
-          pnpm --filter @ubichill/db build
-
+      # パッケージ間参照は dist 経由のため、turbo の typecheck タスクが ^build で依存先を先にビルドする。
       - name: Typecheck
-        run: pnpm -r --parallel exec tsc --noEmit
+        run: pnpm typecheck
 
   verify-mods:
     name: Verify mods & npm package
@@ -118,7 +112,7 @@ jobs:
       # build:workers / build:sdk は CLI を plain node で実行し @ubichill/shared を
       # dist 経由で import するため、shared を先にビルドする。
       - name: Build shared
-        run: pnpm --filter @ubichill/shared build
+        run: pnpm turbo build --filter=@ubichill/shared
 
       # 実際に mod をビルドし、lock.json の integrity が生成バイト列と一致するか検証する。
       # worlds/*.lock.json（mod 完全性ロック、pnpm-lock.yaml と同じくコミット対象）もここで
@@ -188,7 +182,7 @@ jobs:
 
       # buildDts は @ubichill/shared を dist 経由で解決するため shared を先にビルド。
       - name: Build shared
-        run: pnpm --filter @ubichill/shared build
+        run: pnpm turbo build --filter=@ubichill/shared
 
       # SDK型定義バンドルの検証（buildDts = TS Compiler API フルコンパイル、実測20秒級）。
       - name: Verify SDK type bundle

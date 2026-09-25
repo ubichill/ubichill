@@ -11,7 +11,8 @@
         "clean": "rimraf dist",
         "lint": "biome lint .",
         "lint:fix": "biome lint --apply .",
-        "format": "biome format --write ."
+        "format": "biome format --write .",
+        "typecheck": "tsc --noEmit"
     },
     "nodemonConfig": {
         "watch": [
@@ -27,31 +28,30 @@
         "exec": "tsx src/index.ts"
     },
     "dependencies": {
-        "@distube/ytdl-core": "^4.16.12",
         "@ubichill/db": "workspace:*",
         "@ubichill/shared": "workspace:*",
         "bcryptjs": "^3.0.3",
-        "better-auth": "^1.6.25",
-        "cors": "^2.8.5",
+        "better-auth": "catalog:",
+        "cors": "^2.8.6",
         "dotenv": "^17.4.2",
-        "drizzle-orm": "^0.45.2",
-        "express": "^5.2.1",
-        "express-rate-limit": "^8.6.1",
+        "drizzle-orm": "catalog:",
+        "express": "catalog:",
+        "express-rate-limit": "^8.7.0",
         "helmet": "^8.3.0",
-        "nanoid": "^5.1.7",
-        "resend": "^6.18.1",
+        "nanoid": "catalog:",
+        "resend": "^6.28.1",
         "socket.io": "^4.8.3",
-        "yaml": "^2.9.0",
-        "zod": "^4.4.3"
+        "yaml": "catalog:",
+        "zod": "catalog:"
     },
     "devDependencies": {
-        "@types/bcryptjs": "^3.0.0",
-        "@types/cors": "^2.8.17",
-        "@types/express": "^5.0.0",
-        "@types/node": "^22.13.4",
-        "nodemon": "^3.1.11",
-        "rimraf": "^6.0.1",
-        "tsx": "^4.21.0",
-        "wait-on": "^9.0.3"
+        "@types/cors": "^2.8.19",
+        "@types/express": "catalog:",
+        "@types/node": "catalog:",
+        "nodemon": "catalog:",
+        "rimraf": "catalog:",
+        "tsx": "catalog:",
+        "typescript": "catalog:",
+        "wait-on": "^9.1.0"
     }
 }
