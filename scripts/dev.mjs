@@ -13,19 +13,14 @@ async function main() {
         console.error('Error killing ports:', err);
     }
 
-    // Build shared package
-    console.log('🏗️  Building shared package...');
-    const buildShared = spawnSync('pnpm', ['--filter', '@ubichill/shared', 'build'], { stdio: 'inherit', shell: true });
-    if (buildShared.status !== 0) {
-        console.error('Failed to build shared package.');
-        process.exit(1);
-    }
-
-    // Build db package
-    console.log('🏗️  Building db package...');
-    const buildDb = spawnSync('pnpm', ['--filter', '@ubichill/db', 'build'], { stdio: 'inherit', shell: true });
-    if (buildDb.status !== 0) {
-        console.error('Failed to build db package.');
+    // Build shared / db (依存先は turbo の ^build が解決する)
+    console.log('🏗️  Building shared & db packages...');
+    const buildDeps = spawnSync('pnpm', ['turbo', 'build', '--filter=@ubichill/shared', '--filter=@ubichill/db'], {
+        stdio: 'inherit',
+        shell: true,
+    });
+    if (buildDeps.status !== 0) {
+        console.error('Failed to build shared/db packages.');
         process.exit(1);
     }
 

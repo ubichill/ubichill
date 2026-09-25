@@ -19,9 +19,9 @@
         "@ubichill/shared": "workspace:*"
     },
     "scripts": {
-        "prebuild": "pnpm --filter @ubichill/core-components build",
         "build": "node build.mjs",
-        "clean": "rimraf dist-npm"
+        "clean": "rimraf dist-npm",
+        "typecheck": "tsc --noEmit"
     },
     "devDependencies": {
         "dts-bundle-generator": "^9.5.1",

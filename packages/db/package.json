@@ -29,7 +29,8 @@
         "push": "drizzle-kit push",
         "migrate": "node dist/migrate.js",
         "migrate:dev": "tsx src/migrate.ts",
-        "stop": "docker compose down"
+        "stop": "docker compose down",
+        "typecheck": "tsc --noEmit"
     },
     "dependencies": {
         "@ubichill/shared": "workspace:*",

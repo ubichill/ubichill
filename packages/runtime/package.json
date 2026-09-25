@@ -9,7 +9,8 @@
         ".": "./src/index.ts"
     },
     "scripts": {
-        "lint": "biome check src/"
+        "lint": "biome check src/",
+        "typecheck": "tsc --noEmit"
     },
     "devDependencies": {
         "typescript": "catalog:"

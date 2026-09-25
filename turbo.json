@@ -17,6 +17,12 @@
                 "dist-npm/**"
             ]
         },
+        "typecheck": {
+            "dependsOn": [
+                "^build"
+            ],
+            "outputs": []
+        },
         "dev": {
             "dependsOn": [
                 "^build"

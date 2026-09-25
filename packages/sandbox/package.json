@@ -17,5 +17,8 @@
     },
     "devDependencies": {
         "typescript": "catalog:"
+    },
+    "scripts": {
+        "typecheck": "tsc --noEmit"
     }
 }

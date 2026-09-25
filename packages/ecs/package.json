@@ -8,5 +8,8 @@
     "types": "src/index.ts",
     "devDependencies": {
         "typescript": "catalog:"
+    },
+    "scripts": {
+        "typecheck": "tsc --noEmit"
     }
 }

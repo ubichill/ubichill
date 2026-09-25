@@ -20,7 +20,8 @@
     },
     "scripts": {
         "build": "tsc",
-        "clean": "rimraf dist"
+        "clean": "rimraf dist",
+        "typecheck": "tsc --noEmit"
     },
     "dependencies": {
         "zod": "catalog:"
