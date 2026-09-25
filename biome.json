@@ -57,6 +57,14 @@
             "formatter": {
                 "lineEnding": "auto"
             }
+        },
+        {
+            "includes": ["packages/frontend/**", "packages/react/**"],
+            "linter": {
+                "domains": {
+                    "react": "recommended"
+                }
+            }
         }
     ]
 }

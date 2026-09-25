@@ -33,16 +33,17 @@
     },
     "dependencies": {
         "@ubichill/shared": "workspace:*",
-        "drizzle-orm": "^0.45.3",
+        "drizzle-orm": "catalog:",
         "drizzle-zod": "^0.8.3",
-        "nanoid": "^5.1.16",
+        "nanoid": "catalog:",
         "postgres": "^3.4.9",
-        "zod": "^4.6.5"
+        "zod": "catalog:"
     },
     "devDependencies": {
-        "@types/node": "^26.6.2",
+        "@types/node": "catalog:",
         "drizzle-kit": "^0.31.11",
-        "rimraf": "^6.1.3",
-        "tsx": "^4.23.15"
+        "rimraf": "catalog:",
+        "tsx": "catalog:",
+        "typescript": "catalog:"
     }
 }

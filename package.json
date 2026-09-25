@@ -32,23 +32,21 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
-  "dependencies": {
-    "@ubichill/shared": "workspace:*"
-  },
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",
     "@changesets/cli": "^2.31.1",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
-    "@types/node": "^26.6.2",
+    "@types/node": "catalog:",
+    "@ubichill/shared": "workspace:*",
     "concurrently": "^9.2.4",
     "cross-env": "^10.1.0",
-    "esbuild": "^0.28.0",
+    "esbuild": "catalog:",
     "jsdom": "^29.1.1",
     "kill-port": "^2.0.1",
-    "nodemon": "^3.1.14",
+    "nodemon": "catalog:",
     "turbo": "^2.11.3",
-    "typescript": "^7.0.2",
+    "typescript": "catalog:",
     "vitest": "^4.1.11"
   }
 }

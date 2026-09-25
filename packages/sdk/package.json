@@ -11,14 +11,12 @@
         "./jsx-runtime": "./src/jsx/jsx-runtime.ts",
         "./gripable": "./src/jsx/Gripable.tsx"
     },
-    "peerDependencies": {
-        "@ubichill/ecs": "workspace:*",
-        "@ubichill/shared": "workspace:*"
-    },
     "dependencies": {
         "@ubichill/core-components": "workspace:*",
+        "@ubichill/ecs": "workspace:*",
         "@ubichill/loader": "workspace:*",
-        "@ubichill/runtime": "workspace:*"
+        "@ubichill/runtime": "workspace:*",
+        "@ubichill/shared": "workspace:*"
     },
     "scripts": {
         "prebuild": "pnpm --filter @ubichill/core-components build",
@@ -27,7 +25,8 @@
     },
     "devDependencies": {
         "dts-bundle-generator": "^9.5.1",
-        "esbuild": "^0.28.0",
-        "rimraf": "^6.1.3"
+        "esbuild": "catalog:",
+        "rimraf": "catalog:",
+        "typescript": "catalog:"
     }
 }
