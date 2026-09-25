@@ -27,7 +27,6 @@
         "exec": "tsx src/index.ts"
     },
     "dependencies": {
-        "@distube/ytdl-core": "^4.16.12",
         "@ubichill/db": "workspace:*",
         "@ubichill/shared": "workspace:*",
         "bcryptjs": "^3.0.3",
