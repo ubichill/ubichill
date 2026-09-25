@@ -6,7 +6,12 @@ import { detectCapabilities, MOD_EXPORTS_GLOBAL_NAME } from '@ubichill/shared';
 import * as esbuild from 'esbuild';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
-import { basename, join, resolve } from 'node:path';
+import { basename, join, relative, resolve, sep } from 'node:path';
+
+/** base からの相対パスを OS に依らず `/` 区切りで返す（manifest/lock のキーは POSIX 形式で固定する） */
+function toPosixRelative(base: string, path: string): string {
+    return relative(base, path).split(sep).join('/');
+}
 
 /** Worker ファイルからコンポーネント名を導出 (ex: `canvas.worker.ts` → `canvas`, `sub/dir/canvas.worker.ts` → `sub-dir-canvas`) */
 function componentNameFromFile(file: string): string {
@@ -443,7 +448,7 @@ export async function buildMod(modDir: string, options: BuildOptions = {}): Prom
     const lockComponents: Record<string, unknown> = {};
 
     for (const workerPath of workerFiles) {
-        const relPath = workerPath.replace(srcDir + '/', '');
+        const relPath = toPosixRelative(srcDir, workerPath);
         const componentName = componentNameFromFile(relPath);
         const componentType = `${id}:${componentName}`;
 
@@ -530,7 +535,7 @@ export async function buildMod(modDir: string, options: BuildOptions = {}): Prom
     if (existsSync(assetsSrcDir)) {
         copyDirRecursive(assetsSrcDir, publicVersionDir);
         copyDirRecursive(assetsSrcDir, distVersionDir);
-        assetFiles = listFilesRecursive(assetsSrcDir).map((p) => p.replace(assetsSrcDir + '/', ''));
+        assetFiles = listFilesRecursive(assetsSrcDir).map((p) => toPosixRelative(assetsSrcDir, p));
         console.log(`✅ [${id}] assets → v${version}/ (${assetFiles.length} files)`);
     }
 
