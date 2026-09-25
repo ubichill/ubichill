@@ -1,41 +1,17 @@
 {
-  "compilerOptions": {
-    "target": "ESNext",
-    "types": [
-      "node"
-    ],
-    "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true,
-    "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "react-jsx",
-    "declaration": true,
-    "paths": {
-      "@/*": [
-        "./src/*"
-      ],
-      "@ubichill/ecs": [
-        "../ecs/src/index.ts"
-      ],
-      "@ubichill/runtime": ["../runtime/src/index.ts"],
-      "@ubichill/core-components": [
-        "../core-components/src/index.ts"
-      ],
-      "@ubichill/core-components/public": [
-        "../core-components/src/public.ts"
-      ]
-    }
-  },
-  "include": [
-    "src",
-    "cli"
-  ],
-  "exclude": [
-    "node_modules"
-  ]
+    "extends": "../../tsconfig.bundler.json",
+    "compilerOptions": {
+        "lib": ["ES2025", "DOM"],
+        "types": ["node"],
+        "isolatedModules": true,
+        "jsx": "react-jsx",
+        "paths": {
+            "@ubichill/ecs": ["../ecs/src/index.ts"],
+            "@ubichill/runtime": ["../runtime/src/index.ts"],
+            "@ubichill/core-components": ["../core-components/src/index.ts"],
+            "@ubichill/core-components/public": ["../core-components/src/public.ts"]
+        }
+    },
+    "include": ["src", "cli"],
+    "exclude": ["node_modules"]
 }

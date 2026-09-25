@@ -1,40 +1,17 @@
 {
+    "extends": "../../tsconfig.bundler.json",
     "compilerOptions": {
-        "lib": [
-            "dom",
-            "dom.iterable",
-            "esnext"
-        ],
+        "lib": ["ES2025", "DOM"],
         "allowJs": true,
-        "skipLibCheck": true,
-        "strict": true,
-        "noEmit": true,
-        "esModuleInterop": true,
-        "module": "esnext",
-        "moduleResolution": "bundler",
-        "allowImportingTsExtensions": true,
-        "resolveJsonModule": true,
         "isolatedModules": true,
         "jsx": "react-jsx",
         "paths": {
-            "@/*": [
-                "./src/*"
-            ],
-            "@styled-system/*": [
-                "./styled-system/*"
-            ],
-            "@styles/*": [
-                "./src/styles/*"
-            ],
-            "@/styled-system/*": [
-                "./styled-system/*"
-            ],
-            "@ubichill/sdk": [
-                "../sdk/src/index.ts"
-            ],
-            "@ubichill/sdk/react": [
-                "../sdk/src/react/index.ts"
-            ],
+            "@/*": ["./src/*"],
+            "@styled-system/*": ["./styled-system/*"],
+            "@styles/*": ["./src/styles/*"],
+            "@/styled-system/*": ["./styled-system/*"],
+            "@ubichill/sdk": ["../sdk/src/index.ts"],
+            "@ubichill/sdk/react": ["../sdk/src/react/index.ts"],
             "@ubichill/ecs": ["../ecs/src/index.ts"],
             "@ubichill/runtime": ["../runtime/src/index.ts"],
             "@ubichill/core-components": ["../core-components/src/index.ts"],
@@ -43,15 +20,8 @@
             "@ubichill/ui-renderer": ["../ui-renderer/src/index.ts"],
             "@ubichill/react": ["../react/src/index.ts"],
             "@ubichill/shared": ["../shared/src/index.ts"]
-        },
-        "target": "ES2025"
+        }
     },
-    "include": [
-        "**/*.ts",
-        "**/*.tsx"
-    ],
-    "exclude": [
-        "node_modules",
-        "dist"
-    ]
+    "include": ["**/*.ts", "**/*.tsx"],
+    "exclude": ["node_modules", "dist"]
 }

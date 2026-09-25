@@ -245,7 +245,7 @@ overrides:
   esbuild: ^0.28.2
   react: ^19.3.0
   react-dom: ^19.3.0
-  dts-bundle-generator>typescript: ^5.9.0
+  dts-bundle-generator>typescript: ^6.0.3
 
 importers:
 
@@ -3599,13 +3599,13 @@ packages:
     resolution: {integrity: sha512-faYHw0anBbc/kWF3zFTEnxSFOAGUX9GFbOBthvDdLsIlEoWOFOtS0zgCiQYwIskL9iGXZL3kAXD8OoZ4GmMATA==}
     engines: {node: '>= 18'}
 
-  typescript@5.9.3:
-    resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
+  typescript@6.0.2:
+    resolution: {integrity: sha512-bGdAIrZ0wiGDo5l8c++HWtbaNCWTS4UTv7RaTH/ThVIgjkveJt83m74bBHMJkuCbslY8ixgLBVZJIOiQlQTjfQ==}
     engines: {node: '>=14.17'}
     hasBin: true
 
-  typescript@6.0.2:
-    resolution: {integrity: sha512-bGdAIrZ0wiGDo5l8c++HWtbaNCWTS4UTv7RaTH/ThVIgjkveJt83m74bBHMJkuCbslY8ixgLBVZJIOiQlQTjfQ==}
+  typescript@6.0.3:
+    resolution: {integrity: sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==}
     engines: {node: '>=14.17'}
     hasBin: true
 
@@ -5172,7 +5172,7 @@ snapshots:
 
   dts-bundle-generator@9.5.1:
     dependencies:
-      typescript: 5.9.3
+      typescript: 6.0.3
       yargs: 17.7.3
 
   dunder-proto@1.0.1:
@@ -6453,9 +6453,9 @@ snapshots:
       media-typer: 1.1.1
       mime-types: 3.0.2
 
-  typescript@5.9.3: {}
-
   typescript@6.0.2: {}
+
+  typescript@6.0.3: {}
 
   typescript@7.0.2:
     optionalDependencies:

@@ -29,7 +29,7 @@ overrides:
   esbuild: 'catalog:'
   react: 'catalog:'
   react-dom: 'catalog:'
-  dts-bundle-generator>typescript: ^5.9.0
+  dts-bundle-generator>typescript: ^6.0.3
 
 allowBuilds:
   esbuild: true
