@@ -15,12 +15,12 @@
  * ようにし、通常の `pnpm test`/開発ループを重くしない）。CI・リリース前検証で明示的に実行する:
  *   pnpm verify:sdk-types
  *
- * 注意: execFileSync で `node_modules/.bin/tsc` を repo ルート基準の相対パスで呼ぶため、
+ * 注意: execFileSync で `node_modules/typescript` の tsc を repo ルート基準の相対パスで呼ぶため、
  * このファイル自体は packages/sdk/ 配下だが、実行は常に repo ルートから
  * （`pnpm verify:sdk-types` → `vitest run --config vitest.sdk-verify.config.ts`）想定。
  */
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -100,10 +100,13 @@ describe('統合検証: @ubichill/ecs・@ubichill/shared が存在しない環�
                     'utf-8',
                 );
 
-                const tscBin = join(process.cwd(), 'node_modules', '.bin', 'tsc');
+                // .bin/tsc は Windows では .CMD シムになり直接 spawn できないため、
+                // typescript パッケージの bin エントリを node で起動する。
+                const tsDir = join(process.cwd(), 'node_modules', 'typescript');
+                const tscEntry = join(tsDir, JSON.parse(readFileSync(join(tsDir, 'package.json'), 'utf-8')).bin.tsc);
                 // 失敗時は execFileSync が非ゼロ終了で throw する。stdio 'pipe' でエラー本文を拾う。
                 expect(() =>
-                    execFileSync(tscBin, ['--noEmit', '-p', '.'], { cwd: tmp, stdio: 'pipe' }),
+                    execFileSync(process.execPath, [tscEntry, '--noEmit', '-p', '.'], { cwd: tmp, stdio: 'pipe' }),
                 ).not.toThrow();
             } finally {
                 rmSync(tmp, { recursive: true, force: true });
