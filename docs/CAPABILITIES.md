@@ -80,7 +80,7 @@ SDK（mod）と Host（本体）は独立して更新されるため、初期化
 名乗り合い、非互換を検出して警告する（詳細は
 [`packages/shared/src/mod/protocol.ts`](../packages/shared/src/mod/protocol.ts)）。
 
-- 現在の `PROTOCOL_VERSION`: **2**
+- 現在の `PROTOCOL_VERSION`: **3**
 - 互換可能な最小バージョン `MIN_COMPATIBLE_PROTOCOL_VERSION`: **0**
 
 進化ルール（後方互換の生命線）:
