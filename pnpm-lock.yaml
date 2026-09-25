@@ -266,9 +266,6 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.2
-      '@ubichill/shared':
-        specifier: workspace:*
-        version: link:packages/shared
       concurrently:
         specifier: ^9.2.4
         version: 9.2.4
