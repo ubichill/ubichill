@@ -1,5 +1,11 @@
 # @ubichill/sdk
 
+## 2.1.2
+
+### Patch Changes
+
+- cc4f3af: `ubichill build` が Windows でワーカー/アセットの相対パスを誤って算出し、絶対パスが出力先・コンポーネント名に混入してビルドが失敗する問題を修正
+
 ## 2.1.1
 
 ### Patch Changes
