@@ -1,5 +1,5 @@
 # package.json の devEngines.runtime.version と揃える（base ステージで一致を検証し、ズレたらビルドを落とす）
-ARG NODE_VERSION=25.9.0
+ARG NODE_VERSION=26.10.0
 
 # ==========================================
 # base: pnpm + bookworm-slim
