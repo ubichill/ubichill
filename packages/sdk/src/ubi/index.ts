@@ -28,7 +28,7 @@ import { createUiModule } from './ui';
 import type { WorldModule } from './world';
 import { createWorldModule } from './world';
 
-export type { OmitId, ModWorkerMessage, UiRenderCostStat };
+export type { ModWorkerMessage, OmitId, UiRenderCostStat };
 
 // ── mod 向け公開サーフェス ───────────────────────────────────
 // 規約: `_`接頭のメンバは「内部」。mod に見せる型からは一律で除く。

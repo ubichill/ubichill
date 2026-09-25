@@ -158,24 +158,22 @@ describe('entityHandlers 認可', () => {
             expect(getEntity(INSTANCE_ID, entity.id)?.data).toEqual({});
         });
 
-        it.each([
-            'id',
-            'type',
-            'entityId',
-            'parentEntityId',
-        ] as const)('実行時に混入した immutable field %s を拒否する', (field) => {
-            const entity = createEntity(INSTANCE_ID, { ...baseEntity(), ownerId: 'user-a' });
-            const socket = makeSocket('user-a');
-            const before = getEntity(INSTANCE_ID, entity.id);
+        it.each(['id', 'type', 'entityId', 'parentEntityId'] as const)(
+            '実行時に混入した immutable field %s を拒否する',
+            (field) => {
+                const entity = createEntity(INSTANCE_ID, { ...baseEntity(), ownerId: 'user-a' });
+                const socket = makeSocket('user-a');
+                const before = getEntity(INSTANCE_ID, entity.id);
 
-            handleEntityPatch(socket)({
-                entityId: entity.id,
-                patch: { [field]: field === 'type' ? 'core:collider' : 'forged-id' } as never,
-            });
+                handleEntityPatch(socket)({
+                    entityId: entity.id,
+                    patch: { [field]: field === 'type' ? 'core:collider' : 'forged-id' } as never,
+                });
 
-            expect(socket.emit).toHaveBeenCalledWith('error', expect.stringContaining('変更できません'));
-            expect(getEntity(INSTANCE_ID, entity.id)).toEqual(before);
-        });
+                expect(socket.emit).toHaveBeenCalledWith('error', expect.stringContaining('変更できません'));
+                expect(getEntity(INSTANCE_ID, entity.id)).toEqual(before);
+            },
+        );
     });
 
     describe('handleEntityEphemeral', () => {

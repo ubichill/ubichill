@@ -28,6 +28,6 @@
     "devDependencies": {
         "dts-bundle-generator": "^9.5.1",
         "esbuild": "^0.28.0",
-        "rimraf": "^6.0.1"
+        "rimraf": "^6.1.3"
     }
 }

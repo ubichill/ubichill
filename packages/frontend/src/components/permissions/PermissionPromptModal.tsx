@@ -115,7 +115,7 @@ const overlayStyle = {
 
 export function PermissionPromptModal() {
     const permissions = useUbiPermissions();
-    if (!permissions || !permissions.pendingPrompt) return null;
+    if (!permissions?.pendingPrompt) return null;
     const prompt = permissions.pendingPrompt;
     const { resolvePrompt } = permissions;
 

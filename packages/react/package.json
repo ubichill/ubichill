@@ -14,14 +14,14 @@
         "socket.io-client": "^4.8.3"
     },
     "dependencies": {
-        "hls.js": "^1.6.16",
-        "lodash.throttle": "^4.1.1",
+        "@ubichill/core-components": "workspace:*",
         "@ubichill/runtime": "workspace:*",
-        "@ubichill/core-components": "workspace:*"
+        "hls.js": "^1.7.3",
+        "lodash.throttle": "^4.1.1"
     },
     "devDependencies": {
         "@types/lodash.throttle": "^4.1.9",
-        "@types/react": "^19.2.10",
-        "@types/react-dom": "^19.2.3"
+        "@types/react": "^19.3.0",
+        "@types/react-dom": "^19.3.0"
     }
 }

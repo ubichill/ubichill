@@ -229,8 +229,8 @@ describe('createStateModule / editor schema', () => {
             hidden: mod.sync('x', { editable: false }), // 除外
         });
         const schemaMsg = h.sent.find((c) => c.type === 'EDITOR_SCHEMA');
-        expect(schemaMsg).toBeDefined();
-        const schema = (schemaMsg?.payload as { schema: Record<string, { type: string; default: unknown }> }).schema;
+        if (!schemaMsg) throw new Error('EDITOR_SCHEMA が送信されていない');
+        const schema = (schemaMsg.payload as { schema: Record<string, { type: string; default: unknown }> }).schema;
         expect(Object.keys(schema).sort()).toEqual(['bg', 'count', 'enabled', 'title']);
         expect(schema.title.type).toBe('string');
         expect(schema.bg.type).toBe('color'); // hex は color 推論
