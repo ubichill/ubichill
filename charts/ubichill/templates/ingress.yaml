@@ -63,11 +63,19 @@ spec:
           {{- end }}
     {{- end }}
     {{- else if .Values.global.domain }}
-    {{- /* global.domain のみの場合はデフォルトルート（/api・/socket.io → backend, / → frontend）を自動生成 */}}
+    {{- /* global.domain のみの場合はデフォルトルート（/api・/socket.io・/.well-known/webfinger → backend, / → frontend）を自動生成 */}}
     - host: {{ .Values.global.domain | quote }}
       http:
         paths:
           - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullName }}-backend
+                port:
+                  number: {{ $svcPortBackend }}
+          # 作者アカウント（handle@domain）の署名公開鍵を他サーバーへ公開する（RFC 7033）
+          - path: /.well-known/webfinger
             pathType: Prefix
             backend:
               service:

@@ -1,4 +1,4 @@
-import type { ModLock, WorldDefinition } from '@ubichill/shared';
+import type { ModLock, WorldDefinition, WorldSignature } from '@ubichill/shared';
 import { relations } from 'drizzle-orm';
 import { jsonb, pgTable, text, timestamp, varchar } from 'drizzle-orm/pg-core';
 import { nanoid } from 'nanoid';
@@ -17,6 +17,9 @@ export const worlds = pgTable('worlds', {
     // mod 完全性ロック。人間が書く definition とは分離して別カラムに保存し、
     // 配信時は兄弟エンドポイント（/worlds/:id/lock）で返す。null 可（未ロックの旧世界）。
     lock: jsonb('lock').$type<ModLock>(),
+    // 作者が手元の鍵で付けた署名（definition + lock に対する）。サーバーは鍵を持たず検証して保存するだけ。
+    // 内容が変わると無効になるので、配信時に毎回検証する（無効なら配信しない）。
+    signature: jsonb('signature').$type<WorldSignature>(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

@@ -5,10 +5,11 @@ import type {
     InstanceAccess,
     ResolvedWorld,
     WorldEnvironmentData,
+    WorldIdentity,
     WorldMod,
     WorldSource,
 } from '@ubichill/shared';
-import { DEFAULTS } from '@ubichill/shared';
+import { DEFAULTS, isPublishable } from '@ubichill/shared';
 import bcrypt from 'bcryptjs';
 import { logger } from '../utils/logger';
 import { flattenGameObject } from './flattenGameObject';
@@ -29,10 +30,13 @@ class InstanceManager {
      */
     async createInstance(request: CreateInstanceRequest, leaderId: string): Promise<Instance | { error: string }> {
         // worldId は id でも URL でもよい（URL の場合は自ホスト/外部＝連合を解決する）
-        const world = await worldRegistry.resolveRef(request.worldId);
-        if (!world) {
-            return { error: `World not found: ${request.worldId}` };
+        const resolution = await worldRegistry.resolveRefDetailed(request.worldId);
+        if (!resolution.ok) {
+            return {
+                error: resolution.reason === 'integrity' ? resolution.message : `World not found: ${request.worldId}`,
+            };
         }
+        const world = resolution.world;
 
         const maxUsers = request.settings?.maxUsers ?? world.capacity.default;
         const cappedMaxUsers = Math.min(maxUsers, world.capacity.max);
@@ -95,7 +99,10 @@ class InstanceManager {
                 return world ? this.toPublicInstance(db, world) : null;
             }),
         );
-        const instances: Instance[] = mapped.filter((i: Instance | null): i is Instance => i !== null);
+        // 未署名ワールドのインスタンスは一覧に出さない（URL を知っている人だけが確認付きで入れる）。
+        const instances: Instance[] = mapped.filter(
+            (i: Instance | null): i is Instance => i !== null && isPublishable(i.world.identity),
+        );
         return options?.includeFull ? instances : instances.filter((i: Instance) => i.status === 'active');
     }
 
@@ -236,6 +243,7 @@ class InstanceManager {
             authorName?: string;
             source?: WorldSource;
             mods?: WorldMod[];
+            identity?: WorldIdentity;
         },
     ): Instance {
         const access: InstanceAccess = {
@@ -266,6 +274,7 @@ class InstanceManager {
                 authorName: world.authorName,
                 source: world.source,
                 mods: world.mods ?? [],
+                identity: world.identity,
             },
 
             access,

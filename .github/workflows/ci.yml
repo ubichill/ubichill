@@ -132,6 +132,11 @@ jobs:
             exit 1
           fi
 
+      # 公式ワールドの作者署名（worlds/*.sig.json）が現在の YAML + lock に対して有効か。
+      # 無効だと公式ワールドが未署名扱いになり一覧から消えるため、マージ前に止める。
+      - name: Verify world signatures
+        run: pnpm verify:world-locks
+
       # `pnpm build:sdk` が生成する npm 公開物（ubichill パッケージ）が実際にインストール・
       # 実行可能かを確認する fail-closed ゲート。
       - name: Build npm publish package

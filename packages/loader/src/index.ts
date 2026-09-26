@@ -15,6 +15,13 @@ export {
 } from './buildWorldLock.ts';
 export { sriOf } from './integrity.ts';
 export type { AcquireResult, FetchLike, FetchLikeResponse, LoadedMod } from './types.ts';
+export {
+    generateSigningKeyPkcs8,
+    importSigningKey,
+    importSigningKeyPair,
+    signingKeyFrom,
+    webWorldCrypto,
+} from './worldCrypto.ts';
 
 // `runInstall`/`runUpdate`（Node専用: fs/path依存）はメインバーレルからは export しない
 // （frontend が @ubichill/loader を import した際に node:fs がバンドルへ混入し、ブラウザで

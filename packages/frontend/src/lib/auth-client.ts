@@ -15,13 +15,14 @@ export const { signIn, signOut, useSession } = authClient;
 export const registerWithOTP = async (
     email: string,
     password: string,
-    username: string,
+    displayName: string,
+    handle: string,
 ): Promise<{ success: boolean; error?: string; skipVerification?: boolean; message?: string }> => {
     try {
         const res = await fetch(`${API_BASE}/api/v1/users/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password, username }),
+            body: JSON.stringify({ email, password, displayName, handle }),
         });
         const data = await res.json();
         if (!res.ok) {

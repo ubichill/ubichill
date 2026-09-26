@@ -2,10 +2,13 @@ import { useSocket, useWorld, WorkerLoadingProvider } from '@ubichill/react';
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { InstanceHUD } from '@/components/hud/InstanceHUD';
+import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { InstanceLoadingScreen } from '@/instance/InstanceLoadingScreen';
 import { InstanceRenderer } from '@/instance/InstanceRenderer';
 import { useInstanceLoading } from '@/instance/useInstanceLoading';
+import { fetchInstance } from '@/lib/instancesApi';
 import { useSession } from '@/lib/session';
+import { acceptEntry, hasAcceptedEntry, unverifiedEntryKey, unverifiedEntryMessage } from '@/lib/signing';
 import { ModRegistryProvider } from '@/mods/ModRegistryContext';
 
 export function InstancePage() {
@@ -13,6 +16,7 @@ export function InstancePage() {
     const location = useLocation();
     const { id } = useParams<{ id: string }>();
     const { data: session, isPending } = useSession();
+    const confirm = useConfirm();
 
     const { isConnected, error, currentUser, joinWorld, leaveWorld } = useSocket();
     const { resetWorld, modLock, worldSourceKind } = useWorld();
@@ -30,6 +34,8 @@ export function InstancePage() {
 
     useEffect(() => {
         return () => {
+            // 確認待ちの入室処理があれば打ち切る（stillTarget が false になる）
+            joinedIdRef.current = null;
             leaveWorldRef.current();
             resetWorld();
         };
@@ -46,17 +52,36 @@ export function InstancePage() {
         if (!id) return;
         if (joinedIdRef.current === id) return;
 
-        let cancelled = false;
+        // 対象 id を同期的に確保する。以降の await 中に別 id へ移動・アンマウントされたら
+        // joinedIdRef が変わるので、それを見て古い入室処理を打ち切る（確認待ちでも二重入室しない）。
+        const previousId = joinedIdRef.current;
+        joinedIdRef.current = id;
+        const stillTarget = () => joinedIdRef.current === id;
 
-        // 旧インスタンスからの退出完了を待ってから join する（レースコンディション防止）
         const connectToNewInstance = async () => {
-            if (joinedIdRef.current) {
+            // 旧インスタンスからの退出完了を待ってから join する（レースコンディション防止）
+            if (previousId) {
                 await leaveWorldRef.current();
                 resetWorld();
             }
-            if (cancelled) return;
+            if (!stillTarget()) return;
 
-            joinedIdRef.current = id;
+            // ロビー・共有 URL・他人のインスタンスなど入口は複数あるが、必ずここを通る。
+            // 作者署名を検証できないワールドは、入室（= mod 実行）前に本人の確認を取る。
+            const instance = await fetchInstance(id).catch(() => null);
+            if (!stillTarget()) return;
+            const entryKey = instance ? unverifiedEntryKey(instance.world) : null;
+            if (instance && entryKey && !hasAcceptedEntry(sessionStorage, entryKey)) {
+                const accepted = await confirm(unverifiedEntryMessage(instance.world));
+                if (!stillTarget()) return;
+                if (!accepted) {
+                    joinedIdRef.current = null;
+                    navigate('/');
+                    return;
+                }
+                acceptEntry(sessionStorage, entryKey);
+            }
+            if (!stillTarget()) return;
             setLoadError(null);
 
             // ワールドは backend が instanceId -> DB worldRef から権威的に解決する。
@@ -67,11 +92,7 @@ export function InstancePage() {
         };
 
         void connectToNewInstance();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [session, isPending, navigate, id, joinWorld, resetWorld]);
+    }, [session, isPending, navigate, id, joinWorld, resetWorld, confirm]);
 
     const loading = useInstanceLoading({
         instanceId: id,

@@ -1,6 +1,7 @@
 import { type WorldListItem, worldSourceLabel } from '@ubichill/shared';
 import { css } from '@/styled-system/css';
 import { FavoriteButton } from './FavoriteButton';
+import { WorldIdentityBadge } from './WorldIdentityBadge';
 
 interface WorldCardProps {
     world: WorldListItem;
@@ -99,6 +100,7 @@ export function WorldCard({ world, onNavigate }: WorldCardProps) {
                         {world.capacity.default}〜{world.capacity.max}人
                     </span>
                     <span>v{world.version}</span>
+                    <WorldIdentityBadge identity={world.identity} />
                     {/* どのサーバー/由来のワールドか（このインスタンス / GitHub / 外部ホスト等） */}
                     <span
                         className={css({

@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "alg": "ed25519",
+  "publicKey": "vIyjMH-tm4kj8Mnt-DBy0cKjdeclcn7_LR7VtXf2Q_g",
+  "name": "default",
+  "contentHash": "sha256-F5xdGogAWzuAule7Yw300xqzQbFH7jEXDERLiYMhthc=",
+  "signature": "O3VHcU8ZsJ8a4rm_kcqPhVVPBSXoup6Mn3NxNlY0Fta3vdkbiIiXn5bO_d8hc8qksJ4wRO1nQKd71v64l8UMBQ"
+}

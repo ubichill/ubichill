@@ -4,6 +4,9 @@
     "private": true,
     "description": "Backend server for Ubichill",
     "main": "dist/index.js",
+    "files": [
+        "dist"
+    ],
     "scripts": {
         "dev": "wait-on ../shared/dist/.build_done && nodemon",
         "build": "tsc",

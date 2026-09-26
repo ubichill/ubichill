@@ -28,6 +28,7 @@ import { socketAuthMiddleware } from './middleware/socketAuth';
 import { router as federationRouter } from './routes/federation';
 import { router as instancesRouter } from './routes/instances';
 import { router as usersRouter } from './routes/users';
+import { router as webfingerRouter } from './routes/webfinger';
 import { router as worldsRouter } from './routes/worlds';
 import { instanceReaper } from './services/instanceReaper';
 import { worldRegistry } from './services/worldRegistry';
@@ -111,6 +112,7 @@ app.use('/api/v1/worlds', worldsRouter);
 app.use('/api/v1/instances', instancesRouter);
 app.use('/api/v1/users', usersRouter);
 app.use('/api/v1/federation', federationRouter);
+app.use('/.well-known/webfinger', webfingerRouter);
 
 // HTTPサーバーを作成
 const server = http.createServer(app);

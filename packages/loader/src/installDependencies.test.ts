@@ -30,12 +30,17 @@ describe('runInstall', () => {
 
     beforeEach(() => {
         dir = mkdtempSync(join(tmpdir(), 'ubichill-genlock-'));
+        // install は署名鍵があれば自動署名する。開発者の実鍵（~/.config/ubichill）を拾わないよう隔離する。
+        vi.stubEnv('HOME', dir);
+        vi.stubEnv('UBICHILL_SIGNING_KEY', '');
+        vi.stubEnv('UBICHILL_SIGNING_KEY_FILE', '');
     });
 
     afterEach(() => {
         process.exitCode = 0;
         rmSync(dir, { recursive: true, force: true });
         vi.unstubAllGlobals();
+        vi.unstubAllEnvs();
     });
 
     it('url のある依存だけそのURLから取得し baseUrl を焼き込む。他は --mods-dir の fs から読む', async () => {

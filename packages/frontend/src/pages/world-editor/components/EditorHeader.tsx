@@ -13,6 +13,8 @@ interface EditorHeaderProps {
     onBack: () => void;
     /** コントロールパネル（ワールド情報・mod管理・YAML）を開く。削除はコントロールパネル最下部のDanger Zoneへ移した */
     onOpenControlPanel: () => void;
+    /** このブラウザに作者署名の鍵が無い（保存すると署名なし＝非公開になる） */
+    signingKeyMissing: boolean;
 }
 
 /** エディタ画面のトップバー。Unity 風: 左に戻る・タイトル、右にアクション群。 */
@@ -23,6 +25,7 @@ export function EditorHeader({
     onToggleSnap,
     onBack,
     onOpenControlPanel,
+    signingKeyMissing,
 }: EditorHeaderProps) {
     const [menuOpen, setMenuOpen] = useState(false);
 
@@ -74,6 +77,24 @@ export function EditorHeader({
                     </span>
                 )}
             </div>
+            {signingKeyMissing && (
+                <span
+                    title="保存すると署名なしになり、一覧に公開されません。プロフィールの「作者署名の鍵」で鍵を作成・読み込みしてください"
+                    className={css({
+                        flexShrink: 0,
+                        px: '8px',
+                        py: '3px',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        bg: 'errorBg',
+                        color: 'errorText',
+                        whiteSpace: 'nowrap',
+                    })}
+                >
+                    署名鍵なし
+                </span>
+            )}
             <div
                 className={css({
                     display: { base: 'none', md: 'inline-flex' },

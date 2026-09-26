@@ -47,9 +47,12 @@ RUN pnpm turbo build --filter=@ubichill/backend
 
 # inject-workspace-packages=true: pnpm deploy がシンボリックリンクではなく実ファイルをコピーする
 # store-dir を deps と同じキャッシュマウントに向け、deploy の再ダウンロードを防ぐ。
+# pnpm deploy はパッケージの公開対象（files / .gitignore）だけをコピーする。ビルド成果物が
+# 欠けると起動時に MODULE_NOT_FOUND で落ちるため、diff で一致を確認してビルドを止める。
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     printf 'inject-workspace-packages=true\nstore-dir=/pnpm/store\n' > .npmrc \
-    && pnpm --filter="@ubichill/backend" --prod deploy --ignore-scripts /app/deploy-backend
+    && pnpm --filter="@ubichill/backend" --prod deploy --ignore-scripts /app/deploy-backend \
+    && diff -rq packages/backend/dist /app/deploy-backend/dist
 
 # ==========================================
 # builder-frontend: SPA + BFF に必要な最小ビルド
@@ -83,7 +86,8 @@ RUN pnpm turbo build --filter=@ubichill/shared \
 
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     printf 'inject-workspace-packages=true\nstore-dir=/pnpm/store\n' > .npmrc \
-    && pnpm --filter="@ubichill/bff" --prod deploy --ignore-scripts /app/deploy-bff
+    && pnpm --filter="@ubichill/bff" --prod deploy --ignore-scripts /app/deploy-bff \
+    && diff -rq packages/bff/dist /app/deploy-bff/dist
 
 # ==========================================
 # backend-runner: Express API サーバー

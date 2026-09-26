@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "alg": "ed25519",
+  "publicKey": "vIyjMH-tm4kj8Mnt-DBy0cKjdeclcn7_LR7VtXf2Q_g",
+  "name": "danmaku",
+  "contentHash": "sha256-qH03K119DYYCeaV8HqmomrplSJcjjgT8fxwQ/6YtgoQ=",
+  "signature": "-AbiQSOHHlRh_I3XAYB0IhvrfpwkUlHgpAYjewkwtOW-iPqaV_9LgpIpP5YB10inxUPX7-BqAH79UIdbViZMCQ"
+}

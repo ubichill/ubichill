@@ -1,10 +1,15 @@
-import { WorldSourceKind } from '@ubichill/shared';
+import { generateKeyPairSync, sign } from 'node:crypto';
+import { signWorld, WorldDefinitionSchema, type WorldSigningKey, WorldSourceKind, worldIdOf } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
+import yaml from 'yaml';
+import { nodeWorldCrypto } from './worldCrypto';
 import {
     definitionToResolved,
+    identifyWorld,
     lockUrlFor,
     normalizeWorldUrl,
     resolveWorldFromYaml,
+    sigUrlFor,
     toRawGitHubUrl,
 } from './worldResolver';
 
@@ -183,5 +188,64 @@ spec:
         expect(ship.components[3].overlay).toBeUndefined();
         // 子 Entity も同じ正規化を再帰的に通るので、そこでも落ちないこと
         expect(ship.children[0].components[0].overlay).toBe('top-right');
+    });
+});
+
+describe('sigUrlFor（署名の兄弟 URL 導出）', () => {
+    it('lock と同じ規則で .sig.json / /sig を導出する', () => {
+        expect(sigUrlFor('https://h.example/api/v1/worlds/abc/yaml')).toBe('https://h.example/api/v1/worlds/abc/sig');
+        expect(sigUrlFor('https://raw.githubusercontent.com/o/r/main/worlds/x.yaml')).toBe(
+            'https://raw.githubusercontent.com/o/r/main/worlds/x.sig.json',
+        );
+        expect(sigUrlFor('https://example.com/some/page')).toBeNull();
+    });
+});
+
+function newSigningKey(): WorldSigningKey {
+    const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+    return {
+        publicKey: publicKey.export({ format: 'jwk' }).x as string,
+        sign: async (message) => sign(null, Buffer.from(message, 'utf8'), privateKey).toString('base64url'),
+    };
+}
+
+describe('identifyWorld（配信経路を通した署名検証）', () => {
+    const key = newSigningKey();
+
+    /** 本体の配信を模す: definition は YAML、lock は JSON で送られ、受信側は生値をパースする。 */
+    const overTheWire = (definition: unknown, lock: unknown) => ({
+        definition: yaml.parse(yaml.stringify(definition)) as unknown,
+        lock: lock === undefined ? null : (JSON.parse(JSON.stringify(lock)) as unknown),
+    });
+
+    it('スキーマ適用済み definition（undefined の任意項目を含む）でも YAML 往復後に verified', async () => {
+        const def = WorldDefinitionSchema.parse(yaml.parse(VALID_YAML));
+        const withUndefined = { ...def, spec: { ...def.spec, thumbnail: undefined } };
+        const lock = { lockVersion: 1, mods: {} };
+        const sig = await signWorld({ definition: withUndefined, lock }, key, nodeWorldCrypto);
+        const identity = await identifyWorld(overTheWire(withUndefined, lock), sig, 'https://h.example/x');
+        expect(identity).toMatchObject({ status: 'verified', worldId: worldIdOf(key.publicKey, 'test-world') });
+    });
+
+    it('lock 無しワールドは 404（null）同士で一致する', async () => {
+        const def = yaml.parse(VALID_YAML) as unknown;
+        const sig = await signWorld({ definition: def, lock: null }, key, nodeWorldCrypto);
+        await expect(identifyWorld(overTheWire(def, undefined), sig, 'u')).resolves.toMatchObject({
+            status: 'verified',
+        });
+    });
+
+    it('配信元が lock を差し替えたら throw（解決を拒否する）', async () => {
+        const def = yaml.parse(VALID_YAML) as unknown;
+        const sig = await signWorld({ definition: def, lock: null }, key, nodeWorldCrypto);
+        const evilLock = { lockVersion: 1, mods: { pen: { id: 'pen', version: '9.9.9' } } };
+        await expect(identifyWorld(overTheWire(def, evilLock), sig, 'u')).rejects.toThrow(/content-mismatch/);
+    });
+
+    it('署名が取れなければ unsigned で通す', async () => {
+        const def = yaml.parse(VALID_YAML) as unknown;
+        await expect(identifyWorld({ definition: def, lock: null }, undefined, 'u')).resolves.toMatchObject({
+            status: 'unsigned',
+        });
     });
 });
