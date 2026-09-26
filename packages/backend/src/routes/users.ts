@@ -1,10 +1,11 @@
 import { db, favoriteRepository, userRepository, users, type WorldRecord, worldRepository } from '@ubichill/db';
 import type { WorldDefinition } from '@ubichill/shared';
-import { LIMITS } from '@ubichill/shared';
+import { isPublishable, LIMITS } from '@ubichill/shared';
 import { eq } from 'drizzle-orm';
 import { Router } from 'express';
 import { createPendingRegistration, resendOTP, verifyAndRegister } from '../lib/auth';
 import { requireAuth } from '../middleware/auth';
+import { worldRegistry } from '../services/worldRegistry';
 
 const router = Router();
 
@@ -132,18 +133,22 @@ router.get('/me/worlds', requireAuth, async (req, res) => {
         return res.status(401).json({ error: 'Unauthorized' });
     }
     const records = await worldRepository.findByAuthorId(req.user.id);
-    const worlds = records.map((r: WorldRecord) => {
-        const def = r.definition as WorldDefinition;
-        return {
-            id: r.name,
-            displayName: def.spec.displayName,
-            description: def.spec.description ?? null,
-            thumbnail: def.spec.thumbnail ?? null,
-            version: r.version,
-            capacity: def.spec.capacity,
-            updatedAt: r.updatedAt,
-        };
-    });
+    // 本人には未署名（非公開）も返す。署名状態を見せて署名し直せるようにする。
+    const worlds = await Promise.all(
+        records.map(async (r: WorldRecord) => {
+            const def = r.definition as WorldDefinition;
+            return {
+                id: r.name,
+                displayName: def.spec.displayName,
+                description: def.spec.description ?? null,
+                thumbnail: def.spec.thumbnail ?? null,
+                version: r.version,
+                capacity: def.spec.capacity,
+                updatedAt: r.updatedAt,
+                identity: (await worldRegistry.getWorld(r.name))?.identity,
+            };
+        }),
+    );
     return res.json({
         worlds,
         limit: LIMITS.MAX_WORLDS_PER_USER,
@@ -200,20 +205,24 @@ router.get('/:userId', async (req, res) => {
     });
 });
 
-// 他ユーザーが作成したワールド一覧（公開メタデータのみ）
+// 他ユーザーが作成したワールド一覧（公開メタデータのみ。署名検証済みのワールドだけ公開する）
 router.get('/:userId/worlds', async (req, res) => {
     const records = await worldRepository.findByAuthorId(req.params.userId);
-    const worlds = records.map((r: WorldRecord) => {
-        const def = r.definition as WorldDefinition;
-        return {
-            id: r.name,
-            displayName: def.spec.displayName,
-            description: def.spec.description ?? null,
-            thumbnail: def.spec.thumbnail ?? null,
-            version: r.version,
-            capacity: def.spec.capacity,
-        };
-    });
+    const resolved = await Promise.all(records.map((r: WorldRecord) => worldRegistry.getWorld(r.name)));
+    const publishable = new Set(resolved.filter((w) => isPublishable(w?.identity)).map((w) => w?.id));
+    const worlds = records
+        .filter((r: WorldRecord) => publishable.has(r.name))
+        .map((r: WorldRecord) => {
+            const def = r.definition as WorldDefinition;
+            return {
+                id: r.name,
+                displayName: def.spec.displayName,
+                description: def.spec.description ?? null,
+                thumbnail: def.spec.thumbnail ?? null,
+                version: r.version,
+                capacity: def.spec.capacity,
+            };
+        });
     return res.json({ worlds });
 });
 

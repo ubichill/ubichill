@@ -8,6 +8,7 @@ import { css } from '@/styled-system/css';
 import { FavoriteButton } from './FavoriteButton';
 import { InstanceCard } from './InstanceCard';
 import { InstanceDetailOverlay } from './InstanceDetailOverlay';
+import { WorldIdentityBadge } from './WorldIdentityBadge';
 
 interface WorldDetailModalProps {
     worldId: string;
@@ -217,6 +218,7 @@ export function WorldDetailModal({
                                             {worldSourceLabel(world.source)}
                                         </span>
                                     )}
+                                    <WorldIdentityBadge identity={world?.identity} className={css({ ml: '2' })} />
                                 </div>
 
                                 <div className={css({ display: 'flex', gap: '2', flexWrap: 'wrap' })}>

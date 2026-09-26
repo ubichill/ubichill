@@ -10,7 +10,8 @@
     "exports": {
         ".": "./src/index.ts",
         "./install-dependencies": "./src/installDependencies.ts",
-        "./update-dependencies": "./src/updateDependencies.ts"
+        "./update-dependencies": "./src/updateDependencies.ts",
+        "./sign-world": "./src/signWorldFile.ts"
     },
     "dependencies": {
         "@ubichill/shared": "workspace:*",

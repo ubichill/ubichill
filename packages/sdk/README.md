@@ -115,6 +115,19 @@ spec:
 npx ubichill install world.yaml
 ```
 
+- **`keygen` / `sign`**: ワールドに作者署名を付ける。署名は `world.yaml` と `world.lock.json` の内容に対する
+  ed25519 署名で、兄弟ファイル `<world>.sig.json` に書き出す。ホストは署名を検証し、
+  改竄（lock の差し替えを含む）を拒否し、URL が変わっても `公開鍵 + metadata.name` で同じワールドと判定する。
+  - 秘密鍵はコミットしない。失うと以後の署名は別作者扱いになる。
+  - `install` で lock を作り直したら必ず `sign` し直す。CI では `sign --check` で検出できる。
+
+```bash
+npx ubichill keygen --out=ubichill-signing.key   # 1 回だけ
+npx ubichill install world.yaml
+npx ubichill sign world.yaml --key-file=ubichill-signing.key
+npx ubichill sign world.yaml --check
+```
+
 ### 型チェックを `build` の前段に入れる
 
 `ubichill build` は esbuild で bundle するだけで型チェックは行わない。`import` 先の

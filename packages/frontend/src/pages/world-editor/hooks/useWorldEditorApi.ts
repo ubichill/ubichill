@@ -2,9 +2,14 @@ import type { WorldDefinition } from '@ubichill/shared';
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router';
 import yaml from 'yaml';
+import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { API_BASE } from '@/lib/api';
 import { createInstance as createInstanceApi } from '@/lib/instancesApi';
+import { createHostedWorld, loadSigningKey, updateHostedWorld } from '@/lib/signing';
 import { buildWorldLock } from '@/mods/buildWorldLock';
+
+const UNSIGNED_SAVE_MESSAGE =
+    'このブラウザに作者署名の鍵がありません。このまま保存すると未署名になり、一覧に公開されません（URL を知っている人だけが確認付きで入れます）。保存しますか？\n鍵はプロフィールの「作者署名の鍵」で作成・読み込みできます。';
 
 interface UseWorldEditorApiArgs {
     isEdit: boolean;
@@ -22,6 +27,7 @@ interface UseWorldEditorApiArgs {
  */
 export function useWorldEditorApi({ isEdit, worldId, definition, onSavedYamlChange, onError }: UseWorldEditorApiArgs) {
     const navigate = useNavigate();
+    const confirm = useConfirm();
     const [saving, setSaving] = useState(false);
 
     const save = useCallback(async (): Promise<boolean> => {
@@ -34,27 +40,23 @@ export function useWorldEditorApi({ isEdit, worldId, definition, onSavedYamlChan
             // 差し替え mod の実行を拒否できる（配布者を信頼しない）。
             const lock = await buildWorldLock(definition);
             const text = yaml.stringify(definition);
-            const url =
-                isEdit && worldId ? `${API_BASE}/api/v1/worlds/${worldId}/yaml` : `${API_BASE}/api/v1/worlds/yaml`;
-            const method = isEdit ? 'PUT' : 'POST';
-            const res = await fetch(url, {
-                method,
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ yaml: text, lock }),
-            });
-            if (!res.ok) {
-                const data = (await res.json().catch(() => ({}))) as { error?: string };
-                throw new Error(data.error ?? `HTTP ${res.status}`);
-            }
-            // 新規作成: サーバー生成の worldId で編集画面に遷移して以降は dirty 解消できる状態に
-            if (!isEdit) {
-                const created = (await res.json()) as { id: string };
-                navigate(`/world/${created.id}/edit`, { replace: true });
+            const body = { yaml: text, lock };
+            const deps = { apiBase: API_BASE, fetch };
+
+            // 鍵が無いまま保存すると未署名（非公開）になるので、黙って保存せず確認する。
+            const key = await loadSigningKey().catch(() => null);
+            if (!key && !(await confirm(UNSIGNED_SAVE_MESSAGE))) return false;
+
+            if (isEdit && worldId) {
+                await updateHostedWorld(worldId, body, key, deps);
+                // 編集モード: dirty=false にするため savedYaml を更新
+                onSavedYamlChange(text);
                 return true;
             }
-            // 編集モード: dirty=false にするため savedYaml を更新
-            onSavedYamlChange(text);
+            // 新規作成: サーバー生成の worldId で編集画面に遷移して以降は dirty 解消できる状態に
+            const created = await createHostedWorld(body, key, deps);
+            if (created.signError) onError(`保存しましたが署名できず非公開のままです: ${created.signError}`);
+            navigate(`/world/${created.id}/edit`, { replace: true });
             return true;
         } catch (e) {
             onError(e instanceof Error ? e.message : '保存失敗');
@@ -62,7 +64,7 @@ export function useWorldEditorApi({ isEdit, worldId, definition, onSavedYamlChan
         } finally {
             setSaving(false);
         }
-    }, [definition, isEdit, worldId, navigate, onSavedYamlChange, onError]);
+    }, [definition, isEdit, worldId, navigate, onSavedYamlChange, onError, confirm]);
 
     const remove = useCallback(async () => {
         if (!worldId) return;

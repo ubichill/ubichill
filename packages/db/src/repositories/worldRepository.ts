@@ -1,4 +1,4 @@
-import type { ModLock, WorldDefinition } from '@ubichill/shared';
+import type { ModLock, WorldDefinition, WorldSignature } from '@ubichill/shared';
 import { count, eq } from 'drizzle-orm';
 import { db } from '../index';
 import { worlds } from '../schema';
@@ -17,6 +17,7 @@ export interface UpdateWorldInput {
     version?: string;
     definition?: WorldDefinition;
     lock?: ModLock | null;
+    signature?: WorldSignature | null;
 }
 
 export type WorldRecord = typeof worlds.$inferSelect;

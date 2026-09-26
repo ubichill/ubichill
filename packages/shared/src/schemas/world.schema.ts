@@ -2,6 +2,7 @@ import { isCoreComponentNamespace, isCoreComponentType, validateCoreComponentDat
 import { z } from 'zod';
 import { OVERLAY_MODES } from '../mod/entities';
 import { ModLockSchema } from './modLock.schema';
+import { WorldIdentitySchema } from './worldIdentity.schema';
 
 // ============================================
 // 定数
@@ -458,6 +459,8 @@ export const ResolvedWorldSchema = z.object({
     mods: z.array(WorldModSchema).default([]),
     /** mod 完全性ロック（あれば）。ロード時の hash 照合・capability 天井に使う。 */
     lock: ModLockSchema.optional(),
+    /** 識別結果（署名検証済み / 未署名）。解決側が付与する。 */
+    identity: WorldIdentitySchema.optional(),
 });
 
 export type ResolvedWorld = z.infer<typeof ResolvedWorldSchema>;

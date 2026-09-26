@@ -1,0 +1,91 @@
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { WorldSignatureSchema, worldIdOf } from '@ubichill/shared';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { runKeygen, runSign } from './signWorldFile';
+import { importSigningKey, webWorldCrypto } from './worldCrypto';
+
+// RFC 8032 §7.1 TEST 1（空メッセージ）。PKCS8 = 固定プレフィックス + 32byte seed。
+const RFC8032_SEED = '9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60';
+const RFC8032_PUBLIC = 'd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a';
+const RFC8032_SIG =
+    'e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b';
+
+const hexToBase64 = (hex: string): string => Buffer.from(hex, 'hex').toString('base64');
+const hexToBase64Url = (hex: string): string => Buffer.from(hex, 'hex').toString('base64url');
+
+describe('worldCrypto（WebCrypto 実装）', () => {
+    it('RFC 8032 のテストベクタと一致する（鍵の取り込み・公開鍵導出・署名）', async () => {
+        const key = await importSigningKey(hexToBase64(`302e020100300506032b657004220420${RFC8032_SEED}`));
+        expect(key.publicKey).toBe(hexToBase64Url(RFC8032_PUBLIC));
+        expect(await key.sign('')).toBe(hexToBase64Url(RFC8032_SIG));
+        expect(await webWorldCrypto.verifyEd25519(key.publicKey, '', hexToBase64Url(RFC8032_SIG))).toBe(true);
+    });
+
+    it('sha256 は既知値と一致する', async () => {
+        expect(await webWorldCrypto.sha256Base64('abc')).toBe('ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0=');
+    });
+
+    it('壊れた鍵・署名でも throw せず false', async () => {
+        expect(await webWorldCrypto.verifyEd25519('短すぎる', 'm', 'x')).toBe(false);
+    });
+});
+
+describe('ubichill keygen / sign', () => {
+    const dir = { path: '' };
+    const world = () => join(dir.path, 'w.yaml');
+    const lock = () => join(dir.path, 'w.lock.json');
+    const sig = () => join(dir.path, 'w.sig.json');
+    const keyFile = () => join(dir.path, 'k.key');
+
+    beforeEach(async () => {
+        dir.path = mkdtempSync(join(tmpdir(), 'ubichill-sign-'));
+        vi.spyOn(console, 'log').mockImplementation(() => undefined);
+        vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        writeFileSync(world(), 'metadata:\n  name: my-world\nspec:\n  displayName: A\n');
+        writeFileSync(lock(), JSON.stringify({ lockVersion: 1, mods: {} }));
+        await runKeygen([`--out=${keyFile()}`]);
+    });
+
+    afterEach(() => {
+        process.exitCode = 0;
+        vi.restoreAllMocks();
+        rmSync(dir.path, { recursive: true, force: true });
+    });
+
+    it('署名すると公開鍵 + name の worldId を持つ有効な sig.json が出る', async () => {
+        await runSign([world(), `--key-file=${keyFile()}`]);
+        const written = WorldSignatureSchema.parse(JSON.parse(readFileSync(sig(), 'utf-8')));
+        const { publicKey } = await importSigningKey(readFileSync(keyFile(), 'utf-8'));
+        expect(written.publicKey).toBe(publicKey);
+        expect(worldIdOf(written.publicKey, written.name)).toBe(worldIdOf(publicKey, 'my-world'));
+
+        await runSign([world(), '--check']);
+        expect(process.exitCode ?? 0).toBe(0);
+    });
+
+    it('署名後に lock を再生成すると --check が失敗する', async () => {
+        await runSign([world(), `--key-file=${keyFile()}`]);
+        writeFileSync(lock(), JSON.stringify({ lockVersion: 1, mods: { pen: { id: 'pen' } } }));
+        await runSign([world(), '--check']);
+        expect(process.exitCode).toBe(1);
+    });
+
+    it('署名ファイルが無い --check は失敗する（未署名を合格にしない）', async () => {
+        await runSign([world(), '--check']);
+        expect(process.exitCode).toBe(1);
+    });
+
+    it('keygen は既存の鍵を上書きしない', async () => {
+        const before = readFileSync(keyFile(), 'utf-8');
+        await expect(runKeygen([`--out=${keyFile()}`])).rejects.toThrow();
+        expect(readFileSync(keyFile(), 'utf-8')).toBe(before);
+    });
+
+    it('鍵が無ければ署名を拒否する', async () => {
+        vi.stubEnv('UBICHILL_SIGNING_KEY', '');
+        await expect(runSign([world()])).rejects.toThrow(/署名鍵/);
+        vi.unstubAllEnvs();
+    });
+});

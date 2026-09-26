@@ -82,3 +82,11 @@ export {
     worldShareUrl,
     worldSourceLabel,
 } from './world.schema';
+export {
+    Ed25519PublicKeySchema,
+    Ed25519SignatureSchema,
+    type WorldIdentity,
+    WorldIdentitySchema,
+    type WorldSignature,
+    WorldSignatureSchema,
+} from './worldIdentity.schema';

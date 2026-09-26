@@ -6,6 +6,7 @@ import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { API_BASE } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { css } from '@/styled-system/css';
+import { SigningKeySection } from './SigningKeySection';
 
 interface UserProfile {
     id: string;
@@ -192,6 +193,8 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                     {error}
                 </div>
             )}
+
+            {isOwnPage && <SigningKeySection />}
 
             {/* 作成したワールド */}
             <section>

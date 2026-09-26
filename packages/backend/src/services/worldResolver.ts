@@ -20,14 +20,19 @@ import {
     type ModLock,
     ModLockSchema,
     type ResolvedWorld,
+    verifyWorldSignature,
     type WorldDefinition,
     WorldDefinitionSchema,
+    type WorldDocument,
+    type WorldIdentity,
     type WorldMod,
+    type WorldSignatureInvalidReason,
     type WorldSource,
     WorldSourceKind,
 } from '@ubichill/shared';
 import yaml from 'yaml';
 import { safeFetch } from './safeFetch';
+import { nodeWorldCrypto } from './worldCrypto';
 import { migrateLegacyWorldYaml } from './worldMigration';
 
 const GITHUB_BLOB_RE = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/;
@@ -66,25 +71,35 @@ export function definitionToResolved(
     parsed: unknown,
     url: string,
     source: WorldSource,
-    extra?: { authorId?: string; lock?: ModLock },
+    extra?: ResolveExtra,
 ): ResolvedWorld {
     return mapToResolved(validateWorldDefinition(parsed, url), url, source, extra);
 }
 
+interface ResolveExtra {
+    authorId?: string;
+    lock?: ModLock;
+    identity?: WorldIdentity;
+}
+
+type SiblingKind = 'lock' | 'sig';
+
+const SIBLING_FILE_EXT: Record<SiblingKind, string> = { lock: '.lock.json', sig: '.sig.json' };
+
 /**
- * ワールド URL から mod ロックの兄弟 URL を導出する。
- * lock は YAML に埋めず別配信するため、解決側はここが指す先を best-effort で取りに行く。
- * - ubichill 機械 URL `.../api/v1/worlds/:id`(`/yaml`可) → `.../api/v1/worlds/:id/lock`
- * - 直 YAML URL `*.yaml` / `*.yml`（GitHub raw 等）→ 拡張子を `.lock.json` に置換
- * - それ以外 → null（兄弟なし。埋め込み `spec.lock` フォールバックに委ねる）
+ * ワールド URL から兄弟配信物（mod ロック / 署名）の URL を導出する。
+ * どちらも YAML に埋めず別配信するため、解決側はここが指す先を best-effort で取りに行く。
+ * - ubichill 機械 URL `.../api/v1/worlds/:id`(`/yaml`可) → `.../api/v1/worlds/:id/{lock,sig}`
+ * - 直 YAML URL `*.yaml` / `*.yml`（GitHub raw 等）→ 拡張子を `.lock.json` / `.sig.json` に置換
+ * - それ以外 → null（兄弟なし）
  */
-export function lockUrlFor(worldUrl: string): string | null {
+function siblingUrlFor(worldUrl: string, kind: SiblingKind): string | null {
     try {
         const u = new URL(worldUrl);
         const api = /^(\/api\/v1\/worlds\/[^/]+?)(?:\/yaml)?\/?$/.exec(u.pathname);
-        if (api) return `${u.origin}${api[1]}/lock`;
+        if (api) return `${u.origin}${api[1]}/${kind}`;
         if (/\.ya?ml$/i.test(u.pathname)) {
-            return `${u.origin}${u.pathname.replace(/\.ya?ml$/i, '.lock.json')}${u.search}`;
+            return `${u.origin}${u.pathname.replace(/\.ya?ml$/i, SIBLING_FILE_EXT[kind])}${u.search}`;
         }
         return null;
     } catch {
@@ -92,20 +107,43 @@ export function lockUrlFor(worldUrl: string): string | null {
     }
 }
 
+export const lockUrlFor = (worldUrl: string): string | null => siblingUrlFor(worldUrl, 'lock');
+export const sigUrlFor = (worldUrl: string): string | null => siblingUrlFor(worldUrl, 'sig');
+
 /**
- * 兄弟 URL から mod ロックを best-effort で取得する。取得不能・不正は undefined。
- * 失敗しても解決自体は続行し、埋め込み `spec.lock` フォールバックに委ねる。
+ * 兄弟 URL から JSON を best-effort で生のまま取得する。取得不能・非 JSON は undefined。
+ * 生値のまま返すのは contentHash が「配信された値」で計算されるため（スキーマ既定値を足すと一致しない）。
  */
-async function fetchSiblingLock(worldUrl: string): Promise<ModLock | undefined> {
-    const lockUrl = lockUrlFor(worldUrl);
-    if (!lockUrl) return undefined;
+async function fetchSiblingJson(url: string | null): Promise<unknown> {
+    if (!url) return undefined;
     try {
-        const res = await safeFetch(lockUrl, { headers: { Accept: 'application/json' } });
+        const res = await safeFetch(url, { headers: { Accept: 'application/json' } });
         if (!res.ok) return undefined;
-        const parsed = ModLockSchema.safeParse(await res.json());
-        return parsed.success ? parsed.data : undefined;
+        return (await res.json()) as unknown;
     } catch {
         return undefined;
+    }
+}
+
+/**
+ * 配信された生の world + lock と署名から識別結果を得る。改竄・署名不正は throw（解決を拒否）。
+ * 署名が取れなければ unsigned。配信元を乗っ取った攻撃者は署名ファイルを消して unsigned に
+ * 格下げできるため、既知 worldId との照合（お気に入り等）は呼び出し側の責務。
+ */
+export async function identifyWorld(doc: WorldDocument, rawSignature: unknown, url: string): Promise<WorldIdentity> {
+    const verdict = await verifyWorldSignature(doc, rawSignature, nodeWorldCrypto);
+    if (verdict.status === 'invalid') throw new WorldIntegrityError(verdict.reason, url);
+    return verdict;
+}
+
+/** 署名検証に失敗した（改竄・署名不正）。取得失敗と区別し、古いキャッシュへのフォールバックもしない。 */
+export class WorldIntegrityError extends Error {
+    constructor(
+        readonly reason: WorldSignatureInvalidReason,
+        readonly url: string,
+    ) {
+        super(`ワールドの署名検証に失敗しました (${reason}): ${url}`);
+        this.name = 'WorldIntegrityError';
     }
 }
 
@@ -120,12 +158,7 @@ export function validateWorldDefinition(parsed: unknown, url: string): WorldDefi
 }
 
 /** 検証済み WorldDefinition を ResolvedWorld に写像する（純粋）。 */
-function mapToResolved(
-    def: WorldDefinition,
-    url: string,
-    source: WorldSource,
-    extra?: { authorId?: string; lock?: ModLock },
-): ResolvedWorld {
+function mapToResolved(def: WorldDefinition, url: string, source: WorldSource, extra?: ResolveExtra): ResolvedWorld {
     const env = def.spec.environment ?? {
         backgroundColor: DEFAULTS.WORLD_ENVIRONMENT.backgroundColor,
         worldSize: DEFAULTS.WORLD_ENVIRONMENT.worldSize,
@@ -159,6 +192,7 @@ function mapToResolved(
         mods: collectMods(initialEntities, def.spec.dependencies),
         // 別配信の lock（兄弟ファイル / DB カラム）を優先し、無ければ埋め込みフォールバック。
         lock: extra?.lock ?? def.spec.lock,
+        identity: extra?.identity,
     };
 }
 
@@ -189,24 +223,35 @@ export function resolveWorldFromYaml(
     return definitionToResolved(yaml.parse(yamlText), url, source, extra);
 }
 
-/** URL を取得して ResolvedWorld に解決する（外部/他インスタンス用）。 */
-export async function resolveWorldFromUrl(url: string, source: WorldSource): Promise<ResolvedWorld> {
-    const fetchUrl = toRawGitHubUrl(url);
-    // 本体 YAML と兄弟 lock を並行取得（lock は best-effort・失敗しても続行）。
-    const [text, lock] = await Promise.all([fetchText(fetchUrl), fetchSiblingLock(fetchUrl)]);
-    // 正規 URL は元の（人間が貼れる）URL を維持する
-    return definitionToResolved(yaml.parse(text), url, source, { lock });
-}
-
-/** URL を取得し、生定義（配信用）と ResolvedWorld（一覧/入室用）の両方を返す。 */
+/**
+ * URL を取得し、生定義（配信用）と ResolvedWorld（一覧/入室用）の両方を返す（外部/他インスタンス用）。
+ * 本体 YAML・兄弟 lock・兄弟署名を並行取得し、署名があれば検証する（不正なら throw）。
+ */
 export async function resolveWorld(
     url: string,
     source: WorldSource,
 ): Promise<{ definition: WorldDefinition; resolved: ResolvedWorld }> {
     const fetchUrl = toRawGitHubUrl(url);
-    const [text, lock] = await Promise.all([fetchText(fetchUrl), fetchSiblingLock(fetchUrl)]);
-    const definition = validateWorldDefinition(yaml.parse(text), url);
-    return { definition, resolved: definitionToResolved(definition, url, source, { lock }) };
+    const [text, rawLock, rawSig] = await Promise.all([
+        fetchText(fetchUrl),
+        fetchSiblingJson(lockUrlFor(fetchUrl)),
+        fetchSiblingJson(sigUrlFor(fetchUrl)),
+    ]);
+    const rawDefinition: unknown = yaml.parse(text);
+    const identity = await identifyWorld({ definition: rawDefinition, lock: rawLock ?? null }, rawSig, url);
+    const parsedLock = ModLockSchema.safeParse(rawLock);
+    const definition = validateWorldDefinition(rawDefinition, url);
+    // 正規 URL は元の（人間が貼れる）URL を維持する
+    const resolved = mapToResolved(definition, url, source, {
+        lock: parsedLock.success ? parsedLock.data : undefined,
+        identity,
+    });
+    return { definition, resolved };
+}
+
+/** URL を取得して ResolvedWorld に解決する（外部/他インスタンス用）。 */
+export async function resolveWorldFromUrl(url: string, source: WorldSource): Promise<ResolvedWorld> {
+    return (await resolveWorld(url, source)).resolved;
 }
 
 // ============================================================
