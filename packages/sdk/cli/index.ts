@@ -4,7 +4,7 @@
  *
  * 使い方:
  *   ubichill build   [--mods-dir=<dir>] [--public-mods-dir=<dir>] [--dist-dir=<dir>]
- *   ubichill install <world.yaml> [--mods-dir=<dir>] [--base-url=<url>] [--out=<path>]
+ *   ubichill install <world.yaml> [--mods-dir=<dir>] [--base-url=<url>] [--out=<path>] [--no-sign] [--key-file=<path>]
  *   ubichill update  <world.yaml> [<modName>] [--mods-dir=<dir>] [--out=<path>]
  *   ubichill verify  [--dist-dir=<dir>]
  *   ubichill keygen  [--out=<path>]

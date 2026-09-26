@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useSession } from '@/lib/session';
+import { useSigningPublicKey } from '@/lib/signing';
 import { css } from '@/styled-system/css';
 import { EditorAssets } from './components/assets/EditorAssets';
 import { ControlPanelTabs } from './components/ControlPanelTabs';
@@ -39,6 +40,7 @@ export function WorldEditorPage() {
     const [error, setError] = useState('');
     const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
 
+    const signingPublicKey = useSigningPublicKey();
     const { definition, setDefinition, setSavedYaml, loading, dirty, updateEntities } = useDefinition({
         isEdit,
         worldId,
@@ -163,6 +165,7 @@ export function WorldEditorPage() {
                     onToggleSnap={mobile.toggleSnap}
                     onBack={handleBack}
                     onOpenControlPanel={() => modals.openControlPanel()}
+                    signingKeyMissing={signingPublicKey === null}
                 />
             </div>
 

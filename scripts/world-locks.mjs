@@ -55,7 +55,8 @@ const run = (args) => {
 
 let failed = false;
 for (const relPath of worldFiles.sort()) {
-    const installArgs = ['install', relPath, `--mods-dir=${modsDir}`];
+    // 公式ワールドはメンテナが確認して明示署名する（--sign）ので、install の自動署名は止める。
+    const installArgs = ['install', relPath, `--mods-dir=${modsDir}`, '--no-sign'];
     if (check) installArgs.push('--check');
     if (!run(installArgs)) failed = true;
 

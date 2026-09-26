@@ -29,6 +29,7 @@ import {
     createHttpLockEntryGetter,
     type LockEntryGetter,
 } from './buildWorldLock.ts';
+import { signAfterInstall } from './signWorldFile.ts';
 
 function argValue(argv: string[], name: string): string | undefined {
     const hit = argv.find((a) => a.startsWith(`--${name}=`));
@@ -57,7 +58,8 @@ function createFsLockEntryGetter(modsDir: string): LockEntryGetter {
 
 /**
  * `argv`（サブコマンド名を除いた残り引数）から依存を解決しロックを生成する。
- * 使い方: `<world.yaml> [--mods-dir=<dir>] [--base-url=<url>] [--out=<path>] [--check]`。
+ * 使い方: `<world.yaml> [--mods-dir=<dir>] [--base-url=<url>] [--out=<path>] [--check] [--no-sign] [--key-file=<path>]`。
+ * lock を書いた後、署名鍵があれば自動で署名する（{@link signAfterInstall}）。`--no-sign` で抑止。
  * `dependencies[].source.version` が pin されていればそのバージョンを固定して取得する。
  * `--mods-dir` 既定は `process.cwd()` 直下の `mods`。ただし外部 world の標準フローでは
  * `dependencies[].source.url` が優先されるため、この暗黙値は参照されない。
@@ -125,4 +127,13 @@ export async function runInstall(argv: string[]): Promise<void> {
 
     writeFileSync(outPath, nextJson, 'utf-8');
     console.log(`🔒 ${outPath} (${lockedIds.length}/${modIds.length} mods)`);
+
+    // lock が変わると署名は無効になるので続けて署名し直す。署名は兄弟 lock を対象にするため、
+    // --out で別の場所に書いた場合や --no-sign（公式ワールドの明示署名フロー）では行わない。
+    if (argv.includes('--no-sign')) return;
+    if (outPath !== worldPath.replace(/\.ya?ml$/i, '.lock.json')) {
+        console.warn('⚠ --out 指定時は自動署名しません。`ubichill sign` で署名してください。');
+        return;
+    }
+    await signAfterInstall(worldPath, argv);
 }

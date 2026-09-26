@@ -1,9 +1,9 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { WorldSignatureSchema, worldIdOf } from '@ubichill/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { runKeygen, runSign } from './signWorldFile';
+import { defaultSigningKeyFile, runKeygen, runSign, signAfterInstall } from './signWorldFile';
 import { importSigningKey, webWorldCrypto } from './worldCrypto';
 
 // RFC 8032 §7.1 TEST 1（空メッセージ）。PKCS8 = 固定プレフィックス + 32byte seed。
@@ -84,8 +84,73 @@ describe('ubichill keygen / sign', () => {
     });
 
     it('鍵が無ければ署名を拒否する', async () => {
+        vi.stubEnv('HOME', dir.path);
         vi.stubEnv('UBICHILL_SIGNING_KEY', '');
+        vi.stubEnv('UBICHILL_SIGNING_KEY_FILE', '');
         await expect(runSign([world()])).rejects.toThrow(/署名鍵/);
         vi.unstubAllEnvs();
+    });
+});
+
+describe('既定の鍵の場所と install 後の自動署名', () => {
+    const dir = { path: '' };
+    const world = () => join(dir.path, 'w.yaml');
+    const sig = () => join(dir.path, 'w.sig.json');
+
+    beforeEach(() => {
+        dir.path = mkdtempSync(join(tmpdir(), 'ubichill-autosign-'));
+        vi.stubEnv('HOME', dir.path);
+        vi.stubEnv('UBICHILL_SIGNING_KEY', '');
+        vi.stubEnv('UBICHILL_SIGNING_KEY_FILE', '');
+        vi.spyOn(console, 'log').mockImplementation(() => undefined);
+        vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        writeFileSync(world(), 'metadata:\n  name: my-world\nspec:\n  displayName: A\n');
+        writeFileSync(join(dir.path, 'w.lock.json'), JSON.stringify({ lockVersion: 1, mods: {} }));
+    });
+
+    afterEach(() => {
+        process.exitCode = 0;
+        vi.restoreAllMocks();
+        vi.unstubAllEnvs();
+        rmSync(dir.path, { recursive: true, force: true });
+    });
+
+    it('keygen の既定はリポジトリ外（~/.config/ubichill/signing.key）で、所有者のみ読める', async () => {
+        await runKeygen([]);
+        expect(defaultSigningKeyFile().startsWith(dir.path)).toBe(true);
+        expect(statSync(defaultSigningKeyFile()).mode & 0o077).toBe(0);
+    });
+
+    it('鍵が無ければ署名せず警告する（黙って署名なしにしない）', async () => {
+        await signAfterInstall(world(), []);
+        expect(existsSync(sig())).toBe(false);
+        expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('署名なし'));
+    });
+
+    it('既定の場所に鍵があれば自動で署名し、sign --check が通る', async () => {
+        await runKeygen([]);
+        await signAfterInstall(world(), []);
+        await runSign([world(), '--check']);
+        expect(process.exitCode ?? 0).toBe(0);
+    });
+
+    it('別の鍵で署名済みなら上書きしない（作者が変わってしまうため）', async () => {
+        const other = join(dir.path, 'other.key');
+        await runKeygen([`--out=${other}`]);
+        await runSign([world(), `--key-file=${other}`]);
+        const before = readFileSync(sig(), 'utf-8');
+        await runKeygen([]);
+        await signAfterInstall(world(), []);
+        expect(readFileSync(sig(), 'utf-8')).toBe(before);
+        expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('別の鍵'));
+    });
+
+    it('同じ鍵なら lock 変更後に署名し直して有効に戻る', async () => {
+        await runKeygen([]);
+        await signAfterInstall(world(), []);
+        writeFileSync(join(dir.path, 'w.lock.json'), JSON.stringify({ lockVersion: 1, mods: { pen: { id: 'pen' } } }));
+        await signAfterInstall(world(), []);
+        await runSign([world(), '--check']);
+        expect(process.exitCode ?? 0).toBe(0);
     });
 });

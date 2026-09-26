@@ -118,14 +118,17 @@ npx ubichill install world.yaml
 - **`keygen` / `sign`**: ワールドに作者署名を付ける。署名は `world.yaml` と `world.lock.json` の内容に対する
   ed25519 署名で、兄弟ファイル `<world>.sig.json` に書き出す。ホストは署名を検証し、
   改竄（lock の差し替えを含む）を拒否し、URL が変わっても `公開鍵 + metadata.name` で同じワールドと判定する。
-  - 秘密鍵はコミットしない。失うと以後の署名は別作者扱いになる。
-  - `install` で lock を作り直したら必ず `sign` し直す。CI では `sign --check` で検出できる。
+  **署名のないワールドはホストの一覧に公開されない**（URL からは入室時の確認付きで入れる）。
+  - 鍵の既定の場所は `~/.config/ubichill/signing.key`（リポジトリの外）。別の場所にもバックアップすること。
+    失うと以後の署名は別作者扱いになる。ブラウザのプロフィール「作者署名の鍵」で同じファイルを読み込める。
+  - 鍵があれば `install` が lock を書いた後に自動で署名し直す（無ければ警告）。`--no-sign` で抑止。
+    別の鍵で署名済みのワールドは上書きしない（明示の `sign` が必要）。
+  - CI では `sign --check` で署名し忘れ・古い署名を検出できる。
 
 ```bash
-npx ubichill keygen --out=ubichill-signing.key   # 1 回だけ
-npx ubichill install world.yaml
-npx ubichill sign world.yaml --key-file=ubichill-signing.key
-npx ubichill sign world.yaml --check
+npx ubichill keygen                  # 1 回だけ（~/.config/ubichill/signing.key）
+npx ubichill install world.yaml      # lock 生成 + 自動署名
+npx ubichill sign world.yaml --check # CI 用
 ```
 
 ### 型チェックを `build` の前段に入れる

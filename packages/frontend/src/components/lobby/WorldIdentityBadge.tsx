@@ -21,7 +21,9 @@ const badge = cva({
 });
 
 /**
- * 作者署名の検証結果。identity が無い（連合ピア一覧など未検証の自己申告）ときは何も出さない。
+ * 作者署名の有無。identity が無い（検証していない自己申告）ときは何も出さない。
+ * 「作者署名あり」は「その鍵の持ち主が作り、改竄されていない」という意味で、安全性の保証ではない
+ * （鍵は誰でも作れる。安全性は sandbox + capability 天井 + lock が担う）ので「検証済み」とは呼ばない。
  * title に worldId を出し、同名の別作者ワールドと見分けられるようにする。
  */
 export function WorldIdentityBadge({ identity, className }: { identity?: WorldIdentity; className?: string }) {
@@ -30,13 +32,17 @@ export function WorldIdentityBadge({ identity, className }: { identity?: WorldId
     return (
         <span
             className={cx(badge({ status: identity.status }), className)}
-            title={verified ? identity.worldId : '作者の署名がありません。配信元を信頼できる場合のみ入室してください'}
+            title={
+                verified
+                    ? `作者の鍵で署名され、改竄されていません（安全性の保証ではありません）\n${identity.worldId}`
+                    : '作者の署名がありません。改竄の有無も作者も確認できません'
+            }
         >
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
                 <path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z" />
                 {verified && <path d="M9 12l2 2 4-4" />}
             </svg>
-            {verified ? '検証済み' : '未検証'}
+            {verified ? '作者署名あり' : '署名なし'}
         </span>
     );
 }

@@ -36,7 +36,7 @@ function downloadText(filename: string, text: string): void {
  * 作者署名鍵の管理。鍵はこのブラウザにだけ保存され、サーバーには送らない。
  * 保存したワールドはこの鍵で自動的に署名される。
  */
-export function SigningKeySection() {
+export function SigningKeySection({ unsignedCount }: { unsignedCount: number }) {
     const publicKey = useSigningPublicKey();
     const fileInput = useRef<HTMLInputElement>(null);
     const [busy, setBusy] = useState(false);
@@ -91,8 +91,29 @@ export function SigningKeySection() {
             <h2 className={css({ fontSize: 'lg', fontWeight: '700', color: 'text', mb: '1' })}>作者署名の鍵</h2>
             <p className={css({ fontSize: '13px', color: 'textMuted', lineHeight: '1.6', mb: '3' })}>
                 保存したワールドにこの鍵で署名し、改竄されていないこと・同じ作者であることを他のサーバーでも確認できるようにします。
-                鍵はこのブラウザにだけ保存され、サーバーには送られません。既存のワールドは次に保存したときに署名されます。
+                鍵はこのブラウザ（このサイト）にだけ保存され、サーバーには送られません。別のサーバーや端末ではバックアップファイルを読み込むと同じ作者として署名できます。
             </p>
+            {!publicKey && (
+                <p
+                    className={css({
+                        fontSize: '13px',
+                        color: 'errorText',
+                        bg: 'errorBg',
+                        px: '3',
+                        py: '2',
+                        borderRadius: '8px',
+                        mb: '3',
+                    })}
+                >
+                    このブラウザに鍵がありません。保存したワールドは署名されず、一覧に公開されません。
+                    {unsignedCount > 0 && ` 現在 ${unsignedCount} 個のワールドが非公開です。`}
+                </p>
+            )}
+            {publicKey && unsignedCount > 0 && (
+                <p className={css({ fontSize: '13px', color: 'textMuted', mb: '3' })}>
+                    署名のないワールドが {unsignedCount} 個あります。下の一覧の「署名して公開」で公開できます。
+                </p>
+            )}
             {publicKey ? (
                 <div className={css({ display: 'flex', alignItems: 'center', gap: '3', flexWrap: 'wrap' })}>
                     <code
