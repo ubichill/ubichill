@@ -1,6 +1,7 @@
 import { webWorldCrypto } from '@ubichill/loader';
-import { signWorld, type WorldIdentity, type WorldSigningKey } from '@ubichill/shared';
+import { signWorld, type WorldIdentity } from '@ubichill/shared';
 import yaml from 'yaml';
+import type { WorldSigner } from './signer';
 
 export interface SignHostedWorldDeps {
     apiBase: string;
@@ -21,7 +22,7 @@ async function errorMessage(res: Response): Promise<string> {
  */
 export async function signHostedWorld(
     worldId: string,
-    key: WorldSigningKey,
+    signer: WorldSigner,
     { apiBase, fetch }: SignHostedWorldDeps,
 ): Promise<WorldIdentity> {
     const base = `${apiBase}/api/v1/worlds/${encodeURIComponent(worldId)}`;
@@ -34,7 +35,7 @@ export async function signHostedWorld(
 
     const definition = yaml.parse(await yamlRes.text()) as unknown;
     const lock = lockRes.ok ? ((await lockRes.json()) as unknown) : null;
-    const signature = await signWorld({ definition, lock }, key, webWorldCrypto);
+    const signature = await signWorld({ definition, lock }, signer.key, webWorldCrypto, { author: signer.author });
 
     const res = await fetch(`${base}/sig`, {
         method: 'PUT',

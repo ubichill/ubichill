@@ -1,4 +1,10 @@
-import { type Instance, type WorldListItem, worldShareUrl, worldSourceLabel } from '@ubichill/shared';
+import {
+    displayAuthorAccount,
+    type Instance,
+    type WorldListItem,
+    worldShareUrl,
+    worldSourceLabel,
+} from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
@@ -219,6 +225,11 @@ export function WorldDetailModal({
                                         </span>
                                     )}
                                     <WorldIdentityBadge identity={world?.identity} className={css({ ml: '2' })} />
+                                    {world?.identity?.status === 'verified' && world.identity.author && (
+                                        <p className={css({ mt: '1', fontSize: '12px', color: 'textMuted' })}>
+                                            作者 {displayAuthorAccount(world.identity.author)}
+                                        </p>
+                                    )}
                                 </div>
 
                                 <div className={css({ display: 'flex', gap: '2', flexWrap: 'wrap' })}>

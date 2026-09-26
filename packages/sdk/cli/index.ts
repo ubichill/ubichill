@@ -8,7 +8,7 @@
  *   ubichill update  <world.yaml> [<modName>] [--mods-dir=<dir>] [--out=<path>]
  *   ubichill verify  [--dist-dir=<dir>]
  *   ubichill keygen  [--out=<path>]
- *   ubichill sign    <world.yaml> [--key-file=<path>] [--out=<path>] [--check]
+ *   ubichill sign    <world.yaml> [--key-file=<path>] [--author=handle@domain] [--out=<path>] [--check]
  *
  * `lock` は `install` の旧名。非推奨だが後方互換のため残る。
  *

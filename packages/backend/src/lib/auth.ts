@@ -22,7 +22,10 @@ const MAIL_FROM = process.env.MAIL_FROM ?? 'Ubichill <onboarding@resend.dev>';
 interface PendingRegistration {
     email: string;
     password: string;
-    username: string;
+    /** 表示名（日本語可・重複可）。users.name に入る。 */
+    displayName: string;
+    /** URL・署名用の ID（一意）。users.handle に入る。 */
+    handle: string;
     otp: string;
     expiresAt: number;
 }
@@ -48,7 +51,8 @@ const SKIP_EMAIL_VERIFICATION = process.env.SKIP_EMAIL_VERIFICATION === 'true';
 export async function createPendingRegistration(
     email: string,
     password: string,
-    username: string,
+    displayName: string,
+    handle: string,
 ): Promise<{ success: boolean; error?: string; skipVerification?: boolean }> {
     // 既存ユーザーチェック
     const existingUser = await db.query.users.findFirst({
@@ -58,12 +62,12 @@ export async function createPendingRegistration(
         return { success: false, error: 'このメールアドレスは既に登録されています' };
     }
 
-    // ユーザー名の重複チェック
-    const existingUsername = await db.query.users.findFirst({
-        where: eq(users.username, username),
+    // ID（handle）の重複チェック。表示名は重複してよい。
+    const existingHandle = await db.query.users.findFirst({
+        where: eq(users.handle, handle),
     });
-    if (existingUsername) {
-        return { success: false, error: 'このユーザー名は既に使用されています' };
+    if (existingHandle) {
+        return { success: false, error: 'この ID は既に使用されています' };
     }
 
     // メール確認をスキップする場合は直接登録
@@ -74,7 +78,7 @@ export async function createPendingRegistration(
                 body: {
                     email,
                     password,
-                    name: username,
+                    name: displayName,
                 },
             });
 
@@ -83,7 +87,7 @@ export async function createPendingRegistration(
             }
 
             // メール確認済みに設定
-            await db.update(users).set({ emailVerified: true, username }).where(eq(users.email, email));
+            await db.update(users).set({ emailVerified: true, handle }).where(eq(users.email, email));
 
             console.log(`✅ ユーザー登録完了（メール確認スキップ）: ${email}`);
             return { success: true, skipVerification: true };
@@ -102,7 +106,8 @@ export async function createPendingRegistration(
     pendingRegistrations.set(email, {
         email,
         password,
-        username,
+        displayName,
+        handle,
         otp,
         expiresAt,
     });
@@ -119,8 +124,8 @@ export async function createPendingRegistration(
         const result = await getResend().emails.send({
             from: MAIL_FROM,
             to: email,
-            subject: `【Ubichill】${username} さんの認証コード`,
-            text: `${username} さん、Ubichill へようこそ！
+            subject: `【Ubichill】${displayName} さんの認証コード`,
+            text: `${displayName} さん、Ubichill へようこそ！
 
 あなたの認証コード:
 
@@ -164,7 +169,7 @@ export async function verifyAndRegister(email: string, otp: string): Promise<{ s
             body: {
                 email: pending.email,
                 password: pending.password,
-                name: pending.username,
+                name: pending.displayName,
             },
         });
 
@@ -173,7 +178,7 @@ export async function verifyAndRegister(email: string, otp: string): Promise<{ s
         }
 
         // メール確認済みに設定
-        await db.update(users).set({ emailVerified: true, username: pending.username }).where(eq(users.email, email));
+        await db.update(users).set({ emailVerified: true, handle: pending.handle }).where(eq(users.email, email));
 
         pendingRegistrations.delete(email);
         console.log(`✅ ユーザー登録完了: ${email}`);
@@ -207,8 +212,8 @@ export async function resendOTP(email: string): Promise<{ success: boolean; erro
         await getResend().emails.send({
             from: MAIL_FROM,
             to: email,
-            subject: `【Ubichill】${pending.username} さんの認証コード（再送信）`,
-            text: `${pending.username} さん
+            subject: `【Ubichill】${pending.displayName} さんの認証コード（再送信）`,
+            text: `${pending.displayName} さん
 
 新しい認証コード:
 

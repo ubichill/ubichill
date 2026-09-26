@@ -41,10 +41,14 @@ describe('signHostedWorld', () => {
 
     it('サーバーの配信物に署名し、サーバー側の検証を通る', async () => {
         const server = fakeServer({ definition: serverDefinition, lock: { lockVersion: 1, mods: {} } });
-        const identity = await signHostedWorld('w', keyRef.key as WorldSigningKey, {
-            apiBase: '',
-            fetch: server.fetch,
-        });
+        const identity = await signHostedWorld(
+            'w',
+            { key: keyRef.key as WorldSigningKey },
+            {
+                apiBase: '',
+                fetch: server.fetch,
+            },
+        );
         expect(identity).toMatchObject({ status: 'verified', publicKey: keyRef.key?.publicKey });
         expect(server.state.saved).toMatchObject({ name: 'x7k2server' });
     });
@@ -52,14 +56,16 @@ describe('signHostedWorld', () => {
     it('lock が無い（404）ワールドは lock=null として署名する', async () => {
         const server = fakeServer({ definition: serverDefinition, lock: null });
         await expect(
-            signHostedWorld('w', keyRef.key as WorldSigningKey, { apiBase: '', fetch: server.fetch }),
+            signHostedWorld('w', { key: keyRef.key as WorldSigningKey }, { apiBase: '', fetch: server.fetch }),
         ).resolves.toMatchObject({ status: 'verified' });
     });
 
     it('サーバーが拒否したら throw する（黙って未署名にしない）', async () => {
         const server = fakeServer({ definition: serverDefinition, lock: null });
         const liar: WorldSigningKey = { ...(keyRef.key as WorldSigningKey), publicKey: 'A'.repeat(43) };
-        await expect(signHostedWorld('w', liar, { apiBase: '', fetch: server.fetch })).rejects.toThrow(/署名を保存/);
+        await expect(signHostedWorld('w', { key: liar }, { apiBase: '', fetch: server.fetch })).rejects.toThrow(
+            /署名を保存/,
+        );
     });
 
     it('ワールドを取得できなければ署名を送らない', async () => {
@@ -69,7 +75,7 @@ describe('signHostedWorld', () => {
                 ? Response.json({ error: 'World not found' }, { status: 404 })
                 : server.fetch(input, init)) as typeof fetch;
         await expect(
-            signHostedWorld('w', keyRef.key as WorldSigningKey, { apiBase: '', fetch: failing }),
+            signHostedWorld('w', { key: keyRef.key as WorldSigningKey }, { apiBase: '', fetch: failing }),
         ).rejects.toThrow(/World not found/);
         expect(server.state.putCount).toBe(0);
     });

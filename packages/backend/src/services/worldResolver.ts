@@ -31,6 +31,7 @@ import {
     WorldSourceKind,
 } from '@ubichill/shared';
 import yaml from 'yaml';
+import { resolveAuthorKey } from './authorKeys';
 import { safeFetch } from './safeFetch';
 import { nodeWorldCrypto } from './worldCrypto';
 import { migrateLegacyWorldYaml } from './worldMigration';
@@ -131,7 +132,7 @@ async function fetchSiblingJson(url: string | null): Promise<unknown> {
  * 格下げできるため、既知 worldId との照合（お気に入り等）は呼び出し側の責務。
  */
 export async function identifyWorld(doc: WorldDocument, rawSignature: unknown, url: string): Promise<WorldIdentity> {
-    const verdict = await verifyWorldSignature(doc, rawSignature, nodeWorldCrypto);
+    const verdict = await verifyWorldSignature(doc, rawSignature, nodeWorldCrypto, resolveAuthorKey);
     if (verdict.status === 'invalid') throw new WorldIntegrityError(verdict.reason, url);
     return verdict;
 }

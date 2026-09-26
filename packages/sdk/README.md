@@ -124,6 +124,9 @@ npx ubichill install world.yaml
   - 鍵があれば `install` が lock を書いた後に自動で署名し直す（無ければ警告）。`--no-sign` で抑止。
     別の鍵で署名済みのワールドは上書きしない（明示の `sign` が必要）。
   - CI では `sign --check` で署名し忘れ・古い署名を検出できる。
+  - `--author=handle@domain`（または env `UBICHILL_AUTHOR`）で作者アカウントを署名に含められる。
+    ubichill のプロフィール「作者署名」でこの鍵ファイルを読み込んで登録しておくと、どのサーバーでも
+    `@handle@domain` の作品として表示される（登録していない鍵で名乗っても作者表示はされない）。
 
 ```bash
 npx ubichill keygen                  # 1 回だけ（~/.config/ubichill/signing.key）

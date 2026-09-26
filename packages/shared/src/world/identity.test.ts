@@ -1,13 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
+    type AuthorKeyResolver,
+    authorWorldIdOf,
     canonicalJson,
+    KEY_REGISTRATION_MAX_SKEW_MS,
+    keyRegistrationMessage,
     signWorld,
+    verifyKeyRegistration,
     verifyWorldSignature,
     type WorldCrypto,
     type WorldDocument,
     type WorldSigningKey,
     worldContentHash,
     worldIdOf,
+    worldSignaturePayload,
 } from './identity';
 
 // shared は Node/DOM 非依存なので、判定ロジックは決定的な偽暗号で検証する。
@@ -211,5 +217,140 @@ describe('signWorld / verifyWorldSignature', () => {
 
     it('metadata.name の無いワールドには署名できない', async () => {
         await expect(signWorld({ definition: { metadata: {} } }, newKey(), fakeCrypto)).rejects.toThrow();
+    });
+});
+
+describe('作者アカウント（author）', () => {
+    const AUTHOR = 'youkan@ubichill.com';
+    const resolverFor =
+        (keys: Record<string, string | undefined>): AuthorKeyResolver =>
+        async (author) =>
+            keys[author];
+
+    it('作者アカウントの鍵と署名鍵が一致すれば author が付き、worldId はアカウント基準', async () => {
+        const key = newKey();
+        const doc = baseDoc();
+        const sig = await signWorld(doc, key, fakeCrypto, { author: AUTHOR });
+        const verdict = await verifyWorldSignature(doc, sig, fakeCrypto, resolverFor({ [AUTHOR]: key.publicKey }));
+        expect(verdict).toMatchObject({
+            status: 'verified',
+            author: AUTHOR,
+            worldId: authorWorldIdOf(AUTHOR, 'my-world'),
+        });
+    });
+
+    it('他人のアカウントを名乗っても（鍵が違えば）author は付かず、鍵で識別される', async () => {
+        const attacker = newKey();
+        const doc = baseDoc();
+        const sig = await signWorld(doc, attacker, fakeCrypto, { author: AUTHOR });
+        const verdict = await verifyWorldSignature(doc, sig, fakeCrypto, resolverFor({ [AUTHOR]: newKey().publicKey }));
+        expect(verdict).toEqual({
+            status: 'verified',
+            worldId: worldIdOf(attacker.publicKey, 'my-world'),
+            publicKey: attacker.publicKey,
+            contentHash: sig.contentHash,
+        });
+    });
+
+    it('resolver が無い・引けない・失敗する場合も author を付けない（主張だけを信用しない）', async () => {
+        const key = newKey();
+        const doc = baseDoc();
+        const sig = await signWorld(doc, key, fakeCrypto, { author: AUTHOR });
+        for (const resolver of [
+            undefined,
+            resolverFor({}),
+            (() => Promise.reject(new Error('down'))) as AuthorKeyResolver,
+        ]) {
+            const verdict = await verifyWorldSignature(doc, sig, fakeCrypto, resolver);
+            expect(verdict).toMatchObject({ status: 'verified', worldId: worldIdOf(key.publicKey, 'my-world') });
+            expect(verdict).not.toHaveProperty('author');
+        }
+    });
+
+    it('author を書き換える・消すと bad-signature（署名対象に含まれる）', async () => {
+        const key = newKey();
+        const doc = baseDoc();
+        const sig = await signWorld(doc, key, fakeCrypto, { author: AUTHOR });
+        expect(await verifyWorldSignature(doc, { ...sig, author: 'evil@ubichill.com' }, fakeCrypto)).toMatchObject({
+            reason: 'bad-signature',
+        });
+        const { author: _removed, ...withoutAuthor } = sig;
+        expect(await verifyWorldSignature(doc, withoutAuthor, fakeCrypto)).toMatchObject({ reason: 'bad-signature' });
+    });
+
+    it('author の無い署名は従来と同じ署名対象（既存の署名がそのまま有効）', () => {
+        const fields = { version: 1 as const, alg: 'ed25519' as const, publicKey: 'k', name: 'n', contentHash: 'h' };
+        expect(worldSignaturePayload(fields)).toBe(
+            '{"alg":"ed25519","contentHash":"h","name":"n","publicKey":"k","version":1}',
+        );
+    });
+
+    it('形式が不正な author は malformed', async () => {
+        const doc = baseDoc();
+        const sig = await signWorld(doc, newKey(), fakeCrypto);
+        expect(await verifyWorldSignature(doc, { ...sig, author: 'not an account' }, fakeCrypto)).toMatchObject({
+            reason: 'malformed',
+        });
+    });
+});
+
+describe('verifyKeyRegistration（鍵の所有証明）', () => {
+    const NOW = Date.parse('2026-09-26T12:00:00Z');
+    const claimFor = (key: WorldSigningKey, at = new Date(NOW).toISOString()) => ({
+        userId: 'user-1',
+        publicKey: key.publicKey,
+        at,
+    });
+
+    it('その鍵で自分の userId 入りの文に署名していれば通る', async () => {
+        const key = newKey();
+        const claim = claimFor(key);
+        expect(
+            await verifyKeyRegistration(claim, await key.sign(keyRegistrationMessage(claim)), NOW, fakeCrypto),
+        ).toEqual({
+            ok: true,
+        });
+    });
+
+    it('他人の公開鍵を登録しようとしても（秘密鍵が無ければ）拒否', async () => {
+        const victim = newKey();
+        const attacker = newKey();
+        const claim = claimFor(victim);
+        expect(
+            await verifyKeyRegistration(claim, await attacker.sign(keyRegistrationMessage(claim)), NOW, fakeCrypto),
+        ).toEqual({ ok: false, reason: 'bad-signature' });
+    });
+
+    it('別アカウント向けの証明を流用できない', async () => {
+        const key = newKey();
+        const claim = claimFor(key);
+        const signature = await key.sign(keyRegistrationMessage(claim));
+        expect(await verifyKeyRegistration({ ...claim, userId: 'user-2' }, signature, NOW, fakeCrypto)).toMatchObject({
+            reason: 'bad-signature',
+        });
+    });
+
+    it('古い・未来すぎる証明は拒否', async () => {
+        const key = newKey();
+        for (const offset of [-(KEY_REGISTRATION_MAX_SKEW_MS + 1), KEY_REGISTRATION_MAX_SKEW_MS + 1]) {
+            const claim = claimFor(key, new Date(NOW + offset).toISOString());
+            expect(
+                await verifyKeyRegistration(claim, await key.sign(keyRegistrationMessage(claim)), NOW, fakeCrypto),
+            ).toEqual({ ok: false, reason: 'expired' });
+        }
+    });
+
+    it('公開鍵・日時の形式が不正なら malformed', async () => {
+        const key = newKey();
+        expect(await verifyKeyRegistration({ ...claimFor(key), publicKey: 'x' }, 'sig', NOW, fakeCrypto)).toMatchObject(
+            {
+                reason: 'malformed',
+            },
+        );
+        expect(
+            await verifyKeyRegistration({ ...claimFor(key), at: 'yesterday' }, 'sig', NOW, fakeCrypto),
+        ).toMatchObject({
+            reason: 'malformed',
+        });
     });
 });

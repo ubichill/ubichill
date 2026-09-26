@@ -154,3 +154,46 @@ describe('既定の鍵の場所と install 後の自動署名', () => {
         expect(process.exitCode ?? 0).toBe(0);
     });
 });
+
+describe('作者アカウント（--author / UBICHILL_AUTHOR）', () => {
+    const dir = { path: '' };
+    const world = () => join(dir.path, 'w.yaml');
+    const keyFile = () => join(dir.path, 'k.key');
+
+    beforeEach(async () => {
+        dir.path = mkdtempSync(join(tmpdir(), 'ubichill-author-'));
+        vi.stubEnv('HOME', dir.path);
+        vi.stubEnv('UBICHILL_AUTHOR', '');
+        vi.spyOn(console, 'log').mockImplementation(() => undefined);
+        writeFileSync(world(), 'metadata:\n  name: my-world\nspec:\n  displayName: A\n');
+        await runKeygen([`--out=${keyFile()}`]);
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+        vi.unstubAllEnvs();
+        rmSync(dir.path, { recursive: true, force: true });
+    });
+
+    const written = () => WorldSignatureSchema.parse(JSON.parse(readFileSync(join(dir.path, 'w.sig.json'), 'utf-8')));
+
+    it('--author を署名に載せる（@ 付き・大文字ドメインは正規化）', async () => {
+        await runSign([world(), `--key-file=${keyFile()}`, '--author=@youkan@UbiChill.com']);
+        expect(written().author).toBe('youkan@ubichill.com');
+    });
+
+    it('env UBICHILL_AUTHOR でも指定できる', async () => {
+        vi.stubEnv('UBICHILL_AUTHOR', 'youkan@ubichill.com');
+        await runSign([world(), `--key-file=${keyFile()}`]);
+        expect(written().author).toBe('youkan@ubichill.com');
+    });
+
+    it('指定しなければ author を載せない', async () => {
+        await runSign([world(), `--key-file=${keyFile()}`]);
+        expect(written().author).toBeUndefined();
+    });
+
+    it('形式が不正なら署名しない', async () => {
+        await expect(runSign([world(), `--key-file=${keyFile()}`, '--author=youkan'])).rejects.toThrow(/形式/);
+    });
+});

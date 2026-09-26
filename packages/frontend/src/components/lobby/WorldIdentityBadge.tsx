@@ -1,4 +1,4 @@
-import type { WorldIdentity } from '@ubichill/shared';
+import { displayAuthorAccount, type WorldIdentity } from '@ubichill/shared';
 import { cva, cx } from '@/styled-system/css';
 
 const badge = cva({
@@ -34,7 +34,7 @@ export function WorldIdentityBadge({ identity, className }: { identity?: WorldId
             className={cx(badge({ status: identity.status }), className)}
             title={
                 verified
-                    ? `作者の鍵で署名され、改竄されていません（安全性の保証ではありません）\n${identity.worldId}`
+                    ? `${identity.author ? `作者 ${displayAuthorAccount(identity.author)} の鍵` : '作者の鍵'}で署名され、改竄されていません（安全性の保証ではありません）\n${identity.worldId}`
                     : '作者の署名がありません。改竄の有無も作者も確認できません'
             }
         >

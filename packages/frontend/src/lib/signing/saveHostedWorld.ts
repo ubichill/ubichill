@@ -1,5 +1,6 @@
 import { webWorldCrypto } from '@ubichill/loader';
-import { type ModLock, signWorld, type WorldSigningKey } from '@ubichill/shared';
+import { type ModLock, signWorld } from '@ubichill/shared';
+import type { WorldSigner } from './signer';
 import { type SignHostedWorldDeps, signHostedWorld } from './signHostedWorld';
 
 export interface WorldSaveBody {
@@ -20,13 +21,13 @@ async function errorMessage(res: Response): Promise<string> {
 export async function updateHostedWorld(
     worldId: string,
     body: WorldSaveBody,
-    key: WorldSigningKey | null,
+    signer: WorldSigner | null,
     { apiBase, fetch }: SignHostedWorldDeps,
 ): Promise<void> {
     const base = `${apiBase}/api/v1/worlds/${encodeURIComponent(worldId)}`;
     const json = { 'Content-Type': 'application/json' };
 
-    const signature = key
+    const signature = signer
         ? await (async () => {
               const res = await fetch(`${base}/prepare`, {
                   method: 'POST',
@@ -36,7 +37,7 @@ export async function updateHostedWorld(
               });
               if (!res.ok) throw new Error(await errorMessage(res));
               const prepared = (await res.json()) as { definition: unknown; lock: unknown };
-              return signWorld(prepared, key, webWorldCrypto);
+              return signWorld(prepared, signer.key, webWorldCrypto, { author: signer.author });
           })()
         : undefined;
 
@@ -55,7 +56,7 @@ export async function updateHostedWorld(
  */
 export async function createHostedWorld(
     body: WorldSaveBody,
-    key: WorldSigningKey | null,
+    signer: WorldSigner | null,
     deps: SignHostedWorldDeps,
 ): Promise<{ id: string; signError?: string }> {
     const res = await deps.fetch(`${deps.apiBase}/api/v1/worlds/yaml`, {
@@ -66,9 +67,9 @@ export async function createHostedWorld(
     });
     if (!res.ok) throw new Error(await errorMessage(res));
     const { id } = (await res.json()) as { id: string };
-    if (!key) return { id };
+    if (!signer) return { id };
     try {
-        await signHostedWorld(id, key, deps);
+        await signHostedWorld(id, signer, deps);
         return { id };
     } catch (e) {
         return { id, signError: e instanceof Error ? e.message : String(e) };

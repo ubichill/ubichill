@@ -8,7 +8,12 @@
  * 適用前）、lock なら JSON の生値を渡すこと。スキーマ適用後の値を渡すと配信元と一致しない。
  */
 import { formatIntegrity, integrityEquals } from '../mod/modLock';
-import { type WorldIdentity, type WorldSignature, WorldSignatureSchema } from '../schemas/worldIdentity.schema';
+import {
+    Ed25519PublicKeySchema,
+    type WorldIdentity,
+    type WorldSignature,
+    WorldSignatureSchema,
+} from '../schemas/worldIdentity.schema';
 
 export interface WorldCrypto {
     /** UTF-8 文字列の sha256 を標準 base64 で返す。 */
@@ -91,19 +96,32 @@ export function isPublishable(identity: WorldIdentity | undefined): boolean {
     return identity?.status === 'verified';
 }
 
-/** 版をまたいで不変なワールド識別子。 */
+/** 版をまたいで不変なワールド識別子（作者アカウント未確認時は鍵で識別する）。 */
 export function worldIdOf(publicKey: string, name: string): string {
     return `ed25519:${publicKey}/${name}`;
 }
 
+/** 作者アカウントを確認できたワールドの識別子。鍵を入れ替えても変わらない。 */
+export function authorWorldIdOf(author: string, name: string): string {
+    return `acct:${author}/${name}`;
+}
+
+/**
+ * 作者アカウント（`handle@domain`）の現在の署名公開鍵を返す。見つからなければ undefined。
+ * 実装は呼び出し側（自サーバーの DB / 他ドメインの WebFinger）。
+ */
+export type AuthorKeyResolver = (author: string) => Promise<string | undefined>;
+
 /** 署名対象のバイト列（UTF-8 化は crypto 側）。signature 以外の全フィールドを正規化する。 */
 export function worldSignaturePayload(fields: Omit<WorldSignature, 'signature'>): string {
+    // author が無い署名は従来と同じバイト列になる（canonicalJson は undefined を落とす）。
     return canonicalJson({
         version: fields.version,
         alg: fields.alg,
         publicKey: fields.publicKey,
         name: fields.name,
         contentHash: fields.contentHash,
+        author: fields.author,
     });
 }
 
@@ -111,6 +129,7 @@ export async function signWorld(
     doc: WorldDocument,
     key: WorldSigningKey,
     crypto: WorldCrypto,
+    options: { author?: string } = {},
 ): Promise<WorldSignature> {
     const name = worldNameOf(doc.definition);
     if (!name) throw new Error('metadata.name が無いワールドには署名できません');
@@ -120,6 +139,7 @@ export async function signWorld(
         publicKey: key.publicKey,
         name,
         contentHash: await worldContentHash(doc, crypto),
+        ...(options.author ? { author: options.author } : {}),
     };
     return { ...fields, signature: await key.sign(worldSignaturePayload(fields)) };
 }
@@ -127,11 +147,16 @@ export async function signWorld(
 /**
  * 署名を検証して識別結果を返す。`rawSignature` が null/undefined なら unsigned。
  * 照合順: 形式 → name → contentHash → 署名。安価な判定を先に行い、署名検証は最後。
+ *
+ * 署名が主張する作者アカウントは `resolveAuthorKey` で引いた公開鍵が署名鍵と一致したときだけ採用する。
+ * 一致しない・引けない・resolver が無い場合は作者を付けず鍵で識別する（なりすましを表示しない）。
+ * 署名自体は正しいので invalid にはしない（鍵の入れ替え後の古い署名もここに来る）。
  */
 export async function verifyWorldSignature(
     doc: WorldDocument,
     rawSignature: unknown,
     crypto: WorldCrypto,
+    resolveAuthorKey?: AuthorKeyResolver,
 ): Promise<WorldIdentityVerdict> {
     const contentHash = await worldContentHash(doc, crypto);
     if (rawSignature === null || rawSignature === undefined) return { status: 'unsigned', contentHash };
@@ -146,5 +171,61 @@ export async function verifyWorldSignature(
     const ok = await crypto.verifyEd25519(sig.publicKey, worldSignaturePayload(sig), sig.signature).catch(() => false);
     if (!ok) return { status: 'invalid', reason: 'bad-signature' };
 
+    const authorKey =
+        sig.author && resolveAuthorKey ? await resolveAuthorKey(sig.author).catch(() => undefined) : undefined;
+    if (sig.author && authorKey === sig.publicKey) {
+        return {
+            status: 'verified',
+            worldId: authorWorldIdOf(sig.author, sig.name),
+            publicKey: sig.publicKey,
+            contentHash,
+            author: sig.author,
+        };
+    }
     return { status: 'verified', worldId: worldIdOf(sig.publicKey, sig.name), publicKey: sig.publicKey, contentHash };
+}
+
+// ============================================
+// 署名鍵のアカウント登録（所有の証明）
+// ============================================
+
+/** 登録リクエストの有効期間。これより古い・未来すぎる証明は拒否する（再利用・時計ずれ対策）。 */
+export const KEY_REGISTRATION_MAX_SKEW_MS = 5 * 60 * 1000;
+
+export interface KeyRegistrationClaim {
+    userId: string;
+    publicKey: string;
+    /** ISO 8601。 */
+    at: string;
+}
+
+/**
+ * 公開鍵をアカウントに登録するとき、その鍵で署名させる文。
+ * 公開鍵だけを受け付けると、他人の公開鍵を自分の handle に登録して他人のワールドを自分の作品に
+ * 見せかけられるため、秘密鍵を持っていることを証明させる。userId を含めるので他アカウントに流用できない。
+ */
+export function keyRegistrationMessage(claim: KeyRegistrationClaim): string {
+    return canonicalJson({
+        purpose: 'ubichill-signing-key-registration',
+        userId: claim.userId,
+        publicKey: claim.publicKey,
+        at: claim.at,
+    });
+}
+
+export type KeyRegistrationVerdict = { ok: true } | { ok: false; reason: 'malformed' | 'expired' | 'bad-signature' };
+
+export async function verifyKeyRegistration(
+    claim: KeyRegistrationClaim,
+    signature: string,
+    now: number,
+    crypto: WorldCrypto,
+): Promise<KeyRegistrationVerdict> {
+    const at = Date.parse(claim.at);
+    if (!Ed25519PublicKeySchema.safeParse(claim.publicKey).success || Number.isNaN(at)) {
+        return { ok: false, reason: 'malformed' };
+    }
+    if (Math.abs(now - at) > KEY_REGISTRATION_MAX_SKEW_MS) return { ok: false, reason: 'expired' };
+    const ok = await crypto.verifyEd25519(claim.publicKey, keyRegistrationMessage(claim), signature).catch(() => false);
+    return ok ? { ok: true } : { ok: false, reason: 'bad-signature' };
 }

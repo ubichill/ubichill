@@ -17,5 +17,6 @@ export {
 } from './entryGate';
 export { createSigningKey, importSigningKeyBackup, loadSigningKey, removeSigningKey } from './keyStore';
 export { createHostedWorld, updateHostedWorld, type WorldSaveBody } from './saveHostedWorld';
+export { signerFor, type WorldSigner } from './signer';
 export { signHostedWorld } from './signHostedWorld';
 export { useSigningPublicKey } from './useSigningKey';

@@ -1,4 +1,4 @@
-import { isPublishable, LIMITS, type WorldIdentity } from '@ubichill/shared';
+import { displayAuthorAccount, isPublishable, LIMITS, type WorldIdentity } from '@ubichill/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { WorldDetailModal } from '@/components/lobby/WorldDetailModal';
@@ -6,14 +6,17 @@ import { WorldIdentityBadge } from '@/components/lobby/WorldIdentityBadge';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { API_BASE } from '@/lib/api';
 import { useSession } from '@/lib/session';
-import { loadSigningKey, signHostedWorld } from '@/lib/signing';
+import { loadSigningKey, signerFor, signHostedWorld } from '@/lib/signing';
 import { css } from '@/styled-system/css';
 import { SigningKeySection } from './SigningKeySection';
 
+/** 公開プロフィール。自分のページでは MyAccount の項目（登録鍵など）も入る。 */
 interface UserProfile {
     id: string;
     name: string;
-    username: string | null;
+    handle: string | null;
+    author: string | null;
+    signingPublicKey?: string | null;
     profileImageUrl: string | null;
 }
 
@@ -128,12 +131,15 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
     const signWorld = async (worldId: string) => {
         setError('');
         try {
-            const key = await loadSigningKey();
-            if (!key) {
-                setError('先に上の「作者署名の鍵」で鍵を作成するか、バックアップファイルを読み込んでください。');
+            const signer = signerFor(
+                await loadSigningKey(),
+                profile ? { ...profile, signingPublicKey: profile.signingPublicKey ?? null } : null,
+            );
+            if (!signer) {
+                setError('先に上の「作者署名」で鍵を作成するか、バックアップファイルを読み込んでください。');
                 return;
             }
-            const identity = await signHostedWorld(worldId, key, { apiBase: API_BASE, fetch });
+            const identity = await signHostedWorld(worldId, signer, { apiBase: API_BASE, fetch });
             setWorlds((prev) => prev.map((w) => (w.id === worldId ? { ...w, identity } : w)));
         } catch (e) {
             setError(e instanceof Error ? e.message : '署名に失敗しました');
@@ -193,8 +199,10 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                         >
                             {profile.name}
                         </h1>
-                        {profile.username && (
-                            <p className={css({ fontSize: '13px', color: 'textMuted' })}>@{profile.username}</p>
+                        {profile.author && (
+                            <p className={css({ fontSize: '13px', color: 'textMuted' })}>
+                                {displayAuthorAccount(profile.author)}
+                            </p>
                         )}
                     </div>
                 </div>
@@ -215,7 +223,13 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                 </div>
             )}
 
-            {isOwnPage && <SigningKeySection unsignedCount={unsignedCount} />}
+            {isOwnPage && profile && (
+                <SigningKeySection
+                    account={{ ...profile, signingPublicKey: profile.signingPublicKey ?? null }}
+                    onAccountChange={setProfile}
+                    unsignedCount={unsignedCount}
+                />
+            )}
 
             {/* 作成したワールド */}
             <section>

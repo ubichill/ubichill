@@ -3,9 +3,10 @@ import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router';
 import yaml from 'yaml';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
+import { fetchMyAccount } from '@/lib/account/me';
 import { API_BASE } from '@/lib/api';
 import { createInstance as createInstanceApi } from '@/lib/instancesApi';
-import { createHostedWorld, loadSigningKey, updateHostedWorld } from '@/lib/signing';
+import { createHostedWorld, loadSigningKey, signerFor, updateHostedWorld } from '@/lib/signing';
 import { buildWorldLock } from '@/mods/buildWorldLock';
 
 const UNSIGNED_SAVE_MESSAGE =
@@ -44,17 +45,21 @@ export function useWorldEditorApi({ isEdit, worldId, definition, onSavedYamlChan
             const deps = { apiBase: API_BASE, fetch };
 
             // 鍵が無いまま保存すると未署名（非公開）になるので、黙って保存せず確認する。
-            const key = await loadSigningKey().catch(() => null);
-            if (!key && !(await confirm(UNSIGNED_SAVE_MESSAGE))) return false;
+            const [key, account] = await Promise.all([
+                loadSigningKey().catch(() => null),
+                fetchMyAccount().catch(() => null),
+            ]);
+            const signer = signerFor(key, account);
+            if (!signer && !(await confirm(UNSIGNED_SAVE_MESSAGE))) return false;
 
             if (isEdit && worldId) {
-                await updateHostedWorld(worldId, body, key, deps);
+                await updateHostedWorld(worldId, body, signer, deps);
                 // 編集モード: dirty=false にするため savedYaml を更新
                 onSavedYamlChange(text);
                 return true;
             }
             // 新規作成: サーバー生成の worldId で編集画面に遷移して以降は dirty 解消できる状態に
-            const created = await createHostedWorld(body, key, deps);
+            const created = await createHostedWorld(body, signer, deps);
             if (created.signError) onError(`保存しましたが署名できず非公開のままです: ${created.signError}`);
             navigate(`/world/${created.id}/edit`, { replace: true });
             return true;

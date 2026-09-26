@@ -129,6 +129,46 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
         }
     });
 
+    it('作者アカウント: 登録した鍵で author 付き署名すると作者が付き、鍵を替えると外れる', async () => {
+        const { userRepository } = await import('@ubichill/db');
+        const { selfAccount } = await import('./authorKeys');
+        const userId = `it-author-${Date.now()}`;
+        const handle = `it_${Date.now().toString(36)}`;
+        await userRepository.create({ id: userId, name: 'テスト作者', email: `${userId}@example.com` });
+        try {
+            await userRepository.setHandleOnce(userId, handle);
+            expect(await userRepository.setHandleOnce(userId, 'other_handle')).toBeUndefined(); // 変更不可
+            const key = newTestSigningKey();
+            await userRepository.setSigningPublicKey(userId, key.publicKey);
+            worldRegistry.invalidateIdentities();
+
+            const world = await worldRegistry.createFromInput(userId, 'テスト作者', {
+                displayName: '作者テスト',
+                capacity: { default: 2, max: 4 },
+                initialEntities: [],
+            });
+            const hosted = await worldRegistry.getHostedDocument(world.id);
+            if (!hosted) throw new Error('hosted が無い');
+            const served = { definition: yaml.parse(yaml.stringify(hosted.definition)) as unknown, lock: hosted.lock };
+            const author = selfAccount(handle);
+            const sig = await signWorld(served, key, nodeWorldCrypto, { author });
+            expect(await worldRegistry.setWorldSignature(world.id, sig)).toMatchObject({
+                ok: true,
+                identity: { author, worldId: `acct:${author}/${world.id}` },
+            });
+
+            // 鍵を入れ替えると、古い鍵の署名は作者表示が外れ鍵で識別される（公開は続く）
+            await userRepository.setSigningPublicKey(userId, newTestSigningKey().publicKey);
+            (await import('./authorKeys')).invalidateAuthorKey(author);
+            worldRegistry.invalidateIdentities();
+            const after = (await worldRegistry.getWorld(world.id))?.identity;
+            expect(after).toMatchObject({ status: 'verified', worldId: `ed25519:${key.publicKey}/${world.id}` });
+            expect(after).not.toHaveProperty('author');
+        } finally {
+            await userRepository.deleteById(userId);
+        }
+    });
+
     it('instance を URL 参照で作成し往復解決できる', async () => {
         const created = await instanceManager.createInstance({ worldId: 'default' }, SYS);
         expect('error' in created).toBe(false);

@@ -71,6 +71,7 @@ const worldYaml = (displayName: string) =>
         spec: { displayName, capacity: { default: 2, max: 4 }, initialEntities: [] },
     });
 const LOCK = { lockVersion: 1 as const, mods: {} };
+const signerOf = (key: WorldSigningKey | undefined) => (key ? { key } : null);
 const displayNameOf = (definition: unknown): string | undefined =>
     (definition as { spec?: { displayName?: string } } | undefined)?.spec?.displayName;
 
@@ -84,7 +85,7 @@ describe('createHostedWorld / updateHostedWorld', () => {
         const server = fakeServer();
         const { id, signError } = await createHostedWorld(
             { yaml: worldYaml('A'), lock: LOCK },
-            ref.key ?? null,
+            signerOf(ref.key),
             server.deps,
         );
         expect(signError).toBeUndefined();
@@ -93,28 +94,28 @@ describe('createHostedWorld / updateHostedWorld', () => {
 
     it('更新は内容と署名を一度に送り、署名済みのまま', async () => {
         const server = fakeServer();
-        const { id } = await createHostedWorld({ yaml: worldYaml('A'), lock: LOCK }, ref.key ?? null, server.deps);
-        await updateHostedWorld(id, { yaml: worldYaml('B'), lock: LOCK }, ref.key ?? null, server.deps);
+        const { id } = await createHostedWorld({ yaml: worldYaml('A'), lock: LOCK }, signerOf(ref.key), server.deps);
+        await updateHostedWorld(id, { yaml: worldYaml('B'), lock: LOCK }, signerOf(ref.key), server.deps);
         expect(await server.isSigned(id)).toBe(true);
         expect(displayNameOf(server.db.get(id)?.definition)).toBe('B');
     });
 
     it('鍵なしの更新は未署名を明示して送る（署名済みでも 409 にならない＝呼び出し側で確認済み前提）', async () => {
         const server = fakeServer();
-        const { id } = await createHostedWorld({ yaml: worldYaml('A'), lock: LOCK }, ref.key ?? null, server.deps);
+        const { id } = await createHostedWorld({ yaml: worldYaml('A'), lock: LOCK }, signerOf(ref.key), server.deps);
         await updateHostedWorld(id, { yaml: worldYaml('B'), lock: LOCK }, null, server.deps);
         expect(await server.isSigned(id)).toBe(false);
     });
 
     it('署名が通らなければ内容も保存されない（黙って未署名にならない）', async () => {
         const server = fakeServer();
-        const { id } = await createHostedWorld({ yaml: worldYaml('A'), lock: LOCK }, ref.key ?? null, server.deps);
+        const { id } = await createHostedWorld({ yaml: worldYaml('A'), lock: LOCK }, signerOf(ref.key), server.deps);
         const broken: WorldSigningKey = {
             publicKey: (ref.key as WorldSigningKey).publicKey,
             sign: async () => 'A'.repeat(86),
         };
         await expect(
-            updateHostedWorld(id, { yaml: worldYaml('B'), lock: LOCK }, broken, server.deps),
+            updateHostedWorld(id, { yaml: worldYaml('B'), lock: LOCK }, { key: broken }, server.deps),
         ).rejects.toThrow();
         expect(await server.isSigned(id)).toBe(true);
         expect(displayNameOf(server.db.get(id)?.definition)).toBe('A');
@@ -126,7 +127,11 @@ describe('createHostedWorld / updateHostedWorld', () => {
             publicKey: (ref.key as WorldSigningKey).publicKey,
             sign: async () => 'A'.repeat(86),
         };
-        const { id, signError } = await createHostedWorld({ yaml: worldYaml('A'), lock: LOCK }, broken, server.deps);
+        const { id, signError } = await createHostedWorld(
+            { yaml: worldYaml('A'), lock: LOCK },
+            { key: broken },
+            server.deps,
+        );
         expect(signError).toBeTruthy();
         expect(await server.isSigned(id)).toBe(false);
     });

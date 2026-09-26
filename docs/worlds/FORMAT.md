@@ -82,6 +82,7 @@ initialEntities:
 - ワールドと同じ場所に兄弟ファイルとして置く（本体ホストは `.../api/v1/worlds/<id>/sig`）。`ubichill sign` で生成する。
 - 署名対象は `{ definition: <YAML をパースした生の値>, lock: <兄弟 lock の生 JSON | null> }` を正規化 JSON（RFC 8785 相当）にした sha256（`contentHash`）。
 - ワールドの同一性は `ed25519:<公開鍵>/<metadata.name>`。URL が変わっても同じデータ・同じ鍵なら同じワールド。
+- 署名に作者アカウント `author: handle@domain` を含めると、受け手は `https://<domain>/.well-known/webfinger?resource=acct:handle@domain` の `properties["https://ubichill.com/ns/ed25519-signing-key"]` と署名鍵を照合し、一致すれば作者として表示し同一性を `acct:handle@domain/<metadata.name>` にする（鍵を替えても変わらない）。一致しなければ作者は表示しない。
 - 署名があって検証に失敗したワールドは解決を拒否する。
 - **署名を検証できないワールド（未署名）は公開しない**：ワールド一覧・連合（global）一覧・プロフィール・インスタンス一覧に出さない。URL を直接指定すれば入れるが、入室前に確認を求める。
 - 連合ピアの一覧に書かれた署名状態は信用せず、受け手が各ワールドを取得して検証する。

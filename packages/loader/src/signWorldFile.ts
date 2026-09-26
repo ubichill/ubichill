@@ -7,12 +7,21 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { signWorld, verifyWorldSignature, type WorldDocument, WorldSignatureSchema, worldIdOf } from '@ubichill/shared';
+import {
+    formatAuthorAccount,
+    parseAuthorAccount,
+    signWorld,
+    verifyWorldSignature,
+    type WorldDocument,
+    WorldSignatureSchema,
+    worldIdOf,
+} from '@ubichill/shared';
 import yaml from 'yaml';
 import { generateSigningKeyPkcs8, importSigningKey, webWorldCrypto } from './worldCrypto.ts';
 
 const SIGNING_KEY_ENV = 'UBICHILL_SIGNING_KEY';
 const SIGNING_KEY_FILE_ENV = 'UBICHILL_SIGNING_KEY_FILE';
+const AUTHOR_ENV = 'UBICHILL_AUTHOR';
 
 /** 既定の鍵ファイル。リポジトリの外（ホーム）に置き、誤コミットを防ぐ。 */
 export const defaultSigningKeyFile = (): string => join(homedir(), '.config', 'ubichill', 'signing.key');
@@ -25,6 +34,18 @@ function resolveSigningKeyPkcs8(argv: string[]): string | undefined {
     const envFile = process.env[SIGNING_KEY_FILE_ENV];
     if (envFile) return readFileSync(envFile, 'utf-8');
     return existsSync(defaultSigningKeyFile()) ? readFileSync(defaultSigningKeyFile(), 'utf-8') : undefined;
+}
+
+/**
+ * 署名に載せる作者アカウント（`--author=handle@domain` か env UBICHILL_AUTHOR）。
+ * ホストに登録した公開鍵と同じ鍵で署名したときだけ、検証側で作者として表示される。
+ */
+function resolveAuthor(argv: string[]): string | undefined {
+    const raw = argValue(argv, 'author') ?? process.env[AUTHOR_ENV];
+    if (!raw) return undefined;
+    const parsed = parseAuthorAccount(raw);
+    if (!parsed) throw new Error(`作者アカウントの形式が不正です（handle@domain）: ${raw}`);
+    return formatAuthorAccount(parsed);
 }
 
 const sigPathFor = (worldPath: string): string => worldPath.replace(/\.ya?ml$/i, '.sig.json');
@@ -42,14 +63,16 @@ function readWorldDocument(worldPath: string): WorldDocument {
 }
 
 /**
- * 使い方: `<world.yaml> [--key-file=<path>] [--out=<path>] [--check]`。
+ * 使い方: `<world.yaml> [--key-file=<path>] [--author=handle@domain] [--out=<path>] [--check]`。
  * 鍵の探索順は {@link resolveSigningKeyPkcs8}（PKCS8 base64）。
  * `--check`: 書き込まず既存署名が現在の world + lock に対して有効か検証する（CI 用）。
  */
 export async function runSign(argv: string[]): Promise<void> {
     const worldPath = argv.find((a) => !a.startsWith('--'));
     if (!worldPath || !/\.ya?ml$/i.test(worldPath)) {
-        throw new Error('usage: ubichill sign <world.yaml> [--key-file=<path>] [--out=<path>] [--check]');
+        throw new Error(
+            'usage: ubichill sign <world.yaml> [--key-file=<path>] [--author=handle@domain] [--out=<path>] [--check]',
+        );
     }
     const outPath = argValue(argv, 'out') ?? sigPathFor(worldPath);
     const doc = readWorldDocument(worldPath);
@@ -77,7 +100,7 @@ export async function runSign(argv: string[]): Promise<void> {
     }
     const key = await importSigningKey(pkcs8);
 
-    const sig = await signWorld(doc, key, webWorldCrypto);
+    const sig = await signWorld(doc, key, webWorldCrypto, { author: resolveAuthor(argv) });
     writeFileSync(outPath, `${JSON.stringify(sig, null, 2)}\n`, 'utf-8');
     console.log(`🔏 ${outPath} (${worldIdOf(sig.publicKey, sig.name)})`);
 }
@@ -108,7 +131,7 @@ export async function signAfterInstall(worldPath: string, argv: string[]): Promi
         );
         return;
     }
-    const sig = await signWorld(readWorldDocument(worldPath), key, webWorldCrypto);
+    const sig = await signWorld(readWorldDocument(worldPath), key, webWorldCrypto, { author: resolveAuthor(argv) });
     writeFileSync(sigPath, `${JSON.stringify(sig, null, 2)}\n`, 'utf-8');
     console.log(`🔏 ${sigPath} (${worldIdOf(sig.publicKey, sig.name)})`);
 }

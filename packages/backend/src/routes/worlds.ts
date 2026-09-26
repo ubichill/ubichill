@@ -1,4 +1,4 @@
-import { worldRepository } from '@ubichill/db';
+import { userRepository, worldRepository } from '@ubichill/db';
 import {
     LIMITS,
     type ModLock,
@@ -10,6 +10,7 @@ import {
 import { Router } from 'express';
 import yaml from 'yaml';
 import { optionalAuth, requireAuth } from '../middleware/auth';
+import { selfAccount } from '../services/authorKeys';
 import { prepareWorldUpdate, worldRegistry } from '../services/worldRegistry';
 
 const router = Router();
@@ -46,6 +47,18 @@ function parseYamlUpdate(body: unknown): ParsedYamlUpdate {
         return { ok: false, status: 400, body: { error: 'Invalid world definition', details: result.error.issues } };
     }
     return { ok: true, definition: result.data, lock };
+}
+
+/**
+ * 署名が作者アカウントを主張するなら、それはアップロードした本人のアカウントでなければならない。
+ * （他人の handle を名乗る署名は、鍵が一致しなければ表示されないが、保存の時点で弾いておく）
+ */
+async function authorClaimError(rawSignature: unknown, userId: string): Promise<string | null> {
+    const claimed = (rawSignature as { author?: unknown } | null)?.author;
+    if (claimed === undefined) return null;
+    const user = await userRepository.findById(userId);
+    const own = user?.handle ? selfAccount(user.handle) : null;
+    return claimed === own ? null : `署名の作者（${String(claimed)}）があなたのアカウントと一致しません`;
 }
 
 function updateFailureStatus(reason: string): number {
@@ -399,6 +412,11 @@ router.put('/:worldId/sig', requireAuth, async (req, res) => {
             res.status(403).json({ error: 'Forbidden: Only the author can sign this world' });
             return;
         }
+        const claimError = await authorClaimError(req.body, req.user.id);
+        if (claimError) {
+            res.status(422).json({ error: claimError });
+            return;
+        }
         const result = await worldRegistry.setWorldSignature(worldId, req.body as unknown);
         if (!result.ok) {
             const status = result.reason === 'not-found' ? 404 : 422;
@@ -474,6 +492,11 @@ router.put('/:worldId/yaml', requireAuth, async (req, res) => {
             return;
         }
         const { signature, allowUnsigned } = req.body as { signature?: unknown; allowUnsigned?: unknown };
+        const claimError = signature === undefined ? null : await authorClaimError(signature, req.user.id);
+        if (claimError) {
+            res.status(422).json({ error: claimError });
+            return;
+        }
         const result = await worldRegistry.updateWorld(worldId, parsed.definition, parsed.lock, {
             signature,
             allowUnsigned: allowUnsigned === true,

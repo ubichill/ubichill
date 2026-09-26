@@ -29,6 +29,7 @@ import {
 } from '@ubichill/shared';
 import { customAlphabet } from 'nanoid';
 import yaml from 'yaml';
+import { resolveAuthorKey } from './authorKeys';
 import { assertPublicUrl, safeFetch } from './safeFetch';
 import { nodeWorldCrypto } from './worldCrypto';
 import { migrateLegacyWorldYaml } from './worldMigration';
@@ -81,7 +82,7 @@ export type SetSignatureResult =
  * 配信物の識別。無効な署名（内容更新後の古い署名など）は配信しないので unsigned として扱う。
  */
 async function hostedIdentity(hosted: HostedWorldDocument, label: string): Promise<WorldIdentity> {
-    const verdict = await verifyWorldSignature(hosted, hosted.signature, nodeWorldCrypto);
+    const verdict = await verifyWorldSignature(hosted, hosted.signature, nodeWorldCrypto, resolveAuthorKey);
     if (verdict.status !== 'invalid') return verdict;
     console.warn(`⚠ ワールド ${label} の署名が現在の内容と一致しません (${verdict.reason})。未署名として扱います`);
     return { status: 'unsigned', contentHash: await worldContentHash(hosted, nodeWorldCrypto) };
@@ -758,6 +759,15 @@ class WorldRegistry {
         };
     }
 
+    /**
+     * キャッシュ済みの識別結果（作者表示・worldId）を捨てる。作者の署名鍵が変わったときに呼ぶ。
+     * official の索引は作者アカウントを持たない（メンテナ鍵のみ）ので対象外。
+     */
+    invalidateIdentities(): void {
+        this._resolvedCache.clear();
+        this._remoteCache.clear();
+    }
+
     /** 兄弟エンドポイント /worlds/:id/sig 用。現在の内容に対して有効な作者署名だけを返す。 */
     async getWorldSignature(worldId: string): Promise<WorldSignature | undefined> {
         const hosted = await this.getHostedDocument(worldId);
@@ -774,7 +784,7 @@ class WorldRegistry {
         const record = await worldRepository.findByName(worldId);
         if (!record) return { ok: false, reason: 'not-found' };
         const doc: WorldDocument = { definition: record.definition, lock: record.lock ?? null };
-        const verdict = await verifyWorldSignature(doc, rawSignature, nodeWorldCrypto);
+        const verdict = await verifyWorldSignature(doc, rawSignature, nodeWorldCrypto, resolveAuthorKey);
         if (verdict.status !== 'verified') {
             return { ok: false, reason: verdict.status === 'invalid' ? verdict.reason : 'malformed' };
         }
