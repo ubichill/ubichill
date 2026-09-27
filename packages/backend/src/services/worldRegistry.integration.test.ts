@@ -159,7 +159,7 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
 
             // 鍵を入れ替えると、古い鍵の署名は作者表示が外れ鍵で識別される（公開は続く）
             await userRepository.setSigningPublicKey(userId, newTestSigningKey().publicKey);
-            (await import('./authorKeys')).invalidateAuthorKey(author);
+            (await import('./authorKeyStore')).invalidateAuthorKey(author);
             worldRegistry.invalidateIdentities();
             const after = (await worldRegistry.getWorld(world.id))?.identity;
             expect(after).toMatchObject({ status: 'verified', worldId: `ed25519:${key.publicKey}/${world.id}` });

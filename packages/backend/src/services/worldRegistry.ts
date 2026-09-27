@@ -29,7 +29,7 @@ import {
 } from '@ubichill/shared';
 import { customAlphabet } from 'nanoid';
 import yaml from 'yaml';
-import { resolveAuthorKey } from './authorKeys';
+import { resolveAuthorKey } from './authorKeyStore';
 import { assertPublicUrl, safeFetch } from './safeFetch';
 import { nodeWorldCrypto } from './worldCrypto';
 import { migrateLegacyWorldYaml } from './worldMigration';
@@ -373,7 +373,7 @@ class WorldRegistry {
         const cached = this._remoteCache.get(url);
         if (cached && Date.now() - cached.at < WorldRegistry.REMOTE_TTL_MS) return { ok: true, world: cached.world };
         try {
-            const world = await resolveWorldFromUrl(url, this._externalSource(url));
+            const world = await resolveWorldFromUrl(url, this._externalSource(url), { resolveAuthorKey });
             this._remoteCache.set(url, { at: Date.now(), world });
             return { ok: true, world };
         } catch (err) {

@@ -13,6 +13,7 @@
  */
 
 import {
+    type AuthorKeyResolver,
     collectModIds,
     DEFAULTS,
     type InitialEntity,
@@ -31,7 +32,6 @@ import {
     WorldSourceKind,
 } from '@ubichill/shared';
 import yaml from 'yaml';
-import { resolveAuthorKey } from './authorKeys';
 import { safeFetch } from './safeFetch';
 import { nodeWorldCrypto } from './worldCrypto';
 import { migrateLegacyWorldYaml } from './worldMigration';
@@ -131,7 +131,12 @@ async function fetchSiblingJson(url: string | null): Promise<unknown> {
  * 署名が取れなければ unsigned。配信元を乗っ取った攻撃者は署名ファイルを消して unsigned に
  * 格下げできるため、既知 worldId との照合（お気に入り等）は呼び出し側の責務。
  */
-export async function identifyWorld(doc: WorldDocument, rawSignature: unknown, url: string): Promise<WorldIdentity> {
+export async function identifyWorld(
+    doc: WorldDocument,
+    rawSignature: unknown,
+    url: string,
+    resolveAuthorKey?: AuthorKeyResolver,
+): Promise<WorldIdentity> {
     const verdict = await verifyWorldSignature(doc, rawSignature, nodeWorldCrypto, resolveAuthorKey);
     if (verdict.status === 'invalid') throw new WorldIntegrityError(verdict.reason, url);
     return verdict;
@@ -224,6 +229,11 @@ export function resolveWorldFromYaml(
     return definitionToResolved(yaml.parse(yamlText), url, source, extra);
 }
 
+export interface ResolveWorldOptions {
+    /** 署名の作者アカウントを確認する（DB / WebFinger）。無ければ作者は表示せず鍵で識別する。 */
+    resolveAuthorKey?: AuthorKeyResolver;
+}
+
 /**
  * URL を取得し、生定義（配信用）と ResolvedWorld（一覧/入室用）の両方を返す（外部/他インスタンス用）。
  * 本体 YAML・兄弟 lock・兄弟署名を並行取得し、署名があれば検証する（不正なら throw）。
@@ -231,6 +241,7 @@ export function resolveWorldFromYaml(
 export async function resolveWorld(
     url: string,
     source: WorldSource,
+    options: ResolveWorldOptions = {},
 ): Promise<{ definition: WorldDefinition; resolved: ResolvedWorld }> {
     const fetchUrl = toRawGitHubUrl(url);
     const [text, rawLock, rawSig] = await Promise.all([
@@ -239,7 +250,12 @@ export async function resolveWorld(
         fetchSiblingJson(sigUrlFor(fetchUrl)),
     ]);
     const rawDefinition: unknown = yaml.parse(text);
-    const identity = await identifyWorld({ definition: rawDefinition, lock: rawLock ?? null }, rawSig, url);
+    const identity = await identifyWorld(
+        { definition: rawDefinition, lock: rawLock ?? null },
+        rawSig,
+        url,
+        options.resolveAuthorKey,
+    );
     const parsedLock = ModLockSchema.safeParse(rawLock);
     const definition = validateWorldDefinition(rawDefinition, url);
     // 正規 URL は元の（人間が貼れる）URL を維持する
@@ -251,8 +267,12 @@ export async function resolveWorld(
 }
 
 /** URL を取得して ResolvedWorld に解決する（外部/他インスタンス用）。 */
-export async function resolveWorldFromUrl(url: string, source: WorldSource): Promise<ResolvedWorld> {
-    return (await resolveWorld(url, source)).resolved;
+export async function resolveWorldFromUrl(
+    url: string,
+    source: WorldSource,
+    options: ResolveWorldOptions = {},
+): Promise<ResolvedWorld> {
+    return (await resolveWorld(url, source, options)).resolved;
 }
 
 // ============================================================

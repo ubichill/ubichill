@@ -4,7 +4,8 @@ import { HandleSchema, isPublishable, LIMITS, verifyKeyRegistration } from '@ubi
 import { Router } from 'express';
 import { createPendingRegistration, resendOTP, verifyAndRegister } from '../lib/auth';
 import { requireAuth } from '../middleware/auth';
-import { invalidateAuthorKey, selfAccount } from '../services/authorKeys';
+import { invalidateAuthorKey } from '../services/authorKeyStore';
+import { selfAccount } from '../services/authorKeys';
 import { nodeWorldCrypto } from '../services/worldCrypto';
 import { worldRegistry } from '../services/worldRegistry';
 

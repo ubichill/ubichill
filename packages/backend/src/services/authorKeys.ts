@@ -1,12 +1,11 @@
 /**
- * 作者アカウント（handle@domain）→ 署名公開鍵の解決。
+ * 作者アカウント（handle@domain）→ 署名公開鍵の解決（DB・ネットワーク非依存）。
  *
- * - 自サーバーの domain（PUBLIC_BASE_URL のホスト）なら DB から引く。
+ * - 自サーバーの domain（PUBLIC_BASE_URL のホスト）なら注入された `findLocalKey`（DB）で引く。
  * - 他の domain は `https://<domain>/.well-known/webfinger?resource=acct:handle@domain` の JRD から引く
  *   （Mastodon 等と同じ標準。作者が自分のドメインで公開すれば、特定のサーバーに依存しない）。
- * 取得結果は TTL キャッシュする。鍵を登録・変更したら {@link invalidateAuthorKey} で消す。
+ * 取得結果は TTL キャッシュする。実体の組み立て（DB・safeFetch）は authorKeyStore.ts。
  */
-import { userRepository } from '@ubichill/db';
 import {
     Ed25519PublicKeySchema,
     ENV_KEYS,
@@ -15,10 +14,8 @@ import {
     SERVER_CONFIG,
     SIGNING_KEY_WEBFINGER_PROPERTY,
 } from '@ubichill/shared';
-import { safeFetch } from './safeFetch';
 
 const TTL_MS = 5 * 60 * 1000;
-const cache = new Map<string, { at: number; key: string | undefined }>();
 
 /** このサーバーが発行する作者アカウントの domain（ホスト名、開発時はポート付き）。 */
 export function selfDomain(): string {
@@ -45,41 +42,59 @@ export function publicKeyFromWebFinger(jrd: unknown, account: string): string | 
     return Ed25519PublicKeySchema.safeParse(key).success ? (key as string) : undefined;
 }
 
-async function fetchWebFingerKey(account: string, domain: string): Promise<string | undefined> {
-    const path = `/.well-known/webfinger?resource=${encodeURIComponent(`acct:${account}`)}`;
-    // 本番は https のみ。開発（WORLDS_FETCH_ALLOW_PRIVATE）では localhost 間の http も試す。
-    const schemes = process.env.WORLDS_FETCH_ALLOW_PRIVATE === 'true' ? ['https', 'http'] : ['https'];
-    for (const scheme of schemes) {
-        try {
-            const res = await safeFetch(`${scheme}://${domain}${path}`, {
-                headers: { Accept: 'application/jrd+json, application/json' },
-                signal: AbortSignal.timeout(5000),
-            });
-            if (res.ok) return publicKeyFromWebFinger(await res.json(), account);
-        } catch {
-            // 次の scheme を試す
-        }
-    }
-    return undefined;
+export interface AuthorKeyDirectoryDeps {
+    selfDomain: () => string;
+    /** 自サーバーのユーザーの登録公開鍵（DB）。 */
+    findLocalKey: (handle: string) => Promise<string | undefined>;
+    /** WebFinger の取得。失敗・非 2xx は undefined を返すこと。 */
+    fetchJson: (url: string) => Promise<unknown>;
+    /** 開発（localhost 間）だけ http も試す。本番は https のみ。 */
+    allowHttp: boolean;
+    now?: () => number;
 }
 
-/** 作者アカウントの現在の署名公開鍵。見つからなければ undefined（作者として表示しない）。 */
-export async function resolveAuthorKey(author: string): Promise<string | undefined> {
-    const parsed = parseAuthorAccount(author);
-    if (!parsed) return undefined;
-    const account = formatAuthorAccount(parsed);
-    const cached = cache.get(account);
-    if (cached && Date.now() - cached.at < TTL_MS) return cached.key;
-
-    const key =
-        parsed.domain === selfDomain()
-            ? ((await userRepository.findByHandle(parsed.handle))?.signingPublicKey ?? undefined)
-            : await fetchWebFingerKey(account, parsed.domain);
-    cache.set(account, { at: Date.now(), key });
-    return key;
+export interface AuthorKeyDirectory {
+    resolve: (author: string) => Promise<string | undefined>;
+    invalidate: (author: string) => void;
 }
 
-export function invalidateAuthorKey(author: string): void {
-    const parsed = parseAuthorAccount(author);
-    if (parsed) cache.delete(formatAuthorAccount(parsed));
+export function createAuthorKeyDirectory(deps: AuthorKeyDirectoryDeps): AuthorKeyDirectory {
+    const now = deps.now ?? Date.now;
+    const cache = new Map<string, { at: number; key: string | undefined }>();
+
+    const fetchWebFingerKey = async (account: string, domain: string): Promise<string | undefined> => {
+        const path = `/.well-known/webfinger?resource=${encodeURIComponent(`acct:${account}`)}`;
+        const schemes = deps.allowHttp ? ['https', 'http'] : ['https'];
+        const found = await schemes.reduce<Promise<string | undefined>>(
+            async (prev, scheme) =>
+                (await prev) ??
+                publicKeyFromWebFinger(
+                    await deps.fetchJson(`${scheme}://${domain}${path}`).catch(() => undefined),
+                    account,
+                ),
+            Promise.resolve(undefined),
+        );
+        return found;
+    };
+
+    return {
+        async resolve(author) {
+            const parsed = parseAuthorAccount(author);
+            if (!parsed) return undefined;
+            const account = formatAuthorAccount(parsed);
+            const cached = cache.get(account);
+            if (cached && now() - cached.at < TTL_MS) return cached.key;
+
+            const key =
+                parsed.domain === deps.selfDomain()
+                    ? await deps.findLocalKey(parsed.handle)
+                    : await fetchWebFingerKey(account, parsed.domain);
+            cache.set(account, { at: now(), key });
+            return key;
+        },
+        invalidate(author) {
+            const parsed = parseAuthorAccount(author);
+            if (parsed) cache.delete(formatAuthorAccount(parsed));
+        },
+    };
 }
