@@ -35,8 +35,13 @@ export interface WorldSnapshotPayload {
     environment: WorldEnvironmentData;
     /** ワールドに焼かれた mod 完全性ロック（あれば）。ロード時の hash 照合に使う。 */
     lock?: ModLock;
-    /** ワールドの provenance kind（local/github/...）。lock enforcement の分岐に使う。 */
+    /** ワールドの provenance kind（local/github/...）。strictLock が無い旧サーバー向けの判定材料。 */
     sourceKind?: string;
+    /**
+     * mod を lock で厳格に固定するか（サーバーが {@link isStrictLockWorld} で決める）。
+     * true なら lock 欠落・不一致の mod を実行しない。作者署名ありのワールドは常に true。
+     */
+    strictLock?: boolean;
 }
 
 // ============================================

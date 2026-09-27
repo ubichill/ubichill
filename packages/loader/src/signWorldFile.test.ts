@@ -12,6 +12,19 @@ const RFC8032_PUBLIC = 'd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68
 const RFC8032_SIG =
     'e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b';
 
+const VALID_WORLD_YAML = [
+    'apiVersion: ubichill.com/v1alpha1',
+    'kind: World',
+    'metadata:',
+    '  name: my-world',
+    '  version: 1.0.0',
+    'spec:',
+    '  displayName: A',
+    '  capacity: { default: 2, max: 4 }',
+    '  initialEntities: []',
+    '',
+].join('\n');
+
 const hexToBase64 = (hex: string): string => Buffer.from(hex, 'hex').toString('base64');
 const hexToBase64Url = (hex: string): string => Buffer.from(hex, 'hex').toString('base64url');
 
@@ -43,7 +56,7 @@ describe('ubichill keygen / sign', () => {
         dir.path = mkdtempSync(join(tmpdir(), 'ubichill-sign-'));
         vi.spyOn(console, 'log').mockImplementation(() => undefined);
         vi.spyOn(console, 'error').mockImplementation(() => undefined);
-        writeFileSync(world(), 'metadata:\n  name: my-world\nspec:\n  displayName: A\n');
+        writeFileSync(world(), VALID_WORLD_YAML);
         writeFileSync(lock(), JSON.stringify({ lockVersion: 1, mods: {} }));
         await runKeygen([`--out=${keyFile()}`]);
     });
@@ -104,7 +117,7 @@ describe('既定の鍵の場所と install 後の自動署名', () => {
         vi.stubEnv('UBICHILL_SIGNING_KEY_FILE', '');
         vi.spyOn(console, 'log').mockImplementation(() => undefined);
         vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-        writeFileSync(world(), 'metadata:\n  name: my-world\nspec:\n  displayName: A\n');
+        writeFileSync(world(), VALID_WORLD_YAML);
         writeFileSync(join(dir.path, 'w.lock.json'), JSON.stringify({ lockVersion: 1, mods: {} }));
     });
 
@@ -148,7 +161,8 @@ describe('既定の鍵の場所と install 後の自動署名', () => {
     it('同じ鍵なら lock 変更後に署名し直して有効に戻る', async () => {
         await runKeygen([]);
         await signAfterInstall(world(), []);
-        writeFileSync(join(dir.path, 'w.lock.json'), JSON.stringify({ lockVersion: 1, mods: { pen: { id: 'pen' } } }));
+        const extra = { id: 'extra', version: '1.0.0', manifestIntegrity: `sha256-${'A'.repeat(43)}=`, components: {} };
+        writeFileSync(join(dir.path, 'w.lock.json'), JSON.stringify({ lockVersion: 1, mods: { extra } }));
         await signAfterInstall(world(), []);
         await runSign([world(), '--check']);
         expect(process.exitCode ?? 0).toBe(0);
@@ -165,7 +179,7 @@ describe('作者アカウント（--author / UBICHILL_AUTHOR）', () => {
         vi.stubEnv('HOME', dir.path);
         vi.stubEnv('UBICHILL_AUTHOR', '');
         vi.spyOn(console, 'log').mockImplementation(() => undefined);
-        writeFileSync(world(), 'metadata:\n  name: my-world\nspec:\n  displayName: A\n');
+        writeFileSync(world(), VALID_WORLD_YAML);
         await runKeygen([`--out=${keyFile()}`]);
     });
 
@@ -195,5 +209,40 @@ describe('作者アカウント（--author / UBICHILL_AUTHOR）', () => {
 
     it('形式が不正なら署名しない', async () => {
         await expect(runSign([world(), `--key-file=${keyFile()}`, '--author=youkan'])).rejects.toThrow(/形式/);
+    });
+});
+
+describe('固定されていない mod があるワールドには署名しない', () => {
+    const dir = { path: '' };
+    beforeEach(async () => {
+        dir.path = mkdtempSync(join(tmpdir(), 'ubichill-unpinned-'));
+        vi.stubEnv('HOME', dir.path);
+        vi.spyOn(console, 'log').mockImplementation(() => undefined);
+        vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        writeFileSync(
+            join(dir.path, 'w.yaml'),
+            VALID_WORLD_YAML.replace(
+                'initialEntities: []',
+                'initialEntities: [{ id: p, transform: { x: 0, y: 0 }, components: [{ type: "pen:pen", data: {} }] }]',
+            ),
+        );
+        writeFileSync(join(dir.path, 'w.lock.json'), JSON.stringify({ lockVersion: 1, mods: {} }));
+        await runKeygen([]);
+    });
+    afterEach(() => {
+        vi.restoreAllMocks();
+        vi.unstubAllEnvs();
+        rmSync(dir.path, { recursive: true, force: true });
+    });
+
+    it('sign は理由を示して拒否し、署名ファイルを書かない', async () => {
+        await expect(runSign([join(dir.path, 'w.yaml')])).rejects.toThrow(/pen/);
+        expect(existsSync(join(dir.path, 'w.sig.json'))).toBe(false);
+    });
+
+    it('install 後の自動署名も警告して書かない', async () => {
+        await signAfterInstall(join(dir.path, 'w.yaml'), []);
+        expect(existsSync(join(dir.path, 'w.sig.json'))).toBe(false);
+        expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('pen'));
     });
 });

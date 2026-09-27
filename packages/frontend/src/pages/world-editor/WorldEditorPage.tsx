@@ -18,12 +18,14 @@ import { MobileRightHandle } from './components/MobileRightHandle';
 import { Modal } from './components/Modal';
 import { ModalPrimaryButton, ModalSecondaryButton } from './components/ModalButtons';
 import { PanelSection } from './components/PanelSection';
+import { PublishSetupDialog } from './components/PublishSetupDialog';
 import { useAvailableEntityKinds } from './hooks/useAvailableEntityKinds';
 import { useDefinition } from './hooks/useDefinition';
 import { useEditorModals } from './hooks/useEditorModals';
 import { useEntityOps } from './hooks/useEntityOps';
 import { useEntitySelection } from './hooks/useEntitySelection';
 import { useMobilePanels } from './hooks/useMobilePanels';
+import { usePublishSetup } from './hooks/usePublishSetup';
 import { useWorldEditorApi } from './hooks/useWorldEditorApi';
 import { SNAP_STEP } from './lib/dragHelpers';
 import { flattenForStage, getEntityAt, updateEntityAt } from './lib/entityTree';
@@ -47,7 +49,9 @@ export function WorldEditorPage() {
         onError: setError,
     });
 
+    const publishSetup = usePublishSetup();
     const editorApi = useWorldEditorApi({
+        requestPublishSetup: publishSetup.request,
         isEdit,
         worldId,
         definition,
@@ -422,6 +426,8 @@ export function WorldEditorPage() {
                     変更が保存されていません。保存せずに戻ると変更が失われます。
                 </p>
             </Modal>
+            {/* 他のモーダル（コントロールパネル等）から保存しても最前面に出るよう最後に描画する */}
+            {publishSetup.pending && <PublishSetupDialog {...publishSetup.pending} />}
         </div>
     );
 }

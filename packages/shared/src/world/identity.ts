@@ -7,7 +7,9 @@
  * ハッシュ対象は「配信された生の値」。YAML なら `yaml.parse` 直後（マイグレーション・スキーマ既定値
  * 適用前）、lock なら JSON の生値を渡すこと。スキーマ適用後の値を渡すと配信元と一致しない。
  */
-import { formatIntegrity, integrityEquals } from '../mod/modLock';
+import { formatIntegrity, integrityEquals, requiresLock } from '../mod/modLock';
+import { ModLockSchema } from '../schemas/modLock.schema';
+import { unlockedModIds, WorldDefinitionSchema } from '../schemas/world.schema';
 import {
     Ed25519PublicKeySchema,
     type WorldIdentity,
@@ -35,7 +37,16 @@ export interface WorldDocument {
     lock?: unknown;
 }
 
-export type WorldSignatureInvalidReason = 'malformed' | 'name-mismatch' | 'content-mismatch' | 'bad-signature';
+/**
+ * - lock-incomplete: 署名は正しいが、ワールドが実行し得る mod の一部が lock に固定されていない
+ *   （または定義を解釈できない）。「作者署名あり ⇒ 全 mod のコードが固定されている」を保証するため無効扱い。
+ */
+export type WorldSignatureInvalidReason =
+    | 'malformed'
+    | 'name-mismatch'
+    | 'content-mismatch'
+    | 'bad-signature'
+    | 'lock-incomplete';
 
 export type WorldIdentityVerdict = WorldIdentity | { status: 'invalid'; reason: WorldSignatureInvalidReason };
 
@@ -94,6 +105,28 @@ export function worldNameOf(definition: unknown): string | undefined {
  */
 export function isPublishable(identity: WorldIdentity | undefined): boolean {
     return identity?.status === 'verified';
+}
+
+/**
+ * 署名対象のワールドで lock に固定されていない mod。定義を解釈できなければ null（固定を確認できない）。
+ * lock は兄弟配信の値を優先し、無ければ埋め込み `spec.lock`。
+ */
+export function unpinnedModsOf(doc: WorldDocument): string[] | null {
+    const parsed = WorldDefinitionSchema.safeParse(doc.definition);
+    if (!parsed.success) return null;
+    const rawLock = doc.lock ?? parsed.data.spec.lock ?? null;
+    const lock = rawLock === null ? null : ModLockSchema.safeParse(rawLock);
+    if (lock && !lock.success) return null;
+    return unlockedModIds(parsed.data.spec, lock?.data);
+}
+
+/**
+ * このワールドの mod を lock で厳格に固定するか（lock 欠落・不一致の mod は実行しない）。
+ * 作者署名ありのワールドは配信場所に関係なく厳格（署名時と異なる mod コードを動かさない）。
+ * 未署名は従来通り provenance で決める（外部は厳格、本体の未公開ワールドは開発用に寛容）。
+ */
+export function isStrictLockWorld(sourceKind: string, identity: WorldIdentity | undefined): boolean {
+    return isPublishable(identity) || requiresLock(sourceKind);
 }
 
 /** 版をまたいで不変なワールド識別子（作者アカウント未確認時は鍵で識別する）。 */
@@ -170,6 +203,8 @@ export async function verifyWorldSignature(
 
     const ok = await crypto.verifyEd25519(sig.publicKey, worldSignaturePayload(sig), sig.signature).catch(() => false);
     if (!ok) return { status: 'invalid', reason: 'bad-signature' };
+    const unpinned = unpinnedModsOf(doc);
+    if (unpinned === null || unpinned.length > 0) return { status: 'invalid', reason: 'lock-incomplete' };
 
     const authorKey =
         sig.author && resolveAuthorKey ? await resolveAuthorKey(sig.author).catch(() => undefined) : undefined;

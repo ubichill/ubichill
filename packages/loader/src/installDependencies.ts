@@ -20,11 +20,10 @@
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { type ModLockEntry, ModLockEntrySchema, WorldDefinitionSchema } from '@ubichill/shared';
+import { type ModLockEntry, ModLockEntrySchema, requiredLockModIds, WorldDefinitionSchema } from '@ubichill/shared';
 import yaml from 'yaml';
 import {
     buildWorldLock,
-    collectModIds,
     createDependencyAwareLockEntryGetter,
     createHttpLockEntryGetter,
     type LockEntryGetter,
@@ -78,7 +77,8 @@ export async function runInstall(argv: string[]): Promise<void> {
     }
 
     const def = WorldDefinitionSchema.parse(yaml.parse(readFileSync(worldPath, 'utf-8')));
-    const modIds = collectModIds(def.spec.initialEntities);
+    // dependencies だけに書いた mod も実行中に生成され得るので固定する（署名の有効条件と同じ集合）。
+    const modIds = requiredLockModIds(def.spec);
 
     const baseUrl = argValue(argv, 'base-url');
     const modsDir = argValue(argv, 'mods-dir')

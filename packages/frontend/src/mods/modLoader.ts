@@ -45,6 +45,8 @@ function toWorkerModDefinition(m: LoadedMod): WorkerModDefinition {
 export interface LoadModOptions {
     lock?: ModLock;
     sourceKind: string;
+    /** サーバーが決めた厳格固定（{@link AcquireModOptions.strict}）。 */
+    strict?: boolean;
 }
 
 /** Component 型から検証済み WorkerModDefinition を構築する（loader へ委譲）。 */
@@ -53,6 +55,7 @@ export async function loadVerifiedMod(entityType: string, opts: LoadModOptions):
         baseUrl: MOD_BASE_URL,
         lock: opts.lock,
         sourceKind: opts.sourceKind,
+        strict: opts.strict,
     });
     if (typeof result === 'object' && 'workerCode' in result) return toWorkerModDefinition(result);
     return result;

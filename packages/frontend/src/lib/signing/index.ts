@@ -15,7 +15,16 @@ export {
     unverifiedEntryKey,
     unverifiedEntryMessage,
 } from './entryGate';
+export {
+    createKeyWithBackup,
+    downloadKeyBackup,
+    importKeyFile,
+    KEY_BACKUP_FILENAME,
+    REPLACE_KEY_MESSAGE,
+    registerLocalKey,
+} from './keySetup';
 export { createSigningKey, importSigningKeyBackup, loadSigningKey, removeSigningKey } from './keyStore';
+export { type PublishReadiness, publishReadiness } from './publishReadiness';
 export { createHostedWorld, updateHostedWorld, type WorldSaveBody } from './saveHostedWorld';
 export { signerFor, type WorldSigner } from './signer';
 export { signHostedWorld } from './signHostedWorld';

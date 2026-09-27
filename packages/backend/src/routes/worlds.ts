@@ -72,6 +72,13 @@ function updateFailureMessage(reason: string): string {
     if (reason === 'signature-required') {
         return '署名済みのワールドです。署名を付けて保存するか、未署名（非公開）にすることを明示してください';
     }
+    return signatureFailureMessage(reason);
+}
+
+function signatureFailureMessage(reason: string): string {
+    if (reason === 'lock-incomplete') {
+        return '使用する mod のコードが lock に固定されていないため公開できません（署名できません）';
+    }
     return `署名を検証できません (${reason})`;
 }
 
@@ -420,7 +427,7 @@ router.put('/:worldId/sig', requireAuth, async (req, res) => {
         const result = await worldRegistry.setWorldSignature(worldId, req.body as unknown);
         if (!result.ok) {
             const status = result.reason === 'not-found' ? 404 : 422;
-            res.status(status).json({ error: `署名を検証できません (${result.reason})` });
+            res.status(status).json({ error: signatureFailureMessage(result.reason) });
             return;
         }
         res.json({ identity: result.identity });

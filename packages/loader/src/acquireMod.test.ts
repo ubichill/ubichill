@@ -122,6 +122,28 @@ describe('acquireMod', () => {
         }
     });
 
+    it('作者署名ありの local ワールド（strict）は lock 不一致を拒否する＝署名時と違うコードを動かさない', async () => {
+        const r = await acquireMod(TYPE, {
+            baseUrl: BASE,
+            lock: lock(),
+            sourceKind: 'local',
+            strict: true,
+            fetchImpl: fakeFetch(goodRoutes(`${WORKER_CODE} /* swapped */`)),
+        });
+        expect(r).toEqual({ rejected: 'integrity-mismatch' });
+    });
+
+    it('作者署名ありの local ワールド（strict）で lock に無い mod は fetch せず拒否', async () => {
+        let called = false;
+        const spy: FetchLike = async (input) => {
+            called = true;
+            return fakeFetch(goodRoutes())(input);
+        };
+        const r = await acquireMod(TYPE, { baseUrl: BASE, sourceKind: 'local', strict: true, fetchImpl: spy });
+        expect(r).toEqual({ rejected: 'lock-missing' });
+        expect(called).toBe(false);
+    });
+
     it('workerUrl の無い Component は data-only', async () => {
         const dataOnlyManifest = JSON.stringify({
             id: MOD,

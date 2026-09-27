@@ -1,18 +1,17 @@
 import { displayAuthorAccount } from '@ubichill/shared';
 import { useRef, useState } from 'react';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
-import { type MyAccount, registerSigningKey, setMyHandle } from '@/lib/account/me';
+import { type MyAccount, setMyHandle } from '@/lib/account/me';
 import { useHandleAvailability } from '@/lib/account/useHandleAvailability';
 import {
-    createSigningKey,
-    importSigningKeyBackup,
-    loadSigningKey,
+    createKeyWithBackup,
+    importKeyFile,
+    KEY_BACKUP_FILENAME,
+    registerLocalKey,
     removeSigningKey,
     useSigningPublicKey,
 } from '@/lib/signing';
 import { css, cva } from '@/styled-system/css';
-
-const BACKUP_FILENAME = 'ubichill-signing.key';
 
 const button = cva({
     base: {
@@ -44,15 +43,6 @@ const notice = cva({
 });
 
 const row = css({ display: 'flex', alignItems: 'center', gap: '2', flexWrap: 'wrap' });
-
-function downloadText(filename: string, text: string): void {
-    const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-}
 
 /** 鍵の状態（このブラウザの鍵 × アカウントの登録鍵）。 */
 type KeyState = 'none' | 'registered' | 'unregistered' | 'mismatch';
@@ -95,34 +85,21 @@ export function SigningKeySection({ account, onAccountChange, unsignedCount }: S
         }
     };
 
-    /** このブラウザの鍵をアカウントに登録する。別の鍵が登録済みなら置き換えの確認を取る。 */
-    const registerLocalKey = async (): Promise<string | null> => {
-        const key = await loadSigningKey();
-        if (!key) return null;
-        if (account.signingPublicKey && account.signingPublicKey !== key.publicKey) {
-            const ok = await confirm(
-                'アカウントには別の鍵が登録されています。このブラウザの鍵に置き換えると、以前の鍵で署名したワールドは作者表示が外れます（署名し直すと戻ります）。置き換えますか？',
-            );
-            if (!ok) return null;
-        }
-        await registerSigningKey(account.id, key);
-        onAccountChange({ ...account, signingPublicKey: key.publicKey });
+    /** 登録できたらアカウントを更新してメッセージを返す。 */
+    const applyRegistration = (next: MyAccount | null): string => {
+        if (!next) return '';
+        onAccountChange(next);
         return '鍵をアカウントに登録しました。';
     };
 
     const create = () =>
         run(async () => {
-            const { backup } = await createSigningKey();
-            downloadText(BACKUP_FILENAME, `${backup}\n`);
-            const registered = await registerLocalKey();
-            return `鍵を作成し ${BACKUP_FILENAME} をダウンロードしました。無くすと作者表示を引き継げません。${registered ?? ''}`;
+            const registered = applyRegistration(await createKeyWithBackup(account, confirm));
+            return `鍵を作成し ${KEY_BACKUP_FILENAME} をダウンロードしました。無くすと作者表示を引き継げません。${registered}`;
         });
 
     const importFile = (file: File) =>
-        run(async () => {
-            await importSigningKeyBackup(await file.text());
-            return `鍵を読み込みました。${(await registerLocalKey()) ?? ''}`;
-        });
+        run(async () => `鍵を読み込みました。${applyRegistration(await importKeyFile(file, account, confirm))}`);
 
     const remove = async () => {
         if (!(await confirm('このブラウザから鍵を削除しますか？バックアップファイルが無いと元に戻せません。'))) return;
@@ -252,7 +229,9 @@ export function SigningKeySection({ account, onAccountChange, unsignedCount }: S
                         type="button"
                         className={button({ tone: 'primary' })}
                         disabled={busy}
-                        onClick={() => void run(registerLocalKey)}
+                        onClick={() =>
+                            void run(async () => applyRegistration(await registerLocalKey(account, confirm)) || null)
+                        }
                     >
                         {state === 'mismatch' ? 'この鍵に置き換える' : 'この鍵を登録'}
                     </button>

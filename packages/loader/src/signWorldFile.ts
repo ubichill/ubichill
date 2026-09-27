@@ -11,6 +11,7 @@ import {
     formatAuthorAccount,
     parseAuthorAccount,
     signWorld,
+    unpinnedModsOf,
     verifyWorldSignature,
     type WorldDocument,
     WorldSignatureSchema,
@@ -46,6 +47,19 @@ function resolveAuthor(argv: string[]): string | undefined {
     const parsed = parseAuthorAccount(raw);
     if (!parsed) throw new Error(`作者アカウントの形式が不正です（handle@domain）: ${raw}`);
     return formatAuthorAccount(parsed);
+}
+
+/**
+ * 署名できない理由（無ければ null）。使う mod が全部 lock に固定されていない署名は検証側で無効になるので、
+ * 無効な署名ファイルを作らずに理由を示す。
+ */
+function unsignableReason(doc: WorldDocument): string | null {
+    const unpinned = unpinnedModsOf(doc);
+    if (unpinned === null) return 'ワールド定義を解釈できないため mod の固定を確認できません';
+    if (unpinned.length > 0) {
+        return `lock に固定されていない mod があります: ${unpinned.join(', ')}（\`ubichill install\` で lock を作り直してください）`;
+    }
+    return null;
 }
 
 const sigPathFor = (worldPath: string): string => worldPath.replace(/\.ya?ml$/i, '.sig.json');
@@ -98,6 +112,8 @@ export async function runSign(argv: string[]): Promise<void> {
             `署名鍵がありません。\`ubichill keygen\` で ${defaultSigningKeyFile()} に作るか、--key-file=<path> / env ${SIGNING_KEY_ENV} を指定してください`,
         );
     }
+    const reason = unsignableReason(doc);
+    if (reason) throw new Error(`${worldPath} に署名できません: ${reason}`);
     const key = await importSigningKey(pkcs8);
 
     const sig = await signWorld(doc, key, webWorldCrypto, { author: resolveAuthor(argv) });
@@ -131,7 +147,13 @@ export async function signAfterInstall(worldPath: string, argv: string[]): Promi
         );
         return;
     }
-    const sig = await signWorld(readWorldDocument(worldPath), key, webWorldCrypto, { author: resolveAuthor(argv) });
+    const doc = readWorldDocument(worldPath);
+    const reason = unsignableReason(doc);
+    if (reason) {
+        console.warn(`⚠ ${worldPath} は署名しません: ${reason}。署名なしのワールドはホストの一覧に公開されません。`);
+        return;
+    }
+    const sig = await signWorld(doc, key, webWorldCrypto, { author: resolveAuthor(argv) });
     writeFileSync(sigPath, `${JSON.stringify(sig, null, 2)}\n`, 'utf-8');
     console.log(`🔏 ${sigPath} (${worldIdOf(sig.publicKey, sig.name)})`);
 }

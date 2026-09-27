@@ -3,9 +3,11 @@ import {
     type AuthorKeyResolver,
     authorWorldIdOf,
     canonicalJson,
+    isStrictLockWorld,
     KEY_REGISTRATION_MAX_SKEW_MS,
     keyRegistrationMessage,
     signWorld,
+    unpinnedModsOf,
     verifyKeyRegistration,
     verifyWorldSignature,
     type WorldCrypto,
@@ -42,14 +44,21 @@ function newKey(): WorldSigningKey {
     return { publicKey, sign: async (message) => fakeSignature(publicKey, message) };
 }
 
+const INTEGRITY = `sha256-${'A'.repeat(43)}=`;
+const lockEntry = (id: string) => ({ id, version: '1.0.0', manifestIntegrity: INTEGRITY, components: {} });
+
 const baseDoc = (): WorldDocument => ({
     definition: {
         apiVersion: 'ubichill.com/v1alpha1',
         kind: 'World',
         metadata: { name: 'my-world', version: '1.0.0', author: { name: 'alice' } },
-        spec: { displayName: 'ワールド', initialEntities: [{ kind: 'pen:pen', transform: { x: 1.5, y: -0 } }] },
+        spec: {
+            displayName: 'ワールド',
+            capacity: { default: 2, max: 4 },
+            initialEntities: [{ id: 'p', transform: { x: 1.5, y: -0 }, components: [{ type: 'pen:pen', data: {} }] }],
+        },
     },
-    lock: { lockVersion: 1, mods: { pen: { id: 'pen', version: '1.0.0' } } },
+    lock: { lockVersion: 1, mods: { pen: lockEntry('pen') } },
 });
 
 describe('canonicalJson', () => {
@@ -100,7 +109,7 @@ describe('worldContentHash', () => {
 
     it('lock だけの変更でも変わる', async () => {
         const doc = baseDoc();
-        const changed = { ...doc, lock: { lockVersion: 1, mods: {} } };
+        const changed = { ...doc, lock: { lockVersion: 1, mods: { pen: { ...lockEntry('pen'), version: '2.0.0' } } } };
         expect(await worldContentHash(changed, fakeCrypto)).not.toBe(await worldContentHash(doc, fakeCrypto));
     });
 });
@@ -154,7 +163,10 @@ describe('signWorld / verifyWorldSignature', () => {
         expect(await verifyWorldSignature({ definition: doc.definition }, sig, fakeCrypto)).toMatchObject({
             reason: 'content-mismatch',
         });
-        const swapped = { definition: doc.definition, lock: { lockVersion: 1, mods: { evil: { id: 'pen' } } } };
+        const swapped = {
+            definition: doc.definition,
+            lock: { lockVersion: 1, mods: { pen: { ...lockEntry('pen'), version: '6.6.6' } } },
+        };
         expect(await verifyWorldSignature(swapped, sig, fakeCrypto)).toMatchObject({ reason: 'content-mismatch' });
     });
 
@@ -352,5 +364,79 @@ describe('verifyKeyRegistration（鍵の所有証明）', () => {
         ).toMatchObject({
             reason: 'malformed',
         });
+    });
+});
+
+describe('mod 固定の徹底（lock-incomplete）', () => {
+    const withSpec = (patch: Record<string, unknown>, lock: unknown): WorldDocument => {
+        const doc = baseDoc();
+        const def = doc.definition as { spec: Record<string, unknown> };
+        return { definition: { ...def, spec: { ...def.spec, ...patch } }, lock };
+    };
+
+    it('使う mod が lock に無いワールドの署名は無効（署名自体が正しくても）', async () => {
+        const doc = withSpec({}, { lockVersion: 1, mods: {} });
+        const sig = await signWorld(doc, newKey(), fakeCrypto);
+        expect(await verifyWorldSignature(doc, sig, fakeCrypto)).toEqual({
+            status: 'invalid',
+            reason: 'lock-incomplete',
+        });
+    });
+
+    it('lock が無いワールドの署名も無効', async () => {
+        const doc = withSpec({}, null);
+        const sig = await signWorld(doc, newKey(), fakeCrypto);
+        expect(await verifyWorldSignature(doc, sig, fakeCrypto)).toMatchObject({ reason: 'lock-incomplete' });
+    });
+
+    it('dependencies だけに書いた mod（実行中に生成され得る）も固定が必要', async () => {
+        const doc = withSpec(
+            { dependencies: [{ name: 'danmaku', source: { version: 'latest' } }] },
+            { lockVersion: 1, mods: { pen: lockEntry('pen') } },
+        );
+        const sig = await signWorld(doc, newKey(), fakeCrypto);
+        expect(await verifyWorldSignature(doc, sig, fakeCrypto)).toMatchObject({ reason: 'lock-incomplete' });
+        expect(unpinnedModsOf(doc)).toEqual(['danmaku']);
+    });
+
+    it('埋め込み spec.lock でも固定済みなら有効', async () => {
+        const doc = withSpec({ lock: { lockVersion: 1, mods: { pen: lockEntry('pen') } } }, null);
+        const sig = await signWorld(doc, newKey(), fakeCrypto);
+        expect(await verifyWorldSignature(doc, sig, fakeCrypto)).toMatchObject({ status: 'verified' });
+    });
+
+    it('定義を解釈できない（固定を確認できない）なら無効', async () => {
+        const doc: WorldDocument = { definition: { metadata: { name: 'my-world' } }, lock: null };
+        const sig = await signWorld(doc, newKey(), fakeCrypto);
+        expect(await verifyWorldSignature(doc, sig, fakeCrypto)).toMatchObject({ reason: 'lock-incomplete' });
+    });
+
+    it('未署名ワールドは lock の有無に関係なく unsigned（公開されないだけ）', async () => {
+        expect(await verifyWorldSignature(withSpec({}, null), undefined, fakeCrypto)).toMatchObject({
+            status: 'unsigned',
+        });
+    });
+});
+
+describe('isStrictLockWorld（mod を厳格に固定するか）', () => {
+    const verified = {
+        status: 'verified' as const,
+        worldId: 'w',
+        publicKey: 'A'.repeat(43),
+        contentHash: `sha256-${'A'.repeat(43)}=`,
+    };
+    const unsigned = { status: 'unsigned' as const, contentHash: `sha256-${'A'.repeat(43)}=` };
+
+    it('作者署名ありは配信場所に関係なく厳格（本体の local でも）', () => {
+        for (const kind of ['local', 'registry', 'github', 'url', 'remote-instance']) {
+            expect(isStrictLockWorld(kind, verified)).toBe(true);
+        }
+    });
+
+    it('未署名は provenance で決まる（外部は厳格、本体・レジストリは寛容）', () => {
+        expect(isStrictLockWorld('local', unsigned)).toBe(false);
+        expect(isStrictLockWorld('registry', undefined)).toBe(false);
+        expect(isStrictLockWorld('github', unsigned)).toBe(true);
+        expect(isStrictLockWorld('unknown-kind', undefined)).toBe(true);
     });
 });

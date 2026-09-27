@@ -169,6 +169,35 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
         }
     });
 
+    it('mod を lock に固定していないワールドへの署名は保存を拒否（作者署名あり ⇒ 全 mod 固定）', async () => {
+        const world = await worldRegistry.createFromInput(SYS, 'sys', {
+            displayName: '固定なし',
+            capacity: { default: 2, max: 4 },
+            initialEntities: [
+                {
+                    id: 'p',
+                    transform: { x: 0, y: 0, z: 0, scale: 1, rotation: 0 },
+                    components: [{ type: 'pen:pen', data: {} }],
+                    tags: [],
+                    children: [],
+                },
+            ],
+        });
+        try {
+            const hosted = await worldRegistry.getHostedDocument(world.id);
+            if (!hosted) throw new Error('hosted が無い');
+            const served = { definition: yaml.parse(yaml.stringify(hosted.definition)) as unknown, lock: hosted.lock };
+            const sig = await signWorld(served, newTestSigningKey(), nodeWorldCrypto);
+            expect(await worldRegistry.setWorldSignature(world.id, sig)).toEqual({
+                ok: false,
+                reason: 'lock-incomplete',
+            });
+            expect((await worldRegistry.getWorld(world.id))?.identity?.status).toBe('unsigned');
+        } finally {
+            await worldRegistry.deleteWorld(world.id);
+        }
+    });
+
     it('instance を URL 参照で作成し往復解決できる', async () => {
         const created = await instanceManager.createInstance({ worldId: 'default' }, SYS);
         expect('error' in created).toBe(false);

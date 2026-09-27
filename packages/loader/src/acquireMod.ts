@@ -49,6 +49,11 @@ export interface AcquireModOptions {
     lock?: ModLock;
     /** ワールドの provenance kind（local/github/... enforcement 分岐）。 */
     sourceKind: string;
+    /**
+     * 厳格固定（lock 欠落・不一致の mod を実行しない）。サーバーが作者署名と provenance から決めた値。
+     * 未指定なら provenance だけで決める（{@link requiresLock}）。
+     */
+    strict?: boolean;
     /** 注入 fetch（既定: globalThis.fetch）。テスト・Node 実行で差し替える。 */
     fetchImpl?: FetchLike;
 }
@@ -136,12 +141,13 @@ async function fetchWorkerBytes(workerUrl: string, entityType: string, f: FetchL
  * Component 型（`modId:componentName`）から検証済み {@link LoadedMod} を構築する。
  *
  * lock がある mod は「固定 version」を直接取得し（最新ポインタを信頼しない）、
- * manifest / worker の生バイト列 hash を lock と照合する。外部 provenance の不一致・
- * lock 欠落は実行拒否。local は寛容（不一致でも警告続行）。capability は verified 時のみ
+ * manifest / worker の生バイト列 hash を lock と照合する。厳格固定（作者署名あり・外部 provenance）の
+ * 不一致・lock 欠落は実行拒否。未公開の local だけ寛容（不一致でも警告続行）。capability は verified 時のみ
  * lock 天井、それ以外は manifest 由来。
  */
 export async function acquireMod(entityType: string, opts: AcquireModOptions): Promise<AcquireResult> {
     const { lock, sourceKind } = opts;
+    const strict = opts.strict ?? requiresLock(sourceKind);
     const f = opts.fetchImpl ?? defaultFetch;
 
     const colonIdx = entityType.indexOf(':');
@@ -150,8 +156,8 @@ export async function acquireMod(entityType: string, opts: AcquireModOptions): P
     const modName = entityType.slice(0, colonIdx);
     const lockEntry = lock?.mods[modName];
 
-    // 外部 provenance で lock 記載が無いなら、fetch する前に拒否する。
-    if (!lockEntry && requiresLock(sourceKind)) return { rejected: 'lock-missing' };
+    // 厳格固定で lock 記載が無いなら、fetch する前に拒否する。
+    if (!lockEntry && strict) return { rejected: 'lock-missing' };
 
     // この mod だけ別ホストから配布されている場合、lock.baseUrl を既定より優先する。
     const baseUrl = lockEntry?.baseUrl ?? opts.baseUrl;
@@ -182,10 +188,10 @@ export async function acquireMod(entityType: string, opts: AcquireModOptions): P
     });
 
     if (verdict.status === 'rejected') {
-        // 外部は拒否。local は「壊れているかも」警告のみで従来通り続行する。
-        if (requiresLock(sourceKind)) return { rejected: verdict.reason };
+        // 厳格固定（作者署名あり・外部）は拒否。未公開の本体ワールドだけ警告して続行する（開発用）。
+        if (strict) return { rejected: verdict.reason };
         console.warn(
-            `[loader] lock 不一致 (${verdict.reason}) だが local のため続行: ${entityType}。` +
+            `[loader] lock 不一致 (${verdict.reason}) だが未公開の local ワールドのため続行: ${entityType}。` +
                 `worlds/*.lock.json が古い可能性があります → \`ubichill install <world.yaml>\` で再生成してください`,
         );
     }

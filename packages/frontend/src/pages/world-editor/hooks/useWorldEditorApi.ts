@@ -2,15 +2,18 @@ import type { WorldDefinition } from '@ubichill/shared';
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router';
 import yaml from 'yaml';
-import { useConfirm } from '@/components/ui/ConfirmProvider';
-import { fetchMyAccount } from '@/lib/account/me';
+import { fetchMyAccount, type MyAccount } from '@/lib/account/me';
 import { API_BASE } from '@/lib/api';
 import { createInstance as createInstanceApi } from '@/lib/instancesApi';
-import { createHostedWorld, loadSigningKey, signerFor, updateHostedWorld } from '@/lib/signing';
+import {
+    createHostedWorld,
+    loadSigningKey,
+    type PublishReadiness,
+    publishReadiness,
+    updateHostedWorld,
+} from '@/lib/signing';
 import { buildWorldLock } from '@/mods/buildWorldLock';
-
-const UNSIGNED_SAVE_MESSAGE =
-    'このブラウザに作者署名の鍵がありません。このまま保存すると未署名になり、一覧に公開されません（URL を知っている人だけが確認付きで入れます）。保存しますか？\n鍵はプロフィールの「作者署名の鍵」で作成・読み込みできます。';
+import type { PublishDecision } from './usePublishSetup';
 
 interface UseWorldEditorApiArgs {
     isEdit: boolean;
@@ -19,6 +22,11 @@ interface UseWorldEditorApiArgs {
     onSavedYamlChange: (text: string) => void;
     /** エラーメッセージの通知先 (ページ側で集約管理する) */
     onError: (msg: string) => void;
+    /** そのまま公開できないとき、公開の準備ダイアログで利用者の選択を待つ */
+    requestPublishSetup: (
+        readiness: Exclude<PublishReadiness, { kind: 'ready' }>,
+        account: MyAccount | null,
+    ) => Promise<PublishDecision>;
 }
 
 /**
@@ -26,9 +34,15 @@ interface UseWorldEditorApiArgs {
  * 状態は saving のみ。エラーは onError 経由で外部へ通知する。
  * 成功時は呼び出し元の savedYaml も更新する。
  */
-export function useWorldEditorApi({ isEdit, worldId, definition, onSavedYamlChange, onError }: UseWorldEditorApiArgs) {
+export function useWorldEditorApi({
+    isEdit,
+    worldId,
+    definition,
+    onSavedYamlChange,
+    onError,
+    requestPublishSetup,
+}: UseWorldEditorApiArgs) {
     const navigate = useNavigate();
-    const confirm = useConfirm();
     const [saving, setSaving] = useState(false);
 
     const save = useCallback(async (): Promise<boolean> => {
@@ -39,18 +53,23 @@ export function useWorldEditorApi({ isEdit, worldId, definition, onSavedYamlChan
             // body の別フィールドで送ってサーバ側の別カラムに保存する（YAML はクリーンに保つ）。
             // 外部公開時、そのワールドを読む側は兄弟エンドポイントの lock と hash 照合して
             // 差し替え mod の実行を拒否できる（配布者を信頼しない）。
-            const lock = await buildWorldLock(definition);
+            const { lock, unpinned } = await buildWorldLock(definition);
             const text = yaml.stringify(definition);
             const body = { yaml: text, lock };
             const deps = { apiBase: API_BASE, fetch };
 
-            // 鍵が無いまま保存すると未署名（非公開）になるので、黙って保存せず確認する。
+            // そのまま公開できなければ、黙って非公開にせず、この場で鍵の用意か非公開保存かを選ばせる。
             const [key, account] = await Promise.all([
                 loadSigningKey().catch(() => null),
                 fetchMyAccount().catch(() => null),
             ]);
-            const signer = signerFor(key, account);
-            if (!signer && !(await confirm(UNSIGNED_SAVE_MESSAGE))) return false;
+            const readiness = publishReadiness(key, account, unpinned);
+            const decision: PublishDecision =
+                readiness.kind === 'ready'
+                    ? { kind: 'signed', signer: readiness.signer }
+                    : await requestPublishSetup(readiness, account);
+            if (decision.kind === 'cancel') return false;
+            const signer = decision.kind === 'signed' ? decision.signer : null;
 
             if (isEdit && worldId) {
                 await updateHostedWorld(worldId, body, signer, deps);
@@ -69,7 +88,7 @@ export function useWorldEditorApi({ isEdit, worldId, definition, onSavedYamlChan
         } finally {
             setSaving(false);
         }
-    }, [definition, isEdit, worldId, navigate, onSavedYamlChange, onError, confirm]);
+    }, [definition, isEdit, worldId, navigate, onSavedYamlChange, onError, requestPublishSetup]);
 
     const remove = useCallback(async () => {
         if (!worldId) return;

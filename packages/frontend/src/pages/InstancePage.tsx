@@ -19,7 +19,7 @@ export function InstancePage() {
     const confirm = useConfirm();
 
     const { isConnected, error, currentUser, joinWorld, leaveWorld } = useSocket();
-    const { resetWorld, modLock, worldSourceKind } = useWorld();
+    const { resetWorld, modLock, worldSourceKind, strictLock } = useWorld();
 
     const joinedIdRef = useRef<string | null>(null);
     const leaveWorldRef = useRef(leaveWorld);
@@ -68,10 +68,16 @@ export function InstancePage() {
 
             // ロビー・共有 URL・他人のインスタンスなど入口は複数あるが、必ずここを通る。
             // 作者署名を検証できないワールドは、入室（= mod 実行）前に本人の確認を取る。
+            // 取得できなければ署名の有無を確認できないので参加しない（確認を飛ばして入らない）。
             const instance = await fetchInstance(id).catch(() => null);
             if (!stillTarget()) return;
-            const entryKey = instance ? unverifiedEntryKey(instance.world) : null;
-            if (instance && entryKey && !hasAcceptedEntry(sessionStorage, entryKey)) {
+            if (!instance) {
+                joinedIdRef.current = null;
+                setLoadError('ワールドの情報を取得できないため入室できません。時間をおいて再度お試しください。');
+                return;
+            }
+            const entryKey = unverifiedEntryKey(instance.world);
+            if (entryKey && !hasAcceptedEntry(sessionStorage, entryKey)) {
                 const accepted = await confirm(unverifiedEntryMessage(instance.world));
                 if (!stillTarget()) return;
                 if (!accepted) {
@@ -131,7 +137,13 @@ export function InstancePage() {
             )}
             {!loading.failed && currentUser != null && (
                 <main>
-                    <ModRegistryProvider key={id} onStatusChange={setMods} lock={modLock} sourceKind={worldSourceKind}>
+                    <ModRegistryProvider
+                        key={id}
+                        onStatusChange={setMods}
+                        lock={modLock}
+                        sourceKind={worldSourceKind}
+                        strictLock={strictLock}
+                    >
                         <WorkerLoadingProvider onStatusChange={setWorkers}>
                             <InstanceRenderer />
                         </WorkerLoadingProvider>

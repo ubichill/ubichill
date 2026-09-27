@@ -25,6 +25,8 @@ export interface WorldContextType {
     modLock?: ModLock;
     /** ワールドの provenance kind（local/github/...）。lock enforcement の分岐に使う。 */
     worldSourceKind?: string;
+    /** サーバーが決めた mod の厳格固定（true なら lock 欠落・不一致の mod を実行しない）。 */
+    strictLock?: boolean;
     createEntity: <T = Record<string, unknown>>(
         type: string,
         transform: ComponentInstance['transform'],
@@ -56,6 +58,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const [activeMods, setActiveMods] = useState<string[]>([]);
     const [modLock, setModLock] = useState<ModLock | undefined>(undefined);
     const [worldSourceKind, setWorldSourceKind] = useState<string | undefined>(undefined);
+    const [strictLock, setStrictLock] = useState<boolean | undefined>(undefined);
 
     useEffect(() => {
         if (!socket) return;
@@ -72,6 +75,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             setActiveMods(payload.activeMods || []);
             setModLock(payload.lock);
             setWorldSourceKind(payload.sourceKind);
+            setStrictLock(payload.strictLock);
         };
 
         // エンティティ作成を受信
@@ -231,6 +235,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setActiveMods([]);
         setModLock(undefined);
         setWorldSourceKind(undefined);
+        setStrictLock(undefined);
     }, []);
 
     const contextValue: WorldContextType = useMemo(
@@ -242,6 +247,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             activeMods,
             modLock,
             worldSourceKind,
+            strictLock,
             createEntity,
             patchEntity,
             deleteEntity,
@@ -256,6 +262,7 @@ export const WorldProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             activeMods,
             modLock,
             worldSourceKind,
+            strictLock,
             createEntity,
             patchEntity,
             deleteEntity,

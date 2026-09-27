@@ -166,7 +166,7 @@ export function EditorPreview({
     useEffect(() => {
         let cancelled = false;
         buildWorldLock(definitionRef.current)
-            .then((lock) => {
+            .then(({ lock }) => {
                 if (!cancelled) setPreviewLock(lock);
             })
             .catch(() => {
