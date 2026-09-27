@@ -1,5 +1,5 @@
 /**
- * 作者アカウント（handle@domain）→ 署名公開鍵の解決（DB・ネットワーク非依存）。
+ * 作者アカウント（handle@domain）→ 署名公開鍵・表示名の解決（DB・ネットワーク非依存）。
  *
  * - 自サーバーの domain（PUBLIC_BASE_URL のホスト）なら注入された `findLocalKey`（DB）で引く。
  * - 他の domain は `https://<domain>/.well-known/webfinger?resource=acct:handle@domain` の JRD から引く
@@ -7,6 +7,8 @@
  * 取得結果は TTL キャッシュする。実体の組み立て（DB・safeFetch）は authorKeyStore.ts。
  */
 import {
+    DISPLAY_NAME_WEBFINGER_PROPERTY,
+    DisplayNameSchema,
     Ed25519PublicKeySchema,
     ENV_KEYS,
     formatAuthorAccount,
@@ -27,25 +29,37 @@ export function selfAccount(handle: string): string {
     return formatAuthorAccount({ handle, domain: selfDomain() });
 }
 
+/** アカウントが存在するサーバーが公開している、その時点の作者情報。 */
+export interface AuthorProfile {
+    signingPublicKey?: string;
+    displayName?: string;
+}
+
 /**
- * WebFinger の JRD から、指定アカウントの署名公開鍵を取り出す（純粋）。
+ * WebFinger の JRD から、指定アカウントの作者情報（署名公開鍵・表示名）を取り出す（純粋）。
  * subject が問い合わせたアカウントと一致しない応答（別人の JRD を返すなど）は採用しない。
+ * 形式が不正な項目は捨てる（表示名に制御文字・長すぎる文字列を入れられても表示しない）。
  */
-export function publicKeyFromWebFinger(jrd: unknown, account: string): string | undefined {
+export function profileFromWebFinger(jrd: unknown, account: string): AuthorProfile | undefined {
     if (typeof jrd !== 'object' || jrd === null) return undefined;
     const { subject, properties } = jrd as { subject?: unknown; properties?: unknown };
     const expected = parseAuthorAccount(account);
     const actual = typeof subject === 'string' ? parseAuthorAccount(subject) : null;
     if (!expected || !actual || formatAuthorAccount(expected) !== formatAuthorAccount(actual)) return undefined;
-    if (typeof properties !== 'object' || properties === null) return undefined;
-    const key = (properties as Record<string, unknown>)[SIGNING_KEY_WEBFINGER_PROPERTY];
-    return Ed25519PublicKeySchema.safeParse(key).success ? (key as string) : undefined;
+    if (typeof properties !== 'object' || properties === null) return {};
+    const props = properties as Record<string, unknown>;
+    const key = Ed25519PublicKeySchema.safeParse(props[SIGNING_KEY_WEBFINGER_PROPERTY]);
+    const name = DisplayNameSchema.safeParse(props[DISPLAY_NAME_WEBFINGER_PROPERTY]);
+    return {
+        ...(key.success ? { signingPublicKey: key.data } : {}),
+        ...(name.success ? { displayName: name.data } : {}),
+    };
 }
 
 export interface AuthorKeyDirectoryDeps {
     selfDomain: () => string;
-    /** 自サーバーのユーザーの登録公開鍵（DB）。 */
-    findLocalKey: (handle: string) => Promise<string | undefined>;
+    /** 自サーバーのユーザーの作者情報（DB）。存在しなければ undefined。 */
+    findLocalAccount: (handle: string) => Promise<AuthorProfile | undefined>;
     /** WebFinger の取得。失敗・非 2xx は undefined を返すこと。 */
     fetchJson: (url: string) => Promise<unknown>;
     /** 開発（localhost 間）だけ http も試す。本番は https のみ。 */
@@ -54,44 +68,49 @@ export interface AuthorKeyDirectoryDeps {
 }
 
 export interface AuthorKeyDirectory {
+    /** 署名公開鍵（署名検証用）。 */
     resolve: (author: string) => Promise<string | undefined>;
+    /** その時点の表示名。アカウントが見つからなければ undefined（作者名を表示しない）。 */
+    displayName: (author: string) => Promise<string | undefined>;
     invalidate: (author: string) => void;
 }
 
 export function createAuthorKeyDirectory(deps: AuthorKeyDirectoryDeps): AuthorKeyDirectory {
     const now = deps.now ?? Date.now;
-    const cache = new Map<string, { at: number; key: string | undefined }>();
+    const cache = new Map<string, { at: number; profile: AuthorProfile | undefined }>();
 
-    const fetchWebFingerKey = async (account: string, domain: string): Promise<string | undefined> => {
+    const fetchWebFinger = async (account: string, domain: string): Promise<AuthorProfile | undefined> => {
         const path = `/.well-known/webfinger?resource=${encodeURIComponent(`acct:${account}`)}`;
         const schemes = deps.allowHttp ? ['https', 'http'] : ['https'];
-        const found = await schemes.reduce<Promise<string | undefined>>(
+        return schemes.reduce<Promise<AuthorProfile | undefined>>(
             async (prev, scheme) =>
                 (await prev) ??
-                publicKeyFromWebFinger(
+                profileFromWebFinger(
                     await deps.fetchJson(`${scheme}://${domain}${path}`).catch(() => undefined),
                     account,
                 ),
             Promise.resolve(undefined),
         );
-        return found;
+    };
+
+    const profileOf = async (author: string): Promise<AuthorProfile | undefined> => {
+        const parsed = parseAuthorAccount(author);
+        if (!parsed) return undefined;
+        const account = formatAuthorAccount(parsed);
+        const cached = cache.get(account);
+        if (cached && now() - cached.at < TTL_MS) return cached.profile;
+
+        const profile =
+            parsed.domain === deps.selfDomain()
+                ? await deps.findLocalAccount(parsed.handle)
+                : await fetchWebFinger(account, parsed.domain);
+        cache.set(account, { at: now(), profile });
+        return profile;
     };
 
     return {
-        async resolve(author) {
-            const parsed = parseAuthorAccount(author);
-            if (!parsed) return undefined;
-            const account = formatAuthorAccount(parsed);
-            const cached = cache.get(account);
-            if (cached && now() - cached.at < TTL_MS) return cached.key;
-
-            const key =
-                parsed.domain === deps.selfDomain()
-                    ? await deps.findLocalKey(parsed.handle)
-                    : await fetchWebFingerKey(account, parsed.domain);
-            cache.set(account, { at: now(), key });
-            return key;
-        },
+        resolve: async (author) => (await profileOf(author))?.signingPublicKey,
+        displayName: async (author) => (await profileOf(author))?.displayName,
         invalidate(author) {
             const parsed = parseAuthorAccount(author);
             if (parsed) cache.delete(formatAuthorAccount(parsed));

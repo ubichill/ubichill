@@ -229,9 +229,23 @@ export function resolveWorldFromYaml(
     return definitionToResolved(yaml.parse(yamlText), url, source, extra);
 }
 
+/**
+ * 外部ワールドの作者名。metadata.author（自己申告）は使わず、署名で確認できた作者アカウントの
+ * その時点の表示名だけを返す。作者アカウントを確認できない・引けなければ undefined（作者名を出さない）。
+ */
+export async function confirmedAuthorName(
+    identity: WorldIdentity,
+    resolveAuthorName?: (author: string) => Promise<string | undefined>,
+): Promise<string | undefined> {
+    if (identity.status !== 'verified' || !identity.author || !resolveAuthorName) return undefined;
+    return resolveAuthorName(identity.author).catch(() => undefined);
+}
+
 export interface ResolveWorldOptions {
     /** 署名の作者アカウントを確認する（DB / WebFinger）。無ければ作者は表示せず鍵で識別する。 */
     resolveAuthorKey?: AuthorKeyResolver;
+    /** 作者アカウントのその時点の表示名（DB / WebFinger）。 */
+    resolveAuthorName?: (author: string) => Promise<string | undefined>;
 }
 
 /**
@@ -263,7 +277,8 @@ export async function resolveWorld(
         lock: parsedLock.success ? parsedLock.data : undefined,
         identity,
     });
-    return { definition, resolved };
+    const authorName = await confirmedAuthorName(identity, options.resolveAuthorName);
+    return { definition, resolved: { ...resolved, authorName } };
 }
 
 /** URL を取得して ResolvedWorld に解決する（外部/他インスタンス用）。 */

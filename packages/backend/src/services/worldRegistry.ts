@@ -29,7 +29,7 @@ import {
 } from '@ubichill/shared';
 import { customAlphabet } from 'nanoid';
 import yaml from 'yaml';
-import { resolveAuthorKey } from './authorKeyStore';
+import { resolveAuthorDisplayName, resolveAuthorKey } from './authorKeyStore';
 import { assertPublicUrl, safeFetch } from './safeFetch';
 import { nodeWorldCrypto } from './worldCrypto';
 import { migrateLegacyWorldYaml } from './worldMigration';
@@ -261,8 +261,9 @@ class WorldRegistry {
         const verified = await Promise.all(
             items.map(async (item): Promise<WorldListItem | null> => {
                 const resolution = await this._resolveRemote(normalizeWorldUrl(item.url));
-                const identity = resolution.ok ? resolution.world.identity : undefined;
-                return isPublishable(identity) ? { ...item, identity } : null;
+                if (!resolution.ok || !isPublishable(resolution.world.identity)) return null;
+                // 作者名・識別はピアの自己申告ではなく、自分で解決した値を使う
+                return { ...item, identity: resolution.world.identity, authorName: resolution.world.authorName };
             }),
         );
         return verified.filter((w): w is WorldListItem => w !== null);
@@ -376,7 +377,10 @@ class WorldRegistry {
         const cached = this._remoteCache.get(url);
         if (cached && Date.now() - cached.at < WorldRegistry.REMOTE_TTL_MS) return { ok: true, world: cached.world };
         try {
-            const world = await resolveWorldFromUrl(url, this._externalSource(url), { resolveAuthorKey });
+            const world = await resolveWorldFromUrl(url, this._externalSource(url), {
+                resolveAuthorKey,
+                resolveAuthorName: resolveAuthorDisplayName,
+            });
             this._remoteCache.set(url, { at: Date.now(), world });
             return { ok: true, world };
         } catch (err) {

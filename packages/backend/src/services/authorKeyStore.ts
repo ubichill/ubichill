@@ -8,7 +8,12 @@ import { safeFetch } from './safeFetch';
 
 const authorKeys = createAuthorKeyDirectory({
     selfDomain,
-    findLocalKey: async (handle) => (await userRepository.findByHandle(handle))?.signingPublicKey ?? undefined,
+    findLocalAccount: async (handle) => {
+        const user = await userRepository.findByHandle(handle);
+        return user
+            ? { ...(user.signingPublicKey ? { signingPublicKey: user.signingPublicKey } : {}), displayName: user.name }
+            : undefined;
+    },
     fetchJson: async (url) => {
         const res = await safeFetch(url, {
             headers: { Accept: 'application/jrd+json, application/json' },
@@ -20,4 +25,5 @@ const authorKeys = createAuthorKeyDirectory({
 });
 
 export const resolveAuthorKey = authorKeys.resolve;
+export const resolveAuthorDisplayName = authorKeys.displayName;
 export const invalidateAuthorKey = authorKeys.invalidate;

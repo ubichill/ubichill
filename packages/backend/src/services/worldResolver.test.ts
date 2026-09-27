@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import yaml from 'yaml';
 import { nodeWorldCrypto } from './worldCrypto';
 import {
+    confirmedAuthorName,
     definitionToResolved,
     identifyWorld,
     lockUrlFor,
@@ -247,5 +248,30 @@ describe('identifyWorld（配信経路を通した署名検証）', () => {
         await expect(identifyWorld({ definition: def, lock: null }, undefined, 'u')).resolves.toMatchObject({
             status: 'unsigned',
         });
+    });
+});
+
+describe('confirmedAuthorName（外部ワールドの作者名）', () => {
+    const HASH = `sha256-${'A'.repeat(43)}=`;
+    const names = async (author: string) => (author === 'youkan@ubichill.com' ? 'ようかん' : undefined);
+
+    it('作者アカウントを確認できたら、そのアカウントの表示名', async () => {
+        const identity = {
+            status: 'verified' as const,
+            worldId: 'acct:youkan@ubichill.com/w',
+            publicKey: 'A'.repeat(43),
+            contentHash: HASH,
+            author: 'youkan@ubichill.com',
+        };
+        expect(await confirmedAuthorName(identity, names)).toBe('ようかん');
+    });
+
+    it('鍵だけの署名・署名なし・引けない・失敗は作者名を出さない（自己申告に戻さない）', async () => {
+        const keyOnly = { status: 'verified' as const, worldId: 'w', publicKey: 'A'.repeat(43), contentHash: HASH };
+        expect(await confirmedAuthorName(keyOnly, names)).toBeUndefined();
+        expect(await confirmedAuthorName({ status: 'unsigned', contentHash: HASH }, names)).toBeUndefined();
+        const unknown = { ...keyOnly, author: 'nobody@ubichill.com' };
+        expect(await confirmedAuthorName(unknown, names)).toBeUndefined();
+        expect(await confirmedAuthorName(unknown, () => Promise.reject(new Error('down')))).toBeUndefined();
     });
 });

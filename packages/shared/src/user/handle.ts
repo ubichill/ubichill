@@ -12,6 +12,12 @@ import { z } from 'zod';
 /** WebFinger（JRD）の properties で作者署名の公開鍵を載せるキー。 */
 export const SIGNING_KEY_WEBFINGER_PROPERTY = 'https://ubichill.com/ns/ed25519-signing-key';
 
+/**
+ * WebFinger（JRD）の properties で表示名を載せるキー。作者名はワールドのデータに持たせず、
+ * アカウントが存在するサーバーからその時点の表示名を引く（改名しても署名し直さなくてよい）。
+ */
+export const DISPLAY_NAME_WEBFINGER_PROPERTY = 'https://ubichill.com/ns/display-name';
+
 export const HANDLE_PATTERN = /^[a-z0-9_]{3,30}$/;
 
 /** 運営・システム・URL と紛らわしい ID は取らせない。 */

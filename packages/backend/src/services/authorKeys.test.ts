@@ -1,6 +1,8 @@
-import { SIGNING_KEY_WEBFINGER_PROPERTY } from '@ubichill/shared';
+import { DISPLAY_NAME_WEBFINGER_PROPERTY, SIGNING_KEY_WEBFINGER_PROPERTY } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
-import { createAuthorKeyDirectory, publicKeyFromWebFinger } from './authorKeys';
+import { createAuthorKeyDirectory, profileFromWebFinger } from './authorKeys';
+
+const publicKeyFromWebFinger = (jrd: unknown, account: string) => profileFromWebFinger(jrd, account)?.signingPublicKey;
 
 const KEY = 'A'.repeat(43);
 const jrd = (subject: unknown, key: unknown = KEY) => ({
@@ -38,9 +40,9 @@ describe('createAuthorKeyDirectory', () => {
         const clock = { t: 0 };
         const resolver = createAuthorKeyDirectory({
             selfDomain: () => 'ubichill.com',
-            findLocalKey: async (handle) => {
+            findLocalAccount: async (handle) => {
                 calls.local += 1;
-                return handle === 'youkan' ? LOCAL : undefined;
+                return handle === 'youkan' ? { signingPublicKey: LOCAL, displayName: 'ようかん' } : undefined;
             },
             fetchJson: async (url) => {
                 calls.fetch.push(url);
@@ -101,5 +103,36 @@ describe('createAuthorKeyDirectory', () => {
         const { resolver, calls } = setup();
         expect(await resolver.resolve('not an account')).toBeUndefined();
         expect(calls.local + calls.fetch.length).toBe(0);
+    });
+});
+
+describe('表示名（作者名はアカウントから引く）', () => {
+    it('WebFinger の表示名を取り出す', () => {
+        const profile = profileFromWebFinger(
+            { subject: 'acct:youkan@ubichill.com', properties: { [DISPLAY_NAME_WEBFINGER_PROPERTY]: 'ようかん' } },
+            'youkan@ubichill.com',
+        );
+        expect(profile).toEqual({ displayName: 'ようかん' });
+    });
+
+    it('表示名が不正（制御文字・長すぎ・文字列でない）なら捨てる', () => {
+        for (const bad of ['a\u0000b', 'x'.repeat(31), 42, '']) {
+            const profile = profileFromWebFinger(
+                { subject: 'acct:youkan@ubichill.com', properties: { [DISPLAY_NAME_WEBFINGER_PROPERTY]: bad } },
+                'youkan@ubichill.com',
+            );
+            expect(profile?.displayName).toBeUndefined();
+        }
+    });
+
+    it('自サーバーのアカウントは DB の表示名、無いアカウントは undefined', async () => {
+        const directory = createAuthorKeyDirectory({
+            selfDomain: () => 'ubichill.com',
+            findLocalAccount: async (h) => (h === 'youkan' ? { displayName: 'ようかん' } : undefined),
+            fetchJson: async () => undefined,
+            allowHttp: false,
+        });
+        expect(await directory.displayName('youkan@ubichill.com')).toBe('ようかん');
+        expect(await directory.displayName('nobody@ubichill.com')).toBeUndefined();
     });
 });

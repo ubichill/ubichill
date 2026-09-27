@@ -164,6 +164,7 @@ router.put('/me/display-name', requireAuth, async (req, res) => {
         const updated = await userRepository.setDisplayName(req.user.id, parsed.data, key);
         if (!updated) return res.status(404).json({ error: 'User not found' });
         // ワールドの作者名は表示時にアカウントから引くので、キャッシュ済みの解決結果だけ捨てればよい
+        if (updated.handle) invalidateAuthorKey(selfAccount(updated.handle));
         worldRegistry.invalidateResolvedWorlds();
         return res.json({ name: updated.name, displayNameConflict: false });
     } catch {
