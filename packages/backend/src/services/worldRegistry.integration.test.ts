@@ -67,7 +67,7 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
 
     it('作者署名: 有効なものだけ保存・配信し、内容更新で外れる', async () => {
         const key = newTestSigningKey();
-        const world = await worldRegistry.createFromInput(SYS, 'sys', {
+        const world = await worldRegistry.createFromInput(SYS, {
             displayName: '署名テスト',
             capacity: { default: 2, max: 4 },
             initialEntities: [],
@@ -140,9 +140,9 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
             expect(await userRepository.setHandleOnce(userId, 'other_handle')).toBeUndefined(); // 変更不可
             const key = newTestSigningKey();
             await userRepository.setSigningPublicKey(userId, key.publicKey);
-            worldRegistry.invalidateIdentities();
+            worldRegistry.invalidateResolvedWorlds();
 
-            const world = await worldRegistry.createFromInput(userId, 'テスト作者', {
+            const world = await worldRegistry.createFromInput(userId, {
                 displayName: '作者テスト',
                 capacity: { default: 2, max: 4 },
                 initialEntities: [],
@@ -157,10 +157,18 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
                 identity: { author, worldId: `acct:${author}/${world.id}` },
             });
 
+            // 作者名は metadata ではなくアカウントの表示名。表示名を変えても署名はそのまま有効で、名前だけ変わる
+            expect(world.authorName).toBe('テスト作者');
+            await userRepository.setDisplayName(userId, 'テスト作者（改名）', `it-renamed-${Date.now()}`);
+            worldRegistry.invalidateResolvedWorlds();
+            const renamed = await worldRegistry.getWorld(world.id);
+            expect(renamed?.authorName).toBe('テスト作者（改名）');
+            expect(renamed?.identity).toMatchObject({ status: 'verified', author });
+
             // 鍵を入れ替えると、古い鍵の署名は作者表示が外れ鍵で識別される（公開は続く）
             await userRepository.setSigningPublicKey(userId, newTestSigningKey().publicKey);
             (await import('./authorKeyStore')).invalidateAuthorKey(author);
-            worldRegistry.invalidateIdentities();
+            worldRegistry.invalidateResolvedWorlds();
             const after = (await worldRegistry.getWorld(world.id))?.identity;
             expect(after).toMatchObject({ status: 'verified', worldId: `ed25519:${key.publicKey}/${world.id}` });
             expect(after).not.toHaveProperty('author');
@@ -170,7 +178,7 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
     });
 
     it('mod を lock に固定していないワールドへの署名は保存を拒否（作者署名あり ⇒ 全 mod 固定）', async () => {
-        const world = await worldRegistry.createFromInput(SYS, 'sys', {
+        const world = await worldRegistry.createFromInput(SYS, {
             displayName: '固定なし',
             capacity: { default: 2, max: 4 },
             initialEntities: [

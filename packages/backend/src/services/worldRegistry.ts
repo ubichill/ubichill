@@ -241,9 +241,12 @@ class WorldRegistry {
             });
 
         const known = new Set(this._index.keys());
-        const dbItems = allRecords
-            .filter((r: WorldRecord) => !known.has(r.name))
-            .map(async (r: WorldRecord) => this._toListItem(await this._resolveWorld(r), r));
+        const userRecords = allRecords.filter((r: WorldRecord) => !known.has(r.name));
+        const authors = await userRepository.findByIds([...new Set(userRecords.map((r: WorldRecord) => r.authorId))]);
+        const nameById = new Map(authors.map((u) => [u.id, u.name]));
+        const dbItems = userRecords.map(async (r: WorldRecord) =>
+            this._toListItem(await this._resolveWorld(r, nameById.get(r.authorId)), r),
+        );
 
         return [...indexItems, ...(await Promise.all(dbItems))].filter((w) => isPublishable(w.identity));
     }
@@ -467,21 +470,17 @@ class WorldRegistry {
     }
 
     /**
-     * フォーム入力からワールドを作成する。
-     * metadata.name はサーバー側で nanoid 生成、author はセッションのユーザー名で補完。
+     * フォーム入力からワールドを作成する。metadata.name はサーバー側で nanoid 生成。
+     * 表示名は metadata に書き込まない（署名対象なので、表示名を変えるたびに署名し直しが要るため）。
+     * 作者名は表示時に authorId からその時点の表示名を引く（{@link _resolveWorld}）。
      */
-    async createFromInput(
-        authorId: string,
-        authorDisplayName: string,
-        input: WorldCreateInput,
-    ): Promise<ResolvedWorld> {
+    async createFromInput(authorId: string, input: WorldCreateInput): Promise<ResolvedWorld> {
         const definition: WorldDefinition = {
             apiVersion: 'ubichill.com/v1alpha1',
             kind: 'World',
             metadata: {
                 name: generateWorldId(),
                 version: '1.0.0',
-                author: { name: authorDisplayName },
             },
             spec: input,
         };
@@ -492,12 +491,7 @@ class WorldRegistry {
      * YAML テキストからワールドを作成する。
      * metadata.name は無視してサーバー側で再生成し、所有権を作成者に紐付ける。
      */
-    async createFromYaml(
-        authorId: string,
-        authorDisplayName: string,
-        yamlText: string,
-        lock?: ModLock | null,
-    ): Promise<ResolvedWorld> {
+    async createFromYaml(authorId: string, yamlText: string, lock?: ModLock | null): Promise<ResolvedWorld> {
         const parsed = migrateLegacyWorldYaml(yaml.parse(yamlText) as unknown);
         const result = WorldDefinitionSchema.safeParse(parsed);
         if (!result.success) {
@@ -512,7 +506,6 @@ class WorldRegistry {
             metadata: {
                 ...result.data.metadata,
                 name: generateWorldId(),
-                author: result.data.metadata.author ?? { name: authorDisplayName },
             },
             spec: cleanSpec,
         };
@@ -744,26 +737,29 @@ class WorldRegistry {
     }
 
     /** DB レコード → ResolvedWorld（ユーザー作成ワールド。source=local self URL）。 */
-    private async _resolveWorld(record: WorldRecord): Promise<ResolvedWorld> {
+    /**
+     * DB レコード → ResolvedWorld。作者名は metadata ではなくアカウントのその時点の表示名
+     * （表示名を変えても署名し直さずに全ワールドへ反映される）。一覧では一括取得した名前を渡す。
+     */
+    private async _resolveWorld(record: WorldRecord, authorName?: string): Promise<ResolvedWorld> {
         const def = record.definition as WorldDefinition;
-        return {
-            ...definitionToResolved(def, this.selfWorldUrl(record.name), this.localSource(record.name), {
-                authorId: record.authorId,
-                lock: record.lock ?? undefined,
-                identity: await hostedIdentity(
-                    { definition: def, lock: record.lock ?? null, signature: record.signature ?? null },
-                    record.name,
-                ),
-            }),
-            id: record.name,
-        };
+        const resolved = definitionToResolved(def, this.selfWorldUrl(record.name), this.localSource(record.name), {
+            authorId: record.authorId,
+            lock: record.lock ?? undefined,
+            identity: await hostedIdentity(
+                { definition: def, lock: record.lock ?? null, signature: record.signature ?? null },
+                record.name,
+            ),
+        });
+        const name = authorName ?? (await userRepository.findById(record.authorId))?.name;
+        return { ...resolved, id: record.name, authorName: name ?? resolved.authorName };
     }
 
     /**
-     * キャッシュ済みの識別結果（作者表示・worldId）を捨てる。作者の署名鍵が変わったときに呼ぶ。
+     * キャッシュ済みの解決結果（作者表示・作者名・worldId）を捨てる。作者の署名鍵や表示名が変わったときに呼ぶ。
      * official の索引は作者アカウントを持たない（メンテナ鍵のみ）ので対象外。
      */
-    invalidateIdentities(): void {
+    invalidateResolvedWorlds(): void {
         this._resolvedCache.clear();
         this._remoteCache.clear();
     }

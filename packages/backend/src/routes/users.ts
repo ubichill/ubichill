@@ -163,6 +163,8 @@ router.put('/me/display-name', requireAuth, async (req, res) => {
     try {
         const updated = await userRepository.setDisplayName(req.user.id, parsed.data, key);
         if (!updated) return res.status(404).json({ error: 'User not found' });
+        // ワールドの作者名は表示時にアカウントから引くので、キャッシュ済みの解決結果だけ捨てればよい
+        worldRegistry.invalidateResolvedWorlds();
         return res.json({ name: updated.name, displayNameConflict: false });
     } catch {
         return res.status(409).json({ error: 'この表示名は既に使用されています' });
@@ -210,7 +212,7 @@ router.put('/me/signing-key', requireAuth, async (req, res) => {
     if (!updated) return res.status(404).json({ error: 'User not found' });
     // 作者表示・worldId が変わるので、キャッシュ済みの識別結果を捨てる
     if (updated.handle) invalidateAuthorKey(selfAccount(updated.handle));
-    worldRegistry.invalidateIdentities();
+    worldRegistry.invalidateResolvedWorlds();
     return res.json({ signingPublicKey: updated.signingPublicKey });
 });
 

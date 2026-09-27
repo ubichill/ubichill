@@ -251,7 +251,7 @@ router.post('/', requireAuth, async (req, res) => {
             return;
         }
 
-        const world = await worldRegistry.createFromInput(req.user.id, req.user.name, result.data);
+        const world = await worldRegistry.createFromInput(req.user.id, result.data);
         res.status(201).json(world);
     } catch (error) {
         console.error('ワールド作成エラー:', error);
@@ -298,7 +298,7 @@ router.post('/yaml', requireAuth, async (req, res) => {
             return;
         }
 
-        const world = await worldRegistry.createFromYaml(req.user.id, req.user.name, yamlText, lock);
+        const world = await worldRegistry.createFromYaml(req.user.id, yamlText, lock);
         res.status(201).json(world);
     } catch (error) {
         const message = error instanceof Error ? error.message : 'YAML 解析に失敗しました';

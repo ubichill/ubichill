@@ -1,4 +1,4 @@
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../index';
 import { users } from '../schema';
 
@@ -18,6 +18,14 @@ export const userRepository = {
     async findById(id: string): Promise<UserRecord | undefined> {
         const results = await db.select().from(users).where(eq(users.id, id));
         return results[0];
+    },
+
+    async findByIds(ids: readonly string[]): Promise<UserRecord[]> {
+        if (ids.length === 0) return [];
+        return db
+            .select()
+            .from(users)
+            .where(inArray(users.id, [...ids]));
     },
 
     async findByEmail(email: string): Promise<UserRecord | undefined> {
