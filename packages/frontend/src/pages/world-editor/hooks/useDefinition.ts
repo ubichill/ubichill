@@ -36,7 +36,15 @@ interface UseDefinitionOptions {
     onError: (msg: string) => void;
 }
 
+/** 公開状態。published = 一覧に公開中、hasDraft = 公開中の版とは別に未公開の下書きがある。 */
+export interface PublishState {
+    published: boolean;
+    hasDraft: boolean;
+}
+
 interface UseDefinitionResult {
+    publishState: PublishState;
+    setPublishState: React.Dispatch<React.SetStateAction<PublishState>>;
     definition: WorldDefinition;
     setDefinition: React.Dispatch<React.SetStateAction<WorldDefinition>>;
     savedYaml: string | null;
@@ -53,6 +61,7 @@ export function useDefinition({ isEdit, worldId, onError }: UseDefinitionOptions
     const [definition, setDefinition] = useState<WorldDefinition>(createInitialDefinition);
     const [savedYaml, setSavedYaml] = useState<string | null>(null);
     const [loading, setLoading] = useState(isEdit);
+    const [publishState, setPublishState] = useState<PublishState>({ published: false, hasDraft: false });
 
     useEffect(() => {
         if (!isEdit || !worldId) return;
@@ -65,9 +74,15 @@ export function useDefinition({ isEdit, worldId, onError }: UseDefinitionOptions
             .then(async (res) => {
                 if (res.status === 403) throw new Error('このワールドの編集権限がありません');
                 if (!res.ok) throw new Error(`定義取得失敗 (${res.status})`);
-                const def = (await res.json()) as WorldDefinition;
-                setDefinition(def);
-                setSavedYaml(yaml.stringify(def));
+                // 下書きがあれば下書きを編集する（公開中の版はサーバー側に残っている）
+                const data = (await res.json()) as {
+                    definition: WorldDefinition;
+                    hasDraft: boolean;
+                    published: boolean;
+                };
+                setDefinition(data.definition);
+                setSavedYaml(yaml.stringify(data.definition));
+                setPublishState({ published: data.published, hasDraft: data.hasDraft });
             })
             .catch((e: unknown) => {
                 if (e instanceof DOMException && e.name === 'AbortError') return;
@@ -92,5 +107,15 @@ export function useDefinition({ isEdit, worldId, onError }: UseDefinitionOptions
         }));
     }, []);
 
-    return { definition, setDefinition, savedYaml, setSavedYaml, loading, dirty, updateEntities };
+    return {
+        definition,
+        setDefinition,
+        savedYaml,
+        setSavedYaml,
+        loading,
+        dirty,
+        updateEntities,
+        publishState,
+        setPublishState,
+    };
 }

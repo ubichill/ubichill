@@ -20,6 +20,11 @@ export const worlds = pgTable('worlds', {
     // 作者が手元の鍵で付けた署名（definition + lock に対する）。サーバーは鍵を持たず検証して保存するだけ。
     // 内容が変わると無効になるので、配信時に毎回検証する（無効なら配信しない）。
     signature: jsonb('signature').$type<WorldSignature>(),
+    // 公開中のワールドを編集したときの下書き（公開中の版＝definition/lock/signature はそのまま残す）。
+    // 公開すると definition 側へ反映して消す。未公開のワールドは下書きを definition に直接保存する。
+    draftDefinition: jsonb('draft_definition').$type<WorldDefinition>(),
+    draftLock: jsonb('draft_lock').$type<ModLock>(),
+    draftUpdatedAt: timestamp('draft_updated_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

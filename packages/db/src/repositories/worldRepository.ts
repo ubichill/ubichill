@@ -18,6 +18,9 @@ export interface UpdateWorldInput {
     definition?: WorldDefinition;
     lock?: ModLock | null;
     signature?: WorldSignature | null;
+    draftDefinition?: WorldDefinition | null;
+    draftLock?: ModLock | null;
+    draftUpdatedAt?: Date | null;
 }
 
 export type WorldRecord = typeof worlds.$inferSelect;

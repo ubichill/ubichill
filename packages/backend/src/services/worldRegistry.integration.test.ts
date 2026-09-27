@@ -211,6 +211,68 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
         }
     });
 
+    it('下書き: 署名済みワールドは公開中の版を残して下書きだけ保存し、公開で下書きが消える', async () => {
+        const key = newTestSigningKey();
+        const world = await worldRegistry.createFromInput(SYS, {
+            displayName: '下書きテスト',
+            capacity: { default: 2, max: 4 },
+            initialEntities: [],
+        });
+        try {
+            const draftOf = (name: string): WorldDefinition => ({
+                apiVersion: 'ubichill.com/v1alpha1',
+                kind: 'World',
+                metadata: { name: world.id, version: '1.0.0' },
+                spec: { displayName: name, capacity: { default: 2, max: 4 }, initialEntities: [] },
+            });
+
+            // 未署名のワールドは下書きを本体に直接保存（下書きは残らない）
+            expect(await worldRegistry.saveDraft(world.id, draftOf('未署名の下書き'))).toEqual({
+                ok: true,
+                hasDraft: false,
+            });
+            expect((await worldRegistry.getWorld(world.id))?.displayName).toBe('未署名の下書き');
+
+            // 署名する
+            const hosted = await worldRegistry.getHostedDocument(world.id);
+            if (!hosted) throw new Error('hosted が無い');
+            const served = { definition: yaml.parse(yaml.stringify(hosted.definition)) as unknown, lock: hosted.lock };
+            expect(
+                await worldRegistry.setWorldSignature(world.id, await signWorld(served, key, nodeWorldCrypto)),
+            ).toMatchObject({
+                ok: true,
+            });
+
+            // 署名済みのワールドの下書き保存は、公開中の版と署名をそのまま残す
+            expect(await worldRegistry.saveDraft(world.id, draftOf('編集中'))).toEqual({ ok: true, hasDraft: true });
+            const live = await worldRegistry.getWorld(world.id);
+            expect(live?.displayName).toBe('未署名の下書き');
+            expect(live?.identity?.status).toBe('verified');
+            expect(await worldRegistry.getEditorDefinition(world.id)).toMatchObject({
+                definition: { spec: { displayName: '編集中' } },
+                hasDraft: true,
+            });
+
+            // 下書きを署名して公開すると本体が置き換わり、下書きは消える
+            const prepared = prepareWorldUpdate(world.id, draftOf('編集中'), null);
+            const sig = await signWorld(
+                JSON.parse(JSON.stringify(prepared)) as unknown as WorldDocument,
+                key,
+                nodeWorldCrypto,
+            );
+            expect(
+                await worldRegistry.updateWorld(world.id, draftOf('編集中'), null, { signature: sig }),
+            ).toMatchObject({ ok: true });
+            expect(await worldRegistry.getEditorDefinition(world.id)).toMatchObject({
+                definition: { spec: { displayName: '編集中' } },
+                hasDraft: false,
+            });
+            expect((await worldRegistry.getWorld(world.id))?.displayName).toBe('編集中');
+        } finally {
+            await worldRegistry.deleteWorld(world.id);
+        }
+    });
+
     it('instance を URL 参照で作成し往復解決できる', async () => {
         const created = await instanceManager.createInstance({ worldId: 'default' }, SYS);
         expect('error' in created).toBe(false);

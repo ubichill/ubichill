@@ -52,12 +52,8 @@ export function PublishSetupDialog({ readiness, account: initialAccount, finish 
         }
     };
 
-    const footer = (
-        <>
-            <ModalSecondaryButton onClick={() => finish({ kind: 'cancel' })}>キャンセル</ModalSecondaryButton>
-            <ModalSecondaryButton onClick={() => finish({ kind: 'private' })}>非公開で保存</ModalSecondaryButton>
-        </>
-    );
+    // 下書き保存は準備不要で別のボタンからできるので、ここでは公開するかやめるかだけを選ばせる
+    const footer = <ModalSecondaryButton onClick={() => finish({ kind: 'cancel' })}>キャンセル</ModalSecondaryButton>;
 
     if (readiness.kind === 'unpinned') {
         return (
@@ -78,7 +74,9 @@ export function PublishSetupDialog({ readiness, account: initialAccount, finish 
                         <li key={m}>{m}</li>
                     ))}
                 </ul>
-                <p className={paragraph}>非公開で保存すると、URL を知っている人だけが確認付きで入れます。</p>
+                <p className={paragraph}>
+                    公開せずに作業を続けるなら「下書き保存」を使ってください（準備は不要です）。
+                </p>
             </Modal>
         );
     }

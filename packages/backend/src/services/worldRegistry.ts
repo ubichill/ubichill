@@ -556,11 +556,55 @@ class WorldRegistry {
             definition: next.definition,
             lock: next.lock,
             signature: (options.signature as WorldSignature | undefined) ?? null,
+            // 本体の内容を置き換えたので下書きは不要（公開した・または未公開の本体に直接保存した）
+            draftDefinition: null,
+            draftLock: null,
+            draftUpdatedAt: null,
         });
         if (!updated) return { ok: false, reason: 'not-found' };
         const resolved = await this._resolveWorld(updated);
         this._resolvedCache.set(worldId, resolved);
         return { ok: true, world: resolved };
+    }
+
+    /**
+     * 下書きを保存する（鍵・ID などの準備は不要）。
+     * - 署名済み（公開中など）のワールド: 公開中の版はそのまま残し、下書きだけを別に保存する（黙って非公開にしない）。
+     * - 未署名のワールド: もともと公開されていないので、下書きを本体に直接保存する（URL から試しに入れる）。
+     */
+    async saveDraft(
+        worldId: string,
+        definition: WorldDefinition,
+        lock?: ModLock | null,
+    ): Promise<{ ok: true; hasDraft: boolean } | { ok: false; reason: 'not-found' }> {
+        const existing = await worldRepository.findByName(worldId);
+        if (!existing) return { ok: false, reason: 'not-found' };
+        const current = await this.getWorld(worldId);
+        if (current?.identity?.status !== 'verified') {
+            const result = await this.updateWorld(worldId, definition, lock, { allowUnsigned: true });
+            return result.ok ? { ok: true, hasDraft: false } : { ok: false, reason: 'not-found' };
+        }
+        const next = prepareWorldUpdate(worldId, definition, lock);
+        await worldRepository.update(existing.id, {
+            draftDefinition: next.definition,
+            draftLock: next.lock,
+            draftUpdatedAt: new Date(),
+        });
+        return { ok: true, hasDraft: true };
+    }
+
+    /** エディタ用: 下書きがあれば下書き、無ければ本体の定義と、公開状態。 */
+    async getEditorDefinition(
+        worldId: string,
+    ): Promise<{ definition: WorldDefinition; hasDraft: boolean; published: boolean } | undefined> {
+        const record = await worldRepository.findByName(worldId);
+        if (!record) return undefined;
+        const world = await this.getWorld(worldId);
+        return {
+            definition: (record.draftDefinition ?? record.definition) as WorldDefinition,
+            hasDraft: !!record.draftDefinition,
+            published: isPublishable(world?.identity),
+        };
     }
 
     async deleteWorld(worldId: string): Promise<boolean> {

@@ -5,8 +5,12 @@ import type { WorldSigner } from './signer';
 
 export interface SignHostedWorldDeps {
     apiBase: string;
+    /** 呼び出し側は `window.fetch` をそのまま渡してよい（ここでは `deps.fetch()` の形で呼ばない）。 */
     fetch: typeof fetch;
 }
+
+/** ブラウザの fetch を this に依存せず渡すための既定値。 */
+export const browserFetch: typeof fetch = (input, init) => globalThis.fetch(input, init);
 
 async function errorMessage(res: Response): Promise<string> {
     const data = (await res.json().catch(() => ({}))) as { error?: string };

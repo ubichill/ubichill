@@ -6,13 +6,16 @@ import { fetchMyAccount, type MyAccount } from '@/lib/account/me';
 import { API_BASE } from '@/lib/api';
 import { createInstance as createInstanceApi } from '@/lib/instancesApi';
 import {
+    browserFetch,
     createHostedWorld,
     loadSigningKey,
     type PublishReadiness,
     publishReadiness,
+    saveHostedDraft,
     updateHostedWorld,
 } from '@/lib/signing';
 import { buildWorldLock } from '@/mods/buildWorldLock';
+import type { PublishState } from './useDefinition';
 import type { PublishDecision } from './usePublishSetup';
 
 interface UseWorldEditorApiArgs {
@@ -20,9 +23,11 @@ interface UseWorldEditorApiArgs {
     worldId?: string;
     definition: WorldDefinition;
     onSavedYamlChange: (text: string) => void;
+    /** 公開状態の更新（公開した・下書きを保存した） */
+    onPublishStateChange: React.Dispatch<React.SetStateAction<PublishState>>;
     /** エラーメッセージの通知先 (ページ側で集約管理する) */
     onError: (msg: string) => void;
-    /** そのまま公開できないとき、公開の準備ダイアログで利用者の選択を待つ */
+    /** 公開の準備が足りないとき、公開の準備ダイアログで利用者の操作を待つ */
     requestPublishSetup: (
         readiness: Exclude<PublishReadiness, { kind: 'ready' }>,
         account: MyAccount | null,
@@ -30,65 +35,106 @@ interface UseWorldEditorApiArgs {
 }
 
 /**
- * ワールドの保存・削除・インスタンス作成 API 呼び出しを集約する hook。
- * 状態は saving のみ。エラーは onError 経由で外部へ通知する。
- * 成功時は呼び出し元の savedYaml も更新する。
+ * 保存時に mod 完全性ロックを計算する。lock は人間が書く YAML には埋めず、body の別フィールドで送って
+ * サーバ側の別カラムに保存する（YAML はクリーンに保つ）。読む側はこの lock と hash 照合して差し替え mod を拒否する。
+ */
+async function buildSaveBody(definition: WorldDefinition) {
+    const { lock, unpinned } = await buildWorldLock(definition);
+    return { body: { yaml: yaml.stringify(definition), lock }, unpinned };
+}
+
+const deps = { apiBase: API_BASE, fetch: browserFetch };
+
+/**
+ * ワールドの保存・公開・削除・インスタンス作成 API 呼び出しを集約する hook。
+ * - saveDraft: 下書き保存。鍵・ID などの準備は不要で、公開中の版は変えない。
+ * - publish: 作者アカウントで署名して公開する（準備が足りなければ公開の準備ダイアログ）。
  */
 export function useWorldEditorApi({
     isEdit,
     worldId,
     definition,
     onSavedYamlChange,
+    onPublishStateChange,
     onError,
     requestPublishSetup,
 }: UseWorldEditorApiArgs) {
     const navigate = useNavigate();
     const [saving, setSaving] = useState(false);
 
-    const save = useCallback(async (): Promise<boolean> => {
-        setSaving(true);
-        onError('');
-        try {
-            // 保存時に mod 完全性ロックを計算する。lock は人間が書く YAML には埋めず、
-            // body の別フィールドで送ってサーバ側の別カラムに保存する（YAML はクリーンに保つ）。
-            // 外部公開時、そのワールドを読む側は兄弟エンドポイントの lock と hash 照合して
-            // 差し替え mod の実行を拒否できる（配布者を信頼しない）。
-            const { lock, unpinned } = await buildWorldLock(definition);
-            const text = yaml.stringify(definition);
-            const body = { yaml: text, lock };
-            const deps = { apiBase: API_BASE, fetch };
-
-            // そのまま公開できなければ、黙って非公開にせず、この場で鍵の用意か非公開保存かを選ばせる。
-            const [key, account] = await Promise.all([
-                loadSigningKey().catch(() => null),
-                fetchMyAccount().catch(() => null),
-            ]);
-            const readiness = publishReadiness(key, account, unpinned);
-            const decision: PublishDecision =
-                readiness.kind === 'ready'
-                    ? { kind: 'signed', signer: readiness.signer }
-                    : await requestPublishSetup(readiness, account);
-            if (decision.kind === 'cancel') return false;
-            const signer = decision.kind === 'signed' ? decision.signer : null;
-
-            if (isEdit && worldId) {
-                await updateHostedWorld(worldId, body, signer, deps);
-                // 編集モード: dirty=false にするため savedYaml を更新
-                onSavedYamlChange(text);
-                return true;
+    const withSaving = useCallback(
+        async (task: () => Promise<boolean>, failure: string): Promise<boolean> => {
+            setSaving(true);
+            onError('');
+            try {
+                return await task();
+            } catch (e) {
+                onError(e instanceof Error ? e.message : failure);
+                return false;
+            } finally {
+                setSaving(false);
             }
-            // 新規作成: サーバー生成の worldId で編集画面に遷移して以降は dirty 解消できる状態に
-            const created = await createHostedWorld(body, signer, deps);
-            if (created.signError) onError(`保存しましたが署名できず非公開のままです: ${created.signError}`);
-            navigate(`/world/${created.id}/edit`, { replace: true });
-            return true;
-        } catch (e) {
-            onError(e instanceof Error ? e.message : '保存失敗');
-            return false;
-        } finally {
-            setSaving(false);
-        }
-    }, [definition, isEdit, worldId, navigate, onSavedYamlChange, onError, requestPublishSetup]);
+        },
+        [onError],
+    );
+
+    const saveDraft = useCallback(
+        () =>
+            withSaving(async () => {
+                const { body } = await buildSaveBody(definition);
+                if (isEdit && worldId) {
+                    const { hasDraft } = await saveHostedDraft(worldId, body, deps);
+                    onSavedYamlChange(body.yaml);
+                    // 署名済みなら公開状態はそのままで下書きが増える。未署名なら本体に保存され下書きは無い。
+                    onPublishStateChange((prev) => (hasDraft ? { ...prev, hasDraft } : { published: false, hasDraft }));
+                    return true;
+                }
+                const created = await createHostedWorld(body, null, deps);
+                navigate(`/world/${created.id}/edit`, { replace: true });
+                return true;
+            }, '下書きを保存できませんでした'),
+        [definition, isEdit, worldId, navigate, onSavedYamlChange, onPublishStateChange, withSaving],
+    );
+
+    const publish = useCallback(
+        () =>
+            withSaving(async () => {
+                const { body, unpinned } = await buildSaveBody(definition);
+                const [key, account] = await Promise.all([
+                    loadSigningKey().catch(() => null),
+                    fetchMyAccount().catch(() => null),
+                ]);
+                const readiness = publishReadiness(key, account, unpinned);
+                const decision: PublishDecision =
+                    readiness.kind === 'ready'
+                        ? { kind: 'signed', signer: readiness.signer }
+                        : await requestPublishSetup(readiness, account);
+                if (decision.kind === 'cancel') return false;
+
+                if (isEdit && worldId) {
+                    await updateHostedWorld(worldId, body, decision.signer, deps);
+                    onSavedYamlChange(body.yaml);
+                    onPublishStateChange({ published: true, hasDraft: false });
+                    return true;
+                }
+                const created = await createHostedWorld(body, decision.signer, deps);
+                if (created.signError)
+                    onError(`作成しましたが公開できませんでした（下書きのままです）: ${created.signError}`);
+                navigate(`/world/${created.id}/edit`, { replace: true });
+                return true;
+            }, '公開できませんでした'),
+        [
+            definition,
+            isEdit,
+            worldId,
+            navigate,
+            onSavedYamlChange,
+            onPublishStateChange,
+            onError,
+            requestPublishSetup,
+            withSaving,
+        ],
+    );
 
     const remove = useCallback(async () => {
         if (!worldId) return;
@@ -124,5 +170,5 @@ export function useWorldEditorApi({
         }
     }, [worldId, navigate, onError]);
 
-    return { saving, save, remove, createInstance };
+    return { saving, saveDraft, publish, remove, createInstance };
 }

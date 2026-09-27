@@ -6,7 +6,7 @@ import { WorldIdentityBadge } from '@/components/lobby/WorldIdentityBadge';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { API_BASE } from '@/lib/api';
 import { useSession } from '@/lib/session';
-import { loadSigningKey, signerFor, signHostedWorld } from '@/lib/signing';
+import { browserFetch, loadSigningKey, signerFor, signHostedWorld } from '@/lib/signing';
 import { css } from '@/styled-system/css';
 import { DisplayNameEditor } from './DisplayNameEditor';
 import { SigningKeySection } from './SigningKeySection';
@@ -144,7 +144,7 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                 );
                 return;
             }
-            const identity = await signHostedWorld(worldId, signer, { apiBase: API_BASE, fetch });
+            const identity = await signHostedWorld(worldId, signer, { apiBase: API_BASE, fetch: browserFetch });
             setWorlds((prev) => prev.map((w) => (w.id === worldId ? { ...w, identity } : w)));
         } catch (e) {
             setError(e instanceof Error ? e.message : '署名に失敗しました');

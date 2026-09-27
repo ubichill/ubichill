@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import type { MyAccount } from '@/lib/account/me';
 import type { PublishReadiness, WorldSigner } from '@/lib/signing';
 
-export type PublishDecision = { kind: 'signed'; signer: WorldSigner } | { kind: 'private' } | { kind: 'cancel' };
+export type PublishDecision = { kind: 'signed'; signer: WorldSigner } | { kind: 'cancel' };
 
 export interface PendingPublishSetup {
     readiness: Exclude<PublishReadiness, { kind: 'ready' }>;
@@ -11,8 +11,8 @@ export interface PendingPublishSetup {
 }
 
 /**
- * 保存時にそのまま公開できないとき、公開の準備ダイアログを開いて利用者の選択を待つ。
- * `request` は選択（署名して公開 / 非公開で保存 / キャンセル）で解決する Promise を返す。
+ * 公開するときに準備が足りなければ、公開の準備ダイアログを開いて利用者の操作を待つ。
+ * `request` は「署名して公開」か「キャンセル」で解決する Promise を返す（下書き保存はダイアログを通らない）。
  */
 export function usePublishSetup() {
     const [pending, setPending] = useState<PendingPublishSetup | null>(null);

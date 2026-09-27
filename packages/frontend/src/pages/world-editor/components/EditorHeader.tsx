@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import { css } from '@/styled-system/css';
+import type { PublishState } from '../hooks/useDefinition';
 import { editorButton } from '../recipes/button';
 
 interface EditorHeaderProps {
@@ -13,8 +14,19 @@ interface EditorHeaderProps {
     onBack: () => void;
     /** コントロールパネル（ワールド情報・mod管理・YAML）を開く。削除はコントロールパネル最下部のDanger Zoneへ移した */
     onOpenControlPanel: () => void;
-    /** このブラウザに作者署名の鍵が無い（保存すると署名なし＝非公開になる） */
-    signingKeyMissing: boolean;
+    /** 公開状態（新規作成中は null） */
+    publishState: PublishState | null;
+    saving: boolean;
+    /** 下書き保存（準備不要。公開中の版は変わらない） */
+    onSaveDraft: () => void;
+    /** 作者アカウントで署名して公開 */
+    onPublish: () => void;
+}
+
+function publishStateLabel(state: PublishState): { text: string; tone: 'published' | 'draft' } {
+    if (state.published && state.hasDraft) return { text: '公開中・未公開の変更あり', tone: 'draft' };
+    if (state.published) return { text: '公開中', tone: 'published' };
+    return { text: '下書き（未公開）', tone: 'draft' };
 }
 
 /** エディタ画面のトップバー。Unity 風: 左に戻る・タイトル、右にアクション群。 */
@@ -25,7 +37,10 @@ export function EditorHeader({
     onToggleSnap,
     onBack,
     onOpenControlPanel,
-    signingKeyMissing,
+    publishState,
+    saving,
+    onSaveDraft,
+    onPublish,
 }: EditorHeaderProps) {
     const [menuOpen, setMenuOpen] = useState(false);
 
@@ -77,9 +92,8 @@ export function EditorHeader({
                     </span>
                 )}
             </div>
-            {signingKeyMissing && (
+            {publishState && (
                 <span
-                    title="保存すると署名なしになり、一覧に公開されません。プロフィールの「作者署名の鍵」で鍵を作成・読み込みしてください"
                     className={css({
                         flexShrink: 0,
                         px: '8px',
@@ -87,14 +101,32 @@ export function EditorHeader({
                         borderRadius: '6px',
                         fontSize: '12px',
                         fontWeight: '600',
-                        bg: 'errorBg',
-                        color: 'errorText',
                         whiteSpace: 'nowrap',
+                        bg: publishStateLabel(publishState).tone === 'published' ? 'successBg' : 'surface',
+                        color: publishStateLabel(publishState).tone === 'published' ? 'successText' : 'textMuted',
                     })}
                 >
-                    署名鍵なし
+                    {publishStateLabel(publishState).text}
                 </span>
             )}
+            <button
+                type="button"
+                onClick={onSaveDraft}
+                disabled={saving}
+                title="下書きとして保存します（公開中の版は変わりません）。Cmd/Ctrl+S"
+                className={editorButton({ intent: 'secondary' })}
+            >
+                下書き保存
+            </button>
+            <button
+                type="button"
+                onClick={onPublish}
+                disabled={saving}
+                title="あなたの作者アカウントで署名して公開します"
+                className={editorButton({ intent: 'primary' })}
+            >
+                公開する
+            </button>
             <div
                 className={css({
                     display: { base: 'none', md: 'inline-flex' },

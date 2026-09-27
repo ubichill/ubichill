@@ -308,8 +308,8 @@ router.post('/yaml', requireAuth, async (req, res) => {
 
 /**
  * GET /api/v1/worlds/:worldId/definition
- * ワールドの生定義（WorldDefinition）を取得（GUI エディタ用、作成者のみ）
- * ResolvedWorld ではなく YAML と同等の構造をそのまま返す
+ * エディタ用の定義（作成者のみ）。下書きがあれば下書きを返す。
+ * 返り値: `{ definition, hasDraft, published }`（definition は YAML と同等の構造）
  */
 router.get('/:worldId/definition', requireAuth, async (req, res) => {
     try {
@@ -327,7 +327,7 @@ router.get('/:worldId/definition', requireAuth, async (req, res) => {
             res.status(403).json({ error: 'Forbidden: Only the author can view the raw definition' });
             return;
         }
-        res.json(record.definition);
+        res.json(await worldRegistry.getEditorDefinition(worldId));
     } catch (error) {
         console.error('ワールド定義取得エラー:', error);
         res.status(500).json({ error: 'Internal server error' });
@@ -433,6 +433,40 @@ router.put('/:worldId/sig', requireAuth, async (req, res) => {
         res.json({ identity: result.identity });
     } catch (error) {
         console.error('ワールド署名保存エラー:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * PUT /api/v1/worlds/:worldId/draft
+ * 下書きを保存する（作成者のみ、鍵・ID の準備は不要）。公開中の版は変わらない。
+ * body: { yaml: string, lock?: ModLock }
+ */
+router.put('/:worldId/draft', requireAuth, async (req, res) => {
+    try {
+        const worldId = req.params.worldId as string;
+        const record = await worldRegistry.getWorldRecord(worldId);
+        if (!record) {
+            res.status(404).json({ error: 'World not found' });
+            return;
+        }
+        if (record.authorId !== req.user?.id) {
+            res.status(403).json({ error: 'Forbidden: Only the author can update this world' });
+            return;
+        }
+        const parsed = parseYamlUpdate(req.body);
+        if (!parsed.ok) {
+            res.status(parsed.status).json(parsed.body);
+            return;
+        }
+        const result = await worldRegistry.saveDraft(worldId, parsed.definition, parsed.lock);
+        if (!result.ok) {
+            res.status(404).json({ error: 'World not found' });
+            return;
+        }
+        res.json({ hasDraft: result.hasDraft });
+    } catch (error) {
+        console.error('下書き保存エラー:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

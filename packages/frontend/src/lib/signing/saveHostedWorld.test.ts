@@ -136,3 +136,19 @@ describe('createHostedWorld / updateHostedWorld', () => {
         expect(await server.isSigned(id)).toBe(false);
     });
 });
+
+describe('ブラウザの fetch の this 制約（Illegal invocation の回帰）', () => {
+    it('deps.fetch をオブジェクトのメソッドとして呼ばない', async () => {
+        const server = fakeServer();
+        // ブラウザの fetch と同じく、this が window（globalThis）/ undefined 以外なら失敗する fetch
+        const strictFetch = function (this: unknown, input: RequestInfo | URL, init?: RequestInit) {
+            if (this !== undefined && this !== globalThis) {
+                throw new TypeError("Failed to execute 'fetch' on 'Window': Illegal invocation");
+            }
+            return server.deps.fetch(input, init);
+        } as typeof fetch;
+        await expect(
+            createHostedWorld({ yaml: worldYaml('A'), lock: LOCK }, null, { apiBase: '', fetch: strictFetch }),
+        ).resolves.toMatchObject({ id: expect.any(String) });
+    });
+});

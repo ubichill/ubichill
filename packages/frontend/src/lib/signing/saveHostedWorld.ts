@@ -51,6 +51,24 @@ export async function updateHostedWorld(
 }
 
 /**
+ * 下書きを保存する（鍵・ID の準備は不要）。公開中のワールドなら公開中の版は変わらず、下書きだけが保存される。
+ */
+export async function saveHostedDraft(
+    worldId: string,
+    body: WorldSaveBody,
+    { apiBase, fetch }: SignHostedWorldDeps,
+): Promise<{ hasDraft: boolean }> {
+    const res = await fetch(`${apiBase}/api/v1/worlds/${encodeURIComponent(worldId)}/draft`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(await errorMessage(res));
+    return (await res.json()) as { hasDraft: boolean };
+}
+
+/**
  * 新規ワールドを作成し、鍵があれば続けて署名する。ID はサーバーが採番するため作成と署名は
  * 2 段階になるが、署名前のワールドは非公開なので途中で失敗しても未検証ワールドは公開されない。
  */
@@ -59,7 +77,9 @@ export async function createHostedWorld(
     signer: WorldSigner | null,
     deps: SignHostedWorldDeps,
 ): Promise<{ id: string; signError?: string }> {
-    const res = await deps.fetch(`${deps.apiBase}/api/v1/worlds/yaml`, {
+    // deps.fetch(...) の形で呼ぶと this が deps になり、ブラウザの fetch は Illegal invocation で落ちる
+    const { apiBase, fetch } = deps;
+    const res = await fetch(`${apiBase}/api/v1/worlds/yaml`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
