@@ -41,6 +41,21 @@ export const userRepository = {
         return results[0];
     },
 
+    async findByDisplayNameKey(key: string): Promise<UserRecord | undefined> {
+        const results = await db.select().from(users).where(eq(users.displayNameKey, key));
+        return results[0];
+    },
+
+    /** 表示名を変更する（一意キーも更新）。一意制約違反（同時に他人が取った）は呼び出し側で扱う。 */
+    async setDisplayName(id: string, name: string, key: string): Promise<UserRecord | undefined> {
+        const results = await db
+            .update(users)
+            .set({ name, displayNameKey: key, updatedAt: new Date() })
+            .where(eq(users.id, id))
+            .returning();
+        return results[0];
+    },
+
     async findByHandle(handle: string): Promise<UserRecord | undefined> {
         const results = await db.select().from(users).where(eq(users.handle, handle));
         return results[0];

@@ -1,5 +1,6 @@
 import { type WorldListItem, worldSourceLabel } from '@ubichill/shared';
 import { css } from '@/styled-system/css';
+import { AuthorAccountLabel } from './AuthorAccountLabel';
 import { FavoriteButton } from './FavoriteButton';
 import { WorldIdentityBadge } from './WorldIdentityBadge';
 
@@ -94,6 +95,9 @@ export function WorldCard({ world, onNavigate }: WorldCardProps) {
                     )}
                 </div>
                 <h3 className={titleStyle}>{world.displayName}</h3>
+                {world.identity?.status === 'verified' && world.identity.author && (
+                    <AuthorAccountLabel author={world.identity.author} className={css({ mb: '1' })} />
+                )}
                 {world.description && <p className={descriptionStyle}>{world.description}</p>}
                 <div className={metaStyle}>
                     <span>

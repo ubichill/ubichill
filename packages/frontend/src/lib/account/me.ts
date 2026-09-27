@@ -4,8 +4,10 @@ import { API_BASE } from '@/lib/api';
 /** ログイン中のアカウント（`GET /api/v1/users/me`）。 */
 export interface MyAccount {
     id: string;
-    /** 表示名（日本語可・重複可）。 */
+    /** 表示名（日本語可・一意・変更可）。 */
     name: string;
+    /** 移行時に他人と表示名が重複していた。変更を促す。 */
+    displayNameConflict: boolean;
     /** URL・署名用の ID。既存ユーザーは未設定のことがある。 */
     handle: string | null;
     /** 作者アカウント `handle@domain`（handle 未設定なら null）。 */
@@ -24,6 +26,18 @@ export async function fetchMyAccount(): Promise<MyAccount> {
     const res = await fetch(`${API_BASE}/api/v1/users/me`, { credentials: 'include', cache: 'no-store' });
     if (!res.ok) throw new Error(await errorMessage(res));
     return (await res.json()) as MyAccount;
+}
+
+/** 表示名を変更する（一意）。 */
+export async function setMyDisplayName(name: string): Promise<{ name: string }> {
+    const res = await fetch(`${API_BASE}/api/v1/users/me/display-name`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name }),
+    });
+    if (!res.ok) throw new Error(await errorMessage(res));
+    return (await res.json()) as { name: string };
 }
 
 /** ID を設定する（変更不可。未設定のアカウントのみ）。 */

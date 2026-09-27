@@ -1,9 +1,16 @@
 import { favoriteRepository, userRepository, type WorldRecord, worldRepository } from '@ubichill/db';
 import type { WorldDefinition } from '@ubichill/shared';
-import { HandleSchema, isPublishable, LIMITS, verifyKeyRegistration } from '@ubichill/shared';
+import {
+    DisplayNameSchema,
+    displayNameKey,
+    HandleSchema,
+    isPublishable,
+    LIMITS,
+    verifyKeyRegistration,
+} from '@ubichill/shared';
 import { Router } from 'express';
 import { createPendingRegistration, resendOTP, verifyAndRegister } from '../lib/auth';
-import { requireAuth } from '../middleware/auth';
+import { optionalAuth, requireAuth } from '../middleware/auth';
 import { invalidateAuthorKey } from '../services/authorKeyStore';
 import { selfAccount } from '../services/authorKeys';
 import { nodeWorldCrypto } from '../services/worldCrypto';
@@ -28,10 +35,11 @@ router.post('/register', async (req, res) => {
         return res.status(400).json({ error: 'パスワードは8文字以上で入力してください' });
     }
 
-    const trimmedName = displayName.trim();
-    if (trimmedName.length < 1 || trimmedName.length > 50) {
-        return res.status(400).json({ error: '表示名は1〜50文字で入力してください' });
+    const parsedName = DisplayNameSchema.safeParse(displayName);
+    if (!parsedName.success) {
+        return res.status(400).json({ error: parsedName.error.issues[0]?.message ?? '表示名が不正です' });
     }
+    const trimmedName = parsedName.data;
     const parsedHandle = HandleSchema.safeParse(handle.trim());
     if (!parsedHandle.success) {
         return res.status(400).json({ error: parsedHandle.error.issues[0]?.message ?? 'ID が不正です' });
@@ -89,7 +97,21 @@ router.post('/resend-otp', async (req, res) => {
     return res.json({ success: true, message: '認証コードを再送信しました' });
 });
 
-// ID（handle）が使えるか。形式・予約語・重複を確認する（表示名は重複してよいので確認しない）。
+// 表示名が使えるか（一意。全角半角・大文字小文字・空白の違いは同じ名前として扱う）。
+router.get('/check-display-name', optionalAuth, async (req, res) => {
+    const parsed = DisplayNameSchema.safeParse(typeof req.query.name === 'string' ? req.query.name : '');
+    if (!parsed.success) {
+        return res.json({ available: false, error: parsed.error.issues[0]?.message ?? '表示名が不正です' });
+    }
+    const existing = await userRepository.findByDisplayNameKey(displayNameKey(parsed.data));
+    const own = existing && req.user && existing.id === req.user.id;
+    return res.json({
+        available: !existing || !!own,
+        error: existing && !own ? 'この表示名は既に使用されています' : null,
+    });
+});
+
+// ID（handle）が使えるか。形式・予約語・重複を確認する。
 router.get('/check-handle', async (req, res) => {
     const handle = typeof req.query.handle === 'string' ? req.query.handle.trim() : '';
     const parsed = HandleSchema.safeParse(handle);
@@ -120,8 +142,31 @@ router.get('/me', requireAuth, async (req, res) => {
         handle: user.handle ?? null,
         author: user.handle ? selfAccount(user.handle) : null,
         signingPublicKey: user.signingPublicKey ?? null,
+        // 移行時に他人と表示名が重複していた（一意キー未設定）。変更を促す。
+        displayNameConflict: !user.displayNameKey,
         profileImageUrl: user.profileImageUrl ?? user.image ?? null,
     });
+});
+
+// 表示名を変更する（一意）。ID と違い変更できる。
+router.put('/me/display-name', requireAuth, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    const parsed = DisplayNameSchema.safeParse(typeof req.body?.name === 'string' ? req.body.name : '');
+    if (!parsed.success) {
+        return res.status(400).json({ error: parsed.error.issues[0]?.message ?? '表示名が不正です' });
+    }
+    const key = displayNameKey(parsed.data);
+    const existing = await userRepository.findByDisplayNameKey(key);
+    if (existing && existing.id !== req.user.id) {
+        return res.status(409).json({ error: 'この表示名は既に使用されています' });
+    }
+    try {
+        const updated = await userRepository.setDisplayName(req.user.id, parsed.data, key);
+        if (!updated) return res.status(404).json({ error: 'User not found' });
+        return res.json({ name: updated.name, displayNameConflict: false });
+    } catch {
+        return res.status(409).json({ error: 'この表示名は既に使用されています' });
+    }
 });
 
 // ID（handle）を設定する。変更不可なので未設定のときだけ受け付ける（既存ユーザーの移行用）。

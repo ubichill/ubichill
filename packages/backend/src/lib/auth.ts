@@ -1,5 +1,6 @@
 import { randomInt } from 'node:crypto';
 import { accounts, db, sessions, users, verifications } from '@ubichill/db';
+import { displayNameKey } from '@ubichill/shared';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { eq } from 'drizzle-orm';
@@ -22,7 +23,7 @@ const MAIL_FROM = process.env.MAIL_FROM ?? 'Ubichill <onboarding@resend.dev>';
 interface PendingRegistration {
     email: string;
     password: string;
-    /** 表示名（日本語可・重複可）。users.name に入る。 */
+    /** 表示名（日本語可・一意）。users.name に入る。 */
     displayName: string;
     /** URL・署名用の ID（一意）。users.handle に入る。 */
     handle: string;
@@ -62,12 +63,19 @@ export async function createPendingRegistration(
         return { success: false, error: 'このメールアドレスは既に登録されています' };
     }
 
-    // ID（handle）の重複チェック。表示名は重複してよい。
+    // ID（handle）と表示名はどちらも一意（表示名は全角半角・大文字小文字・空白を同一視）。
     const existingHandle = await db.query.users.findFirst({
         where: eq(users.handle, handle),
     });
     if (existingHandle) {
         return { success: false, error: 'この ID は既に使用されています' };
+    }
+    const nameKey = displayNameKey(displayName);
+    const existingName = await db.query.users.findFirst({
+        where: eq(users.displayNameKey, nameKey),
+    });
+    if (existingName) {
+        return { success: false, error: 'この表示名は既に使用されています' };
     }
 
     // メール確認をスキップする場合は直接登録
@@ -87,7 +95,10 @@ export async function createPendingRegistration(
             }
 
             // メール確認済みに設定
-            await db.update(users).set({ emailVerified: true, handle }).where(eq(users.email, email));
+            await db
+                .update(users)
+                .set({ emailVerified: true, handle, displayNameKey: nameKey })
+                .where(eq(users.email, email));
 
             console.log(`✅ ユーザー登録完了（メール確認スキップ）: ${email}`);
             return { success: true, skipVerification: true };
@@ -178,7 +189,10 @@ export async function verifyAndRegister(email: string, otp: string): Promise<{ s
         }
 
         // メール確認済みに設定
-        await db.update(users).set({ emailVerified: true, handle: pending.handle }).where(eq(users.email, email));
+        await db
+            .update(users)
+            .set({ emailVerified: true, handle: pending.handle, displayNameKey: displayNameKey(pending.displayName) })
+            .where(eq(users.email, email));
 
         pendingRegistrations.delete(email);
         console.log(`✅ ユーザー登録完了: ${email}`);

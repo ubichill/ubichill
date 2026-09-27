@@ -1,7 +1,8 @@
 /**
  * ユーザー ID（handle）と作者アカウント（`handle@domain`）の純粋な知識。
  *
- * - 表示名（users.name）は日本語・記号も可で重複してよい。人に見せるための名前。
+ * - 表示名（users.name）は日本語・記号も可。VRChat のように一意で、検索に使う。変更できる。
+ *   一意性は {@link displayNameKey}（全角半角・大文字小文字・空白の違いを同一視）で判定する。
  * - handle は URL・署名・機械処理用の ID。英小文字・数字・`_` の 3〜30 文字、一意、変更不可。
  * - 作者アカウントは `handle@domain`（例 `youkan@ubichill.com`）。表示は `@youkan@ubichill.com`。
  *   domain は handle を発行したサーバー（または作者自身のドメイン）で、WebFinger で公開鍵を引ける。
@@ -78,4 +79,29 @@ export function formatAuthorAccount({ handle, domain }: AuthorAccount): string {
 /** 画面表示用（メールアドレスと区別するため先頭に `@` を付ける）。 */
 export function displayAuthorAccount(account: string): string {
     return `@${account}`;
+}
+
+export const DISPLAY_NAME_MAX_LENGTH = 30;
+
+export const DisplayNameSchema = z
+    .string()
+    .trim()
+    .min(1, '表示名を入力してください')
+    .max(DISPLAY_NAME_MAX_LENGTH, `表示名は ${DISPLAY_NAME_MAX_LENGTH} 文字以内です`)
+    .refine((v) => !isControlText(v), '表示名に制御文字は使えません');
+
+function isControlText(value: string): boolean {
+    return Array.from(value).some((ch) => {
+        const code = ch.codePointAt(0) ?? 0;
+        return code < 0x20 || code === 0x7f;
+    });
+}
+
+/**
+ * 表示名の一意性判定キー。NFKC（全角英数→半角など）・前後空白除去・連続空白の圧縮・小文字化。
+ * 「Youkan」「ｙｏｕｋａｎ」「youkan 」を同じ名前として扱い、見分けにくい重複を防ぐ。
+ * DB の移行 SQL（lower(regexp_replace(btrim(normalize(name, NFKC)), '\s+', ' ', 'g'))）と同じ規則。
+ */
+export function displayNameKey(name: string): string {
+    return name.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
 }

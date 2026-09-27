@@ -18,6 +18,11 @@ export const users = pgTable('users', {
     // App-specific fields
     /** @deprecated 表示名（name）と重複していた旧フィールド。表示名は name、URL・署名用の ID は handle を使う。 */
     username: varchar('username', { length: 255 }).unique(),
+    /**
+     * 表示名（name）の一意性キー（displayNameKey: NFKC・空白圧縮・小文字化）。VRChat のように表示名を一意にする。
+     * 移行時に他人と重複していた既存ユーザーは null（表示名の変更を促す）。
+     */
+    displayNameKey: varchar('display_name_key', { length: 120 }).unique(),
     /** URL・署名・機械処理用の ID（英小文字・数字・_、一意、変更不可）。作者アカウントは handle@domain。 */
     handle: varchar('handle', { length: 30 }).unique(),
     /**

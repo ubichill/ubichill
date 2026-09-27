@@ -43,6 +43,13 @@
       "when": 1790413728304,
       "tag": "0005_overconfident_nighthawk",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790502860220,
+      "tag": "0006_brown_jackpot",
+      "breakpoints": true
     }
   ]
 }

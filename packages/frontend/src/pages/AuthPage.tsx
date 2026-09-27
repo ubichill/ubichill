@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
-import { useHandleAvailability } from '@/lib/account/useHandleAvailability';
+import { useDisplayNameAvailability, useHandleAvailability } from '@/lib/account/useHandleAvailability';
 import { registerWithOTP, resendOTP, signIn, verifyOTPAndRegister } from '@/lib/auth-client';
 import { useSession } from '@/lib/session';
 import { css } from '@/styled-system/css';
@@ -24,6 +24,7 @@ export function AuthPage() {
     const [resendCooldown, setResendCooldown] = useState(0);
     const [otp, setOtp] = useState('');
     const handleStatus = useHandleAvailability(handle, mode === 'register');
+    const displayNameStatus = useDisplayNameAvailability(displayName, mode === 'register');
 
     // クールダウンタイマー
     useEffect(() => {
@@ -48,9 +49,10 @@ export function AuthPage() {
 
         try {
             if (mode === 'register') {
-                // ID が使えない場合は登録しない（表示名は重複してよいので確認しない）
-                if (handleStatus.state !== 'available') {
-                    setError('error' in handleStatus ? handleStatus.error : 'ID を確認してください');
+                // 表示名・ID のどちらかが使えない場合は登録しない（どちらも一意）
+                const blocking = [displayNameStatus, handleStatus].find((st) => st.state !== 'available');
+                if (blocking) {
+                    setError('error' in blocking ? blocking.error : '表示名と ID を確認してください');
                     setIsLoading(false);
                     return;
                 }
@@ -262,13 +264,24 @@ export function AuthPage() {
                                     id="displayName"
                                     type="text"
                                     value={displayName}
-                                    onChange={(e) => setDisplayName(e.target.value.slice(0, 50))}
+                                    onChange={(e) => setDisplayName(e.target.value.slice(0, 30))}
                                     placeholder="表示名"
-                                    className={inputStyle}
+                                    className={
+                                        displayNameStatus.state === 'invalid' || displayNameStatus.state === 'taken'
+                                            ? inputErrorStyle
+                                            : inputStyle
+                                    }
                                     required
                                 />
+                                {displayNameStatus.state === 'checking' && <p className={hintStyle}>確認中...</p>}
+                                {'error' in displayNameStatus && (
+                                    <p className={fieldErrorStyle}>{displayNameStatus.error}</p>
+                                )}
+                                {displayNameStatus.state === 'available' && (
+                                    <p className={fieldSuccessStyle}>この表示名は使用できます</p>
+                                )}
                                 <p className={hintStyle}>
-                                    日本語も使えます。他の人と同じでも構いません（あとから変更できます）
+                                    日本語も使えます。他の人と同じ名前は使えません（あとから変更できます）
                                 </p>
                             </div>
                             <div className={fieldStyle}>
@@ -343,7 +356,11 @@ export function AuthPage() {
                     <button
                         type="submit"
                         className={buttonStyle}
-                        disabled={isLoading || (mode === 'register' && handleStatus.state === 'checking')}
+                        disabled={
+                            isLoading ||
+                            (mode === 'register' &&
+                                (handleStatus.state === 'checking' || displayNameStatus.state === 'checking'))
+                        }
                     >
                         {isLoading ? '処理中...' : mode === 'login' ? 'ログイン' : '登録'}
                     </button>

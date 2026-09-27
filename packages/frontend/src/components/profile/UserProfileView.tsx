@@ -8,6 +8,7 @@ import { API_BASE } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { loadSigningKey, signerFor, signHostedWorld } from '@/lib/signing';
 import { css } from '@/styled-system/css';
+import { DisplayNameEditor } from './DisplayNameEditor';
 import { SigningKeySection } from './SigningKeySection';
 
 /** 公開プロフィール。自分のページでは MyAccount の項目（登録鍵など）も入る。 */
@@ -17,6 +18,7 @@ interface UserProfile {
     handle: string | null;
     author: string | null;
     signingPublicKey?: string | null;
+    displayNameConflict?: boolean;
     profileImageUrl: string | null;
 }
 
@@ -204,6 +206,13 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                                 {displayAuthorAccount(profile.author)}
                             </p>
                         )}
+                        {isOwnPage && (
+                            <DisplayNameEditor
+                                name={profile.name}
+                                conflict={!!profile.displayNameConflict}
+                                onChanged={(name) => setProfile({ ...profile, name, displayNameConflict: false })}
+                            />
+                        )}
                     </div>
                 </div>
             )}
@@ -225,7 +234,11 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
 
             {isOwnPage && profile && (
                 <SigningKeySection
-                    account={{ ...profile, signingPublicKey: profile.signingPublicKey ?? null }}
+                    account={{
+                        ...profile,
+                        signingPublicKey: profile.signingPublicKey ?? null,
+                        displayNameConflict: !!profile.displayNameConflict,
+                    }}
                     onAccountChange={setProfile}
                     unsignedCount={unsignedCount}
                 />
