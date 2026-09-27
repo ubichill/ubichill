@@ -54,6 +54,9 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
         const official = list.find((w) => w.id === 'default');
         expect(official).toBeTruthy();
         expect(official?.source.kind).toBe('local');
+        // 公式ワールドは作者 ubichill@ubichill.com で署名され、worlds/trusted-authors.json の記録で作者を確認できる
+        expect(official?.identity).toMatchObject({ status: 'verified', author: 'ubichill@ubichill.com' });
+        expect(official?.authorName).toBe('Ubichill');
         // official はメモリ索引のみ（DB レコードは無い）
         expect(await worldRegistry.getWorldRecord('default')).toBeUndefined();
     });
@@ -86,7 +89,8 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
             expect(await worldRegistry.setWorldSignature(world.id, sig)).toMatchObject({ ok: true });
             expect(await worldRegistry.getWorldSignature(world.id)).toEqual(sig);
             expect((await worldRegistry.getWorld(world.id))?.identity?.status).toBe('verified');
-            expect((await worldRegistry.listWorlds('local')).some((w) => w.id === world.id)).toBe(true);
+            // 鍵だけの署名（作者アカウントなし）は公開ルールを満たさないので一覧に出ない（例外なし）
+            expect((await worldRegistry.listWorlds('local')).some((w) => w.id === world.id)).toBe(false);
 
             const def = hosted.definition as WorldDefinition;
             const changed = { ...def, spec: { ...def.spec, displayName: '変更後' } };
@@ -156,6 +160,7 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
                 ok: true,
                 identity: { author, worldId: `acct:${author}/${world.id}` },
             });
+            expect((await worldRegistry.listWorlds('local')).some((w) => w.id === world.id)).toBe(true);
 
             // 作者名は metadata ではなくアカウントの表示名。表示名を変えても署名はそのまま有効で、名前だけ変わる
             expect(world.authorName).toBe('テスト作者');

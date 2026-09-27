@@ -33,76 +33,128 @@ describe('publicKeyFromWebFinger', () => {
     });
 });
 
-describe('createAuthorKeyDirectory', () => {
+describe('createAuthorKeyDirectory（確認は初回と鍵変更時だけ）', () => {
     const LOCAL = 'B'.repeat(43);
-    const setup = (overrides: { allowHttp?: boolean; remote?: (url: string) => unknown } = {}) => {
-        const calls = { local: 0, fetch: [] as string[] };
-        const clock = { t: 0 };
-        const resolver = createAuthorKeyDirectory({
+    const REMOTE = 'C'.repeat(43);
+    const ROTATED = 'D'.repeat(43);
+    const PINNED = 'E'.repeat(43);
+
+    const setup = (options: { allowHttp?: boolean; remote?: (url: string) => unknown } = {}) => {
+        const calls = { fetch: [] as string[], saved: [] as string[], refreshed: [] as string[] };
+        const clock = { t: 1_000_000 };
+        const store = new Map<string, { publicKey: string; displayName?: string | null; refreshedAt: Date }>();
+        const directory = createAuthorKeyDirectory({
             selfDomain: () => 'ubichill.com',
-            findLocalAccount: async (handle) => {
-                calls.local += 1;
-                return handle === 'youkan' ? { signingPublicKey: LOCAL, displayName: 'ようかん' } : undefined;
+            findLocalAccount: async (handle) =>
+                handle === 'youkan' ? { signingPublicKey: LOCAL, displayName: 'ようかん' } : undefined,
+            bindings: {
+                find: async (account) => store.get(account),
+                save: async (account, publicKey, displayName) => {
+                    calls.saved.push(account);
+                    store.set(account, { publicKey, displayName, refreshedAt: new Date(clock.t) });
+                },
+                refreshDisplayName: async (account, displayName) => {
+                    calls.refreshed.push(account);
+                    const current = store.get(account);
+                    if (current) store.set(account, { ...current, displayName, refreshedAt: new Date(clock.t) });
+                },
             },
+            pinned: new Map([['ubichill@ubichill.com', { signingPublicKey: PINNED, displayName: 'Ubichill' }]]),
             fetchJson: async (url) => {
                 calls.fetch.push(url);
-                return overrides.remote ? overrides.remote(url) : undefined;
+                return options.remote ? options.remote(url) : undefined;
             },
-            allowHttp: overrides.allowHttp ?? false,
+            allowHttp: options.allowHttp ?? false,
             now: () => clock.t,
         });
-        return { resolver, calls, clock };
+        return { directory, calls, clock, store };
     };
+    const remoteJrd =
+        (key: string, name = 'アリス') =>
+        () => ({
+            subject: 'acct:alice@other.example',
+            properties: { [SIGNING_KEY_WEBFINGER_PROPERTY]: key, [DISPLAY_NAME_WEBFINGER_PROPERTY]: name },
+        });
 
-    it('自サーバーのアカウントは DB で引き、ネットワークに出ない', async () => {
-        const { resolver, calls } = setup();
-        expect(await resolver.resolve('youkan@ubichill.com')).toBe(LOCAL);
+    it('自サーバーのアカウントは DB で引き、ネットワークにも結び付けにも出ない', async () => {
+        const { directory, calls } = setup();
+        expect(await directory.resolve('youkan@ubichill.com', LOCAL)).toBe(LOCAL);
+        expect(await directory.displayName('youkan@ubichill.com')).toBe('ようかん');
+        expect(calls.fetch).toEqual([]);
+        expect(calls.saved).toEqual([]);
+    });
+
+    it('リポジトリに記録した結び付け（公式）が最優先で、ネットワークに出ない', async () => {
+        const { directory, calls } = setup();
+        expect(await directory.resolve('ubichill@ubichill.com', PINNED)).toBe(PINNED);
+        expect(await directory.displayName('ubichill@ubichill.com')).toBe('Ubichill');
         expect(calls.fetch).toEqual([]);
     });
 
-    it('他ドメインは https の WebFinger で引く（本番は http を試さない）', async () => {
-        const { resolver, calls } = setup({ remote: () => undefined });
-        expect(await resolver.resolve('alice@other.example')).toBeUndefined();
-        expect(calls.fetch).toEqual([
-            'https://other.example/.well-known/webfinger?resource=acct%3Aalice%40other.example',
-        ]);
+    it('初回だけ WebFinger で確認して保存し、以後の同じ鍵は確認しない', async () => {
+        const { directory, calls } = setup({ remote: remoteJrd(REMOTE) });
+        expect(await directory.resolve('alice@other.example', REMOTE)).toBe(REMOTE);
+        expect(await directory.resolve('alice@other.example', REMOTE)).toBe(REMOTE);
+        expect(calls.fetch).toHaveLength(1);
+        expect(calls.saved).toEqual(['alice@other.example']);
     });
 
-    it('開発時だけ https で取れなければ http も試す', async () => {
-        const { resolver, calls } = setup({
-            allowHttp: true,
-            remote: (url) => (url.startsWith('http://') ? jrd('acct:alice@localhost:3101') : undefined),
-        });
-        expect(await resolver.resolve('alice@localhost:3101')).toBe(KEY);
-        expect(calls.fetch.map((u) => u.split(':')[0])).toEqual(['https', 'http']);
+    it('署名の鍵が確認済みの鍵と違えば確認し直し、新しい鍵を保存する（鍵の入れ替え）', async () => {
+        const state = { key: REMOTE };
+        const { directory, calls, store } = setup({ remote: () => remoteJrd(state.key)() });
+        await directory.resolve('alice@other.example', REMOTE);
+        state.key = ROTATED;
+        expect(await directory.resolve('alice@other.example', ROTATED)).toBe(ROTATED);
+        expect(calls.fetch).toHaveLength(2);
+        expect(store.get('alice@other.example')?.publicKey).toBe(ROTATED);
     });
 
-    it('取得に失敗（throw）しても undefined（作者を表示しない側に倒す）', async () => {
-        const { resolver } = setup({
-            remote: () => {
-                throw new Error('down');
-            },
-        });
-        expect(await resolver.resolve('alice@other.example')).toBeUndefined();
+    it('他人の鍵で名乗られても、確認し直した結果と違えば一致しない（作者は付かない）', async () => {
+        const { directory } = setup({ remote: remoteJrd(REMOTE) });
+        expect(await directory.resolve('alice@other.example', 'F'.repeat(43))).toBe(REMOTE);
     });
 
-    it('TTL 内はキャッシュし、invalidate または期限切れで引き直す', async () => {
-        const { resolver, calls, clock } = setup();
-        await resolver.resolve('youkan@ubichill.com');
-        await resolver.resolve('@youkan@UbiChill.com'); // 表記ゆれも同じキャッシュ
-        expect(calls.local).toBe(1);
-        resolver.invalidate('youkan@ubichill.com');
-        await resolver.resolve('youkan@ubichill.com');
-        expect(calls.local).toBe(2);
+    it('確認に失敗したら保存済みの鍵を返し、しばらく問い合わせ直さない', async () => {
+        const state = { up: true };
+        const { directory, calls, clock } = setup({ remote: () => (state.up ? remoteJrd(REMOTE)() : undefined) });
+        await directory.resolve('alice@other.example', REMOTE);
+        state.up = false;
+        expect(await directory.resolve('alice@other.example', ROTATED)).toBe(REMOTE);
+        expect(await directory.resolve('alice@other.example', ROTATED)).toBe(REMOTE);
+        expect(calls.fetch).toHaveLength(2); // 失敗は 1 回だけ問い合わせる
         clock.t += 5 * 60 * 1000;
-        await resolver.resolve('youkan@ubichill.com');
-        expect(calls.local).toBe(3);
+        await directory.resolve('alice@other.example', ROTATED);
+        expect(calls.fetch).toHaveLength(3);
+    });
+
+    it('本番は https だけ、開発時だけ http も試す', async () => {
+        const prod = setup();
+        await prod.directory.resolve('alice@other.example', REMOTE);
+        expect(prod.calls.fetch.map((u) => u.split(':')[0])).toEqual(['https']);
+        const dev = setup({ allowHttp: true });
+        await dev.directory.resolve('bob@other.example', REMOTE);
+        expect(dev.calls.fetch.map((u) => u.split(':')[0])).toEqual(['https', 'http']);
+    });
+
+    it('表示名は確認済みの値で即答し、古くなったら裏で更新する。未確認のアカウントは出さない', async () => {
+        const state = { name: 'アリス' };
+        const { directory, calls, clock } = setup({ remote: () => remoteJrd(REMOTE, state.name)() });
+        expect(await directory.displayName('alice@other.example')).toBeUndefined(); // 未確認
+        expect(calls.fetch).toEqual([]);
+        await directory.resolve('alice@other.example', REMOTE);
+        state.name = 'アリス改';
+        expect(await directory.displayName('alice@other.example')).toBe('アリス');
+        expect(calls.refreshed).toEqual([]); // 新しいうちは更新しない
+        clock.t += 60 * 60 * 1000 + 1;
+        expect(await directory.displayName('alice@other.example')).toBe('アリス'); // 即答
+        await new Promise((r) => setTimeout(r, 0));
+        expect(await directory.displayName('alice@other.example')).toBe('アリス改');
     });
 
     it('形式不正なアカウントは問い合わせない', async () => {
-        const { resolver, calls } = setup();
-        expect(await resolver.resolve('not an account')).toBeUndefined();
-        expect(calls.local + calls.fetch.length).toBe(0);
+        const { directory, calls } = setup();
+        expect(await directory.resolve('not an account', REMOTE)).toBeUndefined();
+        expect(calls.fetch).toEqual([]);
     });
 });
 
@@ -123,16 +175,5 @@ describe('表示名（作者名はアカウントから引く）', () => {
             );
             expect(profile?.displayName).toBeUndefined();
         }
-    });
-
-    it('自サーバーのアカウントは DB の表示名、無いアカウントは undefined', async () => {
-        const directory = createAuthorKeyDirectory({
-            selfDomain: () => 'ubichill.com',
-            findLocalAccount: async (h) => (h === 'youkan' ? { displayName: 'ようかん' } : undefined),
-            fetchJson: async () => undefined,
-            allowHttp: false,
-        });
-        expect(await directory.displayName('youkan@ubichill.com')).toBe('ようかん');
-        expect(await directory.displayName('nobody@ubichill.com')).toBeUndefined();
     });
 });

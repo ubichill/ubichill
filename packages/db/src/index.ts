@@ -2,6 +2,7 @@ import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from './schema';
 
+export { type AuthorBindingRecord, authorBindingRepository } from './repositories/authorBindingRepository';
 export { favoriteRepository } from './repositories/favoriteRepository';
 export { federationPeerRepository } from './repositories/federationPeerRepository';
 export { instanceRepository } from './repositories/instanceRepository';

@@ -137,7 +137,7 @@ export function SigningKeySection({ account, onAccountChange, unsignedCount }: S
             <h2 className={css({ fontSize: 'lg', fontWeight: '700', color: 'text', mb: '1' })}>作者署名</h2>
             <p className={css({ fontSize: '13px', color: 'textMuted', lineHeight: '1.6', mb: '3' })}>
                 保存したワールドにあなたのアカウントで署名し、改竄されていないこと・あなたが作ったことを他のサーバーでも確認できるようにします。
-                鍵はこのブラウザ（このサイト）にだけ保存され、サーバーには公開鍵だけが登録されます。署名のないワールドは一覧に公開されません。
+                鍵はこのブラウザ（このサイト）にだけ保存され、サーバーには公開鍵だけが登録されます。作者アカウントで署名していないワールドは一覧に公開されません。
             </p>
 
             {account.author ? (
@@ -204,7 +204,8 @@ export function SigningKeySection({ account, onAccountChange, unsignedCount }: S
             )}
             {state === 'registered' && unsignedCount > 0 && (
                 <p className={notice({ tone: 'info' })}>
-                    署名のないワールドが {unsignedCount} 個あります。下の一覧の「署名して公開」で公開できます。
+                    作者アカウントで署名されていないワールドが {unsignedCount}
+                    個あります。下の一覧の「署名して公開」で公開できます。
                 </p>
             )}
 

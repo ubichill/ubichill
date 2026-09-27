@@ -137,8 +137,11 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                 await loadSigningKey(),
                 profile ? { ...profile, signingPublicKey: profile.signingPublicKey ?? null } : null,
             );
-            if (!signer) {
-                setError('先に上の「作者署名」で鍵を作成するか、バックアップファイルを読み込んでください。');
+            // 公開には作者アカウント（ID + 登録済みの鍵）での署名が要る。鍵だけの署名では公開されない。
+            if (!signer?.author) {
+                setError(
+                    '公開するには、上の「作者署名」で ID を設定し、このブラウザの鍵をアカウントに登録してください。',
+                );
                 return;
             }
             const identity = await signHostedWorld(worldId, signer, { apiBase: API_BASE, fetch });

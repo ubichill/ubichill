@@ -25,7 +25,7 @@ export function unverifiedEntryKey(world: EntryWorld): string | null {
 }
 
 export function unverifiedEntryMessage(world: EntryWorld): string {
-    return `「${world.displayName}」は作者の署名がないワールドです。内容が改竄されていないか、誰が作ったかを確認できません。配信元を信頼できる場合のみ入室してください。入室しますか？`;
+    return `「${world.displayName}」は作者を確認できないワールドです（作者アカウントの署名がありません）。内容が改竄されていないか、誰が作ったかを確認できません。配信元を信頼できる場合のみ入室してください。入室しますか？`;
 }
 
 function readAccepted(store: EntryAcceptanceStore): readonly string[] {

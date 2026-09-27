@@ -62,6 +62,10 @@ function unsignableReason(doc: WorldDocument): string | null {
     return null;
 }
 
+const NO_AUTHOR_WARNING =
+    '⚠ 作者アカウント（--author=handle@domain / env UBICHILL_AUTHOR）なしで署名しました。' +
+    '作者を確認できないワールドはホストの一覧に公開されません。どこかの ubichill サーバーのアカウントにこの鍵を登録し、--author を付けて署名してください。';
+
 const sigPathFor = (worldPath: string): string => worldPath.replace(/\.ya?ml$/i, '.sig.json');
 
 function argValue(argv: string[], name: string): string | undefined {
@@ -116,7 +120,9 @@ export async function runSign(argv: string[]): Promise<void> {
     if (reason) throw new Error(`${worldPath} に署名できません: ${reason}`);
     const key = await importSigningKey(pkcs8);
 
-    const sig = await signWorld(doc, key, webWorldCrypto, { author: resolveAuthor(argv) });
+    const author = resolveAuthor(argv);
+    const sig = await signWorld(doc, key, webWorldCrypto, { author });
+    if (!author) console.warn(NO_AUTHOR_WARNING);
     writeFileSync(outPath, `${JSON.stringify(sig, null, 2)}\n`, 'utf-8');
     console.log(`🔏 ${outPath} (${worldIdOf(sig.publicKey, sig.name)})`);
 }
@@ -153,7 +159,9 @@ export async function signAfterInstall(worldPath: string, argv: string[]): Promi
         console.warn(`⚠ ${worldPath} は署名しません: ${reason}。署名なしのワールドはホストの一覧に公開されません。`);
         return;
     }
-    const sig = await signWorld(doc, key, webWorldCrypto, { author: resolveAuthor(argv) });
+    const author = resolveAuthor(argv);
+    const sig = await signWorld(doc, key, webWorldCrypto, { author });
+    if (!author) console.warn(NO_AUTHOR_WARNING);
     writeFileSync(sigPath, `${JSON.stringify(sig, null, 2)}\n`, 'utf-8');
     console.log(`🔏 ${sigPath} (${worldIdOf(sig.publicKey, sig.name)})`);
 }

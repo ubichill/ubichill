@@ -3,28 +3,35 @@ import { describe, expect, it } from 'vitest';
 import { publishReadiness } from './publishReadiness';
 
 const key: WorldSigningKey = { publicKey: 'K', sign: async () => '' };
-const account = { author: 'youkan@ubichill.com', signingPublicKey: 'K' };
+const account = { handle: 'youkan', author: 'youkan@ubichill.com', signingPublicKey: 'K' };
 
-describe('publishReadiness', () => {
-    it('鍵があり全 mod が固定済みならそのまま公開できる（登録鍵なら作者付き）', () => {
+describe('publishReadiness（公開には作者アカウントでの署名が要る）', () => {
+    it('ID があり、このブラウザの鍵がアカウントの登録鍵ならそのまま作者付きで公開できる', () => {
         expect(publishReadiness(key, account, [])).toMatchObject({
             kind: 'ready',
             signer: { author: 'youkan@ubichill.com' },
         });
     });
 
-    it('鍵が無ければ用意が必要', () => {
-        expect(publishReadiness(null, account, [])).toEqual({ kind: 'needs-key' });
+    it('鍵だけでは公開できない（ID 未設定・未登録・別の鍵）＝足りないものを示す', () => {
+        expect(publishReadiness(key, { handle: null, author: null, signingPublicKey: null }, [])).toEqual({
+            kind: 'needs-setup',
+            missingHandle: true,
+            missingKey: false,
+            keyUnregistered: true,
+        });
+        expect(publishReadiness(key, { ...account, signingPublicKey: 'OTHER' }, [])).toMatchObject({
+            kind: 'needs-setup',
+            keyUnregistered: true,
+        });
+        expect(publishReadiness(null, account, [])).toMatchObject({ kind: 'needs-setup', missingKey: true });
     });
 
-    it('固定できない mod があれば鍵があっても公開できない（鍵の用意より先に伝える）', () => {
+    it('固定できない mod があれば何より先に伝える', () => {
         expect(publishReadiness(key, account, ['danmaku'])).toEqual({ kind: 'unpinned', mods: ['danmaku'] });
-        expect(publishReadiness(null, null, ['danmaku'])).toEqual({ kind: 'unpinned', mods: ['danmaku'] });
     });
 
-    it('アカウント情報が取れなくても鍵があれば鍵だけで署名して公開できる', () => {
-        const readiness = publishReadiness(key, null, []);
-        expect(readiness.kind).toBe('ready');
-        expect(readiness.kind === 'ready' && readiness.signer).not.toHaveProperty('author');
+    it('アカウント情報が取れなければ公開できない（鍵だけで公開しない）', () => {
+        expect(publishReadiness(key, null, [])).toEqual({ kind: 'no-account' });
     });
 });

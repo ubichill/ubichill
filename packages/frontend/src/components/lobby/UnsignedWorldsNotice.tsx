@@ -48,8 +48,8 @@ export function UnsignedWorldsNotice() {
             })}
         >
             <span className={css({ flex: 1, minW: '200px' })}>
-                あなたのワールドのうち {count} 個は作者署名がないため、一覧に表示されていません（URL からは入れます）。
-                署名すると公開されます。
+                あなたのワールドのうち {count} 個は作者アカウントで署名されていないため、一覧に表示されていません（URL
+                からは入れます）。署名すると公開されます。
             </span>
             <button
                 type="button"

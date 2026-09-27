@@ -33,7 +33,13 @@ import { resolveAuthorDisplayName, resolveAuthorKey } from './authorKeyStore';
 import { assertPublicUrl, safeFetch } from './safeFetch';
 import { nodeWorldCrypto } from './worldCrypto';
 import { migrateLegacyWorldYaml } from './worldMigration';
-import { definitionToResolved, normalizeWorldUrl, resolveWorldFromUrl, WorldIntegrityError } from './worldResolver';
+import {
+    confirmedAuthorName,
+    definitionToResolved,
+    normalizeWorldUrl,
+    resolveWorldFromUrl,
+    WorldIntegrityError,
+} from './worldResolver';
 
 // KebabCaseId 互換の lowercase + 数字のみ。21文字で十分な衝突耐性を確保。
 const generateWorldId = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 21);
@@ -540,8 +546,9 @@ class WorldRegistry {
                 return { ok: false, reason: verdict.status === 'invalid' ? verdict.reason : 'malformed' };
             }
         } else if (!options.allowUnsigned) {
+            // 署名が有効なワールド（作者アカウントの確認有無に関係なく）を黙って未署名にしない
             const current = await this.getWorld(worldId);
-            if (isPublishable(current?.identity)) return { ok: false, reason: 'signature-required' };
+            if (current?.identity?.status === 'verified') return { ok: false, reason: 'signature-required' };
         }
 
         const updated = await worldRepository.update(existing.id, {
@@ -634,11 +641,16 @@ class WorldRegistry {
             };
             const lock = ModLockSchema.safeParse(hosted.lock);
             // official ワールドは DB に持たずメモリ索引のみ（DB 依存の排除）
-            const resolved = definitionToResolved(parsed, this.selfWorldUrl(id), this.localSource(id), {
-                authorId: SYSTEM_AUTHOR_ID,
-                lock: lock.success ? lock.data : undefined,
-                identity: await hostedIdentity(hosted, id),
-            });
+            const identity = await hostedIdentity(hosted, id);
+            const resolved = {
+                ...definitionToResolved(parsed, this.selfWorldUrl(id), this.localSource(id), {
+                    authorId: SYSTEM_AUTHOR_ID,
+                    lock: lock.success ? lock.data : undefined,
+                    identity,
+                }),
+                // 公式ワールドの作者名も metadata ではなく、確認できた作者アカウントの表示名
+                authorName: await confirmedAuthorName(identity, resolveAuthorDisplayName),
+            };
             this._index.set(id, resolved);
             this._urlIndex.set(resolved.url, id);
             this._hostedFiles.set(id, hosted);

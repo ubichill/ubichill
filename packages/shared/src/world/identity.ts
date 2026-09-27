@@ -100,11 +100,12 @@ export function worldNameOf(definition: unknown): string | undefined {
 }
 
 /**
- * 一覧・検索に公開してよいか。作者署名を検証できたワールドだけを公開する。
- * 未署名・識別不明（検証していない自己申告）は URL を直接知っている人だけが確認付きで入れる。
+ * 一覧・検索に公開してよいか。署名を検証でき、かつ作者アカウント（どこかのサーバーに実在する
+ * handle@domain）まで確認できたワールドだけを公開する。例外は無い（公式ワールドも公式アカウントで署名する）。
+ * 未署名・鍵だけの署名（作者不明）・識別不明は、URL を直接知っている人だけが確認付きで入れる。
  */
 export function isPublishable(identity: WorldIdentity | undefined): boolean {
-    return identity?.status === 'verified';
+    return identity?.status === 'verified' && !!identity.author;
 }
 
 /**
@@ -122,11 +123,11 @@ export function unpinnedModsOf(doc: WorldDocument): string[] | null {
 
 /**
  * このワールドの mod を lock で厳格に固定するか（lock 欠落・不一致の mod は実行しない）。
- * 作者署名ありのワールドは配信場所に関係なく厳格（署名時と異なる mod コードを動かさない）。
- * 未署名は従来通り provenance で決める（外部は厳格、本体の未公開ワールドは開発用に寛容）。
+ * 署名が有効なワールドは（作者アカウントの確認有無に関係なく）配信場所を問わず厳格
+ * （署名時と異なる mod コードを動かさない）。未署名は provenance で決める（外部は厳格、本体の未公開は開発用に寛容）。
  */
 export function isStrictLockWorld(sourceKind: string, identity: WorldIdentity | undefined): boolean {
-    return isPublishable(identity) || requiresLock(sourceKind);
+    return identity?.status === 'verified' || requiresLock(sourceKind);
 }
 
 /** 版をまたいで不変なワールド識別子（作者アカウント未確認時は鍵で識別する）。 */
@@ -140,10 +141,11 @@ export function authorWorldIdOf(author: string, name: string): string {
 }
 
 /**
- * 作者アカウント（`handle@domain`）の現在の署名公開鍵を返す。見つからなければ undefined。
- * 実装は呼び出し側（自サーバーの DB / 他ドメインの WebFinger）。
+ * 作者アカウント（`handle@domain`）の署名公開鍵を返す。見つからなければ undefined。
+ * `claimedKey`（署名に使われた鍵）を渡すので、実装は「確認済みの結び付けと一致すればネットワークに出ない、
+ * 一致しない・未確認のときだけ確認し直す」ことができる（自サーバーは DB、他ドメインは WebFinger）。
  */
-export type AuthorKeyResolver = (author: string) => Promise<string | undefined>;
+export type AuthorKeyResolver = (author: string, claimedKey: string) => Promise<string | undefined>;
 
 /** 署名対象のバイト列（UTF-8 化は crypto 側）。signature 以外の全フィールドを正規化する。 */
 export function worldSignaturePayload(fields: Omit<WorldSignature, 'signature'>): string {
@@ -207,7 +209,9 @@ export async function verifyWorldSignature(
     if (unpinned === null || unpinned.length > 0) return { status: 'invalid', reason: 'lock-incomplete' };
 
     const authorKey =
-        sig.author && resolveAuthorKey ? await resolveAuthorKey(sig.author).catch(() => undefined) : undefined;
+        sig.author && resolveAuthorKey
+            ? await resolveAuthorKey(sig.author, sig.publicKey).catch(() => undefined)
+            : undefined;
     if (sig.author && authorKey === sig.publicKey) {
         return {
             status: 'verified',

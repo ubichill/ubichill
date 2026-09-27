@@ -21,7 +21,7 @@
  * （frozen-lockfile チェックと同じパターン）。
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, globSync } from 'node:fs';
+import { existsSync, globSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,6 +33,22 @@ const check = process.argv.includes('--check');
 const defaultKeyFile = join(homedir(), '.config', 'ubichill', 'official-worlds.key');
 const keyFile = process.env.UBICHILL_SIGNING_KEY_FILE ?? (existsSync(defaultKeyFile) ? defaultKeyFile : undefined);
 const sign = process.argv.includes('--sign');
+
+/** 公式ワールドの作者アカウント。worlds/trusted-authors.json に鍵を記録してレビューする（例外なく作者アカウントで署名する）。 */
+const OFFICIAL_AUTHOR = 'ubichill@ubichill.com';
+const trustedAuthors = JSON.parse(readFileSync(join(repoRoot, 'worlds', 'trusted-authors.json'), 'utf-8')).authors ?? {};
+
+/** 署名の作者が公式アカウントで、鍵が記録と一致するか（作者なし・別の鍵の署名を公式として通さない）。 */
+function officialAuthorError(relPath) {
+    const sigPath = join(repoRoot, relPath.replace(/\.ya?ml$/i, '.sig.json'));
+    if (!existsSync(sigPath)) return '署名ファイルがありません';
+    const sig = JSON.parse(readFileSync(sigPath, 'utf-8'));
+    if (sig.author !== OFFICIAL_AUTHOR) return `作者が ${OFFICIAL_AUTHOR} ではありません（${sig.author ?? 'なし'}）`;
+    if (sig.publicKey !== trustedAuthors[OFFICIAL_AUTHOR]?.publicKey) {
+        return `署名鍵が worlds/trusted-authors.json の ${OFFICIAL_AUTHOR} の鍵と一致しません`;
+    }
+    return null;
+}
 if (sign && !process.env.UBICHILL_SIGNING_KEY && !keyFile) {
     console.error(`❌ 署名鍵がありません（${defaultKeyFile} か env UBICHILL_SIGNING_KEY[_FILE]）`);
     process.exit(1);
@@ -61,7 +77,9 @@ for (const relPath of worldFiles.sort()) {
     if (!run(installArgs)) failed = true;
 
     if (sign) {
-        if (!run(['sign', relPath, ...(keyFile ? [`--key-file=${keyFile}`] : [])])) failed = true;
+        if (!run(['sign', relPath, `--author=${OFFICIAL_AUTHOR}`, ...(keyFile ? [`--key-file=${keyFile}`] : [])])) {
+            failed = true;
+        }
     } else if (!run(['sign', relPath, '--check'])) {
         if (check) {
             failed = true;
@@ -70,6 +88,12 @@ for (const relPath of worldFiles.sort()) {
                 `⚠ ${relPath} の署名が無効です。署名鍵を持つメンテナが内容を確認して \`pnpm sign:worlds\` で署名し直す必要があります（未署名の公式ワールドは一覧に出ません）。`,
             );
         }
+    }
+
+    const authorError = officialAuthorError(relPath);
+    if (authorError) {
+        console.error(`❌ ${relPath}: ${authorError}。公式ワールドは作者アカウント付きで署名する必要があります。`);
+        if (check || sign) failed = true;
     }
 }
 

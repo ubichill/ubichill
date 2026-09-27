@@ -50,6 +50,13 @@
       "when": 1790502860220,
       "tag": "0006_brown_jackpot",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790505453635,
+      "tag": "0007_pink_taskmaster",
+      "breakpoints": true
     }
   ]
 }

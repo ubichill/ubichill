@@ -3,6 +3,7 @@ import {
     type AuthorKeyResolver,
     authorWorldIdOf,
     canonicalJson,
+    isPublishable,
     isStrictLockWorld,
     KEY_REGISTRATION_MAX_SKEW_MS,
     keyRegistrationMessage,
@@ -438,5 +439,24 @@ describe('isStrictLockWorld（mod を厳格に固定するか）', () => {
         expect(isStrictLockWorld('registry', undefined)).toBe(false);
         expect(isStrictLockWorld('github', unsigned)).toBe(true);
         expect(isStrictLockWorld('unknown-kind', undefined)).toBe(true);
+    });
+});
+
+describe('isPublishable（公開してよいか）', () => {
+    const base = {
+        status: 'verified' as const,
+        worldId: 'w',
+        publicKey: 'A'.repeat(43),
+        contentHash: `sha256-${'A'.repeat(43)}=`,
+    };
+
+    it('作者アカウントまで確認できた署名だけ公開する', () => {
+        expect(isPublishable({ ...base, author: 'youkan@ubichill.com' })).toBe(true);
+    });
+
+    it('鍵だけの署名（作者不明）・未署名・識別不明は公開しない（例外なし）', () => {
+        expect(isPublishable(base)).toBe(false);
+        expect(isPublishable({ status: 'unsigned', contentHash: base.contentHash })).toBe(false);
+        expect(isPublishable(undefined)).toBe(false);
     });
 });

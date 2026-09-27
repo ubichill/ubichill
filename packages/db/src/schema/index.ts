@@ -2,6 +2,7 @@ import { ModLockSchema, WorldDefinitionSchema } from '@ubichill/shared';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { z } from 'zod';
 
+export * from './authorBindings';
 export * from './federationPeers';
 export * from './instances';
 export * from './users';

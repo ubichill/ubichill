@@ -16,12 +16,26 @@ function memoryStore(): EntryAcceptanceStore & { raw: Map<string, string> } {
 }
 
 describe('unverifiedEntryKey', () => {
-    it('署名検証済みなら確認不要', () => {
+    it('作者アカウントまで確認できた署名なら確認不要', () => {
+        expect(
+            unverifiedEntryKey(
+                world({
+                    status: 'verified',
+                    worldId: 'acct:youkan@ubichill.com/w',
+                    publicKey: 'k'.repeat(43),
+                    contentHash: HASH_A,
+                    author: 'youkan@ubichill.com',
+                }),
+            ),
+        ).toBeNull();
+    });
+
+    it('鍵だけの署名（作者不明）は確認が要る', () => {
         expect(
             unverifiedEntryKey(
                 world({ status: 'verified', worldId: 'ed25519:k/w', publicKey: 'k'.repeat(43), contentHash: HASH_A }),
             ),
-        ).toBeNull();
+        ).not.toBeNull();
     });
 
     it('未署名は確認が要る', () => {
