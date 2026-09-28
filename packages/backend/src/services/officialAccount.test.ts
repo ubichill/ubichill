@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-    DEV_INITIAL_PASSWORD,
+    DEV_DEFAULT_PASSWORD,
     ensureOfficialAccount,
     type OfficialAccountDeps,
     officialAccountConfig,
@@ -8,20 +8,40 @@ import {
 
 const KEY = 'K'.repeat(43);
 
-function fakeDeps(state: {
-    users?: Array<{ id: string; email: string; handle: string | null; signingPublicKey: string | null }>;
-    takenNames?: string[];
-    officialPublicKey?: string;
-}) {
+interface FakeUser {
+    id: string;
+    email: string;
+    handle: string | null;
+    signingPublicKey: string | null;
+    passwordChangeRequired: boolean;
+    password?: string;
+}
+
+function fakeDeps(state: { users?: FakeUser[]; takenNames?: string[]; officialPublicKey?: string }) {
     const users = [...(state.users ?? [])];
-    const calls = { signUp: [] as string[], initialize: [] as Array<{ id: string; fields: Record<string, unknown> }> };
+    const calls = {
+        signUp: [] as string[],
+        initialize: [] as Array<{ id: string; fields: Record<string, unknown> }>,
+        replaced: [] as Array<{ id: string; password: string }>,
+    };
     const deps: OfficialAccountDeps = {
         findByHandle: async (h) => users.find((u) => u.handle === h),
         findByEmail: async (e) => users.find((u) => u.email === e),
-        signUp: async (email) => {
+        signUp: async (email, password) => {
             calls.signUp.push(email);
-            users.push({ id: `new-${email}`, email, handle: null, signingPublicKey: null });
+            users.push({
+                id: `new-${email}`,
+                email,
+                handle: null,
+                signingPublicKey: null,
+                passwordChangeRequired: false,
+                password,
+            });
             return `new-${email}`;
+        },
+        passwordMatches: async (id, password) => users.find((u) => u.id === id)?.password === password,
+        replacePassword: async (id, password) => {
+            calls.replaced.push({ id, password });
         },
         isDisplayNameTaken: async (key) => (state.takenNames ?? []).includes(key),
         initialize: async (id, fields) => {
@@ -33,22 +53,57 @@ function fakeDeps(state: {
     return { deps, calls };
 }
 
+const official = (overrides: Partial<FakeUser> = {}): FakeUser => ({
+    id: 'u1',
+    email: 'ubichill@ubichill.com',
+    handle: 'ubichill',
+    signingPublicKey: KEY,
+    passwordChangeRequired: false,
+    password: 'secret-1',
+    ...overrides,
+});
+
 describe('officialAccountConfig', () => {
-    it('開発は既定の初期パスワード、本番は未設定なら作らない', () => {
-        expect(officialAccountConfig({ NODE_ENV: 'development' }).initialPassword).toBe(DEV_INITIAL_PASSWORD);
-        expect(officialAccountConfig({ NODE_ENV: 'production' }).initialPassword).toBeUndefined();
+    it('Secret があればそれを使い、既定値扱いにしない', () => {
+        expect(officialAccountConfig({ NODE_ENV: 'production', OFFICIAL_ACCOUNT_PASSWORD: 'secret-1' })).toEqual({
+            email: 'ubichill@ubichill.com',
+            password: 'secret-1',
+            usingDevDefault: false,
+        });
+    });
+
+    it('開発で未設定なら公開済みの既定値を使い、既定値であることを示す', () => {
+        expect(officialAccountConfig({ NODE_ENV: 'development' })).toMatchObject({
+            password: DEV_DEFAULT_PASSWORD,
+            usingDevDefault: true,
+        });
+    });
+
+    it('旧名 OFFICIAL_ACCOUNT_INITIAL_PASSWORD も読み、新しい名前があればそちらを優先する', () => {
         expect(
-            officialAccountConfig({ NODE_ENV: 'production', OFFICIAL_ACCOUNT_INITIAL_PASSWORD: 'secret-pass' })
-                .initialPassword,
-        ).toBe('secret-pass');
-        expect(officialAccountConfig({}).email).toBe('ubichill@ubichill.com');
+            officialAccountConfig({ NODE_ENV: 'production', OFFICIAL_ACCOUNT_INITIAL_PASSWORD: 'legacy-1' }).password,
+        ).toBe('legacy-1');
+        expect(
+            officialAccountConfig({
+                NODE_ENV: 'production',
+                OFFICIAL_ACCOUNT_PASSWORD: 'new-1',
+                OFFICIAL_ACCOUNT_INITIAL_PASSWORD: 'legacy-1',
+            }).password,
+        ).toBe('new-1');
+    });
+
+    it('本番で未設定なら何もしない（推測できるパスワードで作らない）', () => {
+        expect(officialAccountConfig({ NODE_ENV: 'production' })).toMatchObject({
+            password: undefined,
+            usingDevDefault: false,
+        });
     });
 });
 
-describe('ensureOfficialAccount', () => {
-    const config = { email: 'ubichill@ubichill.com', initialPassword: 'initial-pass' };
+describe('ensureOfficialAccount（パスワードは常に Secret が正）', () => {
+    const config = { email: 'ubichill@ubichill.com', password: 'secret-1', usingDevDefault: false };
 
-    it('無ければ初期パスワードで作り、ID・表示名・公式の鍵・初期パスワードのまま、を設定する', async () => {
+    it('無ければ Secret のパスワードで作り、ID・表示名・公式の鍵を設定する', async () => {
         const { deps, calls } = fakeDeps({ officialPublicKey: KEY });
         expect(await ensureOfficialAccount(config, deps)).toBe('created');
         expect(calls.signUp).toEqual(['ubichill@ubichill.com']);
@@ -58,61 +113,78 @@ describe('ensureOfficialAccount', () => {
             displayNameKey: 'ubichill',
             signingPublicKey: KEY,
             emailVerified: true,
-            passwordChangeRequired: true,
+            passwordChangeRequired: false,
         });
     });
 
-    it('既にあれば作らない（2回目以降の起動）', async () => {
-        const { deps, calls } = fakeDeps({
-            users: [{ id: 'u1', email: 'x@example.com', handle: 'ubichill', signingPublicKey: KEY }],
-            officialPublicKey: KEY,
-        });
-        expect(await ensureOfficialAccount(config, deps)).toBe('exists');
-        expect(calls.signUp).toEqual([]);
+    it('Secret と同じなら何もしない（起動のたびにログインを切らない）', async () => {
+        const { deps, calls } = fakeDeps({ users: [official()], officialPublicKey: KEY });
+        expect(await ensureOfficialAccount(config, deps)).toBe('unchanged');
+        expect(calls.replaced).toEqual([]);
         expect(calls.initialize).toEqual([]);
     });
 
+    it('Secret を差し替えたら次の起動でパスワードを置き換える（ログインは無効化）', async () => {
+        const { deps, calls } = fakeDeps({ users: [official({ password: 'old' })], officialPublicKey: KEY });
+        expect(await ensureOfficialAccount(config, deps)).toBe('synced');
+        expect(calls.replaced).toEqual([{ id: 'u1', password: 'secret-1' }]);
+    });
+
+    it('画面などで変えられていても、次の起動で Secret の値に戻す', async () => {
+        const { deps, calls } = fakeDeps({ users: [official({ password: 'changed-in-ui' })] });
+        await ensureOfficialAccount(config, deps);
+        expect(calls.replaced).toHaveLength(1);
+    });
+
+    it('本番で Secret 未設定なら作らず、既存のパスワードにも触れない', async () => {
+        const none = { ...config, password: undefined };
+        const created = fakeDeps({});
+        expect(await ensureOfficialAccount(none, created.deps)).toBe('skipped');
+        expect(created.calls.signUp).toEqual([]);
+
+        const existing = fakeDeps({ users: [official({ password: 'whatever' })] });
+        expect(await ensureOfficialAccount(none, existing.deps)).toBe('unchanged');
+        expect(existing.calls.replaced).toEqual([]);
+    });
+
+    it('既定値を使っている間だけ「既定のパスワードのまま」を立て、Secret を設定したら外す', async () => {
+        const dev = { ...config, password: DEV_DEFAULT_PASSWORD, usingDevDefault: true };
+        const onDev = fakeDeps({ users: [official({ password: DEV_DEFAULT_PASSWORD })] });
+        await ensureOfficialAccount(dev, onDev.deps);
+        expect(onDev.calls.initialize).toEqual([{ id: 'u1', fields: { passwordChangeRequired: true } }]);
+
+        const onSecret = fakeDeps({ users: [official({ passwordChangeRequired: true })] });
+        await ensureOfficialAccount(config, onSecret.deps);
+        expect(onSecret.calls.initialize).toEqual([{ id: 'u1', fields: { passwordChangeRequired: false } }]);
+    });
+
     it('既存の公式アカウントに鍵が無ければ公式の鍵を入れ、別の鍵が登録済みなら触らない', async () => {
-        const noKey = fakeDeps({
-            users: [{ id: 'u1', email: 'x@example.com', handle: 'ubichill', signingPublicKey: null }],
-            officialPublicKey: KEY,
-        });
+        const noKey = fakeDeps({ users: [official({ signingPublicKey: null })], officialPublicKey: KEY });
         await ensureOfficialAccount(config, noKey.deps);
         expect(noKey.calls.initialize).toEqual([{ id: 'u1', fields: { signingPublicKey: KEY } }]);
 
-        const otherKey = fakeDeps({
-            users: [{ id: 'u1', email: 'x@example.com', handle: 'ubichill', signingPublicKey: 'O'.repeat(43) }],
-            officialPublicKey: KEY,
-        });
+        const otherKey = fakeDeps({ users: [official({ signingPublicKey: 'O'.repeat(43) })], officialPublicKey: KEY });
         await ensureOfficialAccount(config, otherKey.deps);
         expect(otherKey.calls.initialize).toEqual([]);
     });
 
-    it('本番で初期パスワード未設定なら作らない（推測できるパスワードで作らない）', async () => {
-        const { deps, calls } = fakeDeps({});
-        expect(await ensureOfficialAccount({ ...config, initialPassword: undefined }, deps)).toBe('skipped');
-        expect(calls.signUp).toEqual([]);
-    });
-
-    it('同じメールのアカウントが ID 未設定で既にあれば公式アカウントにする（パスワードはそのまま）', async () => {
+    it('同じメールのアカウントが ID 未設定で既にあれば公式アカウントにし、パスワードも Secret に合わせる', async () => {
         const { deps, calls } = fakeDeps({
-            users: [{ id: 'm1', email: 'ubichill@ubichill.com', handle: null, signingPublicKey: null }],
+            users: [official({ id: 'm1', handle: null, signingPublicKey: null, password: 'manual' })],
         });
         expect(await ensureOfficialAccount(config, deps)).toBe('attached');
-        expect(calls.signUp).toEqual([]);
         expect(calls.initialize[0]).toMatchObject({ id: 'm1', fields: { handle: 'ubichill' } });
-        expect(calls.initialize[0]?.fields).not.toHaveProperty('passwordChangeRequired');
+        expect(calls.replaced).toEqual([{ id: 'm1', password: 'secret-1' }]);
     });
 
     it('同じメールのアカウントが別の ID を持っていれば奪わない', async () => {
-        const { deps, calls } = fakeDeps({
-            users: [{ id: 'm1', email: 'ubichill@ubichill.com', handle: 'someone', signingPublicKey: null }],
-        });
+        const { deps, calls } = fakeDeps({ users: [official({ id: 'm1', handle: 'someone' })] });
         expect(await ensureOfficialAccount(config, deps)).toBe('skipped');
         expect(calls.initialize).toEqual([]);
+        expect(calls.replaced).toEqual([]);
     });
 
-    it('表示名「Ubichill」が既に使われていれば、表示名の一意キーは付けない（利用者の名前を奪わない）', async () => {
+    it('表示名「Ubichill」が既に使われていれば一意キーは付けない（利用者の名前を奪わない）', async () => {
         const { deps, calls } = fakeDeps({ takenNames: ['ubichill'] });
         await ensureOfficialAccount(config, deps);
         expect(calls.initialize[0]?.fields).toMatchObject({ name: 'Ubichill', displayNameKey: null });
