@@ -1,5 +1,16 @@
 # @ubichill/db
 
+## 1.0.4
+
+### Patch Changes
+
+- Updated dependencies [25e2070]
+- Updated dependencies [25e2070]
+- Updated dependencies [25e2070]
+- Updated dependencies [25e2070]
+- Updated dependencies [25e2070]
+  - @ubichill/shared@1.3.0
+
 ## 1.0.3
 
 ### Patch Changes
