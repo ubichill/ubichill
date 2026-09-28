@@ -8,8 +8,10 @@ export interface MyAccount {
     name: string;
     /** 移行時に他人と表示名が重複していた。変更を促す。 */
     displayNameConflict: boolean;
-    /** 初期パスワードのまま。変更を促す。 */
+    /** 公開済みの開発用既定パスワードのまま（公式アカウント）。Secret の設定を促す。 */
     passwordChangeRequired: boolean;
+    /** パスワードをサーバーの設定（Secret）で管理している（画面から変更できない）。 */
+    passwordManagedBySecret: boolean;
     /** このサーバーの管理者（公式アカウント）。 */
     isAdmin: boolean;
     /** URL・署名用の ID。既存ユーザーは未設定のことがある。 */

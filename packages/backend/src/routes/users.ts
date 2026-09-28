@@ -6,6 +6,7 @@ import {
     HandleSchema,
     isPublishable,
     LIMITS,
+    OFFICIAL_HANDLE,
     verifyKeyRegistration,
 } from '@ubichill/shared';
 import { Router } from 'express';
@@ -144,8 +145,10 @@ router.get('/me', requireAuth, async (req, res) => {
         signingPublicKey: user.signingPublicKey ?? null,
         // 移行時に他人と表示名が重複していた（一意キー未設定）。変更を促す。
         displayNameConflict: !user.displayNameKey,
-        // 初期パスワードのまま（公式アカウントの初期作成時など）。変更を促す。
+        // 公開済みの開発用既定パスワードのまま（公式アカウント）。Secret の設定を促す。
         passwordChangeRequired: user.passwordChangeRequired,
+        // パスワードを Secret で管理している（画面から変更できない）
+        passwordManagedBySecret: user.handle === OFFICIAL_HANDLE,
         isAdmin: isAdminHandle(user.handle),
         profileImageUrl: user.profileImageUrl ?? user.image ?? null,
     });
@@ -154,6 +157,12 @@ router.get('/me', requireAuth, async (req, res) => {
 // パスワードを変更する。現在のパスワードの確認は better-auth に任せ、他の端末のセッションは無効にする。
 router.put('/me/password', requireAuth, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    const me = await userRepository.findById(req.user.id);
+    if (me?.handle === OFFICIAL_HANDLE) {
+        return res.status(403).json({
+            error: '公式アカウントのパスワードはサーバーの設定（OFFICIAL_ACCOUNT_PASSWORD）で管理されています',
+        });
+    }
     const { currentPassword, newPassword } = (req.body ?? {}) as { currentPassword?: unknown; newPassword?: unknown };
     if (typeof currentPassword !== 'string' || typeof newPassword !== 'string') {
         return res.status(400).json({ error: '現在のパスワードと新しいパスワードが必要です' });

@@ -21,6 +21,7 @@ interface UserProfile {
     signingPublicKey?: string | null;
     displayNameConflict?: boolean;
     passwordChangeRequired?: boolean;
+    passwordManagedBySecret?: boolean;
     isAdmin?: boolean;
     profileImageUrl: string | null;
 }
@@ -241,6 +242,7 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
             {isOwnPage && profile && (
                 <PasswordSection
                     required={!!profile.passwordChangeRequired}
+                    managedBySecret={!!profile.passwordManagedBySecret}
                     onChanged={() => setProfile({ ...profile, passwordChangeRequired: false })}
                 />
             )}
@@ -251,6 +253,7 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                         signingPublicKey: profile.signingPublicKey ?? null,
                         displayNameConflict: !!profile.displayNameConflict,
                         passwordChangeRequired: !!profile.passwordChangeRequired,
+                        passwordManagedBySecret: !!profile.passwordManagedBySecret,
                         isAdmin: !!profile.isAdmin,
                     }}
                     onAccountChange={setProfile}

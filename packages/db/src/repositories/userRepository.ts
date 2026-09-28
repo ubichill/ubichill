@@ -1,6 +1,7 @@
+import { randomUUID } from 'node:crypto';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../index';
-import { users } from '../schema';
+import { accounts, sessions, users } from '../schema';
 
 export type UserRecord = typeof users.$inferSelect;
 
@@ -85,6 +86,40 @@ export const userRepository = {
                 updatedAt: new Date(),
             })
             .where(eq(users.id, id));
+    },
+
+    /** メール・パスワード方式のパスワードハッシュ（better-auth の credential アカウント）。 */
+    async findPasswordHash(userId: string): Promise<string | undefined> {
+        const rows = await db
+            .select({ password: accounts.password })
+            .from(accounts)
+            .where(and(eq(accounts.userId, userId), eq(accounts.providerId, 'credential')));
+        return rows[0]?.password ?? undefined;
+    },
+
+    /** パスワードハッシュを設定する（credential アカウントが無ければ作る）。 */
+    async setPasswordHash(userId: string, hash: string): Promise<void> {
+        const now = new Date();
+        const updated = await db
+            .update(accounts)
+            .set({ password: hash, updatedAt: now })
+            .where(and(eq(accounts.userId, userId), eq(accounts.providerId, 'credential')))
+            .returning({ id: accounts.id });
+        if (updated.length > 0) return;
+        await db.insert(accounts).values({
+            id: randomUUID(),
+            accountId: userId,
+            providerId: 'credential',
+            userId,
+            password: hash,
+            createdAt: now,
+            updatedAt: now,
+        });
+    },
+
+    /** そのユーザーのログインをすべて無効にする。 */
+    async revokeSessions(userId: string): Promise<void> {
+        await db.delete(sessions).where(eq(sessions.userId, userId));
     },
 
     async findByHandle(handle: string): Promise<UserRecord | undefined> {

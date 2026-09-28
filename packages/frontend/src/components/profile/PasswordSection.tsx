@@ -15,9 +15,20 @@ const input = css({
     maxW: '320px',
 });
 
-/** パスワードの変更。初期パスワードのまま（required）なら、変更するまで警告を出す。 */
-export function PasswordSection({ required, onChanged }: { required: boolean; onChanged: () => void }) {
-    const [open, setOpen] = useState(required);
+interface PasswordSectionProps {
+    /** 公開済みの開発用既定パスワードのまま（公式アカウント）。 */
+    required: boolean;
+    /** パスワードをサーバーの設定（Secret）で管理している（公式アカウント）。 */
+    managedBySecret: boolean;
+    onChanged: () => void;
+}
+
+/**
+ * パスワードの変更。公式アカウントのパスワードは Secret（OFFICIAL_ACCOUNT_PASSWORD）が正で起動のたびに
+ * 合わせ直されるので、画面からは変更できないことを示すだけにする。
+ */
+export function PasswordSection({ required, managedBySecret, onChanged }: PasswordSectionProps) {
+    const [open, setOpen] = useState(false);
     const [current, setCurrent] = useState('');
     const [next, setNext] = useState('');
     const [confirm, setConfirm] = useState('');
@@ -44,6 +55,33 @@ export function PasswordSection({ required, onChanged }: { required: boolean; on
         }
     };
 
+    if (managedBySecret) {
+        return (
+            <section
+                className={css({
+                    mb: '6',
+                    p: '4',
+                    bg: 'surface',
+                    border: '1px solid',
+                    borderColor: required ? 'errorText' : 'border',
+                    borderRadius: '12px',
+                })}
+            >
+                <h2 className={css({ fontSize: 'lg', fontWeight: '700', color: 'text', mb: '2' })}>パスワード</h2>
+                <p className={css({ fontSize: '13px', color: 'textMuted', lineHeight: '1.6' })}>
+                    このアカウントのパスワードはサーバーの設定（OFFICIAL_ACCOUNT_PASSWORD）で管理されています。
+                    変更するときは設定の値を差し替えて再デプロイしてください（既存のログインは無効になります）。
+                </p>
+                {required && (
+                    <p className={css({ mt: '2', fontSize: '13px', color: 'errorText', lineHeight: '1.6' })}>
+                        公開されている開発用の既定パスワードのままです。OFFICIAL_ACCOUNT_PASSWORD
+                        を設定して再起動してください。
+                    </p>
+                )}
+            </section>
+        );
+    }
+
     return (
         <section
             className={css({
@@ -51,7 +89,7 @@ export function PasswordSection({ required, onChanged }: { required: boolean; on
                 p: '4',
                 bg: 'surface',
                 border: '1px solid',
-                borderColor: required ? 'errorText' : 'border',
+                borderColor: 'border',
                 borderRadius: '12px',
             })}
         >
@@ -74,11 +112,6 @@ export function PasswordSection({ required, onChanged }: { required: boolean; on
                     </button>
                 )}
             </div>
-            {required && (
-                <p className={css({ mt: '2', fontSize: '13px', color: 'errorText', lineHeight: '1.6' })}>
-                    初期パスワードのままです。このアカウントでは公開や管理の操作ができるため、すぐに変更してください。
-                </p>
-            )}
             {open && (
                 <div className={css({ display: 'flex', flexDirection: 'column', gap: '2', mt: '3' })}>
                     <input
