@@ -113,11 +113,40 @@ export function isAdminHandle(handle: string | null | undefined): boolean {
 }
 
 /**
+ * 公式アカウントのパスワードは Secret（OFFICIAL_ACCOUNT_PASSWORD）が正で、起動のたびに合わせ直す。
+ * 画面や better-auth の /change-password から変えても次の起動で戻るだけなので、変更そのものを受け付けない。
+ */
+export async function blockOfficialPasswordChange(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+        const session = await auth.api.getSession({ headers: toWebHeaders(req) });
+        const user = session ? await userRepository.findById(session.user.id) : undefined;
+        if (user?.handle === OFFICIAL_HANDLE) {
+            res.status(403).json({
+                error: '公式アカウントのパスワードはサーバーの設定（OFFICIAL_ACCOUNT_PASSWORD）で管理されています',
+            });
+            return;
+        }
+    } catch {
+        // セッションを確かめられなければ本来の処理（better-auth）に任せる
+    }
+    next();
+}
+
+/**
  * 管理者限定ミドルウェア（requireAuth の後に置く）。連合ピアの追加・削除やワールドの再読み込みなど、
  * サーバー全体に影響する操作に使う。
  */
 export async function requireAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
-    const user = req.user ? await userRepository.findById(req.user.id) : undefined;
+    // 管理者の操作はクッキーキャッシュ（最大 5 分）を使わずに DB のセッションを確かめる。
+    // 公式アカウントのパスワードを Secret で差し替えた直後（漏えい対応など）に古いログインで操作させないため。
+    const session = await auth.api
+        .getSession({ headers: toWebHeaders(req), query: { disableCookieCache: true } })
+        .catch(() => null);
+    if (!session) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+    }
+    const user = await userRepository.findById(session.user.id);
     if (!isAdminHandle(user?.handle)) {
         res.status(403).json({ error: 'Forbidden: 管理者のみ実行できます' });
         return;

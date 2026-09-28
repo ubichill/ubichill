@@ -24,6 +24,7 @@ import {
     handleWorldLeave,
 } from './handlers/socketHandlers';
 import { auth } from './lib/auth';
+import { blockOfficialPasswordChange } from './middleware/auth';
 import { socketAuthMiddleware } from './middleware/socketAuth';
 import { router as federationRouter } from './routes/federation';
 import { router as instancesRouter } from './routes/instances';
@@ -104,6 +105,7 @@ if (appConfig.debug) {
 }
 
 // 認証API（Better Auth）- CORSとプリフライトを確実に処理するため、先に配置
+app.use('/api/auth/change-password', blockOfficialPasswordChange);
 app.use('/api/auth', toNodeHandler(auth));
 
 // ============================================

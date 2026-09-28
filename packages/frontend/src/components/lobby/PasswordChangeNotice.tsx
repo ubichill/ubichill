@@ -4,7 +4,7 @@ import { fetchMyAccount } from '@/lib/account/me';
 import { useSession } from '@/lib/session';
 import { css } from '@/styled-system/css';
 
-/** 初期パスワードのまま（公式アカウントの初回ログインなど）なら、変更するまでロビーで知らせる。 */
+/** 公式アカウントが公開済みの開発用既定パスワードのままなら、ロビーで知らせる（Secret の設定を促す）。 */
 export function PasswordChangeNotice() {
     const navigate = useNavigate();
     const { data: session } = useSession();
@@ -41,7 +41,10 @@ export function PasswordChangeNotice() {
                 fontSize: '13px',
             })}
         >
-            <span className={css({ flex: 1, minW: '200px' })}>初期パスワードのままです。すぐに変更してください。</span>
+            <span className={css({ flex: 1, minW: '200px' })}>
+                公式アカウントが開発用の既定パスワードのままです。OFFICIAL_ACCOUNT_PASSWORD
+                を設定して再起動してください。
+            </span>
             <button
                 type="button"
                 onClick={() => navigate(`/user/${userId}`)}
@@ -59,7 +62,7 @@ export function PasswordChangeNotice() {
                     _hover: { bg: 'surfaceHover' },
                 })}
             >
-                パスワードを変更する
+                詳細
             </button>
         </div>
     );
