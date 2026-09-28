@@ -61,9 +61,11 @@ export {
     LIMITS,
     type ResolvedWorld,
     ResolvedWorldSchema,
+    requiredLockModIds,
     SafeString,
     SemVer,
     TransformSchema,
+    unlockedModIds,
     type WorldCapacity,
     WorldCapacitySchema,
     type WorldCreateInput,
@@ -82,3 +84,11 @@ export {
     worldShareUrl,
     worldSourceLabel,
 } from './world.schema';
+export {
+    Ed25519PublicKeySchema,
+    Ed25519SignatureSchema,
+    type WorldIdentity,
+    WorldIdentitySchema,
+    type WorldSignature,
+    WorldSignatureSchema,
+} from './worldIdentity.schema';

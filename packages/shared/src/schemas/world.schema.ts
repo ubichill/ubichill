@@ -2,6 +2,7 @@ import { isCoreComponentNamespace, isCoreComponentType, validateCoreComponentDat
 import { z } from 'zod';
 import { OVERLAY_MODES } from '../mod/entities';
 import { ModLockSchema } from './modLock.schema';
+import { WorldIdentitySchema } from './worldIdentity.schema';
 
 // ============================================
 // 定数
@@ -336,6 +337,26 @@ export function collectModIds(entities: InitialEntity[]): string[] {
     return [...ids];
 }
 
+/**
+ * ワールドが実行し得る mod（初期エンティティの mod と dependencies の和集合、core は除く）。
+ * dependencies だけに書かれた mod も実行中に生成され得るため、lock はこの全部を固定する必要がある。
+ */
+export function requiredLockModIds(spec: {
+    initialEntities: InitialEntity[];
+    dependencies?: Array<{ name: string }>;
+}): string[] {
+    const fromDeps = (spec.dependencies ?? []).map((d) => d.name).filter((name) => !isCoreComponentNamespace(name));
+    return [...new Set([...collectModIds(spec.initialEntities), ...fromDeps])];
+}
+
+/** lock に固定されていない mod（空なら全部固定済み）。 */
+export function unlockedModIds(
+    spec: { initialEntities: InitialEntity[]; dependencies?: Array<{ name: string }> },
+    lock: { mods: Record<string, unknown> } | null | undefined,
+): string[] {
+    return requiredLockModIds(spec).filter((id) => !lock?.mods[id]);
+}
+
 // ============================================
 // World Permissions（権限設定）
 // ============================================
@@ -458,6 +479,8 @@ export const ResolvedWorldSchema = z.object({
     mods: z.array(WorldModSchema).default([]),
     /** mod 完全性ロック（あれば）。ロード時の hash 照合・capability 天井に使う。 */
     lock: ModLockSchema.optional(),
+    /** 識別結果（署名検証済み / 未署名）。解決側が付与する。 */
+    identity: WorldIdentitySchema.optional(),
 });
 
 export type ResolvedWorld = z.infer<typeof ResolvedWorldSchema>;

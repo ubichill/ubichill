@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { WorldModSchema, WorldSourceSchema } from './world.schema';
+import { WorldIdentitySchema } from './worldIdentity.schema';
 
 // ============================================
 // Access Type（アクセス種別）
@@ -73,6 +74,8 @@ export const InstanceSchema = z.object({
         source: WorldSourceSchema.optional(),
         /** 使用 mod（リモートワールドでも instance に載せて詳細で表示できるようにする）。 */
         mods: z.array(WorldModSchema).default([]),
+        /** 作者署名の検証結果。未署名なら入室前に確認する。 */
+        identity: WorldIdentitySchema.optional(),
     }),
 
     access: InstanceAccessSchema,
@@ -141,6 +144,8 @@ export const WorldListItemSchema = z.object({
     authorName: z.string().optional(),
     /** このワールドが使う mod 一覧。 */
     mods: z.array(WorldModSchema).default([]),
+    /** 識別結果。連合ピアの一覧由来は自己申告で検証できないため付与しない。 */
+    identity: WorldIdentitySchema.optional(),
     createdAt: z.string().datetime().optional(),
     updatedAt: z.string().datetime().optional(),
 });

@@ -29,6 +29,48 @@
       "when": 1785132402347,
       "tag": "0003_furry_johnny_blaze",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790402149694,
+      "tag": "0004_cuddly_switch",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790413728304,
+      "tag": "0005_overconfident_nighthawk",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790502860220,
+      "tag": "0006_brown_jackpot",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790505453635,
+      "tag": "0007_pink_taskmaster",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790536097151,
+      "tag": "0008_blushing_whistler",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790536772253,
+      "tag": "0009_charming_white_queen",
+      "breakpoints": true
     }
   ]
 }

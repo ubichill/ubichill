@@ -17,12 +17,14 @@ import { MobileRightHandle } from './components/MobileRightHandle';
 import { Modal } from './components/Modal';
 import { ModalPrimaryButton, ModalSecondaryButton } from './components/ModalButtons';
 import { PanelSection } from './components/PanelSection';
+import { PublishSetupDialog } from './components/PublishSetupDialog';
 import { useAvailableEntityKinds } from './hooks/useAvailableEntityKinds';
 import { useDefinition } from './hooks/useDefinition';
 import { useEditorModals } from './hooks/useEditorModals';
 import { useEntityOps } from './hooks/useEntityOps';
 import { useEntitySelection } from './hooks/useEntitySelection';
 import { useMobilePanels } from './hooks/useMobilePanels';
+import { usePublishSetup } from './hooks/usePublishSetup';
 import { useWorldEditorApi } from './hooks/useWorldEditorApi';
 import { SNAP_STEP } from './lib/dragHelpers';
 import { flattenForStage, getEntityAt, updateEntityAt } from './lib/entityTree';
@@ -39,17 +41,21 @@ export function WorldEditorPage() {
     const [error, setError] = useState('');
     const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
 
-    const { definition, setDefinition, setSavedYaml, loading, dirty, updateEntities } = useDefinition({
-        isEdit,
-        worldId,
-        onError: setError,
-    });
+    const { definition, setDefinition, setSavedYaml, loading, dirty, updateEntities, publishState, setPublishState } =
+        useDefinition({
+            isEdit,
+            worldId,
+            onError: setError,
+        });
 
+    const publishSetup = usePublishSetup();
     const editorApi = useWorldEditorApi({
+        requestPublishSetup: publishSetup.request,
         isEdit,
         worldId,
         definition,
         onSavedYamlChange: setSavedYaml,
+        onPublishStateChange: setPublishState,
         onError: setError,
     });
 
@@ -70,8 +76,8 @@ export function WorldEditorPage() {
         [definition.spec.initialEntities],
     );
 
-    // サーバーへ保存する共通処理。フォームが definition を直接更新しているため draft を介さず保存する。
-    const persist = useCallback(async (): Promise<boolean> => {
+    // 保存前の入力チェック（下書き保存・公開で共通）
+    const validate = useCallback((): boolean => {
         if (modals.activeTab === 'yaml' && modals.yamlError) {
             setError(modals.yamlError);
             return false;
@@ -80,12 +86,17 @@ export function WorldEditorPage() {
             setError('表示名は必須です');
             return false;
         }
-        return editorApi.save();
-    }, [definition, editorApi, modals.activeTab, modals.yamlError]);
+        return true;
+    }, [definition, modals.activeTab, modals.yamlError]);
+
+    // 下書き保存（準備不要）。公開中のワールドでも公開中の版は変わらない。
+    const saveDraft = useCallback(async () => validate() && editorApi.saveDraft(), [validate, editorApi]);
+    // 作者アカウントで署名して公開（準備が足りなければ公開の準備ダイアログ）。
+    const publish = useCallback(async () => validate() && editorApi.publish(), [validate, editorApi]);
 
     const handleSave = useCallback(() => {
-        void persist();
-    }, [persist]);
+        void saveDraft();
+    }, [saveDraft]);
 
     // コントロールパネルを閉じる。編集モードでは未保存の変更を保存してから閉じる。
     // 新規作成時は閉じるだけで破棄する（作成は「作成」ボタン or Cmd/Ctrl+S）。
@@ -95,7 +106,7 @@ export function WorldEditorPage() {
                 setError(modals.yamlError);
                 return;
             }
-            if (dirty) void editorApi.save();
+            if (dirty) void editorApi.saveDraft();
         }
         modals.closeControlPanel();
     }, [isEdit, dirty, editorApi, modals.activeTab, modals.yamlError, modals.closeControlPanel]);
@@ -113,9 +124,9 @@ export function WorldEditorPage() {
 
     const handleSaveAndLeave = useCallback(async () => {
         setLeaveConfirmOpen(false);
-        const ok = await persist();
+        const ok = await saveDraft();
         if (ok && isEdit) navigate(-1);
-    }, [persist, isEdit, navigate]);
+    }, [saveDraft, isEdit, navigate]);
 
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
@@ -163,6 +174,10 @@ export function WorldEditorPage() {
                     onToggleSnap={mobile.toggleSnap}
                     onBack={handleBack}
                     onOpenControlPanel={() => modals.openControlPanel()}
+                    publishState={isEdit ? publishState : null}
+                    saving={editorApi.saving}
+                    onSaveDraft={() => void saveDraft()}
+                    onPublish={() => void publish()}
                 />
             </div>
 
@@ -314,16 +329,24 @@ export function WorldEditorPage() {
                         </div>
                         <div className={css({ display: 'flex', gap: '8px' })}>
                             {isEdit ? (
-                                <ModalPrimaryButton onClick={handleCloseControlPanel}>
-                                    {dirty ? '保存して閉じる' : '閉じる'}
-                                </ModalPrimaryButton>
+                                <>
+                                    <ModalSecondaryButton onClick={handleCloseControlPanel}>
+                                        {dirty ? '下書き保存して閉じる' : '閉じる'}
+                                    </ModalSecondaryButton>
+                                    <ModalPrimaryButton onClick={() => void publish()} disabled={editorApi.saving}>
+                                        公開する
+                                    </ModalPrimaryButton>
+                                </>
                             ) : (
                                 <>
                                     <ModalSecondaryButton onClick={modals.closeControlPanel}>
                                         キャンセル
                                     </ModalSecondaryButton>
-                                    <ModalPrimaryButton onClick={handleSave} disabled={editorApi.saving}>
-                                        {editorApi.saving ? '作成中...' : '作成'}
+                                    <ModalSecondaryButton onClick={handleSave} disabled={editorApi.saving}>
+                                        下書きとして作成
+                                    </ModalSecondaryButton>
+                                    <ModalPrimaryButton onClick={() => void publish()} disabled={editorApi.saving}>
+                                        {editorApi.saving ? '処理中...' : '作成して公開'}
                                     </ModalPrimaryButton>
                                 </>
                             )}
@@ -409,7 +432,7 @@ export function WorldEditorPage() {
                                 onClick={handleSaveAndLeave}
                                 className={editorButton({ intent: 'primary' })}
                             >
-                                {isEdit ? '保存して戻る' : '作成'}
+                                {isEdit ? '下書き保存して戻る' : '下書きとして作成'}
                             </button>
                         </div>
                     </div>
@@ -419,6 +442,8 @@ export function WorldEditorPage() {
                     変更が保存されていません。保存せずに戻ると変更が失われます。
                 </p>
             </Modal>
+            {/* 他のモーダル（コントロールパネル等）から保存しても最前面に出るよう最後に描画する */}
+            {publishSetup.pending && <PublishSetupDialog {...publishSetup.pending} />}
         </div>
     );
 }

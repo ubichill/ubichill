@@ -1,16 +1,27 @@
-import { LIMITS } from '@ubichill/shared';
+import { displayAuthorAccount, isPublishable, LIMITS, type WorldIdentity } from '@ubichill/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { WorldDetailModal } from '@/components/lobby/WorldDetailModal';
+import { WorldIdentityBadge } from '@/components/lobby/WorldIdentityBadge';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { API_BASE } from '@/lib/api';
 import { useSession } from '@/lib/session';
+import { browserFetch, loadSigningKey, signerFor, signHostedWorld } from '@/lib/signing';
 import { css } from '@/styled-system/css';
+import { DisplayNameEditor } from './DisplayNameEditor';
+import { PasswordSection } from './PasswordSection';
+import { SigningKeySection } from './SigningKeySection';
 
+/** 公開プロフィール。自分のページでは MyAccount の項目（登録鍵など）も入る。 */
 interface UserProfile {
     id: string;
     name: string;
-    username: string | null;
+    handle: string | null;
+    author: string | null;
+    signingPublicKey?: string | null;
+    displayNameConflict?: boolean;
+    passwordChangeRequired?: boolean;
+    isAdmin?: boolean;
     profileImageUrl: string | null;
 }
 
@@ -22,6 +33,8 @@ interface OwnedWorld {
     version: string;
     capacity: { default: number; max: number };
     updatedAt?: string;
+    /** 本人の一覧のみ。署名なしは非公開なので「署名して公開」を出す。 */
+    identity?: WorldIdentity;
 }
 
 interface UserProfileViewProps {
@@ -117,6 +130,29 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
     }
 
     const remaining = Math.max(0, LIMITS.MAX_WORLDS_PER_USER - worlds.length);
+    const unsignedCount = isOwnPage ? worlds.filter((w) => !isPublishable(w.identity)).length : 0;
+
+    // 保存し直さなくても、今の内容にこのブラウザの鍵で署名して公開できるようにする。
+    const signWorld = async (worldId: string) => {
+        setError('');
+        try {
+            const signer = signerFor(
+                await loadSigningKey(),
+                profile ? { ...profile, signingPublicKey: profile.signingPublicKey ?? null } : null,
+            );
+            // 公開には作者アカウント（ID + 登録済みの鍵）での署名が要る。鍵だけの署名では公開されない。
+            if (!signer?.author) {
+                setError(
+                    '公開するには、上の「作者署名」で ID を設定し、このブラウザの鍵をアカウントに登録してください。',
+                );
+                return;
+            }
+            const identity = await signHostedWorld(worldId, signer, { apiBase: API_BASE, fetch: browserFetch });
+            setWorlds((prev) => prev.map((w) => (w.id === worldId ? { ...w, identity } : w)));
+        } catch (e) {
+            setError(e instanceof Error ? e.message : '署名に失敗しました');
+        }
+    };
     const canCreate = isOwnPage && remaining > 0;
 
     return (
@@ -171,8 +207,17 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                         >
                             {profile.name}
                         </h1>
-                        {profile.username && (
-                            <p className={css({ fontSize: '13px', color: 'textMuted' })}>@{profile.username}</p>
+                        {profile.author && (
+                            <p className={css({ fontSize: '13px', color: 'textMuted' })}>
+                                {displayAuthorAccount(profile.author)}
+                            </p>
+                        )}
+                        {isOwnPage && (
+                            <DisplayNameEditor
+                                name={profile.name}
+                                conflict={!!profile.displayNameConflict}
+                                onChanged={(name) => setProfile({ ...profile, name, displayNameConflict: false })}
+                            />
                         )}
                     </div>
                 </div>
@@ -191,6 +236,26 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                 >
                     {error}
                 </div>
+            )}
+
+            {isOwnPage && profile && (
+                <PasswordSection
+                    required={!!profile.passwordChangeRequired}
+                    onChanged={() => setProfile({ ...profile, passwordChangeRequired: false })}
+                />
+            )}
+            {isOwnPage && profile && (
+                <SigningKeySection
+                    account={{
+                        ...profile,
+                        signingPublicKey: profile.signingPublicKey ?? null,
+                        displayNameConflict: !!profile.displayNameConflict,
+                        passwordChangeRequired: !!profile.passwordChangeRequired,
+                        isAdmin: !!profile.isAdmin,
+                    }}
+                    onAccountChange={setProfile}
+                    unsignedCount={unsignedCount}
+                />
             )}
 
             {/* 作成したワールド */}
@@ -277,6 +342,7 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                                 world={w}
                                 editable={isOwnPage}
                                 onEdit={() => go(`/world/${w.id}/edit`)}
+                                onSign={isOwnPage && !isPublishable(w.identity) ? () => signWorld(w.id) : undefined}
                                 onOpen={() => setSelectedWorldId(w.id)}
                                 onDelete={
                                     isOwnPage
@@ -370,14 +436,17 @@ function OwnedWorldCard({
     onEdit,
     onOpen,
     onDelete,
+    onSign,
 }: {
     world: OwnedWorld;
     editable: boolean;
     onEdit: () => void;
     onOpen: () => void;
     onDelete?: () => void;
+    onSign?: () => Promise<void>;
 }) {
     const [menuOpen, setMenuOpen] = useState(false);
+    const [signing, setSigning] = useState(false);
 
     // メニュー外クリックで閉じる
     useEffect(() => {
@@ -548,7 +617,39 @@ function OwnedWorldCard({
                         {world.capacity.default}〜{world.capacity.max}人
                     </span>
                     <span>v{world.version}</span>
+                    {editable && <WorldIdentityBadge identity={world.identity} />}
                 </div>
+                {onSign && (
+                    <div className={css({ display: 'flex', flexDirection: 'column', gap: '1' })}>
+                        <p className={css({ fontSize: '11px', color: 'textMuted', lineHeight: '1.4' })}>
+                            署名がないため一覧に公開されていません
+                        </p>
+                        <button
+                            type="button"
+                            disabled={signing}
+                            onClick={async () => {
+                                setSigning(true);
+                                await onSign();
+                                setSigning(false);
+                            }}
+                            className={css({
+                                padding: '6px 12px',
+                                bg: 'surface',
+                                color: 'text',
+                                border: '1px solid',
+                                borderColor: 'border',
+                                borderRadius: '8px',
+                                fontSize: '12px',
+                                fontWeight: '600',
+                                cursor: 'pointer',
+                                _hover: { bg: 'surfaceHover' },
+                                _disabled: { opacity: 0.4, cursor: 'not-allowed' },
+                            })}
+                        >
+                            {signing ? '署名中…' : '署名して公開'}
+                        </button>
+                    </div>
+                )}
                 {editable && (
                     <button
                         type="button"

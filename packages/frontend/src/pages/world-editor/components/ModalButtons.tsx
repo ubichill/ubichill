@@ -41,11 +41,20 @@ export function ModalPrimaryButton({
 /**
  * モーダルフッター用のセカンダリボタン（キャンセル）。
  */
-export function ModalSecondaryButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+export function ModalSecondaryButton({
+    onClick,
+    children,
+    disabled,
+}: {
+    onClick: () => void;
+    children: React.ReactNode;
+    disabled?: boolean;
+}) {
     return (
         <button
             type="button"
             onClick={onClick}
+            disabled={disabled}
             className={css({
                 padding: '8px 16px',
                 bg: 'surface',

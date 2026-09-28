@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requireAuth } from '../middleware/auth';
+import { requireAdmin, requireAuth } from '../middleware/auth';
 import { worldRegistry } from '../services/worldRegistry';
 
 const router = Router();
@@ -23,7 +23,7 @@ router.get('/peers', requireAuth, async (_req, res) => {
  * 連合ピアをフォローする（認証必須）。
  * body: { baseUrl: string, displayName?: string }
  */
-router.post('/peers', requireAuth, async (req, res) => {
+router.post('/peers', requireAuth, requireAdmin, async (req, res) => {
     try {
         const { baseUrl, displayName } = req.body as { baseUrl?: unknown; displayName?: unknown };
         if (typeof baseUrl !== 'string' || baseUrl.trim().length === 0) {
@@ -42,7 +42,7 @@ router.post('/peers', requireAuth, async (req, res) => {
  * DELETE /api/v1/federation/peers/:peerId
  * 連合ピアのフォローを解除する（認証必須）。
  */
-router.delete('/peers/:peerId', requireAuth, async (req, res) => {
+router.delete('/peers/:peerId', requireAuth, requireAdmin, async (req, res) => {
     try {
         const peerId = req.params.peerId as string;
         const success = await worldRegistry.unfollowPeer(peerId);

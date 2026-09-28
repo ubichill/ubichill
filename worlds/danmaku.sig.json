@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "alg": "ed25519",
+  "publicKey": "vIyjMH-tm4kj8Mnt-DBy0cKjdeclcn7_LR7VtXf2Q_g",
+  "name": "danmaku",
+  "contentHash": "sha256-qH03K119DYYCeaV8HqmomrplSJcjjgT8fxwQ/6YtgoQ=",
+  "author": "ubichill@ubichill.com",
+  "signature": "QjXvatP8R0wNVduondGEAKBHMRNCrHbSZg24ziyPTBsnoRd8hvog1vVtoC48S8brftTE5XnR8N_BydmZ-IQ6Bg"
+}

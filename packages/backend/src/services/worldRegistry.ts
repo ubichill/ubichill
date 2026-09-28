@@ -9,22 +9,37 @@ import {
 } from '@ubichill/db';
 import {
     ENV_KEYS,
+    isPublishable,
     type ModLock,
     ModLockSchema,
     type ResolvedWorld,
     SERVER_CONFIG,
+    verifyWorldSignature,
     type WorldCreateInput,
     type WorldDefinition,
     WorldDefinitionSchema,
+    type WorldDocument,
+    type WorldIdentity,
     type WorldListItem,
+    type WorldSignature,
+    type WorldSignatureInvalidReason,
     type WorldSource,
     WorldSourceKind,
+    worldContentHash,
 } from '@ubichill/shared';
 import { customAlphabet } from 'nanoid';
 import yaml from 'yaml';
+import { resolveAuthorDisplayName, resolveAuthorKey } from './authorKeyStore';
 import { assertPublicUrl, safeFetch } from './safeFetch';
+import { nodeWorldCrypto } from './worldCrypto';
 import { migrateLegacyWorldYaml } from './worldMigration';
-import { definitionToResolved, normalizeWorldUrl, resolveWorldFromUrl } from './worldResolver';
+import {
+    confirmedAuthorName,
+    definitionToResolved,
+    normalizeWorldUrl,
+    resolveWorldFromUrl,
+    WorldIntegrityError,
+} from './worldResolver';
 
 // KebabCaseId 互換の lowercase + 数字のみ。21文字で十分な衝突耐性を確保。
 const generateWorldId = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 21);
@@ -32,6 +47,63 @@ const generateWorldId = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 2
 // ── システム定数 ──────────────────────────────────────────────────
 
 const SYSTEM_AUTHOR_ID = '00000000-0000-0000-0000-000000000000';
+
+export type WorldResolution =
+    | { ok: true; world: ResolvedWorld }
+    | { ok: false; reason: 'not-found' | 'integrity'; message: string };
+
+const toResolution = (world: ResolvedWorld | undefined): WorldResolution =>
+    world ? { ok: true, world } : { ok: false, reason: 'not-found', message: 'World not found' };
+
+/** 本体が配信するワールドの生の値（署名検証の対象そのもの）。 */
+export interface HostedWorldDocument extends WorldDocument {
+    signature: unknown;
+}
+
+export type UpdateWorldResult =
+    | { ok: true; world: ResolvedWorld }
+    | { ok: false; reason: 'not-found' | 'signature-required' | WorldSignatureInvalidReason };
+
+/**
+ * 更新後に保存・配信される値を作る（純粋）。作者はこの値に署名する（`POST /worlds/:id/prepare`）。
+ * ID を不変にするため metadata.name は worldId に固定し、埋め込み lock は別カラムへ寄せる。
+ */
+export function prepareWorldUpdate(
+    worldId: string,
+    definition: WorldDefinition,
+    lock?: ModLock | null,
+): { definition: WorldDefinition; lock: ModLock | null } {
+    const { lock: embeddedLock, ...cleanSpec } = definition.spec;
+    return {
+        definition: { ...definition, metadata: { ...definition.metadata, name: worldId }, spec: cleanSpec },
+        lock: lock ?? embeddedLock ?? null,
+    };
+}
+
+export type SetSignatureResult =
+    | { ok: true; identity: WorldIdentity }
+    | { ok: false; reason: 'not-found' | WorldSignatureInvalidReason };
+
+/**
+ * 配信物の識別。無効な署名（内容更新後の古い署名など）は配信しないので unsigned として扱う。
+ */
+async function hostedIdentity(hosted: HostedWorldDocument, label: string): Promise<WorldIdentity> {
+    const verdict = await verifyWorldSignature(hosted, hosted.signature, nodeWorldCrypto, resolveAuthorKey);
+    if (verdict.status !== 'invalid') return verdict;
+    console.warn(`⚠ ワールド ${label} の署名が現在の内容と一致しません (${verdict.reason})。未署名として扱います`);
+    return { status: 'unsigned', contentHash: await worldContentHash(hosted, nodeWorldCrypto) };
+}
+
+/** YAML の兄弟 JSON（`.lock.json` / `.sig.json`）を生の値で読む。無い・壊れていれば null。 */
+function readSiblingJson(worldFilePath: string, ext: string): unknown {
+    const siblingPath = worldFilePath.replace(/\.ya?ml$/i, ext);
+    if (!fs.existsSync(siblingPath)) return null;
+    try {
+        return JSON.parse(fs.readFileSync(siblingPath, 'utf-8')) as unknown;
+    } catch {
+        return null;
+    }
+}
 
 // ── WorldRegistry ─────────────────────────────────────────────────
 
@@ -54,8 +126,11 @@ class WorldRegistry {
     private _index = new Map<string, ResolvedWorld>();
     /** url → id の逆引き（getWorldByUrl を O(1) に） */
     private _urlIndex = new Map<string, string>();
-    /** official + registry の生定義（id → WorldDefinition）。URL 配信/フェデレーション用 */
-    private _defByName = new Map<string, WorldDefinition>();
+    /**
+     * official の配信物（id → ファイルをパースしたままの YAML / lock / 署名）。
+     * 作者署名はファイルの生の値に対して付くため、スキーマ既定値で補った値ではなくこれを配信する。
+     */
+    private _hostedFiles = new Map<string, HostedWorldDocument>();
     /** ローカル id → YAML ファイルパス（reload / watch 用） */
     private _fileByName = new Map<string, string>();
     /** 表示順（in-memory。永続化は ordering→DB の別タスク） */
@@ -158,7 +233,7 @@ class WorldRegistry {
         return [...localItems, ...globalItems];
     }
 
-    /** 自インスタンスのワールド一覧。 */
+    /** 自インスタンスのワールド一覧（署名検証済みのみ。未署名は URL を知っている人だけが入れる）。 */
     private async _listLocalWorlds(): Promise<WorldListItem[]> {
         const allRecords = await worldRepository.findAll();
         const dbRecordByName = new Map<string, WorldRecord>(allRecords.map((r: WorldRecord) => [r.name, r]));
@@ -172,17 +247,32 @@ class WorldRegistry {
             });
 
         const known = new Set(this._index.keys());
-        const dbItems: WorldListItem[] = allRecords
-            .filter((r: WorldRecord) => !known.has(r.name))
-            .map((r: WorldRecord) => this._toListItem(this._resolveWorld(r), r));
+        const userRecords = allRecords.filter((r: WorldRecord) => !known.has(r.name));
+        const authors = await userRepository.findByIds([...new Set(userRecords.map((r: WorldRecord) => r.authorId))]);
+        const nameById = new Map(authors.map((u) => [u.id, u.name]));
+        const dbItems = userRecords.map(async (r: WorldRecord) =>
+            this._toListItem(await this._resolveWorld(r, nameById.get(r.authorId)), r),
+        );
 
-        return [...indexItems, ...dbItems];
+        return [...indexItems, ...(await Promise.all(dbItems))].filter((w) => isPublishable(w.identity));
     }
 
-    /** 連合ピアから取得したワールド一覧。メモリキャッシュ（TTL）付き。 */
+    /**
+     * 連合ピアから取得したワールド一覧。ピアの自己申告は信用せず、各ワールドを自分で取得・検証し
+     * 署名検証できたものだけを返す（検証結果は外部ワールドの TTL キャッシュに乗る）。
+     */
     private async _listGlobalWorlds(): Promise<WorldListItem[]> {
         const results = await Promise.allSettled(this._peers.map((peer) => this._fetchPeerWorlds(peer)));
-        return results.flatMap((r) => (r.status === 'fulfilled' ? r.value : []));
+        const items = results.flatMap((r) => (r.status === 'fulfilled' ? r.value : []));
+        const verified = await Promise.all(
+            items.map(async (item): Promise<WorldListItem | null> => {
+                const resolution = await this._resolveRemote(normalizeWorldUrl(item.url));
+                if (!resolution.ok || !isPublishable(resolution.world.identity)) return null;
+                // 作者名・識別はピアの自己申告ではなく、自分で解決した値を使う
+                return { ...item, identity: resolution.world.identity, authorName: resolution.world.authorName };
+            }),
+        );
+        return verified.filter((w): w is WorldListItem => w !== null);
     }
 
     /** 単一ピアのワールド一覧を取得する。キャッシュが有効ならそれを返す。 */
@@ -201,7 +291,8 @@ class WorldRegistry {
                 return cached?.worlds ?? [];
             }
             const data = (await res.json()) as { worlds?: WorldListItem[] };
-            const worlds = (data.worlds ?? []).map((w) => ({
+            // identity はピアの自己申告で検証していないため落とす（入室/詳細の解決時に検証する）。
+            const worlds = (data.worlds ?? []).map(({ identity: _unverified, ...w }) => ({
                 ...w,
                 source: { kind: WorldSourceKind.RemoteInstance, url: w.url, originInstance: peer.baseUrl },
             }));
@@ -226,7 +317,7 @@ class WorldRegistry {
 
         const record = await worldRepository.findByName(worldId);
         if (record) {
-            const resolved = this._resolveWorld(record);
+            const resolved = await this._resolveWorld(record);
             this._resolvedCache.set(worldId, resolved);
             return resolved;
         }
@@ -244,7 +335,16 @@ class WorldRegistry {
      * - それ以外 → id（メモリ索引 or DB）
      */
     async resolveRef(idOrUrl: string): Promise<ResolvedWorld | undefined> {
-        return /^https?:\/\//i.test(idOrUrl) ? this.getWorldByUrl(idOrUrl) : this.getWorld(idOrUrl);
+        const result = await this.resolveRefDetailed(idOrUrl);
+        return result.ok ? result.world : undefined;
+    }
+
+    /** {@link resolveRef} の失敗理由付き版。改竄（署名不正）を「見つからない」と区別して利用者に伝える。 */
+    async resolveRefDetailed(idOrUrl: string): Promise<WorldResolution> {
+        if (!/^https?:\/\//i.test(idOrUrl)) return toResolution(await this.getWorld(idOrUrl));
+        const norm = normalizeWorldUrl(idOrUrl);
+        const local = this._resolveLocalUrl(norm);
+        return local ? toResolution(await local) : this._resolveRemote(norm);
     }
 
     /**
@@ -254,12 +354,16 @@ class WorldRegistry {
      */
     async getWorldByUrl(url: string): Promise<ResolvedWorld | undefined> {
         // 人間向け共有 URL（.../world/:id）も受け付ける（機械 URL へ正規化）。
-        const norm = normalizeWorldUrl(url);
+        const result = await this.resolveRefDetailed(url);
+        return result.ok ? result.world : undefined;
+    }
+
+    /** 自ホストの URL なら解決処理を返す（official はメモリ索引、ユーザー作成は DB）。他ホストは undefined。 */
+    private _resolveLocalUrl(norm: string): Promise<ResolvedWorld | undefined> | undefined {
         const indexedId = this._urlIndex.get(norm);
-        if (indexedId) return this._index.get(indexedId);
+        if (indexedId) return Promise.resolve(this._index.get(indexedId));
         const selfId = this._idFromSelfUrl(norm);
-        if (selfId) return this.getWorld(selfId);
-        return this._resolveRemote(norm);
+        return selfId ? this.getWorld(selfId) : undefined;
     }
 
     /** self URL（自ホストの `.../api/v1/worlds/{id}`、旧 `.../{id}/yaml` 可）から id を取り出す。他ホストは undefined。 */
@@ -275,16 +379,24 @@ class WorldRegistry {
     }
 
     /** 外部（他インスタンス/任意 URL）のワールドをその場で解決する（連合）。TTL キャッシュ。 */
-    private async _resolveRemote(url: string): Promise<ResolvedWorld | undefined> {
+    private async _resolveRemote(url: string): Promise<WorldResolution> {
         const cached = this._remoteCache.get(url);
-        if (cached && Date.now() - cached.at < WorldRegistry.REMOTE_TTL_MS) return cached.world;
+        if (cached && Date.now() - cached.at < WorldRegistry.REMOTE_TTL_MS) return { ok: true, world: cached.world };
         try {
-            const world = await resolveWorldFromUrl(url, this._externalSource(url));
+            const world = await resolveWorldFromUrl(url, this._externalSource(url), {
+                resolveAuthorKey,
+                resolveAuthorName: resolveAuthorDisplayName,
+            });
             this._remoteCache.set(url, { at: Date.now(), world });
-            return world;
+            return { ok: true, world };
         } catch (err) {
             console.error(`❌ 外部ワールド解決失敗: ${url}`, err);
-            return cached?.world;
+            // 改竄を検知したら以前の検証済みキャッシュでも使い続けない（配信元が侵害されている）。
+            if (err instanceof WorldIntegrityError) {
+                this._remoteCache.delete(url);
+                return { ok: false, reason: 'integrity', message: err.message };
+            }
+            return toResolution(cached?.world);
         }
     }
 
@@ -308,14 +420,16 @@ class WorldRegistry {
     }
 
     /**
-     * ワールドの生定義（WorldDefinition）を返す。URL 配信・フェデレーション用。
-     * official/registry はメモリの生定義、ユーザー作成は DB レコードから。
+     * 本体が配信するワールドの実体（YAML / lock / 署名の生の値）。URL 配信・フェデレーション用。
+     * `/worlds/:id`(YAML)・`/lock`・`/sig` は必ずこれを返すこと（署名検証の対象と一致させるため）。
      */
-    async getWorldDefinition(worldId: string): Promise<WorldDefinition | undefined> {
-        const mem = this._defByName.get(worldId);
-        if (mem) return mem;
+    async getHostedDocument(worldId: string): Promise<HostedWorldDocument | undefined> {
+        const file = this._hostedFiles.get(worldId);
+        if (file) return file;
         const record = await worldRepository.findByName(worldId);
-        return record ? (record.definition as WorldDefinition) : undefined;
+        return record
+            ? { definition: record.definition, lock: record.lock ?? null, signature: record.signature ?? null }
+            : undefined;
     }
 
     // ---- 連合ピア管理（フォロー） ----------------------------------
@@ -360,27 +474,23 @@ class WorldRegistry {
             definition,
             lock: lock ?? null,
         });
-        const resolved = this._resolveWorld(record);
+        const resolved = await this._resolveWorld(record);
         this._resolvedCache.set(resolved.id, resolved);
         return resolved;
     }
 
     /**
-     * フォーム入力からワールドを作成する。
-     * metadata.name はサーバー側で nanoid 生成、author はセッションのユーザー名で補完。
+     * フォーム入力からワールドを作成する。metadata.name はサーバー側で nanoid 生成。
+     * 表示名は metadata に書き込まない（署名対象なので、表示名を変えるたびに署名し直しが要るため）。
+     * 作者名は表示時に authorId からその時点の表示名を引く（{@link _resolveWorld}）。
      */
-    async createFromInput(
-        authorId: string,
-        authorDisplayName: string,
-        input: WorldCreateInput,
-    ): Promise<ResolvedWorld> {
+    async createFromInput(authorId: string, input: WorldCreateInput): Promise<ResolvedWorld> {
         const definition: WorldDefinition = {
             apiVersion: 'ubichill.com/v1alpha1',
             kind: 'World',
             metadata: {
                 name: generateWorldId(),
                 version: '1.0.0',
-                author: { name: authorDisplayName },
             },
             spec: input,
         };
@@ -391,12 +501,7 @@ class WorldRegistry {
      * YAML テキストからワールドを作成する。
      * metadata.name は無視してサーバー側で再生成し、所有権を作成者に紐付ける。
      */
-    async createFromYaml(
-        authorId: string,
-        authorDisplayName: string,
-        yamlText: string,
-        lock?: ModLock | null,
-    ): Promise<ResolvedWorld> {
+    async createFromYaml(authorId: string, yamlText: string, lock?: ModLock | null): Promise<ResolvedWorld> {
         const parsed = migrateLegacyWorldYaml(yaml.parse(yamlText) as unknown);
         const result = WorldDefinitionSchema.safeParse(parsed);
         if (!result.success) {
@@ -411,7 +516,6 @@ class WorldRegistry {
             metadata: {
                 ...result.data.metadata,
                 name: generateWorldId(),
-                author: result.data.metadata.author ?? { name: authorDisplayName },
             },
             spec: cleanSpec,
         };
@@ -421,23 +525,86 @@ class WorldRegistry {
     // NOTE: 外部/リモートのワールドは DB にコピーしない（＝連合は参照のみ）。
     // 単発で入るなら resolveRef(URL)→instance 作成、永続的に見たいならピアをフォローする。
 
+    /**
+     * ユーザー作成ワールドを更新する。内容が変わると以前の署名は無効になるため、
+     * - `signature` があれば新しい内容に対して検証し、通れば内容と一緒に保存する（不正なら何も保存しない）
+     * - 無ければ未署名で保存するが、署名済みワールドを黙って未署名にしないよう `allowUnsigned` を要求する
+     */
     async updateWorld(
         worldId: string,
         definition: WorldDefinition,
         lock?: ModLock | null,
-    ): Promise<ResolvedWorld | undefined> {
+        options: { signature?: unknown; allowUnsigned?: boolean } = {},
+    ): Promise<UpdateWorldResult> {
         const existing = await worldRepository.findByName(worldId);
-        if (!existing) return undefined;
-        const { lock: embeddedLock, ...cleanSpec } = definition.spec;
+        if (!existing) return { ok: false, reason: 'not-found' };
+        const next = prepareWorldUpdate(worldId, definition, lock);
+
+        if (options.signature !== undefined) {
+            const verdict = await verifyWorldSignature(next, options.signature, nodeWorldCrypto);
+            if (verdict.status !== 'verified') {
+                return { ok: false, reason: verdict.status === 'invalid' ? verdict.reason : 'malformed' };
+            }
+        } else if (!options.allowUnsigned) {
+            // 署名が有効なワールド（作者アカウントの確認有無に関係なく）を黙って未署名にしない
+            const current = await this.getWorld(worldId);
+            if (current?.identity?.status === 'verified') return { ok: false, reason: 'signature-required' };
+        }
+
         const updated = await worldRepository.update(existing.id, {
-            version: definition.metadata.version,
-            definition: { ...definition, spec: cleanSpec },
-            lock: lock ?? embeddedLock ?? null,
+            version: next.definition.metadata.version,
+            definition: next.definition,
+            lock: next.lock,
+            signature: (options.signature as WorldSignature | undefined) ?? null,
+            // 本体の内容を置き換えたので下書きは不要（公開した・または未公開の本体に直接保存した）
+            draftDefinition: null,
+            draftLock: null,
+            draftUpdatedAt: null,
         });
-        if (!updated) return undefined;
-        const resolved = this._resolveWorld(updated);
+        if (!updated) return { ok: false, reason: 'not-found' };
+        const resolved = await this._resolveWorld(updated);
         this._resolvedCache.set(worldId, resolved);
-        return resolved;
+        return { ok: true, world: resolved };
+    }
+
+    /**
+     * 下書きを保存する（鍵・ID などの準備は不要）。
+     * - 署名済み（公開中など）のワールド: 公開中の版はそのまま残し、下書きだけを別に保存する（黙って非公開にしない）。
+     * - 未署名のワールド: もともと公開されていないので、下書きを本体に直接保存する（URL から試しに入れる）。
+     */
+    async saveDraft(
+        worldId: string,
+        definition: WorldDefinition,
+        lock?: ModLock | null,
+    ): Promise<{ ok: true; hasDraft: boolean } | { ok: false; reason: 'not-found' }> {
+        const existing = await worldRepository.findByName(worldId);
+        if (!existing) return { ok: false, reason: 'not-found' };
+        const current = await this.getWorld(worldId);
+        if (current?.identity?.status !== 'verified') {
+            const result = await this.updateWorld(worldId, definition, lock, { allowUnsigned: true });
+            return result.ok ? { ok: true, hasDraft: false } : { ok: false, reason: 'not-found' };
+        }
+        const next = prepareWorldUpdate(worldId, definition, lock);
+        await worldRepository.update(existing.id, {
+            draftDefinition: next.definition,
+            draftLock: next.lock,
+            draftUpdatedAt: new Date(),
+        });
+        return { ok: true, hasDraft: true };
+    }
+
+    /** エディタ用: 下書きがあれば下書き、無ければ本体の定義と、公開状態。 */
+    async getEditorDefinition(
+        worldId: string,
+    ): Promise<{ definition: WorldDefinition; hasDraft: boolean; published: boolean } | undefined> {
+        const record = await worldRepository.findByName(worldId);
+        if (!record) return undefined;
+        const world = await this.getWorld(worldId);
+        return {
+            definition: (record.draftDefinition ?? record.definition) as WorldDefinition,
+            hasDraft: !!record.draftDefinition,
+            published: isPublishable(world?.identity),
+        };
     }
 
     async deleteWorld(worldId: string): Promise<boolean> {
@@ -478,7 +645,7 @@ class WorldRegistry {
     private async _scanLocal(): Promise<void> {
         this._index.clear();
         this._urlIndex.clear();
-        this._defByName.clear();
+        this._hostedFiles.clear();
         this._fileByName.clear();
         const nextOrder: string[] = [];
         if (!fs.existsSync(this.worldsDir)) {
@@ -501,8 +668,8 @@ class WorldRegistry {
     /** 1 つのローカル YAML を解決してメモリ索引に載せる（DB 非依存）。失敗時は undefined。 */
     private async _indexLocalFile(filePath: string): Promise<ResolvedWorld | undefined> {
         try {
-            const content = fs.readFileSync(filePath, 'utf-8');
-            const parsed = migrateLegacyWorldYaml(yaml.parse(content) as unknown);
+            const rawDefinition = yaml.parse(fs.readFileSync(filePath, 'utf-8')) as unknown;
+            const parsed = migrateLegacyWorldYaml(rawDefinition);
             const result = WorldDefinitionSchema.safeParse(parsed);
             if (!result.success) {
                 console.warn(`⚠  ${path.basename(filePath)}: バリデーションエラー（スキップ）`);
@@ -510,32 +677,31 @@ class WorldRegistry {
             }
             const def = result.data;
             const id = def.metadata.name;
-            // 兄弟 `<name>.lock.json` があれば読み込む（分離方針＝YAML には埋めない）。
-            const lock = this._readSiblingLock(filePath);
+            // 兄弟 `<name>.lock.json` / `<name>.sig.json` があれば読み込む（分離方針＝YAML には埋めない）。
+            const hosted: HostedWorldDocument = {
+                definition: rawDefinition,
+                lock: readSiblingJson(filePath, '.lock.json'),
+                signature: readSiblingJson(filePath, '.sig.json'),
+            };
+            const lock = ModLockSchema.safeParse(hosted.lock);
             // official ワールドは DB に持たずメモリ索引のみ（DB 依存の排除）
-            const resolved = definitionToResolved(parsed, this.selfWorldUrl(id), this.localSource(id), {
-                authorId: SYSTEM_AUTHOR_ID,
-                lock,
-            });
+            const identity = await hostedIdentity(hosted, id);
+            const resolved = {
+                ...definitionToResolved(parsed, this.selfWorldUrl(id), this.localSource(id), {
+                    authorId: SYSTEM_AUTHOR_ID,
+                    lock: lock.success ? lock.data : undefined,
+                    identity,
+                }),
+                // 公式ワールドの作者名も metadata ではなく、確認できた作者アカウントの表示名
+                authorName: await confirmedAuthorName(identity, resolveAuthorDisplayName),
+            };
             this._index.set(id, resolved);
             this._urlIndex.set(resolved.url, id);
-            this._defByName.set(id, def);
+            this._hostedFiles.set(id, hosted);
             this._fileByName.set(id, filePath);
             return resolved;
         } catch (err) {
             console.error(`❌ ローカルワールド読み込み失敗: ${filePath}`, err);
-            return undefined;
-        }
-    }
-
-    /** official ワールド YAML の兄弟 `<name>.lock.json` を読む（fs 版 sibling lock）。無ければ undefined。 */
-    private _readSiblingLock(worldFilePath: string): ModLock | undefined {
-        const lockPath = worldFilePath.replace(/\.ya?ml$/i, '.lock.json');
-        if (!fs.existsSync(lockPath)) return undefined;
-        try {
-            const parsed = ModLockSchema.safeParse(JSON.parse(fs.readFileSync(lockPath, 'utf-8')));
-            return parsed.success ? parsed.data : undefined;
-        } catch {
             return undefined;
         }
     }
@@ -555,11 +721,15 @@ class WorldRegistry {
             let yamlFilename: string | undefined;
             if (/\.ya?ml$/.test(filename)) {
                 yamlFilename = filename;
-            } else if (/\.lock\.json$/.test(filename)) {
-                const trackedFile = [...this._fileByName.values()].find(
-                    (filePath) => path.basename(filePath).replace(/\.ya?ml$/i, '.lock.json') === filename,
-                );
-                yamlFilename = trackedFile ? path.basename(trackedFile) : filename.replace(/\.lock\.json$/, '.yaml');
+            } else {
+                const sibling = /\.(lock|sig)\.json$/.exec(filename);
+                if (sibling) {
+                    const ext = `.${sibling[1]}.json`;
+                    const trackedFile = [...this._fileByName.values()].find(
+                        (filePath) => path.basename(filePath).replace(/\.ya?ml$/i, ext) === filename,
+                    );
+                    yamlFilename = trackedFile ? path.basename(trackedFile) : filename.replace(ext, '.yaml');
+                }
             }
             if (!yamlFilename) return;
 
@@ -574,7 +744,7 @@ class WorldRegistry {
                 }, 300),
             );
         });
-        console.log('👁  worlds/ の YAML / lock を監視中（変更時に自動リロード）');
+        console.log('👁  worlds/ の YAML / lock / sig を監視中（変更時に自動リロード）');
     }
 
     private async _onYamlChanged(filename: string): Promise<void> {
@@ -586,7 +756,7 @@ class WorldRegistry {
             if (id) {
                 this._urlIndex.delete(this.selfWorldUrl(id));
                 this._index.delete(id);
-                this._defByName.delete(id);
+                this._hostedFiles.delete(id);
                 this._fileByName.delete(id);
                 this._order = this._order.filter((n) => n !== id);
                 console.log(`🗑  ワールド削除を検知: ${id}`);
@@ -608,6 +778,9 @@ class WorldRegistry {
         const all = await worldRepository.findAll();
         let migrated = 0;
         for (const record of all) {
+            // 署名済みを書き換えると署名が黙って無効になる。読み出し時にも同じマイグレーションが
+            // 掛かる（validateWorldDefinition）ので、保存値は作者が署名した値のまま残す。
+            if (record.signature) continue;
             const next = migrateLegacyWorldYaml(record.definition);
             if (next === record.definition) continue;
             const parsed = WorldDefinitionSchema.safeParse(next);
@@ -624,25 +797,58 @@ class WorldRegistry {
     }
 
     /** DB レコード → ResolvedWorld（ユーザー作成ワールド。source=local self URL）。 */
-    private _resolveWorld(record: WorldRecord): ResolvedWorld {
+    /**
+     * DB レコード → ResolvedWorld。作者名は metadata ではなくアカウントのその時点の表示名
+     * （表示名を変えても署名し直さずに全ワールドへ反映される）。一覧では一括取得した名前を渡す。
+     */
+    private async _resolveWorld(record: WorldRecord, authorName?: string): Promise<ResolvedWorld> {
         const def = record.definition as WorldDefinition;
-        return {
-            ...definitionToResolved(def, this.selfWorldUrl(record.name), this.localSource(record.name), {
-                authorId: record.authorId,
-                lock: record.lock ?? undefined,
-            }),
-            id: record.name,
-        };
+        const resolved = definitionToResolved(def, this.selfWorldUrl(record.name), this.localSource(record.name), {
+            authorId: record.authorId,
+            lock: record.lock ?? undefined,
+            identity: await hostedIdentity(
+                { definition: def, lock: record.lock ?? null, signature: record.signature ?? null },
+                record.name,
+            ),
+        });
+        const name = authorName ?? (await userRepository.findById(record.authorId))?.name;
+        return { ...resolved, id: record.name, authorName: name ?? resolved.authorName };
     }
 
     /**
-     * ワールドの mod ロックを返す（兄弟エンドポイント /worlds/:id/lock 用）。
-     * DB ユーザーワールドは別カラム、official（ファイル）は解決済み ResolvedWorld.lock から。
+     * キャッシュ済みの解決結果（作者表示・作者名・worldId）を捨てる。作者の署名鍵や表示名が変わったときに呼ぶ。
+     * official の索引は作者アカウントを持たない（メンテナ鍵のみ）ので対象外。
      */
-    async getWorldLock(worldId: string): Promise<ModLock | undefined> {
+    invalidateResolvedWorlds(): void {
+        this._resolvedCache.clear();
+        this._remoteCache.clear();
+    }
+
+    /** 兄弟エンドポイント /worlds/:id/sig 用。現在の内容に対して有効な作者署名だけを返す。 */
+    async getWorldSignature(worldId: string): Promise<WorldSignature | undefined> {
+        const hosted = await this.getHostedDocument(worldId);
+        if (!hosted) return undefined;
+        const verdict = await verifyWorldSignature(hosted, hosted.signature, nodeWorldCrypto);
+        return verdict.status === 'verified' ? (hosted.signature as WorldSignature) : undefined;
+    }
+
+    /**
+     * ユーザー作成ワールドに作者署名を付ける。サーバーは鍵を持たず、現在の内容に対して
+     * 有効な署名だけを保存する（内容を更新すると {@link updateWorld} が署名を外す）。
+     */
+    async setWorldSignature(worldId: string, rawSignature: unknown): Promise<SetSignatureResult> {
         const record = await worldRepository.findByName(worldId);
-        if (record) return record.lock ?? undefined;
-        return this._index.get(worldId)?.lock;
+        if (!record) return { ok: false, reason: 'not-found' };
+        const doc: WorldDocument = { definition: record.definition, lock: record.lock ?? null };
+        const verdict = await verifyWorldSignature(doc, rawSignature, nodeWorldCrypto, resolveAuthorKey);
+        if (verdict.status !== 'verified') {
+            return { ok: false, reason: verdict.status === 'invalid' ? verdict.reason : 'malformed' };
+        }
+        const updated = await worldRepository.update(record.id, { signature: rawSignature as WorldSignature });
+        if (!updated) return { ok: false, reason: 'not-found' };
+        const resolved = await this._resolveWorld(updated);
+        this._resolvedCache.set(worldId, resolved);
+        return { ok: true, identity: verdict };
     }
 
     /** ResolvedWorld(+DB record) → WorldListItem。 */
@@ -659,6 +865,7 @@ class WorldRegistry {
             authorId: rec?.authorId ?? w.authorId,
             authorName: w.authorName,
             mods: w.mods,
+            identity: w.identity,
             createdAt: rec ? rec.createdAt.toISOString() : undefined,
             updatedAt: rec ? rec.updatedAt.toISOString() : undefined,
         };

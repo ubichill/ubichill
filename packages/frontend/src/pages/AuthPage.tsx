@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
-import { API_BASE, registerWithOTP, resendOTP, signIn, verifyOTPAndRegister } from '@/lib/auth-client';
+import { useDisplayNameAvailability, useHandleAvailability } from '@/lib/account/useHandleAvailability';
+import { registerWithOTP, resendOTP, signIn, verifyOTPAndRegister } from '@/lib/auth-client';
 import { useSession } from '@/lib/session';
 import { css } from '@/styled-system/css';
 import { flex, vstack } from '@/styled-system/patterns';
@@ -15,14 +16,15 @@ export function AuthPage() {
     const [mode, setMode] = useState<AuthMode>('login');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [username, setUsername] = useState('');
+    const [displayName, setDisplayName] = useState('');
+    const [handle, setHandle] = useState('');
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [resendCooldown, setResendCooldown] = useState(0);
     const [otp, setOtp] = useState('');
-    const [usernameError, setUsernameError] = useState('');
-    const [isCheckingUsername, setIsCheckingUsername] = useState(false);
+    const handleStatus = useHandleAvailability(handle, mode === 'register');
+    const displayNameStatus = useDisplayNameAvailability(displayName, mode === 'register');
 
     // クールダウンタイマー
     useEffect(() => {
@@ -39,49 +41,6 @@ export function AuthPage() {
         }
     }, [session, isPending, navigate, from]);
 
-    // ユーザー名の重複チェック（デバウンス付き）
-    useEffect(() => {
-        const trimmedUsername = username.trim();
-        if (!trimmedUsername || mode !== 'register') {
-            setUsernameError('');
-            return;
-        }
-
-        // 長さチェック（1-30文字）
-        if (trimmedUsername.length < 1 || trimmedUsername.length > 30) {
-            setUsernameError('ユーザー名は1〜30文字で入力してください');
-            return;
-        }
-
-        let ignore = false;
-        const timer = setTimeout(async () => {
-            setIsCheckingUsername(true);
-            try {
-                const res = await fetch(
-                    `${API_BASE}/api/v1/users/check-username?username=${encodeURIComponent(trimmedUsername)}`,
-                );
-                const data = await res.json();
-
-                if (!ignore) {
-                    if (!data.available) {
-                        setUsernameError(data.error || 'このユーザー名は使用できません');
-                    } else {
-                        setUsernameError('');
-                    }
-                }
-            } catch {
-                if (!ignore) setUsernameError('確認に失敗しました');
-            } finally {
-                if (!ignore) setIsCheckingUsername(false);
-            }
-        }, 500);
-
-        return () => {
-            ignore = true;
-            clearTimeout(timer);
-        };
-    }, [username, mode]);
-
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
@@ -90,15 +49,16 @@ export function AuthPage() {
 
         try {
             if (mode === 'register') {
-                // ユーザー名のエラーがある場合は登録しない
-                if (usernameError) {
-                    setError(usernameError);
+                // 表示名・ID のどちらかが使えない場合は登録しない（どちらも一意）
+                const blocking = [displayNameStatus, handleStatus].find((st) => st.state !== 'available');
+                if (blocking) {
+                    setError('error' in blocking ? blocking.error : '表示名と ID を確認してください');
                     setIsLoading(false);
                     return;
                 }
 
                 // 仮登録（OTP送信）
-                const result = await registerWithOTP(email, password, username.trim());
+                const result = await registerWithOTP(email, password, displayName.trim(), handle.trim());
 
                 if (!result.success) {
                     setError(result.error || '登録に失敗しました');
@@ -175,7 +135,8 @@ export function AuthPage() {
                 setTimeout(() => {
                     setMode('login');
                     setOtp('');
-                    setUsername('');
+                    setDisplayName('');
+                    setHandle('');
                     setPassword('');
                 }, 1500);
             }
@@ -294,26 +255,66 @@ export function AuthPage() {
 
                 <form onSubmit={handleSubmit} className={formStyle}>
                     {mode === 'register' && (
-                        <div className={fieldStyle}>
-                            <label htmlFor="username" className={labelStyle}>
-                                ユーザー名
-                            </label>
-                            <input
-                                id="username"
-                                type="text"
-                                value={username}
-                                onChange={(e) => setUsername(e.target.value.slice(0, 30))}
-                                placeholder="ユーザー名"
-                                className={usernameError ? inputErrorStyle : inputStyle}
-                                required
-                            />
-                            {isCheckingUsername && <p className={hintStyle}>確認中...</p>}
-                            {usernameError && <p className={fieldErrorStyle}>{usernameError}</p>}
-                            {!usernameError && username.trim().length >= 1 && !isCheckingUsername && (
-                                <p className={fieldSuccessStyle}>このユーザー名は使用できます</p>
-                            )}
-                            <p className={hintStyle}>1〜30文字で自由に設定できます</p>
-                        </div>
+                        <>
+                            <div className={fieldStyle}>
+                                <label htmlFor="displayName" className={labelStyle}>
+                                    表示名
+                                </label>
+                                <input
+                                    id="displayName"
+                                    type="text"
+                                    value={displayName}
+                                    onChange={(e) => setDisplayName(e.target.value.slice(0, 30))}
+                                    placeholder="表示名"
+                                    className={
+                                        displayNameStatus.state === 'invalid' || displayNameStatus.state === 'taken'
+                                            ? inputErrorStyle
+                                            : inputStyle
+                                    }
+                                    required
+                                />
+                                {displayNameStatus.state === 'checking' && <p className={hintStyle}>確認中...</p>}
+                                {'error' in displayNameStatus && (
+                                    <p className={fieldErrorStyle}>{displayNameStatus.error}</p>
+                                )}
+                                {displayNameStatus.state === 'available' && (
+                                    <p className={fieldSuccessStyle}>この表示名は使用できます</p>
+                                )}
+                                <p className={hintStyle}>
+                                    日本語も使えます。他の人と同じ名前は使えません（あとから変更できます）
+                                </p>
+                            </div>
+                            <div className={fieldStyle}>
+                                <label htmlFor="handle" className={labelStyle}>
+                                    ID
+                                </label>
+                                <input
+                                    id="handle"
+                                    type="text"
+                                    value={handle}
+                                    onChange={(e) => setHandle(e.target.value.toLowerCase().slice(0, 30))}
+                                    placeholder="youkan"
+                                    autoCapitalize="none"
+                                    autoCorrect="off"
+                                    spellCheck={false}
+                                    className={
+                                        handleStatus.state === 'invalid' || handleStatus.state === 'taken'
+                                            ? inputErrorStyle
+                                            : inputStyle
+                                    }
+                                    required
+                                />
+                                {handleStatus.state === 'checking' && <p className={hintStyle}>確認中...</p>}
+                                {'error' in handleStatus && <p className={fieldErrorStyle}>{handleStatus.error}</p>}
+                                {handleStatus.state === 'available' && (
+                                    <p className={fieldSuccessStyle}>この ID は使用できます</p>
+                                )}
+                                <p className={hintStyle}>
+                                    英小文字・数字・_ の 3〜30 文字。URL
+                                    や作者署名（@ID@サーバー）に使われ、あとから変更できません
+                                </p>
+                            </div>
+                        </>
                     )}
 
                     <div className={fieldStyle}>
@@ -355,7 +356,11 @@ export function AuthPage() {
                     <button
                         type="submit"
                         className={buttonStyle}
-                        disabled={isLoading || (mode === 'register' && isCheckingUsername)}
+                        disabled={
+                            isLoading ||
+                            (mode === 'register' &&
+                                (handleStatus.state === 'checking' || displayNameStatus.state === 'checking'))
+                        }
                     >
                         {isLoading ? '処理中...' : mode === 'login' ? 'ログイン' : '登録'}
                     </button>

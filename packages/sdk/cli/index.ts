@@ -4,9 +4,11 @@
  *
  * 使い方:
  *   ubichill build   [--mods-dir=<dir>] [--public-mods-dir=<dir>] [--dist-dir=<dir>]
- *   ubichill install <world.yaml> [--mods-dir=<dir>] [--base-url=<url>] [--out=<path>]
+ *   ubichill install <world.yaml> [--mods-dir=<dir>] [--base-url=<url>] [--out=<path>] [--no-sign] [--key-file=<path>]
  *   ubichill update  <world.yaml> [<modName>] [--mods-dir=<dir>] [--out=<path>]
  *   ubichill verify  [--dist-dir=<dir>]
+ *   ubichill keygen  [--out=<path>]
+ *   ubichill sign    <world.yaml> [--key-file=<path>] [--author=handle@domain] [--out=<path>] [--check]
  *
  * `lock` は `install` の旧名。非推奨だが後方互換のため残る。
  *
@@ -19,9 +21,10 @@ import { runBuild } from './build.ts';
 import { runInstall } from './install.ts';
 import { runLock } from './lock.ts';
 import { runUpdate } from './update.ts';
+import { runKeygen, runSign } from './sign.ts';
 import { runVerify } from './verify.ts';
 
-const USAGE = `使い方: ubichill <build|install|update|verify> [...args]`;
+const USAGE = `使い方: ubichill <build|install|update|verify|keygen|sign> [...args]`;
 
 async function main(): Promise<void> {
     const [subcommand, ...rest] = process.argv.slice(2);
@@ -40,6 +43,12 @@ async function main(): Promise<void> {
             return;
         case 'verify':
             await runVerify(rest);
+            return;
+        case 'keygen':
+            await runKeygen(rest);
+            return;
+        case 'sign':
+            await runSign(rest);
             return;
         default:
             console.error(USAGE);

@@ -1,31 +1,51 @@
-import { db, favoriteRepository, userRepository, users, type WorldRecord, worldRepository } from '@ubichill/db';
+import { favoriteRepository, userRepository, type WorldRecord, worldRepository } from '@ubichill/db';
 import type { WorldDefinition } from '@ubichill/shared';
-import { LIMITS } from '@ubichill/shared';
-import { eq } from 'drizzle-orm';
+import {
+    DisplayNameSchema,
+    displayNameKey,
+    HandleSchema,
+    isPublishable,
+    LIMITS,
+    verifyKeyRegistration,
+} from '@ubichill/shared';
 import { Router } from 'express';
-import { createPendingRegistration, resendOTP, verifyAndRegister } from '../lib/auth';
-import { requireAuth } from '../middleware/auth';
+import { auth, createPendingRegistration, resendOTP, verifyAndRegister } from '../lib/auth';
+import { isAdminHandle, optionalAuth, requireAuth, toWebHeaders } from '../middleware/auth';
+import { invalidateAuthorKey } from '../services/authorKeyStore';
+import { selfAccount } from '../services/authorKeys';
+import { nodeWorldCrypto } from '../services/worldCrypto';
+import { worldRegistry } from '../services/worldRegistry';
 
 const router = Router();
 
 // 仮登録（OTP送信）
 router.post('/register', async (req, res) => {
-    const { email, password, username } = req.body;
+    const { email, password, displayName, handle } = req.body as {
+        email?: string;
+        password?: string;
+        displayName?: string;
+        handle?: string;
+    };
 
-    if (!email || !password || !username) {
-        return res.status(400).json({ error: 'メールアドレス、パスワード、ユーザー名は必須です' });
+    if (!email || !password || !displayName || !handle) {
+        return res.status(400).json({ error: 'メールアドレス、パスワード、表示名、ID は必須です' });
     }
 
     if (password.length < 8) {
         return res.status(400).json({ error: 'パスワードは8文字以上で入力してください' });
     }
 
-    const trimmedUsername = username.trim();
-    if (trimmedUsername.length < 1 || trimmedUsername.length > 30) {
-        return res.status(400).json({ error: 'ユーザー名は1〜30文字で入力してください' });
+    const parsedName = DisplayNameSchema.safeParse(displayName);
+    if (!parsedName.success) {
+        return res.status(400).json({ error: parsedName.error.issues[0]?.message ?? '表示名が不正です' });
+    }
+    const trimmedName = parsedName.data;
+    const parsedHandle = HandleSchema.safeParse(handle.trim());
+    if (!parsedHandle.success) {
+        return res.status(400).json({ error: parsedHandle.error.issues[0]?.message ?? 'ID が不正です' });
     }
 
-    const result = await createPendingRegistration(email, password, trimmedUsername);
+    const result = await createPendingRegistration(email, password, trimmedName, parsedHandle.data);
 
     if (!result.success) {
         return res.status(400).json({ error: result.error });
@@ -77,34 +97,32 @@ router.post('/resend-otp', async (req, res) => {
     return res.json({ success: true, message: '認証コードを再送信しました' });
 });
 
-// ユーザー名の重複チェック
-router.get('/check-username', async (req, res) => {
-    const { username } = req.query;
-
-    if (!username || typeof username !== 'string') {
-        return res.status(400).json({ error: 'Username is required' });
+// 表示名が使えるか（一意。全角半角・大文字小文字・空白の違いは同じ名前として扱う）。
+router.get('/check-display-name', optionalAuth, async (req, res) => {
+    const parsed = DisplayNameSchema.safeParse(typeof req.query.name === 'string' ? req.query.name : '');
+    if (!parsed.success) {
+        return res.json({ available: false, error: parsed.error.issues[0]?.message ?? '表示名が不正です' });
     }
+    const existing = await userRepository.findByDisplayNameKey(displayNameKey(parsed.data));
+    const own = existing && req.user && existing.id === req.user.id;
+    return res.json({
+        available: !existing || !!own,
+        error: existing && !own ? 'この表示名は既に使用されています' : null,
+    });
+});
 
-    // ユーザー名の長さチェック（1-30文字）
-    const trimmedUsername = username.trim();
-    if (trimmedUsername.length < 1 || trimmedUsername.length > 30) {
-        return res.status(400).json({
-            available: false,
-            error: 'ユーザー名は1〜30文字で入力してください',
-        });
+// ID（handle）が使えるか。形式・予約語・重複を確認する。
+router.get('/check-handle', async (req, res) => {
+    const handle = typeof req.query.handle === 'string' ? req.query.handle.trim() : '';
+    const parsed = HandleSchema.safeParse(handle);
+    if (!parsed.success) {
+        return res.json({ available: false, error: parsed.error.issues[0]?.message ?? 'ID が不正です' });
     }
-
     try {
-        const existingUser = await db.query.users.findFirst({
-            where: eq(users.username, trimmedUsername),
-        });
-
-        return res.json({
-            available: !existingUser,
-            error: existingUser ? 'このユーザー名は既に使用されています' : null,
-        });
+        const existing = await userRepository.findByHandle(parsed.data);
+        return res.json({ available: !existing, error: existing ? 'この ID は既に使用されています' : null });
     } catch (error) {
-        console.error('Username check error:', error);
+        console.error('Handle check error:', error);
         return res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -121,9 +139,110 @@ router.get('/me', requireAuth, async (req, res) => {
     return res.json({
         id: user.id,
         name: user.name,
-        username: user.username,
+        handle: user.handle ?? null,
+        author: user.handle ? selfAccount(user.handle) : null,
+        signingPublicKey: user.signingPublicKey ?? null,
+        // 移行時に他人と表示名が重複していた（一意キー未設定）。変更を促す。
+        displayNameConflict: !user.displayNameKey,
+        // 初期パスワードのまま（公式アカウントの初期作成時など）。変更を促す。
+        passwordChangeRequired: user.passwordChangeRequired,
+        isAdmin: isAdminHandle(user.handle),
         profileImageUrl: user.profileImageUrl ?? user.image ?? null,
     });
+});
+
+// パスワードを変更する。現在のパスワードの確認は better-auth に任せ、他の端末のセッションは無効にする。
+router.put('/me/password', requireAuth, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    const { currentPassword, newPassword } = (req.body ?? {}) as { currentPassword?: unknown; newPassword?: unknown };
+    if (typeof currentPassword !== 'string' || typeof newPassword !== 'string') {
+        return res.status(400).json({ error: '現在のパスワードと新しいパスワードが必要です' });
+    }
+    if (newPassword.length < 8) return res.status(400).json({ error: '新しいパスワードは8文字以上にしてください' });
+    if (newPassword === currentPassword) {
+        return res.status(400).json({ error: '新しいパスワードは現在のパスワードと違うものにしてください' });
+    }
+    const result = await auth.api.changePassword({
+        body: { currentPassword, newPassword, revokeOtherSessions: true },
+        headers: toWebHeaders(req),
+        asResponse: true,
+    });
+    if (!result.ok) {
+        return res.status(400).json({ error: '現在のパスワードが正しくありません' });
+    }
+    // 他セッションの無効化で発行し直されたこのセッションのクッキーを引き継ぐ
+    for (const cookie of result.headers.getSetCookie()) res.append('Set-Cookie', cookie);
+    await userRepository.setPasswordChangeRequired(req.user.id, false);
+    return res.status(204).send();
+});
+
+// 表示名を変更する（一意）。ID と違い変更できる。
+router.put('/me/display-name', requireAuth, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    const parsed = DisplayNameSchema.safeParse(typeof req.body?.name === 'string' ? req.body.name : '');
+    if (!parsed.success) {
+        return res.status(400).json({ error: parsed.error.issues[0]?.message ?? '表示名が不正です' });
+    }
+    const key = displayNameKey(parsed.data);
+    const existing = await userRepository.findByDisplayNameKey(key);
+    if (existing && existing.id !== req.user.id) {
+        return res.status(409).json({ error: 'この表示名は既に使用されています' });
+    }
+    try {
+        const updated = await userRepository.setDisplayName(req.user.id, parsed.data, key);
+        if (!updated) return res.status(404).json({ error: 'User not found' });
+        // ワールドの作者名は表示時にアカウントから引くので、キャッシュ済みの解決結果だけ捨てればよい
+        if (updated.handle) invalidateAuthorKey(selfAccount(updated.handle));
+        worldRegistry.invalidateResolvedWorlds();
+        return res.json({ name: updated.name, displayNameConflict: false });
+    } catch {
+        return res.status(409).json({ error: 'この表示名は既に使用されています' });
+    }
+});
+
+// ID（handle）を設定する。変更不可なので未設定のときだけ受け付ける（既存ユーザーの移行用）。
+router.put('/me/handle', requireAuth, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    const parsed = HandleSchema.safeParse(typeof req.body?.handle === 'string' ? req.body.handle.trim() : '');
+    if (!parsed.success) {
+        return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'ID が不正です' });
+    }
+    const current = await userRepository.findById(req.user.id);
+    if (current?.handle) return res.status(409).json({ error: 'ID は変更できません' });
+    if (await userRepository.findByHandle(parsed.data)) {
+        return res.status(409).json({ error: 'この ID は既に使用されています' });
+    }
+    try {
+        const updated = await userRepository.setHandleOnce(req.user.id, parsed.data);
+        if (!updated) return res.status(409).json({ error: 'ID は変更できません' });
+        return res.json({ handle: updated.handle, author: selfAccount(parsed.data) });
+    } catch {
+        // 一意制約違反（同時に他人が取った）
+        return res.status(409).json({ error: 'この ID は既に使用されています' });
+    }
+});
+
+// 作者署名の公開鍵を登録・置き換える（1 アカウント 1 本）。秘密鍵の所有を署名で証明させる。
+router.put('/me/signing-key', requireAuth, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    const { publicKey, at, signature } = (req.body ?? {}) as { publicKey?: unknown; at?: unknown; signature?: unknown };
+    if (typeof publicKey !== 'string' || typeof at !== 'string' || typeof signature !== 'string') {
+        return res.status(400).json({ error: 'publicKey・at・signature が必要です' });
+    }
+    const verdict = await verifyKeyRegistration(
+        { userId: req.user.id, publicKey, at },
+        signature,
+        Date.now(),
+        nodeWorldCrypto,
+    );
+    if (!verdict.ok) return res.status(422).json({ error: `鍵の所有を確認できません (${verdict.reason})` });
+
+    const updated = await userRepository.setSigningPublicKey(req.user.id, publicKey);
+    if (!updated) return res.status(404).json({ error: 'User not found' });
+    // 作者表示・worldId が変わるので、キャッシュ済みの識別結果を捨てる
+    if (updated.handle) invalidateAuthorKey(selfAccount(updated.handle));
+    worldRegistry.invalidateResolvedWorlds();
+    return res.json({ signingPublicKey: updated.signingPublicKey });
 });
 
 // 自分が作成したワールド一覧（編集に使う詳細情報を含む）
@@ -132,18 +251,22 @@ router.get('/me/worlds', requireAuth, async (req, res) => {
         return res.status(401).json({ error: 'Unauthorized' });
     }
     const records = await worldRepository.findByAuthorId(req.user.id);
-    const worlds = records.map((r: WorldRecord) => {
-        const def = r.definition as WorldDefinition;
-        return {
-            id: r.name,
-            displayName: def.spec.displayName,
-            description: def.spec.description ?? null,
-            thumbnail: def.spec.thumbnail ?? null,
-            version: r.version,
-            capacity: def.spec.capacity,
-            updatedAt: r.updatedAt,
-        };
-    });
+    // 本人には未署名（非公開）も返す。署名状態を見せて署名し直せるようにする。
+    const worlds = await Promise.all(
+        records.map(async (r: WorldRecord) => {
+            const def = r.definition as WorldDefinition;
+            return {
+                id: r.name,
+                displayName: def.spec.displayName,
+                description: def.spec.description ?? null,
+                thumbnail: def.spec.thumbnail ?? null,
+                version: r.version,
+                capacity: def.spec.capacity,
+                updatedAt: r.updatedAt,
+                identity: (await worldRegistry.getWorld(r.name))?.identity,
+            };
+        }),
+    );
     return res.json({
         worlds,
         limit: LIMITS.MAX_WORLDS_PER_USER,
@@ -195,25 +318,30 @@ router.get('/:userId', async (req, res) => {
     return res.json({
         id: user.id,
         name: user.name,
-        username: user.username,
+        handle: user.handle ?? null,
+        author: user.handle ? selfAccount(user.handle) : null,
         profileImageUrl: user.profileImageUrl ?? user.image ?? null,
     });
 });
 
-// 他ユーザーが作成したワールド一覧（公開メタデータのみ）
+// 他ユーザーが作成したワールド一覧（公開メタデータのみ。署名検証済みのワールドだけ公開する）
 router.get('/:userId/worlds', async (req, res) => {
     const records = await worldRepository.findByAuthorId(req.params.userId);
-    const worlds = records.map((r: WorldRecord) => {
-        const def = r.definition as WorldDefinition;
-        return {
-            id: r.name,
-            displayName: def.spec.displayName,
-            description: def.spec.description ?? null,
-            thumbnail: def.spec.thumbnail ?? null,
-            version: r.version,
-            capacity: def.spec.capacity,
-        };
-    });
+    const resolved = await Promise.all(records.map((r: WorldRecord) => worldRegistry.getWorld(r.name)));
+    const publishable = new Set(resolved.filter((w) => isPublishable(w?.identity)).map((w) => w?.id));
+    const worlds = records
+        .filter((r: WorldRecord) => publishable.has(r.name))
+        .map((r: WorldRecord) => {
+            const def = r.definition as WorldDefinition;
+            return {
+                id: r.name,
+                displayName: def.spec.displayName,
+                description: def.spec.description ?? null,
+                thumbnail: def.spec.thumbnail ?? null,
+                version: r.version,
+                capacity: def.spec.capacity,
+            };
+        });
     return res.json({ worlds });
 });
 

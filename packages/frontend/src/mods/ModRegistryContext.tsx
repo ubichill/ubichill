@@ -54,7 +54,9 @@ export const ModRegistryProvider: React.FC<{
      * 未指定（エディタプレビュー等）は local として寛容に扱う。
      */
     sourceKind?: string;
-}> = ({ children, onStatusChange, lock, sourceKind = WorldSourceKind.Local }) => {
+    /** サーバーが決めた厳格固定。作者署名ありのワールドは true（lock 欠落・不一致の mod を実行しない）。 */
+    strictLock?: boolean;
+}> = ({ children, onStatusChange, lock, sourceKind = WorldSourceKind.Local, strictLock }) => {
     const [modMap, setModMap] = useState<Map<string, AnyModDefinition>>(new Map());
     const [loadCounts, setLoadCounts] = useState<ModLoadingStatus>({ completed: 0, total: 0 });
     const pendingModCount = loadCounts.total - loadCounts.completed;
@@ -103,7 +105,7 @@ export const ModRegistryProvider: React.FC<{
             loadingRef.current.add(entityType);
             setLoadCounts((c) => ({ ...c, total: c.total + 1 }));
 
-            loadVerifiedMod(entityType, { lock, sourceKind })
+            loadVerifiedMod(entityType, { lock, sourceKind, strict: strictLock })
                 .then((result) => {
                     if (typeof result === 'object' && 'workerCode' in result) {
                         addMod(result);
@@ -138,7 +140,7 @@ export const ModRegistryProvider: React.FC<{
                     setLoadCounts((c) => ({ ...c, completed: c.completed + 1 }));
                 });
         },
-        [addMod, lock, sourceKind],
+        [addMod, lock, sourceKind, strictLock],
     );
 
     // dependencies が登録されているからといって全 worker を一括起動しない。

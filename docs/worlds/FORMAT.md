@@ -77,6 +77,19 @@ initialEntities:
   - 任意 CDN のインデックス JSON：`[{ "url": "..." }] | [{ "file": "..." }]`
 - 受け手のインスタンスは URL を渡すだけでインスタンスを作成できる（`worldId` に id ではなく URL を渡す）。取得した定義は取り込み元（provenance）を `source`（`local`/`github`/`registry`/`remote-instance`/`url`）として保持する。
 
+## 作者署名（`<world>.sig.json`）
+
+- ワールドと同じ場所に兄弟ファイルとして置く（本体ホストは `.../api/v1/worlds/<id>/sig`）。`ubichill sign` で生成する。
+- 署名対象は `{ definition: <YAML をパースした生の値>, lock: <兄弟 lock の生 JSON | null> }` を正規化 JSON（RFC 8785 相当）にした sha256（`contentHash`）。
+- ワールドの同一性は `ed25519:<公開鍵>/<metadata.name>`。URL が変わっても同じデータ・同じ鍵なら同じワールド。
+- 署名に作者アカウント `author: handle@domain` を含めると、受け手は `https://<domain>/.well-known/webfinger?resource=acct:handle@domain` の `properties["https://ubichill.com/ns/ed25519-signing-key"]` と署名鍵を照合し、一致すれば作者として表示し同一性を `acct:handle@domain/<metadata.name>` にする（鍵を替えても変わらない）。一致しなければ作者は表示しない。
+- 署名があって検証に失敗したワールドは解決を拒否する。
+- **署名を検証できないワールド（未署名）は公開しない**：ワールド一覧・連合（global）一覧・プロフィール・インスタンス一覧に出さない。URL を直接指定すれば入れるが、入室前に確認を求める。
+- 連合ピアの一覧に書かれた署名状態は信用せず、受け手が各ワールドを取得して検証する。
+- サーバーは署名しない（鍵を持たない）。本体で作ったワールドは作者がブラウザの鍵で署名する。更新は `POST .../prepare` で保存予定の値を受け取って署名し、`PUT .../yaml` に内容と署名を一緒に送る（署名が通らなければ何も保存しない）。署名済みワールドを署名なしで更新するには `allowUnsigned: true` の明示が必要。
+- 公式ワールド（`worlds/`）はメンテナ鍵で署名し、`worlds/*.sig.json` をコミットする。lock を再生成したら内容を確認のうえ `pnpm sign:worlds` で署名し直す（CI の `pnpm verify:world-locks` が検出する）。
+- 本体は YAML・lock・署名をファイル（DB）の生の値のまま配信する（既定値で補うと署名と一致しなくなるため）。
+
 ## 正準スキーマ
 
 Zod スキーマが唯一の真実源：`packages/shared/src/schemas/world.schema.ts`（`WorldDefinitionSchema`）。互換性はこの `apiVersion` で管理する。

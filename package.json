@@ -20,6 +20,7 @@
     "gen:world-locks": "node scripts/world-locks.mjs",
     "verify:mod-locks": "node packages/sdk/cli/index.ts verify --dist-dir=dist/mods",
     "verify:world-locks": "node scripts/world-locks.mjs --check",
+    "sign:worlds": "node scripts/world-locks.mjs --sign",
     "verify:sdk-types": "vitest run --config vitest.sdk-verify.config.ts",
     "docs:capabilities": "node scripts/gen-capability-docs.mjs",
     "build": "turbo build --filter=@ubichill/shared && pnpm build:workers && turbo build",

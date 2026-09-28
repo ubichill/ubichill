@@ -28,8 +28,10 @@ import { socketAuthMiddleware } from './middleware/socketAuth';
 import { router as federationRouter } from './routes/federation';
 import { router as instancesRouter } from './routes/instances';
 import { router as usersRouter } from './routes/users';
+import { router as webfingerRouter } from './routes/webfinger';
 import { router as worldsRouter } from './routes/worlds';
 import { instanceReaper } from './services/instanceReaper';
+import { bootstrapOfficialAccount } from './services/officialAccountStore';
 import { worldRegistry } from './services/worldRegistry';
 import { logger } from './utils/logger';
 
@@ -111,6 +113,7 @@ app.use('/api/v1/worlds', worldsRouter);
 app.use('/api/v1/instances', instancesRouter);
 app.use('/api/v1/users', usersRouter);
 app.use('/api/v1/federation', federationRouter);
+app.use('/.well-known/webfinger', webfingerRouter);
 
 // HTTPサーバーを作成
 const server = http.createServer(app);
@@ -190,6 +193,7 @@ function setupGracefulShutdown() {
 async function startServer() {
     // システムユーザー初期化のみ（ワールドシードは行わない）
     await worldRegistry.initialize();
+    await bootstrapOfficialAccount();
 
     // 空インスタンスの掃除（reaper）を起動。DB を定期スイープし、在席0かつ
     // 作成から猶予経過した instance を削除する。インメモリのタイマー状態に依存しないため、

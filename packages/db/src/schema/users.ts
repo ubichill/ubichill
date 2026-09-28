@@ -16,8 +16,24 @@ export const users = pgTable('users', {
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
     // App-specific fields
+    /** @deprecated 表示名（name）と重複していた旧フィールド。表示名は name、URL・署名用の ID は handle を使う。 */
     username: varchar('username', { length: 255 }).unique(),
+    /**
+     * 表示名（name）の一意性キー（displayNameKey: NFKC・空白圧縮・小文字化）。VRChat のように表示名を一意にする。
+     * 移行時に他人と重複していた既存ユーザーは null（表示名の変更を促す）。
+     */
+    displayNameKey: varchar('display_name_key', { length: 120 }).unique(),
+    /** URL・署名・機械処理用の ID（英小文字・数字・_、一意、変更不可）。作者アカウントは handle@domain。 */
+    handle: varchar('handle', { length: 30 }).unique(),
+    /**
+     * 作者署名の公開鍵（ed25519 base64url、1 アカウント 1 本）。秘密鍵はサーバーに置かない。
+     * WebFinger で公開し、他サーバーが handle@domain の署名を確認するのに使う。
+     */
+    signingPublicKey: text('signing_public_key'),
+    signingKeyUpdatedAt: timestamp('signing_key_updated_at'),
     profileImageUrl: varchar('profile_image_url', { length: 1024 }),
+    /** 初期パスワードのまま（公式アカウントの初期作成時など）。変更するまで変更を促す。 */
+    passwordChangeRequired: boolean('password_change_required').default(false).notNull(),
 });
 
 // Better Auth session table

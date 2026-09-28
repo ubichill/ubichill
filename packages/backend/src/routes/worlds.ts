@@ -1,9 +1,17 @@
-import { worldRepository } from '@ubichill/db';
-import { LIMITS, type ModLock, ModLockSchema, WorldCreateInputSchema, WorldDefinitionSchema } from '@ubichill/shared';
+import { userRepository, worldRepository } from '@ubichill/db';
+import {
+    LIMITS,
+    type ModLock,
+    ModLockSchema,
+    WorldCreateInputSchema,
+    type WorldDefinition,
+    WorldDefinitionSchema,
+} from '@ubichill/shared';
 import { Router } from 'express';
 import yaml from 'yaml';
-import { optionalAuth, requireAuth } from '../middleware/auth';
-import { worldRegistry } from '../services/worldRegistry';
+import { optionalAuth, requireAdmin, requireAuth } from '../middleware/auth';
+import { selfAccount } from '../services/authorKeys';
+import { prepareWorldUpdate, worldRegistry } from '../services/worldRegistry';
 
 const router = Router();
 
@@ -19,12 +27,67 @@ function parseOptionalLock(input: unknown): ModLock | undefined | 'invalid' {
     return parsed.success ? parsed.data : 'invalid';
 }
 
+type ParsedYamlUpdate =
+    | { ok: true; definition: WorldDefinition; lock: ModLock | undefined }
+    | { ok: false; status: number; body: { error: string; details?: unknown } };
+
+/** 更新 body（`{ yaml, lock }`）を検証してワールド定義にする。prepare と PUT で同じ解釈をするため共通化。 */
+function parseYamlUpdate(body: unknown): ParsedYamlUpdate {
+    const { yaml: yamlText, lock: lockInput } = (body ?? {}) as { yaml?: unknown; lock?: unknown };
+    if (typeof yamlText !== 'string' || yamlText.length === 0) {
+        return { ok: false, status: 400, body: { error: 'yaml フィールドが必要です' } };
+    }
+    if (yamlText.length > LIMITS.MAX_YAML_SIZE) {
+        return { ok: false, status: 413, body: { error: `YAML が大きすぎます（最大 ${LIMITS.MAX_YAML_SIZE} bytes）` } };
+    }
+    const lock = parseOptionalLock(lockInput);
+    if (lock === 'invalid') return { ok: false, status: 400, body: { error: 'lock フィールドが不正です' } };
+    const result = WorldDefinitionSchema.safeParse(yaml.parse(yamlText) as unknown);
+    if (!result.success) {
+        return { ok: false, status: 400, body: { error: 'Invalid world definition', details: result.error.issues } };
+    }
+    return { ok: true, definition: result.data, lock };
+}
+
+/**
+ * 署名が作者アカウントを主張するなら、それはアップロードした本人のアカウントでなければならない。
+ * （他人の handle を名乗る署名は、鍵が一致しなければ表示されないが、保存の時点で弾いておく）
+ */
+async function authorClaimError(rawSignature: unknown, userId: string): Promise<string | null> {
+    const claimed = (rawSignature as { author?: unknown } | null)?.author;
+    if (claimed === undefined) return null;
+    const user = await userRepository.findById(userId);
+    const own = user?.handle ? selfAccount(user.handle) : null;
+    return claimed === own ? null : `署名の作者（${String(claimed)}）があなたのアカウントと一致しません`;
+}
+
+function updateFailureStatus(reason: string): number {
+    if (reason === 'not-found') return 404;
+    if (reason === 'signature-required') return 409;
+    return 422;
+}
+
+function updateFailureMessage(reason: string): string {
+    if (reason === 'not-found') return 'World not found';
+    if (reason === 'signature-required') {
+        return '署名済みのワールドです。署名を付けて保存するか、未署名（非公開）にすることを明示してください';
+    }
+    return signatureFailureMessage(reason);
+}
+
+function signatureFailureMessage(reason: string): string {
+    if (reason === 'lock-incomplete') {
+        return '使用する mod のコードが lock に固定されていないため公開できません（署名できません）';
+    }
+    return `署名を検証できません (${reason})`;
+}
+
 /**
  * POST /api/v1/worlds/reload
  * YAMLファイルからワールド定義を再読み込み（認証必須）
  * サーバーを再起動せずにワールド定義を更新できる
  */
-router.post('/reload', requireAuth, async (_req, res) => {
+router.post('/reload', requireAuth, requireAdmin, async (_req, res) => {
     try {
         await worldRegistry.reloadWorlds();
         const worlds = await worldRegistry.listWorlds();
@@ -70,13 +133,13 @@ router.get('/resolve', optionalAuth, async (req, res) => {
         return;
     }
     try {
-        const world = await worldRegistry.resolveRef(url);
-        if (!world) {
-            res.status(404).json({ error: 'World not found' });
+        const result = await worldRegistry.resolveRefDetailed(url);
+        if (!result.ok) {
+            res.status(result.reason === 'integrity' ? 422 : 404).json({ error: result.message });
             return;
         }
         res.set('Cache-Control', 'no-store');
-        res.json(world);
+        res.json(result.world);
     } catch (error) {
         console.error(`外部ワールド取得エラー: ${url}`, error);
         res.status(400).json({ error: '外部ワールドを取得できませんでした' });
@@ -88,7 +151,7 @@ router.get('/resolve', optionalAuth, async (req, res) => {
  * ワールドの表示順を更新（認証必須）
  * body: { order: string[] }  ワールドIDの配列
  */
-router.put('/order', requireAuth, async (req, res) => {
+router.put('/order', requireAuth, requireAdmin, async (req, res) => {
     try {
         const { order } = req.body as { order?: unknown };
         if (!Array.isArray(order) || !order.every((v) => typeof v === 'string')) {
@@ -107,7 +170,7 @@ router.put('/order', requireAuth, async (req, res) => {
  * POST /api/v1/worlds/:worldId/reload
  * 指定ワールドのYAML定義のみを再読み込み（認証必須）
  */
-router.post('/:worldId/reload', requireAuth, async (req, res) => {
+router.post('/:worldId/reload', requireAuth, requireAdmin, async (req, res) => {
     try {
         const worldId = req.params.worldId as string;
         const found = await worldRegistry.reloadWorld(worldId);
@@ -136,12 +199,12 @@ router.get('/:worldId', optionalAuth, async (req, res) => {
         const wantsYaml = req.query.format === 'yaml' || /ya?ml/i.test(req.get('accept') ?? '');
 
         if (wantsYaml) {
-            const def = await worldRegistry.getWorldDefinition(worldId);
-            if (!def) {
+            const hosted = await worldRegistry.getHostedDocument(worldId);
+            if (!hosted) {
                 res.status(404).json({ error: 'World not found' });
                 return;
             }
-            res.type('text/yaml').send(yaml.stringify(def));
+            res.type('text/yaml').send(yaml.stringify(hosted.definition));
             return;
         }
 
@@ -188,7 +251,7 @@ router.post('/', requireAuth, async (req, res) => {
             return;
         }
 
-        const world = await worldRegistry.createFromInput(req.user.id, req.user.name, result.data);
+        const world = await worldRegistry.createFromInput(req.user.id, result.data);
         res.status(201).json(world);
     } catch (error) {
         console.error('ワールド作成エラー:', error);
@@ -235,7 +298,7 @@ router.post('/yaml', requireAuth, async (req, res) => {
             return;
         }
 
-        const world = await worldRegistry.createFromYaml(req.user.id, req.user.name, yamlText, lock);
+        const world = await worldRegistry.createFromYaml(req.user.id, yamlText, lock);
         res.status(201).json(world);
     } catch (error) {
         const message = error instanceof Error ? error.message : 'YAML 解析に失敗しました';
@@ -245,8 +308,8 @@ router.post('/yaml', requireAuth, async (req, res) => {
 
 /**
  * GET /api/v1/worlds/:worldId/definition
- * ワールドの生定義（WorldDefinition）を取得（GUI エディタ用、作成者のみ）
- * ResolvedWorld ではなく YAML と同等の構造をそのまま返す
+ * エディタ用の定義（作成者のみ）。下書きがあれば下書きを返す。
+ * 返り値: `{ definition, hasDraft, published }`（definition は YAML と同等の構造）
  */
 router.get('/:worldId/definition', requireAuth, async (req, res) => {
     try {
@@ -264,7 +327,7 @@ router.get('/:worldId/definition', requireAuth, async (req, res) => {
             res.status(403).json({ error: 'Forbidden: Only the author can view the raw definition' });
             return;
         }
-        res.json(record.definition);
+        res.json(await worldRegistry.getEditorDefinition(worldId));
     } catch (error) {
         console.error('ワールド定義取得エラー:', error);
         res.status(500).json({ error: 'Internal server error' });
@@ -281,12 +344,12 @@ router.get('/:worldId/definition', requireAuth, async (req, res) => {
  */
 router.get('/:worldId/yaml', optionalAuth, async (req, res) => {
     try {
-        const def = await worldRegistry.getWorldDefinition(req.params.worldId as string);
-        if (!def) {
+        const hosted = await worldRegistry.getHostedDocument(req.params.worldId as string);
+        if (!hosted) {
             res.status(404).json({ error: 'World not found' });
             return;
         }
-        res.type('text/yaml').send(yaml.stringify(def));
+        res.type('text/yaml').send(yaml.stringify(hosted.definition));
     } catch (error) {
         console.error('ワールドYAML取得エラー:', error);
         res.status(500).json({ error: 'Internal server error' });
@@ -303,14 +366,137 @@ router.get('/:worldId/yaml', optionalAuth, async (req, res) => {
  */
 router.get('/:worldId/lock', optionalAuth, async (req, res) => {
     try {
-        const lock = await worldRegistry.getWorldLock(req.params.worldId as string);
-        if (!lock) {
+        const hosted = await worldRegistry.getHostedDocument(req.params.worldId as string);
+        if (!hosted?.lock) {
             res.status(404).json({ error: 'Lock not found' });
             return;
         }
-        res.json(lock);
+        res.json(hosted.lock);
     } catch (error) {
         console.error('ワールドlock取得エラー:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * GET /api/v1/worlds/:worldId/sig
+ * 作者署名を返す（兄弟ファイル配信）。サーバーは署名しない。現在の YAML + lock に対して
+ * 有効な署名だけを返し、無い・古い場合は 404（＝未署名）。他インスタンスは {@link sigUrlFor} で導出して検証する。
+ */
+router.get('/:worldId/sig', optionalAuth, async (req, res) => {
+    try {
+        const sig = await worldRegistry.getWorldSignature(req.params.worldId as string);
+        if (!sig) {
+            res.status(404).json({ error: 'Signature not found' });
+            return;
+        }
+        res.set('Cache-Control', 'no-cache');
+        res.json(sig);
+    } catch (error) {
+        console.error('ワールド署名取得エラー:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * PUT /api/v1/worlds/:worldId/sig
+ * 作者が手元の鍵で付けた署名を保存する（認証必須、作成者のみ）。body は WorldSignature。
+ * 現在の内容に対して検証できない署名は 422。
+ */
+router.put('/:worldId/sig', requireAuth, async (req, res) => {
+    try {
+        if (!req.user) {
+            res.status(401).json({ error: 'Unauthorized' });
+            return;
+        }
+        const worldId = req.params.worldId as string;
+        const record = await worldRegistry.getWorldRecord(worldId);
+        if (!record) {
+            res.status(404).json({ error: 'World not found' });
+            return;
+        }
+        if (record.authorId !== req.user.id) {
+            res.status(403).json({ error: 'Forbidden: Only the author can sign this world' });
+            return;
+        }
+        const claimError = await authorClaimError(req.body, req.user.id);
+        if (claimError) {
+            res.status(422).json({ error: claimError });
+            return;
+        }
+        const result = await worldRegistry.setWorldSignature(worldId, req.body as unknown);
+        if (!result.ok) {
+            const status = result.reason === 'not-found' ? 404 : 422;
+            res.status(status).json({ error: signatureFailureMessage(result.reason) });
+            return;
+        }
+        res.json({ identity: result.identity });
+    } catch (error) {
+        console.error('ワールド署名保存エラー:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * PUT /api/v1/worlds/:worldId/draft
+ * 下書きを保存する（作成者のみ、鍵・ID の準備は不要）。公開中の版は変わらない。
+ * body: { yaml: string, lock?: ModLock }
+ */
+router.put('/:worldId/draft', requireAuth, async (req, res) => {
+    try {
+        const worldId = req.params.worldId as string;
+        const record = await worldRegistry.getWorldRecord(worldId);
+        if (!record) {
+            res.status(404).json({ error: 'World not found' });
+            return;
+        }
+        if (record.authorId !== req.user?.id) {
+            res.status(403).json({ error: 'Forbidden: Only the author can update this world' });
+            return;
+        }
+        const parsed = parseYamlUpdate(req.body);
+        if (!parsed.ok) {
+            res.status(parsed.status).json(parsed.body);
+            return;
+        }
+        const result = await worldRegistry.saveDraft(worldId, parsed.definition, parsed.lock);
+        if (!result.ok) {
+            res.status(404).json({ error: 'World not found' });
+            return;
+        }
+        res.json({ hasDraft: result.hasDraft });
+    } catch (error) {
+        console.error('下書き保存エラー:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * POST /api/v1/worlds/:worldId/prepare
+ * PUT /:worldId/yaml で保存される値（definition + lock）を保存せずに返す（認証必須、作成者のみ）。
+ * 作者はこの値に署名し、PUT に signature を添えて送る＝内容と署名を 1 回で原子的に保存する。
+ * body: { yaml: string, lock?: ModLock }
+ */
+router.post('/:worldId/prepare', requireAuth, async (req, res) => {
+    try {
+        const worldId = req.params.worldId as string;
+        const record = await worldRegistry.getWorldRecord(worldId);
+        if (!record) {
+            res.status(404).json({ error: 'World not found' });
+            return;
+        }
+        if (record.authorId !== req.user?.id) {
+            res.status(403).json({ error: 'Forbidden: Only the author can update this world' });
+            return;
+        }
+        const parsed = parseYamlUpdate(req.body);
+        if (!parsed.ok) {
+            res.status(parsed.status).json(parsed.body);
+            return;
+        }
+        res.json(prepareWorldUpdate(worldId, parsed.definition, parsed.lock));
+    } catch (error) {
+        console.error('ワールド更新準備エラー:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -341,43 +527,26 @@ router.put('/:worldId/yaml', requireAuth, async (req, res) => {
             return;
         }
 
-        const { yaml: yamlText, lock: lockInput } = req.body as { yaml?: unknown; lock?: unknown };
-        if (typeof yamlText !== 'string' || yamlText.length === 0) {
-            res.status(400).json({ error: 'yaml フィールドが必要です' });
+        const parsed = parseYamlUpdate(req.body);
+        if (!parsed.ok) {
+            res.status(parsed.status).json(parsed.body);
             return;
         }
-        if (yamlText.length > LIMITS.MAX_YAML_SIZE) {
-            res.status(413).json({ error: `YAML が大きすぎます（最大 ${LIMITS.MAX_YAML_SIZE} bytes）` });
+        const { signature, allowUnsigned } = req.body as { signature?: unknown; allowUnsigned?: unknown };
+        const claimError = signature === undefined ? null : await authorClaimError(signature, req.user.id);
+        if (claimError) {
+            res.status(422).json({ error: claimError });
             return;
         }
-        const lock = parseOptionalLock(lockInput);
-        if (lock === 'invalid') {
-            res.status(400).json({ error: 'lock フィールドが不正です' });
+        const result = await worldRegistry.updateWorld(worldId, parsed.definition, parsed.lock, {
+            signature,
+            allowUnsigned: allowUnsigned === true,
+        });
+        if (!result.ok) {
+            res.status(updateFailureStatus(result.reason)).json({ error: updateFailureMessage(result.reason) });
             return;
         }
-
-        const parsed = yaml.parse(yamlText) as unknown;
-        const result = WorldDefinitionSchema.safeParse(parsed);
-        if (!result.success) {
-            res.status(400).json({
-                error: 'Invalid world definition',
-                details: result.error.issues,
-            });
-            return;
-        }
-
-        // ID を不変にするため metadata.name を URL の worldId に強制上書き
-        const definition = {
-            ...result.data,
-            metadata: { ...result.data.metadata, name: worldId },
-        };
-
-        const updated = await worldRegistry.updateWorld(worldId, definition, lock);
-        if (!updated) {
-            res.status(404).json({ error: 'World not found' });
-            return;
-        }
-        res.json(updated);
+        res.json(result.world);
     } catch (error) {
         const message = error instanceof Error ? error.message : 'YAML 更新に失敗しました';
         res.status(422).json({ error: message });
@@ -431,13 +600,15 @@ router.put('/:worldId', requireAuth, async (req, res) => {
             return;
         }
 
-        const updated = await worldRegistry.updateWorld(worldId, definition);
-        if (!updated) {
-            res.status(404).json({ error: 'World not found' });
+        const updated = await worldRegistry.updateWorld(worldId, definition, undefined, {
+            allowUnsigned: req.query.allowUnsigned === 'true',
+        });
+        if (!updated.ok) {
+            res.status(updateFailureStatus(updated.reason)).json({ error: updateFailureMessage(updated.reason) });
             return;
         }
 
-        res.json(updated);
+        res.json(updated.world);
     } catch (error) {
         console.error('ワールド更新エラー:', error);
         res.status(500).json({ error: 'Internal server error' });

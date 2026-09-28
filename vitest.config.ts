@@ -48,6 +48,10 @@ export default defineConfig({
                 find: /^@ubichill\/loader\/update-dependencies$/,
                 replacement: srcPath('./packages/loader/src/updateDependencies.ts'),
             },
+            {
+                find: /^@ubichill\/loader\/sign-world$/,
+                replacement: srcPath('./packages/loader/src/signWorldFile.ts'),
+            },
             { find: /^@ubichill\/ecs$/, replacement: srcPath('./packages/ecs/src/index.ts') },
             { find: /^@ubichill\/runtime$/, replacement: srcPath('./packages/runtime/src/index.ts') },
             { find: /^@ubichill\/sdk$/, replacement: srcPath('./packages/sdk/src/index.ts') },
