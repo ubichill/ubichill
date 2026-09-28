@@ -31,6 +31,7 @@ import { router as usersRouter } from './routes/users';
 import { router as webfingerRouter } from './routes/webfinger';
 import { router as worldsRouter } from './routes/worlds';
 import { instanceReaper } from './services/instanceReaper';
+import { bootstrapOfficialAccount } from './services/officialAccountStore';
 import { worldRegistry } from './services/worldRegistry';
 import { logger } from './utils/logger';
 
@@ -192,6 +193,7 @@ function setupGracefulShutdown() {
 async function startServer() {
     // システムユーザー初期化のみ（ワールドシードは行わない）
     await worldRegistry.initialize();
+    await bootstrapOfficialAccount();
 
     // 空インスタンスの掃除（reaper）を起動。DB を定期スイープし、在席0かつ
     // 作成から猶予経過した instance を削除する。インメモリのタイマー状態に依存しないため、

@@ -129,6 +129,10 @@ backend:
   secretEnv:
     BETTER_AUTH_SECRET: ""
     RESEND_API_KEY: ""
+    # 公式アカウント（ID ubichill。公式ワールドの作者とこのサーバーの管理者を兼ねる）の初期パスワード。
+    # 初回起動時にこのパスワードでアカウントを作り、ログイン後に変更を促す。空なら作らない（警告のみ）。
+    # ログイン用メールは backend.env.OFFICIAL_ACCOUNT_EMAIL（既定 ubichill@ubichill.com）。
+    OFFICIAL_ACCOUNT_INITIAL_PASSWORD: ""
   
   # Existing secret containing the secrets (skips secretEnv creation and injects it)
   existingSecret: ""

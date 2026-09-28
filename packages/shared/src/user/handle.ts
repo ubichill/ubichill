@@ -20,6 +20,15 @@ export const DISPLAY_NAME_WEBFINGER_PROPERTY = 'https://ubichill.com/ns/display-
 
 export const HANDLE_PATTERN = /^[a-z0-9_]{3,30}$/;
 
+/**
+ * 公式アカウントの ID。サーバー起動時に用意され、公式ワールドの作者（ubichill@<domain>）と
+ * このサーバーの管理者を兼ねる。予約語なので一般の登録では取れない。
+ */
+export const OFFICIAL_HANDLE = 'ubichill';
+
+/** 公式ワールドの作者アカウント（worlds/trusted-authors.json に鍵を記録してレビューする）。 */
+export const OFFICIAL_WORLDS_AUTHOR = 'ubichill@ubichill.com';
+
 /** 運営・システム・URL と紛らわしい ID は取らせない。 */
 export const RESERVED_HANDLES: ReadonlySet<string> = new Set([
     'admin',

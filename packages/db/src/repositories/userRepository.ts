@@ -64,6 +64,29 @@ export const userRepository = {
         return results[0];
     },
 
+    async setPasswordChangeRequired(id: string, required: boolean): Promise<void> {
+        await db.update(users).set({ passwordChangeRequired: required, updatedAt: new Date() }).where(eq(users.id, id));
+    },
+
+    /** 公式アカウントの初期化用: ID・表示名・確認済み・署名鍵などをまとめて設定する。 */
+    async initializeAccount(
+        id: string,
+        fields: Partial<
+            Pick<UserRecord, 'handle' | 'name' | 'displayNameKey' | 'signingPublicKey' | 'emailVerified'>
+        > & {
+            passwordChangeRequired?: boolean;
+        },
+    ): Promise<void> {
+        await db
+            .update(users)
+            .set({
+                ...fields,
+                ...(fields.signingPublicKey ? { signingKeyUpdatedAt: new Date() } : {}),
+                updatedAt: new Date(),
+            })
+            .where(eq(users.id, id));
+    },
+
     async findByHandle(handle: string): Promise<UserRecord | undefined> {
         const results = await db.select().from(users).where(eq(users.handle, handle));
         return results[0];

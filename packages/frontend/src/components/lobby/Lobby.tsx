@@ -5,6 +5,7 @@ import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { createInstance } from '@/lib/instancesApi';
 import { SETTINGS_KEYS, useSetting } from '@/lib/settings';
 import { css } from '@/styled-system/css';
+import { PasswordChangeNotice } from './PasswordChangeNotice';
 import { UnsignedWorldsNotice } from './UnsignedWorldsNotice';
 import { useFavorites } from './useFavorites';
 import { useInstances } from './useInstances';
@@ -155,6 +156,7 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                 })}
                 onClick={(e) => e.stopPropagation()}
             >
+                <PasswordChangeNotice />
                 <UnsignedWorldsNotice />
                 <div
                     className={css({

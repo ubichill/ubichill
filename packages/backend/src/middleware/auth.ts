@@ -1,3 +1,5 @@
+import { userRepository } from '@ubichill/db';
+import { OFFICIAL_HANDLE } from '@ubichill/shared';
 import type { NextFunction, Request, Response } from 'express';
 import { auth } from '../lib/auth';
 
@@ -29,15 +31,7 @@ declare global {
 export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
         const session = await auth.api.getSession({
-            headers: new Headers(
-                Object.entries(req.headers).reduce(
-                    (acc, [key, value]) => {
-                        if (value) acc[key] = Array.isArray(value) ? value.join(', ') : value;
-                        return acc;
-                    },
-                    {} as Record<string, string>,
-                ),
-            ),
+            headers: toWebHeaders(req),
         });
 
         if (!session) {
@@ -74,15 +68,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 export async function optionalAuth(req: Request, _res: Response, next: NextFunction): Promise<void> {
     try {
         const session = await auth.api.getSession({
-            headers: new Headers(
-                Object.entries(req.headers).reduce(
-                    (acc, [key, value]) => {
-                        if (value) acc[key] = Array.isArray(value) ? value.join(', ') : value;
-                        return acc;
-                    },
-                    {} as Record<string, string>,
-                ),
-            ),
+            headers: toWebHeaders(req),
         });
 
         if (session) {
@@ -106,4 +92,35 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
         // 認証失敗しても通過
         next();
     }
+}
+
+/** Node（Express）のリクエストヘッダを better-auth に渡す Headers に変換する。 */
+export function toWebHeaders(req: Request): Headers {
+    return new Headers(
+        Object.entries(req.headers).reduce(
+            (acc, [key, value]) => {
+                if (value) acc[key] = Array.isArray(value) ? value.join(', ') : value;
+                return acc;
+            },
+            {} as Record<string, string>,
+        ),
+    );
+}
+
+/** このサーバーの管理者か（公式アカウント `ubichill` が管理者を兼ねる）。 */
+export function isAdminHandle(handle: string | null | undefined): boolean {
+    return handle === OFFICIAL_HANDLE;
+}
+
+/**
+ * 管理者限定ミドルウェア（requireAuth の後に置く）。連合ピアの追加・削除やワールドの再読み込みなど、
+ * サーバー全体に影響する操作に使う。
+ */
+export async function requireAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
+    const user = req.user ? await userRepository.findById(req.user.id) : undefined;
+    if (!isAdminHandle(user?.handle)) {
+        res.status(403).json({ error: 'Forbidden: 管理者のみ実行できます' });
+        return;
+    }
+    next();
 }

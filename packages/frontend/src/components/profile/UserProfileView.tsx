@@ -9,6 +9,7 @@ import { useSession } from '@/lib/session';
 import { browserFetch, loadSigningKey, signerFor, signHostedWorld } from '@/lib/signing';
 import { css } from '@/styled-system/css';
 import { DisplayNameEditor } from './DisplayNameEditor';
+import { PasswordSection } from './PasswordSection';
 import { SigningKeySection } from './SigningKeySection';
 
 /** 公開プロフィール。自分のページでは MyAccount の項目（登録鍵など）も入る。 */
@@ -19,6 +20,8 @@ interface UserProfile {
     author: string | null;
     signingPublicKey?: string | null;
     displayNameConflict?: boolean;
+    passwordChangeRequired?: boolean;
+    isAdmin?: boolean;
     profileImageUrl: string | null;
 }
 
@@ -236,11 +239,19 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
             )}
 
             {isOwnPage && profile && (
+                <PasswordSection
+                    required={!!profile.passwordChangeRequired}
+                    onChanged={() => setProfile({ ...profile, passwordChangeRequired: false })}
+                />
+            )}
+            {isOwnPage && profile && (
                 <SigningKeySection
                     account={{
                         ...profile,
                         signingPublicKey: profile.signingPublicKey ?? null,
                         displayNameConflict: !!profile.displayNameConflict,
+                        passwordChangeRequired: !!profile.passwordChangeRequired,
+                        isAdmin: !!profile.isAdmin,
                     }}
                     onAccountChange={setProfile}
                     unsignedCount={unsignedCount}

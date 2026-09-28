@@ -9,7 +9,7 @@ import {
 } from '@ubichill/shared';
 import { Router } from 'express';
 import yaml from 'yaml';
-import { optionalAuth, requireAuth } from '../middleware/auth';
+import { optionalAuth, requireAdmin, requireAuth } from '../middleware/auth';
 import { selfAccount } from '../services/authorKeys';
 import { prepareWorldUpdate, worldRegistry } from '../services/worldRegistry';
 
@@ -87,7 +87,7 @@ function signatureFailureMessage(reason: string): string {
  * YAMLファイルからワールド定義を再読み込み（認証必須）
  * サーバーを再起動せずにワールド定義を更新できる
  */
-router.post('/reload', requireAuth, async (_req, res) => {
+router.post('/reload', requireAuth, requireAdmin, async (_req, res) => {
     try {
         await worldRegistry.reloadWorlds();
         const worlds = await worldRegistry.listWorlds();
@@ -151,7 +151,7 @@ router.get('/resolve', optionalAuth, async (req, res) => {
  * ワールドの表示順を更新（認証必須）
  * body: { order: string[] }  ワールドIDの配列
  */
-router.put('/order', requireAuth, async (req, res) => {
+router.put('/order', requireAuth, requireAdmin, async (req, res) => {
     try {
         const { order } = req.body as { order?: unknown };
         if (!Array.isArray(order) || !order.every((v) => typeof v === 'string')) {
@@ -170,7 +170,7 @@ router.put('/order', requireAuth, async (req, res) => {
  * POST /api/v1/worlds/:worldId/reload
  * 指定ワールドのYAML定義のみを再読み込み（認証必須）
  */
-router.post('/:worldId/reload', requireAuth, async (req, res) => {
+router.post('/:worldId/reload', requireAuth, requireAdmin, async (req, res) => {
     try {
         const worldId = req.params.worldId as string;
         const found = await worldRegistry.reloadWorld(worldId);

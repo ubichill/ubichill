@@ -8,6 +8,10 @@ export interface MyAccount {
     name: string;
     /** 移行時に他人と表示名が重複していた。変更を促す。 */
     displayNameConflict: boolean;
+    /** 初期パスワードのまま。変更を促す。 */
+    passwordChangeRequired: boolean;
+    /** このサーバーの管理者（公式アカウント）。 */
+    isAdmin: boolean;
     /** URL・署名用の ID。既存ユーザーは未設定のことがある。 */
     handle: string | null;
     /** 作者アカウント `handle@domain`（handle 未設定なら null）。 */
@@ -26,6 +30,17 @@ export async function fetchMyAccount(): Promise<MyAccount> {
     const res = await fetch(`${API_BASE}/api/v1/users/me`, { credentials: 'include', cache: 'no-store' });
     if (!res.ok) throw new Error(await errorMessage(res));
     return (await res.json()) as MyAccount;
+}
+
+/** パスワードを変更する（他の端末のセッションは無効になる）。 */
+export async function changeMyPassword(currentPassword: string, newPassword: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/api/v1/users/me/password`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ currentPassword, newPassword }),
+    });
+    if (!res.ok) throw new Error(await errorMessage(res));
 }
 
 /** 表示名を変更する（一意）。 */

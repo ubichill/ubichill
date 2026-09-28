@@ -9,8 +9,8 @@ import {
     verifyKeyRegistration,
 } from '@ubichill/shared';
 import { Router } from 'express';
-import { createPendingRegistration, resendOTP, verifyAndRegister } from '../lib/auth';
-import { optionalAuth, requireAuth } from '../middleware/auth';
+import { auth, createPendingRegistration, resendOTP, verifyAndRegister } from '../lib/auth';
+import { isAdminHandle, optionalAuth, requireAuth, toWebHeaders } from '../middleware/auth';
 import { invalidateAuthorKey } from '../services/authorKeyStore';
 import { selfAccount } from '../services/authorKeys';
 import { nodeWorldCrypto } from '../services/worldCrypto';
@@ -144,8 +144,36 @@ router.get('/me', requireAuth, async (req, res) => {
         signingPublicKey: user.signingPublicKey ?? null,
         // 移行時に他人と表示名が重複していた（一意キー未設定）。変更を促す。
         displayNameConflict: !user.displayNameKey,
+        // 初期パスワードのまま（公式アカウントの初期作成時など）。変更を促す。
+        passwordChangeRequired: user.passwordChangeRequired,
+        isAdmin: isAdminHandle(user.handle),
         profileImageUrl: user.profileImageUrl ?? user.image ?? null,
     });
+});
+
+// パスワードを変更する。現在のパスワードの確認は better-auth に任せ、他の端末のセッションは無効にする。
+router.put('/me/password', requireAuth, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    const { currentPassword, newPassword } = (req.body ?? {}) as { currentPassword?: unknown; newPassword?: unknown };
+    if (typeof currentPassword !== 'string' || typeof newPassword !== 'string') {
+        return res.status(400).json({ error: '現在のパスワードと新しいパスワードが必要です' });
+    }
+    if (newPassword.length < 8) return res.status(400).json({ error: '新しいパスワードは8文字以上にしてください' });
+    if (newPassword === currentPassword) {
+        return res.status(400).json({ error: '新しいパスワードは現在のパスワードと違うものにしてください' });
+    }
+    const result = await auth.api.changePassword({
+        body: { currentPassword, newPassword, revokeOtherSessions: true },
+        headers: toWebHeaders(req),
+        asResponse: true,
+    });
+    if (!result.ok) {
+        return res.status(400).json({ error: '現在のパスワードが正しくありません' });
+    }
+    // 他セッションの無効化で発行し直されたこのセッションのクッキーを引き継ぐ
+    for (const cookie of result.headers.getSetCookie()) res.append('Set-Cookie', cookie);
+    await userRepository.setPasswordChangeRequired(req.user.id, false);
+    return res.status(204).send();
 });
 
 // 表示名を変更する（一意）。ID と違い変更できる。

@@ -44,6 +44,13 @@ const worldsDir = process.env[ENV_KEYS.WORLDS_DIR]
     ? path.resolve(process.env[ENV_KEYS.WORLDS_DIR] as string)
     : path.resolve(process.cwd(), SERVER_CONFIG.WORLDS_DIR_DEFAULT);
 
+const pinnedAuthors = loadPinnedAuthors(path.join(worldsDir, 'trusted-authors.json'));
+
+/** レビュー済みの記録にある作者アカウントの鍵（公式アカウントの初期化に使う）。 */
+export function pinnedAuthorKey(account: string): string | undefined {
+    return pinnedAuthors.get(account)?.signingPublicKey;
+}
+
 const authorKeys = createAuthorKeyDirectory({
     selfDomain,
     findLocalAccount: async (handle) => {
@@ -62,7 +69,7 @@ const authorKeys = createAuthorKeyDirectory({
         save: (account, publicKey, displayName) => authorBindingRepository.save(account, publicKey, displayName),
         refreshDisplayName: (account, displayName) => authorBindingRepository.refreshDisplayName(account, displayName),
     },
-    pinned: loadPinnedAuthors(path.join(worldsDir, 'trusted-authors.json')),
+    pinned: pinnedAuthors,
     fetchJson: async (url) => {
         const res = await safeFetch(url, {
             headers: { Accept: 'application/jrd+json, application/json' },

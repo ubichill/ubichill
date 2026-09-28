@@ -32,6 +32,8 @@ export const users = pgTable('users', {
     signingPublicKey: text('signing_public_key'),
     signingKeyUpdatedAt: timestamp('signing_key_updated_at'),
     profileImageUrl: varchar('profile_image_url', { length: 1024 }),
+    /** 初期パスワードのまま（公式アカウントの初期作成時など）。変更するまで変更を促す。 */
+    passwordChangeRequired: boolean('password_change_required').default(false).notNull(),
 });
 
 // Better Auth session table
