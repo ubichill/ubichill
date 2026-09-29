@@ -29,7 +29,7 @@ import {
 } from '@ubichill/shared';
 import { customAlphabet } from 'nanoid';
 import yaml from 'yaml';
-import { resolveAuthorDisplayName, resolveAuthorKey } from './authorKeyStore';
+import { isAuthorKey, resolveAuthorDisplayName } from './authorKeyStore';
 import { assertPublicUrl, safeFetch } from './safeFetch';
 import { nodeWorldCrypto } from './worldCrypto';
 import { migrateLegacyWorldYaml } from './worldMigration';
@@ -88,7 +88,7 @@ export type SetSignatureResult =
  * 配信物の識別。無効な署名（内容更新後の古い署名など）は配信しないので unsigned として扱う。
  */
 async function hostedIdentity(hosted: HostedWorldDocument, label: string): Promise<WorldIdentity> {
-    const verdict = await verifyWorldSignature(hosted, hosted.signature, nodeWorldCrypto, resolveAuthorKey);
+    const verdict = await verifyWorldSignature(hosted, hosted.signature, nodeWorldCrypto, isAuthorKey);
     if (verdict.status !== 'invalid') return verdict;
     console.warn(`⚠ ワールド ${label} の署名が現在の内容と一致しません (${verdict.reason})。未署名として扱います`);
     return { status: 'unsigned', contentHash: await worldContentHash(hosted, nodeWorldCrypto) };
@@ -384,7 +384,7 @@ class WorldRegistry {
         if (cached && Date.now() - cached.at < WorldRegistry.REMOTE_TTL_MS) return { ok: true, world: cached.world };
         try {
             const world = await resolveWorldFromUrl(url, this._externalSource(url), {
-                resolveAuthorKey,
+                isAuthorKey,
                 resolveAuthorName: resolveAuthorDisplayName,
             });
             this._remoteCache.set(url, { at: Date.now(), world });
@@ -840,7 +840,7 @@ class WorldRegistry {
         const record = await worldRepository.findByName(worldId);
         if (!record) return { ok: false, reason: 'not-found' };
         const doc: WorldDocument = { definition: record.definition, lock: record.lock ?? null };
-        const verdict = await verifyWorldSignature(doc, rawSignature, nodeWorldCrypto, resolveAuthorKey);
+        const verdict = await verifyWorldSignature(doc, rawSignature, nodeWorldCrypto, isAuthorKey);
         if (verdict.status !== 'verified') {
             return { ok: false, reason: verdict.status === 'invalid' ? verdict.reason : 'malformed' };
         }

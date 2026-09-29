@@ -8,7 +8,7 @@
  * - ログイン用メール: env OFFICIAL_ACCOUNT_EMAIL（既定 ubichill@ubichill.com）
  * - 開発環境で未設定なら公開済みの既定値を使い、「既定のパスワードのまま」と表示して設定を促す。
  *   本番で未設定ならアカウントは作らず、既存のパスワードにも触れない（警告のみ）。
- * - 署名公開鍵: worlds/trusted-authors.json に記録した公式の鍵を最初から登録する（WebFinger で公開される）。
+ * - 公開環境: worlds/trusted-authors.json に記録した公式の鍵に合わせる（鍵一覧としてほかのサーバーへ公開される）。
  */
 import { displayNameKey, OFFICIAL_HANDLE } from '@ubichill/shared';
 
@@ -36,7 +36,6 @@ export function officialAccountConfig(env: NodeJS.ProcessEnv): OfficialAccountCo
 interface ExistingUser {
     id: string;
     handle: string | null;
-    signingPublicKey: string | null;
     passwordChangeRequired: boolean;
 }
 
@@ -56,13 +55,12 @@ export interface OfficialAccountDeps {
             handle?: string;
             name?: string;
             displayNameKey?: string | null;
-            signingPublicKey?: string;
             emailVerified?: boolean;
             passwordChangeRequired?: boolean;
         },
     ) => Promise<void>;
-    /** 公式ワールドの鍵（trusted-authors.json）。無ければ登録しない。 */
-    officialPublicKey: string | undefined;
+    /** 公開環境を trusted-authors.json の記録に合わせる。 */
+    syncSigningKeys: (userId: string) => Promise<void>;
     log: (message: string) => void;
 }
 
@@ -88,18 +86,13 @@ export async function ensureOfficialAccount(
     config: OfficialAccountConfig,
     deps: OfficialAccountDeps,
 ): Promise<OfficialAccountOutcome> {
-    const keyFields = deps.officialPublicKey ? { signingPublicKey: deps.officialPublicKey } : {};
     const existing = await deps.findByHandle(OFFICIAL_HANDLE);
     if (existing) {
         const changed = await syncPassword(existing, config, deps);
-        // 鍵が未登録なら公式の鍵を入れる（別の鍵が登録済みなら触らない）。既定のパスワードかどうかの表示も合わせる。
-        const fields = {
-            ...(!existing.signingPublicKey ? keyFields : {}),
-            ...(existing.passwordChangeRequired !== config.usingDevDefault
-                ? { passwordChangeRequired: config.usingDevDefault }
-                : {}),
-        };
-        if (Object.keys(fields).length > 0) await deps.initialize(existing.id, fields);
+        if (existing.passwordChangeRequired !== config.usingDevDefault) {
+            await deps.initialize(existing.id, { passwordChangeRequired: config.usingDevDefault });
+        }
+        await deps.syncSigningKeys(existing.id);
         return changed ? 'synced' : 'unchanged';
     }
 
@@ -119,11 +112,11 @@ export async function ensureOfficialAccount(
         await deps.initialize(byEmail.id, {
             handle: OFFICIAL_HANDLE,
             ...nameFields,
-            ...keyFields,
             emailVerified: true,
             passwordChangeRequired: config.usingDevDefault,
         });
         await syncPassword(byEmail, config, deps);
+        await deps.syncSigningKeys(byEmail.id);
         deps.log(`👑 既存のアカウント ${config.email} を公式アカウント（${OFFICIAL_HANDLE}）にしました`);
         return 'attached';
     }
@@ -138,10 +131,10 @@ export async function ensureOfficialAccount(
     await deps.initialize(id, {
         handle: OFFICIAL_HANDLE,
         ...nameFields,
-        ...keyFields,
         emailVerified: true,
         passwordChangeRequired: config.usingDevDefault,
     });
+    await deps.syncSigningKeys(id);
     deps.log(`👑 公式アカウント（${OFFICIAL_HANDLE} / ${config.email}）を作成しました`);
     return 'created';
 }

@@ -1,20 +1,25 @@
 /**
- * 作者アカウント（handle@domain）→ 署名公開鍵・表示名の解決（DB・ネットワーク非依存）。
+ * 作者アカウント（handle@domain）→ 公開環境の鍵一覧・表示名の解決（DB・ネットワーク非依存）。
  *
- * - 自サーバーの domain（PUBLIC_BASE_URL のホスト）なら注入された `findLocalKey`（DB）で引く。
- * - 他の domain は `https://<domain>/.well-known/webfinger?resource=acct:handle@domain` の JRD から引く
- *   （Mastodon 等と同じ標準。作者が自分のドメインで公開すれば、特定のサーバーに依存しない）。
- * 取得結果は TTL キャッシュする。実体の組み立て（DB・safeFetch）は authorKeyStore.ts。
+ * - レビュー済みの記録（trusted-authors.json）にあるアカウントはそれを使う（期限なし）。
+ * - 自サーバーの domain（PUBLIC_BASE_URL のホスト）なら注入された `findLocalAccount`（DB）で引く。
+ * - 他の domain は WebFinger（`/.well-known/webfinger?resource=acct:handle@domain`）の links から
+ *   鍵一覧の文書を辿る。取得結果は保存し（author_bindings）、期限で取り直す:
+ *   T_fresh 以内はそのまま、超えたら保存した結果で即答して裏で取り直す、取り直せないまま T_max を超えたら作者を外す。
+ *   分散型で取り消しを通知して回れないので、T_max が取り消しの届く最長時間になる。
+ * 実体の組み立て（DB・safeFetch）は authorKeyStore.ts。
  */
 import {
     DISPLAY_NAME_WEBFINGER_PROPERTY,
     DisplayNameSchema,
-    Ed25519PublicKeySchema,
     ENV_KEYS,
     formatAuthorAccount,
     parseAuthorAccount,
+    parseSigningKeyList,
     SERVER_CONFIG,
-    SIGNING_KEY_WEBFINGER_PROPERTY,
+    SIGNING_KEYS_WEBFINGER_REL,
+    type SigningKeyEntry,
+    signingKeyStatus,
 } from '@ubichill/shared';
 
 /** このサーバーが発行する作者アカウントの domain（ホスト名、開発時はポート付き）。 */
@@ -29,105 +34,132 @@ export function selfAccount(handle: string): string {
 
 /** アカウントが存在するサーバーが公開している、その時点の作者情報。 */
 export interface AuthorProfile {
-    signingPublicKey?: string;
+    keys: readonly SigningKeyEntry[];
     displayName?: string;
 }
 
 /**
- * WebFinger の JRD から、指定アカウントの作者情報（署名公開鍵・表示名）を取り出す（純粋）。
+ * WebFinger の JRD から、表示名と鍵一覧の URL を取り出す（純粋）。
  * subject が問い合わせたアカウントと一致しない応答（別人の JRD を返すなど）は採用しない。
- * 形式が不正な項目は捨てる（表示名に制御文字・長すぎる文字列を入れられても表示しない）。
+ * 鍵一覧の URL は WebFinger を返したのと同じオリジンに限る（別のサーバーに鍵の決定を委ねさせない）。
  */
-export function profileFromWebFinger(jrd: unknown, account: string): AuthorProfile | undefined {
+export function webFingerLinks(
+    jrd: unknown,
+    account: string,
+    origin: string,
+): { signingKeysUrl?: string; displayName?: string } | undefined {
     if (typeof jrd !== 'object' || jrd === null) return undefined;
-    const { subject, properties } = jrd as { subject?: unknown; properties?: unknown };
+    const { subject, properties, links } = jrd as { subject?: unknown; properties?: unknown; links?: unknown };
     const expected = parseAuthorAccount(account);
     const actual = typeof subject === 'string' ? parseAuthorAccount(subject) : null;
     if (!expected || !actual || formatAuthorAccount(expected) !== formatAuthorAccount(actual)) return undefined;
-    if (typeof properties !== 'object' || properties === null) return {};
-    const props = properties as Record<string, unknown>;
-    const key = Ed25519PublicKeySchema.safeParse(props[SIGNING_KEY_WEBFINGER_PROPERTY]);
+    const props = typeof properties === 'object' && properties !== null ? (properties as Record<string, unknown>) : {};
     const name = DisplayNameSchema.safeParse(props[DISPLAY_NAME_WEBFINGER_PROPERTY]);
+    const href = Array.isArray(links)
+        ? links.find(
+              (l): l is { href: string } =>
+                  typeof l === 'object' &&
+                  l !== null &&
+                  (l as { rel?: unknown }).rel === SIGNING_KEYS_WEBFINGER_REL &&
+                  typeof (l as { href?: unknown }).href === 'string',
+          )?.href
+        : undefined;
+    const url = href ? URL.parse(href, origin) : null;
     return {
-        ...(key.success ? { signingPublicKey: key.data } : {}),
+        ...(url && url.origin === origin ? { signingKeysUrl: url.href } : {}),
         ...(name.success ? { displayName: name.data } : {}),
     };
 }
 
 /** 保存済みの確認結果（DB の author_bindings）。 */
-export interface StoredAuthorBinding {
-    publicKey: string;
-    displayName?: string | null;
-    refreshedAt: Date;
+export interface StoredAuthorBinding extends AuthorProfile {
+    fetchedAt: Date;
 }
 
 export interface AuthorBindingStore {
     find: (account: string) => Promise<StoredAuthorBinding | undefined>;
-    save: (account: string, publicKey: string, displayName: string | undefined) => Promise<void>;
-    refreshDisplayName: (account: string, displayName: string | undefined) => Promise<void>;
+    save: (account: string, profile: AuthorProfile) => Promise<void>;
 }
 
 export interface AuthorKeyDirectoryDeps {
     selfDomain: () => string;
     /** 自サーバーのユーザーの作者情報（DB）。存在しなければ undefined。 */
     findLocalAccount: (handle: string) => Promise<AuthorProfile | undefined>;
-    /** 他サーバーの確認済みの結び付け（DB）。 */
+    /** 他サーバーの確認結果（DB）。 */
     bindings: AuthorBindingStore;
     /**
      * リポジトリに記録してレビュー済みの結び付け（公式アカウント）。最優先で使い、ネットワークにも DB にも出ない。
      * 開発環境（オフライン・localhost）でも公式ワールドを公開ルールどおりに扱うため。
      */
-    pinned: ReadonlyMap<string, { signingPublicKey: string; displayName?: string }>;
-    /** WebFinger の取得。失敗・非 2xx は undefined を返すこと。 */
+    pinned: ReadonlyMap<string, AuthorProfile>;
+    /** JSON の取得。失敗・非 2xx は undefined を返すこと。 */
     fetchJson: (url: string) => Promise<unknown>;
     /** 開発（localhost 間）だけ http も試す。本番は https のみ。 */
     allowHttp: boolean;
     now?: () => number;
+    freshMs?: number;
+    maxAgeMs?: number;
 }
 
 export interface AuthorKeyDirectory {
-    /** 署名公開鍵（署名検証用）。claimedKey が確認済みの鍵と一致すればネットワークに出ない。 */
-    resolve: (author: string, claimedKey: string) => Promise<string | undefined>;
+    /** publicKey がその作者の取り消されていない鍵か（署名検証用）。 */
+    isAuthorKey: (author: string, publicKey: string) => Promise<boolean>;
     /** その時点の表示名。確認済みのアカウントでなければ undefined（作者名を表示しない）。 */
     displayName: (author: string) => Promise<string | undefined>;
     invalidate: (author: string) => void;
 }
 
+/** 保存した結果をネットワークに出ずに使う時間（T_fresh）。 */
+export const AUTHOR_KEYS_FRESH_MS = 60 * 60 * 1000;
+/** 取り直せないまま保存した結果を使い続ける上限（T_max）。取り消しがほかのサーバーへ届く最長時間。 */
+export const AUTHOR_KEYS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 /** 確認に失敗したアカウントを問い合わせ直さない時間（取得失敗で毎回ネットワークに出ないように）。 */
-const CLAIM_RETRY_MS = 5 * 60 * 1000;
-/** 保存済みの表示名を裏で更新する間隔（通常アクセスは保存済みの値で即答する）。 */
-const DISPLAY_NAME_REFRESH_MS = 60 * 60 * 1000;
+const FETCH_RETRY_MS = 5 * 60 * 1000;
 
 export function createAuthorKeyDirectory(deps: AuthorKeyDirectoryDeps): AuthorKeyDirectory {
     const now = deps.now ?? Date.now;
-    const failedClaims = new Map<string, number>();
+    const freshMs = deps.freshMs ?? AUTHOR_KEYS_FRESH_MS;
+    const maxAgeMs = deps.maxAgeMs ?? AUTHOR_KEYS_MAX_AGE_MS;
+    const failedAt = new Map<string, number>();
+    const inFlight = new Map<string, Promise<AuthorProfile | undefined>>();
 
-    const fetchWebFinger = async (account: string, domain: string): Promise<AuthorProfile | undefined> => {
+    const fetchProfile = async (account: string, domain: string): Promise<AuthorProfile | undefined> => {
         const path = `/.well-known/webfinger?resource=${encodeURIComponent(`acct:${account}`)}`;
         const schemes = deps.allowHttp ? ['https', 'http'] : ['https'];
-        return schemes.reduce<Promise<AuthorProfile | undefined>>(
-            async (prev, scheme) =>
-                (await prev) ??
-                profileFromWebFinger(
-                    await deps.fetchJson(`${scheme}://${domain}${path}`).catch(() => undefined),
-                    account,
-                ),
-            Promise.resolve(undefined),
-        );
+        return schemes.reduce<Promise<AuthorProfile | undefined>>(async (prev, scheme) => {
+            const found = await prev;
+            if (found) return found;
+            const origin = `${scheme}://${domain}`;
+            const jrd = await deps.fetchJson(`${origin}${path}`).catch(() => undefined);
+            const links = webFingerLinks(jrd, account, origin);
+            if (!links?.signingKeysUrl) return undefined;
+            const list = parseSigningKeyList(
+                await deps.fetchJson(links.signingKeysUrl).catch(() => undefined),
+                account,
+            );
+            return list ? { keys: list.keys, displayName: links.displayName } : undefined;
+        }, Promise.resolve(undefined));
     };
 
-    /** 初回・鍵変更時の確認（claim）。成功したら結び付けを保存する。 */
-    const claim = async (account: string, domain: string): Promise<AuthorProfile | undefined> => {
-        const failedAt = failedClaims.get(account);
-        if (failedAt !== undefined && now() - failedAt < CLAIM_RETRY_MS) return undefined;
-        const profile = await fetchWebFinger(account, domain);
-        if (!profile?.signingPublicKey) {
-            failedClaims.set(account, now());
-            return undefined;
-        }
-        failedClaims.delete(account);
-        await deps.bindings.save(account, profile.signingPublicKey, profile.displayName);
-        return profile;
+    /** 鍵一覧を取り直して保存する。同じアカウントへの同時取得はまとめ、失敗後しばらくは問い合わせない。 */
+    const refresh = (account: string, domain: string): Promise<AuthorProfile | undefined> => {
+        const pending = inFlight.get(account);
+        if (pending) return pending;
+        const failed = failedAt.get(account);
+        if (failed !== undefined && now() - failed < FETCH_RETRY_MS) return Promise.resolve(undefined);
+        const task = fetchProfile(account, domain)
+            .then(async (profile) => {
+                if (!profile) {
+                    failedAt.set(account, now());
+                    return undefined;
+                }
+                failedAt.delete(account);
+                await deps.bindings.save(account, profile);
+                return profile;
+            })
+            .finally(() => inFlight.delete(account));
+        inFlight.set(account, task);
+        return task;
     };
 
     const normalize = (author: string) => {
@@ -135,49 +167,47 @@ export function createAuthorKeyDirectory(deps: AuthorKeyDirectoryDeps): AuthorKe
         return parsed ? { ...parsed, account: formatAuthorAccount(parsed) } : null;
     };
 
-    return {
-        async resolve(author, claimedKey) {
-            const target = normalize(author);
-            if (!target) return undefined;
-            const pin = deps.pinned.get(target.account);
-            if (pin) return pin.signingPublicKey;
-            if (target.domain === deps.selfDomain()) {
-                return (await deps.findLocalAccount(target.handle))?.signingPublicKey;
+    /** 他サーバーのアカウントの、いま使ってよい作者情報。 */
+    const remoteProfile = async (
+        target: { account: string; domain: string },
+        publicKey?: string,
+    ): Promise<AuthorProfile | undefined> => {
+        const binding = await deps.bindings.find(target.account);
+        const age = binding ? now() - binding.fetchedAt.getTime() : Number.POSITIVE_INFINITY;
+        if (binding && age <= maxAgeMs) {
+            // 知らない鍵（新しい公開環境）だけは待って取り直す。それ以外は保存した結果で即答する
+            if (publicKey && signingKeyStatus(binding.keys, publicKey) === 'unknown') {
+                return (await refresh(target.account, target.domain)) ?? binding;
             }
-            const binding = await deps.bindings.find(target.account);
-            if (binding?.publicKey === claimedKey) return binding.publicKey;
-            // 未確認、または確認済みの鍵と違う（鍵の入れ替え等）ときだけ確認し直す。
-            // 確認できなければ保存済みの鍵を返す（一致しないので作者は付かない）。
-            const claimed = await claim(target.account, target.domain);
-            return claimed?.signingPublicKey ?? binding?.publicKey;
+            if (age > freshMs) void refresh(target.account, target.domain).catch(() => undefined);
+            return binding;
+        }
+        // 未確認、または取り直せないまま T_max を超えた: 取り直せなければ作者を付けない
+        return refresh(target.account, target.domain);
+    };
+
+    const profileOf = async (author: string, publicKey?: string): Promise<AuthorProfile | undefined> => {
+        const target = normalize(author);
+        if (!target) return undefined;
+        const pin = deps.pinned.get(target.account);
+        if (pin) return pin;
+        if (target.domain === deps.selfDomain()) return deps.findLocalAccount(target.handle);
+        return remoteProfile(target, publicKey);
+    };
+
+    return {
+        async isAuthorKey(author, publicKey) {
+            const profile = await profileOf(author, publicKey);
+            return !!profile && signingKeyStatus(profile.keys, publicKey) === 'active';
         },
 
         async displayName(author) {
-            const target = normalize(author);
-            if (!target) return undefined;
-            const pin = deps.pinned.get(target.account);
-            if (pin) return pin.displayName;
-            if (target.domain === deps.selfDomain()) {
-                return (await deps.findLocalAccount(target.handle))?.displayName;
-            }
-            const binding = await deps.bindings.find(target.account);
-            if (!binding) return undefined;
-            if (now() - binding.refreshedAt.getTime() > DISPLAY_NAME_REFRESH_MS) {
-                // 表示名は保存済みの値で即答し、裏で更新する（鍵が変わっていたら次の検証時に確認し直す）
-                void fetchWebFinger(target.account, target.domain)
-                    .then((profile) =>
-                        profile?.signingPublicKey === binding.publicKey
-                            ? deps.bindings.refreshDisplayName(target.account, profile.displayName)
-                            : undefined,
-                    )
-                    .catch(() => undefined);
-            }
-            return binding.displayName ?? undefined;
+            return (await profileOf(author))?.displayName;
         },
 
         invalidate(author) {
             const target = normalize(author);
-            if (target) failedClaims.delete(target.account);
+            if (target) failedAt.delete(target.account);
         },
     };
 }

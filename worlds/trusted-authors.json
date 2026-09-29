@@ -1,9 +1,9 @@
 {
-  "$comment": "レビュー済みの作者アカウントと署名公開鍵。ここにある結び付けは WebFinger で確認し直さずに使う（公式ワールドをオフライン・開発環境でも公開ルールどおりに扱うため）。変更は PR でレビューすること。",
+  "$comment": "レビュー済みの作者アカウントと公開環境の鍵一覧。ここにある結び付けは WebFinger で確認し直さずに使う（公式ワールドをオフライン・開発環境でも公開ルールどおりに扱うため）。鍵を取り消すときは消さずに revokedAt を付ける（その鍵の署名はすべて無効になる）。変更は PR でレビューすること。",
   "authors": {
     "ubichill@ubichill.com": {
-      "publicKey": "vIyjMH-tm4kj8Mnt-DBy0cKjdeclcn7_LR7VtXf2Q_g",
-      "displayName": "Ubichill"
+      "displayName": "Ubichill",
+      "keys": [{ "publicKey": "vIyjMH-tm4kj8Mnt-DBy0cKjdeclcn7_LR7VtXf2Q_g" }]
     }
   }
 }

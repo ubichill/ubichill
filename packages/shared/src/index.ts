@@ -302,4 +302,5 @@ export * from './mod/types';
 export * from './mod/vnode';
 export * from './schemas';
 export * from './user/handle';
+export * from './user/signingKeys';
 export * from './world/identity';

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-    type AuthorKeyResolver,
+    type AuthorKeyCheck,
     authorWorldIdOf,
     canonicalJson,
     isPublishable,
@@ -236,9 +236,9 @@ describe('signWorld / verifyWorldSignature', () => {
 describe('作者アカウント（author）', () => {
     const AUTHOR = 'youkan@ubichill.com';
     const resolverFor =
-        (keys: Record<string, string | undefined>): AuthorKeyResolver =>
-        async (author) =>
-            keys[author];
+        (keys: Record<string, string | undefined>): AuthorKeyCheck =>
+        async (author, publicKey) =>
+            keys[author] === publicKey;
 
     it('作者アカウントの鍵と署名鍵が一致すれば author が付き、worldId はアカウント基準', async () => {
         const key = newKey();
@@ -272,7 +272,7 @@ describe('作者アカウント（author）', () => {
         for (const resolver of [
             undefined,
             resolverFor({}),
-            (() => Promise.reject(new Error('down'))) as AuthorKeyResolver,
+            (() => Promise.reject(new Error('down'))) as AuthorKeyCheck,
         ]) {
             const verdict = await verifyWorldSignature(doc, sig, fakeCrypto, resolver);
             expect(verdict).toMatchObject({ status: 'verified', worldId: worldIdOf(key.publicKey, 'my-world') });

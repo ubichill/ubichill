@@ -1,9 +1,10 @@
 /** 公式アカウントの初期化の実体（better-auth・DB・レビュー済みの鍵を注入する）。ロジックは officialAccount.ts。 */
-import { userRepository } from '@ubichill/db';
+import { publishingEnvironmentRepository, userRepository } from '@ubichill/db';
 import { OFFICIAL_WORLDS_AUTHOR } from '@ubichill/shared';
 import { auth } from '../lib/auth';
-import { pinnedAuthorKey } from './authorKeyStore';
+import { pinnedAuthorKeys } from './authorKeyStore';
 import { ensureOfficialAccount, officialAccountConfig } from './officialAccount';
+import { officialKeyChanges } from './publishingEnvironments';
 
 export async function bootstrapOfficialAccount(): Promise<void> {
     const ctx = await auth.$context;
@@ -24,7 +25,25 @@ export async function bootstrapOfficialAccount(): Promise<void> {
         },
         isDisplayNameTaken: async (key) => !!(await userRepository.findByDisplayNameKey(key)),
         initialize: (id, fields) => userRepository.initializeAccount(id, fields),
-        officialPublicKey: pinnedAuthorKey(OFFICIAL_WORLDS_AUTHOR),
+        syncSigningKeys: async (userId) => {
+            const { add, revoke } = officialKeyChanges(
+                pinnedAuthorKeys(OFFICIAL_WORLDS_AUTHOR),
+                await publishingEnvironmentRepository.listByUser(userId),
+            );
+            for (const publicKey of add) {
+                if (await publishingEnvironmentRepository.findByPublicKey(publicKey)) {
+                    console.warn('⚠ 公式の鍵が別のアカウントに登録されているため、公式アカウントに登録しません');
+                    continue;
+                }
+                await publishingEnvironmentRepository.create({
+                    userId,
+                    kind: 'cli',
+                    name: '公式ワールドの署名鍵（trusted-authors.json）',
+                    publicKey,
+                });
+            }
+            for (const id of revoke) await publishingEnvironmentRepository.revoke(userId, id);
+        },
         log: (message) => console.log(message),
     });
 }

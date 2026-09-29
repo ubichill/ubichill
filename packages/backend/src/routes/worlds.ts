@@ -1,4 +1,4 @@
-import { userRepository, worldRepository } from '@ubichill/db';
+import { publishingEnvironmentRepository, userRepository, worldRepository } from '@ubichill/db';
 import {
     LIMITS,
     type ModLock,
@@ -59,6 +59,15 @@ async function authorClaimError(rawSignature: unknown, userId: string): Promise<
     const user = await userRepository.findById(userId);
     const own = user?.handle ? selfAccount(user.handle) : null;
     return claimed === own ? null : `署名の作者（${String(claimed)}）があなたのアカウントと一致しません`;
+}
+
+/** 公開に使った公開環境の最終利用を記録する（使われなくなった環境を一覧で見分けるため）。失敗しても公開は止めない。 */
+async function markSigningKeyUsed(rawSignature: unknown, userId: string): Promise<void> {
+    const publicKey = (rawSignature as { publicKey?: unknown } | null)?.publicKey;
+    if (typeof publicKey !== 'string') return;
+    const env = await publishingEnvironmentRepository.findByPublicKey(publicKey).catch(() => undefined);
+    if (env?.userId === userId && !env.revokedAt)
+        await publishingEnvironmentRepository.touch(env.id).catch(() => undefined);
 }
 
 function updateFailureStatus(reason: string): number {
@@ -430,6 +439,7 @@ router.put('/:worldId/sig', requireAuth, async (req, res) => {
             res.status(status).json({ error: signatureFailureMessage(result.reason) });
             return;
         }
+        await markSigningKeyUsed(req.body, req.user.id);
         res.json({ identity: result.identity });
     } catch (error) {
         console.error('ワールド署名保存エラー:', error);
@@ -546,6 +556,7 @@ router.put('/:worldId/yaml', requireAuth, async (req, res) => {
             res.status(updateFailureStatus(result.reason)).json({ error: updateFailureMessage(result.reason) });
             return;
         }
+        if (signature !== undefined) await markSigningKeyUsed(signature, req.user.id);
         res.json(result.world);
     } catch (error) {
         const message = error instanceof Error ? error.message : 'YAML 更新に失敗しました';

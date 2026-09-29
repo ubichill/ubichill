@@ -1,6 +1,5 @@
 # 作者の公開体験と公開環境（設計書）
 
-対象ブランチ: `feat/author-publishing`（PR #177 `feat/world-identity` の上に積む）
 前提: `docs/design/world-identity.md`（作者署名・作者アカウント・公開ルール）
 
 ## 1. 目的
@@ -60,17 +59,17 @@
 
 ## 5. 公開環境の一覧の公開（ほかのサーバー向け）
 
-WebFinger の JRD から鍵一覧の文書へリンクする。
+WebFinger の JRD から鍵一覧の文書へリンクする（鍵一覧の URL は WebFinger と同じオリジンに限る）。
 
 ```
 GET /.well-known/webfinger?resource=acct:youkan@ubichill.com
 {
   "subject": "acct:youkan@ubichill.com",
   "properties": { "https://ubichill.com/ns/display-name": "ようかん" },
-  "links": [{ "rel": "https://ubichill.com/ns/signing-keys", "href": "https://ubichill.com/api/v1/users/youkan/signing-keys" }]
+  "links": [{ "rel": "https://ubichill.com/ns/signing-keys", "href": "https://ubichill.com/api/v1/authors/youkan/signing-keys" }]
 }
 
-GET /api/v1/users/youkan/signing-keys
+GET /api/v1/authors/youkan/signing-keys
 {
   "account": "youkan@ubichill.com",
   "issuedAt": "2026-09-28T00:00:00Z",
@@ -82,7 +81,7 @@ GET /api/v1/users/youkan/signing-keys
 ```
 
 - **取り消した鍵は消さずに `revokedAt` 付きで残す**。消すと、検証側は「取り消された」のか「通信に失敗しただけ」なのかを区別できない。
-- 移行期間中は、既存の単一の `https://ubichill.com/ns/ed25519-signing-key` プロパティも出す（旧実装の検証側のため）。
+- 旧来の単一の `https://ubichill.com/ns/ed25519-signing-key` プロパティは出さない（利用者がほぼいないので移行期間を設けない）。
 
 ## 6. 検証ルール（読む側）
 
@@ -172,20 +171,20 @@ run: npx ubichill publish worlds/my-world.yaml --out=dist/
 
 - 既存の `users.signing_public_key` は、公開環境（kind=`legacy`, name=「以前の鍵」）として 1 件移す。既存の作品の署名はそのまま有効。
 - 既存の「鍵ファイルを読み込む」導線で使っていた鍵は、読み込んだ時点でそのブラウザの公開環境として登録する。
-- 旧 `https://ubichill.com/ns/ed25519-signing-key` プロパティは移行期間だけ出し続け、その後削除する。
-- ほかのサーバーの `author_bindings` は「アカウント → 鍵一覧 + 取得時刻」を保存する形に変える（今は 1 本の鍵）。
+- 旧 `https://ubichill.com/ns/ed25519-signing-key` プロパティは移行期間を設けず削除する。
+- ほかのサーバーの `author_bindings` は「アカウント → 鍵一覧 + 取得時刻」を保存する形に変える。旧形式の行は取り直せるキャッシュなので移行時に捨てる。
 
 ## 12. 実装順序
 
 | 段階 | 内容 | 備考 |
 |---|---|---|
 | 0 | ワールドの識別子の方針を決める（#178） | 署名形式に影響するので、少なくとも方針だけ先に |
-| 1 | 公開環境（複数鍵）と取り消し、鍵一覧の公開、旧 1 本鍵の移行 | 取り消しを最初から入れる（取り消せない鍵を増やさない） |
-| 2 | Web の初回公開の自動化、「公開できるブラウザ・CLI・CI」画面 | 鍵ファイルを通常導線から外す |
+| 1 | 公開環境（複数鍵）と取り消し、鍵一覧の公開、旧 1 本鍵の移行 | 実装済み（2026-09-29） |
+| 2 | Web の初回公開の自動化、「公開できるブラウザ・CLI・CI」画面 | 実装済み（2026-09-29）。鍵ファイルは上級者向けの読み込みだけ残す |
 | 3 | `ubichill login`（ループバック → デバイス認可の順） | |
 | 4 | `ubichill publish`（固定・署名・アップロード／出力の一本化） | |
 | 5 | `ubichill ci create` と CI での公開 | |
-| 6 | ほかのサーバーでの期限付き再確認（T_fresh / T_max）と、署名し直しの一覧・一括署名し直し | 完了の基準 4 |
+| 6 | ほかのサーバーでの期限付き再確認（T_fresh / T_max）と、署名し直しの一覧・一括署名し直し | 期限付き再確認は段階 1 で実装済み（1 時間 / 24 時間）。残りは署名し直しの一覧・一括 |
 | 7 | ワールドの持ち運び（#178）の実装 | |
 
 ## 13. 未決事項

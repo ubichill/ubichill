@@ -1,4 +1,4 @@
-import { keyRegistrationMessage, type WorldSigningKey } from '@ubichill/shared';
+import { keyRegistrationMessage, type PublishingEnvironmentKind, type WorldSigningKey } from '@ubichill/shared';
 import { API_BASE } from '@/lib/api';
 
 /** ログイン中のアカウント（`GET /api/v1/users/me`）。 */
@@ -18,8 +18,8 @@ export interface MyAccount {
     handle: string | null;
     /** 作者アカウント `handle@domain`（handle 未設定なら null）。 */
     author: string | null;
-    /** アカウントに登録済みの署名公開鍵。 */
-    signingPublicKey: string | null;
+    /** 取り消されていない公開環境の鍵（このブラウザの鍵が登録済みかの判定に使う）。 */
+    signingKeys: string[];
     profileImageUrl: string | null;
 }
 
@@ -69,18 +69,56 @@ export async function setMyHandle(handle: string): Promise<{ handle: string; aut
     return (await res.json()) as { handle: string; author: string };
 }
 
+/** 公開環境（署名して公開できるブラウザ・CLI・CI）。 */
+export interface PublishingEnvironment {
+    id: string;
+    kind: PublishingEnvironmentKind;
+    name: string;
+    publicKey: string;
+    createdAt: string;
+    lastUsedAt: string | null;
+    revokedAt: string | null;
+}
+
+export async function fetchPublishingEnvironments(): Promise<PublishingEnvironment[]> {
+    const res = await fetch(`${API_BASE}/api/v1/users/me/publishing-environments`, {
+        credentials: 'include',
+        cache: 'no-store',
+    });
+    if (!res.ok) throw new Error(await errorMessage(res));
+    return ((await res.json()) as { environments: PublishingEnvironment[] }).environments;
+}
+
+/** 公開環境を取り消す。その鍵の署名は取り消し前のものも含めて作者が付かなくなる。 */
+export async function revokePublishingEnvironment(id: string): Promise<PublishingEnvironment> {
+    const res = await fetch(`${API_BASE}/api/v1/users/me/publishing-environments/${encodeURIComponent(id)}/revoke`, {
+        method: 'POST',
+        credentials: 'include',
+    });
+    if (!res.ok) throw new Error(await errorMessage(res));
+    return ((await res.json()) as { environment: PublishingEnvironment }).environment;
+}
+
 /**
- * このブラウザの鍵をアカウントの署名鍵として登録する（既存の鍵は置き換わる）。
- * 公開鍵だけでなく「その鍵で自分の userId 入りの文に署名したもの」を送り、秘密鍵の所有を証明する。
+ * このブラウザの鍵を公開環境として登録する。公開鍵だけでなく「その鍵で自分の userId 入りの文に署名したもの」を送り、
+ * 秘密鍵の所有を証明する。鍵が取り消し済みなら 'revoked'（作り直しが必要）。
  */
-export async function registerSigningKey(userId: string, key: WorldSigningKey): Promise<void> {
+export async function registerSigningKey(userId: string, key: WorldSigningKey): Promise<'registered' | 'revoked'> {
     const claim = { userId, publicKey: key.publicKey, at: new Date().toISOString() };
     const signature = await key.sign(keyRegistrationMessage(claim));
-    const res = await fetch(`${API_BASE}/api/v1/users/me/signing-key`, {
-        method: 'PUT',
+    const res = await fetch(`${API_BASE}/api/v1/users/me/publishing-environments`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ publicKey: claim.publicKey, at: claim.at, signature }),
     });
+    if (res.status === 409) {
+        const data = (await res
+            .clone()
+            .json()
+            .catch(() => ({}))) as { code?: string };
+        if (data.code === 'revoked') return 'revoked';
+    }
     if (!res.ok) throw new Error(await errorMessage(res));
+    return 'registered';
 }

@@ -5,6 +5,7 @@ import { z } from 'zod';
 export * from './authorBindings';
 export * from './federationPeers';
 export * from './instances';
+export * from './publishingEnvironments';
 export * from './users';
 export * from './worlds';
 

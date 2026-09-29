@@ -141,11 +141,11 @@ export function authorWorldIdOf(author: string, name: string): string {
 }
 
 /**
- * 作者アカウント（`handle@domain`）の署名公開鍵を返す。見つからなければ undefined。
- * `claimedKey`（署名に使われた鍵）を渡すので、実装は「確認済みの結び付けと一致すればネットワークに出ない、
- * 一致しない・未確認のときだけ確認し直す」ことができる（自サーバーは DB、他ドメインは WebFinger）。
+ * `publicKey` が作者アカウント（`handle@domain`）の取り消されていない公開環境の鍵か。
+ * 1 アカウントは複数の鍵を持つので、署名に使われた鍵を渡して判定させる
+ * （自サーバーは DB、他ドメインは WebFinger から辿る鍵一覧）。
  */
-export type AuthorKeyResolver = (author: string, claimedKey: string) => Promise<string | undefined>;
+export type AuthorKeyCheck = (author: string, publicKey: string) => Promise<boolean>;
 
 /** 署名対象のバイト列（UTF-8 化は crypto 側）。signature 以外の全フィールドを正規化する。 */
 export function worldSignaturePayload(fields: Omit<WorldSignature, 'signature'>): string {
@@ -183,15 +183,15 @@ export async function signWorld(
  * 署名を検証して識別結果を返す。`rawSignature` が null/undefined なら unsigned。
  * 照合順: 形式 → name → contentHash → 署名。安価な判定を先に行い、署名検証は最後。
  *
- * 署名が主張する作者アカウントは `resolveAuthorKey` で引いた公開鍵が署名鍵と一致したときだけ採用する。
- * 一致しない・引けない・resolver が無い場合は作者を付けず鍵で識別する（なりすましを表示しない）。
- * 署名自体は正しいので invalid にはしない（鍵の入れ替え後の古い署名もここに来る）。
+ * 署名が主張する作者アカウントは、署名鍵がその作者の有効な鍵だと `isAuthorKey` で確認できたときだけ採用する。
+ * 確認できない・取り消し済み・判定器が無い場合は作者を付けず鍵で識別する（なりすましを表示しない）。
+ * 署名自体は正しいので invalid にはしない（取り消した鍵の署名もここに来る）。
  */
 export async function verifyWorldSignature(
     doc: WorldDocument,
     rawSignature: unknown,
     crypto: WorldCrypto,
-    resolveAuthorKey?: AuthorKeyResolver,
+    isAuthorKey?: AuthorKeyCheck,
 ): Promise<WorldIdentityVerdict> {
     const contentHash = await worldContentHash(doc, crypto);
     if (rawSignature === null || rawSignature === undefined) return { status: 'unsigned', contentHash };
@@ -208,11 +208,9 @@ export async function verifyWorldSignature(
     const unpinned = unpinnedModsOf(doc);
     if (unpinned === null || unpinned.length > 0) return { status: 'invalid', reason: 'lock-incomplete' };
 
-    const authorKey =
-        sig.author && resolveAuthorKey
-            ? await resolveAuthorKey(sig.author, sig.publicKey).catch(() => undefined)
-            : undefined;
-    if (sig.author && authorKey === sig.publicKey) {
+    const authorConfirmed =
+        !!sig.author && !!isAuthorKey && (await isAuthorKey(sig.author, sig.publicKey).catch(() => false));
+    if (sig.author && authorConfirmed) {
         return {
             status: 'verified',
             worldId: authorWorldIdOf(sig.author, sig.name),

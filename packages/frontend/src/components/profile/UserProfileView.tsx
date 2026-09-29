@@ -6,19 +6,19 @@ import { WorldIdentityBadge } from '@/components/lobby/WorldIdentityBadge';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { API_BASE } from '@/lib/api';
 import { useSession } from '@/lib/session';
-import { browserFetch, loadSigningKey, signerFor, signHostedWorld } from '@/lib/signing';
+import { authorSignerFor, browserFetch, signHostedWorld } from '@/lib/signing';
 import { css } from '@/styled-system/css';
 import { DisplayNameEditor } from './DisplayNameEditor';
 import { PasswordSection } from './PasswordSection';
-import { SigningKeySection } from './SigningKeySection';
+import { PublishingSection } from './PublishingSection';
 
-/** 公開プロフィール。自分のページでは MyAccount の項目（登録鍵など）も入る。 */
+/** 公開プロフィール。自分のページでは MyAccount の項目（公開環境の鍵など）も入る。 */
 interface UserProfile {
     id: string;
     name: string;
     handle: string | null;
     author: string | null;
-    signingPublicKey?: string | null;
+    signingKeys?: string[];
     displayNameConflict?: boolean;
     passwordChangeRequired?: boolean;
     passwordManagedBySecret?: boolean;
@@ -64,6 +64,7 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
     const isOwnPage = !!session && targetUserId === session.user.id;
 
     const [profile, setProfile] = useState<UserProfile | null>(null);
+    const [environmentsVersion, setEnvironmentsVersion] = useState(0);
     const [worlds, setWorlds] = useState<OwnedWorld[]>([]);
     const [selectedWorldId, setSelectedWorldId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
@@ -133,20 +134,19 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
     const remaining = Math.max(0, LIMITS.MAX_WORLDS_PER_USER - worlds.length);
     const unsignedCount = isOwnPage ? worlds.filter((w) => !isPublishable(w.identity)).length : 0;
 
-    // 保存し直さなくても、今の内容にこのブラウザの鍵で署名して公開できるようにする。
+    // 保存し直さなくても、今の内容に作者アカウントで署名して公開できるようにする（鍵の用意・登録は自動）。
     const signWorld = async (worldId: string) => {
         setError('');
         try {
-            const signer = signerFor(
-                await loadSigningKey(),
-                profile ? { ...profile, signingPublicKey: profile.signingPublicKey ?? null } : null,
-            );
-            // 公開には作者アカウント（ID + 登録済みの鍵）での署名が要る。鍵だけの署名では公開されない。
-            if (!signer?.author) {
-                setError(
-                    '公開するには、上の「作者署名」で ID を設定し、このブラウザの鍵をアカウントに登録してください。',
-                );
+            if (!profile?.author) {
+                setError('公開するには、上の「公開」で ID を設定してください。');
                 return;
+            }
+            const signingKeys = profile.signingKeys ?? [];
+            const signer = await authorSignerFor({ id: profile.id, author: profile.author, signingKeys });
+            if (!signingKeys.includes(signer.key.publicKey)) {
+                setProfile({ ...profile, signingKeys: [...signingKeys, signer.key.publicKey] });
+                setEnvironmentsVersion((v) => v + 1);
             }
             const identity = await signHostedWorld(worldId, signer, { apiBase: API_BASE, fetch: browserFetch });
             setWorlds((prev) => prev.map((w) => (w.id === worldId ? { ...w, identity } : w)));
@@ -247,10 +247,10 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                 />
             )}
             {isOwnPage && profile && (
-                <SigningKeySection
+                <PublishingSection
                     account={{
                         ...profile,
-                        signingPublicKey: profile.signingPublicKey ?? null,
+                        signingKeys: profile.signingKeys ?? [],
                         displayNameConflict: !!profile.displayNameConflict,
                         passwordChangeRequired: !!profile.passwordChangeRequired,
                         passwordManagedBySecret: !!profile.passwordManagedBySecret,
@@ -258,6 +258,7 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                     }}
                     onAccountChange={setProfile}
                     unsignedCount={unsignedCount}
+                    refreshKey={environmentsVersion}
                 />
             )}
 

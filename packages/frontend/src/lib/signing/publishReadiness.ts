@@ -1,33 +1,21 @@
-import type { WorldSigningKey } from '@ubichill/shared';
 import type { MyAccount } from '@/lib/account/me';
-import { signerFor, type WorldSigner } from './signer';
 
 /**
- * 保存しようとしているワールドを公開できるか。公開には作者アカウント（ID + 登録済みの鍵）での署名が要る。
+ * 保存しようとしているワールドを公開できるか。公開には作者アカウントでの署名が要る。
+ * 鍵の用意と公開環境の登録は公開時に自動で行うので、利用者に求めるのは ID だけ。
  * - unpinned: lock に固定できない mod がある。署名は無効になるので公開できない（先に判定）。
  * - no-account: アカウント情報を取得できない（公開できない）。
- * - needs-setup: ID の設定・鍵の用意・鍵の登録のいずれかが足りない。公開ダイアログでその場で済ませる。
- * - ready: そのまま作者アカウント付きで署名して公開できる。
+ * - needs-handle: ID が未設定。公開ダイアログでその場で決めてもらう。
+ * - ready: そのまま公開できる。
  */
 export type PublishReadiness =
-    | { kind: 'ready'; signer: WorldSigner }
+    | { kind: 'ready'; account: MyAccount }
     | { kind: 'unpinned'; mods: string[] }
     | { kind: 'no-account' }
-    | { kind: 'needs-setup'; missingHandle: boolean; missingKey: boolean; keyUnregistered: boolean };
+    | { kind: 'needs-handle'; account: MyAccount };
 
-export function publishReadiness(
-    key: WorldSigningKey | null,
-    account: Pick<MyAccount, 'handle' | 'author' | 'signingPublicKey'> | null,
-    unpinned: readonly string[],
-): PublishReadiness {
+export function publishReadiness(account: MyAccount | null, unpinned: readonly string[]): PublishReadiness {
     if (unpinned.length > 0) return { kind: 'unpinned', mods: [...unpinned] };
     if (!account) return { kind: 'no-account' };
-    const signer = signerFor(key, account);
-    if (signer?.author) return { kind: 'ready', signer };
-    return {
-        kind: 'needs-setup',
-        missingHandle: !account.handle,
-        missingKey: !key,
-        keyUnregistered: !!key && account.signingPublicKey !== key.publicKey,
-    };
+    return account.author ? { kind: 'ready', account } : { kind: 'needs-handle', account };
 }
