@@ -343,7 +343,7 @@ export function PublishingSection({ account, onAccountChange, unsignedCount, ref
             <details className={css({ mt: '4', fontSize: '13px', color: 'textMuted' })}>
                 <summary className={css({ cursor: 'pointer' })}>上級者向け: CLI の鍵ファイルを読み込む</summary>
                 <p className={css({ mt: '2', mb: '2', lineHeight: '1.6' })}>
-                    `ubichill keygen` で作った鍵ファイルを読み込み、このブラウザの公開環境として登録します。
+                    <code>ubichill keygen</code> で作った鍵ファイルを読み込み、このブラウザの公開環境として登録します。
                 </p>
                 <button
                     type="button"
