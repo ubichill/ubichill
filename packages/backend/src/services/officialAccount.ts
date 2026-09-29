@@ -24,8 +24,7 @@ export interface OfficialAccountConfig {
 }
 
 export function officialAccountConfig(env: NodeJS.ProcessEnv): OfficialAccountConfig {
-    // 旧名 OFFICIAL_ACCOUNT_INITIAL_PASSWORD も読む（既存の Secret を作り直さずに移行できるように）
-    const password = (env.OFFICIAL_ACCOUNT_PASSWORD ?? env.OFFICIAL_ACCOUNT_INITIAL_PASSWORD)?.trim();
+    const password = env.OFFICIAL_ACCOUNT_PASSWORD?.trim();
     const useDevDefault = !password && env.NODE_ENV !== 'production';
     return {
         email: env.OFFICIAL_ACCOUNT_EMAIL?.trim() || 'ubichill@ubichill.com',

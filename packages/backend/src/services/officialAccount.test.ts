@@ -79,19 +79,6 @@ describe('officialAccountConfig', () => {
         });
     });
 
-    it('旧名 OFFICIAL_ACCOUNT_INITIAL_PASSWORD も読み、新しい名前があればそちらを優先する', () => {
-        expect(
-            officialAccountConfig({ NODE_ENV: 'production', OFFICIAL_ACCOUNT_INITIAL_PASSWORD: 'legacy-1' }).password,
-        ).toBe('legacy-1');
-        expect(
-            officialAccountConfig({
-                NODE_ENV: 'production',
-                OFFICIAL_ACCOUNT_PASSWORD: 'new-1',
-                OFFICIAL_ACCOUNT_INITIAL_PASSWORD: 'legacy-1',
-            }).password,
-        ).toBe('new-1');
-    });
-
     it('本番で未設定なら何もしない（推測できるパスワードで作らない）', () => {
         expect(officialAccountConfig({ NODE_ENV: 'production' })).toMatchObject({
             password: undefined,
