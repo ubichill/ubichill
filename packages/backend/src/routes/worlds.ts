@@ -50,15 +50,21 @@ function parseYamlUpdate(body: unknown): ParsedYamlUpdate {
 }
 
 /**
- * 署名が作者アカウントを主張するなら、それはアップロードした本人のアカウントでなければならない。
- * （他人の handle を名乗る署名は、鍵が一致しなければ表示されないが、保存の時点で弾いておく）
+ * 署名が作者アカウントを主張するなら、それはアップロードした本人のアカウントで、鍵はその有効な公開環境でなければならない。
+ * （作者が付かない署名は保存しても公開されないので、黙って非公開にせず保存の時点で弾く。取り消し済みの鍵もここで止まる）
  */
 async function authorClaimError(rawSignature: unknown, userId: string): Promise<string | null> {
-    const claimed = (rawSignature as { author?: unknown } | null)?.author;
+    const { author: claimed, publicKey } = (rawSignature ?? {}) as { author?: unknown; publicKey?: unknown };
     if (claimed === undefined) return null;
     const user = await userRepository.findById(userId);
     const own = user?.handle ? selfAccount(user.handle) : null;
-    return claimed === own ? null : `署名の作者（${String(claimed)}）があなたのアカウントと一致しません`;
+    if (claimed !== own) return `署名の作者（${String(claimed)}）があなたのアカウントと一致しません`;
+    const env =
+        typeof publicKey === 'string' ? await publishingEnvironmentRepository.findByPublicKey(publicKey) : undefined;
+    if (!env || env.userId !== userId || env.revokedAt) {
+        return 'この署名の鍵はあなたの有効な公開環境ではありません（取り消し済みか未登録）。画面を読み込み直して公開し直してください';
+    }
+    return null;
 }
 
 /** 公開に使った公開環境の最終利用を記録する（使われなくなった環境を一覧で見分けるため）。失敗しても公開は止めない。 */

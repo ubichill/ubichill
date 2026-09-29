@@ -115,6 +115,11 @@ export const AUTHOR_KEYS_FRESH_MS = 60 * 60 * 1000;
 export const AUTHOR_KEYS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 /** 確認に失敗したアカウントを問い合わせ直さない時間（取得失敗で毎回ネットワークに出ないように）。 */
 const FETCH_RETRY_MS = 5 * 60 * 1000;
+/**
+ * 知らない鍵のために取り直す最短間隔。作者を名乗って毎回違う鍵で署名したワールドを読ませ、
+ * 作者のサーバーへの問い合わせを増幅させないため。新しい公開環境の反映はこの時間だけ遅れ得る。
+ */
+const UNKNOWN_KEY_REFETCH_MS = 60 * 1000;
 
 export function createAuthorKeyDirectory(deps: AuthorKeyDirectoryDeps): AuthorKeyDirectory {
     const now = deps.now ?? Date.now;
@@ -176,7 +181,7 @@ export function createAuthorKeyDirectory(deps: AuthorKeyDirectoryDeps): AuthorKe
         const age = binding ? now() - binding.fetchedAt.getTime() : Number.POSITIVE_INFINITY;
         if (binding && age <= maxAgeMs) {
             // 知らない鍵（新しい公開環境）だけは待って取り直す。それ以外は保存した結果で即答する
-            if (publicKey && signingKeyStatus(binding.keys, publicKey) === 'unknown') {
+            if (publicKey && signingKeyStatus(binding.keys, publicKey) === 'unknown' && age >= UNKNOWN_KEY_REFETCH_MS) {
                 return (await refresh(target.account, target.domain)) ?? binding;
             }
             if (age > freshMs) void refresh(target.account, target.domain).catch(() => undefined);

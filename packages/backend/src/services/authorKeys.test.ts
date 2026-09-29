@@ -159,17 +159,32 @@ describe('createAuthorKeyDirectory（公開環境の鍵一覧と取り消し）'
 
     it('知らない鍵（新しい公開環境）なら待って取り直す', async () => {
         const state = { keys: [{ publicKey: REMOTE }] as SigningKeyEntry[] };
-        const { directory, calls } = setup({ remote: () => ({ keys: state.keys }) });
+        const { directory, calls, clock } = setup({ remote: () => ({ keys: state.keys }) });
         await directory.isAuthorKey('alice@other.example', REMOTE);
         state.keys = [{ publicKey: REMOTE }, { publicKey: REMOTE_NEW }];
+        clock.t += 60 * 1000;
         expect(await directory.isAuthorKey('alice@other.example', REMOTE_NEW)).toBe(true);
         expect(calls.fetch).toHaveLength(4);
     });
 
-    it('他人の鍵で名乗られても、鍵一覧に無ければ作者は付かない（失敗後しばらくは問い合わせない）', async () => {
-        const { directory, calls } = setup({ remote: () => ({ keys: [{ publicKey: REMOTE }] }) });
+    it('他人の鍵で名乗られても、鍵一覧に無ければ作者は付かない', async () => {
+        const { directory, calls, clock } = setup({ remote: () => ({ keys: [{ publicKey: REMOTE }] }) });
         await directory.isAuthorKey('alice@other.example', REMOTE);
+        clock.t += 60 * 1000;
         expect(await directory.isAuthorKey('alice@other.example', OTHER)).toBe(false);
+        expect(calls.fetch).toHaveLength(4);
+    });
+
+    it('毎回違う知らない鍵で名乗られても、作者のサーバーへの問い合わせは最短間隔ごとに 1 回（増幅させない）', async () => {
+        const { directory, calls, clock } = setup({ remote: () => ({ keys: [{ publicKey: REMOTE }] }) });
+        await directory.isAuthorKey('alice@other.example', REMOTE);
+        for (const c of 'GHIJKLMNOP') {
+            expect(await directory.isAuthorKey('alice@other.example', c.repeat(43))).toBe(false);
+        }
+        expect(calls.fetch).toHaveLength(2);
+        clock.t += 60 * 1000;
+        await directory.isAuthorKey('alice@other.example', 'Q'.repeat(43));
+        await directory.isAuthorKey('alice@other.example', 'R'.repeat(43));
         expect(calls.fetch).toHaveLength(4);
     });
 
