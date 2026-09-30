@@ -101,9 +101,12 @@ export async function revokePublishingEnvironment(id: string): Promise<Publishin
 
 /**
  * このブラウザの鍵を公開環境として登録する。公開鍵だけでなく「その鍵で自分の userId 入りの文に署名したもの」を送り、
- * 秘密鍵の所有を証明する。鍵が取り消し済みなら 'revoked'（作り直しが必要）。
+ * 秘密鍵の所有を証明する。鍵が取り消し済み（revoked）・他のアカウントが登録済み（taken）なら作り直しが必要。
  */
-export async function registerSigningKey(userId: string, key: WorldSigningKey): Promise<'registered' | 'revoked'> {
+export async function registerSigningKey(
+    userId: string,
+    key: WorldSigningKey,
+): Promise<'registered' | 'revoked' | 'taken'> {
     const claim = { userId, publicKey: key.publicKey, at: new Date().toISOString() };
     const signature = await key.sign(keyRegistrationMessage(claim));
     const res = await fetch(`${API_BASE}/api/v1/users/me/publishing-environments`, {
@@ -117,7 +120,7 @@ export async function registerSigningKey(userId: string, key: WorldSigningKey): 
             .clone()
             .json()
             .catch(() => ({}))) as { code?: string };
-        if (data.code === 'revoked') return 'revoked';
+        if (data.code === 'revoked' || data.code === 'taken') return data.code;
     }
     if (!res.ok) throw new Error(await errorMessage(res));
     return 'registered';

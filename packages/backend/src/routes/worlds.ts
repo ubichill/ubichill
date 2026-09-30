@@ -49,31 +49,34 @@ function parseYamlUpdate(body: unknown): ParsedYamlUpdate {
     return { ok: true, definition: result.data, lock };
 }
 
+type AuthorClaim = { error: string } | { environmentId?: string };
+
 /**
  * 署名が作者アカウントを主張するなら、それはアップロードした本人のアカウントで、鍵はその有効な公開環境でなければならない。
  * （作者が付かない署名は保存しても公開されないので、黙って非公開にせず保存の時点で弾く。取り消し済みの鍵もここで止まる）
+ * 通った場合は署名に使った公開環境の ID を返す（最終利用の記録に使う）。
  */
-async function authorClaimError(rawSignature: unknown, userId: string): Promise<string | null> {
+async function checkAuthorClaim(rawSignature: unknown, userId: string): Promise<AuthorClaim> {
     const { author: claimed, publicKey } = (rawSignature ?? {}) as { author?: unknown; publicKey?: unknown };
-    if (claimed === undefined) return null;
+    if (claimed === undefined) return {};
     const user = await userRepository.findById(userId);
     const own = user?.handle ? selfAccount(user.handle) : null;
-    if (claimed !== own) return `署名の作者（${String(claimed)}）があなたのアカウントと一致しません`;
+    if (claimed !== own) return { error: `署名の作者（${String(claimed)}）があなたのアカウントと一致しません` };
     const env =
         typeof publicKey === 'string' ? await publishingEnvironmentRepository.findByPublicKey(publicKey) : undefined;
     if (!env || env.userId !== userId || env.revokedAt) {
-        return 'この署名の鍵はあなたの有効な公開環境ではありません（取り消し済みか未登録）。画面を読み込み直して公開し直してください';
+        return {
+            error: 'この署名の鍵はあなたの有効な公開環境ではありません（取り消し済みか未登録）。画面を読み込み直して公開し直してください',
+        };
     }
-    return null;
+    return { environmentId: env.id };
 }
 
 /** 公開に使った公開環境の最終利用を記録する（使われなくなった環境を一覧で見分けるため）。失敗しても公開は止めない。 */
-async function markSigningKeyUsed(rawSignature: unknown, userId: string): Promise<void> {
-    const publicKey = (rawSignature as { publicKey?: unknown } | null)?.publicKey;
-    if (typeof publicKey !== 'string') return;
-    const env = await publishingEnvironmentRepository.findByPublicKey(publicKey).catch(() => undefined);
-    if (env?.userId === userId && !env.revokedAt)
-        await publishingEnvironmentRepository.touch(env.id).catch(() => undefined);
+async function markEnvironmentUsed(claim: AuthorClaim): Promise<void> {
+    if ('environmentId' in claim && claim.environmentId) {
+        await publishingEnvironmentRepository.touch(claim.environmentId).catch(() => undefined);
+    }
 }
 
 function updateFailureStatus(reason: string): number {
@@ -434,9 +437,9 @@ router.put('/:worldId/sig', requireAuth, async (req, res) => {
             res.status(403).json({ error: 'Forbidden: Only the author can sign this world' });
             return;
         }
-        const claimError = await authorClaimError(req.body, req.user.id);
-        if (claimError) {
-            res.status(422).json({ error: claimError });
+        const claim = await checkAuthorClaim(req.body, req.user.id);
+        if ('error' in claim) {
+            res.status(422).json({ error: claim.error });
             return;
         }
         const result = await worldRegistry.setWorldSignature(worldId, req.body as unknown);
@@ -445,7 +448,7 @@ router.put('/:worldId/sig', requireAuth, async (req, res) => {
             res.status(status).json({ error: signatureFailureMessage(result.reason) });
             return;
         }
-        await markSigningKeyUsed(req.body, req.user.id);
+        await markEnvironmentUsed(claim);
         res.json({ identity: result.identity });
     } catch (error) {
         console.error('ワールド署名保存エラー:', error);
@@ -549,9 +552,9 @@ router.put('/:worldId/yaml', requireAuth, async (req, res) => {
             return;
         }
         const { signature, allowUnsigned } = req.body as { signature?: unknown; allowUnsigned?: unknown };
-        const claimError = signature === undefined ? null : await authorClaimError(signature, req.user.id);
-        if (claimError) {
-            res.status(422).json({ error: claimError });
+        const claim = signature === undefined ? {} : await checkAuthorClaim(signature, req.user.id);
+        if ('error' in claim) {
+            res.status(422).json({ error: claim.error });
             return;
         }
         const result = await worldRegistry.updateWorld(worldId, parsed.definition, parsed.lock, {
@@ -562,7 +565,7 @@ router.put('/:worldId/yaml', requireAuth, async (req, res) => {
             res.status(updateFailureStatus(result.reason)).json({ error: updateFailureMessage(result.reason) });
             return;
         }
-        if (signature !== undefined) await markSigningKeyUsed(signature, req.user.id);
+        await markEnvironmentUsed(claim);
         res.json(result.world);
     } catch (error) {
         const message = error instanceof Error ? error.message : 'YAML 更新に失敗しました';

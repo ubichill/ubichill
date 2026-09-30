@@ -5,6 +5,10 @@ import {
     AUTHOR_KEYS_MAX_AGE_MS,
     type AuthorProfile,
     createAuthorKeyDirectory,
+    createFetchGuard,
+    DOMAIN_FETCH_LIMIT,
+    DOMAIN_FETCH_WINDOW_MS,
+    setBounded,
     webFingerLinks,
 } from './authorKeys';
 
@@ -256,5 +260,61 @@ describe('createAuthorKeyDirectory（公開環境の鍵一覧と取り消し）'
         const { directory, calls } = setup();
         expect(await directory.isAuthorKey('not an account', REMOTE)).toBe(false);
         expect(calls.fetch).toEqual([]);
+    });
+});
+
+describe('setBounded（作者名を変え続けられてもメモリを増やさない）', () => {
+    it('上限を超えたら古い項目から捨て、同じキーの再設定は新しい項目として扱う', () => {
+        const map = new Map<string, number>();
+        for (const [i, k] of ['a', 'b', 'c'].entries()) setBounded(map, k, i, 3);
+        setBounded(map, 'a', 10, 3);
+        setBounded(map, 'd', 11, 3);
+        expect([...map.keys()]).toEqual(['c', 'a', 'd']);
+    });
+});
+
+describe('createFetchGuard（ドメイン単位の取得回数の上限）', () => {
+    it('窓の間は上限まで取得でき、超えたら拒否し、窓が過ぎたら再び取得できる。ドメインごとに別に数える', () => {
+        const clock = { t: 0 };
+        const guard = createFetchGuard({ limit: 3, windowMs: 1000, now: () => clock.t });
+        expect([1, 2, 3, 4].map(() => guard.tryAcquire('victim.example'))).toEqual([true, true, true, false]);
+        expect(guard.tryAcquire('other.example')).toBe(true);
+        clock.t = 1000;
+        expect(guard.tryAcquire('victim.example')).toBe(true);
+    });
+
+    it('ドメイン数の記録にも上限がある（古いドメインの記録から捨てる）', () => {
+        const guard = createFetchGuard({ limit: 1, windowMs: 60_000, now: () => 0, maxDomains: 2 });
+        guard.tryAcquire('a.example');
+        guard.tryAcquire('b.example');
+        guard.tryAcquire('c.example');
+        expect(guard.tryAcquire('a.example')).toBe(true); // a の記録は捨てられている
+    });
+});
+
+describe('作者名を変えて問い合わせを出させる攻撃', () => {
+    it('同じドメインの作者名を変え続けても、そのドメインへの取得は窓ごとに上限までで、超えた分は作者を付けない', async () => {
+        const fetched: string[] = [];
+        const clock = { t: 1_000_000_000 };
+        const directory = createAuthorKeyDirectory({
+            selfDomain: () => 'ubichill.com',
+            findLocalAccount: async () => undefined,
+            bindings: { find: async () => undefined, save: async () => undefined },
+            pinned: new Map(),
+            fetchJson: async (url) => {
+                fetched.push(url);
+                return undefined;
+            },
+            allowHttp: false,
+            now: () => clock.t,
+        });
+        const key = 'K'.repeat(43);
+        for (let i = 0; i < DOMAIN_FETCH_LIMIT + 50; i++) {
+            expect(await directory.isAuthorKey(`a${i}_user@victim.example`, key)).toBe(false);
+        }
+        expect(fetched).toHaveLength(DOMAIN_FETCH_LIMIT);
+        clock.t += DOMAIN_FETCH_WINDOW_MS;
+        await directory.isAuthorKey('later_user@victim.example', key);
+        expect(fetched).toHaveLength(DOMAIN_FETCH_LIMIT + 1);
     });
 });

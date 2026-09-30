@@ -11,7 +11,7 @@ import {
 } from '@/lib/account/me';
 import { isStaleEnvironment, revokeConfirmMessage, sortEnvironments } from '@/lib/account/publishingEnvironments';
 import { useHandleAvailability } from '@/lib/account/useHandleAvailability';
-import { importSigningKeyFile, loadSigningKey, useSigningPublicKey } from '@/lib/signing';
+import { importSigningKeyFile, loadSigningKey, removeSigningKey, useSigningPublicKey } from '@/lib/signing';
 import { css, cva } from '@/styled-system/css';
 
 const button = cva({
@@ -123,7 +123,7 @@ interface PublishingSectionProps {
  * 鍵は公開するときに自動で用意・登録されるので、ここで鍵を作らせない。
  */
 export function PublishingSection({ account, onAccountChange, unsignedCount, refreshKey }: PublishingSectionProps) {
-    const localKey = useSigningPublicKey();
+    const localKey = useSigningPublicKey(account.id);
     const confirm = useConfirm();
     const fileInput = useRef<HTMLInputElement>(null);
     const [environments, setEnvironments] = useState<PublishingEnvironment[] | null>(null);
@@ -189,11 +189,17 @@ export function PublishingSection({ account, onAccountChange, unsignedCount, ref
             ) {
                 return null;
             }
-            await importSigningKeyFile((await file.text()).trim());
-            const key = await loadSigningKey();
+            await importSigningKeyFile(account.id, (await file.text()).trim());
+            const key = await loadSigningKey(account.id);
             if (!key) throw new Error('鍵を読み込めませんでした');
-            if ((await registerSigningKey(account.id, key)) === 'revoked') {
-                throw new Error('この鍵は取り消し済みのため使えません');
+            const registration = await registerSigningKey(account.id, key);
+            if (registration !== 'registered') {
+                await removeSigningKey(account.id);
+                throw new Error(
+                    registration === 'revoked'
+                        ? 'この鍵は取り消し済みのため使えません'
+                        : 'この鍵は別のアカウントが登録しているため使えません',
+                );
             }
             syncAccountKeys(await reload());
             return '鍵を読み込み、このブラウザを公開環境として登録しました。';

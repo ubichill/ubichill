@@ -120,6 +120,52 @@ const FETCH_RETRY_MS = 5 * 60 * 1000;
  * 作者のサーバーへの問い合わせを増幅させないため。新しい公開環境の反映はこの時間だけ遅れ得る。
  */
 const UNKNOWN_KEY_REFETCH_MS = 60 * 1000;
+/**
+ * 同じドメインの作者サーバーへ出す取得の上限（窓の間の回数）。作者名を変えて（a1@x, a2@x, ...）署名したワールドを
+ * 読ませても、そのドメインへの問い合わせは窓ごとにこの回数までに抑える。超えた分は取得せず、作者を付けない。
+ */
+export const DOMAIN_FETCH_LIMIT = 30;
+export const DOMAIN_FETCH_WINDOW_MS = 60 * 1000;
+/** 失敗の記録など、作者名ごとに持つ Map の項目数の上限（作者名を変え続けられてもメモリを増やさない）。 */
+export const MAX_TRACKED_ACCOUNTS = 1000;
+
+/** Map に入れる。上限を超えたら、先に入れた（古い）項目から捨てる。 */
+export function setBounded<K, V>(map: Map<K, V>, key: K, value: V, max: number): void {
+    map.delete(key);
+    map.set(key, value);
+    for (const oldest of map.keys()) {
+        if (map.size <= max) break;
+        map.delete(oldest);
+    }
+}
+
+export interface FetchGuard {
+    /** 取得してよければ true（回数を消費する）。窓の上限に達していたら false。 */
+    tryAcquire: (domain: string) => boolean;
+}
+
+/** ドメインごとの取得回数を窓で数える。古い記録は取得のたびに捨て、ドメイン数の上限も持つ。 */
+export function createFetchGuard(options: {
+    limit: number;
+    windowMs: number;
+    now: () => number;
+    maxDomains?: number;
+}): FetchGuard {
+    const history = new Map<string, number[]>();
+    const maxDomains = options.maxDomains ?? MAX_TRACKED_ACCOUNTS;
+    return {
+        tryAcquire(domain) {
+            const t = options.now();
+            const recent = (history.get(domain) ?? []).filter((at) => t - at < options.windowMs);
+            if (recent.length >= options.limit) {
+                setBounded(history, domain, recent, maxDomains);
+                return false;
+            }
+            setBounded(history, domain, [...recent, t], maxDomains);
+            return true;
+        },
+    };
+}
 
 export function createAuthorKeyDirectory(deps: AuthorKeyDirectoryDeps): AuthorKeyDirectory {
     const now = deps.now ?? Date.now;
@@ -127,6 +173,7 @@ export function createAuthorKeyDirectory(deps: AuthorKeyDirectoryDeps): AuthorKe
     const maxAgeMs = deps.maxAgeMs ?? AUTHOR_KEYS_MAX_AGE_MS;
     const failedAt = new Map<string, number>();
     const inFlight = new Map<string, Promise<AuthorProfile | undefined>>();
+    const guard = createFetchGuard({ limit: DOMAIN_FETCH_LIMIT, windowMs: DOMAIN_FETCH_WINDOW_MS, now });
 
     const fetchProfile = async (account: string, domain: string): Promise<AuthorProfile | undefined> => {
         const path = `/.well-known/webfinger?resource=${encodeURIComponent(`acct:${account}`)}`;
@@ -152,10 +199,12 @@ export function createAuthorKeyDirectory(deps: AuthorKeyDirectoryDeps): AuthorKe
         if (pending) return pending;
         const failed = failedAt.get(account);
         if (failed !== undefined && now() - failed < FETCH_RETRY_MS) return Promise.resolve(undefined);
+        // ドメインの上限に達していたら取得しない（失敗としては記録せず、窓が空けば次のアクセスで取得する）
+        if (!guard.tryAcquire(domain)) return Promise.resolve(undefined);
         const task = fetchProfile(account, domain)
             .then(async (profile) => {
                 if (!profile) {
-                    failedAt.set(account, now());
+                    setBounded(failedAt, account, now(), MAX_TRACKED_ACCOUNTS);
                     return undefined;
                 }
                 failedAt.delete(account);

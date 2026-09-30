@@ -21,9 +21,14 @@ CREATE INDEX "publishing_environments_user_id_idx" ON "publishing_environments" 
 ALTER TABLE "author_bindings" DROP COLUMN "public_key";--> statement-breakpoint
 ALTER TABLE "author_bindings" DROP COLUMN "confirmed_at";--> statement-breakpoint
 ALTER TABLE "author_bindings" DROP COLUMN "refreshed_at";--> statement-breakpoint
--- 旧 1 本鍵を公開環境（legacy）として移す。既存の作品の署名はそのまま有効
+-- 旧 1 本鍵を公開環境（legacy）として移す。既存の作品の署名はそのまま有効。
+-- 旧 users.signing_public_key には一意制約が無く、同じ鍵を複数のアカウントに登録できた。公開鍵は一意なので、
+-- 同じ鍵は最初に登録したアカウントだけに移す（後のアカウントの旧鍵は移さない。新しい公開環境は公開時に自動で作られる）
 INSERT INTO "publishing_environments" ("id", "user_id", "kind", "name", "public_key", "created_at")
-SELECT gen_random_uuid()::text, "id", 'legacy', '以前の鍵', "signing_public_key", COALESCE("signing_key_updated_at", now())
-FROM "users" WHERE "signing_public_key" IS NOT NULL;--> statement-breakpoint
+SELECT DISTINCT ON ("signing_public_key")
+  gen_random_uuid()::text, "id", 'legacy', '以前の鍵', "signing_public_key", COALESCE("signing_key_updated_at", now())
+FROM "users" WHERE "signing_public_key" IS NOT NULL
+ORDER BY "signing_public_key", "signing_key_updated_at" ASC NULLS LAST, "id"
+ON CONFLICT ("public_key") DO NOTHING;--> statement-breakpoint
 ALTER TABLE "users" DROP COLUMN "signing_public_key";--> statement-breakpoint
 ALTER TABLE "users" DROP COLUMN "signing_key_updated_at";
