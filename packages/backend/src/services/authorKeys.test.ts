@@ -8,7 +8,6 @@ import {
     createFetchGuard,
     DOMAIN_FETCH_LIMIT,
     DOMAIN_FETCH_WINDOW_MS,
-    setBounded,
     webFingerLinks,
 } from './authorKeys';
 
@@ -260,16 +259,6 @@ describe('createAuthorKeyDirectory（公開環境の鍵一覧と取り消し）'
         const { directory, calls } = setup();
         expect(await directory.isAuthorKey('not an account', REMOTE)).toBe(false);
         expect(calls.fetch).toEqual([]);
-    });
-});
-
-describe('setBounded（作者名を変え続けられてもメモリを増やさない）', () => {
-    it('上限を超えたら古い項目から捨て、同じキーの再設定は新しい項目として扱う', () => {
-        const map = new Map<string, number>();
-        for (const [i, k] of ['a', 'b', 'c'].entries()) setBounded(map, k, i, 3);
-        setBounded(map, 'a', 10, 3);
-        setBounded(map, 'd', 11, 3);
-        expect([...map.keys()]).toEqual(['c', 'a', 'd']);
     });
 });
 

@@ -21,6 +21,7 @@ import {
     type SigningKeyEntry,
     signingKeyStatus,
 } from '@ubichill/shared';
+import { setBounded } from '../utils/boundedMap';
 
 /** このサーバーが発行する作者アカウントの domain（ホスト名、開発時はポート付き）。 */
 export function selfDomain(): string {
@@ -128,16 +129,6 @@ export const DOMAIN_FETCH_LIMIT = 30;
 export const DOMAIN_FETCH_WINDOW_MS = 60 * 1000;
 /** 失敗の記録など、作者名ごとに持つ Map の項目数の上限（作者名を変え続けられてもメモリを増やさない）。 */
 export const MAX_TRACKED_ACCOUNTS = 1000;
-
-/** Map に入れる。上限を超えたら、先に入れた（古い）項目から捨てる。 */
-export function setBounded<K, V>(map: Map<K, V>, key: K, value: V, max: number): void {
-    map.delete(key);
-    map.set(key, value);
-    for (const oldest of map.keys()) {
-        if (map.size <= max) break;
-        map.delete(oldest);
-    }
-}
 
 export interface FetchGuard {
     /** 取得してよければ true（回数を消費する）。窓の上限に達していたら false。 */
