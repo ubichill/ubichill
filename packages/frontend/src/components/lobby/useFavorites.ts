@@ -64,6 +64,9 @@ async function toggle(worldRef: string): Promise<void> {
             body: JSON.stringify({ worldRef }),
         });
         if (!res.ok) throw new Error('failed');
+        // サーバーは共有 URL を正規化して保存するので、保存された形も持つ（どちらの形でもお気に入り済みと表示する）
+        const saved = willAdd ? ((await res.json().catch(() => ({}))) as { worldRef?: string }).worldRef : undefined;
+        if (saved && saved !== worldRef) setFavorites(new Set([...favorites, saved]));
     } catch {
         const revert = new Set(favorites);
         if (willAdd) revert.delete(worldRef);

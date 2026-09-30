@@ -23,6 +23,7 @@ import { auth, createPendingRegistration, resendOTP, sendAccountNotice, verifyAn
 import { isAdminHandle, optionalAuth, requireAuth, requireFreshAuth, toWebHeaders } from '../middleware/auth';
 import { invalidateAuthorKey } from '../services/authorKeyStore';
 import { selfAccount } from '../services/authorKeys';
+import { favoriteRefOf, resolveFavoriteWorlds } from '../services/favorites';
 import {
     browserEnvironmentName,
     newEnvironmentNotice,
@@ -359,17 +360,28 @@ router.get('/me/favorites', requireAuth, async (req, res) => {
     return res.json({ worldRefs });
 });
 
-// お気に入りに追加（worldRef＝ワールドの正規 URL）
+// お気に入りのワールド（URL を解決して、作者まで確認できたものだけ）。取得できないものは unavailable で返し整理できるようにする。
+router.get('/me/favorites/worlds', requireAuth, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    const refs = await favoriteRepository.list(req.user.id);
+    const result = await resolveFavoriteWorlds(refs, (ref) => worldRegistry.publishableListItem(ref));
+    res.set('Cache-Control', 'no-store');
+    return res.json(result);
+});
+
+// お気に入りに追加（worldRef＝ワールドの URL。外部ワールドも可。共有 URL は正規化する）
 router.post('/me/favorites', requireAuth, async (req, res) => {
     if (!req.user) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
-    const worldRef = req.body?.worldRef;
-    if (typeof worldRef !== 'string' || worldRef.length === 0) {
-        return res.status(400).json({ error: 'worldRef は必須です' });
+    const parsed = favoriteRefOf(req.body?.worldRef);
+    if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+    const existing = await favoriteRepository.list(req.user.id);
+    if (!existing.includes(parsed.ref) && existing.length >= LIMITS.MAX_FAVORITES_PER_USER) {
+        return res.status(409).json({ error: `お気に入りは ${LIMITS.MAX_FAVORITES_PER_USER} 件までです` });
     }
-    await favoriteRepository.add(req.user.id, worldRef);
-    return res.status(204).send();
+    await favoriteRepository.add(req.user.id, parsed.ref);
+    return res.status(201).json({ worldRef: parsed.ref });
 });
 
 // お気に入りから削除
@@ -381,7 +393,10 @@ router.delete('/me/favorites', requireAuth, async (req, res) => {
     if (typeof worldRef !== 'string' || worldRef.length === 0) {
         return res.status(400).json({ error: 'worldRef は必須です' });
     }
+    // 登録時に正規化した形と、渡された形のどちらでも消せるようにする
+    const parsed = favoriteRefOf(worldRef);
     await favoriteRepository.remove(req.user.id, worldRef);
+    if (parsed.ok && parsed.ref !== worldRef) await favoriteRepository.remove(req.user.id, parsed.ref);
     return res.status(204).send();
 });
 
@@ -398,6 +413,15 @@ router.get('/:userId', async (req, res) => {
         author: user.handle ? selfAccount(user.handle) : null,
         profileImageUrl: user.profileImageUrl ?? user.image ?? null,
     });
+});
+
+// 他ユーザーのお気に入り（公開）。作者まで確認できたワールドだけを返す。
+router.get('/:userId/favorites', async (req, res) => {
+    const user = await userRepository.findById(req.params.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const refs = await favoriteRepository.list(user.id);
+    const { worlds } = await resolveFavoriteWorlds(refs, (ref) => worldRegistry.publishableListItem(ref));
+    return res.json({ worlds });
 });
 
 // 他ユーザーが作成したワールド一覧（公開メタデータのみ。署名検証済みのワールドだけ公開する）

@@ -2,10 +2,12 @@ import { useSocket } from '@ubichill/react';
 import { type Instance, worldOriginDomain } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { FavoriteButton } from '@/components/lobby/FavoriteButton';
 import { useInstances } from '@/components/lobby/useInstances';
 import { WorldDetailModal } from '@/components/lobby/WorldDetailModal';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { fetchInstance } from '@/lib/instancesApi';
+import { instanceWorldRef } from '@/lib/worldRef';
 import { css } from '@/styled-system/css';
 import { cardStyle, sectionHeading, tabPanel } from './shared';
 
@@ -94,7 +96,8 @@ export function InstanceTab({ currentInstanceId, onNavigate, onReturnToLobby }: 
         if (!(await confirm('新しいインスタンスを作成して移動しますか？'))) return;
         setCreating(true);
         try {
-            const created = await createInstance({ worldId: world.id });
+            // 外部ワールドは id では自サーバーで解決できないので URL で作る
+            const created = await createInstance({ worldId: instanceWorldRef(world) });
             if (created) {
                 onNavigate?.();
                 navigate(`/instance/${created.id}`, {
@@ -225,6 +228,13 @@ export function InstanceTab({ currentInstanceId, onNavigate, onReturnToLobby }: 
                         <p className={css({ fontSize: '12px', color: 'textMuted', mt: '1' })}>
                             {participants.length} 人が参加中
                         </p>
+                        {world && (
+                            <FavoriteButton
+                                worldRef={instanceWorldRef(world)}
+                                variant="labeled"
+                                className={css({ mt: '2' })}
+                            />
+                        )}
                     </div>
                 </div>
 

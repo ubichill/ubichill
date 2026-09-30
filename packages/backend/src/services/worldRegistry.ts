@@ -857,6 +857,16 @@ class WorldRegistry {
         return { ok: true, identity: verdict };
     }
 
+    /**
+     * URL（または id）で解決し、公開ルールを満たすときだけ一覧の項目にする（お気に入りなど URL で持つ参照用）。
+     * 外部ワールドも自分で取得・検証した結果を使う。満たさなければ undefined。
+     */
+    async publishableListItem(ref: string): Promise<WorldListItem | undefined> {
+        const resolution = await this.resolveRefDetailed(ref);
+        if (!resolution.ok || !isPublishable(resolution.world.identity)) return undefined;
+        return this._toListItem(resolution.world);
+    }
+
     /** ResolvedWorld(+DB record) → WorldListItem。 */
     private _toListItem(w: ResolvedWorld, rec?: WorldRecord): WorldListItem {
         return {

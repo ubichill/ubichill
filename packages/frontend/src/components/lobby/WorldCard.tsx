@@ -6,7 +6,7 @@ import { WorldIdentityBadge } from './WorldIdentityBadge';
 
 interface WorldCardProps {
     world: WorldListItem;
-    onNavigate: (worldId: string) => void;
+    onSelect: (world: WorldListItem) => void;
 }
 
 const cardStyle = css({
@@ -50,14 +50,14 @@ const metaStyle = css({
     color: 'textSubtle',
 });
 
-export function WorldCard({ world, onNavigate }: WorldCardProps) {
+export function WorldCard({ world, onSelect }: WorldCardProps) {
     return (
         <div className={css({ position: 'relative', width: '100%' })}>
             {/* カード（button）の外側に置く。button の入れ子は不正なため兄弟として重ねる。 */}
             <div className={css({ position: 'absolute', top: '10px', right: '10px', zIndex: 1 })}>
                 <FavoriteButton worldRef={world.url} />
             </div>
-            <button type="button" onClick={() => onNavigate(world.id)} className={cardStyle}>
+            <button type="button" onClick={() => onSelect(world)} className={cardStyle}>
                 <div
                     className={css({
                         width: '100%',
