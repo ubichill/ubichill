@@ -1,4 +1,5 @@
 import {
+    type FavoritesVisibility,
     keyRegistrationMessage,
     type PublishingEnvironmentKind,
     type RevokeReason,
@@ -142,4 +143,16 @@ export async function revokeOtherSessions(): Promise<number> {
     });
     if (!res.ok) throw new Error(await errorMessage(res));
     return ((await res.json()) as { revoked: number }).revoked;
+}
+
+/** お気に入り一覧の公開範囲を変更する。 */
+export async function setMyFavoritesVisibility(visibility: FavoritesVisibility): Promise<FavoritesVisibility> {
+    const res = await fetch(`${API_BASE}/api/v1/users/me/favorites/visibility`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ visibility }),
+    });
+    if (!res.ok) throw new Error(await errorMessage(res));
+    return ((await res.json()) as { visibility: FavoritesVisibility }).visibility;
 }

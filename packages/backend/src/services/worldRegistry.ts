@@ -30,6 +30,7 @@ import {
 import { customAlphabet } from 'nanoid';
 import yaml from 'yaml';
 import { isAuthorKey, resolveAuthorDisplayName } from './authorKeyStore';
+import { createRemoteWorldCache } from './remoteWorldCache';
 import { assertPublicUrl, safeFetch } from './safeFetch';
 import { nodeWorldCrypto } from './worldCrypto';
 import { migrateLegacyWorldYaml } from './worldMigration';
@@ -139,10 +140,28 @@ class WorldRegistry {
     /** DB ユーザーワールドの解決キャッシュ */
     private readonly _resolvedCache = new Map<string, ResolvedWorld>();
     /** 外部（他インスタンス/URL）ワールドの解決キャッシュ（連合、TTL 付き） */
-    private readonly _remoteCache = new Map<string, { at: number; ttl: number; world: ResolvedWorld }>();
     private static readonly REMOTE_TTL_MS = 5 * 60 * 1000;
+    /** 取得できなかった外部 URL を取り直さない時間（お気に入りなどで外部への取得を繰り返し起こされないように）。 */
+    private static readonly REMOTE_FAILURE_TTL_MS = 60 * 1000;
+    private static readonly REMOTE_CACHE_MAX = 2000;
     /** 作者をいま確かめられなかった（pending）ワールドは、すぐ確認し直せるよう短くキャッシュする。 */
     private static readonly REMOTE_PENDING_TTL_MS = 30 * 1000;
+    private readonly _remoteCache = createRemoteWorldCache<ResolvedWorld>({
+        load: (url) =>
+            resolveWorldFromUrl(url, this._externalSource(url), {
+                isAuthorKey,
+                resolveAuthorName: resolveAuthorDisplayName,
+            }),
+        isIntegrityError: (err): err is WorldIntegrityError => err instanceof WorldIntegrityError,
+        onFailure: (url, err) => console.error(`❌ 外部ワールド解決失敗: ${url}`, err),
+        ttlMs: WorldRegistry.REMOTE_TTL_MS,
+        ttlFor: (world) =>
+            world.identity?.status === 'verified' && world.identity.authorPending
+                ? WorldRegistry.REMOTE_PENDING_TTL_MS
+                : WorldRegistry.REMOTE_TTL_MS,
+        failureTtlMs: WorldRegistry.REMOTE_FAILURE_TTL_MS,
+        max: WorldRegistry.REMOTE_CACHE_MAX,
+    });
 
     /** フォロー中の連合ピア（他 ubichill インスタンス） */
     private _peers: FederationPeerRecord[] = [];
@@ -380,30 +399,9 @@ class WorldRegistry {
         }
     }
 
-    /** 外部（他インスタンス/任意 URL）のワールドをその場で解決する（連合）。TTL キャッシュ。 */
-    private async _resolveRemote(url: string): Promise<WorldResolution> {
-        const cached = this._remoteCache.get(url);
-        if (cached && Date.now() - cached.at < cached.ttl) return { ok: true, world: cached.world };
-        try {
-            const world = await resolveWorldFromUrl(url, this._externalSource(url), {
-                isAuthorKey,
-                resolveAuthorName: resolveAuthorDisplayName,
-            });
-            const ttl =
-                world.identity?.status === 'verified' && world.identity.authorPending
-                    ? WorldRegistry.REMOTE_PENDING_TTL_MS
-                    : WorldRegistry.REMOTE_TTL_MS;
-            this._remoteCache.set(url, { at: Date.now(), ttl, world });
-            return { ok: true, world };
-        } catch (err) {
-            console.error(`❌ 外部ワールド解決失敗: ${url}`, err);
-            // 改竄を検知したら以前の検証済みキャッシュでも使い続けない（配信元が侵害されている）。
-            if (err instanceof WorldIntegrityError) {
-                this._remoteCache.delete(url);
-                return { ok: false, reason: 'integrity', message: err.message };
-            }
-            return toResolution(cached?.world);
-        }
+    /** 外部（他インスタンス/任意 URL）のワールドをその場で解決する（連合）。TTL キャッシュ（失敗も短時間）。 */
+    private _resolveRemote(url: string): Promise<WorldResolution> {
+        return this._remoteCache.resolve(url);
     }
 
     /** 外部 URL から provenance（source）を推定する。 */
@@ -827,7 +825,7 @@ class WorldRegistry {
      */
     invalidateResolvedWorlds(): void {
         this._resolvedCache.clear();
-        this._remoteCache.clear();
+        this._remoteCache.clearWorlds();
     }
 
     /** 兄弟エンドポイント /worlds/:id/sig 用。現在の内容に対して有効な作者署名だけを返す。 */
@@ -855,6 +853,16 @@ class WorldRegistry {
         const resolved = await this._resolveWorld(updated);
         this._resolvedCache.set(worldId, resolved);
         return { ok: true, identity: verdict };
+    }
+
+    /**
+     * URL（または id）で解決し、公開ルールを満たすときだけ一覧の項目にする（お気に入りなど URL で持つ参照用）。
+     * 外部ワールドも自分で取得・検証した結果を使う。満たさなければ undefined。
+     */
+    async publishableListItem(ref: string): Promise<WorldListItem | undefined> {
+        const resolution = await this.resolveRefDetailed(ref);
+        if (!resolution.ok || !isPublishable(resolution.world.identity)) return undefined;
+        return this._toListItem(resolution.world);
     }
 
     /** ResolvedWorld(+DB record) → WorldListItem。 */

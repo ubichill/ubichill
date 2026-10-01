@@ -1,0 +1,2 @@
+CREATE TYPE "public"."favorites_visibility" AS ENUM('private', 'friends', 'public');--> statement-breakpoint
+ALTER TABLE "user_settings" ADD COLUMN "favorites_visibility" "favorites_visibility" DEFAULT 'private' NOT NULL;

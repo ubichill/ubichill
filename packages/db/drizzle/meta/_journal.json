@@ -78,6 +78,13 @@
       "when": 1790671852136,
       "tag": "0010_publishing_environments",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790841374684,
+      "tag": "0011_favorites_visibility",
+      "breakpoints": true
     }
   ]
 }

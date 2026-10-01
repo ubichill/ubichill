@@ -1,6 +1,7 @@
 import { type Instance, type WorldListItem, worldOriginDomain, worldShareUrl } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { createInstance, fetchInstances, fetchWorld } from '@/lib/instancesApi';
+import { instanceWorldRef } from '@/lib/worldRef';
 import { css } from '@/styled-system/css';
 import { FavoriteButton } from './FavoriteButton';
 
@@ -23,7 +24,7 @@ interface InstanceDetailOverlayProps {
  * mod/説明は instance.world から表示するのでリモートワールドでも見れる。
  */
 export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstanceId }: InstanceDetailOverlayProps) {
-    const worldRef = instance.world.source?.url ?? instance.world.id;
+    const worldRef = instanceWorldRef(instance.world);
     // 詳細の主役インスタンス（右の一覧で切り替わる）。
     const [selected, setSelected] = useState<Instance>(instance);
     // instance.world（mods/description/source を含む）を初期値にし、ローカルはフル情報で補う。

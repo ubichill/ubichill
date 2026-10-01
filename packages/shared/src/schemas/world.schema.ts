@@ -16,6 +16,8 @@ export const LIMITS = {
     MAX_DEPENDENCY_DEPTH: 3,
     MAX_TAGS: 10,
     MAX_WORLDS_PER_USER: 5,
+    MAX_FAVORITES_PER_USER: 100,
+    MAX_WORLD_URL_LENGTH: 2048,
 } as const;
 
 // ============================================

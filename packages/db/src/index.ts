@@ -11,7 +11,9 @@ export {
     type PublishingEnvironmentRecord,
     publishingEnvironmentRepository,
 } from './repositories/publishingEnvironmentRepository';
+export { userFriendRepository } from './repositories/userFriendRepository';
 export { userRepository } from './repositories/userRepository';
+export { userSettingsRepository } from './repositories/userSettingsRepository';
 export { worldRepository } from './repositories/worldRepository';
 
 const connectionString = process.env.DATABASE_URL || 'postgresql://ubichill:password@127.0.0.1:5433/ubichill';

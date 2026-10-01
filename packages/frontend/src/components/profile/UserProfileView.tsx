@@ -10,6 +10,7 @@ import { useSession } from '@/lib/session';
 import { authorSignerFor, browserFetch, signHostedWorld } from '@/lib/signing';
 import { css } from '@/styled-system/css';
 import { DisplayNameEditor } from './DisplayNameEditor';
+import { FavoriteWorldsSection } from './FavoriteWorldsSection';
 import { PasswordSection } from './PasswordSection';
 import { PublishingSection } from './PublishingSection';
 
@@ -77,6 +78,20 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
     const reloadMyWorlds = async () => {
         const res = await fetch(`${API_BASE}/api/v1/users/me/worlds`, { credentials: 'include' });
         if (res.ok) setWorlds(((await res.json()) as { worlds: OwnedWorld[] }).worlds);
+    };
+
+    const joinInstance = (
+        instanceId: string,
+        worldId: string,
+        worldData?: { thumbnail?: string; displayName?: string },
+    ) => {
+        if (onJoinInstance) {
+            onJoinInstance(instanceId, worldId, worldData);
+        } else {
+            // もし onJoinInstance が渡されていなければ、フルページ遷移でインスタンスへ
+            onNavigate?.();
+            navigate(`/instance/${instanceId}`, { state: { worldId } });
+        }
     };
 
     const go = async (path: string) => {
@@ -433,6 +448,10 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                 )}
             </section>
 
+            {targetUserId && (
+                <FavoriteWorldsSection userId={targetUserId} isOwnPage={isOwnPage} onJoinInstance={joinInstance} />
+            )}
+
             {selectedWorldId && selectedWorld && (
                 <WorldDetailModal
                     worldId={selectedWorldId}
@@ -443,15 +462,7 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                         authorId: profile?.id,
                     }}
                     onClose={() => setSelectedWorldId(null)}
-                    onJoinInstance={(instanceId, worldId, worldData) => {
-                        if (onJoinInstance) {
-                            onJoinInstance(instanceId, worldId, worldData);
-                        } else {
-                            // もし onJoinInstance が渡されていなければ、フルページ遷移でインスタンスへ
-                            onNavigate?.();
-                            navigate(`/instance/${instanceId}`, { state: { worldId } });
-                        }
-                    }}
+                    onJoinInstance={joinInstance}
                 />
             )}
         </div>

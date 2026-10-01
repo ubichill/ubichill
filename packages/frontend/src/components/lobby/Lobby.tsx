@@ -6,8 +6,10 @@ import { createInstance } from '@/lib/instancesApi';
 import { SETTINGS_KEYS, useSetting } from '@/lib/settings';
 import { css } from '@/styled-system/css';
 import { PasswordChangeNotice } from './PasswordChangeNotice';
+import { UnavailableFavorites } from './UnavailableFavorites';
 import { UnsignedWorldsNotice } from './UnsignedWorldsNotice';
 import { useFavorites } from './useFavorites';
+import { useFavoriteWorlds } from './useFavoriteWorlds';
 import { useInstances } from './useInstances';
 import { WorldCard } from './WorldCard';
 import { WorldDetailModal } from './WorldDetailModal';
@@ -75,38 +77,32 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
         [confirm, navigate],
     );
     const { worlds, globalWorlds, loading, error, refreshGlobalWorlds } = useInstances();
-    const { favorites } = useFavorites();
+    const { toggle: toggleFavorite } = useFavorites();
     const [tab, setTab] = useState<'local' | 'global' | 'favorites'>('local');
-    const [selectedWorldId, setSelectedWorldId] = useState<string | null>(null);
+    // 選択はワールドの URL で持つ（id はサーバーをまたぐと重複し得る）
+    const [selectedWorldUrl, setSelectedWorldUrl] = useState<string | null>(null);
 
     // ソートキーを localStorage で永続化
     const [sortKey, handleSortChange] = useSetting<SortKey>(SETTINGS_KEYS.lobbySortKey, DEFAULT_SORT, isSortKey);
 
-    // お気に入りは local/global 両方の和集合を url で重複排除し、favorites に含まれるものだけ。
-    const favoriteWorlds = useMemo(() => {
-        const byUrl = new Map<string, WorldListItem>();
-        for (const w of [...worlds, ...globalWorlds]) byUrl.set(w.url, w);
-        return [...byUrl.values()].filter((w) => favorites.has(w.url));
-    }, [worlds, globalWorlds, favorites]);
-    const activeWorlds = tab === 'local' ? worlds : tab === 'global' ? globalWorlds : favoriteWorlds;
+    // お気に入りはサーバーが URL から解決する（ローカル・グローバルの一覧に無い外部ワールドも出す）
+    const favoriteWorlds = useFavoriteWorlds(tab === 'favorites');
+    const activeWorlds = tab === 'local' ? worlds : tab === 'global' ? globalWorlds : favoriteWorlds.worlds;
     const sortedWorlds = useMemo(() => sortWorlds(activeWorlds, sortKey), [activeWorlds, sortKey]);
 
     const scrollRef = useRef<HTMLDivElement>(null);
 
     const selectedWorld = useMemo(
-        () => sortedWorlds.find((world) => world.id === selectedWorldId) ?? undefined,
-        [sortedWorlds, selectedWorldId],
+        () => sortedWorlds.find((world) => world.url === selectedWorldUrl) ?? undefined,
+        [sortedWorlds, selectedWorldUrl],
     );
 
-    const handleSelectWorld = useCallback((worldId: string) => {
-        setSelectedWorldId(worldId);
+    const handleSelectWorld = useCallback((world: WorldListItem) => {
+        setSelectedWorldUrl(world.url);
     }, []);
 
     useEffect(() => {
-        // お気に入りには他サーバーのワールドも含まれ得るので global も読み込む。
-        if (tab === 'global' || tab === 'favorites') {
-            void refreshGlobalWorlds();
-        }
+        if (tab === 'global') void refreshGlobalWorlds();
     }, [tab, refreshGlobalWorlds]);
 
     const [importUrl, setImportUrl] = useState('');
@@ -495,7 +491,11 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                                             fontSize: '13px',
                                         })}
                                     >
-                                        お気に入りはまだありません。ワールドの星マークから追加できます。
+                                        {favoriteWorlds.loading
+                                            ? '読み込み中...'
+                                            : favoriteWorlds.error
+                                              ? favoriteWorlds.error
+                                              : 'お気に入りはまだありません。ワールドの星マーク（入室中は「現在地」）から追加できます。'}
                                     </p>
                                 )}
 
@@ -507,19 +507,22 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                                     })}
                                 >
                                     {sortedWorlds.map((world) => (
-                                        <WorldCard
-                                            key={world.id}
-                                            world={world}
-                                            onNavigate={(worldId) => handleSelectWorld(worldId)}
-                                        />
+                                        <WorldCard key={world.url} world={world} onSelect={handleSelectWorld} />
                                     ))}
                                 </div>
+
+                                {tab === 'favorites' && favoriteWorlds.unavailable.length > 0 && (
+                                    <UnavailableFavorites
+                                        refs={favoriteWorlds.unavailable}
+                                        onRemove={(ref) => void toggleFavorite(ref)}
+                                    />
+                                )}
                             </div>
                         )}
-                        {selectedWorldId && selectedWorld && (
+                        {selectedWorld && (
                             <WorldDetailModal
-                                worldId={selectedWorldId}
-                                onClose={() => setSelectedWorldId(null)}
+                                worldId={selectedWorld.id}
+                                onClose={() => setSelectedWorldUrl(null)}
                                 onJoinInstance={onJoinInstance}
                                 currentInstanceId={currentInstanceId}
                                 initialWorld={selectedWorld}
