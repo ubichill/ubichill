@@ -9,19 +9,23 @@ import type { WorldDefinition } from '@ubichill/shared';
 import {
     DisplayNameSchema,
     displayNameKey,
+    ENV_KEYS,
     HandleSchema,
     isPublishable,
     LIMITS,
     OFFICIAL_HANDLE,
+    RevokeReasonSchema,
+    SERVER_CONFIG,
     verifyKeyRegistration,
 } from '@ubichill/shared';
 import { Router } from 'express';
-import { auth, createPendingRegistration, resendOTP, verifyAndRegister } from '../lib/auth';
+import { auth, createPendingRegistration, resendOTP, sendAccountNotice, verifyAndRegister } from '../lib/auth';
 import { isAdminHandle, optionalAuth, requireAuth, toWebHeaders } from '../middleware/auth';
 import { invalidateAuthorKey } from '../services/authorKeyStore';
 import { selfAccount } from '../services/authorKeys';
 import {
     browserEnvironmentName,
+    newEnvironmentNotice,
     publishingEnvironmentView,
     registrationOutcome,
 } from '../services/publishingEnvironments';
@@ -284,6 +288,15 @@ router.post('/me/publishing-environments', requireAuth, async (req, res) => {
             publicKey,
         });
         worldRegistry.invalidateResolvedWorlds();
+        // 乗っ取った攻撃者が公開環境を追加しても本人が気付けるように知らせる
+        const notice = newEnvironmentNotice({
+            displayName: req.user.name,
+            environmentName: created.name,
+            profileUrl: new URL(`/user/${req.user.id}`, process.env[ENV_KEYS.PUBLIC_BASE_URL] || SERVER_CONFIG.DEV_URL)
+                .href,
+            at: created.createdAt,
+        });
+        void sendAccountNotice(req.user.email, notice.subject, notice.text);
         return res.status(201).json({ environment: publishingEnvironmentView(created) });
     } catch {
         return res.status(409).json({ error: 'この鍵は登録できません', code: 'taken' });
@@ -293,10 +306,19 @@ router.post('/me/publishing-environments', requireAuth, async (req, res) => {
 // 公開環境を取り消す。その鍵の署名は、取り消し前のものも含めてすべて作者が付かなくなる。
 router.post('/me/publishing-environments/:id/revoke', requireAuth, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-    const revoked = await publishingEnvironmentRepository.revoke(req.user.id, String(req.params.id));
+    const reason = RevokeReasonSchema.safeParse(req.body?.reason);
+    if (!reason.success) return res.status(400).json({ error: '取り消す理由（lost / compromised）が必要です' });
+    const revoked = await publishingEnvironmentRepository.revoke(req.user.id, String(req.params.id), reason.data);
     if (!revoked) return res.status(404).json({ error: '有効な公開環境が見つかりません' });
     worldRegistry.invalidateResolvedWorlds();
     return res.json({ environment: publishingEnvironmentView(revoked) });
+});
+
+// いま使っているもの以外のログインをすべて無効にする（乗っ取りに気付いたとき。公開環境の取り消しだけでは攻撃者のログインは残る）
+router.post('/me/sessions/revoke-others', requireAuth, async (req, res) => {
+    if (!req.user || !req.session) return res.status(401).json({ error: 'Unauthorized' });
+    const revoked = await userRepository.revokeOtherSessions(req.user.id, req.session.id);
+    return res.json({ revoked });
 });
 
 // 自分が作成したワールド一覧（編集に使う詳細情報を含む）

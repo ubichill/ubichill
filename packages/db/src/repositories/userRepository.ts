@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { db } from '../index';
 import { accounts, sessions, users } from '../schema';
 
@@ -109,6 +109,15 @@ export const userRepository = {
             createdAt: now,
             updatedAt: now,
         });
+    },
+
+    /** いま使っているもの以外のログインをすべて無効にする（乗っ取りに気付いたとき）。無効にした数を返す。 */
+    async revokeOtherSessions(userId: string, keepSessionId: string): Promise<number> {
+        const removed = await db
+            .delete(sessions)
+            .where(and(eq(sessions.userId, userId), ne(sessions.id, keepSessionId)))
+            .returning({ id: sessions.id });
+        return removed.length;
     },
 
     /** そのユーザーのログインをすべて無効にする。 */

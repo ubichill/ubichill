@@ -17,6 +17,15 @@ export type PublishingEnvironmentKind = (typeof PUBLISHING_ENVIRONMENT_KINDS)[nu
 
 export const PUBLISHING_ENVIRONMENT_NAME_MAX_LENGTH = 80;
 
+/**
+ * 公開環境を取り消す理由。
+ * - lost: 紛失・ブラウザのデータを消した（鍵は自分以外に渡っていない）
+ * - compromised: 漏えい・心当たりのない環境（攻撃者がその鍵で署名した可能性がある）
+ */
+export const REVOKE_REASONS = ['lost', 'compromised'] as const;
+export const RevokeReasonSchema = z.enum(REVOKE_REASONS);
+export type RevokeReason = z.infer<typeof RevokeReasonSchema>;
+
 export const PublishingEnvironmentNameSchema = z
     .string()
     .trim()

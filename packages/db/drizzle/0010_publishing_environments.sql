@@ -8,6 +8,7 @@ CREATE TABLE "publishing_environments" (
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"last_used_at" timestamp,
 	"revoked_at" timestamp,
+	"revoke_reason" text,
 	CONSTRAINT "publishing_environments_public_key_unique" UNIQUE("public_key"),
 	CONSTRAINT "publishing_environments_api_token_hash_unique" UNIQUE("api_token_hash")
 );
@@ -31,4 +32,10 @@ FROM "users" WHERE "signing_public_key" IS NOT NULL
 ORDER BY "signing_public_key", "signing_key_updated_at" ASC NULLS LAST, "id"
 ON CONFLICT ("public_key") DO NOTHING;--> statement-breakpoint
 ALTER TABLE "users" DROP COLUMN "signing_public_key";--> statement-breakpoint
-ALTER TABLE "users" DROP COLUMN "signing_key_updated_at";
+ALTER TABLE "users" DROP COLUMN "signing_key_updated_at";--> statement-breakpoint
+CREATE TABLE "author_confirmed_contents" (
+	"account" text NOT NULL,
+	"content_hash" text NOT NULL,
+	"confirmed_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "author_confirmed_contents_account_content_hash_pk" PRIMARY KEY("account","content_hash")
+);

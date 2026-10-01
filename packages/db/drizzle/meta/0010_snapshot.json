@@ -42,6 +42,46 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.author_confirmed_contents": {
+      "name": "author_confirmed_contents",
+      "schema": "",
+      "columns": {
+        "account": {
+          "name": "account",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content_hash": {
+          "name": "content_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "confirmed_at": {
+          "name": "confirmed_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "author_confirmed_contents_account_content_hash_pk": {
+          "name": "author_confirmed_contents_account_content_hash_pk",
+          "columns": [
+            "account",
+            "content_hash"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.federation_peers": {
       "name": "federation_peers",
       "schema": "",
@@ -305,6 +345,12 @@
         "revoked_at": {
           "name": "revoked_at",
           "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revoke_reason": {
+          "name": "revoke_reason",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         }

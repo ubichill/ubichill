@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { PublishingEnvironment } from './me';
 import {
+    isRecentlyAdded,
     isStaleEnvironment,
+    RECENTLY_ADDED_MS,
     revokeConfirmMessage,
     STALE_ENVIRONMENT_MS,
     sortEnvironments,
@@ -16,6 +18,7 @@ const env = (overrides: Partial<PublishingEnvironment>): PublishingEnvironment =
     createdAt: '2026-09-01T00:00:00Z',
     lastUsedAt: null,
     revokedAt: null,
+    revokeReason: null,
     ...overrides,
 });
 const ago = (ms: number) => new Date(NOW - ms).toISOString();
@@ -55,9 +58,22 @@ describe('sortEnvironments', () => {
 
 describe('revokeConfirmMessage', () => {
     it('取り消し前の署名も無効になることと、このブラウザなら次の公開で作り直されることを伝える', () => {
-        const message = revokeConfirmMessage(env({}), true);
+        const message = revokeConfirmMessage(env({}), true, 'lost');
         expect(message).toContain('取り消し前のものも含めて');
         expect(message).toContain('自動で追加');
-        expect(revokeConfirmMessage(env({}), false)).not.toContain('自動で追加');
+        expect(revokeConfirmMessage(env({}), false, 'lost')).not.toContain('自動で追加');
+    });
+
+    it('漏えいとして取り消すときは、署名したワールドをまとめて署名し直さず 1 つずつ確認することを伝える', () => {
+        expect(revokeConfirmMessage(env({}), false, 'compromised')).toContain('1 つずつ確認');
+        expect(revokeConfirmMessage(env({}), false, 'lost')).not.toContain('1 つずつ確認');
+    });
+});
+
+describe('isRecentlyAdded（心当たりのない環境に気付けるように）', () => {
+    it('追加から一定期間は新しいとして目立たせ、取り消したものは対象外', () => {
+        expect(isRecentlyAdded(env({ createdAt: ago(RECENTLY_ADDED_MS - 1) }), NOW)).toBe(true);
+        expect(isRecentlyAdded(env({ createdAt: ago(RECENTLY_ADDED_MS + 1) }), NOW)).toBe(false);
+        expect(isRecentlyAdded(env({ createdAt: ago(1), revokedAt: ago(0) }), NOW)).toBe(false);
     });
 });

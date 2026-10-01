@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     browserEnvironmentName,
+    newEnvironmentNotice,
     officialKeyChanges,
     registrationOutcome,
     signingKeyListOf,
@@ -128,5 +129,22 @@ describe('browserEnvironmentName', () => {
     it('分からなければ「ブラウザ」', () => {
         expect(browserEnvironmentName(undefined)).toBe('ブラウザ');
         expect(browserEnvironmentName('curl/8.0')).toBe('ブラウザ');
+    });
+});
+
+describe('newEnvironmentNotice（乗っ取りに気付けるように）', () => {
+    it('追加された環境の名前と、心当たりがないときの対処（漏えいとして取り消す・パスワード変更・ログアウト）を伝える', () => {
+        const notice = newEnvironmentNotice({
+            displayName: 'ようかん',
+            environmentName: 'Chrome on Windows',
+            profileUrl: 'https://ubichill.com/user/u1',
+            at: new Date('2026-10-01T00:00:00Z'),
+        });
+        expect(notice.subject).toContain('新しい公開環境');
+        expect(notice.text).toContain('Chrome on Windows');
+        expect(notice.text).toContain('https://ubichill.com/user/u1');
+        expect(notice.text).toContain('心当たりのない環境');
+        expect(notice.text).toContain('パスワード');
+        expect(notice.text).toContain('ログアウト');
     });
 });

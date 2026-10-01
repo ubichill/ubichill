@@ -186,7 +186,7 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
             expect((await worldRegistry.getWorld(world.id))?.identity).toMatchObject({ author });
 
             // 取り消すと、その鍵の署名は取り消し前のものでも作者が外れ、一覧から消える
-            await publishingEnvironmentRepository.revoke(userId, env.id);
+            await publishingEnvironmentRepository.revoke(userId, env.id, 'lost');
             worldRegistry.invalidateResolvedWorlds();
             const after = (await worldRegistry.getWorld(world.id))?.identity;
             expect(after).toMatchObject({ status: 'verified', worldId: `ed25519:${key.publicKey}/${world.id}` });

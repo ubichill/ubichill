@@ -42,7 +42,7 @@ export async function bootstrapOfficialAccount(): Promise<void> {
                     publicKey,
                 });
             }
-            for (const id of revoke) await publishingEnvironmentRepository.revoke(userId, id);
+            for (const id of revoke) await publishingEnvironmentRepository.revoke(userId, id, 'compromised');
         },
         log: (message) => console.log(message),
     });

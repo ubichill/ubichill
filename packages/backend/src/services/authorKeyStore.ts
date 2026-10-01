@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { authorBindingRepository, publishingEnvironmentRepository, userRepository } from '@ubichill/db';
 import {
+    type AuthorKeyCheck,
     ENV_KEYS,
     formatAuthorAccount,
     parseAuthorAccount,
@@ -71,6 +72,10 @@ const authorKeys = createAuthorKeyDirectory({
         },
         save: (account, profile) => authorBindingRepository.save(account, [...profile.keys], profile.displayName),
     },
+    confirmedContents: {
+        record: (account, contentHash) => authorBindingRepository.recordConfirmedContent(account, contentHash),
+        has: (account, contentHash) => authorBindingRepository.hasConfirmedContent(account, contentHash),
+    },
     pinned: pinnedAuthors,
     fetchJson: async (url) => {
         const res = await safeFetch(url, {
@@ -82,6 +87,14 @@ const authorKeys = createAuthorKeyDirectory({
     allowHttp: process.env.WORLDS_FETCH_ALLOW_PRIVATE === 'true',
 });
 
-export const isAuthorKey = authorKeys.isAuthorKey;
+/**
+ * 署名検証で使う作者の確認。DB エラーなどの例外は pending として扱われ、30 秒ごとに確認し直し続けるので、
+ * 障害に気付けるようログを出す。
+ */
+export const isAuthorKey: AuthorKeyCheck = (author, publicKey, contentHash) =>
+    authorKeys.isAuthorKey(author, publicKey, contentHash).catch((err: unknown) => {
+        console.error(`❌ 作者の確認に失敗しました（pending として扱う）: ${author}`, err);
+        return { status: 'pending' } as const;
+    });
 export const resolveAuthorDisplayName = authorKeys.displayName;
 export const invalidateAuthorKey = authorKeys.invalidate;

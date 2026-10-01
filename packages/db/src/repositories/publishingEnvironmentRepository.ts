@@ -41,10 +41,15 @@ export const publishingEnvironmentRepository = {
     },
 
     /** 取り消す（本人のもので未取り消しのときだけ）。取り消しは覆らない。 */
-    async revoke(userId: string, id: string, at = new Date()): Promise<PublishingEnvironmentRecord | undefined> {
+    async revoke(
+        userId: string,
+        id: string,
+        reason: 'lost' | 'compromised',
+        at = new Date(),
+    ): Promise<PublishingEnvironmentRecord | undefined> {
         const results = await db
             .update(publishingEnvironments)
-            .set({ revokedAt: at })
+            .set({ revokedAt: at, revokeReason: reason })
             .where(
                 and(
                     eq(publishingEnvironments.id, id),

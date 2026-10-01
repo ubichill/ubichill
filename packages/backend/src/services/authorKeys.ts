@@ -15,6 +15,7 @@
  * 実体の組み立て（DB・safeFetch）は authorKeyStore.ts。
  */
 import {
+    AUTHOR_CHECK_STALE_MS,
     type AuthorKeyCheck,
     DISPLAY_NAME_WEBFINGER_PROPERTY,
     DisplayNameSchema,
@@ -94,6 +95,11 @@ export interface AuthorKeyDirectoryDeps {
     findLocalAccount: (handle: string) => Promise<AuthorProfile | undefined>;
     /** 他サーバーの確認結果（DB）。 */
     bindings: AuthorBindingStore;
+    /** 確認が新しいうちに作者付きと確かめた内容（確認が古い間は、ここにある内容にだけ作者を付ける）。 */
+    confirmedContents: {
+        record: (account: string, contentHash: string) => Promise<void>;
+        has: (account: string, contentHash: string) => Promise<boolean>;
+    };
     /**
      * リポジトリに記録してレビュー済みの結び付け（公式アカウント）。最優先で使い、ネットワークにも DB にも出ない。
      * 開発環境（オフライン・localhost）でも公式ワールドを公開ルールどおりに扱うため。
@@ -270,15 +276,25 @@ export function createAuthorKeyDirectory(deps: AuthorKeyDirectoryDeps): AuthorKe
     };
 
     return {
-        async isAuthorKey(author, publicKey) {
+        async isAuthorKey(author, publicKey, contentHash) {
             const found = await lookup(author, publicKey);
             if (found.kind === 'pending') return { status: 'pending' };
             if (found.kind === 'missing' || signingKeyStatus(found.profile.keys, publicKey) !== 'active') {
                 return { status: 'unconfirmed' };
             }
-            return found.checkedAt
-                ? { status: 'confirmed', checkedAt: found.checkedAt.toISOString() }
-                : { status: 'confirmed' };
+            // 自サーバー・記録済みの作者は、その場で確かめた結果なので期限の考慮は要らない
+            if (!found.checkedAt) return { status: 'confirmed' };
+            const account = normalize(author)?.account ?? author;
+            const checkedAt = found.checkedAt.toISOString();
+            if (now() - found.checkedAt.getTime() <= AUTHOR_CHECK_STALE_MS) {
+                void deps.confirmedContents.record(account, contentHash).catch(() => undefined);
+                return { status: 'confirmed', checkedAt };
+            }
+            // 確認が古い（作者のサーバーを取り直せていない）間は、古くなる前に確認済みだった内容にだけ作者を付ける。
+            // 鍵を盗んだうえで作者のサーバーを止めても、新しく出した作品には作者が付かない
+            return (await deps.confirmedContents.has(account, contentHash))
+                ? { status: 'confirmed', checkedAt }
+                : { status: 'unconfirmed' };
         },
 
         async displayName(author) {

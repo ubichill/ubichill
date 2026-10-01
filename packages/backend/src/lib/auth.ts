@@ -19,6 +19,22 @@ function getResend(): Resend {
 // （OSS としてセルフホスト時に自分の検証済みドメインを使えるように）。
 const MAIL_FROM = process.env.MAIL_FROM ?? 'Ubichill <onboarding@resend.dev>';
 
+/**
+ * アカウントの安全に関わる通知（新しい公開環境の追加など）をメールで送る。乗っ取りに本人が気付けるようにするため。
+ * メールを送らない環境（SKIP_EMAIL_VERIFICATION・API キー未設定）ではログだけ出す。送信の失敗で操作は止めない。
+ */
+export async function sendAccountNotice(to: string, subject: string, text: string): Promise<void> {
+    if (process.env.SKIP_EMAIL_VERIFICATION === 'true' || !process.env.RESEND_API_KEY) {
+        console.log(`📧 通知（送信しない環境）: ${subject}`);
+        return;
+    }
+    try {
+        await getResend().emails.send({ from: MAIL_FROM, to, subject: `【Ubichill】${subject}`, text });
+    } catch (error) {
+        console.error(`❌ 通知メールの送信に失敗しました: ${subject}`, error);
+    }
+}
+
 // 仮登録データを保持（メモリ内、本番ではRedisなどを使用）
 interface PendingRegistration {
     email: string;

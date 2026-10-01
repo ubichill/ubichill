@@ -153,9 +153,10 @@ export type AuthorKeyCheckResult =
 
 /**
  * 1 アカウントは複数の鍵を持つので、署名に使われた鍵を渡して判定させる
- * （自サーバーは DB、他ドメインは WebFinger から辿る鍵一覧）。
+ * （自サーバーは DB、他ドメインは WebFinger から辿る鍵一覧）。`contentHash` は、作者の確認が古い間に
+ * 「古くなる前に確認済みだった内容」にだけ作者を付けるために渡す。
  */
-export type AuthorKeyCheck = (author: string, publicKey: string) => Promise<AuthorKeyCheckResult>;
+export type AuthorKeyCheck = (author: string, publicKey: string, contentHash: string) => Promise<AuthorKeyCheckResult>;
 
 /** 他サーバーの作者の確認がこれより古ければ「確認が古い」と表示する（作者のサーバーが止まっている可能性）。 */
 export const AUTHOR_CHECK_STALE_MS = 24 * 60 * 60 * 1000;
@@ -229,7 +230,7 @@ export async function verifyWorldSignature(
 
     const check: AuthorKeyCheckResult =
         sig.author && isAuthorKey
-            ? await isAuthorKey(sig.author, sig.publicKey).catch(() => ({ status: 'pending' }) as const)
+            ? await isAuthorKey(sig.author, sig.publicKey, contentHash).catch(() => ({ status: 'pending' }) as const)
             : { status: 'unconfirmed' };
     if (sig.author && check.status === 'confirmed') {
         return {

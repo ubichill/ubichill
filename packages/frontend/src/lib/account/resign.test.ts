@@ -1,8 +1,10 @@
 import type { WorldIdentity } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
-import { resignAll, worldsNeedingResign } from './resign';
+import { type RevokedEnvironment, resignAll, worldsNeedingResign } from './resign';
 
-const REVOKED = 'R'.repeat(43);
+const LOST = 'L'.repeat(43);
+const LEAKED = 'X'.repeat(43);
+const UNKNOWN_REASON = 'U'.repeat(43);
 const ACTIVE = 'A'.repeat(43);
 const verified = (publicKey: string, author?: string): WorldIdentity => ({
     status: 'verified',
@@ -11,26 +13,40 @@ const verified = (publicKey: string, author?: string): WorldIdentity => ({
     contentHash: 'sha256-x',
     ...(author ? { author } : {}),
 });
+const revoked: RevokedEnvironment[] = [
+    { publicKey: LOST, name: 'なくした PC', revokedAt: '2026-10-01T00:00:00Z', revokeReason: 'lost' },
+    { publicKey: LEAKED, name: 'Chrome on Windows', revokedAt: '2026-10-01T00:00:00Z', revokeReason: 'compromised' },
+    { publicKey: UNKNOWN_REASON, name: '以前の鍵', revokedAt: '2026-10-01T00:00:00Z', revokeReason: null },
+];
 
 describe('worldsNeedingResign', () => {
     const worlds = [
-        { id: 'revoked', displayName: '取り消した鍵', identity: verified(REVOKED) },
+        { id: 'lost', displayName: '紛失した鍵', identity: verified(LOST), updatedAt: '2026-09-01T00:00:00Z' },
+        { id: 'leaked', displayName: '漏えいした鍵', identity: verified(LEAKED), updatedAt: '2026-10-01T00:00:00Z' },
+        { id: 'unknown', displayName: '理由不明', identity: verified(UNKNOWN_REASON) },
         { id: 'ok', displayName: '公開中', identity: verified(ACTIVE, 'youkan@ubichill.com') },
         {
             id: 'unsigned',
             displayName: '下書き',
             identity: { status: 'unsigned', contentHash: 'sha256-x' } as WorldIdentity,
         },
-        { id: 'other-key', displayName: '別の鍵（作者なし）', identity: verified(ACTIVE) },
-        { id: 'unknown', displayName: '識別なし' },
+        { id: 'none', displayName: '識別なし' },
     ];
 
-    it('取り消した鍵で署名されたワールドだけを返す', () => {
-        expect(worldsNeedingResign(worlds, new Set([REVOKED])).map((w) => w.id)).toEqual(['revoked']);
+    it('紛失で取り消した鍵の署名だけを、まとめて署名し直す対象にする', () => {
+        const { bulk } = worldsNeedingResign(worlds, revoked);
+        expect(bulk.map((t) => t.world.id)).toEqual(['lost']);
+        expect(bulk[0]?.signedBy.name).toBe('なくした PC');
     });
 
-    it('未署名（非公開のつもりかもしれない）や、取り消していない鍵のワールドは含めない', () => {
-        expect(worldsNeedingResign(worlds, new Set())).toEqual([]);
+    it('漏えい・理由が無い取り消しの署名は、1 つずつ確かめる対象にする（攻撃者の内容に本人の鍵で署名しないように）', () => {
+        const { review } = worldsNeedingResign(worlds, revoked);
+        expect(review.map((t) => t.world.id)).toEqual(['leaked', 'unknown']);
+        expect(review[0]?.signedBy.name).toBe('Chrome on Windows');
+    });
+
+    it('未署名・作者付き・取り消していない鍵のワールドは含めない', () => {
+        expect(worldsNeedingResign(worlds, [])).toEqual({ bulk: [], review: [] });
     });
 });
 

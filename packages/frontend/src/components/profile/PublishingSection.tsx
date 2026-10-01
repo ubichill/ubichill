@@ -1,4 +1,4 @@
-import { displayAuthorAccount } from '@ubichill/shared';
+import { displayAuthorAccount, type RevokeReason } from '@ubichill/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import {
@@ -9,11 +9,18 @@ import {
     revokePublishingEnvironment,
     setMyHandle,
 } from '@/lib/account/me';
-import { isStaleEnvironment, revokeConfirmMessage, sortEnvironments } from '@/lib/account/publishingEnvironments';
-import { type ResignCandidate, type ResignResult, worldsNeedingResign } from '@/lib/account/resign';
+import {
+    isRecentlyAdded,
+    isStaleEnvironment,
+    revokeConfirmMessage,
+    sortEnvironments,
+} from '@/lib/account/publishingEnvironments';
+import { type ResignCandidate, type ResignResult, type ResignTarget, worldsNeedingResign } from '@/lib/account/resign';
 import { useHandleAvailability } from '@/lib/account/useHandleAvailability';
 import { importSigningKeyFile, loadSigningKey, removeSigningKey, useSigningPublicKey } from '@/lib/signing';
 import { css, cva } from '@/styled-system/css';
+import { CompromiseGuide } from './CompromiseGuide';
+import { ResignPanel } from './ResignPanel';
 
 const button = cva({
     base: {
@@ -143,6 +150,10 @@ export function PublishingSection({
     const [message, setMessage] = useState<{ tone: 'info' | 'error'; text: string } | null>(null);
     const [handleInput, setHandleInput] = useState('');
     const handleStatus = useHandleAvailability(handleInput, !account.handle);
+    /** 取り消しの理由を選んでいる公開環境 */
+    const [revoking, setRevoking] = useState<string | null>(null);
+    /** 漏えいとして取り消した直後（ログアウトとパスワード変更へ案内する） */
+    const [compromised, setCompromised] = useState(false);
 
     const reload = useCallback(async () => {
         const list = await fetchPublishingEnvironments();
@@ -184,12 +195,14 @@ export function PublishingSection({
             return 'ID を設定しました。';
         });
 
-    const revoke = async (env: PublishingEnvironment) => {
-        if (!(await confirm(revokeConfirmMessage(env, env.publicKey === localKey)))) return;
+    const revoke = async (env: PublishingEnvironment, reason: RevokeReason) => {
+        if (!(await confirm(revokeConfirmMessage(env, env.publicKey === localKey, reason)))) return;
+        setRevoking(null);
         await run(async () => {
-            await revokePublishingEnvironment(env.id);
+            await revokePublishingEnvironment(env.id, reason);
             syncAccountKeys(await reload());
-            return `「${env.name}」を取り消しました。この鍵で署名したワールドがあれば、上に出る「まとめて署名し直す」で一覧に戻せます。`;
+            if (reason === 'compromised') setCompromised(true);
+            return `「${env.name}」を取り消しました。`;
         });
     };
 
@@ -219,12 +232,29 @@ export function PublishingSection({
 
     const now = Date.now();
     const sorted = environments ? sortEnvironments(environments) : [];
-    const revokedKeys = new Set((environments ?? []).filter((e) => e.revokedAt).map((e) => e.publicKey));
-    const resignTargets = worldsNeedingResign(worlds, revokedKeys);
+    const revoked = (environments ?? []).flatMap((e) =>
+        e.revokedAt
+            ? [{ publicKey: e.publicKey, name: e.name, revokedAt: e.revokedAt, revokeReason: e.revokeReason }]
+            : [],
+    );
+    const resignTargets = worldsNeedingResign(worlds, revoked);
+    const resignCount = resignTargets.bulk.length + resignTargets.review.length;
+
+    const resignOne = async (target: ResignTarget<ResignCandidate>) => {
+        const ok = await confirm(
+            `「${target.world.displayName}」の今の内容に、あなたの鍵で署名し直します。漏えいした環境「${target.signedBy.name}」で署名されていたので、攻撃者が書き換えた内容かもしれません。中身を確かめましたか？`,
+        );
+        if (!ok) return;
+        await run(async () => {
+            const result = await onResign([target.world.id]);
+            if (result.failed[0]) throw new Error(result.failed[0].error);
+            return `「${target.world.displayName}」を署名し直し、一覧に戻しました。`;
+        });
+    };
 
     const resignEverything = () =>
         run(async () => {
-            const result = await onResign(resignTargets.map((w) => w.id));
+            const result = await onResign(resignTargets.bulk.map((t) => t.world.id));
             const names = new Map(worlds.map((w) => [w.id, w.displayName]));
             if (result.failed.length === 0) return `${result.done.length} 個のワールドを署名し直し、一覧に戻しました。`;
             const failed = result.failed.map((f) => `「${names.get(f.id) ?? f.id}」（${f.error}）`).join('、');
@@ -291,34 +321,19 @@ export function PublishingSection({
                 </div>
             )}
 
-            {resignTargets.length > 0 && (
-                <div className={notice({ tone: 'warn' })}>
-                    <p>
-                        取り消した鍵で署名したワールドが {resignTargets.length}{' '}
-                        個あり、作者が外れて一覧に出ていません。このブラウザで署名し直すと元に戻ります。
-                    </p>
-                    <ul className={css({ my: '2', pl: '5', listStyleType: 'disc' })}>
-                        {resignTargets.map((w) => (
-                            <li key={w.id}>{w.displayName}</li>
-                        ))}
-                    </ul>
-                    <button
-                        type="button"
-                        className={button({ tone: 'primary', size: 'sm' })}
-                        disabled={busy}
-                        onClick={() => void resignEverything()}
-                    >
-                        まとめて署名し直す
-                    </button>
-                    <p className={css({ mt: '2', fontSize: '12px' })}>
-                        GitHub など外部に置いたワールドは、CLI で署名し直して署名ファイルを置き直してください。
-                    </p>
-                </div>
-            )}
+            {compromised && <CompromiseGuide onDismiss={() => setCompromised(false)} />}
 
-            {unsignedCount - resignTargets.length > 0 && (
+            <ResignPanel
+                bulk={resignTargets.bulk}
+                review={resignTargets.review}
+                busy={busy}
+                onResignAll={() => void resignEverything()}
+                onResignOne={(t) => void resignOne(t)}
+            />
+
+            {unsignedCount - resignCount > 0 && (
                 <p className={notice({ tone: 'info' })}>
-                    作者アカウントで署名されていないワールドが {unsignedCount - resignTargets.length}
+                    作者アカウントで署名されていないワールドが {unsignedCount - resignCount}
                     個あり、一覧に出ていません。下の一覧の「署名して公開」で公開できます。
                 </p>
             )}
@@ -337,6 +352,7 @@ export function PublishingSection({
                     {sorted.map((env) => {
                         const isThisBrowser = env.publicKey === localKey;
                         const stale = isStaleEnvironment(env, now);
+                        const recent = !isThisBrowser && isRecentlyAdded(env, now);
                         return (
                             <li
                                 key={env.id}
@@ -368,6 +384,14 @@ export function PublishingSection({
                                             <span className={tag({ tone: 'current' })}>このブラウザ</span>
                                         )}
                                         {stale && <span className={tag({ tone: 'stale' })}>長く使われていません</span>}
+                                        {recent && (
+                                            <span
+                                                className={tag({ tone: 'stale' })}
+                                                title="最近追加された環境です。心当たりがなければ「漏えい・心当たりのない環境」として取り消してください"
+                                            >
+                                                新しい
+                                            </span>
+                                        )}
                                         {env.revokedAt && (
                                             <span className={tag({ tone: 'revoked' })}>取り消し済み</span>
                                         )}
@@ -376,17 +400,55 @@ export function PublishingSection({
                                         {KIND_LABEL[env.kind]} ・ 追加 {formatDate(env.createdAt)} ・{' '}
                                         {env.lastUsedAt ? `最終利用 ${formatDate(env.lastUsedAt)}` : '未使用'}
                                         {env.revokedAt && ` ・ 取り消し ${formatDate(env.revokedAt)}`}
+                                        {env.revokeReason &&
+                                            `（${env.revokeReason === 'lost' ? '紛失' : '漏えい・心当たりなし'}）`}
                                     </p>
                                 </div>
-                                {!env.revokedAt && (
+                                {!env.revokedAt && revoking !== env.id && (
                                     <button
                                         type="button"
                                         className={button({ tone: 'danger', size: 'sm' })}
                                         disabled={busy}
-                                        onClick={() => void revoke(env)}
+                                        onClick={() => setRevoking(env.id)}
                                     >
                                         取り消す
                                     </button>
+                                )}
+                                {!env.revokedAt && revoking === env.id && (
+                                    <div
+                                        role="group"
+                                        aria-label="取り消す理由"
+                                        className={css({
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '1',
+                                            alignItems: 'stretch',
+                                        })}
+                                    >
+                                        <button
+                                            type="button"
+                                            className={button({ tone: 'secondary', size: 'sm' })}
+                                            disabled={busy}
+                                            onClick={() => void revoke(env, 'lost')}
+                                        >
+                                            紛失した・データを消した
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={button({ tone: 'danger', size: 'sm' })}
+                                            disabled={busy}
+                                            onClick={() => void revoke(env, 'compromised')}
+                                        >
+                                            漏えい・心当たりがない
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={css({ fontSize: '11px', color: 'textMuted', cursor: 'pointer' })}
+                                            onClick={() => setRevoking(null)}
+                                        >
+                                            やめる
+                                        </button>
+                                    </div>
                                 )}
                             </li>
                         );

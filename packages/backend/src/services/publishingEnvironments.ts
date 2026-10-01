@@ -3,6 +3,7 @@
  */
 import {
     type PublishingEnvironmentKind,
+    type RevokeReason,
     type SigningKeyEntry,
     type SigningKeyList,
     signingKeyStatus,
@@ -17,6 +18,7 @@ export interface PublishingEnvironmentRow {
     createdAt: Date;
     lastUsedAt: Date | null;
     revokedAt: Date | null;
+    revokeReason?: string | null;
 }
 
 export function signingKeyEntryOf(row: Pick<PublishingEnvironmentRow, 'publicKey' | 'createdAt' | 'revokedAt'>) {
@@ -46,6 +48,7 @@ export function publishingEnvironmentView(row: PublishingEnvironmentRow) {
         createdAt: row.createdAt.toISOString(),
         lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
         revokedAt: row.revokedAt?.toISOString() ?? null,
+        revokeReason: (row.revokeReason as RevokeReason | null | undefined) ?? null,
     };
 }
 export type PublishingEnvironmentView = ReturnType<typeof publishingEnvironmentView>;
@@ -102,4 +105,25 @@ export function browserEnvironmentName(userAgent: string | undefined): string {
             ['Linux', 'Linux'],
         ].find(([token]) => ua.includes(token))?.[1] ?? '';
     return os ? `${browser} on ${os}` : browser;
+}
+
+/** 新しい公開環境が追加されたことの通知（心当たりがなければ取り消してパスワードを変える）。 */
+export function newEnvironmentNotice(args: {
+    displayName: string;
+    environmentName: string;
+    profileUrl: string;
+    at: Date;
+}) {
+    return {
+        subject: '新しい公開環境が追加されました',
+        text: `${args.displayName} さん
+
+あなたのアカウントに、ワールドを公開できる環境「${args.environmentName}」が追加されました（${args.at.toISOString()}）。
+
+心当たりがない場合は、すぐに次を行ってください。
+1. ${args.profileUrl} の「公開できるブラウザ・CLI・CI」で、その環境を「漏えい・心当たりのない環境」として取り消す
+2. パスワードを変更し、ほかの端末をすべてログアウトする
+
+心当たりがある場合は、このメールは無視してかまいません。`,
+    };
 }

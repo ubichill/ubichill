@@ -1,6 +1,6 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../index';
-import { authorBindings } from '../schema';
+import { authorBindings, authorConfirmedContents } from '../schema';
 
 export type AuthorBindingRecord = typeof authorBindings.$inferSelect;
 
@@ -17,5 +17,21 @@ export const authorBindingRepository = {
             .insert(authorBindings)
             .values({ account, keys, displayName, fetchedAt })
             .onConflictDoUpdate({ target: authorBindings.account, set: { keys, displayName, fetchedAt } });
+    },
+
+    /** 作者付きと確かめた内容を記録する（確認が古くなった間に作者を付けてよい内容）。 */
+    async recordConfirmedContent(account: string, contentHash: string): Promise<void> {
+        await db.insert(authorConfirmedContents).values({ account, contentHash }).onConflictDoNothing();
+    },
+
+    async hasConfirmedContent(account: string, contentHash: string): Promise<boolean> {
+        const rows = await db
+            .select({ account: authorConfirmedContents.account })
+            .from(authorConfirmedContents)
+            .where(
+                and(eq(authorConfirmedContents.account, account), eq(authorConfirmedContents.contentHash, contentHash)),
+            )
+            .limit(1);
+        return rows.length > 0;
     },
 };

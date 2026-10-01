@@ -1,4 +1,9 @@
-import { keyRegistrationMessage, type PublishingEnvironmentKind, type WorldSigningKey } from '@ubichill/shared';
+import {
+    keyRegistrationMessage,
+    type PublishingEnvironmentKind,
+    type RevokeReason,
+    type WorldSigningKey,
+} from '@ubichill/shared';
 import { API_BASE } from '@/lib/api';
 
 /** ログイン中のアカウント（`GET /api/v1/users/me`）。 */
@@ -78,6 +83,7 @@ export interface PublishingEnvironment {
     createdAt: string;
     lastUsedAt: string | null;
     revokedAt: string | null;
+    revokeReason: RevokeReason | null;
 }
 
 export async function fetchPublishingEnvironments(): Promise<PublishingEnvironment[]> {
@@ -90,10 +96,12 @@ export async function fetchPublishingEnvironments(): Promise<PublishingEnvironme
 }
 
 /** 公開環境を取り消す。その鍵の署名は取り消し前のものも含めて作者が付かなくなる。 */
-export async function revokePublishingEnvironment(id: string): Promise<PublishingEnvironment> {
+export async function revokePublishingEnvironment(id: string, reason: RevokeReason): Promise<PublishingEnvironment> {
     const res = await fetch(`${API_BASE}/api/v1/users/me/publishing-environments/${encodeURIComponent(id)}/revoke`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
+        body: JSON.stringify({ reason }),
     });
     if (!res.ok) throw new Error(await errorMessage(res));
     return ((await res.json()) as { environment: PublishingEnvironment }).environment;
@@ -124,4 +132,14 @@ export async function registerSigningKey(
     }
     if (!res.ok) throw new Error(await errorMessage(res));
     return 'registered';
+}
+
+/** いま使っているもの以外のログインをすべて無効にする（乗っ取りに気付いたとき）。無効にした数を返す。 */
+export async function revokeOtherSessions(): Promise<number> {
+    const res = await fetch(`${API_BASE}/api/v1/users/me/sessions/revoke-others`, {
+        method: 'POST',
+        credentials: 'include',
+    });
+    if (!res.ok) throw new Error(await errorMessage(res));
+    return ((await res.json()) as { revoked: number }).revoked;
 }
