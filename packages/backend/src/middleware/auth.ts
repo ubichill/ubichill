@@ -24,42 +24,55 @@ declare global {
     }
 }
 
-/**
- * 認証必須ミドルウェア
- * セッションがない場合は401を返す
- */
-export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
-    try {
-        const session = await auth.api.getSession({
-            headers: toWebHeaders(req),
-        });
+type SessionResult = Awaited<ReturnType<typeof auth.api.getSession>>;
 
-        if (!session) {
-            res.status(401).json({ error: 'Unauthorized' });
-            return;
-        }
-
-        // リクエストにユーザー情報を追加
-        req.user = {
-            id: session.user.id,
-            email: session.user.email,
-            name: session.user.name,
-            emailVerified: session.user.emailVerified,
-            image: session.user.image,
-        };
-        req.session = {
-            id: session.session.id,
-            userId: session.session.userId,
-            token: session.session.token,
-            expiresAt: session.session.expiresAt,
-        };
-
-        next();
-    } catch (error) {
-        console.error('Auth middleware error:', error);
-        res.status(401).json({ error: 'Unauthorized' });
-    }
+function attachSession(req: Request, session: NonNullable<SessionResult>): void {
+    req.user = {
+        id: session.user.id,
+        email: session.user.email,
+        name: session.user.name,
+        emailVerified: session.user.emailVerified,
+        image: session.user.image,
+    };
+    req.session = {
+        id: session.session.id,
+        userId: session.session.userId,
+        token: session.session.token,
+        expiresAt: session.session.expiresAt,
+    };
 }
+
+function authRequired(options: { fresh: boolean }) {
+    return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+        try {
+            const session = await auth.api.getSession({
+                headers: toWebHeaders(req),
+                ...(options.fresh ? { query: { disableCookieCache: true } } : {}),
+            });
+            if (!session) {
+                res.status(401).json({ error: 'Unauthorized' });
+                return;
+            }
+            attachSession(req, session);
+            next();
+        } catch (error) {
+            console.error('Auth middleware error:', error);
+            res.status(401).json({ error: 'Unauthorized' });
+        }
+    };
+}
+
+/**
+ * 認証必須ミドルウェア。セッションがない場合は 401。
+ * セッションはクッキーキャッシュ（最大 5 分）で確かめるので、ログアウトさせたセッションも最大 5 分は通る。
+ */
+export const requireAuth = authRequired({ fresh: false });
+
+/**
+ * 認証必須ミドルウェア（DB のセッションを確かめる）。公開に関わる操作（公開環境の登録・取り消し、署名つきの保存、
+ * ワールドの作成）に使う。乗っ取りに気付いてほかの端末をログアウトさせた直後から、攻撃者に鍵の登録や公開をさせない。
+ */
+export const requireFreshAuth = authRequired({ fresh: true });
 
 /**
  * オプション認証ミドルウェア

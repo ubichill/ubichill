@@ -133,8 +133,8 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
         }
     });
 
-    it('作者アカウント: 登録した鍵で author 付き署名すると作者が付き、鍵を替えると外れる', async () => {
-        const { userRepository } = await import('@ubichill/db');
+    it('作者アカウント: 公開環境の鍵で author 付き署名すると作者が付き、別の環境を足しても保たれ、取り消すと外れる', async () => {
+        const { publishingEnvironmentRepository, userRepository } = await import('@ubichill/db');
         const { selfAccount } = await import('./authorKeys');
         const userId = `it-author-${Date.now()}`;
         const handle = `it_${Date.now().toString(36)}`;
@@ -143,7 +143,12 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
             await userRepository.setHandleOnce(userId, handle);
             expect(await userRepository.setHandleOnce(userId, 'other_handle')).toBeUndefined(); // 変更不可
             const key = newTestSigningKey();
-            await userRepository.setSigningPublicKey(userId, key.publicKey);
+            const env = await publishingEnvironmentRepository.create({
+                userId,
+                kind: 'browser',
+                name: 'テスト',
+                publicKey: key.publicKey,
+            });
             worldRegistry.invalidateResolvedWorlds();
 
             const world = await worldRegistry.createFromInput(userId, {
@@ -170,13 +175,23 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
             expect(renamed?.authorName).toBe('テスト作者（改名）');
             expect(renamed?.identity).toMatchObject({ status: 'verified', author });
 
-            // 鍵を入れ替えると、古い鍵の署名は作者表示が外れ鍵で識別される（公開は続く）
-            await userRepository.setSigningPublicKey(userId, newTestSigningKey().publicKey);
-            (await import('./authorKeyStore')).invalidateAuthorKey(author);
+            // 別の公開環境を足しても、既存の環境の署名はそのまま有効
+            await publishingEnvironmentRepository.create({
+                userId,
+                kind: 'cli',
+                name: 'テスト CLI',
+                publicKey: newTestSigningKey().publicKey,
+            });
+            worldRegistry.invalidateResolvedWorlds();
+            expect((await worldRegistry.getWorld(world.id))?.identity).toMatchObject({ author });
+
+            // 取り消すと、その鍵の署名は取り消し前のものでも作者が外れ、一覧から消える
+            await publishingEnvironmentRepository.revoke(userId, env.id, 'lost');
             worldRegistry.invalidateResolvedWorlds();
             const after = (await worldRegistry.getWorld(world.id))?.identity;
             expect(after).toMatchObject({ status: 'verified', worldId: `ed25519:${key.publicKey}/${world.id}` });
             expect(after).not.toHaveProperty('author');
+            expect((await worldRegistry.listWorlds('local')).some((w) => w.id === world.id)).toBe(false);
         } finally {
             await userRepository.deleteById(userId);
         }

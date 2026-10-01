@@ -44,9 +44,12 @@ function officialAuthorError(relPath) {
     if (!existsSync(sigPath)) return '署名ファイルがありません';
     const sig = JSON.parse(readFileSync(sigPath, 'utf-8'));
     if (sig.author !== OFFICIAL_AUTHOR) return `作者が ${OFFICIAL_AUTHOR} ではありません（${sig.author ?? 'なし'}）`;
-    if (sig.publicKey !== trustedAuthors[OFFICIAL_AUTHOR]?.publicKey) {
-        return `署名鍵が worlds/trusted-authors.json の ${OFFICIAL_AUTHOR} の鍵と一致しません`;
+    const keys = trustedAuthors[OFFICIAL_AUTHOR]?.keys ?? [];
+    const matches = keys.filter((k) => k.publicKey === sig.publicKey);
+    if (matches.length === 0) {
+        return `署名鍵が worlds/trusted-authors.json の ${OFFICIAL_AUTHOR} の鍵にありません`;
     }
+    if (matches.some((k) => k.revokedAt)) return `署名鍵は取り消されています（署名し直してください）`;
     return null;
 }
 if (sign && !process.env.UBICHILL_SIGNING_KEY && !keyFile) {

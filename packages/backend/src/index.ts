@@ -26,6 +26,7 @@ import {
 import { auth } from './lib/auth';
 import { blockOfficialPasswordChange } from './middleware/auth';
 import { socketAuthMiddleware } from './middleware/socketAuth';
+import { router as authorsRouter } from './routes/authors';
 import { router as federationRouter } from './routes/federation';
 import { router as instancesRouter } from './routes/instances';
 import { router as usersRouter } from './routes/users';
@@ -114,6 +115,7 @@ app.use('/api/auth', toNodeHandler(auth));
 app.use('/api/v1/worlds', worldsRouter);
 app.use('/api/v1/instances', instancesRouter);
 app.use('/api/v1/users', usersRouter);
+app.use('/api/v1/authors', authorsRouter);
 app.use('/api/v1/federation', federationRouter);
 app.use('/.well-known/webfinger', webfingerRouter);
 

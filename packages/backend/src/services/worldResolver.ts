@@ -13,7 +13,7 @@
  */
 
 import {
-    type AuthorKeyResolver,
+    type AuthorKeyCheck,
     collectModIds,
     DEFAULTS,
     type InitialEntity,
@@ -135,9 +135,9 @@ export async function identifyWorld(
     doc: WorldDocument,
     rawSignature: unknown,
     url: string,
-    resolveAuthorKey?: AuthorKeyResolver,
+    isAuthorKey?: AuthorKeyCheck,
 ): Promise<WorldIdentity> {
-    const verdict = await verifyWorldSignature(doc, rawSignature, nodeWorldCrypto, resolveAuthorKey);
+    const verdict = await verifyWorldSignature(doc, rawSignature, nodeWorldCrypto, isAuthorKey);
     if (verdict.status === 'invalid') throw new WorldIntegrityError(verdict.reason, url);
     return verdict;
 }
@@ -243,7 +243,7 @@ export async function confirmedAuthorName(
 
 export interface ResolveWorldOptions {
     /** 署名の作者アカウントを確認する（DB / WebFinger）。無ければ作者は表示せず鍵で識別する。 */
-    resolveAuthorKey?: AuthorKeyResolver;
+    isAuthorKey?: AuthorKeyCheck;
     /** 作者アカウントのその時点の表示名（DB / WebFinger）。 */
     resolveAuthorName?: (author: string) => Promise<string | undefined>;
 }
@@ -268,7 +268,7 @@ export async function resolveWorld(
         { definition: rawDefinition, lock: rawLock ?? null },
         rawSig,
         url,
-        options.resolveAuthorKey,
+        options.isAuthorKey,
     );
     const parsedLock = ModLockSchema.safeParse(rawLock);
     const definition = validateWorldDefinition(rawDefinition, url);

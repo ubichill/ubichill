@@ -6,6 +6,11 @@ export { type AuthorBindingRecord, authorBindingRepository } from './repositorie
 export { favoriteRepository } from './repositories/favoriteRepository';
 export { federationPeerRepository } from './repositories/federationPeerRepository';
 export { instanceRepository } from './repositories/instanceRepository';
+export {
+    type CreatePublishingEnvironmentInput,
+    type PublishingEnvironmentRecord,
+    publishingEnvironmentRepository,
+} from './repositories/publishingEnvironmentRepository';
 export { userRepository } from './repositories/userRepository';
 export { worldRepository } from './repositories/worldRepository';
 

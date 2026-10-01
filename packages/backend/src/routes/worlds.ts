@@ -1,4 +1,4 @@
-import { userRepository, worldRepository } from '@ubichill/db';
+import { publishingEnvironmentRepository, userRepository, worldRepository } from '@ubichill/db';
 import {
     LIMITS,
     type ModLock,
@@ -9,7 +9,7 @@ import {
 } from '@ubichill/shared';
 import { Router } from 'express';
 import yaml from 'yaml';
-import { optionalAuth, requireAdmin, requireAuth } from '../middleware/auth';
+import { optionalAuth, requireAdmin, requireAuth, requireFreshAuth } from '../middleware/auth';
 import { selfAccount } from '../services/authorKeys';
 import { prepareWorldUpdate, worldRegistry } from '../services/worldRegistry';
 
@@ -49,16 +49,34 @@ function parseYamlUpdate(body: unknown): ParsedYamlUpdate {
     return { ok: true, definition: result.data, lock };
 }
 
+type AuthorClaim = { error: string } | { environmentId?: string };
+
 /**
- * 署名が作者アカウントを主張するなら、それはアップロードした本人のアカウントでなければならない。
- * （他人の handle を名乗る署名は、鍵が一致しなければ表示されないが、保存の時点で弾いておく）
+ * 署名が作者アカウントを主張するなら、それはアップロードした本人のアカウントで、鍵はその有効な公開環境でなければならない。
+ * （作者が付かない署名は保存しても公開されないので、黙って非公開にせず保存の時点で弾く。取り消し済みの鍵もここで止まる）
+ * 通った場合は署名に使った公開環境の ID を返す（最終利用の記録に使う）。
  */
-async function authorClaimError(rawSignature: unknown, userId: string): Promise<string | null> {
-    const claimed = (rawSignature as { author?: unknown } | null)?.author;
-    if (claimed === undefined) return null;
+async function checkAuthorClaim(rawSignature: unknown, userId: string): Promise<AuthorClaim> {
+    const { author: claimed, publicKey } = (rawSignature ?? {}) as { author?: unknown; publicKey?: unknown };
+    if (claimed === undefined) return {};
     const user = await userRepository.findById(userId);
     const own = user?.handle ? selfAccount(user.handle) : null;
-    return claimed === own ? null : `署名の作者（${String(claimed)}）があなたのアカウントと一致しません`;
+    if (claimed !== own) return { error: `署名の作者（${String(claimed)}）があなたのアカウントと一致しません` };
+    const env =
+        typeof publicKey === 'string' ? await publishingEnvironmentRepository.findByPublicKey(publicKey) : undefined;
+    if (!env || env.userId !== userId || env.revokedAt) {
+        return {
+            error: 'この署名の鍵はあなたの有効な公開環境ではありません（取り消し済みか未登録）。画面を読み込み直して公開し直してください',
+        };
+    }
+    return { environmentId: env.id };
+}
+
+/** 公開に使った公開環境の最終利用を記録する（使われなくなった環境を一覧で見分けるため）。失敗しても公開は止めない。 */
+async function markEnvironmentUsed(claim: AuthorClaim): Promise<void> {
+    if ('environmentId' in claim && claim.environmentId) {
+        await publishingEnvironmentRepository.touch(claim.environmentId).catch(() => undefined);
+    }
 }
 
 function updateFailureStatus(reason: string): number {
@@ -226,7 +244,7 @@ router.get('/:worldId', optionalAuth, async (req, res) => {
  * - metadata.name はサーバー側で nanoid 生成
  * - 1ユーザー最大 LIMITS.MAX_WORLDS_PER_USER 個まで
  */
-router.post('/', requireAuth, async (req, res) => {
+router.post('/', requireFreshAuth, async (req, res) => {
     try {
         if (!req.user) {
             res.status(401).json({ error: 'Unauthorized' });
@@ -266,7 +284,7 @@ router.post('/', requireAuth, async (req, res) => {
  * - metadata.name は無視してサーバー側で再生成
  * - 1ユーザー最大 LIMITS.MAX_WORLDS_PER_USER 個まで
  */
-router.post('/yaml', requireAuth, async (req, res) => {
+router.post('/yaml', requireFreshAuth, async (req, res) => {
     try {
         if (!req.user) {
             res.status(401).json({ error: 'Unauthorized' });
@@ -403,7 +421,7 @@ router.get('/:worldId/sig', optionalAuth, async (req, res) => {
  * 作者が手元の鍵で付けた署名を保存する（認証必須、作成者のみ）。body は WorldSignature。
  * 現在の内容に対して検証できない署名は 422。
  */
-router.put('/:worldId/sig', requireAuth, async (req, res) => {
+router.put('/:worldId/sig', requireFreshAuth, async (req, res) => {
     try {
         if (!req.user) {
             res.status(401).json({ error: 'Unauthorized' });
@@ -419,9 +437,9 @@ router.put('/:worldId/sig', requireAuth, async (req, res) => {
             res.status(403).json({ error: 'Forbidden: Only the author can sign this world' });
             return;
         }
-        const claimError = await authorClaimError(req.body, req.user.id);
-        if (claimError) {
-            res.status(422).json({ error: claimError });
+        const claim = await checkAuthorClaim(req.body, req.user.id);
+        if ('error' in claim) {
+            res.status(422).json({ error: claim.error });
             return;
         }
         const result = await worldRegistry.setWorldSignature(worldId, req.body as unknown);
@@ -430,6 +448,7 @@ router.put('/:worldId/sig', requireAuth, async (req, res) => {
             res.status(status).json({ error: signatureFailureMessage(result.reason) });
             return;
         }
+        await markEnvironmentUsed(claim);
         res.json({ identity: result.identity });
     } catch (error) {
         console.error('ワールド署名保存エラー:', error);
@@ -477,7 +496,7 @@ router.put('/:worldId/draft', requireAuth, async (req, res) => {
  * 作者はこの値に署名し、PUT に signature を添えて送る＝内容と署名を 1 回で原子的に保存する。
  * body: { yaml: string, lock?: ModLock }
  */
-router.post('/:worldId/prepare', requireAuth, async (req, res) => {
+router.post('/:worldId/prepare', requireFreshAuth, async (req, res) => {
     try {
         const worldId = req.params.worldId as string;
         const record = await worldRegistry.getWorldRecord(worldId);
@@ -507,7 +526,7 @@ router.post('/:worldId/prepare', requireAuth, async (req, res) => {
  * body: { yaml: string }
  * - metadata.name は URL の worldId に強制上書きする（ID は不変）
  */
-router.put('/:worldId/yaml', requireAuth, async (req, res) => {
+router.put('/:worldId/yaml', requireFreshAuth, async (req, res) => {
     try {
         const worldId = req.params.worldId as string;
 
@@ -533,9 +552,9 @@ router.put('/:worldId/yaml', requireAuth, async (req, res) => {
             return;
         }
         const { signature, allowUnsigned } = req.body as { signature?: unknown; allowUnsigned?: unknown };
-        const claimError = signature === undefined ? null : await authorClaimError(signature, req.user.id);
-        if (claimError) {
-            res.status(422).json({ error: claimError });
+        const claim = signature === undefined ? {} : await checkAuthorClaim(signature, req.user.id);
+        if ('error' in claim) {
+            res.status(422).json({ error: claim.error });
             return;
         }
         const result = await worldRegistry.updateWorld(worldId, parsed.definition, parsed.lock, {
@@ -546,6 +565,7 @@ router.put('/:worldId/yaml', requireAuth, async (req, res) => {
             res.status(updateFailureStatus(result.reason)).json({ error: updateFailureMessage(result.reason) });
             return;
         }
+        await markEnvironmentUsed(claim);
         res.json(result.world);
     } catch (error) {
         const message = error instanceof Error ? error.message : 'YAML 更新に失敗しました';
@@ -557,7 +577,7 @@ router.put('/:worldId/yaml', requireAuth, async (req, res) => {
  * PUT /api/v1/worlds/:worldId
  * ワールドを更新（認証必須、作成者のみ）
  */
-router.put('/:worldId', requireAuth, async (req, res) => {
+router.put('/:worldId', requireFreshAuth, async (req, res) => {
     try {
         const worldId = req.params.worldId as string;
 

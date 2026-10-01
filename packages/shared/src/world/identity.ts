@@ -141,11 +141,31 @@ export function authorWorldIdOf(author: string, name: string): string {
 }
 
 /**
- * 作者アカウント（`handle@domain`）の署名公開鍵を返す。見つからなければ undefined。
- * `claimedKey`（署名に使われた鍵）を渡すので、実装は「確認済みの結び付けと一致すればネットワークに出ない、
- * 一致しない・未確認のときだけ確認し直す」ことができる（自サーバーは DB、他ドメインは WebFinger）。
+ * `publicKey` が作者アカウント（`handle@domain`）の取り消されていない公開環境の鍵かの判定結果。
+ * - confirmed: 有効な鍵。`checkedAt` は他サーバーの鍵一覧を最後に確認できた時刻（自サーバー・記録済みでは無し）
+ * - unconfirmed: 一覧に無い・取り消し済み・アカウントが無い
+ * - pending: いまは確認できない（取得の上限などで取りに行かなかった）。作者は付けず、すぐ確認し直す
  */
-export type AuthorKeyResolver = (author: string, claimedKey: string) => Promise<string | undefined>;
+export type AuthorKeyCheckResult =
+    | { status: 'confirmed'; checkedAt?: string }
+    | { status: 'unconfirmed' }
+    | { status: 'pending' };
+
+/**
+ * 1 アカウントは複数の鍵を持つので、署名に使われた鍵を渡して判定させる
+ * （自サーバーは DB、他ドメインは WebFinger から辿る鍵一覧）。`contentHash` は、作者の確認が古い間に
+ * 「古くなる前に確認済みだった内容」にだけ作者を付けるために渡す。
+ */
+export type AuthorKeyCheck = (author: string, publicKey: string, contentHash: string) => Promise<AuthorKeyCheckResult>;
+
+/** 他サーバーの作者の確認がこれより古ければ「確認が古い」と表示する（作者のサーバーが止まっている可能性）。 */
+export const AUTHOR_CHECK_STALE_MS = 24 * 60 * 60 * 1000;
+
+/** 作者の確認が古いか（作者のサーバーから鍵一覧を長く取り直せていない）。 */
+export function isAuthorCheckStale(identity: WorldIdentity | undefined, now: number): boolean {
+    if (identity?.status !== 'verified' || !identity.author || !identity.authorCheckedAt) return false;
+    return now - Date.parse(identity.authorCheckedAt) > AUTHOR_CHECK_STALE_MS;
+}
 
 /** 署名対象のバイト列（UTF-8 化は crypto 側）。signature 以外の全フィールドを正規化する。 */
 export function worldSignaturePayload(fields: Omit<WorldSignature, 'signature'>): string {
@@ -183,15 +203,15 @@ export async function signWorld(
  * 署名を検証して識別結果を返す。`rawSignature` が null/undefined なら unsigned。
  * 照合順: 形式 → name → contentHash → 署名。安価な判定を先に行い、署名検証は最後。
  *
- * 署名が主張する作者アカウントは `resolveAuthorKey` で引いた公開鍵が署名鍵と一致したときだけ採用する。
- * 一致しない・引けない・resolver が無い場合は作者を付けず鍵で識別する（なりすましを表示しない）。
- * 署名自体は正しいので invalid にはしない（鍵の入れ替え後の古い署名もここに来る）。
+ * 署名が主張する作者アカウントは、署名鍵がその作者の有効な鍵だと `isAuthorKey` で確認できたときだけ採用する。
+ * 確認できない・取り消し済み・判定器が無い場合は作者を付けず鍵で識別する（なりすましを表示しない）。
+ * 署名自体は正しいので invalid にはしない（取り消した鍵の署名もここに来る）。
  */
 export async function verifyWorldSignature(
     doc: WorldDocument,
     rawSignature: unknown,
     crypto: WorldCrypto,
-    resolveAuthorKey?: AuthorKeyResolver,
+    isAuthorKey?: AuthorKeyCheck,
 ): Promise<WorldIdentityVerdict> {
     const contentHash = await worldContentHash(doc, crypto);
     if (rawSignature === null || rawSignature === undefined) return { status: 'unsigned', contentHash };
@@ -208,20 +228,27 @@ export async function verifyWorldSignature(
     const unpinned = unpinnedModsOf(doc);
     if (unpinned === null || unpinned.length > 0) return { status: 'invalid', reason: 'lock-incomplete' };
 
-    const authorKey =
-        sig.author && resolveAuthorKey
-            ? await resolveAuthorKey(sig.author, sig.publicKey).catch(() => undefined)
-            : undefined;
-    if (sig.author && authorKey === sig.publicKey) {
+    const check: AuthorKeyCheckResult =
+        sig.author && isAuthorKey
+            ? await isAuthorKey(sig.author, sig.publicKey, contentHash).catch(() => ({ status: 'pending' }) as const)
+            : { status: 'unconfirmed' };
+    if (sig.author && check.status === 'confirmed') {
         return {
             status: 'verified',
             worldId: authorWorldIdOf(sig.author, sig.name),
             publicKey: sig.publicKey,
             contentHash,
             author: sig.author,
+            ...(check.checkedAt ? { authorCheckedAt: check.checkedAt } : {}),
         };
     }
-    return { status: 'verified', worldId: worldIdOf(sig.publicKey, sig.name), publicKey: sig.publicKey, contentHash };
+    return {
+        status: 'verified',
+        worldId: worldIdOf(sig.publicKey, sig.name),
+        publicKey: sig.publicKey,
+        contentHash,
+        ...(check.status === 'pending' ? { authorPending: true as const } : {}),
+    };
 }
 
 // ============================================

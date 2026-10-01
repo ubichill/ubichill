@@ -29,7 +29,7 @@ import {
 } from '@ubichill/shared';
 import { customAlphabet } from 'nanoid';
 import yaml from 'yaml';
-import { resolveAuthorDisplayName, resolveAuthorKey } from './authorKeyStore';
+import { isAuthorKey, resolveAuthorDisplayName } from './authorKeyStore';
 import { assertPublicUrl, safeFetch } from './safeFetch';
 import { nodeWorldCrypto } from './worldCrypto';
 import { migrateLegacyWorldYaml } from './worldMigration';
@@ -88,7 +88,7 @@ export type SetSignatureResult =
  * 配信物の識別。無効な署名（内容更新後の古い署名など）は配信しないので unsigned として扱う。
  */
 async function hostedIdentity(hosted: HostedWorldDocument, label: string): Promise<WorldIdentity> {
-    const verdict = await verifyWorldSignature(hosted, hosted.signature, nodeWorldCrypto, resolveAuthorKey);
+    const verdict = await verifyWorldSignature(hosted, hosted.signature, nodeWorldCrypto, isAuthorKey);
     if (verdict.status !== 'invalid') return verdict;
     console.warn(`⚠ ワールド ${label} の署名が現在の内容と一致しません (${verdict.reason})。未署名として扱います`);
     return { status: 'unsigned', contentHash: await worldContentHash(hosted, nodeWorldCrypto) };
@@ -139,8 +139,10 @@ class WorldRegistry {
     /** DB ユーザーワールドの解決キャッシュ */
     private readonly _resolvedCache = new Map<string, ResolvedWorld>();
     /** 外部（他インスタンス/URL）ワールドの解決キャッシュ（連合、TTL 付き） */
-    private readonly _remoteCache = new Map<string, { at: number; world: ResolvedWorld }>();
+    private readonly _remoteCache = new Map<string, { at: number; ttl: number; world: ResolvedWorld }>();
     private static readonly REMOTE_TTL_MS = 5 * 60 * 1000;
+    /** 作者をいま確かめられなかった（pending）ワールドは、すぐ確認し直せるよう短くキャッシュする。 */
+    private static readonly REMOTE_PENDING_TTL_MS = 30 * 1000;
 
     /** フォロー中の連合ピア（他 ubichill インスタンス） */
     private _peers: FederationPeerRecord[] = [];
@@ -381,13 +383,17 @@ class WorldRegistry {
     /** 外部（他インスタンス/任意 URL）のワールドをその場で解決する（連合）。TTL キャッシュ。 */
     private async _resolveRemote(url: string): Promise<WorldResolution> {
         const cached = this._remoteCache.get(url);
-        if (cached && Date.now() - cached.at < WorldRegistry.REMOTE_TTL_MS) return { ok: true, world: cached.world };
+        if (cached && Date.now() - cached.at < cached.ttl) return { ok: true, world: cached.world };
         try {
             const world = await resolveWorldFromUrl(url, this._externalSource(url), {
-                resolveAuthorKey,
+                isAuthorKey,
                 resolveAuthorName: resolveAuthorDisplayName,
             });
-            this._remoteCache.set(url, { at: Date.now(), world });
+            const ttl =
+                world.identity?.status === 'verified' && world.identity.authorPending
+                    ? WorldRegistry.REMOTE_PENDING_TTL_MS
+                    : WorldRegistry.REMOTE_TTL_MS;
+            this._remoteCache.set(url, { at: Date.now(), ttl, world });
             return { ok: true, world };
         } catch (err) {
             console.error(`❌ 外部ワールド解決失敗: ${url}`, err);
@@ -840,7 +846,7 @@ class WorldRegistry {
         const record = await worldRepository.findByName(worldId);
         if (!record) return { ok: false, reason: 'not-found' };
         const doc: WorldDocument = { definition: record.definition, lock: record.lock ?? null };
-        const verdict = await verifyWorldSignature(doc, rawSignature, nodeWorldCrypto, resolveAuthorKey);
+        const verdict = await verifyWorldSignature(doc, rawSignature, nodeWorldCrypto, isAuthorKey);
         if (verdict.status !== 'verified') {
             return { ok: false, reason: verdict.status === 'invalid' ? verdict.reason : 'malformed' };
         }

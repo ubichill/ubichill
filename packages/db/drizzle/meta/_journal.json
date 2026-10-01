@@ -71,6 +71,13 @@
       "when": 1790536772253,
       "tag": "0009_charming_white_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790671852136,
+      "tag": "0010_publishing_environments",
+      "breakpoints": true
     }
   ]
 }

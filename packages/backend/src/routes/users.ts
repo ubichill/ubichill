@@ -1,19 +1,34 @@
-import { favoriteRepository, userRepository, type WorldRecord, worldRepository } from '@ubichill/db';
+import {
+    favoriteRepository,
+    publishingEnvironmentRepository,
+    userRepository,
+    type WorldRecord,
+    worldRepository,
+} from '@ubichill/db';
 import type { WorldDefinition } from '@ubichill/shared';
 import {
     DisplayNameSchema,
     displayNameKey,
+    ENV_KEYS,
     HandleSchema,
     isPublishable,
     LIMITS,
     OFFICIAL_HANDLE,
+    RevokeReasonSchema,
+    SERVER_CONFIG,
     verifyKeyRegistration,
 } from '@ubichill/shared';
 import { Router } from 'express';
-import { auth, createPendingRegistration, resendOTP, verifyAndRegister } from '../lib/auth';
-import { isAdminHandle, optionalAuth, requireAuth, toWebHeaders } from '../middleware/auth';
+import { auth, createPendingRegistration, resendOTP, sendAccountNotice, verifyAndRegister } from '../lib/auth';
+import { isAdminHandle, optionalAuth, requireAuth, requireFreshAuth, toWebHeaders } from '../middleware/auth';
 import { invalidateAuthorKey } from '../services/authorKeyStore';
 import { selfAccount } from '../services/authorKeys';
+import {
+    browserEnvironmentName,
+    newEnvironmentNotice,
+    publishingEnvironmentView,
+    registrationOutcome,
+} from '../services/publishingEnvironments';
 import { nodeWorldCrypto } from '../services/worldCrypto';
 import { worldRegistry } from '../services/worldRegistry';
 
@@ -142,7 +157,10 @@ router.get('/me', requireAuth, async (req, res) => {
         name: user.name,
         handle: user.handle ?? null,
         author: user.handle ? selfAccount(user.handle) : null,
-        signingPublicKey: user.signingPublicKey ?? null,
+        // 取り消されていない公開環境の鍵（このブラウザの鍵が登録済みかの判定に使う）
+        signingKeys: (await publishingEnvironmentRepository.listByUser(user.id))
+            .filter((e) => !e.revokedAt)
+            .map((e) => e.publicKey),
         // 移行時に他人と表示名が重複していた（一意キー未設定）。変更を促す。
         displayNameConflict: !user.displayNameKey,
         // 公開済みの開発用既定パスワードのまま（公式アカウント）。Secret の設定を促す。
@@ -210,7 +228,7 @@ router.put('/me/display-name', requireAuth, async (req, res) => {
 });
 
 // ID（handle）を設定する。変更不可なので未設定のときだけ受け付ける（既存ユーザーの移行用）。
-router.put('/me/handle', requireAuth, async (req, res) => {
+router.put('/me/handle', requireFreshAuth, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const parsed = HandleSchema.safeParse(typeof req.body?.handle === 'string' ? req.body.handle.trim() : '');
     if (!parsed.success) {
@@ -231,8 +249,15 @@ router.put('/me/handle', requireAuth, async (req, res) => {
     }
 });
 
-// 作者署名の公開鍵を登録・置き換える（1 アカウント 1 本）。秘密鍵の所有を署名で証明させる。
-router.put('/me/signing-key', requireAuth, async (req, res) => {
+// 公開環境（署名鍵）の一覧。取り消したものも含む。
+router.get('/me/publishing-environments', requireAuth, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    const rows = await publishingEnvironmentRepository.listByUser(req.user.id);
+    return res.json({ environments: rows.map(publishingEnvironmentView) });
+});
+
+// このブラウザを公開環境として登録する（ログインできる = 公開できる）。秘密鍵の所有を署名で証明させる。
+router.post('/me/publishing-environments', requireFreshAuth, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const { publicKey, at, signature } = (req.body ?? {}) as { publicKey?: unknown; at?: unknown; signature?: unknown };
     if (typeof publicKey !== 'string' || typeof at !== 'string' || typeof signature !== 'string') {
@@ -246,12 +271,54 @@ router.put('/me/signing-key', requireAuth, async (req, res) => {
     );
     if (!verdict.ok) return res.status(422).json({ error: `鍵の所有を確認できません (${verdict.reason})` });
 
-    const updated = await userRepository.setSigningPublicKey(req.user.id, publicKey);
-    if (!updated) return res.status(404).json({ error: 'User not found' });
-    // 作者表示・worldId が変わるので、キャッシュ済みの識別結果を捨てる
-    if (updated.handle) invalidateAuthorKey(selfAccount(updated.handle));
+    const existing = await publishingEnvironmentRepository.findByPublicKey(publicKey);
+    const outcome = registrationOutcome(existing, req.user.id);
+    if (outcome === 'already-registered' && existing) {
+        return res.json({ environment: publishingEnvironmentView(existing) });
+    }
+    if (outcome === 'revoked') {
+        return res.status(409).json({ error: 'この鍵は取り消し済みのため使えません', code: 'revoked' });
+    }
+    if (outcome === 'taken') return res.status(409).json({ error: 'この鍵は登録できません', code: 'taken' });
+    try {
+        const created = await publishingEnvironmentRepository.create({
+            userId: req.user.id,
+            kind: 'browser',
+            name: browserEnvironmentName(req.get('user-agent')),
+            publicKey,
+        });
+        worldRegistry.invalidateResolvedWorlds();
+        // 乗っ取った攻撃者が公開環境を追加しても本人が気付けるように知らせる
+        const notice = newEnvironmentNotice({
+            displayName: req.user.name,
+            environmentName: created.name,
+            profileUrl: new URL(`/user/${req.user.id}`, process.env[ENV_KEYS.PUBLIC_BASE_URL] || SERVER_CONFIG.DEV_URL)
+                .href,
+            at: created.createdAt,
+        });
+        void sendAccountNotice(req.user.email, notice.subject, notice.text);
+        return res.status(201).json({ environment: publishingEnvironmentView(created) });
+    } catch {
+        return res.status(409).json({ error: 'この鍵は登録できません', code: 'taken' });
+    }
+});
+
+// 公開環境を取り消す。その鍵の署名は、取り消し前のものも含めてすべて作者が付かなくなる。
+router.post('/me/publishing-environments/:id/revoke', requireFreshAuth, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    const reason = RevokeReasonSchema.safeParse(req.body?.reason);
+    if (!reason.success) return res.status(400).json({ error: '取り消す理由（lost / compromised）が必要です' });
+    const revoked = await publishingEnvironmentRepository.revoke(req.user.id, String(req.params.id), reason.data);
+    if (!revoked) return res.status(404).json({ error: '有効な公開環境が見つかりません' });
     worldRegistry.invalidateResolvedWorlds();
-    return res.json({ signingPublicKey: updated.signingPublicKey });
+    return res.json({ environment: publishingEnvironmentView(revoked) });
+});
+
+// いま使っているもの以外のログインをすべて無効にする（乗っ取りに気付いたとき。公開環境の取り消しだけでは攻撃者のログインは残る）
+router.post('/me/sessions/revoke-others', requireFreshAuth, async (req, res) => {
+    if (!req.user || !req.session) return res.status(401).json({ error: 'Unauthorized' });
+    const revoked = await userRepository.revokeOtherSessions(req.user.id, req.session.id);
+    return res.json({ revoked });
 });
 
 // 自分が作成したワールド一覧（編集に使う詳細情報を含む）

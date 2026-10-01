@@ -2,13 +2,13 @@ import type { WorldDefinition } from '@ubichill/shared';
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router';
 import yaml from 'yaml';
-import { fetchMyAccount, type MyAccount } from '@/lib/account/me';
+import { fetchMyAccount } from '@/lib/account/me';
 import { API_BASE } from '@/lib/api';
 import { createInstance as createInstanceApi } from '@/lib/instancesApi';
 import {
+    authorSignerFor,
     browserFetch,
     createHostedWorld,
-    loadSigningKey,
     type PublishReadiness,
     publishReadiness,
     saveHostedDraft,
@@ -28,10 +28,7 @@ interface UseWorldEditorApiArgs {
     /** エラーメッセージの通知先 (ページ側で集約管理する) */
     onError: (msg: string) => void;
     /** 公開の準備が足りないとき、公開の準備ダイアログで利用者の操作を待つ */
-    requestPublishSetup: (
-        readiness: Exclude<PublishReadiness, { kind: 'ready' }>,
-        account: MyAccount | null,
-    ) => Promise<PublishDecision>;
+    requestPublishSetup: (readiness: Exclude<PublishReadiness, { kind: 'ready' }>) => Promise<PublishDecision>;
 }
 
 /**
@@ -48,7 +45,7 @@ const deps = { apiBase: API_BASE, fetch: browserFetch };
 /**
  * ワールドの保存・公開・削除・インスタンス作成 API 呼び出しを集約する hook。
  * - saveDraft: 下書き保存。鍵・ID などの準備は不要で、公開中の版は変えない。
- * - publish: 作者アカウントで署名して公開する（準備が足りなければ公開の準備ダイアログ）。
+ * - publish: 作者アカウントで署名して公開する。鍵の用意と公開環境の登録は自動（ID が無ければその場で決めてもらう）。
  */
 export function useWorldEditorApi({
     isEdit,
@@ -100,24 +97,21 @@ export function useWorldEditorApi({
         () =>
             withSaving(async () => {
                 const { body, unpinned } = await buildSaveBody(definition);
-                const [key, account] = await Promise.all([
-                    loadSigningKey().catch(() => null),
-                    fetchMyAccount().catch(() => null),
-                ]);
-                const readiness = publishReadiness(key, account, unpinned);
+                const readiness = publishReadiness(await fetchMyAccount().catch(() => null), unpinned);
                 const decision: PublishDecision =
                     readiness.kind === 'ready'
-                        ? { kind: 'signed', signer: readiness.signer }
-                        : await requestPublishSetup(readiness, account);
+                        ? { kind: 'continue', account: readiness.account }
+                        : await requestPublishSetup(readiness);
                 if (decision.kind === 'cancel') return false;
+                const signer = await authorSignerFor(decision.account);
 
                 if (isEdit && worldId) {
-                    await updateHostedWorld(worldId, body, decision.signer, deps);
+                    await updateHostedWorld(worldId, body, signer, deps);
                     onSavedYamlChange(body.yaml);
                     onPublishStateChange({ published: true, hasDraft: false });
                     return true;
                 }
-                const created = await createHostedWorld(body, decision.signer, deps);
+                const created = await createHostedWorld(body, signer, deps);
                 if (created.signError)
                     onError(`作成しましたが公開できませんでした（下書きのままです）: ${created.signError}`);
                 navigate(`/world/${created.id}/edit`, { replace: true });

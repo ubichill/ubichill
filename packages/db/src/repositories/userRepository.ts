@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { db } from '../index';
 import { accounts, sessions, users } from '../schema';
 
@@ -69,22 +69,16 @@ export const userRepository = {
         await db.update(users).set({ passwordChangeRequired: required, updatedAt: new Date() }).where(eq(users.id, id));
     },
 
-    /** 公式アカウントの初期化用: ID・表示名・確認済み・署名鍵などをまとめて設定する。 */
+    /** 公式アカウントの初期化用: ID・表示名・確認済みなどをまとめて設定する。 */
     async initializeAccount(
         id: string,
-        fields: Partial<
-            Pick<UserRecord, 'handle' | 'name' | 'displayNameKey' | 'signingPublicKey' | 'emailVerified'>
-        > & {
+        fields: Partial<Pick<UserRecord, 'handle' | 'name' | 'displayNameKey' | 'emailVerified'>> & {
             passwordChangeRequired?: boolean;
         },
     ): Promise<void> {
         await db
             .update(users)
-            .set({
-                ...fields,
-                ...(fields.signingPublicKey ? { signingKeyUpdatedAt: new Date() } : {}),
-                updatedAt: new Date(),
-            })
+            .set({ ...fields, updatedAt: new Date() })
             .where(eq(users.id, id));
     },
 
@@ -117,6 +111,15 @@ export const userRepository = {
         });
     },
 
+    /** いま使っているもの以外のログインをすべて無効にする（乗っ取りに気付いたとき）。無効にした数を返す。 */
+    async revokeOtherSessions(userId: string, keepSessionId: string): Promise<number> {
+        const removed = await db
+            .delete(sessions)
+            .where(and(eq(sessions.userId, userId), ne(sessions.id, keepSessionId)))
+            .returning({ id: sessions.id });
+        return removed.length;
+    },
+
     /** そのユーザーのログインをすべて無効にする。 */
     async revokeSessions(userId: string): Promise<void> {
         await db.delete(sessions).where(eq(sessions.userId, userId));
@@ -136,16 +139,6 @@ export const userRepository = {
             .update(users)
             .set({ handle, updatedAt: new Date() })
             .where(and(eq(users.id, id), isNull(users.handle)))
-            .returning();
-        return results[0];
-    },
-
-    async setSigningPublicKey(id: string, publicKey: string): Promise<UserRecord | undefined> {
-        const now = new Date();
-        const results = await db
-            .update(users)
-            .set({ signingPublicKey: publicKey, signingKeyUpdatedAt: now, updatedAt: now })
-            .where(eq(users.id, id))
             .returning();
         return results[0];
     },

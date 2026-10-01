@@ -4,21 +4,22 @@ import { useNavigate } from 'react-router';
 import { WorldDetailModal } from '@/components/lobby/WorldDetailModal';
 import { WorldIdentityBadge } from '@/components/lobby/WorldIdentityBadge';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
+import { type ResignResult, resignAll } from '@/lib/account/resign';
 import { API_BASE } from '@/lib/api';
 import { useSession } from '@/lib/session';
-import { browserFetch, loadSigningKey, signerFor, signHostedWorld } from '@/lib/signing';
+import { authorSignerFor, browserFetch, signHostedWorld } from '@/lib/signing';
 import { css } from '@/styled-system/css';
 import { DisplayNameEditor } from './DisplayNameEditor';
 import { PasswordSection } from './PasswordSection';
-import { SigningKeySection } from './SigningKeySection';
+import { PublishingSection } from './PublishingSection';
 
-/** 公開プロフィール。自分のページでは MyAccount の項目（登録鍵など）も入る。 */
+/** 公開プロフィール。自分のページでは MyAccount の項目（公開環境の鍵など）も入る。 */
 interface UserProfile {
     id: string;
     name: string;
     handle: string | null;
     author: string | null;
-    signingPublicKey?: string | null;
+    signingKeys?: string[];
     displayNameConflict?: boolean;
     passwordChangeRequired?: boolean;
     passwordManagedBySecret?: boolean;
@@ -64,12 +65,19 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
     const isOwnPage = !!session && targetUserId === session.user.id;
 
     const [profile, setProfile] = useState<UserProfile | null>(null);
+    const [environmentsVersion, setEnvironmentsVersion] = useState(0);
     const [worlds, setWorlds] = useState<OwnedWorld[]>([]);
     const [selectedWorldId, setSelectedWorldId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
     const selectedWorld = useMemo(() => worlds.find((w) => w.id === selectedWorldId), [worlds, selectedWorldId]);
+
+    /** 自分のワールドの一覧を読み込み直す（公開環境の取り消しで作者表示が変わったとき）。 */
+    const reloadMyWorlds = async () => {
+        const res = await fetch(`${API_BASE}/api/v1/users/me/worlds`, { credentials: 'include' });
+        if (res.ok) setWorlds(((await res.json()) as { worlds: OwnedWorld[] }).worlds);
+    };
 
     const go = async (path: string) => {
         if (!(await confirm('このページに移動しますか？'))) return;
@@ -133,25 +141,32 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
     const remaining = Math.max(0, LIMITS.MAX_WORLDS_PER_USER - worlds.length);
     const unsignedCount = isOwnPage ? worlds.filter((w) => !isPublishable(w.identity)).length : 0;
 
-    // 保存し直さなくても、今の内容にこのブラウザの鍵で署名して公開できるようにする。
-    const signWorld = async (worldId: string) => {
+    // 保存し直さなくても、今の内容に作者アカウントで署名して公開できるようにする（鍵の用意・登録は自動）。
+    // 取り消した鍵で署名したワールドをまとめて署名し直すときも同じ処理を使う（鍵の用意は 1 回だけ）。
+    const signWorlds = async (worldIds: readonly string[]): Promise<ResignResult<WorldIdentity>> => {
         setError('');
+        if (!profile?.author) {
+            setError('公開するには、上の「公開」で ID を設定してください。');
+            return { done: [], failed: worldIds.map((id) => ({ id, error: 'ID が未設定です' })) };
+        }
         try {
-            const signer = signerFor(
-                await loadSigningKey(),
-                profile ? { ...profile, signingPublicKey: profile.signingPublicKey ?? null } : null,
-            );
-            // 公開には作者アカウント（ID + 登録済みの鍵）での署名が要る。鍵だけの署名では公開されない。
-            if (!signer?.author) {
-                setError(
-                    '公開するには、上の「作者署名」で ID を設定し、このブラウザの鍵をアカウントに登録してください。',
-                );
-                return;
+            const signingKeys = profile.signingKeys ?? [];
+            const signer = await authorSignerFor({ id: profile.id, author: profile.author, signingKeys });
+            if (!signingKeys.includes(signer.key.publicKey)) {
+                setProfile({ ...profile, signingKeys: [...signingKeys, signer.key.publicKey] });
+                setEnvironmentsVersion((v) => v + 1);
             }
-            const identity = await signHostedWorld(worldId, signer, { apiBase: API_BASE, fetch: browserFetch });
-            setWorlds((prev) => prev.map((w) => (w.id === worldId ? { ...w, identity } : w)));
+            const result = await resignAll(worldIds, (worldId) =>
+                signHostedWorld(worldId, signer, { apiBase: API_BASE, fetch: browserFetch }),
+            );
+            const signed = new Map(result.done.map((d) => [d.id, d.identity]));
+            setWorlds((prev) => prev.map((w) => (signed.has(w.id) ? { ...w, identity: signed.get(w.id) } : w)));
+            if (worldIds.length === 1 && result.failed[0]) setError(result.failed[0].error);
+            return result;
         } catch (e) {
-            setError(e instanceof Error ? e.message : '署名に失敗しました');
+            const message = e instanceof Error ? e.message : '署名に失敗しました';
+            setError(message);
+            return { done: [], failed: worldIds.map((id) => ({ id, error: message })) };
         }
     };
     const canCreate = isOwnPage && remaining > 0;
@@ -247,10 +262,10 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                 />
             )}
             {isOwnPage && profile && (
-                <SigningKeySection
+                <PublishingSection
                     account={{
                         ...profile,
-                        signingPublicKey: profile.signingPublicKey ?? null,
+                        signingKeys: profile.signingKeys ?? [],
                         displayNameConflict: !!profile.displayNameConflict,
                         passwordChangeRequired: !!profile.passwordChangeRequired,
                         passwordManagedBySecret: !!profile.passwordManagedBySecret,
@@ -258,6 +273,10 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                     }}
                     onAccountChange={setProfile}
                     unsignedCount={unsignedCount}
+                    worlds={worlds}
+                    onResign={signWorlds}
+                    onRevoked={reloadMyWorlds}
+                    refreshKey={environmentsVersion}
                 />
             )}
 
@@ -345,7 +364,13 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                                 world={w}
                                 editable={isOwnPage}
                                 onEdit={() => go(`/world/${w.id}/edit`)}
-                                onSign={isOwnPage && !isPublishable(w.identity) ? () => signWorld(w.id) : undefined}
+                                onSign={
+                                    // 署名済みで作者を確認できないワールド（取り消した鍵など）は、上の「公開」欄から署名し直す。
+                                    // 漏えいした環境の署名は中身を確かめさせるため、ここでは 1 クリックで署名し直させない
+                                    isOwnPage && !isPublishable(w.identity) && w.identity?.status !== 'verified'
+                                        ? async () => void (await signWorlds([w.id]))
+                                        : undefined
+                                }
                                 onOpen={() => setSelectedWorldId(w.id)}
                                 onDelete={
                                     isOwnPage
@@ -622,6 +647,11 @@ function OwnedWorldCard({
                     <span>v{world.version}</span>
                     {editable && <WorldIdentityBadge identity={world.identity} />}
                 </div>
+                {editable && !onSign && world.identity?.status === 'verified' && !world.identity.author && (
+                    <p className={css({ fontSize: '11px', color: 'textMuted', lineHeight: '1.4' })}>
+                        作者を確認できない鍵（取り消し済みなど）で署名されているため、一覧に公開されていません。上の「公開」欄から署名し直せます
+                    </p>
+                )}
                 {onSign && (
                     <div className={css({ display: 'flex', flexDirection: 'column', gap: '1' })}>
                         <p className={css({ fontSize: '11px', color: 'textMuted', lineHeight: '1.4' })}>
