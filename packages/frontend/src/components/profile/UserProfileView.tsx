@@ -641,7 +641,9 @@ function OwnedWorldCard({
                 {onSign && (
                     <div className={css({ display: 'flex', flexDirection: 'column', gap: '1' })}>
                         <p className={css({ fontSize: '11px', color: 'textMuted', lineHeight: '1.4' })}>
-                            署名がないため一覧に公開されていません
+                            {world.identity?.status === 'verified'
+                                ? '作者を確認できない鍵（取り消し済みなど）で署名されているため、一覧に公開されていません'
+                                : '署名がないため一覧に公開されていません'}
                         </p>
                         <button
                             type="button"
