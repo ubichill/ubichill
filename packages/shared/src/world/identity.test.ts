@@ -237,7 +237,7 @@ describe('signWorld / verifyWorldSignature', () => {
 });
 
 describe('作者アカウント（author）', () => {
-    const AUTHOR = 'hanako@ubichill.com';
+    const AUTHOR = 'youkan@ubichill.com';
     const resolverFor =
         (keys: Record<string, string | undefined>): AuthorKeyCheck =>
         async (author, publicKey) =>
@@ -498,7 +498,7 @@ describe('isPublishable（公開してよいか）', () => {
     };
 
     it('作者アカウントまで確認できた署名だけ公開する', () => {
-        expect(isPublishable({ ...base, author: 'hanako@ubichill.com' })).toBe(true);
+        expect(isPublishable({ ...base, author: 'youkan@ubichill.com' })).toBe(true);
     });
 
     it('鍵だけの署名（作者不明）・未署名・識別不明は公開しない（例外なし）', () => {

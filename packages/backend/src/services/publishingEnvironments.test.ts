@@ -36,7 +36,7 @@ describe('registrationOutcome', () => {
 describe('signingKeyListOf', () => {
     it('取り消した鍵も revokedAt 付きで残す（取り消しと取得失敗を区別できるように）', () => {
         const list = signingKeyListOf(
-            'hanako@ubichill.com',
+            'youkan@ubichill.com',
             [
                 {
                     id: 'e1',
@@ -62,7 +62,7 @@ describe('signingKeyListOf', () => {
             at('2026-09-29T00:00:00Z'),
         );
         expect(list).toEqual({
-            account: 'hanako@ubichill.com',
+            account: 'youkan@ubichill.com',
             issuedAt: '2026-09-29T00:00:00.000Z',
             keys: [
                 { publicKey: K1, addedAt: '2026-09-01T00:00:00.000Z', revokedAt: '2026-09-02T00:00:00.000Z' },
@@ -137,7 +137,7 @@ describe('browserEnvironmentName', () => {
 describe('newEnvironmentNotice（乗っ取りに気付けるように）', () => {
     it('追加された環境の名前と、心当たりがないときの対処（漏えいとして取り消す・パスワード変更・ログアウト）を伝える', () => {
         const notice = newEnvironmentNotice({
-            displayName: 'はなこ',
+            displayName: 'ようかん',
             environmentName: 'Chrome on Windows',
             profileUrl: 'https://ubichill.com/user/u1',
             at: new Date('2026-10-01T00:00:00Z'),
@@ -164,7 +164,7 @@ describe('authorAccountsOf / isRepositoryManagedKey（公式アカウントの�
     });
 
     it('ほかのアカウントは自サーバーの作者アカウントだけ。ID が無ければ作者ではない', () => {
-        expect(authorAccountsOf('hanako', self, official)).toEqual(['hanako@pr-1.ubichill.com']);
+        expect(authorAccountsOf('youkan', self, official)).toEqual(['youkan@pr-1.ubichill.com']);
         expect(authorAccountsOf(null, self, official)).toEqual([]);
     });
 
@@ -172,6 +172,6 @@ describe('authorAccountsOf / isRepositoryManagedKey（公式アカウントの�
         const pinned = (account: string) => (account === 'ubichill@ubichill.com' ? [{ publicKey: K1 }] : []);
         expect(isRepositoryManagedKey(K1, ['ubichill@pr-1.ubichill.com', 'ubichill@ubichill.com'], pinned)).toBe(true);
         expect(isRepositoryManagedKey(K2, ['ubichill@ubichill.com'], pinned)).toBe(false);
-        expect(isRepositoryManagedKey(K1, ['hanako@ubichill.com'], pinned)).toBe(false);
+        expect(isRepositoryManagedKey(K1, ['youkan@ubichill.com'], pinned)).toBe(false);
     });
 });

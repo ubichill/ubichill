@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { ensureAuthorSigner, type KeyRegistrationResult } from './publisher';
 
 const key = (publicKey: string): WorldSigningKey => ({ publicKey, sign: async () => '' });
-const account = { id: 'u1', author: 'hanako@ubichill.com', signingKeys: [] as string[] };
+const account = { id: 'u1', author: 'youkan@ubichill.com', signingKeys: [] as string[] };
 
 function fakeDeps(state: { local?: string; revoked?: string[]; taken?: string[]; failRegister?: boolean }) {
     const log: string[] = [];
@@ -38,7 +38,7 @@ describe('ensureAuthorSigner（このブラウザを公開環境にする）', (
     it('登録済みの鍵ならそのまま作者付きで署名する（サーバーに出ない）', async () => {
         const { deps, log } = fakeDeps({ local: 'K' });
         const signer = await ensureAuthorSigner({ ...account, signingKeys: ['K'] }, deps);
-        expect(signer).toMatchObject({ author: 'hanako@ubichill.com', key: { publicKey: 'K' } });
+        expect(signer).toMatchObject({ author: 'youkan@ubichill.com', key: { publicKey: 'K' } });
         expect(log).toEqual([]);
     });
 

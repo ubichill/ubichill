@@ -4,13 +4,13 @@ import { publishReadiness } from './publishReadiness';
 
 const account: MyAccount = {
     id: 'u1',
-    name: 'はなこ',
+    name: 'ようかん',
     displayNameConflict: false,
     passwordChangeRequired: false,
     passwordManagedBySecret: false,
     isAdmin: false,
-    handle: 'hanako',
-    author: 'hanako@ubichill.com',
+    handle: 'youkan',
+    author: 'youkan@ubichill.com',
     signingKeys: [],
     profileImageUrl: null,
 };

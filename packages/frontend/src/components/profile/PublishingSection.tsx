@@ -295,7 +295,6 @@ export function PublishingSection({
                         <input
                             value={handleInput}
                             onChange={(e) => setHandleInput(e.target.value.toLowerCase().slice(0, 30))}
-                            placeholder="your_id"
                             aria-label="ID"
                             autoCapitalize="none"
                             spellCheck={false}

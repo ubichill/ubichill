@@ -109,10 +109,10 @@ describe('createAuthorKeyDirectory（公開環境の鍵一覧と取り消し）'
         const directory = createAuthorKeyDirectory({
             selfDomain: () => 'ubichill.com',
             findLocalAccount: async (handle) =>
-                handle === 'hanako'
+                handle === 'youkan'
                     ? {
                           keys: [{ publicKey: LOCAL }, { publicKey: LOCAL_REVOKED, revokedAt: REVOKED_AT }],
-                          displayName: 'はなこ',
+                          displayName: 'ようかん',
                       }
                     : undefined,
             bindings: {
@@ -154,12 +154,12 @@ describe('createAuthorKeyDirectory（公開環境の鍵一覧と取り消し）'
 
     it('自サーバーのアカウントは DB の公開環境で判定し、取り消した鍵は作者にしない', async () => {
         const { directory, calls } = setup();
-        expect((await directory.isAuthorKey('hanako@ubichill.com', LOCAL, HASH)).status === 'confirmed').toBe(true);
-        expect((await directory.isAuthorKey('hanako@ubichill.com', LOCAL_REVOKED, HASH)).status === 'confirmed').toBe(
+        expect((await directory.isAuthorKey('youkan@ubichill.com', LOCAL, HASH)).status === 'confirmed').toBe(true);
+        expect((await directory.isAuthorKey('youkan@ubichill.com', LOCAL_REVOKED, HASH)).status === 'confirmed').toBe(
             false,
         );
-        expect((await directory.isAuthorKey('hanako@ubichill.com', OTHER, HASH)).status === 'confirmed').toBe(false);
-        expect(await directory.displayName('hanako@ubichill.com')).toBe('はなこ');
+        expect((await directory.isAuthorKey('youkan@ubichill.com', OTHER, HASH)).status === 'confirmed').toBe(false);
+        expect(await directory.displayName('youkan@ubichill.com')).toBe('ようかん');
         expect(calls.fetch).toEqual([]);
     });
 

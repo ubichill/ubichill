@@ -7,7 +7,7 @@ const item = (url: string): WorldListItem =>
 
 describe('favoriteRefOf', () => {
     it('外部ワールドの URL をそのまま受け付ける', () => {
-        const url = 'https://raw.githubusercontent.com/iehanako/ubichill-worlds/main/worlds/chillwa.yaml';
+        const url = 'https://raw.githubusercontent.com/ieyoukan/ubichill-worlds/main/worlds/chillwa.yaml';
         expect(favoriteRefOf(url)).toEqual({ ok: true, ref: url });
     });
 

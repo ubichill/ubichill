@@ -21,10 +21,10 @@ describe('unverifiedEntryKey', () => {
             unverifiedEntryKey(
                 world({
                     status: 'verified',
-                    worldId: 'acct:hanako@ubichill.com/w',
+                    worldId: 'acct:youkan@ubichill.com/w',
                     publicKey: 'k'.repeat(43),
                     contentHash: HASH_A,
-                    author: 'hanako@ubichill.com',
+                    author: 'youkan@ubichill.com',
                 }),
             ),
         ).toBeNull();

@@ -23,23 +23,23 @@ describe('signingKeyStatus', () => {
 
 describe('parseSigningKeyList', () => {
     const list = {
-        account: 'hanako@ubichill.com',
+        account: 'youkan@ubichill.com',
         issuedAt: '2026-09-29T00:00:00.000Z',
         keys: [{ publicKey: K1, addedAt: '2026-09-01T00:00:00.000Z' }],
     };
 
     it('問い合わせたアカウントの一覧だけを採用する（ドメインの大文字小文字は同一視）', () => {
-        expect(parseSigningKeyList(list, 'hanako@UbiChill.com')).toEqual(list);
+        expect(parseSigningKeyList(list, 'youkan@UbiChill.com')).toEqual(list);
         expect(parseSigningKeyList(list, 'evil@ubichill.com')).toBeUndefined();
-        expect(parseSigningKeyList(list, 'hanako@evil.com')).toBeUndefined();
+        expect(parseSigningKeyList(list, 'youkan@evil.com')).toBeUndefined();
     });
 
     it('形式不正（鍵の形・日時・欠損）は採用しない', () => {
-        expect(parseSigningKeyList({ ...list, keys: [{ publicKey: 'short' }] }, 'hanako@ubichill.com')).toBeUndefined();
+        expect(parseSigningKeyList({ ...list, keys: [{ publicKey: 'short' }] }, 'youkan@ubichill.com')).toBeUndefined();
         expect(
-            parseSigningKeyList({ ...list, keys: [{ publicKey: K1, revokedAt: 'yesterday' }] }, 'hanako@ubichill.com'),
+            parseSigningKeyList({ ...list, keys: [{ publicKey: K1, revokedAt: 'yesterday' }] }, 'youkan@ubichill.com'),
         ).toBeUndefined();
-        expect(parseSigningKeyList({ account: list.account, keys: [] }, 'hanako@ubichill.com')).toBeUndefined();
-        expect(parseSigningKeyList(null, 'hanako@ubichill.com')).toBeUndefined();
+        expect(parseSigningKeyList({ account: list.account, keys: [] }, 'youkan@ubichill.com')).toBeUndefined();
+        expect(parseSigningKeyList(null, 'youkan@ubichill.com')).toBeUndefined();
     });
 });

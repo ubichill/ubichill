@@ -4,7 +4,7 @@
  * - 表示名（users.name）は日本語・記号も可。VRChat のように一意で、検索に使う。変更できる。
  *   一意性は {@link displayNameKey}（全角半角・大文字小文字・空白の違いを同一視）で判定する。
  * - handle は URL・署名・機械処理用の ID。英小文字・数字・`_` の 3〜30 文字、一意、変更不可。
- * - 作者アカウントは `handle@domain`（例 `hanako@ubichill.com`）。表示は `@hanako@ubichill.com`。
+ * - 作者アカウントは `handle@domain`（例 `youkan@ubichill.com`）。表示は `@youkan@ubichill.com`。
  *   domain は handle を発行したサーバー（または作者自身のドメイン）で、WebFinger で公開鍵を引ける。
  */
 import { z } from 'zod';
@@ -111,7 +111,7 @@ function isControlText(value: string): boolean {
 
 /**
  * 表示名の一意性判定キー。NFKC（全角英数→半角など）・前後空白除去・連続空白の圧縮・小文字化。
- * 「Hanako」「ｈａｎａｋｏ」「hanako 」を同じ名前として扱い、見分けにくい重複を防ぐ。
+ * 「Youkan」「ｙｏｕｋａｎ」「youkan 」を同じ名前として扱い、見分けにくい重複を防ぐ。
  * DB の移行 SQL（lower(regexp_replace(btrim(normalize(name, NFKC)), '\s+', ' ', 'g'))）と同じ規則。
  */
 export function displayNameKey(name: string): string {
