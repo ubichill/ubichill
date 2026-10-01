@@ -20,7 +20,7 @@ import {
 } from '@ubichill/shared';
 import { Router } from 'express';
 import { auth, createPendingRegistration, resendOTP, sendAccountNotice, verifyAndRegister } from '../lib/auth';
-import { isAdminHandle, optionalAuth, requireAuth, toWebHeaders } from '../middleware/auth';
+import { isAdminHandle, optionalAuth, requireAuth, requireFreshAuth, toWebHeaders } from '../middleware/auth';
 import { invalidateAuthorKey } from '../services/authorKeyStore';
 import { selfAccount } from '../services/authorKeys';
 import {
@@ -228,7 +228,7 @@ router.put('/me/display-name', requireAuth, async (req, res) => {
 });
 
 // ID（handle）を設定する。変更不可なので未設定のときだけ受け付ける（既存ユーザーの移行用）。
-router.put('/me/handle', requireAuth, async (req, res) => {
+router.put('/me/handle', requireFreshAuth, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const parsed = HandleSchema.safeParse(typeof req.body?.handle === 'string' ? req.body.handle.trim() : '');
     if (!parsed.success) {
@@ -257,7 +257,7 @@ router.get('/me/publishing-environments', requireAuth, async (req, res) => {
 });
 
 // このブラウザを公開環境として登録する（ログインできる = 公開できる）。秘密鍵の所有を署名で証明させる。
-router.post('/me/publishing-environments', requireAuth, async (req, res) => {
+router.post('/me/publishing-environments', requireFreshAuth, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const { publicKey, at, signature } = (req.body ?? {}) as { publicKey?: unknown; at?: unknown; signature?: unknown };
     if (typeof publicKey !== 'string' || typeof at !== 'string' || typeof signature !== 'string') {
@@ -304,7 +304,7 @@ router.post('/me/publishing-environments', requireAuth, async (req, res) => {
 });
 
 // 公開環境を取り消す。その鍵の署名は、取り消し前のものも含めてすべて作者が付かなくなる。
-router.post('/me/publishing-environments/:id/revoke', requireAuth, async (req, res) => {
+router.post('/me/publishing-environments/:id/revoke', requireFreshAuth, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const reason = RevokeReasonSchema.safeParse(req.body?.reason);
     if (!reason.success) return res.status(400).json({ error: '取り消す理由（lost / compromised）が必要です' });
@@ -315,7 +315,7 @@ router.post('/me/publishing-environments/:id/revoke', requireAuth, async (req, r
 });
 
 // いま使っているもの以外のログインをすべて無効にする（乗っ取りに気付いたとき。公開環境の取り消しだけでは攻撃者のログインは残る）
-router.post('/me/sessions/revoke-others', requireAuth, async (req, res) => {
+router.post('/me/sessions/revoke-others', requireFreshAuth, async (req, res) => {
     if (!req.user || !req.session) return res.status(401).json({ error: 'Unauthorized' });
     const revoked = await userRepository.revokeOtherSessions(req.user.id, req.session.id);
     return res.json({ revoked });

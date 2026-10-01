@@ -73,6 +73,12 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
 
     const selectedWorld = useMemo(() => worlds.find((w) => w.id === selectedWorldId), [worlds, selectedWorldId]);
 
+    /** 自分のワールドの一覧を読み込み直す（公開環境の取り消しで作者表示が変わったとき）。 */
+    const reloadMyWorlds = async () => {
+        const res = await fetch(`${API_BASE}/api/v1/users/me/worlds`, { credentials: 'include' });
+        if (res.ok) setWorlds(((await res.json()) as { worlds: OwnedWorld[] }).worlds);
+    };
+
     const go = async (path: string) => {
         if (!(await confirm('このページに移動しますか？'))) return;
         onNavigate?.();
@@ -269,6 +275,7 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                     unsignedCount={unsignedCount}
                     worlds={worlds}
                     onResign={signWorlds}
+                    onRevoked={reloadMyWorlds}
                     refreshKey={environmentsVersion}
                 />
             )}
@@ -358,7 +365,9 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                                 editable={isOwnPage}
                                 onEdit={() => go(`/world/${w.id}/edit`)}
                                 onSign={
-                                    isOwnPage && !isPublishable(w.identity)
+                                    // 署名済みで作者を確認できないワールド（取り消した鍵など）は、上の「公開」欄から署名し直す。
+                                    // 漏えいした環境の署名は中身を確かめさせるため、ここでは 1 クリックで署名し直させない
+                                    isOwnPage && !isPublishable(w.identity) && w.identity?.status !== 'verified'
                                         ? async () => void (await signWorlds([w.id]))
                                         : undefined
                                 }
@@ -638,12 +647,15 @@ function OwnedWorldCard({
                     <span>v{world.version}</span>
                     {editable && <WorldIdentityBadge identity={world.identity} />}
                 </div>
+                {editable && !onSign && world.identity?.status === 'verified' && !world.identity.author && (
+                    <p className={css({ fontSize: '11px', color: 'textMuted', lineHeight: '1.4' })}>
+                        作者を確認できない鍵（取り消し済みなど）で署名されているため、一覧に公開されていません。上の「公開」欄から署名し直せます
+                    </p>
+                )}
                 {onSign && (
                     <div className={css({ display: 'flex', flexDirection: 'column', gap: '1' })}>
                         <p className={css({ fontSize: '11px', color: 'textMuted', lineHeight: '1.4' })}>
-                            {world.identity?.status === 'verified'
-                                ? '作者を確認できない鍵（取り消し済みなど）で署名されているため、一覧に公開されていません'
-                                : '署名がないため一覧に公開されていません'}
+                            署名がないため一覧に公開されていません
                         </p>
                         <button
                             type="button"

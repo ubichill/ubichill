@@ -9,7 +9,7 @@ import {
 } from '@ubichill/shared';
 import { Router } from 'express';
 import yaml from 'yaml';
-import { optionalAuth, requireAdmin, requireAuth } from '../middleware/auth';
+import { optionalAuth, requireAdmin, requireAuth, requireFreshAuth } from '../middleware/auth';
 import { selfAccount } from '../services/authorKeys';
 import { prepareWorldUpdate, worldRegistry } from '../services/worldRegistry';
 
@@ -244,7 +244,7 @@ router.get('/:worldId', optionalAuth, async (req, res) => {
  * - metadata.name はサーバー側で nanoid 生成
  * - 1ユーザー最大 LIMITS.MAX_WORLDS_PER_USER 個まで
  */
-router.post('/', requireAuth, async (req, res) => {
+router.post('/', requireFreshAuth, async (req, res) => {
     try {
         if (!req.user) {
             res.status(401).json({ error: 'Unauthorized' });
@@ -284,7 +284,7 @@ router.post('/', requireAuth, async (req, res) => {
  * - metadata.name は無視してサーバー側で再生成
  * - 1ユーザー最大 LIMITS.MAX_WORLDS_PER_USER 個まで
  */
-router.post('/yaml', requireAuth, async (req, res) => {
+router.post('/yaml', requireFreshAuth, async (req, res) => {
     try {
         if (!req.user) {
             res.status(401).json({ error: 'Unauthorized' });
@@ -421,7 +421,7 @@ router.get('/:worldId/sig', optionalAuth, async (req, res) => {
  * 作者が手元の鍵で付けた署名を保存する（認証必須、作成者のみ）。body は WorldSignature。
  * 現在の内容に対して検証できない署名は 422。
  */
-router.put('/:worldId/sig', requireAuth, async (req, res) => {
+router.put('/:worldId/sig', requireFreshAuth, async (req, res) => {
     try {
         if (!req.user) {
             res.status(401).json({ error: 'Unauthorized' });
@@ -496,7 +496,7 @@ router.put('/:worldId/draft', requireAuth, async (req, res) => {
  * 作者はこの値に署名し、PUT に signature を添えて送る＝内容と署名を 1 回で原子的に保存する。
  * body: { yaml: string, lock?: ModLock }
  */
-router.post('/:worldId/prepare', requireAuth, async (req, res) => {
+router.post('/:worldId/prepare', requireFreshAuth, async (req, res) => {
     try {
         const worldId = req.params.worldId as string;
         const record = await worldRegistry.getWorldRecord(worldId);
@@ -526,7 +526,7 @@ router.post('/:worldId/prepare', requireAuth, async (req, res) => {
  * body: { yaml: string }
  * - metadata.name は URL の worldId に強制上書きする（ID は不変）
  */
-router.put('/:worldId/yaml', requireAuth, async (req, res) => {
+router.put('/:worldId/yaml', requireFreshAuth, async (req, res) => {
     try {
         const worldId = req.params.worldId as string;
 
@@ -577,7 +577,7 @@ router.put('/:worldId/yaml', requireAuth, async (req, res) => {
  * PUT /api/v1/worlds/:worldId
  * ワールドを更新（認証必須、作成者のみ）
  */
-router.put('/:worldId', requireAuth, async (req, res) => {
+router.put('/:worldId', requireFreshAuth, async (req, res) => {
     try {
         const worldId = req.params.worldId as string;
 

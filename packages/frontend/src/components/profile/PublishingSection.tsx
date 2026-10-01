@@ -128,6 +128,8 @@ interface PublishingSectionProps {
     worlds: readonly ResignCandidate[];
     /** 署名し直す（鍵の用意は 1 回、失敗しても残りは続ける）。 */
     onResign: (worldIds: readonly string[]) => Promise<ResignResult<unknown>>;
+    /** 公開環境を取り消した（ワールドの作者表示が変わるので、ワールドの一覧を読み込み直す）。 */
+    onRevoked: () => Promise<void>;
 }
 
 /**
@@ -141,6 +143,7 @@ export function PublishingSection({
     refreshKey,
     worlds,
     onResign,
+    onRevoked,
 }: PublishingSectionProps) {
     const localKey = useSigningPublicKey(account.id);
     const confirm = useConfirm();
@@ -201,6 +204,7 @@ export function PublishingSection({
         await run(async () => {
             await revokePublishingEnvironment(env.id, reason);
             syncAccountKeys(await reload());
+            await onRevoked();
             if (reason === 'compromised') setCompromised(true);
             return `「${env.name}」を取り消しました。`;
         });
