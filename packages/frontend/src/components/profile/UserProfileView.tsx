@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router';
 import { WorldDetailModal } from '@/components/lobby/WorldDetailModal';
 import { WorldIdentityBadge } from '@/components/lobby/WorldIdentityBadge';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
+import { type ResignResult, resignAll } from '@/lib/account/resign';
 import { API_BASE } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { authorSignerFor, browserFetch, signHostedWorld } from '@/lib/signing';
@@ -135,23 +136,31 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
     const unsignedCount = isOwnPage ? worlds.filter((w) => !isPublishable(w.identity)).length : 0;
 
     // 保存し直さなくても、今の内容に作者アカウントで署名して公開できるようにする（鍵の用意・登録は自動）。
-    const signWorld = async (worldId: string) => {
+    // 取り消した鍵で署名したワールドをまとめて署名し直すときも同じ処理を使う（鍵の用意は 1 回だけ）。
+    const signWorlds = async (worldIds: readonly string[]): Promise<ResignResult<WorldIdentity>> => {
         setError('');
+        if (!profile?.author) {
+            setError('公開するには、上の「公開」で ID を設定してください。');
+            return { done: [], failed: worldIds.map((id) => ({ id, error: 'ID が未設定です' })) };
+        }
         try {
-            if (!profile?.author) {
-                setError('公開するには、上の「公開」で ID を設定してください。');
-                return;
-            }
             const signingKeys = profile.signingKeys ?? [];
             const signer = await authorSignerFor({ id: profile.id, author: profile.author, signingKeys });
             if (!signingKeys.includes(signer.key.publicKey)) {
                 setProfile({ ...profile, signingKeys: [...signingKeys, signer.key.publicKey] });
                 setEnvironmentsVersion((v) => v + 1);
             }
-            const identity = await signHostedWorld(worldId, signer, { apiBase: API_BASE, fetch: browserFetch });
-            setWorlds((prev) => prev.map((w) => (w.id === worldId ? { ...w, identity } : w)));
+            const result = await resignAll(worldIds, (worldId) =>
+                signHostedWorld(worldId, signer, { apiBase: API_BASE, fetch: browserFetch }),
+            );
+            const signed = new Map(result.done.map((d) => [d.id, d.identity]));
+            setWorlds((prev) => prev.map((w) => (signed.has(w.id) ? { ...w, identity: signed.get(w.id) } : w)));
+            if (worldIds.length === 1 && result.failed[0]) setError(result.failed[0].error);
+            return result;
         } catch (e) {
-            setError(e instanceof Error ? e.message : '署名に失敗しました');
+            const message = e instanceof Error ? e.message : '署名に失敗しました';
+            setError(message);
+            return { done: [], failed: worldIds.map((id) => ({ id, error: message })) };
         }
     };
     const canCreate = isOwnPage && remaining > 0;
@@ -258,6 +267,8 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                     }}
                     onAccountChange={setProfile}
                     unsignedCount={unsignedCount}
+                    worlds={worlds}
+                    onResign={signWorlds}
                     refreshKey={environmentsVersion}
                 />
             )}
@@ -346,7 +357,11 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                                 world={w}
                                 editable={isOwnPage}
                                 onEdit={() => go(`/world/${w.id}/edit`)}
-                                onSign={isOwnPage && !isPublishable(w.identity) ? () => signWorld(w.id) : undefined}
+                                onSign={
+                                    isOwnPage && !isPublishable(w.identity)
+                                        ? async () => void (await signWorlds([w.id]))
+                                        : undefined
+                                }
                                 onOpen={() => setSelectedWorldId(w.id)}
                                 onDelete={
                                     isOwnPage

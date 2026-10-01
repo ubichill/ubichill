@@ -5,11 +5,17 @@
  * - 自サーバーの domain（PUBLIC_BASE_URL のホスト）なら注入された `findLocalAccount`（DB）で引く。
  * - 他の domain は WebFinger（`/.well-known/webfinger?resource=acct:handle@domain`）の links から
  *   鍵一覧の文書を辿る。取得結果は保存し（author_bindings）、期限で取り直す:
- *   T_fresh 以内はそのまま、超えたら保存した結果で即答して裏で取り直す、取り直せないまま T_max を超えたら作者を外す。
- *   分散型で取り消しを通知して回れないので、T_max が取り消しの届く最長時間になる。
+ *   T_fresh 以内はそのまま、超えたら保存した結果で即答して裏で取り直す。
+ *   取り消しは鍵一覧に revokedAt として載るので、作者のサーバーが動いていれば T_fresh 以内に届く。
+ *   取り直せない（作者のサーバーが止まっている）間は、最後に確認できた結果を T_max まで使い続け、確認時刻を返して
+ *   「確認が古い」と表示させる（小さな自前サーバーの短い障害で作者のワールドが一覧から消えないように）。
+ * - 他サーバーへの取得は、初めての作者・知らない鍵（discover）だけドメイン単位で上限をかける。保存済みの作者の
+ *   取り直し（refresh）は作者ごとに T_fresh に 1 回で数が限られるので上限をかけない（攻撃者が上限を使い切って、
+ *   既知の作者の取り直しを止められないように）。
  * 実体の組み立て（DB・safeFetch）は authorKeyStore.ts。
  */
 import {
+    type AuthorKeyCheck,
     DISPLAY_NAME_WEBFINGER_PROPERTY,
     DisplayNameSchema,
     ENV_KEYS,
@@ -104,7 +110,7 @@ export interface AuthorKeyDirectoryDeps {
 
 export interface AuthorKeyDirectory {
     /** publicKey がその作者の取り消されていない鍵か（署名検証用）。 */
-    isAuthorKey: (author: string, publicKey: string) => Promise<boolean>;
+    isAuthorKey: AuthorKeyCheck;
     /** その時点の表示名。確認済みのアカウントでなければ undefined（作者名を表示しない）。 */
     displayName: (author: string) => Promise<string | undefined>;
     invalidate: (author: string) => void;
@@ -112,8 +118,12 @@ export interface AuthorKeyDirectory {
 
 /** 保存した結果をネットワークに出ずに使う時間（T_fresh）。 */
 export const AUTHOR_KEYS_FRESH_MS = 60 * 60 * 1000;
-/** 取り直せないまま保存した結果を使い続ける上限（T_max）。取り消しがほかのサーバーへ届く最長時間。 */
-export const AUTHOR_KEYS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+/**
+ * 取り直せないまま保存した結果を使い続ける上限（T_max）。作者のサーバーが止まっている間の猶予。
+ * 取り消しは作者のサーバーが動いていれば T_fresh 以内に届くので、これは「鍵を盗まれ、かつ作者のサーバーも止まっている」
+ * 場合にだけ効く上限。
+ */
+export const AUTHOR_KEYS_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 /** 確認に失敗したアカウントを問い合わせ直さない時間（取得失敗で毎回ネットワークに出ないように）。 */
 const FETCH_RETRY_MS = 5 * 60 * 1000;
 /**
@@ -122,10 +132,12 @@ const FETCH_RETRY_MS = 5 * 60 * 1000;
  */
 const UNKNOWN_KEY_REFETCH_MS = 60 * 1000;
 /**
- * 同じドメインの作者サーバーへ出す取得の上限（窓の間の回数）。作者名を変えて（a1@x, a2@x, ...）署名したワールドを
- * 読ませても、そのドメインへの問い合わせは窓ごとにこの回数までに抑える。超えた分は取得せず、作者を付けない。
+ * 初めての作者・知らない鍵のために同じドメインへ出す取得の上限（窓の間の回数）。作者名を変えて（a1@x, a2@x, ...）
+ * 署名したワールドを読ませても、そのドメインへの問い合わせは窓ごとにこの回数までに抑える。超えた分はいまは取得せず
+ * pending を返す（作者は付けず、呼び出し側はすぐ確認し直す）。作者の多いサーバーの一覧を初めて表示したときは、
+ * 窓が空くごとに順に作者が付いていく。
  */
-export const DOMAIN_FETCH_LIMIT = 30;
+export const DOMAIN_FETCH_LIMIT = 60;
 export const DOMAIN_FETCH_WINDOW_MS = 60 * 1000;
 /** 失敗の記録など、作者名ごとに持つ Map の項目数の上限（作者名を変え続けられてもメモリを増やさない）。 */
 export const MAX_TRACKED_ACCOUNTS = 1000;
@@ -184,14 +196,21 @@ export function createAuthorKeyDirectory(deps: AuthorKeyDirectoryDeps): AuthorKe
         }, Promise.resolve(undefined));
     };
 
-    /** 鍵一覧を取り直して保存する。同じアカウントへの同時取得はまとめ、失敗後しばらくは問い合わせない。 */
-    const refresh = (account: string, domain: string): Promise<AuthorProfile | undefined> => {
+    /**
+     * 鍵一覧を取り直して保存する。同じアカウントへの同時取得はまとめ、失敗後しばらくは問い合わせない。
+     * discover（初めての作者・知らない鍵）はドメインの上限を使い、上限に達していたら 'deferred' を返す。
+     */
+    const refresh = (
+        account: string,
+        domain: string,
+        purpose: 'refresh' | 'discover',
+    ): Promise<AuthorProfile | undefined | 'deferred'> => {
         const pending = inFlight.get(account);
         if (pending) return pending;
         const failed = failedAt.get(account);
         if (failed !== undefined && now() - failed < FETCH_RETRY_MS) return Promise.resolve(undefined);
-        // ドメインの上限に達していたら取得しない（失敗としては記録せず、窓が空けば次のアクセスで取得する）
-        if (!guard.tryAcquire(domain)) return Promise.resolve(undefined);
+        // 上限に達していたら取得しない（失敗としては記録せず、窓が空けば次のアクセスで取得する）
+        if (purpose === 'discover' && !guard.tryAcquire(domain)) return Promise.resolve('deferred');
         const task = fetchProfile(account, domain)
             .then(async (profile) => {
                 if (!profile) {
@@ -212,42 +231,59 @@ export function createAuthorKeyDirectory(deps: AuthorKeyDirectoryDeps): AuthorKe
         return parsed ? { ...parsed, account: formatAuthorAccount(parsed) } : null;
     };
 
+    type Lookup =
+        | { kind: 'found'; profile: AuthorProfile; checkedAt?: Date }
+        | { kind: 'missing' }
+        | { kind: 'pending' };
+
     /** 他サーバーのアカウントの、いま使ってよい作者情報。 */
-    const remoteProfile = async (
-        target: { account: string; domain: string },
-        publicKey?: string,
-    ): Promise<AuthorProfile | undefined> => {
+    const remoteProfile = async (target: { account: string; domain: string }, publicKey?: string): Promise<Lookup> => {
         const binding = await deps.bindings.find(target.account);
         const age = binding ? now() - binding.fetchedAt.getTime() : Number.POSITIVE_INFINITY;
+        const fromBinding = (b: StoredAuthorBinding): Lookup => ({ kind: 'found', profile: b, checkedAt: b.fetchedAt });
         if (binding && age <= maxAgeMs) {
             // 知らない鍵（新しい公開環境）だけは待って取り直す。それ以外は保存した結果で即答する
             if (publicKey && signingKeyStatus(binding.keys, publicKey) === 'unknown' && age >= UNKNOWN_KEY_REFETCH_MS) {
-                return (await refresh(target.account, target.domain)) ?? binding;
+                const fresh = await refresh(target.account, target.domain, 'discover');
+                if (fresh === 'deferred') return { kind: 'pending' };
+                return fresh ? { kind: 'found', profile: fresh, checkedAt: new Date(now()) } : fromBinding(binding);
             }
-            if (age > freshMs) void refresh(target.account, target.domain).catch(() => undefined);
-            return binding;
+            if (age > freshMs) void refresh(target.account, target.domain, 'refresh').catch(() => undefined);
+            return fromBinding(binding);
         }
         // 未確認、または取り直せないまま T_max を超えた: 取り直せなければ作者を付けない
-        return refresh(target.account, target.domain);
+        const fresh = await refresh(target.account, target.domain, binding ? 'refresh' : 'discover');
+        if (fresh === 'deferred') return { kind: 'pending' };
+        return fresh ? { kind: 'found', profile: fresh, checkedAt: new Date(now()) } : { kind: 'missing' };
     };
 
-    const profileOf = async (author: string, publicKey?: string): Promise<AuthorProfile | undefined> => {
+    const lookup = async (author: string, publicKey?: string): Promise<Lookup> => {
         const target = normalize(author);
-        if (!target) return undefined;
+        if (!target) return { kind: 'missing' };
         const pin = deps.pinned.get(target.account);
-        if (pin) return pin;
-        if (target.domain === deps.selfDomain()) return deps.findLocalAccount(target.handle);
+        if (pin) return { kind: 'found', profile: pin };
+        if (target.domain === deps.selfDomain()) {
+            const local = await deps.findLocalAccount(target.handle);
+            return local ? { kind: 'found', profile: local } : { kind: 'missing' };
+        }
         return remoteProfile(target, publicKey);
     };
 
     return {
         async isAuthorKey(author, publicKey) {
-            const profile = await profileOf(author, publicKey);
-            return !!profile && signingKeyStatus(profile.keys, publicKey) === 'active';
+            const found = await lookup(author, publicKey);
+            if (found.kind === 'pending') return { status: 'pending' };
+            if (found.kind === 'missing' || signingKeyStatus(found.profile.keys, publicKey) !== 'active') {
+                return { status: 'unconfirmed' };
+            }
+            return found.checkedAt
+                ? { status: 'confirmed', checkedAt: found.checkedAt.toISOString() }
+                : { status: 'confirmed' };
         },
 
         async displayName(author) {
-            return (await profileOf(author))?.displayName;
+            const found = await lookup(author);
+            return found.kind === 'found' ? found.profile.displayName : undefined;
         },
 
         invalidate(author) {

@@ -10,6 +10,7 @@ import {
     setMyHandle,
 } from '@/lib/account/me';
 import { isStaleEnvironment, revokeConfirmMessage, sortEnvironments } from '@/lib/account/publishingEnvironments';
+import { type ResignCandidate, type ResignResult, worldsNeedingResign } from '@/lib/account/resign';
 import { useHandleAvailability } from '@/lib/account/useHandleAvailability';
 import { importSigningKeyFile, loadSigningKey, removeSigningKey, useSigningPublicKey } from '@/lib/signing';
 import { css, cva } from '@/styled-system/css';
@@ -116,13 +117,24 @@ interface PublishingSectionProps {
     unsignedCount: number;
     /** ワールドの公開などで公開環境が増えたときに一覧を取り直すためのキー */
     refreshKey: number;
+    /** 自分のワールド（取り消した鍵で署名したものを見つけるため）。 */
+    worlds: readonly ResignCandidate[];
+    /** 署名し直す（鍵の用意は 1 回、失敗しても残りは続ける）。 */
+    onResign: (worldIds: readonly string[]) => Promise<ResignResult<unknown>>;
 }
 
 /**
  * 公開の設定。作者アカウントの ID と、公開できるブラウザ・CLI・CI（公開環境）の一覧と取り消し。
  * 鍵は公開するときに自動で用意・登録されるので、ここで鍵を作らせない。
  */
-export function PublishingSection({ account, onAccountChange, unsignedCount, refreshKey }: PublishingSectionProps) {
+export function PublishingSection({
+    account,
+    onAccountChange,
+    unsignedCount,
+    refreshKey,
+    worlds,
+    onResign,
+}: PublishingSectionProps) {
     const localKey = useSigningPublicKey(account.id);
     const confirm = useConfirm();
     const fileInput = useRef<HTMLInputElement>(null);
@@ -177,7 +189,7 @@ export function PublishingSection({ account, onAccountChange, unsignedCount, ref
         await run(async () => {
             await revokePublishingEnvironment(env.id);
             syncAccountKeys(await reload());
-            return `「${env.name}」を取り消しました。`;
+            return `「${env.name}」を取り消しました。この鍵で署名したワールドがあれば、上に出る「まとめて署名し直す」で一覧に戻せます。`;
         });
     };
 
@@ -207,6 +219,17 @@ export function PublishingSection({ account, onAccountChange, unsignedCount, ref
 
     const now = Date.now();
     const sorted = environments ? sortEnvironments(environments) : [];
+    const revokedKeys = new Set((environments ?? []).filter((e) => e.revokedAt).map((e) => e.publicKey));
+    const resignTargets = worldsNeedingResign(worlds, revokedKeys);
+
+    const resignEverything = () =>
+        run(async () => {
+            const result = await onResign(resignTargets.map((w) => w.id));
+            const names = new Map(worlds.map((w) => [w.id, w.displayName]));
+            if (result.failed.length === 0) return `${result.done.length} 個のワールドを署名し直し、一覧に戻しました。`;
+            const failed = result.failed.map((f) => `「${names.get(f.id) ?? f.id}」（${f.error}）`).join('、');
+            throw new Error(`${result.done.length} 個を署名し直しました。署名し直せなかったワールド: ${failed}`);
+        });
 
     return (
         <section
@@ -268,9 +291,34 @@ export function PublishingSection({ account, onAccountChange, unsignedCount, ref
                 </div>
             )}
 
-            {unsignedCount > 0 && (
+            {resignTargets.length > 0 && (
+                <div className={notice({ tone: 'warn' })}>
+                    <p>
+                        取り消した鍵で署名したワールドが {resignTargets.length}{' '}
+                        個あり、作者が外れて一覧に出ていません。このブラウザで署名し直すと元に戻ります。
+                    </p>
+                    <ul className={css({ my: '2', pl: '5', listStyleType: 'disc' })}>
+                        {resignTargets.map((w) => (
+                            <li key={w.id}>{w.displayName}</li>
+                        ))}
+                    </ul>
+                    <button
+                        type="button"
+                        className={button({ tone: 'primary', size: 'sm' })}
+                        disabled={busy}
+                        onClick={() => void resignEverything()}
+                    >
+                        まとめて署名し直す
+                    </button>
+                    <p className={css({ mt: '2', fontSize: '12px' })}>
+                        GitHub など外部に置いたワールドは、CLI で署名し直して署名ファイルを置き直してください。
+                    </p>
+                </div>
+            )}
+
+            {unsignedCount - resignTargets.length > 0 && (
                 <p className={notice({ tone: 'info' })}>
-                    作者アカウントで署名されていないワールドが {unsignedCount}
+                    作者アカウントで署名されていないワールドが {unsignedCount - resignTargets.length}
                     個あり、一覧に出ていません。下の一覧の「署名して公開」で公開できます。
                 </p>
             )}

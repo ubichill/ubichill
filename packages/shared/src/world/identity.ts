@@ -141,11 +141,30 @@ export function authorWorldIdOf(author: string, name: string): string {
 }
 
 /**
- * `publicKey` が作者アカウント（`handle@domain`）の取り消されていない公開環境の鍵か。
+ * `publicKey` が作者アカウント（`handle@domain`）の取り消されていない公開環境の鍵かの判定結果。
+ * - confirmed: 有効な鍵。`checkedAt` は他サーバーの鍵一覧を最後に確認できた時刻（自サーバー・記録済みでは無し）
+ * - unconfirmed: 一覧に無い・取り消し済み・アカウントが無い
+ * - pending: いまは確認できない（取得の上限などで取りに行かなかった）。作者は付けず、すぐ確認し直す
+ */
+export type AuthorKeyCheckResult =
+    | { status: 'confirmed'; checkedAt?: string }
+    | { status: 'unconfirmed' }
+    | { status: 'pending' };
+
+/**
  * 1 アカウントは複数の鍵を持つので、署名に使われた鍵を渡して判定させる
  * （自サーバーは DB、他ドメインは WebFinger から辿る鍵一覧）。
  */
-export type AuthorKeyCheck = (author: string, publicKey: string) => Promise<boolean>;
+export type AuthorKeyCheck = (author: string, publicKey: string) => Promise<AuthorKeyCheckResult>;
+
+/** 他サーバーの作者の確認がこれより古ければ「確認が古い」と表示する（作者のサーバーが止まっている可能性）。 */
+export const AUTHOR_CHECK_STALE_MS = 24 * 60 * 60 * 1000;
+
+/** 作者の確認が古いか（作者のサーバーから鍵一覧を長く取り直せていない）。 */
+export function isAuthorCheckStale(identity: WorldIdentity | undefined, now: number): boolean {
+    if (identity?.status !== 'verified' || !identity.author || !identity.authorCheckedAt) return false;
+    return now - Date.parse(identity.authorCheckedAt) > AUTHOR_CHECK_STALE_MS;
+}
 
 /** 署名対象のバイト列（UTF-8 化は crypto 側）。signature 以外の全フィールドを正規化する。 */
 export function worldSignaturePayload(fields: Omit<WorldSignature, 'signature'>): string {
@@ -208,18 +227,27 @@ export async function verifyWorldSignature(
     const unpinned = unpinnedModsOf(doc);
     if (unpinned === null || unpinned.length > 0) return { status: 'invalid', reason: 'lock-incomplete' };
 
-    const authorConfirmed =
-        !!sig.author && !!isAuthorKey && (await isAuthorKey(sig.author, sig.publicKey).catch(() => false));
-    if (sig.author && authorConfirmed) {
+    const check: AuthorKeyCheckResult =
+        sig.author && isAuthorKey
+            ? await isAuthorKey(sig.author, sig.publicKey).catch(() => ({ status: 'pending' }) as const)
+            : { status: 'unconfirmed' };
+    if (sig.author && check.status === 'confirmed') {
         return {
             status: 'verified',
             worldId: authorWorldIdOf(sig.author, sig.name),
             publicKey: sig.publicKey,
             contentHash,
             author: sig.author,
+            ...(check.checkedAt ? { authorCheckedAt: check.checkedAt } : {}),
         };
     }
-    return { status: 'verified', worldId: worldIdOf(sig.publicKey, sig.name), publicKey: sig.publicKey, contentHash };
+    return {
+        status: 'verified',
+        worldId: worldIdOf(sig.publicKey, sig.name),
+        publicKey: sig.publicKey,
+        contentHash,
+        ...(check.status === 'pending' ? { authorPending: true as const } : {}),
+    };
 }
 
 // ============================================

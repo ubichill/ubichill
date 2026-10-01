@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import type { WorldIdentity } from '../schemas/worldIdentity.schema';
 import {
+    AUTHOR_CHECK_STALE_MS,
     type AuthorKeyCheck,
     authorWorldIdOf,
     canonicalJson,
+    isAuthorCheckStale,
     isPublishable,
     isStrictLockWorld,
     KEY_REGISTRATION_MAX_SKEW_MS,
@@ -238,7 +241,7 @@ describe('作者アカウント（author）', () => {
     const resolverFor =
         (keys: Record<string, string | undefined>): AuthorKeyCheck =>
         async (author, publicKey) =>
-            keys[author] === publicKey;
+            keys[author] === publicKey ? { status: 'confirmed' } : { status: 'unconfirmed' };
 
     it('作者アカウントの鍵と署名鍵が一致すれば author が付き、worldId はアカウント基準', async () => {
         const key = newKey();
@@ -269,15 +272,59 @@ describe('作者アカウント（author）', () => {
         const key = newKey();
         const doc = baseDoc();
         const sig = await signWorld(doc, key, fakeCrypto, { author: AUTHOR });
-        for (const resolver of [
-            undefined,
-            resolverFor({}),
-            (() => Promise.reject(new Error('down'))) as AuthorKeyCheck,
-        ]) {
+        for (const resolver of [undefined, resolverFor({})]) {
             const verdict = await verifyWorldSignature(doc, sig, fakeCrypto, resolver);
             expect(verdict).toMatchObject({ status: 'verified', worldId: worldIdOf(key.publicKey, 'my-world') });
             expect(verdict).not.toHaveProperty('author');
         }
+    });
+
+    it('他サーバーの作者は、最後に鍵一覧を確認できた時刻を載せる（古ければ「確認が古い」と表示するため）', async () => {
+        const key = newKey();
+        const doc = baseDoc();
+        const sig = await signWorld(doc, key, fakeCrypto, { author: AUTHOR });
+        const checkedAt = '2026-09-01T00:00:00.000Z';
+        const verdict = await verifyWorldSignature(doc, sig, fakeCrypto, async () => ({
+            status: 'confirmed',
+            checkedAt,
+        }));
+        expect(verdict).toMatchObject({ author: AUTHOR, authorCheckedAt: checkedAt });
+        expect(isAuthorCheckStale(verdict as WorldIdentity, Date.parse(checkedAt) + AUTHOR_CHECK_STALE_MS + 1)).toBe(
+            true,
+        );
+        expect(isAuthorCheckStale(verdict as WorldIdentity, Date.parse(checkedAt) + 1000)).toBe(false);
+    });
+
+    it('いまは確認できない（pending）・判定器の失敗では作者を付けず、すぐ確認し直す印を付ける', async () => {
+        const key = newKey();
+        const doc = baseDoc();
+        const sig = await signWorld(doc, key, fakeCrypto, { author: AUTHOR });
+        for (const check of [
+            async () => ({ status: 'pending' }) as const,
+            (() => Promise.reject(new Error('down'))) as AuthorKeyCheck,
+        ]) {
+            const verdict = await verifyWorldSignature(doc, sig, fakeCrypto, check);
+            expect(verdict).toMatchObject({ status: 'verified', authorPending: true });
+            expect(verdict).not.toHaveProperty('author');
+        }
+        const unconfirmed = await verifyWorldSignature(doc, sig, fakeCrypto, resolverFor({}));
+        expect(unconfirmed).not.toHaveProperty('authorPending');
+    });
+
+    it('確認の古さは、作者が付いていて確認時刻があるときだけ判定する（自サーバー・未署名は古くならない）', () => {
+        expect(isAuthorCheckStale(undefined, Date.now())).toBe(false);
+        expect(
+            isAuthorCheckStale(
+                {
+                    status: 'verified',
+                    worldId: 'x',
+                    publicKey: 'A'.repeat(43),
+                    contentHash: 'sha256-x',
+                    author: AUTHOR,
+                },
+                Date.now(),
+            ),
+        ).toBe(false);
     });
 
     it('author を書き換える・消すと bad-signature（署名対象に含まれる）', async () => {

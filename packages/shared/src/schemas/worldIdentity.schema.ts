@@ -50,6 +50,13 @@ export const WorldIdentitySchema = z.discriminatedUnion('status', [
         publicKey: Ed25519PublicKeySchema,
         contentHash: IntegritySchema,
         author: AuthorAccountSchema.optional(),
+        /**
+         * 他サーバーの作者の鍵一覧を最後に確認できた時刻（ISO 8601）。作者のサーバーが止まっていて取り直せない間も
+         * 最後の結果で作者を付け続けるので、古ければ「確認が古い」と表示する。自サーバー・記録済みの作者には付かない。
+         */
+        authorCheckedAt: z.string().datetime().optional(),
+        /** 作者を名乗っているが、いまは確認できなかった（取得の上限など）。作者は付けず、すぐ確認し直す。 */
+        authorPending: z.literal(true).optional(),
     }),
     z.object({
         status: z.literal('unsigned'),

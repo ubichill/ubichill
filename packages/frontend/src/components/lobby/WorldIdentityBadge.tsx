@@ -1,4 +1,4 @@
-import { displayAuthorAccount, type WorldIdentity } from '@ubichill/shared';
+import { displayAuthorAccount, isAuthorCheckStale, type WorldIdentity } from '@ubichill/shared';
 import { cva, cx } from '@/styled-system/css';
 
 const badge = cva({
@@ -15,6 +15,7 @@ const badge = cva({
     variants: {
         status: {
             verified: { bg: 'successBg', color: 'successText' },
+            stale: { bg: 'surfaceAccent', color: 'textMuted' },
             unsigned: { bg: 'surfaceAccent', color: 'textSubtle' },
         },
     },
@@ -29,12 +30,21 @@ const badge = cva({
 export function WorldIdentityBadge({ identity, className }: { identity?: WorldIdentity; className?: string }) {
     if (!identity) return null;
     const verified = identity.status === 'verified';
+    // 作者のサーバーから鍵一覧を長く取り直せていない（止まっている可能性）。最後に確認できた結果で作者を付けている
+    const stale = isAuthorCheckStale(identity, Date.now());
+    const checkedAt =
+        identity.status === 'verified' && identity.authorCheckedAt
+            ? new Date(identity.authorCheckedAt).toLocaleString('ja-JP')
+            : '';
+    const staleNote = stale
+        ? `\n作者のサーバーから ${checkedAt} 以降、鍵を確認できていません（最後に確認できた結果で表示しています）`
+        : '';
     return (
         <span
-            className={cx(badge({ status: identity.status }), className)}
+            className={cx(badge({ status: stale ? 'stale' : identity.status }), className)}
             title={
                 verified
-                    ? `${identity.author ? `作者 ${displayAuthorAccount(identity.author)} の鍵` : '作者の鍵'}で署名され、改竄されていません（安全性の保証ではありません）\n${identity.worldId}`
+                    ? `${identity.author ? `作者 ${displayAuthorAccount(identity.author)} の鍵` : '作者の鍵'}で署名され、改竄されていません（安全性の保証ではありません）${staleNote}\n${identity.worldId}`
                     : '作者の署名がありません。改竄の有無も作者も確認できません'
             }
         >
@@ -42,7 +52,7 @@ export function WorldIdentityBadge({ identity, className }: { identity?: WorldId
                 <path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z" />
                 {verified && <path d="M9 12l2 2 4-4" />}
             </svg>
-            {verified ? '作者署名あり' : '署名なし'}
+            {verified ? (stale ? '作者署名あり（確認が古い）' : '作者署名あり') : '署名なし'}
         </span>
     );
 }
