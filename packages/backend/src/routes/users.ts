@@ -1,18 +1,24 @@
 import {
     favoriteRepository,
     publishingEnvironmentRepository,
+    userFriendRepository,
     userRepository,
+    userSettingsRepository,
     type WorldRecord,
     worldRepository,
 } from '@ubichill/db';
 import type { WorldDefinition } from '@ubichill/shared';
 import {
+    canViewFavorites,
     DisplayNameSchema,
     displayNameKey,
     ENV_KEYS,
+    FAVORITES_VISIBILITIES,
+    FavoritesVisibilitySchema,
     HandleSchema,
     isPublishable,
     LIMITS,
+    needsFriendCheck,
     OFFICIAL_HANDLE,
     RevokeReasonSchema,
     SERVER_CONFIG,
@@ -424,15 +430,41 @@ router.get('/:userId', async (req, res) => {
     });
 });
 
-// 他ユーザーのお気に入り（公開・ログイン不要）。作者まで確認できたワールドだけを返す。
-// 呼ばれるたびに外部ワールドを取得し直さないよう、ユーザーごとに数分キャッシュする（追加・削除で捨てる）。
-router.get('/:userId/favorites', async (req, res) => {
-    const user = await userRepository.findById(req.params.userId);
+// お気に入りの公開範囲を変更する（private / friends / public）。
+router.put('/me/favorites/visibility', requireAuth, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    const parsed = FavoritesVisibilitySchema.safeParse(req.body?.visibility);
+    if (!parsed.success) {
+        return res.status(400).json({ error: `visibility は ${FAVORITES_VISIBILITIES.join(' / ')} のいずれかです` });
+    }
+    await userSettingsRepository.setFavoritesVisibility(req.user.id, parsed.data);
+    return res.json({ visibility: parsed.data });
+});
+
+// ユーザーのお気に入り。公開範囲（private / friends / public）に従い、見てよい人にだけ返す。作者まで確認できたワールドだけ。
+// 公開範囲が public ならログイン不要。呼ばれるたびに外部ワールドを取得し直さないよう、ユーザーごとに数分キャッシュする
+// （キャッシュは解決したワールドだけで、閲覧の可否は毎回判定する。追加・削除で捨てる）。
+router.get('/:userId/favorites', optionalAuth, async (req, res) => {
+    const user = await userRepository.findById(String(req.params.userId));
     if (!user) return res.status(404).json({ error: 'User not found' });
+    const visibility = await userSettingsRepository.getFavoritesVisibility(user.id);
+    const viewerId = req.user?.id;
+    const isOwner = viewerId === user.id;
+    const isFriend =
+        viewerId && needsFriendCheck(visibility, isOwner)
+            ? await userFriendRepository.areFriends(viewerId, user.id)
+            : false;
+    if (!canViewFavorites(visibility, { isOwner, isFriend })) {
+        // 公開範囲を絞っているユーザーのお気に入りは、中身も件数も返さない
+        return res
+            .status(403)
+            .json({ error: 'このユーザーのお気に入りは公開されていません', code: 'favorites-hidden' });
+    }
     const { worlds } = await publicFavoritesCache.getOrCreate(user.id, async () =>
         resolveFavoriteWorlds(await favoriteRepository.list(user.id), (ref) => worldRegistry.publishableListItem(ref)),
     );
-    return res.json({ worlds });
+    res.set('Cache-Control', 'private, no-store');
+    return res.json({ worlds, visibility });
 });
 
 // 他ユーザーが作成したワールド一覧（公開メタデータのみ。署名検証済みのワールドだけ公開する）

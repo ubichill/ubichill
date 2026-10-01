@@ -4,6 +4,9 @@ import { worlds } from './worlds';
 
 export const friendStatusEnum = pgEnum('friend_status', ['pending', 'accepted']);
 
+/** お気に入り一覧の公開範囲（値は shared の FAVORITES_VISIBILITIES と同じ）。 */
+export const favoritesVisibilityEnum = pgEnum('favorites_visibility', ['private', 'friends', 'public']);
+
 // Better Auth統合ユーザーテーブル
 // Better Authが必要とするフィールド + アプリ独自のフィールド
 export const users = pgTable('users', {
@@ -78,6 +81,8 @@ export const userSettings = pgTable('user_settings', {
         .primaryKey()
         .references(() => users.id, { onDelete: 'cascade' }),
     disableExternalUrls: boolean('disable_external_urls').default(false).notNull(),
+    /** お気に入り一覧の公開範囲。初期値は本人だけ（行が無いユーザーも private として扱う）。 */
+    favoritesVisibility: favoritesVisibilityEnum('favorites_visibility').default('private').notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

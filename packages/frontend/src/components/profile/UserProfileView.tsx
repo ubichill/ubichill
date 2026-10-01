@@ -448,7 +448,9 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                 )}
             </section>
 
-            {targetUserId && <FavoriteWorldsSection userId={targetUserId} onJoinInstance={joinInstance} />}
+            {targetUserId && (
+                <FavoriteWorldsSection userId={targetUserId} isOwnPage={isOwnPage} onJoinInstance={joinInstance} />
+            )}
 
             {selectedWorldId && selectedWorld && (
                 <WorldDetailModal
