@@ -253,17 +253,17 @@ describe('identifyWorld（配信経路を通した署名検証）', () => {
 
 describe('confirmedAuthorName（外部ワールドの作者名）', () => {
     const HASH = `sha256-${'A'.repeat(43)}=`;
-    const names = async (author: string) => (author === 'youkan@ubichill.com' ? 'ようかん' : undefined);
+    const names = async (author: string) => (author === 'hanako@ubichill.com' ? 'はなこ' : undefined);
 
     it('作者アカウントを確認できたら、そのアカウントの表示名', async () => {
         const identity = {
             status: 'verified' as const,
-            worldId: 'acct:youkan@ubichill.com/w',
+            worldId: 'acct:hanako@ubichill.com/w',
             publicKey: 'A'.repeat(43),
             contentHash: HASH,
-            author: 'youkan@ubichill.com',
+            author: 'hanako@ubichill.com',
         };
-        expect(await confirmedAuthorName(identity, names)).toBe('ようかん');
+        expect(await confirmedAuthorName(identity, names)).toBe('はなこ');
     });
 
     it('鍵だけの署名・署名なし・引けない・失敗は作者名を出さない（自己申告に戻さない）', async () => {

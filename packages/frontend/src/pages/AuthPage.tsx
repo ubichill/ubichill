@@ -293,7 +293,7 @@ export function AuthPage() {
                                     type="text"
                                     value={handle}
                                     onChange={(e) => setHandle(e.target.value.toLowerCase().slice(0, 30))}
-                                    placeholder="youkan"
+                                    placeholder="your_id"
                                     autoCapitalize="none"
                                     autoCorrect="off"
                                     spellCheck={false}

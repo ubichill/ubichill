@@ -39,7 +39,11 @@ export function signingKeyListOf(
 }
 
 /** 本人向けの一覧の 1 件。 */
-export function publishingEnvironmentView(row: PublishingEnvironmentRow) {
+/**
+ * 本人向けの一覧の 1 件。`managedByRepository` はリポジトリの記録（worlds/trusted-authors.json）で管理している鍵で、
+ * 画面からは取り消せない（取り消しは記録に revokedAt を付けて PR でレビューする。記録が優先されるので画面の取り消しは効かない）。
+ */
+export function publishingEnvironmentView(row: PublishingEnvironmentRow, managedByRepository = false) {
     return {
         id: row.id,
         kind: row.kind as PublishingEnvironmentKind,
@@ -49,6 +53,7 @@ export function publishingEnvironmentView(row: PublishingEnvironmentRow) {
         lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
         revokedAt: row.revokedAt?.toISOString() ?? null,
         revokeReason: (row.revokeReason as RevokeReason | null | undefined) ?? null,
+        managedByRepository,
     };
 }
 export type PublishingEnvironmentView = ReturnType<typeof publishingEnvironmentView>;
@@ -126,4 +131,27 @@ export function newEnvironmentNotice(args: {
 
 心当たりがある場合は、このメールは無視してかまいません。`,
     };
+}
+
+/**
+ * アカウントが作者として署名に使う作者アカウント。公式アカウントは、公式ワールドの作者（リポジトリの記録にある
+ * ubichill@ubichill.com）も含む（開発・プレビューでは自サーバーの domain が違っても公式ワールドの作者として扱う）。
+ */
+export function authorAccountsOf(
+    handle: string | null,
+    selfAccount: (handle: string) => string,
+    official: { handle: string; account: string },
+): string[] {
+    if (!handle) return [];
+    const own = selfAccount(handle);
+    return handle === official.handle && official.account !== own ? [own, official.account] : [own];
+}
+
+/** リポジトリの記録で管理している鍵か（作者アカウントのいずれかの記録にある鍵）。 */
+export function isRepositoryManagedKey(
+    publicKey: string,
+    accounts: readonly string[],
+    pinnedKeys: (account: string) => readonly SigningKeyEntry[],
+): boolean {
+    return accounts.some((account) => pinnedKeys(account).some((k) => k.publicKey === publicKey));
 }

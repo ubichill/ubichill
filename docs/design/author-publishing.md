@@ -70,16 +70,16 @@
 WebFinger の JRD から鍵一覧の文書へリンクする（鍵一覧の URL は WebFinger と同じオリジンに限る）。
 
 ```
-GET /.well-known/webfinger?resource=acct:youkan@ubichill.com
+GET /.well-known/webfinger?resource=acct:hanako@ubichill.com
 {
-  "subject": "acct:youkan@ubichill.com",
-  "properties": { "https://ubichill.com/ns/display-name": "ようかん" },
-  "links": [{ "rel": "https://ubichill.com/ns/signing-keys", "href": "https://ubichill.com/api/v1/authors/youkan/signing-keys" }]
+  "subject": "acct:hanako@ubichill.com",
+  "properties": { "https://ubichill.com/ns/display-name": "はなこ" },
+  "links": [{ "rel": "https://ubichill.com/ns/signing-keys", "href": "https://ubichill.com/api/v1/authors/hanako/signing-keys" }]
 }
 
-GET /api/v1/authors/youkan/signing-keys
+GET /api/v1/authors/hanako/signing-keys
 {
-  "account": "youkan@ubichill.com",
+  "account": "hanako@ubichill.com",
   "issuedAt": "2026-09-28T00:00:00Z",
   "keys": [
     { "publicKey": "…", "addedAt": "…" },

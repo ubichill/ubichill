@@ -192,14 +192,14 @@ describe('作者アカウント（--author / UBICHILL_AUTHOR）', () => {
     const written = () => WorldSignatureSchema.parse(JSON.parse(readFileSync(join(dir.path, 'w.sig.json'), 'utf-8')));
 
     it('--author を署名に載せる（@ 付き・大文字ドメインは正規化）', async () => {
-        await runSign([world(), `--key-file=${keyFile()}`, '--author=@youkan@UbiChill.com']);
-        expect(written().author).toBe('youkan@ubichill.com');
+        await runSign([world(), `--key-file=${keyFile()}`, '--author=@hanako@UbiChill.com']);
+        expect(written().author).toBe('hanako@ubichill.com');
     });
 
     it('env UBICHILL_AUTHOR でも指定できる', async () => {
-        vi.stubEnv('UBICHILL_AUTHOR', 'youkan@ubichill.com');
+        vi.stubEnv('UBICHILL_AUTHOR', 'hanako@ubichill.com');
         await runSign([world(), `--key-file=${keyFile()}`]);
-        expect(written().author).toBe('youkan@ubichill.com');
+        expect(written().author).toBe('hanako@ubichill.com');
     });
 
     it('指定しなければ author を載せない', async () => {
@@ -208,7 +208,7 @@ describe('作者アカウント（--author / UBICHILL_AUTHOR）', () => {
     });
 
     it('形式が不正なら署名しない', async () => {
-        await expect(runSign([world(), `--key-file=${keyFile()}`, '--author=youkan'])).rejects.toThrow(/形式/);
+        await expect(runSign([world(), `--key-file=${keyFile()}`, '--author=hanako'])).rejects.toThrow(/形式/);
     });
 });
 

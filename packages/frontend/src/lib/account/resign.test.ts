@@ -24,7 +24,7 @@ describe('worldsNeedingResign', () => {
         { id: 'lost', displayName: '紛失した鍵', identity: verified(LOST), updatedAt: '2026-09-01T00:00:00Z' },
         { id: 'leaked', displayName: '漏えいした鍵', identity: verified(LEAKED), updatedAt: '2026-10-01T00:00:00Z' },
         { id: 'unknown', displayName: '理由不明', identity: verified(UNKNOWN_REASON) },
-        { id: 'ok', displayName: '公開中', identity: verified(ACTIVE, 'youkan@ubichill.com') },
+        { id: 'ok', displayName: '公開中', identity: verified(ACTIVE, 'hanako@ubichill.com') },
         {
             id: 'unsigned',
             displayName: '下書き',

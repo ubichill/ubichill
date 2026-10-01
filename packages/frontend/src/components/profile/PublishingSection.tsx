@@ -295,7 +295,7 @@ export function PublishingSection({
                         <input
                             value={handleInput}
                             onChange={(e) => setHandleInput(e.target.value.toLowerCase().slice(0, 30))}
-                            placeholder="youkan"
+                            placeholder="your_id"
                             aria-label="ID"
                             autoCapitalize="none"
                             spellCheck={false}
@@ -356,7 +356,8 @@ export function PublishingSection({
                     {sorted.map((env) => {
                         const isThisBrowser = env.publicKey === localKey;
                         const stale = isStaleEnvironment(env, now);
-                        const recent = !isThisBrowser && isRecentlyAdded(env, now);
+                        // リポジトリ管理の鍵は起動のたびに記録から作るので、追加日が新しくても心当たりのない環境ではない
+                        const recent = !isThisBrowser && !env.managedByRepository && isRecentlyAdded(env, now);
                         return (
                             <li
                                 key={env.id}
@@ -399,6 +400,14 @@ export function PublishingSection({
                                         {env.revokedAt && (
                                             <span className={tag({ tone: 'revoked' })}>取り消し済み</span>
                                         )}
+                                        {env.managedByRepository && (
+                                            <span
+                                                className={tag({ tone: 'revoked' })}
+                                                title="worlds/trusted-authors.json で管理している鍵です。取り消すには記録に revokedAt を付けて PR でレビューしてください"
+                                            >
+                                                リポジトリで管理
+                                            </span>
+                                        )}
                                     </div>
                                     <p className={css({ fontSize: '12px', color: 'textMuted', mt: '0.5' })}>
                                         {KIND_LABEL[env.kind]} ・ 追加 {formatDate(env.createdAt)} ・{' '}
@@ -408,7 +417,7 @@ export function PublishingSection({
                                             `（${env.revokeReason === 'lost' ? '紛失' : '漏えい・心当たりなし'}）`}
                                     </p>
                                 </div>
-                                {!env.revokedAt && revoking !== env.id && (
+                                {!env.revokedAt && !env.managedByRepository && revoking !== env.id && (
                                     <button
                                         type="button"
                                         className={button({ tone: 'danger', size: 'sm' })}

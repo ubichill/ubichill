@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+    authorAccountsOf,
     browserEnvironmentName,
+    isRepositoryManagedKey,
     newEnvironmentNotice,
     officialKeyChanges,
     registrationOutcome,
@@ -34,7 +36,7 @@ describe('registrationOutcome', () => {
 describe('signingKeyListOf', () => {
     it('取り消した鍵も revokedAt 付きで残す（取り消しと取得失敗を区別できるように）', () => {
         const list = signingKeyListOf(
-            'youkan@ubichill.com',
+            'hanako@ubichill.com',
             [
                 {
                     id: 'e1',
@@ -60,7 +62,7 @@ describe('signingKeyListOf', () => {
             at('2026-09-29T00:00:00Z'),
         );
         expect(list).toEqual({
-            account: 'youkan@ubichill.com',
+            account: 'hanako@ubichill.com',
             issuedAt: '2026-09-29T00:00:00.000Z',
             keys: [
                 { publicKey: K1, addedAt: '2026-09-01T00:00:00.000Z', revokedAt: '2026-09-02T00:00:00.000Z' },
@@ -135,7 +137,7 @@ describe('browserEnvironmentName', () => {
 describe('newEnvironmentNotice（乗っ取りに気付けるように）', () => {
     it('追加された環境の名前と、心当たりがないときの対処（漏えいとして取り消す・パスワード変更・ログアウト）を伝える', () => {
         const notice = newEnvironmentNotice({
-            displayName: 'ようかん',
+            displayName: 'はなこ',
             environmentName: 'Chrome on Windows',
             profileUrl: 'https://ubichill.com/user/u1',
             at: new Date('2026-10-01T00:00:00Z'),
@@ -146,5 +148,30 @@ describe('newEnvironmentNotice（乗っ取りに気付けるように）', () =>
         expect(notice.text).toContain('心当たりのない環境');
         expect(notice.text).toContain('パスワード');
         expect(notice.text).toContain('ログアウト');
+    });
+});
+
+describe('authorAccountsOf / isRepositoryManagedKey（公式アカウントのリポジトリ管理の鍵・ワールド）', () => {
+    const self = (h: string) => `${h}@pr-1.ubichill.com`;
+    const official = { handle: 'ubichill', account: 'ubichill@ubichill.com' };
+
+    it('公式アカウントは、自サーバーの作者アカウントに加えて公式ワールドの作者でもある', () => {
+        expect(authorAccountsOf('ubichill', self, official)).toEqual([
+            'ubichill@pr-1.ubichill.com',
+            'ubichill@ubichill.com',
+        ]);
+        expect(authorAccountsOf('ubichill', (h) => `${h}@ubichill.com`, official)).toEqual(['ubichill@ubichill.com']);
+    });
+
+    it('ほかのアカウントは自サーバーの作者アカウントだけ。ID が無ければ作者ではない', () => {
+        expect(authorAccountsOf('hanako', self, official)).toEqual(['hanako@pr-1.ubichill.com']);
+        expect(authorAccountsOf(null, self, official)).toEqual([]);
+    });
+
+    it('リポジトリの記録にある鍵だけをリポジトリ管理とみなす', () => {
+        const pinned = (account: string) => (account === 'ubichill@ubichill.com' ? [{ publicKey: K1 }] : []);
+        expect(isRepositoryManagedKey(K1, ['ubichill@pr-1.ubichill.com', 'ubichill@ubichill.com'], pinned)).toBe(true);
+        expect(isRepositoryManagedKey(K2, ['ubichill@ubichill.com'], pinned)).toBe(false);
+        expect(isRepositoryManagedKey(K1, ['hanako@ubichill.com'], pinned)).toBe(false);
     });
 });

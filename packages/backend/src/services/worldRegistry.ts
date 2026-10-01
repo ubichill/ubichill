@@ -865,6 +865,22 @@ class WorldRegistry {
         return this._toListItem(resolution.world);
     }
 
+    /**
+     * リポジトリ（worlds/）で管理している公式ワールドのうち、作者がこれらの作者アカウントのもの。
+     * DB のワールドではないので画面からは編集・削除できない（変更はリポジトリの PR で行う）。
+     */
+    repositoryWorldsByAuthor(accounts: readonly string[]): ResolvedWorld[] {
+        return this._order
+            .map((id) => this._index.get(id))
+            .filter(
+                (w): w is ResolvedWorld =>
+                    !!w &&
+                    w.identity?.status === 'verified' &&
+                    !!w.identity.author &&
+                    accounts.includes(w.identity.author),
+            );
+    }
+
     /** ResolvedWorld(+DB record) → WorldListItem。 */
     private _toListItem(w: ResolvedWorld, rec?: WorldRecord): WorldListItem {
         return {
