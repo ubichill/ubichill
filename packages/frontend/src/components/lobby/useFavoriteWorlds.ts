@@ -1,47 +1,55 @@
-import type { WorldListItem } from '@ubichill/shared';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchMyFavoriteWorlds } from '@/lib/favoritesApi';
+import { type LoadedFavorites, needsReload, visibleFavorites } from './favoriteWorldsView';
 import { useFavorites } from './useFavorites';
 
-interface FavoriteWorldsState {
-    worlds: WorldListItem[];
-    unavailable: string[];
-    loading: boolean;
-    error: string | null;
+const EMPTY: LoadedFavorites = { worlds: [], unavailable: [] };
+
+interface LoadState {
+    result: LoadedFavorites;
+    /** 取得を依頼した時点のお気に入り（追加された分の判定に使う）。 */
+    requested: ReadonlySet<string>;
 }
 
 /**
  * お気に入りのワールドを URL から解決して取得する（外部ワールドも含む）。
  * ローカル・グローバルの一覧に無いワールドも出せるよう、一覧の絞り込みではなくサーバーに解決させる。
- * お気に入りが増減したら取り直す。
+ * 取り直すのは、読み込み済みに無いお気に入りが増えたときだけ（外した分は表示から消すだけ）。
+ * 古い応答が新しい応答を上書きしないよう、最後に始めた取得の結果だけを使う。
  */
 export function useFavoriteWorlds(enabled: boolean) {
     const { favorites } = useFavorites();
-    const [state, setState] = useState<FavoriteWorldsState>({
-        worlds: [],
-        unavailable: [],
-        loading: false,
-        error: null,
-    });
+    const [loaded, setLoaded] = useState<LoadState | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const latestRequest = useRef(0);
+
+    const favoritesRef = useRef(favorites);
+    favoritesRef.current = favorites;
 
     const reload = useCallback(async () => {
-        setState((prev) => ({ ...prev, loading: true, error: null }));
+        latestRequest.current += 1;
+        const request = latestRequest.current;
+        const requested = favoritesRef.current;
+        setLoading(true);
+        setError(null);
         try {
             const result = await fetchMyFavoriteWorlds();
-            setState({ ...result, loading: false, error: null });
+            if (request !== latestRequest.current) return;
+            setLoaded({ result, requested });
         } catch (e) {
-            setState((prev) => ({
-                ...prev,
-                loading: false,
-                error: e instanceof Error ? e.message : 'お気に入りを取得できませんでした',
-            }));
+            if (request !== latestRequest.current) return;
+            setError(e instanceof Error ? e.message : 'お気に入りを取得できませんでした');
+        } finally {
+            if (request === latestRequest.current) setLoading(false);
         }
     }, []);
 
     useEffect(() => {
-        void favorites;
-        if (enabled) void reload();
-    }, [enabled, favorites, reload]);
+        if (!enabled) return;
+        if (loaded === null || needsReload(loaded.requested, favorites)) void reload();
+    }, [enabled, favorites, loaded, reload]);
 
-    return { ...state, reload };
+    const view = useMemo(() => visibleFavorites(loaded?.result ?? EMPTY, favorites), [loaded, favorites]);
+    return { ...view, loading, error, reload };
 }

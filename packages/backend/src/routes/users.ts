@@ -32,8 +32,15 @@ import {
 } from '../services/publishingEnvironments';
 import { nodeWorldCrypto } from '../services/worldCrypto';
 import { worldRegistry } from '../services/worldRegistry';
+import { createTtlCache } from '../utils/ttlCache';
 
 const router = Router();
+
+const PUBLIC_FAVORITES_TTL_MS = 3 * 60 * 1000;
+const publicFavoritesCache = createTtlCache<Awaited<ReturnType<typeof resolveFavoriteWorlds>>>({
+    ttlMs: PUBLIC_FAVORITES_TTL_MS,
+    max: 500,
+});
 
 // 仮登録（OTP送信）
 router.post('/register', async (req, res) => {
@@ -381,6 +388,7 @@ router.post('/me/favorites', requireAuth, async (req, res) => {
         return res.status(409).json({ error: `お気に入りは ${LIMITS.MAX_FAVORITES_PER_USER} 件までです` });
     }
     await favoriteRepository.add(req.user.id, parsed.ref);
+    publicFavoritesCache.delete(req.user.id);
     return res.status(201).json({ worldRef: parsed.ref });
 });
 
@@ -397,6 +405,7 @@ router.delete('/me/favorites', requireAuth, async (req, res) => {
     const parsed = favoriteRefOf(worldRef);
     await favoriteRepository.remove(req.user.id, worldRef);
     if (parsed.ok && parsed.ref !== worldRef) await favoriteRepository.remove(req.user.id, parsed.ref);
+    publicFavoritesCache.delete(req.user.id);
     return res.status(204).send();
 });
 
@@ -415,12 +424,14 @@ router.get('/:userId', async (req, res) => {
     });
 });
 
-// 他ユーザーのお気に入り（公開）。作者まで確認できたワールドだけを返す。
+// 他ユーザーのお気に入り（公開・ログイン不要）。作者まで確認できたワールドだけを返す。
+// 呼ばれるたびに外部ワールドを取得し直さないよう、ユーザーごとに数分キャッシュする（追加・削除で捨てる）。
 router.get('/:userId/favorites', async (req, res) => {
     const user = await userRepository.findById(req.params.userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
-    const refs = await favoriteRepository.list(user.id);
-    const { worlds } = await resolveFavoriteWorlds(refs, (ref) => worldRegistry.publishableListItem(ref));
+    const { worlds } = await publicFavoritesCache.getOrCreate(user.id, async () =>
+        resolveFavoriteWorlds(await favoriteRepository.list(user.id), (ref) => worldRegistry.publishableListItem(ref)),
+    );
     return res.json({ worlds });
 });
 
