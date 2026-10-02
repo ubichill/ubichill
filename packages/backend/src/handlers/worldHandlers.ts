@@ -5,13 +5,7 @@
  *  - disconnect        : ソケット切断 (grace period → 自動退出)
  *  - sendWorldSnapshot : 任意のタイミングでスナップショットを再送
  */
-import {
-    DEFAULTS,
-    isStrictLockWorld,
-    type ResolvedWorld,
-    type User,
-    type WorldSnapshotPayload,
-} from '@ubichill/shared';
+import { DEFAULTS, type ResolvedWorld, type User, type WorldSnapshotPayload } from '@ubichill/shared';
 import { appConfig } from '../config';
 import { instanceManager } from '../services/instanceManager';
 import { getInstanceSnapshot, patchEntity } from '../services/instanceState';
@@ -308,7 +302,6 @@ export async function sendWorldSnapshot(socket: TypedSocket, instanceId: string,
         // クライアント側のロード時に lock と hash 照合して不一致 mod を拒否する。
         lock: world.lock,
         sourceKind: world.source.kind,
-        strictLock: isStrictLockWorld(world.source.kind, world.identity),
     };
     socket.emit('world:snapshot', snapshotPayload);
     logger.debug(

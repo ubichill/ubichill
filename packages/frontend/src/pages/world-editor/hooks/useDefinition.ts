@@ -10,13 +10,15 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import yaml from 'yaml';
 import { API_BASE } from '@/lib/api';
 
-const PLACEHOLDER_NAME = 'newworldplaceholder12';
+/** 新しいワールドの metadata.name（作者のワールドの中で一意な識別子。保存後は変えない）。 */
+const newWorldName = (): string =>
+    Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => (b % 36).toString(36)).join('');
 
 function createInitialDefinition(): WorldDefinition {
     return {
         apiVersion: 'ubichill.com/v1alpha1',
         kind: 'World',
-        metadata: { name: PLACEHOLDER_NAME, version: '1.0.0' },
+        metadata: { name: newWorldName(), version: '1.0.0' },
         spec: {
             displayName: '',
             capacity: { default: 10, max: 20 },

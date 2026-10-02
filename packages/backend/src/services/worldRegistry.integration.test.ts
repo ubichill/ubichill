@@ -1,7 +1,7 @@
 import { generateKeyPairSync, sign } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { signWorld, type WorldDefinition, type WorldDocument, type WorldSigningKey } from '@ubichill/shared';
+import { type InitialEntity, signWorld, type WorldDefinition, type WorldSigningKey } from '@ubichill/shared';
 import { beforeAll, describe, expect, it } from 'vitest';
 import yaml from 'yaml';
 import { nodeWorldCrypto } from './worldCrypto';
@@ -23,19 +23,28 @@ function newTestSigningKey(): WorldSigningKey {
  *   DATABASE_URL=postgresql://ubichill:password@127.0.0.1:5433/ubichill pnpm test
  *
  * 検証すること:
- *   - official ワールド（バンドル worlds/）は DB 非在のまま listWorlds に出る（URL ネイティブ／DB 非依存）
- *   - getHostedDocument が official をファイルの生の値で返す（URL 配信の実体＝作者署名の対象）
- *   - 作者署名は現在の内容に対して有効なものだけ保存・配信され、内容更新で外れる
+ *   - リポジトリのワールド（worlds/）は静的ファイルの URL で、外部と同じ規則で検証される（DB 非依存）
+ *   - 本体への保存は「定義・lock・署名」の組をそのまま保存する（中身を書き換えない）。作者 + metadata.name で同じワールド
+ *   - 署名は外部と同じ規則で検証し、通らなければ何も保存しない。署名なしの保存は公開中の版を残して下書きになる
  *   - instance を worldRef(URL) で作成し getInstance が往復解決できる
  */
 
 const RUN = !!process.env.DATABASE_URL;
 const SYS = '00000000-0000-0000-0000-000000000000';
 
+const worldDef = (name: string, displayName: string, initialEntities: InitialEntity[] = []): WorldDefinition => ({
+    apiVersion: 'ubichill.com/v1alpha1',
+    kind: 'World',
+    metadata: { name, version: '1.0.0' },
+    spec: { displayName, capacity: { default: 2, max: 4 }, initialEntities },
+});
+/** 送る組（YAML を往復した値＝ルートが受け取る値と同じ）。 */
+const bundleOf = (def: WorldDefinition) => ({ definition: yaml.parse(yaml.stringify(def)) as unknown, lock: null });
+const uniqueName = (label: string) => `it-${label}-${Date.now().toString(36)}`;
+
 describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
     // 型のみ import（値の import は env 設定後に動的に行う）
     let worldRegistry: typeof import('./worldRegistry').worldRegistry;
-    let prepareWorldUpdate: typeof import('./worldRegistry').prepareWorldUpdate;
     let instanceManager: typeof import('./instanceManager').instanceManager;
 
     beforeAll(async () => {
@@ -44,92 +53,103 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
         // backend の config 検証（config/index.ts）が要求する最小 env を埋める。
         process.env.NODE_ENV ??= 'test';
         process.env.BETTER_AUTH_SECRET ??= 'test-secret';
-        ({ worldRegistry, prepareWorldUpdate } = await import('./worldRegistry'));
+        ({ worldRegistry } = await import('./worldRegistry'));
         ({ instanceManager } = await import('./instanceManager'));
         await worldRegistry.initialize();
     });
 
-    it('official は DB 非在だが listWorlds に出る', async () => {
-        const list = await worldRegistry.listWorlds();
-        const official = list.find((w) => w.id === 'default');
-        expect(official).toBeTruthy();
+    it('リポジトリのワールドは静的ファイルの URL で配られ、外部と同じ規則で署名が確かめられる', async () => {
+        const official = await worldRegistry.getWorld('default');
         expect(official?.source.kind).toBe('local');
-        // 公式ワールドは作者 ubichill@ubichill.com で署名され、worlds/trusted-authors.json の記録で作者を確認できる
-        expect(official?.identity).toMatchObject({ status: 'verified', author: 'ubichill@ubichill.com' });
-        expect(official?.authorName).toBe('Ubichill');
-        // official はメモリ索引のみ（DB レコードは無い）
+        expect(official?.url).toMatch(/\/api\/v1\/repository\/worlds\/default\.yaml$/);
+        // 署名そのものは有効。作者はほかの作者と同じく WebFinger で確かめる（リポジトリの記録で特別に信用しない）
+        expect(official?.identity?.status).toBe('verified');
         expect(await worldRegistry.getWorldRecord('default')).toBeUndefined();
+        expect(worldRegistry.repositoryFile('default.sig.json')?.contentType).toMatch(/json/);
+        expect(worldRegistry.repositoryFile('../package.json')).toBeUndefined();
+        expect(worldRegistry.repositoryFile('trusted-authors.json')).toBeUndefined();
     });
 
-    it('getHostedDocument が official をファイルの生の値で返す', async () => {
+    it('getHostedDocument がリポジトリのワールドをファイルの生の値で返す', async () => {
         const hosted = await worldRegistry.getHostedDocument('default');
-        // スキーマ既定値を補った値ではなく、ファイルそのもの（作者署名の対象）であること
         const file = yaml.parse(readFileSync(path.resolve(process.cwd(), 'worlds/default.yaml'), 'utf-8')) as unknown;
         expect(hosted?.definition).toEqual(file);
     });
 
-    it('作者署名: 有効なものだけ保存・配信し、内容更新で外れる', async () => {
+    it('組の保存: 中身を書き換えず、同じ metadata.name は同じワールド、署名は外部と同じ規則で検証する', async () => {
         const key = newTestSigningKey();
-        const world = await worldRegistry.createFromInput(SYS, {
-            displayName: '署名テスト',
-            capacity: { default: 2, max: 4 },
-            initialEntities: [],
-        });
+        const name = uniqueName('bundle');
+        const first = await worldRegistry.saveBundle(SYS, bundleOf(worldDef(name, 'A')));
+        if (!first.ok) throw new Error(first.message);
         try {
-            const hosted = await worldRegistry.getHostedDocument(world.id);
-            if (!hosted) throw new Error('hosted が無い');
-            // 配信経路（YAML 往復）を通した値に署名する＝ブラウザの署名フローと同じ
-            const served = { definition: yaml.parse(yaml.stringify(hosted.definition)) as unknown, lock: hosted.lock };
-            const sig = await signWorld(served, key, nodeWorldCrypto);
-
-            const forged = { ...sig, contentHash: 'sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=' };
-            expect(await worldRegistry.setWorldSignature(world.id, forged)).toMatchObject({ ok: false });
-            expect(await worldRegistry.getWorldSignature(world.id)).toBeUndefined();
-
-            expect(await worldRegistry.setWorldSignature(world.id, sig)).toMatchObject({ ok: true });
-            expect(await worldRegistry.getWorldSignature(world.id)).toEqual(sig);
-            expect((await worldRegistry.getWorld(world.id))?.identity?.status).toBe('verified');
-            // 鍵だけの署名（作者アカウントなし）は公開ルールを満たさないので一覧に出ない（例外なし）
-            expect((await worldRegistry.listWorlds('local')).some((w) => w.id === world.id)).toBe(false);
-
-            const def = hosted.definition as WorldDefinition;
-            const changed = { ...def, spec: { ...def.spec, displayName: '変更後' } };
-
-            // 署名済みワールドを黙って未署名にする更新は拒否され、内容も変わらない
-            expect(await worldRegistry.updateWorld(world.id, changed)).toMatchObject({
-                ok: false,
-                reason: 'signature-required',
+            expect(first.saved).toBe('unsigned');
+            // metadata.name はそのまま（ホストの ID に書き換えない）。URL の ID はサーバーが決める
+            expect((await worldRegistry.getHostedDocument(first.world.id))?.definition).toMatchObject({
+                metadata: { name },
             });
-            expect((await worldRegistry.getWorld(world.id))?.displayName).toBe('署名テスト');
+            expect(first.world.id).not.toBe(name);
+            expect((await worldRegistry.listWorlds('local')).some((w) => w.id === first.world.id)).toBe(false);
 
-            // 新しい内容への署名を添えると内容と署名が一緒に保存される
-            const prepared = prepareWorldUpdate(world.id, changed, null);
-            const nextSig = await signWorld(
-                JSON.parse(JSON.stringify(prepared)) as unknown as WorldDocument,
-                key,
-                nodeWorldCrypto,
-            );
-            expect(await worldRegistry.updateWorld(world.id, changed, null, { signature: nextSig })).toMatchObject({
-                ok: true,
-            });
-            expect((await worldRegistry.getWorld(world.id))?.identity?.status).toBe('verified');
+            const again = await worldRegistry.saveBundle(SYS, bundleOf(worldDef(name, 'B')));
+            expect(again).toMatchObject({ ok: true, world: { id: first.world.id } });
 
-            // 古い署名（前の内容向け）を添えた更新は何も保存しない
-            const again = { ...changed, spec: { ...changed.spec, displayName: '再変更' } };
-            expect(await worldRegistry.updateWorld(world.id, again, null, { signature: nextSig })).toMatchObject({
+            // 別の内容への署名を添えると何も保存しない
+            const signedB = bundleOf(worldDef(name, 'B'));
+            const sigForOther = await signWorld(bundleOf(worldDef(name, 'X')), key, nodeWorldCrypto);
+            expect(await worldRegistry.saveBundle(SYS, { ...signedB, signature: sigForOther })).toMatchObject({
                 ok: false,
                 reason: 'content-mismatch',
             });
+            expect(await worldRegistry.getWorldSignature(first.world.id)).toBeUndefined();
 
-            // 未署名化を明示すれば保存でき、一覧から消える
-            expect(await worldRegistry.updateWorld(world.id, again, null, { allowUnsigned: true })).toMatchObject({
+            const sig = await signWorld(signedB, key, nodeWorldCrypto);
+            expect(await worldRegistry.saveBundle(SYS, { ...signedB, signature: sig })).toMatchObject({
                 ok: true,
+                saved: 'published',
             });
-            expect(await worldRegistry.getWorldSignature(world.id)).toBeUndefined();
-            expect((await worldRegistry.getWorld(world.id))?.identity?.status).toBe('unsigned');
-            expect((await worldRegistry.listWorlds('local')).some((w) => w.id === world.id)).toBe(false);
+            expect(await worldRegistry.getWorldSignature(first.world.id)).toEqual(sig);
+            expect((await worldRegistry.getWorld(first.world.id))?.identity?.status).toBe('verified');
+            // 鍵だけの署名（作者アカウントなし）は公開ルールを満たさないので一覧に出ない（例外なし）
+            expect((await worldRegistry.listWorlds('local')).some((w) => w.id === first.world.id)).toBe(false);
         } finally {
-            await worldRegistry.deleteWorld(world.id);
+            await worldRegistry.deleteWorld(first.world.id);
+        }
+    });
+
+    it('下書き: 公開中のワールドに署名なしで送ると公開中の版を残し、署名し直しでは消えず、公開で消える', async () => {
+        const key = newTestSigningKey();
+        const name = uniqueName('draft');
+        const live = bundleOf(worldDef(name, '公開中'));
+        const created = await worldRegistry.saveBundle(SYS, {
+            ...live,
+            signature: await signWorld(live, key, nodeWorldCrypto),
+        });
+        if (!created.ok) throw new Error(created.message);
+        const id = created.world.id;
+        try {
+            const draft = bundleOf(worldDef(name, '編集中'));
+            expect(await worldRegistry.saveBundle(SYS, draft)).toMatchObject({ ok: true, saved: 'draft' });
+            expect((await worldRegistry.getWorld(id))?.displayName).toBe('公開中');
+            expect((await worldRegistry.getWorld(id))?.identity?.status).toBe('verified');
+            expect(await worldRegistry.getEditorDefinition(id)).toMatchObject({
+                definition: { spec: { displayName: '編集中' } },
+                hasDraft: true,
+            });
+
+            // 公開中の版に署名し直しても（鍵の取り消し後など）下書きは残る
+            const resign = { ...live, signature: await signWorld(live, newTestSigningKey(), nodeWorldCrypto) };
+            expect(await worldRegistry.saveBundle(SYS, resign)).toMatchObject({ ok: true, saved: 'published' });
+            expect(await worldRegistry.getEditorDefinition(id)).toMatchObject({ hasDraft: true });
+
+            const published = { ...draft, signature: await signWorld(draft, key, nodeWorldCrypto) };
+            expect(await worldRegistry.saveBundle(SYS, published)).toMatchObject({ ok: true, saved: 'published' });
+            expect(await worldRegistry.getEditorDefinition(id)).toMatchObject({
+                definition: { spec: { displayName: '編集中' } },
+                hasDraft: false,
+            });
+            expect((await worldRegistry.getWorld(id))?.displayName).toBe('編集中');
+        } finally {
+            await worldRegistry.deleteWorld(id);
         }
     });
 
@@ -151,20 +171,16 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
             });
             worldRegistry.invalidateResolvedWorlds();
 
-            const world = await worldRegistry.createFromInput(userId, {
-                displayName: '作者テスト',
-                capacity: { default: 2, max: 4 },
-                initialEntities: [],
-            });
-            const hosted = await worldRegistry.getHostedDocument(world.id);
-            if (!hosted) throw new Error('hosted が無い');
-            const served = { definition: yaml.parse(yaml.stringify(hosted.definition)) as unknown, lock: hosted.lock };
             const author = selfAccount(handle);
-            const sig = await signWorld(served, key, nodeWorldCrypto, { author });
-            expect(await worldRegistry.setWorldSignature(world.id, sig)).toMatchObject({
-                ok: true,
-                identity: { author, worldId: `acct:${author}/${world.id}` },
+            const bundle = bundleOf(worldDef('author-test', '作者テスト'));
+            const saved = await worldRegistry.saveBundle(userId, {
+                ...bundle,
+                signature: await signWorld(bundle, key, nodeWorldCrypto, { author }),
             });
+            if (!saved.ok) throw new Error(saved.message);
+            const world = saved.world;
+            // ワールドの識別は作者 + metadata.name（ホストの URL の ID ではない）
+            expect(world.identity).toMatchObject({ author, worldId: `acct:${author}/author-test` });
             expect((await worldRegistry.listWorlds('local')).some((w) => w.id === world.id)).toBe(true);
 
             // 作者名は metadata ではなくアカウントの表示名。表示名を変えても署名はそのまま有効で、名前だけ変わる
@@ -189,7 +205,7 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
             await publishingEnvironmentRepository.revoke(userId, env.id, 'lost');
             worldRegistry.invalidateResolvedWorlds();
             const after = (await worldRegistry.getWorld(world.id))?.identity;
-            expect(after).toMatchObject({ status: 'verified', worldId: `ed25519:${key.publicKey}/${world.id}` });
+            expect(after).toMatchObject({ status: 'verified', worldId: `ed25519:${key.publicKey}/author-test` });
             expect(after).not.toHaveProperty('author');
             expect((await worldRegistry.listWorlds('local')).some((w) => w.id === world.id)).toBe(false);
         } finally {
@@ -197,11 +213,10 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
         }
     });
 
-    it('mod を lock に固定していないワールドへの署名は保存を拒否（作者署名あり ⇒ 全 mod 固定）', async () => {
-        const world = await worldRegistry.createFromInput(SYS, {
-            displayName: '固定なし',
-            capacity: { default: 2, max: 4 },
-            initialEntities: [
+    it('mod を lock に固定していないワールドへの署名は保存を拒否し、何も保存しない', async () => {
+        const name = uniqueName('unpinned');
+        const bundle = bundleOf(
+            worldDef(name, '固定なし', [
                 {
                     id: 'p',
                     transform: { x: 0, y: 0, z: 0, scale: 1, rotation: 0 },
@@ -209,83 +224,21 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
                     tags: [],
                     children: [],
                 },
-            ],
+            ]),
+        );
+        const signature = await signWorld(bundle, newTestSigningKey(), nodeWorldCrypto);
+        expect(await worldRegistry.saveBundle(SYS, { ...bundle, signature })).toMatchObject({
+            ok: false,
+            reason: 'lock-incomplete',
         });
-        try {
-            const hosted = await worldRegistry.getHostedDocument(world.id);
-            if (!hosted) throw new Error('hosted が無い');
-            const served = { definition: yaml.parse(yaml.stringify(hosted.definition)) as unknown, lock: hosted.lock };
-            const sig = await signWorld(served, newTestSigningKey(), nodeWorldCrypto);
-            expect(await worldRegistry.setWorldSignature(world.id, sig)).toEqual({
-                ok: false,
-                reason: 'lock-incomplete',
-            });
-            expect((await worldRegistry.getWorld(world.id))?.identity?.status).toBe('unsigned');
-        } finally {
-            await worldRegistry.deleteWorld(world.id);
-        }
+        expect((await worldRegistry.listWorlds('local')).some((w) => w.displayName === '固定なし')).toBe(false);
     });
 
-    it('下書き: 署名済みワールドは公開中の版を残して下書きだけ保存し、公開で下書きが消える', async () => {
-        const key = newTestSigningKey();
-        const world = await worldRegistry.createFromInput(SYS, {
-            displayName: '下書きテスト',
-            capacity: { default: 2, max: 4 },
-            initialEntities: [],
+    it('metadata.name が長すぎる組は保存しない', async () => {
+        expect(await worldRegistry.saveBundle(SYS, bundleOf(worldDef('a'.repeat(51), '長い')))).toMatchObject({
+            ok: false,
+            reason: 'invalid-definition',
         });
-        try {
-            const draftOf = (name: string): WorldDefinition => ({
-                apiVersion: 'ubichill.com/v1alpha1',
-                kind: 'World',
-                metadata: { name: world.id, version: '1.0.0' },
-                spec: { displayName: name, capacity: { default: 2, max: 4 }, initialEntities: [] },
-            });
-
-            // 未署名のワールドは下書きを本体に直接保存（下書きは残らない）
-            expect(await worldRegistry.saveDraft(world.id, draftOf('未署名の下書き'))).toEqual({
-                ok: true,
-                hasDraft: false,
-            });
-            expect((await worldRegistry.getWorld(world.id))?.displayName).toBe('未署名の下書き');
-
-            // 署名する
-            const hosted = await worldRegistry.getHostedDocument(world.id);
-            if (!hosted) throw new Error('hosted が無い');
-            const served = { definition: yaml.parse(yaml.stringify(hosted.definition)) as unknown, lock: hosted.lock };
-            expect(
-                await worldRegistry.setWorldSignature(world.id, await signWorld(served, key, nodeWorldCrypto)),
-            ).toMatchObject({
-                ok: true,
-            });
-
-            // 署名済みのワールドの下書き保存は、公開中の版と署名をそのまま残す
-            expect(await worldRegistry.saveDraft(world.id, draftOf('編集中'))).toEqual({ ok: true, hasDraft: true });
-            const live = await worldRegistry.getWorld(world.id);
-            expect(live?.displayName).toBe('未署名の下書き');
-            expect(live?.identity?.status).toBe('verified');
-            expect(await worldRegistry.getEditorDefinition(world.id)).toMatchObject({
-                definition: { spec: { displayName: '編集中' } },
-                hasDraft: true,
-            });
-
-            // 下書きを署名して公開すると本体が置き換わり、下書きは消える
-            const prepared = prepareWorldUpdate(world.id, draftOf('編集中'), null);
-            const sig = await signWorld(
-                JSON.parse(JSON.stringify(prepared)) as unknown as WorldDocument,
-                key,
-                nodeWorldCrypto,
-            );
-            expect(
-                await worldRegistry.updateWorld(world.id, draftOf('編集中'), null, { signature: sig }),
-            ).toMatchObject({ ok: true });
-            expect(await worldRegistry.getEditorDefinition(world.id)).toMatchObject({
-                definition: { spec: { displayName: '編集中' } },
-                hasDraft: false,
-            });
-            expect((await worldRegistry.getWorld(world.id))?.displayName).toBe('編集中');
-        } finally {
-            await worldRegistry.deleteWorld(world.id);
-        }
     });
 
     it('instance を URL 参照で作成し往復解決できる', async () => {

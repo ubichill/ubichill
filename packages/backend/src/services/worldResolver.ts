@@ -249,8 +249,46 @@ export interface ResolveWorldOptions {
 }
 
 /**
- * URL を取得し、生定義（配信用）と ResolvedWorld（一覧/入室用）の両方を返す（外部/他インスタンス用）。
- * 本体 YAML・兄弟 lock・兄弟署名を並行取得し、署名があれば検証する（不正なら throw）。
+ * ワールドのバンドル: 作者が書いて署名した 3 つの生の値（world 定義・兄弟 lock・兄弟署名）。
+ * 置き場所（外部 URL・本体のリポジトリの静的ファイル・本体の DB）に関係なく、ワールドは常にこの形で配られ、
+ * {@link resolveBundle} で同じ規則で検証される。置き場所の違いは、バンドルを手に入れる方法だけ。
+ */
+export interface WorldBundle {
+    /** YAML をパースした生の値（スキーマの既定値を足していないもの。署名の対象そのもの）。 */
+    definition: unknown;
+    lock: unknown;
+    signature: unknown;
+}
+
+/**
+ * バンドルを検証して ResolvedWorld にする（すべてのワールドに同じ規則）。
+ * 改竄・署名不正は throw（解決を拒否）、署名が無ければ unsigned。作者は確認できたときだけ付く。
+ */
+export async function resolveBundle(
+    bundle: WorldBundle,
+    url: string,
+    source: WorldSource,
+    options: ResolveWorldOptions & { authorId?: string } = {},
+): Promise<{ definition: WorldDefinition; resolved: ResolvedWorld }> {
+    const identity = await identifyWorld(
+        { definition: bundle.definition, lock: bundle.lock ?? null },
+        bundle.signature ?? null,
+        url,
+        options.isAuthorKey,
+    );
+    const parsedLock = ModLockSchema.safeParse(bundle.lock);
+    const definition = validateWorldDefinition(bundle.definition, url);
+    const resolved = mapToResolved(definition, url, source, {
+        authorId: options.authorId,
+        lock: parsedLock.success ? parsedLock.data : undefined,
+        identity,
+    });
+    const authorName = await confirmedAuthorName(identity, options.resolveAuthorName);
+    return { definition, resolved: { ...resolved, authorName } };
+}
+
+/**
+ * URL からバンドル（本体 YAML・兄弟 lock・兄弟署名）を取得して {@link resolveBundle} で検証する（外部/他インスタンス用）。
  */
 export async function resolveWorld(
     url: string,
@@ -263,22 +301,13 @@ export async function resolveWorld(
         fetchSiblingJson(lockUrlFor(fetchUrl)),
         fetchSiblingJson(sigUrlFor(fetchUrl)),
     ]);
-    const rawDefinition: unknown = yaml.parse(text);
-    const identity = await identifyWorld(
-        { definition: rawDefinition, lock: rawLock ?? null },
-        rawSig,
-        url,
-        options.isAuthorKey,
-    );
-    const parsedLock = ModLockSchema.safeParse(rawLock);
-    const definition = validateWorldDefinition(rawDefinition, url);
     // 正規 URL は元の（人間が貼れる）URL を維持する
-    const resolved = mapToResolved(definition, url, source, {
-        lock: parsedLock.success ? parsedLock.data : undefined,
-        identity,
-    });
-    const authorName = await confirmedAuthorName(identity, options.resolveAuthorName);
-    return { definition, resolved: { ...resolved, authorName } };
+    return resolveBundle(
+        { definition: yaml.parse(text) as unknown, lock: rawLock, signature: rawSig },
+        url,
+        source,
+        options,
+    );
 }
 
 /** URL を取得して ResolvedWorld に解決する（外部/他インスタンス用）。 */

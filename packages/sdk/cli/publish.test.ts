@@ -1,7 +1,7 @@
 import type { WorldSigningKey } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
 import yaml from 'yaml';
-import { type PublishDeps, publish, publishRecordPathFor } from './publish.ts';
+import { type PublishDeps, publish } from './publish.ts';
 
 const key: WorldSigningKey = { publicKey: 'K'.repeat(43), sign: async () => 'S'.repeat(86) };
 const crypto = { sha256Base64: async () => 'h'.repeat(43) + '=', verifyEd25519: async () => true };
@@ -45,54 +45,27 @@ function fakeDeps(files: Record<string, string>, handler: (method: string, path:
     return { deps, requests, files };
 }
 
-const prepared = (id: string) => ({
-    status: 200,
-    body: { definition: { ...(yaml.parse(worldYaml) as object), metadata: { name: id, version: '1.0.0' } }, lock: null },
-});
-
 describe('publish（本体へ）', () => {
-    it('初回は作成して対応を記録し、サーバーが保存する値に作者付きで署名して内容と一緒に送る', async () => {
-        const { deps, requests, files } = fakeDeps({ 'w.yaml': worldYaml }, (method, path) => {
-            if (method === 'POST' && path === '/api/v1/worlds/yaml') return { status: 201, body: { id: 'srv-id' } };
-            if (path.endsWith('/prepare')) return prepared('srv-id');
-            return { status: 200, body: {} };
-        });
+    it('手元の組（yaml・lock・作者付きの署名）をそのまま 1 回の PUT で送る（手元に対応を記録しない）', async () => {
+        const { deps, requests, files } = fakeDeps({ 'w.yaml': worldYaml }, () => ({ status: 200, body: { id: 'srv-id' } }));
         const url = await publish(deps, { worldPath: 'w.yaml', credential });
         expect(url).toBe('https://ubichill.com/world/srv-id');
-        expect(requests.map((r) => `${r.method} ${r.path}`)).toEqual([
-            'POST /api/v1/worlds/yaml',
-            'POST /api/v1/worlds/srv-id/prepare',
-            'PUT /api/v1/worlds/srv-id/yaml',
-        ]);
-        const signature = (requests[2]?.body as { signature: { author: string; name: string } }).signature;
-        expect(signature).toMatchObject({ author: 'youkan@ubichill.com', name: 'srv-id' });
-        expect(JSON.parse(files[publishRecordPathFor('w.yaml')] ?? '{}')).toEqual({
-            servers: { 'https://ubichill.com': { worldId: 'srv-id' } },
-        });
+        expect(requests.map((r) => `${r.method} ${r.path}`)).toEqual(['PUT /api/v1/worlds']);
+        const body = requests[0]?.body as { yaml: string; lock: unknown; signature: { author: string; name: string } };
+        expect(body.yaml).toBe(worldYaml);
+        expect(body.lock).toBeNull();
+        expect(body.signature).toMatchObject({ author: 'youkan@ubichill.com', name: 'my-world' });
+        expect(Object.keys(files)).toEqual(['w.yaml']);
     });
 
-    it('記録があれば同じワールドを更新し、作り直さない', async () => {
-        const record = JSON.stringify({ servers: { 'https://ubichill.com': { worldId: 'known' } } });
-        const { deps, requests } = fakeDeps({ 'w.yaml': worldYaml, 'w.ubichill.json': record }, (_m, path) =>
-            path.endsWith('/prepare') ? prepared('known') : { status: 200, body: {} },
+    it('本体へ送る署名と外部ホスト向けに書き出す署名は同じ（どこに置いても同じ規則で確かめられる）', async () => {
+        const server = fakeDeps({ 'w.yaml': worldYaml }, () => ({ status: 200, body: { id: 'srv-id' } }));
+        await publish(server.deps, { worldPath: 'w.yaml', credential });
+        const out = fakeDeps({ 'w.yaml': worldYaml }, () => ({ status: 500, body: {} }));
+        await publish(out.deps, { worldPath: 'w.yaml', credential, outDir: 'dist' });
+        expect((server.requests[0]?.body as { signature: unknown }).signature).toEqual(
+            JSON.parse(out.files['dist/w.sig.json'] ?? '{}'),
         );
-        await publish(deps, { worldPath: 'w.yaml', credential });
-        expect(requests.map((r) => `${r.method} ${r.path}`)).toEqual([
-            'POST /api/v1/worlds/known/prepare',
-            'PUT /api/v1/worlds/known/yaml',
-        ]);
-    });
-
-    it('記録したワールドが消されていたら作り直して記録を更新する', async () => {
-        const record = JSON.stringify({ servers: { 'https://ubichill.com': { worldId: 'gone' } } });
-        const { deps, files } = fakeDeps({ 'w.yaml': worldYaml, 'w.ubichill.json': record }, (method, path) => {
-            if (path === '/api/v1/worlds/gone/prepare') return { status: 404, body: { error: 'World not found' } };
-            if (method === 'POST' && path === '/api/v1/worlds/yaml') return { status: 201, body: { id: 'new-id' } };
-            if (path.endsWith('/prepare')) return prepared('new-id');
-            return { status: 200, body: {} };
-        });
-        expect(await publish(deps, { worldPath: 'w.yaml', credential })).toBe('https://ubichill.com/world/new-id');
-        expect(files['w.ubichill.json']).toContain('new-id');
     });
 
     it('lock に固定されていない mod があれば、サーバーに送る前に止める', async () => {
@@ -113,9 +86,10 @@ describe('publish（本体へ）', () => {
     });
 
     it('サーバーが断ったら、その理由で失敗する（取り消し済みの鍵など）', async () => {
-        const { deps } = fakeDeps({ 'w.yaml': worldYaml, 'w.ubichill.json': JSON.stringify({ servers: { 'https://ubichill.com': { worldId: 'k' } } }) }, (_m, path) =>
-            path.endsWith('/prepare') ? prepared('k') : { status: 422, body: { error: 'この署名の鍵はあなたの有効な公開環境ではありません' } },
-        );
+        const { deps } = fakeDeps({ 'w.yaml': worldYaml }, () => ({
+            status: 422,
+            body: { error: 'この署名の鍵はあなたの有効な公開環境ではありません' },
+        }));
         await expect(publish(deps, { worldPath: 'w.yaml', credential })).rejects.toThrow('この署名の鍵はあなたの有効な公開環境ではありません');
     });
 });

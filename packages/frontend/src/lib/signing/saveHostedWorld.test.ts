@@ -2,153 +2,139 @@ import { generateSigningKeyPkcs8, importSigningKey, webWorldCrypto } from '@ubic
 import { verifyWorldSignature, type WorldSigningKey } from '@ubichill/shared';
 import { beforeEach, describe, expect, it } from 'vitest';
 import yaml from 'yaml';
-import { createHostedWorld, updateHostedWorld } from './saveHostedWorld';
+import { saveWorldBundle } from './saveHostedWorld';
+import { signHostedWorld } from './signHostedWorld';
 
 /**
- * backend の prepare / PUT yaml / POST yaml / sig を模した偽サーバー。
- * 保存時に metadata.name をサーバー側 ID に書き換える（手元の値と配信値が異なる状況を再現）。
- * 署名済みワールドへの未署名更新は allowUnsigned が無ければ 409 にする（本物と同じ規則）。
+ * backend の PUT /api/v1/worlds・GET /:id?format=yaml・/:id/lock を模した偽サーバー（本物と同じ規則）。
+ * - metadata.name で同じワールドかを決め、中身は書き換えない
+ * - 署名があれば送られた値そのものに対して検証し、通らなければ 422
+ * - 署名なしで公開中のワールドに送ると、公開中の版は残して下書きにする
  */
 function fakeServer() {
-    const db = new Map<string, { definition: unknown; lock: unknown; signature: unknown }>();
-    const normalize = (id: string, text: string) => {
-        const def = yaml.parse(text) as { metadata: Record<string, unknown> };
-        return { ...def, metadata: { ...def.metadata, name: id } };
-    };
-    const isSigned = async (id: string) => {
-        const row = db.get(id);
-        return !!row && (await verifyWorldSignature(row, row.signature, webWorldCrypto)).status === 'verified';
-    };
+    const db = new Map<
+        string,
+        { id: string; definition: unknown; lock: unknown; signature: unknown; draft?: unknown }
+    >();
     const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
-        const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
-        const id = /worlds\/([^/?]+)/.exec(url)?.[1] ?? '';
-        if (url.endsWith('/api/v1/worlds/yaml') && init?.method === 'POST') {
-            const newId = `srv${db.size}`;
-            db.set(newId, {
-                definition: normalize(newId, String(body.yaml)),
-                lock: body.lock ?? null,
-                signature: null,
-            });
-            return Response.json({ id: newId });
-        }
-        if (url.endsWith('/prepare'))
-            return Response.json({ definition: normalize(id, String(body.yaml)), lock: body.lock });
-        if (url.endsWith('/yaml') && init?.method === 'PUT') {
-            const next = { definition: normalize(id, String(body.yaml)), lock: body.lock ?? null };
+        if (url.endsWith('/api/v1/worlds') && init?.method === 'PUT') {
+            const body = JSON.parse(String(init.body)) as { yaml: string; lock: unknown; signature?: unknown };
+            const definition = yaml.parse(body.yaml) as { metadata: { name: string } };
+            const existing = db.get(definition.metadata.name);
+            const id = existing?.id ?? `srv${db.size}`;
             if (body.signature !== undefined) {
-                const v = await verifyWorldSignature(next, body.signature, webWorldCrypto);
+                const v = await verifyWorldSignature({ definition, lock: body.lock }, body.signature, webWorldCrypto);
                 if (v.status !== 'verified') return Response.json({ error: 'bad' }, { status: 422 });
-            } else if (body.allowUnsigned !== true && (await isSigned(id))) {
-                return Response.json({ error: 'signature-required' }, { status: 409 });
+                db.set(definition.metadata.name, { id, definition, lock: body.lock, signature: body.signature });
+                return Response.json({ id, saved: 'published', identity: v });
             }
-            db.set(id, { ...next, signature: body.signature ?? null });
-            return Response.json({});
+            if (existing?.signature) {
+                db.set(definition.metadata.name, { ...existing, draft: definition });
+                return Response.json({ id, saved: 'draft' });
+            }
+            db.set(definition.metadata.name, { id, definition, lock: body.lock, signature: null });
+            return Response.json({ id, saved: 'unsigned' });
         }
-        if (url.includes('?format=yaml')) return new Response(yaml.stringify(db.get(id)?.definition));
-        if (url.endsWith('/lock')) {
-            const lock = db.get(id)?.lock;
-            return lock ? Response.json(lock) : new Response('{}', { status: 404 });
-        }
-        if (url.endsWith('/sig') && init?.method === 'PUT') {
-            const row = db.get(id);
-            if (!row) return new Response('{}', { status: 404 });
-            const v = await verifyWorldSignature(row, body, webWorldCrypto);
-            if (v.status !== 'verified') return Response.json({ error: 'bad' }, { status: 422 });
-            db.set(id, { ...row, signature: body });
-            return Response.json({ identity: v });
-        }
+        const row = [...db.values()].find((r) => url.includes(`/worlds/${r.id}`));
+        if (!row) return Response.json({ error: 'World not found' }, { status: 404 });
+        if (url.endsWith('?format=yaml')) return new Response(yaml.stringify(row.definition));
+        if (url.endsWith('/lock')) return row.lock ? Response.json(row.lock) : new Response('{}', { status: 404 });
         return new Response('{}', { status: 404 });
     }) as typeof fetch;
-    return { db, isSigned, deps: { apiBase: '', fetch: fetchImpl } };
+    return { db, deps: { apiBase: '', fetch: fetchImpl } };
 }
 
-const worldYaml = (displayName: string) =>
+const worldYaml = (displayName: string, name = 'my-world') =>
     yaml.stringify({
         apiVersion: 'ubichill.com/v1alpha1',
         kind: 'World',
-        metadata: { name: 'local-name', version: '1.0.0' },
+        metadata: { name, version: '1.0.0' },
         spec: { displayName, capacity: { default: 2, max: 4 }, initialEntities: [] },
     });
 const LOCK = { lockVersion: 1 as const, mods: {} };
-const signerOf = (key: WorldSigningKey | undefined) => (key ? { key } : null);
 const displayNameOf = (definition: unknown): string | undefined =>
     (definition as { spec?: { displayName?: string } } | undefined)?.spec?.displayName;
 
-describe('createHostedWorld / updateHostedWorld', () => {
+describe('saveWorldBundle', () => {
+    const ref: { key?: WorldSigningKey } = {};
+    beforeEach(async () => {
+        ref.key = await importSigningKey(await generateSigningKeyPkcs8());
+    });
+    const signer = () => ({ key: ref.key as WorldSigningKey });
+
+    it('手元の値そのものに署名し、サーバーの検証を通る（サーバーが値を書き換えないので prepare は要らない）', async () => {
+        const server = fakeServer();
+        const saved = await saveWorldBundle({ yaml: worldYaml('A'), lock: LOCK }, signer(), server.deps);
+        expect(saved).toMatchObject({ id: 'srv0', saved: 'published', identity: { status: 'verified' } });
+    });
+
+    it('同じ metadata.name なら同じワールドの更新になり、違う名前は別のワールドになる', async () => {
+        const server = fakeServer();
+        const first = await saveWorldBundle({ yaml: worldYaml('A'), lock: LOCK }, signer(), server.deps);
+        const again = await saveWorldBundle({ yaml: worldYaml('B'), lock: LOCK }, signer(), server.deps);
+        const other = await saveWorldBundle({ yaml: worldYaml('C', 'other'), lock: LOCK }, signer(), server.deps);
+        expect(again.id).toBe(first.id);
+        expect(other.id).not.toBe(first.id);
+        expect(displayNameOf(server.db.get('my-world')?.definition)).toBe('B');
+    });
+
+    it('公開中のワールドに署名なしで送ると下書きになり、公開中の版は変わらない', async () => {
+        const server = fakeServer();
+        await saveWorldBundle({ yaml: worldYaml('A'), lock: LOCK }, signer(), server.deps);
+        const draft = await saveWorldBundle({ yaml: worldYaml('B'), lock: LOCK }, null, server.deps);
+        expect(draft.saved).toBe('draft');
+        expect(displayNameOf(server.db.get('my-world')?.definition)).toBe('A');
+        expect(displayNameOf(server.db.get('my-world')?.draft)).toBe('B');
+    });
+
+    it('別の鍵を名乗る署名はサーバーが拒否し、throw する（黙って未署名にしない）', async () => {
+        const server = fakeServer();
+        const liar: WorldSigningKey = { ...(ref.key as WorldSigningKey), publicKey: 'A'.repeat(43) };
+        await expect(saveWorldBundle({ yaml: worldYaml('A'), lock: LOCK }, { key: liar }, server.deps)).rejects.toThrow(
+            'bad',
+        );
+        expect(server.db.size).toBe(0);
+    });
+
+    it('lock が null のワールドも lock=null として署名する', async () => {
+        const server = fakeServer();
+        await expect(
+            saveWorldBundle({ yaml: worldYaml('A'), lock: null }, signer(), server.deps),
+        ).resolves.toMatchObject({ saved: 'published' });
+    });
+
+    it('ブラウザの fetch を this なしで呼ぶ（deps.fetch() の形だと Illegal invocation になる）', async () => {
+        const server = fakeServer();
+        const strictFetch = function (this: unknown, input: RequestInfo | URL, init?: RequestInit) {
+            if (this !== undefined && this !== globalThis) throw new TypeError('Illegal invocation');
+            return server.deps.fetch(input, init);
+        } as typeof fetch;
+        await expect(
+            saveWorldBundle({ yaml: worldYaml('A'), lock: LOCK }, null, { apiBase: '', fetch: strictFetch }),
+        ).resolves.toMatchObject({ saved: 'unsigned' });
+    });
+});
+
+describe('signHostedWorld', () => {
     const ref: { key?: WorldSigningKey } = {};
     beforeEach(async () => {
         ref.key = await importSigningKey(await generateSigningKeyPkcs8());
     });
 
-    it('作成してすぐ署名され公開可能になる（name はサーバー採番でも一致）', async () => {
+    it('公開中の版を取り出してそのまま署名し直す（内容は変えない）', async () => {
         const server = fakeServer();
-        const { id, signError } = await createHostedWorld(
-            { yaml: worldYaml('A'), lock: LOCK },
-            signerOf(ref.key),
-            server.deps,
+        const created = await saveWorldBundle({ yaml: worldYaml('A'), lock: LOCK }, null, server.deps);
+        const identity = await signHostedWorld(created.id, { key: ref.key as WorldSigningKey }, server.deps);
+        expect(identity).toMatchObject({ status: 'verified', publicKey: ref.key?.publicKey });
+        expect(displayNameOf(server.db.get('my-world')?.definition)).toBe('A');
+    });
+
+    it('ワールドを取得できなければ何も送らない', async () => {
+        const server = fakeServer();
+        await expect(signHostedWorld('missing', { key: ref.key as WorldSigningKey }, server.deps)).rejects.toThrow(
+            /World not found/,
         );
-        expect(signError).toBeUndefined();
-        expect(await server.isSigned(id)).toBe(true);
-    });
-
-    it('更新は内容と署名を一度に送り、署名済みのまま', async () => {
-        const server = fakeServer();
-        const { id } = await createHostedWorld({ yaml: worldYaml('A'), lock: LOCK }, signerOf(ref.key), server.deps);
-        await updateHostedWorld(id, { yaml: worldYaml('B'), lock: LOCK }, signerOf(ref.key), server.deps);
-        expect(await server.isSigned(id)).toBe(true);
-        expect(displayNameOf(server.db.get(id)?.definition)).toBe('B');
-    });
-
-    it('鍵なしの更新は未署名を明示して送る（署名済みでも 409 にならない＝呼び出し側で確認済み前提）', async () => {
-        const server = fakeServer();
-        const { id } = await createHostedWorld({ yaml: worldYaml('A'), lock: LOCK }, signerOf(ref.key), server.deps);
-        await updateHostedWorld(id, { yaml: worldYaml('B'), lock: LOCK }, null, server.deps);
-        expect(await server.isSigned(id)).toBe(false);
-    });
-
-    it('署名が通らなければ内容も保存されない（黙って未署名にならない）', async () => {
-        const server = fakeServer();
-        const { id } = await createHostedWorld({ yaml: worldYaml('A'), lock: LOCK }, signerOf(ref.key), server.deps);
-        const broken: WorldSigningKey = {
-            publicKey: (ref.key as WorldSigningKey).publicKey,
-            sign: async () => 'A'.repeat(86),
-        };
-        await expect(
-            updateHostedWorld(id, { yaml: worldYaml('B'), lock: LOCK }, { key: broken }, server.deps),
-        ).rejects.toThrow();
-        expect(await server.isSigned(id)).toBe(true);
-        expect(displayNameOf(server.db.get(id)?.definition)).toBe('A');
-    });
-
-    it('作成後の署名に失敗しても未署名＝非公開のまま残り、失敗を返す', async () => {
-        const server = fakeServer();
-        const broken: WorldSigningKey = {
-            publicKey: (ref.key as WorldSigningKey).publicKey,
-            sign: async () => 'A'.repeat(86),
-        };
-        const { id, signError } = await createHostedWorld(
-            { yaml: worldYaml('A'), lock: LOCK },
-            { key: broken },
-            server.deps,
-        );
-        expect(signError).toBeTruthy();
-        expect(await server.isSigned(id)).toBe(false);
-    });
-});
-
-describe('ブラウザの fetch の this 制約（Illegal invocation の回帰）', () => {
-    it('deps.fetch をオブジェクトのメソッドとして呼ばない', async () => {
-        const server = fakeServer();
-        // ブラウザの fetch と同じく、this が window（globalThis）/ undefined 以外なら失敗する fetch
-        const strictFetch = function (this: unknown, input: RequestInfo | URL, init?: RequestInit) {
-            if (this !== undefined && this !== globalThis) {
-                throw new TypeError("Failed to execute 'fetch' on 'Window': Illegal invocation");
-            }
-            return server.deps.fetch(input, init);
-        } as typeof fetch;
-        await expect(
-            createHostedWorld({ yaml: worldYaml('A'), lock: LOCK }, null, { apiBase: '', fetch: strictFetch }),
-        ).resolves.toMatchObject({ id: expect.any(String) });
+        expect(server.db.size).toBe(0);
     });
 });

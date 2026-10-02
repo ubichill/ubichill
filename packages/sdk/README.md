@@ -120,8 +120,9 @@ npx ubichill install world.yaml
   - `login` はブラウザで承認して、この端末を「公開環境」にする（鍵はこの端末だけにあり、サーバーには公開鍵だけが登録される）。
     ブラウザを開けない環境では `--device` で、表示したコードを別の端末で承認する。認証情報は
     `~/.config/ubichill/credentials.json`（0600）に保存する。
-  - `publish` は mod の固定（`install`）・作者アカウント付きの署名・公開を一度に行う。本体へ公開すると
-    `<world>.ubichill.json` にワールドの ID を記録し、次からは同じワールドを更新する（秘密は含まないのでコミットしてよい）。
+  - `publish` は mod の固定（`install`）・作者アカウント付きの署名・公開を一度に行う。本体へ送るのも `--out` で
+    外部ホスト向けに書き出すのも同じ「world.yaml・lock・署名」の組で、本体は中身を書き換えない。同じ作者・同じ
+    `metadata.name` なら同じワールドの更新になる（`metadata.name` を変えると別のワールドになる）。
     `--out=<dir>` なら GitHub Pages など外部に置く `world.yaml` / `.lock.json` / `.sig.json` を書き出す。
   - 公開環境はプロフィールの「公開できるブラウザ・CLI・CI」で一覧・取り消しできる。取り消すと、その鍵の署名はすべて作者が外れる。
 

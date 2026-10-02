@@ -23,7 +23,7 @@ export function YamlEditorForm({ yamlText, yamlDirty, onChange, onFileUpload }: 
                 })}
             >
                 <p className={css({ fontSize: '13px', color: 'textMuted' })}>
-                    `metadata.name` はサーバー側で自動管理されます。
+                    `metadata.name` はワールドの識別子です。変えると別のワールドとして保存されます。
                 </p>
                 <label
                     className={css({

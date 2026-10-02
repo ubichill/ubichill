@@ -1,17 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
-    authorAccountsOf,
     browserEnvironmentName,
-    isRepositoryManagedKey,
     newEnvironmentNotice,
-    officialKeyChanges,
     registrationOutcome,
     signingKeyListOf,
 } from './publishingEnvironments';
 
 const K1 = 'A'.repeat(43);
 const K2 = 'B'.repeat(43);
-const K3 = 'C'.repeat(43);
+const _K3 = 'C'.repeat(43);
 const at = (iso: string) => new Date(iso);
 
 describe('registrationOutcome', () => {
@@ -72,43 +69,6 @@ describe('signingKeyListOf', () => {
     });
 });
 
-describe('officialKeyChanges（公式アカウントを trusted-authors.json に合わせる）', () => {
-    it('記録の有効な鍵で未登録のものを追加し、登録済みは追加しない', () => {
-        expect(
-            officialKeyChanges([{ publicKey: K1 }, { publicKey: K2 }], [{ id: 'e1', publicKey: K1, revokedAt: null }]),
-        ).toEqual({ add: [K2], revoke: [] });
-    });
-
-    it('記録で取り消した鍵は取り消し、記録に無い鍵（画面から追加したもの）は触らない', () => {
-        expect(
-            officialKeyChanges(
-                [{ publicKey: K1, revokedAt: '2026-09-01T00:00:00Z' }, { publicKey: K2 }],
-                [
-                    { id: 'e1', publicKey: K1, revokedAt: null },
-                    { id: 'e2', publicKey: K2, revokedAt: null },
-                    { id: 'e3', publicKey: K3, revokedAt: null },
-                ],
-            ),
-        ).toEqual({ add: [], revoke: ['e1'] });
-    });
-
-    it('取り消し済みの鍵は記録で有効でも追加し直さない（取り消しは覆らない）', () => {
-        expect(
-            officialKeyChanges(
-                [{ publicKey: K1 }],
-                [{ id: 'e1', publicKey: K1, revokedAt: at('2026-09-01T00:00:00Z') }],
-            ),
-        ).toEqual({ add: [], revoke: [] });
-    });
-
-    it('記録で取り消された鍵を新しく追加しない', () => {
-        expect(officialKeyChanges([{ publicKey: K1, revokedAt: '2026-09-01T00:00:00Z' }], [])).toEqual({
-            add: [],
-            revoke: [],
-        });
-    });
-});
-
 describe('browserEnvironmentName', () => {
     it('ブラウザと OS から見分けやすい名前を作る', () => {
         expect(
@@ -148,30 +108,5 @@ describe('newEnvironmentNotice（乗っ取りに気付けるように）', () =>
         expect(notice.text).toContain('心当たりのない環境');
         expect(notice.text).toContain('パスワード');
         expect(notice.text).toContain('ログアウト');
-    });
-});
-
-describe('authorAccountsOf / isRepositoryManagedKey（公式アカウントのリポジトリ管理の鍵・ワールド）', () => {
-    const self = (h: string) => `${h}@pr-1.ubichill.com`;
-    const official = { handle: 'ubichill', account: 'ubichill@ubichill.com' };
-
-    it('公式アカウントは、自サーバーの作者アカウントに加えて公式ワールドの作者でもある', () => {
-        expect(authorAccountsOf('ubichill', self, official)).toEqual([
-            'ubichill@pr-1.ubichill.com',
-            'ubichill@ubichill.com',
-        ]);
-        expect(authorAccountsOf('ubichill', (h) => `${h}@ubichill.com`, official)).toEqual(['ubichill@ubichill.com']);
-    });
-
-    it('ほかのアカウントは自サーバーの作者アカウントだけ。ID が無ければ作者ではない', () => {
-        expect(authorAccountsOf('youkan', self, official)).toEqual(['youkan@pr-1.ubichill.com']);
-        expect(authorAccountsOf(null, self, official)).toEqual([]);
-    });
-
-    it('リポジトリの記録にある鍵だけをリポジトリ管理とみなす', () => {
-        const pinned = (account: string) => (account === 'ubichill@ubichill.com' ? [{ publicKey: K1 }] : []);
-        expect(isRepositoryManagedKey(K1, ['ubichill@pr-1.ubichill.com', 'ubichill@ubichill.com'], pinned)).toBe(true);
-        expect(isRepositoryManagedKey(K2, ['ubichill@ubichill.com'], pinned)).toBe(false);
-        expect(isRepositoryManagedKey(K1, ['youkan@ubichill.com'], pinned)).toBe(false);
     });
 });

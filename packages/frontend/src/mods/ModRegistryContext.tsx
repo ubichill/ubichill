@@ -1,6 +1,6 @@
 import type { WidgetDefinition, WorkerModDefinition } from '@ubichill/react';
 import { isWorkerMod } from '@ubichill/react';
-import { type ModLock, WorldSourceKind } from '@ubichill/shared';
+import type { ModLock } from '@ubichill/shared';
 import type React from 'react';
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { loadVerifiedMod } from './modLoader';
@@ -47,16 +47,9 @@ const ModRegistryContext = createContext<ModRegistryContextType>({
 export const ModRegistryProvider: React.FC<{
     children: React.ReactNode;
     onStatusChange?: (status: ModLoadingStatus) => void;
-    /** ワールドに焼かれた mod 完全性ロック。外部 provenance では hash 照合に使う。 */
+    /** ワールドの mod 完全性ロック。固定されていない mod は、ワールドの置き場所に関係なく実行しない。 */
     lock?: ModLock;
-    /**
-     * ワールドの provenance kind（local/github/...）。lock enforcement の分岐に使う。
-     * 未指定（エディタプレビュー等）は local として寛容に扱う。
-     */
-    sourceKind?: string;
-    /** サーバーが決めた厳格固定。作者署名ありのワールドは true（lock 欠落・不一致の mod を実行しない）。 */
-    strictLock?: boolean;
-}> = ({ children, onStatusChange, lock, sourceKind = WorldSourceKind.Local, strictLock }) => {
+}> = ({ children, onStatusChange, lock }) => {
     const [modMap, setModMap] = useState<Map<string, AnyModDefinition>>(new Map());
     const [loadCounts, setLoadCounts] = useState<ModLoadingStatus>({ completed: 0, total: 0 });
     const pendingModCount = loadCounts.total - loadCounts.completed;
@@ -105,7 +98,7 @@ export const ModRegistryProvider: React.FC<{
             loadingRef.current.add(entityType);
             setLoadCounts((c) => ({ ...c, total: c.total + 1 }));
 
-            loadVerifiedMod(entityType, { lock, sourceKind, strict: strictLock })
+            loadVerifiedMod(entityType, { lock })
                 .then((result) => {
                     if (typeof result === 'object' && 'workerCode' in result) {
                         addMod(result);
@@ -140,7 +133,7 @@ export const ModRegistryProvider: React.FC<{
                     setLoadCounts((c) => ({ ...c, completed: c.completed + 1 }));
                 });
         },
-        [addMod, lock, sourceKind, strictLock],
+        [addMod, lock],
     );
 
     // dependencies が登録されているからといって全 worker を一括起動しない。

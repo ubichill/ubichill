@@ -8,11 +8,10 @@ import { createInstance as createInstanceApi } from '@/lib/instancesApi';
 import {
     authorSignerFor,
     browserFetch,
-    createHostedWorld,
     type PublishReadiness,
     publishReadiness,
-    saveHostedDraft,
-    updateHostedWorld,
+    type SavedWorld,
+    saveWorldBundle,
 } from '@/lib/signing';
 import { buildWorldLock } from '@/mods/buildWorldLock';
 import type { PublishState } from './useDefinition';
@@ -44,7 +43,8 @@ const deps = { apiBase: API_BASE, fetch: browserFetch };
 
 /**
  * ワールドの保存・公開・削除・インスタンス作成 API 呼び出しを集約する hook。
- * - saveDraft: 下書き保存。鍵・ID などの準備は不要で、公開中の版は変えない。
+ * 保存はどれも同じ PUT（定義・lock・署名の組）で、同じワールドかは metadata.name で決まる。
+ * - saveDraft: 署名せずに送る。公開中のワールドなら公開中の版は変えずに下書きになる。
  * - publish: 作者アカウントで署名して公開する。鍵の用意と公開環境の登録は自動（ID が無ければその場で決めてもらう）。
  */
 export function useWorldEditorApi({
@@ -75,22 +75,28 @@ export function useWorldEditorApi({
         [onError],
     );
 
+    /** 新規作成か、metadata.name を変えて別のワールドとして保存したときは、保存先のワールドの編集に移る。 */
+    const followSaved = useCallback(
+        (saved: SavedWorld) => {
+            if (!isEdit || saved.id !== worldId) navigate(`/world/${saved.id}/edit`, { replace: true });
+        },
+        [isEdit, worldId, navigate],
+    );
+
     const saveDraft = useCallback(
         () =>
             withSaving(async () => {
                 const { body } = await buildSaveBody(definition);
-                if (isEdit && worldId) {
-                    const { hasDraft } = await saveHostedDraft(worldId, body, deps);
-                    onSavedYamlChange(body.yaml);
-                    // 署名済みなら公開状態はそのままで下書きが増える。未署名なら本体に保存され下書きは無い。
-                    onPublishStateChange((prev) => (hasDraft ? { ...prev, hasDraft } : { published: false, hasDraft }));
-                    return true;
-                }
-                const created = await createHostedWorld(body, null, deps);
-                navigate(`/world/${created.id}/edit`, { replace: true });
+                const saved = await saveWorldBundle(body, null, deps);
+                onSavedYamlChange(body.yaml);
+                // 公開中なら公開状態はそのままで下書きが増える。未公開なら本体に保存され下書きは無い。
+                onPublishStateChange((prev) =>
+                    saved.saved === 'draft' ? { ...prev, hasDraft: true } : { published: false, hasDraft: false },
+                );
+                followSaved(saved);
                 return true;
             }, '下書きを保存できませんでした'),
-        [definition, isEdit, worldId, navigate, onSavedYamlChange, onPublishStateChange, withSaving],
+        [definition, onSavedYamlChange, onPublishStateChange, followSaved, withSaving],
     );
 
     const publish = useCallback(
@@ -104,30 +110,13 @@ export function useWorldEditorApi({
                         : await requestPublishSetup(readiness);
                 if (decision.kind === 'cancel') return false;
                 const signer = await authorSignerFor(decision.account);
-
-                if (isEdit && worldId) {
-                    await updateHostedWorld(worldId, body, signer, deps);
-                    onSavedYamlChange(body.yaml);
-                    onPublishStateChange({ published: true, hasDraft: false });
-                    return true;
-                }
-                const created = await createHostedWorld(body, signer, deps);
-                if (created.signError)
-                    onError(`作成しましたが公開できませんでした（下書きのままです）: ${created.signError}`);
-                navigate(`/world/${created.id}/edit`, { replace: true });
+                const saved = await saveWorldBundle(body, signer, deps);
+                onSavedYamlChange(body.yaml);
+                onPublishStateChange({ published: true, hasDraft: false });
+                followSaved(saved);
                 return true;
             }, '公開できませんでした'),
-        [
-            definition,
-            isEdit,
-            worldId,
-            navigate,
-            onSavedYamlChange,
-            onPublishStateChange,
-            onError,
-            requestPublishSetup,
-            withSaving,
-        ],
+        [definition, onSavedYamlChange, onPublishStateChange, requestPublishSetup, followSaved, withSaving],
     );
 
     const remove = useCallback(async () => {

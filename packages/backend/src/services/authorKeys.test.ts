@@ -95,8 +95,7 @@ describe('createAuthorKeyDirectory（公開環境の鍵一覧と取り消し）'
     const LOCAL_REVOKED = 'b'.repeat(43);
     const REMOTE = 'C'.repeat(43);
     const REMOTE_NEW = 'D'.repeat(43);
-    const PINNED = 'E'.repeat(43);
-    const PINNED_REVOKED = 'e'.repeat(43);
+    const OFFICIAL = 'E'.repeat(43);
     const OTHER = 'F'.repeat(43);
     const REVOKED_AT = '2026-09-01T00:00:00.000Z';
 
@@ -123,15 +122,6 @@ describe('createAuthorKeyDirectory（公開環境の鍵一覧と取り消し）'
                 },
             },
             confirmedContents: memoryConfirmedContents(),
-            pinned: new Map([
-                [
-                    'ubichill@ubichill.com',
-                    {
-                        keys: [{ publicKey: PINNED }, { publicKey: PINNED_REVOKED, revokedAt: REVOKED_AT }],
-                        displayName: 'Ubichill',
-                    },
-                ],
-            ]),
             fetchJson: async (url) => {
                 calls.fetch.push(url);
                 const remote = options.remote?.();
@@ -163,14 +153,11 @@ describe('createAuthorKeyDirectory（公開環境の鍵一覧と取り消し）'
         expect(calls.fetch).toEqual([]);
     });
 
-    it('レビュー済みの記録（公式）が最優先で、記録で取り消した鍵は作者にしない', async () => {
-        const { directory, calls } = setup();
-        expect((await directory.isAuthorKey('ubichill@ubichill.com', PINNED, HASH)).status === 'confirmed').toBe(true);
-        expect(
-            (await directory.isAuthorKey('ubichill@ubichill.com', PINNED_REVOKED, HASH)).status === 'confirmed',
-        ).toBe(false);
-        expect(await directory.displayName('ubichill@ubichill.com')).toBe('Ubichill');
-        expect(calls.fetch).toEqual([]);
+    it('公式アカウントも特別扱いせず、公開環境に無い鍵は作者にしない', async () => {
+        const { directory } = setup();
+        expect((await directory.isAuthorKey('ubichill@ubichill.com', OFFICIAL, HASH)).status === 'confirmed').toBe(
+            false,
+        );
     });
 
     it('他サーバーは WebFinger → 鍵一覧を辿って保存し、新しいうちはネットワークに出ない', async () => {
@@ -341,7 +328,6 @@ describe('作者名を変えて問い合わせを出させる攻撃', () => {
             findLocalAccount: async () => undefined,
             bindings: { find: async () => undefined, save: async () => undefined },
             confirmedContents: memoryConfirmedContents(),
-            pinned: new Map(),
             fetchJson: async (url) => {
                 fetched.push(url);
                 return undefined;
@@ -380,7 +366,6 @@ describe('上限は初めての作者・知らない鍵だけにかかる', () =
                 },
             },
             confirmedContents: memoryConfirmedContents(),
-            pinned: new Map(),
             fetchJson: async (url) => {
                 fetched.push(url);
                 const handle = /acct%3A([a-z0-9_]+)%40/.exec(url)?.[1] ?? /\/authors\/([a-z0-9_]+)\//.exec(url)?.[1];
@@ -450,7 +435,6 @@ describe('確認が古い間は、古くなる前に確認済みだった内容�
                 },
             },
             confirmedContents: contents,
-            pinned: new Map(),
             fetchJson: async (url) => {
                 if (!state.up) return undefined;
                 if (url.includes('webfinger')) {

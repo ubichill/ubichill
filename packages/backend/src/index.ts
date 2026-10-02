@@ -118,6 +118,18 @@ app.use('/api/v1/worlds', worldsRouter);
 app.use('/api/v1/instances', instancesRouter);
 app.use('/api/v1/users', usersRouter);
 app.use('/api/v1/authors', authorsRouter);
+// リポジトリ（worlds/）のワールドを静的ファイルとして配る（GitHub の raw と同じ形: <name>.yaml と兄弟の .lock.json / .sig.json）。
+// 本体のリポジトリも、外部のホストと同じ配り方・同じ検証で扱う
+app.get('/api/v1/repository/worlds/:file', (req, res) => {
+    const file = worldRegistry.repositoryFile(String(req.params.file));
+    if (!file) {
+        res.status(404).json({ error: 'Not found' });
+        return;
+    }
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Cache-Control', 'public, max-age=60');
+    res.type(file.contentType).sendFile(file.path);
+});
 app.use('/api/v1/cli-auth', cliAuthRouter);
 app.use('/api/v1/federation', federationRouter);
 app.use('/.well-known/webfinger', webfingerRouter);

@@ -1,15 +1,20 @@
 import type { ModLock, WorldDefinition, WorldSignature } from '@ubichill/shared';
-import { count, eq } from 'drizzle-orm';
+import { and, count, eq } from 'drizzle-orm';
 import { db } from '../index';
 import { worlds } from '../schema';
 
 export interface CreateWorldInput {
     authorId: string;
+    /** URL の ID（サーバーが作る）。 */
     name: string;
+    /** 作者が付けた名前（metadata.name）。 */
+    worldName: string;
     version: string;
     definition: WorldDefinition;
     /** mod 完全性ロック（definition とは別カラムに保存）。 */
     lock?: ModLock | null;
+    /** 作者の署名（保存前に検証済みのもの）。 */
+    signature?: WorldSignature | null;
 }
 
 export interface UpdateWorldInput {
@@ -54,6 +59,15 @@ export const worldRepository = {
         return results[0];
     },
 
+    /** 作者と、作者が付けた名前でワールドを取得する（同じ作者・同じ名前は同じワールド）。 */
+    async findByAuthorAndWorldName(authorId: string, worldName: string): Promise<WorldRecord | undefined> {
+        const results = await db
+            .select()
+            .from(worlds)
+            .where(and(eq(worlds.authorId, authorId), eq(worlds.worldName, worldName)));
+        return results[0];
+    },
+
     /**
      * 作成者IDでワールドを取得
      */
@@ -78,9 +92,11 @@ export const worldRepository = {
             .values({
                 authorId: input.authorId,
                 name: input.name,
+                worldName: input.worldName,
                 version: input.version,
                 definition: input.definition,
                 lock: input.lock ?? null,
+                signature: input.signature ?? null,
             })
             .returning();
         return results[0];
@@ -107,25 +123,5 @@ export const worldRepository = {
     async delete(id: string): Promise<boolean> {
         const results = await db.delete(worlds).where(eq(worlds.id, id)).returning();
         return results.length > 0;
-    },
-
-    /**
-     * 名前でワールドを upsert（存在すれば更新、なければ作成）
-     */
-    async upsertByName(input: CreateWorldInput): Promise<WorldRecord> {
-        const existing = await this.findByName(input.name);
-        if (existing) {
-            const updated = await this.update(existing.id, {
-                version: input.version,
-                definition: input.definition,
-                lock: input.lock ?? null,
-            });
-            // updateは既存レコードを更新するので、必ずWorldRecordが返る
-            if (!updated) {
-                throw new Error(`Failed to update world: ${input.name}`);
-            }
-            return updated;
-        }
-        return this.create(input);
     },
 };

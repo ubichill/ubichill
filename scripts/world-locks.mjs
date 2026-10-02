@@ -34,22 +34,18 @@ const defaultKeyFile = join(homedir(), '.config', 'ubichill', 'official-worlds.k
 const keyFile = process.env.UBICHILL_SIGNING_KEY_FILE ?? (existsSync(defaultKeyFile) ? defaultKeyFile : undefined);
 const sign = process.argv.includes('--sign');
 
-/** 公式ワールドの作者アカウント。worlds/trusted-authors.json に鍵を記録してレビューする（例外なく作者アカウントで署名する）。 */
+/**
+ * 公式ワールドの作者アカウント（例外なく作者アカウントで署名する）。鍵がこのアカウントの公開環境にあるかは、
+ * ほかの作者と同じく配信先のサーバーが WebFinger で確かめる（リポジトリで鍵を特別に信用しない）。
+ */
 const OFFICIAL_AUTHOR = 'ubichill@ubichill.com';
-const trustedAuthors = JSON.parse(readFileSync(join(repoRoot, 'worlds', 'trusted-authors.json'), 'utf-8')).authors ?? {};
 
-/** 署名の作者が公式アカウントで、鍵が記録と一致するか（作者なし・別の鍵の署名を公式として通さない）。 */
+/** 署名の作者が公式アカウントか（作者なしの署名を公式として通さない）。 */
 function officialAuthorError(relPath) {
     const sigPath = join(repoRoot, relPath.replace(/\.ya?ml$/i, '.sig.json'));
     if (!existsSync(sigPath)) return '署名ファイルがありません';
     const sig = JSON.parse(readFileSync(sigPath, 'utf-8'));
     if (sig.author !== OFFICIAL_AUTHOR) return `作者が ${OFFICIAL_AUTHOR} ではありません（${sig.author ?? 'なし'}）`;
-    const keys = trustedAuthors[OFFICIAL_AUTHOR]?.keys ?? [];
-    const matches = keys.filter((k) => k.publicKey === sig.publicKey);
-    if (matches.length === 0) {
-        return `署名鍵が worlds/trusted-authors.json の ${OFFICIAL_AUTHOR} の鍵にありません`;
-    }
-    if (matches.some((k) => k.revokedAt)) return `署名鍵は取り消されています（署名し直してください）`;
     return null;
 }
 if (sign && !process.env.UBICHILL_SIGNING_KEY && !keyFile) {

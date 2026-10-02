@@ -20,7 +20,6 @@ import {
     LIMITS,
     needsFriendCheck,
     OFFICIAL_HANDLE,
-    OFFICIAL_WORLDS_AUTHOR,
     RevokeReasonSchema,
     SERVER_CONFIG,
     verifyKeyRegistration,
@@ -35,13 +34,11 @@ import {
     requirePublisher,
     toWebHeaders,
 } from '../middleware/auth';
-import { invalidateAuthorKey, pinnedAuthorKeys } from '../services/authorKeyStore';
+import { invalidateAuthorKey } from '../services/authorKeyStore';
 import { selfAccount } from '../services/authorKeys';
 import { favoriteRefOf, resolveFavoriteWorlds } from '../services/favorites';
 import {
-    authorAccountsOf,
     browserEnvironmentName,
-    isRepositoryManagedKey,
     newEnvironmentNotice,
     publishingEnvironmentView,
     registrationOutcome,
@@ -52,9 +49,8 @@ import { createTtlCache } from '../utils/ttlCache';
 
 const router = Router();
 
-/** ユーザーが作者として署名に使う作者アカウント（公式アカウントは公式ワールドの作者も含む）。 */
-const authorAccountsOfUser = (handle: string | null) =>
-    authorAccountsOf(handle, selfAccount, { handle: OFFICIAL_HANDLE, account: OFFICIAL_WORLDS_AUTHOR });
+/** ユーザーの作者アカウント（このサーバーの handle@domain）。 */
+const authorAccountsOfUser = (handle: string | null) => (handle ? [selfAccount(handle)] : []);
 
 /** リポジトリ（worlds/）で管理しているワールドの一覧の 1 件（画面からは編集・削除できない）。 */
 const repositoryWorldView = (w: ResolvedWorld) => ({
@@ -296,16 +292,8 @@ router.put('/me/handle', requireFreshAuth, async (req, res) => {
 // 公開環境（署名鍵）の一覧。取り消したものも含む。
 router.get('/me/publishing-environments', requireAuth, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-    const [rows, me] = await Promise.all([
-        publishingEnvironmentRepository.listByUser(req.user.id),
-        userRepository.findById(req.user.id),
-    ]);
-    const accounts = authorAccountsOfUser(me?.handle ?? null);
-    return res.json({
-        environments: rows.map((row) =>
-            publishingEnvironmentView(row, isRepositoryManagedKey(row.publicKey, accounts, pinnedAuthorKeys)),
-        ),
-    });
+    const rows = await publishingEnvironmentRepository.listByUser(req.user.id);
+    return res.json({ environments: rows.map((row) => publishingEnvironmentView(row)) });
 });
 
 // このブラウザを公開環境として登録する（ログインできる = 公開できる）。秘密鍵の所有を署名で証明させる。
@@ -360,19 +348,6 @@ router.post('/me/publishing-environments/:id/revoke', requireFreshAuth, async (r
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const reason = RevokeReasonSchema.safeParse(req.body?.reason);
     if (!reason.success) return res.status(400).json({ error: '取り消す理由（lost / compromised）が必要です' });
-    const target = (await publishingEnvironmentRepository.listByUser(req.user.id)).find(
-        (e) => e.id === String(req.params.id),
-    );
-    const me = await userRepository.findById(req.user.id);
-    if (
-        target &&
-        isRepositoryManagedKey(target.publicKey, authorAccountsOfUser(me?.handle ?? null), pinnedAuthorKeys)
-    ) {
-        return res.status(409).json({
-            error: 'この鍵はリポジトリの記録（worlds/trusted-authors.json）で管理されています。取り消すには記録に revokedAt を付けて PR でレビューしてください',
-            code: 'managed-by-repository',
-        });
-    }
     const revoked = await publishingEnvironmentRepository.revoke(req.user.id, String(req.params.id), reason.data);
     if (!revoked) return res.status(404).json({ error: '有効な公開環境が見つかりません' });
     worldRegistry.invalidateResolvedWorlds();

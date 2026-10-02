@@ -3,8 +3,8 @@
  *
  * - keyStore        : 鍵の生成・取り込み・削除（IndexedDB、取り出し不可）
  * - publisher       : このブラウザを公開環境にして作者として署名する（ログインできる = 公開できる）
- * - signHostedWorld : 保存済みワールドの配信物に署名して送る
- * - saveHostedWorld : 保存と署名（更新は内容と署名を原子的に送る）
+ * - saveHostedWorld : 定義・lock・署名の組を送って保存する（新規・更新・下書きは同じ呼び出し）
+ * - signHostedWorld : 公開中の版に署名し直す
  * - entryGate       : 未署名ワールドへの入室確認
  * - useSigningKey   : React フック
  */
@@ -19,7 +19,7 @@ export {
 } from './entryGate';
 export { createSigningKey, importSigningKeyFile, loadSigningKey, removeSigningKey } from './keyStore';
 export { type PublishReadiness, publishReadiness } from './publishReadiness';
-export { createHostedWorld, saveHostedDraft, updateHostedWorld, type WorldSaveBody } from './saveHostedWorld';
+export { browserFetch, type SavedWorld, saveWorldBundle, type WorldSaveBody } from './saveHostedWorld';
 export type { WorldSigner } from './signer';
-export { browserFetch, signHostedWorld } from './signHostedWorld';
+export { signHostedWorld } from './signHostedWorld';
 export { useSigningPublicKey } from './useSigningKey';

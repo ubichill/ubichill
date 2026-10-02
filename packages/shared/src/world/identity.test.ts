@@ -7,7 +7,6 @@ import {
     canonicalJson,
     isAuthorCheckStale,
     isPublishable,
-    isStrictLockWorld,
     KEY_REGISTRATION_MAX_SKEW_MS,
     keyRegistrationMessage,
     signWorld,
@@ -463,29 +462,6 @@ describe('mod 固定の徹底（lock-incomplete）', () => {
         expect(await verifyWorldSignature(withSpec({}, null), undefined, fakeCrypto)).toMatchObject({
             status: 'unsigned',
         });
-    });
-});
-
-describe('isStrictLockWorld（mod を厳格に固定するか）', () => {
-    const verified = {
-        status: 'verified' as const,
-        worldId: 'w',
-        publicKey: 'A'.repeat(43),
-        contentHash: `sha256-${'A'.repeat(43)}=`,
-    };
-    const unsigned = { status: 'unsigned' as const, contentHash: `sha256-${'A'.repeat(43)}=` };
-
-    it('作者署名ありは配信場所に関係なく厳格（本体の local でも）', () => {
-        for (const kind of ['local', 'registry', 'github', 'url', 'remote-instance']) {
-            expect(isStrictLockWorld(kind, verified)).toBe(true);
-        }
-    });
-
-    it('未署名は provenance で決まる（外部は厳格、本体・レジストリは寛容）', () => {
-        expect(isStrictLockWorld('local', unsigned)).toBe(false);
-        expect(isStrictLockWorld('registry', undefined)).toBe(false);
-        expect(isStrictLockWorld('github', unsigned)).toBe(true);
-        expect(isStrictLockWorld('unknown-kind', undefined)).toBe(true);
     });
 });
 
