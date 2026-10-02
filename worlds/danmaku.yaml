@@ -2,8 +2,6 @@ apiVersion: ubichill.com/v1alpha1
 kind: World
 metadata:
   name: danmaku
-  author:
-    name: devようかん
   version: 1.0.0
 spec:
   displayName: 弾幕シューティング

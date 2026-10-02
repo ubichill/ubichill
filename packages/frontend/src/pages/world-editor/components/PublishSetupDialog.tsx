@@ -89,7 +89,6 @@ export function PublishSetupDialog({ readiness, finish }: PendingPublishSetup) {
             <input
                 value={handleInput}
                 onChange={(e) => setHandleInput(e.target.value.toLowerCase().slice(0, 30))}
-                placeholder="youkan"
                 aria-label="ID"
                 autoCapitalize="none"
                 spellCheck={false}

@@ -38,6 +38,8 @@ interface OwnedWorld {
     updatedAt?: string;
     /** 本人の一覧のみ。署名なしは非公開なので「署名して公開」を出す。 */
     identity?: WorldIdentity;
+    /** リポジトリ（worlds/）で管理している公式ワールド。画面からは編集・削除できない（変更は PR で行う）。 */
+    managedBy?: 'repository';
 }
 
 interface UserProfileViewProps {
@@ -153,7 +155,11 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
         );
     }
 
-    const remaining = Math.max(0, LIMITS.MAX_WORLDS_PER_USER - worlds.length);
+    // 作成数の上限は本体に作ったワールドだけで数える（リポジトリ管理の公式ワールドは含めない）
+    const hostedWorlds = worlds.filter((w) => w.managedBy !== 'repository');
+    const repositoryWorlds = worlds.filter((w) => w.managedBy === 'repository');
+    const hostedCount = hostedWorlds.length;
+    const remaining = Math.max(0, LIMITS.MAX_WORLDS_PER_USER - hostedCount);
     const unsignedCount = isOwnPage ? worlds.filter((w) => !isPublishable(w.identity)).length : 0;
 
     // 保存し直さなくても、今の内容に作者アカウントで署名して公開できるようにする（鍵の用意・登録は自動）。
@@ -324,7 +330,7 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                                     color: 'textMuted',
                                 })}
                             >
-                                {worlds.length} / {LIMITS.MAX_WORLDS_PER_USER}
+                                {hostedCount} / {LIMITS.MAX_WORLDS_PER_USER}
                             </span>
                         )}
                     </h2>
@@ -352,7 +358,7 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                     )}
                 </div>
 
-                {worlds.length === 0 ? (
+                {hostedWorlds.length === 0 && !isOwnPage ? (
                     <div
                         className={css({
                             textAlign: 'center',
@@ -373,22 +379,25 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                             gap: '4',
                         })}
                     >
-                        {worlds.map((w) => (
+                        {hostedWorlds.map((w) => (
                             <OwnedWorldCard
                                 key={w.id}
                                 world={w}
-                                editable={isOwnPage}
+                                editable={isOwnPage && w.managedBy !== 'repository'}
                                 onEdit={() => go(`/world/${w.id}/edit`)}
                                 onSign={
                                     // 署名済みで作者を確認できないワールド（取り消した鍵など）は、上の「公開」欄から署名し直す。
                                     // 漏えいした環境の署名は中身を確かめさせるため、ここでは 1 クリックで署名し直させない
-                                    isOwnPage && !isPublishable(w.identity) && w.identity?.status !== 'verified'
+                                    isOwnPage &&
+                                    w.managedBy !== 'repository' &&
+                                    !isPublishable(w.identity) &&
+                                    w.identity?.status !== 'verified'
                                         ? async () => void (await signWorlds([w.id]))
                                         : undefined
                                 }
                                 onOpen={() => setSelectedWorldId(w.id)}
                                 onDelete={
-                                    isOwnPage
+                                    isOwnPage && w.managedBy !== 'repository'
                                         ? async () => {
                                               if (!(await confirm(`「${w.displayName}」を削除しますか?`))) return;
                                               const res = await fetch(`${API_BASE}/api/v1/worlds/${w.id}`, {
@@ -447,6 +456,36 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                     </div>
                 )}
             </section>
+
+            {/* リポジトリ（worlds/）で管理している公式ワールド。作成数の上限・空きスロットとは別に出す */}
+            {repositoryWorlds.length > 0 && (
+                <section className={css({ mt: '8' })}>
+                    <h2 className={css({ fontSize: 'lg', fontWeight: '700', color: 'text', mb: '1' })}>
+                        リポジトリで管理しているワールド
+                    </h2>
+                    <p className={css({ fontSize: '13px', color: 'textMuted', mb: '3' })}>
+                        公式ワールドは worlds/ のファイルで管理しています。画面からは編集・削除できず、変更は PR
+                        で行います。
+                    </p>
+                    <div
+                        className={css({
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+                            gap: '4',
+                        })}
+                    >
+                        {repositoryWorlds.map((w) => (
+                            <OwnedWorldCard
+                                key={w.id}
+                                world={w}
+                                editable={false}
+                                onEdit={() => undefined}
+                                onOpen={() => setSelectedWorldId(w.id)}
+                            />
+                        ))}
+                    </div>
+                </section>
+            )}
 
             {targetUserId && (
                 <FavoriteWorldsSection userId={targetUserId} isOwnPage={isOwnPage} onJoinInstance={joinInstance} />

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+    authorAccountsOf,
     browserEnvironmentName,
+    isRepositoryManagedKey,
     newEnvironmentNotice,
     officialKeyChanges,
     registrationOutcome,
@@ -146,5 +148,30 @@ describe('newEnvironmentNotice（乗っ取りに気付けるように）', () =>
         expect(notice.text).toContain('心当たりのない環境');
         expect(notice.text).toContain('パスワード');
         expect(notice.text).toContain('ログアウト');
+    });
+});
+
+describe('authorAccountsOf / isRepositoryManagedKey（公式アカウントのリポジトリ管理の鍵・ワールド）', () => {
+    const self = (h: string) => `${h}@pr-1.ubichill.com`;
+    const official = { handle: 'ubichill', account: 'ubichill@ubichill.com' };
+
+    it('公式アカウントは、自サーバーの作者アカウントに加えて公式ワールドの作者でもある', () => {
+        expect(authorAccountsOf('ubichill', self, official)).toEqual([
+            'ubichill@pr-1.ubichill.com',
+            'ubichill@ubichill.com',
+        ]);
+        expect(authorAccountsOf('ubichill', (h) => `${h}@ubichill.com`, official)).toEqual(['ubichill@ubichill.com']);
+    });
+
+    it('ほかのアカウントは自サーバーの作者アカウントだけ。ID が無ければ作者ではない', () => {
+        expect(authorAccountsOf('youkan', self, official)).toEqual(['youkan@pr-1.ubichill.com']);
+        expect(authorAccountsOf(null, self, official)).toEqual([]);
+    });
+
+    it('リポジトリの記録にある鍵だけをリポジトリ管理とみなす', () => {
+        const pinned = (account: string) => (account === 'ubichill@ubichill.com' ? [{ publicKey: K1 }] : []);
+        expect(isRepositoryManagedKey(K1, ['ubichill@pr-1.ubichill.com', 'ubichill@ubichill.com'], pinned)).toBe(true);
+        expect(isRepositoryManagedKey(K2, ['ubichill@ubichill.com'], pinned)).toBe(false);
+        expect(isRepositoryManagedKey(K1, ['youkan@ubichill.com'], pinned)).toBe(false);
     });
 });

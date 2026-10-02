@@ -136,7 +136,5 @@ spec:
           overlay: top-left
 metadata:
   name: default
-  author:
-    name: devようかん
   version: 1.0.0
 apiVersion: ubichill.com/v1alpha1
