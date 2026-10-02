@@ -170,44 +170,91 @@ T_max を短くすると、小さな自前サーバーの短い障害で作者�
 ## 9. CLI の流れ
 
 ```
-ubichill login [--server=https://ubichill.com]
-  → CLI が手元で鍵を作る
-  → ブラウザを開いてログイン（RFC 8252: ループバックへのリダイレクト）
-    ブラウザを開けない環境では、表示した短いコードを別の端末で承認（RFC 8628: デバイス認可）
-  → 公開環境（kind=cli）として公開鍵を登録し、API トークンを受け取る
-  → ~/.config/ubichill/credentials/<server>/<handle>.json（0600）に保存
+ubichill login [--server=https://ubichill.com] [--device]
+  → CLI が手元で鍵を作る（秘密鍵は手元だけ）
+  → ブラウザで承認する（ログインしていなければログインしてから）
+      既定: RFC 8252 のループバック。CLI が 127.0.0.1 の一時ポートで待ち、承認後のリダイレクトで認可コードを受け取る
+      --device: RFC 8628 のデバイス認可。表示した短いコードを別の端末のブラウザで承認し、CLI はポーリングで待つ
+  → CLI が「認可コード（またはデバイスコード）＋ 鍵の所有の証明」を送り、公開環境（kind=cli）と API トークンを受け取る
+  → ~/.config/ubichill/credentials.json（0600）に保存（サーバーごと）
 
-ubichill publish world.yaml
-  → mod を固定（今の install）
+ubichill publish world.yaml [--server=…] [--out=<dir>]
+  → mod を固定（install と同じ）
   → 作者アカウント付きで署名（--author 不要。ログインしたアカウントを使う）
-  → 本体へ公開: アップロードまで行う
+  → 本体へ公開: 初回は作成し、以後は同じワールドを更新する（対応は <world>.ubichill.json に記録。秘密は含まない）
+      サーバーが保存する値（prepare）に署名し、内容と署名を一緒に送る（Web と同じ。サーバーは metadata.name を自分の ID にする）
     外部ホストへ公開（--out=<dir>）: 署名済みの world.yaml / .lock.json / .sig.json を出力する
+
+ubichill whoami   # 使っている認証情報（サーバー・作者アカウント・公開環境）
+ubichill logout   # この端末の公開環境を取り消し（紛失として）、認証情報を消す
 ```
 
-- 認証（ログイン）と配置（アップロード／ファイル出力）は分ける。
-- `ubichill keygen` / `sign --key-file` / `--author` は上級者向けとして残す（§10 の CI も同じ仕組みの上に乗る）。
-- better-auth にデバイス認可の仕組みがあるかは実装時に確認する。無ければ自前で実装する（短いコード + ポーリング）。
+### 認可の手順（サーバー側）
+
+| 手順 | API | 認証 |
+|---|---|---|
+| 1. 要求を作る | `POST /api/v1/cli-auth/requests` `{ kind, name, publicKey, redirectUri?, codeChallenge? }` → `{ requestId, approveUrl, userCode?, deviceCode? }` | なし |
+| 2. 内容を見る | `GET /api/v1/cli-auth/requests/:id`（または `?userCode=`） | ログイン |
+| 3. 承認する | `POST /api/v1/cli-auth/requests/:id/approve` → ループバックならリダイレクト先（`?code=&state=`） | ログイン（DB のセッション） |
+| 4. 引き換える | `POST /api/v1/cli-auth/token` `{ requestId, code+codeVerifier | deviceCode, signature }` → `{ token, account, environment }` | 鍵の所有の証明 |
+
+- **要求は 10 分で失効し、1 回しか引き換えられない**。承認されていない要求の引き換えは「承認待ち」（デバイス認可のポーリング用）。
+- **ループバックは PKCE（S256）で認可コードを要求に結び付ける**。リダイレクト先は `http://127.0.0.1:<port>/…` か `http://localhost:<port>/…` に限る。
+  横取りされた認可コードだけでは引き換えられない。
+- **鍵の所有の証明**: 引き換え時に `ubichill-cli-auth:<requestId>` に要求の公開鍵で署名させる。公開環境はこの時点で作る
+  （承認したが引き換えられなかった要求で、だれも持っていない鍵が登録されることはない）。
+- **デバイス認可のフィッシング**（攻撃者が自分の要求のコードを本人に承認させる）への対策: 承認画面に「CLI に表示されたコードと
+  同じか」を確かめさせ、環境の名前・種類・鍵の指紋を出す。承認すると公開環境が追加された通知メールが届く。既定はループバック。
+- 承認画面の操作は、公開環境の登録と同じく DB のセッションを確かめる（ログアウトさせたセッションでは承認できない）。
+
+### API トークン
+
+- 形式は `ubi_<32 byte の乱数>`。サーバーは sha256 だけを保存する（`publishing_environments.api_token_hash`）。**トークン = 公開環境**で、
+  公開環境を取り消すとトークンも同時に使えなくなる。
+- **使える操作は公開に関わるものだけ**: 自分のアカウント情報、ワールドの作成・prepare・更新・署名の保存、自分のワールドの一覧、
+  自分の公開環境の取り消し（logout）。パスワード・ほかの公開環境・お気に入り・セッションの操作には使えない。
+- **トークンで送る署名は、そのトークンの公開環境の鍵で署名したものに限る**（盗まれたトークンで別の鍵の署名を通させない）。
+- 最終利用時刻を記録し、一覧で「長く使われていない」を出す。
 
 ## 10. CI の流れ
 
-CI ではブラウザ操作ができないので、**CLI で CI 用の公開環境を作り、その認証情報を CI の Secret に入れる**。
+CI ではブラウザ操作ができないので、**手元で CI 用の公開環境をブラウザで承認し、その認証情報を CI の Secret に入れる**。
 
 ```
-# 手元で 1 回だけ（ログイン済みの CLI から）
-ubichill ci create --name "GitHub Actions: owner/repo"
-  → CI 用の鍵を作り、公開環境（kind=ci）として登録
-  → 鍵・API トークン・アカウントをまとめた 1 本の文字列を表示（この場限り。サーバーには鍵を保存しない）
+# 手元で 1 回だけ
+ubichill ci create --name "GitHub Actions: owner/repo" [--server=…]
+  → CI 用の鍵を作り、ブラウザで承認して公開環境（kind=ci）として登録（login と同じ手順。CLI のトークンでは作らない）
+  → 鍵・API トークン・サーバー・アカウントをまとめた 1 本の文字列を表示（この場限り。手元にもサーバーにも鍵を保存しない）
 
 # CI（GitHub Actions）
 env:
   UBICHILL_CREDENTIALS: ${{ secrets.UBICHILL_CREDENTIALS }}
-run: npx ubichill publish worlds/my-world.yaml --out=dist/
+run: npx ubichill publish worlds/my-world.yaml            # 本体へ
+run: npx ubichill publish worlds/my-world.yaml --out=dist/ # GitHub Pages など外部へ
 ```
 
+- CI 用の公開環境を CLI のトークンで作れないようにするのは、盗まれた CLI のトークンから新しい鍵を増やさせないため（鍵を増やすのは必ずブラウザの承認）。
 - CI 用の公開環境も一覧に出て、ブラウザ・CLI と同じように取り消せる。取り消したら、その CI の署名はすべて無効（§2）。
 - 鍵の漏えい時は、取り消して `ubichill ci create` し直し、Secret を差し替えて CI を再実行すれば、全作品が新しい鍵で署名し直される。
 - 将来の選択肢: GitHub Actions の OIDC（npm の Trusted Publishing と同じ方式）で、長期の Secret を置かずに公開する。
   ただし実行ごとの使い捨て鍵と「取り消した鍵の署名はすべて無効」の兼ね合い（期限切れと取り消しを区別する必要）があるので別途検討（issue）。
+
+## 10.1 mod の公開（設計のみ。実装は mod のホスティングと一緒に行う）
+
+mod もワールドと同じく**作者アカウントで署名して公開する**。認証・鍵・トークンはワールドと共通にし、mod のために別の仕組みを作らない。
+
+- **認証**: 同じ公開環境と API トークンを使う（`ubichill login` / `ubichill ci create` のまま）。トークンの使える操作に「mod の公開」を加える。
+- **署名の対象**: mod の配布物（worker の hash・manifest・capability の上限・version）を正規化した値に、作者アカウント付きで署名する
+  （ワールドの署名と同じ形式で、`kind: "mod"` と `modId` を入れる）。lock はワールドが「どの mod のどのバイト列を使うか」を固定し、
+  mod の署名は「その mod をだれが出したか」を示す。どちらか一方では足りない（lock は作者を示さず、署名は使う版を固定しない）。
+- **識別子**: `acct:handle@domain/modId`。名前の取り合い（同じ modId の別作者）は作者アカウントで区別する。
+- **権限（capability）の許可**: 利用者が「この mod に外部通信を許可」したときの記録は、URL ではなく `作者アカウント + modId` に結び付ける
+  （同じ作者の新しい版は許可を引き継ぐ。別の作者の同名 mod は引き継がない）。capability の上限が広がった版は、改めて確認する。
+- **公開の CLI**: `ubichill publish mods/<mod>`（本体のホスティングへ）／`--out=<dir>`（GitHub Pages など）。ワールドと同じく
+  ログインしたアカウントで署名する。
+- **取り消し**: ワールドと同じく、取り消した鍵の署名は作者を付けない。利用者の許可（作者アカウント + modId）は、
+  作者が確認できない mod には使わない。
+- 未決: mod のホスティング（本体に置くか、配布元 URL のままにするか）、公開済み mod の版の固定と取り下げ。
 
 ## 11. 移行
 
@@ -223,9 +270,9 @@ run: npx ubichill publish worlds/my-world.yaml --out=dist/
 | 0 | ワールドの識別子の方針を決める（#178） | 署名形式に影響するので、少なくとも方針だけ先に |
 | 1 | 公開環境（複数鍵）と取り消し、鍵一覧の公開、旧 1 本鍵の移行 | 実装済み（2026-09-29） |
 | 2 | Web の初回公開の自動化、「公開できるブラウザ・CLI・CI」画面 | 実装済み（2026-09-29）。鍵ファイルは上級者向けの読み込みだけ残す |
-| 3 | `ubichill login`（ループバック → デバイス認可の順） | |
-| 4 | `ubichill publish`（固定・署名・アップロード／出力の一本化） | |
-| 5 | `ubichill ci create` と CI での公開 | |
+| 3 | `ubichill login`（ループバック → デバイス認可の順） | 実装済み（2026-10-02） |
+| 4 | `ubichill publish`（固定・署名・アップロード／出力の一本化） | 実装済み（2026-10-02） |
+| 5 | `ubichill ci create` と CI での公開 | 実装済み（2026-10-02） |
 | 6 | ほかのサーバーでの期限付き再確認（T_fresh / T_max）と、署名し直しの一覧・一括署名し直し | 実装済み（1 時間 / 14 日、Web の一括署名し直し）。CLI の `--resign-all` は段階 4 |
 | 7 | ワールドの持ち運び（#178）の実装 | |
 

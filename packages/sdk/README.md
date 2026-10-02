@@ -115,24 +115,35 @@ spec:
 npx ubichill install world.yaml
 ```
 
-- **`keygen` / `sign`**: ワールドに作者署名を付ける。署名は `world.yaml` と `world.lock.json` の内容に対する
-  ed25519 署名で、兄弟ファイル `<world>.sig.json` に書き出す。ホストは署名を検証し、
-  改竄（lock の差し替えを含む）を拒否し、URL が変わっても `公開鍵 + metadata.name` で同じワールドと判定する。
-  **署名のないワールドはホストの一覧に公開されない**（URL からは入室時の確認付きで入れる）。
-  - 鍵の既定の場所は `~/.config/ubichill/signing.key`（リポジトリの外）。別の場所にもバックアップすること。
-    失うと以後の署名は別作者扱いになる。ブラウザのプロフィール「作者署名の鍵」で同じファイルを読み込める。
-  - 鍵があれば `install` が lock を書いた後に自動で署名し直す（無ければ警告）。`--no-sign` で抑止。
-    別の鍵で署名済みのワールドは上書きしない（明示の `sign` が必要）。
-  - CI では `sign --check` で署名し忘れ・古い署名を検出できる。
-  - `--author=handle@domain`（または env `UBICHILL_AUTHOR`）で作者アカウントを署名に含められる。
-    ubichill のプロフィール「作者署名」でこの鍵ファイルを読み込んで登録しておくと、どのサーバーでも
-    `@handle@domain` の作品として表示される（登録していない鍵で名乗っても作者表示はされない）。
+- **`login` / `publish`**: ワールドを作者アカウントで署名して公開する。**署名のないワールド・作者を確認できない
+  ワールドはホストの一覧に公開されない**（URL からは入室時の確認付きで入れる）。
+  - `login` はブラウザで承認して、この端末を「公開環境」にする（鍵はこの端末だけにあり、サーバーには公開鍵だけが登録される）。
+    ブラウザを開けない環境では `--device` で、表示したコードを別の端末で承認する。認証情報は
+    `~/.config/ubichill/credentials.json`（0600）に保存する。
+  - `publish` は mod の固定（`install`）・作者アカウント付きの署名・公開を一度に行う。本体へ公開すると
+    `<world>.ubichill.json` にワールドの ID を記録し、次からは同じワールドを更新する（秘密は含まないのでコミットしてよい）。
+    `--out=<dir>` なら GitHub Pages など外部に置く `world.yaml` / `.lock.json` / `.sig.json` を書き出す。
+  - 公開環境はプロフィールの「公開できるブラウザ・CLI・CI」で一覧・取り消しできる。取り消すと、その鍵の署名はすべて作者が外れる。
 
 ```bash
-npx ubichill keygen                  # 1 回だけ（~/.config/ubichill/signing.key）
-npx ubichill install world.yaml      # lock 生成 + 自動署名
-npx ubichill sign world.yaml --check # CI 用
+npx ubichill login                   # ブラウザで承認（--device: 別の端末で承認）
+npx ubichill publish world.yaml      # 本体へ公開（--out=dist/ で外部ホスト向けに書き出す）
+npx ubichill whoami                  # 使っている作者アカウント
+npx ubichill logout                  # この端末の公開環境を取り消す
 ```
+
+- **CI から公開する**: 手元で `ubichill ci create --name="GitHub Actions: owner/repo"` を実行してブラウザで承認すると、
+  CI 用の公開環境の認証情報（1 本の文字列）が表示される。CI の Secret `UBICHILL_CREDENTIALS` に入れて `publish` する。
+
+```yaml
+- run: npx ubichill publish worlds/my-world.yaml --out=dist/
+  env:
+    UBICHILL_CREDENTIALS: ${{ secrets.UBICHILL_CREDENTIALS }}
+```
+
+- **`keygen` / `sign`（上級者向け）**: 鍵ファイルを自分で管理して署名する。`--author=handle@domain` を付け、
+  プロフィールの「上級者向け: CLI の鍵ファイルを読み込む」でその鍵を登録したときだけ作者として表示される。
+  `sign --check` で署名し忘れ・古い署名を検出できる。
 
 ### 型チェックを `build` の前段に入れる
 

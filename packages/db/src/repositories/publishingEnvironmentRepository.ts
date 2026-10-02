@@ -64,4 +64,13 @@ export const publishingEnvironmentRepository = {
     async touch(id: string, at = new Date()): Promise<void> {
         await db.update(publishingEnvironments).set({ lastUsedAt: at }).where(eq(publishingEnvironments.id, id));
     },
+
+    /** API トークン（の hash）から、取り消されていない公開環境を引く。 */
+    async findActiveByTokenHash(tokenHash: string): Promise<PublishingEnvironmentRecord | undefined> {
+        const results = await db
+            .select()
+            .from(publishingEnvironments)
+            .where(and(eq(publishingEnvironments.apiTokenHash, tokenHash), isNull(publishingEnvironments.revokedAt)));
+        return results[0];
+    },
 };

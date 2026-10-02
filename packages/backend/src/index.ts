@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { cliAuthRequestRepository } from '@ubichill/db';
 // Force restart check
 import type { ClientToServerEvents, InterServerEvents, ServerToClientEvents, SocketData } from '@ubichill/shared';
 import cors from 'cors';
@@ -27,6 +28,7 @@ import { auth } from './lib/auth';
 import { blockOfficialPasswordChange } from './middleware/auth';
 import { socketAuthMiddleware } from './middleware/socketAuth';
 import { router as authorsRouter } from './routes/authors';
+import { router as cliAuthRouter } from './routes/cliAuth';
 import { router as federationRouter } from './routes/federation';
 import { router as instancesRouter } from './routes/instances';
 import { router as usersRouter } from './routes/users';
@@ -116,6 +118,7 @@ app.use('/api/v1/worlds', worldsRouter);
 app.use('/api/v1/instances', instancesRouter);
 app.use('/api/v1/users', usersRouter);
 app.use('/api/v1/authors', authorsRouter);
+app.use('/api/v1/cli-auth', cliAuthRouter);
 app.use('/api/v1/federation', federationRouter);
 app.use('/.well-known/webfinger', webfingerRouter);
 
@@ -198,6 +201,14 @@ async function startServer() {
     // システムユーザー初期化のみ（ワールドシードは行わない）
     await worldRegistry.initialize();
     await bootstrapOfficialAccount();
+
+    // 期限切れの CLI 認可の要求を消す（認証なしで作れるので溜めない）
+    const cleanCliAuthRequests = () =>
+        cliAuthRequestRepository
+            .deleteExpired()
+            .catch((err: unknown) => console.error('CLI 認可の要求の掃除に失敗:', err));
+    void cleanCliAuthRequests();
+    setInterval(cleanCliAuthRequests, 10 * 60 * 1000).unref();
 
     // 空インスタンスの掃除（reaper）を起動。DB を定期スイープし、在席0かつ
     // 作成から猶予経過した instance を削除する。インメモリのタイマー状態に依存しないため、

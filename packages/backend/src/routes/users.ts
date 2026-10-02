@@ -27,7 +27,14 @@ import {
 } from '@ubichill/shared';
 import { Router } from 'express';
 import { auth, createPendingRegistration, resendOTP, sendAccountNotice, verifyAndRegister } from '../lib/auth';
-import { isAdminHandle, optionalAuth, requireAuth, requireFreshAuth, toWebHeaders } from '../middleware/auth';
+import {
+    isAdminHandle,
+    optionalAuth,
+    requireAuth,
+    requireFreshAuth,
+    requirePublisher,
+    toWebHeaders,
+} from '../middleware/auth';
 import { invalidateAuthorKey, pinnedAuthorKeys } from '../services/authorKeyStore';
 import { selfAccount } from '../services/authorKeys';
 import { favoriteRefOf, resolveFavoriteWorlds } from '../services/favorites';
@@ -177,7 +184,7 @@ router.get('/check-handle', async (req, res) => {
 });
 
 // 自分のプロフィール
-router.get('/me', requireAuth, async (req, res) => {
+router.get('/me', requirePublisher, async (req, res) => {
     if (!req.user) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
@@ -201,6 +208,10 @@ router.get('/me', requireAuth, async (req, res) => {
         // パスワードを Secret で管理している（画面から変更できない）
         passwordManagedBySecret: user.handle === OFFICIAL_HANDLE,
         isAdmin: isAdminHandle(user.handle),
+        // API トークン（CLI・CI）で呼んだときの公開環境（ubichill whoami で表示する）
+        ...(req.publishingEnvironment
+            ? { publishingEnvironment: { id: req.publishingEnvironment.id, kind: req.publishingEnvironment.kind } }
+            : {}),
         profileImageUrl: user.profileImageUrl ?? user.image ?? null,
     });
 });
@@ -376,7 +387,7 @@ router.post('/me/sessions/revoke-others', requireFreshAuth, async (req, res) => 
 });
 
 // 自分が作成したワールド一覧（編集に使う詳細情報を含む）
-router.get('/me/worlds', requireAuth, async (req, res) => {
+router.get('/me/worlds', requirePublisher, async (req, res) => {
     if (!req.user) {
         return res.status(401).json({ error: 'Unauthorized' });
     }

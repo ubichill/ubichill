@@ -5,6 +5,7 @@ import { ConfirmProvider } from './components/ui/ConfirmProvider';
 import { VersionBadge } from './components/VersionBadge';
 import { SessionProvider } from './lib/session';
 import { AuthPage } from './pages/AuthPage';
+import { CliAuthorizePage } from './pages/CliAuthorizePage';
 import { InstancePage } from './pages/InstancePage';
 import { LobbyPage } from './pages/LobbyPage';
 import { UserPage } from './pages/UserPage';
@@ -61,6 +62,15 @@ export function AppRouter() {
                             element={
                                 <ProtectedRoute>
                                     <WorldEditorPage />
+                                </ProtectedRoute>
+                            }
+                        />
+                        {/* CLI・CI（ubichill login / ci create）を公開環境として追加する承認 */}
+                        <Route
+                            path="/cli/authorize"
+                            element={
+                                <ProtectedRoute>
+                                    <CliAuthorizePage />
                                 </ProtectedRoute>
                             }
                         />

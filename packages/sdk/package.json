@@ -16,7 +16,8 @@
         "@ubichill/ecs": "workspace:*",
         "@ubichill/loader": "workspace:*",
         "@ubichill/runtime": "workspace:*",
-        "@ubichill/shared": "workspace:*"
+        "@ubichill/shared": "workspace:*",
+        "yaml": "catalog:"
     },
     "scripts": {
         "build": "node build.mjs",
