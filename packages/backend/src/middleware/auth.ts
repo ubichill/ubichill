@@ -1,7 +1,8 @@
-import { userRepository } from '@ubichill/db';
+import { publishingEnvironmentRepository, userRepository } from '@ubichill/db';
 import { OFFICIAL_HANDLE } from '@ubichill/shared';
 import type { NextFunction, Request, Response } from 'express';
 import { auth } from '../lib/auth';
+import { bearerToken, sha256Base64Url } from '../services/cliAuth';
 
 // Extend Express Request type with user info
 declare global {
@@ -20,6 +21,8 @@ declare global {
                 token: string;
                 expiresAt: Date;
             };
+            /** API トークン（CLI・CI）で認証したときの公開環境。トークンで送る署名はこの環境の鍵に限る。 */
+            publishingEnvironment?: { id: string; publicKey: string; kind: string };
         }
     }
 }
@@ -73,6 +76,43 @@ export const requireAuth = authRequired({ fresh: false });
  * ワールドの作成）に使う。乗っ取りに気付いてほかの端末をログアウトさせた直後から、攻撃者に鍵の登録や公開をさせない。
  */
 export const requireFreshAuth = authRequired({ fresh: true });
+
+/**
+ * 公開に関わる操作の認証。ブラウザのセッション（DB で確かめる）か、CLI・CI の API トークン（`Authorization: Bearer ubi_…`）。
+ * トークンは公開環境そのもので、取り消された公開環境のトークンは通らない。トークンが使えるのはこの認証を付けた操作だけ
+ * （パスワード・ほかの公開環境・セッション・お気に入りなどは requireAuth で、セッションしか受け付けない）。
+ */
+export async function requirePublisher(req: Request, res: Response, next: NextFunction): Promise<void> {
+    const token = bearerToken(req.get('authorization'));
+    if (!token) {
+        await requireFreshAuth(req, res, next);
+        return;
+    }
+    try {
+        const env = await publishingEnvironmentRepository.findActiveByTokenHash(sha256Base64Url(token));
+        const user = env ? await userRepository.findById(env.userId) : undefined;
+        if (!env || !user) {
+            res.status(401).json({
+                error: 'API トークンが無効です（取り消されたか、存在しません）',
+                code: 'invalid-token',
+            });
+            return;
+        }
+        req.user = {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            emailVerified: user.emailVerified,
+            image: user.image,
+        };
+        req.publishingEnvironment = { id: env.id, publicKey: env.publicKey, kind: env.kind };
+        void publishingEnvironmentRepository.touch(env.id).catch(() => undefined);
+        next();
+    } catch (error) {
+        console.error('API トークンの確認に失敗しました:', error);
+        res.status(401).json({ error: 'Unauthorized' });
+    }
+}
 
 /**
  * オプション認証ミドルウェア

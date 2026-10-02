@@ -9,7 +9,7 @@ import {
 } from '@ubichill/shared';
 import { Router } from 'express';
 import yaml from 'yaml';
-import { optionalAuth, requireAdmin, requireAuth, requireFreshAuth } from '../middleware/auth';
+import { optionalAuth, requireAdmin, requireAuth, requireFreshAuth, requirePublisher } from '../middleware/auth';
 import { selfAccount } from '../services/authorKeys';
 import { prepareWorldUpdate, worldRegistry } from '../services/worldRegistry';
 
@@ -56,7 +56,11 @@ type AuthorClaim = { error: string } | { environmentId?: string };
  * （作者が付かない署名は保存しても公開されないので、黙って非公開にせず保存の時点で弾く。取り消し済みの鍵もここで止まる）
  * 通った場合は署名に使った公開環境の ID を返す（最終利用の記録に使う）。
  */
-async function checkAuthorClaim(rawSignature: unknown, userId: string): Promise<AuthorClaim> {
+async function checkAuthorClaim(
+    rawSignature: unknown,
+    userId: string,
+    tokenEnvironment?: { id: string; publicKey: string },
+): Promise<AuthorClaim> {
     const { author: claimed, publicKey } = (rawSignature ?? {}) as { author?: unknown; publicKey?: unknown };
     if (claimed === undefined) return {};
     const user = await userRepository.findById(userId);
@@ -64,6 +68,10 @@ async function checkAuthorClaim(rawSignature: unknown, userId: string): Promise<
     if (claimed !== own) return { error: `署名の作者（${String(claimed)}）があなたのアカウントと一致しません` };
     const env =
         typeof publicKey === 'string' ? await publishingEnvironmentRepository.findByPublicKey(publicKey) : undefined;
+    // API トークンで送る署名は、そのトークンの公開環境の鍵で署名したものに限る（盗まれたトークンで別の鍵の署名を通させない）
+    if (tokenEnvironment && (typeof publicKey !== 'string' || publicKey !== tokenEnvironment.publicKey)) {
+        return { error: 'API トークンで送る署名は、そのトークンの公開環境の鍵で署名してください' };
+    }
     if (!env || env.userId !== userId || env.revokedAt) {
         return {
             error: 'この署名の鍵はあなたの有効な公開環境ではありません（取り消し済みか未登録）。画面を読み込み直して公開し直してください',
@@ -284,7 +292,7 @@ router.post('/', requireFreshAuth, async (req, res) => {
  * - metadata.name は無視してサーバー側で再生成
  * - 1ユーザー最大 LIMITS.MAX_WORLDS_PER_USER 個まで
  */
-router.post('/yaml', requireFreshAuth, async (req, res) => {
+router.post('/yaml', requirePublisher, async (req, res) => {
     try {
         if (!req.user) {
             res.status(401).json({ error: 'Unauthorized' });
@@ -421,7 +429,7 @@ router.get('/:worldId/sig', optionalAuth, async (req, res) => {
  * 作者が手元の鍵で付けた署名を保存する（認証必須、作成者のみ）。body は WorldSignature。
  * 現在の内容に対して検証できない署名は 422。
  */
-router.put('/:worldId/sig', requireFreshAuth, async (req, res) => {
+router.put('/:worldId/sig', requirePublisher, async (req, res) => {
     try {
         if (!req.user) {
             res.status(401).json({ error: 'Unauthorized' });
@@ -437,7 +445,7 @@ router.put('/:worldId/sig', requireFreshAuth, async (req, res) => {
             res.status(403).json({ error: 'Forbidden: Only the author can sign this world' });
             return;
         }
-        const claim = await checkAuthorClaim(req.body, req.user.id);
+        const claim = await checkAuthorClaim(req.body, req.user.id, req.publishingEnvironment);
         if ('error' in claim) {
             res.status(422).json({ error: claim.error });
             return;
@@ -496,7 +504,7 @@ router.put('/:worldId/draft', requireAuth, async (req, res) => {
  * 作者はこの値に署名し、PUT に signature を添えて送る＝内容と署名を 1 回で原子的に保存する。
  * body: { yaml: string, lock?: ModLock }
  */
-router.post('/:worldId/prepare', requireFreshAuth, async (req, res) => {
+router.post('/:worldId/prepare', requirePublisher, async (req, res) => {
     try {
         const worldId = req.params.worldId as string;
         const record = await worldRegistry.getWorldRecord(worldId);
@@ -526,7 +534,7 @@ router.post('/:worldId/prepare', requireFreshAuth, async (req, res) => {
  * body: { yaml: string }
  * - metadata.name は URL の worldId に強制上書きする（ID は不変）
  */
-router.put('/:worldId/yaml', requireFreshAuth, async (req, res) => {
+router.put('/:worldId/yaml', requirePublisher, async (req, res) => {
     try {
         const worldId = req.params.worldId as string;
 
@@ -552,7 +560,8 @@ router.put('/:worldId/yaml', requireFreshAuth, async (req, res) => {
             return;
         }
         const { signature, allowUnsigned } = req.body as { signature?: unknown; allowUnsigned?: unknown };
-        const claim = signature === undefined ? {} : await checkAuthorClaim(signature, req.user.id);
+        const claim =
+            signature === undefined ? {} : await checkAuthorClaim(signature, req.user.id, req.publishingEnvironment);
         if ('error' in claim) {
             res.status(422).json({ error: claim.error });
             return;

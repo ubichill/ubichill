@@ -301,6 +301,7 @@ export * from './mod/protocol';
 export * from './mod/types';
 export * from './mod/vnode';
 export * from './schemas';
+export * from './user/cliAuth';
 export * from './user/favoritesVisibility';
 export * from './user/handle';
 export * from './user/signingKeys';

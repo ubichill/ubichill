@@ -3,6 +3,7 @@ import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { z } from 'zod';
 
 export * from './authorBindings';
+export * from './cliAuthRequests';
 export * from './federationPeers';
 export * from './instances';
 export * from './publishingEnvironments';

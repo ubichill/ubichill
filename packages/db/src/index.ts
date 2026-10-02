@@ -3,6 +3,11 @@ import postgres from 'postgres';
 import * as schema from './schema';
 
 export { type AuthorBindingRecord, authorBindingRepository } from './repositories/authorBindingRepository';
+export {
+    type CliAuthRequestRecord,
+    type CreateCliAuthRequestInput,
+    cliAuthRequestRepository,
+} from './repositories/cliAuthRequestRepository';
 export { favoriteRepository } from './repositories/favoriteRepository';
 export { federationPeerRepository } from './repositories/federationPeerRepository';
 export { instanceRepository } from './repositories/instanceRepository';

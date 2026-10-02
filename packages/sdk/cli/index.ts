@@ -9,6 +9,14 @@
  *   ubichill verify  [--dist-dir=<dir>]
  *   ubichill keygen  [--out=<path>]
  *   ubichill sign    <world.yaml> [--key-file=<path>] [--author=handle@domain] [--out=<path>] [--check]
+ *   ubichill login   [--server=<url>] [--device] [--name=<表示名>] [--no-browser]
+ *   ubichill logout  [--server=<url>]
+ *   ubichill whoami  [--server=<url>]
+ *   ubichill ci create --name=<表示名> [--server=<url>] [--device]
+ *   ubichill publish <world.yaml> [--server=<url>] [--out=<dir>] [--no-install]
+ *
+ * `login` はブラウザで承認してこの端末を公開環境にする（鍵は手元だけ）。`publish` はログインしたアカウントで署名して公開する。
+ * CI は `ci create` で作った文字列を env UBICHILL_CREDENTIALS に入れて `publish` する。`keygen` / `sign` は上級者向け。
  *
  * `lock` は `install` の旧名。非推奨だが後方互換のため残る。
  *
@@ -17,6 +25,7 @@
  * にしているため Node ネイティブの ESM 解決でも問題なく辿れる）。公開パッケージ `ubichill` では
  * `packages/sdk/build.mjs` がこのファイルを esbuild で自己完結バンドルし、`bin` として配布する。
  */
+import { runCiCreate, runLogin, runLogout, runPublish, runWhoami } from './account.ts';
 import { runBuild } from './build.ts';
 import { runInstall } from './install.ts';
 import { runLock } from './lock.ts';
@@ -24,7 +33,7 @@ import { runUpdate } from './update.ts';
 import { runKeygen, runSign } from './sign.ts';
 import { runVerify } from './verify.ts';
 
-const USAGE = `使い方: ubichill <build|install|update|verify|keygen|sign> [...args]`;
+const USAGE = `使い方: ubichill <login|logout|whoami|publish|ci create|build|install|update|verify|keygen|sign> [...args]`;
 
 async function main(): Promise<void> {
     const [subcommand, ...rest] = process.argv.slice(2);
@@ -49,6 +58,26 @@ async function main(): Promise<void> {
             return;
         case 'sign':
             await runSign(rest);
+            return;
+        case 'login':
+            await runLogin(rest);
+            return;
+        case 'logout':
+            await runLogout(rest);
+            return;
+        case 'whoami':
+            await runWhoami(rest);
+            return;
+        case 'publish':
+            await runPublish(rest);
+            return;
+        case 'ci':
+            if (rest[0] === 'create') {
+                await runCiCreate(rest.slice(1));
+                return;
+            }
+            console.error('使い方: ubichill ci create --name=<表示名>');
+            process.exit(1);
             return;
         default:
             console.error(USAGE);

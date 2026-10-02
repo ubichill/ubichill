@@ -631,6 +631,9 @@ importers:
       '@ubichill/shared':
         specifier: workspace:*
         version: link:../shared
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.1
     devDependencies:
       dts-bundle-generator:
         specifier: ^9.5.1
