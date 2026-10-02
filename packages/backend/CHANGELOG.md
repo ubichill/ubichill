@@ -1,5 +1,18 @@
 # @ubichill/backend
 
+## 1.2.0
+
+### Minor Changes
+
+- 24f1f4b: CLI に `login` / `logout` / `whoami` / `publish` / `ci create` を追加しました。`ubichill login` はブラウザで承認してこの端末を公開環境にし（`--device` で別の端末で承認）、`ubichill publish` は mod の固定・作者アカウント付きの署名・公開（本体へ、または `--out` で外部ホスト向けに書き出し）を一度に行います。CI は `ubichill ci create` で作った認証情報を `UBICHILL_CREDENTIALS` に入れて公開できます。
+- 45f35b8: 外部ワールド（URL で入ったワールド）もお気に入りに登録・一覧表示できるようにしました。お気に入りはサーバーが URL から解決し、作者まで確認できたワールドだけを表示します。お気に入り一覧には公開範囲（Private / Friends / Public、初期値は Private）を付け、`GET /api/v1/users/:userId/favorites` は見てよい人にだけ返します。
+- f8ad698: 公式アカウントのパスワードを Secret（`OFFICIAL_ACCOUNT_PASSWORD`）で管理するようにしました。起動のたびにその値へ合わせ、値が変わったときだけ既存のログインを無効にします。画面からは変更できません。
+- 2ac2ab1: 作者アカウントが公開環境（ブラウザ・CLI・CI）ごとに署名鍵を持てるようにし、取り消せるようにしました。取り消した鍵の署名は取り消し前のものも作者が外れます。鍵一覧は WebFinger の links から辿る `/api/v1/authors/:handle/signing-keys` で公開し、旧 `ed25519-signing-key` プロパティは削除しました。Web では「公開する」でこのブラウザの鍵を自動で作成・登録します。
+
+### Patch Changes
+
+- 26bf376: 公式アカウントのプロフィールに、リポジトリ（worlds/）で管理している公式ワールドを表示するようにしました。リポジトリの記録（worlds/trusted-authors.json）で管理している鍵は、画面からは取り消せません。
+
 ## 1.1.0
 
 ### Minor Changes
