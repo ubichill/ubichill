@@ -1,6 +1,8 @@
-import { normalizeUserCode } from '@ubichill/shared';
+import { displayAuthorAccount, normalizeUserCode } from '@ubichill/shared';
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router';
+import { fetchMyAccount } from '@/lib/account/me';
+import { signOut } from '@/lib/auth-client';
 import { approveCliAuthRequest, type CliAuthRequestView, fetchCliAuthRequest, keyFingerprint } from '@/lib/cliAuthApi';
 import { useSession } from '@/lib/session';
 import { css, cva } from '@/styled-system/css';
@@ -56,6 +58,67 @@ type State =
     | { status: 'ready'; request: CliAuthRequestView }
     | { status: 'done'; request: CliAuthRequestView }
     | { status: 'error'; message: string };
+
+/**
+ * 承認するアカウントと、別のアカウントへの切り替え（ログアウトしてログインし直し、同じ要求の承認に戻る）。
+ * 公式アカウントの CI など、普段と違うアカウントで承認したいときに使う。
+ */
+function ApprovingAccount({ returnTo }: { returnTo: string }) {
+    const navigate = useNavigate();
+    const { data: session } = useSession();
+    const [author, setAuthor] = useState<string | null>(null);
+    const [busy, setBusy] = useState(false);
+
+    useEffect(() => {
+        const ctrl = { cancelled: false };
+        fetchMyAccount()
+            .then((me) => !ctrl.cancelled && setAuthor(me.author))
+            .catch(() => undefined);
+        return () => {
+            ctrl.cancelled = true;
+        };
+    }, []);
+
+    const switchAccount = async () => {
+        setBusy(true);
+        await signOut();
+        navigate('/auth', { state: { from: returnTo }, replace: true });
+    };
+
+    if (!session) return null;
+    return (
+        <div
+            className={css({
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '2',
+                mb: '4',
+                px: '3',
+                py: '2',
+                bg: 'background',
+                border: '1px solid',
+                borderColor: 'border',
+                borderRadius: '8px',
+                fontSize: '13px',
+            })}
+        >
+            <span className={css({ color: 'textMuted' })}>
+                承認するアカウント: <strong className={css({ color: 'text' })}>{session.user.name}</strong>
+                {author && `（${displayAuthorAccount(author)}）`}
+            </span>
+            <button
+                type="button"
+                className={button({ tone: 'secondary' })}
+                disabled={busy}
+                onClick={() => void switchAccount()}
+            >
+                別のアカウントで承認する
+            </button>
+        </div>
+    );
+}
 
 /**
  * CLI・CI（`ubichill login` / `ubichill ci create`）を公開環境として追加する承認画面。
@@ -114,6 +177,15 @@ export function CliAuthorizePage() {
                 <h1 className={css({ fontSize: 'xl', fontWeight: '700', color: 'text', mb: '2' })}>
                     公開環境の追加を承認
                 </h1>
+                {view.status !== 'done' && (
+                    <ApprovingAccount
+                        returnTo={
+                            view.status === 'ready'
+                                ? `/cli/authorize?request=${encodeURIComponent(view.request.id)}${state ? `&state=${encodeURIComponent(state)}` : ''}`
+                                : `/cli/authorize${window.location.search}`
+                        }
+                    />
+                )}
                 {view.status === 'enter-code' && (
                     <form
                         onSubmit={(e) => {
