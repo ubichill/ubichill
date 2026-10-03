@@ -22,6 +22,7 @@ router.get('/', optionalAuth, async (req, res) => {
             tag: queryResult.data.tag,
             worldId: queryResult.data.worldId,
             includeFull: queryResult.data.includeFull,
+            viewerId: req.user?.id ?? null,
         });
 
         res.json({ instances });
@@ -79,10 +80,13 @@ router.post('/', requireAuth, createInstanceLimiter, async (req, res) => {
 router.get('/:id', optionalAuth, async (req, res) => {
     try {
         const id = req.params.id as string;
-        const instance = await instanceManager.getInstance(id);
+        // 公開範囲で入れない人には、インスタンスがあることも伏せる
+        const instance = await instanceManager.getInstanceFor(id, req.user?.id ?? null);
 
         if (!instance) {
-            res.status(404).json({ error: 'Instance not found' });
+            res.status(404).json({
+                error: 'インスタンスが見つからないか、入れる人が限られています（フレンドのみなど）',
+            });
             return;
         }
 

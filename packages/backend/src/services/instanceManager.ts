@@ -9,10 +9,11 @@ import type {
     WorldMod,
     WorldSource,
 } from '@ubichill/shared';
-import { DEFAULTS, isPublishable } from '@ubichill/shared';
+import { canJoinInstance, canSeeInstance, DEFAULTS, type InstanceAudience, isPublishable } from '@ubichill/shared';
 import bcrypt from 'bcryptjs';
 import { logger } from '../utils/logger';
 import { flattenGameObject } from './flattenGameObject';
+import { friendIdsOf } from './friends';
 import { instanceReaper } from './instanceReaper';
 import { clearInstanceState, createEntity } from './instanceState';
 import { clearMediaTimelines } from './mediaTimelineState';
@@ -88,11 +89,22 @@ class InstanceManager {
      * status / 人数は userManager から導出するため DB の status フィルタは信頼しない。
      * 全件取って toPublicInstance で正しい値を計算し、includeFull=false なら ここで post-filter する。
      */
-    async listInstances(options?: { tag?: string; worldId?: string; includeFull?: boolean }): Promise<Instance[]> {
+    async listInstances(options?: {
+        tag?: string;
+        worldId?: string;
+        includeFull?: boolean;
+        /** 見る人（公開範囲で絞る。ログインしていなければ null でパブリックだけ）。 */
+        viewerId?: string | null;
+    }): Promise<Instance[]> {
+        const viewerId = options?.viewerId ?? null;
+        const friends = await friendIdsOf(viewerId);
+        const visible = (db: InstanceRecord) => canSeeInstance(this.audienceOf(db), viewerId, friends);
         if (options?.worldId) {
-            return this.findInstancesByWorld(options.worldId);
+            return this.findInstancesByWorld(options.worldId, visible);
         }
-        const dbInstances = await instanceRepository.findAll({ tag: options?.tag, includeFull: true });
+        const dbInstances = (await instanceRepository.findAll({ tag: options?.tag, includeFull: true })).filter(
+            visible,
+        );
         const mapped = await Promise.all(
             dbInstances.map(async (db: InstanceRecord): Promise<Instance | null> => {
                 const world = await worldRegistry.getWorldByUrl(db.worldRef);
@@ -157,6 +169,32 @@ class InstanceManager {
     }
 
     /**
+     * 見る人がインスタンスに入れるときだけ返す（公開範囲。招待のみは URL を受け取った人なら入れる）。
+     * 入れなければ存在も伏せる（undefined）。
+     */
+    async getInstanceFor(instanceId: string, viewerId: string | null): Promise<Instance | undefined> {
+        const dbInstance = await instanceRepository.findById(instanceId);
+        if (!dbInstance) return undefined;
+        if (!canJoinInstance(this.audienceOf(dbInstance), viewerId, await friendIdsOf(viewerId))) return undefined;
+        return this.getInstance(instanceId);
+    }
+
+    /** 見る人がインスタンスに入れるか（公開範囲）。 */
+    async canJoin(instanceId: string, viewerId: string): Promise<boolean> {
+        const dbInstance = await instanceRepository.findById(instanceId);
+        return !!dbInstance && canJoinInstance(this.audienceOf(dbInstance), viewerId, await friendIdsOf(viewerId));
+    }
+
+    /** 公開範囲の判定に要る情報（参加している人は userManager が真）。 */
+    audienceOf(dbInstance: Pick<InstanceRecord, 'id' | 'accessType' | 'leaderId'>): InstanceAudience {
+        return {
+            accessType: dbInstance.accessType,
+            leaderId: dbInstance.leaderId,
+            memberIds: userManager.getUsersByWorld(dbInstance.id).map((u) => u.id),
+        };
+    }
+
+    /**
      * join 用の軽量な存在確認。world 解決には依存しない。
      * (getWorldByDbId が一時的に null でも参加できるようにするため、DB レコードだけ見る)
      */
@@ -203,11 +241,11 @@ class InstanceManager {
     /**
      * ワールドIDからインスタンスを検索（既存インスタンスへの参加用）
      */
-    async findInstancesByWorld(worldRef: string): Promise<Instance[]> {
+    async findInstancesByWorld(worldRef: string, visible: (db: InstanceRecord) => boolean): Promise<Instance[]> {
         const world = await worldRegistry.resolveRef(worldRef);
         if (!world) return [];
 
-        const dbInstances = await instanceRepository.findByWorldRef(world.url);
+        const dbInstances = (await instanceRepository.findByWorldRef(world.url)).filter(visible);
         return dbInstances.map((dbInstance: InstanceRecord) => this.toPublicInstance(dbInstance, world));
     }
 

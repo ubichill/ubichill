@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { WorldDetailModal } from '@/components/lobby/WorldDetailModal';
 import { WorldIdentityBadge } from '@/components/lobby/WorldIdentityBadge';
+import { UserSocialBar } from '@/components/social';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { type ResignResult, resignAll } from '@/lib/account/resign';
 import { API_BASE } from '@/lib/api';
@@ -262,6 +263,8 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                     </div>
                 </div>
             )}
+
+            {!isOwnPage && session && profile && <UserSocialBar userId={profile.id} name={profile.name} />}
 
             {error && (
                 <div

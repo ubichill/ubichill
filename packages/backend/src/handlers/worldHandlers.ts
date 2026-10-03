@@ -81,6 +81,15 @@ export function handleWorldJoin(socket: TypedSocket) {
 
         const effectiveInstanceId = instance.id;
 
+        // 公開範囲（フレンドのみ・フレンド+）。招待のみは URL を受け取った人なら入れる
+        if (!(await instanceManager.canJoin(effectiveInstanceId, authUser.id))) {
+            callback({
+                success: false,
+                error: 'このインスタンスには入れません（作成者のフレンドなどに限られています）',
+            });
+            return;
+        }
+
         if (instance.hasPassword) {
             if (!password) {
                 callback({ success: false, error: 'パスワードが必要です' });
@@ -122,6 +131,8 @@ export function handleWorldJoin(socket: TypedSocket) {
         // 旧 socket の handleDisconnect は activeUserSockets ガードで no-op になる。
         const oldSocket = activeUserSockets.get(userId);
         if (oldSocket && oldSocket.id !== socket.id) {
+            // 切られた側が理由を出せるように先に知らせる（サーバーから切った接続は自動で再接続しない）
+            oldSocket.emit('session:replaced');
             oldSocket.disconnect(true);
         }
 

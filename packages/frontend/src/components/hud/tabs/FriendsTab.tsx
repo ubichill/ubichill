@@ -1,24 +1,34 @@
-import { css } from '@/styled-system/css';
-import { cardStyle, sectionHeading, tabPanel } from './shared';
+import { useNavigate } from 'react-router';
+import { SocialPanel } from '@/components/social';
+import { type JoinInstanceHandler, tabPanel } from './shared';
 
-export function FriendsTab() {
+/** HUD のフレンドタブ: フレンドの現在地と、ソーシャルページ（検索・申請）への入口。 */
+export function FriendsTab({
+    currentInstanceId,
+    onJoinInstance,
+    onNavigate,
+}: {
+    currentInstanceId?: string;
+    onJoinInstance: JoinInstanceHandler;
+    onNavigate?: () => void;
+}) {
+    const navigate = useNavigate();
     return (
         <div className={tabPanel} onClick={(e) => e.stopPropagation()}>
-            <div className={cardStyle}>
-                <h2 className={sectionHeading}>フレンド一覧</h2>
-                <div
-                    className={css({
-                        p: '8',
-                        bg: 'secondary',
-                        borderRadius: '12px',
-                        textAlign: 'center',
-                        color: 'textMuted',
-                        fontSize: '15px',
-                    })}
-                >
-                    Coming Soon...
-                </div>
-            </div>
+            <SocialPanel
+                compact
+                currentInstanceId={currentInstanceId}
+                onJoin={(instance) =>
+                    onJoinInstance(instance.id, instance.world.id, {
+                        thumbnail: instance.world.thumbnail,
+                        displayName: instance.world.displayName,
+                    })
+                }
+                onOpenSocial={() => {
+                    onNavigate?.();
+                    navigate('/social');
+                }}
+            />
         </div>
     );
 }

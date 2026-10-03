@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
     findInstanceForJoin: vi.fn(),
+    canJoin: vi.fn(),
     reinitializeEntities: vi.fn(),
     verifyInstancePassword: vi.fn(),
     getWorldByUrl: vi.fn(),
@@ -19,6 +20,7 @@ vi.mock('../utils/logger', () => ({ logger: { debug: vi.fn(), info: vi.fn(), war
 vi.mock('../services/instanceManager', () => ({
     instanceManager: {
         findInstanceForJoin: mocks.findInstanceForJoin,
+        canJoin: mocks.canJoin,
         reinitializeEntities: mocks.reinitializeEntities,
         verifyInstancePassword: mocks.verifyInstancePassword,
     },
@@ -84,6 +86,7 @@ describe('handleWorldJoin', () => {
             worldRef: EXTERNAL_REF,
         });
         mocks.getWorldByUrl.mockResolvedValue(WORLD);
+        mocks.canJoin.mockResolvedValue(true);
         mocks.getInstanceSnapshot.mockReturnValue([]);
         mocks.getUserWorld.mockReturnValue(undefined);
         mocks.getUsersByWorld.mockReturnValue([]);
@@ -109,5 +112,32 @@ describe('handleWorldJoin', () => {
             expect.objectContaining({ lock: WORLD.lock, sourceKind: 'github', environment: WORLD.environment }),
         );
         expect(callback).toHaveBeenCalledWith({ success: true, userId: 'user-1', instanceId: 'instance-1' });
+    });
+
+    it('公開範囲で入れない人（フレンドのみなど）は参加させない', async () => {
+        mocks.canJoin.mockResolvedValue(false);
+        const callback = vi.fn();
+        await handleWorldJoin(makeSocket())(
+            {
+                instanceId: 'instance-1',
+                user: { name: 'Alice', status: 'online', position: { x: 0, y: 0 }, lastActiveAt: 0 },
+            },
+            callback,
+        );
+        expect(callback).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
+        expect(mocks.addUser).not.toHaveBeenCalled();
+    });
+
+    it('同じアカウントが別のタブで参加したら、古いタブに理由を知らせてから切る', async () => {
+        const old = makeSocket();
+        const user = { name: 'Alice', status: 'online' as const, position: { x: 0, y: 0 }, lastActiveAt: 0 };
+        await handleWorldJoin(old)({ instanceId: 'instance-1', user }, vi.fn());
+        const next = { ...makeSocket(), id: 'socket-2' } as unknown as typeof old;
+        await handleWorldJoin(next)({ instanceId: 'instance-1', user }, vi.fn());
+        expect(old.emit).toHaveBeenCalledWith('session:replaced');
+        expect(old.disconnect).toHaveBeenCalledWith(true);
+        const notified = (old.emit as ReturnType<typeof vi.fn>).mock.invocationCallOrder.at(-1) ?? 0;
+        const cut = (old.disconnect as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0] ?? 0;
+        expect(notified).toBeLessThan(cut);
     });
 });

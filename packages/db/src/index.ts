@@ -16,8 +16,8 @@ export {
     type PublishingEnvironmentRecord,
     publishingEnvironmentRepository,
 } from './repositories/publishingEnvironmentRepository';
-export { userFriendRepository } from './repositories/userFriendRepository';
-export { userRepository } from './repositories/userRepository';
+export { type FriendRow, userFriendRepository } from './repositories/userFriendRepository';
+export { type UserRecord, userRepository } from './repositories/userRepository';
 export { userSettingsRepository } from './repositories/userSettingsRepository';
 export { worldRepository } from './repositories/worldRepository';
 

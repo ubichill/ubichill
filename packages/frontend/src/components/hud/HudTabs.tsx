@@ -195,7 +195,13 @@ export function HudTabs({
                 {activeTab === 'worlds' && (
                     <WorldsTab onJoinInstance={onJoinInstance} currentInstanceId={currentInstanceId} />
                 )}
-                {activeTab === 'friends' && <FriendsTab />}
+                {activeTab === 'friends' && (
+                    <FriendsTab
+                        currentInstanceId={currentInstanceId}
+                        onJoinInstance={onJoinInstance}
+                        onNavigate={onNavigate}
+                    />
+                )}
                 {activeTab === 'profile' && <ProfileTab onNavigate={onNavigate} onJoinInstance={onJoinInstance} />}
                 {activeTab === 'settings' && <SettingsTab />}
             </div>

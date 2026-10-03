@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq, inArray, isNull, ne } from 'drizzle-orm';
+import { and, eq, ilike, inArray, isNull, ne, or } from 'drizzle-orm';
 import { db } from '../index';
 import { accounts, sessions, users } from '../schema';
 
@@ -123,6 +123,21 @@ export const userRepository = {
     /** そのユーザーのログインをすべて無効にする。 */
     async revokeSessions(userId: string): Promise<void> {
         await db.delete(sessions).where(eq(sessions.userId, userId));
+    },
+
+    /**
+     * ID（前方一致）・表示名（部分一致）でユーザーを探す。大文字小文字は区別しない。ID の無いユーザーも表示名で見つかる。
+     * `excludeIds` はシステムユーザーなど検索に出さないもの。
+     */
+    async search(query: string, options: { limit: number; excludeIds?: readonly string[] }): Promise<UserRecord[]> {
+        const escaped = query.replace(/[\\%_]/g, (c) => `\\${c}`);
+        const match = or(ilike(users.handle, `${escaped}%`), ilike(users.name, `%${escaped}%`));
+        return db
+            .select()
+            .from(users)
+            .where(and(match, ...(options.excludeIds ?? []).map((id) => ne(users.id, id))))
+            .orderBy(users.name)
+            .limit(options.limit);
     },
 
     async findByHandle(handle: string): Promise<UserRecord | undefined> {
