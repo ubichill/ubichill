@@ -30,11 +30,17 @@ import { isAuthorKey, resolveAuthorDisplayName } from './authorKeyStore';
 import { selfDomain } from './authorKeys';
 import { createRemoteWorldCache } from './remoteWorldCache';
 import { assertPublicUrl, safeFetch } from './safeFetch';
-import { normalizeWorldUrl, resolveBundle, resolveWorldFromUrl, WorldIntegrityError } from './worldResolver';
+import {
+    normalizeWorldUrl,
+    parseStoredDefinition,
+    resolveBundle,
+    resolveWorldFromUrl,
+    WorldIntegrityError,
+} from './worldResolver';
 
-// KebabCaseId 互換の lowercase + 数字のみ。21文字で十分な衝突耐性を確保。
 /** worlds.world_name の列の長さ。 */
 const MAX_WORLD_NAME_LENGTH = 50;
+// KebabCaseId 互換の lowercase + 数字のみ。21文字で十分な衝突耐性を確保。
 const generateWorldId = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 21);
 
 // ── システム定数 ──────────────────────────────────────────────────
@@ -45,13 +51,12 @@ export type WorldResolution =
     | { ok: true; world: ResolvedWorld }
     | { ok: false; reason: 'not-found' | 'integrity'; message: string };
 
-const toResolution = (world: ResolvedWorld | undefined): WorldResolution =>
-    world ? { ok: true, world } : { ok: false, reason: 'not-found', message: 'World not found' };
+const NOT_FOUND: WorldResolution = { ok: false, reason: 'not-found', message: 'World not found' };
 
-/** 本体が配信するワールドの生の値（署名検証の対象そのもの）。 */
 /** 配るファイル。リポジトリのものはファイルのパス、DB のものは中身。 */
 export type WorldFile = { contentType: string } & ({ path: string } | { body: string });
 
+/** 本体が配信するワールドの生の値（署名検証の対象そのもの）。 */
 export interface HostedWorldDocument extends WorldDocument {
     lock: unknown;
     signature: unknown;
@@ -65,15 +70,25 @@ export interface HostedWorldDocument extends WorldDocument {
  */
 export type SaveBundleResult =
     | { ok: true; world: ResolvedWorld; saved: 'published' | 'unsigned' | 'draft' }
-    | { ok: false; reason: 'invalid-definition' | 'limit' | WorldSignatureInvalidReason; message: string };
+    | {
+          ok: false;
+          reason: 'invalid-definition' | 'limit' | 'name-taken' | WorldSignatureInvalidReason;
+          message: string;
+      };
 
-/** YAML の兄弟 JSON（`.lock.json` / `.sig.json`）を生の値で読む。無い・壊れていれば null。 */
 /** 作者がこのサーバーのアカウントか（リポジトリのワールドを配ってよいか）。 */
 function isOwnAuthor(identity: ResolvedWorld['identity']): boolean {
     if (identity?.status !== 'verified' || !identity.author) return false;
     return parseAuthorAccount(identity.author)?.domain === selfDomain();
 }
 
+/** Postgres の一意制約違反か（drizzle は元のエラーを cause に入れる）。 */
+function isUniqueViolation(err: unknown): boolean {
+    const e = err as { code?: unknown; cause?: { code?: unknown } } | null;
+    return (e?.code ?? e?.cause?.code) === '23505';
+}
+
+/** YAML の兄弟 JSON（`.lock.json` / `.sig.json`）を生の値で読む。無い・壊れていれば null。 */
 function readSiblingJson(worldFilePath: string, ext: string): unknown {
     const siblingPath = worldFilePath.replace(/\.ya?ml$/i, ext);
     if (!fs.existsSync(siblingPath)) return null;
@@ -109,8 +124,12 @@ class WorldRegistry {
     /** 表示順（in-memory。永続化は ordering→DB の別タスク） */
     private _order: string[] = [];
 
-    /** 本体のワールド（DB・リポジトリ）の解決キャッシュ */
-    private readonly _resolvedCache = new Map<string, ResolvedWorld>();
+    /**
+     * 本体のワールド（DB・リポジトリ）の解決キャッシュ。検証できなかった結果も短く覚える
+     * （一覧のたびに同じワールドの署名検証・DB の問い合わせを繰り返さない）。
+     */
+    private readonly _resolvedCache = new Map<string, { resolution: WorldResolution; at: number }>();
+    private static readonly LOCAL_FAILURE_TTL_MS = 60 * 1000;
     /** 外部（他インスタンス/URL）ワールドの解決キャッシュ（連合、TTL 付き） */
     private static readonly REMOTE_TTL_MS = 5 * 60 * 1000;
     /** 取得できなかった外部 URL を取り直さない時間（お気に入りなどで外部への取得を繰り返し起こされないように）。 */
@@ -305,19 +324,25 @@ class WorldRegistry {
      * @param worldId ワールド id（metadata.name）
      */
     async getWorld(worldId: string): Promise<ResolvedWorld | undefined> {
-        if (this._resolvedCache.has(worldId)) return this._resolvedCache.get(worldId);
-
-        const repository = this._repository.get(worldId);
-        const resolved = repository
-            ? await this._resolveRepositoryWorld(worldId, repository.hosted)
-            : await worldRepository.findByName(worldId).then((r) => (r ? this._resolveWorld(r) : undefined));
-        if (resolved) this._resolvedCache.set(worldId, resolved);
-        return resolved;
+        const resolution = await this.resolveLocal(worldId);
+        return resolution.ok ? resolution.world : undefined;
     }
 
-    async hasWorld(worldId: string): Promise<boolean> {
-        if (this._repository.has(worldId)) return !!(await this.getWorld(worldId));
-        return !!(await worldRepository.findByName(worldId));
+    /** 本体のワールドを id で解決する。検証できなければ理由を返す（「見つからない」と区別する）。 */
+    async resolveLocal(worldId: string): Promise<WorldResolution> {
+        const cached = this._resolvedCache.get(worldId);
+        if (cached && (cached.resolution.ok || Date.now() - cached.at < WorldRegistry.LOCAL_FAILURE_TTL_MS)) {
+            return cached.resolution;
+        }
+        const repository = this._repository.get(worldId);
+        const record = repository ? undefined : await worldRepository.findByName(worldId);
+        // 存在しない id は覚えない（任意の id で問い合わせてキャッシュを膨らませられないように）
+        if (!repository && !record) return NOT_FOUND;
+        const resolution = repository
+            ? await this._resolveRepositoryWorld(worldId, repository.hosted)
+            : await this._resolveWorld(record as WorldRecord);
+        this._resolvedCache.set(worldId, { resolution, at: Date.now() });
+        return resolution;
     }
 
     /**
@@ -332,10 +357,10 @@ class WorldRegistry {
 
     /** {@link resolveRef} の失敗理由付き版。改竄（署名不正）を「見つからない」と区別して利用者に伝える。 */
     async resolveRefDetailed(idOrUrl: string): Promise<WorldResolution> {
-        if (!/^https?:\/\//i.test(idOrUrl)) return toResolution(await this.getWorld(idOrUrl));
+        if (!/^https?:\/\//i.test(idOrUrl)) return this.resolveLocal(idOrUrl);
         const norm = normalizeWorldUrl(idOrUrl);
-        const local = this._resolveLocalUrl(norm);
-        return local ? toResolution(await local) : this._resolveRemote(norm);
+        const selfId = this._idFromSelfUrl(norm);
+        return selfId ? this.resolveLocal(selfId) : this._resolveRemote(norm);
     }
 
     /**
@@ -347,12 +372,6 @@ class WorldRegistry {
         // 人間向け共有 URL（.../world/:id）も受け付ける（機械 URL へ正規化）。
         const result = await this.resolveRefDetailed(url);
         return result.ok ? result.world : undefined;
-    }
-
-    /** 自ホストの URL なら解決処理を返す。他ホストは undefined。 */
-    private _resolveLocalUrl(norm: string): Promise<ResolvedWorld | undefined> | undefined {
-        const selfId = this._idFromSelfUrl(norm);
-        return selfId ? this.getWorld(selfId) : undefined;
     }
 
     /** self URL（自ホストの `.../api/v1/worlds/{id}.yaml`）から id を取り出す。他ホストは undefined。 */
@@ -389,19 +408,6 @@ class WorldRegistry {
     /** 内部用：生の DB レコードを取得 */
     async getWorldRecord(worldId: string): Promise<WorldRecord | undefined> {
         return worldRepository.findByName(worldId);
-    }
-
-    /**
-     * 本体が配信するワールドの実体（YAML / lock / 署名の生の値）。URL 配信・フェデレーション用。
-     * 配信するファイル（{@link worldFile}）は必ずこれと一致させること（署名検証の対象と一致させるため）。
-     */
-    async getHostedDocument(worldId: string): Promise<HostedWorldDocument | undefined> {
-        const repository = this._repository.get(worldId);
-        if (repository) return (await this.getWorld(worldId)) ? repository.hosted : undefined;
-        const record = await worldRepository.findByName(worldId);
-        return record
-            ? { definition: record.definition, lock: record.lock ?? null, signature: record.signature ?? null }
-            : undefined;
     }
 
     // ---- 連合ピア管理（フォロー） ----------------------------------
@@ -453,6 +459,7 @@ class WorldRegistry {
     async saveBundle(
         authorId: string,
         bundle: { definition: unknown; lock: unknown; signature?: unknown },
+        options: { editingId?: string; retried?: boolean } = {},
     ): Promise<SaveBundleResult> {
         const parsed = WorldDefinitionSchema.safeParse(bundle.definition);
         if (!parsed.success) {
@@ -473,6 +480,14 @@ class WorldRegistry {
         }
         const lock = bundle.lock === undefined ? null : bundle.lock;
         const existing = await worldRepository.findByAuthorAndWorldName(authorId, worldName);
+        // 編集中のワールドと違う既存のワールドに当たったら、黙って上書きしない（metadata.name を別のワールドと同じにした）
+        if (existing && options.editingId && existing.name !== options.editingId) {
+            return {
+                ok: false,
+                reason: 'name-taken',
+                message: `metadata.name「${worldName}」はあなたの別のワールドで使われています。別の名前にしてください`,
+            };
+        }
         if (!existing && (await worldRepository.countByAuthorId(authorId)) >= LIMITS.MAX_WORLDS_PER_USER) {
             return {
                 ok: false,
@@ -510,28 +525,36 @@ class WorldRegistry {
         const keepDraft = !!verified && verified.contentHash === published?.identity?.contentHash;
         const fields = keepPublished
             ? {
-                  draftDefinition: bundle.definition as WorldDefinition,
+                  draftDefinition: bundle.definition,
                   draftLock: lock as ModLock | null,
                   draftUpdatedAt: new Date(),
               }
             : {
                   version: parsed.data.metadata.version,
-                  definition: bundle.definition as WorldDefinition,
+                  definition: bundle.definition,
                   lock: lock as ModLock | null,
                   signature: (bundle.signature as WorldSignature | undefined) ?? null,
                   ...(keepDraft ? {} : { draftDefinition: null, draftLock: null, draftUpdatedAt: null }),
               };
-        const record = existing
+        const created = existing
             ? await worldRepository.update(existing.id, fields)
-            : await worldRepository.create({
-                  authorId,
-                  name: urlId,
-                  worldName,
-                  version: parsed.data.metadata.version,
-                  definition: bundle.definition as WorldDefinition,
-                  lock: lock as ModLock | null,
-                  signature: (bundle.signature as WorldSignature | undefined) ?? null,
-              });
+            : await worldRepository
+                  .create({
+                      authorId,
+                      name: urlId,
+                      worldName,
+                      version: parsed.data.metadata.version,
+                      definition: bundle.definition,
+                      lock: lock as ModLock | null,
+                      signature: (bundle.signature as WorldSignature | undefined) ?? null,
+                  })
+                  .catch((err: unknown) => {
+                      // 同じ作者・同じ名前の作成が同時に来た（2 つのタブ・CI のリトライ）。もう一方が作ったワールドの更新にする
+                      if (isUniqueViolation(err) && !options.retried) return 'retry' as const;
+                      throw err;
+                  });
+        if (created === 'retry') return this.saveBundle(authorId, bundle, { ...options, retried: true });
+        const record = created;
         if (!record) return { ok: false, reason: 'invalid-definition', message: 'ワールドを保存できませんでした' };
         this._resolvedCache.delete(urlId);
         const world = await this.getWorld(urlId);
@@ -552,9 +575,12 @@ class WorldRegistry {
     ): Promise<{ definition: WorldDefinition; hasDraft: boolean; published: boolean } | undefined> {
         const record = await worldRepository.findByName(worldId);
         if (!record) return undefined;
+        // 保存したのは作者が送った生の値なので、既定値を補ってから渡す
+        const definition = parseStoredDefinition(record.draftDefinition ?? record.definition);
+        if (!definition) return undefined;
         const world = await this.getWorld(worldId);
         return {
-            definition: (record.draftDefinition ?? record.definition) as WorldDefinition,
+            definition,
             hasDraft: !!record.draftDefinition,
             published: isPublishable(world?.identity),
         };
@@ -644,21 +670,16 @@ class WorldRegistry {
      * リポジトリのワールドを、外部のワールドと同じ {@link resolveBundle} で検証する（ファイルから読むのは取得の方法だけ）。
      * 配るのは作者がこのサーバーのアカウントのものだけ。ほかのサーバーの作者のものは写しを配らない（作者のサーバーを連合でフォローする）。
      */
-    private async _resolveRepositoryWorld(id: string, hosted: HostedWorldDocument): Promise<ResolvedWorld | undefined> {
+    private async _resolveRepositoryWorld(id: string, hosted: HostedWorldDocument): Promise<WorldResolution> {
         // 署名が名乗る作者がほかのサーバーなら検証もしない（一覧のたびに作者のサーバーへ問い合わせない）
         const claimed = (hosted.signature as { author?: unknown } | null)?.author;
-        if (typeof claimed !== 'string' || parseAuthorAccount(claimed)?.domain !== selfDomain()) return undefined;
-        try {
-            const { resolved } = await resolveBundle(hosted, this.selfWorldUrl(id), this.localSource(id), {
-                isAuthorKey,
-                resolveAuthorName: resolveAuthorDisplayName,
-                authorId: SYSTEM_AUTHOR_ID,
-            });
-            return isOwnAuthor(resolved.identity) ? { ...resolved, id } : undefined;
-        } catch (err) {
-            console.error(`❌ リポジトリのワールド ${id} を検証できません（配信しません）`, err);
-            return undefined;
+        if (typeof claimed !== 'string' || parseAuthorAccount(claimed)?.domain !== selfDomain()) return NOT_FOUND;
+        const resolution = await this._verify(id, hosted, SYSTEM_AUTHOR_ID);
+        if (resolution.ok && !isOwnAuthor(resolution.world.identity)) {
+            console.warn(`↪ リポジトリのワールド ${id} は作者（${claimed}）の鍵を確かめられないため配りません`);
+            return NOT_FOUND;
         }
+        return resolution;
     }
 
     /**
@@ -756,22 +777,38 @@ class WorldRegistry {
     // プライベート: 変換ヘルパー
     // ================================================================
 
+    /** DB レコード → ResolvedWorld。外部のワールドと同じく {@link resolveBundle} で検証する（同じ規則）。 */
+    private _resolveWorld(record: WorldRecord): Promise<WorldResolution> {
+        return this._verify(
+            record.name,
+            { definition: record.definition, lock: record.lock ?? null, signature: record.signature ?? null },
+            record.authorId,
+        );
+    }
+
     /**
-     * DB レコード → ResolvedWorld。外部のワールドと同じく {@link resolveBundle} で検証する（同じ規則）。
-     * 署名が内容と一致しない（改竄）なら解決しない（undefined）。作者名は確認できた作者アカウントの表示名。
+     * 本体のワールドの組を検証する。署名が内容と一致しない（改竄・規則違反）なら配信せず、理由を返す
+     * （外部のワールドと同じく拒否する。未署名に格下げしない）。作者名は確認できた作者アカウントの表示名。
      */
-    private async _resolveWorld(record: WorldRecord): Promise<ResolvedWorld | undefined> {
+    private async _verify(id: string, hosted: HostedWorldDocument, authorId: string): Promise<WorldResolution> {
         try {
-            const { resolved } = await resolveBundle(
-                { definition: record.definition, lock: record.lock ?? null, signature: record.signature ?? null },
-                this.selfWorldUrl(record.name),
-                this.localSource(record.name),
-                { isAuthorKey, resolveAuthorName: resolveAuthorDisplayName, authorId: record.authorId },
-            );
-            return { ...resolved, id: record.name };
+            const { resolved } = await resolveBundle(hosted, this.selfWorldUrl(id), this.localSource(id), {
+                isAuthorKey,
+                resolveAuthorName: resolveAuthorDisplayName,
+                authorId,
+            });
+            return { ok: true, world: { ...resolved, id } };
         } catch (err) {
-            console.error(`❌ ワールド ${record.name} を検証できません（配信しません）`, err);
-            return undefined;
+            if (err instanceof WorldIntegrityError) {
+                console.warn(`⚠ ワールド ${id} の署名が内容と一致しないため配信しません（${err.reason}）`);
+                return {
+                    ok: false,
+                    reason: 'integrity',
+                    message: `署名が内容と一致しないため配信していません（${err.reason}）。作者が公開し直す必要があります`,
+                };
+            }
+            console.error(`❌ ワールド ${id} を読み込めません（配信しません）`, err);
+            return { ok: false, reason: 'integrity', message: 'ワールドの定義を読み込めないため配信していません' };
         }
     }
 
@@ -782,11 +819,6 @@ class WorldRegistry {
     invalidateResolvedWorlds(): void {
         this._resolvedCache.clear();
         this._remoteCache.clearWorlds();
-    }
-
-    /** 兄弟エンドポイント /worlds/:id/sig 用。保存した署名をそのまま返す（検証は受け取る側が行う）。 */
-    async getWorldSignature(worldId: string): Promise<unknown> {
-        return (await this.getHostedDocument(worldId))?.signature ?? undefined;
     }
 
     /**

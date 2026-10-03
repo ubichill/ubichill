@@ -1,4 +1,4 @@
-import type { ModLock, WorldDefinition, WorldSignature } from '@ubichill/shared';
+import type { ModLock, WorldSignature } from '@ubichill/shared';
 import { relations } from 'drizzle-orm';
 import { jsonb, pgTable, text, timestamp, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
 import { nanoid } from 'nanoid';
@@ -21,7 +21,8 @@ export const worlds = pgTable(
          */
         worldName: varchar('world_name', { length: 50 }).notNull(),
         version: varchar('version', { length: 50 }).notNull(),
-        definition: jsonb('definition').$type<WorldDefinition>().notNull(),
+        // 作者が送った YAML を読んだ生の値（スキーマの既定値は入れない。署名の対象そのもの）。読む側でスキーマを通す
+        definition: jsonb('definition').$type<unknown>().notNull(),
         // mod 完全性ロック。人間が書く definition とは分離して別カラムに保存し、
         // 配信時は兄弟エンドポイント（/worlds/:id/lock）で返す。null 可（未ロックの旧世界）。
         lock: jsonb('lock').$type<ModLock>(),
@@ -30,7 +31,7 @@ export const worlds = pgTable(
         signature: jsonb('signature').$type<WorldSignature>(),
         // 公開中のワールドを編集したときの下書き（公開中の版＝definition/lock/signature はそのまま残す）。
         // 公開すると definition 側へ反映して消す。未公開のワールドは下書きを definition に直接保存する。
-        draftDefinition: jsonb('draft_definition').$type<WorldDefinition>(),
+        draftDefinition: jsonb('draft_definition').$type<unknown>(),
         draftLock: jsonb('draft_lock').$type<ModLock>(),
         draftUpdatedAt: timestamp('draft_updated_at'),
         createdAt: timestamp('created_at').defaultNow().notNull(),

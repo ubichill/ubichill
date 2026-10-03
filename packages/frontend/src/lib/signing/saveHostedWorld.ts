@@ -6,6 +6,8 @@ import type { WorldSigner } from './signer';
 export interface WorldSaveBody {
     yaml: string;
     lock: ModLock | null;
+    /** 編集中のワールド。metadata.name が自分の別のワールドと同じなら、上書きせずサーバーが断る。 */
+    worldId?: string;
 }
 
 export interface SaveWorldDeps {

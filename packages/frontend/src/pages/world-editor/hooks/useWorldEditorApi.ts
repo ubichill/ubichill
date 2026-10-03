@@ -34,9 +34,9 @@ interface UseWorldEditorApiArgs {
  * 保存時に mod 完全性ロックを計算する。lock は人間が書く YAML には埋めず、body の別フィールドで送って
  * サーバ側の別カラムに保存する（YAML はクリーンに保つ）。読む側はこの lock と hash 照合して差し替え mod を拒否する。
  */
-async function buildSaveBody(definition: WorldDefinition) {
+async function buildSaveBody(definition: WorldDefinition, worldId: string | undefined) {
     const { lock, unpinned } = await buildWorldLock(definition);
-    return { body: { yaml: yaml.stringify(definition), lock }, unpinned };
+    return { body: { yaml: yaml.stringify(definition), lock, worldId }, unpinned };
 }
 
 const deps = { apiBase: API_BASE, fetch: browserFetch };
@@ -86,7 +86,7 @@ export function useWorldEditorApi({
     const saveDraft = useCallback(
         () =>
             withSaving(async () => {
-                const { body } = await buildSaveBody(definition);
+                const { body } = await buildSaveBody(definition, isEdit ? worldId : undefined);
                 const saved = await saveWorldBundle(body, null, deps);
                 onSavedYamlChange(body.yaml);
                 // 公開中なら公開状態はそのままで下書きが増える。未公開なら本体に保存され下書きは無い。
@@ -96,13 +96,13 @@ export function useWorldEditorApi({
                 followSaved(saved);
                 return true;
             }, '下書きを保存できませんでした'),
-        [definition, onSavedYamlChange, onPublishStateChange, followSaved, withSaving],
+        [definition, isEdit, worldId, onSavedYamlChange, onPublishStateChange, followSaved, withSaving],
     );
 
     const publish = useCallback(
         () =>
             withSaving(async () => {
-                const { body, unpinned } = await buildSaveBody(definition);
+                const { body, unpinned } = await buildSaveBody(definition, isEdit ? worldId : undefined);
                 const readiness = publishReadiness(await fetchMyAccount().catch(() => null), unpinned);
                 const decision: PublishDecision =
                     readiness.kind === 'ready'
@@ -116,7 +116,16 @@ export function useWorldEditorApi({
                 followSaved(saved);
                 return true;
             }, '公開できませんでした'),
-        [definition, onSavedYamlChange, onPublishStateChange, requestPublishSetup, followSaved, withSaving],
+        [
+            definition,
+            isEdit,
+            worldId,
+            onSavedYamlChange,
+            onPublishStateChange,
+            requestPublishSetup,
+            followSaved,
+            withSaving,
+        ],
     );
 
     const remove = useCallback(async () => {

@@ -97,13 +97,10 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
             });
             // 以前の URL も同じワールドを指す
             expect((await worldRegistry.getWorldByUrl(own?.url.replace(/\.yaml$/, '') ?? ''))?.id).toBe(name);
-            // ファイルから生の値で配る（作者署名の対象）
-            expect((await worldRegistry.getHostedDocument(name))?.definition).toEqual(bundle.definition);
 
             // 公式ワールドの写し（作者は ubichill@ubichill.com）は配らない。作者のサーバーを連合でフォローして参照する
             expect(await worldRegistry.getWorld('default')).toBeUndefined();
             expect(await worldRegistry.worldFile('default.yaml')).toBeUndefined();
-            expect(await worldRegistry.getHostedDocument('default')).toBeUndefined();
             expect(await worldRegistry.worldFile('../package.json')).toBeUndefined();
 
             // 鍵を取り消すと作者が外れ、配らなくなる（DB のワールドと同じく取り消しが効く）
@@ -124,7 +121,8 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
         try {
             expect(first.saved).toBe('unsigned');
             // metadata.name はそのまま（ホストの ID に書き換えない）。URL の ID はサーバーが決める
-            expect((await worldRegistry.getHostedDocument(first.world.id))?.definition).toMatchObject({
+            const yamlFile = await worldRegistry.worldFile(`${first.world.id}.yaml`);
+            expect(yamlFile && 'body' in yamlFile ? yaml.parse(yamlFile.body) : undefined).toMatchObject({
                 metadata: { name },
             });
             expect(first.world.id).not.toBe(name);
@@ -140,14 +138,13 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
                 ok: false,
                 reason: 'content-mismatch',
             });
-            expect(await worldRegistry.getWorldSignature(first.world.id)).toBeUndefined();
+            expect(await worldRegistry.worldFile(`${first.world.id}.sig.json`)).toBeUndefined();
 
             const sig = await signWorld(signedB, key, nodeWorldCrypto);
             expect(await worldRegistry.saveBundle(SYS, { ...signedB, signature: sig })).toMatchObject({
                 ok: true,
                 saved: 'published',
             });
-            expect(await worldRegistry.getWorldSignature(first.world.id)).toEqual(sig);
             // DB のワールドもリポジトリと同じ形のファイルで配る（公開中の版）
             expect(first.world.url).toMatch(new RegExp(`/api/v1/worlds/${first.world.id}\\.yaml$`));
             const sigFile = await worldRegistry.worldFile(`${first.world.id}.sig.json`);
@@ -158,6 +155,90 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
             expect((await worldRegistry.listWorlds('local')).some((w) => w.id === first.world.id)).toBe(false);
         } finally {
             await worldRegistry.deleteWorld(first.world.id);
+        }
+    });
+
+    it('保存は作者の YAML をそのまま残し、読むときに既定値を補う（省いた項目で画面が落ちない）', async () => {
+        const name = uniqueName('raw');
+        const raw = {
+            apiVersion: 'ubichill.com/v1alpha1',
+            kind: 'World',
+            metadata: { name, version: '1.0.0' },
+            spec: { displayName: '最小' },
+        };
+        const saved = await worldRegistry.saveBundle(SYS, { definition: raw, lock: null });
+        if (!saved.ok) throw new Error(saved.message);
+        try {
+            const yamlFile = await worldRegistry.worldFile(`${saved.world.id}.yaml`);
+            expect(yamlFile && 'body' in yamlFile ? yaml.parse(yamlFile.body) : undefined).toEqual(raw);
+            const editor = await worldRegistry.getEditorDefinition(saved.world.id);
+            expect(editor?.definition.spec.capacity).toEqual(expect.objectContaining({ default: expect.any(Number) }));
+            expect(editor?.definition.spec.initialEntities).toEqual([]);
+            expect(saved.world.capacity.default).toEqual(expect.any(Number));
+        } finally {
+            await worldRegistry.deleteWorld(saved.world.id);
+        }
+    });
+
+    it('編集中と違う自分のワールドと metadata.name がぶつかったら上書きせず name-taken', async () => {
+        const a = await worldRegistry.saveBundle(SYS, bundleOf(worldDef(uniqueName('a'), 'A')));
+        const b = await worldRegistry.saveBundle(SYS, bundleOf(worldDef(uniqueName('b'), 'B')));
+        if (!a.ok || !b.ok) throw new Error('作成できない');
+        try {
+            const aName = (await worldRegistry.getEditorDefinition(a.world.id))?.definition.metadata.name ?? '';
+            // B を編集していて、名前を A と同じにした
+            expect(
+                await worldRegistry.saveBundle(SYS, bundleOf(worldDef(aName, 'B の中身')), { editingId: b.world.id }),
+            ).toMatchObject({ ok: false, reason: 'name-taken' });
+            expect((await worldRegistry.getWorld(a.world.id))?.displayName).toBe('A');
+            // 編集中のワールド自身なら更新できる
+            expect(
+                await worldRegistry.saveBundle(SYS, bundleOf(worldDef(aName, 'A2')), { editingId: a.world.id }),
+            ).toMatchObject({ ok: true, world: { id: a.world.id } });
+        } finally {
+            await worldRegistry.deleteWorld(a.world.id);
+            await worldRegistry.deleteWorld(b.world.id);
+        }
+    });
+
+    it('同じ名前の初回保存が同時に来ても 500 にせず、同じワールドになる', async () => {
+        const name = uniqueName('race');
+        const results = await Promise.all([
+            worldRegistry.saveBundle(SYS, bundleOf(worldDef(name, '1'))),
+            worldRegistry.saveBundle(SYS, bundleOf(worldDef(name, '2'))),
+        ]);
+        const ids = results.map((r) => (r.ok ? r.world.id : r.reason));
+        try {
+            expect(results.every((r) => r.ok)).toBe(true);
+            expect(ids[0]).toBe(ids[1]);
+        } finally {
+            if (results[0]?.ok) await worldRegistry.deleteWorld(results[0].world.id);
+        }
+    });
+
+    it('署名が内容と一致しない DB のワールドは配信せず、「見つからない」ではなく理由を返す', async () => {
+        const { worldRepository } = await import('@ubichill/db');
+        const name = uniqueName('broken');
+        const bundle = bundleOf(worldDef(name, '元'));
+        const saved = await worldRegistry.saveBundle(SYS, {
+            ...bundle,
+            signature: await signWorld(bundle, newTestSigningKey(), nodeWorldCrypto),
+        });
+        if (!saved.ok) throw new Error(saved.message);
+        try {
+            const record = await worldRepository.findByName(saved.world.id);
+            if (!record) throw new Error('レコードが無い');
+            // DB を直接書き換えた（署名の後で中身が変わった）
+            await worldRepository.update(record.id, { definition: bundleOf(worldDef(name, '改竄')).definition });
+            worldRegistry.invalidateResolvedWorlds();
+            expect(await worldRegistry.resolveLocal(saved.world.id)).toMatchObject({ ok: false, reason: 'integrity' });
+            expect(await worldRegistry.resolveRefDetailed(saved.world.url)).toMatchObject({
+                ok: false,
+                reason: 'integrity',
+            });
+            expect(await worldRegistry.resolveLocal('no-such-world-id')).toMatchObject({ reason: 'not-found' });
+        } finally {
+            await worldRegistry.deleteWorld(saved.world.id);
         }
     });
 

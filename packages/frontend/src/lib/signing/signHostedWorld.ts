@@ -20,6 +20,6 @@ export async function signHostedWorld(
     if (!yamlRes.ok) throw new Error(`ワールドを取得できません: ${await errorMessage(yamlRes)}`);
     if (!lockRes.ok && lockRes.status !== 404) throw new Error(`lock を取得できません: ${await errorMessage(lockRes)}`);
     const lock = lockRes.ok ? ((await lockRes.json()) as ModLock) : null;
-    const saved = await saveWorldBundle({ yaml: await yamlRes.text(), lock }, signer, deps);
+    const saved = await saveWorldBundle({ yaml: await yamlRes.text(), lock, worldId }, signer, deps);
     return saved.identity;
 }

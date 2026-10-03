@@ -19,6 +19,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { EntityRenderer } from '@/instance/EntityRenderer';
 import { buildWorldLock } from '@/mods/buildWorldLock';
 import { ModRegistryProvider, useModRegistry } from '@/mods/ModRegistryContext';
+import { css } from '@/styled-system/css';
 
 const FALLBACK_ENTITY: ComponentInstance = {
     id: '',
@@ -248,7 +249,7 @@ export function EditorPreview({
                                     if (e.target === e.currentTarget) onBackgroundMouseDown?.();
                                 }}
                                 data-ubi-mod-surface
-                                style={{ position: 'absolute', inset: 0, overflow: 'auto' }}
+                                className={css({ position: 'absolute', inset: 0, overflow: 'auto' })}
                             >
                                 <PreviewStage
                                     entities={entities}

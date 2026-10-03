@@ -154,6 +154,12 @@ export function validateWorldDefinition(parsed: unknown, url: string): WorldDefi
     return result.data;
 }
 
+/** 保存した生の定義をスキーマに通す（既定値を補う）。読めなければ undefined。 */
+export function parseStoredDefinition(raw: unknown): WorldDefinition | undefined {
+    const result = WorldDefinitionSchema.safeParse(migrateLegacyWorldYaml(raw));
+    return result.success ? result.data : undefined;
+}
+
 /** 検証済み WorldDefinition を ResolvedWorld に写像する（純粋）。 */
 function mapToResolved(def: WorldDefinition, url: string, source: WorldSource, extra?: ResolveExtra): ResolvedWorld {
     const env = def.spec.environment ?? {

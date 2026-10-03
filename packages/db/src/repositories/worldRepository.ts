@@ -1,4 +1,4 @@
-import type { ModLock, WorldDefinition, WorldSignature } from '@ubichill/shared';
+import type { ModLock, WorldSignature } from '@ubichill/shared';
 import { and, count, eq } from 'drizzle-orm';
 import { db } from '../index';
 import { worlds } from '../schema';
@@ -10,7 +10,7 @@ export interface CreateWorldInput {
     /** 作者が付けた名前（metadata.name）。 */
     worldName: string;
     version: string;
-    definition: WorldDefinition;
+    definition: unknown;
     /** mod 完全性ロック（definition とは別カラムに保存）。 */
     lock?: ModLock | null;
     /** 作者の署名（保存前に検証済みのもの）。 */
@@ -20,10 +20,10 @@ export interface CreateWorldInput {
 export interface UpdateWorldInput {
     name?: string;
     version?: string;
-    definition?: WorldDefinition;
+    definition?: unknown;
     lock?: ModLock | null;
     signature?: WorldSignature | null;
-    draftDefinition?: WorldDefinition | null;
+    draftDefinition?: unknown;
     draftLock?: ModLock | null;
     draftUpdatedAt?: Date | null;
 }

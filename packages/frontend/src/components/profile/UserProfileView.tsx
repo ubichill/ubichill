@@ -41,6 +41,8 @@ interface OwnedWorld {
     identity?: WorldIdentity;
     /** リポジトリ（worlds/）で管理している公式ワールド。画面からは編集・削除できない（変更は PR で行う）。 */
     managedBy?: 'repository';
+    /** 本人の一覧のみ。配信できない理由（署名が内容と一致しないなど）。編集して公開し直すと直る。 */
+    problem?: string;
 }
 
 interface UserProfileViewProps {
@@ -393,7 +395,8 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                                     isOwnPage &&
                                     w.managedBy !== 'repository' &&
                                     !isPublishable(w.identity) &&
-                                    w.identity?.status !== 'verified'
+                                    w.identity?.status !== 'verified' &&
+                                    !w.problem
                                         ? async () => void (await signWorlds([w.id]))
                                         : undefined
                                 }
@@ -699,6 +702,11 @@ function OwnedWorldCard({
                     <span>v{world.version}</span>
                     {editable && <WorldIdentityBadge identity={world.identity} />}
                 </div>
+                {editable && world.problem && (
+                    <p className={css({ fontSize: '11px', color: 'errorText', lineHeight: '1.4' })}>
+                        {world.problem}。編集して公開し直してください
+                    </p>
+                )}
                 {editable && !onSign && world.identity?.status === 'verified' && !world.identity.author && (
                     <p className={css({ fontSize: '11px', color: 'textMuted', lineHeight: '1.4' })}>
                         作者を確認できない鍵（取り消し済みなど）で署名されているため、一覧に公開されていません。上の「公開」欄から署名し直せます

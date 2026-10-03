@@ -7,7 +7,7 @@ import {
     type WorldRecord,
     worldRepository,
 } from '@ubichill/db';
-import type { ResolvedWorld, WorldDefinition } from '@ubichill/shared';
+import type { ResolvedWorld } from '@ubichill/shared';
 import {
     canViewFavorites,
     DisplayNameSchema,
@@ -45,6 +45,7 @@ import {
 } from '../services/publishingEnvironments';
 import { nodeWorldCrypto } from '../services/worldCrypto';
 import { worldRegistry } from '../services/worldRegistry';
+import { parseStoredDefinition } from '../services/worldResolver';
 import { createTtlCache } from '../utils/ttlCache';
 
 const router = Router();
@@ -370,19 +371,21 @@ router.get('/me/worlds', requirePublisher, async (req, res) => {
         worldRepository.findByAuthorId(req.user.id),
         userRepository.findById(req.user.id),
     ]);
-    // 本人には未署名（非公開）も返す。署名状態を見せて署名し直せるようにする。
+    // 本人には未署名（非公開）も返す。署名状態を見せて署名し直せるようにする。配信できない（署名が内容と一致しない）ものは理由も返す
     const hosted = await Promise.all(
         records.map(async (r: WorldRecord) => {
-            const def = r.definition as WorldDefinition;
+            const resolution = await worldRegistry.resolveLocal(r.name);
+            const def = resolution.ok ? resolution.world : parseStoredDefinition(r.definition)?.spec;
             return {
                 id: r.name,
-                displayName: def.spec.displayName,
-                description: def.spec.description ?? null,
-                thumbnail: def.spec.thumbnail ?? null,
+                displayName: def?.displayName ?? r.worldName,
+                description: def?.description ?? null,
+                thumbnail: def?.thumbnail ?? null,
                 version: r.version,
-                capacity: def.spec.capacity,
+                capacity: def?.capacity ?? { default: 0, max: 0 },
                 updatedAt: r.updatedAt,
-                identity: (await worldRegistry.getWorld(r.name))?.identity,
+                identity: resolution.ok ? resolution.world.identity : undefined,
+                ...(resolution.ok ? {} : { problem: resolution.message }),
             };
         }),
     );
@@ -504,20 +507,16 @@ router.get('/:userId/favorites', optionalAuth, async (req, res) => {
 router.get('/:userId/worlds', async (req, res) => {
     const records = await worldRepository.findByAuthorId(req.params.userId);
     const resolved = await Promise.all(records.map((r: WorldRecord) => worldRegistry.getWorld(r.name)));
-    const publishable = new Set(resolved.filter((w) => isPublishable(w?.identity)).map((w) => w?.id));
-    const worlds = records
-        .filter((r: WorldRecord) => publishable.has(r.name))
-        .map((r: WorldRecord) => {
-            const def = r.definition as WorldDefinition;
-            return {
-                id: r.name,
-                displayName: def.spec.displayName,
-                description: def.spec.description ?? null,
-                thumbnail: def.spec.thumbnail ?? null,
-                version: r.version,
-                capacity: def.spec.capacity,
-            };
-        });
+    const worlds = resolved
+        .filter((w): w is ResolvedWorld => !!w && isPublishable(w.identity))
+        .map((w) => ({
+            id: w.id,
+            displayName: w.displayName,
+            description: w.description ?? null,
+            thumbnail: w.thumbnail ?? null,
+            version: w.version,
+            capacity: w.capacity,
+        }));
     const owner = await userRepository.findById(req.params.userId);
     const repository = (await worldRegistry.repositoryWorldsByAuthor(authorAccountsOfUser(owner?.handle ?? null))).map(
         repositoryWorldView,

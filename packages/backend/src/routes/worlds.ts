@@ -1,9 +1,11 @@
 import { publishingEnvironmentRepository, userRepository } from '@ubichill/db';
 import { LIMITS, ModLockSchema } from '@ubichill/shared';
+import type { NextFunction, Request, Response } from 'express';
 import { Router } from 'express';
 import yaml from 'yaml';
 import { optionalAuth, requireAdmin, requireAuth, requirePublisher } from '../middleware/auth';
 import { selfAccount } from '../services/authorKeys';
+import { bearerToken } from '../services/cliAuth';
 import { worldRegistry } from '../services/worldRegistry';
 
 const router = Router();
@@ -74,6 +76,17 @@ async function markEnvironmentUsed(claim: AuthorClaim): Promise<void> {
     if ('environmentId' in claim && claim.environmentId) {
         await publishingEnvironmentRepository.touch(claim.environmentId).catch(() => undefined);
     }
+}
+
+/**
+ * 保存の認可。公開（署名あり）と API トークンは公開環境の確認（requirePublisher）。署名なしの下書き保存は公開されないので、
+ * ログインしていれば足りる（エディタを長く開いていても下書きを保存できるように、再ログインを求めない）。
+ */
+function requireSaver(req: Request, res: Response, next: NextFunction): Promise<void> | void {
+    const signed = (req.body as { signature?: unknown } | undefined)?.signature !== undefined;
+    return signed || bearerToken(req.get('authorization'))
+        ? requirePublisher(req, res, next)
+        : requireAuth(req, res, next);
 }
 
 function saveFailureMessage(reason: string, message: string): string {
@@ -210,12 +223,15 @@ router.get('/:worldId', optionalAuth, async (req, res) => {
             else res.send(file.body);
             return;
         }
-        const world = await worldRegistry.getWorld(worldId);
-        if (!world) {
-            res.status(404).json({ error: 'World not found' });
+        const resolution = await worldRegistry.resolveLocal(worldId);
+        if (!resolution.ok) {
+            res.status(resolution.reason === 'integrity' ? 422 : 404).json({
+                error: resolution.message,
+                code: resolution.reason,
+            });
             return;
         }
-        res.json(world);
+        res.json(resolution.world);
     } catch (error) {
         console.error('ワールド取得エラー:', error);
         res.status(500).json({ error: 'Internal server error' });
@@ -224,13 +240,14 @@ router.get('/:worldId', optionalAuth, async (req, res) => {
 
 /**
  * PUT /api/v1/worlds
- * 作者のバンドル（`{ yaml, lock?, signature? }`）を本体に置く（作成・更新・下書き）。外部ホストに置くのと同じく、
+ * 作者のバンドル（`{ yaml, lock?, signature?, worldId? }`）を本体に置く（作成・更新・下書き）。外部ホストに置くのと同じく、
  * 中身は書き換えず、作者 + metadata.name でワールドを区別する（同じ作者・同じ名前なら同じワールドの更新）。
  * - 署名あり: 外部と同じ規則で検証し、通れば公開中の版として保存
  * - 署名なし: 公開中のワールドなら下書きとして保存（公開中の版は残す）、そうでなければ署名なしのまま保存（公開されない）
+ * `worldId` は編集中のワールド（エディタ）。metadata.name が自分の別のワールドと同じなら上書きせず 409。
  * 返り値: `{ id, url, saved, identity }`
  */
-router.put('/', requirePublisher, async (req, res) => {
+router.put('/', requireSaver, async (req, res) => {
     try {
         if (!req.user) {
             res.status(401).json({ error: 'Unauthorized' });
@@ -249,9 +266,19 @@ router.put('/', requirePublisher, async (req, res) => {
             res.status(422).json({ error: claim.error });
             return;
         }
-        const result = await worldRegistry.saveBundle(req.user.id, bundle);
+        const editingId = (req.body as { worldId?: unknown }).worldId;
+        const result = await worldRegistry.saveBundle(req.user.id, bundle, {
+            editingId: typeof editingId === 'string' ? editingId : undefined,
+        });
         if (!result.ok) {
-            const status = result.reason === 'limit' ? 403 : result.reason === 'invalid-definition' ? 400 : 422;
+            const status =
+                result.reason === 'limit'
+                    ? 403
+                    : result.reason === 'invalid-definition'
+                      ? 400
+                      : result.reason === 'name-taken'
+                        ? 409
+                        : 422;
             res.status(status).json({ error: saveFailureMessage(result.reason, result.message), code: result.reason });
             return;
         }
