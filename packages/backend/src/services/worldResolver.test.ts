@@ -45,31 +45,41 @@ describe('toRawGitHubUrl', () => {
 });
 
 describe('normalizeWorldUrl', () => {
-    it('共有 URL(.../world/:id) を機械 URL に正規化する', () => {
-        expect(normalizeWorldUrl('https://h.example/world/abc')).toBe('https://h.example/api/v1/worlds/abc');
+    it('共有 URL（/@handle/name）を、配信している YAML の URL にする（DB なしで、ほかのサーバーでもたどれる）', () => {
+        const yamlUrl = 'https://h.example/api/v1/authors/youkan/worlds/my-world.yaml';
+        expect(normalizeWorldUrl('https://h.example/@youkan/my-world')).toBe(yamlUrl);
+        expect(normalizeWorldUrl('https://h.example/@youkan/my-world/')).toBe(yamlUrl);
+        expect(normalizeWorldUrl('https://h.example/api/v1/authors/youkan/worlds/my-world')).toBe(yamlUrl);
+        expect(normalizeWorldUrl(yamlUrl)).toBe(yamlUrl);
     });
-    it('機械 URL はそのまま、/yaml は除去する', () => {
-        expect(normalizeWorldUrl('https://h.example/api/v1/worlds/abc')).toBe('https://h.example/api/v1/worlds/abc');
-        expect(normalizeWorldUrl('https://h.example/api/v1/worlds/abc/yaml')).toBe(
+    it('以前の内部 ID の形は /api/v1/worlds/:id にそろえる（自ホストなら ID で解決する）', () => {
+        for (const old of [
+            'https://h.example/world/abc',
             'https://h.example/api/v1/worlds/abc',
-        );
+            'https://h.example/api/v1/worlds/abc/yaml',
+            'https://h.example/api/v1/worlds/abc.yaml',
+        ]) {
+            expect(normalizeWorldUrl(old)).toBe('https://h.example/api/v1/worlds/abc');
+        }
     });
-    it('ワールド一覧(.../api/v1/worlds) やその他 URL は変えない', () => {
+    it('単一ワールドでない URL・ubichill 以外の URL・読めない形はそのまま', () => {
         expect(normalizeWorldUrl('https://h.example/api/v1/worlds')).toBe('https://h.example/api/v1/worlds');
         const raw = 'https://raw.githubusercontent.com/o/r/main/worlds/x.yaml';
         expect(normalizeWorldUrl(raw)).toBe(raw);
-    });
-    it('不正な文字列は入力を返す', () => {
+        expect(normalizeWorldUrl('https://h.example/world?url=x')).toBe('https://h.example/world?url=x');
+        expect(normalizeWorldUrl('https://h.example/@Youkan/My_World')).toBe('https://h.example/@Youkan/My_World');
         expect(normalizeWorldUrl('not a url')).toBe('not a url');
     });
 });
 
 describe('lockUrlFor（mod ロックの兄弟 URL 導出）', () => {
-    it('機械 URL(.../api/v1/worlds/:id) → .../lock', () => {
-        expect(lockUrlFor('https://h.example/api/v1/worlds/abc')).toBe('https://h.example/api/v1/worlds/abc/lock');
+    it('ubichill 本体も外部と同じ: .../worlds/:name.yaml → .../:name.lock.json', () => {
+        expect(lockUrlFor('https://h.example/api/v1/authors/youkan/worlds/abc.yaml')).toBe(
+            'https://h.example/api/v1/authors/youkan/worlds/abc.lock.json',
+        );
     });
-    it('/yaml サフィックス付きでも同じ lock URL を導出する', () => {
-        expect(lockUrlFor('https://h.example/api/v1/worlds/abc/yaml')).toBe('https://h.example/api/v1/worlds/abc/lock');
+    it('YAML の URL でなければ兄弟は無い（以前の API 形の /lock は使わない。配り方は 1 つ）', () => {
+        expect(lockUrlFor('https://h.example/api/v1/worlds/abc')).toBeNull();
     });
     it('直 YAML URL は拡張子を .lock.json に置換（GitHub raw 等）', () => {
         expect(lockUrlFor('https://raw.githubusercontent.com/o/r/main/worlds/x.yaml')).toBe(
@@ -194,7 +204,9 @@ spec:
 
 describe('sigUrlFor（署名の兄弟 URL 導出）', () => {
     it('lock と同じ規則で .sig.json / /sig を導出する', () => {
-        expect(sigUrlFor('https://h.example/api/v1/worlds/abc/yaml')).toBe('https://h.example/api/v1/worlds/abc/sig');
+        expect(sigUrlFor('https://h.example/api/v1/worlds/abc.yaml')).toBe(
+            'https://h.example/api/v1/worlds/abc.sig.json',
+        );
         expect(sigUrlFor('https://raw.githubusercontent.com/o/r/main/worlds/x.yaml')).toBe(
             'https://raw.githubusercontent.com/o/r/main/worlds/x.sig.json',
         );

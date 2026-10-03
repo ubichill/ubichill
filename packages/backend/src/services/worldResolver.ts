@@ -29,7 +29,6 @@ import {
     type WorldMod,
     type WorldSignatureInvalidReason,
     type WorldSource,
-    WorldSourceKind,
 } from '@ubichill/shared';
 import yaml from 'yaml';
 import { safeFetch } from './safeFetch';
@@ -37,8 +36,6 @@ import { nodeWorldCrypto } from './worldCrypto';
 import { migrateLegacyWorldYaml } from './worldMigration';
 
 const GITHUB_BLOB_RE = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/;
-const GITHUB_TREE_RE = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/tree\/([^/]+)\/(.+)$/;
-const YAML_EXT_RE = /\.(ya?ml)$/i;
 
 const registryToken = (): string | undefined => process.env.WORLDS_REGISTRY_TOKEN || undefined;
 
@@ -51,8 +48,6 @@ export function toRawGitHubUrl(url: string): string {
 
 /** サイズ上限付きで URL からテキストを取得する。 */
 async function fetchText(url: string): Promise<string> {
-    // 他 ubichill インスタンスの /api/v1/worlds/:id は content negotiation で YAML を返す。
-    // raw GitHub 等は Accept を無視してファイルを返すので、常に yaml を要求して問題ない。
     const headers: Record<string, string> = { Accept: 'application/yaml, text/yaml, */*' };
     const token = registryToken();
     if (token && (url.includes('github') || url.includes('githubusercontent'))) {
@@ -88,17 +83,13 @@ type SiblingKind = 'lock' | 'sig';
 const SIBLING_FILE_EXT: Record<SiblingKind, string> = { lock: '.lock.json', sig: '.sig.json' };
 
 /**
- * ワールド URL から兄弟配信物（mod ロック / 署名）の URL を導出する。
- * どちらも YAML に埋めず別配信するため、解決側はここが指す先を best-effort で取りに行く。
- * - ubichill 機械 URL `.../api/v1/worlds/:id`(`/yaml`可) → `.../api/v1/worlds/:id/{lock,sig}`
- * - 直 YAML URL `*.yaml` / `*.yml`（GitHub raw 等）→ 拡張子を `.lock.json` / `.sig.json` に置換
- * - それ以外 → null（兄弟なし）
+ * ワールド URL から兄弟配信物（mod ロック / 署名）の URL を導出する。配り方は 1 つだけ:
+ * `<world>.yaml` の拡張子を `.lock.json` / `.sig.json` に置き換える（ubichill 本体も GitHub raw などの外部ホストも同じ）。
+ * YAML の URL でなければ null（兄弟なし）。
  */
 function siblingUrlFor(worldUrl: string, kind: SiblingKind): string | null {
     try {
         const u = new URL(worldUrl);
-        const api = /^(\/api\/v1\/worlds\/[^/]+?)(?:\/yaml)?\/?$/.exec(u.pathname);
-        if (api) return `${u.origin}${api[1]}/${kind}`;
         if (/\.ya?ml$/i.test(u.pathname)) {
             return `${u.origin}${u.pathname.replace(/\.ya?ml$/i, SIBLING_FILE_EXT[kind])}${u.search}`;
         }
@@ -161,6 +152,12 @@ export function validateWorldDefinition(parsed: unknown, url: string): WorldDefi
         throw new Error(`ワールド定義が無効です (${url}): ${issue?.path.join('.') ?? ''} ${issue?.message ?? ''}`);
     }
     return result.data;
+}
+
+/** 保存した生の定義をスキーマに通す（既定値を補う）。読めなければ undefined。 */
+export function parseStoredDefinition(raw: unknown): WorldDefinition | undefined {
+    const result = WorldDefinitionSchema.safeParse(migrateLegacyWorldYaml(raw));
+    return result.success ? result.data : undefined;
 }
 
 /** 検証済み WorldDefinition を ResolvedWorld に写像する（純粋）。 */
@@ -249,8 +246,46 @@ export interface ResolveWorldOptions {
 }
 
 /**
- * URL を取得し、生定義（配信用）と ResolvedWorld（一覧/入室用）の両方を返す（外部/他インスタンス用）。
- * 本体 YAML・兄弟 lock・兄弟署名を並行取得し、署名があれば検証する（不正なら throw）。
+ * ワールドのバンドル: 作者が書いて署名した 3 つの生の値（world 定義・兄弟 lock・兄弟署名）。
+ * 置き場所（外部 URL・本体のリポジトリの静的ファイル・本体の DB）に関係なく、ワールドは常にこの形で配られ、
+ * {@link resolveBundle} で同じ規則で検証される。置き場所の違いは、バンドルを手に入れる方法だけ。
+ */
+export interface WorldBundle {
+    /** YAML をパースした生の値（スキーマの既定値を足していないもの。署名の対象そのもの）。 */
+    definition: unknown;
+    lock: unknown;
+    signature: unknown;
+}
+
+/**
+ * バンドルを検証して ResolvedWorld にする（すべてのワールドに同じ規則）。
+ * 改竄・署名不正は throw（解決を拒否）、署名が無ければ unsigned。作者は確認できたときだけ付く。
+ */
+export async function resolveBundle(
+    bundle: WorldBundle,
+    url: string,
+    source: WorldSource,
+    options: ResolveWorldOptions & { authorId?: string } = {},
+): Promise<{ definition: WorldDefinition; resolved: ResolvedWorld }> {
+    const identity = await identifyWorld(
+        { definition: bundle.definition, lock: bundle.lock ?? null },
+        bundle.signature ?? null,
+        url,
+        options.isAuthorKey,
+    );
+    const parsedLock = ModLockSchema.safeParse(bundle.lock);
+    const definition = validateWorldDefinition(bundle.definition, url);
+    const resolved = mapToResolved(definition, url, source, {
+        authorId: options.authorId,
+        lock: parsedLock.success ? parsedLock.data : undefined,
+        identity,
+    });
+    const authorName = await confirmedAuthorName(identity, options.resolveAuthorName);
+    return { definition, resolved: { ...resolved, authorName } };
+}
+
+/**
+ * URL からバンドル（本体 YAML・兄弟 lock・兄弟署名）を取得して {@link resolveBundle} で検証する（外部/他インスタンス用）。
  */
 export async function resolveWorld(
     url: string,
@@ -263,22 +298,13 @@ export async function resolveWorld(
         fetchSiblingJson(lockUrlFor(fetchUrl)),
         fetchSiblingJson(sigUrlFor(fetchUrl)),
     ]);
-    const rawDefinition: unknown = yaml.parse(text);
-    const identity = await identifyWorld(
-        { definition: rawDefinition, lock: rawLock ?? null },
-        rawSig,
-        url,
-        options.isAuthorKey,
-    );
-    const parsedLock = ModLockSchema.safeParse(rawLock);
-    const definition = validateWorldDefinition(rawDefinition, url);
     // 正規 URL は元の（人間が貼れる）URL を維持する
-    const resolved = mapToResolved(definition, url, source, {
-        lock: parsedLock.success ? parsedLock.data : undefined,
-        identity,
-    });
-    const authorName = await confirmedAuthorName(identity, options.resolveAuthorName);
-    return { definition, resolved: { ...resolved, authorName } };
+    return resolveBundle(
+        { definition: yaml.parse(text) as unknown, lock: rawLock, signature: rawSig },
+        url,
+        source,
+        options,
+    );
 }
 
 /** URL を取得して ResolvedWorld に解決する（外部/他インスタンス用）。 */
@@ -290,139 +316,21 @@ export async function resolveWorldFromUrl(
     return (await resolveWorld(url, source, options)).resolved;
 }
 
-// ============================================================
-// レジストリソースの列挙
-// ============================================================
-
-type GitHubContentEntry = { name: string; type: 'file' | 'dir'; download_url: string | null };
-
 /**
- * Contents API の ETag キャッシュ。
- * GitHub は `If-None-Match` に対する 304 応答をレート制限にカウントしないため、
- * 変更が無い限り列挙は実質タダになる（60/時の枠を守る主要な対策）。
- */
-const contentsCache = new Map<string, { etag: string; urls: string[] }>();
-
-/** GitHub tree URL を Contents API で列挙し、各 YAML の raw URL を返す（ETag 条件付き＋制限時フォールバック）。 */
-async function enumerateGitHubDir(owner: string, repo: string, ref: string, path: string): Promise<string[]> {
-    const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${encodeURIComponent(ref)}`;
-    const headers: Record<string, string> = { Accept: 'application/vnd.github+json' };
-    const token = registryToken();
-    if (token) headers.Authorization = `Bearer ${token}`;
-    const cached = contentsCache.get(apiUrl);
-    if (cached) headers['If-None-Match'] = cached.etag;
-
-    const res = await safeFetch(apiUrl, { headers });
-
-    // 304: 未変更。レート制限を消費しない。キャッシュを返す。
-    if (res.status === 304 && cached) return cached.urls;
-
-    // 403/429 のレート制限: キャッシュがあれば維持して列挙を落とさない。
-    if ((res.status === 403 || res.status === 429) && res.headers.get('x-ratelimit-remaining') === '0') {
-        if (cached) {
-            console.warn(`⚠ GitHub API レート制限中。キャッシュで継続: ${apiUrl}`);
-            return cached.urls;
-        }
-        throw new Error(`GitHub API レート制限（キャッシュ無し）: ${apiUrl}`);
-    }
-
-    if (!res.ok) throw new Error(`GitHub Contents API ${res.status}: ${apiUrl}`);
-
-    const entries = (await res.json()) as GitHubContentEntry[];
-    const urls = entries
-        .filter((e) => e.type === 'file' && YAML_EXT_RE.test(e.name) && e.download_url)
-        .map((e) => e.download_url as string);
-    const etag = res.headers.get('etag');
-    if (etag) contentsCache.set(apiUrl, { etag, urls });
-    return urls;
-}
-
-/**
- * CDN 配信のインデックス JSON（API 不使用）を読み、ワールド URL 群へ展開する。
- * 配布者が生成した `[{ file }] | [{ url }]` を想定。`file` は JSON の URL 基準で解決。
- */
-async function enumerateIndexJson(indexUrl: string): Promise<{ url: string; source: WorldSource }[]> {
-    const text = await fetchText(indexUrl);
-    const list = JSON.parse(text) as Array<{ file?: string; url?: string }>;
-    const base = indexUrl.slice(0, indexUrl.lastIndexOf('/') + 1);
-    return list
-        .map((e) => e.url ?? (e.file ? `${base}${e.file}` : undefined))
-        .filter((u): u is string => typeof u === 'string')
-        .map((url) => ({ url, source: { kind: WorldSourceKind.Registry, url, registryName: indexUrl } }));
-}
-
-/**
- * 人間向けの共有 URL（`.../world/:id`）を機械 URL（`.../api/v1/worlds/:id`）に正規化する。
- * ユーザーはブラウザに見えている共有 URL をコピーするのが自然なので、それをそのまま受け付ける。
- * 既に機械 URL ならそのまま返す（`/yaml` サフィックスは除去）。単一ワールド URL でなければ入力を返す。
+ * ubichill 本体のワールドの URL を、配信している YAML の URL（`.../api/v1/authors/:handle/worlds/:name.yaml`）に正規化する。
+ * 共有 URL（`.../@handle/name`）も同じ形にする。以前の内部 ID の形（`.../world/:id`、`.../api/v1/worlds/:id`、`/yaml`・`.yaml` 付き）は
+ * `.../api/v1/worlds/:id` にそろえる（自ホストなら ID で解決できる）。それ以外はそのまま返す。
  */
 export function normalizeWorldUrl(input: string): string {
     try {
         const u = new URL(input);
-        const share = /^\/world\/([^/]+)\/?$/.exec(u.pathname);
-        if (share) return `${u.origin}/api/v1/worlds/${share[1]}`;
-        const api = /^\/api\/v1\/worlds\/([^/]+?)(?:\/yaml)?\/?$/.exec(u.pathname);
-        if (api) return `${u.origin}/api/v1/worlds/${api[1]}`;
-        return input;
+        const author =
+            /^\/@([a-z0-9_]+)\/([a-z0-9-]+)\/?$/.exec(u.pathname) ??
+            /^\/api\/v1\/authors\/([a-z0-9_]+)\/worlds\/([a-z0-9-]+)(?:\.yaml)?\/?$/.exec(u.pathname);
+        if (author) return `${u.origin}/api/v1/authors/${author[1]}/worlds/${author[2]}.yaml`;
+        const legacy = /^\/(?:world|api\/v1\/worlds)\/([a-z0-9-]+)(?:\/yaml|\.yaml)?\/?$/.exec(u.pathname);
+        return legacy ? `${u.origin}/api/v1/worlds/${legacy[1]}` : input;
     } catch {
         return input;
     }
-}
-
-/** URL が単一ワールド（`.../api/v1/worlds/:id`）を指すか。 */
-function isSingleWorldUrl(url: string): boolean {
-    try {
-        return /^\/api\/v1\/worlds\/[^/]+$/.test(new URL(url).pathname);
-    } catch {
-        return false;
-    }
-}
-
-/**
- * レジストリソース URL を個々のワールド URL＋source に展開する。
- * - 共有/機械の単一ワールド URL（.../world/:id, .../api/v1/worlds/:id）→ 単一（kind: remote-instance）
- * - GitHub tree URL → Contents API 列挙（ETag キャッシュ、kind: github）
- * - インデックス JSON URL → CDN 取得（API 不使用、kind: registry）
- * - 直 YAML URL → 単一（kind: github or url）
- * - 他インスタンス一覧 API → kind: remote-instance で展開
- */
-export async function enumerateSource(sourceUrl: string): Promise<{ url: string; source: WorldSource }[]> {
-    // 共有 URL を機械 URL へ正規化し、単一ワールドなら1件だけ返す。
-    const single = normalizeWorldUrl(sourceUrl);
-    if (isSingleWorldUrl(single)) {
-        const origin = new URL(single).origin;
-        return [{ url: single, source: { kind: WorldSourceKind.RemoteInstance, url: single, originInstance: origin } }];
-    }
-
-    const tree = GITHUB_TREE_RE.exec(sourceUrl);
-    if (tree) {
-        const [, owner, repo, ref, path] = tree;
-        const urls = await enumerateGitHubDir(owner, repo, ref, path);
-        return urls.map((url) => ({
-            url,
-            source: { kind: WorldSourceKind.GitHub, url, registryName: `${owner}/${repo}` },
-        }));
-    }
-
-    // インデックス JSON（配布者が生成、CDN 配信で API 不使用の抜け道）
-    if (/\.json$/i.test(sourceUrl)) {
-        return enumerateIndexJson(sourceUrl);
-    }
-
-    if (YAML_EXT_RE.test(sourceUrl)) {
-        const kind = sourceUrl.includes('github') ? WorldSourceKind.GitHub : WorldSourceKind.Url;
-        return [{ url: sourceUrl, source: { kind, url: sourceUrl } }];
-    }
-
-    // 他 ubichill インスタンスのワールド一覧 API とみなす（{ worlds: WorldListItem[] } を返す想定）
-    const res = await safeFetch(sourceUrl, { headers: { Accept: 'application/json' } });
-    if (!res.ok) throw new Error(`レジストリ列挙に失敗 HTTP ${res.status}: ${sourceUrl}`);
-    const body = (await res.json()) as { worlds?: Array<{ url?: string }> };
-    const base = new URL(sourceUrl).origin;
-    return (body.worlds ?? [])
-        .filter((w): w is { url: string } => typeof w.url === 'string')
-        .map((w) => ({
-            url: w.url,
-            source: { kind: WorldSourceKind.RemoteInstance, url: w.url, originInstance: base },
-        }));
 }

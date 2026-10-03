@@ -38,6 +38,8 @@ export function AppRouter() {
                         {/* 公開ワールド URL — 誰でもアクセス可能、認証後に自動参加 */}
                         <Route path="/world" element={<WorldPage />} />
                         <Route path="/world/:worldId" element={<WorldPage />} />
+                        {/* 共有 URL（/@handle/name）。作者の ID と名前で決まる */}
+                        <Route path="/:at/:name" element={<WorldPage />} />
                         {/* ユーザープロフィール（URL から閲覧。マイページは HUD タブで表示） */}
                         <Route
                             path="/user/:userId"

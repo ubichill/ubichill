@@ -85,8 +85,6 @@ export interface PublishingEnvironment {
     lastUsedAt: string | null;
     revokedAt: string | null;
     revokeReason: RevokeReason | null;
-    /** リポジトリの記録（worlds/trusted-authors.json）で管理している鍵（画面からは取り消せない）。 */
-    managedByRepository: boolean;
 }
 
 export async function fetchPublishingEnvironments(): Promise<PublishingEnvironment[]> {

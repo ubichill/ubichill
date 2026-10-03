@@ -1,4 +1,5 @@
 import type { WorldDefinition } from '@ubichill/shared';
+import { toWorldName, WORLD_NAME_MAX_LENGTH } from '@/lib/worldName';
 import { css } from '@/styled-system/css';
 import { PanelSection } from '../PanelSection';
 
@@ -10,7 +11,7 @@ interface WorldInfoFormProps {
 
 /**
  * コントロールパネルの「ワールド情報」タブの中身。
- * displayName / description / version / thumbnail / capacity / worldSize / 背景色。
+ * displayName / 名前（URL）/ description / version / thumbnail / capacity / worldSize / 背景色。
  *
  * 編集は親の definition を直接更新する（即時反映・ローカル）。サーバーへの保存は
  * 「閉じる」「Cmd/Ctrl+S」で行う。公開設定・mod 管理はそれぞれ別タブの責務。
@@ -39,6 +40,26 @@ export function WorldInfoForm({ definition, onChange }: WorldInfoFormProps) {
                         placeholder="例: ぼくのワールド"
                         className={inputStyle}
                     />
+                </Field>
+                <Field label="名前（URL）" required>
+                    <div className={css({ display: 'flex', alignItems: 'center', gap: '6px' })}>
+                        <span className={css({ fontSize: '13px', color: 'textMuted', whiteSpace: 'nowrap' })}>
+                            /@ID/
+                        </span>
+                        <input
+                            type="text"
+                            name="world-name"
+                            value={definition.metadata.name}
+                            onChange={(e) => onUpdateMetadata({ name: toWorldName(e.target.value) })}
+                            maxLength={WORLD_NAME_MAX_LENGTH}
+                            autoCapitalize="none"
+                            spellCheck={false}
+                            className={inputStyle}
+                        />
+                    </div>
+                    <span className={css({ fontSize: '12px', color: 'textMuted', lineHeight: '1.5' })}>
+                        英小文字・数字・- で 50 文字まで。変えると URL が変わります（以前の URL からも開けます）
+                    </span>
                 </Field>
                 <Field label="説明">
                     <textarea

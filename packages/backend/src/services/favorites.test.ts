@@ -11,10 +11,10 @@ describe('favoriteRefOf', () => {
         expect(favoriteRefOf(url)).toEqual({ ok: true, ref: url });
     });
 
-    it('共有 URL（.../world/:id）は一覧と同じ機械 URL に正規化する（同じワールドを二重に登録しない）', () => {
-        expect(favoriteRefOf(' https://ubichill.com/world/danmaku ')).toEqual({
+    it('共有 URL（/@handle/name）は一覧と同じ YAML の URL に正規化する（同じワールドを二重に登録しない）', () => {
+        expect(favoriteRefOf(' https://ubichill.com/@ubichill/danmaku ')).toEqual({
             ok: true,
-            ref: 'https://ubichill.com/api/v1/worlds/danmaku',
+            ref: 'https://ubichill.com/api/v1/authors/ubichill/worlds/danmaku.yaml',
         });
     });
 

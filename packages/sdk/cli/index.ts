@@ -13,7 +13,7 @@
  *   ubichill logout  [--server=<url>]
  *   ubichill whoami  [--server=<url>]
  *   ubichill ci create --name=<表示名> [--server=<url>] [--device]
- *   ubichill publish <world.yaml> [--server=<url>] [--out=<dir>] [--no-install]
+ *   ubichill publish <world.yaml>... [--server=<url>] [--out=<dir>] [--no-install]
  *
  * `login` はブラウザで承認してこの端末を公開環境にする（鍵は手元だけ）。`publish` はログインしたアカウントで署名して公開する。
  * CI は `ci create` で作った文字列を env UBICHILL_CREDENTIALS に入れて `publish` する。`keygen` / `sign` は上級者向け。

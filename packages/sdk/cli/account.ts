@@ -5,7 +5,7 @@
  *   ubichill logout    [--server=<url>]
  *   ubichill whoami    [--server=<url>]
  *   ubichill ci create --name=<表示名> [--server=<url>] [--device] [--no-browser]
- *   ubichill publish   <world.yaml> [--server=<url>] [--out=<dir>] [--no-install] [--mods-dir=<dir>] [--base-url=<url>]
+ *   ubichill publish   <world.yaml>... [--server=<url>] [--out=<dir>] [--no-install] [--mods-dir=<dir>] [--base-url=<url>]
  */
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -168,29 +168,34 @@ export async function runLogout(argv: string[]): Promise<void> {
     console.log(`この端末の公開環境を取り消し、認証情報を消しました（${credential.server}）`);
 }
 
+/** `ubichill publish <world.yaml>...`。CI では `worlds/*.yaml --out=<dir>` のように複数まとめて署名・書き出しできる。 */
 export async function runPublish(argv: string[]): Promise<void> {
-    const worldPath = argv.find((a) => !a.startsWith('--'));
-    if (!worldPath) throw new Error('usage: ubichill publish <world.yaml> [--server=<url>] [--out=<dir>] [--no-install]');
-    const credential = requireCredential(argv);
-    if (!argv.includes('--no-install')) {
-        // mod を固定する（install と同じ）。署名は下でログインしたアカウントで行うので、ここでは署名しない
-        const passthrough = argv.filter((a) => a.startsWith('--mods-dir=') || a.startsWith('--base-url='));
-        await runInstall([worldPath, '--no-sign', ...passthrough]);
-        if (process.exitCode) throw new Error('mod を固定できなかったので公開しません');
+    const worldPaths = argv.filter((a) => !a.startsWith('--'));
+    if (worldPaths.length === 0) {
+        throw new Error('usage: ubichill publish <world.yaml>... [--server=<url>] [--out=<dir>] [--no-install]');
     }
-    await publish(
-        {
-            fs: {
-                readText: (path) => (existsSync(path) ? readFileSync(path, 'utf-8') : undefined),
-                writeText: (path, text) => writeFileSync(path, text, 'utf-8'),
-                mkdir: (path) => mkdirSync(path, { recursive: true }),
-            },
-            request: (method, path, body) => requestJson(method, `${credential.server}${path}`, body, credential.token),
-            key: await importSigningKey(credential.key),
-            crypto: webWorldCrypto,
-            parseYaml: (text) => yaml.parse(text) as unknown,
-            log: (message) => console.log(message),
+    const credential = requireCredential(argv);
+    const key = await importSigningKey(credential.key);
+    const deps = {
+        fs: {
+            readText: (path: string) => (existsSync(path) ? readFileSync(path, 'utf-8') : undefined),
+            writeText: (path: string, text: string) => writeFileSync(path, text, 'utf-8'),
+            mkdir: (path: string) => mkdirSync(path, { recursive: true }),
         },
-        { worldPath, credential, outDir: argValue(argv, 'out') },
-    );
+        request: (method: 'GET' | 'POST' | 'PUT', path: string, body?: unknown) =>
+            requestJson(method, `${credential.server}${path}`, body, credential.token),
+        key,
+        crypto: webWorldCrypto,
+        parseYaml: (text: string) => yaml.parse(text) as unknown,
+        log: (message: string) => console.log(message),
+    };
+    for (const worldPath of worldPaths) {
+        if (!argv.includes('--no-install')) {
+            // mod を固定する（install と同じ）。署名は下でログインしたアカウントで行うので、ここでは署名しない
+            const passthrough = argv.filter((a) => a.startsWith('--mods-dir=') || a.startsWith('--base-url='));
+            await runInstall([worldPath, '--no-sign', ...passthrough]);
+            if (process.exitCode) throw new Error(`${worldPath}: mod を固定できなかったので公開しません`);
+        }
+        await publish(deps, { worldPath, credential, outDir: argValue(argv, 'out') });
+    }
 }

@@ -43,10 +43,8 @@ function toWorkerModDefinition(m: LoadedMod): WorkerModDefinition {
 }
 
 export interface LoadModOptions {
+    /** ワールドの lock。固定されていない mod は、置き場所に関係なく実行しない。 */
     lock?: ModLock;
-    sourceKind: string;
-    /** サーバーが決めた厳格固定（{@link AcquireModOptions.strict}）。 */
-    strict?: boolean;
 }
 
 /** Component 型から検証済み WorkerModDefinition を構築する（loader へ委譲）。 */
@@ -54,8 +52,6 @@ export async function loadVerifiedMod(entityType: string, opts: LoadModOptions):
     const result: AcquireResult = await acquireMod(entityType, {
         baseUrl: MOD_BASE_URL,
         lock: opts.lock,
-        sourceKind: opts.sourceKind,
-        strict: opts.strict,
     });
     if (typeof result === 'object' && 'workerCode' in result) return toWorkerModDefinition(result);
     return result;

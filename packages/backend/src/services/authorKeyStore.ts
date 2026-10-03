@@ -1,59 +1,13 @@
 /**
- * 作者アカウント → 公開鍵・表示名の解決器の実体（DB・safeFetch・リポジトリの記録を注入して組み立てる）。
+ * 作者アカウント → 公開鍵・表示名の解決器の実体（DB・safeFetch を注入して組み立てる）。
+ * どの作者も同じ規則で確かめる（公式アカウントも、リポジトリの記録で特別に信用しない）。
  * ロジックは authorKeys.ts（DB 非依存でテストできる）。
  */
-import fs from 'node:fs';
-import path from 'node:path';
 import { authorBindingRepository, publishingEnvironmentRepository, userRepository } from '@ubichill/db';
-import {
-    type AuthorKeyCheck,
-    ENV_KEYS,
-    formatAuthorAccount,
-    parseAuthorAccount,
-    SERVER_CONFIG,
-    type SigningKeyEntry,
-    SigningKeyEntrySchema,
-} from '@ubichill/shared';
-import { z } from 'zod';
-import { type AuthorProfile, createAuthorKeyDirectory, selfDomain } from './authorKeys';
+import type { AuthorKeyCheck } from '@ubichill/shared';
+import { createAuthorKeyDirectory, selfDomain } from './authorKeys';
 import { signingKeyEntryOf } from './publishingEnvironments';
 import { safeFetch } from './safeFetch';
-
-/**
- * `worlds/trusted-authors.json`（リポジトリで管理しレビューされる、確認済みの作者アカウントと鍵一覧）を読む。
- * 公式ワールドの作者（ubichill@ubichill.com）の確認をオフライン・開発環境でも行えるようにする。
- * 形式: `{ "authors": { "handle@domain": { "displayName": "...", "keys": [{ "publicKey": "...", "revokedAt"?: "..." }] } } }`
- */
-export function loadPinnedAuthors(filePath: string): Map<string, AuthorProfile> {
-    if (!fs.existsSync(filePath)) return new Map();
-    try {
-        const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as { authors?: Record<string, unknown> };
-        return new Map(
-            Object.entries(raw.authors ?? {}).flatMap(([author, value]) => {
-                const account = parseAuthorAccount(author);
-                const entry = value as { keys?: unknown; displayName?: unknown };
-                const keys = z.array(SigningKeyEntrySchema).safeParse(entry.keys);
-                if (!account || !keys.success) return [];
-                const displayName = typeof entry.displayName === 'string' ? entry.displayName : undefined;
-                return [[formatAuthorAccount(account), { keys: keys.data, displayName }] as const];
-            }),
-        );
-    } catch {
-        console.error(`❌ ${filePath} を読めません（確認済み作者の記録を使わずに続行）`);
-        return new Map();
-    }
-}
-
-const worldsDir = process.env[ENV_KEYS.WORLDS_DIR]
-    ? path.resolve(process.env[ENV_KEYS.WORLDS_DIR] as string)
-    : path.resolve(process.cwd(), SERVER_CONFIG.WORLDS_DIR_DEFAULT);
-
-const pinnedAuthors = loadPinnedAuthors(path.join(worldsDir, 'trusted-authors.json'));
-
-/** レビュー済みの記録にある作者アカウントの鍵一覧（公式アカウントの初期化に使う）。 */
-export function pinnedAuthorKeys(account: string): readonly SigningKeyEntry[] {
-    return pinnedAuthors.get(account)?.keys ?? [];
-}
 
 const authorKeys = createAuthorKeyDirectory({
     selfDomain,
@@ -76,7 +30,6 @@ const authorKeys = createAuthorKeyDirectory({
         record: (account, contentHash) => authorBindingRepository.recordConfirmedContent(account, contentHash),
         has: (account, contentHash) => authorBindingRepository.hasConfirmedContent(account, contentHash),
     },
-    pinned: pinnedAuthors,
     fetchJson: async (url) => {
         const res = await safeFetch(url, {
             headers: { Accept: 'application/jrd+json, application/json' },

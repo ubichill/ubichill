@@ -23,7 +23,7 @@ export const HANDLE_PATTERN = /^[a-z0-9_]{3,30}$/;
  */
 export const OFFICIAL_HANDLE = 'ubichill';
 
-/** 公式ワールドの作者アカウント（worlds/trusted-authors.json に鍵を記録してレビューする）。 */
+/** 公式ワールドの作者アカウント（鍵は ubichill.com の公式アカウントの公開環境。ほかの作者と同じく WebFinger で確かめる）。 */
 export const OFFICIAL_WORLDS_AUTHOR = 'ubichill@ubichill.com';
 
 /** 運営・システム・URL と紛らわしい ID は取らせない。 */

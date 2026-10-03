@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ModLockEntry } from '../schemas/modLock.schema';
-import { WorldSourceKind } from '../schemas/world.schema';
-import { formatIntegrity, integrityEquals, requiresLock, resolveLockedMod } from './modLock';
+import { formatIntegrity, integrityEquals, resolveLockedMod } from './modLock';
 
 const WORKER_OK = 'sha256-AAAA';
 const MANIFEST_OK = 'sha256-BBBB';
@@ -22,23 +21,6 @@ function lockEntry(overrides: Partial<ModLockEntry> = {}): ModLockEntry {
         ...overrides,
     };
 }
-
-describe('requiresLock（provenance 別 enforcement）', () => {
-    it('local / registry(official) は lock 不要', () => {
-        expect(requiresLock(WorldSourceKind.Local)).toBe(false);
-        expect(requiresLock(WorldSourceKind.Registry)).toBe(false);
-    });
-
-    it('github / remote-instance / url は lock 必須', () => {
-        expect(requiresLock(WorldSourceKind.GitHub)).toBe(true);
-        expect(requiresLock(WorldSourceKind.RemoteInstance)).toBe(true);
-        expect(requiresLock(WorldSourceKind.Url)).toBe(true);
-    });
-
-    it('未知の kind は安全側で lock 必須', () => {
-        expect(requiresLock('totally-unknown')).toBe(true);
-    });
-});
 
 describe('integrityEquals / formatIntegrity', () => {
     it('formatIntegrity は sha256- を前置する', () => {
@@ -67,26 +49,20 @@ describe('resolveLockedMod', () => {
     };
 
     it('全一致で verified、capabilities は lock 天井を採用', () => {
-        const v = resolveLockedMod({ ...base, lockEntry: lockEntry(), sourceKind: WorldSourceKind.GitHub });
+        const v = resolveLockedMod({ ...base, lockEntry: lockEntry() });
         expect(v).toEqual({ status: 'verified', capabilities: ['scene:read', 'media:control'] });
     });
 
-    it('lock に記載が無い外部 mod は lock-missing で rejected', () => {
-        const v = resolveLockedMod({ ...base, lockEntry: undefined, sourceKind: WorldSourceKind.Url });
+    it('lock に記載が無い mod は、ワールドの置き場所に関係なく lock-missing で rejected（本体のワールドも緩めない）', () => {
+        const v = resolveLockedMod({ ...base, lockEntry: undefined });
         expect(v).toEqual({ status: 'rejected', reason: 'lock-missing' });
     });
 
-    it('lock に記載が無くても local なら unlocked（従来挙動で続行）', () => {
-        const v = resolveLockedMod({ ...base, lockEntry: undefined, sourceKind: WorldSourceKind.Local });
-        expect(v).toEqual({ status: 'unlocked' });
-    });
-
-    it('entityType が lock の components に無ければ（別 component）外部は lock-missing', () => {
+    it('entityType が lock の components に無ければ（別 component）lock-missing', () => {
         const v = resolveLockedMod({
             ...base,
             entityType: 'video-player:controls',
             lockEntry: lockEntry(),
-            sourceKind: WorldSourceKind.GitHub,
         });
         expect(v).toEqual({ status: 'rejected', reason: 'lock-missing' });
     });
@@ -97,7 +73,6 @@ describe('resolveLockedMod', () => {
             manifestIntegrity: 'sha256-TAMPERED',
             workerIntegrity: 'sha256-ALSO-BAD',
             lockEntry: lockEntry(),
-            sourceKind: WorldSourceKind.GitHub,
         });
         expect(v).toEqual({ status: 'rejected', reason: 'manifest-mismatch' });
     });
@@ -107,7 +82,6 @@ describe('resolveLockedMod', () => {
             ...base,
             workerIntegrity: 'sha256-SWAPPED',
             lockEntry: lockEntry(),
-            sourceKind: WorldSourceKind.GitHub,
         });
         expect(v).toEqual({ status: 'rejected', reason: 'integrity-mismatch' });
     });
@@ -115,7 +89,7 @@ describe('resolveLockedMod', () => {
     it('配布者が manifest で権限を増やしても lock 天井のみが採用される（昇格不能）', () => {
         // lock は scene:read/media:control のみ。manifest 側の申告は resolveLockedMod に渡らず、
         // verified の capabilities は lock の 2 件に固定される。
-        const v = resolveLockedMod({ ...base, lockEntry: lockEntry(), sourceKind: WorldSourceKind.RemoteInstance });
+        const v = resolveLockedMod({ ...base, lockEntry: lockEntry() });
         expect(v.status).toBe('verified');
         if (v.status === 'verified') {
             expect(v.capabilities).not.toContain('net:fetch');
@@ -123,12 +97,11 @@ describe('resolveLockedMod', () => {
         }
     });
 
-    it('local でも lock 記載があれば hash 照合し、不一致は rejected（続行判断は loader）', () => {
+    it('hash が一致しなければ、どこに置いたワールドでも rejected', () => {
         const v = resolveLockedMod({
             ...base,
             workerIntegrity: 'sha256-LOCAL-TAMPER',
             lockEntry: lockEntry(),
-            sourceKind: WorldSourceKind.Local,
         });
         expect(v).toEqual({ status: 'rejected', reason: 'integrity-mismatch' });
     });

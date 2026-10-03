@@ -10,24 +10,6 @@
  * 一切参照しない。コードバイト列が lock と一致する以上、真の必要権限＝lock。
  */
 import type { ModLockComponent, ModLockEntry } from '../schemas/modLock.schema';
-import { WorldSourceKind } from '../schemas/world.schema';
-
-/**
- * この provenance の mod は lock を必須とするか。
- * - local / registry(official): 本体が配る信頼済み。開発利便のため lock 無しでも許可（lenient）。
- * - github / remote-instance / url: 外部配布。lock 必須・不一致は拒否（strict）。
- *
- * 未知の kind は安全側に倒して strict（要 lock）とする。
- */
-export function requiresLock(kind: string): boolean {
-    switch (kind) {
-        case WorldSourceKind.Local:
-        case WorldSourceKind.Registry:
-            return false;
-        default:
-            return true;
-    }
-}
 
 /** integrity（`sha256-<base64>`）を base64 digest から組み立てる。 */
 export function formatIntegrity(base64Digest: string): string {
@@ -45,7 +27,7 @@ export function integrityEquals(a: string | undefined, b: string | undefined): b
 
 /** {@link resolveLockedMod} が返す拒否理由。 */
 export type LockRejectReason =
-    /** 外部 provenance なのに lock にこの mod/component の記載が無い。 */
+    /** lock にこの mod/component の記載が無い（置き場所に関係なく、lock に固定されていない mod は実行しない）。 */
     | 'lock-missing'
     /** worker バイト列が lock の integrity と一致しない。 */
     | 'integrity-mismatch'
@@ -53,14 +35,12 @@ export type LockRejectReason =
     | 'manifest-mismatch';
 
 /**
- * lock 検証の判定。取得層（loader）はこれを見て capability 源と続行可否を決める。
+ * lock 検証の判定。どのワールドでも同じ規則（置き場所で緩めない）。
  * - `verified` : lock 記載あり＋バイト列一致。capabilities は lock 天井を採用する。
- * - `unlocked` : lock 記載なし＆ local/official。従来挙動（manifest capabilities）で続行。
- * - `rejected` : lock 必須なのに記載なし、または hash 不一致。外部は拒否、local は警告続行。
+ * - `rejected` : lock に記載なし、または hash 不一致。実行しない。
  */
 export type LockVerdict =
     | { status: 'verified'; capabilities: readonly string[] }
-    | { status: 'unlocked' }
     | { status: 'rejected'; reason: LockRejectReason };
 
 export interface ResolveLockedModArgs {
@@ -72,32 +52,25 @@ export interface ResolveLockedModArgs {
     workerIntegrity: string;
     /** 計算済みの versioned manifest integrity（`sha256-<base64>`）。 */
     manifestIntegrity: string;
-    /** ワールドの provenance kind（local/github/... enforcement 分岐に使う）。 */
-    sourceKind: string;
 }
 
 /**
  * lock に対して mod を検証する純関数。fetch/crypto は呼び出し側で済ませて渡す。
  *
- * 判定順:
- *  1. lock 記載が無い → 外部(requiresLock)は 'lock-missing' で rejected、
- *     local は 'unlocked'（従来挙動で続行）。
+ * 判定順（どのワールドでも同じ。本体のワールドだけ緩めることはしない）:
+ *  1. lock 記載が無い → 'lock-missing'。
  *  2. manifest hash 不一致 → 'manifest-mismatch'。
  *  3. worker hash 不一致 → 'integrity-mismatch'。
  *  4. 全一致 → verified（capabilities は lock 由来のみ＝天井）。
  *
- * rejected の続行/拒否の最終判断は loader が sourceKind（requiresLock）で決める。
  * workerUrl は loader が lock/manifest から持つのでここでは返さない。
  */
 export function resolveLockedMod(args: ResolveLockedModArgs): LockVerdict {
-    const { entityType, lockEntry, workerIntegrity, manifestIntegrity, sourceKind } = args;
+    const { entityType, lockEntry, workerIntegrity, manifestIntegrity } = args;
 
     const component: ModLockComponent | undefined = lockEntry?.components[entityType];
 
-    if (!lockEntry || !component) {
-        // 外部 provenance は lock 必須。local は lock 無しでも従来通り許可。
-        return requiresLock(sourceKind) ? { status: 'rejected', reason: 'lock-missing' } : { status: 'unlocked' };
-    }
+    if (!lockEntry || !component) return { status: 'rejected', reason: 'lock-missing' };
 
     if (!integrityEquals(manifestIntegrity, lockEntry.manifestIntegrity)) {
         return { status: 'rejected', reason: 'manifest-mismatch' };

@@ -8,7 +8,7 @@
  * - ログイン用メール: env OFFICIAL_ACCOUNT_EMAIL（既定 ubichill@ubichill.com）
  * - 開発環境で未設定なら公開済みの既定値を使い、「既定のパスワードのまま」と表示して設定を促す。
  *   本番で未設定ならアカウントは作らず、既存のパスワードにも触れない（警告のみ）。
- * - 公開環境: worlds/trusted-authors.json に記録した公式の鍵に合わせる（鍵一覧としてほかのサーバーへ公開される）。
+ * - 署名の鍵: ほかの作者と同じく、公開環境（`ubichill login` など）で登録する。リポジトリの記録で特別に信用しない。
  */
 import { displayNameKey, OFFICIAL_HANDLE } from '@ubichill/shared';
 
@@ -59,8 +59,6 @@ export interface OfficialAccountDeps {
             passwordChangeRequired?: boolean;
         },
     ) => Promise<void>;
-    /** 公開環境を trusted-authors.json の記録に合わせる。 */
-    syncSigningKeys: (userId: string) => Promise<void>;
     log: (message: string) => void;
 }
 
@@ -92,7 +90,6 @@ export async function ensureOfficialAccount(
         if (existing.passwordChangeRequired !== config.usingDevDefault) {
             await deps.initialize(existing.id, { passwordChangeRequired: config.usingDevDefault });
         }
-        await deps.syncSigningKeys(existing.id);
         return changed ? 'synced' : 'unchanged';
     }
 
@@ -116,7 +113,6 @@ export async function ensureOfficialAccount(
             passwordChangeRequired: config.usingDevDefault,
         });
         await syncPassword(byEmail, config, deps);
-        await deps.syncSigningKeys(byEmail.id);
         deps.log(`👑 既存のアカウント ${config.email} を公式アカウント（${OFFICIAL_HANDLE}）にしました`);
         return 'attached';
     }
@@ -134,7 +130,6 @@ export async function ensureOfficialAccount(
         emailVerified: true,
         passwordChangeRequired: config.usingDevDefault,
     });
-    await deps.syncSigningKeys(id);
-    deps.log(`👑 公式アカウント（${OFFICIAL_HANDLE} / ${config.email}）を作成しました`);
+    deps.log(`👑 公式アカウント（ID ${OFFICIAL_HANDLE}、ログイン用メール ${config.email}）を作成しました`);
     return 'created';
 }

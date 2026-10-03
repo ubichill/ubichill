@@ -19,7 +19,7 @@ export function InstancePage() {
     const confirm = useConfirm();
 
     const { isConnected, error, currentUser, joinWorld, leaveWorld } = useSocket();
-    const { resetWorld, modLock, worldSourceKind, strictLock } = useWorld();
+    const { resetWorld, modLock } = useWorld();
 
     const joinedIdRef = useRef<string | null>(null);
     const leaveWorldRef = useRef(leaveWorld);
@@ -137,13 +137,7 @@ export function InstancePage() {
             )}
             {!loading.failed && currentUser != null && (
                 <main>
-                    <ModRegistryProvider
-                        key={id}
-                        onStatusChange={setMods}
-                        lock={modLock}
-                        sourceKind={worldSourceKind}
-                        strictLock={strictLock}
-                    >
+                    <ModRegistryProvider key={id} onStatusChange={setMods} lock={modLock}>
                         <WorkerLoadingProvider onStatusChange={setWorkers}>
                             <InstanceRenderer />
                         </WorkerLoadingProvider>

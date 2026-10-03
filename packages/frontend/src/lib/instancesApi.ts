@@ -12,10 +12,17 @@ async function readErrorMessage(res: Response, fallback: string): Promise<string
     return data.error ?? fallback;
 }
 
+/** 作者の ID と名前の参照（`@handle/name`。共有 URL `/@handle/name` のパス）。 */
+const AUTHOR_REF = /^@([^/]+)\/([^/]+)$/;
+
+/** `worldRef` は URL・`@handle/name`・内部 ID のどれでもよい。 */
 export async function fetchWorld(worldRef: string): Promise<WorldListItem> {
-    const path = /^https?:\/\//i.test(worldRef)
-        ? `/api/v1/worlds/resolve?url=${encodeURIComponent(worldRef)}`
-        : `/api/v1/worlds/${encodeURIComponent(worldRef)}`;
+    const author = AUTHOR_REF.exec(worldRef);
+    const path = author
+        ? `/api/v1/authors/${encodeURIComponent(author[1] as string)}/worlds/${encodeURIComponent(author[2] as string)}`
+        : /^https?:\/\//i.test(worldRef)
+          ? `/api/v1/worlds/resolve?url=${encodeURIComponent(worldRef)}`
+          : `/api/v1/worlds/${encodeURIComponent(worldRef)}`;
     const res = await fetch(`${API_BASE}${path}`, { credentials: 'include', cache: 'no-store' });
     if (!res.ok) throw new Error('World not found');
     return res.json() as Promise<WorldListItem>;

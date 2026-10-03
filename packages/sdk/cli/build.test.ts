@@ -130,7 +130,6 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
         const result = await acquireMod('pen:canvas', {
             baseUrl: publicDir,
             lock,
-            sourceKind: 'github',
             fetchImpl: fsFetch,
         });
 
@@ -149,7 +148,6 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
             const result = await acquireMod('pen:canvas', {
                 baseUrl: publicDir,
                 lock,
-                sourceKind: 'github',
                 fetchImpl: fsFetch,
             });
             expect(result).toEqual({ rejected: 'integrity-mismatch' });
@@ -166,7 +164,6 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
             const result = await acquireMod('pen:canvas', {
                 baseUrl: publicDir,
                 lock,
-                sourceKind: 'remote-instance',
                 fetchImpl: fsFetch,
             });
             expect(result).toEqual({ rejected: 'manifest-mismatch' });
@@ -175,18 +172,13 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
         }
     });
 
-    it('local provenance は同じ改竄でも警告続行し、manifest 由来の capabilities で読み込む', async () => {
+    it('本体のワールドでも同じ改竄は拒否する（置き場所で緩めない）', async () => {
         const lock = await buildWorldLock([modId], createHttpLockEntryGetter(publicDir, fsFetch));
         const original = readFileSync(workerFilePath);
         writeFileSync(workerFilePath, Buffer.concat([original, Buffer.from(' ')]));
         try {
-            const result = await acquireMod('pen:canvas', {
-                baseUrl: publicDir,
-                lock,
-                sourceKind: 'local',
-                fetchImpl: fsFetch,
-            });
-            expect(typeof result === 'object' && 'workerCode' in result).toBe(true);
+            const result = await acquireMod('pen:canvas', { baseUrl: publicDir, lock, fetchImpl: fsFetch });
+            expect(result).toEqual({ rejected: 'integrity-mismatch' });
         } finally {
             writeFileSync(workerFilePath, original);
         }

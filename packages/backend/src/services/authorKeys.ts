@@ -1,7 +1,6 @@
 /**
  * 作者アカウント（handle@domain）→ 公開環境の鍵一覧・表示名の解決（DB・ネットワーク非依存）。
  *
- * - レビュー済みの記録（trusted-authors.json）にあるアカウントはそれを使う（期限なし）。
  * - 自サーバーの domain（PUBLIC_BASE_URL のホスト）なら注入された `findLocalAccount`（DB）で引く。
  * - 他の domain は WebFinger（`/.well-known/webfinger?resource=acct:handle@domain`）の links から
  *   鍵一覧の文書を辿る。取得結果は保存し（author_bindings）、期限で取り直す:
@@ -100,11 +99,6 @@ export interface AuthorKeyDirectoryDeps {
         record: (account: string, contentHash: string) => Promise<void>;
         has: (account: string, contentHash: string) => Promise<boolean>;
     };
-    /**
-     * リポジトリに記録してレビュー済みの結び付け（公式アカウント）。最優先で使い、ネットワークにも DB にも出ない。
-     * 開発環境（オフライン・localhost）でも公式ワールドを公開ルールどおりに扱うため。
-     */
-    pinned: ReadonlyMap<string, AuthorProfile>;
     /** JSON の取得。失敗・非 2xx は undefined を返すこと。 */
     fetchJson: (url: string) => Promise<unknown>;
     /** 開発（localhost 間）だけ http も試す。本番は https のみ。 */
@@ -266,8 +260,6 @@ export function createAuthorKeyDirectory(deps: AuthorKeyDirectoryDeps): AuthorKe
     const lookup = async (author: string, publicKey?: string): Promise<Lookup> => {
         const target = normalize(author);
         if (!target) return { kind: 'missing' };
-        const pin = deps.pinned.get(target.account);
-        if (pin) return { kind: 'found', profile: pin };
         if (target.domain === deps.selfDomain()) {
             const local = await deps.findLocalAccount(target.handle);
             return local ? { kind: 'found', profile: local } : { kind: 'missing' };
@@ -282,7 +274,7 @@ export function createAuthorKeyDirectory(deps: AuthorKeyDirectoryDeps): AuthorKe
             if (found.kind === 'missing' || signingKeyStatus(found.profile.keys, publicKey) !== 'active') {
                 return { status: 'unconfirmed' };
             }
-            // 自サーバー・記録済みの作者は、その場で確かめた結果なので期限の考慮は要らない
+            // 自サーバーの作者は、その場で DB で確かめた結果なので期限の考慮は要らない
             if (!found.checkedAt) return { status: 'confirmed' };
             const account = normalize(author)?.account ?? author;
             const checkedAt = found.checkedAt.toISOString();

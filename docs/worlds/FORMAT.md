@@ -14,7 +14,7 @@
 apiVersion: ubichill.com/v1alpha1
 kind: World
 metadata:
-  name: my-world            # kebab-case（[a-z0-9-]、1–50 文字）。ワールド id
+  name: my-world            # kebab-case（[a-z0-9-]、1–50 文字）。ワールドの名前で、本体での URL は /@<ID>/my-world
   version: 1.0.0            # SemVer
   author:                   # 任意
     name: Alice
@@ -71,23 +71,22 @@ initialEntities:
 ## 連合（他インスタンス／外部ホスト）
 
 - ワールドを配信できる URL の例：
-  - 本体がホストするワールド：`https://<host>/api/v1/worlds/<id>`（`?format=yaml` or `Accept: */yaml` で YAML）
+  - 本体がホストするワールド：`https://<host>/api/v1/authors/<ID>/worlds/<name>.yaml`（外部ホストと同じ形。共有 URL `https://<host>/@<ID>/<name>` も受け付ける）
   - GitHub の生 YAML：`https://raw.githubusercontent.com/<owner>/<repo>/<ref>/worlds/<name>.yaml`（`blob` URL も可、自動で raw 化）
-  - GitHub ディレクトリ（複数ワールド）：`https://github.com/<owner>/<repo>/tree/<ref>/worlds`（Contents API で列挙）
-  - 任意 CDN のインデックス JSON：`[{ "url": "..." }] | [{ "file": "..." }]`
+- ほかの ubichill サーバーのワールドを一覧（グローバル）に出すには、公式アカウントがプロフィールの「連合」でそのサーバーをフォローする。
 - 受け手のインスタンスは URL を渡すだけでインスタンスを作成できる（`worldId` に id ではなく URL を渡す）。取得した定義は取り込み元（provenance）を `source`（`local`/`github`/`registry`/`remote-instance`/`url`）として保持する。
 
 ## 作者署名（`<world>.sig.json`）
 
-- ワールドと同じ場所に兄弟ファイルとして置く（本体ホストは `.../api/v1/worlds/<id>/sig`）。`ubichill sign` で生成する。
+- ワールドと同じ場所に兄弟ファイルとして置く（本体ホストも `.../worlds/<name>.sig.json` で同じ）。`ubichill publish --out` で生成する。
 - 署名対象は `{ definition: <YAML をパースした生の値>, lock: <兄弟 lock の生 JSON | null> }` を正規化 JSON（RFC 8785 相当）にした sha256（`contentHash`）。
 - ワールドの同一性は `ed25519:<公開鍵>/<metadata.name>`。URL が変わっても同じデータ・同じ鍵なら同じワールド。
 - 署名に作者アカウント `author: handle@domain` を含めると、受け手は `https://<domain>/.well-known/webfinger?resource=acct:handle@domain` の links（rel `https://ubichill.com/ns/signing-keys`）から作者の鍵一覧 `{ account, issuedAt, keys: [{ publicKey, addedAt?, revokedAt? }] }` を取得し、署名鍵が取り消されていない鍵なら作者として表示し同一性を `acct:handle@domain/<metadata.name>` にする（鍵が変わっても変わらない）。一覧に無い・取り消された鍵なら作者は表示しない。
 - 署名があって検証に失敗したワールドは解決を拒否する。
 - **署名を検証できないワールド（未署名）は公開しない**：ワールド一覧・連合（global）一覧・プロフィール・インスタンス一覧に出さない。URL を直接指定すれば入れるが、入室前に確認を求める。
 - 連合ピアの一覧に書かれた署名状態は信用せず、受け手が各ワールドを取得して検証する。
-- サーバーは署名しない（鍵を持たない）。本体で作ったワールドは作者がブラウザの鍵で署名する。更新は `POST .../prepare` で保存予定の値を受け取って署名し、`PUT .../yaml` に内容と署名を一緒に送る（署名が通らなければ何も保存しない）。署名済みワールドを署名なしで更新するには `allowUnsigned: true` の明示が必要。
-- 公式ワールド（`worlds/`）はメンテナ鍵で署名し、`worlds/*.sig.json` をコミットする。lock を再生成したら内容を確認のうえ `pnpm sign:worlds` で署名し直す（CI の `pnpm verify:world-locks` が検出する）。
+- サーバーは署名しない（鍵を持たない）。本体で作ったワールドも外部と同じく、作者が手元（ブラウザ・CLI）で「定義・lock」に署名し、`PUT /api/v1/worlds` に `{ yaml, lock, signature }` を一緒に送る（サーバーは中身を書き換えない。署名が通らなければ何も保存しない）。同じ作者・同じ `metadata.name` なら同じワールドの更新になる。エディタで `metadata.name` を変えると名前の変更（URL が変わり、以前の URL からもたどれる）。署名なしで送ると、公開中のワールドなら公開中の版を残して下書きになる。
+- 公式ワールド（`worlds/`）は main に入ったら CI が公式アカウントで署名し（`ubichill publish worlds/*.yaml --out=worlds`）、イメージに同梱する。署名はコミットしない。ほかのリポジトリも同じ方法で公開できる（`packages/sdk/README.md` の CI の例）。
 - 本体は YAML・lock・署名をファイル（DB）の生の値のまま配信する（既定値で補うと署名と一致しなくなるため）。
 
 ## 正準スキーマ

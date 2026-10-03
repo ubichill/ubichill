@@ -120,25 +120,43 @@ npx ubichill install world.yaml
   - `login` はブラウザで承認して、この端末を「公開環境」にする（鍵はこの端末だけにあり、サーバーには公開鍵だけが登録される）。
     ブラウザを開けない環境では `--device` で、表示したコードを別の端末で承認する。認証情報は
     `~/.config/ubichill/credentials.json`（0600）に保存する。
-  - `publish` は mod の固定（`install`）・作者アカウント付きの署名・公開を一度に行う。本体へ公開すると
-    `<world>.ubichill.json` にワールドの ID を記録し、次からは同じワールドを更新する（秘密は含まないのでコミットしてよい）。
+  - `publish` は mod の固定（`install`）・作者アカウント付きの署名・公開を一度に行う。本体へ送るのも `--out` で
+    外部ホスト向けに書き出すのも同じ「world.yaml・lock・署名」の組で、本体は中身を書き換えない。同じ作者・同じ
+    `metadata.name` なら同じワールドの更新になる（`metadata.name` を変えると別のワールドになる）。
     `--out=<dir>` なら GitHub Pages など外部に置く `world.yaml` / `.lock.json` / `.sig.json` を書き出す。
   - 公開環境はプロフィールの「公開できるブラウザ・CLI・CI」で一覧・取り消しできる。取り消すと、その鍵の署名はすべて作者が外れる。
 
 ```bash
 npx ubichill login                   # ブラウザで承認（--device: 別の端末で承認）
-npx ubichill publish world.yaml      # 本体へ公開（--out=dist/ で外部ホスト向けに書き出す）
+npx ubichill publish world.yaml      # 本体へ公開。共有 URL は https://<サーバー>/@<ID>/<metadata.name>（--out=dist/ で外部ホスト向けに書き出す）
 npx ubichill whoami                  # 使っている作者アカウント
 npx ubichill logout                  # この端末の公開環境を取り消す
 ```
 
 - **CI から公開する**: 手元で `ubichill ci create --name="GitHub Actions: owner/repo"` を実行してブラウザで承認すると、
   CI 用の公開環境の認証情報（1 本の文字列）が表示される。CI の Secret `UBICHILL_CREDENTIALS` に入れて `publish` する。
+  main に入ったら公開する、つまり「マージ = 作者としての確認」にする運用を想定している（ubichill 本体の公式ワールドも同じ方法で署名する）。
+  `metadata.name` を変えると名前の変更になり、URL も変わる（以前の URL からもたどれる）。
 
 ```yaml
-- run: npx ubichill publish worlds/my-world.yaml --out=dist/
-  env:
-    UBICHILL_CREDENTIALS: ${{ secrets.UBICHILL_CREDENTIALS }}
+# .github/workflows/publish-worlds.yml
+on:
+  push:
+    branches: [main]
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # 本体（ログインしたサーバー）へ公開する
+      - run: npx ubichill publish worlds/*.yaml
+        env:
+          UBICHILL_CREDENTIALS: ${{ secrets.UBICHILL_CREDENTIALS }}
+      # GitHub Pages などに置くなら、署名済みのファイルを書き出してアップロードする
+      # - run: npx ubichill publish worlds/*.yaml --out=dist/
 ```
 
 - **`keygen` / `sign`（上級者向け）**: 鍵ファイルを自分で管理して署名する。`--author=handle@domain` を付け、

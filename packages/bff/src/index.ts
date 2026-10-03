@@ -1,6 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { ENV_KEYS, type Instance, SERVER_CONFIG, type WorldListItem } from '@ubichill/shared';
+import {
+    ENV_KEYS,
+    HANDLE_PATTERN,
+    type Instance,
+    SERVER_CONFIG,
+    type WorldListItem,
+    worldShareUrl,
+} from '@ubichill/shared';
 import express from 'express';
 import { esc } from './html';
 import { buildMetaTags } from './ogp';
@@ -62,10 +69,14 @@ interface WorldPageData {
     instances: Instance[];
 }
 
+/** `worldRef` は URL・`@handle/name`（共有 URL のパス）・内部 ID のどれでもよい。 */
 async function fetchWorldPageData(worldRef: string): Promise<WorldPageData> {
-    const worldPath = /^https?:\/\//i.test(worldRef)
-        ? `/api/v1/worlds/resolve?url=${encodeURIComponent(worldRef)}`
-        : `/api/v1/worlds/${encodeURIComponent(worldRef)}`;
+    const author = /^@([^/]+)\/([^/]+)$/.exec(worldRef);
+    const worldPath = author
+        ? `/api/v1/authors/${encodeURIComponent(author[1] as string)}/worlds/${encodeURIComponent(author[2] as string)}`
+        : /^https?:\/\//i.test(worldRef)
+          ? `/api/v1/worlds/resolve?url=${encodeURIComponent(worldRef)}`
+          : `/api/v1/worlds/${encodeURIComponent(worldRef)}`;
     const world = await fetchJson<WorldListItem>(`${CORE_API_URL}${worldPath}`);
     const instancesRes = await fetchJson<{ instances: Instance[] }>(
         `${CORE_API_URL}/api/v1/instances?worldId=${encodeURIComponent(worldRef)}`,
@@ -117,12 +128,53 @@ app.get('/world', async (req, res) => {
     }
 });
 
-// 公開ワールドページ: OGP/JSON-LD/SSR シェルを注入した SPA シェルを全員に返す。
+/** ワールドの共有 URL（`/@handle/name`）。このサーバーのワールドでなければ undefined。 */
+function sharePageUrl(world: WorldListItem | undefined): string | undefined {
+    const url = world ? worldShareUrl(world.url) : undefined;
+    return url?.startsWith(`${PUBLIC_BASE_URL}/@`) ? url : undefined;
+}
+
+// 公開ワールドページ（共有 URL /@handle/name）: OGP/JSON-LD/SSR シェルを注入した SPA シェルを全員に返す。
+app.get('/@:handle/:name', async (req, res, next) => {
+    const { handle, name } = req.params;
+    if (!HANDLE_PATTERN.test(handle) || !/^[a-z0-9-]+$/.test(name)) {
+        next();
+        return;
+    }
+    try {
+        const { world, instances } = await fetchWorldPageData(`@${handle}/${name}`);
+        const tags = buildMetaTags({
+            world,
+            worldId: world?.id ?? name,
+            publicBaseUrl: PUBLIC_BASE_URL,
+            pageUrl: sharePageUrl(world) ?? `${PUBLIC_BASE_URL}/@${handle}/${name}`,
+            enableCrawl: ENABLE_CRAWL,
+        });
+        const bodyShell = renderWorldShell({
+            world,
+            instances,
+            publicBaseUrl: PUBLIC_BASE_URL,
+            coreApiUrl: CORE_API_URL,
+        });
+        res.type('html').send(renderShell(tags, bodyShell));
+    } catch (err) {
+        console.error('OGP/SSR 生成失敗:', err);
+        res.type('html').send(readIndexHtml());
+    }
+});
+
+// 以前の共有 URL（/world/:id）。正規のページ URL は共有 URL（SPA が /@handle/name へ移す）
 app.get('/world/:worldId', async (req, res) => {
     const worldId = req.params.worldId;
     try {
         const { world, instances } = await fetchWorldPageData(worldId);
-        const tags = buildMetaTags({ world, worldId, publicBaseUrl: PUBLIC_BASE_URL, enableCrawl: ENABLE_CRAWL });
+        const tags = buildMetaTags({
+            world,
+            worldId,
+            publicBaseUrl: PUBLIC_BASE_URL,
+            pageUrl: sharePageUrl(world),
+            enableCrawl: ENABLE_CRAWL,
+        });
         const bodyShell = renderWorldShell({
             world,
             instances,
@@ -146,6 +198,7 @@ app.get('/robots.txt', (_req, res) => {
     res.send(
         'User-agent: *\n' +
             'Allow: /world/\n' +
+            'Allow: /@\n' +
             'Disallow: /api/\n' +
             'Disallow: /socket.io/\n' +
             'Disallow: /instance/\n' +
@@ -163,18 +216,18 @@ app.get('/sitemap.xml', async (_req, res) => {
         return;
     }
     try {
-        const data = await fetchJson<{ worlds?: Array<{ id?: string; updatedAt?: string }> }>(
-            `${CORE_API_URL}/api/v1/worlds`,
-            5000,
-        );
+        const data = await fetchJson<{ worlds?: WorldListItem[] }>(`${CORE_API_URL}/api/v1/worlds`, 5000);
         if (!data) {
             res.status(500).send();
             return;
         }
         const urls = (data.worlds ?? [])
-            .filter((w): w is { id: string; updatedAt?: string } => typeof w.id === 'string')
+            .flatMap((w) => {
+                const loc = sharePageUrl(w);
+                return loc ? [{ loc, updatedAt: w.updatedAt }] : [];
+            })
             .map((w) => {
-                const loc = `${PUBLIC_BASE_URL}/world/${encodeURIComponent(w.id)}`;
+                const loc = w.loc;
                 const lastmod = w.updatedAt ? `    <lastmod>${esc(w.updatedAt)}</lastmod>\n` : '';
                 return `  <url>\n    <loc>${esc(loc)}</loc>\n${lastmod}  </url>`;
             })

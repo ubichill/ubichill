@@ -35,13 +35,8 @@ export interface WorldSnapshotPayload {
     environment: WorldEnvironmentData;
     /** ワールドに焼かれた mod 完全性ロック（あれば）。ロード時の hash 照合に使う。 */
     lock?: ModLock;
-    /** ワールドの provenance kind（local/github/...）。strictLock が無い旧サーバー向けの判定材料。 */
+    /** ワールドの provenance kind（local/github/...）。表示用。 */
     sourceKind?: string;
-    /**
-     * mod を lock で厳格に固定するか（サーバーが {@link isStrictLockWorld} で決める）。
-     * true なら lock 欠落・不一致の mod を実行しない。作者署名ありのワールドは常に true。
-     */
-    strictLock?: boolean;
 }
 
 // ============================================
@@ -261,9 +256,6 @@ export const ENV_KEYS = {
 
     /** ワールド定義ディレクトリのパス（ローカルファイル用、レガシー） */
     WORLDS_DIR: 'WORLDS_DIR',
-
-    /** ワールドレジストリURL（カンマ区切り複数指定可） */
-    WORLDS_REGISTRY_URLS: 'WORLDS_REGISTRY_URLS',
 
     /** ワールドレジストリ認証トークン（プライベートリポジトリ向け） */
     WORLDS_REGISTRY_TOKEN: 'WORLDS_REGISTRY_TOKEN',

@@ -19,6 +19,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { EntityRenderer } from '@/instance/EntityRenderer';
 import { buildWorldLock } from '@/mods/buildWorldLock';
 import { ModRegistryProvider, useModRegistry } from '@/mods/ModRegistryContext';
+import { css } from '@/styled-system/css';
 
 const FALLBACK_ENTITY: ComponentInstance = {
     id: '',
@@ -238,28 +239,31 @@ export function EditorPreview({
         >
             <SocketContext.Provider value={socketValue}>
                 <WorldContext.Provider value={worldValue}>
-                    <ModRegistryProvider lock={previewLock}>
-                        {/* ワールド座標系のスクロール領域。overlay: true の Entity はここに置かない
+                    {/* lock に固定されていない mod は実行しないので、試し用の lock ができてから mod を読み込む */}
+                    {previewLock && (
+                        <ModRegistryProvider lock={previewLock}>
+                            {/* ワールド座標系のスクロール領域。overlay: true の Entity はここに置かない
                             （実行時の InstanceRenderer と同様、スクロールの影響を受けない別レイヤーにする）。 */}
-                        <div
-                            onMouseDown={(e) => {
-                                if (e.target === e.currentTarget) onBackgroundMouseDown?.();
-                            }}
-                            data-ubi-mod-surface
-                            style={{ position: 'absolute', inset: 0, overflow: 'auto' }}
-                        >
-                            <PreviewStage
-                                entities={entities}
-                                environment={environment}
-                                overlay={overlay}
-                                gridStep={gridStep}
-                                onBackgroundMouseDown={onBackgroundMouseDown}
-                            />
-                        </div>
-                        {/* overlay: true の Entity 専用レイヤー。上のスクロール領域の外側に置くことで
+                            <div
+                                onMouseDown={(e) => {
+                                    if (e.target === e.currentTarget) onBackgroundMouseDown?.();
+                                }}
+                                data-ubi-mod-surface
+                                className={css({ position: 'absolute', inset: 0, overflow: 'auto' })}
+                            >
+                                <PreviewStage
+                                    entities={entities}
+                                    environment={environment}
+                                    overlay={overlay}
+                                    gridStep={gridStep}
+                                    onBackgroundMouseDown={onBackgroundMouseDown}
+                                />
+                            </div>
+                            {/* overlay: true の Entity 専用レイヤー。上のスクロール領域の外側に置くことで
                             実行画面 (InstanceRenderer の ENTITY_OVERLAY レイヤー) と配置が一致する。 */}
-                        <EditorOverlayStage entities={entities} />
-                    </ModRegistryProvider>
+                            <EditorOverlayStage entities={entities} />
+                        </ModRegistryProvider>
+                    )}
                 </WorldContext.Provider>
             </SocketContext.Provider>
         </div>

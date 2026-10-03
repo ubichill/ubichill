@@ -1,52 +1,25 @@
-import { webWorldCrypto } from '@ubichill/loader';
-import { signWorld, type WorldIdentity } from '@ubichill/shared';
-import yaml from 'yaml';
+import type { ModLock, WorldIdentity } from '@ubichill/shared';
+import { errorMessage, type SaveWorldDeps, saveWorldBundle } from './saveHostedWorld';
 import type { WorldSigner } from './signer';
 
-export interface SignHostedWorldDeps {
-    apiBase: string;
-    /** 呼び出し側は `window.fetch` をそのまま渡してよい（ここでは `deps.fetch()` の形で呼ばない）。 */
-    fetch: typeof fetch;
-}
-
-/** ブラウザの fetch を this に依存せず渡すための既定値。 */
-export const browserFetch: typeof fetch = (input, init) => globalThis.fetch(input, init);
-
-async function errorMessage(res: Response): Promise<string> {
-    const data = (await res.json().catch(() => ({}))) as { error?: string };
-    return data.error ?? `HTTP ${res.status}`;
-}
-
 /**
- * 本体に保存済みのワールドへ作者署名を付ける。
- *
- * 手元の編集内容ではなく、**サーバーが配信している値**（YAML と lock）に署名する。
- * 保存時にサーバーが metadata.name を採番したり lock を分離したりするため、
- * 手元の値に署名すると配信物と一致しない。
+ * 本体で公開中の版（YAML と lock）に署名し直す（鍵を取り消したあとなど）。
+ * 新しい内容を送るのと同じ {@link saveWorldBundle} を使う（署名し直しのための別の入口は作らない）。
  */
 export async function signHostedWorld(
     worldId: string,
     signer: WorldSigner,
-    { apiBase, fetch }: SignHostedWorldDeps,
+    deps: SaveWorldDeps,
 ): Promise<WorldIdentity> {
+    const { apiBase, fetch } = deps;
     const base = `${apiBase}/api/v1/worlds/${encodeURIComponent(worldId)}`;
     const [yamlRes, lockRes] = await Promise.all([
-        fetch(`${base}?format=yaml`, { headers: { Accept: 'application/yaml' }, cache: 'no-store' }),
-        fetch(`${base}/lock`, { headers: { Accept: 'application/json' }, cache: 'no-store' }),
+        fetch(`${base}.yaml`, { cache: 'no-store' }),
+        fetch(`${base}.lock.json`, { cache: 'no-store' }),
     ]);
     if (!yamlRes.ok) throw new Error(`ワールドを取得できません: ${await errorMessage(yamlRes)}`);
     if (!lockRes.ok && lockRes.status !== 404) throw new Error(`lock を取得できません: ${await errorMessage(lockRes)}`);
-
-    const definition = yaml.parse(await yamlRes.text()) as unknown;
-    const lock = lockRes.ok ? ((await lockRes.json()) as unknown) : null;
-    const signature = await signWorld({ definition, lock }, signer.key, webWorldCrypto, { author: signer.author });
-
-    const res = await fetch(`${base}/sig`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(signature),
-    });
-    if (!res.ok) throw new Error(`署名を保存できません: ${await errorMessage(res)}`);
-    return ((await res.json()) as { identity: WorldIdentity }).identity;
+    const lock = lockRes.ok ? ((await lockRes.json()) as ModLock) : null;
+    const saved = await saveWorldBundle({ yaml: await yamlRes.text(), lock, worldId }, signer, deps);
+    return saved.identity;
 }

@@ -19,7 +19,6 @@ const env = (overrides: Partial<PublishingEnvironment>): PublishingEnvironment =
     lastUsedAt: null,
     revokedAt: null,
     revokeReason: null,
-    managedByRepository: false,
     ...overrides,
 });
 const ago = (ms: number) => new Date(NOW - ms).toISOString();

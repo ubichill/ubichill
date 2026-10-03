@@ -69,11 +69,10 @@ function lock(workerCode = WORKER_CODE): ModLock {
 beforeEach(() => resetAcquireCaches());
 
 describe('acquireMod', () => {
-    it('正規バイト列 + 外部 provenance → verified、capabilities は lock 天井', async () => {
+    it('正規バイト列 → verified、capabilities は lock 天井', async () => {
         const r = await acquireMod(TYPE, {
             baseUrl: BASE,
             lock: lock(),
-            sourceKind: 'github',
             fetchImpl: fakeFetch(goodRoutes()),
         });
         expect(typeof r === 'object' && 'workerCode' in r).toBe(true);
@@ -84,63 +83,40 @@ describe('acquireMod', () => {
         }
     });
 
-    it('worker が差し替えられている（hash 不一致）+ 外部 → integrity-mismatch で拒否', async () => {
+    it('worker が差し替えられている（hash 不一致）→ integrity-mismatch で拒否', async () => {
         const tampered = `${WORKER_CODE} /* injected */`;
         const r = await acquireMod(TYPE, {
             baseUrl: BASE,
             lock: lock(), // lock は元コードの hash
-            sourceKind: 'remote-instance',
             fetchImpl: fakeFetch(goodRoutes(tampered)), // 配信は改竄コード
         });
         expect(r).toEqual({ rejected: 'integrity-mismatch' });
     });
 
-    it('外部 provenance で lock 記載が無い → fetch せず lock-missing 拒否', async () => {
+    it('lock 記載が無い → fetch せず lock-missing 拒否', async () => {
         let called = false;
         const spy: FetchLike = async (input) => {
             called = true;
             return fakeFetch(goodRoutes())(input);
         };
-        const r = await acquireMod(TYPE, { baseUrl: BASE, sourceKind: 'url', fetchImpl: spy });
+        const r = await acquireMod(TYPE, { baseUrl: BASE, fetchImpl: spy });
         expect(r).toEqual({ rejected: 'lock-missing' });
         expect(called).toBe(false); // ネットワークに触れない
     });
 
-    it('local は lock 不一致でも警告続行し、capability は manifest 由来', async () => {
-        const tampered = `${WORKER_CODE} /* local edit */`;
-        const r = await acquireMod(TYPE, {
-            baseUrl: BASE,
-            lock: lock(), // 元 hash
-            sourceKind: 'local',
-            fetchImpl: fakeFetch(goodRoutes(tampered)),
-        });
-        expect(typeof r === 'object' && 'workerCode' in r).toBe(true);
-        if (typeof r === 'object' && 'workerCode' in r) {
-            expect(r.workerCode).toBe(tampered);
-            // verified ではないので manifest の capabilities（scene:read）を採用
-            expect(r.capabilities).toEqual(['scene:read']);
-        }
-    });
-
-    it('作者署名ありの local ワールド（strict）は lock 不一致を拒否する＝署名時と違うコードを動かさない', async () => {
-        const r = await acquireMod(TYPE, {
+    it('本体のワールドでも外部と同じく、lock と違うコードは拒否し、lock に無い mod は fetch せず拒否する', async () => {
+        const swapped = await acquireMod(TYPE, {
             baseUrl: BASE,
             lock: lock(),
-            sourceKind: 'local',
-            strict: true,
             fetchImpl: fakeFetch(goodRoutes(`${WORKER_CODE} /* swapped */`)),
         });
-        expect(r).toEqual({ rejected: 'integrity-mismatch' });
-    });
-
-    it('作者署名ありの local ワールド（strict）で lock に無い mod は fetch せず拒否', async () => {
+        expect(swapped).toEqual({ rejected: 'integrity-mismatch' });
         let called = false;
         const spy: FetchLike = async (input) => {
             called = true;
             return fakeFetch(goodRoutes())(input);
         };
-        const r = await acquireMod(TYPE, { baseUrl: BASE, sourceKind: 'local', strict: true, fetchImpl: spy });
-        expect(r).toEqual({ rejected: 'lock-missing' });
+        expect(await acquireMod(TYPE, { baseUrl: BASE, fetchImpl: spy })).toEqual({ rejected: 'lock-missing' });
         expect(called).toBe(false);
     });
 
@@ -156,13 +132,12 @@ describe('acquireMod', () => {
                 lockVersion: 1,
                 mods: { [MOD]: { id: MOD, version: VER, manifestIntegrity: sri(dataOnlyManifest), components: {} } },
             },
-            sourceKind: 'local',
             fetchImpl: fakeFetch({ [manifestUrlAbs]: { body: dataOnlyManifest } }),
         });
         expect(r).toBe('data-only');
     });
 
-    it('lockEntry はあるが対象 component が lock に無い + 外部 → lock-missing 拒否', async () => {
+    it('lockEntry はあるが対象 component が lock に無い → lock-missing 拒否', async () => {
         // mod（pen）の lock はあるが components が空＝この entity の hash が固定されていない。
         // manifest には entity が存在するので取得は進むが、lock 未記載として拒否されるべき。
         const r = await acquireMod(TYPE, {
@@ -171,14 +146,13 @@ describe('acquireMod', () => {
                 lockVersion: 1,
                 mods: { [MOD]: { id: MOD, version: VER, manifestIntegrity: sri(manifestJson), components: {} } },
             },
-            sourceKind: 'github',
             fetchImpl: fakeFetch(goodRoutes()),
         });
         expect(r).toEqual({ rejected: 'lock-missing' });
     });
 
     it('コロンを含まない entityType は not-found', async () => {
-        const r = await acquireMod('nocolon', { baseUrl: BASE, sourceKind: 'local', fetchImpl: fakeFetch({}) });
+        const r = await acquireMod('nocolon', { baseUrl: BASE, fetchImpl: fakeFetch({}) });
         expect(r).toBe('not-found');
     });
 
@@ -192,7 +166,6 @@ describe('acquireMod', () => {
         const r = await acquireMod(TYPE, {
             baseUrl: BASE, // これは使われないはず
             lock: lockWithBaseUrl,
-            sourceKind: 'github',
             fetchImpl: fakeFetch({
                 [otherManifestUrlAbs]: { body: manifestJson },
                 [otherWorkerUrlAbs]: { body: WORKER_CODE, contentType: 'text/javascript' },

@@ -7,7 +7,7 @@
  * ハッシュ対象は「配信された生の値」。YAML なら `yaml.parse` 直後（マイグレーション・スキーマ既定値
  * 適用前）、lock なら JSON の生値を渡すこと。スキーマ適用後の値を渡すと配信元と一致しない。
  */
-import { formatIntegrity, integrityEquals, requiresLock } from '../mod/modLock';
+import { formatIntegrity, integrityEquals } from '../mod/modLock';
 import { ModLockSchema } from '../schemas/modLock.schema';
 import { unlockedModIds, WorldDefinitionSchema } from '../schemas/world.schema';
 import {
@@ -119,15 +119,6 @@ export function unpinnedModsOf(doc: WorldDocument): string[] | null {
     const lock = rawLock === null ? null : ModLockSchema.safeParse(rawLock);
     if (lock && !lock.success) return null;
     return unlockedModIds(parsed.data.spec, lock?.data);
-}
-
-/**
- * このワールドの mod を lock で厳格に固定するか（lock 欠落・不一致の mod は実行しない）。
- * 署名が有効なワールドは（作者アカウントの確認有無に関係なく）配信場所を問わず厳格
- * （署名時と異なる mod コードを動かさない）。未署名は provenance で決める（外部は厳格、本体の未公開は開発用に寛容）。
- */
-export function isStrictLockWorld(sourceKind: string, identity: WorldIdentity | undefined): boolean {
-    return identity?.status === 'verified' || requiresLock(sourceKind);
 }
 
 /** 版をまたいで不変なワールド識別子（作者アカウント未確認時は鍵で識別する）。 */

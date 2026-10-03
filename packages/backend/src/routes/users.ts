@@ -7,7 +7,7 @@ import {
     type WorldRecord,
     worldRepository,
 } from '@ubichill/db';
-import type { ResolvedWorld, WorldDefinition } from '@ubichill/shared';
+import type { ResolvedWorld } from '@ubichill/shared';
 import {
     canViewFavorites,
     DisplayNameSchema,
@@ -20,7 +20,6 @@ import {
     LIMITS,
     needsFriendCheck,
     OFFICIAL_HANDLE,
-    OFFICIAL_WORLDS_AUTHOR,
     RevokeReasonSchema,
     SERVER_CONFIG,
     verifyKeyRegistration,
@@ -35,26 +34,24 @@ import {
     requirePublisher,
     toWebHeaders,
 } from '../middleware/auth';
-import { invalidateAuthorKey, pinnedAuthorKeys } from '../services/authorKeyStore';
+import { invalidateAuthorKey } from '../services/authorKeyStore';
 import { selfAccount } from '../services/authorKeys';
 import { favoriteRefOf, resolveFavoriteWorlds } from '../services/favorites';
 import {
-    authorAccountsOf,
     browserEnvironmentName,
-    isRepositoryManagedKey,
     newEnvironmentNotice,
     publishingEnvironmentView,
     registrationOutcome,
 } from '../services/publishingEnvironments';
 import { nodeWorldCrypto } from '../services/worldCrypto';
 import { worldRegistry } from '../services/worldRegistry';
+import { parseStoredDefinition } from '../services/worldResolver';
 import { createTtlCache } from '../utils/ttlCache';
 
 const router = Router();
 
-/** ユーザーが作者として署名に使う作者アカウント（公式アカウントは公式ワールドの作者も含む）。 */
-const authorAccountsOfUser = (handle: string | null) =>
-    authorAccountsOf(handle, selfAccount, { handle: OFFICIAL_HANDLE, account: OFFICIAL_WORLDS_AUTHOR });
+/** ユーザーの作者アカウント（このサーバーの handle@domain）。 */
+const authorAccountsOfUser = (handle: string | null) => (handle ? [selfAccount(handle)] : []);
 
 /** リポジトリ（worlds/）で管理しているワールドの一覧の 1 件（画面からは編集・削除できない）。 */
 const repositoryWorldView = (w: ResolvedWorld) => ({
@@ -296,16 +293,8 @@ router.put('/me/handle', requireFreshAuth, async (req, res) => {
 // 公開環境（署名鍵）の一覧。取り消したものも含む。
 router.get('/me/publishing-environments', requireAuth, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-    const [rows, me] = await Promise.all([
-        publishingEnvironmentRepository.listByUser(req.user.id),
-        userRepository.findById(req.user.id),
-    ]);
-    const accounts = authorAccountsOfUser(me?.handle ?? null);
-    return res.json({
-        environments: rows.map((row) =>
-            publishingEnvironmentView(row, isRepositoryManagedKey(row.publicKey, accounts, pinnedAuthorKeys)),
-        ),
-    });
+    const rows = await publishingEnvironmentRepository.listByUser(req.user.id);
+    return res.json({ environments: rows.map((row) => publishingEnvironmentView(row)) });
 });
 
 // このブラウザを公開環境として登録する（ログインできる = 公開できる）。秘密鍵の所有を署名で証明させる。
@@ -360,19 +349,6 @@ router.post('/me/publishing-environments/:id/revoke', requireFreshAuth, async (r
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const reason = RevokeReasonSchema.safeParse(req.body?.reason);
     if (!reason.success) return res.status(400).json({ error: '取り消す理由（lost / compromised）が必要です' });
-    const target = (await publishingEnvironmentRepository.listByUser(req.user.id)).find(
-        (e) => e.id === String(req.params.id),
-    );
-    const me = await userRepository.findById(req.user.id);
-    if (
-        target &&
-        isRepositoryManagedKey(target.publicKey, authorAccountsOfUser(me?.handle ?? null), pinnedAuthorKeys)
-    ) {
-        return res.status(409).json({
-            error: 'この鍵はリポジトリの記録（worlds/trusted-authors.json）で管理されています。取り消すには記録に revokedAt を付けて PR でレビューしてください',
-            code: 'managed-by-repository',
-        });
-    }
     const revoked = await publishingEnvironmentRepository.revoke(req.user.id, String(req.params.id), reason.data);
     if (!revoked) return res.status(404).json({ error: '有効な公開環境が見つかりません' });
     worldRegistry.invalidateResolvedWorlds();
@@ -395,25 +371,27 @@ router.get('/me/worlds', requirePublisher, async (req, res) => {
         worldRepository.findByAuthorId(req.user.id),
         userRepository.findById(req.user.id),
     ]);
-    // 本人には未署名（非公開）も返す。署名状態を見せて署名し直せるようにする。
+    // 本人には未署名（非公開）も返す。署名状態を見せて署名し直せるようにする。配信できない（署名が内容と一致しない）ものは理由も返す
     const hosted = await Promise.all(
         records.map(async (r: WorldRecord) => {
-            const def = r.definition as WorldDefinition;
+            const resolution = await worldRegistry.resolveLocal(r.name);
+            const def = resolution.ok ? resolution.world : parseStoredDefinition(r.definition)?.spec;
             return {
                 id: r.name,
-                displayName: def.spec.displayName,
-                description: def.spec.description ?? null,
-                thumbnail: def.spec.thumbnail ?? null,
+                displayName: def?.displayName ?? r.worldName,
+                description: def?.description ?? null,
+                thumbnail: def?.thumbnail ?? null,
                 version: r.version,
-                capacity: def.spec.capacity,
+                capacity: def?.capacity ?? { default: 0, max: 0 },
                 updatedAt: r.updatedAt,
-                identity: (await worldRegistry.getWorld(r.name))?.identity,
+                identity: resolution.ok ? resolution.world.identity : undefined,
+                ...(resolution.ok ? {} : { problem: resolution.message }),
             };
         }),
     );
-    const repository = worldRegistry
-        .repositoryWorldsByAuthor(authorAccountsOfUser(me?.handle ?? null))
-        .map(repositoryWorldView);
+    const repository = (await worldRegistry.repositoryWorldsByAuthor(authorAccountsOfUser(me?.handle ?? null))).map(
+        repositoryWorldView,
+    );
     return res.json({
         worlds: [...hosted, ...repository],
         // 作成数の上限は本体（DB）に作ったワールドだけで数える（リポジトリ管理のワールドは含めない）
@@ -529,24 +507,20 @@ router.get('/:userId/favorites', optionalAuth, async (req, res) => {
 router.get('/:userId/worlds', async (req, res) => {
     const records = await worldRepository.findByAuthorId(req.params.userId);
     const resolved = await Promise.all(records.map((r: WorldRecord) => worldRegistry.getWorld(r.name)));
-    const publishable = new Set(resolved.filter((w) => isPublishable(w?.identity)).map((w) => w?.id));
-    const worlds = records
-        .filter((r: WorldRecord) => publishable.has(r.name))
-        .map((r: WorldRecord) => {
-            const def = r.definition as WorldDefinition;
-            return {
-                id: r.name,
-                displayName: def.spec.displayName,
-                description: def.spec.description ?? null,
-                thumbnail: def.spec.thumbnail ?? null,
-                version: r.version,
-                capacity: def.spec.capacity,
-            };
-        });
+    const worlds = resolved
+        .filter((w): w is ResolvedWorld => !!w && isPublishable(w.identity))
+        .map((w) => ({
+            id: w.id,
+            displayName: w.displayName,
+            description: w.description ?? null,
+            thumbnail: w.thumbnail ?? null,
+            version: w.version,
+            capacity: w.capacity,
+        }));
     const owner = await userRepository.findById(req.params.userId);
-    const repository = worldRegistry
-        .repositoryWorldsByAuthor(authorAccountsOfUser(owner?.handle ?? null))
-        .map(repositoryWorldView);
+    const repository = (await worldRegistry.repositoryWorldsByAuthor(authorAccountsOfUser(owner?.handle ?? null))).map(
+        repositoryWorldView,
+    );
     return res.json({ worlds: [...worlds, ...repository] });
 });
 
