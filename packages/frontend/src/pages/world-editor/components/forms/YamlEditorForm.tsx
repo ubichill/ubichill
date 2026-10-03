@@ -23,7 +23,8 @@ export function YamlEditorForm({ yamlText, yamlDirty, onChange, onFileUpload }: 
                 })}
             >
                 <p className={css({ fontSize: '13px', color: 'textMuted' })}>
-                    `metadata.name` はワールドの識別子です。変えると別のワールドとして保存されます。
+                    `metadata.name` はワールドの名前で、URL（/@ID/名前）になります。変えると URL が変わります（以前の
+                    URL からも開けます）。
                 </p>
                 <label
                     className={css({

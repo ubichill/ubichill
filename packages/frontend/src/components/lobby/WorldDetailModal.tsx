@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { createInstance, fetchInstances, fetchWorld } from '@/lib/instancesApi';
 import { useSession } from '@/lib/session';
+import { localWorldPagePath } from '@/lib/worldRef';
 import { css } from '@/styled-system/css';
 import { AuthorAccountLabel } from './AuthorAccountLabel';
 import { FavoriteButton } from './FavoriteButton';
@@ -94,7 +95,7 @@ export function WorldDetailModal({
         // フロントの origin（:3000）を使うことで正しい共有 URL を生成する。
         const url =
             world?.source?.kind === 'local'
-                ? `${window.location.origin}/world/${worldId}`
+                ? `${window.location.origin}${localWorldPagePath({ id: world.id ?? worldId, url: world.url })}`
                 : world?.url
                   ? worldShareUrl(world.url, window.location.origin)
                   : `${window.location.origin}/world/${worldId}`;
@@ -175,7 +176,10 @@ export function WorldDetailModal({
                                             onClick={() => {
                                                 const target =
                                                     world?.source?.kind === 'local' || !world?.url
-                                                        ? `/world/${world?.id ?? worldId}`
+                                                        ? localWorldPagePath({
+                                                              id: world?.id ?? worldId,
+                                                              url: world?.url,
+                                                          })
                                                         : worldShareUrl(world.url, window.location.origin);
                                                 navigate(target.replace(window.location.origin, ''));
                                                 onClose();

@@ -61,7 +61,7 @@
 |---|---|---|
 | 本体で作成したワールド | 作者の鍵（ブラウザ生成、IndexedDB に取り出し不可で保存、バックアップファイルはユーザーが保管） | 保存のたびにブラウザが内容に署名し、内容と一緒に `PUT /api/v1/worlds` で送る。サーバーは検証して保存するだけ |
 | CLI / GitHub で作るワールド | 作者の鍵（`ubichill keygen` / `ubichill sign`） | ブラウザのバックアップファイルと同じ PKCS8 形式で相互に使える |
-| `worlds/`（公式） | メンテナ鍵（`~/.config/ubichill/official-worlds.key`、リポジトリ外）で署名した `worlds/*.sig.json` をコミット | `pnpm sign:worlds` で明示的に署名（ビルド時の自動署名はしない）。CI の `verify:world-locks` が無効な署名を止める |
+| `worlds/`（公式） | 公式アカウントの CI 用公開環境（Secret `UBICHILL_CREDENTIALS`） | main に入ったら CI が署名してイメージに同梱する（マージ = 公式としての確認）。署名はコミットしない |
 | mod | 作者の鍵（必須方向で検討） | なりすまし防止と grants のキー化 |
 
 - サーバー署名（インスタンス鍵）は採用しない。同じサーバー上では自己保証にしかならず、「検証済み」を誤解させるため。
@@ -79,7 +79,7 @@
 - `@ubichill/loader`: WebCrypto 実装 `webWorldCrypto` / `importSigningKeyPair`（取り出し不可）、CLI 実装 `ubichill keygen` / `ubichill sign [--check]`（subpath `sign-world`）。
 - backend: node:crypto の検証専用実装（`services/worldCrypto.ts`）。外部ワールドは YAML・lock・sig を並行取得して検証し、
   不正は `WorldIntegrityError`（`/worlds/resolve` は 422、キャッシュへのフォールバック無し）。
-  本体ワールドは `getHostedDocument`（ファイル/DB の生の値）を `<id>.yaml` / `.lock.json` / `.sig.json` で配信する。
+  本体ワールドはファイル/DB の生の値を `/api/v1/authors/<handle>/worlds/<name>.yaml` / `.lock.json` / `.sig.json` で配信する。
   保存は `PUT /api/v1/worlds`（内容と署名を一緒に検証して保存）。
   連合ピア一覧の `identity` は自己申告なので捨てる。
 - frontend: `lib/signing`（鍵保管・保存時の自動署名）、プロフィールの鍵管理、`WorldIdentityBadge`（作者署名あり / 署名なし）。
@@ -96,7 +96,7 @@
 |---|---|
 | ブラウザ | そのサイト（オリジン）の IndexedDB。サイトごとに分かれるので、別サーバーでは同じバックアップを読み込む |
 | バックアップ / CLI | `~/.config/ubichill/signing.key`（`ubichill keygen` の既定）。任意の場所でもよい（`--key-file` / `UBICHILL_SIGNING_KEY[_FILE]`） |
-| 公式ワールド | `~/.config/ubichill/official-worlds.key`（メンテナのみ） |
+| 公式ワールド | CI の Secret `UBICHILL_CREDENTIALS`（公式アカウントの CI 用公開環境） |
 
 署名はワールドの内容に対するもので、サーバーや URL には依存しない。どのサーバーでも検証できる。
 ただし本体で作ったワールドは保存時にサーバーが `metadata.name` を採番するため、別サーバーに持っていくと
@@ -135,26 +135,38 @@
 
 - **形は 1 つ**: どのワールドも「world 定義・lock・署名」の組（`WorldBundle`）。検証は `resolveBundle` の 1 経路で、
   署名が壊れていれば配信場所に関係なく拒否する（以前は本体のワールドだけ未署名に格下げしていた）。
-- **ホストは中身を書き換えない**（`metadata.name` も）。同じワールドかは「作者 + `metadata.name`」で決まり
-  （外部と同じ）、本体の URL の ID（`worlds.name`）はサーバーが決めるだけの配信場所。DB には `world_name` 列（作者ごとに一意）を持つ。
+- **ホストは中身を書き換えない**（`metadata.name` も）。同じワールドかは「作者 + `metadata.name`」で決まり（外部と同じ）、
+  DB には `world_name` 列（作者ごとに一意）を持つ。内部の ID（`worlds.name`）はエディタ・API 用で、公開の URL には出さない。
   これにより prepare（サーバーが保存する値を先に受け取って署名する手順）と CLI の `<world>.ubichill.json` は不要になった。
+- **URL は作者と名前**: 共有 URL は `/@handle/name`、配信の正規 URL は `/api/v1/authors/handle/worlds/name.yaml`。
+  共有 URL から文字列だけで正規 URL が決まるので、ほかのサーバーも DB なしでたどれる。保存（下書きを含む）には ID が要る。
+  - **名前の変更は移動**: `metadata.name` を変えて保存すると、同じワールドのまま URL が変わる（GitHub のリポジトリ名の変更と同じ）。
+    以前の名前は `world_name_aliases` に残し、以前の URL（お気に入り・インスタンス・共有したリンク）からも同じワールドをたどれる。
+    以前の名前で新しいワールドを作ると、そちらが優先される。署名は名前を含むので、公開中のワールドは公開し直したときに名前が変わる
+    （下書きでは変わらない）。自分の別のワールドと同じ名前にすると上書きせず 409。
+  - 以前の形（`/world/<id>`、`/api/v1/worlds/<id>`）は自ホストなら内部 ID で解決し、画面は `/@handle/name` へ移す。
+    保存済みの参照（お気に入り・インスタンス）は移行 0013 で正規 URL に書き換える。
 - **本体へ送る入口は 1 つ**: `PUT /api/v1/worlds`（`{ yaml, lock, signature? }`）。新規・更新・下書き・署名し直しはすべてこれ。
   署名ありは外部と同じ規則で検証して公開中の版として保存（下書きは消す。ただし公開中の版と同じ内容への署名し直しでは残す）。
   署名なしは、公開中のワールドなら公開中の版を残して下書きに、そうでなければ署名なしで保存（公開されない）。
   署名には作者アカウントが要る（作者の付かない署名は公開されないので保存の時点で拒否する）。
-- **配り方も 1 つ**: 本体のワールド（DB・リポジトリとも）は `/api/v1/worlds/<id>.yaml` と兄弟の `<id>.lock.json` / `<id>.sig.json`
-  （CORS `*`）。GitHub Pages などの外部ホストと同じ形で、受け取る側の兄弟 URL の規則も 1 つ（拡張子の置き換え）。
+- **配り方も 1 つ**: 本体のワールド（DB・リポジトリとも）は `/api/v1/authors/<handle>/worlds/<name>.yaml` と兄弟の
+  `.lock.json` / `.sig.json`（CORS `*`）。GitHub Pages などの外部ホストと同じ形で、受け取る側の兄弟 URL の規則も 1 つ（拡張子の置き換え）。
   リポジトリのワールドは置いてあるファイルをそのまま返し、DB のワールドは公開中の版をファイルにして返す（下書きは配らない）。
-  以前の形（`/api/v1/worlds/<id>` の YAML 応答・`/yaml`・`/lock`・`/sig`）は廃止。以前の URL と共有 URL（`/world/<id>`）は
-  `<id>.yaml` に正規化し、保存済みの参照（お気に入り・インスタンス）は移行 0013 で書き換える。
+  以前の配信の形（`/api/v1/worlds/<id>` の YAML 応答・`/yaml`・`/lock`・`/sig`）は廃止。
 - **ほかのサーバーの作者のワールドは写しを配らない**: リポジトリ（`worlds/`）のワールドは、作者がこのサーバーのアカウントのものだけ配る
   （ubichill.com なら公式ワールド）。プレビューや自前のサーバーは、公式ワールドの写しを抱えず、公式アカウント（管理者）が
   プロフィールの「連合」で https://ubichill.com をフォローして参照する。`WORLDS_REGISTRY_URLS`（使われていなかった）と
   レジストリの列挙は廃止し、ワールドの一覧への取り込みは連合だけにした。作者の確認は署名が名乗る作者のドメインを先に見て、
   ほかのサーバーなら検証もしない（一覧のたびに問い合わせない）。
-  - 制約: 連合は相手のサーバーも `<id>.yaml` で配る版である必要がある。ubichill.com が更新されるまで、ほかのインスタンスの
+  - 制約: 連合は相手のサーバーもこの形で配る版である必要がある。ubichill.com が更新されるまで、ほかのインスタンスの
     「グローバル」に公式ワールドは出ない。プレビューで公式ワールドやその mod の変更を試すときは、プレビューの URL を指定して
     プレビューのアカウントで公開し直す（`ubichill publish --server=https://pr-N.ubichill.com`。作者は別になる）。
+    初期のフォロー先は env `WORLDS_FEDERATION_PEERS`（カンマ区切り）でも入れられる（プレビューを作り直すたびにフォローし直さない）。
+- **公式ワールドの署名は CI**: ほかの作者の CI と同じ方法。main に入ったら CI が公式アカウントの CI 用公開環境
+  （Secret `UBICHILL_CREDENTIALS`、`ubichill ci create` で作る）で `ubichill publish worlds/*.yaml --out=worlds` してイメージに同梱する。
+  マージ = 公式としての確認。署名はリポジトリに置かず、メンテナの鍵ファイル（`official-worlds.key`・`pnpm sign:worlds`）は廃止。
+  プレビューのイメージには署名しない。GitHub が乗っ取られると公式名義で署名されるので、Secret と main の保護を絞ること。
 - **特別な信用はしない**: `worlds/trusted-authors.json` を廃止した。公式アカウント（`ubichill@ubichill.com`）の鍵も、
   ほかの作者と同じく ubichill.com の公開環境で、WebFinger で確かめる。画面からの取り消しも同じく効く。
 - **lock は常に必須**: 配信場所・署名の有無に関係なく、lock に固定されていない mod は実行しない（`strictLock` / `isStrictLockWorld` を廃止）。
@@ -205,14 +217,14 @@
 
 - 公開できるのは、署名が有効で**作者アカウント（どこかのサーバーに実在する handle@domain）まで確認できた**ワールドだけ。
   鍵だけの署名（作者不明）・未署名は一覧に出さず、URL からの入室時に確認する。作者名もアカウントから引き、自己申告は使わない。
-- 公式ワールドも例外ではなく、作者 `ubichill@ubichill.com` で署名する（`pnpm sign:worlds`）。
+- 公式ワールドも例外ではなく、作者 `ubichill@ubichill.com` で署名する（main の CI が署名する）。
 - **確認結果の保存と期限**: 他サーバーの作者アカウントの鍵一覧と表示名は `author_bindings` に保存し、通常アクセスはそれを使う。
   T_fresh（1 時間）を超えたら保存した結果で即答して裏で取り直し、知らない鍵（新しい公開環境）の署名が来たときだけ待って取り直す。
   取り消しは鍵一覧の `revokedAt` で届く。取り直せない（作者のサーバーが止まっている）間は最後の結果を T_max（14 日）まで使い、
   確認から 24 時間を超えたら「確認が古い」と表示し、それまでに確認済みだった内容にだけ作者を付ける。取り消しが届くのは
   「T_fresh ＋ 5 分、かつアクセスがあった後」（詳細と信頼モデルは `author-publishing.md`）。
 - 公式ワールドにも特別な信用はない（`worlds/trusted-authors.json` は 2026-10-03 に廃止）。CI の `verify:world-locks` は
-  署名が有効で作者が公式アカウントであることだけを検証し、鍵が公開環境にあるかは配信先のサーバーが確かめる。
+  lock だけを検証し、署名は main の CI が付ける。鍵が公開環境にあるかは配信先のサーバーが確かめる。
 - 署名済みワールドを黙って未署名にしない保護は、作者確認の有無に関係なく署名が有効なら働く。
 
 ## 公開ルール（2026-09-26 決定・上で強化）

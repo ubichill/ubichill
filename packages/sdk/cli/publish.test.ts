@@ -47,9 +47,10 @@ function fakeDeps(files: Record<string, string>, handler: (method: string, path:
 
 describe('publish（本体へ）', () => {
     it('手元の組（yaml・lock・作者付きの署名）をそのまま 1 回の PUT で送る（手元に対応を記録しない）', async () => {
-        const { deps, requests, files } = fakeDeps({ 'w.yaml': worldYaml }, () => ({ status: 200, body: { id: 'srv-id' } }));
+        const { deps, requests, files } = fakeDeps({ 'w.yaml': worldYaml }, () => ({ status: 200, body: { id: 'srv-id', url: 'https://ubichill.com/api/v1/authors/youkan/worlds/my-world.yaml' } }));
         const url = await publish(deps, { worldPath: 'w.yaml', credential });
-        expect(url).toBe('https://ubichill.com/world/srv-id');
+        // 共有 URL は /@ID/metadata.name
+        expect(url).toBe('https://ubichill.com/@youkan/my-world');
         expect(requests.map((r) => `${r.method} ${r.path}`)).toEqual(['PUT /api/v1/worlds']);
         const body = requests[0]?.body as { yaml: string; lock: unknown; signature: { author: string; name: string } };
         expect(body.yaml).toBe(worldYaml);
@@ -59,7 +60,7 @@ describe('publish（本体へ）', () => {
     });
 
     it('本体へ送る署名と外部ホスト向けに書き出す署名は同じ（どこに置いても同じ規則で確かめられる）', async () => {
-        const server = fakeDeps({ 'w.yaml': worldYaml }, () => ({ status: 200, body: { id: 'srv-id' } }));
+        const server = fakeDeps({ 'w.yaml': worldYaml }, () => ({ status: 200, body: { id: 'srv-id', url: 'https://ubichill.com/api/v1/authors/youkan/worlds/my-world.yaml' } }));
         await publish(server.deps, { worldPath: 'w.yaml', credential });
         const out = fakeDeps({ 'w.yaml': worldYaml }, () => ({ status: 500, body: {} }));
         await publish(out.deps, { worldPath: 'w.yaml', credential, outDir: 'dist' });

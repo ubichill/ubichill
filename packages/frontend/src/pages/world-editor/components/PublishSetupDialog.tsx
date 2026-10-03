@@ -12,7 +12,7 @@ const paragraph = css({ fontSize: '13px', color: 'textMuted', lineHeight: '1.7',
  * 公開時に足りないものの案内。鍵の用意と公開環境の登録は自動なので、利用者に求めるのは ID だけ。
  * 固定できない mod がある・アカウントを取れないときは、公開できない理由だけを伝える。
  */
-export function PublishSetupDialog({ readiness, finish }: PendingPublishSetup) {
+export function PublishSetupDialog({ readiness, purpose, finish }: PendingPublishSetup) {
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
     const [handleInput, setHandleInput] = useState('');
@@ -42,9 +42,15 @@ export function PublishSetupDialog({ readiness, finish }: PendingPublishSetup) {
 
     if (readiness.kind === 'no-account') {
         return (
-            <Modal open onClose={cancel} title="公開できません" width="480px" footer={cancelButton}>
+            <Modal
+                open
+                onClose={cancel}
+                title={purpose === 'publish' ? '公開できません' : '保存できません'}
+                width="480px"
+                footer={cancelButton}
+            >
                 <p className={paragraph}>
-                    アカウント情報を取得できないため、作者として署名できません。時間をおいて再度お試しください。
+                    アカウント情報を取得できないため、ワールドの URL を決められません。時間をおいて再度お試しください。
                 </p>
             </Modal>
         );
@@ -67,7 +73,7 @@ export function PublishSetupDialog({ readiness, finish }: PendingPublishSetup) {
         <Modal
             open
             onClose={cancel}
-            title="ID を決めて公開する"
+            title={purpose === 'publish' ? 'ID を決めて公開する' : 'ID を決めて保存する'}
             width="520px"
             footer={
                 <>
@@ -76,14 +82,15 @@ export function PublishSetupDialog({ readiness, finish }: PendingPublishSetup) {
                         disabled={busy || handleStatus.state !== 'available'}
                         onClick={() => void submit()}
                     >
-                        この ID で公開する
+                        {purpose === 'publish' ? 'この ID で公開する' : 'この ID で保存する'}
                     </ModalPrimaryButton>
                 </>
             }
         >
             <p className={paragraph}>
-                公開するワールドには、作者アカウント「@ID@サーバー」で署名します。ほかのサーバーでも、改竄されていないこと・
-                あなたが作ったことを確認できるようになります。ID は英小文字・数字・_ の 3〜30
+                ワールドの URL
+                は「/@ID/名前」になり、公開するときは作者アカウント「@ID@サーバー」で署名します。ほかのサーバーでも、
+                改竄されていないこと・あなたが作ったことを確認できるようになります。ID は英小文字・数字・_ の 3〜30
                 文字で、あとから変更できません。
             </p>
             <input

@@ -54,3 +54,6 @@ CODE_STUDY.md
 # Antigravity CLI
 .antigravitycli/
 .playwright-mcp/
+
+# 公式ワールドの署名は main の CI が付けてイメージに同梱する（リポジトリには置かない）
+worlds/*.sig.json

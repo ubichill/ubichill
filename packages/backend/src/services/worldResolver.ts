@@ -317,15 +317,19 @@ export async function resolveWorldFromUrl(
 }
 
 /**
- * ubichill 本体のワールドの URL を、配信している YAML の URL（`.../api/v1/worlds/:id.yaml`）に正規化する。
- * 人間向けの共有 URL（`.../world/:id`）と以前の形（`.../api/v1/worlds/:id`、`.../:id/yaml`）を受け付ける。
- * それ以外はそのまま返す。
+ * ubichill 本体のワールドの URL を、配信している YAML の URL（`.../api/v1/authors/:handle/worlds/:name.yaml`）に正規化する。
+ * 共有 URL（`.../@handle/name`）も同じ形にする。以前の内部 ID の形（`.../world/:id`、`.../api/v1/worlds/:id`、`/yaml`・`.yaml` 付き）は
+ * `.../api/v1/worlds/:id` にそろえる（自ホストなら ID で解決できる）。それ以外はそのまま返す。
  */
 export function normalizeWorldUrl(input: string): string {
     try {
         const u = new URL(input);
-        const m = /^\/(?:world|api\/v1\/worlds)\/([^/.]+)(?:\/yaml)?\/?$/.exec(u.pathname);
-        return m ? `${u.origin}/api/v1/worlds/${m[1]}.yaml` : input;
+        const author =
+            /^\/@([a-z0-9_]+)\/([a-z0-9-]+)\/?$/.exec(u.pathname) ??
+            /^\/api\/v1\/authors\/([a-z0-9_]+)\/worlds\/([a-z0-9-]+)(?:\.yaml)?\/?$/.exec(u.pathname);
+        if (author) return `${u.origin}/api/v1/authors/${author[1]}/worlds/${author[2]}.yaml`;
+        const legacy = /^\/(?:world|api\/v1\/worlds)\/([a-z0-9-]+)(?:\/yaml|\.yaml)?\/?$/.exec(u.pathname);
+        return legacy ? `${u.origin}/api/v1/worlds/${legacy[1]}` : input;
     } catch {
         return input;
     }

@@ -1,6 +1,6 @@
 import type { ModLock, WorldSignature } from '@ubichill/shared';
 import { relations } from 'drizzle-orm';
-import { jsonb, pgTable, text, timestamp, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
+import { jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
 import { nanoid } from 'nanoid';
 import { users } from './users';
 
@@ -13,11 +13,12 @@ export const worlds = pgTable(
         authorId: text('author_id')
             .notNull()
             .references(() => users.id, { onDelete: 'cascade' }),
-        /** URL の ID（`/api/v1/worlds/:name.yaml`）。サーバーが作る。作者の付けた名前とは別。 */
+        /** 内部の ID（エディタ・API の `/api/v1/worlds/:name`）。サーバーが作る。公開の URL は作者 + world_name。 */
         name: varchar('name', { length: 255 }).notNull().unique(),
         /**
          * 作者が付けた名前（metadata.name）。ホストは書き換えず、作者 + この名前でワールドを区別する
-         * （同じ作者が同じ名前で送れば同じワールドの更新）。署名の name と一致する。
+         * （同じ作者が同じ名前で送れば同じワールドの更新）。署名の name と一致し、公開の URL
+         * （`/@handle/name`、`/api/v1/authors/handle/worlds/name.yaml`）になる。
          */
         worldName: varchar('world_name', { length: 50 }).notNull(),
         version: varchar('version', { length: 50 }).notNull(),
@@ -38,6 +39,25 @@ export const worlds = pgTable(
         updatedAt: timestamp('updated_at').defaultNow().notNull(),
     },
     (table) => [uniqueIndex('worlds_author_world_name_unique').on(table.authorId, table.worldName)],
+);
+
+/**
+ * 名前を変えたワールドの以前の名前。以前の URL（お気に入り・インスタンス・共有したリンク）からも同じワールドをたどれるようにする。
+ * 同じ作者が以前の名前で新しいワールドを作ったら、そちらが優先される（行を消す）。
+ */
+export const worldNameAliases = pgTable(
+    'world_name_aliases',
+    {
+        authorId: text('author_id')
+            .notNull()
+            .references(() => users.id, { onDelete: 'cascade' }),
+        name: varchar('name', { length: 50 }).notNull(),
+        worldId: varchar('world_id', { length: 21 })
+            .notNull()
+            .references(() => worlds.id, { onDelete: 'cascade' }),
+        createdAt: timestamp('created_at').defaultNow().notNull(),
+    },
+    (table) => [primaryKey({ columns: [table.authorId, table.name] })],
 );
 
 export const worldsRelations = relations(worlds, ({ one }) => ({

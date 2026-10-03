@@ -202,28 +202,12 @@ router.post('/:worldId/reload', requireAuth, requireAdmin, async (req, res) => {
 
 /**
  * GET /api/v1/worlds/:worldId
- * - `:id.yaml` / `:id.lock.json` / `:id.sig.json`: ワールドのファイル（正規 URL と兄弟）。DB のワールドもリポジトリのワールドも、
- *   外部ホストと同じ形で公開で配る（他インスタンスやクローラが URL でワールドを取得し、同じ規則で検証する）
- * - `:id`: 画面向けの ResolvedWorld(JSON)
+ * 内部 ID でワールドを返す（画面・エディタ向けの ResolvedWorld(JSON)）。公開の URL とファイルは
+ * `/api/v1/authors/:handle/worlds/:name(.yaml)`（共有 URL は `/@handle/name`）。
  */
 router.get('/:worldId', optionalAuth, async (req, res) => {
     try {
-        const worldId = req.params.worldId as string;
-        if (worldId.includes('.')) {
-            const file = await worldRegistry.worldFile(worldId);
-            if (!file) {
-                res.status(404).json({ error: 'Not found' });
-                return;
-            }
-            res.set('Access-Control-Allow-Origin', '*');
-            // 更新・署名し直しをすぐ届ける（ETag で再検証する）
-            res.set('Cache-Control', 'no-cache');
-            res.type(file.contentType);
-            if ('path' in file) res.sendFile(file.path);
-            else res.send(file.body);
-            return;
-        }
-        const resolution = await worldRegistry.resolveLocal(worldId);
+        const resolution = await worldRegistry.resolveLocal(req.params.worldId as string);
         if (!resolution.ok) {
             res.status(resolution.reason === 'integrity' ? 422 : 404).json({
                 error: resolution.message,
@@ -244,7 +228,8 @@ router.get('/:worldId', optionalAuth, async (req, res) => {
  * 中身は書き換えず、作者 + metadata.name でワールドを区別する（同じ作者・同じ名前なら同じワールドの更新）。
  * - 署名あり: 外部と同じ規則で検証し、通れば公開中の版として保存
  * - 署名なし: 公開中のワールドなら下書きとして保存（公開中の版は残す）、そうでなければ署名なしのまま保存（公開されない）
- * `worldId` は編集中のワールド（エディタ）。metadata.name が自分の別のワールドと同じなら上書きせず 409。
+ * `worldId` は編集中のワールド（エディタ）。metadata.name を変えると名前の変更（URL も変わり、以前の URL からもたどれる）。
+ * 自分の別のワールドと同じ名前なら上書きせず 409。保存には ID（作者アカウント）が要る（無ければ 409 handle-required）。
  * 返り値: `{ id, url, saved, identity }`
  */
 router.put('/', requireSaver, async (req, res) => {
@@ -276,7 +261,7 @@ router.put('/', requireSaver, async (req, res) => {
                     ? 403
                     : result.reason === 'invalid-definition'
                       ? 400
-                      : result.reason === 'name-taken'
+                      : result.reason === 'name-taken' || result.reason === 'handle-required'
                         ? 409
                         : 422;
             res.status(status).json({ error: saveFailureMessage(result.reason, result.message), code: result.reason });

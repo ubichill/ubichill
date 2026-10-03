@@ -3,12 +3,12 @@
  *
  * 本体へ送るのも外部ホストへ置くのも、同じ「world.yaml・lock・署名」の組（サーバーは中身を書き換えない）。
  * - 本体へ公開（既定）: 組を PUT /api/v1/worlds で送る。作者 + metadata.name で同じワールドかが決まるので、
- *   初回の作成と以後の更新は同じ呼び出し（手元に対応を記録しない）。
+ *   初回の作成と以後の更新は同じ呼び出し（手元に対応を記録しない）。共有 URL は `/@ID/metadata.name`。
  * - 外部ホストへ公開（`--out=<dir>`）: 組を world.yaml / .lock.json / .sig.json として書き出す（GitHub Pages など）。
  * 署名には `ubichill login`（CI は UBICHILL_CREDENTIALS）の鍵と作者アカウントを使う。
  */
 import { basename, join } from 'node:path';
-import { signWorld, unpinnedModsOf, type WorldDocument, type WorldSigningKey } from '@ubichill/shared';
+import { signWorld, unpinnedModsOf, type WorldDocument, type WorldSigningKey, worldShareUrl } from '@ubichill/shared';
 import type { Credential } from './credentials.ts';
 
 export interface PublishFs {
@@ -86,8 +86,9 @@ async function publishToServer(deps: PublishDeps, options: PublishOptions): Prom
         lock: bundle.lock,
         signature: bundle.signature,
     });
-    if (saved.status !== 200 || typeof saved.body.id !== 'string') throw errorOf(saved, '公開できませんでした');
-    const url = `${options.credential.server}/world/${saved.body.id}`;
+    if (saved.status !== 200 || typeof saved.body.url !== 'string') throw errorOf(saved, '公開できませんでした');
+    // 共有 URL（/@ID/名前）。名前は world.yaml の metadata.name
+    const url = worldShareUrl(saved.body.url);
     deps.log(`✅ 公開しました: ${url}（作者 @${options.credential.account}）`);
     return url;
 }

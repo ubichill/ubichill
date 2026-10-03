@@ -128,18 +128,35 @@ npx ubichill install world.yaml
 
 ```bash
 npx ubichill login                   # ブラウザで承認（--device: 別の端末で承認）
-npx ubichill publish world.yaml      # 本体へ公開（--out=dist/ で外部ホスト向けに書き出す）
+npx ubichill publish world.yaml      # 本体へ公開。共有 URL は https://<サーバー>/@<ID>/<metadata.name>（--out=dist/ で外部ホスト向けに書き出す）
 npx ubichill whoami                  # 使っている作者アカウント
 npx ubichill logout                  # この端末の公開環境を取り消す
 ```
 
 - **CI から公開する**: 手元で `ubichill ci create --name="GitHub Actions: owner/repo"` を実行してブラウザで承認すると、
   CI 用の公開環境の認証情報（1 本の文字列）が表示される。CI の Secret `UBICHILL_CREDENTIALS` に入れて `publish` する。
+  main に入ったら公開する、つまり「マージ = 作者としての確認」にする運用を想定している（ubichill 本体の公式ワールドも同じ方法で署名する）。
+  `metadata.name` を変えると名前の変更になり、URL も変わる（以前の URL からもたどれる）。
 
 ```yaml
-- run: npx ubichill publish worlds/my-world.yaml --out=dist/
-  env:
-    UBICHILL_CREDENTIALS: ${{ secrets.UBICHILL_CREDENTIALS }}
+# .github/workflows/publish-worlds.yml
+on:
+  push:
+    branches: [main]
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # 本体（ログインしたサーバー）へ公開する
+      - run: npx ubichill publish worlds/*.yaml
+        env:
+          UBICHILL_CREDENTIALS: ${{ secrets.UBICHILL_CREDENTIALS }}
+      # GitHub Pages などに置くなら、署名済みのファイルを書き出してアップロードする
+      # - run: npx ubichill publish worlds/*.yaml --out=dist/
 ```
 
 - **`keygen` / `sign`（上級者向け）**: 鍵ファイルを自分で管理して署名する。`--author=handle@domain` を付け、

@@ -1,8 +1,9 @@
-import { type Instance, type WorldListItem, worldSourceLabel } from '@ubichill/shared';
+import { type Instance, type WorldListItem, WorldSourceKind, worldSourceLabel } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
-import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
+import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import { createInstance, fetchInstances, fetchWorld } from '@/lib/instancesApi';
 import { useSession } from '@/lib/session';
+import { localWorldPagePath } from '@/lib/worldRef';
 import { css } from '@/styled-system/css';
 
 /**
@@ -18,10 +19,12 @@ import { css } from '@/styled-system/css';
 export function WorldPage() {
     const navigate = useNavigate();
     const location = useLocation();
-    const { worldId } = useParams<{ worldId: string }>();
+    const { worldId, at, name } = useParams<{ worldId: string; at: string; name: string }>();
     const [searchParams] = useSearchParams();
     const externalUrl = searchParams.get('url')?.trim();
-    const worldRef = externalUrl || worldId;
+    // 共有 URL（/@handle/name）
+    const authorRef = at?.startsWith('@') && name ? `${at}/${name}` : undefined;
+    const worldRef = externalUrl || authorRef || worldId;
     const { data: session, isPending } = useSession();
 
     const [world, setWorld] = useState<WorldListItem | null>(null);
@@ -45,10 +48,14 @@ export function WorldPage() {
             .then(([worldData, instancesData]) => {
                 setWorld(worldData);
                 setInstances(instancesData);
+                // 以前の共有 URL（/world/:id）で開いたら、今の共有 URL（/@handle/name）へ移す
+                const sharePath =
+                    worldData.source.kind === WorldSourceKind.Local ? localWorldPagePath(worldData) : undefined;
+                if (worldId && sharePath?.startsWith('/@')) navigate(sharePath, { replace: true });
             })
             .catch((e: unknown) => setError(e instanceof Error ? e.message : 'データの取得に失敗しました'))
             .finally(() => setLoading(false));
-    }, [worldRef]);
+    }, [worldRef, worldId, navigate]);
 
     // クライアント側メタ（タブ名 + JS 実行するクローラ向け）。
     // リンクプレビュー bot 向けの OGP は BFF が担う。
@@ -106,6 +113,9 @@ export function WorldPage() {
             setCreating(false);
         }
     };
+
+    // /:at/:name は共有 URL（/@handle/name）だけ。それ以外の 2 段のパスはロビーへ
+    if (at !== undefined && !authorRef) return <Navigate to="/" replace />;
 
     if (loading) {
         return (

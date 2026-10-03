@@ -22,6 +22,7 @@ global:
 # イメージにバンドルした worlds/ は、作者がこのサーバーのアカウントのものだけ配る（ubichill.com なら公式ワールド）。
 # ほかのサーバーのワールドは URL で解決・入室する。一覧に出すには公式アカウントでそのサーバーを連合でフォローする
 # （例: ubichill.com 以外のインスタンスは https://ubichill.com をフォローすると公式ワールドが出る）。
+# 初期のフォロー先は backend.env の WORLDS_FEDERATION_PEERS（カンマ区切り）でも入れられる（DB を作り直すプレビュー向け）。
 worlds:
   # 外部の private リポジトリ等から on-demand 取得する際の GitHub トークン（Secret として注入）
   # 本番では registryToken 直書きより existingTokenSecret を推奨

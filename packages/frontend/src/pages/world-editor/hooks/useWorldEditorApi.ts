@@ -27,7 +27,10 @@ interface UseWorldEditorApiArgs {
     /** エラーメッセージの通知先 (ページ側で集約管理する) */
     onError: (msg: string) => void;
     /** 公開の準備が足りないとき、公開の準備ダイアログで利用者の操作を待つ */
-    requestPublishSetup: (readiness: Exclude<PublishReadiness, { kind: 'ready' }>) => Promise<PublishDecision>;
+    requestPublishSetup: (
+        readiness: Exclude<PublishReadiness, { kind: 'ready' }>,
+        purpose?: 'publish' | 'save',
+    ) => Promise<PublishDecision>;
 }
 
 /**
@@ -44,7 +47,8 @@ const deps = { apiBase: API_BASE, fetch: browserFetch };
 /**
  * ワールドの保存・公開・削除・インスタンス作成 API 呼び出しを集約する hook。
  * 保存はどれも同じ PUT（定義・lock・署名の組）で、同じワールドかは metadata.name で決まる。
- * - saveDraft: 署名せずに送る。公開中のワールドなら公開中の版は変えずに下書きになる。
+ * - saveDraft: 署名せずに送る。公開中のワールドなら公開中の版は変えずに下書きになる（ID が無ければその場で決める）。
+ * metadata.name を変えると名前の変更になる（同じワールドのまま URL が変わり、以前の URL からもたどれる）。
  * - publish: 作者アカウントで署名して公開する。鍵の用意と公開環境の登録は自動（ID が無ければその場で決めてもらう）。
  */
 export function useWorldEditorApi({
@@ -86,6 +90,15 @@ export function useWorldEditorApi({
     const saveDraft = useCallback(
         () =>
             withSaving(async () => {
+                // 下書きにも ID が要る（ワールドの URL は /@ID/名前）。無ければその場で決めてもらう
+                const account = await fetchMyAccount().catch(() => null);
+                if (!account?.author) {
+                    const decision = await requestPublishSetup(
+                        account ? { kind: 'needs-handle', account } : { kind: 'no-account' },
+                        'save',
+                    );
+                    if (decision.kind === 'cancel') return false;
+                }
                 const { body } = await buildSaveBody(definition, isEdit ? worldId : undefined);
                 const saved = await saveWorldBundle(body, null, deps);
                 onSavedYamlChange(body.yaml);
@@ -96,7 +109,16 @@ export function useWorldEditorApi({
                 followSaved(saved);
                 return true;
             }, '下書きを保存できませんでした'),
-        [definition, isEdit, worldId, onSavedYamlChange, onPublishStateChange, followSaved, withSaving],
+        [
+            definition,
+            isEdit,
+            worldId,
+            onSavedYamlChange,
+            onPublishStateChange,
+            requestPublishSetup,
+            followSaved,
+            withSaving,
+        ],
     );
 
     const publish = useCallback(
