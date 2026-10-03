@@ -1,5 +1,12 @@
 # @ubichill/bff
 
+## 1.0.5
+
+### Patch Changes
+
+- Updated dependencies [0d3bd18]
+  - @ubichill/shared@1.4.0
+
 ## 1.0.4
 
 ### Patch Changes
