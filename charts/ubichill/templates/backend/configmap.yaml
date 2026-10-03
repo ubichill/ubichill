@@ -7,7 +7,7 @@
   ここに置くもの:
     - values.yaml の backend.env (NODE_ENV / PORT / SKIP_EMAIL_VERIFICATION 等)
     - global.domain から自動導出する CORS_ORIGIN / BETTER_AUTH_URL
-    - WORLDS_REGISTRY_URLS / WORLDS_DIR / REDIS_URL のような template 由来の値
+    - WORLDS_DIR / REDIS_URL のような template 由来の値
 
   ここに置かないもの:
     - DATABASE_URL (postgres password を含むため deployment 側で valueFrom か文字列で組み立てる)

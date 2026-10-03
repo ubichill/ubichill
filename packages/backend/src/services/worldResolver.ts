@@ -29,7 +29,6 @@ import {
     type WorldMod,
     type WorldSignatureInvalidReason,
     type WorldSource,
-    WorldSourceKind,
 } from '@ubichill/shared';
 import yaml from 'yaml';
 import { safeFetch } from './safeFetch';
@@ -37,8 +36,6 @@ import { nodeWorldCrypto } from './worldCrypto';
 import { migrateLegacyWorldYaml } from './worldMigration';
 
 const GITHUB_BLOB_RE = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/;
-const GITHUB_TREE_RE = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/tree\/([^/]+)\/(.+)$/;
-const YAML_EXT_RE = /\.(ya?ml)$/i;
 
 const registryToken = (): string | undefined => process.env.WORLDS_REGISTRY_TOKEN || undefined;
 
@@ -313,67 +310,6 @@ export async function resolveWorldFromUrl(
     return (await resolveWorld(url, source, options)).resolved;
 }
 
-// ============================================================
-// レジストリソースの列挙
-// ============================================================
-
-type GitHubContentEntry = { name: string; type: 'file' | 'dir'; download_url: string | null };
-
-/**
- * Contents API の ETag キャッシュ。
- * GitHub は `If-None-Match` に対する 304 応答をレート制限にカウントしないため、
- * 変更が無い限り列挙は実質タダになる（60/時の枠を守る主要な対策）。
- */
-const contentsCache = new Map<string, { etag: string; urls: string[] }>();
-
-/** GitHub tree URL を Contents API で列挙し、各 YAML の raw URL を返す（ETag 条件付き＋制限時フォールバック）。 */
-async function enumerateGitHubDir(owner: string, repo: string, ref: string, path: string): Promise<string[]> {
-    const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${encodeURIComponent(ref)}`;
-    const headers: Record<string, string> = { Accept: 'application/vnd.github+json' };
-    const token = registryToken();
-    if (token) headers.Authorization = `Bearer ${token}`;
-    const cached = contentsCache.get(apiUrl);
-    if (cached) headers['If-None-Match'] = cached.etag;
-
-    const res = await safeFetch(apiUrl, { headers });
-
-    // 304: 未変更。レート制限を消費しない。キャッシュを返す。
-    if (res.status === 304 && cached) return cached.urls;
-
-    // 403/429 のレート制限: キャッシュがあれば維持して列挙を落とさない。
-    if ((res.status === 403 || res.status === 429) && res.headers.get('x-ratelimit-remaining') === '0') {
-        if (cached) {
-            console.warn(`⚠ GitHub API レート制限中。キャッシュで継続: ${apiUrl}`);
-            return cached.urls;
-        }
-        throw new Error(`GitHub API レート制限（キャッシュ無し）: ${apiUrl}`);
-    }
-
-    if (!res.ok) throw new Error(`GitHub Contents API ${res.status}: ${apiUrl}`);
-
-    const entries = (await res.json()) as GitHubContentEntry[];
-    const urls = entries
-        .filter((e) => e.type === 'file' && YAML_EXT_RE.test(e.name) && e.download_url)
-        .map((e) => e.download_url as string);
-    const etag = res.headers.get('etag');
-    if (etag) contentsCache.set(apiUrl, { etag, urls });
-    return urls;
-}
-
-/**
- * CDN 配信のインデックス JSON（API 不使用）を読み、ワールド URL 群へ展開する。
- * 配布者が生成した `[{ file }] | [{ url }]` を想定。`file` は JSON の URL 基準で解決。
- */
-async function enumerateIndexJson(indexUrl: string): Promise<{ url: string; source: WorldSource }[]> {
-    const text = await fetchText(indexUrl);
-    const list = JSON.parse(text) as Array<{ file?: string; url?: string }>;
-    const base = indexUrl.slice(0, indexUrl.lastIndexOf('/') + 1);
-    return list
-        .map((e) => e.url ?? (e.file ? `${base}${e.file}` : undefined))
-        .filter((u): u is string => typeof u === 'string')
-        .map((url) => ({ url, source: { kind: WorldSourceKind.Registry, url, registryName: indexUrl } }));
-}
-
 /**
  * ubichill 本体のワールドの URL を、配信している YAML の URL（`.../api/v1/worlds/:id.yaml`）に正規化する。
  * 人間向けの共有 URL（`.../world/:id`）と以前の形（`.../api/v1/worlds/:id`、`.../:id/yaml`）を受け付ける。
@@ -387,62 +323,4 @@ export function normalizeWorldUrl(input: string): string {
     } catch {
         return input;
     }
-}
-
-/** URL が ubichill 本体の単一ワールド（`.../api/v1/worlds/:id.yaml`）を指すか。 */
-function isSingleWorldUrl(url: string): boolean {
-    try {
-        return /^\/api\/v1\/worlds\/[^/]+\.ya?ml$/.test(new URL(url).pathname);
-    } catch {
-        return false;
-    }
-}
-
-/**
- * レジストリソース URL を個々のワールド URL＋source に展開する。
- * - ubichill 本体の単一ワールド URL（.../world/:id, .../api/v1/worlds/:id.yaml）→ 単一（kind: remote-instance）
- * - GitHub tree URL → Contents API 列挙（ETag キャッシュ、kind: github）
- * - インデックス JSON URL → CDN 取得（API 不使用、kind: registry）
- * - 直 YAML URL → 単一（kind: github or url）
- * - 他インスタンス一覧 API → kind: remote-instance で展開
- */
-export async function enumerateSource(sourceUrl: string): Promise<{ url: string; source: WorldSource }[]> {
-    // 共有 URL を機械 URL へ正規化し、単一ワールドなら1件だけ返す。
-    const single = normalizeWorldUrl(sourceUrl);
-    if (isSingleWorldUrl(single)) {
-        const origin = new URL(single).origin;
-        return [{ url: single, source: { kind: WorldSourceKind.RemoteInstance, url: single, originInstance: origin } }];
-    }
-
-    const tree = GITHUB_TREE_RE.exec(sourceUrl);
-    if (tree) {
-        const [, owner, repo, ref, path] = tree;
-        const urls = await enumerateGitHubDir(owner, repo, ref, path);
-        return urls.map((url) => ({
-            url,
-            source: { kind: WorldSourceKind.GitHub, url, registryName: `${owner}/${repo}` },
-        }));
-    }
-
-    // インデックス JSON（配布者が生成、CDN 配信で API 不使用の抜け道）
-    if (/\.json$/i.test(sourceUrl)) {
-        return enumerateIndexJson(sourceUrl);
-    }
-
-    if (YAML_EXT_RE.test(sourceUrl)) {
-        const kind = sourceUrl.includes('github') ? WorldSourceKind.GitHub : WorldSourceKind.Url;
-        return [{ url: sourceUrl, source: { kind, url: sourceUrl } }];
-    }
-
-    // 他 ubichill インスタンスのワールド一覧 API とみなす（{ worlds: WorldListItem[] } を返す想定）
-    const res = await safeFetch(sourceUrl, { headers: { Accept: 'application/json' } });
-    if (!res.ok) throw new Error(`レジストリ列挙に失敗 HTTP ${res.status}: ${sourceUrl}`);
-    const body = (await res.json()) as { worlds?: Array<{ url?: string }> };
-    const base = new URL(sourceUrl).origin;
-    return (body.worlds ?? [])
-        .filter((w): w is { url: string } => typeof w.url === 'string')
-        .map((w) => ({
-            url: w.url,
-            source: { kind: WorldSourceKind.RemoteInstance, url: w.url, originInstance: base },
-        }));
 }

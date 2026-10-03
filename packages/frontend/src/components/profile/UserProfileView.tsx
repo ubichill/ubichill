@@ -11,6 +11,7 @@ import { authorSignerFor, browserFetch, signHostedWorld } from '@/lib/signing';
 import { css } from '@/styled-system/css';
 import { DisplayNameEditor } from './DisplayNameEditor';
 import { FavoriteWorldsSection } from './FavoriteWorldsSection';
+import { FederationSection } from './FederationSection';
 import { PasswordSection } from './PasswordSection';
 import { PublishingSection } from './PublishingSection';
 
@@ -282,6 +283,7 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                     onChanged={() => setProfile({ ...profile, passwordChangeRequired: false })}
                 />
             )}
+            {isOwnPage && profile?.isAdmin && <FederationSection />}
             {isOwnPage && profile && (
                 <PublishingSection
                     account={{

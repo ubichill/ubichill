@@ -1,5 +1,6 @@
 import { generateKeyPairSync, sign } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { type InitialEntity, signWorld, type WorldDefinition, type WorldSigningKey } from '@ubichill/shared';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -23,7 +24,7 @@ function newTestSigningKey(): WorldSigningKey {
  *   DATABASE_URL=postgresql://ubichill:password@127.0.0.1:5433/ubichill pnpm test
  *
  * 検証すること:
- *   - リポジトリのワールド（worlds/）は静的ファイルの URL で、外部と同じ規則で検証される（DB 非依存）
+ *   - リポジトリのワールド（worlds/）は作者がこのサーバーのアカウントのものだけ、DB と同じ形（<id>.yaml と兄弟）で配る
  *   - 本体への保存は「定義・lock・署名」の組をそのまま保存する（中身を書き換えない）。作者 + metadata.name で同じワールド
  *   - 署名は外部と同じ規則で検証し、通らなければ何も保存しない。署名なしの保存は公開中の版を残して下書きになる
  *   - instance を worldRef(URL) で作成し getInstance が往復解決できる
@@ -47,9 +48,15 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
     let worldRegistry: typeof import('./worldRegistry').worldRegistry;
     let instanceManager: typeof import('./instanceManager').instanceManager;
 
+    // 一時的な worlds/。公式ワールド（作者はほかのサーバーの ubichill@ubichill.com）の写しを置く
+    const worldsDir = mkdtempSync(path.join(tmpdir(), 'ubichill-worlds-'));
+
     beforeAll(async () => {
-        // vitest は repo ルートから走るため、WORLDS_DIR をリポジトリの worlds/ に固定する。
-        process.env.WORLDS_DIR = path.resolve(process.cwd(), 'worlds');
+        // vitest は repo ルートから走る
+        for (const file of ['default.yaml', 'default.lock.json', 'default.sig.json']) {
+            copyFileSync(path.resolve(process.cwd(), 'worlds', file), path.join(worldsDir, file));
+        }
+        process.env.WORLDS_DIR = worldsDir;
         // backend の config 検証（config/index.ts）が要求する最小 env を埋める。
         process.env.NODE_ENV ??= 'test';
         process.env.BETTER_AUTH_SECRET ??= 'test-secret';
@@ -58,26 +65,55 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
         await worldRegistry.initialize();
     });
 
-    it('リポジトリのワールドも DB のワールドと同じ URL の形（<id>.yaml と兄弟ファイル）で配り、外部と同じ規則で確かめる', async () => {
-        const official = await worldRegistry.getWorld('default');
-        expect(official?.source.kind).toBe('local');
-        expect(official?.url).toMatch(/\/api\/v1\/worlds\/default\.yaml$/);
-        // 署名そのものは有効。作者はほかの作者と同じく WebFinger で確かめる（リポジトリの記録で特別に信用しない）
-        expect(official?.identity?.status).toBe('verified');
-        expect(await worldRegistry.getWorldRecord('default')).toBeUndefined();
-        expect(await worldRegistry.worldFile('default.sig.json')).toMatchObject({
-            path: expect.stringMatching(/default\.sig\.json$/),
-        });
-        expect(await worldRegistry.worldFile('../package.json')).toBeUndefined();
-        expect(await worldRegistry.worldFile('trusted-authors.json')).toBeUndefined();
-        // 以前の URL・共有 URL も同じワールドを指す
-        expect((await worldRegistry.getWorldByUrl(official?.url.replace(/\.yaml$/, '') ?? ''))?.id).toBe('default');
-    });
+    it('リポジトリのワールドは作者がこのサーバーのアカウントのものだけ、DB と同じ形で配る（ほかのサーバーの作者の写しは配らない）', async () => {
+        const { publishingEnvironmentRepository, userRepository } = await import('@ubichill/db');
+        const { selfAccount } = await import('./authorKeys');
+        const userId = `it-repo-${Date.now()}`;
+        const handle = `it_r${Date.now().toString(36)}`;
+        await userRepository.create({ id: userId, name: 'リポジトリ作者', email: `${userId}@example.com` });
+        try {
+            await userRepository.setHandleOnce(userId, handle);
+            const key = newTestSigningKey();
+            await publishingEnvironmentRepository.create({
+                userId,
+                kind: 'ci',
+                name: 'テスト',
+                publicKey: key.publicKey,
+            });
+            const name = uniqueName('repo');
+            const bundle = { ...bundleOf(worldDef(name, 'リポジトリ')), lock: { lockVersion: 1, mods: {} } };
+            writeFileSync(path.join(worldsDir, `${name}.yaml`), yaml.stringify(bundle.definition));
+            writeFileSync(path.join(worldsDir, `${name}.lock.json`), JSON.stringify(bundle.lock));
+            const sig = await signWorld(bundle, key, nodeWorldCrypto, { author: selfAccount(handle) });
+            writeFileSync(path.join(worldsDir, `${name}.sig.json`), JSON.stringify(sig));
+            await worldRegistry.reloadWorlds();
 
-    it('getHostedDocument がリポジトリのワールドをファイルの生の値で返す', async () => {
-        const hosted = await worldRegistry.getHostedDocument('default');
-        const file = yaml.parse(readFileSync(path.resolve(process.cwd(), 'worlds/default.yaml'), 'utf-8')) as unknown;
-        expect(hosted?.definition).toEqual(file);
+            const own = await worldRegistry.getWorld(name);
+            expect(own?.url).toMatch(new RegExp(`/api/v1/worlds/${name}\\.yaml$`));
+            expect(own?.identity).toMatchObject({ status: 'verified', author: selfAccount(handle) });
+            expect((await worldRegistry.listWorlds('local')).some((w) => w.id === name)).toBe(true);
+            expect(await worldRegistry.worldFile(`${name}.sig.json`)).toMatchObject({
+                path: expect.stringMatching(/\.sig\.json$/),
+            });
+            // 以前の URL も同じワールドを指す
+            expect((await worldRegistry.getWorldByUrl(own?.url.replace(/\.yaml$/, '') ?? ''))?.id).toBe(name);
+            // ファイルから生の値で配る（作者署名の対象）
+            expect((await worldRegistry.getHostedDocument(name))?.definition).toEqual(bundle.definition);
+
+            // 公式ワールドの写し（作者は ubichill@ubichill.com）は配らない。作者のサーバーを連合でフォローして参照する
+            expect(await worldRegistry.getWorld('default')).toBeUndefined();
+            expect(await worldRegistry.worldFile('default.yaml')).toBeUndefined();
+            expect(await worldRegistry.getHostedDocument('default')).toBeUndefined();
+            expect(await worldRegistry.worldFile('../package.json')).toBeUndefined();
+
+            // 鍵を取り消すと作者が外れ、配らなくなる（DB のワールドと同じく取り消しが効く）
+            const [env] = await publishingEnvironmentRepository.listByUser(userId);
+            if (env) await publishingEnvironmentRepository.revoke(userId, env.id, 'compromised');
+            worldRegistry.invalidateResolvedWorlds();
+            expect(await worldRegistry.getWorld(name)).toBeUndefined();
+        } finally {
+            await userRepository.deleteById(userId);
+        }
     });
 
     it('組の保存: 中身を書き換えず、同じ metadata.name は同じワールド、署名は外部と同じ規則で検証する', async () => {
@@ -251,10 +287,16 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
     });
 
     it('instance を URL 参照で作成し往復解決できる', async () => {
-        const created = await instanceManager.createInstance({ worldId: 'default' }, SYS);
-        expect('error' in created).toBe(false);
-        if ('error' in created) return;
-        const got = await instanceManager.getInstance(created.id);
-        expect(got?.world.id).toBe('default');
+        const saved = await worldRegistry.saveBundle(SYS, bundleOf(worldDef(uniqueName('inst'), 'インスタンス')));
+        if (!saved.ok) throw new Error(saved.message);
+        try {
+            const created = await instanceManager.createInstance({ worldId: saved.world.url }, SYS);
+            expect('error' in created).toBe(false);
+            if ('error' in created) return;
+            const got = await instanceManager.getInstance(created.id);
+            expect(got?.world.id).toBe(saved.world.id);
+        } finally {
+            await worldRegistry.deleteWorld(saved.world.id);
+        }
     });
 });

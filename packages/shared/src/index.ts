@@ -257,9 +257,6 @@ export const ENV_KEYS = {
     /** ワールド定義ディレクトリのパス（ローカルファイル用、レガシー） */
     WORLDS_DIR: 'WORLDS_DIR',
 
-    /** ワールドレジストリURL（カンマ区切り複数指定可） */
-    WORLDS_REGISTRY_URLS: 'WORLDS_REGISTRY_URLS',
-
     /** ワールドレジストリ認証トークン（プライベートリポジトリ向け） */
     WORLDS_REGISTRY_TOKEN: 'WORLDS_REGISTRY_TOKEN',
 

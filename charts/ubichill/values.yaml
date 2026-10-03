@@ -19,8 +19,9 @@ global:
 
 # Worlds configuration
 # ワールド
-# official ワールドはイメージにバンドルした worlds/ を使う（起動時の registry seed は廃止）。
-# 外部/他インスタンスのワールドは実行時に URL で on-demand 解決・入室する（連合）。
+# イメージにバンドルした worlds/ は、作者がこのサーバーのアカウントのものだけ配る（ubichill.com なら公式ワールド）。
+# ほかのサーバーのワールドは URL で解決・入室する。一覧に出すには公式アカウントでそのサーバーを連合でフォローする
+# （例: ubichill.com 以外のインスタンスは https://ubichill.com をフォローすると公式ワールドが出る）。
 worlds:
   # 外部の private リポジトリ等から on-demand 取得する際の GitHub トークン（Secret として注入）
   # 本番では registryToken 直書きより existingTokenSecret を推奨
@@ -109,7 +110,6 @@ backend:
   # 自動導出される値:
   #   CORS_ORIGIN, BETTER_AUTH_URL ← global.domain から組み立て (上書き可)
   #   REDIS_URL                    ← redis subchart 名から組み立て
-  #   WORLDS_REGISTRY_URLS         ← worlds.registries から組み立て
   #   WORLDS_DIR                   ← /worlds-rw 固定
   #
   # よく使う option (string で渡す。zod の transform が boolean に変換する):

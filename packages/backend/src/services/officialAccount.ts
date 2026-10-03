@@ -130,6 +130,6 @@ export async function ensureOfficialAccount(
         emailVerified: true,
         passwordChangeRequired: config.usingDevDefault,
     });
-    deps.log(`👑 公式アカウント（${OFFICIAL_HANDLE} / ${config.email}）を作成しました`);
+    deps.log(`👑 公式アカウント（ID ${OFFICIAL_HANDLE}、ログイン用メール ${config.email}）を作成しました`);
     return 'created';
 }

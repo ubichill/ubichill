@@ -386,9 +386,9 @@ router.get('/me/worlds', requirePublisher, async (req, res) => {
             };
         }),
     );
-    const repository = worldRegistry
-        .repositoryWorldsByAuthor(authorAccountsOfUser(me?.handle ?? null))
-        .map(repositoryWorldView);
+    const repository = (await worldRegistry.repositoryWorldsByAuthor(authorAccountsOfUser(me?.handle ?? null))).map(
+        repositoryWorldView,
+    );
     return res.json({
         worlds: [...hosted, ...repository],
         // 作成数の上限は本体（DB）に作ったワールドだけで数える（リポジトリ管理のワールドは含めない）
@@ -519,9 +519,9 @@ router.get('/:userId/worlds', async (req, res) => {
             };
         });
     const owner = await userRepository.findById(req.params.userId);
-    const repository = worldRegistry
-        .repositoryWorldsByAuthor(authorAccountsOfUser(owner?.handle ?? null))
-        .map(repositoryWorldView);
+    const repository = (await worldRegistry.repositoryWorldsByAuthor(authorAccountsOfUser(owner?.handle ?? null))).map(
+        repositoryWorldView,
+    );
     return res.json({ worlds: [...worlds, ...repository] });
 });
 
