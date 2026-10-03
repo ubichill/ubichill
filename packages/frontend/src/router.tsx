@@ -8,7 +8,6 @@ import { AuthPage } from './pages/AuthPage';
 import { CliAuthorizePage } from './pages/CliAuthorizePage';
 import { InstancePage } from './pages/InstancePage';
 import { LobbyPage } from './pages/LobbyPage';
-import { SocialPage } from './pages/SocialPage';
 import { UserPage } from './pages/UserPage';
 import { WorldPage } from './pages/WorldPage';
 import { WorldEditorPage } from './pages/world-editor';
@@ -47,15 +46,6 @@ export function AppRouter() {
                             element={
                                 <ProtectedRoute>
                                     <UserPage />
-                                </ProtectedRoute>
-                            }
-                        />
-                        {/* ソーシャル（フレンドの現在地・ユーザー検索・フレンドと申請） */}
-                        <Route
-                            path="/social"
-                            element={
-                                <ProtectedRoute>
-                                    <SocialPage />
                                 </ProtectedRoute>
                             }
                         />

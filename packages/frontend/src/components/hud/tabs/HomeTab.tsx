@@ -3,9 +3,8 @@ import { useEffect, useState } from 'react';
 import { InstanceCard } from '@/components/lobby/InstanceCard';
 import { InstanceDetailOverlay } from '@/components/lobby/InstanceDetailOverlay';
 import { useInstances } from '@/components/lobby/useInstances';
-import { FriendLocations, useFriendLocations } from '@/components/social';
 import { css } from '@/styled-system/css';
-import { cardBase, cardStyle, type JoinInstanceHandler, sectionHeading, tabPanel } from './shared';
+import { cardBase, type JoinInstanceHandler, sectionHeading, tabPanel } from './shared';
 
 interface HomeTabProps {
     onJoinInstance: JoinInstanceHandler;
@@ -17,7 +16,6 @@ interface HomeTabProps {
 
 export function HomeTab({ onJoinInstance, currentInstanceId, onReturnToLobby }: HomeTabProps) {
     const { instances, loading, error, refreshInstances } = useInstances();
-    const friendLocations = useFriendLocations();
     const [detailInstance, setDetailInstance] = useState<Instance | null>(null);
 
     useEffect(() => {
@@ -54,27 +52,6 @@ export function HomeTab({ onJoinInstance, currentInstanceId, onReturnToLobby }: 
                     ロビーへ戻る
                 </button>
             )}
-            <div className={cardStyle}>
-                <h2 className={sectionHeading}>フレンドの現在地</h2>
-                {friendLocations.data ? (
-                    <FriendLocations
-                        data={friendLocations.data}
-                        currentInstanceId={currentInstanceId}
-                        showElsewhere={false}
-                        onJoin={(instance) =>
-                            onJoinInstance(instance.id, instance.world.id, {
-                                thumbnail: instance.world.thumbnail,
-                                displayName: instance.world.displayName,
-                            })
-                        }
-                    />
-                ) : (
-                    <div className={css({ color: 'textMuted', fontSize: '13px' })}>
-                        {friendLocations.error ?? '読み込み中...'}
-                    </div>
-                )}
-            </div>
-
             <div className={css(cardBase, { flex: 1 })}>
                 <h2 className={sectionHeading}>アクティブなインスタンス</h2>
                 {loading && instances.length === 0 ? (

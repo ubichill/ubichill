@@ -23,7 +23,6 @@ const chip = cva({
         minWidth: 0,
         _hover: { bg: 'surfaceHover' },
     },
-    variants: { muted: { true: { opacity: 0.7 } } },
 });
 
 function PeopleIcon() {
@@ -36,10 +35,10 @@ function PeopleIcon() {
     );
 }
 
-function FriendChip({ user, muted }: { user: UserSummary; muted?: boolean }) {
+function FriendChip({ user }: { user: UserSummary }) {
     const navigate = useNavigate();
     return (
-        <button type="button" className={chip({ muted })} onClick={() => navigate(userPagePath(user))}>
+        <button type="button" className={chip()} onClick={() => navigate(userPagePath(user))}>
             <UserAvatar user={user} size="sm" />
             <span className={css({ minWidth: 0 })}>
                 <span
@@ -155,22 +154,20 @@ function InstanceCard({
 }
 
 /**
- * フレンドの現在地（インスタンスごと。フレンドの多い順）。見えないインスタンスにいるフレンドは「非公開の場所」、
- * インスタンスにいないフレンドは「インスタンスにいない」にまとめる。
+ * フレンドの現在地（インスタンスごと。フレンドの多い順）。自分に見えるインスタンスだけを出す
+ * （見えないインスタンス・インスタンスにいないフレンドは出さない）。
  */
 export function FriendLocations({
     data,
     currentInstanceId,
     onJoin,
-    showElsewhere = true,
 }: {
     data: FriendLocationsResponse;
     currentInstanceId?: string;
     onJoin: (instance: Instance) => void;
-    showElsewhere?: boolean;
 }) {
     const section = css({ py: '3', borderBottom: '1px solid', borderColor: 'border', _last: { borderBottom: 'none' } });
-    const empty = data.locations.length === 0 && data.private.length === 0;
+    const empty = data.locations.length === 0;
     return (
         <div>
             {empty && (
@@ -203,29 +200,6 @@ export function FriendLocations({
                     </div>
                 </section>
             ))}
-            {data.private.length > 0 && (
-                <section className={section}>
-                    <h3 className={groupTitle}>非公開の場所</h3>
-                    <p className={css({ fontSize: '12px', color: 'textMuted', mb: '2' })}>
-                        あなたには見えないインスタンス（フレンドのみ・招待のみなど）にいます
-                    </p>
-                    <div className={friendGrid}>
-                        {data.private.map((f) => (
-                            <FriendChip key={f.id} user={f} />
-                        ))}
-                    </div>
-                </section>
-            )}
-            {showElsewhere && data.elsewhere.length > 0 && (
-                <section className={section}>
-                    <h3 className={groupTitle}>インスタンスにいない</h3>
-                    <div className={friendGrid}>
-                        {data.elsewhere.map((f) => (
-                            <FriendChip key={f.id} user={f} muted />
-                        ))}
-                    </div>
-                </section>
-            )}
         </div>
     );
 }

@@ -82,12 +82,19 @@ router.get('/users/:userId', optionalAuth, async (req, res) => {
 // 自分のフレンド・自分への申請・自分の申請。
 router.get('/friends', requireAuth, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-    const groups = friendGroupsOf(await friendEdgesOf(req.user.id), req.user.id);
-    const [friends, incoming, outgoing] = await Promise.all([
+    const me = req.user.id;
+    const edges = await userFriendRepository.listForUser(me);
+    const groups = friendGroupsOf(edges, me);
+    const [friends, incomingUsers, outgoing] = await Promise.all([
         summariesOf(groups.friends),
         summariesOf(groups.incoming),
         summariesOf(groups.outgoing),
     ]);
+    const requestedAt = (from: string) =>
+        edges.find((e) => e.userId === from && e.friendId === me)?.createdAt.toISOString() ?? new Date(0).toISOString();
+    const incoming = incomingUsers
+        .map((u) => ({ ...u, requestedAt: requestedAt(u.id) }))
+        .sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
     return res.json({ friends, incoming, outgoing } satisfies FriendsResponse);
 });
 

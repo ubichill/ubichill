@@ -125,9 +125,15 @@ export interface UserWithFriendship extends UserSummary {
     friendship: Friendship;
 }
 
-/** `GET /api/v1/users/me/friends` */
+/** 自分への申請（通知に出す）。 */
+export interface FriendRequestSummary extends UserSummary {
+    /** 申請された日時（ISO 8601） */
+    requestedAt: string;
+}
+
+/** `GET /api/v1/social/friends` */
 export interface FriendsResponse {
     friends: UserSummary[];
-    incoming: UserSummary[];
+    incoming: FriendRequestSummary[];
     outgoing: UserSummary[];
 }
