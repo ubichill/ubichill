@@ -71,7 +71,7 @@ initialEntities:
 ## 連合（他インスタンス／外部ホスト）
 
 - ワールドを配信できる URL の例：
-  - 本体がホストするワールド：`https://<host>/api/v1/worlds/<id>`（`?format=yaml` or `Accept: */yaml` で YAML）
+  - 本体がホストするワールド：`https://<host>/api/v1/worlds/<id>.yaml`（外部ホストと同じ形。共有 URL `https://<host>/world/<id>` も受け付ける）
   - GitHub の生 YAML：`https://raw.githubusercontent.com/<owner>/<repo>/<ref>/worlds/<name>.yaml`（`blob` URL も可、自動で raw 化）
   - GitHub ディレクトリ（複数ワールド）：`https://github.com/<owner>/<repo>/tree/<ref>/worlds`（Contents API で列挙）
   - 任意 CDN のインデックス JSON：`[{ "url": "..." }] | [{ "file": "..." }]`
@@ -79,7 +79,7 @@ initialEntities:
 
 ## 作者署名（`<world>.sig.json`）
 
-- ワールドと同じ場所に兄弟ファイルとして置く（本体ホストは `.../api/v1/worlds/<id>/sig`）。`ubichill sign` で生成する。
+- ワールドと同じ場所に兄弟ファイルとして置く（本体ホストも `.../api/v1/worlds/<id>.sig.json` で同じ）。`ubichill sign` で生成する。
 - 署名対象は `{ definition: <YAML をパースした生の値>, lock: <兄弟 lock の生 JSON | null> }` を正規化 JSON（RFC 8785 相当）にした sha256（`contentHash`）。
 - ワールドの同一性は `ed25519:<公開鍵>/<metadata.name>`。URL が変わっても同じデータ・同じ鍵なら同じワールド。
 - 署名に作者アカウント `author: handle@domain` を含めると、受け手は `https://<domain>/.well-known/webfinger?resource=acct:handle@domain` の links（rel `https://ubichill.com/ns/signing-keys`）から作者の鍵一覧 `{ account, issuedAt, keys: [{ publicKey, addedAt?, revokedAt? }] }` を取得し、署名鍵が取り消されていない鍵なら作者として表示し同一性を `acct:handle@domain/<metadata.name>` にする（鍵が変わっても変わらない）。一覧に無い・取り消された鍵なら作者は表示しない。

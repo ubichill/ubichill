@@ -40,7 +40,7 @@
 
 ### 署名ファイル（兄弟ファイル、lock と同じ分離方針）
 
-`<world>.sig.json`（本体ホストのワールドは `GET /api/v1/worlds/:id/sig`）:
+`<world>.sig.json`（本体ホストのワールドも `GET /api/v1/worlds/:id.sig.json` で同じ形）:
 
 ```json
 {
@@ -59,7 +59,7 @@
 
 | 対象 | 鍵 | 備考 |
 |---|---|---|
-| 本体で作成したワールド | 作者の鍵（ブラウザ生成、IndexedDB に取り出し不可で保存、バックアップファイルはユーザーが保管） | 保存のたびにブラウザが配信物に署名し `PUT /worlds/:id/sig`。サーバーは検証して保存するだけ |
+| 本体で作成したワールド | 作者の鍵（ブラウザ生成、IndexedDB に取り出し不可で保存、バックアップファイルはユーザーが保管） | 保存のたびにブラウザが内容に署名し、内容と一緒に `PUT /api/v1/worlds` で送る。サーバーは検証して保存するだけ |
 | CLI / GitHub で作るワールド | 作者の鍵（`ubichill keygen` / `ubichill sign`） | ブラウザのバックアップファイルと同じ PKCS8 形式で相互に使える |
 | `worlds/`（公式） | メンテナ鍵（`~/.config/ubichill/official-worlds.key`、リポジトリ外）で署名した `worlds/*.sig.json` をコミット | `pnpm sign:worlds` で明示的に署名（ビルド時の自動署名はしない）。CI の `verify:world-locks` が無効な署名を止める |
 | mod | 作者の鍵（必須方向で検討） | なりすまし防止と grants のキー化 |
@@ -79,8 +79,8 @@
 - `@ubichill/loader`: WebCrypto 実装 `webWorldCrypto` / `importSigningKeyPair`（取り出し不可）、CLI 実装 `ubichill keygen` / `ubichill sign [--check]`（subpath `sign-world`）。
 - backend: node:crypto の検証専用実装（`services/worldCrypto.ts`）。外部ワールドは YAML・lock・sig を並行取得して検証し、
   不正は `WorldIntegrityError`（`/worlds/resolve` は 422、キャッシュへのフォールバック無し）。
-  本体ワールドは `getHostedDocument`（ファイル/DB の生の値）を配信し、`/sig` は現在の内容に対して有効な署名だけ返す。
-  `PUT /worlds/:id/sig`（作成者のみ）は検証してから `worlds.signature` に保存、内容更新で外す。
+  本体ワールドは `getHostedDocument`（ファイル/DB の生の値）を `<id>.yaml` / `.lock.json` / `.sig.json` で配信する。
+  保存は `PUT /api/v1/worlds`（内容と署名を一緒に検証して保存）。
   連合ピア一覧の `identity` は自己申告なので捨てる。
 - frontend: `lib/signing`（鍵保管・保存時の自動署名）、プロフィールの鍵管理、`WorldIdentityBadge`（作者署名あり / 署名なし）。
 
@@ -142,13 +142,15 @@
   署名ありは外部と同じ規則で検証して公開中の版として保存（下書きは消す。ただし公開中の版と同じ内容への署名し直しでは残す）。
   署名なしは、公開中のワールドなら公開中の版を残して下書きに、そうでなければ署名なしで保存（公開されない）。
   署名には作者アカウントが要る（作者の付かない署名は公開されないので保存の時点で拒否する）。
-- **リポジトリのワールドは静的ファイル**: `/api/v1/repository/worlds/<file>`（YAML と兄弟の `.lock.json` / `.sig.json` を置いてあるとおりに返す。
-  CORS `*`）。GitHub Pages などの外部ホストと同じ配り方で、ファイルから読むのは取得の方法だけ。
+- **配り方も 1 つ**: 本体のワールド（DB・リポジトリとも）は `/api/v1/worlds/<id>.yaml` と兄弟の `<id>.lock.json` / `<id>.sig.json`
+  （CORS `*`）。GitHub Pages などの外部ホストと同じ形で、受け取る側の兄弟 URL の規則も 1 つ（拡張子の置き換え）。
+  リポジトリのワールドは置いてあるファイルをそのまま返し、DB のワールドは公開中の版をファイルにして返す（下書きは配らない）。
+  以前の形（`/api/v1/worlds/<id>` の YAML 応答・`/yaml`・`/lock`・`/sig`）は廃止。以前の URL と共有 URL（`/world/<id>`）は
+  `<id>.yaml` に正規化し、保存済みの参照（お気に入り・インスタンス）は移行 0013 で書き換える。
 - **特別な信用はしない**: `worlds/trusted-authors.json` を廃止した。公式アカウント（`ubichill@ubichill.com`）の鍵も、
   ほかの作者と同じく ubichill.com の公開環境で、WebFinger で確かめる。画面からの取り消しも同じく効く。
 - **lock は常に必須**: 配信場所・署名の有無に関係なく、lock に固定されていない mod は実行しない（`strictLock` / `isStrictLockWorld` を廃止）。
 - 制約: ネットワークに出られない開発環境では公式ワールドの作者を確認できず、一覧に出ない（URL からは入室時の確認付きで入れる）。
-  公式ワールドの URL は `/api/v1/repository/worlds/<name>.yaml` に変わった（お気に入りなどで旧 URL を参照していれば別のワールドになる）。
 
 ## mod 固定の徹底（2026-09-27）
 

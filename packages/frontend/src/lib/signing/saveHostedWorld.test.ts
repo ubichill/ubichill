@@ -6,7 +6,7 @@ import { saveWorldBundle } from './saveHostedWorld';
 import { signHostedWorld } from './signHostedWorld';
 
 /**
- * backend の PUT /api/v1/worlds・GET /:id?format=yaml・/:id/lock を模した偽サーバー（本物と同じ規則）。
+ * backend の PUT /api/v1/worlds・GET /:id.yaml・/:id.lock.json を模した偽サーバー（本物と同じ規則）。
  * - metadata.name で同じワールドかを決め、中身は書き換えない
  * - 署名があれば送られた値そのものに対して検証し、通らなければ 422
  * - 署名なしで公開中のワールドに送ると、公開中の版は残して下書きにする
@@ -36,10 +36,10 @@ function fakeServer() {
             db.set(definition.metadata.name, { id, definition, lock: body.lock, signature: null });
             return Response.json({ id, saved: 'unsigned' });
         }
-        const row = [...db.values()].find((r) => url.includes(`/worlds/${r.id}`));
+        const row = [...db.values()].find((r) => url.includes(`/worlds/${r.id}.`));
         if (!row) return Response.json({ error: 'World not found' }, { status: 404 });
-        if (url.endsWith('?format=yaml')) return new Response(yaml.stringify(row.definition));
-        if (url.endsWith('/lock')) return row.lock ? Response.json(row.lock) : new Response('{}', { status: 404 });
+        if (url.endsWith('.yaml')) return new Response(yaml.stringify(row.definition));
+        if (url.endsWith('.lock.json')) return row.lock ? Response.json(row.lock) : new Response('{}', { status: 404 });
         return new Response('{}', { status: 404 });
     }) as typeof fetch;
     return { db, deps: { apiBase: '', fetch: fetchImpl } };

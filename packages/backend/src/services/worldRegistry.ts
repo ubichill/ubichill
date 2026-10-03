@@ -47,6 +47,9 @@ const toResolution = (world: ResolvedWorld | undefined): WorldResolution =>
     world ? { ok: true, world } : { ok: false, reason: 'not-found', message: 'World not found' };
 
 /** 本体が配信するワールドの生の値（署名検証の対象そのもの）。 */
+/** 配るファイル。リポジトリのものはファイルのパス、DB のものは中身。 */
+export type WorldFile = { contentType: string } & ({ path: string } | { body: string });
+
 export interface HostedWorldDocument extends WorldDocument {
     lock: unknown;
     signature: unknown;
@@ -153,21 +156,16 @@ class WorldRegistry {
         return (process.env[ENV_KEYS.PUBLIC_BASE_URL] || SERVER_CONFIG.DEV_URL).replace(/\/$/, '');
     }
 
-    /** 本体がホストするワールドの正規 URL（＝一意キー）。 */
+    /**
+     * 本体がホストするワールドの正規 URL（＝一意キー）。DB のワールドもリポジトリのワールドも、外部ホストと同じく
+     * YAML の URL で、兄弟の `.lock.json` / `.sig.json` を同じ場所に置く。
+     */
     private selfWorldUrl(id: string): string {
-        return `${this._publicBaseUrl}/api/v1/worlds/${id}`;
+        return `${this._publicBaseUrl}/api/v1/worlds/${id}.yaml`;
     }
 
     private localSource(id: string): WorldSource {
         return { kind: WorldSourceKind.Local, url: this.selfWorldUrl(id), registryName: 'this instance' };
-    }
-
-    /**
-     * リポジトリ（worlds/）のワールドの正規 URL。静的ファイル（GitHub の raw と同じ形）として配り、
-     * 兄弟の `.lock.json` / `.sig.json` も同じ場所に置く（外部ホストと同じ配り方）。
-     */
-    private repositoryWorldUrl(fileName: string): string {
-        return `${this._publicBaseUrl}/api/v1/repository/worlds/${fileName}`;
     }
 
     // ================================================================
@@ -359,12 +357,12 @@ class WorldRegistry {
         return selfId ? this.getWorld(selfId) : undefined;
     }
 
-    /** self URL（自ホストの `.../api/v1/worlds/{id}`、旧 `.../{id}/yaml` 可）から id を取り出す。他ホストは undefined。 */
+    /** self URL（自ホストの `.../api/v1/worlds/{id}.yaml`）から id を取り出す。他ホストは undefined。 */
     private _idFromSelfUrl(url: string): string | undefined {
         try {
             const u = new URL(url);
             if (u.origin !== new URL(this._publicBaseUrl).origin) return undefined;
-            const m = /^\/api\/v1\/worlds\/(.+?)(?:\/yaml)?$/.exec(u.pathname);
+            const m = /^\/api\/v1\/worlds\/([^/]+)\.yaml$/.exec(u.pathname);
             return m?.[1];
         } catch {
             return undefined;
@@ -397,7 +395,7 @@ class WorldRegistry {
 
     /**
      * 本体が配信するワールドの実体（YAML / lock / 署名の生の値）。URL 配信・フェデレーション用。
-     * `/worlds/:id`(YAML)・`/lock`・`/sig` は必ずこれを返すこと（署名検証の対象と一致させるため）。
+     * 配信するファイル（{@link worldFile}）は必ずこれと一致させること（署名検証の対象と一致させるため）。
      */
     async getHostedDocument(worldId: string): Promise<HostedWorldDocument | undefined> {
         const file = this._hostedFiles.get(worldId);
@@ -630,17 +628,16 @@ class WorldRegistry {
                 lock: readSiblingJson(filePath, '.lock.json'),
                 signature: readSiblingJson(filePath, '.sig.json'),
             };
-            const url = this.repositoryWorldUrl(fileName);
-            const { resolved } = await resolveBundle(
-                hosted,
-                url,
-                { kind: WorldSourceKind.Local, url, registryName: 'this instance' },
-                {
-                    isAuthorKey,
-                    resolveAuthorName: resolveAuthorDisplayName,
-                    authorId: SYSTEM_AUTHOR_ID,
-                },
-            );
+            const name = (hosted.definition as { metadata?: { name?: unknown } } | null)?.metadata?.name;
+            if (typeof name !== 'string' || !/^[a-z0-9-]+$/.test(name)) {
+                throw new Error(`metadata.name は [a-z0-9-] で書いてください（${fileName}）`);
+            }
+            const url = this.selfWorldUrl(name);
+            const { resolved } = await resolveBundle(hosted, url, this.localSource(name), {
+                isAuthorKey,
+                resolveAuthorName: resolveAuthorDisplayName,
+                authorId: SYSTEM_AUTHOR_ID,
+            });
             const id = resolved.id;
             this._index.set(id, resolved);
             this._urlIndex.set(url, id);
@@ -653,15 +650,26 @@ class WorldRegistry {
         }
     }
 
-    /** リポジトリのワールドの静的ファイル（`/api/v1/repository/worlds/<file>`）。YAML と兄弟の lock・署名だけを、置いてあるとおりに返す。 */
-    repositoryFile(fileName: string): { path: string; contentType: string } | undefined {
-        const m = /^([a-z0-9-]+)\.(yaml|yml|lock\.json|sig\.json)$/.exec(fileName);
+    /**
+     * 本体が配るワールドのファイル（`/api/v1/worlds/<id>.yaml` と兄弟の `.lock.json` / `.sig.json`）。
+     * リポジトリのワールドは置いてあるファイルをそのまま、DB のワールドは保存した値をファイルにして返す（公開中の版。下書きは配らない）。
+     * 配り方はどちらも同じで、外部ホストとも同じ。無ければ undefined。
+     */
+    async worldFile(fileName: string): Promise<WorldFile | undefined> {
+        const m = /^([a-z0-9-]+)\.(yaml|lock\.json|sig\.json)$/.exec(fileName);
         if (!m) return undefined;
-        const filePath = path.join(this.worldsDir, fileName);
-        if (!fs.existsSync(filePath)) return undefined;
-        const contentType =
-            m[2] === 'yaml' || m[2] === 'yml' ? 'application/yaml; charset=utf-8' : 'application/json; charset=utf-8';
-        return { path: filePath, contentType };
+        const [, id, kind] = m as unknown as [string, string, 'yaml' | 'lock.json' | 'sig.json'];
+        const contentType = kind === 'yaml' ? 'application/yaml; charset=utf-8' : 'application/json; charset=utf-8';
+        const repositoryYaml = this._fileByName.get(id);
+        if (repositoryYaml) {
+            const filePath = kind === 'yaml' ? repositoryYaml : repositoryYaml.replace(/\.ya?ml$/i, `.${kind}`);
+            return fs.existsSync(filePath) ? { contentType, path: filePath } : undefined;
+        }
+        const record = await worldRepository.findByName(id);
+        if (!record) return undefined;
+        if (kind === 'yaml') return { contentType, body: yaml.stringify(record.definition) };
+        const value = kind === 'lock.json' ? record.lock : record.signature;
+        return value ? { contentType, body: JSON.stringify(value) } : undefined;
     }
 
     // ================================================================

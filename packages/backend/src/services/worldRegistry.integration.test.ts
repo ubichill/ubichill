@@ -58,16 +58,20 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
         await worldRegistry.initialize();
     });
 
-    it('リポジトリのワールドは静的ファイルの URL で配られ、外部と同じ規則で署名が確かめられる', async () => {
+    it('リポジトリのワールドも DB のワールドと同じ URL の形（<id>.yaml と兄弟ファイル）で配り、外部と同じ規則で確かめる', async () => {
         const official = await worldRegistry.getWorld('default');
         expect(official?.source.kind).toBe('local');
-        expect(official?.url).toMatch(/\/api\/v1\/repository\/worlds\/default\.yaml$/);
+        expect(official?.url).toMatch(/\/api\/v1\/worlds\/default\.yaml$/);
         // 署名そのものは有効。作者はほかの作者と同じく WebFinger で確かめる（リポジトリの記録で特別に信用しない）
         expect(official?.identity?.status).toBe('verified');
         expect(await worldRegistry.getWorldRecord('default')).toBeUndefined();
-        expect(worldRegistry.repositoryFile('default.sig.json')?.contentType).toMatch(/json/);
-        expect(worldRegistry.repositoryFile('../package.json')).toBeUndefined();
-        expect(worldRegistry.repositoryFile('trusted-authors.json')).toBeUndefined();
+        expect(await worldRegistry.worldFile('default.sig.json')).toMatchObject({
+            path: expect.stringMatching(/default\.sig\.json$/),
+        });
+        expect(await worldRegistry.worldFile('../package.json')).toBeUndefined();
+        expect(await worldRegistry.worldFile('trusted-authors.json')).toBeUndefined();
+        // 以前の URL・共有 URL も同じワールドを指す
+        expect((await worldRegistry.getWorldByUrl(official?.url.replace(/\.yaml$/, '') ?? ''))?.id).toBe('default');
     });
 
     it('getHostedDocument がリポジトリのワールドをファイルの生の値で返す', async () => {
@@ -108,6 +112,11 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
                 saved: 'published',
             });
             expect(await worldRegistry.getWorldSignature(first.world.id)).toEqual(sig);
+            // DB のワールドもリポジトリと同じ形のファイルで配る（公開中の版）
+            expect(first.world.url).toMatch(new RegExp(`/api/v1/worlds/${first.world.id}\\.yaml$`));
+            const sigFile = await worldRegistry.worldFile(`${first.world.id}.sig.json`);
+            expect(sigFile && 'body' in sigFile ? JSON.parse(sigFile.body) : undefined).toEqual(sig);
+            expect(await worldRegistry.worldFile(`${first.world.id}.lock.json`)).toBeUndefined();
             expect((await worldRegistry.getWorld(first.world.id))?.identity?.status).toBe('verified');
             // 鍵だけの署名（作者アカウントなし）は公開ルールを満たさないので一覧に出ない（例外なし）
             expect((await worldRegistry.listWorlds('local')).some((w) => w.id === first.world.id)).toBe(false);

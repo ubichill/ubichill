@@ -9,7 +9,7 @@ import { IntegritySchema } from './modLock.schema';
 // - 署名: 作者の ed25519 鍵で `{ version, alg, publicKey, name, contentHash, author? }` に署名する。
 //   作者アカウント（handle@domain）を確認できれば `acct:handle@domain/name`、できなければ
 //   `publicKey + metadata.name` がワールドの同一性（版をまたいで不変）。
-// - 署名はワールド YAML と分離し、兄弟ファイル（`<world>.sig.json` / `/worlds/:id/sig`）で配る。
+// - 署名はワールド YAML と分離し、兄弟ファイル（`<world>.sig.json`）で配る（本体も外部も同じ）。
 // 暗号化ではない。署名の有無に関わらずワールドは誰でも読める。
 // ============================================
 

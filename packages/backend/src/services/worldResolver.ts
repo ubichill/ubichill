@@ -51,8 +51,6 @@ export function toRawGitHubUrl(url: string): string {
 
 /** サイズ上限付きで URL からテキストを取得する。 */
 async function fetchText(url: string): Promise<string> {
-    // 他 ubichill インスタンスの /api/v1/worlds/:id は content negotiation で YAML を返す。
-    // raw GitHub 等は Accept を無視してファイルを返すので、常に yaml を要求して問題ない。
     const headers: Record<string, string> = { Accept: 'application/yaml, text/yaml, */*' };
     const token = registryToken();
     if (token && (url.includes('github') || url.includes('githubusercontent'))) {
@@ -88,17 +86,13 @@ type SiblingKind = 'lock' | 'sig';
 const SIBLING_FILE_EXT: Record<SiblingKind, string> = { lock: '.lock.json', sig: '.sig.json' };
 
 /**
- * ワールド URL から兄弟配信物（mod ロック / 署名）の URL を導出する。
- * どちらも YAML に埋めず別配信するため、解決側はここが指す先を best-effort で取りに行く。
- * - ubichill 機械 URL `.../api/v1/worlds/:id`(`/yaml`可) → `.../api/v1/worlds/:id/{lock,sig}`
- * - 直 YAML URL `*.yaml` / `*.yml`（GitHub raw 等）→ 拡張子を `.lock.json` / `.sig.json` に置換
- * - それ以外 → null（兄弟なし）
+ * ワールド URL から兄弟配信物（mod ロック / 署名）の URL を導出する。配り方は 1 つだけ:
+ * `<world>.yaml` の拡張子を `.lock.json` / `.sig.json` に置き換える（ubichill 本体も GitHub raw などの外部ホストも同じ）。
+ * YAML の URL でなければ null（兄弟なし）。
  */
 function siblingUrlFor(worldUrl: string, kind: SiblingKind): string | null {
     try {
         const u = new URL(worldUrl);
-        const api = /^(\/api\/v1\/worlds\/[^/]+?)(?:\/yaml)?\/?$/.exec(u.pathname);
-        if (api) return `${u.origin}${api[1]}/${kind}`;
         if (/\.ya?ml$/i.test(u.pathname)) {
             return `${u.origin}${u.pathname.replace(/\.ya?ml$/i, SIBLING_FILE_EXT[kind])}${u.search}`;
         }
@@ -381,27 +375,24 @@ async function enumerateIndexJson(indexUrl: string): Promise<{ url: string; sour
 }
 
 /**
- * 人間向けの共有 URL（`.../world/:id`）を機械 URL（`.../api/v1/worlds/:id`）に正規化する。
- * ユーザーはブラウザに見えている共有 URL をコピーするのが自然なので、それをそのまま受け付ける。
- * 既に機械 URL ならそのまま返す（`/yaml` サフィックスは除去）。単一ワールド URL でなければ入力を返す。
+ * ubichill 本体のワールドの URL を、配信している YAML の URL（`.../api/v1/worlds/:id.yaml`）に正規化する。
+ * 人間向けの共有 URL（`.../world/:id`）と以前の形（`.../api/v1/worlds/:id`、`.../:id/yaml`）を受け付ける。
+ * それ以外はそのまま返す。
  */
 export function normalizeWorldUrl(input: string): string {
     try {
         const u = new URL(input);
-        const share = /^\/world\/([^/]+)\/?$/.exec(u.pathname);
-        if (share) return `${u.origin}/api/v1/worlds/${share[1]}`;
-        const api = /^\/api\/v1\/worlds\/([^/]+?)(?:\/yaml)?\/?$/.exec(u.pathname);
-        if (api) return `${u.origin}/api/v1/worlds/${api[1]}`;
-        return input;
+        const m = /^\/(?:world|api\/v1\/worlds)\/([^/.]+)(?:\/yaml)?\/?$/.exec(u.pathname);
+        return m ? `${u.origin}/api/v1/worlds/${m[1]}.yaml` : input;
     } catch {
         return input;
     }
 }
 
-/** URL が単一ワールド（`.../api/v1/worlds/:id`）を指すか。 */
+/** URL が ubichill 本体の単一ワールド（`.../api/v1/worlds/:id.yaml`）を指すか。 */
 function isSingleWorldUrl(url: string): boolean {
     try {
-        return /^\/api\/v1\/worlds\/[^/]+$/.test(new URL(url).pathname);
+        return /^\/api\/v1\/worlds\/[^/]+\.ya?ml$/.test(new URL(url).pathname);
     } catch {
         return false;
     }
@@ -409,7 +400,7 @@ function isSingleWorldUrl(url: string): boolean {
 
 /**
  * レジストリソース URL を個々のワールド URL＋source に展開する。
- * - 共有/機械の単一ワールド URL（.../world/:id, .../api/v1/worlds/:id）→ 単一（kind: remote-instance）
+ * - ubichill 本体の単一ワールド URL（.../world/:id, .../api/v1/worlds/:id.yaml）→ 単一（kind: remote-instance）
  * - GitHub tree URL → Contents API 列挙（ETag キャッシュ、kind: github）
  * - インデックス JSON URL → CDN 取得（API 不使用、kind: registry）
  * - 直 YAML URL → 単一（kind: github or url）

@@ -14,8 +14,8 @@ export async function signHostedWorld(
     const { apiBase, fetch } = deps;
     const base = `${apiBase}/api/v1/worlds/${encodeURIComponent(worldId)}`;
     const [yamlRes, lockRes] = await Promise.all([
-        fetch(`${base}?format=yaml`, { headers: { Accept: 'application/yaml' }, cache: 'no-store' }),
-        fetch(`${base}/lock`, { headers: { Accept: 'application/json' }, cache: 'no-store' }),
+        fetch(`${base}.yaml`, { cache: 'no-store' }),
+        fetch(`${base}.lock.json`, { cache: 'no-store' }),
     ]);
     if (!yamlRes.ok) throw new Error(`ワールドを取得できません: ${await errorMessage(yamlRes)}`);
     if (!lockRes.ok && lockRes.status !== 404) throw new Error(`lock を取得できません: ${await errorMessage(lockRes)}`);

@@ -189,26 +189,27 @@ router.post('/:worldId/reload', requireAuth, requireAdmin, async (req, res) => {
 
 /**
  * GET /api/v1/worlds/:worldId
- * ワールドの**正規 URL**（{@link ResolvedWorld.url}）。content negotiation で返す形式を切り替える:
- *   - 既定 / `Accept: application/json` → ResolvedWorld(JSON)（フロント詳細表示用）
- *   - `Accept` が yaml を含む または `?format=yaml` → WorldDefinition(YAML)（連合/クローラ/エディタ用、公開）
- * official/ユーザー作成を問わず公開で配信する（他インスタンスが URL でワールド実体を取得できるように）。
+ * - `:id.yaml` / `:id.lock.json` / `:id.sig.json`: ワールドのファイル（正規 URL と兄弟）。DB のワールドもリポジトリのワールドも、
+ *   外部ホストと同じ形で公開で配る（他インスタンスやクローラが URL でワールドを取得し、同じ規則で検証する）
+ * - `:id`: 画面向けの ResolvedWorld(JSON)
  */
 router.get('/:worldId', optionalAuth, async (req, res) => {
     try {
         const worldId = req.params.worldId as string;
-        const wantsYaml = req.query.format === 'yaml' || /ya?ml/i.test(req.get('accept') ?? '');
-
-        if (wantsYaml) {
-            const hosted = await worldRegistry.getHostedDocument(worldId);
-            if (!hosted) {
-                res.status(404).json({ error: 'World not found' });
+        if (worldId.includes('.')) {
+            const file = await worldRegistry.worldFile(worldId);
+            if (!file) {
+                res.status(404).json({ error: 'Not found' });
                 return;
             }
-            res.type('text/yaml').send(yaml.stringify(hosted.definition));
+            res.set('Access-Control-Allow-Origin', '*');
+            // 更新・署名し直しをすぐ届ける（ETag で再検証する）
+            res.set('Cache-Control', 'no-cache');
+            res.type(file.contentType);
+            if ('path' in file) res.sendFile(file.path);
+            else res.send(file.body);
             return;
         }
-
         const world = await worldRegistry.getWorld(worldId);
         if (!world) {
             res.status(404).json({ error: 'World not found' });
@@ -286,70 +287,6 @@ router.get('/:worldId/definition', requireAuth, async (req, res) => {
         res.json(await worldRegistry.getEditorDefinition(worldId));
     } catch (error) {
         console.error('ワールド定義取得エラー:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-/**
- * GET /api/v1/worlds/:worldId/yaml
- * ワールドの定義を YAML テキストで取得する。
- *
- * これは「ワールド＝URL」の**正規 URL**（{@link ResolvedWorld.url}）が指す先であり、
- * 作者が置いた内容をそのまま公開で配信する（フェデレーション＝他インスタンスやクローラが URL でワールド実体を
- * 取得できるようにするため）。保存は PUT /api/v1/worlds で認可する。
- */
-router.get('/:worldId/yaml', optionalAuth, async (req, res) => {
-    try {
-        const hosted = await worldRegistry.getHostedDocument(req.params.worldId as string);
-        if (!hosted) {
-            res.status(404).json({ error: 'World not found' });
-            return;
-        }
-        res.type('text/yaml').send(yaml.stringify(hosted.definition));
-    } catch (error) {
-        console.error('ワールドYAML取得エラー:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-/**
- * GET /api/v1/worlds/:worldId/lock
- * ワールドの mod 完全性ロックを返す（兄弟ファイル配信）。
- *
- * lock は人間が書く YAML には埋めず、この公開エンドポイントで別配信する。
- * 他インスタンス/クローラが正規 URL から {@link lockUrlFor} で導出して取得する。
- * lock 未設定のワールドは 404（＝外部 provenance ではロード側で lock-missing 拒否になる）。
- */
-router.get('/:worldId/lock', optionalAuth, async (req, res) => {
-    try {
-        const hosted = await worldRegistry.getHostedDocument(req.params.worldId as string);
-        if (!hosted?.lock) {
-            res.status(404).json({ error: 'Lock not found' });
-            return;
-        }
-        res.json(hosted.lock);
-    } catch (error) {
-        console.error('ワールドlock取得エラー:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-/**
- * GET /api/v1/worlds/:worldId/sig
- * 作者署名を返す（兄弟ファイル配信）。サーバーは署名せず、作者が付けた署名をそのまま返す。
- * 無ければ 404（＝未署名）。受け取る側が {@link sigUrlFor} で導出して検証する（外部ホストと同じ）。
- */
-router.get('/:worldId/sig', optionalAuth, async (req, res) => {
-    try {
-        const sig = await worldRegistry.getWorldSignature(req.params.worldId as string);
-        if (!sig) {
-            res.status(404).json({ error: 'Signature not found' });
-            return;
-        }
-        res.set('Cache-Control', 'no-cache');
-        res.json(sig);
-    } catch (error) {
-        console.error('ワールド署名取得エラー:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

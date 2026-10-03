@@ -19,6 +19,9 @@ describe('worldShareUrl', () => {
     });
 
     it('viewerOrigin なしの旧呼び出しは従来形式を維持する', () => {
+        expect(worldShareUrl('https://peer.example/api/v1/worlds/chillwa.yaml')).toBe(
+            'https://peer.example/world/chillwa',
+        );
         expect(worldShareUrl('https://peer.example/api/v1/worlds/chillwa')).toBe('https://peer.example/world/chillwa');
         const raw = 'https://raw.githubusercontent.com/o/r/main/worlds/chillwa.yaml';
         expect(worldShareUrl(raw)).toBe(raw);
@@ -27,14 +30,14 @@ describe('worldShareUrl', () => {
 
 describe('worldOriginDomain', () => {
     it('ローカルは null（何も出さない）', () => {
-        const s: WorldSource = { kind: WorldSourceKind.Local, url: 'https://me.example/api/v1/worlds/w1' };
+        const s: WorldSource = { kind: WorldSourceKind.Local, url: 'https://me.example/api/v1/worlds/w1.yaml' };
         expect(worldOriginDomain(s)).toBeNull();
     });
 
     it('リモートインスタンスは originInstance の host を返す', () => {
         const s: WorldSource = {
             kind: WorldSourceKind.RemoteInstance,
-            url: 'https://peer.example/api/v1/worlds/w1',
+            url: 'https://peer.example/api/v1/worlds/w1.yaml',
             originInstance: 'https://peer.example',
         };
         expect(worldOriginDomain(s)).toBe('peer.example');

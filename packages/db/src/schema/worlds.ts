@@ -13,7 +13,7 @@ export const worlds = pgTable(
         authorId: text('author_id')
             .notNull()
             .references(() => users.id, { onDelete: 'cascade' }),
-        /** URL の ID（`/api/v1/worlds/:name`）。サーバーが作る。作者の付けた名前とは別。 */
+        /** URL の ID（`/api/v1/worlds/:name.yaml`）。サーバーが作る。作者の付けた名前とは別。 */
         name: varchar('name', { length: 255 }).notNull().unique(),
         /**
          * 作者が付けた名前（metadata.name）。ホストは書き換えず、作者 + この名前でワールドを区別する
