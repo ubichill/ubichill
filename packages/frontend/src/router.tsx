@@ -49,6 +49,15 @@ export function AppRouter() {
                                 </ProtectedRoute>
                             }
                         />
+                        {/* ユーザーページ（/@ID） */}
+                        <Route
+                            path="/:at"
+                            element={
+                                <ProtectedRoute>
+                                    <UserPage />
+                                </ProtectedRoute>
+                            }
+                        />
                         {/* ワールド新規作成 */}
                         <Route
                             path="/worlds/new"

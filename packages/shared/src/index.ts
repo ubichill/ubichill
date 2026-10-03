@@ -84,6 +84,9 @@ export interface ServerToClientEvents {
     /** エラー通知 */
     error: (message: string) => void;
 
+    /** 同じアカウントが別のタブ・端末で参加したので、この接続は切られる（1 アカウント 1 接続） */
+    'session:replaced': () => void;
+
     // ============================================
     // UEP Events (Server -> Client)
     // ============================================
@@ -295,6 +298,7 @@ export * from './mod/vnode';
 export * from './schemas';
 export * from './user/cliAuth';
 export * from './user/favoritesVisibility';
+export * from './user/friends';
 export * from './user/handle';
 export * from './user/signingKeys';
 export * from './world/identity';

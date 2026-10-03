@@ -1,4 +1,4 @@
-import { type Instance, type WorldListItem, worldShareUrl, worldSourceLabel } from '@ubichill/shared';
+import { type AccessType, type Instance, type WorldListItem, worldShareUrl, worldSourceLabel } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
@@ -6,6 +6,7 @@ import { createInstance, fetchInstances, fetchWorld } from '@/lib/instancesApi';
 import { useSession } from '@/lib/session';
 import { localWorldPagePath } from '@/lib/worldRef';
 import { css } from '@/styled-system/css';
+import { AccessTypeSelect } from './AccessTypeSelect';
 import { AuthorAccountLabel } from './AuthorAccountLabel';
 import { FavoriteButton } from './FavoriteButton';
 import { InstanceCard } from './InstanceCard';
@@ -69,13 +70,15 @@ export function WorldDetailModal({
         };
     }, [worldId, initialWorld]);
 
+    const [accessType, setAccessType] = useState<AccessType>('public');
+
     const handleCreate = async () => {
         if (creating) return;
         setCreating(true);
         setError(null);
         const worldRef = world?.url ?? worldId;
         try {
-            const instance = await createInstance(worldRef);
+            const instance = await createInstance({ worldId: worldRef, access: { type: accessType } });
             onJoinInstance(instance.id, instance.world.id, {
                 thumbnail: instance.world.thumbnail,
                 displayName: instance.world.displayName,
@@ -267,6 +270,7 @@ export function WorldDetailModal({
                                         </svg>
                                         {copied ? 'コピーしました！' : '共有URLをコピー'}
                                     </button>
+                                    <AccessTypeSelect value={accessType} onChange={setAccessType} />
                                     <button
                                         type="button"
                                         onClick={handleCreate}

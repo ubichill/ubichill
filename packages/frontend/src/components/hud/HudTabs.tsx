@@ -1,14 +1,17 @@
 import { useState } from 'react';
+import { useNotifications } from '@/components/notifications';
 import { css } from '@/styled-system/css';
 import { FriendsTab } from './tabs/FriendsTab';
 import { HomeTab } from './tabs/HomeTab';
 import { InstanceTab } from './tabs/InstanceTab';
+import { NotificationsTab } from './tabs/NotificationsTab';
 import { ProfileTab } from './tabs/ProfileTab';
 import { SettingsTab } from './tabs/SettingsTab';
+import { SocialTab } from './tabs/SocialTab';
 import type { JoinInstanceHandler } from './tabs/shared';
 import { WorldsTab } from './tabs/WorldsTab';
 
-export type HudTabId = 'instance' | 'home' | 'worlds' | 'friends' | 'profile' | 'settings';
+export type HudTabId = 'instance' | 'home' | 'worlds' | 'social' | 'friends' | 'notifications' | 'profile' | 'settings';
 
 interface TabDef {
     id: HudTabId;
@@ -79,6 +82,25 @@ const TABS: TabDef[] = [
         ),
     },
     {
+        id: 'social',
+        label: 'ソーシャル',
+        icon: (
+            <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            >
+                <circle cx="12" cy="12" r="3" />
+                <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1" />
+            </svg>
+        ),
+    },
+    {
         id: 'friends',
         label: 'フレンド',
         icon: (
@@ -96,6 +118,25 @@ const TABS: TabDef[] = [
                 <circle cx="9" cy="7" r="4" />
                 <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
                 <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+            </svg>
+        ),
+    },
+    {
+        id: 'notifications',
+        label: '通知',
+        icon: (
+            <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            >
+                <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+                <path d="M13.7 21a2 2 0 0 1-3.4 0" />
             </svg>
         ),
     },
@@ -164,6 +205,8 @@ export function HudTabs({
     onReturnToLobby,
 }: HudTabsProps) {
     const [activeTab, setActiveTab] = useState<HudTabId>(initialTab);
+    const notifications = useNotifications();
+    const badges: Partial<Record<HudTabId, number>> = { notifications: notifications.items.length };
 
     const visibleTabs = TABS.filter((tab) => !tab.instanceOnly || currentInstanceId);
 
@@ -195,7 +238,13 @@ export function HudTabs({
                 {activeTab === 'worlds' && (
                     <WorldsTab onJoinInstance={onJoinInstance} currentInstanceId={currentInstanceId} />
                 )}
-                {activeTab === 'friends' && <FriendsTab />}
+                {activeTab === 'social' && (
+                    <SocialTab currentInstanceId={currentInstanceId} onJoinInstance={onJoinInstance} />
+                )}
+                {activeTab === 'friends' && <FriendsTab onFriendshipChange={() => void notifications.reload()} />}
+                {activeTab === 'notifications' && (
+                    <NotificationsTab notifications={notifications} onNavigate={onNavigate} />
+                )}
                 {activeTab === 'profile' && <ProfileTab onNavigate={onNavigate} onJoinInstance={onJoinInstance} />}
                 {activeTab === 'settings' && <SettingsTab />}
             </div>
@@ -223,8 +272,8 @@ export function HudTabs({
                         border: '1px solid',
                         borderColor: 'hudBorder',
                         overflow: 'hidden',
-                        p: '2',
-                        gap: '2',
+                        p: { base: '1.5', md: '2' },
+                        gap: { base: '0.5', md: '2' },
                     })}
                 >
                     {visibleTabs.map((tab) => (
@@ -252,8 +301,40 @@ export function HudTabs({
                                 },
                             })}
                         >
-                            {tab.icon}
-                            <span className={css({ fontSize: '11px', fontWeight: '700' })}>{tab.label}</span>
+                            <span className={css({ position: 'relative', display: 'inline-flex' })}>
+                                {tab.icon}
+                                {(badges[tab.id] ?? 0) > 0 && (
+                                    <span
+                                        className={css({
+                                            position: 'absolute',
+                                            top: '-4px',
+                                            right: '-8px',
+                                            minWidth: '16px',
+                                            height: '16px',
+                                            px: '1',
+                                            borderRadius: 'full',
+                                            bg: 'errorText',
+                                            color: 'white',
+                                            fontSize: '10px',
+                                            fontWeight: '700',
+                                            lineHeight: '16px',
+                                            textAlign: 'center',
+                                        })}
+                                    >
+                                        {badges[tab.id]}
+                                    </span>
+                                )}
+                            </span>
+                            <span
+                                className={css({
+                                    fontSize: { base: '10px', md: '11px' },
+                                    fontWeight: '700',
+                                    whiteSpace: 'nowrap',
+                                    letterSpacing: { base: '-0.02em', md: 'normal' },
+                                })}
+                            >
+                                {tab.label}
+                            </span>
                         </button>
                     ))}
                 </div>
