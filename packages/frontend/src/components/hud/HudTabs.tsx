@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useNotifications } from '@/components/notifications';
 import { css } from '@/styled-system/css';
-import { FriendsTab } from './tabs/FriendsTab';
 import { HomeTab } from './tabs/HomeTab';
 import { InstanceTab } from './tabs/InstanceTab';
 import { NotificationsTab } from './tabs/NotificationsTab';
@@ -11,7 +10,7 @@ import { SocialTab } from './tabs/SocialTab';
 import type { JoinInstanceHandler } from './tabs/shared';
 import { WorldsTab } from './tabs/WorldsTab';
 
-export type HudTabId = 'instance' | 'home' | 'worlds' | 'social' | 'friends' | 'notifications' | 'profile' | 'settings';
+export type HudTabId = 'instance' | 'home' | 'worlds' | 'social' | 'notifications' | 'profile' | 'settings';
 
 interface TabDef {
     id: HudTabId;
@@ -19,6 +18,8 @@ interface TabDef {
     icon: React.ReactNode;
     /** インスタンス内（currentInstanceId あり）でのみ表示するタブ */
     instanceOnly?: boolean;
+    /** タブバーに出さない（ほかの入口から開く） */
+    hidden?: boolean;
 }
 
 const TABS: TabDef[] = [
@@ -95,25 +96,6 @@ const TABS: TabDef[] = [
                 strokeLinecap="round"
                 strokeLinejoin="round"
             >
-                <circle cx="12" cy="12" r="3" />
-                <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1" />
-            </svg>
-        ),
-    },
-    {
-        id: 'friends',
-        label: 'フレンド',
-        icon: (
-            <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-            >
                 <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
                 <circle cx="9" cy="7" r="4" />
                 <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
@@ -141,8 +123,10 @@ const TABS: TabDef[] = [
         ),
     },
     {
+        // タブバーには出さない（自分のユーザー名を押すと開く）
         id: 'profile',
         label: 'マイページ',
+        hidden: true,
         icon: (
             <svg
                 width="24"
@@ -190,11 +174,14 @@ interface HudTabsProps {
     onNavigate?: () => void;
     /** ロビーへ戻る操作（インスタンス内のみ。ホーム/現在地タブにボタンを出す） */
     onReturnToLobby?: () => void;
+    /** 表示するタブを外から決める（自分のユーザー名からマイページを開くため）。省略時は内部で持つ */
+    activeTab?: HudTabId;
+    onTabChange?: (tab: HudTabId) => void;
 }
 
 /**
  * ロビーとインスタンス内オーバーレイで共通利用する HUD ナビゲーション。
- * 現在地 / ホーム / ワールド / フレンド / マイページを遷移なしのタブで切り替える。
+ * 現在地 / ホーム / ワールド / ソーシャル / 通知 / 設定を遷移なしのタブで切り替える（マイページは自分のユーザー名から開く）。
  * タブバーは PC では上部、スマホでは下部に表示する。
  */
 export function HudTabs({
@@ -203,12 +190,16 @@ export function HudTabs({
     initialTab = 'home',
     onNavigate,
     onReturnToLobby,
+    activeTab: controlledTab,
+    onTabChange,
 }: HudTabsProps) {
-    const [activeTab, setActiveTab] = useState<HudTabId>(initialTab);
+    const [internalTab, setInternalTab] = useState<HudTabId>(initialTab);
+    const activeTab = controlledTab ?? internalTab;
+    const setActiveTab = onTabChange ?? setInternalTab;
     const notifications = useNotifications();
     const badges: Partial<Record<HudTabId, number>> = { notifications: notifications.items.length };
 
-    const visibleTabs = TABS.filter((tab) => !tab.instanceOnly || currentInstanceId);
+    const visibleTabs = TABS.filter((tab) => !tab.hidden && (!tab.instanceOnly || currentInstanceId));
 
     return (
         <>
@@ -239,9 +230,12 @@ export function HudTabs({
                     <WorldsTab onJoinInstance={onJoinInstance} currentInstanceId={currentInstanceId} />
                 )}
                 {activeTab === 'social' && (
-                    <SocialTab currentInstanceId={currentInstanceId} onJoinInstance={onJoinInstance} />
+                    <SocialTab
+                        currentInstanceId={currentInstanceId}
+                        onJoinInstance={onJoinInstance}
+                        onFriendshipChange={() => void notifications.reload()}
+                    />
                 )}
-                {activeTab === 'friends' && <FriendsTab onFriendshipChange={() => void notifications.reload()} />}
                 {activeTab === 'notifications' && (
                     <NotificationsTab notifications={notifications} onNavigate={onNavigate} />
                 )}

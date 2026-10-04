@@ -1,7 +1,9 @@
 import { useSocket } from '@ubichill/react';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { LobbyAccountMenu } from '@/components/lobby/LobbyAccountMenu';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
+import { useSession } from '@/lib/session';
 import { css } from '@/styled-system/css';
 import { type HudTabId, HudTabs } from './HudTabs';
 
@@ -16,13 +18,15 @@ interface HudOverlayProps {
 
 /**
  * インスタンス内から開く HUD オーバーレイ。
- * ホーム / ワールド / フレンド / マイページのタブをロビーと共通化し、別インスタンスへの移動も提供する。
+ * タブはロビーと共通（マイページは右上の自分のユーザー名から開く）。別インスタンスへの移動も提供する。
  * 背景（ポップアップの周囲）をクリックすると閉じる。
  */
 export function HudOverlay({ onClose, currentInstanceId, initialTab = 'worlds' }: HudOverlayProps) {
     const navigate = useNavigate();
     const confirm = useConfirm();
     const { leaveWorld } = useSocket();
+    const { data: session } = useSession();
+    const [tab, setTab] = useState<HudTabId>(initialTab);
 
     // フェードインアニメーション用の状態
     const [visible, setVisible] = useState(false);
@@ -89,10 +93,18 @@ export function HudOverlay({ onClose, currentInstanceId, initialTab = 'worlds' }
             }}
             onClick={onClose}
         >
+            <div onClick={(e) => e.stopPropagation()}>
+                <LobbyAccountMenu
+                    userName={session?.user.name ?? ''}
+                    items={[]}
+                    onUserClick={() => setTab('profile')}
+                />
+            </div>
             <HudTabs
                 onJoinInstance={handleJoinInstance}
                 currentInstanceId={currentInstanceId}
-                initialTab={initialTab}
+                activeTab={tab}
+                onTabChange={setTab}
                 onNavigate={onClose}
                 onReturnToLobby={() => void handleReturnToLobby()}
             />
