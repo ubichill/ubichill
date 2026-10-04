@@ -118,6 +118,8 @@ export interface UserSummary {
     name: string;
     handle: string | null;
     profileImageUrl: string | null;
+    /** 自己紹介（書いていなければ null） */
+    bio: string | null;
 }
 
 /** 検索結果・プロフィール（自分との関係付き）。 */

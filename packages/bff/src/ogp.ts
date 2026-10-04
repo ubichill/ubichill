@@ -84,8 +84,8 @@ interface UserMetaInput {
 }
 
 /**
- * ユーザーページ（`/@ID`）の <head>。名前・アイコン・説明を出す（説明は作者アカウントと公開しているワールドの数から作る）。
- * アイコンが無ければサイトのアイコン。
+ * ユーザーページ（`/@ID`）の <head>。名前・アイコン・説明を出す。説明は本人が書いた自己紹介で、
+ * 書いていなければ作者アカウントと公開しているワールドの数から作る。アイコンが無ければサイトのアイコン。
  */
 export function buildUserMetaTags({
     user,
@@ -99,11 +99,13 @@ export function buildUserMetaTags({
     const account = `@${user?.handle ?? handle}@${domain}`;
     const name = user?.name ?? account;
     const title = user ? `${name}（${account}）` : account;
-    const desc = user
-        ? `${name}（${account}）の ubichill のプロフィール。${
-              worldCount !== undefined ? `公開しているワールド ${worldCount} 件。` : ''
-          }`
-        : `${account} — ubichill のユーザー`;
+    const desc = user?.bio
+        ? user.bio.replace(/\s+/g, ' ').slice(0, 200)
+        : user
+          ? `${name}（${account}）の ubichill のプロフィール。${
+                worldCount !== undefined ? `公開しているワールド ${worldCount} 件。` : ''
+            }`
+          : `${account} — ubichill のユーザー`;
     const image = user?.profileImageUrl ?? `${publicBaseUrl}/icon.png`;
     const jsonLd = escJsonForScript(
         JSON.stringify({

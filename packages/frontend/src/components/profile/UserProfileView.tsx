@@ -10,6 +10,7 @@ import { API_BASE } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { authorSignerFor, browserFetch, signHostedWorld } from '@/lib/signing';
 import { css } from '@/styled-system/css';
+import { BioSection } from './BioSection';
 import { DisplayNameEditor } from './DisplayNameEditor';
 import { FavoriteWorldsSection } from './FavoriteWorldsSection';
 import { FederationSection } from './FederationSection';
@@ -28,6 +29,7 @@ interface UserProfile {
     passwordManagedBySecret?: boolean;
     isAdmin?: boolean;
     profileImageUrl: string | null;
+    bio?: string | null;
 }
 
 interface OwnedWorld {
@@ -260,6 +262,11 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                                 onChanged={(name) => setProfile({ ...profile, name, displayNameConflict: false })}
                             />
                         )}
+                        <BioSection
+                            bio={profile.bio ?? null}
+                            editable={isOwnPage}
+                            onChanged={(bio) => setProfile({ ...profile, bio })}
+                        />
                     </div>
                 </div>
             )}

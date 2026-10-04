@@ -9,6 +9,7 @@ import {
 } from '@ubichill/db';
 import type { ResolvedWorld } from '@ubichill/shared';
 import {
+    BioSchema,
     canViewFavorites,
     DisplayNameSchema,
     displayNameKey,
@@ -205,12 +206,24 @@ router.get('/me', requirePublisher, async (req, res) => {
         // パスワードを Secret で管理している（画面から変更できない）
         passwordManagedBySecret: user.handle === OFFICIAL_HANDLE,
         isAdmin: isAdminHandle(user.handle),
+        bio: user.bio ?? null,
         // API トークン（CLI・CI）で呼んだときの公開環境（ubichill whoami で表示する）
         ...(req.publishingEnvironment
             ? { publishingEnvironment: { id: req.publishingEnvironment.id, kind: req.publishingEnvironment.kind } }
             : {}),
         profileImageUrl: user.profileImageUrl ?? user.image ?? null,
     });
+});
+
+// 自己紹介を書く（空にすると「書いていない」に戻る）。
+router.put('/me/bio', requireAuth, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    const parsed = BioSchema.safeParse(typeof req.body?.bio === 'string' ? req.body.bio : '');
+    if (!parsed.success) {
+        return res.status(400).json({ error: parsed.error.issues[0]?.message ?? '自己紹介が不正です' });
+    }
+    const updated = await userRepository.setBio(req.user.id, parsed.data);
+    return res.json({ bio: updated?.bio ?? null });
 });
 
 // パスワードを変更する。現在のパスワードの確認は better-auth に任せ、他の端末のセッションは無効にする。
@@ -463,6 +476,7 @@ router.get('/:userId', async (req, res) => {
         handle: user.handle ?? null,
         author: user.handle ? selfAccount(user.handle) : null,
         profileImageUrl: user.profileImageUrl ?? user.image ?? null,
+        bio: user.bio ?? null,
     });
 });
 

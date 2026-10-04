@@ -63,6 +63,18 @@ export async function setMyDisplayName(name: string): Promise<{ name: string }> 
     return (await res.json()) as { name: string };
 }
 
+/** 自己紹介を書く（空にすると書いていない状態に戻る）。 */
+export async function setMyBio(bio: string): Promise<{ bio: string | null }> {
+    const res = await fetch(`${API_BASE}/api/v1/users/me/bio`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ bio }),
+    });
+    if (!res.ok) throw new Error(await errorMessage(res));
+    return (await res.json()) as { bio: string | null };
+}
+
 /** ID を設定する（変更不可。未設定のアカウントのみ）。 */
 export async function setMyHandle(handle: string): Promise<{ handle: string; author: string }> {
     const res = await fetch(`${API_BASE}/api/v1/users/me/handle`, {

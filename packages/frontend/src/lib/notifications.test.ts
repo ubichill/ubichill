@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { groupNotifications, NOTIFICATION_TABS, notificationsFrom, relativeTime } from './notifications';
 
-const request = (id: string, requestedAt: string) => ({ id, name: id, handle: id, profileImageUrl: null, requestedAt });
+const request = (id: string, requestedAt: string) => ({
+    id,
+    name: id,
+    handle: id,
+    profileImageUrl: null,
+    bio: null,
+    requestedAt,
+});
 
 describe('notificationsFrom / groupNotifications', () => {
     const items = notificationsFrom({

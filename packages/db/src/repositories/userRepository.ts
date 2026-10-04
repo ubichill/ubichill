@@ -65,6 +65,11 @@ export const userRepository = {
         return results[0];
     },
 
+    async setBio(id: string, bio: string | null): Promise<UserRecord | undefined> {
+        const results = await db.update(users).set({ bio, updatedAt: new Date() }).where(eq(users.id, id)).returning();
+        return results[0];
+    },
+
     async setPasswordChangeRequired(id: string, required: boolean): Promise<void> {
         await db.update(users).set({ passwordChangeRequired: required, updatedAt: new Date() }).where(eq(users.id, id));
     },

@@ -32,6 +32,7 @@ const summaryOf = (u: UserRecord): UserSummary => ({
     name: u.name,
     handle: u.handle ?? null,
     profileImageUrl: u.profileImageUrl ?? u.image ?? null,
+    bio: u.bio ?? null,
 });
 
 async function summariesOf(ids: readonly string[]): Promise<UserSummary[]> {
