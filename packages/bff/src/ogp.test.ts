@@ -1,6 +1,6 @@
 import type { WorldListItem } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
-import { buildJsonLd, buildMetaTags } from './ogp';
+import { buildJsonLd, buildMetaTags, buildUserMetaTags } from './ogp';
 
 const baseWorld: WorldListItem = {
     id: 'w1',
@@ -80,5 +80,46 @@ describe('buildMetaTags', () => {
         });
         expect(tags).toContain(`<link rel="canonical" href="${pageUrl}">`);
         expect(tags).toContain(`<meta property="og:url" content="${pageUrl}">`);
+    });
+});
+
+describe('buildUserMetaTags', () => {
+    const base = {
+        handle: 'youkan',
+        publicBaseUrl: 'https://ubichill.com',
+        pageUrl: 'https://ubichill.com/@youkan',
+        enableCrawl: true,
+    };
+    const user = { id: 'u1', name: 'ようかん', handle: 'youkan', profileImageUrl: null };
+
+    it('名前・作者アカウント・公開しているワールドの数で説明を作り、アイコンが無ければサイトのアイコン', () => {
+        const tags = buildUserMetaTags({ ...base, user, worldCount: 3 });
+        expect(tags).toContain('<meta property="og:title" content="ようかん（@youkan@ubichill.com）">');
+        expect(tags).toContain('公開しているワールド 3 件');
+        expect(tags).toContain('<meta property="og:image" content="https://ubichill.com/icon.png">');
+        expect(tags).toContain('<meta property="og:type" content="profile">');
+        expect(tags).toContain('<link rel="canonical" href="https://ubichill.com/@youkan">');
+    });
+
+    it('アイコンがあればそれを使う', () => {
+        const tags = buildUserMetaTags({
+            ...base,
+            user: { ...user, profileImageUrl: 'https://cdn.example/a.png' },
+            worldCount: 0,
+        });
+        expect(tags).toContain('<meta property="og:image" content="https://cdn.example/a.png">');
+    });
+
+    it('見つからないユーザーは ID だけを出す（ワールドの数は出さない）', () => {
+        const tags = buildUserMetaTags({ ...base, user: undefined, worldCount: undefined });
+        expect(tags).toContain('<meta property="og:title" content="@youkan@ubichill.com">');
+        expect(tags).not.toContain('公開しているワールド');
+    });
+
+    it('表示名の HTML と </script> をエスケープする', () => {
+        const evil = { ...user, name: '"><script>alert(1)</script>' };
+        const tags = buildUserMetaTags({ ...base, user: evil, worldCount: 1 });
+        expect(tags).not.toContain('"><script>');
+        expect(tags.split('<script type="application/ld+json">')[1]).not.toMatch(/<\/script>.*<\/script>/s);
     });
 });
