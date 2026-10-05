@@ -1,7 +1,7 @@
 import type { WorldSigningKey } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
 import yaml from 'yaml';
-import { type PublishDeps, publish } from './publish.ts';
+import { confirmEnvironment, type PublishDeps, publish } from './publish.ts';
 
 const key: WorldSigningKey = { publicKey: 'K'.repeat(43), sign: async () => 'S'.repeat(86) };
 const crypto = { sha256Base64: async () => 'h'.repeat(43) + '=', verifyEd25519: async () => true };
@@ -102,5 +102,30 @@ describe('publish（外部ホスト向け --out）', () => {
         expect(requests).toEqual([]);
         expect(files['dist/w.yaml']).toBe(worldYaml);
         expect(JSON.parse(files['dist/w.sig.json'] ?? '{}')).toMatchObject({ author: 'youkan@ubichill.com', name: 'my-world' });
+    });
+});
+
+describe('confirmEnvironment（--out の前にサーバーで確かめる）', () => {
+    const run = (res: { status: number; body: Record<string, unknown> } | Error) =>
+        confirmEnvironment(
+            { request: async () => (res instanceof Error ? Promise.reject(res) : res) },
+            { account: 'youkan@ubichill.com', server: 'https://ubichill.com' },
+        );
+
+    it('アカウントが一致すれば確認できた（サーバーに最終利用が残る）', async () => {
+        await expect(run({ status: 200, body: { author: 'youkan@ubichill.com' } })).resolves.toBe('confirmed');
+    });
+
+    it('公開環境が取り消されている（401）なら止める', async () => {
+        await expect(run({ status: 401, body: { code: 'invalid-token' } })).rejects.toThrow(/取り消されている/);
+    });
+
+    it('サーバーのアカウントが認証情報と違えば止める', async () => {
+        await expect(run({ status: 200, body: { author: 'other@ubichill.com' } })).rejects.toThrow(/一致しません/);
+    });
+
+    it('サーバーに届かない・止まっているときは unreachable（呼び出し側は警告して続ける）', async () => {
+        await expect(run(new Error('ECONNREFUSED'))).resolves.toBe('unreachable');
+        await expect(run({ status: 503, body: {} })).resolves.toBe('unreachable');
     });
 });

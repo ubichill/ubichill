@@ -24,7 +24,7 @@ import {
     resolveCredential,
     saveCredential,
 } from './credentials.ts';
-import { publish } from './publish.ts';
+import { confirmEnvironment, publish } from './publish.ts';
 
 export const DEFAULT_SERVER = 'https://ubichill.com';
 
@@ -189,6 +189,10 @@ export async function runPublish(argv: string[]): Promise<void> {
         parseYaml: (text: string) => yaml.parse(text) as unknown,
         log: (message: string) => console.log(message),
     };
+    // 外部ホスト向けはサーバーに何も送らないので、署名の前にサーバーで公開環境とアカウントを確かめる
+    if (argValue(argv, 'out') !== undefined && (await confirmEnvironment(deps, credential)) === 'unreachable') {
+        console.warn(`⚠ ${credential.server} に確認できませんでした（署名は続けます。公開環境が取り消されていないか後で確かめてください）`);
+    }
     for (const worldPath of worldPaths) {
         if (!argv.includes('--no-install')) {
             // mod を固定する（install と同じ）。署名は下でログインしたアカウントで行うので、ここでは署名しない
