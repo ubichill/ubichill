@@ -375,7 +375,9 @@ export function PublishingSection({
                                     </div>
                                     <p className={css({ fontSize: '12px', color: 'textMuted', mt: '0.5' })}>
                                         {KIND_LABEL[env.kind]} ・ 追加 {formatDate(env.createdAt)} ・{' '}
-                                        {env.lastUsedAt ? `最終利用 ${formatDate(env.lastUsedAt)}` : '未使用'}
+                                        <span title="サーバーで公開・確認した日時（外部ホスト向けの ubichill publish --out も、署名の前にサーバーで確認します）">
+                                            {env.lastUsedAt ? `最終利用 ${formatDate(env.lastUsedAt)}` : '未使用'}
+                                        </span>
                                         {env.revokedAt && ` ・ 取り消し ${formatDate(env.revokedAt)}`}
                                         {env.revokeReason &&
                                             `（${env.revokeReason === 'lost' ? '紛失' : '漏えい・心当たりなし'}）`}

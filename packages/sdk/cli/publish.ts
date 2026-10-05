@@ -56,6 +56,33 @@ function readLocal(deps: PublishDeps, worldPath: string) {
     return { yamlText, lockText, lock, doc: { definition: deps.parseYaml(yamlText), lock } as WorldDocument };
 }
 
+/**
+ * 外部ホスト向けに署名する前に、サーバーで公開環境とアカウントを確かめる（`--out` はサーバーに何も送らないため）。
+ * - 確かめるとサーバーに「最終利用」が残る（使っている CI が「未使用」「長く使われていません」に見えないように）
+ * - 公開環境が取り消されていれば止める（取り消した鍵の署名は、配信先で作者が付かない）
+ * - サーバーのアカウントが認証情報と違えば止める
+ * サーバーに届かないときは `unreachable`（署名はサーバーなしでも正しく作れるので、呼び出し側は警告して続ける）。
+ */
+export async function confirmEnvironment(
+    deps: Pick<PublishDeps, 'request'>,
+    credential: Pick<Credential, 'account' | 'server'>,
+): Promise<'confirmed' | 'unreachable'> {
+    const res = await deps.request('GET', '/api/v1/users/me').catch(() => undefined);
+    if (!res || res.status >= 500) return 'unreachable';
+    if (res.status === 401) {
+        throw new Error(
+            'この公開環境は取り消されているか、トークンが無効です。ubichill login（CI は ubichill ci create）でやり直してください',
+        );
+    }
+    if (res.status !== 200) throw errorOf(res, 'アカウントを確認できませんでした');
+    if (res.body.author !== credential.account) {
+        throw new Error(
+            `${credential.server} のアカウント（${String(res.body.author ?? 'ID 未設定')}）が認証情報（${credential.account}）と一致しません`,
+        );
+    }
+    return 'confirmed';
+}
+
 /** 固定と作者付きの署名を済ませた組。 */
 async function signedBundle(deps: PublishDeps, options: PublishOptions) {
     const local = readLocal(deps, options.worldPath);
