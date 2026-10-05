@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import { type HudTabId, HudTabs } from '@/components/hud/HudTabs';
 import { type AccountMenuItem, LobbyAccountMenu } from '@/components/lobby/LobbyAccountMenu';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
@@ -14,7 +14,9 @@ export function LobbyPage() {
     const { data: session } = useSession();
 
     const userName = session?.user?.name ?? '';
-    const [tab, setTab] = useState<HudTabId>('home');
+    // ユーザーページの「プロフィールを編集」などから、開くタブを受け取る
+    const location = useLocation();
+    const [tab, setTab] = useState<HudTabId>((location.state as { hudTab?: HudTabId } | null)?.hudTab ?? 'home');
 
     const handleJoinInstance = (
         instanceId: string,

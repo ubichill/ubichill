@@ -142,7 +142,7 @@ export async function runCiCreate(argv: string[]): Promise<void> {
     console.log(`\n✅ CI 用の公開環境「${name}」を作りました（@${credential.account}）。`);
     console.log(`次の値を CI の Secret（環境変数 ${CREDENTIALS_ENV}）に設定してください。この場限りの表示で、どこにも保存しません。\n`);
     console.log(encodeCiCredentials(credential));
-    console.log('\n漏れたら、プロフィールの「公開できるブラウザ・CLI・CI」で取り消し、ubichill ci create で作り直してください。');
+    console.log('\n漏れたら、設定の「公開」（公開できるブラウザ・CLI・CI）で取り消し、ubichill ci create で作り直してください。');
 }
 
 function requireCredential(argv: string[]): Credential {

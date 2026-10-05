@@ -65,7 +65,7 @@ export function InstanceHUD() {
                 />
             </button>
 
-            {/* タブ付きオーバーレイ（ホーム / 現在地 / ワールド / フレンド / マイページ） */}
+            {/* タブ付きオーバーレイ（ホーム / 現在地 / ワールド / ソーシャル / 通知 / 設定。マイページは自分のユーザー名から） */}
             {open && instanceId && (
                 <HudOverlay currentInstanceId={instanceId} initialTab="home" onClose={() => setOpen(false)} />
             )}

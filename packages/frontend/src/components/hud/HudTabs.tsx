@@ -5,7 +5,7 @@ import { HomeTab } from './tabs/HomeTab';
 import { InstanceTab } from './tabs/InstanceTab';
 import { NotificationsTab } from './tabs/NotificationsTab';
 import { ProfileTab } from './tabs/ProfileTab';
-import { SettingsTab } from './tabs/SettingsTab';
+import { type SettingsSection, SettingsTab } from './tabs/SettingsTab';
 import { SocialTab } from './tabs/SocialTab';
 import type { JoinInstanceHandler } from './tabs/shared';
 import { WorldsTab } from './tabs/WorldsTab';
@@ -197,6 +197,7 @@ export function HudTabs({
     const activeTab = controlledTab ?? internalTab;
     const setActiveTab = onTabChange ?? setInternalTab;
     const notifications = useNotifications();
+    const [settingsSection, setSettingsSection] = useState<SettingsSection>('profile');
     const badges: Partial<Record<HudTabId, number>> = { notifications: notifications.items.length };
 
     const visibleTabs = TABS.filter((tab) => !tab.hidden && (!tab.instanceOnly || currentInstanceId));
@@ -239,8 +240,24 @@ export function HudTabs({
                 {activeTab === 'notifications' && (
                     <NotificationsTab notifications={notifications} onNavigate={onNavigate} />
                 )}
-                {activeTab === 'profile' && <ProfileTab onNavigate={onNavigate} onJoinInstance={onJoinInstance} />}
-                {activeTab === 'settings' && <SettingsTab />}
+                {activeTab === 'profile' && (
+                    <ProfileTab
+                        onNavigate={onNavigate}
+                        onJoinInstance={onJoinInstance}
+                        onEditProfile={() => {
+                            setSettingsSection('profile');
+                            setActiveTab('settings');
+                        }}
+                    />
+                )}
+                {activeTab === 'settings' && (
+                    <SettingsTab
+                        section={settingsSection}
+                        onSectionChange={setSettingsSection}
+                        onNavigate={onNavigate}
+                        onJoinInstance={onJoinInstance}
+                    />
+                )}
             </div>
 
             <div

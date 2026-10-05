@@ -74,7 +74,12 @@ export function UserPage() {
             {handle && handleState && !handleState.userId && (
                 <p className={css({ color: 'errorText' })}>@{handle} というユーザーは見つかりませんでした。</p>
             )}
-            {(!handle || handleState?.userId) && <UserProfileView userId={userId ?? undefined} />}
+            {(!handle || handleState?.userId) && (
+                <UserProfileView
+                    userId={userId ?? undefined}
+                    onEditProfile={() => navigate('/', { state: { hudTab: 'settings' } })}
+                />
+            )}
         </div>
     );
 }

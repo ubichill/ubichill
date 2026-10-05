@@ -87,7 +87,7 @@ export function browserEnvironmentName(userAgent: string | undefined): string {
 export function newEnvironmentNotice(args: {
     displayName: string;
     environmentName: string;
-    profileUrl: string;
+    siteUrl: string;
     at: Date;
 }) {
     return {
@@ -97,7 +97,7 @@ export function newEnvironmentNotice(args: {
 あなたのアカウントに、ワールドを公開できる環境「${args.environmentName}」が追加されました（${args.at.toISOString()}）。
 
 心当たりがない場合は、すぐに次を行ってください。
-1. ${args.profileUrl} の「公開できるブラウザ・CLI・CI」で、その環境を「漏えい・心当たりのない環境」として取り消す
+1. ${args.siteUrl} を開き、設定の「公開」（公開できるブラウザ・CLI・CI）で、その環境を「漏えい・心当たりのない環境」として取り消す
 2. パスワードを変更し、ほかの端末をすべてログアウトする
 
 心当たりがある場合は、このメールは無視してかまいません。`,

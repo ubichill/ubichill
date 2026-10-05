@@ -346,8 +346,7 @@ router.post('/me/publishing-environments', requireFreshAuth, async (req, res) =>
         const notice = newEnvironmentNotice({
             displayName: req.user.name,
             environmentName: created.name,
-            profileUrl: new URL(`/user/${req.user.id}`, process.env[ENV_KEYS.PUBLIC_BASE_URL] || SERVER_CONFIG.DEV_URL)
-                .href,
+            siteUrl: new URL('/', process.env[ENV_KEYS.PUBLIC_BASE_URL] || SERVER_CONFIG.DEV_URL).href,
             at: created.createdAt,
         });
         void sendAccountNotice(req.user.email, notice.subject, notice.text);
