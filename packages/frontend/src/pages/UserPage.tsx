@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router';
 import { UserProfileView } from '@/components/profile';
-import { fetchUserByHandle } from '@/lib/socialApi';
+import { fetchUserByHandle, fetchUserWithFriendship } from '@/lib/socialApi';
 import { css } from '@/styled-system/css';
 
 /** ユーザーページ（/user/:userId と /@ID）。 */
@@ -21,6 +21,20 @@ export function UserPage() {
             ctrl.cancelled = true;
         };
     }, [handle]);
+
+    // /user/:id で開いたら、共有に使える /@ID に置き換える（アドレスバーの URL をそのまま共有できるように）
+    useEffect(() => {
+        if (!routeUserId) return;
+        const ctrl = { cancelled: false };
+        fetchUserWithFriendship(routeUserId)
+            .then((u) => {
+                if (!ctrl.cancelled && u.handle) navigate(`/@${u.handle}`, { replace: true });
+            })
+            .catch(() => undefined);
+        return () => {
+            ctrl.cancelled = true;
+        };
+    }, [routeUserId, navigate]);
 
     // /:at は /@ID だけ。それ以外の 1 段のパスはロビーへ
     if (at !== undefined && !handle) return <Navigate to="/" replace />;

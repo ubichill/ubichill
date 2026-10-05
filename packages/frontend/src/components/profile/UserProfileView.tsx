@@ -5,7 +5,6 @@ import { WorldDetailModal } from '@/components/lobby/WorldDetailModal';
 import { UserSocialBar } from '@/components/social';
 import { API_BASE } from '@/lib/api';
 import { useSession } from '@/lib/session';
-import { userPagePath } from '@/lib/userPath';
 import { css, cva } from '@/styled-system/css';
 import { BioSection } from './BioSection';
 import { FavoriteWorldsSection } from './FavoriteWorldsSection';
@@ -60,7 +59,7 @@ interface UserProfileViewProps {
 
 /**
  * プロフィール（ほかの人に見えるとおり。自分のページでも同じ内容）。ページ（/@ID・/user/:id）と HUD のマイページで使う。
- * 自分のページには「URL をコピー」と「プロフィールを編集」を出す。編集は設定で行う。
+ * 自分のページには「プロフィールを編集」を出す（編集は設定で行う）。共有はページの URL（/@ID）をそのまま使う。
  */
 export function UserProfileView({ userId, onNavigate, onJoinInstance, onEditProfile }: UserProfileViewProps) {
     const navigate = useNavigate();
@@ -73,7 +72,6 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance, onEditProf
     const [selectedWorldId, setSelectedWorldId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
-    const [copied, setCopied] = useState(false);
 
     const joinInstance = (
         instanceId: string,
@@ -121,12 +119,6 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance, onEditProf
         );
     }
 
-    const copyUrl = () => {
-        if (!profile) return;
-        void navigator.clipboard.writeText(`${window.location.origin}${userPagePath(profile)}`);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-    };
     const selectedWorld = worlds.find((w) => w.id === selectedWorldId);
 
     return (
@@ -190,25 +182,6 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance, onEditProf
                             </div>
                             {isOwnPage && (
                                 <div className={css({ display: 'flex', gap: '2', flexWrap: 'wrap' })}>
-                                    <button
-                                        type="button"
-                                        className={actionButton({ tone: 'secondary' })}
-                                        onClick={copyUrl}
-                                    >
-                                        <svg
-                                            width="14"
-                                            height="14"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="2"
-                                            aria-hidden
-                                        >
-                                            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                                            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-                                        </svg>
-                                        {copied ? 'コピーしました' : 'URL をコピー'}
-                                    </button>
                                     {onEditProfile && (
                                         <button
                                             type="button"

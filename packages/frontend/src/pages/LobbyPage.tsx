@@ -92,7 +92,11 @@ export function LobbyPage() {
                 <span className={css({ fontSize: '15px', fontWeight: '700', lineHeight: 1 })}>Ubichill</span>
             </div>
 
-            <LobbyAccountMenu userName={userName} items={accountMenuItems} onUserClick={() => setTab('profile')} />
+            <LobbyAccountMenu
+                userName={userName}
+                items={accountMenuItems}
+                onUserClick={() => session && navigate(`/user/${encodeURIComponent(session.user.id)}`)}
+            />
 
             {/* スマホは上部にロゴ/アカウントがあるため余白を確保。PC はタブバーが上部に来るため不要 */}
             <div className={css({ h: { base: '14', md: '0' }, flexShrink: 0 })} />
