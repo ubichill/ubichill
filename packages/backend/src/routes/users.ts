@@ -9,6 +9,7 @@ import {
 } from '@ubichill/db';
 import type { ResolvedWorld } from '@ubichill/shared';
 import {
+    BioSchema,
     canViewFavorites,
     DisplayNameSchema,
     displayNameKey,
@@ -205,12 +206,24 @@ router.get('/me', requirePublisher, async (req, res) => {
         // パスワードを Secret で管理している（画面から変更できない）
         passwordManagedBySecret: user.handle === OFFICIAL_HANDLE,
         isAdmin: isAdminHandle(user.handle),
+        bio: user.bio ?? null,
         // API トークン（CLI・CI）で呼んだときの公開環境（ubichill whoami で表示する）
         ...(req.publishingEnvironment
             ? { publishingEnvironment: { id: req.publishingEnvironment.id, kind: req.publishingEnvironment.kind } }
             : {}),
-        profileImageUrl: user.profileImageUrl ?? user.image ?? null,
+        profileImageUrl: user.profileImageUrl ?? null,
     });
+});
+
+// 自己紹介を書く（空にすると「書いていない」に戻る）。
+router.put('/me/bio', requireAuth, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    const parsed = BioSchema.safeParse(typeof req.body?.bio === 'string' ? req.body.bio : '');
+    if (!parsed.success) {
+        return res.status(400).json({ error: parsed.error.issues[0]?.message ?? '自己紹介が不正です' });
+    }
+    const updated = await userRepository.setBio(req.user.id, parsed.data);
+    return res.json({ bio: updated?.bio ?? null });
 });
 
 // パスワードを変更する。現在のパスワードの確認は better-auth に任せ、他の端末のセッションは無効にする。
@@ -333,8 +346,7 @@ router.post('/me/publishing-environments', requireFreshAuth, async (req, res) =>
         const notice = newEnvironmentNotice({
             displayName: req.user.name,
             environmentName: created.name,
-            profileUrl: new URL(`/user/${req.user.id}`, process.env[ENV_KEYS.PUBLIC_BASE_URL] || SERVER_CONFIG.DEV_URL)
-                .href,
+            siteUrl: new URL('/', process.env[ENV_KEYS.PUBLIC_BASE_URL] || SERVER_CONFIG.DEV_URL).href,
             at: created.createdAt,
         });
         void sendAccountNotice(req.user.email, notice.subject, notice.text);
@@ -462,7 +474,8 @@ router.get('/:userId', async (req, res) => {
         name: user.name,
         handle: user.handle ?? null,
         author: user.handle ? selfAccount(user.handle) : null,
-        profileImageUrl: user.profileImageUrl ?? user.image ?? null,
+        profileImageUrl: user.profileImageUrl ?? null,
+        bio: user.bio ?? null,
     });
 });
 

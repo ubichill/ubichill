@@ -4,7 +4,7 @@ import { InstanceCard } from '@/components/lobby/InstanceCard';
 import { InstanceDetailOverlay } from '@/components/lobby/InstanceDetailOverlay';
 import { useInstances } from '@/components/lobby/useInstances';
 import { css } from '@/styled-system/css';
-import { cardBase, cardStyle, type JoinInstanceHandler, sectionHeading, tabPanel } from './shared';
+import { cardBase, type JoinInstanceHandler, sectionHeading, tabPanel } from './shared';
 
 interface HomeTabProps {
     onJoinInstance: JoinInstanceHandler;
@@ -52,22 +52,6 @@ export function HomeTab({ onJoinInstance, currentInstanceId, onReturnToLobby }: 
                     ロビーへ戻る
                 </button>
             )}
-            <div className={cardStyle}>
-                <h2 className={sectionHeading}>オンラインのフレンド</h2>
-                <div
-                    className={css({
-                        p: '6',
-                        bg: 'secondary',
-                        borderRadius: '12px',
-                        textAlign: 'center',
-                        color: 'textMuted',
-                        fontSize: '15px',
-                    })}
-                >
-                    Coming Soon...
-                </div>
-            </div>
-
             <div className={css(cardBase, { flex: 1 })}>
                 <h2 className={sectionHeading}>アクティブなインスタンス</h2>
                 {loading && instances.length === 0 ? (

@@ -309,7 +309,7 @@ export function CliAuthorizePage() {
                 {view.status === 'done' && (
                     <p className={css({ fontSize: '14px', color: 'successText', lineHeight: '1.6' })}>
                         承認しました。CLI
-                        に戻ってください。追加した公開環境はプロフィールの「公開できるブラウザ・CLI・CI」で確認・取り消しできます。
+                        に戻ってください。追加した公開環境は設定の「公開」（公開できるブラウザ・CLI・CI）で確認・取り消しできます。
                     </p>
                 )}
             </div>

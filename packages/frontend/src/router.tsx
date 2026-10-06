@@ -40,15 +40,10 @@ export function AppRouter() {
                         <Route path="/world/:worldId" element={<WorldPage />} />
                         {/* 共有 URL（/@handle/name）。作者の ID と名前で決まる */}
                         <Route path="/:at/:name" element={<WorldPage />} />
-                        {/* ユーザープロフィール（URL から閲覧。マイページは HUD タブで表示） */}
-                        <Route
-                            path="/user/:userId"
-                            element={
-                                <ProtectedRoute>
-                                    <UserPage />
-                                </ProtectedRoute>
-                            }
-                        />
+                        {/* ユーザーのプロフィール（共有できるよう、ログインしなくても見られる。操作するときだけログイン） */}
+                        <Route path="/user/:userId" element={<UserPage />} />
+                        {/* ユーザーページ（/@ID）。ログインしなくても見られる */}
+                        <Route path="/:at" element={<UserPage />} />
                         {/* ワールド新規作成 */}
                         <Route
                             path="/worlds/new"

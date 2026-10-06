@@ -5,12 +5,13 @@ import {
     HANDLE_PATTERN,
     type Instance,
     SERVER_CONFIG,
+    type UserSummary,
     type WorldListItem,
     worldShareUrl,
 } from '@ubichill/shared';
 import express from 'express';
 import { esc } from './html';
-import { buildMetaTags } from './ogp';
+import { buildMetaTags, buildUserMetaTags } from './ogp';
 import { renderWorldShell } from './worldShell';
 
 /**
@@ -159,6 +160,52 @@ app.get('/@:handle/:name', async (req, res, next) => {
         res.type('html').send(renderShell(tags, bodyShell));
     } catch (err) {
         console.error('OGP/SSR 生成失敗:', err);
+        res.type('html').send(readIndexHtml());
+    }
+});
+
+/** ユーザーページの <head>（名前・アイコン・説明）を付けた SPA シェルを返す。 */
+async function sendUserPage(res: express.Response, user: UserSummary | undefined, handle: string): Promise<void> {
+    const worlds = user
+        ? await fetchJson<{ worlds?: unknown[] }>(`${CORE_API_URL}/api/v1/users/${encodeURIComponent(user.id)}/worlds`)
+        : undefined;
+    const pageUrl = `${PUBLIC_BASE_URL}${user?.handle ? `/@${user.handle}` : user ? `/user/${encodeURIComponent(user.id)}` : `/@${handle}`}`;
+    const tags = buildUserMetaTags({
+        user,
+        handle,
+        worldCount: worlds?.worlds?.length,
+        publicBaseUrl: PUBLIC_BASE_URL,
+        pageUrl,
+        enableCrawl: ENABLE_CRAWL,
+    });
+    res.type('html').send(renderShell(tags, ''));
+}
+
+// ユーザーページ（/@ID）。共有できるよう、ログインなしでも名前・アイコン・説明のプレビューを出す。
+app.get('/@:handle', async (req, res, next) => {
+    const handle = req.params.handle.toLowerCase();
+    if (!HANDLE_PATTERN.test(handle)) {
+        next();
+        return;
+    }
+    try {
+        const user = await fetchJson<UserSummary>(`${CORE_API_URL}/api/v1/social/users/by-handle/${handle}`);
+        await sendUserPage(res, user, handle);
+    } catch (err) {
+        console.error('ユーザーページの OGP 生成失敗:', err);
+        res.type('html').send(readIndexHtml());
+    }
+});
+
+// ユーザーページ（内部 ID）。正規の URL は ID があれば /@ID
+app.get('/user/:userId', async (req, res) => {
+    try {
+        const user = await fetchJson<UserSummary>(
+            `${CORE_API_URL}/api/v1/social/users/${encodeURIComponent(req.params.userId)}`,
+        );
+        await sendUserPage(res, user, user?.handle ?? req.params.userId);
+    } catch (err) {
+        console.error('ユーザーページの OGP 生成失敗:', err);
         res.type('html').send(readIndexHtml());
     }
 });

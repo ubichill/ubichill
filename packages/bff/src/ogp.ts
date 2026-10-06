@@ -5,7 +5,7 @@
  * 値の HTML/JSON エスケープはここで完結させ、呼び出し側は結果を <head> に流すだけ。
  */
 
-import type { WorldListItem } from '@ubichill/shared';
+import type { UserSummary, WorldListItem } from '@ubichill/shared';
 import { esc, escJsonForScript } from './html';
 
 interface MetaInput {
@@ -67,6 +67,73 @@ export function buildMetaTags({ world, worldId, publicBaseUrl, pageUrl, enableCr
         image ? `<meta name="twitter:image:alt" content="${esc(name)}">` : '',
         enableCrawl ? '' : '<meta name="robots" content="noindex, nofollow">',
         `<script type="application/ld+json">${buildJsonLd(world, name, desc, url)}</script>`,
+    ]
+        .filter(Boolean)
+        .join('\n');
+}
+
+interface UserMetaInput {
+    user: UserSummary | undefined;
+    /** 見つからなかったときにも出す ID（`/@ID` の ID） */
+    handle: string;
+    /** 公開しているワールドの数（分からなければ undefined） */
+    worldCount: number | undefined;
+    publicBaseUrl: string;
+    pageUrl: string;
+    enableCrawl: boolean;
+}
+
+/**
+ * ユーザーページ（`/@ID`）の <head>。名前・アイコン・説明を出す。説明は本人が書いた自己紹介で、
+ * 書いていなければ作者アカウントと公開しているワールドの数から作る。アイコンが無ければサイトのアイコン。
+ */
+export function buildUserMetaTags({
+    user,
+    handle,
+    worldCount,
+    publicBaseUrl,
+    pageUrl,
+    enableCrawl,
+}: UserMetaInput): string {
+    const domain = publicBaseUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    const account = `@${user?.handle ?? handle}@${domain}`;
+    const name = user?.name ?? account;
+    const title = user ? `${name}（${account}）` : account;
+    const desc = user?.bio
+        ? user.bio.replace(/\s+/g, ' ').slice(0, 200)
+        : user
+          ? `${name}（${account}）の ubichill のプロフィール。${
+                worldCount !== undefined ? `公開しているワールド ${worldCount} 件。` : ''
+            }`
+          : `${account} — ubichill のユーザー`;
+    const image = user?.profileImageUrl ?? `${publicBaseUrl}/icon.png`;
+    const jsonLd = escJsonForScript(
+        JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'ProfilePage',
+            url: pageUrl,
+            inLanguage: 'ja',
+            mainEntity: { '@type': 'Person', name, alternateName: account, image, url: pageUrl },
+        }),
+    );
+    return [
+        `<title>${esc(title)} — ubichill</title>`,
+        `<meta name="description" content="${esc(desc)}">`,
+        `<link rel="canonical" href="${esc(pageUrl)}">`,
+        '<meta property="og:type" content="profile">',
+        '<meta property="og:site_name" content="ubichill">',
+        `<meta property="og:title" content="${esc(title)}">`,
+        `<meta property="og:description" content="${esc(desc)}">`,
+        `<meta property="og:url" content="${esc(pageUrl)}">`,
+        `<meta property="og:image" content="${esc(image)}">`,
+        `<meta property="og:image:alt" content="${esc(name)}">`,
+        user?.handle ? `<meta property="profile:username" content="${esc(user.handle)}">` : '',
+        '<meta name="twitter:card" content="summary">',
+        `<meta name="twitter:title" content="${esc(title)}">`,
+        `<meta name="twitter:description" content="${esc(desc)}">`,
+        `<meta name="twitter:image" content="${esc(image)}">`,
+        enableCrawl ? '' : '<meta name="robots" content="noindex, nofollow">',
+        `<script type="application/ld+json">${jsonLd}</script>`,
     ]
         .filter(Boolean)
         .join('\n');

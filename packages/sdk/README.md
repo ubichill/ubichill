@@ -124,7 +124,7 @@ npx ubichill install world.yaml
     外部ホスト向けに書き出すのも同じ「world.yaml・lock・署名」の組で、本体は中身を書き換えない。同じ作者・同じ
     `metadata.name` なら同じワールドの更新になる（`metadata.name` を変えると別のワールドになる）。
     `--out=<dir>` なら GitHub Pages など外部に置く `world.yaml` / `.lock.json` / `.sig.json` を書き出す。
-  - 公開環境はプロフィールの「公開できるブラウザ・CLI・CI」で一覧・取り消しできる。取り消すと、その鍵の署名はすべて作者が外れる。
+  - 公開環境は設定の「公開」（公開できるブラウザ・CLI・CI）で一覧・取り消しできる。取り消すと、その鍵の署名はすべて作者が外れる。
 
 ```bash
 npx ubichill login                   # ブラウザで承認（--device: 別の端末で承認）

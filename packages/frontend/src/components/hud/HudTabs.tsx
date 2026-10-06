@@ -1,14 +1,16 @@
 import { useState } from 'react';
+import { useNotifications } from '@/components/notifications';
 import { css } from '@/styled-system/css';
-import { FriendsTab } from './tabs/FriendsTab';
 import { HomeTab } from './tabs/HomeTab';
 import { InstanceTab } from './tabs/InstanceTab';
+import { NotificationsTab } from './tabs/NotificationsTab';
 import { ProfileTab } from './tabs/ProfileTab';
-import { SettingsTab } from './tabs/SettingsTab';
+import { type SettingsSection, SettingsTab } from './tabs/SettingsTab';
+import { SocialTab } from './tabs/SocialTab';
 import type { JoinInstanceHandler } from './tabs/shared';
 import { WorldsTab } from './tabs/WorldsTab';
 
-export type HudTabId = 'instance' | 'home' | 'worlds' | 'friends' | 'profile' | 'settings';
+export type HudTabId = 'instance' | 'home' | 'worlds' | 'social' | 'notifications' | 'profile' | 'settings';
 
 interface TabDef {
     id: HudTabId;
@@ -16,6 +18,8 @@ interface TabDef {
     icon: React.ReactNode;
     /** インスタンス内（currentInstanceId あり）でのみ表示するタブ */
     instanceOnly?: boolean;
+    /** タブバーに出さない（ほかの入口から開く） */
+    hidden?: boolean;
 }
 
 const TABS: TabDef[] = [
@@ -79,8 +83,8 @@ const TABS: TabDef[] = [
         ),
     },
     {
-        id: 'friends',
-        label: 'フレンド',
+        id: 'social',
+        label: 'ソーシャル',
         icon: (
             <svg
                 width="24"
@@ -100,8 +104,29 @@ const TABS: TabDef[] = [
         ),
     },
     {
+        id: 'notifications',
+        label: '通知',
+        icon: (
+            <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            >
+                <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+                <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+            </svg>
+        ),
+    },
+    {
+        // タブバーには出さない（自分のユーザー名を押すと開く）
         id: 'profile',
         label: 'マイページ',
+        hidden: true,
         icon: (
             <svg
                 width="24"
@@ -149,11 +174,14 @@ interface HudTabsProps {
     onNavigate?: () => void;
     /** ロビーへ戻る操作（インスタンス内のみ。ホーム/現在地タブにボタンを出す） */
     onReturnToLobby?: () => void;
+    /** 表示するタブを外から決める（自分のユーザー名からマイページを開くため）。省略時は内部で持つ */
+    activeTab?: HudTabId;
+    onTabChange?: (tab: HudTabId) => void;
 }
 
 /**
  * ロビーとインスタンス内オーバーレイで共通利用する HUD ナビゲーション。
- * 現在地 / ホーム / ワールド / フレンド / マイページを遷移なしのタブで切り替える。
+ * 現在地 / ホーム / ワールド / ソーシャル / 通知 / 設定を遷移なしのタブで切り替える（マイページは自分のユーザー名から開く）。
  * タブバーは PC では上部、スマホでは下部に表示する。
  */
 export function HudTabs({
@@ -162,10 +190,17 @@ export function HudTabs({
     initialTab = 'home',
     onNavigate,
     onReturnToLobby,
+    activeTab: controlledTab,
+    onTabChange,
 }: HudTabsProps) {
-    const [activeTab, setActiveTab] = useState<HudTabId>(initialTab);
+    const [internalTab, setInternalTab] = useState<HudTabId>(initialTab);
+    const activeTab = controlledTab ?? internalTab;
+    const setActiveTab = onTabChange ?? setInternalTab;
+    const notifications = useNotifications();
+    const [settingsSection, setSettingsSection] = useState<SettingsSection>('profile');
+    const badges: Partial<Record<HudTabId, number>> = { notifications: notifications.items.length };
 
-    const visibleTabs = TABS.filter((tab) => !tab.instanceOnly || currentInstanceId);
+    const visibleTabs = TABS.filter((tab) => !tab.hidden && (!tab.instanceOnly || currentInstanceId));
 
     return (
         <>
@@ -195,9 +230,34 @@ export function HudTabs({
                 {activeTab === 'worlds' && (
                     <WorldsTab onJoinInstance={onJoinInstance} currentInstanceId={currentInstanceId} />
                 )}
-                {activeTab === 'friends' && <FriendsTab />}
-                {activeTab === 'profile' && <ProfileTab onNavigate={onNavigate} onJoinInstance={onJoinInstance} />}
-                {activeTab === 'settings' && <SettingsTab />}
+                {activeTab === 'social' && (
+                    <SocialTab
+                        currentInstanceId={currentInstanceId}
+                        onJoinInstance={onJoinInstance}
+                        onFriendshipChange={() => void notifications.reload()}
+                    />
+                )}
+                {activeTab === 'notifications' && (
+                    <NotificationsTab notifications={notifications} onNavigate={onNavigate} />
+                )}
+                {activeTab === 'profile' && (
+                    <ProfileTab
+                        onNavigate={onNavigate}
+                        onJoinInstance={onJoinInstance}
+                        onEditProfile={() => {
+                            setSettingsSection('profile');
+                            setActiveTab('settings');
+                        }}
+                    />
+                )}
+                {activeTab === 'settings' && (
+                    <SettingsTab
+                        section={settingsSection}
+                        onSectionChange={setSettingsSection}
+                        onNavigate={onNavigate}
+                        onJoinInstance={onJoinInstance}
+                    />
+                )}
             </div>
 
             <div
@@ -223,8 +283,8 @@ export function HudTabs({
                         border: '1px solid',
                         borderColor: 'hudBorder',
                         overflow: 'hidden',
-                        p: '2',
-                        gap: '2',
+                        p: { base: '1.5', md: '2' },
+                        gap: { base: '0.5', md: '2' },
                     })}
                 >
                     {visibleTabs.map((tab) => (
@@ -252,8 +312,40 @@ export function HudTabs({
                                 },
                             })}
                         >
-                            {tab.icon}
-                            <span className={css({ fontSize: '11px', fontWeight: '700' })}>{tab.label}</span>
+                            <span className={css({ position: 'relative', display: 'inline-flex' })}>
+                                {tab.icon}
+                                {(badges[tab.id] ?? 0) > 0 && (
+                                    <span
+                                        className={css({
+                                            position: 'absolute',
+                                            top: '-4px',
+                                            right: '-8px',
+                                            minWidth: '16px',
+                                            height: '16px',
+                                            px: '1',
+                                            borderRadius: 'full',
+                                            bg: 'errorText',
+                                            color: 'white',
+                                            fontSize: '10px',
+                                            fontWeight: '700',
+                                            lineHeight: '16px',
+                                            textAlign: 'center',
+                                        })}
+                                    >
+                                        {badges[tab.id]}
+                                    </span>
+                                )}
+                            </span>
+                            <span
+                                className={css({
+                                    fontSize: { base: '10px', md: '11px' },
+                                    fontWeight: '700',
+                                    whiteSpace: 'nowrap',
+                                    letterSpacing: { base: '-0.02em', md: 'normal' },
+                                })}
+                            >
+                                {tab.label}
+                            </span>
                         </button>
                     ))}
                 </div>

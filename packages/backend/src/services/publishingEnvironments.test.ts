@@ -99,12 +99,12 @@ describe('newEnvironmentNotice（乗っ取りに気付けるように）', () =>
         const notice = newEnvironmentNotice({
             displayName: 'ようかん',
             environmentName: 'Chrome on Windows',
-            profileUrl: 'https://ubichill.com/user/u1',
+            siteUrl: 'https://ubichill.com/',
             at: new Date('2026-10-01T00:00:00Z'),
         });
         expect(notice.subject).toContain('新しい公開環境');
         expect(notice.text).toContain('Chrome on Windows');
-        expect(notice.text).toContain('https://ubichill.com/user/u1');
+        expect(notice.text).toContain('https://ubichill.com/ を開き、設定の「公開」');
         expect(notice.text).toContain('心当たりのない環境');
         expect(notice.text).toContain('パスワード');
         expect(notice.text).toContain('ログアウト');

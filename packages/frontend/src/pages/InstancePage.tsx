@@ -69,13 +69,17 @@ export function InstancePage() {
             // ロビー・共有 URL・他人のインスタンスなど入口は複数あるが、必ずここを通る。
             // 作者署名を検証できないワールドは、入室（= mod 実行）前に本人の確認を取る。
             // 取得できなければ署名の有無を確認できないので参加しない（確認を飛ばして入らない）。
-            const instance = await fetchInstance(id).catch(() => null);
+            const fetched = await fetchInstance(id).then(
+                (instance) => ({ instance }),
+                (e: unknown) => ({ error: e instanceof Error ? e.message : String(e) }),
+            );
             if (!stillTarget()) return;
-            if (!instance) {
+            if (!('instance' in fetched)) {
                 joinedIdRef.current = null;
-                setLoadError('ワールドの情報を取得できないため入室できません。時間をおいて再度お試しください。');
+                setLoadError(`入室できません: ${fetched.error}`);
                 return;
             }
+            const { instance } = fetched;
             const entryKey = unverifiedEntryKey(instance.world);
             if (entryKey && !hasAcceptedEntry(sessionStorage, entryKey)) {
                 const accepted = await confirm(unverifiedEntryMessage(instance.world));

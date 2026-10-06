@@ -29,6 +29,8 @@ export const users = pgTable('users', {
     /** URL・署名・機械処理用の ID（英小文字・数字・_、一意、変更不可）。作者アカウントは handle@domain。 */
     handle: varchar('handle', { length: 30 }).unique(),
     profileImageUrl: varchar('profile_image_url', { length: 1024 }),
+    /** 自己紹介（任意。プロフィールとリンクのプレビューに出す） */
+    bio: text('bio'),
     /** 初期パスワードのまま（公式アカウントの初期作成時など）。変更するまで変更を促す。 */
     passwordChangeRequired: boolean('password_change_required').default(false).notNull(),
 });

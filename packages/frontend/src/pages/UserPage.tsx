@@ -1,10 +1,45 @@
-import { useNavigate, useParams } from 'react-router';
+import { useEffect, useState } from 'react';
+import { Navigate, useNavigate, useParams } from 'react-router';
 import { UserProfileView } from '@/components/profile';
+import { fetchUserByHandle, fetchUserWithFriendship } from '@/lib/socialApi';
 import { css } from '@/styled-system/css';
 
+/** ユーザーページ（/user/:userId と /@ID）。 */
 export function UserPage() {
     const navigate = useNavigate();
-    const { userId: routeUserId } = useParams<{ userId?: string }>();
+    const { userId: routeUserId, at } = useParams<{ userId?: string; at?: string }>();
+    const handle = at?.startsWith('@') ? at.slice(1) : undefined;
+    const [resolved, setResolved] = useState<{ handle: string; userId: string | null } | null>(null);
+
+    useEffect(() => {
+        if (!handle) return;
+        const ctrl = { cancelled: false };
+        fetchUserByHandle(handle)
+            .then((u) => !ctrl.cancelled && setResolved({ handle, userId: u.id }))
+            .catch(() => !ctrl.cancelled && setResolved({ handle, userId: null }));
+        return () => {
+            ctrl.cancelled = true;
+        };
+    }, [handle]);
+
+    // /user/:id で開いたら、共有に使える /@ID に置き換える（アドレスバーの URL をそのまま共有できるように）
+    useEffect(() => {
+        if (!routeUserId) return;
+        const ctrl = { cancelled: false };
+        fetchUserWithFriendship(routeUserId)
+            .then((u) => {
+                if (!ctrl.cancelled && u.handle) navigate(`/@${u.handle}`, { replace: true });
+            })
+            .catch(() => undefined);
+        return () => {
+            ctrl.cancelled = true;
+        };
+    }, [routeUserId, navigate]);
+
+    // /:at は /@ID だけ。それ以外の 1 段のパスはロビーへ
+    if (at !== undefined && !handle) return <Navigate to="/" replace />;
+    const handleState = handle && resolved?.handle === handle ? resolved : null;
+    const userId = handle ? handleState?.userId : routeUserId;
 
     return (
         <div
@@ -49,7 +84,16 @@ export function UserPage() {
                 </button>
             </div>
 
-            <UserProfileView userId={routeUserId} />
+            {handle && !handleState && <p className={css({ color: 'textMuted' })}>読み込み中...</p>}
+            {handle && handleState && !handleState.userId && (
+                <p className={css({ color: 'errorText' })}>@{handle} というユーザーは見つかりませんでした。</p>
+            )}
+            {(!handle || handleState?.userId) && (
+                <UserProfileView
+                    userId={userId ?? undefined}
+                    onEditProfile={() => navigate('/', { state: { hudTab: 'settings' } })}
+                />
+            )}
         </div>
     );
 }

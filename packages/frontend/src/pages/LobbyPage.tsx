@@ -1,5 +1,6 @@
-import { useNavigate } from 'react-router';
-import { HudTabs } from '@/components/hud/HudTabs';
+import { useState } from 'react';
+import { useLocation, useNavigate } from 'react-router';
+import { type HudTabId, HudTabs } from '@/components/hud/HudTabs';
 import { type AccountMenuItem, LobbyAccountMenu } from '@/components/lobby/LobbyAccountMenu';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { signOut } from '@/lib/auth-client';
@@ -13,6 +14,9 @@ export function LobbyPage() {
     const { data: session } = useSession();
 
     const userName = session?.user?.name ?? '';
+    // ユーザーページの「プロフィールを編集」などから、開くタブを受け取る
+    const location = useLocation();
+    const [tab, setTab] = useState<HudTabId>((location.state as { hudTab?: HudTabId } | null)?.hudTab ?? 'home');
 
     const handleJoinInstance = (
         instanceId: string,
@@ -88,12 +92,16 @@ export function LobbyPage() {
                 <span className={css({ fontSize: '15px', fontWeight: '700', lineHeight: 1 })}>Ubichill</span>
             </div>
 
-            <LobbyAccountMenu userName={userName} items={accountMenuItems} />
+            <LobbyAccountMenu
+                userName={userName}
+                items={accountMenuItems}
+                onUserClick={() => session && navigate(`/user/${encodeURIComponent(session.user.id)}`)}
+            />
 
             {/* スマホは上部にロゴ/アカウントがあるため余白を確保。PC はタブバーが上部に来るため不要 */}
             <div className={css({ h: { base: '14', md: '0' }, flexShrink: 0 })} />
 
-            <HudTabs onJoinInstance={handleJoinInstance} initialTab="home" />
+            <HudTabs onJoinInstance={handleJoinInstance} activeTab={tab} onTabChange={setTab} />
         </main>
     );
 }

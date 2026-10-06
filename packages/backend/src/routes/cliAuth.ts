@@ -155,7 +155,7 @@ router.post('/token', async (req, res) => {
     const notice = newEnvironmentNotice({
         displayName: user.name,
         environmentName: environment.name,
-        profileUrl: new URL(`/user/${user.id}`, publicBaseUrl()).href,
+        siteUrl: new URL('/', publicBaseUrl()).href,
         at: environment.createdAt,
     });
     void sendAccountNotice(user.email, notice.subject, notice.text);
