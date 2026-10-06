@@ -358,6 +358,15 @@ monitoring:
 # 独立したGoインスタンス実行サーバー。状態を保持するため1 replica。
 instanceRuntime:
   enabled: true
+  # backend とは別イメージ。backend のデプロイで Go が再起動しない（状態はメモリのみ）。
+  image:
+    repository: "ghcr.io/ubichill/ubichill-instance"
+    tag: "latest"
+    pullPolicy: Always
+  # 受け付けるブラウザ Origin。空なら https://<global.domain>
+  origins: []
+  # 切断後に参加者とロックを保持する時間（Go の duration 形式）
+  disconnectGrace: 15s
   # 未指定時はbackendと同じSecretを参照。専用Secretに切り替える場合は
   # existingSecretとsecretKeyを設定（32文字以上のランダム値）。
   existingSecret: ""

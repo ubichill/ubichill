@@ -19,21 +19,26 @@ spec:
       labels:
         {{- include "ubichill.selectorLabels" . | nindent 8 }}
         component: instance
+      {{- /*
+        backend の設定・イメージには依存させない。Go は状態をメモリに持つので、
+        backend のデプロイや設定変更のたびに再起動すると全インスタンスの状態が消える。
+        管理トークンを chart が管理する場合（existingSecret 無し）だけ、その値の変更で再起動する。
+      */}}
+      {{- if not (.Values.instanceRuntime.existingSecret | default .Values.backend.existingSecret) }}
       annotations:
-        checksum/config: {{ include (print $.Template.BasePath "/backend/configmap.yaml") . | sha256sum }}
-        checksum/secret: {{ include (print $.Template.BasePath "/backend/secret.yaml") . | sha256sum }}
+        checksum/admin-token: {{ get .Values.backend.secretEnv .Values.instanceRuntime.secretKey | toString | sha256sum }}
+      {{- end }}
     spec:
       containers:
         - name: instance
-          image: {{ include "ubichill.backend.image" . }}
-          imagePullPolicy: {{ .Values.backend.image.pullPolicy | default .Values.global.imagePullPolicy }}
-          command: ["/usr/local/bin/ubichill-instance", "--listen=:3002"]
+          image: {{ include "ubichill.instance.image" . }}
+          imagePullPolicy: {{ .Values.instanceRuntime.image.pullPolicy | default .Values.global.imagePullPolicy }}
+          args:
+            - --origins={{ include "ubichill.instance.origins" . }}
+            - --disconnect-grace={{ .Values.instanceRuntime.disconnectGrace }}
           ports:
             - name: realtime
               containerPort: 3002
-          envFrom:
-            - configMapRef:
-                name: {{ include "ubichill.fullname" . }}-backend-config
           env:
             - name: INSTANCE_ADMIN_TOKEN
               valueFrom:

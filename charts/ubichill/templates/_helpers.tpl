@@ -74,6 +74,28 @@ Backend image
 {{- end }}
 
 {{/*
+Instance (Go) image
+*/}}
+{{- define "ubichill.instance.image" -}}
+{{- if .Values.global.imageRegistry }}
+{{- printf "%s/%s:%s" .Values.global.imageRegistry .Values.instanceRuntime.image.repository (.Values.instanceRuntime.image.tag | default .Chart.AppVersion) }}
+{{- else }}
+{{- printf "%s:%s" .Values.instanceRuntime.image.repository (.Values.instanceRuntime.image.tag | default .Chart.AppVersion) }}
+{{- end }}
+{{- end }}
+
+{{/*
+Instance (Go) が受け付けるブラウザ Origin。未指定なら https://<global.domain>。
+*/}}
+{{- define "ubichill.instance.origins" -}}
+{{- if .Values.instanceRuntime.origins }}
+{{- join "," .Values.instanceRuntime.origins }}
+{{- else if .Values.global.domain }}
+{{- printf "https://%s" .Values.global.domain }}
+{{- end }}
+{{- end }}
+
+{{/*
 Frontend image
 */}}
 {{- define "ubichill.frontend.image" -}}

@@ -45,7 +45,7 @@ spec:
       http:
         paths:
           {{- if $.Values.instanceRuntime.enabled }}
-          - path: /realtime
+          - path: /realtime/v1/ws
             pathType: Prefix
             backend:
               service:
@@ -72,7 +72,7 @@ spec:
           {{- end }}
     {{- end }}
     {{- else if .Values.global.domain }}
-    {{- /* /api・/.well-known/webfinger → backend、/realtime → instance、/ → frontend */}}
+    {{- /* /api・/.well-known/webfinger → backend、/realtime/v1/ws → instance（管理APIは公開しない）、/ → frontend */}}
     - host: {{ .Values.global.domain | quote }}
       http:
         paths:
@@ -92,7 +92,7 @@ spec:
                 port:
                   number: {{ $svcPortBackend }}
           {{- if .Values.instanceRuntime.enabled }}
-          - path: /realtime
+          - path: /realtime/v1/ws
             pathType: Prefix
             backend:
               service:

@@ -126,3 +126,9 @@ ingress:
   # hosts:
   #   - host: example.com
   #     paths: [...]
+# Go インスタンス（本番は Image Updater が vX.Y.Z タグへ更新する）
+instanceRuntime:
+  image:
+    repository: "ghcr.io/ubichill/ubichill-instance"
+    tag: "latest"
+    pullPolicy: IfNotPresent
