@@ -3,13 +3,14 @@ import type { ClientToServerEvents, InstanceAPI, ServerToClientEvents } from '@u
 type Events = ServerToClientEvents & {
     connect: () => void;
     disconnect: () => void;
+    connecting: () => void;
     connect_error: (error: Error) => void;
 };
 type Listener = (...args: unknown[]) => void;
 type Join = Parameters<ClientToServerEvents['world:join']>[0];
 type JoinReply = Parameters<Parameters<ClientToServerEvents['world:join']>[1]>[0];
 export type InstanceGrant = InstanceAPI['schemas']['InstanceGrant'];
-export type ResolveInstance = (instanceId: string, password?: string) => Promise<InstanceGrant>;
+export type ResolveInstance = (instanceId: string, password?: string, signal?: AbortSignal) => Promise<InstanceGrant>;
 /** 認可・パスワード・プロトコル不一致による入室拒否。再試行しても変わらないので、自動再接続を止めて参加失敗として返す。 */
 export class InstanceJoinRejected extends Error {}
 interface Frame {
@@ -19,10 +20,20 @@ interface Frame {
     replyTo?: string;
 }
 
+const MAX_ATTEMPTS = 6;
+const RECOVERY_TIMEOUT_MS = 30000;
+const STABLE_CONNECTION_MS = 10000;
+interface Recovery {
+    attempts: number;
+    deadline: number;
+    ticketRefreshes: number;
+}
+
 /** Typed instance transport. Disconnected operations are never replayed: a fresh
  * snapshot restores state after reconnect. Only joining is retried automatically. */
 export class InstanceSocket {
     connected = false;
+    connecting = false;
     id: string | undefined;
     private ws: WebSocket | null = null;
     private listeners = new Map<string, Set<Listener>>();
@@ -30,7 +41,10 @@ export class InstanceSocket {
     private joined: { data: Join; callback: (result: JoinReply) => void } | null = null;
     private retry: ReturnType<typeof setTimeout> | undefined;
     private generation = 0;
-    private attempts = 0;
+    private recovery: Recovery | null = null;
+    private deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+    private stableTimer: ReturnType<typeof setTimeout> | undefined;
+    private attemptAbort: AbortController | null = null;
 
     constructor(private readonly resolveInstance: ResolveInstance) {}
 
@@ -83,11 +97,17 @@ export class InstanceSocket {
         this.ws.send(JSON.stringify({ event, data, id }));
     }
     private async open() {
+        if (!this.prepareRecovery()) return;
         const generation = ++this.generation;
         const joined = this.joined;
-        if (!joined) return;
+        const recovery = this.recovery;
+        if (!joined || !recovery) return;
+        recovery.attempts++;
+        this.attemptAbort?.abort();
+        const abort = new AbortController();
+        this.attemptAbort = abort;
         try {
-            const grant = await this.resolveInstance(joined.data.instanceId, joined.data.password);
+            const grant = await this.resolveInstance(joined.data.instanceId, joined.data.password, abort.signal);
             if (generation !== this.generation) return;
             if (grant.protocolVersion !== 1) throw new InstanceJoinRejected('非対応の通信バージョンです');
             const url = new URL(grant.url, window.location.href);
@@ -111,16 +131,26 @@ export class InstanceSocket {
                         return;
                     }
                     if (!result.success) {
-                        this.joined = null;
-                        joined.callback(result);
-                        ws.close();
+                        if (result.code === 'ticket_invalid' && recovery.ticketRefreshes < 1) {
+                            recovery.ticketRefreshes++;
+                            ws.close();
+                        } else if (result.code === 'instance_unavailable') {
+                            ws.close();
+                        } else {
+                            this.failJoin(result.error ?? 'インスタンスに参加できません');
+                        }
                         return;
                     }
                     this.connected = true;
+                    this.connecting = false;
                     this.id = result.userId;
-                    this.attempts = 0;
+                    clearTimeout(this.deadlineTimer);
+                    // Brief successful joins must not reset an endlessly flapping connection.
+                    this.stableTimer = setTimeout(() => {
+                        if (generation === this.generation && this.connected) this.recovery = null;
+                    }, STABLE_CONNECTION_MS);
                     joined.callback(result);
-                    this.dispatch('connect');
+                    if (generation === this.generation && this.connected) this.dispatch('connect');
                 });
             };
             ws.onmessage = (event) => {
@@ -141,8 +171,12 @@ export class InstanceSocket {
             ws.onclose = () => {
                 clearTimeout(handshake);
                 if (generation !== this.generation) return;
+                clearTimeout(this.stableTimer);
+                this.ws = null;
                 this.connected = false;
+                this.connecting = this.joined !== null;
                 this.failPending();
+                if (generation !== this.generation) return;
                 this.dispatch('disconnect');
                 this.scheduleReconnect();
             };
@@ -153,18 +187,39 @@ export class InstanceSocket {
         } catch (error) {
             if (generation !== this.generation) return;
             if (error instanceof InstanceJoinRejected) {
-                this.joined = null;
-                joined.callback({ success: false, error: error.message });
+                this.failJoin(error.message);
                 return;
             }
             this.dispatch('connect_error', error instanceof Error ? error : new Error(String(error)));
             this.scheduleReconnect();
         }
     }
+    private prepareRecovery(): boolean {
+        if (!this.joined) return false;
+        this.recovery ??= { attempts: 0, deadline: Date.now() + RECOVERY_TIMEOUT_MS, ticketRefreshes: 0 };
+        const remaining = this.recovery.deadline - Date.now();
+        if (remaining <= 0 || this.recovery.attempts >= MAX_ATTEMPTS) {
+            this.failJoin('インスタンスに接続できません。再試行の上限に達しました');
+            return false;
+        }
+        clearTimeout(this.deadlineTimer);
+        clearTimeout(this.stableTimer);
+        this.deadlineTimer = setTimeout(() => this.failJoin('インスタンスへの接続がタイムアウトしました'), remaining);
+        this.connecting = true;
+        this.dispatch('connecting');
+        return true;
+    }
+    private failJoin(message: string) {
+        const joined = this.joined;
+        if (!joined) return;
+        this.disconnect();
+        joined.callback({ success: false, error: message });
+    }
     private scheduleReconnect() {
-        if (!this.joined) return;
+        if (!this.prepareRecovery()) return;
         clearTimeout(this.retry);
-        this.retry = setTimeout(() => void this.open(), Math.min(1000 * 2 ** this.attempts++, 10000));
+        const attempts = this.recovery?.attempts ?? 1;
+        this.retry = setTimeout(() => void this.open(), Math.min(1000 * 2 ** Math.max(0, attempts - 1), 10000));
     }
     private failPending() {
         const pending = [...this.pending.values()];
@@ -175,12 +230,21 @@ export class InstanceSocket {
         }
     }
     disconnect() {
+        const wasActive = this.connected || this.connecting;
         this.generation++;
         this.joined = null;
+        this.recovery = null;
         clearTimeout(this.retry);
+        clearTimeout(this.deadlineTimer);
+        clearTimeout(this.stableTimer);
+        this.attemptAbort?.abort();
+        this.attemptAbort = null;
         this.ws?.close();
         this.ws = null;
         this.connected = false;
+        this.connecting = false;
+        this.id = undefined;
         this.failPending();
+        if (wasActive) this.dispatch('disconnect');
     }
 }

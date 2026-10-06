@@ -143,7 +143,14 @@ export interface ClientToServerEvents {
             password?: string;
             user: Omit<User, 'id'>;
         },
-        callback: (response: { success: boolean; userId?: string; instanceId?: string; error?: string }) => void,
+        callback: (response: {
+            success: boolean;
+            userId?: string;
+            instanceId?: string;
+            error?: string;
+            /** チケット再取得で復旧できる入室失敗。 */
+            code?: 'ticket_invalid' | 'instance_unavailable';
+        }) => void,
     ) => void;
 
     /** ワールドから退出 */

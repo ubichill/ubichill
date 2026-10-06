@@ -143,8 +143,12 @@ func (s *Server) serveSocket(w http.ResponseWriter, r *http.Request) {
 			id := str(data["instanceId"])
 			t, err := s.verify(str(data["token"]), id)
 			room := s.room(id)
-			if err != nil || room == nil {
-				p.reject(f.ID, "参加チケットが無効です")
+			if err != nil {
+				p.reply(f.ID, Object{"success": false, "error": "参加チケットが無効です", "code": "ticket_invalid"})
+				continue
+			}
+			if room == nil {
+				p.reply(f.ID, Object{"success": false, "error": "インスタンスが見つかりません", "code": "instance_unavailable"})
 				continue
 			}
 			s.admission.Lock()

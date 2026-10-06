@@ -205,6 +205,7 @@ export function EditorPreview({
         () => ({
             socket: null,
             isConnected: true,
+            isConnecting: false,
             users: new Map(),
             currentUser: null,
             error: null,

@@ -8,6 +8,7 @@ export type JoinWorld = (name: string, instanceId: string, onError?: (error: str
 export interface SocketContextValue {
     socket: InstanceSocket | null;
     isConnected: boolean;
+    isConnecting: boolean;
     users: Map<string, User>;
     currentUser: User | null;
     error: string | null;
@@ -29,6 +30,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode; resolveInstan
     const socketRef = useRef<InstanceSocket | null>(null);
     const [activeSocket, setActiveSocket] = useState<InstanceSocket | null>(null);
     const [isConnected, setIsConnected] = useState(false);
+    const [isConnecting, setIsConnecting] = useState(false);
     const [users, setUsers] = useState<Map<string, User>>(new Map());
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const currentUserRef = useRef<User | null>(null);
@@ -49,9 +51,11 @@ export const SocketProvider: React.FC<{ children: React.ReactNode; resolveInstan
                     currentUserRef.current = newUser;
                 } else {
                     const msg = response.error || 'Failed to join world';
+                    setUsers(new Map());
                     setCurrentUser(null);
                     currentUserRef.current = null;
                     setError(msg);
+                    setIsConnecting(false);
                     onError?.(msg);
                 }
             });
@@ -82,16 +86,23 @@ export const SocketProvider: React.FC<{ children: React.ReactNode; resolveInstan
         // Set up event listeners
         socket.on('connect', () => {
             setIsConnected(true);
+            setIsConnecting(false);
             setError(null);
         });
 
+        socket.on('connecting', () => setIsConnecting(true));
+
         socket.on('session:replaced', () => {
+            setUsers(new Map());
+            setIsConnecting(false);
             setCurrentUser(null);
             currentUserRef.current = null;
             setError('同じアカウントが別のタブ・端末でインスタンスに参加したため、こちらの接続は切れました');
         });
 
         socket.on('instance:closing', (reason) => {
+            setUsers(new Map());
+            setIsConnecting(false);
             setCurrentUser(null);
             currentUserRef.current = null;
             setError(reason);
@@ -99,18 +110,12 @@ export const SocketProvider: React.FC<{ children: React.ReactNode; resolveInstan
 
         socket.on('disconnect', () => {
             setIsConnected(false);
+            setIsConnecting(socket.connecting);
         });
 
-        socket.on('connect_error', (err) => {
-            setError(`Connection error: ${err.message}`);
+        socket.on('connect_error', () => {
             setIsConnected(false);
-
-            // ここでは強制リダイレクトしない。dev のクロスオリジン構成では
-            // バックエンド再起動などの一過性エラーが Unauthorized として届くことがあり、
-            // それで /auth に飛ばすと「勝手にログアウト」に見える。
-            // 認証の真偽判定は useSession / ProtectedRoute に一本化し、
-            // socket は自動再接続に任せる（セッションが本当に切れていれば
-            // ProtectedRoute が画面遷移し、その際に socket もクリーンアップされる）。
+            // 一時的な失敗は接続中として扱う。拒否・再試行上限はjoinのcallbackで確定する。
         });
 
         socket.on('users:update', (updatedUsers) => {
@@ -234,6 +239,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode; resolveInstan
             setUsers(new Map());
             setCurrentUser(null);
             currentUserRef.current = null;
+            setIsConnecting(false);
             if (!socket || !isConnected) {
                 socket?.disconnect();
                 resolve();
@@ -267,6 +273,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode; resolveInstan
     const value: SocketContextValue = {
         socket: activeSocket,
         isConnected,
+        isConnecting,
         users,
         currentUser,
         error,

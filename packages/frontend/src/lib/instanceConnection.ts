@@ -9,7 +9,7 @@ export const STANDALONE_INSTANCE: string = import.meta.env.VITE_INSTANCE_ID ?? '
 export const isJoinRejection = (status: number): boolean =>
     status >= 400 && status < 500 && status !== 408 && status !== 429;
 
-export const resolveInstance: ResolveInstance = async (instanceId, password) => {
+export const resolveInstance: ResolveInstance = async (instanceId, password, signal) => {
     const key = `ubichill:guest:${STANDALONE_RUNTIME}:${instanceId}`;
     const path = STANDALONE_RUNTIME
         ? `${STANDALONE_RUNTIME}/realtime/v1/instances/${encodeURIComponent(instanceId)}/guest`
@@ -19,7 +19,7 @@ export const resolveInstance: ResolveInstance = async (instanceId, password) => 
         headers: { 'Content-Type': 'application/json' },
         credentials: STANDALONE_RUNTIME ? 'omit' : 'include',
         body: JSON.stringify(STANDALONE_RUNTIME ? { resumeToken: sessionStorage.getItem(key) ?? '' } : { password }),
-        signal: AbortSignal.timeout(10000),
+        signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(10000)]) : AbortSignal.timeout(10000),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {

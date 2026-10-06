@@ -9,7 +9,8 @@ interface InstanceLoadingScreenProps {
     fadingOut: boolean;
     failed: boolean;
     failureMessage: string | null;
-    onReturnToLobby: () => void;
+    recoveryLabel: string;
+    onRecover: () => void;
 }
 
 function StageIcon({ status }: { status: StageStatus }) {
@@ -93,7 +94,8 @@ export function InstanceLoadingScreen({
     fadingOut,
     failed,
     failureMessage,
-    onReturnToLobby,
+    recoveryLabel,
+    onRecover,
 }: InstanceLoadingScreenProps) {
     return (
         <div
@@ -165,7 +167,7 @@ export function InstanceLoadingScreen({
                     </p>
                     <button
                         type="button"
-                        onClick={onReturnToLobby}
+                        onClick={onRecover}
                         className={css({
                             display: 'inline-flex',
                             alignItems: 'center',
@@ -193,7 +195,7 @@ export function InstanceLoadingScreen({
                         >
                             <path d="M15 18l-6-6 6-6" />
                         </svg>
-                        ロビーに戻る
+                        {recoveryLabel}
                     </button>
                 </div>
             ) : (

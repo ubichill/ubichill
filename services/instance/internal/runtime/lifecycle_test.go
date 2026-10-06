@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -110,6 +112,69 @@ func TestOnlyDeliberateCloseAnnouncesClosing(t *testing.T) {
 	// A process shutdown is not the end of the instance: clients must reconnect and reprovision.
 	s.Close()
 	expectClosed(t, other, "instance:closing")
+}
+
+func TestAdmissionReportsRecoverableFailureCodes(t *testing.T) {
+	s, h := start(t, false)
+	previous := New(Config{})
+	cases := []struct {
+		name, room, token, code string
+	}{
+		{"server restarted", "a", previous.sign(ticket{"a", "alice", time.Now().Add(time.Minute).Unix(), "member"}), "ticket_invalid"},
+		{"ticket expired", "a", s.sign(ticket{"a", "alice", time.Now().Add(-time.Minute).Unix(), "member"}), "ticket_invalid"},
+		{"room disappeared", "missing", s.sign(ticket{"missing", "alice", time.Now().Add(time.Minute).Unix(), "member"}), "instance_unavailable"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(h.URL, "http")+"/realtime/v1/ws", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			if err := c.WriteJSON(Frame{Event: "world:join", ID: "join", Data: encoded(Object{
+				"instanceId": tc.room, "token": tc.token,
+				"user": Object{"name": "Alice", "status": "online", "position": Object{"x": 0, "y": 0}},
+			})}); err != nil {
+				t.Fatal(err)
+			}
+			out, _ := object(receive(t, c, "join").Data)
+			if out["success"] != false || out["code"] != tc.code {
+				t.Fatalf("unexpected rejection: %v", out)
+			}
+		})
+	}
+	if len(members(s, "a")) != 0 {
+		t.Fatal("rejected participants entered the room")
+	}
+}
+
+func TestStandaloneGuestJoinsWithoutManagementToken(t *testing.T) {
+	s := New(Config{Guests: true, Grace: time.Millisecond})
+	if _, err := s.Provision(definition("standalone")); err != nil {
+		t.Fatal(err)
+	}
+	h := httptest.NewServer(s.Handler())
+	t.Cleanup(func() { s.Close(); h.Close() })
+	code, grant := call(t, h, "POST", "/instances/standalone/guest", Object{}, false)
+	if code != 200 {
+		t.Fatalf("guest admission requires SNS/auth: %d", code)
+	}
+	c, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(h.URL, "http")+"/realtime/v1/ws", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if err := c.WriteJSON(Frame{Event: "world:join", ID: "join", Data: encoded(Object{
+		"instanceId": "standalone", "token": grant["token"],
+		"user": Object{"name": "Guest", "status": "online", "position": Object{"x": 0, "y": 0}},
+	})}); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := object(receive(t, c, "join").Data)
+	if out["success"] != true || out["userId"] != grant["userId"] {
+		t.Fatalf("guest join: %v", out)
+	}
+	receive(t, c, "world:snapshot")
 }
 
 func TestRateLimitRejectsWithoutDisconnecting(t *testing.T) {

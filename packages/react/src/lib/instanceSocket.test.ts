@@ -82,7 +82,7 @@ describe('InstanceSocket', () => {
         socket.emit('world:join', { instanceId: 'room', password: 'secret-pw', user: { ...user } }, vi.fn());
         await flush();
         latest().open();
-        expect(resolve).toHaveBeenCalledWith('room', 'secret-pw');
+        expect(resolve).toHaveBeenCalledWith('room', 'secret-pw', expect.any(AbortSignal));
         expect(latest().frames[0]?.data).not.toHaveProperty('password');
         expect(Object.keys(latest().frames[0]?.data as object).sort()).toEqual(['instanceId', 'token', 'user']);
         socket.disconnect();
@@ -137,6 +137,160 @@ describe('InstanceSocket', () => {
         expect(callback).toHaveBeenCalledOnce();
     });
 
+    it('HTTPが応答しなくても30秒で中断し、遅れて返るチケットを使わない', async () => {
+        const pending = Promise.withResolvers<typeof grant>();
+        const resolve = vi.fn<ResolveInstance>(() => pending.promise);
+        const socket = new InstanceSocket(resolve);
+        const joined = vi.fn();
+        socket.emit('world:join', { instanceId: 'room', user }, joined);
+        await flush();
+        const signal = resolve.mock.calls[0]?.[2];
+        await vi.advanceTimersByTimeAsync(29999);
+        expect(joined).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1);
+        expect(signal?.aborted).toBe(true);
+        expect(joined).toHaveBeenCalledOnce();
+        expect(socket.connecting).toBe(false);
+        pending.resolve(grant);
+        await flush();
+        await vi.advanceTimersByTimeAsync(120000);
+        expect(FakeWebSocket.instances).toHaveLength(0);
+        expect(resolve).toHaveBeenCalledOnce();
+    });
+
+    it('WebSocketが開かなくても30秒以内に失敗を返し、再接続を止める', async () => {
+        const resolve = vi.fn<ResolveInstance>(async () => grant);
+        const socket = new InstanceSocket(resolve);
+        const joined = vi.fn();
+        socket.emit('world:join', { instanceId: 'room', user }, joined);
+        await flush();
+        await vi.advanceTimersByTimeAsync(30000);
+        expect(joined).toHaveBeenCalledOnce();
+        expect(socket.connecting).toBe(false);
+        const attempts = resolve.mock.calls.length;
+        await vi.advanceTimersByTimeAsync(120000);
+        expect(resolve).toHaveBeenCalledTimes(attempts);
+        expect(latest().readyState).toBe(3);
+    });
+
+    it('入室直後に切断を繰り返しても再試行上限をリセットしない', async () => {
+        const resolve = vi.fn<ResolveInstance>(async () => grant);
+        const socket = new InstanceSocket(resolve);
+        const joined = vi.fn();
+        socket.emit('world:join', { instanceId: 'room', user }, joined);
+        await flush();
+        for (const delay of [1000, 2000, 4000, 8000, 10000]) {
+            latest().open();
+            ackJoin(latest());
+            latest().close();
+            await vi.advanceTimersByTimeAsync(delay);
+        }
+        latest().open();
+        ackJoin(latest());
+        latest().close();
+        await vi.advanceTimersByTimeAsync(120000);
+        expect(resolve).toHaveBeenCalledTimes(6);
+        const failures = joined.mock.calls.filter(([result]) => !result.success);
+        expect(failures).toHaveLength(1);
+        expect(socket.connected).toBe(false);
+        expect(socket.connecting).toBe(false);
+    });
+
+    it('10秒安定した接続の切断後は新しい復旧上限を使う', async () => {
+        const resolve = vi.fn<ResolveInstance>(async () => grant);
+        const socket = new InstanceSocket(resolve);
+        const joined = vi.fn();
+        socket.emit('world:join', { instanceId: 'room', user }, joined);
+        await flush();
+        latest().open();
+        ackJoin(latest());
+        await vi.advanceTimersByTimeAsync(40000);
+        expect(socket.connected).toBe(true);
+        latest().close();
+        await vi.advanceTimersByTimeAsync(1000);
+        latest().open();
+        ackJoin(latest());
+        expect(resolve).toHaveBeenCalledTimes(2);
+        expect(socket.connected).toBe(true);
+        socket.disconnect();
+    });
+
+    it('退出は取得中のHTTPを中断して再試行も取り消す', async () => {
+        const resolve = vi.fn<ResolveInstance>(() => new Promise(() => {}));
+        const socket = new InstanceSocket(resolve);
+        const joined = vi.fn();
+        socket.emit('world:join', { instanceId: 'room', user }, joined);
+        await flush();
+        const signal = resolve.mock.calls[0]?.[2];
+        socket.disconnect();
+        expect(signal?.aborted).toBe(true);
+        await vi.advanceTimersByTimeAsync(120000);
+        expect(resolve).toHaveBeenCalledOnce();
+        expect(joined).not.toHaveBeenCalled();
+    });
+
+    it('チケット失効は一度だけ取り直して入室できる', async () => {
+        const resolve = vi
+            .fn<ResolveInstance>()
+            .mockResolvedValueOnce({ ...grant, token: 'ticket-1' })
+            .mockResolvedValue({ ...grant, token: 'ticket-2' });
+        const socket = new InstanceSocket(resolve);
+        const joined = vi.fn();
+        socket.emit('world:join', { instanceId: 'room', user }, joined);
+        await flush();
+        latest().open();
+        latest().receive({
+            replyTo: latest().frames[0]?.id,
+            data: { success: false, error: '失効', code: 'ticket_invalid' },
+        });
+        expect(joined).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1000);
+        latest().open();
+        expect(latest().frames[0]?.data).toMatchObject({ token: 'ticket-2' });
+        ackJoin(latest());
+        expect(resolve).toHaveBeenCalledTimes(2);
+        expect(joined).toHaveBeenCalledOnce();
+        expect(socket.connected).toBe(true);
+        socket.disconnect();
+    });
+
+    it('チケットを取り直しても無効なら失敗にして止める', async () => {
+        const resolve = vi.fn<ResolveInstance>(async () => grant);
+        const socket = new InstanceSocket(resolve);
+        const joined = vi.fn();
+        socket.emit('world:join', { instanceId: 'room', user }, joined);
+        await flush();
+        for (const delay of [1000, 120000]) {
+            latest().open();
+            latest().receive({
+                replyTo: latest().frames[0]?.id,
+                data: { success: false, error: '失効', code: 'ticket_invalid' },
+            });
+            await vi.advanceTimersByTimeAsync(delay);
+        }
+        expect(resolve).toHaveBeenCalledTimes(2);
+        expect(joined).toHaveBeenCalledOnce();
+        expect(joined).toHaveBeenCalledWith({ success: false, error: '失効' });
+    });
+
+    it('部屋が消え続ける場合も接続上限で終了する', async () => {
+        const resolve = vi.fn<ResolveInstance>(async () => grant);
+        const socket = new InstanceSocket(resolve);
+        const joined = vi.fn();
+        socket.emit('world:join', { instanceId: 'room', user }, joined);
+        await flush();
+        for (const delay of [1000, 2000, 4000, 8000, 10000, 120000]) {
+            latest().open();
+            latest().receive({
+                replyTo: latest().frames[0]?.id,
+                data: { success: false, error: '部屋なし', code: 'instance_unavailable' },
+            });
+            await vi.advanceTimersByTimeAsync(delay);
+        }
+        expect(resolve).toHaveBeenCalledTimes(6);
+        expect(joined).toHaveBeenCalledOnce();
+    });
+
     describe('入室拒否', () => {
         it('拒否されたら一度だけ失敗を返し、再試行しない', async () => {
             const resolve = vi.fn<ResolveInstance>(async () => {
@@ -173,7 +327,7 @@ describe('InstanceSocket', () => {
             expect(joined).toHaveBeenLastCalledWith({ success: false, error: 'このインスタンスには入れません' });
             expect(socket.connected).toBe(false);
         });
-        it('一時的な失敗は参加失敗にせず、上限付きの間隔で再試行を続ける', async () => {
+        it('一時的な失敗は上限まで再試行し、超えたら一度だけ失敗にする', async () => {
             const resolve = vi.fn<ResolveInstance>().mockRejectedValue(new Error('Instance runtime: 503'));
             const socket = new InstanceSocket(resolve);
             const joined = vi.fn();
@@ -181,11 +335,17 @@ describe('InstanceSocket', () => {
             socket.on('connect_error', connectError);
             socket.emit('world:join', { instanceId: 'room', user }, joined);
             await flush();
-            // 1s, 2s, 4s, 8s, 以降 10s 上限
-            await vi.advanceTimersByTimeAsync(1000 + 2000 + 4000 + 8000 + 10000);
+            await vi.advanceTimersByTimeAsync(1000 + 2000 + 4000 + 8000);
+            expect(resolve).toHaveBeenCalledTimes(5);
+            expect(joined).not.toHaveBeenCalled();
+            await vi.advanceTimersByTimeAsync(10000);
             expect(resolve).toHaveBeenCalledTimes(6);
             expect(connectError).toHaveBeenCalledTimes(6);
-            expect(joined).not.toHaveBeenCalled();
+            expect(joined).toHaveBeenCalledOnce();
+            expect(joined).toHaveBeenCalledWith({ success: false, error: expect.stringContaining('上限') });
+            await vi.advanceTimersByTimeAsync(120000);
+            expect(resolve).toHaveBeenCalledTimes(6);
+            expect(joined).toHaveBeenCalledOnce();
             socket.disconnect();
         });
         it('一時的な失敗の後に拒否されたら、そこで止まる', async () => {

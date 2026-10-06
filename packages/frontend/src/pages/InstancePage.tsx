@@ -19,7 +19,7 @@ export function InstancePage() {
     const { data: session, isPending } = useSession();
     const confirm = useConfirm();
 
-    const { isConnected, error, currentUser, joinWorld, leaveWorld } = useSocket();
+    const { isConnected, isConnecting, error, currentUser, joinWorld, leaveWorld } = useSocket();
     const { resetWorld, modLock } = useWorld();
 
     const joinedIdRef = useRef<string | null>(null);
@@ -109,6 +109,7 @@ export function InstancePage() {
         instanceId: id,
         isAuthPending: isPending,
         isConnected,
+        isConnecting,
         isJoined: currentUser != null,
         error: error ?? loadError,
         mods,
@@ -117,7 +118,8 @@ export function InstancePage() {
 
     // 失敗時は一定時間後に自動でロビーへ戻す（ロード画面で詰まらないように）
     useEffect(() => {
-        if (!loading.failed) return;
+        // 単体モードの / は同じ部屋へリダイレクトする。失敗時は留めて無限入室を防ぐ。
+        if (!loading.failed || STANDALONE_RUNTIME) return;
         console.warn('[InstancePage] load failed → returning to lobby:', loading.failureMessage);
         const timer = setTimeout(() => navigate('/'), 5000);
         return () => clearTimeout(timer);
@@ -137,7 +139,8 @@ export function InstancePage() {
                     fadingOut={loading.fadingOut}
                     failed={loading.failed}
                     failureMessage={loading.failureMessage}
-                    onReturnToLobby={() => navigate('/')}
+                    recoveryLabel={STANDALONE_RUNTIME ? '再試行する' : 'ロビーに戻る'}
+                    onRecover={() => (STANDALONE_RUNTIME ? window.location.reload() : navigate('/'))}
                 />
             )}
             {!loading.failed && currentUser != null && (

@@ -877,7 +877,18 @@
             "replyTo": {
               "type": "string"
             },
-            "data": {}
+            "data": {
+              "type": "object",
+              "properties": {
+                "success": { "type": "boolean" },
+                "error": { "type": "string" },
+                "code": {
+                  "type": "string",
+                  "enum": ["ticket_invalid", "instance_unavailable"],
+                  "description": "Recoverable world:join failure. Refresh the ticket at most once for ticket_invalid; all retries share a finite connection budget."
+                }
+              }
+            }
           },
           "additionalProperties": false
         }

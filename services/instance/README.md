@@ -23,6 +23,8 @@ VITE_INSTANCE_SERVER_URL=http://localhost:3002 pnpm --filter @ubichill/frontend 
 ゲストのカーソルが見える。ゲストIDはサーバーが発行し、同じタブでの再接続に保持する。
 `VITE_INSTANCE_ID` でルートURLから移動するインスタンスIDを変更できる。
 表示用UIとmod配信はフロント側が担当する。
+GoサーバーはUIの静的ファイルやmodを配信しない。フロントをビルドして任意の静的ホストから配信すれば、
+実行時に必要なバックエンドはGoのみになる。開発用のViteサーバーもSNS backendには依存しない。
 
 `--world` はOpenAPIの `InstanceDefinition` 形式のJSON。初期エンティティはflatten済みの
 ComponentInstance配列で、mod完全性lockや環境設定も含む。
@@ -72,6 +74,8 @@ backendのデプロイや設定変更ではGoを再起動しない（状態が�
 - HelmのGo Deploymentは1 replica・Recreate。複数サーバーへの割当はまだ実装していない。
   単純にreplica数を増やすと状態が分裂する。
 - SNS停止中でも既存のGo接続は継続する。SNS連携での新規入室・再接続はチケット再取得が必要。
+- 自動再接続は最大6回・30秒。失効チケットの取り直しも同じ上限内で1回だけ行う。
+  単体モードは上限到達後に失敗画面に留まり、本人の操作で再試行する。
 - SNSのフレンド解除やBANを既存接続へ即時反映する機能はない。
 - 公開運用ではTLSをIngress等で終端し、`--origins` を実際のフロントURLへ設定する。
 
