@@ -1,4 +1,5 @@
-import { and, eq, or } from 'drizzle-orm';
+import { friendshipOf } from '@ubichill/shared';
+import { and, eq, or, sql } from 'drizzle-orm';
 import { db } from '../index';
 import { userFriends } from '../schema';
 
@@ -41,6 +42,34 @@ export const userFriendRepository = {
     /** 2 人の間の行。 */
     async findBetween(a: string, b: string): Promise<FriendRow[]> {
         return db.select().from(userFriends).where(between(a, b));
+    },
+
+    /**
+     * `from` が `to` に申請する。`to` からの申請が来ていれば承認になる（お互いに申請したらフレンド）。2 人の間の行を返す。
+     * 2 人の関係ごとにロックして読み取りと更新を直列にする。同時に申請し合うと、どちらも「関係なし」と読んで
+     * 逆向きの pending を 1 行ずつ作り、どちらも「申請が来ている」のままになるため。
+     */
+    async requestOrAccept(from: string, to: string): Promise<FriendRow[]> {
+        const pair = from < to ? `${from}\n${to}` : `${to}\n${from}`;
+        return db.transaction(async (tx) => {
+            await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`user_friends:${pair}`}))`);
+            const rows = await tx.select().from(userFriends).where(between(from, to));
+            const current = friendshipOf(rows, from, to);
+            if (current === 'incoming') {
+                await tx
+                    .update(userFriends)
+                    .set({ status: 'accepted' })
+                    .where(and(eq(userFriends.userId, to), eq(userFriends.friendId, from)));
+            } else if (current === 'none') {
+                await tx
+                    .insert(userFriends)
+                    .values({ userId: from, friendId: to, status: 'pending' })
+                    .onConflictDoNothing();
+            } else {
+                return rows;
+            }
+            return tx.select().from(userFriends).where(between(from, to));
+        });
     },
 
     /** 申請する（既に行があれば何もしない）。 */

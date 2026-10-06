@@ -45,6 +45,26 @@ describe.skipIf(!RUN)('userFriendRepository / userRepository.search (DB統合)',
         expect(await userFriendRepository.remove(ids.b, ids.a)).toBe(false);
     });
 
+    it('相手から申請が来ていれば、申請は承認になる', async () => {
+        expect(friendshipOf(await userFriendRepository.requestOrAccept(ids.a, ids.b), ids.a, ids.b)).toBe('outgoing');
+        expect(friendshipOf(await userFriendRepository.requestOrAccept(ids.a, ids.b), ids.a, ids.b)).toBe('outgoing');
+        expect(friendshipOf(await userFriendRepository.requestOrAccept(ids.b, ids.a), ids.b, ids.a)).toBe('friends');
+        expect(await userFriendRepository.findBetween(ids.a, ids.b)).toHaveLength(1);
+        await userFriendRepository.remove(ids.a, ids.b);
+    });
+
+    it('同時に申請し合ってもフレンドになる（どちらも「申請が来ている」のままにならない）', async () => {
+        for (const _round of Array.from({ length: 10 })) {
+            await Promise.all([
+                userFriendRepository.requestOrAccept(ids.a, ids.b),
+                userFriendRepository.requestOrAccept(ids.b, ids.a),
+            ]);
+            expect(await relation(ids.a, ids.b)).toBe('friends');
+            expect(await userFriendRepository.findBetween(ids.a, ids.b)).toHaveLength(1);
+            await userFriendRepository.remove(ids.a, ids.b);
+        }
+    });
+
     it('検索: 表示名の部分一致（大文字小文字は区別しない）と ID の前方一致', async () => {
         expect((await userRepository.search(`charlie_${stamp}`, { limit: 5 })).map((u) => u.id)).toEqual([ids.c]);
         expect((await userRepository.search(`ch${stamp}`.slice(0, 6), { limit: 50 })).map((u) => u.id)).toContain(

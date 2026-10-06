@@ -31,7 +31,7 @@ const summaryOf = (u: UserRecord): UserSummary => ({
     id: u.id,
     name: u.name,
     handle: u.handle ?? null,
-    profileImageUrl: u.profileImageUrl ?? u.image ?? null,
+    profileImageUrl: u.profileImageUrl ?? null,
     bio: u.bio ?? null,
 });
 
@@ -107,10 +107,8 @@ router.post('/friends', requireAuth, async (req, res) => {
     const target = targetId ? await userRepository.findById(targetId) : undefined;
     if (!target || target.id === SYSTEM_USER_ID) return res.status(404).json({ error: 'User not found' });
     if (target.id === me) return res.status(400).json({ error: '自分には申請できません' });
-    const current = friendshipOf(await userFriendRepository.findBetween(me, target.id), me, target.id);
-    if (current === 'incoming') await userFriendRepository.accept(me, target.id);
-    else if (current === 'none') await userFriendRepository.request(me, target.id);
-    return res.json({ friendship: friendshipOf(await userFriendRepository.findBetween(me, target.id), me, target.id) });
+    const edges = await userFriendRepository.requestOrAccept(me, target.id);
+    return res.json({ friendship: friendshipOf(edges, me, target.id) });
 });
 
 // 自分への申請を承認する。

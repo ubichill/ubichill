@@ -14,19 +14,26 @@ export function UserSearch({ onFriendshipChange }: { onFriendshipChange?: () => 
 
     useEffect(() => {
         const q = query.trim();
+        setError(null);
         if (!q) {
             setResults(null);
             return;
         }
+        // 検索語が変わったら前の検索の応答は捨てる（応答の順が入れ替わると、今の入力と違う結果が出るため）
+        const controller = new AbortController();
         const timer = setTimeout(() => {
-            searchUsers(q)
+            searchUsers(q, controller.signal)
                 .then((users) => {
-                    setResults(users);
-                    setError(null);
+                    if (!controller.signal.aborted) setResults(users);
                 })
-                .catch((e: unknown) => setError(e instanceof Error ? e.message : '検索できませんでした'));
+                .catch((e: unknown) => {
+                    if (!controller.signal.aborted) setError(e instanceof Error ? e.message : '検索できませんでした');
+                });
         }, SEARCH_DELAY_MS);
-        return () => clearTimeout(timer);
+        return () => {
+            clearTimeout(timer);
+            controller.abort();
+        };
     }, [query]);
 
     const update = (id: string, friendship: Friendship) => {

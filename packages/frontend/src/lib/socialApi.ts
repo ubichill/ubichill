@@ -24,8 +24,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     return (res.status === 204 ? undefined : await res.json()) as T;
 }
 
-export const searchUsers = async (q: string) =>
-    (await request<{ users: UserWithFriendship[] }>(`/users?q=${encodeURIComponent(q)}`)).users;
+export const searchUsers = async (q: string, signal?: AbortSignal) =>
+    (await request<{ users: UserWithFriendship[] }>(`/users?q=${encodeURIComponent(q)}`, { signal })).users;
 
 export const fetchUserByHandle = (handle: string) =>
     request<UserWithFriendship>(`/users/by-handle/${encodeURIComponent(handle)}`);

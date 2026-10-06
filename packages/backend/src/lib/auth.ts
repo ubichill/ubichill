@@ -298,14 +298,18 @@ export const auth = betterAuth({
         max: 100,
     },
     user: {
+        // どちらもサーバーだけが書く。input を許すと /update-user から任意の値（外部の画像 URL など）を入れられ、
+        // 公開のプロフィール・OGP に出てしまう
         additionalFields: {
             username: {
                 type: 'string',
                 required: false,
+                input: false,
             },
             profileImageUrl: {
                 type: 'string',
                 required: false,
+                input: false,
             },
         },
     },

@@ -211,7 +211,7 @@ router.get('/me', requirePublisher, async (req, res) => {
         ...(req.publishingEnvironment
             ? { publishingEnvironment: { id: req.publishingEnvironment.id, kind: req.publishingEnvironment.kind } }
             : {}),
-        profileImageUrl: user.profileImageUrl ?? user.image ?? null,
+        profileImageUrl: user.profileImageUrl ?? null,
     });
 });
 
@@ -474,7 +474,7 @@ router.get('/:userId', async (req, res) => {
         name: user.name,
         handle: user.handle ?? null,
         author: user.handle ? selfAccount(user.handle) : null,
-        profileImageUrl: user.profileImageUrl ?? user.image ?? null,
+        profileImageUrl: user.profileImageUrl ?? null,
         bio: user.bio ?? null,
     });
 });

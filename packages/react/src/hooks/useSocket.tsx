@@ -10,6 +10,7 @@ import {
 import type React from 'react';
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
+import { rejoinUser } from '../lib/rejoinUser';
 
 // Socket type definition
 type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
@@ -57,31 +58,34 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } | null>(null);
 
     /** world:join を送る。失敗したら参加していない状態に戻す（画面は理由を出してロビーへ戻せる）。 */
-    const sendJoin = useCallback((socket: AppSocket, joined: NonNullable<typeof joinedRef.current>) => {
-        setError(null);
-        socket.emit(
-            'world:join',
-            {
-                instanceId: joined.instanceId,
-                user: joined.user,
-                ...(joined.legacyWorldId ? { worldId: joined.legacyWorldId } : {}),
-            },
-            (response) => {
-                if (response.success && response.userId) {
-                    const newUser = { ...joined.user, id: response.userId };
-                    setCurrentUser(newUser);
-                    currentUserRef.current = newUser;
-                } else {
-                    const msg = response.error || 'Failed to join world';
-                    joinedRef.current = null;
-                    setCurrentUser(null);
-                    currentUserRef.current = null;
-                    setError(msg);
-                    joined.onError?.(msg);
-                }
-            },
-        );
-    }, []);
+    const sendJoin = useCallback(
+        (socket: AppSocket, joined: NonNullable<typeof joinedRef.current>, user: Omit<User, 'id'>) => {
+            setError(null);
+            socket.emit(
+                'world:join',
+                {
+                    instanceId: joined.instanceId,
+                    user,
+                    ...(joined.legacyWorldId ? { worldId: joined.legacyWorldId } : {}),
+                },
+                (response) => {
+                    if (response.success && response.userId) {
+                        const newUser = { ...user, id: response.userId };
+                        setCurrentUser(newUser);
+                        currentUserRef.current = newUser;
+                    } else {
+                        const msg = response.error || 'Failed to join world';
+                        joinedRef.current = null;
+                        setCurrentUser(null);
+                        currentUserRef.current = null;
+                        setError(msg);
+                        joined.onError?.(msg);
+                    }
+                },
+            );
+        },
+        [],
+    );
 
     // Keep ref in sync
     useEffect(() => {
@@ -121,7 +125,8 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             setError(null);
             // 再接続: 参加していたインスタンスに参加し直す（初回の参加は joinWorld が送る）
             const joined = joinedRef.current;
-            if (joined && currentUserRef.current) sendJoin(socket, joined);
+            if (joined && currentUserRef.current)
+                sendJoin(socket, joined, rejoinUser(joined.user, currentUserRef.current, Date.now()));
         });
 
         socket.on('session:replaced', () => {
@@ -237,7 +242,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             // 接続後にワールドに参加
             const joined = { instanceId, user: initialUser, legacyWorldId, onError };
             joinedRef.current = joined;
-            const emitJoin = () => sendJoin(socket, joined);
+            const emitJoin = () => sendJoin(socket, joined, initialUser);
 
             if (socket.connected) {
                 emitJoin();

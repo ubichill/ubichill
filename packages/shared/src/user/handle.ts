@@ -112,13 +112,20 @@ function isControlText(value: string): boolean {
 /** 自己紹介の最大文字数。 */
 export const BIO_MAX_LENGTH = 300;
 
+const normalizeBio = (value: string): string => value.replace(/\r\n?/g, '\n').trim();
+
+/** 自己紹介の文字数（保存される形にそろえたあとのコードポイント数）。画面のカウンタと API の上限は必ずこれで数える。 */
+export function bioLength(value: string): number {
+    return Array.from(normalizeBio(value)).length;
+}
+
 /**
  * 自己紹介（任意。改行は使える）。前後の空白を除き、空なら null（書いていない）。改行・タブ以外の制御文字は使えない。
+ * 入力の大きさは body の上限（express.json）で抑えるので、ここでは正規化後の文字数だけを見る。
  */
 export const BioSchema = z
     .string()
-    .max(BIO_MAX_LENGTH + 100, `自己紹介は ${BIO_MAX_LENGTH} 文字以内です`)
-    .transform((v) => v.replace(/\r\n?/g, '\n').trim())
+    .transform(normalizeBio)
     .refine((v) => Array.from(v).length <= BIO_MAX_LENGTH, `自己紹介は ${BIO_MAX_LENGTH} 文字以内です`)
     .refine((v) => !isControlText(v.replace(/[\n\t]/g, '')), '自己紹介に制御文字は使えません')
     .transform((v) => (v === '' ? null : v));
