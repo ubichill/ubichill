@@ -44,7 +44,7 @@ URL を開くだけでカーソルがアバターになる、軽量な 2D メタ
 | Production（アプリ本体） | <https://ubichill.com/> | `main` への merge → `:latest` / `:sha-<sha>` イメージで自動デプロイ |
 | PR プレビュー | `pr-<番号>.ubichill.com` | PR に `preview` ラベル付与 → `:pr-<番号>` / `:sha-<sha>` をビルドし、GitOps（ArgoCD ApplicationSet）が PR ごとに払い出す |
 
-> イメージは GHCR（`ghcr.io/<owner>/ubichill-{backend,frontend}`）に push される。デプロイ先のドメインや secret は本リポジトリには含めず、GitOps/Helm values 側で注入する（`global.domain` や `MAIL_FROM` 等）。
+> イメージは GHCR（`ghcr.io/<owner>/ubichill-{backend,frontend,instance}`）に push される。デプロイ先のドメインや secret は本リポジトリには含めず、GitOps/Helm values 側で注入する（`global.domain` や `MAIL_FROM` 等）。
 
 ## 自分のサーバーで動かす
 

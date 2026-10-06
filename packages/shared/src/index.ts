@@ -110,9 +110,6 @@ export interface ServerToClientEvents {
     // Instance Events (Server -> Client)
     // ============================================
 
-    /** インスタンス状態更新 */
-    'instance:updated': (stats: { currentUsers: number }) => void;
-
     /** インスタンス終了通知 */
     'instance:closing': (reason: string) => void;
 
@@ -141,12 +138,8 @@ export interface ClientToServerEvents {
     /** ワールドに参加 */
     'world:join': (
         data: {
-            /**
-             * @deprecated ワールドはサーバーが instanceId から解決する。
-             * 旧クライアントとの wire 互換のため受理するが、認可・解決には使用しない。
-             */
-            worldId?: string;
             instanceId: string;
+            /** 参加チケットの取得（SNS の REST）にだけ使い、インスタンスサーバーへは送らない。 */
             password?: string;
             user: Omit<User, 'id'>;
         },
@@ -209,9 +202,6 @@ export interface ClientToServerEvents {
  * デフォルト設定
  */
 export const DEFAULTS = {
-    /** デフォルトのワールドID */
-    WORLD_ID: 'default',
-
     /** ユーザーのデフォルトステータス */
     USER_STATUS: 'online' as UserStatus,
 

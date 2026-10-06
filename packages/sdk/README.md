@@ -4,7 +4,7 @@
 `ubichill`（unscoped）。ワークスペース内の実装は `@ubichill/sdk` という名前だが、公開物は
 `ubichill` としてビルドされる。
 
-ubichill は「URLで起動し、Socket.IO で同期する、ゼロトラスト型のmod動的ロード2Dメタバース基盤」。
+ubichill は「URLで起動し、WebSocket で同期する、ゼロトラスト型のmod動的ロード2Dメタバース基盤」。
 mod は Web Worker 内で動く独立したサンドボックスで、Host本体には直接アクセスできない。
 `Ubi` グローバル（このSDKが注入する）経由でのみ Host とやり取りする。
 

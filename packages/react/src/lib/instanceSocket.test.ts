@@ -76,6 +76,17 @@ describe('InstanceSocket', () => {
         expect(connected).toHaveBeenCalledOnce();
         socket.disconnect();
     });
+    it('パスワードはチケット取得にだけ使い、インスタンスサーバーへ送らない', async () => {
+        const resolve = vi.fn<ResolveInstance>(async () => grant);
+        const socket = new InstanceSocket(resolve);
+        socket.emit('world:join', { instanceId: 'room', password: 'secret-pw', user: { ...user } }, vi.fn());
+        await flush();
+        latest().open();
+        expect(resolve).toHaveBeenCalledWith('room', 'secret-pw');
+        expect(latest().frames[0]?.data).not.toHaveProperty('password');
+        expect(Object.keys(latest().frames[0]?.data as object).sort()).toEqual(['instanceId', 'token', 'user']);
+        socket.disconnect();
+    });
     it('再接続は新しいチケットと最新位置を使い、createを再送しない', async () => {
         const resolve = vi.fn<ResolveInstance>(async () => grant);
         const socket = new InstanceSocket(resolve);

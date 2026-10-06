@@ -98,7 +98,8 @@ export class InstanceSocket {
             const handshake = setTimeout(() => ws.close(), 10000);
             ws.onopen = () => {
                 if (generation !== this.generation) return;
-                this.send('world:join', { ...joined.data, token: grant.token }, (value) => {
+                const { instanceId, user } = joined.data;
+                this.send('world:join', { instanceId, user, token: grant.token }, (value) => {
                     if (generation !== this.generation) return;
                     clearTimeout(handshake);
                     const result = value as JoinReply;

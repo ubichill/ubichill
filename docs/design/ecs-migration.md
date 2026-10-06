@@ -92,7 +92,7 @@ Worker への配信時に flat ビュー (`ComponentInstance`) に展開する�
 
 | 経路 | 同 tab sender | 他 tab/他ユーザー | 用途 |
 |---|---|---|---|
-| `Ubi.event.broadcast(type, data)` | ❌ (Socket.IO `socket.to(room)`) | ✅ 同 entity を見てる他ユーザーの Worker | クロスユーザー揮発性同期 |
+| `Ubi.event.broadcast(type, data)` | ❌ (インスタンスサーバーの `entity:ephemeral` 中継) | ✅ 同 entity を見てる他ユーザーの Worker | クロスユーザー揮発性同期 |
 | `Ubi.event.sendToHost(type, data)` | ✅ 自 Worker → 自 Host のみ | ❌ | host bridge |
 | `Ubi.event.emit(type, data, { scope, targetType })` | ✅ 同 tab 内の他 Worker (scope + type 絞り込み) | ❌ | クロス Component コマンド |
 | `Ubi.entity(id).update(patch)` | ✅ (ただし watchScope 内 または entityRef で明示配線された id のみ、Stage 5 参照) | ✅ Reliable State | 他エンティティの書き換え (escape hatch) |

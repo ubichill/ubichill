@@ -58,8 +58,9 @@ SNSが入室条件を検証して初期状態をPUTし、参加チケットを�
 人数・在席・フレンドの現在地はGoの管理APIから取得する。Goに到達できなければエラーにし、
 空室と見なしてDBレコードを削除しない。空室回収はGo側でも在席を再確認してから実行する。
 
-Helmでは専用Deployment/ServiceにGoを配置し、`/realtime` を直接ルーティングする。
-Goバイナリは既存backendイメージにも同梱し、SNSとGoを別プロセス・別Podで起動する。
+Helmでは専用イメージ（`ghcr.io/ubichill/ubichill-instance`）・Deployment/ServiceでGoを配置し、
+WebSocketの `/realtime/v1/ws` だけを直接ルーティングする（管理APIはクラスタ内のみ）。
+backendのデプロイや設定変更ではGoを再起動しない（状態がメモリにあるため）。
 管理トークンは既定でbackend Secretの `BETTER_AUTH_SECRET` キーを参照する。
 専用キーを使う場合は `instanceRuntime.existingSecret` / `instanceRuntime.secretKey` を指定する。
 明示したIngressルートに旧 `/socket.io` があれば削除できる。

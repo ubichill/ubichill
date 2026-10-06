@@ -1,11 +1,11 @@
 /**
  * useModBroadcast
  *
- * entity:ephemeral ↔ Ubi.network.broadcast の Socket.IO ブリッジ。
+ * entity:ephemeral ↔ Ubi.network.broadcast のインスタンス通信ブリッジ。
  *
  * 責務:
  * - 他ユーザーの entity:ephemeral を EVT_NETWORK_BROADCAST として Worker へ転送
- * - Worker の onNetworkBroadcast を entity:ephemeral として Socket.IO へ送出
+ * - Worker の onNetworkBroadcast を entity:ephemeral としてインスタンスサーバーへ送出
  */
 
 import type { EntityEphemeralPayload, ModHostEvent } from '@ubichill/shared';

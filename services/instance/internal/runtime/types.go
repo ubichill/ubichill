@@ -5,7 +5,7 @@ import (
 	"github.com/ubichill/ubichill/services/instance/internal/protocol"
 )
 
-// Wire types are described by protocol/instance/{openapi,asyncapi}.yaml.
+// Wire types are described by protocol/instance/{openapi,asyncapi}.json.
 // Mod data stays opaque: the runtime does not execute mod code.
 type Object = map[string]any
 

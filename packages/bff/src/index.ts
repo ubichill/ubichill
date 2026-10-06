@@ -21,7 +21,7 @@ import { renderWorldShell } from './worldShell';
  * - `/world/:id` は core API からワールド情報＋インスタンス一覧を取り、index.html の <head> に
  *   OGP / Twitter / JSON-LD を、<body> に SSR シェルを注入する（bot も人間も同一 HTML＝
  *   UA 判定・クローキング不要）。
- * - core backend は `/api` `/socket.io`（Ingress が直接ルーティング）でドメイン API に純化。
+ * - core backend は `/api`、インスタンス通信は Go の `/realtime/v1/ws`（いずれも Ingress が直接ルーティング）。
  */
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -247,7 +247,7 @@ app.get('/robots.txt', (_req, res) => {
             'Allow: /world/\n' +
             'Allow: /@\n' +
             'Disallow: /api/\n' +
-            'Disallow: /socket.io/\n' +
+            'Disallow: /realtime/\n' +
             'Disallow: /instance/\n' +
             'Disallow: /auth/\n' +
             'Disallow: /worlds/new\n' +

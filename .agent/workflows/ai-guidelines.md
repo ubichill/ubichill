@@ -14,7 +14,8 @@ description: AIアシスタント向けガイドライン
   
 - **パッケージの役割**:
   - `packages/shared`: **重要**。型定義、定数、共通ユーティリティはここに記述してください。フロントエンドとバックエンドでコードを重複させないでください。
-  - `packages/backend`: APIサーバー、Socket.ioサーバーロジック。
+  - `packages/backend`: SNS・認証のAPIサーバー。
+  - `services/instance`: インスタンス内の同期を担う Go の WebSocket サーバー。
   - `packages/frontend`: UI/UXロジック。`hooks/` にロジックを切り出すことを推奨します。
 
 ## 2. 言語とスタイル
@@ -31,7 +32,7 @@ description: AIアシスタント向けガイドライン
   - スタイリングは `styled-system` から `css` 関数などをインポートして使用してください。
   - `className` 属性に `css({})` の戻り値を渡す形で記述してください。
 - **コンポーネント**: 再利用可能なUIパーツは `src/components` に作成してください。
-- **Socket.io**: イベント名は、`shared` パッケージの `ServerToClientEvents` / `ClientToServerEvents` インターフェースで厳密に管理してください。
+- **インスタンス通信**: イベント名は、`shared` パッケージの `ServerToClientEvents` / `ClientToServerEvents` インターフェースで厳密に管理してください。
 
 ## 4. Docker / 環境
 

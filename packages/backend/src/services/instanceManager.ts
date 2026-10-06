@@ -3,12 +3,11 @@ import type {
     CreateInstanceRequest,
     Instance,
     InstanceAccess,
-    WorldEnvironmentData,
     WorldIdentity,
     WorldMod,
     WorldSource,
 } from '@ubichill/shared';
-import { canJoinInstance, canSeeInstance, DEFAULTS, type InstanceAudience, isPublishable } from '@ubichill/shared';
+import { canJoinInstance, canSeeInstance, type InstanceAudience, isPublishable } from '@ubichill/shared';
 import bcrypt from 'bcryptjs';
 import { appConfig } from '../config';
 import { logger } from '../utils/logger';
@@ -244,20 +243,6 @@ class InstanceManager {
     }
 
     /**
-     * ワールドの環境設定を取得
-     */
-    async getWorldEnvironment(worldId: string): Promise<WorldEnvironmentData> {
-        const world = await worldRegistry.getWorld(worldId);
-        if (world) {
-            return {
-                backgroundColor: world.environment.backgroundColor,
-                worldSize: world.environment.worldSize,
-            };
-        }
-        return DEFAULTS.WORLD_ENVIRONMENT;
-    }
-
-    /**
      * DB record から公開用のInstanceオブジェクトに変換
      *
      * currentUsers / status は Go runtime (= 真の在籍) から導出する。
@@ -320,15 +305,6 @@ class InstanceManager {
                 namespace: `/${dbInstance.id}`,
             },
         };
-    }
-
-    /**
-     * 全インスタンスを削除する管理用ヘルパー (テスト/手動運用用)。
-     */
-    async cleanupAll(): Promise<number> {
-        const presence = await instanceRuntime.presence();
-        await Promise.all([...presence.keys()].map((id) => instanceRuntime.close(id)));
-        return instanceRepository.deleteAll();
     }
 }
 

@@ -55,14 +55,12 @@ export type MediaHandlers = Pick<
     | 'onMediaSetDeviceControl'
 >;
 
-type AppSocket = InstanceSocket;
-
 export interface CreateMediaRuntimeOptions {
     definitionId: string;
     syncScopeId: string;
     modId: string;
     mediaVisibility: Map<string, boolean>;
-    getSocket: () => AppSocket | null;
+    getSocket: () => InstanceSocket | null;
     authorizeUrl: (url: string) => Promise<ExternalUrlAccess>;
     sendEvent: (event: ModHostEvent) => void;
 }
