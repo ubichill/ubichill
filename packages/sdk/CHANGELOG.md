@@ -1,5 +1,13 @@
 # @ubichill/sdk
 
+## 3.0.1
+
+### Patch Changes
+
+- Updated dependencies [307340c]
+  - @ubichill/shared@1.5.0
+  - @ubichill/loader@1.2.1
+
 ## 3.0.0
 
 ### Major Changes
