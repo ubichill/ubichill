@@ -50,7 +50,7 @@ jobs:
           helm lint charts/ubichill \
             -f charts/ubichill/values-prod.yaml \
             --set global.domain=prod.example.test \
-            --set backend.secretEnv.BETTER_AUTH_SECRET=test-better-auth-secret \
+            --set backend.secretEnv.BETTER_AUTH_SECRET=test-better-auth-secret-at-least-32-characters \
             --set backend.secretEnv.RESEND_API_KEY=test-resend-api-key \
             --set postgresql.auth.postgresPassword=test-postgres-password \
             --set postgresql.auth.password=test-app-password \
@@ -71,7 +71,7 @@ jobs:
           helm template ubichill-prod charts/ubichill \
             -f charts/ubichill/values-prod.yaml \
             --set global.domain=prod.example.test \
-            --set backend.secretEnv.BETTER_AUTH_SECRET=test-better-auth-secret \
+            --set backend.secretEnv.BETTER_AUTH_SECRET=test-better-auth-secret-at-least-32-characters \
             --set backend.secretEnv.RESEND_API_KEY=test-resend-api-key \
             --set postgresql.auth.postgresPassword=test-postgres-password \
             --set postgresql.auth.password=test-app-password \
