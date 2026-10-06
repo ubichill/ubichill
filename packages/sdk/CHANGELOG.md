@@ -1,5 +1,19 @@
 # @ubichill/sdk
 
+## 3.0.0
+
+### Major Changes
+
+- 902e748: 鍵ファイルを自分で作って管理する `ubichill keygen` / `ubichill sign` を廃止する。署名は `ubichill login`（CI は `ubichill ci create`）のあと `ubichill publish` で行う（鍵は CLI が作り、作者アカウントに自動で登録される）。
+
+  - `ubichill install` は署名しなくなった（`--no-sign` / `--key-file` も廃止）。手元に鍵ファイルがあると、作者の付かない署名を黙って作っていた
+  - 署名の確認（旧 `ubichill sign --check`）は `ubichill verify <world.yaml>`。無効・未署名に加えて、作者アカウントの無い署名も不合格にする
+  - 旧コマンドを実行すると、代わりの使い方を表示して終了する
+
+### Patch Changes
+
+- 902e748: `ubichill publish --out`（外部ホスト向け）でも、署名の前にサーバーで公開環境とアカウントを確かめる。公開環境の「最終利用」が記録されるので、使っている CI が「未使用」「長く使われていません」に見えなくなる。公開環境が取り消されていれば署名せずに止める（サーバーに届かないときは警告して続ける）。
+
 ## 2.4.0
 
 ### Minor Changes
