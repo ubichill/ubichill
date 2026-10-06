@@ -1,5 +1,11 @@
 # @ubichill/shared
 
+## 1.6.0
+
+### Minor Changes
+
+- 749cc83: インスタンス内の通信・状態管理を Go サーバーへ分離。ゲストによる単体運用、SNS 参加チケット、OpenAPI による共通型生成、WebSocket 接続と再同期に対応。
+
 ## 1.5.0
 
 ### Minor Changes

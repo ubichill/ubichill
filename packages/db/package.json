@@ -1,6 +1,6 @@
 {
     "name": "@ubichill/db",
-    "version": "1.2.0",
+    "version": "1.2.1",
     "private": true,
     "description": "Database definitions and migrations for Ubichill",
     "main": "./dist/index.js",
