@@ -59,6 +59,11 @@ func receive(t *testing.T, c *websocket.Conn, event string) Frame {
 }
 func connect(t *testing.T, s *Server, h *httptest.Server, room, user string) *websocket.Conn {
 	t.Helper()
+	c, _ := join(t, s, h, room, user)
+	return c
+}
+func join(t *testing.T, s *Server, h *httptest.Server, room, user string) (*websocket.Conn, Snapshot) {
+	t.Helper()
 	c, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(h.URL, "http")+"/realtime/v1/ws", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -72,8 +77,11 @@ func connect(t *testing.T, s *Server, h *httptest.Server, room, user string) *we
 	if result["success"] != true {
 		t.Fatalf("join: %s", f.Data)
 	}
-	receive(t, c, "world:snapshot")
-	return c
+	var snapshot Snapshot
+	if err := json.Unmarshal(receive(t, c, "world:snapshot").Data, &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	return c, snapshot
 }
 func TestGuestAndManagementBoundary(t *testing.T) {
 	_, h := start(t, true)
