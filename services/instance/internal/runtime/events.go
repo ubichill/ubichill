@@ -108,7 +108,7 @@ func (r *Room) handle(p *peer, f Frame) {
 				e[key] = value
 			}
 		}
-		r.entities[str(e["id"])] = e
+		r.put(str(e["id"]), e)
 		p.reply(f.ID, Object{"success": true, "entity": e})
 		r.broadcast("entity:created", e, p, false)
 	case "entity:patch":
@@ -164,7 +164,7 @@ func (r *Room) handle(p *peer, f Frame) {
 			p.reject(f.ID, "エンティティが大きすぎます")
 			return
 		}
-		r.entities[id] = updated
+		r.put(id, updated)
 		r.broadcast("entity:patched", Object{"entityId": id, "patch": clean}, p, false)
 		p.reply(f.ID, Object{"success": true})
 	case "entity:ephemeral":
@@ -184,7 +184,7 @@ func (r *Room) handle(p *peer, f Frame) {
 			p.reject(f.ID, "削除できません")
 			return
 		}
-		delete(r.entities, id)
+		r.drop(id)
 		r.broadcast("entity:deleted", id, p, false)
 		p.reply(f.ID, Object{"success": true})
 	case "media:timeline:get":

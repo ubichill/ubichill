@@ -67,7 +67,7 @@ func (s *Server) Close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, r := range s.rooms {
-		r.close()
+		r.close(false)
 	}
 	s.rooms = map[string]*Room{}
 }
@@ -180,7 +180,7 @@ func (s *Server) Handler() http.Handler {
 			room.closed = true
 			room.mu.Unlock()
 		}
-		room.close()
+		room.close(true)
 		delete(s.rooms, r.PathValue("id"))
 		s.retired[r.PathValue("id")] = time.Now().Add(2 * time.Minute)
 		w.WriteHeader(204)

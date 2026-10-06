@@ -32,6 +32,11 @@ class InstanceReaper {
     private timer: NodeJS.Timeout | null = null;
     /** instanceId → このプロセスで作成した時刻 (ms)。birth grace 判定に使う。 */
     private bornAt = new Map<string, number>();
+    /**
+     * instanceId → Go に部屋が無いと最初に観測した時刻 (ms)。Go の再起動直後は全部屋が無く、
+     * 参加者の再接続（/join で作り直す）を待つ必要があるので、created_at ではなくここから猶予を数える。
+     */
+    private absentSince = new Map<string, number>();
 
     /** createInstance から呼ぶ: このプロセスでの生成時刻を記録する。 */
     markCreated(instanceId: string): void {
@@ -77,13 +82,20 @@ class InstanceReaper {
         for (const id of this.bornAt.keys()) {
             if (!liveIds.has(id)) this.bornAt.delete(id);
         }
+        for (const id of this.absentSince.keys()) {
+            if (!liveIds.has(id) || presence.has(id)) this.absentSince.delete(id);
+        }
+        for (const inst of all) {
+            if (!presence.has(inst.id) && !this.absentSince.has(inst.id)) this.absentSince.set(inst.id, now);
+        }
 
         const reapable = all.filter((inst) => {
             const runtime = presence.get(inst.id);
             const isEmpty = !runtime || runtime.memberIds.length === 0;
             // 生成時刻はプロセス内記録を最優先。無ければ DB の created_at にフォールバック。
             const bornMs = this.bornAt.get(inst.id) ?? inst.createdAt.getTime();
-            const isPastGrace = now - Math.max(bornMs, runtime?.emptySince ?? bornMs) >= graceMs;
+            const emptySince = runtime ? runtime.emptySince : (this.absentSince.get(inst.id) ?? now);
+            const isPastGrace = now - Math.max(bornMs, emptySince) >= graceMs;
             return isEmpty && isPastGrace;
         });
 
@@ -93,6 +105,7 @@ class InstanceReaper {
             removed.push(inst.id);
             await instanceRepository.delete(inst.id);
             this.bornAt.delete(inst.id);
+            this.absentSince.delete(inst.id);
             logger.info(`インスタンス自動削除（在席0・猶予経過）: ${inst.id}`);
         }
 
