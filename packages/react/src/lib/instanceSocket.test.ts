@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { InstanceSocket, type ResolveInstance } from './instanceSocket';
+import { InstanceJoinRejected, InstanceSocket, type ResolveInstance } from './instanceSocket';
 
 class FakeWebSocket {
     static OPEN = 1;
@@ -124,5 +124,111 @@ describe('InstanceSocket', () => {
         socket.emit('world:leave', callback);
         latest().close();
         expect(callback).toHaveBeenCalledOnce();
+    });
+
+    describe('入室拒否', () => {
+        it('拒否されたら一度だけ失敗を返し、再試行しない', async () => {
+            const resolve = vi.fn<ResolveInstance>(async () => {
+                throw new InstanceJoinRejected('パスワードが正しくありません');
+            });
+            const socket = new InstanceSocket(resolve);
+            const joined = vi.fn();
+            const connectError = vi.fn();
+            socket.on('connect_error', connectError);
+            socket.emit('world:join', { instanceId: 'room', user }, joined);
+            await flush();
+            await vi.advanceTimersByTimeAsync(60000);
+            expect(joined).toHaveBeenCalledOnce();
+            expect(joined).toHaveBeenCalledWith({ success: false, error: 'パスワードが正しくありません' });
+            expect(resolve).toHaveBeenCalledOnce();
+            expect(connectError).not.toHaveBeenCalled();
+            expect(FakeWebSocket.instances).toHaveLength(0);
+        });
+        it('再接続中に拒否されたら（削除・権限変更）参加失敗として返し、再接続をやめる', async () => {
+            const resolve = vi
+                .fn<ResolveInstance>()
+                .mockResolvedValueOnce(grant)
+                .mockRejectedValue(new InstanceJoinRejected('このインスタンスには入れません'));
+            const socket = new InstanceSocket(resolve);
+            const joined = vi.fn();
+            socket.emit('world:join', { instanceId: 'room', user: { ...user } }, joined);
+            await flush();
+            latest().open();
+            ackJoin(latest());
+            latest().close();
+            await vi.advanceTimersByTimeAsync(60000);
+            expect(resolve).toHaveBeenCalledTimes(2);
+            expect(joined).toHaveBeenCalledTimes(2);
+            expect(joined).toHaveBeenLastCalledWith({ success: false, error: 'このインスタンスには入れません' });
+            expect(socket.connected).toBe(false);
+        });
+        it('一時的な失敗は参加失敗にせず、上限付きの間隔で再試行を続ける', async () => {
+            const resolve = vi.fn<ResolveInstance>().mockRejectedValue(new Error('Instance runtime: 503'));
+            const socket = new InstanceSocket(resolve);
+            const joined = vi.fn();
+            const connectError = vi.fn();
+            socket.on('connect_error', connectError);
+            socket.emit('world:join', { instanceId: 'room', user }, joined);
+            await flush();
+            // 1s, 2s, 4s, 8s, 以降 10s 上限
+            await vi.advanceTimersByTimeAsync(1000 + 2000 + 4000 + 8000 + 10000);
+            expect(resolve).toHaveBeenCalledTimes(6);
+            expect(connectError).toHaveBeenCalledTimes(6);
+            expect(joined).not.toHaveBeenCalled();
+            socket.disconnect();
+        });
+        it('一時的な失敗の後に拒否されたら、そこで止まる', async () => {
+            const resolve = vi
+                .fn<ResolveInstance>()
+                .mockRejectedValueOnce(new Error('network'))
+                .mockRejectedValue(new InstanceJoinRejected('このインスタンスには入れません'));
+            const socket = new InstanceSocket(resolve);
+            const joined = vi.fn();
+            socket.emit('world:join', { instanceId: 'room', user }, joined);
+            await flush();
+            await vi.advanceTimersByTimeAsync(60000);
+            expect(resolve).toHaveBeenCalledTimes(2);
+            expect(joined).toHaveBeenCalledOnce();
+            expect(joined).toHaveBeenCalledWith({ success: false, error: 'このインスタンスには入れません' });
+        });
+        it('通信バージョンが違うサーバーには接続せず、参加失敗にする', async () => {
+            const socket = new InstanceSocket(async () => ({ ...grant, protocolVersion: 2 as unknown as 1 }));
+            const joined = vi.fn();
+            socket.emit('world:join', { instanceId: 'room', user }, joined);
+            await flush();
+            await vi.advanceTimersByTimeAsync(60000);
+            expect(FakeWebSocket.instances).toHaveLength(0);
+            expect(joined).toHaveBeenCalledOnce();
+            expect(joined.mock.calls[0]?.[0]).toMatchObject({ success: false });
+        });
+        it('サーバーが入室を拒否したら再接続しない', async () => {
+            const socket = new InstanceSocket(async () => grant);
+            const joined = vi.fn();
+            socket.emit('world:join', { instanceId: 'room', user }, joined);
+            await flush();
+            latest().open();
+            latest().receive({ replyTo: latest().frames[0]?.id, data: { success: false, error: '満員です' } });
+            await vi.advanceTimersByTimeAsync(60000);
+            expect(joined).toHaveBeenCalledOnce();
+            expect(joined).toHaveBeenCalledWith({ success: false, error: '満員です' });
+            expect(FakeWebSocket.instances).toHaveLength(1);
+        });
+        it('拒否された後も別の入室はやり直せる', async () => {
+            const resolve = vi
+                .fn<ResolveInstance>()
+                .mockRejectedValueOnce(new InstanceJoinRejected('このインスタンスには入れません'))
+                .mockResolvedValue(grant);
+            const socket = new InstanceSocket(resolve);
+            socket.emit('world:join', { instanceId: 'locked', user }, vi.fn());
+            await flush();
+            const joined = vi.fn();
+            socket.emit('world:join', { instanceId: 'room', user }, joined);
+            await flush();
+            latest().open();
+            ackJoin(latest());
+            expect(joined).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
+            expect(socket.connected).toBe(true);
+            socket.disconnect();
+        });
     });
 });

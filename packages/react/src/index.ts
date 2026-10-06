@@ -47,6 +47,7 @@ export { useWorld, WorldContext, WorldProvider } from './hooks/useWorld';
 export { type UseWorldModOptions, useWorldMod } from './hooks/useWorldMod';
 export { collectColliders, useWorldSimulation } from './hooks/useWorldSimulation';
 export type { InstanceGrant, ResolveInstance } from './lib/instanceSocket';
+export { InstanceJoinRejected } from './lib/instanceSocket';
 export { ridingSyncRef } from './ridingSyncRef';
 export type { WidgetDefinition, WorkerModDefinition } from './types';
 export { isWorkerMod } from './types';

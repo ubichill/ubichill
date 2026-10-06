@@ -17,7 +17,7 @@ vi.mock('./instanceRuntime', () => ({
 }));
 vi.mock('./instanceReaper', () => ({ instanceReaper: { markCreated: vi.fn() } }));
 
-import { instanceManager } from './instanceManager';
+import { InstanceJoinRejected, instanceManager } from './instanceManager';
 
 const record = {
     id: 'room',
@@ -38,7 +38,7 @@ describe('GoインスタンスへのSNS参加受付', () => {
         mocks.ticket.mockResolvedValue({ token: 'ticket' });
     });
     it('フレンド条件を満たさない参加者にはチケットを発行しない', async () => {
-        await expect(instanceManager.join('room', 'stranger')).rejects.toThrow('入れません');
+        await expect(instanceManager.join('room', 'stranger')).rejects.toThrow(InstanceJoinRejected);
         expect(mocks.ticket).not.toHaveBeenCalled();
         expect(mocks.provision).not.toHaveBeenCalled();
     });
@@ -51,17 +51,29 @@ describe('GoインスタンスへのSNS参加受付', () => {
     });
     it('所有者でも部屋のパスワード確認を省略しない', async () => {
         mocks.findById.mockResolvedValue({ ...record, hasPassword: true });
-        await expect(instanceManager.join('room', 'owner')).rejects.toThrow('パスワード');
+        await expect(instanceManager.join('room', 'owner')).rejects.toThrow(InstanceJoinRejected);
         expect(mocks.ticket).not.toHaveBeenCalled();
     });
     it('Goに接続できない場合に公開範囲を迂回しない', async () => {
         mocks.presence.mockRejectedValue(new Error('runtime unavailable'));
-        await expect(instanceManager.join('room', 'owner')).rejects.toThrow('unavailable');
+        const error = await instanceManager.join('room', 'owner').catch((e: unknown) => e);
+        expect(error).not.toBeInstanceOf(InstanceJoinRejected);
         expect(mocks.ticket).not.toHaveBeenCalled();
     });
-    it('ワールドが解決できなければ参加チケットを発行しない', async () => {
+    it('存在しないインスタンスは拒否として扱う', async () => {
+        mocks.findById.mockResolvedValue(undefined);
+        await expect(instanceManager.join('gone', 'owner')).rejects.toThrow(InstanceJoinRejected);
+    });
+    it('パスワード違いは拒否として扱い、チケットを発行しない', async () => {
+        mocks.findById.mockResolvedValue({ ...record, hasPassword: true, passwordHash: 'x' });
+        await expect(instanceManager.join('room', 'owner', 'wrong')).rejects.toThrow(InstanceJoinRejected);
+        expect(mocks.ticket).not.toHaveBeenCalled();
+    });
+    it('ワールドが解決できなければ参加チケットを発行しない（取得元の障害かもしれないので拒否扱いにしない）', async () => {
         mocks.getWorldByUrl.mockResolvedValue(null);
-        await expect(instanceManager.join('room', 'owner')).rejects.toThrow('ワールド');
+        const error = await instanceManager.join('room', 'owner').catch((e: unknown) => e);
+        expect(error).toBeInstanceOf(Error);
+        expect(error).not.toBeInstanceOf(InstanceJoinRejected);
         expect(mocks.ticket).not.toHaveBeenCalled();
     });
 });

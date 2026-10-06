@@ -17,6 +17,9 @@ import { instanceReaper } from './instanceReaper';
 import { instanceRuntime, type RuntimePresence } from './instanceRuntime';
 import { worldRegistry } from './worldRegistry';
 
+/** 認可・パスワードによる入室拒否。再試行しても結果は変わらない（障害による失敗と区別する）。 */
+export class InstanceJoinRejected extends Error {}
+
 /**
  * インスタンスマネージャー
  * インスタンスの CRUD と公開データ変換を担う（DBベース）。
@@ -186,9 +189,10 @@ class InstanceManager {
     /** SNSの入室可否を確認し、Go用の短期チケットを発行する。 */
     async join(instanceId: string, userId: string, password?: string) {
         const record = await instanceRepository.findById(instanceId);
-        if (!record || !(await this.canJoin(instanceId, userId))) throw new Error('このインスタンスには入れません');
+        if (!record || !(await this.canJoin(instanceId, userId)))
+            throw new InstanceJoinRejected('このインスタンスには入れません');
         if (record.hasPassword && (!password || !(await this.verifyInstancePassword(instanceId, password)))) {
-            throw new Error('パスワードが正しくありません');
+            throw new InstanceJoinRejected('パスワードが正しくありません');
         }
         const world = await worldRegistry.getWorldByUrl(record.worldRef);
         if (!world) throw new Error('ワールドを取得できません');

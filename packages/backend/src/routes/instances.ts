@@ -2,7 +2,7 @@ import { CreateInstanceRequestSchema, ListInstancesQuerySchema } from '@ubichill
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { optionalAuth, requireAuth } from '../middleware/auth';
-import { instanceManager } from '../services/instanceManager';
+import { InstanceJoinRejected, instanceManager } from '../services/instanceManager';
 
 const router = Router();
 
@@ -104,7 +104,9 @@ router.post('/:id/join', requireAuth, async (req, res) => {
         const password = typeof req.body?.password === 'string' ? req.body.password : undefined;
         return res.json(await instanceManager.join(String(req.params.id), req.user.id, password));
     } catch (error) {
-        return res.status(403).json({ error: error instanceof Error ? error.message : '入室できません' });
+        if (error instanceof InstanceJoinRejected) return res.status(403).json({ error: error.message });
+        console.error('インスタンス参加エラー:', error);
+        return res.status(503).json({ error: 'インスタンスに接続できません' });
     }
 });
 

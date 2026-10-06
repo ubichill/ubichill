@@ -10,6 +10,8 @@ type Join = Parameters<ClientToServerEvents['world:join']>[0];
 type JoinReply = Parameters<Parameters<ClientToServerEvents['world:join']>[1]>[0];
 export type InstanceGrant = InstanceAPI['schemas']['InstanceGrant'];
 export type ResolveInstance = (instanceId: string, password?: string) => Promise<InstanceGrant>;
+/** 認可・パスワード・プロトコル不一致による入室拒否。再試行しても変わらないので、自動再接続を止めて参加失敗として返す。 */
+export class InstanceJoinRejected extends Error {}
 interface Frame {
     event?: string;
     data?: unknown;
@@ -87,7 +89,7 @@ export class InstanceSocket {
         try {
             const grant = await this.resolveInstance(joined.data.instanceId, joined.data.password);
             if (generation !== this.generation) return;
-            if (grant.protocolVersion !== 1) throw new Error('非対応の通信バージョンです');
+            if (grant.protocolVersion !== 1) throw new InstanceJoinRejected('非対応の通信バージョンです');
             const url = new URL(grant.url, window.location.href);
             url.protocol = url.protocol === 'https:' || url.protocol === 'wss:' ? 'wss:' : 'ws:';
             const ws = new WebSocket(url);
@@ -149,6 +151,11 @@ export class InstanceSocket {
             };
         } catch (error) {
             if (generation !== this.generation) return;
+            if (error instanceof InstanceJoinRejected) {
+                this.joined = null;
+                joined.callback({ success: false, error: error.message });
+                return;
+            }
             this.dispatch('connect_error', error instanceof Error ? error : new Error(String(error)));
             this.scheduleReconnect();
         }
