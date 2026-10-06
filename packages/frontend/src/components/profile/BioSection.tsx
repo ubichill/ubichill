@@ -1,6 +1,7 @@
-import { BIO_MAX_LENGTH } from '@ubichill/shared';
+import { BIO_MAX_LENGTH, bioLength } from '@ubichill/shared';
 import { useState } from 'react';
 import { setMyBio } from '@/lib/account/me';
+import { bioSegments } from '@/lib/bioLinks';
 import { css } from '@/styled-system/css';
 
 const text = css({
@@ -10,6 +11,7 @@ const text = css({
     whiteSpace: 'pre-wrap',
     overflowWrap: 'anywhere',
 });
+const link = css({ color: 'primaryHighlight', textDecoration: 'underline', _hover: { opacity: 0.8 } });
 const empty = css({ fontSize: '13px', color: 'textMuted' });
 const linkButton = css({
     mt: '1',
@@ -39,7 +41,7 @@ export function BioSection({
     const [value, setValue] = useState(bio ?? '');
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
-    const length = Array.from(value.trim()).length;
+    const length = bioLength(value);
 
     const save = async () => {
         setBusy(true);
@@ -57,7 +59,28 @@ export function BioSection({
     if (!editing) {
         return (
             <div className={css({ mt: '3' })}>
-                {bio ? <p className={text}>{bio}</p> : <p className={empty}>自己紹介はまだ書いていないようです。</p>}
+                {bio ? (
+                    <p className={text}>
+                        {bioSegments(bio).map((s, i) =>
+                            s.kind === 'link' ? (
+                                // 自己紹介はだれでも書けるので、開いた先に元のページを触らせず、リンクの評価も渡さない
+                                <a
+                                    key={i}
+                                    href={s.href}
+                                    target="_blank"
+                                    rel="noopener noreferrer nofollow ugc"
+                                    className={link}
+                                >
+                                    {s.text}
+                                </a>
+                            ) : (
+                                <span key={i}>{s.text}</span>
+                            ),
+                        )}
+                    </p>
+                ) : (
+                    <p className={empty}>自己紹介はまだ書いていないようです。</p>
+                )}
                 {editable && (
                     <button
                         type="button"
