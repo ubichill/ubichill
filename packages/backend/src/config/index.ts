@@ -13,9 +13,11 @@ const envSchema = z.object({
     // SPA は1画面の表示でも複数のAPIを呼ぶため、100/15分では即座に枯渇する。
     // 認証・バージョン・ヘルスは limiter から除外した上で、上限を現実的な値に引き上げる。
     RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().finite().default(10000),
-    INSTANCE_EMPTY_TIMEOUT_MS: z.coerce.number().int().nonnegative().default(60000),
+    INSTANCE_EMPTY_TIMEOUT_MS: z.coerce.number().int().nonnegative().default(5000),
+    // Go再起動で部屋が消えたときは、通常の空室より長く再接続を待つ。
+    INSTANCE_RECOVERY_GRACE_MS: z.coerce.number().int().nonnegative().default(60000),
     // 空インスタンス掃除（reaper）の実行間隔。再起動耐性のため定期スイープ方式を採る。
-    INSTANCE_REAP_INTERVAL_MS: z.coerce.number().int().positive().default(30000),
+    INSTANCE_REAP_INTERVAL_MS: z.coerce.number().int().positive().default(1000),
     DEBUG: z
         .string()
         .optional()
@@ -74,6 +76,7 @@ export const appConfig = {
     },
     instance: {
         emptyTimeoutMs: parsedEnv.data.INSTANCE_EMPTY_TIMEOUT_MS,
+        recoveryGraceMs: parsedEnv.data.INSTANCE_RECOVERY_GRACE_MS,
         reapIntervalMs: parsedEnv.data.INSTANCE_REAP_INTERVAL_MS,
     },
     runtime: {

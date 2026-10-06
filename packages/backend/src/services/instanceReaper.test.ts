@@ -7,7 +7,9 @@ const mocks = vi.hoisted(() => ({
     close: vi.fn(),
 }));
 vi.mock('@ubichill/db', () => ({ instanceRepository: { findAll: mocks.findAll, delete: mocks.delete } }));
-vi.mock('../config', () => ({ appConfig: { instance: { emptyTimeoutMs: 60_000, reapIntervalMs: 30_000 } } }));
+vi.mock('../config', () => ({
+    appConfig: { instance: { emptyTimeoutMs: 60_000, recoveryGraceMs: 60_000, reapIntervalMs: 30_000 } },
+}));
 vi.mock('../utils/logger', () => ({ logger: { info: vi.fn(), error: vi.fn() } }));
 vi.mock('./instanceRuntime', () => ({ instanceRuntime: { presence: mocks.presence, close: mocks.close } }));
 

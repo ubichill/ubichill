@@ -59,6 +59,10 @@ SNSが入室条件を検証して初期状態をPUTし、参加チケットを�
 フロントは `POST /api/v1/instances/:id/join` でチケットを取得し、Goへ直接接続する。
 人数・在席・フレンドの現在地はGoの管理APIから取得する。Goに到達できなければエラーにし、
 空室と見なしてDBレコードを削除しない。空室回収はGo側でも在席を再確認してから実行する。
+SNS連携では在席0になってから5秒の猶予を置き、1秒ごとに回収を確認する（通常5〜6秒）。
+`INSTANCE_EMPTY_TIMEOUT_MS` / `INSTANCE_REAP_INTERVAL_MS` で変更できる。
+Go再起動で部屋が消えた場合は別の `INSTANCE_RECOVERY_GRACE_MS`（既定60秒）で再接続を待つ。
+通信切断後の15秒の参加者保持は独立した設定で、明示退出では即座に在席から外れる。
 
 Helmでは専用イメージ（`ghcr.io/ubichill/ubichill-instance`）・Deployment/ServiceでGoを配置し、
 WebSocketの `/realtime/v1/ws` だけを直接ルーティングする（管理APIはクラスタ内のみ）。

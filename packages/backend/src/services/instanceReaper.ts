@@ -20,7 +20,7 @@ import { instanceRuntime } from './instanceRuntime';
  * 「作成直後の猶予 (birth grace)」:
  *   - createInstance した本人が join する前に消されると world:join が
  *     「インスタンスが見つかりません」で失敗する。これを防ぐため、作成から
- *     emptyTimeoutMs を過ぎるまでは在席0でも削除しない。
+ *     emptyTimeoutMs（Goに部屋が無ければrecoveryGraceMs）を過ぎるまでは在席0でも削除しない。
  *   - 生成時刻は **createInstance が markCreated() で記録したプロセス内の時刻**を最優先で使う。
  *     DB の created_at は `timestamp`(タイムゾーン無し) で、postgres-js の解釈次第で
  *     getTime() が実時刻からズレ得るため、作りたて instance の猶予判定をこれに頼ると
@@ -30,6 +30,7 @@ import { instanceRuntime } from './instanceRuntime';
  */
 class InstanceReaper {
     private timer: NodeJS.Timeout | null = null;
+    private sweeping = false;
     /** instanceId → このプロセスで作成した時刻 (ms)。birth grace 判定に使う。 */
     private bornAt = new Map<string, number>();
     /**
@@ -48,9 +49,15 @@ class InstanceReaper {
         if (this.timer) return;
         const intervalMs = appConfig.instance.reapIntervalMs;
         this.timer = setInterval(() => {
-            void this.sweepOnce().catch((err) => {
-                logger.error('インスタンス掃除中にエラー:', err);
-            });
+            if (this.sweeping) return;
+            this.sweeping = true;
+            void this.sweepOnce()
+                .catch((err) => {
+                    logger.error('インスタンス掃除中にエラー:', err);
+                })
+                .finally(() => {
+                    this.sweeping = false;
+                });
         }, intervalMs);
         // スイープ自体は Node の終了を妨げない
         this.timer.unref?.();
@@ -69,7 +76,8 @@ class InstanceReaper {
 
     /**
      * 1 回分のスイープ。削除した件数を返す。
-     * 「在席0」かつ「作成から emptyTimeoutMs 以上経過」の instance を削除する。
+     * Go側の空室時刻と生成時刻から猶予を過ぎた instance を削除する。
+     * Goに部屋が無い場合は復元待ちの猶予を使う。
      */
     async sweepOnce(): Promise<number> {
         const graceMs = appConfig.instance.emptyTimeoutMs;
@@ -95,7 +103,8 @@ class InstanceReaper {
             // 生成時刻はプロセス内記録を最優先。無ければ DB の created_at にフォールバック。
             const bornMs = this.bornAt.get(inst.id) ?? inst.createdAt.getTime();
             const emptySince = runtime ? runtime.emptySince : (this.absentSince.get(inst.id) ?? now);
-            const isPastGrace = now - Math.max(bornMs, emptySince) >= graceMs;
+            const requiredGraceMs = runtime ? graceMs : appConfig.instance.recoveryGraceMs;
+            const isPastGrace = now - Math.max(bornMs, emptySince) >= requiredGraceMs;
             return isEmpty && isPastGrace;
         });
 
