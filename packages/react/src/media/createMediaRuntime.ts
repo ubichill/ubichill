@@ -1,7 +1,6 @@
 /** React-independent media runtime: DOM/HLS lifecycle, state snapshots, and shared timeline. */
 import { reportDiagnostic } from '@ubichill/sandbox';
 import type {
-    ClientToServerEvents,
     MediaError,
     MediaLoadOptions,
     MediaMetadata,
@@ -11,11 +10,10 @@ import type {
     MediaTimelineIntent,
     MediaTimelineResult,
     ModHostEvent,
-    ServerToClientEvents,
 } from '@ubichill/shared';
 import Hls from 'hls.js';
-import type { Socket } from 'socket.io-client';
 import type { ExternalUrlAccess } from '../lib/externalUrlAuthorization';
+import type { InstanceSocket } from '../lib/instanceSocket';
 import type { ModWorkerHandlers } from '../useModWorker';
 import { planTimelinePlaybackCorrection } from './timelineSync';
 
@@ -57,14 +55,12 @@ export type MediaHandlers = Pick<
     | 'onMediaSetDeviceControl'
 >;
 
-type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
-
 export interface CreateMediaRuntimeOptions {
     definitionId: string;
     syncScopeId: string;
     modId: string;
     mediaVisibility: Map<string, boolean>;
-    getSocket: () => AppSocket | null;
+    getSocket: () => InstanceSocket | null;
     authorizeUrl: (url: string) => Promise<ExternalUrlAccess>;
     sendEvent: (event: ModHostEvent) => void;
 }

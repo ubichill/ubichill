@@ -1,9 +1,7 @@
 import { instanceRepository } from '@ubichill/db';
 import { appConfig } from '../config';
 import { logger } from '../utils/logger';
-import { clearInstanceState } from './instanceState';
-import { clearMediaTimelines } from './mediaTimelineState';
-import { userManager } from './userManager';
+import { instanceRuntime } from './instanceRuntime';
 
 /**
  * 空インスタンスの掃除（reaper）。
@@ -16,13 +14,13 @@ import { userManager } from './userManager';
  *       1. nodemon / Pod 再起動でタイマーが全部消え、孤児 instance が永久に残る
  *       2. プロセス単位なので、作成したプロセスが死ぬと誰も削除しない
  *     という二重の脆さがあった。
- *   - reaper は「DB を定期スイープし、在席(userManager)で生存判定する」ステートレス方式。
+ *   - reaper は「DB を定期スイープし、Go側の在席で生存判定する」ステートレス方式。
  *     再起動してもインメモリ状態に依存しないので孤児が確実に回収される。
  *
  * 「作成直後の猶予 (birth grace)」:
  *   - createInstance した本人が join する前に消されると world:join が
  *     「インスタンスが見つかりません」で失敗する。これを防ぐため、作成から
- *     emptyTimeoutMs を過ぎるまでは在席0でも削除しない。
+ *     emptyTimeoutMs（Goに部屋が無ければrecoveryGraceMs）を過ぎるまでは在席0でも削除しない。
  *   - 生成時刻は **createInstance が markCreated() で記録したプロセス内の時刻**を最優先で使う。
  *     DB の created_at は `timestamp`(タイムゾーン無し) で、postgres-js の解釈次第で
  *     getTime() が実時刻からズレ得るため、作りたて instance の猶予判定をこれに頼ると
@@ -32,8 +30,14 @@ import { userManager } from './userManager';
  */
 class InstanceReaper {
     private timer: NodeJS.Timeout | null = null;
+    private sweeping = false;
     /** instanceId → このプロセスで作成した時刻 (ms)。birth grace 判定に使う。 */
     private bornAt = new Map<string, number>();
+    /**
+     * instanceId → Go に部屋が無いと最初に観測した時刻 (ms)。Go の再起動直後は全部屋が無く、
+     * 参加者の再接続（/join で作り直す）を待つ必要があるので、created_at ではなくここから猶予を数える。
+     */
+    private absentSince = new Map<string, number>();
 
     /** createInstance から呼ぶ: このプロセスでの生成時刻を記録する。 */
     markCreated(instanceId: string): void {
@@ -45,9 +49,15 @@ class InstanceReaper {
         if (this.timer) return;
         const intervalMs = appConfig.instance.reapIntervalMs;
         this.timer = setInterval(() => {
-            void this.sweepOnce().catch((err) => {
-                logger.error('インスタンス掃除中にエラー:', err);
-            });
+            if (this.sweeping) return;
+            this.sweeping = true;
+            void this.sweepOnce()
+                .catch((err) => {
+                    logger.error('インスタンス掃除中にエラー:', err);
+                })
+                .finally(() => {
+                    this.sweeping = false;
+                });
         }, intervalMs);
         // スイープ自体は Node の終了を妨げない
         this.timer.unref?.();
@@ -66,36 +76,49 @@ class InstanceReaper {
 
     /**
      * 1 回分のスイープ。削除した件数を返す。
-     * 「在席0」かつ「作成から emptyTimeoutMs 以上経過」の instance を削除する。
+     * Go側の空室時刻と生成時刻から猶予を過ぎた instance を削除する。
+     * Goに部屋が無い場合は復元待ちの猶予を使う。
      */
     async sweepOnce(): Promise<number> {
         const graceMs = appConfig.instance.emptyTimeoutMs;
         const now = Date.now();
         const all = await instanceRepository.findAll({ includeFull: true });
+        const presence = await instanceRuntime.presence();
         const liveIds = new Set(all.map((inst) => inst.id));
 
         // DB から消えた instance の生成時刻記録を掃除（メモリリーク防止）
         for (const id of this.bornAt.keys()) {
             if (!liveIds.has(id)) this.bornAt.delete(id);
         }
+        for (const id of this.absentSince.keys()) {
+            if (!liveIds.has(id) || presence.has(id)) this.absentSince.delete(id);
+        }
+        for (const inst of all) {
+            if (!presence.has(inst.id) && !this.absentSince.has(inst.id)) this.absentSince.set(inst.id, now);
+        }
 
         const reapable = all.filter((inst) => {
-            const isEmpty = userManager.getUsersByWorld(inst.id).length === 0;
+            const runtime = presence.get(inst.id);
+            const isEmpty = !runtime || runtime.memberIds.length === 0;
             // 生成時刻はプロセス内記録を最優先。無ければ DB の created_at にフォールバック。
             const bornMs = this.bornAt.get(inst.id) ?? inst.createdAt.getTime();
-            const isPastGrace = now - bornMs >= graceMs;
+            const emptySince = runtime ? runtime.emptySince : (this.absentSince.get(inst.id) ?? now);
+            const requiredGraceMs = runtime ? graceMs : appConfig.instance.recoveryGraceMs;
+            const isPastGrace = now - Math.max(bornMs, emptySince) >= requiredGraceMs;
             return isEmpty && isPastGrace;
         });
 
+        const removed: string[] = [];
         for (const inst of reapable) {
+            if (!(await instanceRuntime.close(inst.id, now - graceMs))) continue;
+            removed.push(inst.id);
             await instanceRepository.delete(inst.id);
-            clearInstanceState(inst.id);
-            clearMediaTimelines(inst.id);
             this.bornAt.delete(inst.id);
+            this.absentSince.delete(inst.id);
             logger.info(`インスタンス自動削除（在席0・猶予経過）: ${inst.id}`);
         }
 
-        return reapable.length;
+        return removed.length;
     }
 }
 

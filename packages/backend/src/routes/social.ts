@@ -18,7 +18,7 @@ import { Router } from 'express';
 import { optionalAuth, requireAuth } from '../middleware/auth';
 import { friendEdgesOf, friendIdsOf } from '../services/friends';
 import { instanceManager } from '../services/instanceManager';
-import { userManager } from '../services/userManager';
+import { instanceRuntime } from '../services/instanceRuntime';
 
 const router = Router();
 
@@ -137,15 +137,19 @@ router.get('/locations', requireAuth, async (req, res) => {
     const me = req.user.id;
     const friendIds = [...(await friendIdsOf(me))];
     const myFriends = new Set(friendIds);
-    const instanceIds = [...new Set(friendIds.flatMap((id) => userManager.getUserWorld(id) ?? []))];
+    const presence = await instanceRuntime.presence();
+    const locationsByUser = new Map(
+        [...presence.values()].flatMap((room) => room.memberIds.map((id) => [id, room.id] as const)),
+    );
+    const instanceIds = [...new Set(friendIds.flatMap((id) => locationsByUser.get(id) ?? []))];
     const records = (await Promise.all(instanceIds.map((id) => instanceRepository.findById(id)))).flatMap((r) =>
         r ? [r] : [],
     );
     const recordById = new Map(records.map((r) => [r.id, r]));
     const grouped = groupFriendLocations(
         friendIds,
-        (userId) => recordById.get(userManager.getUserWorld(userId) ?? ''),
-        (record) => canSeeInstance(instanceManager.audienceOf(record), me, myFriends),
+        (userId) => recordById.get(locationsByUser.get(userId) ?? ''),
+        (record) => canSeeInstance(instanceManager.audienceOf(record, presence), me, myFriends),
     );
     const locations = await Promise.all(
         grouped.locations.map(async (l) => ({

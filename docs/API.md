@@ -286,9 +286,12 @@ Worker→Host の postMessage 一点。
 
 ---
 
-## Socket.IO イベント（フロントエンド向け）
+## WebSocket イベント（フロントエンド向け）
 
-詳細は [`ARCHITECTURE.md`](./ARCHITECTURE.md) を参照。
+Goインスタンスサーバーの `/realtime/v1/ws` に接続する。
+SNS運用では `POST /api/v1/instances/:id/join` で参加チケットを取得し、最初の `world:join` フレームに渡す。
+HTTP契約・型生成はOpenAPI、WebSocket契約はAsyncAPI。詳細は
+[インスタンスプロトコル](../protocol/instance/README.md) と [`ARCHITECTURE.md`](./ARCHITECTURE.md) を参照。
 
 **Client → Server**: `world:join` / `cursor:move` / `entity:create` / `entity:patch` / `entity:ephemeral` / `entity:delete`
 

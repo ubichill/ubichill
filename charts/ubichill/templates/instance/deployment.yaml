@@ -1,0 +1,78 @@
+{{- if .Values.instanceRuntime.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ubichill.fullname" . }}-instance
+  labels:
+    {{- include "ubichill.labels" . | nindent 4 }}
+spec:
+  # State has one owner. Multiple replicas require instance-aware routing.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "ubichill.selectorLabels" . | nindent 6 }}
+      component: instance
+  template:
+    metadata:
+      labels:
+        {{- include "ubichill.selectorLabels" . | nindent 8 }}
+        component: instance
+      {{- /*
+        backend の設定・イメージには依存させない。Go は状態をメモリに持つので、
+        backend のデプロイや設定変更のたびに再起動すると全インスタンスの状態が消える。
+        管理トークンを chart が管理する場合（existingSecret 無し）だけ、その値の変更で再起動する。
+      */}}
+      {{- if not (.Values.instanceRuntime.existingSecret | default .Values.backend.existingSecret) }}
+      annotations:
+        checksum/admin-token: {{ get .Values.backend.secretEnv .Values.instanceRuntime.secretKey | toString | sha256sum }}
+      {{- end }}
+    spec:
+      containers:
+        - name: instance
+          image: {{ include "ubichill.instance.image" . }}
+          imagePullPolicy: {{ .Values.instanceRuntime.image.pullPolicy | default .Values.global.imagePullPolicy }}
+          args:
+            - --origins={{ include "ubichill.instance.origins" . }}
+            - --disconnect-grace={{ .Values.instanceRuntime.disconnectGrace }}
+          ports:
+            - name: realtime
+              containerPort: 3002
+          env:
+            - name: INSTANCE_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.instanceRuntime.existingSecret | default .Values.backend.existingSecret | default (printf "%s-backend-secrets" (include "ubichill.fullname" .)) }}
+                  key: {{ .Values.instanceRuntime.secretKey }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: realtime
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: realtime
+          resources:
+            {{- toYaml .Values.instanceRuntime.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ubichill.fullname" . }}-instance
+spec:
+  ports:
+    - name: realtime
+      port: 3002
+      targetPort: realtime
+  selector:
+    {{- include "ubichill.selectorLabels" . | nindent 4 }}
+    component: instance
+{{- end }}

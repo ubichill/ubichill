@@ -1,5 +1,6 @@
 import { createContext, type ReactNode, useContext, useEffect, useMemo, useRef } from 'react';
 import { useSession as useBetterAuthSession } from '@/lib/auth-client';
+import { STANDALONE_RUNTIME } from './instanceConnection';
 
 /**
  * セッション購読を「アプリ全体で 1 箇所」に集約し、一過性の取得失敗で
@@ -34,7 +35,7 @@ export function isUnauthorized(error: SessionState['error']): boolean {
     return status === 401;
 }
 
-export function SessionProvider({ children }: { children: ReactNode }) {
+function AuthSessionProvider({ children }: { children: ReactNode }) {
     // アプリ内で唯一の useSession 購読。これにより get-session は 1 回に集約される。
     const raw = useBetterAuthSession();
 
@@ -78,4 +79,19 @@ export function useSession(): SessionState {
         throw new Error('useSession は SessionProvider の内側で使用してください');
     }
     return ctx;
+}
+
+const guestSession: SessionState = {
+    data: null,
+    error: null,
+    isPending: false,
+    isRefetching: false,
+    refetch: async () => {},
+};
+export function SessionProvider({ children }: { children: ReactNode }) {
+    return STANDALONE_RUNTIME ? (
+        <SessionContext.Provider value={guestSession}>{children}</SessionContext.Provider>
+    ) : (
+        <AuthSessionProvider>{children}</AuthSessionProvider>
+    );
 }

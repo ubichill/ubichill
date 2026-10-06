@@ -59,7 +59,7 @@ export interface MediaSyncState {
 }
 
 // ============================================
-// Socket.io Event Types
+// Instance WebSocket Event Types
 // ============================================
 
 /**
@@ -110,9 +110,6 @@ export interface ServerToClientEvents {
     // Instance Events (Server -> Client)
     // ============================================
 
-    /** インスタンス状態更新 */
-    'instance:updated': (stats: { currentUsers: number }) => void;
-
     /** インスタンス終了通知 */
     'instance:closing': (reason: string) => void;
 
@@ -141,16 +138,19 @@ export interface ClientToServerEvents {
     /** ワールドに参加 */
     'world:join': (
         data: {
-            /**
-             * @deprecated ワールドはサーバーが instanceId から解決する。
-             * 旧クライアントとの wire 互換のため受理するが、認可・解決には使用しない。
-             */
-            worldId?: string;
             instanceId: string;
+            /** 参加チケットの取得（SNS の REST）にだけ使い、インスタンスサーバーへは送らない。 */
             password?: string;
             user: Omit<User, 'id'>;
         },
-        callback: (response: { success: boolean; userId?: string; instanceId?: string; error?: string }) => void,
+        callback: (response: {
+            success: boolean;
+            userId?: string;
+            instanceId?: string;
+            error?: string;
+            /** チケット再取得で復旧できる入室失敗。 */
+            code?: 'ticket_invalid' | 'instance_unavailable';
+        }) => void,
     ) => void;
 
     /** ワールドから退出 */
@@ -201,30 +201,6 @@ export interface ClientToServerEvents {
     'media:timeline:get': (data: { sessionId: string }, callback: (result: MediaTimelineResult) => void) => void;
 }
 
-/**
- * サーバー間イベント（Socket.io Adapter用）
- */
-export interface InterServerEvents {
-    ping: () => void;
-}
-
-/**
- * ソケットデータ（各接続に紐づくデータ）
- */
-export interface SocketData {
-    userId?: string;
-    /** 参加中のインスタンスID。Socket.IO ルームキー兼エンティティ状態キー */
-    instanceId?: string;
-    user?: User;
-    /** better-auth で認証されたユーザー情報（接続時にセット、以降不変） */
-    authUser?: {
-        id: string;
-        email: string;
-        name: string;
-        image: string | null;
-    };
-}
-
 // ============================================
 // Constants
 // ============================================
@@ -233,9 +209,6 @@ export interface SocketData {
  * デフォルト設定
  */
 export const DEFAULTS = {
-    /** デフォルトのワールドID */
-    WORLD_ID: 'default',
-
     /** ユーザーのデフォルトステータス */
     USER_STATUS: 'online' as UserStatus,
 
@@ -288,6 +261,7 @@ export const SERVER_CONFIG = {
 // Re-export Schemas and Mods
 // ============================================
 
+export type { components as InstanceAPI } from './generated/instance';
 export * from './mod/capability';
 export * from './mod/errors';
 export * from './mod/modLock';

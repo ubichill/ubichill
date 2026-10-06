@@ -1,0 +1,58 @@
+name: Instance runtime
+on:
+  pull_request:
+    paths:
+      - services/instance/**
+      - protocol/instance/**
+      - packages/shared/src/generated/**
+      - scripts/generate-instance-protocol.mjs
+      - tools/protocol/**
+      - mise.toml
+      - mise.lock
+      - .github/workflows/instance.yml
+  push:
+    branches: [main]
+    paths:
+      - services/instance/**
+      - protocol/instance/**
+      - packages/shared/src/generated/**
+      - scripts/generate-instance-protocol.mjs
+      - tools/protocol/**
+      - mise.toml
+      - mise.lock
+      - .github/workflows/instance.yml
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+jobs:
+  instance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # Go も mise.toml から導入する（バージョンの真実源を 1 つにする）
+      - uses: ./.github/actions/setup
+      - name: Check Go version matches Dockerfile
+        run: |
+          want="$(mise current go)"
+          got="$(sed -n 's/^ARG GO_VERSION=//p' services/instance/Dockerfile)"
+          if [ "$want" != "$got" ]; then
+            echo "::error::services/instance/Dockerfile の GO_VERSION ($got) が mise.toml の go ($want) と一致しません"
+            exit 1
+          fi
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ hashFiles('mise.toml', 'services/instance/go.sum') }}
+          restore-keys: go-${{ runner.os }}-
+      - run: pnpm protocol:generate
+      - run: git diff --exit-code -- services/instance/internal/protocol packages/shared/src/generated
+      - run: go -C services/instance vet ./...
+      - run: go -C services/instance test -race ./...
+      - run: test -z "$(gofmt -l services/instance)"
+      - run: docker build services/instance

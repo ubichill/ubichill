@@ -2,7 +2,7 @@ import { CreateInstanceRequestSchema, ListInstancesQuerySchema } from '@ubichill
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { optionalAuth, requireAuth } from '../middleware/auth';
-import { instanceManager } from '../services/instanceManager';
+import { InstanceJoinRejected, instanceManager } from '../services/instanceManager';
 
 const router = Router();
 
@@ -94,6 +94,19 @@ router.get('/:id', optionalAuth, async (req, res) => {
     } catch (error) {
         console.error('インスタンス取得エラー:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/** SNSの認証・公開範囲を確認し、インスタンスへの接続情報を返す。 */
+router.post('/:id/join', requireAuth, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+        const password = typeof req.body?.password === 'string' ? req.body.password : undefined;
+        return res.json(await instanceManager.join(String(req.params.id), req.user.id, password));
+    } catch (error) {
+        if (error instanceof InstanceJoinRejected) return res.status(403).json({ error: error.message });
+        console.error('インスタンス参加エラー:', error);
+        return res.status(503).json({ error: 'インスタンスに接続できません' });
     }
 });
 

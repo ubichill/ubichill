@@ -33,7 +33,7 @@ URL を開くだけでカーソルがアバターになる、軽量な 2D メタ
 ペン・動画・付箋など、ワールドの機能は **動的にロードされる Web Worker mod** で増やせる。
 
 - **動的にロードされるmod** — ゼロトラスト Worker サンドボックスで安全に実行
-- **完全 CSR + Socket.IO** — サーバーは状態同期だけ、UI はブラウザに閉じる
+- **完全 CSR + Go / WebSocket** — インスタンス通信を独立サーバーで処理、UI はブラウザに閉じる
 - **World as Code** — YAML でワールド定義をプロビジョニング、エディタで編集
 
 ## 環境
@@ -44,7 +44,7 @@ URL を開くだけでカーソルがアバターになる、軽量な 2D メタ
 | Production（アプリ本体） | <https://ubichill.com/> | `main` への merge → `:latest` / `:sha-<sha>` イメージで自動デプロイ |
 | PR プレビュー | `pr-<番号>.ubichill.com` | PR に `preview` ラベル付与 → `:pr-<番号>` / `:sha-<sha>` をビルドし、GitOps（ArgoCD ApplicationSet）が PR ごとに払い出す |
 
-> イメージは GHCR（`ghcr.io/<owner>/ubichill-{backend,frontend}`）に push される。デプロイ先のドメインや secret は本リポジトリには含めず、GitOps/Helm values 側で注入する（`global.domain` や `MAIL_FROM` 等）。
+> イメージは GHCR（`ghcr.io/<owner>/ubichill-{backend,frontend,instance}`）に push される。デプロイ先のドメインや secret は本リポジトリには含めず、GitOps/Helm values 側で注入する（`global.domain` や `MAIL_FROM` 等）。
 
 ## 自分のサーバーで動かす
 
@@ -67,11 +67,12 @@ DB は同梱の PostgreSQL がパスワードを自動生成するので指定�
 
 Node / pnpm のバージョンは `package.json`（`devEngines.runtime` / `packageManager`）で固定し、[mise](https://mise.jdx.dev/) がそれを読んで導入する。
 `pnpm` 経由のスクリプトは lock 済みの Node で実行されるため、手元の Node がずれていても CI と同じになる。
+インスタンスサーバーにはGo 1.24以上が必要（CI・Dockerは1.27.1）。
 
 ```bash
 mise install      # package.json の Node・pnpm を導入（mise.lock でチェックサム検証）
 pnpm install
-pnpm dev          # PostgreSQL (Docker) + Backend (3001) + Frontend (3000)
+pnpm dev          # PostgreSQL (Docker) + SNS API (3001) + Go (3002) + Frontend (3000)
 ```
 
 PR フローは [.github/workflows/ci.yml](.github/workflows/ci.yml)、内部設計は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
@@ -87,3 +88,18 @@ AGPL-3.0-only（独立した mod については追加的許可あり）。詳�
 
 第三者コンテンツおよび mod は、それぞれの権利者・提供元の利用条件に従ってください。
 本リポジトリのライセンスは、第三者の動画、音声、画像その他のコンテンツを利用する権利を付与するものではありません。公式配布のワールドには、第三者コンテンツや特定の外部 mod を初期設定として含めません。
+
+## インスタンスだけ動かす
+
+SNSやDBを使わないGoサーバーとゲスト用フロントを起動できる。
+
+```sh
+pnpm install
+pnpm turbo build --filter=@ubichill/shared
+pnpm instance:dev
+# 別ターミナル
+VITE_INSTANCE_SERVER_URL=http://localhost:3002 pnpm --filter @ubichill/frontend dev
+```
+
+`http://localhost:3000/instance/standalone?name=Alice` へアクセスする。
+[単体運用・SNS連携・Docker](services/instance/README.md) / [OpenAPI・AsyncAPI](protocol/instance/README.md)。

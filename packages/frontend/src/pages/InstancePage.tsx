@@ -6,6 +6,7 @@ import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { InstanceLoadingScreen } from '@/instance/InstanceLoadingScreen';
 import { InstanceRenderer } from '@/instance/InstanceRenderer';
 import { useInstanceLoading } from '@/instance/useInstanceLoading';
+import { STANDALONE_RUNTIME } from '@/lib/instanceConnection';
 import { fetchInstance } from '@/lib/instancesApi';
 import { useSession } from '@/lib/session';
 import { acceptEntry, hasAcceptedEntry, unverifiedEntryKey, unverifiedEntryMessage } from '@/lib/signing';
@@ -18,7 +19,7 @@ export function InstancePage() {
     const { data: session, isPending } = useSession();
     const confirm = useConfirm();
 
-    const { isConnected, error, currentUser, joinWorld, leaveWorld } = useSocket();
+    const { isConnected, isConnecting, error, currentUser, joinWorld, leaveWorld } = useSocket();
     const { resetWorld, modLock } = useWorld();
 
     const joinedIdRef = useRef<string | null>(null);
@@ -44,7 +45,7 @@ export function InstancePage() {
     useEffect(() => {
         if (isPending) return;
 
-        if (!session) {
+        if (!session && !STANDALONE_RUNTIME) {
             navigate('/auth');
             return;
         }
@@ -96,18 +97,19 @@ export function InstancePage() {
 
             // ワールドは backend が instanceId -> DB worldRef から権威的に解決する。
             // location.state や API 応答の短い worldId を使うと、外部 YAML の URL/lock が失われる。
-            joinWorld(session.user.name, id, (msg) => {
+            joinWorld(session?.user.name ?? new URLSearchParams(location.search).get('name') ?? 'Guest', id, (msg) => {
                 console.error('[InstancePage] world:join failed:', msg);
             });
         };
 
         void connectToNewInstance();
-    }, [session, isPending, navigate, id, joinWorld, resetWorld, confirm]);
+    }, [session, isPending, navigate, id, joinWorld, resetWorld, confirm, location.search]);
 
     const loading = useInstanceLoading({
         instanceId: id,
         isAuthPending: isPending,
         isConnected,
+        isConnecting,
         isJoined: currentUser != null,
         error: error ?? loadError,
         mods,
@@ -116,7 +118,8 @@ export function InstancePage() {
 
     // 失敗時は一定時間後に自動でロビーへ戻す（ロード画面で詰まらないように）
     useEffect(() => {
-        if (!loading.failed) return;
+        // 単体モードの / は同じ部屋へリダイレクトする。失敗時は留めて無限入室を防ぐ。
+        if (!loading.failed || STANDALONE_RUNTIME) return;
         console.warn('[InstancePage] load failed → returning to lobby:', loading.failureMessage);
         const timer = setTimeout(() => navigate('/'), 5000);
         return () => clearTimeout(timer);
@@ -136,7 +139,8 @@ export function InstancePage() {
                     fadingOut={loading.fadingOut}
                     failed={loading.failed}
                     failureMessage={loading.failureMessage}
-                    onReturnToLobby={() => navigate('/')}
+                    recoveryLabel={STANDALONE_RUNTIME ? '再試行する' : 'ロビーに戻る'}
+                    onRecover={() => (STANDALONE_RUNTIME ? window.location.reload() : navigate('/'))}
                 />
             )}
             {!loading.failed && currentUser != null && (
@@ -146,7 +150,7 @@ export function InstancePage() {
                             <InstanceRenderer />
                         </WorkerLoadingProvider>
                     </ModRegistryProvider>
-                    <InstanceHUD />
+                    {!STANDALONE_RUNTIME && <InstanceHUD />}
                 </main>
             )}
         </>

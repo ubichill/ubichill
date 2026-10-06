@@ -1,13 +1,19 @@
 import concurrently from 'concurrently';
+import { randomBytes } from 'node:crypto';
 import killPort from 'kill-port';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 
 async function main() {
-    console.log('🧹 Checking for existing processes on ports 3000 and 3001...');
+    process.env.INSTANCE_ADMIN_TOKEN ||= randomBytes(32).toString('hex');
+    process.env.INSTANCE_PUBLIC_URL ||= 'http://localhost:3002/realtime/v1/ws';
+
+    console.log('🧹 Checking for existing processes on ports 3000, 3001 and 3002...');
     try {
         await killPort(3000);
         await killPort(3001);
+        // 残った `pnpm instance:dev`（ゲストモード）が居ると、Go が起動できないか管理トークンが食い違う
+        await killPort(3002);
         console.log('Existing processes killed or ports are free.');
     } catch (err) {
         console.error('Error killing ports:', err);
@@ -98,6 +104,7 @@ async function main() {
         [
             { command: 'pnpm --filter @ubichill/frontend dev', name: 'frontend', prefixColor: 'cyan' },
             { command: 'pnpm --filter @ubichill/backend dev', name: 'backend', prefixColor: 'magenta' },
+            { command: 'go -C services/instance run ./cmd/instance --origins=http://localhost:3000', name: 'instance', prefixColor: 'blue' },
         ],
         {
             prefix: '[{name}]',

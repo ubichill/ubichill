@@ -1,29 +1,14 @@
-import {
-    type ClientToServerEvents,
-    type CursorPosition,
-    DEFAULTS,
-    SERVER_CONFIG,
-    type ServerToClientEvents,
-    type User,
-    type UserStatus,
-} from '@ubichill/shared';
+import { type CursorPosition, DEFAULTS, type User, type UserStatus } from '@ubichill/shared';
 import type React from 'react';
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { io, type Socket } from 'socket.io-client';
-import { rejoinUser } from '../lib/rejoinUser';
+import { InstanceSocket, type ResolveInstance } from '../lib/instanceSocket';
 
-// Socket type definition
-type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
-
-export interface JoinWorld {
-    (name: string, instanceId: string, onError?: (error: string) => void): void;
-    /** @deprecated worldId は不要。`joinWorld(name, instanceId, onError)` を使用する。 */
-    (name: string, worldId: string, instanceId: string, onError?: (error: string) => void): void;
-}
+export type JoinWorld = (name: string, instanceId: string, onError?: (error: string) => void) => void;
 
 export interface SocketContextValue {
-    socket: AppSocket | null;
+    socket: InstanceSocket | null;
     isConnected: boolean;
+    isConnecting: boolean;
     users: Map<string, User>;
     currentUser: User | null;
     error: string | null;
@@ -38,51 +23,42 @@ export const SocketContext = createContext<SocketContextValue | null>(null);
 /**
  * ソケット接続を子コンポーネントに提供するプロバイダー
  */
-export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const socketRef = useRef<AppSocket | null>(null);
+export const SocketProvider: React.FC<{ children: React.ReactNode; resolveInstance: ResolveInstance }> = ({
+    children,
+    resolveInstance,
+}) => {
+    const socketRef = useRef<InstanceSocket | null>(null);
+    const [activeSocket, setActiveSocket] = useState<InstanceSocket | null>(null);
     const [isConnected, setIsConnected] = useState(false);
+    const [isConnecting, setIsConnecting] = useState(false);
     const [users, setUsers] = useState<Map<string, User>>(new Map());
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const currentUserRef = useRef<User | null>(null);
     const [error, setError] = useState<string | null>(null);
     const isInitializedRef = useRef(false);
-    /**
-     * 参加中のインスタンス。自動で再接続したら参加し直す（サーバーは再接続を参加とみなさないので、
-     * 送り直さないと猶予の後に退出扱いになり、空になったインスタンスが削除される）。退出・切られたら null。
-     */
-    const joinedRef = useRef<{
-        instanceId: string;
-        user: Omit<User, 'id'>;
-        legacyWorldId?: string;
-        onError?: (error: string) => void;
-    } | null>(null);
 
-    /** world:join を送る。失敗したら参加していない状態に戻す（画面は理由を出してロビーへ戻せる）。 */
+    /**
+     * world:join を送る。再接続時の参加し直しは InstanceSocket が行い、その結果もここへ返る。
+     * 失敗したら参加していない状態に戻す（画面は理由を出してロビーへ戻せる）。
+     */
     const sendJoin = useCallback(
-        (socket: AppSocket, joined: NonNullable<typeof joinedRef.current>, user: Omit<User, 'id'>) => {
+        (socket: InstanceSocket, instanceId: string, user: Omit<User, 'id'>, onError?: (error: string) => void) => {
             setError(null);
-            socket.emit(
-                'world:join',
-                {
-                    instanceId: joined.instanceId,
-                    user,
-                    ...(joined.legacyWorldId ? { worldId: joined.legacyWorldId } : {}),
-                },
-                (response) => {
-                    if (response.success && response.userId) {
-                        const newUser = { ...user, id: response.userId };
-                        setCurrentUser(newUser);
-                        currentUserRef.current = newUser;
-                    } else {
-                        const msg = response.error || 'Failed to join world';
-                        joinedRef.current = null;
-                        setCurrentUser(null);
-                        currentUserRef.current = null;
-                        setError(msg);
-                        joined.onError?.(msg);
-                    }
-                },
-            );
+            socket.emit('world:join', { instanceId, user }, (response) => {
+                if (response.success && response.userId) {
+                    const newUser = { ...user, id: response.userId };
+                    setCurrentUser(newUser);
+                    currentUserRef.current = newUser;
+                } else {
+                    const msg = response.error || 'Failed to join world';
+                    setUsers(new Map());
+                    setCurrentUser(null);
+                    currentUserRef.current = null;
+                    setError(msg);
+                    setIsConnecting(false);
+                    onError?.(msg);
+                }
+            });
         },
         [],
     );
@@ -101,55 +77,45 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             return socketRef.current;
         }
 
-        // Dev サーバー検出: 開発時は frontend (5173 等) と backend (3001) が別ポート。
-        // 本番は同 origin で配信されるので socketUrl は undefined にして同 origin を使う。
-        const isDev =
-            typeof window !== 'undefined' &&
-            (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') &&
-            window.location.port !== '' &&
-            window.location.port !== '3001';
-        const socketUrl = isDev ? SERVER_CONFIG.DEV_URL : undefined;
-
-        const socket: AppSocket = io(socketUrl || window.location.origin, {
-            autoConnect: false,
-            path: '/socket.io',
-            withCredentials: true,
-        });
+        const socket = new InstanceSocket(resolveInstance);
 
         socketRef.current = socket;
+        setActiveSocket(socket);
         isInitializedRef.current = true;
 
         // Set up event listeners
         socket.on('connect', () => {
             setIsConnected(true);
+            setIsConnecting(false);
             setError(null);
-            // 再接続: 参加していたインスタンスに参加し直す（初回の参加は joinWorld が送る）
-            const joined = joinedRef.current;
-            if (joined && currentUserRef.current)
-                sendJoin(socket, joined, rejoinUser(joined.user, currentUserRef.current, Date.now()));
         });
 
+        socket.on('connecting', () => setIsConnecting(true));
+
         socket.on('session:replaced', () => {
-            joinedRef.current = null;
+            setUsers(new Map());
+            setIsConnecting(false);
             setCurrentUser(null);
             currentUserRef.current = null;
             setError('同じアカウントが別のタブ・端末でインスタンスに参加したため、こちらの接続は切れました');
         });
 
-        socket.on('disconnect', () => {
-            setIsConnected(false);
+        socket.on('instance:closing', (reason) => {
+            setUsers(new Map());
+            setIsConnecting(false);
+            setCurrentUser(null);
+            currentUserRef.current = null;
+            setError(reason);
         });
 
-        socket.on('connect_error', (err) => {
-            setError(`Connection error: ${err.message}`);
+        socket.on('disconnect', () => {
             setIsConnected(false);
+            setIsConnecting(socket.connecting);
+        });
 
-            // ここでは強制リダイレクトしない。dev のクロスオリジン構成では
-            // バックエンド再起動などの一過性エラーが Unauthorized として届くことがあり、
-            // それで /auth に飛ばすと「勝手にログアウト」に見える。
-            // 認証の真偽判定は useSession / ProtectedRoute に一本化し、
-            // socket は自動再接続に任せる（セッションが本当に切れていれば
-            // ProtectedRoute が画面遷移し、その際に socket もクリーンアップされる）。
+        socket.on('connect_error', () => {
+            setIsConnected(false);
+            // 一時的な失敗は接続中として扱う。拒否・再試行上限はjoinのcallbackで確定する。
         });
 
         socket.on('users:update', (updatedUsers) => {
@@ -207,52 +173,31 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         });
 
         return socket;
-    }, [sendJoin]);
+    }, [resolveInstance]);
 
     // Cleanup on unmount
     useEffect(() => {
         return () => {
             if (socketRef.current) {
                 socketRef.current.disconnect();
+                socketRef.current = null;
+                isInitializedRef.current = false;
             }
         };
     }, []);
 
-    const joinWorld = useCallback(
-        (
-            name: string,
-            instanceIdOrLegacyWorldId: string,
-            instanceIdOrOnError?: string | ((error: string) => void),
-            legacyOnError?: (error: string) => void,
-        ) => {
-            const isLegacyCall = typeof instanceIdOrOnError === 'string';
-            const instanceId = isLegacyCall ? instanceIdOrOnError : instanceIdOrLegacyWorldId;
-            const onError = isLegacyCall ? legacyOnError : instanceIdOrOnError;
-            const legacyWorldId = isLegacyCall ? instanceIdOrLegacyWorldId : undefined;
-            // ソケットを初期化して接続
-            const socket = initializeSocket();
-
+    const joinWorld: JoinWorld = useCallback(
+        (name, instanceId, onError) => {
             const initialUser: Omit<User, 'id'> = {
                 name,
                 status: DEFAULTS.USER_STATUS,
                 position: DEFAULTS.INITIAL_POSITION,
                 lastActiveAt: Date.now(),
             };
-
-            // 接続後にワールドに参加
-            const joined = { instanceId, user: initialUser, legacyWorldId, onError };
-            joinedRef.current = joined;
-            const emitJoin = () => sendJoin(socket, joined, initialUser);
-
-            if (socket.connected) {
-                emitJoin();
-            } else {
-                socket.once('connect', emitJoin);
-                socket.connect();
-            }
+            sendJoin(initializeSocket(), instanceId, initialUser, onError);
         },
         [initializeSocket, sendJoin],
-    ) as JoinWorld;
+    );
 
     const updatePosition = useCallback(
         (position: CursorPosition, heldEntityId?: string | null) => {
@@ -289,11 +234,14 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     );
 
     const leaveWorld = useCallback(() => {
-        // 退出したら再接続しても参加し直さない
-        joinedRef.current = null;
         return new Promise<void>((resolve) => {
             const socket = socketRef.current;
+            setUsers(new Map());
+            setCurrentUser(null);
+            currentUserRef.current = null;
+            setIsConnecting(false);
             if (!socket || !isConnected) {
+                socket?.disconnect();
                 resolve();
                 return;
             }
@@ -302,6 +250,8 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const cleanupAndResolve = () => {
                 if (isDone) return;
                 isDone = true;
+                socket.disconnect();
+                setIsConnected(false);
                 resolve();
             };
 
@@ -321,8 +271,9 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }, [isConnected]);
 
     const value: SocketContextValue = {
-        socket: socketRef.current,
+        socket: activeSocket,
         isConnected,
+        isConnecting,
         users,
         currentUser,
         error,

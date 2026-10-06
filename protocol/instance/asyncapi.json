@@ -1,0 +1,898 @@
+{
+  "asyncapi": "3.0.0",
+  "info": {
+    "title": "Ubichill instance events",
+    "version": "1.0.0",
+    "description": "JSON over WebSocket, protocolVersion 1. No Socket.IO framing. See README.md for ordering, recovery, limits and acknowledgement semantics."
+  },
+  "servers": {
+    "local": {
+      "host": "localhost:3002",
+      "protocol": "ws"
+    }
+  },
+  "channels": {
+    "instance": {
+      "address": "/realtime/v1/ws",
+      "messages": {
+        "cursor:move": {
+          "$ref": "#/components/messages/cursor:move"
+        },
+        "cursor:moved": {
+          "$ref": "#/components/messages/cursor:moved"
+        },
+        "entity:create": {
+          "$ref": "#/components/messages/entity:create"
+        },
+        "entity:created": {
+          "$ref": "#/components/messages/entity:created"
+        },
+        "entity:delete": {
+          "$ref": "#/components/messages/entity:delete"
+        },
+        "entity:deleted": {
+          "$ref": "#/components/messages/entity:deleted"
+        },
+        "entity:ephemeral": {
+          "$ref": "#/components/messages/entity:ephemeral"
+        },
+        "entity:patch": {
+          "$ref": "#/components/messages/entity:patch"
+        },
+        "entity:patched": {
+          "$ref": "#/components/messages/entity:patched"
+        },
+        "error": {
+          "$ref": "#/components/messages/error"
+        },
+        "instance:closing": {
+          "$ref": "#/components/messages/instance:closing"
+        },
+        "media:state-request": {
+          "$ref": "#/components/messages/media:state-request"
+        },
+        "media:state-response": {
+          "$ref": "#/components/messages/media:state-response"
+        },
+        "media:sync": {
+          "$ref": "#/components/messages/media:sync"
+        },
+        "media:timeline": {
+          "$ref": "#/components/messages/media:timeline"
+        },
+        "media:timeline:get": {
+          "$ref": "#/components/messages/media:timeline:get"
+        },
+        "media:timeline:update": {
+          "$ref": "#/components/messages/media:timeline:update"
+        },
+        "reply": {
+          "$ref": "#/components/messages/reply"
+        },
+        "session:replaced": {
+          "$ref": "#/components/messages/session:replaced"
+        },
+        "status:changed": {
+          "$ref": "#/components/messages/status:changed"
+        },
+        "status:update": {
+          "$ref": "#/components/messages/status:update"
+        },
+        "user:joined": {
+          "$ref": "#/components/messages/user:joined"
+        },
+        "user:left": {
+          "$ref": "#/components/messages/user:left"
+        },
+        "users:update": {
+          "$ref": "#/components/messages/users:update"
+        },
+        "world:join": {
+          "$ref": "#/components/messages/world:join"
+        },
+        "world:leave": {
+          "$ref": "#/components/messages/world:leave"
+        },
+        "world:snapshot": {
+          "$ref": "#/components/messages/world:snapshot"
+        }
+      }
+    }
+  },
+  "operations": {
+    "receive": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/instance"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/instance/messages/world:join"
+        },
+        {
+          "$ref": "#/channels/instance/messages/world:leave"
+        },
+        {
+          "$ref": "#/channels/instance/messages/cursor:move"
+        },
+        {
+          "$ref": "#/channels/instance/messages/status:update"
+        },
+        {
+          "$ref": "#/channels/instance/messages/entity:create"
+        },
+        {
+          "$ref": "#/channels/instance/messages/entity:patch"
+        },
+        {
+          "$ref": "#/channels/instance/messages/entity:delete"
+        },
+        {
+          "$ref": "#/channels/instance/messages/entity:ephemeral"
+        },
+        {
+          "$ref": "#/channels/instance/messages/media:sync"
+        },
+        {
+          "$ref": "#/channels/instance/messages/media:state-request"
+        },
+        {
+          "$ref": "#/channels/instance/messages/media:state-response"
+        },
+        {
+          "$ref": "#/channels/instance/messages/media:timeline:get"
+        },
+        {
+          "$ref": "#/channels/instance/messages/media:timeline:update"
+        }
+      ]
+    },
+    "send": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/instance"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/instance/messages/users:update"
+        },
+        {
+          "$ref": "#/channels/instance/messages/user:joined"
+        },
+        {
+          "$ref": "#/channels/instance/messages/user:left"
+        },
+        {
+          "$ref": "#/channels/instance/messages/cursor:moved"
+        },
+        {
+          "$ref": "#/channels/instance/messages/status:changed"
+        },
+        {
+          "$ref": "#/channels/instance/messages/world:snapshot"
+        },
+        {
+          "$ref": "#/channels/instance/messages/entity:created"
+        },
+        {
+          "$ref": "#/channels/instance/messages/entity:patched"
+        },
+        {
+          "$ref": "#/channels/instance/messages/entity:deleted"
+        },
+        {
+          "$ref": "#/channels/instance/messages/entity:ephemeral"
+        },
+        {
+          "$ref": "#/channels/instance/messages/media:sync"
+        },
+        {
+          "$ref": "#/channels/instance/messages/media:state-request"
+        },
+        {
+          "$ref": "#/channels/instance/messages/media:state-response"
+        },
+        {
+          "$ref": "#/channels/instance/messages/media:timeline"
+        },
+        {
+          "$ref": "#/channels/instance/messages/error"
+        },
+        {
+          "$ref": "#/channels/instance/messages/session:replaced"
+        },
+        {
+          "$ref": "#/channels/instance/messages/instance:closing"
+        },
+        {
+          "$ref": "#/channels/instance/messages/reply"
+        }
+      ]
+    }
+  },
+  "components": {
+    "messages": {
+      "media:state-response": {
+        "name": "media:state-response",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event"
+          ],
+          "properties": {
+            "event": {
+              "const": "media:state-response"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {}
+          },
+          "additionalProperties": false
+        }
+      },
+      "user:joined": {
+        "name": "user:joined",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event"
+          ],
+          "properties": {
+            "event": {
+              "const": "user:joined"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {}
+          },
+          "additionalProperties": false
+        }
+      },
+      "user:left": {
+        "name": "user:left",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event"
+          ],
+          "properties": {
+            "event": {
+              "const": "user:left"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {}
+          },
+          "additionalProperties": false
+        }
+      },
+      "status:changed": {
+        "name": "status:changed",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event"
+          ],
+          "properties": {
+            "event": {
+              "const": "status:changed"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {}
+          },
+          "additionalProperties": false
+        }
+      },
+      "cursor:move": {
+        "name": "cursor:move",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event"
+          ],
+          "properties": {
+            "event": {
+              "const": "cursor:move"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "position": {
+                  "type": "object",
+                  "properties": {
+                    "x": {
+                      "type": "number",
+                      "minimum": -10000000.0,
+                      "maximum": 10000000.0
+                    },
+                    "y": {
+                      "type": "number",
+                      "minimum": -10000000.0,
+                      "maximum": 10000000.0
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "additionalProperties": false
+                },
+                "heldEntityId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 64
+                }
+              },
+              "required": [
+                "position"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "entity:deleted": {
+        "name": "entity:deleted",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event"
+          ],
+          "properties": {
+            "event": {
+              "const": "entity:deleted"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "error": {
+        "name": "error",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event"
+          ],
+          "properties": {
+            "event": {
+              "const": "error"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {}
+          },
+          "additionalProperties": false
+        }
+      },
+      "cursor:moved": {
+        "name": "cursor:moved",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event"
+          ],
+          "properties": {
+            "event": {
+              "const": "cursor:moved"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {}
+          },
+          "additionalProperties": false
+        }
+      },
+      "entity:patch": {
+        "name": "entity:patch",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event"
+          ],
+          "properties": {
+            "event": {
+              "const": "entity:patch"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "entityId": {
+                  "type": "string"
+                },
+                "patch": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              },
+              "required": [
+                "entityId",
+                "patch"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "entity:created": {
+        "name": "entity:created",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event"
+          ],
+          "properties": {
+            "event": {
+              "const": "entity:created"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {}
+          },
+          "additionalProperties": false
+        }
+      },
+      "world:snapshot": {
+        "name": "world:snapshot",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event"
+          ],
+          "properties": {
+            "event": {
+              "const": "world:snapshot"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {
+              "$ref": "openapi.json#/components/schemas/Snapshot"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "entity:delete": {
+        "name": "entity:delete",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event"
+          ],
+          "properties": {
+            "event": {
+              "const": "entity:delete"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "users:update": {
+        "name": "users:update",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event"
+          ],
+          "properties": {
+            "event": {
+              "const": "users:update"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {}
+          },
+          "additionalProperties": false
+        }
+      },
+      "media:sync": {
+        "name": "media:sync",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event"
+          ],
+          "properties": {
+            "event": {
+              "const": "media:sync"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {}
+          },
+          "additionalProperties": false
+        }
+      },
+      "media:timeline:update": {
+        "name": "media:timeline:update",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event"
+          ],
+          "properties": {
+            "event": {
+              "const": "media:timeline:update"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {}
+          },
+          "additionalProperties": false
+        }
+      },
+      "world:leave": {
+        "name": "world:leave",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event"
+          ],
+          "properties": {
+            "event": {
+              "const": "world:leave"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {}
+          },
+          "additionalProperties": false
+        }
+      },
+      "media:state-request": {
+        "name": "media:state-request",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event"
+          ],
+          "properties": {
+            "event": {
+              "const": "media:state-request"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {}
+          },
+          "additionalProperties": false
+        }
+      },
+      "entity:patched": {
+        "name": "entity:patched",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event"
+          ],
+          "properties": {
+            "event": {
+              "const": "entity:patched"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {}
+          },
+          "additionalProperties": false
+        }
+      },
+      "media:timeline": {
+        "name": "media:timeline",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event"
+          ],
+          "properties": {
+            "event": {
+              "const": "media:timeline"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {}
+          },
+          "additionalProperties": false
+        }
+      },
+      "status:update": {
+        "name": "status:update",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event"
+          ],
+          "properties": {
+            "event": {
+              "const": "status:update"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {}
+          },
+          "additionalProperties": false
+        }
+      },
+      "instance:closing": {
+        "name": "instance:closing",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event"
+          ],
+          "properties": {
+            "event": {
+              "const": "instance:closing"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {}
+          },
+          "additionalProperties": false
+        }
+      },
+      "entity:ephemeral": {
+        "name": "entity:ephemeral",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event"
+          ],
+          "properties": {
+            "event": {
+              "const": "entity:ephemeral"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "entityId": {
+                  "type": "string"
+                },
+                "data": {}
+              },
+              "required": [
+                "entityId",
+                "data"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "media:timeline:get": {
+        "name": "media:timeline:get",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event"
+          ],
+          "properties": {
+            "event": {
+              "const": "media:timeline:get"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {}
+          },
+          "additionalProperties": false
+        }
+      },
+      "session:replaced": {
+        "name": "session:replaced",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event"
+          ],
+          "properties": {
+            "event": {
+              "const": "session:replaced"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {}
+          },
+          "additionalProperties": false
+        }
+      },
+      "world:join": {
+        "name": "world:join",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event",
+            "id",
+            "data"
+          ],
+          "properties": {
+            "event": {
+              "const": "world:join"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "instanceId": {
+                  "type": "string"
+                },
+                "token": {
+                  "type": "string"
+                },
+                "user": {
+                  "type": "object",
+                  "required": [
+                    "name",
+                    "position",
+                    "status"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 30
+                    },
+                    "position": {
+                      "type": "object",
+                      "properties": {
+                        "x": {
+                          "type": "number",
+                          "minimum": -10000000.0,
+                          "maximum": 10000000.0
+                        },
+                        "y": {
+                          "type": "number",
+                          "minimum": -10000000.0,
+                          "maximum": 10000000.0
+                        }
+                      },
+                      "required": [
+                        "x",
+                        "y"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "status": {
+                      "enum": [
+                        "online",
+                        "busy",
+                        "dnd",
+                        "away",
+                        "offline"
+                      ]
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              },
+              "required": [
+                "instanceId",
+                "token",
+                "user"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "entity:create": {
+        "name": "entity:create",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event"
+          ],
+          "properties": {
+            "event": {
+              "const": "entity:create"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {}
+          },
+          "additionalProperties": false
+        }
+      },
+      "reply": {
+        "name": "reply",
+        "payload": {
+          "type": "object",
+          "required": [
+            "replyTo",
+            "data"
+          ],
+          "properties": {
+            "replyTo": {
+              "type": "string"
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "success": { "type": "boolean" },
+                "error": { "type": "string" },
+                "code": {
+                  "type": "string",
+                  "enum": ["ticket_invalid", "instance_unavailable"],
+                  "description": "Recoverable world:join failure. Refresh the ticket at most once for ticket_invalid; all retries share a finite connection budget."
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  }
+}

@@ -6,6 +6,7 @@
  */
 import type { CreateInstanceRequest, Instance, WorldListItem } from '@ubichill/shared';
 import { API_BASE } from './api';
+import { STANDALONE_RUNTIME } from './instanceConnection';
 
 async function readErrorMessage(res: Response, fallback: string): Promise<string> {
     const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -41,6 +42,22 @@ export async function fetchInstances(worldId?: string): Promise<Instance[]> {
 }
 
 export async function fetchInstance(instanceId: string): Promise<Instance> {
+    if (STANDALONE_RUNTIME) {
+        const response = await fetch(`${STANDALONE_RUNTIME}/realtime/v1/instances/${encodeURIComponent(instanceId)}`);
+        if (!response.ok) throw new Error('インスタンスが見つかりません');
+        const room = (await response.json()) as { id: string; name: string; maxUsers: number };
+        return {
+            id: room.id,
+            status: 'active',
+            leaderId: '',
+            createdAt: '',
+            expiresAt: null,
+            world: { id: room.id, version: '1', displayName: room.name, authorId: '', mods: [] },
+            access: { type: 'public', tags: [], password: false },
+            stats: { currentUsers: 0, maxUsers: room.maxUsers },
+            connection: { url: `${STANDALONE_RUNTIME}/realtime/v1/ws`, namespace: '' },
+        };
+    }
     const res = await fetch(`${API_BASE}/api/v1/instances/${instanceId}`, { credentials: 'include' });
     if (!res.ok) throw new Error(await readErrorMessage(res, 'インスタンスが見つかりません'));
     return res.json() as Promise<Instance>;

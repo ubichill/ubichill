@@ -1,5 +1,16 @@
 # Ubichill アーキテクチャ
 
+## インスタンスサーバーとSNSの境界
+
+`services/instance` のGoサーバーが入退室・カーソル・エンティティ・ロック・メディア同期を所有する。
+TypeScript backendはSNSのDB、認証、フレンド、ワールド解決と参加チケット発行を担当する。
+ブラウザはSNSから接続先と短期チケットを取得し、Goへ直接WebSocket接続する。
+ゲストモードではGoと定義ファイルだけで起動し、SNSのセッションを必要としない。
+
+HTTPは `protocol/instance/openapi.json` からGo/TypeScriptの型を生成する。
+リアルタイム通信は `protocol/instance/asyncapi.json` と `protocol/instance/README.md` を参照。
+状態は現在メモリのみで、再起動時は初期状態へ戻る。確定更新の応答はDB保存を意味しない。
+
 ## システム全体像
 
 ```
@@ -18,7 +29,7 @@ Browser (Main Thread)
 ```
 
 ロジックはすべて **Sandbox Worker** 内で処理し、React はレンダリングのみを担う。
-Socket.IO によるワールド同期はメインスレッドが担い、Worker は知らない。
+WebSocket によるGoインスタンスサーバーとのワールド同期はメインスレッドが担い、Worker は知らない。
 
 ### SDK 名前空間（mod開発者向け）
 
@@ -127,7 +138,7 @@ fetch は接続先ドメインごとに承認する。詳細は [`API.md`](./API
 
 | チャネル | 用途 | 保存 | 頻度 |
 |---|---|---|---|
-| **Reliable State** | 位置確定・色変更・ロック | PostgreSQL | 低（1-10Hz / アクション終了時） |
+| **Reliable State** | 位置確定・色変更・ロック | インスタンスのメモリ | 低（1-10Hz / アクション終了時） |
 | **Volatile Stream** | ドラッグ中・カーソル・描画軌跡 | なし（ブロードキャストのみ） | 高（30-60Hz） |
 
 `stream` は 30ms（33Hz）を目安にスロットリングする。

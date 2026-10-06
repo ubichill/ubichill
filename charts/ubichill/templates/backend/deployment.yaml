@@ -136,6 +136,11 @@ spec:
             name: {{ include "ubichill.fullname" . }}-backend-secrets
         {{- end }}
         env:
+        - name: INSTANCE_ADMIN_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.instanceRuntime.existingSecret | default .Values.backend.existingSecret | default (printf "%s-backend-secrets" (include "ubichill.fullname" .)) }}
+              key: {{ .Values.instanceRuntime.secretKey }}
         {{- /* PostgreSQL: DATABASE_URL は postgres password を含むため inline で組み立てる */}}
         {{- if .Values.postgresql.enabled }}
         {{- /*

@@ -35,7 +35,12 @@ backend:
     CORS_ORIGIN: "*"  # dev では全オリジン許可
   secretEnv:
     BETTER_AUTH_SECRET: "dev-secret-key"
+    # 開発専用。管理APIのキーは認証キーと分け、Go/SNS双方の32文字以上という条件を満たす。
+    INSTANCE_ADMIN_TOKEN: "dev-instance-admin-token-not-for-production"
     RESEND_API_KEY: "dev-resend-key"
+
+instanceRuntime:
+  secretKey: INSTANCE_ADMIN_TOKEN
 
 # Frontend configuration for development  
 frontend:

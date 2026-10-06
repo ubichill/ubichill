@@ -204,6 +204,8 @@ jobs:
     outputs:
       backend: ${{ github.event_name == 'push' && 'true' || steps.filter.outputs.backend }}
       frontend: ${{ github.event_name == 'push' && 'true' || steps.filter.outputs.frontend }}
+      # Go は push でも実差分で判定する。イメージが更新されると Pod が再起動し全インスタンスの状態が消えるため。
+      instance: ${{ steps.filter.outputs.instance }}
       next-version: ${{ steps.next-version.outputs.tag }}
     steps:
       - uses: actions/checkout@v5
@@ -229,17 +231,16 @@ jobs:
       # opened / reopened: PR base から cumulative、synchronize: 前回 push HEAD から incremental
       - name: Detect changed paths
         id: filter
-        if: github.event_name == 'pull_request'
         env:
-          PR_ACTION: ${{ github.event.action }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_ACTION: ${{ github.event_name == 'push' && 'synchronize' || github.event.action }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           PR_BEFORE_SHA: ${{ github.event.before }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: .github/scripts/detect-changed-paths.sh
 
   # ── Docker ビルド（並列）────────────────────────────────────────────────
   # push to main       → 変更のあったイメージを :latest / :sha-<sha> / :<version> で
-  # PR + preview ラベル → 3イメージ全部を :pr-<番号> / :sha-<sha> でビルド
+  # PR + preview ラベル → 全イメージを :pr-<番号> / :sha-<sha> でビルド
   #   （プレビュー環境はフルスタックが要るため detect-changes で絞らず全部作る）
   # ラベル無しの PR      → ビルドしない（lint / typecheck のみ）
   #   いずれも immutable な :sha-<sha> を付与。共有の可変 :dev タグは廃止し、
@@ -377,22 +378,75 @@ jobs:
           cache-to: type=gha,mode=max,scope=frontend
           provenance: false
 
+  build-instance:
+    name: Build and push Instance image
+    needs: [lint, test, typecheck, detect-changes]
+    if: >
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      (
+        (github.event_name == 'push' && needs.detect-changes.outputs.instance == 'true') ||
+        (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'preview'))
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAME: ubichill-instance
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Extract versions
+        id: versions
+        run: |
+          SHA="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          echo "short-sha=$(echo "$SHA" | cut -c1-7)" >> $GITHUB_OUTPUT
+          echo "next-version=${{ needs.detect-changes.outputs.next-version }}" >> $GITHUB_OUTPUT
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v4
+
+      # Go のテストは Dockerfile の build ステージで実行される（落ちたら push しない）
+      - uses: docker/build-push-action@v7
+        with:
+          context: services/instance
+          push: true
+          tags: |
+            ${{ github.event_name == 'push' && format('{0}/{1}/{2}:latest', env.REGISTRY, github.repository_owner, env.IMAGE_NAME) || '' }}
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:sha-${{ steps.versions.outputs.short-sha }}
+            ${{ github.event_name == 'pull_request' && format('{0}/{1}/{2}:sha-{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, github.event.pull_request.head.sha) || '' }}
+            ${{ github.event_name == 'pull_request' && format('{0}/{1}/{2}:pr-{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, github.event.pull_request.number) || '' }}
+            ${{ github.event_name == 'push' && format('{0}/{1}/{2}:{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, steps.versions.outputs.next-version) || '' }}
+          cache-from: type=gha,scope=instance
+          cache-to: type=gha,mode=max,scope=instance
+          provenance: false
+
   # ── git タグ付け（push to main のビルド完了後）──────────────────────────────
 
   tag-release:
     name: Tag release
     # push to main のリリースタグは SDK 検証（verify-mods/verify-sdk）も通過してから打つ。
-    needs: [detect-changes, build-backend, build-frontend, verify-mods, verify-sdk]
+    needs: [detect-changes, build-backend, build-frontend, build-instance, verify-mods, verify-sdk]
     if: >
       always() && !cancelled() &&
       github.event_name == 'push' && github.ref == 'refs/heads/main' &&
       needs.build-backend.result    != 'failure' &&
       needs.build-frontend.result   != 'failure' &&
+      needs.build-instance.result   != 'failure' &&
       needs.verify-mods.result      != 'failure' &&
       needs.verify-sdk.result       != 'failure' &&
       (
         needs.build-backend.result    == 'success' ||
-        needs.build-frontend.result   == 'success'
+        needs.build-frontend.result   == 'success' ||
+        needs.build-instance.result   == 'success'
       )
     runs-on: ubuntu-latest
     permissions:

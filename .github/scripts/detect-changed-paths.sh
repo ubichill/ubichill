@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# PR の変更パスを検知し、backend / frontend の build 要否を判定する。
+# 変更パスを検知し、backend / frontend / instance の build 要否を判定する。
 #
 # 呼び出し: GitHub Actions の "Detect changed paths" step から実行される。
 # 環境変数:
@@ -13,10 +13,13 @@
 # diff の取り方:
 #   - synchronize かつ before が reachable: 前回 push HEAD との incremental
 #   - それ以外 (opened / reopened / force-push 等): PR base からの cumulative
+#   push to main では PR_ACTION=synchronize / PR_BEFORE_SHA=push 前の HEAD として呼ぶ。
+#   diff が取れなければ全部 true にする（ビルド漏れより無駄なビルドの方がまし）。
 #
 # 出力 (GITHUB_OUTPUT):
 #   backend       = true|false
 #   frontend      = true|false
+#   instance      = true|false
 set -eo pipefail
 
 if [[ "${PR_ACTION:-}" == "synchronize" && -n "${PR_BEFORE_SHA:-}" ]] \
@@ -31,12 +34,19 @@ fi
 echo "Mode: ${MODE}"
 echo "Base: ${BASE_SHA}  Head: ${PR_HEAD_SHA}"
 
-CHANGED=$(git diff --name-only "${BASE_SHA}" "${PR_HEAD_SHA}" || true)
-echo "Changed files:"
-echo "${CHANGED}" | sed 's/^/  /'
-
 backend=false
 frontend=false
+instance=false
+
+if ! CHANGED=$(git diff --name-only "${BASE_SHA}" "${PR_HEAD_SHA}"); then
+    echo "diff を取得できないため全部ビルドする"
+    CHANGED=""
+    backend=true
+    frontend=true
+    instance=true
+fi
+echo "Changed files:"
+echo "${CHANGED}" | sed 's/^/  /'
 
 while IFS= read -r f; do
     [[ -z "${f}" ]] && continue
@@ -45,14 +55,19 @@ while IFS= read -r f; do
             backend=true ;;
     esac
     case "${f}" in
-        packages/frontend/*|packages/shared/*|packages/sdk/*|mods/*|scripts/build-workers.mjs|Dockerfile|pnpm-lock.yaml)
+        packages/react/*|packages/frontend/*|packages/bff/*|packages/shared/*|packages/sdk/*|packages/ecs/*|packages/sandbox/*|packages/ui-renderer/*|packages/loader/*|packages/runtime/*|packages/core-components/*|mods/*|scripts/build-workers.mjs|Dockerfile|pnpm-lock.yaml)
             frontend=true ;;
+    esac
+    case "${f}" in
+        services/instance/*)
+            instance=true ;;
     esac
 done <<< "${CHANGED}"
 
 {
     echo "backend=${backend}"
     echo "frontend=${frontend}"
+    echo "instance=${instance}"
 } >> "${GITHUB_OUTPUT}"
 
-echo "→ backend=${backend} frontend=${frontend}"
+echo "→ backend=${backend} frontend=${frontend} instance=${instance}"

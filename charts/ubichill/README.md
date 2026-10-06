@@ -1,6 +1,6 @@
 # Ubichill Helm Chart
 
-Ubichill（Frontend + Backend + Redis + PostgreSQL）を Kubernetes にデプロイするための単一 Helm チャートです。第三者 mod のバックエンドは各 mod の運営者が独立してホストし、この chart はデプロイしません（Host は mod のバックエンドと直接通信せず、mod の worker が、ユーザーから許可された場合に限り、自分のバックエンドへ直接 fetch します）。
+Ubichill（Frontend + SNS Backend + Go Instance + Redis + PostgreSQL）を Kubernetes にデプロイするための単一 Helm チャートです。第三者 mod のバックエンドは各 mod の運営者が独立してホストし、この chart はデプロイしません（Host は mod のバックエンドと直接通信せず、mod の worker が、ユーザーから許可された場合に限り、自分のバックエンドへ直接 fetch します）。
 
 ## クイックスタート
 
@@ -70,13 +70,26 @@ CI でも PR 時に `charts/**` の lint / template を検証する（[helm-ci.y
 
 ```
 Kubernetes (namespace)
-├── frontend   … Vite CSR（React）を nginx で配信。/api・/socket.io は backend へ proxy
-├── backend    … Node.js + Socket.IO。起動時に migrate init container が DB スキーマ適用
+├── frontend   … Vite CSR（React）を BFF で配信
+├── backend    … SNS・認証の Node.js API。Ingress の /api で接続。起動時に DB スキーマ適用
+├── instance   … Go / WebSocket。Ingress の /realtime/v1/ws で直接接続。1 replica・Recreate
 ├── redis      … 共有キャッシュ
 └── postgresql … アプリ DB（同梱 or 外部）
 ```
 
 デプロイ先のドメインや secret は本リポジトリには含めず、GitOps / Helm values 側で注入する。
+
+Goは専用イメージ（`instanceRuntime.image`）で起動し、backendのイメージ・設定には依存しない。
+状態がメモリにあるため、backendのデプロイや設定変更でGoを再起動させないためである。
+ブラウザOriginは `instanceRuntime.origins`（未指定なら `https://<global.domain>`）、
+切断猶予は `instanceRuntime.disconnectGrace` で指定する。Ingressが公開するのはWebSocketの
+`/realtime/v1/ws` だけで、管理API（`/realtime/v1/instances`）はクラスタ内からのみ到達できる。
+管理トークンは既定でbackend Secretの `BETTER_AUTH_SECRET`（32文字以上）を参照する。専用のSecretを使うには
+`instanceRuntime.existingSecret` / `instanceRuntime.secretKey` を指定する。existingSecretを使う場合、
+トークンを変えたら backend と instance の Pod を再起動する。
+Goを外部で運用する場合は `instanceRuntime.enabled=false` とし、backend.envの
+`INSTANCE_RUNTIME_URL` / `INSTANCE_PUBLIC_URL` を外部サーバーに合わせる。
+状態はメモリのみで、再起動時に初期状態へ戻る。詳細は [運用手順](../../services/instance/README.md)。
 
 ## コントリビューション / ライセンス
 

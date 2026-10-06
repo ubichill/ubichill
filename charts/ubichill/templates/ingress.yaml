@@ -44,6 +44,15 @@ spec:
     - host: {{ .host | quote }}
       http:
         paths:
+          {{- if $.Values.instanceRuntime.enabled }}
+          - path: /realtime/v1/ws
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullName }}-instance
+                port:
+                  number: 3002
+          {{- end }}
           {{- range .paths }}
           - path: {{ .path }}
             {{- if .pathType }}
@@ -63,7 +72,7 @@ spec:
           {{- end }}
     {{- end }}
     {{- else if .Values.global.domain }}
-    {{- /* global.domain のみの場合はデフォルトルート（/api・/socket.io・/.well-known/webfinger → backend, / → frontend）を自動生成 */}}
+    {{- /* /api・/.well-known/webfinger → backend、/realtime/v1/ws → instance（管理APIは公開しない）、/ → frontend */}}
     - host: {{ .Values.global.domain | quote }}
       http:
         paths:
@@ -82,13 +91,15 @@ spec:
                 name: {{ $fullName }}-backend
                 port:
                   number: {{ $svcPortBackend }}
-          - path: /socket.io
+          {{- if .Values.instanceRuntime.enabled }}
+          - path: /realtime/v1/ws
             pathType: Prefix
             backend:
               service:
-                name: {{ $fullName }}-backend
+                name: {{ $fullName }}-instance
                 port:
-                  number: {{ $svcPortBackend }}
+                  number: 3002
+          {{- end }}
           - path: /
             pathType: Prefix
             backend:

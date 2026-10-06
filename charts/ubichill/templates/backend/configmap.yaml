@@ -38,5 +38,11 @@ data:
   {{- if .Values.redis.enabled }}
   REDIS_URL: {{ printf "redis://%s-redis-master:%v" (include "ubichill.fullname" .) (.Values.redis.master.service.ports.redis | default 6379) | quote }}
   {{- end }}
+  {{- if not (hasKey .Values.backend.env "INSTANCE_RUNTIME_URL") }}
+  INSTANCE_RUNTIME_URL: {{ printf "http://%s-instance:3002" (include "ubichill.fullname" .) | quote }}
+  {{- end }}
+  {{- if not (hasKey .Values.backend.env "INSTANCE_PUBLIC_URL") }}
+  INSTANCE_PUBLIC_URL: "/realtime/v1/ws"
+  {{- end }}
   WORLDS_DIR: "/worlds-rw"
 {{- end }}

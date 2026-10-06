@@ -308,7 +308,7 @@ ingress:
   annotations: {}
   # hosts: []  # 未設定時は global.domain から自動生成
   # tls: []    # 未設定時は global.domain から自動生成
-  # hosts を手書きする場合は /socket.io → backend も忘れずに追加すること
+  # /realtime → instance は hosts を手書きする場合も自動追加される
 
 # Service configuration
 service:
@@ -354,3 +354,27 @@ monitoring:
     enabled: false
     interval: 30s
     scrapeTimeout: 10s
+
+# 独立したGoインスタンス実行サーバー。状態を保持するため1 replica。
+instanceRuntime:
+  enabled: true
+  # backend とは別イメージ。backend のデプロイで Go が再起動しない（状態はメモリのみ）。
+  image:
+    repository: "ghcr.io/ubichill/ubichill-instance"
+    tag: "latest"
+    pullPolicy: Always
+  # 受け付けるブラウザ Origin。空なら https://<global.domain>
+  origins: []
+  # 切断後に参加者とロックを保持する時間（Go の duration 形式）
+  disconnectGrace: 15s
+  # 未指定時はbackendと同じSecretを参照。専用Secretに切り替える場合は
+  # existingSecretとsecretKeyを設定（32文字以上のランダム値）。
+  existingSecret: ""
+  secretKey: BETTER_AUTH_SECRET
+  resources:
+    requests:
+      cpu: 100m
+      memory: 64Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi

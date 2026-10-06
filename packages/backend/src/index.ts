@@ -1,32 +1,12 @@
 import http from 'node:http';
 import { cliAuthRequestRepository } from '@ubichill/db';
-// Force restart check
-import type { ClientToServerEvents, InterServerEvents, ServerToClientEvents, SocketData } from '@ubichill/shared';
 import cors from 'cors';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
-import { Server } from 'socket.io';
 import { appConfig } from './config';
-import {
-    handleCursorMove,
-    handleDisconnect,
-    handleEntityCreate,
-    handleEntityDelete,
-    handleEntityEphemeral,
-    handleEntityPatch,
-    handleMediaStateRequest,
-    handleMediaStateResponse,
-    handleMediaSync,
-    handleMediaTimelineGet,
-    handleMediaTimelineUpdate,
-    handleStatusUpdate,
-    handleWorldJoin,
-    handleWorldLeave,
-} from './handlers/socketHandlers';
 import { auth } from './lib/auth';
 import { blockOfficialPasswordChange } from './middleware/auth';
-import { socketAuthMiddleware } from './middleware/socketAuth';
 import { router as authorsRouter } from './routes/authors';
 import { router as cliAuthRouter } from './routes/cliAuth';
 import { router as federationRouter } from './routes/federation';
@@ -75,11 +55,7 @@ const limiter = rateLimit({
     message: { error: 'このIPからのリクエストが多すぎます。しばらくしてから再試行してください。' },
     standardHeaders: true,
     legacyHeaders: false,
-    skip: (req) =>
-        req.path === '/health' ||
-        req.path === '/api/version' ||
-        req.path.startsWith('/api/auth') ||
-        req.path.startsWith('/socket.io'),
+    skip: (req) => req.path === '/health' || req.path === '/api/version' || req.path.startsWith('/api/auth'),
 });
 app.use(limiter);
 
@@ -127,46 +103,6 @@ app.use('/.well-known/webfinger', webfingerRouter);
 // HTTPサーバーを作成
 const server = http.createServer(app);
 
-// 型付きイベントでSocket.IOを初期化
-const io = new Server<ClientToServerEvents, ServerToClientEvents, InterServerEvents, SocketData>(server, {
-    cors: {
-        origin: appConfig.cors.origin,
-        methods: ['GET', 'POST'],
-        credentials: true,
-    },
-});
-
-// ============================================
-// Socket.IO 認証ミドルウェア（接続時に better-auth 検証）
-// ============================================
-io.use(socketAuthMiddleware);
-
-// Socket.IO 接続ハンドラー
-io.on('connection', (socket) => {
-    const authUser = socket.data.authUser;
-    console.log(`🔌 新しい接続: ${socket.id.substring(0, 8)} (user: ${authUser?.name ?? 'unknown'})`);
-
-    // 既存イベントハンドラー
-    socket.on('world:join', handleWorldJoin(socket));
-    socket.on('world:leave', handleWorldLeave(socket));
-    socket.on('cursor:move', handleCursorMove(socket));
-    socket.on('status:update', handleStatusUpdate(socket));
-    socket.on('disconnect', handleDisconnect(socket));
-
-    // UEP (Ubichill Entity Protocol) イベントハンドラー
-    socket.on('entity:create', handleEntityCreate(socket));
-    socket.on('entity:patch', handleEntityPatch(socket));
-    socket.on('entity:ephemeral', handleEntityEphemeral(socket));
-    socket.on('entity:delete', handleEntityDelete(socket));
-
-    // メディア (動画/音声) peer 間同期
-    socket.on('media:sync', handleMediaSync(socket));
-    socket.on('media:state-request', handleMediaStateRequest(socket));
-    socket.on('media:state-response', handleMediaStateResponse(socket));
-    socket.on('media:timeline:update', handleMediaTimelineUpdate(socket));
-    socket.on('media:timeline:get', handleMediaTimelineGet(socket));
-});
-
 // ============================================
 // グレースフルシャットダウン
 // ============================================
@@ -180,11 +116,6 @@ function setupGracefulShutdown() {
         // 新規 HTTP 接続を拒否し、既存リクエストの完了を待つ
         server.close(() => {
             console.log('✅ HTTP サーバー停止完了');
-        });
-
-        // Socket.IO を閉じる（既存クライアントに disconnect イベントを送信）
-        io.close(() => {
-            console.log('✅ Socket.IO 停止完了');
         });
 
         // フォールバック: 一定時間内に完了しない場合は強制終了

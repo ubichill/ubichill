@@ -3,6 +3,7 @@
 # ----------------------------------------
 node_modules
 packages/*/node_modules
+tools/*/node_modules
 mods/*/node_modules
 mods/*/frontend/node_modules
 
@@ -30,6 +31,8 @@ packages/frontend/styled-system
 # ----------------------------------------
 charts/
 .github/
+# Go インスタンスは services/instance/Dockerfile で別イメージにする
+services/
 
 # ----------------------------------------
 # ドキュメント・エディタ設定

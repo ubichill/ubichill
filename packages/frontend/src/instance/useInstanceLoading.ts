@@ -19,6 +19,8 @@ interface UseInstanceLoadingParams {
     isAuthPending: boolean;
     /** Socket 接続済み */
     isConnected: boolean;
+    /** 上限付きの接続・再接続を試行中 */
+    isConnecting: boolean;
     /** world:join 成功（currentUser 確定） */
     isJoined: boolean;
     /** Socket / join のエラー文字列 */
@@ -71,6 +73,7 @@ export function useInstanceLoading({
     instanceId,
     isAuthPending,
     isConnected,
+    isConnecting,
     isJoined,
     error,
     mods,
@@ -147,10 +150,10 @@ export function useInstanceLoading({
         if (failureMessage) return;
         if (error && !isJoined) {
             setFailureMessage(error);
-        } else if (timedOut && !complete && !isJoined) {
+        } else if (timedOut && !complete && !isJoined && !isConnecting) {
             setFailureMessage('インスタンスへの接続がタイムアウトしました');
         }
-    }, [error, isJoined, timedOut, complete, failureMessage]);
+    }, [error, isJoined, isConnecting, timedOut, complete, failureMessage]);
 
     const failed = failureMessage !== null;
 
