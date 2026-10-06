@@ -4,11 +4,10 @@
  *
  * 使い方:
  *   ubichill build   [--mods-dir=<dir>] [--public-mods-dir=<dir>] [--dist-dir=<dir>]
- *   ubichill install <world.yaml> [--mods-dir=<dir>] [--base-url=<url>] [--out=<path>] [--no-sign] [--key-file=<path>]
+ *   ubichill install <world.yaml> [--mods-dir=<dir>] [--base-url=<url>] [--out=<path>] [--check]
  *   ubichill update  <world.yaml> [<modName>] [--mods-dir=<dir>] [--out=<path>]
- *   ubichill verify  [--dist-dir=<dir>]
- *   ubichill keygen  [--out=<path>]
- *   ubichill sign    <world.yaml> [--key-file=<path>] [--author=handle@domain] [--out=<path>] [--check]
+ *   ubichill verify  [--dist-dir=<dir>]      mod のビルド（lock.json）を検証する
+ *   ubichill verify  <world.yaml>            ワールドの署名が今の内容に対して有効か調べる
  *   ubichill login   [--server=<url>] [--device] [--name=<表示名>] [--no-browser]
  *   ubichill logout  [--server=<url>]
  *   ubichill whoami  [--server=<url>]
@@ -16,7 +15,8 @@
  *   ubichill publish <world.yaml>... [--server=<url>] [--out=<dir>] [--no-install]
  *
  * `login` はブラウザで承認してこの端末を公開環境にする（鍵は手元だけ）。`publish` はログインしたアカウントで署名して公開する。
- * CI は `ci create` で作った文字列を env UBICHILL_CREDENTIALS に入れて `publish` する。`keygen` / `sign` は上級者向け。
+ * CI は `ci create` で作った文字列を env UBICHILL_CREDENTIALS に入れて `publish` する。鍵は CLI が作って手元に持つ
+ * （鍵ファイルを自分で作って管理する `keygen` / `sign` は廃止。自分のドメインの作者アカウント #181 で必要になれば作り直す）。
  *
  * `lock` は `install` の旧名。非推奨だが後方互換のため残る。
  *
@@ -30,10 +30,10 @@ import { runBuild } from './build.ts';
 import { runInstall } from './install.ts';
 import { runLock } from './lock.ts';
 import { runUpdate } from './update.ts';
-import { runKeygen, runSign } from './sign.ts';
 import { runVerify } from './verify.ts';
+import { runVerifyWorld } from './verifyWorld.ts';
 
-const USAGE = `使い方: ubichill <login|logout|whoami|publish|ci create|build|install|update|verify|keygen|sign> [...args]`;
+const USAGE = `使い方: ubichill <login|logout|whoami|publish|ci create|build|install|update|verify> [...args]`;
 
 async function main(): Promise<void> {
     const [subcommand, ...rest] = process.argv.slice(2);
@@ -51,13 +51,16 @@ async function main(): Promise<void> {
             await runLock(rest);
             return;
         case 'verify':
-            await runVerify(rest);
+            // <world.yaml> を渡したらワールドの署名、無ければ mod のビルド
+            if (rest.some((a) => !a.startsWith('--') && /\.ya?ml$/i.test(a))) await runVerifyWorld(rest);
+            else await runVerify(rest);
             return;
         case 'keygen':
-            await runKeygen(rest);
-            return;
         case 'sign':
-            await runSign(rest);
+            console.error(
+                `ubichill ${subcommand} は廃止しました。署名は ubichill login（CI は ubichill ci create）のあと ubichill publish で行います。署名の確認は ubichill verify <world.yaml> です。`,
+            );
+            process.exit(1);
             return;
         case 'login':
             await runLogin(rest);

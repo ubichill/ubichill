@@ -159,9 +159,9 @@ jobs:
       # - run: npx ubichill publish worlds/*.yaml --out=dist/
 ```
 
-- **`keygen` / `sign`（上級者向け）**: 鍵ファイルを自分で管理して署名する。`--author=handle@domain` を付け、
-  プロフィールの「上級者向け: CLI の鍵ファイルを読み込む」でその鍵を登録したときだけ作者として表示される。
-  `sign --check` で署名し忘れ・古い署名を検出できる。
+- **`verify <world.yaml>`**: 兄弟の `.sig.json` が今の `world.yaml` と `.lock.json` に対して有効か調べる（CI 用。無効・未署名・
+  作者なしなら失敗）。lock を作り直したら署名し直しが要るので、その確認に使う。
+- 鍵ファイルを自分で作って管理する `keygen` / `sign` は 3.0.0 で廃止した。鍵は `login` / `ci create` が作り、作者アカウントに自動で登録される。
 
 ### 型チェックを `build` の前段に入れる
 

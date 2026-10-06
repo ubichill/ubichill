@@ -60,7 +60,7 @@
 | 対象 | 鍵 | 備考 |
 |---|---|---|
 | 本体で作成したワールド | 作者の鍵（ブラウザ生成、IndexedDB に取り出し不可で保存、バックアップファイルはユーザーが保管） | 保存のたびにブラウザが内容に署名し、内容と一緒に `PUT /api/v1/worlds` で送る。サーバーは検証して保存するだけ |
-| CLI / GitHub で作るワールド | 作者の鍵（`ubichill keygen` / `ubichill sign`） | ブラウザのバックアップファイルと同じ PKCS8 形式で相互に使える |
+| CLI / GitHub で作るワールド | 公開環境の鍵（`ubichill login`、CI は `ubichill ci create`） | `ubichill publish` で署名する。鍵ファイルを自分で管理する `keygen` / `sign` は廃止（2026-10） |
 | `worlds/`（公式） | 公式アカウントの CI 用公開環境（Secret `UBICHILL_CREDENTIALS`） | main に入ったら CI が署名してイメージに同梱する（マージ = 公式としての確認）。署名はコミットしない |
 | mod | 作者の鍵（必須方向で検討） | なりすまし防止と grants のキー化 |
 
@@ -76,7 +76,7 @@
 
 - `@ubichill/shared`: `WorldSignatureSchema` / `WorldIdentitySchema`、`canonicalJson`、`signWorld` / `verifyWorldSignature`。
   暗号プリミティブは `WorldCrypto` / `WorldSigningKey` として注入（shared は Node/DOM 非依存を維持）。
-- `@ubichill/loader`: WebCrypto 実装 `webWorldCrypto` / `importSigningKeyPair`（取り出し不可）、CLI 実装 `ubichill keygen` / `ubichill sign [--check]`（subpath `sign-world`）。
+- `@ubichill/loader`: WebCrypto 実装 `webWorldCrypto` / `importSigningKeyPair`（取り出し不可）、CLI の確認 `ubichill verify <world.yaml>`（subpath `verify-world`。署名は `ubichill publish`）。
 - backend: node:crypto の検証専用実装（`services/worldCrypto.ts`）。外部ワールドは YAML・lock・sig を並行取得して検証し、
   不正は `WorldIntegrityError`（`/worlds/resolve` は 422、キャッシュへのフォールバック無し）。
   本体ワールドはファイル/DB の生の値を `/api/v1/authors/<handle>/worlds/<name>.yaml` / `.lock.json` / `.sig.json` で配信する。
@@ -95,7 +95,7 @@
 | 使い方 | 場所 |
 |---|---|
 | ブラウザ | そのサイト（オリジン）の IndexedDB。サイトごとに分かれるので、別サーバーでは同じバックアップを読み込む |
-| バックアップ / CLI | `~/.config/ubichill/signing.key`（`ubichill keygen` の既定）。任意の場所でもよい（`--key-file` / `UBICHILL_SIGNING_KEY[_FILE]`） |
+| CLI | `~/.config/ubichill/credentials.json`（`ubichill login` が作る。0600）。CI は Secret `UBICHILL_CREDENTIALS` |
 | 公式ワールド | CI の Secret `UBICHILL_CREDENTIALS`（公式アカウントの CI 用公開環境） |
 
 署名はワールドの内容に対するもので、サーバーや URL には依存しない。どのサーバーでも検証できる。

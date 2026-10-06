@@ -191,9 +191,9 @@ export async function runPublish(argv: string[]): Promise<void> {
     };
     for (const worldPath of worldPaths) {
         if (!argv.includes('--no-install')) {
-            // mod を固定する（install と同じ）。署名は下でログインしたアカウントで行うので、ここでは署名しない
+            // mod を固定する（install と同じ）。署名は下でログインしたアカウントで行う
             const passthrough = argv.filter((a) => a.startsWith('--mods-dir=') || a.startsWith('--base-url='));
-            await runInstall([worldPath, '--no-sign', ...passthrough]);
+            await runInstall([worldPath, ...passthrough]);
             if (process.exitCode) throw new Error(`${worldPath}: mod を固定できなかったので公開しません`);
         }
         await publish(deps, { worldPath, credential, outDir: argValue(argv, 'out') });
