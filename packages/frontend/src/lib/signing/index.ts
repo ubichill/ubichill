@@ -17,7 +17,7 @@ export {
     unverifiedEntryKey,
     unverifiedEntryMessage,
 } from './entryGate';
-export { createSigningKey, importSigningKeyFile, loadSigningKey, removeSigningKey } from './keyStore';
+export { createSigningKey, loadSigningKey, removeSigningKey } from './keyStore';
 export { type PublishReadiness, publishReadiness } from './publishReadiness';
 export { browserFetch, type SavedWorld, saveWorldBundle, type WorldSaveBody } from './saveHostedWorld';
 export type { WorldSigner } from './signer';

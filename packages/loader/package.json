@@ -11,7 +11,7 @@
         ".": "./src/index.ts",
         "./install-dependencies": "./src/installDependencies.ts",
         "./update-dependencies": "./src/updateDependencies.ts",
-        "./sign-world": "./src/signWorldFile.ts"
+        "./verify-world": "./src/verifyWorldFile.ts"
     },
     "dependencies": {
         "@ubichill/shared": "workspace:*",

@@ -1,11 +1,10 @@
 import { displayAuthorAccount, type RevokeReason } from '@ubichill/shared';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import {
     fetchPublishingEnvironments,
     type MyAccount,
     type PublishingEnvironment,
-    registerSigningKey,
     revokePublishingEnvironment,
     setMyHandle,
 } from '@/lib/account/me';
@@ -17,7 +16,7 @@ import {
 } from '@/lib/account/publishingEnvironments';
 import { type ResignCandidate, type ResignResult, type ResignTarget, worldsNeedingResign } from '@/lib/account/resign';
 import { useHandleAvailability } from '@/lib/account/useHandleAvailability';
-import { importSigningKeyFile, loadSigningKey, removeSigningKey, useSigningPublicKey } from '@/lib/signing';
+import { useSigningPublicKey } from '@/lib/signing';
 import { css, cva } from '@/styled-system/css';
 import { CompromiseGuide } from './CompromiseGuide';
 import { ResignPanel } from './ResignPanel';
@@ -147,7 +146,6 @@ export function PublishingSection({
 }: PublishingSectionProps) {
     const localKey = useSigningPublicKey(account.id);
     const confirm = useConfirm();
-    const fileInput = useRef<HTMLInputElement>(null);
     const [environments, setEnvironments] = useState<PublishingEnvironment[] | null>(null);
     const [busy, setBusy] = useState(false);
     const [message, setMessage] = useState<{ tone: 'info' | 'error'; text: string } | null>(null);
@@ -209,30 +207,6 @@ export function PublishingSection({
             return `「${env.name}」を取り消しました。`;
         });
     };
-
-    const importFile = (file: File) =>
-        run(async () => {
-            if (
-                localKey &&
-                !(await confirm('このブラウザの鍵を、読み込むファイルの鍵に置き換えます。よろしいですか？'))
-            ) {
-                return null;
-            }
-            await importSigningKeyFile(account.id, (await file.text()).trim());
-            const key = await loadSigningKey(account.id);
-            if (!key) throw new Error('鍵を読み込めませんでした');
-            const registration = await registerSigningKey(account.id, key);
-            if (registration !== 'registered') {
-                await removeSigningKey(account.id);
-                throw new Error(
-                    registration === 'revoked'
-                        ? 'この鍵は取り消し済みのため使えません'
-                        : 'この鍵は別のアカウントが登録しているため使えません',
-                );
-            }
-            syncAccountKeys(await reload());
-            return '鍵を読み込み、このブラウザを公開環境として登録しました。';
-        });
 
     const now = Date.now();
     const sorted = environments ? sortEnvironments(environments) : [];
@@ -401,7 +375,9 @@ export function PublishingSection({
                                     </div>
                                     <p className={css({ fontSize: '12px', color: 'textMuted', mt: '0.5' })}>
                                         {KIND_LABEL[env.kind]} ・ 追加 {formatDate(env.createdAt)} ・{' '}
-                                        {env.lastUsedAt ? `最終利用 ${formatDate(env.lastUsedAt)}` : '未使用'}
+                                        <span title="サーバーで公開・確認した日時（外部ホスト向けの ubichill publish --out も、署名の前にサーバーで確認します）">
+                                            {env.lastUsedAt ? `最終利用 ${formatDate(env.lastUsedAt)}` : '未使用'}
+                                        </span>
                                         {env.revokedAt && ` ・ 取り消し ${formatDate(env.revokedAt)}`}
                                         {env.revokeReason &&
                                             `（${env.revokeReason === 'lost' ? '紛失' : '漏えい・心当たりなし'}）`}
@@ -458,32 +434,6 @@ export function PublishingSection({
                     })}
                 </ul>
             )}
-
-            <details className={css({ mt: '4', fontSize: '13px', color: 'textMuted' })}>
-                <summary className={css({ cursor: 'pointer' })}>上級者向け: CLI の鍵ファイルを読み込む</summary>
-                <p className={css({ mt: '2', mb: '2', lineHeight: '1.6' })}>
-                    <code>ubichill keygen</code> で作った鍵ファイルを読み込み、このブラウザの公開環境として登録します。
-                </p>
-                <button
-                    type="button"
-                    className={button({ tone: 'secondary' })}
-                    disabled={busy}
-                    onClick={() => fileInput.current?.click()}
-                >
-                    鍵ファイルを読み込む
-                </button>
-                <input
-                    ref={fileInput}
-                    type="file"
-                    accept=".key,text/plain"
-                    className={css({ display: 'none' })}
-                    onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        e.target.value = '';
-                        if (file) void importFile(file);
-                    }}
-                />
-            </details>
 
             {message && (
                 <p

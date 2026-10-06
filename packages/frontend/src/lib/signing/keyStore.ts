@@ -7,7 +7,6 @@ import type { WorldSigningKey } from '@ubichill/shared';
  * サーバーは鍵を一切持たない。秘密鍵は取り出し不可の CryptoKey としてアカウント（userId）ごとに保存する
  * （同じブラウザで別のアカウントに切り替えても、互いの鍵を使い回さない）。バックアップは取らない:
  * 別の端末は自分の公開環境（鍵）を持ち、このブラウザのデータが消えたら次の公開で新しい鍵が自動で登録される。
- * CLI の鍵ファイル（`ubichill keygen`、PKCS8）は上級者向けに読み込める。
  */
 const DB_NAME = 'ubichill-signing';
 const STORE = 'keys';
@@ -77,11 +76,6 @@ export async function createSigningKey(userId: string): Promise<WorldSigningKey>
     const key = await loadSigningKey(userId);
     if (!key) throw new Error('鍵を保存できませんでした');
     return key;
-}
-
-/** `ubichill keygen` の鍵ファイル（PKCS8）の中身から取り込む（上級者向け）。 */
-export function importSigningKeyFile(userId: string, pkcs8: string): Promise<string> {
-    return store(userId, pkcs8);
 }
 
 export async function removeSigningKey(userId: string): Promise<void> {

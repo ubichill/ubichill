@@ -33,8 +33,7 @@ const run = (args) => {
 
 let failed = false;
 for (const relPath of worldFiles.sort()) {
-    // 署名は CI が公式アカウントで行うので、install の自動署名は止める。
-    const installArgs = ['install', relPath, `--mods-dir=${modsDir}`, '--no-sign'];
+    const installArgs = ['install', relPath, `--mods-dir=${modsDir}`];
     if (check) installArgs.push('--check');
     if (!run(installArgs)) failed = true;
 }
