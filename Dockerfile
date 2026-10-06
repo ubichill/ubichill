@@ -1,14 +1,6 @@
 # package.json の devEngines.runtime.version と揃える（base ステージで一致を検証し、ズレたらビルドを落とす）
 ARG NODE_VERSION=26.10.0
 
-FROM golang:1.27.1-alpine AS builder-instance
-WORKDIR /src
-COPY services/instance/go.mod services/instance/go.sum ./
-RUN go mod download
-COPY services/instance/ ./
-RUN CGO_ENABLED=0 go build -trimpath -o /ubichill-instance ./cmd/instance
-
-
 # ==========================================
 # base: pnpm + bookworm-slim
 # ==========================================
@@ -107,7 +99,6 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
 # backend-runner: Express API サーバー
 # ==========================================
 FROM node:${NODE_VERSION}-alpine AS backend-runner
-COPY --from=builder-instance /ubichill-instance /usr/local/bin/ubichill-instance
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 ENV NODE_ENV=production

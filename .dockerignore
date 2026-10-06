@@ -31,6 +31,8 @@ packages/frontend/styled-system
 # ----------------------------------------
 charts/
 .github/
+# Go インスタンスは services/instance/Dockerfile で別イメージにする
+services/
 
 # ----------------------------------------
 # ドキュメント・エディタ設定

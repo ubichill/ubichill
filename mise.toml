@@ -1,5 +1,9 @@
 # Node / pnpm のバージョンの真実源は package.json（devEngines.runtime / packageManager）。
 # mise はそれを読んで導入するだけで、ここにバージョンは書かない。
+# Go（services/instance）は package.json に置き場が無いのでここが真実源。Dockerfile の GO_VERSION は CI で一致を検証する。
+[tools]
+go = "1.27.1"
+
 [settings]
 idiomatic_version_file_enable_tools = ["node", "pnpm"]
 
