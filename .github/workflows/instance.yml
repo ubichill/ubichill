@@ -1,0 +1,22 @@
+name: Instance runtime
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  instance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.1'
+          cache-dependency-path: services/instance/go.sum
+      - uses: ./.github/actions/setup
+      - run: pnpm protocol:generate
+      - run: git diff --exit-code -- services/instance/internal/protocol packages/shared/src/generated
+      - run: go -C services/instance vet ./...
+      - run: go -C services/instance test -race ./...
+      - run: test -z "$(gofmt -l services/instance)"

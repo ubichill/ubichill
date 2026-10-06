@@ -59,7 +59,7 @@ export interface MediaSyncState {
 }
 
 // ============================================
-// Socket.io Event Types
+// Instance WebSocket Event Types
 // ============================================
 
 /**
@@ -201,30 +201,6 @@ export interface ClientToServerEvents {
     'media:timeline:get': (data: { sessionId: string }, callback: (result: MediaTimelineResult) => void) => void;
 }
 
-/**
- * サーバー間イベント（Socket.io Adapter用）
- */
-export interface InterServerEvents {
-    ping: () => void;
-}
-
-/**
- * ソケットデータ（各接続に紐づくデータ）
- */
-export interface SocketData {
-    userId?: string;
-    /** 参加中のインスタンスID。Socket.IO ルームキー兼エンティティ状態キー */
-    instanceId?: string;
-    user?: User;
-    /** better-auth で認証されたユーザー情報（接続時にセット、以降不変） */
-    authUser?: {
-        id: string;
-        email: string;
-        name: string;
-        image: string | null;
-    };
-}
-
 // ============================================
 // Constants
 // ============================================
@@ -288,6 +264,7 @@ export const SERVER_CONFIG = {
 // Re-export Schemas and Mods
 // ============================================
 
+export type { components as InstanceAPI } from './generated/instance';
 export * from './mod/capability';
 export * from './mod/errors';
 export * from './mod/modLock';

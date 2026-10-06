@@ -3,6 +3,7 @@ import { CursorLayer } from './components/cursor/CursorLayer';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { ConfirmProvider } from './components/ui/ConfirmProvider';
 import { VersionBadge } from './components/VersionBadge';
+import { STANDALONE_INSTANCE, STANDALONE_RUNTIME } from './lib/instanceConnection';
 import { SessionProvider } from './lib/session';
 import { AuthPage } from './pages/AuthPage';
 import { CliAuthorizePage } from './pages/CliAuthorizePage';
@@ -13,6 +14,20 @@ import { WorldPage } from './pages/WorldPage';
 import { WorldEditorPage } from './pages/world-editor';
 
 export function AppRouter() {
+    if (STANDALONE_RUNTIME)
+        return (
+            <BrowserRouter>
+                <SessionProvider>
+                    <ConfirmProvider>
+                        <Routes>
+                            <Route path="/instance/:id" element={<InstancePage />} />
+                            <Route path="*" element={<Navigate to={`/instance/${STANDALONE_INSTANCE}`} replace />} />
+                        </Routes>
+                        <CursorLayer />
+                    </ConfirmProvider>
+                </SessionProvider>
+            </BrowserRouter>
+        );
     return (
         <BrowserRouter>
             <SessionProvider>

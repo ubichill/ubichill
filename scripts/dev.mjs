@@ -1,9 +1,13 @@
 import concurrently from 'concurrently';
+import { randomBytes } from 'node:crypto';
 import killPort from 'kill-port';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 
 async function main() {
+    process.env.INSTANCE_ADMIN_TOKEN ||= randomBytes(32).toString('hex');
+    process.env.INSTANCE_PUBLIC_URL ||= 'http://localhost:3002/realtime/v1/ws';
+
     console.log('🧹 Checking for existing processes on ports 3000 and 3001...');
     try {
         await killPort(3000);
@@ -98,6 +102,7 @@ async function main() {
         [
             { command: 'pnpm --filter @ubichill/frontend dev', name: 'frontend', prefixColor: 'cyan' },
             { command: 'pnpm --filter @ubichill/backend dev', name: 'backend', prefixColor: 'magenta' },
+            { command: 'go -C services/instance run ./cmd/instance --origins=http://localhost:3000', name: 'instance', prefixColor: 'blue' },
         ],
         {
             prefix: '[{name}]',

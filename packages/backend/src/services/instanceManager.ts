@@ -3,7 +3,6 @@ import type {
     CreateInstanceRequest,
     Instance,
     InstanceAccess,
-    ResolvedWorld,
     WorldEnvironmentData,
     WorldIdentity,
     WorldMod,
@@ -11,13 +10,11 @@ import type {
 } from '@ubichill/shared';
 import { canJoinInstance, canSeeInstance, DEFAULTS, type InstanceAudience, isPublishable } from '@ubichill/shared';
 import bcrypt from 'bcryptjs';
+import { appConfig } from '../config';
 import { logger } from '../utils/logger';
-import { flattenGameObject } from './flattenGameObject';
 import { friendIdsOf } from './friends';
 import { instanceReaper } from './instanceReaper';
-import { clearInstanceState, createEntity } from './instanceState';
-import { clearMediaTimelines } from './mediaTimelineState';
-import { userManager } from './userManager';
+import { instanceRuntime, type RuntimePresence } from './instanceRuntime';
 import { worldRegistry } from './worldRegistry';
 
 /**
@@ -59,18 +56,11 @@ class InstanceManager {
             passwordHash,
         });
 
-        // ワールド定義の initialEntities (GameObject + components[]) を flat ComponentInstance に展開して配置
-        if (world.initialEntities && world.initialEntities.length > 0) {
-            let placed = 0;
-            for (const gameObject of world.initialEntities) {
-                for (const flat of flattenGameObject(gameObject)) {
-                    createEntity(dbInstance.id, flat);
-                    placed += 1;
-                }
-            }
-            logger.info(
-                `インスタンス ${dbInstance.id} に GameObject ${world.initialEntities.length}件 (Component ${placed}件) を配置しました`,
-            );
+        try {
+            await instanceRuntime.provision(dbInstance.id, cappedMaxUsers, world);
+        } catch (error) {
+            await instanceRepository.delete(dbInstance.id);
+            throw error;
         }
 
         logger.info(`インスタンス作成: ${dbInstance.id} (world: ${world.id})`);
@@ -86,7 +76,7 @@ class InstanceManager {
     /**
      * インスタンス一覧を取得
      *
-     * status / 人数は userManager から導出するため DB の status フィルタは信頼しない。
+     * status / 人数は Go runtime から導出するため DB の status フィルタは信頼しない。
      * 全件取って toPublicInstance で正しい値を計算し、includeFull=false なら ここで post-filter する。
      */
     async listInstances(options?: {
@@ -98,9 +88,10 @@ class InstanceManager {
     }): Promise<Instance[]> {
         const viewerId = options?.viewerId ?? null;
         const friends = await friendIdsOf(viewerId);
-        const visible = (db: InstanceRecord) => canSeeInstance(this.audienceOf(db), viewerId, friends);
+        const presence = await instanceRuntime.presence();
+        const visible = (db: InstanceRecord) => canSeeInstance(this.audienceOf(db, presence), viewerId, friends);
         if (options?.worldId) {
-            return this.findInstancesByWorld(options.worldId, visible);
+            return this.findInstancesByWorld(options.worldId, visible, presence);
         }
         const dbInstances = (await instanceRepository.findAll({ tag: options?.tag, includeFull: true })).filter(
             visible,
@@ -108,7 +99,7 @@ class InstanceManager {
         const mapped = await Promise.all(
             dbInstances.map(async (db: InstanceRecord): Promise<Instance | null> => {
                 const world = await worldRegistry.getWorldByUrl(db.worldRef);
-                return world ? this.toPublicInstance(db, world) : null;
+                return world ? this.toPublicInstance(db, world, presence) : null;
             }),
         );
         // 未署名ワールドのインスタンスは一覧に出さない（URL を知っている人だけが確認付きで入れる）。
@@ -130,27 +121,8 @@ class InstanceManager {
     }
 
     /**
-     * サーバー再起動後にインメモリのエンティティ状態が失われた場合、
-     * ワールド定義の initialEntities からインスタンスエンティティを再配置する。
-     */
-    async reinitializeEntities(instanceId: string, world: ResolvedWorld): Promise<void> {
-        if (!world.initialEntities.length) return;
-        let placed = 0;
-        for (const gameObject of world.initialEntities) {
-            for (const flat of flattenGameObject(gameObject)) {
-                createEntity(instanceId, flat);
-                placed += 1;
-            }
-        }
-        logger.info(
-            `インスタンス ${instanceId} のエンティティ状態を再初期化しました (GameObject ${world.initialEntities.length}件 → Component ${placed}件)`,
-        );
-    }
-
-    /**
      * インスタンスを取得 (公開用 Instance。world 解決が必要)。
-     * world が解決できないと undefined を返すため、join の存在確認には
-     * findInstanceForJoin を使うこと (world 不整合でも参加できるように)。
+     * world が解決できない場合は undefined を返す。
      */
     async getInstance(instanceId: string): Promise<Instance | undefined> {
         const dbInstance = await instanceRepository.findById(instanceId);
@@ -175,39 +147,53 @@ class InstanceManager {
     async getInstanceFor(instanceId: string, viewerId: string | null): Promise<Instance | undefined> {
         const dbInstance = await instanceRepository.findById(instanceId);
         if (!dbInstance) return undefined;
-        if (!canJoinInstance(this.audienceOf(dbInstance), viewerId, await friendIdsOf(viewerId))) return undefined;
+        if (
+            !canJoinInstance(
+                this.audienceOf(dbInstance, await instanceRuntime.presence()),
+                viewerId,
+                await friendIdsOf(viewerId),
+            )
+        )
+            return undefined;
         return this.getInstance(instanceId);
     }
 
     /** 見る人がインスタンスに入れるか（公開範囲）。 */
     async canJoin(instanceId: string, viewerId: string): Promise<boolean> {
         const dbInstance = await instanceRepository.findById(instanceId);
-        return !!dbInstance && canJoinInstance(this.audienceOf(dbInstance), viewerId, await friendIdsOf(viewerId));
+        return (
+            !!dbInstance &&
+            canJoinInstance(
+                this.audienceOf(dbInstance, await instanceRuntime.presence()),
+                viewerId,
+                await friendIdsOf(viewerId),
+            )
+        );
     }
 
-    /** 公開範囲の判定に要る情報（参加している人は userManager が真）。 */
-    audienceOf(dbInstance: Pick<InstanceRecord, 'id' | 'accessType' | 'leaderId'>): InstanceAudience {
+    /** 公開範囲の判定に要る情報（参加している人は Go runtime が真）。 */
+    audienceOf(
+        dbInstance: Pick<InstanceRecord, 'id' | 'accessType' | 'leaderId'>,
+        presence: Map<string, RuntimePresence>,
+    ): InstanceAudience {
         return {
             accessType: dbInstance.accessType,
             leaderId: dbInstance.leaderId,
-            memberIds: userManager.getUsersByWorld(dbInstance.id).map((u) => u.id),
+            memberIds: presence.get(dbInstance.id)?.memberIds ?? [],
         };
     }
 
-    /**
-     * join 用の軽量な存在確認。world 解決には依存しない。
-     * (getWorldByDbId が一時的に null でも参加できるようにするため、DB レコードだけ見る)
-     */
-    async findInstanceForJoin(
-        instanceId: string,
-    ): Promise<{ id: string; hasPassword: boolean; worldRef: string } | undefined> {
-        const dbInstance = await instanceRepository.findById(instanceId);
-        if (!dbInstance) {
-            // join が「見つかりません」で失敗する唯一の地点。原因切り分け用に必ずログを残す。
-            logger.warn(`findInstanceForJoin: DB に instance がありません (id: ${instanceId})`);
-            return undefined;
+    /** SNSの入室可否を確認し、Go用の短期チケットを発行する。 */
+    async join(instanceId: string, userId: string, password?: string) {
+        const record = await instanceRepository.findById(instanceId);
+        if (!record || !(await this.canJoin(instanceId, userId))) throw new Error('このインスタンスには入れません');
+        if (record.hasPassword && (!password || !(await this.verifyInstancePassword(instanceId, password)))) {
+            throw new Error('パスワードが正しくありません');
         }
-        return { id: dbInstance.id, hasPassword: dbInstance.hasPassword, worldRef: dbInstance.worldRef };
+        const world = await worldRegistry.getWorldByUrl(record.worldRef);
+        if (!world) throw new Error('ワールドを取得できません');
+        await instanceRuntime.provision(record.id, record.maxUsers, world);
+        return instanceRuntime.ticket(record.id, userId);
     }
 
     /**
@@ -223,15 +209,13 @@ class InstanceManager {
             return { success: false, error: 'Only the leader can close the instance' };
         }
 
+        await instanceRuntime.close(instanceId);
+
         // DBから削除
         const deleted = await instanceRepository.deleteByLeader(instanceId, userId);
         if (!deleted) {
             return { success: false, error: 'Failed to delete instance' };
         }
-
-        // インスタンスのエンティティ状態をクリーンアップ
-        clearInstanceState(instanceId);
-        clearMediaTimelines(instanceId);
 
         logger.info(`インスタンス終了: ${instanceId}`);
 
@@ -241,12 +225,18 @@ class InstanceManager {
     /**
      * ワールドIDからインスタンスを検索（既存インスタンスへの参加用）
      */
-    async findInstancesByWorld(worldRef: string, visible: (db: InstanceRecord) => boolean): Promise<Instance[]> {
+    async findInstancesByWorld(
+        worldRef: string,
+        visible: (db: InstanceRecord) => boolean,
+        presence: Map<string, RuntimePresence>,
+    ): Promise<Instance[]> {
         const world = await worldRegistry.resolveRef(worldRef);
         if (!world) return [];
 
         const dbInstances = (await instanceRepository.findByWorldRef(world.url)).filter(visible);
-        return dbInstances.map((dbInstance: InstanceRecord) => this.toPublicInstance(dbInstance, world));
+        return Promise.all(
+            dbInstances.map((dbInstance: InstanceRecord) => this.toPublicInstance(dbInstance, world, presence)),
+        );
     }
 
     /**
@@ -266,10 +256,10 @@ class InstanceManager {
     /**
      * DB record から公開用のInstanceオブジェクトに変換
      *
-     * currentUsers / status は userManager (= 真の在籍) から導出する。
+     * currentUsers / status は Go runtime (= 真の在籍) から導出する。
      * DB の currentUsers は一切書き込まれず、参照もされない (将来的にスキーマ削除予定)。
      */
-    private toPublicInstance(
+    private async toPublicInstance(
         dbInstance: Awaited<ReturnType<typeof instanceRepository.findById>> & object,
         world: {
             id: string;
@@ -283,16 +273,17 @@ class InstanceManager {
             mods?: WorldMod[];
             identity?: WorldIdentity;
         },
-    ): Instance {
+        knownPresence?: Map<string, RuntimePresence>,
+    ): Promise<Instance> {
         const access: InstanceAccess = {
             type: dbInstance.accessType,
             tags: dbInstance.accessTags ?? [],
             password: dbInstance.hasPassword,
         };
 
-        const truthCount = userManager.getUsersByWorld(dbInstance.id).length;
-        const derivedStatus: Instance['status'] =
-            truthCount >= dbInstance.maxUsers ? 'full' : truthCount === 0 ? 'closing' : 'active';
+        const presence = knownPresence ?? (await instanceRuntime.presence());
+        const truthCount = presence.get(dbInstance.id)?.memberIds.length ?? 0;
+        const derivedStatus: Instance['status'] = truthCount >= dbInstance.maxUsers ? 'full' : 'active';
 
         return {
             id: dbInstance.id,
@@ -321,7 +312,7 @@ class InstanceManager {
                 maxUsers: dbInstance.maxUsers,
             },
             connection: {
-                url: DEFAULTS.WORLD_ID, // 将来的にはサーバーURLを返す
+                url: appConfig.runtime.publicUrl,
                 namespace: `/${dbInstance.id}`,
             },
         };
@@ -331,6 +322,8 @@ class InstanceManager {
      * 全インスタンスを削除する管理用ヘルパー (テスト/手動運用用)。
      */
     async cleanupAll(): Promise<number> {
+        const presence = await instanceRuntime.presence();
+        await Promise.all([...presence.keys()].map((id) => instanceRuntime.close(id)));
         return instanceRepository.deleteAll();
     }
 }

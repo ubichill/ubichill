@@ -1,9 +1,7 @@
 import { instanceRepository } from '@ubichill/db';
 import { appConfig } from '../config';
 import { logger } from '../utils/logger';
-import { clearInstanceState } from './instanceState';
-import { clearMediaTimelines } from './mediaTimelineState';
-import { userManager } from './userManager';
+import { instanceRuntime } from './instanceRuntime';
 
 /**
  * 空インスタンスの掃除（reaper）。
@@ -16,7 +14,7 @@ import { userManager } from './userManager';
  *       1. nodemon / Pod 再起動でタイマーが全部消え、孤児 instance が永久に残る
  *       2. プロセス単位なので、作成したプロセスが死ぬと誰も削除しない
  *     という二重の脆さがあった。
- *   - reaper は「DB を定期スイープし、在席(userManager)で生存判定する」ステートレス方式。
+ *   - reaper は「DB を定期スイープし、Go側の在席で生存判定する」ステートレス方式。
  *     再起動してもインメモリ状態に依存しないので孤児が確実に回収される。
  *
  * 「作成直後の猶予 (birth grace)」:
@@ -72,6 +70,7 @@ class InstanceReaper {
         const graceMs = appConfig.instance.emptyTimeoutMs;
         const now = Date.now();
         const all = await instanceRepository.findAll({ includeFull: true });
+        const presence = await instanceRuntime.presence();
         const liveIds = new Set(all.map((inst) => inst.id));
 
         // DB から消えた instance の生成時刻記録を掃除（メモリリーク防止）
@@ -80,22 +79,24 @@ class InstanceReaper {
         }
 
         const reapable = all.filter((inst) => {
-            const isEmpty = userManager.getUsersByWorld(inst.id).length === 0;
+            const runtime = presence.get(inst.id);
+            const isEmpty = !runtime || runtime.memberIds.length === 0;
             // 生成時刻はプロセス内記録を最優先。無ければ DB の created_at にフォールバック。
             const bornMs = this.bornAt.get(inst.id) ?? inst.createdAt.getTime();
-            const isPastGrace = now - bornMs >= graceMs;
+            const isPastGrace = now - Math.max(bornMs, runtime?.emptySince ?? bornMs) >= graceMs;
             return isEmpty && isPastGrace;
         });
 
+        const removed: string[] = [];
         for (const inst of reapable) {
+            if (!(await instanceRuntime.close(inst.id, now - graceMs))) continue;
+            removed.push(inst.id);
             await instanceRepository.delete(inst.id);
-            clearInstanceState(inst.id);
-            clearMediaTimelines(inst.id);
             this.bornAt.delete(inst.id);
             logger.info(`インスタンス自動削除（在席0・猶予経過）: ${inst.id}`);
         }
 
-        return reapable.length;
+        return removed.length;
     }
 }
 

@@ -43,7 +43,6 @@
         "helmet": "^8.3.0",
         "nanoid": "catalog:",
         "resend": "^6.28.1",
-        "socket.io": "^4.8.3",
         "yaml": "catalog:",
         "zod": "catalog:"
     },

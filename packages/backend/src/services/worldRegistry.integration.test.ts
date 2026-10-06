@@ -3,9 +3,17 @@ import { copyFileSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { type InitialEntity, signWorld, type WorldDefinition, type WorldSigningKey } from '@ubichill/shared';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import yaml from 'yaml';
 import { nodeWorldCrypto } from './worldCrypto';
+
+// このスイートはDBとの往復を扱う。Go通信はinstanceAdmissionとGo側のテストが担当する。
+vi.mock('./instanceRuntime', () => ({
+    instanceRuntime: {
+        provision: vi.fn(async () => {}),
+        presence: vi.fn(async () => new Map()),
+    },
+}));
 
 function newTestSigningKey(): WorldSigningKey {
     const { privateKey, publicKey } = generateKeyPairSync('ed25519');
@@ -63,6 +71,7 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
         // backend の config 検証（config/index.ts）が要求する最小 env を埋める。
         process.env.NODE_ENV ??= 'test';
         process.env.BETTER_AUTH_SECRET ??= 'test-secret';
+        process.env.INSTANCE_ADMIN_TOKEN ??= 'test-instance-token-at-least-32-characters';
         ({ worldRegistry } = await import('./worldRegistry'));
         ({ instanceManager } = await import('./instanceManager'));
         await worldRegistry.initialize();

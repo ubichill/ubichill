@@ -6,6 +6,7 @@ import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { InstanceLoadingScreen } from '@/instance/InstanceLoadingScreen';
 import { InstanceRenderer } from '@/instance/InstanceRenderer';
 import { useInstanceLoading } from '@/instance/useInstanceLoading';
+import { STANDALONE_RUNTIME } from '@/lib/instanceConnection';
 import { fetchInstance } from '@/lib/instancesApi';
 import { useSession } from '@/lib/session';
 import { acceptEntry, hasAcceptedEntry, unverifiedEntryKey, unverifiedEntryMessage } from '@/lib/signing';
@@ -44,7 +45,7 @@ export function InstancePage() {
     useEffect(() => {
         if (isPending) return;
 
-        if (!session) {
+        if (!session && !STANDALONE_RUNTIME) {
             navigate('/auth');
             return;
         }
@@ -96,13 +97,13 @@ export function InstancePage() {
 
             // ワールドは backend が instanceId -> DB worldRef から権威的に解決する。
             // location.state や API 応答の短い worldId を使うと、外部 YAML の URL/lock が失われる。
-            joinWorld(session.user.name, id, (msg) => {
+            joinWorld(session?.user.name ?? new URLSearchParams(location.search).get('name') ?? 'Guest', id, (msg) => {
                 console.error('[InstancePage] world:join failed:', msg);
             });
         };
 
         void connectToNewInstance();
-    }, [session, isPending, navigate, id, joinWorld, resetWorld, confirm]);
+    }, [session, isPending, navigate, id, joinWorld, resetWorld, confirm, location.search]);
 
     const loading = useInstanceLoading({
         instanceId: id,
@@ -146,7 +147,7 @@ export function InstancePage() {
                             <InstanceRenderer />
                         </WorkerLoadingProvider>
                     </ModRegistryProvider>
-                    <InstanceHUD />
+                    {!STANDALONE_RUNTIME && <InstanceHUD />}
                 </main>
             )}
         </>

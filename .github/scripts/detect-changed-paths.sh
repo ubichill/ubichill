@@ -41,11 +41,11 @@ frontend=false
 while IFS= read -r f; do
     [[ -z "${f}" ]] && continue
     case "${f}" in
-        packages/backend/*|packages/shared/*|packages/db/*|Dockerfile|pnpm-lock.yaml)
+        services/instance/*|protocol/instance/*|packages/backend/*|packages/shared/*|packages/db/*|Dockerfile|pnpm-lock.yaml)
             backend=true ;;
     esac
     case "${f}" in
-        packages/frontend/*|packages/shared/*|packages/sdk/*|mods/*|scripts/build-workers.mjs|Dockerfile|pnpm-lock.yaml)
+        packages/react/*|packages/frontend/*|packages/shared/*|packages/sdk/*|mods/*|scripts/build-workers.mjs|Dockerfile|pnpm-lock.yaml)
             frontend=true ;;
     esac
 done <<< "${CHANGED}"

@@ -97,6 +97,17 @@ router.get('/:id', optionalAuth, async (req, res) => {
     }
 });
 
+/** SNSの認証・公開範囲を確認し、インスタンスへの接続情報を返す。 */
+router.post('/:id/join', requireAuth, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+        const password = typeof req.body?.password === 'string' ? req.body.password : undefined;
+        return res.json(await instanceManager.join(String(req.params.id), req.user.id, password));
+    } catch (error) {
+        return res.status(403).json({ error: error instanceof Error ? error.message : '入室できません' });
+    }
+});
+
 /**
  * DELETE /api/v1/instances/:id
  * インスタンスを終了（認証必須）

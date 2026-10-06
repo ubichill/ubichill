@@ -3,6 +3,7 @@
 # ----------------------------------------
 node_modules
 packages/*/node_modules
+tools/*/node_modules
 mods/*/node_modules
 mods/*/frontend/node_modules
 

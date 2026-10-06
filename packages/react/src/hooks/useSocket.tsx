@@ -1,19 +1,10 @@
-import {
-    type ClientToServerEvents,
-    type CursorPosition,
-    DEFAULTS,
-    SERVER_CONFIG,
-    type ServerToClientEvents,
-    type User,
-    type UserStatus,
-} from '@ubichill/shared';
+import { type CursorPosition, DEFAULTS, type User, type UserStatus } from '@ubichill/shared';
 import type React from 'react';
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { io, type Socket } from 'socket.io-client';
-import { rejoinUser } from '../lib/rejoinUser';
+import { InstanceSocket, type ResolveInstance } from '../lib/instanceSocket';
 
 // Socket type definition
-type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
+type AppSocket = InstanceSocket;
 
 export interface JoinWorld {
     (name: string, instanceId: string, onError?: (error: string) => void): void;
@@ -38,8 +29,12 @@ export const SocketContext = createContext<SocketContextValue | null>(null);
 /**
  * ソケット接続を子コンポーネントに提供するプロバイダー
  */
-export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const SocketProvider: React.FC<{ children: React.ReactNode; resolveInstance: ResolveInstance }> = ({
+    children,
+    resolveInstance,
+}) => {
     const socketRef = useRef<AppSocket | null>(null);
+    const [activeSocket, setActiveSocket] = useState<AppSocket | null>(null);
     const [isConnected, setIsConnected] = useState(false);
     const [users, setUsers] = useState<Map<string, User>>(new Map());
     const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -101,32 +96,16 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             return socketRef.current;
         }
 
-        // Dev サーバー検出: 開発時は frontend (5173 等) と backend (3001) が別ポート。
-        // 本番は同 origin で配信されるので socketUrl は undefined にして同 origin を使う。
-        const isDev =
-            typeof window !== 'undefined' &&
-            (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') &&
-            window.location.port !== '' &&
-            window.location.port !== '3001';
-        const socketUrl = isDev ? SERVER_CONFIG.DEV_URL : undefined;
-
-        const socket: AppSocket = io(socketUrl || window.location.origin, {
-            autoConnect: false,
-            path: '/socket.io',
-            withCredentials: true,
-        });
+        const socket = new InstanceSocket(resolveInstance);
 
         socketRef.current = socket;
+        setActiveSocket(socket);
         isInitializedRef.current = true;
 
         // Set up event listeners
         socket.on('connect', () => {
             setIsConnected(true);
             setError(null);
-            // 再接続: 参加していたインスタンスに参加し直す（初回の参加は joinWorld が送る）
-            const joined = joinedRef.current;
-            if (joined && currentUserRef.current)
-                sendJoin(socket, joined, rejoinUser(joined.user, currentUserRef.current, Date.now()));
         });
 
         socket.on('session:replaced', () => {
@@ -134,6 +113,13 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             setCurrentUser(null);
             currentUserRef.current = null;
             setError('同じアカウントが別のタブ・端末でインスタンスに参加したため、こちらの接続は切れました');
+        });
+
+        socket.on('instance:closing', (reason) => {
+            joinedRef.current = null;
+            setCurrentUser(null);
+            currentUserRef.current = null;
+            setError(reason);
         });
 
         socket.on('disconnect', () => {
@@ -207,13 +193,15 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         });
 
         return socket;
-    }, [sendJoin]);
+    }, [resolveInstance]);
 
     // Cleanup on unmount
     useEffect(() => {
         return () => {
             if (socketRef.current) {
                 socketRef.current.disconnect();
+                socketRef.current = null;
+                isInitializedRef.current = false;
             }
         };
     }, []);
@@ -244,12 +232,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             joinedRef.current = joined;
             const emitJoin = () => sendJoin(socket, joined, initialUser);
 
-            if (socket.connected) {
-                emitJoin();
-            } else {
-                socket.once('connect', emitJoin);
-                socket.connect();
-            }
+            emitJoin();
         },
         [initializeSocket, sendJoin],
     ) as JoinWorld;
@@ -293,7 +276,11 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         joinedRef.current = null;
         return new Promise<void>((resolve) => {
             const socket = socketRef.current;
+            setUsers(new Map());
+            setCurrentUser(null);
+            currentUserRef.current = null;
             if (!socket || !isConnected) {
+                socket?.disconnect();
                 resolve();
                 return;
             }
@@ -302,6 +289,8 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const cleanupAndResolve = () => {
                 if (isDone) return;
                 isDone = true;
+                socket.disconnect();
+                setIsConnected(false);
                 resolve();
             };
 
@@ -321,7 +310,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }, [isConnected]);
 
     const value: SocketContextValue = {
-        socket: socketRef.current,
+        socket: activeSocket,
         isConnected,
         users,
         currentUser,

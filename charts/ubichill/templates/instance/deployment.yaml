@@ -1,0 +1,73 @@
+{{- if .Values.instanceRuntime.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ubichill.fullname" . }}-instance
+  labels:
+    {{- include "ubichill.labels" . | nindent 4 }}
+spec:
+  # State has one owner. Multiple replicas require instance-aware routing.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "ubichill.selectorLabels" . | nindent 6 }}
+      component: instance
+  template:
+    metadata:
+      labels:
+        {{- include "ubichill.selectorLabels" . | nindent 8 }}
+        component: instance
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/backend/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/backend/secret.yaml") . | sha256sum }}
+    spec:
+      containers:
+        - name: instance
+          image: {{ include "ubichill.backend.image" . }}
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy | default .Values.global.imagePullPolicy }}
+          command: ["/usr/local/bin/ubichill-instance", "--listen=:3002"]
+          ports:
+            - name: realtime
+              containerPort: 3002
+          envFrom:
+            - configMapRef:
+                name: {{ include "ubichill.fullname" . }}-backend-config
+          env:
+            - name: INSTANCE_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.instanceRuntime.existingSecret | default .Values.backend.existingSecret | default (printf "%s-backend-secrets" (include "ubichill.fullname" .)) }}
+                  key: {{ .Values.instanceRuntime.secretKey }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: realtime
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: realtime
+          resources:
+            {{- toYaml .Values.instanceRuntime.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ubichill.fullname" . }}-instance
+spec:
+  ports:
+    - name: realtime
+      port: 3002
+      targetPort: realtime
+  selector:
+    {{- include "ubichill.selectorLabels" . | nindent 4 }}
+    component: instance
+{{- end }}

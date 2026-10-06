@@ -1,6 +1,14 @@
 # package.json の devEngines.runtime.version と揃える（base ステージで一致を検証し、ズレたらビルドを落とす）
 ARG NODE_VERSION=26.10.0
 
+FROM golang:1.27.1-alpine AS builder-instance
+WORKDIR /src
+COPY services/instance/go.mod services/instance/go.sum ./
+RUN go mod download
+COPY services/instance/ ./
+RUN CGO_ENABLED=0 go build -trimpath -o /ubichill-instance ./cmd/instance
+
+
 # ==========================================
 # base: pnpm + bookworm-slim
 # ==========================================
@@ -20,6 +28,8 @@ FROM base AS deps
 WORKDIR /app
 
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+COPY tools/protocol/package.json           ./tools/protocol/package.json
+COPY packages/runtime/package.json        ./packages/runtime/package.json
 COPY packages/backend/package.json        ./packages/backend/package.json
 COPY packages/bff/package.json            ./packages/bff/package.json
 COPY packages/core-components/package.json ./packages/core-components/package.json
@@ -63,6 +73,10 @@ WORKDIR /app
 COPY . .
 
 # Vite ビルド時に埋め込まれる環境変数
+ARG VITE_INSTANCE_SERVER_URL
+ENV VITE_INSTANCE_SERVER_URL=${VITE_INSTANCE_SERVER_URL}
+ARG VITE_INSTANCE_ID
+ENV VITE_INSTANCE_ID=${VITE_INSTANCE_ID}
 ARG VITE_BACKEND_URL
 ENV VITE_BACKEND_URL=${VITE_BACKEND_URL}
 
@@ -93,6 +107,7 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
 # backend-runner: Express API サーバー
 # ==========================================
 FROM node:${NODE_VERSION}-alpine AS backend-runner
+COPY --from=builder-instance /ubichill-instance /usr/local/bin/ubichill-instance
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 ENV NODE_ENV=production
@@ -115,7 +130,7 @@ CMD ["node", "dist/index.js"]
 #
 # 静的配信に加え、/world/:id で core API から取得したワールド情報を index.html の
 # <head> に OGP/JSON-LD として注入する（Web 検索・SNS リンクプレビュー対応）。
-# core backend はドメイン API に純化し、/api・/socket.io は Ingress が直接ルーティングする。
+# Ingress が /api を core backend、/realtime を Go インスタンスへ直接ルーティングする。
 # ==========================================
 FROM node:${NODE_VERSION}-alpine AS frontend-runner
 RUN apk add --no-cache libc6-compat
