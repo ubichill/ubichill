@@ -1,0 +1,7 @@
+{
+    "extends": "../tsconfig.base.json",
+    // テストと WASM 生成スクリプトが node:fs で同梱 WASM を読み書きする。
+    "compilerOptions": { "types": ["node"] },
+    "include": ["src/**/*.ts", "src/**/*.tsx", "scripts/**/*.ts"],
+    "exclude": ["node_modules"]
+}

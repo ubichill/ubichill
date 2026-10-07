@@ -55,6 +55,13 @@ export const CAPABILITY_CATALOG = {
         label: 'UI の描画',
         description: '自身の UI をワールド内に描画する',
     },
+    'asset:read': {
+        // 自分の配布物（lock で固定した manifest の integrity と一致するもの）だけを読む。外部には出ない。
+        risk: 'safe',
+        commands: [CommandType.ASSET_LOAD],
+        label: '同梱アセットの読み込み',
+        description: 'mod に同梱された WASM・データファイルを読み込む',
+    },
     'event:emit': {
         risk: 'safe',
         commands: [CommandType.EVENT_EMIT],
@@ -151,6 +158,7 @@ export interface CapabilityDetector {
 
 export const CAPABILITY_DETECTORS: readonly CapabilityDetector[] = [
     { cap: 'net:fetch', api: 'Ubi.fetch', test: (c) => /\bUbi\.fetch\b/.test(c) },
+    { cap: 'asset:read', api: 'Ubi.asset.*', test: (c) => /\bUbi\.asset\b/.test(c) },
     // `export default` は sandbox.worker.ts が自動で Ubi.ui.render() する対象（明示呼び出し不要）。
     {
         cap: 'ui:render',
@@ -247,6 +255,7 @@ export function listCapabilities(): CapabilityInfo[] {
 /**
  * capability 宣言の有無に関わらず常に許可するコアコマンド。
  * - CMD_LOG      : デバッグログ（制限すると開発体験が著しく悪化）
+ * - CMD_ABORT    : 自分の実行中リクエストの取り消し（権限を広げない）
  * - CMD_READY    : Worker の初期化通知（必須）
  * - CMD_GRIP     : SDK コアの「掴む」機能（pen.worker 等が普通に使う）
  * - CMD_RIDE     : SDK コアの「乗る」機能（乗り物 mod が普通に使う）
@@ -254,6 +263,7 @@ export function listCapabilities(): CapabilityInfo[] {
  */
 export const ALWAYS_ALLOWED_COMMANDS: readonly string[] = [
     'CMD_LOG',
+    'CMD_ABORT',
     'CMD_READY',
     'CMD_GRIP',
     'CMD_RIDE',

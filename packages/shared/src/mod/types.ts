@@ -207,31 +207,70 @@ export type CmdUiRender = {
     payload: { targetId: string; vnode: VNode | null };
 };
 
-/** Ubi.network.fetch() / onFetch ハンドラー共通のリクエストオプション */
+/** `Ubi.fetch` の本文の受け取り方。 */
+export type FetchResponseType = 'text' | 'arrayBuffer';
+
+/** Ubi.fetch() / onFetch ハンドラー共通のリクエストオプション */
 export type FetchOptions = {
-    method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+    method?: 'GET' | 'HEAD' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
     headers?: Record<string, string>;
-    body?: string;
+    /** バイト列は Host へコピーして渡す（呼び出し側のバッファは使い続けられる）。 */
+    body?: string | ArrayBuffer | Uint8Array;
+    /** 既定は `'text'`。`'arrayBuffer'` ならコピーせずに Worker へ移す。 */
+    responseType?: FetchResponseType;
+    /** 本文の上限（byte）。超えたら読み込みを止める。既定と上限は `FETCH_LIMITS`。 */
+    maxBytes?: number;
+    /** ドメイン承認の待ち時間も含めた制限時間（ms）。既定と上限は `FETCH_LIMITS`。 */
+    timeoutMs?: number;
 };
 
-/** Ubi.network.fetch() / onFetch ハンドラー共通のレスポンス型 */
-export type FetchResult = {
+/** Host が合成した失敗（ドメイン拒否・制限時間・サイズ超過など）の理由。 */
+export type FetchError = {
+    code: UbiErrorCode;
+    message: string;
+};
+
+/** Ubi.fetch() / onFetch ハンドラー共通のレスポンス型 */
+export type FetchResult<TBody extends string | ArrayBuffer = string> = {
     ok: boolean;
     status: number;
     statusText: string;
     headers: Record<string, string>;
-    body: string;
+    /** リダイレクト後の最終 URL。Host が通信しなかった失敗では無い。 */
+    url?: string;
+    /** Host が合成した失敗のとき理由が入る。サーバーの HTTP エラー（404 等）では無い。 */
+    error?: FetchError;
+    body: TBody;
 };
 
 /**
- * Ubi.network.fetch(url, options) → Response
- * ホワイトリストされたURLに対してHTTPリクエストを送信します。
- * セキュリティのため、ホスト側でURL検証を行います。
+ * Ubi.fetch(url, options) → FetchResult
+ * ユーザーが許可したドメイン（と自分のアセット・名前空間）へ HTTP リクエストを送る。
+ * URL の検証とドメイン承認は Host 側で行う。
  */
 export type CmdNetworkFetch = {
     type: 'NETWORK_FETCH';
     payload: { url: string; options?: FetchOptions };
     id: string; // RPC
+};
+
+/**
+ * Ubi.asset.bytes(path) → ArrayBuffer
+ * mod に同梱したアセットを読む。Host は manifest の integrity と照合してから渡す。
+ */
+export type CmdAssetLoad = {
+    type: 'ASSET_LOAD';
+    payload: { path: string };
+    id: string; // RPC
+};
+
+/**
+ * 実行中の RPC（fetch・アセット読み込み）を取り消す。Fire & Forget。
+ * Host は該当リクエストの通信を止め、結果を返さない。
+ */
+export type CmdAbort = {
+    type: 'CMD_ABORT';
+    payload: { requestId: string };
 };
 
 /**
@@ -565,6 +604,8 @@ export type ModGuestCommand =
     | CmdUiShowToast
     | CmdUiRender
     | CmdNetworkFetch
+    | CmdAssetLoad
+    | CmdAbort
     | CmdMediaLoad
     | CmdMediaPlay
     | CmdMediaPause
@@ -964,3 +1005,6 @@ export type RpcCreateEntityResult = string; // 作成されたエンティティ
 
 /** NETWORK_FETCH の戻り値（FetchResult のエイリアス） */
 export type RpcNetworkFetchResult = FetchResult;
+
+/** ASSET_LOAD の戻り値（integrity 照合済みのバイト列） */
+export type RpcAssetLoadResult = ArrayBuffer;

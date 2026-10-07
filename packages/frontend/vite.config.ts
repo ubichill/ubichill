@@ -2,6 +2,8 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
+import type { Connect } from 'vite';
+import { isSandboxWorkerScriptPath, SANDBOX_WORKER_CSP } from '../shared/src/mod/sandboxPolicy';
 
 /**
  * dev サーバー専用: /mods/<name>/mod.json を
@@ -26,9 +28,27 @@ const serveSourceModJson = () => ({
     },
 });
 
+/** Sandbox Worker のスクリプトに CSP を付ける（本番は BFF が同じ値を付ける）。 */
+const sandboxWorkerCsp = () => {
+    const middleware: Connect.NextHandleFunction = (req, res, next) => {
+        const pathname = (req.url ?? '').split('?')[0];
+        if (isSandboxWorkerScriptPath(pathname)) res.setHeader('Content-Security-Policy', SANDBOX_WORKER_CSP);
+        next();
+    };
+    return {
+        name: 'sandbox-worker-csp',
+        configureServer(server: import('vite').ViteDevServer) {
+            server.middlewares.use(middleware);
+        },
+        configurePreviewServer(server: import('vite').PreviewServer) {
+            server.middlewares.use(middleware);
+        },
+    };
+};
+
 export default defineConfig({
     // 注意: `plugins` は Vite の予約キー（Vite プラグイン配列）なので mod にリネームしない。
-    plugins: [react(), serveSourceModJson()],
+    plugins: [react(), serveSourceModJson(), sandboxWorkerCsp()],
     resolve: {
         // monorepo の他パッケージが node_modules/react を別途持っていると build 時に
         // React が 2 つ bundle され、フックが null になる ("Cannot read properties of null (reading 'useRef')").

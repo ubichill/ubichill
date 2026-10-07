@@ -33,6 +33,14 @@ interface VersionedModJson {
     name?: string;
     version: string;
     components?: Record<string, WorkerMetaObject>;
+    assetIntegrity?: unknown;
+}
+
+/** manifest の assetIntegrity から文字列の組だけを取り出す（照合は Host がアセット読み込み時に行う）。 */
+export function assetIntegrityOf(raw: unknown): Readonly<Record<string, string>> | undefined {
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return undefined;
+    const entries = Object.entries(raw).filter((entry): entry is [string, string] => typeof entry[1] === 'string');
+    return Object.freeze(Object.fromEntries(entries));
 }
 
 /** manifest のバイト列 hash（integrity 照合用）とパース結果。 */
@@ -176,6 +184,8 @@ export async function acquireMod(entityType: string, opts: AcquireModOptions): P
         workerCode: new TextDecoder().decode(fetchedWorker.bytes),
         capabilities,
         modBase: versionedBase,
+        // manifest は lock の manifestIntegrity と照合済みなので、ここに載る hash もそのまま信頼できる。
+        assetIntegrity: assetIntegrityOf(fetched.manifest.assetIntegrity),
         watchScope: entry.watchScope ?? 'subtree',
         watchEntityTypes: entry.watchEntityTypes,
         canvasTargets: entry.canvasTargets,

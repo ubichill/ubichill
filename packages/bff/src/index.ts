@@ -12,6 +12,7 @@ import {
 import express from 'express';
 import { esc } from './html';
 import { buildMetaTags, buildUserMetaTags } from './ogp';
+import { staticAssetHeaders } from './staticHeaders';
 import { renderWorldShell } from './worldShell';
 
 /**
@@ -288,15 +289,13 @@ app.get('/sitemap.xml', async (_req, res) => {
     }
 });
 
-// 静的アセット（/mods は no-cache、ハッシュ付きは immutable）
+// 静的アセット（Sandbox Worker の CSP、/mods は no-cache、ハッシュ付きは immutable）
 app.use(
     express.static(DIST, {
         index: false,
         setHeaders: (res, filePath) => {
-            if (filePath.includes(`${path.sep}mods${path.sep}`)) {
-                res.setHeader('Cache-Control', 'public, no-cache');
-            } else if (/\.[0-9a-f]{8,}\.\w+$/i.test(filePath)) {
-                res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+            for (const [name, value] of Object.entries(staticAssetHeaders(filePath.split(path.sep).join('/')))) {
+                res.setHeader(name, value);
             }
         },
     }),

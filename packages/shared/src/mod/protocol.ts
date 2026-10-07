@@ -30,7 +30,8 @@
  * コマンドを mod が使う恐れがある）。逆（古い mod × 新しい Host）は常に動く。
  */
 // v3: MediaSource / MediaState / loadId と EVT_MEDIA_STATE を追加。
-export const PROTOCOL_VERSION = 3;
+// v4: バイナリ fetch（responseType / maxBytes / timeoutMs）、ASSET_LOAD、CMD_ABORT を追加。
+export const PROTOCOL_VERSION = 4;
 
 /**
  * これ未満のバージョンで作られた mod とは互換性がない下限。
@@ -95,6 +96,36 @@ export function checkProtocolCompatibility(hostVersion: number, guestVersion: nu
     return { level: 'ok', hostVersion, guestVersion };
 }
 
+/**
+ * Host がバイト列を受け渡すときの上限。Host のメモリと待ち時間を守るための値で、mod は範囲内で上書きできる。
+ * `timeoutMs` はドメイン承認の待ち時間を含む。
+ */
+export const FETCH_LIMITS = {
+    defaultTimeoutMs: 120_000,
+    maxTimeoutMs: 300_000,
+    defaultMaxBytes: 32 * 1024 * 1024,
+    maxBytes: 256 * 1024 * 1024,
+} as const;
+
+function clampLimit(value: number | undefined, fallback: number, max: number): number {
+    if (value === undefined || !Number.isFinite(value) || value < 0) return fallback;
+    return Math.min(value, max);
+}
+
+/** mod が指定した timeoutMs / maxBytes を {@link FETCH_LIMITS} の範囲に収める（Host と SDK で同じ値を使う）。 */
+export function normalizeFetchLimits(options?: { timeoutMs?: number; maxBytes?: number }): {
+    timeoutMs: number;
+    maxBytes: number;
+} {
+    return {
+        timeoutMs: Math.max(
+            1,
+            clampLimit(options?.timeoutMs, FETCH_LIMITS.defaultTimeoutMs, FETCH_LIMITS.maxTimeoutMs),
+        ),
+        maxBytes: clampLimit(options?.maxBytes, FETCH_LIMITS.defaultMaxBytes, FETCH_LIMITS.maxBytes),
+    };
+}
+
 /** Guest (Worker) → Host コマンド。 */
 export const CommandType = {
     // scene (ECS)
@@ -107,6 +138,8 @@ export const CommandType = {
     SCENE_UNSUBSCRIBE_ENTITY: 'SCENE_UNSUBSCRIBE_ENTITY',
     // network
     NETWORK_FETCH: 'NETWORK_FETCH',
+    // asset
+    ASSET_LOAD: 'ASSET_LOAD',
     NETWORK_BROADCAST: 'NETWORK_BROADCAST',
     NETWORK_SEND_TO_HOST: 'NETWORK_SEND_TO_HOST',
     EVENT_EMIT: 'EVENT_EMIT',
@@ -131,6 +164,7 @@ export const CommandType = {
     CMD_GRIP: 'CMD_GRIP',
     CMD_RIDE: 'CMD_RIDE',
     CMD_LOG: 'CMD_LOG',
+    CMD_ABORT: 'CMD_ABORT',
     CMD_READY: 'CMD_READY',
     CMD_INIT_FAILED: 'CMD_INIT_FAILED',
 } as const;

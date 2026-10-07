@@ -2,9 +2,17 @@ import type { EcsWorld, System, WorkerEvent } from '@ubichill/ecs';
 import { EcsEventType, EcsWorldImpl } from '@ubichill/ecs';
 import type { ComponentInstance } from '@ubichill/shared/mod/entities';
 import { UbiError, UbiErrorCode } from '@ubichill/shared/mod/errors';
-import { CommandType } from '@ubichill/shared/mod/protocol';
-import type { FetchOptions, ModGuestCommand, ModHostEvent, ModWorkerMessage } from '@ubichill/shared/mod/types';
+import { CommandType, normalizeFetchLimits } from '@ubichill/shared/mod/protocol';
+import type {
+    FetchOptions,
+    FetchResult,
+    ModGuestCommand,
+    ModHostEvent,
+    ModWorkerMessage,
+} from '@ubichill/shared/mod/types';
 import { _beginRender, _callHandler, _clearTarget } from '../jsx/jsx-runtime';
+import type { AssetModule } from './asset';
+import { createAssetModule } from './asset';
 import type { CanvasModule } from './canvas';
 import { createCanvasModule } from './canvas';
 import type { EntityModule } from './entity';
@@ -20,9 +28,11 @@ import { createPlayerModule } from './player';
 import { createReadTracker } from './reactiveTracking';
 import type { RideModule } from './ride';
 import { createRideModule } from './ride';
+import type { RuntimeModule } from './runtime';
+import { createRuntimeModule } from './runtime';
 import type { StateModule } from './state';
 import { createStateModule } from './state';
-import type { OmitId, UiRenderCostStat } from './types';
+import type { OmitId, RpcOptions, UiRenderCostStat } from './types';
 import type { UiModule } from './ui';
 import { createUiModule } from './ui';
 import type { WorldModule } from './world';
@@ -54,6 +64,18 @@ export type Ubi = Omit<UbiSDK, `_${string}` | 'ui' | 'player' | 'state'> & {
     readonly state: State;
 };
 
+/**
+ * `Ubi.fetch` のオプション。`signal` は Worker 内だけで使い、Host へは送らない。
+ * 本文の受け取り方・上限・制限時間は {@link FetchOptions}。
+ */
+export type UbiFetchOptions = FetchOptions & {
+    /** abort すると通信を取り消し、`FETCH_ABORTED` の UbiError で失敗する。 */
+    signal?: AbortSignal;
+};
+
+/** Host の制限時間が先に切れて FETCH_TIMEOUT の結果が届くよう、SDK 側はこれだけ長く待つ。 */
+const FETCH_RPC_GRACE_MS = 5_000;
+
 /** EVT_INPUT の type 文字列マッピング（毎フレーム再生成を回避） */
 const INPUT_TYPE_MAP: Readonly<Record<string, string>> = {
     MOUSE_MOVE: EcsEventType.INPUT_MOUSE_MOVE,
@@ -83,13 +105,15 @@ type PendingRequest = {
  *   Ubi.media.*     — メディア再生 (video / audio / HLS)
  *   Ubi.canvas.*    — canvas 描画
  *   Ubi.player.*    — プレイヤー情報 (others / scroll / syncCursor)
- *   Ubi.fetch(url)  — HTTP (whitelist 経由)
+ *   Ubi.asset.*     — 同梱アセット・WASM（integrity 照合つき）
+ *   Ubi.runtime.*   — 実行環境の能力判定（WASM の機能・Host の版）
+ *   Ubi.fetch(url)  — HTTP（ユーザーが許可したドメインのみ。バイナリ・取り消し対応）
  *   Ubi.registerSystem(fn) — ECS System 登録
  *   Ubi.log(msg, level)
  */
 export class UbiSDK {
-    /** fetch はドメイン初回承認でユーザー応答待ちになるため長めのタイムアウトにする。 */
-    static readonly FETCH_RPC_TIMEOUT_MS = 120_000;
+    /** fetch はドメイン初回承認でユーザー応答待ちになるため長めのタイムアウトにする（既定値）。 */
+    static readonly FETCH_RPC_TIMEOUT_MS = normalizeFetchLimits().timeoutMs + FETCH_RPC_GRACE_MS;
 
     // ── RPC ──────────────────────────────────────────────────
     private _commandCounter = 0;
@@ -123,6 +147,7 @@ export class UbiSDK {
     public watchEntityTypes: string[] = [];
     /** Host環境がタッチ/ペン等の低精度ポインタか (`matchMedia('(pointer: coarse)')`)。スマホ向け入力UIの出し分けに使う。 */
     public hasCoarsePointer = false;
+    private _hostProtocolVersion = 0;
 
     // ── Public API modules ───────────────────────────────────
     /** 宣言的リアクティブ状態。`define` でスキーマを作り `sync` で同期範囲（共有/永続/ユーザー別）を指定する。 */
@@ -143,6 +168,10 @@ export class UbiSDK {
     public readonly grip: GripModule;
     /** 「乗る」操作。乗り物 Entity を宣言的に扱う。乗車中は自分のアバターがキーボード移動+カメラ追従に切り替わる。 */
     public readonly ride: RideModule;
+    /** 同梱アセット。`bytes`/`text` で読み、`wasm` で WebAssembly をコンパイルする（manifest の integrity と照合済み）。 */
+    public readonly asset: AssetModule;
+    /** 実行環境の能力判定。`supports('wasm:simd')` などで分岐し、`require` で未対応を明確なエラーにする。 */
+    public readonly runtime: RuntimeModule;
     /** @internal Ubi.state / Ubi.entity の実装で使用。modからは Ubi.entity 経由で操作する。 */
     private readonly _world: WorldModule;
 
@@ -152,7 +181,8 @@ export class UbiSDK {
         this._local = new EcsWorldImpl();
 
         const send = (cmd: OmitId<ModGuestCommand>): void => this._send(cmd);
-        const rpc = <T>(cmd: OmitId<ModGuestCommand>): Promise<T> => this._rpc<T>(cmd);
+        const rpc = <T>(cmd: OmitId<ModGuestCommand>, rpcOptions?: RpcOptions): Promise<T> =>
+            this._rpc<T>(cmd, rpcOptions);
 
         // Ubi.ui.render の自動再描画（依存追跡）用。ui/state 両モジュールで共有する1個だけ
         // 生成し deps 経由で配る（モジュール単一状態にしない — reactiveTracking.ts の docstring 参照）。
@@ -189,6 +219,14 @@ export class UbiSDK {
         });
         this.media = createMediaModule(send);
         this.canvas = createCanvasModule(send);
+        this.asset = createAssetModule({
+            rpc: (cmd, rpcOptions) => this._rpc(cmd, { timeoutMs: UbiSDK.FETCH_RPC_TIMEOUT_MS, ...rpcOptions }),
+        });
+        this.runtime = createRuntimeModule(() => this._hostProtocolVersion, {
+            webAssembly: globalThis.WebAssembly,
+            sharedArrayBuffer: (globalThis as { SharedArrayBuffer?: unknown }).SharedArrayBuffer,
+            crossOriginIsolated: (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated,
+        });
         this.entity = createEntityModule(
             this._world,
             () => this.componentInstanceId,
@@ -256,11 +294,27 @@ export class UbiSDK {
     // ── Top-level shortcuts ──────────────────────────────────
 
     /**
-     * HTTP リクエスト（Host 側でドメイン承認を経由）。
-     * ドメインの初回承認はユーザーの応答待ちになるため、通常 RPC より長いタイムアウトを使う。
+     * HTTP リクエスト。ユーザーが許可したドメイン（と自分のアセット・名前空間）にだけ届く。
+     *
+     * - `responseType: 'arrayBuffer'` で本文をバイト列として受け取る（コピーせずに Worker へ移る）。
+     * - `maxBytes` / `timeoutMs` は Host の上限（`FETCH_LIMITS`）の範囲で指定できる。`timeoutMs` は承認待ちを含む。
+     * - `signal` を abort すると取り消し、`FETCH_ABORTED` の UbiError で失敗する。
+     * - ドメイン拒否・制限時間・サイズ超過などは失敗の FetchResult（`error.code` 付き）で返る。
+     *
+     * ブラウザの CORS・cookie・禁止ヘッダーの制限はそのまま残る（Host が許可しても解除されない）。
      */
-    public fetch(url: string, options?: FetchOptions): Promise<unknown> {
-        return this._rpc({ type: CommandType.NETWORK_FETCH, payload: { url, options } }, UbiSDK.FETCH_RPC_TIMEOUT_MS);
+    public fetch(url: string, options?: UbiFetchOptions & { responseType?: 'text' }): Promise<FetchResult<string>>;
+    public fetch(
+        url: string,
+        options: UbiFetchOptions & { responseType: 'arrayBuffer' },
+    ): Promise<FetchResult<ArrayBuffer>>;
+    public fetch(url: string, options: UbiFetchOptions = {}): Promise<FetchResult<string | ArrayBuffer>> {
+        const { signal, ...wireOptions } = options;
+        const { timeoutMs } = normalizeFetchLimits(wireOptions);
+        return this._rpc(
+            { type: CommandType.NETWORK_FETCH, payload: { url, options: wireOptions } },
+            { timeoutMs: timeoutMs + FETCH_RPC_GRACE_MS, signal },
+        );
     }
 
     // ── Transport ─────────────────────────────────────────────
@@ -269,26 +323,48 @@ export class UbiSDK {
         this._sendToHost(command as ModGuestCommand);
     }
 
-    private _rpc<T>(command: OmitId<ModGuestCommand>, timeoutMs = this._rpcTimeout): Promise<T> {
+    private _rpc<T>(command: OmitId<ModGuestCommand>, options: RpcOptions = {}): Promise<T> {
+        const timeoutMs = options.timeoutMs ?? this._rpcTimeout;
+        const { signal } = options;
+        const prefix = this.modId ? `[UbiSDK:${this.modId}]` : '[UbiSDK]';
+        if (signal?.aborted) {
+            return Promise.reject(
+                new UbiError(UbiErrorCode.FETCH_ABORTED, `${prefix} 取り消されました: ${command.type}`),
+            );
+        }
         const id = `rpc_${this._commandCounter++}`;
         return new Promise<T>((resolve, reject) => {
-            const timer = setTimeout(() => {
+            const settle = (): void => {
+                clearTimeout(timer);
+                signal?.removeEventListener('abort', onAbort);
                 this._pendingRequests.delete(id);
-                const prefix = this.modId ? `[UbiSDK:${this.modId}]` : '[UbiSDK]';
-                reject(
-                    new UbiError(
-                        UbiErrorCode.RPC_TIMEOUT,
-                        `${prefix} RPC タイムアウト (${timeoutMs}ms): ${command.type}`,
+            };
+            // 待つのをやめたら Host にも伝え、通信と後片付けを止めてもらう。
+            const cancel = (error: UbiError): void => {
+                settle();
+                this._send({ type: CommandType.CMD_ABORT, payload: { requestId: id } });
+                reject(error);
+            };
+            const onAbort = (): void =>
+                cancel(new UbiError(UbiErrorCode.FETCH_ABORTED, `${prefix} 取り消されました: ${command.type}`));
+            const timer = setTimeout(
+                () =>
+                    cancel(
+                        new UbiError(
+                            UbiErrorCode.RPC_TIMEOUT,
+                            `${prefix} RPC タイムアウト (${timeoutMs}ms): ${command.type}`,
+                        ),
                     ),
-                );
-            }, timeoutMs);
+                timeoutMs,
+            );
+            signal?.addEventListener('abort', onAbort, { once: true });
             this._pendingRequests.set(id, {
                 resolve: (data) => {
-                    clearTimeout(timer);
+                    settle();
                     resolve(data as T);
                 },
                 reject: (error, code) => {
-                    clearTimeout(timer);
+                    settle();
                     // code があれば UbiError、無ければ通常 Error (後方互換)
                     reject(code ? new UbiError(code, error) : new Error(error));
                 },
@@ -325,6 +401,11 @@ export class UbiSDK {
     /** @internal sandbox.worker.ts から EVT_LIFECYCLE_INIT 時に呼ばれる */
     public _setInitialEntities(entities: ComponentInstance[]): void {
         this._initialEntities = entities;
+    }
+
+    /** @internal sandbox.worker.ts から EVT_LIFECYCLE_INIT 時に呼ばれる（`Ubi.runtime.protocolVersion`）。 */
+    public _setHostProtocolVersion(version: number): void {
+        this._hostProtocolVersion = version;
     }
 
     /** @internal sandbox.worker.ts から全ホストイベントをここに流す */
@@ -394,7 +475,6 @@ export class UbiSDK {
                     } else {
                         pending.reject(event.error ?? 'Unknown RPC error', event.errorCode);
                     }
-                    this._pendingRequests.delete(event.id);
                 }
                 break;
             }

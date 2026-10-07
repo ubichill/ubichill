@@ -4,7 +4,9 @@ import type { FetchErrorBody } from './fetchHandler';
 import {
     checkUrlAllowed,
     createModFetchHandler,
+    fetchDirect,
     isUrlAllowed,
+    readBodyWithLimit,
     resolveModAssetUrl,
     resolveModNamespaceUrl,
 } from './fetchHandler';
@@ -132,7 +134,7 @@ describe('createModFetchHandler', () => {
         expect(spy).not.toHaveBeenCalled();
         expect(res.ok).toBe(false);
         expect(res.status).toBe(403);
-        const body = JSON.parse(res.body) as FetchErrorBody;
+        const body = JSON.parse(res.body as string) as FetchErrorBody;
         expect(body.error.code).toBe(UbiErrorCode.FETCH_DOMAIN_NOT_ALLOWED);
         // 拒否時は許可ドメイン一覧を返し、mod側が理由を判別できる
         expect(body.error.allowedDomains).toEqual(['api.github.com']);
@@ -146,5 +148,115 @@ describe('createModFetchHandler', () => {
         expect(res.ok).toBe(true);
         expect(res.status).toBe(200);
         expect(res.body).toBe('hello');
+    });
+});
+
+function streamOf(chunks: Uint8Array[], onCancel?: () => void): ReadableStream<Uint8Array> {
+    const queue = [...chunks];
+    return new ReadableStream({
+        pull(controller) {
+            const next = queue.shift();
+            if (next) controller.enqueue(next);
+            else controller.close();
+        },
+        cancel: onCancel,
+    });
+}
+
+describe('readBodyWithLimit', () => {
+    it('分割された本文を 1 つの ArrayBuffer に連結する', async () => {
+        const res = new Response(streamOf([new Uint8Array([1, 2]), new Uint8Array([3]), new Uint8Array([4, 5])]));
+        const body = await readBodyWithLimit(res, 5);
+        expect(new Uint8Array(body as ArrayBuffer)).toEqual(new Uint8Array([1, 2, 3, 4, 5]));
+    });
+
+    it('content-length を偽って小さく申告しても、実際に読んだ量で止める', async () => {
+        const cancel = vi.fn();
+        const res = new Response(streamOf([new Uint8Array(4), new Uint8Array(4), new Uint8Array(4)], cancel), {
+            headers: { 'content-length': '1' },
+        });
+        expect(await readBodyWithLimit(res, 6)).toBe('too-large');
+        expect(cancel).toHaveBeenCalled();
+    });
+
+    it('content-length が上限を超えていれば本文を読まずに止める', async () => {
+        const cancel = vi.fn();
+        const res = new Response(streamOf([new Uint8Array(1)], cancel), { headers: { 'content-length': '100' } });
+        expect(await readBodyWithLimit(res, 10)).toBe('too-large');
+        expect(cancel).toHaveBeenCalled();
+    });
+
+    it('本文が無い応答は空の ArrayBuffer', async () => {
+        expect((await readBodyWithLimit(new Response(null, { status: 204 }), 0)) as ArrayBuffer).toHaveProperty(
+            'byteLength',
+            0,
+        );
+    });
+});
+
+describe('fetchDirect（バイナリ・制限・取り消し）', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it("responseType: 'arrayBuffer' はバイト列をそのまま返し、UTF-8 として壊さない", async () => {
+        const bytes = new Uint8Array([0x00, 0xff, 0xfe, 0x80, 0x0a]);
+        vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(bytes, { status: 200 }));
+        const res = await fetchDirect('https://cdn.example.com/a.wasm', { responseType: 'arrayBuffer' });
+        expect(new Uint8Array(res.body as ArrayBuffer)).toEqual(bytes);
+    });
+
+    it('既定（text）は従来どおり文字列を返し、最終 URL も返す', async () => {
+        const response = new Response('ok', { status: 200 });
+        Object.defineProperty(response, 'url', { value: 'https://api.example.com/final' });
+        vi.spyOn(globalThis, 'fetch').mockResolvedValue(response);
+        const res = await fetchDirect('https://api.example.com/start');
+        expect(res).toMatchObject({ ok: true, body: 'ok', url: 'https://api.example.com/final' });
+        expect(res.error).toBeUndefined();
+    });
+
+    it('上限を超えた本文は 413 と FETCH_RESPONSE_TOO_LARGE になり、本文を渡さない', async () => {
+        vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(new Uint8Array(32)));
+        const res = await fetchDirect('https://cdn.example.com/big', { responseType: 'arrayBuffer', maxBytes: 16 });
+        expect(res).toMatchObject({ ok: false, status: 413, error: { code: UbiErrorCode.FETCH_RESPONSE_TOO_LARGE } });
+        expect((res.body as ArrayBuffer).byteLength).toBe(0);
+    });
+
+    it('取り消し済みの signal では通信しない', async () => {
+        const spy = vi.spyOn(globalThis, 'fetch');
+        const controller = new AbortController();
+        controller.abort();
+        const res = await fetchDirect('https://api.example.com/x', undefined, { signal: controller.signal });
+        expect(spy).not.toHaveBeenCalled();
+        expect(res.error?.code).toBe(UbiErrorCode.FETCH_ABORTED);
+    });
+
+    it('通信中に timeoutMs を過ぎたら FETCH_TIMEOUT', async () => {
+        vi.spyOn(globalThis, 'fetch').mockImplementation(
+            (_url, init) =>
+                new Promise((_resolve, reject) => {
+                    init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+                }),
+        );
+        const res = await fetchDirect('https://api.example.com/slow', { timeoutMs: 10 });
+        expect(res).toMatchObject({ status: 504, error: { code: UbiErrorCode.FETCH_TIMEOUT } });
+    });
+
+    it('cookie の扱い（credentials）とバイナリの送信本文を fetch に渡す', async () => {
+        const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(''));
+        const body = new Uint8Array([1, 2, 3]);
+        await fetchDirect('https://api.example.com/upload', { method: 'POST', body }, { credentials: 'omit' });
+        expect(spy).toHaveBeenCalledWith(
+            'https://api.example.com/upload',
+            expect.objectContaining({ method: 'POST', body, credentials: 'omit' }),
+        );
+    });
+
+    it('通信の失敗は FETCH_NETWORK_ERROR（例外を mod に漏らさない）', async () => {
+        vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'));
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        const res = await fetchDirect('https://api.example.com/x', { responseType: 'arrayBuffer' });
+        expect(res).toMatchObject({ ok: false, error: { code: UbiErrorCode.FETCH_NETWORK_ERROR } });
+        expect(res.body).toBeInstanceOf(ArrayBuffer);
     });
 });

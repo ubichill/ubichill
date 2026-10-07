@@ -8,74 +8,34 @@ import {
     type ModHostEvent,
     PROTOCOL_VERSION,
 } from '@ubichill/shared';
+import { currentFunctionPrototypes, findLockdownLeaks, lockdownGlobalScope } from './lockdown';
 
-// IMPORTANT: Function コンストラクタを無効化する前に保存
+// 封鎖より前に退避する。mod コードの評価はこの参照だけが行う。
 const SafeFunction = Function;
+const securePostMessage = self.postMessage.bind(self) as (cmd: ModGuestCommand) => void;
+const functionPrototypes = currentFunctionPrototypes();
 
-const nullifyGlobals = (): ((cmd: ModGuestCommand) => void) => {
-    const dangerousGlobals = [
-        'fetch',
-        'XMLHttpRequest',
-        'WebSocket',
-        'EventSource',
-        'indexedDB',
-        'localStorage',
-        'sessionStorage',
-        'Worker',
-        'SharedWorker',
-        'navigator',
-        'importScripts', // CRITICAL: 外部スクリプト読み込みを防止
-        'eval', // CRITICAL: eval を明示的にブロック
-        'Function', // CRITICAL: new Function() を防止（内部的には SafeFunction を使用）
-    ];
-
-    for (const glob of dangerousGlobals) {
-        if (glob in self) {
-            try {
-                Object.defineProperty(self, glob, { value: undefined, writable: false, configurable: false });
-            } catch (_e) {
-                console.warn(`[Sandbox] グローバルの無効化に失敗しました: ${glob}`);
-            }
-        }
-    }
-
+const lockdownError = ((): string | null => {
     try {
+        lockdownGlobalScope(self, {
+            postMessageStub: () => {
+                console.warn('[Sandbox] postMessage の直接呼び出しは禁止されています。Ubi API を使用してください。');
+            },
+            functionPrototypes,
+        });
         Object.freeze(Object.prototype);
         Object.freeze(Array.prototype);
         Object.freeze(String.prototype);
         Object.freeze(Number.prototype);
         Object.freeze(Boolean.prototype);
-    } catch (_e) {
-        console.warn('[Sandbox] プロトタイプのフリーズに失敗しました');
+    } catch (error) {
+        return error instanceof Error ? error.message : String(error);
     }
+    const leaks = findLockdownLeaks(self, functionPrototypes);
+    return leaks.length > 0 ? `封鎖できなかった入口: ${leaks.join(', ')}` : null;
+})();
 
-    const originalPostMessage = self.postMessage.bind(self);
-    Object.defineProperty(self, 'postMessage', {
-        value: () => {
-            console.warn('[Sandbox] postMessage の直接呼び出しは禁止されています。Ubi API を使用してください。');
-        },
-        writable: false,
-        configurable: false,
-    });
-
-    return originalPostMessage;
-};
-
-const securePostMessage = nullifyGlobals();
-
-// UbiSDK を securePostMessage で初期化（グローバル無効化後に生成することで安全な送信経路を確保）
 const Ubi = new UbiSDK(securePostMessage);
-
-// \bFunction\s*\( — 単語境界を使うことで ZodFunction( / ProxyFunction( 等の誤検知を防ぐ
-const DANGEROUS_PATTERNS = [/importScripts/, /eval\s*\(/, /\bFunction\s*\(/, /__proto__/, /prototype\s*\[/] as const;
-
-function checkDangerousPatterns(code: string): void {
-    for (const pattern of DANGEROUS_PATTERNS) {
-        if (pattern.test(code)) {
-            throw new Error(`[Sandbox セキュリティ] 禁止されたパターンが検出されました: ${pattern.source}`);
-        }
-    }
-}
 
 self.addEventListener('message', (e: MessageEvent<ModHostEvent>) => {
     const event = e.data;
@@ -93,6 +53,7 @@ self.addEventListener('message', (e: MessageEvent<ModHostEvent>) => {
     Ubi.modBase = event.payload.modBase ?? '';
     Ubi.watchEntityTypes = event.payload.watchEntityTypes ?? [];
     Ubi.hasCoarsePointer = event.payload.hasCoarsePointer ?? false;
+    Ubi._setHostProtocolVersion(event.payload.protocolVersion ?? 0);
     // state.define がmodコード実行前にこのスナップショットを同期反映する
     Ubi._setInitialEntities(event.payload.initialEntities ?? []);
 
@@ -106,8 +67,8 @@ self.addEventListener('message', (e: MessageEvent<ModHostEvent>) => {
     }
 
     try {
-        // SECURITY NOTE: 本番環境では静的解析・コード署名・CSP・将来的に QuickJS+WASM への移行を推奨
-        checkDangerousPatterns(event.payload.code);
+        // 封鎖に失敗した環境では mod を実行しない（fail closed）。
+        if (lockdownError) throw new Error(`[Sandbox] グローバルの封鎖に失敗しました: ${lockdownError}`);
 
         // modの console.log 等を Ubi.log へリダイレクト（グローバル console をシャドウ）
         const _modConsole = {

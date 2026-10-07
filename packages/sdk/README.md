@@ -47,12 +47,16 @@ export default function Counter() {
 | `Ubi.canvas` | 共有キャンバス描画（`frame`/`commitStroke`） |
 | `Ubi.player` | 参加者情報・スクロール位置・カーソル同期 |
 | `Ubi.media` | 動画/音声/HLSの読み込みと再生制御 |
-| `Ubi.fetch(url)` | HTTP リクエスト（ドメイン単位でユーザー承認を経由） |
+| `Ubi.asset` | 同梱アセット（`assets/`）の読み込みと WASM のコンパイル。Host が manifest の integrity と照合して渡す |
+| `Ubi.runtime` | 実行環境の能力判定（`supports('wasm:simd')` など）と、未対応時の明確なエラー（`require`） |
+| `Ubi.fetch(url, options?)` | HTTP リクエスト（ドメイン単位でユーザー承認）。`responseType: 'arrayBuffer'`・`maxBytes`・`timeoutMs`・`signal` |
 | `Ubi.registerSystem(fn)` | ECS System登録（毎フレーム呼ばれる） |
 
 - 権限（capability）はビルド時に使用APIから自動検出され、`export const config` で宣言したものと和集合される。
   一覧・危険度は [`docs/CAPABILITIES.md`](https://github.com/ubichill/ubichill/blob/main/docs/CAPABILITIES.md)。
 - Worker→Host のワイヤープロトコルバージョンは `PROTOCOL_VERSION`（npm semverとは連動しない）。
+- WASM・バイナリ・通信の境界（ブラウザの CORS は解除されない等）は
+  [`docs/MOD_RUNTIME.md`](https://github.com/ubichill/ubichill/blob/main/docs/MOD_RUNTIME.md)。
 
 ### JSX（オプション）
 

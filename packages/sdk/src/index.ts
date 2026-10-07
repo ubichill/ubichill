@@ -48,10 +48,12 @@ export { UbiError, UbiErrorCode } from '@ubichill/shared/mod/errors';
 // ハンドシェイクする値と同じ定数）。SDKのnpm semverはこの値と自動連動しないため、
 // mod開発者が「このSDKでビルドしたmodがどのHostバージョンと噛み合うか」を確認する
 // 目安として公開する。実際の互換性チェックは Host 側の checkProtocolCompatibility が担う。
-export { PROTOCOL_VERSION } from '@ubichill/shared/mod/protocol';
+export { FETCH_LIMITS, PROTOCOL_VERSION } from '@ubichill/shared/mod/protocol';
 export type {
     CanvasCursorData,
     CanvasStrokeData,
+    CmdAbort,
+    CmdAssetLoad,
     CmdCanvasCommitStroke,
     CmdCanvasFrame,
     CmdLog,
@@ -80,6 +82,10 @@ export type {
     EvtPlayerLeft,
     EvtRpcResponse,
     EvtSceneEntityUpdated,
+    FetchError,
+    FetchOptions,
+    FetchResponseType,
+    FetchResult,
     InputContextMenuData,
     InputFrameEvent,
     InputKeyDownData,
@@ -107,6 +113,7 @@ export type {
     ModGuestCommand,
     ModHostEvent,
     ModWorkerMessage,
+    RpcAssetLoadResult,
     RpcCreateEntityResult,
     RpcGetEntityResult,
     RpcNetworkFetchResult,
@@ -115,13 +122,15 @@ export type {
     UserJoinedCallback,
     UserLeftCallback,
 } from '@ubichill/shared/mod/types';
-export type { Ubi } from './ubi';
+export type { Ubi, UbiFetchOptions } from './ubi';
 // UbiSDK クラス（実装） + mod 向け公開型
 export { UbiSDK } from './ubi';
+export type { AssetLoadOptions } from './ubi/asset';
 export type { ComponentConfig, DataField, DataFieldType } from './ubi/config';
 export type { EmitOptions, EmitScope, EventRegistry } from './ubi/event';
 export type { Grip, GripOptions } from './ubi/grip';
 export type { Ride } from './ubi/ride';
+export type { RuntimeFeature } from './ubi/runtime';
 export type { EntityState, EntityStateFor, OmitId, UiRenderCostStat } from './ubi/types';
 // 宣言的 grip ラッパーは別 export path: '@ubichill/sdk/gripable'
 // (sandbox / 他の sub-package が JSX なしで型解決できるよう main entry から分離)

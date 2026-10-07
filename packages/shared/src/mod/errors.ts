@@ -34,11 +34,31 @@ export const UbiErrorCode = {
     FETCH_INVALID_URL: 'FETCH_INVALID_URL',
     /** fetch 自体が throw した (ネットワーク断・CORS 等) */
     FETCH_NETWORK_ERROR: 'FETCH_NETWORK_ERROR',
+    /** 制限時間（timeoutMs）内に終わらなかった */
+    FETCH_TIMEOUT: 'FETCH_TIMEOUT',
+    /** 本文が上限（maxBytes）を超えた */
+    FETCH_RESPONSE_TOO_LARGE: 'FETCH_RESPONSE_TOO_LARGE',
+    /** mod が AbortSignal で取り消した */
+    FETCH_ABORTED: 'FETCH_ABORTED',
+
+    // ── asset (Ubi.asset) ──
+    /** mod の versioned ディレクトリの外を指すパス */
+    ASSET_INVALID_PATH: 'ASSET_INVALID_PATH',
+    /** manifest の assetIntegrity に載っていないアセット */
+    ASSET_NOT_DECLARED: 'ASSET_NOT_DECLARED',
+    /** 取得したバイト列が manifest の integrity と一致しない */
+    ASSET_INTEGRITY_MISMATCH: 'ASSET_INTEGRITY_MISMATCH',
+    /** アセットを取得できなかった（HTTP エラー・通信失敗） */
+    ASSET_FETCH_FAILED: 'ASSET_FETCH_FAILED',
+
+    // ── runtime ──
+    /** 実行環境（ブラウザ・Host）がその機能を持たない */
+    UNSUPPORTED_FEATURE: 'UNSUPPORTED_FEATURE',
 
     // ── worker lifecycle ──
     /** Worker 初期化に失敗した (modコードの構文エラー等) */
     WORKER_INIT_FAILED: 'WORKER_INIT_FAILED',
-    /** 禁止された危険パターン (eval / Function 等) を検出した */
+    /** @deprecated 文字列検査は廃止した。コード生成は Worker 内の封鎖が実行時に止める。 */
     SECURITY_PATTERN_DETECTED: 'SECURITY_PATTERN_DETECTED',
     /** mod (SDK) と Host のプロトコルバージョンが非互換、または機能欠落の恐れがある */
     PROTOCOL_VERSION_MISMATCH: 'PROTOCOL_VERSION_MISMATCH',
