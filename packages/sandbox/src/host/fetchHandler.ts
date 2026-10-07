@@ -118,6 +118,13 @@ function errorResult(
     };
 }
 
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+/** ブラウザでは manual の結果は opaqueredirect になる（Node 等ではリダイレクトの応答がそのまま見える）。 */
+function isRedirect(response: Response): boolean {
+    return response.type === 'opaqueredirect' || REDIRECT_STATUSES.has(response.status);
+}
+
 function headersOf(response: Response): Record<string, string> {
     const headers: Record<string, string> = {};
     response.headers.forEach((value, key) => {
@@ -153,13 +160,26 @@ async function runFetch(
     if (signal.aborted) return abortedResult(signal, responseType);
 
     try {
+        // リダイレクトは追わない。ブラウザは行き先を送信前に見せないため、追うと未承認の相手へ本文や cookie が届き得る。
         const response = await fetch(url, {
             method: options?.method ?? 'GET',
             headers: options?.headers,
             body: options?.body as BodyInit | undefined,
             credentials: context.credentials,
+            redirect: 'manual',
             signal,
         });
+        if (isRedirect(response)) {
+            await response.body?.cancel();
+            return errorResult(
+                HTTP_STATUS.FORBIDDEN,
+                {
+                    code: UbiErrorCode.FETCH_REDIRECT_BLOCKED,
+                    message: 'リダイレクトは追いません。最終的な URL を直接指定してください',
+                },
+                responseType,
+            );
+        }
         const bytes = await readBodyWithLimit(response, maxBytes);
         if (bytes === 'too-large') {
             return errorResult(

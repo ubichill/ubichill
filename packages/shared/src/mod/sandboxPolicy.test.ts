@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isSandboxWorkerScriptPath, SANDBOX_WORKER_CSP } from './sandboxPolicy';
+import { isSandboxWorkerScriptPath, SANDBOX_WORKER_CSP, sandboxWorkerDevCsp } from './sandboxPolicy';
 
 describe('isSandboxWorkerScriptPath', () => {
     it.each([
@@ -23,13 +23,17 @@ describe('isSandboxWorkerScriptPath', () => {
     });
 });
 
-describe('SANDBOX_WORKER_CSP', () => {
-    const directives = new Map(
-        SANDBOX_WORKER_CSP.split(';').map((d) => {
+function directivesOf(csp: string) {
+    return new Map(
+        csp.split(';').map((d) => {
             const [name, ...values] = d.trim().split(/\s+/);
             return [name, values] as const;
         }),
     );
+}
+
+describe('SANDBOX_WORKER_CSP', () => {
+    const directives = directivesOf(SANDBOX_WORKER_CSP);
 
     it('既定ですべて拒否し、通信系のディレクティブを個別に緩めていない', () => {
         expect(directives.get('default-src')).toEqual(["'none'"]);
@@ -38,10 +42,19 @@ describe('SANDBOX_WORKER_CSP', () => {
         }
     });
 
-    it('スクリプトは同一オリジンのみ（外部 URL・data:・blob: を許さない）', () => {
-        const scriptSrc = directives.get('script-src') ?? [];
-        expect(scriptSrc).toContain("'self'");
-        expect(scriptSrc.filter((v) => !v.startsWith("'"))).toEqual([]);
-        expect(scriptSrc).toContain("'wasm-unsafe-eval'");
+    it("スクリプトの URL を 1 つも許可しない（'self' も無い＝同一オリジンの mod の JS も import できない）", () => {
+        expect(directives.get('script-src')).toEqual(["'unsafe-eval'", "'wasm-unsafe-eval'"]);
+    });
+});
+
+describe('sandboxWorkerDevCsp', () => {
+    it("渡したパスだけを許可し、'self' やワイルドカードを足さない", () => {
+        const sources = [
+            'http://localhost:3000/@fs/repo/packages/sdk/src/',
+            'http://localhost:3000/node_modules/.vite/deps/',
+        ];
+        const directives = directivesOf(sandboxWorkerDevCsp(sources));
+        expect(directives.get('default-src')).toEqual(["'none'"]);
+        expect(directives.get('script-src')).toEqual([...sources, "'unsafe-eval'", "'wasm-unsafe-eval'"]);
     });
 });

@@ -259,4 +259,34 @@ describe('fetchDirect（バイナリ・制限・取り消し）', () => {
         expect(res).toMatchObject({ ok: false, error: { code: UbiErrorCode.FETCH_NETWORK_ERROR } });
         expect(res.body).toBeInstanceOf(ArrayBuffer);
     });
+
+    it('リダイレクトは追わずに FETCH_REDIRECT_BLOCKED で返し、本文を渡さない', async () => {
+        const spy = vi
+            .spyOn(globalThis, 'fetch')
+            .mockResolvedValue(
+                new Response('secret', { status: 307, headers: { location: 'https://evil.example/x' } }),
+            );
+        const res = await fetchDirect('https://api.example.com/r', { method: 'POST', body: 'payload' });
+
+        expect(spy).toHaveBeenCalledWith('https://api.example.com/r', expect.objectContaining({ redirect: 'manual' }));
+        expect(res).toMatchObject({ ok: false, status: 403, error: { code: UbiErrorCode.FETCH_REDIRECT_BLOCKED } });
+        expect(String(res.body)).not.toContain('secret');
+    });
+
+    it('ブラウザの opaqueredirect（行き先が見えない応答）も同じく拒否する', async () => {
+        const opaque = new Response(null, { status: 200 });
+        Object.defineProperty(opaque, 'type', { value: 'opaqueredirect' });
+        Object.defineProperty(opaque, 'status', { value: 0 });
+        vi.spyOn(globalThis, 'fetch').mockResolvedValue(opaque);
+        const res = await fetchDirect('https://api.example.com/r', { responseType: 'arrayBuffer' });
+        expect(res.error?.code).toBe(UbiErrorCode.FETCH_REDIRECT_BLOCKED);
+        expect(res.body).toBeInstanceOf(ArrayBuffer);
+    });
+
+    it('304 Not Modified はリダイレクトではないのでそのまま返す', async () => {
+        vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 304 }));
+        const res = await fetchDirect('https://api.example.com/r', { headers: { 'if-none-match': '"v1"' } });
+        expect(res.status).toBe(304);
+        expect(res.error).toBeUndefined();
+    });
 });

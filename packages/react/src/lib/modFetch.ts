@@ -2,8 +2,8 @@
  * Worker の NETWORK_FETCH を処理するハンドラ（React 非依存の本体。useModFetch が束ねる）。
  *
  * 1. URL を認可する（自アセット・自名前空間は承認不要、本体の他領域は禁止、外部はドメイン承認）。
- * 2. 外部オリジンには cookie を送らない（リダイレクトで本体へ戻されても認証付きで届かないように）。
- * 3. リダイレクトで URL が変わったら、行き先も同じ規則で認可し直す。通らなければ本文を捨てる。
+ * 2. 外部オリジンには cookie を送らない。
+ * 3. リダイレクトは Host の fetch が追わない（送信前に行き先を審査できないため。fetchHandler 参照）。
  */
 import {
     abortedFetchResult,
@@ -24,7 +24,7 @@ export type ModFetchHandler = (
 export interface ModFetchDeps {
     modId: string;
     appOrigin: string | undefined;
-    authorizeUrl: (url: string) => Promise<ExternalUrlAccess>;
+    authorizeUrl: (url: string, signal?: AbortSignal) => Promise<ExternalUrlAccess>;
     fetchImpl?: typeof fetchDirect;
     report?: typeof reportDiagnostic;
 }
@@ -57,21 +57,14 @@ export function createModFetch({
 
     return async (url, options, context) => {
         const responseType = options?.responseType;
-        const access = await authorizeUrl(url);
+        const signal = context?.signal;
+        const access = await authorizeUrl(url, signal);
+        if (signal?.aborted) return abortedFetchResult(signal, responseType);
         if (!access.allowed) return deny(access, responseType);
-        if (context?.signal?.aborted) return abortedFetchResult(context.signal, responseType);
 
-        const result = await fetchImpl(access.url, options, {
-            signal: context?.signal,
+        return fetchImpl(access.url, options, {
+            signal,
             credentials: credentialsFor(access.url, appOrigin),
         });
-        if (!result.url || result.url === access.url) return result;
-
-        const redirected = await authorizeUrl(result.url);
-        if (redirected.allowed) return result;
-        return deny(
-            { ...redirected, message: `リダイレクト先が許可されていません: ${redirected.message}` },
-            responseType,
-        );
     };
 }

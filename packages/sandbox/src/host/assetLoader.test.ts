@@ -60,14 +60,11 @@ describe('matchesIntegrity', () => {
 describe('loadModAsset', () => {
     const integrity = { 'a.wasm': sri(WASM), 'nested/b.bin': sri(new Uint8Array([9])) };
 
-    it('integrity と一致したバイト列を返す（先頭の ./ は manifest のキーに合わせて外す）', async () => {
+    it('integrity と一致したバイト列を返し、cookie は送らない（先頭の ./ は manifest のキーに合わせて外す）', async () => {
         const fetchImpl = serve({ [`${MOD_BASE}/a.wasm`]: WASM });
         const bytes = await loadModAsset('./a.wasm', { modBase: MOD_BASE, integrity }, { fetchImpl });
         expect(new Uint8Array(bytes)).toEqual(WASM);
-        expect(fetchImpl).toHaveBeenCalledWith(
-            `${MOD_BASE}/a.wasm`,
-            expect.objectContaining({ credentials: 'same-origin' }),
-        );
+        expect(fetchImpl).toHaveBeenCalledWith(`${MOD_BASE}/a.wasm`, expect.objectContaining({ credentials: 'omit' }));
     });
 
     it('配布元が中身を差し替えたら ASSET_INTEGRITY_MISMATCH（バイト列を渡さない）', async () => {

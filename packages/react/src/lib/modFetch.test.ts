@@ -90,35 +90,36 @@ describe('createModFetch', () => {
         expect(res.error?.code).toBe(UbiErrorCode.FETCH_ABORTED);
     });
 
-    it('承認済みドメインから本体の /api へリダイレクトされたら本文を渡さない', async () => {
-        const fetchImpl = vi.fn(async () => ok(`${APP}/api/v1/users/me`, '{"email":"me@example.com"}'));
-        const { handler, report } = setup(fetchImpl);
+    it('承認待ちの間に取り消されたら、拒否として診断に出さず FETCH_ABORTED で返す', async () => {
+        const fetchImpl = vi.fn();
+        const report = vi.fn();
+        const controller = new AbortController();
+        const handler = createModFetch({
+            modId: 'demo',
+            appOrigin: APP,
+            authorizeUrl: async () => {
+                controller.abort();
+                return { allowed: false, code: UbiErrorCode.FETCH_ABORTED, message: 'aborted' };
+            },
+            fetchImpl: fetchImpl as never,
+            report,
+        });
 
-        const res = await handler('https://api.example.com/redirect');
+        const res = await handler('https://api.example.com/v1', undefined, { signal: controller.signal });
 
-        expect(res.ok).toBe(false);
-        expect(res.status).toBe(403);
-        expect(String(res.body)).not.toContain('me@example.com');
-        expect(report).toHaveBeenCalledWith(
-            expect.objectContaining({ message: expect.stringContaining('リダイレクト先') }),
-        );
+        expect(res.error?.code).toBe(UbiErrorCode.FETCH_ABORTED);
+        expect(fetchImpl).not.toHaveBeenCalled();
+        expect(report).not.toHaveBeenCalled();
     });
 
-    it('未承認ドメインへのリダイレクトも同じく拒否する', async () => {
-        const fetchImpl = vi.fn(async () => ok('https://evil.example/leak'));
-        const { handler } = setup(fetchImpl);
-        const res = await handler('https://api.example.com/r');
-        expect(res.error?.code).toBe(UbiErrorCode.FETCH_DOMAIN_NOT_ALLOWED);
+    it('取り消しの signal を承認待ちにも渡す（画面の取り下げに使う）', async () => {
+        const { handler } = setup(vi.fn(async (url: string) => ok(url)));
+        const signal = new AbortController().signal;
+        await handler('https://api.example.com/v1', undefined, { signal });
+        expect(authorizeUrl).toHaveBeenCalledWith('https://api.example.com/v1', signal);
     });
 
-    it('承認済みの範囲内のリダイレクトはそのまま返す', async () => {
-        const fetchImpl = vi.fn(async () => ok('https://cdn.example.com/final.bin'));
-        const { handler } = setup(fetchImpl);
-        const res = await handler('https://api.example.com/r');
-        expect(res).toMatchObject({ ok: true, body: 'secret' });
-    });
-
-    it('リダイレクトが無ければ認可は 1 回だけ', async () => {
+    it('認可は送信前の 1 回だけ（リダイレクトは Host の fetch が追わない）', async () => {
         const fetchImpl = vi.fn(async (url: string) => ok(url));
         const { handler } = setup(fetchImpl);
         await handler('https://api.example.com/v1');

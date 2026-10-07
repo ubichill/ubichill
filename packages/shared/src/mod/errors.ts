@@ -40,6 +40,8 @@ export const UbiErrorCode = {
     FETCH_RESPONSE_TOO_LARGE: 'FETCH_RESPONSE_TOO_LARGE',
     /** mod が AbortSignal で取り消した */
     FETCH_ABORTED: 'FETCH_ABORTED',
+    /** 応答がリダイレクトだった（行き先を送信前に審査できないため追わない） */
+    FETCH_REDIRECT_BLOCKED: 'FETCH_REDIRECT_BLOCKED',
 
     // ── asset (Ubi.asset) ──
     /** mod の versioned ディレクトリの外を指すパス */

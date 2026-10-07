@@ -24,6 +24,7 @@ import {
 } from '@ubichill/shared';
 import type React from 'react';
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
+import { createSharedWait } from '../lib/sharedWait';
 
 /** 承認プロンプト。mod一括（capability 群）と外部通信ドメインの 2 種。 */
 export type PermissionPromptRequest =
@@ -54,7 +55,8 @@ export interface PermissionContextValue {
      * fetch・動画・音声で共有する外部ドメイン承認。
      * ask のときはドメインごとにプロンプト（今回だけ/次回以降も許可/拒否）。
      */
-    authorizeExternalDomain(modId: string, domain: string): boolean | Promise<boolean>;
+    /** signal を渡すと、待っている依頼がすべて取り消された時点で承認画面を取り下げる（記憶はしない）。 */
+    authorizeExternalDomain(modId: string, domain: string, signal?: AbortSignal): boolean | Promise<boolean>;
     /** @deprecated `authorizeExternalDomain` を使用してください。 */
     authorizeFetchDomain(modId: string, domain: string): boolean | Promise<boolean>;
     /** 表示中の承認プロンプト（null = 無し）。UI が読む。 */
@@ -97,7 +99,7 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
 
     const queueRef = useRef<PromptItem[]>([]);
     const inFlightModRef = useRef(new Map<string, Promise<void>>());
-    const inFlightExternalRef = useRef(new Map<string, Promise<boolean>>());
+    const inFlightExternalRef = useRef(new Map<string, (signal?: AbortSignal) => Promise<boolean>>());
     const [pendingPrompt, setPendingPrompt] = useState<PermissionPromptRequest | null>(null);
 
     const showNext = useCallback(() => {
@@ -171,15 +173,16 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
     );
 
     const authorizeExternalDomain = useCallback(
-        (modId: string, domain: string): boolean | Promise<boolean> => {
+        (modId: string, domain: string, signal?: AbortSignal): boolean | Promise<boolean> => {
             // 確定判定は純粋関数に委譲。ask のときだけプロンプトを出す。
             const decision = resolveExternalDomainDecision(policyRef.current, modId, domain);
             if (decision === 'allow') return true;
             if (decision === 'deny') return false;
+            if (signal?.aborted) return false;
 
             const key = `${modId}::${domain}`;
             const existing = inFlightExternalRef.current.get(key);
-            if (existing) return existing;
+            if (existing) return existing(signal);
 
             const persist = (d: PermissionDecision) =>
                 setPolicy((prev) => ({
@@ -190,28 +193,30 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
                     },
                 }));
 
-            const promise = new Promise<boolean>((resolve) => {
-                queueRef.current.push({
-                    kind: 'external',
-                    modId,
-                    domain,
-                    resolve: (outcome) => {
-                        if (outcome === 'always') {
-                            persist('allow');
-                            resolve(true);
-                        } else if (outcome === 'deny') {
-                            persist('deny');
-                            resolve(false);
-                        } else {
-                            resolve(true); // 'once' / 'allow' → 今回だけ許可（記憶しない）
-                        }
-                    },
-                });
-                if (queueRef.current.length === 1) showNext();
-            }).finally(() => inFlightExternalRef.current.delete(key));
-
-            inFlightExternalRef.current.set(key, promise);
-            return promise;
+            const answered = Promise.withResolvers<boolean>();
+            const item: PromptItem = {
+                kind: 'external',
+                modId,
+                domain,
+                resolve: (outcome) => {
+                    if (outcome === 'always') persist('allow');
+                    if (outcome === 'deny') persist('deny');
+                    // 'once' / 'allow' → 今回だけ許可（記憶しない）
+                    answered.resolve(outcome !== 'deny');
+                },
+            };
+            const decided = answered.promise.finally(() => inFlightExternalRef.current.delete(key));
+            // 待っている依頼がすべて取り消されたら、画面を取り下げる（ユーザーの判断としては記憶しない）。
+            const join = createSharedWait(decided, false, () => {
+                const index = queueRef.current.indexOf(item);
+                if (index >= 0) queueRef.current.splice(index, 1);
+                if (index === 0) showNext();
+                answered.resolve(false);
+            });
+            inFlightExternalRef.current.set(key, join);
+            queueRef.current.push(item);
+            if (queueRef.current.length === 1) showNext();
+            return join(signal);
         },
         [setPolicy, showNext],
     );

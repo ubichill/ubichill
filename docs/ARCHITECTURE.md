@@ -162,8 +162,9 @@ Worker の中で mod コードを隔離する。詳細と WASM の扱いは [MOD
    取り除く（ブラウザでは多くが `WorkerGlobalScope.prototype` 側にある）。取り除けない入口が 1 つでもあれば mod を実行しない
 2. **コード生成の禁止** — `eval` / `Function` / 関数の `constructor` / 文字列のタイマーは `EvalError`。`SafeFunction`
    （封鎖前に退避した `Function`）だけが mod コードを評価する
-3. **Worker 専用の CSP** — `default-src 'none'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'` を Worker スクリプトの
-   応答に付ける（BFF・Vite）。1 を抜けても通信・外部スクリプトの読み込みはできない
+3. **Worker 専用の CSP** — 本番は `default-src 'none'; script-src 'unsafe-eval' 'wasm-unsafe-eval'` を Worker スクリプトの
+   応答に付ける（BFF・Vite preview）。スクリプトの URL を 1 つも許可しないので、1 を抜けても通信できず、同一オリジンを含めて
+   他の JS を読み込めない（lock で固定したコードだけが動く）。dev は Worker の依存パッケージのパスだけを許可する
 4. **プロトタイプ凍結** — `Object.prototype` 等をフリーズしてプロトタイプチェーン汚染をブロック
 5. **postMessage の一本化** — `self.postMessage` は警告のみ。Host へ届くのは SDK の経路だけで、Host 側の capability ゲートを必ず通る
 
@@ -171,7 +172,7 @@ WASM は禁止しない。WASM は `imports` で渡した関数しか呼べな�
 動的なコードが必要な mod は、QuickJS などのインタプリタを WASM として同梱して動かす。
 
 **既知の限界**: 3 の CSP は BFF と Vite が付ける。それ以外の方法でフロントを配信すると 1・2 だけになり、
-`import()` での外部スクリプト読み込みは JS 側では止められない。
+`import()` でのスクリプト読み込みは JS 側では止められない。
 
 ---
 

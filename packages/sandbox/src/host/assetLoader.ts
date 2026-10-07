@@ -72,7 +72,8 @@ export async function loadModAsset(
 
     const response = await (options.fetchImpl ?? fetch)(url, {
         signal: options.signal,
-        credentials: 'same-origin',
+        // 中身は integrity で確かめるのでリダイレクトは追ってよいが、cookie は付けない（本体 API へ戻されても認証されない）。
+        credentials: 'omit',
     }).catch((error: unknown) => {
         throw new UbiError(
             UbiErrorCode.ASSET_FETCH_FAILED,

@@ -29,7 +29,7 @@ Ubichill が提供するのは**用途を限定しない実行・通信・デー
 | 段 | 何をするか | どこで効くか |
 | --- | --- | --- |
 | Worker 内の封鎖（`packages/sandbox/src/worker/lockdown.ts`） | `fetch`・`XMLHttpRequest`・`WebSocket`・`WebTransport`・`EventSource`・`importScripts`・`Worker`・`BroadcastChannel`・`indexedDB`・`caches`・`navigator`・`FontFace` などを **`self` とプロトタイプチェーンの全段から**取り除く。コード生成の入口も止める。1 つでも取り除けなければ mod を実行しない | どの配信方法でも効く |
-| Worker 専用の CSP（`SANDBOX_WORKER_CSP`） | `default-src 'none'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'`。封鎖を抜けても通信できず、`import()` で外部のスクリプトも読めない | BFF（本番）と Vite（dev / preview）が Worker スクリプトに付ける。それ以外の配信方法では付かない |
+| Worker 専用の CSP（`SANDBOX_WORKER_CSP`） | 本番は `default-src 'none'; script-src 'unsafe-eval' 'wasm-unsafe-eval'`。スクリプトの URL を 1 つも許可しないので、封鎖を抜けても通信できず、`import()` で**同一オリジンの JS（他の mod のアセット等）も読めない**。dev は Vite が Worker の依存（`packages/{sandbox,sdk,shared,ecs,runtime,core-components}/src/` と `node_modules/.vite/deps/`）をモジュールごとに配信するため、そのパスだけを許可する | BFF（本番）と Vite（dev / preview）が Worker スクリプトに付ける。それ以外の配信方法では付かない |
 
 > 以前は `self` の上書きと文字列検査だけだったため、`Object.getPrototypeOf(self).fetch.call(self, '/api/v1/…')`
 > で本体の API に cookie 付きで届いた。文字列検査は WASM のグルーコード（Emscripten・wasm-bindgen が含む
@@ -70,7 +70,7 @@ else process(new Uint8Array(res.body)); // res.body は ArrayBuffer（コピー�
 - 送信本文に `ArrayBuffer` / `Uint8Array` を渡せる（Host へはコピーして送る）。
 - Host が合成した失敗（ドメイン拒否・制限時間・サイズ超過・通信失敗）は reject ではなく `ok: false` と
   `error.code` で返る（`FETCH_DOMAIN_NOT_ALLOWED` / `FETCH_TIMEOUT` / `FETCH_RESPONSE_TOO_LARGE` /
-  `FETCH_NETWORK_ERROR`）。サーバーの 404 などには `error` は付かない。
+  `FETCH_NETWORK_ERROR` / `FETCH_REDIRECT_BLOCKED`）。サーバーの 404 などには `error` は付かない。
 - 取り消し（`signal`）だけは reject（`FETCH_ABORTED`）。標準の `fetch` と同じ。
 
 ### `Ubi.runtime` — 実行環境の能力
@@ -128,8 +128,9 @@ Host が許可しても、**ブラウザの制限は解除されない**。
 | 自分のアセット（`modBase` 配下）・自分の名前空間（`/mods/<id>/`） | 承認不要 |
 | 本体オリジンのそれ以外（`/api` など） | 禁止 |
 | 外部ドメイン | https のみ。ホスト名ごとにユーザーが承認（「今回だけ / 次回以降も / 拒否」） |
-| リダイレクト | 最終 URL が変わったら同じ規則で認可し直す。通らなければ本文を渡さない（リクエスト自体は送られている） |
-| cookie | 外部オリジンには送らない（`credentials: 'omit'`）。リダイレクトで本体に戻されても認証は付かない |
+| リダイレクト | **追わない**（`FETCH_REDIRECT_BLOCKED`）。ブラウザは行き先を送信前に見せないため、追うと未承認の相手へ送信本文や cookie が届き得る。最終的な URL を直接指定する |
+| cookie | 外部オリジンには送らない（`credentials: 'omit'`）。同梱アセットの取得も cookie を付けない |
+| 承認待ちの取り消し | `signal` の取り消し・制限時間で、承認画面を待つ依頼から外れる。同じドメインを待つ依頼がすべて外れたら画面を取り下げる（拒否としては記憶しない） |
 | CORS | 相手が `Access-Control-Allow-Origin` を返さなければ失敗する（`FETCH_NETWORK_ERROR`） |
 | 応答ヘッダー | CORS で公開されたもの（`Access-Control-Expose-Headers`）しか読めない |
 | 禁止ヘッダー | `Cookie`・`Origin`・`User-Agent` などはブラウザが送らせない |

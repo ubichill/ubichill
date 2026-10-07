@@ -127,6 +127,7 @@ const attempt = async (name, fn) => {
     await attempt('webTransport', () => new WebTransport('https://' + location.host + '/leak-wt'));
     await attempt('broadcastChannel', () => new BroadcastChannel('host'));
     await attempt('importScripts', () => importScripts('/leak-import-scripts.js'));
+    await attempt('importSameOrigin', () => import(location.origin + '/mods/other/v1.0.0/tool/index.js'));
     await attempt('importCrossOrigin', () => import(location.protocol + '//localhost:' + location.port + '/leak-import.js'));
     await attempt('rawPostMessage', () => DedicatedWorkerGlobalScope.prototype.postMessage.call(self, { type: 'NETWORK_FETCH' }));
 
@@ -285,7 +286,7 @@ describe.skipIf(!chromePath)('Sandbox Worker（実ブラウザ）', () => {
         const probes = (result.probes as { probes: Record<string, string> }).probes;
         const reachable = Object.entries(probes).filter(([, outcome]) => !outcome.startsWith('blocked:'));
         expect(reachable).toEqual([]);
-        expect(Object.keys(probes)).toHaveLength(14);
+        expect(Object.keys(probes)).toHaveLength(15);
     });
 
     it('サーバーには 1 件も届いていない（本体 API・外部への持ち出しが起きていない）', () => {
