@@ -95,6 +95,7 @@ export function SettingsTab({
                             ...profile,
                             signingKeys: profile.signingKeys ?? [],
                             displayNameConflict: !!profile.displayNameConflict,
+                            displayNameChangeAvailableAt: profile.displayNameChangeAvailableAt ?? null,
                             passwordChangeRequired: !!profile.passwordChangeRequired,
                             passwordManagedBySecret: !!profile.passwordManagedBySecret,
                             isAdmin: !!profile.isAdmin,

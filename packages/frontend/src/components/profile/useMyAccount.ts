@@ -13,6 +13,8 @@ export interface MyProfile {
     author: string | null;
     signingKeys?: string[];
     displayNameConflict?: boolean;
+    /** 次に別の表示名へ変えられる時刻（ISO 8601）。変えたことが無ければ null。 */
+    displayNameChangeAvailableAt?: string | null;
     passwordChangeRequired?: boolean;
     passwordManagedBySecret?: boolean;
     isAdmin?: boolean;

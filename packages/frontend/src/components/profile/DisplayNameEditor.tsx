@@ -1,3 +1,4 @@
+import { DISPLAY_NAME_CHANGE_COOLDOWN_DAYS, decideDisplayNameChange, displayNameKey } from '@ubichill/shared';
 import { useState } from 'react';
 import { setMyDisplayName } from '@/lib/account/me';
 import { useDisplayNameAvailability } from '@/lib/account/useHandleAvailability';
@@ -7,11 +8,13 @@ interface DisplayNameEditorProps {
     name: string;
     /** 移行時に他人と重複していた。変更するまで警告を出す。 */
     conflict: boolean;
-    onChanged: (name: string) => void;
+    /** 次に別の名前へ変えられる時刻（ISO 8601）。制限が無ければ null。 */
+    availableAt: string | null;
+    onChanged: (result: { name: string; displayNameChangeAvailableAt: string | null }) => void;
 }
 
 /** 自分の表示名の変更（一意。全角半角・大文字小文字・空白の違いは同じ名前として扱う）。 */
-export function DisplayNameEditor({ name, conflict, onChanged }: DisplayNameEditorProps) {
+export function DisplayNameEditor({ name, conflict, availableAt, onChanged }: DisplayNameEditorProps) {
     const [editing, setEditing] = useState(conflict);
     const [value, setValue] = useState(name);
     const [error, setError] = useState('');
@@ -22,8 +25,7 @@ export function DisplayNameEditor({ name, conflict, onChanged }: DisplayNameEdit
         setBusy(true);
         setError('');
         try {
-            const result = await setMyDisplayName(value.trim());
-            onChanged(result.name);
+            onChanged(await setMyDisplayName(value.trim()));
             setEditing(false);
         } catch (e) {
             setError(e instanceof Error ? e.message : '変更できませんでした');
@@ -53,6 +55,13 @@ export function DisplayNameEditor({ name, conflict, onChanged }: DisplayNameEdit
     }
 
     const unchanged = value.trim() === name && !conflict;
+    // API と同じ規則で判定する（見た目だけの変更は期間中でもできる）
+    const decision = decideDisplayNameChange(
+        { currentKey: conflict ? null : displayNameKey(name), availableAt: availableAt ? new Date(availableAt) : null },
+        value,
+        new Date(),
+    );
+    const blocked = decision.kind === 'cooldown';
     return (
         <div className={css({ mt: '2' })}>
             {conflict && (
@@ -78,7 +87,7 @@ export function DisplayNameEditor({ name, conflict, onChanged }: DisplayNameEdit
                 />
                 <button
                     type="button"
-                    disabled={busy || unchanged || (value.trim() !== name && status.state !== 'available')}
+                    disabled={busy || unchanged || blocked || (value.trim() !== name && status.state !== 'available')}
                     onClick={() => void save()}
                     className={css({
                         px: '3',
@@ -118,7 +127,14 @@ export function DisplayNameEditor({ name, conflict, onChanged }: DisplayNameEdit
                     </button>
                 )}
             </div>
-            {'error' in status && (
+            {blocked && (
+                <p className={css({ mt: '1', fontSize: '12px', color: 'textMuted' })}>
+                    別の名前に変えられるのは {DISPLAY_NAME_CHANGE_COOLDOWN_DAYS} 日に 1 回までです。次は{' '}
+                    {decision.availableAt.toLocaleDateString('ja-JP')}{' '}
+                    以降に変えられます（大文字小文字・全角半角だけの変更はいつでもできます）。
+                </p>
+            )}
+            {!blocked && 'error' in status && (
                 <p className={css({ mt: '1', fontSize: '12px', color: 'errorText' })}>{status.error}</p>
             )}
             {error && <p className={css({ mt: '1', fontSize: '12px', color: 'errorText' })}>{error}</p>}

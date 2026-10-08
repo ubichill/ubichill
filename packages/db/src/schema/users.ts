@@ -26,6 +26,8 @@ export const users = pgTable('users', {
      * 移行時に他人と重複していた既存ユーザーは null（表示名の変更を促す）。
      */
     displayNameKey: varchar('display_name_key', { length: 120 }).unique(),
+    /** 最後に表示名の一意キーを変えた時刻（変更の制限に使う）。登録時の名前と、見た目だけの変更は数えない。 */
+    displayNameChangedAt: timestamp('display_name_changed_at'),
     /** URL・署名・機械処理用の ID（英小文字・数字・_、一意、変更不可）。作者アカウントは handle@domain。 */
     handle: varchar('handle', { length: 30 }).unique(),
     profileImageUrl: varchar('profile_image_url', { length: 1024 }),
