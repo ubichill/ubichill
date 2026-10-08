@@ -6,10 +6,12 @@ import { UserRow } from './UserRow';
 
 const SEARCH_DELAY_MS = 300;
 
-/** ユーザー検索（ID の前方一致・表示名の部分一致）。 */
+/** ユーザー検索（ID の前方一致・表示名の部分一致・`@ID@サーバー` の指定）。 */
 export function UserSearch({ onFriendshipChange }: { onFriendshipChange?: () => void }) {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<UserWithFriendship[] | null>(null);
+    /** ほかのサーバーのアカウントが指定された（連合のフレンドに対応するまで見つけられない） */
+    const [remoteAccount, setRemoteAccount] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -17,14 +19,17 @@ export function UserSearch({ onFriendshipChange }: { onFriendshipChange?: () => 
         setError(null);
         if (!q) {
             setResults(null);
+            setRemoteAccount(null);
             return;
         }
         // 検索語が変わったら前の検索の応答は捨てる（応答の順が入れ替わると、今の入力と違う結果が出るため）
         const controller = new AbortController();
         const timer = setTimeout(() => {
             searchUsers(q, controller.signal)
-                .then((users) => {
-                    if (!controller.signal.aborted) setResults(users);
+                .then((response) => {
+                    if (controller.signal.aborted) return;
+                    setResults(response.users);
+                    setRemoteAccount(response.remoteAccount ?? null);
                 })
                 .catch((e: unknown) => {
                     if (!controller.signal.aborted) setError(e instanceof Error ? e.message : '検索できませんでした');
@@ -47,7 +52,7 @@ export function UserSearch({ onFriendshipChange }: { onFriendshipChange?: () => 
                 type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="ID か表示名で探す"
+                placeholder="ID・表示名・@ID@サーバー で探す"
                 aria-label="ユーザーを検索"
                 className={css({
                     width: 'full',
@@ -63,7 +68,13 @@ export function UserSearch({ onFriendshipChange }: { onFriendshipChange?: () => 
                 })}
             />
             {error && <p className={css({ fontSize: '13px', color: 'errorText', mb: '2' })}>{error}</p>}
-            {results && results.length === 0 && (
+            {remoteAccount && (
+                <p className={css({ fontSize: '13px', color: 'textMuted' })}>
+                    @{remoteAccount}{' '}
+                    はほかのサーバーのアカウントです。ほかのサーバーのユーザーとのフレンドには、まだ対応していません。
+                </p>
+            )}
+            {!remoteAccount && results && results.length === 0 && (
                 <p className={css({ fontSize: '13px', color: 'textMuted' })}>見つかりませんでした。</p>
             )}
             {results && results.length > 0 && (

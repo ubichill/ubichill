@@ -11,7 +11,11 @@ import type { ResolvedWorld } from '@ubichill/shared';
 import {
     BioSchema,
     canViewFavorites,
+    DISPLAY_NAME_CHANGE_COOLDOWN_DAYS,
     DisplayNameSchema,
+    decideDisplayNameChange,
+    displayNameChangeAvailableAt,
+    displayNameChangeCutoff,
     displayNameKey,
     ENV_KEYS,
     FAVORITES_VISIBILITIES,
@@ -201,6 +205,8 @@ router.get('/me', requirePublisher, async (req, res) => {
             .map((e) => e.publicKey),
         // 移行時に他人と表示名が重複していた（一意キー未設定）。変更を促す。
         displayNameConflict: !user.displayNameKey,
+        // 次に別の名前へ変えられる時刻（変えたことが無ければ null）。見た目だけの変更はいつでもできる
+        displayNameChangeAvailableAt: availableAtOf(user.displayNameChangedAt),
         // 公開済みの開発用既定パスワードのまま（公式アカウント）。Secret の設定を促す。
         passwordChangeRequired: user.passwordChangeRequired,
         // パスワードを Secret で管理している（画面から変更できない）
@@ -257,25 +263,62 @@ router.put('/me/password', requireAuth, async (req, res) => {
     return res.status(204).send();
 });
 
-// 表示名を変更する（一意）。ID と違い変更できる。
+const availableAtOf = (changedAt: Date | null): string | null =>
+    displayNameChangeAvailableAt(changedAt)?.toISOString() ?? null;
+
+const cooldownError = (availableAt: Date) => ({
+    error: `表示名を別の名前に変えられるのは ${DISPLAY_NAME_CHANGE_COOLDOWN_DAYS} 日に 1 回までです`,
+    availableAt: availableAt.toISOString(),
+});
+
+// 表示名を変更する（一意）。ID と違い変更できるが、別の名前にするのは一定期間に 1 回（shared の displayNameChange）。
 router.put('/me/display-name', requireAuth, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const parsed = DisplayNameSchema.safeParse(typeof req.body?.name === 'string' ? req.body.name : '');
     if (!parsed.success) {
         return res.status(400).json({ error: parsed.error.issues[0]?.message ?? '表示名が不正です' });
     }
+    const current = await userRepository.findById(req.user.id);
+    if (!current) return res.status(404).json({ error: 'User not found' });
+    const now = new Date();
+    const decision = decideDisplayNameChange(
+        {
+            currentKey: current.displayNameKey,
+            availableAt: displayNameChangeAvailableAt(current.displayNameChangedAt),
+        },
+        parsed.data,
+        now,
+    );
+    if (decision.kind === 'cooldown') return res.status(429).json(cooldownError(decision.availableAt));
     const key = displayNameKey(parsed.data);
     const existing = await userRepository.findByDisplayNameKey(key);
     if (existing && existing.id !== req.user.id) {
         return res.status(409).json({ error: 'この表示名は既に使用されています' });
     }
     try {
-        const updated = await userRepository.setDisplayName(req.user.id, parsed.data, key);
-        if (!updated) return res.status(404).json({ error: 'User not found' });
+        // 期間の判定は書き込みと同じ UPDATE でもう一度行う（同時に 2 回変えられないように）
+        const cutoff = displayNameChangeCutoff(now);
+        const updated = await userRepository.setDisplayName(
+            req.user.id,
+            parsed.data,
+            key,
+            decision.startsCooldown ? { changedAt: now, notChangedAfter: cutoff } : {},
+        );
+        if (!updated) {
+            const latest = await userRepository.findById(req.user.id);
+            const availableAt = displayNameChangeAvailableAt(latest?.displayNameChangedAt ?? null);
+            return availableAt
+                ? res.status(429).json(cooldownError(availableAt))
+                : res.status(404).json({ error: 'User not found' });
+        }
         // ワールドの作者名は表示時にアカウントから引くので、キャッシュ済みの解決結果だけ捨てればよい
         if (updated.handle) invalidateAuthorKey(selfAccount(updated.handle));
         worldRegistry.invalidateResolvedWorlds();
-        return res.json({ name: updated.name, displayNameConflict: false });
+        return res.json({
+            name: updated.name,
+            displayNameConflict: false,
+            displayNameChangeAvailableAt: availableAtOf(updated.displayNameChangedAt),
+        });
     } catch {
         return res.status(409).json({ error: 'この表示名は既に使用されています' });
     }
