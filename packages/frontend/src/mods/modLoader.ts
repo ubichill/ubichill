@@ -15,7 +15,7 @@ import type { ModLock } from '@ubichill/shared';
  * VITE_MOD_CDN_URL があれば外部 CDN / GitHub Pages、無ければ自ホストの /mods。
  */
 export const MOD_BASE_URL: string = (() => {
-    const envUrl = import.meta.env.VITE_MOD_CDN_URL as string | undefined;
+    const envUrl = import.meta.env.VITE_MOD_CDN_URL;
     if (envUrl) return envUrl.replace(/\/$/, '');
     return '/mods';
 })();
