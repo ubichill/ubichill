@@ -1,5 +1,20 @@
 # @ubichill/backend
 
+## 1.6.0
+
+### Minor Changes
+
+- 70ae199: 表示名を別の名前に変えるのを 90 日に 1 回までにする（大文字小文字・全角半角だけの変更と、重複の解消は除く）。ユーザー検索は表示名の一意キーで照合して ID の一致を先に並べ、`@ID@サーバー` の指定を解釈する（ほかのサーバーのアカウントは `remoteAccount` として返す）。
+- 1e313e9: mod が外部サービスへ身元証明を渡せる `Ubi.identity.token(audience)` を追加。Ubichill のサーバーが短命の JWT（EdDSA）を発行し、サービスは公開鍵（`/api/v1/service-tokens/keys`）だけで検証できる。利用者 ID はサービスごとの仮名。権限 `identity:token`。プロトコル v5。
+
+### Patch Changes
+
+- Updated dependencies [70ae199]
+- Updated dependencies [5d131c6]
+- Updated dependencies [1e313e9]
+  - @ubichill/shared@1.7.0
+  - @ubichill/db@1.3.0
+
 ## 1.5.0
 
 ### Minor Changes
