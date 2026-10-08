@@ -8,7 +8,16 @@
  * RPC（id を持つコマンド）の戻り値は dispatchCommand の返り値になり、Manager が
  * EVT_RPC_RESPONSE に載せる。fire-and-forget は undefined を返す。
  */
-import { CommandType, type ModGuestCommand, type ModWorkerMessage } from '@ubichill/shared';
+import {
+    CommandType,
+    FETCH_LIMITS,
+    type ModGuestCommand,
+    type ModWorkerMessage,
+    normalizeFetchLimits,
+    UbiError,
+    UbiErrorCode,
+} from '@ubichill/shared';
+import { abortedFetchResult } from './fetchHandler';
 import type { HostHandlers } from './types';
 
 /** RPC タイムアウトを型で判別するための専用エラー（文字列マッチをやめるため）。 */
@@ -28,6 +37,38 @@ export interface CommandContext<TPayloadMap extends Record<string, unknown> = Re
     senderComponentInstanceId(): string | undefined;
     /** CMD_LOG のフォールバック console 出力用プレフィックス。 */
     logPrefix: string;
+    /** 取り消せるリクエストとして登録し、取り消し・制限時間で abort される signal を返す。 */
+    openRequest(id: string, timeoutMs: number): AbortSignal;
+    closeRequest(id: string): void;
+    abortRequest(id: string): void;
+    /** mod に同梱したアセットを integrity 照合のうえ読む。 */
+    loadAsset(path: string, signal: AbortSignal): Promise<ArrayBuffer>;
+}
+
+/** promise と signal の abort のうち先に来た方で決着させる（ハンドラが signal を見なくても待ち続けない）。 */
+async function raceWithAbort<T>(promise: Promise<T>, signal: AbortSignal, onAbort: () => T): Promise<T> {
+    if (signal.aborted) return onAbort();
+    const aborted = Promise.withResolvers<T>();
+    const listener = () => {
+        try {
+            aborted.resolve(onAbort());
+        } catch (error) {
+            aborted.reject(error);
+        }
+    };
+    signal.addEventListener('abort', listener, { once: true });
+    try {
+        return await Promise.race([promise, aborted.promise]);
+    } finally {
+        signal.removeEventListener('abort', listener);
+    }
+}
+
+function abortError(signal: AbortSignal): UbiError {
+    const timedOut = (signal.reason as { name?: string } | undefined)?.name === 'TimeoutError';
+    return timedOut
+        ? new UbiError(UbiErrorCode.FETCH_TIMEOUT, '制限時間内に読み込みが終わりませんでした')
+        : new UbiError(UbiErrorCode.FETCH_ABORTED, '読み込みは取り消されました');
 }
 
 /**
@@ -60,11 +101,32 @@ export async function dispatchCommand<TPayloadMap extends Record<string, unknown
         case CommandType.SCENE_DESTROY_ENTITY:
             await withTimeout(handlers.onDestroyEntity?.(command.payload.id) ?? Promise.resolve(), command.type);
             return undefined;
-        case CommandType.NETWORK_FETCH:
-            return withTimeout(
-                handlers.onFetch?.(command.payload.url, command.payload.options) ?? Promise.resolve(undefined),
-                command.type,
-            );
+        case CommandType.NETWORK_FETCH: {
+            const { options } = command.payload;
+            const signal = ctx.openRequest(command.id, normalizeFetchLimits(options).timeoutMs);
+            try {
+                return await raceWithAbort(
+                    handlers.onFetch?.(command.payload.url, options, { signal }) ?? Promise.resolve(undefined),
+                    signal,
+                    () => abortedFetchResult(signal, options?.responseType),
+                );
+            } finally {
+                ctx.closeRequest(command.id);
+            }
+        }
+        case CommandType.ASSET_LOAD: {
+            const signal = ctx.openRequest(command.id, FETCH_LIMITS.defaultTimeoutMs);
+            try {
+                return await raceWithAbort(ctx.loadAsset(command.payload.path, signal), signal, () => {
+                    throw abortError(signal);
+                });
+            } finally {
+                ctx.closeRequest(command.id);
+            }
+        }
+        case CommandType.CMD_ABORT:
+            ctx.abortRequest(command.payload.requestId);
+            return undefined;
         case CommandType.NETWORK_SEND_TO_HOST:
             handlers.onMessage?.({
                 type: command.payload.type,

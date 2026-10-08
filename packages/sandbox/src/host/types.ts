@@ -21,6 +21,7 @@ import type {
     ModWorkerMessage,
     VNode,
 } from '@ubichill/shared';
+import type { HostFetchContext } from './fetchHandler';
 import type { TickMetric } from './modDiagnostics';
 
 export type { FetchOptions, FetchResult } from '@ubichill/shared';
@@ -34,7 +35,12 @@ export type HostHandlers<TPayloadMap extends Record<string, unknown> = Record<st
     onCreateEntity?: (entity: Omit<ComponentInstance, 'id'>) => Promise<ComponentInstance>;
     onUpdateEntity?: (id: string, patch: EntityPatchPayload) => Promise<void>;
     onDestroyEntity?: (id: string) => Promise<void>;
-    onFetch?: (url: string, options?: FetchOptions) => Promise<FetchResult>;
+    /** context.signal は mod の取り消し・制限時間・Worker 破棄で abort される。通信はこれで止めること。 */
+    onFetch?: (
+        url: string,
+        options?: FetchOptions,
+        context?: HostFetchContext,
+    ) => Promise<FetchResult<string | ArrayBuffer>>;
     onMessage?: (msg: ModWorkerMessage<TPayloadMap>) => void;
     onReady?: () => void;
     /** Worker の初期化が失敗したとき (構文エラー等) に発火。Host はローディングを終了する */
@@ -128,6 +134,8 @@ export interface ModHostManagerOptions<TPayloadMap extends Record<string, unknow
     componentType?: string;
     /** modアセットのベースURL（Worker で Ubi.modBase として参照可能） */
     modBase?: string;
+    /** 同梱アセットの相対パス → SRI。lock で固定した manifest の assetIntegrity。Ubi.asset はこれと照合する。 */
+    assetIntegrity?: Readonly<Record<string, string>>;
     /** この Component が監視する他 Component 型一覧（mod.json の watchEntityTypes）。SDK の state 自動同期に使用 */
     watchEntityTypes?: string[];
     /** Worker 起動時点で watchEntityTypes にマッチしている既存エンティティ。SDK がmodコード実行前に state.local へ同期反映する */

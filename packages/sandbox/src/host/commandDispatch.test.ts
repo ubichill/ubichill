@@ -1,14 +1,21 @@
 import { CommandType, type ModGuestCommand } from '@ubichill/shared';
 import { describe, expect, it, vi } from 'vitest';
 import { type CommandContext, dispatchCommand, RpcTimeoutError } from './commandDispatch';
+import { createHostRequests } from './hostRequests';
 import type { HostHandlers } from './types';
 
-function makeCtx(handlers: HostHandlers): CommandContext {
+function makeCtx(handlers: HostHandlers, overrides: Partial<CommandContext> = {}): CommandContext {
+    const requests = createHostRequests();
     return {
         handlers,
         withTimeout: (p) => p, // テストではタイムアウトなしで素通し
         senderComponentInstanceId: () => 'sender-1',
         logPrefix: '[test]',
+        openRequest: (id, timeoutMs) => requests.open(id, timeoutMs),
+        closeRequest: (id) => requests.close(id),
+        abortRequest: (id) => requests.abort(id),
+        loadAsset: async () => new ArrayBuffer(0),
+        ...overrides,
     };
 }
 
@@ -98,5 +105,83 @@ describe('dispatchCommand', () => {
     it('RpcTimeoutError は instanceof で判別できる', () => {
         expect(new RpcTimeoutError('x')).toBeInstanceOf(RpcTimeoutError);
         expect(new RpcTimeoutError('x')).toBeInstanceOf(Error);
+    });
+});
+
+describe('dispatchCommand: fetch・アセットの取り消しと制限時間', () => {
+    const fetchCommand = (id: string, options?: Record<string, unknown>) =>
+        ({
+            type: CommandType.NETWORK_FETCH,
+            id,
+            payload: { url: 'https://api.example.com/x', options },
+        }) as ModGuestCommand;
+
+    it('NETWORK_FETCH は onFetch に abort できる signal を渡し、完了後は登録を外す', async () => {
+        const requests = createHostRequests();
+        const onFetch = vi.fn(async () => ({ ok: true, status: 200, statusText: 'OK', headers: {}, body: 'x' }));
+        const ctx = makeCtx(
+            { onFetch },
+            {
+                openRequest: (id, ms) => requests.open(id, ms),
+                closeRequest: (id) => requests.close(id),
+            },
+        );
+
+        await dispatchCommand(fetchCommand('rpc_1'), ctx);
+
+        const context = (onFetch.mock.calls[0] as unknown[])[2] as { signal: AbortSignal };
+        expect(context.signal).toBeInstanceOf(AbortSignal);
+        expect(requests.size).toBe(0);
+    });
+
+    it('ハンドラが signal を無視して応答しなくても、CMD_ABORT で決着して FETCH_ABORTED を返す', async () => {
+        const onFetch = vi.fn(() => new Promise<never>(() => {}));
+        const ctx = makeCtx({ onFetch });
+
+        const pending = dispatchCommand(fetchCommand('rpc_2', { responseType: 'arrayBuffer' }), ctx);
+        await dispatchCommand({ type: CommandType.CMD_ABORT, payload: { requestId: 'rpc_2' } } as ModGuestCommand, ctx);
+
+        const result = (await pending) as { ok: boolean; error?: { code: string }; body: unknown };
+        expect(result.ok).toBe(false);
+        expect(result.error?.code).toBe('FETCH_ABORTED');
+        expect(result.body).toBeInstanceOf(ArrayBuffer);
+    });
+
+    it('timeoutMs を過ぎたら FETCH_TIMEOUT を返す（承認待ちで止まったままにしない）', async () => {
+        const onFetch = vi.fn(() => new Promise<never>(() => {}));
+        const result = (await dispatchCommand(fetchCommand('rpc_3', { timeoutMs: 20 }), makeCtx({ onFetch }))) as {
+            status: number;
+            error?: { code: string };
+        };
+        expect(result.status).toBe(504);
+        expect(result.error?.code).toBe('FETCH_TIMEOUT');
+    });
+
+    it('別のリクエスト id の CMD_ABORT は影響しない', async () => {
+        const onFetch = vi.fn(async (_url: string, _opts?: unknown, context?: { signal?: AbortSignal }) => {
+            await new Promise((r) => setTimeout(r, 10));
+            return { ok: !context?.signal?.aborted, status: 200, statusText: 'OK', headers: {}, body: '' };
+        });
+        const ctx = makeCtx({ onFetch });
+        const pending = dispatchCommand(fetchCommand('rpc_4'), ctx);
+        await dispatchCommand({ type: CommandType.CMD_ABORT, payload: { requestId: 'other' } } as ModGuestCommand, ctx);
+        expect(((await pending) as { ok: boolean }).ok).toBe(true);
+    });
+
+    it('ASSET_LOAD は loadAsset のバイト列を返し、取り消されたら FETCH_ABORTED で失敗する', async () => {
+        const bytes = new Uint8Array([1, 2, 3]).buffer;
+        const ok = await dispatchCommand(
+            { type: CommandType.ASSET_LOAD, id: 'a1', payload: { path: 'x.wasm' } } as ModGuestCommand,
+            makeCtx({}, { loadAsset: async (path) => (path === 'x.wasm' ? bytes : new ArrayBuffer(0)) }),
+        );
+        expect(ok).toBe(bytes);
+
+        const ctx = makeCtx({}, { loadAsset: () => new Promise<never>(() => {}) });
+        const pending = dispatchCommand(
+            { type: CommandType.ASSET_LOAD, id: 'a2', payload: { path: 'big.bin' } } as ModGuestCommand,
+            ctx,
+        );
+        await dispatchCommand({ type: CommandType.CMD_ABORT, payload: { requestId: 'a2' } } as ModGuestCommand, ctx);
+        await expect(pending).rejects.toMatchObject({ code: 'FETCH_ABORTED' });
     });
 });

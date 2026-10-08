@@ -15,6 +15,8 @@ export interface LoadedMod {
     capabilities?: string[];
     /** versioned アセットベース URL（Worker で `Ubi.modBase`）。 */
     modBase: string;
+    /** 同梱アセットの相対パス → SRI。manifest 由来（manifest は lock と照合済み）。 */
+    assetIntegrity?: Readonly<Record<string, string>>;
     watchScope: 'entity' | 'subtree' | 'parent' | 'world';
     watchEntityTypes?: string[];
     canvasTargets?: string[];

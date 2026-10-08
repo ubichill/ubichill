@@ -2,6 +2,8 @@
     "extends": "../../tsconfig.bundler.json",
     "compilerOptions": {
         "lib": ["ES2025", "DOM"],
+        // テスト（別 realm・実ブラウザ検証）が node の API を使う。
+        "types": ["node"],
         "paths": {
             "@ubichill/runtime": ["../runtime/src/index.ts"],
             "@ubichill/core-components": ["../core-components/src/index.ts"],

@@ -58,6 +58,13 @@ Component 定義（`ComponentManifestEntry`）の主なフィールド:
 > **形式は JSON で確定。** URL で動的ロードされ、ゼロトラストの信頼境界で `JSON.parse` される。
 > 依存ゼロ・YAML 特有の地雷（アンカー爆弾・暗黙の型強制）を境界に持ち込まないため。
 
+### 同梱アセット
+
+`mods/<id>/assets/` に置いたファイル（WASM・データ・zip など）は、ビルドで versioned ディレクトリへコピーされ、
+各ファイルの sha256 が manifest の `assetIntegrity` に載る。manifest は lock で固定されるので、アセットの中身も
+lock に連なって固定される。Worker からは `Ubi.asset.bytes(path)` / `Ubi.asset.wasm(path)` で読み、Host が
+integrity と照合してから渡す（→ [MOD_RUNTIME.md](./MOD_RUNTIME.md)）。サンプルは `mods/wasm-demo`。
+
 ---
 
 ## 権限（capability）

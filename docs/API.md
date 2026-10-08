@@ -25,7 +25,7 @@
 
 ## Mod SDK — `Ubi.*`
 
-API surface は意図的にコンパクト (7 ネームスペース + 数個のトップレベル shortcut):
+API surface は意図的にコンパクト (ネームスペース + 数個のトップレベル shortcut):
 
 ```ts
 // ──── 状態管理 (declarative)  ────────────────────────────
@@ -98,8 +98,18 @@ await Ubi.entity.query<T>(type)                    // type 検索
 await Ubi.entity.get<T>(id)                        // id で取得
 await Ubi.entity.spawn(entity)                     // 親を明示指定して自由 spawn
 
+// ──── 同梱アセット・WASM（→ MOD_RUNTIME.md）────────────
+await Ubi.asset.bytes(path, { signal? })           // assets/ のファイル（manifest の integrity と照合済み）
+await Ubi.asset.text(path)                         // UTF-8 として読む
+await Ubi.asset.wasm(path)                         // WebAssembly.Module（同じパスは 1 回だけコンパイル）
+Ubi.runtime.supports(feature)                      // 'wasm' | 'wasm:simd' | 'wasm:exceptions' | 'wasm:threads' | 'wasm:jspi' | 'fetch:binary' | 'asset'
+Ubi.runtime.require(feature)                       // 使えなければ UNSUPPORTED_FEATURE の UbiError
+
 // ──── その他 ──────────────────────────────────────────
 await Ubi.fetch(url, options?)                     // HTTP (外部はドメインごとにユーザー承認)
+//   options: { method, headers, body (string | ArrayBuffer | Uint8Array),
+//              responseType: 'text' | 'arrayBuffer', maxBytes, timeoutMs, signal }
+//   失敗は res.ok === false と res.error.code（取り消しだけは FETCH_ABORTED で reject）
 Ubi.registerSystem((entities, deltaTimeMs, events) => {...}) // ECS System 登録。deltaTimeMs はミリ秒（秒ではない）
 Ubi.log(message, level?)                           // ログ ('debug' | 'info' | 'warn' | 'error')
 

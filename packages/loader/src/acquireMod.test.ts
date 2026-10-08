@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { ModLock } from '@ubichill/shared';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { acquireMod, resetAcquireCaches } from './acquireMod';
+import { acquireMod, assetIntegrityOf, resetAcquireCaches } from './acquireMod';
 import type { FetchLike, FetchLikeResponse } from './types';
 
 const BASE = 'https://cdn.test/mods';
@@ -175,5 +175,52 @@ describe('acquireMod', () => {
         if (typeof r === 'object' && 'workerCode' in r) {
             expect(r.modBase).toBe(`${OTHER}/${MOD}/v${VER}`);
         }
+    });
+});
+
+describe('同梱アセットの integrity', () => {
+    const wasmSri = `sha256-${'A'.repeat(43)}=`;
+    const withAssets = JSON.stringify({
+        id: MOD,
+        version: VER,
+        components: { [TYPE]: { workerUrl: WORKER_URL, capabilities: ['asset:read'] } },
+        assets: ['fnv1a.wasm'],
+        assetIntegrity: { 'fnv1a.wasm': wasmSri },
+    });
+
+    it('lock と照合済みの manifest から assetIntegrity を Host へ渡す', async () => {
+        const routes = { ...goodRoutes(), [manifestUrlAbs]: { body: withAssets } };
+        const base = lock();
+        const r = await acquireMod(TYPE, {
+            baseUrl: BASE,
+            lock: { ...base, mods: { [MOD]: { ...base.mods[MOD], manifestIntegrity: sri(withAssets) } } },
+            fetchImpl: fakeFetch(routes),
+        });
+        expect(r).toMatchObject({ assetIntegrity: { 'fnv1a.wasm': wasmSri } });
+    });
+
+    it('manifest の assetIntegrity を後から書き換えると、manifest ごと拒否される', async () => {
+        const tampered = withAssets.replace(wasmSri, `sha256-${'B'.repeat(43)}=`);
+        const routes = { ...goodRoutes(), [manifestUrlAbs]: { body: tampered } };
+        const base = lock();
+        const r = await acquireMod(TYPE, {
+            baseUrl: BASE,
+            lock: { ...base, mods: { [MOD]: { ...base.mods[MOD], manifestIntegrity: sri(withAssets) } } },
+            fetchImpl: fakeFetch(routes),
+        });
+        expect(r).toEqual({ rejected: 'manifest-mismatch' });
+    });
+
+    it('アセットの無い mod は assetIntegrity を持たない', async () => {
+        const r = await acquireMod(TYPE, { baseUrl: BASE, lock: lock(), fetchImpl: fakeFetch(goodRoutes()) });
+        expect(r).toMatchObject({ assetIntegrity: undefined });
+    });
+
+    it('assetIntegrityOf は文字列以外の値・配列・null を捨て、凍結して返す', () => {
+        expect(assetIntegrityOf({ 'a.wasm': 'sha256-x', 'b.bin': 1, 'c.bin': null })).toEqual({ 'a.wasm': 'sha256-x' });
+        expect(Object.isFrozen(assetIntegrityOf({}))).toBe(true);
+        expect(assetIntegrityOf(['a'])).toBeUndefined();
+        expect(assetIntegrityOf(null)).toBeUndefined();
+        expect(assetIntegrityOf('x')).toBeUndefined();
     });
 });

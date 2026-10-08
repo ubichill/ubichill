@@ -6,7 +6,15 @@ export type { VNode };
 export type OmitId<T> = T extends unknown ? Omit<T, 'id'> : never;
 
 export type SendFn = (cmd: OmitId<ModGuestCommand>) => void;
-export type RpcFn = <T>(cmd: OmitId<ModGuestCommand>) => Promise<T>;
+
+export type RpcOptions = {
+    /** 応答を待つ時間（ms）。過ぎたら RPC_TIMEOUT で失敗し、Host にも取り消しを送る。 */
+    timeoutMs?: number;
+    /** abort されたら FETCH_ABORTED で失敗し、Host にも取り消しを送る。 */
+    signal?: AbortSignal;
+};
+
+export type RpcFn = <T>(cmd: OmitId<ModGuestCommand>, options?: RpcOptions) => Promise<T>;
 
 export type UiRenderCostStat = {
     targetId: string;

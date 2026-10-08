@@ -95,7 +95,6 @@ describe('authorizeExternalDomain（fetch・メディア共通のドメイン許
             mediaRequest = ctx.current.authorizeExternalDomain('vp', 'media.example.com');
         });
 
-        expect(fetchRequest).toBe(mediaRequest);
         expect(ctx.current.pendingPrompt).toEqual({ kind: 'external', modId: 'vp', domain: 'media.example.com' });
         act(() => ctx.current.resolvePrompt('once'));
         await expect(fetchRequest).resolves.toBe(true);
@@ -209,5 +208,80 @@ describe('取り消し', () => {
         });
         expect(ctx.current.pendingPrompt).toMatchObject({ kind: 'external', domain: 'api.example.com' });
         expect(onChange).toHaveBeenCalled();
+    });
+});
+
+describe('authorizeExternalDomain の取り消し（承認画面の後片付け）', () => {
+    it('待っていた依頼が取り消したら画面を取り下げ、拒否として記憶しない', async () => {
+        const onPolicyChange = vi.fn();
+        const ctx = setup(onPolicyChange);
+        const controller = new AbortController();
+        let request: boolean | Promise<boolean> = true;
+        act(() => {
+            request = ctx.current.authorizeExternalDomain('vp', 'api.example.com', controller.signal);
+        });
+        expect(ctx.current.pendingPrompt).toMatchObject({ domain: 'api.example.com' });
+
+        act(() => controller.abort());
+
+        await expect(request).resolves.toBe(false);
+        expect(ctx.current.pendingPrompt).toBeNull();
+        expect(onPolicyChange).not.toHaveBeenCalled();
+        // 記憶していないので、次の依頼ではもう一度聞く
+        act(() => {
+            void ctx.current.authorizeExternalDomain('vp', 'api.example.com');
+        });
+        expect(ctx.current.pendingPrompt).toMatchObject({ domain: 'api.example.com' });
+    });
+
+    it('同じドメインを待つ依頼が残っていれば、1 件の取り消しでは画面を残す', async () => {
+        const ctx = setup();
+        const first = new AbortController();
+        let kept: boolean | Promise<boolean> = false;
+        let cancelled: boolean | Promise<boolean> = true;
+        act(() => {
+            cancelled = ctx.current.authorizeExternalDomain('vp', 'api.example.com', first.signal);
+            kept = ctx.current.authorizeExternalDomain('vp', 'api.example.com', new AbortController().signal);
+        });
+
+        act(() => first.abort());
+        await expect(cancelled).resolves.toBe(false);
+        expect(ctx.current.pendingPrompt).toMatchObject({ domain: 'api.example.com' });
+
+        act(() => ctx.current.resolvePrompt('once'));
+        await expect(kept).resolves.toBe(true);
+    });
+
+    it('signal の無い依頼（動画の読み込み等）が待っていれば、他が取り消しても画面を残す', () => {
+        const ctx = setup();
+        const controller = new AbortController();
+        act(() => {
+            void ctx.current.authorizeExternalDomain('vp', 'media.example.com');
+            void ctx.current.authorizeExternalDomain('vp', 'media.example.com', controller.signal);
+        });
+        act(() => controller.abort());
+        expect(ctx.current.pendingPrompt).toMatchObject({ domain: 'media.example.com' });
+    });
+
+    it('後ろに並んでいた画面が取り下げられたら、前の画面に答えた後に出てこない', () => {
+        const ctx = setup();
+        const controller = new AbortController();
+        act(() => {
+            void ctx.current.authorizeExternalDomain('vp', 'first.example.com');
+            void ctx.current.authorizeExternalDomain('vp', 'second.example.com', controller.signal);
+        });
+        act(() => controller.abort());
+        expect(ctx.current.pendingPrompt).toMatchObject({ domain: 'first.example.com' });
+
+        act(() => ctx.current.resolvePrompt('once'));
+        expect(ctx.current.pendingPrompt).toBeNull();
+    });
+
+    it('すでに取り消された signal では画面を出さない', () => {
+        const ctx = setup();
+        const controller = new AbortController();
+        controller.abort();
+        expect(ctx.current.authorizeExternalDomain('vp', 'api.example.com', controller.signal)).toBe(false);
+        expect(ctx.current.pendingPrompt).toBeNull();
     });
 });

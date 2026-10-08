@@ -19,6 +19,7 @@ import {
     type ModGuestCommand,
     type ModHostEvent,
     PROTOCOL_VERSION,
+    UbiError,
     UbiErrorCode,
 } from '@ubichill/shared';
 import {
@@ -27,9 +28,11 @@ import {
     releaseSharedInput,
     setSharedScrollElement,
 } from '@ubichill/ui-renderer';
+import { loadModAsset } from './assetLoader';
 import { type CapabilityGate, createCapabilityGate } from './capabilityGate';
 import { type CommandContext, dispatchCommand, RpcTimeoutError } from './commandDispatch';
 import { CMD_TO_HANDLER } from './commandHandlers';
+import { createHostRequests, type HostRequests, transferablesOf } from './hostRequests';
 import { getActiveWorkerCount, getWorker, registerWorker, unregisterWorker } from './ModRegistry';
 import { isMetricEnabled, reportDiagnostic, reportMetric } from './modDiagnostics';
 import { subscribeWorkerTick, unsubscribeWorkerTick } from './SimulationLoop';
@@ -69,6 +72,8 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
     private readonly _instanceKey: string;
     /** 現Tickにホスト側でコマンド処理に要した累積時間 (ms) */
     private _currentTickCommandMs = 0;
+    /** 実行中の fetch・アセット読み込み（取り消しと破棄時の後片付け用）。 */
+    private readonly _requests: HostRequests = createHostRequests();
 
     private readonly tickEnabled: boolean;
     private readonly _autoInputEnabled: boolean;
@@ -123,11 +128,16 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
             authorizeCapability: options.allowAllCapabilities ? undefined : options.authorizeCapability,
         });
 
+        const assetSource = { modBase: options.modBase, integrity: options.assetIntegrity };
         this._commandContext = {
             handlers: this.handlers,
             withTimeout: (promise, cmdType) => this._withTimeout(promise, cmdType),
             senderComponentInstanceId: () => getWorker(this._instanceKey)?.componentInstanceId,
             logPrefix: this._logPrefix,
+            openRequest: (id, timeoutMs) => this._requests.open(id, timeoutMs),
+            closeRequest: (id) => this._requests.close(id),
+            abortRequest: (id) => this._requests.abort(id),
+            loadAsset: (path, signal) => loadModAsset(path, assetSource, { signal }),
         };
 
         // tickFps は「tick を回すかどうか」の判定にのみ使う。実際の刻みはワールド共通の
@@ -313,14 +323,22 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
             // コマンドの振り分けは commandDispatch に委譲（新コマンドはそちらに 1 case 足す）。
             const result = await dispatchCommand(command, this._commandContext);
             if (id) {
-                this.sendEvent({ type: HostEventType.EVT_RPC_RESPONSE, id, success: true, data: result });
+                // バイト列はコピーせずに移す（送った後は Host 側から触らない）。
+                this._postEvent(
+                    { type: HostEventType.EVT_RPC_RESPONSE, id, success: true, data: result },
+                    transferablesOf(result),
+                );
             }
         } catch (error) {
             if (id) {
                 const message = error instanceof Error ? error.message : String(error);
                 // タイムアウトは専用エラー型で判別する（メッセージ文字列に依存しない）。
                 const errorCode =
-                    error instanceof RpcTimeoutError ? UbiErrorCode.RPC_TIMEOUT : UbiErrorCode.RPC_HANDLER_ERROR;
+                    error instanceof UbiError
+                        ? error.code
+                        : error instanceof RpcTimeoutError
+                          ? UbiErrorCode.RPC_TIMEOUT
+                          : UbiErrorCode.RPC_HANDLER_ERROR;
                 this.sendEvent({ type: HostEventType.EVT_RPC_RESPONSE, id, success: false, error: message, errorCode });
             }
         } finally {
@@ -328,6 +346,15 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
                 this._currentTickCommandMs += performance.now() - _cmdStart;
             }
         }
+    }
+
+    /** 初期化後に限り transfer 付きで送る（RPC 応答は初期化後にしか発生しない）。 */
+    private _postEvent(event: ModHostEvent, transfer: Transferable[]): void {
+        if (transfer.length > 0 && this.isInitialized) {
+            this.worker.postMessage(event, transfer);
+            return;
+        }
+        this.sendEvent(event);
     }
 
     public sendEvent(event: ModHostEvent): void {
@@ -378,6 +405,7 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
         if (this._autoInputEnabled) {
             releaseSharedInput(this._instanceKey);
         }
+        this._requests.abortAll();
         this.worker.terminate();
         unregisterWorker(this._instanceKey);
     }

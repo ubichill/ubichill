@@ -16,6 +16,17 @@ function sriOf(buffer: Buffer): string {
     return `sha256-${createHash('sha256').update(buffer).digest('base64')}`;
 }
 
+/** manifest の assetIntegrity が実ファイルと一致するか（アセットは manifest 経由で lock に固定される）。 */
+function verifyAssets(versionDir: string, label: string, manifestBytes: Buffer): string[] {
+    const manifest = JSON.parse(manifestBytes.toString('utf-8')) as { assetIntegrity?: Record<string, string> };
+    return Object.entries(manifest.assetIntegrity ?? {}).flatMap(([path, expected]) => {
+        const assetPath = join(versionDir, path);
+        if (!existsSync(assetPath)) return [`${label}: アセットが無い (${path})`];
+        const actual = sriOf(readFileSync(assetPath));
+        return actual === expected ? [] : [`${label}: アセットの integrity 不一致 (${path}, manifest=${expected}, 実測=${actual})`];
+    });
+}
+
 /** 1 mod のディレクトリを検証する。問題があれば文字列配列で返す（空なら OK）。 */
 function verifyModDir(modDir: string, modDirName: string): string[] {
     const errors: string[] = [];
@@ -37,12 +48,14 @@ function verifyModDir(modDir: string, modDirName: string): string[] {
             errors.push(`${modDirName}/${versionDirName}: manifest.json が無い`);
             continue;
         }
-        const manifestIntegrity = sriOf(readFileSync(manifestPath));
+        const manifestBytes = readFileSync(manifestPath);
+        const manifestIntegrity = sriOf(manifestBytes);
         if (manifestIntegrity !== rawLock.manifestIntegrity) {
             errors.push(
                 `${modDirName}/${versionDirName}: manifestIntegrity 不一致 (lock=${rawLock.manifestIntegrity}, 実測=${manifestIntegrity})`,
             );
         }
+        errors.push(...verifyAssets(versionDir, `${modDirName}/${versionDirName}`, manifestBytes));
 
         for (const [componentType, comp] of Object.entries(rawLock.components ?? {})) {
             const workerPath = join(versionDir, comp.workerUrl.replace(/^\.\//, ''));

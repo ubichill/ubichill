@@ -155,16 +155,24 @@ fetch は接続先ドメインごとに承認する。詳細は [`API.md`](./API
 
 ## Sandbox セキュリティ
 
-5 層構造でmodコードを隔離する。
+Worker の中で mod コードを隔離する。詳細と WASM の扱いは [MOD_RUNTIME.md](./MOD_RUNTIME.md)。
 
-1. **グローバル無効化** — `fetch` / `WebSocket` / `eval` / `Function` / `importScripts` を `undefined` に書き換え
-2. **プロトタイプ凍結** — `Object.prototype` 等をフリーズしてプロトタイプチェーン汚染をブロック
-3. **postMessage 直接呼び出し禁止** — `self.postMessage` を警告のみの関数に差し替え（内部の `securePostMessage` のみが実際に送信）
-4. **危険パターン検出** — `importScripts` / `eval(` / `Function(` / `__proto__` / `prototype[` を正規表現でチェック
-5. **SafeFunction 評価** — `"use strict"` + try/catch ラップで実行（`SafeFunction` は `nullifyGlobals()` 前に保存した唯一の `Function` 参照）
+1. **グローバルの封鎖** — `fetch` / `XMLHttpRequest` / `WebSocket` / `WebTransport` / `importScripts` / `Worker` /
+   `BroadcastChannel` / `indexedDB` / `caches` / `navigator` などを、`self` だけでなく**プロトタイプチェーンの全段から**
+   取り除く（ブラウザでは多くが `WorkerGlobalScope.prototype` 側にある）。取り除けない入口が 1 つでもあれば mod を実行しない
+2. **コード生成の禁止** — `eval` / `Function` / 関数の `constructor` / 文字列のタイマーは `EvalError`。`SafeFunction`
+   （封鎖前に退避した `Function`）だけが mod コードを評価する
+3. **Worker 専用の CSP** — 本番は `default-src 'none'; script-src 'unsafe-eval' 'wasm-unsafe-eval'` を Worker スクリプトの
+   応答に付ける（BFF・Vite preview）。スクリプトの URL を 1 つも許可しないので、1 を抜けても通信できず、同一オリジンを含めて
+   他の JS を読み込めない（lock で固定したコードだけが動く）。dev は Worker の依存パッケージのパスだけを許可する
+4. **プロトタイプ凍結** — `Object.prototype` 等をフリーズしてプロトタイプチェーン汚染をブロック
+5. **postMessage の一本化** — `self.postMessage` は警告のみ。Host へ届くのは SDK の経路だけで、Host 側の capability ゲートを必ず通る
 
-**既知の限界**: `new Function()` ベースのため完全な VM 隔離ではない。
-将来の改善候補: QuickJS + WASM による完全隔離（コスト高のため未実装）。
+WASM は禁止しない。WASM は `imports` で渡した関数しか呼べないため、JS 層の権限を越えない。
+動的なコードが必要な mod は、QuickJS などのインタプリタを WASM として同梱して動かす。
+
+**既知の限界**: 3 の CSP は BFF と Vite が付ける。それ以外の方法でフロントを配信すると 1・2 だけになり、
+`import()` でのスクリプト読み込みは JS 側では止められない。
 
 ---
 
@@ -247,12 +255,10 @@ sequenceDiagram
 flowchart LR
     code["modコード\n(文字列)"]
 
-    code -->|"静的スキャン\nFunction( / eval( / __proto__"| check{{"危険パターン？"}}
-    check -->|"Yes → 即時停止"| err["初期化失敗"]
-    check -->|"No"| sandbox
+    code -->|"封鎖に失敗したら実行しない"| sandbox
 
     subgraph sandbox["Sandbox Worker 実行環境"]
-        freeze["グローバル無効化\nfetch / eval / Function\nWebSocket / localStorage"]
+        freeze["グローバル封鎖（プロトタイプ全段）\nfetch / WebSocket / caches / importScripts\neval / Function は EvalError\n+ Worker 専用 CSP"]
         cap["capability ゲート\n危険度ティア別に on-demand 承認\n未承認コマンドは拒否"]
         serial["VNode シリアライズ\n関数は '__h0' に変換\npostMessage に関数は乗らない"]
         vnode["VNodeRenderer サニタイズ\nタグ許可リスト / URL 検証\ninnerHTML 禁止"]

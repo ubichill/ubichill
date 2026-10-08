@@ -2,6 +2,8 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
+import type { Connect } from 'vite';
+import { isSandboxWorkerScriptPath, SANDBOX_WORKER_CSP, sandboxWorkerDevCsp } from '../shared/src/mod/sandboxPolicy';
 
 /**
  * dev サーバー専用: /mods/<name>/mod.json を
@@ -26,9 +28,47 @@ const serveSourceModJson = () => ({
     },
 });
 
+/** dev で Sandbox Worker が読むモジュールの置き場所（mod のアセットや他のパッケージは含めない）。 */
+const SANDBOX_WORKER_DEV_SCRIPT_PATHS = [
+    ...['sandbox', 'sdk', 'shared', 'ecs', 'runtime', 'core-components'].map(
+        (name) => `/@fs${resolve(__dirname, '..', name, 'src')}/`,
+    ),
+    '/node_modules/.vite/deps/',
+];
+
+/**
+ * Sandbox Worker のスクリプトに CSP を付ける。
+ * preview（本番ビルド）は 1 ファイルなので本番と同じ値。dev は依存モジュールのパスだけを許可する。
+ */
+const sandboxWorkerCsp = () => {
+    const middleware =
+        (cspFor: (req: Connect.IncomingMessage) => string): Connect.NextHandleFunction =>
+        (req, res, next) => {
+            const pathname = (req.url ?? '').split('?')[0];
+            if (isSandboxWorkerScriptPath(pathname)) res.setHeader('Content-Security-Policy', cspFor(req));
+            next();
+        };
+    return {
+        name: 'sandbox-worker-csp',
+        configureServer(server: import('vite').ViteDevServer) {
+            const scheme = server.config.server.https ? 'https' : 'http';
+            server.middlewares.use(
+                middleware((req) =>
+                    sandboxWorkerDevCsp(
+                        SANDBOX_WORKER_DEV_SCRIPT_PATHS.map((path) => `${scheme}://${req.headers.host}${path}`),
+                    ),
+                ),
+            );
+        },
+        configurePreviewServer(server: import('vite').PreviewServer) {
+            server.middlewares.use(middleware(() => SANDBOX_WORKER_CSP));
+        },
+    };
+};
+
 export default defineConfig({
     // 注意: `plugins` は Vite の予約キー（Vite プラグイン配列）なので mod にリネームしない。
-    plugins: [react(), serveSourceModJson()],
+    plugins: [react(), serveSourceModJson(), sandboxWorkerCsp()],
     resolve: {
         // monorepo の他パッケージが node_modules/react を別途持っていると build 時に
         // React が 2 つ bundle され、フックが null になる ("Cannot read properties of null (reading 'useRef')").

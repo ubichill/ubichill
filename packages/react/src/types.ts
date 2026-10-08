@@ -74,6 +74,8 @@ export interface WorkerModDefinition {
      * ModRegistryContext が mod.json のバージョンから自動計算して設定する。
      */
     modBase?: string;
+    /** 同梱アセットの相対パス → SRI（lock で固定した manifest の assetIntegrity）。`Ubi.asset` はこれと照合する。 */
+    assetIntegrity?: Readonly<Record<string, string>>;
     /**
      * true の場合、エンティティごとではなくワールド参加中に 1 つだけ起動される。
      * Host は EVT_PLAYER_JOINED / EVT_PLAYER_LEFT / EVT_PLAYER_CURSOR_MOVED を

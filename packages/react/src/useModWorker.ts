@@ -1,15 +1,22 @@
-import { type HostHandlers, ModHostManager, type ModHostManagerOptions } from '@ubichill/sandbox';
-import type {
-    ComponentInstance,
-    EntityPatchPayload,
-    FetchOptions,
-    FetchResult,
-    InputFrameEvent,
-    MediaLoadOptions,
-    ModGuestCommand,
-    ModHostEvent,
-    ModWorkerMessage,
-    VNode,
+import {
+    forbiddenFetchResult,
+    type HostFetchContext,
+    type HostHandlers,
+    ModHostManager,
+    type ModHostManagerOptions,
+} from '@ubichill/sandbox';
+import {
+    type ComponentInstance,
+    type EntityPatchPayload,
+    type FetchOptions,
+    type FetchResult,
+    type InputFrameEvent,
+    type MediaLoadOptions,
+    type ModGuestCommand,
+    type ModHostEvent,
+    type ModWorkerMessage,
+    UbiErrorCode,
+    type VNode,
 } from '@ubichill/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -98,8 +105,12 @@ export type ModWorkerHandlers<TPayloadMap extends Record<string, unknown> = Reco
         payload: import('@ubichill/shared').CmdRide['payload'],
         senderComponentInstanceId: string | undefined,
     ) => void;
-    /** Worker が Ubi.network.fetch() を呼んだときに発火する */
-    onFetch?: (url: string, options?: FetchOptions) => Promise<FetchResult>;
+    /** Worker が Ubi.fetch() を呼んだときに発火する。context.signal で通信を止めること */
+    onFetch?: (
+        url: string,
+        options?: FetchOptions,
+        context?: HostFetchContext,
+    ) => Promise<FetchResult<string | ArrayBuffer>>;
     /** Tick 送信直前に発火するパフォーマンスフック（setMetricHandler 登録時のみ） */
     onTickComplete?: (metric: import('@ubichill/sandbox').TickMetric) => void;
 };
@@ -180,6 +191,7 @@ export function useModWorker<TPayloadMap extends Record<string, unknown> = Recor
             worldId: options.worldId,
             myUserId: options.myUserId,
             modBase: options.modBase,
+            assetIntegrity: options.assetIntegrity,
             watchEntityTypes: options.watchEntityTypes,
             initialEntities: initialEntitiesRef.current,
             handlers: {
@@ -223,9 +235,15 @@ export function useModWorker<TPayloadMap extends Record<string, unknown> = Recor
                 },
                 onUpdateEntity: (id, patch) => handlersRef.current.onUpdateEntity?.(id, patch) ?? Promise.resolve(),
                 onDestroyEntity: (id) => handlersRef.current.onDestroyEntity?.(id) ?? Promise.resolve(),
-                onFetch: (url, options) =>
-                    handlersRef.current.onFetch?.(url, options) ??
-                    Promise.resolve({ ok: false, status: 403, statusText: 'Forbidden', headers: {}, body: '' }),
+                onFetch: (url, options, context) =>
+                    handlersRef.current.onFetch?.(url, options, context) ??
+                    Promise.resolve(
+                        forbiddenFetchResult(
+                            UbiErrorCode.HANDLER_NOT_CONNECTED,
+                            'fetch のハンドラーが接続されていません',
+                            options?.responseType,
+                        ),
+                    ),
                 onTickComplete: (metric) => handlersRef.current.onTickComplete?.(metric),
             },
             onResourceLimitExceeded: (reason) => onResourceLimitExceededRef.current?.(reason),
@@ -255,6 +273,7 @@ export function useModWorker<TPayloadMap extends Record<string, unknown> = Recor
         options.worldId,
         options.myUserId,
         options.modBase,
+        options.assetIntegrity,
         options.watchEntityTypes,
     ]);
 
