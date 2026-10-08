@@ -33,6 +33,7 @@ describe('normalizeServiceAudience', () => {
         ['https://xn--r8jz45g.example', 'https://xn--r8jz45g.example'],
         ['http://localhost:8000', 'http://localhost:8000'],
         ['http://127.0.0.1:8000/', 'http://127.0.0.1:8000'],
+        ['https://127.0.0.1', 'https://127.0.0.1'],
     ])('オリジンとして受け付ける: %s', (input, expected) => {
         expect(normalizeServiceAudience(input)).toBe(expected);
     });
@@ -47,6 +48,13 @@ describe('normalizeServiceAudience', () => {
         'https://videoplayer.example:70000',
         'https://.example',
         'https://a..example',
+        'https://999.0.0.1',
+        'https://1.2.3.999',
+        'https://127.1',
+        'https://0x7f000001',
+        'https://2130706433',
+        'https://0177.0.0.1',
+        'https://api.123',
         'https://例え.example',
         'ftp://videoplayer.example',
         'videoplayer.example',

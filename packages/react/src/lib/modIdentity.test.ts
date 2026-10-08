@@ -1,5 +1,6 @@
 import { UbiErrorCode } from '@ubichill/shared';
 import { describe, expect, it, vi } from 'vitest';
+import type { RequestServiceToken } from '../components/ServiceTokenContext';
 import type { ExternalUrlAccess } from './externalUrlAuthorization';
 import { createModIdentity, IDENTITY_TOKEN_REUSE_MARGIN_MS } from './modIdentity';
 
@@ -34,7 +35,11 @@ describe('createModIdentity', () => {
         const result = await handler(`${AUDIENCE}/`, { signal });
 
         expect(authorizeUrl).toHaveBeenCalledWith(`${AUDIENCE}/`, signal);
-        expect(requestToken).toHaveBeenCalledWith({ audience: AUDIENCE, modId: 'video-player' });
+        expect(requestToken).toHaveBeenCalledWith({
+            audience: AUDIENCE,
+            modId: 'video-player',
+            signal: expect.any(AbortSignal),
+        });
         expect(result.token).toBe(`token-for-${AUDIENCE}-1`);
     });
 
@@ -128,5 +133,47 @@ describe('createModIdentity', () => {
         const { handler, signal } = setup({ requestToken, now: Date.now });
         await expect(handler(AUDIENCE, { signal: signal() })).rejects.toThrow('down');
         await expect(handler(AUDIENCE, { signal: signal() })).resolves.toMatchObject({ token: 't' });
+    });
+
+    it('1 人が取り消しても共有する発行は続け、残った依頼者に返す', async () => {
+        const response = Promise.withResolvers<{ token: string; expiresAt: number }>();
+        const requestToken = vi.fn((_input: Parameters<RequestServiceToken>[0]) => response.promise);
+        const { handler } = setup({ requestToken });
+        const first = new AbortController();
+        const second = new AbortController();
+        const a = handler(AUDIENCE, { signal: first.signal });
+        const b = handler(AUDIENCE, { signal: second.signal });
+        await vi.waitFor(() => expect(requestToken).toHaveBeenCalledTimes(1));
+        const rejection = expect(a).rejects.toMatchObject({ code: UbiErrorCode.FETCH_ABORTED });
+        first.abort();
+        await rejection;
+        expect(requestToken.mock.calls[0]?.[0].signal?.aborted).toBe(false);
+        response.resolve({ token: 'shared', expiresAt: 1_300_000 });
+        await expect(b).resolves.toMatchObject({ token: 'shared' });
+    });
+
+    it('全員が取り消したら通信を止め、遅れて返った応答はキャッシュせず新しい依頼を保持する', async () => {
+        const old = Promise.withResolvers<{ token: string; expiresAt: number }>();
+        const next = Promise.withResolvers<{ token: string; expiresAt: number }>();
+        const requestToken = vi.fn().mockReturnValueOnce(old.promise).mockReturnValue(next.promise);
+        const { handler, signal } = setup({ requestToken });
+        const first = new AbortController();
+        const a = handler(AUDIENCE, { signal: first.signal });
+        await vi.waitFor(() => expect(requestToken).toHaveBeenCalledTimes(1));
+        const rejection = expect(a).rejects.toMatchObject({ code: UbiErrorCode.FETCH_TIMEOUT });
+        first.abort(new DOMException('timeout', 'TimeoutError'));
+        await rejection;
+        expect(requestToken.mock.calls[0]?.[0].signal?.aborted).toBe(true);
+
+        const b = handler(AUDIENCE, { signal: signal() });
+        await vi.waitFor(() => expect(requestToken).toHaveBeenCalledTimes(2));
+        old.resolve({ token: 'abandoned', expiresAt: 1_300_000 });
+        await Promise.resolve();
+        const c = handler(AUDIENCE, { signal: signal() });
+        next.resolve({ token: 'new', expiresAt: 1_300_000 });
+        await expect(b).resolves.toMatchObject({ token: 'new' });
+        await expect(c).resolves.toMatchObject({ token: 'new' });
+        expect(requestToken).toHaveBeenCalledTimes(2);
+        await expect(handler(AUDIENCE, { signal: signal() })).resolves.toMatchObject({ token: 'new' });
     });
 });

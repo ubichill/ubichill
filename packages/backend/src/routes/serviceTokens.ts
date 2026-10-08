@@ -2,7 +2,7 @@ import { ENV_KEYS, normalizeServiceAudience, SERVER_CONFIG } from '@ubichill/sha
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
-import { requireAuth } from '../middleware/auth';
+import { requireFreshAuth } from '../middleware/auth';
 import { type ServiceTokenIssuer, serviceTokenIssuerFromEnv } from '../services/serviceTokens';
 import { logger } from '../utils/logger';
 
@@ -43,7 +43,8 @@ router.get('/keys', (_req, res) => {
     res.json(issuer.jwks());
 });
 
-router.post('/', requireAuth, issueLimiter, (req, res) => {
+// 失効したセッションの cookie キャッシュから、新しい身元証明を発行しない。
+router.post('/', requireFreshAuth, issueLimiter, (req, res) => {
     const issuer = tokenIssuer;
     if (!issuer) {
         res.status(503).json({ error: 'このサーバーはサービストークンを発行していません' });

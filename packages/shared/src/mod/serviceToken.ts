@@ -62,6 +62,16 @@ export function normalizeServiceAudience(input: string): string | null {
     if (scheme === 'http' && !isLocal) return null;
     const port = match[3] === undefined ? undefined : Number(match[3]);
     if (port !== undefined && (port < 1 || port > 65535)) return null;
+    // ブラウザが IPv4 として解釈するホストは、4 オクテットの十進表記だけを受け付ける。
+    // 127.1・0x7f000001・0177.0.0.1 などを別の aud/sub として発行しない。
+    const labels = host.split('.');
+    const endsInNumber = /^(?:[0-9]+|0x[0-9a-f]*)$/i.test(labels.at(-1) ?? '');
+    if (
+        endsInNumber &&
+        !(labels.length === 4 && labels.every((part) => /^(?:0|[1-9][0-9]{0,2})$/.test(part) && Number(part) <= 255))
+    ) {
+        return null;
+    }
     const defaultPort = scheme === 'https' ? 443 : 80;
     return port === undefined || port === defaultPort ? `${scheme}://${host}` : `${scheme}://${host}:${port}`;
 }
