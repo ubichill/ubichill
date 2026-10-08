@@ -1,0 +1,32 @@
+{
+  "id": "wasm-demo",
+  "name": "wasm-demo",
+  "version": "1.0.0",
+  "components": {
+    "wasm-demo:checksum": {
+      "defaultTransform": {
+        "x": 40,
+        "y": 40,
+        "z": 10,
+        "w": 380,
+        "h": 250
+      },
+      "description": "同梱した WASM で FNV-1a を計算するサンプル（同梱アセット・バイナリ fetch・WASM 実行の確認用）。",
+      "capabilities": [
+        "asset:read",
+        "net:fetch",
+        "scene:read",
+        "ui:render"
+      ],
+      "workerUrl": "./checksum/index.faa2cf68.js"
+    }
+  },
+  "assets": [
+    "fnv1a.wasm",
+    "sample.txt"
+  ],
+  "assetIntegrity": {
+    "fnv1a.wasm": "sha256-AKd0QxFimaj0+abLdhJfq7OuiqGaxYzMHKragA5VwmQ=",
+    "sample.txt": "sha256-tnrnBLw2Snm7/UTuJd4blvh12746OZ9vVKdoUIir5BQ="
+  }
+}

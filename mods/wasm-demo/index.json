@@ -1,0 +1,18 @@
+[
+  {
+    "id": "wasm-demo",
+    "name": "wasm-demo",
+    "version": "1.0.0",
+    "components": [
+      "wasm-demo:checksum"
+    ],
+    "versions": [
+      {
+        "version": "1.0.0",
+        "components": [
+          "wasm-demo:checksum"
+        ]
+      }
+    ]
+  }
+]
