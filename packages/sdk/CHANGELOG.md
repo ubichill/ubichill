@@ -1,5 +1,14 @@
 # @ubichill/sdk
 
+## 3.0.2
+
+### Patch Changes
+
+- 749cc83: インスタンス内の通信・状態管理を Go サーバーへ分離。ゲストによる単体運用、SNS 参加チケット、OpenAPI による共通型生成、WebSocket 接続と再同期に対応。
+- Updated dependencies [749cc83]
+  - @ubichill/shared@1.6.0
+  - @ubichill/loader@1.2.2
+
 ## 3.0.1
 
 ### Patch Changes

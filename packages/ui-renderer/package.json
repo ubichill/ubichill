@@ -1,6 +1,6 @@
 {
     "name": "@ubichill/ui-renderer",
-    "version": "3.0.3",
+    "version": "3.0.4",
     "private": true,
     "description": "VNode→DOM renderer and DOM input collector for Ubichill host. Framework-agnostic (no React).",
     "sideEffects": false,
