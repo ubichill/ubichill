@@ -265,6 +265,17 @@ export type CmdAssetLoad = {
 };
 
 /**
+ * Ubi.identity.token(audience) → RpcIdentityTokenResult
+ * 外部サービス（audience のオリジン）へ渡すサービストークンを受け取る。
+ * Host は audience をドメイン承認と同じ規則で確かめてから、Ubichill のサーバーに発行を依頼する。
+ */
+export type CmdIdentityToken = {
+    type: 'IDENTITY_TOKEN';
+    payload: { audience: string };
+    id: string; // RPC
+};
+
+/**
  * 実行中の RPC（fetch・アセット読み込み）を取り消す。Fire & Forget。
  * Host は該当リクエストの通信を止め、結果を返さない。
  */
@@ -605,6 +616,7 @@ export type ModGuestCommand =
     | CmdUiRender
     | CmdNetworkFetch
     | CmdAssetLoad
+    | CmdIdentityToken
     | CmdAbort
     | CmdMediaLoad
     | CmdMediaPlay
@@ -1008,3 +1020,6 @@ export type RpcNetworkFetchResult = FetchResult;
 
 /** ASSET_LOAD の戻り値（integrity 照合済みのバイト列） */
 export type RpcAssetLoadResult = ArrayBuffer;
+
+/** IDENTITY_TOKEN の戻り値。expiresAt はミリ秒の epoch。 */
+export type RpcIdentityTokenResult = { token: string; expiresAt: number };

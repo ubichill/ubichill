@@ -268,6 +268,7 @@ export * from './mod/modLock';
 export * from './mod/permission';
 export * from './mod/protocol';
 export * from './mod/sandboxPolicy';
+export * from './mod/serviceToken';
 export * from './mod/types';
 export * from './mod/vnode';
 export * from './schemas';

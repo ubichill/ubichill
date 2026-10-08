@@ -31,7 +31,8 @@
  */
 // v3: MediaSource / MediaState / loadId と EVT_MEDIA_STATE を追加。
 // v4: バイナリ fetch（responseType / maxBytes / timeoutMs）、ASSET_LOAD、CMD_ABORT を追加。
-export const PROTOCOL_VERSION = 4;
+// v5: IDENTITY_TOKEN（外部サービス向けのサービストークン）を追加。
+export const PROTOCOL_VERSION = 5;
 
 /**
  * これ未満のバージョンで作られた mod とは互換性がない下限。
@@ -140,6 +141,8 @@ export const CommandType = {
     NETWORK_FETCH: 'NETWORK_FETCH',
     // asset
     ASSET_LOAD: 'ASSET_LOAD',
+    // identity
+    IDENTITY_TOKEN: 'IDENTITY_TOKEN',
     NETWORK_BROADCAST: 'NETWORK_BROADCAST',
     NETWORK_SEND_TO_HOST: 'NETWORK_SEND_TO_HOST',
     EVENT_EMIT: 'EVENT_EMIT',

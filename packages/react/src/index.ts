@@ -29,6 +29,11 @@ export type {
 export { PermissionProvider, useUbiPermissions } from './components/PermissionContext';
 export type { RidingState } from './components/RideContext';
 export { RideProvider, useRide } from './components/RideContext';
+export {
+    type RequestServiceToken,
+    ServiceTokenProvider,
+    useServiceTokenRequester,
+} from './components/ServiceTokenContext';
 export type { WorkerModHostProps } from './components/WorkerModHost';
 export { WorkerModHost } from './components/WorkerModHost';
 export { editorSchemaRegistry, useEditorSchema } from './editorSchemaRegistry';

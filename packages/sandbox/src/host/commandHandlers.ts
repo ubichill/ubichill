@@ -13,6 +13,7 @@ export const CMD_TO_HANDLER = {
     [CommandType.SCENE_UPDATE_ENTITY]: 'onUpdateEntity',
     [CommandType.SCENE_DESTROY_ENTITY]: 'onDestroyEntity',
     [CommandType.NETWORK_FETCH]: 'onFetch',
+    [CommandType.IDENTITY_TOKEN]: 'onIdentityToken',
     [CommandType.NETWORK_SEND_TO_HOST]: 'onMessage',
     [CommandType.NETWORK_BROADCAST]: 'onNetworkBroadcast',
     [CommandType.EVENT_EMIT]: 'onEventEmit',

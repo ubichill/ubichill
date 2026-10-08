@@ -186,3 +186,15 @@ describe('同梱アセットと取り消し', () => {
         expect(buildAllowedCommands(undefined).has('CMD_ABORT')).toBe(true);
     });
 });
+
+describe('外部サービスへの身元証明', () => {
+    it('identity:token は dangerous（サービスが利用者を継続して識別できるようになるため）', () => {
+        expect(getCapabilityRisk('identity:token')).toBe('dangerous');
+        expect(buildAllowedCommands(['identity:token']).has('IDENTITY_TOKEN')).toBe(true);
+        expect(buildAllowedCommands(['net:fetch']).has('IDENTITY_TOKEN')).toBe(false);
+    });
+
+    it('Ubi.identity の利用から identity:token を検出する', () => {
+        expect(detectCapabilities('await Ubi.identity.token("https://api.example.com")')).toContain('identity:token');
+    });
+});

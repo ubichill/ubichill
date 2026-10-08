@@ -15,6 +15,7 @@ import {
     type ModGuestCommand,
     type ModHostEvent,
     type ModWorkerMessage,
+    UbiError,
     UbiErrorCode,
     type VNode,
 } from '@ubichill/shared';
@@ -105,6 +106,11 @@ export type ModWorkerHandlers<TPayloadMap extends Record<string, unknown> = Reco
         payload: import('@ubichill/shared').CmdRide['payload'],
         senderComponentInstanceId: string | undefined,
     ) => void;
+    /** Worker が Ubi.identity.token() を呼んだときに発火する。失敗は UbiError を投げる */
+    onIdentityToken?: (
+        audience: string,
+        context: { signal: AbortSignal },
+    ) => Promise<import('@ubichill/shared').RpcIdentityTokenResult>;
     /** Worker が Ubi.fetch() を呼んだときに発火する。context.signal で通信を止めること */
     onFetch?: (
         url: string,
@@ -243,6 +249,11 @@ export function useModWorker<TPayloadMap extends Record<string, unknown> = Recor
                             'fetch のハンドラーが接続されていません',
                             options?.responseType,
                         ),
+                    ),
+                onIdentityToken: (audience, context) =>
+                    handlersRef.current.onIdentityToken?.(audience, context) ??
+                    Promise.reject(
+                        new UbiError(UbiErrorCode.IDENTITY_UNAVAILABLE, '身元証明のハンドラーが接続されていません'),
                     ),
                 onTickComplete: (metric) => handlersRef.current.onTickComplete?.(metric),
             },
