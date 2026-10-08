@@ -16,6 +16,7 @@ import { useModBroadcast } from '../hooks/useModBroadcast';
 import { useModCanvas } from '../hooks/useModCanvas';
 import { useModEntitySync } from '../hooks/useModEntitySync';
 import { useModFetch } from '../hooks/useModFetch';
+import { useModIdentity } from '../hooks/useModIdentity';
 import { useModMedia } from '../hooks/useModMedia';
 import { useModPresence } from '../hooks/useModPresence';
 import { useModUI } from '../hooks/useModUI';
@@ -116,6 +117,7 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
     const { vnodes, onRender, sendAction, sendEventRef } = useModUI();
     const { getVideoRef, mediaHandlers } = useModMedia(definition, sendEventRef, entity.entityId ?? entityId);
     const onFetch = useModFetch(definition);
+    const onIdentityToken = useModIdentity(definition);
     const filterInputEvents = useCallback(
         (events: InputFrameEvent[]) => filterRideInput(events, ridingSyncRef.get(), entityId),
         [entityId],
@@ -190,6 +192,7 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
             // worker が報告した Inspector 用スキーマをレジストリへ。World エディタが参照する。
             onEditorSchema: (componentType, schema) => editorSchemaRegistry.set(componentType, schema),
             onFetch,
+            onIdentityToken,
             onNetworkBroadcast: (type, data) => onNetworkBroadcastRef.current?.(type, data),
             onEventEmit: (type, data, scope, targetType, senderId) =>
                 routeEmit({

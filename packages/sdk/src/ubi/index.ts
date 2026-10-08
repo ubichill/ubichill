@@ -21,6 +21,8 @@ import type { EventModule } from './event';
 import { createEventModule } from './event';
 import type { GripModule } from './grip';
 import { createGripModule } from './grip';
+import type { IdentityModule } from './identity';
+import { createIdentityModule } from './identity';
 import type { MediaModule } from './media';
 import { createMediaModule } from './media';
 import type { PlayerModule } from './player';
@@ -107,6 +109,7 @@ type PendingRequest = {
  *   Ubi.player.*    — プレイヤー情報 (others / scroll / syncCursor)
  *   Ubi.asset.*     — 同梱アセット・WASM（integrity 照合つき）
  *   Ubi.runtime.*   — 実行環境の能力判定（WASM の機能・Host の版）
+ *   Ubi.identity.*  — 外部サービスへの身元証明（サービストークン）
  *   Ubi.fetch(url)  — HTTP（ユーザーが許可したドメインのみ。バイナリ・取り消し対応）
  *   Ubi.registerSystem(fn) — ECS System 登録
  *   Ubi.log(msg, level)
@@ -172,6 +175,8 @@ export class UbiSDK {
     public readonly asset: AssetModule;
     /** 実行環境の能力判定。`supports('wasm:simd')` などで分岐し、`require` で未対応を明確なエラーにする。 */
     public readonly runtime: RuntimeModule;
+    /** 外部サービスへの身元証明。`token(audience)` でそのサービス専用の短命なトークンを受け取る。 */
+    public readonly identity: IdentityModule;
     /** @internal Ubi.state / Ubi.entity の実装で使用。modからは Ubi.entity 経由で操作する。 */
     private readonly _world: WorldModule;
 
@@ -222,6 +227,9 @@ export class UbiSDK {
         this.asset = createAssetModule({
             rpc: (cmd, rpcOptions) => this._rpc(cmd, { timeoutMs: UbiSDK.FETCH_RPC_TIMEOUT_MS, ...rpcOptions }),
         });
+        this.identity = createIdentityModule((cmd, rpcOptions) =>
+            this._rpc(cmd, { timeoutMs: UbiSDK.FETCH_RPC_TIMEOUT_MS, ...rpcOptions }),
+        );
         this.runtime = createRuntimeModule(() => this._hostProtocolVersion, {
             webAssembly: globalThis.WebAssembly,
             sharedArrayBuffer: (globalThis as { SharedArrayBuffer?: unknown }).SharedArrayBuffer,

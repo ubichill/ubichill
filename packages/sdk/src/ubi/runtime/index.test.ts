@@ -60,6 +60,11 @@ describe('createRuntimeModule', () => {
         );
     });
 
+    it('identity はプロトコル v5 から', () => {
+        expect(createRuntimeModule(() => 4, {}).supports('identity')).toBe(false);
+        expect(createRuntimeModule(() => 5, {}).supports('identity')).toBe(true);
+    });
+
     it('古い Host（プロトコル v3 以前）では asset・fetch:binary を持たない', () => {
         const runtime = createRuntimeModule(() => 3, { webAssembly: WebAssembly });
         expect(runtime.supports('asset')).toBe(false);

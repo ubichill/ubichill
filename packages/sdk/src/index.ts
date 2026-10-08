@@ -56,6 +56,7 @@ export type {
     CmdAssetLoad,
     CmdCanvasCommitStroke,
     CmdCanvasFrame,
+    CmdIdentityToken,
     CmdLog,
     CmdNetworkBroadcast,
     CmdNetworkFetch,
@@ -116,6 +117,7 @@ export type {
     RpcAssetLoadResult,
     RpcCreateEntityResult,
     RpcGetEntityResult,
+    RpcIdentityTokenResult,
     RpcNetworkFetchResult,
     TickCallback,
     UiPointerActionDetail,
@@ -129,6 +131,7 @@ export type { AssetLoadOptions } from './ubi/asset';
 export type { ComponentConfig, DataField, DataFieldType } from './ubi/config';
 export type { EmitOptions, EmitScope, EventRegistry } from './ubi/event';
 export type { Grip, GripOptions } from './ubi/grip';
+export type { IdentityTokenOptions } from './ubi/identity';
 export type { Ride } from './ubi/ride';
 export type { RuntimeFeature } from './ubi/runtime';
 export type { EntityState, EntityStateFor, OmitId, UiRenderCostStat } from './ubi/types';

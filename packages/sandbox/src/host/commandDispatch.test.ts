@@ -185,3 +185,28 @@ describe('dispatchCommand: fetch・アセットの取り消しと制限時間', 
         await expect(pending).rejects.toMatchObject({ code: 'FETCH_ABORTED' });
     });
 });
+
+describe('dispatchCommand: IDENTITY_TOKEN', () => {
+    const command = (id: string) =>
+        ({ type: CommandType.IDENTITY_TOKEN, id, payload: { audience: 'https://api.example.com' } }) as ModGuestCommand;
+
+    it('onIdentityToken に宛先と取り消し用の signal を渡し、結果を返す', async () => {
+        const onIdentityToken = vi.fn(async () => ({ token: 't', expiresAt: 1 }));
+        const result = await dispatchCommand(command('i1'), makeCtx({ onIdentityToken }));
+        expect(result).toEqual({ token: 't', expiresAt: 1 });
+        expect(onIdentityToken).toHaveBeenCalledWith('https://api.example.com', { signal: expect.any(AbortSignal) });
+    });
+
+    it('ハンドラーが無い Host では IDENTITY_UNAVAILABLE で失敗する', async () => {
+        await expect(dispatchCommand(command('i2'), makeCtx({}))).rejects.toMatchObject({
+            code: 'IDENTITY_UNAVAILABLE',
+        });
+    });
+
+    it('承認待ちで止まっていても CMD_ABORT で FETCH_ABORTED にする', async () => {
+        const ctx = makeCtx({ onIdentityToken: () => new Promise<never>(() => {}) });
+        const pending = dispatchCommand(command('i3'), ctx);
+        await dispatchCommand({ type: CommandType.CMD_ABORT, payload: { requestId: 'i3' } } as ModGuestCommand, ctx);
+        await expect(pending).rejects.toMatchObject({ code: 'FETCH_ABORTED' });
+    });
+});

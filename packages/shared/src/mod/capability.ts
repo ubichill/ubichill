@@ -121,6 +121,13 @@ export const CAPABILITY_CATALOG = {
         label: 'ホストへの通知',
         description: 'アプリ本体にプレイヤー状態（アバター等）の更新を依頼する',
     },
+    'identity:token': {
+        // サービスごとの仮名でも、そのサービスはあなたを継続して識別できるようになる。
+        risk: 'dangerous',
+        commands: [CommandType.IDENTITY_TOKEN],
+        label: '外部サービスへの身元証明',
+        description: '許可したドメインのサービスに、ログイン中であることの証明とそのサービス専用の匿名 ID を渡す',
+    },
     'net:fetch': {
         risk: 'dangerous',
         commands: [CommandType.NETWORK_FETCH],
@@ -159,6 +166,7 @@ export interface CapabilityDetector {
 export const CAPABILITY_DETECTORS: readonly CapabilityDetector[] = [
     { cap: 'net:fetch', api: 'Ubi.fetch', test: (c) => /\bUbi\.fetch\b/.test(c) },
     { cap: 'asset:read', api: 'Ubi.asset.*', test: (c) => /\bUbi\.asset\b/.test(c) },
+    { cap: 'identity:token', api: 'Ubi.identity.token', test: (c) => /\bUbi\.identity\b/.test(c) },
     // `export default` は sandbox.worker.ts が自動で Ubi.ui.render() する対象（明示呼び出し不要）。
     {
         cap: 'ui:render',

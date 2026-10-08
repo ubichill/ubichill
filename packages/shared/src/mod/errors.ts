@@ -53,6 +53,12 @@ export const UbiErrorCode = {
     /** アセットを取得できなかった（HTTP エラー・通信失敗） */
     ASSET_FETCH_FAILED: 'ASSET_FETCH_FAILED',
 
+    // ── identity (Ubi.identity) ──
+    /** サービストークンを受け取れない（未ログイン・ゲスト・サーバーが発行していない） */
+    IDENTITY_UNAVAILABLE: 'IDENTITY_UNAVAILABLE',
+    /** 宛先がサービスのオリジン（https://example.com）になっていない */
+    IDENTITY_AUDIENCE_INVALID: 'IDENTITY_AUDIENCE_INVALID',
+
     // ── runtime ──
     /** 実行環境（ブラウザ・Host）がその機能を持たない */
     UNSUPPORTED_FEATURE: 'UNSUPPORTED_FEATURE',

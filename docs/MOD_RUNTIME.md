@@ -132,6 +132,7 @@ Host が許可しても、**ブラウザの制限は解除されない**。
 | cookie | 外部オリジンには送らない（`credentials: 'omit'`）。同梱アセットの取得も cookie を付けない |
 | 承認待ちの取り消し | `signal` の取り消し・制限時間で、承認画面を待つ依頼から外れる。同じドメインを待つ依頼がすべて外れたら画面を取り下げる（拒否としては記憶しない） |
 | CORS | 相手が `Access-Control-Allow-Origin` を返さなければ失敗する（`FETCH_NETWORK_ERROR`） |
+| 自分の外部サービスの保護 | `Ubi.identity.token(audience)` で、ログイン中の利用者からの依頼であることを示す短命の署名を付けられる（→ [SERVICE_TOKEN.md](./SERVICE_TOKEN.md)） |
 | 応答ヘッダー | CORS で公開されたもの（`Access-Control-Expose-Headers`）しか読めない |
 | 禁止ヘッダー | `Cookie`・`Origin`・`User-Agent` などはブラウザが送らせない |
 

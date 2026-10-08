@@ -124,6 +124,22 @@ export async function dispatchCommand<TPayloadMap extends Record<string, unknown
                 ctx.closeRequest(command.id);
             }
         }
+        case CommandType.IDENTITY_TOKEN: {
+            // ドメイン承認の画面を待つことがあるので、fetch と同じ制限時間にする。
+            const signal = ctx.openRequest(command.id, FETCH_LIMITS.defaultTimeoutMs);
+            try {
+                const issue =
+                    handlers.onIdentityToken?.(command.payload.audience, { signal }) ??
+                    Promise.reject(
+                        new UbiError(UbiErrorCode.IDENTITY_UNAVAILABLE, 'この Host は身元証明に対応していません'),
+                    );
+                return await raceWithAbort(issue, signal, () => {
+                    throw abortError(signal);
+                });
+            } finally {
+                ctx.closeRequest(command.id);
+            }
+        }
         case CommandType.CMD_ABORT:
             ctx.abortRequest(command.payload.requestId);
             return undefined;

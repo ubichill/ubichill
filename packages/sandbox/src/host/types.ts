@@ -19,6 +19,7 @@ import type {
     ModGuestCommand,
     ModHostEvent,
     ModWorkerMessage,
+    RpcIdentityTokenResult,
     VNode,
 } from '@ubichill/shared';
 import type { HostFetchContext } from './fetchHandler';
@@ -42,6 +43,8 @@ export type HostHandlers<TPayloadMap extends Record<string, unknown> = Record<st
         context?: HostFetchContext,
     ) => Promise<FetchResult<string | ArrayBuffer>>;
     onMessage?: (msg: ModWorkerMessage<TPayloadMap>) => void;
+    /** Worker が Ubi.identity.token() を呼んだときに発火する。失敗は UbiError を投げる。 */
+    onIdentityToken?: (audience: string, context: { signal: AbortSignal }) => Promise<RpcIdentityTokenResult>;
     onReady?: () => void;
     /** Worker の初期化が失敗したとき (構文エラー等) に発火。Host はローディングを終了する */
     onInitFailed?: (error: string) => void;

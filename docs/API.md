@@ -104,6 +104,7 @@ await Ubi.asset.text(path)                         // UTF-8 として読む
 await Ubi.asset.wasm(path)                         // WebAssembly.Module（同じパスは 1 回だけコンパイル）
 Ubi.runtime.supports(feature)                      // 'wasm' | 'wasm:simd' | 'wasm:exceptions' | 'wasm:threads' | 'wasm:jspi' | 'fetch:binary' | 'asset'
 Ubi.runtime.require(feature)                       // 使えなければ UNSUPPORTED_FEATURE の UbiError
+await Ubi.identity.token(audience, { signal? })    // 外部サービスへの身元証明（短命の JWT）。→ SERVICE_TOKEN.md
 
 // ──── その他 ──────────────────────────────────────────
 await Ubi.fetch(url, options?)                     // HTTP (外部はドメインごとにユーザー承認)

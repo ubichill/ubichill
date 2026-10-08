@@ -19,7 +19,9 @@ export type RuntimeFeature =
     /** `Ubi.fetch` の responseType: 'arrayBuffer'・maxBytes・timeoutMs・signal */
     | 'fetch:binary'
     /** `Ubi.asset`（integrity 照合つきの同梱アセット） */
-    | 'asset';
+    | 'asset'
+    /** `Ubi.identity`（外部サービスへの身元証明。ログインしていなくても Host が対応していれば true） */
+    | 'identity';
 
 export type RuntimeModule = {
     /** Host のプロトコル版（`PROTOCOL_VERSION`）。 */
@@ -46,8 +48,12 @@ const EXCEPTIONS_PROBE = new Uint8Array([
     0, 97, 115, 109, 1, 0, 0, 0, 1, 4, 1, 96, 0, 0, 3, 2, 1, 0, 10, 8, 1, 6, 0, 6, 64, 25, 11, 11,
 ]);
 
-/** この版の Host が `fetch:binary` と `asset` を持つ最初のプロトコル版。 */
-const BINARY_IO_PROTOCOL_VERSION = 4;
+/** Host の機能 → それを持つ最初のプロトコル版。 */
+const HOST_FEATURE_PROTOCOL: Partial<Record<RuntimeFeature, number>> = {
+    'fetch:binary': 4,
+    asset: 4,
+    identity: 5,
+};
 
 function validates(webAssembly: typeof WebAssembly | undefined, bytes: Uint8Array<ArrayBuffer>): boolean {
     try {
@@ -78,10 +84,10 @@ export function detectEngineFeatures(env: RuntimeEnvironment): ReadonlySet<Runti
 
 export function createRuntimeModule(getProtocolVersion: () => number, env: RuntimeEnvironment): RuntimeModule {
     const engine = detectEngineFeatures(env);
-    const supports = (feature: RuntimeFeature): boolean =>
-        feature === 'fetch:binary' || feature === 'asset'
-            ? getProtocolVersion() >= BINARY_IO_PROTOCOL_VERSION
-            : engine.has(feature);
+    const supports = (feature: RuntimeFeature): boolean => {
+        const since = HOST_FEATURE_PROTOCOL[feature];
+        return since === undefined ? engine.has(feature) : getProtocolVersion() >= since;
+    };
     return {
         get protocolVersion() {
             return getProtocolVersion();
