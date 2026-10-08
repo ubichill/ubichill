@@ -13,6 +13,7 @@
 
 import type { CanvasStrokeData, ComponentConfig, Entity, System } from 'ubichill';
 import { PenEvents } from './events';
+import { buildStroke, type StrokePoint, strokeFingerprint } from './stroke';
 
 export const config: ComponentConfig = {
     canvasTargets: ['drawing'],
@@ -40,8 +41,10 @@ const draw = Ubi.state.define({
     heldPenEntityId: null as string | null,
     color: '#000000',
     strokeWidth: 4,
+    /** 保持中の pen:pen が消しゴム (data.eraser) か。 */
+    eraser: false,
     isDrawing: false,
-    currentStroke: [] as Array<[x: number, y: number, pressure: number]>,
+    currentStroke: [] as StrokePoint[],
 });
 
 // ────────────────────────────────────────────────────────────────
@@ -64,11 +67,6 @@ const remoteHeld = new Map<string, RemotePenInfo>();
 const committedFingerprints = new Set<string>();
 const drawnEntityIds = new Set<string>();
 
-const strokeFingerprint = (data: CanvasStrokeData): string => {
-    const p0 = data.points[0];
-    return `${data.color}|${data.size}|${data.points.length}|${p0?.[0] ?? 0},${p0?.[1] ?? 0}`;
-};
-
 const addFingerprint = (fp: string): void => {
     if (committedFingerprints.size >= MAX_FINGERPRINT_CACHE) {
         const oldest = committedFingerprints.values().next().value;
@@ -87,10 +85,10 @@ const popFingerprintIfExists = (fp: string): boolean => {
 // レンダリングヘルパー
 // ────────────────────────────────────────────────────────────────
 
-const buildActiveStroke = (): CanvasStrokeData | null => {
-    if (!draw.local.isDrawing || draw.local.currentStroke.length <= 1) return null;
-    return { points: draw.local.currentStroke, color: draw.local.color, size: draw.local.strokeWidth };
-};
+const heldTool = () => ({ color: draw.local.color, strokeWidth: draw.local.strokeWidth, eraser: draw.local.eraser });
+
+const buildActiveStroke = (): CanvasStrokeData | null =>
+    draw.local.isDrawing ? buildStroke(draw.local.currentStroke, heldTool()) : null;
 
 // ────────────────────────────────────────────────────────────────
 // イベント受信
@@ -111,6 +109,7 @@ PenEvents.on('entity:pen:pen', (pen) => {
             draw.local.heldPenEntityId = pen.entityId ?? null;
             if (pen.data.color !== undefined) draw.local.color = pen.data.color;
             if (pen.data.strokeWidth !== undefined) draw.local.strokeWidth = pen.data.strokeWidth;
+            draw.local.eraser = pen.data.eraser === true;
         });
     } else if (pen.id === draw.local.heldPenId) {
         draw.batch(() => {
@@ -171,12 +170,9 @@ PenEvents.on('entity:pen:stroke', (entity) => {
 
 // pen:draw:up で stroke が確定したらコミット + 永続化
 const flushCompletedStroke = (): void => {
-    if (draw.local.isDrawing || draw.local.currentStroke.length <= 1) return;
-    const strokeData: CanvasStrokeData = {
-        points: draw.local.currentStroke.slice(),
-        color: draw.local.color,
-        size: draw.local.strokeWidth,
-    };
+    if (draw.local.isDrawing) return;
+    const strokeData = buildStroke(draw.local.currentStroke, heldTool());
+    if (!strokeData) return;
     draw.local.currentStroke = [];
 
     Ubi.canvas.commitStroke(CANVAS_TARGET, strokeData);
