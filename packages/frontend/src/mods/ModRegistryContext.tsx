@@ -2,8 +2,10 @@ import type { WidgetDefinition, WorkerModDefinition } from '@ubichill/react';
 import { isWorkerMod } from '@ubichill/react';
 import type { ModLock } from '@ubichill/shared';
 import type React from 'react';
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { ModRejectionNotice } from './ModRejectionNotice';
 import { loadVerifiedMod } from './modLoader';
+import { groupRejections, type RejectedMod } from './modRejection';
 
 // ============================================
 // mod ローダー（取得 + lock 照合は modLoader.ts に委譲）
@@ -28,6 +30,10 @@ interface ModRegistryContextType {
     pendingModCount: number;
     /** エンティティタイプを指定してmodを動的ロードする（未ロードの場合のみ実行） */
     loadMod: (entityType: string) => void;
+    /** 検証に失敗して実行しなかった mod（理由つき）。 */
+    rejectedMods: RejectedMod[];
+    /** 実行しなかった mod を読み込み直す（作者をいま確認できなかった場合など）。 */
+    retryRejected: (mod: RejectedMod) => void;
 }
 
 // ============================================
@@ -38,6 +44,8 @@ const ModRegistryContext = createContext<ModRegistryContextType>({
     modMap: new Map(),
     pendingModCount: 0,
     loadMod: () => {},
+    rejectedMods: [],
+    retryRejected: () => {},
 });
 
 // ============================================
@@ -52,6 +60,9 @@ export const ModRegistryProvider: React.FC<{
 }> = ({ children, onStatusChange, lock }) => {
     const [modMap, setModMap] = useState<Map<string, AnyModDefinition>>(new Map());
     const [loadCounts, setLoadCounts] = useState<ModLoadingStatus>({ completed: 0, total: 0 });
+    // Component 型 → 実行しなかった理由
+    const [rejections, setRejections] = useState<ReadonlyMap<string, string>>(new Map());
+    const rejectedMods = useMemo(() => groupRejections(rejections), [rejections]);
     const pendingModCount = loadCounts.total - loadCounts.completed;
 
     useEffect(() => {
@@ -97,6 +108,12 @@ export const ModRegistryProvider: React.FC<{
             if (loadingRef.current.has(entityType)) return;
             loadingRef.current.add(entityType);
             setLoadCounts((c) => ({ ...c, total: c.total + 1 }));
+            setRejections((prev) => {
+                if (!prev.has(entityType)) return prev;
+                const next = new Map(prev);
+                next.delete(entityType);
+                return next;
+            });
 
             loadVerifiedMod(entityType, { lock })
                 .then((result) => {
@@ -115,6 +132,7 @@ export const ModRegistryProvider: React.FC<{
                         console.warn(
                             `[ModRegistry] component "${entityType}" は検証に失敗 (${result.rejected})。実行を拒否します。`,
                         );
+                        setRejections((prev) => new Map(prev).set(entityType, result.rejected));
                         loadingRef.current.delete(entityType);
                         return;
                     }
@@ -136,13 +154,21 @@ export const ModRegistryProvider: React.FC<{
         [addMod, lock],
     );
 
+    const retryRejected = useCallback(
+        (mod: RejectedMod) => {
+            for (const entityType of mod.entityTypes) loadMod(entityType);
+        },
+        [loadMod],
+    );
+
     // dependencies が登録されているからといって全 worker を一括起動しない。
     // シーン (initialEntities) に置かれたエンティティだけが EntityRenderer 経由で
     // loadMod される。singleton も同じく entity が無ければ起動しない。
 
     return (
-        <ModRegistryContext.Provider value={{ modMap, pendingModCount, loadMod }}>
+        <ModRegistryContext.Provider value={{ modMap, pendingModCount, loadMod, rejectedMods, retryRejected }}>
             {children}
+            <ModRejectionNotice mods={rejectedMods} onRetry={retryRejected} />
         </ModRegistryContext.Provider>
     );
 };

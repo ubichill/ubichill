@@ -4,7 +4,13 @@
  * 署名の照合と作者の確認はサーバー（`POST /api/v1/mods/signature/verify`）が行う。他サーバーの作者の鍵一覧の取得・保存・
  * 取り消しの反映はワールドの署名と同じ仕組みを使うため。ここは依頼の組み立てと、開発用の例外の判定だけを持つ。
  */
-import { MOD_SIGNATURE_FILE, type ModLockEntry, ModLockEntrySchema, type ModSignatureVerdict } from '@ubichill/shared';
+import {
+    MOD_SIGNATURE_FILE,
+    type ModLockEntry,
+    ModLockEntrySchema,
+    type ModSignatureRejectReason,
+    type ModSignatureVerdict,
+} from '@ubichill/shared';
 import { API_BASE } from '@/lib/api';
 
 export type VerifyModSignature = (entry: ModLockEntry, signature: unknown) => Promise<ModSignatureVerdict>;
@@ -68,24 +74,67 @@ export const verifyModSignatureViaApi: VerifyModSignature = createSignatureVerif
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 });
 
-const fetchJson = async (url: string): Promise<unknown> => {
+/**
+ * 配布されている版の作者の確認結果（World Editor の一覧用）。
+ * - verified: 署名で作者を確認できた
+ * - unsigned: 署名ファイルが無い
+ * - rejected: 署名はあるが通らない（改ざん・取り消された鍵など。確定）
+ * - data-only: 実行するコードが無い（署名の対象が無い）
+ * - unavailable: 通信の失敗などで、いまは確認できない（確認し直せば変わり得る）
+ */
+export type ModAuthorCheck =
+    | { status: 'verified'; author: string }
+    | { status: 'unsigned' }
+    | { status: 'rejected'; reason: ModSignatureRejectReason }
+    | { status: 'data-only' }
+    | { status: 'unavailable' };
+
+/** 取得結果。`missing` は「そのファイルは無い」と確定したとき。通信の失敗・サーバーエラーは throw する。 */
+export type FetchedJson = { found: true; value: unknown } | { found: false };
+
+export interface ModAuthorCheckDeps {
+    fetchJson: (url: string) => Promise<FetchedJson>;
+    verify: VerifyModSignature;
+}
+
+/** 「無い」と「取得できない」を分けて確認する（通信の失敗を「署名なし」と表示しない）。 */
+export async function checkModAuthor(
+    deps: ModAuthorCheckDeps,
+    baseUrl: string,
+    modId: string,
+    version: string,
+): Promise<ModAuthorCheck> {
+    const versionedBase = `${baseUrl}/${modId}/v${version}`;
     try {
-        const res = await fetch(url, { cache: 'no-store' });
-        return res.ok ? (JSON.parse(await res.text()) as unknown) : undefined;
+        const [lock, signature] = await Promise.all([
+            deps.fetchJson(`${versionedBase}/lock.json`),
+            deps.fetchJson(`${versionedBase}/${MOD_SIGNATURE_FILE}`),
+        ]);
+        if (!lock.found) return { status: 'data-only' };
+        const entry = ModLockEntrySchema.safeParse(lock.value);
+        if (!entry.success) return { status: 'unavailable' };
+        if (!signature.found) return { status: 'unsigned' };
+        const verdict = await deps.verify(entry.data, signature.value);
+        if (verdict.status === 'verified') return { status: 'verified', author: verdict.author };
+        return verdict.reason === 'author-pending'
+            ? { status: 'unavailable' }
+            : { status: 'rejected', reason: verdict.reason };
     } catch {
-        return undefined;
+        return { status: 'unavailable' };
+    }
+}
+
+/** 404・JSON でない応答（SPA の fallback）は「無い」。サーバーエラーと通信の失敗は throw。 */
+const fetchJson = async (url: string): Promise<FetchedJson> => {
+    const res = await fetch(url, { cache: 'no-store' });
+    if (res.status >= 500) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) return { found: false };
+    try {
+        return { found: true, value: JSON.parse(await res.text()) as unknown };
+    } catch {
+        return { found: false };
     }
 };
 
-/** 配布されている版の作者を確認する（World Editor の一覧用）。確認できなければ undefined。 */
-export async function fetchModAuthor(baseUrl: string, modId: string, version: string): Promise<string | undefined> {
-    const versionedBase = `${baseUrl}/${modId}/v${version}`;
-    const [lock, signature] = await Promise.all([
-        fetchJson(`${versionedBase}/lock.json`),
-        fetchJson(`${versionedBase}/${MOD_SIGNATURE_FILE}`),
-    ]);
-    const entry = ModLockEntrySchema.safeParse(lock);
-    if (!entry.success || signature === undefined) return undefined;
-    const verdict = await verifyModSignatureViaApi(entry.data, signature);
-    return verdict.status === 'verified' ? verdict.author : undefined;
-}
+export const fetchModAuthor = (baseUrl: string, modId: string, version: string): Promise<ModAuthorCheck> =>
+    checkModAuthor({ fetchJson, verify: verifyModSignatureViaApi }, baseUrl, modId, version);

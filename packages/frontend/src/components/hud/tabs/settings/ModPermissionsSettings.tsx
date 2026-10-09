@@ -11,6 +11,7 @@
  * 権限状態は @ubichill/react の PermissionProvider（main.tsx でマウント）から取得する。
  */
 import { type CapabilityRisk, describeCapability, type TierMode, useUbiPermissions } from '@ubichill/react';
+import { displayAuthorAccount, parsePermissionSubject } from '@ubichill/shared';
 import { css } from '@/styled-system/css';
 import { cardStyle, sectionHeading } from '../shared';
 
@@ -83,6 +84,19 @@ function RiskBadge({ risk }: { risk: CapabilityRisk }) {
             })}
         >
             {meta.label}
+        </span>
+    );
+}
+
+/** 許可の対象（作者＋mod の ID）。作者の無い項目は、署名が必須になる前の記録か、開発用の Host での未署名 mod。 */
+function SubjectLabel({ subject }: { subject: string }) {
+    const { modId, author } = parsePermissionSubject(subject);
+    return (
+        <span className={css({ display: 'flex', flexDirection: 'column', minW: 0 })}>
+            <span className={css({ fontSize: '15px', fontWeight: '700', color: 'text' })}>{modId}</span>
+            <span className={css({ fontSize: '11px', color: 'textMuted', wordBreak: 'break-all' })}>
+                {author ? `作者 ${displayAuthorAccount(author)}` : '署名なし'}
+            </span>
         </span>
     );
 }
@@ -203,9 +217,7 @@ export function ModPermissionsSettings() {
                                         mb: '3',
                                     })}
                                 >
-                                    <span className={css({ fontSize: '15px', fontWeight: '700', color: 'text' })}>
-                                        {modId}
-                                    </span>
+                                    <SubjectLabel subject={modId} />
                                     <button
                                         type="button"
                                         onClick={() => {

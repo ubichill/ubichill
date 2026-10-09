@@ -23,6 +23,8 @@ export type ModFetchHandler = (
 
 export interface ModFetchDeps {
     modId: string;
+    /** 許可の対象（作者＋mod の ID）。拒否トーストの「許可」が記録する先。 */
+    permissionSubject: string;
     appOrigin: string | undefined;
     authorizeUrl: (url: string, signal?: AbortSignal) => Promise<ExternalUrlAccess>;
     fetchImpl?: typeof fetchDirect;
@@ -35,6 +37,7 @@ function credentialsFor(url: string, appOrigin: string | undefined): RequestCred
 
 export function createModFetch({
     modId,
+    permissionSubject,
     appOrigin,
     authorizeUrl,
     fetchImpl = fetchDirect,
@@ -50,7 +53,7 @@ export function createModFetch({
             modId,
             code: access.code,
             message: access.message,
-            ...(access.domain ? { retry: { modId, domain: access.domain } } : {}),
+            ...(access.domain ? { retry: { subject: permissionSubject, domain: access.domain } } : {}),
         });
         return forbiddenFetchResult(access.code, access.message, responseType);
     };

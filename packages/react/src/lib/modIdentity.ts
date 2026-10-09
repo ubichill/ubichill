@@ -20,6 +20,8 @@ export type ModIdentityHandler = (
 
 export interface ModIdentityDeps {
     modId: string;
+    /** 許可の対象（作者＋mod の ID）。拒否トーストの「許可」が記録する先。 */
+    permissionSubject: string;
     authorizeUrl: (url: string, signal?: AbortSignal) => Promise<ExternalUrlAccess>;
     requestToken: RequestServiceToken | null;
     now?: () => number;
@@ -41,6 +43,7 @@ function cancelledToken(signal: AbortSignal): UbiError {
 
 export function createModIdentity({
     modId,
+    permissionSubject,
     authorizeUrl,
     requestToken,
     now = Date.now,
@@ -109,7 +112,7 @@ export function createModIdentity({
                 modId,
                 code: access.code,
                 message: access.message,
-                ...(access.domain ? { retry: { modId, domain: access.domain } } : {}),
+                ...(access.domain ? { retry: { subject: permissionSubject, domain: access.domain } } : {}),
             });
             throw new UbiError(access.code, access.message);
         }

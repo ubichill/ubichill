@@ -3,7 +3,8 @@ import { useMemo, useState } from 'react';
 import { type AvailableMod, useAvailableMods } from '@/lib/mods/useAvailableMods';
 import { useModAuthor } from '@/lib/mods/useModAuthor';
 import { SETTINGS_KEYS, useSetting } from '@/lib/settings';
-import { css } from '@/styled-system/css';
+import { describeModRejection } from '@/mods/modRejection';
+import { css, cx } from '@/styled-system/css';
 import { computeModDiff, type ModSelectionEntry, selectionToDependencies } from '../../lib/modSelection';
 import { editorButton } from '../../recipes/button';
 import { PanelSection } from '../PanelSection';
@@ -12,20 +13,51 @@ import { RegistryUrlManager } from './RegistryUrlManager';
 const isStringArray = (value: unknown): value is string[] =>
     Array.isArray(value) && value.every((v) => typeof v === 'string');
 
-/** 署名で確認できた作者。確認できない mod は、本番の Host では実行されない。 */
-function ModAuthor({ mod }: { mod: AvailableMod }) {
-    const author = useModAuthor(mod);
-    if (author === 'checking') return null;
+const authorLine = css({ fontSize: '11px', mt: '2px', wordBreak: 'break-all' });
+
+/**
+ * インストールする版の作者（署名で確認できたものだけ）。確認できない版は、本番の Host では実行されない。
+ * 「署名が無い」「署名が通らない」「いまは確認できない」を分けて出す。
+ */
+function ModAuthor({ mod, version }: { mod: AvailableMod; version: string }) {
+    const { state, retry } = useModAuthor(mod, version);
+    if (state.status === 'checking' || state.status === 'data-only') return null;
+    if (state.status === 'verified') {
+        return (
+            <div className={cx(authorLine, css({ color: 'textSubtle' }))}>
+                v{version} の作者 {displayAuthorAccount(state.author)}
+            </div>
+        );
+    }
+    if (state.status === 'unavailable') {
+        return (
+            <div className={cx(authorLine, css({ color: 'textSubtle', display: 'flex', gap: '6px' }))}>
+                <span>v{version} の作者をいま確認できません</span>
+                {/* カード全体が選択ボタンなので、入れ子の button にしない */}
+                <span
+                    role="button"
+                    tabIndex={0}
+                    className={css({ color: 'primary', fontWeight: '600', cursor: 'pointer' })}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        retry();
+                    }}
+                    onKeyDown={(e) => {
+                        if (e.key !== 'Enter' && e.key !== ' ') return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        retry();
+                    }}
+                >
+                    再試行
+                </span>
+            </div>
+        );
+    }
     return (
-        <div
-            className={css({
-                fontSize: '11px',
-                mt: '2px',
-                wordBreak: 'break-all',
-                color: author ? 'textSubtle' : 'errorText',
-            })}
-        >
-            {author ? `作者 ${displayAuthorAccount(author)}` : '作者を確認できません（署名なし）'}
+        <div className={cx(authorLine, css({ color: 'errorText' }))}>
+            v{version}:{' '}
+            {state.status === 'unsigned' ? '作者の署名がありません' : describeModRejection(state.reason).message}
         </div>
     );
 }
@@ -167,7 +199,7 @@ export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorP
                                         <div className={css({ fontSize: '11px', color: 'textSubtle', mt: '2px' })}>
                                             v{p.version} · {p.components.length} components
                                         </div>
-                                        <ModAuthor mod={p} />
+                                        <ModAuthor mod={p} version={isOutdated ? pinnedVersion : p.version} />
                                         <SourceLabel mod={p} />
                                     </div>
                                 </button>

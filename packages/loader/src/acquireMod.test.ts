@@ -1,7 +1,13 @@
 import { createHash } from 'node:crypto';
 import { type AuthorKeyCheck, type ModLock, signMod, verifyModSignature } from '@ubichill/shared';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { type AcquireModOptions, acquireMod, assetIntegrityOf, resetAcquireCaches } from './acquireMod';
+import {
+    type AcquireModOptions,
+    acquireMod,
+    assetIntegrityOf,
+    MOD_AUTHOR_CACHE_TTL_MS,
+    resetAcquireCaches,
+} from './acquireMod';
 import type { FetchLike, FetchLikeResponse } from './types';
 import { generateSigningKeyPkcs8, importSigningKey, webWorldCrypto } from './worldCrypto';
 
@@ -393,6 +399,48 @@ describe('作者署名', () => {
         expect(await acquireMod(TYPE, options)).toEqual({ rejected: 'author-pending' });
         state.down = false;
         expect(await acquireMod(TYPE, options)).toMatchObject({ author: AUTHOR });
+    });
+
+    it('鍵を取り消したら、期限を過ぎた読み込みからは実行しない（確認済みの結果を使い続けない）', async () => {
+        const key = await newKey();
+        const keys: Record<string, string> = { [AUTHOR]: key.publicKey };
+        const calls: string[] = [];
+        const clock = { now: 1_000_000 };
+        const options = {
+            baseUrl: BASE,
+            lock: lock(),
+            verifySignature: hostTrusting(keys, calls),
+            fetchImpl: fakeFetch(await signedRoutes(key)),
+            now: () => clock.now,
+        };
+        expect(await acquireMod(TYPE, options)).toMatchObject({ author: AUTHOR });
+
+        // 作者が公開環境を取り消す
+        delete keys[AUTHOR];
+        clock.now += MOD_AUTHOR_CACHE_TTL_MS - 1;
+        expect(await acquireMod(TYPE, options)).toMatchObject({ author: AUTHOR });
+        expect(calls).toHaveLength(1);
+
+        clock.now += 1;
+        expect(await acquireMod(TYPE, options)).toEqual({ rejected: 'author-unconfirmed' });
+        expect(calls).toHaveLength(2);
+    });
+
+    it('期限を過ぎても有効な鍵なら、確認し直してそのまま実行できる', async () => {
+        const key = await newKey();
+        const calls: string[] = [];
+        const clock = { now: 0 };
+        const options = {
+            baseUrl: BASE,
+            lock: lock(),
+            verifySignature: hostTrusting({ [AUTHOR]: key.publicKey }, calls),
+            fetchImpl: fakeFetch(await signedRoutes(key)),
+            now: () => clock.now,
+        };
+        await acquireMod(TYPE, options);
+        clock.now += MOD_AUTHOR_CACHE_TTL_MS;
+        expect(await acquireMod(TYPE, options)).toMatchObject({ author: AUTHOR });
+        expect(calls).toHaveLength(2);
     });
 
     it('同じ mod の作者の確認は 1 回で済ませる', async () => {

@@ -4,7 +4,7 @@
  *  - external: fetch・動画・音声を問わず、外部通信の初回にドメインを確認する。
  */
 import { type CapabilityRisk, describeCapability, useUbiPermissions } from '@ubichill/react';
-import { displayAuthorAccount } from '@ubichill/shared';
+import { displayAuthorAccount, parsePermissionSubject } from '@ubichill/shared';
 import { css } from '@/styled-system/css';
 
 const RISK_META: Record<CapabilityRisk, { label: string; color: string; bg: string }> = {
@@ -119,6 +119,9 @@ export function PermissionPromptModal() {
     if (!permissions?.pendingPrompt) return null;
     const prompt = permissions.pendingPrompt;
     const { resolvePrompt } = permissions;
+    // 許可は「作者＋mod の ID」に付く。同じ ID を名乗る別の作者の mod には引き継がれない。
+    const { modId, author } = parsePermissionSubject(prompt.modId);
+    const authorLabel = author ? `作者 ${displayAuthorAccount(author)}` : '署名なし（開発）';
 
     if (prompt.kind === 'external') {
         return (
@@ -128,10 +131,13 @@ export function PermissionPromptModal() {
                         <ShieldIcon risk="dangerous" />
                         <div className={css({ display: 'flex', flexDirection: 'column', gap: '2px' })}>
                             <span className={css({ fontSize: '11px', fontWeight: '600', color: 'textMuted' })}>
-                                「{prompt.modId}」が外部通信を要求
+                                「{modId}」が外部通信を要求
                             </span>
                             <span className={css({ fontSize: '16px', fontWeight: '700', color: 'text' })}>
                                 {prompt.domain}
+                            </span>
+                            <span className={css({ fontSize: '12px', color: 'textMuted', wordBreak: 'break-all' })}>
+                                {authorLabel}
                             </span>
                         </div>
                     </div>
@@ -173,11 +179,9 @@ export function PermissionPromptModal() {
                         <span className={css({ fontSize: '11px', fontWeight: '600', color: 'textMuted' })}>
                             modが権限を要求
                         </span>
-                        <span className={css({ fontSize: '17px', fontWeight: '700', color: 'text' })}>
-                            {prompt.modId}
-                        </span>
+                        <span className={css({ fontSize: '17px', fontWeight: '700', color: 'text' })}>{modId}</span>
                         <span className={css({ fontSize: '12px', color: 'textMuted', wordBreak: 'break-all' })}>
-                            {prompt.author ? `作者 ${displayAuthorAccount(prompt.author)}` : '署名なし（開発）'}
+                            {authorLabel}
                         </span>
                     </div>
                 </div>

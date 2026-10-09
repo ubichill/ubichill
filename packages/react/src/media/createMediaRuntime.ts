@@ -59,6 +59,8 @@ export interface CreateMediaRuntimeOptions {
     definitionId: string;
     syncScopeId: string;
     modId: string;
+    /** 許可の対象（作者＋mod の ID）。拒否トーストの「許可」が記録する先。 */
+    permissionSubject: string;
     mediaVisibility: Map<string, boolean>;
     getSocket: () => InstanceSocket | null;
     authorizeUrl: (url: string) => Promise<ExternalUrlAccess>;
@@ -139,6 +141,7 @@ export function createMediaRuntime({
     definitionId,
     syncScopeId,
     modId,
+    permissionSubject,
     mediaVisibility,
     getSocket,
     authorizeUrl,
@@ -642,7 +645,7 @@ export function createMediaRuntime({
                     modId,
                     code: access.code,
                     message: `メディアを読み込めません: ${access.message}`,
-                    ...(access.domain ? { retry: { modId, domain: access.domain } } : {}),
+                    ...(access.domain ? { retry: { subject: permissionSubject, domain: access.domain } } : {}),
                 });
                 return;
             }

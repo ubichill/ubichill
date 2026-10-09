@@ -74,6 +74,8 @@ export interface AcquireModOptions {
     allowUnsigned?: (baseUrl: string) => boolean;
     /** 注入 fetch（既定: globalThis.fetch）。テスト・Node 実行で差し替える。 */
     fetchImpl?: FetchLike;
+    /** 現在時刻（ミリ秒）。作者の確認結果の期限に使う。既定は Date.now。 */
+    now?: () => number;
 }
 
 const defaultFetch: FetchLike = (input, init) => fetch(input, init as RequestInit) as unknown as ReturnType<FetchLike>;
@@ -155,8 +157,15 @@ async function fetchSignature(versionedBase: string, f: FetchLike): Promise<unkn
 
 type AuthorResult = { author?: string } | { rejected: ModSignatureRejectReason };
 
+/**
+ * 作者を確認できた結果を使い回す時間。これを過ぎた読み込み（ワールドの移動・入り直し）ではサーバーへ確認し直す。
+ * 鍵の取り消しをサーバーが知ってから、同じブラウザで新しく実行されなくなるまでの上限になる。
+ * 実行中の Worker は止めない（実行中の mod を止めるのは別の仕組み）。
+ */
+export const MOD_AUTHOR_CACHE_TTL_MS = 5 * 60 * 1000;
+
 // 同じ mod の複数 Component で作者の確認を繰り返さない。確認できなかった結果は残さない（次の読み込みで確認し直す）。
-const authorCache = new Map<string, Promise<AuthorResult>>();
+const authorCache = new Map<string, { checkedAt: number; result: Promise<AuthorResult> }>();
 
 async function checkAuthor(
     versionedBase: string,
@@ -183,17 +192,19 @@ function resolveAuthor(
     f: FetchLike,
 ): Promise<AuthorResult> {
     const key = `${versionedBase}::${JSON.stringify(lockEntry)}`;
+    const now = (opts.now ?? Date.now)();
     const cached = authorCache.get(key);
-    if (cached) return cached;
-    const p = checkAuthor(versionedBase, baseUrl, lockEntry, opts, f);
-    authorCache.set(key, p);
-    p.then(
-        (result) => {
-            if ('rejected' in result) authorCache.delete(key);
-        },
-        () => authorCache.delete(key),
-    );
-    return p;
+    if (cached && now - cached.checkedAt < MOD_AUTHOR_CACHE_TTL_MS) return cached.result;
+    const entry = { checkedAt: now, result: checkAuthor(versionedBase, baseUrl, lockEntry, opts, f) };
+    authorCache.set(key, entry);
+    // 後から始まった確認を、先に始まった確認の失敗で消さない
+    const forget = () => {
+        if (authorCache.get(key) === entry) authorCache.delete(key);
+    };
+    entry.result.then((result) => {
+        if ('rejected' in result) forget();
+    }, forget);
+    return entry.result;
 }
 
 /**

@@ -26,10 +26,33 @@ export type TierMode = 'allow' | 'ask' | 'deny';
 export interface PermissionPolicy {
     /** 危険度ティアごとの既定モード。 */
     readonly tierDefaults: Readonly<Record<CapabilityRisk, TierMode>>;
-    /** mod別に記憶済みの確定判断: modId -> capability -> decision。tierDefaults を上書きする。 */
+    /** mod別に記憶済みの確定判断: 許可の対象（{@link permissionSubject}）-> capability -> decision。tierDefaults を上書きする。 */
     readonly grants: Readonly<Record<string, Readonly<Record<string, PermissionDecision>>>>;
     /** mod別・ドメイン別の外部通信許可。フィールド名は保存済み設定との互換性のため維持。 */
     readonly fetchGrants: Readonly<Record<string, Readonly<Record<string, PermissionDecision>>>>;
+}
+
+/** 作者の無い mod（開発用の Host だけが動かす未署名の mod）の許可の対象に付ける接頭辞。作者アカウントは `@` を含むので重ならない。 */
+const UNSIGNED_SUBJECT_PREFIX = 'unsigned/';
+
+/**
+ * 許可の対象（{@link PermissionPolicy} の `grants` / `fetchGrants` のキー）。
+ * 署名で作者を確認できた mod は「作者アカウント/mod の ID」。同じ ID を名乗る別の作者の mod は、許可を引き継がない。
+ * 未署名の mod は「unsigned/mod の ID」。mod の ID は自己申告なので、ID だけをキーにすると
+ * 「他人の作者アカウント/ID」という ID を名乗る未署名の mod が、その作者への許可を使えてしまう。
+ */
+export function permissionSubject(modId: string, author?: string): string {
+    return author ? `${author}/${modId}` : `${UNSIGNED_SUBJECT_PREFIX}${modId}`;
+}
+
+/**
+ * {@link permissionSubject} の逆（表示用）。作者アカウントは `/` を含まないので、最初の `/` で分ける。
+ * `/` の無いキーは、作者署名が必須になる前の記録（どの mod にも使われない）。
+ */
+export function parsePermissionSubject(subject: string): { modId: string; author?: string } {
+    if (subject.startsWith(UNSIGNED_SUBJECT_PREFIX)) return { modId: subject.slice(UNSIGNED_SUBJECT_PREFIX.length) };
+    const slash = subject.indexOf('/');
+    return slash === -1 ? { modId: subject } : { author: subject.slice(0, slash), modId: subject.slice(slash + 1) };
 }
 
 /**

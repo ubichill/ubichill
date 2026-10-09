@@ -32,7 +32,7 @@ import {
     type WatchScope,
 } from '../lib/entityScope';
 import { ridingSyncRef } from '../ridingSyncRef';
-import type { WorkerModDefinition } from '../types';
+import { modPermissionSubject, type WorkerModDefinition } from '../types';
 import { useModWorker } from '../useModWorker';
 import { useWorkerLoading } from '../WorkerLoadingContext';
 import { useHold } from './HoldContext';
@@ -57,10 +57,10 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
     // 宣言 capability の静的判定にフォールバック）。modId 束縛済みで identity 安定。
     // definition.id は "mod:component" 形式。信頼境界はmod単位なので ":" の前を使う
     // （同一modの全コンポーネントで許可を共有する）。
-    const modId = definition.id.split(':')[0];
+    const subject = modPermissionSubject(definition);
     const authorizeCapability = useMemo(
-        () => (permissions ? (capability: string) => permissions.authorizeCapability(modId, capability) : undefined),
-        [permissions, modId],
+        () => (permissions ? (capability: string) => permissions.authorizeCapability(subject, capability) : undefined),
+        [permissions, subject],
     );
 
     // 読み込み時に要求 capability をまとめて承認してもらい、**決定が済むまで Worker を実行しない**。
@@ -69,7 +69,6 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
     // Provider 不在（エディタ Preview 等）は即実行。
     const authorizeMod = permissions?.authorizeMod;
     const declaredCapabilities = definition.capabilities;
-    const author = definition.author;
     const [enabled, setEnabled] = useState(false);
     useEffect(() => {
         if (!authorizeMod) {
@@ -78,13 +77,13 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
         }
         let cancelled = false;
         setEnabled(false);
-        authorizeMod(modId, declaredCapabilities ?? [], author).then(() => {
+        authorizeMod(subject, declaredCapabilities ?? []).then(() => {
             if (!cancelled) setEnabled(true); // 決定後は許可/拒否とも実行
         });
         return () => {
             cancelled = true;
         };
-    }, [authorizeMod, modId, declaredCapabilities, author]);
+    }, [authorizeMod, subject, declaredCapabilities]);
     const hostDivRef = useRef<HTMLDivElement>(null);
     const workerLoading = useWorkerLoading();
 
@@ -171,6 +170,7 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
     const { sendEvent, workerRevision, setScrollElement } = useModWorker({
         modCode: definition.workerCode,
         modId: definition.id,
+        permissionSubject: subject,
         componentInstanceId: entityId,
         entityId: entity.entityId,
         parentEntityId: entity.parentEntityId,

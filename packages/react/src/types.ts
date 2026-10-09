@@ -1,4 +1,4 @@
-import type { ComponentDataFieldSpec, OverlayMode } from '@ubichill/shared';
+import { type ComponentDataFieldSpec, type OverlayMode, permissionSubject } from '@ubichill/shared';
 
 /**
  * modが Host (ModRegistry) に渡す定義オブジェクト（Custom Elements ベース）。
@@ -27,6 +27,11 @@ export interface WidgetDefinition {
  * 描画はすべて Worker 内の ECS System が担う（OffscreenCanvas / VNode）。
  * Host は GenericModHost でサンドボックス・通信のみを提供する。
  */
+/** 権限の許可の対象（作者＋mod の ID）。mod の ID は `definition.id`（"mod:component"）の ":" の前。 */
+export function modPermissionSubject(definition: Pick<WorkerModDefinition, 'id' | 'author'>): string {
+    return permissionSubject(definition.id.split(':')[0] ?? definition.id, definition.author);
+}
+
 export interface WorkerModDefinition {
     /** mod識別子（mod.json の id と一致） */
     id: string;

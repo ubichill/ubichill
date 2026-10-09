@@ -1,37 +1,41 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { MOD_BASE_URL } from '@/mods/modLoader';
-import { fetchModAuthor } from '@/mods/modSignature';
+import { fetchModAuthor, type ModAuthorCheck } from '@/mods/modSignature';
 import type { AvailableMod } from './useAvailableMods';
 
-/** 確認中は 'checking'、確認できた作者アカウント、確認できなければ null（署名なし・作者を確認できない）。 */
-export type ModAuthorState = 'checking' | string | null;
+export type ModAuthorState = { status: 'checking' } | ModAuthorCheck;
 
-const cache = new Map<string, Promise<string | null>>();
+// 確定した結果だけを使い回す。「いまは確認できない」は残さず、開き直し・再試行で確認し直す。
+const cache = new Map<string, ModAuthorCheck>();
 
-function authorOf(mod: AvailableMod): Promise<string | null> {
+/**
+ * 一覧の mod の、指定した版の作者を配布物の署名から確認する。名乗っているだけの作者は表示しない。
+ * `retry` は「いまは確認できない」ときの確認し直し。
+ */
+export function useModAuthor(mod: AvailableMod, version: string): { state: ModAuthorState; retry: () => void } {
     const baseUrl = mod.baseUrl ?? MOD_BASE_URL;
-    const key = `${baseUrl}::${mod.id}@${mod.version}`;
-    const cached = cache.get(key);
-    if (cached) return cached;
-    const p = fetchModAuthor(baseUrl, mod.id, mod.version)
-        .then((author) => author ?? null)
-        .catch(() => null);
-    cache.set(key, p);
-    return p;
-}
+    const key = `${baseUrl}::${mod.id}@${version}`;
+    const [attempt, setAttempt] = useState(0);
+    const [state, setState] = useState<ModAuthorState>(() => cache.get(key) ?? { status: 'checking' });
 
-/** 一覧の mod（最新版）の作者を、配布物の署名から確認する。名乗っているだけの作者は表示しない。 */
-export function useModAuthor(mod: AvailableMod): ModAuthorState {
-    const [state, setState] = useState<ModAuthorState>('checking');
+    // biome-ignore lint/correctness/useExhaustiveDependencies: attempt は確認し直しの合図
     useEffect(() => {
+        const cached = cache.get(key);
+        if (cached) {
+            setState(cached);
+            return;
+        }
         let cancelled = false;
-        setState('checking');
-        authorOf(mod).then((author) => {
-            if (!cancelled) setState(author);
+        setState({ status: 'checking' });
+        fetchModAuthor(baseUrl, mod.id, version).then((result) => {
+            if (result.status !== 'unavailable') cache.set(key, result);
+            if (!cancelled) setState(result);
         });
         return () => {
             cancelled = true;
         };
-    }, [mod]);
-    return state;
+    }, [key, baseUrl, mod.id, version, attempt]);
+
+    const retry = useCallback(() => setAttempt((n) => n + 1), []);
+    return { state, retry };
 }

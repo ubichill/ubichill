@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/api', () => ({ API_BASE: 'https://ubichill.example' }));
 
-import { createSignatureVerifier, isUnsignedModAllowed } from './modSignature';
+import { checkModAuthor, createSignatureVerifier, type FetchedJson, isUnsignedModAllowed } from './modSignature';
 
 const ORIGIN = 'https://ubichill.example';
 
@@ -92,5 +92,84 @@ describe('createSignatureVerifier', () => {
         expect(await verdict).toEqual(pending);
         expect(request).toHaveBeenCalledTimes(3);
         expect(slept).toEqual([10, 20]);
+    });
+});
+
+describe('checkModAuthor', () => {
+    const BASE = 'https://mods.example';
+    const lock = { id: 'pen', version: '1.0.0', manifestIntegrity: `sha256-${'A'.repeat(43)}=`, components: {} };
+    const LOCK_URL = `${BASE}/pen/v1.0.0/lock.json`;
+    const SIG_URL = `${BASE}/pen/v1.0.0/lock.sig.json`;
+    const found = (value: unknown): FetchedJson => ({ found: true, value });
+    const missing: FetchedJson = { found: false };
+
+    const check = (
+        files: Record<string, FetchedJson | Error>,
+        verdict: ModSignatureVerdict | Error = {
+            status: 'verified',
+            author: 'alice@example.com',
+            publicKey: 'k',
+            contentHash: 'h',
+        },
+    ) => {
+        const verify = vi.fn(async () => {
+            if (verdict instanceof Error) throw verdict;
+            return verdict;
+        });
+        const result = checkModAuthor(
+            {
+                fetchJson: async (url) => {
+                    const hit = files[url] ?? missing;
+                    if (hit instanceof Error) throw hit;
+                    return hit;
+                },
+                verify,
+            },
+            BASE,
+            'pen',
+            '1.0.0',
+        );
+        return { result, verify };
+    };
+
+    it('指定した版の lock と署名を確認して、作者を返す', async () => {
+        const { result, verify } = check({ [LOCK_URL]: found(lock), [SIG_URL]: found({ sig: 1 }) });
+        expect(await result).toEqual({ status: 'verified', author: 'alice@example.com' });
+        expect(verify).toHaveBeenCalledWith(lock, { sig: 1 });
+    });
+
+    it('署名ファイルが無いと確定したときだけ「署名なし」', async () => {
+        const { result, verify } = check({ [LOCK_URL]: found(lock) });
+        expect(await result).toEqual({ status: 'unsigned' });
+        expect(verify).not.toHaveBeenCalled();
+    });
+
+    it('通信の失敗・サーバーエラーは「署名なし」にせず、確認できないと返す', async () => {
+        const offline = new Error('offline');
+        for (const files of [
+            { [LOCK_URL]: found(lock), [SIG_URL]: offline },
+            { [LOCK_URL]: offline, [SIG_URL]: found({}) },
+        ]) {
+            expect(await check(files).result).toEqual({ status: 'unavailable' });
+        }
+        const files = { [LOCK_URL]: found(lock), [SIG_URL]: found({}) };
+        expect(await check(files, offline).result).toEqual({ status: 'unavailable' });
+        expect(await check(files, { status: 'rejected', reason: 'author-pending' }).result).toEqual({
+            status: 'unavailable',
+        });
+    });
+
+    it('確定した拒否（取り消された鍵・改ざん）は理由つきで返す', async () => {
+        const files = { [LOCK_URL]: found(lock), [SIG_URL]: found({}) };
+        for (const reason of ['author-unconfirmed', 'signature-content-mismatch'] as const) {
+            expect(await check(files, { status: 'rejected', reason }).result).toEqual({ status: 'rejected', reason });
+        }
+    });
+
+    it('lock が無い mod（実行するコードが無い）は署名の対象外。lock として読めないものは確認できない扱い', async () => {
+        expect(await check({ [SIG_URL]: found({}) }).result).toEqual({ status: 'data-only' });
+        expect(await check({ [LOCK_URL]: found({ id: 'pen' }), [SIG_URL]: found({}) }).result).toEqual({
+            status: 'unavailable',
+        });
     });
 });

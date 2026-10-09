@@ -127,6 +127,8 @@ export interface ModHostManagerOptions<TPayloadMap extends Record<string, unknow
     worldId?: string;
     myUserId?: string;
     modId?: string;
+    /** 権限の許可の対象（作者＋mod の ID。`permissionSubject`）。拒否の診断に載せ、UI が「許可」に変えるときに使う。 */
+    permissionSubject?: string;
     /** Worker (= 1 Component インスタンス) を識別する flat ID。`Ubi.componentInstanceId` として参照可能。 */
     componentInstanceId?: string;
     /** 自 Worker が乗っている Entity (GameObject) の id。`Ubi.entityId` として参照可能。 */

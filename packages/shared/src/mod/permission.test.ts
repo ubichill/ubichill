@@ -4,6 +4,8 @@ import {
     DEFAULT_PERMISSION_POLICY,
     isCapabilityGranted,
     type PermissionPolicy,
+    parsePermissionSubject,
+    permissionSubject,
     resolveCapabilities,
     resolveExternalDomainDecision,
 } from './permission';
@@ -132,5 +134,50 @@ describe('resolveExternalDomainDecision（外部通信ドメイン判定・純�
                 'x.com',
             ),
         ).toBe('deny');
+    });
+});
+
+describe('許可の対象（作者＋mod の ID）', () => {
+    const ALICE = 'alice@example.com';
+    const granted = (subject: string) => ({
+        ...DEFAULT_PERMISSION_POLICY,
+        grants: { [subject]: { 'identity:token': 'allow' as const } },
+        fetchGrants: { [subject]: { 'api.example.com': 'allow' as const } },
+    });
+
+    it('同じ作者の同じ mod には許可が効く', () => {
+        const policy = granted(permissionSubject('pen', ALICE));
+        expect(isCapabilityGranted(policy, permissionSubject('pen', ALICE), 'identity:token')).toBe(true);
+        expect(capabilityNeedsConsent(policy, permissionSubject('pen', ALICE), 'identity:token')).toBe(false);
+        expect(resolveExternalDomainDecision(policy, permissionSubject('pen', ALICE), 'api.example.com')).toBe('allow');
+    });
+
+    it.each([
+        ['同じ ID を名乗る別の作者', permissionSubject('pen', 'mallory@evil.example')],
+        ['同じ ID の未署名 mod', permissionSubject('pen')],
+        ['作者アカウントを ID に埋め込んだ未署名 mod', permissionSubject(`${ALICE}/pen`)],
+        ['作者アカウントを ID に埋め込んだ別の作者の mod', permissionSubject(`${ALICE}/pen`, 'mallory@evil.example')],
+        ['同じ作者の別の mod', permissionSubject('pen2', ALICE)],
+        ['署名が必須になる前の記録のキー（ID だけ）', 'pen'],
+    ])('%s は、許可を引き継がない', (_label, other) => {
+        const policy = granted(permissionSubject('pen', ALICE));
+        expect(other).not.toBe(permissionSubject('pen', ALICE));
+        expect(isCapabilityGranted(policy, other, 'identity:token')).toBe(false);
+        expect(capabilityNeedsConsent(policy, other, 'identity:token')).toBe(true);
+        expect(resolveExternalDomainDecision(policy, other, 'api.example.com')).toBe('ask');
+    });
+
+    it('署名が必須になる前の記録（ID だけのキー）は、未署名の mod にも使われない', () => {
+        const policy = granted('pen');
+        expect(isCapabilityGranted(policy, permissionSubject('pen'), 'identity:token')).toBe(false);
+        expect(isCapabilityGranted(policy, permissionSubject('pen', ALICE), 'identity:token')).toBe(false);
+    });
+
+    it('表示用に作者と ID へ戻せる（ID に / や @ があっても作者を取り違えない）', () => {
+        expect(parsePermissionSubject(permissionSubject('pen', ALICE))).toEqual({ author: ALICE, modId: 'pen' });
+        expect(parsePermissionSubject(permissionSubject('a/b@c', ALICE))).toEqual({ author: ALICE, modId: 'a/b@c' });
+        expect(parsePermissionSubject(permissionSubject('pen'))).toEqual({ modId: 'pen' });
+        expect(parsePermissionSubject(permissionSubject(`${ALICE}/pen`))).toEqual({ modId: `${ALICE}/pen` });
+        expect(parsePermissionSubject('pen')).toEqual({ modId: 'pen' });
     });
 });
