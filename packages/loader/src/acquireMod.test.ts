@@ -141,6 +141,20 @@ describe('acquireMod', () => {
         expect(called).toBe(false);
     });
 
+    it('manifest の一時的な取得失敗は記憶せず、通信復旧後の再試行で読み込める', async () => {
+        const requests: string[] = [];
+        const good = fakeFetch(goodRoutes());
+        const failing = fakeFetch({ [manifestUrlAbs]: { body: '', ok: false, status: 503 } });
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === manifestUrlAbs) requests.push(url);
+            return url === manifestUrlAbs && requests.length === 1 ? failing(url, init) : good(url, init);
+        };
+        const options = { baseUrl: BASE, lock: lock(), ...unsignedDev, fetchImpl };
+        expect(await acquireMod(TYPE, options)).toBe('not-found');
+        expect(await acquireMod(TYPE, options)).toMatchObject({ id: TYPE, workerCode: WORKER_CODE });
+        expect(requests).toHaveLength(2);
+    });
+
     it('workerUrl の無い Component は data-only', async () => {
         const dataOnlyManifest = JSON.stringify({
             id: MOD,

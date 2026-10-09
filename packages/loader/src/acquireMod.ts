@@ -110,6 +110,10 @@ function fetchManifest(
         })
         .catch(() => null);
     manifestCache.set(key, p);
+    // 通信障害・取得失敗を記憶すると、再試行しても同じ失敗を返し続ける。
+    p.then((result) => {
+        if (result === null && manifestCache.get(key) === p) manifestCache.delete(key);
+    });
     return p;
 }
 
