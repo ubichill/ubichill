@@ -319,3 +319,4 @@ HTTP契約・型生成はOpenAPI、WebSocket契約はAsyncAPI。詳細は
 | `/worlds` | 一覧・詳細 | 作成 | 更新・削除（**作成者のみ**） |
 | `/instances` | 一覧・詳細 | 作成（10件/h） | 削除（**リーダーのみ**） |
 | `/users/me` | 自分の情報 | — | — |
+| `/mods/signature/verify` | — | mod の作者署名の確認（**ログイン不要**。`{ entry, signature }` → `{ status: 'verified', author } \| { status: 'rejected', reason }`。→ [MOD.md](./MOD.md#作者署名必須)） | — |

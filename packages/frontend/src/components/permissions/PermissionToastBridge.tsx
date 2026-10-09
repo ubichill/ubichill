@@ -29,12 +29,11 @@ export function PermissionToastBridge() {
             const p = permissionsRef.current;
             let action: ToastAction | undefined;
             if (p && retry) {
-                // retry.modId は "mod:component" のことがあるので ":" 前に正規化。
-                const name = retry.modId.split(':')[0];
+                // retry.subject は許可の対象（作者＋mod の ID）。拒否した mod と同じ作者の mod にだけ許可が付く。
                 action =
                     'capability' in retry
-                        ? { label: '許可', run: () => p.grantCapability(name, retry.capability) }
-                        : { label: '許可', run: () => p.grantExternalDomain(name, retry.domain) };
+                        ? { label: '許可', run: () => p.grantCapability(retry.subject, retry.capability) }
+                        : { label: '許可', run: () => p.grantExternalDomain(retry.subject, retry.domain) };
             }
             pushToast(message, 'warn', action);
         });

@@ -31,6 +31,7 @@ function setup(fetchImpl: ReturnType<typeof vi.fn>) {
     const report = vi.fn();
     const handler = createModFetch({
         modId: 'demo',
+        permissionSubject: 'alice@example.com/demo',
         appOrigin: APP,
         authorizeUrl,
         fetchImpl: fetchImpl as never,
@@ -74,7 +75,7 @@ describe('createModFetch', () => {
         expect(res).toMatchObject({ ok: false, status: 403, error: { code: UbiErrorCode.FETCH_DOMAIN_NOT_ALLOWED } });
         expect(res.body).toBeInstanceOf(ArrayBuffer);
         expect(report).toHaveBeenCalledWith(
-            expect.objectContaining({ retry: { modId: 'demo', domain: 'evil.example' } }),
+            expect.objectContaining({ retry: { subject: 'alice@example.com/demo', domain: 'evil.example' } }),
         );
     });
 
@@ -96,6 +97,7 @@ describe('createModFetch', () => {
         const controller = new AbortController();
         const handler = createModFetch({
             modId: 'demo',
+            permissionSubject: 'alice@example.com/demo',
             appOrigin: APP,
             authorizeUrl: async () => {
                 controller.abort();

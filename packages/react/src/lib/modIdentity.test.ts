@@ -17,6 +17,7 @@ function setup(overrides: Partial<Parameters<typeof createModIdentity>[0]> = {})
     const authorizeUrl = vi.fn(allow);
     const handler = createModIdentity({
         modId: 'video-player',
+        permissionSubject: 'alice@example.com/video-player',
         authorizeUrl,
         requestToken,
         now: () => clock.now,
@@ -68,7 +69,9 @@ describe('createModIdentity', () => {
         });
         expect(requestToken).not.toHaveBeenCalled();
         expect(report).toHaveBeenCalledWith(
-            expect.objectContaining({ retry: { modId: 'video-player', domain: 'videoplayer.example' } }),
+            expect.objectContaining({
+                retry: { subject: 'alice@example.com/video-player', domain: 'videoplayer.example' },
+            }),
         );
     });
 

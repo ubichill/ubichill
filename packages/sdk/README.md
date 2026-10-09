@@ -70,7 +70,7 @@ export default function Counter() {
 ```bash
 npx ubichill build  [--mods-dir=<dir>] [--public-mods-dir=<dir>] [--dist-dir=<dir>]
 npx ubichill lock   <world.yaml> [--mods-dir=<dir>] [--base-url=<url>] [--out=<path>]
-npx ubichill verify [--dist-dir=<dir>]
+npx ubichill verify [--dist-dir=<dir>] [--require-signatures]
 ```
 
 - **`build`**: `src/**/*.worker.ts(x)` のうち `export const config` を持つファイルを Component
@@ -96,6 +96,7 @@ npx ubichill verify [--dist-dir=<dir>]
     取得に失敗しても（未公開・オフライン等）ビルド自体は失敗しない。
 - **`verify`**: `build` の出力を fail-closed で再検証する。`lock.json` の integrity が
   実際に配布するバイト列と一致するかを独立に再計算して突き合わせ、ズレていれば非ゼロ終了する。
+  作者署名（`lock.sig.json`）があれば今の lock に対して有効かも調べ、`--require-signatures` で署名の無い mod も不合格にする。
   CI の配布前ゲートに使う想定。
 - **`lock`**: ワールド定義（YAML）が参照する mod の `lock.json` 断片を集約し、
   兄弟ファイル `<world>.lock.json` に書き出す。ホストはこのロックでmodの完全性
@@ -161,6 +162,21 @@ jobs:
           UBICHILL_CREDENTIALS: ${{ secrets.UBICHILL_CREDENTIALS }}
       # GitHub Pages などに置くなら、署名済みのファイルを書き出してアップロードする
       # - run: npx ubichill publish worlds/*.yaml --out=dist/
+```
+
+- **mod に署名する（必須）**: Host は、作者アカウントの署名を確認できた mod だけを実行する。`build` のあとに
+  `publish <ビルド出力>` を実行すると、ワールドと同じアカウント・同じ鍵で `v<version>/lock.sig.json` を書き出す
+  （mod はサーバーへ送らない。署名済みの出力をそのまま GitHub Pages などへ置く）。開発中は、開発用の Host が自分の
+  オリジンの未署名 mod だけを動かす。
+
+```yaml
+# mod のリポジトリの公開ワークフロー（抜粋）
+      - run: npx ubichill build
+      - run: npx ubichill publish dist          # 複数 mod の出力なら dist/mods
+        env:
+          UBICHILL_CREDENTIALS: ${{ secrets.UBICHILL_CREDENTIALS }}
+      - run: npx ubichill verify --dist-dir=dist --require-signatures
+      # このあと dist を GitHub Pages などへ置く
 ```
 
 - **`verify <world.yaml>`**: 兄弟の `.sig.json` が今の `world.yaml` と `.lock.json` に対して有効か調べる（CI 用。無効・未署名・

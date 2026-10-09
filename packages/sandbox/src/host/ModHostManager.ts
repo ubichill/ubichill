@@ -19,6 +19,7 @@ import {
     type ModGuestCommand,
     type ModHostEvent,
     PROTOCOL_VERSION,
+    permissionSubject,
     UbiError,
     UbiErrorCode,
 } from '@ubichill/shared';
@@ -69,6 +70,7 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
     private readonly _commandContext: CommandContext<TPayloadMap>;
     private readonly _logPrefix: string;
     private readonly _modId: string;
+    private readonly _permissionSubject: string;
     private readonly _instanceKey: string;
     /** 現Tickにホスト側でコマンド処理に要した累積時間 (ms) */
     private _currentTickCommandMs = 0;
@@ -105,6 +107,8 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
         this.handlers = options.handlers;
         this.onResourceLimitExceeded = options.onResourceLimitExceeded;
         this._modId = options.modId ?? 'unknown';
+        this._permissionSubject =
+            options.permissionSubject ?? permissionSubject(this._modId.split(':')[0] ?? this._modId);
         this._logPrefix = options.modId ? `[ModSandbox:${options.modId}]` : '[ModSandbox]';
         this._instanceKey = `${this._modId}:${performance.now().toFixed(3)}:${Math.random().toString(36).slice(2)}`;
         registerWorker(this._instanceKey, {
@@ -299,7 +303,7 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
                 modId: this._modId,
                 code: errorCode,
                 message,
-                ...(this._onDemand && capability ? { retry: { modId: this._modId, capability } } : {}),
+                ...(this._onDemand && capability ? { retry: { subject: this._permissionSubject, capability } } : {}),
             });
             if (id) {
                 this.sendEvent({ type: HostEventType.EVT_RPC_RESPONSE, id, success: false, error: message, errorCode });

@@ -26,7 +26,10 @@ import type React from 'react';
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import { createSharedWait } from '../lib/sharedWait';
 
-/** 承認プロンプト。mod一括（capability 群）と外部通信ドメインの 2 種。 */
+/**
+ * 承認プロンプト。mod一括（capability 群）と外部通信ドメインの 2 種。
+ * このファイルの `modId` は許可の対象（作者＋mod の ID。shared の `permissionSubject`）。表示は `parsePermissionSubject` で分ける。
+ */
 export type PermissionPromptRequest =
     | { kind: 'mod'; modId: string; capabilities: { capability: string; risk: CapabilityRisk }[] }
     | { kind: 'external'; modId: string; domain: string };

@@ -4,6 +4,7 @@ import { authorizeExternalUrl } from '../lib/externalUrlAuthorization';
 const base = {
     modBase: 'https://mods.example.com/sample/v1/',
     modId: 'sample',
+    permissionSubject: 'alice@example.com/sample',
     appOrigin: 'https://ubichill.example.com',
 };
 
@@ -16,7 +17,11 @@ describe('authorizeExternalUrl', () => {
             authorizeExternalDomain,
         });
 
-        expect(authorizeExternalDomain).toHaveBeenCalledWith('sample', 'media.example.com', undefined);
+        expect(authorizeExternalDomain).toHaveBeenCalledWith(
+            'alice@example.com/sample',
+            'media.example.com',
+            undefined,
+        );
         expect(result).toEqual({ allowed: true, url: 'https://media.example.com/video.mp4' });
     });
 
@@ -81,7 +86,11 @@ describe('authorizeExternalUrl', () => {
             signal: controller.signal,
         });
 
-        expect(authorizeExternalDomain).toHaveBeenCalledWith('sample', 'api.example.com', controller.signal);
+        expect(authorizeExternalDomain).toHaveBeenCalledWith(
+            'alice@example.com/sample',
+            'api.example.com',
+            controller.signal,
+        );
         expect(result).toMatchObject({ allowed: false, code: 'FETCH_ABORTED' });
         expect(result).not.toHaveProperty('domain');
     });

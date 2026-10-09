@@ -9,7 +9,14 @@
  * 返す LoadedMod は React/DOM 非依存の中立表現。Host が WorkerModDefinition にマップする。
  */
 import type { ComponentDataFieldSpec, OverlayMode } from '@ubichill/shared';
-import { type ModLock, resolveLockedMod } from '@ubichill/shared';
+import {
+    MOD_SIGNATURE_FILE,
+    type ModLock,
+    type ModLockEntry,
+    type ModSignatureRejectReason,
+    type ModSignatureVerdict,
+    resolveLockedMod,
+} from '@ubichill/shared';
 import { sriOf } from './integrity.ts';
 import type { AcquireResult, FetchLike, LoadedMod } from './types.ts';
 
@@ -55,8 +62,20 @@ export interface AcquireModOptions {
     baseUrl: string;
     /** ワールドの mod 完全性ロック。lock に固定されていない mod は、ワールドの置き場所に関係なく実行しない。 */
     lock?: ModLock;
+    /**
+     * 作者署名の検証（署名の照合と、署名鍵が作者の有効な鍵かの確認）。Host が注入する。
+     * 確認できた mod だけを実行する。例外は「いまは確認できない」として扱う。
+     */
+    verifySignature: (entry: ModLockEntry, signature: unknown) => Promise<ModSignatureVerdict>;
+    /**
+     * 署名ファイルの無い mod を「署名なし（開発）」として動かしてよいか（取得元の baseUrl で判定）。
+     * 開発用の Host が自分のオリジンの mod にだけ許す。既定は不可。署名ファイルがあれば常に検証する。
+     */
+    allowUnsigned?: (baseUrl: string) => boolean;
     /** 注入 fetch（既定: globalThis.fetch）。テスト・Node 実行で差し替える。 */
     fetchImpl?: FetchLike;
+    /** 現在時刻（ミリ秒）。作者の確認結果の期限に使う。既定は Date.now。 */
+    now?: () => number;
 }
 
 const defaultFetch: FetchLike = (input, init) => fetch(input, init as RequestInit) as unknown as ReturnType<FetchLike>;
@@ -91,6 +110,10 @@ function fetchManifest(
         })
         .catch(() => null);
     manifestCache.set(key, p);
+    // 通信障害・取得失敗を記憶すると、再試行しても同じ失敗を返し続ける。
+    p.then((result) => {
+        if (result === null && manifestCache.get(key) === p) manifestCache.delete(key);
+    });
     return p;
 }
 
@@ -126,12 +149,85 @@ async function fetchWorkerBytes(workerUrl: string, entityType: string, f: FetchL
     }
 }
 
+/** 404・SPA fallback は署名なし。通信障害を署名なしと誤判定しない。 */
+async function fetchSignature(versionedBase: string, f: FetchLike): Promise<unknown> {
+    const res = await f(`${versionedBase}/${MOD_SIGNATURE_FILE}`, { cache: 'no-store' });
+    if (!res.ok) {
+        if (res.status === 404 || res.status === undefined) return undefined;
+        throw new Error(`署名ファイルを取得できません (${res.status})`);
+    }
+    if (res.headers.get('content-type')?.includes('text/html')) return undefined;
+    try {
+        return JSON.parse(await res.text()) as unknown;
+    } catch {
+        return {}; // ファイルはあるが壊れている。開発環境でも署名なしにはしない。
+    }
+}
+
+type AuthorResult = { author?: string } | { rejected: ModSignatureRejectReason };
+
+/**
+ * 作者を確認できた結果を使い回す時間。これを過ぎた読み込み（ワールドの移動・入り直し）ではサーバーへ確認し直す。
+ * 鍵の取り消しをサーバーが知ってから、同じブラウザで新しく実行されなくなるまでの上限になる。
+ * 実行中の Worker は止めない（実行中の mod を止めるのは別の仕組み）。
+ */
+export const MOD_AUTHOR_CACHE_TTL_MS = 5 * 60 * 1000;
+
+// 同じ mod の複数 Component で作者の確認を繰り返さない。確認できなかった結果は残さない（次の読み込みで確認し直す）。
+const authorCache = new Map<string, { checkedAt: number; result: Promise<AuthorResult> }>();
+
+async function checkAuthor(
+    versionedBase: string,
+    baseUrl: string,
+    lockEntry: ModLockEntry,
+    opts: AcquireModOptions,
+    f: FetchLike,
+): Promise<AuthorResult> {
+    const signature = await fetchSignature(versionedBase, f);
+    if (signature === undefined) {
+        return opts.allowUnsigned?.(baseUrl) ? {} : { rejected: 'signature-missing' };
+    }
+    const verdict = await opts
+        .verifySignature(lockEntry, signature)
+        .catch((): ModSignatureVerdict => ({ status: 'rejected', reason: 'author-pending' }));
+    return verdict.status === 'verified' ? { author: verdict.author } : { rejected: verdict.reason };
+}
+
+function resolveAuthor(
+    versionedBase: string,
+    baseUrl: string,
+    lockEntry: ModLockEntry,
+    opts: AcquireModOptions,
+    f: FetchLike,
+): Promise<AuthorResult> {
+    const key = `${versionedBase}::${JSON.stringify(lockEntry)}`;
+    const now = (opts.now ?? Date.now)();
+    const cached = authorCache.get(key);
+    if (cached && now - cached.checkedAt < MOD_AUTHOR_CACHE_TTL_MS) return cached.result;
+    const entry = {
+        checkedAt: now,
+        result: checkAuthor(versionedBase, baseUrl, lockEntry, opts, f).catch(
+            (): AuthorResult => ({ rejected: 'author-pending' }),
+        ),
+    };
+    authorCache.set(key, entry);
+    // 後から始まった確認を、先に始まった確認の失敗で消さない
+    const forget = () => {
+        if (authorCache.get(key) === entry) authorCache.delete(key);
+    };
+    entry.result.then((result) => {
+        if ('rejected' in result) forget();
+    }, forget);
+    return entry.result;
+}
+
 /**
  * Component 型（`modId:componentName`）から検証済み {@link LoadedMod} を構築する。
  *
  * lock がある mod は「固定 version」を直接取得し（最新ポインタを信頼しない）、
  * manifest / worker の生バイト列 hash を lock と照合する。lock 欠落・不一致は、ワールドの置き場所に関係なく
  * 実行拒否（本体のワールドだけ緩めることはしない）。capability は lock の天井。
+ * lock と一致した mod は、作者署名（`lock.sig.json`）で作者を確認できたものだけを返す。
  */
 export async function acquireMod(entityType: string, opts: AcquireModOptions): Promise<AcquireResult> {
     const { lock } = opts;
@@ -175,6 +271,9 @@ export async function acquireMod(entityType: string, opts: AcquireModOptions): P
 
     if (verdict.status === 'rejected') return { rejected: verdict.reason };
 
+    const authored = await resolveAuthor(versionedBase, baseUrl, lockEntry, opts, f);
+    if ('rejected' in authored) return authored;
+
     // capability 天井は lock 由来のみ（manifest の自己申告は使わない）
     const capabilities = [...verdict.capabilities];
 
@@ -183,6 +282,7 @@ export async function acquireMod(entityType: string, opts: AcquireModOptions): P
         name: `${fetched.manifest.name ?? modName} - ${entityType.slice(colonIdx + 1)}`,
         workerCode: new TextDecoder().decode(fetchedWorker.bytes),
         capabilities,
+        author: authored.author,
         modBase: versionedBase,
         // manifest は lock の manifestIntegrity と照合済みなので、ここに載る hash もそのまま信頼できる。
         assetIntegrity: assetIntegrityOf(fetched.manifest.assetIntegrity),
@@ -201,4 +301,5 @@ export async function acquireMod(entityType: string, opts: AcquireModOptions): P
 /** テスト / インスタンス離脱時のキャッシュリセット。 */
 export function resetAcquireCaches(): void {
     manifestCache.clear();
+    authorCache.clear();
 }

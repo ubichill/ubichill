@@ -182,6 +182,7 @@ export function useModWorker<TPayloadMap extends Record<string, unknown> = Recor
         const manager = new ModHostManager<TPayloadMap>({
             modCode: options.modCode,
             modId: options.modId,
+            permissionSubject: options.permissionSubject,
             componentInstanceId: options.componentInstanceId,
             entityId: options.entityId,
             parentEntityId: options.parentEntityId,
@@ -270,6 +271,7 @@ export function useModWorker<TPayloadMap extends Record<string, unknown> = Recor
         options.enabled,
         options.modCode,
         options.modId,
+        options.permissionSubject,
         options.componentInstanceId,
         options.entityId,
         options.parentEntityId,

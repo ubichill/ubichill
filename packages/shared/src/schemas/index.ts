@@ -41,6 +41,7 @@ export {
     ModLockEntrySchema,
     ModLockSchema,
 } from './modLock.schema';
+export { MOD_SIGNATURE_FILE, type ModSignature, ModSignatureSchema } from './modSignature.schema';
 export {
     AuthorSchema,
     type ComponentType,

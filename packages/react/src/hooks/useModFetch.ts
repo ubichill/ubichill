@@ -15,7 +15,7 @@
 
 import { useMemo } from 'react';
 import { createModFetch, type ModFetchHandler } from '../lib/modFetch';
-import type { WorkerModDefinition } from '../types';
+import { modPermissionSubject, type WorkerModDefinition } from '../types';
 import { useExternalUrlAuthorization } from './useExternalUrlAuthorization';
 
 export function useModFetch(definition: WorkerModDefinition): ModFetchHandler {
@@ -27,9 +27,10 @@ export function useModFetch(definition: WorkerModDefinition): ModFetchHandler {
             createModFetch({
                 // definition.id は "mod:component" 形式。承認は mod 単位なので ":" の前を使う。
                 modId: definition.id.split(':')[0],
+                permissionSubject: modPermissionSubject(definition),
                 appOrigin,
                 authorizeUrl,
             }),
-        [definition.id, appOrigin, authorizeUrl],
+        [definition, appOrigin, authorizeUrl],
     );
 }
