@@ -20,7 +20,7 @@
         "event:emit",
         "scene:read"
       ],
-      "workerUrl": "./canvas/index.d806c782.js"
+      "workerUrl": "./canvas/index.eec80df1.js"
     },
     "danmaku:player": {
       "watchScope": "world",
@@ -70,7 +70,7 @@
         "scene:update",
         "ui:render"
       ],
-      "workerUrl": "./player/index.71e94e8b.js"
+      "workerUrl": "./player/index.dad0cc88.js"
     },
     "danmaku:wall": {
       "description": "core:collider と同じEntityに置く、弾幕ワールドの壁の見た目。",
