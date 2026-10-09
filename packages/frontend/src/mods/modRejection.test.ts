@@ -49,7 +49,7 @@ describe('groupRejections', () => {
         ]);
     });
 
-    it('mod の中で理由が分かれたら、再試行しても直らない理由を見せ、再試行は出さない', () => {
+    it('mod の中で理由が分かれたら、再試行しても直らない理由を見せ、回復できる部品の再試行を残す', () => {
         const [mod] = groupRejections(
             new Map([
                 ['m:a', 'author-pending'],
@@ -58,7 +58,7 @@ describe('groupRejections', () => {
         );
         expect(mod).toMatchObject({
             message: describeModRejection('integrity-mismatch').message,
-            retryable: false,
+            retryable: true,
         });
     });
 

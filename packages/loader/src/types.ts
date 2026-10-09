@@ -49,6 +49,8 @@ export type FetchLike = (input: string, init?: { cache?: 'no-store' }) => Promis
 
 export interface FetchLikeResponse {
     ok: boolean;
+    /** HTTP status。古い注入 fetch では省略可。 */
+    status?: number;
     headers: { get(name: string): string | null };
     json(): Promise<unknown>;
     text(): Promise<string>;

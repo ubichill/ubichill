@@ -1,9 +1,13 @@
+import { resolveLatestVersion } from '@ubichill/loader';
 import { type Dependency, displayAuthorAccount } from '@ubichill/shared';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { type AvailableMod, useAvailableMods } from '@/lib/mods/useAvailableMods';
 import { useModAuthor } from '@/lib/mods/useModAuthor';
 import { SETTINGS_KEYS, useSetting } from '@/lib/settings';
+import { checkModInstallation, type ModInstallationCheck } from '@/mods/modInstallation';
+import { MOD_BASE_URL } from '@/mods/modLoader';
 import { describeModRejection } from '@/mods/modRejection';
+import { fetchModAuthor, isUnsignedModAllowed } from '@/mods/modSignature';
 import { css, cx } from '@/styled-system/css';
 import { computeModDiff, type ModSelectionEntry, selectionToDependencies } from '../../lib/modSelection';
 import { editorButton } from '../../recipes/button';
@@ -13,7 +17,7 @@ import { RegistryUrlManager } from './RegistryUrlManager';
 const isStringArray = (value: unknown): value is string[] =>
     Array.isArray(value) && value.every((v) => typeof v === 'string');
 
-const authorLine = css({ fontSize: '11px', mt: '2px', wordBreak: 'break-all' });
+const authorLine = css({ fontSize: '11px', mt: '2px', overflowWrap: 'anywhere', lineHeight: '1.5' });
 
 /**
  * インストールする版の作者（署名で確認できたものだけ）。確認できない版は、本番の Host では実行されない。
@@ -21,7 +25,13 @@ const authorLine = css({ fontSize: '11px', mt: '2px', wordBreak: 'break-all' });
  */
 function ModAuthor({ mod, version }: { mod: AvailableMod; version: string }) {
     const { state, retry } = useModAuthor(mod, version);
-    if (state.status === 'checking' || state.status === 'data-only') return null;
+    if (state.status === 'data-only') return null;
+    if (state.status === 'checking')
+        return (
+            <div className={cx(authorLine, css({ color: 'textSubtle' }))} role="status">
+                v{version} の作者を確認中…
+            </div>
+        );
     if (state.status === 'verified') {
         return (
             <div className={cx(authorLine, css({ color: 'textSubtle' }))}>
@@ -31,26 +41,34 @@ function ModAuthor({ mod, version }: { mod: AvailableMod; version: string }) {
     }
     if (state.status === 'unavailable') {
         return (
-            <div className={cx(authorLine, css({ color: 'textSubtle', display: 'flex', gap: '6px' }))}>
+            <div
+                className={cx(
+                    authorLine,
+                    css({ color: 'textSubtle', display: 'flex', alignItems: 'center', gap: '6px' }),
+                )}
+            >
                 <span>v{version} の作者をいま確認できません</span>
-                {/* カード全体が選択ボタンなので、入れ子の button にしない */}
-                <span
-                    role="button"
-                    tabIndex={0}
-                    className={css({ color: 'primary', fontWeight: '600', cursor: 'pointer' })}
+                <button
+                    type="button"
+                    className={css({
+                        color: 'primary',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        flexShrink: 0,
+                        whiteSpace: 'nowrap',
+                        minHeight: '32px',
+                        px: '1',
+                        bg: 'transparent',
+                        border: 'none',
+                        _focusVisible: { outline: '2px solid', outlineColor: 'primary' },
+                    })}
                     onClick={(e) => {
                         e.stopPropagation();
                         retry();
                     }}
-                    onKeyDown={(e) => {
-                        if (e.key !== 'Enter' && e.key !== ' ') return;
-                        e.preventDefault();
-                        e.stopPropagation();
-                        retry();
-                    }}
                 >
-                    再試行
-                </span>
+                    再確認
+                </button>
             </div>
         );
     }
@@ -91,6 +109,41 @@ export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorP
     const diff = useMemo(() => computeModDiff(dependencies, nextDependencies), [dependencies, nextDependencies]);
     const hasDiff = diff.added.length > 0 || diff.removed.length > 0 || diff.updated.length > 0;
 
+    const [installation, setInstallation] = useState<{ checking: boolean; failures: ModInstallationCheck[] }>({
+        checking: false,
+        failures: [],
+    });
+    const attemptRef = useRef(0);
+    useEffect(
+        () => () => {
+            attemptRef.current += 1;
+        },
+        [],
+    );
+    const resetInstallation = () => {
+        attemptRef.current += 1;
+        setInstallation({ checking: false, failures: [] });
+    };
+    const install = async () => {
+        const attempt = ++attemptRef.current;
+        setInstallation({ checking: true, failures: [] });
+        const checks = await checkModInstallation(nextDependencies, {
+            baseUrl: MOD_BASE_URL,
+            resolveLatest: resolveLatestVersion,
+            checkAuthor: fetchModAuthor,
+            allowUnsigned: (baseUrl) =>
+                isUnsignedModAllowed({
+                    devHost: import.meta.env.DEV || import.meta.env.VITE_ENVIRONMENT === 'development',
+                    baseUrl,
+                    origin: window.location.origin,
+                }),
+        });
+        if (attemptRef.current !== attempt) return;
+        const failures = checks.filter((check) => !check.allowed);
+        setInstallation({ checking: false, failures });
+        if (failures.length === 0) onCommitDependencies(nextDependencies);
+    };
+
     const knownIds = new Set(mods.map((m) => m.id));
     // 読み込み中は mod 一覧が空のため、既存の依存を「未知」と誤判定しない。
     const unknownSelected = loading ? [] : selected.filter((e) => !knownIds.has(e.id));
@@ -103,12 +156,14 @@ export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorP
     const removeSelected = (id: string) => setSelected((prev) => prev.filter((e) => e.id !== id));
 
     const handleToggle = (p: AvailableMod) => {
+        resetInstallation();
         const existing = selected.find((e) => e.id === p.id);
         if (existing) removeSelected(p.id);
         else upsertSelected({ id: p.id, version: 'latest', baseUrl: p.baseUrl });
     };
 
     const handleVersionChange = (p: AvailableMod, version: string) => {
+        resetInstallation();
         upsertSelected({ id: p.id, version, baseUrl: p.baseUrl });
     };
 
@@ -127,6 +182,11 @@ export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorP
                         const checked = !!selectedEntry;
                         const pinnedVersion = selectedEntry?.version ?? 'latest';
                         const isOutdated = pinnedVersion !== 'latest' && pinnedVersion !== p.version;
+                        const displayedVersion = pinnedVersion === 'latest' ? p.version : pinnedVersion;
+                        const componentCount =
+                            displayedVersion === p.version
+                                ? p.components.length
+                                : p.versions?.find((v) => v.version === displayedVersion)?.components?.length;
                         return (
                             <div
                                 key={`${p.sourceLabel}:${p.id}`}
@@ -145,6 +205,7 @@ export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorP
                                 <button
                                     type="button"
                                     onClick={() => handleToggle(p)}
+                                    aria-pressed={checked}
                                     className={css({
                                         display: 'flex',
                                         alignItems: 'flex-start',
@@ -197,12 +258,15 @@ export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorP
                                             {p.name}
                                         </div>
                                         <div className={css({ fontSize: '11px', color: 'textSubtle', mt: '2px' })}>
-                                            v{p.version} · {p.components.length} components
+                                            v{displayedVersion}
+                                            {componentCount === undefined ? '' : ` · ${componentCount} コンポーネント`}
                                         </div>
-                                        <ModAuthor mod={p} version={isOutdated ? pinnedVersion : p.version} />
                                         <SourceLabel mod={p} />
                                     </div>
                                 </button>
+                                <div className={css({ pl: '24px' })}>
+                                    <ModAuthor mod={p} version={displayedVersion} />
+                                </div>
 
                                 {checked && (
                                     <div
@@ -293,7 +357,10 @@ export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorP
                                 <span>{e.id}</span>
                                 <button
                                     type="button"
-                                    onClick={() => removeSelected(e.id)}
+                                    onClick={() => {
+                                        resetInstallation();
+                                        removeSelected(e.id);
+                                    }}
                                     className={css({
                                         fontSize: '11px',
                                         color: 'errorText',
@@ -331,14 +398,47 @@ export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorP
                 ) : (
                     <p className={css({ fontSize: '13px', color: 'textMuted' })}>変更はありません</p>
                 )}
+                {installation.failures.length > 0 && (
+                    <div
+                        role="alert"
+                        className={css({
+                            mt: '3',
+                            p: '3',
+                            border: '1px solid',
+                            borderColor: 'border',
+                            borderRadius: '8px',
+                            color: 'errorText',
+                            fontSize: '13px',
+                        })}
+                    >
+                        <p>利用できない mod があるため、変更を反映しませんでした。</p>
+                        <ul>
+                            {installation.failures.map((check) => (
+                                <li key={check.modId}>
+                                    {check.modId}
+                                    {check.version ? ` v${check.version}` : ''}:{' '}
+                                    {check.result.status === 'unsigned'
+                                        ? 'この版には作者の署名がなく、本番では利用できません。別の版を選ぶか、一覧から外してください。'
+                                        : check.result.status === 'rejected'
+                                          ? `${describeModRejection(check.result.reason).message}。別の版を選ぶか、一覧から外してください。`
+                                          : 'いまは確認できません。時間をおいて再確認してください。'}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
                 <div className={css({ mt: '3', display: 'flex', justifyContent: 'flex-end' })}>
                     <button
                         type="button"
-                        onClick={() => onCommitDependencies(nextDependencies)}
-                        disabled={!hasDiff}
+                        onClick={install}
+                        disabled={!hasDiff || installation.checking || loading}
                         className={editorButton({ intent: 'success' })}
                     >
-                        インストール
+                        {installation.checking
+                            ? '利用可否を確認中…'
+                            : installation.failures.length > 0
+                              ? '再確認してインストール'
+                              : '確認してインストール'}
                     </button>
                 </div>
             </PanelSection>
@@ -351,14 +451,10 @@ export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorP
 }
 
 function SourceLabel({ mod }: { mod: AvailableMod }) {
-    const isLocal = mod.sourceLabel === 'local';
+    const url = URL.parse(mod.baseUrl ?? MOD_BASE_URL, window.location.origin);
     return (
-        <div className={css({ fontSize: '10px', mt: '2px', opacity: 0.85 })}>
-            {isLocal ? (
-                <span className={css({ color: 'textSubtle' })}>ローカル</span>
-            ) : (
-                <span className={css({ color: 'errorText' })}>外部 URL（要確認）</span>
-            )}
+        <div className={css({ fontSize: '11px', mt: '2px', color: 'textSubtle', overflowWrap: 'anywhere' })}>
+            配信元: {url?.host ?? mod.sourceLabel}
         </div>
     );
 }

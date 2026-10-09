@@ -31,12 +31,15 @@ const manifestJson = JSON.stringify({
 });
 
 /** URL→レスポンス本体をひく最小 fetch フェイク。 */
-function fakeFetch(routes: Record<string, { body: string; contentType?: string; ok?: boolean }>): FetchLike {
+function fakeFetch(
+    routes: Record<string, { body: string; contentType?: string; ok?: boolean; status?: number }>,
+): FetchLike {
     return async (input): Promise<FetchLikeResponse> => {
         const hit = routes[input];
         const body = hit?.body ?? '';
         return {
             ok: hit ? (hit.ok ?? true) : false,
+            status: hit ? (hit.status ?? (hit.ok === false ? 503 : 200)) : 404,
             headers: { get: (n) => (n.toLowerCase() === 'content-type' ? (hit?.contentType ?? '') : null) },
             json: async () => JSON.parse(body),
             text: async () => body,
@@ -312,6 +315,22 @@ describe('作者署名', () => {
             fetchImpl: fakeFetch(routes),
         });
         expect(r).toEqual({ rejected: 'signature-missing' });
+    });
+
+    it.each([429, 503])('署名の取得が HTTP %i なら、未署名と決めつけず再試行できる', async (status) => {
+        const routes = { ...goodRoutes(), [sigUrlAbs]: { body: '', ok: false, status } };
+        expect(
+            await acquireMod(TYPE, { baseUrl: BASE, lock: lock(), ...unsignedDev, fetchImpl: fakeFetch(routes) }),
+        ).toEqual({ rejected: 'author-pending' });
+    });
+
+    it('署名ファイルへの通信失敗も、開発用の未署名例外にしない', async () => {
+        const fallback = fakeFetch(goodRoutes());
+        const fetchImpl: FetchLike = (url, init) =>
+            url === sigUrlAbs ? Promise.reject(Error('offline')) : fallback(url, init);
+        expect(await acquireMod(TYPE, { baseUrl: BASE, lock: lock(), ...unsignedDev, fetchImpl })).toEqual({
+            rejected: 'author-pending',
+        });
     });
 
     it('開発用の Host は、許した取得元の未署名 mod だけを作者なしで動かす', async () => {

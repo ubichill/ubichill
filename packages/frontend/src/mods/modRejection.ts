@@ -10,6 +10,7 @@ export interface ModRejectionText {
 }
 
 const TEXTS: Record<string, ModRejectionText> = {
+    'load-unavailable': { message: 'mod のファイルを取得できません。時間をおいて再試行してください', retryable: true },
     'lock-missing': { message: 'ワールドがこの mod の内容を固定していません', retryable: false },
     'integrity-mismatch': { message: 'ワールドが固定した内容と違うコードが配られています', retryable: false },
     'manifest-mismatch': { message: 'ワールドが固定した内容と違う定義が配られています', retryable: false },
@@ -54,7 +55,7 @@ export function groupRejections(rejections: ReadonlyMap<string, string>): Reject
             return {
                 modId,
                 message: shown.message,
-                retryable: texts.every((t) => t.retryable),
+                retryable: texts.some((t) => t.retryable),
                 entityTypes: items.map((item) => item.entityType).sort(),
             };
         })

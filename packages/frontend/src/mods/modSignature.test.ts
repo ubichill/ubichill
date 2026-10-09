@@ -159,6 +159,30 @@ describe('checkModAuthor', () => {
         });
     });
 
+    it('存在しない mod や lock のない実行コードを data-only として許可しない', async () => {
+        expect(await check({}).result).toEqual({ status: 'unavailable' });
+        expect(
+            await check({
+                [`${BASE}/pen/v1.0.0/manifest.json`]: found({
+                    id: 'pen',
+                    version: '1.0.0',
+                    components: { 'pen:pen': { workerUrl: './worker.js' } },
+                }),
+            }).result,
+        ).toEqual({ status: 'unavailable' });
+    });
+
+    it('別の mod・版の lock で選択した版の作者を表示しない', async () => {
+        for (const wrong of [
+            { ...lock, id: 'other' },
+            { ...lock, version: '2.0.0' },
+        ]) {
+            const { result, verify } = check({ [LOCK_URL]: found(wrong), [SIG_URL]: found({}) });
+            expect(await result).toEqual({ status: 'rejected', reason: 'signature-mod-mismatch' });
+            expect(verify).not.toHaveBeenCalled();
+        }
+    });
+
     it('確定した拒否（取り消された鍵・改ざん）は理由つきで返す', async () => {
         const files = { [LOCK_URL]: found(lock), [SIG_URL]: found({}) };
         for (const reason of ['author-unconfirmed', 'signature-content-mismatch'] as const) {
@@ -167,7 +191,12 @@ describe('checkModAuthor', () => {
     });
 
     it('lock が無い mod（実行するコードが無い）は署名の対象外。lock として読めないものは確認できない扱い', async () => {
-        expect(await check({ [SIG_URL]: found({}) }).result).toEqual({ status: 'data-only' });
+        expect(
+            await check({
+                [SIG_URL]: found({}),
+                [`${BASE}/pen/v1.0.0/manifest.json`]: found({ id: 'pen', version: '1.0.0', components: {} }),
+            }).result,
+        ).toEqual({ status: 'data-only' });
         expect(await check({ [LOCK_URL]: found({ id: 'pen' }), [SIG_URL]: found({}) }).result).toEqual({
             status: 'unavailable',
         });

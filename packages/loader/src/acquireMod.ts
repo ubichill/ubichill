@@ -145,13 +145,18 @@ async function fetchWorkerBytes(workerUrl: string, entityType: string, f: FetchL
     }
 }
 
-/** 署名ファイル（`lock.sig.json`）の中身。無い・JSON でない（SPA の fallback など）なら undefined。 */
+/** 404・SPA fallback は署名なし。通信障害を署名なしと誤判定しない。 */
 async function fetchSignature(versionedBase: string, f: FetchLike): Promise<unknown> {
+    const res = await f(`${versionedBase}/${MOD_SIGNATURE_FILE}`, { cache: 'no-store' });
+    if (!res.ok) {
+        if (res.status === 404 || res.status === undefined) return undefined;
+        throw new Error(`署名ファイルを取得できません (${res.status})`);
+    }
+    if (res.headers.get('content-type')?.includes('text/html')) return undefined;
     try {
-        const res = await f(`${versionedBase}/${MOD_SIGNATURE_FILE}`, { cache: 'no-store' });
-        return res.ok ? (JSON.parse(await res.text()) as unknown) : undefined;
+        return JSON.parse(await res.text()) as unknown;
     } catch {
-        return undefined;
+        return {}; // ファイルはあるが壊れている。開発環境でも署名なしにはしない。
     }
 }
 
@@ -195,7 +200,12 @@ function resolveAuthor(
     const now = (opts.now ?? Date.now)();
     const cached = authorCache.get(key);
     if (cached && now - cached.checkedAt < MOD_AUTHOR_CACHE_TTL_MS) return cached.result;
-    const entry = { checkedAt: now, result: checkAuthor(versionedBase, baseUrl, lockEntry, opts, f) };
+    const entry = {
+        checkedAt: now,
+        result: checkAuthor(versionedBase, baseUrl, lockEntry, opts, f).catch(
+            (): AuthorResult => ({ rejected: 'author-pending' }),
+        ),
+    };
     authorCache.set(key, entry);
     // 後から始まった確認を、先に始まった確認の失敗で消さない
     const forget = () => {

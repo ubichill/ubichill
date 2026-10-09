@@ -110,9 +110,28 @@ export async function checkModAuthor(
             deps.fetchJson(`${versionedBase}/lock.json`),
             deps.fetchJson(`${versionedBase}/${MOD_SIGNATURE_FILE}`),
         ]);
-        if (!lock.found) return { status: 'data-only' };
+        if (!lock.found) {
+            const manifest = await deps.fetchJson(`${versionedBase}/manifest.json`);
+            if (!manifest.found || typeof manifest.value !== 'object' || manifest.value === null)
+                return { status: 'unavailable' };
+            const value = manifest.value as {
+                id?: unknown;
+                version?: unknown;
+                components?: Record<string, { workerUrl?: unknown }>;
+            };
+            if (
+                value.id !== modId ||
+                value.version !== version ||
+                !value.components ||
+                Object.values(value.components).some((component) => component?.workerUrl)
+            )
+                return { status: 'unavailable' };
+            return { status: 'data-only' };
+        }
         const entry = ModLockEntrySchema.safeParse(lock.value);
         if (!entry.success) return { status: 'unavailable' };
+        if (entry.data.id !== modId || entry.data.version !== version)
+            return { status: 'rejected', reason: 'signature-mod-mismatch' };
         if (!signature.found) return { status: 'unsigned' };
         const verdict = await deps.verify(entry.data, signature.value);
         if (verdict.status === 'verified') return { status: 'verified', author: verdict.author };
@@ -124,16 +143,13 @@ export async function checkModAuthor(
     }
 }
 
-/** 404・JSON でない応答（SPA の fallback）は「無い」。サーバーエラーと通信の失敗は throw。 */
+/** 404・SPA の HTML fallback は「無い」。通信エラー・壊れた JSON は確認失敗。 */
 const fetchJson = async (url: string): Promise<FetchedJson> => {
     const res = await fetch(url, { cache: 'no-store' });
-    if (res.status >= 500) throw new Error(`HTTP ${res.status}`);
-    if (!res.ok) return { found: false };
-    try {
-        return { found: true, value: JSON.parse(await res.text()) as unknown };
-    } catch {
-        return { found: false };
-    }
+    if (res.status === 404) return { found: false };
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (res.headers.get('content-type')?.includes('text/html')) return { found: false };
+    return { found: true, value: JSON.parse(await res.text()) as unknown };
 };
 
 export const fetchModAuthor = (baseUrl: string, modId: string, version: string): Promise<ModAuthorCheck> =>
