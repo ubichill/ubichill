@@ -4,11 +4,11 @@
     "pen": {
       "id": "pen",
       "version": "2.0.0",
-      "manifestIntegrity": "sha256-lsfA15mq+kOyhIWsrGipe4q6jop/MGopZ49xvVL4GLA=",
+      "manifestIntegrity": "sha256-tOEHSi2wVFefEvyepFjyKSw3yfurrMBX7jETGnQRObw=",
       "components": {
         "pen:canvas": {
-          "workerUrl": "./canvas/index.582a78a7.js",
-          "integrity": "sha256-WCp4p1jc0TxXHUa2KVNsRiWE75OVVUIVt3dxg0fs7nk=",
+          "workerUrl": "./canvas/index.ba3a8b96.js",
+          "integrity": "sha256-ujqLlntrB+IKRVGfbEeccplUcMAmnjHEeVBw8sSBeTI=",
           "capabilities": [
             "canvas:draw",
             "event:broadcast",
@@ -18,8 +18,8 @@
           ]
         },
         "pen:pen": {
-          "workerUrl": "./pen/index.df9fd0ce.js",
-          "integrity": "sha256-35/QzsPErsw3pAuSFloob0fDOWOD8wI30tjff/zdqng=",
+          "workerUrl": "./pen/index.7064c2c5.js",
+          "integrity": "sha256-cGTCxQEebbUwBpneXZEf/92zKKS+VdJIn5uy8kSVE7w=",
           "capabilities": [
             "event:emit",
             "host:message",

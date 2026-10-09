@@ -22,10 +22,20 @@ import type { ModWorkerHandlers } from '../useModWorker';
 
 // ── 描画ヘルパー ─────────────────────────────────────────────────
 
+/**
+ * 消しゴムは「描いた線を透明で上書きする」ので destination-out で合成する。
+ * 永続レイヤーには線しか無いので、背景（ワールドの床）は消えない。
+ */
+const strokeCompositeOperation = (stroke: CanvasStrokeData): GlobalCompositeOperation =>
+    stroke.mode === 'erase' ? 'destination-out' : 'source-over';
+
 function drawStroke(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, stroke: CanvasStrokeData): void {
     if (stroke.points.length < 2) return;
+    ctx.save();
+    ctx.globalCompositeOperation = strokeCompositeOperation(stroke);
     ctx.beginPath();
-    ctx.strokeStyle = stroke.color;
+    // destination-out は色を使わずアルファだけを見るので、不透明な色で塗る
+    ctx.strokeStyle = stroke.mode === 'erase' ? '#000' : stroke.color;
     ctx.lineWidth = stroke.size;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -34,6 +44,7 @@ function drawStroke(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingCont
         ctx.lineTo(stroke.points[i][0], stroke.points[i][1]);
     }
     ctx.stroke();
+    ctx.restore();
 }
 
 function drawCursor(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, cursor: CanvasCursorData): void {

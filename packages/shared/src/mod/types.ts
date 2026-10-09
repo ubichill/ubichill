@@ -302,6 +302,11 @@ export type CanvasStrokeData = {
     points: Array<[number, number, number]>;
     color: string;
     size: number;
+    /**
+     * `'erase'` はなぞった部分の、それまでに描いた線を消す（`color` は使わない）。
+     * 消すのも 1 本のストロークなので、描いた順に重ねれば誰の画面でも同じ結果になる。省略時は `'draw'`。
+     */
+    mode?: 'draw' | 'erase';
 };
 
 /** shape === 'custom' 時の塗りつぶしパス定義 */

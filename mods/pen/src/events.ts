@@ -17,6 +17,8 @@ import type {
 interface PenPenData {
     color?: string;
     strokeWidth?: number;
+    /** true なら消しゴム。描く代わりに、なぞった部分の線を消す。 */
+    eraser?: boolean;
 }
 
 export const PenEvents = Ubi.event.define<{
