@@ -11,13 +11,16 @@ import { router as authorsRouter } from './routes/authors';
 import { router as cliAuthRouter } from './routes/cliAuth';
 import { router as federationRouter } from './routes/federation';
 import { router as instancesRouter } from './routes/instances';
+import { createModsRouter } from './routes/mods';
 import { router as serviceTokensRouter } from './routes/serviceTokens';
 import { router as socialRouter } from './routes/social';
 import { router as usersRouter } from './routes/users';
 import { router as webfingerRouter } from './routes/webfinger';
 import { router as worldsRouter } from './routes/worlds';
+import { isAuthorKey } from './services/authorKeyStore';
 import { instanceReaper } from './services/instanceReaper';
 import { bootstrapOfficialAccount } from './services/officialAccountStore';
+import { nodeWorldCrypto } from './services/worldCrypto';
 import { worldRegistry } from './services/worldRegistry';
 import { logger } from './utils/logger';
 
@@ -99,6 +102,7 @@ app.use('/api/v1/social', socialRouter);
 app.use('/api/v1/authors', authorsRouter);
 app.use('/api/v1/cli-auth', cliAuthRouter);
 app.use('/api/v1/federation', federationRouter);
+app.use('/api/v1/mods', createModsRouter({ crypto: nodeWorldCrypto, isAuthorKey }));
 app.use('/api/v1/service-tokens', serviceTokensRouter);
 app.use('/.well-known/webfinger', webfingerRouter);
 

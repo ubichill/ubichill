@@ -9,7 +9,14 @@
  * 返す LoadedMod は React/DOM 非依存の中立表現。Host が WorkerModDefinition にマップする。
  */
 import type { ComponentDataFieldSpec, OverlayMode } from '@ubichill/shared';
-import { type ModLock, resolveLockedMod } from '@ubichill/shared';
+import {
+    MOD_SIGNATURE_FILE,
+    type ModLock,
+    type ModLockEntry,
+    type ModSignatureRejectReason,
+    type ModSignatureVerdict,
+    resolveLockedMod,
+} from '@ubichill/shared';
 import { sriOf } from './integrity.ts';
 import type { AcquireResult, FetchLike, LoadedMod } from './types.ts';
 
@@ -55,6 +62,16 @@ export interface AcquireModOptions {
     baseUrl: string;
     /** ワールドの mod 完全性ロック。lock に固定されていない mod は、ワールドの置き場所に関係なく実行しない。 */
     lock?: ModLock;
+    /**
+     * 作者署名の検証（署名の照合と、署名鍵が作者の有効な鍵かの確認）。Host が注入する。
+     * 確認できた mod だけを実行する。例外は「いまは確認できない」として扱う。
+     */
+    verifySignature: (entry: ModLockEntry, signature: unknown) => Promise<ModSignatureVerdict>;
+    /**
+     * 署名ファイルの無い mod を「署名なし（開発）」として動かしてよいか（取得元の baseUrl で判定）。
+     * 開発用の Host が自分のオリジンの mod にだけ許す。既定は不可。署名ファイルがあれば常に検証する。
+     */
+    allowUnsigned?: (baseUrl: string) => boolean;
     /** 注入 fetch（既定: globalThis.fetch）。テスト・Node 実行で差し替える。 */
     fetchImpl?: FetchLike;
 }
@@ -126,12 +143,66 @@ async function fetchWorkerBytes(workerUrl: string, entityType: string, f: FetchL
     }
 }
 
+/** 署名ファイル（`lock.sig.json`）の中身。無い・JSON でない（SPA の fallback など）なら undefined。 */
+async function fetchSignature(versionedBase: string, f: FetchLike): Promise<unknown> {
+    try {
+        const res = await f(`${versionedBase}/${MOD_SIGNATURE_FILE}`, { cache: 'no-store' });
+        return res.ok ? (JSON.parse(await res.text()) as unknown) : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+type AuthorResult = { author?: string } | { rejected: ModSignatureRejectReason };
+
+// 同じ mod の複数 Component で作者の確認を繰り返さない。確認できなかった結果は残さない（次の読み込みで確認し直す）。
+const authorCache = new Map<string, Promise<AuthorResult>>();
+
+async function checkAuthor(
+    versionedBase: string,
+    baseUrl: string,
+    lockEntry: ModLockEntry,
+    opts: AcquireModOptions,
+    f: FetchLike,
+): Promise<AuthorResult> {
+    const signature = await fetchSignature(versionedBase, f);
+    if (signature === undefined) {
+        return opts.allowUnsigned?.(baseUrl) ? {} : { rejected: 'signature-missing' };
+    }
+    const verdict = await opts
+        .verifySignature(lockEntry, signature)
+        .catch((): ModSignatureVerdict => ({ status: 'rejected', reason: 'author-pending' }));
+    return verdict.status === 'verified' ? { author: verdict.author } : { rejected: verdict.reason };
+}
+
+function resolveAuthor(
+    versionedBase: string,
+    baseUrl: string,
+    lockEntry: ModLockEntry,
+    opts: AcquireModOptions,
+    f: FetchLike,
+): Promise<AuthorResult> {
+    const key = `${versionedBase}::${JSON.stringify(lockEntry)}`;
+    const cached = authorCache.get(key);
+    if (cached) return cached;
+    const p = checkAuthor(versionedBase, baseUrl, lockEntry, opts, f);
+    authorCache.set(key, p);
+    p.then(
+        (result) => {
+            if ('rejected' in result) authorCache.delete(key);
+        },
+        () => authorCache.delete(key),
+    );
+    return p;
+}
+
 /**
  * Component 型（`modId:componentName`）から検証済み {@link LoadedMod} を構築する。
  *
  * lock がある mod は「固定 version」を直接取得し（最新ポインタを信頼しない）、
  * manifest / worker の生バイト列 hash を lock と照合する。lock 欠落・不一致は、ワールドの置き場所に関係なく
  * 実行拒否（本体のワールドだけ緩めることはしない）。capability は lock の天井。
+ * lock と一致した mod は、作者署名（`lock.sig.json`）で作者を確認できたものだけを返す。
  */
 export async function acquireMod(entityType: string, opts: AcquireModOptions): Promise<AcquireResult> {
     const { lock } = opts;
@@ -175,6 +246,9 @@ export async function acquireMod(entityType: string, opts: AcquireModOptions): P
 
     if (verdict.status === 'rejected') return { rejected: verdict.reason };
 
+    const authored = await resolveAuthor(versionedBase, baseUrl, lockEntry, opts, f);
+    if ('rejected' in authored) return authored;
+
     // capability 天井は lock 由来のみ（manifest の自己申告は使わない）
     const capabilities = [...verdict.capabilities];
 
@@ -183,6 +257,7 @@ export async function acquireMod(entityType: string, opts: AcquireModOptions): P
         name: `${fetched.manifest.name ?? modName} - ${entityType.slice(colonIdx + 1)}`,
         workerCode: new TextDecoder().decode(fetchedWorker.bytes),
         capabilities,
+        author: authored.author,
         modBase: versionedBase,
         // manifest は lock の manifestIntegrity と照合済みなので、ここに載る hash もそのまま信頼できる。
         assetIntegrity: assetIntegrityOf(fetched.manifest.assetIntegrity),
@@ -201,4 +276,5 @@ export async function acquireMod(entityType: string, opts: AcquireModOptions): P
 /** テスト / インスタンス離脱時のキャッシュリセット。 */
 export function resetAcquireCaches(): void {
     manifestCache.clear();
+    authorCache.clear();
 }

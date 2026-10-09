@@ -28,7 +28,13 @@ import { createSharedWait } from '../lib/sharedWait';
 
 /** 承認プロンプト。mod一括（capability 群）と外部通信ドメインの 2 種。 */
 export type PermissionPromptRequest =
-    | { kind: 'mod'; modId: string; capabilities: { capability: string; risk: CapabilityRisk }[] }
+    | {
+          kind: 'mod';
+          modId: string;
+          /** 署名で確認できた作者アカウント。無ければ未署名（開発用の Host だけが動かす）。 */
+          author?: string;
+          capabilities: { capability: string; risk: CapabilityRisk }[];
+      }
     | { kind: 'external'; modId: string; domain: string };
 
 /** プロンプトへのユーザー応答。mod は allow/deny、fetch は once/always/deny。 */
@@ -50,7 +56,7 @@ export interface PermissionContextValue {
      * 実行を開始する（＝確認前は実行しない。拒否した権限は実行時ゲートが個別に拒否するだけで、
      * mod自体は決定後に動く）。
      */
-    authorizeMod(modId: string, capabilities: readonly string[]): Promise<void>;
+    authorizeMod(modId: string, capabilities: readonly string[], author?: string): Promise<void>;
     /**
      * fetch・動画・音声で共有する外部ドメイン承認。
      * ask のときはドメインごとにプロンプト（今回だけ/次回以降も許可/拒否）。
@@ -110,7 +116,7 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
         }
         setPendingPrompt(
             next.kind === 'mod'
-                ? { kind: 'mod', modId: next.modId, capabilities: next.capabilities }
+                ? { kind: 'mod', modId: next.modId, author: next.author, capabilities: next.capabilities }
                 : { kind: 'external', modId: next.modId, domain: next.domain },
         );
     }, []);
@@ -132,7 +138,7 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
 
     // 読み込み時の一括承認。ユーザーが決定した時点で解決する（許可でも拒否でも）。
     const authorizeMod = useCallback(
-        (modId: string, capabilities: readonly string[]): Promise<void> => {
+        (modId: string, capabilities: readonly string[], author?: string): Promise<void> => {
             const current = policyRef.current;
             // 承認が必要な capability（純粋関数で判定）。
             const pending = [...new Set(capabilities)].filter((cap) => capabilityNeedsConsent(current, modId, cap));
@@ -146,6 +152,7 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
                 queueRef.current.push({
                     kind: 'mod',
                     modId,
+                    author,
                     capabilities: pending.map((cap) => ({ capability: cap, risk: getCapabilityRisk(cap) })),
                     resolve: (outcome) => {
                         // 拒否した権限は実行時ゲートが個別に拒否する。mod自体は決定後に動く。

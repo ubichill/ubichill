@@ -36,6 +36,8 @@ export interface WorkerModDefinition {
     workerCode: string;
     /** mod.json の capabilities（未指定: 全許可） */
     capabilities?: string[];
+    /** 署名で確認できた作者アカウント（`handle@domain`）。無いのは開発用の Host が許した未署名の mod。 */
+    author?: string;
     /**
      * Host が生成して Worker へ Transferable 転送する OffscreenCanvas のターゲット名リスト。
      * Worker は `Ubi.canvas.request(targetId)` で受け取る。

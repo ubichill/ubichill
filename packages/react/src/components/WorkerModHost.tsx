@@ -69,6 +69,7 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
     // Provider 不在（エディタ Preview 等）は即実行。
     const authorizeMod = permissions?.authorizeMod;
     const declaredCapabilities = definition.capabilities;
+    const author = definition.author;
     const [enabled, setEnabled] = useState(false);
     useEffect(() => {
         if (!authorizeMod) {
@@ -77,13 +78,13 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
         }
         let cancelled = false;
         setEnabled(false);
-        authorizeMod(modId, declaredCapabilities ?? []).then(() => {
+        authorizeMod(modId, declaredCapabilities ?? [], author).then(() => {
             if (!cancelled) setEnabled(true); // 決定後は許可/拒否とも実行
         });
         return () => {
             cancelled = true;
         };
-    }, [authorizeMod, modId, declaredCapabilities]);
+    }, [authorizeMod, modId, declaredCapabilities, author]);
     const hostDivRef = useRef<HTMLDivElement>(null);
     const workerLoading = useWorkerLoading();
 

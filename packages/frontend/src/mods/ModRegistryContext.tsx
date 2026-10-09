@@ -111,9 +111,9 @@ export const ModRegistryProvider: React.FC<{
                         return;
                     }
                     if (typeof result === 'object' && 'rejected' in result) {
-                        // lock 照合に失敗した外部 mod。安全のため実行しない。
+                        // lock の照合か作者署名の確認に失敗した mod。実行しない。
                         console.warn(
-                            `[ModRegistry] component "${entityType}" は lock 照合に失敗 (${result.rejected})。実行を拒否します。`,
+                            `[ModRegistry] component "${entityType}" は検証に失敗 (${result.rejected})。実行を拒否します。`,
                         );
                         loadingRef.current.delete(entityType);
                         return;

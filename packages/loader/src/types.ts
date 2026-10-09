@@ -1,4 +1,4 @@
-import type { ComponentDataFieldSpec, LockRejectReason, OverlayMode } from '@ubichill/shared';
+import type { ComponentDataFieldSpec, LockRejectReason, ModSignatureRejectReason, OverlayMode } from '@ubichill/shared';
 
 /**
  * 取得・検証済みの mod（React/DOM 非依存の中立表現）。
@@ -13,6 +13,8 @@ export interface LoadedMod {
     workerCode: string;
     /** 付与を許す capability（verified 時は lock 天井、それ以外は manifest 由来）。 */
     capabilities?: string[];
+    /** 署名で確認できた作者アカウント（`handle@domain`）。無いのは「署名なし（開発）」として許した mod だけ。 */
+    author?: string;
     /** versioned アセットベース URL（Worker で `Ubi.modBase`）。 */
     modBase: string;
     /** 同梱アセットの相対パス → SRI。manifest 由来（manifest は lock と照合済み）。 */
@@ -34,9 +36,13 @@ export interface LoadedMod {
  *  - LoadedMod   : 取得＋検証成功。
  *  - 'data-only' : worker を持たない純データ Component（警告不要）。
  *  - 'not-found' : manifest/worker 取得失敗・未宣言。
- *  - { rejected }: lock 照合で拒否（外部 provenance）。理由付き。
+ *  - { rejected }: lock の照合か作者署名の確認で拒否。理由付き。
  */
-export type AcquireResult = LoadedMod | 'data-only' | 'not-found' | { rejected: LockRejectReason };
+export type AcquireResult =
+    | LoadedMod
+    | 'data-only'
+    | 'not-found'
+    | { rejected: LockRejectReason | ModSignatureRejectReason };
 
 /** DOM/Node 共通の最小 fetch シグネチャ（注入用）。 */
 export type FetchLike = (input: string, init?: { cache?: 'no-store' }) => Promise<FetchLikeResponse>;

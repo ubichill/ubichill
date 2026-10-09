@@ -117,6 +117,50 @@ mod は SDK 経由で Host と通信する。SDK と Host は独立更新され�
 
 ---
 
+## 作者署名（必須）
+
+mod の配布物には**作者アカウントの署名が必須**。Host は、署名で作者を確認できた mod だけを実行する。
+鍵・作者アカウント・公開環境・取り消しはワールドの署名と同じ仕組みを使う（→ [author-publishing.md](./design/author-publishing.md)）。
+
+| | 担当 |
+| --- | --- |
+| 承認したものと同一のコードか | lock（ワールドが固定） |
+| そのコードをだれが出したか | 作者署名（本節） |
+| 何をしてよいか | capability の同意 |
+
+- **署名するもの**: `v<version>/lock.json` のうち実行内容を決める部分（id・version・manifest の hash・各 worker の hash と
+  権限の上限）。置き場所（URL）は含めないので、同じ配布物をどこに置いても同じ署名で確かめられる。
+- **置き場所**: `lock.json` の兄弟の `v<version>/lock.sig.json`。
+- **署名の方法**: `ubichill build` のあとに `ubichill publish <ビルド出力>`（`ubichill login` したアカウント。CI は
+  Secret `UBICHILL_CREDENTIALS`）。mod はサーバーへ送らない。署名済みの出力をそのまま GitHub Pages などへ置く。
+- **Host の確認**: ワールドの lock と一致した mod について `lock.sig.json` を取得し、サーバー
+  （`POST /api/v1/mods/signature/verify`）で署名と作者（署名鍵が作者の有効な公開環境の鍵か）を確かめる。
+  署名が無い・lock と合わない・作者の鍵ではない・鍵が取り消されている・作者をいま確認できない mod は実行しない。
+- **表示**: 権限の確認画面と World Editor の mod 一覧に、確認できた作者（`@ID@ドメイン`）を出す。名乗っているだけの作者は出さない。
+
+```bash
+npx ubichill login                 # 1 回だけ（CI は ubichill ci create で作った UBICHILL_CREDENTIALS）
+npx ubichill build
+npx ubichill publish dist          # 単体 mod の出力。複数 mod なら dist/mods
+npx ubichill verify --dist-dir=dist --require-signatures
+```
+
+内容が変わるビルドをすると、以前の内容に付けた `lock.sig.json` は消える（署名し直す）。同じ内容の再ビルドでは残る。
+
+### 開発中の mod
+
+開発用の Host（`pnpm dev`、または `VITE_ENVIRONMENT=development` でビルドしたプレビュー）は、**自分のオリジンから配る mod に
+限って**、署名ファイルの無い mod を「署名なし（開発）」として動かす。署名ファイルがあれば開発用の Host でも必ず確かめる。
+本番としてビルドした Host（`VITE_ENVIRONMENT` を指定しないビルドを含む）に例外は無い。
+
+自分でビルドしたイメージに自分の mod を同梱して本番運用するときは、自分のサーバーのアカウントで署名する
+（`ubichill login --server=<自分のサーバー>` → `ubichill publish packages/frontend/public/mods` → イメージをビルド。
+`--build-arg REQUIRE_MOD_SIGNATURES=true` で、署名の無い mod があればビルドを止められる）。
+公式イメージに同梱の mod は公式アカウント（`ubichill@ubichill.com`）の署名なので、サーバーが `ubichill.com` に
+問い合わせられる必要がある（確認できた結果はサーバーに保存される）。
+
+---
+
 ## 配布
 
 mod は URL ベースで配布する（GitHub Pages / 任意 CDN）。ワールドは `spec.dependencies[].source` にその URL を書く。

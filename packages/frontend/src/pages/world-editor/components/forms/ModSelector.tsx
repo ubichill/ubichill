@@ -1,6 +1,7 @@
-import type { Dependency } from '@ubichill/shared';
+import { type Dependency, displayAuthorAccount } from '@ubichill/shared';
 import { useMemo, useState } from 'react';
 import { type AvailableMod, useAvailableMods } from '@/lib/mods/useAvailableMods';
+import { useModAuthor } from '@/lib/mods/useModAuthor';
 import { SETTINGS_KEYS, useSetting } from '@/lib/settings';
 import { css } from '@/styled-system/css';
 import { computeModDiff, type ModSelectionEntry, selectionToDependencies } from '../../lib/modSelection';
@@ -10,6 +11,24 @@ import { RegistryUrlManager } from './RegistryUrlManager';
 
 const isStringArray = (value: unknown): value is string[] =>
     Array.isArray(value) && value.every((v) => typeof v === 'string');
+
+/** 署名で確認できた作者。確認できない mod は、本番の Host では実行されない。 */
+function ModAuthor({ mod }: { mod: AvailableMod }) {
+    const author = useModAuthor(mod);
+    if (author === 'checking') return null;
+    return (
+        <div
+            className={css({
+                fontSize: '11px',
+                mt: '2px',
+                wordBreak: 'break-all',
+                color: author ? 'textSubtle' : 'errorText',
+            })}
+        >
+            {author ? `作者 ${displayAuthorAccount(author)}` : '作者を確認できません（署名なし）'}
+        </div>
+    );
+}
 
 interface ModSelectorProps {
     /** 現在 definition に登録済みの依存（インストール済み mod）。 */
@@ -148,6 +167,7 @@ export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorP
                                         <div className={css({ fontSize: '11px', color: 'textSubtle', mt: '2px' })}>
                                             v{p.version} · {p.components.length} components
                                         </div>
+                                        <ModAuthor mod={p} />
                                         <SourceLabel mod={p} />
                                     </div>
                                 </button>

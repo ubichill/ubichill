@@ -6,13 +6,14 @@
  *   ubichill build   [--mods-dir=<dir>] [--public-mods-dir=<dir>] [--dist-dir=<dir>]
  *   ubichill install <world.yaml> [--mods-dir=<dir>] [--base-url=<url>] [--out=<path>] [--check]
  *   ubichill update  <world.yaml> [<modName>] [--mods-dir=<dir>] [--out=<path>]
- *   ubichill verify  [--dist-dir=<dir>]      mod のビルド（lock.json）を検証する
+ *   ubichill verify  [--dist-dir=<dir>] [--require-signatures]   mod のビルド（lock.json と署名）を検証する
  *   ubichill verify  <world.yaml>            ワールドの署名が今の内容に対して有効か調べる
  *   ubichill login   [--server=<url>] [--device] [--name=<表示名>] [--no-browser]
  *   ubichill logout  [--server=<url>]
  *   ubichill whoami  [--server=<url>]
  *   ubichill ci create --name=<表示名> [--server=<url>] [--device]
  *   ubichill publish <world.yaml>... [--server=<url>] [--out=<dir>] [--no-install]
+ *   ubichill publish <mods のビルド出力>...   mod の配布物（例 dist/mods）に署名する
  *
  * `login` はブラウザで承認してこの端末を公開環境にする（鍵は手元だけ）。`publish` はログインしたアカウントで署名して公開する。
  * CI は `ci create` で作った文字列を env UBICHILL_CREDENTIALS に入れて `publish` する。鍵は CLI が作って手元に持つ

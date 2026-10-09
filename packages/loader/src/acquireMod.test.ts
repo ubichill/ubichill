@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
-import type { ModLock } from '@ubichill/shared';
+import { type AuthorKeyCheck, type ModLock, signMod, verifyModSignature } from '@ubichill/shared';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { acquireMod, assetIntegrityOf, resetAcquireCaches } from './acquireMod';
+import { type AcquireModOptions, acquireMod, assetIntegrityOf, resetAcquireCaches } from './acquireMod';
 import type { FetchLike, FetchLikeResponse } from './types';
+import { generateSigningKeyPkcs8, importSigningKey, webWorldCrypto } from './worldCrypto';
 
 const BASE = 'https://cdn.test/mods';
 const MOD = 'pen';
@@ -66,6 +67,12 @@ function lock(workerCode = WORKER_CODE): ModLock {
     };
 }
 
+/** 署名ファイルを置かない既存のテスト用: 開発用の Host として「署名なし（開発）」を許す。 */
+const unsignedDev: Pick<AcquireModOptions, 'verifySignature' | 'allowUnsigned'> = {
+    verifySignature: async () => ({ status: 'rejected', reason: 'author-unconfirmed' }),
+    allowUnsigned: () => true,
+};
+
 beforeEach(() => resetAcquireCaches());
 
 describe('acquireMod', () => {
@@ -73,6 +80,7 @@ describe('acquireMod', () => {
         const r = await acquireMod(TYPE, {
             baseUrl: BASE,
             lock: lock(),
+            ...unsignedDev,
             fetchImpl: fakeFetch(goodRoutes()),
         });
         expect(typeof r === 'object' && 'workerCode' in r).toBe(true);
@@ -88,6 +96,7 @@ describe('acquireMod', () => {
         const r = await acquireMod(TYPE, {
             baseUrl: BASE,
             lock: lock(), // lock は元コードの hash
+            ...unsignedDev,
             fetchImpl: fakeFetch(goodRoutes(tampered)), // 配信は改竄コード
         });
         expect(r).toEqual({ rejected: 'integrity-mismatch' });
@@ -99,7 +108,7 @@ describe('acquireMod', () => {
             called = true;
             return fakeFetch(goodRoutes())(input);
         };
-        const r = await acquireMod(TYPE, { baseUrl: BASE, fetchImpl: spy });
+        const r = await acquireMod(TYPE, { baseUrl: BASE, ...unsignedDev, fetchImpl: spy });
         expect(r).toEqual({ rejected: 'lock-missing' });
         expect(called).toBe(false); // ネットワークに触れない
     });
@@ -108,6 +117,7 @@ describe('acquireMod', () => {
         const swapped = await acquireMod(TYPE, {
             baseUrl: BASE,
             lock: lock(),
+            ...unsignedDev,
             fetchImpl: fakeFetch(goodRoutes(`${WORKER_CODE} /* swapped */`)),
         });
         expect(swapped).toEqual({ rejected: 'integrity-mismatch' });
@@ -116,7 +126,9 @@ describe('acquireMod', () => {
             called = true;
             return fakeFetch(goodRoutes())(input);
         };
-        expect(await acquireMod(TYPE, { baseUrl: BASE, fetchImpl: spy })).toEqual({ rejected: 'lock-missing' });
+        expect(await acquireMod(TYPE, { baseUrl: BASE, ...unsignedDev, fetchImpl: spy })).toEqual({
+            rejected: 'lock-missing',
+        });
         expect(called).toBe(false);
     });
 
@@ -132,6 +144,7 @@ describe('acquireMod', () => {
                 lockVersion: 1,
                 mods: { [MOD]: { id: MOD, version: VER, manifestIntegrity: sri(dataOnlyManifest), components: {} } },
             },
+            ...unsignedDev,
             fetchImpl: fakeFetch({ [manifestUrlAbs]: { body: dataOnlyManifest } }),
         });
         expect(r).toBe('data-only');
@@ -146,13 +159,14 @@ describe('acquireMod', () => {
                 lockVersion: 1,
                 mods: { [MOD]: { id: MOD, version: VER, manifestIntegrity: sri(manifestJson), components: {} } },
             },
+            ...unsignedDev,
             fetchImpl: fakeFetch(goodRoutes()),
         });
         expect(r).toEqual({ rejected: 'lock-missing' });
     });
 
     it('コロンを含まない entityType は not-found', async () => {
-        const r = await acquireMod('nocolon', { baseUrl: BASE, fetchImpl: fakeFetch({}) });
+        const r = await acquireMod('nocolon', { baseUrl: BASE, ...unsignedDev, fetchImpl: fakeFetch({}) });
         expect(r).toBe('not-found');
     });
 
@@ -166,6 +180,7 @@ describe('acquireMod', () => {
         const r = await acquireMod(TYPE, {
             baseUrl: BASE, // これは使われないはず
             lock: lockWithBaseUrl,
+            ...unsignedDev,
             fetchImpl: fakeFetch({
                 [otherManifestUrlAbs]: { body: manifestJson },
                 [otherWorkerUrlAbs]: { body: WORKER_CODE, contentType: 'text/javascript' },
@@ -194,6 +209,7 @@ describe('同梱アセットの integrity', () => {
         const r = await acquireMod(TYPE, {
             baseUrl: BASE,
             lock: { ...base, mods: { [MOD]: { ...base.mods[MOD], manifestIntegrity: sri(withAssets) } } },
+            ...unsignedDev,
             fetchImpl: fakeFetch(routes),
         });
         expect(r).toMatchObject({ assetIntegrity: { 'fnv1a.wasm': wasmSri } });
@@ -206,13 +222,19 @@ describe('同梱アセットの integrity', () => {
         const r = await acquireMod(TYPE, {
             baseUrl: BASE,
             lock: { ...base, mods: { [MOD]: { ...base.mods[MOD], manifestIntegrity: sri(withAssets) } } },
+            ...unsignedDev,
             fetchImpl: fakeFetch(routes),
         });
         expect(r).toEqual({ rejected: 'manifest-mismatch' });
     });
 
     it('アセットの無い mod は assetIntegrity を持たない', async () => {
-        const r = await acquireMod(TYPE, { baseUrl: BASE, lock: lock(), fetchImpl: fakeFetch(goodRoutes()) });
+        const r = await acquireMod(TYPE, {
+            baseUrl: BASE,
+            lock: lock(),
+            ...unsignedDev,
+            fetchImpl: fakeFetch(goodRoutes()),
+        });
         expect(r).toMatchObject({ assetIntegrity: undefined });
     });
 
@@ -222,5 +244,168 @@ describe('同梱アセットの integrity', () => {
         expect(assetIntegrityOf(['a'])).toBeUndefined();
         expect(assetIntegrityOf(null)).toBeUndefined();
         expect(assetIntegrityOf('x')).toBeUndefined();
+    });
+});
+
+describe('作者署名', () => {
+    const AUTHOR = 'alice@example.com';
+    const sigUrlAbs = `${BASE}/${MOD}/v${VER}/lock.sig.json`;
+    const newKey = async () => importSigningKey(await generateSigningKeyPkcs8());
+
+    /** 本物の ed25519 で検証し、作者の鍵一覧は `keys` を正とする Host。 */
+    const hostTrusting = (keys: Record<string, string>, calls: string[] = []): AcquireModOptions['verifySignature'] => {
+        const isAuthorKey: AuthorKeyCheck = async (author, publicKey) => {
+            calls.push(author);
+            return keys[author] === publicKey ? { status: 'confirmed' } : { status: 'unconfirmed' };
+        };
+        return (entry, signature) => verifyModSignature(entry, signature, webWorldCrypto, isAuthorKey);
+    };
+
+    const signedRoutes = async (
+        key: Awaited<ReturnType<typeof newKey>>,
+        author = AUTHOR,
+        workerCode = WORKER_CODE,
+    ) => ({
+        ...goodRoutes(workerCode),
+        [sigUrlAbs]: {
+            body: JSON.stringify(await signMod(lock().mods[MOD], key, webWorldCrypto, { author })),
+            contentType: 'application/json',
+        },
+    });
+
+    it('作者の鍵で署名された mod は、作者付きで読み込める', async () => {
+        const key = await newKey();
+        const r = await acquireMod(TYPE, {
+            baseUrl: BASE,
+            lock: lock(),
+            verifySignature: hostTrusting({ [AUTHOR]: key.publicKey }),
+            fetchImpl: fakeFetch(await signedRoutes(key)),
+        });
+        expect(r).toMatchObject({ id: TYPE, author: AUTHOR });
+    });
+
+    it('署名ファイルが無い mod は実行しない（lock と一致していても）', async () => {
+        const r = await acquireMod(TYPE, {
+            baseUrl: BASE,
+            lock: lock(),
+            verifySignature: hostTrusting({}),
+            fetchImpl: fakeFetch(goodRoutes()),
+        });
+        expect(r).toEqual({ rejected: 'signature-missing' });
+    });
+
+    it('SPA の fallback（200 の HTML）が返っても、署名ありとは扱わない', async () => {
+        const routes = {
+            ...goodRoutes(),
+            [sigUrlAbs]: { body: '<!doctype html><html></html>', contentType: 'text/html' },
+        };
+        const r = await acquireMod(TYPE, {
+            baseUrl: BASE,
+            lock: lock(),
+            verifySignature: hostTrusting({}),
+            fetchImpl: fakeFetch(routes),
+        });
+        expect(r).toEqual({ rejected: 'signature-missing' });
+    });
+
+    it('開発用の Host は、許した取得元の未署名 mod だけを作者なしで動かす', async () => {
+        const seen: string[] = [];
+        const options = {
+            lock: lock(),
+            verifySignature: hostTrusting({}),
+            allowUnsigned: (baseUrl: string) => {
+                seen.push(baseUrl);
+                return baseUrl === BASE;
+            },
+        };
+        const local = await acquireMod(TYPE, { ...options, baseUrl: BASE, fetchImpl: fakeFetch(goodRoutes()) });
+        expect(local).toMatchObject({ id: TYPE });
+        expect(local).not.toHaveProperty('author', expect.anything());
+
+        resetAcquireCaches();
+        const OTHER = 'https://other-host.test/mods';
+        const external = await acquireMod(TYPE, {
+            ...options,
+            baseUrl: BASE,
+            lock: { ...lock(), mods: { [MOD]: { ...lock().mods[MOD], baseUrl: OTHER } } },
+            fetchImpl: fakeFetch({
+                [`${OTHER}/${MOD}/v${VER}/manifest.json`]: { body: manifestJson },
+                [`${OTHER}/${MOD}/v${VER}/canvas/index.abc.js`]: { body: WORKER_CODE, contentType: 'text/javascript' },
+            }),
+        });
+        expect(external).toEqual({ rejected: 'signature-missing' });
+        expect(seen).toEqual([BASE, OTHER]);
+    });
+
+    it('開発用の Host でも、署名ファイルがあるのに確認できない mod は実行しない', async () => {
+        const mallory = await newKey();
+        const r = await acquireMod(TYPE, {
+            baseUrl: BASE,
+            lock: lock(),
+            verifySignature: hostTrusting({ [AUTHOR]: (await newKey()).publicKey }),
+            allowUnsigned: () => true,
+            fetchImpl: fakeFetch(await signedRoutes(mallory)),
+        });
+        expect(r).toEqual({ rejected: 'author-unconfirmed' });
+    });
+
+    it('別の内容に付けた署名を置いても通らない（ワールドが固定した lock と照合する）', async () => {
+        const key = await newKey();
+        const other = { ...lock().mods[MOD], manifestIntegrity: sri('another manifest') };
+        const routes = {
+            ...goodRoutes(),
+            [sigUrlAbs]: { body: JSON.stringify(await signMod(other, key, webWorldCrypto, { author: AUTHOR })) },
+        };
+        const r = await acquireMod(TYPE, {
+            baseUrl: BASE,
+            lock: lock(),
+            verifySignature: hostTrusting({ [AUTHOR]: key.publicKey }),
+            fetchImpl: fakeFetch(routes),
+        });
+        expect(r).toEqual({ rejected: 'signature-content-mismatch' });
+    });
+
+    it('lock と違うコードは、正しい署名があっても lock の照合で拒否する', async () => {
+        const key = await newKey();
+        const r = await acquireMod(TYPE, {
+            baseUrl: BASE,
+            lock: lock(),
+            verifySignature: hostTrusting({ [AUTHOR]: key.publicKey }),
+            fetchImpl: fakeFetch(await signedRoutes(key, AUTHOR, `${WORKER_CODE} /* swapped */`)),
+        });
+        expect(r).toEqual({ rejected: 'integrity-mismatch' });
+    });
+
+    it('確認の途中で落ちたら「いまは確認できない」として拒否し、次の読み込みで確認し直す', async () => {
+        const key = await newKey();
+        const routes = await signedRoutes(key);
+        const state = { down: true };
+        const trusting = hostTrusting({ [AUTHOR]: key.publicKey });
+        const options = {
+            baseUrl: BASE,
+            lock: lock(),
+            verifySignature: ((entry, signature) =>
+                state.down
+                    ? Promise.reject(new Error('backend down'))
+                    : trusting(entry, signature)) satisfies AcquireModOptions['verifySignature'],
+            fetchImpl: fakeFetch(routes),
+        };
+        expect(await acquireMod(TYPE, options)).toEqual({ rejected: 'author-pending' });
+        state.down = false;
+        expect(await acquireMod(TYPE, options)).toMatchObject({ author: AUTHOR });
+    });
+
+    it('同じ mod の作者の確認は 1 回で済ませる', async () => {
+        const key = await newKey();
+        const calls: string[] = [];
+        const options = {
+            baseUrl: BASE,
+            lock: lock(),
+            verifySignature: hostTrusting({ [AUTHOR]: key.publicKey }, calls),
+            fetchImpl: fakeFetch(await signedRoutes(key)),
+        };
+        await Promise.all([acquireMod(TYPE, options), acquireMod(TYPE, options)]);
+        await acquireMod(TYPE, options);
+        expect(calls).toEqual([AUTHOR]);
     });
 });

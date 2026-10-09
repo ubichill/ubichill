@@ -4,6 +4,7 @@
  *  - external: fetch・動画・音声を問わず、外部通信の初回にドメインを確認する。
  */
 import { type CapabilityRisk, describeCapability, useUbiPermissions } from '@ubichill/react';
+import { displayAuthorAccount } from '@ubichill/shared';
 import { css } from '@/styled-system/css';
 
 const RISK_META: Record<CapabilityRisk, { label: string; color: string; bg: string }> = {
@@ -174,6 +175,9 @@ export function PermissionPromptModal() {
                         </span>
                         <span className={css({ fontSize: '17px', fontWeight: '700', color: 'text' })}>
                             {prompt.modId}
+                        </span>
+                        <span className={css({ fontSize: '12px', color: 'textMuted', wordBreak: 'break-all' })}>
+                            {prompt.author ? `作者 ${displayAuthorAccount(prompt.author)}` : '署名なし（開発）'}
                         </span>
                     </div>
                 </div>

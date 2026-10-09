@@ -350,6 +350,29 @@ jobs:
           echo "short-sha=$(echo "$SHA" | cut -c1-7)" >> $GITHUB_OUTPUT
           echo "next-version=${{ needs.detect-changes.outputs.next-version }}" >> $GITHUB_OUTPUT
 
+      # 同梱する mod に公式アカウント（ubichill@ubichill.com）で署名する（main だけ。マージ = 公式としての確認）。ワールドの署名と同じ
+      # Secret UBICHILL_CREDENTIALS を使い、署名はリポジトリに置かない。署名（lock.sig.json）は packages/frontend/public/mods に書き、
+      # イメージのビルドがそのまま取り込む（イメージ内の再ビルドと内容が違えば REQUIRE_MOD_SIGNATURES でビルドが止まる）。
+      # プレビューは署名しない（開発用の Host として、自分のオリジンの未署名 mod だけを動かす）。
+      - uses: ./.github/actions/setup
+        if: github.event_name == 'push'
+
+      - name: Sign bundled mods
+        if: github.event_name == 'push'
+        env:
+          UBICHILL_CREDENTIALS: ${{ secrets.UBICHILL_CREDENTIALS }}
+        run: |
+          if [ -z "$UBICHILL_CREDENTIALS" ]; then
+            echo "::error::Secret UBICHILL_CREDENTIALS がありません。公式アカウントで 'ubichill ci create --name=\"GitHub Actions: ubichill/ubichill\"' を実行して設定してください。"
+            exit 1
+          fi
+          pnpm turbo build --filter=@ubichill/shared
+          pnpm build:workers
+          # 公開環境が取り消されていたら、署名しても Host で作者を確認できないので先に止める
+          node packages/sdk/cli/index.ts whoami
+          node packages/sdk/cli/index.ts publish packages/frontend/public/mods
+          node packages/sdk/cli/index.ts verify --dist-dir=packages/frontend/public/mods --require-signatures
+
       - uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
@@ -368,6 +391,7 @@ jobs:
             COMMIT_HASH=${{ steps.versions.outputs.short-sha }}
             VITE_COMMIT_HASH=${{ steps.versions.outputs.short-sha }}
             VITE_ENVIRONMENT=${{ github.event_name == 'push' && 'production' || 'development' }}
+            REQUIRE_MOD_SIGNATURES=${{ github.event_name == 'push' && 'true' || 'false' }}
           tags: |
             ${{ github.event_name == 'push' && format('{0}/{1}/{2}:latest', env.REGISTRY, github.repository_owner, env.IMAGE_NAME) || '' }}
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:sha-${{ steps.versions.outputs.short-sha }}
