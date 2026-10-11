@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "alg": "ed25519",
+  "kind": "mod",
+  "publicKey": "PUlU51o_Sch92myux0fHEFuRJSxUbKiN9GC54o1fKW0",
+  "name": "mobile-controller",
+  "modVersion": "1.0.0",
+  "contentHash": "sha256-iCnYcHUN7MPFYYYHnBNKpr5rjq1rD6tuOb5mvM30QO4=",
+  "author": "ubichill@ubichill.com",
+  "signature": "ztbffEU-CRq9madtvG3KgZpoZeboUEM1rfe6sJuHNZLlwqOjOsUpxFpMTI4_DsIuJ7YmOr9U4tJ86e8LrLVkBQ"
+}

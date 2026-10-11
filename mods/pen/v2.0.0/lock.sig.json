@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "alg": "ed25519",
+  "kind": "mod",
+  "publicKey": "PUlU51o_Sch92myux0fHEFuRJSxUbKiN9GC54o1fKW0",
+  "name": "pen",
+  "modVersion": "2.0.0",
+  "contentHash": "sha256-MYWD0FIUuVP7wZgV4uBE6pE3en3a0vSWxekbY0pLvGw=",
+  "author": "ubichill@ubichill.com",
+  "signature": "tfMdH96hlKN0QIplZpHXJSQOHkC296P9teEBYta5NDbTzsGfLdogFeg2J4z3b8iBavJzfMKHe8OCKf5ACGVPDw"
+}

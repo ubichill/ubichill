@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "alg": "ed25519",
+  "kind": "mod",
+  "publicKey": "PUlU51o_Sch92myux0fHEFuRJSxUbKiN9GC54o1fKW0",
+  "name": "danmaku",
+  "modVersion": "1.0.0",
+  "contentHash": "sha256-G23Kb0OlwCn8+JwOBqjV73A/PPmaj+BEPnrFRiiCghM=",
+  "author": "ubichill@ubichill.com",
+  "signature": "KfkbL211qXvcgCeak5_flA_H4-ZRFgK3bLeWPjdbih6ld3sXIyRP2HqGaeprpBwhvlmJL_18d36k9hMKtFNRBA"
+}

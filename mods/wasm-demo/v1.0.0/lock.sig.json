@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "alg": "ed25519",
+  "kind": "mod",
+  "publicKey": "PUlU51o_Sch92myux0fHEFuRJSxUbKiN9GC54o1fKW0",
+  "name": "wasm-demo",
+  "modVersion": "1.0.0",
+  "contentHash": "sha256-8YODZStCE6+EJHnfguIpZjpdQK2kbKKYGcgQoUP+QMQ=",
+  "author": "ubichill@ubichill.com",
+  "signature": "RQ5EjJD6J9rszIQcNFv1v3llUT00d0Fkjbon-FjJrljITC8oYI77y2bbV7gL3OKuJdTiPT5A8-aorBIbIl-4AQ"
+}
