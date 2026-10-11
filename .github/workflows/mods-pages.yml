@@ -6,6 +6,7 @@ on:
     paths:
       - 'mods/**'
       - 'packages/sdk/cli/**'
+      - '.github/workflows/mods-pages.yml'
   workflow_dispatch:
 
 concurrency:
@@ -61,6 +62,22 @@ jobs:
           cp -r dist/mods/. /tmp/gh-pages/mods/
           echo "✅ Mods synced to gh-pages/mods/"
           ls -la /tmp/gh-pages/mods/
+
+      # Host は作者署名（v<版>/lock.sig.json）を確認できた mod だけを実行する。外部のワールドはこの Pages の mod を
+      # 参照するので、ここにも公式アカウント（ubichill@ubichill.com）で署名する（イメージ同梱の mod・公式ワールドと同じ Secret）。
+      # 公開済みの過去の版も含めて署名する（過去の版を固定しているワールドでも動くように）。中身は変えないので、ワールドの lock はそのまま使える。
+      - name: Sign mods
+        env:
+          UBICHILL_CREDENTIALS: ${{ secrets.UBICHILL_CREDENTIALS }}
+        run: |
+          if [ -z "$UBICHILL_CREDENTIALS" ]; then
+            echo "::error::Secret UBICHILL_CREDENTIALS がありません。公式アカウントで 'ubichill ci create' を実行して設定してください。"
+            exit 1
+          fi
+          # 公開環境が取り消されていたら、署名しても Host で作者を確認できないので先に止める
+          node packages/sdk/cli/index.ts whoami
+          node packages/sdk/cli/index.ts publish /tmp/gh-pages/mods
+          node packages/sdk/cli/index.ts verify --dist-dir=/tmp/gh-pages/mods --require-signatures
 
       - name: Commit and push to gh-pages
         working-directory: /tmp/gh-pages

@@ -162,10 +162,18 @@ async function evaluateInChrome(browserWsUrl: string, pageUrl: string, expressio
         ws.addEventListener('error', reject, { once: true });
     });
     const pending = new Map<number, (message: { result?: unknown; error?: unknown }) => void>();
+    const eventWaiters: { method: string; resolve: () => void }[] = [];
     ws.addEventListener('message', (event) => {
-        const message = JSON.parse(String(event.data)) as { id?: number; result?: unknown; error?: unknown };
+        const message = JSON.parse(String(event.data)) as {
+            id?: number;
+            method?: string;
+            result?: unknown;
+            error?: unknown;
+        };
         if (message.id !== undefined) pending.get(message.id)?.(message);
+        for (const waiter of eventWaiters.filter((w) => w.method === message.method)) waiter.resolve();
     });
+    const nextEvent = (method: string) => new Promise<void>((resolve) => eventWaiters.push({ method, resolve }));
     const send = (method: string, params: object, sessionId?: string) =>
         new Promise<Record<string, unknown>>((resolve, reject) => {
             const id = pending.size + 1;
@@ -177,8 +185,13 @@ async function evaluateInChrome(browserWsUrl: string, pageUrl: string, expressio
             ws.send(JSON.stringify({ id, method, params, sessionId }));
         });
     try {
-        const { targetId } = await send('Target.createTarget', { url: pageUrl });
+        // 読み込みの途中で評価すると、ページの実行コンテキストが入れ替わって評価が壊れる。読み込みの完了を待つ
+        const { targetId } = await send('Target.createTarget', { url: 'about:blank' });
         const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true });
+        await send('Page.enable', {}, sessionId as string);
+        const loaded = nextEvent('Page.loadEventFired');
+        await send('Page.navigate', { url: pageUrl }, sessionId as string);
+        await loaded;
         const evaluated = await send(
             'Runtime.evaluate',
             { expression, awaitPromise: true, returnByValue: true },
