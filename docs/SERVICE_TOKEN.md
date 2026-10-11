@@ -50,7 +50,8 @@ async function callApi(path: string) {
 | `iss` | 発行元の Ubichill の公開オリジン（例 `https://ubichill.example`） |
 | `aud` | 宛先のサービスのオリジン。**ほかのサービスでは使えない** |
 | `sub` | **サービスごとの仮名**。同じ人・同じサービスなら常に同じ。サービスが違えば別の値で、突き合わせられない |
-| `mod` | 依頼した mod の ID（`video-player` など） |
+| `mod` | 依頼した mod の ID（`video-player` など）。**自己申告**なので、だれの mod かは `mod_author` で確かめる |
+| `mod_author` | 依頼した mod の作者アカウント（`ID@ドメイン`）。発行元が mod の作者署名と作者の公開環境を確かめたときだけ入る。開発用の Host で動く未署名の mod では入らない |
 | `iat` / `exp` | 発行時刻と期限（5 分） |
 | `jti` | トークンごとの一意な値 |
 
@@ -64,7 +65,8 @@ async function callApi(path: string) {
 2. **`iss` が信頼する発行元の一覧にあるか**を先に確かめる（一覧に無い発行元の鍵は取りに行かない）。
 3. 発行元の公開鍵を `<iss>/api/v1/service-tokens/keys`（JWKS）から取得してキャッシュする。
    知らない `kid` が来たら取り直す（発行元が鍵を差し替えた場合）。
-4. 署名（EdDSA のみ受け付ける）、`aud` が自分のオリジンか、`exp` / `iat`、必要なら `mod` を確かめる。
+4. 署名（EdDSA のみ受け付ける）、`aud` が自分のオリジンか、`exp` / `iat` を確かめる。
+   **自分の mod からの依頼だけ受けるなら `mod_author` が自分の作者アカウントか**を確かめる（`mod` は別の作者も名乗れる）。
 5. `sub` を利用者の識別子として、回数制限や利用記録に使う。
 
 ### Python（PyJWT）
@@ -91,8 +93,9 @@ def verify(token: str) -> dict:
         options={"require": ["exp", "iat", "aud", "iss", "sub"]},
         leeway=30,
     )
-    if claims.get("mod") != "my-mod":
-        raise PermissionError("unexpected mod")
+    # mod の ID は自己申告。自分の作者アカウントが署名した mod からの依頼だけ受ける
+    if claims.get("mod_author") != "alice@ubichill.example":
+        raise PermissionError("unexpected mod author")
     return claims
 ```
 
@@ -115,6 +118,8 @@ export async function verify(token: string) {
         algorithms: ['EdDSA'],
         clockTolerance: 30,
     });
+    // mod の ID は自己申告。自分の作者アカウントが署名した mod からの依頼だけ受ける
+    if (payload.mod_author !== 'alice@ubichill.example') throw new Error('unexpected mod author');
     return payload;
 }
 ```
@@ -133,9 +138,18 @@ export async function verify(token: string) {
 | --- | --- |
 | Ubichill にログインしていない第三者がサービスを直接使うこと | ログインした利用者が、自分の権利の範囲でサービスを使い込むこと（サービス側で `sub` ごとに回数制限する） |
 | 別のサービス宛てのトークンの流用（`aud`） | 利用者が自分のトークンを 5 分以内に別の場所で使うこと |
-| サービス同士での利用者の突き合わせ（仮名） | 悪意ある mod が同じ ID（`mod`）を名乗ること（mod の ID は自己申告。lock で固定したワールドでのみ意味を持つ） |
+| サービス同士での利用者の突き合わせ（仮名） | 購入した本人が、自分のブラウザから正規の mod を装ってトークンを取ること（トークンは利用者のブラウザに渡る） |
+| 別の作者の mod が同じ ID を名乗って依頼すること（`mod_author` を確かめれば） | |
 
 ---
+
+## mod の作者（`mod_author`）が載るまで
+
+1. Host は mod を読み込むとき、作者署名（`lock.sig.json`）を確かめる（[MOD.md](./MOD.md#作者署名必須)）。
+2. mod が `Ubi.identity.token()` を呼ぶと、Host はその lock と署名を発行の依頼に付ける。
+3. 発行元は、mod の読み込みと同じ規則で署名と作者の公開環境を確かめ直し、通ったときだけ `mod_author` を入れる
+   （Host の申告をそのまま信じない）。署名が付いているのに通らなければ発行しない（403。作者をいま確認できないときは 503）。
+   署名の無い依頼（開発用の Host の未署名 mod）は `mod_author` 無しで発行する。
 
 ## 発行元（Ubichill のサーバー）の設定
 

@@ -39,6 +39,7 @@ function toWorkerModDefinition(m: LoadedMod): WorkerModDefinition {
         workerCode: m.workerCode,
         capabilities: m.capabilities,
         author: m.author,
+        authorProof: m.authorProof,
         singleton: m.singleton,
         canvasTargets: m.canvasTargets,
         watchEntityTypes: m.watchEntityTypes,

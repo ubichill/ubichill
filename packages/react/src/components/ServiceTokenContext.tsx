@@ -3,7 +3,7 @@
  * 依頼先の URL や認証はアプリ固有なので、このパッケージは知らない（SocketProvider の resolveInstance と同じ形）。
  * Provider が無い環境（エディタの Preview 等）ではトークンを出さない。
  */
-import type { RpcIdentityTokenResult } from '@ubichill/shared';
+import type { ModAuthorProof, RpcIdentityTokenResult } from '@ubichill/shared';
 import type React from 'react';
 import { createContext, useContext } from 'react';
 
@@ -11,6 +11,8 @@ import { createContext, useContext } from 'react';
 export type RequestServiceToken = (input: {
     audience: string;
     modId: string;
+    /** 依頼した mod の作者署名。発行元が確かめ直してトークンに作者（`mod_author`）を載せる。 */
+    authorProof?: ModAuthorProof;
     signal?: AbortSignal;
 }) => Promise<RpcIdentityTokenResult>;
 

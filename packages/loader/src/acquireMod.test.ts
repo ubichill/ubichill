@@ -305,6 +305,10 @@ describe('作者署名', () => {
             fetchImpl: fakeFetch(await signedRoutes(key)),
         });
         expect(r).toMatchObject({ id: TYPE, author: AUTHOR });
+        // サービストークンの発行でサーバーが確かめ直せるよう、確認に使った lock と署名を返す
+        expect(r).toMatchObject({
+            authorProof: { entry: lock().mods[MOD], signature: expect.objectContaining({ author: AUTHOR }) },
+        });
     });
 
     it('署名ファイルが無い mod は実行しない（lock と一致していても）', async () => {
@@ -360,6 +364,7 @@ describe('作者署名', () => {
         const local = await acquireMod(TYPE, { ...options, baseUrl: BASE, fetchImpl: fakeFetch(goodRoutes()) });
         expect(local).toMatchObject({ id: TYPE });
         expect(local).not.toHaveProperty('author', expect.anything());
+        expect(local).not.toHaveProperty('authorProof', expect.anything());
 
         resetAcquireCaches();
         const OTHER = 'https://other-host.test/mods';

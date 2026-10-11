@@ -6,7 +6,13 @@
  * 3. 同じ宛先のトークンは期限の少し前まで使い回し、同時の依頼は 1 つにまとめる。
  */
 import { reportDiagnostic } from '@ubichill/sandbox';
-import { normalizeServiceAudience, type RpcIdentityTokenResult, UbiError, UbiErrorCode } from '@ubichill/shared';
+import {
+    type ModAuthorProof,
+    normalizeServiceAudience,
+    type RpcIdentityTokenResult,
+    UbiError,
+    UbiErrorCode,
+} from '@ubichill/shared';
 import type { RequestServiceToken } from '../components/ServiceTokenContext';
 import type { ExternalUrlAccess } from './externalUrlAuthorization';
 
@@ -22,6 +28,8 @@ export interface ModIdentityDeps {
     modId: string;
     /** 許可の対象（作者＋mod の ID）。拒否トーストの「許可」が記録する先。 */
     permissionSubject: string;
+    /** mod の作者署名（読み込み時に確認できたもの）。発行の依頼に付ける。未署名の mod では無い。 */
+    authorProof?: ModAuthorProof;
     authorizeUrl: (url: string, signal?: AbortSignal) => Promise<ExternalUrlAccess>;
     requestToken: RequestServiceToken | null;
     now?: () => number;
@@ -44,6 +52,7 @@ function cancelledToken(signal: AbortSignal): UbiError {
 export function createModIdentity({
     modId,
     permissionSubject,
+    authorProof,
     authorizeUrl,
     requestToken,
     now = Date.now,
@@ -58,7 +67,9 @@ export function createModIdentity({
         const controller = new AbortController();
         const state = { waiters: 0, settled: false };
         const promise = Promise.resolve()
-            .then(() => request({ audience, modId, signal: controller.signal }))
+            .then(() =>
+                request({ audience, modId, ...(authorProof ? { authorProof } : {}), signal: controller.signal }),
+            )
             .then((result) => {
                 if (controller.signal.aborted) throw cancelledToken(controller.signal);
                 cache.set(audience, result);

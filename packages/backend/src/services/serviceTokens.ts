@@ -16,10 +16,15 @@ import {
     sign,
 } from 'node:crypto';
 import {
+    type AuthorKeyCheck,
+    type ModAuthorProof,
+    type ModSignatureRejectReason,
     SERVICE_TOKEN_ALGORITHM,
     SERVICE_TOKEN_TTL_SECONDS,
     type ServiceTokenClaims,
     type ServiceTokenJwk,
+    verifyModSignature,
+    type WorldCrypto,
 } from '@ubichill/shared';
 
 export interface IssuedServiceToken {
@@ -30,7 +35,8 @@ export interface IssuedServiceToken {
 
 export interface ServiceTokenIssuer {
     readonly issuer: string;
-    issue(input: { userId: string; audience: string; modId: string }): IssuedServiceToken;
+    /** `modAuthor` は呼び出し側が mod の作者署名を確かめたときだけ渡す。 */
+    issue(input: { userId: string; audience: string; modId: string; modAuthor?: string }): IssuedServiceToken;
     jwks(): { keys: ServiceTokenJwk[] };
 }
 
@@ -74,7 +80,7 @@ export function createServiceTokenIssuer(options: ServiceTokenIssuerOptions): Se
 
     return {
         issuer: options.issuer,
-        issue({ userId, audience, modId }) {
+        issue({ userId, audience, modId, modAuthor }) {
             const iat = Math.floor(now() / 1000);
             const exp = iat + SERVICE_TOKEN_TTL_SECONDS;
             const token = signServiceToken(
@@ -83,6 +89,7 @@ export function createServiceTokenIssuer(options: ServiceTokenIssuerOptions): Se
                     aud: audience,
                     sub: servicePseudonym(options.subjectSecret, audience, userId),
                     mod: modId,
+                    ...(modAuthor ? { mod_author: modAuthor } : {}),
                     iat,
                     exp,
                     jti: randomId(),
@@ -141,4 +148,30 @@ export function serviceTokenIssuerFromEnv(
         privateKeyPkcs8: source.kind === 'configured' ? source.pkcs8 : generatePkcs8(),
         subjectSecret,
     });
+}
+
+export type ModAuthorForToken =
+    | { ok: true; modAuthor?: string }
+    | { ok: false; status: 400 | 403 | 503; code: ModSignatureRejectReason | 'mod-mismatch'; error: string };
+
+/**
+ * トークンに載せる mod の作者を決める。Host が付けた署名（読み込み時に確認できた lock と lock.sig.json）を、
+ * mod の読み込みと同じ規則で確かめ直す（Host の申告をそのまま信じない）。
+ * - 署名が無い: 作者なしで発行する（開発用の Host で動く未署名の mod）。作者を求めるサービスはそのトークンを受けない。
+ * - 署名が通らない: 発行しない。作者をいま確認できないときは 503（時間をおけば通る）。
+ */
+export async function modAuthorForToken(
+    modId: string,
+    proof: ModAuthorProof | undefined,
+    deps: { crypto: WorldCrypto; isAuthorKey: AuthorKeyCheck },
+): Promise<ModAuthorForToken> {
+    if (!proof) return { ok: true };
+    if (proof.entry.id !== modId) {
+        return { ok: false, status: 400, code: 'mod-mismatch', error: '署名された mod と依頼した mod が違います' };
+    }
+    const verdict = await verifyModSignature(proof.entry, proof.signature, deps.crypto, deps.isAuthorKey);
+    if (verdict.status === 'verified') return { ok: true, modAuthor: verdict.author };
+    return verdict.reason === 'author-pending'
+        ? { ok: false, status: 503, code: verdict.reason, error: 'いまは mod の作者を確認できません' }
+        : { ok: false, status: 403, code: verdict.reason, error: 'mod の作者署名を確認できません' };
 }

@@ -34,6 +34,15 @@ export type ModSignatureRejectReason =
     | 'author-unconfirmed'
     | 'author-pending';
 
+/**
+ * mod の作者を第三者（Ubichill のサーバー）に確かめ直してもらうための材料。Host が読み込み時に確認できた lock と署名。
+ * 受け取った側は {@link verifyModSignature} で確かめ直す（Host の申告をそのまま信じない）。
+ */
+export interface ModAuthorProof {
+    entry: ModLockEntry;
+    signature: unknown;
+}
+
 export type ModSignatureVerdict =
     | {
           status: 'verified';

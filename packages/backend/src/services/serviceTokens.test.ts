@@ -1,19 +1,25 @@
-import { createPublicKey, generateKeyPairSync, verify } from 'node:crypto';
+import { createPublicKey, generateKeyPairSync, sign, verify } from 'node:crypto';
 import {
+    type AuthorKeyCheck,
     checkServiceTokenClaims,
     isServiceTokenClaims,
+    type ModLockEntry,
     SERVICE_TOKEN_TTL_SECONDS,
     type ServiceTokenJwk,
+    signMod,
+    type WorldSigningKey,
 } from '@ubichill/shared';
 import { describe, expect, it, vi } from 'vitest';
 import {
     createServiceTokenIssuer,
+    modAuthorForToken,
     parsePkcs8,
     servicePseudonym,
     serviceTokenIssuerFromEnv,
     serviceTokenKeySource,
     signServiceToken,
 } from './serviceTokens';
+import { nodeWorldCrypto } from './worldCrypto';
 
 const ISSUER = 'https://ubichill.example';
 const AUDIENCE = 'https://videoplayer.example';
@@ -34,7 +40,12 @@ function issuer(pem = pkcs8Pem()) {
 }
 
 /** 外部サービスと同じ手順の検証（JWKS の鍵で署名を確かめ、規則を当てる）。 */
-function verifyLikeService(token: string, keys: readonly ServiceTokenJwk[], now = NOW_MS / 1000) {
+function verifyLikeService(
+    token: string,
+    keys: readonly ServiceTokenJwk[],
+    now = NOW_MS / 1000,
+    allowedModAuthors?: readonly string[],
+) {
     const [header, body, signature] = token.split('.');
     if (!header || !body || !signature) return 'malformed';
     const parsedHeader = JSON.parse(Buffer.from(header, 'base64url').toString());
@@ -47,7 +58,7 @@ function verifyLikeService(token: string, keys: readonly ServiceTokenJwk[], now 
     }
     const claims = JSON.parse(Buffer.from(body, 'base64url').toString());
     if (!isServiceTokenClaims(claims)) return 'malformed';
-    return checkServiceTokenClaims(claims, { audience: AUDIENCE, now }) ?? claims;
+    return checkServiceTokenClaims(claims, { audience: AUDIENCE, now, allowedModAuthors }) ?? claims;
 }
 
 describe('createServiceTokenIssuer', () => {
@@ -189,5 +200,123 @@ describe('serviceTokenKeySource / serviceTokenIssuerFromEnv', () => {
         expect(() => serviceTokenIssuerFromEnv({ NODE_ENV: 'development' }, ISSUER, vi.fn())).toThrow(
             'BETTER_AUTH_SECRET',
         );
+    });
+});
+
+describe('mod の作者（mod_author）', () => {
+    const AUTHOR = 'alice@example.com';
+    const newKey = (): WorldSigningKey => {
+        const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+        return {
+            publicKey: publicKey.export({ format: 'jwk' }).x ?? '',
+            sign: async (message) => sign(null, Buffer.from(message, 'utf8'), privateKey).toString('base64url'),
+        };
+    };
+    const integrity = (c: string) => `sha256-${c.repeat(43)}=`;
+    const entry: ModLockEntry = {
+        id: 'paid-game',
+        version: '1.0.0',
+        manifestIntegrity: integrity('A'),
+        components: { 'paid-game:main': { workerUrl: './main.js', integrity: integrity('B'), capabilities: [] } },
+    };
+    const alice = newKey();
+    const lookups: string[] = [];
+    const isAuthorKey: AuthorKeyCheck = async (author, publicKey) => {
+        lookups.push(author);
+        return author === AUTHOR && publicKey === alice.publicKey ? { status: 'confirmed' } : { status: 'unconfirmed' };
+    };
+    const deps = { crypto: nodeWorldCrypto, isAuthorKey };
+
+    it('作者の署名を確かめ直せたら、トークンに作者が載り、その作者だけを受けるサービスで通る', async () => {
+        const signature = await signMod(entry, alice, nodeWorldCrypto, { author: AUTHOR });
+        const author = await modAuthorForToken('paid-game', { entry, signature }, deps);
+        expect(author).toEqual({ ok: true, modAuthor: AUTHOR });
+
+        const tokens = issuer();
+        const { token } = tokens.issue({ userId: 'u', audience: AUDIENCE, modId: 'paid-game', modAuthor: AUTHOR });
+        expect(verifyLikeService(token, tokens.jwks().keys, NOW_MS / 1000, [AUTHOR])).toMatchObject({
+            mod: 'paid-game',
+            mod_author: AUTHOR,
+        });
+    });
+
+    it('署名の無い依頼は作者なしで発行し、作者を求めるサービスでは通らない', async () => {
+        expect(await modAuthorForToken('paid-game', undefined, deps)).toEqual({ ok: true });
+        const tokens = issuer();
+        const { token } = tokens.issue({ userId: 'u', audience: AUDIENCE, modId: 'paid-game' });
+        expect(verifyLikeService(token, tokens.jwks().keys)).not.toHaveProperty('mod_author');
+        expect(verifyLikeService(token, tokens.jwks().keys, NOW_MS / 1000, [AUTHOR])).toBe('mod-author-not-allowed');
+    });
+
+    it('同じ ID を名乗る別の作者の mod は、その作者として載り、alice だけを受けるサービスでは通らない', async () => {
+        const mallory = newKey();
+        const malloryCheck: AuthorKeyCheck = async (author, publicKey) =>
+            author === 'mallory@evil.example' && publicKey === mallory.publicKey
+                ? { status: 'confirmed' }
+                : { status: 'unconfirmed' };
+        const signature = await signMod(entry, mallory, nodeWorldCrypto, { author: 'mallory@evil.example' });
+        const author = await modAuthorForToken(
+            'paid-game',
+            { entry, signature },
+            { ...deps, isAuthorKey: malloryCheck },
+        );
+        expect(author).toEqual({ ok: true, modAuthor: 'mallory@evil.example' });
+        const tokens = issuer();
+        const { token } = tokens.issue({
+            userId: 'u',
+            audience: AUDIENCE,
+            modId: 'paid-game',
+            modAuthor: 'mallory@evil.example',
+        });
+        expect(verifyLikeService(token, tokens.jwks().keys, NOW_MS / 1000, [AUTHOR])).toBe('mod-author-not-allowed');
+    });
+
+    it('alice を名乗る署名を自分の鍵で作っても、発行しない', async () => {
+        const signature = await signMod(entry, newKey(), nodeWorldCrypto, { author: AUTHOR });
+        expect(await modAuthorForToken('paid-game', { entry, signature }, deps)).toMatchObject({
+            ok: false,
+            status: 403,
+            code: 'author-unconfirmed',
+        });
+    });
+
+    it('alice の正しい署名を、別の mod の依頼に付け替えても発行しない', async () => {
+        const signature = await signMod(entry, alice, nodeWorldCrypto, { author: AUTHOR });
+        lookups.length = 0;
+        expect(await modAuthorForToken('other-mod', { entry, signature }, deps)).toMatchObject({
+            ok: false,
+            status: 400,
+            code: 'mod-mismatch',
+        });
+        // 他の mod の lock に付け替えると内容が合わない
+        const other = { ...entry, id: 'other-mod', components: {} };
+        expect(await modAuthorForToken('other-mod', { entry: other, signature }, deps)).toMatchObject({
+            ok: false,
+            status: 403,
+        });
+        expect(lookups).toEqual([]);
+    });
+
+    it('付けた署名が無い・壊れている・内容と合わないなら発行しない（作者なしに格下げしない）', async () => {
+        const signature = await signMod(entry, alice, nodeWorldCrypto, { author: AUTHOR });
+        for (const proof of [
+            { entry, signature: undefined },
+            { entry, signature: { ...signature, signature: 'A'.repeat(86) } },
+            { entry: { ...entry, manifestIntegrity: integrity('C') }, signature },
+        ]) {
+            expect(await modAuthorForToken('paid-game', proof, deps)).toMatchObject({ ok: false, status: 403 });
+        }
+    });
+
+    it('作者をいま確認できないときは 503（時間をおけば通る）', async () => {
+        const signature = await signMod(entry, alice, nodeWorldCrypto, { author: AUTHOR });
+        const pending: AuthorKeyCheck = async () => ({ status: 'pending' });
+        expect(
+            await modAuthorForToken('paid-game', { entry, signature }, { ...deps, isAuthorKey: pending }),
+        ).toMatchObject({
+            ok: false,
+            status: 503,
+            code: 'author-pending',
+        });
     });
 });
