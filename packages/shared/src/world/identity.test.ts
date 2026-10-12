@@ -254,6 +254,20 @@ describe('作者アカウント（author）', () => {
         });
     });
 
+    it.each(['youkan@UBICHILL.COM', '@youkan@ubichill.com', 'acct:youkan@ubichill.com', ' youkan@ubichill.com'])(
+        '作者の表記の揺れ（%j）は形式不正（同じ作者の同じワールドが別の worldId に分かれるのを防ぐ）',
+        async (author) => {
+            const key = newKey();
+            const doc = baseDoc();
+            const sig = await signWorld(doc, key, fakeCrypto, { author });
+            const anyAuthor: AuthorKeyCheck = async () => ({ status: 'confirmed' });
+            expect(await verifyWorldSignature(doc, sig, fakeCrypto, anyAuthor)).toEqual({
+                status: 'invalid',
+                reason: 'malformed',
+            });
+        },
+    );
+
     it('他人のアカウントを名乗っても（鍵が違えば）author は付かず、鍵で識別される', async () => {
         const attacker = newKey();
         const doc = baseDoc();

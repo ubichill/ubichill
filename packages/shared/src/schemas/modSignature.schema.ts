@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { isCanonicalAuthorAccount } from '../user/handle';
+import { SignedAuthorAccountSchema } from '../user/handle';
 import { IntegritySchema } from './modLock.schema';
 import { Ed25519PublicKeySchema, Ed25519SignatureSchema } from './worldIdentity.schema';
 
@@ -25,17 +25,7 @@ export const ModSignatureSchema = z.object({
     modVersion: z.string().min(1),
     /** lock のうち実行内容を決める部分（{@link modLockContent}）の sha256。 */
     contentHash: IntegritySchema,
-    /**
-     * 作者アカウント。正規の表記（{@link isCanonicalAuthorAccount}）だけを受け付ける。同じ作者を別の表記で署名できると、
-     * 権限の許可のキー・サービストークンの `mod_author` が表記ごとに分かれ、完全一致で比べる側が取り違える。
-     */
-    author: z
-        .string()
-        .max(300)
-        .refine(
-            isCanonicalAuthorAccount,
-            '作者アカウントは正規の表記（handle@domain、ドメインは小文字）にしてください',
-        ),
+    author: SignedAuthorAccountSchema,
     signature: Ed25519SignatureSchema,
 });
 

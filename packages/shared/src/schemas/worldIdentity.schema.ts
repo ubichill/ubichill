@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AuthorAccountSchema } from '../user/handle';
+import { AuthorAccountSchema, SignedAuthorAccountSchema } from '../user/handle';
 import { IntegritySchema } from './modLock.schema';
 
 // ============================================
@@ -27,10 +27,10 @@ export const WorldSignatureSchema = z.object({
     name: z.string().min(1),
     contentHash: IntegritySchema,
     /**
-     * 作者アカウント（`handle@domain`）の主張。署名対象に含まれる。検証側は domain の WebFinger で
+     * 作者アカウント（`handle@domain`、正規の表記だけ）の主張。署名対象に含まれる。検証側は domain の WebFinger で
      * その handle の公開鍵を引き、`publicKey` と一致したときだけ作者として表示する（主張だけでは信用しない）。
      */
-    author: AuthorAccountSchema.optional(),
+    author: SignedAuthorAccountSchema.optional(),
     signature: Ed25519SignatureSchema,
 });
 

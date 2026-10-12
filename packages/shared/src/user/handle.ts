@@ -65,6 +65,20 @@ export const AuthorAccountSchema = z
     .max(300)
     .refine((v) => parseAuthorAccount(v) !== null, '作者アカウントは handle@domain の形式です');
 
+/**
+ * 署名に入れる作者アカウント。正規の表記（{@link isCanonicalAuthorAccount}）だけを受け付ける。
+ * 同じ作者を別の表記で署名できると、作者で決まる ID（ワールドの `acct:作者/名前`・権限の許可のキー・
+ * サービストークンの `mod_author`）が表記ごとに分かれ、完全一致で比べる側が取り違える。ワールドと mod で同じ規則。
+ * 利用者の入力（`@alice@example.com` など）を受けるときは {@link AuthorAccountSchema} で読んでから正規化する。
+ */
+export const SignedAuthorAccountSchema = z
+    .string()
+    .max(300)
+    .refine(
+        (v) => isCanonicalAuthorAccount(v),
+        '作者アカウントは正規の表記（handle@domain、ドメインは小文字）にしてください',
+    );
+
 export interface AuthorAccount {
     handle: string;
     domain: string;
