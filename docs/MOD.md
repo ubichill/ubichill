@@ -153,6 +153,17 @@ npx ubichill verify --dist-dir=dist --require-signatures
 
 内容が変わるビルドをすると、以前の内容に付けた `lock.sig.json` は消える（署名し直す）。同じ内容の再ビルドでは残る。
 
+### ユーザーページに出す
+
+`publish` に公開先の URL（Host がこの mod を取りに来る基点。ワールドの依存の `source.url` と同じ値）を渡すと、署名したときに
+作者アカウントのサーバーへ登録され、ユーザーページの「公開している mod」に出る。`--public-url` を省くと package.json の
+`homepage` を使う。サーバーは公開先から `lock.json` と `lock.sig.json` を取り、本人の署名付きで配られていると確かめたものだけを出す
+（公開前・別の物に置き換えた・鍵を取り消した場合は出ない）。登録は設定の「ワールド」→「外部に置いた作品」から外せる。
+
+```bash
+npx ubichill publish dist --public-url=https://yourname.github.io/your-mod
+```
+
 ### 開発中の mod
 
 開発用の Host（`pnpm dev`、または `VITE_ENVIRONMENT=development` でビルドしたプレビュー）は、**自分のオリジンから配る mod に

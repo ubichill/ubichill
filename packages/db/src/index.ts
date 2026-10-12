@@ -8,6 +8,11 @@ export {
     type CreateCliAuthRequestInput,
     cliAuthRequestRepository,
 } from './repositories/cliAuthRequestRepository';
+export {
+    type ExternalWorkKey,
+    type ExternalWorkRecord,
+    externalWorkRepository,
+} from './repositories/externalWorkRepository';
 export { favoriteRepository } from './repositories/favoriteRepository';
 export { federationPeerRepository } from './repositories/federationPeerRepository';
 export { instanceRepository } from './repositories/instanceRepository';

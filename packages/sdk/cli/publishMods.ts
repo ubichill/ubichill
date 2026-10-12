@@ -6,7 +6,7 @@
  * mod はサーバーへ送らない。署名済みの出力をそのまま GitHub Pages などへ置く。
  */
 import { join } from 'node:path';
-import { MOD_SIGNATURE_FILE, ModLockEntrySchema, signMod, type WorldSigningKey } from '@ubichill/shared';
+import { MOD_SIGNATURE_FILE, type ModLockEntry, ModLockEntrySchema, type ModSignature, signMod, type WorldSigningKey } from '@ubichill/shared';
 import type { Credential } from './credentials.ts';
 import { type ModVersionDir, modVersionDirs } from './modLayout.ts';
 
@@ -41,8 +41,14 @@ function readLock(deps: PublishModsDeps, target: ModVersionDir) {
     return parsed.data;
 }
 
-/** 出力にある全 mod・全版に署名し、書き出した署名ファイルのパスを返す。1 つも無ければ失敗（パスの指定ミスに気付けるように）。 */
-export async function publishMods(deps: PublishModsDeps, options: PublishModsOptions): Promise<string[]> {
+export interface SignedMod {
+    entry: ModLockEntry;
+    signature: ModSignature;
+    path: string;
+}
+
+/** 出力にある全 mod・全版に署名し、書き出した署名を返す。1 つも無ければ失敗（パスの指定ミスに気付けるように）。 */
+export async function publishMods(deps: PublishModsDeps, options: PublishModsOptions): Promise<SignedMod[]> {
     const locks = modVersionDirs(options.modsDir, deps.fs.listDirs).flatMap((target) => {
         const entry = readLock(deps, target);
         return entry ? [{ ...target, entry }] : [];
@@ -50,13 +56,13 @@ export async function publishMods(deps: PublishModsDeps, options: PublishModsOpt
     if (locks.length === 0) {
         throw new Error(`${options.modsDir} に署名する mod がありません（先に ubichill build を実行してください）`);
     }
-    const written: string[] = [];
+    const written: SignedMod[] = [];
     for (const { dir, entry } of locks) {
         const signature = await signMod(entry, deps.key, deps.crypto, { author: options.credential.account });
         const sigPath = join(dir, MOD_SIGNATURE_FILE);
         deps.fs.writeText(sigPath, `${JSON.stringify(signature, null, 2)}\n`);
         deps.log(`🔏 ${sigPath}（${entry.id}@${entry.version}、作者 @${options.credential.account}）`);
-        written.push(sigPath);
+        written.push({ entry, signature, path: sigPath });
     }
     return written;
 }

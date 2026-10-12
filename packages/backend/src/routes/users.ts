@@ -1,4 +1,5 @@
 import {
+    externalWorkRepository,
     favoriteRepository,
     publishingEnvironmentRepository,
     userFriendRepository,
@@ -7,7 +8,7 @@ import {
     type WorldRecord,
     worldRepository,
 } from '@ubichill/db';
-import type { ResolvedWorld } from '@ubichill/shared';
+import type { ResolvedWorld, WorldListItem } from '@ubichill/shared';
 import {
     BioSchema,
     canViewFavorites,
@@ -18,11 +19,13 @@ import {
     displayNameChangeCutoff,
     displayNameKey,
     ENV_KEYS,
+    ExternalWorkRegistrationSchema,
     FAVORITES_VISIBILITIES,
     FavoritesVisibilitySchema,
     HandleSchema,
     isPublishable,
     LIMITS,
+    MAX_EXTERNAL_WORKS_PER_USER,
     needsFriendCheck,
     OFFICIAL_HANDLE,
     RevokeReasonSchema,
@@ -30,6 +33,7 @@ import {
     verifyKeyRegistration,
 } from '@ubichill/shared';
 import { Router } from 'express';
+import yaml from 'yaml';
 import { auth, createPendingRegistration, resendOTP, sendAccountNotice, verifyAndRegister } from '../lib/auth';
 import {
     isAdminHandle,
@@ -39,8 +43,10 @@ import {
     requirePublisher,
     toWebHeaders,
 } from '../middleware/auth';
-import { invalidateAuthorKey } from '../services/authorKeyStore';
+import { invalidateAuthorKey, isAuthorKey } from '../services/authorKeyStore';
 import { selfAccount } from '../services/authorKeys';
+import { publishedExternalWorks } from '../services/externalWorkStore';
+import { verifyRegistration } from '../services/externalWorks';
 import { favoriteRefOf, resolveFavoriteWorlds } from '../services/favorites';
 import {
     browserEnvironmentName,
@@ -68,6 +74,19 @@ const repositoryWorldView = (w: ResolvedWorld) => ({
     capacity: w.capacity,
     identity: w.identity,
     managedBy: 'repository' as const,
+});
+
+/** 外部（GitHub Pages など）に置いたワールド。開くときは URL で入る。 */
+const externalWorldView = (w: WorldListItem) => ({
+    id: w.id,
+    url: w.url,
+    displayName: w.displayName,
+    description: w.description ?? null,
+    thumbnail: w.thumbnail ?? null,
+    version: w.version,
+    capacity: w.capacity,
+    identity: w.identity,
+    managedBy: 'external' as const,
 });
 
 const PUBLIC_FAVORITES_TTL_MS = 3 * 60 * 1000;
@@ -455,6 +474,65 @@ router.get('/me/worlds', requirePublisher, async (req, res) => {
     });
 });
 
+// 外部の作品の登録（`ubichill publish` が署名したときに送る）。署名の作者が本人のものだけ受け付ける
+router.put('/me/external-works', requirePublisher, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    const parsed = ExternalWorkRegistrationSchema.safeParse(req.body);
+    if (!parsed.success) {
+        return res
+            .status(400)
+            .json({ error: parsed.error.issues[0]?.message ?? '依頼の形式が違います', code: 'invalid-request' });
+    }
+    const me = await userRepository.findById(req.user.id);
+    if (!me?.handle) return res.status(403).json({ error: 'ID を決めてから登録してください', code: 'no-handle' });
+    const verdict = await verifyRegistration(parsed.data, {
+        account: selfAccount(me.handle),
+        crypto: nodeWorldCrypto,
+        isAuthorKey,
+        parseYaml: (text) => yaml.parse(text) as unknown,
+        selfOrigin: new URL(process.env[ENV_KEYS.PUBLIC_BASE_URL] || SERVER_CONFIG.DEV_URL).origin,
+    });
+    if (!verdict.ok) return res.status(verdict.status).json({ error: verdict.error, code: verdict.code });
+    const key = { userId: me.id, kind: verdict.work.kind, url: verdict.work.url, name: verdict.work.name };
+    if (
+        !(await externalWorkRepository.exists(key)) &&
+        (await externalWorkRepository.countByUser(me.id)) >= MAX_EXTERNAL_WORKS_PER_USER
+    ) {
+        return res.status(409).json({
+            error: `外部の作品は ${MAX_EXTERNAL_WORKS_PER_USER} 件まで登録できます。設定から不要なものを消してください`,
+            code: 'limit',
+        });
+    }
+    await externalWorkRepository.upsert({ ...key, version: verdict.work.version });
+    return res.json({ work: verdict.work });
+});
+
+// 登録した外部の作品（本人の設定画面）。いま配られているかに関わらず全部返す
+router.get('/me/external-works', requireAuth, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    const records = await externalWorkRepository.listByUser(req.user.id);
+    res.set('Cache-Control', 'private, no-store');
+    return res.json({
+        works: records.map((r) => ({
+            kind: r.kind,
+            url: r.url,
+            name: r.name,
+            ...(r.version ? { version: r.version } : {}),
+            registeredAt: r.registeredAt.toISOString(),
+        })),
+    });
+});
+
+router.delete('/me/external-works', requireAuth, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    const { kind, url, name } = (req.body ?? {}) as Record<string, unknown>;
+    if (typeof kind !== 'string' || typeof url !== 'string' || typeof name !== 'string') {
+        return res.status(400).json({ error: 'kind・url・name を指定してください' });
+    }
+    const removed = await externalWorkRepository.remove({ userId: req.user.id, kind, url, name });
+    return removed ? res.status(204).end() : res.status(404).json({ error: 'Not found' });
+});
+
 // お気に入りワールドの worldRef 一覧
 router.get('/me/favorites', requireAuth, async (req, res) => {
     if (!req.user) {
@@ -577,7 +655,18 @@ router.get('/:userId/worlds', async (req, res) => {
     const repository = (await worldRegistry.repositoryWorldsByAuthor(authorAccountsOfUser(owner?.handle ?? null))).map(
         repositoryWorldView,
     );
-    return res.json({ worlds: [...worlds, ...repository] });
+    const external = owner?.handle
+        ? (await publishedExternalWorks(owner.id, selfAccount(owner.handle))).worlds.map(externalWorldView)
+        : [];
+    return res.json({ worlds: [...worlds, ...repository, ...external] });
+});
+
+// ユーザーが公開している mod（外部に置いたもののうち、いま本人の署名付きで配られていると確かめられたもの）
+router.get('/:userId/mods', async (req, res) => {
+    const owner = await userRepository.findById(req.params.userId);
+    if (!owner?.handle) return res.json({ mods: [] });
+    const { mods } = await publishedExternalWorks(owner.id, selfAccount(owner.handle));
+    return res.json({ mods });
 });
 
 export { router };
