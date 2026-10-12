@@ -1,21 +1,23 @@
 /**
  * 作者アカウント → 公開鍵・表示名の解決器の実体（DB・safeFetch を注入して組み立てる）。
  * どの作者も同じ規則で確かめる（公式アカウントも、リポジトリの記録で特別に信用しない）。
- * ロジックは authorKeys.ts（DB 非依存でテストできる）。
+ * 規則は @ubichill/shared の authorKeyDirectory（ブラウザの Host と同じ。DB 非依存でテストできる）。
  */
 import { authorBindingRepository, publishingEnvironmentRepository, userRepository } from '@ubichill/db';
-import type { AuthorKeyCheck } from '@ubichill/shared';
-import { createAuthorKeyDirectory, selfDomain } from './authorKeys';
+import { type AuthorKeyCheck, createAuthorKeyDirectory } from '@ubichill/shared';
+import { selfDomain } from './authorKeys';
 import { signingKeyEntryOf } from './publishingEnvironments';
 import { safeFetch } from './safeFetch';
 
 const authorKeys = createAuthorKeyDirectory({
-    selfDomain,
-    findLocalAccount: async (handle) => {
-        const user = await userRepository.findByHandle(handle);
-        if (!user) return undefined;
-        const environments = await publishingEnvironmentRepository.listByUser(user.id);
-        return { keys: environments.map(signingKeyEntryOf), displayName: user.name };
+    local: {
+        domain: selfDomain,
+        findAccount: async (handle) => {
+            const user = await userRepository.findByHandle(handle);
+            if (!user) return undefined;
+            const environments = await publishingEnvironmentRepository.listByUser(user.id);
+            return { keys: environments.map(signingKeyEntryOf), displayName: user.name };
+        },
     },
     bindings: {
         find: async (account) => {

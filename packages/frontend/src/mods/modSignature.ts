@@ -1,17 +1,22 @@
 /**
  * mod の作者署名の確認（frontend アダプタ）。
  *
- * 署名の照合と作者の確認はサーバー（`POST /api/v1/mods/signature/verify`）が行う。他サーバーの作者の鍵一覧の取得・保存・
- * 取り消しの反映はワールドの署名と同じ仕組みを使うため。ここは依頼の組み立てと、開発用の例外の判定だけを持つ。
+ * 確認はブラウザで行う（署名の照合は WebCrypto、作者の鍵一覧は作者のサーバーの WebFinger から直接取る）。
+ * 規則は backend と同じ @ubichill/shared の verifyModSignature と authorKeyDirectory で、Host のオリジンに
+ * SNS backend があってもなくても（単体モードでも）同じように確かめる。ここは保存先・取得の注入と開発用の例外の判定だけを持つ。
  */
+import { webWorldCrypto } from '@ubichill/loader';
 import {
+    createAuthorKeyDirectory,
     MOD_SIGNATURE_FILE,
     type ModLockEntry,
     ModLockEntrySchema,
     type ModSignatureRejectReason,
     type ModSignatureVerdict,
+    verifyModSignature,
 } from '@ubichill/shared';
-import { API_BASE } from '@/lib/api';
+import { createStoredAuthorBindings, type KeyValueStorage } from './browserAuthorKeys';
+import { DEV_HOST } from './devHost';
 
 export type VerifyModSignature = (entry: ModLockEntry, signature: unknown) => Promise<ModSignatureVerdict>;
 
@@ -25,13 +30,8 @@ export function isUnsignedModAllowed(args: { devHost: boolean; baseUrl: string; 
     return url !== null && url.origin === args.origin;
 }
 
-const isVerdict = (value: unknown): value is ModSignatureVerdict =>
-    typeof value === 'object' &&
-    value !== null &&
-    ((value as { status?: unknown }).status === 'verified' || (value as { status?: unknown }).status === 'rejected');
-
 export interface SignatureVerifierDeps {
-    /** サーバーへ確認を依頼する。応答を確認結果として読めなければ throw。 */
+    /** 1 回の確認。throw は「いまは確認できない」として扱う。 */
     request: VerifyModSignature;
     sleep: (ms: number) => Promise<void>;
     /** 「いまは確認できない」ときに確認し直す間隔（ミリ秒）。この回数だけ待って確認し直す。 */
@@ -39,7 +39,7 @@ export interface SignatureVerifierDeps {
 }
 
 /**
- * 「いまは確認できない」（サーバーが作者のサーバーへの問い合わせを見送った・サーバーに届かない）ときだけ、間をあけて確認し直す。
+ * 「いまは確認できない」（作者のサーバーへの問い合わせを見送った・届かない）ときだけ、間をあけて確認し直す。
  * それ以外の拒否は確定なので繰り返さない。
  */
 export function createSignatureVerifier(deps: SignatureVerifierDeps): VerifyModSignature {
@@ -58,21 +58,53 @@ export function createSignatureVerifier(deps: SignatureVerifierDeps): VerifyModS
     return (entry, signature) => attempt(entry, signature, delays);
 }
 
-const requestVerdict: VerifyModSignature = async (entry, signature) => {
-    const res = await fetch(`${API_BASE}/api/v1/mods/signature/verify`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ entry, signature }),
-    });
-    const body: unknown = res.ok ? await res.json() : undefined;
-    if (!isVerdict(body)) throw new Error(`mod の署名を確認できませんでした (${res.status})`);
-    return body;
+/** 作者のサーバーの WebFinger・鍵一覧を取る。失敗・非 2xx は undefined（作者の確認の規則は失敗を「確認できない」として扱う）。 */
+const fetchPublicJson = async (url: string): Promise<unknown> => {
+    try {
+        const res = await fetch(url, {
+            headers: { Accept: 'application/jrd+json, application/json' },
+            credentials: 'omit',
+            signal: AbortSignal.timeout(5000),
+        });
+        return res.ok ? ((await res.json()) as unknown) : undefined;
+    } catch {
+        return undefined;
+    }
 };
 
-export const verifyModSignatureViaApi: VerifyModSignature = createSignatureVerifier({
-    request: requestVerdict,
-    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-});
+/** ブラウザで確かめる verifier を作る（保存先・取得を注入できる）。 */
+export function createBrowserSignatureVerifier(deps: {
+    storage: KeyValueStorage;
+    fetchJson: (url: string) => Promise<unknown>;
+    /** 開発（localhost の作者のサーバー）だけ http も試す。 */
+    allowHttp: boolean;
+    now?: () => number;
+}): VerifyModSignature {
+    const stored = createStoredAuthorBindings(deps.storage, deps.now);
+    const directory = createAuthorKeyDirectory({
+        bindings: stored.bindings,
+        confirmedContents: stored.confirmedContents,
+        fetchJson: deps.fetchJson,
+        allowHttp: deps.allowHttp,
+        ...(deps.now ? { now: deps.now } : {}),
+    });
+    return (entry, signature) => verifyModSignature(entry, signature, webWorldCrypto, directory.isAuthorKey);
+}
+
+// localStorage を読むので、最初に使うときに作る（テスト・SSR で import しただけでは触らない）
+const browserVerifier = { current: undefined as VerifyModSignature | undefined };
+
+export const verifyModSignatureInBrowser: VerifyModSignature = (entry, signature) => {
+    browserVerifier.current ??= createSignatureVerifier({
+        request: createBrowserSignatureVerifier({
+            storage: window.localStorage,
+            fetchJson: fetchPublicJson,
+            allowHttp: DEV_HOST,
+        }),
+        sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    });
+    return browserVerifier.current(entry, signature);
+};
 
 /**
  * 配布されている版の作者の確認結果（World Editor の一覧用）。
@@ -153,4 +185,4 @@ const fetchJson = async (url: string): Promise<FetchedJson> => {
 };
 
 export const fetchModAuthor = (baseUrl: string, modId: string, version: string): Promise<ModAuthorCheck> =>
-    checkModAuthor({ fetchJson, verify: verifyModSignatureViaApi }, baseUrl, modId, version);
+    checkModAuthor({ fetchJson, verify: verifyModSignatureInBrowser }, baseUrl, modId, version);

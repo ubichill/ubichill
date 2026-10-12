@@ -273,6 +273,7 @@ export * from './mod/serviceToken';
 export * from './mod/types';
 export * from './mod/vnode';
 export * from './schemas';
+export * from './user/authorKeyDirectory';
 export * from './user/cliAuth';
 export * from './user/displayNameChange';
 export * from './user/externalWorks';
