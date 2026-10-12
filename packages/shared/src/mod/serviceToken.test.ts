@@ -88,6 +88,26 @@ describe('checkServiceTokenClaims', () => {
             'mod-not-allowed',
         );
     });
+
+    it('allowedModAuthors を指定すると、その作者が署名した mod のトークンだけ受ける', () => {
+        const only = { ...rules, allowedModAuthors: ['alice@example.com'] };
+        expect(checkServiceTokenClaims(claims({ mod_author: 'alice@example.com' }), only)).toBeNull();
+        expect(checkServiceTokenClaims(claims({ mod_author: 'mallory@evil.example' }), only)).toBe(
+            'mod-author-not-allowed',
+        );
+        // 作者の無いトークン（未署名の mod）・ID だけ同じ別作者の mod は受けない
+        expect(checkServiceTokenClaims(claims(), only)).toBe('mod-author-not-allowed');
+        expect(checkServiceTokenClaims(claims({ mod_author: '' }), only)).toBe('mod-author-not-allowed');
+        // 大文字小文字・前後の空白違いを同じ作者として扱わない（発行元は正規化した値を入れる）
+        expect(checkServiceTokenClaims(claims({ mod_author: 'Alice@example.com' }), only)).toBe(
+            'mod-author-not-allowed',
+        );
+    });
+
+    it('allowedModAuthors を指定しなければ、作者の有無を問わない（これまでのサービスはそのまま動く）', () => {
+        expect(checkServiceTokenClaims(claims(), rules)).toBeNull();
+        expect(checkServiceTokenClaims(claims({ mod_author: 'alice@example.com' }), rules)).toBeNull();
+    });
 });
 
 describe('isServiceTokenClaims', () => {
@@ -95,12 +115,18 @@ describe('isServiceTokenClaims', () => {
         expect(isServiceTokenClaims(claims())).toBe(true);
     });
 
-    it.each([null, 'x', {}, { ...claims(), exp: '1' }, { ...claims(), sub: 1 }, { ...claims(), iat: Number.NaN }])(
-        '欠けている・型が違えば false: %j',
-        (value) => {
-            expect(isServiceTokenClaims(value)).toBe(false);
-        },
-    );
+    it.each([
+        null,
+        'x',
+        {},
+        { ...claims(), exp: '1' },
+        { ...claims(), sub: 1 },
+        { ...claims(), iat: Number.NaN },
+        { ...claims(), mod_author: 1 },
+        { ...claims(), mod_author: null },
+    ])('欠けている・型が違えば false: %j', (value) => {
+        expect(isServiceTokenClaims(value)).toBe(false);
+    });
 });
 
 describe('serviceTokenKeysUrl', () => {

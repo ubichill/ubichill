@@ -6,12 +6,15 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 const mocks = vi.hoisted(() => ({
     getSession: vi.fn(),
     issue: vi.fn(() => ({ token: 'signed-token', expiresAt: 1_300_000 })),
+    isAuthorKey: vi.fn(async () => ({ status: 'unconfirmed' as const })),
 }));
 
 vi.mock('@ubichill/db', () => ({ publishingEnvironmentRepository: {}, userRepository: {} }));
 vi.mock('../lib/auth', () => ({ auth: { api: { getSession: mocks.getSession } } }));
 vi.mock('../utils/logger', () => ({ logger: { warn: vi.fn() } }));
-vi.mock('../services/serviceTokens', () => ({
+vi.mock('../services/authorKeyStore', () => ({ isAuthorKey: mocks.isAuthorKey }));
+vi.mock('../services/serviceTokens', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('../services/serviceTokens')>()),
     serviceTokenIssuerFromEnv: () => ({
         issuer: 'https://ubichill.example',
         issue: mocks.issue,
@@ -30,11 +33,11 @@ const session = {
     session: { id: 'session-1', userId: 'user-1', token: 'session-token', expiresAt: new Date(2_000_000) },
 };
 
-const issue = () =>
+const issue = (extra: Record<string, unknown> = {}) =>
     fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1/service-tokens`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', cookie: 'session=old' },
-        body: JSON.stringify({ audience: 'https://api.example.com', modId: 'my-mod' }),
+        body: JSON.stringify({ audience: 'https://api.example.com', modId: 'my-mod', ...extra }),
     });
 
 describe('POST /api/v1/service-tokens のセッション確認', () => {
@@ -69,5 +72,39 @@ describe('POST /api/v1/service-tokens のセッション確認', () => {
             audience: 'https://api.example.com',
             modId: 'my-mod',
         });
+    });
+
+    it('付けた mod の署名が通らなければ、理由つきで断り、発行しない', async () => {
+        mocks.getSession.mockResolvedValue(session);
+        const entry = {
+            id: 'my-mod',
+            version: '1.0.0',
+            manifestIntegrity: `sha256-${'A'.repeat(43)}=`,
+            components: {},
+        };
+        const response = await issue({ authorProof: { entry, signature: { forged: true } } });
+        expect(response.status).toBe(403);
+        expect(await response.json()).toMatchObject({ code: 'signature-malformed' });
+        const mismatched = await issue({ authorProof: { entry: { ...entry, id: 'other' }, signature: {} } });
+        expect(mismatched.status).toBe(400);
+        expect(await mismatched.json()).toMatchObject({ code: 'mod-mismatch' });
+        expect(mocks.issue).not.toHaveBeenCalled();
+        expect(mocks.isAuthorKey).not.toHaveBeenCalled();
+    });
+
+    it('lock の形をしていない証明は 400', async () => {
+        mocks.getSession.mockResolvedValue(session);
+        for (const authorProof of ['x', { entry: 'x' }, { entry: { id: 'my-mod' } }]) {
+            const response = await issue({ authorProof });
+            expect(response.status).toBe(400);
+            // 宛先ではなく依頼の形の誤りとして返す
+            expect(await response.json()).toMatchObject({ code: 'invalid-request' });
+        }
+        for (const audience of ['http://api.example.com', 'not a url', 42]) {
+            const response = await issue({ audience });
+            expect(response.status).toBe(400);
+            expect(await response.json()).toMatchObject({ code: 'audience-invalid' });
+        }
+        expect(mocks.issue).not.toHaveBeenCalled();
     });
 });

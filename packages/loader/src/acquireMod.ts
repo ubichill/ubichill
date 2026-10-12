@@ -11,6 +11,7 @@
 import type { ComponentDataFieldSpec, OverlayMode } from '@ubichill/shared';
 import {
     MOD_SIGNATURE_FILE,
+    type ModAuthorProof,
     type ModLock,
     type ModLockEntry,
     type ModSignatureRejectReason,
@@ -164,7 +165,7 @@ async function fetchSignature(versionedBase: string, f: FetchLike): Promise<unkn
     }
 }
 
-type AuthorResult = { author?: string } | { rejected: ModSignatureRejectReason };
+type AuthorResult = { author?: string; authorProof?: ModAuthorProof } | { rejected: ModSignatureRejectReason };
 
 /**
  * 作者を確認できた結果を使い回す時間。これを過ぎた読み込み（ワールドの移動・入り直し）ではサーバーへ確認し直す。
@@ -190,7 +191,9 @@ async function checkAuthor(
     const verdict = await opts
         .verifySignature(lockEntry, signature)
         .catch((): ModSignatureVerdict => ({ status: 'rejected', reason: 'author-pending' }));
-    return verdict.status === 'verified' ? { author: verdict.author } : { rejected: verdict.reason };
+    return verdict.status === 'verified'
+        ? { author: verdict.author, authorProof: { entry: lockEntry, signature } }
+        : { rejected: verdict.reason };
 }
 
 function resolveAuthor(
@@ -283,6 +286,7 @@ export async function acquireMod(entityType: string, opts: AcquireModOptions): P
         workerCode: new TextDecoder().decode(fetchedWorker.bytes),
         capabilities,
         author: authored.author,
+        authorProof: authored.authorProof,
         modBase: versionedBase,
         // manifest は lock の manifestIntegrity と照合済みなので、ここに載る hash もそのまま信頼できる。
         assetIntegrity: assetIntegrityOf(fetched.manifest.assetIntegrity),

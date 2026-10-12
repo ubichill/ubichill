@@ -29,6 +29,20 @@ function setup(overrides: Partial<Parameters<typeof createModIdentity>[0]> = {})
 }
 
 describe('createModIdentity', () => {
+    it('作者を確認できた mod は、その署名を発行の依頼に付ける（未署名の mod では付けない）', async () => {
+        const authorProof = {
+            entry: { id: 'video-player', version: '1.0.0', manifestIntegrity: 'm', components: {} },
+            signature: { author: 'alice@example.com' },
+        };
+        const signed = setup({ authorProof });
+        await signed.handler(AUDIENCE, { signal: signed.signal() });
+        expect(signed.requestToken).toHaveBeenCalledWith(expect.objectContaining({ authorProof }));
+
+        const unsigned = setup();
+        await unsigned.handler(AUDIENCE, { signal: unsigned.signal() });
+        expect(unsigned.requestToken.mock.calls[0]?.[0]).not.toHaveProperty('authorProof');
+    });
+
     it('宛先をオリジンに正規化し、fetch と同じ認可を通してから mod の ID 付きで依頼する', async () => {
         const { handler, requestToken, authorizeUrl } = setup();
         const signal = new AbortController().signal;

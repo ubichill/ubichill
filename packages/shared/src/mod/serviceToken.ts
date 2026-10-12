@@ -6,6 +6,7 @@
  *
  * - `aud` はサービスのオリジン。トークンはそのサービスでしか通らない。
  * - `sub` はサービスごとの仮名。本当のユーザー ID は渡さず、サービスをまたいで同じ人だと突き合わせられない。
+ * - `mod_author` は依頼した mod の、署名で確認できた作者アカウント。サービスは「自分が署名した mod からの依頼だけ受ける」と決められる。
  *
  * ここは形式と規則（純粋な知識）だけを持つ。署名は発行元（backend）が行う。
  */
@@ -25,8 +26,13 @@ export interface ServiceTokenClaims {
     aud: string;
     /** サービスごとの利用者の仮名。 */
     sub: string;
-    /** 依頼した mod の ID（mod.json の id）。 */
+    /** 依頼した mod の ID（mod.json の id）。自己申告なので、作者を確かめるときは `mod_author` を使う。 */
     mod: string;
+    /**
+     * 依頼した mod の作者アカウント（`handle@domain`）。発行元が mod の作者署名と作者の公開環境を確かめたときだけ入る
+     * （開発用の Host で動く未署名の mod では入らない）。
+     */
+    mod_author?: string;
     iat: number;
     exp: number;
     /** トークンごとの一意な値（サービスが再利用を検出したい場合に使う）。 */
@@ -85,13 +91,15 @@ export type ServiceTokenRejectReason =
     | 'wrong-audience'
     | 'expired'
     | 'not-yet-valid'
-    | 'mod-not-allowed';
+    | 'mod-not-allowed'
+    | 'mod-author-not-allowed';
 
 export function isServiceTokenClaims(value: unknown): value is ServiceTokenClaims {
     if (typeof value !== 'object' || value === null) return false;
     const v = value as Record<string, unknown>;
     return (
         ['iss', 'aud', 'sub', 'mod', 'jti'].every((key) => typeof v[key] === 'string') &&
+        (v.mod_author === undefined || typeof v.mod_author === 'string') &&
         Number.isFinite(v.iat) &&
         Number.isFinite(v.exp)
     );
@@ -102,13 +110,15 @@ export interface ServiceTokenClaimRules {
     audience: string;
     /** 現在時刻（秒）。 */
     now: number;
-    /** 受け付ける mod の ID。省略時は問わない。 */
+    /** 受け付ける mod の ID。省略時は問わない。ID は自己申告なので、作者で絞るなら allowedModAuthors を使う。 */
     allowedMods?: readonly string[];
+    /** 受け付ける mod の作者アカウント（`handle@domain`）。指定すると `mod_author` の無いトークンも受けない。 */
+    allowedModAuthors?: readonly string[];
     /** 時計のずれの許容（秒）。 */
     clockSkewSeconds?: number;
 }
 
-/** 署名を確かめた後に、宛先・期限・mod を確かめる（サービス側の規則）。 */
+/** 署名を確かめた後に、宛先・期限・mod・mod の作者を確かめる（サービス側の規則）。 */
 export function checkServiceTokenClaims(
     claims: ServiceTokenClaims,
     rules: ServiceTokenClaimRules,
@@ -118,5 +128,8 @@ export function checkServiceTokenClaims(
     if (claims.exp + skew <= rules.now) return 'expired';
     if (claims.iat - skew > rules.now) return 'not-yet-valid';
     if (rules.allowedMods && !rules.allowedMods.includes(claims.mod)) return 'mod-not-allowed';
+    if (rules.allowedModAuthors && !(claims.mod_author && rules.allowedModAuthors.includes(claims.mod_author))) {
+        return 'mod-author-not-allowed';
+    }
     return null;
 }

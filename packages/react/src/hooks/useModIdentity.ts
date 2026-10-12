@@ -10,8 +10,9 @@ export function useModIdentity(definition: WorkerModDefinition): ModIdentityHand
     const requestToken = useServiceTokenRequester();
     const modId = definition.id.split(':')[0] ?? definition.id;
     const permissionSubject = modPermissionSubject(definition);
+    const authorProof = definition.authorProof;
     return useMemo(
-        () => createModIdentity({ modId, permissionSubject, authorizeUrl, requestToken }),
-        [modId, permissionSubject, authorizeUrl, requestToken],
+        () => createModIdentity({ modId, permissionSubject, authorProof, authorizeUrl, requestToken }),
+        [modId, permissionSubject, authorProof, authorizeUrl, requestToken],
     );
 }

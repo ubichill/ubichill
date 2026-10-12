@@ -1,4 +1,10 @@
-import type { ComponentDataFieldSpec, LockRejectReason, ModSignatureRejectReason, OverlayMode } from '@ubichill/shared';
+import type {
+    ComponentDataFieldSpec,
+    LockRejectReason,
+    ModAuthorProof,
+    ModSignatureRejectReason,
+    OverlayMode,
+} from '@ubichill/shared';
 
 /**
  * 取得・検証済みの mod（React/DOM 非依存の中立表現）。
@@ -15,6 +21,8 @@ export interface LoadedMod {
     capabilities?: string[];
     /** 署名で確認できた作者アカウント（`handle@domain`）。無いのは「署名なし（開発）」として許した mod だけ。 */
     author?: string;
+    /** 作者を確認できた lock と署名。サービストークンの発行で、サーバーに作者を確かめ直してもらうために渡す。 */
+    authorProof?: ModAuthorProof;
     /** versioned アセットベース URL（Worker で `Ubi.modBase`）。 */
     modBase: string;
     /** 同梱アセットの相対パス → SRI。manifest 由来（manifest は lock と照合済み）。 */

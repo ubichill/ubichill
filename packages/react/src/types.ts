@@ -1,4 +1,9 @@
-import { type ComponentDataFieldSpec, type OverlayMode, permissionSubject } from '@ubichill/shared';
+import {
+    type ComponentDataFieldSpec,
+    type ModAuthorProof,
+    type OverlayMode,
+    permissionSubject,
+} from '@ubichill/shared';
 
 /**
  * modが Host (ModRegistry) に渡す定義オブジェクト（Custom Elements ベース）。
@@ -43,6 +48,8 @@ export interface WorkerModDefinition {
     capabilities?: string[];
     /** 署名で確認できた作者アカウント（`handle@domain`）。無いのは開発用の Host が許した未署名の mod。 */
     author?: string;
+    /** 作者を確認できた lock と署名（サービストークンの発行の依頼に付ける）。 */
+    authorProof?: ModAuthorProof;
     /**
      * Host が生成して Worker へ Transferable 転送する OffscreenCanvas のターゲット名リスト。
      * Worker は `Ubi.canvas.request(targetId)` で受け取る。
