@@ -55,13 +55,28 @@ router.post('/', requireFreshAuth, issueLimiter, async (req, res) => {
         return;
     }
     const parsed = IssueRequestSchema.safeParse(req.body);
-    const audience = parsed.success ? normalizeServiceAudience(parsed.data.audience) : null;
-    if (!parsed.success || !audience) {
-        res.status(400).json({ error: '宛先はサービスのオリジン（https://example.com）で指定してください' });
+    if (!parsed.success) {
+        const audienceIssue = parsed.error.issues.some((issue) => issue.path[0] === 'audience');
+        res.status(400).json(
+            audienceIssue
+                ? {
+                      error: '宛先はサービスのオリジン（https://example.com）で指定してください',
+                      code: 'audience-invalid',
+                  }
+                : { error: '依頼の形式が違います（mod の ID・作者署名）', code: 'invalid-request' },
+        );
+        return;
+    }
+    const audience = normalizeServiceAudience(parsed.data.audience);
+    if (!audience) {
+        res.status(400).json({
+            error: '宛先はサービスのオリジン（https://example.com）で指定してください',
+            code: 'audience-invalid',
+        });
         return;
     }
     if (audience === new URL(issuer.issuer).origin) {
-        res.status(400).json({ error: 'Ubichill 自身を宛先にはできません' });
+        res.status(400).json({ error: 'Ubichill 自身を宛先にはできません', code: 'audience-invalid' });
         return;
     }
     const userId = req.user?.id;

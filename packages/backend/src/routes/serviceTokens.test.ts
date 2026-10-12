@@ -87,6 +87,7 @@ describe('POST /api/v1/service-tokens のセッション確認', () => {
         expect(await response.json()).toMatchObject({ code: 'signature-malformed' });
         const mismatched = await issue({ authorProof: { entry: { ...entry, id: 'other' }, signature: {} } });
         expect(mismatched.status).toBe(400);
+        expect(await mismatched.json()).toMatchObject({ code: 'mod-mismatch' });
         expect(mocks.issue).not.toHaveBeenCalled();
         expect(mocks.isAuthorKey).not.toHaveBeenCalled();
     });
@@ -94,7 +95,15 @@ describe('POST /api/v1/service-tokens のセッション確認', () => {
     it('lock の形をしていない証明は 400', async () => {
         mocks.getSession.mockResolvedValue(session);
         for (const authorProof of ['x', { entry: 'x' }, { entry: { id: 'my-mod' } }]) {
-            expect((await issue({ authorProof })).status).toBe(400);
+            const response = await issue({ authorProof });
+            expect(response.status).toBe(400);
+            // 宛先ではなく依頼の形の誤りとして返す
+            expect(await response.json()).toMatchObject({ code: 'invalid-request' });
+        }
+        for (const audience of ['http://api.example.com', 'not a url', 42]) {
+            const response = await issue({ audience });
+            expect(response.status).toBe(400);
+            expect(await response.json()).toMatchObject({ code: 'audience-invalid' });
         }
         expect(mocks.issue).not.toHaveBeenCalled();
     });

@@ -162,6 +162,24 @@ describe('verifyModSignature', () => {
         }
     });
 
+    it.each([
+        'alice@EXAMPLE.COM',
+        '@alice@example.com',
+        'acct:alice@example.com',
+        ' alice@example.com',
+        'alice@example.com ',
+    ])(
+        '作者アカウントの表記の揺れ（%j）は、鍵が作者のものでも形式不正（表記ごとに別の作者に見えるのを防ぐ）',
+        async (author) => {
+            const signature = await signMod(entry(), key, crypto, { author });
+            const anyAuthor: AuthorKeyCheck = async () => ({ status: 'confirmed' });
+            expect(await verifyModSignature(entry(), signature, crypto, anyAuthor)).toEqual({
+                status: 'rejected',
+                reason: 'signature-malformed',
+            });
+        },
+    );
+
     it('作者アカウントの無い署名・kind の無い署名は形式不正', async () => {
         const signature = await signMod(entry(), key, crypto, { author: AUTHOR });
         const { author: _author, ...withoutAuthor } = signature;

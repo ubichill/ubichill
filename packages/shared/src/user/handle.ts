@@ -88,6 +88,12 @@ export function formatAuthorAccount({ handle, domain }: AuthorAccount): string {
     return `${handle}@${domain.toLowerCase()}`;
 }
 
+/** 正規の表記（`handle@domain`、ドメインは小文字、`@`・`acct:`・空白なし）か。 */
+export function isCanonicalAuthorAccount(input: string): boolean {
+    const parsed = parseAuthorAccount(input);
+    return parsed !== null && formatAuthorAccount(parsed) === input;
+}
+
 /** 画面表示用（メールアドレスと区別するため先頭に `@` を付ける）。 */
 export function displayAuthorAccount(account: string): string {
     return `@${account}`;
