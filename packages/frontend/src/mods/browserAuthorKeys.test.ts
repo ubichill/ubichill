@@ -1,4 +1,4 @@
-import { generateSigningKeyPkcs8, importSigningKey, webWorldCrypto } from '@ubichill/loader';
+import { acquireMod, generateSigningKeyPkcs8, importSigningKey, sriOf, webWorldCrypto } from '@ubichill/loader';
 import {
     AUTHOR_KEYS_FRESH_MS,
     AUTHOR_KEYS_MAX_AGE_MS,
@@ -193,6 +193,64 @@ describe('ブラウザでの mod の作者署名の確認（SNS backend なし�
         const { signature, verifier, server } = await setup();
         server.state.down = true;
         expect(await verifier()(entry, signature)).toMatchObject({ status: 'rejected', reason: 'author-unconfirmed' });
+    });
+
+    it('Host の API に一度も問い合わせずに、署名付きの mod を読み込める（単体モード）', async () => {
+        const { server } = await setup();
+        const MODS = 'https://mods.example/mods';
+        const manifest = JSON.stringify({
+            id: 'pen',
+            version: '1.0.0',
+            components: { 'pen:pen': { workerUrl: './pen.js' } },
+        });
+        const worker = 'globalThis.onmessage = () => {};';
+        const lockEntry = {
+            ...entry,
+            manifestIntegrity: await sriOf(new TextEncoder().encode(manifest).buffer),
+            components: {
+                'pen:pen': {
+                    workerUrl: './pen.js',
+                    integrity: await sriOf(new TextEncoder().encode(worker).buffer),
+                    capabilities: [],
+                },
+            },
+        };
+        const key = await importSigningKey(await generateSigningKeyPkcs8());
+        server.state.keys = [{ publicKey: key.publicKey }];
+        const modSignature = await signMod(lockEntry, key, webWorldCrypto, { author: AUTHOR });
+        const requested: string[] = [];
+        const files: Record<string, { body: string; type: string }> = {
+            [`${MODS}/pen/v1.0.0/manifest.json`]: { body: manifest, type: 'application/json' },
+            [`${MODS}/pen/v1.0.0/pen.js`]: { body: worker, type: 'text/javascript' },
+            [`${MODS}/pen/v1.0.0/lock.sig.json`]: { body: JSON.stringify(modSignature), type: 'application/json' },
+        };
+        const result = await acquireMod('pen:pen', {
+            baseUrl: MODS,
+            lock: { lockVersion: 1, mods: { pen: lockEntry } },
+            verifySignature: createBrowserSignatureVerifier({
+                storage: memoryStorage(),
+                fetchJson: async (url) => {
+                    requested.push(url);
+                    return server.fetchJson(url);
+                },
+                allowHttp: false,
+            }),
+            allowUnsigned: () => false,
+            fetchImpl: async (url: string) => {
+                requested.push(url);
+                const hit = files[url];
+                return {
+                    ok: !!hit,
+                    headers: { get: () => hit?.type ?? null },
+                    json: async () => JSON.parse(hit?.body ?? 'null'),
+                    text: async () => hit?.body ?? '',
+                    arrayBuffer: async () => new TextEncoder().encode(hit?.body ?? '').buffer,
+                };
+            },
+        });
+        expect(result).toMatchObject({ id: 'pen:pen', author: AUTHOR });
+        // 問い合わせ先は mod の置き場所と作者のサーバーだけ
+        expect(requested.every((url) => url.startsWith(`${MODS}/`) || url.startsWith(`${ORIGIN}/`))).toBe(true);
     });
 
     it('本番の Host は作者のサーバーに http で問い合わせない', async () => {

@@ -54,6 +54,10 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      # 設計の規則（scripts/architecture.mjs）: 単体モードで mod が動く・shared は純粋・backend はビルド済みのパッケージだけ、など
+      - name: Check architecture
+        run: pnpm check:architecture
+
       # .changeset/*.md のフロントマターが実ワークスペースのpackage.json名と一致するかを
       # PR時点で検証する。ここを飛ばすと不一致は push to main 後の changeset-release/main
       # ジョブでのみ発覚し、リリースフローがブロックされるまで気づけない
@@ -156,17 +160,6 @@ jobs:
             echo "== $dir"
             pnpm exec tsc --noEmit -p "$dir"
           done
-
-      # mod は npm 公開パッケージ `ubichill` にだけ依存する。tsconfig の paths は SDK ソースを
-      # 指しており、その解決のために内部パッケージ (@ubichill/*) も引けてしまうので、
-      # 「実際に import していないこと」はここで直接検査する。
-      # これを許すと、リポジトリ内では通るのに npm 経由の mod では解決できない mod が生まれる。
-      - name: Ensure mods only import the public SDK package
-        run: |
-          if grep -rn --include='*.ts' --include='*.tsx' "from '@ubichill/\|from \"@ubichill/\|import('@ubichill/" mods/*/src; then
-            echo "::error::mod が内部パッケージ (@ubichill/*) を import しています。公開パッケージ 'ubichill' だけを使ってください。"
-            exit 1
-          fi
 
   verify-sdk:
     name: Verify SDK types & drift
