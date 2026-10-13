@@ -79,7 +79,9 @@ initialEntities:
 ## 作者署名（`<world>.sig.json`）
 
 - ワールドと同じ場所に兄弟ファイルとして置く（本体ホストも `.../worlds/<name>.sig.json` で同じ）。`ubichill publish --out` で生成する。
-- 署名対象は `{ definition: <YAML をパースした生の値>, lock: <兄弟 lock の生 JSON | null> }` を正規化 JSON（RFC 8785 相当）にした sha256（`contentHash`）。
+- 形式は mod と共通の作者署名（`format: "ubichill-signature"`・`version: 2`・`kind: "world"`。docs/PROTOCOLS.md）。作者アカウント（`author`）は必須で、正規の表記（`handle@domain`、ドメインは小文字）だけ。`subject` は `metadata.name`。
+- 内容のハッシュ（`contentHash`）は `{ definition: <YAML をパースした生の値>, lock: <兄弟 lock の生 JSON | null> }` を正規化 JSON（RFC 8785 相当）にした sha256。
+- 版 1 の署名（2026-10 より前の形式）は読まない。`ubichill publish` で署名し直す。
 - ワールドの同一性は `ed25519:<公開鍵>/<metadata.name>`。URL が変わっても同じデータ・同じ鍵なら同じワールド。
 - 署名に作者アカウント `author: handle@domain` を含めると、受け手は `https://<domain>/.well-known/webfinger?resource=acct:handle@domain` の links（rel `https://ubichill.com/ns/signing-keys`）から作者の鍵一覧 `{ account, issuedAt, keys: [{ publicKey, addedAt?, revokedAt? }] }` を取得し、署名鍵が取り消されていない鍵なら作者として表示し同一性を `acct:handle@domain/<metadata.name>` にする（鍵が変わっても変わらない）。一覧に無い・取り消された鍵なら作者は表示しない。
 - 署名があって検証に失敗したワールドは解決を拒否する。

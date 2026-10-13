@@ -245,7 +245,8 @@ mod もワールドと同じく**作者アカウントで署名して公開す�
 
 - **認証**: 同じ公開環境（`ubichill login` / `ubichill ci create`、CI は `UBICHILL_CREDENTIALS`）。
 - **署名の対象**: mod の lock（worker の hash・manifest の hash・capability の上限・version）を正規化した値に、作者アカウント付きで署名する。
-  ワールドの署名と同じ形式に `kind: "mod"` と `modVersion` を加え、ワールドの署名として使い回せないようにする。
+  ワールドの署名と同じ形式（docs/PROTOCOLS.md の作者署名。`kind: "mod"`、`subjectVersion` に mod の版）で、`kind` が署名する値に入るので
+  ワールドの署名として使い回せない。
   lock はワールドが「どの mod のどのバイト列を使うか」を固定し、mod の署名は「その mod をだれが出したか」を示す。
   どちらか一方では足りない（lock は作者を示さず、署名は使う版を固定しない）。
 - **ワールドとの違いは 1 つ**: 作者アカウントの無い署名（鍵だけの署名）を認めない。ワールドは作者を確認できなくても URL から入れるが、

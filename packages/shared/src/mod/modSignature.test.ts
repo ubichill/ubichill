@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { type ModLockEntry, ModLockEntrySchema } from '../schemas/modLock.schema';
+import { signaturePayload, signEnvelope } from '../signature/envelope';
 import type { AuthorKeyCheck, WorldCrypto, WorldSigningKey } from '../world/identity';
-import { signWorld, worldSignaturePayload } from '../world/identity';
-import { modContentHash, modSignaturePayload, signMod, verifyModSignature } from './modSignature';
+import { modContentHash, signMod, verifyModSignature } from './modSignature';
 
 // shared は Node/DOM 非依存なので、判定ロジックは決定的な偽暗号で検証する（本物の ed25519 は backend と CLI のテスト）。
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
@@ -168,17 +168,25 @@ describe('verifyModSignature', () => {
         'acct:alice@example.com',
         ' alice@example.com',
         'alice@example.com ',
-    ])(
-        '作者アカウントの表記の揺れ（%j）は、鍵が作者のものでも形式不正（表記ごとに別の作者に見えるのを防ぐ）',
-        async (author) => {
-            const signature = await signMod(entry(), key, crypto, { author });
-            const anyAuthor: AuthorKeyCheck = async () => ({ status: 'confirmed' });
-            expect(await verifyModSignature(entry(), signature, crypto, anyAuthor)).toEqual({
-                status: 'rejected',
-                reason: 'signature-malformed',
-            });
-        },
-    );
+    ])('作者の表記の揺れ（%j）は、鍵が正しくても形式不正（読む側でも受け付けない）', async (author) => {
+        const fields = {
+            format: 'ubichill-signature',
+            version: 2,
+            kind: 'mod',
+            alg: 'ed25519',
+            publicKey: key.publicKey,
+            author,
+            subject: entry().id,
+            subjectVersion: entry().version,
+            contentHash: await modContentHash(entry(), crypto),
+        } as const;
+        const forged = { ...fields, signature: await key.sign(signaturePayload(fields)) };
+        const anyAuthor: AuthorKeyCheck = async () => ({ status: 'confirmed' });
+        expect(await verifyModSignature(entry(), forged, crypto, anyAuthor)).toEqual({
+            status: 'rejected',
+            reason: 'signature-malformed',
+        });
+    });
 
     it('作者アカウントの無い署名・kind の無い署名は形式不正', async () => {
         const signature = await signMod(entry(), key, crypto, { author: AUTHOR });
@@ -215,33 +223,67 @@ describe('verifyModSignature', () => {
     });
 });
 
-describe('ワールドの署名との分離', () => {
-    it('mod の署名対象はワールドの署名対象と同じバイト列にならない', async () => {
-        const modSignature = await signMod(entry(), key, crypto, { author: AUTHOR });
-        const { signature: _s, ...fields } = modSignature;
-        const asWorld = worldSignaturePayload({
-            version: 1,
-            alg: 'ed25519',
-            publicKey: fields.publicKey,
-            name: fields.name,
-            contentHash: fields.contentHash,
-            author: fields.author,
+describe('種類の分離（共通の形式の kind）', () => {
+    it('同じ名前・同じ内容のハッシュでも、ワールドの署名を mod の署名として出すと通らない', async () => {
+        const contentHash = await modContentHash(entry(), crypto);
+        const asWorld = await signEnvelope({ kind: 'world', subject: 'pen', contentHash }, key, AUTHOR);
+        expect(await verifyModSignature(entry(), asWorld, crypto, aliceOnly)).toEqual({
+            status: 'rejected',
+            reason: 'signature-malformed',
         });
-        expect(modSignaturePayload(fields)).not.toBe(asWorld);
+        // kind だけを書き換えると署名が合わない（kind は署名する値に入る）
+        expect(
+            await verifyModSignature(
+                entry(),
+                { ...asWorld, kind: 'mod', subjectVersion: entry().version },
+                crypto,
+                aliceOnly,
+            ),
+        ).toEqual({ status: 'rejected', reason: 'signature-invalid' });
     });
 
-    it('ワールドの署名を mod の署名として出しても通らない', async () => {
-        const doc = { definition: { metadata: { name: 'pen' } }, lock: null };
-        const worldSignature = await signWorld(doc, key, crypto, { author: AUTHOR });
-        const disguised = {
-            ...worldSignature,
+    it('ワールドの署名と mod の署名の署名する値は、別のバイト列になる', async () => {
+        const contentHash = await modContentHash(entry(), crypto);
+        const fields = {
+            format: 'ubichill-signature',
+            version: 2,
+            alg: 'ed25519',
+            publicKey: key.publicKey,
+            author: AUTHOR,
+            subject: 'pen',
+            contentHash,
+        } as const;
+        expect(signaturePayload({ ...fields, kind: 'mod', subjectVersion: '2.0.1' })).not.toBe(
+            signaturePayload({ ...fields, kind: 'world' }),
+        );
+    });
+
+    it('版 1 の形式（以前の mod の署名）は読み続けない（署名し直す）', async () => {
+        const v1 = {
+            version: 1,
+            alg: 'ed25519',
             kind: 'mod',
-            modVersion: '2.0.1',
+            publicKey: key.publicKey,
+            name: entry().id,
+            modVersion: entry().version,
             contentHash: await modContentHash(entry(), crypto),
+            author: AUTHOR,
         };
-        expect(await verifyModSignature(entry(), disguised, crypto, aliceOnly)).toEqual({
+        const legacy = { ...v1, signature: await key.sign(JSON.stringify(v1)) };
+        expect(await verifyModSignature(entry(), legacy, crypto, aliceOnly)).toEqual({
             status: 'rejected',
-            reason: 'signature-invalid',
+            reason: 'signature-malformed',
         });
+    });
+
+    it('新しく署名するときは、正規の表記でない作者を断る', async () => {
+        for (const author of [
+            'alice@EXAMPLE.COM',
+            '@alice@example.com',
+            'acct:alice@example.com',
+            ' alice@example.com',
+        ]) {
+            await expect(signMod(entry(), key, crypto, { author })).rejects.toThrow('正規の表記');
+        }
     });
 });

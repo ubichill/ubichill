@@ -75,6 +75,24 @@ describe('backend-runs-built-packages-only', () => {
     });
 });
 
+describe('signatures-in-one-place', () => {
+    it('署名の部品の外で Ed25519 の照合を呼ぶと違反', () => {
+        for (const path of ['packages/backend/src/routes/cliAuth.ts', 'packages/frontend/src/mods/modSignature.ts', 'packages/sdk/cli/verify.ts']) {
+            expect(violations(path.replace('packages/sdk/cli', 'packages/sdk/src'), 'await crypto.verifyEd25519(key, message, sig)')).toEqual([
+                'signatures-in-one-place',
+            ]);
+        }
+    });
+
+    it('署名の部品・暗号の実装（定義）・テストは対象にしない', () => {
+        const call = 'await crypto.verifyEd25519(key, message, sig)';
+        expect(violations('packages/shared/src/signature/envelope.ts', call)).toEqual([]);
+        expect(violations('packages/shared/src/user/cliAuth.ts', call)).toEqual([]);
+        expect(violations('packages/loader/src/worldCrypto.ts', 'verifyEd25519: async (publicKey, message, signature) => {')).toEqual([]);
+        expect(violations('packages/backend/src/x.test.ts', call)).toEqual([]);
+    });
+});
+
 describe('mods-use-public-sdk-only', () => {
     it('mod が内部パッケージを読むと違反、公開パッケージは良い', () => {
         expect(violations('mods/pen/src/pen.worker.ts', "import { Ubi } from '@ubichill/sdk';")).toEqual(['mods-use-public-sdk-only']);

@@ -273,6 +273,17 @@ export * from './mod/serviceToken';
 export * from './mod/types';
 export * from './mod/vnode';
 export * from './schemas';
+export {
+    confirmEnvelopeAuthor,
+    type EnvelopeInvalidReason,
+    type EnvelopeVerdict,
+    type SignatureFields,
+    type SignatureTarget,
+    SignedAuthorSchema,
+    signaturePayload,
+    signEnvelope,
+    verifyEnvelope,
+} from './signature/envelope';
 export * from './user/authorKeyDirectory';
 export * from './user/cliAuth';
 export * from './user/displayNameChange';

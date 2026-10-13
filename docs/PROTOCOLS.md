@@ -18,15 +18,15 @@ Ubichill の約束ごと（プロトコル・データの形式・API）を、**
 | --- | --- | --- | --- |
 | ワールドの定義 | `apiVersion: ubichill.com/v1alpha1` | `shared/schemas/world.schema.ts` | `<world>.yaml` |
 | mod の lock | `lockVersion: 1` | `shared/schemas/modLock.schema.ts` | `<world>.lock.json`・`v<版>/lock.json` |
-| 作者署名（ワールド） | `version: 1` | `shared/world/identity.ts` | `<world>.sig.json` |
-| 作者署名（mod） | `version: 1`・`kind: 'mod'` | `shared/mod/modSignature.ts` | `v<版>/lock.sig.json` |
+| 作者署名（ワールド） | `version: 2`・`kind: 'world'` | `shared/signature/envelope.ts`（内容のハッシュは `shared/world/identity.ts`） | `<world>.sig.json` |
+| 作者署名（mod） | `version: 2`・`kind: 'mod'` | `shared/signature/envelope.ts`（内容のハッシュは `shared/mod/modSignature.ts`） | `v<版>/lock.sig.json` |
 | サービストークン | JWT（EdDSA） | `shared/mod/serviceToken.ts` | 外部サービスへ渡す |
 | CLI・CI の認証情報 | `version: 1` | `sdk/cli/credentials.ts` | `~/.config/ubichill`・CI の Secret |
 
-### 作者署名を 1 つの形式にする（次に実装する）
+### 作者署名の形式（版 2）
 
-今はワールドと mod で署名の作り方が違う（ワールドの署名には種類が無く、mod とは別のスキーマと関数）。課金（購入の証明など）で種類が増えるたびに同じことを繰り返さないよう、1 つの形式（封筒）にそろえる。
-ワールドの署名を作っているのは今のところ私たちだけなので、古い形式を読み続けずに作り直す（署名し直す）。
+ワールド・mod など、作者が署名するものはすべてこの 1 つの形式（封筒）で署名する。種類を足すとき（購入の証明など）も `kind` を足すだけにする。
+版 1（ワールドと mod で別々だった形式）は、ワールドを作っていたのが私たちだけだったので読み続けずに署名し直した（2026-10）。
 
 ```json
 {
@@ -47,7 +47,7 @@ Ubichill の約束ごと（プロトコル・データの形式・API）を、**
 - **署名する値**: `signature` 以外の全項目の正規化した JSON（RFC 8785 相当）。`format` と `kind` が入るので、別の種類・別の用途の署名として使い回せない。
 - **作者**: 必須。正規の表記（`handle@domain`、ドメインは小文字）だけ。作者の無い署名は作らない。
 - **検証の順番（どの種類も同じ）**: 形式を読む → 対象と内容のハッシュを照らす → 元のバイト列で署名を照合する → 作者の鍵を確かめる（`authorKeyDirectory`）。
-- **CI**: 形式の固定のために、決まった鍵で作った署名の例（テストベクター）を置き、いつまでも検証できることを確かめる。署名する値の作り方を変えると落ちる。
+- **CI**: 形式の固定のために、決まった鍵で作った署名の例（`shared/signature/vectors.v2.json`）を置き、`loader/src/signatureVectors.test.ts` が本物の Ed25519 で、いつまでも検証できることと、同じ鍵から同じバイト列ができることを確かめる。署名する値の作り方を変えると落ちる。形式を変えるときは版を上げ、新しい版の例を足す（古い版の例は残す）。
 
 ## B. 公開している SDK と Host ⇔ Worker のプロトコル
 
@@ -83,5 +83,6 @@ Ubichill の約束ごと（プロトコル・データの形式・API）を、**
 | `loader-main-is-browser-safe` | loader の既定の入口はブラウザで読める |
 | `backend-runs-built-packages-only` | backend はソースのまま配るパッケージに依存しない |
 | `mods-use-public-sdk-only` | mod は公開パッケージ `ubichill` だけに依存する |
+| `signatures-in-one-place` | Ed25519 の照合は shared の署名・鍵の証明の部品（`signature/envelope.ts`・`world/identity.ts`・`user/cliAuth.ts`）の中だけ |
 
 規則を足すときは、何を守るのかを `why` に書く。

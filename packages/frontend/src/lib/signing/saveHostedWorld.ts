@@ -34,14 +34,15 @@ export async function errorMessage(res: Response): Promise<string> {
 /**
  * ワールドを本体に保存する（外部に置くワールドと同じ「定義・lock・署名」の組をそのまま送る。サーバーは中身を書き換えない）。
  * 作者 + metadata.name で同じワールドかが決まるので、新規も更新も同じ呼び出しになる。
- * 署名する値は送る値そのもの（YAML を読んだ定義と lock）。鍵が無ければ署名なしで送り、公開中のワールドなら下書きになる。
+ * 署名する値は送る値そのもの（YAML を読んだ定義と lock）。鍵が無い・鍵がまだアカウントに登録されていない（作者を付けられない）
+ * ときは署名なしで送り、公開中のワールドなら下書きになる（署名には作者が必須。docs/PROTOCOLS.md）。
  */
 export async function saveWorldBundle(
     body: WorldSaveBody,
     signer: WorldSigner | null,
     { apiBase, fetch }: SaveWorldDeps,
 ): Promise<SavedWorld> {
-    const signature = signer
+    const signature = signer?.author
         ? await signWorld(
               { definition: yaml.parse(body.yaml) as unknown, lock: body.lock },
               signer.key,

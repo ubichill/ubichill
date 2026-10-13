@@ -57,11 +57,18 @@ const displayNameOf = (definition: unknown): string | undefined =>
     (definition as { spec?: { displayName?: string } } | undefined)?.spec?.displayName;
 
 describe('saveWorldBundle', () => {
+    it('鍵がまだアカウントに登録されていない（作者を付けられない）ときは署名しない（作者の無い署名は作らない）', async () => {
+        const server = fakeServer();
+        const key = await importSigningKey(await generateSigningKeyPkcs8());
+        const saved = await saveWorldBundle({ yaml: worldYaml('A'), lock: LOCK }, { key }, server.deps);
+        expect(saved).toMatchObject({ saved: 'unsigned' });
+    });
+
     const ref: { key?: WorldSigningKey } = {};
     beforeEach(async () => {
         ref.key = await importSigningKey(await generateSigningKeyPkcs8());
     });
-    const signer = () => ({ key: ref.key as WorldSigningKey });
+    const signer = () => ({ key: ref.key as WorldSigningKey, author: 'alice@example.com' });
 
     it('手元の値そのものに署名し、サーバーの検証を通る（サーバーが値を書き換えないので prepare は要らない）', async () => {
         const server = fakeServer();
@@ -91,9 +98,13 @@ describe('saveWorldBundle', () => {
     it('別の鍵を名乗る署名はサーバーが拒否し、throw する（黙って未署名にしない）', async () => {
         const server = fakeServer();
         const liar: WorldSigningKey = { ...(ref.key as WorldSigningKey), publicKey: 'A'.repeat(43) };
-        await expect(saveWorldBundle({ yaml: worldYaml('A'), lock: LOCK }, { key: liar }, server.deps)).rejects.toThrow(
-            'bad',
-        );
+        await expect(
+            saveWorldBundle(
+                { yaml: worldYaml('A'), lock: LOCK },
+                { key: liar, author: 'alice@example.com' },
+                server.deps,
+            ),
+        ).rejects.toThrow('bad');
         expect(server.db.size).toBe(0);
     });
 
@@ -125,7 +136,11 @@ describe('signHostedWorld', () => {
     it('公開中の版を取り出してそのまま署名し直す（内容は変えない）', async () => {
         const server = fakeServer();
         const created = await saveWorldBundle({ yaml: worldYaml('A'), lock: LOCK }, null, server.deps);
-        const identity = await signHostedWorld(created.id, { key: ref.key as WorldSigningKey }, server.deps);
+        const identity = await signHostedWorld(
+            created.id,
+            { key: ref.key as WorldSigningKey, author: 'alice@example.com' },
+            server.deps,
+        );
         expect(identity).toMatchObject({ status: 'verified', publicKey: ref.key?.publicKey });
         expect(displayNameOf(server.db.get('my-world')?.definition)).toBe('A');
     });

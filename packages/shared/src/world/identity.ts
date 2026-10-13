@@ -7,29 +7,25 @@
  * ハッシュ対象は「配信された生の値」。YAML なら `yaml.parse` 直後（マイグレーション・スキーマ既定値
  * 適用前）、lock なら JSON の生値を渡すこと。スキーマ適用後の値を渡すと配信元と一致しない。
  */
-import { formatIntegrity, integrityEquals } from '../mod/modLock';
+import { formatIntegrity } from '../mod/modLock';
 import { ModLockSchema } from '../schemas/modLock.schema';
 import { unlockedModIds, WorldDefinitionSchema } from '../schemas/world.schema';
+import { Ed25519PublicKeySchema, type WorldIdentity } from '../schemas/worldIdentity.schema';
 import {
-    Ed25519PublicKeySchema,
-    type WorldIdentity,
+    confirmEnvelopeAuthor,
+    type EnvelopeInvalidReason,
+    type SignatureTarget,
+    signEnvelope,
+    verifyEnvelope,
     type WorldSignature,
-    WorldSignatureSchema,
-} from '../schemas/worldIdentity.schema';
-
-export interface WorldCrypto {
-    /** UTF-8 文字列の sha256 を標準 base64 で返す。 */
-    sha256Base64(text: string): Promise<string>;
-    /** ed25519 検証。鍵・署名は base64url。不正な鍵・署名は throw せず false を返すこと。 */
-    verifyEd25519(publicKey: string, message: string, signature: string): Promise<boolean>;
-}
-
-export interface WorldSigningKey {
-    /** base64url の ed25519 公開鍵。 */
-    readonly publicKey: string;
-    /** UTF-8 文字列に署名し base64url を返す。 */
-    sign(message: string): Promise<string>;
-}
+} from '../signature/envelope';
+import {
+    type AuthorKeyCheck,
+    type AuthorKeyCheckResult,
+    canonicalJson,
+    type WorldCrypto,
+    type WorldSigningKey,
+} from '../signature/primitives';
 
 /** ハッシュ対象。lock は兄弟配信の生 JSON（無ければ null）。埋め込み `spec.lock` は definition 側に含まれる。 */
 export interface WorldDocument {
@@ -50,40 +46,7 @@ export type WorldSignatureInvalidReason =
 
 export type WorldIdentityVerdict = WorldIdentity | { status: 'invalid'; reason: WorldSignatureInvalidReason };
 
-function isPlainObject(value: object): boolean {
-    const proto = Object.getPrototypeOf(value);
-    return proto === Object.prototype || proto === null;
-}
-
-/**
- * RFC 8785 (JCS) 相当の正規化 JSON。キーは UTF-16 コード単位順、空白無し。
- * `JSON.stringify` と同じく object の undefined 値は落とし、配列内の undefined は null にする。
- * 非有限数・Date/Map 等の非プレーン object・bigint 等は署名対象として曖昧なので throw する。
- */
-export function canonicalJson(value: unknown): string {
-    if (value === null) return 'null';
-    switch (typeof value) {
-        case 'boolean':
-            return value ? 'true' : 'false';
-        case 'number':
-            if (!Number.isFinite(value)) throw new TypeError(`正規化できない数値: ${value}`);
-            return JSON.stringify(value);
-        case 'string':
-            return JSON.stringify(value);
-        case 'object': {
-            if (Array.isArray(value)) {
-                return `[${value.map((v) => canonicalJson(v === undefined ? null : v)).join(',')}]`;
-            }
-            if (!isPlainObject(value)) throw new TypeError('正規化できない object（プレーン object のみ可）');
-            const entries = Object.entries(value)
-                .filter(([, v]) => v !== undefined)
-                .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-            return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`;
-        }
-        default:
-            throw new TypeError(`正規化できない値の型: ${typeof value}`);
-    }
-}
+export { type AuthorKeyCheck, type AuthorKeyCheckResult, canonicalJson, type WorldCrypto, type WorldSigningKey };
 
 export async function worldContentHash(doc: WorldDocument, crypto: WorldCrypto): Promise<string> {
     const text = canonicalJson({ definition: doc.definition, lock: doc.lock ?? null });
@@ -131,24 +94,6 @@ export function authorWorldIdOf(author: string, name: string): string {
     return `acct:${author}/${name}`;
 }
 
-/**
- * `publicKey` が作者アカウント（`handle@domain`）の取り消されていない公開環境の鍵かの判定結果。
- * - confirmed: 有効な鍵。`checkedAt` は他サーバーの鍵一覧を最後に確認できた時刻（自サーバー・記録済みでは無し）
- * - unconfirmed: 一覧に無い・取り消し済み・アカウントが無い
- * - pending: いまは確認できない（取得の上限などで取りに行かなかった）。作者は付けず、すぐ確認し直す
- */
-export type AuthorKeyCheckResult =
-    | { status: 'confirmed'; checkedAt?: string }
-    | { status: 'unconfirmed' }
-    | { status: 'pending' };
-
-/**
- * 1 アカウントは複数の鍵を持つので、署名に使われた鍵を渡して判定させる
- * （自サーバーは DB、他ドメインは WebFinger から辿る鍵一覧）。`contentHash` は、作者の確認が古い間に
- * 「古くなる前に確認済みだった内容」にだけ作者を付けるために渡す。
- */
-export type AuthorKeyCheck = (author: string, publicKey: string, contentHash: string) => Promise<AuthorKeyCheckResult>;
-
 /** 他サーバーの作者の確認がこれより古ければ「確認が古い」と表示する（作者のサーバーが止まっている可能性）。 */
 export const AUTHOR_CHECK_STALE_MS = 24 * 60 * 60 * 1000;
 
@@ -158,45 +103,38 @@ export function isAuthorCheckStale(identity: WorldIdentity | undefined, now: num
     return now - Date.parse(identity.authorCheckedAt) > AUTHOR_CHECK_STALE_MS;
 }
 
-/** 署名対象のバイト列（UTF-8 化は crypto 側）。signature 以外の全フィールドを正規化する。 */
-export function worldSignaturePayload(fields: Omit<WorldSignature, 'signature'>): string {
-    // author が無い署名は従来と同じバイト列になる（canonicalJson は undefined を落とす）。
-    return canonicalJson({
-        version: fields.version,
-        alg: fields.alg,
-        publicKey: fields.publicKey,
-        name: fields.name,
-        contentHash: fields.contentHash,
-        author: fields.author,
-    });
+/** ワールドの署名の対象（共通の形式の `kind: 'world'`）。内容のハッシュは `{ definition, lock }` から求める。 */
+async function worldTarget(doc: WorldDocument, crypto: WorldCrypto): Promise<SignatureTarget | undefined> {
+    const name = worldNameOf(doc.definition);
+    return name ? { kind: 'world', subject: name, contentHash: await worldContentHash(doc, crypto) } : undefined;
 }
 
+/** ワールドに作者アカウント付きで署名する（共通の形式。docs/PROTOCOLS.md）。 */
 export async function signWorld(
     doc: WorldDocument,
     key: WorldSigningKey,
     crypto: WorldCrypto,
-    options: { author?: string } = {},
+    options: { author: string },
 ): Promise<WorldSignature> {
-    const name = worldNameOf(doc.definition);
-    if (!name) throw new Error('metadata.name が無いワールドには署名できません');
-    const fields = {
-        version: 1 as const,
-        alg: 'ed25519' as const,
-        publicKey: key.publicKey,
-        name,
-        contentHash: await worldContentHash(doc, crypto),
-        ...(options.author ? { author: options.author } : {}),
-    };
-    return { ...fields, signature: await key.sign(worldSignaturePayload(fields)) };
+    const target = await worldTarget(doc, crypto);
+    if (!target) throw new Error('metadata.name が無いワールドには署名できません');
+    return (await signEnvelope(target, key, options.author)) as WorldSignature;
 }
+
+const INVALID_REASON: Record<EnvelopeInvalidReason, WorldSignatureInvalidReason> = {
+    malformed: 'malformed',
+    'kind-mismatch': 'malformed',
+    'subject-mismatch': 'name-mismatch',
+    'content-mismatch': 'content-mismatch',
+    'bad-signature': 'bad-signature',
+};
 
 /**
  * 署名を検証して識別結果を返す。`rawSignature` が null/undefined なら unsigned。
- * 照合順: 形式 → name → contentHash → 署名。安価な判定を先に行い、署名検証は最後。
+ * 照合の順番は共通の形式と同じ（形式 → 名前 → 内容 → 署名）で、そのあとに lock の固定を確かめ、最後に作者を確かめる。
  *
- * 署名が主張する作者アカウントは、署名鍵がその作者の有効な鍵だと `isAuthorKey` で確認できたときだけ採用する。
- * 確認できない・取り消し済み・判定器が無い場合は作者を付けず鍵で識別する（なりすましを表示しない）。
- * 署名自体は正しいので invalid にはしない（取り消した鍵の署名もここに来る）。
+ * 作者は、署名鍵がその作者の有効な鍵だと `isAuthorKey` で確認できたときだけ採用する。確認できない・取り消し済み・判定器が無い
+ * 場合は作者を付けず鍵で識別する（なりすましを表示しない）。署名自体は正しいので invalid にはしない。
  */
 export async function verifyWorldSignature(
     doc: WorldDocument,
@@ -206,37 +144,30 @@ export async function verifyWorldSignature(
 ): Promise<WorldIdentityVerdict> {
     const contentHash = await worldContentHash(doc, crypto);
     if (rawSignature === null || rawSignature === undefined) return { status: 'unsigned', contentHash };
-
-    const parsed = WorldSignatureSchema.safeParse(rawSignature);
-    if (!parsed.success) return { status: 'invalid', reason: 'malformed' };
-    const sig = parsed.data;
-
-    if (sig.name !== worldNameOf(doc.definition)) return { status: 'invalid', reason: 'name-mismatch' };
-    if (!integrityEquals(sig.contentHash, contentHash)) return { status: 'invalid', reason: 'content-mismatch' };
-
-    const ok = await crypto.verifyEd25519(sig.publicKey, worldSignaturePayload(sig), sig.signature).catch(() => false);
-    if (!ok) return { status: 'invalid', reason: 'bad-signature' };
+    const target = await worldTarget(doc, crypto);
+    if (!target) return { status: 'invalid', reason: 'name-mismatch' };
+    const verdict = await verifyEnvelope(rawSignature, target, crypto);
+    if (verdict.status === 'missing') return { status: 'unsigned', contentHash };
+    if (verdict.status === 'invalid') return { status: 'invalid', reason: INVALID_REASON[verdict.reason] };
     const unpinned = unpinnedModsOf(doc);
     if (unpinned === null || unpinned.length > 0) return { status: 'invalid', reason: 'lock-incomplete' };
 
-    const check: AuthorKeyCheckResult =
-        sig.author && isAuthorKey
-            ? await isAuthorKey(sig.author, sig.publicKey, contentHash).catch(() => ({ status: 'pending' }) as const)
-            : { status: 'unconfirmed' };
-    if (sig.author && check.status === 'confirmed') {
+    const { envelope } = verdict;
+    const check = await confirmEnvelopeAuthor(envelope, isAuthorKey);
+    if (check.status === 'confirmed') {
         return {
             status: 'verified',
-            worldId: authorWorldIdOf(sig.author, sig.name),
-            publicKey: sig.publicKey,
+            worldId: authorWorldIdOf(envelope.author, envelope.subject),
+            publicKey: envelope.publicKey,
             contentHash,
-            author: sig.author,
+            author: envelope.author,
             ...(check.checkedAt ? { authorCheckedAt: check.checkedAt } : {}),
         };
     }
     return {
         status: 'verified',
-        worldId: worldIdOf(sig.publicKey, sig.name),
-        publicKey: sig.publicKey,
+        worldId: worldIdOf(envelope.publicKey, envelope.subject),
+        publicKey: envelope.publicKey,
         contentHash,
         ...(check.status === 'pending' ? { authorPending: true as const } : {}),
     };

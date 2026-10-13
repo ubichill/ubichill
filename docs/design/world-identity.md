@@ -53,7 +53,7 @@
 }
 ```
 
-署名対象は `{ version, alg, publicKey, name, contentHash }` の JCS。
+署名対象は `{ version, alg, publicKey, name, contentHash }` の JCS（版 1。2026-10 に mod と共通の形式（版 2、docs/PROTOCOLS.md）に置き換えた）。
 
 ### 鍵の保持者（サーバーは鍵を持たない）
 
