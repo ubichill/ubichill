@@ -2,6 +2,8 @@
  * Host ⇔ Worker のプロトコルの契約（版ごとのコマンド・イベントの一覧）。公開している SDK と Host の間の約束なので、
  * 黙って変えないよう protocol.contract.test.ts が今の定義と照らし合わせる。
  *
+ * 照らし合わせるのは名前の増減だけ。ペイロードの型や意味の変更は検知しないので、レビューで確かめる。
+ *
  * 変えるとき（docs/PROTOCOLS.md）:
  * - 足す: PROTOCOL_VERSION を +1 し、この一覧の末尾に新しい版を足す（古い版の行は書き換えない）
  * - 消す・意味を変える（破壊的）: さらに MIN_COMPATIBLE_PROTOCOL_VERSION を新しい版まで上げる
