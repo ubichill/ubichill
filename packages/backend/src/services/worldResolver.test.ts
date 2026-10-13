@@ -235,14 +235,18 @@ describe('identifyWorld（配信経路を通した署名検証）', () => {
         const def = WorldDefinitionSchema.parse(yaml.parse(VALID_YAML));
         const withUndefined = { ...def, spec: { ...def.spec, thumbnail: undefined } };
         const lock = { lockVersion: 1, mods: {} };
-        const sig = await signWorld({ definition: withUndefined, lock }, key, nodeWorldCrypto);
+        const sig = await signWorld({ definition: withUndefined, lock }, key, nodeWorldCrypto, {
+            author: 'alice@example.com',
+        });
         const identity = await identifyWorld(overTheWire(withUndefined, lock), sig, 'https://h.example/x');
         expect(identity).toMatchObject({ status: 'verified', worldId: worldIdOf(key.publicKey, 'test-world') });
     });
 
     it('lock 無しワールドは 404（null）同士で一致する', async () => {
         const def = yaml.parse(VALID_YAML) as unknown;
-        const sig = await signWorld({ definition: def, lock: null }, key, nodeWorldCrypto);
+        const sig = await signWorld({ definition: def, lock: null }, key, nodeWorldCrypto, {
+            author: 'alice@example.com',
+        });
         await expect(identifyWorld(overTheWire(def, undefined), sig, 'u')).resolves.toMatchObject({
             status: 'verified',
         });
@@ -250,7 +254,9 @@ describe('identifyWorld（配信経路を通した署名検証）', () => {
 
     it('配信元が lock を差し替えたら throw（解決を拒否する）', async () => {
         const def = yaml.parse(VALID_YAML) as unknown;
-        const sig = await signWorld({ definition: def, lock: null }, key, nodeWorldCrypto);
+        const sig = await signWorld({ definition: def, lock: null }, key, nodeWorldCrypto, {
+            author: 'alice@example.com',
+        });
         const evilLock = { lockVersion: 1, mods: { pen: { id: 'pen', version: '9.9.9' } } };
         await expect(identifyWorld(overTheWire(def, evilLock), sig, 'u')).rejects.toThrow(/content-mismatch/);
     });

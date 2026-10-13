@@ -18,7 +18,6 @@ import {
     type WorldSigningKey,
     worldContentHash,
     worldIdOf,
-    worldSignaturePayload,
 } from './identity';
 
 // shared は Node/DOM 非依存なので、判定ロジックは決定的な偽暗号で検証する。
@@ -47,6 +46,8 @@ function newKey(): WorldSigningKey {
     return { publicKey, sign: async (message) => fakeSignature(publicKey, message) };
 }
 
+/** 署名に入れる作者（作者を確かめない検証では鍵で識別される）。 */
+const SIGNER = 'alice@example.com';
 const INTEGRITY = `sha256-${'A'.repeat(43)}=`;
 const lockEntry = (id: string) => ({ id, version: '1.0.0', manifestIntegrity: INTEGRITY, components: {} });
 
@@ -121,7 +122,7 @@ describe('signWorld / verifyWorldSignature', () => {
     it('署名したものは verified になり worldId は 公開鍵 + name', async () => {
         const key = newKey();
         const doc = baseDoc();
-        const sig = await signWorld(doc, key, fakeCrypto);
+        const sig = await signWorld(doc, key, fakeCrypto, { author: SIGNER });
         const verdict = await verifyWorldSignature(doc, sig, fakeCrypto);
         expect(verdict).toEqual({
             status: 'verified',
@@ -134,7 +135,7 @@ describe('signWorld / verifyWorldSignature', () => {
     it('URL が変わっても（＝同じデータを別経路で受け取っても）同じ worldId', async () => {
         const key = newKey();
         const doc = baseDoc();
-        const sig = await signWorld(doc, key, fakeCrypto);
+        const sig = await signWorld(doc, key, fakeCrypto, { author: SIGNER });
         const mirrored = JSON.parse(JSON.stringify(doc)) as WorldDocument;
         const a = await verifyWorldSignature(doc, sig, fakeCrypto);
         const b = await verifyWorldSignature(mirrored, JSON.parse(JSON.stringify(sig)), fakeCrypto);
@@ -151,7 +152,7 @@ describe('signWorld / verifyWorldSignature', () => {
 
     it('definition を 1 文字でも改竄すると content-mismatch', async () => {
         const doc = baseDoc();
-        const sig = await signWorld(doc, newKey(), fakeCrypto);
+        const sig = await signWorld(doc, newKey(), fakeCrypto, { author: SIGNER });
         const tampered = JSON.parse(JSON.stringify(doc)) as { definition: { spec: { displayName: string } } };
         tampered.definition.spec.displayName = 'ワールト';
         expect(await verifyWorldSignature(tampered, sig, fakeCrypto)).toEqual({
@@ -162,7 +163,7 @@ describe('signWorld / verifyWorldSignature', () => {
 
     it('lock を差し替え・削除すると content-mismatch（配信元乗っ取りで lock ごと偽装できない）', async () => {
         const doc = baseDoc();
-        const sig = await signWorld(doc, newKey(), fakeCrypto);
+        const sig = await signWorld(doc, newKey(), fakeCrypto, { author: SIGNER });
         expect(await verifyWorldSignature({ definition: doc.definition }, sig, fakeCrypto)).toMatchObject({
             reason: 'content-mismatch',
         });
@@ -175,7 +176,7 @@ describe('signWorld / verifyWorldSignature', () => {
 
     it('攻撃者が改竄後に contentHash だけ書き換えても bad-signature', async () => {
         const doc = baseDoc();
-        const sig = await signWorld(doc, newKey(), fakeCrypto);
+        const sig = await signWorld(doc, newKey(), fakeCrypto, { author: SIGNER });
         const tampered = { definition: doc.definition, lock: null };
         const forged = { ...sig, contentHash: await worldContentHash(tampered, fakeCrypto) };
         expect(await verifyWorldSignature(tampered, forged, fakeCrypto)).toEqual({
@@ -186,15 +187,23 @@ describe('signWorld / verifyWorldSignature', () => {
 
     it('他人の公開鍵に差し替える（作者のなりすまし）と bad-signature', async () => {
         const doc = baseDoc();
-        const sig = await signWorld(doc, newKey(), fakeCrypto);
+        const sig = await signWorld(doc, newKey(), fakeCrypto, { author: SIGNER });
         const impersonated = { ...sig, publicKey: newKey().publicKey };
         expect(await verifyWorldSignature(doc, impersonated, fakeCrypto)).toMatchObject({ reason: 'bad-signature' });
     });
 
     it('攻撃者が自分の鍵で署名し直すと verified だが worldId が別物になる', async () => {
         const doc = baseDoc();
-        const original = await verifyWorldSignature(doc, await signWorld(doc, newKey(), fakeCrypto), fakeCrypto);
-        const resigned = await verifyWorldSignature(doc, await signWorld(doc, newKey(), fakeCrypto), fakeCrypto);
+        const original = await verifyWorldSignature(
+            doc,
+            await signWorld(doc, newKey(), fakeCrypto, { author: SIGNER }),
+            fakeCrypto,
+        );
+        const resigned = await verifyWorldSignature(
+            doc,
+            await signWorld(doc, newKey(), fakeCrypto, { author: SIGNER }),
+            fakeCrypto,
+        );
         expect(resigned.status).toBe('verified');
         expect(original.status === 'verified' && resigned.status === 'verified' && resigned.worldId).not.toBe(
             original.status === 'verified' && original.worldId,
@@ -205,14 +214,21 @@ describe('signWorld / verifyWorldSignature', () => {
         const doc = baseDoc();
         const other = JSON.parse(JSON.stringify(doc)) as { definition: { metadata: { name: string } } };
         other.definition.metadata.name = 'other-world';
-        const sigForOther = await signWorld(other, newKey(), fakeCrypto);
+        const sigForOther = await signWorld(other, newKey(), fakeCrypto, { author: SIGNER });
         expect(await verifyWorldSignature(doc, sigForOther, fakeCrypto)).toMatchObject({ reason: 'name-mismatch' });
     });
 
     it('署名ファイルの形式が不正なら malformed（未署名への格下げはしない）', async () => {
         const doc = baseDoc();
-        const sig = await signWorld(doc, newKey(), fakeCrypto);
-        for (const bad of [{}, 'x', { ...sig, alg: 'rsa' }, { ...sig, version: 2 }, { ...sig, signature: 'AAAA' }]) {
+        const sig = await signWorld(doc, newKey(), fakeCrypto, { author: SIGNER });
+        for (const bad of [
+            {},
+            'x',
+            { ...sig, alg: 'rsa' },
+            { ...sig, version: 1 },
+            { ...sig, format: 'other' },
+            { ...sig, signature: 'AAAA' },
+        ]) {
             expect(await verifyWorldSignature(doc, bad, fakeCrypto)).toEqual({
                 status: 'invalid',
                 reason: 'malformed',
@@ -222,7 +238,7 @@ describe('signWorld / verifyWorldSignature', () => {
 
     it('crypto 実装が throw しても bad-signature に倒す', async () => {
         const doc = baseDoc();
-        const sig = await signWorld(doc, newKey(), fakeCrypto);
+        const sig = await signWorld(doc, newKey(), fakeCrypto, { author: SIGNER });
         const throwing: WorldCrypto = {
             ...fakeCrypto,
             verifyEd25519: () => Promise.reject(new Error('boom')),
@@ -231,7 +247,9 @@ describe('signWorld / verifyWorldSignature', () => {
     });
 
     it('metadata.name の無いワールドには署名できない', async () => {
-        await expect(signWorld({ definition: { metadata: {} } }, newKey(), fakeCrypto)).rejects.toThrow();
+        await expect(
+            signWorld({ definition: { metadata: {} } }, newKey(), fakeCrypto, { author: SIGNER }),
+        ).rejects.toThrow();
     });
 });
 
@@ -333,20 +351,40 @@ describe('作者アカウント（author）', () => {
         expect(await verifyWorldSignature(doc, { ...sig, author: 'evil@ubichill.com' }, fakeCrypto)).toMatchObject({
             reason: 'bad-signature',
         });
+        // 作者は必須（作者の無い署名は作らない・受け付けない）
         const { author: _removed, ...withoutAuthor } = sig;
-        expect(await verifyWorldSignature(doc, withoutAuthor, fakeCrypto)).toMatchObject({ reason: 'bad-signature' });
+        expect(await verifyWorldSignature(doc, withoutAuthor, fakeCrypto)).toMatchObject({ reason: 'malformed' });
     });
 
-    it('author の無い署名は従来と同じ署名対象（既存の署名がそのまま有効）', () => {
-        const fields = { version: 1 as const, alg: 'ed25519' as const, publicKey: 'k', name: 'n', contentHash: 'h' };
-        expect(worldSignaturePayload(fields)).toBe(
-            '{"alg":"ed25519","contentHash":"h","name":"n","publicKey":"k","version":1}',
-        );
+    it('版 1 の形式（以前の署名）は読み続けない（署名し直す）', async () => {
+        const key = newKey();
+        const doc = baseDoc();
+        const v1 = {
+            version: 1,
+            alg: 'ed25519',
+            publicKey: key.publicKey,
+            name: 'my-world',
+            contentHash: await worldContentHash(doc, fakeCrypto),
+            author: AUTHOR,
+        };
+        const legacy = { ...v1, signature: await key.sign(JSON.stringify(v1)) };
+        expect(await verifyWorldSignature(doc, legacy, fakeCrypto)).toEqual({ status: 'invalid', reason: 'malformed' });
+    });
+
+    it('新しく署名するときは、正規の表記でない作者を断る', async () => {
+        for (const author of [
+            'youkan@UBICHILL.COM',
+            '@youkan@ubichill.com',
+            'acct:youkan@ubichill.com',
+            ' youkan@ubichill.com',
+        ]) {
+            await expect(signWorld(baseDoc(), newKey(), fakeCrypto, { author })).rejects.toThrow('正規の表記');
+        }
     });
 
     it('形式が不正な author は malformed', async () => {
         const doc = baseDoc();
-        const sig = await signWorld(doc, newKey(), fakeCrypto);
+        const sig = await signWorld(doc, newKey(), fakeCrypto, { author: SIGNER });
         expect(await verifyWorldSignature(doc, { ...sig, author: 'not an account' }, fakeCrypto)).toMatchObject({
             reason: 'malformed',
         });
@@ -423,7 +461,7 @@ describe('mod 固定の徹底（lock-incomplete）', () => {
 
     it('使う mod が lock に無いワールドの署名は無効（署名自体が正しくても）', async () => {
         const doc = withSpec({}, { lockVersion: 1, mods: {} });
-        const sig = await signWorld(doc, newKey(), fakeCrypto);
+        const sig = await signWorld(doc, newKey(), fakeCrypto, { author: SIGNER });
         expect(await verifyWorldSignature(doc, sig, fakeCrypto)).toEqual({
             status: 'invalid',
             reason: 'lock-incomplete',
@@ -432,7 +470,7 @@ describe('mod 固定の徹底（lock-incomplete）', () => {
 
     it('lock が無いワールドの署名も無効', async () => {
         const doc = withSpec({}, null);
-        const sig = await signWorld(doc, newKey(), fakeCrypto);
+        const sig = await signWorld(doc, newKey(), fakeCrypto, { author: SIGNER });
         expect(await verifyWorldSignature(doc, sig, fakeCrypto)).toMatchObject({ reason: 'lock-incomplete' });
     });
 
@@ -441,20 +479,20 @@ describe('mod 固定の徹底（lock-incomplete）', () => {
             { dependencies: [{ name: 'danmaku', source: { version: 'latest' } }] },
             { lockVersion: 1, mods: { pen: lockEntry('pen') } },
         );
-        const sig = await signWorld(doc, newKey(), fakeCrypto);
+        const sig = await signWorld(doc, newKey(), fakeCrypto, { author: SIGNER });
         expect(await verifyWorldSignature(doc, sig, fakeCrypto)).toMatchObject({ reason: 'lock-incomplete' });
         expect(unpinnedModsOf(doc)).toEqual(['danmaku']);
     });
 
     it('埋め込み spec.lock でも固定済みなら有効', async () => {
         const doc = withSpec({ lock: { lockVersion: 1, mods: { pen: lockEntry('pen') } } }, null);
-        const sig = await signWorld(doc, newKey(), fakeCrypto);
+        const sig = await signWorld(doc, newKey(), fakeCrypto, { author: SIGNER });
         expect(await verifyWorldSignature(doc, sig, fakeCrypto)).toMatchObject({ status: 'verified' });
     });
 
     it('定義を解釈できない（固定を確認できない）なら無効', async () => {
         const doc: WorldDocument = { definition: { metadata: { name: 'my-world' } }, lock: null };
-        const sig = await signWorld(doc, newKey(), fakeCrypto);
+        const sig = await signWorld(doc, newKey(), fakeCrypto, { author: SIGNER });
         expect(await verifyWorldSignature(doc, sig, fakeCrypto)).toMatchObject({ reason: 'lock-incomplete' });
     });
 

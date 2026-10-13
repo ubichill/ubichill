@@ -6,15 +6,16 @@
  * 署名の無い mod・作者を確認できない mod は実行しない（ワールドの置き場所・mod の置き場所で緩めない）。
  */
 import type { ModLockEntry } from '../schemas/modLock.schema';
-import { type ModSignature, ModSignatureSchema } from '../schemas/modSignature.schema';
 import {
-    type AuthorKeyCheck,
-    type AuthorKeyCheckResult,
-    canonicalJson,
-    type WorldCrypto,
-    type WorldSigningKey,
-} from '../world/identity';
-import { formatIntegrity, integrityEquals } from './modLock';
+    confirmEnvelopeAuthor,
+    type EnvelopeInvalidReason,
+    type ModSignature,
+    type SignatureTarget,
+    signEnvelope,
+    verifyEnvelope,
+} from '../signature/envelope';
+import { type AuthorKeyCheck, canonicalJson, type WorldCrypto, type WorldSigningKey } from '../world/identity';
+import { formatIntegrity } from './modLock';
 
 /**
  * - signature-missing: 署名ファイルが無い
@@ -77,45 +78,39 @@ export async function modContentHash(entry: ModLockEntry, crypto: WorldCrypto): 
     return formatIntegrity(await crypto.sha256Base64(canonicalJson(modLockContent(entry))));
 }
 
-/** 署名対象のバイト列。signature 以外の全フィールドを正規化する。 */
-export function modSignaturePayload(fields: Omit<ModSignature, 'signature'>): string {
-    return canonicalJson({
-        version: fields.version,
-        alg: fields.alg,
-        kind: fields.kind,
-        publicKey: fields.publicKey,
-        name: fields.name,
-        modVersion: fields.modVersion,
-        contentHash: fields.contentHash,
-        author: fields.author,
-    });
+/** mod の署名の対象（共通の形式の `kind: 'mod'`）。版は lock の内容にも入るが、取り違えを防ぐため対象の版として明示する。 */
+async function modTarget(entry: ModLockEntry, crypto: WorldCrypto): Promise<SignatureTarget> {
+    return {
+        kind: 'mod',
+        subject: entry.id,
+        subjectVersion: entry.version,
+        contentHash: await modContentHash(entry, crypto),
+    };
 }
 
+/** mod に作者アカウント付きで署名する（共通の形式。docs/PROTOCOLS.md）。 */
 export async function signMod(
     entry: ModLockEntry,
     key: WorldSigningKey,
     crypto: WorldCrypto,
     options: { author: string },
 ): Promise<ModSignature> {
-    const fields = {
-        version: 1 as const,
-        alg: 'ed25519' as const,
-        kind: 'mod' as const,
-        publicKey: key.publicKey,
-        name: entry.id,
-        modVersion: entry.version,
-        contentHash: await modContentHash(entry, crypto),
-        author: options.author,
-    };
-    return { ...fields, signature: await key.sign(modSignaturePayload(fields)) };
+    return (await signEnvelope(await modTarget(entry, crypto), key, options.author)) as ModSignature;
 }
 
 const rejected = (reason: ModSignatureRejectReason): ModSignatureVerdict => ({ status: 'rejected', reason });
 
+const INVALID_REASON: Record<EnvelopeInvalidReason, ModSignatureRejectReason> = {
+    malformed: 'signature-malformed',
+    'kind-mismatch': 'signature-malformed',
+    'subject-mismatch': 'signature-mod-mismatch',
+    'content-mismatch': 'signature-content-mismatch',
+    'bad-signature': 'signature-invalid',
+};
+
 /**
  * lock（ワールドが固定した mod の項目）に対して署名を検証する。`rawSignature` が null/undefined なら signature-missing。
- * 照合順: 形式 → mod の ID と版 → 内容 → 署名 → 作者。安価な判定を先に行い、作者の確認（他サーバーへの問い合わせ）は最後。
- * `isAuthorKey` を渡さなければ作者を確認できないので author-unconfirmed（鍵だけの署名では実行しない）。
+ * 照合の順番は共通の形式と同じ。作者を確かめられなければ実行しない（鍵だけの署名では動かさない）。
  */
 export async function verifyModSignature(
     entry: ModLockEntry,
@@ -123,28 +118,18 @@ export async function verifyModSignature(
     crypto: WorldCrypto,
     isAuthorKey?: AuthorKeyCheck,
 ): Promise<ModSignatureVerdict> {
-    if (rawSignature === null || rawSignature === undefined) return rejected('signature-missing');
-    const parsed = ModSignatureSchema.safeParse(rawSignature);
-    if (!parsed.success) return rejected('signature-malformed');
-    const sig = parsed.data;
-
-    if (sig.name !== entry.id || sig.modVersion !== entry.version) return rejected('signature-mod-mismatch');
-    const contentHash = await modContentHash(entry, crypto);
-    if (!integrityEquals(sig.contentHash, contentHash)) return rejected('signature-content-mismatch');
-
-    const ok = await crypto.verifyEd25519(sig.publicKey, modSignaturePayload(sig), sig.signature).catch(() => false);
-    if (!ok) return rejected('signature-invalid');
-
-    const check: AuthorKeyCheckResult = isAuthorKey
-        ? await isAuthorKey(sig.author, sig.publicKey, contentHash).catch(() => ({ status: 'pending' }) as const)
-        : { status: 'unconfirmed' };
+    const verdict = await verifyEnvelope(rawSignature, await modTarget(entry, crypto), crypto);
+    if (verdict.status === 'missing') return rejected('signature-missing');
+    if (verdict.status === 'invalid') return rejected(INVALID_REASON[verdict.reason]);
+    const { envelope } = verdict;
+    const check = await confirmEnvelopeAuthor(envelope, isAuthorKey);
     if (check.status === 'pending') return rejected('author-pending');
     if (check.status !== 'confirmed') return rejected('author-unconfirmed');
     return {
         status: 'verified',
-        author: sig.author,
-        publicKey: sig.publicKey,
-        contentHash,
+        author: envelope.author,
+        publicKey: envelope.publicKey,
+        contentHash: envelope.contentHash,
         ...(check.checkedAt ? { authorCheckedAt: check.checkedAt } : {}),
     };
 }

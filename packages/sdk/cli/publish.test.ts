@@ -52,10 +52,10 @@ describe('publish（本体へ）', () => {
         // 共有 URL は /@ID/metadata.name
         expect(url).toBe('https://ubichill.com/@youkan/my-world');
         expect(requests.map((r) => `${r.method} ${r.path}`)).toEqual(['PUT /api/v1/worlds']);
-        const body = requests[0]?.body as { yaml: string; lock: unknown; signature: { author: string; name: string } };
+        const body = requests[0]?.body as { yaml: string; lock: unknown; signature: { author: string; subject: string } };
         expect(body.yaml).toBe(worldYaml);
         expect(body.lock).toBeNull();
-        expect(body.signature).toMatchObject({ author: 'youkan@ubichill.com', name: 'my-world' });
+        expect(body.signature).toMatchObject({ author: 'youkan@ubichill.com', subject: 'my-world', kind: 'world' });
         expect(Object.keys(files)).toEqual(['w.yaml']);
     });
 
@@ -101,7 +101,7 @@ describe('publish（外部ホスト向け --out）', () => {
         await publish(deps, { worldPath: 'worlds/w.yaml', credential, outDir: 'dist' });
         expect(requests).toEqual([]);
         expect(files['dist/w.yaml']).toBe(worldYaml);
-        expect(JSON.parse(files['dist/w.sig.json'] ?? '{}')).toMatchObject({ author: 'youkan@ubichill.com', name: 'my-world' });
+        expect(JSON.parse(files['dist/w.sig.json'] ?? '{}')).toMatchObject({ author: 'youkan@ubichill.com', subject: 'my-world', kind: 'world' });
     });
 });
 
