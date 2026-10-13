@@ -65,20 +65,6 @@ export const AuthorAccountSchema = z
     .max(300)
     .refine((v) => parseAuthorAccount(v) !== null, '作者アカウントは handle@domain の形式です');
 
-/**
- * 署名に入れる作者アカウント。正規の表記（{@link isCanonicalAuthorAccount}）だけを受け付ける。
- * 同じ作者を別の表記で署名できると、作者で決まる ID（ワールドの `acct:作者/名前`・権限の許可のキー・
- * サービストークンの `mod_author`）が表記ごとに分かれ、完全一致で比べる側が取り違える。ワールドと mod で同じ規則。
- * 利用者の入力（`@alice@example.com` など）を受けるときは {@link AuthorAccountSchema} で読んでから正規化する。
- */
-export const SignedAuthorAccountSchema = z
-    .string()
-    .max(300)
-    .refine(
-        (v) => isCanonicalAuthorAccount(v),
-        '作者アカウントは正規の表記（handle@domain、ドメインは小文字）にしてください',
-    );
-
 export interface AuthorAccount {
     handle: string;
     domain: string;
@@ -106,6 +92,23 @@ export function formatAuthorAccount({ handle, domain }: AuthorAccount): string {
 export function isCanonicalAuthorAccount(input: string): boolean {
     const parsed = parseAuthorAccount(input);
     return parsed !== null && formatAuthorAccount(parsed) === input;
+}
+
+/**
+ * 正規の表記にする（読めなければ null）。署名の作者は、検証したあとでこれを通してから使う
+ * （作者で決まる ID・権限の許可のキー・サービストークンの `mod_author` が、表記ごとに分かれないように）。
+ * 署名の対象そのものは書き換えない（書き換えると署名が合わなくなる）。新しく署名する値は {@link assertSignableAuthor} で正規の表記に限る。
+ */
+export function canonicalAuthorAccount(input: string): string | null {
+    const parsed = parseAuthorAccount(input);
+    return parsed ? formatAuthorAccount(parsed) : null;
+}
+
+/** 新しく署名する作者アカウントは正規の表記に限る（既存の署名は揺れた表記でも検証できるが、新しく作らない）。 */
+export function assertSignableAuthor(author: string): void {
+    if (!isCanonicalAuthorAccount(author)) {
+        throw new Error(`作者アカウントは正規の表記（handle@domain、ドメインは小文字）で署名してください: ${author}`);
+    }
 }
 
 /** 画面表示用（メールアドレスと区別するため先頭に `@` を付ける）。 */

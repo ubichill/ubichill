@@ -254,19 +254,84 @@ describe('作者アカウント（author）', () => {
         });
     });
 
+    /** 以前の版が作れた、揺れた表記の作者で署名したワールド（今の signWorld は断るので、署名の対象を直接作る）。 */
+    const legacySigned = async (doc: WorldDocument, key: WorldSigningKey, author: string) => {
+        const fields = {
+            version: 1 as const,
+            alg: 'ed25519' as const,
+            publicKey: key.publicKey,
+            name: 'my-world',
+            contentHash: await worldContentHash(doc, fakeCrypto),
+            author,
+        };
+        return { ...fields, signature: await key.sign(worldSignaturePayload(fields)) };
+    };
+
     it.each(['youkan@UBICHILL.COM', '@youkan@ubichill.com', 'acct:youkan@ubichill.com', ' youkan@ubichill.com'])(
-        '作者の表記の揺れ（%j）は形式不正（同じ作者の同じワールドが別の worldId に分かれるのを防ぐ）',
+        '揺れた表記（%j）の既存の署名も元のまま検証でき、作者とワールドの ID は正規の表記になる',
         async (author) => {
             const key = newKey();
             const doc = baseDoc();
-            const sig = await signWorld(doc, key, fakeCrypto, { author });
-            const anyAuthor: AuthorKeyCheck = async () => ({ status: 'confirmed' });
-            expect(await verifyWorldSignature(doc, sig, fakeCrypto, anyAuthor)).toEqual({
-                status: 'invalid',
-                reason: 'malformed',
+            const checked: string[] = [];
+            const resolver: AuthorKeyCheck = async (a, publicKey) => {
+                checked.push(a);
+                return a === AUTHOR && publicKey === key.publicKey
+                    ? { status: 'confirmed' }
+                    : { status: 'unconfirmed' };
+            };
+            const verdict = await verifyWorldSignature(doc, await legacySigned(doc, key, author), fakeCrypto, resolver);
+            expect(verdict).toMatchObject({
+                status: 'verified',
+                author: AUTHOR,
+                worldId: authorWorldIdOf(AUTHOR, 'my-world'),
             });
+            expect(checked).toEqual([AUTHOR]);
         },
     );
+
+    it('同じ作者の同じワールドは、署名の表記が違っても同じワールドの ID になる', async () => {
+        const key = newKey();
+        const doc = baseDoc();
+        const resolver = resolverFor({ [AUTHOR]: key.publicKey });
+        const canonical = await verifyWorldSignature(
+            doc,
+            await signWorld(doc, key, fakeCrypto, { author: AUTHOR }),
+            fakeCrypto,
+            resolver,
+        );
+        const legacy = await verifyWorldSignature(
+            doc,
+            await legacySigned(doc, key, '@youkan@UBICHILL.com'),
+            fakeCrypto,
+            resolver,
+        );
+        expect(canonical).toMatchObject({ status: 'verified' });
+        expect(legacy).toMatchObject({ status: 'verified' });
+        expect(legacy.status === 'verified' && legacy.worldId).toBe(
+            canonical.status === 'verified' && canonical.worldId,
+        );
+    });
+
+    it('署名の作者の表記を検証後に書き換えると署名が合わない（正規化は署名の対象ではなく、検証後の値にだけ行う）', async () => {
+        const key = newKey();
+        const doc = baseDoc();
+        const legacy = await legacySigned(doc, key, '@youkan@ubichill.com');
+        expect(await verifyWorldSignature(doc, { ...legacy, author: AUTHOR }, fakeCrypto)).toEqual({
+            status: 'invalid',
+            reason: 'bad-signature',
+        });
+    });
+
+    it('新しく署名するときは、正規の表記でない作者を断る', async () => {
+        for (const author of [
+            'youkan@UBICHILL.COM',
+            '@youkan@ubichill.com',
+            'acct:youkan@ubichill.com',
+            ' youkan@ubichill.com',
+        ]) {
+            await expect(signWorld(baseDoc(), newKey(), fakeCrypto, { author })).rejects.toThrow('正規の表記');
+        }
+    });
 
     it('他人のアカウントを名乗っても（鍵が違えば）author は付かず、鍵で識別される', async () => {
         const attacker = newKey();

@@ -162,23 +162,41 @@ describe('verifyModSignature', () => {
         }
     });
 
-    it.each([
-        'alice@EXAMPLE.COM',
-        '@alice@example.com',
-        'acct:alice@example.com',
-        ' alice@example.com',
-        'alice@example.com ',
-    ])(
-        '作者アカウントの表記の揺れ（%j）は、鍵が作者のものでも形式不正（表記ごとに別の作者に見えるのを防ぐ）',
+    /** 以前の版が作れた、揺れた表記の作者の署名（今の signMod は断るので、署名の対象を直接作る）。 */
+    const legacySigned = async (author: string) => {
+        const fields = {
+            version: 1 as const,
+            alg: 'ed25519' as const,
+            kind: 'mod' as const,
+            publicKey: key.publicKey,
+            name: entry().id,
+            modVersion: entry().version,
+            contentHash: await modContentHash(entry(), crypto),
+            author,
+        };
+        return { ...fields, signature: await key.sign(modSignaturePayload(fields)) };
+    };
+
+    it.each(['alice@EXAMPLE.COM', '@alice@example.com', 'acct:alice@example.com', ' alice@example.com'])(
+        '揺れた表記（%j）の既存の署名も元のまま検証でき、作者は正規の表記で返す（許可のキー・mod_author を分けない）',
         async (author) => {
-            const signature = await signMod(entry(), key, crypto, { author });
-            const anyAuthor: AuthorKeyCheck = async () => ({ status: 'confirmed' });
-            expect(await verifyModSignature(entry(), signature, crypto, anyAuthor)).toEqual({
-                status: 'rejected',
-                reason: 'signature-malformed',
+            expect(await verifyModSignature(entry(), await legacySigned(author), crypto, aliceOnly)).toMatchObject({
+                status: 'verified',
+                author: AUTHOR,
             });
         },
     );
+
+    it('新しく署名するときは、正規の表記でない作者を断る', async () => {
+        for (const author of [
+            'alice@EXAMPLE.COM',
+            '@alice@example.com',
+            'acct:alice@example.com',
+            ' alice@example.com',
+        ]) {
+            await expect(signMod(entry(), key, crypto, { author })).rejects.toThrow('正規の表記');
+        }
+    });
 
     it('作者アカウントの無い署名・kind の無い署名は形式不正', async () => {
         const signature = await signMod(entry(), key, crypto, { author: AUTHOR });

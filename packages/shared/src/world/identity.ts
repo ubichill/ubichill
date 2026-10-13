@@ -16,6 +16,7 @@ import {
     type WorldSignature,
     WorldSignatureSchema,
 } from '../schemas/worldIdentity.schema';
+import { assertSignableAuthor, canonicalAuthorAccount } from '../user/handle';
 
 export interface WorldCrypto {
     /** UTF-8 文字列の sha256 を標準 base64 で返す。 */
@@ -179,6 +180,7 @@ export async function signWorld(
 ): Promise<WorldSignature> {
     const name = worldNameOf(doc.definition);
     if (!name) throw new Error('metadata.name が無いワールドには署名できません');
+    if (options.author) assertSignableAuthor(options.author);
     const fields = {
         version: 1 as const,
         alg: 'ed25519' as const,
@@ -219,17 +221,19 @@ export async function verifyWorldSignature(
     const unpinned = unpinnedModsOf(doc);
     if (unpinned === null || unpinned.length > 0) return { status: 'invalid', reason: 'lock-incomplete' };
 
+    // 署名は元の表記のまま検証した。作者は正規の表記にしてから確かめ・使う（表記ごとに別の作者・別のワールドにしない）
+    const author = sig.author ? canonicalAuthorAccount(sig.author) : null;
     const check: AuthorKeyCheckResult =
-        sig.author && isAuthorKey
-            ? await isAuthorKey(sig.author, sig.publicKey, contentHash).catch(() => ({ status: 'pending' }) as const)
+        author && isAuthorKey
+            ? await isAuthorKey(author, sig.publicKey, contentHash).catch(() => ({ status: 'pending' }) as const)
             : { status: 'unconfirmed' };
-    if (sig.author && check.status === 'confirmed') {
+    if (author && check.status === 'confirmed') {
         return {
             status: 'verified',
-            worldId: authorWorldIdOf(sig.author, sig.name),
+            worldId: authorWorldIdOf(author, sig.name),
             publicKey: sig.publicKey,
             contentHash,
-            author: sig.author,
+            author,
             ...(check.checkedAt ? { authorCheckedAt: check.checkedAt } : {}),
         };
     }

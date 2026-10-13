@@ -7,6 +7,7 @@
  */
 import type { ModLockEntry } from '../schemas/modLock.schema';
 import { type ModSignature, ModSignatureSchema } from '../schemas/modSignature.schema';
+import { assertSignableAuthor, canonicalAuthorAccount } from '../user/handle';
 import {
     type AuthorKeyCheck,
     type AuthorKeyCheckResult,
@@ -97,6 +98,7 @@ export async function signMod(
     crypto: WorldCrypto,
     options: { author: string },
 ): Promise<ModSignature> {
+    assertSignableAuthor(options.author);
     const fields = {
         version: 1 as const,
         alg: 'ed25519' as const,
@@ -135,14 +137,17 @@ export async function verifyModSignature(
     const ok = await crypto.verifyEd25519(sig.publicKey, modSignaturePayload(sig), sig.signature).catch(() => false);
     if (!ok) return rejected('signature-invalid');
 
+    // 署名は元の表記のまま検証した。作者は正規の表記にしてから確かめ・返す（許可のキー・mod_author を表記で分けない）
+    const author = canonicalAuthorAccount(sig.author);
+    if (!author) return rejected('signature-malformed');
     const check: AuthorKeyCheckResult = isAuthorKey
-        ? await isAuthorKey(sig.author, sig.publicKey, contentHash).catch(() => ({ status: 'pending' }) as const)
+        ? await isAuthorKey(author, sig.publicKey, contentHash).catch(() => ({ status: 'pending' }) as const)
         : { status: 'unconfirmed' };
     if (check.status === 'pending') return rejected('author-pending');
     if (check.status !== 'confirmed') return rejected('author-unconfirmed');
     return {
         status: 'verified',
-        author: sig.author,
+        author,
         publicKey: sig.publicKey,
         contentHash,
         ...(check.checkedAt ? { authorCheckedAt: check.checkedAt } : {}),
