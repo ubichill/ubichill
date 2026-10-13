@@ -6,12 +6,13 @@
  *   ubichill whoami    [--server=<url>]
  *   ubichill ci create --name=<表示名> [--server=<url>] [--device] [--no-browser]
  *   ubichill publish   <world.yaml>... [--server=<url>] [--out=<dir>] [--no-install] [--mods-dir=<dir>] [--base-url=<url>]
- *   ubichill publish   <mods のビルド出力>... [--server=<url>]
+ *   ubichill publish   <mods のビルド出力>... [--server=<url>] [--public-url=<url>]
  */
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { hostname } from 'node:os';
+import { join } from 'node:path';
 import { generateSigningKeyPkcs8, importSigningKey, webWorldCrypto } from '@ubichill/loader';
 import { runInstall } from '@ubichill/loader/install-dependencies';
 import yaml from 'yaml';
@@ -27,7 +28,8 @@ import {
 } from './credentials.ts';
 import { confirmEnvironment, publish } from './publish.ts';
 import { listDirsOnDisk } from './modLayout.ts';
-import { publishMods } from './publishMods.ts';
+import { publishMods, type SignedMod } from './publishMods.ts';
+import { latestPerMod, normalizePublicUrl, registerExternalWorks } from './registerWorks.ts';
 import { verifyAllModLocks } from './verify.ts';
 
 export const DEFAULT_SERVER = 'https://ubichill.com';
@@ -174,6 +176,14 @@ export async function runLogout(argv: string[]): Promise<void> {
 
 const isDirectory = (path: string): boolean => existsSync(path) && statSync(path).isDirectory();
 
+/** package.json の homepage（無ければ undefined）。 */
+function homepageOf(dir: string): string | undefined {
+    const path = join(dir, 'package.json');
+    if (!existsSync(path)) return undefined;
+    const { homepage } = JSON.parse(readFileSync(path, 'utf-8')) as { homepage?: unknown };
+    return typeof homepage === 'string' && homepage.length > 0 ? homepage : undefined;
+}
+
 /**
  * `ubichill publish <world.yaml>...` / `ubichill publish <mods のビルド出力>...`。
  * ディレクトリを渡すと mod の配布物に、world.yaml を渡すとワールドに、同じアカウント・同じ鍵で署名する。
@@ -208,13 +218,14 @@ export async function runPublish(argv: string[]): Promise<void> {
     if (offline && (await confirmEnvironment(deps, credential)) === 'unreachable') {
         console.warn(`⚠ ${credential.server} に確認できませんでした（署名は続けます。公開環境が取り消されていないか後で確かめてください）`);
     }
+    const signedMods: SignedMod[] = [];
     for (const modsDir of modsDirs) {
         // 配布するバイト列と一致しない lock には署名しない
         const errors = verifyAllModLocks(modsDir);
         if (errors.length > 0) {
             throw new Error(`${modsDir}: lock が配布物と一致しないので署名しません:\n${errors.map((e) => `  - ${e}`).join('\n')}`);
         }
-        await publishMods(
+        const signed = await publishMods(
             {
                 fs: {
                     readText: deps.fs.readText,
@@ -227,6 +238,25 @@ export async function runPublish(argv: string[]): Promise<void> {
             },
             { modsDir, credential },
         );
+        signedMods.push(...signed);
+    }
+    if (signedMods.length > 0) {
+        // 公開先（Host がこの mod を取りに来る基点）。指定が無ければ package.json の homepage（ubichill build の registry と同じ）
+        const publicUrl = argValue(argv, 'public-url') ?? homepageOf(process.cwd());
+        if (publicUrl) {
+            await registerExternalWorks(
+                deps.request,
+                latestPerMod(signedMods).map(({ entry, signature }) => ({
+                    kind: 'mod' as const,
+                    url: normalizePublicUrl(publicUrl),
+                    entry,
+                    signature,
+                })),
+                deps.log,
+            );
+        } else {
+            deps.log('💡 --public-url=<公開先の URL>（または package.json の homepage）を指定すると、ユーザーページに mod が出ます');
+        }
     }
     for (const worldPath of worldPaths) {
         if (!argv.includes('--no-install')) {
@@ -235,6 +265,11 @@ export async function runPublish(argv: string[]): Promise<void> {
             await runInstall([worldPath, ...passthrough]);
             if (process.exitCode) throw new Error(`${worldPath}: mod を固定できなかったので公開しません`);
         }
-        await publish(deps, { worldPath, credential, outDir: argValue(argv, 'out') });
+        await publish(deps, {
+            worldPath,
+            credential,
+            outDir: argValue(argv, 'out'),
+            publicUrl: argValue(argv, 'public-url'),
+        });
     }
 }

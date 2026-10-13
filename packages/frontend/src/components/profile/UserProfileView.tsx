@@ -1,14 +1,16 @@
-import { displayAuthorAccount } from '@ubichill/shared';
+import { displayAuthorAccount, type PublishedMod } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { WorldDetailModal } from '@/components/lobby/WorldDetailModal';
 import { UserSocialBar } from '@/components/social';
 import { API_BASE } from '@/lib/api';
+import { fetchPublishedMods } from '@/lib/externalWorksApi';
 import { useSession } from '@/lib/session';
 import { css, cva } from '@/styled-system/css';
 import { BioSection } from './BioSection';
 import { FavoriteWorldsSection } from './FavoriteWorldsSection';
 import { type OwnedWorld, OwnedWorldCard } from './OwnedWorldCard';
+import { PublishedModsSection } from './PublishedModsSection';
 
 /** 公開プロフィール（`GET /api/v1/users/:id`）。 */
 interface PublicProfile {
@@ -69,7 +71,8 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance, onEditProf
 
     const [profile, setProfile] = useState<PublicProfile | null>(null);
     const [worlds, setWorlds] = useState<OwnedWorld[]>([]);
-    const [selectedWorldId, setSelectedWorldId] = useState<string | null>(null);
+    const [selectedWorldKey, setSelectedWorldKey] = useState<string | null>(null);
+    const [mods, setMods] = useState<PublishedMod[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
@@ -95,14 +98,16 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance, onEditProf
         Promise.all([
             fetch(`${API_BASE}/api/v1/users/${id}`, { credentials: 'include' }),
             fetch(`${API_BASE}/api/v1/users/${id}/worlds`, { credentials: 'include' }),
+            fetchPublishedMods(targetUserId),
         ])
-            .then(async ([pRes, wRes]) => {
+            .then(async ([pRes, wRes, publishedMods]) => {
                 if (!pRes.ok) throw new Error(`プロフィール取得失敗 (${pRes.status})`);
                 if (!wRes.ok) throw new Error(`ワールド取得失敗 (${wRes.status})`);
                 const [p, w] = [(await pRes.json()) as PublicProfile, (await wRes.json()) as { worlds: OwnedWorld[] }];
                 if (ctrl.cancelled) return;
                 setProfile(p);
                 setWorlds(w.worlds);
+                setMods(publishedMods);
             })
             .catch((e: unknown) => !ctrl.cancelled && setError(e instanceof Error ? e.message : '読み込み失敗'))
             .finally(() => !ctrl.cancelled && setLoading(false));
@@ -119,7 +124,9 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance, onEditProf
         );
     }
 
-    const selectedWorld = worlds.find((w) => w.id === selectedWorldId);
+    // 外部のワールドは本体のワールドと id が重なり得るので URL で区別する
+    const keyOf = (w: OwnedWorld) => w.url ?? w.id;
+    const selectedWorld = worlds.find((w) => keyOf(w) === selectedWorldKey);
 
     return (
         <div>
@@ -241,16 +248,18 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance, onEditProf
                     >
                         {worlds.map((w) => (
                             <OwnedWorldCard
-                                key={w.id}
+                                key={keyOf(w)}
                                 world={w}
                                 editable={false}
                                 onEdit={() => undefined}
-                                onOpen={() => setSelectedWorldId(w.id)}
+                                onOpen={() => setSelectedWorldKey(keyOf(w))}
                             />
                         ))}
                     </div>
                 )}
             </section>
+
+            {mods.length > 0 && <PublishedModsSection mods={mods} />}
 
             {targetUserId && (
                 <FavoriteWorldsSection userId={targetUserId} isOwnPage={false} onJoinInstance={joinInstance} />
@@ -265,7 +274,7 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance, onEditProf
                         thumbnail: selectedWorld.thumbnail ?? undefined,
                         authorId: profile?.id,
                     }}
-                    onClose={() => setSelectedWorldId(null)}
+                    onClose={() => setSelectedWorldKey(null)}
                     onJoinInstance={joinInstance}
                 />
             )}

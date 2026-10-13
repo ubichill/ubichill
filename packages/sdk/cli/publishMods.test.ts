@@ -53,7 +53,7 @@ describe('publishMods', () => {
             'dist/mods/danmaku/v2.0.0/lock.json': JSON.stringify(lockOf('danmaku', '2.0.0')),
         };
         const { deps, key } = await depsFor(files);
-        const written = await publishMods(deps, { modsDir: 'dist/mods', credential });
+        const written = (await publishMods(deps, { modsDir: 'dist/mods', credential })).map((m) => m.path);
         expect(written.sort()).toEqual([
             'dist/mods/danmaku/v2.0.0/lock.sig.json',
             'dist/mods/pen/v1.0.0/lock.sig.json',
@@ -103,7 +103,7 @@ describe('publishMods', () => {
             'dist/v3.1.0/screen/index.js': '',
         };
         const { deps } = await depsFor(files);
-        expect((await publishMods(deps, { modsDir: 'dist', credential })).sort()).toEqual([
+        expect((await publishMods(deps, { modsDir: 'dist', credential })).map((m) => m.path).sort()).toEqual([
             'dist/v3.0.0/lock.sig.json',
             'dist/v3.1.0/lock.sig.json',
         ]);
@@ -115,7 +115,7 @@ describe('publishMods', () => {
             'out/pen/v1.0.0/lock.json': JSON.stringify(lockOf('pen', '1.0.0')),
         };
         const { deps } = await depsFor(files);
-        expect((await publishMods(deps, { modsDir: 'out', credential })).sort()).toEqual([
+        expect((await publishMods(deps, { modsDir: 'out', credential })).map((m) => m.path).sort()).toEqual([
             'out/pen/v1.0.0/lock.sig.json',
             'out/video-player/v3.1.0/lock.sig.json',
         ]);
@@ -128,7 +128,9 @@ describe('publishMods', () => {
             'out/pen/vendor/readme.txt': 'x',
         };
         const { deps } = await depsFor(files);
-        expect(await publishMods(deps, { modsDir: 'out', credential })).toEqual(['out/pen/v1.0.0/lock.sig.json']);
+        expect((await publishMods(deps, { modsDir: 'out', credential })).map((m) => m.path)).toEqual([
+            'out/pen/v1.0.0/lock.sig.json',
+        ]);
     });
 
     it('置き場所と中身が違う lock には署名しない（別の mod の lock を置かれても、その名前で署名しない）', async () => {

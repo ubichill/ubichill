@@ -1,5 +1,6 @@
 import http from 'node:http';
 import { cliAuthRequestRepository } from '@ubichill/db';
+import { LIMITS } from '@ubichill/shared';
 import cors from 'cors';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
@@ -64,6 +65,11 @@ const limiter = rateLimit({
 app.use(limiter);
 
 // JSONボディパーサー
+// ワールドを送る依頼（yaml・lock・署名）は既定の上限（100KB）を超え得るので、受け付けるワールドの大きさに合わせる
+app.use(
+    ['/api/v1/worlds', '/api/v1/users/me/external-works'],
+    express.json({ limit: LIMITS.MAX_PUBLISH_REQUEST_SIZE }),
+);
 app.use(express.json());
 
 // バージョン情報エンドポイント。常に commitHash + environment を返す。

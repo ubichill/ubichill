@@ -1,5 +1,6 @@
 export * from './authorBindingRepository';
 export * from './cliAuthRequestRepository';
+export * from './externalWorkRepository';
 export * from './federationPeerRepository';
 export * from './instanceRepository';
 export * from './publishingEnvironmentRepository';
