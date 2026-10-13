@@ -104,7 +104,7 @@ function saveFailureMessage(reason: string, message: string): string {
 router.post('/reload', requireAuth, requireAdmin, async (_req, res) => {
     try {
         await worldRegistry.reloadWorlds();
-        const worlds = await worldRegistry.listWorlds();
+        const worlds = await worldRegistry.listWorlds('local');
         res.json({ success: true, worldCount: worlds.length });
     } catch (error) {
         console.error('ワールド再読み込みエラー:', error);
@@ -118,13 +118,13 @@ router.post('/reload', requireAuth, requireAdmin, async (_req, res) => {
 /**
  * GET /api/v1/worlds
  * ワールドテンプレート一覧を取得（認証必須）。
- * クエリ `?scope=local|global|all` でローカル/連合/すべてを切り替え（デフォルト all）。
+ * クエリ `?scope=local|global` でローカル（このサーバーのワールド）と連合（フォロー中のサーバーのワールド）を切り替える
+ * （既定は local）。両方を混ぜた一覧は返さない。連合先のサーバーもこの既定で取りに来るので、こちらが連合で受け取った
+ * ワールドを、さらに別のサーバーへ自分のものとして渡さない。
  */
 router.get('/', optionalAuth, async (req, res) => {
     try {
-        const scopeParam = req.query.scope;
-        const scope: 'local' | 'global' | 'all' =
-            scopeParam === 'local' || scopeParam === 'global' ? scopeParam : 'all';
+        const scope = req.query.scope === 'global' ? 'global' : 'local';
         const worlds = await worldRegistry.listWorlds(scope);
         res.json({ worlds });
     } catch (error) {

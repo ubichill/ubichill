@@ -179,6 +179,15 @@ jobs:
       # このあと dist を GitHub Pages などへ置く
 ```
 
+- **ユーザーページに出す（`--public-url`）**: 外部に置く作品は、公開先の URL を渡すと署名したときに作者アカウントのサーバーへ登録され、
+  ユーザーページに出る（サーバーは公開先で本人の署名付きと確かめてから出す）。ワールドは `--out` の中身を置く URL
+  （`<URL>/<world>.yaml` になる）、mod は配布の基点（省略時は package.json の `homepage`）。登録に失敗しても公開は止めない。
+
+```bash
+npx ubichill publish worlds/*.yaml --out=dist/worlds --public-url=https://yourname.github.io/your-worlds/worlds
+npx ubichill publish dist --public-url=https://yourname.github.io/your-mod
+```
+
 - **`verify <world.yaml>`**: 兄弟の `.sig.json` が今の `world.yaml` と `.lock.json` に対して有効か調べる（CI 用。無効・未署名・
   作者なしなら失敗）。lock を作り直したら署名し直しが要るので、その確認に使う。
 - 鍵ファイルを自分で作って管理する `keygen` / `sign` は 3.0.0 で廃止した。鍵は `login` / `ci create` が作り、作者アカウントに自動で登録される。

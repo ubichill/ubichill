@@ -24,7 +24,7 @@ let worldsInflight: Promise<WorldListItem[]> | null = null;
 let globalWorldsCache: { data: WorldListItem[]; at: number } | null = null;
 let globalWorldsInflight: Promise<WorldListItem[]> | null = null;
 
-async function fetchWorlds(scope: 'all' | 'local' | 'global', force: boolean): Promise<WorldListItem[]> {
+async function fetchWorlds(scope: 'local' | 'global', force: boolean): Promise<WorldListItem[]> {
     const isGlobal = scope === 'global';
     const cache = isGlobal ? globalWorldsCache : worldsCache;
     const inflight = isGlobal ? globalWorldsInflight : worldsInflight;
@@ -91,7 +91,7 @@ export function useInstances(): UseInstancesReturn {
         setLoading(true);
         setError(null);
         try {
-            setWorlds(await fetchWorlds('all', force));
+            setWorlds(await fetchWorlds('local', force));
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Unknown error');
         } finally {

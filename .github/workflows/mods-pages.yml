@@ -76,7 +76,8 @@ jobs:
           fi
           # 公開環境が取り消されていたら、署名しても Host で作者を確認できないので先に止める
           node packages/sdk/cli/index.ts whoami
-          node packages/sdk/cli/index.ts publish /tmp/gh-pages/mods
+          # 公開先を渡すと、公式アカウントのユーザーページに mod が出る（公開先で署名を確かめてから表示される）
+          node packages/sdk/cli/index.ts publish /tmp/gh-pages/mods --public-url=https://ubichill.github.io/ubichill/mods
           node packages/sdk/cli/index.ts verify --dist-dir=/tmp/gh-pages/mods --require-signatures
 
       - name: Commit and push to gh-pages
