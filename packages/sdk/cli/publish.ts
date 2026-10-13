@@ -10,6 +10,7 @@
 import { basename, join } from 'node:path';
 import { signWorld, unpinnedModsOf, type WorldDocument, type WorldSigningKey, worldShareUrl } from '@ubichill/shared';
 import type { Credential } from './credentials.ts';
+import { normalizePublicUrl, registerExternalWorks } from './registerWorks.ts';
 
 export interface PublishFs {
     readText: (path: string) => string | undefined;
@@ -32,6 +33,11 @@ export interface PublishOptions {
     credential: Credential;
     /** 外部ホスト向けに書き出す先（指定が無ければ本体へ公開）。 */
     outDir?: string;
+    /**
+     * 書き出したファイルを公開する場所（`--out` の中身を置く URL）。指定するとユーザーページに登録する
+     * （`<publicUrl>/<world>.yaml`）。
+     */
+    publicUrl?: string;
 }
 
 const lockPathFor = (worldPath: string) => worldPath.replace(/\.ya?ml$/i, '.lock.json');
@@ -102,6 +108,14 @@ async function publishToDirectory(deps: PublishDeps, options: PublishOptions & {
     if (bundle.lockText !== undefined) deps.fs.writeText(lockPathFor(outWorld), bundle.lockText);
     deps.fs.writeText(outWorld.replace(/\.ya?ml$/i, '.sig.json'), `${JSON.stringify(bundle.signature, null, 2)}\n`);
     deps.log(`🔏 ${outWorld} と .lock.json / .sig.json を書き出しました（作者 @${options.credential.account}）`);
+    if (options.publicUrl) {
+        const url = `${normalizePublicUrl(options.publicUrl)}/${name}`;
+        await registerExternalWorks(
+            (method, path, body) => deps.request(method, path, body),
+            [{ kind: 'world', url, yaml: bundle.yamlText, lock: bundle.lock, signature: bundle.signature }],
+            deps.log,
+        );
+    }
     return outWorld;
 }
 

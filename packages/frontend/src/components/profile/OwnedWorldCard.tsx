@@ -14,8 +14,13 @@ export interface OwnedWorld {
     updatedAt?: string;
     /** 本人の一覧のみ。署名なしは非公開なので「署名して公開」を出す。 */
     identity?: WorldIdentity;
-    /** リポジトリ（worlds/）で管理している公式ワールド。画面からは編集・削除できない（変更は PR で行う）。 */
-    managedBy?: 'repository';
+    /**
+     * repository: リポジトリ（worlds/）で管理している公式ワールド。画面からは編集・削除できない（変更は PR で行う）。
+     * external: 外部（GitHub Pages など）に置いたワールド。`url` で入る。
+     */
+    managedBy?: 'repository' | 'external';
+    /** 外部のワールドの URL（開くとき・入るときに使う）。 */
+    url?: string;
     /** 本人の一覧のみ。配信できない理由（署名が内容と一致しないなど）。編集して公開し直すと直る。 */
     problem?: string;
 }

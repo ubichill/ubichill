@@ -286,6 +286,7 @@ export {
 } from './signature/envelope';
 export * from './user/cliAuth';
 export * from './user/displayNameChange';
+export * from './user/externalWorks';
 export * from './user/favoritesVisibility';
 export * from './user/friends';
 export * from './user/handle';

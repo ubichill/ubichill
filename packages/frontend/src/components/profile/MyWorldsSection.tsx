@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router';
 import { WorldDetailModal } from '@/components/lobby/WorldDetailModal';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { css } from '@/styled-system/css';
+import { ExternalWorksSection } from './ExternalWorksSection';
 import { OwnedWorldCard } from './OwnedWorldCard';
 import type { MyAccountState } from './useMyAccount';
 
@@ -37,7 +38,7 @@ export function MyWorldsSection({
     };
 
     // 作成数の上限は本体に作ったワールドだけで数える（リポジトリ管理のワールドは含めない）
-    const hostedWorlds = worlds.filter((w) => w.managedBy !== 'repository');
+    const hostedWorlds = worlds.filter((w) => !w.managedBy);
     const repositoryWorlds = worlds.filter((w) => w.managedBy === 'repository');
     const remaining = Math.max(0, LIMITS.MAX_WORLDS_PER_USER - hostedWorlds.length);
     const selectedWorld = worlds.find((w) => w.id === selectedWorldId);
@@ -160,6 +161,8 @@ export function MyWorldsSection({
                     </div>
                 </section>
             )}
+
+            <ExternalWorksSection />
 
             {selectedWorld && (
                 <WorldDetailModal
