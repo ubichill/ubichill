@@ -89,6 +89,22 @@ export function architectureRules(context) {
                     .map((m) => `${m} に依存しています`),
         },
         {
+            id: 'signatures-in-one-place',
+            why: '署名の照合は shared の 1 か所で行う（作者署名は signature/envelope.ts、鍵の所有の証明は world/identity.ts と user/cliAuth.ts）。各所で照合すると、署名する値や照合の順番がずれる（docs/PROTOCOLS.md）',
+            applies: (path) =>
+                !isTest(path) &&
+                path.startsWith('packages/') &&
+                ![
+                    'packages/shared/src/signature/envelope.ts',
+                    'packages/shared/src/world/identity.ts',
+                    'packages/shared/src/user/cliAuth.ts',
+                ].includes(path),
+            check: (source) =>
+                [...stripComments(source).matchAll(/\.verifyEd25519\s*\(/g)].map(
+                    () => 'Ed25519 の照合を直接呼んでいます。shared の署名の部品（verifyEnvelope など）を使ってください',
+                ),
+        },
+        {
             id: 'mods-use-public-sdk-only',
             why: 'mod は npm で公開している ubichill パッケージだけに依存する（リポジトリの外の mod と同じ条件でビルドできるように）',
             applies: (path) => /^mods\/[^/]+\/src\//.test(path),

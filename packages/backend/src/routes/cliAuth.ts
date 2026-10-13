@@ -3,10 +3,10 @@ import {
     CLI_AUTH_POLL_INTERVAL_MS,
     CLI_AUTH_REQUEST_TTL_MS,
     CliAuthRequestInputSchema,
-    cliAuthProofMessage,
     ENV_KEYS,
     normalizeUserCode,
     SERVER_CONFIG,
+    verifyCliAuthProof,
 } from '@ubichill/shared';
 import { Router } from 'express';
 import { sendAccountNotice } from '../lib/auth';
@@ -132,7 +132,7 @@ router.post('/token', async (req, res) => {
     const outcome = exchangeOutcome(request, input, new Date());
     if (!outcome.ok) return res.status(outcome.status).json({ error: outcome.error, code: outcome.code });
     if (!request?.userId) return res.status(400).json({ error: '認可コードが一致しません', code: 'invalid-grant' });
-    const proved = await nodeWorldCrypto.verifyEd25519(request.publicKey, cliAuthProofMessage(request.id), signature);
+    const proved = await verifyCliAuthProof(request, signature, nodeWorldCrypto);
     if (!proved) return res.status(400).json({ error: '鍵の所有を確認できません', code: 'invalid-proof' });
 
     // 1 回だけ引き換えられる（同時に送られても 1 つしか通らない）
