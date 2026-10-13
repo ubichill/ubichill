@@ -30,7 +30,7 @@ import { customAlphabet } from 'nanoid';
 import yaml from 'yaml';
 import { isAuthorKey, resolveAuthorDisplayName } from './authorKeyStore';
 import { selfDomain } from './authorKeys';
-import { federatedListItems } from './federatedWorlds';
+import { federatedCandidates, uniqueByWorldId } from './federatedWorlds';
 import { createRemoteWorldCache } from './remoteWorldCache';
 import { assertPublicUrl, safeFetch } from './safeFetch';
 import {
@@ -277,19 +277,20 @@ class WorldRegistry {
      */
     private async _listGlobalWorlds(): Promise<WorldListItem[]> {
         const results = await Promise.allSettled(this._peers.map((peer) => this._fetchPeerWorlds(peer)));
-        const items = federatedListItems(
+        const candidates = federatedCandidates(
             results.flatMap((r) => (r.status === 'fulfilled' ? r.value : [])),
             this._publicBaseUrl,
         );
         const verified = await Promise.all(
-            items.map(async (item): Promise<WorldListItem | null> => {
+            candidates.map(async (item): Promise<WorldListItem | null> => {
                 const resolution = await this._resolveRemote(normalizeWorldUrl(item.url));
                 if (!resolution.ok || !isPublishable(resolution.world.identity)) return null;
-                // 作者名・識別はピアの自己申告ではなく、自分で解決した値を使う
-                return { ...item, identity: resolution.world.identity, authorName: resolution.world.authorName };
+                // 表示する値（名前・説明・作者・識別）はピアの申告ではなく、自分で取得して確かめたワールドから作る。
+                // どのピアから知ったか（source）だけはピアの一覧の値を使う
+                return { ...this._toListItem(resolution.world), source: item.source };
             }),
         );
-        return verified.filter((w): w is WorldListItem => w !== null);
+        return uniqueByWorldId(verified.filter((w): w is WorldListItem => w !== null));
     }
 
     /** 単一ピアのワールド一覧を取得する。キャッシュが有効ならそれを返す。 */
