@@ -1,8 +1,6 @@
 import type { ModLockEntry, ModSignatureVerdict } from '@ubichill/shared';
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('@/lib/api', () => ({ API_BASE: 'https://ubichill.example' }));
-
 import { checkModAuthor, createSignatureVerifier, type FetchedJson, isUnsignedModAllowed } from './modSignature';
 
 const ORIGIN = 'https://ubichill.example';
