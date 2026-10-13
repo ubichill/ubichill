@@ -30,6 +30,7 @@ import { customAlphabet } from 'nanoid';
 import yaml from 'yaml';
 import { isAuthorKey, resolveAuthorDisplayName } from './authorKeyStore';
 import { selfDomain } from './authorKeys';
+import { federatedCandidates, uniqueByWorldId } from './federatedWorlds';
 import { createRemoteWorldCache } from './remoteWorldCache';
 import { assertPublicUrl, safeFetch } from './safeFetch';
 import {
@@ -238,19 +239,12 @@ class WorldRegistry {
     // ================================================================
 
     /**
-     * ワールド一覧を返す。
-     * - `local`: official/registry + ユーザー作成（自インスタンス）
-     * - `global`: フォロー中の連合ピアから取得したワールド
-     * - `all`: 両方（デフォルト）
+     * ワールド一覧を返す。ローカルと連合は混ぜない。
+     * - `local`: このサーバーのワールド（リポジトリ + ユーザー作成）
+     * - `global`: フォロー中の連合ピアのワールド（各ピアのローカルだけ）
      */
-    async listWorlds(scope: 'local' | 'global' | 'all' = 'all'): Promise<WorldListItem[]> {
-        const localItems = await this._listLocalWorlds();
-        if (scope === 'local') return localItems;
-
-        const globalItems = await this._listGlobalWorlds();
-        if (scope === 'global') return globalItems;
-
-        return [...localItems, ...globalItems];
+    async listWorlds(scope: 'local' | 'global'): Promise<WorldListItem[]> {
+        return scope === 'local' ? this._listLocalWorlds() : this._listGlobalWorlds();
     }
 
     /** 自インスタンスのワールド一覧（署名検証済みのみ。未署名は URL を知っている人だけが入れる）。 */
@@ -283,16 +277,20 @@ class WorldRegistry {
      */
     private async _listGlobalWorlds(): Promise<WorldListItem[]> {
         const results = await Promise.allSettled(this._peers.map((peer) => this._fetchPeerWorlds(peer)));
-        const items = results.flatMap((r) => (r.status === 'fulfilled' ? r.value : []));
+        const candidates = federatedCandidates(
+            results.flatMap((r) => (r.status === 'fulfilled' ? r.value : [])),
+            this._publicBaseUrl,
+        );
         const verified = await Promise.all(
-            items.map(async (item): Promise<WorldListItem | null> => {
+            candidates.map(async (item): Promise<WorldListItem | null> => {
                 const resolution = await this._resolveRemote(normalizeWorldUrl(item.url));
                 if (!resolution.ok || !isPublishable(resolution.world.identity)) return null;
-                // 作者名・識別はピアの自己申告ではなく、自分で解決した値を使う
-                return { ...item, identity: resolution.world.identity, authorName: resolution.world.authorName };
+                // 表示する値（名前・説明・作者・識別）はピアの申告ではなく、自分で取得して確かめたワールドから作る。
+                // どのピアから知ったか（source）だけはピアの一覧の値を使う
+                return { ...this._toListItem(resolution.world), source: item.source };
             }),
         );
-        return verified.filter((w): w is WorldListItem => w !== null);
+        return uniqueByWorldId(verified.filter((w): w is WorldListItem => w !== null));
     }
 
     /** 単一ピアのワールド一覧を取得する。キャッシュが有効ならそれを返す。 */
@@ -302,7 +300,8 @@ class WorldRegistry {
             return cached.worlds;
         }
         try {
-            const res = await safeFetch(`${peer.baseUrl}/api/v1/worlds`, {
+            // ピアのローカルだけを取る（ピアが連合で受け取ったワールドまで取り込まない）
+            const res = await safeFetch(`${peer.baseUrl}/api/v1/worlds?scope=local`, {
                 headers: { Accept: 'application/json' },
                 signal: AbortSignal.timeout(5000),
             });
