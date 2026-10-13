@@ -1,11 +1,12 @@
 {
-  "version": 1,
-  "alg": "ed25519",
+  "format": "ubichill-signature",
+  "version": 2,
   "kind": "mod",
+  "alg": "ed25519",
   "publicKey": "PUlU51o_Sch92myux0fHEFuRJSxUbKiN9GC54o1fKW0",
-  "name": "danmaku",
-  "modVersion": "1.0.0",
-  "contentHash": "sha256-G23Kb0OlwCn8+JwOBqjV73A/PPmaj+BEPnrFRiiCghM=",
   "author": "ubichill@ubichill.com",
-  "signature": "KfkbL211qXvcgCeak5_flA_H4-ZRFgK3bLeWPjdbih6ld3sXIyRP2HqGaeprpBwhvlmJL_18d36k9hMKtFNRBA"
+  "subject": "danmaku",
+  "subjectVersion": "1.0.0",
+  "contentHash": "sha256-G23Kb0OlwCn8+JwOBqjV73A/PPmaj+BEPnrFRiiCghM=",
+  "signature": "ymywi2MAKJNY9IdZ0huWU6IG5R_FxSkuJmQ463vXjGju9KAG0BMYVycv8N_-5VEdXQ-htI0eeUhVIG8BNhY1Dg"
 }

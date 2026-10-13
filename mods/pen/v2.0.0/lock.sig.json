@@ -1,11 +1,12 @@
 {
-  "version": 1,
-  "alg": "ed25519",
+  "format": "ubichill-signature",
+  "version": 2,
   "kind": "mod",
+  "alg": "ed25519",
   "publicKey": "PUlU51o_Sch92myux0fHEFuRJSxUbKiN9GC54o1fKW0",
-  "name": "pen",
-  "modVersion": "2.0.0",
-  "contentHash": "sha256-MYWD0FIUuVP7wZgV4uBE6pE3en3a0vSWxekbY0pLvGw=",
   "author": "ubichill@ubichill.com",
-  "signature": "tfMdH96hlKN0QIplZpHXJSQOHkC296P9teEBYta5NDbTzsGfLdogFeg2J4z3b8iBavJzfMKHe8OCKf5ACGVPDw"
+  "subject": "pen",
+  "subjectVersion": "2.0.0",
+  "contentHash": "sha256-MYWD0FIUuVP7wZgV4uBE6pE3en3a0vSWxekbY0pLvGw=",
+  "signature": "BpfApQ1fnC_IX_okxD_AmakhHn9r0tPi15f_w7nB_j7jc5FbPVtmCO1Dq7njw4tbtIJGOOAuGA8uezd9A_2XCw"
 }

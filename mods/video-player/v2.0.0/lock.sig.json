@@ -1,11 +1,12 @@
 {
-  "version": 1,
-  "alg": "ed25519",
+  "format": "ubichill-signature",
+  "version": 2,
   "kind": "mod",
+  "alg": "ed25519",
   "publicKey": "PUlU51o_Sch92myux0fHEFuRJSxUbKiN9GC54o1fKW0",
-  "name": "video-player",
-  "modVersion": "2.0.0",
-  "contentHash": "sha256-Qcn7JW24xXx+01nnQ123KK3OoCNY1yjqg6nUJmIVFN0=",
   "author": "ubichill@ubichill.com",
-  "signature": "Bkd0JqMTn3uyF-7YgfXSCcGNOM1ciljcOv_bRUnlpE2n0dQX3xKTuRoN96o4OHDocA4uh99CTEmZmn1px6ixDA"
+  "subject": "video-player",
+  "subjectVersion": "2.0.0",
+  "contentHash": "sha256-Qcn7JW24xXx+01nnQ123KK3OoCNY1yjqg6nUJmIVFN0=",
+  "signature": "lgfazIThX8F6CXOduCQZjO-v8ff1aPqJtwAiCVLdv8rVrGR8gYJrm2Pg4zjBFXosbuQbWw5jQ3agz7j7TTG9AQ"
 }
