@@ -1,5 +1,20 @@
 # @ubichill/db
 
+## 1.4.0
+
+### Minor Changes
+
+- a5d6f3a: 外部（GitHub Pages など）に置いたワールド・mod をユーザーページに出せるようにした。`ubichill publish` に `--public-url`（mod は省略時 package.json の `homepage`）を渡すと、署名したときに作者アカウントのサーバーへ登録される。サーバーは本人の署名が付いた内容だけを登録し、表示する前に公開先で本人の署名付きで配られているかを確かめる。ユーザーページに「公開している mod」を追加し、外部のワールドも「作成したワールド」に出る。
+
+### Patch Changes
+
+- Updated dependencies [902a24c]
+- Updated dependencies [a5d6f3a]
+- Updated dependencies [9d7c2d9]
+- Updated dependencies [18142c5]
+- Updated dependencies [b802a3c]
+  - @ubichill/shared@1.9.0
+
 ## 1.3.1
 
 ### Patch Changes

@@ -1,5 +1,22 @@
 # @ubichill/sdk
 
+## 3.3.0
+
+### Minor Changes
+
+- a5d6f3a: 外部（GitHub Pages など）に置いたワールド・mod をユーザーページに出せるようにした。`ubichill publish` に `--public-url`（mod は省略時 package.json の `homepage`）を渡すと、署名したときに作者アカウントのサーバーへ登録される。サーバーは本人の署名が付いた内容だけを登録し、表示する前に公開先で本人の署名付きで配られているかを確かめる。ユーザーページに「公開している mod」を追加し、外部のワールドも「作成したワールド」に出る。
+- b802a3c: 作者署名をワールドと mod で 1 つの形式にした（`format: "ubichill-signature"`・`version: 2`・`kind`。docs/PROTOCOLS.md）。署名する値・検証の順番は `signEnvelope` / `verifyEnvelope` の 1 か所で、`kind` が署名する値に入るので別の種類の署名として使い回せない。作者は必須で正規の表記だけ。版 1 の署名は読まないので、ワールドと mod は `ubichill publish` で署名し直す必要がある。形式を固定するテストベクターを加えた。
+
+### Patch Changes
+
+- Updated dependencies [902a24c]
+- Updated dependencies [a5d6f3a]
+- Updated dependencies [9d7c2d9]
+- Updated dependencies [18142c5]
+- Updated dependencies [b802a3c]
+  - @ubichill/shared@1.9.0
+  - @ubichill/loader@1.3.2
+
 ## 3.2.0
 
 ### Minor Changes
