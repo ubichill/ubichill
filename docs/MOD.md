@@ -158,7 +158,9 @@ npx ubichill verify --dist-dir=dist --require-signatures
 `publish` に公開先の URL（Host がこの mod を取りに来る基点。ワールドの依存の `source.url` と同じ値）を渡すと、署名したときに
 作者アカウントのサーバーへ登録され、ユーザーページの「公開している mod」に出る。`--public-url` を省くと package.json の
 `homepage` を使う。サーバーは公開先から `lock.json` と `lock.sig.json` を取り、本人の署名付きで配られていると確かめたものだけを出す
-（公開前・別の物に置き換えた・鍵を取り消した場合は出ない）。登録は設定の「ワールド」→「外部に置いた作品」から外せる。
+（公開前・別の物に置き換えた・鍵を取り消した場合は出ない）。設定の「ワールド」→「外部に置いた作品」で、作品ごとの状態
+（公開済み・公開待ち・取得失敗・署名を確認できない）を見て再確認でき、登録を外せる。API トークン（CLI・CI）で登録するときは、
+そのトークンの公開環境の鍵で署名した作品に限る（ワールドの公開と同じ）。
 
 ```bash
 npx ubichill publish dist --public-url=https://yourname.github.io/your-mod

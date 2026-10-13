@@ -429,6 +429,25 @@ class WorldRegistry {
         return this._remoteCache.resolve(url);
     }
 
+    /** 外部のワールドを取り直して解決する（作者が公開し直したのを確かめ直すとき。呼び出し側で回数を抑えること）。 */
+    async resolveRemoteFresh(url: string): Promise<WorldResolution> {
+        const norm = normalizeWorldUrl(url);
+        if (this._selfRef(norm)) return NOT_FOUND;
+        this._remoteCache.forget(norm);
+        return this._resolveRemote(norm);
+    }
+
+    /** 外部のワールドを解決する（キャッシュを使う）。このサーバーのワールドの URL は外部として扱わない。 */
+    async resolveRemote(url: string): Promise<WorldResolution> {
+        const norm = normalizeWorldUrl(url);
+        return this._selfRef(norm) ? NOT_FOUND : this._resolveRemote(norm);
+    }
+
+    /** 一覧の 1 件の形にする（外部の作品をユーザーページ・一覧に出すとき）。 */
+    listItemOf(world: ResolvedWorld): WorldListItem {
+        return this._toListItem(world);
+    }
+
     /** 外部 URL から provenance（source）を推定する。 */
     private _externalSource(url: string): WorldSource {
         try {

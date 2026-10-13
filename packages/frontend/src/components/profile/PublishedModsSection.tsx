@@ -3,7 +3,38 @@
  * URL はワールドの依存（`spec.dependencies[].source.url`）にそのまま書ける値。
  */
 import type { PublishedMod } from '@ubichill/shared';
+import { useState } from 'react';
 import { css } from '@/styled-system/css';
+
+function CopyUrlButton({ url }: { url: string }) {
+    const [copied, setCopied] = useState(false);
+    const copy = () =>
+        navigator.clipboard.writeText(url).then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+        });
+    return (
+        <button
+            type="button"
+            onClick={() => void copy()}
+            className={css({
+                mt: '2',
+                px: '2.5',
+                py: '1',
+                borderRadius: '8px',
+                border: '1px solid',
+                borderColor: 'border',
+                bg: 'background',
+                color: 'text',
+                fontSize: '11px',
+                cursor: 'pointer',
+                _hover: { borderColor: 'borderStrong' },
+            })}
+        >
+            {copied ? 'コピーしました' : 'URL をコピー'}
+        </button>
+    );
+}
 
 export function PublishedModsSection({ mods }: { mods: PublishedMod[] }) {
     return (
@@ -40,6 +71,7 @@ export function PublishedModsSection({ mods }: { mods: PublishedMod[] }) {
                         >
                             {mod.url}
                         </div>
+                        <CopyUrlButton url={mod.url} />
                     </div>
                 ))}
             </div>

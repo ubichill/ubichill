@@ -1,8 +1,21 @@
 import { generateKeyPairSync, sign } from 'node:crypto';
-import { type AuthorKeyCheck, type ModLockEntry, signMod, signWorld, type WorldSigningKey } from '@ubichill/shared';
+import {
+    type AuthorKeyCheck,
+    authorWorldIdOf,
+    type ModLockEntry,
+    signMod,
+    signWorld,
+    type WorldSigningKey,
+} from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
 import yaml from 'yaml';
-import { confirmPublishedMod, type RegistrationDeps, verifyRegistration } from './externalWorks';
+import {
+    confirmPublishedMod,
+    type FetchedJson,
+    type RegistrationDeps,
+    verifyRegistration,
+    worldConfirmation,
+} from './externalWorks';
 import { nodeWorldCrypto } from './worldCrypto';
 
 function newKey(): WorldSigningKey {
@@ -135,6 +148,24 @@ describe('verifyRegistration', () => {
         });
     });
 
+    it('API トークンで送るときは、そのトークンの公開環境の鍵の署名だけ登録できる（同じ作者の別の公開環境の署名は不可）', async () => {
+        const otherEnvironment = newKey();
+        const tokenDeps = { ...deps, tokenPublicKey: otherEnvironment.publicKey };
+        expect(await verifyRegistration(await signedMod(), tokenDeps)).toMatchObject({
+            ok: false,
+            code: 'environment-key-mismatch',
+        });
+        expect(await verifyRegistration(await signedWorld(), tokenDeps)).toMatchObject({
+            ok: false,
+            code: 'environment-key-mismatch',
+        });
+        expect(await verifyRegistration(await signedMod(), { ...deps, tokenPublicKey: alice.publicKey })).toMatchObject(
+            {
+                ok: true,
+            },
+        );
+    });
+
     it('読めない yaml は 400', async () => {
         const world = await signedWorld();
         expect(await verifyRegistration({ ...world, yaml: ': [' }, deps)).toMatchObject({ ok: false, status: 400 });
@@ -142,7 +173,10 @@ describe('verifyRegistration', () => {
 });
 
 describe('confirmPublishedMod', () => {
-    const serve = (files: Record<string, unknown>) => async (url: string) => files[url];
+    const serve =
+        (files: Record<string, unknown>) =>
+        async (url: string): Promise<FetchedJson> =>
+            url in files ? { found: true, value: files[url] } : { found: false };
     const at = (file: string) => `${MOD_URL}/video-player/v3.1.0/${file}`;
     const work = { url: MOD_URL, name: 'video-player', version: '3.1.0' };
 
@@ -154,24 +188,37 @@ describe('confirmPublishedMod', () => {
             isAuthorKey,
             fetchJson: serve({ [at('lock.json')]: entry, [at('lock.sig.json')]: signature }),
         });
-        expect(published).toEqual({ id: 'video-player', name: 'video-player', version: '3.1.0', url: MOD_URL });
+        expect(published).toEqual({
+            status: 'published',
+            mod: { id: 'video-player', name: 'video-player', version: '3.1.0', url: MOD_URL },
+        });
     });
 
-    it('まだ公開されていない・別の物が置かれている・他人の署名なら、表示しない', async () => {
+    it('公開前は not-found、別の物・他人の署名は invalid（どちらも表示しない）', async () => {
         const { signature } = await signedMod();
         const bob = newKey();
         const bobSignature = await signMod(entry, bob, nodeWorldCrypto, { author: 'bob@ubichill.com' });
         const other = { ...entry, id: 'other' };
-        for (const files of [
-            {},
-            { [at('lock.json')]: entry },
-            { [at('lock.json')]: { ...entry, manifestIntegrity: integrity('C') }, [at('lock.sig.json')]: signature },
-            {
-                [at('lock.json')]: other,
-                [at('lock.sig.json')]: await signMod(other, alice, nodeWorldCrypto, { author: ALICE }),
-            },
-            { [at('lock.json')]: entry, [at('lock.sig.json')]: bobSignature },
-        ]) {
+        const cases: [Record<string, unknown>, string][] = [
+            [{}, 'not-found'],
+            [{ [at('lock.json')]: entry }, 'not-found'],
+            [
+                {
+                    [at('lock.json')]: { ...entry, manifestIntegrity: integrity('C') },
+                    [at('lock.sig.json')]: signature,
+                },
+                'invalid',
+            ],
+            [
+                {
+                    [at('lock.json')]: other,
+                    [at('lock.sig.json')]: await signMod(other, alice, nodeWorldCrypto, { author: ALICE }),
+                },
+                'invalid',
+            ],
+            [{ [at('lock.json')]: entry, [at('lock.sig.json')]: bobSignature }, 'invalid'],
+        ];
+        for (const [files, status] of cases) {
             const published = await confirmPublishedMod(work, {
                 account: ALICE,
                 crypto: nodeWorldCrypto,
@@ -182,8 +229,28 @@ describe('confirmPublishedMod', () => {
                         : { status: 'unconfirmed' },
                 fetchJson: serve(files),
             });
-            expect(published).toBeUndefined();
+            expect(published).toEqual({ status });
         }
+    });
+
+    it('公開先に届かない・作者をいま確認できないときは unreachable（公開前と分ける）', async () => {
+        const { signature } = await signedMod();
+        const down = await confirmPublishedMod(work, {
+            account: ALICE,
+            crypto: nodeWorldCrypto,
+            isAuthorKey,
+            fetchJson: async () => {
+                throw new Error('HTTP 502');
+            },
+        });
+        expect(down).toEqual({ status: 'unreachable' });
+        const pending = await confirmPublishedMod(work, {
+            account: ALICE,
+            crypto: nodeWorldCrypto,
+            isAuthorKey: async () => ({ status: 'pending' }),
+            fetchJson: serve({ [at('lock.json')]: entry, [at('lock.sig.json')]: signature }),
+        });
+        expect(pending).toEqual({ status: 'unreachable' });
     });
 
     it('鍵を取り消したら表示しない', async () => {
@@ -194,7 +261,7 @@ describe('confirmPublishedMod', () => {
             isAuthorKey: async () => ({ status: 'unconfirmed' }),
             fetchJson: serve({ [at('lock.json')]: entry, [at('lock.sig.json')]: signature }),
         });
-        expect(published).toBeUndefined();
+        expect(published).toEqual({ status: 'invalid' });
     });
 
     it('mod の ID・版に URL として特別な文字があっても、別の場所を取りに行かない', async () => {
@@ -207,10 +274,49 @@ describe('confirmPublishedMod', () => {
                 isAuthorKey,
                 fetchJson: async (url) => {
                     fetched.push(url);
-                    return undefined;
+                    return { found: false };
                 },
             },
         );
         expect(fetched.every((url) => url.startsWith(`${MOD_URL}/..%2Fx%3Fy/v1.0.0%23z/`))).toBe(true);
+    });
+});
+
+describe('worldConfirmation', () => {
+    const verifiedAs = (author: string, name: string) => ({
+        identity: { status: 'verified', author, worldId: authorWorldIdOf(author, name) },
+    });
+    const expected = { account: ALICE, name: 'chillwa' };
+
+    it('本人の署名で、登録した名前の作品なら published', () => {
+        expect(worldConfirmation({ ok: true, world: verifiedAs(ALICE, 'chillwa') }, expected)).toMatchObject({
+            status: 'published',
+        });
+    });
+
+    it('同じ URL で名前を変えて公開し直したら、以前の名前の登録は出さない（重複しない）', () => {
+        expect(worldConfirmation({ ok: true, world: verifiedAs(ALICE, 'chillwa-v2') }, expected)).toEqual({
+            status: 'invalid',
+        });
+    });
+
+    it('他人の署名・作者の付かない署名・改ざんは invalid、取得できなければ not-found、作者の確認待ちは unreachable', () => {
+        expect(worldConfirmation({ ok: true, world: verifiedAs('bob@ubichill.com', 'chillwa') }, expected)).toEqual({
+            status: 'invalid',
+        });
+        expect(worldConfirmation({ ok: true, world: { identity: { status: 'unsigned' } } }, expected)).toEqual({
+            status: 'invalid',
+        });
+        expect(worldConfirmation({ ok: false, reason: 'integrity' }, expected)).toEqual({ status: 'invalid' });
+        expect(worldConfirmation({ ok: false, reason: 'not-found' }, expected)).toEqual({ status: 'not-found' });
+        expect(
+            worldConfirmation(
+                {
+                    ok: true,
+                    world: { identity: { status: 'verified', worldId: 'ed25519:x/chillwa', authorPending: true } },
+                },
+                expected,
+            ),
+        ).toEqual({ status: 'unreachable' });
     });
 });

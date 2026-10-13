@@ -1,4 +1,4 @@
-import { and, count, eq } from 'drizzle-orm';
+import { and, count, eq, sql } from 'drizzle-orm';
 import { db } from '../index';
 import { externalWorks } from '../schema';
 
@@ -14,21 +14,38 @@ const keyOf = (key: ExternalWorkKey) =>
     );
 
 export const externalWorkRepository = {
-    /** 登録する（同じ作品なら版と登録時刻を更新する）。 */
-    async upsert(record: ExternalWorkKey & { version: string | null }): Promise<void> {
-        const registeredAt = new Date();
-        await db
-            .insert(externalWorks)
-            .values({ ...record, registeredAt })
-            .onConflictDoUpdate({
-                target: [externalWorks.userId, externalWorks.kind, externalWorks.url, externalWorks.name],
-                set: { version: record.version, registeredAt },
-            });
-    },
-
-    async exists(key: ExternalWorkKey): Promise<boolean> {
-        const rows = await db.select({ url: externalWorks.url }).from(externalWorks).where(keyOf(key)).limit(1);
-        return rows.length > 0;
+    /**
+     * 上限の中で登録する（同じ作品の登録し直しは数えない）。件数の確認と保存を、ユーザーごとのロックを取った 1 つの
+     * トランザクションで行う（同時に登録しても上限を超えない）。
+     */
+    async registerWithinLimit(
+        record: ExternalWorkKey & { version: string | null },
+        max: number,
+    ): Promise<'saved' | 'limit'> {
+        return db.transaction(async (tx) => {
+            await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`external_works:${record.userId}`}))`);
+            const [existing] = await tx
+                .select({ url: externalWorks.url })
+                .from(externalWorks)
+                .where(keyOf(record))
+                .limit(1);
+            if (!existing) {
+                const [row] = await tx
+                    .select({ n: count() })
+                    .from(externalWorks)
+                    .where(eq(externalWorks.userId, record.userId));
+                if ((row?.n ?? 0) >= max) return 'limit';
+            }
+            const registeredAt = new Date();
+            await tx
+                .insert(externalWorks)
+                .values({ ...record, registeredAt })
+                .onConflictDoUpdate({
+                    target: [externalWorks.userId, externalWorks.kind, externalWorks.url, externalWorks.name],
+                    set: { version: record.version, registeredAt },
+                });
+            return 'saved';
+        });
     },
 
     async listByUser(userId: string): Promise<ExternalWorkRecord[]> {

@@ -8,7 +8,9 @@
  */
 import {
     type AuthorKeyCheck,
+    authorWorldIdOf,
     type ExternalWorkRegistration,
+    type ExternalWorkStatus,
     MOD_SIGNATURE_FILE,
     ModLockEntrySchema,
     type PublishedMod,
@@ -37,6 +39,11 @@ export interface RegistrationDeps {
     parseYaml: (text: string) => unknown;
     /** このサーバーのオリジン。本体に置いたワールドは外部の作品として登録しない（すでに出ている）。 */
     selfOrigin: string;
+    /**
+     * API トークン（CLI・CI）で送られたときは、そのトークンの公開環境の鍵。署名はこの鍵のものに限る
+     * （ワールドの公開と同じ制限。盗まれたトークンで、同じ作者の別の公開環境の署名を登録させない）。
+     */
+    tokenPublicKey?: string;
 }
 
 const rejectedBy = (status: 400 | 403 | 503, code: string, error: string): RegistrationVerdict => ({
@@ -55,6 +62,14 @@ export async function verifyRegistration(
 ): Promise<RegistrationVerdict> {
     if (URL.parse(registration.url)?.origin === deps.selfOrigin) {
         return rejectedBy(400, 'self-hosted', 'このサーバーに置いた作品は、外部の作品として登録しなくても表示されます');
+    }
+    const signedKey = (registration.signature as { publicKey?: unknown } | null | undefined)?.publicKey;
+    if (deps.tokenPublicKey !== undefined && signedKey !== deps.tokenPublicKey) {
+        return rejectedBy(
+            403,
+            'environment-key-mismatch',
+            'API トークンで送る署名は、そのトークンの公開環境の鍵で署名してください',
+        );
     }
     if (registration.kind === 'mod') {
         const verdict = await verifyModSignature(
@@ -109,8 +124,15 @@ export async function verifyRegistration(
     return { ok: true, work: { kind: 'world', url: registration.url, name, version: null } };
 }
 
+/** 取得の結果。`found: false` は「無い」と確定したとき（404 など）。通信の失敗・サーバーの障害は throw。 */
+export type FetchedJson = { found: true; value: unknown } | { found: false };
+
+export type ModConfirmation =
+    | { status: 'published'; mod: PublishedMod }
+    | { status: Exclude<ExternalWorkStatus, 'published'> };
+
 /**
- * 登録された mod が、その URL で本人の署名付きのまま配られているかを確かめる。確かめられなければ undefined。
+ * 登録された mod が、その URL で本人の署名付きのまま配られているかを確かめる。
  * 取るのは `<url>/<modId>/v<版>/` の lock.json と lock.sig.json（Host が読み込むのと同じ場所）。
  */
 export async function confirmPublishedMod(
@@ -119,18 +141,42 @@ export async function confirmPublishedMod(
         account: string;
         crypto: WorldCrypto;
         isAuthorKey: AuthorKeyCheck;
-        /** 失敗・非 2xx は undefined。 */
-        fetchJson: (url: string) => Promise<unknown>;
+        fetchJson: (url: string) => Promise<FetchedJson>;
     },
-): Promise<PublishedMod | undefined> {
+): Promise<ModConfirmation> {
     const base = `${work.url}/${encodeURIComponent(work.name)}/v${encodeURIComponent(work.version)}`;
-    const [lock, signature] = await Promise.all([
-        deps.fetchJson(`${base}/lock.json`).catch(() => undefined),
-        deps.fetchJson(`${base}/${MOD_SIGNATURE_FILE}`).catch(() => undefined),
-    ]);
-    const entry = ModLockEntrySchema.safeParse(lock);
-    if (!entry.success || entry.data.id !== work.name || entry.data.version !== work.version) return undefined;
-    const verdict = await verifyModSignature(entry.data, signature, deps.crypto, deps.isAuthorKey);
-    if (verdict.status !== 'verified' || verdict.author !== deps.account) return undefined;
-    return { id: work.name, name: work.name, version: work.version, url: work.url };
+    const fetched = await Promise.all([
+        deps.fetchJson(`${base}/lock.json`),
+        deps.fetchJson(`${base}/${MOD_SIGNATURE_FILE}`),
+    ]).catch(() => undefined);
+    if (!fetched) return { status: 'unreachable' };
+    const [lock, signature] = fetched;
+    if (!lock.found || !signature.found) return { status: 'not-found' };
+    const entry = ModLockEntrySchema.safeParse(lock.value);
+    if (!entry.success || entry.data.id !== work.name || entry.data.version !== work.version)
+        return { status: 'invalid' };
+    const verdict = await verifyModSignature(entry.data, signature.value, deps.crypto, deps.isAuthorKey);
+    if (verdict.status === 'rejected' && verdict.reason === 'author-pending') return { status: 'unreachable' };
+    if (verdict.status !== 'verified' || verdict.author !== deps.account) return { status: 'invalid' };
+    return { status: 'published', mod: { id: work.name, name: work.name, version: work.version, url: work.url } };
+}
+
+/**
+ * 外部のワールドを解決した結果から、登録した作品が本人の署名付きで配られているかを決める（純粋）。
+ * 作品の ID（`acct:作者/名前`）まで照合するので、同じ URL で名前を変えて公開し直したとき、以前の名前の登録は出ない。
+ */
+export function worldConfirmation<
+    W extends { identity?: { status: string; worldId?: string; author?: string; authorPending?: true } },
+>(
+    resolution: { ok: true; world: W } | { ok: false; reason: 'not-found' | 'integrity' },
+    expected: { account: string; name: string },
+): { status: 'published'; world: W } | { status: Exclude<ExternalWorkStatus, 'published'> } {
+    if (!resolution.ok) return { status: resolution.reason === 'integrity' ? 'invalid' : 'not-found' };
+    const identity = resolution.world.identity;
+    if (identity?.status === 'verified' && identity.authorPending) return { status: 'unreachable' };
+    const published =
+        identity?.status === 'verified' &&
+        identity.author === expected.account &&
+        identity.worldId === authorWorldIdOf(expected.account, expected.name);
+    return published ? { status: 'published', world: resolution.world } : { status: 'invalid' };
 }

@@ -6,6 +6,7 @@
  */
 import { z } from 'zod';
 import { ModLockEntrySchema } from '../schemas/modLock.schema';
+import { LIMITS } from '../schemas/world.schema';
 
 export const EXTERNAL_WORK_KINDS = ['world', 'mod'] as const;
 export type ExternalWorkKind = (typeof EXTERNAL_WORK_KINDS)[number];
@@ -29,8 +30,8 @@ export const ExternalWorkRegistrationSchema = z.discriminatedUnion('kind', [
     z.object({
         kind: z.literal('world'),
         url: ExternalWorkUrlSchema.refine((v) => /\.ya?ml$/i.test(v), 'ワールドは .yaml の URL を指定してください'),
-        /** 配信する world.yaml の中身（署名を確かめるため。サーバーは保存しない）。 */
-        yaml: z.string().max(1_000_000),
+        /** 配信する world.yaml の中身（署名を確かめるため。サーバーは保存しない）。上限は外部のワールドを取り込むときと同じ。 */
+        yaml: z.string().max(LIMITS.MAX_YAML_SIZE, `ワールドの YAML は ${LIMITS.MAX_YAML_SIZE} 文字までです`),
         lock: z.unknown().optional(),
         signature: z.unknown(),
     }),
@@ -43,6 +44,16 @@ export const ExternalWorkRegistrationSchema = z.discriminatedUnion('kind', [
 ]);
 export type ExternalWorkRegistration = z.infer<typeof ExternalWorkRegistrationSchema>;
 
+/**
+ * 公開先を確かめた結果。
+ * - published: 本人の署名付きで配られている（ユーザーページに出る）
+ * - not-found: 公開先に無い（まだ公開前・取り下げた。ワールドは取得の失敗もここに入る）
+ * - unreachable: 公開先に届かない（通信・サーバーの障害。時間をおいて確かめ直す）
+ * - invalid: 配られているが、本人の署名と確かめられない（内容の書き換え・鍵の取り消し・名前の変更・別の作品）
+ */
+export const EXTERNAL_WORK_STATUSES = ['published', 'not-found', 'unreachable', 'invalid'] as const;
+export type ExternalWorkStatus = (typeof EXTERNAL_WORK_STATUSES)[number];
+
 /** 登録された外部の作品（本人の設定画面に出す）。 */
 export interface ExternalWork {
     kind: ExternalWorkKind;
@@ -52,6 +63,9 @@ export interface ExternalWork {
     /** mod の版（最後に登録した版）。world は無し。 */
     version?: string;
     registeredAt: string;
+    status: ExternalWorkStatus;
+    /** 公開先を確かめた時刻（ISO 8601）。 */
+    checkedAt: string;
 }
 
 /** 公開している mod（ユーザーページに出す）。 */

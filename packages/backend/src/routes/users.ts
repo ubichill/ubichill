@@ -33,6 +33,7 @@ import {
     verifyKeyRegistration,
 } from '@ubichill/shared';
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import yaml from 'yaml';
 import { auth, createPendingRegistration, resendOTP, sendAccountNotice, verifyAndRegister } from '../lib/auth';
 import {
@@ -45,7 +46,7 @@ import {
 } from '../middleware/auth';
 import { invalidateAuthorKey, isAuthorKey } from '../services/authorKeyStore';
 import { selfAccount } from '../services/authorKeys';
-import { publishedExternalWorks } from '../services/externalWorkStore';
+import { externalWorkStatuses, publishedExternalWorks } from '../services/externalWorkStore';
 import { verifyRegistration } from '../services/externalWorks';
 import { favoriteRefOf, resolveFavoriteWorlds } from '../services/favorites';
 import {
@@ -491,36 +492,47 @@ router.put('/me/external-works', requirePublisher, async (req, res) => {
         isAuthorKey,
         parseYaml: (text) => yaml.parse(text) as unknown,
         selfOrigin: new URL(process.env[ENV_KEYS.PUBLIC_BASE_URL] || SERVER_CONFIG.DEV_URL).origin,
+        ...(req.publishingEnvironment ? { tokenPublicKey: req.publishingEnvironment.publicKey } : {}),
     });
     if (!verdict.ok) return res.status(verdict.status).json({ error: verdict.error, code: verdict.code });
-    const key = { userId: me.id, kind: verdict.work.kind, url: verdict.work.url, name: verdict.work.name };
-    if (
-        !(await externalWorkRepository.exists(key)) &&
-        (await externalWorkRepository.countByUser(me.id)) >= MAX_EXTERNAL_WORKS_PER_USER
-    ) {
+    const saved = await externalWorkRepository.registerWithinLimit(
+        {
+            userId: me.id,
+            kind: verdict.work.kind,
+            url: verdict.work.url,
+            name: verdict.work.name,
+            version: verdict.work.version,
+        },
+        MAX_EXTERNAL_WORKS_PER_USER,
+    );
+    if (saved === 'limit') {
         return res.status(409).json({
-            error: `外部の作品は ${MAX_EXTERNAL_WORKS_PER_USER} 件まで登録できます。設定から不要なものを消してください`,
+            error: `外部の作品は ${MAX_EXTERNAL_WORKS_PER_USER} 件まで登録できます。設定から不要なものを外してください`,
             code: 'limit',
         });
     }
-    await externalWorkRepository.upsert({ ...key, version: verdict.work.version });
     return res.json({ work: verdict.work });
 });
 
-// 登録した外部の作品（本人の設定画面）。いま配られているかに関わらず全部返す
-router.get('/me/external-works', requireAuth, async (req, res) => {
+// 再確認（公開先を取り直す）は外部への取得を起こすので、利用者ごとに回数を抑える
+const recheckLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 6,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => req.user?.id ?? 'anonymous',
+    skip: (req) => req.query.refresh !== '1',
+    message: { error: '再確認が多すぎます。少し待ってから試してください' },
+});
+
+// 登録した外部の作品（本人の設定画面）。公開先を確かめた状態つきで全部返す。?refresh=1 で確かめ直す
+router.get('/me/external-works', requireAuth, recheckLimiter, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-    const records = await externalWorkRepository.listByUser(req.user.id);
+    const me = await userRepository.findById(req.user.id);
+    if (!me?.handle) return res.json({ works: [] });
+    const works = await externalWorkStatuses(me.id, selfAccount(me.handle), req.query.refresh === '1');
     res.set('Cache-Control', 'private, no-store');
-    return res.json({
-        works: records.map((r) => ({
-            kind: r.kind,
-            url: r.url,
-            name: r.name,
-            ...(r.version ? { version: r.version } : {}),
-            registeredAt: r.registeredAt.toISOString(),
-        })),
-    });
+    return res.json({ works });
 });
 
 router.delete('/me/external-works', requireAuth, async (req, res) => {
