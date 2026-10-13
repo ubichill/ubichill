@@ -8,7 +8,12 @@ import {
     signMod,
 } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
-import { createStoredAuthorBindings, type KeyValueStorage, MAX_STORED_AUTHORS } from './browserAuthorKeys';
+import {
+    availableStorage,
+    createStoredAuthorBindings,
+    type KeyValueStorage,
+    MAX_STORED_AUTHORS,
+} from './browserAuthorKeys';
 import { createBrowserSignatureVerifier } from './modSignature';
 
 /** localStorage の代わり（タブを閉じても残る保存領域）。 */
@@ -22,6 +27,36 @@ function memoryStorage(): KeyValueStorage & { data: Map<string, string> } {
         },
     };
 }
+
+describe('availableStorage', () => {
+    it('localStorage を取り出すだけで例外になる環境では、メモリに切り替えて動く', async () => {
+        const storage = availableStorage(() => {
+            throw new DOMException('The operation is insecure.', 'SecurityError');
+        });
+        const store = createStoredAuthorBindings(storage);
+        await store.bindings.save('alice@other.example', { keys: [{ publicKey: 'A'.repeat(43) }] });
+        expect(await store.bindings.find('alice@other.example')).toBeDefined();
+    });
+
+    it('書き込みで例外になる（容量 0 など）・無い場合もメモリに切り替える', () => {
+        const readOnly: KeyValueStorage = {
+            getItem: () => null,
+            setItem: () => {
+                throw new DOMException('quota', 'QuotaExceededError');
+            },
+        };
+        for (const get of [() => readOnly, () => undefined]) {
+            const storage = availableStorage(get);
+            storage.setItem('k', 'v');
+            expect(storage.getItem('k')).toBe('v');
+        }
+    });
+
+    it('使える localStorage はそのまま使う', () => {
+        const local = memoryStorage();
+        expect(availableStorage(() => local)).toBe(local);
+    });
+});
 
 describe('createStoredAuthorBindings', () => {
     const profile = { keys: [{ publicKey: 'A'.repeat(43) }], displayName: 'アリス' };

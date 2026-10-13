@@ -20,6 +20,33 @@ export const MAX_STORED_CONTENTS = 2000;
 
 export type KeyValueStorage = Pick<Storage, 'getItem' | 'setItem'>;
 
+/** タブを閉じるまでの保存先（localStorage を使えない環境の代わり。再読み込みすると猶予は効かない）。 */
+export function memoryStorage(): KeyValueStorage {
+    const data = new Map<string, string>();
+    return {
+        getItem: (key) => data.get(key) ?? null,
+        setItem: (key, value) => {
+            data.set(key, value);
+        },
+    };
+}
+
+/**
+ * 使える保存先を選ぶ。localStorage は取り出すだけで例外になる環境がある（Cookie を拒否した設定・一部のプライベートモード・
+ * サンドボックスの iframe）。その場合はメモリに切り替え、確認そのものは続ける。
+ */
+export function availableStorage(getLocalStorage: () => KeyValueStorage | undefined): KeyValueStorage {
+    try {
+        const storage = getLocalStorage();
+        if (!storage) return memoryStorage();
+        const probe = 'ubichill:storage-probe';
+        storage.setItem(probe, '1');
+        return storage;
+    } catch {
+        return memoryStorage();
+    }
+}
+
 interface StoredBinding {
     keys: SigningKeyEntry[];
     displayName?: string;

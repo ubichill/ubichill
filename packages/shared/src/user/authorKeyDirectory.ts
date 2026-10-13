@@ -20,15 +20,43 @@ import { DISPLAY_NAME_WEBFINGER_PROPERTY, DisplayNameSchema, formatAuthorAccount
 import { parseSigningKeyList, SIGNING_KEYS_WEBFINGER_REL, type SigningKeyEntry, signingKeyStatus } from './signingKeys';
 
 /**
- * WebFinger が示した鍵一覧の URL を、問い合わせたオリジンの URL に限って受け付ける（`URL` を使わない）。
- * 受け付けるのは `<origin>/...` と `/...`（`//` で始まるものを除く）だけ。表記の揺れ（大文字のホスト・既定のポートの明示）も受けない。
+ * 鍵一覧の URL を、WebFinger を返したオリジンの URL に解決する。同じオリジンでなければ undefined。
+ * 既定（{@link resolveSameOrigin}）は実行環境の URL で正規化してから比べる。
  */
-function sameOriginUrl(href: string, origin: string): string | undefined {
+export type ResolveSameOrigin = (href: string, origin: string) => string | undefined;
+
+/**
+ * URL を扱えない環境での既定（`URL` を使わない）。`<origin>/...` と `/...`（`//` で始まるものを除く）だけを受け付ける。
+ * 表記の揺れ（既定のポートの明示など）は受けない。
+ */
+export const resolveSameOriginStrict: ResolveSameOrigin = (href, origin) => {
     if (/[\s\\]/.test(href)) return undefined;
     if (href.startsWith(`${origin}/`)) return href;
     if (href.startsWith('/') && !href.startsWith('//')) return `${origin}${href}`;
     return undefined;
+};
+
+interface ParsedUrl {
+    origin: string;
+    href: string;
+    username: string;
+    password: string;
 }
+// shared は環境の型を持たないので、実行環境の URL（Node・ブラウザとも持つ）を最小の形で取り出す
+const parseUrl = (globalThis as unknown as { URL?: { parse(url: string, base?: string): ParsedUrl | null } }).URL
+    ?.parse;
+
+/**
+ * 既定の解決。実行環境の URL で正規化（相対 URL・既定のポート・大文字のホスト）してから同じオリジンかを比べる。
+ * 認証情報を含む URL は受けない。URL が無い環境では {@link resolveSameOriginStrict}。
+ */
+export const resolveSameOrigin: ResolveSameOrigin = (href, origin) => {
+    if (!parseUrl) return resolveSameOriginStrict(href, origin);
+    const url = parseUrl(href, origin);
+    const expected = parseUrl(origin)?.origin;
+    if (!url || !expected || url.origin !== expected || url.username || url.password) return undefined;
+    return url.href;
+};
 
 /** Map に入れる。上限を超えたら、先に入れた（古い）項目から捨てる（再設定したキーは新しい項目として扱う）。 */
 function setBounded<K, V>(map: Map<K, V>, key: K, value: V, max: number): void {
@@ -55,6 +83,7 @@ export function webFingerLinks(
     jrd: unknown,
     account: string,
     origin: string,
+    resolve: ResolveSameOrigin = resolveSameOrigin,
 ): { signingKeysUrl?: string; displayName?: string } | undefined {
     if (typeof jrd !== 'object' || jrd === null) return undefined;
     const { subject, properties, links } = jrd as { subject?: unknown; properties?: unknown; links?: unknown };
@@ -72,7 +101,7 @@ export function webFingerLinks(
                   typeof (l as { href?: unknown }).href === 'string',
           )?.href
         : undefined;
-    const signingKeysUrl = href ? sameOriginUrl(href, origin) : undefined;
+    const signingKeysUrl = href ? resolve(href, origin) : undefined;
     return {
         ...(signingKeysUrl ? { signingKeysUrl } : {}),
         ...(name.success ? { displayName: name.data } : {}),
@@ -110,6 +139,8 @@ export interface AuthorKeyDirectoryDeps {
     fetchJson: (url: string) => Promise<unknown>;
     /** 開発（localhost 間）だけ http も試す。本番は https のみ。 */
     allowHttp: boolean;
+    /** 鍵一覧の URL の解決（既定は {@link resolveSameOrigin}）。 */
+    resolveSameOrigin?: ResolveSameOrigin;
     now?: () => number;
     freshMs?: number;
     maxAgeMs?: number;
@@ -193,7 +224,7 @@ export function createAuthorKeyDirectory(deps: AuthorKeyDirectoryDeps): AuthorKe
             if (found) return found;
             const origin = `${scheme}://${domain}`;
             const jrd = await deps.fetchJson(`${origin}${path}`).catch(() => undefined);
-            const links = webFingerLinks(jrd, account, origin);
+            const links = webFingerLinks(jrd, account, origin, deps.resolveSameOrigin);
             if (!links?.signingKeysUrl) return undefined;
             const list = parseSigningKeyList(
                 await deps.fetchJson(links.signingKeysUrl).catch(() => undefined),

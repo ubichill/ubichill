@@ -15,7 +15,7 @@ import {
     type ModSignatureVerdict,
     verifyModSignature,
 } from '@ubichill/shared';
-import { createStoredAuthorBindings, type KeyValueStorage } from './browserAuthorKeys';
+import { availableStorage, createStoredAuthorBindings, type KeyValueStorage } from './browserAuthorKeys';
 import { DEV_HOST } from './devHost';
 
 export type VerifyModSignature = (entry: ModLockEntry, signature: unknown) => Promise<ModSignatureVerdict>;
@@ -97,7 +97,7 @@ const browserVerifier = { current: undefined as VerifyModSignature | undefined }
 export const verifyModSignatureInBrowser: VerifyModSignature = (entry, signature) => {
     browserVerifier.current ??= createSignatureVerifier({
         request: createBrowserSignatureVerifier({
-            storage: window.localStorage,
+            storage: availableStorage(() => window.localStorage),
             fetchJson: fetchPublicJson,
             allowHttp: DEV_HOST,
         }),

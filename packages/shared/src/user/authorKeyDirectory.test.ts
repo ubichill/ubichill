@@ -8,6 +8,7 @@ import {
     createFetchGuard,
     DOMAIN_FETCH_LIMIT,
     DOMAIN_FETCH_WINDOW_MS,
+    resolveSameOriginStrict,
     webFingerLinks,
 } from './authorKeyDirectory';
 import { DISPLAY_NAME_WEBFINGER_PROPERTY } from './handle';
@@ -85,20 +86,48 @@ describe('webFingerLinks', () => {
         '//evil.example/keys',
         'https://other.example.evil.example/keys',
         'https://other.example@evil.example/keys',
-        'https://OTHER.example/keys',
-        'https://other.example:443/keys',
+        'https://user:pass@other.example/keys',
         'http://other.example/keys',
-        '/\\evil.example/keys',
-        ' /keys',
-        'keys',
+        'https://other.example:8443/keys',
         'javascript:alert(1)',
-    ])('同じオリジンと言い切れない鍵一覧の URL（%j）は採用しない', (href) => {
+    ])('同じオリジンではない鍵一覧の URL（%j）は採用しない', (href) => {
         const links = webFingerLinks(
             { subject: 'acct:alice@other.example', links: [{ rel: SIGNING_KEYS_WEBFINGER_REL, href }] },
             'alice@other.example',
             ORIGIN,
         );
         expect(links).toEqual({});
+    });
+
+    it.each([
+        ['https://other.example:443/keys', `${ORIGIN}/keys`],
+        ['https://OTHER.example/keys', `${ORIGIN}/keys`],
+        ['keys', `${ORIGIN}/keys`],
+        ['/a/../keys', `${ORIGIN}/keys`],
+    ])(
+        '同じオリジンの表記の揺れ（%j）は、正規の URL にそろえて採用する（ほかの実装と連携できるように）',
+        (href, expected) => {
+            const links = webFingerLinks(
+                { subject: 'acct:alice@other.example', links: [{ rel: SIGNING_KEYS_WEBFINGER_REL, href }] },
+                'alice@other.example',
+                ORIGIN,
+            );
+            expect(links?.signingKeysUrl).toBe(expected);
+        },
+    );
+
+    it('URL を扱えない環境の既定は、同じオリジンの絶対 URL と / で始まるパスだけを受け付ける', () => {
+        expect(resolveSameOriginStrict(`${ORIGIN}/keys`, ORIGIN)).toBe(`${ORIGIN}/keys`);
+        expect(resolveSameOriginStrict('/keys', ORIGIN)).toBe(`${ORIGIN}/keys`);
+        for (const href of [
+            '//evil.example/keys',
+            'https://other.example:443/keys',
+            ' /keys',
+            '/\\evil.example',
+            'keys',
+        ]) {
+            expect(resolveSameOriginStrict(href, ORIGIN)).toBeUndefined();
+        }
     });
 
     it('作者アカウントを発行していない Host（local なし）は、どの作者も WebFinger で確かめる', async () => {
