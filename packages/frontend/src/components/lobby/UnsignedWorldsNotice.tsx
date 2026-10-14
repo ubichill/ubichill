@@ -1,16 +1,17 @@
 import { isPublishable, type WorldIdentity } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useHudNavigation } from '@/components/hud/HudNavigationContext';
 import { API_BASE } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { css } from '@/styled-system/css';
 
 /**
  * 自分のワールドのうち署名がなく一覧に出ていないものがあれば知らせる（作者署名の導入に伴う移行案内）。
- * 何もしなくても消えたように見えるのを防ぎ、プロフィールの「署名して公開」へ案内する。
+ * 何もしなくても消えたように見えるのを防ぎ、設定の「ワールド」（署名して公開できる場所）を HUD の中で開く。
+ * 公開プロフィールには公開済みのワールドしか出ないので、そこへは案内しない。
  */
 export function UnsignedWorldsNotice() {
-    const navigate = useNavigate();
+    const hud = useHudNavigation();
     const { data: session } = useSession();
     const [count, setCount] = useState(0);
     const userId = session?.user.id;
@@ -29,7 +30,7 @@ export function UnsignedWorldsNotice() {
         };
     }, [userId]);
 
-    if (!userId || count === 0) return null;
+    if (!userId || count === 0 || !hud) return null;
     return (
         <div
             className={css({
@@ -53,7 +54,7 @@ export function UnsignedWorldsNotice() {
             </span>
             <button
                 type="button"
-                onClick={() => navigate(`/user/${userId}`)}
+                onClick={() => hud.openSettings('worlds')}
                 className={css({
                     px: '3',
                     py: '6px',

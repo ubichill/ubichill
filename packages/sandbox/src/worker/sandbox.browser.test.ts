@@ -254,9 +254,20 @@ describe.skipIf(!chromePath)('Sandbox Worker（実ブラウザ）', () => {
             ],
             { stdio: ['ignore', 'ignore', 'pipe'] },
         );
+        // CI の runner は Chrome の起動が遅いことがある。起動しなければ、Chrome の出力を添えて落とす（原因を追えるように）
         browserWsUrl = await new Promise<string>((resolve, reject) => {
-            const timer = setTimeout(() => reject(new Error('Chrome の DevTools が起動しませんでした')), 20_000);
+            const output: string[] = [];
+            const fail = (reason: string) =>
+                reject(
+                    new Error(`Chrome の DevTools が起動しませんでした（${reason}）\n${output.join('').slice(-2000)}`),
+                );
+            const timer = setTimeout(() => fail('45 秒待った'), 45_000);
+            chrome.once('exit', (code) => {
+                clearTimeout(timer);
+                fail(`終了コード ${code}`);
+            });
             chrome.stderr?.on('data', (chunk: Buffer) => {
+                output.push(chunk.toString());
                 const match = /DevTools listening on (ws:\/\/\S+)/.exec(chunk.toString());
                 if (match?.[1]) {
                     clearTimeout(timer);
@@ -277,7 +288,7 @@ describe.skipIf(!chromePath)('Sandbox Worker（実ブラウザ）', () => {
             })`,
         );
         result = JSON.parse(String(json));
-    }, 60_000);
+    }, 120_000);
 
     afterAll(async () => {
         if (chrome && chrome.exitCode === null) {

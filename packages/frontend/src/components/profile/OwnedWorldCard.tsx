@@ -1,6 +1,7 @@
 import type { WorldIdentity } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { WorldIdentityBadge } from '@/components/lobby/WorldIdentityBadge';
+import { isResignable } from '@/lib/account/worldProblems';
 import { css } from '@/styled-system/css';
 
 /** プロフィール・設定のワールド一覧の 1 件。 */
@@ -23,6 +24,11 @@ export interface OwnedWorld {
     url?: string;
     /** 本人の一覧のみ。配信できない理由（署名が内容と一致しないなど）。編集して公開し直すと直る。 */
     problem?: string;
+    /**
+     * 本人の一覧のみ。署名を検証できなかった理由。`malformed` は署名の形式が古い（版 1）など、中身は変わっていないので
+     * そのまま署名し直せば直る。
+     */
+    problemCode?: string;
 }
 
 /** ワールドのカード。`editable` なら編集・署名・削除のメニューを出す（設定のワールド管理）。 */
@@ -217,7 +223,9 @@ export function OwnedWorldCard({
                 </div>
                 {editable && world.problem && (
                     <p className={css({ fontSize: '11px', color: 'errorText', lineHeight: '1.4' })}>
-                        {world.problem}。編集して公開し直してください
+                        {isResignable(world)
+                            ? '署名の形式が古いため配信していません。「署名して公開」で署名し直してください（内容は変わりません）'
+                            : `${world.problem}。編集して公開し直してください`}
                     </p>
                 )}
                 {editable && !onSign && world.identity?.status === 'verified' && !world.identity.author && (
