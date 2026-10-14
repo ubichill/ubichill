@@ -50,7 +50,13 @@ const SYSTEM_AUTHOR_ID = '00000000-0000-0000-0000-000000000000';
 
 export type WorldResolution =
     | { ok: true; world: ResolvedWorld }
-    | { ok: false; reason: 'not-found' | 'integrity'; message: string };
+    | {
+          ok: false;
+          reason: 'not-found' | 'integrity';
+          message: string;
+          /** 署名を検証できなかった理由（本体のワールドだけ。作者に直し方を案内するため）。 */
+          signatureReason?: WorldSignatureInvalidReason;
+      };
 
 const NOT_FOUND: WorldResolution = { ok: false, reason: 'not-found', message: 'World not found' };
 
@@ -188,6 +194,10 @@ class WorldRegistry {
      * 本体がホストするワールドの正規 URL（＝一意キー）。作者の ID と名前で決まり（共有 URL は `/@handle/name`）、
      * DB のワールドもリポジトリのワールドも、外部ホストと同じく YAML の URL で兄弟の `.lock.json` / `.sig.json` を同じ場所に置く。
      */
+    hostedWorldUrl(handle: string, name: string): string {
+        return this.selfWorldUrl(handle, name);
+    }
+
     private selfWorldUrl(handle: string, name: string): string {
         return `${this._publicBaseUrl}/api/v1/authors/${handle}/worlds/${name}.yaml`;
     }
@@ -884,6 +894,7 @@ class WorldRegistry {
                     ok: false,
                     reason: 'integrity',
                     message: `署名が内容と一致しないため配信していません（${err.reason}）。作者が公開し直す必要があります`,
+                    signatureReason: err.reason,
                 };
             }
             console.error(`❌ ワールド ${id} を読み込めません（配信しません）`, err);

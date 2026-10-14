@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNotifications } from '@/components/notifications';
 import { css } from '@/styled-system/css';
+import { type HudNavigation, HudNavigationContext } from './HudNavigationContext';
 import { HomeTab } from './tabs/HomeTab';
 import { InstanceTab } from './tabs/InstanceTab';
 import { NotificationsTab } from './tabs/NotificationsTab';
@@ -198,12 +199,21 @@ export function HudTabs({
     const setActiveTab = onTabChange ?? setInternalTab;
     const notifications = useNotifications();
     const [settingsSection, setSettingsSection] = useState<SettingsSection>('profile');
+    const navigation = useMemo<HudNavigation>(
+        () => ({
+            openSettings: (section) => {
+                setSettingsSection(section);
+                setActiveTab('settings');
+            },
+        }),
+        [setActiveTab],
+    );
     const badges: Partial<Record<HudTabId, number>> = { notifications: notifications.items.length };
 
     const visibleTabs = TABS.filter((tab) => !tab.hidden && (!tab.instanceOnly || currentInstanceId));
 
     return (
-        <>
+        <HudNavigationContext.Provider value={navigation}>
             <div
                 className={css({
                     flex: 1,
@@ -350,6 +360,6 @@ export function HudTabs({
                     ))}
                 </div>
             </div>
-        </>
+        </HudNavigationContext.Provider>
     );
 }

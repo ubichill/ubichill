@@ -77,9 +77,12 @@ export function useMyAccount() {
                 setProfile({ ...profile, signingKeys: [...signingKeys, signer.key.publicKey] });
                 setEnvironmentsVersion((v) => v + 1);
             }
-            const result = await resignAll(worldIds, (worldId) =>
-                signHostedWorld(worldId, signer, { apiBase: API_BASE, fetch: browserFetch }),
-            );
+            const result = await resignAll(worldIds, (worldId) => {
+                const url = worlds.find((w) => w.id === worldId)?.url;
+                if (!url)
+                    return Promise.reject(new Error('ワールドの配信先が分かりません。画面を読み込み直してください'));
+                return signHostedWorld({ id: worldId, url }, signer, { apiBase: API_BASE, fetch: browserFetch });
+            });
             const signed = new Map(result.done.map((d) => [d.id, d.identity]));
             setWorlds((prev) => prev.map((w) => (signed.has(w.id) ? { ...w, identity: signed.get(w.id) } : w)));
             if (worldIds.length === 1 && result.failed[0]) setError(result.failed[0].error);

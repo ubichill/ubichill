@@ -459,8 +459,15 @@ router.get('/me/worlds', requirePublisher, async (req, res) => {
                 version: r.version,
                 capacity: def?.capacity ?? { default: 0, max: 0 },
                 updatedAt: r.updatedAt,
+                // 配信の道筋（署名し直すときに、配信している生の値をここから取る）
+                ...(me?.handle ? { url: worldRegistry.hostedWorldUrl(me.handle, r.worldName) } : {}),
                 identity: resolution.ok ? resolution.world.identity : undefined,
-                ...(resolution.ok ? {} : { problem: resolution.message }),
+                ...(resolution.ok
+                    ? {}
+                    : {
+                          problem: resolution.message,
+                          ...(resolution.signatureReason ? { problemCode: resolution.signatureReason } : {}),
+                      }),
             };
         }),
     );

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { WorldDetailModal } from '@/components/lobby/WorldDetailModal';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
+import { isResignable } from '@/lib/account/worldProblems';
 import { css } from '@/styled-system/css';
 import { ExternalWorksSection } from './ExternalWorksSection';
 import { OwnedWorldCard } from './OwnedWorldCard';
@@ -93,7 +94,9 @@ export function MyWorldsSection({
                         onSign={
                             // 署名済みで作者を確認できないワールド（取り消した鍵など）は「公開」から署名し直す。
                             // 漏えいした環境の署名は中身を確かめさせるため、ここでは 1 クリックで署名し直させない
-                            !isPublishable(w.identity) && w.identity?.status !== 'verified' && !w.problem
+                            !isPublishable(w.identity) &&
+                            w.identity?.status !== 'verified' &&
+                            (!w.problem || isResignable(w))
                                 ? async () => void (await account.signWorlds([w.id]))
                                 : undefined
                         }
