@@ -77,7 +77,9 @@ type Snapshot struct {
 
 // TicketRequest defines model for TicketRequest.
 type TicketRequest struct {
-	UserId string `json:"userId"`
+	// Name SNS が保証する表示名。指定すると、クライアントが入室時に送る名前より優先する。
+	Name   *string `json:"name,omitempty"`
+	UserId string  `json:"userId"`
 }
 
 // CloseInstanceParams defines parameters for CloseInstance.

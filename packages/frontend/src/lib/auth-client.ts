@@ -17,7 +17,14 @@ export const registerWithOTP = async (
     password: string,
     displayName: string,
     handle: string,
-): Promise<{ success: boolean; error?: string; skipVerification?: boolean; message?: string }> => {
+): Promise<{
+    success: boolean;
+    error?: string;
+    skipVerification?: boolean;
+    message?: string;
+    /** 確認と再送信に使う。仮登録はメールアドレスではなくこの ID で引く。 */
+    registrationId?: string;
+}> => {
     try {
         const res = await fetch(`${API_BASE}/api/v1/users/register`, {
             method: 'POST',
@@ -28,7 +35,12 @@ export const registerWithOTP = async (
         if (!res.ok) {
             return { success: false, error: data.error || '登録に失敗しました' };
         }
-        return { success: true, skipVerification: data.skipVerification, message: data.message };
+        return {
+            success: true,
+            skipVerification: data.skipVerification,
+            message: data.message,
+            registrationId: data.registrationId,
+        };
     } catch {
         return { success: false, error: '通信エラーが発生しました' };
     }
@@ -36,14 +48,14 @@ export const registerWithOTP = async (
 
 // カスタム登録フロー: OTP検証して本登録
 export const verifyOTPAndRegister = async (
-    email: string,
+    registrationId: string,
     otp: string,
 ): Promise<{ success: boolean; error?: string }> => {
     try {
         const res = await fetch(`${API_BASE}/api/v1/users/verify`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, otp }),
+            body: JSON.stringify({ registrationId, otp }),
         });
         const data = await res.json();
         if (!res.ok) {
@@ -56,12 +68,12 @@ export const verifyOTPAndRegister = async (
 };
 
 // OTP再送信
-export const resendOTP = async (email: string): Promise<{ success: boolean; error?: string }> => {
+export const resendOTP = async (registrationId: string): Promise<{ success: boolean; error?: string }> => {
     try {
         const res = await fetch(`${API_BASE}/api/v1/users/resend-otp`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email }),
+            body: JSON.stringify({ registrationId }),
         });
         const data = await res.json();
         if (!res.ok) {

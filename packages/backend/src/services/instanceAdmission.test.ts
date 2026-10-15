@@ -17,7 +17,7 @@ vi.mock('./instanceRuntime', () => ({
 }));
 vi.mock('./instanceReaper', () => ({ instanceReaper: { markCreated: vi.fn() } }));
 
-import { InstanceJoinRejected, instanceManager } from './instanceManager';
+import { InstanceJoinRejected, instanceManager, ticketName } from './instanceManager';
 
 const record = {
     id: 'room',
@@ -38,7 +38,9 @@ describe('GoインスタンスへのSNS参加受付', () => {
         mocks.ticket.mockResolvedValue({ token: 'ticket' });
     });
     it('フレンド条件を満たさない参加者にはチケットを発行しない', async () => {
-        await expect(instanceManager.join('room', 'stranger')).rejects.toThrow(InstanceJoinRejected);
+        await expect(instanceManager.join('room', { id: 'stranger', name: 'Stranger' })).rejects.toThrow(
+            InstanceJoinRejected,
+        );
         expect(mocks.ticket).not.toHaveBeenCalled();
         expect(mocks.provision).not.toHaveBeenCalled();
     });
@@ -46,34 +48,56 @@ describe('GoインスタンスへのSNS参加受付', () => {
         mocks.findById.mockResolvedValue({ ...record, accessType: 'friend_plus' });
         mocks.friendIdsOf.mockResolvedValue(new Set(['friend']));
         mocks.presence.mockResolvedValue(new Map([['room', { memberIds: ['friend'] }]]));
-        await expect(instanceManager.join('room', 'visitor')).resolves.toEqual({ token: 'ticket' });
-        expect(mocks.ticket).toHaveBeenCalledWith('room', 'visitor');
+        await expect(instanceManager.join('room', { id: 'visitor', name: 'Visitor' })).resolves.toEqual({
+            token: 'ticket',
+        });
+        expect(mocks.ticket).toHaveBeenCalledWith('room', 'visitor', 'Visitor');
     });
     it('所有者でも部屋のパスワード確認を省略しない', async () => {
         mocks.findById.mockResolvedValue({ ...record, hasPassword: true });
-        await expect(instanceManager.join('room', 'owner')).rejects.toThrow(InstanceJoinRejected);
+        await expect(instanceManager.join('room', { id: 'owner', name: 'Owner' })).rejects.toThrow(
+            InstanceJoinRejected,
+        );
         expect(mocks.ticket).not.toHaveBeenCalled();
     });
     it('Goに接続できない場合に公開範囲を迂回しない', async () => {
         mocks.presence.mockRejectedValue(new Error('runtime unavailable'));
-        const error = await instanceManager.join('room', 'owner').catch((e: unknown) => e);
+        const error = await instanceManager.join('room', { id: 'owner', name: 'Owner' }).catch((e: unknown) => e);
         expect(error).not.toBeInstanceOf(InstanceJoinRejected);
         expect(mocks.ticket).not.toHaveBeenCalled();
     });
     it('存在しないインスタンスは拒否として扱う', async () => {
         mocks.findById.mockResolvedValue(undefined);
-        await expect(instanceManager.join('gone', 'owner')).rejects.toThrow(InstanceJoinRejected);
+        await expect(instanceManager.join('gone', { id: 'owner', name: 'Owner' })).rejects.toThrow(
+            InstanceJoinRejected,
+        );
     });
     it('パスワード違いは拒否として扱い、チケットを発行しない', async () => {
         mocks.findById.mockResolvedValue({ ...record, hasPassword: true, passwordHash: 'x' });
-        await expect(instanceManager.join('room', 'owner', 'wrong')).rejects.toThrow(InstanceJoinRejected);
+        await expect(instanceManager.join('room', { id: 'owner', name: 'Owner' }, 'wrong')).rejects.toThrow(
+            InstanceJoinRejected,
+        );
         expect(mocks.ticket).not.toHaveBeenCalled();
     });
     it('ワールドが解決できなければ参加チケットを発行しない（取得元の障害かもしれないので拒否扱いにしない）', async () => {
         mocks.getWorldByUrl.mockResolvedValue(null);
-        const error = await instanceManager.join('room', 'owner').catch((e: unknown) => e);
+        const error = await instanceManager.join('room', { id: 'owner', name: 'Owner' }).catch((e: unknown) => e);
         expect(error).toBeInstanceOf(Error);
         expect(error).not.toBeInstanceOf(InstanceJoinRejected);
         expect(mocks.ticket).not.toHaveBeenCalled();
+    });
+});
+
+describe('ticketName', () => {
+    it('表示名をチケットに入れる（前後の空白は落とす）', () => {
+        expect(ticketName(' アリス ')).toBe('アリス');
+    });
+
+    it('Go が受け付けない長さの名前は入れない（入室そのものは失敗させない）', () => {
+        expect(ticketName('あ'.repeat(30))).toBe('あ'.repeat(30));
+        expect(ticketName('あ'.repeat(31))).toBeUndefined();
+        expect(ticketName('   ')).toBeUndefined();
+        // 絵文字などサロゲートペアは 1 文字として数える（Go の rune 数と揃える）
+        expect(ticketName('😀'.repeat(30))).toBe('😀'.repeat(30));
     });
 });

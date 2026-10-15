@@ -7,6 +7,7 @@ import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import { appConfig } from './config';
 import { auth } from './lib/auth';
+import { isPublicAuthPath } from './lib/authEndpoints';
 import { blockOfficialPasswordChange } from './middleware/auth';
 import { router as authorsRouter } from './routes/authors';
 import { router as cliAuthRouter } from './routes/cliAuth';
@@ -92,6 +93,10 @@ if (appConfig.debug) {
 }
 
 // 認証API（Better Auth）- CORSとプリフライトを確実に処理するため、先に配置
+app.use('/api/auth', (req, res, next) => {
+    if (req.method === 'OPTIONS' || isPublicAuthPath(req.path)) return next();
+    res.status(404).json({ error: 'Not Found' });
+});
 app.use('/api/auth/change-password', blockOfficialPasswordChange);
 app.use('/api/auth', toNodeHandler(auth));
 

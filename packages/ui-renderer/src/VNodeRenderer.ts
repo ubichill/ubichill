@@ -5,8 +5,10 @@
  *
  * セキュリティ:
  * - ALLOWED_TAGS による許可タグのホワイトリスト
+ * - 属性・スタイルは HTML / SVG とも sanitize.ts の許可リストを通す
  * - onUbi* 以外のイベントリスナーは設定しない
  * - innerHTML は使用しない（すべて createElement / createTextNode）
+ * - リンクは別タブ（opener なし）で開き、フォームは送信させない（Host のページを遷移させない）
  *
  * 差分適用:
  * - 同タグなら要素を破棄せず属性・子要素だけを更新する（<input> のフォーカス保持）
@@ -15,24 +17,13 @@
  */
 
 import type { VNode, VNodeChild } from '@ubichill/shared';
+import { sanitizeHtmlAttr, sanitizeStyle, sanitizeSvgAttr } from './sanitize';
 
 const FRAGMENT = 'ubichill:fragment' as const;
 
 // ============================================================
-// URL / スタイル サニタイズ
+// スタイル
 // ============================================================
-
-function sanitizeUrl(url: string): string | null {
-    if (url.startsWith('//')) return null;
-    // data:image/ は Host が生成した安全な画像データのみ許可
-    if (url.startsWith('data:image/')) return url;
-    try {
-        const { protocol } = new URL(url);
-        return protocol === 'https:' || protocol === 'http:' ? url : null;
-    } catch {
-        return url;
-    }
-}
 
 function camelToHyphen(prop: string): string {
     return prop.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
@@ -205,63 +196,6 @@ const ALLOWED_TAGS = new Set([
     'marker',
 ]);
 
-function isAllowedAttr(key: string): boolean {
-    switch (key) {
-        case 'id':
-        case 'class':
-        case 'title':
-        case 'placeholder':
-        case 'disabled':
-        case 'type':
-        case 'value':
-        case 'checked':
-        case 'selected':
-        case 'href':
-        case 'src':
-        case 'alt':
-        // 画像の軽量化・レイアウト安定用（modがサムネ等で使う）
-        case 'loading':
-        case 'decoding':
-        case 'width':
-        case 'height':
-        case 'referrerpolicy':
-        case 'colspan':
-        case 'rowspan':
-        case 'for':
-        case 'name':
-        case 'role':
-        case 'tabindex':
-        case 'min':
-        case 'max':
-        case 'step':
-        case 'rows':
-        case 'cols':
-        case 'readonly':
-        case 'maxlength':
-        case 'fill':
-        case 'stroke':
-        case 'd':
-        case 'cx':
-        case 'cy':
-        case 'r':
-        case 'rx':
-        case 'ry':
-        case 'x1':
-        case 'y1':
-        case 'x2':
-        case 'y2':
-        case 'points':
-        case 'transform':
-        case 'viewBox':
-        case 'preserveAspectRatio':
-        case 'offset':
-        case 'xmlns':
-            return true;
-        default:
-            return key.startsWith('data-') || key.startsWith('aria-');
-    }
-}
-
 // ============================================================
 // 差分追跡 (WeakMap — 要素が GC されると自動解放)
 // ============================================================
@@ -336,7 +270,9 @@ function _patchProps(el: Element, newProps: Record<string, unknown>, sendAction:
         // style オブジェクト
         if (key === 'style' && typeof val === 'object') {
             for (const [prop, sv] of Object.entries(val as Record<string, string | number>)) {
-                (el as HTMLElement).style.setProperty(camelToHyphen(prop), styleValue(prop, sv));
+                const name = camelToHyphen(prop);
+                const safe = sanitizeStyle(name, styleValue(prop, sv));
+                if (safe !== null) (el as HTMLElement).style.setProperty(name, safe);
             }
             continue;
         }
@@ -361,42 +297,40 @@ function _patchProps(el: Element, newProps: Record<string, unknown>, sendAction:
         // 通常属性
         if (inSvg) {
             const attrKey = SVG_CAMEL_ATTRS.has(key) ? key : camelToHyphen(key);
-            applyAttr(attrKey, String(val));
-        } else {
-            const attrKey = key === 'class' ? 'class' : key;
-            if (isAllowedAttr(key)) {
-                if (key === 'href' || key === 'src') {
-                    const safe = sanitizeUrl(String(val));
-                    if (safe !== null) {
-                        applyAttr(attrKey, safe);
-                    }
-                } else if (key === 'value' && el instanceof HTMLInputElement) {
-                    // フォーカス中の <input> は value 属性を上書きしない（入力中の文字を保護）
-                    const sv = String(val);
-                    if (document.activeElement !== el && prevAttrs.get('value') !== sv) {
-                        el.setAttribute('value', sv);
-                        (el as HTMLInputElement).value = sv;
-                    }
-                    nextAttrs.set('value', sv);
-                } else if (key === 'checked' && el instanceof HTMLInputElement) {
-                    (el as HTMLInputElement).checked = Boolean(val);
-                } else if (
-                    key === 'disabled' ||
-                    key === 'readonly' ||
-                    key === 'selected' ||
-                    key === 'required' ||
-                    key === 'multiple'
-                ) {
-                    // Boolean 属性: 値に関わらず存在するだけで有効になるため、
-                    // truthy の場合のみセットし、falsy の場合はセットしない（prevAttrs の掃除で削除される）
-                    if (val) {
-                        applyAttr(attrKey, '');
-                    }
-                } else {
-                    applyAttr(attrKey, String(val));
-                }
-            }
+            const safe = sanitizeSvgAttr(attrKey, String(val));
+            if (safe !== null) applyAttr(attrKey, safe);
+            continue;
         }
+        const safe = sanitizeHtmlAttr(el.tagName.toLowerCase(), key, String(val));
+        if (safe === null) continue;
+        if (key === 'value' && el instanceof HTMLInputElement) {
+            // フォーカス中の <input> は value 属性を上書きしない（入力中の文字を保護）
+            if (document.activeElement !== el && prevAttrs.get('value') !== safe) {
+                el.setAttribute('value', safe);
+                el.value = safe;
+            }
+            nextAttrs.set('value', safe);
+        } else if (key === 'checked' && el instanceof HTMLInputElement) {
+            el.checked = Boolean(val);
+        } else if (
+            key === 'disabled' ||
+            key === 'readonly' ||
+            key === 'selected' ||
+            key === 'required' ||
+            key === 'multiple'
+        ) {
+            // Boolean 属性: 値に関わらず存在するだけで有効になるため、
+            // truthy の場合のみセットし、falsy の場合はセットしない（prevAttrs の掃除で削除される）
+            if (val) applyAttr(key, '');
+        } else {
+            applyAttr(key, safe);
+        }
+    }
+
+    // リンクは Host のページを置き換えず、開いた先から Host を操作させない
+    if (el instanceof HTMLAnchorElement && nextAttrs.has('href')) {
+        applyAttr('target', '_blank');
+        applyAttr('rel', 'noopener noreferrer');
     }
 
     // 前回あって今回ない属性を削除
@@ -412,6 +346,10 @@ function _patchProps(el: Element, newProps: Record<string, unknown>, sendAction:
             prevHandlers.delete(eventType);
         }
     }
+}
+
+function preventSubmit(e: Event): void {
+    e.preventDefault();
 }
 
 // ============================================================
@@ -512,6 +450,8 @@ function _patchNode(
 
     // 新規作成 / 置き換え
     const newEl: Element = inSvg ? document.createElementNS(SVG_NS, vnode.type) : document.createElement(vnode.type);
+    // 送信先を持たないフォームでも、送信すると Host のページが入力値付きの URL へ遷移する
+    if (newEl instanceof HTMLFormElement) newEl.addEventListener('submit', preventSubmit);
     _patchProps(newEl, vnode.props, sendAction, inSvg);
     _patchChildren(newEl, vnode.children, sendAction, inSvg);
     if (oldNode) parent.replaceChild(newEl, oldNode);

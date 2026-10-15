@@ -36,6 +36,7 @@ export function officialAccountConfig(env: NodeJS.ProcessEnv): OfficialAccountCo
 interface ExistingUser {
     id: string;
     handle: string | null;
+    emailVerified: boolean;
     passwordChangeRequired: boolean;
 }
 
@@ -48,6 +49,8 @@ export interface OfficialAccountDeps {
     passwordMatches: (userId: string, password: string) => Promise<boolean>;
     /** パスワードを置き換え、既存のログインをすべて無効にする。 */
     replacePassword: (userId: string, password: string) => Promise<void>;
+    /** 既存のログインと公開環境（署名の鍵・API トークン）をすべて取り消す。鍵で付けた署名も無効になる扱いにする。 */
+    revokeCredentials: (userId: string) => Promise<number>;
     isDisplayNameTaken: (key: string) => Promise<boolean>;
     initialize: (
         id: string,
@@ -99,13 +102,21 @@ export async function ensureOfficialAccount(
         displayNameKey: (await deps.isDisplayNameTaken(key)) ? null : key,
     };
 
-    // 同じメールのアカウントが既にあれば（手動で作った等）、それを公式アカウントにする
+    // 同じメールのアカウントが既にあれば（手動で作った等）、それを公式アカウントにする。
+    // 公式は管理者を兼ねるので、メールの持ち主が作ったと確かめられたアカウントだけを使い、
+    // 昇格前に付いたログインと鍵は持ち越さない（先に作っておいたアカウントを後から昇格させる乗っ取りを防ぐ）。
     const byEmail = await deps.findByEmail(config.email);
     if (byEmail) {
         if (byEmail.handle) {
             deps.log(`⚠ ${config.email} は別の ID（${byEmail.handle}）で登録済みのため公式アカウントにできません`);
             return 'skipped';
         }
+        if (!byEmail.emailVerified) {
+            deps.log(`⚠ ${config.email} のアカウントはメールアドレスが確認されていないため公式アカウントにできません`);
+            return 'skipped';
+        }
+        const revoked = await deps.revokeCredentials(byEmail.id);
+        if (revoked > 0) deps.log(`🔒 昇格前のアカウントに付いていた公開環境 ${revoked} 件を取り消しました`);
         await deps.initialize(byEmail.id, {
             handle: OFFICIAL_HANDLE,
             ...nameFields,

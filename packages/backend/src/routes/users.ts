@@ -138,18 +138,22 @@ router.post('/register', async (req, res) => {
         });
     }
 
-    return res.json({ success: true, message: '認証コードをメールに送信しました' });
+    return res.json({
+        success: true,
+        registrationId: result.registrationId,
+        message: '認証コードをメールに送信しました',
+    });
 });
 
 // OTP検証して本登録
 router.post('/verify', async (req, res) => {
-    const { email, otp } = req.body;
+    const { registrationId, otp } = req.body as { registrationId?: unknown; otp?: unknown };
 
-    if (!email || !otp) {
-        return res.status(400).json({ error: 'メールアドレスと認証コードは必須です' });
+    if (typeof registrationId !== 'string' || typeof otp !== 'string' || !registrationId || !otp) {
+        return res.status(400).json({ error: '登録の ID と認証コードは必須です' });
     }
 
-    const result = await verifyAndRegister(email, otp);
+    const result = await verifyAndRegister(registrationId, otp);
 
     if (!result.success) {
         return res.status(400).json({ error: result.error });
@@ -160,13 +164,13 @@ router.post('/verify', async (req, res) => {
 
 // OTP再送信
 router.post('/resend-otp', async (req, res) => {
-    const { email } = req.body;
+    const { registrationId } = req.body as { registrationId?: unknown };
 
-    if (!email) {
-        return res.status(400).json({ error: 'メールアドレスは必須です' });
+    if (typeof registrationId !== 'string' || !registrationId) {
+        return res.status(400).json({ error: '登録の ID は必須です' });
     }
 
-    const result = await resendOTP(email);
+    const result = await resendOTP(registrationId);
 
     if (!result.success) {
         return res.status(400).json({ error: result.error });

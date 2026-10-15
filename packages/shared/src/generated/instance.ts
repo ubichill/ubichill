@@ -145,6 +145,8 @@ export interface components {
         };
         TicketRequest: {
             userId: string;
+            /** @description SNS が保証する表示名。指定すると、クライアントが入室時に送る名前より優先する。 */
+            name?: string;
         };
         Error: {
             /** @enum {boolean} */

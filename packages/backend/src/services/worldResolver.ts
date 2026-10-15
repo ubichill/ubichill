@@ -46,14 +46,27 @@ export function toRawGitHubUrl(url: string): string {
     return url;
 }
 
+const REGISTRY_TOKEN_HOSTS = new Set(['raw.githubusercontent.com', 'api.github.com']);
+
+/** レジストリのトークンを付けてよい URL か。トークンは GitHub 本体にだけ送る（部分一致にするとほかのホストへ漏れる）。 */
+export function sendsRegistryToken(url: string): boolean {
+    try {
+        const u = new URL(url);
+        return u.protocol === 'https:' && REGISTRY_TOKEN_HOSTS.has(u.hostname);
+    } catch {
+        return false;
+    }
+}
+
 /** サイズ上限付きで URL からテキストを取得する。 */
 async function fetchText(url: string): Promise<string> {
     const headers: Record<string, string> = { Accept: 'application/yaml, text/yaml, */*' };
     const token = registryToken();
-    if (token && (url.includes('github') || url.includes('githubusercontent'))) {
+    if (token && sendsRegistryToken(url)) {
         headers.Authorization = `Bearer ${token}`;
     }
-    const res = await safeFetch(url, { headers });
+    // 上限は文字数なので、UTF-8 の最大 4 バイトぶんまで読んでから文字数で確かめる
+    const res = await safeFetch(url, { headers, maxBytes: LIMITS.MAX_YAML_SIZE * 4 });
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${url}`);
     const text = await res.text();
     if (text.length > LIMITS.MAX_YAML_SIZE) {

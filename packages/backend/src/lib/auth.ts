@@ -1,10 +1,11 @@
-import { randomInt } from 'node:crypto';
+import { randomBytes, randomInt } from 'node:crypto';
 import { accounts, db, sessions, users, verifications } from '@ubichill/db';
 import { displayNameKey } from '@ubichill/shared';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { eq } from 'drizzle-orm';
 import { Resend } from 'resend';
+import { createPendingRegistrationStore } from '../services/pendingRegistrations';
 
 // SKIP_EMAIL_VERIFICATION=true の場合はAPIキー不要なので遅延初期化
 let _resend: Resend | null = null;
@@ -35,26 +36,15 @@ export async function sendAccountNotice(to: string, subject: string, text: strin
     }
 }
 
-// 仮登録データを保持（メモリ内、本番ではRedisなどを使用）
-interface PendingRegistration {
-    email: string;
-    password: string;
-    /** 表示名（日本語可・一意）。users.name に入る。 */
-    displayName: string;
-    /** URL・署名用の ID（一意）。users.handle に入る。 */
-    handle: string;
-    otp: string;
-    expiresAt: number;
-}
-export const pendingRegistrations = new Map<string, PendingRegistration>();
+// 仮登録（メモリ内。複数レプリカでは共有されない）
+const pendingRegistrations = createPendingRegistrationStore({
+    now: Date.now,
+    newId: () => randomBytes(24).toString('base64url'),
+    newOtp: () => generateOTP(),
+});
 
 // 期限切れエントリを定期削除（メモリリーク防止）
-setInterval(() => {
-    const now = Date.now();
-    for (const [key, reg] of pendingRegistrations) {
-        if (reg.expiresAt < now) pendingRegistrations.delete(key);
-    }
-}, 60_000).unref();
+setInterval(() => pendingRegistrations.sweep(), 60_000).unref();
 
 // OTPを生成（暗号学的に安全な乱数を使用）
 export function generateOTP(): string {
@@ -70,7 +60,7 @@ export async function createPendingRegistration(
     password: string,
     displayName: string,
     handle: string,
-): Promise<{ success: boolean; error?: string; skipVerification?: boolean }> {
+): Promise<{ success: boolean; error?: string; skipVerification?: boolean; registrationId?: string }> {
     // 既存ユーザーチェック
     const existingUser = await db.query.users.findFirst({
         where: eq(users.email, email),
@@ -124,20 +114,14 @@ export async function createPendingRegistration(
         }
     }
 
-    const otp = generateOTP();
-    const expiresAt = Date.now() + 10 * 60 * 1000; // 10分
-
-    // 既存の仮登録を削除（同じメールアドレスで再登録可能に）
-    pendingRegistrations.delete(email);
-
-    pendingRegistrations.set(email, {
-        email,
-        password,
-        displayName,
-        handle,
-        otp,
-        expiresAt,
-    });
+    const pending = pendingRegistrations.add({ email, password, displayName, handle });
+    if ('error' in pending) {
+        return {
+            success: false,
+            error: '確認待ちの登録が多すぎます。届いた認証コードを使うか、10分後にやり直してください',
+        };
+    }
+    const { id: registrationId, otp } = pending;
 
     // OTPをメールで送信
     console.log(`📧 OTP送信: ${email}`);
@@ -165,30 +149,31 @@ ${otp}
 心当たりがない場合は、このメールを無視してください。`,
         });
         console.log(`   ✅ OTP送信成功:`, result);
-        return { success: true };
+        return { success: true, registrationId };
     } catch (error) {
         console.error(`   ❌ OTP送信失敗:`, error);
-        pendingRegistrations.delete(email);
+        pendingRegistrations.remove(registrationId);
         return { success: false, error: 'メールの送信に失敗しました' };
     }
 }
 
-// OTPを検証して本登録
-export async function verifyAndRegister(email: string, otp: string): Promise<{ success: boolean; error?: string }> {
-    const pending = pendingRegistrations.get(email);
+const VERIFY_ERRORS = {
+    'not-found': '仮登録が見つかりません。もう一度登録してください。',
+    expired: '認証コードの有効期限が切れました。もう一度登録してください。',
+    'wrong-code': '認証コードが正しくありません',
+    'too-many-failures': '認証コードを何度も間違えたため、この登録は無効になりました。もう一度登録してください。',
+} as const;
 
-    if (!pending) {
-        return { success: false, error: '仮登録が見つかりません。もう一度登録してください。' };
+// OTPを検証して本登録。仮登録は申し込んだ本人に返した registrationId で引く。
+export async function verifyAndRegister(
+    registrationId: string,
+    otp: string,
+): Promise<{ success: boolean; error?: string }> {
+    const outcome = pendingRegistrations.verify(registrationId, otp);
+    if (outcome.status !== 'verified') {
+        return { success: false, error: VERIFY_ERRORS[outcome.status] };
     }
-
-    if (Date.now() > pending.expiresAt) {
-        pendingRegistrations.delete(email);
-        return { success: false, error: '認証コードの有効期限が切れました。もう一度登録してください。' };
-    }
-
-    if (pending.otp !== otp) {
-        return { success: false, error: '認証コードが正しくありません' };
-    }
+    const pending = outcome.registration;
 
     // 本登録実行
     try {
@@ -201,6 +186,7 @@ export async function verifyAndRegister(email: string, otp: string): Promise<{ s
         });
 
         if (!result) {
+            pendingRegistrations.restore(registrationId, pending, otp);
             return { success: false, error: '登録に失敗しました' };
         }
 
@@ -208,28 +194,26 @@ export async function verifyAndRegister(email: string, otp: string): Promise<{ s
         await db
             .update(users)
             .set({ emailVerified: true, handle: pending.handle, displayNameKey: displayNameKey(pending.displayName) })
-            .where(eq(users.email, email));
+            .where(eq(users.email, pending.email));
 
-        pendingRegistrations.delete(email);
-        console.log(`✅ ユーザー登録完了: ${email}`);
+        console.log(`✅ ユーザー登録完了: ${pending.email}`);
         return { success: true };
     } catch (error) {
         console.error('Registration error:', error);
+        pendingRegistrations.restore(registrationId, pending, otp);
         return { success: false, error: '登録に失敗しました' };
     }
 }
 
 // OTPを再送信
-export async function resendOTP(email: string): Promise<{ success: boolean; error?: string }> {
-    const pending = pendingRegistrations.get(email);
+export async function resendOTP(registrationId: string): Promise<{ success: boolean; error?: string }> {
+    const pending = pendingRegistrations.reissue(registrationId);
 
     if (!pending) {
         return { success: false, error: '仮登録が見つかりません。もう一度登録してください。' };
     }
 
-    const otp = generateOTP();
-    pending.otp = otp;
-    pending.expiresAt = Date.now() + 10 * 60 * 1000;
+    const { email, otp } = pending;
 
     console.log(`📧 OTP再送信: ${email}`);
     if (process.env.NODE_ENV === 'development') {

@@ -74,6 +74,17 @@ function _isInteractiveTarget(target: EventTarget | null): boolean {
     return target.closest('button, input, select, textarea, a[href], [role="button"], label') !== null;
 }
 
+/**
+ * キーを打った先が入力欄か。mod の UI は Shadow DOM の中にあり、window で受けたイベントの target は
+ * Shadow の外側（ホスト要素）に付け替えられる。打った先そのもの（composedPath の先頭）で判定しないと、
+ * mod の入力欄に打った文字がワールドのキー入力として全 mod に配られる。
+ */
+function _isTypingTarget(e: KeyboardEvent): boolean {
+    const origin = e.composedPath()[0] ?? e.target;
+    if (_isInteractiveTarget(origin)) return true;
+    return origin instanceof HTMLElement && origin.isContentEditable;
+}
+
 /** PointerEvent.pointerType はブラウザ定義の string。mod へは既知の3値のみ渡す。 */
 function _normalizePointerType(pointerType: string): 'mouse' | 'pen' | 'touch' {
     return pointerType === 'pen' || pointerType === 'touch' ? pointerType : 'mouse';
@@ -260,7 +271,7 @@ export class InputCollector {
         this._onKeyDown = (e: KeyboardEvent) => {
             // フォームへのタイピングは UI の責務。ワールド/全 Worker へ配ると、空白や矢印が
             // mod の操作と競合し、入力欄のフォーカスや値が壊れることがある。
-            if (_isInteractiveTarget(e.target)) return;
+            if (_isTypingTarget(e)) return;
             // 矢印キー・スペースはゲーム入力なので、スクロール可能なワールドコンテナの
             // デフォルトスクロールを止める（自機移動で画面が動くのを防ぐ）。
             if (SCROLL_PREVENT_KEYS.has(e.code)) {

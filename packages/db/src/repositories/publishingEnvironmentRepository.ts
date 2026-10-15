@@ -61,6 +61,16 @@ export const publishingEnvironmentRepository = {
         return results[0];
     },
 
+    /** 本人の未取り消しの公開環境をすべて取り消し、取り消した数を返す。 */
+    async revokeAllForUser(userId: string, reason: 'lost' | 'compromised', at = new Date()): Promise<number> {
+        const results = await db
+            .update(publishingEnvironments)
+            .set({ revokedAt: at, revokeReason: reason })
+            .where(and(eq(publishingEnvironments.userId, userId), isNull(publishingEnvironments.revokedAt)))
+            .returning({ id: publishingEnvironments.id });
+        return results.length;
+    },
+
     async touch(id: string, at = new Date()): Promise<void> {
         await db.update(publishingEnvironments).set({ lastUsedAt: at }).where(eq(publishingEnvironments.id, id));
     },
