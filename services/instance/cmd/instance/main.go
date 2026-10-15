@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -41,7 +42,7 @@ func main() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			if err := rdb.Ping(ctx).Err(); err != nil {
-				log.Printf("redis is not reachable yet (continuing without it): %v", err)
+				log.Printf("redis is not reachable yet (rooms cannot be assigned until it is): %v", err)
 				return
 			}
 			log.Printf("redis connected")
@@ -51,7 +52,12 @@ func main() {
 	for i := range allowedOrigins {
 		allowedOrigins[i] = strings.TrimSpace(allowedOrigins[i])
 	}
-	s := runtime.New(runtime.Config{AdminToken: token, TicketKey: ticketKey, Guests: *guests, Origins: allowedOrigins, Grace: *grace})
+	// Redis を設定したら部屋の割り当ては Redis だけ。落ちてもメモリに切り替えない（coord.DirectoryFor）
+	node := coord.NewNodeID(os.Getenv("POD_NAME"))
+	s := runtime.New(runtime.Config{
+		AdminToken: token, TicketKey: ticketKey, Guests: *guests, Origins: allowedOrigins, Grace: *grace,
+		Directory: coord.DirectoryFor(rdb, nil), Node: node, Addr: advertiseAddr(*addr),
+	})
 	if *world != "" {
 		body, err := os.ReadFile(*world)
 		if err != nil {
@@ -75,8 +81,25 @@ func main() {
 		defer cancel()
 		_ = server.Shutdown(shutdown)
 	}()
-	log.Printf("instance runtime listening on %s (guests=%v, redis=%v)", *addr, *guests, rdb != nil)
+	log.Printf("instance runtime listening on %s (node=%s, guests=%v, redis=%v)", *addr, node, *guests, rdb != nil)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
+}
+
+// advertiseAddr は他の Pod から届く自分のアドレス。INSTANCE_ADVERTISE_ADDR、無ければ POD_IP（Downward API）か
+// ホスト名に待ち受けのポートを付ける。
+func advertiseAddr(listen string) string {
+	if v := os.Getenv("INSTANCE_ADVERTISE_ADDR"); v != "" {
+		return v
+	}
+	_, port, err := net.SplitHostPort(listen)
+	if err != nil {
+		port = "3002"
+	}
+	host := os.Getenv("POD_IP")
+	if host == "" {
+		host, _ = os.Hostname()
+	}
+	return net.JoinHostPort(host, port)
 }

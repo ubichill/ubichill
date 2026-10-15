@@ -84,6 +84,14 @@ for (const c of cases) {
     }
 }
 
+// instance のノード ID とアドレスは Downward API から渡す（Directory の heartbeat・owner の割り当て）
+const downward = containerEnv(render('ubichill', ['--set', 'redis.auth.password=test-redis-password']), '-instance', 'instance');
+for (const [key, fieldPath] of [['POD_NAME', 'metadata.name'], ['POD_IP', 'status.podIP']]) {
+    if (JSON.stringify(downward[key]) !== JSON.stringify({ fieldRef: { fieldPath } })) {
+        failures.push(`instance: ${key} = ${JSON.stringify(downward[key])}（期待 fieldRef ${fieldPath}）`);
+    }
+}
+
 const rejected = (() => {
     try {
         render('ubichill', ['--set', 'redis.external.url=redis://redis.shared:6379', '--set', 'redis.auth.password=x']);
@@ -99,4 +107,4 @@ if (failures.length > 0) {
     console.error(`❌ chart の Redis の env:\n${failures.map((f) => `  - ${f}`).join('\n')}`);
     process.exit(1);
 }
-console.log(`✅ chart の Redis の env: ${cases.length} 通り + 同時指定の拒否`);
+console.log(`✅ chart の Redis の env: ${cases.length} 通り + instance の Downward API + 同時指定の拒否`);

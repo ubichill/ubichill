@@ -11,15 +11,30 @@ const (
 	AdminTokenScopes = "adminToken.Scopes"
 )
 
+// Defines values for ConflictSuccess.
+const (
+	ConflictSuccessFalse ConflictSuccess = false
+)
+
 // Defines values for ErrorSuccess.
 const (
-	False ErrorSuccess = false
+	ErrorSuccessFalse ErrorSuccess = false
 )
 
 // Defines values for InstanceGrantProtocolVersion.
 const (
 	N1 InstanceGrantProtocolVersion = 1
 )
+
+// Conflict owner が別のノードのときは owner を付ける。
+type Conflict struct {
+	Error   string          `json:"error"`
+	Owner   *InstanceOwner  `json:"owner,omitempty"`
+	Success ConflictSuccess `json:"success"`
+}
+
+// ConflictSuccess defines model for Conflict.Success.
+type ConflictSuccess bool
 
 // Error defines model for Error.
 type Error struct {
@@ -55,14 +70,35 @@ type InstanceGrant struct {
 // InstanceGrantProtocolVersion defines model for InstanceGrant.ProtocolVersion.
 type InstanceGrantProtocolVersion int
 
+// InstanceOwner defines model for InstanceOwner.
+type InstanceOwner struct {
+	// Addr owner の内部アドレス。owner の heartbeat が切れていれば無い。
+	Addr string `json:"addr,omitempty"`
+
+	// Alive owner の heartbeat が期限内か。
+	Alive bool   `json:"alive"`
+	Epoch int64  `json:"epoch"`
+	Gen   string `json:"gen"`
+	Node  string `json:"node"`
+}
+
 // RuntimePresence defines model for RuntimePresence.
 type RuntimePresence struct {
 	// EmptySince Epoch milliseconds; 0 while occupied, includes reconnect grace.
-	EmptySince int64    `json:"emptySince"`
-	ID         string   `json:"id"`
-	MaxUsers   int      `json:"maxUsers"`
-	MemberIDs  []string `json:"memberIds"`
-	Name       string   `json:"name"`
+	EmptySince int64 `json:"emptySince"`
+
+	// Epoch owner の世代。owner が交代するたびに増える。(gen, epoch) の組で比べる。
+	Epoch int64 `json:"epoch,omitempty"`
+
+	// Gen 割り当てた時点のクラスタの世代。
+	Gen       string   `json:"gen,omitempty"`
+	ID        string   `json:"id"`
+	MaxUsers  int      `json:"maxUsers"`
+	MemberIDs []string `json:"memberIds"`
+	Name      string   `json:"name"`
+
+	// Node owner のノード ID（Pod 名＋起動ごとの乱数）。単体モードのゲスト向けには返さない。
+	Node string `json:"node,omitempty"`
 }
 
 // Snapshot defines model for Snapshot.
