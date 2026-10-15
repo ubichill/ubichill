@@ -23,6 +23,7 @@ export function AuthPage() {
     const [isLoading, setIsLoading] = useState(false);
     const [resendCooldown, setResendCooldown] = useState(0);
     const [otp, setOtp] = useState('');
+    const [registrationId, setRegistrationId] = useState('');
     const handleStatus = useHandleAvailability(handle, mode === 'register');
     const displayNameStatus = useDisplayNameAvailability(displayName, mode === 'register');
 
@@ -70,11 +71,14 @@ export function AuthPage() {
                         setMode('login');
                         setPassword(''); // セキュリティのためパスワードをクリア
                     }, 1500);
-                } else {
+                } else if (result.registrationId) {
                     // OTP入力画面へ遷移
+                    setRegistrationId(result.registrationId);
                     setMode('verify');
                     setSuccess(result.message || '認証コードをメールに送信しました。');
                     setResendCooldown(60);
+                } else {
+                    setError('登録に失敗しました');
                 }
             } else {
                 // ログイン
@@ -97,14 +101,14 @@ export function AuthPage() {
     };
 
     const handleResendOTP = useCallback(async () => {
-        if (resendCooldown > 0 || !email) return;
+        if (resendCooldown > 0 || !registrationId) return;
 
         setError('');
         setSuccess('');
         setIsLoading(true);
 
         try {
-            const result = await resendOTP(email);
+            const result = await resendOTP(registrationId);
             if (!result.success) {
                 setError(result.error || '認証コードの送信に失敗しました');
             } else {
@@ -116,17 +120,17 @@ export function AuthPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [email, resendCooldown]);
+    }, [registrationId, resendCooldown]);
 
     const handleVerifyOTP = useCallback(async () => {
-        if (!email || !otp) return;
+        if (!registrationId || !otp) return;
 
         setError('');
         setSuccess('');
         setIsLoading(true);
 
         try {
-            const result = await verifyOTPAndRegister(email, otp);
+            const result = await verifyOTPAndRegister(registrationId, otp);
             if (!result.success) {
                 setError(result.error || '認証コードが正しくありません');
             } else {
@@ -135,6 +139,7 @@ export function AuthPage() {
                 setTimeout(() => {
                     setMode('login');
                     setOtp('');
+                    setRegistrationId('');
                     setDisplayName('');
                     setHandle('');
                     setPassword('');
@@ -145,7 +150,7 @@ export function AuthPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [email, otp]);
+    }, [registrationId, otp]);
 
     // ローディング中または既にログイン済みの場合
     if (isPending || (session && !isPending)) {
