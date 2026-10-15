@@ -122,7 +122,7 @@ spec:
           ── 環境変数 ──
           通常 env は ConfigMap (backend-config) と Secret (backend-secrets / existingSecret)
           にまとめて envFrom で一括 mount する。
-          DATABASE_URL と WORLDS_REGISTRY_TOKEN だけは valueFrom や動的組立が要るので
+          DATABASE_URL・REDIS_PASSWORD・WORLDS_REGISTRY_TOKEN だけは valueFrom や動的組立が要るので
           env: に inline で残す。
         */}}
         envFrom:
@@ -141,6 +141,9 @@ spec:
             secretKeyRef:
               name: {{ .Values.instanceRuntime.existingSecret | default .Values.backend.existingSecret | default (printf "%s-backend-secrets" (include "ubichill.fullname" .)) }}
               key: {{ .Values.instanceRuntime.secretKey }}
+        {{- with include "ubichill.redis.passwordEnv" . }}
+        {{- . | nindent 8 }}
+        {{- end }}
         {{- /* PostgreSQL: DATABASE_URL は postgres password を含むため inline で組み立てる */}}
         {{- if .Values.postgresql.enabled }}
         {{- /*

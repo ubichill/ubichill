@@ -45,6 +45,13 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.instanceRuntime.existingSecret | default .Values.backend.existingSecret | default (printf "%s-backend-secrets" (include "ubichill.fullname" .)) }}
                   key: {{ .Values.instanceRuntime.secretKey }}
+            {{- if .Values.redis.enabled }}
+            - name: REDIS_URL
+              value: {{ include "ubichill.redis.url" . | quote }}
+            {{- with include "ubichill.redis.passwordEnv" . }}
+            {{- . | nindent 12 }}
+            {{- end }}
+            {{- end }}
           securityContext:
             runAsNonRoot: true
             runAsUser: 1000

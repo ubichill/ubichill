@@ -4,6 +4,8 @@ import { z } from 'zod';
 // 環境変数を読み込む
 config();
 
+const emptyToUndefined = (value: unknown): unknown => (value === '' ? undefined : value);
+
 // 環境変数のバリデーションスキーマ
 const envSchema = z.object({
     PORT: z.coerce.number().int().min(1).max(65535).default(3001),
@@ -31,7 +33,9 @@ const envSchema = z.object({
     INSTANCE_PUBLIC_URL: z.string().default('/realtime/v1/ws'),
     INSTANCE_ADMIN_TOKEN: z.string().min(32),
     DATABASE_URL: z.string().min(1),
-    REDIS_URL: z.string().default('redis://127.0.0.1:6379'),
+    // 未設定なら Redis に接続しない（単体・開発・テストは Redis なしで動く）。空文字は chart や .env の未設定として扱う。
+    REDIS_URL: z.preprocess(emptyToUndefined, z.url({ protocol: /^rediss?$/ }).optional()),
+    REDIS_PASSWORD: z.preprocess(emptyToUndefined, z.string().optional()),
     BETTER_AUTH_SECRET: z.string().min(1),
     BETTER_AUTH_URL: z.string().default('http://localhost:3001'),
     RESEND_API_KEY: z.string().optional(),
@@ -86,7 +90,10 @@ export const appConfig = {
     },
     db: {
         databaseUrl: parsedEnv.data.DATABASE_URL,
-        redisUrl: parsedEnv.data.REDIS_URL,
+    },
+    redis: {
+        url: parsedEnv.data.REDIS_URL,
+        password: parsedEnv.data.REDIS_PASSWORD,
     },
     auth: {
         secret: parsedEnv.data.BETTER_AUTH_SECRET,
@@ -122,7 +129,7 @@ console.log(`   デバッグモード: ${appConfig.debug ? '有効' : '無効'}`
 console.log(`   空インスタンス自動削除: ${appConfig.instance.emptyTimeoutMs / 1000}秒`);
 console.log('📦 DB設定:');
 console.log(`   DATABASE_URL: ${maskUrl(appConfig.db.databaseUrl)}`);
-console.log(`   REDIS_URL: ${maskUrl(appConfig.db.redisUrl)}`);
+console.log(`   REDIS_URL: ${appConfig.redis.url ? maskUrl(appConfig.redis.url) : '未設定（Redis なしで動く）'}`);
 console.log('🔐 認証設定:');
 console.log(`   BETTER_AUTH_URL: ${appConfig.auth.url}`);
 console.log(`   BETTER_AUTH_SECRET: ${appConfig.auth.secret ? '設定済み' : '未設定'}`);

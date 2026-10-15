@@ -8,6 +8,7 @@ import helmet from 'helmet';
 import { appConfig } from './config';
 import { auth } from './lib/auth';
 import { isPublicAuthPath } from './lib/authEndpoints';
+import { redis, redisHealth } from './lib/redis';
 import { blockOfficialPasswordChange } from './middleware/auth';
 import { router as authorsRouter } from './routes/authors';
 import { router as cliAuthRouter } from './routes/cliAuth';
@@ -44,8 +45,9 @@ app.use(
 );
 
 // ヘルスチェック（レートリミッターより前に配置して K8s probe を除外）
+// Redis の状態は載せるだけで 200 のまま返す（Redis 障害で backend を再起動させても直らない）
 app.get('/health', (_req, res) => {
-    res.json({ status: 'ok', timestamp: Date.now() });
+    res.json({ status: 'ok', timestamp: Date.now(), redis: redisHealth(redis) });
 });
 
 // レート制限
@@ -129,6 +131,7 @@ function setupGracefulShutdown() {
         // 新規 HTTP 接続を拒否し、既存リクエストの完了を待つ
         server.close(() => {
             console.log('✅ HTTP サーバー停止完了');
+            redis?.destroy();
         });
 
         // フォールバック: 一定時間内に完了しない場合は強制終了

@@ -27,6 +27,29 @@ func newID() string {
 	}
 	return base64.RawURLEncoding.EncodeToString(b)
 }
+
+// ticketKeyLabel は管理トークンからチケット鍵を派生するときの用途の名前。変えると発行済みのチケットがすべて無効になる。
+const ticketKeyLabel = "ubichill instance ticket v1"
+
+// ticketKey は全 Pod・再起動の前後で同じ鍵になるよう、設定から決める。
+// 管理トークンを持つ者は管理 API でチケットを発行できるので、そこから派生しても権限は広がらない。
+// 派生にするのは、管理トークンそのものを別の用途の鍵に使わないため。
+// どちらも無い単体モード（--guests）だけ起動ごとの乱数にする。
+func ticketKey(c Config) []byte {
+	if c.TicketKey != "" {
+		return []byte(c.TicketKey)
+	}
+	if c.AdminToken != "" {
+		mac := hmac.New(sha256.New, []byte(c.AdminToken))
+		mac.Write([]byte(ticketKeyLabel))
+		return mac.Sum(nil)
+	}
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		panic(err)
+	}
+	return key
+}
 func (s *Server) sign(t ticket) string {
 	payload := base64.RawURLEncoding.EncodeToString(encoded(t))
 	mac := hmac.New(sha256.New, s.key)

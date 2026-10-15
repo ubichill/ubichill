@@ -96,6 +96,48 @@ Instance (Go) が受け付けるブラウザ Origin。未指定なら https://<g
 {{- end }}
 
 {{/*
+redis subchart の fullname（bitnami common.names.fullname と同じ規則。Service・Secret の名前の元）。
+*/}}
+{{- define "ubichill.redis.fullname" -}}
+{{- if .Values.redis.fullnameOverride }}
+{{- .Values.redis.fullnameOverride | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- $name := default "redis" .Values.redis.nameOverride }}
+{{- if contains $name .Release.Name }}
+{{- .Release.Name | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
+REDIS_URL（redis subchart が有効なときだけ使う）。パスワードは URL に入れず REDIS_PASSWORD で渡す。
+*/}}
+{{- define "ubichill.redis.url" -}}
+{{- printf "redis://%s-master:%v" (include "ubichill.redis.fullname" .) (.Values.redis.master.service.ports.redis | default 6379) }}
+{{- end }}
+
+{{/*
+REDIS_PASSWORD の env。subchart が作る Secret（auth.existingSecret があればそちら）を参照する。
+subchart が無効・認証なしなら何も出さない。
+*/}}
+{{- define "ubichill.redis.passwordEnv" -}}
+{{- if and .Values.redis.enabled .Values.redis.auth.enabled -}}
+- name: REDIS_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      {{- if .Values.redis.auth.existingSecret }}
+      name: {{ tpl .Values.redis.auth.existingSecret . }}
+      key: {{ .Values.redis.auth.existingSecretPasswordKey | default "redis-password" }}
+      {{- else }}
+      name: {{ include "ubichill.redis.fullname" . }}
+      key: redis-password
+      {{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
 Frontend image
 */}}
 {{- define "ubichill.frontend.image" -}}
