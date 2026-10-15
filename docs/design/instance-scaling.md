@@ -10,6 +10,7 @@
 - KEDA は Pod 数の調整だけを担う。部屋の配置・WebSocket の振り分け・障害からの復旧は Ubichill が実装する。
 - 最初は `minReplicaCount: 1` とし、自動の scale-out だけを有効にする。自動の scale-in は、安全な drain ができるまで無効にする。
 - 単体モード（`--guests`・テスト・Redis なし）は、メモリ実装で今のまま動かす。
+- **部屋の割り当てを Redis で共有するのは `INSTANCE_DIRECTORY=redis`（chart の `instanceRuntime.directory`）を明示したときだけ。既定はメモリ**（G1）。1 Pod では共有する相手がおらず、Redis の可用性が部屋の可用性の上限になるだけなので、replicas を 2 以上にするときだけ redis にする。
 
 ### edge / owner + Pub/Sub 案をやめた理由
 
@@ -45,12 +46,13 @@ Prometheus ──▶ KEDA ──▶ HPA ──▶ Go Deployment
 | `ubi:cluster:gen` | クラスタの世代 ID（最初の Pod が `SET NX` で置くランダムな値） | なし |
 | `ubi:node:<nodeId>` | `{addr, startedAt, state: ready/draining, rooms, connections, capacity}` | 15 秒（5 秒ごとに更新） |
 | `ubi:room:<roomId>` | `{node, epoch, token}`（owner のリース） | 15 秒（owner が 5 秒ごとに延長） |
-| `ubi:room:epoch:<roomId>` | owner の世代。交代のたびに INCR | なし（部屋を消すとき DEL） |
+| `ubi:room:epoch:<roomId>` | owner の世代。交代のたびに INCR | 最後の延長から 25 時間（最長のチケット＝ゲストの 24 時間より長くし、作り直した部屋の epoch が巻き戻らないようにする。G1） |
 | `ubi:presence:<roomId>` | `{members, emptySince}`（表示用の近似値） | 15 秒 |
 | `ubi:absent:<roomId>` | owner が見つからなくなった最初の時刻（reaper の復旧猶予） | なし（部屋が見つかったら DEL） |
 | `ubi:rooms` | 部屋 ID の集合（期限切れの参照は reaper が掃除する） | なし |
 
 - `nodeId` は Pod 名に起動ごとの乱数を足したもの（再起動した Pod を別のノードとして扱う）。
+- 部屋 ID が `epoch:` で始まるものは拒否する（`ubi:room:epoch:` のキーと衝突するため。G1）。
 - 在席は表示用の近似値。入室の許可と定員の最終判定は owner が行う。
 
 ### owner のリースと世代（fencing）
