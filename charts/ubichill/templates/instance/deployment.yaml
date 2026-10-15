@@ -1,4 +1,11 @@
 {{- if .Values.instanceRuntime.enabled }}
+{{- $directory := .Values.instanceRuntime.directory | default "memory" }}
+{{- if not (has $directory (list "memory" "redis")) }}
+{{- fail (printf "instanceRuntime.directory は memory か redis です（%s）" $directory) }}
+{{- end }}
+{{- if and (eq $directory "redis") (not .Values.redis.enabled) (not (and .Values.redis.external .Values.redis.external.url)) }}
+{{- fail "instanceRuntime.directory: redis には Redis（redis.enabled か redis.external.url）が要ります" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -54,6 +61,9 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
+            # 部屋の割り当てを Redis で共有するか（memory / redis）。replicas を 2 以上にするときだけ redis
+            - name: INSTANCE_DIRECTORY
+              value: {{ $directory | quote }}
             {{- with include "ubichill.redis.env" . }}
             {{- . | nindent 12 }}
             {{- end }}

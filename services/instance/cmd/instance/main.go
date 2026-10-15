@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -13,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/ubichill/ubichill/services/instance/internal/coord"
 	"github.com/ubichill/ubichill/services/instance/internal/runtime"
 )
@@ -52,11 +55,17 @@ func main() {
 	for i := range allowedOrigins {
 		allowedOrigins[i] = strings.TrimSpace(allowedOrigins[i])
 	}
-	// Redis を設定したら部屋の割り当ては Redis だけ。落ちてもメモリに切り替えない（coord.DirectoryFor）
+	// 部屋の割り当てを Redis で共有するかは明示して決める（既定はメモリ）。1 Pod では共有する相手がおらず、
+	// Redis の可用性が部屋の可用性の上限になるだけなので、複数 Pod にするときだけ redis にする。
+	// redis にしたら、落ちてもメモリに切り替えない（coord.DirectoryFor）。
+	directoryClient, err := directoryClientFor(os.Getenv("INSTANCE_DIRECTORY"), rdb)
+	if err != nil {
+		log.Fatal(err)
+	}
 	node := coord.NewNodeID(os.Getenv("POD_NAME"))
 	s := runtime.New(runtime.Config{
 		AdminToken: token, TicketKey: ticketKey, Guests: *guests, Origins: allowedOrigins, Grace: *grace,
-		Directory: coord.DirectoryFor(rdb, nil), Node: node, Addr: advertiseAddr(*addr),
+		Directory: coord.DirectoryFor(directoryClient, nil), Node: node, Addr: advertiseAddr(*addr),
 	})
 	if *world != "" {
 		body, err := os.ReadFile(*world)
@@ -81,7 +90,7 @@ func main() {
 		defer cancel()
 		_ = server.Shutdown(shutdown)
 	}()
-	log.Printf("instance runtime listening on %s (node=%s, guests=%v, redis=%v)", *addr, node, *guests, rdb != nil)
+	log.Printf("instance runtime listening on %s (node=%s, guests=%v, redis=%v, directory=%s)", *addr, node, *guests, rdb != nil, directoryName(directoryClient))
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
@@ -102,4 +111,27 @@ func advertiseAddr(listen string) string {
 		host, _ = os.Hostname()
 	}
 	return net.JoinHostPort(host, port)
+}
+
+// directoryClientFor は INSTANCE_DIRECTORY（memory / redis、既定 memory）から、Directory に使う Redis クライアントを返す。
+// memory なら nil（Redis を設定していても部屋の割り当てには使わない）。
+func directoryClientFor(mode string, rdb *redis.Client) (*redis.Client, error) {
+	switch mode {
+	case "", "memory":
+		return nil, nil
+	case "redis":
+		if rdb == nil {
+			return nil, errors.New("INSTANCE_DIRECTORY=redis requires REDIS_URL")
+		}
+		return rdb, nil
+	default:
+		return nil, fmt.Errorf("INSTANCE_DIRECTORY must be memory or redis (got %q)", mode)
+	}
+}
+
+func directoryName(client *redis.Client) string {
+	if client == nil {
+		return "memory"
+	}
+	return "redis"
 }
