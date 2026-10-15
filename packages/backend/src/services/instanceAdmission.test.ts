@@ -27,6 +27,7 @@ const record = {
     maxUsers: 10,
     hasPassword: false,
 };
+const owner = { base: 'http://10.0.0.7:3002', gen: 'g1', epoch: 2 };
 
 describe('GoインスタンスへのSNS参加受付', () => {
     beforeEach(() => {
@@ -36,6 +37,7 @@ describe('GoインスタンスへのSNS参加受付', () => {
         mocks.presence.mockResolvedValue(new Map());
         mocks.getWorldByUrl.mockResolvedValue({ id: 'world' });
         mocks.ticket.mockResolvedValue({ token: 'ticket' });
+        mocks.provision.mockResolvedValue(owner);
     });
     it('フレンド条件を満たさない参加者にはチケットを発行しない', async () => {
         await expect(instanceManager.join('room', { id: 'stranger', name: 'Stranger' })).rejects.toThrow(
@@ -51,7 +53,8 @@ describe('GoインスタンスへのSNS参加受付', () => {
         await expect(instanceManager.join('room', { id: 'visitor', name: 'Visitor' })).resolves.toEqual({
             token: 'ticket',
         });
-        expect(mocks.ticket).toHaveBeenCalledWith('room', 'visitor', 'Visitor');
+        // チケットは割り当てた owner の Pod へ、その世代で発行する
+        expect(mocks.ticket).toHaveBeenCalledWith('room', 'visitor', 'Visitor', owner);
     });
     it('所有者でも部屋のパスワード確認を省略しない', async () => {
         mocks.findById.mockResolvedValue({ ...record, hasPassword: true });

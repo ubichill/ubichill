@@ -77,17 +77,33 @@ backendのデプロイや設定変更ではGoを再起動しない（状態が�
 |---|---|
 | `INSTANCE_ADMIN_TOKEN` | 管理APIのトークン（32文字以上）。`--guests` 以外では必須 |
 | `INSTANCE_TICKET_KEY` | 参加チケットの署名鍵（任意・32文字以上）。無ければ管理トークンから派生し、どちらも無ければ起動ごとの乱数 |
-| `REDIS_URL` / `REDIS_PASSWORD` | 任意。設定すると部屋の割り当て（Directory・owner のリースと世代・在席・heartbeat）を Redis に置く。未設定ならメモリ（単体モード）。設定したあと Redis が落ちてもメモリに切り替えず、新しい部屋は作れず、既存の部屋は自己停止する |
+| `REDIS_URL` / `REDIS_PASSWORD` | 任意。Redis の接続先 |
+| `INSTANCE_DIRECTORY` | `memory`（既定）/ `redis`。`redis` なら部屋の割り当て（Directory・owner のリースと世代・在席・heartbeat）を Redis で共有し、複数の Pod と WS Router が使える（`REDIS_URL` 必須）。Redis が落ちてもメモリに切り替えず、新しい部屋は作れず、既存の部屋は自己停止する。backend にも同じ値を渡す |
 | `POD_NAME` | ノード ID の元（起動ごとの乱数を足す）。無ければホスト名。Helm は Downward API で渡す |
-| `POD_IP` / `INSTANCE_ADVERTISE_ADDR` | 他の Pod から届く自分のアドレス（heartbeat に書く）。`INSTANCE_ADVERTISE_ADDR` が優先、無ければ `POD_IP` かホスト名に待ち受けのポートを付ける |
+| `POD_IP` / `INSTANCE_ADVERTISE_ADDR` | 他の Pod・backend から届く自分のアドレス（`host:port`。heartbeat に書き、中継と管理 API の宛先になる）。`INSTANCE_ADVERTISE_ADDR` が優先、無ければ `POD_IP` かホスト名に待ち受けのポートを付ける |
 
 ## 状態と運用上の制約
 
 - 現時点の状態保存はメモリのみ。再起動すると編集状態・在席が失われる（チケットの署名鍵は管理トークンから派生するので、
   再接続情報は再起動の前後で有効なまま。部屋が消えていれば `instance_unavailable` で取り直す）。
   SNS側のDBにあるインスタンスは次の入室時にワールド初期状態から復元する。
-- HelmのGo Deploymentは1 replica・Recreate。Directory（部屋 → owner の割り当て）はあるが、WebSocket を owner へ振り分ける
-  Router はまだ無いので、replica数を増やすと別の Pod に来た接続は入室できない（設計は docs/design/instance-scaling.md）。
+- HelmのGo Deploymentは既定で1 replica・Recreate。`INSTANCE_DIRECTORY=redis`（chart: `instanceRuntime.directory: redis`）なら
+  `instanceRuntime.replicas` を2以上にできる（memory のまま2以上にすると描画で失敗する）。設計は docs/design/instance-scaling.md。
+- **WS Router**: 各 Pod が Router を兼ねる。最初の `world:join` の部屋が手元に無ければ、Directory の owner の内部アドレス
+  （heartbeat の `addr`）の `/realtime/v1/relay` へ WebSocket を張り、`world:join` から先を双方向に中継する。owner は Upgrade の後に1回だけ決め、
+  owner が接続を閉じたら（自己停止・終了・退出）中継も閉じる。クライアントはチケットを取り直して繋ぎ直す。
+  owner が居ない・heartbeat が切れている・中継先が別のノードだったときは `instance_unavailable`、チケットの世代が今の owner と違えば `ticket_invalid`。
+  中継された接続はさらに中継しない。中継している Pod を止めると、その Pod 経由の接続も切れる。
+- **Pod 間の認証**: `/realtime/v1/relay` は Ingress に出さない。さらに中継元は、管理トークンから HMAC-SHA256 で派生した鍵
+  （用途の名前 `ubichill instance relay v1`）で `{from, to, exp}` に署名した `X-Ubichill-Relay` ヘッダーを付ける。owner は署名・30秒の期限・
+  宛先のノード ID を確かめ、無い・違えば 401、宛先が別のノードなら 421 にする。Origin はブラウザ以外なら自由に付けられるので認証に使わない。
+  中継用の口でも owner はチケットと `(gen, epoch)` を自分で確かめる。
+- **上限を数える場所**: 毎秒240件のレート制限はクライアントが繋いだ Pod だけが数える（owner でも数えると窓の区切りがずれて二重に絞る）。
+  受信70KiBの上限は両方にあるが、中継は同じバイト列を送るので先に効くのは繋いだ Pod。ping/pong とアイドルの切断は区間ごと
+  （クライアント ⇔ 繋いだ Pod、繋いだ Pod ⇔ owner）。
+- 管理 API（作成・チケット発行・終了）は任意の `?gen=&epoch=` を受け、今の部屋の世代と違えば409（今の owner を付ける）。
+  backend は `directory: redis` のとき、割り当てた Pod（在席の `addr`、409 の `owner.addr`）の `http://<addr>/realtime/v1` へ続く管理 API を送り、
+  在席は Redis の `ubi:rooms`・`ubi:presence:<id>` から読む。
 - owner は部屋のリースを 5 秒ごとに延長する。最後に成功した延長の要求を送った時刻から 10 秒（TTL 15 秒 − 余裕 5 秒）を過ぎると、
   その部屋の状態変更と入室を止めて接続を閉じる（`instance:closing` は送らない。クライアントはチケットを取り直して入り直し、
   部屋は新しい epoch で作り直される）。Redis の中身が消えて世代（`ubi:cluster:gen`）が変わったときも全部屋を捨てる。

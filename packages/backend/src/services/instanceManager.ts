@@ -13,7 +13,7 @@ import { appConfig } from '../config';
 import { logger } from '../utils/logger';
 import { friendIdsOf } from './friends';
 import { instanceReaper } from './instanceReaper';
-import { instanceRuntime, type RuntimePresence } from './instanceRuntime';
+import { instanceRuntime, type RoomPresence } from './instanceRuntime';
 import { worldRegistry } from './worldRegistry';
 
 /** 認可・パスワードによる入室拒否。再試行しても結果は変わらない（障害による失敗と区別する）。 */
@@ -176,7 +176,7 @@ class InstanceManager {
     /** 公開範囲の判定に要る情報（参加している人は Go runtime が真）。 */
     audienceOf(
         dbInstance: Pick<InstanceRecord, 'id' | 'accessType' | 'leaderId'>,
-        presence: Map<string, RuntimePresence>,
+        presence: Map<string, RoomPresence>,
     ): InstanceAudience {
         return {
             accessType: dbInstance.accessType,
@@ -199,8 +199,8 @@ class InstanceManager {
         }
         const world = await worldRegistry.getWorldByUrl(record.worldRef);
         if (!world) throw new Error('ワールドを取得できません');
-        await instanceRuntime.provision(record.id, record.maxUsers, world);
-        return instanceRuntime.ticket(record.id, userId, ticketName(participant.name));
+        const owner = await instanceRuntime.provision(record.id, record.maxUsers, world);
+        return instanceRuntime.ticket(record.id, userId, ticketName(participant.name), owner);
     }
 
     /**
@@ -235,7 +235,7 @@ class InstanceManager {
     async findInstancesByWorld(
         worldRef: string,
         visible: (db: InstanceRecord) => boolean,
-        presence: Map<string, RuntimePresence>,
+        presence: Map<string, RoomPresence>,
     ): Promise<Instance[]> {
         const world = await worldRegistry.resolveRef(worldRef);
         if (!world) return [];
@@ -266,7 +266,7 @@ class InstanceManager {
             mods?: WorldMod[];
             identity?: WorldIdentity;
         },
-        knownPresence?: Map<string, RuntimePresence>,
+        knownPresence?: Map<string, RoomPresence>,
     ): Promise<Instance> {
         const access: InstanceAccess = {
             type: dbInstance.accessType,
