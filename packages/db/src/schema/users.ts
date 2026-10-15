@@ -16,8 +16,8 @@ export const users = pgTable('users', {
     email: text('email').notNull().unique(),
     emailVerified: boolean('email_verified').notNull().default(false),
     image: text('image'),
-    createdAt: timestamp('created_at').notNull().defaultNow(),
-    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     // App-specific fields
     /** @deprecated 表示名（name）と重複していた旧フィールド。表示名は name、URL・署名用の ID は handle を使う。 */
     username: varchar('username', { length: 255 }).unique(),
@@ -27,7 +27,7 @@ export const users = pgTable('users', {
      */
     displayNameKey: varchar('display_name_key', { length: 120 }).unique(),
     /** 最後に表示名の一意キーを変えた時刻（変更の制限に使う）。登録時の名前と、見た目だけの変更は数えない。 */
-    displayNameChangedAt: timestamp('display_name_changed_at'),
+    displayNameChangedAt: timestamp('display_name_changed_at', { withTimezone: true }),
     /** URL・署名・機械処理用の ID（英小文字・数字・_、一意、変更不可）。作者アカウントは handle@domain。 */
     handle: varchar('handle', { length: 30 }).unique(),
     profileImageUrl: varchar('profile_image_url', { length: 1024 }),
@@ -40,10 +40,10 @@ export const users = pgTable('users', {
 // Better Auth session table
 export const sessions = pgTable('sessions', {
     id: text('id').primaryKey(),
-    expiresAt: timestamp('expires_at').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     token: text('token').notNull().unique(),
-    createdAt: timestamp('created_at').notNull().defaultNow(),
-    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     ipAddress: text('ip_address'),
     userAgent: text('user_agent'),
     userId: text('user_id')
@@ -62,12 +62,12 @@ export const accounts = pgTable('accounts', {
     accessToken: text('access_token'),
     refreshToken: text('refresh_token'),
     idToken: text('id_token'),
-    accessTokenExpiresAt: timestamp('access_token_expires_at'),
-    refreshTokenExpiresAt: timestamp('refresh_token_expires_at'),
+    accessTokenExpiresAt: timestamp('access_token_expires_at', { withTimezone: true }),
+    refreshTokenExpiresAt: timestamp('refresh_token_expires_at', { withTimezone: true }),
     scope: text('scope'),
     password: text('password'),
-    createdAt: timestamp('created_at').notNull().defaultNow(),
-    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 // Better Auth verification table (for email verification)
@@ -75,9 +75,9 @@ export const verifications = pgTable('verifications', {
     id: text('id').primaryKey(),
     identifier: text('identifier').notNull(),
     value: text('value').notNull(),
-    expiresAt: timestamp('expires_at').notNull(),
-    createdAt: timestamp('created_at').defaultNow(),
-    updatedAt: timestamp('updated_at').defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
 
 export const userSettings = pgTable('user_settings', {
@@ -87,8 +87,8 @@ export const userSettings = pgTable('user_settings', {
     disableExternalUrls: boolean('disable_external_urls').default(false).notNull(),
     /** お気に入り一覧の公開範囲。初期値は本人だけ（行が無いユーザーも private として扱う）。 */
     favoritesVisibility: favoritesVisibilityEnum('favorites_visibility').default('private').notNull(),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const userFriends = pgTable(
@@ -101,7 +101,7 @@ export const userFriends = pgTable(
             .notNull()
             .references(() => users.id, { onDelete: 'cascade' }),
         status: friendStatusEnum('status').default('pending').notNull(),
-        createdAt: timestamp('created_at').defaultNow().notNull(),
+        createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     },
     (table) => [primaryKey({ columns: [table.userId, table.friendId] })],
 );
@@ -114,7 +114,7 @@ export const userFavorites = pgTable(
             .references(() => users.id, { onDelete: 'cascade' }),
         // ワールド参照＝正規 URL（worlds.id への FK を廃止。official/外部ワールドは DB に無い）
         worldRef: text('world_ref').notNull(),
-        createdAt: timestamp('created_at').defaultNow().notNull(),
+        createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     },
     (table) => [primaryKey({ columns: [table.userId, table.worldRef] })],
 );

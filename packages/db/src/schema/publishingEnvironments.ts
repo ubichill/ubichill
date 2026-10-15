@@ -18,9 +18,9 @@ export const publishingEnvironments = pgTable(
         name: text('name').notNull(),
         publicKey: text('public_key').notNull().unique(),
         apiTokenHash: text('api_token_hash').unique(),
-        createdAt: timestamp('created_at').defaultNow().notNull(),
-        lastUsedAt: timestamp('last_used_at'),
-        revokedAt: timestamp('revoked_at'),
+        createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+        lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+        revokedAt: timestamp('revoked_at', { withTimezone: true }),
         /**
          * 取り消した理由。lost（紛失・データ消去）/ compromised（漏えい・心当たりのない環境）。
          * compromised の鍵で署名したワールドは、攻撃者が書き換えた内容かもしれないので一括の署名し直しの対象にしない。
