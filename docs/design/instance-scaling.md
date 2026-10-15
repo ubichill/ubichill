@@ -77,11 +77,11 @@ Redis を設定した環境では、Redis が落ちても**プロセス内の状
 | 既存の部屋の owner | リースを延長できず、自己停止の期限を過ぎたら状態変更と入室を止め、接続を閉じる | 新しい epoch で割り当て直す（部屋の中身は失われる） |
 | 在席（`ubi:presence`） | backend の一覧は空・古いままになる（表示用の近似値） | 次の heartbeat で戻る |
 | reaper | リースを取れないので掃除を止める（消し過ぎない側に倒す） | 掃除を再開する。`ubi:absent` が消えていれば猶予を数え直す |
-| HTTP・better-auth のレート制限 | **fail-open**（制限せずに通す）。backend の可用性を優先し、警告を出す | 共有の数え方に戻る |
+| HTTP・better-auth のレート制限 | **fail-open**（制限せずに通す）。backend の可用性を優先し、警告を出す。**ログイン（`/sign-in/email`）だけは fail-closed（503）**（R2 で決定。総当たりの主な的で、既存のセッションは Redis に依存しない） | 共有の数え方に戻る |
 | キャッシュの無効化 | 通知が届かない。各 backend のキャッシュは TTL で揃う | 再開する |
 
 - 既存の部屋が「Redis が落ちたら止まる」のは、二重の owner を避けるための意図した振る舞い。Redis の可用性が部屋の可用性の上限になるので、Redis の再起動にかかる時間と自己停止の余裕（TTL − 余裕）を合わせて決める。
-- fail-open にするレート制限は、総当たりへの防御が弱まる。better-auth のログインだけは fail-closed（Redis が使えなければ 503）にするかを R2 で決める。
+- better-auth のレート制限は `rateLimit.customStorage` で Redis に置く。`secondaryStorage` はセッションと検証値まで Redis に移すので使わない（R2）。
 
 ## 部屋の作成・入室
 
@@ -147,7 +147,7 @@ spec:
 | 登録の仮データ | Postgres の `pending_registrations`（[db-redesign.md](./db-redesign.md)） |
 | reaper | Redis のリース、DB の `created_at`、共有の `ubi:absent`。削除の前に owner の世代と在席を確かめる |
 | CLI 承認・仮登録の期限切れの掃除 | reaper と同じリースの下で実行する |
-| ワールドの並び順（`reorderWorlds`） | Postgres で共有する |
+| ワールドの並び順（`reorderWorlds`） | Postgres で共有する（R2 ではメモリのまま。複数台で揃わないので DB 側の作業で移す） |
 | キャッシュの無効化・ワールドの再読み込み | backend 専用の Redis Pub/Sub。通知が落ちても TTL で揃う |
 
 backend を 2 台以上にする前に、DB 側の「時刻の型」と「仮登録」を終える。
