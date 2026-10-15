@@ -185,8 +185,12 @@ class InstanceManager {
         };
     }
 
-    /** SNSの入室可否を確認し、Go用の短期チケットを発行する。 */
-    async join(instanceId: string, userId: string, password?: string) {
+    /**
+     * SNSの入室可否を確認し、Go用の短期チケットを発行する。
+     * 表示名もチケットに入れ、Go はクライアントが送る名前より優先する（ほかの参加者になりすませないように）。
+     */
+    async join(instanceId: string, participant: { id: string; name: string }, password?: string) {
+        const userId = participant.id;
         const record = await instanceRepository.findById(instanceId);
         if (!record || !(await this.canJoin(instanceId, userId)))
             throw new InstanceJoinRejected('このインスタンスには入れません');
@@ -196,7 +200,7 @@ class InstanceManager {
         const world = await worldRegistry.getWorldByUrl(record.worldRef);
         if (!world) throw new Error('ワールドを取得できません');
         await instanceRuntime.provision(record.id, record.maxUsers, world);
-        return instanceRuntime.ticket(record.id, userId);
+        return instanceRuntime.ticket(record.id, userId, ticketName(participant.name));
     }
 
     /**
@@ -310,3 +314,10 @@ class InstanceManager {
 
 // シングルトンインスタンス
 export const instanceManager = new InstanceManager();
+
+/** Go が受け付ける表示名（1〜30 文字）に収める。収まらない古い名前はチケットに入れず、Go はクライアントの名前を使う。 */
+export function ticketName(name: string): string | undefined {
+    const trimmed = name.trim();
+    const length = [...trimmed].length;
+    return length >= 1 && length <= 30 ? trimmed : undefined;
+}

@@ -452,6 +452,12 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 200
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30,
+            "description": "SNS が保証する表示名。指定すると、クライアントが入室時に送る名前より優先する。"
           }
         },
         "required": [

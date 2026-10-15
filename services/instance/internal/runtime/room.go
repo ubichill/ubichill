@@ -13,6 +13,8 @@ type Room struct {
 	mu         sync.Mutex
 	definition Definition
 	entities   map[string]Object
+	sizes      map[string]int
+	bytes      int
 	order      map[string]uint64
 	sequence   uint64
 	members    map[string]*member
@@ -31,7 +33,7 @@ func newRoom(d Definition) (*Room, error) {
 	if d.ID == "" || len(d.ID) > 200 || d.MaxUsers < 1 || d.MaxUsers > 1000 || d.Snapshot.Environment == nil || len(d.Snapshot.Entities) > 10000 {
 		return nil, errors.New("invalid instance definition")
 	}
-	r := &Room{definition: d, entities: map[string]Object{}, order: map[string]uint64{}, members: map[string]*member{}, timelines: map[string]Object{}, emptySince: time.Now().UnixMilli()}
+	r := &Room{definition: d, entities: map[string]Object{}, sizes: map[string]int{}, order: map[string]uint64{}, members: map[string]*member{}, timelines: map[string]Object{}, emptySince: time.Now().UnixMilli()}
 	for _, e := range d.Snapshot.Entities {
 		id := str(e["id"])
 		if id == "" || len(id) > 200 {
@@ -46,9 +48,32 @@ func newRoom(d Definition) (*Room, error) {
 		if _, ok := e["data"].(map[string]any); !ok || str(e["type"]) == "" {
 			return nil, errors.New("invalid entity")
 		}
-		r.put(id, clone(e))
+		e = clone(e)
+		if !r.fits(id, e) {
+			return nil, errors.New("instance definition is too large")
+		}
+		r.put(id, e)
 	}
 	return r, nil
+}
+
+// maxRoomBytes bounds the state one room keeps in memory and sends to every joining participant.
+const maxRoomBytes = 16 << 20
+
+// maxLocksPerMember bounds how many entities one participant can hold at once, so nobody can lock the whole world.
+const maxLocksPerMember = 16
+
+func (r *Room) fits(id string, e Object) bool {
+	return r.bytes-r.sizes[id]+len(encoded(e)) <= maxRoomBytes
+}
+func (r *Room) locksHeldBy(userID string) int {
+	n := 0
+	for _, e := range r.entities {
+		if str(e["lockedBy"]) == userID {
+			n++
+		}
+	}
+	return n
 }
 
 // Entities keep insertion order so every client renders ties and singleton lookups identically.
@@ -58,8 +83,13 @@ func (r *Room) put(id string, e Object) {
 		r.order[id] = r.sequence
 	}
 	r.entities[id] = e
+	size := len(encoded(e))
+	r.bytes += size - r.sizes[id]
+	r.sizes[id] = size
 }
 func (r *Room) drop(id string) {
+	r.bytes -= r.sizes[id]
+	delete(r.sizes, id)
 	delete(r.entities, id)
 	delete(r.order, id)
 }

@@ -16,6 +16,8 @@ type ticket struct {
 	Subject  string `json:"subject"`
 	Expires  int64  `json:"expires"`
 	Kind     string `json:"kind"`
+	// Name is the display name the SNS vouches for. When present it replaces the name the client sends.
+	Name string `json:"name,omitempty"`
 }
 
 func newID() string {
