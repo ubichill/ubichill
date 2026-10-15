@@ -112,18 +112,27 @@ redis subchart の fullname（bitnami common.names.fullname と同じ規則。Se
 {{- end }}
 
 {{/*
-REDIS_URL（redis subchart が有効なときだけ使う）。パスワードは URL に入れず REDIS_PASSWORD で渡す。
+subchart の REDIS_URL。パスワードは URL に入れず REDIS_PASSWORD で渡す。
 */}}
 {{- define "ubichill.redis.url" -}}
 {{- printf "redis://%s-master:%v" (include "ubichill.redis.fullname" .) (.Values.redis.master.service.ports.redis | default 6379) }}
 {{- end }}
 
 {{/*
-REDIS_PASSWORD の env。subchart が作る Secret（auth.existingSecret があればそちら）を参照する。
-subchart が無効・認証なしなら何も出さない。
+backend と instance に渡す Redis の env（REDIS_URL・REDIS_PASSWORD）。両方が同じ接続先を見るよう、ここだけで組み立てる。
+- redis.enabled: subchart。パスワードは subchart の Secret（auth.existingSecret があればそちら）
+- redis.external.url: 外部の Redis。パスワードは redis.external.existingSecret があれば参照する
+- どちらも無ければ何も出さない（Redis なしで動く）
 */}}
-{{- define "ubichill.redis.passwordEnv" -}}
-{{- if and .Values.redis.enabled .Values.redis.auth.enabled -}}
+{{- define "ubichill.redis.env" -}}
+{{- $ext := .Values.redis.external | default dict }}
+{{- if and .Values.redis.enabled $ext.url }}
+{{- fail "redis.enabled と redis.external.url は同時に指定できません。外部の Redis を使うときは redis.enabled: false にしてください" }}
+{{- end }}
+{{- if .Values.redis.enabled }}
+- name: REDIS_URL
+  value: {{ include "ubichill.redis.url" . | quote }}
+{{- if .Values.redis.auth.enabled }}
 - name: REDIS_PASSWORD
   valueFrom:
     secretKeyRef:
@@ -134,6 +143,17 @@ subchart が無効・認証なしなら何も出さない。
       name: {{ include "ubichill.redis.fullname" . }}
       key: redis-password
       {{- end }}
+{{- end }}
+{{- else if $ext.url }}
+- name: REDIS_URL
+  value: {{ $ext.url | quote }}
+{{- if $ext.existingSecret }}
+- name: REDIS_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ tpl $ext.existingSecret . }}
+      key: {{ $ext.existingSecretPasswordKey | default "redis-password" }}
+{{- end }}
 {{- end }}
 {{- end }}
 

@@ -7,6 +7,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
 // testLease は契約テストを当てる実装と、期限を進める方法の組。
@@ -221,4 +223,23 @@ func runLeaseContract(t *testing.T, newLease func(t *testing.T) testLease) {
 			t.Fatalf("release empty name: err=%v", err)
 		}
 	})
+}
+
+func TestLeaseForDoesNotFallBackToMemoryWhenRedisIsDown(t *testing.T) {
+	// 誰も聞いていないアドレス。接続できないので、どの操作もエラーになるはず
+	client := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1", MaxRetries: -1, DialTimeout: 200 * time.Millisecond})
+	defer client.Close()
+	lease := LeaseFor(client, "ubi:lease:")
+	if _, ok, err := lease.Acquire(context.Background(), "room", time.Second); err == nil || ok {
+		t.Fatalf("Redis が落ちているのに取得できた: ok=%v err=%v", ok, err)
+	}
+	if _, isMemory := lease.(*MemoryLease); isMemory {
+		t.Fatal("Redis を設定したのにメモリのリースになった")
+	}
+}
+
+func TestLeaseForUsesMemoryWithoutRedis(t *testing.T) {
+	if _, isMemory := LeaseFor(nil, "ubi:lease:").(*MemoryLease); !isMemory {
+		t.Fatal("Redis なしならメモリのリースのはず")
+	}
 }

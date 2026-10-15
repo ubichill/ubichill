@@ -55,13 +55,17 @@ postgresql:
 
 ## Redis
 
-`redis.enabled=true` なら、backend と instance の両方に次の環境変数を渡す。`false` なら渡さず、
-どちらも Redis なしで今まで通り動く（外部の Redis を使う場合は `backend.env.REDIS_URL` 等で指定する）。
+backend と instance には、同じ接続先を次の環境変数で渡す（`ubichill.redis.env` が両方を組み立てる）。
+
+- `redis.enabled=true`: 同梱の subchart を使う。
+- `redis.enabled=false` かつ `redis.external.url`: 外部の Redis を使う。パスワードは `redis.external.existingSecret` の `redis.external.existingSecretPasswordKey`（既定 `redis-password`）。
+- どちらも無い: 渡さない。backend も instance も Redis なしで動く。
+- 両方を指定すると描画で失敗する。`backend.env.REDIS_URL` での指定は instance に届かないので使わない。
 
 | 環境変数 | 値 |
 |---|---|
-| `REDIS_URL` | `redis://<release>-redis-master:6379`（パスワードは入れない） |
-| `REDIS_PASSWORD` | subchart の Secret `<release>-redis` の `redis-password` を `secretKeyRef` で参照。`redis.auth.existingSecret` があればその Secret の `redis.auth.existingSecretPasswordKey`（既定 `redis-password`）。`redis.auth.enabled=false` なら渡さない |
+| `REDIS_URL` | subchart: `redis://<release>-redis-master:6379`、外部: `redis.external.url`（パスワードは入れない） |
+| `REDIS_PASSWORD` | subchart の Secret `<release>-redis` の `redis-password` を `secretKeyRef` で参照。`redis.auth.existingSecret` があればその Secret の `redis.auth.existingSecretPasswordKey`（既定 `redis-password`）。`redis.auth.enabled=false` なら渡さない。外部の Redis は `redis.external.existingSecret` があるときだけ |
 
 `redis.auth.existingSecret` を指定しないと、Bitnami の subchart はパスワードを描画のたびに乱数で作り、
 既存の Secret はクラスタを `lookup` して引き継ぐ。ArgoCD のように `lookup` できない描画では、
@@ -69,6 +73,7 @@ postgresql:
 GitOps では Secret を自分で作って `redis.auth.existingSecret` を指定する。
 
 Redis が落ちても backend の `/health` は 200 のままで（`redis: "unavailable"` を載せる）、Pod は再起動しない。
+Redis に頼る機能ごとの、落ちたときの振る舞いは `docs/design/instance-scaling.md` の「Redis が使えないとき」に決めてある。どの機能も、Redis が落ちたからといってプロセス内のリースなどに切り替えない。
 
 ## 開発・検証
 

@@ -95,3 +95,11 @@ export function createRedisLease(redis: RedisCommands, keyPrefix = 'ubi:lease:')
         },
     };
 }
+
+/**
+ * Redis を設定していれば Redis のリースだけを使う。Redis が落ちてもメモリのリースへ切り替えない
+ * （切り替えると、各 backend がそれぞれ持ち主になり、1 台に絞る意味が無くなる）。落ちている間の命令は失敗として返す。
+ */
+export function leaseFor(redis: RedisCommands | undefined): Lease {
+    return redis ? createRedisLease(redis) : createMemoryLease();
+}

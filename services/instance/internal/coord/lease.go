@@ -163,3 +163,13 @@ func (r *RedisLease) Release(ctx context.Context, name, token string) (bool, err
 	n, err := releaseScript.Run(ctx, r.client, []string{r.prefix + name}, token).Int()
 	return err == nil && n == 1, err
 }
+
+// LeaseFor は Redis を設定していれば Redis のリースだけを返す。Redis が落ちてもメモリのリースへ切り替えない
+// （切り替えると各 Pod がそれぞれ持ち主になり、同じ部屋の owner が複数になる）。落ちている間の操作はエラーを返す。
+// *redis.Client で受けるのは、nil の判定を確実にするため（インタフェースで受けると型付きの nil を見逃す）。
+func LeaseFor(client *redis.Client, prefix string) Lease {
+	if client == nil {
+		return NewMemoryLease()
+	}
+	return NewRedisLease(client, prefix)
+}

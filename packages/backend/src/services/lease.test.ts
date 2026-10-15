@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createMemoryLease } from './lease';
+import { createMemoryLease, leaseFor } from './lease';
 import { leaseContract } from './leaseContract';
 
 const fakeClock = () => {
@@ -26,5 +26,21 @@ describe('createMemoryLease', () => {
         expect(await lease.acquire('a', 1000)).toBeNull();
         await clock.advance(1);
         expect(await lease.acquire('a', 1000)).not.toBeNull();
+    });
+});
+
+describe('leaseFor', () => {
+    it('Redis を設定していれば、Redis が落ちてもメモリへ切り替えずに失敗を返す', async () => {
+        const down = { sendCommand: async () => Promise.reject(new Error('The client is closed')) };
+        const lease = leaseFor(down);
+        await expect(lease.acquire('reaper', 1000)).rejects.toThrow('closed');
+        await expect(lease.renew('reaper', 'token', 1000)).rejects.toThrow('closed');
+    });
+
+    it('Redis を設定していなければ、プロセス内のリースで動く', async () => {
+        const lease = leaseFor(undefined);
+        const token = await lease.acquire('reaper', 1000);
+        expect(token).not.toBeNull();
+        expect(await lease.acquire('reaper', 1000)).toBeNull();
     });
 });
