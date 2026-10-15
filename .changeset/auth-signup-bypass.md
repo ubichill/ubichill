@@ -1,6 +1,5 @@
 ---
 "@ubichill/backend": patch
-"@ubichill/frontend": patch
 "@ubichill/db": patch
 ---
 
