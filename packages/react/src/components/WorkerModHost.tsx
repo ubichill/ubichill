@@ -57,10 +57,17 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
     // 宣言 capability の静的判定にフォールバック）。modId 束縛済みで identity 安定。
     // definition.id は "mod:component" 形式。信頼境界はmod単位なので ":" の前を使う
     // （同一modの全コンポーネントで許可を共有する）。
+    // lock が許す権限（definition.capabilities）が天井。ユーザー設定の既定で許される権限でも、lock に無ければ許さない。
     const subject = modPermissionSubject(definition);
+    const capabilities = definition.capabilities;
     const authorizeCapability = useMemo(
-        () => (permissions ? (capability: string) => permissions.authorizeCapability(subject, capability) : undefined),
-        [permissions, subject],
+        () =>
+            permissions
+                ? (capability: string) =>
+                      (capabilities?.includes(capability) ?? false) &&
+                      permissions.authorizeCapability(subject, capability)
+                : undefined,
+        [permissions, subject, capabilities],
     );
 
     // 読み込み時に要求 capability をまとめて承認してもらい、**決定が済むまで Worker を実行しない**。
