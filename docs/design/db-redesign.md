@@ -1,21 +1,20 @@
-# DB の再設計と、インスタンスの水平スケール
+# DB（Postgres）の再設計
 
 対象ブランチ: `docs/db-redesign`（この文書）。実装は「移行の順番」の PR ごとに分ける。
+Redis を使うスケールの作業（Go の Pub/Sub・backend の複数レプリカ）は [instance-scaling.md](./instance-scaling.md) に分けた。
 
 ## 決めたこと
 
 - 登録の仮データは Postgres に置く（メモリに置かない）。
-- インスタンス（Go）を複数 Pod にするとき、部屋の置き場所と在席は **Redis** で共有する。
-- 公開したワールドの版は、変更しない `world_versions` に分ける。
+- 公開したワールドの版は、変更しない `world_versions` に分ける。残すのは 3 版まで。それ以上は課金で増やす（ワールドの保存数と同じ仕組み）。
 - 鍵は自サーバーの作者・他サーバーの作者で 1 つのテーブルにする。
+- 生きている状態（部屋・在席・レート制限の数など）は DB に置かず、Redis の作業で扱う。
 
 ## いまの問題
 
 | 対象 | 問題 | 影響 |
 |---|---|---|
 | 登録の仮データ | backend のメモリにあり、パスワードを平文で持つ | レプリカが 2 つ以上だと登録と確認が別の Pod に当たって失敗する。再起動で登録途中のものが消える |
-| Go インスタンス | 部屋をメモリに持ち `replicas: 1` 固定。backend は Service 1 つに問い合わせる | Pod を増やすと作成・入室・在席の問い合わせが別の Pod に当たり壊れる |
-| チケットの署名鍵 | Go が起動ごとに乱数で作る | Pod 間でチケットを確かめられない。再起動でゲストの再接続情報が無効になる |
 | reaper | 作成時刻をプロセス内（`markCreated`）に持つ | backend を増やすと、作った Pod 以外は DB の時刻に頼る |
 | 時刻の列 | すべて `timestamp`（タイムゾーンなし） | postgres-js の解釈でずれる。reaper がプロセス内の時刻を使っているのはこのため |
 | 鍵 | 自サーバーは `publishing_environments`（取り消しは列）、他サーバーは `author_bindings.keys`（jsonb の中） | 作者の鍵の確認が 2 通りに分かれる。取り消しの表現も違う |
@@ -26,7 +25,7 @@
 ## 原則
 
 - **DB に置くのは、長く残る事実と所有だけ。** アカウント、作者の鍵、自サーバーで公開したワールドの版、インスタンスの設定（誰が・どのワールドを・どの公開範囲で）。
-- **生きている状態は DB に置かない。** 部屋の中身と在席は Go が正で、複数 Pod の間で共有するものだけを Redis に置く（失ってよい・TTL で消える）。
+- **生きている状態は DB に置かない。** 部屋の中身と在席は Go が正で、複数 Pod の間で共有するものは Redis に置く（[instance-scaling.md](./instance-scaling.md)）。
 - 秘密はハッシュだけを保存する（パスワード・OTP・登録 ID・API トークン・デバイスコード）。
 - 時刻はすべて `timestamptz`。
 - 外部や公式のワールドは今まで通り DB に入れない（ワールド＝URL）。
@@ -144,7 +143,9 @@ world_name_aliases                -- 今のまま
 - **同じ `version` で内容が違う公開は拒否する**（`content_hash` が違えばエラー）。版の番号を上げずに中身だけ差し替えることはできない。
 - 署名し直し（鍵の取り消しのあとなど）は、同じ版の `signature` だけを変えることになる。`world_versions` は変更しない方針なので、署名だけ別の行にするか、この列に限って更新を許すかを決める（未決 2）。
 - 公開を取り消すときは `current_version_id` を NULL にする。過去の版は残す。お気に入りやインスタンスが古い版の `content_hash` を指していても解決できる。
-- `MAX_WORLDS_PER_USER` に加えて、1 ワールドあたりの版の数にも上限を設ける（古い版から消す）。
+- **残す版は 3 つまで。** 4 つ目を公開すると、いちばん古い版を消す（公開そのものは拒否しない。更新できなくなると困るため）。
+  - ただし、動いているインスタンスが `content_hash` で指している版は消さない。そのインスタンスが終わってから消す。
+  - 上限はワールドの保存数（今の `LIMITS.MAX_WORLDS_PER_USER` = 5）と同じ仕組みで決める。`limitsFor(user)` が `{ maxWorlds, maxVersionsPerWorld }` を返す関数にしておき、今は定数を返す。課金を入れるときは、この関数がプランを見るように変えるだけにする。
 
 ### インスタンス
 
@@ -163,54 +164,9 @@ instances
 ```
 
 - `current_users` と `has_password` を消す。
-- どの Pod にあるか・誰がいるかは DB に置かない（次の節の Redis）。
+- どの Pod にあるか・誰がいるかは DB に置かない（Redis。[instance-scaling.md](./instance-scaling.md)）。
 - `content_hash` を持たせ、作成後にワールドが更新されても、そのインスタンスは作成時の版で動くようにする。
 - reaper の作成時刻は `created_at`（timestamptz）を使い、`markCreated` のプロセス内の記録をやめる。
-
-## インスタンスの水平スケール（Redis）
-
-### 全体
-
-```
-client ──WS──▶ Ingress ──▶ instance Service（任意の Pod）
-                                │ 自分が持ち主でなければ、持ち主の Pod へ WS を中継する
-                                ▼
-                         持ち主の Pod（部屋をメモリに持つ）
-backend ──管理 API──▶ 持ち主の Pod（Redis で引いた内部アドレス）
-Go の各 Pod ──▶ Redis：ノードの生存・部屋の持ち主・在席
-```
-
-### Redis のキー
-
-| キー | 値 | 書く側 | TTL |
-|---|---|---|---|
-| `ubi:node:<node>` | `{addr, rooms, members}` | 各 Pod（5 秒ごと） | 15 秒 |
-| `ubi:room:<instanceId>` | 持ち主の `<node>` | 部屋を作った Pod（`SET NX`） | 持ち主が 5 秒ごとに延長（15 秒） |
-| `ubi:presence:<instanceId>` | `{memberIds, emptySince}` | 持ち主の Pod（入退室のたびと 5 秒ごと） | 15 秒 |
-| `ubi:rooms` | 部屋 ID の集合 | 持ち主の Pod | なし（部屋を消すとき SREM） |
-
-- `<node>` は Pod 名（Downward API）、`addr` は Pod IP:port。
-- **部屋の置き場所**: backend は `ubi:room:<id>` を引き、生きている持ち主がいればそこへ送る。いなければ `ubi:node:*` から部屋の少ない Pod を選び、その Pod に作らせる。持ち主の取り合いは `SET NX` で決める。
-- **在席**: backend の `presence()` は `ubi:rooms` と `ubi:presence:*` をまとめて読む。各 Pod へ問い合わせを広げない。
-- **WS の振り分け**: Ingress は今のまま `/realtime/v1/ws` を Service に向ける。受けた Pod は `world:join` のチケットの instanceId で持ち主を引き、自分でなければ持ち主へ WS を中継する。
-  - Ingress の設定や Pod ごとの Service を増やさずに済む。代わりに中継のぶん 1 段遅くなる。
-  - 中継をやめたくなったら、チケットに持ち主の `<node>` を入れ、Ingress の `upstream-hash-by` で振り分ける形に変えられる。
-- **チケットの署名鍵**: Secret から全 Pod で同じ鍵を読む（`INSTANCE_TICKET_KEY`）。中継先の Pod でも確かめられ、再起動でゲストの再接続情報が無効にならない。
-- **Pod が落ちたとき**: 持ち主のキーの TTL が切れる。次の入室で backend が別の Pod に作り直す。部屋の中の状態は失われる（今も再起動で失われるので同じ）。
-- **Redis が落ちたとき**: 新しい部屋を作れなくなるが、既存の部屋の接続は続く（Pod 内のメモリで動いている）。在席の一覧は空になるので、reaper は「Redis が読めないときは消さない」ようにする。
-- **単体モード**（`--guests`・テスト・Redis なし）: 同じ `Directory` インタフェースのメモリ実装を使う。今と同じく 1 Pod で動く。
-
-### Go の変更点
-
-- `Directory` インタフェース（`Claim / Owner / Heartbeat / PublishPresence / Release`）を作り、メモリ実装と Redis 実装を置く。
-- 管理 API は今のまま（backend は持ち主の `addr` へ送る）。
-- `serveSocket` に中継を足す。最初の `world:join` を読んでから持ち主を決めるので、そのフレームを中継先へ送り直す。
-
-### chart の変更点
-
-- instance を Deployment のまま `replicas` を可変にする（StatefulSet は不要。Pod 名と IP は Redis に出す）。
-- Bitnami の Redis subchart を実際に使う。本番は既存の Redis を指せるようにする（`redis.external.url`）。
-- `INSTANCE_TICKET_KEY` を Secret に追加する。
 
 ## 移行の順番（PR ごと）
 
@@ -220,7 +176,8 @@ Go の各 Pod ──▶ Redis：ノードの生存・部屋の持ち主・在席
 4. **users の整理**: `username`・`profile_image_url` を消す。`handle` の NULL を解消してから NOT NULL にする。
 5. **worlds の版**: `world_versions`・`world_drafts` を作り、今の `definition/lock/signature` を版 1 行として移す。下書きの列も移す。API を `worlds.id` に寄せたあと、`worlds.name` と古い列を消す。
 6. **instances**: `current_users`・`has_password` を消し、`content_hash` を足す。
-7. **インスタンスのスケール**: Go の `Directory`（メモリ → Redis）、中継、共有のチケット鍵、chart。最後に `replicas` を 2 にして本番で確かめる。
+
+Redis の作業との依存: backend を 2 つ以上にする前に、1（reaper のプロセス内の時刻をやめる）と 2（仮登録）を終えておく。
 
 - 消す列は、使わなくなる PR と消す PR を分ける。ロールバックで古いイメージに戻しても動くように。
 - 本番の DB は `baselineIfNeeded` の挙動に注意する。永続ボリュームが残っていると、新しいマイグレーションが適用済み扱いになることがある（検証はボリュームを作り直して行う）。
@@ -229,6 +186,4 @@ Go の各 Pod ──▶ Redis：ノードの生存・部屋の持ち主・在席
 
 1. `handle` が NULL の既存アカウントの扱い。本番の件数次第で「ログイン時に決めさせる」か「自動で振る」かを決める。
 2. 署名し直しで変わる `signature` を、`world_versions` の例外として更新するか、`world_version_signatures`（版ごとに複数の署名）に分けるか。
-3. 版の保存数の上限（例: 1 ワールドあたり 20 版）。
-4. Redis を Bitnami の subchart で持つか、外部の Redis を必須にするか。
-5. backend の複数レプリカ化（reaper の二重実行）。Redis があるので `SET NX` のリース 1 つで済むが、このスケール作業に含めるか。
+3. 古い版を自動で消すか、4 つ目の公開を拒否して「どれを消すか」を作者に選ばせるか（この文書は自動で消す案）。
