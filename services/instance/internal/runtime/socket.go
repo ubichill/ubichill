@@ -1,7 +1,10 @@
 package runtime
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -60,7 +63,13 @@ func (p *peer) write() {
 				return
 			}
 			_ = p.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			if p.conn.WriteJSON(f) != nil {
+			var err error
+			if f.raw != nil {
+				err = p.conn.WriteMessage(websocket.TextMessage, f.raw)
+			} else {
+				err = p.conn.WriteJSON(f)
+			}
+			if err != nil {
 				return
 			}
 		case <-tick.C:
@@ -70,7 +79,27 @@ func (p *peer) write() {
 		}
 	}
 }
-func (s *Server) serveSocket(w http.ResponseWriter, r *http.Request) {
+func (s *Server) serveSocket(w http.ResponseWriter, r *http.Request) { s.serve(w, r, false) }
+
+// rateLimit は 1 つのクライアントの接続から受けるフレームの上限（毎秒 240 件）。中継では接続を受けた Pod だけが数える。
+// owner でも数えると、窓の区切りが中継元とずれ、中継元が通した分を owner が超過と数えることがある。
+type rateLimit struct {
+	window time.Time
+	count  int
+}
+
+func (l *rateLimit) allow(now time.Time) bool {
+	if now.Sub(l.window) > time.Second {
+		l.window = now
+		l.count = 0
+	}
+	l.count++
+	return l.count <= 240
+}
+
+// serve は 1 つの WebSocket 接続。relayed は他の Pod から中継された接続で、Origin の確認とレート制限は中継元が済ませている。
+// 中継された接続はさらに中継しない（Pod の間で回り続けないように）。
+func (s *Server) serve(w http.ResponseWriter, r *http.Request, relayed bool) {
 	upgrader := websocket.Upgrader{CheckOrigin: s.originAllowed, HandshakeTimeout: 10 * time.Second}
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -79,6 +108,12 @@ func (s *Server) serveSocket(w http.ResponseWriter, r *http.Request) {
 	p := &peer{id: newID(), conn: conn, out: make(chan Frame, 256), done: make(chan struct{})}
 	go p.write()
 	defer p.stop()
+	var up *upstream
+	defer func() {
+		if up != nil {
+			s.forgetRelay(up)
+		}
+	}()
 	defer func() {
 		s.admission.Lock()
 		defer s.admission.Unlock()
@@ -104,31 +139,35 @@ func (s *Server) serveSocket(w http.ResponseWriter, r *http.Request) {
 	conn.SetReadLimit(70 << 10)
 	_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
 	conn.SetPongHandler(func(string) error {
-		if p.room != nil {
+		if p.room != nil || up != nil {
 			return conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 		}
 		return nil
 	})
-	window := time.Now()
-	count := 0
+	var limit rateLimit
 	// Request IDs correlate replies. The client never automatically replays
 	// mutations after reconnect; the room snapshot restores its state.
 	for {
-		var f Frame
-		if conn.ReadJSON(&f) != nil {
+		_, raw, err := conn.ReadMessage()
+		if err != nil {
 			return
 		}
-		if time.Since(window) > time.Second {
-			window = time.Now()
-			count = 0
+		var f Frame
+		if json.Unmarshal(raw, &f) != nil {
+			return
 		}
-		count++
-		if count > 240 {
+		if !relayed && !limit.allow(time.Now()) {
 			p.reject(f.ID, "rate limit exceeded")
 			continue
 		}
 		if len(f.ID) > 100 {
 			return
+		}
+		if up != nil {
+			if up.forward(raw) != nil {
+				return
+			}
+			continue
 		}
 		if f.Event == "world:join" {
 			if p.room != nil {
@@ -145,7 +184,17 @@ func (s *Server) serveSocket(w http.ResponseWriter, r *http.Request) {
 			t, err := s.verify(str(data["token"]), id)
 			room := s.room(id)
 			if err != nil {
-				p.reply(f.ID, Object{"success": false, "error": "参加チケットが無効です", "code": "ticket_invalid"})
+				p.reply(f.ID, ticketInvalid())
+				continue
+			}
+			if room == nil && !relayed {
+				next, failed := s.relayJoin(id, t, raw, p)
+				if failed != nil {
+					p.reply(f.ID, failed)
+					continue
+				}
+				up = next
+				_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 				continue
 			}
 			if room == nil {
@@ -154,7 +203,7 @@ func (s *Server) serveSocket(w http.ResponseWriter, r *http.Request) {
 			}
 			// 前の owner・前の部屋（同じ ID で作り直す前）に向けたチケット。取り直せば今の世代のチケットになる
 			if !room.issued(t) {
-				p.reply(f.ID, Object{"success": false, "error": "参加チケットが無効です", "code": "ticket_invalid"})
+				p.reply(f.ID, ticketInvalid())
 				continue
 			}
 			s.admission.Lock()
@@ -197,9 +246,37 @@ func (s *Server) serveSocket(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// relayJoin は手元に無い部屋への world:join を owner へ中継し始める。読んだ world:join はそのまま owner へ送る。
+func (s *Server) relayJoin(id string, t claims, join []byte, p *peer) (*upstream, Object) {
+	ctx, cancel := context.WithTimeout(context.Background(), s.fencing.Timeout)
+	to, failed := s.route(ctx, id, t)
+	cancel()
+	if failed != nil {
+		return nil, failed
+	}
+	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	up, err := s.dialOwner(ctx, to)
+	if err != nil {
+		log.Printf("relay to %s (%s) for %s failed: %v", to.node, to.addr, id, err)
+		return nil, unavailable()
+	}
+	if up.forward(join) != nil {
+		s.forgetRelay(up)
+		return nil, unavailable()
+	}
+	go up.pump(p)
+	return up, nil
+}
+
 // unavailable は部屋が無い・閉じた・自己停止したときの入室の失敗。クライアントはチケットを取り直して入り直す。
 func unavailable() Object {
 	return Object{"success": false, "error": "インスタンスが見つかりません", "code": "instance_unavailable"}
+}
+
+// ticketInvalid は署名・期限・部屋の世代が合わないチケット。クライアントは同じ復旧の中で 1 回だけ取り直す。
+func ticketInvalid() Object {
+	return Object{"success": false, "error": "参加チケットが無効です", "code": "ticket_invalid"}
 }
 
 // profile keeps only the fields other participants may see. Unknown fields (e.g. image URLs that every

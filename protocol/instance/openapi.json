@@ -94,7 +94,7 @@
       ],
       "put": {
         "operationId": "provisionInstance",
-        "description": "Idempotent create. Existing instance state is never reset. Management token required. Assigns the room to this node in the directory: 409 with the owner when another node holds it, 503 when the directory is unavailable.",
+        "description": "Idempotent create. Existing instance state is never reset. Management token required. Assigns the room to this node in the directory: 409 with the owner when another node holds it, 503 when the directory is unavailable. With gen and epoch, 409 unless this node holds the room at that generation (never creates a new one).",
         "requestBody": {
           "required": true,
           "content": {
@@ -117,7 +117,7 @@
             }
           },
           "409": {
-            "description": "Owned by another node",
+            "description": "Owned by another node, or not at the expected generation",
             "content": {
               "application/json": {
                 "schema": {
@@ -136,7 +136,15 @@
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ExpectedGen"
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedEpoch"
+          }
+        ]
       },
       "get": {
         "operationId": "getInstance",
@@ -166,7 +174,7 @@
       },
       "delete": {
         "operationId": "closeInstance",
-        "description": "Closes the room only while this node is its owner, then releases the assignment.",
+        "description": "Closes the room only while this node is its owner, then releases the assignment. With gen and epoch, 409 when this node holds the room at another generation.",
         "parameters": [
           {
             "name": "emptyBefore",
@@ -176,6 +184,12 @@
               "format": "int64"
             },
             "description": "Atomically reject if occupied or emptied after this epoch millisecond timestamp."
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedGen"
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedEpoch"
           }
         ],
         "responses": {
@@ -183,7 +197,7 @@
             "description": "Closed or already absent"
           },
           "409": {
-            "description": "Occupied, recently emptied, or owned by another node",
+            "description": "Occupied, recently emptied, owned by another node, or not at the expected generation",
             "content": {
               "application/json": {
                 "schema": {
@@ -218,7 +232,7 @@
       ],
       "post": {
         "operationId": "issueTicket",
-        "description": "Management API. Caller has already authorized the SNS user. Ticket expires in 2 minutes and is checked at admission. Existing connections remain admitted.",
+        "description": "Management API. Caller has already authorized the SNS user. Ticket expires in 2 minutes and is checked at admission. Existing connections remain admitted. Send it to the owner (addr). With gen and epoch, 409 unless this node holds the room at that generation.",
         "requestBody": {
           "required": true,
           "content": {
@@ -240,6 +254,16 @@
               }
             }
           },
+          "409": {
+            "description": "Not held by this node at the expected generation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conflict"
+                }
+              }
+            }
+          },
           "default": {
             "description": "Request failed",
             "content": {
@@ -250,7 +274,15 @@
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ExpectedGen"
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedEpoch"
+          }
+        ]
       }
     },
     "/realtime/v1/instances/{id}/guest": {
@@ -350,6 +382,11 @@
             "type": "integer",
             "format": "int64",
             "description": "owner の世代。owner が交代するたびに増える。(gen, epoch) の組で比べる。",
+            "x-go-type-skip-optional-pointer": true
+          },
+          "addr": {
+            "type": "string",
+            "description": "owner の内部アドレス（host:port）。管理 API と Pod 間の中継はここへ送る。単体モードのゲスト向けには返さない。",
             "x-go-type-skip-optional-pointer": true
           }
         },
@@ -571,6 +608,25 @@
           "error"
         ],
         "additionalProperties": false
+      }
+    },
+    "parameters": {
+      "ExpectedGen": {
+        "name": "gen",
+        "in": "query",
+        "schema": {
+          "type": "string"
+        },
+        "description": "呼び出し側が知っている部屋の世代（クラスタの gen）。epoch と組で指定する。今の部屋の世代と違えば 409。"
+      },
+      "ExpectedEpoch": {
+        "name": "epoch",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "description": "呼び出し側が知っている owner の epoch。gen と組で指定する。"
       }
     }
   }
