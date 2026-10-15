@@ -85,8 +85,10 @@ pending_registrations
 
 ```
 author_keys
-  public_key      text PK
+  id              text PK              -- 代理キー（公開鍵は主キーにしない。下の理由）
   account         text NOT NULL        -- handle@domain（自サーバーの作者も同じ形）
+  algorithm       text NOT NULL        -- 今は ed25519 だけ
+  public_key      text NOT NULL        -- 正規化した値（base64url・接頭辞なし）
   origin          text NOT NULL        -- local / remote
   user_id         text NULL REFERENCES users ON DELETE CASCADE   -- local のときだけ
   kind            text NULL            -- browser / cli / ci（local のときだけ）
@@ -97,8 +99,10 @@ author_keys
   fetched_at      timestamptz          -- remote のときだけ（WebFinger から取った時刻）
   revoked_at      timestamptz
   revoke_reason   text                 -- lost / compromised
+  UNIQUE (account, algorithm, public_key)
+  UNIQUE (algorithm, public_key) WHERE origin = 'local'   -- 1 つの鍵を持てる自サーバーのアカウントは 1 つ
   INDEX (account), INDEX (user_id)
-  CHECK (origin = 'local') = (user_id IS NOT NULL)
+  CHECK ((origin = 'local') = (user_id IS NOT NULL))
 
 remote_authors
   account       text PK
@@ -108,9 +112,14 @@ remote_authors
 author_confirmed_contents   -- 今のまま
 ```
 
-- 作者の鍵の確認（`isAuthorKey`）は `author_keys` を `account` で引くだけにする。local は即時、remote は `fetched_at` が古ければ WebFinger から取り直す。
+- **公開鍵を主キーにしない理由**
+  - 信頼の単位は「鍵」ではなく「アカウントと鍵の組」。他のサーバーは、自サーバーの利用者の公開鍵を自分のアカウントの鍵だと WebFinger で主張できる。公開鍵が主キーだと両方の主張を記録できず、先に入った方が勝つか上書きになる。署名には作者のアカウントが入っているので、確かめるべきは「この鍵がこのアカウントのものか」で、鍵だけで引く必要はない。
+  - 同じ鍵の書き方の違い（base64 と base64url、`ed25519:` の接頭辞）で別の行にならないよう、保存の前に正規化し、アルゴリズムを列に持つ。
+  - 取り消した鍵を同じアカウントに登録し直すことは、`UNIQUE (account, algorithm, public_key)` で防ぐ（取り消しは覆らない。登録し直すなら新しい鍵）。主キーの副作用に頼らず、規則として持つ。
+- 他のサーバーが自サーバーの local の鍵を名乗ってきたら（同じ `(algorithm, public_key)` の local の行がある）、その remote の行は保存するが警告を記録し、署名の確認では使わない（なりすましの試みとして扱う）。
+- 作者の鍵の確認（`isAuthorKey`）は `author_keys` を `(account, algorithm, public_key)` で引くだけにする。local は即時、remote は `fetched_at` が古ければ WebFinger から取り直す。
 - 取り消しは両方とも行の `revoked_at` で表す。lost は取り消し以前の署名を有効のまま、compromised はすべての署名を無効にする。この意味は今と同じ。
-- `publishing_environments` と `author_bindings` を移して消す。
+- `publishing_environments` と `author_bindings` を移して消す。読み書きを切り替える PR と、古いテーブルを消す PR を分ける。
 
 ### ワールド（自サーバーで公開したものだけ）
 
