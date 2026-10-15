@@ -10,26 +10,33 @@ vi.mock('@ubichill/db', () => ({ instanceRepository: { findAll: mocks.findAll, d
 vi.mock('../config', () => ({
     appConfig: { instance: { emptyTimeoutMs: 60_000, recoveryGraceMs: 60_000, reapIntervalMs: 30_000 } },
 }));
-vi.mock('../utils/logger', () => ({ logger: { info: vi.fn(), error: vi.fn() } }));
+vi.mock('../utils/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
+vi.mock('../lib/redis', () => ({ redis: null }));
+vi.mock('./maintenance', () => ({ maintenanceGate: { hold: async () => true, release: async () => {} } }));
 vi.mock('./instanceRuntime', () => ({ instanceRuntime: { presence: mocks.presence, close: mocks.close } }));
 
-import { instanceReaper } from './instanceReaper';
+import { type AbsenceClock, createMemoryAbsenceClock } from './absenceClock';
+import { InstanceReaper } from './instanceReaper';
+import { createMemoryLease } from './lease';
+import { createLeaseGate, type LeaseGate } from './leaseGate';
 
 const T0 = Date.UTC(2026, 0, 1);
-const old = { id: 'room', createdAt: new Date(T0 - 24 * 60 * 60_000) };
+const DAY = 24 * 60 * 60_000;
+const old = { id: 'room', createdAt: new Date(T0 - DAY) };
 const runtimeRoom = (memberIds: string[], emptySince: number) =>
     new Map([['room', { id: 'room', memberIds, emptySince }]]);
+const held: LeaseGate = { hold: async () => true, release: async () => {} };
+const newReaper = (deps: { gate?: LeaseGate; absence?: AbsenceClock } = {}) =>
+    new InstanceReaper({ gate: deps.gate ?? held, absence: deps.absence ?? createMemoryAbsenceClock(DAY) });
 
-describe('instanceReaper', () => {
+describe('InstanceReaper', () => {
     beforeEach(() => {
         vi.resetAllMocks();
         vi.useFakeTimers();
         vi.setSystemTime(T0);
         mocks.findAll.mockResolvedValue([old]);
         mocks.close.mockResolvedValue(true);
-        // 前のテストの観測記録を残さない（シングルトン）
         mocks.presence.mockResolvedValue(runtimeRoom(['someone'], 0));
-        return instanceReaper.sweepOnce();
     });
     afterEach(() => {
         vi.useRealTimers();
@@ -37,57 +44,100 @@ describe('instanceReaper', () => {
 
     it('Go の再起動直後で部屋が無くても、古い instance を即削除しない', async () => {
         mocks.presence.mockResolvedValue(new Map());
-        expect(await instanceReaper.sweepOnce()).toBe(0);
+        expect(await newReaper().sweepOnce()).toBe(0);
         expect(mocks.close).not.toHaveBeenCalled();
         expect(mocks.delete).not.toHaveBeenCalled();
     });
     it('部屋が無い状態が猶予を超えて続いたら削除する', async () => {
+        const reaper = newReaper();
         mocks.presence.mockResolvedValue(new Map());
-        await instanceReaper.sweepOnce();
+        await reaper.sweepOnce();
         vi.setSystemTime(T0 + 59_999);
-        expect(await instanceReaper.sweepOnce()).toBe(0);
+        expect(await reaper.sweepOnce()).toBe(0);
         vi.setSystemTime(T0 + 60_000);
-        expect(await instanceReaper.sweepOnce()).toBe(1);
+        expect(await reaper.sweepOnce()).toBe(1);
         expect(mocks.delete).toHaveBeenCalledWith('room');
     });
     it('猶予中に再接続で部屋が作り直されたら、不在の観測はリセットされる', async () => {
+        const reaper = newReaper();
         mocks.presence.mockResolvedValue(new Map());
-        await instanceReaper.sweepOnce();
+        await reaper.sweepOnce();
         vi.setSystemTime(T0 + 30_000);
         mocks.presence.mockResolvedValue(runtimeRoom(['alice'], 0));
-        await instanceReaper.sweepOnce();
+        await reaper.sweepOnce();
         // 全員が抜けて部屋も消えた（再起動）: 再び観測時刻から数え直す
         vi.setSystemTime(T0 + 70_000);
         mocks.presence.mockResolvedValue(new Map());
-        expect(await instanceReaper.sweepOnce()).toBe(0);
+        expect(await reaper.sweepOnce()).toBe(0);
         vi.setSystemTime(T0 + 130_000);
-        expect(await instanceReaper.sweepOnce()).toBe(1);
+        expect(await reaper.sweepOnce()).toBe(1);
     });
     it('在席者がいれば削除しない', async () => {
         vi.setSystemTime(T0 + 10 * 60_000);
-        expect(await instanceReaper.sweepOnce()).toBe(0);
+        expect(await newReaper().sweepOnce()).toBe(0);
     });
     it('Go 上で空になってから猶予を超えたら削除する', async () => {
         mocks.presence.mockResolvedValue(runtimeRoom([], T0 - 60_000));
-        expect(await instanceReaper.sweepOnce()).toBe(1);
+        expect(await newReaper().sweepOnce()).toBe(1);
         expect(mocks.close).toHaveBeenCalledWith('room', T0 - 60_000);
     });
     it('Go が削除を拒否（直前に誰かが入った）したら DB からも消さない', async () => {
         mocks.presence.mockResolvedValue(runtimeRoom([], T0 - 60_000));
         mocks.close.mockResolvedValue(false);
-        expect(await instanceReaper.sweepOnce()).toBe(0);
+        expect(await newReaper().sweepOnce()).toBe(0);
         expect(mocks.delete).not.toHaveBeenCalled();
     });
     it('作成直後の instance は Go に部屋が無くても消さない', async () => {
-        instanceReaper.markCreated('room');
+        const reaper = newReaper();
+        reaper.markCreated('room');
         mocks.findAll.mockResolvedValue([{ ...old, createdAt: new Date(T0) }]);
         mocks.presence.mockResolvedValue(new Map());
         vi.setSystemTime(T0 + 59_999);
-        expect(await instanceReaper.sweepOnce()).toBe(0);
+        expect(await reaper.sweepOnce()).toBe(0);
     });
     it('Go に到達できなければ何も消さない', async () => {
         mocks.presence.mockRejectedValue(new Error('runtime down'));
-        await expect(instanceReaper.sweepOnce()).rejects.toThrow('runtime down');
+        await expect(newReaper().sweepOnce()).rejects.toThrow('runtime down');
         expect(mocks.delete).not.toHaveBeenCalled();
+    });
+
+    it('リースを持っていなければ DB にも Go にも触らない', async () => {
+        const reaper = newReaper({ gate: { hold: async () => false, release: async () => {} } });
+        mocks.presence.mockResolvedValue(runtimeRoom([], T0 - 60_000));
+        expect(await reaper.runOnce()).toBeNull();
+        expect(mocks.findAll).not.toHaveBeenCalled();
+        expect(mocks.presence).not.toHaveBeenCalled();
+        expect(mocks.close).not.toHaveBeenCalled();
+    });
+
+    it('リースが別の backend に移っても、不在の起点は引き継がれる（猶予が延びない）', async () => {
+        const absence = createMemoryAbsenceClock(DAY);
+        const lease = createMemoryLease();
+        const log = { info: vi.fn(), warn: vi.fn() };
+        const gateA = createLeaseGate(lease, 'reaper', 15_000, log);
+        const gateB = createLeaseGate(lease, 'reaper', 15_000, log);
+        const a = newReaper({ gate: gateA, absence });
+        const b = newReaper({ gate: gateB, absence });
+        mocks.presence.mockResolvedValue(new Map());
+
+        expect(await a.runOnce()).toBe(0);
+        expect(await b.runOnce()).toBeNull();
+        // A が止まって手放した。B が引き継ぎ、A が最初に観測した時刻から数える
+        await gateA.release();
+        vi.setSystemTime(T0 + 60_000);
+        expect(await b.runOnce()).toBe(1);
+        expect(mocks.delete).toHaveBeenCalledWith('room');
+    });
+
+    it('削除したインスタンスの起点は消す（同じ id がまた不在になったら数え直す）', async () => {
+        const absence = createMemoryAbsenceClock(DAY);
+        const forget = vi.spyOn(absence, 'forget');
+        mocks.presence.mockResolvedValue(new Map());
+        const reaper = newReaper({ absence });
+        await reaper.sweepOnce();
+        vi.setSystemTime(T0 + 60_000);
+        await reaper.sweepOnce();
+        expect(forget).toHaveBeenLastCalledWith(['room']);
+        expect((await absence.since(['room'], T0 + 61_000)).get('room')).toBe(T0 + 61_000);
     });
 });

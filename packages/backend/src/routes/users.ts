@@ -36,6 +36,8 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import yaml from 'yaml';
 import { auth, createPendingRegistration, resendOTP, sendAccountNotice, verifyAndRegister } from '../lib/auth';
+import { redis } from '../lib/redis';
+import { sharedRateLimit } from '../lib/sharedRateLimit';
 import {
     isAdminHandle,
     optionalAuth,
@@ -46,6 +48,7 @@ import {
 } from '../middleware/auth';
 import { invalidateAuthorKey, isAuthorKey } from '../services/authorKeyStore';
 import { selfAccount } from '../services/authorKeys';
+import { backendEvents } from '../services/backendEvents';
 import { externalWorkStatuses, publishedExternalWorks } from '../services/externalWorkStore';
 import { verifyRegistration } from '../services/externalWorks';
 import { favoriteRefOf, resolveFavoriteWorlds } from '../services/favorites';
@@ -58,6 +61,7 @@ import {
 import { nodeWorldCrypto } from '../services/worldCrypto';
 import { worldRegistry } from '../services/worldRegistry';
 import { parseStoredDefinition } from '../services/worldResolver';
+import { logger } from '../utils/logger';
 import { createTtlCache } from '../utils/ttlCache';
 
 const router = Router();
@@ -95,6 +99,11 @@ const publicFavoritesCache = createTtlCache<Awaited<ReturnType<typeof resolveFav
     ttlMs: PUBLIC_FAVORITES_TTL_MS,
     max: 500,
 });
+backendEvents.on('favorites.changed', ({ userId }) => publicFavoritesCache.delete(userId));
+const favoritesChanged = (userId: string): void => {
+    publicFavoritesCache.delete(userId);
+    backendEvents.broadcast({ type: 'favorites.changed', userId });
+};
 
 // 仮登録（OTP送信）
 router.post('/register', async (req, res) => {
@@ -534,6 +543,7 @@ const recheckLimiter = rateLimit({
     keyGenerator: (req) => req.user?.id ?? 'anonymous',
     skip: (req) => req.query.refresh !== '1',
     message: { error: '再確認が多すぎます。少し待ってから試してください' },
+    ...sharedRateLimit('external-works-recheck', redis, logger),
 });
 
 // 登録した外部の作品（本人の設定画面）。公開先を確かめた状態つきで全部返す。?refresh=1 で確かめ直す
@@ -586,7 +596,7 @@ router.post('/me/favorites', requireAuth, async (req, res) => {
         return res.status(409).json({ error: `お気に入りは ${LIMITS.MAX_FAVORITES_PER_USER} 件までです` });
     }
     await favoriteRepository.add(req.user.id, parsed.ref);
-    publicFavoritesCache.delete(req.user.id);
+    favoritesChanged(req.user.id);
     return res.status(201).json({ worldRef: parsed.ref });
 });
 
@@ -603,7 +613,7 @@ router.delete('/me/favorites', requireAuth, async (req, res) => {
     const parsed = favoriteRefOf(worldRef);
     await favoriteRepository.remove(req.user.id, worldRef);
     if (parsed.ok && parsed.ref !== worldRef) await favoriteRepository.remove(req.user.id, parsed.ref);
-    publicFavoritesCache.delete(req.user.id);
+    favoritesChanged(req.user.id);
     return res.status(204).send();
 });
 

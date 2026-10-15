@@ -33,6 +33,8 @@ worlds:
 # Backend application configuration
 backend:
   enabled: true
+  # 2 以上にするには Redis（redis.enabled か redis.external.url）が要る（無いと描画で失敗する）。
+  # DB 側の作業（created_at の timestamptz 化・仮登録の DB 化）が入るまでは 1 のままにする（README の「backend の複数レプリカ」）。
   replicaCount: 1
 
   # Drizzle migration は backend Deployment の init container として実行される（デフォルト）。

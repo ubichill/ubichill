@@ -5,7 +5,11 @@ import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { eq } from 'drizzle-orm';
 import { Resend } from 'resend';
+import { appConfig } from '../config';
 import { createPendingRegistrationStore } from '../services/pendingRegistrations';
+import { logger } from '../utils/logger';
+import { createAuthRateLimitStorage } from './authRateLimit';
+import { redis } from './redis';
 
 // SKIP_EMAIL_VERIFICATION=true の場合はAPIキー不要なので遅延初期化
 let _resend: Resend | null = null;
@@ -253,6 +257,9 @@ console.log(`   BETTER_AUTH_URL: ${process.env.BETTER_AUTH_URL || 'http://localh
 console.log(`   CORS_ORIGIN: ${process.env.CORS_ORIGIN || 'http://localhost:3000'}`);
 console.log(`   SKIP_EMAIL_VERIFICATION: ${SKIP_EMAIL_VERIFICATION ? '✅ 有効（メール確認スキップ）' : '無効'}`);
 
+/** better-auth のレート制限を有効にするか。 */
+export const authRateLimitEnabled = appConfig.isProduction;
+
 export const auth = betterAuth({
     database: drizzleAdapter(db, {
         provider: 'pg',
@@ -278,8 +285,12 @@ export const auth = betterAuth({
         },
     },
     rateLimit: {
+        // better-auth の既定と同じ（本番だけ）。ログインを Redis 障害で止めるか（index.ts）もこれに合わせる
+        enabled: authRateLimitEnabled,
         window: 60,
         max: 100,
+        // secondaryStorage ではなくこちらで共有する（secondaryStorage はセッション・検証トークンの保存先も Redis に移す）
+        ...(redis ? { customStorage: createAuthRateLimitStorage(redis, logger) } : {}),
     },
     user: {
         // どちらもサーバーだけが書く。input を許すと /update-user から任意の値（外部の画像 URL など）を入れられ、
