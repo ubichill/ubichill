@@ -69,7 +69,7 @@ Prometheus ──▶ KEDA ──▶ HPA ──▶ Go Deployment
 1. backend が PostgreSQL でインスタンスの設定と入室の可否を確かめる（今と同じ）。
 2. Directory で owner を引く。いなければ、`ready` で `draining` でない Pod から、空き容量（接続数・部屋数）で選び、Lua で原子的に割り当てる。
 3. owner の管理 API で部屋を作る（`(gen, epoch)` 付き）。失敗したら `token` を照合して割り当てを取り消し、別の Pod で再試行する。
-4. backend が `roomId, gen, epoch, ユーザー, 表示名, 期限` を含むチケットを発行する。全 Pod は共有の Secret `INSTANCE_TICKET_KEY` で確かめる。
+4. backend が `roomId, gen, epoch, ユーザー, 表示名, 期限` を含むチケットを発行する。全 Pod は共有の鍵で確かめる（`INSTANCE_TICKET_KEY`、無ければ `INSTANCE_ADMIN_TOKEN` から HMAC で派生。R1 で実装）。
 5. Router が owner へ接続をプロキシする。owner もチケットと `(gen, epoch)` を確かめる。
 6. 入室後のエンティティ操作・カーソル・スナップショット・配信は、owner の Pod の中で処理する（今のまま）。
 7. owner を失ったら、次の入室で割り当て直す。メモリ上の部屋の状態は失われる（今の再起動と同じ）。
@@ -92,7 +92,7 @@ Prometheus ──▶ KEDA ──▶ HPA ──▶ Go Deployment
 - 手動で縮めるときは、対象の Pod を `draining` にして新しい部屋の割り当てを止め、部屋が空になってから終了させる。
 - SIGTERM を受けたら readiness を false にし、`terminationGracePeriodSeconds` の範囲で接続を閉じて、クライアントを繋ぎ直させる。
 - **自動の scale-in（K2）の候補**: 各 Pod が自分の部屋数・接続数を `controller.kubernetes.io/pod-deletion-cost` の注釈に書けば、ReplicaSet は空いている Pod を優先して消す（ベストエフォート）。drain と組み合わせれば、配置コントローラを作らずに済む可能性がある。注釈を書くには、Pod の ServiceAccount に自分の Pod を patch する RBAC が要る。
-- 前提: クラスタに Prometheus と KEDA があること。本番クラスタにあるかを先に確かめる。
+- 前提: 本番（home-manifests）には Prometheus（`apps/prometheus`）はあるが、**KEDA は無い**。K1 は home-manifests に KEDA の Application を足すところから始める。
 
 ```yaml
 # 概念の例（そのままは使えない。指標は未実装）
@@ -165,4 +165,4 @@ backend を 2 台以上にする前に、DB 側の「時刻の型」と「仮登
 2. Pod の容量の指標と KEDA の閾値、1 部屋の最大人数、許せる遅延。
 3. Redis を Helm の subchart で持つか、外部の Redis にするか。
 4. 自動の scale-in の方式（`pod-deletion-cost` で足りるか）。決まるまでは scale-out だけを自動にする。
-5. 本番クラスタに Prometheus と KEDA があるか。
+5. KEDA を home-manifests にどう入れるか（Helm の Application、namespace、CRD の扱い）。
