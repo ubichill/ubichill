@@ -86,11 +86,25 @@ func newServer(config Config) *Server {
 }
 
 // Provision は部屋を自分に割り当てて作る。自分が owner のまま生きている部屋はそのまま返す（冪等）。
-func (s *Server) Provision(d Definition) (*Room, error) {
+func (s *Server) Provision(d Definition) (*Room, error) { return s.provision(d, expectation{}) }
+
+// errStaleGeneration は世代を指定した作成で、その世代の部屋がこの Pod に無いとき。
+var errStaleGeneration = errors.New("instance generation does not match")
+
+// provision は部屋を返すか作る。世代を指定したときは、その世代の部屋を返すだけで作らない。
+// 世代の確認と作るかどうかの判断を同じ provisioning のロックの下で行う（外で確かめると、確かめた直後に
+// fencing で部屋が捨てられ、古い世代を指定した要求が新しい epoch の部屋を作ってしまう）。
+func (s *Server) provision(d Definition, want expectation) (*Room, error) {
 	s.provisioning.Lock()
 	defer s.provisioning.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), s.fencing.Timeout)
 	defer cancel()
+	if want.set {
+		if r := s.owned(d.ID); r != nil && want.matches(r) {
+			return r, nil
+		}
+		return nil, errStaleGeneration
+	}
 	// Idempotent creation never resets an existing room, including an empty world.
 	if r := s.room(d.ID); r != nil {
 		if r.usable() {
@@ -242,13 +256,11 @@ func (s *Server) Handler() http.Handler {
 			return
 		}
 		// 世代を指定した作成は、その世代の部屋の確認だけ（新しい epoch で作り直さない）
-		if want.set && !want.matches(s.owned(d.ID)) {
-			writeJSON(w, 409, s.staleGeneration(r.Context(), d.ID))
-			return
-		}
-		room, err := s.Provision(d)
+		room, err := s.provision(d, want)
 		var elsewhere *ownedElsewhere
 		switch {
+		case errors.Is(err, errStaleGeneration):
+			writeJSON(w, 409, s.staleGeneration(r.Context(), d.ID))
 		case errors.As(err, &elsewhere):
 			writeJSON(w, 409, conflict(elsewhere))
 		case errors.Is(err, errDirectoryUnavailable):

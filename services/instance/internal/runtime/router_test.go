@@ -8,6 +8,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -332,6 +333,44 @@ func TestManagementAPIRejectsAnotherGeneration(t *testing.T) {
 	}
 	if code, _ := call(t, a.http, "DELETE", "/instances/room"+current, nil, true); code != 204 || a.room("room") != nil {
 		t.Fatalf("close at the current generation: %d", code)
+	}
+}
+
+// 世代を指定した作成は、部屋が fencing で捨てられた直後でも、新しい epoch の部屋を作らない。
+// 世代の確認を provisioning のロックの外でしていたときは、確認の直後に捨てられると epoch=1 の要求で epoch=2 が作られた。
+func TestProvisionWithGenerationNeverCreatesANewEpoch(t *testing.T) {
+	c := newCluster()
+	a := c.node(t, "node-a", false)
+	r := provision(t, a, "room")
+	stale := fmt.Sprintf("?gen=%s&epoch=%d", r.gen, r.epoch)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	a.discard(ctx, r, true)
+	if code, _ := call(t, a.http, "PUT", "/instances/room"+stale, definition("room"), true); code != 409 || a.room("room") != nil {
+		t.Fatalf("provision at a discarded generation: %d (room=%v)", code, a.room("room"))
+	}
+
+	// 古い世代の作成を何本も並べて投げている間に部屋を捨てても、古い世代の要求からは部屋が生まれない
+	for i := 0; i < 30; i++ {
+		fresh := provision(t, a, "race")
+		old := fmt.Sprintf("/instances/race?gen=%s&epoch=%d", fresh.gen, fresh.epoch)
+		var wg sync.WaitGroup
+		for w := 0; w < 8; w++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for k := 0; k < 5; k++ {
+					call(t, a.http, "PUT", old, definition("race"), true)
+				}
+			}()
+		}
+		time.Sleep(time.Duration(i%5) * time.Millisecond)
+		a.discard(ctx, fresh, true)
+		wg.Wait()
+		if created := a.room("race"); created != nil {
+			t.Fatalf("round %d: a request at epoch %d created epoch %d", i, fresh.epoch, created.epoch)
+		}
 	}
 }
 

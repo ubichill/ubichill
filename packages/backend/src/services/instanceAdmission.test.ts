@@ -7,13 +7,17 @@ const mocks = vi.hoisted(() => ({
     presence: vi.fn(),
     provision: vi.fn(),
     ticket: vi.fn(),
+    close: vi.fn(),
+    deleteByLeader: vi.fn(),
 }));
-vi.mock('@ubichill/db', () => ({ instanceRepository: { findById: mocks.findById } }));
+vi.mock('@ubichill/db', () => ({
+    instanceRepository: { findById: mocks.findById, deleteByLeader: mocks.deleteByLeader },
+}));
 vi.mock('../config', () => ({ appConfig: { runtime: { publicUrl: '/realtime/v1/ws' } } }));
 vi.mock('./worldRegistry', () => ({ worldRegistry: { getWorldByUrl: mocks.getWorldByUrl } }));
 vi.mock('./friends', () => ({ friendIdsOf: mocks.friendIdsOf }));
 vi.mock('./instanceRuntime', () => ({
-    instanceRuntime: { presence: mocks.presence, provision: mocks.provision, ticket: mocks.ticket },
+    instanceRuntime: { presence: mocks.presence, provision: mocks.provision, ticket: mocks.ticket, close: mocks.close },
 }));
 vi.mock('./instanceReaper', () => ({ instanceReaper: { markCreated: vi.fn() } }));
 
@@ -102,5 +106,39 @@ describe('ticketName', () => {
         expect(ticketName('   ')).toBeUndefined();
         // 絵文字などサロゲートペアは 1 文字として数える（Go の rune 数と揃える）
         expect(ticketName('😀'.repeat(30))).toBe('😀'.repeat(30));
+    });
+});
+
+describe('インスタンスの終了', () => {
+    beforeEach(() => {
+        vi.resetAllMocks();
+        mocks.findById.mockResolvedValue(record);
+        mocks.deleteByLeader.mockResolvedValue(true);
+    });
+
+    it('Go 側で閉じられたと確かめてから DB を消す', async () => {
+        mocks.close.mockResolvedValue(true);
+        await expect(instanceManager.closeInstance('room', 'owner')).resolves.toEqual({ success: true });
+        expect(mocks.deleteByLeader).toHaveBeenCalledWith('room', 'owner');
+    });
+
+    it('閉じられなければ（owner が止まっている・世代が合わない）DB を残して失敗を返す', async () => {
+        mocks.close.mockResolvedValue(false);
+        await expect(instanceManager.closeInstance('room', 'owner')).resolves.toMatchObject({
+            success: false,
+            reason: 'runtime-unavailable',
+        });
+        expect(mocks.deleteByLeader).not.toHaveBeenCalled();
+    });
+
+    it('Go への問い合わせが失敗したら DB を残す', async () => {
+        mocks.close.mockRejectedValue(new Error('Instance runtime: 503'));
+        await expect(instanceManager.closeInstance('room', 'owner')).rejects.toThrow();
+        expect(mocks.deleteByLeader).not.toHaveBeenCalled();
+    });
+
+    it('リーダー以外は Go に問い合わせる前に拒否する', async () => {
+        await expect(instanceManager.closeInstance('room', 'someone')).resolves.toMatchObject({ reason: 'forbidden' });
+        expect(mocks.close).not.toHaveBeenCalled();
     });
 });
