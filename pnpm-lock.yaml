@@ -332,6 +332,9 @@ importers:
       resend:
         specifier: ^6.28.1
         version: 6.28.1
+      undici:
+        specifier: ^7.29.1
+        version: 7.29.1
       yaml:
         specifier: 'catalog:'
         version: 2.9.1

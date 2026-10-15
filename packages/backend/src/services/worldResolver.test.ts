@@ -10,6 +10,7 @@ import {
     lockUrlFor,
     normalizeWorldUrl,
     resolveWorldFromYaml,
+    sendsRegistryToken,
     sigUrlFor,
     toRawGitHubUrl,
 } from './worldResolver';
@@ -30,6 +31,27 @@ spec:
     max: 16
   initialEntities: []
 `;
+
+describe('sendsRegistryToken', () => {
+    it('GitHub 本体のホストにだけトークンを送る', () => {
+        expect(sendsRegistryToken('https://raw.githubusercontent.com/o/r/main/w.yaml')).toBe(true);
+        expect(sendsRegistryToken('https://api.github.com/repos/o/r/contents/w.yaml')).toBe(true);
+    });
+
+    it('名前に github を含むだけのホストやパスには送らない', () => {
+        for (const url of [
+            'https://attacker.example/github.yaml',
+            'https://github.attacker.example/w.yaml',
+            'https://raw.githubusercontent.com.attacker.example/w.yaml',
+            'https://attacker.example/?u=raw.githubusercontent.com',
+            'https://raw.githubusercontent.com@attacker.example/w.yaml',
+            'http://raw.githubusercontent.com/o/r/main/w.yaml',
+            'not a url',
+        ]) {
+            expect(sendsRegistryToken(url), url).toBe(false);
+        }
+    });
+});
 
 describe('toRawGitHubUrl', () => {
     it('GitHub blob URL を raw へ変換する', () => {
