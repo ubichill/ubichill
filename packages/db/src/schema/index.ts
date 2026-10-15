@@ -7,6 +7,7 @@ export * from './cliAuthRequests';
 export * from './externalWorks';
 export * from './federationPeers';
 export * from './instances';
+export * from './pendingRegistrations';
 export * from './publishingEnvironments';
 export * from './users';
 export * from './worlds';
