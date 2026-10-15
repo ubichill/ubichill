@@ -71,8 +71,13 @@ pending_registrations
 ```
 
 - 規則は #242 のメモリ版（`services/pendingRegistrations.ts`）と同じにする。ID で引く、同じアドレスは同時に 3 件まで、5 回間違えたら捨てる、再送信で失敗回数を戻さない。
-- 失敗回数の加算と取り出しは 1 文で行う（`UPDATE ... RETURNING` / `DELETE ... RETURNING`）。同時に送られた確認で 2 回登録させない。
-- 本登録は、ハッシュ済みのパスワードで `users` と `accounts` を 1 トランザクションで作る。`auth.api.signUpEmail` は平文しか受け取らないので、better-auth の内部 adapter を使う。
+- **「同じアドレスは 3 件まで」は、数えてから足す（`SELECT COUNT` → `INSERT`）だけでは同時の申し込みで超える。** トランザクションの最初に `pg_advisory_xact_lock(hashtextextended(lower(email), 0))` でアドレスごとに直列にしてから、数えて足す。
+- **確認と本登録は 1 つのトランザクションにする。**
+  1. `SELECT ... FROM pending_registrations WHERE id_hash = $1 FOR UPDATE` で行を押さえる。
+  2. 期限切れなら消して終わる。コードが違えば `failures` を足し、上限なら消して確定させる（このトランザクションはここで commit）。
+  3. コードが合えば、`users` と `accounts` を作り、仮登録を消して commit する。
+  - 本登録が一意制約などで失敗したらロールバックし、仮登録は残る。同じコードで入れ直せる（メモリ版の `restore()` は要らなくなる）。
+- `users` と `accounts` は、better-auth の adapter ではなく、同じトランザクションの中で drizzle から直接書く（adapter は自分の接続を使うのでトランザクションに入れられない）。パスワードのハッシュは better-auth の `ctx.password.hash` で作り、`accounts.provider_id = 'credential'` など better-auth が読む形に揃える。better-auth を更新したときに形がずれないよう、「直接作ったユーザーで better-auth のログインが通る」結合テストを置く。
 - 期限切れの行は reaper と同じ定期処理で消す。
 - `handle` と表示名は仮登録の段階では押さえない（他人の名前を 10 分間取り置きできないように）。本登録の時点で一意制約に当たったら失敗させる。
 
@@ -114,9 +119,11 @@ worlds
   id                  varchar(21) PK
   author_id           text NOT NULL REFERENCES users ON DELETE CASCADE
   world_name          varchar(50) NOT NULL        -- 公開名。URL は /api/v1/authors/<handle>/worlds/<world_name>.yaml
-  current_version_id  varchar(21) NULL REFERENCES world_versions   -- 未公開なら NULL
+  current_version_id  varchar(21) NULL                -- 未公開なら NULL
   created_at, updated_at  timestamptz
   UNIQUE (author_id, world_name)
+  FOREIGN KEY (id, current_version_id) REFERENCES world_versions (world_id, id)
+    -- 別のワールドの版を current に指せないようにする（current_version_id が NULL なら検査されない）
 
 world_versions                    -- 変更しない（INSERT のみ）
   id             varchar(21) PK
@@ -125,9 +132,10 @@ world_versions                    -- 変更しない（INSERT のみ）
   definition     jsonb NOT NULL          -- 作者が送った生の値（署名の対象）
   lock           jsonb
   signature      jsonb
-  content_hash   text NOT NULL           -- sha256(JCS({definition, lock}))
+  content_hash   text NOT NULL           -- shared の worldContentHash() の値（後述）
   published_at   timestamptz NOT NULL
   UNIQUE (world_id, version)
+  UNIQUE (world_id, id)                  -- worlds からの複合外部キーの参照先
 
 world_drafts                      -- 0..1 / world
   world_id    varchar(21) PK REFERENCES worlds ON DELETE CASCADE
@@ -138,13 +146,20 @@ world_drafts                      -- 0..1 / world
 world_name_aliases                -- 今のまま
 ```
 
+- `worlds` と `world_versions` は互いを参照する。作るときは `worlds`（current は NULL）→ `world_versions` → `worlds.current_version_id` の更新、の順で 1 トランザクションに入れる。
+- **`content_hash` は、shared の `worldContentHash()` を唯一の正とする。** 形式は `sha256-<base64>`（`formatIntegrity`）で、`canonicalJson({ definition, lock: lock ?? null })` を対象にする。lock が無い版も `null` として計算する。保存する側で別のハッシュ計算を書かない（hex にすると既存の contentHash と一致しなくなる）。
 - 内部の ID `worlds.name` を消す。API の `/api/v1/worlds/:worldId` は `worlds.id` で引く。
 - 公開は「`world_versions` に 1 行足し、`current_version_id` を付け替え、下書きを消す」を 1 トランザクションで行う。
 - **同じ `version` で内容が違う公開は拒否する**（`content_hash` が違えばエラー）。版の番号を上げずに中身だけ差し替えることはできない。
 - 署名し直し（鍵の取り消しのあとなど）は、同じ版の `signature` だけを変えることになる。`world_versions` は変更しない方針なので、署名だけ別の行にするか、この列に限って更新を許すかを決める（未決 2）。
-- 公開を取り消すときは `current_version_id` を NULL にする。過去の版は残す。お気に入りやインスタンスが古い版の `content_hash` を指していても解決できる。
+- 公開を取り消すときは `current_version_id` を NULL にする。過去の版は残す。
 - **残す版は 3 つまで。** 4 つ目を公開すると、いちばん古い版を消す（公開そのものは拒否しない。更新できなくなると困るため）。
-  - ただし、動いているインスタンスが `content_hash` で指している版は消さない。そのインスタンスが終わってから消す。
+  - **消してよいかの基準は「その版を指すインスタンスの行が DB にあるか」にする。** Go 側で動いているかは基準にしない。owner が落ちても DB の行は残り、再入室で同じ版から作り直すため。
+  - これを DB で守るため、`instances.world_version_id` から `world_versions` へ `ON DELETE RESTRICT` の外部キーを張る（下のインスタンスの節）。インスタンスが reaper に消されてから、版を消す。
+  - 消せなかった古い版は、次に公開するときか定期処理で消し直す。その間は一時的に 3 版を超える。
+- **古い版の contentHash を後から解決できるのは、残っている版だけ。** 消した版の `content_hash` を指す取得は 410 Gone を返す。
+  - お気に入りはワールドの URL（`world_ref`）で持っているので、版を消しても影響しない。
+  - 版をまたいだ同一性は、署名済みのワールドの `worldId`（`ed25519:<publicKey>/<metadata.name>`）で表す（[world-identity.md](./world-identity.md)）。`content_hash` は「その版の中身」の識別にだけ使う。
   - 上限はワールドの保存数（今の `LIMITS.MAX_WORLDS_PER_USER` = 5）と同じ仕組みで決める。`limitsFor(user)` が `{ maxWorlds, maxVersionsPerWorld }` を返す関数にしておき、今は定数を返す。課金を入れるときは、この関数がプランを見るように変えるだけにする。
 
 ### インスタンス
@@ -153,7 +168,9 @@ world_name_aliases                -- 今のまま
 instances
   id            varchar(21) PK
   world_ref     text NOT NULL          -- 正規 URL（今のまま）
-  content_hash  text NULL              -- 作成時に解決したワールドの版（署名済みのとき）
+  content_hash  text NULL              -- 作成時に解決したワールドの版（worldContentHash()）
+  world_version_id varchar(21) NULL REFERENCES world_versions ON DELETE RESTRICT
+                                       -- 自サーバーで公開したワールドのときだけ。外部・公式は NULL
   leader_id     text NOT NULL REFERENCES users ON DELETE CASCADE
   access_type   instance_access_type NOT NULL
   access_tags   jsonb
