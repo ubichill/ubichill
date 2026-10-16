@@ -86,7 +86,7 @@ pending_registrations
 ```
 author_keys
   id              text PK              -- 代理キー（公開鍵は主キーにしない。下の理由）
-  account         text NOT NULL        -- handle@domain（自サーバーの作者も同じ形）
+  account         text NULL            -- remote のときだけ handle@domain。local は user_id から決める（下）
   algorithm       text NOT NULL        -- 今は ed25519 だけ
   public_key      text NOT NULL        -- 正規化した値（base64url・接頭辞なし）
   origin          text NOT NULL        -- local / remote
@@ -101,8 +101,9 @@ author_keys
   revoke_reason   text                 -- lost / compromised
   UNIQUE (account, algorithm, public_key)
   UNIQUE (algorithm, public_key) WHERE origin = 'local'   -- 1 つの鍵を持てる自サーバーのアカウントは 1 つ
-  INDEX (account), INDEX (user_id)
+  INDEX (user_id)                      -- account は一意索引の先頭列で引ける
   CHECK ((origin = 'local') = (user_id IS NOT NULL))
+  CHECK ((origin = 'remote') = (account IS NOT NULL))
 
 remote_authors
   account       text PK
@@ -117,7 +118,9 @@ author_confirmed_contents   -- 今のまま
   - 同じ鍵の書き方の違い（base64 と base64url、`ed25519:` の接頭辞）で別の行にならないよう、保存の前に正規化し、アルゴリズムを列に持つ。
   - 取り消した鍵を同じアカウントに登録し直すことは、`UNIQUE (account, algorithm, public_key)` で防ぐ（取り消しは覆らない。登録し直すなら新しい鍵）。主キーの副作用に頼らず、規則として持つ。
 - 他のサーバーが自サーバーの local の鍵を名乗ってきたら（同じ `(algorithm, public_key)` の local の行がある）、その remote の行は保存するが警告を記録し、署名の確認では使わない（なりすましの試みとして扱う）。
-- 作者の鍵の確認（`isAuthorKey`）は `author_keys` を `(account, algorithm, public_key)` で引くだけにする。local は即時、remote は `fetched_at` が古ければ WebFinger から取り直す。
+- **local の行は `account` を持たず、`user_id` から `users.handle` と `PUBLIC_BASE_URL` で作者アカウントを決める**（#251 で決定）。自ドメインは環境変数で決まり SQL から見えない、`PUBLIC_BASE_URL` を変えると保存した値が古くなる、handle が NULL のユーザーも鍵を登録できる、の 3 つのため。`UNIQUE (account, …)` が効くのは remote の行だけで、local は部分一意で守る。
+- 公開鍵の正規化は shared の `normalizeEd25519PublicKey` 1 つ（接頭辞なし・パディングなしの base64url、43 文字目の余りの 2 bit を 0 に揃える）。余りの bit を揃えないと、同じ鍵が 4 通りの文字列で検証を通る。
+- 作者の鍵の確認（`isAuthorKey`）は、shared の `authorKeyDirectory` の形（アカウント単位の鍵一覧）を保ち、DB はアカウントで引き、鍵の照合は正規化した値で行う。local は即時、remote は `fetched_at` が古ければ WebFinger から取り直す。
 - 取り消しは両方とも行の `revoked_at` で表す。lost は取り消し以前の署名を有効のまま、compromised はすべての署名を無効にする。この意味は今と同じ。
 - `publishing_environments` と `author_bindings` を移して消す。読み書きを切り替える PR と、古いテーブルを消す PR を分ける。
 
