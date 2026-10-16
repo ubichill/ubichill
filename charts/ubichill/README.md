@@ -142,3 +142,10 @@ Goを外部で運用する場合は `instanceRuntime.enabled=false` とし、bac
 
 コントリビューション手順はリポジトリルートの [README](../../README.md) と（追加予定の）`CONTRIBUTING.md` を参照。
 ライセンスはリポジトリルートの `LICENSE` に従います。
+
+
+### backend の Redis を有効にする前
+
+R2 の共有レート制限・掃除・通知は、`backend.replicaCount: 1` でも `REDIS_URL` が設定されていれば Redis を使う。
+本番の Argo CD では、R2 をデプロイする前に `redis.auth.existingSecret` と `existingSecretPasswordKey` を固定する。
+Redis に認証できない間は新規ログインが 503 になり、掃除は停止する。`/health` の `redis: ready` と認証付き PING を確認してから進める。

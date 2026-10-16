@@ -25,7 +25,11 @@ const DAY = 24 * 60 * 60_000;
 const old = { id: 'room', createdAt: new Date(T0 - DAY) };
 const runtimeRoom = (memberIds: string[], emptySince: number) =>
     new Map([['room', { id: 'room', memberIds, emptySince }]]);
-const held: LeaseGate = { hold: async () => true, release: async () => {} };
+const held: LeaseGate = {
+    hold: async () => true,
+    run: async (work) => work(async () => true),
+    release: async () => {},
+};
 const newReaper = (deps: { gate?: LeaseGate; absence?: AbsenceClock } = {}) =>
     new InstanceReaper({ gate: deps.gate ?? held, absence: deps.absence ?? createMemoryAbsenceClock(DAY) });
 
@@ -102,7 +106,7 @@ describe('InstanceReaper', () => {
     });
 
     it('リースを持っていなければ DB にも Go にも触らない', async () => {
-        const reaper = newReaper({ gate: { hold: async () => false, release: async () => {} } });
+        const reaper = newReaper({ gate: { hold: async () => false, run: async () => null, release: async () => {} } });
         mocks.presence.mockResolvedValue(runtimeRoom([], T0 - 60_000));
         expect(await reaper.runOnce()).toBeNull();
         expect(mocks.findAll).not.toHaveBeenCalled();
@@ -139,5 +143,27 @@ describe('InstanceReaper', () => {
         await reaper.sweepOnce();
         expect(forget).toHaveBeenLastCalledWith(['room']);
         expect((await absence.since(['room'], T0 + 61_000)).get('room')).toBe(T0 + 61_000);
+    });
+    it('Go の終了を待っている間にリースを失ったら DB は削除しない', async () => {
+        const lease = createMemoryLease();
+        const gate = createLeaseGate(lease, 'reaper', 1500, { info: vi.fn(), warn: vi.fn() });
+        mocks.presence.mockResolvedValue(runtimeRoom([], T0 - 60_000));
+        let finish!: (closed: boolean) => void;
+        mocks.close.mockImplementation(
+            () =>
+                new Promise<boolean>((resolve) => {
+                    finish = resolve;
+                }),
+        );
+        const running = newReaper({ gate }).runOnce();
+        await vi.advanceTimersByTimeAsync(0);
+        const renew = vi.spyOn(lease, 'renew').mockResolvedValue(false);
+        await vi.advanceTimersByTimeAsync(1500);
+        renew.mockRestore();
+        const next = createLeaseGate(lease, 'reaper', 1500, { info: vi.fn(), warn: vi.fn() });
+        expect(await next.hold()).toBe(true);
+        finish(true);
+        expect(await running).toBe(0);
+        expect(mocks.delete).not.toHaveBeenCalled();
     });
 });

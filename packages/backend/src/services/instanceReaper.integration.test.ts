@@ -86,4 +86,25 @@ describe.skipIf(!RUN)('InstanceReaper × 2 (Redis統合)', () => {
         expect(mocks.delete).toHaveBeenCalledWith('room');
         expect(await a.reaper.runOnce()).toBeNull();
     });
+    it('1 回の掃除が TTL より長くても、処理中の更新で別 backend に渡らない', async () => {
+        const [a, b] = pair();
+        mocks.presence.mockResolvedValue(
+            new Map([['room', { id: 'room', memberIds: [], emptySince: Date.now() - 60_000 }]]),
+        );
+        let finish!: (closed: boolean) => void;
+        mocks.close.mockImplementation(
+            () =>
+                new Promise<boolean>((resolve) => {
+                    finish = resolve;
+                }),
+        );
+        const running = a.reaper.runOnce();
+        await vi.waitFor(() => expect(mocks.close).toHaveBeenCalledOnce());
+        await sleep(2400);
+        expect(await b.reaper.runOnce()).toBeNull();
+        finish(true);
+        expect(await running).toBe(1);
+        expect(mocks.delete).toHaveBeenCalledOnce();
+        await a.gate.release();
+    });
 });

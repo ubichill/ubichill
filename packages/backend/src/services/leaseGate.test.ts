@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryLease, type Lease } from './lease';
 import { createLeaseGate } from './leaseGate';
 
@@ -79,5 +79,68 @@ describe('createLeaseGate', () => {
         expect(await gate.hold()).toBe(true);
         expect(acquire).not.toHaveBeenCalled();
         expect(log.info).toHaveBeenLastCalledWith(expect.stringContaining('Redis が戻りました'));
+    });
+});
+
+describe('LeaseGate.run', () => {
+    afterEach(() => vi.useRealTimers());
+
+    it('長い処理の途中も更新し、別 backend にリースを渡さない', async () => {
+        vi.useFakeTimers();
+        const lease = createMemoryLease();
+        const a = createLeaseGate(lease, 'reaper', 1500, quietLog());
+        const b = createLeaseGate(lease, 'reaper', 1500, quietLog());
+        let finish!: () => void;
+        const blocked = new Promise<void>((resolve) => {
+            finish = resolve;
+        });
+        const work = vi.fn(async (checkpoint: () => Promise<boolean>) => {
+            await blocked;
+            return checkpoint();
+        });
+        const running = a.run(work);
+        await vi.advanceTimersByTimeAsync(0);
+        await vi.advanceTimersByTimeAsync(5000);
+        expect(await b.hold()).toBe(false);
+        finish();
+        expect(await running).toBe(true);
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('失効後に別 backend が取ったら、元の処理は取り直さず副作用を止める', async () => {
+        vi.useFakeTimers();
+        const lease = createMemoryLease();
+        const a = createLeaseGate(lease, 'reaper', 1500, quietLog());
+        const b = createLeaseGate(lease, 'reaper', 1500, quietLog());
+        let finish!: () => void;
+        const blocked = new Promise<void>((resolve) => {
+            finish = resolve;
+        });
+        const effect = vi.fn();
+        const running = a.run(async (checkpoint) => {
+            await blocked;
+            if (await checkpoint()) effect();
+        });
+        await vi.advanceTimersByTimeAsync(0);
+        const renew = vi.spyOn(lease, 'renew').mockResolvedValue(false);
+        await vi.advanceTimersByTimeAsync(1500);
+        renew.mockRestore();
+        expect(await b.hold()).toBe(true);
+        finish();
+        await running;
+        expect(effect).not.toHaveBeenCalled();
+    });
+
+    it('延長の応答が止まっても checkpoint は期限内に false を返す', async () => {
+        vi.useFakeTimers();
+        const lease = createMemoryLease();
+        const gate = createLeaseGate(lease, 'reaper', 1500, quietLog());
+        const running = gate.run(async (checkpoint) => {
+            vi.spyOn(lease, 'renew').mockImplementation(() => new Promise(() => undefined));
+            return checkpoint();
+        });
+        await vi.advanceTimersByTimeAsync(600);
+        expect(await running).toBe(false);
+        expect(vi.getTimerCount()).toBe(0);
     });
 });

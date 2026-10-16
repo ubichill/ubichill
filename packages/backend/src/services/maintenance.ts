@@ -4,7 +4,7 @@ import { logger } from '../utils/logger';
 import { leaseFor } from './lease';
 import { createLeaseGate } from './leaseGate';
 
-// 掃除の間隔の数倍。ただし 1 回の掃除が Go の応答待ちで延びても、途中でほかの backend に移らない長さは取る
+// 処理中は LeaseGate.run が TTL の 1/3 ごとに更新し、失効したら次の副作用を止める。
 const ttlMs = Math.max(appConfig.instance.reapIntervalMs * 5, 15_000);
 
 /**

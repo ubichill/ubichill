@@ -174,10 +174,12 @@ async function startServer() {
 
     // 期限切れの CLI 認可の要求を消す（認証なしで作れるので溜めない）。reaper と同じリースを持つ 1 台だけが行う
     const cleanCliAuthRequests = async () => {
-        if (!(await maintenanceGate.hold())) return;
-        await cliAuthRequestRepository
-            .deleteExpired()
-            .catch((err: unknown) => console.error('CLI 認可の要求の掃除に失敗:', err));
+        await maintenanceGate.run(async (checkpoint) => {
+            if (!(await checkpoint())) return;
+            await cliAuthRequestRepository
+                .deleteExpired()
+                .catch((err: unknown) => console.error('CLI 認可の要求の掃除に失敗:', err));
+        });
     };
     void cleanCliAuthRequests();
     setInterval(() => void cleanCliAuthRequests(), 10 * 60 * 1000).unref();

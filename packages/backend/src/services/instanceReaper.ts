@@ -80,8 +80,7 @@ export class InstanceReaper {
 
     /** リースを持っていればスイープして削除件数を返す。持っていなければ（ほかの backend が担当・Redis 障害）null。 */
     async runOnce(): Promise<number | null> {
-        if (!(await this.deps.gate.hold())) return null;
-        return this.sweepOnce();
+        return this.deps.gate.run((checkpoint) => this.sweepOnce(checkpoint));
     }
 
     /**
@@ -89,7 +88,7 @@ export class InstanceReaper {
      * Go側の空室時刻と生成時刻から猶予を過ぎた instance を削除する。
      * Goに部屋が無い場合は復元待ちの猶予を使う。
      */
-    async sweepOnce(): Promise<number> {
+    async sweepOnce(checkpoint: () => Promise<boolean> = async () => true): Promise<number> {
         const graceMs = appConfig.instance.emptyTimeoutMs;
         const now = Date.now();
         const all = await instanceRepository.findAll({ includeFull: true });
@@ -100,6 +99,7 @@ export class InstanceReaper {
         for (const id of this.bornAt.keys()) {
             if (!liveIds.has(id)) this.bornAt.delete(id);
         }
+        if (!(await checkpoint())) return 0;
         const ids = all.map((inst) => inst.id);
         await this.deps.absence.forget(ids.filter((id) => presence.has(id)));
         const absentSince = await this.deps.absence.since(
@@ -120,13 +120,15 @@ export class InstanceReaper {
 
         const removed: string[] = [];
         for (const inst of reapable) {
+            if (!(await checkpoint())) break;
             if (!(await instanceRuntime.close(inst.id, now - graceMs))) continue;
-            removed.push(inst.id);
+            if (!(await checkpoint())) break;
             await instanceRepository.delete(inst.id);
+            removed.push(inst.id);
             this.bornAt.delete(inst.id);
             logger.info(`インスタンス自動削除（在席0・猶予経過）: ${inst.id}`);
         }
-        await this.deps.absence.forget(removed);
+        if (await checkpoint()) await this.deps.absence.forget(removed);
 
         return removed.length;
     }
