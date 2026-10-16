@@ -11,7 +11,7 @@ type RuntimeConflict = InstanceAPI['schemas']['Conflict'];
 type RuntimeOwnerInfo = InstanceAPI['schemas']['InstanceOwner'];
 
 /** 一覧・入室の判定・reaper が使う在席。Redis から読むときは名前・定員が無い。 */
-export type RoomPresence = Pick<RuntimePresence, 'id' | 'memberIds' | 'emptySince'>;
+export type RoomPresence = Pick<RuntimePresence, 'id' | 'memberIds' | 'emptySince' | 'gen' | 'epoch'>;
 
 /** 部屋の owner の管理 API の宛先と、呼び出しに付ける世代（Go は世代が合わなければ 409 を返す）。 */
 export interface RuntimeOwner {
@@ -63,6 +63,12 @@ export async function readRoomPresence(
         | string
         | null
     )[];
+    const expired = ids.filter((_, i) => !values[i]);
+    if (expired.length > 0) {
+        // 読んだあとに owner・在席が戻った部屋を一覧から消さないよう Redis 内で再確認する。
+        const keys = [`${prefix}rooms`, ...expired.flatMap((id) => [`${prefix}presence:${id}`, `${prefix}room:${id}`])];
+        await client.sendCommand(['EVAL', PRUNE_EXPIRED_ROOMS, String(keys.length), ...keys, ...expired]);
+    }
     return new Map(
         ids.flatMap((id, i) => {
             const presence = parsePresence(id, values[i]);
@@ -71,15 +77,29 @@ export async function readRoomPresence(
     );
 }
 
+const PRUNE_EXPIRED_ROOMS = `for i, id in ipairs(ARGV) do
+  if redis.call('EXISTS', KEYS[2*i]) == 0 and redis.call('EXISTS', KEYS[2*i+1]) == 0 then
+    redis.call('SREM', KEYS[1], id)
+  end
+end
+return 1`;
+
 function parsePresence(id: string, value: string | null | undefined): RoomPresence | null {
     if (!value) return null;
     try {
-        const parsed = JSON.parse(value) as { members?: unknown; emptySince?: unknown };
+        const parsed = JSON.parse(value) as { members?: unknown; emptySince?: unknown; gen?: unknown; epoch?: unknown };
         if (!Array.isArray(parsed.members) || typeof parsed.emptySince !== 'number') return null;
         return {
             id,
             memberIds: parsed.members.filter((m): m is string => typeof m === 'string'),
             emptySince: parsed.emptySince,
+            ...(typeof parsed.gen === 'string' &&
+            parsed.gen &&
+            typeof parsed.epoch === 'number' &&
+            Number.isSafeInteger(parsed.epoch) &&
+            parsed.epoch > 0
+                ? { gen: parsed.gen, epoch: parsed.epoch }
+                : {}),
         };
     } catch {
         return null;
@@ -205,12 +225,25 @@ export function createInstanceRuntime(options: InstanceRuntimeOptions) {
             throw new Error(`Instance runtime: 部屋を置ける Pod がありません (${failures.join(', ')})`);
         },
         /** 部屋を閉じる。owner が別の Pod なら、その Pod へ世代を付けて送り直す。 */
-        async close(id: string, emptyBefore?: number): Promise<boolean> {
+        async close(
+            id: string,
+            emptyBefore?: number,
+            observed?: Pick<RoomPresence, 'gen' | 'epoch'> | null,
+        ): Promise<boolean> {
             const path = `/instances/${encodeURIComponent(id)}`;
             const query: Record<string, string> = emptyBefore === undefined ? {} : { emptyBefore: String(emptyBefore) };
+            if (observed === null) query.absent = 'true';
+            else if (observed !== undefined) {
+                if (observed.gen && observed.epoch) Object.assign(query, generation(observed));
+                else if (options.directory === 'redis') return false; // 旧 Pod の近似値には世代が無い。更新を待つ。
+            }
             const response = await request(options.url, path, { method: 'DELETE' }, query);
             if (response.status !== 409) return response.status === 204;
             const conflict = (await response.json()) as RuntimeConflict;
+            // reaper が見た世代・不在と違う部屋は閉じない。移動先が同じ世代なら宛先だけを変える。
+            if (observed === null) return false;
+            if (observed && (conflict.owner?.gen !== observed.gen || conflict.owner?.epoch !== observed.epoch))
+                return false;
             // owner の無い 409 は owner の Pod 自身が答えた「在席がある・空いたばかり」
             const owner = liveOwner(conflict.owner);
             if (!owner) return false;

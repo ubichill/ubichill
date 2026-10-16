@@ -54,3 +54,20 @@ func TestDeleteFailsClosedWhenRetirementCannotReachRedis(t *testing.T) {
 		t.Fatal("failed deletion closed the room")
 	}
 }
+
+func TestAbsentObservationCannotCloseAnExistingRoom(t *testing.T) {
+	c := newCluster()
+	a, b := c.pod(t, "node-a"), c.pod(t, "node-b")
+	provision(t, b, "room")
+	for _, n := range []*node{a, b} {
+		if code, _ := call(t, n.http, "DELETE", "/instances/room?absent=true", nil, true); code != 409 {
+			t.Fatalf("absent DELETE on %s = %d", n.node, code)
+		}
+	}
+	if b.owned("room") == nil {
+		t.Fatal("the new room was closed")
+	}
+	if code, _ := call(t, a.http, "DELETE", "/instances/room?absent=true&gen=g1&epoch=1", nil, true); code != 400 {
+		t.Fatalf("conflicting expectations = %d", code)
+	}
+}

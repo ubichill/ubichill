@@ -425,6 +425,9 @@ func (s *Server) closeInstance(ctx context.Context, id, emptyBefore string, want
 	ctx, cancel := context.WithTimeout(ctx, s.fencing.Timeout)
 	defer cancel()
 	room := s.owned(id)
+	if room != nil && want.absent {
+		return 409, s.staleGeneration(ctx, id)
+	}
 	// 呼び出し側が見ていたのと別の世代の部屋（作り直された部屋）は閉じない
 	if room != nil && want.set && !want.matches(room) {
 		return 409, s.staleGeneration(ctx, id)
@@ -436,6 +439,9 @@ func (s *Server) closeInstance(ctx context.Context, id, emptyBefore string, want
 		owner, held, err := s.dir.Owner(ctx, id)
 		if err != nil && !errors.Is(err, coord.ErrInvalidRoom) {
 			return 503, failure(errDirectoryUnavailable.Error())
+		}
+		if held && (want.absent || want.set && (owner.Gen != want.gen || owner.Epoch != want.epoch)) {
+			return 409, s.staleGeneration(ctx, id)
 		}
 		if held && owner.Node != s.node {
 			info, alive, err := s.dir.Node(ctx, owner.Node)
@@ -495,9 +501,10 @@ func (s *Server) closeInstance(ctx context.Context, id, emptyBefore string, want
 
 // expectation は管理 API の ?gen=&epoch=（backend が知っている部屋の世代）。付いていなければ照らさない。
 type expectation struct {
-	set   bool
-	gen   string
-	epoch int64
+	absent bool
+	set    bool
+	gen    string
+	epoch  int64
 }
 
 func (e expectation) matches(r *Room) bool {
@@ -508,6 +515,13 @@ func (e expectation) matches(r *Room) bool {
 func expected(w http.ResponseWriter, r *http.Request) (expectation, bool) {
 	q := r.URL.Query()
 	gen, epoch := q.Get("gen"), q.Get("epoch")
+	if absent := q.Get("absent"); absent != "" {
+		if absent != "true" || gen != "" || epoch != "" {
+			writeJSON(w, 400, failure("absent=true cannot be combined with gen or epoch"))
+			return expectation{}, false
+		}
+		return expectation{absent: true}, true
+	}
 	if gen == "" && epoch == "" {
 		return expectation{}, true
 	}

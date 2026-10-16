@@ -83,7 +83,7 @@ describe('readRoomPresence', () => {
         });
         const map = await readRoomPresence({ sendCommand }, 'p:');
         expect([...map.entries()]).toEqual([['a', { id: 'a', memberIds: ['alice'], emptySince: 0 }]]);
-        expect(sendCommand).toHaveBeenLastCalledWith([
+        expect(sendCommand).toHaveBeenNthCalledWith(2, [
             'MGET',
             'p:presence:a',
             'p:presence:expired',
@@ -175,6 +175,34 @@ describe('instanceRuntime', () => {
         );
         expect(await runtime('redis', stale.fetch).close('room')).toBe(false);
         expect(stale.calls).toHaveLength(2);
+    });
+
+    it('reaper の close は観測した世代を付け、別の世代へ送り直さない', async () => {
+        const stale = fakeFetch({ status: 409, body: conflict(owner('10.0.0.8:3002', true, 5)) });
+        expect(await runtime('redis', stale.fetch).close('room', 123, { gen: 'g1', epoch: 4 })).toBe(false);
+        expect(stale.calls).toHaveLength(1);
+        expect(Object.fromEntries(stale.calls[0].url.searchParams)).toEqual({
+            emptyBefore: '123',
+            gen: 'g1',
+            epoch: '4',
+        });
+        const moved = fakeFetch({ status: 409, body: conflict(owner('10.0.0.8:3002')) }, { status: 204 });
+        expect(await runtime('redis', moved.fetch).close('room', 123, { gen: 'g1', epoch: 4 })).toBe(true);
+        expect(Object.fromEntries(moved.calls[1].url.searchParams)).toEqual({
+            emptyBefore: '123',
+            gen: 'g1',
+            epoch: '4',
+        });
+    });
+
+    it('reaper が不在を観測した部屋は、新しい owner がいたら閉じない', async () => {
+        const fresh = fakeFetch({ status: 409, body: conflict(owner('10.0.0.8:3002')) });
+        expect(await runtime('redis', fresh.fetch).close('room', 123, null)).toBe(false);
+        expect(fresh.calls).toHaveLength(1);
+        expect(Object.fromEntries(fresh.calls[0].url.searchParams)).toEqual({ emptyBefore: '123', absent: 'true' });
+        const oldPod = fakeFetch();
+        expect(await runtime('redis', oldPod.fetch).close('room', 123, {})).toBe(false);
+        expect(oldPod.calls).toHaveLength(0);
     });
 
     it('在席: redis は Redis を読み、Go の Service には問い合わせない。memory は Service に問い合わせる', async () => {

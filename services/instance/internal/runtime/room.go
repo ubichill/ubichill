@@ -168,7 +168,7 @@ func (r *Room) extend(deadline time.Time) {
 func (r *Room) occupancy() (coord.RoomPresence, int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	p := coord.RoomPresence{Room: r.definition.ID, Members: make([]string, 0, len(r.members)), EmptySince: r.emptySince}
+	p := coord.RoomPresence{Gen: r.gen, Epoch: r.epoch, Room: r.definition.ID, Members: make([]string, 0, len(r.members)), EmptySince: r.emptySince}
 	connected := 0
 	for id, m := range r.members {
 		p.Members = append(p.Members, id)

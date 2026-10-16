@@ -231,7 +231,7 @@
       },
       "delete": {
         "operationId": "closeInstance",
-        "description": "Closes the room only while this node is its owner, then releases the assignment. With gen and epoch, 409 when this node holds the room at another generation.",
+        "description": "Closes only the observed generation (gen and epoch) or only an unassigned room (absent=true). Atomically checks the owner token and retires the room. Redis errors fail closed.",
         "parameters": [
           {
             "name": "emptyBefore",
@@ -247,6 +247,14 @@
           },
           {
             "$ref": "#/components/parameters/ExpectedEpoch"
+          },
+          {
+            "name": "absent",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "With true, close only if no owner exists; cannot be combined with gen or epoch. Used by reaper after observing absence."
           }
         ],
         "responses": {

@@ -40,6 +40,8 @@ type NodeInfo struct {
 
 // RoomPresence は表示用の在席の近似値。入室の許可と定員の判定は owner が行う。
 type RoomPresence struct {
+	Gen        string   `json:"gen,omitempty"`
+	Epoch      int64    `json:"epoch,omitempty"`
 	Room       string   `json:"-"`
 	Members    []string `json:"members"`
 	EmptySince int64    `json:"emptySince"`
