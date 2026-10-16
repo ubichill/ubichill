@@ -1,4 +1,4 @@
-import { publishingEnvironmentRepository, userRepository } from '@ubichill/db';
+import { authorKeyRepository, userRepository } from '@ubichill/db';
 import { LIMITS, ModLockSchema } from '@ubichill/shared';
 import type { NextFunction, Request, Response } from 'express';
 import { Router } from 'express';
@@ -57,10 +57,9 @@ async function checkAuthorClaim(
     const user = await userRepository.findById(userId);
     const own = user?.handle ? selfAccount(user.handle) : null;
     if (claimed !== own) return { error: `署名の作者（${String(claimed)}）があなたのアカウントと一致しません` };
-    const env =
-        typeof publicKey === 'string' ? await publishingEnvironmentRepository.findByPublicKey(publicKey) : undefined;
+    const env = typeof publicKey === 'string' ? await authorKeyRepository.findLocalKey(publicKey) : undefined;
     // API トークンで送る署名は、そのトークンの公開環境の鍵で署名したものに限る（盗まれたトークンで別の鍵の署名を通させない）
-    if (tokenEnvironment && (typeof publicKey !== 'string' || publicKey !== tokenEnvironment.publicKey)) {
+    if (tokenEnvironment && env?.id !== tokenEnvironment.id) {
         return { error: 'API トークンで送る署名は、そのトークンの公開環境の鍵で署名してください' };
     }
     if (!env || env.userId !== userId || env.revokedAt) {
@@ -74,7 +73,7 @@ async function checkAuthorClaim(
 /** 公開に使った公開環境の最終利用を記録する（使われなくなった環境を一覧で見分けるため）。失敗しても公開は止めない。 */
 async function markEnvironmentUsed(claim: AuthorClaim): Promise<void> {
     if ('environmentId' in claim && claim.environmentId) {
-        await publishingEnvironmentRepository.touch(claim.environmentId).catch(() => undefined);
+        await authorKeyRepository.touch(claim.environmentId).catch(() => undefined);
     }
 }
 

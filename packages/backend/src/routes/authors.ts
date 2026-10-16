@@ -1,4 +1,4 @@
-import { publishingEnvironmentRepository, userRepository } from '@ubichill/db';
+import { authorKeyRepository, userRepository } from '@ubichill/db';
 import { HANDLE_PATTERN } from '@ubichill/shared';
 import { Router } from 'express';
 import { selfAccount } from '../services/authorKeys';
@@ -20,7 +20,7 @@ router.get('/:handle/signing-keys', async (req, res) => {
         res.status(404).json({ error: 'Not found' });
         return;
     }
-    const rows = await publishingEnvironmentRepository.listByUser(user.id);
+    const rows = await authorKeyRepository.listByUser(user.id);
     res.set('Access-Control-Allow-Origin', '*');
     // 取り消しを早く届けるため短くする
     res.set('Cache-Control', 'public, max-age=60');

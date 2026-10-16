@@ -1,7 +1,7 @@
 import {
+    authorKeyRepository,
     externalWorkRepository,
     favoriteRepository,
-    publishingEnvironmentRepository,
     userFriendRepository,
     userRepository,
     userSettingsRepository,
@@ -224,7 +224,7 @@ router.get('/me', requirePublisher, async (req, res) => {
         handle: user.handle ?? null,
         author: user.handle ? selfAccount(user.handle) : null,
         // 取り消されていない公開環境の鍵（このブラウザの鍵が登録済みかの判定に使う）
-        signingKeys: (await publishingEnvironmentRepository.listByUser(user.id))
+        signingKeys: (await authorKeyRepository.listByUser(user.id))
             .filter((e) => !e.revokedAt)
             .map((e) => e.publicKey),
         // 移行時に他人と表示名が重複していた（一意キー未設定）。変更を促す。
@@ -373,7 +373,7 @@ router.put('/me/handle', requireFreshAuth, async (req, res) => {
 // 公開環境（署名鍵）の一覧。取り消したものも含む。
 router.get('/me/publishing-environments', requireAuth, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-    const rows = await publishingEnvironmentRepository.listByUser(req.user.id);
+    const rows = await authorKeyRepository.listByUser(req.user.id);
     return res.json({ environments: rows.map((row) => publishingEnvironmentView(row)) });
 });
 
@@ -392,7 +392,7 @@ router.post('/me/publishing-environments', requireFreshAuth, async (req, res) =>
     );
     if (!verdict.ok) return res.status(422).json({ error: `鍵の所有を確認できません (${verdict.reason})` });
 
-    const existing = await publishingEnvironmentRepository.findByPublicKey(publicKey);
+    const existing = await authorKeyRepository.findLocalKey(publicKey);
     const outcome = registrationOutcome(existing, req.user.id);
     if (outcome === 'already-registered' && existing) {
         return res.json({ environment: publishingEnvironmentView(existing) });
@@ -402,7 +402,7 @@ router.post('/me/publishing-environments', requireFreshAuth, async (req, res) =>
     }
     if (outcome === 'taken') return res.status(409).json({ error: 'この鍵は登録できません', code: 'taken' });
     try {
-        const created = await publishingEnvironmentRepository.create({
+        const created = await authorKeyRepository.createLocal({
             userId: req.user.id,
             kind: 'browser',
             name: browserEnvironmentName(req.get('user-agent')),
@@ -428,7 +428,7 @@ router.post('/me/publishing-environments/:id/revoke', requireFreshAuth, async (r
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const reason = RevokeReasonSchema.safeParse(req.body?.reason);
     if (!reason.success) return res.status(400).json({ error: '取り消す理由（lost / compromised）が必要です' });
-    const revoked = await publishingEnvironmentRepository.revoke(req.user.id, String(req.params.id), reason.data);
+    const revoked = await authorKeyRepository.revoke(req.user.id, String(req.params.id), reason.data);
     if (!revoked) return res.status(404).json({ error: '有効な公開環境が見つかりません' });
     worldRegistry.invalidateResolvedWorlds();
     return res.json({ environment: publishingEnvironmentView(revoked) });

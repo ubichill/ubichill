@@ -1,4 +1,4 @@
-import { cliAuthRequestRepository, publishingEnvironmentRepository, userRepository } from '@ubichill/db';
+import { authorKeyRepository, cliAuthRequestRepository, userRepository } from '@ubichill/db';
 import {
     CLI_AUTH_POLL_INTERVAL_MS,
     CLI_AUTH_REQUEST_TTL_MS,
@@ -140,11 +140,11 @@ router.post('/token', async (req, res) => {
     if (!consumed) return res.status(409).json({ error: 'この認可の要求は引き換え済みです', code: 'consumed' });
     const user = await userRepository.findById(request.userId);
     if (!user?.handle) return res.status(409).json({ error: '作者アカウントが見つかりません' });
-    if (await publishingEnvironmentRepository.findByPublicKey(request.publicKey)) {
+    if (await authorKeyRepository.findLocalKey(request.publicKey)) {
         return res.status(409).json({ error: 'この鍵は登録できません（作り直してください）', code: 'taken' });
     }
     const token = newApiToken();
-    const environment = await publishingEnvironmentRepository.create({
+    const environment = await authorKeyRepository.createLocal({
         userId: user.id,
         kind: request.kind,
         name: request.name,
@@ -174,7 +174,7 @@ router.post('/logout', requirePublisher, async (req, res) => {
             .status(400)
             .json({ error: 'API トークンで呼んでください（ブラウザの公開環境は画面から取り消します）' });
     }
-    const revoked = await publishingEnvironmentRepository.revoke(req.user.id, req.publishingEnvironment.id, 'lost');
+    const revoked = await authorKeyRepository.revoke(req.user.id, req.publishingEnvironment.id, 'lost');
     worldRegistry.invalidateResolvedWorlds();
     return res.json({ revoked: !!revoked });
 });

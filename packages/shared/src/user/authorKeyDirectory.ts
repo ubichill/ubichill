@@ -108,7 +108,7 @@ export function webFingerLinks(
     };
 }
 
-/** 保存済みの確認結果（DB の author_bindings）。 */
+/** 保存済みの確認結果（backend は DB の author_keys・remote_authors）。 */
 export interface StoredAuthorBinding extends AuthorProfile {
     fetchedAt: Date;
 }
