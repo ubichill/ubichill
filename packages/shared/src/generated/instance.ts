@@ -67,7 +67,7 @@ export interface paths {
         /** @description Idempotent create. Existing instance state is never reset. Management token required. Assigns the room to this node in the directory: 409 with the owner when another node holds it, 503 when the directory is unavailable, when this node is draining or when it holds its maximum number of rooms (choose another node). 400 for a room closed within the last 2 minutes on any node. With gen and epoch, 409 unless this node holds the room at that generation (never creates a new one). */
         put: operations['provisionInstance'];
         post?: never;
-        /** @description Closes the room only while this node is its owner, then releases the assignment. With gen and epoch, 409 when this node holds the room at another generation. */
+        /** @description Closes only the observed generation (gen and epoch) or only an unassigned room (absent=true). Atomically checks the owner token and retires the room. Redis errors fail closed. */
         delete: operations['closeInstance'];
         options?: never;
         head?: never;
@@ -397,6 +397,8 @@ export interface operations {
                 gen?: components['parameters']['ExpectedGen'];
                 /** @description 呼び出し側が知っている owner の epoch。gen と組で指定する。 */
                 epoch?: components['parameters']['ExpectedEpoch'];
+                /** @description With true, close only if no owner exists; cannot be combined with gen or epoch. Used by reaper after observing absence. */
+                absent?: boolean;
             };
             header?: never;
             path: {

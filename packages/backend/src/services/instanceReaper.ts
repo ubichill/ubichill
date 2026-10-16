@@ -103,7 +103,15 @@ export class InstanceReaper {
         const removed: string[] = [];
         for (const inst of reapable) {
             if (!(await checkpoint())) break;
-            if (!(await instanceRuntime.close(inst.id, now - graceMs))) continue;
+            const observed = presence.get(inst.id);
+            if (
+                !(await instanceRuntime.close(
+                    inst.id,
+                    now - graceMs,
+                    observed ? { gen: observed.gen, epoch: observed.epoch } : null,
+                ))
+            )
+                continue;
             if (!(await checkpoint())) break;
             await instanceRepository.delete(inst.id);
             removed.push(inst.id);

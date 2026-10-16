@@ -97,7 +97,7 @@ backendのデプロイや設定変更ではGoを再起動しない（状態が�
   持っている部屋は入室・操作・延長とも続ける。接続（参加者と中継）が無くなるか `--drain-timeout`（既定 0。chart は redis のとき 15 秒）を過ぎたら、
   残りの部屋を閉じて割り当てを解放する（`instance:closing` は送らない）。クライアントは繋ぎ直し、部屋は別の Pod に作り直される。
 - **閉じた部屋**: 終了した部屋は 2 分間どの Pod でも作り直せない（Directory の `ubi:retired:<id>`。memory なら Pod の中だけ）。割り当ての Lua の中で確かめ、
-  閉じる側は割り当てを解放する前に印を付けるので、閉じた直後に別の Pod へ届いた作成でも生き返らない。作成は 400。
+  閉じる側は token の照合・印の設定・割り当てと在席の削除を原子的に行う。owner が変わっていたら 409、Redis に届かなければ 503 を返し、DB の削除を止める。作成は 400。
 - **WS Router**: 各 Pod が Router を兼ねる。最初の `world:join` の部屋が手元に無ければ、Directory の owner の内部アドレス
   （heartbeat の `addr`）の `/realtime/v1/relay` へ WebSocket を張り、`world:join` から先を双方向に中継する。owner は Upgrade の後に1回だけ決め、
   owner が接続を閉じたら（自己停止・終了・退出）中継も閉じる。クライアントはチケットを取り直して繋ぎ直す。
@@ -111,6 +111,8 @@ backendのデプロイや設定変更ではGoを再起動しない（状態が�
   受信70KiBの上限は両方にあるが、中継は同じバイト列を送るので先に効くのは繋いだ Pod。ping/pong とアイドルの切断は区間ごと
   （クライアント ⇔ 繋いだ Pod、繋いだ Pod ⇔ owner）。
 - 管理 API（作成・チケット発行・終了）は任意の `?gen=&epoch=` を受け、今の部屋の世代と違えば409（今の owner を付ける）。
+  reaper は観測した世代を付け、世代が変わっていれば送り直さない。不在を観測した場合は `?absent=true` で owner がいないことを原子的に確認する。
+  Redis の在席にも `gen/epoch` を載せ、owner も在席も期限切れの参照は backend が Redis 内で再確認して `ubi:rooms` から外す。
   backend は `directory: redis` のとき、割り当てた Pod（在席の `addr`、409 の `owner.addr`）の `http://<addr>/realtime/v1` へ続く管理 API を送り、
   在席は Redis の `ubi:rooms`・`ubi:presence:<id>` から読む。
 - owner は部屋のリースを 5 秒ごとに延長する。最後に成功した延長の要求を送った時刻から 10 秒（TTL 15 秒 − 余裕 5 秒）を過ぎると、

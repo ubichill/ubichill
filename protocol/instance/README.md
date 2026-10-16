@@ -75,3 +75,8 @@ ownerが接続を閉じたら中継も閉じるので、クライアントはい
 - メディアtimelineはrevisionによる競合検出。同じmediaIdのloadは冪等。
 - 受信70KiB、エンティティ64KiB、ephemeral32KiB、240イベント/秒/接続が上限。
 - インスタンス最大1000、部屋の参加者最大1000、エンティティ10000、メディアsession1000。
+
+
+reaper の DELETE は、観測した `gen`・`epoch` を付ける。409 の別世代へ削除を送り直さない。
+観測時に部屋が不在なら `absent=true`（`gen`・`epoch` と同時指定不可）を付け、owner が現れていれば 409 にする。
+終了時の token 照合・retired の設定・割り当てと在席の削除は Directory の原子的な操作で行い、Redis 障害時は 503 で DB の行を残す。

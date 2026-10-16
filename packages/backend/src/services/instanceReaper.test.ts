@@ -24,7 +24,7 @@ const T0 = Date.UTC(2026, 0, 1);
 const DAY = 24 * 60 * 60_000;
 const old = { id: 'room', createdAt: new Date(T0 - DAY) };
 const runtimeRoom = (memberIds: string[], emptySince: number) =>
-    new Map([['room', { id: 'room', memberIds, emptySince }]]);
+    new Map([['room', { id: 'room', memberIds, emptySince, gen: 'g1', epoch: 1 }]]);
 const held: LeaseGate = {
     hold: async () => true,
     run: async (work) => work(async () => true),
@@ -83,7 +83,7 @@ describe('InstanceReaper', () => {
     it('Go 上で空になってから猶予を超えたら削除する', async () => {
         mocks.presence.mockResolvedValue(runtimeRoom([], T0 - 60_000));
         expect(await newReaper().sweepOnce()).toBe(1);
-        expect(mocks.close).toHaveBeenCalledWith('room', T0 - 60_000);
+        expect(mocks.close).toHaveBeenCalledWith('room', T0 - 60_000, { gen: 'g1', epoch: 1 });
     });
     it('Go が削除を拒否（直前に誰かが入った）したら DB からも消さない', async () => {
         mocks.presence.mockResolvedValue(runtimeRoom([], T0 - 60_000));
