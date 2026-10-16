@@ -299,7 +299,11 @@ class WorldRegistry {
             }),
         );
 
-        return [...repositoryItems.flat(), ...dbItems.flat()].filter((w) => isPublishable(w.identity));
+        // 開発・プレビューで署名なしとして配っている同梱ワールドも一覧に出す（利用者のワールドは署名済みだけ）
+        const repositoryListed = repositoryItems
+            .flat()
+            .filter((w) => isPublishable(w.identity) || serveUnsignedRepositoryWorlds());
+        return [...repositoryListed, ...dbItems.flat().filter((w) => isPublishable(w.identity))];
     }
 
     /**
