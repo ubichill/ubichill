@@ -20,8 +20,13 @@ kubectl -n ubichill exec -it $PG -- bash -c 'PGPASSWORD=$POSTGRES_PASSWORD psql 
 
 ```sql
 SHOW timezone;
-SELECT rolname, rolconfig FROM pg_roles WHERE rolconfig IS NOT NULL;
-SELECT datname, datconfig FROM pg_database WHERE datconfig IS NOT NULL;
+-- DB 共通・ロール共通・DB とロールの組ごとの設定をすべて確認する
+SELECT d.datname, r.rolname, s.setconfig
+FROM pg_db_role_setting s
+LEFT JOIN pg_database d ON d.oid = s.setdatabase
+LEFT JOIN pg_roles r ON r.oid = s.setrole
+WHERE s.setdatabase IN (0, (SELECT oid FROM pg_database WHERE datname = current_database()))
+  AND s.setrole IN (0, (SELECT oid FROM pg_roles WHERE rolname = current_user));
 -- 適用済みのマイグレーション（baselineIfNeeded で空振りしていないかの基準）
 SELECT id, hash, created_at FROM drizzle.__drizzle_migrations ORDER BY id;
 ```
