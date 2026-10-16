@@ -244,10 +244,15 @@ jobs:
     # verify-mods / verify-sdk は SDK npm 公開物の検証であり、Docker イメージには不要。
     # これらを待たずに lint/test/typecheck 通過後すぐイメージビルドを開始する（並列化）。
     needs: [lint, test, typecheck, detect-changes]
+    # 本番（push）は lint・test・typecheck がすべて通ってから。プレビュー（PR + preview ラベル）は typecheck だけを条件にし、
+    # テストが落ちていてもイメージを作る（作らないとプレビューが ImagePullBackOff のまま黙って壊れる）。結果は preview-status が PR に書く。
     if: >
+      always() && !cancelled() &&
       github.event.pull_request.user.login != 'dependabot[bot]' &&
+      needs.typecheck.result == 'success' && needs.detect-changes.result == 'success' &&
       (
-        (github.event_name == 'push' && needs.detect-changes.outputs.backend == 'true') ||
+        (github.event_name == 'push' && needs.lint.result == 'success' && needs.test.result == 'success' &&
+          needs.detect-changes.outputs.backend == 'true') ||
         (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'preview'))
       )
     runs-on: ubuntu-latest
@@ -318,10 +323,15 @@ jobs:
   build-frontend:
     name: Build and push Frontend image
     needs: [lint, test, typecheck, detect-changes]
+    # 本番（push）は lint・test・typecheck がすべて通ってから。プレビュー（PR + preview ラベル）は typecheck だけを条件にし、
+    # テストが落ちていてもイメージを作る（作らないとプレビューが ImagePullBackOff のまま黙って壊れる）。結果は preview-status が PR に書く。
     if: >
+      always() && !cancelled() &&
       github.event.pull_request.user.login != 'dependabot[bot]' &&
+      needs.typecheck.result == 'success' && needs.detect-changes.result == 'success' &&
       (
-        (github.event_name == 'push' && needs.detect-changes.outputs.frontend == 'true') ||
+        (github.event_name == 'push' && needs.lint.result == 'success' && needs.test.result == 'success' &&
+          needs.detect-changes.outputs.frontend == 'true') ||
         (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'preview'))
       )
     runs-on: ubuntu-latest
@@ -398,10 +408,15 @@ jobs:
   build-instance:
     name: Build and push Instance image
     needs: [lint, test, typecheck, detect-changes]
+    # 本番（push）は lint・test・typecheck がすべて通ってから。プレビュー（PR + preview ラベル）は typecheck だけを条件にし、
+    # テストが落ちていてもイメージを作る（作らないとプレビューが ImagePullBackOff のまま黙って壊れる）。結果は preview-status が PR に書く。
     if: >
+      always() && !cancelled() &&
       github.event.pull_request.user.login != 'dependabot[bot]' &&
+      needs.typecheck.result == 'success' && needs.detect-changes.result == 'success' &&
       (
-        (github.event_name == 'push' && needs.detect-changes.outputs.instance == 'true') ||
+        (github.event_name == 'push' && needs.lint.result == 'success' && needs.test.result == 'success' &&
+          needs.detect-changes.outputs.instance == 'true') ||
         (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'preview'))
       )
     runs-on: ubuntu-latest
@@ -445,6 +460,38 @@ jobs:
           cache-from: type=gha,scope=instance
           cache-to: type=gha,mode=max,scope=instance
           provenance: false
+
+  # ── プレビューの状態を PR に知らせる ─────────────────────────────────────────
+  # イメージを作れたか、テストが通ったか、プレビューが新しいコミットで立ち上がったかを 1 つのコメントにまとめて更新する。
+  preview-status:
+    name: Preview status
+    needs: [lint, test, typecheck, build-backend, build-frontend, build-instance]
+    if: >
+      always() && !cancelled() &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      contains(github.event.pull_request.labels.*.name, 'preview')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: Report preview status
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          LINT: ${{ needs.lint.result }}
+          TEST: ${{ needs.test.result }}
+          TYPECHECK: ${{ needs.typecheck.result }}
+          BUILD_BACKEND: ${{ needs.build-backend.result }}
+          BUILD_FRONTEND: ${{ needs.build-frontend.result }}
+          BUILD_INSTANCE: ${{ needs.build-instance.result }}
+        run: .github/scripts/preview-status.sh
 
   # ── git タグ付け（push to main のビルド完了後）──────────────────────────────
 
