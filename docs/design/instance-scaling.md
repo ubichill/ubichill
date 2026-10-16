@@ -97,7 +97,7 @@ Redis を設定した環境では、Redis が落ちても**プロセス内の状
 
 ## reaper（空インスタンスの掃除）
 
-- 実行は Redis のリース `ubi:lease:reaper`（`token` 付き、Lua で更新・解放）を取った backend 1 台だけ。
+- 実行は Redis のリース `ubi:lease:reaper`（`token` 付き、Lua で更新・解放）を取った backend 1 台だけ。掃除中も TTL の 1/3 ごとに更新し、失効した処理はリースを取り直さず削除を止める。
 - 作成時刻は DB の `created_at`（timestamptz）。`markCreated` のプロセス内の記録をやめる。
 - 復旧の猶予の起点（今の `absentSince`）は `ubi:absent:<roomId>` に置く。リースが別の backend に移っても、猶予が延びたり縮んだりしない。
 - 削除の直前に、owner の管理 API の `close(emptyBefore, gen, epoch)` を呼ぶ。owner が「今も空で、emptyBefore より前から空」かつ世代が一致するときだけ閉じる（今の `instanceRuntime.close()` の原子的な判定を owner 側で保つ）。owner がいない部屋は、`ubi:absent` からの猶予が過ぎていれば DB から消す。
@@ -143,7 +143,7 @@ spec:
 | 対象 | 対応 |
 |---|---|
 | HTTP のレート制限 | `rate-limit-redis` の store |
-| better-auth のレート制限 | better-auth の `secondaryStorage` に Redis |
+| better-auth のレート制限 | `rateLimit.customStorage` に Redis（セッション・検証値は Postgres のまま） |
 | 登録の仮データ | Postgres の `pending_registrations`（[db-redesign.md](./db-redesign.md)） |
 | reaper | Redis のリース、DB の `created_at`、共有の `ubi:absent`。削除の前に owner の世代と在席を確かめる |
 | CLI 承認・仮登録の期限切れの掃除 | reaper と同じリースの下で実行する |
@@ -173,7 +173,7 @@ backend を 2 台以上にする前に、DB 側の「時刻の型」と「仮登
 | R2 | backend のレート制限・reaper（リースと共有の猶予）・キャッシュ共有、`replicas: 2` | R1、DB 側の時刻の型・仮登録 |
 | G1 | Go の Directory、heartbeat、原子的な割り当て、リースと世代（fencing）、自己停止 | R1 |
 | G2 | WS Router（Go Pod のプロキシ）、チケットの世代の検証、2 Pod での部屋単位の分散 | G1 |
-| G3 | owner の障害時の割り当て直し、在席と reaper の整合、障害テスト | G2 |
+| G3 | owner の障害時の割り当て直し、在席と reaper の整合、障害テスト | G2、R2 |
 | K1 | Prometheus の指標、KEDA の scale-out、自動の scale-in は無効 | G3、クラスタの Prometheus・KEDA |
 | K2 | 安全な自動の scale-in（`pod-deletion-cost` と drain、足りなければ配置コントローラ） | K1 |
 | K3 | 1 部屋の接続の限界に当たったときだけ、edge/owner の分離を検討 | 負荷試験 |
@@ -185,3 +185,11 @@ backend を 2 台以上にする前に、DB 側の「時刻の型」と「仮登
 3. Redis を Helm の subchart で持つか、外部の Redis にするか。
 4. 自動の scale-in の方式（`pod-deletion-cost` で足りるか）。決まるまでは scale-out だけを自動にする。
 5. KEDA を home-manifests にどう入れるか（Helm の Application、namespace、CRD の扱い）。
+
+
+## 本番に有効化する条件
+
+- R2 は backend が 1 台でも、`REDIS_URL` があれば共有のレート制限・掃除・通知に Redis を使う。R2 の本番デプロイ前に、home-manifests で `redis.auth.existingSecret` と `existingSecretPasswordKey` を固定する。Argo CD の描画でパスワードを作り直させない。
+- G3 は R2 と合わせ、reaper が観測した `(gen, epoch)` だけを閉じる。観測時に owner がいなければ、閉じる時点でも owner がいない場合だけ DB を削除する。
+- 部屋の閉鎖は、Redis で token の照合・retired の設定・割り当てと在席の削除を原子的に行う。Redis に届かなければ成功を返さず、DB の行を残す。
+- 本番データを検証環境へコピーしても、作者アカウントは `handle@domain` ごとに別のものとして扱う。別ドメインでの作者確認、鍵の取り消し、未署名ワールドの入室は検証用のアカウントと鍵で確かめる。
