@@ -1,5 +1,18 @@
 // World CRD スキーマ
 
+export {
+    MOD_SIGNATURE_FILE,
+    type ModSignature,
+    ModSignatureSchema,
+    SIGNATURE_FORMAT,
+    SIGNATURE_KINDS,
+    SIGNATURE_VERSION,
+    type SignatureEnvelope,
+    SignatureEnvelopeSchema,
+    type SignatureKind,
+    type WorldSignature,
+    WorldSignatureSchema,
+} from '../signature/envelope';
 // Instance API スキーマ
 export {
     AccessType,
@@ -89,6 +102,4 @@ export {
     Ed25519SignatureSchema,
     type WorldIdentity,
     WorldIdentitySchema,
-    type WorldSignature,
-    WorldSignatureSchema,
 } from './worldIdentity.schema';

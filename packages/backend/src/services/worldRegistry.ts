@@ -30,6 +30,7 @@ import { customAlphabet } from 'nanoid';
 import yaml from 'yaml';
 import { isAuthorKey, resolveAuthorDisplayName } from './authorKeyStore';
 import { selfDomain } from './authorKeys';
+import { federatedCandidates, uniqueByWorldId } from './federatedWorlds';
 import { createRemoteWorldCache } from './remoteWorldCache';
 import { assertPublicUrl, safeFetch } from './safeFetch';
 import {
@@ -49,7 +50,13 @@ const SYSTEM_AUTHOR_ID = '00000000-0000-0000-0000-000000000000';
 
 export type WorldResolution =
     | { ok: true; world: ResolvedWorld }
-    | { ok: false; reason: 'not-found' | 'integrity'; message: string };
+    | {
+          ok: false;
+          reason: 'not-found' | 'integrity';
+          message: string;
+          /** 署名を検証できなかった理由（本体のワールドだけ。作者に直し方を案内するため）。 */
+          signatureReason?: WorldSignatureInvalidReason;
+      };
 
 const NOT_FOUND: WorldResolution = { ok: false, reason: 'not-found', message: 'World not found' };
 
@@ -187,6 +194,10 @@ class WorldRegistry {
      * 本体がホストするワールドの正規 URL（＝一意キー）。作者の ID と名前で決まり（共有 URL は `/@handle/name`）、
      * DB のワールドもリポジトリのワールドも、外部ホストと同じく YAML の URL で兄弟の `.lock.json` / `.sig.json` を同じ場所に置く。
      */
+    hostedWorldUrl(handle: string, name: string): string {
+        return this.selfWorldUrl(handle, name);
+    }
+
     private selfWorldUrl(handle: string, name: string): string {
         return `${this._publicBaseUrl}/api/v1/authors/${handle}/worlds/${name}.yaml`;
     }
@@ -238,19 +249,12 @@ class WorldRegistry {
     // ================================================================
 
     /**
-     * ワールド一覧を返す。
-     * - `local`: official/registry + ユーザー作成（自インスタンス）
-     * - `global`: フォロー中の連合ピアから取得したワールド
-     * - `all`: 両方（デフォルト）
+     * ワールド一覧を返す。ローカルと連合は混ぜない。
+     * - `local`: このサーバーのワールド（リポジトリ + ユーザー作成）
+     * - `global`: フォロー中の連合ピアのワールド（各ピアのローカルだけ）
      */
-    async listWorlds(scope: 'local' | 'global' | 'all' = 'all'): Promise<WorldListItem[]> {
-        const localItems = await this._listLocalWorlds();
-        if (scope === 'local') return localItems;
-
-        const globalItems = await this._listGlobalWorlds();
-        if (scope === 'global') return globalItems;
-
-        return [...localItems, ...globalItems];
+    async listWorlds(scope: 'local' | 'global'): Promise<WorldListItem[]> {
+        return scope === 'local' ? this._listLocalWorlds() : this._listGlobalWorlds();
     }
 
     /** 自インスタンスのワールド一覧（署名検証済みのみ。未署名は URL を知っている人だけが入れる）。 */
@@ -283,16 +287,20 @@ class WorldRegistry {
      */
     private async _listGlobalWorlds(): Promise<WorldListItem[]> {
         const results = await Promise.allSettled(this._peers.map((peer) => this._fetchPeerWorlds(peer)));
-        const items = results.flatMap((r) => (r.status === 'fulfilled' ? r.value : []));
+        const candidates = federatedCandidates(
+            results.flatMap((r) => (r.status === 'fulfilled' ? r.value : [])),
+            this._publicBaseUrl,
+        );
         const verified = await Promise.all(
-            items.map(async (item): Promise<WorldListItem | null> => {
+            candidates.map(async (item): Promise<WorldListItem | null> => {
                 const resolution = await this._resolveRemote(normalizeWorldUrl(item.url));
                 if (!resolution.ok || !isPublishable(resolution.world.identity)) return null;
-                // 作者名・識別はピアの自己申告ではなく、自分で解決した値を使う
-                return { ...item, identity: resolution.world.identity, authorName: resolution.world.authorName };
+                // 表示する値（名前・説明・作者・識別）はピアの申告ではなく、自分で取得して確かめたワールドから作る。
+                // どのピアから知ったか（source）だけはピアの一覧の値を使う
+                return { ...this._toListItem(resolution.world), source: item.source };
             }),
         );
-        return verified.filter((w): w is WorldListItem => w !== null);
+        return uniqueByWorldId(verified.filter((w): w is WorldListItem => w !== null));
     }
 
     /** 単一ピアのワールド一覧を取得する。キャッシュが有効ならそれを返す。 */
@@ -302,7 +310,8 @@ class WorldRegistry {
             return cached.worlds;
         }
         try {
-            const res = await safeFetch(`${peer.baseUrl}/api/v1/worlds`, {
+            // ピアのローカルだけを取る（ピアが連合で受け取ったワールドまで取り込まない）
+            const res = await safeFetch(`${peer.baseUrl}/api/v1/worlds?scope=local`, {
                 headers: { Accept: 'application/json' },
                 signal: AbortSignal.timeout(5000),
             });
@@ -427,6 +436,25 @@ class WorldRegistry {
     /** 外部（他インスタンス/任意 URL）のワールドをその場で解決する（連合）。TTL キャッシュ（失敗も短時間）。 */
     private _resolveRemote(url: string): Promise<WorldResolution> {
         return this._remoteCache.resolve(url);
+    }
+
+    /** 外部のワールドを取り直して解決する（作者が公開し直したのを確かめ直すとき。呼び出し側で回数を抑えること）。 */
+    async resolveRemoteFresh(url: string): Promise<WorldResolution> {
+        const norm = normalizeWorldUrl(url);
+        if (this._selfRef(norm)) return NOT_FOUND;
+        this._remoteCache.forget(norm);
+        return this._resolveRemote(norm);
+    }
+
+    /** 外部のワールドを解決する（キャッシュを使う）。このサーバーのワールドの URL は外部として扱わない。 */
+    async resolveRemote(url: string): Promise<WorldResolution> {
+        const norm = normalizeWorldUrl(url);
+        return this._selfRef(norm) ? NOT_FOUND : this._resolveRemote(norm);
+    }
+
+    /** 一覧の 1 件の形にする（外部の作品をユーザーページ・一覧に出すとき）。 */
+    listItemOf(world: ResolvedWorld): WorldListItem {
+        return this._toListItem(world);
     }
 
     /** 外部 URL から provenance（source）を推定する。 */
@@ -866,6 +894,7 @@ class WorldRegistry {
                     ok: false,
                     reason: 'integrity',
                     message: `署名が内容と一致しないため配信していません（${err.reason}）。作者が公開し直す必要があります`,
+                    signatureReason: err.reason,
                 };
             }
             console.error(`❌ ワールド ${id} を読み込めません（配信しません）`, err);

@@ -47,12 +47,16 @@ export default function Counter() {
 | `Ubi.canvas` | 共有キャンバス描画（`frame`/`commitStroke`） |
 | `Ubi.player` | 参加者情報・スクロール位置・カーソル同期 |
 | `Ubi.media` | 動画/音声/HLSの読み込みと再生制御 |
-| `Ubi.fetch(url)` | HTTP リクエスト（ドメイン単位でユーザー承認を経由） |
+| `Ubi.asset` | 同梱アセット（`assets/`）の読み込みと WASM のコンパイル。Host が manifest の integrity と照合して渡す |
+| `Ubi.runtime` | 実行環境の能力判定（`supports('wasm:simd')` など）と、未対応時の明確なエラー（`require`） |
+| `Ubi.fetch(url, options?)` | HTTP リクエスト（ドメイン単位でユーザー承認）。`responseType: 'arrayBuffer'`・`maxBytes`・`timeoutMs`・`signal` |
 | `Ubi.registerSystem(fn)` | ECS System登録（毎フレーム呼ばれる） |
 
 - 権限（capability）はビルド時に使用APIから自動検出され、`export const config` で宣言したものと和集合される。
   一覧・危険度は [`docs/CAPABILITIES.md`](https://github.com/ubichill/ubichill/blob/main/docs/CAPABILITIES.md)。
 - Worker→Host のワイヤープロトコルバージョンは `PROTOCOL_VERSION`（npm semverとは連動しない）。
+- WASM・バイナリ・通信の境界（ブラウザの CORS は解除されない等）は
+  [`docs/MOD_RUNTIME.md`](https://github.com/ubichill/ubichill/blob/main/docs/MOD_RUNTIME.md)。
 
 ### JSX（オプション）
 
@@ -66,7 +70,7 @@ export default function Counter() {
 ```bash
 npx ubichill build  [--mods-dir=<dir>] [--public-mods-dir=<dir>] [--dist-dir=<dir>]
 npx ubichill lock   <world.yaml> [--mods-dir=<dir>] [--base-url=<url>] [--out=<path>]
-npx ubichill verify [--dist-dir=<dir>]
+npx ubichill verify [--dist-dir=<dir>] [--require-signatures]
 ```
 
 - **`build`**: `src/**/*.worker.ts(x)` のうち `export const config` を持つファイルを Component
@@ -92,6 +96,7 @@ npx ubichill verify [--dist-dir=<dir>]
     取得に失敗しても（未公開・オフライン等）ビルド自体は失敗しない。
 - **`verify`**: `build` の出力を fail-closed で再検証する。`lock.json` の integrity が
   実際に配布するバイト列と一致するかを独立に再計算して突き合わせ、ズレていれば非ゼロ終了する。
+  作者署名（`lock.sig.json`）があれば今の lock に対して有効かも調べ、`--require-signatures` で署名の無い mod も不合格にする。
   CI の配布前ゲートに使う想定。
 - **`lock`**: ワールド定義（YAML）が参照する mod の `lock.json` 断片を集約し、
   兄弟ファイル `<world>.lock.json` に書き出す。ホストはこのロックでmodの完全性
@@ -157,6 +162,30 @@ jobs:
           UBICHILL_CREDENTIALS: ${{ secrets.UBICHILL_CREDENTIALS }}
       # GitHub Pages などに置くなら、署名済みのファイルを書き出してアップロードする
       # - run: npx ubichill publish worlds/*.yaml --out=dist/
+```
+
+- **mod に署名する（必須）**: Host は、作者アカウントの署名を確認できた mod だけを実行する。`build` のあとに
+  `publish <ビルド出力>` を実行すると、ワールドと同じアカウント・同じ鍵で `v<version>/lock.sig.json` を書き出す
+  （mod はサーバーへ送らない。署名済みの出力をそのまま GitHub Pages などへ置く）。開発中は、開発用の Host が自分の
+  オリジンの未署名 mod だけを動かす。
+
+```yaml
+# mod のリポジトリの公開ワークフロー（抜粋）
+      - run: npx ubichill build
+      - run: npx ubichill publish dist          # 複数 mod の出力なら dist/mods
+        env:
+          UBICHILL_CREDENTIALS: ${{ secrets.UBICHILL_CREDENTIALS }}
+      - run: npx ubichill verify --dist-dir=dist --require-signatures
+      # このあと dist を GitHub Pages などへ置く
+```
+
+- **ユーザーページに出す（`--public-url`）**: 外部に置く作品は、公開先の URL を渡すと署名したときに作者アカウントのサーバーへ登録され、
+  ユーザーページに出る（サーバーは公開先で本人の署名付きと確かめてから出す）。ワールドは `--out` の中身を置く URL
+  （`<URL>/<world>.yaml` になる）、mod は配布の基点（省略時は package.json の `homepage`）。登録に失敗しても公開は止めない。
+
+```bash
+npx ubichill publish worlds/*.yaml --out=dist/worlds --public-url=https://yourname.github.io/your-worlds/worlds
+npx ubichill publish dist --public-url=https://yourname.github.io/your-mod
 ```
 
 - **`verify <world.yaml>`**: 兄弟の `.sig.json` が今の `world.yaml` と `.lock.json` に対して有効か調べる（CI 用。無効・未署名・

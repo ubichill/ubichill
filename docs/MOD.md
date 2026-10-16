@@ -58,6 +58,13 @@ Component 定義（`ComponentManifestEntry`）の主なフィールド:
 > **形式は JSON で確定。** URL で動的ロードされ、ゼロトラストの信頼境界で `JSON.parse` される。
 > 依存ゼロ・YAML 特有の地雷（アンカー爆弾・暗黙の型強制）を境界に持ち込まないため。
 
+### 同梱アセット
+
+`mods/<id>/assets/` に置いたファイル（WASM・データ・zip など）は、ビルドで versioned ディレクトリへコピーされ、
+各ファイルの sha256 が manifest の `assetIntegrity` に載る。manifest は lock で固定されるので、アセットの中身も
+lock に連なって固定される。Worker からは `Ubi.asset.bytes(path)` / `Ubi.asset.wasm(path)` で読み、Host が
+integrity と照合してから渡す（→ [MOD_RUNTIME.md](./MOD_RUNTIME.md)）。サンプルは `mods/wasm-demo`。
+
 ---
 
 ## 権限（capability）
@@ -107,6 +114,74 @@ lock が防ぐのは「一度承認した mod が、後から URL 乗っ取り�
 mod は SDK 経由で Host と通信する。SDK と Host は独立更新されるため、初期化時に
 `PROTOCOL_VERSION` を突き合わせて非互換を検出する
 （→ [CAPABILITIES.md](./CAPABILITIES.md#プロトコルバージョン)）。
+
+---
+
+## 作者署名（必須）
+
+mod の配布物には**作者アカウントの署名が必須**。Host は、署名で作者を確認できた mod だけを実行する。
+鍵・作者アカウント・公開環境・取り消しはワールドの署名と同じ仕組みを使う（→ [author-publishing.md](./design/author-publishing.md)）。
+
+| | 担当 |
+| --- | --- |
+| 承認したものと同一のコードか | lock（ワールドが固定） |
+| そのコードをだれが出したか | 作者署名（本節） |
+| 何をしてよいか | capability の同意 |
+
+- **署名するもの**: `v<version>/lock.json` のうち実行内容を決める部分（id・version・manifest の hash・各 worker の hash と
+  権限の上限）。置き場所（URL）は含めないので、同じ配布物をどこに置いても同じ署名で確かめられる。
+- **置き場所**: `lock.json` の兄弟の `v<version>/lock.sig.json`。
+- **署名の方法**: `ubichill build` のあとに `ubichill publish <ビルド出力>`（`ubichill login` したアカウント。CI は
+  Secret `UBICHILL_CREDENTIALS`）。mod はサーバーへ送らない。署名済みの出力をそのまま GitHub Pages などへ置く。
+- **Host の確認（ブラウザで行う）**: ワールドの lock と一致した mod について `lock.sig.json` を取得し、ブラウザで署名を照合して、
+  作者のサーバーの WebFinger から鍵の一覧を直接取って作者を確かめる。Host のオリジンのサーバーには頼らないので、
+  SNS backend の無い単体モードでも同じ規則で動く。規則（鍵一覧の期限・取り消し・取得の上限・作者のサーバーが止まったときの猶予）は
+  サーバーがサービストークンを発行するときと同じコード（`@ubichill/shared` の `authorKeyDirectory`）で、ブラウザは結果を localStorage に持つ。
+  署名が無い・lock と合わない・作者の鍵ではない・鍵が取り消されている・作者をいま確認できない mod は実行しない。
+- **表示**: 権限の確認画面と World Editor の mod 一覧（選んでいる版）に、確認できた作者（`@ID@ドメイン`）を出す。名乗っているだけの作者は出さない。
+  実行しなかった mod は、理由つきで画面に出す（いまは確認できない場合は再試行できる）。
+- **権限の許可は「作者＋mod の ID」に付く**: 利用者が許可・拒否した記録（capability・外部通信のドメイン）は、確認できた作者と mod の ID の組に
+  結び付ける。同じ作者の新しい版は許可を引き継ぎ、同じ ID を名乗る別の作者の mod は引き継がない。
+  作者署名が必須になる前の記録（ID だけ）は、どの mod にも使われない（もう一度確認する）。
+- **取り消しが届くまで**: 作者が公開環境を取り消すと、作者のサーバーが動いていれば 1 時間以内（鍵一覧を取り直す間隔）に各ブラウザへ届き、
+  さらに確認できた結果を 5 分だけ使い回すので、それを過ぎた読み込み（ワールドの移動・入り直し）から実行されなくなる。実行中の mod は止めない。
+- **作者のサーバーへの問い合わせ**: 利用者のブラウザが作者のサーバー（WebFinger・鍵一覧）に直接問い合わせる。mod の配布物を作者の置き場所から
+  取るのと同じく、作者のサーバーには利用者の IP が見える。作者のサーバーは `Access-Control-Allow-Origin: *` で返す必要がある
+  （Ubichill のサーバーは返している）。
+
+```bash
+npx ubichill login                 # 1 回だけ（CI は ubichill ci create で作った UBICHILL_CREDENTIALS）
+npx ubichill build
+npx ubichill publish dist          # 単体 mod の出力。複数 mod なら dist/mods
+npx ubichill verify --dist-dir=dist --require-signatures
+```
+
+内容が変わるビルドをすると、以前の内容に付けた `lock.sig.json` は消える（署名し直す）。同じ内容の再ビルドでは残る。
+
+### ユーザーページに出す
+
+`publish` に公開先の URL（Host がこの mod を取りに来る基点。ワールドの依存の `source.url` と同じ値）を渡すと、署名したときに
+作者アカウントのサーバーへ登録され、ユーザーページの「公開している mod」に出る。`--public-url` を省くと package.json の
+`homepage` を使う。サーバーは公開先から `lock.json` と `lock.sig.json` を取り、本人の署名付きで配られていると確かめたものだけを出す
+（公開前・別の物に置き換えた・鍵を取り消した場合は出ない）。設定の「ワールド」→「外部に置いた作品」で、作品ごとの状態
+（公開済み・公開待ち・取得失敗・署名を確認できない）を見て再確認でき、登録を外せる。API トークン（CLI・CI）で登録するときは、
+そのトークンの公開環境の鍵で署名した作品に限る（ワールドの公開と同じ）。
+
+```bash
+npx ubichill publish dist --public-url=https://yourname.github.io/your-mod
+```
+
+### 開発中の mod
+
+開発用の Host（`pnpm dev`、または `VITE_ENVIRONMENT=development` でビルドしたプレビュー）は、**自分のオリジンから配る mod に
+限って**、署名ファイルの無い mod を「署名なし（開発）」として動かす。署名ファイルがあれば開発用の Host でも必ず確かめる。
+本番としてビルドした Host（`VITE_ENVIRONMENT` を指定しないビルドを含む）に例外は無い。
+
+自分でビルドしたイメージに自分の mod を同梱して本番運用するときは、自分のサーバーのアカウントで署名する
+（`ubichill login --server=<自分のサーバー>` → `ubichill publish packages/frontend/public/mods` → イメージをビルド。
+`--build-arg REQUIRE_MOD_SIGNATURES=true` で、署名の無い mod があればビルドを止められる）。
+公式イメージに同梱の mod は公式アカウント（`ubichill@ubichill.com`）の署名なので、サーバーが `ubichill.com` に
+問い合わせられる必要がある（確認できた結果はサーバーに保存される）。
 
 ---
 

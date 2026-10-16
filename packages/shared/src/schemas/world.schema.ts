@@ -10,6 +10,8 @@ import { WorldIdentitySchema } from './worldIdentity.schema';
 
 export const LIMITS = {
     MAX_YAML_SIZE: 100 * 1024, // 100KB
+    /** ワールドを送る依頼（yaml・lock・署名を JSON にしたもの）の上限。yaml の上限に lock と署名の分を足した余裕。 */
+    MAX_PUBLISH_REQUEST_SIZE: 512 * 1024,
     MAX_STRING_LENGTH: 1000,
     MAX_INITIAL_ENTITIES: 500,
     MAX_COMPONENTS_PER_ENTITY: 32,

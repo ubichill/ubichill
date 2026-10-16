@@ -153,7 +153,7 @@ func (s *Server) serveSocket(w http.ResponseWriter, r *http.Request) {
 			}
 			s.admission.Lock()
 			old := s.active[t.Subject]
-			err = room.join(p, user, t.Subject, f.ID)
+			err = room.join(p, profile(user, t), t.Subject, f.ID)
 			if err == nil {
 				// Keep the previous session if the destination rejects admission.
 				if old != nil && old != p && old.room != nil && old.room != room {
@@ -187,6 +187,16 @@ func (s *Server) serveSocket(w http.ResponseWriter, r *http.Request) {
 			p.room.handle(p, f)
 		}
 	}
+}
+
+// profile keeps only the fields other participants may see. Unknown fields (e.g. image URLs that every
+// participant's browser would fetch) are dropped, and the SNS-vouched name wins over the client's.
+func profile(user Object, t ticket) Object {
+	name := str(user["name"])
+	if t.Name != "" {
+		name = t.Name
+	}
+	return Object{"name": name, "status": user["status"], "position": user["position"]}
 }
 func returnAfterSend(p *peer) {
 	select {

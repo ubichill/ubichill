@@ -35,7 +35,7 @@ interface RawIndexEntry {
 }
 
 const MOD_BASE_URL: string = (() => {
-    const envUrl = (import.meta.env.VITE_MOD_CDN_URL as string | undefined) ?? '';
+    const envUrl = import.meta.env.VITE_MOD_CDN_URL ?? '';
     if (envUrl) return envUrl.replace(/\/$/, '');
     return '/mods';
 })();

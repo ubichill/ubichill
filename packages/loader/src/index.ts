@@ -4,7 +4,7 @@
  * browser+Node 両対応・React/DOM 非依存。frontend（取得+検証）と CLI（ロック生成）が共有する。
  * 知識（スキーマ / resolveLockedMod）は @ubichill/shared、隔離実行は @ubichill/sandbox。
  */
-export { type AcquireModOptions, acquireMod, resetAcquireCaches } from './acquireMod.ts';
+export { type AcquireModOptions, acquireMod, MOD_AUTHOR_CACHE_TTL_MS, resetAcquireCaches } from './acquireMod.ts';
 export {
     buildWorldLock,
     collectModIds,

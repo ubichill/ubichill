@@ -6,6 +6,7 @@ const account: MyAccount = {
     id: 'u1',
     name: 'ようかん',
     displayNameConflict: false,
+    displayNameChangeAvailableAt: null,
     passwordChangeRequired: false,
     passwordManagedBySecret: false,
     isAdmin: false,

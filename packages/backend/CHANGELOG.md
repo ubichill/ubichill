@@ -1,5 +1,64 @@
 # @ubichill/backend
 
+## 1.8.0
+
+### Minor Changes
+
+- 902a24c: mod の作者署名の確認をブラウザで行うようにした（単体モードでも mod が動く）。作者の確認の規則（鍵一覧の期限・取り消し・取得の上限・作者のサーバーが止まったときの猶予）を `@ubichill/shared` の `createAuthorKeyDirectory` に移し、ブラウザ（localStorage）とサーバー（DB）が同じコードで確かめる。Host は自分のオリジンの backend に確認を頼まなくなった。使われなくなった `POST /api/v1/mods/signature/verify` は削除した（フロントは backend との版のずれを検知して読み込み直すので、内部の API の互換は残さない）。WebFinger の鍵一覧の URL は、実行環境の URL で正規化してから同じオリジンかを比べる。localStorage を使えない環境ではメモリに切り替えて確認を続ける。
+- a5d6f3a: 外部（GitHub Pages など）に置いたワールド・mod をユーザーページに出せるようにした。`ubichill publish` に `--public-url`（mod は省略時 package.json の `homepage`）を渡すと、署名したときに作者アカウントのサーバーへ登録される。サーバーは本人の署名が付いた内容だけを登録し、表示する前に公開先で本人の署名付きで配られているかを確かめる。ユーザーページに「公開している mod」を追加し、外部のワールドも「作成したワールド」に出る。
+- 18142c5: サービストークンに、依頼した mod の確認済みの作者アカウント（`mod_author`）を載せるようにした。Host が読み込み時に確認した mod の署名を発行の依頼に付け、サーバーが確かめ直したときだけ入る。サービスは `checkServiceTokenClaims` の `allowedModAuthors` で「自分が署名した mod からの依頼だけ受ける」と決められる。
+- b802a3c: 作者署名をワールドと mod で 1 つの形式にした（`format: "ubichill-signature"`・`version: 2`・`kind`。docs/PROTOCOLS.md）。署名する値・検証の順番は `signEnvelope` / `verifyEnvelope` の 1 か所で、`kind` が署名する値に入るので別の種類の署名として使い回せない。作者は必須で正規の表記だけ。版 1 の署名は読まないので、ワールドと mod は `ubichill publish` で署名し直す必要がある。形式を固定するテストベクターを加えた。
+
+### Patch Changes
+
+- 2a2dc60: ワールドの一覧でローカルと連合を混ぜないようにした。`GET /api/v1/worlds` の既定は `scope=local`（このサーバーのワールドだけ）になり、`scope=all` は無くなった。連合ピアからはピアのローカルだけを取り、このサーバー自身のワールドを連合の一覧に出さない。
+- Updated dependencies [902a24c]
+- Updated dependencies [a5d6f3a]
+- Updated dependencies [9d7c2d9]
+- Updated dependencies [18142c5]
+- Updated dependencies [b802a3c]
+  - @ubichill/shared@1.9.0
+  - @ubichill/db@1.4.0
+
+## 1.7.0
+
+### Minor Changes
+
+- c6cba3a: mod の作者署名を必須にした。`ubichill publish <ビルド出力>` がワールドと同じアカウント・同じ鍵（CI は `UBICHILL_CREDENTIALS`）で `v<version>/lock.sig.json` を書き出し、Host は署名で作者を確認できた mod だけを実行する（`POST /api/v1/mods/signature/verify`）。`ubichill verify` は署名も検証し（`--require-signatures`）、単体 mod の出力（`dist/v<version>/`）も検証するようになった。公開済みの mod は署名して公開し直す必要がある。権限の許可は「作者＋ mod の ID」に結び付くようになり、同じ ID を名乗る別の作者の mod は許可を引き継がない（これまでの許可は確認し直しになる）。
+
+### Patch Changes
+
+- Updated dependencies [c6cba3a]
+  - @ubichill/shared@1.8.0
+  - @ubichill/db@1.3.1
+
+## 1.6.0
+
+### Minor Changes
+
+- 70ae199: 表示名を別の名前に変えるのを 90 日に 1 回までにする（大文字小文字・全角半角だけの変更と、重複の解消は除く）。ユーザー検索は表示名の一意キーで照合して ID の一致を先に並べ、`@ID@サーバー` の指定を解釈する（ほかのサーバーのアカウントは `remoteAccount` として返す）。
+- 1e313e9: mod が外部サービスへ身元証明を渡せる `Ubi.identity.token(audience)` を追加。Ubichill のサーバーが短命の JWT（EdDSA）を発行し、サービスは公開鍵（`/api/v1/service-tokens/keys`）だけで検証できる。利用者 ID はサービスごとの仮名。権限 `identity:token`。プロトコル v5。
+
+### Patch Changes
+
+- Updated dependencies [70ae199]
+- Updated dependencies [5d131c6]
+- Updated dependencies [1e313e9]
+  - @ubichill/shared@1.7.0
+  - @ubichill/db@1.3.0
+
+## 1.5.0
+
+### Minor Changes
+
+- 749cc83: インスタンス内の通信・状態管理を Go サーバーへ分離。ゲストによる単体運用、SNS 参加チケット、OpenAPI による共通型生成、WebSocket 接続と再同期に対応。
+
+### Patch Changes
+
+- Updated dependencies [749cc83]
+  - @ubichill/shared@1.6.0
+  - @ubichill/db@1.2.1
+
 ## 1.4.0
 
 ### Minor Changes

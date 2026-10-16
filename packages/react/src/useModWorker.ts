@@ -1,15 +1,23 @@
-import { type HostHandlers, ModHostManager, type ModHostManagerOptions } from '@ubichill/sandbox';
-import type {
-    ComponentInstance,
-    EntityPatchPayload,
-    FetchOptions,
-    FetchResult,
-    InputFrameEvent,
-    MediaLoadOptions,
-    ModGuestCommand,
-    ModHostEvent,
-    ModWorkerMessage,
-    VNode,
+import {
+    forbiddenFetchResult,
+    type HostFetchContext,
+    type HostHandlers,
+    ModHostManager,
+    type ModHostManagerOptions,
+} from '@ubichill/sandbox';
+import {
+    type ComponentInstance,
+    type EntityPatchPayload,
+    type FetchOptions,
+    type FetchResult,
+    type InputFrameEvent,
+    type MediaLoadOptions,
+    type ModGuestCommand,
+    type ModHostEvent,
+    type ModWorkerMessage,
+    UbiError,
+    UbiErrorCode,
+    type VNode,
 } from '@ubichill/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -98,8 +106,17 @@ export type ModWorkerHandlers<TPayloadMap extends Record<string, unknown> = Reco
         payload: import('@ubichill/shared').CmdRide['payload'],
         senderComponentInstanceId: string | undefined,
     ) => void;
-    /** Worker が Ubi.network.fetch() を呼んだときに発火する */
-    onFetch?: (url: string, options?: FetchOptions) => Promise<FetchResult>;
+    /** Worker が Ubi.identity.token() を呼んだときに発火する。失敗は UbiError を投げる */
+    onIdentityToken?: (
+        audience: string,
+        context: { signal: AbortSignal },
+    ) => Promise<import('@ubichill/shared').RpcIdentityTokenResult>;
+    /** Worker が Ubi.fetch() を呼んだときに発火する。context.signal で通信を止めること */
+    onFetch?: (
+        url: string,
+        options?: FetchOptions,
+        context?: HostFetchContext,
+    ) => Promise<FetchResult<string | ArrayBuffer>>;
     /** Tick 送信直前に発火するパフォーマンスフック（setMetricHandler 登録時のみ） */
     onTickComplete?: (metric: import('@ubichill/sandbox').TickMetric) => void;
 };
@@ -165,6 +182,7 @@ export function useModWorker<TPayloadMap extends Record<string, unknown> = Recor
         const manager = new ModHostManager<TPayloadMap>({
             modCode: options.modCode,
             modId: options.modId,
+            permissionSubject: options.permissionSubject,
             componentInstanceId: options.componentInstanceId,
             entityId: options.entityId,
             parentEntityId: options.parentEntityId,
@@ -180,6 +198,7 @@ export function useModWorker<TPayloadMap extends Record<string, unknown> = Recor
             worldId: options.worldId,
             myUserId: options.myUserId,
             modBase: options.modBase,
+            assetIntegrity: options.assetIntegrity,
             watchEntityTypes: options.watchEntityTypes,
             initialEntities: initialEntitiesRef.current,
             handlers: {
@@ -223,9 +242,20 @@ export function useModWorker<TPayloadMap extends Record<string, unknown> = Recor
                 },
                 onUpdateEntity: (id, patch) => handlersRef.current.onUpdateEntity?.(id, patch) ?? Promise.resolve(),
                 onDestroyEntity: (id) => handlersRef.current.onDestroyEntity?.(id) ?? Promise.resolve(),
-                onFetch: (url, options) =>
-                    handlersRef.current.onFetch?.(url, options) ??
-                    Promise.resolve({ ok: false, status: 403, statusText: 'Forbidden', headers: {}, body: '' }),
+                onFetch: (url, options, context) =>
+                    handlersRef.current.onFetch?.(url, options, context) ??
+                    Promise.resolve(
+                        forbiddenFetchResult(
+                            UbiErrorCode.HANDLER_NOT_CONNECTED,
+                            'fetch のハンドラーが接続されていません',
+                            options?.responseType,
+                        ),
+                    ),
+                onIdentityToken: (audience, context) =>
+                    handlersRef.current.onIdentityToken?.(audience, context) ??
+                    Promise.reject(
+                        new UbiError(UbiErrorCode.IDENTITY_UNAVAILABLE, '身元証明のハンドラーが接続されていません'),
+                    ),
                 onTickComplete: (metric) => handlersRef.current.onTickComplete?.(metric),
             },
             onResourceLimitExceeded: (reason) => onResourceLimitExceededRef.current?.(reason),
@@ -241,6 +271,7 @@ export function useModWorker<TPayloadMap extends Record<string, unknown> = Recor
         options.enabled,
         options.modCode,
         options.modId,
+        options.permissionSubject,
         options.componentInstanceId,
         options.entityId,
         options.parentEntityId,
@@ -255,6 +286,7 @@ export function useModWorker<TPayloadMap extends Record<string, unknown> = Recor
         options.worldId,
         options.myUserId,
         options.modBase,
+        options.assetIntegrity,
         options.watchEntityTypes,
     ]);
 

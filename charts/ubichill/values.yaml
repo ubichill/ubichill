@@ -136,6 +136,9 @@ backend:
     # 強いランダム値にし、リポジトリにはコミットしない（existingSecret を推奨）。
     # ログイン用メールは backend.env.OFFICIAL_ACCOUNT_EMAIL（既定 ubichill@ubichill.com）。
     OFFICIAL_ACCOUNT_PASSWORD: ""
+    # サービストークン（mod が外部サービスへ渡す身元証明）の署名鍵。Ed25519 の PKCS8（PEM か base64）。
+    # 作り方: openssl genpkey -algorithm ed25519。全 Pod で同じ鍵を使う。空なら本番では発行しない（docs/SERVICE_TOKEN.md）。
+    SERVICE_TOKEN_SIGNING_KEY: ""
   
   # Existing secret containing the secrets (skips secretEnv creation and injects it)
   existingSecret: ""

@@ -9,16 +9,34 @@
  * リポジトリの実ファイル（packages/frontend/public/mods）は汚さず、一時ディレクトリへビルドする
  * （buildMod の publicModsDir/distModsDir 注入を利用）。
  */
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { acquireMod, buildWorldLock, createHttpLockEntryGetter, resetAcquireCaches } from '@ubichill/loader';
+import {
+    acquireMod,
+    buildWorldLock,
+    createHttpLockEntryGetter,
+    generateSigningKeyPkcs8,
+    importSigningKey,
+    resetAcquireCaches,
+    webWorldCrypto,
+} from '@ubichill/loader';
+import { type ModLockEntry, verifyModSignature } from '@ubichill/shared';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildMod } from './build.ts';
+import { listDirsOnDisk } from './modLayout.ts';
+import { publishMods } from './publishMods.ts';
+import { verifyAllModLocks, verifyAllModSignatures } from './verify.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+/** この結合テストは build と lock 照合の契約だけを見る。署名ファイルは置かず、開発用の Host として読む。 */
+const unsignedDev = {
+    verifySignature: async () => ({ status: 'rejected', reason: 'author-unconfirmed' }) as const,
+    allowUnsigned: () => true,
+};
 const repoRoot = join(__dirname, '..', '..', '..');
 const penModDir = join(repoRoot, 'mods', 'pen');
 
@@ -130,7 +148,7 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
         const result = await acquireMod('pen:canvas', {
             baseUrl: publicDir,
             lock,
-            fetchImpl: fsFetch,
+            fetchImpl: fsFetch, ...unsignedDev,
         });
 
         expect(typeof result === 'object' && 'workerCode' in result).toBe(true);
@@ -148,7 +166,7 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
             const result = await acquireMod('pen:canvas', {
                 baseUrl: publicDir,
                 lock,
-                fetchImpl: fsFetch,
+                fetchImpl: fsFetch, ...unsignedDev,
             });
             expect(result).toEqual({ rejected: 'integrity-mismatch' });
         } finally {
@@ -164,7 +182,7 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
             const result = await acquireMod('pen:canvas', {
                 baseUrl: publicDir,
                 lock,
-                fetchImpl: fsFetch,
+                fetchImpl: fsFetch, ...unsignedDev,
             });
             expect(result).toEqual({ rejected: 'manifest-mismatch' });
         } finally {
@@ -177,11 +195,83 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
         const original = readFileSync(workerFilePath);
         writeFileSync(workerFilePath, Buffer.concat([original, Buffer.from(' ')]));
         try {
-            const result = await acquireMod('pen:canvas', { baseUrl: publicDir, lock, fetchImpl: fsFetch });
+            const result = await acquireMod('pen:canvas', { baseUrl: publicDir, lock, fetchImpl: fsFetch, ...unsignedDev });
             expect(result).toEqual({ rejected: 'integrity-mismatch' });
         } finally {
             writeFileSync(workerFilePath, original);
         }
+    });
+
+    describe('作者署名（build → publish → verify → Host の読み込み）', () => {
+        const AUTHOR = 'alice@example.com';
+        const sigPath = () => join(publicDir, modId, `v${version}`, 'lock.sig.json');
+        const rebuild = () =>
+            buildMod(penModDir, { distDir: join(distDir, modId), publicDir: join(publicDir, modId) });
+
+        async function publishBuilt() {
+            const key = await importSigningKey(await generateSigningKeyPkcs8());
+            await publishMods(
+                {
+                    fs: {
+                        readText: (path) => (existsSync(path) ? readFileSync(path, 'utf-8') : undefined),
+                        writeText: (path, text) => writeFileSync(path, text, 'utf-8'),
+                        listDirs: listDirsOnDisk,
+                    },
+                    key,
+                    crypto: webWorldCrypto,
+                    log: () => undefined,
+                },
+                { modsDir: publicDir, credential: { account: AUTHOR } },
+            );
+            const verifySignature = (entry: ModLockEntry, signature: unknown) =>
+                verifyModSignature(entry, signature, webWorldCrypto, async (author, publicKey) =>
+                    author === AUTHOR && publicKey === key.publicKey ? { status: 'confirmed' } : { status: 'unconfirmed' },
+                );
+            return { verifySignature };
+        }
+
+        afterEach(() => rmSync(sigPath(), { force: true }));
+
+        it('署名した実ビルドは verify に合格し、本番の Host（未署名を許さない）で作者付きで読み込める', async () => {
+            const { verifySignature } = await publishBuilt();
+            expect(verifyAllModLocks(publicDir)).toEqual([]);
+            expect(await verifyAllModSignatures(publicDir, true)).toEqual([]);
+
+            const lock = await buildWorldLock([modId], createHttpLockEntryGetter(publicDir, fsFetch));
+            const result = await acquireMod('pen:canvas', { baseUrl: publicDir, lock, fetchImpl: fsFetch, verifySignature });
+            expect(result).toMatchObject({ id: 'pen:canvas', author: AUTHOR });
+        });
+
+        it('署名していない実ビルドは、本番の Host では実行されない', async () => {
+            const lock = await buildWorldLock([modId], createHttpLockEntryGetter(publicDir, fsFetch));
+            const result = await acquireMod('pen:canvas', {
+                baseUrl: publicDir,
+                lock,
+                fetchImpl: fsFetch,
+                verifySignature: async () => ({ status: 'rejected', reason: 'author-unconfirmed' }),
+            });
+            expect(result).toEqual({ rejected: 'signature-missing' });
+            expect(await verifyAllModSignatures(publicDir, true)).toHaveLength(1);
+        });
+
+        it('同じ内容の再ビルドでは署名が残る（CI で署名してからイメージ内で再ビルドしても有効）', async () => {
+            await publishBuilt();
+            const before = readFileSync(sigPath(), 'utf-8');
+            await rebuild();
+            expect(readFileSync(sigPath(), 'utf-8')).toBe(before);
+            expect(await verifyAllModSignatures(publicDir, true)).toEqual([]);
+        });
+
+        it('内容が変わる再ビルドでは、以前の内容に付けた署名を消す', async () => {
+            await publishBuilt();
+            const lockPath = join(publicDir, modId, `v${version}`, 'lock.json');
+            const current = readFileSync(lockPath, 'utf-8');
+            // 「以前のビルドは別の内容だった」状態を作る
+            writeFileSync(lockPath, current.replace(/"version": "[^"]+"/, '"version": "0.0.0-old"'));
+            await rebuild();
+            expect(readFileSync(lockPath, 'utf-8')).toBe(current);
+            expect(existsSync(sigPath())).toBe(false);
+        });
     });
 });
 

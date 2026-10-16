@@ -4,6 +4,7 @@ import { authorizeExternalUrl } from '../lib/externalUrlAuthorization';
 const base = {
     modBase: 'https://mods.example.com/sample/v1/',
     modId: 'sample',
+    permissionSubject: 'alice@example.com/sample',
     appOrigin: 'https://ubichill.example.com',
 };
 
@@ -16,7 +17,11 @@ describe('authorizeExternalUrl', () => {
             authorizeExternalDomain,
         });
 
-        expect(authorizeExternalDomain).toHaveBeenCalledWith('sample', 'media.example.com');
+        expect(authorizeExternalDomain).toHaveBeenCalledWith(
+            'alice@example.com/sample',
+            'media.example.com',
+            undefined,
+        );
         expect(result).toEqual({ allowed: true, url: 'https://media.example.com/video.mp4' });
     });
 
@@ -66,5 +71,27 @@ describe('authorizeExternalUrl', () => {
         });
 
         expect(result).toMatchObject({ allowed: false, code: 'FETCH_DOMAIN_NOT_ALLOWED' });
+    });
+
+    it('承認待ちの間に取り消されたら、ユーザーの拒否ではなく FETCH_ABORTED にする（拒否トーストを出さない）', async () => {
+        const controller = new AbortController();
+        const authorizeExternalDomain = vi.fn(async (_modId: string, _domain: string, signal?: AbortSignal) => {
+            controller.abort();
+            return !signal?.aborted;
+        });
+        const result = await authorizeExternalUrl({
+            ...base,
+            url: 'https://api.example.com/x',
+            authorizeExternalDomain,
+            signal: controller.signal,
+        });
+
+        expect(authorizeExternalDomain).toHaveBeenCalledWith(
+            'alice@example.com/sample',
+            'api.example.com',
+            controller.signal,
+        );
+        expect(result).toMatchObject({ allowed: false, code: 'FETCH_ABORTED' });
+        expect(result).not.toHaveProperty('domain');
     });
 });

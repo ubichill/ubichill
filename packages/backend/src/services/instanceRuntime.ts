@@ -45,10 +45,10 @@ export const instanceRuntime = {
         const response = await request(`/instances/${encodeURIComponent(id)}${query}`, { method: 'DELETE' });
         return response.status === 204;
     },
-    async ticket(id: string, userId: string): Promise<RuntimeGrant> {
+    async ticket(id: string, userId: string, name?: string): Promise<RuntimeGrant> {
         const response = await request(`/instances/${encodeURIComponent(id)}/tickets`, {
             method: 'POST',
-            body: JSON.stringify({ userId }),
+            body: JSON.stringify({ userId, ...(name ? { name } : {}) }),
         });
         return { ...((await response.json()) as RuntimeGrant), url: appConfig.runtime.publicUrl };
     },

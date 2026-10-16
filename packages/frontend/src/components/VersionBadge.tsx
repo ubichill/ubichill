@@ -13,7 +13,7 @@ const FE_COMMIT = import.meta.env.VITE_COMMIT_HASH ?? 'unknown';
 // ビルド時に埋め込まれる環境名。表示/非表示の判定はこれ「だけ」で決める。
 // バックエンド (/api/version) 不達でも dev では確実にバッジを出すため、
 // API レスポンスには依存しない。未設定 (ローカル pnpm dev) は development 扱い。
-const FE_ENVIRONMENT = (import.meta.env.VITE_ENVIRONMENT as string | undefined) ?? 'development';
+const FE_ENVIRONMENT = import.meta.env.VITE_ENVIRONMENT ?? 'development';
 
 const REPO = 'https://github.com/ubichill/ubichill';
 

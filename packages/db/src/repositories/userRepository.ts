@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq, ilike, inArray, isNull, ne, or } from 'drizzle-orm';
+import { and, asc, eq, ilike, inArray, isNull, lte, ne, or, type SQL, sql } from 'drizzle-orm';
 import { db } from '../index';
 import { accounts, sessions, users } from '../schema';
 
@@ -56,11 +56,29 @@ export const userRepository = {
     },
 
     /** 表示名を変更する（一意キーも更新）。一意制約違反（同時に他人が取った）は呼び出し側で扱う。 */
-    async setDisplayName(id: string, name: string, key: string): Promise<UserRecord | undefined> {
+    /**
+     * 表示名を変える。`changedAt` を渡すと変更の時刻を記録する（一意キーを変えるとき）。
+     * `notChangedAfter` を渡すと、最後の変更がそれより後のときは書き込まない（期間中の同時リクエストで
+     * 2 回変えられないよう、判定と書き込みを 1 つの UPDATE にする）。書き込まなければ undefined。
+     */
+    async setDisplayName(
+        id: string,
+        name: string,
+        key: string,
+        options: { changedAt?: Date; notChangedAfter?: Date } = {},
+    ): Promise<UserRecord | undefined> {
+        const cooldown = options.notChangedAfter
+            ? or(isNull(users.displayNameChangedAt), lte(users.displayNameChangedAt, options.notChangedAfter))
+            : undefined;
         const results = await db
             .update(users)
-            .set({ name, displayNameKey: key, updatedAt: new Date() })
-            .where(eq(users.id, id))
+            .set({
+                name,
+                displayNameKey: key,
+                updatedAt: new Date(),
+                ...(options.changedAt ? { displayNameChangedAt: options.changedAt } : {}),
+            })
+            .where(and(eq(users.id, id), cooldown))
             .returning();
         return results[0];
     },
@@ -134,14 +152,32 @@ export const userRepository = {
      * ID（前方一致）・表示名（部分一致）でユーザーを探す。大文字小文字は区別しない。ID の無いユーザーも表示名で見つかる。
      * `excludeIds` はシステムユーザーなど検索に出さないもの。
      */
-    async search(query: string, options: { limit: number; excludeIds?: readonly string[] }): Promise<UserRecord[]> {
-        const escaped = query.replace(/[\\%_]/g, (c) => `\\${c}`);
-        const match = or(ilike(users.handle, `${escaped}%`), ilike(users.name, `%${escaped}%`));
+    /**
+     * ユーザー検索。ID の前方一致と、表示名の一意キーの部分一致（全角半角・大文字小文字を区別しない）。
+     * 並びは ID の完全一致 → ID の前方一致 → 表示名の完全一致 → それ以外（同じ順位は表示名順）。
+     * 一意キーの無いユーザー（移行時に重複していた）は表示名そのもので照合する。
+     */
+    async search(
+        query: { handlePrefix: string | null; nameKey: string },
+        options: { limit: number; excludeIds?: readonly string[] },
+    ): Promise<UserRecord[]> {
+        const escapeLike = (v: string) => v.replace(/[\\%_]/g, (c) => `\\${c}`);
+        const nameMatch = or(
+            ilike(users.displayNameKey, `%${escapeLike(query.nameKey)}%`),
+            and(isNull(users.displayNameKey), ilike(users.name, `%${escapeLike(query.nameKey)}%`)),
+        );
+        const handleMatch = query.handlePrefix ? ilike(users.handle, `${escapeLike(query.handlePrefix)}%`) : undefined;
+        const rank: SQL = query.handlePrefix
+            ? sql`case when ${users.handle} = ${query.handlePrefix} then 0
+                       when ${users.handle} like ${`${escapeLike(query.handlePrefix)}%`} then 1
+                       when ${users.displayNameKey} = ${query.nameKey} then 2
+                       else 3 end`
+            : sql`case when ${users.displayNameKey} = ${query.nameKey} then 2 else 3 end`;
         return db
             .select()
             .from(users)
-            .where(and(match, ...(options.excludeIds ?? []).map((id) => ne(users.id, id))))
-            .orderBy(users.name)
+            .where(and(or(handleMatch, nameMatch), ...(options.excludeIds ?? []).map((id) => ne(users.id, id))))
+            .orderBy(rank, asc(users.name))
             .limit(options.limit);
     },
 

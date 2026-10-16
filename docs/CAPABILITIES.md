@@ -7,7 +7,7 @@ mod は必要な権限を `mod.json` の `capabilities` で宣言する（ビル
 宣言していない権限のコマンドは **default-deny** で拒否される。ここは唯一の定義元
 [`packages/shared/src/mod/capability.ts`](../packages/shared/src/mod/capability.ts) から生成している。
 
-- 定義済み capability: **11** 件（🟢 4 / 🟡 6 / 🔴 1）
+- 定義済み capability: **13** 件（🟢 5 / 🟡 6 / 🔴 2）
 - 未知の権限は安全側に倒して **dangerous** として扱われる（承認必須）。
 
 ## 危険度ティア
@@ -51,6 +51,7 @@ mod は必要な権限を `mod.json` の `capabilities` で宣言する（ビル
 | `scene:read` | シーンの読み取り | `Ubi.entity.get / query, Ubi.state 読み取り` | ワールド内のオブジェクト情報を読み取る | `SCENE_GET_ENTITY`<br>`SCENE_QUERY_ENTITIES` |
 | `ui:toast` | 通知の表示 | `Ubi.ui.showToast` | 画面に一時的な通知（トースト）を表示する | `UI_SHOW_TOAST` |
 | `ui:render` | UI の描画 | `Ubi.ui.render / export default` | 自身の UI をワールド内に描画する | `UI_RENDER` |
+| `asset:read` | 同梱アセットの読み込み | `Ubi.asset.*` | mod に同梱された WASM・データファイルを読み込む | `ASSET_LOAD` |
 | `event:emit` | ワールド内イベント送信 | `Ubi.event.emit` | 同じワールド内の他コンポーネントへイベントを送る | `EVENT_EMIT` |
 
 ### sensitive（要注意）
@@ -72,6 +73,7 @@ mod は必要な権限を `mod.json` の `capabilities` で宣言する（ビル
 
 | capability | ラベル | 発生元 API | 説明 | 許可されるコマンド |
 | --- | --- | --- | --- | --- |
+| `identity:token` | 外部サービスへの身元証明 | `Ubi.identity.token` | 許可したドメインのサービスに、ログイン中であることの証明とそのサービス専用の匿名 ID を渡す | `IDENTITY_TOKEN` |
 | `net:fetch` | 外部通信 (fetch) | `Ubi.fetch` | 外部サーバーへ HTTP 通信する（許可したドメインのみ） | `NETWORK_FETCH` |
 
 ## プロトコルバージョン
@@ -80,7 +82,7 @@ SDK（mod）と Host（本体）は独立して更新されるため、初期化
 名乗り合い、非互換を検出して警告する（詳細は
 [`packages/shared/src/mod/protocol.ts`](../packages/shared/src/mod/protocol.ts)）。
 
-- 現在の `PROTOCOL_VERSION`: **3**
+- 現在の `PROTOCOL_VERSION`: **5**
 - 互換可能な最小バージョン `MIN_COMPATIBLE_PROTOCOL_VERSION`: **0**
 
 進化ルール（後方互換の生命線）:

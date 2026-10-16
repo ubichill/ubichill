@@ -4,6 +4,7 @@
  */
 import { z } from 'zod';
 import { Ed25519PublicKeySchema } from '../schemas/worldIdentity.schema';
+import type { WorldCrypto } from '../signature/primitives';
 import { PublishingEnvironmentNameSchema } from './signingKeys';
 
 /** 認可要求の有効期間（承認・引き換えまで）。 */
@@ -45,6 +46,15 @@ export function isLoopbackRedirectUri(uri: string): boolean {
 /** 引き換え時に要求の鍵で署名させる文（鍵の所有の証明）。要求ごとに違うので使い回せない。 */
 export function cliAuthProofMessage(requestId: string): string {
     return `ubichill-cli-auth:${requestId}`;
+}
+
+/** 引き換えの証明（要求の鍵で {@link cliAuthProofMessage} に署名したもの）を確かめる。暗号の失敗は false。 */
+export function verifyCliAuthProof(
+    request: { id: string; publicKey: string },
+    signature: string,
+    crypto: Pick<WorldCrypto, 'verifyEd25519'>,
+): Promise<boolean> {
+    return crypto.verifyEd25519(request.publicKey, cliAuthProofMessage(request.id), signature).catch(() => false);
 }
 
 /** デバイス認可の、画面で照合する短いコード（XXXX-XXXX）を正規化する（大文字小文字・ハイフン・空白の揺れを許す）。 */

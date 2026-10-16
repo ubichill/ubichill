@@ -31,9 +31,9 @@ export interface ModDiagnostic {
     message: string;
     /**
      * 拒否を「クリックで許可」に変えるための再承認情報（UI が「許可」ボタンを出す）。
-     * modId は "mod:component" 形式のことがあるので、消費側で ":" 前に正規化する。
+     * subject は許可の対象（作者＋mod の ID。`permissionSubject`）。そのまま許可の記録のキーに使う。
      */
-    retry?: { modId: string; capability: string } | { modId: string; domain: string };
+    retry?: { subject: string; capability: string } | { subject: string; domain: string };
 }
 
 /**

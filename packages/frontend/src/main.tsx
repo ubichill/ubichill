@@ -1,8 +1,9 @@
-import { SocketProvider, WorldProvider } from '@ubichill/react';
+import { ServiceTokenProvider, SocketProvider, WorldProvider } from '@ubichill/react';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { PermissionRoot } from './components/permissions/PermissionRoot';
 import { resolveInstance } from './lib/instanceConnection';
+import { requestServiceToken } from './lib/serviceTokens';
 import { AppRouter } from './router';
 import './styles/globals.css';
 
@@ -14,7 +15,9 @@ createRoot(rootEl).render(
         <SocketProvider resolveInstance={resolveInstance}>
             <WorldProvider>
                 <PermissionRoot>
-                    <AppRouter />
+                    <ServiceTokenProvider requestToken={requestServiceToken}>
+                        <AppRouter />
+                    </ServiceTokenProvider>
                 </PermissionRoot>
             </WorldProvider>
         </SocketProvider>

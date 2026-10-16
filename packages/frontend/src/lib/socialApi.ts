@@ -1,5 +1,12 @@
 /** ソーシャル API（ユーザー検索・フレンド・フレンドの現在地）。 */
-import type { Friendship, FriendsResponse, Instance, UserSummary, UserWithFriendship } from '@ubichill/shared';
+import type {
+    Friendship,
+    FriendsResponse,
+    Instance,
+    UserSearchResponse,
+    UserSummary,
+    UserWithFriendship,
+} from '@ubichill/shared';
 import { API_BASE } from './api';
 
 export interface FriendLocationsResponse {
@@ -24,8 +31,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     return (res.status === 204 ? undefined : await res.json()) as T;
 }
 
-export const searchUsers = async (q: string, signal?: AbortSignal) =>
-    (await request<{ users: UserWithFriendship[] }>(`/users?q=${encodeURIComponent(q)}`, { signal })).users;
+export const searchUsers = (q: string, signal?: AbortSignal) =>
+    request<UserSearchResponse>(`/users?q=${encodeURIComponent(q)}`, { signal });
 
 export const fetchUserByHandle = (handle: string) =>
     request<UserWithFriendship>(`/users/by-handle/${encodeURIComponent(handle)}`);

@@ -6,7 +6,7 @@ import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { InstanceLoadingScreen } from '@/instance/InstanceLoadingScreen';
 import { InstanceRenderer } from '@/instance/InstanceRenderer';
 import { useInstanceLoading } from '@/instance/useInstanceLoading';
-import { STANDALONE_RUNTIME } from '@/lib/instanceConnection';
+import { declinedEntryExit, STANDALONE_RUNTIME } from '@/lib/instanceConnection';
 import { fetchInstance } from '@/lib/instancesApi';
 import { useSession } from '@/lib/session';
 import { acceptEntry, hasAcceptedEntry, unverifiedEntryKey, unverifiedEntryMessage } from '@/lib/signing';
@@ -87,7 +87,9 @@ export function InstancePage() {
                 if (!stillTarget()) return;
                 if (!accepted) {
                     joinedIdRef.current = null;
-                    navigate('/');
+                    const exit = declinedEntryExit(Boolean(STANDALONE_RUNTIME));
+                    if (exit.kind === 'navigate') navigate(exit.to);
+                    else setLoadError(exit.message);
                     return;
                 }
                 acceptEntry(sessionStorage, entryKey);

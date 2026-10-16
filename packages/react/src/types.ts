@@ -1,4 +1,9 @@
-import type { ComponentDataFieldSpec, OverlayMode } from '@ubichill/shared';
+import {
+    type ComponentDataFieldSpec,
+    type ModAuthorProof,
+    type OverlayMode,
+    permissionSubject,
+} from '@ubichill/shared';
 
 /**
  * modが Host (ModRegistry) に渡す定義オブジェクト（Custom Elements ベース）。
@@ -27,6 +32,11 @@ export interface WidgetDefinition {
  * 描画はすべて Worker 内の ECS System が担う（OffscreenCanvas / VNode）。
  * Host は GenericModHost でサンドボックス・通信のみを提供する。
  */
+/** 権限の許可の対象（作者＋mod の ID）。mod の ID は `definition.id`（"mod:component"）の ":" の前。 */
+export function modPermissionSubject(definition: Pick<WorkerModDefinition, 'id' | 'author'>): string {
+    return permissionSubject(definition.id.split(':')[0] ?? definition.id, definition.author);
+}
+
 export interface WorkerModDefinition {
     /** mod識別子（mod.json の id と一致） */
     id: string;
@@ -34,8 +44,12 @@ export interface WorkerModDefinition {
     name: string;
     /** esbuild でバンドルされた Worker 実行コード文字列 */
     workerCode: string;
-    /** mod.json の capabilities（未指定: 全許可） */
+    /** lock が許す capability（権限の天井）。未指定なら capability の要るコマンドは何も許さない。 */
     capabilities?: string[];
+    /** 署名で確認できた作者アカウント（`handle@domain`）。無いのは開発用の Host が許した未署名の mod。 */
+    author?: string;
+    /** 作者を確認できた lock と署名（サービストークンの発行の依頼に付ける）。 */
+    authorProof?: ModAuthorProof;
     /**
      * Host が生成して Worker へ Transferable 転送する OffscreenCanvas のターゲット名リスト。
      * Worker は `Ubi.canvas.request(targetId)` で受け取る。
@@ -74,6 +88,8 @@ export interface WorkerModDefinition {
      * ModRegistryContext が mod.json のバージョンから自動計算して設定する。
      */
     modBase?: string;
+    /** 同梱アセットの相対パス → SRI（lock で固定した manifest の assetIntegrity）。`Ubi.asset` はこれと照合する。 */
+    assetIntegrity?: Readonly<Record<string, string>>;
     /**
      * true の場合、エンティティごとではなくワールド参加中に 1 つだけ起動される。
      * Host は EVT_PLAYER_JOINED / EVT_PLAYER_LEFT / EVT_PLAYER_CURSOR_MOVED を

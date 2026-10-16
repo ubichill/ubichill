@@ -45,8 +45,11 @@ func position(value any) bool {
 	}
 	return true
 }
+func validName(name string) bool {
+	return utf8.RuneCountInString(strings.TrimSpace(name)) >= 1 && utf8.RuneCountInString(name) <= 30
+}
 func validUser(v Object) bool {
-	return utf8.RuneCountInString(strings.TrimSpace(str(v["name"]))) >= 1 && utf8.RuneCountInString(str(v["name"])) <= 30 && position(v["position"]) && validStatus(str(v["status"]))
+	return validName(str(v["name"])) && position(v["position"]) && validStatus(str(v["status"]))
 }
 func validStatus(v string) bool {
 	return v == "online" || v == "busy" || v == "dnd" || v == "away" || v == "offline"
@@ -108,6 +111,10 @@ func (r *Room) handle(p *peer, f Frame) {
 				e[key] = value
 			}
 		}
+		if !r.fits(str(e["id"]), e) {
+			p.reject(f.ID, "インスタンスの容量を超えています")
+			return
+		}
 		r.put(str(e["id"]), e)
 		p.reply(f.ID, Object{"success": true, "entity": e})
 		r.broadcast("entity:created", e, p, false)
@@ -156,12 +163,20 @@ func (r *Room) handle(p *peer, f Frame) {
 		if value, exists := patch["lockedBy"]; exists {
 			clean["lockedBy"] = nil
 			if value != nil {
+				if str(e["lockedBy"]) != p.userID && r.locksHeldBy(p.userID) >= maxLocksPerMember {
+					p.reject(f.ID, "同時に持てる数を超えています")
+					return
+				}
 				clean["lockedBy"] = p.userID
 			}
 			updated["lockedBy"] = clean["lockedBy"]
 		}
 		if len(encoded(updated)) > 65536 {
 			p.reject(f.ID, "エンティティが大きすぎます")
+			return
+		}
+		if !r.fits(id, updated) {
+			p.reject(f.ID, "インスタンスの容量を超えています")
 			return
 		}
 		r.put(id, updated)

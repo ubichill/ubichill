@@ -155,14 +155,16 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
 
             // 別の内容への署名を添えると何も保存しない
             const signedB = bundleOf(worldDef(name, 'B'));
-            const sigForOther = await signWorld(bundleOf(worldDef(name, 'X')), key, nodeWorldCrypto);
+            const sigForOther = await signWorld(bundleOf(worldDef(name, 'X')), key, nodeWorldCrypto, {
+                author: 'alice@example.com',
+            });
             expect(await worldRegistry.saveBundle(AUTHOR, { ...signedB, signature: sigForOther })).toMatchObject({
                 ok: false,
                 reason: 'content-mismatch',
             });
             expect(await worldRegistry.worldFile(HANDLE, `${name}.sig.json`)).toBeUndefined();
 
-            const sig = await signWorld(signedB, key, nodeWorldCrypto);
+            const sig = await signWorld(signedB, key, nodeWorldCrypto, { author: 'alice@example.com' });
             expect(await worldRegistry.saveBundle(AUTHOR, { ...signedB, signature: sig })).toMatchObject({
                 ok: true,
                 saved: 'published',
@@ -266,7 +268,7 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
         const live = bundleOf(worldDef(before, '公開中'));
         const created = await worldRegistry.saveBundle(AUTHOR, {
             ...live,
-            signature: await signWorld(live, key, nodeWorldCrypto),
+            signature: await signWorld(live, key, nodeWorldCrypto, { author: 'alice@example.com' }),
         });
         if (!created.ok) throw new Error(created.message);
         try {
@@ -314,7 +316,7 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
         const bundle = bundleOf(worldDef(name, '元'));
         const saved = await worldRegistry.saveBundle(AUTHOR, {
             ...bundle,
-            signature: await signWorld(bundle, newTestSigningKey(), nodeWorldCrypto),
+            signature: await signWorld(bundle, newTestSigningKey(), nodeWorldCrypto, { author: 'alice@example.com' }),
         });
         if (!saved.ok) throw new Error(saved.message);
         try {
@@ -340,7 +342,7 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
         const live = bundleOf(worldDef(name, '公開中'));
         const created = await worldRegistry.saveBundle(AUTHOR, {
             ...live,
-            signature: await signWorld(live, key, nodeWorldCrypto),
+            signature: await signWorld(live, key, nodeWorldCrypto, { author: 'alice@example.com' }),
         });
         if (!created.ok) throw new Error(created.message);
         const id = created.world.id;
@@ -355,11 +357,17 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
             });
 
             // 公開中の版に署名し直しても（鍵の取り消し後など）下書きは残る
-            const resign = { ...live, signature: await signWorld(live, newTestSigningKey(), nodeWorldCrypto) };
+            const resign = {
+                ...live,
+                signature: await signWorld(live, newTestSigningKey(), nodeWorldCrypto, { author: 'alice@example.com' }),
+            };
             expect(await worldRegistry.saveBundle(AUTHOR, resign)).toMatchObject({ ok: true, saved: 'published' });
             expect(await worldRegistry.getEditorDefinition(id)).toMatchObject({ hasDraft: true });
 
-            const published = { ...draft, signature: await signWorld(draft, key, nodeWorldCrypto) };
+            const published = {
+                ...draft,
+                signature: await signWorld(draft, key, nodeWorldCrypto, { author: 'alice@example.com' }),
+            };
             expect(await worldRegistry.saveBundle(AUTHOR, published)).toMatchObject({ ok: true, saved: 'published' });
             expect(await worldRegistry.getEditorDefinition(id)).toMatchObject({
                 definition: { spec: { displayName: '編集中' } },
@@ -444,7 +452,9 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
                 },
             ]),
         );
-        const signature = await signWorld(bundle, newTestSigningKey(), nodeWorldCrypto);
+        const signature = await signWorld(bundle, newTestSigningKey(), nodeWorldCrypto, {
+            author: 'alice@example.com',
+        });
         expect(await worldRegistry.saveBundle(AUTHOR, { ...bundle, signature })).toMatchObject({
             ok: false,
             reason: 'lock-incomplete',

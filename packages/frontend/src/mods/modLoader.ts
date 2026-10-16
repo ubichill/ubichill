@@ -2,20 +2,23 @@
  * modLoader — frontend 側の薄いアダプタ。
  *
  * 取得・integrity・lock 照合の中核は @ubichill/loader（env非依存）に分離済み。
- * ここは Host 固有の 2 点だけ担う:
+ * ここは Host 固有の 3 点だけ担う:
  *  - `VITE_MOD_CDN_URL` env から baseUrl を解決する。
+ *  - 作者署名をブラウザで確かめる verifier を渡し、開発用の Host かどうかを伝える。
  *  - 中立 `LoadedMod` を Host の `WorkerModDefinition`（React 型）にマップする。
  */
 import { type AcquireResult, acquireMod, type LoadedMod } from '@ubichill/loader';
 import type { WorkerModDefinition } from '@ubichill/react';
 import type { ModLock } from '@ubichill/shared';
+import { DEV_HOST } from './devHost';
+import { isUnsignedModAllowed, verifyModSignatureInBrowser } from './modSignature';
 
 /**
  * mod のベース URL。
  * VITE_MOD_CDN_URL があれば外部 CDN / GitHub Pages、無ければ自ホストの /mods。
  */
 export const MOD_BASE_URL: string = (() => {
-    const envUrl = import.meta.env.VITE_MOD_CDN_URL as string | undefined;
+    const envUrl = import.meta.env.VITE_MOD_CDN_URL;
     if (envUrl) return envUrl.replace(/\/$/, '');
     return '/mods';
 })();
@@ -30,6 +33,8 @@ function toWorkerModDefinition(m: LoadedMod): WorkerModDefinition {
         name: m.name,
         workerCode: m.workerCode,
         capabilities: m.capabilities,
+        author: m.author,
+        authorProof: m.authorProof,
         singleton: m.singleton,
         canvasTargets: m.canvasTargets,
         watchEntityTypes: m.watchEntityTypes,
@@ -37,6 +42,7 @@ function toWorkerModDefinition(m: LoadedMod): WorkerModDefinition {
         thumbnail: m.thumbnail,
         mediaTargets: m.mediaTargets,
         modBase: m.modBase,
+        assetIntegrity: m.assetIntegrity,
         dataFields: m.dataFields,
         overlay: m.overlay,
     };
@@ -52,6 +58,9 @@ export async function loadVerifiedMod(entityType: string, opts: LoadModOptions):
     const result: AcquireResult = await acquireMod(entityType, {
         baseUrl: MOD_BASE_URL,
         lock: opts.lock,
+        verifySignature: verifyModSignatureInBrowser,
+        allowUnsigned: (baseUrl) =>
+            isUnsignedModAllowed({ devHost: DEV_HOST, baseUrl, origin: window.location.origin }),
     });
     if (typeof result === 'object' && 'workerCode' in result) return toWorkerModDefinition(result);
     return result;

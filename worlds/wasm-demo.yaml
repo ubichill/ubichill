@@ -1,0 +1,32 @@
+apiVersion: ubichill.com/v1alpha1
+kind: World
+metadata:
+  name: wasm-demo
+  version: 1.0.0
+spec:
+  displayName: WASM デモ
+  description: "mod に同梱した WASM で、同梱アセットと外部から取得したバイト列のチェックサムを計算するサンプル"
+  environment:
+    worldSize:
+      width: 800
+      height: 600
+    backgroundColor: "#020617"
+  dependencies:
+    - name: wasm-demo
+      source:
+        version: latest
+  initialEntities:
+    - id: checksum
+      tags: []
+      children: []
+      transform:
+        x: 40
+        y: 40
+        z: 10
+        w: 380
+        h: 250
+        scale: 1
+        rotation: 0
+      components:
+        - type: wasm-demo:checksum
+          data: {}

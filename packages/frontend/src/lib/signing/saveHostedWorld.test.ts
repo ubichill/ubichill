@@ -36,7 +36,9 @@ function fakeServer() {
             db.set(definition.metadata.name, { id, definition, lock: body.lock, signature: null });
             return Response.json({ id, saved: 'unsigned' });
         }
-        const row = [...db.values()].find((r) => url.includes(`/worlds/${r.id}.`));
+        // 本番と同じく、配信の道筋（/api/v1/authors/<ID>/worlds/<名前>.yaml）だけに答える
+        const file = /\/api\/v1\/authors\/[^/]+\/worlds\/([^/]+)\.(?:yaml|lock\.json)$/.exec(url);
+        const row = file ? db.get(file[1] as string) : undefined;
         if (!row) return Response.json({ error: 'World not found' }, { status: 404 });
         if (url.endsWith('.yaml')) return new Response(yaml.stringify(row.definition));
         if (url.endsWith('.lock.json')) return row.lock ? Response.json(row.lock) : new Response('{}', { status: 404 });
@@ -57,11 +59,18 @@ const displayNameOf = (definition: unknown): string | undefined =>
     (definition as { spec?: { displayName?: string } } | undefined)?.spec?.displayName;
 
 describe('saveWorldBundle', () => {
+    it('鍵がまだアカウントに登録されていない（作者を付けられない）ときは署名しない（作者の無い署名は作らない）', async () => {
+        const server = fakeServer();
+        const key = await importSigningKey(await generateSigningKeyPkcs8());
+        const saved = await saveWorldBundle({ yaml: worldYaml('A'), lock: LOCK }, { key }, server.deps);
+        expect(saved).toMatchObject({ saved: 'unsigned' });
+    });
+
     const ref: { key?: WorldSigningKey } = {};
     beforeEach(async () => {
         ref.key = await importSigningKey(await generateSigningKeyPkcs8());
     });
-    const signer = () => ({ key: ref.key as WorldSigningKey });
+    const signer = () => ({ key: ref.key as WorldSigningKey, author: 'alice@example.com' });
 
     it('手元の値そのものに署名し、サーバーの検証を通る（サーバーが値を書き換えないので prepare は要らない）', async () => {
         const server = fakeServer();
@@ -91,9 +100,13 @@ describe('saveWorldBundle', () => {
     it('別の鍵を名乗る署名はサーバーが拒否し、throw する（黙って未署名にしない）', async () => {
         const server = fakeServer();
         const liar: WorldSigningKey = { ...(ref.key as WorldSigningKey), publicKey: 'A'.repeat(43) };
-        await expect(saveWorldBundle({ yaml: worldYaml('A'), lock: LOCK }, { key: liar }, server.deps)).rejects.toThrow(
-            'bad',
-        );
+        await expect(
+            saveWorldBundle(
+                { yaml: worldYaml('A'), lock: LOCK },
+                { key: liar, author: 'alice@example.com' },
+                server.deps,
+            ),
+        ).rejects.toThrow('bad');
         expect(server.db.size).toBe(0);
     });
 
@@ -125,16 +138,36 @@ describe('signHostedWorld', () => {
     it('公開中の版を取り出してそのまま署名し直す（内容は変えない）', async () => {
         const server = fakeServer();
         const created = await saveWorldBundle({ yaml: worldYaml('A'), lock: LOCK }, null, server.deps);
-        const identity = await signHostedWorld(created.id, { key: ref.key as WorldSigningKey }, server.deps);
+        const identity = await signHostedWorld(
+            { id: created.id, url: '/api/v1/authors/alice/worlds/my-world.yaml' },
+            { key: ref.key as WorldSigningKey, author: 'alice@example.com' },
+            server.deps,
+        );
         expect(identity).toMatchObject({ status: 'verified', publicKey: ref.key?.publicKey });
         expect(displayNameOf(server.db.get('my-world')?.definition)).toBe('A');
     });
 
+    it('本体の ID の道筋（/api/v1/worlds/<ID>.yaml、本番には無い）からは取らない', async () => {
+        const server = fakeServer();
+        const created = await saveWorldBundle({ yaml: worldYaml('A'), lock: LOCK }, null, server.deps);
+        await expect(
+            signHostedWorld(
+                { id: created.id, url: `/api/v1/worlds/${created.id}.yaml` },
+                { key: ref.key as WorldSigningKey, author: 'alice@example.com' },
+                server.deps,
+            ),
+        ).rejects.toThrow(/World not found/);
+    });
+
     it('ワールドを取得できなければ何も送らない', async () => {
         const server = fakeServer();
-        await expect(signHostedWorld('missing', { key: ref.key as WorldSigningKey }, server.deps)).rejects.toThrow(
-            /World not found/,
-        );
+        await expect(
+            signHostedWorld(
+                { id: 'missing', url: '/api/v1/authors/alice/worlds/missing.yaml' },
+                { key: ref.key as WorldSigningKey, author: 'alice@example.com' },
+                server.deps,
+            ),
+        ).rejects.toThrow(/World not found/);
         expect(server.db.size).toBe(0);
     });
 });

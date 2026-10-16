@@ -167,3 +167,34 @@ describe('buildAllowedCommands', () => {
         expect(allowed.has('SCENE_CREATE_ENTITY')).toBe(true);
     });
 });
+
+describe('同梱アセットと取り消し', () => {
+    it('asset:read は safe で ASSET_LOAD だけを許可する（net:fetch を要求しない）', () => {
+        expect(getCapabilityRisk('asset:read')).toBe('safe');
+        expect([...buildAllowedCommands(['asset:read'])].sort()).toEqual(
+            [...ALWAYS_ALLOWED_COMMANDS, 'ASSET_LOAD'].sort(),
+        );
+        expect(buildAllowedCommands(['asset:read']).has('NETWORK_FETCH')).toBe(false);
+    });
+
+    it('Ubi.asset の利用から asset:read を検出し、似た名前は拾わない', () => {
+        expect(detectCapabilities('const m = await Ubi.asset.wasm("a.wasm");')).toContain('asset:read');
+        expect(detectCapabilities('const x = Ubi.assets; const y = myUbi.asset;')).not.toContain('asset:read');
+    });
+
+    it('CMD_ABORT は宣言なしで常に許可する（自分のリクエストを止めるだけ）', () => {
+        expect(buildAllowedCommands(undefined).has('CMD_ABORT')).toBe(true);
+    });
+});
+
+describe('外部サービスへの身元証明', () => {
+    it('identity:token は dangerous（サービスが利用者を継続して識別できるようになるため）', () => {
+        expect(getCapabilityRisk('identity:token')).toBe('dangerous');
+        expect(buildAllowedCommands(['identity:token']).has('IDENTITY_TOKEN')).toBe(true);
+        expect(buildAllowedCommands(['net:fetch']).has('IDENTITY_TOKEN')).toBe(false);
+    });
+
+    it('Ubi.identity の利用から identity:token を検出する', () => {
+        expect(detectCapabilities('await Ubi.identity.token("https://api.example.com")')).toContain('identity:token');
+    });
+});

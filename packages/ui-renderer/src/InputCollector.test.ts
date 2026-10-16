@@ -140,6 +140,41 @@ describe('InputCollector: pointerType の伝播', () => {
 });
 
 describe('InputCollector: フォーム入力とワールドキー入力の分離', () => {
+    const typedKeys = (): string =>
+        (collector?.collectSince(0).events ?? [])
+            .filter((event) => event.type === 'KEY_DOWN')
+            .map((event) => (event.data as { key: string }).key)
+            .join('');
+    const type = (target: Element, text: string): void => {
+        for (const key of text) {
+            target.dispatchEvent(new KeyboardEvent('keydown', { key, code: 'KeyA', bubbles: true, composed: true }));
+        }
+    };
+
+    it('mod の UI（Shadow DOM）の入力欄に打った文字を、ワールドのキー入力として全 mod に配らない', () => {
+        const host = setup('<div></div>');
+        const input = document.createElement('input');
+        host.attachShadow({ mode: 'open' }).appendChild(input);
+        type(input, 'secret');
+        expect(typedKeys()).toBe('');
+    });
+
+    it('contenteditable に打った文字も配らない', () => {
+        const editor = setup('<div contenteditable="true"></div>');
+        // jsdom は isContentEditable を実装していない
+        Object.defineProperty(editor, 'isContentEditable', { value: true });
+        type(editor, 'secret');
+        expect(typedKeys()).toBe('');
+    });
+
+    it('Shadow DOM の中でも入力欄でない要素からのキーはワールドへ渡す', () => {
+        const host = setup('<div></div>');
+        const panel = document.createElement('div');
+        host.attachShadow({ mode: 'open' }).appendChild(panel);
+        type(panel, 'wasd');
+        expect(typedKeys()).toBe('wasd');
+    });
+
     it('input で入力した空白をワールドへ転送せず、ブラウザ既定動作も妨げない', () => {
         const input = setup('<input type="search" />');
         const down = new KeyboardEvent('keydown', {

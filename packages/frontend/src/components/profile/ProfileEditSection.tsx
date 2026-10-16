@@ -51,7 +51,10 @@ export function ProfileEditSection({ account }: { account: MyAccountState }) {
                 <DisplayNameEditor
                     name={profile.name}
                     conflict={!!profile.displayNameConflict}
-                    onChanged={(name) => setProfile({ ...profile, name, displayNameConflict: false })}
+                    availableAt={profile.displayNameChangeAvailableAt ?? null}
+                    onChanged={({ name, displayNameChangeAvailableAt }) =>
+                        setProfile({ ...profile, name, displayNameConflict: false, displayNameChangeAvailableAt })
+                    }
                 />
             </div>
             <div>

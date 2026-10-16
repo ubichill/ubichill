@@ -1,16 +1,19 @@
 import http from 'node:http';
 import { cliAuthRequestRepository } from '@ubichill/db';
+import { LIMITS } from '@ubichill/shared';
 import cors from 'cors';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import { appConfig } from './config';
 import { auth } from './lib/auth';
+import { isPublicAuthPath } from './lib/authEndpoints';
 import { blockOfficialPasswordChange } from './middleware/auth';
 import { router as authorsRouter } from './routes/authors';
 import { router as cliAuthRouter } from './routes/cliAuth';
 import { router as federationRouter } from './routes/federation';
 import { router as instancesRouter } from './routes/instances';
+import { router as serviceTokensRouter } from './routes/serviceTokens';
 import { router as socialRouter } from './routes/social';
 import { router as usersRouter } from './routes/users';
 import { router as webfingerRouter } from './routes/webfinger';
@@ -60,6 +63,11 @@ const limiter = rateLimit({
 app.use(limiter);
 
 // JSONボディパーサー
+// ワールドを送る依頼（yaml・lock・署名）は既定の上限（100KB）を超え得るので、受け付けるワールドの大きさに合わせる
+app.use(
+    ['/api/v1/worlds', '/api/v1/users/me/external-works'],
+    express.json({ limit: LIMITS.MAX_PUBLISH_REQUEST_SIZE }),
+);
 app.use(express.json());
 
 // バージョン情報エンドポイント。常に commitHash + environment を返す。
@@ -85,6 +93,10 @@ if (appConfig.debug) {
 }
 
 // 認証API（Better Auth）- CORSとプリフライトを確実に処理するため、先に配置
+app.use('/api/auth', (req, res, next) => {
+    if (req.method === 'OPTIONS' || isPublicAuthPath(req.path)) return next();
+    res.status(404).json({ error: 'Not Found' });
+});
 app.use('/api/auth/change-password', blockOfficialPasswordChange);
 app.use('/api/auth', toNodeHandler(auth));
 
@@ -98,6 +110,7 @@ app.use('/api/v1/social', socialRouter);
 app.use('/api/v1/authors', authorsRouter);
 app.use('/api/v1/cli-auth', cliAuthRouter);
 app.use('/api/v1/federation', federationRouter);
+app.use('/api/v1/service-tokens', serviceTokensRouter);
 app.use('/.well-known/webfinger', webfingerRouter);
 
 // HTTPサーバーを作成

@@ -1,0 +1,66 @@
+{
+    "note": "署名の形式を固定するためのテストベクター（docs/PROTOCOLS.md）。この鍵はテスト専用で、どこの公開環境にも登録しない。書き換えない（形式を変えるなら新しい版を足す）。",
+    "signingKeyPkcs8": "MC4CAQAwBQYDK2VwBCIEIK8cmlLxQ0jUHiOtm05+T3BMgqvv7zkYGWAaYUSPswcs",
+    "publicKey": "s1vJJw1NRkdIcRMPK8dVk5IRwffDqNDZCO6dmlS9mBY",
+    "author": "vector@example.com",
+    "world": {
+        "document": {
+            "definition": {
+                "apiVersion": "ubichill.com/v1alpha1",
+                "kind": "World",
+                "metadata": {
+                    "name": "vector-world",
+                    "version": "1.0.0"
+                },
+                "spec": {
+                    "displayName": "テスト用",
+                    "capacity": {
+                        "default": 2,
+                        "max": 4
+                    },
+                    "initialEntities": []
+                }
+            },
+            "lock": null
+        },
+        "payload": "{\"alg\":\"ed25519\",\"author\":\"vector@example.com\",\"contentHash\":\"sha256-jWaedvlKGez7gPLsR5ivwC2h2YaGR8yNCD8TvDi6Z6o=\",\"format\":\"ubichill-signature\",\"kind\":\"world\",\"publicKey\":\"s1vJJw1NRkdIcRMPK8dVk5IRwffDqNDZCO6dmlS9mBY\",\"subject\":\"vector-world\",\"version\":2}",
+        "signature": {
+            "format": "ubichill-signature",
+            "version": 2,
+            "kind": "world",
+            "alg": "ed25519",
+            "publicKey": "s1vJJw1NRkdIcRMPK8dVk5IRwffDqNDZCO6dmlS9mBY",
+            "author": "vector@example.com",
+            "subject": "vector-world",
+            "contentHash": "sha256-jWaedvlKGez7gPLsR5ivwC2h2YaGR8yNCD8TvDi6Z6o=",
+            "signature": "W_LT3WeB2rZ7NRs2MO_swxY3d_jjRPyeicoIXNFvUumdkiKlRXmqutixGGtZHCYNMF0yOTdlf8G8po2M5n3XDA"
+        }
+    },
+    "mod": {
+        "entry": {
+            "id": "vector-mod",
+            "version": "1.2.3",
+            "manifestIntegrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            "components": {
+                "vector-mod:main": {
+                    "workerUrl": "./main/index.js",
+                    "integrity": "sha256-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+                    "capabilities": ["scene:read"]
+                }
+            }
+        },
+        "payload": "{\"alg\":\"ed25519\",\"author\":\"vector@example.com\",\"contentHash\":\"sha256-N22422B/n2b4jA3IJwTTtkDmdPvf11//z0TbpMWBS9o=\",\"format\":\"ubichill-signature\",\"kind\":\"mod\",\"publicKey\":\"s1vJJw1NRkdIcRMPK8dVk5IRwffDqNDZCO6dmlS9mBY\",\"subject\":\"vector-mod\",\"subjectVersion\":\"1.2.3\",\"version\":2}",
+        "signature": {
+            "format": "ubichill-signature",
+            "version": 2,
+            "kind": "mod",
+            "alg": "ed25519",
+            "publicKey": "s1vJJw1NRkdIcRMPK8dVk5IRwffDqNDZCO6dmlS9mBY",
+            "author": "vector@example.com",
+            "subject": "vector-mod",
+            "subjectVersion": "1.2.3",
+            "contentHash": "sha256-N22422B/n2b4jA3IJwTTtkDmdPvf11//z0TbpMWBS9o=",
+            "signature": "WjwpBoRFCwbpXAVL4ovbNrewcRnMQWWhLNxGUu-ZLHw3lq2ldpel9IHq5AhMxmO7LlgPoqr6Zsfq8gTrq2uWBQ"
+        }
+    }
+}

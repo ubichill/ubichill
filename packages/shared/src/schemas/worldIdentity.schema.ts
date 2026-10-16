@@ -6,7 +6,7 @@ import { IntegritySchema } from './modLock.schema';
 // World Identity（ワールドの識別と作者署名）
 //
 // - contentHash: `{ definition, lock }` を正規化 JSON にした sha256。URL 非依存の「版」の同一性。
-// - 署名: 作者の ed25519 鍵で `{ version, alg, publicKey, name, contentHash, author? }` に署名する。
+// - 署名: 作者の ed25519 鍵で、共通の形式（signature/envelope.ts の `kind: 'world'`）で署名する。
 //   作者アカウント（handle@domain）を確認できれば `acct:handle@domain/name`、できなければ
 //   `publicKey + metadata.name` がワールドの同一性（版をまたいで不変）。
 // - 署名はワールド YAML と分離し、兄弟ファイル（`<world>.sig.json`）で配る（本体も外部も同じ）。
@@ -18,23 +18,6 @@ export const Ed25519PublicKeySchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/, 'M
 
 /** ed25519 署名（64 byte）の base64url（パディング無し）。 */
 export const Ed25519SignatureSchema = z.string().regex(/^[A-Za-z0-9_-]{86}$/, 'Must be base64url(64byte)');
-
-export const WorldSignatureSchema = z.object({
-    version: z.literal(1),
-    alg: z.literal('ed25519'),
-    publicKey: Ed25519PublicKeySchema,
-    /** 署名対象ワールドの `metadata.name`。 */
-    name: z.string().min(1),
-    contentHash: IntegritySchema,
-    /**
-     * 作者アカウント（`handle@domain`）の主張。署名対象に含まれる。検証側は domain の WebFinger で
-     * その handle の公開鍵を引き、`publicKey` と一致したときだけ作者として表示する（主張だけでは信用しない）。
-     */
-    author: AuthorAccountSchema.optional(),
-    signature: Ed25519SignatureSchema,
-});
-
-export type WorldSignature = z.infer<typeof WorldSignatureSchema>;
 
 /**
  * 解決済みワールドの識別結果。invalid（改竄・署名不正）は解決時に拒否するため含まない。

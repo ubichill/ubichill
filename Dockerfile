@@ -83,10 +83,16 @@ ENV VITE_ENVIRONMENT=${VITE_ENVIRONMENT}
 ARG COMMIT_HASH=unknown
 ENV COMMIT_HASH=${COMMIT_HASH}
 
+# mod の作者署名（lock.sig.json）は鍵を持つ CI がビルドの前に packages/frontend/public/mods へ置く（鍵をイメージのビルドに渡さない）。
+# true にすると、署名の無い mod・再ビルドした内容と合わない署名があればビルドを止める（本番の Host は署名の無い mod を実行しない）。
+ARG REQUIRE_MOD_SIGNATURES=false
+
 # build:workers が packages/frontend/public/mods へ mod を配置し、続く vite build が
 # public/ を dist/ へコピーする。順序が重要。
 RUN pnpm turbo build --filter=@ubichill/shared \
     && pnpm build:workers \
+    && node packages/sdk/cli/index.ts verify --dist-dir=packages/frontend/public/mods \
+        $([ "$REQUIRE_MOD_SIGNATURES" = "true" ] && echo --require-signatures) \
     && pnpm --filter @ubichill/frontend build \
     && pnpm --filter @ubichill/bff build
 

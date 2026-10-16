@@ -265,14 +265,32 @@ export type { components as InstanceAPI } from './generated/instance';
 export * from './mod/capability';
 export * from './mod/errors';
 export * from './mod/modLock';
+export * from './mod/modSignature';
 export * from './mod/permission';
 export * from './mod/protocol';
+export * from './mod/sandboxPolicy';
+export * from './mod/serviceToken';
 export * from './mod/types';
 export * from './mod/vnode';
 export * from './schemas';
+export {
+    confirmEnvelopeAuthor,
+    type EnvelopeInvalidReason,
+    type EnvelopeVerdict,
+    type SignatureFields,
+    type SignatureTarget,
+    SignedAuthorSchema,
+    signaturePayload,
+    signEnvelope,
+    verifyEnvelope,
+} from './signature/envelope';
+export * from './user/authorKeyDirectory';
 export * from './user/cliAuth';
+export * from './user/displayNameChange';
+export * from './user/externalWorks';
 export * from './user/favoritesVisibility';
 export * from './user/friends';
 export * from './user/handle';
 export * from './user/signingKeys';
+export * from './user/userSearch';
 export * from './world/identity';

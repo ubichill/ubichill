@@ -191,15 +191,16 @@ func (s *Server) Handler() http.Handler {
 		}
 		var body struct {
 			UserID string `json:"userId"`
+			Name   string `json:"name"`
 		}
 		if !decode(w, r, &body) {
 			return
 		}
-		if body.UserID == "" || len(body.UserID) > 200 || s.room(r.PathValue("id")) == nil {
+		if body.UserID == "" || len(body.UserID) > 200 || s.room(r.PathValue("id")) == nil || body.Name != "" && !validName(body.Name) {
 			writeJSON(w, 400, failure("invalid participant or instance"))
 			return
 		}
-		s.grant(w, r, body.UserID, "member", time.Minute*2)
+		s.grant(w, r, body.UserID, body.Name, "member", time.Minute*2)
 	})
 	mux.HandleFunc("POST /realtime/v1/instances/{id}/guest", func(w http.ResponseWriter, r *http.Request) {
 		if !s.config.Guests {
@@ -222,7 +223,7 @@ func (s *Server) Handler() http.Handler {
 				id = t.Subject
 			}
 		}
-		s.grant(w, r, id, "guest", 24*time.Hour)
+		s.grant(w, r, id, "", "guest", 24*time.Hour)
 	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !s.originAllowed(r) {
@@ -250,7 +251,7 @@ func (s *Server) authorize(w http.ResponseWriter, r *http.Request) bool {
 	}
 	return true
 }
-func (s *Server) grant(w http.ResponseWriter, r *http.Request, id, kind string, ttl time.Duration) {
-	t := ticket{r.PathValue("id"), id, time.Now().Add(ttl).Unix(), kind}
+func (s *Server) grant(w http.ResponseWriter, r *http.Request, id, name, kind string, ttl time.Duration) {
+	t := ticket{r.PathValue("id"), id, time.Now().Add(ttl).Unix(), kind, name}
 	writeJSON(w, 200, Object{"token": s.sign(t), "userId": id, "expiresAt": t.Expires * 1000, "url": "/realtime/v1/ws", "protocolVersion": 1})
 }

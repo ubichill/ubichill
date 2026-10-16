@@ -9,8 +9,12 @@ export interface ExternalUrlAuthorizationOptions {
     url: string;
     modBase: string | undefined;
     modId: string;
+    /** 許可の対象（作者＋mod の ID）。ドメインの許可はこの単位で記憶する。 */
+    permissionSubject: string;
     appOrigin: string | undefined;
-    authorizeExternalDomain?: (modId: string, domain: string) => boolean | Promise<boolean>;
+    authorizeExternalDomain?: (subject: string, domain: string, signal?: AbortSignal) => boolean | Promise<boolean>;
+    /** 依頼側が待つのをやめたら承認待ちから外す。 */
+    signal?: AbortSignal;
 }
 
 /** Ubi.fetch と Ubi.media.load が共有する、通信手段に依存しない外部URL認可。 */
@@ -18,8 +22,10 @@ export async function authorizeExternalUrl({
     url,
     modBase,
     modId,
+    permissionSubject,
     appOrigin,
     authorizeExternalDomain,
+    signal,
 }: ExternalUrlAuthorizationOptions): Promise<ExternalUrlAccess> {
     const ownUrl = resolveModAssetUrl(url, modBase) ?? resolveModNamespaceUrl(url, modId, appOrigin);
     if (ownUrl !== null) return { allowed: true, url: ownUrl };
@@ -55,7 +61,12 @@ export async function authorizeExternalUrl({
             domain,
         };
     }
-    if (!(await authorizeExternalDomain(modId, domain))) {
+    const approved = await authorizeExternalDomain(permissionSubject, domain, signal);
+    // 取り消しで承認待ちを抜けた場合は、ユーザーが拒否したのではない（拒否として診断・記憶しない）。
+    if (signal?.aborted) {
+        return { allowed: false, code: UbiErrorCode.FETCH_ABORTED, message: '承認待ちの間に取り消されました' };
+    }
+    if (!approved) {
         return {
             allowed: false,
             code: UbiErrorCode.FETCH_DOMAIN_NOT_ALLOWED,

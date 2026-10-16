@@ -159,6 +159,13 @@ export const ModVersionedManifestSchema = z.object({
     name: z.string().optional(),
     version: z.string(),
     components: z.record(z.string(), VersionedComponentManifestEntrySchema).default({}),
+    /** 同梱アセットの相対パス一覧（versioned ディレクトリ直下からの相対）。 */
+    assets: z.array(z.string()).optional(),
+    /**
+     * 同梱アセットの相対パス → SRI（`sha256-<base64>`）。アセットがある mod だけが持つ。
+     * manifest 自体は lock で固定されるので、`Ubi.asset` がこの値と照合すればアセットの中身も固定される。
+     */
+    assetIntegrity: z.record(z.string(), z.string()).optional(),
 });
 
 export type ModVersionedManifest = z.infer<typeof ModVersionedManifestSchema>;

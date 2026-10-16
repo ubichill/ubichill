@@ -3,6 +3,7 @@ import { CursorLayer } from './components/cursor/CursorLayer';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { ConfirmProvider } from './components/ui/ConfirmProvider';
 import { VersionBadge } from './components/VersionBadge';
+import { VersionSkewGuard } from './components/VersionSkewGuard';
 import { STANDALONE_INSTANCE, STANDALONE_RUNTIME } from './lib/instanceConnection';
 import { SessionProvider } from './lib/session';
 import { AuthPage } from './pages/AuthPage';
@@ -89,6 +90,7 @@ export function AppRouter() {
                         <Route path="*" element={<Navigate to="/" replace />} />
                     </Routes>
                     <VersionBadge />
+                    <VersionSkewGuard />
                     <CursorLayer />
                 </ConfirmProvider>
             </SessionProvider>

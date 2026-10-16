@@ -253,9 +253,31 @@ function listFilesRecursive(dir: string): string[] {
     return out;
 }
 
-function sriOf(text: string): string {
-    const hash = createHash('sha256').update(text).digest('base64');
+function sriOf(content: string | Uint8Array): string {
+    const hash = createHash('sha256').update(content).digest('base64');
     return `sha256-${hash}`;
+}
+
+/** versioned ディレクトリ直下で build が書き出すファイル。アセットが同名だと上書きし合う。 */
+const RESERVED_ASSET_PATHS = new Set(['manifest.json', 'lock.json', 'lock.sig.json', 'mod.json', 'index.json']);
+
+/** アセットの一覧（POSIX 相対パス・ソート済み）と、各ファイルの SRI。 */
+export function collectAssets(
+    assetsDir: string,
+    componentDirs: ReadonlySet<string>,
+): { files: string[]; integrity: Record<string, string> } {
+    if (!existsSync(assetsDir)) return { files: [], integrity: {} };
+    const files = listFilesRecursive(assetsDir)
+        .map((p) => toPosixRelative(assetsDir, p))
+        .sort();
+    const clashes = files.filter((p) => RESERVED_ASSET_PATHS.has(p) || componentDirs.has(p.split('/')[0] ?? ''));
+    if (clashes.length > 0) {
+        throw new Error(
+            `assets/ に build の出力と同じ名前があります: ${clashes.join(', ')}（manifest.json・lock.json・Component 名のディレクトリは使えません）`,
+        );
+    }
+    const integrity = Object.fromEntries(files.map((p) => [p, sriOf(readFileSync(join(assetsDir, p)))]));
+    return { files, integrity };
 }
 
 /**
@@ -418,6 +440,15 @@ async function fetchRemoteVersions(
 }
 
 /** @param modDir mod のルートディレクトリへの絶対パス */
+/** lock.json を書く。内容が変わったら、以前の内容に付けた署名（lock.sig.json）は無効なので消す。 */
+function writeLock(versionDir: string, lock: string): void {
+    const lockPath = join(versionDir, 'lock.json');
+    const sigPath = join(versionDir, 'lock.sig.json');
+    const unchanged = existsSync(lockPath) && readFileSync(lockPath, 'utf-8') === lock;
+    if (!unchanged && existsSync(sigPath)) unlinkSync(sigPath);
+    writeFileSync(lockPath, lock, 'utf-8');
+}
+
 export async function buildMod(modDir: string, options: BuildOptions = {}): Promise<ModIndexEntry> {
     const { id, name, version, homepage } = readPackageJson(modDir);
     const { distDir, publicDir } = resolveDirs({ ...options, modDir });
@@ -529,14 +560,15 @@ export async function buildMod(modDir: string, options: BuildOptions = {}): Prom
         );
     }
 
-    // assets/ をバージョン固定パスにコピー（Worker は Ubi.modBase で参照）
+    // assets/ をバージョン固定パスにコピー（Worker は Ubi.asset / Ubi.modBase で参照）。
+    // 各ファイルの SRI を manifest に載せる。manifest は lock で固定されるので、アセットの中身も固定される。
     const assetsSrcDir = join(modDir, 'assets');
-    let assetFiles: string[] = [];
-    if (existsSync(assetsSrcDir)) {
+    const componentDirs = new Set(Object.keys(lockComponents).map((type) => type.slice(id.length + 1).split('/')[0]));
+    const assets = collectAssets(assetsSrcDir, componentDirs);
+    if (assets.files.length > 0) {
         copyDirRecursive(assetsSrcDir, publicVersionDir);
         copyDirRecursive(assetsSrcDir, distVersionDir);
-        assetFiles = listFilesRecursive(assetsSrcDir).map((p) => toPosixRelative(assetsSrcDir, p));
-        console.log(`✅ [${id}] assets → v${version}/ (${assetFiles.length} files)`);
+        console.log(`✅ [${id}] assets → v${version}/ (${assets.files.length} files)`);
     }
 
     const versionedManifest = JSON.stringify(
@@ -545,7 +577,9 @@ export async function buildMod(modDir: string, options: BuildOptions = {}): Prom
             name,
             version,
             components: versionedComponents,
-            assets: assetFiles,
+            assets: assets.files,
+            // アセットの無い mod の manifest は従来とバイト単位で同じにする（既存の lock を壊さない）。
+            ...(assets.files.length > 0 ? { assetIntegrity: assets.integrity } : {}),
         },
         null,
         2,
@@ -564,8 +598,8 @@ export async function buildMod(modDir: string, options: BuildOptions = {}): Prom
         null,
         2,
     );
-    writeFileSync(join(distVersionDir, 'lock.json'), lock, 'utf-8');
-    writeFileSync(join(publicVersionDir, 'lock.json'), lock, 'utf-8');
+    writeLock(distVersionDir, lock);
+    writeLock(publicVersionDir, lock);
     console.log(`🔒 [${id}] lock.json (${Object.keys(lockComponents).length} components)`);
 
     // ── index.json（この mod 単体をレジストリとして公開する）────────────

@@ -70,6 +70,11 @@ export function createRemoteWorldCache<W>(deps: RemoteWorldCacheDeps<W>) {
             inFlight.set(url, task);
             return task;
         },
+        /** 1 つの URL の結果（成功・失敗とも）を捨て、次の解決で取り直させる（作者が公開し直したのを確かめ直すとき）。 */
+        forget(url: string): void {
+            worlds.delete(url);
+            failures.delete(url);
+        },
         /** 成功結果を捨てる（作者の鍵や表示名が変わったとき）。失敗の記録は取得の抑制なので残す。 */
         clearWorlds(): void {
             worlds.clear();

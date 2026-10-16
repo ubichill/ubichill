@@ -3,7 +3,7 @@ import type { MediaTimeline, ModHostEvent } from '@ubichill/shared';
 import type React from 'react';
 import { useEffect, useMemo, useRef } from 'react';
 import { createMediaRuntime, type MediaHandlers } from '../media/createMediaRuntime';
-import type { WorkerModDefinition } from '../types';
+import { modPermissionSubject, type WorkerModDefinition } from '../types';
 import { useExternalUrlAuthorization } from './useExternalUrlAuthorization';
 import { useSocket } from './useSocket';
 
@@ -27,18 +27,20 @@ export function useModMedia(
     authorizeUrlRef.current = authorizeUrl;
 
     const modId = definition.id.split(':')[0];
+    const permissionSubject = modPermissionSubject(definition);
     const runtime = useMemo(
         () =>
             createMediaRuntime({
                 definitionId: definition.id,
                 syncScopeId,
                 modId,
+                permissionSubject,
                 mediaVisibility: mediaVisibilityRef.current,
                 getSocket: () => socketRef.current,
                 authorizeUrl: (url) => authorizeUrlRef.current(url),
                 sendEvent: (event) => sendEventRef.current?.(event),
             }),
-        [definition.id, modId, sendEventRef, syncScopeId],
+        [definition.id, modId, permissionSubject, sendEventRef, syncScopeId],
     );
 
     useEffect(() => {

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { checkProtocolCompatibility, MIN_COMPATIBLE_PROTOCOL_VERSION, PROTOCOL_VERSION } from './protocol';
+import {
+    checkProtocolCompatibility,
+    FETCH_LIMITS,
+    MIN_COMPATIBLE_PROTOCOL_VERSION,
+    normalizeFetchLimits,
+    PROTOCOL_VERSION,
+} from './protocol';
 
 describe('checkProtocolCompatibility', () => {
     it('同一バージョンは ok', () => {
@@ -33,5 +39,21 @@ describe('checkProtocolCompatibility', () => {
 
     it('MIN_COMPATIBLE は PROTOCOL_VERSION 以下（破壊的変更時のみ引き上げる不変条件）', () => {
         expect(MIN_COMPATIBLE_PROTOCOL_VERSION).toBeLessThanOrEqual(PROTOCOL_VERSION);
+    });
+});
+
+describe('normalizeFetchLimits', () => {
+    it('未指定・不正値は既定値、上限超えは上限に丸める', () => {
+        expect(normalizeFetchLimits()).toEqual({
+            timeoutMs: FETCH_LIMITS.defaultTimeoutMs,
+            maxBytes: FETCH_LIMITS.defaultMaxBytes,
+        });
+        expect(normalizeFetchLimits({ timeoutMs: Number.NaN, maxBytes: -1 })).toEqual(normalizeFetchLimits());
+        expect(normalizeFetchLimits({ timeoutMs: 10 ** 9, maxBytes: 10 ** 12 })).toEqual({
+            timeoutMs: FETCH_LIMITS.maxTimeoutMs,
+            maxBytes: FETCH_LIMITS.maxBytes,
+        });
+        expect(normalizeFetchLimits({ timeoutMs: 0 }).timeoutMs).toBe(1);
+        expect(normalizeFetchLimits({ maxBytes: 0 }).maxBytes).toBe(0);
     });
 });

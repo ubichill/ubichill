@@ -14,6 +14,8 @@ export interface MyAccount {
     name: string;
     /** 移行時に他人と表示名が重複していた。変更を促す。 */
     displayNameConflict: boolean;
+    /** 次に別の表示名へ変えられる時刻（ISO 8601）。変えたことが無ければ null。 */
+    displayNameChangeAvailableAt: string | null;
     /** 公開済みの開発用既定パスワードのまま（公式アカウント）。Secret の設定を促す。 */
     passwordChangeRequired: boolean;
     /** パスワードをサーバーの設定（Secret）で管理している（画面から変更できない）。 */
@@ -52,7 +54,9 @@ export async function changeMyPassword(currentPassword: string, newPassword: str
 }
 
 /** 表示名を変更する（一意）。 */
-export async function setMyDisplayName(name: string): Promise<{ name: string }> {
+export async function setMyDisplayName(
+    name: string,
+): Promise<{ name: string; displayNameChangeAvailableAt: string | null }> {
     const res = await fetch(`${API_BASE}/api/v1/users/me/display-name`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -60,7 +64,7 @@ export async function setMyDisplayName(name: string): Promise<{ name: string }> 
         body: JSON.stringify({ name }),
     });
     if (!res.ok) throw new Error(await errorMessage(res));
-    return (await res.json()) as { name: string };
+    return (await res.json()) as { name: string; displayNameChangeAvailableAt: string | null };
 }
 
 /** 自己紹介を書く（空にすると書いていない状態に戻る）。 */

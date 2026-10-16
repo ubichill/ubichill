@@ -11,11 +11,14 @@ import {
     groupFriendLocations,
     HANDLE_PATTERN,
     type Instance,
+    parseUserSearchQuery,
+    type UserSearchResponse,
     type UserSummary,
     type UserWithFriendship,
 } from '@ubichill/shared';
 import { Router } from 'express';
 import { optionalAuth, requireAuth } from '../middleware/auth';
+import { selfDomain } from '../services/authorKeys';
 import { friendEdgesOf, friendIdsOf } from '../services/friends';
 import { instanceManager } from '../services/instanceManager';
 import { instanceRuntime } from '../services/instanceRuntime';
@@ -25,7 +28,6 @@ const router = Router();
 /** システムユーザーは検索・フレンドに出さない。 */
 const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000';
 const SEARCH_LIMIT = 20;
-const SEARCH_MAX_LENGTH = 50;
 
 const summaryOf = (u: UserRecord): UserSummary => ({
     id: u.id,
@@ -49,20 +51,26 @@ async function withFriendship(viewerId: string | undefined, user: UserRecord): P
     return { ...summaryOf(user), friendship };
 }
 
-// ユーザー検索（ID の前方一致・表示名の部分一致）。自分との関係付き。
+// ユーザー検索（ID の前方一致・表示名の部分一致・`@handle@domain` の指定）。自分との関係付き。
 router.get('/users', requireAuth, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-    const q = typeof req.query.q === 'string' ? req.query.q.trim().replace(/^@/, '') : '';
-    if (!q) return res.json({ users: [] });
-    if (q.length > SEARCH_MAX_LENGTH) return res.status(400).json({ error: '検索語が長すぎます' });
+    const query = parseUserSearchQuery(typeof req.query.q === 'string' ? req.query.q : '', selfDomain());
+    if (query.kind === 'tooLong') return res.status(400).json({ error: '検索語が長すぎます' });
+    if (query.kind === 'empty') return res.json({ users: [] } satisfies UserSearchResponse);
+    // ほかのサーバーのアカウントは、連合のフレンド（#200）でそのサーバーに問い合わせるまで引けない
+    if (query.kind === 'remote') {
+        return res.json({ users: [], remoteAccount: query.account } satisfies UserSearchResponse);
+    }
     const [users, edges] = await Promise.all([
-        userRepository.search(q, { limit: SEARCH_LIMIT, excludeIds: [SYSTEM_USER_ID] }),
+        query.kind === 'local'
+            ? userRepository.findByHandle(query.handle).then((u) => (u && u.id !== SYSTEM_USER_ID ? [u] : []))
+            : userRepository.search(query, { limit: SEARCH_LIMIT, excludeIds: [SYSTEM_USER_ID] }),
         friendEdgesOf(req.user.id),
     ]);
     const me = req.user.id;
     return res.json({
         users: users.map((u): UserWithFriendship => ({ ...summaryOf(u), friendship: friendshipOf(edges, me, u.id) })),
-    });
+    } satisfies UserSearchResponse);
 });
 
 // ID（/@handle）でユーザーを引く（ユーザーページ）。

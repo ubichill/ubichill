@@ -32,35 +32,38 @@ describe('createCapabilityGate — 静的モード（allowlist）', () => {
 });
 
 describe('createCapabilityGate — on-demand モード', () => {
+    // lock が net:fetch と scene:update を許している mod
+    const allowedCommands = buildAllowedCommands(['net:fetch', 'scene:update']);
+
     it('コアコマンドは authorizeCapability を呼ばず即許可する', () => {
         const authorize = vi.fn(() => true);
-        const gate = createCapabilityGate({ authorizeCapability: authorize });
+        const gate = createCapabilityGate({ allowedCommands, authorizeCapability: authorize });
         expect(gate.authorize('CMD_LOG')).toBe(true);
         expect(authorize).not.toHaveBeenCalled();
     });
 
     it('どの capability にも属さない未知コマンドは問い合わせず拒否する', () => {
         const authorize = vi.fn(() => true);
-        const gate = createCapabilityGate({ authorizeCapability: authorize });
+        const gate = createCapabilityGate({ allowedCommands, authorizeCapability: authorize });
         expect(gate.authorize('TOTALLY_UNKNOWN')).toBe(false);
         expect(authorize).not.toHaveBeenCalled();
     });
 
     it('コマンドの属する capability をコールバックに問い合わせ、結果をそのまま返す', () => {
         const authorize = vi.fn((cap: string) => cap === 'net:fetch');
-        const gate = createCapabilityGate({ authorizeCapability: authorize });
+        const gate = createCapabilityGate({ allowedCommands, authorizeCapability: authorize });
         expect(gate.authorize('NETWORK_FETCH')).toBe(true);
         expect(authorize).toHaveBeenCalledWith('net:fetch');
     });
 
     it('拒否された capability のコマンドは false になる', () => {
-        const gate = createCapabilityGate({ authorizeCapability: () => false });
+        const gate = createCapabilityGate({ allowedCommands, authorizeCapability: () => false });
         expect(gate.authorize('NETWORK_FETCH')).toBe(false);
     });
 
     it('キャッシュせず毎回評価する（承認が deny→allow に変われば次は許可される）', () => {
         let granted = false;
-        const gate = createCapabilityGate({ authorizeCapability: () => granted });
+        const gate = createCapabilityGate({ allowedCommands, authorizeCapability: () => granted });
         expect(gate.authorize('SCENE_UPDATE_ENTITY')).toBe(false); // 承認前
         granted = true; // 読み込み時の一括承認で許可された想定
         expect(gate.authorize('SCENE_UPDATE_ENTITY')).toBe(true); // キャッシュされていないので反映
@@ -68,10 +71,36 @@ describe('createCapabilityGate — on-demand モード', () => {
 
     it('コールバックが throw したら安全側（拒否）に倒す', () => {
         const gate = createCapabilityGate({
+            allowedCommands,
             authorizeCapability: () => {
                 throw new Error('boom');
             },
         });
         expect(gate.authorize('NETWORK_FETCH')).toBe(false);
+    });
+
+    it('ユーザー設定が許していても、lock に無い権限のコマンドは拒否する（lock が天井）', () => {
+        const authorize = vi.fn(() => true);
+        const gate = createCapabilityGate({
+            allowedCommands: buildAllowedCommands(['ui:render']),
+            authorizeCapability: authorize,
+        });
+        expect(gate.authorize('SCENE_UPDATE_ENTITY')).toBe(false);
+        expect(gate.authorize('NETWORK_FETCH')).toBe(false);
+        expect(authorize).not.toHaveBeenCalled();
+    });
+
+    it('lock が許していても、ユーザーが拒否した権限のコマンドは拒否する', () => {
+        const gate = createCapabilityGate({
+            allowedCommands: buildAllowedCommands(['scene:update']),
+            authorizeCapability: (cap) => cap !== 'scene:update',
+        });
+        expect(gate.authorize('SCENE_UPDATE_ENTITY')).toBe(false);
+    });
+
+    it('lock を渡し忘れたら、ユーザー設定に関係なくコア以外は拒否する', () => {
+        const gate = createCapabilityGate({ authorizeCapability: () => true });
+        expect(gate.authorize('SCENE_UPDATE_ENTITY')).toBe(false);
+        expect(gate.authorize('CMD_LOG')).toBe(true);
     });
 });

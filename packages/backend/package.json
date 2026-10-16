@@ -1,6 +1,6 @@
 {
     "name": "@ubichill/backend",
-    "version": "1.4.0",
+    "version": "1.8.0",
     "private": true,
     "description": "Backend server for Ubichill",
     "main": "dist/index.js",
@@ -43,6 +43,7 @@
         "helmet": "^8.3.0",
         "nanoid": "catalog:",
         "resend": "^6.28.1",
+        "undici": "^7.29.1",
         "yaml": "catalog:",
         "zod": "catalog:"
     },

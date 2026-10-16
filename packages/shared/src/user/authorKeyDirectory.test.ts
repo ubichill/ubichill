@@ -1,10 +1,5 @@
-import {
-    AUTHOR_CHECK_STALE_MS,
-    DISPLAY_NAME_WEBFINGER_PROPERTY,
-    SIGNING_KEYS_WEBFINGER_REL,
-    type SigningKeyEntry,
-} from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
+import { AUTHOR_CHECK_STALE_MS } from '../world/identity';
 import {
     AUTHOR_KEYS_FRESH_MS,
     AUTHOR_KEYS_MAX_AGE_MS,
@@ -13,10 +8,19 @@ import {
     createFetchGuard,
     DOMAIN_FETCH_LIMIT,
     DOMAIN_FETCH_WINDOW_MS,
+    resolveSameOriginStrict,
     webFingerLinks,
-} from './authorKeys';
+} from './authorKeyDirectory';
+import { DISPLAY_NAME_WEBFINGER_PROPERTY } from './handle';
+import { SIGNING_KEYS_WEBFINGER_REL, type SigningKeyEntry } from './signingKeys';
 
 const HASH = 'sha256-content';
+
+// shared は環境の型（DOM・Node）を持たないので、テストのタイマーだけ型を補う
+const nextTask = () =>
+    new Promise<void>((resolve) =>
+        (globalThis as unknown as { setTimeout: (callback: () => void, ms: number) => unknown }).setTimeout(resolve, 0),
+    );
 
 /** 確認済みの内容の記録（テスト用のメモリ実装）。 */
 function memoryConfirmedContents() {
@@ -78,6 +82,71 @@ describe('webFingerLinks', () => {
         expect(links?.signingKeysUrl).toBe(`${ORIGIN}/keys`);
     });
 
+    it.each([
+        '//evil.example/keys',
+        'https://other.example.evil.example/keys',
+        'https://other.example@evil.example/keys',
+        'https://user:pass@other.example/keys',
+        'http://other.example/keys',
+        'https://other.example:8443/keys',
+        'javascript:alert(1)',
+    ])('同じオリジンではない鍵一覧の URL（%j）は採用しない', (href) => {
+        const links = webFingerLinks(
+            { subject: 'acct:alice@other.example', links: [{ rel: SIGNING_KEYS_WEBFINGER_REL, href }] },
+            'alice@other.example',
+            ORIGIN,
+        );
+        expect(links).toEqual({});
+    });
+
+    it.each([
+        ['https://other.example:443/keys', `${ORIGIN}/keys`],
+        ['https://OTHER.example/keys', `${ORIGIN}/keys`],
+        ['keys', `${ORIGIN}/keys`],
+        ['/a/../keys', `${ORIGIN}/keys`],
+    ])(
+        '同じオリジンの表記の揺れ（%j）は、正規の URL にそろえて採用する（ほかの実装と連携できるように）',
+        (href, expected) => {
+            const links = webFingerLinks(
+                { subject: 'acct:alice@other.example', links: [{ rel: SIGNING_KEYS_WEBFINGER_REL, href }] },
+                'alice@other.example',
+                ORIGIN,
+            );
+            expect(links?.signingKeysUrl).toBe(expected);
+        },
+    );
+
+    it('URL を扱えない環境の既定は、同じオリジンの絶対 URL と / で始まるパスだけを受け付ける', () => {
+        expect(resolveSameOriginStrict(`${ORIGIN}/keys`, ORIGIN)).toBe(`${ORIGIN}/keys`);
+        expect(resolveSameOriginStrict('/keys', ORIGIN)).toBe(`${ORIGIN}/keys`);
+        for (const href of [
+            '//evil.example/keys',
+            'https://other.example:443/keys',
+            ' /keys',
+            '/\\evil.example',
+            'keys',
+        ]) {
+            expect(resolveSameOriginStrict(href, ORIGIN)).toBeUndefined();
+        }
+    });
+
+    it('作者アカウントを発行していない Host（local なし）は、どの作者も WebFinger で確かめる', async () => {
+        const fetched: string[] = [];
+        const directory = createAuthorKeyDirectory({
+            bindings: { find: async () => undefined, save: async () => undefined },
+            confirmedContents: memoryConfirmedContents(),
+            fetchJson: async (url) => {
+                fetched.push(url);
+                return undefined;
+            },
+            allowHttp: false,
+        });
+        expect(await directory.isAuthorKey('youkan@ubichill.com', 'B'.repeat(43), HASH)).toEqual({
+            status: 'unconfirmed',
+        });
+        expect(fetched).toEqual(['https://ubichill.com/.well-known/webfinger?resource=acct%3Ayoukan%40ubichill.com']);
+    });
+
     it('表示名が不正（制御文字・長すぎ・文字列でない）なら捨てる', () => {
         for (const bad of ['a\u0000b', 'x'.repeat(31), 42, '']) {
             const links = webFingerLinks(
@@ -106,14 +175,16 @@ describe('createAuthorKeyDirectory（公開環境の鍵一覧と取り消し）'
         const clock = { t: 1_000_000_000 };
         const store = new Map<string, AuthorProfile & { fetchedAt: Date }>();
         const directory = createAuthorKeyDirectory({
-            selfDomain: () => 'ubichill.com',
-            findLocalAccount: async (handle) =>
-                handle === 'youkan'
-                    ? {
-                          keys: [{ publicKey: LOCAL }, { publicKey: LOCAL_REVOKED, revokedAt: REVOKED_AT }],
-                          displayName: 'ようかん',
-                      }
-                    : undefined,
+            local: {
+                domain: () => 'ubichill.com',
+                findAccount: async (handle) =>
+                    handle === 'youkan'
+                        ? {
+                              keys: [{ publicKey: LOCAL }, { publicKey: LOCAL_REVOKED, revokedAt: REVOKED_AT }],
+                              displayName: 'ようかん',
+                          }
+                        : undefined,
+            },
             bindings: {
                 find: async (account) => store.get(account),
                 save: async (account, profile) => {
@@ -130,7 +201,9 @@ describe('createAuthorKeyDirectory（公開環境の鍵一覧と取り消し）'
                     return {
                         subject: 'acct:alice@other.example',
                         properties: { [DISPLAY_NAME_WEBFINGER_PROPERTY]: remote.name ?? 'アリス' },
-                        links: [{ rel: SIGNING_KEYS_WEBFINGER_REL, href: `${new URL(url).origin}/keys` }],
+                        links: [
+                            { rel: SIGNING_KEYS_WEBFINGER_REL, href: `${/^https?:\/\/[^/]+/.exec(url)?.[0]}/keys` },
+                        ],
                     };
                 }
                 return { account: 'alice@other.example', issuedAt: new Date(clock.t).toISOString(), keys: remote.keys };
@@ -140,7 +213,7 @@ describe('createAuthorKeyDirectory（公開環境の鍵一覧と取り消し）'
         });
         return { directory, calls, clock, store };
     };
-    const tick = () => new Promise((r) => setTimeout(r, 0));
+    const tick = () => nextTask();
 
     it('自サーバーのアカウントは DB の公開環境で判定し、取り消した鍵は作者にしない', async () => {
         const { directory, calls } = setup();
@@ -324,8 +397,7 @@ describe('作者名を変えて問い合わせを出させる攻撃', () => {
         const fetched: string[] = [];
         const clock = { t: 1_000_000_000 };
         const directory = createAuthorKeyDirectory({
-            selfDomain: () => 'ubichill.com',
-            findLocalAccount: async () => undefined,
+            local: { domain: () => 'ubichill.com', findAccount: async () => undefined },
             bindings: { find: async () => undefined, save: async () => undefined },
             confirmedContents: memoryConfirmedContents(),
             fetchJson: async (url) => {
@@ -350,15 +422,14 @@ describe('作者名を変えて問い合わせを出させる攻撃', () => {
 
 describe('上限は初めての作者・知らない鍵だけにかかる', () => {
     const KNOWN = 'C'.repeat(43);
-    const tick = () => new Promise((r) => setTimeout(r, 0));
+    const tick = () => nextTask();
     const setupDomain = () => {
         const fetched: string[] = [];
         const clock = { t: 1_000_000_000 };
         const store = new Map<string, AuthorProfile & { fetchedAt: Date }>();
         const known = new Set(['known1', 'known2', 'known3']);
         const directory = createAuthorKeyDirectory({
-            selfDomain: () => 'ubichill.com',
-            findLocalAccount: async () => undefined,
+            local: { domain: () => 'ubichill.com', findAccount: async () => undefined },
             bindings: {
                 find: async (account) => store.get(account),
                 save: async (account, profile) => {
@@ -426,8 +497,7 @@ describe('確認が古い間は、古くなる前に確認済みだった内容�
         const store = new Map<string, AuthorProfile & { fetchedAt: Date }>();
         const contents = memoryConfirmedContents();
         const directory = createAuthorKeyDirectory({
-            selfDomain: () => 'ubichill.com',
-            findLocalAccount: async () => undefined,
+            local: { domain: () => 'ubichill.com', findAccount: async () => undefined },
             bindings: {
                 find: async (account) => store.get(account),
                 save: async (account, profile) => {
@@ -440,7 +510,9 @@ describe('確認が古い間は、古くなる前に確認済みだった内容�
                 if (url.includes('webfinger')) {
                     return {
                         subject: 'acct:alice@small.example',
-                        links: [{ rel: SIGNING_KEYS_WEBFINGER_REL, href: `${new URL(url).origin}/keys` }],
+                        links: [
+                            { rel: SIGNING_KEYS_WEBFINGER_REL, href: `${/^https?:\/\/[^/]+/.exec(url)?.[0]}/keys` },
+                        ],
                     };
                 }
                 return {
@@ -454,7 +526,7 @@ describe('確認が古い間は、古くなる前に確認済みだった内容�
         });
         return { directory, state, clock, contents };
     };
-    const tickOnce = () => new Promise((r) => setTimeout(r, 0));
+    const tickOnce = () => nextTask();
 
     it('確認が新しいうちに作者付きと確かめた内容は記録する', async () => {
         const { directory, contents } = setupStale();

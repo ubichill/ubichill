@@ -16,6 +16,7 @@ import { useModBroadcast } from '../hooks/useModBroadcast';
 import { useModCanvas } from '../hooks/useModCanvas';
 import { useModEntitySync } from '../hooks/useModEntitySync';
 import { useModFetch } from '../hooks/useModFetch';
+import { useModIdentity } from '../hooks/useModIdentity';
 import { useModMedia } from '../hooks/useModMedia';
 import { useModPresence } from '../hooks/useModPresence';
 import { useModUI } from '../hooks/useModUI';
@@ -31,7 +32,7 @@ import {
     type WatchScope,
 } from '../lib/entityScope';
 import { ridingSyncRef } from '../ridingSyncRef';
-import type { WorkerModDefinition } from '../types';
+import { modPermissionSubject, type WorkerModDefinition } from '../types';
 import { useModWorker } from '../useModWorker';
 import { useWorkerLoading } from '../WorkerLoadingContext';
 import { useHold } from './HoldContext';
@@ -56,10 +57,17 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
     // 宣言 capability の静的判定にフォールバック）。modId 束縛済みで identity 安定。
     // definition.id は "mod:component" 形式。信頼境界はmod単位なので ":" の前を使う
     // （同一modの全コンポーネントで許可を共有する）。
-    const modId = definition.id.split(':')[0];
+    // lock が許す権限（definition.capabilities）が天井。ユーザー設定の既定で許される権限でも、lock に無ければ許さない。
+    const subject = modPermissionSubject(definition);
+    const capabilities = definition.capabilities;
     const authorizeCapability = useMemo(
-        () => (permissions ? (capability: string) => permissions.authorizeCapability(modId, capability) : undefined),
-        [permissions, modId],
+        () =>
+            permissions
+                ? (capability: string) =>
+                      (capabilities?.includes(capability) ?? false) &&
+                      permissions.authorizeCapability(subject, capability)
+                : undefined,
+        [permissions, subject, capabilities],
     );
 
     // 読み込み時に要求 capability をまとめて承認してもらい、**決定が済むまで Worker を実行しない**。
@@ -76,13 +84,13 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
         }
         let cancelled = false;
         setEnabled(false);
-        authorizeMod(modId, declaredCapabilities ?? []).then(() => {
+        authorizeMod(subject, declaredCapabilities ?? []).then(() => {
             if (!cancelled) setEnabled(true); // 決定後は許可/拒否とも実行
         });
         return () => {
             cancelled = true;
         };
-    }, [authorizeMod, modId, declaredCapabilities]);
+    }, [authorizeMod, subject, declaredCapabilities]);
     const hostDivRef = useRef<HTMLDivElement>(null);
     const workerLoading = useWorkerLoading();
 
@@ -116,6 +124,7 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
     const { vnodes, onRender, sendAction, sendEventRef } = useModUI();
     const { getVideoRef, mediaHandlers } = useModMedia(definition, sendEventRef, entity.entityId ?? entityId);
     const onFetch = useModFetch(definition);
+    const onIdentityToken = useModIdentity(definition);
     const filterInputEvents = useCallback(
         (events: InputFrameEvent[]) => filterRideInput(events, ridingSyncRef.get(), entityId),
         [entityId],
@@ -168,6 +177,7 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
     const { sendEvent, workerRevision, setScrollElement } = useModWorker({
         modCode: definition.workerCode,
         modId: definition.id,
+        permissionSubject: subject,
         componentInstanceId: entityId,
         entityId: entity.entityId,
         parentEntityId: entity.parentEntityId,
@@ -177,6 +187,7 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
         enabled,
         myUserId: currentUser?.id,
         modBase: definition.modBase,
+        assetIntegrity: definition.assetIntegrity,
         watchEntityTypes: definition.watchEntityTypes,
         initialEntities,
         filterInputEvents,
@@ -189,6 +200,7 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
             // worker が報告した Inspector 用スキーマをレジストリへ。World エディタが参照する。
             onEditorSchema: (componentType, schema) => editorSchemaRegistry.set(componentType, schema),
             onFetch,
+            onIdentityToken,
             onNetworkBroadcast: (type, data) => onNetworkBroadcastRef.current?.(type, data),
             onEventEmit: (type, data, scope, targetType, senderId) =>
                 routeEmit({

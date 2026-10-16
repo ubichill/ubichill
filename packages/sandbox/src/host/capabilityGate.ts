@@ -5,9 +5,10 @@
  *
  * モードは 3 つ:
  *  - allowAll  : 全コマンド許可（信頼済み first-party / 開発用エスケープハッチ）。
- *  - dynamic   : authorizeCapability コールバックが判断源。**毎回評価する（キャッシュしない）**。
- *                承認はmod読み込み時に別途まとめて確定するため、ここは即時の許可判定だけを行い、
- *                プロンプトや保留はしない（＝コマンドを握らないので RPC タイムアウトを招かない）。
+ *  - dynamic   : allowlist（lock が許す天井）**かつ** authorizeCapability（ユーザーの許可）。
+ *                ユーザー設定の既定で許される権限でも、lock に無ければ拒否する。
+ *                コールバックは**毎回評価する（キャッシュしない）**。承認はmod読み込み時に別途まとめて確定するため、
+ *                ここは即時の許可判定だけを行い、プロンプトや保留はしない（＝RPC タイムアウトを招かない）。
  *  - static    : 構築時の allowlist（Set）で判定。
  *
  * コアコマンド（ALWAYS_ALLOWED_COMMANDS）は capability 宣言なしで常に許可する。
@@ -22,7 +23,7 @@ export interface CapabilityGate {
 export interface CapabilityGateOptions {
     /** 全コマンドを許可する（他の判定を一切行わない）。 */
     allowAll?: boolean;
-    /** 静的 allowlist（authorizeCapability 未指定時の判断源）。 */
+    /** lock が許すコマンド（天井）。authorizeCapability があってもこれを超えては許可しない。未指定は全拒否。 */
     allowedCommands?: ReadonlySet<string>;
     /**
      * 認可コールバック（指定時は静的 allowlist より優先）。同期で即時判定する。
@@ -38,6 +39,7 @@ export function createCapabilityGate(options: CapabilityGateOptions): Capability
         authorize(commandType): boolean {
             if (options.allowAll) return true;
             if (ALWAYS_ALLOWED.has(commandType)) return true;
+            if (!options.allowedCommands?.has(commandType)) return false;
 
             if (options.authorizeCapability) {
                 const capability = COMMAND_TO_CAPABILITY[commandType];
@@ -49,7 +51,7 @@ export function createCapabilityGate(options: CapabilityGateOptions): Capability
                 }
             }
 
-            return options.allowedCommands?.has(commandType) ?? false;
+            return true;
         },
     };
 }

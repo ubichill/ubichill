@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { signWorld } from '@ubichill/shared';
@@ -50,7 +50,7 @@ describe('ubichill verify <world.yaml>（署名が今の内容に対して有効
     const dir = { path: '' };
     const world = () => join(dir.path, 'w.yaml');
     const sig = () => join(dir.path, 'w.sig.json');
-    const writeSigned = async (author?: string) => {
+    const writeSigned = async (author: string) => {
         const key = await importSigningKey(await generateSigningKeyPkcs8());
         const signature = await signWorld(
             { definition: yaml.parse(VALID_WORLD_YAML), lock: null },
@@ -94,8 +94,13 @@ describe('ubichill verify <world.yaml>（署名が今の内容に対して有効
         expect(process.exitCode).toBe(1);
     });
 
-    it('作者アカウントの無い署名は不合格（公開されないため）', async () => {
-        await writeSigned(undefined);
+    it('作者アカウントの無い署名は不合格（作者は必須）', async () => {
+        await writeSigned('youkan@ubichill.com');
+        const { author: _author, ...withoutAuthor } = JSON.parse(readFileSync(sig(), 'utf-8')) as Record<
+            string,
+            unknown
+        >;
+        writeFileSync(sig(), JSON.stringify(withoutAuthor));
         await runVerifyWorld([world()]);
         expect(process.exitCode).toBe(1);
     });
