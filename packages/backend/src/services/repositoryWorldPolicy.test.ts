@@ -1,9 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
+import { repositoryWorldPolicy } from './worldRegistry';
 
 vi.mock('@ubichill/db', () => ({ federationPeerRepository: {}, userRepository: {}, worldRepository: {} }));
 vi.mock('./authorKeyStore', () => ({ isAuthorKey: vi.fn(), resolveAuthorDisplayName: vi.fn() }));
-
-const { repositoryWorldPolicy } = await import('./worldRegistry');
 
 const account = (handle: string, domain: string) => ({ handle, domain });
 
