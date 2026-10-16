@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildStroke, ERASER_SIZE_SCALE, type StrokePoint, strokeFingerprint } from './stroke';
+import { buildStroke, ERASER_FALLBACK_COLOR, ERASER_SIZE_SCALE, type StrokePoint, strokeFingerprint } from './stroke';
 
 const pen = { color: '#ff0000', strokeWidth: 4, eraser: false };
 const eraser = { ...pen, eraser: true };
@@ -24,6 +24,11 @@ describe('buildStroke', () => {
         expect(stroke?.mode).toBe('erase');
         expect(stroke?.size).toBe(4 * ERASER_SIZE_SCALE);
         expect(buildStroke(line, { ...eraser, color: '#00ff00' })).toEqual(stroke);
+    });
+
+    it('消しゴムの color は透明（mode を知らない古い Host で上書き描画されても線が増えない）', () => {
+        expect(buildStroke(line, eraser)?.color).toBe(ERASER_FALLBACK_COLOR);
+        expect(ERASER_FALLBACK_COLOR).toMatch(/^rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*0\s*\)$/);
     });
 
     it('元の点の配列を共有しない（描画中の配列への追加が確定済みのストロークに漏れない）', () => {

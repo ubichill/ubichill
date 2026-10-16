@@ -19,11 +19,22 @@ export interface PenTool {
 /** 消しゴムはペンと同じ太さの選択肢を使うが、線より太くないと消しにくいのでこの倍率で広げる。 */
 export const ERASER_SIZE_SCALE = 4;
 
+/**
+ * 消すストロークの color。mode を知らない古い Host（プロトコル v5 以前）は color で上書き描画するので、
+ * 透明にして「何も起きない」に留める（黒い太線にしない）。新しい Host は erase のとき color を使わない。
+ */
+export const ERASER_FALLBACK_COLOR = 'rgba(0,0,0,0)';
+
 /** 点が 1 つ以下ならストロークにならない（クリックしただけ）。 */
 export function buildStroke(points: readonly StrokePoint[], tool: PenTool): CanvasStrokeData | null {
     if (points.length <= 1) return null;
     return tool.eraser
-        ? { points: points.slice(), color: '#000000', size: tool.strokeWidth * ERASER_SIZE_SCALE, mode: 'erase' }
+        ? {
+              points: points.slice(),
+              color: ERASER_FALLBACK_COLOR,
+              size: tool.strokeWidth * ERASER_SIZE_SCALE,
+              mode: 'erase',
+          }
         : { points: points.slice(), color: tool.color, size: tool.strokeWidth };
 }
 

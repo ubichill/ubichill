@@ -4,11 +4,11 @@
     "pen": {
       "id": "pen",
       "version": "2.0.0",
-      "manifestIntegrity": "sha256-tOEHSi2wVFefEvyepFjyKSw3yfurrMBX7jETGnQRObw=",
+      "manifestIntegrity": "sha256-kw+1Qyb2pgrwLNzl84c6AmU6P1n7GsWmusachcPptnc=",
       "components": {
         "pen:canvas": {
-          "workerUrl": "./canvas/index.ba3a8b96.js",
-          "integrity": "sha256-ujqLlntrB+IKRVGfbEeccplUcMAmnjHEeVBw8sSBeTI=",
+          "workerUrl": "./canvas/index.435856d5.js",
+          "integrity": "sha256-Q1hW1S8EX76J2Gwk9lpz/lYgZIbf9xkYxEuRYD2wznA=",
           "capabilities": [
             "canvas:draw",
             "event:broadcast",
