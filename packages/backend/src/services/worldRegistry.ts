@@ -30,6 +30,7 @@ import { customAlphabet } from 'nanoid';
 import yaml from 'yaml';
 import { isAuthorKey, resolveAuthorDisplayName } from './authorKeyStore';
 import { selfDomain } from './authorKeys';
+import { type BackendEvents, backendEvents } from './backendEvents';
 import { federatedCandidates, uniqueByWorldId } from './federatedWorlds';
 import { createRemoteWorldCache } from './remoteWorldCache';
 import { assertPublicUrl, safeFetch } from './safeFetch';
@@ -134,14 +135,19 @@ class WorldRegistry {
      * 解決（検証）は DB のワールドと同じく {@link getWorld} で行い、結果は `_resolvedCache` に載せる。
      */
     private _repository = new Map<string, { filePath: string; hosted: HostedWorldDocument }>();
-    /** 表示順（in-memory。永続化は ordering→DB の別タスク） */
+    /**
+     * 表示順（in-memory。永続化は ordering→DB の別タスク）。backend を複数にすると、並べ替えた backend にしか効かない
+     * （ほかの backend に知らせてもいない。Postgres に移すまでの既知の制限）。
+     */
     private _order: string[] = [];
 
     /**
      * 本体のワールド（DB・リポジトリ）の解決キャッシュ。検証できなかった結果も短く覚える
      * （一覧のたびに同じワールドの署名検証・DB の問い合わせを繰り返さない）。
+     * ほかの backend での保存・削除は知らせ（{@link BackendEvents}）で捨てるが、届かなくても LOCAL_TTL_MS で揃う。
      */
     private readonly _resolvedCache = new Map<string, { resolution: WorldResolution; at: number }>();
+    private static readonly LOCAL_TTL_MS = 5 * 60 * 1000;
     private static readonly LOCAL_FAILURE_TTL_MS = 60 * 1000;
     /** 外部（他インスタンス/URL）ワールドの解決キャッシュ（連合、TTL 付き） */
     private static readonly REMOTE_TTL_MS = 5 * 60 * 1000;
@@ -167,8 +173,10 @@ class WorldRegistry {
         max: WorldRegistry.REMOTE_CACHE_MAX,
     });
 
-    /** フォロー中の連合ピア（他 ubichill インスタンス） */
+    /** フォロー中の連合ピア（他 ubichill インスタンス）。ほかの backend でのフォローの変更に追いつくよう、期限で DB から読み直す。 */
     private _peers: FederationPeerRecord[] = [];
+    private _peersLoadedAt = 0;
+    private static readonly PEER_LIST_TTL_MS = 5 * 60 * 1000;
     /** ピアごとのワールド一覧キャッシュ（TTL 付き） */
     private readonly _peerWorldCache = new Map<string, { at: number; worlds: WorldListItem[] }>();
     private static readonly PEER_WORLD_TTL_MS = 5 * 60 * 1000;
@@ -177,7 +185,17 @@ class WorldRegistry {
     private _watcher: ReturnType<typeof fs.watch> | null = null;
     private readonly _debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-    constructor() {
+    constructor(private readonly events: BackendEvents = backendEvents) {
+        events.on('world.changed', ({ worldId }) => {
+            this._resolvedCache.delete(worldId);
+        });
+        events.on('world.reload', ({ worldId }) => this._reloadWorldHere(worldId).then(() => undefined));
+        events.on('worlds.reload', () => this._reloadWorldsHere());
+        events.on('worlds.resolved-stale', () => this._dropResolvedHere());
+        events.on('remote.changed', ({ url }) => {
+            this._remoteCache.forget(url);
+        });
+        events.on('peers.changed', () => this._reloadPeers());
         const envWorldsDir = process.env[ENV_KEYS.WORLDS_DIR];
         this.worldsDir = envWorldsDir
             ? path.resolve(envWorldsDir)
@@ -225,7 +243,7 @@ class WorldRegistry {
 
     /** フォロー中の連合ピアを DB から読み込む。環境変数 WORLDS_FEDERATION_PEERS からの新規追加も行う。 */
     private async _loadPeers(): Promise<void> {
-        this._peers = await federationPeerRepository.findAll();
+        await this._reloadPeers();
         const envPeers = (process.env.WORLDS_FEDERATION_PEERS ?? '')
             .split(',')
             .map((u) => u.trim().replace(/\/$/, ''))
@@ -286,6 +304,9 @@ class WorldRegistry {
      * 署名検証できたものだけを返す（検証結果は外部ワールドの TTL キャッシュに乗る）。
      */
     private async _listGlobalWorlds(): Promise<WorldListItem[]> {
+        if (Date.now() - this._peersLoadedAt >= WorldRegistry.PEER_LIST_TTL_MS) {
+            await this._reloadPeers().catch((err: unknown) => console.warn('⚠ 連合ピアを読み直せません:', err));
+        }
         const results = await Promise.allSettled(this._peers.map((peer) => this._fetchPeerWorlds(peer)));
         const candidates = federatedCandidates(
             results.flatMap((r) => (r.status === 'fulfilled' ? r.value : [])),
@@ -346,7 +367,8 @@ class WorldRegistry {
     /** 本体のワールドを id で解決する。検証できなければ理由を返す（「見つからない」と区別する）。 */
     async resolveLocal(worldId: string): Promise<WorldResolution> {
         const cached = this._resolvedCache.get(worldId);
-        if (cached && (cached.resolution.ok || Date.now() - cached.at < WorldRegistry.LOCAL_FAILURE_TTL_MS)) {
+        const ttl = cached?.resolution.ok ? WorldRegistry.LOCAL_TTL_MS : WorldRegistry.LOCAL_FAILURE_TTL_MS;
+        if (cached && Date.now() - cached.at < ttl) {
             return cached.resolution;
         }
         const repository = this._repository.get(worldId);
@@ -443,6 +465,7 @@ class WorldRegistry {
         const norm = normalizeWorldUrl(url);
         if (this._selfRef(norm)) return NOT_FOUND;
         this._remoteCache.forget(norm);
+        this.events.broadcast({ type: 'remote.changed', url: norm });
         return this._resolveRemote(norm);
     }
 
@@ -495,6 +518,7 @@ class WorldRegistry {
         if (existing) return existing;
         const peer = await federationPeerRepository.create({ baseUrl: normalized, displayName });
         this._peers.push(peer);
+        this.events.broadcast({ type: 'peers.changed' });
         return peer;
     }
 
@@ -502,10 +526,24 @@ class WorldRegistry {
     async unfollowPeer(peerId: string): Promise<boolean> {
         const success = await federationPeerRepository.delete(peerId);
         if (success) {
-            this._peers = this._peers.filter((p) => p.id !== peerId);
-            this._peerWorldCache.delete(peerId);
+            this._setPeers(this._peers.filter((p) => p.id !== peerId));
+            this.events.broadcast({ type: 'peers.changed' });
         }
         return success;
+    }
+
+    /** フォロー中のピアを DB から読み直す（ほかの backend でのフォローの変更に追いつく）。 */
+    private async _reloadPeers(): Promise<void> {
+        this._setPeers(await federationPeerRepository.findAll());
+    }
+
+    private _setPeers(peers: FederationPeerRecord[]): void {
+        const followed = new Set(peers.map((p) => p.baseUrl));
+        for (const baseUrl of this._peerWorldCache.keys()) {
+            if (!followed.has(baseUrl)) this._peerWorldCache.delete(baseUrl);
+        }
+        this._peers = peers;
+        this._peersLoadedAt = Date.now();
     }
 
     /** フォロー中のピア一覧を返す。 */
@@ -633,6 +671,7 @@ class WorldRegistry {
         if (saved === 'taken') return nameTaken('あなたの別のワールド');
         if (!saved) return { ok: false, reason: 'invalid-definition', message: 'ワールドを保存できませんでした' };
         this._resolvedCache.delete(urlId);
+        this.events.broadcast({ type: 'world.changed', worldId: urlId });
         const world = await this.getWorld(urlId);
         if (!world) return { ok: false, reason: 'invalid-definition', message: 'ワールドを読み込めませんでした' };
         return {
@@ -666,19 +705,33 @@ class WorldRegistry {
         const existing = await worldRepository.findByName(worldId);
         if (!existing) return false;
         const success = await worldRepository.delete(existing.id);
-        if (success) this._resolvedCache.delete(worldId);
+        if (success) {
+            this._resolvedCache.delete(worldId);
+            this.events.broadcast({ type: 'world.changed', worldId });
+        }
         return success;
     }
 
-    /** 全件リロード（緊急用・SIGUSR2 などから呼ばれる） */
+    /** 全件リロード（緊急用・SIGUSR2 などから呼ばれる）。ほかの backend にも読み直させる。 */
     async reloadWorlds(): Promise<void> {
+        await this._reloadWorldsHere();
+        this.events.broadcast({ type: 'worlds.reload' });
+    }
+
+    private async _reloadWorldsHere(): Promise<void> {
         this._resolvedCache.clear();
         await this._scanLocal();
         console.log('✅ ワールド定義を全件再読み込みしました');
     }
 
-    /** 特定ワールドのみリロード（API から呼ばれる） */
+    /** 特定ワールドのみリロード（API から呼ばれる）。ほかの backend にも読み直させる。 */
     async reloadWorld(worldId: string): Promise<boolean> {
+        const found = await this._reloadWorldHere(worldId);
+        if (found) this.events.broadcast({ type: 'world.reload', worldId });
+        return found;
+    }
+
+    private async _reloadWorldHere(worldId: string): Promise<boolean> {
         const file = this._repository.get(worldId)?.filePath;
         if (!file) return false;
         await this._onYamlChanged(path.basename(file));
@@ -907,6 +960,11 @@ class WorldRegistry {
      * official の索引は作者アカウントを持たない（メンテナ鍵のみ）ので対象外。
      */
     invalidateResolvedWorlds(): void {
+        this._dropResolvedHere();
+        this.events.broadcast({ type: 'worlds.resolved-stale' });
+    }
+
+    private _dropResolvedHere(): void {
         this._resolvedCache.clear();
         this._remoteCache.clearWorlds();
     }

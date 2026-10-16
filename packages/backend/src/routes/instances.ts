@@ -1,8 +1,11 @@
 import { CreateInstanceRequestSchema, ListInstancesQuerySchema } from '@ubichill/shared';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
+import { redis } from '../lib/redis';
+import { sharedRateLimit } from '../lib/sharedRateLimit';
 import { optionalAuth, requireAuth } from '../middleware/auth';
 import { InstanceJoinRejected, instanceManager } from '../services/instanceManager';
+import { logger } from '../utils/logger';
 
 const router = Router();
 
@@ -38,6 +41,7 @@ const createInstanceLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Too many instances created from this IP, please try again after an hour' },
+    ...sharedRateLimit('instances-create', redis, logger),
 });
 
 /**

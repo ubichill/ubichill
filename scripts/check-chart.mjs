@@ -187,8 +187,39 @@ const rejected = (() => {
 })();
 if (!rejected) failures.push('subchart と redis.external.url を同時に指定しても描画が通ってしまう');
 
+// backend の台数: 既定は 1。2 以上は Redis があるときだけ描画できる
+const backendReplicas = (manifests) => {
+    const docs = parseAllDocuments(manifests).map((d) => d.toJS()).filter(Boolean);
+    return docs.find((d) => d.kind === 'Deployment' && d.metadata.name.endsWith('-backend'))?.spec.replicas;
+};
+const replicaCases = [
+    { name: '既定', args: ['--set', 'redis.auth.password=x'], want: 1 },
+    { name: 'subchart の Redis で 2 台', args: ['--set', 'redis.auth.password=x', '--set', 'backend.replicaCount=2'], want: 2 },
+    {
+        name: '外部の Redis で 2 台',
+        args: ['--set', 'redis.enabled=false', '--set', 'redis.external.url=redis://redis.shared:6379', '--set', 'backend.replicaCount=2'],
+        want: 2,
+    },
+    { name: 'Redis なしで 1 台', args: ['--set', 'redis.enabled=false'], want: 1 },
+];
+for (const c of replicaCases) {
+    const got = backendReplicas(render('ubichill', c.args));
+    if (got !== c.want) failures.push(`backend の台数（${c.name}）: ${got}（期待 ${c.want}）`);
+}
+const rejectedReplicas = (() => {
+    try {
+        render('ubichill', ['--set', 'redis.enabled=false', '--set', 'backend.replicaCount=2']);
+        return false;
+    } catch (error) {
+        return String(error.stderr).includes('Redis（redis.enabled または redis.external.url）が要ります');
+    }
+})();
+if (!rejectedReplicas) failures.push('Redis なしで backend.replicaCount=2 を指定しても描画が通ってしまう');
+
 if (failures.length > 0) {
-    console.error(`❌ chart の Redis の env:\n${failures.map((f) => `  - ${f}`).join('\n')}`);
+    console.error(`❌ chart の Redis の env・backend の台数:\n${failures.map((f) => `  - ${f}`).join('\n')}`);
     process.exit(1);
 }
-console.log(`✅ chart の Redis の env: ${cases.length} 通り + instance の Downward API・Directory の選択（Go・backend）・replicas・更新方式と drain + 不正な指定の拒否`);
+console.log(
+    `✅ chart の Redis の env: ${cases.length} 通り + instance の Directory・replicas・更新方式と drain、backend の台数: ${replicaCases.length} 通り + 不正な指定の拒否`,
+);

@@ -75,6 +75,26 @@ GitOps では Secret を自分で作って `redis.auth.existingSecret` を指定
 Redis が落ちても backend の `/health` は 200 のままで（`redis: "unavailable"` を載せる）、Pod は再起動しない。
 Redis に頼る機能ごとの、落ちたときの振る舞いは `docs/design/instance-scaling.md` の「Redis が使えないとき」に決めてある。どの機能も、Redis が落ちたからといってプロセス内のリースなどに切り替えない。
 
+## backend の複数レプリカ
+
+`backend.replicaCount` で台数を変えられる。**既定は 1 のままにする。** 2 以上にする条件は次のとおり。
+
+1. Redis があること（`redis.enabled` か `redis.external.url`）。無いまま 2 以上を指定すると描画で失敗する。
+2. DB 側の作業が入っていること。入るまでは 1 台で動かす。
+   - インスタンスの作成時刻（`created_at`）が `timestamptz` になっていること。今の reaper は、作りたてのインスタンスの猶予を作成した backend のプロセス内の時刻で数え、ほかの backend が作ったものは `created_at` で数える。型がずれていると、作りたてのインスタンスを消してしまう。
+   - 登録の仮データ（OTP）が DB にあること。今はプロセス内にあるので、登録と確認が別の backend に振られると確認に失敗する。
+
+Redis で揃えるもの（Redis なしの 1 台では今までどおりプロセス内で動く）:
+
+| 対象 | 揃え方 | Redis が落ちている間 |
+|---|---|---|
+| HTTP のレート制限（全体・インスタンス作成・サービストークン・外部の作品の再確認） | `rate-limit-redis`（`ubi:rl:<limiter>:`） | 制限せずに通す（警告は limiter ごとに 1 回） |
+| better-auth のレート制限 | `rateLimit.customStorage`（`ubi:auth-rl:`）。`secondaryStorage` は使わない（セッション・検証トークンの保存先まで Redis に移るため） | 制限せずに通す。ただしログイン（`/api/auth/sign-in/email`）は 503 で断る |
+| 空インスタンスの掃除・期限切れの CLI 認可の掃除 | リース `ubi:lease:reaper` を持つ 1 台だけが動かす。復旧猶予の起点は `ubi:absent:<instanceId>` | 掃除しない |
+| ワールドの解決・外部ワールド・連合のフォロー・公開のお気に入り・外部の作品の確認のキャッシュ | Pub/Sub `ubi:ch:backend` で捨てさせる。届かなくても各キャッシュの期限（5 分以内。お気に入りは 3 分、外部の作品は 10 分）で揃う | 知らせは届かず、期限で揃う |
+
+**揃わないもの: ワールドの並び順（`PUT /api/v1/worlds/order` の `reorderWorlds`）。** プロセス内にあり、知らせも送らないので、並べ替えた backend にしか効かず、再起動で消える。DB 側の作業で Postgres に移す。
+
 ## 開発・検証
 
 ```bash
@@ -126,3 +146,10 @@ Goを外部で運用する場合は `instanceRuntime.enabled=false` とし、bac
 
 コントリビューション手順はリポジトリルートの [README](../../README.md) と（追加予定の）`CONTRIBUTING.md` を参照。
 ライセンスはリポジトリルートの `LICENSE` に従います。
+
+
+### backend の Redis を有効にする前
+
+R2 の共有レート制限・掃除・通知は、`backend.replicaCount: 1` でも `REDIS_URL` が設定されていれば Redis を使う。
+本番の Argo CD では、R2 をデプロイする前に `redis.auth.existingSecret` と `existingSecretPasswordKey` を固定する。
+Redis に認証できない間は新規ログインが 503 になり、掃除は停止する。`/health` の `redis: ready` と認証付き PING を確認してから進める。

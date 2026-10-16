@@ -7,10 +7,12 @@ import { type ExternalWorkRecord, externalWorkRepository } from '@ubichill/db';
 import type { ExternalWork, ExternalWorkStatus, PublishedMod, WorldListItem } from '@ubichill/shared';
 import { setBounded } from '../utils/boundedMap';
 import { isAuthorKey } from './authorKeyStore';
+import { backendEvents } from './backendEvents';
 import { confirmPublishedMod, type FetchedJson, worldConfirmation } from './externalWorks';
 import { safeFetch } from './safeFetch';
 import { nodeWorldCrypto } from './worldCrypto';
 import { worldRegistry } from './worldRegistry';
+import { normalizeWorldUrl } from './worldResolver';
 
 const PUBLISHED_TTL_MS = 10 * 60 * 1000;
 const NOT_PUBLISHED_TTL_MS = 60 * 1000;
@@ -20,7 +22,14 @@ type Confirmation =
     | { status: 'published'; world?: WorldListItem; mod?: PublishedMod }
     | { status: Exclude<ExternalWorkStatus, 'published'> };
 
-const confirmations = new Map<string, { at: number; value: Promise<Confirmation> }>();
+const confirmations = new Map<string, { at: number; url: string; value: Promise<Confirmation> }>();
+
+// ほかの backend で確かめ直した URL の結果は捨てる（届かなくても TTL で揃う）
+backendEvents.on('remote.changed', ({ url }) => {
+    for (const [key, entry] of confirmations) {
+        if (entry.url === url || normalizeWorldUrl(entry.url) === url) confirmations.delete(key);
+    }
+});
 
 /** 404 などは「無い」、通信の失敗・5xx は throw（取得の失敗と公開前を分ける）。 */
 const fetchJson = async (url: string): Promise<FetchedJson> => {
@@ -70,8 +79,10 @@ function cachedConfirm(record: ExternalWorkRecord, account: string, fresh: boole
                 : cachedConfirm(record, account, true),
         );
     }
+    // ワールドは worldRegistry.resolveRemoteFresh が知らせる
+    if (fresh && record.kind !== 'world') backendEvents.broadcast({ type: 'remote.changed', url: record.url });
     const value = confirm(record, account, fresh).catch((): Confirmation => ({ status: 'unreachable' }));
-    setBounded(confirmations, key, { at: now, value }, MAX_CACHED);
+    setBounded(confirmations, key, { at: now, url: record.url, value }, MAX_CACHED);
     return value.then((confirmation) => ({ confirmation, checkedAt: now }));
 }
 
