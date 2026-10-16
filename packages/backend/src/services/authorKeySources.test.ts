@@ -1,4 +1,5 @@
 import type { AuthorKeyRepository } from '@ubichill/db';
+import { createAuthorKeyDirectory, SIGNING_KEYS_WEBFINGER_REL } from '@ubichill/shared';
 import { describe, expect, it, vi } from 'vitest';
 import { authorKeySources, withNormalizedKey } from './authorKeySources';
 
@@ -115,4 +116,60 @@ describe('withNormalizedKey', () => {
         expect(await normalized('a@b.example', 'short', 'sha256-x')).toEqual({ status: 'unconfirmed' });
         expect(check).toHaveBeenCalledOnce();
     });
+});
+
+describe('取得した直後も保存済みと同じ鍵の検査を使う', () => {
+    it.each([false, true])(
+        'local の鍵を名乗る一覧を初回・未知の鍵の取り直しで承認しない（既存=%s）',
+        async (existing) => {
+            const account = 'mallory@evil.example';
+            let saved = false;
+            const recordConfirmedContent = vi.fn(async () => undefined);
+            const sources = authorKeySources({
+                repository: fakeRepository({
+                    saveRemoteAuthor: async () => {
+                        saved = true;
+                        return { claimedLocalKeys: [KEY] };
+                    },
+                    findRemoteAuthor: async () =>
+                        saved
+                            ? {
+                                  account,
+                                  displayName: null,
+                                  fetchedAt: FETCHED,
+                                  keys: [{ publicKey: KEY, createdAt: FETCHED, revokedAt: null, claimsLocalKey: true }],
+                              }
+                            : existing
+                              ? {
+                                    account,
+                                    displayName: null,
+                                    fetchedAt: new Date(FETCHED.getTime() - 61_000),
+                                    keys: [],
+                                }
+                              : undefined,
+                    recordConfirmedContent,
+                    hasConfirmedContent: async () => false,
+                }),
+                findUserByHandle: async () => undefined,
+                warn: () => undefined,
+            });
+            const directory = createAuthorKeyDirectory({
+                bindings: sources.bindings,
+                confirmedContents: sources.confirmedContents,
+                fetchJson: async (url) =>
+                    url.includes('webfinger')
+                        ? {
+                              subject: `acct:${account}`,
+                              links: [{ rel: SIGNING_KEYS_WEBFINGER_REL, href: 'https://evil.example/keys' }],
+                          }
+                        : { account, issuedAt: FETCHED.toISOString(), keys: [{ publicKey: KEY }] },
+                allowHttp: false,
+                now: () => FETCHED.getTime(),
+            });
+            const check = withNormalizedKey(directory.isAuthorKey);
+            expect(await check(account, KEY, 'sha256-first')).toEqual({ status: 'unconfirmed' });
+            expect(await check(account, KEY, 'sha256-next')).toEqual({ status: 'unconfirmed' });
+            expect(recordConfirmedContent).not.toHaveBeenCalled();
+        },
+    );
 });

@@ -257,7 +257,9 @@ export function createAuthorKeyDirectory(deps: AuthorKeyDirectoryDeps): AuthorKe
                 }
                 failedAt.delete(account);
                 await deps.bindings.save(account, profile);
-                return profile;
+                // 保存先が行う鍵の正規化・local の鍵を名乗る remote の拒否を、初回取得にも適用する。
+                // 生の取得結果を返すと、保存済みの結果から読む場合だけ拒否される鍵が初回は通ってしまう。
+                return deps.bindings.find(account);
             })
             .finally(() => inFlight.delete(account));
         inFlight.set(account, task);
