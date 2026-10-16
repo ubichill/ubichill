@@ -1,0 +1,6 @@
+# プレビュー環境（home-manifests の ApplicationSet）だけが values-dev.yaml の上に重ねる値。本番・dev では読まない。
+# この PR のプレビューで、Go を複数 Pod にして部屋の割り当て（Directory）を Redis で共有し、
+# Pod 間の中継・fencing を実クラスタで確かめる。main に入ると、以降のすべての PR のプレビューの既定になる。
+instanceRuntime:
+  directory: redis
+  replicas: 2
