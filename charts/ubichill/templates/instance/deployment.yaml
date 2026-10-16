@@ -23,8 +23,19 @@ metadata:
 spec:
   # 部屋ごとの owner は Directory が決め、別の Pod に来た WebSocket は owner へ中継する（Ingress・Service はそのまま）
   replicas: {{ $replicas }}
+  {{- /*
+    memory は Pod ごとに Directory が別なので、新旧の Pod が並ぶと同じ部屋の owner が 2 つできる。Recreate で必ず入れ替える。
+    redis は owner が 1 つに決まる（fencing）ので、新しい Pod が ready になってから古い Pod を 1 つずつ draining で止める。
+  */}}
   strategy:
+    {{- if eq $directory "redis" }}
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    {{- else }}
     type: Recreate
+    {{- end }}
   selector:
     matchLabels:
       {{- include "ubichill.selectorLabels" . | nindent 6 }}
@@ -44,6 +55,8 @@ spec:
         checksum/admin-token: {{ get .Values.backend.secretEnv .Values.instanceRuntime.secretKey | toString | sha256sum }}
       {{- end }}
     spec:
+      # SIGTERM のあと drainTimeout まで接続が抜けるのを待ち、残りを閉じてから HTTP を止める（最大 10 秒）
+      terminationGracePeriodSeconds: {{ .Values.instanceRuntime.terminationGracePeriodSeconds }}
       containers:
         - name: instance
           image: {{ include "ubichill.instance.image" . }}
@@ -51,6 +64,9 @@ spec:
           args:
             - --origins={{ include "ubichill.instance.origins" . }}
             - --disconnect-grace={{ .Values.instanceRuntime.disconnectGrace }}
+            - --max-rooms={{ .Values.instanceRuntime.maxRooms }}
+            {{- /* memory（1 Pod・Recreate）では部屋を移せる先が無く、待つほど止まっている時間が延びるだけなので待たない */}}
+            - --drain-timeout={{ if eq $directory "redis" }}{{ .Values.instanceRuntime.drainTimeout }}{{ else }}0s{{ end }}
           ports:
             - name: realtime
               containerPort: 3002
@@ -82,9 +98,10 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+          # draining（SIGTERM のあと）は /ready が 503 になり、Service から外れる。生存は /health のまま
           readinessProbe:
             httpGet:
-              path: /health
+              path: /ready
               port: realtime
           livenessProbe:
             httpGet:

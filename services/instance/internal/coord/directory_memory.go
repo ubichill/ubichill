@@ -17,6 +17,7 @@ type MemoryDirectory struct {
 	rooms    map[string]expiring[Assignment]
 	epochs   map[string]expiring[int64]
 	presence map[string]expiring[RoomPresence]
+	retired  map[string]expiring[struct{}]
 	listed   map[string]bool
 }
 
@@ -43,6 +44,7 @@ func (m *MemoryDirectory) Wipe() {
 	m.rooms = map[string]expiring[Assignment]{}
 	m.epochs = map[string]expiring[int64]{}
 	m.presence = map[string]expiring[RoomPresence]{}
+	m.retired = map[string]expiring[struct{}]{}
 	m.listed = map[string]bool{}
 }
 
@@ -96,6 +98,9 @@ func (m *MemoryDirectory) Assign(_ context.Context, room, node, gen string, ttl 
 		return Assignment{}, false, ErrGenChanged
 	}
 	now := m.now()
+	if _, ok := live(m.retired, room, now); ok {
+		return Assignment{}, false, ErrRetired
+	}
 	if a, ok := live(m.rooms, room, now); ok {
 		return a, false, nil
 	}
@@ -190,5 +195,15 @@ func (m *MemoryDirectory) Forget(_ context.Context, room string) error {
 	defer m.mu.Unlock()
 	delete(m.presence, room)
 	delete(m.listed, room)
+	return nil
+}
+
+func (m *MemoryDirectory) Retire(_ context.Context, room string, ttl time.Duration) error {
+	if err := validateRoom(room, ttl, true); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.retired[room] = expiring[struct{}]{struct{}{}, m.now().Add(ttl)}
 	return nil
 }

@@ -20,12 +20,22 @@ import (
 // clock が nil なら実時間。
 func startPod(t *testing.T, dir coord.Directory, name string, clock func() time.Time) *node {
 	t.Helper()
+	return startPodWith(t, dir, name, clock, nil)
+}
+
+// startPodWith は設定を変えた Pod を立てる（部屋の上限・fencing の時間など）。
+func startPodWith(t *testing.T, dir coord.Directory, name string, clock func() time.Time, configure func(*Config)) *node {
+	t.Helper()
 	link := &partitioned{Directory: dir}
 	h := httptest.NewUnstartedServer(nil)
-	s := newServer(Config{
+	config := Config{
 		AdminToken: strings.Repeat("a", 32), Grace: 20 * time.Millisecond,
 		Directory: link, Node: name, Addr: h.Listener.Addr().String(), Fencing: testFencing, Clock: clock,
-	})
+	}
+	if configure != nil {
+		configure(&config)
+	}
+	s := newServer(config)
 	h.Config.Handler = s.Handler()
 	h.Start()
 	t.Cleanup(func() { s.Close(); h.Close() })
@@ -35,8 +45,6 @@ func startPod(t *testing.T, dir coord.Directory, name string, clock func() time.
 func (c *cluster) pod(t *testing.T, name string) *node { return startPod(t, c.dir, name, c.clock.Now) }
 
 func relayURL(n *node) string { return "ws" + strings.TrimPrefix(n.http.URL, "http") + relayPath }
-
-func (s *Server) relayCount() int { s.relayMu.Lock(); defer s.relayMu.Unlock(); return len(s.relays) }
 
 func eventually(t *testing.T, what string, ok func() bool) {
 	t.Helper()

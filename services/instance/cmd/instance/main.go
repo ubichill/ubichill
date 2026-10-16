@@ -26,6 +26,8 @@ func main() {
 	guests := flag.Bool("guests", false, "allow server-issued guest identities")
 	origins := flag.String("origins", os.Getenv("CORS_ORIGIN"), "comma-separated browser origins")
 	grace := flag.Duration("disconnect-grace", 15*time.Second, "reconnect grace period")
+	maxRooms := flag.Int("max-rooms", 1000, "rooms this node holds at most (advertised as its capacity)")
+	drainTimeout := flag.Duration("drain-timeout", 0, "on SIGTERM, refuse new rooms and wait up to this long for connections to end before closing the rest")
 	flag.Parse()
 	token := os.Getenv("INSTANCE_ADMIN_TOKEN")
 	if !*guests && len(token) < 32 {
@@ -65,7 +67,7 @@ func main() {
 	node := coord.NewNodeID(os.Getenv("POD_NAME"))
 	s := runtime.New(runtime.Config{
 		AdminToken: token, TicketKey: ticketKey, Guests: *guests, Origins: allowedOrigins, Grace: *grace,
-		Directory: coord.DirectoryFor(directoryClient, nil), Node: node, Addr: advertiseAddr(*addr),
+		Directory: coord.DirectoryFor(directoryClient, nil), Node: node, Addr: advertiseAddr(*addr), MaxRooms: *maxRooms,
 	})
 	if *world != "" {
 		body, err := os.ReadFile(*world)
@@ -85,6 +87,11 @@ func main() {
 	defer stop()
 	go func() {
 		<-ctx.Done()
+		// 新しい部屋を断って readiness を落とし、接続が抜けるのを drain-timeout まで待つ。
+		// 残った部屋は Close で割り当てを解放して閉じ、クライアントは別のノードへ繋ぎ直す
+		drain, cancel := context.WithTimeout(context.Background(), *drainTimeout)
+		s.Drain(drain)
+		cancel()
 		s.Close()
 		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()

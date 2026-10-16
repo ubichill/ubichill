@@ -115,6 +115,48 @@ if (instanceReplicasOf(['--set', 'instanceRuntime.directory=redis', '--set', 'in
     failures.push('instanceRuntime.replicas=3（redis）が Deployment に渡らない');
 }
 
+// 更新方式・drain・readiness。memory は新旧の Pod が並ぶと owner が 2 つになるので Recreate のまま、
+// redis は新しい Pod が ready になってから古い Pod を draining で止める
+const instanceDeploymentOf = (args) => {
+    const docs = parseAllDocuments(render('ubichill', ['--set', 'redis.auth.password=x', ...args])).map((d) => d.toJS()).filter(Boolean);
+    const deployment = docs.find((d) => d.kind === 'Deployment' && d.metadata.name.endsWith('-instance'));
+    const container = deployment.spec.template.spec.containers.find((c) => c.name === 'instance');
+    const arg = (name) => container.args.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
+    return {
+        strategy: deployment.spec.strategy,
+        grace: deployment.spec.template.spec.terminationGracePeriodSeconds,
+        readiness: container.readinessProbe?.httpGet?.path,
+        liveness: container.livenessProbe?.httpGet?.path,
+        drainTimeout: arg('drain-timeout'),
+        maxRooms: arg('max-rooms'),
+    };
+};
+const memoryDeployment = instanceDeploymentOf([]);
+const redisDeployment = instanceDeploymentOf(['--set', 'instanceRuntime.directory=redis', '--set', 'instanceRuntime.replicas=2', '--set', 'instanceRuntime.maxRooms=200']);
+const expectDeployment = (label, got, want) => {
+    for (const [key, value] of Object.entries(want)) {
+        if (JSON.stringify(got[key]) !== JSON.stringify(value)) {
+            failures.push(`instance（${label}）の ${key} = ${JSON.stringify(got[key])}（期待 ${JSON.stringify(value)}）`);
+        }
+    }
+};
+expectDeployment('memory', memoryDeployment, {
+    strategy: { type: 'Recreate' },
+    grace: 30,
+    readiness: '/ready',
+    liveness: '/health',
+    drainTimeout: '0s',
+    maxRooms: '1000',
+});
+expectDeployment('redis', redisDeployment, {
+    strategy: { type: 'RollingUpdate', rollingUpdate: { maxSurge: 1, maxUnavailable: 0 } },
+    grace: 30,
+    readiness: '/ready',
+    liveness: '/health',
+    drainTimeout: '15s',
+    maxRooms: '200',
+});
+
 const renderFails = (args, message) => {
     try {
         render('ubichill', args);
@@ -179,5 +221,5 @@ if (failures.length > 0) {
     process.exit(1);
 }
 console.log(
-    `✅ chart の Redis の env: ${cases.length} 通り + instance の Downward API・Directory の選択（Go・backend）・replicas + 不正な指定の拒否、backend の台数: ${replicaCases.length} 通り + Redis なしの複数台の拒否`,
+    `✅ chart の Redis の env: ${cases.length} 通り + instance の Downward API・Directory の選択（Go・backend）・replicas・更新方式と drain + 不正な指定の拒否、backend の台数: ${replicaCases.length} 通り + Redis なしの複数台の拒否`,
 );
