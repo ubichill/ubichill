@@ -1,7 +1,9 @@
 import type { InstanceAPI, ResolvedWorld } from '@ubichill/shared';
 import { appConfig } from '../config';
 import { type RedisCommands, redis } from '../lib/redis';
+import { logger } from '../utils/logger';
 import { flattenGameObject } from './flattenGameObject';
+import { placementOrder, readPlacement } from './instancePlacement';
 
 export type RuntimePresence = InstanceAPI['schemas']['RuntimePresence'];
 export type RuntimeGrant = InstanceAPI['schemas']['InstanceGrant'];
@@ -21,17 +23,21 @@ export interface RuntimeOwner {
 export type DirectoryMode = 'memory' | 'redis';
 
 export interface InstanceRuntimeOptions {
-    /** INSTANCE_RUNTIME_URL（Service）。memory では全部ここへ送る。redis では最初の割り当てだけ */
+    /** INSTANCE_RUNTIME_URL（Service）。memory では全部ここへ送る。redis では置き場所を選べないときの作成と、終了の最初の 1 回 */
     url: string;
     token: string;
     publicUrl: string;
     directory: DirectoryMode;
     redis: RedisCommands | null;
     fetch?: typeof fetch;
+    log?: Pick<typeof logger, 'warn'>;
 }
 
 /** Go の Directory のキーの名前空間（services/instance/internal/coord の DirectoryFor と同じ）。 */
 const DIRECTORY_PREFIX = 'ubi:';
+
+/** 部屋の作成を送り直す Pod の数の上限（draining・上限・応答なしで断られたとき）。 */
+const PLACEMENT_ATTEMPTS = 3;
 
 // host:port だけを受け付ける。管理トークンを付けて送る先なので、パス・資格情報・スキームを混ぜさせない
 const OWNER_ADDR = /^(?:\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.-]+):\d{1,5}$/;
@@ -100,6 +106,21 @@ function requireOwner(body: unknown): RuntimeOwner {
 /** Go の管理API。SNSのDB・セッション情報はこの境界を越えない。 */
 export function createInstanceRuntime(options: InstanceRuntimeOptions) {
     const send = options.fetch ?? fetch;
+    const log = options.log ?? logger;
+
+    function call(
+        base: string,
+        path: string,
+        init: RequestInit = {},
+        query: Record<string, string> = {},
+    ): Promise<Response> {
+        const search = new URLSearchParams(query).toString();
+        return send(`${base}/realtime/v1${path}${search ? `?${search}` : ''}`, {
+            ...init,
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${options.token}` },
+            signal: AbortSignal.timeout(5000),
+        });
+    }
 
     async function request(
         base: string,
@@ -107,14 +128,34 @@ export function createInstanceRuntime(options: InstanceRuntimeOptions) {
         init: RequestInit = {},
         query: Record<string, string> = {},
     ): Promise<Response> {
-        const search = new URLSearchParams(query).toString();
-        const response = await send(`${base}/realtime/v1${path}${search ? `?${search}` : ''}`, {
-            ...init,
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${options.token}` },
-            signal: AbortSignal.timeout(5000),
-        });
+        const response = await call(base, path, init, query);
         if (!response.ok && response.status !== 409) throw new Error(`Instance runtime: ${response.status}`);
         return response;
+    }
+
+    /**
+     * 部屋の作成を送る先。redis では Redis の各 Pod の状態から選ぶ（owner が生きていれば owner、居なければ空いている Pod）。
+     * 選べない（Pod の状態が無い・Redis に届かない）ときと memory は Service に任せる。
+     */
+    async function placementTargets(id: string): Promise<string[]> {
+        if (options.directory !== 'redis' || !options.redis) return [options.url];
+        try {
+            const view = await readPlacement(options.redis, id, DIRECTORY_PREFIX);
+            const bases = placementOrder(view.nodes, view.owner).flatMap((node) => {
+                try {
+                    return [ownerBase(node.addr)];
+                } catch {
+                    return [];
+                }
+            });
+            if (bases.length > 0) return bases.slice(0, PLACEMENT_ATTEMPTS);
+        } catch (error) {
+            log.warn(
+                'Instance runtime: 置き場所を選べないので Service に任せます:',
+                error instanceof Error ? error.message : error,
+            );
+        }
+        return [options.url];
     }
 
     return {
@@ -127,27 +168,41 @@ export function createInstanceRuntime(options: InstanceRuntimeOptions) {
         },
         /** 部屋を割り当てて作り、続く管理 API の宛先（owner）を返す。別の Pod が持っていればその Pod を返す。 */
         async provision(id: string, maxUsers: number, world: ResolvedWorld): Promise<RuntimeOwner> {
-            const response = await request(options.url, `/instances/${encodeURIComponent(id)}`, {
-                method: 'PUT',
-                body: JSON.stringify({
-                    id,
-                    name: world.displayName,
-                    maxUsers,
-                    snapshot: {
-                        entities: world.initialEntities.flatMap((entity) => flattenGameObject(entity)),
-                        availableComponents: [],
-                        activeMods: world.dependencies?.map((dependency) => dependency.name) ?? [],
-                        environment: world.environment,
-                        lock: world.lock,
-                        sourceKind: world.source.kind,
-                    },
-                }),
+            const body = JSON.stringify({
+                id,
+                name: world.displayName,
+                maxUsers,
+                snapshot: {
+                    entities: world.initialEntities.flatMap((entity) => flattenGameObject(entity)),
+                    availableComponents: [],
+                    activeMods: world.dependencies?.map((dependency) => dependency.name) ?? [],
+                    environment: world.environment,
+                    lock: world.lock,
+                    sourceKind: world.source.kind,
+                },
             });
-            if (response.status === 409) return requireOwner(await response.json());
-            const presence = (await response.json()) as RuntimePresence;
-            // memory は 1 Pod なので Service のまま。redis は Service が次に別の Pod へ当てるので owner へ直接送る
-            const base = options.directory === 'redis' && presence.addr ? ownerBase(presence.addr) : options.url;
-            return { base, gen: presence.gen, epoch: presence.epoch };
+            const failures: string[] = [];
+            for (const base of await placementTargets(id)) {
+                // 503（draining・上限・Directory に届かない）と応答なしは、別の Pod へ送り直す。作成は冪等なので、
+                // 応答だけが失われて部屋ができていても、次の Pod は 409 で owner を返す
+                const response = await call(base, `/instances/${encodeURIComponent(id)}`, {
+                    method: 'PUT',
+                    body,
+                }).catch((error: unknown) => (error instanceof Error ? error : new Error(String(error))));
+                if (response instanceof Error || response.status === 503) {
+                    failures.push(`${base}: ${response instanceof Error ? response.message : 503}`);
+                    continue;
+                }
+                if (!response.ok && response.status !== 409) throw new Error(`Instance runtime: ${response.status}`);
+                // 409 の owner が死んでいれば（割り当てを解放せずに落ちた）、リースの期限まではどの Pod も作れない。
+                // 送り直さずに失敗にし、入室は 503 でクライアントに取り直させる
+                if (response.status === 409) return requireOwner(await response.json());
+                const presence = (await response.json()) as RuntimePresence;
+                // memory は 1 Pod なので Service のまま。redis は Service が次に別の Pod へ当てるので owner へ直接送る
+                const to = options.directory === 'redis' && presence.addr ? ownerBase(presence.addr) : options.url;
+                return { base: to, gen: presence.gen, epoch: presence.epoch };
+            }
+            throw new Error(`Instance runtime: 部屋を置ける Pod がありません (${failures.join(', ')})`);
         },
         /** 部屋を閉じる。owner が別の Pod なら、その Pod へ世代を付けて送り直す。 */
         async close(id: string, emptyBefore?: number): Promise<boolean> {
