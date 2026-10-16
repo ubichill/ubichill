@@ -97,7 +97,7 @@ CI でも PR 時に `charts/**` の lint / template を検証する（[helm-ci.y
 Kubernetes (namespace)
 ├── frontend   … Vite CSR（React）を BFF で配信
 ├── backend    … SNS・認証の Node.js API。Ingress の /api で接続。起動時に DB スキーマ適用
-├── instance   … Go / WebSocket。Ingress の /realtime/v1/ws で直接接続。既定 1 replica・Recreate（redis の Directory なら複数）
+├── instance   … Go / WebSocket。Ingress の /realtime/v1/ws で直接接続。既定 1 replica・Recreate（redis の Directory なら複数・RollingUpdate）
 ├── redis      … backend・instance の共有状態（リース等。部屋の状態は持たない）
 └── postgresql … アプリ DB（同梱 or 外部）
 ```
@@ -109,6 +109,8 @@ Goは専用イメージ（`instanceRuntime.image`）で起動し、backendのイ
 ブラウザOriginは `instanceRuntime.origins`（未指定なら `https://<global.domain>`）、
 切断猶予は `instanceRuntime.disconnectGrace` で指定する。
 部屋の割り当て（Directory）は `instanceRuntime.directory`（既定 `memory`。backend にも同じ値を渡す）。`instanceRuntime.replicas`（既定 1）を 2 以上にするときだけ `redis` にする（`memory` のままでは描画で失敗する）。どの Pod に来た WebSocket も、各 Pod が部屋の owner の Pod へ Pod の IP で直接中継するので、Ingress・Service は 1 つのまま（Pod 間の Service は要らない）。中継用の口 `/realtime/v1/relay` は Ingress に出さず、管理トークンから派生した HMAC で Pod 間の接続を確かめる。
+`redis` では backend が新しい部屋の置き場所を Redis の各 Pod の状態（`ready` で、部屋数が `instanceRuntime.maxRooms` 未満、接続数・部屋数の少ない順）から選び、その Pod へ直接作成を送る（Service の振り分けには任せない）。
+更新は RollingUpdate（`maxSurge: 1`・`maxUnavailable: 0`）。古い Pod は SIGTERM で draining になって新しい部屋を断り、readiness（`/ready`）を落として、`instanceRuntime.drainTimeout` まで接続が抜けるのを待ってから残りの部屋を閉じる。閉じた部屋の参加者は繋ぎ直し、部屋は別の Pod に作り直される（中身はメモリなので失われる。今の再起動と同じ）。`memory` は新旧の Pod が並ぶと同じ部屋の owner が 2 つになるので Recreate のままで、待たずに閉じる。
 `redis` は Redis の可用性が部屋の可用性の上限になる（Redis が約 10 秒以上落ちると全部屋が止まる）ので、先に Redis の Secret を固定しておく（下の「Redis」）。Ingressが公開するのはWebSocketの
 `/realtime/v1/ws` だけで、管理API（`/realtime/v1/instances`）はクラスタ内からのみ到達できる。
 管理トークンは既定でbackend Secretの `BETTER_AUTH_SECRET`（32文字以上）を参照する。専用のSecretを使うには

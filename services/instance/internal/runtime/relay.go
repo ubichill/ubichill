@@ -198,6 +198,8 @@ func (s *Server) forgetRelay(u *upstream) {
 	s.relayMu.Unlock()
 }
 
+func (s *Server) relayCount() int { s.relayMu.Lock(); defer s.relayMu.Unlock(); return len(s.relays) }
+
 // closeRelays は中継している接続をすべて閉じる（プロセスの停止）。
 func (s *Server) closeRelays() {
 	s.relayMu.Lock()

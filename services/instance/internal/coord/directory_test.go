@@ -228,7 +228,7 @@ func runDirectoryContract(t *testing.T, newDirectory func(t *testing.T) testDire
 
 	t.Run("heartbeat expires", func(t *testing.T) {
 		d := newDirectory(t)
-		info := NodeInfo{Addr: "10.0.0.1:3002", StartedAt: 1, State: NodeReady, Rooms: 2, Connections: 3}
+		info := NodeInfo{Addr: "10.0.0.1:3002", StartedAt: 1, State: NodeReady, Rooms: 2, Connections: 3, Capacity: 50}
 		if err := d.Heartbeat(ctx, "node-a", info, ttl); err != nil {
 			t.Fatal(err)
 		}
@@ -271,6 +271,35 @@ func runDirectoryContract(t *testing.T, newDirectory func(t *testing.T) testDire
 		}
 	})
 
+	t.Run("a retired room is not assigned to any node until the retirement expires", func(t *testing.T) {
+		d := newDirectory(t)
+		a, _ := assign(t, d, "room", "node-a")
+		// 閉じる側は割り当てを解放する前に Retire する。どちらの順でも、解放したあとに別のノードが取れない
+		if err := d.Retire(ctx, "room", 2*ttl); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := d.Release(ctx, "room", a.Token); err != nil {
+			t.Fatal(err)
+		}
+		for _, node := range []string{"node-a", "node-b"} {
+			if _, _, err := d.Assign(ctx, "room", node, gen(t, d), ttl); !errors.Is(err, ErrRetired) {
+				t.Fatalf("assign a retired room to %s: %v", node, err)
+			}
+		}
+		// ほかの部屋には効かない
+		if _, created := assign(t, d, "other", "node-b"); !created {
+			t.Fatal("retiring one room blocked another")
+		}
+		d.advance(2*ttl + 50*time.Millisecond)
+		next, created := assign(t, d, "room", "node-b")
+		if !created || next.Epoch != a.Epoch+1 {
+			t.Fatalf("after retirement: %+v created=%v", next, created)
+		}
+		if err := d.Retire(ctx, "epoch:x", ttl); !errors.Is(err, ErrInvalidRoom) {
+			t.Fatalf("retire an invalid room: %v", err)
+		}
+	})
+
 	t.Run("invalid arguments are rejected", func(t *testing.T) {
 		d := newDirectory(t)
 		g := gen(t, d)
@@ -292,6 +321,41 @@ func runDirectoryContract(t *testing.T, newDirectory func(t *testing.T) testDire
 			t.Fatalf("assign without a node: %v", err)
 		}
 	})
+}
+
+// backend は ubi:nodes の一覧から ubi:node:<id> を読んで置き場所を選ぶ（packages/backend の instancePlacement）。
+func TestRedisHeartbeatListsTheNodeForPlacement(t *testing.T) {
+	client := testRedis(t)
+	ctx := context.Background()
+	prefix := "ubi:test:nodes:" + newToken() + ":"
+	t.Cleanup(func() {
+		keys, _ := client.Keys(ctx, prefix+"*").Result()
+		if len(keys) > 0 {
+			_ = client.Del(ctx, keys...).Err()
+		}
+	})
+	d := NewRedisDirectory(client, prefix)
+	info := NodeInfo{Addr: "10.0.0.1:3002", StartedAt: 1, State: NodeDraining, Rooms: 2, Connections: 3, Capacity: 50}
+	if err := d.Heartbeat(ctx, "node-a", info, time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if members, err := client.SMembers(ctx, prefix+"nodes").Result(); err != nil || !slices.Equal(members, []string{"node-a"}) {
+		t.Fatalf("nodes = %v %v", members, err)
+	}
+	raw, err := client.Get(ctx, prefix+"node:node-a").Result()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"addr":"10.0.0.1:3002","startedAt":1,"state":"draining","rooms":2,"connections":3,"capacity":50}`
+	if raw != want {
+		t.Fatalf("node value = %s", raw)
+	}
+	if err := d.Retire(ctx, "room", time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if ttl, err := client.PTTL(ctx, prefix+"retired:room").Result(); err != nil || ttl <= 0 || ttl > time.Second {
+		t.Fatalf("retired ttl = %v %v", ttl, err)
+	}
 }
 
 func TestDirectoryForDoesNotFallBackToMemoryWhenRedisIsDown(t *testing.T) {

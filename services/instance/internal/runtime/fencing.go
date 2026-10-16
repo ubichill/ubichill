@@ -112,7 +112,7 @@ func (s *Server) assign(ctx context.Context, id string) (coord.Assignment, time.
 			}
 			continue
 		}
-		if errors.Is(err, coord.ErrInvalidRoom) {
+		if errors.Is(err, coord.ErrInvalidRoom) || errors.Is(err, coord.ErrRetired) {
 			return coord.Assignment{}, time.Time{}, err
 		}
 		if err != nil {
@@ -154,6 +154,8 @@ func (s *Server) discard(ctx context.Context, r *Room, release bool) {
 
 // maintain は 1 回分の heartbeat・延長・自己停止・在席の書き込み。失敗があれば false（早めに試し直す）。
 func (s *Server) maintain(ctx context.Context) bool {
+	s.maintaining.Lock()
+	defer s.maintaining.Unlock()
 	healthy := true
 	if _, err := s.observeGeneration(ctx); err != nil {
 		healthy = false
@@ -193,7 +195,14 @@ func (s *Server) maintain(ctx context.Context) bool {
 	if err := s.dir.PublishPresence(ctx, presence, s.fencing.TTL); err != nil {
 		healthy = false
 	}
-	info := coord.NodeInfo{Addr: s.config.Addr, StartedAt: s.started.UnixMilli(), State: coord.NodeReady, Rooms: len(presence), Connections: connections}
+	state := coord.NodeReady
+	if s.draining.Load() {
+		state = coord.NodeDraining
+	}
+	info := coord.NodeInfo{
+		Addr: s.config.Addr, StartedAt: s.started.UnixMilli(), State: state, Rooms: len(presence),
+		Connections: connections + s.relayCount(), Capacity: s.config.MaxRooms,
+	}
 	if err := s.dir.Heartbeat(ctx, s.node, info, s.fencing.TTL); err != nil {
 		healthy = false
 	}
@@ -223,4 +232,50 @@ func (s *Server) presenceOf(r *Room) Presence {
 	p := r.presence()
 	p.Node, p.Gen, p.Epoch, p.Addr = s.node, r.gen, r.epoch, s.config.Addr
 	return p
+}
+
+// beginDrain は新しい部屋の割り当てを断り始め（readiness も 503 になる）、ノードの状態を draining にしてすぐ書き直す
+// （次の heartbeat を待つと、その間 backend が新しい部屋をこのノードに選び続ける）。持っている部屋と接続はそのまま動かす。
+func (s *Server) beginDrain() {
+	// 作成の途中の要求が終わってから印を付ける。戻ったあとは新しい部屋が生まれない
+	s.provisioning.Lock()
+	first := s.draining.CompareAndSwap(false, true)
+	s.provisioning.Unlock()
+	if !first {
+		return
+	}
+	log.Printf("draining: refusing new rooms")
+	ctx, cancel := context.WithTimeout(context.Background(), s.fencing.Timeout)
+	defer cancel()
+	s.maintain(ctx)
+}
+
+// Drain は draining に入り、接続（部屋の参加者と中継）が無くなるか ctx が終わるまで待つ。そのあと Close で残りを閉じる。
+func (s *Server) Drain(ctx context.Context) {
+	s.beginDrain()
+	tick := time.NewTicker(200 * time.Millisecond)
+	defer tick.Stop()
+	for s.connections() > 0 {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+	}
+}
+
+// connections は部屋の参加者の接続と、ほかの Pod の部屋へ中継している接続の数。
+func (s *Server) connections() int {
+	s.mu.RLock()
+	rooms := make([]*Room, 0, len(s.rooms))
+	for _, r := range s.rooms {
+		rooms = append(rooms, r)
+	}
+	s.mu.RUnlock()
+	n := s.relayCount()
+	for _, r := range rooms {
+		_, connected := r.occupancy()
+		n += connected
+	}
+	return n
 }

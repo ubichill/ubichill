@@ -384,6 +384,12 @@ instanceRuntime:
   # Go の Pod の数。2 以上は directory: redis のときだけ（memory では描画で失敗する）。
   # 部屋は割り当てた Pod が持ち、別の Pod に来た WebSocket は owner の Pod へ中継する。
   replicas: 1
+  # 1 Pod が持つ部屋の数の上限。backend は redis のとき、上限に達していない Pod から新しい部屋の置き場所を選ぶ。
+  maxRooms: 1000
+  # SIGTERM のあと新しい部屋を断り（draining）、接続が抜けるのを待つ時間（directory: redis のときだけ。memory は待たない）。
+  # 過ぎたら残りの部屋を閉じ、クライアントは別の Pod へ繋ぎ直す。terminationGracePeriodSeconds は drainTimeout + 10 秒以上にする。
+  drainTimeout: 15s
+  terminationGracePeriodSeconds: 30
   # 未指定時はbackendと同じSecretを参照。専用Secretに切り替える場合は
   # existingSecretとsecretKeyを設定（32文字以上のランダム値）。
   existingSecret: ""
