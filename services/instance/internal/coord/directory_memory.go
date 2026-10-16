@@ -198,12 +198,19 @@ func (m *MemoryDirectory) Forget(_ context.Context, room string) error {
 	return nil
 }
 
-func (m *MemoryDirectory) Retire(_ context.Context, room string, ttl time.Duration) error {
+func (m *MemoryDirectory) Retire(_ context.Context, room, token string, ttl time.Duration) (bool, error) {
 	if err := validateRoom(room, ttl, true); err != nil {
-		return err
+		return false, err
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	owner, held := live(m.rooms, room, m.now())
+	if held && owner.Token != token || !held && token != "" {
+		return false, nil
+	}
 	m.retired[room] = expiring[struct{}]{struct{}{}, m.now().Add(ttl)}
-	return nil
+	delete(m.rooms, room)
+	delete(m.presence, room)
+	delete(m.listed, room)
+	return true, nil
 }

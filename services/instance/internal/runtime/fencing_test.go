@@ -72,11 +72,11 @@ func (p *partitioned) Release(ctx context.Context, room, token string) (bool, er
 	}
 	return p.Directory.Release(ctx, room, token)
 }
-func (p *partitioned) Retire(ctx context.Context, room string, ttl time.Duration) error {
+func (p *partitioned) Retire(ctx context.Context, room, token string, ttl time.Duration) (bool, error) {
 	if err := p.fail(); err != nil {
-		return err
+		return false, err
 	}
-	return p.Directory.Retire(ctx, room, ttl)
+	return p.Directory.Retire(ctx, room, token, ttl)
 }
 func (p *partitioned) PublishPresence(ctx context.Context, rooms []coord.RoomPresence, ttl time.Duration) error {
 	if err := p.fail(); err != nil {

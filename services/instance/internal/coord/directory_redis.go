@@ -211,11 +211,25 @@ func (r *RedisDirectory) Forget(ctx context.Context, room string) error {
 	return err
 }
 
-func (r *RedisDirectory) Retire(ctx context.Context, room string, ttl time.Duration) error {
+var retireScript = redis.NewScript(`
+local token = redis.call('HGET', KEYS[1], 'token')
+if token then
+  if token ~= ARGV[1] then return 0 end
+elseif ARGV[1] ~= '' then
+  return 0
+end
+redis.call('SET', KEYS[2], '1', 'PX', ARGV[2])
+redis.call('DEL', KEYS[1], KEYS[3])
+redis.call('SREM', KEYS[4], ARGV[3])
+return 1`)
+
+func (r *RedisDirectory) Retire(ctx context.Context, room, token string, ttl time.Duration) (bool, error) {
 	if err := validateRoom(room, ttl, true); err != nil {
-		return err
+		return false, err
 	}
-	return r.client.Set(ctx, r.retiredKey(room), "1", ttl).Err()
+	keys := []string{r.roomKey(room), r.retiredKey(room), r.presenceKey(room), r.roomsKey()}
+	n, err := retireScript.Run(ctx, r.client, keys, token, ttl.Milliseconds(), room).Int()
+	return err == nil && n == 1, err
 }
 
 // DirectoryFor は Redis を設定していれば Redis の Directory だけを返す。LeaseFor と同じく、

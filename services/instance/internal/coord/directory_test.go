@@ -275,7 +275,7 @@ func runDirectoryContract(t *testing.T, newDirectory func(t *testing.T) testDire
 		d := newDirectory(t)
 		a, _ := assign(t, d, "room", "node-a")
 		// 閉じる側は割り当てを解放する前に Retire する。どちらの順でも、解放したあとに別のノードが取れない
-		if err := d.Retire(ctx, "room", 2*ttl); err != nil {
+		if ok, err := d.Retire(ctx, "room", a.Token, 2*ttl); err != nil || !ok {
 			t.Fatal(err)
 		}
 		if _, err := d.Release(ctx, "room", a.Token); err != nil {
@@ -295,8 +295,41 @@ func runDirectoryContract(t *testing.T, newDirectory func(t *testing.T) testDire
 		if !created || next.Epoch != a.Epoch+1 {
 			t.Fatalf("after retirement: %+v created=%v", next, created)
 		}
-		if err := d.Retire(ctx, "epoch:x", ttl); !errors.Is(err, ErrInvalidRoom) {
+		if _, err := d.Retire(ctx, "epoch:x", "", ttl); !errors.Is(err, ErrInvalidRoom) {
 			t.Fatalf("retire an invalid room: %v", err)
+		}
+	})
+
+	t.Run("retirement cannot close a new owner and cleans only its own presence", func(t *testing.T) {
+		d := newDirectory(t)
+		first, _ := assign(t, d, "room", "node-a")
+		if ok, err := d.Retire(ctx, "room", "", ttl); err != nil || ok {
+			t.Fatalf("absent retirement with owner: %v %v", ok, err)
+		}
+		if _, err := d.Release(ctx, "room", first.Token); err != nil {
+			t.Fatal(err)
+		}
+		next, _ := assign(t, d, "room", "node-b")
+		if err := d.PublishPresence(ctx, []RoomPresence{{Room: "room", Members: []string{"alice"}}}, ttl); err != nil {
+			t.Fatal(err)
+		}
+		if ok, err := d.Retire(ctx, "room", first.Token, ttl); err != nil || ok {
+			t.Fatalf("stale retirement: %v %v", ok, err)
+		}
+		if _, ok, _ := d.Presence(ctx, "room"); !ok {
+			t.Fatal("stale retirement erased new presence")
+		}
+		if ok, err := d.Retire(ctx, "room", next.Token, ttl); err != nil || !ok {
+			t.Fatalf("current retirement: %v %v", ok, err)
+		}
+		if _, held, _ := d.Owner(ctx, "room"); held {
+			t.Fatal("retired owner remains")
+		}
+		if _, present, _ := d.Presence(ctx, "room"); present {
+			t.Fatal("retired presence remains")
+		}
+		if rooms, _ := d.Rooms(ctx); slices.Contains(rooms, "room") {
+			t.Fatal("retired room remains listed")
 		}
 	})
 
@@ -350,7 +383,7 @@ func TestRedisHeartbeatListsTheNodeForPlacement(t *testing.T) {
 	if raw != want {
 		t.Fatalf("node value = %s", raw)
 	}
-	if err := d.Retire(ctx, "room", time.Second); err != nil {
+	if ok, err := d.Retire(ctx, "room", "", time.Second); err != nil || !ok {
 		t.Fatal(err)
 	}
 	if ttl, err := client.PTTL(ctx, prefix+"retired:room").Result(); err != nil || ttl <= 0 || ttl > time.Second {

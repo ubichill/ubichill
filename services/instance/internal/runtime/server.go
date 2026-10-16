@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -445,10 +444,16 @@ func (s *Server) closeInstance(ctx context.Context, id, emptyBefore string, want
 			}
 			return 409, conflict(&ownedElsewhere{owner: owner, addr: info.Addr, alive: alive})
 		}
-		s.retire(ctx, id)
+		token := ""
 		if held {
-			// 自分のノードの割り当てだが部屋が無い（自己停止のあと解放できなかった）
-			_, _ = s.dir.Release(ctx, id, owner.Token)
+			token = owner.Token
+		}
+		retired, err := s.dir.Retire(ctx, id, token, retiredFor)
+		if err != nil {
+			return 503, failure(errDirectoryUnavailable.Error())
+		}
+		if !retired {
+			return 409, s.staleGeneration(ctx, id)
 		}
 		return 204, nil
 	}
@@ -466,6 +471,17 @@ func (s *Server) closeInstance(ctx context.Context, id, emptyBefore string, want
 			return 409, failure("instance is occupied or recently emptied")
 		}
 	}
+	// token の照合と retired の設定を同じ操作にする。失敗時には DB を削除させない。
+	retired, err := s.dir.Retire(ctx, id, room.token, retiredFor)
+	if err != nil {
+		room.mu.Unlock()
+		return 503, failure(errDirectoryUnavailable.Error())
+	}
+	if !retired {
+		room.mu.Unlock()
+		s.discard(ctx, room, false)
+		return 409, s.staleGeneration(ctx, id)
+	}
 	room.closed = true
 	room.mu.Unlock()
 	room.close(true)
@@ -474,19 +490,7 @@ func (s *Server) closeInstance(ctx context.Context, id, emptyBefore string, want
 		delete(s.rooms, id)
 	}
 	s.mu.Unlock()
-	// 解放より先に印を付ける（解放と印の間に別のノードが割り当てを取れないように）
-	s.retire(ctx, id)
-	_, _ = s.dir.Release(ctx, id, room.token)
-	_ = s.dir.Forget(ctx, id)
 	return 204, nil
-}
-
-// retire は閉じた部屋を retiredFor の間どのノードにも作らせない。Directory に届かなければ記録だけする
-// （部屋はもう閉じている。DB の行が消えれば backend は作成を送らないので、残るのは消す直前の競合だけ）。
-func (s *Server) retire(ctx context.Context, id string) {
-	if err := s.dir.Retire(ctx, id, retiredFor); err != nil {
-		log.Printf("could not retire %s: %v", id, err)
-	}
 }
 
 // expectation は管理 API の ?gen=&epoch=（backend が知っている部屋の世代）。付いていなければ照らさない。

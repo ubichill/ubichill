@@ -64,8 +64,9 @@ type Directory interface {
 	Rooms(ctx context.Context) ([]string, error)
 	// Forget は部屋を意図して終えたときに在席と一覧から消す。
 	Forget(ctx context.Context, room string) error
-	// Retire は閉じた部屋を ttl の間どのノードにも割り当てさせない（閉じる途中・直後に届いた作成で生き返らせない）。
-	Retire(ctx context.Context, room string, ttl time.Duration) error
+	// Retire は owner の token の照合、閉鎖の印、割り当て・在席の削除を原子的に行う。
+	// token が空なら owner がいない場合だけ成功する。別の owner が取得済みなら false。
+	Retire(ctx context.Context, room, token string, ttl time.Duration) (bool, error)
 }
 
 var (
