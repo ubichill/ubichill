@@ -420,7 +420,12 @@ class WorldRegistry {
         name: string,
     ): Promise<{ id: string; repository?: { filePath: string }; record?: WorldRecord } | undefined> {
         const repository = this._repository.get(name);
-        if (repository && claimedAuthorOf(repository.hosted)?.handle === handle) return { id: name, repository };
+        if (repository) {
+            const claimed = claimedAuthorOf(repository.hosted);
+            // 署名なしとして配っている同梱ワールドは公式アカウントの名義（_resolveRepositoryWorld と同じ規則）
+            const owner = claimed?.handle ?? (serveUnsignedRepositoryWorlds() ? OFFICIAL_HANDLE : undefined);
+            if (owner === handle) return { id: name, repository };
+        }
         if (!HANDLE_PATTERN.test(handle)) return undefined;
         const user = await userRepository.findByHandle(handle);
         if (!user) return undefined;
