@@ -214,6 +214,20 @@ function extractConfigFromCode(code: string): Record<string, unknown> | null {
     }
 }
 
+/**
+ * `config.dataOnly: true` の Component の manifest エントリ（純粋）。data-only でなければ null。
+ *
+ * data-only は Worker を持たず、mod が spawn して持ち回るだけのデータ（例: pen:stroke）。
+ * manifest に宣言しておくと、Host はその型の Entity を「この mod のデータ」と認識して Worker を探さない。
+ * コードを実行しないので workerUrl・capabilities は持たせず、lock の components にも載せない
+ * （manifest 自体は lock の manifestIntegrity で固定されるので、宣言は改竄できない）。
+ */
+export function dataOnlyManifestEntry(config: Record<string, unknown> | null): Record<string, unknown> | null {
+    if (config?.dataOnly !== true) return null;
+    const { capabilities: _caps, workerUrl: _url, ...rest } = config;
+    return rest;
+}
+
 function copyDirRecursive(src: string, dest: string): void {
     mkdirSync(dest, { recursive: true });
     for (const entry of readdirSync(src, { withFileTypes: true })) {
@@ -486,6 +500,13 @@ export async function buildMod(modDir: string, options: BuildOptions = {}): Prom
         // `export const config` を持つファイルのみを処理する
         if (!isWorkerFile(workerPath)) {
             console.log(`📋 [${componentType}] skipped (no export const config)`);
+            continue;
+        }
+
+        const dataOnly = dataOnlyManifestEntry(extractConfigFromCode(readFileSync(workerPath, 'utf-8')));
+        if (dataOnly) {
+            versionedComponents[componentType] = dataOnly;
+            console.log(`📦 [${componentType}] data-only（Worker なし）`);
             continue;
         }
 

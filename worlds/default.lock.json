@@ -4,7 +4,7 @@
     "pen": {
       "id": "pen",
       "version": "2.0.0",
-      "manifestIntegrity": "sha256-kw+1Qyb2pgrwLNzl84c6AmU6P1n7GsWmusachcPptnc=",
+      "manifestIntegrity": "sha256-hMZHezIm1HCIzvdpDUIg/0rGDKVI9dqGbLj/osTJ64g=",
       "components": {
         "pen:canvas": {
           "workerUrl": "./canvas/index.435856d5.js",
