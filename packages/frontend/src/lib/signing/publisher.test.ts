@@ -92,10 +92,4 @@ describe('ensureAuthorSigner（このブラウザを公開環境にする）', (
         const { deps } = fakeDeps({ local: 'K', failRegister: true });
         await expect(ensureAuthorSigner(account, deps)).rejects.toThrow();
     });
-
-    it('ID 未設定のアカウントでは鍵を作らない', async () => {
-        const { deps, log } = fakeDeps({});
-        await expect(ensureAuthorSigner({ ...account, author: null }, deps)).rejects.toThrow();
-        expect(log).toEqual([]);
-    });
 });

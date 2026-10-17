@@ -162,3 +162,41 @@ ON CONFLICT DO NOTHING;
 ```
 
 もう一度新しいイメージに進めるときは、0020 は適用済みなので再び走らない。上の「デプロイ中に古い Pod が書いたものを写す」をもう一度行う。
+
+## 0021_users_cleanup（users の handle を必須にし、画像を image に寄せる）
+
+- handle が NULL のユーザーに `user_` + 16 進 12 桁（`gen_random_uuid()` の先頭）を振る。システムユーザー（`00000000-…`）だけは予約語の `system`。
+  振った handle は変更できないので、その人はそのまま使い続ける（URL は `/@user_…`、作者アカウントは `user_…@<domain>`）。
+- `image` が空の行だけ、`profile_image_url` の値を `image` に移す。
+- `handle` を NOT NULL にする。`username`・`profile_image_url` は**残す**（新しいイメージは読まない。デプロイ中の古い Pod が SELECT するので、消すのは次の 0022）。
+
+1.〜2. の手順（事前確認・バックアップ）は同じ。
+
+### 事前確認
+
+```sql
+-- 振られる人（本番では 5 件の見込み。システムユーザーを含むか確かめる）
+SELECT id, email, name, username, created_at FROM users WHERE handle IS NULL ORDER BY created_at;
+-- 移す画像（image と profile_image_url が両方あって違う行は image を残す）
+SELECT id, image, profile_image_url FROM users WHERE coalesce(btrim(profile_image_url), '') <> '';
+-- 予約語の system を他人が持っていないこと（持っていればシステムユーザーにも user_… を振る）
+SELECT id FROM users WHERE handle = 'system';
+```
+
+振られた人には、ID が決まったこと（`@user_…`）を知らせる。ID はあとから変えられない。
+
+### 事後確認
+
+```sql
+SELECT count(*) FROM users WHERE handle IS NULL;  -- 0
+SELECT id, handle FROM users WHERE handle ~ '^user_[0-9a-f]{12}$' OR handle = 'system';
+```
+
+- 新しくログインできること、`/@<振った handle>` のプロフィールが開けることを確かめる。
+
+### 古いイメージに戻すとき
+
+列は残っているので、そのまま戻せる。振った handle と NOT NULL もそのままでよい（古いイメージの「ID を設定する」画面は出なくなる）。
+ただし古いイメージは handle を後から書く作り方（better-auth の signUpEmail）でユーザーを作るので、公式アカウントが無い DB で起動すると
+その作成が NOT NULL で失敗する（本番は作成済みなので当たらない）。
+0021 の後に新しいイメージで変わった画像は `image` にだけあり、古いイメージ（`profile_image_url` を出す）には出ない（今はどちらも書く口が無い）。

@@ -15,12 +15,11 @@ export const users = pgTable('users', {
     name: text('name').notNull(),
     email: text('email').notNull().unique(),
     emailVerified: boolean('email_verified').notNull().default(false),
+    /** プロフィール画像の URL。書くのはサーバーだけ（better-auth の /update-user は HTTP から塞いでいる）。 */
     image: text('image'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     // App-specific fields
-    /** @deprecated 表示名（name）と重複していた旧フィールド。表示名は name、URL・署名用の ID は handle を使う。 */
-    username: varchar('username', { length: 255 }).unique(),
     /**
      * 表示名（name）の一意性キー（displayNameKey: NFKC・空白圧縮・小文字化）。VRChat のように表示名を一意にする。
      * 移行時に他人と重複していた既存ユーザーは null（表示名の変更を促す）。
@@ -29,8 +28,7 @@ export const users = pgTable('users', {
     /** 最後に表示名の一意キーを変えた時刻（変更の制限に使う）。登録時の名前と、見た目だけの変更は数えない。 */
     displayNameChangedAt: timestamp('display_name_changed_at', { withTimezone: true }),
     /** URL・署名・機械処理用の ID（英小文字・数字・_、一意、変更不可）。作者アカウントは handle@domain。 */
-    handle: varchar('handle', { length: 30 }).unique(),
-    profileImageUrl: varchar('profile_image_url', { length: 1024 }),
+    handle: varchar('handle', { length: 30 }).notNull().unique(),
     /** 自己紹介（任意。プロフィールとリンクのプレビューに出す） */
     bio: text('bio'),
     /** 初期パスワードのまま（公式アカウントの初期作成時など）。変更するまで変更を促す。 */

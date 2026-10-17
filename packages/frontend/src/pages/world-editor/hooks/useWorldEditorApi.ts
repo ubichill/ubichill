@@ -90,14 +90,11 @@ export function useWorldEditorApi({
     const saveDraft = useCallback(
         () =>
             withSaving(async () => {
-                // 下書きにも ID が要る（ワールドの URL は /@ID/名前）。無ければその場で決めてもらう
+                // ワールドの URL は /@ID/名前 なので、アカウントを取れなければ保存先が決まらない
                 const account = await fetchMyAccount().catch(() => null);
-                if (!account?.author) {
-                    const decision = await requestPublishSetup(
-                        account ? { kind: 'needs-handle', account } : { kind: 'no-account' },
-                        'save',
-                    );
-                    if (decision.kind === 'cancel') return false;
+                if (!account) {
+                    await requestPublishSetup({ kind: 'no-account' }, 'save');
+                    return false;
                 }
                 const { body } = await buildSaveBody(definition, isEdit ? worldId : undefined);
                 const saved = await saveWorldBundle(body, null, deps);

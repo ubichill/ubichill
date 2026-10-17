@@ -6,7 +6,6 @@ import {
     type MyAccount,
     type PublishingEnvironment,
     revokePublishingEnvironment,
-    setMyHandle,
 } from '@/lib/account/me';
 import {
     isRecentlyAdded,
@@ -15,7 +14,6 @@ import {
     sortEnvironments,
 } from '@/lib/account/publishingEnvironments';
 import { type ResignCandidate, type ResignResult, type ResignTarget, worldsNeedingResign } from '@/lib/account/resign';
-import { useHandleAvailability } from '@/lib/account/useHandleAvailability';
 import { useSigningPublicKey } from '@/lib/signing';
 import { css, cva } from '@/styled-system/css';
 import { CompromiseGuide } from './CompromiseGuide';
@@ -149,8 +147,6 @@ export function PublishingSection({
     const [environments, setEnvironments] = useState<PublishingEnvironment[] | null>(null);
     const [busy, setBusy] = useState(false);
     const [message, setMessage] = useState<{ tone: 'info' | 'error'; text: string } | null>(null);
-    const [handleInput, setHandleInput] = useState('');
-    const handleStatus = useHandleAvailability(handleInput, !account.handle);
     /** 取り消しの理由を選んでいる公開環境 */
     const [revoking, setRevoking] = useState<string | null>(null);
     /** 漏えいとして取り消した直後（ログアウトとパスワード変更へ案内する） */
@@ -184,17 +180,6 @@ export function PublishingSection({
 
     const syncAccountKeys = (list: readonly PublishingEnvironment[]) =>
         onAccountChange({ ...account, signingKeys: list.filter((e) => !e.revokedAt).map((e) => e.publicKey) });
-
-    const saveHandle = () =>
-        run(async () => {
-            const ok = await confirm(
-                `ID を「${handleInput.trim()}」にします。あとから変更できません。よろしいですか？`,
-            );
-            if (!ok) return null;
-            const result = await setMyHandle(handleInput.trim());
-            onAccountChange({ ...account, handle: result.handle, author: result.author });
-            return 'ID を設定しました。';
-        });
 
     const revoke = async (env: PublishingEnvironment, reason: RevokeReason) => {
         if (!(await confirm(revokeConfirmMessage(env, env.publicKey === localKey, reason)))) return;
@@ -256,47 +241,9 @@ export function PublishingSection({
                 ログインしたブラウザで「公開する」を押すと、そのブラウザが公開環境として自動で登録されます。
             </p>
 
-            {account.author ? (
-                <p className={css({ fontSize: '14px', color: 'text', mb: '3' })}>
-                    作者アカウント: <strong>{displayAuthorAccount(account.author)}</strong>
-                </p>
-            ) : (
-                <div className={css({ mb: '4' })}>
-                    <p className={notice({ tone: 'warn' })}>
-                        ID が未設定です。公開するには ID（英小文字・数字・_ の 3〜30 文字、変更不可）を決めてください。
-                    </p>
-                    <div className={row}>
-                        <input
-                            value={handleInput}
-                            onChange={(e) => setHandleInput(e.target.value.toLowerCase().slice(0, 30))}
-                            aria-label="ID"
-                            autoCapitalize="none"
-                            spellCheck={false}
-                            className={css({
-                                px: '3',
-                                py: '2',
-                                border: '1px solid',
-                                borderColor: 'border',
-                                borderRadius: '8px',
-                                fontSize: '14px',
-                                bg: 'background',
-                                color: 'text',
-                            })}
-                        />
-                        <button
-                            type="button"
-                            className={button({ tone: 'primary' })}
-                            disabled={busy || handleStatus.state !== 'available'}
-                            onClick={() => void saveHandle()}
-                        >
-                            ID を設定
-                        </button>
-                    </div>
-                    {'error' in handleStatus && (
-                        <p className={css({ mt: '1', fontSize: '12px', color: 'errorText' })}>{handleStatus.error}</p>
-                    )}
-                </div>
-            )}
+            <p className={css({ fontSize: '14px', color: 'text', mb: '3' })}>
+                作者アカウント: <strong>{displayAuthorAccount(account.author)}</strong>
+            </p>
 
             {compromised && <CompromiseGuide onDismiss={() => setCompromised(false)} />}
 

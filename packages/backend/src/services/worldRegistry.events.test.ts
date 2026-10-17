@@ -35,8 +35,8 @@ describe('worldRegistry と backend の間の知らせ', () => {
         vi.resetAllMocks();
         received.length = 0;
         db.worldRepository.findByName.mockResolvedValue(record);
-        // 作者の ID が無いワールドは「配信しない」と解決され、その結果もキャッシュされる
-        db.userRepository.findById.mockResolvedValue({ id: 'author-1', handle: null });
+        // 作者のアカウントが無いワールドは「配信しない」と解決され、その結果もキャッシュされる
+        db.userRepository.findById.mockResolvedValue(undefined);
     });
 
     it('ほかの backend がワールドを変えたら、解決のキャッシュを捨てて DB から引き直す', async () => {

@@ -51,7 +51,7 @@ users
 
 - `username` を消す。
 - 画像は better-auth の `image` に寄せ、`profile_image_url` を消す。HTTP の `/update-user` は #242 で塞いだので、`image` に書けるのはサーバーだけ。
-- `handle` を NOT NULL にする。登録では必ず決めるが、既存の行に NULL がある可能性がある。移行の前に本番の件数を数え、残っていれば次回のログインで決めさせる画面を先に出す（未決 1）。
+- `handle` を NOT NULL にする。登録では必ず決める。既存の NULL の行（本番で 5 件）には、移行で `user_` + 16 進 12 桁を自動で振る（システムユーザーは予約語の `system`）。「後から ID を決める」口（`PUT /me/handle`）は消す。
 - `sessions`・`accounts`・`verifications` は better-auth のまま。時刻だけ `timestamptz` にする。
 - `user_settings`・`user_friends`・`user_favorites` は今のまま（時刻の型だけ変える）。
 
@@ -213,6 +213,6 @@ Redis の作業との依存: backend を 2 つ以上にする前に、1（reaper
 
 ## 未決
 
-1. `handle` が NULL の既存アカウントの扱い。本番の件数次第で「ログイン時に決めさせる」か「自動で振る」かを決める。
+1. （決定）`handle` が NULL の既存アカウントは移行で自動で振る（0021_users_cleanup）。
 2. 署名し直しで変わる `signature` を、`world_versions` の例外として更新するか、`world_version_signatures`（版ごとに複数の署名）に分けるか。
 3. 古い版を自動で消すか、4 つ目の公開を拒否して「どれを消すか」を作者に選ばせるか（この文書は自動で消す案）。
