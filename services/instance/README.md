@@ -77,15 +77,22 @@ backendのデプロイや設定変更ではGoを再起動しない（状態が�
 |---|---|
 | `INSTANCE_ADMIN_TOKEN` | 管理APIのトークン（32文字以上）。`--guests` 以外では必須 |
 | `INSTANCE_TICKET_KEY` | 参加チケットの署名鍵（任意・32文字以上）。無ければ管理トークンから派生し、どちらも無ければ起動ごとの乱数 |
-| `REDIS_URL` / `REDIS_PASSWORD` | 任意。未設定ならRedisなしで動く。今は接続の確認だけで、部屋の割り当て（Directory・owner のリース）は今後使う |
+| `REDIS_URL` / `REDIS_PASSWORD` | 任意。設定すると部屋の割り当て（Directory・owner のリースと世代・在席・heartbeat）を Redis に置く。未設定ならメモリ（単体モード）。設定したあと Redis が落ちてもメモリに切り替えず、新しい部屋は作れず、既存の部屋は自己停止する |
+| `POD_NAME` | ノード ID の元（起動ごとの乱数を足す）。無ければホスト名。Helm は Downward API で渡す |
+| `POD_IP` / `INSTANCE_ADVERTISE_ADDR` | 他の Pod から届く自分のアドレス（heartbeat に書く）。`INSTANCE_ADVERTISE_ADDR` が優先、無ければ `POD_IP` かホスト名に待ち受けのポートを付ける |
 
 ## 状態と運用上の制約
 
 - 現時点の状態保存はメモリのみ。再起動すると編集状態・在席が失われる（チケットの署名鍵は管理トークンから派生するので、
   再接続情報は再起動の前後で有効なまま。部屋が消えていれば `instance_unavailable` で取り直す）。
   SNS側のDBにあるインスタンスは次の入室時にワールド初期状態から復元する。
-- HelmのGo Deploymentは1 replica・Recreate。複数サーバーへの割当はまだ実装していない。
-  単純にreplica数を増やすと状態が分裂する。
+- HelmのGo Deploymentは1 replica・Recreate。Directory（部屋 → owner の割り当て）はあるが、WebSocket を owner へ振り分ける
+  Router はまだ無いので、replica数を増やすと別の Pod に来た接続は入室できない（設計は docs/design/instance-scaling.md）。
+- owner は部屋のリースを 5 秒ごとに延長する。最後に成功した延長の要求を送った時刻から 10 秒（TTL 15 秒 − 余裕 5 秒）を過ぎると、
+  その部屋の状態変更と入室を止めて接続を閉じる（`instance:closing` は送らない。クライアントはチケットを取り直して入り直し、
+  部屋は新しい epoch で作り直される）。Redis の中身が消えて世代（`ubi:cluster:gen`）が変わったときも全部屋を捨てる。
+- プロセスが落ちて割り当てを解放できなかった部屋は、TTL（15 秒）が切れるまで他の Pod が作れない（管理 API は 409）。
+  通常の停止（SIGTERM）では解放するので、次の Pod はすぐ作り直せる。
 - SNS停止中でも既存のGo接続は継続する。SNS連携での新規入室・再接続はチケット再取得が必要。
 - 自動再接続は最大6回・30秒。失効チケットの取り直しも同じ上限内で1回だけ行う。
   単体モードは上限到達後に失敗画面に留まり、本人の操作で再試行する。

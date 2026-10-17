@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { cliAuthRequestRepository } from '@ubichill/db';
+import { cliAuthRequestRepository, pendingRegistrationRepository } from '@ubichill/db';
 import { LIMITS } from '@ubichill/shared';
 import cors from 'cors';
 import express from 'express';
@@ -173,17 +173,22 @@ async function startServer() {
             .catch((err: unknown) => logger.warn('キャッシュの無効化の知らせを購読できません（TTL で揃えます）:', err));
     }
 
-    // 期限切れの CLI 認可の要求を消す（認証なしで作れるので溜めない）。reaper と同じリースを持つ 1 台だけが行う
-    const cleanCliAuthRequests = async () => {
+    // 期限切れの CLI 認可の要求と仮登録を消す（どちらも認証なしで作れるので溜めない）。reaper と同じリースを持つ 1 台だけが行う
+    const cleanExpiredRequests = async () => {
         await maintenanceGate.run(async (checkpoint) => {
             if (!(await checkpoint())) return;
-            await cliAuthRequestRepository
-                .deleteExpired()
-                .catch((err: unknown) => console.error('CLI 認可の要求の掃除に失敗:', err));
+            await Promise.all([
+                cliAuthRequestRepository
+                    .deleteExpired()
+                    .catch((err: unknown) => console.error('CLI 認可の要求の掃除に失敗:', err)),
+                pendingRegistrationRepository
+                    .deleteExpired()
+                    .catch((err: unknown) => console.error('仮登録の掃除に失敗:', err)),
+            ]);
         });
     };
-    void cleanCliAuthRequests();
-    setInterval(() => void cleanCliAuthRequests(), 10 * 60 * 1000).unref();
+    void cleanExpiredRequests();
+    setInterval(() => void cleanExpiredRequests(), 10 * 60 * 1000).unref();
 
     // 空インスタンスの掃除（reaper）を起動。DB を定期スイープし、在席0かつ
     // 作成から猶予経過した instance を削除する。インメモリのタイマー状態に依存しないため、

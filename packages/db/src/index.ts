@@ -17,6 +17,13 @@ export { favoriteRepository } from './repositories/favoriteRepository';
 export { federationPeerRepository } from './repositories/federationPeerRepository';
 export { instanceRepository } from './repositories/instanceRepository';
 export {
+    type LockedPendingRegistration,
+    type NewCredentialUser,
+    type PendingRegistrationEmailScope,
+    type PendingRegistrationRecord,
+    pendingRegistrationRepository,
+} from './repositories/pendingRegistrationRepository';
+export {
     type CreatePublishingEnvironmentInput,
     type PublishingEnvironmentRecord,
     publishingEnvironmentRepository,
@@ -54,6 +61,7 @@ export {
     insertWorldSchema,
     instances,
     instancesRelations,
+    pendingRegistrations,
     selectInstanceSchema,
     selectUserFavoriteSchema,
     selectUserFriendSchema,

@@ -52,6 +52,8 @@ export default defineConfig({
                 find: /^@ubichill\/loader\/sign-world$/,
                 replacement: srcPath('./packages/loader/src/signWorldFile.ts'),
             },
+            // backend の結合テストは実際の DB に繋ぐ。CI のテストジョブは db をビルドしないのでソースを読む
+            { find: /^@ubichill\/db$/, replacement: srcPath('./packages/db/src/index.ts') },
             { find: /^@ubichill\/ecs$/, replacement: srcPath('./packages/ecs/src/index.ts') },
             { find: /^@ubichill\/runtime$/, replacement: srcPath('./packages/runtime/src/index.ts') },
             { find: /^@ubichill\/sdk$/, replacement: srcPath('./packages/sdk/src/index.ts') },

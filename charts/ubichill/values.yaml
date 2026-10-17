@@ -379,6 +379,10 @@ instanceRuntime:
   origins: []
   # 切断後に参加者とロックを保持する時間（Go の duration 形式）
   disconnectGrace: 15s
+  # 部屋の割り当て（Directory）を Redis で共有するか: memory / redis。
+  # 1 Pod では共有する相手がおらず、Redis の可用性が部屋の可用性の上限になるだけなので memory にしておく。
+  # replicas を 2 以上にするときに redis にする（Redis の Secret を固定してから。README の「Redis」）。
+  directory: memory
   # 未指定時はbackendと同じSecretを参照。専用Secretに切り替える場合は
   # existingSecretとsecretKeyを設定（32文字以上のランダム値）。
   existingSecret: ""
