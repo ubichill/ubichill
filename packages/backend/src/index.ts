@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { cliAuthRequestRepository } from '@ubichill/db';
+import { cliAuthRequestRepository, pendingRegistrationRepository } from '@ubichill/db';
 import { LIMITS } from '@ubichill/shared';
 import cors from 'cors';
 import express from 'express';
@@ -152,13 +152,18 @@ async function startServer() {
     await bootstrapOfficialAccount();
     await worldRegistry.initialize();
 
-    // 期限切れの CLI 認可の要求を消す（認証なしで作れるので溜めない）
-    const cleanCliAuthRequests = () =>
-        cliAuthRequestRepository
-            .deleteExpired()
-            .catch((err: unknown) => console.error('CLI 認可の要求の掃除に失敗:', err));
-    void cleanCliAuthRequests();
-    setInterval(cleanCliAuthRequests, 10 * 60 * 1000).unref();
+    // 期限切れの CLI 認可の要求と仮登録を消す（どちらも認証なしで作れるので溜めない）
+    const cleanExpiredRequests = () =>
+        Promise.all([
+            cliAuthRequestRepository
+                .deleteExpired()
+                .catch((err: unknown) => console.error('CLI 認可の要求の掃除に失敗:', err)),
+            pendingRegistrationRepository
+                .deleteExpired()
+                .catch((err: unknown) => console.error('仮登録の掃除に失敗:', err)),
+        ]);
+    void cleanExpiredRequests();
+    setInterval(cleanExpiredRequests, 10 * 60 * 1000).unref();
 
     // 空インスタンスの掃除（reaper）を起動。DB を定期スイープし、在席0かつ
     // 作成から猶予経過した instance を削除する。インメモリのタイマー状態に依存しないため、
