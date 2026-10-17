@@ -30,11 +30,11 @@ function migrationsUpTo(tag: string): string {
     return dir;
 }
 
-interface UserRow {
+type UserRow = {
     id: string;
     handle: string | null;
     image: string | null;
-}
+};
 
 describe.skipIf(!RUN)('0021_users_cleanup（DB 統合）', () => {
     const name = `ubichill_users_cleanup_${Date.now().toString(36)}`;
