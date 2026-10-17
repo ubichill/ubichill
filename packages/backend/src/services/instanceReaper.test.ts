@@ -93,11 +93,28 @@ describe('InstanceReaper', () => {
     });
     it('作成直後の instance は Go に部屋が無くても消さない', async () => {
         const reaper = newReaper();
-        reaper.markCreated('room');
         mocks.findAll.mockResolvedValue([{ ...old, createdAt: new Date(T0) }]);
         mocks.presence.mockResolvedValue(new Map());
         vi.setSystemTime(T0 + 59_999);
         expect(await reaper.sweepOnce()).toBe(0);
+    });
+    it('Go 上で空の時間が長くても、created_at が新しければ消さず、猶予を過ぎたら消す', async () => {
+        // timestamptz は +09 で返っても同じ瞬間を指す（T0 - 30 秒）
+        mocks.findAll.mockResolvedValue([{ ...old, createdAt: new Date('2026-01-01 08:59:30+09') }]);
+        mocks.presence.mockResolvedValue(runtimeRoom([], T0 - 10 * 60_000));
+        const instanceReaper = newReaper();
+        expect(await instanceReaper.sweepOnce()).toBe(0);
+        vi.setSystemTime(T0 + 29_999);
+        expect(await instanceReaper.sweepOnce()).toBe(0);
+        vi.setSystemTime(T0 + 30_000);
+        expect(await instanceReaper.sweepOnce()).toBe(1);
+        expect(mocks.delete).toHaveBeenCalledWith('room');
+    });
+    it('created_at が古く Go 上でも猶予を超えて空なら消す', async () => {
+        mocks.findAll.mockResolvedValue([{ ...old, createdAt: new Date('2025-12-31 23:58:00+00') }]);
+        mocks.presence.mockResolvedValue(runtimeRoom([], T0 - 60_000));
+        expect(await newReaper().sweepOnce()).toBe(1);
+        expect(mocks.delete).toHaveBeenCalledWith('room');
     });
     it('Go に到達できなければ何も消さない', async () => {
         mocks.presence.mockRejectedValue(new Error('runtime down'));

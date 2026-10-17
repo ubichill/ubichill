@@ -31,6 +31,8 @@ backend:
   
   env:
     NODE_ENV: "development"
+    # 公式ワールドの署名は main への push でしか付かないので、開発・プレビューでは署名なしのまま配る（無いと入れるワールドが無い）
+    WORLDS_SERVE_UNSIGNED_REPOSITORY: "true"
     TRUST_PROXY: "true"
     CORS_ORIGIN: "*"  # dev では全オリジン許可
   secretEnv:
