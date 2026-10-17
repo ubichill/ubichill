@@ -1,4 +1,7 @@
 {{- if .Values.backend.enabled }}
+{{- if and (gt (int .Values.backend.replicaCount) 1) (not .Values.redis.enabled) (not (.Values.redis.external | default dict).url) }}
+{{- fail "backend.replicaCount を 2 以上にするには Redis（redis.enabled または redis.external.url）が要ります。無いと reaper が台数分動き、レート制限も台数分に緩みます" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:

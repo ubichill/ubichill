@@ -91,3 +91,74 @@ kubectl -n ubichill scale deploy/ubichill-backend --replicas=0
 kubectl -n ubichill exec -i $PG -- bash -c 'PGPASSWORD=$POSTGRES_PASSWORD pg_restore -U ubichill -d ubichill --clean --if-exists' < ubichill-YYYYMMDD-HHMM.dump
 # 古いイメージに戻してから backend を起こす（新しいイメージはまたマイグレーションを当てる）
 ```
+
+## 0020_author_keys（作者の鍵を author_keys・remote_authors に移す）
+
+`publishing_environments`（自サーバーの公開環境）と `author_bindings`（他サーバーの作者の鍵一覧）を `author_keys`・`remote_authors` に写す。
+新しいイメージは新しいテーブルだけを読み書きし、古いテーブルは**残すが書かない**（消すのは次のマイグレーション）。
+1.〜2. の手順（事前確認・バックアップ）は同じ。
+
+### 事前確認
+
+自サーバーの鍵に、形の読めないものや、正規化すると同じ鍵になるもの（同じ鍵の別の書き方）があると、0020 は何も変えずに失敗する。
+どちらのアカウントの鍵かは自動で決めないので、先に数える（どちらも 0 行であること）。
+
+```sql
+SELECT id, user_id, public_key FROM publishing_environments
+WHERE regexp_replace(public_key, '^ed25519:', '') !~ '^[A-Za-z0-9+/_-]{43}=?$';
+
+SELECT encode(decode(translate(rtrim(regexp_replace(public_key, '^ed25519:', ''), '='), '-_', '+/') || '=', 'base64'), 'hex') AS key,
+       array_agg(id), array_agg(user_id)
+FROM publishing_environments GROUP BY 1 HAVING count(*) > 1;
+```
+
+### 事後確認
+
+```sql
+SELECT (SELECT count(*) FROM publishing_environments) AS old_local, (SELECT count(*) FROM author_keys WHERE origin = 'local') AS new_local,
+       (SELECT count(*) FROM author_bindings) AS old_remote, (SELECT count(*) FROM remote_authors) AS new_remote;
+```
+
+### デプロイ中に古い Pod が書いたものを写す
+
+マイグレーションは initContainer で走り、その間も古い Pod が古いテーブルに書く。マイグレーションの後に古い Pod で行われた
+公開環境の登録・**取り消し**は新しいテーブルに入っていない。取り消しが漏れると、取り消したはずの鍵が新しいイメージで有効のままになるので、
+古い Pod がすべて止まってから、次を確かめて写す。
+
+```sql
+-- 古いテーブルだけで取り消されている（写す）
+UPDATE author_keys a SET revoked_at = p.revoked_at, revoke_reason = p.revoke_reason
+FROM publishing_environments p
+WHERE a.id = p.id AND p.revoked_at IS NOT NULL AND a.revoked_at IS NULL;
+
+-- 古いテーブルだけにある公開環境（写す。鍵が正規形でなければ CHECK で失敗するので、その行は本人に登録し直してもらう）
+INSERT INTO author_keys (id, algorithm, public_key, origin, user_id, kind, name, api_token_hash, created_at, last_used_at, revoked_at, revoke_reason)
+SELECT p.id, 'ed25519', p.public_key, 'local', p.user_id, p.kind, p.name, p.api_token_hash, p.created_at, p.last_used_at, p.revoked_at, p.revoke_reason
+FROM publishing_environments p
+WHERE NOT EXISTS (SELECT 1 FROM author_keys a WHERE a.id = p.id);
+```
+
+`author_bindings` は取り直せるキャッシュなので写さなくてよい（新しいイメージが T_fresh ごとに取り直す）。
+
+### 古いイメージに戻すとき
+
+古いイメージは古いテーブルを読むので、0020 の後に新しいイメージで行った変更は見えない。
+
+- **0020 の後に取り消した鍵が、古いイメージでは有効に戻る。** 戻したら、すぐに取り消しを古いテーブルへ写す。
+- 0020 の後に登録した公開環境（ブラウザ・CLI・CI）は古いイメージから見えない。その鍵で署名したワールドに作者が付かず、
+  その公開環境の API トークンも通らない。下の 2 つ目の SQL で写す（写さなければ、本人がログインし直して登録し直す）。
+- 他サーバーの作者の確認結果は、古いテーブルの古い結果を使い、T_fresh を過ぎたものから取り直す。
+
+```sql
+UPDATE publishing_environments p SET revoked_at = a.revoked_at, revoke_reason = a.revoke_reason
+FROM author_keys a
+WHERE a.id = p.id AND a.revoked_at IS NOT NULL AND p.revoked_at IS NULL;
+
+INSERT INTO publishing_environments (id, user_id, kind, name, public_key, api_token_hash, created_at, last_used_at, revoked_at, revoke_reason)
+SELECT id, user_id, kind, name, public_key, api_token_hash, created_at, last_used_at, revoked_at, revoke_reason
+FROM author_keys a
+WHERE origin = 'local' AND NOT EXISTS (SELECT 1 FROM publishing_environments p WHERE p.id = a.id)
+ON CONFLICT DO NOTHING;
+```
+
+もう一度新しいイメージに進めるときは、0020 は適用済みなので再び走らない。上の「デプロイ中に古い Pod が書いたものを写す」をもう一度行う。

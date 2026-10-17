@@ -141,6 +141,13 @@
       "when": 1792085836323,
       "tag": "0019_pending_registrations",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1792105891539,
+      "tag": "0020_author_keys",
+      "breakpoints": true
     }
   ]
 }

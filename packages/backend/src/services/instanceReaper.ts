@@ -1,7 +1,11 @@
 import { instanceRepository } from '@ubichill/db';
 import { appConfig } from '../config';
+import { redis } from '../lib/redis';
 import { logger } from '../utils/logger';
+import { type AbsenceClock, absenceClockFor } from './absenceClock';
 import { instanceRuntime } from './instanceRuntime';
+import type { LeaseGate } from './leaseGate';
+import { maintenanceGate } from './maintenance';
 
 /**
  * 空インスタンスの掃除（reaper）。
@@ -16,6 +20,8 @@ import { instanceRuntime } from './instanceRuntime';
  *     という二重の脆さがあった。
  *   - reaper は「DB を定期スイープし、Go側の在席で生存判定する」ステートレス方式。
  *     再起動してもインメモリ状態に依存しないので孤児が確実に回収される。
+ *   - 複数の backend では、リース（{@link LeaseGate}）を持つ 1 台だけが掃除する。
+ *     Go に部屋が無いと最初に観測した時刻（復旧猶予の起点）は {@link AbsenceClock} で共有する。
  *
  * 「作成直後の猶予 (birth grace)」:
  *   - createInstance した本人が join する前に消されると world:join が
@@ -25,14 +31,10 @@ import { instanceRuntime } from './instanceRuntime';
  *     複数あるとき作成した Pod 以外では猶予が効かない。timestamptz は瞬間を保存するので、
  *     DB のセッションの TimeZone に関係なく getTime() は実時刻と一致する。
  */
-class InstanceReaper {
+export class InstanceReaper {
     private timer: NodeJS.Timeout | null = null;
     private sweeping = false;
-    /**
-     * instanceId → Go に部屋が無いと最初に観測した時刻 (ms)。Go の再起動直後は全部屋が無く、
-     * 参加者の再接続（/join で作り直す）を待つ必要があるので、created_at ではなくここから猶予を数える。
-     */
-    private absentSince = new Map<string, number>();
+    constructor(private readonly deps: { gate: LeaseGate; absence: AbsenceClock }) {}
 
     /** 定期スイープを開始（多重起動はガード）。 */
     start(): void {
@@ -41,7 +43,7 @@ class InstanceReaper {
         this.timer = setInterval(() => {
             if (this.sweeping) return;
             this.sweeping = true;
-            void this.sweepOnce()
+            void this.runOnce()
                 .catch((err) => {
                     logger.error('インスタンス掃除中にエラー:', err);
                 })
@@ -64,30 +66,35 @@ class InstanceReaper {
         }
     }
 
+    /** リースを持っていればスイープして削除件数を返す。持っていなければ（ほかの backend が担当・Redis 障害）null。 */
+    async runOnce(): Promise<number | null> {
+        return this.deps.gate.run((checkpoint) => this.sweepOnce(checkpoint));
+    }
+
     /**
      * 1 回分のスイープ。削除した件数を返す。
      * Go側の空室時刻と生成時刻から猶予を過ぎた instance を削除する。
      * Goに部屋が無い場合は復元待ちの猶予を使う。
      */
-    async sweepOnce(): Promise<number> {
+    async sweepOnce(checkpoint: () => Promise<boolean> = async () => true): Promise<number> {
         const graceMs = appConfig.instance.emptyTimeoutMs;
         const now = Date.now();
         const all = await instanceRepository.findAll({ includeFull: true });
         const presence = await instanceRuntime.presence();
-        const liveIds = new Set(all.map((inst) => inst.id));
 
-        for (const id of this.absentSince.keys()) {
-            if (!liveIds.has(id) || presence.has(id)) this.absentSince.delete(id);
-        }
-        for (const inst of all) {
-            if (!presence.has(inst.id) && !this.absentSince.has(inst.id)) this.absentSince.set(inst.id, now);
-        }
+        if (!(await checkpoint())) return 0;
+        const ids = all.map((inst) => inst.id);
+        await this.deps.absence.forget(ids.filter((id) => presence.has(id)));
+        const absentSince = await this.deps.absence.since(
+            ids.filter((id) => !presence.has(id)),
+            now,
+        );
 
         const reapable = all.filter((inst) => {
             const runtime = presence.get(inst.id);
             const isEmpty = !runtime || runtime.memberIds.length === 0;
             const bornMs = inst.createdAt.getTime();
-            const emptySince = runtime ? runtime.emptySince : (this.absentSince.get(inst.id) ?? now);
+            const emptySince = runtime ? runtime.emptySince : (absentSince.get(inst.id) ?? now);
             const requiredGraceMs = runtime ? graceMs : appConfig.instance.recoveryGraceMs;
             const isPastGrace = now - Math.max(bornMs, emptySince) >= requiredGraceMs;
             return isEmpty && isPastGrace;
@@ -95,15 +102,23 @@ class InstanceReaper {
 
         const removed: string[] = [];
         for (const inst of reapable) {
+            if (!(await checkpoint())) break;
             if (!(await instanceRuntime.close(inst.id, now - graceMs))) continue;
-            removed.push(inst.id);
+            if (!(await checkpoint())) break;
             await instanceRepository.delete(inst.id);
-            this.absentSince.delete(inst.id);
+            removed.push(inst.id);
             logger.info(`インスタンス自動削除（在席0・猶予経過）: ${inst.id}`);
         }
+        if (await checkpoint()) await this.deps.absence.forget(removed);
 
         return removed.length;
     }
 }
 
-export const instanceReaper = new InstanceReaper();
+// 消し忘れ（reaper 以外で消えたインスタンス）の記録が残り続けないための期限。過ぎても数え直すだけ（消し過ぎない）
+const ABSENCE_TTL_MS = appConfig.instance.recoveryGraceMs + 24 * 60 * 60 * 1000;
+
+export const instanceReaper = new InstanceReaper({
+    gate: maintenanceGate,
+    absence: absenceClockFor(redis ?? undefined, ABSENCE_TTL_MS),
+});

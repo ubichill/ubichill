@@ -1,6 +1,9 @@
 import { jsonb, pgTable, primaryKey, text, timestamp } from 'drizzle-orm/pg-core';
 
 /**
+ * @deprecated 0020_author_keys で author_keys（origin = remote）と remote_authors に移した。読み書きしない。
+ * 次のマイグレーションで消す（それまでは、古いイメージに戻したときに読めるよう残す）。
+ *
  * 他サーバーの作者アカウント（handle@domain）の、確認した公開環境の鍵一覧と表示名。
  * 通常アクセスはこれを使ってネットワークに出ず、fetched_at からの経過で取り直す（T_fresh / T_max）。
  * 自サーバーのアカウントは publishing_environments を直接見るのでここには入れない。
