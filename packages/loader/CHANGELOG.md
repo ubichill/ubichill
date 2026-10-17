@@ -1,5 +1,16 @@
 # @ubichill/loader
 
+## 1.3.3
+
+### Patch Changes
+
+- Updated dependencies [70b6047]
+- Updated dependencies [c0164c3]
+- Updated dependencies [db4057f]
+- Updated dependencies [319eb74]
+- Updated dependencies [4afeacc]
+  - @ubichill/shared@1.9.1
+
 ## 1.3.2
 
 ### Patch Changes
