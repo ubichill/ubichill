@@ -1,0 +1,102 @@
+// chart を実際に描画し、backend と instance に渡る Redis の env を確かめる（helm lint では中身までは見ない）。
+// 使い方: node scripts/check-chart.mjs（helm が PATH にあり、charts/ubichill/charts に依存の tgz があること）
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { parseAllDocuments } from 'yaml';
+
+const chart = fileURLToPath(new URL('../charts/ubichill', import.meta.url));
+const base = [
+    '--set', 'global.domain=example.test',
+    '--set', 'backend.secretEnv.BETTER_AUTH_SECRET=test-better-auth-secret-at-least-32-characters',
+    '--set', 'postgresql.auth.password=test-app-password',
+    '--set', 'postgresql.auth.postgresPassword=test-postgres-password',
+];
+
+const render = (release, args) =>
+    execFileSync('helm', ['template', release, chart, ...base, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+
+const containerEnv = (manifests, deploymentSuffix, container) => {
+    const docs = parseAllDocuments(manifests).map((d) => d.toJS()).filter(Boolean);
+    const deployment = docs.find((d) => d.kind === 'Deployment' && d.metadata.name.endsWith(deploymentSuffix));
+    if (!deployment) throw new Error(`Deployment *${deploymentSuffix} が描画されていない`);
+    const found = deployment.spec.template.spec.containers.find((c) => c.name === container);
+    if (!found) throw new Error(`container ${container} が無い`);
+    return Object.fromEntries((found.env ?? []).map((e) => [e.name, e.value ?? e.valueFrom]));
+};
+
+const secretRef = (name, key) => ({ secretKeyRef: { name, key } });
+
+const cases = [
+    {
+        name: 'subchart・認証あり（既定）',
+        release: 'ubichill',
+        args: ['--set', 'redis.auth.password=test-redis-password'],
+        expect: { REDIS_URL: 'redis://ubichill-redis-master:6379', REDIS_PASSWORD: secretRef('ubichill-redis', 'redis-password') },
+    },
+    {
+        name: 'subchart・認証なし',
+        release: 'ubichill',
+        args: ['--set', 'redis.auth.enabled=false'],
+        expect: { REDIS_URL: 'redis://ubichill-redis-master:6379', REDIS_PASSWORD: undefined },
+    },
+    {
+        name: 'subchart・auth.existingSecret',
+        release: 'ubichill',
+        args: ['--set', 'redis.auth.existingSecret=ubichill-secrets', '--set', 'redis.auth.existingSecretPasswordKey=REDIS_PASSWORD'],
+        expect: { REDIS_URL: 'redis://ubichill-redis-master:6379', REDIS_PASSWORD: secretRef('ubichill-secrets', 'REDIS_PASSWORD') },
+    },
+    {
+        name: 'リリース名に ubichill が入らない',
+        release: 'foo',
+        args: ['--set', 'redis.auth.password=test-redis-password'],
+        expect: { REDIS_URL: 'redis://foo-redis-master:6379', REDIS_PASSWORD: secretRef('foo-redis', 'redis-password') },
+    },
+    {
+        name: 'Redis なし',
+        release: 'ubichill',
+        args: ['--set', 'redis.enabled=false'],
+        expect: { REDIS_URL: undefined, REDIS_PASSWORD: undefined },
+    },
+    {
+        name: '外部の Redis・パスワードあり',
+        release: 'ubichill',
+        args: ['--set', 'redis.enabled=false', '--set', 'redis.external.url=redis://redis.shared:6379', '--set', 'redis.external.existingSecret=redis-credentials'],
+        expect: { REDIS_URL: 'redis://redis.shared:6379', REDIS_PASSWORD: secretRef('redis-credentials', 'redis-password') },
+    },
+    {
+        name: '外部の Redis・パスワードなし',
+        release: 'ubichill',
+        args: ['--set', 'redis.enabled=false', '--set', 'redis.external.url=redis://redis.shared:6379'],
+        expect: { REDIS_URL: 'redis://redis.shared:6379', REDIS_PASSWORD: undefined },
+    },
+];
+
+const failures = [];
+for (const c of cases) {
+    const manifests = render(c.release, c.args);
+    for (const [suffix, container] of [['-backend', 'backend'], ['-instance', 'instance']]) {
+        const env = containerEnv(manifests, suffix, container);
+        for (const [key, want] of Object.entries(c.expect)) {
+            if (JSON.stringify(env[key]) !== JSON.stringify(want)) {
+                failures.push(`${c.name} / ${container}: ${key} = ${JSON.stringify(env[key])}（期待 ${JSON.stringify(want)}）`);
+            }
+        }
+    }
+}
+
+const rejected = (() => {
+    try {
+        render('ubichill', ['--set', 'redis.external.url=redis://redis.shared:6379', '--set', 'redis.auth.password=x']);
+        return false;
+    } catch (error) {
+        // ほかの理由で描画が失敗しても「拒否した」と数えない
+        return String(error.stderr).includes('同時に指定できません');
+    }
+})();
+if (!rejected) failures.push('subchart と redis.external.url を同時に指定しても描画が通ってしまう');
+
+if (failures.length > 0) {
+    console.error(`❌ chart の Redis の env:\n${failures.map((f) => `  - ${f}`).join('\n')}`);
+    process.exit(1);
+}
+console.log(`✅ chart の Redis の env: ${cases.length} 通り + 同時指定の拒否`);

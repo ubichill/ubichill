@@ -1,7 +1,7 @@
 # Goインスタンスサーバー
 
 インスタンス内の入退室・カーソル・エンティティ・ロック・メディア同期を管理する。
-SNSアカウント、Better Auth、PostgreSQL、Redis、Node.jsに依存せず起動できる。
+SNSアカウント、Better Auth、PostgreSQL、Redis、Node.jsに依存せず起動できる（Redisは任意。下の「環境変数」）。
 modの実行はブラウザ内のWorkerで行う。
 
 ## 単体運用
@@ -71,9 +71,18 @@ backendのデプロイや設定変更ではGoを再起動しない（状態が�
 専用キーを使う場合は `instanceRuntime.existingSecret` / `instanceRuntime.secretKey` を指定する。
 明示したIngressルートに旧 `/socket.io` があれば削除できる。
 
+## 環境変数
+
+| 名前 | 説明 |
+|---|---|
+| `INSTANCE_ADMIN_TOKEN` | 管理APIのトークン（32文字以上）。`--guests` 以外では必須 |
+| `INSTANCE_TICKET_KEY` | 参加チケットの署名鍵（任意・32文字以上）。無ければ管理トークンから派生し、どちらも無ければ起動ごとの乱数 |
+| `REDIS_URL` / `REDIS_PASSWORD` | 任意。未設定ならRedisなしで動く。今は接続の確認だけで、部屋の割り当て（Directory・owner のリース）は今後使う |
+
 ## 状態と運用上の制約
 
-- 現時点の状態保存はメモリのみ。再起動すると編集状態・在席・再接続情報が失われる。
+- 現時点の状態保存はメモリのみ。再起動すると編集状態・在席が失われる（チケットの署名鍵は管理トークンから派生するので、
+  再接続情報は再起動の前後で有効なまま。部屋が消えていれば `instance_unavailable` で取り直す）。
   SNS側のDBにあるインスタンスは次の入室時にワールド初期状態から復元する。
 - HelmのGo Deploymentは1 replica・Recreate。複数サーバーへの割当はまだ実装していない。
   単純にreplica数を増やすと状態が分裂する。

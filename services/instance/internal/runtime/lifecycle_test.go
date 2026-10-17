@@ -116,11 +116,11 @@ func TestOnlyDeliberateCloseAnnouncesClosing(t *testing.T) {
 
 func TestAdmissionReportsRecoverableFailureCodes(t *testing.T) {
 	s, h := start(t, false)
-	previous := New(Config{})
+	other := New(Config{AdminToken: strings.Repeat("b", 32)})
 	cases := []struct {
 		name, room, token, code string
 	}{
-		{"server restarted", "a", previous.sign(ticket{"a", "alice", time.Now().Add(time.Minute).Unix(), "member", ""}), "ticket_invalid"},
+		{"signed with another key", "a", other.sign(ticket{"a", "alice", time.Now().Add(time.Minute).Unix(), "member", ""}), "ticket_invalid"},
 		{"ticket expired", "a", s.sign(ticket{"a", "alice", time.Now().Add(-time.Minute).Unix(), "member", ""}), "ticket_invalid"},
 		{"room disappeared", "missing", s.sign(ticket{"missing", "alice", time.Now().Add(time.Minute).Unix(), "member", ""}), "instance_unavailable"},
 	}

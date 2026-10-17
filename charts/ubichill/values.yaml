@@ -110,7 +110,7 @@ backend:
   #
   # 自動導出される値:
   #   CORS_ORIGIN, BETTER_AUTH_URL ← global.domain から組み立て (上書き可)
-  #   REDIS_URL                    ← redis subchart 名から組み立て
+  #   REDIS_URL / REDIS_PASSWORD   ← redis（subchart か redis.external）から組み立て。instance にも同じ値を渡す
   #   WORLDS_DIR                   ← /worlds-rw 固定
   #
   # よく使う option (string で渡す。zod の transform が boolean に変換する):
@@ -225,7 +225,7 @@ frontend:
       drop:
         - ALL
 
-# Shared Redis cache
+# backend と instance の共有状態。REDIS_URL / REDIS_PASSWORD を両方に渡す（README の「Redis」）
 redis:
   enabled: true
   architecture: standalone
@@ -243,7 +243,14 @@ redis:
   auth:
     enabled: true
     password: ""
+    # GitOps（ArgoCD 等）では指定する。空だと描画のたびにパスワードが作り直される（README の「Redis」）
     existingSecret: ""
+    existingSecretPasswordKey: ""
+  # subchart を使わず外部の Redis を使うとき（redis.enabled: false にする）。backend と instance の両方に渡す
+  external:
+    url: ""
+    existingSecret: ""
+    existingSecretPasswordKey: "redis-password"
   master:
     persistence:
       enabled: true
