@@ -15,7 +15,6 @@ import type {
     UserStatus,
     WorldEnvironmentData,
 } from './mod/entities';
-import type { MediaTimeline, MediaTimelineIntent, MediaTimelineResult } from './mod/types';
 
 // ============================================
 // World Snapshot (拡張版)
@@ -40,22 +39,32 @@ export interface WorldSnapshotPayload {
 }
 
 // ============================================
-// Media sync
+// 部屋の共有状態
 // ============================================
 
 /**
- * メディアの再生状態を peer 間で同期するための状態。
- * 旧 `{ currentIndex, isPlaying, currentTime }` は動画プレイリスト前提だったため、
- * 「何を再生しているか」を mod 定義の mediaId で一般化し、動画/音声/配信を問わず扱える。
- * @deprecated revision 競合を解決できないため MediaTimeline / media:timeline:* を使用する。
+ * 部屋の共有状態の 1 件。インスタンスサーバーは値を解釈せず、revision による比較と交換と、
+ * 書き込みの時刻（updatedAt・サーバー時刻の ms）・書いた参加者（updatedBy）だけを付ける。
+ * キーの名前空間と値の意味は Host が決める（例: メディアのタイムラインは `media:<session>`）。
  */
-export interface MediaSyncState {
-    /** 再生対象メディアの識別子（プレイリスト index を一般化。mod が内容ごとに決める）。 */
-    mediaId: string;
-    isPlaying: boolean;
-    currentTime: number;
-    duration?: number;
-    playbackRate?: number;
+export interface SharedStateEntry {
+    key: string;
+    value: unknown;
+    revision: number;
+    updatedAt: number;
+    updatedBy: string;
+}
+
+/** `state:get` / `state:update` の応答。競合（code: 'conflict'）では今の entry を返す。 */
+export type SharedStateResult =
+    | { success: true; entry: SharedStateEntry | null; serverTime: number }
+    | { success: false; error: string; code?: 'conflict'; entry?: SharedStateEntry | null; serverTime?: number };
+
+export interface SharedStateUpdate {
+    key: string;
+    value: unknown;
+    /** 今の revision（無いキーは 0）。一致しなければ書かずに競合を返す。 */
+    expectedRevision: number;
 }
 
 // ============================================
@@ -113,22 +122,8 @@ export interface ServerToClientEvents {
     /** インスタンス終了通知 */
     'instance:closing': (reason: string) => void;
 
-    // ============================================
-    // Media (video / audio etc.) ピア間同期 (Server -> Client)
-    // 任意のメディア系modの「再生状態を peer 間で揃える」ためのルーム broadcast。
-    // ============================================
-
-    /** @deprecated media:timeline を使用する。 */
-    'media:sync': (data: MediaSyncState) => void;
-
-    /** @deprecated media:timeline:get を使用する。 */
-    'media:state-request': (data: { fromSocketId: string }) => void;
-
-    /** @deprecated media:timeline:get の callback を使用する。 */
-    'media:state-response': (data: MediaSyncState) => void;
-
-    /** revision 付き正規タイムラインの更新通知。 */
-    'media:timeline': (data: MediaTimeline) => void;
+    /** 共有状態が他の参加者に更新された（書いた本人へは応答で返すので送らない） */
+    'state:changed': (entry: SharedStateEntry) => void;
 }
 
 /**
@@ -182,23 +177,14 @@ export interface ClientToServerEvents {
     'entity:delete': (entityId: string) => void;
 
     // ============================================
-    // Media (video / audio etc.) ピア間同期 (Client -> Server)
+    // 部屋の共有状態 (Client -> Server)
     // ============================================
 
-    /** @deprecated media:timeline:update を使用する。 */
-    'media:sync': (data: MediaSyncState) => void;
+    /** 共有状態の今の値を取得する（入室・再接続の直後に使う） */
+    'state:get': (data: { key: string }, callback: (result: SharedStateResult) => void) => void;
 
-    /** @deprecated media:timeline:get を使用する。 */
-    'media:state-request': () => void;
-
-    /** @deprecated media:timeline:get の callback を使用する。 */
-    'media:state-response': (data: MediaSyncState & { toSocketId: string }) => void;
-
-    /** 再生意図を Server の正規タイムラインへ適用。 */
-    'media:timeline:update': (data: MediaTimelineIntent, callback: (result: MediaTimelineResult) => void) => void;
-
-    /** 遅参加/再接続時に現在の正規タイムラインを取得。 */
-    'media:timeline:get': (data: { sessionId: string }, callback: (result: MediaTimelineResult) => void) => void;
+    /** expectedRevision が一致したときだけ共有状態を書き換える */
+    'state:update': (data: SharedStateUpdate, callback: (result: SharedStateResult) => void) => void;
 }
 
 // ============================================

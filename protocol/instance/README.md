@@ -29,7 +29,7 @@ ownerが接続を閉じたら中継も閉じるので、クライアントはい
 ## フレームと順序
 
 - 送信: `{event, data?, id?}`。`id` はリクエストごとに一意な100文字以内の文字列。
-- 応答: `{replyTo, data}`。join/createとメディア操作は応答必須。patch/delete/leaveもIDがあれば応答する。
+- 応答: `{replyTo, data}`。join/createと共有状態の操作（`state:get`・`state:update`）は応答必須。patch/delete/leaveもIDがあれば応答する。
 - 通知: `{event, data?}`。失敗はリクエストIDがあれば `{success:false,error}`、なければ `error` 通知。
 - 入室応答 → `users:update` → `world:snapshot` → 以降の更新、の順番で同じ接続へ送る。
 - 同一インスタンスの状態変更と送信キューへの追加を直列化する。ネットワーク書き込みは接続ごとに独立。
@@ -72,9 +72,11 @@ ownerが接続を閉じたら中継も閉じるので、クライアントはい
 - 他人のロックは変更できない。ロック取得時はサーバーが参加者IDを設定する。
 - ownerIdがあるエンティティの削除は所有者のみ。共有データはロックされていなければ参加者が編集できる。
 - エンティティのdata/transformはトップレベルのキーをマージする。
-- メディアtimelineはrevisionによる競合検出。同じmediaIdのloadは冪等。
+- 共有状態（`state:*`）はキーごとのrevisionによる比較と交換。値は解釈しないJSONで、サーバーは `revision`（+1）・`updatedAt`（書き込みを受けたサーバー時刻のms）・`updatedBy` を付ける。
+  `expectedRevision`（無いキーは0）が一致しなければ書かずに `code: "conflict"` と今の `entry` を返す。成功した変更は書いた本人以外へ `state:changed` で配る（本人へは応答で返す）。
+  キーの名前空間と値の意味（メディアの再生位置など）はHostが決める。入室時のスナップショットには含めないので、必要なキーを `state:get` で取る。
 - 受信70KiB、エンティティ64KiB、ephemeral32KiB、240イベント/秒/接続が上限。
-- インスタンス最大1000、部屋の参加者最大1000、エンティティ10000、メディアsession1000。
+- インスタンス最大1000、部屋の参加者最大1000、エンティティ10000、共有状態はキー1000・キー512バイト・値32KiB（詰めたJSON）・合計4MiB。
 
 
 reaper の DELETE は、観測した `gen`・`epoch` を付ける。409 の別世代へ削除を送り直さない。

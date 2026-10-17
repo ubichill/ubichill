@@ -204,124 +204,28 @@ func (r *Room) handle(p *peer, f Frame) {
 		r.drop(id)
 		r.broadcast("entity:deleted", id, p, false)
 		p.reply(f.ID, Object{"success": true})
-	case "media:timeline:get":
-		id := str(data["sessionId"])
-		if id == "" || len(id) > 256 {
-			p.reject(f.ID, "不正なsessionIdです")
+	case "state:get":
+		key := str(data["key"])
+		if !validStateKey(key) {
+			p.reject(f.ID, "不正なキーです")
 			return
 		}
-		p.reply(f.ID, Object{"success": true, "timeline": r.timelines[id], "serverTime": time.Now().UnixMilli()})
-	case "media:timeline:update":
-		result, err := r.media(data, p.userID)
+		p.reply(f.ID, Object{"success": true, "entry": r.state[key], "serverTime": r.now().UnixMilli()})
+	case "state:update":
+		entry, err := r.updateState(f.Data, p.userID)
+		if errors.Is(err, errStateConflict) {
+			// 負けた側が今の値に合わせ直せるよう、競合では今の値を返す
+			key := str(data["key"])
+			p.reply(f.ID, Object{"success": false, "error": err.Error(), "code": "conflict", "entry": r.state[key], "serverTime": r.now().UnixMilli()})
+			return
+		}
 		if err != nil {
-			p.reply(f.ID, Object{"success": false, "error": err.Error(), "timeline": r.timelines[str(data["sessionId"])], "serverTime": time.Now().UnixMilli()})
+			p.reject(f.ID, err.Error())
 			return
 		}
-		p.reply(f.ID, Object{"success": true, "timeline": result, "serverTime": time.Now().UnixMilli()})
-		r.broadcast("media:timeline", result, p, false)
-	case "media:sync", "media:state-request", "media:state-response":
-		if len(f.Data) > 32768 {
-			p.reject(f.ID, "メディアデータが大きすぎます")
-			return
-		}
-		if f.Event == "media:state-request" {
-			r.broadcast(f.Event, Object{"fromSocketId": p.id}, p, false)
-		} else if f.Event == "media:state-response" {
-			target := str(data["toSocketId"])
-			delete(data, "toSocketId")
-			for _, m := range r.members {
-				if m.peer != nil && m.peer.id == target {
-					m.peer.send(Frame{Event: f.Event, Data: encoded(data)}, false)
-				}
-			}
-		} else {
-			r.broadcast(f.Event, data, p, false)
-		}
+		p.reply(f.ID, Object{"success": true, "entry": entry, "serverTime": r.now().UnixMilli()})
+		r.broadcast("state:changed", entry, p, false)
 	default:
 		p.reject(f.ID, "unknown event")
 	}
-}
-func (r *Room) media(v Object, userID string) (Object, error) {
-	id := str(v["sessionId"])
-	mediaID := str(v["mediaId"])
-	action := str(v["action"])
-	current := r.timelines[id]
-	bad := errors.New("不正なメディア更新です")
-	if id == "" || len(id) > 256 || mediaID == "" || len(mediaID) > 512 {
-		return nil, bad
-	}
-	if action != "load" && action != "play" && action != "pause" && action != "seek" && action != "ended" && action != "metadata" {
-		return nil, bad
-	}
-	for _, k := range []string{"position", "duration", "playbackRate", "expectedRevision"} {
-		if raw, exists := v[k]; exists {
-			if k == "duration" && raw == nil {
-				continue
-			}
-			n, ok := raw.(float64)
-			if !ok || n < 0 || k == "playbackRate" && (n == 0 || n > 4) || k == "expectedRevision" && (math.Trunc(n) != n || n > 9007199254740991) {
-				return nil, bad
-			}
-		}
-	}
-	if rev, exists := v["expectedRevision"]; exists && current != nil && num(rev) != num(current["revision"]) {
-		return nil, errors.New("メディア状態が既に更新されています")
-	}
-	if action != "load" && (current == nil || str(current["mediaId"]) != mediaID) {
-		return nil, errors.New("再生対象が一致しません")
-	}
-	if action == "load" && current != nil && str(current["mediaId"]) == mediaID {
-		return current, nil
-	}
-	if current == nil && len(r.timelines) >= 1000 {
-		return nil, errors.New("メディア数の上限です")
-	}
-	now := float64(time.Now().UnixMilli())
-	rate := float64(1)
-	revision := float64(1)
-	pos := float64(0)
-	if current != nil {
-		rate = num(current["playbackRate"])
-		revision = num(current["revision"]) + 1
-		pos = num(current["anchorTime"])
-		if str(current["phase"]) == "playing" {
-			pos += math.Max(0, now-num(current["anchorServerTime"])) / 1000 * rate
-		}
-		if current["duration"] != nil {
-			pos = math.Min(pos, num(current["duration"]))
-		}
-	}
-	if raw, exists := v["playbackRate"]; exists {
-		rate = num(raw)
-	}
-	var next Object
-	if action == "load" {
-		next = Object{"sessionId": id, "mediaId": mediaID, "phase": "paused", "anchorTime": num(v["position"]), "duration": v["duration"]}
-	} else {
-		next = clone(current)
-		next["anchorTime"] = pos
-		switch action {
-		case "play":
-			next["phase"] = "playing"
-		case "pause":
-			next["phase"] = "paused"
-		case "ended":
-			next["phase"] = "ended"
-			if next["duration"] != nil {
-				next["anchorTime"] = next["duration"]
-			}
-		case "seek":
-			if raw, exists := v["position"]; exists {
-				next["anchorTime"] = raw
-			}
-		case "metadata":
-			next["duration"] = v["duration"]
-		}
-	}
-	next["anchorServerTime"] = now
-	next["playbackRate"] = rate
-	next["revision"] = revision
-	next["updatedBy"] = userID
-	r.timelines[id] = next
-	return next, nil
 }
