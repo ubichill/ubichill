@@ -1,5 +1,16 @@
 # @ubichill/bff
 
+## 1.0.11
+
+### Patch Changes
+
+- Updated dependencies [70b6047]
+- Updated dependencies [c0164c3]
+- Updated dependencies [db4057f]
+- Updated dependencies [319eb74]
+- Updated dependencies [4afeacc]
+  - @ubichill/shared@1.9.1
+
 ## 1.0.10
 
 ### Patch Changes
