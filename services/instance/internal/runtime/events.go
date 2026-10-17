@@ -59,8 +59,10 @@ func (r *Room) handle(p *peer, f Frame) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	m := r.members[p.userID]
-	if r.closed || m == nil || m.peer != p {
+	if r.closed || !r.now().Before(r.deadline) || m == nil || m.peer != p {
 		p.reject(f.ID, "参加していません")
+		// 自己停止の期限を過ぎていれば、拒否を届けてから閉じる
+		r.usableLocked()
 		return
 	}
 	data, _ := object(f.Data)

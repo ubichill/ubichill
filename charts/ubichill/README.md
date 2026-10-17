@@ -107,7 +107,9 @@ Kubernetes (namespace)
 Goは専用イメージ（`instanceRuntime.image`）で起動し、backendのイメージ・設定には依存しない。
 状態がメモリにあるため、backendのデプロイや設定変更でGoを再起動させないためである。
 ブラウザOriginは `instanceRuntime.origins`（未指定なら `https://<global.domain>`）、
-切断猶予は `instanceRuntime.disconnectGrace` で指定する。Ingressが公開するのはWebSocketの
+切断猶予は `instanceRuntime.disconnectGrace` で指定する。
+部屋の割り当て（Directory）は `instanceRuntime.directory`（既定 `memory`）。`replicas` を 2 以上にするときだけ `redis` にする。
+`redis` は Redis の可用性が部屋の可用性の上限になる（Redis が約 10 秒以上落ちると全部屋が止まる）ので、先に Redis の Secret を固定しておく（下の「Redis」）。Ingressが公開するのはWebSocketの
 `/realtime/v1/ws` だけで、管理API（`/realtime/v1/instances`）はクラスタ内からのみ到達できる。
 管理トークンは既定でbackend Secretの `BETTER_AUTH_SECRET`（32文字以上）を参照する。専用のSecretを使うには
 `instanceRuntime.existingSecret` / `instanceRuntime.secretKey` を指定する。existingSecretを使う場合、

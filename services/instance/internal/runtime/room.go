@@ -5,6 +5,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/ubichill/ubichill/services/instance/internal/coord"
 )
 
 // Each room serializes state transitions and enqueueing snapshots/events under its
@@ -21,6 +23,13 @@ type Room struct {
 	timelines  map[string]Object
 	emptySince int64
 	closed     bool
+	// owner の世代。割り当てのたびに新しい Room を作るので、作ったあとは変わらない。
+	gen   string
+	epoch int64
+	token string
+	// deadline は自己停止の期限（mu で守る）。過ぎたら状態変更と入室を止めて部屋を閉じる。
+	deadline time.Time
+	now      func() time.Time
 }
 type member struct {
 	session *peer
@@ -29,11 +38,14 @@ type member struct {
 	timer   *time.Timer
 }
 
+// errUnavailable は部屋が閉じた・自己停止したとき。クライアントはチケットを取り直して入り直せる。
+var errUnavailable = errors.New("instance unavailable")
+
 func newRoom(d Definition) (*Room, error) {
 	if d.ID == "" || len(d.ID) > 200 || d.MaxUsers < 1 || d.MaxUsers > 1000 || d.Snapshot.Environment == nil || len(d.Snapshot.Entities) > 10000 {
 		return nil, errors.New("invalid instance definition")
 	}
-	r := &Room{definition: d, entities: map[string]Object{}, sizes: map[string]int{}, order: map[string]uint64{}, members: map[string]*member{}, timelines: map[string]Object{}, emptySince: time.Now().UnixMilli()}
+	r := &Room{definition: d, entities: map[string]Object{}, sizes: map[string]int{}, order: map[string]uint64{}, members: map[string]*member{}, timelines: map[string]Object{}, emptySince: time.Now().UnixMilli(), now: time.Now}
 	for _, e := range d.Snapshot.Entities {
 		id := str(e["id"])
 		if id == "" || len(id) > 200 {
@@ -128,11 +140,50 @@ func (r *Room) snapshot() Snapshot {
 	}
 	return s
 }
+
+// usableLocked は部屋が閉じておらず自己停止の期限内かを返す。期限を過ぎていればここで閉じる
+// （延長の周期を待たずに、期限を過ぎた最初の操作で止める）。
+func (r *Room) usableLocked() bool {
+	if r.closed {
+		return false
+	}
+	if !r.now().Before(r.deadline) {
+		r.shutdownLocked(false)
+		return false
+	}
+	return true
+}
+func (r *Room) usable() bool { r.mu.Lock(); defer r.mu.Unlock(); return r.usableLocked() }
+
+// extend は延長が成功したときに期限を延ばす。期限を過ぎて止めた部屋は、あとから延長が成功しても生き返らせない。
+func (r *Room) extend(deadline time.Time) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.usableLocked() && deadline.After(r.deadline) {
+		r.deadline = deadline
+	}
+}
+
+// occupancy は Directory に書く在席と、つながっている接続の数。
+func (r *Room) occupancy() (coord.RoomPresence, int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	p := coord.RoomPresence{Room: r.definition.ID, Members: make([]string, 0, len(r.members)), EmptySince: r.emptySince}
+	connected := 0
+	for id, m := range r.members {
+		p.Members = append(p.Members, id)
+		if m.peer != nil {
+			connected++
+		}
+	}
+	sort.Strings(p.Members)
+	return p, connected
+}
 func (r *Room) join(p *peer, user Object, id string, request string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.closed {
-		return errors.New("instance closed")
+	if !r.usableLocked() {
+		return errUnavailable
 	}
 	old := r.members[id]
 	if old == nil && len(r.members) >= r.definition.MaxUsers {
@@ -216,6 +267,9 @@ func (r *Room) remove(id string) {
 func (r *Room) close(announce bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.shutdownLocked(announce)
+}
+func (r *Room) shutdownLocked(announce bool) {
 	r.closed = true
 	if announce {
 		r.broadcast("instance:closing", "インスタンスが終了しました", nil, false)

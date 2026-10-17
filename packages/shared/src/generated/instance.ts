@@ -47,9 +47,10 @@ export interface paths {
         };
         /** @description Management token required in managed mode. Guest mode returns metadata with memberIds redacted. */
         get: operations['getInstance'];
-        /** @description Idempotent create. Existing instance state is never reset. Management token required. */
+        /** @description Idempotent create. Existing instance state is never reset. Management token required. Assigns the room to this node in the directory: 409 with the owner when another node holds it, 503 when the directory is unavailable. */
         put: operations['provisionInstance'];
         post?: never;
+        /** @description Closes the room only while this node is its owner, then releases the assignment. */
         delete: operations['closeInstance'];
         options?: never;
         head?: never;
@@ -108,6 +109,15 @@ export interface components {
              * @description Epoch milliseconds; 0 while occupied, includes reconnect grace.
              */
             emptySince: number;
+            /** @description owner のノード ID（Pod 名＋起動ごとの乱数）。単体モードのゲスト向けには返さない。 */
+            node?: string;
+            /** @description 割り当てた時点のクラスタの世代。 */
+            gen?: string;
+            /**
+             * Format: int64
+             * @description owner の世代。owner が交代するたびに増える。(gen, epoch) の組で比べる。
+             */
+            epoch?: number;
         };
         InstanceGrant: {
             url: string;
@@ -152,6 +162,23 @@ export interface components {
             /** @enum {boolean} */
             success: false;
             error: string;
+        };
+        InstanceOwner: {
+            node: string;
+            gen: string;
+            /** Format: int64 */
+            epoch: number;
+            /** @description owner の内部アドレス。owner の heartbeat が切れていれば無い。 */
+            addr?: string;
+            /** @description owner の heartbeat が期限内か。 */
+            alive: boolean;
+        };
+        /** @description owner が別のノードのときは owner を付ける。 */
+        Conflict: {
+            /** @enum {boolean} */
+            success: false;
+            error: string;
+            owner?: components['schemas']['InstanceOwner'];
         };
     };
     responses: never;
@@ -270,6 +297,15 @@ export interface operations {
                     'application/json': components['schemas']['RuntimePresence'];
                 };
             };
+            /** @description Owned by another node */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    'application/json': components['schemas']['Conflict'];
+                };
+            };
             /** @description Request failed */
             default: {
                 headers: {
@@ -302,12 +338,14 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Occupied or recently emptied */
+            /** @description Occupied, recently emptied, or owned by another node */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    'application/json': components['schemas']['Conflict'];
+                };
             };
             /** @description Request failed */
             default: {

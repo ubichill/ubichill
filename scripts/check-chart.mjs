@@ -84,6 +84,35 @@ for (const c of cases) {
     }
 }
 
+// instance のノード ID とアドレスは Downward API から渡す（Directory の heartbeat・owner の割り当て）
+const downward = containerEnv(render('ubichill', ['--set', 'redis.auth.password=test-redis-password']), '-instance', 'instance');
+for (const [key, fieldPath] of [['POD_NAME', 'metadata.name'], ['POD_IP', 'status.podIP']]) {
+    if (JSON.stringify(downward[key]) !== JSON.stringify({ fieldRef: { fieldPath } })) {
+        failures.push(`instance: ${key} = ${JSON.stringify(downward[key])}（期待 fieldRef ${fieldPath}）`);
+    }
+}
+
+// 部屋の割り当て（Directory）は既定でメモリ。redis は明示したときだけ
+const directoryOf = (args) => containerEnv(render('ubichill', ['--set', 'redis.auth.password=x', ...args]), '-instance', 'instance').INSTANCE_DIRECTORY;
+if (directoryOf([]) !== 'memory') failures.push(`INSTANCE_DIRECTORY の既定が memory でない: ${directoryOf([])}`);
+if (directoryOf(['--set', 'instanceRuntime.directory=redis']) !== 'redis') failures.push('instanceRuntime.directory=redis が渡らない');
+
+const renderFails = (args, message) => {
+    try {
+        render('ubichill', args);
+        return false;
+    } catch (error) {
+        // ほかの理由で描画が失敗しても「拒否した」と数えない
+        return String(error.stderr).includes(message);
+    }
+};
+if (!renderFails(['--set', 'redis.enabled=false', '--set', 'instanceRuntime.directory=redis'], 'Redis（redis.enabled か redis.external.url）が要ります')) {
+    failures.push('Redis なしで instanceRuntime.directory=redis を指定しても描画が通ってしまう');
+}
+if (!renderFails(['--set', 'redis.auth.password=x', '--set', 'instanceRuntime.directory=Redis'], 'memory か redis です')) {
+    failures.push('instanceRuntime.directory の不正な値が描画を通ってしまう');
+}
+
 const rejected = (() => {
     try {
         render('ubichill', ['--set', 'redis.external.url=redis://redis.shared:6379', '--set', 'redis.auth.password=x']);
@@ -99,4 +128,4 @@ if (failures.length > 0) {
     console.error(`❌ chart の Redis の env:\n${failures.map((f) => `  - ${f}`).join('\n')}`);
     process.exit(1);
 }
-console.log(`✅ chart の Redis の env: ${cases.length} 通り + 同時指定の拒否`);
+console.log(`✅ chart の Redis の env: ${cases.length} 通り + instance の Downward API・Directory の選択 + 不正な指定の拒否`);

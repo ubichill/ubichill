@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -11,6 +12,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/ubichill/ubichill/services/instance/internal/coord"
+	"github.com/ubichill/ubichill/services/instance/internal/protocol"
 )
 
 type Config struct {
@@ -20,53 +24,142 @@ type Config struct {
 	Guests    bool
 	Origins   []string
 	Grace     time.Duration
+	// Directory は部屋の割り当て。nil ならメモリ（単体モード）。Redis を設定したら Redis だけを使う。
+	Directory coord.Directory
+	// Node はこのプロセスのノード ID（coord.NewNodeID）。空なら起動ごとに作る。
+	Node string
+	// Addr は他の Pod から届く自分のアドレス（heartbeat に書く。G2 の振り分けで使う）。
+	Addr    string
+	Fencing Fencing
+	// Clock は自己停止の期限を測る時計。time.Now の値は monotonic clock を持つので、壁時計の変更の影響を受けない。
+	Clock func() time.Time
 }
 type Server struct {
-	retired   map[string]time.Time
-	mu        sync.RWMutex
-	rooms     map[string]*Room
-	admission sync.Mutex
-	active    map[string]*peer
-	key       []byte
-	config    Config
+	retired      map[string]time.Time
+	mu           sync.RWMutex
+	rooms        map[string]*Room
+	gen          string
+	admission    sync.Mutex
+	provisioning sync.Mutex
+	active       map[string]*peer
+	key          []byte
+	config       Config
+	dir          coord.Directory
+	node         string
+	now          func() time.Time
+	fencing      Fencing
+	started      time.Time
+	stop         context.CancelFunc
+	stopOnce     sync.Once
+	loopDone     chan struct{}
 }
 
+// New は Server を作り、heartbeat と owner のリースの延長を始める（Close で止める）。
 func New(config Config) *Server {
-	return &Server{retired: map[string]time.Time{}, rooms: map[string]*Room{}, active: map[string]*peer{}, key: ticketKey(config), config: config}
+	s := newServer(config)
+	ctx, cancel := context.WithCancel(context.Background())
+	s.stop = cancel
+	s.loopDone = make(chan struct{})
+	go s.loop(ctx)
+	return s
 }
+
+// newServer は延長を自動では回さない Server（テストで時計を進めて maintain を呼ぶ）。
+func newServer(config Config) *Server {
+	if config.Clock == nil {
+		config.Clock = time.Now
+	}
+	if config.Directory == nil {
+		config.Directory = coord.NewMemoryDirectory(config.Clock)
+	}
+	if config.Node == "" {
+		config.Node = coord.NewNodeID("")
+	}
+	return &Server{
+		retired: map[string]time.Time{}, rooms: map[string]*Room{}, active: map[string]*peer{}, key: ticketKey(config), config: config,
+		dir: config.Directory, node: config.Node, now: config.Clock, fencing: config.Fencing.withDefaults(), started: time.Now(),
+	}
+}
+
+// Provision は部屋を自分に割り当てて作る。自分が owner のまま生きている部屋はそのまま返す（冪等）。
 func (s *Server) Provision(d Definition) (*Room, error) {
+	s.provisioning.Lock()
+	defer s.provisioning.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), s.fencing.Timeout)
+	defer cancel()
+	// Idempotent creation never resets an existing room, including an empty world.
+	if r := s.room(d.ID); r != nil {
+		if r.usable() {
+			return r, nil
+		}
+		s.discard(ctx, r, true)
+	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	for id, until := range s.retired {
 		if time.Now().After(until) {
 			delete(s.retired, id)
 		}
 	}
-	if _, retired := s.retired[d.ID]; retired {
+	_, retired := s.retired[d.ID]
+	full := len(s.rooms) >= 1000
+	s.mu.Unlock()
+	if retired {
 		return nil, errors.New("instance has been closed")
 	}
-	// Idempotent creation never resets an existing room, including an empty world.
-	if r := s.rooms[d.ID]; r != nil {
-		return r, nil
-	}
-	if len(s.rooms) >= 1000 {
+	if full {
 		return nil, errors.New("instance limit reached")
 	}
 	r, err := newRoom(d)
 	if err != nil {
 		return nil, err
 	}
-	s.rooms[d.ID] = r
+	a, sent, err := s.assign(ctx, d.ID)
+	if err != nil {
+		return nil, err
+	}
+	r.gen, r.epoch, r.token, r.now, r.deadline = a.Gen, a.Epoch, a.Token, s.now, s.fencing.deadline(sent)
+	s.mu.Lock()
+	current := s.gen == a.Gen
+	if current {
+		s.rooms[d.ID] = r
+	}
+	s.mu.Unlock()
+	if !current {
+		// 割り当てのあいだに世代が変わった。前の世代の割り当ては新しい世代では無効なので捨てる
+		s.discard(ctx, r, true)
+		return nil, errDirectoryUnavailable
+	}
 	return r, nil
 }
 func (s *Server) room(id string) *Room { s.mu.RLock(); defer s.mu.RUnlock(); return s.rooms[id] }
+
+// Close はプロセスの停止。部屋を閉じ（instance:closing は送らない）、割り当てを解放して、
+// 次に起動した Pod が TTL を待たずに部屋を作り直せるようにする。
 func (s *Server) Close() {
+	s.stopOnce.Do(func() {
+		if s.stop != nil {
+			s.stop()
+			<-s.loopDone
+		}
+	})
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, r := range s.rooms {
-		r.close(false)
-	}
+	rooms := s.rooms
 	s.rooms = map[string]*Room{}
+	s.mu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), s.fencing.Timeout)
+	defer cancel()
+	for id, r := range rooms {
+		r.close(false)
+		_, _ = s.dir.Release(ctx, id, r.token)
+	}
+}
+
+// owned は自分が今の owner で、自己停止の期限内の部屋だけを返す。
+func (s *Server) owned(id string) *Room {
+	if r := s.room(id); r != nil && r.usable() {
+		return r
+	}
+	return nil
 }
 func (s *Server) originAllowed(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
@@ -113,10 +206,16 @@ func (s *Server) Handler() http.Handler {
 			return
 		}
 		s.mu.RLock()
-		defer s.mu.RUnlock()
-		list := []Presence{}
+		rooms := make([]*Room, 0, len(s.rooms))
 		for _, room := range s.rooms {
-			list = append(list, room.presence())
+			rooms = append(rooms, room)
+		}
+		s.mu.RUnlock()
+		list := []Presence{}
+		for _, room := range rooms {
+			if room.usable() {
+				list = append(list, s.presenceOf(room))
+			}
 		}
 		writeJSON(w, 200, Object{"instances": list})
 	})
@@ -133,24 +232,31 @@ func (s *Server) Handler() http.Handler {
 			return
 		}
 		room, err := s.Provision(d)
-		if err != nil {
+		var elsewhere *ownedElsewhere
+		switch {
+		case errors.As(err, &elsewhere):
+			writeJSON(w, 409, conflict(elsewhere))
+		case errors.Is(err, errDirectoryUnavailable):
+			writeJSON(w, 503, failure(errDirectoryUnavailable.Error()))
+		case err != nil:
 			writeJSON(w, 400, failure(err.Error()))
-			return
+		default:
+			writeJSON(w, 200, s.presenceOf(room))
 		}
-		writeJSON(w, 200, room.presence())
 	})
 	mux.HandleFunc("GET /realtime/v1/instances/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if !s.config.Guests && !s.authorize(w, r) {
 			return
 		}
-		room := s.room(r.PathValue("id"))
+		room := s.owned(r.PathValue("id"))
 		if room == nil {
 			writeJSON(w, 404, failure("instance not found"))
 			return
 		}
-		p := room.presence()
+		p := s.presenceOf(room)
 		if s.config.Guests {
 			p.MemberIDs = []string{}
+			p.Node, p.Gen, p.Epoch = "", "", 0
 		}
 		writeJSON(w, 200, p)
 	})
@@ -158,29 +264,12 @@ func (s *Server) Handler() http.Handler {
 		if !s.authorize(w, r) {
 			return
 		}
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		room := s.rooms[r.PathValue("id")]
-		if room == nil {
-			s.retired[r.PathValue("id")] = time.Now().Add(2 * time.Minute)
-			w.WriteHeader(204)
+		code, body := s.closeInstance(r.Context(), r.PathValue("id"), r.URL.Query().Get("emptyBefore"))
+		if body == nil {
+			w.WriteHeader(code)
 			return
 		}
-		if raw := r.URL.Query().Get("emptyBefore"); raw != "" {
-			before, err := strconv.ParseInt(raw, 10, 64)
-			room.mu.Lock()
-			if err != nil || len(room.members) > 0 || room.emptySince > before {
-				room.mu.Unlock()
-				writeJSON(w, 409, failure("instance is occupied or recently emptied"))
-				return
-			}
-			room.closed = true
-			room.mu.Unlock()
-		}
-		room.close(true)
-		delete(s.rooms, r.PathValue("id"))
-		s.retired[r.PathValue("id")] = time.Now().Add(2 * time.Minute)
-		w.WriteHeader(204)
+		writeJSON(w, code, body)
 	})
 	mux.HandleFunc("POST /realtime/v1/instances/{id}/tickets", func(w http.ResponseWriter, r *http.Request) {
 		if !s.authorize(w, r) {
@@ -193,18 +282,19 @@ func (s *Server) Handler() http.Handler {
 		if !decode(w, r, &body) {
 			return
 		}
-		if body.UserID == "" || len(body.UserID) > 200 || s.room(r.PathValue("id")) == nil || body.Name != "" && !validName(body.Name) {
+		if body.UserID == "" || len(body.UserID) > 200 || s.owned(r.PathValue("id")) == nil || body.Name != "" && !validName(body.Name) {
 			writeJSON(w, 400, failure("invalid participant or instance"))
 			return
 		}
-		s.grant(w, r, body.UserID, body.Name, "member", time.Minute*2)
+		s.grant(w, r, s.owned(r.PathValue("id")), body.UserID, body.Name, "member", time.Minute*2)
 	})
 	mux.HandleFunc("POST /realtime/v1/instances/{id}/guest", func(w http.ResponseWriter, r *http.Request) {
 		if !s.config.Guests {
 			writeJSON(w, 403, failure("guest mode disabled"))
 			return
 		}
-		if s.room(r.PathValue("id")) == nil {
+		room := s.owned(r.PathValue("id"))
+		if room == nil {
 			writeJSON(w, 404, failure("instance not found"))
 			return
 		}
@@ -216,11 +306,12 @@ func (s *Server) Handler() http.Handler {
 		}
 		id := "guest:" + newID()
 		if body.ResumeToken != "" {
-			if t, err := s.verify(body.ResumeToken, r.PathValue("id")); err == nil && t.Kind == "guest" {
+			// 世代が違えば前の部屋のゲストなので、同じ ID を引き継がない
+			if t, err := s.verify(body.ResumeToken, r.PathValue("id")); err == nil && t.Kind == "guest" && room.issued(t) {
 				id = t.Subject
 			}
 		}
-		s.grant(w, r, id, "", "guest", 24*time.Hour)
+		s.grant(w, r, room, id, "", "guest", 24*time.Hour)
 	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !s.originAllowed(r) {
@@ -248,7 +339,78 @@ func (s *Server) authorize(w http.ResponseWriter, r *http.Request) bool {
 	}
 	return true
 }
-func (s *Server) grant(w http.ResponseWriter, r *http.Request, id, name, kind string, ttl time.Duration) {
+
+// grant はチケットを発行する。発行するのは owner 自身なので、部屋の今の世代を入れる。
+func (s *Server) grant(w http.ResponseWriter, r *http.Request, room *Room, id, name, kind string, ttl time.Duration) {
+	if room == nil {
+		writeJSON(w, 404, failure("instance not found"))
+		return
+	}
 	t := ticket{r.PathValue("id"), id, time.Now().Add(ttl).Unix(), kind, name}
-	writeJSON(w, 200, Object{"token": s.sign(t), "userId": id, "expiresAt": t.Expires * 1000, "url": "/realtime/v1/ws", "protocolVersion": 1})
+	writeJSON(w, 200, Object{"token": s.signFor(room, t), "userId": id, "expiresAt": t.Expires * 1000, "url": "/realtime/v1/ws", "protocolVersion": 1})
+}
+
+// closeInstance は自分が今の owner のときだけ部屋を閉じ、割り当てを token で解放する。
+func (s *Server) closeInstance(ctx context.Context, id, emptyBefore string) (int, any) {
+	s.provisioning.Lock()
+	defer s.provisioning.Unlock()
+	ctx, cancel := context.WithTimeout(ctx, s.fencing.Timeout)
+	defer cancel()
+	room := s.owned(id)
+	if room == nil {
+		if stale := s.room(id); stale != nil {
+			s.discard(ctx, stale, true)
+		}
+		owner, held, err := s.dir.Owner(ctx, id)
+		if err != nil && !errors.Is(err, coord.ErrInvalidRoom) {
+			return 503, failure(errDirectoryUnavailable.Error())
+		}
+		if held && owner.Node != s.node {
+			info, alive, err := s.dir.Node(ctx, owner.Node)
+			if err != nil {
+				return 503, failure(errDirectoryUnavailable.Error())
+			}
+			return 409, conflict(&ownedElsewhere{owner: owner, addr: info.Addr, alive: alive})
+		}
+		if held {
+			// 自分のノードの割り当てだが部屋が無い（自己停止のあと解放できなかった）
+			_, _ = s.dir.Release(ctx, id, owner.Token)
+		}
+		s.mu.Lock()
+		s.retired[id] = time.Now().Add(2 * time.Minute)
+		s.mu.Unlock()
+		return 204, nil
+	}
+	room.mu.Lock()
+	// 部屋の終了は外に影響するので、直前にリースがまだ有効かを確かめる
+	if !room.usableLocked() {
+		room.mu.Unlock()
+		s.discard(ctx, room, true)
+		return 503, failure("instance lease expired")
+	}
+	if emptyBefore != "" {
+		before, err := strconv.ParseInt(emptyBefore, 10, 64)
+		if err != nil || len(room.members) > 0 || room.emptySince > before {
+			room.mu.Unlock()
+			return 409, failure("instance is occupied or recently emptied")
+		}
+	}
+	room.closed = true
+	room.mu.Unlock()
+	room.close(true)
+	s.mu.Lock()
+	if s.rooms[id] == room {
+		delete(s.rooms, id)
+	}
+	s.retired[id] = time.Now().Add(2 * time.Minute)
+	s.mu.Unlock()
+	_, _ = s.dir.Release(ctx, id, room.token)
+	_ = s.dir.Forget(ctx, id)
+	return 204, nil
+}
+
+func conflict(e *ownedElsewhere) protocol.Conflict {
+	return protocol.Conflict{Success: protocol.ConflictSuccessFalse, Error: e.Error(), Owner: &protocol.InstanceOwner{
+		Node: e.owner.Node, Gen: e.owner.Gen, Epoch: e.owner.Epoch, Addr: e.addr, Alive: e.alive,
+	}}
 }

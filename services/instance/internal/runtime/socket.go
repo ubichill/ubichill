@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"errors"
 	"net/http"
 	"sync"
 	"time"
@@ -148,12 +149,17 @@ func (s *Server) serveSocket(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			if room == nil {
-				p.reply(f.ID, Object{"success": false, "error": "インスタンスが見つかりません", "code": "instance_unavailable"})
+				p.reply(f.ID, unavailable())
+				continue
+			}
+			// 前の owner・前の部屋（同じ ID で作り直す前）に向けたチケット。取り直せば今の世代のチケットになる
+			if !room.issued(t) {
+				p.reply(f.ID, Object{"success": false, "error": "参加チケットが無効です", "code": "ticket_invalid"})
 				continue
 			}
 			s.admission.Lock()
 			old := s.active[t.Subject]
-			err = room.join(p, profile(user, t), t.Subject, f.ID)
+			err = room.join(p, profile(user, t.ticket), t.Subject, f.ID)
 			if err == nil {
 				// Keep the previous session if the destination rejects admission.
 				if old != nil && old != p && old.room != nil && old.room != room {
@@ -164,7 +170,9 @@ func (s *Server) serveSocket(w http.ResponseWriter, r *http.Request) {
 				s.active[t.Subject] = p
 			}
 			s.admission.Unlock()
-			if err != nil {
+			if errors.Is(err, errUnavailable) {
+				p.reply(f.ID, unavailable())
+			} else if err != nil {
 				p.reject(f.ID, err.Error())
 			} else {
 				_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
@@ -187,6 +195,11 @@ func (s *Server) serveSocket(w http.ResponseWriter, r *http.Request) {
 			p.room.handle(p, f)
 		}
 	}
+}
+
+// unavailable は部屋が無い・閉じた・自己停止したときの入室の失敗。クライアントはチケットを取り直して入り直す。
+func unavailable() Object {
+	return Object{"success": false, "error": "インスタンスが見つかりません", "code": "instance_unavailable"}
 }
 
 // profile keeps only the fields other participants may see. Unknown fields (e.g. image URLs that every

@@ -94,7 +94,7 @@
       ],
       "put": {
         "operationId": "provisionInstance",
-        "description": "Idempotent create. Existing instance state is never reset. Management token required.",
+        "description": "Idempotent create. Existing instance state is never reset. Management token required. Assigns the room to this node in the directory: 409 with the owner when another node holds it, 503 when the directory is unavailable.",
         "requestBody": {
           "required": true,
           "content": {
@@ -112,6 +112,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RuntimePresence"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Owned by another node",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conflict"
                 }
               }
             }
@@ -156,6 +166,7 @@
       },
       "delete": {
         "operationId": "closeInstance",
+        "description": "Closes the room only while this node is its owner, then releases the assignment.",
         "parameters": [
           {
             "name": "emptyBefore",
@@ -172,7 +183,14 @@
             "description": "Closed or already absent"
           },
           "409": {
-            "description": "Occupied or recently emptied"
+            "description": "Occupied, recently emptied, or owned by another node",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conflict"
+                }
+              }
+            }
           },
           "default": {
             "description": "Request failed",
@@ -317,6 +335,22 @@
             "type": "integer",
             "format": "int64",
             "description": "Epoch milliseconds; 0 while occupied, includes reconnect grace."
+          },
+          "node": {
+            "type": "string",
+            "description": "owner のノード ID（Pod 名＋起動ごとの乱数）。単体モードのゲスト向けには返さない。",
+            "x-go-type-skip-optional-pointer": true
+          },
+          "gen": {
+            "type": "string",
+            "description": "割り当てた時点のクラスタの世代。",
+            "x-go-type-skip-optional-pointer": true
+          },
+          "epoch": {
+            "type": "integer",
+            "format": "int64",
+            "description": "owner の世代。owner が交代するたびに増える。(gen, epoch) の組で比べる。",
+            "x-go-type-skip-optional-pointer": true
           }
         },
         "required": [
@@ -476,6 +510,60 @@
           },
           "error": {
             "type": "string"
+          }
+        },
+        "required": [
+          "success",
+          "error"
+        ],
+        "additionalProperties": false
+      },
+      "InstanceOwner": {
+        "type": "object",
+        "properties": {
+          "node": {
+            "type": "string"
+          },
+          "gen": {
+            "type": "string"
+          },
+          "epoch": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "addr": {
+            "type": "string",
+            "description": "owner の内部アドレス。owner の heartbeat が切れていれば無い。",
+            "x-go-type-skip-optional-pointer": true
+          },
+          "alive": {
+            "type": "boolean",
+            "description": "owner の heartbeat が期限内か。"
+          }
+        },
+        "required": [
+          "node",
+          "gen",
+          "epoch",
+          "alive"
+        ],
+        "additionalProperties": false
+      },
+      "Conflict": {
+        "type": "object",
+        "description": "owner が別のノードのときは owner を付ける。",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          },
+          "error": {
+            "type": "string"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/InstanceOwner"
           }
         },
         "required": [
