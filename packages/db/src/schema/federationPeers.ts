@@ -16,8 +16,8 @@ export const federationPeers = pgTable('federation_peers', {
     baseUrl: text('base_url').notNull().unique(),
     /** ピアの表示名（省略時は baseUrl）。 */
     displayName: text('display_name'),
-    createdAt: timestamp('created_at').notNull().defaultNow(),
-    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const federationPeersRelations = relations(federationPeers, () => ({
