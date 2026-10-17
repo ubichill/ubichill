@@ -1,0 +1,22 @@
+{{- if and .Values.instanceRuntime.enabled .Values.instanceRuntime.metrics.serviceMonitor.enabled }}
+{{- /* Prometheus Operator（kube-prometheus-stack）の CRD が要る。無いクラスタでは有効にしない */}}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "ubichill.fullname" . }}-instance
+  labels:
+    {{- include "ubichill.labels" . | nindent 4 }}
+    component: instance
+    {{- with .Values.instanceRuntime.metrics.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "ubichill.selectorLabels" . | nindent 6 }}
+      component: instance
+  endpoints:
+    - port: realtime
+      path: /metrics
+      interval: {{ .Values.instanceRuntime.metrics.serviceMonitor.interval }}
+{{- end }}

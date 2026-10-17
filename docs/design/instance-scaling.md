@@ -102,41 +102,29 @@ Redis を設定した環境では、Redis が落ちても**プロセス内の状
 - 復旧の猶予の起点（今の `absentSince`）は `ubi:absent:<roomId>` に置く。リースが別の backend に移っても、猶予が延びたり縮んだりしない。
 - 削除の直前に、owner の管理 API の `close(emptyBefore, gen, epoch)` を呼ぶ。owner が「今も空で、emptyBefore より前から空」かつ世代が一致するときだけ閉じる（今の `instanceRuntime.close()` の原子的な判定を owner 側で保つ）。owner がいない部屋は、`ubi:absent` からの猶予が過ぎていれば DB から消す。
 
-## KEDA
+## KEDA（K1）
 
-- Go Pod は `active_rooms`・`websocket_connections`・`room_capacity_available`・`draining`・CPU・メモリを Prometheus 形式で出す。
-- 集約した指標（例: `ubichill_instance_scaling_pressure`。recording rule で作る）を、KEDA の Prometheus scaler に渡す。指標と閾値は負荷試験で決める。
-- 新しい Pod は ready になってから割り当ての候補になる。既存の部屋は自動では移さない。
-- **自動の scale-in は最初は無効**（`scaleDown.selectPolicy: Disabled`）。HPA は、どの Pod を消すかを部屋の有無で選べないため。
-- 手動で縮めるときは、対象の Pod を `draining` にして新しい部屋の割り当てを止め、部屋が空になってから終了させる。
+使い方・本番で有効にする手順は [chart の README](../../charts/ubichill/README.md) の「Go インスタンスの自動スケール（KEDA）」。
+
+- Go Pod は `GET /metrics` で `ubichill_instance_{active_rooms,room_capacity,room_capacity_available,websocket_connections,relay_connections,draining}` を Prometheus の text 形式で出す。CPU・メモリは cAdvisor のものを使う（Go からは出さない）。
+  - **標準ライブラリだけで書く**。gauge 6 つでラベルも histogram も無く、text 形式は数行で書ける。`prometheus/client_golang` は `client_model`・`common`・`procfs`・`protobuf` などを引き込み、Go の依存（今は gorilla/websocket と go-redis だけ）が数倍になる。histogram（配信の遅延の p95・p99）が要るようになったら入れ直す。
+  - **認証は付けない**。Ingress は `/realtime/v1/ws` だけを Go へ送るので、管理 API と同じくクラスタの外には出ない。中身は数だけ（部屋 ID・利用者 ID・ラベルを出さない）。管理トークンで守ると Prometheus にそのトークンを渡すことになり、漏れたときの被害の方が大きい。
+  - `websocket_connections` は heartbeat の `connections` と同じ数え方（部屋の参加者＋他の Pod へ中継している接続）。中継された接続は中継する Pod と owner の Pod の両方で数える。どちらも WebSocket を持つので負荷としては正しい。
+  - `room_capacity_available` は draining の間 0 にする（合計して受けられる部屋の数を多く見積もらない）。
+- chart は `ServiceMonitor`（`instanceRuntime.metrics.serviceMonitor.enabled`）と `ScaledObject`（`instanceRuntime.autoscaling.enabled`）を値で作る。どちらも既定は無効（CRD の無いクラスタで描画・適用が落ちない）。`ScaledObject` は `directory: redis` でないと描画で失敗する。
+- **集約の指標（`ubichill_instance_scaling_pressure`・recording rule）は作らない**。trigger を接続数と部屋数の 2 つにし、HPA に最大を取らせる（HPA は trigger ごとに台数を出して大きい方を取る）。
+  - recording rule は評価の間隔ぶん遅れ、`PrometheusRule` の CRD と Prometheus の `ruleSelector` にも依存する。rule が読み込まれないと KEDA は空の結果を受け、既定（`ignoreNullValues: true`）では 0 として scale-out しないまま気付けない。
+  - 閾値の単位が「1 Pod に持たせたい接続数」「1 Pod に持たせたい部屋数」のまま残る。`AverageValue` なので台数は `ceil(合計 / 閾値)`。
+  - 指標が無いときは `ignoreNullValues: "false"` で ScaledObject の失敗として出し、台数を変えない。
+  - 部屋数の閾値は `maxRooms` 未満にする（上限に達した Pod は新しい部屋を 503 で断るので、その手前で増やす）。
+  - 今の値（接続 300・部屋 800）は仮。負荷試験で決める。
+- 新しい Pod は ready になってから割り当ての候補になる。既存の部屋は自動では移さない（backend は接続数の少ない Pod を選ぶので、新しい部屋は増えた Pod に置かれる）。
+- **自動の scale-in は無効**（`scaleDown.selectPolicy: Disabled`）。HPA は、どの Pod を消すかを部屋の有無で選べないため。
+- 有効にすると Deployment に `replicas` を書かない（Argo CD の同期のたびに HPA の台数へ戻さない）。
+- 手動で縮めるときは、消す Pod に `pod-deletion-cost` を付け、ScaledObject の `autoscaling.keda.sh/paused-replicas` で台数を 1 つ減らす。Pod は SIGTERM で draining になり、`drainTimeout` まで接続が抜けるのを待ってから残りの部屋を閉じる。
 - SIGTERM を受けたら readiness を false にし、`terminationGracePeriodSeconds` の範囲で接続を閉じて、クライアントを繋ぎ直させる。
 - **自動の scale-in（K2）の候補**: 各 Pod が自分の部屋数・接続数を `controller.kubernetes.io/pod-deletion-cost` の注釈に書けば、ReplicaSet は空いている Pod を優先して消す（ベストエフォート）。drain と組み合わせれば、配置コントローラを作らずに済む可能性がある。注釈を書くには、Pod の ServiceAccount に自分の Pod を patch する RBAC が要る。
-- 前提: 本番（home-manifests）には Prometheus（`apps/prometheus`）はあるが、**KEDA は無い**。K1 は home-manifests に KEDA の Application を足すところから始める。
-
-```yaml
-# 概念の例（そのままは使えない。指標は未実装）
-apiVersion: keda.sh/v1alpha1
-kind: ScaledObject
-metadata:
-  name: ubichill-instance
-spec:
-  scaleTargetRef:
-    name: ubichill-instance
-  minReplicaCount: 1
-  maxReplicaCount: 10
-  pollingInterval: 30
-  advanced:
-    horizontalPodAutoscalerConfig:
-      behavior:
-        scaleDown:
-          selectPolicy: Disabled
-  triggers:
-    - type: prometheus
-      metadata:
-        serverAddress: http://prometheus-operated.monitoring.svc:9090
-        query: ubichill_instance_scaling_pressure
-        threshold: "1"
-```
+- KEDA は home-manifests の `argocd-apps/keda.yaml`（公式の Helm chart、namespace `keda`、版は固定）で入れる。CRD は chart の templates に入っていて、`ScaledJob` の CRD が約 650KB あり client-side apply の `last-applied-configuration` の上限（256KB）を超えるので `ServerSideApply=true` にする。KEDA が自分で書き込む `APIService` と `ValidatingWebhookConfiguration` の `caBundle` は `ignoreDifferences` に入れる。
 
 ## backend の複数レプリカ
 
@@ -181,10 +169,10 @@ backend を 2 台以上にする前に、DB 側の「時刻の型」と「仮登
 ## 未決
 
 1. WS Router を Go の Pod に兼ねさせ続けるか、別の Deployment に分けるか（G2 の負荷試験で決める）。
-2. Pod の容量の指標と KEDA の閾値、1 部屋の最大人数、許せる遅延。
+2. KEDA の閾値（`targetConnectionsPerPod`・`targetRoomsPerPod`。K1 では仮の値）、1 部屋の最大人数、許せる遅延。指標は K1 で決めた。
 3. Redis を Helm の subchart で持つか、外部の Redis にするか。
 4. 自動の scale-in の方式（`pod-deletion-cost` で足りるか）。決まるまでは scale-out だけを自動にする。
-5. KEDA を home-manifests にどう入れるか（Helm の Application、namespace、CRD の扱い）。
+5. ~~KEDA を home-manifests にどう入れるか~~ K1 で決めた（「KEDA（K1）」）。
 
 
 ## 本番に有効化する条件
@@ -193,3 +181,4 @@ backend を 2 台以上にする前に、DB 側の「時刻の型」と「仮登
 - G3 は R2 と合わせ、reaper が観測した `(gen, epoch)` だけを閉じる。観測時に owner がいなければ、閉じる時点でも owner がいない場合だけ DB を削除する。
 - 部屋の閉鎖は、Redis で token の照合・retired の設定・割り当てと在席の削除を原子的に行う。Redis に届かなければ成功を返さず、DB の行を残す。
 - 本番データを検証環境へコピーしても、作者アカウントは `handle@domain` ごとに別のものとして扱う。別ドメインでの作者確認、鍵の取り消し、未署名ワールドの入室は検証用のアカウントと鍵で確かめる。
+- K1 は KEDA を入れても、ubichill の Application では `directory: redis` → ServiceMonitor → ScaledObject の順に 1 つずつ有効にする（chart の README の「本番で有効にする手順」）。閾値を負荷試験で決めるまでは ScaledObject を有効にしない。
