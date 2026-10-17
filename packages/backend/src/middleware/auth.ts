@@ -161,7 +161,7 @@ export function toWebHeaders(req: Request): Headers {
 }
 
 /** このサーバーの管理者か（公式アカウント `ubichill` が管理者を兼ねる）。 */
-export function isAdminHandle(handle: string | null | undefined): boolean {
+export function isAdminHandle(handle: string | undefined): boolean {
     return handle === OFFICIAL_HANDLE;
 }
 

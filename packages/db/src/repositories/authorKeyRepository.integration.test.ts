@@ -25,8 +25,7 @@ describe.skipIf(!RUN)('authorKeyRepository (DB統合)', () => {
     beforeAll(async () => {
         await db.insert(users).values([
             { id: alice, name: 'Alice', email: `${alice}@example.com`, handle: alice },
-            // handle が未設定でも鍵は持てる（ブラウザの公開環境は handle を決める前に登録できる）
-            { id: bob, name: 'Bob', email: `${bob}@example.com` },
+            { id: bob, name: 'Bob', email: `${bob}@example.com`, handle: bob },
         ]);
     });
 

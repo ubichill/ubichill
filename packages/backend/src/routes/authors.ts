@@ -16,7 +16,7 @@ const router = Router();
 router.get('/:handle/signing-keys', async (req, res) => {
     const { handle } = req.params;
     const user = HANDLE_PATTERN.test(handle) ? await userRepository.findByHandle(handle) : undefined;
-    if (!user?.handle) {
+    if (!user) {
         res.status(404).json({ error: 'Not found' });
         return;
     }

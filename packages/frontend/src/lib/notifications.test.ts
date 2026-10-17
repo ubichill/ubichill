@@ -5,7 +5,7 @@ const request = (id: string, requestedAt: string) => ({
     id,
     name: id,
     handle: id,
-    profileImageUrl: null,
+    image: null,
     bio: null,
     requestedAt,
 });

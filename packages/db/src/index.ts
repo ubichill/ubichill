@@ -16,6 +16,7 @@ export {
     type CreateCliAuthRequestInput,
     cliAuthRequestRepository,
 } from './repositories/cliAuthRequestRepository';
+export type { NewCredentialUser } from './repositories/credentialUser';
 export {
     type ExternalWorkKey,
     type ExternalWorkRecord,
@@ -26,7 +27,6 @@ export { federationPeerRepository } from './repositories/federationPeerRepositor
 export { instanceRepository } from './repositories/instanceRepository';
 export {
     type LockedPendingRegistration,
-    type NewCredentialUser,
     type PendingRegistrationEmailScope,
     type PendingRegistrationRecord,
     pendingRegistrationRepository,

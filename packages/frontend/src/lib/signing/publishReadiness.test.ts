@@ -13,17 +13,12 @@ const account: MyAccount = {
     handle: 'youkan',
     author: 'youkan@ubichill.com',
     signingKeys: [],
-    profileImageUrl: null,
+    image: null,
 };
 
 describe('publishReadiness（ログインできる = 公開できる）', () => {
-    it('ID があれば、鍵が無くても未登録でも公開できる（鍵は公開時に自動で用意する）', () => {
+    it('鍵が無くても未登録でも公開できる（鍵は公開時に自動で用意する）', () => {
         expect(publishReadiness(account, [])).toEqual({ kind: 'ready', account });
-    });
-
-    it('ID が未設定なら ID だけを求める', () => {
-        const noHandle = { ...account, handle: null, author: null };
-        expect(publishReadiness(noHandle, [])).toEqual({ kind: 'needs-handle', account: noHandle });
     });
 
     it('固定できない mod があれば何より先に伝える', () => {

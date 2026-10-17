@@ -1,5 +1,13 @@
 import { randomBytes, randomInt } from 'node:crypto';
-import { accounts, db, pendingRegistrationRepository, sessions, users, verifications } from '@ubichill/db';
+import {
+    accounts,
+    db,
+    pendingRegistrationRepository,
+    sessions,
+    userRepository,
+    users,
+    verifications,
+} from '@ubichill/db';
 import { displayNameKey } from '@ubichill/shared';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
@@ -102,23 +110,16 @@ export async function createPendingRegistration(
     if (SKIP_EMAIL_VERIFICATION) {
         console.log(`⚠️ メール確認をスキップして直接登録: ${email}`);
         try {
-            const result = await auth.api.signUpEmail({
-                body: {
-                    email,
-                    password,
-                    name: displayName,
-                },
+            await userRepository.createCredentialUser({
+                userId: newBetterAuthId(ctx, 'user'),
+                accountId: newBetterAuthId(ctx, 'account'),
+                email,
+                name: displayName,
+                handle,
+                displayNameKey: nameKey,
+                passwordHash: await ctx.password.hash(password),
+                now: new Date(),
             });
-
-            if (!result) {
-                return { success: false, error: '登録に失敗しました' };
-            }
-
-            // メール確認済みに設定
-            await db
-                .update(users)
-                .set({ emailVerified: true, handle, displayNameKey: nameKey })
-                .where(eq(users.email, email));
 
             console.log(`✅ ユーザー登録完了（メール確認スキップ）: ${email}`);
             return { success: true, skipVerification: true };
@@ -285,24 +286,23 @@ export const auth = betterAuth({
         ...(redis ? { customStorage: createAuthRateLimitStorage(redis, logger) } : {}),
     },
     user: {
-        // どちらもサーバーだけが書く。input を許すと /update-user から任意の値（外部の画像 URL など）を入れられ、
-        // 公開のプロフィール・OGP に出てしまう
         additionalFields: {
-            username: {
-                type: 'string',
-                required: false,
-                input: false,
-            },
-            profileImageUrl: {
-                type: 'string',
-                required: false,
-                input: false,
-            },
+            // drizzle adapter は「better-auth が書かない NOT NULL・既定値なしの列」があると schema mismatch で止まる。
+            // 書くのはサーバーだけ（users は userRepository.createCredentialUser で handle ごと作る）なので input は許さない。
+            // required なので、handle を渡せない signUpEmail は users を作る前に失敗する（handle の無い行を作らない）。
+            handle: { type: 'string', required: true, input: false },
         },
     },
 });
 
 export type Session = typeof auth.$Infer.Session;
+
+/** users・accounts を better-auth の adapter を通さずに作るときの ID（better-auth と同じ作り方）。 */
+export function newBetterAuthId(ctx: Awaited<typeof auth.$context>, model: 'user' | 'account'): string {
+    const id = ctx.generateId({ model });
+    if (typeof id !== 'string') throw new Error(`better-auth が ${model} の ID を DB に任せる設定になっている`);
+    return id;
+}
 
 /** 仮登録。コードの HMAC の鍵とユーザー ID の作り方は better-auth と同じもの（auth.$context）を使う。 */
 export const getPendingRegistrations = (() => {
@@ -315,12 +315,7 @@ export const getPendingRegistrations = (() => {
                 newId: () => randomBytes(24).toString('base64url'),
                 newOtp: generateOTP,
                 hashOtp: createOtpHasher(ctx.secret),
-                newRecordId: (model) => {
-                    const id = ctx.generateId({ model });
-                    if (typeof id !== 'string')
-                        throw new Error(`better-auth が ${model} の ID を DB に任せる設定になっている`);
-                    return id;
-                },
+                newRecordId: (model) => newBetterAuthId(ctx, model),
             }),
         );
         return cache.ready;

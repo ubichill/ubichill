@@ -60,7 +60,7 @@ export function UserRow({
                         {user.name}
                     </span>
                     <span className={css({ display: 'block', fontSize: '12px', color: 'textMuted', lineClamp: 1 })}>
-                        {user.handle ? `@${user.handle}` : 'ID 未設定'}
+                        @{user.handle}
                     </span>
                 </span>
             </button>

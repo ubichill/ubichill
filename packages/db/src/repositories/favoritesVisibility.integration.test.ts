@@ -16,7 +16,7 @@ const ids = { a: `vis-a-${stamp}`, b: `vis-b-${stamp}`, c: `vis-c-${stamp}` };
 describe.skipIf(!RUN)('userSettingsRepository / userFriendRepository (DB統合)', () => {
     beforeAll(async () => {
         for (const id of Object.values(ids)) {
-            await userRepository.create({ id, name: id, email: `${id}@example.com` });
+            await userRepository.create({ id, name: id, email: `${id}@example.com`, handle: id.replaceAll('-', '_') });
         }
     });
 

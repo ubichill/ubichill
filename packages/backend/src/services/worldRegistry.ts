@@ -81,7 +81,7 @@ export type SaveBundleResult =
     | { ok: true; world: ResolvedWorld; saved: 'published' | 'unsigned' | 'draft' }
     | {
           ok: false;
-          reason: 'invalid-definition' | 'limit' | 'name-taken' | 'handle-required' | WorldSignatureInvalidReason;
+          reason: 'invalid-definition' | 'limit' | 'name-taken' | 'author-not-found' | WorldSignatureInvalidReason;
           message: string;
       };
 
@@ -606,13 +606,7 @@ class WorldRegistry {
         }
         const worldName = parsed.data.metadata.name;
         const handle = (await userRepository.findById(authorId))?.handle;
-        if (!handle) {
-            return {
-                ok: false,
-                reason: 'handle-required',
-                message: '先に ID を設定してください（ワールドの URL になります）',
-            };
-        }
+        if (!handle) return { ok: false, reason: 'author-not-found', message: '作者のアカウントが見つかりません' };
         const lock = bundle.lock === undefined ? null : bundle.lock;
         const existing = await worldRepository.findByAuthorAndWorldName(authorId, worldName);
         const editingRecord = options.editingId ? await worldRepository.findByName(options.editingId) : undefined;
@@ -948,10 +942,7 @@ class WorldRegistry {
     /** DB レコード → ResolvedWorld。外部のワールドと同じく {@link resolveBundle} で検証する（同じ規則）。 */
     private async _resolveWorld(record: WorldRecord): Promise<WorldResolution> {
         const handle = (await userRepository.findById(record.authorId))?.handle;
-        // 公開の URL は作者の ID で決まるので、ID の無い作者（以前のアカウント）のワールドは配れない
-        if (!handle) {
-            return { ok: false, reason: 'not-found', message: '作者の ID が未設定のため配信していません' };
-        }
+        if (!handle) return { ok: false, reason: 'not-found', message: '作者のアカウントが見つかりません' };
         return this._verify(
             record.name,
             this.selfWorldUrl(handle, record.worldName),

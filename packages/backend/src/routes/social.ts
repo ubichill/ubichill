@@ -32,8 +32,8 @@ const SEARCH_LIMIT = 20;
 const summaryOf = (u: UserRecord): UserSummary => ({
     id: u.id,
     name: u.name,
-    handle: u.handle ?? null,
-    profileImageUrl: u.profileImageUrl ?? null,
+    handle: u.handle,
+    image: u.image ?? null,
     bio: u.bio ?? null,
 });
 

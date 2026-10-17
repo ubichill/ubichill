@@ -1,20 +1,9 @@
 import { and, count, eq, gt, lt, sql } from 'drizzle-orm';
 import { db } from '../index';
-import { accounts, pendingRegistrations, users } from '../schema';
+import { pendingRegistrations } from '../schema';
+import { insertCredentialUser, type NewCredentialUser } from './credentialUser';
 
 export type PendingRegistrationRecord = typeof pendingRegistrations.$inferSelect;
-
-/** メール・パスワードで登録する確認済みのユーザー（better-auth の signUpEmail が書くものと同じ形）。 */
-export interface NewCredentialUser {
-    userId: string;
-    accountId: string;
-    email: string;
-    name: string;
-    handle: string;
-    displayNameKey: string;
-    passwordHash: string;
-    now: Date;
-}
 
 /** 同じメールアドレスのロックの中でできること。 */
 export interface PendingRegistrationEmailScope {
@@ -27,33 +16,6 @@ export interface LockedPendingRegistration {
     remove(): Promise<void>;
     setFailures(failures: number): Promise<void>;
     createCredentialUser(user: NewCredentialUser): Promise<void>;
-}
-
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
-
-// better-auth の signUpEmail（createUser + linkAccount）と同じ形。sign-in は providerId='credential' かつ
-// accountId=user.id の行を探し、password を ctx.password.verify で確かめる
-async function insertCredentialUser(tx: Tx, user: NewCredentialUser): Promise<void> {
-    await tx.insert(users).values({
-        id: user.userId,
-        email: user.email,
-        name: user.name,
-        emailVerified: true,
-        image: null,
-        handle: user.handle,
-        displayNameKey: user.displayNameKey,
-        createdAt: user.now,
-        updatedAt: user.now,
-    });
-    await tx.insert(accounts).values({
-        id: user.accountId,
-        accountId: user.userId,
-        providerId: 'credential',
-        userId: user.userId,
-        password: user.passwordHash,
-        createdAt: user.now,
-        updatedAt: user.now,
-    });
 }
 
 export const pendingRegistrationRepository = {

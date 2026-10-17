@@ -55,7 +55,7 @@ async function checkAuthorClaim(
     if (claimed === undefined)
         return { error: '署名に作者アカウントがありません（作者の付かない署名では公開されません）' };
     const user = await userRepository.findById(userId);
-    const own = user?.handle ? selfAccount(user.handle) : null;
+    const own = user ? selfAccount(user.handle) : null;
     if (claimed !== own) return { error: `署名の作者（${String(claimed)}）があなたのアカウントと一致しません` };
     const env = typeof publicKey === 'string' ? await authorKeyRepository.findLocalKey(publicKey) : undefined;
     // API トークンで送る署名は、そのトークンの公開環境の鍵で署名したものに限る（盗まれたトークンで別の鍵の署名を通させない）
@@ -228,7 +228,7 @@ router.get('/:worldId', optionalAuth, async (req, res) => {
  * - 署名あり: 外部と同じ規則で検証し、通れば公開中の版として保存
  * - 署名なし: 公開中のワールドなら下書きとして保存（公開中の版は残す）、そうでなければ署名なしのまま保存（公開されない）
  * `worldId` は編集中のワールド（エディタ）。metadata.name を変えると名前の変更（URL も変わり、以前の URL からもたどれる）。
- * 自分の別のワールドと同じ名前なら上書きせず 409。保存には ID（作者アカウント）が要る（無ければ 409 handle-required）。
+ * 自分の別のワールドと同じ名前なら上書きせず 409。
  * 返り値: `{ id, url, saved, identity }`
  */
 router.put('/', requireSaver, async (req, res) => {
@@ -260,9 +260,11 @@ router.put('/', requireSaver, async (req, res) => {
                     ? 403
                     : result.reason === 'invalid-definition'
                       ? 400
-                      : result.reason === 'name-taken' || result.reason === 'handle-required'
+                      : result.reason === 'name-taken'
                         ? 409
-                        : 422;
+                        : result.reason === 'author-not-found'
+                          ? 404
+                          : 422;
             res.status(status).json({ error: saveFailureMessage(result.reason, result.message), code: result.reason });
             return;
         }
