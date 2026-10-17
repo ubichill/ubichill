@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDatabase, type Database } from './index';
 
 /**
- * 0021_users_cleanup の結合テスト。DATABASE_URL の Postgres に使い捨ての DB を作り、0020 まで当てた DB に
+ * 0021_users_cleanup・0022_users_drop_columns の結合テスト。DATABASE_URL の Postgres に使い捨ての DB を作り、0020 まで当てた DB に
  * handle なし・username あり・profile_image_url ありのユーザーを入れてから 0021 を当てる。DATABASE_URL がある時だけ走る。
  */
 const RUN = !!process.env.DATABASE_URL;
@@ -126,5 +126,18 @@ describe.skipIf(!RUN)('0021_users_cleanup（DB 統合）', () => {
         await expect(
             db().execute(sql`INSERT INTO users (id, name, email) VALUES ('after', 'After', 'after@example.com')`),
         ).rejects.toThrow();
+    });
+
+    it('0022 で username・profile_image_url が消え、移した画像と handle は残る', async () => {
+        await migrate(db(), { migrationsFolder: MIGRATIONS });
+        const columns = (
+            await db().execute<{ column_name: string }>(
+                sql`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users'`,
+            )
+        ).map((r) => r.column_name);
+        expect(columns).not.toContain('username');
+        expect(columns).not.toContain('profile_image_url');
+        const [row] = await db().execute<UserRow>(sql`SELECT id, handle, image FROM users WHERE id = 'old-only'`);
+        expect(row).toEqual(byId('old-only'));
     });
 });

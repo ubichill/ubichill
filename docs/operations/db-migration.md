@@ -200,3 +200,36 @@ SELECT id, handle FROM users WHERE handle ~ '^user_[0-9a-f]{12}$' OR handle = 's
 ただし古いイメージは handle を後から書く作り方（better-auth の signUpEmail）でユーザーを作るので、公式アカウントが無い DB で起動すると
 その作成が NOT NULL で失敗する（本番は作成済みなので当たらない）。
 0021 の後に新しいイメージで変わった画像は `image` にだけあり、古いイメージ（`profile_image_url` を出す）には出ない（今はどちらも書く口が無い）。
+
+## 0022_users_drop_columns（username・profile_image_url を消す）
+
+0021 で読まなくなった 2 列（`username` は一意制約ごと）を消す。データの書き換えは無い。
+
+### 事前確認
+
+- **0021 を当てたイメージがすべての Pod で動き、0021 より前のイメージに戻す予定が無いこと**（古いイメージは 2 列を SELECT するので、
+  デプロイ中に古い Pod が残っていると users を読む処理がほぼすべて失敗する）。0021 と同じリリースで出さない。
+
+```sql
+SELECT id FROM drizzle.__drizzle_migrations ORDER BY id DESC LIMIT 1;  -- 0021 まで適用済み
+SELECT count(*) FROM users WHERE coalesce(btrim(profile_image_url), '') <> '' AND image IS DISTINCT FROM btrim(profile_image_url);
+-- 0 でなければ、image を正として捨てる値を控える
+```
+
+### 事後確認
+
+```sql
+SELECT column_name FROM information_schema.columns
+WHERE table_schema = 'public' AND table_name = 'users' AND column_name IN ('username', 'profile_image_url');  -- 0 行
+```
+
+### 古いイメージに戻すとき
+
+0021 以降のイメージ（0022 の前を含む）へはそのまま戻せる。0021 より前のイメージに戻すときは、**イメージを戻す前に**列を足し直す
+（値は戻らない。画像は `image` に移してあるので、古いイメージでは画像が出なくなるだけ）。
+
+```sql
+ALTER TABLE users ADD COLUMN username varchar(255);
+ALTER TABLE users ADD CONSTRAINT users_username_unique UNIQUE (username);
+ALTER TABLE users ADD COLUMN profile_image_url varchar(1024);
+```
