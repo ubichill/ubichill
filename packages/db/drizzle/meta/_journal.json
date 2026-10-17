@@ -134,6 +134,13 @@
       "when": 1792083621351,
       "tag": "0018_timestamptz",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792085836323,
+      "tag": "0019_pending_registrations",
+      "breakpoints": true
     }
   ]
 }
