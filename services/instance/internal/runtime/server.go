@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"crypto/rand"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -16,9 +15,11 @@ import (
 
 type Config struct {
 	AdminToken string
-	Guests     bool
-	Origins    []string
-	Grace      time.Duration
+	// TicketKey は参加チケットの署名鍵。空なら AdminToken から派生する（ticketKey を参照）。
+	TicketKey string
+	Guests    bool
+	Origins   []string
+	Grace     time.Duration
 }
 type Server struct {
 	retired   map[string]time.Time
@@ -31,11 +32,7 @@ type Server struct {
 }
 
 func New(config Config) *Server {
-	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		panic(err)
-	}
-	return &Server{retired: map[string]time.Time{}, rooms: map[string]*Room{}, active: map[string]*peer{}, key: key, config: config}
+	return &Server{retired: map[string]time.Time{}, rooms: map[string]*Room{}, active: map[string]*peer{}, key: ticketKey(config), config: config}
 }
 func (s *Server) Provision(d Definition) (*Room, error) {
 	s.mu.Lock()

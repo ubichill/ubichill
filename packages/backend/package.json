@@ -31,6 +31,7 @@
         "exec": "tsx src/index.ts"
     },
     "dependencies": {
+        "@redis/client": "^6.3.0",
         "@ubichill/db": "workspace:*",
         "@ubichill/shared": "workspace:*",
         "bcryptjs": "^3.0.3",

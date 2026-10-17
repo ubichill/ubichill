@@ -5,6 +5,7 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - "charts/**"
+      - "scripts/check-chart.mjs"
       - ".github/workflows/helm-ci.yml"
   workflow_dispatch:
 
@@ -22,6 +23,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+
+      # check:chart（描画結果の検査）が yaml を使う
+      - uses: ./.github/actions/setup
 
       - name: Install Helm
         uses: azure/setup-helm@v4
@@ -77,3 +81,7 @@ jobs:
             --set postgresql.auth.password=test-app-password \
             --set redis.auth.password=test-redis-password \
             > /tmp/ubichill-prod.yaml
+
+      # lint は書式しか見ないので、backend と instance に渡る Redis の env を描画結果で確かめる
+      - name: Check rendered Redis env
+        run: pnpm check:chart

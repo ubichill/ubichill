@@ -45,10 +45,35 @@ frontend:
     tag: latest
 
 redis:
-  enabled: true                  # 共有キャッシュ
+  enabled: true                  # backend と instance の共有状態（下の「Redis」）
+  auth:
+    existingSecret: ""           # 本番は指定を推奨（下の「Redis」）
+    existingSecretPasswordKey: ""
 postgresql:
   enabled: true                  # 同梱 PostgreSQL（persistence.enabled で永続/揮発を切替）
 ```
+
+## Redis
+
+backend と instance には、同じ接続先を次の環境変数で渡す（`ubichill.redis.env` が両方を組み立てる）。
+
+- `redis.enabled=true`: 同梱の subchart を使う。
+- `redis.enabled=false` かつ `redis.external.url`: 外部の Redis を使う。パスワードは `redis.external.existingSecret` の `redis.external.existingSecretPasswordKey`（既定 `redis-password`）。
+- どちらも無い: 渡さない。backend も instance も Redis なしで動く。
+- 両方を指定すると描画で失敗する。`backend.env.REDIS_URL` での指定は instance に届かないので使わない。
+
+| 環境変数 | 値 |
+|---|---|
+| `REDIS_URL` | subchart: `redis://<release>-redis-master:6379`、外部: `redis.external.url`（パスワードは入れない） |
+| `REDIS_PASSWORD` | subchart の Secret `<release>-redis` の `redis-password` を `secretKeyRef` で参照。`redis.auth.existingSecret` があればその Secret の `redis.auth.existingSecretPasswordKey`（既定 `redis-password`）。`redis.auth.enabled=false` なら渡さない。外部の Redis は `redis.external.existingSecret` があるときだけ |
+
+`redis.auth.existingSecret` を指定しないと、Bitnami の subchart はパスワードを描画のたびに乱数で作り、
+既存の Secret はクラスタを `lookup` して引き継ぐ。ArgoCD のように `lookup` できない描画では、
+描画のたびにパスワードが変わり、Redis の Pod も再起動する（backend・instance は古いパスワードのまま繋がらなくなる）。
+GitOps では Secret を自分で作って `redis.auth.existingSecret` を指定する。
+
+Redis が落ちても backend の `/health` は 200 のままで（`redis: "unavailable"` を載せる）、Pod は再起動しない。
+Redis に頼る機能ごとの、落ちたときの振る舞いは `docs/design/instance-scaling.md` の「Redis が使えないとき」に決めてある。どの機能も、Redis が落ちたからといってプロセス内のリースなどに切り替えない。
 
 ## 開発・検証
 
@@ -73,7 +98,7 @@ Kubernetes (namespace)
 ├── frontend   … Vite CSR（React）を BFF で配信
 ├── backend    … SNS・認証の Node.js API。Ingress の /api で接続。起動時に DB スキーマ適用
 ├── instance   … Go / WebSocket。Ingress の /realtime/v1/ws で直接接続。1 replica・Recreate
-├── redis      … 共有キャッシュ
+├── redis      … backend・instance の共有状態（リース等。部屋の状態は持たない）
 └── postgresql … アプリ DB（同梱 or 外部）
 ```
 
@@ -87,6 +112,8 @@ Goは専用イメージ（`instanceRuntime.image`）で起動し、backendのイ
 管理トークンは既定でbackend Secretの `BETTER_AUTH_SECRET`（32文字以上）を参照する。専用のSecretを使うには
 `instanceRuntime.existingSecret` / `instanceRuntime.secretKey` を指定する。existingSecretを使う場合、
 トークンを変えたら backend と instance の Pod を再起動する。
+参加チケットの署名鍵は管理トークンから派生する（全 Pod・再起動の前後で同じ鍵）。専用の鍵を使う場合は
+instance に `INSTANCE_TICKET_KEY`（32 文字以上）を渡す。
 Goを外部で運用する場合は `instanceRuntime.enabled=false` とし、backend.envの
 `INSTANCE_RUNTIME_URL` / `INSTANCE_PUBLIC_URL` を外部サーバーに合わせる。
 状態はメモリのみで、再起動時に初期状態へ戻る。詳細は [運用手順](../../services/instance/README.md)。

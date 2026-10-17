@@ -96,6 +96,68 @@ Instance (Go) が受け付けるブラウザ Origin。未指定なら https://<g
 {{- end }}
 
 {{/*
+redis subchart の fullname（bitnami common.names.fullname と同じ規則。Service・Secret の名前の元）。
+*/}}
+{{- define "ubichill.redis.fullname" -}}
+{{- if .Values.redis.fullnameOverride }}
+{{- .Values.redis.fullnameOverride | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- $name := default "redis" .Values.redis.nameOverride }}
+{{- if contains $name .Release.Name }}
+{{- .Release.Name | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
+subchart の REDIS_URL。パスワードは URL に入れず REDIS_PASSWORD で渡す。
+*/}}
+{{- define "ubichill.redis.url" -}}
+{{- printf "redis://%s-master:%v" (include "ubichill.redis.fullname" .) (.Values.redis.master.service.ports.redis | default 6379) }}
+{{- end }}
+
+{{/*
+backend と instance に渡す Redis の env（REDIS_URL・REDIS_PASSWORD）。両方が同じ接続先を見るよう、ここだけで組み立てる。
+- redis.enabled: subchart。パスワードは subchart の Secret（auth.existingSecret があればそちら）
+- redis.external.url: 外部の Redis。パスワードは redis.external.existingSecret があれば参照する
+- どちらも無ければ何も出さない（Redis なしで動く）
+*/}}
+{{- define "ubichill.redis.env" -}}
+{{- $ext := .Values.redis.external | default dict }}
+{{- if and .Values.redis.enabled $ext.url }}
+{{- fail "redis.enabled と redis.external.url は同時に指定できません。外部の Redis を使うときは redis.enabled: false にしてください" }}
+{{- end }}
+{{- if .Values.redis.enabled }}
+- name: REDIS_URL
+  value: {{ include "ubichill.redis.url" . | quote }}
+{{- if .Values.redis.auth.enabled }}
+- name: REDIS_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      {{- if .Values.redis.auth.existingSecret }}
+      name: {{ tpl .Values.redis.auth.existingSecret . }}
+      key: {{ .Values.redis.auth.existingSecretPasswordKey | default "redis-password" }}
+      {{- else }}
+      name: {{ include "ubichill.redis.fullname" . }}
+      key: redis-password
+      {{- end }}
+{{- end }}
+{{- else if $ext.url }}
+- name: REDIS_URL
+  value: {{ $ext.url | quote }}
+{{- if $ext.existingSecret }}
+- name: REDIS_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ tpl $ext.existingSecret . }}
+      key: {{ $ext.existingSecretPasswordKey | default "redis-password" }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
 Frontend image
 */}}
 {{- define "ubichill.frontend.image" -}}
