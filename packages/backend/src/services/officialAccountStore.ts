@@ -1,5 +1,5 @@
 /** 公式アカウントの初期化の実体（better-auth・DB・レビュー済みの鍵を注入する）。ロジックは officialAccount.ts。 */
-import { publishingEnvironmentRepository, userRepository } from '@ubichill/db';
+import { authorKeyRepository, userRepository } from '@ubichill/db';
 import { auth } from '../lib/auth';
 import { ensureOfficialAccount, officialAccountConfig } from './officialAccount';
 
@@ -22,7 +22,7 @@ export async function bootstrapOfficialAccount(): Promise<void> {
         },
         revokeCredentials: async (userId) => {
             await userRepository.revokeSessions(userId);
-            return publishingEnvironmentRepository.revokeAllForUser(userId, 'compromised');
+            return authorKeyRepository.revokeAllForUser(userId, 'compromised');
         },
         isDisplayNameTaken: async (key) => !!(await userRepository.findByDisplayNameKey(key)),
         initialize: (id, fields) => userRepository.initializeAccount(id, fields),

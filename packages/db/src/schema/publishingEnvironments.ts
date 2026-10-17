@@ -2,6 +2,9 @@ import { index, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 import { users } from './users';
 
 /**
+ * @deprecated 0020_author_keys で author_keys（origin = local）に移した。読み書きしない。次のマイグレーションで消す
+ * （それまでは、古いイメージに戻したときに読めるよう残す）。
+ *
  * 作者アカウントの公開環境（ブラウザ・CLI・CI）。1 つの公開環境 = 署名鍵 1 本（+ CLI・CI はアップロード用の API トークン）。
  * 秘密鍵は各環境の手元だけにあり、ここには公開鍵だけを置く。取り消しは削除せず revoked_at を立てる
  * （ほかのサーバーが「取り消し」と「取得失敗」を区別できるように鍵一覧に残す）。

@@ -86,7 +86,7 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
     });
 
     it('リポジトリのワールドは作者がこのサーバーのアカウントのものだけ、DB と同じ形で配る（ほかのサーバーの作者の写しは配らない）', async () => {
-        const { publishingEnvironmentRepository, userRepository } = await import('@ubichill/db');
+        const { authorKeyRepository, userRepository } = await import('@ubichill/db');
         const { selfAccount } = await import('./authorKeys');
         const userId = `it-repo-${Date.now()}`;
         const handle = `it_r${Date.now().toString(36)}`;
@@ -94,7 +94,7 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
         try {
             await userRepository.setHandleOnce(userId, handle);
             const key = newTestSigningKey();
-            await publishingEnvironmentRepository.create({
+            await authorKeyRepository.createLocal({
                 userId,
                 kind: 'ci',
                 name: 'テスト',
@@ -126,8 +126,8 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
             expect(await worldRegistry.worldFile(handle, '../package.json')).toBeUndefined();
 
             // 鍵を取り消すと作者が外れ、配らなくなる（DB のワールドと同じく取り消しが効く）
-            const [env] = await publishingEnvironmentRepository.listByUser(userId);
-            if (env) await publishingEnvironmentRepository.revoke(userId, env.id, 'compromised');
+            const [env] = await authorKeyRepository.listByUser(userId);
+            if (env) await authorKeyRepository.revoke(userId, env.id, 'compromised');
             worldRegistry.invalidateResolvedWorlds();
             expect(await worldRegistry.getWorld(name)).toBeUndefined();
         } finally {
@@ -380,7 +380,7 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
     });
 
     it('作者アカウント: 公開環境の鍵で author 付き署名すると作者が付き、別の環境を足しても保たれ、取り消すと外れる', async () => {
-        const { publishingEnvironmentRepository, userRepository } = await import('@ubichill/db');
+        const { authorKeyRepository, userRepository } = await import('@ubichill/db');
         const { selfAccount } = await import('./authorKeys');
         const userId = `it-author-${Date.now()}`;
         const handle = `it_${Date.now().toString(36)}`;
@@ -389,7 +389,7 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
             await userRepository.setHandleOnce(userId, handle);
             expect(await userRepository.setHandleOnce(userId, 'other_handle')).toBeUndefined(); // 変更不可
             const key = newTestSigningKey();
-            const env = await publishingEnvironmentRepository.create({
+            const env = await authorKeyRepository.createLocal({
                 userId,
                 kind: 'browser',
                 name: 'テスト',
@@ -418,7 +418,7 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
             expect(renamed?.identity).toMatchObject({ status: 'verified', author });
 
             // 別の公開環境を足しても、既存の環境の署名はそのまま有効
-            await publishingEnvironmentRepository.create({
+            await authorKeyRepository.createLocal({
                 userId,
                 kind: 'cli',
                 name: 'テスト CLI',
@@ -428,7 +428,7 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
             expect((await worldRegistry.getWorld(world.id))?.identity).toMatchObject({ author });
 
             // 取り消すと、その鍵の署名は取り消し前のものでも作者が外れ、一覧から消える
-            await publishingEnvironmentRepository.revoke(userId, env.id, 'lost');
+            await authorKeyRepository.revoke(userId, env.id, 'lost');
             worldRegistry.invalidateResolvedWorlds();
             const after = (await worldRegistry.getWorld(world.id))?.identity;
             expect(after).toMatchObject({ status: 'verified', worldId: `ed25519:${key.publicKey}/author-test` });

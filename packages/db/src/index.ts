@@ -2,7 +2,15 @@ import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from './schema';
 
-export { type AuthorBindingRecord, authorBindingRepository } from './repositories/authorBindingRepository';
+export {
+    type AuthorKeyRepository,
+    authorKeyRepository,
+    type CreateLocalAuthorKeyInput,
+    createAuthorKeyRepository,
+    type RemoteAuthorKeyRecord,
+    type RemoteAuthorRecord,
+} from './repositories/authorKeyRepository';
+export type { FetchedSigningKey, LocalAuthorKeyRecord } from './repositories/authorKeyRows';
 export {
     type CliAuthRequestRecord,
     type CreateCliAuthRequestInput,
@@ -23,11 +31,6 @@ export {
     type PendingRegistrationRecord,
     pendingRegistrationRepository,
 } from './repositories/pendingRegistrationRepository';
-export {
-    type CreatePublishingEnvironmentInput,
-    type PublishingEnvironmentRecord,
-    publishingEnvironmentRepository,
-} from './repositories/publishingEnvironmentRepository';
 export { type FriendRow, userFriendRepository } from './repositories/userFriendRepository';
 export { type UserRecord, userRepository } from './repositories/userRepository';
 export { userSettingsRepository } from './repositories/userSettingsRepository';
@@ -35,9 +38,18 @@ export { worldRepository } from './repositories/worldRepository';
 
 const connectionString = process.env.DATABASE_URL || 'postgresql://ubichill:password@127.0.0.1:5433/ubichill';
 
-// Disable prefetch as it is not supported for "Transaction" pool mode
-export const client = postgres(connectionString, { prepare: false });
-export const db: PostgresJsDatabase<typeof schema> = drizzle(client, { schema });
+export type Database = PostgresJsDatabase<typeof schema>;
+
+/** 接続を作る（既定の db とは別の DB を使うテスト・ツール用。使い終わったら client.end() する）。 */
+export function createDatabase(url: string): { client: postgres.Sql; db: Database } {
+    // Disable prefetch as it is not supported for "Transaction" pool mode
+    const client = postgres(url, { prepare: false });
+    return { client, db: drizzle(client, { schema }) };
+}
+
+const defaultDatabase = createDatabase(connectionString);
+export const client = defaultDatabase.client;
+export const db: Database = defaultDatabase.db;
 
 export type {
     CreateFederationPeerInput,
