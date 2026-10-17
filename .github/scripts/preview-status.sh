@@ -6,6 +6,8 @@ set -euo pipefail
 
 marker='<!-- ubichill-preview-status -->'
 url="https://pr-${PR_NUMBER}.ubichill.com"
+# URL は必ず Markdown のリンクにする。裸の URL の後に全角の「）」「。」が続くと、GitHub の自動リンクがそれも URL に含める
+link="[pr-${PR_NUMBER}.ubichill.com](${url})"
 short_sha="${HEAD_SHA:0:7}"
 
 mark() {
@@ -38,9 +40,9 @@ if $images_ok; then
 fi
 
 if $deployed; then
-  headline="プレビューは \`${short_sha}\` で動いています: ${url}"
+  headline="プレビューは \`${short_sha}\` で動いています: ${link}"
 elif $images_ok; then
-  headline="イメージは作りましたが、15 分以内に \`${short_sha}\` で立ち上がりませんでした（${url}）。Argo CD の Application \`ubichill-preview-pr-${PR_NUMBER}\` を確認してください"
+  headline="イメージは作りましたが、15 分以内に \`${short_sha}\` で立ち上がりませんでした（${link}）。Argo CD の Application \`ubichill-preview-pr-${PR_NUMBER}\` を確認してください"
 else
   headline="プレビュー用のイメージを作れなかったので、プレビューは古いコミットのまま（または起動できない）です"
 fi
