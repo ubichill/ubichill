@@ -19,7 +19,6 @@ vi.mock('./friends', () => ({ friendIdsOf: mocks.friendIdsOf }));
 vi.mock('./instanceRuntime', () => ({
     instanceRuntime: { presence: mocks.presence, provision: mocks.provision, ticket: mocks.ticket, close: mocks.close },
 }));
-vi.mock('./instanceReaper', () => ({ instanceReaper: { markCreated: vi.fn() } }));
 
 import { InstanceJoinRejected, instanceManager, ticketName } from './instanceManager';
 

@@ -50,6 +50,16 @@ const envSchema = z
             .string()
             .default('false')
             .transform((val) => val === 'true'),
+        // 開発・プレビュー用。署名の無い同梱ワールド（worlds/）を「署名なし」として配る（services/worldRegistry.ts）
+        WORLDS_SERVE_UNSIGNED_REPOSITORY: z
+            .string()
+            .default('false')
+            .transform((val) => val === 'true'),
+    })
+    .refine((env) => !(env.NODE_ENV === 'production' && env.WORLDS_SERVE_UNSIGNED_REPOSITORY), {
+        message:
+            'WORLDS_SERVE_UNSIGNED_REPOSITORY は本番（NODE_ENV=production）では使えません（署名の無いワールドを公式として配ってしまう）',
+        path: ['WORLDS_SERVE_UNSIGNED_REPOSITORY'],
     })
     .refine((env) => env.INSTANCE_DIRECTORY !== 'redis' || env.REDIS_URL !== undefined, {
         message: 'INSTANCE_DIRECTORY=redis には REDIS_URL が要ります',

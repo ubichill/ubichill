@@ -28,8 +28,8 @@ export const instances = pgTable(
         hasPassword: boolean('has_password').notNull().default(false),
         maxUsers: integer('max_users').notNull().default(10),
         currentUsers: integer('current_users').notNull().default(0),
-        createdAt: timestamp('created_at').notNull().defaultNow(),
-        expiresAt: timestamp('expires_at'),
+        createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+        expiresAt: timestamp('expires_at', { withTimezone: true }),
         // パスワード保護用（ハッシュ化して保存）
         passwordHash: varchar('password_hash', { length: 255 }),
     },

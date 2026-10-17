@@ -14,6 +14,7 @@ import {
     isPublishable,
     LIMITS,
     type ModLock,
+    OFFICIAL_HANDLE,
     parseAuthorAccount,
     type ResolvedWorld,
     SERVER_CONFIG,
@@ -84,6 +85,26 @@ export type SaveBundleResult =
       };
 
 /** 署名が名乗る作者アカウント（検証前。リポジトリのワールドの URL と、配るかの事前判定に使う）。 */
+/**
+ * リポジトリ（worlds/）のワールドの扱い。
+ * - 自サーバーの作者の署名 → 作者の鍵で確かめて配る
+ * - ほかのサーバーの作者の署名 → 配らない（一覧のたびに作者のサーバーへ問い合わせない）
+ * - 署名なし → 配らない。開発・プレビュー（`WORLDS_SERVE_UNSIGNED_REPOSITORY=true`）だけ、公式アカウントの名義で「署名なし」として配る。
+ *   公式ワールドの署名は main への push でしか付けないので、無いとプレビューに入れるワールドが 1 つも無くなる
+ */
+export type RepositoryWorldPolicy = 'verify-own' | 'serve-unsigned' | 'skip';
+
+export function repositoryWorldPolicy(
+    claimed: AuthorAccount | null,
+    ownDomain: string,
+    serveUnsigned: boolean,
+): RepositoryWorldPolicy {
+    if (claimed) return claimed.domain === ownDomain ? 'verify-own' : 'skip';
+    return serveUnsigned ? 'serve-unsigned' : 'skip';
+}
+
+const serveUnsignedRepositoryWorlds = (): boolean => process.env.WORLDS_SERVE_UNSIGNED_REPOSITORY === 'true';
+
 function claimedAuthorOf(hosted: HostedWorldDocument | undefined): AuthorAccount | null {
     const claimed = (hosted?.signature as { author?: unknown } | null | undefined)?.author;
     return typeof claimed === 'string' ? parseAuthorAccount(claimed) : null;
@@ -278,7 +299,11 @@ class WorldRegistry {
             }),
         );
 
-        return [...repositoryItems.flat(), ...dbItems.flat()].filter((w) => isPublishable(w.identity));
+        // 開発・プレビューで署名なしとして配っている同梱ワールドも一覧に出す（利用者のワールドは署名済みだけ）
+        const repositoryListed = repositoryItems
+            .flat()
+            .filter((w) => isPublishable(w.identity) || serveUnsignedRepositoryWorlds());
+        return [...repositoryListed, ...dbItems.flat().filter((w) => isPublishable(w.identity))];
     }
 
     /**
@@ -395,7 +420,12 @@ class WorldRegistry {
         name: string,
     ): Promise<{ id: string; repository?: { filePath: string }; record?: WorldRecord } | undefined> {
         const repository = this._repository.get(name);
-        if (repository && claimedAuthorOf(repository.hosted)?.handle === handle) return { id: name, repository };
+        if (repository) {
+            const claimed = claimedAuthorOf(repository.hosted);
+            // 署名なしとして配っている同梱ワールドは公式アカウントの名義（_resolveRepositoryWorld と同じ規則）
+            const owner = claimed?.handle ?? (serveUnsignedRepositoryWorlds() ? OFFICIAL_HANDLE : undefined);
+            if (owner === handle) return { id: name, repository };
+        }
         if (!HANDLE_PATTERN.test(handle)) return undefined;
         const user = await userRepository.findByHandle(handle);
         if (!user) return undefined;
@@ -747,9 +777,16 @@ class WorldRegistry {
      * 配るのは作者がこのサーバーのアカウントのものだけ。ほかのサーバーの作者のものは写しを配らない（作者のサーバーを連合でフォローする）。
      */
     private async _resolveRepositoryWorld(id: string, hosted: HostedWorldDocument): Promise<WorldResolution> {
-        // 署名が名乗る作者がほかのサーバーなら検証もしない（一覧のたびに作者のサーバーへ問い合わせない）
         const claimed = claimedAuthorOf(hosted);
-        if (!claimed || claimed.domain !== selfDomain()) return NOT_FOUND;
+        const policy = repositoryWorldPolicy(claimed, selfDomain(), serveUnsignedRepositoryWorlds());
+        if (policy === 'skip') return NOT_FOUND;
+        if (policy === 'serve-unsigned') {
+            const official = await userRepository.findByHandle(OFFICIAL_HANDLE);
+            if (!official) return NOT_FOUND;
+            // 署名が付いていれば resolveBundle が確かめる（内容と合わなければ配らない）。無ければ「署名なし」として返る
+            return this._verify(id, this.selfWorldUrl(OFFICIAL_HANDLE, id), hosted, official.id);
+        }
+        if (!claimed) return NOT_FOUND;
         const author = await userRepository.findByHandle(claimed.handle);
         if (!author) return NOT_FOUND;
         const resolution = await this._verify(id, this.selfWorldUrl(claimed.handle, id), hosted, author.id);

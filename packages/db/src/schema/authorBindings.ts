@@ -10,7 +10,7 @@ export const authorBindings = pgTable('author_bindings', {
     /** `{ publicKey, addedAt?, revokedAt? }[]`（取り消した鍵も含む） */
     keys: jsonb('keys').$type<Array<{ publicKey: string; addedAt?: string; revokedAt?: string }>>().notNull(),
     displayName: text('display_name'),
-    fetchedAt: timestamp('fetched_at').defaultNow().notNull(),
+    fetchedAt: timestamp('fetched_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
 /**
@@ -23,7 +23,7 @@ export const authorConfirmedContents = pgTable(
     {
         account: text('account').notNull(),
         contentHash: text('content_hash').notNull(),
-        confirmedAt: timestamp('confirmed_at').defaultNow().notNull(),
+        confirmedAt: timestamp('confirmed_at', { withTimezone: true }).defaultNow().notNull(),
     },
     (table) => [primaryKey({ columns: [table.account, table.contentHash] })],
 );
