@@ -27,7 +27,5 @@ BEGIN
 		UPDATE "users" SET "handle" = candidate, "updated_at" = now() WHERE "id" = target."id";
 	END LOOP;
 END $$;--> statement-breakpoint
-ALTER TABLE "users" DROP CONSTRAINT "users_username_unique";--> statement-breakpoint
-ALTER TABLE "users" ALTER COLUMN "handle" SET NOT NULL;--> statement-breakpoint
-ALTER TABLE "users" DROP COLUMN "username";--> statement-breakpoint
-ALTER TABLE "users" DROP COLUMN "profile_image_url";
+-- username・profile_image_url は新しいコードが読まないだけで、ここでは消さない（デプロイ中の古い Pod が SELECT するため。0022 で消す）。
+ALTER TABLE "users" ALTER COLUMN "handle" SET NOT NULL;

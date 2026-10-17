@@ -39,6 +39,7 @@ interface UserRow {
 describe.skipIf(!RUN)('0021_users_cleanup（DB 統合）', () => {
     const name = `ubichill_users_cleanup_${Date.now().toString(36)}`;
     const upTo0020 = RUN ? migrationsUpTo('0020_author_keys') : '';
+    const upTo0021 = RUN ? migrationsUpTo('0021_users_cleanup') : '';
     const admin = RUN ? createDatabase(process.env.DATABASE_URL ?? '') : undefined;
     const state: { scratch?: ReturnType<typeof createDatabase>; rows: UserRow[]; columns: string[] } = {
         rows: [],
@@ -74,7 +75,7 @@ describe.skipIf(!RUN)('0021_users_cleanup（DB 統合）', () => {
             FROM unnest(${sql.raw(`ARRAY[${noHandle.map((id) => `'${id}'`).join(',')}]`)}) AS id
         `);
 
-        await migrate(db(), { migrationsFolder: MIGRATIONS });
+        await migrate(db(), { migrationsFolder: upTo0021 });
         state.rows = [...(await db().execute<UserRow>(sql`SELECT id, handle, image FROM users`))];
         state.columns = (
             await db().execute<{ column_name: string }>(
@@ -87,7 +88,7 @@ describe.skipIf(!RUN)('0021_users_cleanup（DB 統合）', () => {
         await state.scratch?.client.end({ timeout: 5 });
         await admin?.client.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
         await admin?.client.end({ timeout: 5 });
-        if (upTo0020) rmSync(upTo0020, { recursive: true, force: true });
+        for (const dir of [upTo0020, upTo0021]) if (dir) rmSync(dir, { recursive: true, force: true });
     });
 
     it('すべてのユーザーに handle があり、重ならず、システムユーザー以外は登録と同じ規則（予約語を含む）を満たす', () => {
@@ -119,9 +120,9 @@ describe.skipIf(!RUN)('0021_users_cleanup（DB 統合）', () => {
         expect(byId('keep')?.image).toBeNull();
     });
 
-    it('username・profile_image_url の列が消え、handle は NOT NULL になる', async () => {
-        expect(state.columns).not.toContain('username');
-        expect(state.columns).not.toContain('profile_image_url');
+    it('username・profile_image_url の列は残し（古い Pod が読む）、handle は NOT NULL になる', async () => {
+        expect(state.columns).toContain('username');
+        expect(state.columns).toContain('profile_image_url');
         await expect(
             db().execute(sql`INSERT INTO users (id, name, email) VALUES ('after', 'After', 'after@example.com')`),
         ).rejects.toThrow();
