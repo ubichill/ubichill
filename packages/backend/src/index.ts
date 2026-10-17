@@ -148,8 +148,9 @@ function setupGracefulShutdown() {
 // サーバーを起動（非同期初期化）
 async function startServer() {
     // システムユーザー初期化のみ（ワールドシードは行わない）
-    await worldRegistry.initialize();
+    // 公式アカウントを先に用意する（同梱ワールドの作者の確認に使う。後だと最初の読み込みで配られない）
     await bootstrapOfficialAccount();
+    await worldRegistry.initialize();
 
     // 期限切れの CLI 認可の要求を消す（認証なしで作れるので溜めない）
     const cleanCliAuthRequests = () =>

@@ -34,9 +34,9 @@ export const worlds = pgTable(
         // 公開すると definition 側へ反映して消す。未公開のワールドは下書きを definition に直接保存する。
         draftDefinition: jsonb('draft_definition').$type<unknown>(),
         draftLock: jsonb('draft_lock').$type<ModLock>(),
-        draftUpdatedAt: timestamp('draft_updated_at'),
-        createdAt: timestamp('created_at').defaultNow().notNull(),
-        updatedAt: timestamp('updated_at').defaultNow().notNull(),
+        draftUpdatedAt: timestamp('draft_updated_at', { withTimezone: true }),
+        createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+        updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
     },
     (table) => [uniqueIndex('worlds_author_world_name_unique').on(table.authorId, table.worldName)],
 );
@@ -55,7 +55,7 @@ export const worldNameAliases = pgTable(
         worldId: varchar('world_id', { length: 21 })
             .notNull()
             .references(() => worlds.id, { onDelete: 'cascade' }),
-        createdAt: timestamp('created_at').defaultNow().notNull(),
+        createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     },
     (table) => [primaryKey({ columns: [table.authorId, table.name] })],
 );

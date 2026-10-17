@@ -12,7 +12,6 @@ import bcrypt from 'bcryptjs';
 import { appConfig } from '../config';
 import { logger } from '../utils/logger';
 import { friendIdsOf } from './friends';
-import { instanceReaper } from './instanceReaper';
 import { instanceRuntime, type RuntimePresence } from './instanceRuntime';
 import { worldRegistry } from './worldRegistry';
 
@@ -66,11 +65,6 @@ class InstanceManager {
         }
 
         logger.info(`インスタンス作成: ${dbInstance.id} (world: ${world.id})`);
-
-        // 空インスタンスの掃除は instanceReaper が定期スイープで担う。
-        // 生成時刻をプロセス内に記録し、birth grace を DB タイムスタンプ解釈に依存せず
-        // 確実に効かせる（作成者が join する前に消されて not found になるのを防ぐ）。
-        instanceReaper.markCreated(dbInstance.id);
 
         return this.toPublicInstance(dbInstance, world);
     }
