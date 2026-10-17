@@ -25,7 +25,7 @@ import {
 } from '@ubichill/loader';
 import { type ModLockEntry, verifyModSignature } from '@ubichill/shared';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { buildMod } from './build.ts';
+import { buildMod, dataOnlyManifestEntry } from './build.ts';
 import { listDirsOnDisk } from './modLayout.ts';
 import { publishMods } from './publishMods.ts';
 import { verifyAllModLocks, verifyAllModSignatures } from './verify.ts';
@@ -122,9 +122,34 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
         expect(comp.canvasTargets).toEqual(['drawing']);
     });
 
-    it('manifest に全3コンポーネント（pen:pen, pen:canvas, pen:tray）が列挙される', () => {
+    it('manifest に全コンポーネントが列挙され、Worker を持つ 3 つだけが lock に載る', () => {
         const comps = manifest.components as Record<string, unknown>;
-        expect(Object.keys(comps).sort()).toEqual(['pen:canvas', 'pen:pen', 'pen:tray']);
+        expect(Object.keys(comps).sort()).toEqual(['pen:canvas', 'pen:pen', 'pen:stroke', 'pen:tray']);
+        expect(Object.keys(lockEntry.components as Record<string, unknown>).sort()).toEqual([
+            'pen:canvas',
+            'pen:pen',
+            'pen:tray',
+        ]);
+    });
+
+    it('data-only の pen:stroke は workerUrl・capabilities を持たず、バンドルも出力しない', () => {
+        const stroke = (manifest.components as Record<string, Record<string, unknown>>)['pen:stroke'];
+        expect(stroke.dataOnly).toBe(true);
+        expect(stroke).not.toHaveProperty('workerUrl');
+        expect(stroke).not.toHaveProperty('capabilities');
+        expect(existsSync(join(publicDir, modId, `v${version}`, 'stroke'))).toBe(false);
+    });
+
+    it('Host は pen:stroke を data-only として扱う（Worker を探して not-found にしない）', async () => {
+        const lock = await buildWorldLock([modId], createHttpLockEntryGetter(publicDir, fsFetch));
+        const result = await acquireMod('pen:stroke', { baseUrl: publicDir, lock, fetchImpl: fsFetch, ...unsignedDev });
+        expect(result).toBe('data-only');
+    });
+
+    it('宣言していない型は従来どおり not-found（data-only と取り違えない）', async () => {
+        const lock = await buildWorldLock([modId], createHttpLockEntryGetter(publicDir, fsFetch));
+        const result = await acquireMod('pen:undeclared', { baseUrl: publicDir, lock, fetchImpl: fsFetch, ...unsignedDev });
+        expect(result).toBe('not-found');
     });
 
     it('lock.json の各コンポーネント integrity が実 worker ファイルと一致する', () => {
@@ -357,5 +382,25 @@ describe('リモート registry からのバージョン履歴マージ（CI ク
 
         expect(called).toBe(false);
         expect(entry.versions.map((v) => v.version)).toEqual(['2.0.0']);
+    });
+});
+
+describe('dataOnlyManifestEntry', () => {
+    it('dataOnly: true だけを data-only にし、workerUrl・capabilities は落とす（コードを実行しないので権限を持たせない）', () => {
+        expect(
+            dataOnlyManifestEntry({
+                dataOnly: true,
+                description: 'x',
+                capabilities: ['net:fetch'],
+                workerUrl: './evil.js',
+            }),
+        ).toEqual({ dataOnly: true, description: 'x' });
+    });
+
+    it('dataOnly が true 以外（省略・false・文字列の "true"）や config 無しは null', () => {
+        expect(dataOnlyManifestEntry(null)).toBeNull();
+        expect(dataOnlyManifestEntry({})).toBeNull();
+        expect(dataOnlyManifestEntry({ dataOnly: false })).toBeNull();
+        expect(dataOnlyManifestEntry({ dataOnly: 'true' })).toBeNull();
     });
 });
