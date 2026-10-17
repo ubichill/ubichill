@@ -9,17 +9,19 @@ import {
 interface FakeUser {
     id: string;
     email: string;
-    handle: string | null;
+    handle: string;
     emailVerified: boolean;
     passwordChangeRequired: boolean;
     password?: string;
     publishingEnvironments?: number;
+    /** その ID で公開したワールド・外部の作品の数 */
+    published?: number;
 }
 
 function fakeDeps(state: { users?: FakeUser[]; takenNames?: string[] }) {
     const users = [...(state.users ?? [])];
     const calls = {
-        signUp: [] as string[],
+        signUp: [] as Array<{ email: string; handle: string; name: string; displayNameKey: string | null }>,
         initialize: [] as Array<{ id: string; fields: Record<string, unknown> }>,
         replaced: [] as Array<{ id: string; password: string }>,
         revoked: [] as string[],
@@ -27,17 +29,21 @@ function fakeDeps(state: { users?: FakeUser[]; takenNames?: string[] }) {
     const deps: OfficialAccountDeps = {
         findByHandle: async (h) => users.find((u) => u.handle === h),
         findByEmail: async (e) => users.find((u) => u.email === e),
-        signUp: async (email, password) => {
-            calls.signUp.push(email);
+        signUp: async ({ email, password, handle, name, displayNameKey }) => {
+            calls.signUp.push({ email, handle, name, displayNameKey });
             users.push({
                 id: `new-${email}`,
                 email,
-                handle: null,
-                emailVerified: false,
+                handle,
+                emailVerified: true,
                 passwordChangeRequired: false,
                 password,
             });
             return `new-${email}`;
+        },
+        hasPublished: async (id) => {
+            const user = users.find((u) => u.id === id);
+            return (user?.publishingEnvironments ?? 0) > 0 || (user?.published ?? 0) > 0;
         },
         passwordMatches: async (id, password) => users.find((u) => u.id === id)?.password === password,
         replacePassword: async (id, password) => {
@@ -93,17 +99,21 @@ describe('officialAccountConfig', () => {
 describe('ensureOfficialAccount（パスワードは常に Secret が正）', () => {
     const config = { email: 'ubichill@ubichill.com', password: 'secret-1', usingDevDefault: false };
 
-    it('無ければ Secret のパスワードで作り、ID・表示名を設定する', async () => {
+    it('無ければ Secret のパスワードで、ID・表示名を決めた状態で作る（ID の無い瞬間を作らない）', async () => {
         const { deps, calls } = fakeDeps({});
         expect(await ensureOfficialAccount(config, deps)).toBe('created');
-        expect(calls.signUp).toEqual(['ubichill@ubichill.com']);
-        expect(calls.initialize[0]?.fields).toMatchObject({
-            handle: 'ubichill',
-            name: 'Ubichill',
-            displayNameKey: 'ubichill',
-            emailVerified: true,
-            passwordChangeRequired: false,
-        });
+        expect(calls.signUp).toEqual([
+            { email: 'ubichill@ubichill.com', handle: 'ubichill', name: 'Ubichill', displayNameKey: 'ubichill' },
+        ]);
+        expect(calls.initialize).toEqual([]);
+    });
+
+    it('既定のパスワードで作ったときは「既定のパスワードのまま」を立てる', async () => {
+        const { deps, calls } = fakeDeps({});
+        await ensureOfficialAccount({ ...config, password: DEV_DEFAULT_PASSWORD, usingDevDefault: true }, deps);
+        expect(calls.initialize).toEqual([
+            { id: 'new-ubichill@ubichill.com', fields: { passwordChangeRequired: true } },
+        ]);
     });
 
     it('Secret と同じなら何もしない（起動のたびにログインを切らない）', async () => {
@@ -147,9 +157,9 @@ describe('ensureOfficialAccount（パスワードは常に Secret が正）', ()
         expect(onSecret.calls.initialize).toEqual([{ id: 'u1', fields: { passwordChangeRequired: false } }]);
     });
 
-    it('同じメールのアカウントが ID 未設定で既にあれば公式アカウントにし、パスワードも Secret に合わせる', async () => {
+    it('同じメールのアカウントが、その ID で何も公開していなければ公式アカウントにし、パスワードも Secret に合わせる', async () => {
         const { deps, calls } = fakeDeps({
-            users: [official({ id: 'm1', handle: null, password: 'manual' })],
+            users: [official({ id: 'm1', handle: 'user_0123456789ab', password: 'manual' })],
         });
         expect(await ensureOfficialAccount(config, deps)).toBe('attached');
         expect(calls.initialize[0]).toMatchObject({ id: 'm1', fields: { handle: 'ubichill' } });
@@ -158,7 +168,7 @@ describe('ensureOfficialAccount（パスワードは常に Secret が正）', ()
 
     it('メールアドレスを確認していないアカウントは、同じメールでも公式にしない', async () => {
         const { deps, calls } = fakeDeps({
-            users: [official({ id: 'm1', handle: null, emailVerified: false, password: 'attacker' })],
+            users: [official({ id: 'm1', handle: 'user_0123456789ab', emailVerified: false, password: 'attacker' })],
         });
         expect(await ensureOfficialAccount(config, deps)).toBe('skipped');
         expect(calls.initialize).toEqual([]);
@@ -166,14 +176,23 @@ describe('ensureOfficialAccount（パスワードは常に Secret が正）', ()
         expect(calls.revoked).toEqual([]);
     });
 
-    it('先に作られていたアカウントを公式にするときは、それまでのログインと鍵を持ち越さない', async () => {
+    it('先に作られていたアカウントを公式にするときは、それまでのログインを持ち越さない', async () => {
         const { deps, calls } = fakeDeps({
-            users: [official({ id: 'm1', handle: null, password: 'secret-1', publishingEnvironments: 2 })],
+            users: [official({ id: 'm1', handle: 'user_0123456789ab', password: 'secret-1' })],
         });
         expect(await ensureOfficialAccount(config, deps)).toBe('attached');
         // パスワードが Secret と同じでも取り消す（パスワードの置き換えに頼らない）
         expect(calls.replaced).toEqual([]);
         expect(calls.revoked).toEqual(['m1']);
+    });
+
+    it('同じメールのアカウントが鍵を登録していれば（取り消し済みでも）、その ID の署名があり得るので付け替えない', async () => {
+        const { deps, calls } = fakeDeps({
+            users: [official({ id: 'm1', handle: 'user_0123456789ab', publishingEnvironments: 1 })],
+        });
+        expect(await ensureOfficialAccount(config, deps)).toBe('skipped');
+        expect(calls.initialize).toEqual([]);
+        expect(calls.revoked).toEqual([]);
     });
 
     it('すでに公式のアカウントは、起動のたびに鍵を取り消さない', async () => {
@@ -182,8 +201,8 @@ describe('ensureOfficialAccount（パスワードは常に Secret が正）', ()
         expect(calls.revoked).toEqual([]);
     });
 
-    it('同じメールのアカウントが別の ID を持っていれば奪わない', async () => {
-        const { deps, calls } = fakeDeps({ users: [official({ id: 'm1', handle: 'someone' })] });
+    it('同じメールのアカウントが別の ID でワールドなどを公開していれば奪わない', async () => {
+        const { deps, calls } = fakeDeps({ users: [official({ id: 'm1', handle: 'someone', published: 1 })] });
         expect(await ensureOfficialAccount(config, deps)).toBe('skipped');
         expect(calls.initialize).toEqual([]);
         expect(calls.replaced).toEqual([]);
@@ -192,6 +211,6 @@ describe('ensureOfficialAccount（パスワードは常に Secret が正）', ()
     it('表示名「Ubichill」が既に使われていれば一意キーは付けない（利用者の名前を奪わない）', async () => {
         const { deps, calls } = fakeDeps({ takenNames: ['ubichill'] });
         await ensureOfficialAccount(config, deps);
-        expect(calls.initialize[0]?.fields).toMatchObject({ name: 'Ubichill', displayNameKey: null });
+        expect(calls.signUp[0]).toMatchObject({ name: 'Ubichill', displayNameKey: null });
     });
 });

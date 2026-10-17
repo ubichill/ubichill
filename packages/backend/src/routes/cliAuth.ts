@@ -100,7 +100,7 @@ router.get('/requests', requireFreshAuth, async (req, res) => {
 router.post('/requests/:id/approve', requireFreshAuth, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const user = await userRepository.findById(req.user.id);
-    if (!user?.handle) return res.status(409).json({ error: '先に ID を設定してください（作者アカウントが必要です）' });
+    if (!user) return res.status(404).json({ error: 'User not found' });
     const request = await cliAuthRequestRepository.findActive(String(req.params.id));
     if (request?.status !== 'pending') {
         return res.status(404).json({ error: '承認できる要求が見つかりません（期限切れか、処理済みです）' });
@@ -139,7 +139,7 @@ router.post('/token', async (req, res) => {
     const consumed = await cliAuthRequestRepository.consume(request.id);
     if (!consumed) return res.status(409).json({ error: 'この認可の要求は引き換え済みです', code: 'consumed' });
     const user = await userRepository.findById(request.userId);
-    if (!user?.handle) return res.status(409).json({ error: '作者アカウントが見つかりません' });
+    if (!user) return res.status(409).json({ error: '作者アカウントが見つかりません' });
     if (await authorKeyRepository.findLocalKey(request.publicKey)) {
         return res.status(409).json({ error: 'この鍵は登録できません（作り直してください）', code: 'taken' });
     }

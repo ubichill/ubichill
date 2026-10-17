@@ -22,13 +22,13 @@ export interface MyAccount {
     passwordManagedBySecret: boolean;
     /** このサーバーの管理者（公式アカウント）。 */
     isAdmin: boolean;
-    /** URL・署名用の ID。既存ユーザーは未設定のことがある。 */
-    handle: string | null;
-    /** 作者アカウント `handle@domain`（handle 未設定なら null）。 */
-    author: string | null;
+    /** URL・署名用の ID（変更不可）。 */
+    handle: string;
+    /** 作者アカウント `handle@domain`。 */
+    author: string;
     /** 取り消されていない公開環境の鍵（このブラウザの鍵が登録済みかの判定に使う）。 */
     signingKeys: string[];
-    profileImageUrl: string | null;
+    image: string | null;
 }
 
 async function errorMessage(res: Response): Promise<string> {
@@ -77,18 +77,6 @@ export async function setMyBio(bio: string): Promise<{ bio: string | null }> {
     });
     if (!res.ok) throw new Error(await errorMessage(res));
     return (await res.json()) as { bio: string | null };
-}
-
-/** ID を設定する（変更不可。未設定のアカウントのみ）。 */
-export async function setMyHandle(handle: string): Promise<{ handle: string; author: string }> {
-    const res = await fetch(`${API_BASE}/api/v1/users/me/handle`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ handle }),
-    });
-    if (!res.ok) throw new Error(await errorMessage(res));
-    return (await res.json()) as { handle: string; author: string };
 }
 
 /** 公開環境（署名して公開できるブラウザ・CLI・CI）。 */

@@ -1,6 +1,6 @@
 /** 公式アカウントの初期化の実体（better-auth・DB・レビュー済みの鍵を注入する）。ロジックは officialAccount.ts。 */
-import { authorKeyRepository, userRepository } from '@ubichill/db';
-import { auth } from '../lib/auth';
+import { authorKeyRepository, externalWorkRepository, userRepository, worldRepository } from '@ubichill/db';
+import { auth, newBetterAuthId } from '../lib/auth';
 import { ensureOfficialAccount, officialAccountConfig } from './officialAccount';
 
 export async function bootstrapOfficialAccount(): Promise<void> {
@@ -8,9 +8,28 @@ export async function bootstrapOfficialAccount(): Promise<void> {
     await ensureOfficialAccount(officialAccountConfig(process.env), {
         findByHandle: (handle) => userRepository.findByHandle(handle),
         findByEmail: (email) => userRepository.findByEmail(email),
-        signUp: async (email, password, name) => {
-            const result = await auth.api.signUpEmail({ body: { email, password, name } });
-            return result.user.id;
+        // signUpEmail は handle の無い users を先に作るので使わない（handle は NOT NULL）
+        signUp: async ({ email, password, name, handle, displayNameKey }) => {
+            const userId = newBetterAuthId(ctx, 'user');
+            await userRepository.createCredentialUser({
+                userId,
+                accountId: newBetterAuthId(ctx, 'account'),
+                email: email.toLowerCase(),
+                name,
+                handle,
+                displayNameKey,
+                passwordHash: await ctx.password.hash(password),
+                now: new Date(),
+            });
+            return userId;
+        },
+        hasPublished: async (userId) => {
+            const [keys, worlds, externalWorks] = await Promise.all([
+                authorKeyRepository.listByUser(userId),
+                worldRepository.findByAuthorId(userId),
+                externalWorkRepository.countByUser(userId),
+            ]);
+            return keys.length > 0 || worlds.length > 0 || externalWorks > 0;
         },
         passwordMatches: async (userId, password) => {
             const hash = await userRepository.findPasswordHash(userId);

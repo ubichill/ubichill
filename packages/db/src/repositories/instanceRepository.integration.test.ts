@@ -20,7 +20,9 @@ describe.skipIf(!RUN)('instances の時刻（timestamptz, DB統合）', () => {
         const tokyo = drizzle(client, { schema });
         const userId = `tz-it-${stamp}`;
         try {
-            await tokyo.insert(schema.users).values({ id: userId, name: userId, email: `${userId}@example.com` });
+            await tokyo
+                .insert(schema.users)
+                .values({ id: userId, name: userId, email: `${userId}@example.com`, handle: `tz_${stamp}` });
             const before = Date.now();
             const expiresAt = new Date(before + 60_000);
             const [created] = await tokyo

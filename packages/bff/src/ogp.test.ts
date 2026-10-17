@@ -90,7 +90,7 @@ describe('buildUserMetaTags', () => {
         pageUrl: 'https://ubichill.com/@youkan',
         enableCrawl: true,
     };
-    const user = { id: 'u1', name: 'ようかん', handle: 'youkan', profileImageUrl: null, bio: null };
+    const user = { id: 'u1', name: 'ようかん', handle: 'youkan', image: null, bio: null };
 
     it('名前・作者アカウント・公開しているワールドの数で説明を作り、アイコンが無ければサイトのアイコン', () => {
         const tags = buildUserMetaTags({ ...base, user, worldCount: 3 });
@@ -114,7 +114,7 @@ describe('buildUserMetaTags', () => {
     it('アイコンがあればそれを使う', () => {
         const tags = buildUserMetaTags({
             ...base,
-            user: { ...user, profileImageUrl: 'https://cdn.example/a.png' },
+            user: { ...user, image: 'https://cdn.example/a.png' },
             worldCount: 0,
         });
         expect(tags).toContain('<meta property="og:image" content="https://cdn.example/a.png">');

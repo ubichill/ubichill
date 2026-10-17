@@ -28,7 +28,7 @@ export function UserPage() {
         const ctrl = { cancelled: false };
         fetchUserWithFriendship(routeUserId)
             .then((u) => {
-                if (!ctrl.cancelled && u.handle) navigate(`/@${u.handle}`, { replace: true });
+                if (!ctrl.cancelled) navigate(`/@${u.handle}`, { replace: true });
             })
             .catch(() => undefined);
         return () => {

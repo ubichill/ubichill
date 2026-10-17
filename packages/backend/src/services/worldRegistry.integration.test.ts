@@ -76,8 +76,7 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
         ({ instanceManager } = await import('./instanceManager'));
         await worldRegistry.initialize();
         const { userRepository } = await import('@ubichill/db');
-        await userRepository.create({ id: AUTHOR, name: '保存テスト', email: `${AUTHOR}@example.com` });
-        await userRepository.setHandleOnce(AUTHOR, HANDLE);
+        await userRepository.create({ id: AUTHOR, name: '保存テスト', email: `${AUTHOR}@example.com`, handle: HANDLE });
     });
 
     afterAll(async () => {
@@ -90,9 +89,8 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
         const { selfAccount } = await import('./authorKeys');
         const userId = `it-repo-${Date.now()}`;
         const handle = `it_r${Date.now().toString(36)}`;
-        await userRepository.create({ id: userId, name: 'リポジトリ作者', email: `${userId}@example.com` });
+        await userRepository.create({ id: userId, name: 'リポジトリ作者', email: `${userId}@example.com`, handle });
         try {
-            await userRepository.setHandleOnce(userId, handle);
             const key = newTestSigningKey();
             await authorKeyRepository.createLocal({
                 userId,
@@ -281,18 +279,10 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
         }
     });
 
-    it('ID の無いアカウントは保存できない（公開の URL が作れない）', async () => {
-        const { userRepository } = await import('@ubichill/db');
-        const userId = `it-nohandle-${Date.now()}`;
-        await userRepository.create({ id: userId, name: 'ID なし', email: `${userId}@example.com` });
-        try {
-            expect(await worldRegistry.saveBundle(userId, bundleOf(worldDef(uniqueName('nh'), 'x')))).toMatchObject({
-                ok: false,
-                reason: 'handle-required',
-            });
-        } finally {
-            await userRepository.deleteById(userId);
-        }
+    it('作者のアカウントが無ければ保存できない（公開の URL が作れない）', async () => {
+        expect(
+            await worldRegistry.saveBundle(`it-missing-${Date.now()}`, bundleOf(worldDef(uniqueName('nh'), 'x'))),
+        ).toMatchObject({ ok: false, reason: 'author-not-found' });
     });
 
     it('同じ名前の初回保存が同時に来ても 500 にせず、同じワールドになる', async () => {
@@ -384,10 +374,8 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
         const { selfAccount } = await import('./authorKeys');
         const userId = `it-author-${Date.now()}`;
         const handle = `it_${Date.now().toString(36)}`;
-        await userRepository.create({ id: userId, name: 'テスト作者', email: `${userId}@example.com` });
+        await userRepository.create({ id: userId, name: 'テスト作者', email: `${userId}@example.com`, handle });
         try {
-            await userRepository.setHandleOnce(userId, handle);
-            expect(await userRepository.setHandleOnce(userId, 'other_handle')).toBeUndefined(); // 変更不可
             const key = newTestSigningKey();
             const env = await authorKeyRepository.createLocal({
                 userId,
