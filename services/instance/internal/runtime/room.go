@@ -20,7 +20,9 @@ type Room struct {
 	order      map[string]uint64
 	sequence   uint64
 	members    map[string]*member
-	timelines  map[string]Object
+	// state は共有状態（state.go）。stateBytes はその大きさの合計。
+	state      map[string]*stateEntry
+	stateBytes int
 	emptySince int64
 	closed     bool
 	// owner の世代。割り当てのたびに新しい Room を作るので、作ったあとは変わらない。
@@ -45,7 +47,7 @@ func newRoom(d Definition) (*Room, error) {
 	if d.ID == "" || len(d.ID) > 200 || d.MaxUsers < 1 || d.MaxUsers > 1000 || d.Snapshot.Environment == nil || len(d.Snapshot.Entities) > 10000 {
 		return nil, errors.New("invalid instance definition")
 	}
-	r := &Room{definition: d, entities: map[string]Object{}, sizes: map[string]int{}, order: map[string]uint64{}, members: map[string]*member{}, timelines: map[string]Object{}, emptySince: time.Now().UnixMilli(), now: time.Now}
+	r := &Room{definition: d, entities: map[string]Object{}, sizes: map[string]int{}, order: map[string]uint64{}, members: map[string]*member{}, state: map[string]*stateEntry{}, emptySince: time.Now().UnixMilli(), now: time.Now}
 	for _, e := range d.Snapshot.Entities {
 		id := str(e["id"])
 		if id == "" || len(id) > 200 {

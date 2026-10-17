@@ -107,7 +107,7 @@ func spreadAndConverge(t *testing.T, a, b *node) {
 	if got := members(b.Server, "room-b"); !slices.Equal(got, []string{"carol"}) {
 		t.Fatalf("room-b members = %v", got)
 	}
-	if got := request(t, carol, "media:timeline:get", "through-a", Object{"sessionId": "s"}); got["success"] != true {
+	if got := request(t, carol, "state:get", "through-a", Object{"key": "s"}); got["success"] != true {
 		t.Fatalf("request through the relay: %v", got)
 	}
 }
@@ -254,7 +254,7 @@ func TestRateLimitIsCountedOnlyWhereTheClientConnects(t *testing.T) {
 	burst := func(conn *websocket.Conn, n int) (limited int) {
 		t.Helper()
 		for i := range n {
-			if err := conn.WriteJSON(Frame{Event: "media:timeline:get", ID: fmt.Sprint("r", i), Data: encoded(Object{"sessionId": "s"})}); err != nil {
+			if err := conn.WriteJSON(Frame{Event: "state:get", ID: fmt.Sprint("r", i), Data: encoded(Object{"key": "s"})}); err != nil {
 				t.Fatal(err)
 			}
 		}
