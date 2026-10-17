@@ -81,7 +81,7 @@ export class InstanceSocket {
     }
     private send(event: string, data: unknown, callback?: Listener) {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            callback?.({ success: false, error: '接続が切れています', timeline: null });
+            callback?.({ success: false, error: '接続が切れています' });
             return;
         }
         // A stale cursor/ephemeral update can be dropped before entering TCP's queue.
@@ -90,7 +90,7 @@ export class InstanceSocket {
         if (id && callback) {
             const timer = setTimeout(() => {
                 this.pending.delete(id);
-                callback({ success: false, error: '応答がタイムアウトしました', timeline: null });
+                callback({ success: false, error: '応答がタイムアウトしました' });
             }, 10000);
             this.pending.set(id, { callback, timer });
         }
@@ -226,7 +226,7 @@ export class InstanceSocket {
         this.pending.clear();
         for (const { callback, timer } of pending) {
             clearTimeout(timer);
-            callback({ success: false, error: '接続が切れています', timeline: null });
+            callback({ success: false, error: '接続が切れています' });
         }
     }
     disconnect() {
