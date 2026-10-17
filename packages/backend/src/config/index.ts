@@ -7,47 +7,58 @@ config();
 const emptyToUndefined = (value: unknown): unknown => (value === '' ? undefined : value);
 
 // 環境変数のバリデーションスキーマ
-const envSchema = z.object({
-    PORT: z.coerce.number().int().min(1).max(65535).default(3001),
-    NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-    CORS_ORIGIN: z.string().default('http://localhost:3000'),
-    RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().finite().default(900000),
-    // SPA は1画面の表示でも複数のAPIを呼ぶため、100/15分では即座に枯渇する。
-    // 認証・バージョン・ヘルスは limiter から除外した上で、上限を現実的な値に引き上げる。
-    RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().finite().default(10000),
-    INSTANCE_EMPTY_TIMEOUT_MS: z.coerce.number().int().nonnegative().default(5000),
-    // Go再起動で部屋が消えたときは、通常の空室より長く再接続を待つ。
-    INSTANCE_RECOVERY_GRACE_MS: z.coerce.number().int().nonnegative().default(60000),
-    // 空インスタンス掃除（reaper）の実行間隔。再起動耐性のため定期スイープ方式を採る。
-    INSTANCE_REAP_INTERVAL_MS: z.coerce.number().int().positive().default(1000),
-    DEBUG: z
-        .string()
-        .optional()
-        .transform((val) => {
-            if (val === 'true') return true;
-            if (val === 'false') return false;
-            // 未指定時は production 以外（development/test）で true にする賢いロジック
-            return process.env.NODE_ENV !== 'production';
-        }),
-    INSTANCE_RUNTIME_URL: z.url().default('http://127.0.0.1:3002'),
-    INSTANCE_PUBLIC_URL: z.string().default('/realtime/v1/ws'),
-    INSTANCE_ADMIN_TOKEN: z.string().min(32),
-    DATABASE_URL: z.string().min(1),
-    // 未設定なら Redis に接続しない（単体・開発・テストは Redis なしで動く）。空文字は chart や .env の未設定として扱う。
-    REDIS_URL: z.preprocess(emptyToUndefined, z.url({ protocol: /^rediss?$/ }).optional()),
-    REDIS_PASSWORD: z.preprocess(emptyToUndefined, z.string().optional()),
-    BETTER_AUTH_SECRET: z.string().min(1),
-    BETTER_AUTH_URL: z.string().default('http://localhost:3001'),
-    RESEND_API_KEY: z.string().optional(),
-    SKIP_EMAIL_VERIFICATION: z
-        .string()
-        .default('false')
-        .transform((val) => val === 'true'),
-    TRUST_PROXY: z
-        .string()
-        .default('false')
-        .transform((val) => val === 'true'),
-});
+const envSchema = z
+    .object({
+        PORT: z.coerce.number().int().min(1).max(65535).default(3001),
+        NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+        CORS_ORIGIN: z.string().default('http://localhost:3000'),
+        RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().finite().default(900000),
+        // SPA は1画面の表示でも複数のAPIを呼ぶため、100/15分では即座に枯渇する。
+        // 認証・バージョン・ヘルスは limiter から除外した上で、上限を現実的な値に引き上げる。
+        RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().finite().default(10000),
+        INSTANCE_EMPTY_TIMEOUT_MS: z.coerce.number().int().nonnegative().default(5000),
+        // Go再起動で部屋が消えたときは、通常の空室より長く再接続を待つ。
+        INSTANCE_RECOVERY_GRACE_MS: z.coerce.number().int().nonnegative().default(60000),
+        // 空インスタンス掃除（reaper）の実行間隔。再起動耐性のため定期スイープ方式を採る。
+        INSTANCE_REAP_INTERVAL_MS: z.coerce.number().int().positive().default(1000),
+        DEBUG: z
+            .string()
+            .optional()
+            .transform((val) => {
+                if (val === 'true') return true;
+                if (val === 'false') return false;
+                // 未指定時は production 以外（development/test）で true にする賢いロジック
+                return process.env.NODE_ENV !== 'production';
+            }),
+        INSTANCE_RUNTIME_URL: z.url().default('http://127.0.0.1:3002'),
+        INSTANCE_PUBLIC_URL: z.string().default('/realtime/v1/ws'),
+        INSTANCE_ADMIN_TOKEN: z.string().min(32),
+        DATABASE_URL: z.string().min(1),
+        // 未設定なら Redis に接続しない（単体・開発・テストは Redis なしで動く）。空文字は chart や .env の未設定として扱う。
+        REDIS_URL: z.preprocess(emptyToUndefined, z.url({ protocol: /^rediss?$/ }).optional()),
+        REDIS_PASSWORD: z.preprocess(emptyToUndefined, z.string().optional()),
+        BETTER_AUTH_SECRET: z.string().min(1),
+        BETTER_AUTH_URL: z.string().default('http://localhost:3001'),
+        RESEND_API_KEY: z.string().optional(),
+        SKIP_EMAIL_VERIFICATION: z
+            .string()
+            .default('false')
+            .transform((val) => val === 'true'),
+        TRUST_PROXY: z
+            .string()
+            .default('false')
+            .transform((val) => val === 'true'),
+        // 開発・プレビュー用。署名の無い同梱ワールド（worlds/）を「署名なし」として配る（services/worldRegistry.ts）
+        WORLDS_SERVE_UNSIGNED_REPOSITORY: z
+            .string()
+            .default('false')
+            .transform((val) => val === 'true'),
+    })
+    .refine((env) => !(env.NODE_ENV === 'production' && env.WORLDS_SERVE_UNSIGNED_REPOSITORY), {
+        message:
+            'WORLDS_SERVE_UNSIGNED_REPOSITORY は本番（NODE_ENV=production）では使えません（署名の無いワールドを公式として配ってしまう）',
+        path: ['WORLDS_SERVE_UNSIGNED_REPOSITORY'],
+    });
 
 // 環境変数をパースして検証
 const parsedEnv = envSchema.safeParse(process.env);
