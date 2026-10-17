@@ -3,8 +3,11 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
+	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/ubichill/ubichill/services/instance/internal/coord"
 	"github.com/ubichill/ubichill/services/instance/internal/runtime"
 )
@@ -41,7 +45,7 @@ func main() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			if err := rdb.Ping(ctx).Err(); err != nil {
-				log.Printf("redis is not reachable yet (continuing without it): %v", err)
+				log.Printf("redis is not reachable yet (rooms cannot be assigned until it is): %v", err)
 				return
 			}
 			log.Printf("redis connected")
@@ -51,7 +55,18 @@ func main() {
 	for i := range allowedOrigins {
 		allowedOrigins[i] = strings.TrimSpace(allowedOrigins[i])
 	}
-	s := runtime.New(runtime.Config{AdminToken: token, TicketKey: ticketKey, Guests: *guests, Origins: allowedOrigins, Grace: *grace})
+	// 部屋の割り当てを Redis で共有するかは明示して決める（既定はメモリ）。1 Pod では共有する相手がおらず、
+	// Redis の可用性が部屋の可用性の上限になるだけなので、複数 Pod にするときだけ redis にする。
+	// redis にしたら、落ちてもメモリに切り替えない（coord.DirectoryFor）。
+	directoryClient, err := directoryClientFor(os.Getenv("INSTANCE_DIRECTORY"), rdb)
+	if err != nil {
+		log.Fatal(err)
+	}
+	node := coord.NewNodeID(os.Getenv("POD_NAME"))
+	s := runtime.New(runtime.Config{
+		AdminToken: token, TicketKey: ticketKey, Guests: *guests, Origins: allowedOrigins, Grace: *grace,
+		Directory: coord.DirectoryFor(directoryClient, nil), Node: node, Addr: advertiseAddr(*addr),
+	})
 	if *world != "" {
 		body, err := os.ReadFile(*world)
 		if err != nil {
@@ -75,8 +90,48 @@ func main() {
 		defer cancel()
 		_ = server.Shutdown(shutdown)
 	}()
-	log.Printf("instance runtime listening on %s (guests=%v, redis=%v)", *addr, *guests, rdb != nil)
+	log.Printf("instance runtime listening on %s (node=%s, guests=%v, redis=%v, directory=%s)", *addr, node, *guests, rdb != nil, directoryName(directoryClient))
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
+}
+
+// advertiseAddr は他の Pod から届く自分のアドレス。INSTANCE_ADVERTISE_ADDR、無ければ POD_IP（Downward API）か
+// ホスト名に待ち受けのポートを付ける。
+func advertiseAddr(listen string) string {
+	if v := os.Getenv("INSTANCE_ADVERTISE_ADDR"); v != "" {
+		return v
+	}
+	_, port, err := net.SplitHostPort(listen)
+	if err != nil {
+		port = "3002"
+	}
+	host := os.Getenv("POD_IP")
+	if host == "" {
+		host, _ = os.Hostname()
+	}
+	return net.JoinHostPort(host, port)
+}
+
+// directoryClientFor は INSTANCE_DIRECTORY（memory / redis、既定 memory）から、Directory に使う Redis クライアントを返す。
+// memory なら nil（Redis を設定していても部屋の割り当てには使わない）。
+func directoryClientFor(mode string, rdb *redis.Client) (*redis.Client, error) {
+	switch mode {
+	case "", "memory":
+		return nil, nil
+	case "redis":
+		if rdb == nil {
+			return nil, errors.New("INSTANCE_DIRECTORY=redis requires REDIS_URL")
+		}
+		return rdb, nil
+	default:
+		return nil, fmt.Errorf("INSTANCE_DIRECTORY must be memory or redis (got %q)", mode)
+	}
+}
+
+func directoryName(client *redis.Client) string {
+	if client == nil {
+		return "memory"
+	}
+	return "redis"
 }

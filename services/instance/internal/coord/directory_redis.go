@@ -1,0 +1,208 @@
+package coord
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strconv"
+	"time"
+
+	"github.com/redis/go-redis/v9"
+)
+
+// 部屋の割り当ては R1 のリースの値（token を 1 項目に持つハッシュ）に node・epoch・gen を足した形。
+// 照合は token の項目だけを見るので、R1 の RedisLease の延長・解放とも互換のまま。
+var (
+	clusterGenScript = redis.NewScript(`
+local g = redis.call('GET', KEYS[1])
+if g then return g end
+redis.call('SET', KEYS[1], ARGV[1])
+return ARGV[1]`)
+	// KEYS: room, epoch, gen / ARGV: node, gen, token, ttl, epochRetention
+	assignScript = redis.NewScript(`
+if redis.call('GET', KEYS[3]) ~= ARGV[2] then return {-1} end
+local cur = redis.call('HMGET', KEYS[1], 'node', 'epoch', 'token', 'gen')
+if cur[3] then return {0, cur[1], cur[2], cur[3], cur[4]} end
+local epoch = redis.call('INCR', KEYS[2])
+redis.call('PEXPIRE', KEYS[2], ARGV[5])
+redis.call('HSET', KEYS[1], 'node', ARGV[1], 'epoch', epoch, 'token', ARGV[3], 'gen', ARGV[2])
+redis.call('PEXPIRE', KEYS[1], ARGV[4])
+return {1, ARGV[1], tostring(epoch), ARGV[3], ARGV[2]}`)
+	// KEYS: room, epoch / ARGV: token, ttl, epochRetention
+	roomRenewScript = redis.NewScript(`
+if redis.call('HGET', KEYS[1], 'token') ~= ARGV[1] then return 0 end
+redis.call('PEXPIRE', KEYS[2], ARGV[3])
+return redis.call('PEXPIRE', KEYS[1], ARGV[2])`)
+)
+
+// RedisDirectory は Pod の間で共有する Directory。キーは設計書（docs/design/instance-scaling.md）の「Redis Directory」。
+type RedisDirectory struct {
+	client redis.UniversalClient
+	prefix string
+}
+
+// NewRedisDirectory の prefix はキーの名前空間（本番は "ubi:"、テストは衝突しない値）。
+func NewRedisDirectory(client redis.UniversalClient, prefix string) *RedisDirectory {
+	return &RedisDirectory{client: client, prefix: prefix}
+}
+
+func (r *RedisDirectory) genKey() string               { return r.prefix + "cluster:gen" }
+func (r *RedisDirectory) nodeKey(node string) string   { return r.prefix + "node:" + node }
+func (r *RedisDirectory) roomKey(room string) string   { return r.prefix + "room:" + room }
+func (r *RedisDirectory) epochKey(room string) string  { return r.prefix + "room:epoch:" + room }
+func (r *RedisDirectory) presenceKey(id string) string { return r.prefix + "presence:" + id }
+func (r *RedisDirectory) roomsKey() string             { return r.prefix + "rooms" }
+
+func (r *RedisDirectory) ClusterGen(ctx context.Context) (string, error) {
+	return clusterGenScript.Run(ctx, r.client, []string{r.genKey()}, newToken()).Text()
+}
+
+func (r *RedisDirectory) Heartbeat(ctx context.Context, node string, info NodeInfo, ttl time.Duration) error {
+	if err := validate(node, ttl); err != nil {
+		return err
+	}
+	body, err := json.Marshal(info)
+	if err != nil {
+		return err
+	}
+	return r.client.Set(ctx, r.nodeKey(node), body, ttl).Err()
+}
+
+func (r *RedisDirectory) Node(ctx context.Context, node string) (NodeInfo, bool, error) {
+	var info NodeInfo
+	ok, err := r.getJSON(ctx, r.nodeKey(node), &info)
+	return info, ok, err
+}
+
+func (r *RedisDirectory) getJSON(ctx context.Context, key string, v any) (bool, error) {
+	body, err := r.client.Get(ctx, key).Bytes()
+	if errors.Is(err, redis.Nil) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, json.Unmarshal(body, v)
+}
+
+func (r *RedisDirectory) Assign(ctx context.Context, room, node, gen string, ttl time.Duration) (Assignment, bool, error) {
+	if err := validateRoom(room, ttl, true); err != nil {
+		return Assignment{}, false, err
+	}
+	if node == "" {
+		return Assignment{}, false, ErrInvalidLease
+	}
+	keys := []string{r.roomKey(room), r.epochKey(room), r.genKey()}
+	out, err := assignScript.Run(ctx, r.client, keys, node, gen, newToken(), ttl.Milliseconds(), epochRetention.Milliseconds()).Slice()
+	if err != nil {
+		return Assignment{}, false, err
+	}
+	status, _ := out[0].(int64)
+	if status < 0 {
+		return Assignment{}, false, ErrGenChanged
+	}
+	a, err := assignmentOf(out[1:])
+	return a, status == 1, err
+}
+
+func assignmentOf(fields []any) (Assignment, error) {
+	if len(fields) != 4 {
+		return Assignment{}, fmt.Errorf("directory: unexpected assignment %v", fields)
+	}
+	s := func(v any) string { str, _ := v.(string); return str }
+	epoch, err := strconv.ParseInt(s(fields[1]), 10, 64)
+	if err != nil {
+		return Assignment{}, fmt.Errorf("directory: epoch: %w", err)
+	}
+	return Assignment{Node: s(fields[0]), Epoch: epoch, Token: s(fields[2]), Gen: s(fields[3])}, nil
+}
+
+func (r *RedisDirectory) Owner(ctx context.Context, room string) (Assignment, bool, error) {
+	if err := validateRoom(room, 0, false); err != nil {
+		return Assignment{}, false, err
+	}
+	out, err := r.client.HMGet(ctx, r.roomKey(room), "node", "epoch", "token", "gen").Result()
+	if err != nil {
+		return Assignment{}, false, err
+	}
+	if out[2] == nil {
+		return Assignment{}, false, nil
+	}
+	a, err := assignmentOf(out)
+	return a, err == nil, err
+}
+
+func (r *RedisDirectory) Renew(ctx context.Context, room, token string, ttl time.Duration) (bool, error) {
+	if err := validateRoom(room, ttl, true); err != nil {
+		return false, err
+	}
+	keys := []string{r.roomKey(room), r.epochKey(room)}
+	n, err := roomRenewScript.Run(ctx, r.client, keys, token, ttl.Milliseconds(), epochRetention.Milliseconds()).Int()
+	return err == nil && n == 1, err
+}
+
+func (r *RedisDirectory) Release(ctx context.Context, room, token string) (bool, error) {
+	if err := validateRoom(room, 0, false); err != nil {
+		return false, err
+	}
+	n, err := releaseScript.Run(ctx, r.client, []string{r.roomKey(room)}, token).Int()
+	return err == nil && n == 1, err
+}
+
+func (r *RedisDirectory) PublishPresence(ctx context.Context, rooms []RoomPresence, ttl time.Duration) error {
+	for _, p := range rooms {
+		if err := validateRoom(p.Room, ttl, true); err != nil {
+			return err
+		}
+	}
+	if len(rooms) == 0 {
+		return nil
+	}
+	_, err := r.client.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+		for _, p := range rooms {
+			if p.Members == nil {
+				p.Members = []string{}
+			}
+			body, err := json.Marshal(p)
+			if err != nil {
+				return err
+			}
+			pipe.Set(ctx, r.presenceKey(p.Room), body, ttl)
+			pipe.SAdd(ctx, r.roomsKey(), p.Room)
+		}
+		return nil
+	})
+	return err
+}
+
+func (r *RedisDirectory) Presence(ctx context.Context, room string) (RoomPresence, bool, error) {
+	p := RoomPresence{Room: room}
+	ok, err := r.getJSON(ctx, r.presenceKey(room), &p)
+	return p, ok, err
+}
+
+func (r *RedisDirectory) Rooms(ctx context.Context) ([]string, error) {
+	return r.client.SMembers(ctx, r.roomsKey()).Result()
+}
+
+func (r *RedisDirectory) Forget(ctx context.Context, room string) error {
+	if err := validateRoom(room, 0, false); err != nil {
+		return err
+	}
+	_, err := r.client.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+		pipe.SRem(ctx, r.roomsKey(), room)
+		pipe.Del(ctx, r.presenceKey(room))
+		return nil
+	})
+	return err
+}
+
+// DirectoryFor は Redis を設定していれば Redis の Directory だけを返す。LeaseFor と同じく、
+// Redis が落ちてもメモリに切り替えない（各 Pod がそれぞれ owner になる）。落ちている間の操作はエラーになる。
+func DirectoryFor(client *redis.Client, now func() time.Time) Directory {
+	if client == nil {
+		return NewMemoryDirectory(now)
+	}
+	return NewRedisDirectory(client, "ubi:")
+}
