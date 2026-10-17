@@ -8,8 +8,7 @@ const db = vi.hoisted(() => ({
 }));
 vi.mock('@ubichill/db', () => ({
     ...db,
-    authorBindingRepository: {},
-    publishingEnvironmentRepository: {},
+    authorKeyRepository: {},
 }));
 
 import { type BackendEvent, backendEvents, createMemoryBusHub } from './backendEvents';
