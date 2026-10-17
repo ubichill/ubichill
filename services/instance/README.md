@@ -96,6 +96,8 @@ backendのデプロイや設定変更ではGoを再起動しない（状態が�
 - **draining**: SIGTERM を受けると、新しい部屋の作成を 503 で断り、heartbeat の `state` を `draining` に書き直し、`GET /ready` を 503 にする（`/health` は 200 のまま）。
   持っている部屋は入室・操作・延長とも続ける。接続（参加者と中継）が無くなるか `--drain-timeout`（既定 0。chart は redis のとき 15 秒）を過ぎたら、
   残りの部屋を閉じて割り当てを解放する（`instance:closing` は送らない）。クライアントは繋ぎ直し、部屋は別の Pod に作り直される。
+- **指標**: `GET /metrics`（認証なし。Ingress には出さない）で部屋数・部屋の上限と空き・WebSocket の接続数（中継を含む）・中継の数・draining を
+  Prometheus の text 形式で出す。KEDA の scale-out に使う（chart の README の「Go インスタンスの自動スケール（KEDA）」）。
 - **閉じた部屋**: 終了した部屋は 2 分間どの Pod でも作り直せない（Directory の `ubi:retired:<id>`。memory なら Pod の中だけ）。割り当ての Lua の中で確かめ、
   閉じる側は token の照合・印の設定・割り当てと在席の削除を原子的に行う。owner が変わっていたら 409、Redis に届かなければ 503 を返し、DB の削除を止める。作成は 400。
 - **WS Router**: 各 Pod が Router を兼ねる。最初の `world:join` の部屋が手元に無ければ、Directory の owner の内部アドレス

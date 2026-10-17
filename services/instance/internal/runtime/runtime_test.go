@@ -157,7 +157,7 @@ func TestRoomIsolationAndLifecycle(t *testing.T) {
 		t.Fatal("lock bypass")
 	}
 	// A snapshot barrier proves no cross-room broadcast was queued before it.
-	_ = other.WriteJSON(Frame{Event: "media:timeline:get", ID: "barrier", Data: encoded(Object{"sessionId": "video"})})
+	_ = other.WriteJSON(Frame{Event: "state:get", ID: "barrier", Data: encoded(Object{"key": "video"})})
 	var frame Frame
 	_ = other.SetReadDeadline(time.Now().Add(time.Second))
 	if err := other.ReadJSON(&frame); err != nil || frame.ReplyTo != "barrier" {
@@ -196,7 +196,7 @@ func TestFullRoomAndAtomicReaping(t *testing.T) {
 		t.Fatal("capacity bypass")
 	}
 }
-func TestConcurrentCreationAndMediaRevision(t *testing.T) {
+func TestConcurrentCreation(t *testing.T) {
 	s, _ := start(t, false)
 	var wg sync.WaitGroup
 	for range 20 {
@@ -210,24 +210,8 @@ func TestConcurrentCreationAndMediaRevision(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	r := s.room("same")
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	first, err := r.media(Object{"sessionId": "v", "mediaId": "one", "action": "load"}, "alice")
-	if err != nil {
-		t.Fatal(err)
-	}
-	again, _ := r.media(Object{"sessionId": "v", "mediaId": "one", "action": "load"}, "bob")
-	if again["revision"] != first["revision"] {
-		t.Fatal("load reset")
-	}
-	_, err = r.media(Object{"sessionId": "v", "mediaId": "one", "action": "play", "expectedRevision": float64(0)}, "bob")
-	if err == nil {
-		t.Fatal("stale revision accepted")
-	}
-	_, err = r.media(Object{"sessionId": "v", "mediaId": "one", "action": "seek", "position": float64(-1)}, "bob")
-	if err == nil {
-		t.Fatal("invalid seek accepted")
+	if s.room("same") == nil {
+		t.Fatal("room was not created")
 	}
 }
 

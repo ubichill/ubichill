@@ -176,6 +176,64 @@ if (!renderFails(['--set', 'redis.auth.password=x', '--set', 'instanceRuntime.re
     failures.push('directory: memory で instanceRuntime.replicas=2 にしても描画が通ってしまう');
 }
 
+// 指標の収集（ServiceMonitor）と KEDA の scale-out は既定で無効（CRD が無いクラスタでも描画・適用が落ちない）
+const docsOf = (args) => parseAllDocuments(render('ubichill', ['--set', 'redis.auth.password=x', ...args])).map((d) => d.toJS()).filter(Boolean);
+const instanceOf = (docs, kind) => docs.find((d) => d.kind === kind && d.metadata.name.endsWith('-instance'));
+const defaultDocs = docsOf([]);
+if (instanceOf(defaultDocs, 'ScaledObject') || instanceOf(defaultDocs, 'ServiceMonitor')) {
+    failures.push('既定で ScaledObject か ServiceMonitor が描画される');
+}
+if (instanceOf(defaultDocs, 'Deployment')?.spec?.replicas !== 1) failures.push('自動スケールが無効のとき Deployment に replicas が無い');
+const autoscaled = docsOf([
+    '--set', 'instanceRuntime.directory=redis',
+    '--set', 'instanceRuntime.autoscaling.enabled=true',
+    '--set', 'instanceRuntime.autoscaling.maxReplicaCount=7',
+    '--set', 'instanceRuntime.autoscaling.targetConnectionsPerPod=250',
+    '--set', 'instanceRuntime.metrics.serviceMonitor.enabled=true',
+    '--set', 'instanceRuntime.metrics.serviceMonitor.labels.release=prometheus',
+]);
+const scaled = instanceOf(autoscaled, 'ScaledObject');
+if (!scaled) {
+    failures.push('autoscaling.enabled で ScaledObject が描画されない');
+} else {
+    const triggers = Object.fromEntries(scaled.spec.triggers.map((t) => [t.name, t]));
+    const want = {
+        target: scaled.spec.scaleTargetRef.name === 'ubichill-instance',
+        min: scaled.spec.minReplicaCount === 1,
+        max: scaled.spec.maxReplicaCount === 7,
+        // 自動の scale-in は無効（HPA は消す Pod を部屋の有無で選べない）
+        noScaleIn: scaled.spec.advanced?.horizontalPodAutoscalerConfig?.behavior?.scaleDown?.selectPolicy === 'Disabled',
+        connections:
+            triggers.connections?.metricType === 'AverageValue' &&
+            triggers.connections.metadata.threshold === '250' &&
+            triggers.connections.metadata.query === 'sum(ubichill_instance_websocket_connections{namespace="default",service="ubichill-instance"})',
+        rooms: triggers.rooms?.metricType === 'AverageValue' && triggers.rooms.metadata.threshold === '800' && triggers.rooms.metadata.query.startsWith('sum(ubichill_instance_active_rooms{'),
+        // 指標が無いときに 0 として扱わない
+        nullIsError: scaled.spec.triggers.every((t) => t.metadata.ignoreNullValues === 'false'),
+    };
+    for (const [key, ok] of Object.entries(want)) if (!ok) failures.push(`ScaledObject の ${key} が期待と違う: ${JSON.stringify(scaled.spec)}`);
+}
+// HPA が台数を持つので Deployment には replicas を書かない（同期のたびに戻さない）
+if (instanceOf(autoscaled, 'Deployment')?.spec?.replicas !== undefined) failures.push('autoscaling.enabled でも Deployment に replicas が書かれる');
+const monitor = instanceOf(autoscaled, 'ServiceMonitor');
+const service = instanceOf(autoscaled, 'Service');
+const endpoint = monitor?.spec?.endpoints?.[0];
+if (!monitor || endpoint?.port !== 'realtime' || endpoint?.path !== '/metrics' || monitor.metadata.labels.release !== 'prometheus') {
+    failures.push(`ServiceMonitor が期待と違う: ${JSON.stringify(monitor)}`);
+} else if (!Object.entries(monitor.spec.selector.matchLabels).every(([k, v]) => service?.metadata?.labels?.[k] === v)) {
+    failures.push('ServiceMonitor の selector が instance の Service のラベルに合わない');
+}
+const autoscalingArgs = ['--set', 'redis.auth.password=x', '--set', 'instanceRuntime.autoscaling.enabled=true'];
+if (!renderFails(autoscalingArgs, 'autoscaling.enabled には instanceRuntime.directory: redis が要ります')) {
+    failures.push('directory: memory で autoscaling.enabled にしても描画が通ってしまう');
+}
+if (!renderFails([...autoscalingArgs, '--set', 'instanceRuntime.directory=redis', '--set', 'instanceRuntime.autoscaling.targetRoomsPerPod=1000'], 'maxRooms（1000）未満にします')) {
+    failures.push('targetRoomsPerPod が maxRooms 以上でも描画が通ってしまう');
+}
+if (!renderFails([...autoscalingArgs, '--set', 'instanceRuntime.directory=redis', '--set', 'instanceRuntime.autoscaling.maxReplicaCount=1'], 'maxReplicaCount は 2 以上')) {
+    failures.push('maxReplicaCount=1 でも描画が通ってしまう');
+}
+
 const rejected = (() => {
     try {
         render('ubichill', ['--set', 'redis.external.url=redis://redis.shared:6379', '--set', 'redis.auth.password=x']);
@@ -221,5 +279,5 @@ if (failures.length > 0) {
     process.exit(1);
 }
 console.log(
-    `✅ chart の Redis の env: ${cases.length} 通り + instance の Downward API・Directory の選択（Go・backend）・replicas・更新方式と drain + 不正な指定の拒否、backend の台数: ${replicaCases.length} 通り + Redis なしの複数台の拒否`,
+    `✅ chart の Redis の env: ${cases.length} 通り + instance の Downward API・Directory の選択（Go・backend）・replicas・更新方式と drain・指標の収集と KEDA（既定・有効・拒否） + 不正な指定の拒否、backend の台数: ${replicaCases.length} 通り + Redis なしの複数台の拒否`,
 );

@@ -1,0 +1,59 @@
+{{- if and .Values.instanceRuntime.enabled .Values.instanceRuntime.autoscaling.enabled }}
+{{- $a := .Values.instanceRuntime.autoscaling }}
+{{- /* memory の Directory は Pod ごとに別で、2 Pod 以上では同じ部屋の owner が Pod ごとにできる */}}
+{{- if ne (.Values.instanceRuntime.directory | default "memory") "redis" }}
+{{- fail "instanceRuntime.autoscaling.enabled には instanceRuntime.directory: redis が要ります（memory では Pod の間で部屋を共有できません）" }}
+{{- end }}
+{{- if lt (int $a.maxReplicaCount) 2 }}
+{{- fail (printf "instanceRuntime.autoscaling.maxReplicaCount は 2 以上にします（%v）" $a.maxReplicaCount) }}
+{{- end }}
+{{- if or (le (int $a.targetRoomsPerPod) 0) (ge (int $a.targetRoomsPerPod) (int .Values.instanceRuntime.maxRooms)) }}
+{{- fail (printf "instanceRuntime.autoscaling.targetRoomsPerPod（%v）は 1 以上で instanceRuntime.maxRooms（%v）未満にします（上限に達してから増やすと、増えるまでの間は新しい部屋を作れない）" $a.targetRoomsPerPod .Values.instanceRuntime.maxRooms) }}
+{{- end }}
+{{- if le (int $a.targetConnectionsPerPod) 0 }}
+{{- fail "instanceRuntime.autoscaling.targetConnectionsPerPod は 1 以上にします" }}
+{{- end }}
+{{- $selector := $a.prometheus.selector | default (printf "namespace=%q,service=%q" .Release.Namespace (printf "%s-instance" (include "ubichill.fullname" .))) }}
+{{- /* KEDA の CRD が要る。無いクラスタでは有効にしない */}}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "ubichill.fullname" . }}-instance
+  labels:
+    {{- include "ubichill.labels" . | nindent 4 }}
+    component: instance
+spec:
+  scaleTargetRef:
+    name: {{ include "ubichill.fullname" . }}-instance
+  minReplicaCount: 1
+  maxReplicaCount: {{ int $a.maxReplicaCount }}
+  pollingInterval: {{ int $a.pollingInterval }}
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        {{- /* HPA は消す Pod を部屋の有無で選べない。縮めるのは手動（draining）か K2 で */}}
+        scaleDown:
+          selectPolicy: Disabled
+  {{- /*
+    HPA は trigger ごとに台数を出して最大を取るので、指標を 1 つにまとめない。
+    AverageValue なので台数は ceil(合計 / threshold)。threshold は「1 Pod に持たせたい量」。
+    ignoreNullValues: false で、指標が無い（集めていない）ときは 0 とせず ScaledObject の失敗として出す。
+  */}}
+  triggers:
+    - type: prometheus
+      name: connections
+      metricType: AverageValue
+      metadata:
+        serverAddress: {{ $a.prometheus.serverAddress | quote }}
+        query: {{ printf "sum(ubichill_instance_websocket_connections{%s})" $selector | quote }}
+        threshold: {{ $a.targetConnectionsPerPod | toString | quote }}
+        ignoreNullValues: "false"
+    - type: prometheus
+      name: rooms
+      metricType: AverageValue
+      metadata:
+        serverAddress: {{ $a.prometheus.serverAddress | quote }}
+        query: {{ printf "sum(ubichill_instance_active_rooms{%s})" $selector | quote }}
+        threshold: {{ $a.targetRoomsPerPod | toString | quote }}
+        ignoreNullValues: "false"
+{{- end }}
