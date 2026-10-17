@@ -392,6 +392,28 @@ instanceRuntime:
   # 過ぎたら残りの部屋を閉じ、クライアントは別の Pod へ繋ぎ直す。terminationGracePeriodSeconds は drainTimeout + 10 秒以上にする。
   drainTimeout: 15s
   terminationGracePeriodSeconds: 30
+  # Go は GET /metrics（ポート realtime、認証なし、Ingress には出さない）で負荷を Prometheus 形式で出す（README の「自動スケール」）。
+  metrics:
+    # Prometheus Operator の ServiceMonitor を作る。CRD（monitoring.coreos.com）が無いクラスタでは有効にしない。
+    serviceMonitor:
+      enabled: false
+      interval: 15s
+      # Prometheus の serviceMonitorSelector に合わせるラベル（全件を拾う設定なら不要）
+      labels: {}
+  # KEDA の ScaledObject で Go の Pod を自動で増やす（減らさない）。KEDA の CRD と、指標を集める Prometheus が要る。
+  # directory: redis でないと描画で失敗する。有効にすると Deployment の replicas は書かず、台数は HPA が持つ。
+  autoscaling:
+    enabled: false
+    maxReplicaCount: 5
+    pollingInterval: 30
+    # 1 Pod に持たせたい接続数と部屋数。台数 = max(ceil(接続数の合計 / 前者), ceil(部屋数の合計 / 後者))。
+    # 負荷試験で決めるまでの仮の値。targetRoomsPerPod は maxRooms 未満にする（上限で断り始める前に増やす）。
+    targetConnectionsPerPod: 300
+    targetRoomsPerPod: 800
+    prometheus:
+      serverAddress: http://prometheus-operated.monitoring.svc:9090
+      # 系列を選ぶ PromQL のラベル。空なら namespace と ServiceMonitor の service ラベル（<fullname>-instance）
+      selector: ""
   # 未指定時はbackendと同じSecretを参照。専用Secretに切り替える場合は
   # existingSecretとsecretKeyを設定（32文字以上のランダム値）。
   existingSecret: ""

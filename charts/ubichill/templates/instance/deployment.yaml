@@ -22,7 +22,10 @@ metadata:
     {{- include "ubichill.labels" . | nindent 4 }}
 spec:
   # 部屋ごとの owner は Directory が決め、別の Pod に来た WebSocket は owner へ中継する（Ingress・Service はそのまま）
+  {{- /* KEDA（HPA）が台数を持つときは書かない。書くと同期のたびに HPA の決めた台数を戻してしまう */}}
+  {{- if not .Values.instanceRuntime.autoscaling.enabled }}
   replicas: {{ $replicas }}
+  {{- end }}
   {{- /*
     memory は Pod ごとに Directory が別なので、新旧の Pod が並ぶと同じ部屋の owner が 2 つできる。Recreate で必ず入れ替える。
     redis は owner が 1 つに決まる（fencing）ので、新しい Pod が ready になってから古い Pod を 1 つずつ draining で止める。
@@ -114,6 +117,9 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "ubichill.fullname" . }}-instance
+  labels:
+    {{- include "ubichill.labels" . | nindent 4 }}
+    component: instance
 spec:
   ports:
     - name: realtime

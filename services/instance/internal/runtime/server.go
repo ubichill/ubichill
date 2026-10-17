@@ -245,6 +245,9 @@ func (s *Server) Handler() http.Handler {
 		}
 		writeJSON(w, 200, Object{"status": "ok"})
 	})
+	// 認証を付けない。Ingress は /realtime/v1/ws だけを Go へ送るのでクラスタの外には出ず、中身は数だけ。
+	// 管理トークンで守ると Prometheus にそのトークンを渡すことになり、漏れたときの被害の方が大きい
+	mux.HandleFunc("GET /metrics", s.serveMetrics)
 	mux.HandleFunc("GET /realtime/v1/ws", s.serveSocket)
 	mux.HandleFunc("GET "+relayPath, s.serveRelay)
 	mux.HandleFunc("GET /realtime/v1/instances", func(w http.ResponseWriter, r *http.Request) {
