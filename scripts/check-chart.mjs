@@ -97,6 +97,24 @@ const directoryOf = (args) => containerEnv(render('ubichill', ['--set', 'redis.a
 if (directoryOf([]) !== 'memory') failures.push(`INSTANCE_DIRECTORY の既定が memory でない: ${directoryOf([])}`);
 if (directoryOf(['--set', 'instanceRuntime.directory=redis']) !== 'redis') failures.push('instanceRuntime.directory=redis が渡らない');
 
+// backend も同じ Directory の値を受け取る（redis なら owner の Pod へ管理 API を送り、在席を Redis から読む）
+const backendDirectoryOf = (args) => {
+    const docs = parseAllDocuments(render('ubichill', ['--set', 'redis.auth.password=x', ...args])).map((d) => d.toJS()).filter(Boolean);
+    return docs.find((d) => d.kind === 'ConfigMap' && d.metadata.name.endsWith('-backend-config'))?.data?.INSTANCE_DIRECTORY;
+};
+if (backendDirectoryOf([]) !== 'memory') failures.push(`backend の INSTANCE_DIRECTORY の既定が memory でない: ${backendDirectoryOf([])}`);
+if (backendDirectoryOf(['--set', 'instanceRuntime.directory=redis']) !== 'redis') failures.push('instanceRuntime.directory=redis が backend に渡らない');
+
+// Go の Pod の数。2 以上は Directory を Redis で共有するときだけ
+const instanceReplicasOf = (args) => {
+    const docs = parseAllDocuments(render('ubichill', ['--set', 'redis.auth.password=x', ...args])).map((d) => d.toJS()).filter(Boolean);
+    return docs.find((d) => d.kind === 'Deployment' && d.metadata.name.endsWith('-instance'))?.spec?.replicas;
+};
+if (instanceReplicasOf([]) !== 1) failures.push(`instance の replicas の既定が 1 でない: ${instanceReplicasOf([])}`);
+if (instanceReplicasOf(['--set', 'instanceRuntime.directory=redis', '--set', 'instanceRuntime.replicas=3']) !== 3) {
+    failures.push('instanceRuntime.replicas=3（redis）が Deployment に渡らない');
+}
+
 const renderFails = (args, message) => {
     try {
         render('ubichill', args);
@@ -111,6 +129,9 @@ if (!renderFails(['--set', 'redis.enabled=false', '--set', 'instanceRuntime.dire
 }
 if (!renderFails(['--set', 'redis.auth.password=x', '--set', 'instanceRuntime.directory=Redis'], 'memory か redis です')) {
     failures.push('instanceRuntime.directory の不正な値が描画を通ってしまう');
+}
+if (!renderFails(['--set', 'redis.auth.password=x', '--set', 'instanceRuntime.replicas=2'], 'Pod の間で部屋を共有できません')) {
+    failures.push('directory: memory で instanceRuntime.replicas=2 にしても描画が通ってしまう');
 }
 
 const rejected = (() => {
@@ -158,5 +179,5 @@ if (failures.length > 0) {
     process.exit(1);
 }
 console.log(
-    `✅ chart の Redis の env: ${cases.length} 通り + instance の Downward API・Directory の選択 + 不正な指定の拒否、backend の台数: ${replicaCases.length} 通り + Redis なしの複数台の拒否`,
+    `✅ chart の Redis の env: ${cases.length} 通り + instance の Downward API・Directory の選択（Go・backend）・replicas + 不正な指定の拒否、backend の台数: ${replicaCases.length} 通り + Redis なしの複数台の拒否`,
 );

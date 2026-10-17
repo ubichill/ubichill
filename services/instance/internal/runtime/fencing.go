@@ -218,9 +218,9 @@ func (s *Server) loop(ctx context.Context) {
 	}
 }
 
-// presenceOf は管理 API に返す在席。owner の情報（G2 で backend が管理 API に付ける世代）を足す。
+// presenceOf は管理 API に返す在席。owner の情報（backend が続く管理 API を送る先と、付ける世代）を足す。
 func (s *Server) presenceOf(r *Room) Presence {
 	p := r.presence()
-	p.Node, p.Gen, p.Epoch = s.node, r.gen, r.epoch
+	p.Node, p.Gen, p.Epoch, p.Addr = s.node, r.gen, r.epoch, s.config.Addr
 	return p
 }

@@ -17,6 +17,8 @@ type Frame struct {
 	Data    json.RawMessage `json:"data,omitempty"`
 	ID      string          `json:"id,omitempty"`
 	ReplyTo string          `json:"replyTo,omitempty"`
+	// raw は中継で owner から届いたフレームの元のバイト列（解かずにそのまま送る）。
+	raw []byte
 }
 
 func encoded(v any) json.RawMessage { b, _ := json.Marshal(v); return b }

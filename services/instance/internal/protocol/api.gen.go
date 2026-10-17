@@ -84,6 +84,9 @@ type InstanceOwner struct {
 
 // RuntimePresence defines model for RuntimePresence.
 type RuntimePresence struct {
+	// Addr owner の内部アドレス（host:port）。管理 API と Pod 間の中継はここへ送る。単体モードのゲスト向けには返さない。
+	Addr string `json:"addr,omitempty"`
+
 	// EmptySince Epoch milliseconds; 0 while occupied, includes reconnect grace.
 	EmptySince int64 `json:"emptySince"`
 
@@ -118,10 +121,40 @@ type TicketRequest struct {
 	UserId string  `json:"userId"`
 }
 
+// ExpectedEpoch defines model for ExpectedEpoch.
+type ExpectedEpoch = int64
+
+// ExpectedGen defines model for ExpectedGen.
+type ExpectedGen = string
+
 // CloseInstanceParams defines parameters for CloseInstance.
 type CloseInstanceParams struct {
 	// EmptyBefore Atomically reject if occupied or emptied after this epoch millisecond timestamp.
 	EmptyBefore *int64 `form:"emptyBefore,omitempty" json:"emptyBefore,omitempty"`
+
+	// Gen 呼び出し側が知っている部屋の世代（クラスタの gen）。epoch と組で指定する。今の部屋の世代と違えば 409。
+	Gen *ExpectedGen `form:"gen,omitempty" json:"gen,omitempty"`
+
+	// Epoch 呼び出し側が知っている owner の epoch。gen と組で指定する。
+	Epoch *ExpectedEpoch `form:"epoch,omitempty" json:"epoch,omitempty"`
+}
+
+// ProvisionInstanceParams defines parameters for ProvisionInstance.
+type ProvisionInstanceParams struct {
+	// Gen 呼び出し側が知っている部屋の世代（クラスタの gen）。epoch と組で指定する。今の部屋の世代と違えば 409。
+	Gen *ExpectedGen `form:"gen,omitempty" json:"gen,omitempty"`
+
+	// Epoch 呼び出し側が知っている owner の epoch。gen と組で指定する。
+	Epoch *ExpectedEpoch `form:"epoch,omitempty" json:"epoch,omitempty"`
+}
+
+// IssueTicketParams defines parameters for IssueTicket.
+type IssueTicketParams struct {
+	// Gen 呼び出し側が知っている部屋の世代（クラスタの gen）。epoch と組で指定する。今の部屋の世代と違えば 409。
+	Gen *ExpectedGen `form:"gen,omitempty" json:"gen,omitempty"`
+
+	// Epoch 呼び出し側が知っている owner の epoch。gen と組で指定する。
+	Epoch *ExpectedEpoch `form:"epoch,omitempty" json:"epoch,omitempty"`
 }
 
 // ProvisionInstanceJSONRequestBody defines body for ProvisionInstance for application/json ContentType.

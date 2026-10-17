@@ -47,10 +47,10 @@ export interface paths {
         };
         /** @description Management token required in managed mode. Guest mode returns metadata with memberIds redacted. */
         get: operations['getInstance'];
-        /** @description Idempotent create. Existing instance state is never reset. Management token required. Assigns the room to this node in the directory: 409 with the owner when another node holds it, 503 when the directory is unavailable. */
+        /** @description Idempotent create. Existing instance state is never reset. Management token required. Assigns the room to this node in the directory: 409 with the owner when another node holds it, 503 when the directory is unavailable. With gen and epoch, 409 unless this node holds the room at that generation (never creates a new one). */
         put: operations['provisionInstance'];
         post?: never;
-        /** @description Closes the room only while this node is its owner, then releases the assignment. */
+        /** @description Closes the room only while this node is its owner, then releases the assignment. With gen and epoch, 409 when this node holds the room at another generation. */
         delete: operations['closeInstance'];
         options?: never;
         head?: never;
@@ -68,7 +68,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Management API. Caller has already authorized the SNS user. Ticket expires in 2 minutes and is checked at admission. Existing connections remain admitted. */
+        /** @description Management API. Caller has already authorized the SNS user. Ticket expires in 2 minutes and is checked at admission. Existing connections remain admitted. Send it to the owner (addr). With gen and epoch, 409 unless this node holds the room at that generation. */
         post: operations['issueTicket'];
         delete?: never;
         options?: never;
@@ -118,6 +118,8 @@ export interface components {
              * @description owner の世代。owner が交代するたびに増える。(gen, epoch) の組で比べる。
              */
             epoch?: number;
+            /** @description owner の内部アドレス（host:port）。管理 API と Pod 間の中継はここへ送る。単体モードのゲスト向けには返さない。 */
+            addr?: string;
         };
         InstanceGrant: {
             url: string;
@@ -182,7 +184,12 @@ export interface components {
         };
     };
     responses: never;
-    parameters: never;
+    parameters: {
+        /** @description 呼び出し側が知っている部屋の世代（クラスタの gen）。epoch と組で指定する。今の部屋の世代と違えば 409。 */
+        ExpectedGen: string;
+        /** @description 呼び出し側が知っている owner の epoch。gen と組で指定する。 */
+        ExpectedEpoch: number;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
@@ -275,7 +282,12 @@ export interface operations {
     };
     provisionInstance: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description 呼び出し側が知っている部屋の世代（クラスタの gen）。epoch と組で指定する。今の部屋の世代と違えば 409。 */
+                gen?: components['parameters']['ExpectedGen'];
+                /** @description 呼び出し側が知っている owner の epoch。gen と組で指定する。 */
+                epoch?: components['parameters']['ExpectedEpoch'];
+            };
             header?: never;
             path: {
                 id: string;
@@ -297,7 +309,7 @@ export interface operations {
                     'application/json': components['schemas']['RuntimePresence'];
                 };
             };
-            /** @description Owned by another node */
+            /** @description Owned by another node, or not at the expected generation */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -322,6 +334,10 @@ export interface operations {
             query?: {
                 /** @description Atomically reject if occupied or emptied after this epoch millisecond timestamp. */
                 emptyBefore?: number;
+                /** @description 呼び出し側が知っている部屋の世代（クラスタの gen）。epoch と組で指定する。今の部屋の世代と違えば 409。 */
+                gen?: components['parameters']['ExpectedGen'];
+                /** @description 呼び出し側が知っている owner の epoch。gen と組で指定する。 */
+                epoch?: components['parameters']['ExpectedEpoch'];
             };
             header?: never;
             path: {
@@ -338,7 +354,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Occupied, recently emptied, or owned by another node */
+            /** @description Occupied, recently emptied, owned by another node, or not at the expected generation */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -360,7 +376,12 @@ export interface operations {
     };
     issueTicket: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description 呼び出し側が知っている部屋の世代（クラスタの gen）。epoch と組で指定する。今の部屋の世代と違えば 409。 */
+                gen?: components['parameters']['ExpectedGen'];
+                /** @description 呼び出し側が知っている owner の epoch。gen と組で指定する。 */
+                epoch?: components['parameters']['ExpectedEpoch'];
+            };
             header?: never;
             path: {
                 id: string;
@@ -380,6 +401,15 @@ export interface operations {
                 };
                 content: {
                     'application/json': components['schemas']['InstanceGrant'];
+                };
+            };
+            /** @description Not held by this node at the expected generation */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    'application/json': components['schemas']['Conflict'];
                 };
             };
             /** @description Request failed */

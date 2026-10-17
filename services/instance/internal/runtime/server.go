@@ -52,6 +52,9 @@ type Server struct {
 	stop         context.CancelFunc
 	stopOnce     sync.Once
 	loopDone     chan struct{}
+	relayKey     []byte
+	relayMu      sync.Mutex
+	relays       map[*upstream]struct{}
 }
 
 // New は Server を作り、heartbeat と owner のリースの延長を始める（Close で止める）。
@@ -78,15 +81,30 @@ func newServer(config Config) *Server {
 	return &Server{
 		retired: map[string]time.Time{}, rooms: map[string]*Room{}, active: map[string]*peer{}, key: ticketKey(config), config: config,
 		dir: config.Directory, node: config.Node, now: config.Clock, fencing: config.Fencing.withDefaults(), started: time.Now(),
+		relayKey: relayKey(config), relays: map[*upstream]struct{}{},
 	}
 }
 
 // Provision は部屋を自分に割り当てて作る。自分が owner のまま生きている部屋はそのまま返す（冪等）。
-func (s *Server) Provision(d Definition) (*Room, error) {
+func (s *Server) Provision(d Definition) (*Room, error) { return s.provision(d, expectation{}) }
+
+// errStaleGeneration は世代を指定した作成で、その世代の部屋がこの Pod に無いとき。
+var errStaleGeneration = errors.New("instance generation does not match")
+
+// provision は部屋を返すか作る。世代を指定したときは、その世代の部屋を返すだけで作らない。
+// 世代の確認と作るかどうかの判断を同じ provisioning のロックの下で行う（外で確かめると、確かめた直後に
+// fencing で部屋が捨てられ、古い世代を指定した要求が新しい epoch の部屋を作ってしまう）。
+func (s *Server) provision(d Definition, want expectation) (*Room, error) {
 	s.provisioning.Lock()
 	defer s.provisioning.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), s.fencing.Timeout)
 	defer cancel()
+	if want.set {
+		if r := s.owned(d.ID); r != nil && want.matches(r) {
+			return r, nil
+		}
+		return nil, errStaleGeneration
+	}
 	// Idempotent creation never resets an existing room, including an empty world.
 	if r := s.room(d.ID); r != nil {
 		if r.usable() {
@@ -142,6 +160,7 @@ func (s *Server) Close() {
 			<-s.loopDone
 		}
 	})
+	s.closeRelays()
 	s.mu.Lock()
 	rooms := s.rooms
 	s.rooms = map[string]*Room{}
@@ -201,6 +220,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, Object{"status": "ok"}) })
 	mux.HandleFunc("GET /realtime/v1/ws", s.serveSocket)
+	mux.HandleFunc("GET "+relayPath, s.serveRelay)
 	mux.HandleFunc("GET /realtime/v1/instances", func(w http.ResponseWriter, r *http.Request) {
 		if !s.authorize(w, r) {
 			return
@@ -231,9 +251,16 @@ func (s *Server) Handler() http.Handler {
 			writeJSON(w, 400, failure("id mismatch"))
 			return
 		}
-		room, err := s.Provision(d)
+		want, ok := expected(w, r)
+		if !ok {
+			return
+		}
+		// 世代を指定した作成は、その世代の部屋の確認だけ（新しい epoch で作り直さない）
+		room, err := s.provision(d, want)
 		var elsewhere *ownedElsewhere
 		switch {
+		case errors.Is(err, errStaleGeneration):
+			writeJSON(w, 409, s.staleGeneration(r.Context(), d.ID))
 		case errors.As(err, &elsewhere):
 			writeJSON(w, 409, conflict(elsewhere))
 		case errors.Is(err, errDirectoryUnavailable):
@@ -256,7 +283,7 @@ func (s *Server) Handler() http.Handler {
 		p := s.presenceOf(room)
 		if s.config.Guests {
 			p.MemberIDs = []string{}
-			p.Node, p.Gen, p.Epoch = "", "", 0
+			p.Node, p.Gen, p.Epoch, p.Addr = "", "", 0, ""
 		}
 		writeJSON(w, 200, p)
 	})
@@ -264,7 +291,11 @@ func (s *Server) Handler() http.Handler {
 		if !s.authorize(w, r) {
 			return
 		}
-		code, body := s.closeInstance(r.Context(), r.PathValue("id"), r.URL.Query().Get("emptyBefore"))
+		want, ok := expected(w, r)
+		if !ok {
+			return
+		}
+		code, body := s.closeInstance(r.Context(), r.PathValue("id"), r.URL.Query().Get("emptyBefore"), want)
 		if body == nil {
 			w.WriteHeader(code)
 			return
@@ -282,11 +313,20 @@ func (s *Server) Handler() http.Handler {
 		if !decode(w, r, &body) {
 			return
 		}
-		if body.UserID == "" || len(body.UserID) > 200 || s.owned(r.PathValue("id")) == nil || body.Name != "" && !validName(body.Name) {
+		want, ok := expected(w, r)
+		if !ok {
+			return
+		}
+		room := s.owned(r.PathValue("id"))
+		if want.set && !want.matches(room) {
+			writeJSON(w, 409, s.staleGeneration(r.Context(), r.PathValue("id")))
+			return
+		}
+		if body.UserID == "" || len(body.UserID) > 200 || room == nil || body.Name != "" && !validName(body.Name) {
 			writeJSON(w, 400, failure("invalid participant or instance"))
 			return
 		}
-		s.grant(w, r, s.owned(r.PathValue("id")), body.UserID, body.Name, "member", time.Minute*2)
+		s.grant(w, r, room, body.UserID, body.Name, "member", time.Minute*2)
 	})
 	mux.HandleFunc("POST /realtime/v1/instances/{id}/guest", func(w http.ResponseWriter, r *http.Request) {
 		if !s.config.Guests {
@@ -351,12 +391,16 @@ func (s *Server) grant(w http.ResponseWriter, r *http.Request, room *Room, id, n
 }
 
 // closeInstance は自分が今の owner のときだけ部屋を閉じ、割り当てを token で解放する。
-func (s *Server) closeInstance(ctx context.Context, id, emptyBefore string) (int, any) {
+func (s *Server) closeInstance(ctx context.Context, id, emptyBefore string, want expectation) (int, any) {
 	s.provisioning.Lock()
 	defer s.provisioning.Unlock()
 	ctx, cancel := context.WithTimeout(ctx, s.fencing.Timeout)
 	defer cancel()
 	room := s.owned(id)
+	// 呼び出し側が見ていたのと別の世代の部屋（作り直された部屋）は閉じない
+	if room != nil && want.set && !want.matches(room) {
+		return 409, s.staleGeneration(ctx, id)
+	}
 	if room == nil {
 		if stale := s.room(id); stale != nil {
 			s.discard(ctx, stale, true)
@@ -407,6 +451,49 @@ func (s *Server) closeInstance(ctx context.Context, id, emptyBefore string) (int
 	_, _ = s.dir.Release(ctx, id, room.token)
 	_ = s.dir.Forget(ctx, id)
 	return 204, nil
+}
+
+// expectation は管理 API の ?gen=&epoch=（backend が知っている部屋の世代）。付いていなければ照らさない。
+type expectation struct {
+	set   bool
+	gen   string
+	epoch int64
+}
+
+func (e expectation) matches(r *Room) bool {
+	return !e.set || r != nil && r.gen == e.gen && r.epoch == e.epoch
+}
+
+// expected は ?gen=&epoch= を読む。片方だけ・数でない epoch は 400 を返して false。
+func expected(w http.ResponseWriter, r *http.Request) (expectation, bool) {
+	q := r.URL.Query()
+	gen, epoch := q.Get("gen"), q.Get("epoch")
+	if gen == "" && epoch == "" {
+		return expectation{}, true
+	}
+	n, err := strconv.ParseInt(epoch, 10, 64)
+	if gen == "" || err != nil || n < 1 {
+		writeJSON(w, 400, failure("gen and epoch must be given together"))
+		return expectation{}, false
+	}
+	return expectation{set: true, gen: gen, epoch: n}, true
+}
+
+// staleGeneration は世代が合わないときの 409。今の owner が分かれば付ける（backend はそこへ送り直す）。
+func (s *Server) staleGeneration(ctx context.Context, id string) protocol.Conflict {
+	c := protocol.Conflict{Success: protocol.ConflictSuccessFalse, Error: "instance is not at the expected generation"}
+	ctx, cancel := context.WithTimeout(ctx, s.fencing.Timeout)
+	defer cancel()
+	owner, held, err := s.dir.Owner(ctx, id)
+	if err != nil || !held {
+		return c
+	}
+	info, alive, err := s.dir.Node(ctx, owner.Node)
+	if err != nil {
+		return c
+	}
+	c.Owner = conflict(&ownedElsewhere{owner: owner, addr: info.Addr, alive: alive}).Owner
+	return c
 }
 
 func conflict(e *ownedElsewhere) protocol.Conflict {

@@ -6,6 +6,14 @@
 {{- if and (eq $directory "redis") (not .Values.redis.enabled) (not (and .Values.redis.external .Values.redis.external.url)) }}
 {{- fail "instanceRuntime.directory: redis には Redis（redis.enabled か redis.external.url）が要ります" }}
 {{- end }}
+{{- $replicas := 1 }}
+{{- if hasKey .Values.instanceRuntime "replicas" }}
+{{- $replicas = int .Values.instanceRuntime.replicas }}
+{{- end }}
+{{- /* メモリの Directory は Pod ごとに別なので、2 Pod 以上では同じ部屋の owner が Pod ごとにできてしまう */}}
+{{- if and (ge $replicas 2) (ne $directory "redis") }}
+{{- fail (printf "instanceRuntime.replicas を 2 以上（%d）にするには instanceRuntime.directory: redis が要ります（memory では Pod の間で部屋を共有できません）" $replicas) }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -13,8 +21,8 @@ metadata:
   labels:
     {{- include "ubichill.labels" . | nindent 4 }}
 spec:
-  # State has one owner. Multiple replicas require instance-aware routing.
-  replicas: 1
+  # 部屋ごとの owner は Directory が決め、別の Pod に来た WebSocket は owner へ中継する（Ingress・Service はそのまま）
+  replicas: {{ $replicas }}
   strategy:
     type: Recreate
   selector:

@@ -367,7 +367,7 @@ monitoring:
     interval: 30s
     scrapeTimeout: 10s
 
-# 独立したGoインスタンス実行サーバー。状態を保持するため1 replica。
+# 独立したGoインスタンス実行サーバー。既定は 1 replica（複数にするときは directory: redis）。
 instanceRuntime:
   enabled: true
   # backend とは別イメージ。backend のデプロイで Go が再起動しない（状態はメモリのみ）。
@@ -383,6 +383,9 @@ instanceRuntime:
   # 1 Pod では共有する相手がおらず、Redis の可用性が部屋の可用性の上限になるだけなので memory にしておく。
   # replicas を 2 以上にするときに redis にする（Redis の Secret を固定してから。README の「Redis」）。
   directory: memory
+  # Go の Pod の数。2 以上は directory: redis のときだけ（memory では描画で失敗する）。
+  # 部屋は割り当てた Pod が持ち、別の Pod に来た WebSocket は owner の Pod へ中継する。
+  replicas: 1
   # 未指定時はbackendと同じSecretを参照。専用Secretに切り替える場合は
   # existingSecretとsecretKeyを設定（32文字以上のランダム値）。
   existingSecret: ""
