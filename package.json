@@ -21,6 +21,7 @@
     "verify:mod-locks": "node packages/sdk/cli/index.ts verify --dist-dir=dist/mods",
     "verify:world-locks": "node scripts/world-locks.mjs --check",
     "check:architecture": "node scripts/check-architecture.mjs",
+    "check:chart": "node scripts/check-chart.mjs",
     "verify:sdk-types": "vitest run --config vitest.sdk-verify.config.ts",
     "docs:capabilities": "node scripts/gen-capability-docs.mjs",
     "build": "turbo build --filter=@ubichill/shared && pnpm build:workers && turbo build",
@@ -50,6 +51,7 @@
     "nodemon": "catalog:",
     "turbo": "^2.11.3",
     "typescript": "catalog:",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.11",
+    "yaml": "catalog:"
   }
 }

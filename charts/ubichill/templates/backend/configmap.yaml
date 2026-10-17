@@ -7,10 +7,11 @@
   ここに置くもの:
     - values.yaml の backend.env (NODE_ENV / PORT / SKIP_EMAIL_VERIFICATION 等)
     - global.domain から自動導出する CORS_ORIGIN / BETTER_AUTH_URL
-    - WORLDS_DIR / REDIS_URL のような template 由来の値
+    - WORLDS_DIR のような template 由来の値
 
   ここに置かないもの:
     - DATABASE_URL (postgres password を含むため deployment 側で valueFrom か文字列で組み立てる)
+    - REDIS_URL / REDIS_PASSWORD (instance と同じ値を ubichill.redis.env で deployment 側に入れる)
     - 機密値 (backend.secretEnv → Secret)
     - WORLDS_REGISTRY_TOKEN (secretKeyRef なので deployment 側に inline で残す)
 */}}
@@ -34,9 +35,6 @@ data:
   {{- /* PUBLIC_BASE_URL: ワールドの正規 URL（{PUBLIC_BASE_URL}/api/v1/worlds/{id}/yaml）生成に使う */}}
   {{- if and .Values.global.domain (not (hasKey .Values.backend.env "PUBLIC_BASE_URL")) }}
   PUBLIC_BASE_URL: {{ printf "https://%s" .Values.global.domain | quote }}
-  {{- end }}
-  {{- if .Values.redis.enabled }}
-  REDIS_URL: {{ printf "redis://%s-redis-master:%v" (include "ubichill.fullname" .) (.Values.redis.master.service.ports.redis | default 6379) | quote }}
   {{- end }}
   {{- if not (hasKey .Values.backend.env "INSTANCE_RUNTIME_URL") }}
   INSTANCE_RUNTIME_URL: {{ printf "http://%s-instance:3002" (include "ubichill.fullname" .) | quote }}
