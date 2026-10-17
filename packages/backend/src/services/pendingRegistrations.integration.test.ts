@@ -1,7 +1,6 @@
 import { db, pendingRegistrations, userRepository, users } from '@ubichill/db';
 import { eq } from 'drizzle-orm';
-import { afterAll, describe, expect, it } from 'vitest';
-import { auth, getPendingRegistrations } from '../lib/auth';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 /**
  * 仮登録（Postgres）と better-auth の結合テスト。DATABASE_URL がある時だけ走る。
@@ -12,11 +11,22 @@ const stamp = Date.now().toString(36);
 const PASSWORD = 'correct horse battery';
 
 describe.skipIf(!RUN)('仮登録（DB統合）', () => {
+    // lib/auth は読み込んだ時点で環境変数を検証するので、走らせるときだけ読み込む（スキップ時に落とさない）
+    const loaded: { module?: typeof import('../lib/auth') } = {};
+    beforeAll(async () => {
+        loaded.module = await import('../lib/auth');
+    });
+    const authModule = () => {
+        if (!loaded.module) throw new Error('lib/auth が読み込まれていない');
+        return loaded.module;
+    };
+    const auth = () => authModule().auth;
+    const getPendingRegistrations = () => authModule().getPendingRegistrations();
     const emails: string[] = [];
     const register = async (tag: string, overrides: { email?: string; handle?: string } = {}) => {
         const email = overrides.email ?? `pr-${tag}-${stamp}@example.com`;
         emails.push(email.toLowerCase());
-        const ctx = await auth.$context;
+        const ctx = await auth().$context;
         const store = await getPendingRegistrations();
         const result = await store.add({
             email,
@@ -47,14 +57,14 @@ describe.skipIf(!RUN)('仮登録（DB統合）', () => {
         const outcome = await store.verify(id, otp);
         expect(outcome).toMatchObject({ status: 'verified', email });
 
-        const signedIn = await auth.api.signInEmail({ body: { email, password: PASSWORD } });
+        const signedIn = await auth().api.signInEmail({ body: { email, password: PASSWORD } });
         expect(signedIn.user.email).toBe(email);
         expect(signedIn.token).toBeTruthy();
         // 大文字が混じった入力でもログインできる（better-auth は小文字で引く）
         await expect(
-            auth.api.signInEmail({ body: { email: `PR-SignIn-${stamp}@Example.com`, password: PASSWORD } }),
+            auth().api.signInEmail({ body: { email: `PR-SignIn-${stamp}@Example.com`, password: PASSWORD } }),
         ).resolves.toMatchObject({ user: { email } });
-        await expect(auth.api.signInEmail({ body: { email, password: 'wrong password!' } })).rejects.toThrow();
+        await expect(auth().api.signInEmail({ body: { email, password: 'wrong password!' } })).rejects.toThrow();
 
         const user = await userRepository.findByEmail(email);
         expect(user).toMatchObject({

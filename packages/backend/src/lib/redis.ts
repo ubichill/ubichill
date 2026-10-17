@@ -20,24 +20,36 @@ interface RedisLog {
     info: (...args: unknown[]) => void;
 }
 
-/** 接続を始めて、すぐに返す（Redis が落ちていても backend の起動を止めない）。 */
-export function connectRedis(options: { url: string; password?: string }, log: RedisLog = logger): RedisConnection {
-    const client = newClient(options.url, options.password);
+/** 切れた・戻ったの変化だけを記録し、接続を始める（Redis が落ちていても待たない）。 */
+function watch(client: RedisConnection, label: string, log: RedisLog): RedisConnection {
     // 再接続のたびに error が出るので、切れた・戻ったの変化だけを記録する
     const state = { failing: false };
     client.on('error', (err: unknown) => {
         if (state.failing) return;
         state.failing = true;
-        log.warn('Redis に接続できません（再接続を続けます）:', err instanceof Error ? err.message : err);
+        log.warn(`${label}に接続できません（再接続を続けます）:`, err instanceof Error ? err.message : err);
     });
     client.on('ready', () => {
-        if (state.failing) log.info('Redis に再接続しました');
+        if (state.failing) log.info(`${label}に再接続しました`);
         state.failing = false;
     });
     client.connect().catch((err: unknown) => {
-        log.warn('Redis への接続を諦めました:', err instanceof Error ? err.message : err);
+        log.warn(`${label}への接続を諦めました:`, err instanceof Error ? err.message : err);
     });
     return client;
+}
+
+/** 接続を始めて、すぐに返す（Redis が落ちていても backend の起動を止めない）。 */
+export function connectRedis(options: { url: string; password?: string }, log: RedisLog = logger): RedisConnection {
+    return watch(newClient(options.url, options.password), 'Redis ', log);
+}
+
+/**
+ * Pub/Sub の購読用の別の接続（購読中の接続はほかの命令を送れない）。購読の要求は繋がるまで待たせ、
+ * 再接続のあとは node-redis が購読し直す。
+ */
+export function connectSubscriber(client: RedisConnection, log: RedisLog = logger): RedisConnection {
+    return watch(client.duplicate({ disableOfflineQueue: false }), 'Redis（購読）', log);
 }
 
 /** /health に載せる状態。Redis 未設定なら載せない。落ちていても backend 全体は healthy のまま（再起動しても直らないため）。 */
