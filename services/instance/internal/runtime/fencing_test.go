@@ -72,6 +72,12 @@ func (p *partitioned) Release(ctx context.Context, room, token string) (bool, er
 	}
 	return p.Directory.Release(ctx, room, token)
 }
+func (p *partitioned) Retire(ctx context.Context, room, token string, ttl time.Duration) (bool, error) {
+	if err := p.fail(); err != nil {
+		return false, err
+	}
+	return p.Directory.Retire(ctx, room, token, ttl)
+}
 func (p *partitioned) PublishPresence(ctx context.Context, rooms []coord.RoomPresence, ttl time.Duration) error {
 	if err := p.fail(); err != nil {
 		return err
@@ -418,6 +424,11 @@ func TestConflictReportsTheOwnerAndOnlyTheOwnerCloses(t *testing.T) {
 	if _, ok, _ := c.dir.Presence(ctx, "room"); ok {
 		t.Fatal("close did not forget the presence")
 	}
+	// 閉じた部屋は別のノードでも retiredFor の間は作れない
+	if _, err := b.Provision(definition("room")); !errors.Is(err, errRetired) {
+		t.Fatalf("provision right after close: %v", err)
+	}
+	c.clock.Advance(retiredFor)
 	if next := provision(t, b, "room"); next.epoch != 2 {
 		t.Fatalf("epoch after close = %d", next.epoch)
 	}

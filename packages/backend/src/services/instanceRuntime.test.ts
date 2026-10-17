@@ -83,7 +83,7 @@ describe('readRoomPresence', () => {
         });
         const map = await readRoomPresence({ sendCommand }, 'p:');
         expect([...map.entries()]).toEqual([['a', { id: 'a', memberIds: ['alice'], emptySince: 0 }]]);
-        expect(sendCommand).toHaveBeenLastCalledWith([
+        expect(sendCommand).toHaveBeenNthCalledWith(2, [
             'MGET',
             'p:presence:a',
             'p:presence:expired',
@@ -177,6 +177,34 @@ describe('instanceRuntime', () => {
         expect(stale.calls).toHaveLength(2);
     });
 
+    it('reaper の close は観測した世代を付け、別の世代へ送り直さない', async () => {
+        const stale = fakeFetch({ status: 409, body: conflict(owner('10.0.0.8:3002', true, 5)) });
+        expect(await runtime('redis', stale.fetch).close('room', 123, { gen: 'g1', epoch: 4 })).toBe(false);
+        expect(stale.calls).toHaveLength(1);
+        expect(Object.fromEntries(stale.calls[0].url.searchParams)).toEqual({
+            emptyBefore: '123',
+            gen: 'g1',
+            epoch: '4',
+        });
+        const moved = fakeFetch({ status: 409, body: conflict(owner('10.0.0.8:3002')) }, { status: 204 });
+        expect(await runtime('redis', moved.fetch).close('room', 123, { gen: 'g1', epoch: 4 })).toBe(true);
+        expect(Object.fromEntries(moved.calls[1].url.searchParams)).toEqual({
+            emptyBefore: '123',
+            gen: 'g1',
+            epoch: '4',
+        });
+    });
+
+    it('reaper が不在を観測した部屋は、新しい owner がいたら閉じない', async () => {
+        const fresh = fakeFetch({ status: 409, body: conflict(owner('10.0.0.8:3002')) });
+        expect(await runtime('redis', fresh.fetch).close('room', 123, null)).toBe(false);
+        expect(fresh.calls).toHaveLength(1);
+        expect(Object.fromEntries(fresh.calls[0].url.searchParams)).toEqual({ emptyBefore: '123', absent: 'true' });
+        const oldPod = fakeFetch();
+        expect(await runtime('redis', oldPod.fetch).close('room', 123, {})).toBe(false);
+        expect(oldPod.calls).toHaveLength(0);
+    });
+
     it('在席: redis は Redis を読み、Go の Service には問い合わせない。memory は Service に問い合わせる', async () => {
         const sendCommand = vi.fn(async (args: ReadonlyArray<string>) =>
             args[0] === 'SMEMBERS' ? ['room'] : [JSON.stringify({ members: ['alice'], emptySince: 0 })],
@@ -189,6 +217,131 @@ describe('instanceRuntime', () => {
         const svc = fakeFetch({ status: 200, body: { instances: [presence('h:1')] } });
         expect((await runtime('memory', svc.fetch, { sendCommand }).presence()).has('room')).toBe(true);
         expect(svc.calls[0].url.href).toBe(`${SERVICE}/realtime/v1/instances`);
+    });
+
+    describe('redis: 置き場所', () => {
+        const nodeValue = (addr: string, load: object = {}) =>
+            JSON.stringify({ addr, startedAt: 1, state: 'ready', rooms: 0, connections: 0, capacity: 10, ...load });
+        /** ubi:nodes・ubi:node:<id>・ubi:room:<id> を返す Redis。 */
+        const directory = (nodes: Record<string, string | null>, owner: string | null = null) => ({
+            sendCommand: vi.fn(async (args: ReadonlyArray<string>) => {
+                if (args[0] === 'SMEMBERS') return Object.keys(nodes);
+                if (args[0] === 'HGET') return owner;
+                if (args[0] === 'MGET') return args.slice(1).map((key) => nodes[key.slice('ubi:node:'.length)] ?? null);
+                return 1;
+            }),
+        });
+        const quiet = { warn: vi.fn() };
+        const placed = (fetch: typeof globalThis.fetch, redis: RedisCommands) =>
+            createInstanceRuntime({
+                url: SERVICE,
+                token: 't',
+                publicUrl: '/ws',
+                directory: 'redis',
+                redis,
+                fetch,
+                log: quiet,
+            });
+        const puts = (calls: { url: URL; method: string }[]) =>
+            calls.filter((c) => c.method === 'PUT').map((c) => c.url.origin);
+
+        it('Service ではなく、空いている Pod へ作成を送る', async () => {
+            const redis = directory({
+                busy: nodeValue('10.0.0.1:3002', { connections: 40, rooms: 2 }),
+                idle: nodeValue('10.0.0.2:3002', { connections: 3, rooms: 5 }),
+                draining: nodeValue('10.0.0.3:3002', { state: 'draining' }),
+            });
+            const { fetch, calls } = fakeFetch({ status: 200, body: presence('10.0.0.2:3002') });
+            expect(await placed(fetch, redis).provision('room', 3, world)).toEqual({
+                base: 'http://10.0.0.2:3002',
+                gen: 'g1',
+                epoch: 4,
+            });
+            expect(puts(calls)).toEqual(['http://10.0.0.2:3002']);
+        });
+
+        it('生きている owner が居れば、空いている Pod より先に owner へ送る', async () => {
+            const redis = directory(
+                { idle: nodeValue('10.0.0.2:3002'), owner: nodeValue('10.0.0.9:3002', { connections: 90 }) },
+                'owner',
+            );
+            const { fetch, calls } = fakeFetch({ status: 200, body: presence('10.0.0.9:3002') });
+            await placed(fetch, redis).provision('room', 3, world);
+            expect(puts(calls)).toEqual(['http://10.0.0.9:3002']);
+        });
+
+        it('503（draining・上限）と応答なしは次の Pod へ送り直す', async () => {
+            const redis = directory({
+                a: nodeValue('10.0.0.1:3002'),
+                b: nodeValue('10.0.0.2:3002', { connections: 1 }),
+                c: nodeValue('10.0.0.3:3002', { connections: 2 }),
+            });
+            const replies: (Reply | Error)[] = [
+                { status: 503, body: { success: false, error: 'node is draining' } },
+                new TypeError('fetch failed'),
+                { status: 200, body: presence('10.0.0.3:3002') },
+            ];
+            const calls: string[] = [];
+            const fetch = vi.fn(async (input: string | URL | Request) => {
+                calls.push(new URL(String(input)).origin);
+                const reply = replies.shift();
+                if (!reply || reply instanceof Error) throw reply ?? new Error('unexpected');
+                return new Response(JSON.stringify(reply.body), { status: reply.status });
+            }) as unknown as typeof globalThis.fetch;
+            expect((await placed(fetch, redis).provision('room', 3, world)).base).toBe('http://10.0.0.3:3002');
+            expect(calls).toEqual(['http://10.0.0.1:3002', 'http://10.0.0.2:3002', 'http://10.0.0.3:3002']);
+        });
+
+        it('送り直すのは 3 つの Pod まで。全部に断られたら失敗にする', async () => {
+            const nodes = Object.fromEntries(
+                ['a', 'b', 'c', 'd'].map((id, i) => [id, nodeValue(`10.0.0.${i + 1}:3002`, { connections: i })]),
+            );
+            const full = { status: 503, body: { success: false, error: 'node is at capacity' } };
+            const { fetch, calls } = fakeFetch(full, full, full);
+            await expect(placed(fetch, directory(nodes)).provision('room', 3, world)).rejects.toThrow('置ける Pod');
+            expect(calls).toHaveLength(3);
+        });
+
+        it('400（閉じたばかりの部屋など）は送り直さない', async () => {
+            const redis = directory({ a: nodeValue('10.0.0.1:3002'), b: nodeValue('10.0.0.2:3002') });
+            const { fetch, calls } = fakeFetch({
+                status: 400,
+                body: { success: false, error: 'instance has been closed' },
+            });
+            await expect(placed(fetch, redis).provision('room', 3, world)).rejects.toThrow('400');
+            expect(calls).toHaveLength(1);
+        });
+
+        it('owner が割り当てを解放せずに落ちた（409 で alive: false）なら、送り直さずに失敗にする（入室は 503 で取り直させる）', async () => {
+            const redis = directory({ a: nodeValue('10.0.0.1:3002'), b: nodeValue('10.0.0.2:3002') });
+            const { fetch, calls } = fakeFetch({ status: 409, body: conflict(owner('10.0.0.8:3002', false)) });
+            await expect(placed(fetch, redis).provision('room', 3, world)).rejects.toThrow('owner が応答しません');
+            expect(calls).toHaveLength(1);
+        });
+
+        it('Pod の状態が無い・壊れている・アドレスが不正・Redis に届かないときは Service に任せる', async () => {
+            for (const redis of [
+                directory({}),
+                directory({ broken: '{', evil: nodeValue('evil.test:80/x') }),
+                {
+                    sendCommand: vi.fn(async () => {
+                        throw new Error('The client is closed');
+                    }),
+                },
+            ]) {
+                const { fetch, calls } = fakeFetch({ status: 200, body: presence('10.0.0.7:3002') });
+                await placed(fetch, redis).provision('room', 3, world);
+                expect(puts(calls)).toEqual([SERVICE]);
+            }
+        });
+
+        it('memory は Redis を読まずに Service へ送り、503 を送り直さない', async () => {
+            const redis = directory({ a: nodeValue('10.0.0.1:3002') });
+            const { fetch, calls } = fakeFetch({ status: 503, body: { success: false, error: 'node is draining' } });
+            await expect(runtime('memory', fetch, redis).provision('room', 3, world)).rejects.toThrow();
+            expect(puts(calls)).toEqual([SERVICE]);
+            expect(redis.sendCommand).not.toHaveBeenCalled();
+        });
     });
 
     it('redis が落ちていれば在席は失敗にする（reaper が空室と誤って消さない）', async () => {

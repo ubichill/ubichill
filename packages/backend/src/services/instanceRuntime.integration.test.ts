@@ -31,13 +31,42 @@ describe.skipIf(!process.env.REDIS_URL)('readRoomPresence (Redis統合)', () => 
         await client.set(`${prefix}presence:busy`, JSON.stringify({ members: ['alice', 'bob'], emptySince: 0 }), {
             expiration: { type: 'PX', value: 15_000 },
         });
-        await client.set(`${prefix}presence:empty`, JSON.stringify({ members: [], emptySince: 1700 }), {
-            expiration: { type: 'PX', value: 15_000 },
-        });
+        await client.set(
+            `${prefix}presence:empty`,
+            JSON.stringify({ members: [], emptySince: 1700, gen: 'g1', epoch: 4 }),
+            {
+                expiration: { type: 'PX', value: 15_000 },
+            },
+        );
         const presence = await readRoomPresence(client, prefix);
         expect(Object.fromEntries(presence)).toEqual({
             busy: { id: 'busy', memberIds: ['alice', 'bob'], emptySince: 0 },
-            empty: { id: 'empty', memberIds: [], emptySince: 1700 },
+            empty: { id: 'empty', memberIds: [], emptySince: 1700, gen: 'g1', epoch: 4 },
         });
+        expect(await client.sMembers(`${prefix}rooms`)).not.toContain('expired');
+    });
+
+    it('一覧を掃除する直前に戻った在席や新しい owner の参照は消さない', async () => {
+        await client.sAdd(`${prefix}rooms`, ['reviving', 'owning']);
+        await client.hSet(`${prefix}room:owning`, { node: 'new-node', token: 'new-token' });
+        let restored = false;
+        const racing = {
+            sendCommand: async (args: ReadonlyArray<string>) => {
+                const reply = await client.sendCommand(args);
+                if (args[0] === 'MGET' && !restored) {
+                    restored = true;
+                    await client.set(
+                        `${prefix}presence:reviving`,
+                        JSON.stringify({ members: [], emptySince: 1700, gen: 'g2', epoch: 2 }),
+                    );
+                }
+                return reply;
+            },
+        };
+        await readRoomPresence(racing, prefix);
+        const listed = await client.sMembers(`${prefix}rooms`);
+        expect(listed).toContain('reviving');
+        expect(listed).toContain('owning');
+        expect((await readRoomPresence(client, prefix)).get('reviving')).toMatchObject({ gen: 'g2', epoch: 2 });
     });
 });

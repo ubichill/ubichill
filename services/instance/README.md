@@ -88,7 +88,16 @@ backendのデプロイや設定変更ではGoを再起動しない（状態が�
   再接続情報は再起動の前後で有効なまま。部屋が消えていれば `instance_unavailable` で取り直す）。
   SNS側のDBにあるインスタンスは次の入室時にワールド初期状態から復元する。
 - HelmのGo Deploymentは既定で1 replica・Recreate。`INSTANCE_DIRECTORY=redis`（chart: `instanceRuntime.directory: redis`）なら
-  `instanceRuntime.replicas` を2以上にできる（memory のまま2以上にすると描画で失敗する）。設計は docs/design/instance-scaling.md。
+  `instanceRuntime.replicas` を2以上にでき、更新は RollingUpdate になる（memory のまま2以上にすると描画で失敗する）。設計は docs/design/instance-scaling.md。
+- **置き場所**: 各 Pod は heartbeat に `{addr, state, rooms, connections, capacity}` を書き、`ubi:nodes` に自分を載せる。`connections` は部屋の参加者と、
+  ほかの Pod の部屋へ中継している接続の合計。`capacity` は `--max-rooms`（既定 1000）。backend は `directory: redis` のとき、
+  部屋の owner が生きていればその Pod、居なければ `state: ready` で部屋数が `capacity` 未満の Pod を接続数・部屋数の少ない順に選び、その Pod へ作成を送る。
+  draining・上限に達した Pod は作成を 503 で断り、backend は次の Pod へ送り直す。
+- **draining**: SIGTERM を受けると、新しい部屋の作成を 503 で断り、heartbeat の `state` を `draining` に書き直し、`GET /ready` を 503 にする（`/health` は 200 のまま）。
+  持っている部屋は入室・操作・延長とも続ける。接続（参加者と中継）が無くなるか `--drain-timeout`（既定 0。chart は redis のとき 15 秒）を過ぎたら、
+  残りの部屋を閉じて割り当てを解放する（`instance:closing` は送らない）。クライアントは繋ぎ直し、部屋は別の Pod に作り直される。
+- **閉じた部屋**: 終了した部屋は 2 分間どの Pod でも作り直せない（Directory の `ubi:retired:<id>`。memory なら Pod の中だけ）。割り当ての Lua の中で確かめ、
+  閉じる側は token の照合・印の設定・割り当てと在席の削除を原子的に行う。owner が変わっていたら 409、Redis に届かなければ 503 を返し、DB の削除を止める。作成は 400。
 - **WS Router**: 各 Pod が Router を兼ねる。最初の `world:join` の部屋が手元に無ければ、Directory の owner の内部アドレス
   （heartbeat の `addr`）の `/realtime/v1/relay` へ WebSocket を張り、`world:join` から先を双方向に中継する。owner は Upgrade の後に1回だけ決め、
   owner が接続を閉じたら（自己停止・終了・退出）中継も閉じる。クライアントはチケットを取り直して繋ぎ直す。
@@ -102,13 +111,18 @@ backendのデプロイや設定変更ではGoを再起動しない（状態が�
   受信70KiBの上限は両方にあるが、中継は同じバイト列を送るので先に効くのは繋いだ Pod。ping/pong とアイドルの切断は区間ごと
   （クライアント ⇔ 繋いだ Pod、繋いだ Pod ⇔ owner）。
 - 管理 API（作成・チケット発行・終了）は任意の `?gen=&epoch=` を受け、今の部屋の世代と違えば409（今の owner を付ける）。
+  reaper は観測した世代を付け、世代が変わっていれば送り直さない。不在を観測した場合は `?absent=true` で owner がいないことを原子的に確認する。
+  Redis の在席にも `gen/epoch` を載せ、owner も在席も期限切れの参照は backend が Redis 内で再確認して `ubi:rooms` から外す。
   backend は `directory: redis` のとき、割り当てた Pod（在席の `addr`、409 の `owner.addr`）の `http://<addr>/realtime/v1` へ続く管理 API を送り、
   在席は Redis の `ubi:rooms`・`ubi:presence:<id>` から読む。
 - owner は部屋のリースを 5 秒ごとに延長する。最後に成功した延長の要求を送った時刻から 10 秒（TTL 15 秒 − 余裕 5 秒）を過ぎると、
   その部屋の状態変更と入室を止めて接続を閉じる（`instance:closing` は送らない。クライアントはチケットを取り直して入り直し、
   部屋は新しい epoch で作り直される）。Redis の中身が消えて世代（`ubi:cluster:gen`）が変わったときも全部屋を捨てる。
-- プロセスが落ちて割り当てを解放できなかった部屋は、TTL（15 秒）が切れるまで他の Pod が作れない（管理 API は 409）。
+- プロセスが落ちて割り当てを解放できなかった部屋は、TTL（15 秒）が切れるまで他の Pod が作れない（管理 API は 409。backend の入室は 503 で、
+  クライアントは再接続の上限の中で取り直す）。切れたあとの入室で別の Pod が新しい epoch で作り、前のチケットは `ticket_invalid` になる。
   通常の停止（SIGTERM）では解放するので、次の Pod はすぐ作り直せる。
+- 同じユーザーの別の接続へ `session:replaced` を送るのは、同じ owner の Pod の部屋どうしだけ。別の Pod の部屋に入り直したときは、
+  前の部屋の接続はそのまま残る（閉じれば猶予のあと抜ける）。
 - SNS停止中でも既存のGo接続は継続する。SNS連携での新規入室・再接続はチケット再取得が必要。
 - 自動再接続は最大6回・30秒。失効チケットの取り直しも同じ上限内で1回だけ行う。
   単体モードは上限到達後に失敗画面に留まり、本人の操作で再試行する。

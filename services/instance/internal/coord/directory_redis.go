@@ -19,9 +19,10 @@ local g = redis.call('GET', KEYS[1])
 if g then return g end
 redis.call('SET', KEYS[1], ARGV[1])
 return ARGV[1]`)
-	// KEYS: room, epoch, gen / ARGV: node, gen, token, ttl, epochRetention
+	// KEYS: room, epoch, gen, retired / ARGV: node, gen, token, ttl, epochRetention
 	assignScript = redis.NewScript(`
 if redis.call('GET', KEYS[3]) ~= ARGV[2] then return {-1} end
+if redis.call('EXISTS', KEYS[4]) == 1 then return {-2} end
 local cur = redis.call('HMGET', KEYS[1], 'node', 'epoch', 'token', 'gen')
 if cur[3] then return {0, cur[1], cur[2], cur[3], cur[4]} end
 local epoch = redis.call('INCR', KEYS[2])
@@ -47,12 +48,14 @@ func NewRedisDirectory(client redis.UniversalClient, prefix string) *RedisDirect
 	return &RedisDirectory{client: client, prefix: prefix}
 }
 
-func (r *RedisDirectory) genKey() string               { return r.prefix + "cluster:gen" }
-func (r *RedisDirectory) nodeKey(node string) string   { return r.prefix + "node:" + node }
-func (r *RedisDirectory) roomKey(room string) string   { return r.prefix + "room:" + room }
-func (r *RedisDirectory) epochKey(room string) string  { return r.prefix + "room:epoch:" + room }
-func (r *RedisDirectory) presenceKey(id string) string { return r.prefix + "presence:" + id }
-func (r *RedisDirectory) roomsKey() string             { return r.prefix + "rooms" }
+func (r *RedisDirectory) genKey() string                { return r.prefix + "cluster:gen" }
+func (r *RedisDirectory) nodeKey(node string) string    { return r.prefix + "node:" + node }
+func (r *RedisDirectory) roomKey(room string) string    { return r.prefix + "room:" + room }
+func (r *RedisDirectory) epochKey(room string) string   { return r.prefix + "room:epoch:" + room }
+func (r *RedisDirectory) presenceKey(id string) string  { return r.prefix + "presence:" + id }
+func (r *RedisDirectory) roomsKey() string              { return r.prefix + "rooms" }
+func (r *RedisDirectory) nodesKey() string              { return r.prefix + "nodes" }
+func (r *RedisDirectory) retiredKey(room string) string { return r.prefix + "retired:" + room }
 
 func (r *RedisDirectory) ClusterGen(ctx context.Context) (string, error) {
 	return clusterGenScript.Run(ctx, r.client, []string{r.genKey()}, newToken()).Text()
@@ -66,7 +69,14 @@ func (r *RedisDirectory) Heartbeat(ctx context.Context, node string, info NodeIn
 	if err != nil {
 		return err
 	}
-	return r.client.Set(ctx, r.nodeKey(node), body, ttl).Err()
+	// ubi:nodes は backend が置き場所を選ぶときの一覧（KEYS・SCAN で全キーを舐めさせない）。
+	// 期限の切れたノードは、読んだ backend が一覧から外す。
+	_, err = r.client.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+		pipe.Set(ctx, r.nodeKey(node), body, ttl)
+		pipe.SAdd(ctx, r.nodesKey(), node)
+		return nil
+	})
+	return err
 }
 
 func (r *RedisDirectory) Node(ctx context.Context, node string) (NodeInfo, bool, error) {
@@ -93,14 +103,17 @@ func (r *RedisDirectory) Assign(ctx context.Context, room, node, gen string, ttl
 	if node == "" {
 		return Assignment{}, false, ErrInvalidLease
 	}
-	keys := []string{r.roomKey(room), r.epochKey(room), r.genKey()}
+	keys := []string{r.roomKey(room), r.epochKey(room), r.genKey(), r.retiredKey(room)}
 	out, err := assignScript.Run(ctx, r.client, keys, node, gen, newToken(), ttl.Milliseconds(), epochRetention.Milliseconds()).Slice()
 	if err != nil {
 		return Assignment{}, false, err
 	}
 	status, _ := out[0].(int64)
-	if status < 0 {
+	switch status {
+	case -1:
 		return Assignment{}, false, ErrGenChanged
+	case -2:
+		return Assignment{}, false, ErrRetired
 	}
 	a, err := assignmentOf(out[1:])
 	return a, status == 1, err
@@ -196,6 +209,27 @@ func (r *RedisDirectory) Forget(ctx context.Context, room string) error {
 		return nil
 	})
 	return err
+}
+
+var retireScript = redis.NewScript(`
+local token = redis.call('HGET', KEYS[1], 'token')
+if token then
+  if token ~= ARGV[1] then return 0 end
+elseif ARGV[1] ~= '' then
+  return 0
+end
+redis.call('SET', KEYS[2], '1', 'PX', ARGV[2])
+redis.call('DEL', KEYS[1], KEYS[3])
+redis.call('SREM', KEYS[4], ARGV[3])
+return 1`)
+
+func (r *RedisDirectory) Retire(ctx context.Context, room, token string, ttl time.Duration) (bool, error) {
+	if err := validateRoom(room, ttl, true); err != nil {
+		return false, err
+	}
+	keys := []string{r.roomKey(room), r.retiredKey(room), r.presenceKey(room), r.roomsKey()}
+	n, err := retireScript.Run(ctx, r.client, keys, token, ttl.Milliseconds(), room).Int()
+	return err == nil && n == 1, err
 }
 
 // DirectoryFor は Redis を設定していれば Redis の Directory だけを返す。LeaseFor と同じく、

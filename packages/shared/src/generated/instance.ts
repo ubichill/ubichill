@@ -20,6 +20,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    '/ready': {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Readiness. 503 while the node is draining (after SIGTERM): it refuses new rooms and should be taken out of the Service. Existing rooms keep working. */
+        get: operations['ready'];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     '/realtime/v1/instances': {
         parameters: {
             query?: never;
@@ -47,10 +64,10 @@ export interface paths {
         };
         /** @description Management token required in managed mode. Guest mode returns metadata with memberIds redacted. */
         get: operations['getInstance'];
-        /** @description Idempotent create. Existing instance state is never reset. Management token required. Assigns the room to this node in the directory: 409 with the owner when another node holds it, 503 when the directory is unavailable. With gen and epoch, 409 unless this node holds the room at that generation (never creates a new one). */
+        /** @description Idempotent create. Existing instance state is never reset. Management token required. Assigns the room to this node in the directory: 409 with the owner when another node holds it, 503 when the directory is unavailable, when this node is draining or when it holds its maximum number of rooms (choose another node). 400 for a room closed within the last 2 minutes on any node. With gen and epoch, 409 unless this node holds the room at that generation (never creates a new one). */
         put: operations['provisionInstance'];
         post?: never;
-        /** @description Closes the room only while this node is its owner, then releases the assignment. With gen and epoch, 409 when this node holds the room at another generation. */
+        /** @description Closes only the observed generation (gen and epoch) or only an unassigned room (absent=true). Atomically checks the owner token and retires the room. Redis errors fail closed. */
         delete: operations['closeInstance'];
         options?: never;
         head?: never;
@@ -218,6 +235,39 @@ export interface operations {
             };
         };
     };
+    ready: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ready */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    'application/json': {
+                        status: string;
+                    };
+                };
+            };
+            /** @description Draining */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    'application/json': {
+                        status: string;
+                    };
+                };
+            };
+        };
+    };
     listInstances: {
         parameters: {
             query?: never;
@@ -318,6 +368,15 @@ export interface operations {
                     'application/json': components['schemas']['Conflict'];
                 };
             };
+            /** @description Directory unavailable, node draining or at capacity. Another node may accept it. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    'application/json': components['schemas']['Error'];
+                };
+            };
             /** @description Request failed */
             default: {
                 headers: {
@@ -338,6 +397,8 @@ export interface operations {
                 gen?: components['parameters']['ExpectedGen'];
                 /** @description 呼び出し側が知っている owner の epoch。gen と組で指定する。 */
                 epoch?: components['parameters']['ExpectedEpoch'];
+                /** @description With true, close only if no owner exists; cannot be combined with gen or epoch. Used by reaper after observing absence. */
+                absent?: boolean;
             };
             header?: never;
             path: {

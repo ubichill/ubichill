@@ -42,6 +42,53 @@
         }
       }
     },
+    "/ready": {
+      "get": {
+        "operationId": "ready",
+        "description": "Readiness. 503 while the node is draining (after SIGTERM): it refuses new rooms and should be taken out of the Service. Existing rooms keep working.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Draining",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/realtime/v1/instances": {
       "get": {
         "operationId": "listInstances",
@@ -94,7 +141,7 @@
       ],
       "put": {
         "operationId": "provisionInstance",
-        "description": "Idempotent create. Existing instance state is never reset. Management token required. Assigns the room to this node in the directory: 409 with the owner when another node holds it, 503 when the directory is unavailable. With gen and epoch, 409 unless this node holds the room at that generation (never creates a new one).",
+        "description": "Idempotent create. Existing instance state is never reset. Management token required. Assigns the room to this node in the directory: 409 with the owner when another node holds it, 503 when the directory is unavailable, when this node is draining or when it holds its maximum number of rooms (choose another node). 400 for a room closed within the last 2 minutes on any node. With gen and epoch, 409 unless this node holds the room at that generation (never creates a new one).",
         "requestBody": {
           "required": true,
           "content": {
@@ -122,6 +169,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Conflict"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Directory unavailable, node draining or at capacity. Another node may accept it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -174,7 +231,7 @@
       },
       "delete": {
         "operationId": "closeInstance",
-        "description": "Closes the room only while this node is its owner, then releases the assignment. With gen and epoch, 409 when this node holds the room at another generation.",
+        "description": "Closes only the observed generation (gen and epoch) or only an unassigned room (absent=true). Atomically checks the owner token and retires the room. Redis errors fail closed.",
         "parameters": [
           {
             "name": "emptyBefore",
@@ -190,6 +247,14 @@
           },
           {
             "$ref": "#/components/parameters/ExpectedEpoch"
+          },
+          {
+            "name": "absent",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "With true, close only if no owner exists; cannot be combined with gen or epoch. Used by reaper after observing absence."
           }
         ],
         "responses": {

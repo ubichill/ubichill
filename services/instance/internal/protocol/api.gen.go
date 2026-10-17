@@ -137,6 +137,9 @@ type CloseInstanceParams struct {
 
 	// Epoch 呼び出し側が知っている owner の epoch。gen と組で指定する。
 	Epoch *ExpectedEpoch `form:"epoch,omitempty" json:"epoch,omitempty"`
+
+	// Absent With true, close only if no owner exists; cannot be combined with gen or epoch. Used by reaper after observing absence.
+	Absent *bool `form:"absent,omitempty" json:"absent,omitempty"`
 }
 
 // ProvisionInstanceParams defines parameters for ProvisionInstance.

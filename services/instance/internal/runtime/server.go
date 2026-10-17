@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ubichill/ubichill/services/instance/internal/coord"
@@ -33,9 +34,22 @@ type Config struct {
 	Fencing Fencing
 	// Clock は自己停止の期限を測る時計。time.Now の値は monotonic clock を持つので、壁時計の変更の影響を受けない。
 	Clock func() time.Time
+	// MaxRooms はこのノードが持つ部屋の数の上限（0 なら 1000）。heartbeat の capacity として backend の置き場所の選択にも使う。
+	MaxRooms int
 }
+
+// retiredFor は閉じた部屋を作り直させない期間。閉じる途中・直後に届いた入室（backend が DB を消す前に
+// 作成を送ったもの）で部屋を生き返らせない。Directory に置くので、redis なら全 Pod で揃う。
+const retiredFor = 2 * time.Minute
+
+var (
+	errRetired = errors.New("instance has been closed")
+	// errDraining・errNodeFull は 503。backend は別のノードを選び直す。
+	errDraining = errors.New("node is draining")
+	errNodeFull = errors.New("node is at capacity")
+)
+
 type Server struct {
-	retired      map[string]time.Time
 	mu           sync.RWMutex
 	rooms        map[string]*Room
 	gen          string
@@ -55,6 +69,9 @@ type Server struct {
 	relayKey     []byte
 	relayMu      sync.Mutex
 	relays       map[*upstream]struct{}
+	draining     atomic.Bool
+	// maintaining は heartbeat・延長を 1 本ずつにする（周期の loop と、draining に入った直後の書き直し）。
+	maintaining sync.Mutex
 }
 
 // New は Server を作り、heartbeat と owner のリースの延長を始める（Close で止める）。
@@ -78,8 +95,11 @@ func newServer(config Config) *Server {
 	if config.Node == "" {
 		config.Node = coord.NewNodeID("")
 	}
+	if config.MaxRooms <= 0 {
+		config.MaxRooms = 1000
+	}
 	return &Server{
-		retired: map[string]time.Time{}, rooms: map[string]*Room{}, active: map[string]*peer{}, key: ticketKey(config), config: config,
+		rooms: map[string]*Room{}, active: map[string]*peer{}, key: ticketKey(config), config: config,
 		dir: config.Directory, node: config.Node, now: config.Clock, fencing: config.Fencing.withDefaults(), started: time.Now(),
 		relayKey: relayKey(config), relays: map[*upstream]struct{}{},
 	}
@@ -112,26 +132,24 @@ func (s *Server) provision(d Definition, want expectation) (*Room, error) {
 		}
 		s.discard(ctx, r, true)
 	}
-	s.mu.Lock()
-	for id, until := range s.retired {
-		if time.Now().After(until) {
-			delete(s.retired, id)
-		}
+	// draining でも持っている部屋は上で返す（動き続ける）。新しい部屋だけを断る
+	if s.draining.Load() {
+		return nil, errDraining
 	}
-	_, retired := s.retired[d.ID]
-	full := len(s.rooms) >= 1000
-	s.mu.Unlock()
-	if retired {
-		return nil, errors.New("instance has been closed")
-	}
+	s.mu.RLock()
+	full := len(s.rooms) >= s.config.MaxRooms
+	s.mu.RUnlock()
 	if full {
-		return nil, errors.New("instance limit reached")
+		return nil, errNodeFull
 	}
 	r, err := newRoom(d)
 	if err != nil {
 		return nil, err
 	}
 	a, sent, err := s.assign(ctx, d.ID)
+	if errors.Is(err, coord.ErrRetired) {
+		return nil, errRetired
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -219,6 +237,14 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, Object{"status": "ok"}) })
+	// readiness。draining（SIGTERM のあと）は 503 にして、Service から新しい接続・管理 API を外させる
+	mux.HandleFunc("GET /ready", func(w http.ResponseWriter, r *http.Request) {
+		if s.draining.Load() {
+			writeJSON(w, 503, Object{"status": "draining"})
+			return
+		}
+		writeJSON(w, 200, Object{"status": "ok"})
+	})
 	mux.HandleFunc("GET /realtime/v1/ws", s.serveSocket)
 	mux.HandleFunc("GET "+relayPath, s.serveRelay)
 	mux.HandleFunc("GET /realtime/v1/instances", func(w http.ResponseWriter, r *http.Request) {
@@ -265,6 +291,8 @@ func (s *Server) Handler() http.Handler {
 			writeJSON(w, 409, conflict(elsewhere))
 		case errors.Is(err, errDirectoryUnavailable):
 			writeJSON(w, 503, failure(errDirectoryUnavailable.Error()))
+		case errors.Is(err, errDraining), errors.Is(err, errNodeFull):
+			writeJSON(w, 503, failure(err.Error()))
 		case err != nil:
 			writeJSON(w, 400, failure(err.Error()))
 		default:
@@ -397,6 +425,9 @@ func (s *Server) closeInstance(ctx context.Context, id, emptyBefore string, want
 	ctx, cancel := context.WithTimeout(ctx, s.fencing.Timeout)
 	defer cancel()
 	room := s.owned(id)
+	if room != nil && want.absent {
+		return 409, s.staleGeneration(ctx, id)
+	}
 	// 呼び出し側が見ていたのと別の世代の部屋（作り直された部屋）は閉じない
 	if room != nil && want.set && !want.matches(room) {
 		return 409, s.staleGeneration(ctx, id)
@@ -409,6 +440,9 @@ func (s *Server) closeInstance(ctx context.Context, id, emptyBefore string, want
 		if err != nil && !errors.Is(err, coord.ErrInvalidRoom) {
 			return 503, failure(errDirectoryUnavailable.Error())
 		}
+		if held && (want.absent || want.set && (owner.Gen != want.gen || owner.Epoch != want.epoch)) {
+			return 409, s.staleGeneration(ctx, id)
+		}
 		if held && owner.Node != s.node {
 			info, alive, err := s.dir.Node(ctx, owner.Node)
 			if err != nil {
@@ -416,13 +450,17 @@ func (s *Server) closeInstance(ctx context.Context, id, emptyBefore string, want
 			}
 			return 409, conflict(&ownedElsewhere{owner: owner, addr: info.Addr, alive: alive})
 		}
+		token := ""
 		if held {
-			// 自分のノードの割り当てだが部屋が無い（自己停止のあと解放できなかった）
-			_, _ = s.dir.Release(ctx, id, owner.Token)
+			token = owner.Token
 		}
-		s.mu.Lock()
-		s.retired[id] = time.Now().Add(2 * time.Minute)
-		s.mu.Unlock()
+		retired, err := s.dir.Retire(ctx, id, token, retiredFor)
+		if err != nil {
+			return 503, failure(errDirectoryUnavailable.Error())
+		}
+		if !retired {
+			return 409, s.staleGeneration(ctx, id)
+		}
 		return 204, nil
 	}
 	room.mu.Lock()
@@ -439,6 +477,17 @@ func (s *Server) closeInstance(ctx context.Context, id, emptyBefore string, want
 			return 409, failure("instance is occupied or recently emptied")
 		}
 	}
+	// token の照合と retired の設定を同じ操作にする。失敗時には DB を削除させない。
+	retired, err := s.dir.Retire(ctx, id, room.token, retiredFor)
+	if err != nil {
+		room.mu.Unlock()
+		return 503, failure(errDirectoryUnavailable.Error())
+	}
+	if !retired {
+		room.mu.Unlock()
+		s.discard(ctx, room, false)
+		return 409, s.staleGeneration(ctx, id)
+	}
 	room.closed = true
 	room.mu.Unlock()
 	room.close(true)
@@ -446,18 +495,16 @@ func (s *Server) closeInstance(ctx context.Context, id, emptyBefore string, want
 	if s.rooms[id] == room {
 		delete(s.rooms, id)
 	}
-	s.retired[id] = time.Now().Add(2 * time.Minute)
 	s.mu.Unlock()
-	_, _ = s.dir.Release(ctx, id, room.token)
-	_ = s.dir.Forget(ctx, id)
 	return 204, nil
 }
 
 // expectation は管理 API の ?gen=&epoch=（backend が知っている部屋の世代）。付いていなければ照らさない。
 type expectation struct {
-	set   bool
-	gen   string
-	epoch int64
+	absent bool
+	set    bool
+	gen    string
+	epoch  int64
 }
 
 func (e expectation) matches(r *Room) bool {
@@ -468,6 +515,13 @@ func (e expectation) matches(r *Room) bool {
 func expected(w http.ResponseWriter, r *http.Request) (expectation, bool) {
 	q := r.URL.Query()
 	gen, epoch := q.Get("gen"), q.Get("epoch")
+	if absent := q.Get("absent"); absent != "" {
+		if absent != "true" || gen != "" || epoch != "" {
+			writeJSON(w, 400, failure("absent=true cannot be combined with gen or epoch"))
+			return expectation{}, false
+		}
+		return expectation{absent: true}, true
+	}
 	if gen == "" && epoch == "" {
 		return expectation{}, true
 	}
