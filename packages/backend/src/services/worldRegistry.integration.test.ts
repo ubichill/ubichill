@@ -53,6 +53,10 @@ const worldDef = (name: string, displayName: string, initialEntities: InitialEnt
 /** 送る組（YAML を往復した値＝ルートが受け取る値と同じ）。 */
 const bundleOf = (def: WorldDefinition) => ({ definition: yaml.parse(yaml.stringify(def)) as unknown, lock: null });
 const uniqueName = (label: string) => `it-${label}-${Date.now().toString(36)}`;
+const withVersion = (def: WorldDefinition, version: string): WorldDefinition => ({
+    ...def,
+    metadata: { ...def.metadata, version },
+});
 
 describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
     // 型のみ import（値の import は env 設定後に動的に行う）
@@ -301,7 +305,8 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
     });
 
     it('署名が内容と一致しない DB のワールドは配信せず、「見つからない」ではなく理由を返す', async () => {
-        const { worldRepository } = await import('@ubichill/db');
+        const { db, worldRepository, worldVersions } = await import('@ubichill/db');
+        const { eq } = await import('drizzle-orm');
         const name = uniqueName('broken');
         const bundle = bundleOf(worldDef(name, '元'));
         const saved = await worldRegistry.saveBundle(AUTHOR, {
@@ -310,10 +315,13 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
         });
         if (!saved.ok) throw new Error(saved.message);
         try {
-            const record = await worldRepository.findByName(saved.world.id);
-            if (!record) throw new Error('レコードが無い');
+            const state = await worldRepository.findState(saved.world.id);
+            if (!state?.current) throw new Error('公開中の版が無い');
             // DB を直接書き換えた（署名の後で中身が変わった）
-            await worldRepository.update(record.id, { definition: bundleOf(worldDef(name, '改竄')).definition });
+            await db
+                .update(worldVersions)
+                .set({ definition: bundleOf(worldDef(name, '改竄')).definition })
+                .where(eq(worldVersions.id, state.current.id));
             worldRegistry.invalidateResolvedWorlds();
             expect(await worldRegistry.resolveLocal(saved.world.id)).toMatchObject({ ok: false, reason: 'integrity' });
             expect(await worldRegistry.resolveRefDetailed(saved.world.url)).toMatchObject({
@@ -337,7 +345,8 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
         if (!created.ok) throw new Error(created.message);
         const id = created.world.id;
         try {
-            const draft = bundleOf(worldDef(name, '編集中'));
+            // 同じ version で中身を変えた公開は拒否するので、下書きは版を上げる
+            const draft = bundleOf(withVersion(worldDef(name, '編集中'), '1.1.0'));
             expect(await worldRegistry.saveBundle(AUTHOR, draft)).toMatchObject({ ok: true, saved: 'draft' });
             expect((await worldRegistry.getWorld(id))?.displayName).toBe('公開中');
             expect((await worldRegistry.getWorld(id))?.identity?.status).toBe('verified');
@@ -471,5 +480,174 @@ describe.skipIf(!RUN)('worldRegistry + instanceManager (DB統合)', () => {
         } finally {
             await worldRegistry.deleteWorld(saved.world.id);
         }
+    });
+    describe('公開の版（world_versions）', () => {
+        const key = newTestSigningKey();
+        const signed = async (def: WorldDefinition, signingKey: WorldSigningKey = key) => {
+            const bundle = bundleOf(def);
+            return {
+                ...bundle,
+                signature: await signWorld(bundle, signingKey, nodeWorldCrypto, { author: 'alice@example.com' }),
+            };
+        };
+        const publish = async (name: string, version: string, label = version) => {
+            const result = await worldRegistry.saveBundle(
+                AUTHOR,
+                await signed(withVersion(worldDef(name, label), version)),
+            );
+            if (!result.ok) throw new Error(result.message);
+            return result.world;
+        };
+
+        it('4 つ目を公開すると、いちばん古い版を消す（公開は拒否しない）。消した版の content_hash は gone、ほかは引ける', async () => {
+            const { worldRepository } = await import('@ubichill/db');
+            const name = uniqueName('keep3');
+            const v1 = await publish(name, '1.0.0');
+            try {
+                const v2 = await publish(name, '1.0.1');
+                await publish(name, '1.0.2');
+                expect(await worldRepository.listVersions(v1.id)).toHaveLength(3);
+                const v4 = await publish(name, '1.0.3');
+                const versions = await worldRepository.listVersions(v1.id);
+                expect(versions.map((v) => v.version).sort()).toEqual(['1.0.1', '1.0.2', '1.0.3']);
+                expect(v4.version).toBe('1.0.3');
+
+                const hashOf = (w: typeof v1) => w.identity?.contentHash ?? '';
+                expect(await worldRegistry.resolveVersion(v1.id, hashOf(v1))).toMatchObject({
+                    ok: false,
+                    reason: 'gone',
+                });
+                expect(await worldRegistry.resolveVersion(v1.id, hashOf(v2))).toMatchObject({
+                    ok: true,
+                    world: { id: v1.id, version: '1.0.1', identity: { contentHash: hashOf(v2) } },
+                });
+                expect(await worldRegistry.resolveVersion(v1.id, hashOf(v4))).toMatchObject({
+                    ok: true,
+                    world: { version: '1.0.3' },
+                });
+                expect(await worldRegistry.resolveVersion('no-such-world', hashOf(v2))).toMatchObject({
+                    reason: 'not-found',
+                });
+            } finally {
+                await worldRegistry.deleteWorld(v1.id);
+            }
+        });
+
+        it('インスタンスが指す版は消さず、インスタンスが消えたら定期処理で消し直す', async () => {
+            const { instanceRepository, worldRepository } = await import('@ubichill/db');
+            const name = uniqueName('pinned');
+            const v1 = await publish(name, '1.0.0');
+            try {
+                const created = await instanceManager.createInstance({ worldId: v1.url }, SYS);
+                if ('error' in created) throw new Error(created.error);
+                const pinned = await instanceRepository.findById(created.id);
+                const [first] = await worldRepository.listVersions(v1.id);
+                // 作成時の版を記録する（自サーバーで公開した版は ID も）
+                expect(pinned).toMatchObject({ worldVersionId: first?.id, contentHash: v1.identity?.contentHash });
+
+                for (const version of ['1.0.1', '1.0.2', '1.0.3']) await publish(name, version);
+                expect((await worldRepository.listVersions(v1.id)).map((v) => v.version).sort()).toEqual([
+                    '1.0.0',
+                    '1.0.1',
+                    '1.0.2',
+                    '1.0.3',
+                ]);
+
+                await instanceRepository.delete(created.id);
+                await worldRegistry.pruneAllVersions();
+                expect((await worldRepository.listVersions(v1.id)).map((v) => v.version).sort()).toEqual([
+                    '1.0.1',
+                    '1.0.2',
+                    '1.0.3',
+                ]);
+            } finally {
+                await worldRegistry.deleteWorld(v1.id);
+            }
+        });
+
+        it('インスタンスが版を指していても、ワールドごと消せる（版の参照だけ外す）', async () => {
+            const { instanceRepository } = await import('@ubichill/db');
+            const v1 = await publish(uniqueName('delpinned'), '1.0.0');
+            const created = await instanceManager.createInstance({ worldId: v1.url }, SYS);
+            if ('error' in created) throw new Error(created.error);
+            try {
+                expect(await worldRegistry.deleteWorld(v1.id)).toBe(true);
+                expect(await instanceRepository.findById(created.id)).toMatchObject({ worldVersionId: null });
+            } finally {
+                await instanceRepository.delete(created.id);
+            }
+        });
+
+        it('同じ version で中身の違う公開は拒否し、公開中の版も下書きも変えない', async () => {
+            const name = uniqueName('conflict');
+            const v1 = await publish(name, '1.0.0', '元');
+            try {
+                expect(await worldRegistry.saveBundle(AUTHOR, await signed(worldDef(name, '差し替え')))).toMatchObject({
+                    ok: false,
+                    reason: 'version-conflict',
+                });
+                expect((await worldRegistry.getWorld(v1.id))?.displayName).toBe('元');
+                const yamlFile = await worldRegistry.worldFile(HANDLE, `${name}.yaml`);
+                expect(yamlFile && 'body' in yamlFile ? yaml.parse(yamlFile.body).spec.displayName : undefined).toBe(
+                    '元',
+                );
+            } finally {
+                await worldRegistry.deleteWorld(v1.id);
+            }
+        });
+
+        it('署名し直しは同じ版の signature だけを置き換える（定義・lock・content_hash・時刻・ID は変えない）', async () => {
+            const { worldRepository } = await import('@ubichill/db');
+            const name = uniqueName('resign');
+            const v1 = await publish(name, '1.0.0', '元');
+            try {
+                const [before] = await worldRepository.listVersions(v1.id);
+                const resigned = await signed(withVersion(worldDef(name, '元'), '1.0.0'), newTestSigningKey());
+                expect(await worldRegistry.saveBundle(AUTHOR, resigned)).toMatchObject({
+                    ok: true,
+                    saved: 'published',
+                });
+                const after = await worldRepository.listVersions(v1.id);
+                expect(after).toHaveLength(1);
+                expect(after[0]).toEqual({ ...before, signature: resigned.signature });
+                expect(after[0]?.signature).not.toEqual(before?.signature);
+                const sigFile = await worldRegistry.worldFile(HANDLE, `${name}.sig.json`);
+                expect(sigFile && 'body' in sigFile ? JSON.parse(sigFile.body) : undefined).toEqual(resigned.signature);
+            } finally {
+                await worldRegistry.deleteWorld(v1.id);
+            }
+        });
+
+        it('公開中のワールドに署名なしで送ると下書き、署名が無効になったワールドに署名なしで送ると公開中を外して下書きを配る', async () => {
+            const { worldRepository } = await import('@ubichill/db');
+            const name = uniqueName('unpub');
+            const v1 = await publish(name, '1.0.0', '公開中');
+            try {
+                // 公開中の版を壊す（鍵を取り消した後などで、公開中の版を配れなくなった）
+                const { db, worldVersions } = await import('@ubichill/db');
+                const { eq } = await import('drizzle-orm');
+                const state = await worldRepository.findState(v1.id);
+                await db
+                    .update(worldVersions)
+                    .set({ signature: null })
+                    .where(eq(worldVersions.id, state?.current?.id ?? ''));
+                worldRegistry.invalidateResolvedWorlds();
+                expect(await worldRegistry.saveBundle(AUTHOR, bundleOf(worldDef(name, '署名なし')))).toMatchObject({
+                    ok: true,
+                    saved: 'unsigned',
+                    world: { displayName: '署名なし', identity: { status: 'unsigned' } },
+                });
+                const after = await worldRepository.findState(v1.id);
+                expect(after?.world.currentVersionId).toBeNull();
+                // 過去の版は残す
+                expect(await worldRepository.listVersions(v1.id)).toHaveLength(1);
+                expect(await worldRegistry.getEditorDefinition(v1.id)).toMatchObject({
+                    hasDraft: false,
+                    published: false,
+                });
+            } finally {
+                await worldRegistry.deleteWorld(v1.id);
+            }
+        });
     });
 });

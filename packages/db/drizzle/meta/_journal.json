@@ -162,6 +162,13 @@
       "when": 1792241468043,
       "tag": "0022_users_drop_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1792297158813,
+      "tag": "0023_world_versions",
+      "breakpoints": true
     }
   ]
 }

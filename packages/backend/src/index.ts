@@ -184,6 +184,10 @@ async function startServer() {
                 pendingRegistrationRepository
                     .deleteExpired()
                     .catch((err: unknown) => console.error('仮登録の掃除に失敗:', err)),
+                // インスタンスが消えて消せるようになった古い版を消し直す
+                worldRegistry
+                    .pruneAllVersions()
+                    .catch((err: unknown) => console.error('ワールドの古い版の掃除に失敗:', err)),
             ]);
         });
     };

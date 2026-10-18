@@ -2,10 +2,12 @@ import {
     authorKeyRepository,
     externalWorkRepository,
     favoriteRepository,
+    servedWorldOf,
     userFriendRepository,
     userRepository,
     userSettingsRepository,
     type WorldRecord,
+    type WorldState,
     worldRepository,
 } from '@ubichill/db';
 import type { ResolvedWorld, WorldListItem } from '@ubichill/shared';
@@ -25,6 +27,7 @@ import {
     HandleSchema,
     isPublishable,
     LIMITS,
+    limitsFor,
     MAX_EXTERNAL_WORKS_PER_USER,
     needsFriendCheck,
     OFFICIAL_HANDLE,
@@ -430,21 +433,23 @@ router.get('/me/worlds', requirePublisher, async (req, res) => {
     if (!req.user) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
-    const [records, me] = await Promise.all([
-        worldRepository.findByAuthorId(req.user.id),
+    const [states, me] = await Promise.all([
+        worldRepository.findStatesByAuthorId(req.user.id),
         userRepository.findById(req.user.id),
     ]);
     // 本人には未署名（非公開）も返す。署名状態を見せて署名し直せるようにする。配信できない（署名が内容と一致しない）ものは理由も返す
     const hosted = await Promise.all(
-        records.map(async (r: WorldRecord) => {
-            const resolution = await worldRegistry.resolveLocal(r.name);
-            const def = resolution.ok ? resolution.world : parseStoredDefinition(r.definition)?.spec;
+        states.map(async (state: WorldState) => {
+            const r = state.world;
+            const served = servedWorldOf(state);
+            const resolution = await worldRegistry.resolveLocal(r.id);
+            const def = resolution.ok ? resolution.world : parseStoredDefinition(served?.definition)?.spec;
             return {
-                id: r.name,
+                id: r.id,
                 displayName: def?.displayName ?? r.worldName,
                 description: def?.description ?? null,
                 thumbnail: def?.thumbnail ?? null,
-                version: r.version,
+                version: served?.version ?? '',
                 capacity: def?.capacity ?? { default: 0, max: 0 },
                 updatedAt: r.updatedAt,
                 // 配信の道筋（署名し直すときに、配信している生の値をここから取る）
@@ -465,8 +470,8 @@ router.get('/me/worlds', requirePublisher, async (req, res) => {
     return res.json({
         worlds: [...hosted, ...repository],
         // 作成数の上限は本体（DB）に作ったワールドだけで数える（リポジトリ管理のワールドは含めない）
-        limit: LIMITS.MAX_WORLDS_PER_USER,
-        remaining: Math.max(0, LIMITS.MAX_WORLDS_PER_USER - hosted.length),
+        limit: limitsFor(req.user).maxWorlds,
+        remaining: Math.max(0, limitsFor(req.user).maxWorlds - hosted.length),
     });
 });
 
@@ -648,7 +653,7 @@ router.get('/:userId/favorites', optionalAuth, async (req, res) => {
 // 他ユーザーが作成したワールド一覧（公開メタデータのみ。署名検証済みのワールドだけ公開する）
 router.get('/:userId/worlds', async (req, res) => {
     const records = await worldRepository.findByAuthorId(req.params.userId);
-    const resolved = await Promise.all(records.map((r: WorldRecord) => worldRegistry.getWorld(r.name)));
+    const resolved = await Promise.all(records.map((r: WorldRecord) => worldRegistry.getWorld(r.id)));
     const worlds = resolved
         .filter((w): w is ResolvedWorld => !!w && isPublishable(w.identity))
         .map((w) => ({
