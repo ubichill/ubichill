@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, eq, ilike, inArray, isNull, lte, ne, or, type SQL, sql } from 'drizzle-orm';
 import { db } from '../index';
-import { accounts, sessions, users } from '../schema';
+import { accounts, instances, sessions, users, worlds, worldVersions } from '../schema';
 import { insertCredentialUser, type NewCredentialUser } from './credentialUser';
 
 export type UserRecord = typeof users.$inferSelect;
@@ -193,9 +193,27 @@ export const userRepository = {
         return results[0];
     },
 
-    /** ユーザーを削除する（ワールド・お気に入り等は FK の cascade で消える）。 */
+    /**
+     * ユーザーを削除する（ワールド・お気に入り等は FK の cascade で消える）。ほかの人のインスタンスが
+     * このユーザーのワールドの版を指していると版を消せない（RESTRICT）ので、先に参照を外す。
+     */
     async deleteById(id: string): Promise<void> {
-        await db.delete(users).where(eq(users.id, id));
+        await db.transaction(async (tx) => {
+            await tx
+                .update(instances)
+                .set({ worldVersionId: null })
+                .where(
+                    inArray(
+                        instances.worldVersionId,
+                        tx
+                            .select({ id: worldVersions.id })
+                            .from(worldVersions)
+                            .innerJoin(worlds, eq(worlds.id, worldVersions.worldId))
+                            .where(eq(worlds.authorId, id)),
+                    ),
+                );
+            await tx.delete(users).where(eq(users.id, id));
+        });
     },
 
     async ensureSystemUser(systemUserId: string): Promise<UserRecord> {

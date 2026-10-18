@@ -8,6 +8,10 @@ export interface CreateInstanceInput {
     id?: string;
     /** ワールド参照＝正規 URL（worlds.id への FK は廃止） */
     worldRef: string;
+    /** 作成時に解決したワールドの版（shared の worldContentHash()）。 */
+    contentHash?: string | null;
+    /** 自サーバーで公開したワールドの版のときだけ。 */
+    worldVersionId?: string | null;
     leaderId: string;
     accessType?: 'public' | 'friend_plus' | 'friend_only' | 'invite_only';
     accessTags?: string[];
@@ -62,6 +66,8 @@ export const instanceRepository = {
             .values({
                 id: input.id,
                 worldRef: input.worldRef,
+                contentHash: input.contentHash ?? null,
+                worldVersionId: input.worldVersionId ?? null,
                 leaderId: input.leaderId,
                 accessType: input.accessType ?? 'public',
                 accessTags: input.accessTags ?? [],

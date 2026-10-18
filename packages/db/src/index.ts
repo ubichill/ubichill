@@ -34,7 +34,9 @@ export {
 export { type FriendRow, userFriendRepository } from './repositories/userFriendRepository';
 export { type UserRecord, userRepository } from './repositories/userRepository';
 export { userSettingsRepository } from './repositories/userSettingsRepository';
-export { worldRepository } from './repositories/worldRepository';
+export { type PublishOutcome, type WorldTarget, worldRepository } from './repositories/worldRepository';
+export { editorWorldOf, type ServedWorld, servedWorldOf, versionsToPrune } from './repositories/worldRows';
+export { backfillWorldContentHashes, versionContentHash } from './worldContentHashBackfill';
 
 const connectionString = process.env.DATABASE_URL || 'postgresql://ubichill:password@127.0.0.1:5433/ubichill';
 
@@ -57,11 +59,11 @@ export type {
 } from './repositories/federationPeerRepository';
 export type { CreateInstanceInput, InstanceRecord, UpdateInstanceInput } from './repositories/instanceRepository';
 export type {
-    CreateWorldInput,
-    InsertWorldRecord,
-    UpdateWorldInput,
+    WorldDraftRecord,
     WorldRecord,
-} from './repositories/worldRepository';
+    WorldState,
+    WorldVersionRecord,
+} from './repositories/worldRows';
 export {
     accounts,
     friendStatusEnum,
@@ -70,7 +72,6 @@ export {
     insertUserFriendSchema,
     insertUserSchema,
     insertUserSettingsSchema,
-    insertWorldSchema,
     instances,
     instancesRelations,
     pendingRegistrations,
@@ -79,7 +80,6 @@ export {
     selectUserFriendSchema,
     selectUserSchema,
     selectUserSettingsSchema,
-    selectWorldSchema,
     sessions,
     userFavorites,
     userFavoritesRelations,
@@ -90,6 +90,8 @@ export {
     users,
     usersRelations,
     verifications,
+    worldDrafts,
     worlds,
     worldsRelations,
+    worldVersions,
 } from './schema';

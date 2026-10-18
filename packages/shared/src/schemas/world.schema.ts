@@ -18,6 +18,8 @@ export const LIMITS = {
     MAX_DEPENDENCY_DEPTH: 3,
     MAX_TAGS: 10,
     MAX_WORLDS_PER_USER: 5,
+    /** 1 つのワールドに残す公開の版の数（limitsFor から使う）。 */
+    MAX_VERSIONS_PER_WORLD: 3,
     MAX_FAVORITES_PER_USER: 100,
     MAX_WORLD_URL_LENGTH: 2048,
 } as const;

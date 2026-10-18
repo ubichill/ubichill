@@ -2,11 +2,13 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const db = vi.hoisted(() => ({
-    worldRepository: { findByName: vi.fn(), delete: vi.fn(), findAll: vi.fn() },
+    worldRepository: { findState: vi.fn(), delete: vi.fn(), findAll: vi.fn() },
     userRepository: { findById: vi.fn(), findByHandle: vi.fn() },
     federationPeerRepository: { findAll: vi.fn(), delete: vi.fn() },
 }));
-vi.mock('@ubichill/db', () => ({
+// servedWorldOf などの純粋な関数は本物を使う（接続は問い合わせるまで張らない）
+vi.mock('@ubichill/db', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('@ubichill/db')>()),
     ...db,
     authorKeyRepository: {},
 }));
@@ -22,7 +24,10 @@ describe('worldRegistry と backend の間の知らせ', () => {
     const hub = createMemoryBusHub();
     const other = hub.connect();
     const received: BackendEvent[] = [];
-    const record = { id: 'db-1', name: 'w1', authorId: 'author-1', worldName: 'hello' };
+    const state = {
+        world: { id: 'w1', authorId: 'author-1', worldName: 'hello', currentVersionId: null },
+        draft: { worldId: 'w1', definition: { metadata: { name: 'hello', version: '1.0.0' } }, lock: null },
+    };
 
     beforeAll(async () => {
         await backendEvents.attach(hub.connect());
@@ -34,7 +39,7 @@ describe('worldRegistry と backend の間の知らせ', () => {
     beforeEach(() => {
         vi.resetAllMocks();
         received.length = 0;
-        db.worldRepository.findByName.mockResolvedValue(record);
+        db.worldRepository.findState.mockResolvedValue(state);
         // 作者のアカウントが無いワールドは「配信しない」と解決され、その結果もキャッシュされる
         db.userRepository.findById.mockResolvedValue(undefined);
     });
@@ -42,25 +47,25 @@ describe('worldRegistry と backend の間の知らせ', () => {
     it('ほかの backend がワールドを変えたら、解決のキャッシュを捨てて DB から引き直す', async () => {
         await worldRegistry.resolveLocal('w2');
         await worldRegistry.resolveLocal('w2');
-        expect(db.worldRepository.findByName).toHaveBeenCalledTimes(1);
+        expect(db.worldRepository.findState).toHaveBeenCalledTimes(1);
         // 別のワールドの知らせでは捨てない
         await other.publish({ type: 'world.changed', worldId: 'other' });
         await sleep(10);
         await worldRegistry.resolveLocal('w2');
-        expect(db.worldRepository.findByName).toHaveBeenCalledTimes(1);
+        expect(db.worldRepository.findState).toHaveBeenCalledTimes(1);
         await other.publish({ type: 'world.changed', worldId: 'w2' });
         await sleep(10);
         await worldRegistry.resolveLocal('w2');
-        expect(db.worldRepository.findByName).toHaveBeenCalledTimes(2);
+        expect(db.worldRepository.findState).toHaveBeenCalledTimes(2);
     });
 
     it('作者の鍵・表示名が変わった知らせでも捨てる', async () => {
         await worldRegistry.resolveLocal('w1');
-        const before = db.worldRepository.findByName.mock.calls.length;
+        const before = db.worldRepository.findState.mock.calls.length;
         await other.publish({ type: 'worlds.resolved-stale' });
         await sleep(10);
         await worldRegistry.resolveLocal('w1');
-        expect(db.worldRepository.findByName).toHaveBeenCalledTimes(before + 1);
+        expect(db.worldRepository.findState).toHaveBeenCalledTimes(before + 1);
     });
 
     it('削除したら、ほかの backend に知らせる', async () => {

@@ -233,3 +233,96 @@ ALTER TABLE users ADD COLUMN username varchar(255);
 ALTER TABLE users ADD CONSTRAINT users_username_unique UNIQUE (username);
 ALTER TABLE users ADD COLUMN profile_image_url varchar(1024);
 ```
+
+## 0023_world_versions（ワールドの版と下書きを分ける）
+
+`worlds` の 1 行に入っていた公開中の版と下書きを、`world_versions`（版。変えない）と `world_drafts`（下書き）に分ける。
+
+- 署名のある行は、`definition`・`lock`・`signature`・`version` をそのまま版 1 行にし、`current_version_id` で指す（公開の時刻は `updated_at`）。
+- 下書き: 公開中の行は `draft_*` を、署名の無い行は今の `definition`・`lock` を下書きにする（未公開のワールドは下書きを署名なしとして配る。
+  配る中身は 0023 の前と同じ）。
+- `worlds.id` を `worlds.name` と同じ値に書き換える（API の `/api/v1/worlds/:worldId` の id と、以前の形の URL `/api/v1/worlds/<name>` を変えないため）。
+  `world_name_aliases.world_id` も同じく書き換える。name が 21 文字を超える行・ほかの行の id と同じ name の行は書き換えず、その行の API の id は変わる。
+- `content_hash` は SQL では入れない（shared の `worldContentHash()` と同じ値を SQL で作れない）。`migrate.js` がマイグレーションの直後に埋める。
+  失敗したら initContainer が失敗する。もう一度流せば、残りだけ埋める。
+- `instances` に `content_hash` と `world_version_id`（`world_versions` へ `ON DELETE RESTRICT`）を足す。既存のインスタンスは NULL のまま。
+- `worlds` の `name`・`version`・`definition`・`lock`・`signature`・`draft_*` は**残す**（デプロイ中の古い Pod が読み書きする）。
+  新しいイメージは読まず、保存のたびに版と下書きから書き直す（古いイメージに戻したときに同じ中身が見えるように）。消すのは後続のマイグレーション。
+- 開発環境の `pnpm dev` は `drizzle-kit push` でスキーマだけ合わせるので、既存のワールドは移らない（版も下書きも無いので見つからなくなる）。
+  手元のワールドを残したいときは、下の「古い Pod が書いたものを写す」の SQL を当てる。
+
+1.〜2. の手順（事前確認・バックアップ）は同じ。
+
+### 事前確認
+
+```sql
+-- 本番は 5 行の見込み。署名あり（版になる）・下書きあり・署名なし（下書きになる）の数
+SELECT count(*) AS total, count(signature) AS signed, count(draft_definition) AS drafted,
+       count(*) FILTER (WHERE signature IS NULL) AS unsigned FROM worlds;
+-- id を name にそろえられない行（0 行の見込み。あれば API の id が変わるので、作者のエディタのブックマークが外れる）
+SELECT w.id, w.name FROM worlds w
+WHERE w.id <> w.name AND (length(w.name) > 21 OR EXISTS (SELECT 1 FROM worlds o WHERE o.id = w.name));
+-- 署名の無い行に下書きがある（今のコードでは起きない。あれば draft_* を下書きにし、definition は版にも下書きにも残らない）
+SELECT id, name FROM worlds WHERE signature IS NULL AND draft_definition IS NOT NULL;
+```
+
+### 事後確認
+
+```sql
+SELECT (SELECT count(*) FROM worlds WHERE signature IS NOT NULL) AS signed,
+       (SELECT count(*) FROM world_versions) AS versions,
+       (SELECT count(*) FROM world_drafts) AS drafts,
+       (SELECT count(*) FROM world_versions WHERE content_hash IS NULL) AS unhashed;  -- signed = versions、unhashed = 0
+SELECT count(*) FROM worlds WHERE id <> name;  -- 事前確認で出た行の数と同じ
+```
+
+- 自分のワールドの一覧（`/api/v1/users/me/worlds`）・共有 URL・YAML の配信・エディタの下書きが 0023 の前と同じに見えること。
+
+### デプロイ中に古い Pod が書いたものを写す
+
+マイグレーションの後に古い Pod が行った保存は、古い列にだけ入る。古い Pod がすべて止まってから、次の 2 つが 0 行であることを確かめる。
+
+```sql
+-- 古い Pod が作ったワールド（版も下書きも無いので、新しいイメージでは見つからない）
+SELECT w.id, w.name FROM worlds w
+WHERE w.current_version_id IS NULL AND NOT EXISTS (SELECT 1 FROM world_drafts d WHERE d.world_id = w.id);
+-- 古い Pod が保存したワールド（古い列が版・下書きと食い違う）
+SELECT w.id, w.name FROM worlds w
+LEFT JOIN world_versions v ON v.id = w.current_version_id
+LEFT JOIN world_drafts d ON d.world_id = w.id
+WHERE (w.signature IS NOT NULL AND (v.id IS NULL OR v.definition IS DISTINCT FROM w.definition
+           OR v.signature IS DISTINCT FROM w.signature OR d.definition IS DISTINCT FROM w.draft_definition))
+   OR (w.signature IS NULL AND (v.id IS NOT NULL OR d.definition IS DISTINCT FROM w.definition));
+```
+
+行があれば、その行を 0023 と同じ規則で移し直す（`$ID` は上で出た id）。署名のある行の新しい版は、版を上げて公開されていれば足し、
+同じ version で中身が違えば上書きされた版なので作者に知らせる。最後に `migrate.js` をもう一度流して content_hash を埋める。
+
+```sql
+-- 署名なし: 下書きを今の定義にし、公開中を外す
+INSERT INTO world_drafts (world_id, definition, lock, updated_at)
+SELECT id, definition, lock, updated_at FROM worlds WHERE id = '$ID'
+ON CONFLICT (world_id) DO UPDATE SET definition = EXCLUDED.definition, lock = EXCLUDED.lock, updated_at = EXCLUDED.updated_at;
+UPDATE worlds SET current_version_id = NULL WHERE id = '$ID';
+-- 署名あり（新しい version）: 版を足して公開中にし、下書きを draft_* に合わせる
+INSERT INTO world_versions (id, world_id, version, definition, lock, signature, published_at)
+SELECT substr(replace(gen_random_uuid()::text, '-', ''), 1, 21), id, version, definition, lock, signature, updated_at
+FROM worlds WHERE id = '$ID';
+UPDATE worlds w SET current_version_id = v.id FROM world_versions v WHERE w.id = '$ID' AND v.world_id = w.id AND v.version = w.version;
+DELETE FROM world_drafts WHERE world_id = '$ID';
+INSERT INTO world_drafts (world_id, definition, lock, updated_at)
+SELECT id, draft_definition, draft_lock, coalesce(draft_updated_at, updated_at) FROM worlds WHERE id = '$ID' AND draft_definition IS NOT NULL;
+```
+
+### 古いイメージに戻すとき
+
+新しいイメージは古い列を書き直しているので、古いイメージはそのまま同じ中身を読める（id は name と同じ値なので、新しく作ったワールドも引ける）。
+ただし、**イメージを戻す前に**インスタンスの版の参照を外す。古いイメージはワールドを消すとき版を指すインスタンスを考えないので、
+外さないと RESTRICT でワールドとユーザーの削除が失敗する。
+
+```sql
+UPDATE instances SET world_version_id = NULL WHERE world_version_id IS NOT NULL;
+```
+
+- 古いイメージは版の履歴を使わない（公開中の 1 つだけ）。同じ version で中身の違う公開も通るので、そのまま古い列だけが変わる。
+- 新しいイメージに進め直すときは、上の「古い Pod が書いたものを写す」で食い違いを確かめてから出す。

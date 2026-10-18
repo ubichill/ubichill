@@ -53,6 +53,9 @@ class InstanceManager {
         // DBにインスタンスを作成（ワールドは URL で参照する。official/外部ワールドも instance 化可）
         const dbInstance = await instanceRepository.create({
             worldRef: world.url,
+            // 作成時の版。自サーバーで公開した版なら、この行がある間はその版を消さない
+            contentHash: world.identity?.contentHash ?? null,
+            worldVersionId: resolution.versionId ?? null,
             leaderId,
             accessType: request.access?.type ?? 'public',
             accessTags: request.access?.tags ?? [],

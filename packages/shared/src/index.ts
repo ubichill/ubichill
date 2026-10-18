@@ -277,6 +277,7 @@ export * from './user/externalWorks';
 export * from './user/favoritesVisibility';
 export * from './user/friends';
 export * from './user/handle';
+export * from './user/limits';
 export * from './user/signingKeys';
 export * from './user/userSearch';
 export * from './world/identity';
