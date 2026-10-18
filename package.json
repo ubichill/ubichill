@@ -32,6 +32,7 @@
     "db:migrate": "pnpm --filter @ubichill/db migrate:dev",
     "clean": "pnpm --filter \"./packages/*\" clean",
     "test": "vitest run",
+    "smoke": "pnpm --filter @ubichill/e2e smoke",
     "test:watch": "vitest",
     "instance:dev": "go -C services/instance run ./cmd/instance --guests --world=examples/empty.json --origins=http://localhost:3000",
     "instance:test": "go -C services/instance test -race ./...",
