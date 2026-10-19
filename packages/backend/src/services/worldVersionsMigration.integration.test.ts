@@ -69,6 +69,8 @@ interface OldRow {
 describe.skipIf(!RUN)('0023 の前後でワールドの API が同じ（DB 統合）', () => {
     const dbName = `ubichill_world_api_${Date.now().toString(36)}`;
     const upTo0022 = RUN ? migrationsUpTo('0022_users_drop_columns') : '';
+    // 本番と同じく、content_hash を埋めてから NOT NULL にする 0025 を当てる
+    const upTo0024 = RUN ? migrationsUpTo('0024_db_cleanup_stop_using') : '';
     const adminUrl = process.env.DATABASE_URL ?? '';
     const state: { admin?: ReturnType<typeof import('@ubichill/db').createDatabase> } = {};
     const worldsDir = mkdtempSync(path.join(tmpdir(), 'ubichill-worlds-'));
@@ -177,8 +179,9 @@ describe.skipIf(!RUN)('0023 の前後でワールドの API が同じ（DB 統�
             INSERT INTO world_name_aliases (author_id, name, world_id) VALUES (${AUTHOR_ID}, 'pub-before', 'old-pub')
         `);
 
-        await migrate(db, { migrationsFolder: MIGRATIONS });
+        await migrate(db, { migrationsFolder: upTo0024 });
         await backfillWorldContentHashes(db);
+        await migrate(db, { migrationsFolder: MIGRATIONS });
         ({ worldRegistry } = await import('./worldRegistry'));
         await worldRegistry.initialize();
     }, 60_000);
@@ -187,7 +190,7 @@ describe.skipIf(!RUN)('0023 の前後でワールドの API が同じ（DB 統�
         await dbModule?.client.end({ timeout: 5 });
         await state.admin?.client.unsafe(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`);
         await state.admin?.client.end({ timeout: 5 });
-        for (const dir of [upTo0022, worldsDir]) if (dir) rmSync(dir, { recursive: true, force: true });
+        for (const dir of [upTo0022, upTo0024, worldsDir]) if (dir) rmSync(dir, { recursive: true, force: true });
     });
 
     const fileBody = async (worldName: string, kind: 'yaml' | 'lock.json' | 'sig.json') => {

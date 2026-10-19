@@ -70,11 +70,8 @@ export const worldVersions = pgTable(
         definition: jsonb('definition').$type<unknown>().notNull(),
         lock: jsonb('lock').$type<ModLock>(),
         signature: jsonb('signature').$type<WorldSignature>(),
-        /**
-         * shared の worldContentHash() の値（`sha256-<base64>`）。0023 で移した行は SQL では求められないので、
-         * migrate.js がマイグレーションの直後に埋める（backfillWorldContentHashes）。NOT NULL は後続のマイグレーションで付ける。
-         */
-        contentHash: text('content_hash'),
+        /** shared の worldContentHash() の値（`sha256-<base64>`）。保存する側で別のハッシュ計算を書かない。 */
+        contentHash: text('content_hash').notNull(),
         publishedAt: timestamp('published_at', { withTimezone: true }).defaultNow().notNull(),
     },
     (table) => [

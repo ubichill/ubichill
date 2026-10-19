@@ -3,7 +3,6 @@ import { and, count, eq, gt, inArray, notExists, sql } from 'drizzle-orm';
 import { customAlphabet } from 'nanoid';
 import { type Database, db } from '../index';
 import { instances, worldDrafts, worldNameAliases, worlds, worldVersions } from '../schema';
-import { versionContentHash } from '../worldContentHashBackfill';
 import { versionsToPrune, type WorldRecord, type WorldState, type WorldVersionRecord } from './worldRows';
 
 export type { WorldDraftRecord, WorldRecord, WorldState, WorldVersionRecord } from './worldRows';
@@ -172,10 +171,7 @@ export const worldRepository = {
                     .from(worldVersions)
                     .where(and(eq(worldVersions.worldId, worldId), eq(worldVersions.version, input.version)))
                     .for('update');
-                const sameVersionHash = sameVersion
-                    ? (sameVersion.contentHash ?? (await versionContentHash(sameVersion.definition, sameVersion.lock)))
-                    : undefined;
-                if (sameVersion && sameVersionHash !== input.contentHash) throw new VersionConflict();
+                if (sameVersion && sameVersion.contentHash !== input.contentHash) throw new VersionConflict();
                 const versionId = sameVersion
                     ? sameVersion.id
                     : (
@@ -196,10 +192,7 @@ export const worldRepository = {
                     // 版を変えない例外: 同じ中身への署名し直しだけは signature の列を置き換える
                     await tx
                         .update(worldVersions)
-                        .set({
-                            signature: input.signature,
-                            ...(sameVersion.contentHash ? {} : { contentHash: input.contentHash }),
-                        })
+                        .set({ signature: input.signature })
                         .where(eq(worldVersions.id, versionId));
                 }
                 if (previous?.contentHash !== input.contentHash) {
