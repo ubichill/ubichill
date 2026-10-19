@@ -39,24 +39,6 @@ export const worlds = pgTable(
         currentVersionId: varchar('current_version_id', { length: 21 }),
         createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
         updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-
-        // ── 0023 より前の列。新しいコードは読まない（古いイメージに戻したときのために書き込みだけ合わせる）。後続のマイグレーションで消す ──
-        /** @deprecated id と同じ値を入れる。 */
-        name: varchar('name', { length: 255 }).notNull().unique(),
-        /** @deprecated 公開中の版（無ければ下書き）の metadata.version。 */
-        version: varchar('version', { length: 50 }).notNull(),
-        /** @deprecated 公開中の版（無ければ下書き）の定義。 */
-        definition: jsonb('definition').$type<unknown>().notNull(),
-        /** @deprecated */
-        lock: jsonb('lock').$type<ModLock>(),
-        /** @deprecated */
-        signature: jsonb('signature').$type<WorldSignature>(),
-        /** @deprecated 公開中のワールドの下書き。 */
-        draftDefinition: jsonb('draft_definition').$type<unknown>(),
-        /** @deprecated */
-        draftLock: jsonb('draft_lock').$type<ModLock>(),
-        /** @deprecated */
-        draftUpdatedAt: timestamp('draft_updated_at', { withTimezone: true }),
     },
     (table) => [
         uniqueIndex('worlds_author_world_name_unique').on(table.authorId, table.worldName),

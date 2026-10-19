@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { check, index, pgTable, text, timestamp, unique, uniqueIndex } from 'drizzle-orm/pg-core';
+import { check, index, pgTable, primaryKey, text, timestamp, unique, uniqueIndex } from 'drizzle-orm/pg-core';
 import { users } from './users';
 
 /**
@@ -75,3 +75,18 @@ export const remoteAuthors = pgTable('remote_authors', {
     displayName: text('display_name'),
     fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull(),
 });
+
+/**
+ * 他サーバーの作者の鍵一覧が新しい（確認が古くない）うちに、作者付きと確かめたワールドの内容（contentHash）。
+ * 作者のサーバーを取り直せず確認が古くなった間は、ここにある内容にだけ作者を付ける。盗んだ鍵で新しく出した作品に、
+ * 作者のサーバーを止めて作者を付けさせることを防ぐ（既存の作品は一覧から消えない）。
+ */
+export const authorConfirmedContents = pgTable(
+    'author_confirmed_contents',
+    {
+        account: text('account').notNull(),
+        contentHash: text('content_hash').notNull(),
+        confirmedAt: timestamp('confirmed_at', { withTimezone: true }).defaultNow().notNull(),
+    },
+    (table) => [primaryKey({ columns: [table.account, table.contentHash] })],
+);

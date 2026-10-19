@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm';
-import { boolean, index, integer, jsonb, pgEnum, pgTable, text, timestamp, varchar } from 'drizzle-orm/pg-core';
+import { index, integer, jsonb, pgEnum, pgTable, text, timestamp, varchar } from 'drizzle-orm/pg-core';
 import { nanoid } from 'nanoid';
 import { users } from './users';
 import { worldVersions } from './worlds';
@@ -35,12 +35,10 @@ export const instances = pgTable(
         status: instanceStatusEnum('status').notNull().default('active'),
         accessType: instanceAccessTypeEnum('access_type').notNull().default('public'),
         accessTags: jsonb('access_tags').$type<string[]>().default([]),
-        hasPassword: boolean('has_password').notNull().default(false),
         maxUsers: integer('max_users').notNull().default(10),
-        currentUsers: integer('current_users').notNull().default(0),
         createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
         expiresAt: timestamp('expires_at', { withTimezone: true }),
-        // パスワード保護用（ハッシュ化して保存）
+        /** パスワード保護（bcrypt のハッシュ）。パスワードがあるかはこの列が NULL でないかで決める。 */
         passwordHash: varchar('password_hash', { length: 255 }),
     },
     (table) => [

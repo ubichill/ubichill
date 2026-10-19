@@ -4,13 +4,7 @@ import { customAlphabet } from 'nanoid';
 import { type Database, db } from '../index';
 import { instances, worldDrafts, worldNameAliases, worlds, worldVersions } from '../schema';
 import { versionContentHash } from '../worldContentHashBackfill';
-import {
-    definitionVersionOf,
-    versionsToPrune,
-    type WorldRecord,
-    type WorldState,
-    type WorldVersionRecord,
-} from './worldRows';
+import { versionsToPrune, type WorldRecord, type WorldState, type WorldVersionRecord } from './worldRows';
 
 export type { WorldDraftRecord, WorldRecord, WorldState, WorldVersionRecord } from './worldRows';
 
@@ -55,44 +49,15 @@ const worldColumns = {
     updatedAt: worlds.updatedAt,
 };
 
-/**
- * 0023 より前の列を、版と下書きから書き直す（古いイメージに戻したときに同じ中身が見えるように）。読まない。列を消すときに一緒に消す。
- * 公開中なら definition/lock/signature は公開中の版・draft_* は下書き、未公開なら definition/lock は下書き・署名なし。
- */
-async function syncLegacyColumns(tx: Transaction, worldId: string): Promise<void> {
-    await tx.execute(sql`
-        UPDATE worlds w SET
-            version = COALESCE(v.version, d.definition->'metadata'->>'version', w.version),
-            definition = COALESCE(v.definition, d.definition, w.definition),
-            lock = CASE WHEN v.id IS NOT NULL THEN v.lock WHEN d.world_id IS NOT NULL THEN d.lock ELSE w.lock END,
-            signature = CASE WHEN v.id IS NOT NULL THEN v.signature WHEN d.world_id IS NOT NULL THEN NULL ELSE w.signature END,
-            draft_definition = CASE WHEN v.id IS NOT NULL THEN d.definition END,
-            draft_lock = CASE WHEN v.id IS NOT NULL THEN d.lock END,
-            draft_updated_at = CASE WHEN v.id IS NOT NULL THEN d.updated_at END
-        FROM worlds s
-        LEFT JOIN world_versions v ON v.id = s.current_version_id
-        LEFT JOIN world_drafts d ON d.world_id = s.id
-        WHERE w.id = s.id AND w.id = ${worldId}
-    `);
-}
-
 /** 保存先のワールドを決める（作成・名前の変更）。返すのはワールドの ID。 */
-async function ensureWorld(tx: Transaction, target: WorldTarget, seed: { definition: unknown }): Promise<string> {
+async function ensureWorld(tx: Transaction, target: WorldTarget): Promise<string> {
     if (!target.worldId) {
         // 以前ほかのワールドが使っていた名前なら、新しいワールドを優先する
         await tx
             .delete(worldNameAliases)
             .where(and(eq(worldNameAliases.authorId, target.authorId), eq(worldNameAliases.name, target.worldName)));
         const id = generateWorldId();
-        await tx.insert(worlds).values({
-            id,
-            authorId: target.authorId,
-            worldName: target.worldName,
-            // 0023 より前の NOT NULL の列（syncLegacyColumns が書き直す）
-            name: id,
-            version: definitionVersionOf(seed.definition),
-            definition: seed.definition,
-        });
+        await tx.insert(worlds).values({ id, authorId: target.authorId, worldName: target.worldName });
         return id;
     }
     const worldId = target.worldId;
@@ -196,7 +161,7 @@ export const worldRepository = {
     async publish(target: WorldTarget, input: PublishInput): Promise<PublishOutcome> {
         try {
             return await db.transaction(async (tx) => {
-                const worldId = await ensureWorld(tx, target, input);
+                const worldId = await ensureWorld(tx, target);
                 const [previous] = await tx
                     .select({ contentHash: worldVersions.contentHash })
                     .from(worlds)
@@ -244,7 +209,6 @@ export const worldRepository = {
                     .update(worlds)
                     .set({ currentVersionId: versionId, updatedAt: new Date() })
                     .where(eq(worlds.id, worldId));
-                await syncLegacyColumns(tx, worldId);
                 return { status: sameVersion ? 'resigned' : 'published', worldId, versionId } as const;
             });
         } catch (err) {
@@ -262,7 +226,7 @@ export const worldRepository = {
         input: { definition: unknown; lock: ModLock | null; unpublish: boolean },
     ): Promise<string> {
         return db.transaction(async (tx) => {
-            const worldId = await ensureWorld(tx, target, input);
+            const worldId = await ensureWorld(tx, target);
             const now = new Date();
             await tx
                 .insert(worldDrafts)
@@ -274,7 +238,6 @@ export const worldRepository = {
             if (input.unpublish) {
                 await tx.update(worlds).set({ currentVersionId: null }).where(eq(worlds.id, worldId));
             }
-            await syncLegacyColumns(tx, worldId);
             return worldId;
         });
     },

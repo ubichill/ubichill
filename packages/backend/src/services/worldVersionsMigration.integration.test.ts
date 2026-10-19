@@ -285,7 +285,7 @@ describe.skipIf(!RUN)('0023 の前後でワールドの API が同じ（DB 統�
         expect(await worldRegistry.getEditorDefinition(rows.drafted.name)).toMatchObject({ hasDraft: true });
     });
 
-    it('公開: 下書きを署名して公開すると版が増え、下書きは消える。古いイメージ向けの列も合わせる', async () => {
+    it('公開: 下書きを署名して公開すると版が増え、下書きは消える', async () => {
         const draft = rows.drafted.draftDefinition;
         const signature = await signWorld({ definition: draft, lock: null }, key, nodeWorldCrypto, {
             author: author(),
@@ -299,26 +299,13 @@ describe.skipIf(!RUN)('0023 の前後でワールドの API が同じ（DB 統�
         ).toMatchObject({ ok: true, saved: 'published', world: { version: '1.1.0', displayName: '編集中' } });
         expect(await worldRegistry.getEditorDefinition(rows.drafted.name)).toMatchObject({ hasDraft: false });
         expect(await dbModule.worldRepository.listVersions(rows.drafted.name)).toHaveLength(2);
-        const { sql } = await import('drizzle-orm');
-        const [legacy] = await dbModule.db.execute<{
-            version: string;
-            definition: unknown;
-            signature: unknown;
-            draft_definition: unknown;
-        }>(sql`SELECT version, definition, signature, draft_definition FROM worlds WHERE id = ${rows.drafted.name}`);
-        expect(legacy).toEqual({ version: '1.1.0', definition: draft, signature, draft_definition: null });
     });
 
-    it('新しく作るワールドの id も、以前の name と同じ形（小文字と数字の 21 文字）で、name にも同じ値を入れる', async () => {
+    it('新しく作るワールドの id も、以前の name と同じ形（小文字と数字の 21 文字）', async () => {
         // 作れるのは 5 つまでなので 1 つ消す
         expect(await worldRegistry.deleteWorld(rows.broken.name)).toBe(true);
         const created = await worldRegistry.saveBundle(AUTHOR_ID, { definition: def('fresh', '新規'), lock: null });
         if (!created.ok) throw new Error(created.message);
         expect(created.world.id).toMatch(/^[a-z0-9]{21}$/);
-        const { sql } = await import('drizzle-orm');
-        const [row] = await dbModule.db.execute<{ name: string }>(
-            sql`SELECT name FROM worlds WHERE id = ${created.world.id}`,
-        );
-        expect(row?.name).toBe(created.world.id);
     });
 });

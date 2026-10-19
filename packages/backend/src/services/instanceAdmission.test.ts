@@ -28,7 +28,7 @@ const record = {
     accessType: 'friend_only',
     worldRef: 'https://world.test/room.yaml',
     maxUsers: 10,
-    hasPassword: false,
+    passwordHash: null,
 };
 const owner = { base: 'http://10.0.0.7:3002', gen: 'g1', epoch: 2 };
 
@@ -60,7 +60,7 @@ describe('GoインスタンスへのSNS参加受付', () => {
         expect(mocks.ticket).toHaveBeenCalledWith('room', 'visitor', 'Visitor', owner);
     });
     it('所有者でも部屋のパスワード確認を省略しない', async () => {
-        mocks.findById.mockResolvedValue({ ...record, hasPassword: true });
+        mocks.findById.mockResolvedValue({ ...record, passwordHash: 'x' });
         await expect(instanceManager.join('room', { id: 'owner', name: 'Owner' })).rejects.toThrow(
             InstanceJoinRejected,
         );
@@ -79,7 +79,7 @@ describe('GoインスタンスへのSNS参加受付', () => {
         );
     });
     it('パスワード違いは拒否として扱い、チケットを発行しない', async () => {
-        mocks.findById.mockResolvedValue({ ...record, hasPassword: true, passwordHash: 'x' });
+        mocks.findById.mockResolvedValue({ ...record, passwordHash: 'x' });
         await expect(instanceManager.join('room', { id: 'owner', name: 'Owner' }, 'wrong')).rejects.toThrow(
             InstanceJoinRejected,
         );
