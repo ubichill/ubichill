@@ -15,14 +15,12 @@ export interface CreateInstanceInput {
     leaderId: string;
     accessType?: 'public' | 'friend_plus' | 'friend_only' | 'invite_only';
     accessTags?: string[];
-    hasPassword?: boolean;
     maxUsers?: number;
     passwordHash?: string;
 }
 
 export interface UpdateInstanceInput {
     status?: 'active' | 'full' | 'closing';
-    currentUsers?: number;
     expiresAt?: Date | null;
 }
 
@@ -71,9 +69,7 @@ export const instanceRepository = {
                 leaderId: input.leaderId,
                 accessType: input.accessType ?? 'public',
                 accessTags: input.accessTags ?? [],
-                hasPassword: input.hasPassword ?? false,
                 maxUsers: input.maxUsers ?? 10,
-                currentUsers: 0,
                 passwordHash: input.passwordHash,
             })
             .returning();

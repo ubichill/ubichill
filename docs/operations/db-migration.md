@@ -326,3 +326,93 @@ UPDATE instances SET world_version_id = NULL WHERE world_version_id IS NOT NULL;
 
 - 古いイメージは版の履歴を使わない（公開中の 1 つだけ）。同じ version で中身の違う公開も通るので、そのまま古い列だけが変わる。
 - 新しいイメージに進め直すときは、上の「古い Pod が書いたものを写す」で食い違いを確かめてから出す。
+
+## 0024_db_cleanup_stop_using（古い列を書かない・古い鍵のテーブルを消す）
+
+列の削除（0025）の前の段。新しいイメージは次のものを読み書きしなくなる。列は**残す**（デプロイ中・戻したあとの 0023 のイメージが書く）。
+
+- `worlds` の `name`・`version`・`definition`・`lock`・`signature`・`draft_*`: 保存のたびの書き戻しをやめる。新しく作る行は NULL のまま。
+  新しいイメージの INSERT が通るよう、`name`・`version`・`definition` の NOT NULL だけ外す（`name` の UNIQUE は NULL どうしでは重ならない）。
+- `instances` の `has_password`・`current_users`: パスワードの有無は `password_hash IS NOT NULL` で決める。`current_users` は誰も読まない（default の 0 のまま）。
+  0023 のイメージは `has_password` だけを見て入室のパスワードを確かめるので、新しいイメージが作ったパスワード付きのインスタンスに
+  古い Pod からパスワードなしで入れないよう、トリガー `instances_sync_has_password` で INSERT・UPDATE のたびに `password_hash` から決める
+  （既存の食い違う行も直す）。トリガーは 0025 で列と一緒に消す。
+- `publishing_environments`・`author_bindings` を DROP する（0020 以降のイメージは読み書きしない。行は 0020 で `author_keys`・`remote_authors` に移してある）。
+
+1.〜2. の手順（事前確認・バックアップ）は同じ。バックアップには古い鍵のテーブルが入っている（戻すときに使う）。
+
+### 事前確認
+
+- **0023 のイメージ（#266）がすべての Pod で動いていること**。0020 より前のイメージは古い鍵のテーブルを読むので、残っていると作者の確認・API トークンが通らない。
+
+```sql
+SELECT id FROM drizzle.__drizzle_migrations ORDER BY id DESC LIMIT 1;  -- 0023 まで適用済み
+-- 0020 の「デプロイ中に古い Pod が書いたものを写す」が済んでいること（どちらも 0 行。あれば 0020 の節の SQL で写してから出す）
+SELECT p.id FROM publishing_environments p WHERE NOT EXISTS (SELECT 1 FROM author_keys a WHERE a.id = p.id);
+SELECT p.id FROM publishing_environments p JOIN author_keys a ON a.id = p.id
+WHERE p.revoked_at IS NOT NULL AND a.revoked_at IS NULL;
+-- has_password と password_hash の食い違い（0 の見込み。あれば 0024 が password_hash に合わせる）
+SELECT id, has_password FROM instances WHERE has_password IS DISTINCT FROM (password_hash IS NOT NULL);
+```
+
+### 事後確認
+
+```sql
+SELECT to_regclass('publishing_environments'), to_regclass('author_bindings');  -- どちらも NULL
+SELECT tgname FROM pg_trigger WHERE tgrelid = 'instances'::regclass AND NOT tgisinternal;  -- instances_sync_has_password
+SELECT column_name, is_nullable FROM information_schema.columns
+WHERE table_schema = 'public' AND table_name = 'worlds' AND column_name IN ('name', 'version', 'definition');  -- すべて YES
+```
+
+- パスワード付きのインスタンスを作り、一覧で鍵の印が出ること、パスワードなしでは入れず正しいパスワードで入れることを確かめる。
+- 作者の鍵の一覧（`/api/v1/authors/<handle>/signing-keys`）・公開・CLI の API トークンが 0024 の前と同じに通ること。
+
+### 古いイメージに戻すとき
+
+- **0023 のイメージ（#266）へはそのまま戻せる。** 0023 のイメージは古い列を読まず（書くだけ）、`has_password` はトリガーが正しく保つ。
+- **0023 より前のイメージへは、0023 の節の「古いイメージに戻すとき」に加えて、イメージを戻す前に古い列を版と下書きから書き直す**
+  （0024 の後に保存したワールドは古い列が古いまま、新しく作ったワールドは NULL）。
+
+```sql
+UPDATE worlds w SET
+    name = COALESCE(w.name, w.id),
+    version = COALESCE(v.version, d.definition->'metadata'->>'version', w.version),
+    definition = COALESCE(v.definition, d.definition, w.definition),
+    lock = CASE WHEN v.id IS NOT NULL THEN v.lock WHEN d.world_id IS NOT NULL THEN d.lock ELSE w.lock END,
+    signature = CASE WHEN v.id IS NOT NULL THEN v.signature WHEN d.world_id IS NOT NULL THEN NULL ELSE w.signature END,
+    draft_definition = CASE WHEN v.id IS NOT NULL THEN d.definition END,
+    draft_lock = CASE WHEN v.id IS NOT NULL THEN d.lock END,
+    draft_updated_at = CASE WHEN v.id IS NOT NULL THEN d.updated_at END
+FROM worlds s
+LEFT JOIN world_versions v ON v.id = s.current_version_id
+LEFT JOIN world_drafts d ON d.world_id = s.id
+WHERE w.id = s.id;
+```
+
+- **0020 より前のイメージ（古い鍵のテーブルを読む）へ戻すと、鍵が見えなくなる**（作者の確認が外れ、API トークンが通らない）。
+  イメージを戻す前にテーブルを作り直し、0020 の節の「古いイメージに戻すとき」の SQL で `author_keys` から写す。
+  `author_bindings` は取り直せるキャッシュなので空でよい。
+
+```sql
+CREATE TABLE publishing_environments (
+    id text PRIMARY KEY,
+    user_id text NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    kind text NOT NULL,
+    name text NOT NULL,
+    public_key text NOT NULL CONSTRAINT publishing_environments_public_key_unique UNIQUE,
+    api_token_hash text CONSTRAINT publishing_environments_api_token_hash_unique UNIQUE,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    last_used_at timestamptz,
+    revoked_at timestamptz,
+    revoke_reason text
+);
+CREATE INDEX publishing_environments_user_id_idx ON publishing_environments (user_id);
+CREATE TABLE author_bindings (
+    account text PRIMARY KEY,
+    keys jsonb NOT NULL,
+    display_name text,
+    fetched_at timestamptz NOT NULL DEFAULT now()
+);
+```
+
+もう一度新しいイメージに進めるときは、0024 は適用済みなので再び走らない。作り直したテーブルは誰も読まないので、0025 の前に手で消してよい。

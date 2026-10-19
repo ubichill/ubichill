@@ -15,6 +15,8 @@ import { friendIdsOf } from './friends';
 import { instanceRuntime, type RoomPresence } from './instanceRuntime';
 import { worldRegistry } from './worldRegistry';
 
+const hasPassword = (record: Pick<InstanceRecord, 'passwordHash'>): boolean => record.passwordHash !== null;
+
 /** 認可・パスワードによる入室拒否。再試行しても結果は変わらない（障害による失敗と区別する）。 */
 export type CloseInstanceResult =
     | { success: true }
@@ -59,7 +61,6 @@ class InstanceManager {
             leaderId,
             accessType: request.access?.type ?? 'public',
             accessTags: request.access?.tags ?? [],
-            hasPassword: !!request.access?.password,
             maxUsers: cappedMaxUsers,
             passwordHash,
         });
@@ -195,7 +196,7 @@ class InstanceManager {
         const record = await instanceRepository.findById(instanceId);
         if (!record || !(await this.canJoin(instanceId, userId)))
             throw new InstanceJoinRejected('このインスタンスには入れません');
-        if (record.hasPassword && (!password || !(await this.verifyInstancePassword(instanceId, password)))) {
+        if (hasPassword(record) && (!password || !(await this.verifyInstancePassword(instanceId, password)))) {
             throw new InstanceJoinRejected('パスワードが正しくありません');
         }
         const world = await worldRegistry.getWorldByUrl(record.worldRef);
@@ -250,8 +251,7 @@ class InstanceManager {
     /**
      * DB record から公開用のInstanceオブジェクトに変換
      *
-     * currentUsers / status は Go runtime (= 真の在籍) から導出する。
-     * DB の currentUsers は一切書き込まれず、参照もされない (将来的にスキーマ削除予定)。
+     * currentUsers / status は Go runtime (= 真の在籍) から導出する（DB には持たない）。
      */
     private async toPublicInstance(
         dbInstance: Awaited<ReturnType<typeof instanceRepository.findById>> & object,
@@ -272,7 +272,7 @@ class InstanceManager {
         const access: InstanceAccess = {
             type: dbInstance.accessType,
             tags: dbInstance.accessTags ?? [],
-            password: dbInstance.hasPassword,
+            password: hasPassword(dbInstance),
         };
 
         const presence = knownPresence ?? (await instanceRuntime.presence());

@@ -172,6 +172,8 @@ const ms = (value: string | undefined): number => (value ? new Date(value).getTi
 describe.skipIf(!RUN)('0023_world_versions（DB 統合）', () => {
     const name = `ubichill_world_versions_${Date.now().toString(36)}`;
     const upTo0022 = RUN ? migrationsUpTo('0022_users_drop_columns') : '';
+    // 0023 だけを確かめる（後続のマイグレーションは古い列を消す）
+    const upTo0023 = RUN ? migrationsUpTo('0023_world_versions') : '';
     const admin = RUN ? createDatabase(process.env.DATABASE_URL ?? '') : undefined;
     const state: {
         scratch?: ReturnType<typeof createDatabase>;
@@ -221,7 +223,7 @@ describe.skipIf(!RUN)('0023_world_versions（DB 統合）', () => {
             INSERT INTO instances (id, world_ref, leader_id) VALUES ('inst-1', 'https://example.com/api/v1/authors/alice_w/worlds/pub.yaml', 'u1')
         `);
 
-        await migrate(db(), { migrationsFolder: MIGRATIONS });
+        await migrate(db(), { migrationsFolder: upTo0023 });
         state.hashesBeforeBackfill = (
             await db().execute<{ content_hash: string | null }>(sql`SELECT content_hash FROM world_versions`)
         ).map((r) => r.content_hash);
@@ -237,7 +239,7 @@ describe.skipIf(!RUN)('0023_world_versions（DB 統合）', () => {
         await state.scratch?.client.end({ timeout: 5 });
         await admin?.client.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
         await admin?.client.end({ timeout: 5 });
-        if (upTo0022) rmSync(upTo0022, { recursive: true, force: true });
+        for (const dir of [upTo0022, upTo0023]) if (dir) rmSync(dir, { recursive: true, force: true });
     });
 
     it('id を以前の name にそろえる（API の id が変わらない）。収まらない・重なる行は id のまま', () => {
