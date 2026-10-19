@@ -4,3 +4,4 @@
 instanceRuntime:
   directory: redis
   replicas: 2
+# 負荷試験（#270）: 本番と同じく Service 経由で繋ぎ、半分ほどが Pod 間の中継になる状態で 1 Pod あたりの限界を測る
