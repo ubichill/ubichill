@@ -47,6 +47,19 @@ type RoomPresence struct {
 	EmptySince int64    `json:"emptySince"`
 }
 
+// RoomLease は延長する部屋と、その owner の token。
+type RoomLease struct {
+	Room  string
+	Token string
+}
+
+// Renewal は 1 部屋の延長の結果。Err があれば延長できたか分からない（閉じずに次の周期で試し直す）。
+// Err が無く OK が false なら、リースはもう別の owner のもの（失った）。
+type Renewal struct {
+	OK  bool
+	Err error
+}
+
 // Directory は部屋 ID → owner の割り当て、ノードの生存、クラスタの世代、在席を持つ。
 type Directory interface {
 	// ClusterGen は今のクラスタの世代を返す。無ければ乱数で作る（Redis が全部消えると変わる）。
@@ -58,8 +71,9 @@ type Directory interface {
 	// 閉じてから ttl の間（Retire）は ErrRetired。
 	Assign(ctx context.Context, room, node, gen string, ttl time.Duration) (a Assignment, created bool, err error)
 	Owner(ctx context.Context, room string) (Assignment, bool, error)
+	// Renew は部屋のリースをまとめて延長する（Redis では 1 往復）。結果は leases と同じ順に返す。
 	// Renew・Release は token が今の owner と一致するときだけ効く。
-	Renew(ctx context.Context, room, token string, ttl time.Duration) (bool, error)
+	Renew(ctx context.Context, ttl time.Duration, leases ...RoomLease) []Renewal
 	Release(ctx context.Context, room, token string) (bool, error)
 	PublishPresence(ctx context.Context, rooms []RoomPresence, ttl time.Duration) error
 	Presence(ctx context.Context, room string) (RoomPresence, bool, error)

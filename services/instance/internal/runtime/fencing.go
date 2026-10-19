@@ -166,22 +166,34 @@ func (s *Server) maintain(ctx context.Context) bool {
 		rooms = append(rooms, r)
 	}
 	s.mu.RUnlock()
+	usable := make([]*Room, 0, len(rooms))
+	leases := make([]coord.RoomLease, 0, len(rooms))
+	for _, r := range rooms {
+		if r.usable() {
+			usable = append(usable, r)
+			leases = append(leases, coord.RoomLease{Room: r.definition.ID, Token: r.token})
+		}
+	}
+	sent := s.now()
+	lost := make(map[*Room]bool)
+	for i, renewal := range s.dir.Renew(ctx, s.fencing.TTL, leases...) {
+		r := usable[i]
+		switch {
+		case renewal.Err != nil:
+			healthy = false
+		case !renewal.OK:
+			log.Printf("lost the lease of %s (epoch %d): closing it", r.definition.ID, r.epoch)
+			s.discard(ctx, r, false)
+			lost[r] = true
+		default:
+			r.extend(s.fencing.deadline(sent))
+		}
+	}
 	presence := make([]coord.RoomPresence, 0, len(rooms))
 	connections := 0
 	for _, r := range rooms {
-		if r.usable() {
-			sent := s.now()
-			ok, err := s.dir.Renew(ctx, r.definition.ID, r.token, s.fencing.TTL)
-			switch {
-			case err != nil:
-				healthy = false
-			case !ok:
-				log.Printf("lost the lease of %s (epoch %d): closing it", r.definition.ID, r.epoch)
-				s.discard(ctx, r, false)
-				continue
-			default:
-				r.extend(s.fencing.deadline(sent))
-			}
+		if lost[r] {
+			continue
 		}
 		if !r.usable() {
 			log.Printf("could not renew the lease of %s (epoch %d) in time: closing it", r.definition.ID, r.epoch)

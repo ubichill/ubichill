@@ -122,20 +122,25 @@ func (m *MemoryDirectory) Owner(_ context.Context, room string) (Assignment, boo
 	return a, ok, nil
 }
 
-func (m *MemoryDirectory) Renew(_ context.Context, room, token string, ttl time.Duration) (bool, error) {
-	if err := validateRoom(room, ttl, true); err != nil {
-		return false, err
-	}
+func (m *MemoryDirectory) Renew(_ context.Context, ttl time.Duration, leases ...RoomLease) []Renewal {
+	out := make([]Renewal, len(leases))
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	now := m.now()
-	a, ok := live(m.rooms, room, now)
-	if !ok || a.Token != token {
-		return false, nil
+	for i, l := range leases {
+		if err := validateRoom(l.Room, ttl, true); err != nil {
+			out[i].Err = err
+			continue
+		}
+		a, ok := live(m.rooms, l.Room, now)
+		if !ok || a.Token != l.Token {
+			continue
+		}
+		m.rooms[l.Room] = expiring[Assignment]{a, now.Add(ttl)}
+		m.epochs[l.Room] = expiring[int64]{a.Epoch, now.Add(epochRetention)}
+		out[i].OK = true
 	}
-	m.rooms[room] = expiring[Assignment]{a, now.Add(ttl)}
-	m.epochs[room] = expiring[int64]{a.Epoch, now.Add(epochRetention)}
-	return true, nil
+	return out
 }
 
 func (m *MemoryDirectory) Release(_ context.Context, room, token string) (bool, error) {

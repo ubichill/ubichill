@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"time"
 
@@ -146,13 +147,49 @@ func (r *RedisDirectory) Owner(ctx context.Context, room string) (Assignment, bo
 	return a, err == nil, err
 }
 
-func (r *RedisDirectory) Renew(ctx context.Context, room, token string, ttl time.Duration) (bool, error) {
-	if err := validateRoom(room, ttl, true); err != nil {
-		return false, err
+// Renew は延長を 1 つのパイプラインで送る。部屋ごとに往復を待つと、部屋の数だけ遅れが積み重なり、
+// CPU が詰まった Pod では後ろの部屋が期限に間に合わず自己停止する。
+func (r *RedisDirectory) Renew(ctx context.Context, ttl time.Duration, leases ...RoomLease) []Renewal {
+	out := make([]Renewal, len(leases))
+	cmds := r.renewPipeline(ctx, ttl, leases, out, func(pipe redis.Pipeliner, keys []string, args ...any) *redis.Cmd {
+		return roomRenewScript.EvalSha(ctx, pipe, keys, args...)
+	})
+	// Redis が再起動するとスクリプトのキャッシュが消える。そのときだけ本文ごと送り直す
+	if slices.ContainsFunc(cmds, func(c *redis.Cmd) bool { return c != nil && redis.HasErrorPrefix(c.Err(), "NOSCRIPT") }) {
+		cmds = r.renewPipeline(ctx, ttl, leases, out, func(pipe redis.Pipeliner, keys []string, args ...any) *redis.Cmd {
+			return roomRenewScript.Eval(ctx, pipe, keys, args...)
+		})
 	}
-	keys := []string{r.roomKey(room), r.epochKey(room)}
-	n, err := roomRenewScript.Run(ctx, r.client, keys, token, ttl.Milliseconds(), epochRetention.Milliseconds()).Int()
-	return err == nil && n == 1, err
+	for i, c := range cmds {
+		if c == nil {
+			continue
+		}
+		n, err := c.Int()
+		out[i] = Renewal{OK: err == nil && n == 1, Err: err}
+	}
+	return out
+}
+
+func (r *RedisDirectory) renewPipeline(
+	ctx context.Context,
+	ttl time.Duration,
+	leases []RoomLease,
+	out []Renewal,
+	run func(pipe redis.Pipeliner, keys []string, args ...any) *redis.Cmd,
+) []*redis.Cmd {
+	cmds := make([]*redis.Cmd, len(leases))
+	pipe := r.client.Pipeline()
+	for i, l := range leases {
+		if err := validateRoom(l.Room, ttl, true); err != nil {
+			out[i].Err = err
+			continue
+		}
+		cmds[i] = run(pipe, []string{r.roomKey(l.Room), r.epochKey(l.Room)}, l.Token, ttl.Milliseconds(), epochRetention.Milliseconds())
+	}
+	if pipe.Len() > 0 {
+		_, _ = pipe.Exec(ctx)
+	}
+	return cmds
 }
 
 func (r *RedisDirectory) Release(ctx context.Context, room, token string) (bool, error) {
