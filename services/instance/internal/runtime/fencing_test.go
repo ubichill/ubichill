@@ -31,7 +31,8 @@ func (c *fakeClock) Advance(d time.Duration) {
 // partitioned は 1 つのノードから見た Directory。down の間はそのノードだけ Redis に届かない。
 type partitioned struct {
 	coord.Directory
-	down atomic.Bool
+	down   atomic.Bool
+	renews atomic.Int64
 }
 
 var errPartitioned = errors.New("partitioned")
@@ -60,11 +61,16 @@ func (p *partitioned) Assign(ctx context.Context, room, node, gen string, ttl ti
 	}
 	return p.Directory.Assign(ctx, room, node, gen, ttl)
 }
-func (p *partitioned) Renew(ctx context.Context, room, token string, ttl time.Duration) (bool, error) {
+func (p *partitioned) Renew(ctx context.Context, ttl time.Duration, leases ...coord.RoomLease) []coord.Renewal {
+	p.renews.Add(1)
 	if err := p.fail(); err != nil {
-		return false, err
+		out := make([]coord.Renewal, len(leases))
+		for i := range out {
+			out[i].Err = err
+		}
+		return out
 	}
-	return p.Directory.Renew(ctx, room, token, ttl)
+	return p.Directory.Renew(ctx, ttl, leases...)
 }
 func (p *partitioned) Release(ctx context.Context, room, token string) (bool, error) {
 	if err := p.fail(); err != nil {
@@ -247,7 +253,7 @@ func TestOldOwnerStopsBeforeNewOwnerAcquires(t *testing.T) {
 	// 旧 owner が戻っても、古い token の延長・解放は新しい owner に効かない
 	a.link.down.Store(false)
 	ctx := context.Background()
-	if ok, _ := c.dir.Renew(ctx, "room", old.token, testFencing.TTL); ok {
+	if c.dir.Renew(ctx, testFencing.TTL, coord.RoomLease{Room: "room", Token: old.token})[0].OK {
 		t.Fatal("old token renewed the new owner's lease")
 	}
 	if ok, _ := c.dir.Release(ctx, "room", old.token); ok {
@@ -279,6 +285,42 @@ func TestLosingTheTokenStopsTheRoomImmediately(t *testing.T) {
 		t.Fatal("room survived a lost token")
 	}
 	expectClosed(t, alice, "instance:closing")
+}
+
+// 延長は部屋の数によらず 1 回の呼び出しにまとめる。1 部屋だけ失っても、ほかの部屋は延長される。
+func TestRenewalIsBatchedAndALostRoomDoesNotTakeOthersDown(t *testing.T) {
+	c := newCluster()
+	a := c.node(t, "node-a", false)
+	b := c.node(t, "node-b", false)
+	rooms := map[string]*Room{}
+	for _, id := range []string{"r1", "r2", "r3", "r4"} {
+		rooms[id] = provision(t, a, id)
+	}
+	if ok, _ := c.dir.Release(context.Background(), "r2", rooms["r2"].token); !ok {
+		t.Fatal("release")
+	}
+	provision(t, b, "r2")
+	a.link.renews.Store(0)
+	c.clock.Advance(testFencing.Interval)
+	if !a.maintain() {
+		t.Fatal("maintain failed")
+	}
+	if n := a.link.renews.Load(); n != 1 {
+		t.Fatalf("renew was called %d times for 4 rooms", n)
+	}
+	if a.room("r2") != nil {
+		t.Fatal("lost room was kept")
+	}
+	for _, id := range []string{"r1", "r3", "r4"} {
+		if a.owned(id) != rooms[id] {
+			t.Fatalf("%s was dropped with the lost room", id)
+		}
+	}
+	// 延長されているので、最初の期限（作成 + 10 秒）を過ぎても止まらない
+	c.clock.Advance(testFencing.Interval + time.Second)
+	if !a.maintain() || a.owned("r1") != rooms["r1"] {
+		t.Fatal("renewed room stopped at the original deadline")
+	}
 }
 
 func TestTicketFromAnOldEpochIsRejectedByTheNewRoom(t *testing.T) {

@@ -117,8 +117,11 @@ func (r *Room) presence() Presence {
 	sort.Strings(ids)
 	return Presence{ID: r.definition.ID, Name: r.definition.Name, MaxUsers: r.definition.MaxUsers, MemberIDs: ids, EmptySince: r.emptySince}
 }
+
+// broadcast は 1 回だけ符号化し、全員に同じバイト列を送る（受け手ごとに符号化すると部屋の人数倍の CPU を使う）。
 func (r *Room) broadcast(event string, data any, except *peer, volatile bool) {
 	f := Frame{Event: event, Data: encoded(data)}
+	f.raw = encoded(f)
 	for _, m := range r.members {
 		if m.peer != nil && m.peer != except {
 			m.peer.send(f, volatile)

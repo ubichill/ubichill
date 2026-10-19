@@ -17,7 +17,7 @@ type Frame struct {
 	Data    json.RawMessage `json:"data,omitempty"`
 	ID      string          `json:"id,omitempty"`
 	ReplyTo string          `json:"replyTo,omitempty"`
-	// raw は中継で owner から届いたフレームの元のバイト列（解かずにそのまま送る）。
+	// raw は符号化済みのバイト列。中継で owner から届いたフレーム、broadcast で 1 回だけ符号化したフレーム。
 	raw []byte
 }
 
