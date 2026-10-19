@@ -38,6 +38,7 @@ spec:
     HPA は trigger ごとに台数を出して最大を取るので、指標を 1 つにまとめない。
     AverageValue なので台数は ceil(合計 / threshold)。threshold は「1 Pod に持たせたい量」。
     ignoreNullValues: false で、指標が無い（集めていない）ときは 0 とせず ScaledObject の失敗として出す。
+    CPU は requests（100m）に対する割合ではなく量（AverageValue）で指定する。
   */}}
   triggers:
     - type: prometheus
@@ -56,4 +57,11 @@ spec:
         query: {{ printf "sum(ubichill_instance_active_rooms{%s})" $selector | quote }}
         threshold: {{ $a.targetRoomsPerPod | toString | quote }}
         ignoreNullValues: "false"
+    {{- with $a.targetCPUPerPod }}
+    - type: cpu
+      name: cpu
+      metricType: AverageValue
+      metadata:
+        value: {{ . | toString | quote }}
+    {{- end }}
 {{- end }}
