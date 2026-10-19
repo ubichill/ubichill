@@ -416,3 +416,64 @@ CREATE TABLE author_bindings (
 ```
 
 もう一度新しいイメージに進めるときは、0024 は適用済みなので再び走らない。作り直したテーブルは誰も読まないので、0025 の前に手で消してよい。
+
+## 0025_db_cleanup_drop_columns（worlds・instances の古い列を消す）
+
+0024 で読み書きをやめた列を消す。データの書き換えは無い。
+
+- `worlds` の `name`（UNIQUE ごと）・`version`・`definition`・`lock`・`signature`・`draft_*`、`instances` の `has_password`・`current_users`、
+  `has_password` を決めていたトリガー `instances_sync_has_password` を消す。
+- `world_versions.content_hash` を NOT NULL にする。空の行があれば、何も変えずに失敗する（initContainer が失敗し、古い Pod が動き続ける）。
+- `migrate.js` は content_hash を埋めなくなる。0023 より前の DB に 0023〜0025 を 1 回で当てると、埋める前に 0025 に来て失敗するので、
+  先に 0024 のイメージで当てる（本番は 0024 のリリースで済んでいる前提）。
+
+1.〜2. の手順（事前確認・バックアップ）は同じ。
+
+### 事前確認
+
+- **0024 のイメージがすべての Pod で動き、0024 より前のイメージに戻す予定が無いこと**。0023 のイメージは worlds の古い列を INSERT し、
+  `has_password` を読むので、デプロイ中に残っているとワールドの作成とインスタンスの一覧・入室が失敗する。0024 と同じリリースで出さない。
+
+```sql
+SELECT id FROM drizzle.__drizzle_migrations ORDER BY id DESC LIMIT 1;  -- 0024 まで適用済み
+SELECT count(*) FROM world_versions WHERE content_hash IS NULL;  -- 0（0 でなければ 0024 のイメージの migrate.js をもう一度流す）
+SELECT id, has_password FROM instances WHERE has_password IS DISTINCT FROM (password_hash IS NOT NULL);  -- 0 行
+```
+
+### 事後確認
+
+```sql
+SELECT table_name, column_name FROM information_schema.columns
+WHERE table_schema = 'public' AND ((table_name = 'worlds' AND column_name IN
+      ('name', 'version', 'definition', 'lock', 'signature', 'draft_definition', 'draft_lock', 'draft_updated_at'))
+   OR (table_name = 'instances' AND column_name IN ('has_password', 'current_users')));  -- 0 行
+SELECT is_nullable FROM information_schema.columns
+WHERE table_schema = 'public' AND table_name = 'world_versions' AND column_name = 'content_hash';  -- NO
+```
+
+- ワールドの保存・公開、パスワード付き・なしのインスタンスの作成・入室・一覧の鍵の印が 0025 の前と同じであることを確かめる。
+
+### 古いイメージに戻すとき
+
+0024 のイメージへはそのまま戻せる（消した列を読み書きしない）。0024 より前のイメージに戻すときは、**イメージを戻す前に**列とトリガーを足し直す
+（値は戻らない。worlds の古い列は 0024 の節の書き直しの SQL で、has_password は下の UPDATE で入れる）。0023 より前のイメージへは、
+さらに 0024 の節の「古いイメージに戻すとき」を行う。
+
+```sql
+ALTER TABLE world_versions ALTER COLUMN content_hash DROP NOT NULL;  -- 0023 のイメージは NULL を書かないので、戻さなくてもよい
+ALTER TABLE worlds ADD COLUMN name varchar(255) CONSTRAINT worlds_name_unique UNIQUE, ADD COLUMN version varchar(50),
+    ADD COLUMN definition jsonb, ADD COLUMN lock jsonb, ADD COLUMN signature jsonb,
+    ADD COLUMN draft_definition jsonb, ADD COLUMN draft_lock jsonb, ADD COLUMN draft_updated_at timestamptz;
+ALTER TABLE instances ADD COLUMN has_password boolean NOT NULL DEFAULT false, ADD COLUMN current_users integer NOT NULL DEFAULT 0;
+UPDATE instances SET has_password = (password_hash IS NOT NULL);
+CREATE FUNCTION instances_sync_has_password() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    NEW.has_password := NEW.password_hash IS NOT NULL;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER instances_sync_has_password BEFORE INSERT OR UPDATE ON instances
+FOR EACH ROW EXECUTE FUNCTION instances_sync_has_password();
+```
+
+- 0023 のイメージは worlds の INSERT で `name`・`version`・`definition` を書き、読まないので、上の書き直しをしなくても動く。
+- has_password を足し直さずに 0023 のイメージを動かすと、インスタンスを読む処理がすべて失敗する。
