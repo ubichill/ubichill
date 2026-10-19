@@ -5,7 +5,6 @@ import { join, resolve } from 'node:path';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
-import { backfillWorldContentHashes } from './worldContentHashBackfill';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -111,8 +110,6 @@ async function main(): Promise<void> {
         const db = drizzle(client);
         await migrate(db, { migrationsFolder });
         console.log('✅ Migrations applied');
-        const hashed = await backfillWorldContentHashes(db);
-        if (hashed > 0) console.log(`✅ world_versions.content_hash を ${hashed} 行埋めました`);
     } catch (err) {
         console.error('❌ Migration failed:', err);
         process.exitCode = 1;

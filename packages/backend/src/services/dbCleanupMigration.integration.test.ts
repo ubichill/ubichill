@@ -18,7 +18,7 @@ vi.mock('./instanceRuntime', () => ({
 }));
 
 /**
- * DB の後片付け（0024: 古い列を書かない・古い鍵のテーブルを消す）の前後で、ワールドとインスタンスの API が同じ結果になるか。
+ * DB の後片付け（0024: 古い列を書かない・古い鍵のテーブルを消す、0025: 古い列を消す）の前後で、ワールドとインスタンスの API が同じ結果になるか。
  * 前のマイグレーションまで当てた使い捨ての DB に、その時点のイメージが書く形のデータ（公開中・下書きあり・署名なしのワールド、
  * パスワードあり・なしのインスタンス、古い鍵のテーブルの行）を入れ、読み取りの応答を控えてから残りのマイグレーションを当てて比べる。
  * DATABASE_URL がある時だけ走る。
@@ -152,11 +152,14 @@ function defineCleanupSuite(from: string): void {
                 worldName: string,
                 legacy: { version: string; definition: unknown; lock: unknown; signature: unknown },
                 draft?: { definition: unknown; lock: unknown },
+                writeLegacy = true,
             ) => {
+                // 0024 のイメージが作った行は古い列が NULL
                 await database.execute(sql`
                     INSERT INTO worlds (id, author_id, world_name, name, version, definition, lock, signature,
                                         draft_definition, draft_lock, draft_updated_at)
-                    VALUES (${id}, ${AUTHOR_ID}, ${worldName}, ${id}, ${legacy.version}, ${json(legacy.definition)}::jsonb,
+                    VALUES (${id}, ${AUTHOR_ID}, ${worldName}, ${writeLegacy ? id : null},
+                            ${writeLegacy ? legacy.version : null}, ${writeLegacy ? json(legacy.definition) : null}::jsonb,
                             ${json(legacy.lock)}::jsonb, ${json(legacy.signature)}::jsonb,
                             ${legacy.signature && draft ? json(draft.definition) : null}::jsonb,
                             ${legacy.signature && draft ? json(draft.lock) : null}::jsonb,
@@ -191,6 +194,7 @@ function defineCleanupSuite(from: string): void {
                 'unsigned',
                 { version: '0.1.0', definition: unsignedDef, lock: LOCK, signature: null },
                 { definition: unsignedDef, lock: LOCK },
+                from === '0023_world_versions',
             );
             // 本番と同じく、版の content_hash は migrate.js の埋め戻しで入れる
             await db.backfillWorldContentHashes(database);
@@ -370,40 +374,67 @@ function defineCleanupSuite(from: string): void {
             expect(await db.authorKeyRepository.listByUser(AUTHOR_ID)).toHaveLength(1);
         });
 
-        it('0024: worlds の古い列は書き直さない（列は残り、NOT NULL は外れている）', async () => {
+        it('0025: 古い列・トリガーは消え、content_hash は NOT NULL', async () => {
             const { db, sql } = m();
-            const rows = await db.db.execute<{ id: string; name: string | null; version: string | null }>(
-                sql`SELECT id, name, version FROM worlds WHERE author_id = ${AUTHOR_ID} ORDER BY created_at, id`,
-            );
-            // 当てる前からある行は当時の値のまま（drafted は 1.1.0 を公開したが 1.0.0 のまま）。新しく作った行は NULL
-            expect(rows.find((r) => r.id === ids.drafted)).toMatchObject({ name: ids.drafted, version: '1.0.0' });
-            expect(rows.filter((r) => !Object.values(ids).includes(r.id))).toEqual([
-                expect.objectContaining({ name: null, version: null }),
-            ]);
-        });
-
-        it('0024: デプロイ中の 0023 のイメージの書き込み（古い列つきの INSERT）も通り、has_password は password_hash から決まる', async () => {
-            const { db, sql } = m();
-            await db.db.execute(sql`
-                INSERT INTO worlds (id, author_id, world_name, name, version, definition)
-                VALUES ('oldpodworld0000000000', ${AUTHOR_ID}, 'oldpod', 'oldpodworld0000000000', '1.0.0', '{}'::jsonb)
+            const columns = await db.db.execute<{ table_name: string; column_name: string }>(sql`
+                SELECT table_name, column_name FROM information_schema.columns
+                WHERE table_schema = 'public' AND (
+                    (table_name = 'worlds' AND column_name IN ('name', 'version', 'definition', 'lock', 'signature',
+                                                              'draft_definition', 'draft_lock', 'draft_updated_at'))
+                    OR (table_name = 'instances' AND column_name IN ('has_password', 'current_users')))
             `);
-            await db.db.execute(sql`
-                INSERT INTO instances (id, world_ref, leader_id, has_password, password_hash, current_users)
-                VALUES ('inst-oldpod', ${urlOf('pub')}, ${AUTHOR_ID}, false, 'hash', 0)
-            `);
-            // 新しいコードは has_password を書かないが、0023 のイメージが読んでも正しい値になっている
-            const [mismatch] = await db.db.execute<{ n: number }>(
-                sql`SELECT count(*)::int AS n FROM instances WHERE has_password IS DISTINCT FROM (password_hash IS NOT NULL)`,
+            expect([...columns]).toEqual([]);
+            const [trigger] = await db.db.execute<{ n: number }>(
+                sql`SELECT count(*)::int AS n FROM pg_trigger WHERE tgname = 'instances_sync_has_password'`,
             );
-            expect(mismatch?.n).toBe(0);
-            await db.db.execute(sql`UPDATE instances SET password_hash = NULL WHERE id = 'inst-oldpod'`);
-            const [cleared] = await db.db.execute<{ has_password: boolean }>(
-                sql`SELECT has_password FROM instances WHERE id = 'inst-oldpod'`,
-            );
-            expect(cleared?.has_password).toBe(false);
+            expect(trigger?.n).toBe(0);
+            await expect(
+                db.db.execute(sql`
+                    INSERT INTO world_versions (id, world_id, version, definition) VALUES ('nohash', ${ids.pub}, '9.9.9', '{}'::jsonb)
+                `),
+            ).rejects.toThrow();
         });
     });
 }
 
 defineCleanupSuite('0023_world_versions');
+defineCleanupSuite('0024_db_cleanup_stop_using');
+
+describe.skipIf(!RUN)('0025 は content_hash が空の版があれば止まる（DB 統合）', () => {
+    it('何も変えずに失敗し、古い列は残る', async () => {
+        const adminUrl = process.env.DATABASE_URL ?? '';
+        const dbName = `ubichill_cleanup_stop_${Date.now().toString(36)}`;
+        const upTo0024 = migrationsUpTo('0024_db_cleanup_stop_using');
+        const { createDatabase } = await import('@ubichill/db');
+        const { sql } = await import('drizzle-orm');
+        const admin = createDatabase(adminUrl);
+        await admin.client.unsafe(`CREATE DATABASE "${dbName}"`);
+        await admin.client.unsafe(`ALTER DATABASE "${dbName}" SET timezone TO 'UTC'`);
+        const url = new URL(adminUrl);
+        url.pathname = `/${dbName}`;
+        const scratch = createDatabase(url.toString());
+        try {
+            await migrate(scratch.db, { migrationsFolder: upTo0024 });
+            await scratch.db.execute(sql`
+                INSERT INTO users (id, name, email, handle) VALUES ('u1', 'U', 'u1@example.com', 'u_one')
+            `);
+            await scratch.db.execute(sql`
+                INSERT INTO worlds (id, author_id, world_name) VALUES ('w1', 'u1', 'w')
+            `);
+            await scratch.db.execute(sql`
+                INSERT INTO world_versions (id, world_id, version, definition) VALUES ('v1', 'w1', '1.0.0', '{}'::jsonb)
+            `);
+            await expect(migrate(scratch.db, { migrationsFolder: MIGRATIONS })).rejects.toThrow();
+            const [left] = await scratch.db.execute<{ n: number }>(sql`
+                SELECT count(*)::int AS n FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'instances' AND column_name = 'has_password'
+            `);
+            expect(left?.n).toBe(1);
+        } finally {
+            await scratch.client.end({ timeout: 5 });
+            await admin.client.unsafe(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`);
+            await admin.client.end({ timeout: 5 });
+            rmSync(upTo0024, { recursive: true, force: true });
+        }
+    });
+});

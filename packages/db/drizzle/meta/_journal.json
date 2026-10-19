@@ -176,6 +176,13 @@
       "when": 1792380519840,
       "tag": "0024_db_cleanup_stop_using",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1792389357320,
+      "tag": "0025_db_cleanup_drop_columns",
+      "breakpoints": true
     }
   ]
 }

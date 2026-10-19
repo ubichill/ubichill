@@ -17,7 +17,8 @@ export function versionContentHash(definition: unknown, lock: unknown): Promise<
 
 /**
  * content_hash が空の版を埋める（0023 で移した行）。何度呼んでもよい。埋めた数を返す。
- * SQL では worldContentHash() と同じ値を作れないので、マイグレーションの直後に migrate.js から呼ぶ。
+ * SQL では worldContentHash() と同じ値を作れないので、0023・0024 のイメージの migrate.js がマイグレーションの直後に呼んでいた
+ * （0025 で NOT NULL にしたので今の migrate.js は呼ばない。0023 の移行のテストで使う）。
  */
 export async function backfillWorldContentHashes<TSchema extends Record<string, unknown>>(
     database: PostgresJsDatabase<TSchema>,
