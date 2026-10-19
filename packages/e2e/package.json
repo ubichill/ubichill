@@ -1,0 +1,16 @@
+{
+    "name": "@ubichill/e2e",
+    "version": "0.0.0",
+    "private": true,
+    "type": "module",
+    "description": "プレビュー環境・ローカルの pnpm dev に対するスモークテスト（API と WebSocket の通し・ブラウザ）",
+    "scripts": {
+        "smoke": "node src/cli.ts",
+        "typecheck": "tsc --noEmit"
+    },
+    "devDependencies": {
+        "@playwright/test": "1.64.1",
+        "@types/node": "catalog:",
+        "typescript": "catalog:"
+    }
+}
