@@ -4,6 +4,6 @@
   "version": "1.0.0",
   "devDependencies": {
     "openapi-typescript": "7.10.1",
-    "typescript": "6.0.3"
+    "typescript": "7.0.2"
   }
 }
