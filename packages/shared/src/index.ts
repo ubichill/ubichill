@@ -124,6 +124,9 @@ export interface ServerToClientEvents {
 
     /** 共有状態が他の参加者に更新された（書いた本人へは応答で返すので送らない） */
     'state:changed': (entry: SharedStateEntry) => void;
+
+    /** その場だけの知らせ（切断の予告など）。知らない種類も届くので parseServerNotice で読む */
+    'server:notice': (notice: unknown) => void;
 }
 
 /**
@@ -258,6 +261,8 @@ export * from './mod/sandboxPolicy';
 export * from './mod/serviceToken';
 export * from './mod/types';
 export * from './mod/vnode';
+export * from './notification/activity';
+export * from './notification/serverNotice';
 export * from './schemas';
 export {
     confirmEnvelopeAuthor,
