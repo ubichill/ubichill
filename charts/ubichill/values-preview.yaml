@@ -4,3 +4,7 @@
 instanceRuntime:
   directory: redis
   replicas: 2
+  # 一時（#279 の確認用。マージ前に戻す）: 引っ越しと切断の予告を短い時間で確かめる
+  migrateAfter: 1m
+  drainTimeout: 4m
+  disconnectNotice: 1m
