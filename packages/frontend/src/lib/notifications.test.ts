@@ -1,33 +1,66 @@
+import type { AppNotification } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
-import { groupNotifications, NOTIFICATION_TABS, notificationsFrom, relativeTime } from './notifications';
+import {
+    groupNotifications,
+    NOTIFICATION_TABS,
+    notificationText,
+    relativeTime,
+    serverNoticeMessage,
+    unreadBadge,
+} from './notifications';
 
-const request = (id: string, requestedAt: string) => ({
-    id,
-    name: id,
-    handle: id,
-    image: null,
-    bio: null,
-    requestedAt,
+const actor = { type: 'Person', id: 'alice', name: 'Alice', preferredUsername: 'alice', icon: null } as const;
+const base = { actor, published: '2026-10-01T00:00:00.000Z', read: false };
+const items: AppNotification[] = [
+    { ...base, id: '1', type: 'Like', object: { type: 'World', id: 'https://x.example/w.yaml', name: '森' } },
+    { ...base, id: '2', type: 'Follow', object: { type: 'Person', id: 'bob' } },
+    { ...base, id: '3', type: 'Accept', object: { type: 'Follow', actor: 'bob', object: 'alice' } },
+    { ...base, id: '4', type: 'Announce', object: { type: 'Note', id: '4', summary: 'メンテ', content: '本文' } },
+];
+
+describe('groupNotifications', () => {
+    it('申請・承認はフレンド、お気に入り・お知らせはその他。並びは保ち、無い種類も空で持つ', () => {
+        const groups = groupNotifications(items);
+        expect(groups['friend-request'].map((n) => n.id)).toEqual(['2', '3']);
+        expect(groups.other.map((n) => n.id)).toEqual(['1', '4']);
+        expect(groups.invite).toEqual([]);
+        expect(NOTIFICATION_TABS.map((t) => t.kind)).toEqual(['invite', 'friend-request', 'other']);
+    });
 });
 
-describe('notificationsFrom / groupNotifications', () => {
-    const items = notificationsFrom({
-        incomingFriendRequests: [request('old', '2026-10-01T00:00:00Z'), request('new', '2026-10-03T00:00:00Z')],
+describe('notificationText', () => {
+    it('種類ごとの文面', () => {
+        expect(items.map(notificationText)).toEqual([
+            'Alice さんがワールド「森」をお気に入りにしました',
+            'Alice さんからフレンドリクエストが届きました',
+            'Alice さんがフレンドリクエストを承認しました',
+            'お知らせ: メンテ',
+        ]);
     });
+});
 
-    it('フレンドリクエストを新しい順の通知にする', () => {
-        expect(items.map((n) => n.id)).toEqual(['friend-request:new', 'friend-request:old']);
+describe('unreadBadge', () => {
+    it('0 以下は出さず、100 以上は 99+', () => {
+        expect(unreadBadge(0)).toBeNull();
+        expect(unreadBadge(-1)).toBeNull();
+        expect(unreadBadge(7)).toBe('7');
+        expect(unreadBadge(99)).toBe('99');
+        expect(unreadBadge(100)).toBe('99+');
     });
+});
 
-    it('種類ごとに分け、無い種類も空で持つ（タブの件数 0 を出せる）', () => {
-        const groups = groupNotifications(items);
-        expect(groups['friend-request']).toHaveLength(2);
-        expect(groups.invite).toEqual([]);
-        expect(groups.other).toEqual([]);
-    });
-
-    it('通知タブは招待・フレンドリクエスト・その他の順', () => {
-        expect(NOTIFICATION_TABS.map((t) => t.kind)).toEqual(['invite', 'friend-request', 'other']);
+describe('serverNoticeMessage', () => {
+    const now = 1_800_000_000_000;
+    it('切るまでの時間を秒・分で出す。過ぎていれば「まもなく」', () => {
+        expect(serverNoticeMessage({ kind: 'disconnect', at: now + 30_000 }, now)).toBe(
+            '約 30 秒後に接続が切れます（自動で繋ぎ直します）',
+        );
+        expect(serverNoticeMessage({ kind: 'disconnect', at: now + 5 * 60_000 }, now)).toBe(
+            '約 5 分後に接続が切れます（自動で繋ぎ直します）',
+        );
+        expect(serverNoticeMessage({ kind: 'disconnect', at: now - 1000 }, now)).toBe(
+            'まもなく接続が切れます（自動で繋ぎ直します）',
+        );
     });
 });
 
