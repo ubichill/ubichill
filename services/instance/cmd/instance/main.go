@@ -17,6 +17,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"github.com/ubichill/ubichill/services/instance/internal/coord"
+	"github.com/ubichill/ubichill/services/instance/internal/kube"
 	"github.com/ubichill/ubichill/services/instance/internal/runtime"
 )
 
@@ -28,6 +29,9 @@ func main() {
 	grace := flag.Duration("disconnect-grace", 15*time.Second, "reconnect grace period")
 	maxRooms := flag.Int("max-rooms", 1000, "rooms this node holds at most (advertised as its capacity)")
 	drainTimeout := flag.Duration("drain-timeout", 0, "on SIGTERM, refuse new rooms and wait up to this long for connections to end before closing the rest")
+	migrateAfter := flag.Duration("migrate-after", 3*time.Hour, "while draining, move rooms this old (with participants) to another node without reconnecting the clients")
+	disconnectNotice := flag.Duration("disconnect-notice", 10*time.Minute, "while draining, send server:notice to direct clients this long before the drain timeout")
+	deletionCost := flag.Bool("pod-deletion-cost", false, "write controller.kubernetes.io/pod-deletion-cost on this pod (needs a service account that can patch it)")
 	flag.Parse()
 	token := os.Getenv("INSTANCE_ADMIN_TOKEN")
 	if !*guests && len(token) < 32 {
@@ -68,6 +72,7 @@ func main() {
 	s := runtime.New(runtime.Config{
 		AdminToken: token, TicketKey: ticketKey, Guests: *guests, Origins: allowedOrigins, Grace: *grace,
 		Directory: coord.DirectoryFor(directoryClient, nil), Node: node, Addr: advertiseAddr(*addr), MaxRooms: *maxRooms,
+		MigrateAfter: *migrateAfter, DisconnectNotice: *disconnectNotice,
 	})
 	if *world != "" {
 		body, err := os.ReadFile(*world)
@@ -85,10 +90,18 @@ func main() {
 	server := &http.Server{Addr: *addr, Handler: s.Handler(), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if *deletionCost {
+		// 書けなくても動作は続ける（消す Pod の選び方が ReplicaSet の既定に戻るだけ）
+		if patcher, err := kube.InCluster(os.Getenv("POD_NAMESPACE"), os.Getenv("POD_NAME")); err != nil {
+			log.Printf("pod-deletion-cost is disabled: %v", err)
+		} else {
+			go kube.Run(context.Background(), patcher, s.DeletionCost, time.Now)
+		}
+	}
 	go func() {
 		<-ctx.Done()
-		// 新しい部屋を断って readiness を落とし、接続が抜けるのを drain-timeout まで待つ。
-		// 残った部屋は Close で割り当てを解放して閉じ、クライアントは別のノードへ繋ぎ直す
+		// 新しい部屋を断って readiness を落とし、migrate-after を過ぎた部屋は別のノードへ引っ越し、
+		// 直接繋いでいる接続が抜けるのを drain-timeout まで待つ。残りは Close で閉じ、クライアントは繋ぎ直す
 		drain, cancel := context.WithTimeout(context.Background(), *drainTimeout)
 		s.Drain(drain)
 		cancel()

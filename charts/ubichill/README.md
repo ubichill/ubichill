@@ -130,7 +130,7 @@ Goは専用イメージ（`instanceRuntime.image`）で起動し、backendのイ
 切断猶予は `instanceRuntime.disconnectGrace` で指定する。
 部屋の割り当て（Directory）は `instanceRuntime.directory`（既定 `memory`。backend にも同じ値を渡す）。`instanceRuntime.replicas`（既定 1）を 2 以上にするときだけ `redis` にする（`memory` のままでは描画で失敗する）。どの Pod に来た WebSocket も、各 Pod が部屋の owner の Pod へ Pod の IP で直接中継するので、Ingress・Service は 1 つのまま（Pod 間の Service は要らない）。中継用の口 `/realtime/v1/relay` は Ingress に出さず、管理トークンから派生した HMAC で Pod 間の接続を確かめる。
 `redis` では backend が新しい部屋の置き場所を Redis の各 Pod の状態（`ready` で、部屋数が `instanceRuntime.maxRooms` 未満、接続数・部屋数の少ない順）から選び、その Pod へ直接作成を送る（Service の振り分けには任せない）。
-更新は RollingUpdate（`maxSurge: 1`・`maxUnavailable: 0`）。古い Pod は SIGTERM で draining になって新しい部屋を断り、readiness（`/ready`）を落として、`instanceRuntime.drainTimeout` まで接続が抜けるのを待ってから残りの部屋を閉じる。閉じた部屋の参加者は繋ぎ直し、部屋は別の Pod に作り直される（中身はメモリなので失われる。今の再起動と同じ）。`memory` は新旧の Pod が並ぶと同じ部屋の owner が 2 つになるので Recreate のままで、待たずに閉じる。
+更新は RollingUpdate（`maxSurge: 1`・`maxUnavailable: 0`）。古い Pod は SIGTERM で draining になって新しい部屋を断り、readiness（`/ready`）を落とす。作られてから `instanceRuntime.migrateAfter`（既定 3h）を過ぎた部屋は新しい Pod へ引っ越し（クライアントは繋ぎ直さない）、若い部屋は空になるか 3h に達するまで待つ。直接繋いでいるクライアントは `instanceRuntime.drainTimeout`（既定 24h）まで中継し続ける（下の「自動で縮める」）。古い Pod は最長で drainTimeout の間残る。上限で残った部屋の参加者は繋ぎ直し、部屋は別の Pod に作り直される（中身はメモリなので失われる）。`memory` は新旧の Pod が並ぶと同じ部屋の owner が 2 つになるので Recreate のままで、待たずに閉じる。
 `redis` は Redis の可用性が部屋の可用性の上限になる（Redis が約 10 秒以上落ちると全部屋が止まる）ので、先に Redis の Secret を固定しておく（下の「Redis」）。Ingressが公開するのはWebSocketの
 `/realtime/v1/ws` だけで、管理API（`/realtime/v1/instances`）はクラスタ内からのみ到達できる。
 管理トークンは既定でbackend Secretの `BETTER_AUTH_SECRET`（32文字以上）を参照する。専用のSecretを使うには
@@ -174,7 +174,7 @@ instanceRuntime:
 ```
 
 - どちらも既定は無効。CRD の無いクラスタで描画・適用が落ちない。
-- `ScaledObject` は `minReplicaCount: 1`、**自動の scale-in は無効**（`scaleDown.selectPolicy: Disabled`）。HPA は消す Pod を部屋の有無で選べないため。
+- `ScaledObject` は `minReplicaCount: 1`。scale-in はゆっくり行う（既定: `stabilizationWindowSeconds: 900`、10 分に 1 Pod。`autoscaling.scaleDown` で変える。`scaleDown.enabled: false` で無効）。縮め方は下の「自動で縮める」。
 - 有効にすると Deployment に `replicas` を書かない（同期のたびに HPA の決めた台数へ戻さない）。`instanceRuntime.replicas` は使われない。
 - trigger は接続数・部屋数・CPU の 3 つ。HPA は trigger ごとに台数を出して大きい方を取るので、1 つの指標（recording rule）にまとめない。どれも `AverageValue` で、台数は `ceil(合計 / 閾値)`。
   - `targetConnectionsPerPod`: 1 Pod に持たせたい `ubichill_instance_websocket_connections`。中継された接続は中継元と owner の両方で数えるので、Service に振り分けを任せた 2 Pod では利用者の約 1.5 倍になる。
@@ -182,17 +182,23 @@ instanceRuntime:
   - `targetCPUPerPod`: 1 Pod の CPU の量（requests に対する割合ではない）。大人数の部屋は配信が人数の 2 乗で増え、接続数では負荷を測れないため。`resources.limits.cpu` より小さくする。
   - `targetRoomsPerPod`: 1 Pod に持たせたい部屋の数。`maxRooms` に達した Pod は新しい部屋を 503 で断るので、その手前で増やす（`maxRooms` 以上は描画で失敗する）。
   - HPA は 10% の許容幅を持つ。例: 1 Pod・閾値 200 なら接続数が 220 を超えたときに 2 台になる。
-  - 既存の部屋は移さない。増えた Pod には、backend が接続数の少ない Pod を選ぶので新しい部屋が置かれる。
-- 指標が取れない（ServiceMonitor が無い・Prometheus に届かない）ときは 0 とせず ScaledObject の失敗にする（`ignoreNullValues: "false"`）。台数はそのまま。
-- 系列は `namespace` と ServiceMonitor が付ける `service` ラベル（`<fullname>-instance`）で選ぶ。別の方法で集めるなら `autoscaling.prometheus.selector` で指定する。
+  - 増やしたときは既存の部屋は移さない。増えた Pod には、backend が接続数の少ない Pod を選ぶので新しい部屋が置かれる。
+- 接続数・部屋数の query は draining の Pod を除く（`sum(X{sel} unless on(pod) (ubichill_instance_draining{sel} == 1))`）。除かないと、止めている Pod に残った接続が残りの Pod の平均に足され、縮めた直後に増やし直す。CPU の trigger は cAdvisor の値なので除けない（止めている Pod の CPU も平均に入る）。
+- 指標が取れない（ServiceMonitor が無い・Prometheus に届かない）ときは 0 とせず ScaledObject の失敗にする（`ignoreNullValues: "false"`）。台数はそのまま。全部の Pod が draining の一瞬（1 Pod の停止中）も結果が空になり、同じく台数はそのまま。
+- 系列は `namespace` と ServiceMonitor が付ける `service` ラベル（`<fullname>-instance`）で選ぶ。別の方法で集めるなら `autoscaling.prometheus.selector` で指定する。draining の除外は `pod` ラベル（ServiceMonitor が付ける）で突き合わせる。
 
-### 手動で縮める
+### 自動で縮める
 
-自動では減らさない。減らすときは、部屋の少ない Pod を選んで消す（Pod ごとの `ubichill_instance_websocket_connections` を見る）。
+HPA が台数を減らすと、ReplicaSet は `controller.kubernetes.io/pod-deletion-cost` の小さい Pod から消す。Go は自分の Pod にこの注釈を書く（値 = 直接繋いでいるクライアント数 + 自分が owner の部屋の参加者数。変わったときだけ、最短 30 秒おき）。書くために、`autoscaling.enabled` のときだけ ServiceAccount・Role（pods の get/patch）・RoleBinding を作り、`POD_NAMESPACE` を Downward API で渡す。書けなくても動作は続ける（警告は 10 分に 1 回）。
 
-1. 消す Pod に `controller.kubernetes.io/pod-deletion-cost=-1000` を付ける（ReplicaSet が先に消す。ベストエフォート）。
-2. ScaledObject に `autoscaling.keda.sh/paused-replicas: "<今の台数 - 1>"` を付ける。KEDA が台数を固定し、Pod は SIGTERM で draining になり、`drainTimeout` まで接続が抜けるのを待ってから残りの部屋を閉じる（参加者は繋ぎ直し、部屋は別の Pod に作り直される）。
-3. 消えたら `paused-replicas` を外す。scale-in が無効なので、指標が小さくても台数はそのまま。
+消された Pod は SIGTERM で次のように止まる。
+
+1. draining になり、新しい部屋を断る（readiness 503・`state: draining`）。中継しかしていなくなっても draining のまま。
+2. 持っている部屋のうち、空になったものは今までどおり閉じる（backend の掃除か、最後の Close）。作られてから `migrateAfter`（既定 3h）未満の部屋は待つ。過ぎても参加者の居る部屋は、別の Pod（ready・空きあり・接続の少ない順）へ**引っ越す**。クライアントは繋ぎ直さない（エンティティ・共有状態・参加者を引き継ぎ、入退室の通知も出ない）。
+3. 部屋が無くなっても、この Pod に直接繋いでいるクライアント（今は新しい owner へ中継しているだけ）が居る間は止まらない。上限は `drainTimeout`（既定 24h。1 日続く部屋があるため）。上限の `disconnectNotice`（既定 10m）前に、直接繋いでいるクライアントへ `server:notice`（`{"kind":"disconnect","at":<切る時刻の epoch ms>}`）を送る。
+4. `terminationGracePeriodSeconds` は空なら `drainTimeout` + 30 秒（既定で 86430）。明示すると、それより先に Pod が強制終了され、引っ越しや中継の途中で切れる。
+
+縮めたくない時間帯は ScaledObject に `autoscaling.keda.sh/paused-replicas` を付けて台数を固定する。
 
 ### 本番で有効にする手順
 

@@ -128,7 +128,11 @@ const instanceDeploymentOf = (args) => {
         readiness: container.readinessProbe?.httpGet?.path,
         liveness: container.livenessProbe?.httpGet?.path,
         drainTimeout: arg('drain-timeout'),
+        migrateAfter: arg('migrate-after'),
+        disconnectNotice: arg('disconnect-notice'),
+        deletionCost: arg('pod-deletion-cost'),
         maxRooms: arg('max-rooms'),
+        serviceAccount: deployment.spec.template.spec.serviceAccountName,
     };
 };
 const memoryDeployment = instanceDeploymentOf([]);
@@ -146,16 +150,31 @@ expectDeployment('memory', memoryDeployment, {
     readiness: '/ready',
     liveness: '/health',
     drainTimeout: '0s',
+    migrateAfter: '3h',
+    disconnectNotice: '10m',
+    deletionCost: undefined,
     maxRooms: '1000',
+    serviceAccount: undefined,
 });
 expectDeployment('redis', redisDeployment, {
     strategy: { type: 'RollingUpdate', rollingUpdate: { maxSurge: 1, maxUnavailable: 0 } },
-    grace: 30,
+    // terminationGracePeriodSeconds は drainTimeout（24h）+ 30 秒
+    grace: 86430,
     readiness: '/ready',
     liveness: '/health',
-    drainTimeout: '15s',
+    drainTimeout: '24h',
     maxRooms: '200',
 });
+expectDeployment(
+    'redis・drainTimeout 1h30m15s',
+    instanceDeploymentOf(['--set', 'instanceRuntime.directory=redis', '--set', 'instanceRuntime.drainTimeout=1h30m15s', '--set', 'instanceRuntime.migrateAfter=2h']),
+    { grace: 5445, drainTimeout: '1h30m15s', migrateAfter: '2h' },
+);
+expectDeployment(
+    'redis・terminationGracePeriodSeconds を明示',
+    instanceDeploymentOf(['--set', 'instanceRuntime.directory=redis', '--set', 'instanceRuntime.terminationGracePeriodSeconds=600']),
+    { grace: 600 },
+);
 
 const renderFails = (args, message) => {
     try {
@@ -171,6 +190,9 @@ if (!renderFails(['--set', 'redis.enabled=false', '--set', 'instanceRuntime.dire
 }
 if (!renderFails(['--set', 'redis.auth.password=x', '--set', 'instanceRuntime.directory=Redis'], 'memory か redis です')) {
     failures.push('instanceRuntime.directory の不正な値が描画を通ってしまう');
+}
+if (!renderFails(['--set', 'redis.auth.password=x', '--set', 'instanceRuntime.directory=redis', '--set', 'instanceRuntime.drainTimeout=1d'], 'h・m・s の組み合わせ')) {
+    failures.push('drainTimeout の秒に直せない値（1d）が描画を通ってしまう');
 }
 if (!renderFails(['--set', 'redis.auth.password=x', '--set', 'instanceRuntime.replicas=2'], 'Pod の間で部屋を共有できません')) {
     failures.push('directory: memory で instanceRuntime.replicas=2 にしても描画が通ってしまう');
@@ -201,18 +223,67 @@ if (!scaled) {
         target: scaled.spec.scaleTargetRef.name === 'ubichill-instance',
         min: scaled.spec.minReplicaCount === 1,
         max: scaled.spec.maxReplicaCount === 7,
-        // 自動の scale-in は無効（HPA は消す Pod を部屋の有無で選べない）
-        noScaleIn: scaled.spec.advanced?.horizontalPodAutoscalerConfig?.behavior?.scaleDown?.selectPolicy === 'Disabled',
+        // 縮めるのはゆっくり（既定: 15 分の安定化、10 分に 1 Pod）
+        scaleIn:
+            JSON.stringify(scaled.spec.advanced?.horizontalPodAutoscalerConfig?.behavior?.scaleDown) ===
+            JSON.stringify({ stabilizationWindowSeconds: 900, policies: [{ type: 'Pods', value: 1, periodSeconds: 600 }] }),
+        // 接続数・部屋数は draining の Pod を除く（止めている Pod の接続で、縮めた直後に増やし直さない）
         connections:
             triggers.connections?.metricType === 'AverageValue' &&
             triggers.connections.metadata.threshold === '250' &&
-            triggers.connections.metadata.query === 'sum(ubichill_instance_websocket_connections{namespace="default",service="ubichill-instance"})',
-        rooms: triggers.rooms?.metricType === 'AverageValue' && triggers.rooms.metadata.threshold === '800' && triggers.rooms.metadata.query.startsWith('sum(ubichill_instance_active_rooms{'),
+            triggers.connections.metadata.query ===
+                'sum(ubichill_instance_websocket_connections{namespace="default",service="ubichill-instance"} unless on(pod) (ubichill_instance_draining{namespace="default",service="ubichill-instance"} == 1))',
+        rooms:
+            triggers.rooms?.metricType === 'AverageValue' &&
+            triggers.rooms.metadata.threshold === '800' &&
+            triggers.rooms.metadata.query ===
+                'sum(ubichill_instance_active_rooms{namespace="default",service="ubichill-instance"} unless on(pod) (ubichill_instance_draining{namespace="default",service="ubichill-instance"} == 1))',
         cpu: triggers.cpu?.type === 'cpu' && triggers.cpu.metricType === 'AverageValue' && triggers.cpu.metadata.value === '600m',
         // 指標が無いときに 0 として扱わない
         nullIsError: scaled.spec.triggers.filter((t) => t.type === 'prometheus').every((t) => t.metadata.ignoreNullValues === 'false'),
     };
     for (const [key, ok] of Object.entries(want)) if (!ok) failures.push(`ScaledObject の ${key} が期待と違う: ${JSON.stringify(scaled.spec)}`);
+}
+const noScaleIn = instanceOf(
+    docsOf(['--set', 'instanceRuntime.directory=redis', '--set', 'instanceRuntime.autoscaling.enabled=true', '--set', 'instanceRuntime.autoscaling.scaleDown.enabled=false']),
+    'ScaledObject',
+);
+if (noScaleIn?.spec?.advanced?.horizontalPodAutoscalerConfig?.behavior?.scaleDown?.selectPolicy !== 'Disabled') {
+    failures.push('autoscaling.scaleDown.enabled=false でも scale-in が無効にならない');
+}
+// 自動で縮めるときだけ、Go が自分の Pod に pod-deletion-cost を書く権限（ServiceAccount・Role・RoleBinding）と Downward API を付ける
+{
+    const deployment = instanceOf(autoscaled, 'Deployment');
+    const container = deployment?.spec?.template?.spec?.containers?.find((c) => c.name === 'instance');
+    const env = Object.fromEntries((container?.env ?? []).map((e) => [e.name, e.value ?? e.valueFrom]));
+    const sa = autoscaled.find((d) => d.kind === 'ServiceAccount' && d.metadata.name === 'ubichill-instance');
+    const role = autoscaled.find((d) => d.kind === 'Role' && d.metadata.name === 'ubichill-instance-deletion-cost');
+    const binding = autoscaled.find((d) => d.kind === 'RoleBinding' && d.metadata.name === 'ubichill-instance-deletion-cost');
+    const want = {
+        serviceAccount: deployment?.spec?.template?.spec?.serviceAccountName === 'ubichill-instance' && sa?.automountServiceAccountToken === true,
+        role: JSON.stringify(role?.rules) === JSON.stringify([{ apiGroups: [''], resources: ['pods'], verbs: ['get', 'patch'] }]),
+        binding:
+            binding?.roleRef?.kind === 'Role' &&
+            binding.roleRef.name === role?.metadata?.name &&
+            binding.subjects?.[0]?.kind === 'ServiceAccount' &&
+            binding.subjects[0].name === 'ubichill-instance' &&
+            binding.subjects[0].namespace === 'default',
+        namespaceEnv: JSON.stringify(env.POD_NAMESPACE) === JSON.stringify({ fieldRef: { fieldPath: 'metadata.namespace' } }),
+        podNameEnv: JSON.stringify(env.POD_NAME) === JSON.stringify({ fieldRef: { fieldPath: 'metadata.name' } }),
+        flag: container?.args?.includes('--pod-deletion-cost=true'),
+    };
+    for (const [key, ok] of Object.entries(want)) if (!ok) failures.push(`pod-deletion-cost の ${key} が期待と違う`);
+    const plain = docsOf(['--set', 'instanceRuntime.directory=redis']);
+    const plainContainer = instanceOf(plain, 'Deployment')?.spec?.template?.spec?.containers?.find((c) => c.name === 'instance');
+    if (
+        plain.some((d) => (d.kind === 'Role' || d.kind === 'RoleBinding') && d.metadata.name.includes('instance')) ||
+        plain.some((d) => d.kind === 'ServiceAccount' && d.metadata.name === 'ubichill-instance') ||
+        instanceOf(plain, 'Deployment')?.spec?.template?.spec?.serviceAccountName !== undefined ||
+        plainContainer?.args?.some((a) => a.startsWith('--pod-deletion-cost')) ||
+        plainContainer?.env?.some((e) => e.name === 'POD_NAMESPACE')
+    ) {
+        failures.push('自動スケールが無効でも pod-deletion-cost の権限・設定が描画される');
+    }
 }
 // HPA が台数を持つので Deployment には replicas を書かない（同期のたびに戻さない）
 if (instanceOf(autoscaled, 'Deployment')?.spec?.replicas !== undefined) failures.push('autoscaling.enabled でも Deployment に replicas が書かれる');
@@ -285,5 +356,5 @@ if (failures.length > 0) {
     process.exit(1);
 }
 console.log(
-    `✅ chart の Redis の env: ${cases.length} 通り + instance の Downward API・Directory の選択（Go・backend）・replicas・更新方式と drain・指標の収集と KEDA（既定・有効・拒否） + 不正な指定の拒否、backend の台数: ${replicaCases.length} 通り + Redis なしの複数台の拒否`,
+    `✅ chart の Redis の env: ${cases.length} 通り + instance の Downward API・Directory の選択（Go・backend）・replicas・更新方式と drain（引っ越し・猶予の自動計算）・指標の収集と KEDA（既定・有効・scale-in・draining の除外・拒否）・pod-deletion-cost の権限 + 不正な指定の拒否、backend の台数: ${replicaCases.length} 通り + Redis なしの複数台の拒否`,
 );

@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -20,6 +21,12 @@ type peer struct {
 	once   sync.Once
 	room   *Room
 	userID string
+	// relayed は他の Pod から中継されてきた接続（クライアントは中継元の Pod に繋いでいる）。
+	relayed bool
+	// link は owner の Pod へ中継している経路。引っ越しで、自分の部屋の参加者から中継に切り替わることがある。
+	link atomic.Pointer[relayLink]
+	// pass は入室に使ったチケットと user。中継に切り替えるとき、チケットを署名し直して新しい owner に入り直す。
+	pass *relayPass
 }
 
 func (p *peer) stop()          { p.once.Do(func() { close(p.done); _ = p.conn.Close() }) }
@@ -105,13 +112,16 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, relayed bool) {
 	if err != nil {
 		return
 	}
-	p := &peer{id: newID(), conn: conn, out: make(chan Frame, 256), done: make(chan struct{})}
+	p := &peer{id: newID(), conn: conn, out: make(chan Frame, 256), done: make(chan struct{}), relayed: relayed}
 	go p.write()
 	defer p.stop()
-	var up *upstream
+	if !relayed {
+		s.addClient(p)
+		defer s.dropClient(p)
+	}
 	defer func() {
-		if up != nil {
-			s.forgetRelay(up)
+		if l := p.link.Load(); l != nil {
+			l.close()
 		}
 	}()
 	defer func() {
@@ -139,7 +149,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, relayed bool) {
 	conn.SetReadLimit(70 << 10)
 	_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
 	conn.SetPongHandler(func(string) error {
-		if p.room != nil || up != nil {
+		if p.room != nil || p.link.Load() != nil {
 			return conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 		}
 		return nil
@@ -163,8 +173,8 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, relayed bool) {
 		if len(f.ID) > 100 {
 			return
 		}
-		if up != nil {
-			if up.forward(raw) != nil {
+		if l := p.link.Load(); l != nil {
+			if l.forward(raw) != nil {
 				return
 			}
 			continue
@@ -188,12 +198,13 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, relayed bool) {
 				continue
 			}
 			if room == nil && !relayed {
-				next, failed := s.relayJoin(id, t, raw, p)
+				l, failed := s.relayJoin(id, relayPass{t, user}, raw, p)
 				if failed != nil {
 					p.reply(f.ID, failed)
 					continue
 				}
-				up = next
+				p.link.Store(l)
+				go l.start(nil)
 				_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 				continue
 			}
@@ -206,6 +217,8 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, relayed bool) {
 				p.reply(f.ID, ticketInvalid())
 				continue
 			}
+			// join が r.mu を取るので、引っ越しで参加者を集める側からも見える
+			p.pass = &relayPass{t, user}
 			s.admission.Lock()
 			old := s.active[t.Subject]
 			err = room.join(p, profile(user, t.ticket), t.Subject, f.ID)
@@ -247,7 +260,8 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, relayed bool) {
 }
 
 // relayJoin は手元に無い部屋への world:join を owner へ中継し始める。読んだ world:join はそのまま owner へ送る。
-func (s *Server) relayJoin(id string, t claims, join []byte, p *peer) (*upstream, Object) {
+func (s *Server) relayJoin(id string, pass relayPass, join []byte, p *peer) (*relayLink, Object) {
+	t := pass.claims
 	ctx, cancel := context.WithTimeout(context.Background(), s.fencing.Timeout)
 	to, failed := s.route(ctx, id, t)
 	cancel()
@@ -262,11 +276,12 @@ func (s *Server) relayJoin(id string, t claims, join []byte, p *peer) (*upstream
 		return nil, unavailable()
 	}
 	if up.forward(join) != nil {
-		s.forgetRelay(up)
+		up.close()
 		return nil, unavailable()
 	}
-	go up.pump(p)
-	return up, nil
+	l := &relayLink{s: s, p: p, room: id, pass: pass, up: up}
+	s.addLink(l)
+	return l, nil
 }
 
 // unavailable は部屋が無い・閉じた・自己停止したときの入室の失敗。クライアントはチケットを取り直して入り直す。

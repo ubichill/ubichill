@@ -84,6 +84,18 @@ func (p *partitioned) Retire(ctx context.Context, room, token string, ttl time.D
 	}
 	return p.Directory.Retire(ctx, room, token, ttl)
 }
+func (p *partitioned) Transfer(ctx context.Context, room, from, to, token, gen string, ttl time.Duration) (coord.Assignment, bool, error) {
+	if err := p.fail(); err != nil {
+		return coord.Assignment{}, false, err
+	}
+	return p.Directory.Transfer(ctx, room, from, to, token, gen, ttl)
+}
+func (p *partitioned) Nodes(ctx context.Context) (map[string]coord.NodeInfo, error) {
+	if err := p.fail(); err != nil {
+		return nil, err
+	}
+	return p.Directory.Nodes(ctx)
+}
 func (p *partitioned) PublishPresence(ctx context.Context, rooms []coord.RoomPresence, ttl time.Duration) error {
 	if err := p.fail(); err != nil {
 		return err
