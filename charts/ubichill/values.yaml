@@ -388,10 +388,17 @@ instanceRuntime:
   replicas: 1
   # 1 Pod が持つ部屋の数の上限。backend は redis のとき、上限に達していない Pod から新しい部屋の置き場所を選ぶ。
   maxRooms: 1000
-  # SIGTERM のあと新しい部屋を断り（draining）、接続が抜けるのを待つ時間（directory: redis のときだけ。memory は待たない）。
-  # 過ぎたら残りの部屋を閉じ、クライアントは別の Pod へ繋ぎ直す。terminationGracePeriodSeconds は drainTimeout + 10 秒以上にする。
-  drainTimeout: 15s
-  terminationGracePeriodSeconds: 30
+  # SIGTERM のあと新しい部屋を断り（draining）、この Pod に直接繋いでいるクライアントが抜けるのを待つ上限
+  # （directory: redis のときだけ。memory は待たない）。部屋は migrateAfter を過ぎたら別の Pod へ引っ越す（再接続なし）。
+  # 引っ越したあとも、直接繋いでいるクライアントはこの Pod が中継し続け、上限で切る。1 日続く部屋があるので 24h。
+  # 形式は Go の duration のうち h・m・s の組み合わせ（例: 24h, 1h30m, 15s）。
+  drainTimeout: 24h
+  # draining のとき、作ってからこれだけ経った部屋を引っ越す。若い部屋は空になるか、この時間に達するまで待つ。
+  migrateAfter: 3h
+  # drainTimeout のこれだけ前に、直接繋いでいるクライアントへ server:notice（切る時刻）を送る。
+  disconnectNotice: 10m
+  # 空なら drainTimeout + 30 秒。drainTimeout より短くすると、引っ越しや中継の途中で Pod が強制終了される。
+  terminationGracePeriodSeconds: ""
   # Go は GET /metrics（ポート realtime、認証なし、Ingress には出さない）で負荷を Prometheus 形式で出す（README の「自動スケール」）。
   metrics:
     # Prometheus Operator の ServiceMonitor を作る。CRD（monitoring.coreos.com）が無いクラスタでは有効にしない。
@@ -400,12 +407,20 @@ instanceRuntime:
       interval: 15s
       # Prometheus の serviceMonitorSelector に合わせるラベル（全件を拾う設定なら不要）
       labels: {}
-  # KEDA の ScaledObject で Go の Pod を自動で増やす（減らさない）。KEDA の CRD と、指標を集める Prometheus が要る。
+  # KEDA の ScaledObject で Go の Pod を自動で増減する。KEDA の CRD と、指標を集める Prometheus が要る。
   # directory: redis でないと描画で失敗する。有効にすると Deployment の replicas は書かず、台数は HPA が持つ。
+  # 有効にすると、Go が自分の Pod に pod-deletion-cost を書くための ServiceAccount・Role（pods の get/patch）・RoleBinding も作る。
   autoscaling:
     enabled: false
     maxReplicaCount: 5
     pollingInterval: 30
+    # 縮める速さ。消す Pod は pod-deletion-cost（直接の接続＋owner の部屋の参加者）の小さいものから選ばれ、
+    # SIGTERM のあと部屋を引っ越して直接の接続が抜けるのを待つ（drainTimeout）。enabled: false なら縮めない。
+    scaleDown:
+      enabled: true
+      stabilizationWindowSeconds: 900
+      podsPerPeriod: 1
+      periodSeconds: 600
     # 1 Pod に持たせたい接続数・部屋数・CPU。台数は trigger ごとの ceil(合計 / 閾値) の最大。
     # 接続数は websocket_connections の単位（中継は中継元と owner の両方で数える。2 Pod で利用者の約 1.5 倍）。
     # 負荷試験（#271。CPU 上限 1 コア、1 部屋 10 人・カーソル 20Hz・3 割が操作）で 1 Pod の指標が約 225 のとき

@@ -31,6 +31,22 @@ redis.call('PEXPIRE', KEYS[2], ARGV[5])
 redis.call('HSET', KEYS[1], 'node', ARGV[1], 'epoch', epoch, 'token', ARGV[3], 'gen', ARGV[2])
 redis.call('PEXPIRE', KEYS[1], ARGV[4])
 return {1, ARGV[1], tostring(epoch), ARGV[3], ARGV[2]}`)
+	// KEYS: room, epoch, gen / ARGV: fromToken, toNode, toToken, gen, ttl, epochRetention
+	// epoch のキーが消えていても（保持期間の切れ）今の epoch より小さくしない。
+	transferScript = redis.NewScript(`
+if redis.call('GET', KEYS[3]) ~= ARGV[4] then return {-1} end
+local cur = redis.call('HMGET', KEYS[1], 'epoch', 'token', 'gen')
+if not cur[2] or cur[2] ~= ARGV[1] or cur[3] ~= ARGV[4] then return {0} end
+local epoch = redis.call('INCR', KEYS[2])
+local floor = tonumber(cur[1]) + 1
+if epoch < floor then
+  epoch = floor
+  redis.call('SET', KEYS[2], epoch)
+end
+redis.call('PEXPIRE', KEYS[2], ARGV[6])
+redis.call('HSET', KEYS[1], 'node', ARGV[2], 'epoch', epoch, 'token', ARGV[3], 'gen', ARGV[4])
+redis.call('PEXPIRE', KEYS[1], ARGV[5])
+return {1, ARGV[2], tostring(epoch), ARGV[3], ARGV[4]}`)
 	// KEYS: room, epoch / ARGV: token, ttl, epochRetention
 	roomRenewScript = redis.NewScript(`
 if redis.call('HGET', KEYS[1], 'token') ~= ARGV[1] then return 0 end
@@ -198,6 +214,53 @@ func (r *RedisDirectory) Release(ctx context.Context, room, token string) (bool,
 	}
 	n, err := releaseScript.Run(ctx, r.client, []string{r.roomKey(room)}, token).Int()
 	return err == nil && n == 1, err
+}
+
+func (r *RedisDirectory) Transfer(ctx context.Context, room, fromToken, toNode, toToken, gen string, ttl time.Duration) (Assignment, bool, error) {
+	if err := validateTransfer(room, fromToken, toNode, toToken, ttl); err != nil {
+		return Assignment{}, false, err
+	}
+	keys := []string{r.roomKey(room), r.epochKey(room), r.genKey()}
+	out, err := transferScript.Run(ctx, r.client, keys, fromToken, toNode, toToken, gen, ttl.Milliseconds(), epochRetention.Milliseconds()).Slice()
+	if err != nil {
+		return Assignment{}, false, err
+	}
+	switch status, _ := out[0].(int64); status {
+	case -1:
+		return Assignment{}, false, ErrGenChanged
+	case 0:
+		return Assignment{}, false, nil
+	}
+	a, err := assignmentOf(out[1:])
+	return a, err == nil, err
+}
+
+// Nodes は ubi:nodes の一覧から生きているノードを読む（期限の切れたノードは backend が一覧から外す）。
+func (r *RedisDirectory) Nodes(ctx context.Context) (map[string]NodeInfo, error) {
+	ids, err := r.client.SMembers(ctx, r.nodesKey()).Result()
+	if err != nil || len(ids) == 0 {
+		return map[string]NodeInfo{}, err
+	}
+	keys := make([]string, len(ids))
+	for i, id := range ids {
+		keys[i] = r.nodeKey(id)
+	}
+	values, err := r.client.MGet(ctx, keys...).Result()
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]NodeInfo, len(ids))
+	for i, v := range values {
+		body, ok := v.(string)
+		if !ok {
+			continue
+		}
+		var info NodeInfo
+		if json.Unmarshal([]byte(body), &info) == nil {
+			out[ids[i]] = info
+		}
+	}
+	return out, nil
 }
 
 func (r *RedisDirectory) PublishPresence(ctx context.Context, rooms []RoomPresence, ttl time.Duration) error {

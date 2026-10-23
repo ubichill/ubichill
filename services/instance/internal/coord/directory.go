@@ -75,6 +75,12 @@ type Directory interface {
 	// Renew・Release は token が今の owner と一致するときだけ効く。
 	Renew(ctx context.Context, ttl time.Duration, leases ...RoomLease) []Renewal
 	Release(ctx context.Context, room, token string) (bool, error)
+	// Transfer は owner の付け替え（引っ越し）。fromToken が今の owner と一致するときだけ、node を toNode に、
+	// token を toToken に替え、epoch を 1 増やして TTL を ttl にする。一致しなければ false（失った・期限切れ）。
+	// toToken は引っ越し先が「準備」で作ったもの。先は確定が届かなくても Owner を引けば付け替えを知れる。
+	Transfer(ctx context.Context, room, fromToken, toNode, toToken, gen string, ttl time.Duration) (Assignment, bool, error)
+	// Nodes は heartbeat が生きているノードの一覧（引っ越し先を選ぶ）。
+	Nodes(ctx context.Context) (map[string]NodeInfo, error)
 	PublishPresence(ctx context.Context, rooms []RoomPresence, ttl time.Duration) error
 	Presence(ctx context.Context, room string) (RoomPresence, bool, error)
 	Rooms(ctx context.Context) ([]string, error)
@@ -101,6 +107,19 @@ func validateRoom(room string, ttl time.Duration, checkTTL bool) error {
 		return ErrInvalidRoom
 	}
 	if checkTTL && ttl < time.Millisecond {
+		return ErrInvalidLease
+	}
+	return nil
+}
+
+// NewToken は Transfer の toToken に使う乱数。
+func NewToken() string { return newToken() }
+
+func validateTransfer(room, fromToken, toNode, toToken string, ttl time.Duration) error {
+	if err := validateRoom(room, ttl, true); err != nil {
+		return err
+	}
+	if fromToken == "" || toNode == "" || toToken == "" {
 		return ErrInvalidLease
 	}
 	return nil

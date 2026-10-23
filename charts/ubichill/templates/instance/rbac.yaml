@@ -1,0 +1,40 @@
+{{- /* Go が自分の Pod に controller.kubernetes.io/pod-deletion-cost を書く（自動で縮めるときだけ要る） */}}
+{{- if and .Values.instanceRuntime.enabled .Values.instanceRuntime.autoscaling.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "ubichill.serviceAccountName.instance" . }}
+  labels:
+    {{- include "ubichill.labels" . | nindent 4 }}
+    component: instance
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "ubichill.fullname" . }}-instance-deletion-cost
+  labels:
+    {{- include "ubichill.labels" . | nindent 4 }}
+    component: instance
+rules:
+  {{- /* Pod 名は起動ごとに変わるので resourceNames では絞れない。namespace の中だけに留める */}}
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "ubichill.fullname" . }}-instance-deletion-cost
+  labels:
+    {{- include "ubichill.labels" . | nindent 4 }}
+    component: instance
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "ubichill.fullname" . }}-instance-deletion-cost
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "ubichill.serviceAccountName.instance" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

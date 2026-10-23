@@ -36,6 +36,11 @@ type Config struct {
 	Clock func() time.Time
 	// MaxRooms はこのノードが持つ部屋の数の上限（0 なら 1000）。heartbeat の capacity として backend の置き場所の選択にも使う。
 	MaxRooms int
+	// MigrateAfter は draining のとき、作ってからこれだけ経った部屋を別の Pod へ引っ越す（0 なら 3 時間）。
+	// それより若い部屋は、空になるか、この時間に達するまで待つ。
+	MigrateAfter time.Duration
+	// DisconnectNotice は Drain の期限のこれだけ前に、直接繋いでいるクライアントへ server:notice を送る（0 なら 10 分）。
+	DisconnectNotice time.Duration
 }
 
 // retiredFor は閉じた部屋を作り直させない期間。閉じる途中・直後に届いた入室（backend が DB を消す前に
@@ -68,8 +73,16 @@ type Server struct {
 	loopDone     chan struct{}
 	relayKey     []byte
 	relayMu      sync.Mutex
-	relays       map[*upstream]struct{}
+	relays       map[*relayLink]struct{}
+	clients      map[*peer]struct{}
 	draining     atomic.Bool
+	// pending は引っ越し先として準備した部屋（確定を待つ。s.mu で守る）。
+	pending map[string]*pendingHandoff
+	// migrations は進めている引っ越しの数（Drain は 0 になるまで終わらない）。
+	migrations atomic.Int32
+	// retryAt は引っ越しに失敗した部屋を次に試す時刻（s.mu で守る）。
+	retryAt        map[*Room]time.Time
+	handoffTimeout time.Duration
 	// maintaining は heartbeat・延長を 1 本ずつにする（周期の loop と、draining に入った直後の書き直し）。
 	maintaining sync.Mutex
 }
@@ -98,10 +111,17 @@ func newServer(config Config) *Server {
 	if config.MaxRooms <= 0 {
 		config.MaxRooms = 1000
 	}
+	if config.MigrateAfter <= 0 {
+		config.MigrateAfter = 3 * time.Hour
+	}
+	if config.DisconnectNotice <= 0 {
+		config.DisconnectNotice = 10 * time.Minute
+	}
 	return &Server{
 		rooms: map[string]*Room{}, active: map[string]*peer{}, key: ticketKey(config), config: config,
 		dir: config.Directory, node: config.Node, now: config.Clock, fencing: config.Fencing.withDefaults(), started: time.Now(),
-		relayKey: relayKey(config), relays: map[*upstream]struct{}{},
+		relayKey: relayKey(config), relays: map[*relayLink]struct{}{}, clients: map[*peer]struct{}{},
+		pending: map[string]*pendingHandoff{}, retryAt: map[*Room]time.Time{}, handoffTimeout: 10 * time.Second,
 	}
 }
 
@@ -132,6 +152,13 @@ func (s *Server) provision(d Definition, want expectation) (*Room, error) {
 		}
 		s.discard(ctx, r, true)
 	}
+	// 引っ越してくる途中の部屋。Directory ではもう自分が owner なので、割り当て直す（初期状態で作り直す）前に引き取る
+	if s.awaiting(d.ID) {
+		if r, err := s.completeHandoffLocked(ctx, d.ID); err == nil {
+			return r, nil
+		}
+		return nil, errDirectoryUnavailable
+	}
 	// draining でも持っている部屋は上で返す（動き続ける）。新しい部屋だけを断る
 	if s.draining.Load() {
 		return nil, errDraining
@@ -154,6 +181,7 @@ func (s *Server) provision(d Definition, want expectation) (*Room, error) {
 		return nil, err
 	}
 	r.gen, r.epoch, r.token, r.now, r.deadline = a.Gen, a.Epoch, a.Token, s.now, s.fencing.deadline(sent)
+	r.createdAt, r.grace = s.now().UnixMilli(), s.config.Grace
 	s.mu.Lock()
 	current := s.gen == a.Gen
 	if current {
@@ -182,12 +210,17 @@ func (s *Server) Close() {
 	s.mu.Lock()
 	rooms := s.rooms
 	s.rooms = map[string]*Room{}
+	for id, h := range s.pending {
+		h.timer.Stop()
+		delete(s.pending, id)
+	}
 	s.mu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), s.fencing.Timeout)
 	defer cancel()
 	for id, r := range rooms {
 		r.close(false)
-		_, _ = s.dir.Release(ctx, id, r.token)
+		_, _, token := r.lease()
+		_, _ = s.dir.Release(ctx, id, token)
 	}
 }
 
@@ -220,8 +253,9 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(v)
 }
-func decode(w http.ResponseWriter, r *http.Request, v any) bool {
-	d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<20))
+func decode(w http.ResponseWriter, r *http.Request, v any) bool { return decodeLimit(w, r, v, 8<<20) }
+func decodeLimit(w http.ResponseWriter, r *http.Request, v any, limit int64) bool {
+	d := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
 	d.DisallowUnknownFields()
 	if d.Decode(v) != nil {
 		writeJSON(w, 400, failure("invalid JSON"))
@@ -333,6 +367,7 @@ func (s *Server) Handler() http.Handler {
 		}
 		writeJSON(w, code, body)
 	})
+	mux.HandleFunc("POST /realtime/v1/instances/{id}/handoff", s.serveHandoff)
 	mux.HandleFunc("POST /realtime/v1/instances/{id}/tickets", func(w http.ResponseWriter, r *http.Request) {
 		if !s.authorize(w, r) {
 			return
@@ -427,6 +462,10 @@ func (s *Server) closeInstance(ctx context.Context, id, emptyBefore string, want
 	defer s.provisioning.Unlock()
 	ctx, cancel := context.WithTimeout(ctx, s.fencing.Timeout)
 	defer cancel()
+	// 引っ越してくる途中なら先に引き取る（引き取らずに閉じると、中身を確かめずに retire してしまう）
+	if s.awaiting(id) {
+		_, _ = s.completeHandoffLocked(ctx, id)
+	}
 	room := s.owned(id)
 	if room != nil && want.absent {
 		return 409, s.staleGeneration(ctx, id)
@@ -511,7 +550,14 @@ type expectation struct {
 }
 
 func (e expectation) matches(r *Room) bool {
-	return !e.set || r != nil && r.gen == e.gen && r.epoch == e.epoch
+	if !e.set {
+		return true
+	}
+	if r == nil {
+		return false
+	}
+	gen, epoch, _ := r.lease()
+	return gen == e.gen && epoch == e.epoch
 }
 
 // expected は ?gen=&epoch= を読む。片方だけ・数でない epoch は 400 を返して false。
