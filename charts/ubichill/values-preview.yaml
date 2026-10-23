@@ -4,10 +4,3 @@
 instanceRuntime:
   directory: redis
   replicas: 2
-  # 一時（#272 の確認用。マージ前に戻す）: 自動スケールをプレビューで動かす
-  metrics:
-    serviceMonitor:
-      enabled: true
-  autoscaling:
-    enabled: true
-    maxReplicaCount: 3
