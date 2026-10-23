@@ -1084,6 +1084,18 @@ class WorldRegistry {
     }
 
     /**
+     * このサーバーのワールドなら作者のユーザー ID（お気に入りの通知の宛先）。外部のワールドは undefined
+     * （外部の作者 ID はこのサーバーのユーザー ID と同じ空間ではないので、取り違えて届けない）。
+     */
+    async localWorldAuthor(ref: string): Promise<{ authorId: string; url: string; name: string } | undefined> {
+        if (/^https?:\/\//i.test(ref) && !this._selfRef(normalizeWorldUrl(ref))) return undefined;
+        const resolution = await this.resolveRefDetailed(ref);
+        if (!resolution.ok || !resolution.world.authorId) return undefined;
+        const { authorId, url, displayName } = resolution.world;
+        return { authorId, url, name: displayName };
+    }
+
+    /**
      * URL（または id）で解決し、公開ルールを満たすときだけ一覧の項目にする（お気に入りなど URL で持つ参照用）。
      * 外部ワールドも自分で取得・検証した結果を使う。満たさなければ undefined。
      */

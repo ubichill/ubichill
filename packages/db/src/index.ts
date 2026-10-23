@@ -2,6 +2,7 @@ import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from './schema';
 
+export { type AnnouncementRecord, announcementRepository } from './repositories/announcementRepository';
 export {
     type AuthorKeyRepository,
     authorKeyRepository,
@@ -25,6 +26,11 @@ export {
 export { favoriteRepository } from './repositories/favoriteRepository';
 export { federationPeerRepository } from './repositories/federationPeerRepository';
 export { instanceRepository } from './repositories/instanceRepository';
+export {
+    type CreateNotificationInput,
+    type NotificationRecord,
+    notificationRepository,
+} from './repositories/notificationRepository';
 export {
     type LockedPendingRegistration,
     type PendingRegistrationEmailScope,
