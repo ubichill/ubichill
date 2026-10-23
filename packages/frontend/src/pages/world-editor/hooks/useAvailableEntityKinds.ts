@@ -81,7 +81,7 @@ interface ModIndex {
     version: string;
 }
 
-interface VersionedManifestComponent {
+export interface VersionedManifestComponent {
     singleton?: boolean;
     canvasTargets?: string[];
     mediaTargets?: string[];
@@ -90,6 +90,8 @@ interface VersionedManifestComponent {
     dataFields?: DataFields;
     thumbnail?: string;
     overlay?: OverlayMode;
+    /** Worker を持たないデータ専用 Component（mod が spawn するだけで、エディタでは置かない） */
+    dataOnly?: boolean;
 }
 
 interface VersionedManifest {
@@ -151,6 +153,32 @@ function fetchManifest(base: string, name: string, version: string): Promise<Ver
 }
 
 /**
+ * 1 つの mod の manifest から、エディタで配置できる entity kind を作る（純粋）。
+ * データ専用 Component（例: pen:stroke）は mod が実行中に spawn するものなので並べない。
+ */
+export function entityKindsFromManifest(
+    modName: string,
+    components: Record<string, VersionedManifestComponent>,
+    versionedBase: string,
+): AvailableEntityKind[] {
+    return Object.entries(components)
+        .filter(([, meta]) => meta.dataOnly !== true)
+        .map(([kind, meta]) => ({
+            modName,
+            kind,
+            singleton: meta.singleton,
+            canvasTargets: meta.canvasTargets,
+            mediaTargets: meta.mediaTargets,
+            suggestSize: !!(meta.canvasTargets?.length || meta.mediaTargets?.length),
+            defaultTransform: meta.defaultTransform,
+            dataFields: meta.dataFields,
+            thumbnailUrl: meta.thumbnail ? `${versionedBase}/${meta.thumbnail}` : undefined,
+            viewKind: deriveViewKind(meta),
+            overlay: meta.overlay,
+        }));
+}
+
+/**
  * WorldDefinition の dependencies に登録された各modの manifest を読み、
  * 配置可能な entity kind 一覧を返す。
  */
@@ -183,19 +211,7 @@ export function useAvailableEntityKinds(definition: WorldDefinition | null): {
                 const manifest = await fetchManifest(base, dep.name, idx.version);
                 const components = manifest?.components ?? {};
                 const versionedBase = `${base}/${dep.name}/v${idx.version}`;
-                return Object.entries(components).map(([kind, meta]) => ({
-                    modName: dep.name,
-                    kind,
-                    singleton: meta.singleton,
-                    canvasTargets: meta.canvasTargets,
-                    mediaTargets: meta.mediaTargets,
-                    suggestSize: !!(meta.canvasTargets?.length || meta.mediaTargets?.length),
-                    defaultTransform: meta.defaultTransform,
-                    dataFields: meta.dataFields,
-                    thumbnailUrl: meta.thumbnail ? `${versionedBase}/${meta.thumbnail}` : undefined,
-                    viewKind: deriveViewKind(meta),
-                    overlay: meta.overlay,
-                }));
+                return entityKindsFromManifest(dep.name, components, versionedBase);
             }),
         )
             .then((results) => {

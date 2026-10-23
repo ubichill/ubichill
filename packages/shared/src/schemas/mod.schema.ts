@@ -115,6 +115,8 @@ const ComponentManifestMetaSchema = z.object({
     defaultTransform: TransformSchema.partial().optional(),
     dataFields: z.record(z.string(), ComponentDataFieldSpecSchema).optional(),
     displayName: z.string().optional(),
+    /** Worker を持たないデータ専用 Component（mod が spawn して持ち回る。例: pen:stroke）。workerUrl を持たない。 */
+    dataOnly: z.boolean().optional(),
 });
 
 /**

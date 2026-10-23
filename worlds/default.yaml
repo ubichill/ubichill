@@ -56,6 +56,25 @@ spec:
                 strokeWidth: 4
               type: pen:pen
               overlay: top-left
+        # 消しゴム。中身はペンと同じ pen:pen で、eraser を付けると描く代わりに線を消す。
+        - id: eraser
+          tags: []
+          children: []
+          transform:
+            h: 48
+            w: 55
+            x: 143
+            y: 7
+            z: 6
+            scale: 1
+            rotation: 0
+          components:
+            - data:
+                color: "#1a1a1a"
+                strokeWidth: 4
+                eraser: true
+              type: pen:pen
+              overlay: top-left
       transform:
         h: 67
         w: 266

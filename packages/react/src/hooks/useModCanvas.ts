@@ -17,6 +17,7 @@
 import type { CanvasCursorData, CanvasStrokeData } from '@ubichill/shared';
 import type React from 'react';
 import { useEffect, useRef } from 'react';
+import { strokeStyle } from '../lib/strokeStyle';
 import type { WorkerModDefinition } from '../types';
 import type { ModWorkerHandlers } from '../useModWorker';
 
@@ -24,8 +25,11 @@ import type { ModWorkerHandlers } from '../useModWorker';
 
 function drawStroke(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, stroke: CanvasStrokeData): void {
     if (stroke.points.length < 2) return;
+    const style = strokeStyle(stroke);
+    ctx.save();
+    ctx.globalCompositeOperation = style.composite;
     ctx.beginPath();
-    ctx.strokeStyle = stroke.color;
+    ctx.strokeStyle = style.color;
     ctx.lineWidth = stroke.size;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -34,6 +38,7 @@ function drawStroke(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingCont
         ctx.lineTo(stroke.points[i][0], stroke.points[i][1]);
     }
     ctx.stroke();
+    ctx.restore();
 }
 
 function drawCursor(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, cursor: CanvasCursorData): void {
