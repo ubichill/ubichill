@@ -168,15 +168,41 @@ func runDirectoryContract(t *testing.T, newDirectory func(t *testing.T) testDire
 	t.Run("renew extends only with the current token", func(t *testing.T) {
 		d := newDirectory(t)
 		a, _ := assign(t, d, "room", "a")
-		if ok, err := d.Renew(ctx, "room", "not-the-token", 10*ttl); err != nil || ok {
+		if ok, err := renewOne(ctx, d, "room", "not-the-token", 10*ttl); err != nil || ok {
 			t.Fatalf("renew with a wrong token: %v %v", ok, err)
 		}
-		if ok, err := d.Renew(ctx, "room", a.Token, 3*ttl); err != nil || !ok {
+		if ok, err := renewOne(ctx, d, "room", a.Token, 3*ttl); err != nil || !ok {
 			t.Fatalf("renew: %v %v", ok, err)
 		}
 		d.advance(2 * ttl)
 		if owner, ok, _ := d.Owner(ctx, "room"); !ok || owner != a {
 			t.Fatalf("renewed lease expired at the original ttl: %+v %v", owner, ok)
+		}
+	})
+
+	t.Run("renew handles many rooms at once and answers in order", func(t *testing.T) {
+		d := newDirectory(t)
+		a, _ := assign(t, d, "a", "node")
+		b, _ := assign(t, d, "b", "node")
+		got := d.Renew(ctx, 3*ttl,
+			RoomLease{Room: "b", Token: b.Token},
+			RoomLease{Room: "missing", Token: "t"},
+			RoomLease{Room: "epoch:x", Token: "t"},
+			RoomLease{Room: "a", Token: "not-the-token"},
+			RoomLease{Room: "a", Token: a.Token},
+		)
+		if len(got) != 5 || !got[0].OK || got[0].Err != nil || got[1].OK || got[1].Err != nil ||
+			!errors.Is(got[2].Err, ErrInvalidRoom) || got[3].OK || got[3].Err != nil || !got[4].OK {
+			t.Fatalf("renewals = %+v", got)
+		}
+		d.advance(2 * ttl)
+		for _, room := range []string{"a", "b"} {
+			if _, ok, _ := d.Owner(ctx, room); !ok {
+				t.Fatalf("%s expired although it was renewed in the batch", room)
+			}
+		}
+		if got := d.Renew(ctx, ttl); len(got) != 0 {
+			t.Fatalf("renewing nothing = %+v", got)
 		}
 	})
 
@@ -191,7 +217,7 @@ func runDirectoryContract(t *testing.T, newDirectory func(t *testing.T) testDire
 		if !created || next.Node != "b" || next.Epoch != old.Epoch+1 || next.Token == old.Token {
 			t.Fatalf("next = %+v (old %+v)", next, old)
 		}
-		if ok, _ := d.Renew(ctx, "room", old.Token, ttl); ok {
+		if ok, _ := renewOne(ctx, d, "room", old.Token, ttl); ok {
 			t.Fatal("old token renewed the new owner's lease")
 		}
 		if ok, _ := d.Release(ctx, "room", old.Token); ok {
@@ -217,7 +243,7 @@ func runDirectoryContract(t *testing.T, newDirectory func(t *testing.T) testDire
 		if after == before {
 			t.Fatal("generation survived a wipe")
 		}
-		if ok, _ := d.Renew(ctx, "room", a.Token, ttl); ok {
+		if ok, _ := renewOne(ctx, d, "room", a.Token, ttl); ok {
 			t.Fatal("a lease from before the wipe was renewed")
 		}
 		next, created := assign(t, d, "room", "b")
@@ -340,7 +366,7 @@ func runDirectoryContract(t *testing.T, newDirectory func(t *testing.T) testDire
 			if _, _, err := d.Assign(ctx, room, "a", g, ttl); !errors.Is(err, ErrInvalidRoom) {
 				t.Fatalf("assign %q: %v", room, err)
 			}
-			if _, err := d.Renew(ctx, room, "t", ttl); !errors.Is(err, ErrInvalidRoom) {
+			if _, err := renewOne(ctx, d, room, "t", ttl); !errors.Is(err, ErrInvalidRoom) {
 				t.Fatalf("renew %q: %v", room, err)
 			}
 			if _, err := d.Release(ctx, room, "t"); !errors.Is(err, ErrInvalidRoom) {
@@ -405,7 +431,7 @@ func TestDirectoryForDoesNotFallBackToMemoryWhenRedisIsDown(t *testing.T) {
 	if a, created, err := d.Assign(ctx, "room", "node", "gen", time.Second); err == nil || created {
 		t.Fatalf("Redis が落ちているのに割り当てた: %+v %v", a, err)
 	}
-	if ok, err := d.Renew(ctx, "room", "token", time.Second); err == nil || ok {
+	if ok, err := renewOne(ctx, d, "room", "token", time.Second); err == nil || ok {
 		t.Fatalf("Redis が落ちているのに延長できた: %v %v", ok, err)
 	}
 }
@@ -462,5 +488,35 @@ func TestRedisEpochKeyExpiresAfterRetention(t *testing.T) {
 	ttl, err := client.PTTL(ctx, prefix+"room:epoch:room").Result()
 	if err != nil || ttl < 24*time.Hour || ttl > epochRetention {
 		t.Fatalf("epoch key ttl = %v %v", ttl, err)
+	}
+}
+
+func renewOne(ctx context.Context, d Directory, room, token string, ttl time.Duration) (bool, error) {
+	r := d.Renew(ctx, ttl, RoomLease{Room: room, Token: token})[0]
+	return r.OK, r.Err
+}
+
+// Redis が再起動してスクリプトのキャッシュが消えても、延長は失敗しない（本文ごと送り直す）。
+func TestRedisRenewSurvivesAScriptFlush(t *testing.T) {
+	client := testRedis(t)
+	ctx := context.Background()
+	prefix := "ubi:test:dir:" + newToken() + ":"
+	t.Cleanup(func() {
+		keys, _ := client.Keys(ctx, prefix+"*").Result()
+		if len(keys) > 0 {
+			_ = client.Del(ctx, keys...).Err()
+		}
+	})
+	d := NewRedisDirectory(client, prefix)
+	gen, _ := d.ClusterGen(ctx)
+	a, _, err := d.Assign(ctx, "room", "node", gen, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := client.ScriptFlush(ctx).Err(); err != nil {
+		t.Fatal(err)
+	}
+	if got := d.Renew(ctx, time.Second, RoomLease{Room: "room", Token: a.Token}); !got[0].OK || got[0].Err != nil {
+		t.Fatalf("renew after SCRIPT FLUSH = %+v", got)
 	}
 }
