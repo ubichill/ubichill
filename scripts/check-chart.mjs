@@ -208,8 +208,9 @@ if (!scaled) {
             triggers.connections.metadata.threshold === '250' &&
             triggers.connections.metadata.query === 'sum(ubichill_instance_websocket_connections{namespace="default",service="ubichill-instance"})',
         rooms: triggers.rooms?.metricType === 'AverageValue' && triggers.rooms.metadata.threshold === '800' && triggers.rooms.metadata.query.startsWith('sum(ubichill_instance_active_rooms{'),
+        cpu: triggers.cpu?.type === 'cpu' && triggers.cpu.metricType === 'AverageValue' && triggers.cpu.metadata.value === '600m',
         // 指標が無いときに 0 として扱わない
-        nullIsError: scaled.spec.triggers.every((t) => t.metadata.ignoreNullValues === 'false'),
+        nullIsError: scaled.spec.triggers.filter((t) => t.type === 'prometheus').every((t) => t.metadata.ignoreNullValues === 'false'),
     };
     for (const [key, ok] of Object.entries(want)) if (!ok) failures.push(`ScaledObject の ${key} が期待と違う: ${JSON.stringify(scaled.spec)}`);
 }
@@ -223,6 +224,11 @@ if (!monitor || endpoint?.port !== 'realtime' || endpoint?.path !== '/metrics' |
 } else if (!Object.entries(monitor.spec.selector.matchLabels).every(([k, v]) => service?.metadata?.labels?.[k] === v)) {
     failures.push('ServiceMonitor の selector が instance の Service のラベルに合わない');
 }
+const withoutCpu = instanceOf(
+    docsOf(['--set', 'instanceRuntime.directory=redis', '--set', 'instanceRuntime.autoscaling.enabled=true', '--set', 'instanceRuntime.autoscaling.targetCPUPerPod=']),
+    'ScaledObject',
+);
+if (withoutCpu?.spec?.triggers?.some((t) => t.type === 'cpu') !== false) failures.push('targetCPUPerPod を空にしても CPU の trigger が描画される');
 const autoscalingArgs = ['--set', 'redis.auth.password=x', '--set', 'instanceRuntime.autoscaling.enabled=true'];
 if (!renderFails(autoscalingArgs, 'autoscaling.enabled には instanceRuntime.directory: redis が要ります')) {
     failures.push('directory: memory で autoscaling.enabled にしても描画が通ってしまう');

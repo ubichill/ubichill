@@ -112,12 +112,13 @@ Redis を設定した環境では、Redis が落ちても**プロセス内の状
   - `websocket_connections` は heartbeat の `connections` と同じ数え方（部屋の参加者＋他の Pod へ中継している接続）。中継された接続は中継する Pod と owner の Pod の両方で数える。どちらも WebSocket を持つので負荷としては正しい。
   - `room_capacity_available` は draining の間 0 にする（合計して受けられる部屋の数を多く見積もらない）。
 - chart は `ServiceMonitor`（`instanceRuntime.metrics.serviceMonitor.enabled`）と `ScaledObject`（`instanceRuntime.autoscaling.enabled`）を値で作る。どちらも既定は無効（CRD の無いクラスタで描画・適用が落ちない）。`ScaledObject` は `directory: redis` でないと描画で失敗する。
-- **集約の指標（`ubichill_instance_scaling_pressure`・recording rule）は作らない**。trigger を接続数と部屋数の 2 つにし、HPA に最大を取らせる（HPA は trigger ごとに台数を出して大きい方を取る）。
+- **集約の指標（`ubichill_instance_scaling_pressure`・recording rule）は作らない**。trigger を接続数・部屋数・CPU の 3 つにし、HPA に最大を取らせる（HPA は trigger ごとに台数を出して大きい方を取る）。
   - recording rule は評価の間隔ぶん遅れ、`PrometheusRule` の CRD と Prometheus の `ruleSelector` にも依存する。rule が読み込まれないと KEDA は空の結果を受け、既定（`ignoreNullValues: true`）では 0 として scale-out しないまま気付けない。
   - 閾値の単位が「1 Pod に持たせたい接続数」「1 Pod に持たせたい部屋数」のまま残る。`AverageValue` なので台数は `ceil(合計 / 閾値)`。
   - 指標が無いときは `ignoreNullValues: "false"` で ScaledObject の失敗として出し、台数を変えない。
   - 部屋数の閾値は `maxRooms` 未満にする（上限に達した Pod は新しい部屋を 503 で断るので、その手前で増やす）。
-  - 今の値（接続 300・部屋 800）は仮。負荷試験で決める。
+  - 接続 200・部屋 800・CPU 600m。接続は負荷試験（#271）で決めた: CPU 上限 1 コア、1 部屋 10 人・カーソル 20Hz・3 割が操作で、1 Pod の `websocket_connections` が約 225 のとき CPU 約 640m・p95 約 30ms、約 375 で p95 が 300ms を超えた。
+  - CPU の trigger は大人数の部屋のため（配信は人数の 2 乗で増え、接続数では測れない）。cAdvisor / metrics-server の値を `AverageValue` で使う（requests が 100m なので割合では使わない）。
 - 新しい Pod は ready になってから割り当ての候補になる。既存の部屋は自動では移さない（backend は接続数の少ない Pod を選ぶので、新しい部屋は増えた Pod に置かれる）。
 - **自動の scale-in は無効**（`scaleDown.selectPolicy: Disabled`）。HPA は、どの Pod を消すかを部屋の有無で選べないため。
 - 有効にすると Deployment に `replicas` を書かない（Argo CD の同期のたびに HPA の台数へ戻さない）。
@@ -169,7 +170,7 @@ backend を 2 台以上にする前に、DB 側の「時刻の型」と「仮登
 ## 未決
 
 1. WS Router を Go の Pod に兼ねさせ続けるか、別の Deployment に分けるか（G2 の負荷試験で決める）。
-2. KEDA の閾値（`targetConnectionsPerPod`・`targetRoomsPerPod`。K1 では仮の値）、1 部屋の最大人数、許せる遅延。指標は K1 で決めた。
+2. ~~KEDA の閾値~~ #271 の負荷試験で決めた（「KEDA（K1）」）。1 部屋の最大人数と、大人数の部屋の配信（カーソルをまとめて送るか）は未決。
 3. Redis を Helm の subchart で持つか、外部の Redis にするか。
 4. 自動の scale-in の方式（`pod-deletion-cost` で足りるか）。決まるまでは scale-out だけを自動にする。
 5. ~~KEDA を home-manifests にどう入れるか~~ K1 で決めた（「KEDA（K1）」）。

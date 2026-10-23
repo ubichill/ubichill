@@ -166,8 +166,9 @@ instanceRuntime:
   autoscaling:
     enabled: true                # KEDA の CRD が要る
     maxReplicaCount: 5
-    targetConnectionsPerPod: 300 # 仮の値。負荷試験で決める
+    targetConnectionsPerPod: 200 # 負荷試験（#271）から
     targetRoomsPerPod: 800       # maxRooms 未満
+    targetCPUPerPod: 600m        # 空なら CPU の trigger を作らない
     prometheus:
       serverAddress: http://prometheus-operated.monitoring.svc:9090
 ```
@@ -175,10 +176,12 @@ instanceRuntime:
 - どちらも既定は無効。CRD の無いクラスタで描画・適用が落ちない。
 - `ScaledObject` は `minReplicaCount: 1`、**自動の scale-in は無効**（`scaleDown.selectPolicy: Disabled`）。HPA は消す Pod を部屋の有無で選べないため。
 - 有効にすると Deployment に `replicas` を書かない（同期のたびに HPA の決めた台数へ戻さない）。`instanceRuntime.replicas` は使われない。
-- trigger は接続数と部屋数の 2 つ。HPA は trigger ごとに台数を出して大きい方を取るので、1 つの指標（recording rule）にまとめない。どちらも `AverageValue` で、台数は `ceil(合計 / 閾値)`。
-  - `targetConnectionsPerPod`: 1 Pod に持たせたい WebSocket の数。CPU・配信の遅延と比べて決める。
+- trigger は接続数・部屋数・CPU の 3 つ。HPA は trigger ごとに台数を出して大きい方を取るので、1 つの指標（recording rule）にまとめない。どれも `AverageValue` で、台数は `ceil(合計 / 閾値)`。
+  - `targetConnectionsPerPod`: 1 Pod に持たせたい `ubichill_instance_websocket_connections`。中継された接続は中継元と owner の両方で数えるので、Service に振り分けを任せた 2 Pod では利用者の約 1.5 倍になる。
+    負荷試験（#271。CPU 上限 1 コア、1 部屋 10 人・カーソル 20Hz・3 割が操作）では 1 Pod の値が約 225 で CPU 約 640m・遅延 p95 約 30ms、約 375 で遅延が急に悪化した（p95 300ms 超）。既定の 200 はその手前。
+  - `targetCPUPerPod`: 1 Pod の CPU の量（requests に対する割合ではない）。大人数の部屋は配信が人数の 2 乗で増え、接続数では負荷を測れないため。`resources.limits.cpu` より小さくする。
   - `targetRoomsPerPod`: 1 Pod に持たせたい部屋の数。`maxRooms` に達した Pod は新しい部屋を 503 で断るので、その手前で増やす（`maxRooms` 以上は描画で失敗する）。
-  - HPA は 10% の許容幅を持つ。例: 1 Pod・閾値 300 なら接続数が 330 を超えたときに 2 台になる。
+  - HPA は 10% の許容幅を持つ。例: 1 Pod・閾値 200 なら接続数が 220 を超えたときに 2 台になる。
   - 既存の部屋は移さない。増えた Pod には、backend が接続数の少ない Pod を選ぶので新しい部屋が置かれる。
 - 指標が取れない（ServiceMonitor が無い・Prometheus に届かない）ときは 0 とせず ScaledObject の失敗にする（`ignoreNullValues: "false"`）。台数はそのまま。
 - 系列は `namespace` と ServiceMonitor が付ける `service` ラベル（`<fullname>-instance`）で選ぶ。別の方法で集めるなら `autoscaling.prometheus.selector` で指定する。
@@ -196,7 +199,7 @@ instanceRuntime:
 1. クラスタに KEDA を入れる（home-manifests の `argocd-apps/keda.yaml`）。`v1beta1.external.metrics.k8s.io` の APIService が Available で、`scaledobjects.keda.sh` の CRD があることを確かめる。
 2. `instanceRuntime.directory: redis`（`replicas: 1` のまま）で動かし、部屋の作成・入室・更新（RollingUpdate と drain）を確かめる。Redis の Secret は先に固定しておく（「Redis」）。
 3. `instanceRuntime.metrics.serviceMonitor.enabled: true` だけを先に入れ、Prometheus で `ubichill_instance_active_rooms{namespace="ubichill",service="ubichill-instance"}` が取れることを確かめる。
-4. 負荷試験で閾値を決め、`instanceRuntime.autoscaling.enabled: true` と `maxReplicaCount` を入れる。Argo CD の Application には `apps/Deployment` の `/spec/replicas` を `ignoreDifferences` に足す（HPA が変えた台数を差分にしない）。
+4. 閾値を確かめ（既定は #271 の負荷試験から）、`instanceRuntime.autoscaling.enabled: true` と `maxReplicaCount` を入れる。Argo CD の Application には `apps/Deployment` の `/spec/replicas` を `ignoreDifferences` に足す（HPA が変えた台数を差分にしない）。
 5. `kubectl get scaledobject,hpa -n ubichill` で `READY`・`ACTIVE` と HPA の指標が読めていることを確かめる。
 
 ## コントリビューション / ライセンス
