@@ -1,5 +1,135 @@
 # @ubichill/backend
 
+## 1.8.1
+
+### Patch Changes
+
+- 4afeacc: better-auth の口のうち、画面が使うもの（ログイン・ログアウト・セッション取得・パスワード変更）だけを HTTP に開けるようにした。`/api/auth/sign-up/email` からメール確認を通らずに登録する、`/api/auth/update-user` で表示名の一意性と変更間隔を迂回する、といった使い方ができなくなる。
+
+  仮登録はメールアドレスではなく、申し込んだ本人に返す ID で引くようにした（`/users/verify`・`/users/resend-otp` は `registrationId` を受け取る）。他人が同じアドレスで申し込み直して本人の仮登録をパスワードごと置き換えることはできない。認証コードは 5 回間違えると無効になる。
+
+  公式アカウントは、メールアドレスを確認済みのアカウントだけを昇格させ、昇格前のログインと公開環境は取り消す。
+
+- 70b6047: 作者の鍵を 1 つのテーブルにまとめた（マイグレーション `0020_author_keys`）。自サーバーの公開環境（`publishing_environments`）と他サーバーの作者の鍵一覧（`author_bindings` の jsonb）を、`author_keys`（代理キー・`origin` が local / remote）と `remote_authors` に移し、読み書きをすべて新しいテーブルに切り替えた。古いテーブルは残すが書かない（次のマイグレーションで消す）。古いイメージに戻すときの手順は `docs/operations/db-migration.md`。
+
+  - 公開鍵は保存・照合の前に正規化する（shared の `normalizeEd25519PublicKey`。`ed25519:` の接頭辞・base64 / base64url・パディング・43 文字目の使われない bit の違いを 1 つにする）。これまでは文字列の完全一致で比べていたため、同じ鍵を別の書き方で別のアカウントに登録できた。DB でも正規形だけを受け付ける。
+  - 同じ鍵を持てる自サーバーのアカウントは 1 つ。取り消した鍵を登録し直すこともできない（今と同じ）。
+  - 他サーバーの作者が自サーバーの公開環境の鍵を名乗ってきた場合、その一覧は保存するが警告を記録し、その鍵では作者を付けない（これまでは付いていた）。
+  - `@ubichill/db`: `publishingEnvironmentRepository`・`authorBindingRepository` を `authorKeyRepository`（`createAuthorKeyRepository`）にまとめた。別の DB に接続する `createDatabase` を足した。
+
+- 85910ee: Redis を設定した backend を複数台で動かせるように、プロセス内にあった状態を Redis で揃える（Redis なしの 1 台では今まで通り）。
+
+  - HTTP のレート制限（全体・インスタンス作成・サービストークン・外部の作品の再確認）は `rate-limit-redis` で台数をまたいで数える。Redis が落ちている間は制限せずに通し、警告は limiter ごとに 1 回だけ出す。
+  - better-auth のレート制限は `rateLimit.customStorage` で Redis に数える（`secondaryStorage` はセッションの保存先まで変えるので使わない）。Redis が落ちている間も、ログイン（`/api/auth/sign-in/email`）だけは 503 で断る。
+  - 空インスタンスの掃除と期限切れの CLI 認可の掃除は、リース `ubi:lease:reaper` を持つ 1 台だけが行う。Redis が落ちている間は掃除しない。Go に部屋が無いと最初に観測した時刻は `ubi:absent:<instanceId>` に置き、担当の backend が替わっても復旧の猶予が延びない。
+  - ワールドの保存・削除・再読み込み、作者の鍵・表示名の変更、外部ワールドの確かめ直し、連合のフォロー、公開のお気に入りの変更を、Pub/Sub（`ubi:ch:backend`）でほかの backend に知らせてキャッシュを捨てさせる。届かなくても期限で揃うよう、本体のワールドの解決結果（今までは期限なし）は 5 分、連合のフォロー先は 5 分で読み直す。
+  - ワールドの並び順はまだプロセス内のままで、複数台では揃わない。chart の `backend.replicaCount` は既定 1 のまま。Redis なしで 2 以上を指定すると描画で失敗する。
+
+- 740ccc7: DB の古い列・テーブルを読み書きしないようにした（マイグレーション `0024_db_cleanup_stop_using`）。列の削除（0025）とリリースを分ける。
+
+  - `worlds` の 0023 より前の列（`name`・`version`・`definition`・`lock`・`signature`・`draft_*`）への保存のたびの書き戻しをやめ、スキーマから外した。列は残し、新しいコードの INSERT が通るよう `name`・`version`・`definition` の NOT NULL を外す。
+  - `instances` の `has_password`・`current_users` をスキーマから外した。パスワードの有無は `password_hash` で決める。デプロイ中・戻したあとの 0023 のイメージが `has_password` で入室を確かめるので、0025 までは DB のトリガーが `password_hash` から `has_password` を決める。
+  - 0020 で移した古い鍵のテーブル `publishing_environments`・`author_bindings` を消した。0020 より前のイメージに戻すときの作り直し方は `docs/operations/db-migration.md`。
+
+- 72caae4: DB の時刻の列をすべて `timestamptz` にした（マイグレーション `0018_timestamptz`）。既存の値は UTC として変換するので、指す瞬間は変わらない。DB のセッションの TimeZone が UTC でなくても、`defaultNow()` の値がずれなくなる。
+
+  空インスタンスの掃除（reaper）は、作成直後の猶予を DB の `created_at` だけで判定するようにした。作成したプロセスの中に時刻を持たないので、backend が複数あっても猶予が効く。
+
+- b5419f6: 依存の更新（Dependabot #130・#244・#257・#258 をまとめた）: better-auth 1.7.7、drizzle-orm 0.45.4、express 5.3.0、express-rate-limit 8.7.1、resend 6.32.1、zod 4.6.7、nanoid 6.0.1（Node 18・20 のサポート終了。本番は Node 26）、react-router 8.4.0、@types/node 26.6.5。
+- 154a908: テストの修正のみ（worldRegistry.events.test の @ubichill/db の差し替えに authorKeyRepository を足す）。動作の変更はない。
+- eebac88: Go のインスタンスの負荷を Prometheus で集め、KEDA で Pod を自動で増やせるようにする（K1）。
+
+  Go: `GET /metrics`（認証なし。Ingress には出さない）で `ubichill_instance_active_rooms`・`room_capacity`・`room_capacity_available`（draining の間は 0）・`websocket_connections`（heartbeat の `connections` と同じ。中継を含む）・`relay_connections`・`draining` を Prometheus の text 形式で出す。依存を増やさないよう標準ライブラリだけで書いた。
+
+  chart: `instanceRuntime.metrics.serviceMonitor.enabled` で ServiceMonitor を、`instanceRuntime.autoscaling.enabled` で KEDA の ScaledObject（`minReplicaCount: 1`・自動の scale-in は無効・接続数と部屋数の 2 つの trigger）を作る。どちらも既定は無効。ScaledObject は `directory: redis` でないと描画で失敗し、有効なときは Deployment に `replicas` を書かない。instance の Service にラベルを付けた。
+
+- c0164c3: Go のインスタンスに部屋の Directory を足す（G1）。部屋を作る（`PUT /realtime/v1/instances/{id}`）ときに、部屋をこのノードに割り当てる。割り当てを Redis で共有するのは `INSTANCE_DIRECTORY=redis`（chart の `instanceRuntime.directory: redis`）のときだけで、既定はメモリ（1 Pod では共有する相手がおらず、Redis の可用性が部屋の可用性の上限になるだけのため）。owner は部屋のリースを 5 秒ごとに延長し、最後に成功した延長の要求を送った時刻から 10 秒（TTL 15 秒 − 余裕 5 秒）を過ぎるか、延長が token 不一致で失敗したら、その部屋の状態変更と入室を止めて接続を閉じる（`instance:closing` は送らない。クライアントはチケットを取り直して入り直し、部屋は新しい epoch で作り直される）。Redis の中身が消えて `ubi:cluster:gen` が変わったら全部屋を捨てる。`redis` にしたあと Redis が落ちても、メモリに切り替えない（新しい部屋は 503、既存の部屋は自己停止する）。
+
+  参加チケットに部屋の世代（`gen`・`epoch`）を入れ、今の部屋の世代と一致しなければ `ticket_invalid` で拒否する。ゲストの再接続情報も、世代が違えば新しいゲスト ID を発行する（Go を再起動すると部屋の世代が変わるので、ゲストは新しい ID で入り直す。R1 の「再起動してもゲストの再接続情報が切れない」はこの PR で取り消しになる）。
+
+  管理 API: 別のノードが owner の部屋の作成・終了は 409 と owner（`node`・`gen`・`epoch`・`addr`・`alive`）を返す。終了は自分が今の owner のときだけ行い、割り当てを token で解放する。在席のレスポンスに `node`・`gen`・`epoch` を足した（任意の項目。単体モードのゲスト向けには返さない）。backend はまだ使わない（G2 から）。
+
+  chart は instance に `POD_NAME`・`POD_IP`（Downward API）を渡す。instance は `replicas: 1` のまま（WebSocket を owner に振り分ける Router は G2）。
+
+- db4057f: Go のインスタンスの owner が落ちた・止まるときの扱いを揃える（G3）。
+
+  Go: 閉じた部屋を 2 分作らせない印（`retired`）を Directory に移した。`directory: redis` なら `ubi:retired:<id>`（TTL 2 分）を割り当ての Lua の中で確かめるので、閉じた Pod 以外に作成が届いても生き返らない（閉じる側は割り当てを解放する前に印を付ける）。`memory` では今までどおり Pod の中だけ。heartbeat の `ubi:node:<id>` に `capacity`（`--max-rooms`、既定 1000）を足し、`connections` に中継している接続を含め、`ubi:nodes` に自分を載せる。SIGTERM を受けたら draining に入り、新しい部屋の作成を 503 で断り、`state: draining` をすぐ書き、`GET /ready`（新設）を 503 にする。持っている部屋は動き続け、接続が無くなるか `--drain-timeout`（既定 0）を過ぎたら残りを閉じて割り当てを解放する。部屋数が上限に達した Pod の作成も 400 から 503 に変えた。
+
+  backend: `INSTANCE_DIRECTORY=redis` のとき、部屋の作成を Service の振り分けに任せず、Redis の `ubi:nodes`・`ubi:node:<id>` から選んだ Pod へ直接送る（部屋の owner が生きていれば owner、居なければ `ready` で上限未満の Pod を接続数・部屋数の少ない順）。503 と応答なしは 3 つの Pod まで送り直す。Pod の状態を読めなければ Service に任せる。owner が割り当てを解放せずに落ちたとき（409 で `alive: false`）は送り直さず、入室は今までどおり 503 でクライアントに取り直させる。
+
+  shared: インスタンスのプロトコルに `GET /ready` と、作成（PUT）の 503 を足した（生成した型の追加のみ）。
+
+  chart: `directory: redis` の Deployment を RollingUpdate（`maxSurge: 1`・`maxUnavailable: 0`）にした（`memory` は新旧の Pod が並ぶと owner が 2 つになるので Recreate のまま）。readinessProbe を `/ready` に、`instanceRuntime.maxRooms`（既定 1000）・`drainTimeout`（既定 15s、memory では 0）・`terminationGracePeriodSeconds`（既定 30）を足した。
+
+  reaper も R2 と統合し、観測した `(gen, epoch)` または不在条件だけを閉じる。終了は token の照合・retired の設定・割り当てと在席の削除を原子的に行い、競合や Redis 障害時に成功を返さない。owner と在席が期限切れの参照は `ubi:rooms` から掃除する。
+
+- cdbb81b: chart: Go のインスタンスの KEDA の閾値を負荷試験の結果で決める。`instanceRuntime.autoscaling.targetConnectionsPerPod` の既定を 300 から 200 に下げ、CPU の trigger（`targetCPUPerPod`、既定 600m、空なら作らない）を足す。大人数の部屋は配信が人数の 2 乗で増え、接続数では負荷を測れないため。
+- 26a4525: Go のインスタンスが負荷の高いときに部屋ごと落ちる問題を直す。
+
+  - 部屋のリースの延長を、部屋ごとの往復から 1 つのパイプラインにまとめる。CPU の上限に当たった Pod では往復の遅れが部屋の数だけ積み重なり、後ろの部屋が期限（送った時刻 + 10 秒）に間に合わず自己停止していた（負荷試験で 1 Pod 500 接続・50 部屋のときに 44 部屋が止まった）。Redis の再起動でスクリプトのキャッシュが消えたときは本文ごと送り直す。
+  - `cursor:moved` などの broadcast を 1 回だけ符号化し、全員に同じバイト列を送る。今までは受け手ごとに符号化し直していた。
+
+- 319eb74: Go のインスタンスを複数の Pod で動かせるようにする（G2）。各 Pod が WS Router を兼ね、最初の `world:join` の部屋が手元に無ければ、Directory の owner の内部アドレスの `/realtime/v1/relay` へ WebSocket を張って中継する。owner は Upgrade の後に 1 回だけ決め、owner が接続を閉じたら（自己停止・終了・退出）中継も閉じる（クライアントはチケットを取り直して繋ぎ直す）。owner が居ない・死んでいるときは `instance_unavailable`、チケットの世代が今の owner と違えば `ticket_invalid`。owner も中継された `world:join` のチケットと世代を自分で確かめる。中継用の口は Ingress に出さず、管理トークンから派生した鍵の HMAC（送り元・宛先のノード ID・30 秒の期限）で Pod 間の接続を確かめる。毎秒 240 件のレート制限はクライアントが繋いだ Pod だけが数える。
+
+  管理 API（作成・チケット発行・終了）に任意の `?gen=&epoch=` を足し、今の部屋の世代と違えば 409（今の owner を付ける）を返す。在席のレスポンスに owner の `addr` を足した（任意の項目）。
+
+  backend: 部屋の作成（PUT）の 409 を成功扱いにせず、owner の `addr`（`http://<addr>/realtime/v1`）へチケット発行・終了を世代付きで送る。`INSTANCE_DIRECTORY=redis`（chart は `instanceRuntime.directory` を backend にも渡す）のときは、作成を受けた Pod へ直接続く管理 API を送り、在席を Redis の `ubi:rooms`・`ubi:presence:<id>` から読む（Redis が落ちていれば在席は失敗にし、reaper が空室と誤って消さない）。`memory` のときは今までどおり `INSTANCE_RUNTIME_URL` に送る。
+
+  chart: `instanceRuntime.replicas`（既定 1）。`directory: memory` のまま 2 以上にすると描画で失敗する。
+
+- fa9d86a: 登録の仮データ（メール確認待ち）をメモリから Postgres の `pending_registrations` に移した（マイグレーション `0019_pending_registrations`）。backend が複数あっても、申し込みと確認が別の Pod に当たって失敗しない。再起動しても登録の途中は消えない。
+
+  保存するのは登録 ID の SHA-256・認証コードの HMAC（鍵は better-auth の秘密）・パスワードのハッシュだけで、平文は持たない。同じメールアドレスの仮登録は同時に 3 件まで（アドレスごとのロックで、同時の申し込みでも超えない）。確認と本登録は 1 つのトランザクションで行い、本登録に失敗したら仮登録は残る。期限切れの仮登録は CLI 認可の要求と同じ定期処理で消す。
+
+  メールアドレスは小文字に揃えてから確かめる・保存する（better-auth と同じ）。大文字を含むアドレスで登録したときに、既存ユーザーの確認をすり抜けたり、確認済みの印が付かなかったりしていた。
+
+- a124a25: 開発・プレビュー（`WORLDS_SERVE_UNSIGNED_REPOSITORY=true`、chart の `values-dev.yaml`）では、署名の無い同梱ワールド（`worlds/`）を公式アカウントの名義で「署名なし」として配る。公式ワールドの署名は main への push でしか付けないので、プレビューには入れるワールドが 1 つも無かった。本番（`NODE_ENV=production`）でこの設定を有効にすると起動しない。署名があって内容と合わないものは今まで通り配らない。
+- 4afeacc: インスタンスに入るとき、ほかの参加者に見せる名前を SNS がチケットに入れ、Go のインスタンスはクライアントが送る名前より優先する（ほかの人や公式になりすませない）。入室時のユーザー情報は名前・ステータス・位置だけを配る（任意の画像 URL などを全員のブラウザに読ませない）。1 人が同時に持てるエンティティは 16 個まで、1 インスタンスの状態は 16MB まで。
+
+  デプロイは Go のインスタンスを先に更新すること。古い Go は参加チケットの要求に知らない項目（`name`）があると拒否する。
+
+- cbb2eb2: backend と Go のインスタンスが Redis に繋がるようにする（`REDIS_URL`・`REDIS_PASSWORD`。どちらも任意で、未設定なら今まで通り Redis なしで動く）。backend の `/health` は Redis を設定したときだけ `redis: "ready" | "unavailable"` を載せ、Redis が落ちても 200 を返す。複数の backend・Go Pod で使うリース（メモリ実装と Redis 実装）を足したが、まだどこからも使わない。
+
+  Go のインスタンスの参加チケットの署名鍵を、`INSTANCE_TICKET_KEY` か、無ければ `INSTANCE_ADMIN_TOKEN` から派生した鍵にする（全 Pod・再起動の前後で同じ鍵）。Go を再起動しても発行済みのチケットとゲストの再接続情報は無効にならない。管理トークンを変えると発行済みのチケットは無効になる。
+
+  chart は backend と instance の両方に `REDIS_URL` と `REDIS_PASSWORD`（redis subchart の Secret を参照）を渡す。GitOps では `redis.auth.existingSecret` を指定すること（指定しないと描画のたびにパスワードが作り直される）。
+
+- 4c0e362: `GET /api/v1/users/me/worlds` が、本体に保存したワールドの配信の道筋（`url`）と、署名を検証できなかった理由（`problemCode`）を返すようにした。設定の「ワールド」から署名し直すときに使う。
+- 4afeacc: サーバーが外部 URL を取りに行くときの確認を強めた。IPv4 射影（`[::ffff:127.0.0.1]`）・NAT64 などの書き方で内部アドレスへ届く穴を塞ぎ、接続に使う DNS 解決の結果でも確かめる（DNS リバインディング対策）。応答本文の大きさと時間に上限を設け、別のホストへのリダイレクトでは Authorization を外す。ワールド取得用の GitHub トークンは GitHub のホストにだけ送る。
+- 0030710: users を整理した（マイグレーション `0021_users_cleanup`）。`handle` を NOT NULL にし、未設定の既存ユーザーには `user_` + 16 進 12 桁を自動で振る（システムユーザーは予約語の `system`）。画像は better-auth の `image` に寄せた（`image` が空の行だけ移す）。`username`・`profile_image_url` は新しいコードから読まなくしたが、列はデプロイ中の古い Pod のために残す（0022 で消す）。
+
+  - `PUT /api/v1/users/me/handle` と、handle 未設定を前提にした分岐・画面を消した。ユーザーの応答の `profileImageUrl` は `image` に変えた（内部 API）。shared の `UserSummary` も `handle: string`・`image` にした。
+  - メール確認を通さない登録と公式アカウントの作成は、better-auth の `signUpEmail` をやめ、users と accounts を 1 トランザクションで handle ごと作る（`userRepository.createCredentialUser`）。better-auth の `additionalFields` に `handle`（required・input: false）を宣言した（宣言しないと drizzle adapter が schema mismatch で止まる）。
+  - 公式アカウントへの昇格は「handle 未設定」ではなく「その ID で鍵の登録・公開をしたことが無い」を条件にした。
+  - 古いイメージに戻す手順は `docs/operations/db-migration.md`。
+
+- ac490dd: 自サーバーで公開したワールドを、変えない版（`world_versions`）と下書き（`world_drafts`）に分けた（マイグレーション `0023_world_versions`）。既存の行の公開中の版を版 1 行に、下書き（未公開のワールドは今の定義）を下書きに移す。`worlds.id` を以前の `name` と同じ値にそろえ、API の `/api/v1/worlds/:worldId` は `worlds.id` で引く（応答の id は変わらない）。古い列（`name`・`version`・`definition`・`lock`・`signature`・`draft_*`）は読まなくしたが、デプロイ中の古い Pod と古いイメージへの戻しのために残し、保存のたびに書き直す（消すのは後続のマイグレーション）。
+
+  - `content_hash` は shared の `worldContentHash()` だけで求める。移した版の値は `migrate.js` がマイグレーションの直後に埋める（`backfillWorldContentHashes`）。
+  - 同じ `metadata.version` で中身の違う公開は 409（`code: version-conflict`）で拒否する。同じ中身への署名し直しは、その版の `signature` の列だけを置き換える。
+  - 残す版は `limitsFor(user).maxVersionsPerWorld`（今は 3）まで。超えて公開すると古い版から消す（公開は拒否しない）。インスタンスが指す版は消さず、定期処理（10 分ごと）で消し直す。shared に `limitsFor` と `LIMITS.MAX_VERSIONS_PER_WORLD` を足し、ワールドの数の上限も `limitsFor` から取る。
+  - `GET /api/v1/worlds/:worldId/versions?contentHash=...` を足した。残っている版を返し、消した版は 410。
+  - インスタンスを作るとき、ワールドの `content_hash` と、自サーバーで公開した版なら `world_version_id`（`world_versions` へ `ON DELETE RESTRICT`）を記録する。
+  - 手順と戻し方は `docs/operations/db-migration.md`。
+
+- Updated dependencies [4afeacc]
+- Updated dependencies [70b6047]
+- Updated dependencies [083e2ba]
+- Updated dependencies [740ccc7]
+- Updated dependencies [72caae4]
+- Updated dependencies [b5419f6]
+- Updated dependencies [c0164c3]
+- Updated dependencies [db4057f]
+- Updated dependencies [319eb74]
+- Updated dependencies [f942349]
+- Updated dependencies [fa9d86a]
+- Updated dependencies [4afeacc]
+- Updated dependencies [0030710]
+- Updated dependencies [7b0ec8d]
+- Updated dependencies [ac490dd]
+  - @ubichill/db@1.4.1
+  - @ubichill/shared@1.9.1
+
 ## 1.8.0
 
 ### Minor Changes
