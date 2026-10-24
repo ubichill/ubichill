@@ -1,5 +1,21 @@
 # @ubichill/ui-renderer
 
+## 3.0.8
+
+### Patch Changes
+
+- 4afeacc: mod の UI の入力欄に打った文字が、ワールドのキー入力としてすべての mod に配られていたのを直した。Shadow DOM の外で受けたキーの打ち先を、付け替え前の要素（`composedPath()` の先頭）で判定する。contenteditable への入力も配らない。
+- 4afeacc: mod の UI を描くときの許可判定を HTML と SVG で揃えた。SVG に付けた `onclick` などのイベント属性が Host のページで実行される穴を塞ぐ。SVG の参照（`<use href>`・`url()`）は同じ文書内だけにし、インラインスタイルの `url()`・`image-set()` などは捨てる（ドメイン承認を通らない送信経路になるため）。リンクは別タブ・opener なしで開き、フォームは送信させず、パスワード欄は描かない。
+- Updated dependencies [70b6047]
+- Updated dependencies [c0164c3]
+- Updated dependencies [db4057f]
+- Updated dependencies [319eb74]
+- Updated dependencies [f942349]
+- Updated dependencies [4afeacc]
+- Updated dependencies [0030710]
+- Updated dependencies [ac490dd]
+  - @ubichill/shared@1.9.1
+
 ## 3.0.7
 
 ### Patch Changes
