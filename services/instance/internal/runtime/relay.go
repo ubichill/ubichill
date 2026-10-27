@@ -1,12 +1,15 @@
 package runtime
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -132,7 +135,7 @@ func (s *Server) route(ctx context.Context, id string, t claims) (target, Object
 
 type target struct{ node, addr string }
 
-// upstream は中継先（owner）への接続。データの書き込みはクライアントから読む goroutine だけが行う。
+// upstream は中継先（owner）への 1 本の接続。
 type upstream struct {
 	conn *websocket.Conn
 	once sync.Once
@@ -147,7 +150,6 @@ func (s *Server) dialOwner(ctx context.Context, to target) (*upstream, error) {
 	if err != nil {
 		return nil, err
 	}
-	u := &upstream{conn: conn}
 	_ = conn.SetReadDeadline(time.Now().Add(relayIdle))
 	conn.SetPingHandler(func(data string) error {
 		_ = conn.SetReadDeadline(time.Now().Add(relayIdle))
@@ -157,10 +159,7 @@ func (s *Server) dialOwner(ctx context.Context, to target) (*upstream, error) {
 		}
 		return err
 	})
-	s.relayMu.Lock()
-	s.relays[u] = struct{}{}
-	s.relayMu.Unlock()
-	return u, nil
+	return &upstream{conn: conn}, nil
 }
 
 func (u *upstream) forward(raw []byte) error {
@@ -170,43 +169,223 @@ func (u *upstream) forward(raw []byte) error {
 
 func (u *upstream) close() { u.once.Do(func() { _ = u.conn.Close() }) }
 
-// pump は owner からのフレームをそのままクライアントへ送る。owner が閉じたら（自己停止・終了・退出）、
-// 積んだフレームを送り切ってからクライアントも閉じる。クライアントはチケットを取り直して入り直す。
-func (u *upstream) pump(p *peer) {
-	defer p.stopAfterSend()
+// 引っ越し（handoff.go）で、元の owner が中継の接続にだけ送る制御のフレーム。中継元が飲み込み、クライアントには届けない。
+// owner が送るイベント名はサーバーが決めた固定の名前だけなので、クライアントがこの形のフレームを owner に送らせることはできない。
+const migrateEvent = "relay:migrate"
+
+var migratePrefix = []byte(`{"event":"` + migrateEvent + `"`)
+
+// migration は引っ越し先。中継元はここへ繋ぎ直し、チケットを (Gen, Epoch) で署名し直して入り直す。
+type migration struct {
+	Node  string `json:"node"`
+	Addr  string `json:"addr"`
+	Gen   string `json:"gen"`
+	Epoch int64  `json:"epoch"`
+}
+
+type relayPass struct {
+	claims claims
+	user   Object
+}
+
+// maxRelayQueue は繋ぎ直しの間にクライアントから届いたフレームを持っておく数。溢れたら接続を切る（クライアントは繋ぎ直す）。
+const maxRelayQueue = 64
+
+var errRelayQueueFull = errors.New("relay queue is full while switching owners")
+
+// relayLink はクライアントの接続 1 本を owner へ中継する経路。owner が引っ越したら、クライアントの接続を保ったまま
+// 新しい owner へ繋ぎ直す。クライアントからの書き込みは serve の goroutine、owner からの読み取りは start の goroutine。
+type relayLink struct {
+	s    *Server
+	p    *peer
+	room string
+	pass relayPass
+
+	mu        sync.Mutex
+	up        *upstream
+	queue     [][]byte
+	switching bool
+	closed    bool
+}
+
+func (l *relayLink) forward(raw []byte) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.switching {
+		if len(l.queue) >= maxRelayQueue {
+			return errRelayQueueFull
+		}
+		l.queue = append(l.queue, raw)
+		return nil
+	}
+	if l.up == nil {
+		return errRelayUnavailable
+	}
+	return l.up.forward(raw)
+}
+
+var errRelayUnavailable = errors.New("relay is closed")
+
+func (l *relayLink) close() {
+	l.mu.Lock()
+	l.closed = true
+	up := l.up
+	l.up = nil
+	l.mu.Unlock()
+	if up != nil {
+		up.close()
+	}
+	l.s.dropLink(l)
+}
+
+// start は owner からのフレームをクライアントへ送る。to があれば、先にそこへ繋ぎ直す（自分の部屋の参加者を中継に切り替えるとき）。
+// owner が閉じたら（自己停止・終了・退出）、積んだフレームを送り切ってからクライアントも閉じる。クライアントはチケットを取り直して入り直す。
+func (l *relayLink) start(to *migration) {
+	defer l.p.stopAfterSend()
+	if to != nil && !l.switchTo(*to) {
+		return
+	}
 	for {
-		kind, msg, err := u.conn.ReadMessage()
+		l.mu.Lock()
+		up := l.up
+		l.mu.Unlock()
+		if up == nil {
+			return
+		}
+		kind, msg, err := up.conn.ReadMessage()
 		if err != nil {
 			return
 		}
 		if kind != websocket.TextMessage {
 			continue
 		}
+		if bytes.HasPrefix(msg, migratePrefix) {
+			var f struct {
+				Data migration `json:"data"`
+			}
+			if json.Unmarshal(msg, &f) != nil || !l.switchTo(f.Data) {
+				return
+			}
+			continue
+		}
 		// 揮発のフレームを落とすかは owner が決めている。ここで詰まったら owner からの読み取りを止め、owner 側のキューに任せる
 		select {
-		case p.out <- Frame{raw: msg}:
-		case <-p.done:
+		case l.p.out <- Frame{raw: msg}:
+		case <-l.p.done:
 			return
 		}
 	}
 }
 
-func (s *Server) forgetRelay(u *upstream) {
-	u.close()
-	s.relayMu.Lock()
-	delete(s.relays, u)
-	s.relayMu.Unlock()
+// switchTo は新しい owner へ繋ぎ直す。その間にクライアントから届いたフレームは持っておき、入り直したあとに順に送る。
+func (l *relayLink) switchTo(to migration) bool {
+	l.mu.Lock()
+	if l.closed {
+		l.mu.Unlock()
+		return false
+	}
+	l.switching = true
+	old := l.up
+	l.up = nil
+	l.mu.Unlock()
+	if old != nil {
+		old.close()
+	}
+	up, err := l.rejoin(to)
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if err == nil && l.closed {
+		err = errRelayUnavailable
+	}
+	for _, raw := range l.queue {
+		if err != nil {
+			break
+		}
+		err = up.forward(raw)
+	}
+	if err != nil {
+		if up != nil {
+			up.close()
+		}
+		log.Printf("relay of %s to the new owner %s failed: %v", l.room, to.Node, err)
+		return false
+	}
+	l.queue = nil
+	l.up = up
+	l.switching = false
+	return true
 }
 
+// rejoin は新しい owner に入り直す。チケットは中継する Pod が自分で署名し直す（全 Pod で鍵が同じ）。
+// 入室の応答はこちらで飲み込む（クライアントは入室済み）。続く users:update・world:snapshot はクライアントへ送る。
+func (l *relayLink) rejoin(to migration) (*upstream, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	up, err := l.s.dialOwner(ctx, target{node: to.Node, addr: to.Addr})
+	if err != nil {
+		return nil, err
+	}
+	c := l.pass.claims
+	c.Gen, c.Epoch, c.Expires = to.Gen, to.Epoch, time.Now().Add(time.Minute).Unix()
+	id := "relay:rejoin:" + newID()
+	join := encoded(Frame{Event: "world:join", ID: id, Data: encoded(Object{"instanceId": l.room, "token": l.s.signClaims(c), "user": l.pass.user})})
+	if err := up.forward(join); err != nil {
+		up.close()
+		return nil, err
+	}
+	_ = up.conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+	for {
+		kind, msg, err := up.conn.ReadMessage()
+		if err != nil {
+			up.close()
+			return nil, err
+		}
+		if kind != websocket.TextMessage {
+			continue
+		}
+		var f Frame
+		if json.Unmarshal(msg, &f) == nil && f.ReplyTo == id {
+			if out, _ := object(f.Data); out["success"] != true {
+				up.close()
+				return nil, fmt.Errorf("rejoin refused: %s", f.Data)
+			}
+			_ = up.conn.SetReadDeadline(time.Now().Add(relayIdle))
+			return up, nil
+		}
+		l.p.send(Frame{raw: msg}, false)
+	}
+}
+
+func (s *Server) addLink(l *relayLink) {
+	s.relayMu.Lock()
+	s.relays[l] = struct{}{}
+	s.relayMu.Unlock()
+}
+func (s *Server) dropLink(l *relayLink) { s.relayMu.Lock(); delete(s.relays, l); s.relayMu.Unlock() }
+
 func (s *Server) relayCount() int { s.relayMu.Lock(); defer s.relayMu.Unlock(); return len(s.relays) }
+
+// addClient・dropClient はこの Pod に直接繋いでいるクライアント（中継されてきた接続を除く）。
+func (s *Server) addClient(p *peer)  { s.relayMu.Lock(); s.clients[p] = struct{}{}; s.relayMu.Unlock() }
+func (s *Server) dropClient(p *peer) { s.relayMu.Lock(); delete(s.clients, p); s.relayMu.Unlock() }
+
+func (s *Server) directClients() []*peer {
+	s.relayMu.Lock()
+	defer s.relayMu.Unlock()
+	out := make([]*peer, 0, len(s.clients))
+	for p := range s.clients {
+		out = append(out, p)
+	}
+	return out
+}
 
 // closeRelays は中継している接続をすべて閉じる（プロセスの停止）。
 func (s *Server) closeRelays() {
 	s.relayMu.Lock()
 	relays := s.relays
-	s.relays = map[*upstream]struct{}{}
+	s.relays = map[*relayLink]struct{}{}
 	s.relayMu.Unlock()
-	for u := range relays {
-		u.close()
+	for l := range relays {
+		l.close()
 	}
 }

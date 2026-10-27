@@ -58,8 +58,15 @@ spec:
         checksum/admin-token: {{ get .Values.backend.secretEnv .Values.instanceRuntime.secretKey | toString | sha256sum }}
       {{- end }}
     spec:
-      # SIGTERM のあと drainTimeout まで接続が抜けるのを待ち、残りを閉じてから HTTP を止める（最大 10 秒）
-      terminationGracePeriodSeconds: {{ .Values.instanceRuntime.terminationGracePeriodSeconds }}
+      {{- $drainTimeout := ternary .Values.instanceRuntime.drainTimeout "0s" (eq $directory "redis") }}
+      {{- $drainSeconds := include "ubichill.durationSeconds" $drainTimeout | int }}
+      {{- $grace := .Values.instanceRuntime.terminationGracePeriodSeconds }}
+      # SIGTERM のあと drainTimeout まで部屋を引っ越し・直接の接続が抜けるのを待ち、残りを閉じてから HTTP を止める（最大 10 秒）
+      terminationGracePeriodSeconds: {{ if or (eq (toString $grace) "") (eq $grace nil) }}{{ add $drainSeconds 30 }}{{ else }}{{ int $grace }}{{ end }}
+      {{- if .Values.instanceRuntime.autoscaling.enabled }}
+      # 自分の Pod に pod-deletion-cost を書く（templates/instance/rbac.yaml）
+      serviceAccountName: {{ include "ubichill.serviceAccountName.instance" . }}
+      {{- end }}
       containers:
         - name: instance
           image: {{ include "ubichill.instance.image" . }}
@@ -69,7 +76,12 @@ spec:
             - --disconnect-grace={{ .Values.instanceRuntime.disconnectGrace }}
             - --max-rooms={{ .Values.instanceRuntime.maxRooms }}
             {{- /* memory（1 Pod・Recreate）では部屋を移せる先が無く、待つほど止まっている時間が延びるだけなので待たない */}}
-            - --drain-timeout={{ if eq $directory "redis" }}{{ .Values.instanceRuntime.drainTimeout }}{{ else }}0s{{ end }}
+            - --drain-timeout={{ $drainTimeout }}
+            - --migrate-after={{ .Values.instanceRuntime.migrateAfter }}
+            - --disconnect-notice={{ .Values.instanceRuntime.disconnectNotice }}
+            {{- if .Values.instanceRuntime.autoscaling.enabled }}
+            - --pod-deletion-cost=true
+            {{- end }}
           ports:
             - name: realtime
               containerPort: 3002
@@ -88,6 +100,12 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
+            {{- if .Values.instanceRuntime.autoscaling.enabled }}
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            {{- end }}
             # 部屋の割り当てを Redis で共有するか（memory / redis）。replicas を 2 以上にするときだけ redis
             - name: INSTANCE_DIRECTORY
               value: {{ $directory | quote }}

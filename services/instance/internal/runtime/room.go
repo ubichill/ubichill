@@ -25,6 +25,12 @@ type Room struct {
 	stateBytes int
 	emptySince int64
 	closed     bool
+	// migrating は owner の引っ越しの間（凍結）。状態を変えず、変更系は再試行できるエラーで断る（handoff.go）。
+	// 引っ越しが済んだ部屋は migrating のまま closed にする。
+	migrating bool
+	// createdAt は部屋を作った時刻（epoch ms）。引っ越しでも引き継ぎ、作ってからの時間で引っ越すかを決める。
+	createdAt int64
+	grace     time.Duration
 	// owner の世代。割り当てのたびに新しい Room を作るので、作ったあとは変わらない。
 	gen   string
 	epoch int64
@@ -38,6 +44,8 @@ type member struct {
 	user    Object
 	peer    *peer
 	timer   *time.Timer
+	// migrated は引っ越しで移ってきて、まだ繋ぎ直していない参加者。繋ぎ直しでは user:joined を出さない。
+	migrated bool
 }
 
 // errUnavailable は部屋が閉じた・自己停止したとき。クライアントはチケットを取り直して入り直せる。
@@ -158,7 +166,15 @@ func (r *Room) usableLocked() bool {
 	}
 	return true
 }
-func (r *Room) usable() bool { r.mu.Lock(); defer r.mu.Unlock(); return r.usableLocked() }
+
+// lease は owner の世代と token。引っ越しを断られて取り戻したとき（handoff.go の reclaim）だけ変わる。
+func (r *Room) lease() (gen string, epoch int64, token string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.gen, r.epoch, r.token
+}
+func (r *Room) epochNow() int64 { _, epoch, _ := r.lease(); return epoch }
+func (r *Room) usable() bool    { r.mu.Lock(); defer r.mu.Unlock(); return r.usableLocked() }
 
 // extend は延長が成功したときに期限を延ばす。期限を過ぎて止めた部屋は、あとから延長が成功しても生き返らせない。
 func (r *Room) extend(deadline time.Time) {
@@ -187,10 +203,12 @@ func (r *Room) occupancy() (coord.RoomPresence, int) {
 func (r *Room) join(p *peer, user Object, id string, request string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if !r.usableLocked() {
+	if !r.usableLocked() || r.migrating {
 		return errUnavailable
 	}
 	old := r.members[id]
+	// 引っ越しの繋ぎ直し。他の人から見れば居続けていたので、入退室を出さず、移ってきたプロフィール（最新の位置）を使う
+	resumed := old != nil && old.migrated && old.peer == nil
 	if old == nil && len(r.members) >= r.definition.MaxUsers {
 		return errors.New("instance full")
 	}
@@ -203,8 +221,12 @@ func (r *Room) join(p *peer, user Object, id string, request string) error {
 			old.peer.stopAfterSend()
 		}
 	}
-	user = clone(user)
-	user["id"] = id
+	if resumed {
+		user = old.user
+	} else {
+		user = clone(user)
+		user["id"] = id
+	}
 	user["lastActiveAt"] = time.Now().UnixMilli()
 	p.room = r
 	p.userID = id
@@ -217,7 +239,9 @@ func (r *Room) join(p *peer, user Object, id string, request string) error {
 	}
 	p.send(Frame{Event: "users:update", Data: encoded(users)}, false)
 	p.send(Frame{Event: "world:snapshot", Data: encoded(r.snapshot())}, false)
-	r.broadcast("user:joined", user, p, false)
+	if !resumed {
+		r.broadcast("user:joined", user, p, false)
+	}
 	return nil
 }
 func (r *Room) leave(p *peer, grace time.Duration) {
@@ -227,18 +251,30 @@ func (r *Room) leave(p *peer, grace time.Duration) {
 	if m == nil || m.session != p {
 		return
 	}
+	m.peer = nil
+	// 凍結の間は状態を変えない。猶予は引っ越し先（取りやめたら thaw）が数える
+	if r.migrating {
+		return
+	}
 	if grace > 0 {
-		m.peer = nil
-		m.timer = time.AfterFunc(grace, func() {
-			r.mu.Lock()
-			defer r.mu.Unlock()
-			if r.members[p.userID] == m && m.peer == nil {
-				r.remove(p.userID)
-			}
-		})
+		r.armGrace(p.userID, m, grace)
 	} else {
 		r.remove(p.userID)
 	}
+}
+
+// armGrace は切断の猶予を数え始める。猶予の間に繋ぎ直さなければ抜けさせる。
+func (r *Room) armGrace(id string, m *member, grace time.Duration) {
+	if m.timer != nil {
+		m.timer.Stop()
+	}
+	m.timer = time.AfterFunc(grace, func() {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		if r.members[id] == m && m.peer == nil && !r.migrating {
+			r.remove(id)
+		}
+	})
 }
 func (r *Room) remove(id string) {
 	m := r.members[id]

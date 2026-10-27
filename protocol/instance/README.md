@@ -23,6 +23,11 @@ HMACで検証する不透明な値として扱う。発行するのは部屋の 
 SNSチケットは2分、ゲストの再接続情報は24時間有効。
 Goが複数のPodで動くとき、接続を受けたPodは部屋のownerのPodへ `world:join` から先を中継する（クライアントから見たフレームは変わらない）。
 ownerが接続を閉じたら中継も閉じるので、クライアントはいつもどおりチケットを取り直して繋ぎ直す。
+例外は scale-in の引っ越し（ownerだけを別のPodへ移す）で、接続は切れない。引っ越しの間（通常は数十ms）、変更系の要求は
+`{"success":false,"error":"…","code":"migrating"}` になり状態は変わらないので、少し待って同じ操作を送り直してよい
+（応答の要らないカーソル・ephemeral・IDの無いpatchは捨てられる）。引っ越しのあと `users:update`・`world:snapshot` がもう一度届く（入退室の通知は出ない）。
+止めるPodは、直接繋いでいるクライアントへ切断の前（既定10分前）に `{"event":"server:notice","data":{"kind":"disconnect","at":<epoch ms>}}` を送る。
+Pod間の `relay:migrate` と `POST /realtime/v1/instances/{id}/handoff` は内部の口で、クライアントとbackendの契約には含めない。
 管理APIの作成・チケット発行・終了は任意の `?gen=&epoch=` を受け、ownerの今の世代と違えば409（今のownerを付ける）にする。
 期限は入室時に検証する。既存接続の継続中にSNSの権限変更を即時反映する機能はない。
 

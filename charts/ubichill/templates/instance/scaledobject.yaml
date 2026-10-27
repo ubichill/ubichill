@@ -31,22 +31,36 @@ spec:
   advanced:
     horizontalPodAutoscalerConfig:
       behavior:
-        {{- /* HPA は消す Pod を部屋の有無で選べない。縮めるのは手動（draining）か K2 で */}}
+        {{- /*
+          消す Pod は ReplicaSet が pod-deletion-cost（Go が書く）の小さい順に選ぶ。消された Pod は部屋を引っ越し、
+          直接の接続が抜けるまで（drainTimeout）残るので、急いで減らさない。
+        */}}
         scaleDown:
+          {{- if $a.scaleDown.enabled }}
+          stabilizationWindowSeconds: {{ int $a.scaleDown.stabilizationWindowSeconds }}
+          policies:
+            - type: Pods
+              value: {{ int $a.scaleDown.podsPerPeriod }}
+              periodSeconds: {{ int $a.scaleDown.periodSeconds }}
+          {{- else }}
           selectPolicy: Disabled
+          {{- end }}
   {{- /*
     HPA は trigger ごとに台数を出して最大を取るので、指標を 1 つにまとめない。
     AverageValue なので台数は ceil(合計 / threshold)。threshold は「1 Pod に持たせたい量」。
     ignoreNullValues: false で、指標が無い（集めていない）ときは 0 とせず ScaledObject の失敗として出す。
     CPU は requests（100m）に対する割合ではなく量（AverageValue）で指定する。
+    接続数・部屋数は draining の Pod を除く。除かないと、止めている Pod に残った接続が残りの Pod の平均に足され、
+    縮めた直後に増やし直す（CPU は cAdvisor の値なので除けない）。
   */}}
+  {{- $active := printf "unless on(pod) (ubichill_instance_draining{%s} == 1)" $selector }}
   triggers:
     - type: prometheus
       name: connections
       metricType: AverageValue
       metadata:
         serverAddress: {{ $a.prometheus.serverAddress | quote }}
-        query: {{ printf "sum(ubichill_instance_websocket_connections{%s})" $selector | quote }}
+        query: {{ printf "sum(ubichill_instance_websocket_connections{%s} %s)" $selector $active | quote }}
         threshold: {{ $a.targetConnectionsPerPod | toString | quote }}
         ignoreNullValues: "false"
     - type: prometheus
@@ -54,7 +68,7 @@ spec:
       metricType: AverageValue
       metadata:
         serverAddress: {{ $a.prometheus.serverAddress | quote }}
-        query: {{ printf "sum(ubichill_instance_active_rooms{%s})" $selector | quote }}
+        query: {{ printf "sum(ubichill_instance_active_rooms{%s} %s)" $selector $active | quote }}
         threshold: {{ $a.targetRoomsPerPod | toString | quote }}
         ignoreNullValues: "false"
     {{- with $a.targetCPUPerPod }}
