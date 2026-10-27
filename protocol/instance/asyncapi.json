@@ -51,6 +51,9 @@
         "reply": {
           "$ref": "#/components/messages/reply"
         },
+        "server:notice": {
+          "$ref": "#/components/messages/server:notice"
+        },
         "session:replaced": {
           "$ref": "#/components/messages/session:replaced"
         },
@@ -176,6 +179,9 @@
         },
         {
           "$ref": "#/channels/instance/messages/instance:closing"
+        },
+        {
+          "$ref": "#/channels/instance/messages/server:notice"
         },
         {
           "$ref": "#/channels/instance/messages/reply"
@@ -590,6 +596,44 @@
                 "data"
               ],
               "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "server:notice": {
+        "name": "server:notice",
+        "summary": "Ephemeral notice (not stored). Clients ignore unknown kinds.",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event",
+            "data"
+          ],
+          "properties": {
+            "event": {
+              "const": "server:notice"
+            },
+            "data": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "kind",
+                    "at"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "disconnect"
+                    },
+                    "at": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "Epoch milliseconds when the server closes this connection. The client reconnects automatically."
+                    }
+                  }
+                }
+              ]
             }
           },
           "additionalProperties": false

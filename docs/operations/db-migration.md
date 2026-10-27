@@ -477,3 +477,51 @@ FOR EACH ROW EXECUTE FUNCTION instances_sync_has_password();
 
 - 0023 のイメージは worlds の INSERT で `name`・`version`・`definition` を書き、読まないので、上の書き直しをしなくても動く。
 - has_password を足し直さずに 0023 のイメージを動かすと、インスタンスを読む処理がすべて失敗する。
+
+## 0026_notifications（通知・お知らせの表を足す）
+
+表を 3 つ足し、返事を待っているフレンド申請を通知（`Follow`）に写す。既存の表は変えない。
+
+- `notifications`: 本人に関わる出来事（`Follow`・`Accept`・`Like`）。受け手・actor（このサーバーのユーザーか、将来のリモートの URI のどちらか 1 つ）・
+  object（jsonb、形は shared のスキーマで確かめる）・作成時刻・既読時刻。同じ出来事は `(recipient_id, dedupe_key)` の一意索引で 1 つにする。
+  受け手か actor のユーザーを消すと、通知も消える。
+- `announcements`: 運営のお知らせ。全員に行を書かない。
+- `announcement_reads`: 利用者ごとの「この時刻までのお知らせは読んだ」位置。行が無い人は登録した時刻を位置とする（読むときに合わせる）。
+- 写すのは `user_friends` の `pending` の行だけ（申請された人への `Follow`、時刻は申請の時刻をミリ秒に丸めたもの）。ID は 2 人の組から決めるので、
+  もう一度流しても増えない。
+
+1.〜2. の手順（事前確認・バックアップ）は同じ。足すだけなので、古い Pod が残っていても困らない（古いイメージは新しい表を読み書きしない）。
+
+### 事前確認
+
+```sql
+SELECT id FROM drizzle.__drizzle_migrations ORDER BY id DESC LIMIT 1;  -- 0025 まで適用済み
+SELECT count(*) FROM user_friends WHERE status = 'pending';  -- 写す件数（事後確認で比べる）
+```
+
+### 事後確認
+
+```sql
+SELECT count(*) FROM notifications WHERE type = 'Follow';  -- 事前確認の pending の件数と同じ
+SELECT count(*) FROM notifications n
+LEFT JOIN user_friends f ON f.user_id = n.actor_user_id AND f.friend_id = n.recipient_id AND f.status = 'pending'
+WHERE n.type = 'Follow' AND f.user_id IS NULL;  -- 0（申請中でないものを写していない）
+```
+
+- 申請中のフレンドがいるアカウントでログインし、ヘッダーのベルに件数が出て、一覧から承認・拒否できることを確かめる。
+
+### 掃除
+
+backend の定期の掃除（`maintenanceGate` を持つ 1 台だけ、10 分ごと）が、90 日より古い通知・お知らせと、1 人あたり 200 件を超えた古い通知を消す
+（`NOTIFICATION_LIMITS`）。上限を超える受け手を探すのに `notifications` を受け手ごとに数えるので、行が数百万を超えたら、受け手ごとの件数を持つか、
+掃除を受け手の範囲ごとに分ける。
+
+### 古いイメージに戻すとき
+
+0025 のイメージへはそのまま戻せる（新しい表を読まない）。表を残したまま戻し、もう一度新しいイメージに進めると、戻していた間の申請は通知にならない
+（フレンドの一覧からは見える）。表を消すのは、新しいイメージに戻さないと決めたときだけにする。
+
+```sql
+DROP TABLE notifications, announcements, announcement_reads;
+DELETE FROM drizzle.__drizzle_migrations WHERE id = (SELECT max(id) FROM drizzle.__drizzle_migrations);  -- 0026 の行
+```
