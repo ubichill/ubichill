@@ -1,5 +1,27 @@
 # @ubichill/backend
 
+## 1.9.0
+
+### Minor Changes
+
+- d7850d7: 通知の仕組みを足した（ActivityStreams 2.0 に寄せた形）。
+
+  - shared: 通知の型と zod のスキーマ（`Follow`・`Accept`・`Like`・`Announce`、種類ごとの object、actor はユーザー ID か https の URI）、一覧のカーソル、SSE の出来事。インスタンスのその場だけの知らせ `server:notice`（今は切断の予告 `{kind:"disconnect",at}`）の型と読み取り。イベントを足しただけなので `protocolVersion` は上げない（docs/PROTOCOLS.md の D）。
+  - db: マイグレーション `0026_notifications`。`notifications`（受け手・種類・actor・object・既読時刻、同じ出来事は 1 つ）・`announcements`・`announcement_reads`（お知らせの既読の位置）を足し、返事を待っているフレンド申請を `Follow` の通知に写す。手順は `docs/operations/db-migration.md`。
+  - backend: `/api/v1/notifications`（一覧・未読数・既読・SSE `stream`・お知らせの一覧と作成）。フレンドの申請で `Follow`、承認で `Accept`、ワールドのお気に入りで作者に `Like`（自分には送らない・同じ人の繰り返しは 1 つ）、関係が消えたら 2 人の間の申請・承認の通知を消す。お知らせを出せるのは公式アカウントだけ。SSE は Redis の Pub/Sub（`ubi:ch:notifications`）で全台に配り、Redis が無い・送れないときはその台の接続にだけ届ける。古い通知は 90 日・1 人 200 件で掃除する（1 台だけ）。
+
+### Patch Changes
+
+- 636974f: Go のインスタンスを KEDA で自動で縮められるようにする（K2）。縮めるとき、部屋の owner だけを別の Pod へ引っ越し、クライアントの WebSocket は切らない。
+
+  Go: SIGTERM で draining になったあと、作られてから `--migrate-after`（既定 3h）を過ぎても参加者の居る部屋を、Directory の ready な Pod（接続の少ない順）へ引っ越す。若い部屋は空になるか 3h に達するまで待つ。引っ越しは「凍結 → 先の Pod の `POST /realtime/v1/instances/{id}/handoff` で準備 → Directory の `Transfer`（token が一致すれば node と token を替え epoch+1。Redis は Lua）→ 確定」で行い、owner の居ない隙間を作らない（確定が届かなくても、先が準備の期限に Directory を見て引き取る）。凍結の間、変更系の要求は `code: "migrating"` の失敗（状態は変えない）。中継してきた Pod には `relay:migrate` を送り、中継元が新しい owner へ繋ぎ直してチケットを署名し直す。元の Pod に直接繋いでいたクライアントは、元の Pod が中継に変わる。新しい owner は繋ぎ直しで `user:joined` を出さない。部屋が無くなっても直接繋いでいるクライアントが居る間は `--drain-timeout` まで止まらず、その `--disconnect-notice`（既定 10m）前に `server:notice`（`{"kind":"disconnect","at":<epoch ms>}`）を送る。`--pod-deletion-cost` で自分の Pod に `controller.kubernetes.io/pod-deletion-cost`（直接の接続数 + owner の部屋の参加者数）を書く（client-go は使わない）。
+
+  chart: ScaledObject の scale-in を有効にした（既定: 安定化 900 秒・10 分に 1 Pod。`autoscaling.scaleDown`）。接続数・部屋数の query から draining の Pod を除く。`drainTimeout` の既定を 24h にし、`terminationGracePeriodSeconds` は空なら drainTimeout + 30 秒。`migrateAfter`・`disconnectNotice` を足した。自動スケールが有効なときだけ、instance の ServiceAccount・Role（pods の get/patch）・RoleBinding を作り、`POD_NAMESPACE` を渡す。
+
+- Updated dependencies [d7850d7]
+  - @ubichill/shared@1.10.0
+  - @ubichill/db@1.5.0
+
 ## 1.8.1
 
 ### Patch Changes
