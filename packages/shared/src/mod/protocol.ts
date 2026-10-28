@@ -32,7 +32,8 @@
 // v3: MediaSource / MediaState / loadId と EVT_MEDIA_STATE を追加。
 // v4: バイナリ fetch（responseType / maxBytes / timeoutMs）、ASSET_LOAD、CMD_ABORT を追加。
 // v5: IDENTITY_TOKEN（外部サービス向けのサービストークン）を追加。
-export const PROTOCOL_VERSION = 5;
+// v6: CanvasStrokeData に任意の mode（'draw' | 'erase'）を追加。
+export const PROTOCOL_VERSION = 6;
 
 /**
  * これ未満のバージョンで作られた mod とは互換性がない下限。
