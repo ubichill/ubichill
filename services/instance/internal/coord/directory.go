@@ -36,6 +36,8 @@ type NodeInfo struct {
 	Connections int       `json:"connections"`
 	// Capacity はこのノードが持てる部屋の数の上限。
 	Capacity int `json:"capacity"`
+	// Full は接続数が上限に近く、新しい部屋を受けないとき。古い版のノードは書かない（false＝部屋数だけで決める）。
+	Full bool `json:"full,omitempty"`
 }
 
 // RoomPresence は表示用の在席の近似値。入室の許可と定員の判定は owner が行う。

@@ -41,6 +41,10 @@ type Config struct {
 	MigrateAfter time.Duration
 	// DisconnectNotice は Drain の期限のこれだけ前に、直接繋いでいるクライアントへ server:notice を送る（0 なら 10 分）。
 	DisconnectNotice time.Duration
+	// CursorBatch はカーソルをまとめて送る間隔（0 なら 1 件ずつ。cursors.go）。
+	CursorBatch time.Duration
+	// MaxConnections は接続数の上限（0 なら無制限。limits.go）。
+	MaxConnections int
 }
 
 // retiredFor は閉じた部屋を作り直させない期間。閉じる途中・直後に届いた入室（backend が DB を消す前に
@@ -85,6 +89,8 @@ type Server struct {
 	handoffTimeout time.Duration
 	// maintaining は heartbeat・延長を 1 本ずつにする（周期の loop と、draining に入った直後の書き直し）。
 	maintaining sync.Mutex
+	// rejectedJoins は接続数の上限で断った world:join の数。
+	rejectedJoins atomic.Int64
 }
 
 // New は Server を作り、heartbeat と owner のリースの延長を始める（Close で止める）。
@@ -166,7 +172,7 @@ func (s *Server) provision(d Definition, want expectation) (*Room, error) {
 	s.mu.RLock()
 	full := len(s.rooms) >= s.config.MaxRooms
 	s.mu.RUnlock()
-	if full {
+	if full || s.roomsFull() {
 		return nil, errNodeFull
 	}
 	r, err := newRoom(d)
@@ -181,7 +187,7 @@ func (s *Server) provision(d Definition, want expectation) (*Room, error) {
 		return nil, err
 	}
 	r.gen, r.epoch, r.token, r.now, r.deadline = a.Gen, a.Epoch, a.Token, s.now, s.fencing.deadline(sent)
-	r.createdAt, r.grace = s.now().UnixMilli(), s.config.Grace
+	r.createdAt, r.grace, r.cursorBatch = s.now().UnixMilli(), s.config.Grace, s.config.CursorBatch
 	s.mu.Lock()
 	current := s.gen == a.Gen
 	if current {

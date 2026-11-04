@@ -146,16 +146,28 @@ Goを外部で運用する場合は `instanceRuntime.enabled=false` とし、bac
 
 Go の Pod は `GET /metrics`（ポート `realtime`＝3002）で負荷を Prometheus の text 形式で出す。認証は無い。Ingress は `/realtime/v1/ws` だけを Go へ送るのでクラスタの外には出ず、中身は数だけ（部屋 ID・利用者 ID は出さない）。管理トークンで守ると Prometheus にそのトークンを渡すことになるので付けない。
 
-| 指標（gauge） | 意味 |
-|---|---|
-| `ubichill_instance_active_rooms` | この Pod が owner の部屋の数 |
-| `ubichill_instance_room_capacity` | 部屋の上限（`instanceRuntime.maxRooms`） |
-| `ubichill_instance_room_capacity_available` | あと受けられる部屋の数。draining の間は 0 |
-| `ubichill_instance_websocket_connections` | この Pod が持つ WebSocket。部屋の参加者（他の Pod から中継されたものを含む）＋他の Pod へ中継している接続。heartbeat の `connections` と同じ数え方 |
-| `ubichill_instance_relay_connections` | 他の Pod の部屋へ中継している接続 |
-| `ubichill_instance_draining` | SIGTERM のあと新しい部屋を断っている間は 1 |
+| 指標 | 種類 | 意味 |
+|---|---|---|
+| `ubichill_instance_active_rooms` | gauge | この Pod が owner の部屋の数 |
+| `ubichill_instance_room_capacity` | gauge | 部屋の上限（`instanceRuntime.maxRooms`） |
+| `ubichill_instance_room_capacity_available` | gauge | あと受けられる部屋の数。draining の間と、接続数が `maxConnections` の 9 割に達している間は 0 |
+| `ubichill_instance_websocket_connections` | gauge | この Pod が持つ WebSocket。部屋の参加者（他の Pod から中継されたものを含む）＋他の Pod へ中継している接続。heartbeat の `connections` と同じ数え方 |
+| `ubichill_instance_connection_capacity` | gauge | 接続数の上限（`instanceRuntime.maxConnections`）。0 は無制限 |
+| `ubichill_instance_relay_connections` | gauge | 他の Pod の部屋へ中継している接続 |
+| `ubichill_instance_draining` | gauge | SIGTERM のあと新しい部屋を断っている間は 1 |
+| `ubichill_instance_rejected_joins_total{reason="connection_limit"}` | counter | 接続数の上限で断った `world:join`（直接・中継の両方）の数 |
 
 中継された接続は、中継する Pod と owner の Pod の両方で数える（どちらも WebSocket を 1 本持つ）。利用者の数は `sum(websocket_connections) - sum(relay_connections)`。CPU・メモリは kube-prometheus-stack の cAdvisor（`container_cpu_usage_seconds_total` など）で見る。
+
+### 接続数の上限（`maxConnections`）
+
+KEDA が増やすまでの間に 1 Pod が飽和すると、延長の goroutine が遅れて部屋が自己停止し、全員が切断される。`instanceRuntime.maxConnections`（`--max-connections`、既定 0＝無制限）で 1 Pod の接続数（`websocket_connections` と同じ単位）を抑える。
+
+- 上限の 9 割から新しい部屋を受けない（作成・引っ越しを 503、heartbeat の `full`、`room_capacity_available` を 0）。backend は別の Pod に部屋を置く。持っている部屋には残りの 1 割で人が入れる。
+- 上限に達したら新しい参加者の入室を `instance_unavailable` で断る。クライアントはチケットを取り直して入り直す（Service が別の Pod に当てれば、そこから中継で入れる。owner が上限なら入れない）。入室中の接続は切らない。
+- draining にはしない。`/ready` も落とさない。KEDA の接続数・部屋数の query は draining の Pod を除くので、draining にすると飽和した Pod の負荷が scale-out に効かなくなる。
+- `autoscaling.targetConnectionsPerPod` は `maxConnections` の 9 割未満にする（描画で確かめる）。新しい部屋を断り始めてから増やすと、増えるまでの間は新しい部屋を作れない。
+- 値の目安: #271（まとめ送りの前。CPU 上限 1 コア、1 部屋 10 人・カーソル 20Hz・3 割が操作）では 1 Pod の `websocket_connections` が約 375 で遅延 p95 が 300ms を超えた。まとめ送り（`cursors:batch`）で 1 部屋 10 人・3 人が動く配信の CPU は約 4 割減った（Go のベンチマーク）ので、上限は k6 で測り直してから決める。決めるまでは例えば `maxConnections: 400`（新しい部屋は 360 で止まる）・`targetConnectionsPerPod: 200` のように、飽和の手前で止める値にする。
 
 ```yaml
 instanceRuntime:

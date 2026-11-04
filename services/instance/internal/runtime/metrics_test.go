@@ -10,9 +10,10 @@ import (
 	"time"
 )
 
-var sampleLine = regexp.MustCompile(`^([a-zA-Z_:][a-zA-Z0-9_:]*) (-?[0-9]+)$`)
+var sampleLine = regexp.MustCompile(`^([a-zA-Z_:][a-zA-Z0-9_:]*)(\{[a-z_]+="[a-z_]+"\})? (-?[0-9]+)$`)
 
 // scrape は /metrics を Authorization なしで読み、text 形式として解釈する。形式が崩れていたら失敗にする。
+// 値はラベルを含む系列の名前（`name{reason="x"}`）で引く。counter は名前が _total で終わるものだけ。
 func scrape(t *testing.T, n *node) map[string]int {
 	t.Helper()
 	res, err := http.Get(n.http.URL + "/metrics")
@@ -31,10 +32,14 @@ func scrape(t *testing.T, n *node) map[string]int {
 	typed := map[string]bool{}
 	for _, line := range strings.Split(strings.TrimSuffix(string(body), "\n"), "\n") {
 		if name, ok := strings.CutPrefix(line, "# TYPE "); ok {
-			if !strings.HasSuffix(name, " gauge") {
+			switch {
+			case strings.HasSuffix(name, "_total counter"):
+				typed[strings.TrimSuffix(name, " counter")] = true
+			case strings.HasSuffix(name, " gauge") && !strings.HasSuffix(name, "_total gauge"):
+				typed[strings.TrimSuffix(name, " gauge")] = true
+			default:
 				t.Fatalf("type line %q", line)
 			}
-			typed[strings.TrimSuffix(name, " gauge")] = true
 			continue
 		}
 		if strings.HasPrefix(line, "# HELP ") {
@@ -44,13 +49,16 @@ func scrape(t *testing.T, n *node) map[string]int {
 		if m == nil {
 			t.Fatalf("not a sample line: %q", line)
 		}
-		if _, dup := values[m[1]]; dup || !typed[m[1]] {
-			t.Fatalf("sample %s is duplicated or has no TYPE", m[1])
+		series := m[1] + m[2]
+		if _, dup := values[series]; dup || !typed[m[1]] {
+			t.Fatalf("sample %s is duplicated or has no TYPE", series)
 		}
-		values[m[1]], _ = strconv.Atoi(m[2])
+		values[series], _ = strconv.Atoi(m[3])
 	}
 	return values
 }
+
+const rejectedSeries = `rejected_joins_total{reason="connection_limit"}`
 
 func expectMetrics(t *testing.T, label string, got map[string]int, want map[string]int) {
 	t.Helper()
@@ -68,8 +76,9 @@ func TestMetricsOfAnIdlePod(t *testing.T) {
 	expectMetrics(t, "idle", got, map[string]int{
 		"active_rooms": 0, "room_capacity": 1000, "room_capacity_available": 1000,
 		"websocket_connections": 0, "relay_connections": 0, "draining": 0,
+		"connection_capacity": 0, rejectedSeries: 0,
 	})
-	if len(got) != 6 {
+	if len(got) != 8 {
 		t.Fatalf("unexpected series: %v", got)
 	}
 }

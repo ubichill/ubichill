@@ -27,6 +27,8 @@ type peer struct {
 	link atomic.Pointer[relayLink]
 	// pass は入室に使ったチケットと user。中継に切り替えるとき、チケットを署名し直して新しい owner に入り直す。
 	pass *relayPass
+	// batchCursors は入室で cursors:batch を宣言した接続（cursors.go）。部屋の r.mu の下で読む。
+	batchCursors bool
 }
 
 func (p *peer) stop()          { p.once.Do(func() { close(p.done); _ = p.conn.Close() }) }
@@ -197,8 +199,14 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, relayed bool) {
 				p.reply(f.ID, ticketInvalid())
 				continue
 			}
+			pass := relayPass{t, user, knownFeatures(data["features"])}
 			if room == nil && !relayed {
-				l, failed := s.relayJoin(id, relayPass{t, user}, raw, p)
+				// 中継は owner の参加者かどうかを知らないので、上限ではいつも断る（クライアントは別の Pod から入り直す）
+				if s.connectionsFull() {
+					s.rejectJoin(p, f.ID)
+					continue
+				}
+				l, failed := s.relayJoin(id, pass, raw, p)
 				if failed != nil {
 					p.reply(f.ID, failed)
 					continue
@@ -217,11 +225,12 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, relayed bool) {
 				p.reply(f.ID, ticketInvalid())
 				continue
 			}
-			// join が r.mu を取るので、引っ越しで参加者を集める側からも見える
-			p.pass = &relayPass{t, user}
+			// join が r.mu を取るので、引っ越しで参加者を集める側・まとめ送りからも見える
+			p.pass = &pass
+			p.batchCursors = batchesCursors(pass.features)
 			s.admission.Lock()
 			old := s.active[t.Subject]
-			err = room.join(p, profile(user, t.ticket), t.Subject, f.ID)
+			err = room.join(p, profile(user, t.ticket), t.Subject, f.ID, s.connectionsFull())
 			if err == nil {
 				// Keep the previous session if the destination rejects admission.
 				if old != nil && old != p && old.room != nil && old.room != room {
@@ -232,7 +241,9 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, relayed bool) {
 				s.active[t.Subject] = p
 			}
 			s.admission.Unlock()
-			if errors.Is(err, errUnavailable) {
+			if errors.Is(err, errConnectionLimit) {
+				s.rejectJoin(p, f.ID)
+			} else if errors.Is(err, errUnavailable) {
 				p.reply(f.ID, unavailable())
 			} else if err != nil {
 				p.reject(f.ID, err.Error())

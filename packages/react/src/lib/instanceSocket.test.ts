@@ -84,7 +84,66 @@ describe('InstanceSocket', () => {
         latest().open();
         expect(resolve).toHaveBeenCalledWith('room', 'secret-pw', expect.any(AbortSignal));
         expect(latest().frames[0]?.data).not.toHaveProperty('password');
-        expect(Object.keys(latest().frames[0]?.data as object).sort()).toEqual(['instanceId', 'token', 'user']);
+        expect(Object.keys(latest().frames[0]?.data as object).sort()).toEqual([
+            'features',
+            'instanceId',
+            'token',
+            'user',
+        ]);
+        socket.disconnect();
+    });
+    it('入室のたびに cursors:batch を宣言する（再接続でも）', async () => {
+        const socket = new InstanceSocket(async () => grant);
+        socket.emit('world:join', { instanceId: 'room', user: { ...user } }, vi.fn());
+        await flush();
+        latest().open();
+        expect(latest().frames[0]?.data).toMatchObject({ features: ['cursors:batch'] });
+        ackJoin(latest());
+        latest().close();
+        await vi.advanceTimersByTimeAsync(1000);
+        await flush();
+        latest().open();
+        expect(FakeWebSocket.instances).toHaveLength(2);
+        expect(latest().frames[0]?.data).toMatchObject({ features: ['cursors:batch'] });
+        socket.disconnect();
+    });
+    it('cursors:moved を順に個々の cursor:moved として配り、まとめたイベントは配らない', async () => {
+        const socket = new InstanceSocket(async () => grant);
+        const moved = vi.fn();
+        const batched = vi.fn();
+        socket.on('cursor:moved', moved);
+        socket.on('cursors:moved', batched);
+        socket.emit('world:join', { instanceId: 'room', user: { ...user } }, vi.fn());
+        await flush();
+        latest().open();
+        ackJoin(latest());
+        const bob = { userId: 'bob', position: { x: 1, y: 2 }, heldEntityId: null };
+        const carol = { userId: 'carol', position: { x: 3, y: 4 }, heldEntityId: 'e1' };
+        const dave = { userId: 'dave', position: { x: 5, y: 6 } };
+        latest().receive({ event: 'cursors:moved', data: [bob, carol, dave] });
+        expect(moved.mock.calls).toEqual([[bob], [carol], [dave]]);
+        expect(batched).not.toHaveBeenCalled();
+        // 1 件ずつの cursor:moved（宣言を知らない古いサーバー）もそのまま届く
+        latest().receive({ event: 'cursor:moved', data: bob });
+        expect(moved).toHaveBeenCalledTimes(4);
+        socket.disconnect();
+    });
+    it('壊れた cursors:moved は読み飛ばし、後続のイベントを止めない', async () => {
+        const socket = new InstanceSocket(async () => grant);
+        const moved = vi.fn();
+        const left = vi.fn();
+        socket.on('cursor:moved', moved);
+        socket.on('user:left', left);
+        socket.emit('world:join', { instanceId: 'room', user: { ...user } }, vi.fn());
+        await flush();
+        latest().open();
+        ackJoin(latest());
+        latest().receive({ event: 'cursors:moved', data: { userId: 'bob' } });
+        latest().receive({ event: 'cursors:moved' });
+        latest().receive({ event: 'cursors:moved', data: [] });
+        latest().receive({ event: 'user:left', data: 'bob' });
+        expect(moved).not.toHaveBeenCalled();
+        expect(left).toHaveBeenCalledWith('bob');
         socket.disconnect();
     });
     it('再接続は新しいチケットと最新位置を使い、createを再送しない', async () => {
