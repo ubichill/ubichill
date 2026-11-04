@@ -105,6 +105,86 @@ describe('InstanceSocket', () => {
         expect(latest().frames[0]?.data).toMatchObject({ user: { position: { x: 42, y: 20 } } });
         socket.disconnect();
     });
+    it('引っ越し中（migrating）の要求は送り直し、応答が返れば一度だけ返す', async () => {
+        const socket = new InstanceSocket(async () => grant);
+        socket.emit('world:join', { instanceId: 'room', user: { ...user } }, vi.fn());
+        await flush();
+        latest().open();
+        ackJoin(latest());
+        const done = vi.fn();
+        socket.emit('state:update', { key: 'k', value: { n: 1 }, expectedRevision: 0 }, done);
+        const ws = latest();
+        expect(ws.frames).toHaveLength(2);
+        ws.receive({ replyTo: ws.frames[1]?.id, data: { success: false, error: '移動中', code: 'migrating' } });
+        expect(done).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(500);
+        expect(ws.frames).toHaveLength(3);
+        expect(ws.frames[2]?.id).not.toBe(ws.frames[1]?.id);
+        expect(ws.frames[2]?.data).toEqual({ key: 'k', value: { n: 1 }, expectedRevision: 0 });
+        ws.receive({ replyTo: ws.frames[2]?.id, data: { success: true } });
+        expect(done).toHaveBeenCalledExactlyOnceWith({ success: true });
+        socket.disconnect();
+    });
+    it('引っ越しが終わらなければ 20 回で諦めて migrating の失敗を返す', async () => {
+        const socket = new InstanceSocket(async () => grant);
+        socket.emit('world:join', { instanceId: 'room', user: { ...user } }, vi.fn());
+        await flush();
+        latest().open();
+        ackJoin(latest());
+        const done = vi.fn();
+        socket.emit('state:update', { key: 'k', value: { n: 2 }, expectedRevision: 0 }, done);
+        const ws = latest();
+        for (const _ of Array.from({ length: 21 })) {
+            ws.receive({ replyTo: ws.frames.at(-1)?.id, data: { success: false, error: '移動中', code: 'migrating' } });
+            await vi.advanceTimersByTimeAsync(500);
+        }
+        expect(ws.frames).toHaveLength(22);
+        expect(done).toHaveBeenCalledExactlyOnceWith({ success: false, error: '移動中', code: 'migrating' });
+        socket.disconnect();
+    });
+    it('引っ越しの待ちの間に別の部屋へ入り直したら、古い要求を新しい接続へ送らず失敗で一度だけ返す', async () => {
+        const socket = new InstanceSocket(async () => grant);
+        socket.emit('world:join', { instanceId: 'room', user: { ...user } }, vi.fn());
+        await flush();
+        latest().open();
+        ackJoin(latest());
+        const done = vi.fn();
+        socket.emit('state:update', { key: 'k', value: { n: 1 }, expectedRevision: 0 }, done);
+        const first = latest();
+        first.receive({ replyTo: first.frames[1]?.id, data: { success: false, error: '移動中', code: 'migrating' } });
+        socket.emit('world:join', { instanceId: 'other', user: { ...user } }, vi.fn());
+        expect(done).toHaveBeenCalledExactlyOnceWith({ success: false, error: '接続が切れています' });
+        await flush();
+        const second = latest();
+        second.open();
+        ackJoin(second);
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(second.frames.map((f) => f.event)).toEqual(['world:join']);
+        expect(done).toHaveBeenCalledOnce();
+        socket.disconnect();
+    });
+    it('引っ越しの待ちの間に切れて繋ぎ直しても、古い要求を送り直さない', async () => {
+        const socket = new InstanceSocket(async () => grant);
+        socket.emit('world:join', { instanceId: 'room', user: { ...user } }, vi.fn());
+        await flush();
+        latest().open();
+        ackJoin(latest());
+        const done = vi.fn();
+        socket.emit('state:update', { key: 'k', value: { n: 1 }, expectedRevision: 0 }, done);
+        const first = latest();
+        first.receive({ replyTo: first.frames[1]?.id, data: { success: false, error: '移動中', code: 'migrating' } });
+        first.close();
+        expect(done).toHaveBeenCalledExactlyOnceWith({ success: false, error: '接続が切れています' });
+        await vi.advanceTimersByTimeAsync(1000);
+        await flush();
+        const second = latest();
+        second.open();
+        ackJoin(second);
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(second.frames.map((f) => f.event)).toEqual(['world:join']);
+        expect(done).toHaveBeenCalledOnce();
+        socket.disconnect();
+    });
     it('接続前の退出は遅れて返った接続情報を破棄する', async () => {
         const pending = Promise.withResolvers<typeof grant>();
         const socket = new InstanceSocket(() => pending.promise);
