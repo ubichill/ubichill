@@ -4,6 +4,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
 metadata:
   name: {{ include "ubichill-loadtest.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ubichill-loadtest.labels" . | nindent 4 }}
     {{- with .Values.podMonitor.labels }}

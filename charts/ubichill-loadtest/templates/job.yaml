@@ -3,6 +3,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: {{ include "ubichill-loadtest.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ubichill-loadtest.labels" . | nindent 4 }}
 spec:

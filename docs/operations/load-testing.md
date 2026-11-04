@@ -6,7 +6,7 @@ dev 環境の Go（WebSocket）に、繰り返し同じ条件で負荷をかけ�
 
 ## 前提
 
-- dev 環境（namespace `ubichill-dev`、release `ubichill-dev`）。Go の Service は `ubichill-dev-instance:3002`、管理トークンは Secret `ubichill-dev-backend-secrets` の `INSTANCE_ADMIN_TOKEN`。
+- dev 環境（namespace `ubichill-dev`、release `ubichill-dev`）。Go の Service は `ubichill-dev-instance:3002`、管理トークンは Secret `ubichill-dev-secrets`（home-manifests の SealedSecret。chart が作る `<release>-backend-secrets` は existingSecret のときは無い）の `INSTANCE_ADMIN_TOKEN`。
 - Prometheus Operator（kube-prometheus-stack）が `ubichill-dev` の PodMonitor を拾う設定になっていること。Go 側は `instanceRuntime.metrics.serviceMonitor.enabled: true`（負荷を受ける側の `ubichill_instance_*` が無いと比べられない）。
 - 生成器を載せるノードに `ubichill.com/loadgen=true` のラベル。生成器は攻撃対象（Go の Pod）と**別のノード**で動かす。同じノードに載せると CPU を取り合い、Go の遅延が生成器の分だけ悪く見える。
 - kubectl の context が自宅のクラスタ（dev）であること。`kubectl config current-context` で確かめる。
@@ -14,7 +14,7 @@ dev 環境の Go（WebSocket）に、繰り返し同じ条件で負荷をかけ�
 ```sh
 kubectl config current-context
 kubectl get nodes -l ubichill.com/loadgen=true
-kubectl -n ubichill-dev get secret ubichill-dev-backend-secrets -o jsonpath='{.data.INSTANCE_ADMIN_TOKEN}' | wc -c   # 空でない
+kubectl -n ubichill-dev get secret ubichill-dev-secrets -o jsonpath='{.data.INSTANCE_ADMIN_TOKEN}' | wc -c   # 空でない
 ```
 
 ## 走らせ方
@@ -25,7 +25,7 @@ kubectl -n ubichill-dev get secret ubichill-dev-backend-secrets -o jsonpath='{.d
 COMMON=(
   -n ubichill-dev
   --set target.instanceUrl=http://ubichill-dev-instance:3002
-  --set target.adminTokenSecret.name=ubichill-dev-backend-secrets
+  --set target.adminTokenSecret.name=ubichill-dev-secrets
   --set 'nodeSelector.ubichill\.com/loadgen=true'
 )
 ```

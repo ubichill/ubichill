@@ -1,6 +1,7 @@
 // Go インスタンス（WebSocket）の負荷生成器。Node 22+ の組み込み WebSocket と fetch だけで動く（依存なし）。
 // 純粋な計算（設定・部屋 ID・ランプ・指標・ヒストグラム・遅延）は export して loadgen.test.mjs で確かめる。
 // 指標の名前とラベルは Grafana のダッシュボード（Ubichill / Load test）が参照するので変えない。
+import { realpathSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { pathToFileURL } from 'node:url';
 
@@ -695,7 +696,8 @@ async function main() {
     await Promise.all(plan.map((spec, i) => launch(spec, schedule[i])));
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// ConfigMap のマウントはシンボリックリンク（/loadgen/loadgen.mjs → ..data/loadgen.mjs）。import.meta.url は実体のパスになるので realpath で比べる
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
     main().catch((error) => {
         log({ type: 'fatal', errors: [String(error?.stack ?? error)] });
         process.exit(1);

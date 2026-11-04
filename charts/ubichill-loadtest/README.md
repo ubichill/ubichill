@@ -15,7 +15,7 @@ worker（Pod）1 つが `scenario.roomsPerWorker` 個の部屋を作り、各部
 ```sh
 helm install lt-smoke charts/ubichill-loadtest -n ubichill-dev \
   --set target.instanceUrl=http://ubichill-dev-instance:3002 \
-  --set target.adminTokenSecret.name=ubichill-dev-backend-secrets \
+  --set target.adminTokenSecret.name=ubichill-dev-secrets \
   --set scenario.name=smoke --set scenario.roomsPerWorker=2 --set scenario.usersPerRoom=5 \
   --set scenario.durationSeconds=60 \
   --set 'nodeSelector.ubichill\.com/loadgen=true'
