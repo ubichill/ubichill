@@ -1,4 +1,4 @@
-import type { ClientToServerEvents, InstanceAPI, ServerToClientEvents } from '@ubichill/shared';
+import type { ClientToServerEvents, InstanceAPI, InstanceFeature, ServerToClientEvents } from '@ubichill/shared';
 
 type Events = ServerToClientEvents & {
     connect: () => void;
@@ -19,6 +19,9 @@ interface Frame {
     id?: string;
     replyTo?: string;
 }
+
+/** 入室で宣言する受け取れる形。cursors:moved は受け取った所で cursor:moved に展開するので、上の層は変わらない。 */
+const FEATURES: InstanceFeature[] = ['cursors:batch'];
 
 const MAX_ATTEMPTS = 6;
 const RECOVERY_TIMEOUT_MS = 30000;
@@ -119,7 +122,7 @@ export class InstanceSocket {
             ws.onopen = () => {
                 if (generation !== this.generation) return;
                 const { instanceId, user } = joined.data;
-                this.send('world:join', { instanceId, user, token: grant.token }, (value) => {
+                this.send('world:join', { instanceId, user, token: grant.token, features: FEATURES }, (value) => {
                     if (generation !== this.generation) return;
                     clearTimeout(handshake);
                     const result = value as JoinReply;
@@ -163,6 +166,9 @@ export class InstanceSocket {
                         this.pending.delete(frame.replyTo);
                         pending.callback(frame.data);
                     }
+                } else if (frame.event === 'cursors:moved') {
+                    if (!Array.isArray(frame.data)) return;
+                    for (const cursor of frame.data) this.dispatch('cursor:moved', cursor);
                 } else if (frame.event) {
                     if (frame.event === 'session:replaced' || frame.event === 'instance:closing') this.joined = null;
                     this.dispatch(frame.event, frame.data);

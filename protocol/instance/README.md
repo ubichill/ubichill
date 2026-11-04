@@ -14,6 +14,8 @@ mod SDKのHost/Workerプロトコルとは独立したバージョンである�
 {"event":"world:join","id":"request-1","data":{"instanceId":"standalone","token":"opaque-ticket","user":{"name":"Guest","position":{"x":0,"y":0},"status":"online"}}}
 ```
 
+`data.features`（任意）はクライアントが受け取れる形の宣言で、サーバーは知らない値を読み飛ばす（下の「受け取れる形の宣言」）。
+
 チケットはURLやCookieに入れない。インスタンス・参加者・期限・種別・部屋の世代（クラスタの `gen` と owner の `epoch`）を
 HMACで検証する不透明な値として扱う。発行するのは部屋の owner で、入室時に今の部屋の世代と一致しなければ `ticket_invalid` にする。
 同じ部屋IDで作り直された部屋（owner の交代・自己停止・Redis の消失のあと）に、前の部屋のチケットを通さないため。
@@ -60,7 +62,9 @@ Pod間の `relay:migrate` と `POST /realtime/v1/instances/{id}/handoff` は内�
 `world:join` の失敗応答には復旧可能な場合だけ `code` を付ける。
 `ticket_invalid` は失効・署名鍵の変更（単体モードの再起動・管理トークンの変更）等でチケットを検証できない場合で、同じ復旧中に1回だけ取り直す。
 `ticket_invalid` は部屋の世代の不一致（チケットの発行後に owner が交代した）でも返す。
-`instance_unavailable` はチケット発行後に部屋が消えた・owner が自己停止した場合で、上記の接続上限内でチケットを取り直す。
+`instance_unavailable` はチケット発行後に部屋が消えた・owner が自己停止した場合と、繋いだ Pod か owner の Pod が接続数の上限
+（`--max-connections`）に達している場合で、上記の接続上限内でチケットを取り直す（Service が別の Pod に繋げば入れる）。
+上限で断るのは新しい参加者だけで、入室中の接続は切らず、切断の猶予中の人の戻りも断らない。
 認可・パスワード・満員等の拒否は再試行しない。
 
 切断後15秒は参加者とロックを保持する。同じIDで戻れば復帰し、期限後にロック解除と退出通知を行う。
@@ -69,6 +73,18 @@ Pod間の `relay:migrate` と `POST /realtime/v1/instances/{id}/handoff` は内�
 `instance:closing` はインスタンスの終了（リーダーの削除・空室の掃除）でのみ送る。Goプロセスの停止・owner の自己停止
 （リースを延長できない・世代が変わった）では送らずに切断し、
 クライアントは再接続して部屋を作り直す（SNSは部屋が無いと観測してから猶予を数えるので、その間に戻れば消えない）。
+
+## 受け取れる形の宣言（features）
+
+Go のインスタンスとフロントは別々にデプロイされるので、配り方を変えるときはクライアントが `world:join` の
+`data.features` で宣言し、宣言した接続にだけ新しい形で送る。宣言しない接続（古いフロント・外部の実装）には今までの形を送り続ける。
+宣言は接続ごとで、再接続のたびに送る。Pod の間の中継は中身を見ずに owner へ通し、引っ越しでは中継元が同じ宣言で入り直す。
+
+- `cursors:batch`: 他の参加者のカーソルを `cursor:moved` の代わりに `cursors:moved` で受ける。サーバーは一定の間隔
+  （`--cursor-batch-interval`、既定 50ms、0 なら宣言しても `cursor:moved`）の中の `cursor:move` を利用者ごとに最新の 1 件にし、
+  受け手ごとに 1 フレームで送る（`{"event":"cursors:moved","data":[{"userId","position","heldEntityId"?}]}`）。
+  自分の分は含まない（動いたのが自分だけなら送らない）。`heldEntityId` の付け方は `cursor:moved` と同じ（最新の move に有効な値があれば付く）。
+  揮発で、溢れたら捨てる。抜けた人の分は `user:left` の後に送らない。
 
 ## その場だけの知らせ
 

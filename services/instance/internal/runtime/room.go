@@ -31,6 +31,10 @@ type Room struct {
 	// createdAt は部屋を作った時刻（epoch ms）。引っ越しでも引き継ぎ、作ってからの時間で引っ越すかを決める。
 	createdAt int64
 	grace     time.Duration
+	// cursorBatch はカーソルをまとめて送る間隔（0 なら 1 件ずつ。cursors.go）。cursors は間隔の中の利用者ごとの最新の 1 件。
+	cursorBatch time.Duration
+	cursors     map[string]Object
+	cursorTimer *time.Timer
 	// owner の世代。割り当てのたびに新しい Room を作るので、作ったあとは変わらない。
 	gen   string
 	epoch int64
@@ -185,6 +189,19 @@ func (r *Room) extend(deadline time.Time) {
 	}
 }
 
+// connected はつながっている参加者の接続の数（occupancy と違い在席の一覧を作らない。入室のたびに数えるため）。
+func (r *Room) connected() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	n := 0
+	for _, m := range r.members {
+		if m.peer != nil {
+			n++
+		}
+	}
+	return n
+}
+
 // occupancy は Directory に書く在席と、つながっている接続の数。
 func (r *Room) occupancy() (coord.RoomPresence, int) {
 	r.mu.Lock()
@@ -200,7 +217,9 @@ func (r *Room) occupancy() (coord.RoomPresence, int) {
 	sort.Strings(p.Members)
 	return p, connected
 }
-func (r *Room) join(p *peer, user Object, id string, request string) error {
+
+// join は参加者を入れる。full なら新しい参加者だけを断る（猶予中の人の戻り・引っ越しの繋ぎ直し・同じ人の別の接続は通す）。
+func (r *Room) join(p *peer, user Object, id string, request string, full bool) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if !r.usableLocked() || r.migrating {
@@ -211,6 +230,9 @@ func (r *Room) join(p *peer, user Object, id string, request string) error {
 	resumed := old != nil && old.migrated && old.peer == nil
 	if old == nil && len(r.members) >= r.definition.MaxUsers {
 		return errors.New("instance full")
+	}
+	if old == nil && full {
+		return errConnectionLimit
 	}
 	if old != nil {
 		if old.timer != nil {
@@ -285,6 +307,8 @@ func (r *Room) remove(id string) {
 		m.timer.Stop()
 	}
 	delete(r.members, id)
+	// 抜けた人のカーソルを user:left の後に届けない
+	delete(r.cursors, id)
 	for entityID, e := range r.entities {
 		if str(e["lockedBy"]) == id {
 			e["lockedBy"] = nil
@@ -312,6 +336,7 @@ func (r *Room) close(announce bool) {
 }
 func (r *Room) shutdownLocked(announce bool) {
 	r.closed = true
+	r.stopCursorsLocked()
 	if announce {
 		r.broadcast("instance:closing", "インスタンスが終了しました", nil, false)
 	}

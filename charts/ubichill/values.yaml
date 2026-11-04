@@ -388,6 +388,10 @@ instanceRuntime:
   replicas: 1
   # 1 Pod が持つ部屋の数の上限。backend は redis のとき、上限に達していない Pod から新しい部屋の置き場所を選ぶ。
   maxRooms: 1000
+  # 1 Pod が持つ WebSocket（部屋の参加者＋他の Pod へ中継している接続）の上限。0 なら無制限。
+  # 上限の 9 割から新しい部屋を受けず（backend は別の Pod に置く）、上限で新しい参加者の入室を断る（入室中の人は切らない）。
+  # 値の決め方は README の「Go インスタンスの自動スケール」。autoscaling の targetConnectionsPerPod は 9 割未満にする。
+  maxConnections: 0
   # SIGTERM のあと新しい部屋を断り（draining）、この Pod に直接繋いでいるクライアントが抜けるのを待つ上限
   # （directory: redis のときだけ。memory は待たない）。部屋は migrateAfter を過ぎたら別の Pod へ引っ越す（再接続なし）。
   # 引っ越したあとも、直接繋いでいるクライアントはこの Pod が中継し続け、上限で切る。1 日続く部屋があるので 24h。

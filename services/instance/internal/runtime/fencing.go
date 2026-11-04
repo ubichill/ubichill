@@ -215,9 +215,10 @@ func (s *Server) maintain(ctx context.Context) bool {
 	if s.draining.Load() {
 		state = coord.NodeDraining
 	}
+	connections += s.relayCount()
 	info := coord.NodeInfo{
 		Addr: s.config.Addr, StartedAt: s.started.UnixMilli(), State: state, Rooms: len(presence),
-		Connections: connections + s.relayCount(), Capacity: s.config.MaxRooms,
+		Connections: connections, Capacity: s.config.MaxRooms, Full: !s.admitsRooms(connections),
 	}
 	if err := s.dir.Heartbeat(ctx, s.node, info, s.fencing.TTL); err != nil {
 		healthy = false
@@ -277,8 +278,7 @@ func (s *Server) connections() int {
 	s.mu.RUnlock()
 	n := 0
 	for _, r := range rooms {
-		_, connected := r.occupancy()
-		n += connected
+		n += r.connected()
 	}
 	// 中継は部屋の後に数える。引っ越しは参加者を外すのと同じロックの中で中継を足すので、この順なら 0 に見えない
 	return n + s.relayCount()

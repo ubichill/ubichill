@@ -132,6 +132,7 @@ const instanceDeploymentOf = (args) => {
         disconnectNotice: arg('disconnect-notice'),
         deletionCost: arg('pod-deletion-cost'),
         maxRooms: arg('max-rooms'),
+        maxConnections: arg('max-connections'),
         serviceAccount: deployment.spec.template.spec.serviceAccountName,
     };
 };
@@ -154,6 +155,7 @@ expectDeployment('memory', memoryDeployment, {
     disconnectNotice: '10m',
     deletionCost: undefined,
     maxRooms: '1000',
+    maxConnections: '0',
     serviceAccount: undefined,
 });
 expectDeployment('redis', redisDeployment, {
@@ -169,6 +171,11 @@ expectDeployment(
     'redis・drainTimeout 1h30m15s',
     instanceDeploymentOf(['--set', 'instanceRuntime.directory=redis', '--set', 'instanceRuntime.drainTimeout=1h30m15s', '--set', 'instanceRuntime.migrateAfter=2h']),
     { grace: 5445, drainTimeout: '1h30m15s', migrateAfter: '2h' },
+);
+expectDeployment(
+    'redis・maxConnections 500',
+    instanceDeploymentOf(['--set', 'instanceRuntime.directory=redis', '--set', 'instanceRuntime.maxConnections=500']),
+    { maxConnections: '500' },
 );
 expectDeployment(
     'redis・terminationGracePeriodSeconds を明示',
@@ -193,6 +200,9 @@ if (!renderFails(['--set', 'redis.auth.password=x', '--set', 'instanceRuntime.di
 }
 if (!renderFails(['--set', 'redis.auth.password=x', '--set', 'instanceRuntime.directory=redis', '--set', 'instanceRuntime.drainTimeout=1d'], 'h・m・s の組み合わせ')) {
     failures.push('drainTimeout の秒に直せない値（1d）が描画を通ってしまう');
+}
+if (!renderFails(['--set', 'redis.auth.password=x', '--set', 'instanceRuntime.maxConnections=-1'], 'maxConnections は 0（無制限）以上')) {
+    failures.push('instanceRuntime.maxConnections が負でも描画が通ってしまう');
 }
 if (!renderFails(['--set', 'redis.auth.password=x', '--set', 'instanceRuntime.replicas=2'], 'Pod の間で部屋を共有できません')) {
     failures.push('directory: memory で instanceRuntime.replicas=2 にしても描画が通ってしまう');
@@ -306,6 +316,14 @@ if (!renderFails(autoscalingArgs, 'autoscaling.enabled には instanceRuntime.di
 }
 if (!renderFails([...autoscalingArgs, '--set', 'instanceRuntime.directory=redis', '--set', 'instanceRuntime.autoscaling.targetRoomsPerPod=1000'], 'maxRooms（1000）未満にします')) {
     failures.push('targetRoomsPerPod が maxRooms 以上でも描画が通ってしまう');
+}
+// 9 割（新しい部屋を断り始める数）ちょうどは断り、その手前は通す。0（無制限）なら比べない
+const connectionTarget = (max, target) => [...autoscalingArgs, '--set', 'instanceRuntime.directory=redis', '--set', `instanceRuntime.maxConnections=${max}`, '--set', `instanceRuntime.autoscaling.targetConnectionsPerPod=${target}`];
+if (!renderFails(connectionTarget(300, 270), 'maxConnections（300）の 9 割未満にします')) {
+    failures.push('targetConnectionsPerPod が maxConnections の 9 割以上でも描画が通ってしまう');
+}
+for (const [max, target] of [[300, 269], [0, 5000]]) {
+    if (!instanceOf(docsOf(connectionTarget(max, target).slice(2)), 'ScaledObject')) failures.push(`maxConnections=${max}・targetConnectionsPerPod=${target} が描画されない`);
 }
 if (!renderFails([...autoscalingArgs, '--set', 'instanceRuntime.directory=redis', '--set', 'instanceRuntime.autoscaling.maxReplicaCount=1'], 'maxReplicaCount は 2 以上')) {
     failures.push('maxReplicaCount=1 でも描画が通ってしまう');

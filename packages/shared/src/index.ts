@@ -71,6 +71,20 @@ export interface SharedStateUpdate {
 // Instance WebSocket Event Types
 // ============================================
 
+/** 他の参加者のカーソル 1 件（cursor:moved・cursors:moved の要素） */
+export interface CursorMovedPayload {
+    userId: string;
+    position: CursorPosition;
+    heldEntityId?: string | null;
+}
+
+/**
+ * world:join で宣言する、クライアントが受け取れる形。Go のインスタンスとフロントは別々にデプロイされるので、
+ * 配り方を変えるときは宣言したクライアントにだけ新しい形で送る（docs/PROTOCOLS.md の D）。
+ * - `cursors:batch`: カーソルを cursor:moved の代わりに cursors:moved でまとめて受ける
+ */
+export type InstanceFeature = 'cursors:batch';
+
 /**
  * サーバーからクライアントへ送信されるイベント
  */
@@ -85,7 +99,13 @@ export interface ServerToClientEvents {
     'user:left': (userId: string) => void;
 
     /** ユーザーのカーソル位置更新 */
-    'cursor:moved': (data: { userId: string; position: CursorPosition; heldEntityId?: string | null }) => void;
+    'cursor:moved': (data: CursorMovedPayload) => void;
+
+    /**
+     * まとめたカーソル（features に `cursors:batch` を宣言した接続だけが受ける）。利用者ごとに最新の 1 件で、自分の分は含まない。
+     * InstanceSocket が個々の cursor:moved に展開して配るので、このイベント自体は購読側に届かない。
+     */
+    'cursors:moved': (data: CursorMovedPayload[]) => void;
 
     /** ユーザーのステータス更新 */
     'status:changed': (data: { userId: string; status: UserStatus }) => void;
@@ -140,6 +160,8 @@ export interface ClientToServerEvents {
             /** 参加チケットの取得（SNS の REST）にだけ使い、インスタンスサーバーへは送らない。 */
             password?: string;
             user: Omit<User, 'id'>;
+            /** 受け取れる形の宣言。InstanceSocket が付けるので呼び出し側は指定しない。 */
+            features?: InstanceFeature[];
         },
         callback: (response: {
             success: boolean;
