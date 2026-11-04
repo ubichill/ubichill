@@ -375,7 +375,11 @@ async function adminRequest(config, url, method, body) {
     // 接続を使い回すと管理 API が毎回同じ Pod に届き、部屋の owner が 1 つの Pod に偏る。毎回つなぎ直して Service に散らせる
     const response = await fetch(url, {
         method,
-        headers: { authorization: `Bearer ${config.adminToken}`, 'content-type': 'application/json', connection: 'close' },
+        headers: {
+            authorization: `Bearer ${config.adminToken}`,
+            'content-type': 'application/json',
+            connection: 'close',
+        },
         body: body === undefined ? undefined : JSON.stringify(body),
     });
     const text = await response.text();
@@ -632,13 +636,15 @@ async function main() {
     const rooms = [];
     const creating = new Map();
     const ensureRoom = (id) => {
-        const pending = creating.get(id) ?? createRoom(config, id).then((room) => {
-            if (room !== null) {
-                rooms.push(room);
-                registry.set('rooms', {}, rooms.length);
-            }
-            return room;
-        });
+        const pending =
+            creating.get(id) ??
+            createRoom(config, id).then((room) => {
+                if (room !== null) {
+                    rooms.push(room);
+                    registry.set('rooms', {}, rooms.length);
+                }
+                return room;
+            });
         creating.set(id, pending);
         return pending;
     };
