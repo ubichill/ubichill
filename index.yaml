@@ -3,6 +3,30 @@ entries:
   ubichill:
   - apiVersion: v2
     appVersion: latest
+    created: "2026-11-04T12:59:45.424697165Z"
+    dependencies:
+    - condition: postgresql.enabled
+      name: postgresql
+      repository: https://charts.bitnami.com/bitnami
+      version: 16.4.3
+    description: Ubichill Main Application - Frontend and Backend Platform
+    digest: 5616c2f3959e65deaabf43c3b5ae01fea3deb002863b39a95a68919d37af6115
+    keywords:
+    - ubichill
+    - platform
+    - frontend
+    - backend
+    - mods
+    maintainers:
+    - email: pnasimonan@gmail.com
+      name: Ubichill Team
+    name: ubichill
+    type: application
+    urls:
+    - https://github.com/ubichill/ubichill/releases/download/ubichill-0.2.0/ubichill-0.2.0.tgz
+    version: 0.2.0
+  - apiVersion: v2
+    appVersion: latest
     created: "2026-04-18T10:20:39.757839022Z"
     dependencies:
     - condition: redis.enabled
@@ -302,4 +326,4 @@ entries:
     urls:
     - https://github.com/ubichill/ubichill/releases/download/video-player-0.1.0/video-player-0.1.0.tgz
     version: 0.1.0
-generated: "2026-11-04T12:48:36.040335773Z"
+generated: "2026-11-04T12:59:45.424735772Z"
