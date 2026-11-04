@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { repositoryWorldPolicy } from './worldRegistry';
+import { asUnsignedRepositoryWorld, repositoryWorldPolicy } from './worldRegistry';
 
 vi.mock('@ubichill/db', () => ({ federationPeerRepository: {}, userRepository: {}, worldRepository: {} }));
 vi.mock('./authorKeyStore', () => ({ isAuthorKey: vi.fn(), resolveAuthorDisplayName: vi.fn() }));
@@ -12,9 +12,19 @@ describe('repositoryWorldPolicy（同梱ワールドを配るか）', () => {
         expect(repositoryWorldPolicy(account('ubichill', 'ubichill.com'), 'ubichill.com', true)).toBe('verify-own');
     });
 
-    it('ほかのサーバーの作者の署名は、開発用の設定があっても配らない（作者のサーバーへ問い合わせない）', () => {
+    it('ほかのサーバーの作者の署名は既定では配らない（作者のサーバーへ問い合わせない）', () => {
         expect(repositoryWorldPolicy(account('ubichill', 'ubichill.com'), 'pr-250.ubichill.com', false)).toBe('skip');
-        expect(repositoryWorldPolicy(account('ubichill', 'ubichill.com'), 'pr-250.ubichill.com', true)).toBe('skip');
+    });
+
+    it('ほかのサーバーの作者の署名でも、開発用の設定のときは署名を外して署名なしとして配る（dev は main のイメージ）', () => {
+        expect(repositoryWorldPolicy(account('ubichill', 'ubichill.com'), 'dev.ubichill.com', true)).toBe('serve-unsigned');
+        const hosted = { definition: { metadata: { name: 'default' } }, lock: { a: 1 }, signature: { author: '@ubichill@ubichill.com' } };
+        const unsigned = asUnsignedRepositoryWorld(hosted as never);
+        expect(unsigned.signature).toBeNull();
+        expect(unsigned.lock).toEqual({ a: 1 });
+        expect(hosted.signature).not.toBeNull();
+        const plain = { definition: {}, lock: null, signature: null };
+        expect(asUnsignedRepositoryWorld(plain as never)).toBe(plain);
     });
 
     it('署名なしは既定では配らず、開発・プレビューの設定のときだけ署名なしとして配る', () => {

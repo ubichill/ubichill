@@ -105,7 +105,9 @@ export type SaveBundleResult =
  * - 自サーバーの作者の署名 → 作者の鍵で確かめて配る
  * - ほかのサーバーの作者の署名 → 配らない（一覧のたびに作者のサーバーへ問い合わせない）
  * - 署名なし → 配らない。開発・プレビュー（`WORLDS_SERVE_UNSIGNED_REPOSITORY=true`）だけ、公式アカウントの名義で「署名なし」として配る。
- *   公式ワールドの署名は main への push でしか付けないので、無いとプレビューに入れるワールドが 1 つも無くなる
+ *   公式ワールドの署名は main への push でしか付けないので、無いとプレビューに入れるワールドが 1 つも無くなる。
+ *   dev 環境は main のイメージ（本番の作者の署名付き）で動くので、同じ設定のときはその署名を外して「署名なし」として配る
+ *   （作者のサーバーへは問い合わせない。本番では設定自体が使えない）
  */
 export type RepositoryWorldPolicy = 'verify-own' | 'serve-unsigned' | 'skip';
 
@@ -114,8 +116,13 @@ export function repositoryWorldPolicy(
     ownDomain: string,
     serveUnsigned: boolean,
 ): RepositoryWorldPolicy {
-    if (claimed) return claimed.domain === ownDomain ? 'verify-own' : 'skip';
+    if (claimed?.domain === ownDomain) return 'verify-own';
     return serveUnsigned ? 'serve-unsigned' : 'skip';
+}
+
+/** 署名なしとして配るときの文書。ほかのサーバーの作者の署名が付いていれば外す（その鍵では確かめないため）。 */
+export function asUnsignedRepositoryWorld(hosted: HostedWorldDocument): HostedWorldDocument {
+    return hosted.signature == null ? hosted : { ...hosted, signature: null };
 }
 
 const serveUnsignedRepositoryWorlds = (): boolean => process.env.WORLDS_SERVE_UNSIGNED_REPOSITORY === 'true';
@@ -911,8 +918,7 @@ class WorldRegistry {
         if (policy === 'serve-unsigned') {
             const official = await userRepository.findByHandle(OFFICIAL_HANDLE);
             if (!official) return NOT_FOUND;
-            // 署名が付いていれば resolveBundle が確かめる（内容と合わなければ配らない）。無ければ「署名なし」として返る
-            return this._verify(id, this.selfWorldUrl(OFFICIAL_HANDLE, id), hosted, official.id);
+            return this._verify(id, this.selfWorldUrl(OFFICIAL_HANDLE, id), asUnsignedRepositoryWorld(hosted), official.id);
         }
         if (!claimed) return NOT_FOUND;
         const author = await userRepository.findByHandle(claimed.handle);
