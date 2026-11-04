@@ -209,6 +209,26 @@ entries:
     urls:
     - https://github.com/ubichill/ubichill/releases/download/ubichill-0.1.0/ubichill-0.1.0.tgz
     version: 0.1.0
+  ubichill-loadtest:
+  - apiVersion: v2
+    appVersion: 2.3.0
+    created: "2026-11-04T12:48:36.040300958Z"
+    description: 実際の利用者と同じ経路（ログイン → インスタンス → WebSocket）の負荷試験。k6-operator の TestRun
+      で走らせ、結果を Prometheus の remote write で出す
+    digest: 6d5483d6c48296e7a5ce07943a8648c72bcd5e8e8677d83c38b7f656a6ac5896
+    keywords:
+    - ubichill
+    - loadtest
+    - instance
+    - k6
+    maintainers:
+    - email: pnasimonan@gmail.com
+      name: Ubichill Team
+    name: ubichill-loadtest
+    type: application
+    urls:
+    - https://github.com/ubichill/ubichill/releases/download/ubichill-loadtest-0.1.0/ubichill-loadtest-0.1.0.tgz
+    version: 0.1.0
   video-player:
   - apiVersion: v2
     appVersion: latest
@@ -282,4 +302,4 @@ entries:
     urls:
     - https://github.com/ubichill/ubichill/releases/download/video-player-0.1.0/video-player-0.1.0.tgz
     version: 0.1.0
-generated: "2026-04-18T10:20:39.757863689Z"
+generated: "2026-11-04T12:48:36.040335773Z"
