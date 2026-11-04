@@ -23,6 +23,11 @@ interface Frame {
 const MAX_ATTEMPTS = 6;
 const RECOVERY_TIMEOUT_MS = 30000;
 const STABLE_CONNECTION_MS = 10000;
+// 部屋が別の Pod へ引っ越している間（数秒）、変更の要求は code: "migrating" で断られる。同じ要求を送り直す
+const MIGRATING_RETRY_MS = 500;
+const MIGRATING_RETRIES = 20;
+const isMigrating = (value: unknown): boolean =>
+    typeof value === 'object' && value !== null && (value as { code?: unknown }).code === 'migrating';
 interface Recovery {
     attempts: number;
     deadline: number;
@@ -79,7 +84,7 @@ export class InstanceSocket {
         this.send(event, values[0], callback);
         return this;
     }
-    private send(event: string, data: unknown, callback?: Listener) {
+    private send(event: string, data: unknown, callback?: Listener, retries = 0) {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
             callback?.({ success: false, error: '接続が切れています' });
             return;
@@ -88,11 +93,18 @@ export class InstanceSocket {
         if ((event === 'cursor:move' || event === 'entity:ephemeral') && this.ws.bufferedAmount > 65536) return;
         const id = callback ? crypto.randomUUID() : undefined;
         if (id && callback) {
+            const settle = (value: unknown) => {
+                if (event !== 'world:join' && retries < MIGRATING_RETRIES && isMigrating(value)) {
+                    setTimeout(() => this.send(event, data, callback, retries + 1), MIGRATING_RETRY_MS);
+                    return;
+                }
+                callback(value);
+            };
             const timer = setTimeout(() => {
                 this.pending.delete(id);
                 callback({ success: false, error: '応答がタイムアウトしました' });
             }, 10000);
-            this.pending.set(id, { callback, timer });
+            this.pending.set(id, { callback: settle, timer });
         }
         this.ws.send(JSON.stringify({ event, data, id }));
     }
