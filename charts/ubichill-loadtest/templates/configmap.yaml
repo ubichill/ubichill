@@ -1,0 +1,10 @@
+{{- include "ubichill-loadtest.validate" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ubichill-loadtest.fullname" . }}
+  labels:
+    {{- include "ubichill-loadtest.labels" . | nindent 4 }}
+data:
+  loadgen.mjs: |
+    {{- .Files.Get "files/loadgen.mjs" | nindent 4 }}

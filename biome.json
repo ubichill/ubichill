@@ -7,7 +7,7 @@
     },
     "files": {
         "ignoreUnknown": false,
-        "includes": ["**/src/**"]
+        "includes": ["**/src/**", "charts/ubichill-loadtest/files/**"]
     },
     "formatter": {
         "enabled": true,

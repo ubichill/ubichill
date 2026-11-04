@@ -1,0 +1,72 @@
+# ubichill-loadtest: Go インスタンスの負荷試験（1 回 = 1 release）。
+# helm install <name> charts/ubichill-loadtest -n <namespace> --set target.instanceUrl=... で Job を立て、
+# helm uninstall <name> で片付ける。Argo CD には載せない。
+
+# 攻撃対象
+target:
+  # Go の Service。管理 API（部屋の作成・チケット・削除）と WebSocket の両方に使う。
+  # 本番の Service 名（ubichill-instance）そのものを向くと描画で失敗する。
+  instanceUrl: ""
+  # 管理トークン（INSTANCE_ADMIN_TOKEN）を持つ既存の Secret。ubichill chart なら <release>-backend-secrets
+  adminTokenSecret:
+    name: ""
+    key: INSTANCE_ADMIN_TOKEN
+
+# 試験の条件。worker（Job の Pod）ごとに roomsPerWorker × usersPerRoom 本の接続を張る
+scenario:
+  # 指標の scenario ラベル（英数字・-_.）。Grafana で走りを見分ける
+  name: default
+  roomsPerWorker: 10
+  usersPerRoom: 10
+  # 部屋の定員（maxUsers）。空なら usersPerRoom + 5
+  maxUsersPerRoom: ""
+  # cursor:move の頻度（Hz）と、送る利用者の割合
+  cursorHz: 20
+  activeRatio: 0.3
+  durationSeconds: 300
+  # 接続をこの時間で均等に増やす
+  rampSeconds: 30
+  # 各部屋の 1 人が entity:patch を送る間隔（秒）。0 なら送らない
+  patchIntervalSeconds: 5
+  # 時間切れのあと、終わった直後の値を Prometheus が拾えるよう /metrics を残す時間（秒）
+  holdSeconds: 30
+  # 部屋 ID の先頭。ID は <roomPrefix>-<Pod 名の末尾>-<n>
+  roomPrefix: loadtest
+
+# worker の数（Job の parallelism と completions）
+workers: 1
+
+job:
+  backoffLimit: 0
+  # 終わった Pod（ログ）を残す時間
+  ttlSecondsAfterFinished: 3600
+  # SIGTERM で接続を閉じ、部屋を消すのに要る
+  terminationGracePeriodSeconds: 30
+
+image:
+  repository: node
+  tag: 24-alpine
+  pullPolicy: IfNotPresent
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 128Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi
+
+# 攻撃対象（Go の Pod）と別のノードに載せる。例: nodeSelector: { ubichill.com/loadgen: "true" }
+nodeSelector: {}
+affinity: {}
+tolerations: []
+
+metrics:
+  port: 9400
+
+# Prometheus Operator の PodMonitor。CRD（monitoring.coreos.com）が無いクラスタでは false にする
+podMonitor:
+  enabled: true
+  interval: 15s
+  # Prometheus の podMonitorSelector に合わせるラベル（全件を拾う設定なら不要）
+  labels: {}

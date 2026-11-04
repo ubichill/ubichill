@@ -60,6 +60,22 @@ jobs:
             --set postgresql.auth.password=test-app-password \
             --set redis.auth.password=test-redis-password
 
+      # 負荷試験の chart（依存なし）。本番の Service 名を向いた値は描画で落ちることも確かめる
+      - name: Lint load test chart
+        run: |
+          helm lint charts/ubichill-loadtest \
+            --set target.instanceUrl=http://ubichill-dev-instance:3002 \
+            --set target.adminTokenSecret.name=ubichill-dev-backend-secrets
+          if helm template lt charts/ubichill-loadtest \
+            --set target.instanceUrl=http://ubichill-instance:3002 \
+            --set target.adminTokenSecret.name=x > /dev/null 2>&1; then
+            echo "本番の Service 名を向いた target.instanceUrl が通ってしまった" >&2
+            exit 1
+          fi
+
+      - name: Test load generator
+        run: pnpm test:loadgen
+
       - name: Render chart with dev values
         run: |
           helm template ubichill-dev charts/ubichill \
