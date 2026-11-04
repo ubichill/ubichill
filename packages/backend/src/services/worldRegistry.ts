@@ -120,6 +120,25 @@ export function repositoryWorldPolicy(
     return serveUnsigned ? 'serve-unsigned' : 'skip';
 }
 
+/**
+ * リポジトリのワールドを配る名義（URL `/api/v1/authors/<handle>/worlds/<name>.yaml` の handle）。配らないなら undefined。
+ * ID で取るとき（_resolveRepositoryWorld）と URL から探すとき（_locate）で同じ規則を使う。
+ */
+export function repositoryWorldOwner(
+    claimed: AuthorAccount | null,
+    ownDomain: string,
+    serveUnsigned: boolean,
+): string | undefined {
+    switch (repositoryWorldPolicy(claimed, ownDomain, serveUnsigned)) {
+        case 'verify-own':
+            return claimed?.handle;
+        case 'serve-unsigned':
+            return OFFICIAL_HANDLE;
+        case 'skip':
+            return undefined;
+    }
+}
+
 /** 署名なしとして配るときの文書。ほかのサーバーの作者の署名が付いていれば外す（その鍵では確かめないため）。 */
 export function asUnsignedRepositoryWorld(hosted: HostedWorldDocument): HostedWorldDocument {
     return hosted.signature == null ? hosted : { ...hosted, signature: null };
@@ -464,9 +483,11 @@ class WorldRegistry {
     ): Promise<{ id: string; repository?: { filePath: string }; record?: WorldRecord } | undefined> {
         const repository = this._repository.get(name);
         if (repository) {
-            const claimed = claimedAuthorOf(repository.hosted);
-            // 署名なしとして配っている同梱ワールドは公式アカウントの名義（_resolveRepositoryWorld と同じ規則）
-            const owner = claimed?.handle ?? (serveUnsignedRepositoryWorlds() ? OFFICIAL_HANDLE : undefined);
+            const owner = repositoryWorldOwner(
+                claimedAuthorOf(repository.hosted),
+                selfDomain(),
+                serveUnsignedRepositoryWorlds(),
+            );
             if (owner === handle) return { id: name, repository };
         }
         if (!HANDLE_PATTERN.test(handle)) return undefined;

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { asUnsignedRepositoryWorld, repositoryWorldPolicy } from './worldRegistry';
+import { asUnsignedRepositoryWorld, repositoryWorldOwner, repositoryWorldPolicy } from './worldRegistry';
 
 vi.mock('@ubichill/db', () => ({ federationPeerRepository: {}, userRepository: {}, worldRepository: {} }));
 vi.mock('./authorKeyStore', () => ({ isAuthorKey: vi.fn(), resolveAuthorDisplayName: vi.fn() }));
@@ -36,5 +36,13 @@ describe('repositoryWorldPolicy（同梱ワールドを配るか）', () => {
     it('署名なしは既定では配らず、開発・プレビューの設定のときだけ署名なしとして配る', () => {
         expect(repositoryWorldPolicy(null, 'ubichill.com', false)).toBe('skip');
         expect(repositoryWorldPolicy(null, 'pr-250.ubichill.com', true)).toBe('serve-unsigned');
+    });
+
+    it('配る名義（URL の handle）は ID で取るときと同じ規則。他サーバーの作者の handle では探せない', () => {
+        expect(repositoryWorldOwner(account('alice', 'ubichill.com'), 'ubichill.com', false)).toBe('alice');
+        expect(repositoryWorldOwner(account('alice', 'ubichill.com'), 'dev.ubichill.com', true)).toBe('ubichill');
+        expect(repositoryWorldOwner(account('alice', 'ubichill.com'), 'dev.ubichill.com', false)).toBeUndefined();
+        expect(repositoryWorldOwner(null, 'dev.ubichill.com', true)).toBe('ubichill');
+        expect(repositoryWorldOwner(null, 'ubichill.com', false)).toBeUndefined();
     });
 });
