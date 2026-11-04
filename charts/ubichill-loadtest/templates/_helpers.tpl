@@ -140,8 +140,14 @@ dev（ubichill-dev-*）やプレビューの名前は通す。script（config.ts
 {{- end }}
 {{- end }}
 
+{{- /*
+  testid は CLI の --tag でも付ける。k6-operator が --tag instance_id=… --tag testrun_name=… を付け、k6 は CLI の tags で
+  script の options.tags をまるごと置き換えるので、script 側だけだと testid が指標から消える
+*/}}
 {{- define "ubichill-loadtest.args" -}}
-{{- if .Values.output.prometheus.enabled -}}
+- --tag
+- testid={{ .Values.testid }}
+{{- if .Values.output.prometheus.enabled }}
 - --out
 - experimental-prometheus-rw
 {{- end -}}

@@ -63,7 +63,9 @@ if (users && browser && configMap) {
     expect(env.LT_WS_BASE === 'http://ubichill-dev-instance:3002', `cluster の LT_WS_BASE: ${env.LT_WS_BASE}`);
     expect(env.LT_TESTID === 'smoke-1', 'LT_TESTID が testid と違う');
     expect(env.K6_PROMETHEUS_RW_TREND_STATS === 'p(50),p(95),p(99),max', 'K6_PROMETHEUS_RW_TREND_STATS');
-    expect(users.spec.args.join(' ') === '--out experimental-prometheus-rw', `args: ${users.spec.args}`);
+    // k6-operator の --tag が script の options.tags を置き換えるので、testid は CLI でも付ける
+    expect(users.spec.args.join(' ') === '--tag testid=smoke-1 --out experimental-prometheus-rw', `args: ${users.spec.args}`);
+    expect(browser.spec.args.join(' ') === '--tag testid=smoke-1 --out experimental-prometheus-rw', `browser の args: ${browser.spec.args}`);
     expect(users.spec.script.configMap.file === 'main.ts', 'script の file');
     expect(users.spec.runner.nodeSelector['ubichill.com/loadgen'] === 'true', 'nodeSelector の値が文字列の "true" でない');
     expect(envOf(browser).LT_SCENARIO === 'browser', 'browser の LT_SCENARIO');
