@@ -68,11 +68,8 @@ frontend:
   # BACKEND_HOST / BACKEND_PORT は deployment.yaml テンプレートで自動注入
   env: {}
 
-# Use Redis for shared caching
 redis:
   enabled: true
-  global:
-    imageRegistry: ""
   master:
     persistence:
       enabled: false  # No persistence needed in dev

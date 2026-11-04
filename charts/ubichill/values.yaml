@@ -2,7 +2,7 @@
 
 # Global settings
 global:
-  # ⚠ ここを設定すると bitnami subchart (postgresql/redis) にも leak し、
+  # ⚠ ここを設定すると bitnami subchart (postgresql) にも leak し、
   # docker.io/bitnamilegacy/* に対して `<global>/docker.io/...` のような壊れた URL を作る。
   # ubichill 自身の image は backend.image.repository / frontend.image.repository に
   # フルパス (ghcr.io/<owner>/...) を書く方針なので、global は空のまま。
@@ -228,35 +228,48 @@ frontend:
         - ALL
 
 # backend と instance の共有状態。REDIS_URL / REDIS_PASSWORD を両方に渡す（README の「Redis」）
+# 同梱の Redis。Bitnami の subchart ではなく chart 自身のテンプレートで Valkey（Redis 7.2 互換）を動かす（templates/redis）。
+# 中身はすべて一時的（部屋の割り当て・リース・在席・レート制限・Pub/Sub）で、消えても Go が部屋を作り直す。
+# Bitnami の subchart の key のうち、ここに無いもの（architecture・commonConfiguration など）は無視される（README の「Redis」）。
 redis:
   enabled: true
-  architecture: standalone
-  # Explicitly reset registry for this subchart to avoid inheriting 'ghcr.io' from global
-  global:
-    imageRegistry: ""
-  # Bitnami は 2025-08 に docker.io/bitnami/* の **version-pinned tags** を
-  # パージしたが、`latest` rolling tag は残っている (snapshot は bitnamilegacy
-  # に退避済だが 7.2.4-debian-11 などは pull 不可)。
-  # prod が `bitnami/redis:latest` で動いているので合わせる。
   image:
-    registry: ""
-    repository: docker.io/bitnami/redis
-    tag: latest
+    repository: docker.io/valkey/valkey
+    # 版を固定する（latest は描画で失敗する）。digest（sha256:...）を指定するとそれで引く
+    tag: "8.1.11-alpine"
+    digest: ""
+    pullPolicy: IfNotPresent
   auth:
     enabled: true
+    # password か existingSecret のどちらかが要る（無いと描画で失敗する）。GitOps では existingSecret にする
     password: ""
-    # GitOps（ArgoCD 等）では指定する。空だと描画のたびにパスワードが作り直される（README の「Redis」）
     existingSecret: ""
     existingSecretPasswordKey: ""
-  # subchart を使わず外部の Redis を使うとき（redis.enabled: false にする）。backend と instance の両方に渡す
+  # 同梱の Redis を使わず外部の Redis を使うとき（redis.enabled: false にする）。backend と instance の両方に渡す
   external:
     url: ""
     existingSecret: ""
     existingSecretPasswordKey: "redis-password"
+  config:
+    # 空なら master.resources.limits.memory の 75%（AOF の書き直しの fork・Pub/Sub のバッファの分を空ける）
+    maxmemory: ""
+    # 追い出さず、満杯なら書き込みを失敗させる。リースや部屋の割り当てを追い出すと、期限より前に別の Pod が
+    # owner を取れてしまい fencing の前提（期限までは旧 owner だけ）が崩れる。失敗は「Redis が使えない」と同じ扱いになる
+    maxmemoryPolicy: noeviction
+    appendfsync: everysec
+    # valkey.conf に足す行
+    extra: ""
   master:
+    service:
+      ports:
+        redis: 6379
     persistence:
+      # AOF を PVC に置く（再起動の前後で部屋を保つため）。false なら emptyDir（Pod を作り直すと消える）
       enabled: true
+      # 空ならクラスタの既定。"-" なら storageClassName: ""
+      storageClass: ""
       size: 2Gi
+      accessModes: [ReadWriteOnce]
     resources:
       limits:
         memory: 512Mi
@@ -264,15 +277,47 @@ redis:
       requests:
         memory: 256Mi
         cpu: 100m
-  
-  # Redis configuration for production
-  commonConfiguration: |-
-    maxmemory 512mb
-    maxmemory-policy allkeys-lru
-    appendonly yes
-    save 900 1
-    save 300 10
-    save 60 10000
+    podSecurityContext:
+      # イメージの valkey ユーザー（uid 999・gid 1000）
+      runAsNonRoot: true
+      runAsUser: 999
+      runAsGroup: 1000
+      fsGroup: 1000
+      fsGroupChangePolicy: OnRootMismatch
+      seccompProfile:
+        type: RuntimeDefault
+    containerSecurityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: [ALL]
+    nodeSelector: {}
+    affinity: {}
+    tolerations: []
+  # redis_exporter を sidecar で動かす（Valkey にも対応する作者の公式イメージ）
+  metrics:
+    enabled: false
+    image:
+      repository: docker.io/oliver006/redis_exporter
+      tag: "v1.96.0"
+      digest: ""
+      pullPolicy: IfNotPresent
+    resources:
+      limits:
+        memory: 64Mi
+        cpu: 100m
+      requests:
+        memory: 32Mi
+        cpu: 10m
+    serviceMonitor:
+      # Prometheus Operator の CRD が要る
+      enabled: false
+      interval: 30s
+      labels: {}
+  # backend・instance の Pod からだけ 6379 に繋げる（metrics は metricsFrom、空なら同じ namespace から）
+  networkPolicy:
+    enabled: false
+    metricsFrom: []
 
 # Database (optional)
 postgresql:

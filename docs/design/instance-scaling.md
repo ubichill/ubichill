@@ -82,6 +82,7 @@ Redis を設定した環境では、Redis が落ちても**プロセス内の状
 
 - 既存の部屋が「Redis が落ちたら止まる」のは、二重の owner を避けるための意図した振る舞い。Redis の可用性が部屋の可用性の上限になるので、Redis の再起動にかかる時間と自己停止の余裕（TTL − 余裕）を合わせて決める。
 - better-auth のレート制限は `rateLimit.customStorage` で Redis に置く。`secondaryStorage` はセッションと検証値まで Redis に移すので使わない（R2）。
+- Redis のメモリが満杯のときも「落ちている」と同じ扱いにする。chart の Valkey は `maxmemory-policy noeviction` で、追い出さずに書き込みを失敗させる。リースや部屋の割り当てを期限より前に追い出すと、別の Pod が owner を取れてしまい、自己停止の前提（期限までは旧 owner だけが持つ）が崩れる。`volatile-lru` も期限付きのキーを追い出すので使わない。
 
 ## 部屋の作成・入室
 
@@ -215,7 +216,7 @@ backend を 2 台以上にする前に、DB 側の「時刻の型」と「仮登
 
 1. WS Router を Go の Pod に兼ねさせ続けるか、別の Deployment に分けるか（G2 の負荷試験で決める）。
 2. ~~KEDA の閾値~~ #271 の負荷試験で決めた（「KEDA（K1）」）。1 部屋の最大人数と、大人数の部屋の配信（カーソルをまとめて送るか）は未決。
-3. Redis を Helm の subchart で持つか、外部の Redis にするか。
+3. ~~Redis を Helm の subchart で持つか、外部の Redis にするか~~ chart 自身のテンプレートで Valkey（Redis 7.2 互換、公式イメージを版で固定）を 1 replica で動かす。Bitnami の subchart は版付きのイメージが消えたのでやめた（chart の README の「同梱の Redis（Valkey）」）。外部の Redis は `redis.external.url` で使える。残り: レプリカ・Sentinel は持たないので、Valkey の Pod の作り直し（ノードの障害・更新）の間は部屋が止まる。
 4. ~~自動の scale-in の方式~~ K2 で `pod-deletion-cost` と owner の引っ越しにした。残り: Role が namespace の Pod を patch できる（Go 専用の namespace にするか）、フロントの `migrating` の再試行と `server:notice` の表示、止めている Pod の CPU が KEDA の CPU の trigger に入ること。
 5. ~~KEDA を home-manifests にどう入れるか~~ K1 で決めた（「KEDA（K1）」）。
 
