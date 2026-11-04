@@ -918,7 +918,12 @@ class WorldRegistry {
         if (policy === 'serve-unsigned') {
             const official = await userRepository.findByHandle(OFFICIAL_HANDLE);
             if (!official) return NOT_FOUND;
-            return this._verify(id, this.selfWorldUrl(OFFICIAL_HANDLE, id), asUnsignedRepositoryWorld(hosted), official.id);
+            return this._verify(
+                id,
+                this.selfWorldUrl(OFFICIAL_HANDLE, id),
+                asUnsignedRepositoryWorld(hosted),
+                official.id,
+            );
         }
         if (!claimed) return NOT_FOUND;
         const author = await userRepository.findByHandle(claimed.handle);

@@ -17,8 +17,14 @@ describe('repositoryWorldPolicy（同梱ワールドを配るか）', () => {
     });
 
     it('ほかのサーバーの作者の署名でも、開発用の設定のときは署名を外して署名なしとして配る（dev は main のイメージ）', () => {
-        expect(repositoryWorldPolicy(account('ubichill', 'ubichill.com'), 'dev.ubichill.com', true)).toBe('serve-unsigned');
-        const hosted = { definition: { metadata: { name: 'default' } }, lock: { a: 1 }, signature: { author: '@ubichill@ubichill.com' } };
+        expect(repositoryWorldPolicy(account('ubichill', 'ubichill.com'), 'dev.ubichill.com', true)).toBe(
+            'serve-unsigned',
+        );
+        const hosted = {
+            definition: { metadata: { name: 'default' } },
+            lock: { a: 1 },
+            signature: { author: '@ubichill@ubichill.com' },
+        };
         const unsigned = asUnsignedRepositoryWorld(hosted as never);
         expect(unsigned.signature).toBeNull();
         expect(unsigned.lock).toEqual({ a: 1 });
