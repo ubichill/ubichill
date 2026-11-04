@@ -44,10 +44,10 @@ Prometheus ──▶ KEDA ──▶ HPA ──▶ Go Deployment
 | キー | 内容 | TTL |
 |---|---|---|
 | `ubi:cluster:gen` | クラスタの世代 ID（最初の Pod が `SET NX` で置くランダムな値） | なし |
-| `ubi:node:<nodeId>` | `{addr, startedAt, state: ready/draining, rooms, connections, capacity}` | 15 秒（5 秒ごとに更新） |
-| `ubi:room:<roomId>` | `{node, epoch, token}`（owner のリース） | 15 秒（owner が 5 秒ごとに延長） |
+| `ubi:node:<nodeId>` | `{addr, startedAt, state: ready/draining, rooms, connections, capacity}` | 30 秒（5 秒ごとに更新） |
+| `ubi:room:<roomId>` | `{node, epoch, token}`（owner のリース） | 30 秒（owner が 5 秒ごとに延長） |
 | `ubi:room:epoch:<roomId>` | owner の世代。交代のたびに INCR | 最後の延長から 25 時間（最長のチケット＝ゲストの 24 時間より長くし、作り直した部屋の epoch が巻き戻らないようにする。G1） |
-| `ubi:presence:<roomId>` | `{members, emptySince}`（表示用の近似値） | 15 秒 |
+| `ubi:presence:<roomId>` | `{members, emptySince}`（表示用の近似値） | 30 秒 |
 | `ubi:absent:<roomId>` | owner が見つからなくなった最初の時刻（reaper の復旧猶予） | なし（部屋が見つかったら DEL） |
 | `ubi:rooms` | 部屋 ID の集合（期限切れの参照は reaper が掃除する） | なし |
 
@@ -63,7 +63,7 @@ Prometheus ──▶ KEDA ──▶ HPA ──▶ Go Deployment
   - チケットに `(gen, epoch)` を入れ、owner は自分の世代と一致しないチケットを拒否する。
   - backend から owner への管理 API（作成・チケット発行・終了）も `(gen, epoch)` を付け、一致しなければ 409 を返す。
   - チケットの署名鍵は R1 から全 Pod・再起動をまたいで同じなので、世代を入れないと、同じ部屋 ID で作り直された部屋に前の部屋のチケットが通る（特に期限 24 時間のゲストのチケット）。ゲストの再接続（`resumeToken`）も、世代が違えば新しいゲスト ID を発行する。
-- **旧 owner の自己停止**: owner は、最後に更新が成功した**要求を送った時刻**から `TTL − 余裕`（例: 15 秒 − 5 秒）を過ぎたら、その部屋の状態変更と入室を止め、接続を閉じる。時刻は monotonic clock で測る。基準を応答を受けた時刻にすると、Redis の応答が遅れたときに、旧 owner と新 owner が同時に動く隙間ができる。
+- **旧 owner の自己停止**: owner は、最後に更新が成功した**要求を送った時刻**から `TTL − 余裕`（30 秒 − 10 秒 = 20 秒。当初は 15 秒 − 5 秒だったが、CPU の上限に張り付いた Pod で延長の往復が数秒遅れて部屋が自己停止したので延ばした）を過ぎたら、その部屋の状態変更と入室を止め、接続を閉じる。時刻は monotonic clock で測る。基準を応答を受けた時刻にすると、Redis の応答が遅れたときに、旧 owner と新 owner が同時に動く隙間ができる。
 - **副作用のある処理**（部屋の終了・エンティティの永続化など、外に影響するもの）は、実行の直前に「自分のリースがまだ有効か」を確かめる。
 - **Redis が全部消えたとき**: `ubi:cluster:gen` が消えるか変わる。各 Pod は heartbeat で変化を見つけたら、持っている部屋をすべて捨てて接続を閉じる。新しい gen で部屋を割り当て直す。世代を Postgres に持つ必要はない（部屋はもともと一時的なもの）。
 

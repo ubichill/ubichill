@@ -371,6 +371,57 @@ describe('InstanceSocket', () => {
         expect(joined).toHaveBeenCalledOnce();
     });
 
+    it('入れた後の切断は、部屋のリースが切れるまで（30 秒超）部屋が無くても繋ぎ直しを続ける', async () => {
+        const resolve = vi.fn<ResolveInstance>(async () => grant);
+        const socket = new InstanceSocket(resolve);
+        const joined = vi.fn();
+        socket.emit('world:join', { instanceId: 'room', user }, joined);
+        await flush();
+        latest().open();
+        ackJoin(latest());
+        await vi.advanceTimersByTimeAsync(10000);
+        latest().close();
+        // Pod が落ちてから 35 秒、部屋のリースが残っていて作り直せない（instance_unavailable）
+        const startedAt = Date.now();
+        for (const _ of Array.from({ length: 20 })) {
+            await vi.advanceTimersByTimeAsync(10000);
+            if (Date.now() - startedAt >= 35000) break;
+            latest().open();
+            latest().receive({
+                replyTo: latest().frames[0]?.id,
+                data: { success: false, error: '部屋なし', code: 'instance_unavailable' },
+            });
+        }
+        latest().open();
+        ackJoin(latest());
+        expect(socket.connected).toBe(true);
+        expect(joined.mock.calls.filter(([result]) => !result.success)).toHaveLength(0);
+        socket.disconnect();
+    });
+
+    it('入れた後の切断でも、60 秒で繋ぎ直しを諦める', async () => {
+        const resolve = vi.fn<ResolveInstance>(async () => grant);
+        const socket = new InstanceSocket(resolve);
+        const joined = vi.fn();
+        socket.emit('world:join', { instanceId: 'room', user }, joined);
+        await flush();
+        latest().open();
+        ackJoin(latest());
+        await vi.advanceTimersByTimeAsync(10000);
+        latest().close();
+        for (const _ of Array.from({ length: 12 })) {
+            await vi.advanceTimersByTimeAsync(10000);
+            latest().open();
+            latest().receive({
+                replyTo: latest().frames[0]?.id,
+                data: { success: false, error: '部屋なし', code: 'instance_unavailable' },
+            });
+        }
+        await vi.advanceTimersByTimeAsync(120000);
+        expect(joined.mock.calls.filter(([result]) => !result.success)).toHaveLength(1);
+        expect(socket.connecting).toBe(false);
+    });
+
     describe('入室拒否', () => {
         it('拒否されたら一度だけ失敗を返し、再試行しない', async () => {
             const resolve = vi.fn<ResolveInstance>(async () => {

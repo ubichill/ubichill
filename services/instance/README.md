@@ -133,10 +133,10 @@ backendのデプロイや設定変更ではGoを再起動しない（状態が�
   Redis の在席にも `gen/epoch` を載せ、owner も在席も期限切れの参照は backend が Redis 内で再確認して `ubi:rooms` から外す。
   backend は `directory: redis` のとき、割り当てた Pod（在席の `addr`、409 の `owner.addr`）の `http://<addr>/realtime/v1` へ続く管理 API を送り、
   在席は Redis の `ubi:rooms`・`ubi:presence:<id>` から読む。
-- owner は部屋のリースを 5 秒ごとに延長する。最後に成功した延長の要求を送った時刻から 10 秒（TTL 15 秒 − 余裕 5 秒）を過ぎると、
+- owner は部屋のリースを 5 秒ごとに延長する。最後に成功した延長の要求を送った時刻から 20 秒（TTL 30 秒 − 余裕 10 秒）を過ぎると、
   その部屋の状態変更と入室を止めて接続を閉じる（`instance:closing` は送らない。クライアントはチケットを取り直して入り直し、
   部屋は新しい epoch で作り直される）。Redis の中身が消えて世代（`ubi:cluster:gen`）が変わったときも全部屋を捨てる。
-- プロセスが落ちて割り当てを解放できなかった部屋は、TTL（15 秒）が切れるまで他の Pod が作れない（管理 API は 409。backend の入室は 503 で、
+- プロセスが落ちて割り当てを解放できなかった部屋は、TTL（30 秒）が切れるまで他の Pod が作れない（管理 API は 409。backend の入室は 503 で、
   クライアントは再接続の上限の中で取り直す）。切れたあとの入室で別の Pod が新しい epoch で作り、前のチケットは `ticket_invalid` になる。
   通常の停止（SIGTERM）では解放するので、次の Pod はすぐ作り直せる。
 - 同じユーザーの別の接続へ `session:replaced` を送るのは、同じ owner の Pod の部屋どうしだけ。別の Pod の部屋に入り直したときは、

@@ -20,8 +20,12 @@ interface Frame {
     replyTo?: string;
 }
 
+// 最初の入室は早く諦めて利用者に知らせる。一度入れた後の切断（Pod の障害など）は、部屋のリースが切れて
+// 別の Pod が作り直せるまで（TTL 30 秒 + backend の作り直し）待つ必要があるので長く続ける
 const MAX_ATTEMPTS = 6;
 const RECOVERY_TIMEOUT_MS = 30000;
+const RECONNECT_MAX_ATTEMPTS = 10;
+const RECONNECT_TIMEOUT_MS = 60000;
 const STABLE_CONNECTION_MS = 10000;
 // 部屋が別の Pod へ引っ越している間（数秒）、変更の要求は code: "migrating" で断られる。同じ要求を送り直す
 const MIGRATING_RETRY_MS = 500;
@@ -30,6 +34,7 @@ const isMigrating = (value: unknown): boolean =>
     typeof value === 'object' && value !== null && (value as { code?: unknown }).code === 'migrating';
 interface Recovery {
     attempts: number;
+    maxAttempts: number;
     deadline: number;
     ticketRefreshes: number;
 }
@@ -47,6 +52,8 @@ export class InstanceSocket {
     private retry: ReturnType<typeof setTimeout> | undefined;
     private generation = 0;
     private recovery: Recovery | null = null;
+    /** 今の入室（joined）で一度でも入れたか。入れた後の切断は長い復旧の期限を使う */
+    private joinedOnce = false;
     private deadlineTimer: ReturnType<typeof setTimeout> | undefined;
     private stableTimer: ReturnType<typeof setTimeout> | undefined;
     private attemptAbort: AbortController | null = null;
@@ -166,6 +173,7 @@ export class InstanceSocket {
                     }
                     this.connected = true;
                     this.connecting = false;
+                    this.joinedOnce = true;
                     this.id = result.userId;
                     clearTimeout(this.deadlineTimer);
                     // Brief successful joins must not reset an endlessly flapping connection.
@@ -219,9 +227,14 @@ export class InstanceSocket {
     }
     private prepareRecovery(): boolean {
         if (!this.joined) return false;
-        this.recovery ??= { attempts: 0, deadline: Date.now() + RECOVERY_TIMEOUT_MS, ticketRefreshes: 0 };
+        this.recovery ??= {
+            attempts: 0,
+            maxAttempts: this.joinedOnce ? RECONNECT_MAX_ATTEMPTS : MAX_ATTEMPTS,
+            deadline: Date.now() + (this.joinedOnce ? RECONNECT_TIMEOUT_MS : RECOVERY_TIMEOUT_MS),
+            ticketRefreshes: 0,
+        };
         const remaining = this.recovery.deadline - Date.now();
-        if (remaining <= 0 || this.recovery.attempts >= MAX_ATTEMPTS) {
+        if (remaining <= 0 || this.recovery.attempts >= this.recovery.maxAttempts) {
             this.failJoin('インスタンスに接続できません。再試行の上限に達しました');
             return false;
         }
@@ -257,6 +270,7 @@ export class InstanceSocket {
         this.generation++;
         this.joined = null;
         this.recovery = null;
+        this.joinedOnce = false;
         clearTimeout(this.retry);
         clearTimeout(this.deadlineTimer);
         clearTimeout(this.stableTimer);
