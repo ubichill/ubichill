@@ -76,6 +76,11 @@ Ubichill の約束ごと（プロトコル・データの形式・API）を、**
 `protocolVersion` を上げると古いタブは入室そのものを確定した失敗にするので、上げるのは接続・入室の手順やフレームの形を変えたときだけにする（イベントの増減では上げない）。
 例: `server:notice`（その場だけの知らせ）はイベントを足しただけなので上げない。古いタブは知らないイベントを読み飛ばし、新しいタブも知らない `kind` を読み飛ばす。
 
+ただし Go のインスタンスはフロント・backend と別のイメージで、別々にデプロイされる（新しいフロントが古い Go に繋ぐ時間も、その逆もある）。
+`VersionSkewGuard` は backend の版しか見ないので、**今あるイベントの配り方を変えるときは `world:join` の `features` で宣言させ、宣言した接続にだけ新しい形で送る**。
+宣言しない接続には今の形を送り続ける（外部の実装・e2e の `apiSmoke` もこちら）。宣言を足すのはイベントの増減と同じ扱いで、`protocolVersion` は上げない。
+例: `cursors:batch`（カーソルを `cursors:moved` でまとめて受ける。`protocol/instance/README.md` の「受け取れる形の宣言」）。
+
 通知の API（`/api/v1/notifications`・SSE）も D。ただし通知の形（`shared/notification/activity.ts`）は ActivityStreams 2.0 に寄せてあり、
 ほかのサーバーと送り合うようになったら、その送り合う形は C（足すだけ）として扱う。
 

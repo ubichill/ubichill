@@ -31,6 +31,8 @@ func main() {
 	drainTimeout := flag.Duration("drain-timeout", 0, "on SIGTERM, refuse new rooms and wait up to this long for connections to end before closing the rest")
 	migrateAfter := flag.Duration("migrate-after", 3*time.Hour, "while draining, move rooms this old (with participants) to another node without reconnecting the clients")
 	disconnectNotice := flag.Duration("disconnect-notice", 10*time.Minute, "while draining, send server:notice to direct clients this long before the drain timeout")
+	cursorBatch := flag.Duration("cursor-batch-interval", 50*time.Millisecond, "send the latest cursor of each user once per interval to clients that declare cursors:batch (0 sends every move)")
+	maxConnections := flag.Int("max-connections", 0, "WebSocket connections (room members and relays) this node accepts at most; new rooms stop at 90% (0 = unlimited)")
 	deletionCost := flag.Bool("pod-deletion-cost", false, "write controller.kubernetes.io/pod-deletion-cost on this pod (needs a service account that can patch it)")
 	flag.Parse()
 	token := os.Getenv("INSTANCE_ADMIN_TOKEN")
@@ -72,7 +74,7 @@ func main() {
 	s := runtime.New(runtime.Config{
 		AdminToken: token, TicketKey: ticketKey, Guests: *guests, Origins: allowedOrigins, Grace: *grace,
 		Directory: coord.DirectoryFor(directoryClient, nil), Node: node, Addr: advertiseAddr(*addr), MaxRooms: *maxRooms,
-		MigrateAfter: *migrateAfter, DisconnectNotice: *disconnectNotice,
+		MigrateAfter: *migrateAfter, DisconnectNotice: *disconnectNotice, CursorBatch: *cursorBatch, MaxConnections: *maxConnections,
 	})
 	if *world != "" {
 		body, err := os.ReadFile(*world)

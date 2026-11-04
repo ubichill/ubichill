@@ -186,6 +186,8 @@ type migration struct {
 type relayPass struct {
 	claims claims
 	user   Object
+	// features は入室で宣言した機能。引っ越しの入り直しでも同じ宣言を送る。
+	features []string
 }
 
 // maxRelayQueue は繋ぎ直しの間にクライアントから届いたフレームを持っておく数。溢れたら接続を切る（クライアントは繋ぎ直す）。
@@ -328,7 +330,11 @@ func (l *relayLink) rejoin(to migration) (*upstream, error) {
 	c := l.pass.claims
 	c.Gen, c.Epoch, c.Expires = to.Gen, to.Epoch, time.Now().Add(time.Minute).Unix()
 	id := "relay:rejoin:" + newID()
-	join := encoded(Frame{Event: "world:join", ID: id, Data: encoded(Object{"instanceId": l.room, "token": l.s.signClaims(c), "user": l.pass.user})})
+	data := Object{"instanceId": l.room, "token": l.s.signClaims(c), "user": l.pass.user}
+	if len(l.pass.features) > 0 {
+		data["features"] = l.pass.features
+	}
+	join := encoded(Frame{Event: "world:join", ID: id, Data: encoded(data)})
 	if err := up.forward(join); err != nil {
 		up.close()
 		return nil, err

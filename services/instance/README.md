@@ -90,10 +90,20 @@ backendのデプロイや設定変更ではGoを再起動しない（状態が�
   SNS側のDBにあるインスタンスは次の入室時にワールド初期状態から復元する。
 - HelmのGo Deploymentは既定で1 replica・Recreate。`INSTANCE_DIRECTORY=redis`（chart: `instanceRuntime.directory: redis`）なら
   `instanceRuntime.replicas` を2以上にでき、更新は RollingUpdate になる（memory のまま2以上にすると描画で失敗する）。設計は docs/design/instance-scaling.md。
-- **置き場所**: 各 Pod は heartbeat に `{addr, state, rooms, connections, capacity}` を書き、`ubi:nodes` に自分を載せる。`connections` は部屋の参加者と、
-  ほかの Pod の部屋へ中継している接続の合計。`capacity` は `--max-rooms`（既定 1000）。backend は `directory: redis` のとき、
-  部屋の owner が生きていればその Pod、居なければ `state: ready` で部屋数が `capacity` 未満の Pod を接続数・部屋数の少ない順に選び、その Pod へ作成を送る。
-  draining・上限に達した Pod は作成を 503 で断り、backend は次の Pod へ送り直す。
+- **置き場所**: 各 Pod は heartbeat に `{addr, state, rooms, connections, capacity, full}` を書き、`ubi:nodes` に自分を載せる。`connections` は部屋の参加者と、
+  ほかの Pod の部屋へ中継している接続の合計。`capacity` は `--max-rooms`（既定 1000）。`full` は接続数が下の上限の 9 割に達して新しい部屋を受けないとき（古い版は書かない）。
+  backend は `directory: redis` のとき、部屋の owner が生きていればその Pod、居なければ `state: ready` で `full` でなく部屋数が `capacity` 未満の Pod を
+  接続数・部屋数の少ない順に選び、その Pod へ作成を送る。draining・上限に達した Pod は作成を 503 で断り、backend は次の Pod へ送り直す。
+- **接続数の上限**: `--max-connections`（既定 0＝無制限。数え方は `connections` と同じ）。上限の 9 割から新しい部屋（作成・引っ越し）を 503 で断り、
+  heartbeat の `full` と指標の `room_capacity_available` を 0 にする（`draining` にはしない。KEDA が draining の Pod の接続を除くので、負荷が見えなくなる）。
+  上限に達したら、新しい参加者の `world:join`（直接・中継の両方。中継元では中継を始める前）を `instance_unavailable` で断る。
+  入室中の接続は切らず、切断の猶予中の人の戻り・引っ越しの繋ぎ直し・同じ人の別の接続は断らない（数えていた人が戻るだけなので、その分だけ上限を超えうる）。
+  `/ready` は落とさない（落とすと Service から外れ、中継している接続まで draining と同じ扱いになる）。
+  上限に達した owner の部屋には新しい人が入れない（クライアントは再接続の上限の中で取り直したあと失敗にする）。部屋を別の Pod へ移すことはしない。
+- **カーソルのまとめ送り**: `--cursor-batch-interval`（既定 50ms、0 で無効）。`world:join` で `features: ["cursors:batch"]` を宣言した接続には、
+  間隔の中の `cursor:move` を利用者ごとに最新の 1 件にし、自分の分を除いて 1 フレームの `cursors:moved` で送る。宣言しない接続には今まで通り
+  `cursor:moved` を 1 件ずつ送る。WebSocket の送信（1 フレーム 1 write）が CPU の大半なので、1 部屋 10 人・3 人が動く 50ms で送るフレームが 27 から 10 になる。
+  タイマーは動きのあった部屋にだけ張り、送ったら外す。
 - **draining**: SIGTERM を受けると、新しい部屋の作成を 503 で断り、heartbeat の `state` を `draining` に書き直し、`GET /ready` を 503 にする（`/health` は 200 のまま）。
   持っている部屋は入室・操作・延長とも続ける。作られてから `--migrate-after`（既定 3h）を過ぎても参加者の居る部屋は、下の「引っ越し」で別の Pod へ移す。
   接続（参加者と中継）が無くなるか `--drain-timeout`（既定 0。chart は redis のとき 24h）を過ぎたら、残りの部屋を閉じて割り当てを解放する
@@ -111,8 +121,8 @@ backendのデプロイや設定変更ではGoを再起動しない（状態が�
   新しい owner は移ってきた参加者を切断の猶予（`max(--disconnect-grace, 30s)`）の状態で持ち、繋ぎ直しでは `user:joined` を出さない（`users:update`・`world:snapshot` は送り直す）。
 - **pod-deletion-cost**: `--pod-deletion-cost` を付けると、自分の Pod に `controller.kubernetes.io/pod-deletion-cost`（直接繋いでいるクライアント数 + owner の部屋の参加者数）を
   変わったときだけ・最短 30 秒おきに書く。client-go は使わず、in-cluster の ServiceAccount のトークンと CA で PATCH する（`POD_NAME`・`POD_NAMESPACE` が要る）。失敗しても動作は続ける。
-- **指標**: `GET /metrics`（認証なし。Ingress には出さない）で部屋数・部屋の上限と空き・WebSocket の接続数（中継を含む）・中継の数・draining を
-  Prometheus の text 形式で出す。KEDA の scale-out に使う（chart の README の「Go インスタンスの自動スケール（KEDA）」）。
+- **指標**: `GET /metrics`（認証なし。Ingress には出さない）で部屋数・部屋の上限と空き・WebSocket の接続数（中継を含む）と上限・中継の数・draining・
+  上限で断った入室の数（counter）を Prometheus の text 形式で出す。KEDA の scale-out に使う（chart の README の「Go インスタンスの自動スケール（KEDA）」）。
 - **閉じた部屋**: 終了した部屋は 2 分間どの Pod でも作り直せない（Directory の `ubi:retired:<id>`。memory なら Pod の中だけ）。割り当ての Lua の中で確かめ、
   閉じる側は token の照合・印の設定・割り当てと在席の削除を原子的に行う。owner が変わっていたら 409、Redis に届かなければ 503 を返し、DB の削除を止める。作成は 400。
 - **WS Router**: 各 Pod が Router を兼ねる。最初の `world:join` の部屋が手元に無ければ、Directory の owner の内部アドレス
@@ -133,10 +143,10 @@ backendのデプロイや設定変更ではGoを再起動しない（状態が�
   Redis の在席にも `gen/epoch` を載せ、owner も在席も期限切れの参照は backend が Redis 内で再確認して `ubi:rooms` から外す。
   backend は `directory: redis` のとき、割り当てた Pod（在席の `addr`、409 の `owner.addr`）の `http://<addr>/realtime/v1` へ続く管理 API を送り、
   在席は Redis の `ubi:rooms`・`ubi:presence:<id>` から読む。
-- owner は部屋のリースを 5 秒ごとに延長する。最後に成功した延長の要求を送った時刻から 10 秒（TTL 15 秒 − 余裕 5 秒）を過ぎると、
+- owner は部屋のリースを 5 秒ごとに延長する。最後に成功した延長の要求を送った時刻から 20 秒（TTL 30 秒 − 余裕 10 秒）を過ぎると、
   その部屋の状態変更と入室を止めて接続を閉じる（`instance:closing` は送らない。クライアントはチケットを取り直して入り直し、
   部屋は新しい epoch で作り直される）。Redis の中身が消えて世代（`ubi:cluster:gen`）が変わったときも全部屋を捨てる。
-- プロセスが落ちて割り当てを解放できなかった部屋は、TTL（15 秒）が切れるまで他の Pod が作れない（管理 API は 409。backend の入室は 503 で、
+- プロセスが落ちて割り当てを解放できなかった部屋は、TTL（30 秒）が切れるまで他の Pod が作れない（管理 API は 409。backend の入室は 503 で、
   クライアントは再接続の上限の中で取り直す）。切れたあとの入室で別の Pod が新しい epoch で作り、前のチケットは `ticket_invalid` になる。
   通常の停止（SIGTERM）では解放するので、次の Pod はすぐ作り直せる。
 - 同じユーザーの別の接続へ `session:replaced` を送るのは、同じ owner の Pod の部屋どうしだけ。別の Pod の部屋に入り直したときは、

@@ -1,0 +1,14 @@
+{
+  "name": "@ubichill/loadtest",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "k6 の負荷試験の script（charts/ubichill-loadtest の ConfigMap に載る）。型検査のためだけのパッケージ",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/k6": "2.3.1",
+    "typescript": "catalog:"
+  }
+}

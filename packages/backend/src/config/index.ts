@@ -4,6 +4,8 @@ import { z } from 'zod';
 // 環境変数を読み込む
 config();
 
+export const INSTANCE_CREATE_LIMIT_DEFAULT = 10;
+
 const emptyToUndefined = (value: unknown): unknown => (value === '' ? undefined : value);
 
 // 環境変数のバリデーションスキーマ
@@ -16,6 +18,11 @@ const envSchema = z
         // SPA は1画面の表示でも複数のAPIを呼ぶため、100/15分では即座に枯渇する。
         // 認証・バージョン・ヘルスは limiter から除外した上で、上限を現実的な値に引き上げる。
         RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().finite().default(10000),
+        // 1 IP・1 時間あたりのインスタンス作成の上限。負荷試験（k6 の Pod は IP が少ない）で dev だけ上げる。本番では既定より緩められない
+        INSTANCE_CREATE_LIMIT_PER_HOUR: z.preprocess(
+            emptyToUndefined,
+            z.coerce.number().int().positive().default(INSTANCE_CREATE_LIMIT_DEFAULT),
+        ),
         INSTANCE_EMPTY_TIMEOUT_MS: z.coerce.number().int().nonnegative().default(5000),
         // Go再起動で部屋が消えたときは、通常の空室より長く再接続を待つ。
         INSTANCE_RECOVERY_GRACE_MS: z.coerce.number().int().nonnegative().default(60000),
@@ -61,6 +68,13 @@ const envSchema = z
             'WORLDS_SERVE_UNSIGNED_REPOSITORY は本番（NODE_ENV=production）では使えません（署名の無いワールドを公式として配ってしまう）',
         path: ['WORLDS_SERVE_UNSIGNED_REPOSITORY'],
     })
+    .refine(
+        (env) => !(env.NODE_ENV === 'production' && env.INSTANCE_CREATE_LIMIT_PER_HOUR > INSTANCE_CREATE_LIMIT_DEFAULT),
+        {
+            message: `INSTANCE_CREATE_LIMIT_PER_HOUR は本番（NODE_ENV=production）では ${INSTANCE_CREATE_LIMIT_DEFAULT} より大きくできません（負荷試験用の緩和）`,
+            path: ['INSTANCE_CREATE_LIMIT_PER_HOUR'],
+        },
+    )
     .refine((env) => env.INSTANCE_DIRECTORY !== 'redis' || env.REDIS_URL !== undefined, {
         message: 'INSTANCE_DIRECTORY=redis には REDIS_URL が要ります',
         path: ['INSTANCE_DIRECTORY'],
@@ -94,6 +108,7 @@ export const appConfig = {
     rateLimit: {
         windowMs: parsedEnv.data.RATE_LIMIT_WINDOW_MS,
         maxRequests: parsedEnv.data.RATE_LIMIT_MAX_REQUESTS,
+        instanceCreatePerHour: parsedEnv.data.INSTANCE_CREATE_LIMIT_PER_HOUR,
     },
     instance: {
         emptyTimeoutMs: parsedEnv.data.INSTANCE_EMPTY_TIMEOUT_MS,
@@ -143,6 +158,7 @@ console.log(
     `   CORS許可オリジン: ${Array.isArray(appConfig.cors.origin) ? appConfig.cors.origin.join(', ') : appConfig.cors.origin}`,
 );
 console.log(`   レート制限: ${appConfig.rateLimit.maxRequests}リクエスト/${appConfig.rateLimit.windowMs / 1000}秒`);
+console.log(`   インスタンス作成の上限: ${appConfig.rateLimit.instanceCreatePerHour}件/時（1 IP）`);
 console.log(`   デバッグモード: ${appConfig.debug ? '有効' : '無効'}`);
 console.log(`   空インスタンス自動削除: ${appConfig.instance.emptyTimeoutMs / 1000}秒`);
 console.log('📦 DB設定:');

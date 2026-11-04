@@ -13,6 +13,11 @@
 {{- if le (int $a.targetConnectionsPerPod) 0 }}
 {{- fail "instanceRuntime.autoscaling.targetConnectionsPerPod は 1 以上にします" }}
 {{- end }}
+{{- $maxConnections := int .Values.instanceRuntime.maxConnections }}
+{{- /* Go は上限の 9 割（limits.go の roomCutoff）から新しい部屋を断るので、その手前で増やす */}}
+{{- if and (gt $maxConnections 0) (ge (int $a.targetConnectionsPerPod) (sub $maxConnections (div $maxConnections 10))) }}
+{{- fail (printf "instanceRuntime.autoscaling.targetConnectionsPerPod（%v）は instanceRuntime.maxConnections（%v）の 9 割未満にします（新しい部屋を断り始めてから増やすと、増えるまでの間は新しい部屋を作れない）" $a.targetConnectionsPerPod $maxConnections) }}
+{{- end }}
 {{- $selector := $a.prometheus.selector | default (printf "namespace=%q,service=%q" .Release.Namespace (printf "%s-instance" (include "ubichill.fullname" .))) }}
 {{- /* KEDA の CRD が要る。無いクラスタでは有効にしない */}}
 apiVersion: keda.sh/v1alpha1

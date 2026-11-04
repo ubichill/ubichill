@@ -1,0 +1,42 @@
+{{- if .Values.browser.enabled }}
+{{- /* 画面の体験の確認。Chromium は CPU・メモリを食うので、利用者の負荷とは別の TestRun（runner 1 つ）にする */}}
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: {{ include "ubichill-loadtest.fullname" . }}-browser
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ubichill-loadtest.labels" . | nindent 4 }}
+spec:
+  parallelism: 1
+  script:
+    configMap:
+      name: {{ include "ubichill-loadtest.fullname" . }}
+      file: main.ts
+  {{- with (include "ubichill-loadtest.args" .) }}
+  args:
+    {{- . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.testRun.cleanup }}
+  cleanup: {{ . | quote }}
+  {{- end }}
+  runner:
+    image: {{ .Values.browser.image | quote }}
+    imagePullPolicy: {{ .Values.runner.imagePullPolicy }}
+    metadata:
+      labels:
+        {{- include "ubichill-loadtest.labels" . | nindent 8 }}
+        ubichill.com/loadtest-role: browser
+    env:
+      {{- include "ubichill-loadtest.env" (dict "root" . "scenario" "browser") | nindent 6 }}
+    resources:
+      {{- toYaml .Values.browser.resources | nindent 6 }}
+    {{- with (default .Values.runner.nodeSelector .Values.browser.nodeSelector) }}
+    nodeSelector:
+      {{- include "ubichill-loadtest.nodeSelector" . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.runner.tolerations }}
+    tolerations:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+{{- end }}

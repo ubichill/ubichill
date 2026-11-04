@@ -226,16 +226,28 @@ Goを外部で運用する場合は `instanceRuntime.enabled=false` とし、bac
 
 Go の Pod は `GET /metrics`（ポート `realtime`＝3002）で負荷を Prometheus の text 形式で出す。認証は無い。Ingress は `/realtime/v1/ws` だけを Go へ送るのでクラスタの外には出ず、中身は数だけ（部屋 ID・利用者 ID は出さない）。管理トークンで守ると Prometheus にそのトークンを渡すことになるので付けない。
 
-| 指標（gauge） | 意味 |
-|---|---|
-| `ubichill_instance_active_rooms` | この Pod が owner の部屋の数 |
-| `ubichill_instance_room_capacity` | 部屋の上限（`instanceRuntime.maxRooms`） |
-| `ubichill_instance_room_capacity_available` | あと受けられる部屋の数。draining の間は 0 |
-| `ubichill_instance_websocket_connections` | この Pod が持つ WebSocket。部屋の参加者（他の Pod から中継されたものを含む）＋他の Pod へ中継している接続。heartbeat の `connections` と同じ数え方 |
-| `ubichill_instance_relay_connections` | 他の Pod の部屋へ中継している接続 |
-| `ubichill_instance_draining` | SIGTERM のあと新しい部屋を断っている間は 1 |
+| 指標 | 種類 | 意味 |
+|---|---|---|
+| `ubichill_instance_active_rooms` | gauge | この Pod が owner の部屋の数 |
+| `ubichill_instance_room_capacity` | gauge | 部屋の上限（`instanceRuntime.maxRooms`） |
+| `ubichill_instance_room_capacity_available` | gauge | あと受けられる部屋の数。draining の間と、接続数が `maxConnections` の 9 割に達している間は 0 |
+| `ubichill_instance_websocket_connections` | gauge | この Pod が持つ WebSocket。部屋の参加者（他の Pod から中継されたものを含む）＋他の Pod へ中継している接続。heartbeat の `connections` と同じ数え方 |
+| `ubichill_instance_connection_capacity` | gauge | 接続数の上限（`instanceRuntime.maxConnections`）。0 は無制限 |
+| `ubichill_instance_relay_connections` | gauge | 他の Pod の部屋へ中継している接続 |
+| `ubichill_instance_draining` | gauge | SIGTERM のあと新しい部屋を断っている間は 1 |
+| `ubichill_instance_rejected_joins_total{reason="connection_limit"}` | counter | 接続数の上限で断った `world:join`（直接・中継の両方）の数 |
 
 中継された接続は、中継する Pod と owner の Pod の両方で数える（どちらも WebSocket を 1 本持つ）。利用者の数は `sum(websocket_connections) - sum(relay_connections)`。CPU・メモリは kube-prometheus-stack の cAdvisor（`container_cpu_usage_seconds_total` など）で見る。
+
+### 接続数の上限（`maxConnections`）
+
+KEDA が増やすまでの間に 1 Pod が飽和すると、延長の goroutine が遅れて部屋が自己停止し、全員が切断される。`instanceRuntime.maxConnections`（`--max-connections`、既定 0＝無制限）で 1 Pod の接続数（`websocket_connections` と同じ単位）を抑える。
+
+- 上限の 9 割から新しい部屋を受けない（作成・引っ越しを 503、heartbeat の `full`、`room_capacity_available` を 0）。backend は別の Pod に部屋を置く。持っている部屋には残りの 1 割で人が入れる。
+- 上限に達したら新しい参加者の入室を `instance_unavailable` で断る。クライアントはチケットを取り直して入り直す（Service が別の Pod に当てれば、そこから中継で入れる。owner が上限なら入れない）。入室中の接続は切らない。
+- draining にはしない。`/ready` も落とさない。KEDA の接続数・部屋数の query は draining の Pod を除くので、draining にすると飽和した Pod の負荷が scale-out に効かなくなる。
+- `autoscaling.targetConnectionsPerPod` は `maxConnections` の 9 割未満にする（描画で確かめる）。新しい部屋を断り始めてから増やすと、増えるまでの間は新しい部屋を作れない。
+- 値の目安: #271（まとめ送りの前。CPU 上限 1 コア、1 部屋 10 人・カーソル 20Hz・3 割が操作）では 1 Pod の `websocket_connections` が約 375 で遅延 p95 が 300ms を超えた。まとめ送り（`cursors:batch`）で 1 部屋 10 人・3 人が動く配信の CPU は約 4 割減った（Go のベンチマーク）ので、上限は k6 で測り直してから決める。決めるまでは例えば `maxConnections: 400`（新しい部屋は 360 で止まる）・`targetConnectionsPerPod: 200` のように、飽和の手前で止める値にする。
 
 ```yaml
 instanceRuntime:
@@ -269,7 +281,9 @@ instanceRuntime:
 
 ### 自動で縮める
 
-HPA が台数を減らすと、ReplicaSet は `controller.kubernetes.io/pod-deletion-cost` の小さい Pod から消す。Go は自分の Pod にこの注釈を書く（値 = 直接繋いでいるクライアント数 + 自分が owner の部屋の参加者数。変わったときだけ、最短 30 秒おき）。書くために、`autoscaling.enabled` のときだけ ServiceAccount・Role（pods の get/patch）・RoleBinding を作り、`POD_NAMESPACE` を Downward API で渡す。書けなくても動作は続ける（警告は 10 分に 1 回）。
+HPA が台数を減らすと、ReplicaSet は `controller.kubernetes.io/pod-deletion-cost` の小さい Pod から消す。Go は自分の Pod にこの注釈を書く（値 = 直接繋いでいるクライアント数 + 自分が owner の部屋の参加者数。変わったときだけ、最短 30 秒おき）。書くために、`autoscaling.enabled` のときだけ ServiceAccount・Role（pods の patch）・RoleBinding を作り、`POD_NAMESPACE` を Downward API で渡す。書けなくても動作は続ける（警告は 10 分に 1 回）。
+
+Go の権限は 2 段で絞る。Role は namespace の pods の `patch` だけ（Pod 名は起動ごとに変わるので `resourceNames` では絞れない）。その上で `ValidatingAdmissionPolicy`（`autoscaling.deletionCostPolicy.enabled`、既定 true、Kubernetes 1.30 以上）が、この ServiceAccount からの更新を「同じ release の instance の Pod」「変わるのは pod-deletion-cost の注釈だけ（ほかの注釈・ラベル・finalizer・ownerReferences・spec は同じ）」に限る。Go が乗っ取られても、できるのは同じ Deployment の Pod の消される順を変えることだけになる。policy は cluster-scoped なので名前に namespace を含める。無いクラスタでは `deletionCostPolicy.enabled: false` にする（Role だけになる）。
 
 消された Pod は SIGTERM で次のように止まる。
 
@@ -287,6 +301,19 @@ HPA が台数を減らすと、ReplicaSet は `controller.kubernetes.io/pod-dele
 3. `instanceRuntime.metrics.serviceMonitor.enabled: true` だけを先に入れ、Prometheus で `ubichill_instance_active_rooms{namespace="ubichill",service="ubichill-instance"}` が取れることを確かめる。
 4. 閾値を確かめ（既定は #271 の負荷試験から）、`instanceRuntime.autoscaling.enabled: true` と `maxReplicaCount` を入れる。Argo CD の Application には `apps/Deployment` の `/spec/replicas` を `ignoreDifferences` に足す（HPA が変えた台数を差分にしない）。
 5. `kubectl get scaledobject,hpa -n ubichill` で `READY`・`ACTIVE` と HPA の指標が読めていることを確かめる。
+
+## 環境（本番・dev・プレビュー）
+
+| | 本番 `ubichill` | dev `ubichill-dev` | プレビュー `preview-pr-<n>` |
+|---|---|---|---|
+| 値 | `values.yaml` + `values-prod.yaml` | `values.yaml` + `values-dev.yaml`（+ 本番と同じ構成を Application 側で重ねる） | `values-dev.yaml` + PR の `values-preview.yaml` |
+| イメージ | `vX.Y.Z`（release） | `main-<sha>`（main の最新。Image Updater が追う） | `sha-<PR の sha>` |
+| DB・Redis | 永続 | 永続（PR と違い消えない） | 消える |
+| `NODE_ENV` | production | development（メール確認なし・未署名の同梱ワールド可） | development |
+| Go | redis・KEDA（増減） | 本番と同じ。生成器と別ノード（`instanceRuntime.affinity`） | redis・2 Pod |
+| 用途 | | 負荷試験・スケールの評価（`docs/operations/load-testing.md`） | PR の確認 |
+
+Application の定義は home-manifests（`argocd-apps/ubichill.yaml`・`ubichill-dev.yaml`・`ubichill-preview.yaml`）。dev の Go を負荷の生成器と別のノードに置くには `instanceRuntime.affinity` に `requiredDuringSchedulingIgnoredDuringExecution` でノードのラベル（例: `ubichill.com/loadgen` が無いノード）を指定する。
 
 ## コントリビューション / ライセンス
 

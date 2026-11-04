@@ -44,10 +44,10 @@ Prometheus ──▶ KEDA ──▶ HPA ──▶ Go Deployment
 | キー | 内容 | TTL |
 |---|---|---|
 | `ubi:cluster:gen` | クラスタの世代 ID（最初の Pod が `SET NX` で置くランダムな値） | なし |
-| `ubi:node:<nodeId>` | `{addr, startedAt, state: ready/draining, rooms, connections, capacity}` | 15 秒（5 秒ごとに更新） |
-| `ubi:room:<roomId>` | `{node, epoch, token}`（owner のリース） | 15 秒（owner が 5 秒ごとに延長） |
+| `ubi:node:<nodeId>` | `{addr, startedAt, state: ready/draining, rooms, connections, capacity, full?}` | 30 秒（5 秒ごとに更新） |
+| `ubi:room:<roomId>` | `{node, epoch, token}`（owner のリース） | 30 秒（owner が 5 秒ごとに延長） |
 | `ubi:room:epoch:<roomId>` | owner の世代。交代のたびに INCR | 最後の延長から 25 時間（最長のチケット＝ゲストの 24 時間より長くし、作り直した部屋の epoch が巻き戻らないようにする。G1） |
-| `ubi:presence:<roomId>` | `{members, emptySince}`（表示用の近似値） | 15 秒 |
+| `ubi:presence:<roomId>` | `{members, emptySince}`（表示用の近似値） | 30 秒 |
 | `ubi:absent:<roomId>` | owner が見つからなくなった最初の時刻（reaper の復旧猶予） | なし（部屋が見つかったら DEL） |
 | `ubi:rooms` | 部屋 ID の集合（期限切れの参照は reaper が掃除する） | なし |
 
@@ -63,7 +63,7 @@ Prometheus ──▶ KEDA ──▶ HPA ──▶ Go Deployment
   - チケットに `(gen, epoch)` を入れ、owner は自分の世代と一致しないチケットを拒否する。
   - backend から owner への管理 API（作成・チケット発行・終了）も `(gen, epoch)` を付け、一致しなければ 409 を返す。
   - チケットの署名鍵は R1 から全 Pod・再起動をまたいで同じなので、世代を入れないと、同じ部屋 ID で作り直された部屋に前の部屋のチケットが通る（特に期限 24 時間のゲストのチケット）。ゲストの再接続（`resumeToken`）も、世代が違えば新しいゲスト ID を発行する。
-- **旧 owner の自己停止**: owner は、最後に更新が成功した**要求を送った時刻**から `TTL − 余裕`（例: 15 秒 − 5 秒）を過ぎたら、その部屋の状態変更と入室を止め、接続を閉じる。時刻は monotonic clock で測る。基準を応答を受けた時刻にすると、Redis の応答が遅れたときに、旧 owner と新 owner が同時に動く隙間ができる。
+- **旧 owner の自己停止**: owner は、最後に更新が成功した**要求を送った時刻**から `TTL − 余裕`（30 秒 − 10 秒 = 20 秒。当初は 15 秒 − 5 秒だったが、CPU の上限に張り付いた Pod で延長の往復が数秒遅れて部屋が自己停止したので延ばした）を過ぎたら、その部屋の状態変更と入室を止め、接続を閉じる。時刻は monotonic clock で測る。基準を応答を受けた時刻にすると、Redis の応答が遅れたときに、旧 owner と新 owner が同時に動く隙間ができる。
 - **副作用のある処理**（部屋の終了・エンティティの永続化など、外に影響するもの）は、実行の直前に「自分のリースがまだ有効か」を確かめる。
 - **Redis が全部消えたとき**: `ubi:cluster:gen` が消えるか変わる。各 Pod は heartbeat で変化を見つけたら、持っている部屋をすべて捨てて接続を閉じる。新しい gen で部屋を割り当て直す。世代を Postgres に持つ必要はない（部屋はもともと一時的なもの）。
 
@@ -107,11 +107,11 @@ Redis を設定した環境では、Redis が落ちても**プロセス内の状
 
 使い方・本番で有効にする手順は [chart の README](../../charts/ubichill/README.md) の「Go インスタンスの自動スケール（KEDA）」。
 
-- Go Pod は `GET /metrics` で `ubichill_instance_{active_rooms,room_capacity,room_capacity_available,websocket_connections,relay_connections,draining}` を Prometheus の text 形式で出す。CPU・メモリは cAdvisor のものを使う（Go からは出さない）。
-  - **標準ライブラリだけで書く**。gauge 6 つでラベルも histogram も無く、text 形式は数行で書ける。`prometheus/client_golang` は `client_model`・`common`・`procfs`・`protobuf` などを引き込み、Go の依存（今は gorilla/websocket と go-redis だけ）が数倍になる。histogram（配信の遅延の p95・p99）が要るようになったら入れ直す。
+- Go Pod は `GET /metrics` で `ubichill_instance_{active_rooms,room_capacity,room_capacity_available,websocket_connections,connection_capacity,relay_connections,draining}` と counter の `ubichill_instance_rejected_joins_total{reason}` を Prometheus の text 形式で出す。CPU・メモリは cAdvisor のものを使う（Go からは出さない）。
+  - **標準ライブラリだけで書く**。gauge 7 つと固定のラベル 1 つの counter で histogram は無く、text 形式は数行で書ける。`prometheus/client_golang` は `client_model`・`common`・`procfs`・`protobuf` などを引き込み、Go の依存（今は gorilla/websocket と go-redis だけ）が数倍になる。histogram（配信の遅延の p95・p99）が要るようになったら入れ直す。
   - **認証は付けない**。Ingress は `/realtime/v1/ws` だけを Go へ送るので、管理 API と同じくクラスタの外には出ない。中身は数だけ（部屋 ID・利用者 ID・ラベルを出さない）。管理トークンで守ると Prometheus にそのトークンを渡すことになり、漏れたときの被害の方が大きい。
   - `websocket_connections` は heartbeat の `connections` と同じ数え方（部屋の参加者＋他の Pod へ中継している接続）。中継された接続は中継する Pod と owner の Pod の両方で数える。どちらも WebSocket を持つので負荷としては正しい。
-  - `room_capacity_available` は draining の間 0 にする（合計して受けられる部屋の数を多く見積もらない）。
+  - `room_capacity_available` は draining の間と、接続数が `--max-connections` の 9 割に達している間は 0 にする（合計して受けられる部屋の数を多く見積もらない）。接続数で断っている Pod は `draining` にしない（下の query が draining の Pod の接続を除くので、飽和した Pod の負荷が見えなくなる）。
 - chart は `ServiceMonitor`（`instanceRuntime.metrics.serviceMonitor.enabled`）と `ScaledObject`（`instanceRuntime.autoscaling.enabled`）を値で作る。どちらも既定は無効（CRD の無いクラスタで描画・適用が落ちない）。`ScaledObject` は `directory: redis` でないと描画で失敗する。
 - **集約の指標（`ubichill_instance_scaling_pressure`・recording rule）は作らない**。trigger を接続数・部屋数・CPU の 3 つにし、HPA に最大を取らせる（HPA は trigger ごとに台数を出して大きい方を取る）。
   - recording rule は評価の間隔ぶん遅れ、`PrometheusRule` の CRD と Prometheus の `ruleSelector` にも依存する。rule が読み込まれないと KEDA は空の結果を受け、既定（`ignoreNullValues: true`）では 0 として scale-out しないまま気付けない。
@@ -215,7 +215,7 @@ backend を 2 台以上にする前に、DB 側の「時刻の型」と「仮登
 ## 未決
 
 1. WS Router を Go の Pod に兼ねさせ続けるか、別の Deployment に分けるか（G2 の負荷試験で決める）。
-2. ~~KEDA の閾値~~ #271 の負荷試験で決めた（「KEDA（K1）」）。1 部屋の最大人数と、大人数の部屋の配信（カーソルをまとめて送るか）は未決。
+2. ~~KEDA の閾値~~ #271 の負荷試験で決めた（「KEDA（K1）」）。~~大人数の部屋の配信~~ カーソルは `cursors:batch` を宣言した接続にまとめて送る（`--cursor-batch-interval`、既定 50ms）。1 部屋の最大人数と、まとめ送りの後の 1 Pod の接続数の上限（`--max-connections`）は k6 の負荷試験で決める。
 3. ~~Redis を Helm の subchart で持つか、外部の Redis にするか~~ chart 自身のテンプレートで Valkey（Redis 7.2 互換、公式イメージを版で固定）を 1 replica で動かす。Bitnami の subchart は版付きのイメージが消えたのでやめた（chart の README の「同梱の Redis（Valkey）」）。外部の Redis は `redis.external.url` で使える。残り: レプリカ・Sentinel は持たないので、Valkey の Pod の作り直し（ノードの障害・更新）の間は部屋が止まる。
 4. ~~自動の scale-in の方式~~ K2 で `pod-deletion-cost` と owner の引っ越しにした。残り: Role が namespace の Pod を patch できる（Go 専用の namespace にするか）、フロントの `migrating` の再試行と `server:notice` の表示、止めている Pod の CPU が KEDA の CPU の trigger に入ること。
 5. ~~KEDA を home-manifests にどう入れるか~~ K1 で決めた（「KEDA（K1）」）。
