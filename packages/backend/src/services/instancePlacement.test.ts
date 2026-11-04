@@ -8,6 +8,7 @@ const node = (id: string, load: Partial<NodeLoad> = {}): NodeLoad => ({
     rooms: 0,
     connections: 0,
     capacity: 10,
+    full: false,
     ...load,
 });
 const ids = (nodes: NodeLoad[]) => nodes.map((n) => n.id);
@@ -31,6 +32,12 @@ describe('placementOrder', () => {
             node('busy', { connections: 900, rooms: 9 }),
         ];
         expect(ids(placementOrder(nodes))).toEqual(['busy']);
+    });
+
+    it('接続数で新しい部屋を断っている Pod（full）には、部屋数に空きがあっても置かない。owner なら先頭に置く', () => {
+        const nodes = [node('full', { full: true, rooms: 0, capacity: 0 }), node('busy', { connections: 900 })];
+        expect(ids(placementOrder(nodes))).toEqual(['busy']);
+        expect(ids(placementOrder(nodes, 'full'))).toEqual(['full', 'busy']);
     });
 
     it('上限を書いていない Pod（capacity 0）は上限なしとして扱う', () => {
@@ -76,7 +83,11 @@ describe('parseNodeLoad', () => {
             rooms: 2,
             connections: 3,
             capacity: 50,
+            full: false,
         });
+        expect(parseNodeLoad('n', value.replace('}', ',"full":true}'))?.full).toBe(true);
+        // true 以外は full と見なさない（古い版の Pod は書かない）
+        expect(parseNodeLoad('n', value.replace('}', ',"full":"yes"}'))?.full).toBe(false);
     });
 
     it('capacity の無い古い Pod は上限 0（上限なし）', () => {
@@ -119,7 +130,7 @@ describe('readPlacement', () => {
         const view = await readPlacement({ sendCommand }, 'room', 'p:');
         expect(view).toEqual({
             owner: 'a',
-            nodes: [{ id: 'a', addr: 'a:1', state: 'ready', rooms: 0, connections: 0, capacity: 5 }],
+            nodes: [{ id: 'a', addr: 'a:1', state: 'ready', rooms: 0, connections: 0, capacity: 5, full: false }],
         });
         expect(sendCommand).toHaveBeenCalledWith(['HGET', 'p:room:room', 'node']);
         expect(sendCommand).toHaveBeenCalledWith(['MGET', 'p:node:a', 'p:node:expired', 'p:node:broken']);

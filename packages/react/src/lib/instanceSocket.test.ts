@@ -84,7 +84,66 @@ describe('InstanceSocket', () => {
         latest().open();
         expect(resolve).toHaveBeenCalledWith('room', 'secret-pw', expect.any(AbortSignal));
         expect(latest().frames[0]?.data).not.toHaveProperty('password');
-        expect(Object.keys(latest().frames[0]?.data as object).sort()).toEqual(['instanceId', 'token', 'user']);
+        expect(Object.keys(latest().frames[0]?.data as object).sort()).toEqual([
+            'features',
+            'instanceId',
+            'token',
+            'user',
+        ]);
+        socket.disconnect();
+    });
+    it('入室のたびに cursors:batch を宣言する（再接続でも）', async () => {
+        const socket = new InstanceSocket(async () => grant);
+        socket.emit('world:join', { instanceId: 'room', user: { ...user } }, vi.fn());
+        await flush();
+        latest().open();
+        expect(latest().frames[0]?.data).toMatchObject({ features: ['cursors:batch'] });
+        ackJoin(latest());
+        latest().close();
+        await vi.advanceTimersByTimeAsync(1000);
+        await flush();
+        latest().open();
+        expect(FakeWebSocket.instances).toHaveLength(2);
+        expect(latest().frames[0]?.data).toMatchObject({ features: ['cursors:batch'] });
+        socket.disconnect();
+    });
+    it('cursors:moved を順に個々の cursor:moved として配り、まとめたイベントは配らない', async () => {
+        const socket = new InstanceSocket(async () => grant);
+        const moved = vi.fn();
+        const batched = vi.fn();
+        socket.on('cursor:moved', moved);
+        socket.on('cursors:moved', batched);
+        socket.emit('world:join', { instanceId: 'room', user: { ...user } }, vi.fn());
+        await flush();
+        latest().open();
+        ackJoin(latest());
+        const bob = { userId: 'bob', position: { x: 1, y: 2 }, heldEntityId: null };
+        const carol = { userId: 'carol', position: { x: 3, y: 4 }, heldEntityId: 'e1' };
+        const dave = { userId: 'dave', position: { x: 5, y: 6 } };
+        latest().receive({ event: 'cursors:moved', data: [bob, carol, dave] });
+        expect(moved.mock.calls).toEqual([[bob], [carol], [dave]]);
+        expect(batched).not.toHaveBeenCalled();
+        // 1 件ずつの cursor:moved（宣言を知らない古いサーバー）もそのまま届く
+        latest().receive({ event: 'cursor:moved', data: bob });
+        expect(moved).toHaveBeenCalledTimes(4);
+        socket.disconnect();
+    });
+    it('壊れた cursors:moved は読み飛ばし、後続のイベントを止めない', async () => {
+        const socket = new InstanceSocket(async () => grant);
+        const moved = vi.fn();
+        const left = vi.fn();
+        socket.on('cursor:moved', moved);
+        socket.on('user:left', left);
+        socket.emit('world:join', { instanceId: 'room', user: { ...user } }, vi.fn());
+        await flush();
+        latest().open();
+        ackJoin(latest());
+        latest().receive({ event: 'cursors:moved', data: { userId: 'bob' } });
+        latest().receive({ event: 'cursors:moved' });
+        latest().receive({ event: 'cursors:moved', data: [] });
+        latest().receive({ event: 'user:left', data: 'bob' });
+        expect(moved).not.toHaveBeenCalled();
+        expect(left).toHaveBeenCalledWith('bob');
         socket.disconnect();
     });
     it('再接続は新しいチケットと最新位置を使い、createを再送しない', async () => {
@@ -103,6 +162,86 @@ describe('InstanceSocket', () => {
         expect(resolve).toHaveBeenCalledTimes(2);
         expect(latest().frames).toHaveLength(1);
         expect(latest().frames[0]?.data).toMatchObject({ user: { position: { x: 42, y: 20 } } });
+        socket.disconnect();
+    });
+    it('引っ越し中（migrating）の要求は送り直し、応答が返れば一度だけ返す', async () => {
+        const socket = new InstanceSocket(async () => grant);
+        socket.emit('world:join', { instanceId: 'room', user: { ...user } }, vi.fn());
+        await flush();
+        latest().open();
+        ackJoin(latest());
+        const done = vi.fn();
+        socket.emit('state:update', { key: 'k', value: { n: 1 }, expectedRevision: 0 }, done);
+        const ws = latest();
+        expect(ws.frames).toHaveLength(2);
+        ws.receive({ replyTo: ws.frames[1]?.id, data: { success: false, error: '移動中', code: 'migrating' } });
+        expect(done).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(500);
+        expect(ws.frames).toHaveLength(3);
+        expect(ws.frames[2]?.id).not.toBe(ws.frames[1]?.id);
+        expect(ws.frames[2]?.data).toEqual({ key: 'k', value: { n: 1 }, expectedRevision: 0 });
+        ws.receive({ replyTo: ws.frames[2]?.id, data: { success: true } });
+        expect(done).toHaveBeenCalledExactlyOnceWith({ success: true });
+        socket.disconnect();
+    });
+    it('引っ越しが終わらなければ 20 回で諦めて migrating の失敗を返す', async () => {
+        const socket = new InstanceSocket(async () => grant);
+        socket.emit('world:join', { instanceId: 'room', user: { ...user } }, vi.fn());
+        await flush();
+        latest().open();
+        ackJoin(latest());
+        const done = vi.fn();
+        socket.emit('state:update', { key: 'k', value: { n: 2 }, expectedRevision: 0 }, done);
+        const ws = latest();
+        for (const _ of Array.from({ length: 21 })) {
+            ws.receive({ replyTo: ws.frames.at(-1)?.id, data: { success: false, error: '移動中', code: 'migrating' } });
+            await vi.advanceTimersByTimeAsync(500);
+        }
+        expect(ws.frames).toHaveLength(22);
+        expect(done).toHaveBeenCalledExactlyOnceWith({ success: false, error: '移動中', code: 'migrating' });
+        socket.disconnect();
+    });
+    it('引っ越しの待ちの間に別の部屋へ入り直したら、古い要求を新しい接続へ送らず失敗で一度だけ返す', async () => {
+        const socket = new InstanceSocket(async () => grant);
+        socket.emit('world:join', { instanceId: 'room', user: { ...user } }, vi.fn());
+        await flush();
+        latest().open();
+        ackJoin(latest());
+        const done = vi.fn();
+        socket.emit('state:update', { key: 'k', value: { n: 1 }, expectedRevision: 0 }, done);
+        const first = latest();
+        first.receive({ replyTo: first.frames[1]?.id, data: { success: false, error: '移動中', code: 'migrating' } });
+        socket.emit('world:join', { instanceId: 'other', user: { ...user } }, vi.fn());
+        expect(done).toHaveBeenCalledExactlyOnceWith({ success: false, error: '接続が切れています' });
+        await flush();
+        const second = latest();
+        second.open();
+        ackJoin(second);
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(second.frames.map((f) => f.event)).toEqual(['world:join']);
+        expect(done).toHaveBeenCalledOnce();
+        socket.disconnect();
+    });
+    it('引っ越しの待ちの間に切れて繋ぎ直しても、古い要求を送り直さない', async () => {
+        const socket = new InstanceSocket(async () => grant);
+        socket.emit('world:join', { instanceId: 'room', user: { ...user } }, vi.fn());
+        await flush();
+        latest().open();
+        ackJoin(latest());
+        const done = vi.fn();
+        socket.emit('state:update', { key: 'k', value: { n: 1 }, expectedRevision: 0 }, done);
+        const first = latest();
+        first.receive({ replyTo: first.frames[1]?.id, data: { success: false, error: '移動中', code: 'migrating' } });
+        first.close();
+        expect(done).toHaveBeenCalledExactlyOnceWith({ success: false, error: '接続が切れています' });
+        await vi.advanceTimersByTimeAsync(1000);
+        await flush();
+        const second = latest();
+        second.open();
+        ackJoin(second);
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(second.frames.map((f) => f.event)).toEqual(['world:join']);
+        expect(done).toHaveBeenCalledOnce();
         socket.disconnect();
     });
     it('接続前の退出は遅れて返った接続情報を破棄する', async () => {
@@ -289,6 +428,57 @@ describe('InstanceSocket', () => {
         }
         expect(resolve).toHaveBeenCalledTimes(6);
         expect(joined).toHaveBeenCalledOnce();
+    });
+
+    it('入れた後の切断は、部屋のリースが切れるまで（30 秒超）部屋が無くても繋ぎ直しを続ける', async () => {
+        const resolve = vi.fn<ResolveInstance>(async () => grant);
+        const socket = new InstanceSocket(resolve);
+        const joined = vi.fn();
+        socket.emit('world:join', { instanceId: 'room', user }, joined);
+        await flush();
+        latest().open();
+        ackJoin(latest());
+        await vi.advanceTimersByTimeAsync(10000);
+        latest().close();
+        // Pod が落ちてから 35 秒、部屋のリースが残っていて作り直せない（instance_unavailable）
+        const startedAt = Date.now();
+        for (const _ of Array.from({ length: 20 })) {
+            await vi.advanceTimersByTimeAsync(10000);
+            if (Date.now() - startedAt >= 35000) break;
+            latest().open();
+            latest().receive({
+                replyTo: latest().frames[0]?.id,
+                data: { success: false, error: '部屋なし', code: 'instance_unavailable' },
+            });
+        }
+        latest().open();
+        ackJoin(latest());
+        expect(socket.connected).toBe(true);
+        expect(joined.mock.calls.filter(([result]) => !result.success)).toHaveLength(0);
+        socket.disconnect();
+    });
+
+    it('入れた後の切断でも、60 秒で繋ぎ直しを諦める', async () => {
+        const resolve = vi.fn<ResolveInstance>(async () => grant);
+        const socket = new InstanceSocket(resolve);
+        const joined = vi.fn();
+        socket.emit('world:join', { instanceId: 'room', user }, joined);
+        await flush();
+        latest().open();
+        ackJoin(latest());
+        await vi.advanceTimersByTimeAsync(10000);
+        latest().close();
+        for (const _ of Array.from({ length: 12 })) {
+            await vi.advanceTimersByTimeAsync(10000);
+            latest().open();
+            latest().receive({
+                replyTo: latest().frames[0]?.id,
+                data: { success: false, error: '部屋なし', code: 'instance_unavailable' },
+            });
+        }
+        await vi.advanceTimersByTimeAsync(120000);
+        expect(joined.mock.calls.filter(([result]) => !result.success)).toHaveLength(1);
+        expect(socket.connecting).toBe(false);
     });
 
     describe('入室拒否', () => {

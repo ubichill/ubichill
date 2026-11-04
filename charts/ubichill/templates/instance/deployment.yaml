@@ -14,6 +14,9 @@
 {{- if and (ge $replicas 2) (ne $directory "redis") }}
 {{- fail (printf "instanceRuntime.replicas を 2 以上（%d）にするには instanceRuntime.directory: redis が要ります（memory では Pod の間で部屋を共有できません）" $replicas) }}
 {{- end }}
+{{- if lt (int .Values.instanceRuntime.maxConnections) 0 }}
+{{- fail (printf "instanceRuntime.maxConnections は 0（無制限）以上にします（%v）" .Values.instanceRuntime.maxConnections) }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -67,6 +70,18 @@ spec:
       # 自分の Pod に pod-deletion-cost を書く（templates/instance/rbac.yaml）
       serviceAccountName: {{ include "ubichill.serviceAccountName.instance" . }}
       {{- end }}
+      {{- with .Values.instanceRuntime.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.instanceRuntime.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.instanceRuntime.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: instance
           image: {{ include "ubichill.instance.image" . }}
@@ -75,6 +90,7 @@ spec:
             - --origins={{ include "ubichill.instance.origins" . }}
             - --disconnect-grace={{ .Values.instanceRuntime.disconnectGrace }}
             - --max-rooms={{ .Values.instanceRuntime.maxRooms }}
+            - --max-connections={{ int .Values.instanceRuntime.maxConnections }}
             {{- /* memory（1 Pod・Recreate）では部屋を移せる先が無く、待つほど止まっている時間が延びるだけなので待たない */}}
             - --drain-timeout={{ $drainTimeout }}
             - --migrate-after={{ .Values.instanceRuntime.migrateAfter }}

@@ -1,0 +1,66 @@
+{{- /*
+  Go の ServiceAccount は Role で namespace の pods を patch できる（Pod 名は起動ごとに変わるので resourceNames で絞れない）。
+  ここで「この release の instance の Pod の、controller.kubernetes.io/pod-deletion-cost の注釈だけ」に絞る。
+  ほかの Pod・ほかの注釈・ラベル・spec（image など）を変える要求は、権限があっても拒む。
+  どちらも cluster-scoped なので名前に namespace を含める。
+*/}}
+{{- if and .Values.instanceRuntime.enabled .Values.instanceRuntime.autoscaling.enabled .Values.instanceRuntime.autoscaling.deletionCostPolicy.enabled }}
+{{- $name := printf "%s-%s-instance-deletion-cost" .Release.Namespace (include "ubichill.fullname" .) }}
+{{- $sa := printf "system:serviceaccount:%s:%s" .Release.Namespace (include "ubichill.serviceAccountName.instance" .) }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "ubichill.labels" . | nindent 4 }}
+    component: instance
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["UPDATE"]
+        resources: ["pods"]
+  matchConditions:
+    - name: instance-service-account
+      expression: {{ printf "request.userInfo.username == %q" $sa | quote }}
+  variables:
+    - name: cost
+      expression: "'controller.kubernetes.io/pod-deletion-cost'"
+    - name: oldAnnotations
+      expression: "oldObject.metadata.?annotations.orValue({})"
+    - name: newAnnotations
+      expression: "object.metadata.?annotations.orValue({})"
+  validations:
+    - expression: >-
+        object.metadata.?labels[?'component'].orValue('') == 'instance' &&
+        object.metadata.?labels[?'app.kubernetes.io/instance'].orValue('') == {{ .Release.Name | quote }}
+      message: "the instance service account may only patch the instance pods of its own release"
+    - expression: >-
+        variables.newAnnotations.all(k, k == variables.cost || (k in variables.oldAnnotations && variables.oldAnnotations[k] == variables.newAnnotations[k])) &&
+        variables.oldAnnotations.all(k, k == variables.cost || k in variables.newAnnotations)
+      message: "the instance service account may only change the pod-deletion-cost annotation"
+    - expression: >-
+        object.metadata.?labels.orValue({}) == oldObject.metadata.?labels.orValue({}) &&
+        object.metadata.?finalizers.orValue([]) == oldObject.metadata.?finalizers.orValue([]) &&
+        object.metadata.?ownerReferences.orValue([]) == oldObject.metadata.?ownerReferences.orValue([])
+      message: "the instance service account may not change labels, finalizers or owner references"
+    - expression: "object.spec == oldObject.spec"
+      message: "the instance service account may not change the pod spec"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "ubichill.labels" . | nindent 4 }}
+    component: instance
+spec:
+  policyName: {{ $name }}
+  validationActions: ["Deny"]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: {{ .Release.Namespace }}
+{{- end }}

@@ -85,7 +85,7 @@ func (r *Room) handle(p *peer, f Frame) {
 		if held, exists := data["heldEntityId"]; exists && (held == nil || (len(str(held)) > 0 && len(str(held)) <= 64)) {
 			out["heldEntityId"] = held
 		}
-		r.broadcast("cursor:moved", out, p, true)
+		r.moveCursor(p, out)
 	case "status:update":
 		var status string
 		if json.Unmarshal(f.Data, &status) != nil || !validStatus(status) {

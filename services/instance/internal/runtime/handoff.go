@@ -120,6 +120,7 @@ func (r *Room) handOver(s *Server) (relayed []*peer, links []*relayLink) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.closed = true
+	r.stopCursorsLocked()
 	for _, m := range r.members {
 		if m.timer != nil {
 			m.timer.Stop()
@@ -182,10 +183,10 @@ func restoreRoom(h handoffSnapshot) (*Room, error) {
 }
 
 // arrive は確定した部屋の参加者の猶予を数え始める。猶予の間に中継元が繋ぎ直せば、入退室を出さずに戻る。
-func (r *Room) arrive(grace time.Duration) {
+func (r *Room) arrive(grace, cursorBatch time.Duration) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.grace = grace
+	r.grace, r.cursorBatch = grace, cursorBatch
 	for id, m := range r.members {
 		r.armGrace(id, m, migratedGrace(grace))
 	}
@@ -197,11 +198,12 @@ type candidate struct {
 	info coord.NodeInfo
 }
 
-// handoffTargets は引っ越し先の候補を、接続の少ない順に返す（自分・draining・空きの無いノード・アドレスの無いノードを除く）。
+// handoffTargets は引っ越し先の候補を、接続の少ない順に返す（自分・draining・空きの無いノード・接続数で新しい部屋を断っているノード・
+// アドレスの無いノードを除く）。
 func handoffTargets(self string, nodes map[string]coord.NodeInfo) []candidate {
 	out := make([]candidate, 0, len(nodes))
 	for id, info := range nodes {
-		if id == self || info.State != coord.NodeReady || info.Addr == "" || info.Rooms >= info.Capacity {
+		if id == self || info.State != coord.NodeReady || info.Addr == "" || info.Rooms >= info.Capacity || info.Full {
 			continue
 		}
 		out = append(out, candidate{id, info})
@@ -441,6 +443,9 @@ func (s *Server) prepareHandoff(id, from string, h handoffSnapshot) (string, err
 	if s.draining.Load() {
 		return "", errDraining
 	}
+	if s.roomsFull() {
+		return "", errNodeFull
+	}
 	if s.room(id) != nil {
 		return "", errors.New("instance already exists on this node")
 	}
@@ -504,7 +509,7 @@ func (s *Server) completeHandoffLocked(ctx context.Context, id string) (*Room, e
 		return nil, errNoHandoff
 	}
 	p.timer.Stop()
-	r.arrive(s.config.Grace)
+	r.arrive(s.config.Grace, s.config.CursorBatch)
 	log.Printf("took over %s from %s (epoch %d)", id, p.from, owner.Epoch)
 	return r, nil
 }
