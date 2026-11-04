@@ -95,7 +95,18 @@ export class InstanceSocket {
         if (id && callback) {
             const settle = (value: unknown) => {
                 if (event !== 'world:join' && retries < MIGRATING_RETRIES && isMigrating(value)) {
-                    setTimeout(() => this.send(event, data, callback, retries + 1), MIGRATING_RETRY_MS);
+                    // 待つ間も pending に置く。切断・退出・別の部屋への入室で failPending が取り消し、古い部屋の要求を新しい接続へ送らない
+                    const generation = this.generation;
+                    const waitId = crypto.randomUUID();
+                    const wait = setTimeout(() => {
+                        this.pending.delete(waitId);
+                        if (generation !== this.generation) {
+                            callback({ success: false, error: '接続が切れています' });
+                            return;
+                        }
+                        this.send(event, data, callback, retries + 1);
+                    }, MIGRATING_RETRY_MS);
+                    this.pending.set(waitId, { callback, timer: wait });
                     return;
                 }
                 callback(value);
