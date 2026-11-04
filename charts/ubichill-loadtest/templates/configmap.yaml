@@ -1,4 +1,5 @@
 {{- include "ubichill-loadtest.validate" . -}}
+{{- /* k6 の script。k6 は TypeScript をそのまま読み、同じディレクトリの ./*.ts を import する（テストは載せない） */}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -7,5 +8,9 @@ metadata:
   labels:
     {{- include "ubichill-loadtest.labels" . | nindent 4 }}
 data:
-  loadgen.mjs: |
-    {{- .Files.Get "files/loadgen.mjs" | nindent 4 }}
+  {{- range $path, $_ := .Files.Glob "scripts/*.ts" }}
+  {{- if not (hasSuffix ".test.ts" $path) }}
+  {{ base $path }}: |
+    {{- $.Files.Get $path | nindent 4 }}
+  {{- end }}
+  {{- end }}

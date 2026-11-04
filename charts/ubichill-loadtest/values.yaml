@@ -1,72 +1,102 @@
-# ubichill-loadtest: Go インスタンスの負荷試験（1 回 = 1 release）。
-# helm install <name> charts/ubichill-loadtest -n <namespace> --set target.instanceUrl=... で Job を立て、
-# helm uninstall <name> で片付ける。Argo CD には載せない。
+# ubichill-loadtest: k6（k6-operator の TestRun）で、実際の利用者と同じ経路の負荷をかける。1 回の試験 = 1 release。
+# helm install <name> charts/ubichill-loadtest -n ubichill-dev --set testid=... で走らせ、helm uninstall <name> で片付ける。
+# Argo CD には載せない。k6-operator（v1.6 以上。spec.args を使う）と CRD（k6.io/v1alpha1 TestRun）が要る。
 
-# 攻撃対象
+# 走りの名前（必須。英数字・-_. の 63 文字まで）。全指標の testid タグになり、Grafana の testid 変数で走りを選ぶ
+testid: ""
+
 target:
-  # Go の Service。管理 API（部屋の作成・チケット・削除）と WebSocket の両方に使う。
-  # 本番の Service 名（ubichill-instance）そのものを向くと描画で失敗する。
+  # 対象の ubichill の release 名。Service 名（<release>-backend・<release>-instance）の元。
+  # 本番の release（ubichill）・namespace（ubichill）・ホスト（ubichill.com）を向くと描画で失敗する
+  release: ubichill-dev
+  # 画面のオリジン。Origin ヘッダー・ブラウザの開き先・参加情報の相対 URL の基準
+  origin: https://dev.ubichill.com
+  # cluster: backend と Go の Service へクラスタの中から直接繋ぐ（既定）。
+  # public: origin のまま Cloudflare を通す（Cloudflare のレート制限・帯域も測ることになる）
+  via: cluster
+  # via=cluster のときの URL。空なら http://<release>-backend:3001・http://<release>-instance:3002
+  backendUrl: ""
   instanceUrl: ""
-  # 管理トークン（INSTANCE_ADMIN_TOKEN）を持つ既存の Secret。ubichill chart なら <release>-backend-secrets
-  adminTokenSecret:
-    name: ""
-    key: INSTANCE_ADMIN_TOKEN
+  # 入るワールド（GET /api/v1/worlds の id か url）。1 部屋の人数はワールドの capacity.max まで（default は 20）
+  worldId: default
 
-# 試験の条件。worker（Job の Pod）ごとに roomsPerWorker × usersPerRoom 本の接続を張る
 scenario:
-  # 指標の scenario ラベル（英数字・-_.）。Grafana で走りを見分ける
-  name: default
-  roomsPerWorker: 10
+  # 部屋の数（parallelism で割り切れること。同じ部屋の人は同じ runner に置く）と 1 部屋の人数。
+  # 利用者の総数は rooms × usersPerRoom
+  rooms: 10
   usersPerRoom: 10
-  # 部屋の定員（maxUsers）。空なら usersPerRoom + 5
+  # インスタンスの定員（settings.maxUsers）。空なら usersPerRoom
   maxUsersPerRoom: ""
   # cursor:move の頻度（Hz）と、送る利用者の割合
   cursorHz: 20
   activeRatio: 0.3
-  durationSeconds: 300
-  # 接続をこの時間で均等に増やす
-  rampSeconds: 30
-  # 各部屋の 1 人が entity:patch を送る間隔（秒）。0 なら送らない
+  # 各部屋の entity:patch（1 人目）と state:update（1・2 人目）の間隔（秒）。0 なら送らない
   patchIntervalSeconds: 5
-  # 時間切れのあと、終わった直後の値を Prometheus が拾えるよう /metrics を残す時間（秒）
-  holdSeconds: 30
-  # 部屋 ID の先頭。ID は <roomPrefix>-<Pod 名の末尾>-<n>
-  roomPrefix: loadtest
+  # world:join で features: ["cursors:batch"] を宣言し、cursors:moved（まとめ送り）を受ける
+  cursorBatch: false
+  # この時間で利用者を均等に増やし、増やし切ってから holdSeconds 保つ
+  rampSeconds: 60
+  holdSeconds: 300
 
-# worker の数（Job の parallelism と completions）
-workers: 1
+accounts:
+  # アカウント loadtest_<offset + n>（画面の確認は loadtest_web<offset + n>）。無ければ登録し、あれば使い回す。
+  # 1 アカウント 1 接続なので、同時に 2 つ走らせるときは重ならないようにずらす
+  offset: 0
+  # dev 専用のアカウントの共通のパスワード
+  password: loadtest-dev-password
 
-job:
-  backoffLimit: 0
-  # 終わった Pod（ログ）を残す時間
-  ttlSecondsAfterFinished: 3600
-  # SIGTERM で接続を閉じ、部屋を消すのに要る
-  terminationGracePeriodSeconds: 30
+# runner（k6 の Pod）の数。部屋は runner ごとに分ける
+parallelism: 1
 
-image:
-  repository: node
-  tag: 24-alpine
-  pullPolicy: IfNotPresent
+runner:
+  image: grafana/k6:2.3.0
+  imagePullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  # 攻撃対象（Go の Pod）と別のノードに載せる（同じノードだと CPU を取り合い、Go の遅延が runner の分だけ悪く見える）
+  nodeSelector:
+    ubichill.com/loadgen: "true"
+  tolerations: []
+  affinity: {}
 
-resources:
-  requests:
-    cpu: 200m
-    memory: 128Mi
-  limits:
-    cpu: "1"
-    memory: 512Mi
+# 画面の体験の確認（Chromium）。利用者の負荷とは別の TestRun（runner 1 つ）で、同じ testid で走らせる
+browser:
+  enabled: false
+  image: grafana/k6:2.3.0-with-browser
+  vus: 1
+  # 始める時刻（秒）。空なら scenario.rampSeconds（利用者を増やし切ってから）
+  startSeconds: ""
+  # 走らせる長さ（秒）。空なら scenario.holdSeconds
+  durationSeconds: ""
+  # 1 回通すごとの休み（秒）
+  pauseSeconds: 30
+  resources:
+    requests:
+      cpu: "1"
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  # 空なら runner.nodeSelector
+  nodeSelector: {}
 
-# 攻撃対象（Go の Pod）と別のノードに載せる。例: nodeSelector: { ubichill.com/loadgen: "true" }
-nodeSelector: {}
-affinity: {}
-tolerations: []
+output:
+  # Prometheus の remote write（Prometheus 側で --web.enable-remote-write-receiver が要る）
+  prometheus:
+    enabled: true
+    serverUrl: http://prometheus-operated.monitoring.svc:9090/api/v1/write
+    # Trend を出す統計（k6_<name>_p50 などの gauge。値は試験の始めからの累積）
+    trendStats: p(50),p(95),p(99),max
+    # true なら Trend を native histogram（k6_<name>_seconds）で送る。時間の窓で分位を取れるが、
+    # Prometheus 側で native histogram の受け入れが要り、trendStats の gauge は出なくなる
+    nativeHistogram: false
+    pushInterval: 5s
 
-metrics:
-  port: 9400
-
-# Prometheus Operator の PodMonitor。CRD（monitoring.coreos.com）が無いクラスタでは false にする
-podMonitor:
-  enabled: true
-  interval: 15s
-  # Prometheus の podMonitorSelector に合わせるラベル（全件を拾う設定なら不要）
-  labels: {}
+testRun:
+  # "post" なら終わったときに TestRun ごと Pod を消す。既定は残す（runner のログに k6 の要約が出る）。helm uninstall で消える
+  cleanup: ""

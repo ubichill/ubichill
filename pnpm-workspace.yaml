@@ -1,6 +1,8 @@
 packages:
   - 'packages/*'
   - 'tools/*'
+  # k6 の負荷試験の script（型検査だけ。chart の ConfigMap に載るので chart の中に置く）
+  - 'charts/*/scripts'
 
 # 複数パッケージで共有する依存のバージョンはここで一元管理する（各 package.json では `catalog:` で参照）
 catalog:

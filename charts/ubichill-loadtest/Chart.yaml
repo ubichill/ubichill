@@ -1,14 +1,15 @@
 apiVersion: v2
 name: ubichill-loadtest
-description: Go インスタンス（WebSocket）の負荷試験。1 回の試験を Job として立て、結果を Prometheus の指標で出す
+description: 実際の利用者と同じ経路（ログイン → インスタンス → WebSocket）の負荷試験。k6-operator の TestRun で走らせ、結果を Prometheus の remote write で出す
 type: application
 version: 0.1.0
-appVersion: "24"
+appVersion: "2.3.0"
 
 keywords:
   - ubichill
   - loadtest
   - instance
+  - k6
 
 maintainers:
   - name: Ubichill Team
