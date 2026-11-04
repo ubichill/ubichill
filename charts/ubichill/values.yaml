@@ -413,9 +413,14 @@ instanceRuntime:
       labels: {}
   # KEDA の ScaledObject で Go の Pod を自動で増減する。KEDA の CRD と、指標を集める Prometheus が要る。
   # directory: redis でないと描画で失敗する。有効にすると Deployment の replicas は書かず、台数は HPA が持つ。
-  # 有効にすると、Go が自分の Pod に pod-deletion-cost を書くための ServiceAccount・Role（pods の get/patch）・RoleBinding も作る。
+  # 有効にすると、Go が自分の Pod に pod-deletion-cost を書くための ServiceAccount・Role（pods の patch）・RoleBinding も作る。
   autoscaling:
     enabled: false
+    # Role は namespace の pods 全部の patch を許す（Pod 名は起動ごとに変わり resourceNames で絞れない）。
+    # ValidatingAdmissionPolicy で「instance の Pod の pod-deletion-cost の注釈だけ」に絞る。
+    # Kubernetes 1.30 以上。無いクラスタでは false にする（Role だけになる）。
+    deletionCostPolicy:
+      enabled: true
     maxReplicaCount: 5
     pollingInterval: 30
     # 縮める速さ。消す Pod は pod-deletion-cost（直接の接続＋owner の部屋の参加者）の小さいものから選ばれ、
@@ -450,3 +455,7 @@ instanceRuntime:
     limits:
       cpu: 1000m
       memory: 1Gi
+  # Go の Pod の配置。負荷試験の生成器と別のノードに置く（docs/operations/load-testing.md）などに使う。
+  nodeSelector: {}
+  affinity: {}
+  tolerations: []

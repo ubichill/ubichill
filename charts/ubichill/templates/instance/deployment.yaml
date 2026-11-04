@@ -70,6 +70,18 @@ spec:
       # 自分の Pod に pod-deletion-cost を書く（templates/instance/rbac.yaml）
       serviceAccountName: {{ include "ubichill.serviceAccountName.instance" . }}
       {{- end }}
+      {{- with .Values.instanceRuntime.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.instanceRuntime.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.instanceRuntime.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: instance
           image: {{ include "ubichill.instance.image" . }}

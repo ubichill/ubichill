@@ -201,7 +201,9 @@ instanceRuntime:
 
 ### 自動で縮める
 
-HPA が台数を減らすと、ReplicaSet は `controller.kubernetes.io/pod-deletion-cost` の小さい Pod から消す。Go は自分の Pod にこの注釈を書く（値 = 直接繋いでいるクライアント数 + 自分が owner の部屋の参加者数。変わったときだけ、最短 30 秒おき）。書くために、`autoscaling.enabled` のときだけ ServiceAccount・Role（pods の get/patch）・RoleBinding を作り、`POD_NAMESPACE` を Downward API で渡す。書けなくても動作は続ける（警告は 10 分に 1 回）。
+HPA が台数を減らすと、ReplicaSet は `controller.kubernetes.io/pod-deletion-cost` の小さい Pod から消す。Go は自分の Pod にこの注釈を書く（値 = 直接繋いでいるクライアント数 + 自分が owner の部屋の参加者数。変わったときだけ、最短 30 秒おき）。書くために、`autoscaling.enabled` のときだけ ServiceAccount・Role（pods の patch）・RoleBinding を作り、`POD_NAMESPACE` を Downward API で渡す。書けなくても動作は続ける（警告は 10 分に 1 回）。
+
+Go の権限は 2 段で絞る。Role は namespace の pods の `patch` だけ（Pod 名は起動ごとに変わるので `resourceNames` では絞れない）。その上で `ValidatingAdmissionPolicy`（`autoscaling.deletionCostPolicy.enabled`、既定 true、Kubernetes 1.30 以上）が、この ServiceAccount からの更新を「同じ release の instance の Pod」「変わるのは pod-deletion-cost の注釈だけ（ほかの注釈・ラベル・finalizer・ownerReferences・spec は同じ）」に限る。Go が乗っ取られても、できるのは同じ Deployment の Pod の消される順を変えることだけになる。policy は cluster-scoped なので名前に namespace を含める。無いクラスタでは `deletionCostPolicy.enabled: false` にする（Role だけになる）。
 
 消された Pod は SIGTERM で次のように止まる。
 
@@ -219,6 +221,19 @@ HPA が台数を減らすと、ReplicaSet は `controller.kubernetes.io/pod-dele
 3. `instanceRuntime.metrics.serviceMonitor.enabled: true` だけを先に入れ、Prometheus で `ubichill_instance_active_rooms{namespace="ubichill",service="ubichill-instance"}` が取れることを確かめる。
 4. 閾値を確かめ（既定は #271 の負荷試験から）、`instanceRuntime.autoscaling.enabled: true` と `maxReplicaCount` を入れる。Argo CD の Application には `apps/Deployment` の `/spec/replicas` を `ignoreDifferences` に足す（HPA が変えた台数を差分にしない）。
 5. `kubectl get scaledobject,hpa -n ubichill` で `READY`・`ACTIVE` と HPA の指標が読めていることを確かめる。
+
+## 環境（本番・dev・プレビュー）
+
+| | 本番 `ubichill` | dev `ubichill-dev` | プレビュー `preview-pr-<n>` |
+|---|---|---|---|
+| 値 | `values.yaml` + `values-prod.yaml` | `values.yaml` + `values-dev.yaml`（+ 本番と同じ構成を Application 側で重ねる） | `values-dev.yaml` + PR の `values-preview.yaml` |
+| イメージ | `vX.Y.Z`（release） | `main-<sha>`（main の最新。Image Updater が追う） | `sha-<PR の sha>` |
+| DB・Redis | 永続 | 永続（PR と違い消えない） | 消える |
+| `NODE_ENV` | production | development（メール確認なし・未署名の同梱ワールド可） | development |
+| Go | redis・KEDA（増減） | 本番と同じ。生成器と別ノード（`instanceRuntime.affinity`） | redis・2 Pod |
+| 用途 | | 負荷試験・スケールの評価（`docs/operations/load-testing.md`） | PR の確認 |
+
+Application の定義は home-manifests（`argocd-apps/ubichill.yaml`・`ubichill-dev.yaml`・`ubichill-preview.yaml`）。dev の Go を負荷の生成器と別のノードに置くには `instanceRuntime.affinity` に `requiredDuringSchedulingIgnoredDuringExecution` でノードのラベル（例: `ubichill.com/loadgen` が無いノード）を指定する。
 
 ## コントリビューション / ライセンス
 

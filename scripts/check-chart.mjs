@@ -271,7 +271,7 @@ if (noScaleIn?.spec?.advanced?.horizontalPodAutoscalerConfig?.behavior?.scaleDow
     const binding = autoscaled.find((d) => d.kind === 'RoleBinding' && d.metadata.name === 'ubichill-instance-deletion-cost');
     const want = {
         serviceAccount: deployment?.spec?.template?.spec?.serviceAccountName === 'ubichill-instance' && sa?.automountServiceAccountToken === true,
-        role: JSON.stringify(role?.rules) === JSON.stringify([{ apiGroups: [''], resources: ['pods'], verbs: ['get', 'patch'] }]),
+        role: JSON.stringify(role?.rules) === JSON.stringify([{ apiGroups: [''], resources: ['pods'], verbs: ['patch'] }]),
         binding:
             binding?.roleRef?.kind === 'Role' &&
             binding.roleRef.name === role?.metadata?.name &&
@@ -297,6 +297,37 @@ if (noScaleIn?.spec?.advanced?.horizontalPodAutoscalerConfig?.behavior?.scaleDow
 }
 // HPA が台数を持つので Deployment には replicas を書かない（同期のたびに戻さない）
 if (instanceOf(autoscaled, 'Deployment')?.spec?.replicas !== undefined) failures.push('autoscaling.enabled でも Deployment に replicas が書かれる');
+// Go の権限: Role は pods の patch だけ（上の role の検査）。ValidatingAdmissionPolicy が instance の Pod の pod-deletion-cost の注釈だけに絞る
+const policy = autoscaled.find((d) => d.kind === 'ValidatingAdmissionPolicy');
+const binding = autoscaled.find((d) => d.kind === 'ValidatingAdmissionPolicyBinding');
+if (!policy || !binding) {
+    failures.push('autoscaling.enabled で ValidatingAdmissionPolicy とその Binding が描画されない');
+} else {
+    const want = {
+        namespacedName: policy.metadata.name === 'default-ubichill-instance-deletion-cost' && binding.spec.policyName === policy.metadata.name,
+        serviceAccount: policy.spec.matchConditions?.[0]?.expression === 'request.userInfo.username == "system:serviceaccount:default:ubichill-instance"',
+        onlyPods: policy.spec.matchConstraints.resourceRules.every((r) => JSON.stringify(r.resources) === '["pods"]' && JSON.stringify(r.operations) === '["UPDATE"]'),
+        annotationOnly: policy.spec.validations.some((v) => v.expression.includes('variables.cost')),
+        specFrozen: policy.spec.validations.some((v) => v.expression === 'object.spec == oldObject.spec'),
+        deny: JSON.stringify(binding.spec.validationActions) === '["Deny"]',
+        thisNamespace: binding.spec.matchResources.namespaceSelector.matchLabels['kubernetes.io/metadata.name'] === 'default',
+        fail: policy.spec.failurePolicy === 'Fail',
+    };
+    for (const [key, ok] of Object.entries(want)) if (!ok) failures.push(`ValidatingAdmissionPolicy の ${key} が期待と違う`);
+}
+if (docsOf(['--set', 'instanceRuntime.directory=redis', '--set', 'instanceRuntime.autoscaling.enabled=true', '--set', 'instanceRuntime.autoscaling.deletionCostPolicy.enabled=false']).some((d) => d.kind === 'ValidatingAdmissionPolicy')) {
+    failures.push('deletionCostPolicy.enabled=false でも ValidatingAdmissionPolicy が描画される');
+}
+if (defaultDocs.some((d) => d.kind === 'ValidatingAdmissionPolicy' || d.kind === 'Role')) failures.push('自動スケールが無効なのに Role か ValidatingAdmissionPolicy が描画される');
+// Go の配置（負荷の生成器と別のノードに置く）
+const placed = instanceOf(
+    docsOf(['--set-string', 'instanceRuntime.nodeSelector.ubichill\\.com/target=true', '--set-json', 'instanceRuntime.tolerations=[{"key":"a","operator":"Exists"}]', '--set-json', 'instanceRuntime.affinity={"nodeAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":{"nodeSelectorTerms":[{"matchExpressions":[{"key":"ubichill.com/loadgen","operator":"DoesNotExist"}]}]}}}']),
+    'Deployment',
+)?.spec?.template?.spec;
+if (placed?.nodeSelector?.['ubichill.com/target'] !== 'true' || placed?.tolerations?.[0]?.key !== 'a' || placed?.affinity?.nodeAffinity?.requiredDuringSchedulingIgnoredDuringExecution?.nodeSelectorTerms?.[0]?.matchExpressions?.[0]?.key !== 'ubichill.com/loadgen') {
+    failures.push(`instance の nodeSelector・tolerations・affinity が渡らない: ${JSON.stringify({ n: placed?.nodeSelector, t: placed?.tolerations, a: placed?.affinity })}`);
+}
+if (instanceOf(defaultDocs, 'Deployment')?.spec?.template?.spec?.affinity !== undefined) failures.push('affinity を指定していないのに instance に affinity が書かれる');
 const monitor = instanceOf(autoscaled, 'ServiceMonitor');
 const service = instanceOf(autoscaled, 'Service');
 const endpoint = monitor?.spec?.endpoints?.[0];

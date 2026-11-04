@@ -25,7 +25,10 @@ type Fencing struct {
 }
 
 func (f Fencing) withDefaults() Fencing {
-	def := Fencing{TTL: 15 * time.Second, Margin: 5 * time.Second, Interval: 5 * time.Second, Retry: time.Second, Timeout: 2 * time.Second}
+	// TTL 30 秒・余裕 10 秒: 最後に成功した延長から 20 秒は持つ。CPU の上限に張り付いた Pod では、延長の goroutine が
+	// 何千もの送信の goroutine の後ろに並び、往復が数秒遅れる（負荷試験で 15 秒・5 秒のときに 1 Pod の部屋が 20 個自己停止した）。
+	// 代わりに、落ちた Pod の部屋を別の Pod が作り直せるまで最長 30 秒かかる（backend の復旧の猶予 60 秒の内）。
+	def := Fencing{TTL: 30 * time.Second, Margin: 10 * time.Second, Interval: 5 * time.Second, Retry: time.Second, Timeout: 5 * time.Second}
 	if f.TTL <= 0 {
 		f.TTL = def.TTL
 	}
