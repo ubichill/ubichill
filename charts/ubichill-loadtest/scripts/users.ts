@@ -5,7 +5,7 @@ import { type ApiTarget, createInstance, deleteInstance, discoverInstance, ensur
 import type { LoadTestConfig } from './config.ts';
 import { instanceOps, joinFailures, reconnects } from './metrics.ts';
 import { loadtestAccount, planUser, roomsPerRunner, roomTag, runnerSlot, type UserPlan } from './plan.ts';
-import { joinRetryDelay, resolveSocketUrl } from './protocol.ts';
+import { recoveryDelay, resolveSocketUrl } from './protocol.ts';
 import { runSession } from './session.ts';
 
 const DISCOVER_TIMEOUT_MS = 60_000;
@@ -80,7 +80,7 @@ export async function runUser(config: LoadTestConfig): Promise<void> {
         deadlineMs,
         startedAtMs,
     };
-    await joinRoom(room, 0);
+    await joinRoom(room, { attempt: 0, sinceMs: Date.now() });
     if (plan.creator) {
         // 自分が早く抜けても（入室の失敗など）、ほかの人の退室の時刻までは消さない
         sleep(Math.max(0, deadlineMs - Date.now()) / 1000 + DELETE_AFTER_LEAVE_SECONDS);
@@ -106,11 +106,27 @@ function createRoom(config: LoadTestConfig, target: ApiTarget, cookie: string, t
     return null;
 }
 
-/** 参加情報を取って入る。チケットの世代のずれ・部屋の引っ越しで断られたら、Host と同じく取り直して入り直す。 */
-async function joinRoom(room: RoomContext, attempt: number): Promise<void> {
+interface Recovery {
+    readonly attempt: number;
+    /** 入室・繋ぎ直しを始めた時刻。一時的な失敗はここから RECOVERY_MS まで取り直す */
+    readonly sinceMs: number;
+}
+
+/**
+ * 参加情報を取って入る。一時的な失敗（Pod の再起動・部屋の作り直しの間の 503・部屋が無い・世代のずれ）は、
+ * Host と同じく期限まで取り直して入り直す。途中で切られたら繋ぎ直す。
+ */
+async function joinRoom(room: RoomContext, recovery: Recovery): Promise<void> {
+    const retry = async (stage: 'ticket' | 'join', reason: string): Promise<void> => {
+        joinFailures.add(1, { stage, reason });
+        const delay = recoveryDelay(stage, reason, recovery.attempt, Date.now() - recovery.sinceMs);
+        if (delay === null || Date.now() + delay >= room.deadlineMs) return;
+        sleep(delay / 1000);
+        await joinRoom(room, { attempt: recovery.attempt + 1, sinceMs: recovery.sinceMs });
+    };
     const ticket = joinTicket(room.target, room.cookie, room.instanceId);
     if ('error' in ticket) {
-        joinFailures.add(1, { stage: 'ticket', reason: ticket.error });
+        await retry('ticket', ticket.error);
         return;
     }
     const outcome = await runSession({
@@ -132,13 +148,9 @@ async function joinRoom(room: RoomContext, attempt: number): Promise<void> {
         if (Date.now() + RECONNECT_DELAY_MS >= room.deadlineMs) return;
         reconnects.add(1, { code: String(outcome.code) });
         sleep(RECONNECT_DELAY_MS / 1000);
-        await joinRoom({ ...room, startedAtMs: Date.now() }, 0);
+        const now = Date.now();
+        await joinRoom({ ...room, startedAtMs: now }, { attempt: 0, sinceMs: now });
         return;
     }
-    const failure = outcome.kind === 'connect_failed' ? 'connect_failed' : outcome.failure;
-    joinFailures.add(1, { stage: 'join', reason: failure });
-    const delay = outcome.kind === 'join_failed' ? joinRetryDelay(outcome.failure, attempt) : null;
-    if (delay === null || Date.now() + delay >= room.deadlineMs) return;
-    sleep(delay / 1000);
-    await joinRoom(room, attempt + 1);
+    await retry('join', outcome.kind === 'connect_failed' ? 'connect_failed' : outcome.failure);
 }

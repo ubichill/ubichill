@@ -51,17 +51,45 @@ export function joinFailure(reply: unknown): JoinFailure {
 
 export const MIGRATING_RETRY_MS = 500;
 export const MAX_MIGRATING_RETRIES = 3;
-export const MAX_JOIN_RETRIES = 2;
+/** 入室・繋ぎ直しを続ける時間（Host の一度入れた後の繋ぎ直しと同じ。部屋のリース TTL 30 秒 + backend の作り直し） */
+export const RECOVERY_MS = 60_000;
 
 /** 引っ越し中（migrating）の要求は、Host と同じく少し待って同じ操作を送り直す。待つ ms か、諦めるなら null。 */
 export const migratingRetryDelay = (result: RequestResult, attempt: number): number | null =>
     result === 'migrating' && attempt < MAX_MIGRATING_RETRIES ? MIGRATING_RETRY_MS : null;
 
-/** 入室の失敗のうち、チケットを取り直せば入れるもの（Host の再接続と同じ）。待つ ms か、諦めるなら null。 */
-export const joinRetryDelay = (failure: JoinFailure, attempt: number): number | null =>
-    (failure === 'ticket_invalid' || failure === 'instance_unavailable') && attempt < MAX_JOIN_RETRIES
-        ? 500 * (attempt + 1)
-        : null;
+/**
+ * 参加情報（チケット）の取得・入室の失敗のうち、一時的なもの。Pod の再起動・部屋の作り直しの間に起きる。
+ * 参加情報は通信の失敗（status_0）・429・5xx、入室は世代のずれ・部屋が無い・WS が繋がらない・応答なし。
+ */
+export function isTransientFailure(stage: 'ticket' | 'join', reason: string): boolean {
+    if (stage === 'join') {
+        return (
+            reason === 'ticket_invalid' ||
+            reason === 'instance_unavailable' ||
+            reason === 'connect_failed' ||
+            reason === 'timeout'
+        );
+    }
+    const status = /^status_(\d+)$/.exec(reason);
+    const code = status ? Number(status[1]) : Number.NaN;
+    return code === 0 || code === 429 || (code >= 500 && code <= 599);
+}
+
+/**
+ * 一時的な失敗のあと、取り直して入り直すまで待つ ms（Host と同じ 1, 2, 4, 8, 10, 10 … 秒）。
+ * 諦めるなら null（一時的でない・復旧の期限 RECOVERY_MS を超える）。
+ */
+export function recoveryDelay(
+    stage: 'ticket' | 'join',
+    reason: string,
+    attempt: number,
+    elapsedMs: number,
+): number | null {
+    if (!isTransientFailure(stage, reason)) return null;
+    const delay = Math.min(1000 * 2 ** attempt, 10_000);
+    return elapsedMs + delay > RECOVERY_MS ? null : delay;
+}
 
 // ---- カーソルの遅延 ----
 

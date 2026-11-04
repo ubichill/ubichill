@@ -10,9 +10,9 @@ import {
     findTaggedInstance,
     findWorld,
     instanceIdFromUrl,
+    isTransientFailure,
     joinFailure,
     joinGrant,
-    joinRetryDelay,
     LATENCY_MARK_Y,
     latencyMs,
     MAX_MIGRATING_RETRIES,
@@ -20,6 +20,8 @@ import {
     nextRevision,
     noticeKind,
     parseFrame,
+    RECOVERY_MS,
+    recoveryDelay,
     requestResult,
     resolveSocketUrl,
     STAMP_MODULO,
@@ -83,12 +85,29 @@ describe('再試行の判断', () => {
         expect(migratingRetryDelay('timeout', 0)).toBeNull();
     });
 
-    it('入室はチケットの取り直しで直るものだけ、間隔を延ばして 2 回まで', () => {
-        expect(joinRetryDelay('ticket_invalid', 0)).toBe(500);
-        expect(joinRetryDelay('instance_unavailable', 1)).toBe(1000);
-        expect(joinRetryDelay('instance_unavailable', 2)).toBeNull();
-        expect(joinRetryDelay('rejected', 0)).toBeNull();
-        expect(joinRetryDelay('timeout', 0)).toBeNull();
+    it('入室はチケットの取り直しで直るものだけ、間隔を延ばして取り直す', () => {
+        expect(recoveryDelay('join', 'ticket_invalid', 0, 0)).toBe(1000);
+        expect(recoveryDelay('join', 'instance_unavailable', 3, 7000)).toBe(8000);
+        expect(recoveryDelay('join', 'instance_unavailable', 6, 30_000)).toBe(10_000);
+        expect(recoveryDelay('join', 'rejected', 0, 0)).toBeNull();
+    });
+
+    it('参加情報の取得の一時的な失敗（通信・429・5xx）は取り直し、4xx は諦める', () => {
+        expect(recoveryDelay('ticket', 'status_503', 0, 0)).toBe(1000);
+        expect(recoveryDelay('ticket', 'status_0', 1, 1000)).toBe(2000);
+        expect(recoveryDelay('ticket', 'status_429', 0, 0)).toBe(1000);
+        expect(recoveryDelay('ticket', 'status_403', 0, 0)).toBeNull();
+        expect(recoveryDelay('ticket', 'status_404', 0, 0)).toBeNull();
+        expect(recoveryDelay('ticket', 'status_x', 0, 0)).toBeNull();
+        expect(isTransientFailure('join', 'connect_failed')).toBe(true);
+        expect(isTransientFailure('join', 'timeout')).toBe(true);
+    });
+
+    it('リースの TTL（30 秒）を超えて取り直し続け、復旧の期限（60 秒）で諦める', () => {
+        // 503 が 35 秒続いても、まだ取り直す
+        expect(recoveryDelay('ticket', 'status_503', 5, 35_000)).toBe(10_000);
+        expect(recoveryDelay('join', 'instance_unavailable', 8, RECOVERY_MS - 10_000)).toBe(10_000);
+        expect(recoveryDelay('join', 'instance_unavailable', 8, RECOVERY_MS - 9_999)).toBeNull();
     });
 });
 
