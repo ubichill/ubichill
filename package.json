@@ -22,6 +22,7 @@
     "verify:world-locks": "node scripts/world-locks.mjs --check",
     "check:architecture": "node scripts/check-architecture.mjs",
     "check:chart": "node scripts/check-chart.mjs",
+    "check:loadtest-chart": "node scripts/check-loadtest-chart.mjs",
     "verify:sdk-types": "vitest run --config vitest.sdk-verify.config.ts",
     "docs:capabilities": "node scripts/gen-capability-docs.mjs",
     "build": "turbo build --filter=@ubichill/shared && pnpm build:workers && turbo build",

@@ -6,6 +6,7 @@ on:
     paths:
       - "charts/**"
       - "scripts/check-chart.mjs"
+      - "scripts/check-loadtest-chart.mjs"
       - ".github/workflows/helm-ci.yml"
   workflow_dispatch:
 
@@ -59,6 +60,12 @@ jobs:
             --set postgresql.auth.postgresPassword=test-postgres-password \
             --set postgresql.auth.password=test-app-password \
             --set redis.auth.password=test-redis-password
+
+      # 負荷試験の chart（k6 の TestRun）。本番を向いた値で描画が落ちること・対象の URL も確かめる
+      - name: Lint load test chart
+        run: |
+          helm lint charts/ubichill-loadtest --set testid=ci
+          node scripts/check-loadtest-chart.mjs
 
       - name: Render chart with dev values
         run: |

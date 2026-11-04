@@ -1,0 +1,13 @@
+.DS_Store
+.git/
+.gitignore
+*.swp
+*.bak
+*.tmp
+*.orig
+*~
+# k6 の script の型検査・テスト用（ConfigMap に載せない）
+scripts/node_modules/
+scripts/package.json
+scripts/tsconfig.json
+scripts/*.test.ts

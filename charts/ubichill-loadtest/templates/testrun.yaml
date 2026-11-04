@@ -1,0 +1,44 @@
+{{- /* 利用者の負荷。parallelism の数の runner が部屋を分けて持つ */}}
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: {{ include "ubichill-loadtest.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ubichill-loadtest.labels" . | nindent 4 }}
+spec:
+  parallelism: {{ .Values.parallelism }}
+  script:
+    configMap:
+      name: {{ include "ubichill-loadtest.fullname" . }}
+      file: main.ts
+  {{- with (include "ubichill-loadtest.args" .) }}
+  args:
+    {{- . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.testRun.cleanup }}
+  cleanup: {{ . | quote }}
+  {{- end }}
+  runner:
+    image: {{ .Values.runner.image | quote }}
+    imagePullPolicy: {{ .Values.runner.imagePullPolicy }}
+    metadata:
+      labels:
+        {{- include "ubichill-loadtest.labels" . | nindent 8 }}
+        ubichill.com/loadtest-role: users
+    env:
+      {{- include "ubichill-loadtest.env" (dict "root" . "scenario" "users") | nindent 6 }}
+    resources:
+      {{- toYaml .Values.runner.resources | nindent 6 }}
+    {{- with .Values.runner.nodeSelector }}
+    nodeSelector:
+      {{- include "ubichill-loadtest.nodeSelector" . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.runner.tolerations }}
+    tolerations:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.runner.affinity }}
+    affinity:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}

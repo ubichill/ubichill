@@ -297,6 +297,15 @@ importers:
         specifier: 'catalog:'
         version: 2.9.1
 
+  charts/ubichill-loadtest/scripts:
+    devDependencies:
+      '@types/k6':
+        specifier: 2.3.1
+        version: 2.3.1
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+
   packages/backend:
     dependencies:
       '@redis/client':
@@ -1538,6 +1547,9 @@ packages:
 
   '@types/http-errors@2.0.5':
     resolution: {integrity: sha512-r8Tayk8HJnX0FztbZN7oVqGccWgw98T/0neJphO91KkmOzug1KkofZURD4UaD5uH8AqcFLfdPErnBod0u71/qg==}
+
+  '@types/k6@2.3.1':
+    resolution: {integrity: sha512-3zbIAfQXvSDsA3ZaKC7+eczsvx1hGtL8o68iYEssOmTEmg0MuoCwZ45aAI3jDm0JtlhJZaQAszrie+M1xaqK7g==}
 
   '@types/lodash.throttle@4.1.9':
     resolution: {integrity: sha512-PCPVfpfueguWZQB7pJQK890F2scYKoDUL3iM522AptHWn7d5NQmeS/LTEHIcLr5PaTzl3dK2Z0xSUHHTHwaL5g==}
@@ -4838,6 +4850,8 @@ snapshots:
       '@types/serve-static': 2.2.0
 
   '@types/http-errors@2.0.5': {}
+
+  '@types/k6@2.3.1': {}
 
   '@types/lodash.throttle@4.1.9':
     dependencies:
