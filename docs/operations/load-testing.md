@@ -10,7 +10,7 @@ dev 環境に、実際の利用者と同じ経路（ログイン → インス�
 
 1. アカウント `loadtest_<n>`（`loadtest+<n>@example.com`）でログインする。無ければ `POST /api/v1/users/register` で登録してからログインする（dev は `SKIP_EMAIL_VERIFICATION=true` で即時）。dev の DB は消えないので、次の走りでは使い回す。
 2. 部屋の 1 人目が、ワールド（既定 `default`）で `POST /api/v1/instances` を作る。部屋の印（`access.tags` の `lt<走りの名前のハッシュ>r<部屋番号>`）を付ける。2 人目以降は、ロビーでワールドを選んだときと同じ `GET /api/v1/instances?worldId=` から印で探す（1 人目が作るまで 1 秒ごとに、最大 60 秒）。
-3. `POST /api/v1/instances/:id/join` で `{token, url}` を取り、WebSocket で `world:join` → `world:snapshot`。`ticket_invalid`・`instance_unavailable` は Host と同じく参加情報を取り直して 2 回まで入り直す。試験の途中にサーバーから切られたら 1 秒後に繋ぎ直す。
+3. `POST /api/v1/instances/:id/join` で `{token, url}` を取り、WebSocket で `world:join` → `world:snapshot`。一時的な失敗（参加情報の通信の失敗・429・5xx、入室の `ticket_invalid`・`instance_unavailable`・繋がらない・応答なし）は、Host の一度入れた後の繋ぎ直しと同じく 1, 2, 4, 8, 10 … 秒の間隔で 60 秒まで取り直す（部屋のリース TTL 30 秒 + backend の作り直し）。試験の途中にサーバーから切られたら 1 秒後に繋ぎ直す。
 4. 部屋の中:
    - `activeRatio`（既定 3 割）の人が `cursorHz`（既定 20Hz）で `cursor:move`。1 人目は x に時刻、y に印（-1）を入れ、2 人目が `cursor:moved`（`cursorBatch` なら `cursors:moved` のまとめ送りも）で受けて遅延を測る。同じ部屋の人は同じ runner（Pod）に置くので、同じ時計で測れる。
    - 1 人目が `entity:create` した box に `patchIntervalSeconds`（既定 5 秒）ごとに `entity:patch`。1・2 人目が同じ間隔で同じキーに `state:update`（`expectedRevision` 付き。競合を数える）。
