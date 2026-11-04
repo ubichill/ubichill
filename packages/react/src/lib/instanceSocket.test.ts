@@ -112,7 +112,7 @@ describe('InstanceSocket', () => {
         latest().open();
         ackJoin(latest());
         const done = vi.fn();
-        socket.emit('entity:patch', { entityId: 'e1', patch: { data: { n: 1 } } }, done);
+        socket.emit('state:update', { key: 'k', value: { n: 1 } }, done);
         const ws = latest();
         expect(ws.frames).toHaveLength(2);
         ws.receive({ replyTo: ws.frames[1]?.id, data: { success: false, error: '移動中', code: 'migrating' } });
@@ -120,7 +120,7 @@ describe('InstanceSocket', () => {
         await vi.advanceTimersByTimeAsync(500);
         expect(ws.frames).toHaveLength(3);
         expect(ws.frames[2]?.id).not.toBe(ws.frames[1]?.id);
-        expect(ws.frames[2]?.data).toEqual({ entityId: 'e1', patch: { data: { n: 1 } } });
+        expect(ws.frames[2]?.data).toEqual({ key: 'k', value: { n: 1 } });
         ws.receive({ replyTo: ws.frames[2]?.id, data: { success: true } });
         expect(done).toHaveBeenCalledExactlyOnceWith({ success: true });
         socket.disconnect();
@@ -132,7 +132,7 @@ describe('InstanceSocket', () => {
         latest().open();
         ackJoin(latest());
         const done = vi.fn();
-        socket.emit('entity:delete', 'e1', done);
+        socket.emit('state:update', { key: 'k', value: { n: 2 } }, done);
         const ws = latest();
         for (const _ of Array.from({ length: 21 })) {
             ws.receive({ replyTo: ws.frames.at(-1)?.id, data: { success: false, error: '移動中', code: 'migrating' } });
