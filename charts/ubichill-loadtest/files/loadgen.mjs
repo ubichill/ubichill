@@ -372,9 +372,10 @@ const ownerUrl = (config, presence) =>
     typeof presence?.addr === 'string' && presence.addr !== '' ? `http://${presence.addr}` : config.instanceUrl;
 
 async function adminRequest(config, url, method, body) {
+    // 接続を使い回すと管理 API が毎回同じ Pod に届き、部屋の owner が 1 つの Pod に偏る。毎回つなぎ直して Service に散らせる
     const response = await fetch(url, {
         method,
-        headers: { authorization: `Bearer ${config.adminToken}`, 'content-type': 'application/json' },
+        headers: { authorization: `Bearer ${config.adminToken}`, 'content-type': 'application/json', connection: 'close' },
         body: body === undefined ? undefined : JSON.stringify(body),
     });
     const text = await response.text();
@@ -627,18 +628,21 @@ async function main() {
         clientsPlanned: ids.length * config.usersPerRoom,
     });
 
-    const rooms = (await Promise.all(ids.map((id) => createRoom(config, id)))).filter((room) => room !== null);
-    registry.set('rooms', {}, rooms.length);
-    if (rooms.length === 0) {
-        log({ type: 'fatal', errors: ['部屋を 1 つも作れなかった'] });
-        server.close();
-        process.exit(1);
-    }
-    const byId = new Map(rooms.map((room) => [room.id, room]));
-    const plan = planClients(
-        config,
-        rooms.map((room) => room.id),
-    );
+    // 部屋は最初の利用者が入る直前に作る（ランプの間に増えた Pod にも部屋が置かれる。先に全部作ると最初の Pod に集まる）
+    const rooms = [];
+    const creating = new Map();
+    const ensureRoom = (id) => {
+        const pending = creating.get(id) ?? createRoom(config, id).then((room) => {
+            if (room !== null) {
+                rooms.push(room);
+                registry.set('rooms', {}, rooms.length);
+            }
+            return room;
+        });
+        creating.set(id, pending);
+        return pending;
+    };
+    const plan = planClients(config, ids);
     const schedule = rampSchedule(plan.length, config.rampSeconds * 1000);
 
     const summary = { previous: registry.snapshot() };
@@ -652,7 +656,11 @@ async function main() {
     const launch = async (spec, delayMs) => {
         await sleep(delayMs, controller.signal);
         if (controller.signal.aborted) return;
-        const room = byId.get(spec.roomId);
+        const room = await ensureRoom(spec.roomId);
+        if (room === null || controller.signal.aborted) {
+            if (room === null) registry.inc('join_failures_total', { reason: 'other' }, 1);
+            return;
+        }
         const token = await issueTicket(config, room, spec.userId);
         if (token === null) {
             registry.inc('join_failures_total', { reason: 'other' }, 1);
