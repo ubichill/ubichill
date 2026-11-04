@@ -1,0 +1,23 @@
+{{- if and .Values.redis.enabled .Values.redis.metrics.enabled .Values.redis.metrics.serviceMonitor.enabled }}
+{{- /* Prometheus Operator の CRD が要る。additionalLabels は Bitnami の subchart の key（互換） */}}
+{{- $sm := .Values.redis.metrics.serviceMonitor }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "ubichill.redis.fullname" . }}
+  labels:
+    {{- include "ubichill.labels" . | nindent 4 }}
+    component: redis-metrics
+    {{- with merge (dict) ($sm.labels | default dict) ($sm.additionalLabels | default dict) }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "ubichill.selectorLabels" . | nindent 6 }}
+      component: redis-metrics
+  endpoints:
+    - port: http-metrics
+      path: /metrics
+      interval: {{ $sm.interval | default "30s" }}
+{{- end }}
