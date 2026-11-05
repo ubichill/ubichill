@@ -1,5 +1,43 @@
 # @ubichill/backend
 
+## 1.9.1
+
+### Patch Changes
+
+- 9a21d63: chart の同梱の Redis を、Bitnami の subchart（`bitnami/redis:latest`）から chart 自身のテンプレートで動かす Valkey（`valkey/valkey:8.1.11-alpine`、Redis 7.2 互換）に替えた。
+
+  - Service `<release>-redis-master:6379` と Secret の参照は変わらないので、backend・instance の `REDIS_URL`・`REDIS_PASSWORD` はそのまま。
+  - StatefulSet・PVC の名前が変わるので、移行のときに Redis の中身は消える（Go は部屋を作り直し、レート制限は 0 から数え直す。ログインのセッションは Postgres なので消えない）。手順は chart の README の「Bitnami の subchart からの移行」。
+  - `redis.auth.password` か `redis.auth.existingSecret` が要る（乱数で作らない）。イメージは版で固定し、`latest` と Bitnami のイメージは描画で失敗する。
+  - `maxmemory` はメモリの上限の 75%、`maxmemory-policy` は `noeviction`（リースを追い出さない）。
+  - exporter は `oliver006/redis_exporter` の sidecar（`redis.metrics.enabled`）。
+
+- 4a3e032: dev 環境と負荷試験のための chart・CI・クライアントの変更。
+
+  - CI: main への push で `:main-<sha>` タグも付ける（dev 環境の Image Updater が追う。`:sha-<sha>` は PR のプレビューにも付くので区別する）。
+  - chart: `instanceRuntime.nodeSelector` / `affinity` / `tolerations` で Go の Pod の配置を指定できる（負荷の生成器と別のノードに置く）。
+  - chart: Go の権限を絞る。Role は pods の `patch` だけにし、`ValidatingAdmissionPolicy`（`instanceRuntime.autoscaling.deletionCostPolicy.enabled`、既定 true）で、この ServiceAccount からの更新を「同じ release の instance の Pod の pod-deletion-cost の注釈だけ」に限る。
+  - react（changeset の対象外）: 部屋の引っ越し中に `code: "migrating"` で断られた応答付きの要求（state:update・entity:create など）を 500ms おきに最大 20 回送り直す。利用者からは失敗に見えない。
+
+- aa04846: `WORLDS_SERVE_UNSIGNED_REPOSITORY=true`（開発・プレビュー・dev 環境）のとき、ほかのサーバーの作者の署名が付いた同梱ワールドも、署名を外して「署名なし」として公式アカウントの名義で配る。dev 環境は main のイメージ（本番の作者の署名付き）で動くので、今までは配れるワールドが 1 つも無かった。作者のサーバーへは問い合わせず、本番ではこの設定自体が使えない。
+- b4c63fa: Go のインスタンスにカーソルのまとめ送りと接続数の上限を足した。
+
+  - Go: `--cursor-batch-interval`（既定 50ms、0 で無効）。`world:join` で `features: ["cursors:batch"]` を宣言した接続には、間隔の中の `cursor:move` を利用者ごとに最新の 1 件にし、自分の分を除いて 1 フレームの `cursors:moved` で送る。宣言しない接続には今まで通り `cursor:moved` を 1 件ずつ送る。中継は宣言をそのまま owner へ通し、引っ越しでは同じ宣言で入り直す。
+  - Go: `--max-connections`（既定 0 ＝無制限）。上限の 9 割から新しい部屋（作成・引っ越し）を 503 で断り、heartbeat の `full` と `room_capacity_available` を 0 にする。上限で新しい参加者の `world:join`（直接・中継の両方）を `instance_unavailable` で断る。入室中の接続は切らず、`/ready` も落とさない。指標 `ubichill_instance_connection_capacity`・`ubichill_instance_rejected_joins_total{reason}` を足した。chart は `instanceRuntime.maxConnections`。
+  - backend: heartbeat の `full` の Pod には新しい部屋を置かない（古い版の Pod は書かないので部屋数だけで決める）。
+  - shared: `ServerToClientEvents` に `cursors:moved`、`world:join` の data に `features?`（`InstanceFeature`）、`CursorMovedPayload` を足した。宣言を足しただけなので `protocolVersion` は上げない（docs/PROTOCOLS.md の D）。
+
+- e956ac5: インスタンス作成の 1 IP・1 時間あたりの上限を `INSTANCE_CREATE_LIMIT_PER_HOUR` で変えられるようにする（既定は 10 のまま）。負荷試験のために dev で上げる用。本番（`NODE_ENV=production`）では既定より大きくすると起動しない。
+- 01165a6: Go のインスタンスのリースの既定を TTL 30 秒・余裕 10 秒・Directory の往復の上限 5 秒にする（15 秒・5 秒・2 秒から）。CPU の上限に張り付いた Pod では、延長の goroutine が何千もの送信の後ろに並んで往復が数秒遅れ、dev の負荷試験（1000 接続・3 Pod）で 1 Pod の部屋が 21 個自己停止して約 290 人が切断された。延長が 20 秒まで遅れても部屋を保つ。代わりに、落ちた Pod の部屋を別の Pod が作り直せるまで最長 30 秒かかる（backend の復旧の猶予 60 秒の内）。
+
+  フロント（@ubichill/react、changeset の対象外）は、一度入れた後の切断に限り繋ぎ直しを 60 秒・10 回まで続ける（最初の入室は今まで通り 30 秒・6 回）。リースが 30 秒になったので、Pod の障害の直後は部屋を作り直せるまで最長 30 秒 + backend の作り直しの時間がかかり、30 秒で諦めると戻れたはずの利用者が脱落する。
+
+- Updated dependencies [24578ca]
+- Updated dependencies [b4c63fa]
+- Updated dependencies [24578ca]
+  - @ubichill/shared@1.11.0
+  - @ubichill/db@1.5.1
+
 ## 1.9.0
 
 ### Minor Changes
