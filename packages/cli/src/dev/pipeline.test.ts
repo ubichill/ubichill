@@ -10,6 +10,12 @@ import type { GoAdmin } from './goRuntime.ts';
 import { buildRoomDefinition, createPipeline, type PipelineDeps, type WorldSource } from './pipeline.ts';
 import type { DevEvent } from './server.ts';
 
+/** 中身を変えた mod（lock の断片の hash が変わる）。 */
+const edited = (mod: ModArtifacts, mark: string): ModArtifacts => ({
+    ...mod,
+    lockEntry: { ...mod.lockEntry, manifestIntegrity: `sha256-${mark.repeat(43)}=` },
+});
+
 const worldYaml = (deps: string[] = ['pen']): WorldSource => ({
     url: 'file:///p/world.yaml',
     raw: {
@@ -91,6 +97,7 @@ describe('createPipeline', () => {
         const h = harness();
         h.pipeline.schedule({ mods: 'all', reconfigure: true });
         await h.pipeline.idle();
+        h.mods.set('pen', edited(fakeMod('pen'), 'B'));
         h.pipeline.schedule({ mods: new Set(['pen']), reconfigure: false });
         await h.pipeline.idle();
         expect(currentGeneration(h.pipeline.state)).toMatchObject({ buildId: 'r-2', instanceId: 'dev-r-1' });
@@ -160,7 +167,7 @@ describe('createPipeline', () => {
         h.pipeline.schedule({ mods: 'all', reconfigure: true });
         await h.pipeline.idle();
         h.compile.mockImplementationOnce(
-            () => new Promise((resolve) => (gate.resolve = () => resolve(fakeMod('pen')))),
+            () => new Promise((resolve) => (gate.resolve = () => resolve(edited(fakeMod('pen'), 'B')))),
         );
         h.pipeline.schedule({ mods: new Set(['pen']), reconfigure: false });
         h.pipeline.schedule({ mods: new Set(['pen']), reconfigure: false });
@@ -200,5 +207,118 @@ describe('buildRoomDefinition', () => {
         expect(def.maxUsers).toBe(3);
         expect(def.id).toBe('dev-x');
         expect(def.snapshot.lock).toBe(lock);
+    });
+});
+
+describe('失敗の後に何を残し、何をやり直すか', () => {
+    it('初回のビルドが失敗しても mod は監視の対象に入り、直して知らせれば公開される', async () => {
+        const h = harness({ loadWorld: async () => undefined });
+        h.compile.mockRejectedValueOnce(new Error('syntax error'));
+        h.pipeline.schedule({ mods: 'all', reconfigure: true });
+        await h.pipeline.idle();
+        expect(currentGeneration(h.pipeline.state)).toBeUndefined();
+        // 監視の情報は公開の成否と切り離されている（ここが空だと、直して保存しても気づけない）
+        expect([...h.pipeline.modDirs.keys()]).toEqual(['pen']);
+        // 直した: 監視が pen の変更を知らせる
+        h.pipeline.schedule({ mods: new Set(['pen']), reconfigure: false });
+        await h.pipeline.idle();
+        expect(currentGeneration(h.pipeline.state)).toMatchObject({ buildId: 'r-1', instanceId: 'dev-r-1' });
+        expect(h.go.puts.map((d) => d.id)).toEqual(['dev-r-1']);
+    });
+
+    it('A と B を同時に変えて B だけ失敗し、B を直したとき、A の変更も次の世代に入る', async () => {
+        const h2 = harness({ loadWorld: async () => worldYaml(['pen', 'danmaku']) });
+        h2.mods.set('danmaku', fakeMod('danmaku'));
+        h2.pipeline.schedule({ mods: 'all', reconfigure: true });
+        await h2.pipeline.idle();
+        const firstPen = currentGeneration(h2.pipeline.state)?.mods.get('pen');
+
+        // A（pen）を変え、B（danmaku）を壊す
+        const penV2 = edited(fakeMod('pen'), 'C');
+        h2.mods.set('pen', penV2);
+        h2.compile.mockImplementation(async (dir: string) => {
+            if (dir.endsWith('danmaku')) throw new Error('broken danmaku');
+            return h2.mods.get(dir.split('/').pop() as string) as ModArtifacts;
+        });
+        h2.pipeline.schedule({ mods: new Set(['pen', 'danmaku']), reconfigure: false });
+        await h2.pipeline.idle();
+        expect(currentGeneration(h2.pipeline.state)?.mods.get('pen')).toBe(firstPen);
+        expect(h2.events.at(-1)).toMatchObject({ type: 'build-error', mod: 'danmaku' });
+
+        // B だけを直して保存する（監視が知らせるのは danmaku だけ）
+        h2.compile.mockImplementation(
+            async (dir: string) => h2.mods.get(dir.split('/').pop() as string) as ModArtifacts,
+        );
+        h2.pipeline.schedule({ mods: new Set(['danmaku']), reconfigure: false });
+        await h2.pipeline.idle();
+        expect(currentGeneration(h2.pipeline.state)?.mods.get('pen')).toBe(penV2);
+    });
+
+    it('失敗の後、次の知らせが来るまでは同じビルドを繰り返さない', async () => {
+        const h = harness();
+        h.pipeline.schedule({ mods: 'all', reconfigure: true });
+        await h.pipeline.idle();
+        h.compile.mockRejectedValue(new Error('still broken'));
+        h.pipeline.schedule({ mods: new Set(['pen']), reconfigure: false });
+        await h.pipeline.idle();
+        await h.pipeline.idle();
+        expect(h.compile).toHaveBeenCalledTimes(2);
+    });
+
+    it('失敗した mod はすべて知らせる（1 つ目で止めない）', async () => {
+        const h = harness({ loadWorld: async () => undefined });
+        h.mods.set('danmaku', fakeMod('danmaku'));
+        h.compile.mockRejectedValue(new Error('broken'));
+        h.pipeline.schedule({ mods: 'all', reconfigure: true });
+        await h.pipeline.idle();
+        expect(
+            h.events
+                .filter((e) => e.type === 'build-error')
+                .map((e) => (e as { mod: string }).mod)
+                .sort(),
+        ).toEqual(['danmaku', 'pen']);
+    });
+
+    it('合成したワールドに同じ版のまま Worker を足すと、部屋を作り直して新しい Component が入る', async () => {
+        const h = harness({ loadWorld: async () => undefined });
+        h.pipeline.schedule({ mods: 'all', reconfigure: true });
+        await h.pipeline.idle();
+        h.mods.set('pen', fakeMod('pen', '1.0.0', ['pen:main', 'pen:tray']));
+        h.pipeline.schedule({ mods: new Set(['pen']), reconfigure: false });
+        await h.pipeline.idle();
+        expect(currentGeneration(h.pipeline.state)?.instanceId).toBe('dev-r-2');
+        expect(h.go.puts.at(-1)?.snapshot.entities.map((e) => e.type)).toEqual(['pen:main', 'pen:tray']);
+    });
+
+    it('部屋の作り直しを Go が断ったら、作り直しの要求は残り、次の変更のときにもう一度試す', async () => {
+        const reject = { on: false };
+        const go = fakeGo(() => (reject.on ? 'busy' : null));
+        const h = harness({ go: () => go.admin });
+        h.pipeline.schedule({ mods: 'all', reconfigure: true });
+        await h.pipeline.idle();
+        reject.on = true;
+        h.pipeline.schedule({ mods: new Set(), reconfigure: true });
+        await h.pipeline.idle();
+        expect(currentGeneration(h.pipeline.state)?.instanceId).toBe('dev-r-1');
+        reject.on = false;
+        h.pipeline.schedule({ mods: new Set(['pen']), reconfigure: false });
+        await h.pipeline.idle();
+        expect(currentGeneration(h.pipeline.state)?.instanceId).toBe('dev-r-2');
+    });
+});
+
+describe('中身の変わらない保存', () => {
+    it('ビルドし直しても成果物が同じなら、新しい世代を公開しない（ページを読み直させない）', async () => {
+        const h = harness();
+        h.pipeline.schedule({ mods: 'all', reconfigure: true });
+        await h.pipeline.idle();
+        h.pipeline.schedule({ mods: new Set(['pen']), reconfigure: false });
+        await h.pipeline.idle();
+        expect(currentGeneration(h.pipeline.state)?.buildId).toBe('r-1');
+        expect(h.events.filter((e) => e.type === 'generation')).toHaveLength(1);
+        // 部屋を作り直すボタンは中身が同じでも効く
+        h.pipeline.schedule({ mods: new Set(), reconfigure: true });
+        await h.pipeline.idle();
+        expect(currentGeneration(h.pipeline.state)?.instanceId).toBe('dev-r-2');
     });
 });

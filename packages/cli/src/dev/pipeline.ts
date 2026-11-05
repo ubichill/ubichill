@@ -1,13 +1,23 @@
 /**
  * dev サーバーの判断: いつ何をビルドし、世代をどう確定するか。
  *
- * 切り替えは「全部が成功したら最後に 1 回だけ公開する」。途中で失敗したら、今の世代も Go の部屋も触らない。
- *   1. 対象の mod をビルドする（1 つでも失敗したら中止）
- *   2. 前の世代の成果物と組み合わせ、新しい lock を作る
- *   3. 部屋を作り直すときだけ: world.yaml を解決・検証し、新しい ID の部屋を Go に作る（拒否されたら中止。前の部屋はそのまま）
- *   4. 世代を公開し、SSE で知らせる
+ * 持つ状態は 3 つに分ける（混ぜると、失敗の後に何を残し何をやり直すかが追えなくなる）:
+ *   - published（公開した世代）: ブラウザが今使っている世代と、その部屋の定義。公開に成功したときだけ変わる。
+ *   - unpublished（まだ公開できていない変更）: 変わったと知らされたが、まだ世代に入っていない mod・ワールド。
+ *     公開に成功するまで消さない。失敗した後の変更はここに合流し、次のビルドで一緒にやり直す。
+ *   - discovered（監視の情報）: mod のディレクトリと、各 mod が読んだファイル。公開の成否と関係なく更新する
+ *     （初回のビルドが失敗しても、直して保存すれば気づけるように）。
+ *
+ * 切り替えは「全部が成功したら最後に 1 回だけ公開する」。途中で失敗したら published も Go の部屋も触らない。
+ *   1. 未反映の mod と、公開した世代に無い mod をビルドする（1 つでも失敗したら中止）
+ *   2. 公開した世代の成果物と組み合わせ、新しい lock を作る
+ *   3. 部屋を作り直すときだけ: ワールドを解決・検証し、新しい ID の部屋を Go に作る（拒否されたら中止。前の部屋はそのまま）
+ *   4. 世代を公開し、SSE で知らせる。このビルドが反映した変更だけを unpublished から消す
  *   5. 部屋を作り直したときは、前の部屋をしばらくしてから消す（読み直し中のページを切らない）
- * ビルドは 1 つずつ。ビルド中に来た変更はためておき、終わったら 1 回にまとめる（世代は作った順に公開される）。
+ * ビルドは 1 つずつ。ビルド中に来た変更は次のビルドにまとめる（世代は作った順に公開される）。
+ *
+ * 名前の区別: buildId = 配布物（lock・manifest・Worker・asset）の世代、instanceId = Go の部屋。
+ * Go の owner の世代（gen / epoch）は Go の中だけのもので、ここでは扱わない。
  */
 import {
     type InstanceDefinition,
@@ -73,27 +83,27 @@ export class BuildError extends Error {
 export class WorldError extends Error {}
 
 export interface Pipeline {
+    /** 公開した世代（ブラウザが使うもの）。 */
     readonly state: GenerationState;
-    /** 変更を予約する。ビルド中なら次のビルドにまとめる。 */
+    /** 変更を知らせる。ビルド中なら次のビルドにまとめる。失敗しても、公開できるまで変更は消えない。 */
     schedule(plan: RebuildPlan): void;
     /** 進行中のビルドが終わるまで待つ（テスト・終了処理）。 */
     idle(): Promise<void>;
-    /** 今の mod のディレクトリと入力（監視の対象）。 */
+    /** 監視の情報: 今の mod のディレクトリと、各 mod が読んだファイル。 */
     readonly modDirs: ReadonlyMap<string, string>;
     readonly inputsByMod: ReadonlyMap<string, ReadonlySet<string>>;
     /** Go が起動し直したあと、今の世代の部屋を作り直す。 */
     restoreRoom(): Promise<void>;
 }
 
-const mergePlans = (a: RebuildPlan | null, b: RebuildPlan): RebuildPlan => ({
-    mods:
-        !a || a.mods === 'all' || b.mods === 'all'
-            ? a?.mods === 'all' || b.mods === 'all'
-                ? 'all'
-                : b.mods
-            : new Set([...a.mods, ...b.mods]),
-    reconfigure: (a?.reconfigure ?? false) || b.reconfigure,
-});
+/** まだ公開できていない変更。値は変更の通し番号（ビルド中に同じものがもう一度変わったら、そのビルドでは消さない）。 */
+interface Unpublished {
+    mods: Map<string, number>;
+    /** mod の一覧を探し直す（0 なら不要）。 */
+    rescan: number;
+    /** 部屋を作り直す（0 なら不要）。 */
+    reconfigure: number;
+}
 
 /** 世代に入れる部屋の定義を作る（world.yaml か合成したワールド）。失敗は WorldError。 */
 export async function buildRoomDefinition(
@@ -122,69 +132,135 @@ export async function buildRoomDefinition(
     });
 }
 
+const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+
+/** 成果物の中身が同じか。lock の断片は manifest（asset の hash を含む）と各 Worker の hash を持つので、それで比べる。 */
+function sameContents(a: ReadonlyMap<string, ModArtifacts>, b: ReadonlyMap<string, ModArtifacts>): boolean {
+    if (a.size !== b.size) return false;
+    for (const [id, mod] of b) {
+        const before = a.get(id);
+        if (!before || JSON.stringify(before.lockEntry) !== JSON.stringify(mod.lockEntry)) return false;
+    }
+    return true;
+}
+
 export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pipeline {
     const retireDelay = deps.retireDelayMs ?? RETIRE_DELAY_MS;
     const later = deps.setTimeout ?? setTimeout;
-    const self = {
+    const published = {
         state: initial,
+        // Go が落ちて起動し直したときに作り直すために、今の部屋の定義を持つ
+        room: undefined as InstanceDefinition | undefined,
+    };
+    const unpublished: Unpublished = { mods: new Map(), rescan: 0, reconfigure: 0 };
+    const discovered = {
         modDirs: new Map<string, string>() as ReadonlyMap<string, string>,
-        inputsByMod: new Map<string, ReadonlySet<string>>() as ReadonlyMap<string, ReadonlySet<string>>,
-        pending: null as RebuildPlan | null,
+        inputsByMod: new Map<string, ReadonlySet<string>>(),
+    };
+    const control = {
+        seq: 0,
+        /** 最後のビルドの後に知らせが来たか。失敗の後は、次の知らせまでやり直さない（同じ失敗を繰り返さない）。 */
+        notified: false,
         running: null as Promise<void> | null,
-        // 部屋の定義は Go が落ちて起動し直したときに作り直すために持つ
-        roomDefinition: undefined as InstanceDefinition | undefined,
     };
 
-    async function compileMods(plan: RebuildPlan): Promise<ReadonlyMap<string, ModArtifacts>> {
-        const previous = currentGeneration(self.state)?.mods ?? new Map<string, ModArtifacts>();
-        const modDirs = plan.mods === 'all' ? await deps.discoverMods() : self.modDirs;
-        const targets = plan.mods === 'all' ? new Set(modDirs.keys()) : plan.mods;
+    /** 未反映の変更を記録する。 */
+    function record(plan: RebuildPlan): void {
+        const seq = ++control.seq;
+        if (plan.mods === 'all') unpublished.rescan = seq;
+        else for (const id of plan.mods) unpublished.mods.set(id, seq);
+        if (plan.reconfigure) unpublished.reconfigure = seq;
+        control.notified = true;
+    }
+
+    /** このビルドが反映した変更だけを消す（ビルド中にもう一度変わったものは残す）。 */
+    function settle(taken: Unpublished): void {
+        for (const [id, seq] of taken.mods) if (unpublished.mods.get(id) === seq) unpublished.mods.delete(id);
+        if (unpublished.rescan === taken.rescan) unpublished.rescan = 0;
+        if (unpublished.reconfigure === taken.reconfigure) unpublished.reconfigure = 0;
+    }
+
+    async function compileMods(taken: Unpublished): Promise<ReadonlyMap<string, ModArtifacts>> {
+        const previous = currentGeneration(published.state)?.mods ?? new Map<string, ModArtifacts>();
+        // 監視の情報は公開の成否と切り離す: 見つけた mod はビルドが失敗しても監視する
+        if (taken.rescan || discovered.modDirs.size === 0) discovered.modDirs = await deps.discoverMods();
         const mods = new Map<string, ModArtifacts>();
-        const inputs = new Map<string, ReadonlySet<string>>();
-        for (const [id, dir] of modDirs) {
+        const failures: BuildError[] = [];
+        for (const [id, dir] of discovered.modDirs) {
             const kept = previous.get(id);
-            if (!targets.has(id) && kept) {
+            if (kept && !taken.mods.has(id) && !taken.rescan) {
                 mods.set(id, kept);
-                inputs.set(id, self.inputsByMod.get(id) ?? new Set());
                 continue;
             }
             try {
                 const artifacts = await deps.compile(dir);
                 mods.set(artifacts.id, artifacts);
-                inputs.set(artifacts.id, artifacts.inputs);
+                discovered.inputsByMod.set(artifacts.id, artifacts.inputs);
             } catch (error) {
-                throw new BuildError(id, error instanceof Error ? error.message : String(error));
+                failures.push(new BuildError(id, errorMessage(error)));
             }
         }
-        self.modDirs = modDirs;
-        self.inputsByMod = inputs;
+        for (const id of discovered.inputsByMod.keys())
+            if (!discovered.modDirs.has(id)) discovered.inputsByMod.delete(id);
+        // 失敗した mod をすべて知らせる（1 つ目で止めると、直した順に 1 つずつしか分からない）
+        for (const failure of failures.slice(0, -1)) report(failure);
+        if (failures.length > 0) throw failures.at(-1);
         return mods;
     }
 
-    async function run(plan: RebuildPlan): Promise<void> {
-        const previous = currentGeneration(self.state);
+    function report(error: unknown): void {
+        if (error instanceof BuildError) {
+            deps.log(`❌ [${error.mod}] ビルドに失敗: ${error.message}`);
+            deps.broadcast({ type: 'build-error', mod: error.mod, message: error.message });
+            return;
+        }
+        const message = errorMessage(error);
+        deps.log(`❌ ワールドを作れません: ${message}`);
+        deps.broadcast({ type: 'world-error', message });
+    }
+
+    async function run(): Promise<void> {
+        control.notified = false;
+        const taken: Unpublished = {
+            mods: new Map(unpublished.mods),
+            rescan: unpublished.rescan,
+            reconfigure: unpublished.reconfigure,
+        };
+        const previous = currentGeneration(published.state);
         try {
-            const mods = await compileMods(plan);
-            const { state, buildId } = nextBuildId(self.state);
+            const mods = await compileMods(taken);
+            // 中身が変わっていない（保存しただけ）なら公開しない。開いているページを無駄に読み直させない
+            if (previous && !taken.reconfigure && sameContents(previous.mods, mods)) {
+                settle(taken);
+                return;
+            }
+            const { state, buildId } = nextBuildId(published.state);
             const world = await deps.loadWorld();
-            const definition = world ? validateWorldDefinition(world.raw, world.url) : undefined;
+            const definition = (() => {
+                try {
+                    return world ? validateWorldDefinition(world.raw, world.url) : undefined;
+                } catch (error) {
+                    throw new WorldError(errorMessage(error));
+                }
+            })();
             const modIds = definition ? requiredLockModIds(definition.spec) : [...mods.keys()];
             const lock = await buildGenerationLock(buildId, mods, modIds, definition?.spec.dependencies);
-            const newRoom = plan.reconfigure || needsNewRoom(previous, mods) || !previous;
+            // 合成したワールドは Component から初期の entity を作るので、Component が増減したら部屋を作り直す
+            const newRoom = !previous || taken.reconfigure > 0 || needsNewRoom(previous, mods, { synthesized: !world });
             const instanceId = newRoom ? `dev-${buildId}` : (previous as Generation).instanceId;
-            if (newRoom) {
-                const roomDefinition = await buildRoomDefinition(world, mods, lock, {
-                    instanceId,
-                    maxUsers: deps.maxUsers,
-                });
+            const room = newRoom
+                ? await buildRoomDefinition(world, mods, lock, { instanceId, maxUsers: deps.maxUsers })
+                : published.room;
+            if (newRoom && room) {
                 const go = deps.go();
                 if (!go) throw new WorldError('Go のインスタンスサーバーが動いていません');
-                const result = await go.putInstance(roomDefinition);
+                const result = await go.putInstance(room);
                 if (!result.ok) throw new WorldError(`Go が部屋を作れません (${result.status}): ${result.error}`);
-                self.roomDefinition = roomDefinition;
             }
-            const generation: Generation = { buildId, mods, lock, instanceId };
-            self.state = publishGeneration(state, generation);
+            // ここから先は失敗しない: 公開して、反映した変更を消す
+            published.state = publishGeneration(state, { buildId, mods, lock, instanceId });
+            published.room = room;
+            settle(taken);
             deps.broadcast({ type: 'generation', buildId, instanceId });
             deps.log(`✅ 世代 ${buildId}（mod ${mods.size}、部屋 ${instanceId}${newRoom ? '・作り直し' : ''}）`);
             if (newRoom && previous && previous.instanceId !== instanceId) {
@@ -192,54 +268,40 @@ export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pi
                 later(() => void deps.go()?.deleteInstance(retired), retireDelay);
             }
         } catch (error) {
-            if (error instanceof BuildError) {
-                deps.log(`❌ [${error.mod}] ビルドに失敗: ${error.message}`);
-                deps.broadcast({ type: 'build-error', mod: error.mod, message: error.message });
-            } else {
-                const message = error instanceof Error ? error.message : String(error);
-                deps.log(`❌ ワールドを作れません: ${message}`);
-                deps.broadcast({ type: 'world-error', message });
-            }
+            report(error);
         }
     }
 
-    function drain(): Promise<void> {
-        const plan = self.pending;
-        if (!plan) return Promise.resolve();
-        self.pending = null;
-        return run(plan).then(drain);
+    async function drain(): Promise<void> {
+        while (control.notified) await run();
     }
 
     return {
         get state() {
-            return self.state;
+            return published.state;
         },
         get modDirs() {
-            return self.modDirs;
+            return discovered.modDirs;
         },
         get inputsByMod() {
-            return self.inputsByMod;
+            return discovered.inputsByMod;
         },
         schedule(plan) {
-            self.pending = mergePlans(self.pending, plan);
-            if (!self.running) {
-                self.running = drain().finally(() => {
-                    self.running = null;
+            record(plan);
+            if (!control.running) {
+                control.running = drain().finally(() => {
+                    control.running = null;
                 });
             }
         },
-        idle: () => self.running ?? Promise.resolve(),
+        idle: () => control.running ?? Promise.resolve(),
         async restoreRoom() {
-            const definition = self.roomDefinition;
+            const room = published.room;
             const go = deps.go();
-            if (!definition || !go) return;
-            const result = await go.putInstance(definition);
-            if (result.ok) deps.log(`♻️  部屋 ${definition.id} を作り直しました（状態は初期に戻ります）`);
-            else
-                deps.broadcast({
-                    type: 'world-error',
-                    message: `Go が部屋を作れません (${result.status}): ${result.error}`,
-                });
+            if (!room || !go) return;
+            const result = await go.putInstance(room);
+            if (result.ok) deps.log(`♻️  部屋 ${room.id} を作り直しました（状態は初期に戻ります）`);
+            else report(new WorldError(`Go が部屋を作れません (${result.status}): ${result.error}`));
         },
     };
 }

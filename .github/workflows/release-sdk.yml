@@ -84,7 +84,8 @@ jobs:
         uses: changesets/action@v1
         with:
           # Version Packages PR が既に無い状態（＝マージ済み）のときだけ実行される。
-          publish: node scripts/publish-npm.mjs packages/sdk packages/cli packages/instance
+          # instance を cli より先に出す（cli の optionalDependencies が同じ版の instance を指す。逆だと、公開の間 cli を入れても Go が入らない）
+          publish: node scripts/publish-npm.mjs packages/sdk packages/instance packages/cli
           version: pnpm changeset version
           commit: 'chore: version packages'
           title: 'chore: version packages'

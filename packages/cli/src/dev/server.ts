@@ -5,6 +5,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { join, resolve, sep } from 'node:path';
+import type { Duplex } from 'node:stream';
 import { isSandboxWorkerScriptPath, type ModLock, SANDBOX_WORKER_CSP } from '@ubichill/shared';
 import { findGeneration, type Generation, type GenerationState } from './generation.ts';
 import { isRealtimePath, proxyHttp, proxyUpgrade } from './proxy.ts';
@@ -66,6 +67,8 @@ export function formatSse(event: DevEvent): string {
 
 export function createDevServer(deps: DevServerDeps): DevServer {
     const clients = new Set<ServerResponse>();
+    // Upgrade した WebSocket は http.Server の接続の管理から外れる（closeAllConnections では閉じない）ので自分で持つ
+    const upgraded = new Set<Duplex>();
     const pageHtml = () => withDevMeta(readFileSync(join(deps.worldDist, 'world.html'), 'utf-8'));
     const assetsRoot = resolve(deps.worldDist);
 
@@ -169,6 +172,8 @@ export function createDevServer(deps: DevServerDeps): DevServer {
             socket.destroy();
             return;
         }
+        upgraded.add(socket);
+        socket.on('close', () => upgraded.delete(socket));
         proxyUpgrade(req, socket, head, port);
     });
 
@@ -181,6 +186,9 @@ export function createDevServer(deps: DevServerDeps): DevServer {
         close() {
             for (const client of clients) client.end();
             clients.clear();
+            // 中継中の WebSocket を切る（切ると Go への中継も proxyUpgrade の close で切れる）
+            for (const socket of upgraded) socket.destroy();
+            upgraded.clear();
             return new Promise((done) => {
                 server.closeAllConnections();
                 server.close(() => done());

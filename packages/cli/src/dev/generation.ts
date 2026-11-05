@@ -7,13 +7,13 @@ import type { Dependency, ModLock } from '@ubichill/shared';
 import type { ModArtifacts } from '../build.ts';
 
 export interface Generation {
-    /** `<起動ごとの乱数>-<連番>`。dev サーバーを再起動しても前の値と衝突しない。 */
+    /** 配布物の世代。`<起動ごとの乱数>-<連番>`。dev サーバーを再起動しても前の値と衝突しない。Go の owner の世代（gen/epoch）とは別物。 */
     buildId: string;
     /** 全 mod の成果物（id → 成果物）。前の世代と変わらない mod は同じ参照を共有する。 */
     mods: ReadonlyMap<string, ModArtifacts>;
     /** 各エントリの baseUrl はこの世代の URL。 */
     lock: ModLock;
-    /** この世代のブラウザが入る部屋。 */
+    /** この世代のブラウザが入る Go の部屋。mod のコードだけが変わったときは前の世代と同じ部屋を使う（entity が残る）。 */
     instanceId: string;
 }
 
@@ -67,13 +67,24 @@ export async function buildGenerationLock(
     return buildWorldLock([...modIds], createDependencyAwareLockEntryGetter(dependencies, local, fetchImpl));
 }
 
-/** 世代の切り替えで部屋を作り直すか（mod の集合か版が変わると、定義の activeMods・availableComponents が変わる）。 */
-export function needsNewRoom(previous: Generation | undefined, mods: ReadonlyMap<string, ModArtifacts>): boolean {
+/**
+ * 世代の切り替えで部屋を作り直すか。mod の集合か版が変わると、定義の activeMods が変わる。
+ * world.yaml が無く mod から合成したワールドなら、初期の entity は Component から作るので、Component の集合が変わっても作り直す
+ * （同じ版のまま Worker を足しても、新しい Component が部屋に現れるように）。
+ */
+export function needsNewRoom(
+    previous: Generation | undefined,
+    mods: ReadonlyMap<string, ModArtifacts>,
+    options: { synthesized: boolean },
+): boolean {
     if (!previous) return true;
     if (previous.mods.size !== mods.size) return true;
+    const sameComponents = (a: readonly string[], b: readonly string[]) =>
+        a.length === b.length && [...a].sort().every((type, i) => type === [...b].sort()[i]);
     for (const [id, mod] of mods) {
         const before = previous.mods.get(id);
         if (!before || before.version !== mod.version) return true;
+        if (options.synthesized && !sameComponents(before.components, mod.components)) return true;
     }
     return false;
 }

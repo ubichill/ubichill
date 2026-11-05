@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { describe, expect, it, vi } from 'vitest';
-import { isAlreadyPublished } from './publish-npm.mjs';
+import { buildCommand, isAlreadyPublished } from './publish-npm.mjs';
 
 // npm view <name>@<version> version は、そのバージョンが無いと非ゼロ終了する。
 // 実ネットワークを叩かずにこの分岐を確認する（execFileSync をモック）。
@@ -17,5 +17,11 @@ describe('isAlreadyPublished', () => {
             throw new Error('npm ERR! 404');
         });
         expect(isAlreadyPublished('@ubichill/cli', '9.9.9')).toBe(false);
+    });
+});
+
+describe('buildCommand', () => {
+    it('turbo を通してビルドする（@ubichill/cli は frontend のビルドに依存する。pnpm --filter <name> build では走らない）', () => {
+        expect(buildCommand('@ubichill/cli')).toEqual(['turbo', 'build', '--filter=@ubichill/cli']);
     });
 });

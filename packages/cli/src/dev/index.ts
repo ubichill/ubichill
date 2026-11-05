@@ -77,7 +77,7 @@ export async function runDev(argv: string[]): Promise<void> {
 
     const log = (line: string) => console.log(line);
     const origins = [`http://localhost:${port}`, `http://127.0.0.1:${port}`];
-    const runtime = { current: undefined as GoRuntime | undefined };
+    const runtime = { current: undefined as GoRuntime | undefined, shuttingDown: false };
     const startRuntime = async () => {
         runtime.current = await startGo({
             binary: binary.path,
@@ -85,6 +85,8 @@ export async function runDev(argv: string[]): Promise<void> {
             log,
             onExit: (code) => {
                 runtime.current = undefined;
+                // 終了処理の途中で Go が先に止まっても、起動し直さない
+                if (runtime.shuttingDown) return;
                 log(`⚠️  Go のインスタンスサーバーが終了しました (exit ${code})。起動し直します`);
                 void startRuntime().then(() => pipeline.restoreRoom());
             },
@@ -150,6 +152,8 @@ export async function runDev(argv: string[]): Promise<void> {
     log('   保存すると自動でビルドして読み直します。Ctrl+C で止めます\n');
 
     const shutdown = async () => {
+        // 先に再起動を止めてから閉じる（WebSocket を切ると Go 側の接続も切れるが、Go は止めない限り動き続ける）
+        runtime.shuttingDown = true;
         watcher.close();
         await server.close();
         runtime.current?.stop();

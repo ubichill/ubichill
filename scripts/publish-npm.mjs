@@ -12,7 +12,8 @@
  * 同じように git タグ + GitHub Release（各パッケージの CHANGELOG.md から該当バージョンのエントリを読む）を作成できる。
  *
  * 使い方: node scripts/publish-npm.mjs <packages/sdk> [<packages/cli> ...] [--dry-run]
- *   各パッケージについて `pnpm --filter <name> build` で dist-npm を作り、`npm publish dist-npm` する。
+ *   各パッケージについて `pnpm turbo build --filter=<name>` で dist-npm を作り、`npm publish dist-npm` する。
+ *   turbo を通すのは、turbo.json に書いたビルドの依存（@ubichill/cli は world.html を同梱するので frontend のビルド）も走らせるため。
  */
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -47,13 +48,16 @@ export function publishDirs(distNpmDir) {
         .sort();
 }
 
+/** 公開物を作るコマンド。turbo.json の依存（`@ubichill/cli#build` → `@ubichill/frontend#build` など）を通す。 */
+export const buildCommand = (name) => ['turbo', 'build', `--filter=${name}`];
+
 /** 1 つのワークスペースのパッケージをビルドし、その公開物（1 つまたは複数）を公開する。 */
 export function publishPackage(packageDir, { dryRun }) {
     const dir = resolve(repoRoot, packageDir);
     const { name, version } = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'));
 
     console.log(`🔨 Building ${name}@${version} publish artifact...`);
-    execFileSync('pnpm', ['--filter', name, 'build'], { cwd: repoRoot, stdio: 'inherit' });
+    execFileSync('pnpm', buildCommand(name), { cwd: repoRoot, stdio: 'inherit' });
 
     for (const distNpmDir of publishDirs(join(dir, 'dist-npm'))) publishDir(name, version, distNpmDir, { dryRun });
 }

@@ -6,7 +6,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { fakeMod } from './generation.test.ts';
 import { type Generation, type GenerationState, initialGenerationState, publishGeneration } from './generation.ts';
 import { absolutizeLock, createDevServer, type DevServer, formatSse } from './server.ts';
@@ -179,5 +179,51 @@ describe('absolutizeLock', () => {
         expect(lock.mods.pen?.baseUrl).toBe('http://127.0.0.1:3333/__ubichill/g/r-1/mods');
         expect(lock.mods.ext?.baseUrl).toBe('https://cdn.example/mods');
         expect(lock.mods.bare?.baseUrl).toBeUndefined();
+    });
+});
+
+describe('close（WebSocket を中継しているとき）', () => {
+    it('中継中の WebSocket があっても close が終わり、Go 側の接続も切れる', async () => {
+        const worldDist = mkdtempSync(join(tmpdir(), 'ubichill-world-dist-'));
+        writeFileSync(join(worldDist, 'world.html'), '<html><head></head></html>');
+        // 偽の Go: upgrade を受けて 101 を返し、接続を開いたままにする
+        const upstreamClosed = { value: false };
+        const go = createServer();
+        go.on('upgrade', (_req, socket) => {
+            socket.write(
+                'HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: x\r\n\r\n',
+            );
+            // http.Server のソケットは half-open を許すので、相手が切ったことは 'end' で分かる
+            for (const event of ['end', 'close']) {
+                socket.on(event, () => {
+                    upstreamClosed.value = true;
+                });
+            }
+        });
+        const goPort = Number((await listen(go)).split(':').pop());
+        const dev = createDevServer({
+            state: () => initialGenerationState('r'),
+            goPort: () => goPort,
+            worldDist,
+            onReconfigure: () => {},
+        });
+        const origin = await listen(dev.server);
+        const { connect } = await import('node:net');
+        const client = connect(Number(origin.split(':').pop()), '127.0.0.1');
+        await new Promise<void>((resolve) => client.on('connect', () => resolve()));
+        client.write(
+            'GET /realtime/v1/ws HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n',
+        );
+        await new Promise<void>((resolve) => client.once('data', () => resolve()));
+
+        const closed = await Promise.race([
+            dev.close().then(() => 'closed'),
+            new Promise((resolve) => setTimeout(() => resolve('timeout'), 2000)),
+        ]);
+        expect(closed).toBe('closed');
+        await vi.waitFor(() => expect(upstreamClosed.value).toBe(true), { timeout: 2000 });
+        client.destroy();
+        go.close();
+        rmSync(worldDist, { recursive: true, force: true });
     });
 });

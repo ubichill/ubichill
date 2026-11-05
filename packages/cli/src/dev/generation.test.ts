@@ -95,9 +95,10 @@ describe('buildGenerationLock', () => {
 });
 
 describe('needsNewRoom', () => {
+    const yaml = { synthesized: false };
     it('最初・mod の集合が変わった・版が変わったときだけ部屋を作り直す', () => {
         const previous = gen('r-1', [fakeMod('pen'), fakeMod('danmaku')]);
-        expect(needsNewRoom(undefined, previous.mods)).toBe(true);
+        expect(needsNewRoom(undefined, previous.mods, yaml)).toBe(true);
         expect(
             needsNewRoom(
                 previous,
@@ -105,6 +106,7 @@ describe('needsNewRoom', () => {
                     ['pen', fakeMod('pen')],
                     ['danmaku', fakeMod('danmaku')],
                 ]),
+                yaml,
             ),
         ).toBe(false);
         expect(
@@ -114,9 +116,10 @@ describe('needsNewRoom', () => {
                     ['pen', fakeMod('pen', '1.0.1')],
                     ['danmaku', fakeMod('danmaku')],
                 ]),
+                yaml,
             ),
         ).toBe(true);
-        expect(needsNewRoom(previous, new Map([['pen', fakeMod('pen')]]))).toBe(true);
+        expect(needsNewRoom(previous, new Map([['pen', fakeMod('pen')]]), yaml)).toBe(true);
         expect(
             needsNewRoom(
                 previous,
@@ -124,7 +127,21 @@ describe('needsNewRoom', () => {
                     ['pen', fakeMod('pen')],
                     ['other', fakeMod('other')],
                 ]),
+                yaml,
             ),
         ).toBe(true);
+    });
+});
+
+describe('needsNewRoom（Component の増減）', () => {
+    const previous = gen('r-1', [fakeMod('pen', '1.0.0', ['pen:pen'])]);
+    const added = new Map([['pen', fakeMod('pen', '1.0.0', ['pen:pen', 'pen:tray'])]]);
+    it('合成したワールドでは、同じ版のまま Worker を足しても部屋を作り直す（新しい Component の entity が要る）', () => {
+        expect(needsNewRoom(previous, added, { synthesized: true })).toBe(true);
+        const reordered = new Map([['pen', fakeMod('pen', '1.0.0', ['pen:pen'])]]);
+        expect(needsNewRoom(previous, reordered, { synthesized: true })).toBe(false);
+    });
+    it('world.yaml のワールドは配置が YAML で決まるので、Component の増減だけでは作り直さない', () => {
+        expect(needsNewRoom(previous, added, { synthesized: false })).toBe(false);
     });
 });
