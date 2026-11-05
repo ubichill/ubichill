@@ -5,8 +5,13 @@
 
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
-import { basename, join, relative, resolve, sep } from 'node:path';
-import { detectCapabilities, MOD_EXPORTS_GLOBAL_NAME } from '@ubichill/shared';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
+import {
+    detectCapabilities,
+    MOD_EXPORTS_GLOBAL_NAME,
+    type ModLockComponent,
+    type ModLockEntry,
+} from '@ubichill/shared';
 import * as esbuild from 'esbuild';
 
 /** base からの相対パスを OS に依らず `/` 区切りで返す（manifest/lock のキーは POSIX 形式で固定する） */
@@ -218,19 +223,6 @@ function extractConfigFromCode(code: string): Record<string, unknown> | null {
     }
 }
 
-function copyDirRecursive(src: string, dest: string): void {
-    mkdirSync(dest, { recursive: true });
-    for (const entry of readdirSync(src, { withFileTypes: true })) {
-        const srcPath = join(src, entry.name);
-        const destPath = join(dest, entry.name);
-        if (entry.isDirectory()) {
-            copyDirRecursive(srcPath, destPath);
-        } else {
-            writeFileSync(destPath, readFileSync(srcPath));
-        }
-    }
-}
-
 function cleanOldBundles(dir: string, keepFilename: string): void {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
         if (entry.isFile() && entry.name !== keepFilename && entry.name.startsWith('index.')) {
@@ -293,9 +285,15 @@ export function collectAssets(
  */
 const PUBLIC_PACKAGE_NAME = 'ubichill';
 
-async function bundleWorker(entryPath: string, tsconfig?: string): Promise<string> {
+/** Worker を 1 ファイルにバンドルする。読んだファイル（esbuild の metafile。node_modules も含む）も返す。 */
+async function bundleWorker(
+    entryPath: string,
+    modDir: string,
+    tsconfig?: string,
+): Promise<{ code: string; inputs: string[] }> {
     const result = await esbuild.build({
         entryPoints: [entryPath],
+        absWorkingDir: modDir,
         bundle: true,
         format: 'iife',
         globalName: MOD_EXPORTS_GLOBAL_NAME,
@@ -305,11 +303,12 @@ async function bundleWorker(entryPath: string, tsconfig?: string): Promise<strin
         jsxImportSource: PUBLIC_PACKAGE_NAME,
         write: false,
         minify: true,
+        metafile: true,
         tsconfig,
     });
     const out = result.outputFiles?.[0];
     if (!out) throw new Error(`esbuild failed for ${entryPath}`);
-    return out.text;
+    return { code: out.text, inputs: Object.keys(result.metafile.inputs).map((input) => resolve(modDir, input)) };
 }
 
 // ============================================================
@@ -443,49 +442,53 @@ async function fetchRemoteVersions(
     }
 }
 
-/** @param modDir mod のルートディレクトリへの絶対パス */
 /** lock.json を書く。内容が変わったら、以前の内容に付けた署名（lock.sig.json）は無効なので消す。 */
-function writeLock(versionDir: string, lock: string): void {
+function writeLock(versionDir: string, lock: Uint8Array): void {
     const lockPath = join(versionDir, 'lock.json');
     const sigPath = join(versionDir, 'lock.sig.json');
-    const unchanged = existsSync(lockPath) && readFileSync(lockPath, 'utf-8') === lock;
+    const unchanged = existsSync(lockPath) && Buffer.from(readFileSync(lockPath)).equals(Buffer.from(lock));
     if (!unchanged && existsSync(sigPath)) unlinkSync(sigPath);
-    writeFileSync(lockPath, lock, 'utf-8');
+    writeFileSync(lockPath, lock);
 }
 
-export async function buildMod(modDir: string, options: BuildOptions = {}): Promise<ModIndexEntry> {
-    const { id, name, version, homepage } = readPackageJson(modDir);
-    const { distDir, publicDir } = resolveDirs({ ...options, modDir });
-    const registryUrl = options.registryUrl ?? homepage;
+/**
+ * 1 つの mod の 1 回のビルドの結果。書き込みはしない（`writeArtifacts` が dist / public に置き、
+ * dev サーバーはメモリから配る）。
+ */
+export interface ModArtifacts {
+    id: string;
+    name: string;
+    version: string;
+    /** Component 型（`<id>:<name>`）。 */
+    components: string[];
+    /** `v<version>/` の下に置くファイル（POSIX 相対パス → 中身）: Worker・manifest.json・lock.json・asset。 */
+    files: ReadonlyMap<string, Uint8Array>;
+    lockEntry: ModLockEntry;
+    /** このビルドが読んだファイルの絶対パス（Worker・import した共有コード・package.json・tsconfig・asset）。監視に使う。 */
+    inputs: ReadonlySet<string>;
+}
 
-    // tsconfig 検索
+/**
+ * mod をビルドして成果物をメモリに作る。毎回 package.json を読み直し、Worker と asset を探し直す
+ * （Worker の追加・削除・版の変更を差分で追う仕組みは持たない。1 回のビルドは十分に速い）。
+ */
+export async function compileMod(modDir: string): Promise<ModArtifacts> {
+    const { id, name, version } = readPackageJson(modDir);
     const rootTsconfig = join(modDir, 'tsconfig.json');
     const tsconfig = existsSync(rootTsconfig) ? rootTsconfig : undefined;
+    const inputs = new Set<string>([join(modDir, 'package.json'), ...(tsconfig ? [tsconfig] : [])]);
+    const files = new Map<string, Uint8Array>();
+    const encoder = new TextEncoder();
 
-    // ── ルート index（npm の "latest" pointer 相当） ──────────────────
-    // バージョンへのポインタのみ。エンティティ詳細はバージョン付きマニフェストに分離。
-    const rootIndex = JSON.stringify({ id, name, version }, null, 2);
-    mkdirSync(publicDir, { recursive: true });
-    mkdirSync(distDir, { recursive: true });
-    writeFileSync(join(publicDir, 'mod.json'), rootIndex, 'utf-8');
-    writeFileSync(join(distDir, 'mod.json'), rootIndex, 'utf-8');
-
-    const publicVersionDir = join(publicDir, `v${version}`);
-    const distVersionDir = join(distDir, `v${version}`);
-    mkdirSync(distVersionDir, { recursive: true });
-    mkdirSync(publicVersionDir, { recursive: true });
-
-    // ── Worker 自動探索 ───────────────────────────────────────
     const srcDir = join(modDir, 'src');
-    const workerFiles = findWorkerFiles(srcDir);
-
     const versionedComponents: Record<string, unknown> = {};
-    const lockComponents: Record<string, unknown> = {};
+    const lockComponents: Record<string, ModLockComponent> = {};
 
-    for (const workerPath of workerFiles) {
+    for (const workerPath of findWorkerFiles(srcDir)) {
         const relPath = toPosixRelative(srcDir, workerPath);
         const componentName = componentNameFromFile(relPath);
         const componentType = `${id}:${componentName}`;
+        inputs.add(workerPath);
 
         // `export const config` を持つファイルのみを処理する
         if (!isWorkerFile(workerPath)) {
@@ -493,23 +496,14 @@ export async function buildMod(modDir: string, options: BuildOptions = {}): Prom
             continue;
         }
 
-        const code = await bundleWorker(workerPath, tsconfig);
+        const bundled = await bundleWorker(workerPath, modDir, tsconfig);
+        for (const input of bundled.inputs) inputs.add(input);
+        const code = bundled.code;
 
         // コンテンツハッシュ（8文字）でキャッシュバスティング
         const hash = createHash('sha256').update(code).digest('hex').slice(0, 8);
         const outFilename = `index.${hash}.js`;
-
-        // dist: バージョン固定
-        const distComponentDir = join(distVersionDir, componentName);
-        mkdirSync(distComponentDir, { recursive: true });
-        cleanOldBundles(distComponentDir, outFilename);
-        writeFileSync(join(distComponentDir, outFilename), code, 'utf-8');
-
-        // public: バージョン固定パス（CDN キャッシュバスティング用）
-        const publicComponentDir = join(publicVersionDir, componentName);
-        mkdirSync(publicComponentDir, { recursive: true });
-        cleanOldBundles(publicComponentDir, outFilename);
-        writeFileSync(join(publicComponentDir, outFilename), code, 'utf-8');
+        files.set(`${componentName}/${outFilename}`, encoder.encode(code));
 
         // config からメタデータを取得
         const srcCode = readFileSync(workerPath, 'utf-8');
@@ -534,41 +528,30 @@ export async function buildMod(modDir: string, options: BuildOptions = {}): Prom
         }
 
         // マニフェスト用: 検出結果と宣言の和集合（セキュリティ的に過剰許可より安全）
-        const capabilitySet = new Set<string>();
-        for (const cap of detected) capabilitySet.add(cap);
-        for (const cap of declaredCapabilities) capabilitySet.add(cap);
-        const capabilities = Array.from(capabilitySet).sort();
+        const capabilities = [...new Set([...detected, ...declaredCapabilities])].sort();
 
         const workerUrl = `./${componentName}/${outFilename}`;
         const { capabilities: _ignoredCaps, workerUrl: _ignoredUrl, ...restConfig } = config ?? {};
-        versionedComponents[componentType] = {
-            ...restConfig,
-            capabilities,
-            workerUrl,
-        };
-
+        versionedComponents[componentType] = { ...restConfig, capabilities, workerUrl };
         // lock: worker バイト列のフル sha256 + capability 天井を固定する。
-        lockComponents[componentType] = {
-            workerUrl,
-            integrity: sriOf(code),
-            capabilities,
-        };
+        lockComponents[componentType] = { workerUrl, integrity: sriOf(code), capabilities };
 
         console.log(
-            `✅ [${componentType}] ${componentName}/${outFilename}` + ` [caps: ${capabilities.join(', ') || 'none'}]`,
+            `✅ [${componentType}] ${componentName}/${outFilename} [caps: ${capabilities.join(', ') || 'none'}]`,
         );
     }
 
-    // assets/ をバージョン固定パスにコピー（Worker は Ubi.asset / Ubi.modBase で参照）。
+    // assets/ をバージョン固定パスに置く（Worker は Ubi.asset / Ubi.modBase で参照）。
     // 各ファイルの SRI を manifest に載せる。manifest は lock で固定されるので、アセットの中身も固定される。
     const assetsSrcDir = join(modDir, 'assets');
     const componentDirs = new Set(Object.keys(lockComponents).map((type) => type.slice(id.length + 1).split('/')[0]));
     const assets = collectAssets(assetsSrcDir, componentDirs);
-    if (assets.files.length > 0) {
-        copyDirRecursive(assetsSrcDir, publicVersionDir);
-        copyDirRecursive(assetsSrcDir, distVersionDir);
-        console.log(`✅ [${id}] assets → v${version}/ (${assets.files.length} files)`);
+    for (const asset of assets.files) {
+        const path = join(assetsSrcDir, asset);
+        inputs.add(path);
+        files.set(asset, readFileSync(path));
     }
+    if (assets.files.length > 0) console.log(`✅ [${id}] assets → v${version}/ (${assets.files.length} files)`);
 
     const versionedManifest = JSON.stringify(
         {
@@ -583,23 +566,61 @@ export async function buildMod(modDir: string, options: BuildOptions = {}): Prom
         null,
         2,
     );
-    writeFileSync(join(distVersionDir, 'manifest.json'), versionedManifest, 'utf-8');
-    writeFileSync(join(publicVersionDir, 'manifest.json'), versionedManifest, 'utf-8');
+    files.set('manifest.json', encoder.encode(versionedManifest));
 
     // ── lock.json（ModLockEntry 形状）─────────────────────────────
-    const lock = JSON.stringify(
-        {
-            id,
-            version,
-            manifestIntegrity: sriOf(versionedManifest),
-            components: lockComponents,
-        },
-        null,
-        2,
-    );
-    writeLock(distVersionDir, lock);
-    writeLock(publicVersionDir, lock);
+    const lockEntry: ModLockEntry = {
+        id,
+        version,
+        manifestIntegrity: sriOf(versionedManifest),
+        components: lockComponents,
+    };
+    files.set('lock.json', encoder.encode(JSON.stringify(lockEntry, null, 2)));
     console.log(`🔒 [${id}] lock.json (${Object.keys(lockComponents).length} components)`);
+
+    return { id, name, version, components: Object.keys(versionedComponents), files, lockEntry, inputs };
+}
+
+export interface WriteArtifactsOptions {
+    /** CDN 配布用の出力先（`<modDir>/dist` 相当）。 */
+    distDir: string;
+    /** フロントエンド配信用の出力先（既定: distDir と同じ）。 */
+    publicDir?: string;
+    /** 公開済み registry（`index.json` を配信している URL）。バージョン履歴を継続するために取得する。 */
+    registryUrl?: string;
+    /** テスト注入用の fetch 実装。既定はグローバル `fetch`。 */
+    fetchImpl?: typeof fetch;
+}
+
+/**
+ * 成果物を dist / public に書く。`mod.json`（最新の版へのポインタ）、`v<version>/` の中身、
+ * `index.json`（この mod 単体のレジストリ。過去の版の履歴を持つ）。
+ */
+export async function writeArtifacts(artifacts: ModArtifacts, options: WriteArtifactsOptions): Promise<ModIndexEntry> {
+    const { id, name, version, components, files } = artifacts;
+    const distDir = options.distDir;
+    const publicDir = options.publicDir ?? distDir;
+
+    // ── ルート index（npm の "latest" pointer 相当） ──────────────────
+    // バージョンへのポインタのみ。エンティティ詳細はバージョン付きマニフェストに分離。
+    const rootIndex = JSON.stringify({ id, name, version }, null, 2);
+    for (const dir of new Set([publicDir, distDir])) {
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(join(dir, 'mod.json'), rootIndex, 'utf-8');
+        const versionDir = join(dir, `v${version}`);
+        mkdirSync(versionDir, { recursive: true });
+        for (const [relPath, bytes] of files) {
+            const target = join(versionDir, ...relPath.split('/'));
+            mkdirSync(dirname(target), { recursive: true });
+            if (relPath === 'lock.json') {
+                writeLock(versionDir, bytes);
+                continue;
+            }
+            writeFileSync(target, bytes);
+            // Worker のバンドル名は内容の hash なので、前の内容のバンドルは消す
+            if (/^[^/]+\/index\.[0-9a-f]{8}\.js$/.test(relPath)) cleanOldBundles(dirname(target), basename(target));
+        }
+    }
 
     // ── index.json（この mod 単体をレジストリとして公開する）────────────
     // World Editor の「レジストリ URL を追加」機能は index.json（一覧）を期待する。
@@ -611,11 +632,14 @@ export async function buildMod(modDir: string, options: BuildOptions = {}): Prom
     // package.json の homepage）から公開済み index.json を取得して履歴を補う。CI の
     // クリーンチェックアウトではローカル履歴が毎回失われるため、これが無いと
     // 「latest」以外のバージョンが World Editor から選べなくなる。
-    const components = Object.keys(versionedComponents);
     const localVersions = readExistingVersions(join(distDir, 'index.json'), id);
-    const remoteVersions = registryUrl ? await fetchRemoteVersions(registryUrl, id, options.fetchImpl) : [];
-    if (registryUrl && remoteVersions.length > 0) {
-        console.log(`🌐 [${id}] registry からバージョン履歴を取得 (${registryUrl}): ${remoteVersions.length}件`);
+    const remoteVersions = options.registryUrl
+        ? await fetchRemoteVersions(options.registryUrl, id, options.fetchImpl)
+        : [];
+    if (options.registryUrl && remoteVersions.length > 0) {
+        console.log(
+            `🌐 [${id}] registry からバージョン履歴を取得 (${options.registryUrl}): ${remoteVersions.length}件`,
+        );
     }
     const existingVersions = mergeVersionArrays(localVersions, remoteVersions);
     const versions = mergeVersionHistory(existingVersions, { version, components });
@@ -625,6 +649,13 @@ export async function buildMod(modDir: string, options: BuildOptions = {}): Prom
     writeFileSync(join(publicDir, 'index.json'), indexJson, 'utf-8');
 
     return indexEntry;
+}
+
+/** `ubichill build` の 1 mod ぶん: ビルドして dist / public に書く。 */
+export async function buildMod(modDir: string, options: BuildOptions = {}): Promise<ModIndexEntry> {
+    const { distDir, publicDir } = resolveDirs({ ...options, modDir });
+    const registryUrl = options.registryUrl ?? readPackageJson(modDir).homepage;
+    return writeArtifacts(await compileMod(modDir), { distDir, publicDir, registryUrl, fetchImpl: options.fetchImpl });
 }
 
 /**
