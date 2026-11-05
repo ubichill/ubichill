@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { architectureRules, checkFile, importedModules, stripComments } from './architecture.mjs';
+import { architectureRules, checkFile, importedModules, resolveFrontendImport, stripComments, worldAppClosure } from './architecture.mjs';
 
 const rules = architectureRules({ loaderNodeOnly: new Set(['packages/loader/src/installDependencies.ts']) });
 const violations = (path, source) => checkFile(path, source, rules).map((v) => v.rule);
@@ -29,7 +29,8 @@ describe('stripComments / importedModules', () => {
 describe('host-runs-mods-without-backend', () => {
     it('mod の経路から Host の API を呼ぶと違反', () => {
         for (const path of [
-            'packages/frontend/src/mods/modSignature.ts',
+            'packages/frontend/src/world/modSignature.ts',
+            'packages/frontend/src/worldApp/WorldApp.tsx',
             'packages/loader/src/acquireMod.ts',
             'packages/sandbox/src/host/fetchHandler.ts',
             'packages/react/src/lib/modFetch.ts',
@@ -41,7 +42,7 @@ describe('host-runs-mods-without-backend', () => {
 
     it('説明のコメント・テスト・mod の経路の外は対象にしない', () => {
         expect(violations('packages/sandbox/src/host/fetchHandler.ts', '/**\n * コアの `/api/v1/…` は null\n */')).toEqual([]);
-        expect(violations('packages/frontend/src/mods/x.test.ts', "fetch('/api/v1/x')")).toEqual([]);
+        expect(violations('packages/frontend/src/world/x.test.ts', "fetch('/api/v1/x')")).toEqual([]);
         expect(violations('packages/frontend/src/lib/serviceTokens.ts', "fetch(`${API_BASE}/api/v1/service-tokens`)")).toEqual([]);
     });
 });
@@ -77,7 +78,7 @@ describe('backend-runs-built-packages-only', () => {
 
 describe('signatures-in-one-place', () => {
     it('署名の部品の外で Ed25519 の照合を呼ぶと違反', () => {
-        for (const path of ['packages/backend/src/routes/cliAuth.ts', 'packages/frontend/src/mods/modSignature.ts', 'packages/cli/src/verify.ts']) {
+        for (const path of ['packages/backend/src/routes/cliAuth.ts', 'packages/frontend/src/world/modSignature.ts', 'packages/cli/src/verify.ts']) {
             expect(violations(path, 'await crypto.verifyEd25519(key, message, sig)')).toEqual([
                 'signatures-in-one-place',
             ]);
@@ -105,5 +106,64 @@ describe('違反の報告', () => {
         const [v] = checkFile('packages/shared/src/x.ts', "import 'node:fs';", rules);
         expect(v).toMatchObject({ rule: 'shared-is-pure', path: 'packages/shared/src/x.ts' });
         expect(v?.why.length).toBeGreaterThan(10);
+    });
+});
+
+describe('world-app-closure', () => {
+    const src = 'packages/frontend/src/';
+    /** パス → ソース。無いパスは存在しない扱い。 */
+    const fakeFs = (files) => ({
+        read: (path) => files[path] ?? '',
+        exists: (path) => path in files,
+    });
+    const closure = (files) => worldAppClosure({ ...fakeFs(files), entry: `${src}worldApp/main.tsx` });
+
+    it('許可の中だけを辿るなら違反なし。パッケージ・CSS・styled-system は辿らない', () => {
+        const files = {
+            [`${src}worldApp/main.tsx`]: "import '@/styles/globals.css';\nimport { css } from '@/styled-system/css';\nimport { WorldView } from '@/world';\nimport { PermissionRoot } from '@/components/permissions/PermissionRoot';",
+            [`${src}world/index.ts`]: "export { WorldView } from './WorldView';",
+            [`${src}world/WorldView.tsx`]: "import { useSocket } from '@ubichill/react';\nimport { pushToast } from '@/lib/toast';",
+            [`${src}lib/toast.ts`]: '',
+            [`${src}components/permissions/PermissionRoot.tsx`]: "import { readSetting } from '@/lib/settings';",
+            [`${src}lib/settings/index.ts`]: "export { readSetting } from './store';",
+            [`${src}lib/settings/store.ts`]: '',
+        };
+        const result = closure(files);
+        expect(result.violations).toEqual([]);
+        expect([...result.visited].sort()).toEqual(Object.keys(files).sort());
+    });
+
+    it('helper を 2 段経由した backend API・auth-client も、経路つきで違反にする', () => {
+        const files = {
+            [`${src}worldApp/main.tsx`]: "import { WorldView } from '@/world';",
+            [`${src}world/index.ts`]: "export { WorldView } from './WorldView';",
+            [`${src}world/WorldView.tsx`]: "import { helper } from './helper';\nimport { useSession } from '@/lib/session';",
+            [`${src}world/helper.ts`]: "import { fetchInstance } from '../lib/instancesApi';",
+            [`${src}lib/instancesApi.ts`]: "import { API_BASE } from './api';",
+            [`${src}lib/api.ts`]: '',
+            [`${src}lib/session.tsx`]: "import { useSession } from '@/lib/auth-client';",
+            [`${src}lib/auth-client.ts`]: "import { createAuthClient } from 'better-auth/react';",
+        };
+        const { violations } = closure(files);
+        expect(violations.map((v) => v.path)).toEqual([`${src}lib/session.tsx`, `${src}lib/instancesApi.ts`]);
+        expect(violations[1].chain).toEqual([
+            `${src}worldApp/main.tsx`,
+            `${src}world/index.ts`,
+            `${src}world/WorldView.tsx`,
+            `${src}world/helper.ts`,
+            `${src}lib/instancesApi.ts`,
+        ]);
+        // 違反したファイルの先は辿らない（lib/api はそこで止まる）
+        expect(violations.map((v) => v.path)).not.toContain(`${src}lib/api.ts`);
+    });
+
+    it('import の解決: @/ と相対パスを .ts/.tsx/index に解決し、拡張子付きの CSS や画像は辿らない', () => {
+        const exists = (path) => [`${src}world/a.tsx`, `${src}world/b/index.ts`, `${src}lib/toast.ts`].includes(path);
+        expect(resolveFrontendImport(`${src}worldApp/main.tsx`, '@/world/a', exists)).toBe(`${src}world/a.tsx`);
+        expect(resolveFrontendImport(`${src}world/a.tsx`, './b', exists)).toBe(`${src}world/b/index.ts`);
+        expect(resolveFrontendImport(`${src}world/b/index.ts`, '../../lib/toast', exists)).toBe(`${src}lib/toast.ts`);
+        expect(resolveFrontendImport(`${src}world/a.tsx`, '@/styles/globals.css', exists)).toBeNull();
+        expect(resolveFrontendImport(`${src}world/a.tsx`, '@ubichill/react', exists)).toBeNull();
+        expect(resolveFrontendImport(`${src}world/a.tsx`, './missing', exists)).toBeNull();
     });
 });

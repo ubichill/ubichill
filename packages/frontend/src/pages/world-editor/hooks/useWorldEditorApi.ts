@@ -5,6 +5,7 @@ import yaml from 'yaml';
 import { fetchMyAccount } from '@/lib/account/me';
 import { API_BASE } from '@/lib/api';
 import { createInstance as createInstanceApi } from '@/lib/instancesApi';
+import { MOD_CDN_URL } from '@/lib/modCdn';
 import {
     authorSignerFor,
     browserFetch,
@@ -13,7 +14,7 @@ import {
     type SavedWorld,
     saveWorldBundle,
 } from '@/lib/signing';
-import { buildWorldLock } from '@/mods/buildWorldLock';
+import { buildWorldLock } from '@/world';
 import type { PublishState } from './useDefinition';
 import type { PublishDecision } from './usePublishSetup';
 
@@ -38,7 +39,7 @@ interface UseWorldEditorApiArgs {
  * サーバ側の別カラムに保存する（YAML はクリーンに保つ）。読む側はこの lock と hash 照合して差し替え mod を拒否する。
  */
 async function buildSaveBody(definition: WorldDefinition, worldId: string | undefined) {
-    const { lock, unpinned } = await buildWorldLock(definition);
+    const { lock, unpinned } = await buildWorldLock(definition, MOD_CDN_URL);
     return { body: { yaml: yaml.stringify(definition), lock, worldId }, unpinned };
 }
 

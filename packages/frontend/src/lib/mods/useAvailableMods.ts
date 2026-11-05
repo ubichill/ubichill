@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { MOD_CDN_URL } from '@/lib/modCdn';
 
 /**
  * 利用可能modの 1 エントリ。
@@ -34,12 +35,6 @@ interface RawIndexEntry {
     baseUrl?: string;
 }
 
-const MOD_BASE_URL: string = (() => {
-    const envUrl = import.meta.env.VITE_MOD_CDN_URL ?? '';
-    if (envUrl) return envUrl.replace(/\/$/, '');
-    return '/mods';
-})();
-
 const cache = new Map<string, Promise<AvailableMod[]>>();
 
 async function fetchRegistry(url: string, sourceLabel: string): Promise<AvailableMod[]> {
@@ -68,7 +63,7 @@ async function fetchRegistry(url: string, sourceLabel: string): Promise<Availabl
 
 /**
  * 利用可能modの一覧を返す。
- * ローカル `${MOD_BASE_URL}/index.json` と、追加されたレジストリ URL を全部統合する。
+ * ローカル `${MOD_CDN_URL}/index.json` と、追加されたレジストリ URL を全部統合する。
  * 同一 id がある場合は最初に登場したものを優先（ローカルを先にロードするため、ローカル優先）。
  */
 export function useAvailableMods(registryUrls: string[]): {
@@ -85,7 +80,7 @@ export function useAvailableMods(registryUrls: string[]): {
         let cancelled = false;
         setLoading(true);
         const sources: Array<Promise<AvailableMod[]>> = [
-            fetchRegistry(`${MOD_BASE_URL}/index.json`, 'local'),
+            fetchRegistry(`${MOD_CDN_URL}/index.json`, 'local'),
             ...registryUrls.map((u) => fetchRegistry(u, u)),
         ];
         Promise.all(sources)

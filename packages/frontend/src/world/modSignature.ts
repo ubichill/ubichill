@@ -16,7 +16,7 @@ import {
     verifyModSignature,
 } from '@ubichill/shared';
 import { availableStorage, createStoredAuthorBindings, type KeyValueStorage } from './browserAuthorKeys';
-import { DEV_HOST } from './devHost';
+import type { ModSource } from './modSource';
 
 export type VerifyModSignature = (entry: ModLockEntry, signature: unknown) => Promise<ModSignatureVerdict>;
 
@@ -91,20 +91,25 @@ export function createBrowserSignatureVerifier(deps: {
     return (entry, signature) => verifyModSignature(entry, signature, webWorldCrypto, directory.isAuthorKey);
 }
 
-// localStorage を読むので、最初に使うときに作る（テスト・SSR で import しただけでは触らない）
-const browserVerifier = { current: undefined as VerifyModSignature | undefined };
+// localStorage を読むので、最初に使うときに作る（テスト・SSR で import しただけでは触らない）。
+// 開発用の Host かどうか（http の作者のサーバーを試すか）ごとに 1 つ。
+const browserVerifiers = new Map<boolean, VerifyModSignature>();
 
-export const verifyModSignatureInBrowser: VerifyModSignature = (entry, signature) => {
-    browserVerifier.current ??= createSignatureVerifier({
+/** ブラウザで確かめる verifier。確認できた作者は localStorage に持ち、同じ鍵の確認を繰り返さない。 */
+export function browserSignatureVerifier(devHost: boolean): VerifyModSignature {
+    const cached = browserVerifiers.get(devHost);
+    if (cached) return cached;
+    const verifier = createSignatureVerifier({
         request: createBrowserSignatureVerifier({
             storage: availableStorage(() => window.localStorage),
             fetchJson: fetchPublicJson,
-            allowHttp: DEV_HOST,
+            allowHttp: devHost,
         }),
         sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     });
-    return browserVerifier.current(entry, signature);
-};
+    browserVerifiers.set(devHost, verifier);
+    return verifier;
+}
 
 /**
  * 配布されている版の作者の確認結果（World Editor の一覧用）。
@@ -184,5 +189,8 @@ const fetchJson = async (url: string): Promise<FetchedJson> => {
     return { found: true, value: JSON.parse(await res.text()) as unknown };
 };
 
-export const fetchModAuthor = (baseUrl: string, modId: string, version: string): Promise<ModAuthorCheck> =>
-    checkModAuthor({ fetchJson, verify: verifyModSignatureInBrowser }, baseUrl, modId, version);
+/** 配布されている版の作者をブラウザで確認する関数を作る（World Editor の一覧・インストール前の確認）。 */
+export const modAuthorFetcher =
+    (source: Pick<ModSource, 'devHost'>) =>
+    (baseUrl: string, modId: string, version: string): Promise<ModAuthorCheck> =>
+        checkModAuthor({ fetchJson, verify: browserSignatureVerifier(source.devHost) }, baseUrl, modId, version);

@@ -36,10 +36,11 @@ export function architectureRules(context) {
     return [
         {
             id: 'host-runs-mods-without-backend',
-            why: 'Host は SNS backend の無い単体モードでも mod を動かす。mod の取得・確認・実行の経路から、自分のオリジンの API に頼らない（#229）',
+            why: 'Host は SNS backend の無い world.html でも mod を動かす。mod の取得・確認・実行の経路から、自分のオリジンの API に頼らない（#229）',
             applies: (path) =>
                 !isTest(path) &&
-                (path.startsWith('packages/frontend/src/mods/') ||
+                (path.startsWith('packages/frontend/src/world/') ||
+                    path.startsWith('packages/frontend/src/worldApp/') ||
                     path.startsWith('packages/loader/src/') ||
                     path.startsWith('packages/sandbox/src/') ||
                     path.startsWith('packages/react/src/')),
@@ -121,4 +122,77 @@ export function checkFile(path, source, rules) {
     return rules
         .filter((rule) => rule.applies(path))
         .flatMap((rule) => rule.check(source).map((message) => ({ rule: rule.id, why: rule.why, path, message })));
+}
+
+// ── world.html から辿れるコードの閉包 ─────────────────────────────────────────
+
+/** `world.html` のエントリ。ここから import で辿れる frontend のコードが検査の対象。 */
+export const WORLD_APP_ENTRY = 'packages/frontend/src/worldApp/main.tsx';
+
+/**
+ * `world.html` から辿ってよい frontend のコード（`packages/frontend/src/` からの相対）。
+ * SNS（pages・lib/api・lib/session・lib/signing・lib/auth-client）はここに無いので、helper を何段経由しても違反になる。
+ */
+export const WORLD_APP_ALLOWED = [
+    'world/',
+    'worldApp/',
+    'styles/',
+    'components/ui/',
+    'components/permissions/',
+    'lib/toast.ts',
+    'lib/settings/',
+    'lib/notifications.ts',
+];
+
+const FRONTEND_SRC = 'packages/frontend/src/';
+const SOURCE_EXTENSIONS = ['.ts', '.tsx'];
+
+/** import の指定子を frontend のファイルのパスにする。パッケージ・styled-system・CSS など辿らないものは null。 */
+export function resolveFrontendImport(fromPath, specifier, exists) {
+    const base = specifier.startsWith('@/')
+        ? `${FRONTEND_SRC}${specifier.slice(2)}`
+        : specifier.startsWith('.')
+          ? joinPath(fromPath.slice(0, fromPath.lastIndexOf('/')), specifier)
+          : null;
+    if (base === null || specifier.startsWith('@/styled-system') || /\.(css|svg|png|json)$/.test(base)) return null;
+    // 拡張子の無い指定子はファイルかディレクトリの index。ディレクトリそのものを「存在する」と数えない
+    const candidates = SOURCE_EXTENSIONS.some((ext) => base.endsWith(ext))
+        ? [base]
+        : [...SOURCE_EXTENSIONS.map((ext) => `${base}${ext}`), ...SOURCE_EXTENSIONS.map((ext) => `${base}/index${ext}`)];
+    return candidates.find((candidate) => exists(candidate)) ?? null;
+}
+
+function joinPath(dir, relative) {
+    const parts = dir.split('/');
+    for (const segment of relative.split('/')) {
+        if (segment === '..') parts.pop();
+        else if (segment !== '.' && segment !== '') parts.push(segment);
+    }
+    return parts.join('/');
+}
+
+/**
+ * `world.html` から import で辿れる frontend のファイルを集め、許可の外にあるものを「そこへ至る import の連鎖」付きで返す。
+ * @param {{ read: (path: string) => string, exists: (path: string) => boolean, entry?: string, allowed?: string[] }} fs
+ */
+export function worldAppClosure({ read, exists, entry = WORLD_APP_ENTRY, allowed = WORLD_APP_ALLOWED }) {
+    const isAllowed = (path) => allowed.some((prefix) => path.startsWith(`${FRONTEND_SRC}${prefix}`));
+    const chains = new Map([[entry, [entry]]]);
+    const queue = [entry];
+    const violations = [];
+    while (queue.length > 0) {
+        const path = queue.shift();
+        const chain = chains.get(path);
+        if (!isAllowed(path)) {
+            violations.push({ path, chain });
+            continue;
+        }
+        for (const specifier of importedModules(read(path))) {
+            const next = resolveFrontendImport(path, specifier, exists);
+            if (next === null || chains.has(next)) continue;
+            chains.set(next, [...chain, next]);
+            queue.push(next);
+        }
+    }
+    return { visited: [...chains.keys()], violations };
 }

@@ -13,18 +13,18 @@ go -C services/instance run ./cmd/instance \
   --guests --world=examples/empty.json --origins=http://localhost:3000
 ```
 
-別ターミナルで既存のブラウザUIを起動する（事前に `pnpm install` と `pnpm turbo build --filter=@ubichill/shared`）:
+別ターミナルで、ワールドを動かすだけの画面 `world.html` を起動する（事前に `pnpm install` と `pnpm turbo build --filter=@ubichill/shared`）:
 
 ```sh
-VITE_INSTANCE_SERVER_URL=http://localhost:3002 pnpm --filter @ubichill/frontend dev
+pnpm --filter @ubichill/frontend dev
 ```
 
-`http://localhost:3000/instance/standalone?name=Alice` を開く。ログイン不要で、他のブラウザから入った
+`http://localhost:3000/world.html?name=Alice` を開く。ログイン不要で、他のブラウザから入った
 ゲストのカーソルが見える。ゲストIDはサーバーが発行し、同じタブでの再接続に保持する。
-`VITE_INSTANCE_ID` でルートURLから移動するインスタンスIDを変更できる。
-表示用UIとmod配信はフロント側が担当する。
-GoサーバーはUIの静的ファイルやmodを配信しない。フロントをビルドして任意の静的ホストから配信すれば、
-実行時に必要なバックエンドはGoのみになる。開発用のViteサーバーもSNS backendには依存しない。
+入るインスタンスは URL のパス（`/<id>`、`/` は `default`）で決まる。
+`world.html` は「Go と `/mods` が同じオリジンにある」前提で設定を持たない（Vite の開発サーバーは `/realtime` を Go へ中継する）。
+GoサーバーはUIの静的ファイルやmodを配信しない。`world.html` と `ubichill build` の出力を同じオリジンの静的ホストから配信し、
+`/realtime/v1/*` を Go へ中継すれば、実行時に必要なバックエンドはGoのみになる。
 
 `--world` はOpenAPIの `InstanceDefinition` 形式のJSON。初期エンティティはflatten済みの
 ComponentInstance配列で、mod完全性lockや環境設定も含む。World as Code の YAML からは

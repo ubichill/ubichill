@@ -21,29 +21,30 @@
  * 持っているエンティティの追従同期:
  *  - useBroadcastCursor が cursor:move 送信時に heldEntitySyncRef から heldEntityId を含める
  *  - cursor:moved を受信したら HeldEntityPositionRegistry.notify で EntityRenderer に伝達
- *  ※ CursorLayer は HoldProvider の外側（router レベル）で動くため、
+ *  ※ CursorLayer は HoldProvider の外側（WorldView）で動くため、
  *    useHold() ではなくモジュールレベルの heldEntitySyncRef / HeldEntityPositionRegistry を使う
  */
 
 import { ridingSyncRef, useSocket, useWorld } from '@ubichill/react';
 import { useEffect, useRef, useSyncExternalStore } from 'react';
-import { HeldEntityPositionRegistry } from '@/instance/HeldEntityPositionRegistry';
-import { readHeldOffset } from '@/instance/heldOffset';
-import { useSession } from '@/lib/session';
+import { HeldEntityPositionRegistry } from '../HeldEntityPositionRegistry';
+import { readHeldOffset } from '../heldOffset';
 import { applyCursorStyles, removeCursorStyles } from './cursorImages';
 import { RemoteCursorsPortal } from './RemoteCursorsPortal';
 import { useBroadcastCursor } from './useBroadcastCursor';
 import { riddenTransformPosition, useRideFollow } from './useRideFollow';
 import { useScrollWorldEl } from './useScrollWorldEl';
 
-export function CursorLayer() {
-    const session = useSession();
+/**
+ * @param fallbackSelfId 入室前に自分と他人を分ける ID（SNS はログイン中のユーザー）。入室後は入室で決まった ID を使う。
+ */
+export function CursorLayer({ fallbackSelfId }: { fallbackSelfId?: string }) {
     const { users, currentUser, isConnected, socket, updatePosition } = useSocket();
     const { entities, environment } = useWorld();
     const scrollEl = useScrollWorldEl();
 
     const selfCursorUrl = currentUser?.cursorUrl ?? null;
-    const selfId = currentUser?.id ?? session.data?.user?.id;
+    const selfId = currentUser?.id ?? fallbackSelfId;
     const riding = useSyncExternalStore(ridingSyncRef.subscribe, ridingSyncRef.get, ridingSyncRef.get);
 
     // socket イベントハンドラ内から「常に最新の entities」を読むための ref。

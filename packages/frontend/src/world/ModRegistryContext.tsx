@@ -7,6 +7,7 @@ import { pushToast } from '@/lib/toast';
 import { ModRejectionNotice } from './ModRejectionNotice';
 import { loadVerifiedMod } from './modLoader';
 import { describeModRejection, groupRejections, type RejectedMod } from './modRejection';
+import type { ModSource } from './modSource';
 
 // ============================================
 // mod ローダー（取得 + lock 照合は modLoader.ts に委譲）
@@ -58,7 +59,9 @@ export const ModRegistryProvider: React.FC<{
     onStatusChange?: (status: ModLoadingStatus) => void;
     /** ワールドの mod 完全性ロック。固定されていない mod は、ワールドの置き場所に関係なく実行しない。 */
     lock?: ModLock;
-}> = ({ children, onStatusChange, lock }) => {
+    /** mod の取得元と、未署名の mod を許すか。 */
+    source: ModSource;
+}> = ({ children, onStatusChange, lock, source }) => {
     const [modMap, setModMap] = useState<Map<string, AnyModDefinition>>(new Map());
     const [loadCounts, setLoadCounts] = useState<ModLoadingStatus>({ completed: 0, total: 0 });
     // Component 型 → 実行しなかった理由
@@ -118,7 +121,7 @@ export const ModRegistryProvider: React.FC<{
                     return next;
                 });
 
-            return loadVerifiedMod(entityType, { lock })
+            return loadVerifiedMod(entityType, { lock, source })
                 .then((result) => {
                     if (typeof result === 'object' && 'workerCode' in result) {
                         addMod(result);
@@ -160,7 +163,7 @@ export const ModRegistryProvider: React.FC<{
                     setLoadCounts((c) => ({ ...c, completed: c.completed + 1 }));
                 });
         },
-        [addMod, lock],
+        [addMod, lock, source],
     );
 
     const retryRejected = useCallback(

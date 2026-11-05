@@ -11,9 +11,9 @@ import {
 } from '@ubichill/react';
 import type { ComponentInstance } from '@ubichill/shared';
 import { useMemo } from 'react';
-import { useModRegistry } from '@/mods/ModRegistryContext';
 import { Z_INDEX } from '@/styles/layers';
 import { EntityRenderer } from './EntityRenderer';
+import { useModRegistry } from './ModRegistryContext';
 
 const FALLBACK_ENTITY: ComponentInstance = {
     id: '',
@@ -24,7 +24,8 @@ const FALLBACK_ENTITY: ComponentInstance = {
     transform: { x: 0, y: 0, z: 0, w: 0, h: 0, scale: 1, rotation: 0 },
 };
 
-export const InstanceRenderer: React.FC = () => {
+/** ワールドの描画面（スクロールするワールド + 画面固定のオーバーレイ）。入室後に `WorldView` が置く。 */
+export const WorldStage: React.FC = () => {
     return (
         <RideProvider>
             <HoldProvider>

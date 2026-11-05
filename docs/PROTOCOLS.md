@@ -90,7 +90,8 @@ Ubichill の約束ごと（プロトコル・データの形式・API）を、**
 
 | 規則 | 守るもの |
 | --- | --- |
-| `host-runs-mods-without-backend` | Host は SNS backend の無い単体モードでも mod を動かす（mod の経路から Host の API を呼ばない） |
+| `host-runs-mods-without-backend` | Host は SNS backend の無い `world.html` でも mod を動かす（mod の経路から Host の API を呼ばない） |
+| `world-app-closure` | `world.html` から辿れるコード（`src/world`・`src/worldApp`）は SNS（認証・router・backend API）を読み込まない。間接の import も含めて辿る |
 | `shared-is-pure` | shared は Node・DOM・ネットワークに依存しない（ブラウザ・backend・CLI が同じ規則を使う） |
 | `loader-main-is-browser-safe` | loader の既定の入口はブラウザで読める |
 | `backend-runs-built-packages-only` | backend はソースのまま配るパッケージに依存しない |

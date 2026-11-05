@@ -4,9 +4,9 @@ import { EMPTY_ENTITY_TYPE, OVERLAY_FILL, resolveOverlayMode } from '@ubichill/s
 import type React from 'react';
 import { useEffect, useRef } from 'react';
 import { Z_INDEX } from '@/styles/layers';
-import { useModRegistry } from '../mods/ModRegistryContext';
 import { HeldEntityPositionRegistry } from './HeldEntityPositionRegistry';
 import { readHeldOffset } from './heldOffset';
+import { useModRegistry } from './ModRegistryContext';
 
 interface EntityRendererProps {
     entityId: string;
@@ -49,7 +49,7 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({ entityId }) => {
     if (isCoreComponentType(entity.type)) return null;
     if (!mod) return null;
     if (!isWorkerMod(mod)) return null;
-    // singleton は InstanceRenderer 側で起動するためここではスキップ
+    // singleton は WorldStage 側で起動するためここではスキップ
     if (mod.singleton) return null;
 
     return <EntityRendererInner entityId={entityId} />;
