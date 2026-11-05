@@ -25,6 +25,18 @@
                 "dist-npm/**"
             ]
         },
+        "@ubichill/instance#build": {
+            "inputs": [
+                "build.mjs",
+                "package.json",
+                "../cli/src/instancePlatforms.ts",
+                "../../services/instance/**",
+                "../../mise.toml"
+            ],
+            "outputs": [
+                "dist-npm/**"
+            ]
+        },
         "typecheck": {
             "dependsOn": [
                 "^build"

@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { buildCliJs, buildPackageJson, CLI_RUNTIME_DEPENDENCIES } from './build.mjs';
+import { buildCliJs, buildPackageJson, CLI_RUNTIME_DEPENDENCIES, instanceDependencies } from './build.mjs';
 
 const cliDir = dirname(fileURLToPath(import.meta.url));
 
@@ -17,6 +17,20 @@ describe('buildPackageJson（@ubichill/cli）', () => {
         expect(pkg.main).toBeUndefined();
         expect(pkg.exports).toBeUndefined();
         expect(pkg.files).toEqual(['cli.js', 'LICENSE', 'README.md']);
+    });
+
+    it('Go のインスタンスサーバーは os・cpu ごとの optionalDependency で、版は @ubichill/instance に完全一致', () => {
+        const pkg = JSON.parse(buildPackageJson());
+        const instanceVersion = JSON.parse(readFileSync(join(cliDir, '..', 'instance', 'package.json'), 'utf-8')).version;
+        expect(Object.keys(pkg.optionalDependencies)).toEqual([
+            '@ubichill/instance-darwin-arm64',
+            '@ubichill/instance-darwin-x64',
+            '@ubichill/instance-linux-x64',
+            '@ubichill/instance-linux-arm64',
+            '@ubichill/instance-win32-x64',
+        ]);
+        for (const range of Object.values(pkg.optionalDependencies)) expect(range).toBe(instanceVersion);
+        expect(instanceDependencies()).toEqual(pkg.optionalDependencies);
     });
 
     it('files に挙げた LICENSE・README.md が実在する', () => {

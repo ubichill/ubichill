@@ -10,6 +10,7 @@ import * as esbuild from 'esbuild';
 import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { INSTANCE_PLATFORMS, instancePackageName } from './src/instancePlatforms.ts';
 
 const cliDir = dirname(fileURLToPath(import.meta.url));
 
@@ -41,6 +42,15 @@ export async function buildCliJs() {
     return result.outputFiles[0].text;
 }
 
+/**
+ * Go のインスタンスサーバー（`ubichill dev` が起動する）。プラットフォームごとの optionalDependency で、
+ * os・cpu の合う 1 つだけが入る。版は @ubichill/instance（changesets の fixed グループで cli と同じ版）に完全一致させる。
+ */
+export function instanceDependencies() {
+    const { version } = JSON.parse(readFileSync(join(cliDir, '..', 'instance', 'package.json'), 'utf-8'));
+    return Object.fromEntries(INSTANCE_PLATFORMS.map((platform) => [instancePackageName(platform), version]));
+}
+
 export function buildPackageJson() {
     const pkg = JSON.parse(readFileSync(join(cliDir, 'package.json'), 'utf-8'));
     return JSON.stringify(
@@ -56,6 +66,7 @@ export function buildPackageJson() {
             engines: { node: '>=22' },
             files: ['cli.js', 'LICENSE', 'README.md'],
             dependencies: CLI_RUNTIME_DEPENDENCIES,
+            optionalDependencies: instanceDependencies(),
         },
         null,
         2,

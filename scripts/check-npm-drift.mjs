@@ -15,9 +15,9 @@
  */
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
@@ -37,10 +37,11 @@ function latestPublishTag(publishedName) {
     return tags[0] ?? null;
 }
 
-/** dist-npm の *.js / *.d.ts 全体を連結した sha256（package.json/README/LICENSE は対象外）。 */
+/** dist-npm の中身（package.json / README / LICENSE 以外。Go のバイナリも含む）を連結した sha256。 */
 function hashDistNpm(dir) {
-    const files = readdirSync(dir)
-        .filter((f) => /\.(js|d\.ts)$/.test(f))
+    const files = readdirSync(dir, { recursive: true, withFileTypes: true })
+        .filter((entry) => entry.isFile() && !['package.json', 'README.md', 'LICENSE'].includes(entry.name))
+        .map((entry) => relative(dir, join(entry.parentPath, entry.name)))
         .sort();
     const hash = createHash('sha256');
     for (const f of files) {
@@ -50,10 +51,16 @@ function hashDistNpm(dir) {
     return hash.digest('hex');
 }
 
-/** 公開名は dist-npm の package.json にある（ワークスペース名と違うことがある: @ubichill/sdk → ubichill）。 */
+/**
+ * タグの名前。公開名は dist-npm の package.json にある（ワークスペース名と違うことがある: @ubichill/sdk → ubichill）。
+ * 複数の公開物を出すパッケージ（@ubichill/instance）は最初の公開物のタグで代表する（版は同じ）。
+ */
 function publishedNameOf(packageDir) {
     sh('pnpm', ['turbo', 'build', `--filter=${workspaceNameOf(packageDir)}`]);
-    return JSON.parse(readFileSync(join(packageDir, 'dist-npm', 'package.json'), 'utf-8')).name;
+    const distNpm = join(packageDir, 'dist-npm');
+    const own = join(distNpm, 'package.json');
+    const first = readdirSync(distNpm).sort().find((name) => existsSync(join(distNpm, name, 'package.json')));
+    return JSON.parse(readFileSync(existsSync(own) ? own : join(distNpm, first, 'package.json'), 'utf-8')).name;
 }
 
 function workspaceNameOf(packageDir) {

@@ -195,7 +195,47 @@ jobs:
       # sdk・cli がインライン展開する shared/ecs/loader を変更して changeset を
       # 付け忘れた場合の fail-closed 検査。
       - name: Check for undetected npm build drift
-        run: node scripts/check-npm-drift.mjs packages/sdk packages/cli
+        run: node scripts/check-npm-drift.mjs packages/sdk packages/cli packages/instance
+
+  # Go のインスタンスサーバーの npm 配布（@ubichill/instance-<os>-<cpu>）が各 OS で入って起動するか。
+  # cli の optionalDependencies はレジストリの版を指すので、未公開の版でも試せるよう手元の tgz を直接入れる
+  verify-instance-npm:
+    name: Verify instance npm package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/setup
+        with:
+          install-args: --ignore-scripts
+
+      - name: Build shared
+        run: pnpm turbo build --filter=@ubichill/shared
+
+      - name: Build cli and instance packages
+        run: pnpm build:cli && pnpm build:instance
+
+      - name: Install the packed cli and this platform's instance package
+        shell: bash
+        run: |
+          set -eu
+          PLATFORM="$(node -p "process.platform + '-' + process.arch")"
+          mkdir -p "$RUNNER_TEMP/consumer" && cd "$RUNNER_TEMP/consumer"
+          npm init -y > /dev/null
+          npm pack "$GITHUB_WORKSPACE/packages/cli/dist-npm" --pack-destination . > /dev/null
+          npm pack "$GITHUB_WORKSPACE/packages/instance/dist-npm/$PLATFORM" --pack-destination . > /dev/null
+          npm install --omit=optional ./ubichill-cli-*.tgz ./ubichill-instance-*.tgz
+          node node_modules/@ubichill/cli/cli.js 2>&1 | head -1
+
+      - name: Start the Go instance server from node_modules
+        shell: bash
+        run: node packages/instance/smoke.mjs --dir="$RUNNER_TEMP/consumer"
 
   # 変更検知: PR 時はパスフィルタ、push to main では全て true を返す。
   detect-changes:

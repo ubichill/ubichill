@@ -15,7 +15,7 @@
  *   各パッケージについて `pnpm --filter <name> build` で dist-npm を作り、`npm publish dist-npm` する。
  */
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -35,7 +35,19 @@ export function isAlreadyPublished(name, version) {
     }
 }
 
-/** 1 パッケージを dist-npm からビルドして公開する。 */
+/**
+ * 公開物のディレクトリ。dist-npm に package.json があればそれ 1 つ、無ければ dist-npm/<name>/ の各ディレクトリ
+ * （@ubichill/instance はプラットフォームごとに別のパッケージを出す）。
+ */
+export function publishDirs(distNpmDir) {
+    if (existsSync(join(distNpmDir, 'package.json'))) return [distNpmDir];
+    return readdirSync(distNpmDir, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && existsSync(join(distNpmDir, entry.name, 'package.json')))
+        .map((entry) => join(distNpmDir, entry.name))
+        .sort();
+}
+
+/** 1 つのワークスペースのパッケージをビルドし、その公開物（1 つまたは複数）を公開する。 */
 export function publishPackage(packageDir, { dryRun }) {
     const dir = resolve(repoRoot, packageDir);
     const { name, version } = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'));
@@ -43,7 +55,10 @@ export function publishPackage(packageDir, { dryRun }) {
     console.log(`🔨 Building ${name}@${version} publish artifact...`);
     execFileSync('pnpm', ['--filter', name, 'build'], { cwd: repoRoot, stdio: 'inherit' });
 
-    const distNpmDir = join(dir, 'dist-npm');
+    for (const distNpmDir of publishDirs(join(dir, 'dist-npm'))) publishDir(name, version, distNpmDir, { dryRun });
+}
+
+function publishDir(name, version, distNpmDir, { dryRun }) {
     const published = JSON.parse(readFileSync(join(distNpmDir, 'package.json'), 'utf-8'));
     if (published.version !== version) {
         throw new Error(

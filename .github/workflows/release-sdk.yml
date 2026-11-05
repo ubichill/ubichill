@@ -1,4 +1,4 @@
-name: Release npm packages (ubichill, @ubichill/cli)
+name: Release npm packages (ubichill, @ubichill/cli, @ubichill/instance-*)
 
 # 既存の CI の "Tag release" ジョブ（push to main で v0.0.N を自動採番するDocker imageの
 # バージョニング）とは完全に独立している。npm のバージョンは各パッケージ（packages/sdk・packages/cli）の
@@ -33,6 +33,8 @@ on:
       - '.changeset/**'
       - 'packages/sdk/**'
       - 'packages/cli/**'
+      - 'packages/instance/**'
+      - 'services/instance/**'
       - 'packages/ecs/**'
       - 'packages/shared/**'
       - 'packages/loader/**'
@@ -81,7 +83,7 @@ jobs:
         uses: changesets/action@v1
         with:
           # Version Packages PR が既に無い状態（＝マージ済み）のときだけ実行される。
-          publish: node scripts/publish-npm.mjs packages/sdk packages/cli
+          publish: node scripts/publish-npm.mjs packages/sdk packages/cli packages/instance
           version: pnpm changeset version
           commit: 'chore: version packages'
           title: 'chore: version packages'

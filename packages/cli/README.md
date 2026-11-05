@@ -20,6 +20,10 @@ npm install -D @ubichill/cli    # このコマンド
 }
 ```
 
+`@ubichill/cli` は Go のインスタンスサーバー（`ubichill-instance`）を optionalDependencies で持つ
+（`@ubichill/instance-<os>-<cpu>`。macOS arm64/x64・Linux x64/arm64・Windows x64 のうち合う 1 つだけが入る）。
+CI で `build` しか使わないなら `npm install --omit=optional` で外せる。
+
 ## コマンド
 
 ```bash
