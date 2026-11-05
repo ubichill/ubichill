@@ -20,7 +20,7 @@ const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
 /** SNS にしか無いもの。world.html の chunk に現れたら SNS のコードが混ざっている。 */
 export const FORBIDDEN_MARKERS = ['better-auth', '/api/v1/'];
 
-const files = worldScripts(manifest);
+const files = worldScripts(manifest, dist);
 if (files.length === 0) {
     console.error('❌ manifest に world.html のエントリがありません');
     process.exit(1);
