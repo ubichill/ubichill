@@ -1,8 +1,7 @@
-import type { InstanceAPI, ResolvedWorld } from '@ubichill/shared';
+import { type InstanceAPI, type ResolvedWorld, toInstanceDefinition } from '@ubichill/shared';
 import { appConfig } from '../config';
 import { type RedisCommands, redis } from '../lib/redis';
 import { logger } from '../utils/logger';
-import { flattenGameObject } from './flattenGameObject';
 import { placementOrder, readPlacement } from './instancePlacement';
 
 export type RuntimePresence = InstanceAPI['schemas']['RuntimePresence'];
@@ -188,19 +187,7 @@ export function createInstanceRuntime(options: InstanceRuntimeOptions) {
         },
         /** 部屋を割り当てて作り、続く管理 API の宛先（owner）を返す。別の Pod が持っていればその Pod を返す。 */
         async provision(id: string, maxUsers: number, world: ResolvedWorld): Promise<RuntimeOwner> {
-            const body = JSON.stringify({
-                id,
-                name: world.displayName,
-                maxUsers,
-                snapshot: {
-                    entities: world.initialEntities.flatMap((entity) => flattenGameObject(entity)),
-                    availableComponents: [],
-                    activeMods: world.dependencies?.map((dependency) => dependency.name) ?? [],
-                    environment: world.environment,
-                    lock: world.lock,
-                    sourceKind: world.source.kind,
-                },
-            });
+            const body = JSON.stringify(toInstanceDefinition(world, { id, maxUsers }));
             const failures: string[] = [];
             for (const base of await placementTargets(id)) {
                 // 503（draining・上限・Directory に届かない）と応答なしは、別の Pod へ送り直す。作成は冪等なので、

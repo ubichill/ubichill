@@ -16,10 +16,9 @@ import type {
 } from '@ubichill/shared';
 import type React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { EntityRenderer } from '@/instance/EntityRenderer';
-import { buildWorldLock } from '@/mods/buildWorldLock';
-import { ModRegistryProvider, useModRegistry } from '@/mods/ModRegistryContext';
+import { HOST_MOD_SOURCE, MOD_CDN_URL } from '@/lib/modCdn';
 import { css } from '@/styled-system/css';
+import { buildWorldLock, EntityRenderer, ModRegistryProvider, useModRegistry } from '@/world';
 
 const FALLBACK_ENTITY: ComponentInstance = {
     id: '',
@@ -166,7 +165,7 @@ export function EditorPreview({
     // biome-ignore lint/correctness/useExhaustiveDependencies: dependencies は再構築のトリガーとして意図的に指定（definitionは常にrefで最新参照するため不要）
     useEffect(() => {
         let cancelled = false;
-        buildWorldLock(definitionRef.current)
+        buildWorldLock(definitionRef.current, MOD_CDN_URL)
             .then(({ lock }) => {
                 if (!cancelled) setPreviewLock(lock);
             })
@@ -242,7 +241,7 @@ export function EditorPreview({
                 <WorldContext.Provider value={worldValue}>
                     {/* lock に固定されていない mod は実行しないので、試し用の lock ができてから mod を読み込む */}
                     {previewLock && (
-                        <ModRegistryProvider lock={previewLock}>
+                        <ModRegistryProvider lock={previewLock} source={HOST_MOD_SOURCE}>
                             {/* ワールド座標系のスクロール領域。overlay: true の Entity はここに置かない
                             （実行時の InstanceRenderer と同様、スクロールの影響を受けない別レイヤーにする）。 */}
                             <div

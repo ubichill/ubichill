@@ -12,7 +12,7 @@ import { globSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
-const cliPath = fileURLToPath(new URL('../packages/sdk/cli/index.ts', import.meta.url));
+const cliPath = fileURLToPath(new URL('../packages/cli/src/index.ts', import.meta.url));
 const modsDir = fileURLToPath(new URL('../packages/frontend/public/mods', import.meta.url));
 const check = process.argv.includes('--check');
 

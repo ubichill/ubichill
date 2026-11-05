@@ -1,42 +1,17 @@
-import type { ModLock } from './schemas/modLock.schema';
-
 // ゼロ依存の素朴な型（User/ComponentInstance/EntityTransform 等）は mod/entities.ts に分離。
 // barrel（このファイル）を経由せず SDK 側から直接 import できるようにするため
 // （dts-bundle-generator が schemas/* の zod スキーマまで読み込まずに済む、詳細は同ファイル参照）。
 export * from './mod/entities';
 
 import type {
-    AvailableComponent,
     ComponentInstance,
     CursorPosition,
     EntityEphemeralPayload,
     EntityPatchPayload,
     User,
     UserStatus,
-    WorldEnvironmentData,
 } from './mod/entities';
-
-// ============================================
-// World Snapshot (拡張版)
-// ============================================
-
-/**
- * ワールドスナップショットペイロード（flat ComponentInstance 単位）。
- *
- * GameObject に複数 Component が載っている場合、バックエンドが
- * 各 Component を 1 つの flat ComponentInstance に展開してから配信する。
- */
-export interface WorldSnapshotPayload {
-    entities: ComponentInstance[];
-    availableComponents: AvailableComponent[];
-    /** アクティブなmodIDのリスト */
-    activeMods: string[];
-    environment: WorldEnvironmentData;
-    /** ワールドに焼かれた mod 完全性ロック（あれば）。ロード時の hash 照合に使う。 */
-    lock?: ModLock;
-    /** ワールドの provenance kind（local/github/...）。表示用。 */
-    sourceKind?: string;
-}
+import type { WorldSnapshotPayload } from './world/instanceDefinition';
 
 // ============================================
 // 部屋の共有状態
@@ -217,23 +192,6 @@ export interface ClientToServerEvents {
 // ============================================
 
 /**
- * デフォルト設定
- */
-export const DEFAULTS = {
-    /** ユーザーのデフォルトステータス */
-    USER_STATUS: 'online' as UserStatus,
-
-    /** カーソル位置の初期値 */
-    INITIAL_POSITION: { x: 0, y: 0 } as CursorPosition,
-
-    /** デフォルトのワールド環境 */
-    WORLD_ENVIRONMENT: {
-        backgroundColor: '#F0F8FF',
-        worldSize: { width: 2000, height: 1500 },
-    } as WorldEnvironmentData,
-} as const;
-
-/**
  * 環境変数キー定数
  * 各パッケージで散らばらないよう、ここで一元管理する
  */
@@ -308,3 +266,5 @@ export * from './user/limits';
 export * from './user/signingKeys';
 export * from './user/userSearch';
 export * from './world/identity';
+export * from './world/instanceDefinition';
+export * from './world/resolve';

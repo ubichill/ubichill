@@ -1,10 +1,9 @@
 /**
  * 設計の規則（scripts/architecture.mjs）をリポジトリの全ソースに当てる。違反があれば非ゼロで終わる（CI の lint で実行）。
  */
-import { readFileSync } from 'node:fs';
-import { globSync } from 'node:fs';
+import { existsSync, globSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { architectureRules, checkFile } from './architecture.mjs';
+import { architectureRules, checkFile, WORLD_APP_ALLOWED, worldAppClosure } from './architecture.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf-8');
@@ -30,3 +29,16 @@ if (violations.length > 0) {
     process.exit(1);
 }
 console.log(`✅ 設計の規則: ${files.length} ファイル、${rules.length} 件の規則に違反なし`);
+
+// world.html から辿れるコードが SNS を読み込まないこと（直接の import だけでなく helper 越しも辿る）
+const closure = worldAppClosure({ read, exists: (path) => existsSync(new URL(`../${path}`, import.meta.url)) });
+if (closure.violations.length > 0) {
+    for (const v of closure.violations) {
+        console.error(`❌ [world-app-closure] ${v.path} は world.html から辿れるが、許可の外にある\n   経路: ${v.chain.join('\n     → ')}`);
+    }
+    console.error(
+        `\n理由: world.html は SNS（認証・router・backend API）無しでワールドを動かす。辿ってよいのは packages/frontend/src の ${WORLD_APP_ALLOWED.join(', ')} だけ`,
+    );
+    process.exit(1);
+}
+console.log(`✅ world-app-closure: world.html から辿れる ${closure.visited.length} ファイルはすべて許可の中`);

@@ -1,7 +1,7 @@
 {
     "name": "@ubichill/sdk",
     "version": "3.3.2",
-    "description": "ubichill mod SDK (UbiSDK runtime + public API) and CLI (build/lock/verify) for mod developers.",
+    "description": "ubichill mod SDK (UbiSDK runtime + public API) for mod developers.",
     "type": "module",
     "sideEffects": false,
     "main": "src/index.ts",
@@ -14,10 +14,8 @@
     "dependencies": {
         "@ubichill/core-components": "workspace:*",
         "@ubichill/ecs": "workspace:*",
-        "@ubichill/loader": "workspace:*",
         "@ubichill/runtime": "workspace:*",
-        "@ubichill/shared": "workspace:*",
-        "yaml": "catalog:"
+        "@ubichill/shared": "workspace:*"
     },
     "scripts": {
         "build": "node build.mjs",

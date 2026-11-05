@@ -210,3 +210,20 @@ export interface WorldEnvironmentData {
      */
     worldSize: { width: number; height: number };
 }
+
+/**
+ * デフォルト設定
+ */
+export const DEFAULTS = {
+    /** ユーザーのデフォルトステータス */
+    USER_STATUS: 'online' as UserStatus,
+
+    /** カーソル位置の初期値 */
+    INITIAL_POSITION: { x: 0, y: 0 } as CursorPosition,
+
+    /** デフォルトのワールド環境 */
+    WORLD_ENVIRONMENT: {
+        backgroundColor: '#F0F8FF',
+        worldSize: { width: 2000, height: 1500 },
+    } as WorldEnvironmentData,
+} as const;

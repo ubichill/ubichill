@@ -91,15 +91,19 @@ AGPL-3.0-only（独立した mod については追加的許可あり）。詳�
 
 ## インスタンスだけ動かす
 
-SNSやDBを使わないGoサーバーとゲスト用フロントを起動できる。
+SNS や DB を使わず、Go のインスタンスサーバーと、ワールドを動かすだけの画面（`world.html`）で動かせる。
+`world.html` は「Go と `/mods` が同じオリジンにある」前提で、設定を持たない。
 
 ```sh
 pnpm install
 pnpm turbo build --filter=@ubichill/shared
-pnpm instance:dev
-# 別ターミナル
-VITE_INSTANCE_SERVER_URL=http://localhost:3002 pnpm --filter @ubichill/frontend dev
+pnpm build:workers                                   # mod と worlds/*.lock.json
+node packages/cli/src/index.ts world build worlds/default.yaml --out=/tmp/default.json
+go -C services/instance run ./cmd/instance --guests --world=/tmp/default.json --origins=http://localhost:3000
+# 別ターミナル（Vite の開発サーバーは /realtime を Go へ中継する）
+pnpm --filter @ubichill/frontend dev
 ```
 
-`http://localhost:3000/instance/standalone?name=Alice` へアクセスする。
+`http://localhost:3000/world.html?name=Alice`（入る部屋は `/<id>` で決まり、`/` は `default`）へアクセスする。
+本番の画面と同じ `src/world` で動き、同期は Go だけで行う。
 [単体運用・SNS連携・Docker](services/instance/README.md) / [OpenAPI・AsyncAPI](protocol/instance/README.md)。

@@ -5,4 +5,3 @@ export {
     type NotificationsState,
     useNotifications,
 } from './NotificationsProvider';
-export { ServerNoticeToasts } from './ServerNoticeToasts';

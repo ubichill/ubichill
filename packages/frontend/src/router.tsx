@@ -1,11 +1,9 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
-import { CursorLayer } from './components/cursor/CursorLayer';
-import { NotificationsProvider, ServerNoticeToasts } from './components/notifications';
+import { NotificationsProvider } from './components/notifications';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { ConfirmProvider } from './components/ui/ConfirmProvider';
 import { VersionBadge } from './components/VersionBadge';
 import { VersionSkewGuard } from './components/VersionSkewGuard';
-import { STANDALONE_INSTANCE, STANDALONE_RUNTIME } from './lib/instanceConnection';
 import { SessionProvider } from './lib/session';
 import { AuthPage } from './pages/AuthPage';
 import { CliAuthorizePage } from './pages/CliAuthorizePage';
@@ -16,26 +14,6 @@ import { WorldPage } from './pages/WorldPage';
 import { WorldEditorPage } from './pages/world-editor';
 
 export function AppRouter() {
-    if (STANDALONE_RUNTIME)
-        return (
-            <BrowserRouter>
-                <SessionProvider>
-                    <NotificationsProvider>
-                        <ConfirmProvider>
-                            <Routes>
-                                <Route path="/instance/:id" element={<InstancePage />} />
-                                <Route
-                                    path="*"
-                                    element={<Navigate to={`/instance/${STANDALONE_INSTANCE}`} replace />}
-                                />
-                            </Routes>
-                            <CursorLayer />
-                            <ServerNoticeToasts />
-                        </ConfirmProvider>
-                    </NotificationsProvider>
-                </SessionProvider>
-            </BrowserRouter>
-        );
     return (
         <BrowserRouter>
             <SessionProvider>
@@ -99,8 +77,6 @@ export function AppRouter() {
                         </Routes>
                         <VersionBadge />
                         <VersionSkewGuard />
-                        <CursorLayer />
-                        <ServerNoticeToasts />
                     </ConfirmProvider>
                 </NotificationsProvider>
             </SessionProvider>

@@ -68,7 +68,7 @@ export default defineConfig({
     test: {
         environment: 'node',
         // packages 配下はどこにテストファイルがあっても拾う（src/ 限定にしない。
-        // 例: packages/sdk/build.test.mjs, packages/sdk/cli/build.test.ts はビルドツール自身の
+        // 例: packages/sdk/build.test.mjs, packages/cli/build.test.mjs はビルドツール自身の
         // テストで src/ 配下ではない）。
         include: [
             'packages/**/*.test.{ts,tsx,mjs}',

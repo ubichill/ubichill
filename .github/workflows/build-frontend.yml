@@ -54,9 +54,9 @@ jobs:
           pnpm turbo build --filter=@ubichill/shared
           pnpm build:workers
           # 公開環境が取り消されていたら、署名しても Host で作者を確認できないので先に止める
-          node packages/sdk/cli/index.ts whoami
-          node packages/sdk/cli/index.ts publish packages/frontend/public/mods
-          node packages/sdk/cli/index.ts verify --dist-dir=packages/frontend/public/mods --require-signatures
+          node packages/cli/src/index.ts whoami
+          node packages/cli/src/index.ts publish packages/frontend/public/mods
+          node packages/cli/src/index.ts verify --dist-dir=packages/frontend/public/mods --require-signatures
 
       - uses: docker/login-action@v4
         with:

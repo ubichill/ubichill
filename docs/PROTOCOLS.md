@@ -21,7 +21,7 @@ Ubichill の約束ごと（プロトコル・データの形式・API）を、**
 | 作者署名（ワールド） | `version: 2`・`kind: 'world'` | `shared/signature/envelope.ts`（内容のハッシュは `shared/world/identity.ts`） | `<world>.sig.json` |
 | 作者署名（mod） | `version: 2`・`kind: 'mod'` | `shared/signature/envelope.ts`（内容のハッシュは `shared/mod/modSignature.ts`） | `v<版>/lock.sig.json` |
 | サービストークン | JWT（EdDSA） | `shared/mod/serviceToken.ts` | 外部サービスへ渡す |
-| CLI・CI の認証情報 | `version: 1` | `sdk/cli/credentials.ts` | `~/.config/ubichill`・CI の Secret |
+| CLI・CI の認証情報 | `version: 1` | `cli/src/credentials.ts` | `~/.config/ubichill`・CI の Secret |
 
 ### 作者署名の形式（版 2）
 
@@ -55,7 +55,7 @@ Ubichill の約束ごと（プロトコル・データの形式・API）を、**
 - 足す: `PROTOCOL_VERSION` を +1 し、契約に新しい版を足す。消す・意味を変える: さらに `MIN_COMPATIBLE_PROTOCOL_VERSION` を上げる。どちらも忘れると CI が落ちる。
 - **CI が見るのはコマンド・イベントの名前の増減だけ**。ペイロードの型や意味を変えたこと（項目を必須にした・単位を変えたなど）は検知しない。
   `shared/mod/protocol.ts` と `shared/mod/types.ts` のペイロードの型を変える PR は、互換を壊していないかをレビューで確かめる。
-- SDK のビルド結果が変わったのに changeset が無ければ落ちる（`packages/sdk/check-drift.mjs`）。
+- SDK のビルド結果が変わったのに changeset が無ければ落ちる（`scripts/check-npm-drift.mjs`）。
 
 ## C. サーバーの間の API
 
@@ -90,7 +90,8 @@ Ubichill の約束ごと（プロトコル・データの形式・API）を、**
 
 | 規則 | 守るもの |
 | --- | --- |
-| `host-runs-mods-without-backend` | Host は SNS backend の無い単体モードでも mod を動かす（mod の経路から Host の API を呼ばない） |
+| `host-runs-mods-without-backend` | Host は SNS backend の無い `world.html` でも mod を動かす（mod の経路から Host の API を呼ばない） |
+| `world-app-closure` | `world.html` から辿れるコード（`src/world`・`src/worldApp`）は SNS（認証・router・backend API）を読み込まない。間接の import も含めて辿る |
 | `shared-is-pure` | shared は Node・DOM・ネットワークに依存しない（ブラウザ・backend・CLI が同じ規則を使う） |
 | `loader-main-is-browser-safe` | loader の既定の入口はブラウザで読める |
 | `backend-runs-built-packages-only` | backend はソースのまま配るパッケージに依存しない |

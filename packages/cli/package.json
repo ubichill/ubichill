@@ -1,0 +1,24 @@
+{
+    "name": "@ubichill/cli",
+    "version": "0.0.0",
+    "description": "ubichill CLI for mod developers: dev server, build, install, verify, publish.",
+    "type": "module",
+    "sideEffects": false,
+    "main": "src/index.ts",
+    "dependencies": {
+        "@ubichill/loader": "workspace:*",
+        "@ubichill/shared": "workspace:*",
+        "esbuild": "catalog:",
+        "yaml": "catalog:"
+    },
+    "scripts": {
+        "build": "node build.mjs",
+        "clean": "rimraf dist-npm",
+        "typecheck": "tsc --noEmit"
+    },
+    "devDependencies": {
+        "@types/node": "catalog:",
+        "rimraf": "catalog:",
+        "typescript": "catalog:"
+    }
+}
