@@ -27,9 +27,10 @@ GoサーバーはUIの静的ファイルやmodを配信しない。フロント�
 実行時に必要なバックエンドはGoのみになる。開発用のViteサーバーもSNS backendには依存しない。
 
 `--world` はOpenAPIの `InstanceDefinition` 形式のJSON。初期エンティティはflatten済みの
-ComponentInstance配列で、mod完全性lockや環境設定も含む。
-既存のWorld as Code YAMLを使うSNS運用では、TypeScript側の既存の検証・解決・flattenを利用する。
-単体運用でmodを使う場合は `pnpm build:workers` でフロントの配信物を作り、定義にlockと初期状態を渡す。
+ComponentInstance配列で、mod完全性lockや環境設定も含む。World as Code の YAML からは
+`ubichill world build <world.yaml>`（`@ubichill/cli`。このリポジトリでは `node packages/cli/src/index.ts world build`）で作る。
+本体（SNS backend）がインスタンスを作るときと同じ変換（`@ubichill/shared` の `toInstanceDefinition`）なので、初期状態は同じになる。
+単体運用でmodを使う場合は `pnpm build:workers` でフロントの配信物を作り、`ubichill install` で lock を作ってから `world build` する。
 
 Goバイナリだけを配布する場合:
 

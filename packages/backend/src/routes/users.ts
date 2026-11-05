@@ -31,6 +31,7 @@ import {
     MAX_EXTERNAL_WORKS_PER_USER,
     needsFriendCheck,
     OFFICIAL_HANDLE,
+    parseStoredDefinition,
     RevokeReasonSchema,
     SERVER_CONFIG,
     verifyKeyRegistration,
@@ -64,7 +65,6 @@ import {
 } from '../services/publishingEnvironments';
 import { nodeWorldCrypto } from '../services/worldCrypto';
 import { worldRegistry } from '../services/worldRegistry';
-import { parseStoredDefinition } from '../services/worldResolver';
 import { logger } from '../utils/logger';
 import { createTtlCache } from '../utils/ttlCache';
 

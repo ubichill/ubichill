@@ -14,6 +14,7 @@
  *   ubichill ci create --name=<表示名> [--server=<url>] [--device]
  *   ubichill publish <world.yaml>... [--server=<url>] [--out=<dir>] [--public-url=<url>] [--no-install]
  *   ubichill publish <mods のビルド出力>...   mod の配布物（例 dist/mods）に署名する
+ *   ubichill world build <world.yaml> [--id=<instanceId>] [--max-users=<n>] [--out=<path>]   Go に渡す定義 JSON を作る
  *
  * `login` はブラウザで承認してこの端末を公開環境にする（鍵は手元だけ）。`publish` はログインしたアカウントで署名して公開する。
  * CI は `ci create` で作った文字列を env UBICHILL_CREDENTIALS に入れて `publish` する。鍵は CLI が作って手元に持つ
@@ -33,8 +34,9 @@ import { runLock } from './lock.ts';
 import { runUpdate } from './update.ts';
 import { runVerify } from './verify.ts';
 import { runVerifyWorld } from './verifyWorld.ts';
+import { runWorld } from './world.ts';
 
-const USAGE = `使い方: ubichill <login|logout|whoami|publish|ci create|build|install|update|verify> [...args]`;
+const USAGE = `使い方: ubichill <login|logout|whoami|publish|ci create|build|install|update|verify|world build> [...args]`;
 
 async function main(): Promise<void> {
     const [subcommand, ...rest] = process.argv.slice(2);
@@ -74,6 +76,9 @@ async function main(): Promise<void> {
             return;
         case 'publish':
             await runPublish(rest);
+            return;
+        case 'world':
+            await runWorld(rest);
             return;
         case 'ci':
             if (rest[0] === 'create') {

@@ -20,6 +20,7 @@ import {
     type ModLock,
     OFFICIAL_HANDLE,
     parseAuthorAccount,
+    parseStoredDefinition,
     type ResolvedWorld,
     SERVER_CONFIG,
     type WorldDefinition,
@@ -38,13 +39,7 @@ import { type BackendEvents, backendEvents } from './backendEvents';
 import { federatedCandidates, uniqueByWorldId } from './federatedWorlds';
 import { createRemoteWorldCache } from './remoteWorldCache';
 import { assertPublicUrl, safeFetch } from './safeFetch';
-import {
-    normalizeWorldUrl,
-    parseStoredDefinition,
-    resolveBundle,
-    resolveWorldFromUrl,
-    WorldIntegrityError,
-} from './worldResolver';
+import { normalizeWorldUrl, resolveBundle, resolveWorldFromUrl, WorldIntegrityError } from './worldResolver';
 
 // ── システム定数 ──────────────────────────────────────────────────
 

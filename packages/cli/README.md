@@ -34,6 +34,7 @@ ubichill whoami  [--server=<url>]
 ubichill ci create --name=<表示名> [--server=<url>] [--device]
 ubichill publish <world.yaml>... [--server=<url>] [--out=<dir>] [--public-url=<url>] [--no-install]
 ubichill publish <mods のビルド出力>... [--server=<url>] [--public-url=<url>]
+ubichill world build <world.yaml> [--id=<instanceId>] [--max-users=<n>] [--out=<path>]
 ```
 
 - **`build`**: `src/**/*.worker.ts(x)` のうち `export const config` を持つファイルを Component
@@ -71,6 +72,10 @@ ubichill publish <mods のビルド出力>... [--server=<url>] [--public-url=<ur
   - `publish <ビルド出力>` は mod の配布物に `v<version>/lock.sig.json` を書き出す（mod はサーバーへ送らない）。
     Host は作者署名を確認できた mod だけを実行する。
   - `--public-url=<url>` を渡すと、署名したときに作者アカウントのサーバーへ登録され、ユーザーページに出る。
+- **`world build`**: 手元の `world.yaml` と兄弟の `.lock.json` から、Go のインスタンスサーバー（`ubichill-instance`）に
+  渡す定義 JSON を作る。本体がインスタンスを作るときと同じ変換なので、`ubichill-instance --guests --world=<出力>` で
+  起動した部屋は本体と同じ初期状態を持つ。`--id` は省略時 `metadata.name`、`--max-users` は省略時ワールドの定員の上限。
+  lock に無い mod を参照していれば失敗する（先に `ubichill install`）。
 - **CI から公開する**: 手元で `ubichill ci create --name="GitHub Actions: owner/repo"` を実行してブラウザで承認すると、
   CI 用の公開環境の認証情報（1 本の文字列）が表示される。CI の Secret `UBICHILL_CREDENTIALS` に入れて `publish` する。
 

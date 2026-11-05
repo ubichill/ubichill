@@ -1,6 +1,7 @@
-import { EMPTY_ENTITY_TYPE, type InitialEntity } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
-import { flattenGameObject } from './flattenGameObject';
+import { EMPTY_ENTITY_TYPE } from '../mod/entities';
+import type { InitialEntity, ResolvedWorld } from '../schemas/world.schema';
+import { flattenGameObject, toInstanceDefinition } from './instanceDefinition';
 
 function makeEntity(overrides: Partial<InitialEntity> = {}): InitialEntity {
     return {
@@ -167,5 +168,73 @@ describe('flattenGameObject', () => {
         expect(result[1].overlay).toBe(true);
         // 指定が無い Component に overlay を勝手に生やさない（ワールド座標のままであるべき）
         expect(result[2].overlay).toBeUndefined();
+    });
+});
+
+describe('toInstanceDefinition', () => {
+    const world = (overrides: Partial<ResolvedWorld> = {}) =>
+        ({
+            displayName: 'Home',
+            initialEntities: [
+                makeEntity({
+                    id: 'tray',
+                    transform: { x: 10, y: 20, z: 1, scale: 1, rotation: 0 },
+                    components: [{ type: 'pen:tray', data: {} }],
+                    children: [
+                        makeEntity({
+                            id: 'pen',
+                            transform: { x: 1, y: 2, z: 0, scale: 1, rotation: 0 },
+                            components: [{ type: 'pen:pen', data: { color: '#fff' } }],
+                        }),
+                    ],
+                }),
+                makeEntity({ id: 'marker' }),
+            ],
+            dependencies: [
+                { name: 'pen', source: { type: 'url', version: 'latest' } },
+                { name: 'danmaku', source: { type: 'url', version: '1.0.0' } },
+            ],
+            environment: { backgroundColor: '#123456', worldSize: { width: 100, height: 50 } },
+            lock: { lockVersion: 1, mods: {} },
+            source: { kind: 'local', url: 'https://h.example/api/v1/worlds/home' },
+            ...overrides,
+        }) as ResolvedWorld;
+
+    it('backend が PUT していた JSON とキーの順番まで同じ定義を作る', () => {
+        const w = world();
+        const expected = JSON.stringify({
+            id: 'inst-1',
+            name: 'Home',
+            maxUsers: 7,
+            snapshot: {
+                entities: w.initialEntities.flatMap((entity) => flattenGameObject(entity)),
+                availableComponents: [],
+                activeMods: ['pen', 'danmaku'],
+                environment: w.environment,
+                lock: w.lock,
+                sourceKind: 'local',
+            },
+        });
+        expect(JSON.stringify(toInstanceDefinition(w, { id: 'inst-1', maxUsers: 7 }))).toBe(expected);
+    });
+
+    it('入れ子の GameObject は絶対座標に展開され、Component の無い GameObject も 1 件になる', () => {
+        const { snapshot } = toInstanceDefinition(world(), { id: 'i', maxUsers: 1 });
+        expect(snapshot.entities.map((e) => e.id)).toEqual(['tray::0', 'pen::0', 'marker::0']);
+        expect(snapshot.entities[1]?.transform).toMatchObject({ x: 11, y: 22, z: 1 });
+        expect(snapshot.entities[1]?.parentEntityId).toBe('tray');
+        expect(snapshot.entities[2]?.type).toBe(EMPTY_ENTITY_TYPE);
+    });
+
+    it('dependencies が無ければ activeMods は空で、lock が無ければ JSON に lock が現れない', () => {
+        const def = toInstanceDefinition(world({ dependencies: undefined, lock: undefined }), { id: 'i', maxUsers: 1 });
+        expect(def.snapshot.activeMods).toEqual([]);
+        expect(JSON.parse(JSON.stringify(def)).snapshot).not.toHaveProperty('lock');
+    });
+
+    it('id と maxUsers は呼び出し側の値をそのまま使う（上限の検査は Go が行う）', () => {
+        const def = toInstanceDefinition(world(), { id: 'dev-abc', maxUsers: 1000 });
+        expect(def.id).toBe('dev-abc');
+        expect(def.maxUsers).toBe(1000);
     });
 });

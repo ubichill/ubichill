@@ -49,7 +49,7 @@ describe('buildCliJs（CLI 完全バンドル、esbuild/yaml のみ external）'
     });
 
     it('サブコマンドが実際にバンドルされている', () => {
-        for (const name of ['runBuild', 'runInstall', 'runUpdate', 'runVerify', 'runPublish']) {
+        for (const name of ['runBuild', 'runInstall', 'runUpdate', 'runVerify', 'runPublish', 'runWorld']) {
             expect(code).toMatch(new RegExp(name));
         }
     });
