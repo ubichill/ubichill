@@ -7,11 +7,11 @@
  * 使い方: node build.mjs [--out-dir=dist-npm]（cwd は packages/cli/ 前提）
  */
 import * as esbuild from 'esbuild';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { INSTANCE_PLATFORMS, instancePackageName } from './src/instancePlatforms.ts';
-import { worldDistFiles } from './worldDist.mjs';
+import { WORLD_DIST_DIR, worldDistFiles } from './worldDist.mjs';
 
 const cliDir = dirname(fileURLToPath(import.meta.url));
 
@@ -76,13 +76,9 @@ export function buildPackageJson() {
 
 /**
  * `ubichill dev` が配る `world.html`（SNS 無しでワールドを動かす画面）とその assets を同梱する。
- * frontend のビルド出力（turbo が先に作る）から、world.html が使うファイルだけを写す。
+ * world.html だけのビルド（frontend の build:world。turbo が先に作る）の出力をそのまま写す。SNS のビルドには依存しない。
  */
-export function copyWorldDist(outWorldDir) {
-    const distDir = join(cliDir, '..', 'frontend', 'dist');
-    if (!existsSync(join(distDir, '.vite', 'manifest.json'))) {
-        throw new Error(`${distDir} に frontend のビルドがありません（pnpm --filter @ubichill/frontend build）`);
-    }
+export function copyWorldDist(outWorldDir, distDir = WORLD_DIST_DIR) {
     const files = worldDistFiles(distDir);
     for (const file of files) {
         const target = join(outWorldDir, file);

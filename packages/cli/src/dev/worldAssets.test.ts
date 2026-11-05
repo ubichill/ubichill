@@ -19,7 +19,7 @@ describe('resolveWorldDist', () => {
     });
     it('無ければ frontend のビルドを案内し、環境変数が間違っていれば候補を見ない', () => {
         expect(resolveWorldDist({ env: {}, candidates: ['/a'], exists: () => false })).toMatchObject({
-            error: expect.stringContaining('pnpm --filter @ubichill/frontend build'),
+            error: expect.stringContaining('pnpm --filter @ubichill/frontend build:world'),
         });
         expect(
             resolveWorldDist({

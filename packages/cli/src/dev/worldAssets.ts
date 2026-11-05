@@ -2,7 +2,7 @@
  * `world.html` とその assets の置き場所。
  * 1. 環境変数 `UBICHILL_WORLD_DIST`
  * 2. 公開物に同梱した `world/`（cli.js の隣）
- * 3. このリポジトリの中で動かしているとき: `packages/frontend/dist`（`pnpm --filter @ubichill/frontend build`）
+ * 3. このリポジトリの中で動かしているとき: `packages/frontend/dist-world`（`pnpm --filter @ubichill/frontend build:world`）
  */
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -26,7 +26,7 @@ export function resolveWorldDist(deps: {
         ? { path: found }
         : {
               error:
-                  'world.html が見つかりません。このリポジトリの中なら `pnpm --filter @ubichill/frontend build` を実行してください' +
+                  'world.html が見つかりません。このリポジトリの中なら `pnpm --filter @ubichill/frontend build:world` を実行してください' +
                   `（候補: ${deps.candidates.join(', ')}）`,
           };
 }
@@ -37,7 +37,7 @@ export function findWorldDist(): { path: string } | { error: string } {
     return resolveWorldDist({
         env: process.env,
         candidates: fromSource
-            ? [join(here, '..', '..', '..', 'frontend', 'dist')]
+            ? [join(here, '..', '..', '..', 'frontend', 'dist-world')]
             : [join(here, 'world'), join(here, '..', 'world')],
         exists: existsSync,
     });

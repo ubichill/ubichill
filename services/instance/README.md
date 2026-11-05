@@ -23,7 +23,7 @@ pnpm --filter @ubichill/frontend dev
 ゲストのカーソルが見える。ゲストIDはサーバーが発行し、同じタブでの再接続に保持する。
 入るインスタンスは URL のパス（`/<id>`、`/` は `default`）で決まる。
 `world.html` は「Go と `/mods` が同じオリジンにある」前提で設定を持たない（Vite の開発サーバーは `/realtime` を Go へ中継する）。
-GoサーバーはUIの静的ファイルやmodを配信しない。`world.html` と `ubichill build` の出力を同じオリジンの静的ホストから配信し、
+GoサーバーはUIの静的ファイルやmodを配信しない。`world.html`（`pnpm --filter @ubichill/frontend build:world` の出力 `packages/frontend/dist-world/`）と `ubichill build` の出力を同じオリジンの静的ホストから配信し、
 `/realtime/v1/*` を Go へ中継すれば、実行時に必要なバックエンドはGoのみになる。
 
 `--world` はOpenAPIの `InstanceDefinition` 形式のJSON。初期エンティティはflatten済みの

@@ -127,12 +127,9 @@ export default defineConfig({
         // world.html は「Go と同じオリジン」を前提にする。開発では Go（:3002）へ中継する（pnpm dev の SNS は絶対 URL で Go に繋ぐので影響しない）
         proxy: { '/realtime': { target: 'http://127.0.0.1:3002', ws: true } },
     },
+    // SNS の画面（index.html）だけを作る。world.html は vite.world.config.ts で別にビルドする（SNS のコードと chunk・CSS を共有させない）
     build: {
         target: 'es2025',
         outDir: 'dist',
-        // index.html は SNS、world.html はワールドを動かすだけの画面（自前ホスト・ubichill dev が配る）。
-        rollupOptions: { input: { index: resolve(__dirname, 'index.html'), world: resolve(__dirname, 'world.html') } },
-        // world.html から辿れる chunk に SNS のコードが入らないことを CI が確かめる（scripts/check-world-app-bundle.mjs）
-        manifest: true,
     },
 });

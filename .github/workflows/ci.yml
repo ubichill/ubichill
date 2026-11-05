@@ -140,10 +140,10 @@ jobs:
       - name: Verify world locks
         run: pnpm verify:world-locks
 
-      # world.html（SNS 無しでワールドを動かす画面）の chunk に SNS のコードが入っていないか。
-      # ソースの import は check:architecture（world-app-closure）が辿る。ここは実際に配る JS を見る
-      - name: Build frontend (index.html + world.html)
-        run: pnpm --filter @ubichill/frontend build
+      # world.html（SNS 無しでワールドを動かす画面）の出力に SNS のものが入っていないか。
+      # ソースの import は check:architecture（world-app-closure）が辿る。ここは実際に配るファイルを見る
+      - name: Build world.html
+        run: pnpm --filter @ubichill/frontend build:world
 
       - name: Verify world.html bundle has no SNS code
         run: node scripts/check-world-app-bundle.mjs

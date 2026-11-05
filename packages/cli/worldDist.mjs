@@ -1,43 +1,24 @@
 /**
- * frontend のビルド出力のうち、`world.html` が使うファイル（Vite の manifest から辿れる chunk と CSS、アイコン）。
+ * world.html のビルド出力（`packages/frontend/dist-world`。`pnpm --filter @ubichill/frontend build:world`）。
+ * SNS の画面とは別のビルドなので、中のファイルは全部 world.html のためのもの。
  * `@ubichill/cli` の公開物に同梱する（build.mjs）のと、SNS のコードが混ざっていないかの検査（scripts/check-world-app-bundle.mjs）で使う。
  */
-import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readdirSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-/** manifest のエントリから imports / dynamicImports で辿れる chunk（manifest のキー）。 */
-export function reachableChunks(manifest, entry) {
-    const seen = new Set();
-    const queue = [entry];
-    while (queue.length > 0) {
-        const key = queue.shift();
-        const chunk = manifest[key];
-        if (!chunk || seen.has(key)) continue;
-        seen.add(key);
-        queue.push(...(chunk.imports ?? []), ...(chunk.dynamicImports ?? []));
+export const WORLD_DIST_DIR = fileURLToPath(new URL('../frontend/dist-world', import.meta.url));
+
+/** 出力の中の全ファイル（dist からの POSIX 相対パス、ソート済み）。world.html が無ければ throw。 */
+export function worldDistFiles(distDir = WORLD_DIST_DIR) {
+    if (!existsSync(join(distDir, 'world.html'))) {
+        throw new Error(`${distDir} に world.html がありません（pnpm --filter @ubichill/frontend build:world）`);
     }
-    return [...seen];
+    return readdirSync(distDir, { recursive: true, withFileTypes: true })
+        .filter((entry) => entry.isFile())
+        .map((entry) => relative(distDir, join(entry.parentPath, entry.name)).split(sep).join('/'))
+        .sort();
 }
 
-/**
- * Sandbox Worker の chunk（`new Worker(new URL(...))` で Vite が別に出すもの）。manifest の import の連鎖には現れないので
- * `assets/` の名前で拾う（@ubichill/shared の isSandboxWorkerScriptPath と同じ形）。
- */
-export function workerScripts(distDir) {
-    return readdirSync(join(distDir, 'assets'))
-        .filter((name) => /^sandbox\.worker(?:-[\w-]+)?\.js$/.test(name))
-        .map((name) => `assets/${name}`);
-}
-
-/** `world.html` が読む JS（dist からの相対パス）: manifest から辿れる chunk と Sandbox Worker。 */
-export function worldScripts(manifest, distDir) {
-    return [...reachableChunks(manifest, 'world.html').map((key) => manifest[key].file), ...workerScripts(distDir)];
-}
-
-/** `world.html` の公開物（dist からの相対パス）: HTML・JS・CSS・アイコン。 */
-export function worldDistFiles(distDir) {
-    const manifest = JSON.parse(readFileSync(join(distDir, '.vite', 'manifest.json'), 'utf-8'));
-    if (!manifest['world.html']) throw new Error(`${distDir} の manifest に world.html がありません`);
-    const css = reachableChunks(manifest, 'world.html').flatMap((key) => manifest[key].css ?? []);
-    return ['world.html', 'icon.png', ...worldScripts(manifest, distDir), ...new Set(css)];
-}
+/** world.html の出力に置いてよいファイル: HTML・アイコン・assets/ の下（public/ の SNS の配信物が混ざらないこと）。 */
+export const isWorldDistFile = (file) => file === 'world.html' || file === 'icon.png' || file.startsWith('assets/');

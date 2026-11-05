@@ -101,6 +101,15 @@ frontend に `src/world/` を作り、エントリを `index.html`（SNS）と `
 
 `world.html` は「Go と `/mods` は同じオリジン」を前提にし、設定ファイルを持たない。インスタンス ID は URL のパスから取り、省略時は `default`。
 
+### ビルドを分ける
+
+`world.html` は SNS の画面とは別のビルドで作る（`pnpm --filter @ubichill/frontend build:world` → `packages/frontend/dist-world/`、設定は `vite.world.config.ts`）。
+
+- 入口が `world.html` だけなので、chunk は world から辿れるコードだけでできる。SNS の chunk を共有しない。
+- CSS も、world から辿ってよいファイル（`WORLD_APP_ALLOWED`）だけから抽出する（`panda.world.config.ts`）。テーマとトークンは SNS と同じ。
+- `public/`（同梱の mod・アバターの画像）は写さない。
+- `@ubichill/cli` はこの出力をそのまま同梱する。SNS の画面のビルド（`build` → `dist/`）には依存しない。
+
 ### dev だけの差
 
 - dev サーバーが `world.html` に `<meta name="ubichill-dev">` を差し込むと、`world.html` は世代を SSE から受け取り（後述）、その世代の lock・インスタンス ID を使う。未署名の mod は、その世代の URL から来たものだけを「未署名・ローカル」として動かす（`allowUnsigned(baseUrl)` で判定）。
@@ -346,7 +355,7 @@ PR 0 と PR 1 は並行できる（PR 1 の `world build` だけ後から足し�
 - **cli が大きくなる**: Go のバイナリ（未計測、gzip 後 4MB 前後の見込み）と `world.html` の成果物（#208 時点の単体ビルドで 1,161KB）。CI で build だけ使う人は `--omit=optional` で外せる。
 - **世代のメモリ**: 3 世代をメモリに持つ。変わらない mod は参照を共有するので、増えるのは変わった mod の分だけ。asset の大きい mod を頻繁に変えると増える。
 - **`fs.watch` の差**: recursive の挙動が OS で違い、エディタの保存方法（rename での置き換え）で取りこぼしうる。取りこぼしても次の保存で追いつくが、PR 5 の CI で macOS・Linux・Windows を確かめる。
-- **ビルドの順序**: cli のビルドが frontend のビルド（SNS も含む全体）に依存する。公開の処理は turbo を通すので依存も走る。将来は `world.html` だけを作るビルドの経路を分けると、cli の配布物が SNS のビルドに引きずられない。
+- **ビルドの順序**: cli のビルドは `world.html` だけのビルド（frontend の `build:world` → `dist-world/`）に依存し、SNS の画面のビルドには依存しない。公開の処理は turbo を通すので依存も走る。
 - **Go の版と Host の版のずれ**: cli に同梱する `world.html` と Go は同じコミットから作るのでずれない。自前ホストで組を崩すと、インスタンスプロトコルの版の確認で弾かれる。
 - **Windows**: 子プロセスの終了とパスの扱いが違う。PR 3 の Windows ランナーで確かめる。
 
