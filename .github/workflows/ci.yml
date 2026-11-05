@@ -231,7 +231,10 @@ jobs:
           npm pack "$GITHUB_WORKSPACE/packages/cli/dist-npm" --pack-destination . > /dev/null
           npm pack "$GITHUB_WORKSPACE/packages/instance/dist-npm/$PLATFORM" --pack-destination . > /dev/null
           npm install --omit=optional ./ubichill-cli-*.tgz ./ubichill-instance-*.tgz
-          node node_modules/@ubichill/cli/cli.js 2>&1 | head -1
+          # 引数なしは使い方を出して exit 1 で終わる。起動して使い方が出ることだけを確かめる
+          usage="$(node node_modules/@ubichill/cli/cli.js 2>&1 || true)"
+          echo "$usage"
+          echo "$usage" | grep -q '使い方: ubichill'
 
       - name: Start the Go instance server from node_modules
         shell: bash
