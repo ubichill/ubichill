@@ -12,7 +12,7 @@ import yaml from 'yaml';
 import { compileMod } from '../build.ts';
 import { findInstanceBinary } from '../instanceBinary.ts';
 import { initialGenerationState } from './generation.ts';
-import { type GoRuntime, startGo } from './goRuntime.ts';
+import { superviseGo } from './goRuntime.ts';
 import { createPipeline } from './pipeline.ts';
 import { createDevServer } from './server.ts';
 import { createWatcher, planChanges, watchTargets } from './watch.ts';
@@ -62,6 +62,7 @@ export async function runDev(argv: string[]): Promise<void> {
     const port = Number(argValue(argv, 'port') ?? DEFAULT_PORT);
     const maxUsers = Number(argValue(argv, 'max-users') ?? 20);
     if (!Number.isInteger(port) || port < 1 || !Number.isInteger(maxUsers) || maxUsers < 1) throw new Error(USAGE);
+    const modsDirArg = argValue(argv, 'mods-dir');
     const worldArg = argv.find((a) => !a.startsWith('--'));
     const worldPath = worldArg
         ? resolve(cwd, worldArg)
@@ -77,25 +78,16 @@ export async function runDev(argv: string[]): Promise<void> {
 
     const log = (line: string) => console.log(line);
     const origins = [`http://localhost:${port}`, `http://127.0.0.1:${port}`];
-    const runtime = { current: undefined as GoRuntime | undefined, shuttingDown: false };
-    const startRuntime = async () => {
-        runtime.current = await startGo({
-            binary: binary.path,
-            origins,
-            log,
-            onExit: (code) => {
-                runtime.current = undefined;
-                // 終了処理の途中で Go が先に止まっても、起動し直さない
-                if (runtime.shuttingDown) return;
-                log(`⚠️  Go のインスタンスサーバーが終了しました (exit ${code})。起動し直します`);
-                void startRuntime().then(() => pipeline.restoreRoom());
-            },
-        });
-    };
+    const go = superviseGo({
+        binary: binary.path,
+        origins,
+        log,
+        onRestarted: () => void pipeline.restoreRoom(),
+    });
 
     const pipeline = createPipeline(
         {
-            discoverMods: async () => discoverModDirs(cwd, argValue(argv, 'mods-dir')).modDirs,
+            discoverMods: async () => discoverModDirs(cwd, modsDirArg).modDirs,
             compile: compileMod,
             loadWorld: async () =>
                 worldPath
@@ -104,7 +96,7 @@ export async function runDev(argv: string[]): Promise<void> {
                           url: pathToFileURL(worldPath).href,
                       }
                     : undefined,
-            go: () => runtime.current,
+            go: () => go.current,
             broadcast: (event) => server.broadcast(event),
             log,
             maxUsers,
@@ -113,12 +105,12 @@ export async function runDev(argv: string[]): Promise<void> {
     );
     const server = createDevServer({
         state: () => pipeline.state,
-        goPort: () => runtime.current?.port,
+        goPort: () => go.current?.port,
         worldDist: worldDist.path,
         onReconfigure: () => pipeline.schedule({ mods: new Set(), reconfigure: true }),
     });
 
-    const { modsRoot } = discoverModDirs(cwd, argValue(argv, 'mods-dir'));
+    const { modsRoot } = discoverModDirs(cwd, modsDirArg);
     const watcher = createWatcher((paths) => {
         const plan = planChanges(paths, {
             modDirs: pipeline.modDirs,
@@ -137,7 +129,7 @@ export async function runDev(argv: string[]): Promise<void> {
             );
     });
 
-    await startRuntime();
+    await go.start();
     pipeline.schedule({ mods: 'all', reconfigure: true });
     await pipeline.idle();
     watcher.update(watchTargets({ modDirs: pipeline.modDirs, inputsByMod: pipeline.inputsByMod, modsRoot, worldPath }));
@@ -151,12 +143,10 @@ export async function runDev(argv: string[]): Promise<void> {
     );
     log('   保存すると自動でビルドして読み直します。Ctrl+C で止めます\n');
 
+    // 再起動を止め、起動の途中のものも含めて Go が終わるのを待ってから抜ける（子プロセスを残さない）
     const shutdown = async () => {
-        // 先に再起動を止めてから閉じる（WebSocket を切ると Go 側の接続も切れるが、Go は止めない限り動き続ける）
-        runtime.shuttingDown = true;
         watcher.close();
-        await server.close();
-        runtime.current?.stop();
+        await Promise.all([server.close(), go.stop()]);
         process.exit(0);
     };
     process.once('SIGINT', () => void shutdown());

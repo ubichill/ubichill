@@ -11,7 +11,8 @@
         },
         "@ubichill/sdk#build": {
             "dependsOn": [
-                "^build"
+                "^build",
+                "^transit"
             ],
             "outputs": [
                 "dist-npm/**"
@@ -20,6 +21,7 @@
         "@ubichill/cli#build": {
             "dependsOn": [
                 "^build",
+                "^transit",
                 "@ubichill/frontend#build:world"
             ],
             "outputs": [
@@ -28,11 +30,12 @@
         },
         "@ubichill/frontend#build:world": {
             "dependsOn": [
-                "@ubichill/shared#build"
+                "@ubichill/shared#build",
+                "^transit"
             ],
             "inputs": [
                 "$TURBO_DEFAULT$",
-                "../../scripts/architecture.mjs"
+                "$TURBO_ROOT$/scripts/architecture.mjs"
             ],
             "outputs": [
                 "dist-world/**"
@@ -42,9 +45,9 @@
             "inputs": [
                 "build.mjs",
                 "package.json",
-                "../cli/src/instancePlatforms.ts",
-                "../../services/instance/**",
-                "../../mise.toml"
+                "$TURBO_ROOT$/packages/cli/src/instancePlatforms.ts",
+                "$TURBO_ROOT$/services/instance/**",
+                "$TURBO_ROOT$/mise.toml"
             ],
             "outputs": [
                 "dist-npm/**"
@@ -63,6 +66,11 @@
             "cache": false,
             "persistent": true
         },
-        "lint": {}
+        "lint": {},
+        "transit": {
+            "dependsOn": [
+                "^transit"
+            ]
+        }
     }
 }

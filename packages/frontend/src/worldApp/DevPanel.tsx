@@ -38,6 +38,8 @@ const button = css({
     _hover: { backgroundColor: 'hudBgHover' },
 });
 const dot = css({ width: '8px', height: '8px', borderRadius: '50%' });
+// 繋がっているか（SSE）。色はトークンから
+const dotState = { connected: css({ backgroundColor: 'success' }), disconnected: css({ backgroundColor: 'warning' }) };
 const diagnostics = css({
     position: 'fixed',
     left: '12px',
@@ -82,7 +84,7 @@ export function DevBar({
 }) {
     return (
         <div className={bar} data-build-id={buildId ?? ''} data-instance-id={instanceId ?? ''}>
-            <span className={dot} style={{ backgroundColor: connected ? '#5fd38d' : '#f0a04b' }} />
+            <span className={`${dot} ${connected ? dotState.connected : dotState.disconnected}`} />
             <span>
                 <span className={label}>ubichill dev </span>
                 {buildId ?? 'ビルドを待っています'}

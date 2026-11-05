@@ -11,5 +11,5 @@ export { checkModInstallation, type ModInstallationCheck } from './modInstallati
 export { describeModRejection } from './modRejection';
 export { isUnsignedModAllowed, type ModAuthorCheck, modAuthorFetcher } from './modSignature';
 export type { ModSource } from './modSource';
-export { createGuestResolver, fetchGuestInstance, isJoinRejection, presenceToInstance } from './runtimeApi';
-export { ENTRY_DECLINED_MESSAGE, WorldView, type WorldViewProps } from './WorldView';
+export { createGuestResolver, fetchGuestInstance, isJoinRejection } from './runtimeApi';
+export { WorldView, type WorldViewProps } from './WorldView';

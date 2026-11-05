@@ -44,8 +44,8 @@ export function useDevGeneration(): DevState {
             adopted.current = event;
             const response = await fetch(generationLockUrl(event.buildId), { cache: 'no-store' });
             if (!response.ok) {
-                // 世代が既に消えている（切り替えが速かった）。次の generation で読み直す
-                adopted.current = null;
+                // 世代が既に消えている（切り替えが速かった）。読み直して今の世代から始める（待っていても次の通知が来るとは限らない）
+                window.location.reload();
                 return;
             }
             const lock = ModLockSchema.parse(await response.json());

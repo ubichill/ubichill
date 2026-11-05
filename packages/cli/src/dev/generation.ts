@@ -80,7 +80,7 @@ export function needsNewRoom(
     if (!previous) return true;
     if (previous.mods.size !== mods.size) return true;
     const sameComponents = (a: readonly string[], b: readonly string[]) =>
-        a.length === b.length && [...a].sort().every((type, i) => type === [...b].sort()[i]);
+        a.length === b.length && [...a].sort().join('\n') === [...b].sort().join('\n');
     for (const [id, mod] of mods) {
         const before = previous.mods.get(id);
         if (!before || before.version !== mod.version) return true;
