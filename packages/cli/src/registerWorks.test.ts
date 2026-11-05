@@ -1,6 +1,12 @@
 import type { ModLockEntry } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
-import { compareVersions, latestPerMod, normalizePublicUrl, type RegisterRequest, registerExternalWorks } from './registerWorks.ts';
+import {
+    compareVersions,
+    latestPerMod,
+    normalizePublicUrl,
+    type RegisterRequest,
+    registerExternalWorks,
+} from './registerWorks.ts';
 
 const entry = (id: string, version: string) => ({ entry: { id, version } as ModLockEntry });
 
@@ -44,7 +50,12 @@ describe('latestPerMod', () => {
     });
 
     it('mod ごとに一番新しい版だけを残す（10 は 9 より新しい）', () => {
-        const latest = latestPerMod([entry('pen', '2.9.0'), entry('pen', '2.10.0'), entry('vp', '3.1.0'), entry('pen', '2.0.0')]);
+        const latest = latestPerMod([
+            entry('pen', '2.9.0'),
+            entry('pen', '2.10.0'),
+            entry('vp', '3.1.0'),
+            entry('pen', '2.0.0'),
+        ]);
         expect(latest.map((m) => `${m.entry.id}@${m.entry.version}`).sort()).toEqual(['pen@2.10.0', 'vp@3.1.0']);
     });
 });

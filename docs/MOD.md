@@ -150,6 +150,7 @@ mod の配布物には**作者アカウントの署名が必須**。Host は、�
   （Ubichill のサーバーは返している）。
 
 ```bash
+npm i ubichill && npm i -D @ubichill/cli   # SDK と、ubichill コマンド
 npx ubichill login                 # 1 回だけ（CI は ubichill ci create で作った UBICHILL_CREDENTIALS）
 npx ubichill build
 npx ubichill publish dist          # 単体 mod の出力。複数 mod なら dist/mods

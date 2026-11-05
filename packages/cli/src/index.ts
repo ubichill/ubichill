@@ -21,10 +21,10 @@
  *
  * `lock` は `install` の旧名。非推奨だが後方互換のため残る。
  *
- * このリポジトリ内部からは `node packages/sdk/cli/index.ts <subcommand> ...` で直接実行できる
+ * このリポジトリ内部からは `node packages/cli/src/index.ts <subcommand> ...` で直接実行できる
  * （Node 22+ の TypeScript 型ストリッピングにより tsx 等は不要。相対importは全て拡張子明示
- * にしているため Node ネイティブの ESM 解決でも問題なく辿れる）。公開パッケージ `ubichill` では
- * `packages/sdk/build.mjs` がこのファイルを esbuild で自己完結バンドルし、`bin` として配布する。
+ * にしているため Node ネイティブの ESM 解決でも問題なく辿れる）。公開パッケージ `@ubichill/cli` では
+ * `packages/cli/build.mjs` がこのファイルを esbuild で自己完結バンドルし、`bin` として配布する。
  */
 import { runCiCreate, runLogin, runLogout, runPublish, runWhoami } from './account.ts';
 import { runBuild } from './build.ts';

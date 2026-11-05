@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { afterAll, describe, expect, it } from 'vitest';
-import { buildMod, type ModIndexEntry, runBuild } from '../cli/build.ts';
+import { buildMod, type ModIndexEntry, runBuild } from '../src/build.ts';
 
 function sriOf(text: string): string {
     return `sha256-${createHash('sha256').update(text).digest('base64')}`;
@@ -30,7 +30,8 @@ interface ModFixture {
 }
 
 // SDK パッケージ本体（jsx-runtime の解決用）。
-const SDK_PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+// mod から見た SDK（公開名 `ubichill`）はワークスペースの packages/sdk を指す
+const SDK_PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'sdk');
 /** mod から見た SDK の名前。npm 公開名で、mod のソースも CLI の jsxImportSource もこれに揃う。 */
 const PUBLIC_PACKAGE_NAME = 'ubichill';
 

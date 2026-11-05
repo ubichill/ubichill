@@ -21,7 +21,7 @@ Ubichill の約束ごと（プロトコル・データの形式・API）を、**
 | 作者署名（ワールド） | `version: 2`・`kind: 'world'` | `shared/signature/envelope.ts`（内容のハッシュは `shared/world/identity.ts`） | `<world>.sig.json` |
 | 作者署名（mod） | `version: 2`・`kind: 'mod'` | `shared/signature/envelope.ts`（内容のハッシュは `shared/mod/modSignature.ts`） | `v<版>/lock.sig.json` |
 | サービストークン | JWT（EdDSA） | `shared/mod/serviceToken.ts` | 外部サービスへ渡す |
-| CLI・CI の認証情報 | `version: 1` | `sdk/cli/credentials.ts` | `~/.config/ubichill`・CI の Secret |
+| CLI・CI の認証情報 | `version: 1` | `cli/src/credentials.ts` | `~/.config/ubichill`・CI の Secret |
 
 ### 作者署名の形式（版 2）
 
@@ -55,7 +55,7 @@ Ubichill の約束ごと（プロトコル・データの形式・API）を、**
 - 足す: `PROTOCOL_VERSION` を +1 し、契約に新しい版を足す。消す・意味を変える: さらに `MIN_COMPATIBLE_PROTOCOL_VERSION` を上げる。どちらも忘れると CI が落ちる。
 - **CI が見るのはコマンド・イベントの名前の増減だけ**。ペイロードの型や意味を変えたこと（項目を必須にした・単位を変えたなど）は検知しない。
   `shared/mod/protocol.ts` と `shared/mod/types.ts` のペイロードの型を変える PR は、互換を壊していないかをレビューで確かめる。
-- SDK のビルド結果が変わったのに changeset が無ければ落ちる（`packages/sdk/check-drift.mjs`）。
+- SDK のビルド結果が変わったのに changeset が無ければ落ちる（`scripts/check-npm-drift.mjs`）。
 
 ## C. サーバーの間の API
 

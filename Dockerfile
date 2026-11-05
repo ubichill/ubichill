@@ -91,7 +91,7 @@ ARG REQUIRE_MOD_SIGNATURES=false
 # public/ を dist/ へコピーする。順序が重要。
 RUN pnpm turbo build --filter=@ubichill/shared \
     && pnpm build:workers \
-    && node packages/sdk/cli/index.ts verify --dist-dir=packages/frontend/public/mods \
+    && node packages/cli/src/index.ts verify --dist-dir=packages/frontend/public/mods \
         $([ "$REQUIRE_MOD_SIGNATURES" = "true" ] && echo --require-signatures) \
     && pnpm --filter @ubichill/frontend build \
     && pnpm --filter @ubichill/bff build

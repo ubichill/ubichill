@@ -17,6 +17,14 @@
                 "dist-npm/**"
             ]
         },
+        "@ubichill/cli#build": {
+            "dependsOn": [
+                "^build"
+            ],
+            "outputs": [
+                "dist-npm/**"
+            ]
+        },
         "typecheck": {
             "dependsOn": [
                 "^build"

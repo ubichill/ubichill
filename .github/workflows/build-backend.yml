@@ -52,8 +52,8 @@ jobs:
           fi
           pnpm turbo build --filter=@ubichill/shared
           # 公開環境が取り消されていたら、署名しても配信先で作者が付かないので先に止める
-          node packages/sdk/cli/index.ts whoami
-          node packages/sdk/cli/index.ts publish worlds/*.yaml --out=worlds --no-install
+          node packages/cli/src/index.ts whoami
+          node packages/cli/src/index.ts publish worlds/*.yaml --out=worlds --no-install
 
       - uses: docker/login-action@v4
         with:

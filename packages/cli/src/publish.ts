@@ -21,7 +21,11 @@ export interface PublishFs {
 export interface PublishDeps {
     fs: PublishFs;
     /** 認証付きで本体の API を呼ぶ。 */
-    request: (method: 'GET' | 'POST' | 'PUT', path: string, body?: unknown) => Promise<{ status: number; body: Record<string, unknown> }>;
+    request: (
+        method: 'GET' | 'POST' | 'PUT',
+        path: string,
+        body?: unknown,
+    ) => Promise<{ status: number; body: Record<string, unknown> }>;
     key: WorldSigningKey;
     crypto: Parameters<typeof signWorld>[2];
     parseYaml: (text: string) => unknown;

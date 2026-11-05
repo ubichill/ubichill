@@ -2,11 +2,12 @@
  * CLI ビルドツールのコア — mod.json を廃止し、package.json + Worker コード内の
  * `export const config` を元にマニフェスト・lock.json を自動生成する。
  */
+
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { basename, join, relative, resolve, sep } from 'node:path';
 import { detectCapabilities, MOD_EXPORTS_GLOBAL_NAME } from '@ubichill/shared';
 import * as esbuild from 'esbuild';
-import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
-import { basename, join, relative, resolve, sep } from 'node:path';
 
 /** base からの相対パスを OS に依らず `/` 区切りで返す（manifest/lock のキーは POSIX 形式で固定する） */
 function toPosixRelative(base: string, path: string): string {
@@ -15,7 +16,10 @@ function toPosixRelative(base: string, path: string): string {
 
 /** Worker ファイルからコンポーネント名を導出 (ex: `canvas.worker.ts` → `canvas`, `sub/dir/canvas.worker.ts` → `sub-dir-canvas`) */
 function componentNameFromFile(file: string): string {
-    return file.replace(/\.worker\.[jt]sx?$/, '').split(/[\\/]/).join('-');
+    return file
+        .replace(/\.worker\.[jt]sx?$/, '')
+        .split(/[\\/]/)
+        .join('-');
 }
 
 /** src/ 以下の *.worker.ts(x) を再帰的にスキャン */
@@ -515,9 +519,7 @@ export async function buildMod(modDir: string, options: BuildOptions = {}): Prom
         // `export default`（ui:render の自動マウント対象）は globalName バンドル後には
         // 文字列として残らないため、生ソース（srcCode）も検出対象に含める。
         const detected = detectCapabilities(`${code}\n${srcCode}`);
-        const declaredCapabilities = Array.isArray(config?.capabilities)
-            ? (config.capabilities as string[])
-            : [];
+        const declaredCapabilities = Array.isArray(config?.capabilities) ? (config.capabilities as string[]) : [];
 
         // 宣言された capability と検出結果を突き合わせて警告
         const undetected = declaredCapabilities.filter((cap) => !detected.includes(cap));
@@ -528,9 +530,7 @@ export async function buildMod(modDir: string, options: BuildOptions = {}): Prom
             );
         }
         if (excess.length > 0) {
-            console.warn(
-                `⚠️  [${componentType}] 過剰検出: ${excess.join(', ')} (config.capabilities に宣言なし)`,
-            );
+            console.warn(`⚠️  [${componentType}] 過剰検出: ${excess.join(', ')} (config.capabilities に宣言なし)`);
         }
 
         // マニフェスト用: 検出結果と宣言の和集合（セキュリティ的に過剰許可より安全）
@@ -555,8 +555,7 @@ export async function buildMod(modDir: string, options: BuildOptions = {}): Prom
         };
 
         console.log(
-            `✅ [${componentType}] ${componentName}/${outFilename}` +
-                ` [caps: ${capabilities.join(', ') || 'none'}]`,
+            `✅ [${componentType}] ${componentName}/${outFilename}` + ` [caps: ${capabilities.join(', ') || 'none'}]`,
         );
     }
 
@@ -633,8 +632,7 @@ export async function buildMod(modDir: string, options: BuildOptions = {}): Prom
  * 個別の mod として扱い、それぞれ `buildMod` する。
  */
 async function runBatchBuild(modsDirArg: string, args: string[]): Promise<void> {
-    const argValue = (flag: string): string | undefined =>
-        args.find((a) => a.startsWith(flag))?.slice(flag.length);
+    const argValue = (flag: string): string | undefined => args.find((a) => a.startsWith(flag))?.slice(flag.length);
 
     // esbuild は呼び出しごとに絶対パスを要求するため、相対指定を早期に解決しておく。
     const modsDir = resolve(modsDirArg);
@@ -674,8 +672,7 @@ async function runBatchBuild(modsDirArg: string, args: string[]): Promise<void> 
  * 存在する場合、または `--mods-dir=` が明示された場合のみ一括ビルドに切り替える。
  */
 export async function runBuild(args: string[]): Promise<void> {
-    const argValue = (flag: string): string | undefined =>
-        args.find((a) => a.startsWith(flag))?.slice(flag.length);
+    const argValue = (flag: string): string | undefined => args.find((a) => a.startsWith(flag))?.slice(flag.length);
 
     const modsDirArg = argValue('--mods-dir=');
     const modsDir = modsDirArg ?? 'mods';

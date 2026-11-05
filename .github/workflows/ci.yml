@@ -140,16 +140,15 @@ jobs:
       - name: Verify world locks
         run: pnpm verify:world-locks
 
-      # `pnpm build:sdk` が生成する npm 公開物（ubichill パッケージ）が実際にインストール・
-      # 実行可能かを確認する fail-closed ゲート。
-      - name: Build npm publish package
-        run: pnpm build:sdk
+      # npm 公開物（ubichill・@ubichill/cli）が実際にインストール・実行可能かを確認する fail-closed ゲート。
+      - name: Build npm publish packages
+        run: pnpm build:sdk && pnpm build:cli
 
-      - name: Smoke-test npm publish package
+      - name: Smoke-test npm publish packages
         run: |
-          cd packages/sdk/dist-npm
+          (cd packages/sdk/dist-npm && node -e "import('./index.js').then(m => { if (!m.UbiSDK) throw new Error('UbiSDK not exported'); })")
+          cd packages/cli/dist-npm
           npm install --no-save
-          node -e "import('./index.js').then(m => { if (!m.UbiSDK) throw new Error('UbiSDK not exported'); })"
           node cli.js verify --dist-dir=../../../dist/mods
 
       # mods/* は pnpm workspace の外なので `pnpm -r exec tsc` (typecheck ジョブ) に含まれない。
@@ -170,7 +169,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          # check-drift.mjs が直近publishタグ(ubichill@*)をworktreeでビルド・比較するため、
+          # check-npm-drift.mjs が直近publishタグ(ubichill@*、@ubichill/cli@*)をworktreeでビルド・比較するため、
           # タグと履歴が必要（デフォルトのshallow checkoutでは見えない）。
           fetch-depth: 0
           fetch-tags: true
@@ -185,10 +184,10 @@ jobs:
       - name: Verify SDK type bundle
         run: pnpm verify:sdk-types
 
-      # sdk がインライン展開する shared/ecs/loader を変更して sdk 向け changeset を
+      # sdk・cli がインライン展開する shared/ecs/loader を変更して changeset を
       # 付け忘れた場合の fail-closed 検査。
-      - name: Check for undetected SDK build drift
-        run: node packages/sdk/check-drift.mjs
+      - name: Check for undetected npm build drift
+        run: node scripts/check-npm-drift.mjs packages/sdk packages/cli
 
   # 変更検知: PR 時はパスフィルタ、push to main では全て true を返す。
   detect-changes:

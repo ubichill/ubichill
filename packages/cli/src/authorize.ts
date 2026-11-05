@@ -89,7 +89,8 @@ export async function authorize(deps: AuthorizeDeps, options: AuthorizeOptions):
             if (!(await deps.openBrowser(url))) deps.log('（ブラウザを開けませんでした。上の URL を開いてください）');
             const callback = await loopback.waitForCallback();
             // 別の要求のリダイレクトを受け取らない（CSRF 対策の state、RFC 8252 §8.9）
-            if (callback.state !== state) throw new Error('承認の応答が一致しません（state が違います）。もう一度実行してください');
+            if (callback.state !== state)
+                throw new Error('承認の応答が一致しません（state が違います）。もう一度実行してください');
             const exchanged = await deps.post(api('/api/v1/cli-auth/token'), {
                 requestId: requestIdOf.value,
                 code: callback.code,
@@ -113,7 +114,9 @@ export async function authorize(deps: AuthorizeDeps, options: AuthorizeOptions):
     const deviceCode = String(created.body.deviceCode);
     const intervalMs = Number(created.body.interval ?? 3) * 1000;
     const deadline = deps.now() + Number(created.body.expiresIn ?? 600) * 1000;
-    deps.log(`別の端末のブラウザで ${String(created.body.approveUrl)} を開き、コード ${String(created.body.userCode)} を確かめて承認してください`);
+    deps.log(
+        `別の端末のブラウザで ${String(created.body.approveUrl)} を開き、コード ${String(created.body.userCode)} を確かめて承認してください`,
+    );
     await deps.openBrowser(String(created.body.approveUrl));
 
     const poll = async (): Promise<Credential> => {

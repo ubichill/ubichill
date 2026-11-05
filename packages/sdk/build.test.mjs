@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { buildCliJs, buildJs, buildPackageJson, ENTRIES } from './build.mjs';
+import { buildJs, buildPackageJson, ENTRIES } from './build.mjs';
 
 // このファイルは高速なチェックのみ（buildJs は esbuild で ~数十ms）。
 // buildDts（TS Compiler API フルコンパイル、実測20秒級・不可避）を要するテストは
@@ -30,14 +30,12 @@ describe('buildJs（SDK 完全バンドル）', () => {
 });
 
 describe('buildPackageJson', () => {
-    it('unscoped 名 "ubichill" で import surface は自己完結、bin（CLI）だけ real dependency を持つ', () => {
+    it('unscoped 名 "ubichill" で、依存も bin も持たない（CLI は @ubichill/cli）', () => {
         const pkg = JSON.parse(buildPackageJson());
         expect(pkg.name).toBe('ubichill');
-        // esbuild/yaml は cli.js 側だけが external にしている実行時依存（bundleすると
-        // Dynamic require エラーで実行時に落ちるため、real dependency として残す必要がある）。
-        expect(pkg.dependencies).toEqual({ esbuild: '^0.28.0', yaml: '^2.5.0' });
-        expect(pkg.bin).toEqual({ ubichill: './cli.js' });
-        expect(pkg.engines).toEqual({ node: '>=22' });
+        expect(pkg.dependencies).toEqual({});
+        expect(pkg.bin).toBeUndefined();
+        expect(pkg.engines).toBeUndefined();
         expect(pkg.version).toMatch(/^\d+\.\d+\.\d+$/);
         // Host本体（AGPL-3.0-only）とは別に MIT（外部mod開発者が自分のコードへ組み込みやすいよう）
         expect(pkg.license).toBe('MIT');
@@ -59,32 +57,5 @@ describe('buildPackageJson', () => {
         expect(readme).toMatch(/Ubi\.state/);
         expect(readme).toMatch(/Ubi\.entity/);
         expect(readme).not.toMatch(/useWorld|useSocket|WorldProvider|SocketProvider/);
-    });
-});
-
-describe('buildCliJs（CLI 完全バンドル、esbuild/yaml のみ external）', () => {
-    let code;
-    beforeAll(async () => {
-        code = await buildCliJs();
-    });
-
-    it('shebang が1行だけ（二重shebangはNodeのESM実行時にSyntaxErrorになるため実測済みで禁止）', () => {
-        const lines = code.split('\n');
-        expect(lines[0]).toBe('#!/usr/bin/env node');
-        expect(lines[1]).not.toMatch(/^#!/);
-    });
-
-    it('esbuild/yaml は bundle されず import 文で外部化されている（native binary/動的requireの解決崩壊を防ぐ）', () => {
-        expect(code).toMatch(/from ["']esbuild["']/);
-        expect(code).toMatch(/from ["']yaml["']/);
-        // esbuild本体のソース（native binaryをrequireするコード等）が混入していないことの傍証
-        expect(code).not.toMatch(/Dynamic require of/);
-    });
-
-    it('build/install/update/verify サブコマンドが実際にバンドルされている', () => {
-        expect(code).toMatch(/runBuild/);
-        expect(code).toMatch(/runInstall/);
-        expect(code).toMatch(/runUpdate/);
-        expect(code).toMatch(/runVerify/);
     });
 });

@@ -410,6 +410,31 @@ importers:
         specifier: 'catalog:'
         version: 7.0.2
 
+  packages/cli:
+    dependencies:
+      '@ubichill/loader':
+        specifier: workspace:*
+        version: link:../loader
+      '@ubichill/shared':
+        specifier: workspace:*
+        version: link:../shared
+      esbuild:
+        specifier: ^0.28.2
+        version: 0.28.2
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.1
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.5
+      rimraf:
+        specifier: 'catalog:'
+        version: 6.1.3
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+
   packages/core-components:
     dependencies:
       zod:
@@ -643,18 +668,12 @@ importers:
       '@ubichill/ecs':
         specifier: workspace:*
         version: link:../ecs
-      '@ubichill/loader':
-        specifier: workspace:*
-        version: link:../loader
       '@ubichill/runtime':
         specifier: workspace:*
         version: link:../runtime
       '@ubichill/shared':
         specifier: workspace:*
         version: link:../shared
-      yaml:
-        specifier: 'catalog:'
-        version: 2.9.1
     devDependencies:
       dts-bundle-generator:
         specifier: ^9.5.1

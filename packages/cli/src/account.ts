@@ -18,16 +18,16 @@ import { runInstall } from '@ubichill/loader/install-dependencies';
 import yaml from 'yaml';
 import { type AuthorizeDeps, authorize, type HttpResponse, type LoopbackServer } from './authorize.ts';
 import {
-    type Credential,
     CREDENTIALS_ENV,
+    type Credential,
     encodeCiCredentials,
     normalizeServer,
     removeCredential,
     resolveCredential,
     saveCredential,
 } from './credentials.ts';
-import { confirmEnvironment, publish } from './publish.ts';
 import { listDirsOnDisk } from './modLayout.ts';
+import { confirmEnvironment, publish } from './publish.ts';
 import { publishMods, type SignedMod } from './publishMods.ts';
 import { latestPerMod, normalizePublicUrl, registerExternalWorks } from './registerWorks.ts';
 import { verifyAllModLocks } from './verify.ts';
@@ -59,7 +59,11 @@ async function requestJson(
 /** ブラウザを開く（開けなければ false。URL は常に表示するので、開けなくても続けられる）。 */
 function openBrowser(url: string): Promise<boolean> {
     const command =
-        process.platform === 'darwin' ? ['open', url] : process.platform === 'win32' ? ['cmd', '/c', 'start', '', url] : ['xdg-open', url];
+        process.platform === 'darwin'
+            ? ['open', url]
+            : process.platform === 'win32'
+              ? ['cmd', '/c', 'start', '', url]
+              : ['xdg-open', url];
     return new Promise((resolve) => {
         const child = spawn(command[0] as string, command.slice(1), { stdio: 'ignore', detached: true });
         child.on('error', () => resolve(false));
@@ -82,7 +86,9 @@ function startLoopback(): Promise<LoopbackServer> {
                 return;
             }
             res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-            res.end('<!doctype html><meta charset="utf-8"><title>ubichill</title><p>承認しました。CLI に戻ってください。このページは閉じてかまいません。</p>');
+            res.end(
+                '<!doctype html><meta charset="utf-8"><title>ubichill</title><p>承認しました。CLI に戻ってください。このページは閉じてかまいません。</p>',
+            );
             for (const waiter of waiters.splice(0)) waiter({ code, state: url.searchParams.get('state') ?? undefined });
         });
         server.on('error', reject);
@@ -146,14 +152,19 @@ export async function runCiCreate(argv: string[]): Promise<void> {
         flow: argv.includes('--device') ? 'device' : 'loopback',
     });
     console.log(`\n✅ CI 用の公開環境「${name}」を作りました（@${credential.account}）。`);
-    console.log(`次の値を CI の Secret（環境変数 ${CREDENTIALS_ENV}）に設定してください。この場限りの表示で、どこにも保存しません。\n`);
+    console.log(
+        `次の値を CI の Secret（環境変数 ${CREDENTIALS_ENV}）に設定してください。この場限りの表示で、どこにも保存しません。\n`,
+    );
     console.log(encodeCiCredentials(credential));
-    console.log('\n漏れたら、設定の「公開」（公開できるブラウザ・CLI・CI）で取り消し、ubichill ci create で作り直してください。');
+    console.log(
+        '\n漏れたら、設定の「公開」（公開できるブラウザ・CLI・CI）で取り消し、ubichill ci create で作り直してください。',
+    );
 }
 
 function requireCredential(argv: string[]): Credential {
     const credential = resolveCredential({ server: argValue(argv, 'server') });
-    if (!credential) throw new Error(`ログインしていません。ubichill login（CI は env ${CREDENTIALS_ENV}）で認証してください`);
+    if (!credential)
+        throw new Error(`ログインしていません。ubichill login（CI は env ${CREDENTIALS_ENV}）で認証してください`);
     return credential;
 }
 
@@ -161,15 +172,20 @@ export async function runWhoami(argv: string[]): Promise<void> {
     const credential = requireCredential(argv);
     const me = await requestJson('GET', `${credential.server}/api/v1/users/me`, undefined, credential.token);
     if (me.status !== 200) {
-        throw new Error('認証情報が使えません（公開環境が取り消された可能性があります）。ubichill login し直してください');
+        throw new Error(
+            '認証情報が使えません（公開環境が取り消された可能性があります）。ubichill login し直してください',
+        );
     }
     console.log(`@${credential.account}（${credential.server}、公開環境 ${credential.environmentId}）`);
 }
 
 export async function runLogout(argv: string[]): Promise<void> {
-    if (process.env[CREDENTIALS_ENV]) throw new Error(`${CREDENTIALS_ENV} の認証情報は CI の Secret から消し、画面で取り消してください`);
+    if (process.env[CREDENTIALS_ENV])
+        throw new Error(`${CREDENTIALS_ENV} の認証情報は CI の Secret から消し、画面で取り消してください`);
     const credential = requireCredential(argv);
-    await requestJson('POST', `${credential.server}/api/v1/cli-auth/logout`, {}, credential.token).catch(() => undefined);
+    await requestJson('POST', `${credential.server}/api/v1/cli-auth/logout`, {}, credential.token).catch(
+        () => undefined,
+    );
     removeCredential(credential.server);
     console.log(`この端末の公開環境を取り消し、認証情報を消しました（${credential.server}）`);
 }
@@ -216,14 +232,18 @@ export async function runPublish(argv: string[]): Promise<void> {
     // 外部ホスト向け・mod はサーバーに何も送らないので、署名の前にサーバーで公開環境とアカウントを確かめる
     const offline = argValue(argv, 'out') !== undefined || modsDirs.length > 0;
     if (offline && (await confirmEnvironment(deps, credential)) === 'unreachable') {
-        console.warn(`⚠ ${credential.server} に確認できませんでした（署名は続けます。公開環境が取り消されていないか後で確かめてください）`);
+        console.warn(
+            `⚠ ${credential.server} に確認できませんでした（署名は続けます。公開環境が取り消されていないか後で確かめてください）`,
+        );
     }
     const signedMods: SignedMod[] = [];
     for (const modsDir of modsDirs) {
         // 配布するバイト列と一致しない lock には署名しない
         const errors = verifyAllModLocks(modsDir);
         if (errors.length > 0) {
-            throw new Error(`${modsDir}: lock が配布物と一致しないので署名しません:\n${errors.map((e) => `  - ${e}`).join('\n')}`);
+            throw new Error(
+                `${modsDir}: lock が配布物と一致しないので署名しません:\n${errors.map((e) => `  - ${e}`).join('\n')}`,
+            );
         }
         const signed = await publishMods(
             {
@@ -255,7 +275,9 @@ export async function runPublish(argv: string[]): Promise<void> {
                 deps.log,
             );
         } else {
-            deps.log('💡 --public-url=<公開先の URL>（または package.json の homepage）を指定すると、ユーザーページに mod が出ます');
+            deps.log(
+                '💡 --public-url=<公開先の URL>（または package.json の homepage）を指定すると、ユーザーページに mod が出ます',
+            );
         }
     }
     for (const worldPath of worldPaths) {

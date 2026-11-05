@@ -10,8 +10,8 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { MOD_SIGNATURE_FILE, ModLockEntrySchema, verifyModSignature } from '@ubichill/shared';
 import { webWorldCrypto } from '@ubichill/loader';
+import { MOD_SIGNATURE_FILE, ModLockEntrySchema, verifyModSignature } from '@ubichill/shared';
 import { listDirsOnDisk, type ModVersionDir, modVersionDirs } from './modLayout.ts';
 
 function sriOf(buffer: Buffer): string {
@@ -25,7 +25,9 @@ function verifyAssets(versionDir: string, label: string, manifestBytes: Buffer):
         const assetPath = join(versionDir, path);
         if (!existsSync(assetPath)) return [`${label}: アセットが無い (${path})`];
         const actual = sriOf(readFileSync(assetPath));
-        return actual === expected ? [] : [`${label}: アセットの integrity 不一致 (${path}, manifest=${expected}, 実測=${actual})`];
+        return actual === expected
+            ? []
+            : [`${label}: アセットの integrity 不一致 (${path}, manifest=${expected}, 実測=${actual})`];
     });
 }
 
@@ -82,7 +84,8 @@ export async function verifyAllModSignatures(distDir: string, requireSignatures:
     const results = await Promise.all(
         versionDirs.map(async ({ label, dir }): Promise<string[]> => {
             const sigPath = join(dir, MOD_SIGNATURE_FILE);
-            if (!existsSync(sigPath)) return requireSignatures ? [`${label}: 署名がありません（ubichill publish で署名してください）`] : [];
+            if (!existsSync(sigPath))
+                return requireSignatures ? [`${label}: 署名がありません（ubichill publish で署名してください）`] : [];
             const entry = ModLockEntrySchema.safeParse(JSON.parse(readFileSync(join(dir, 'lock.json'), 'utf-8')));
             if (!entry.success) return [`${label}: lock.json がスキーマ不正`];
             const signature = (() => {
@@ -95,7 +98,9 @@ export async function verifyAllModSignatures(distDir: string, requireSignatures:
             const verdict = await verifyModSignature(entry.data, signature, webWorldCrypto, async () => ({
                 status: 'confirmed',
             }));
-            return verdict.status === 'verified' ? [] : [`${label}: 署名が無効です (${verdict.reason})。ubichill publish で署名し直してください`];
+            return verdict.status === 'verified'
+                ? []
+                : [`${label}: 署名が無効です (${verdict.reason})。ubichill publish で署名し直してください`];
         }),
     );
     return results.flat();

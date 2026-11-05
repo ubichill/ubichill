@@ -47,7 +47,10 @@ describe('authorize（ループバック）', () => {
     it('PKCE の challenge を送り、承認後に verifier と鍵の所有の証明で引き換える', async () => {
         const { deps, posts, opened } = fakeDeps((url) =>
             url.endsWith('/requests')
-                ? { status: 201, body: { requestId: 'req-1', approveUrl: 'https://ubichill.com/cli/authorize?request=req-1' } }
+                ? {
+                      status: 201,
+                      body: { requestId: 'req-1', approveUrl: 'https://ubichill.com/cli/authorize?request=req-1' },
+                  }
                 : tokenResponse,
         );
         const credential = await authorize(deps, options);
@@ -104,7 +107,11 @@ describe('authorize（デバイス認可）', () => {
 
     it('承認されるまで間隔を空けてポーリングし、承認後に引き換える（リダイレクト先は送らない）', async () => {
         const { deps, posts } = fakeDeps((url, _body, n) =>
-            url.endsWith('/requests') ? created : n < 4 ? { status: 428, body: { code: 'authorization-pending' } } : tokenResponse,
+            url.endsWith('/requests')
+                ? created
+                : n < 4
+                  ? { status: 428, body: { code: 'authorization-pending' } }
+                  : tokenResponse,
         );
         const credential = await authorize(deps, { ...options, flow: 'device' });
         expect(credential.token).toBe('ubi_t');

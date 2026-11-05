@@ -4,7 +4,7 @@ import yaml from 'yaml';
 import { confirmEnvironment, type PublishDeps, publish } from './publish.ts';
 
 const key: WorldSigningKey = { publicKey: 'K'.repeat(43), sign: async () => 'S'.repeat(86) };
-const crypto = { sha256Base64: async () => 'h'.repeat(43) + '=', verifyEd25519: async () => true };
+const crypto = { sha256Base64: async () => `${'h'.repeat(43)}=`, verifyEd25519: async () => true };
 const credential = {
     server: 'https://ubichill.com',
     account: 'youkan@ubichill.com',
@@ -23,7 +23,10 @@ spec:
   initialEntities: []
 `;
 
-function fakeDeps(files: Record<string, string>, handler: (method: string, path: string, body: unknown) => { status: number; body: Record<string, unknown> }) {
+function fakeDeps(
+    files: Record<string, string>,
+    handler: (method: string, path: string, body: unknown) => { status: number; body: Record<string, unknown> },
+) {
     const requests: Array<{ method: string; path: string; body: unknown }> = [];
     const deps: PublishDeps = {
         fs: {
@@ -47,12 +50,19 @@ function fakeDeps(files: Record<string, string>, handler: (method: string, path:
 
 describe('publish（本体へ）', () => {
     it('手元の組（yaml・lock・作者付きの署名）をそのまま 1 回の PUT で送る（手元に対応を記録しない）', async () => {
-        const { deps, requests, files } = fakeDeps({ 'w.yaml': worldYaml }, () => ({ status: 200, body: { id: 'srv-id', url: 'https://ubichill.com/api/v1/authors/youkan/worlds/my-world.yaml' } }));
+        const { deps, requests, files } = fakeDeps({ 'w.yaml': worldYaml }, () => ({
+            status: 200,
+            body: { id: 'srv-id', url: 'https://ubichill.com/api/v1/authors/youkan/worlds/my-world.yaml' },
+        }));
         const url = await publish(deps, { worldPath: 'w.yaml', credential });
         // 共有 URL は /@ID/metadata.name
         expect(url).toBe('https://ubichill.com/@youkan/my-world');
         expect(requests.map((r) => `${r.method} ${r.path}`)).toEqual(['PUT /api/v1/worlds']);
-        const body = requests[0]?.body as { yaml: string; lock: unknown; signature: { author: string; subject: string } };
+        const body = requests[0]?.body as {
+            yaml: string;
+            lock: unknown;
+            signature: { author: string; subject: string };
+        };
         expect(body.yaml).toBe(worldYaml);
         expect(body.lock).toBeNull();
         expect(body.signature).toMatchObject({ author: 'youkan@ubichill.com', subject: 'my-world', kind: 'world' });
@@ -60,11 +70,14 @@ describe('publish（本体へ）', () => {
     });
 
     it('本体へ送る署名と外部ホスト向けに書き出す署名は同じ（どこに置いても同じ規則で確かめられる）', async () => {
-        const server = fakeDeps({ 'w.yaml': worldYaml }, () => ({ status: 200, body: { id: 'srv-id', url: 'https://ubichill.com/api/v1/authors/youkan/worlds/my-world.yaml' } }));
+        const server = fakeDeps({ 'w.yaml': worldYaml }, () => ({
+            status: 200,
+            body: { id: 'srv-id', url: 'https://ubichill.com/api/v1/authors/youkan/worlds/my-world.yaml' },
+        }));
         await publish(server.deps, { worldPath: 'w.yaml', credential });
         const out = fakeDeps({ 'w.yaml': worldYaml }, () => ({ status: 500, body: {} }));
         await publish(out.deps, { worldPath: 'w.yaml', credential, outDir: 'dist' });
-        expect((server.requests[0]?.body as { signature: unknown }).signature).toEqual(
+        expect((server.requests[0]?.body as { signature: unknown } | undefined)?.signature).toEqual(
             JSON.parse(out.files['dist/w.sig.json'] ?? '{}'),
         );
     });
@@ -91,7 +104,9 @@ describe('publish（本体へ）', () => {
             status: 422,
             body: { error: 'この署名の鍵はあなたの有効な公開環境ではありません' },
         }));
-        await expect(publish(deps, { worldPath: 'w.yaml', credential })).rejects.toThrow('この署名の鍵はあなたの有効な公開環境ではありません');
+        await expect(publish(deps, { worldPath: 'w.yaml', credential })).rejects.toThrow(
+            'この署名の鍵はあなたの有効な公開環境ではありません',
+        );
     });
 });
 
@@ -101,7 +116,11 @@ describe('publish（外部ホスト向け --out）', () => {
         await publish(deps, { worldPath: 'worlds/w.yaml', credential, outDir: 'dist' });
         expect(requests).toEqual([]);
         expect(files['dist/w.yaml']).toBe(worldYaml);
-        expect(JSON.parse(files['dist/w.sig.json'] ?? '{}')).toMatchObject({ author: 'youkan@ubichill.com', subject: 'my-world', kind: 'world' });
+        expect(JSON.parse(files['dist/w.sig.json'] ?? '{}')).toMatchObject({
+            author: 'youkan@ubichill.com',
+            subject: 'my-world',
+            kind: 'world',
+        });
     });
 
     it('--public-url を指定すると、書き出した内容と署名を公開先の URL でユーザーページに登録する', async () => {

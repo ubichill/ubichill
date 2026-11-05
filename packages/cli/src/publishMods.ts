@@ -6,7 +6,14 @@
  * mod はサーバーへ送らない。署名済みの出力をそのまま GitHub Pages などへ置く。
  */
 import { join } from 'node:path';
-import { MOD_SIGNATURE_FILE, type ModLockEntry, ModLockEntrySchema, type ModSignature, signMod, type WorldSigningKey } from '@ubichill/shared';
+import {
+    MOD_SIGNATURE_FILE,
+    type ModLockEntry,
+    ModLockEntrySchema,
+    type ModSignature,
+    signMod,
+    type WorldSigningKey,
+} from '@ubichill/shared';
 import type { Credential } from './credentials.ts';
 import { type ModVersionDir, modVersionDirs } from './modLayout.ts';
 

@@ -57,16 +57,21 @@ export function encodeCiCredentials(credential: Credential): string {
 export function decodeCiCredentials(text: string): Credential {
     const trimmed = text.trim();
     if (!trimmed.startsWith(CI_CREDENTIALS_PREFIX)) {
-        throw new Error(`${CREDENTIALS_ENV} の形式が違います（${CI_CREDENTIALS_PREFIX} で始まる文字列を設定してください）`);
+        throw new Error(
+            `${CREDENTIALS_ENV} の形式が違います（${CI_CREDENTIALS_PREFIX} で始まる文字列を設定してください）`,
+        );
     }
     const json = (() => {
         try {
-            return JSON.parse(Buffer.from(trimmed.slice(CI_CREDENTIALS_PREFIX.length), 'base64url').toString('utf-8')) as unknown;
+            return JSON.parse(
+                Buffer.from(trimmed.slice(CI_CREDENTIALS_PREFIX.length), 'base64url').toString('utf-8'),
+            ) as unknown;
         } catch {
             return undefined;
         }
     })();
-    if (!isCredential(json)) throw new Error(`${CREDENTIALS_ENV} を読めません（ubichill ci create で作り直してください）`);
+    if (!isCredential(json))
+        throw new Error(`${CREDENTIALS_ENV} を読めません（ubichill ci create で作り直してください）`);
     const { server, account, token, key, environmentId } = json;
     return { server: normalizeServer(server), account, token, key, environmentId };
 }
@@ -100,7 +105,9 @@ export function resolveCredential(options: {
     if (fromEnv) {
         const credential = decodeCiCredentials(fromEnv);
         if (options.server && normalizeServer(options.server) !== credential.server) {
-            throw new Error(`${CREDENTIALS_ENV} は ${credential.server} の認証情報です（--server=${options.server} と違います）`);
+            throw new Error(
+                `${CREDENTIALS_ENV} は ${credential.server} の認証情報です（--server=${options.server} と違います）`,
+            );
         }
         return credential;
     }
@@ -111,7 +118,11 @@ export function resolveCredential(options: {
 
 export function saveCredential(credential: Credential, path = defaultCredentialsPath()): void {
     const file = readFile(path);
-    writeFile(path, { version: 1, default: credential.server, servers: { ...file.servers, [credential.server]: credential } });
+    writeFile(path, {
+        version: 1,
+        default: credential.server,
+        servers: { ...file.servers, [credential.server]: credential },
+    });
 }
 
 export function removeCredential(server: string, path = defaultCredentialsPath()): void {

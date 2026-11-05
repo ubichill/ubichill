@@ -77,8 +77,8 @@ describe('backend-runs-built-packages-only', () => {
 
 describe('signatures-in-one-place', () => {
     it('署名の部品の外で Ed25519 の照合を呼ぶと違反', () => {
-        for (const path of ['packages/backend/src/routes/cliAuth.ts', 'packages/frontend/src/mods/modSignature.ts', 'packages/sdk/cli/verify.ts']) {
-            expect(violations(path.replace('packages/sdk/cli', 'packages/sdk/src'), 'await crypto.verifyEd25519(key, message, sig)')).toEqual([
+        for (const path of ['packages/backend/src/routes/cliAuth.ts', 'packages/frontend/src/mods/modSignature.ts', 'packages/cli/src/verify.ts']) {
+            expect(violations(path, 'await crypto.verifyEd25519(key, message, sig)')).toEqual([
                 'signatures-in-one-place',
             ]);
         }

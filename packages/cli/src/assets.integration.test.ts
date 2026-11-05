@@ -62,7 +62,9 @@ describe('同梱アセット: build → manifest → Host の照合', () => {
         const { instance } = await WebAssembly.instantiate(bytes, {});
         const memory = instance.exports.memory as WebAssembly.Memory;
         new Uint8Array(memory.buffer).set(new TextEncoder().encode('a'));
-        expect(((instance.exports.fnv1a as (p: number, l: number) => number)(0, 1) >>> 0).toString(16)).toBe('e40c292c');
+        expect(((instance.exports.fnv1a as (p: number, l: number) => number)(0, 1) >>> 0).toString(16)).toBe(
+            'e40c292c',
+        );
     });
 
     it('配布後にアセットを 1 バイト書き換えると、Host は拒否し ubichill verify も失敗する', async () => {
@@ -74,9 +76,15 @@ describe('同梱アセット: build → manifest → Host の照合', () => {
             writeFileSync(wasmPath, tampered);
 
             await expect(
-                loadModAsset('fnv1a.wasm', { modBase: MOD_BASE, integrity: manifest.assetIntegrity }, { fetchImpl: fsFetch }),
+                loadModAsset(
+                    'fnv1a.wasm',
+                    { modBase: MOD_BASE, integrity: manifest.assetIntegrity },
+                    { fetchImpl: fsFetch },
+                ),
             ).rejects.toMatchObject({ code: UbiErrorCode.ASSET_INTEGRITY_MISMATCH });
-            expect(verifyAllModLocks(distDir)).toEqual([expect.stringContaining('アセットの integrity 不一致 (fnv1a.wasm')]);
+            expect(verifyAllModLocks(distDir)).toEqual([
+                expect.stringContaining('アセットの integrity 不一致 (fnv1a.wasm'),
+            ]);
         } finally {
             writeFileSync(wasmPath, original);
         }
@@ -127,4 +135,3 @@ describe('collectAssets', () => {
         }
     });
 });
-

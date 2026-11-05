@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { describe, expect, it, vi } from 'vitest';
-import { isAlreadyPublished } from './publish.mjs';
+import { isAlreadyPublished } from './publish-npm.mjs';
 
 // npm view <name>@<version> version は、そのバージョンが無いと非ゼロ終了する。
 // 実ネットワークを叩かずにこの分岐を確認する（execFileSync をモック）。
@@ -16,6 +16,6 @@ describe('isAlreadyPublished', () => {
         vi.mocked(execFileSync).mockImplementation(() => {
             throw new Error('npm ERR! 404');
         });
-        expect(isAlreadyPublished('ubichill', '9.9.9')).toBe(false);
+        expect(isAlreadyPublished('@ubichill/cli', '9.9.9')).toBe(false);
     });
 });

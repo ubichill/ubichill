@@ -72,12 +72,14 @@ export async function registerExternalWorks(
         registrations.map(async (registration) => {
             const res = await request('PUT', EXTERNAL_WORKS_PATH, registration).catch(() => undefined);
             if (res?.status === 200) return true;
-            const reason = typeof res?.body.error === 'string' ? res.body.error : res ? `HTTP ${res.status}` : '通信できません';
+            const reason =
+                typeof res?.body.error === 'string' ? res.body.error : res ? `HTTP ${res.status}` : '通信できません';
             log(`⚠ ${registration.url} をユーザーページに登録できませんでした（${reason}）。署名と公開は続けます`);
             return false;
         }),
     );
     const registered = results.filter(Boolean).length;
-    if (registered > 0) log(`📇 ${registered} 件の作品をユーザーページに登録しました（公開先で確かめられたものから表示されます）`);
+    if (registered > 0)
+        log(`📇 ${registered} 件の作品をユーザーページに登録しました（公開先で確かめられたものから表示されます）`);
     return registered;
 }

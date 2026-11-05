@@ -9,8 +9,9 @@
  * リポジトリの実ファイル（packages/frontend/public/mods）は汚さず、一時ディレクトリへビルドする
  * （buildMod の publicModsDir/distModsDir 注入を利用）。
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+
 import { createHash } from 'node:crypto';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -92,9 +93,10 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
         const manifestPath = join(publicDir, modId, `v${version}`, 'manifest.json');
         manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
         manifestFilePath = manifestPath;
-        lockEntry = JSON.parse(
-            readFileSync(join(publicDir, modId, `v${version}`, 'lock.json'), 'utf-8'),
-        ) as Record<string, unknown>;
+        lockEntry = JSON.parse(readFileSync(join(publicDir, modId, `v${version}`, 'lock.json'), 'utf-8')) as Record<
+            string,
+            unknown
+        >;
         const lockComps = lockEntry.components as Record<string, { workerUrl: string }>;
         const relWorkerUrl = lockComps['pen:canvas'].workerUrl.replace(/^\.\//, '');
         workerFilePath = join(publicDir, modId, `v${version}`, relWorkerUrl);
@@ -132,14 +134,14 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
         for (const [, comp] of Object.entries(lockComps)) {
             const path = join(publicDir, modId, `v${version}`, comp.workerUrl.replace(/^\.\//, ''));
             const bytes = readFileSync(path, 'utf-8');
-            const hash = 'sha256-' + createHash('sha256').update(bytes).digest('base64');
+            const hash = `sha256-${createHash('sha256').update(bytes).digest('base64')}`;
             expect(comp.integrity).toBe(hash);
         }
     });
 
     it('実ビルドの manifestIntegrity が実 manifest ファイルと一致する', () => {
         const bytes = readFileSync(manifestFilePath, 'utf-8');
-        const hash = 'sha256-' + createHash('sha256').update(bytes).digest('base64');
+        const hash = `sha256-${createHash('sha256').update(bytes).digest('base64')}`;
         expect(lockEntry.manifestIntegrity).toBe(hash);
     });
 
@@ -148,7 +150,8 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
         const result = await acquireMod('pen:canvas', {
             baseUrl: publicDir,
             lock,
-            fetchImpl: fsFetch, ...unsignedDev,
+            fetchImpl: fsFetch,
+            ...unsignedDev,
         });
 
         expect(typeof result === 'object' && 'workerCode' in result).toBe(true);
@@ -166,7 +169,8 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
             const result = await acquireMod('pen:canvas', {
                 baseUrl: publicDir,
                 lock,
-                fetchImpl: fsFetch, ...unsignedDev,
+                fetchImpl: fsFetch,
+                ...unsignedDev,
             });
             expect(result).toEqual({ rejected: 'integrity-mismatch' });
         } finally {
@@ -182,7 +186,8 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
             const result = await acquireMod('pen:canvas', {
                 baseUrl: publicDir,
                 lock,
-                fetchImpl: fsFetch, ...unsignedDev,
+                fetchImpl: fsFetch,
+                ...unsignedDev,
             });
             expect(result).toEqual({ rejected: 'manifest-mismatch' });
         } finally {
@@ -195,7 +200,12 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
         const original = readFileSync(workerFilePath);
         writeFileSync(workerFilePath, Buffer.concat([original, Buffer.from(' ')]));
         try {
-            const result = await acquireMod('pen:canvas', { baseUrl: publicDir, lock, fetchImpl: fsFetch, ...unsignedDev });
+            const result = await acquireMod('pen:canvas', {
+                baseUrl: publicDir,
+                lock,
+                fetchImpl: fsFetch,
+                ...unsignedDev,
+            });
             expect(result).toEqual({ rejected: 'integrity-mismatch' });
         } finally {
             writeFileSync(workerFilePath, original);
@@ -205,8 +215,7 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
     describe('作者署名（build → publish → verify → Host の読み込み）', () => {
         const AUTHOR = 'alice@example.com';
         const sigPath = () => join(publicDir, modId, `v${version}`, 'lock.sig.json');
-        const rebuild = () =>
-            buildMod(penModDir, { distDir: join(distDir, modId), publicDir: join(publicDir, modId) });
+        const rebuild = () => buildMod(penModDir, { distDir: join(distDir, modId), publicDir: join(publicDir, modId) });
 
         async function publishBuilt() {
             const key = await importSigningKey(await generateSigningKeyPkcs8());
@@ -225,7 +234,9 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
             );
             const verifySignature = (entry: ModLockEntry, signature: unknown) =>
                 verifyModSignature(entry, signature, webWorldCrypto, async (author, publicKey) =>
-                    author === AUTHOR && publicKey === key.publicKey ? { status: 'confirmed' } : { status: 'unconfirmed' },
+                    author === AUTHOR && publicKey === key.publicKey
+                        ? { status: 'confirmed' }
+                        : { status: 'unconfirmed' },
                 );
             return { verifySignature };
         }
@@ -238,7 +249,12 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
             expect(await verifyAllModSignatures(publicDir, true)).toEqual([]);
 
             const lock = await buildWorldLock([modId], createHttpLockEntryGetter(publicDir, fsFetch));
-            const result = await acquireMod('pen:canvas', { baseUrl: publicDir, lock, fetchImpl: fsFetch, verifySignature });
+            const result = await acquireMod('pen:canvas', {
+                baseUrl: publicDir,
+                lock,
+                fetchImpl: fsFetch,
+                verifySignature,
+            });
             expect(result).toMatchObject({ id: 'pen:canvas', author: AUTHOR });
         });
 
