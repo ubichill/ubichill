@@ -15,6 +15,7 @@
  *   ubichill publish <world.yaml>... [--server=<url>] [--out=<dir>] [--public-url=<url>] [--no-install]
  *   ubichill publish <mods のビルド出力>...   mod の配布物（例 dist/mods）に署名する
  *   ubichill world build <world.yaml> [--id=<instanceId>] [--max-users=<n>] [--out=<path>]   Go に渡す定義 JSON を作る
+ *   ubichill dev     [world.yaml] [--port=<n>] [--mods-dir=<dir>] [--max-users=<n>]   手元の mod を本番と同じ Go で動かす開発サーバー
  *
  * `login` はブラウザで承認してこの端末を公開環境にする（鍵は手元だけ）。`publish` はログインしたアカウントで署名して公開する。
  * CI は `ci create` で作った文字列を env UBICHILL_CREDENTIALS に入れて `publish` する。鍵は CLI が作って手元に持つ
@@ -29,6 +30,7 @@
  */
 import { runCiCreate, runLogin, runLogout, runPublish, runWhoami } from './account.ts';
 import { runBuild } from './build.ts';
+import { runDev } from './dev/index.ts';
 import { runInstall } from './install.ts';
 import { runLock } from './lock.ts';
 import { runUpdate } from './update.ts';
@@ -36,13 +38,16 @@ import { runVerify } from './verify.ts';
 import { runVerifyWorld } from './verifyWorld.ts';
 import { runWorld } from './world.ts';
 
-const USAGE = `使い方: ubichill <login|logout|whoami|publish|ci create|build|install|update|verify|world build> [...args]`;
+const USAGE = `使い方: ubichill <dev|build|install|update|verify|world build|login|logout|whoami|publish|ci create> [...args]`;
 
 async function main(): Promise<void> {
     const [subcommand, ...rest] = process.argv.slice(2);
     switch (subcommand) {
         case 'build':
             await runBuild(rest);
+            return;
+        case 'dev':
+            await runDev(rest);
             return;
         case 'install':
             await runInstall(rest);

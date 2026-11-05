@@ -7,10 +7,11 @@
  * 使い方: node build.mjs [--out-dir=dist-npm]（cwd は packages/cli/ 前提）
  */
 import * as esbuild from 'esbuild';
-import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { INSTANCE_PLATFORMS, instancePackageName } from './src/instancePlatforms.ts';
+import { worldDistFiles } from './worldDist.mjs';
 
 const cliDir = dirname(fileURLToPath(import.meta.url));
 
@@ -64,13 +65,32 @@ export function buildPackageJson() {
             type: 'module',
             bin: { ubichill: './cli.js' },
             engines: { node: '>=22' },
-            files: ['cli.js', 'LICENSE', 'README.md'],
+            files: ['cli.js', 'world', 'LICENSE', 'README.md'],
             dependencies: CLI_RUNTIME_DEPENDENCIES,
             optionalDependencies: instanceDependencies(),
         },
         null,
         2,
     );
+}
+
+/**
+ * `ubichill dev` が配る `world.html`（SNS 無しでワールドを動かす画面）とその assets を同梱する。
+ * frontend のビルド出力（turbo が先に作る）から、world.html が使うファイルだけを写す。
+ */
+export function copyWorldDist(outWorldDir) {
+    const distDir = join(cliDir, '..', 'frontend', 'dist');
+    if (!existsSync(join(distDir, '.vite', 'manifest.json'))) {
+        throw new Error(`${distDir} に frontend のビルドがありません（pnpm --filter @ubichill/frontend build）`);
+    }
+    const files = worldDistFiles(distDir);
+    for (const file of files) {
+        const target = join(outWorldDir, file);
+        mkdirSync(dirname(target), { recursive: true });
+        copyFileSync(join(distDir, file), target);
+    }
+    console.log(`✅ world/ (${files.length} files)`);
+    return files;
 }
 
 async function main() {
@@ -82,6 +102,8 @@ async function main() {
     const cliJs = await buildCliJs();
     writeFileSync(join(outDir, 'cli.js'), cliJs, { encoding: 'utf-8', mode: 0o755 });
     console.log(`✅ cli.js (${cliJs.length} bytes)`);
+
+    copyWorldDist(join(outDir, 'world'));
 
     writeFileSync(join(outDir, 'package.json'), buildPackageJson(), 'utf-8');
     copyFileSync(join(cliDir, 'LICENSE'), join(outDir, 'LICENSE'));

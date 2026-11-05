@@ -19,7 +19,8 @@
         },
         "@ubichill/cli#build": {
             "dependsOn": [
-                "^build"
+                "^build",
+                "@ubichill/frontend#build"
             ],
             "outputs": [
                 "dist-npm/**"

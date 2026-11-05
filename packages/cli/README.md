@@ -6,7 +6,8 @@ mod が import する SDK は別パッケージ [`ubichill`](https://www.npmjs.c
 
 ```bash
 npm install ubichill            # mod が import する SDK（依存なし）
-npm install -D @ubichill/cli    # このコマンド
+npm install -D @ubichill/cli    # このコマンド（Go のインスタンスサーバーも入る）
+npx ubichill dev                # 手元の mod を、本番と同じ Go のインスタンスサーバーで動かす
 ```
 
 ```json
@@ -14,11 +15,31 @@ npm install -D @ubichill/cli    # このコマンド
     "dependencies": { "ubichill": "^4" },
     "devDependencies": { "@ubichill/cli": "^1", "typescript": "^5" },
     "scripts": {
+        "dev": "ubichill dev",
         "typecheck": "tsc --noEmit",
         "build": "npm run typecheck && ubichill build"
     }
 }
 ```
+
+## `ubichill dev`
+
+```bash
+ubichill dev [world.yaml] [--port=3333] [--mods-dir=<dir>] [--max-users=<n>]
+```
+
+Docker・DB・Go のツールチェーンは要らない。`http://localhost:3333/` を開くと、本番と同じ画面（`world.html`）と同じ判定
+（lock の照合・権限・Go のロックと上限）で mod が動く。複数のタブ・ブラウザで同期する。
+
+- **ワールド**: 引数か `./world.yaml`。無ければ、手元の mod の Component を 1 つずつ中央に置いたワールドを合成する。
+- **保存すると**: その mod だけビルドし直し、全部そろったら「世代」（lock・manifest・Worker・asset）を切り替えて、
+  開いているページを読み直す。entity と共有状態は Go にあるので残る（消えるのは Worker の中のローカルな状態だけ）。
+  ビルドに失敗したら前の世代が動き続け、失敗は画面の診断に出る。
+- **`world.yaml` を変えると**: 新しい部屋を作ってから切り替える（配置は初期状態に戻る）。Go が定義を断ったら前の部屋のまま。
+  画面の「部屋を作り直す」も同じ。
+- **署名**: 手元のビルドは署名が無いので「署名なし・ローカル」として動かす。lock の照合・権限の確認は本番と同じ。
+- mod の外の共有コードも、import していれば監視する（その mod をビルドし直す）。
+- Go のバイナリは `@ubichill/instance-<os>-<cpu>` から探す。自分でビルドしたものを使うなら `UBICHILL_INSTANCE_BIN=<path>`。
 
 `@ubichill/cli` は Go のインスタンスサーバー（`ubichill-instance`）を optionalDependencies で持つ
 （`@ubichill/instance-<os>-<cpu>`。macOS arm64/x64・Linux x64/arm64・Windows x64 のうち合う 1 つだけが入る）。
@@ -76,6 +97,7 @@ ubichill world build <world.yaml> [--id=<instanceId>] [--max-users=<n>] [--out=<
   - `publish <ビルド出力>` は mod の配布物に `v<version>/lock.sig.json` を書き出す（mod はサーバーへ送らない）。
     Host は作者署名を確認できた mod だけを実行する。
   - `--public-url=<url>` を渡すと、署名したときに作者アカウントのサーバーへ登録され、ユーザーページに出る。
+- **`dev`**: 上の「`ubichill dev`」。
 - **`world build`**: 手元の `world.yaml` と兄弟の `.lock.json` から、Go のインスタンスサーバー（`ubichill-instance`）に
   渡す定義 JSON を作る。本体がインスタンスを作るときと同じ変換なので、`ubichill-instance --guests --world=<出力>` で
   起動した部屋は本体と同じ初期状態を持つ。`--id` は省略時 `metadata.name`、`--max-users` は省略時ワールドの定員の上限。

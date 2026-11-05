@@ -14,7 +14,7 @@ mod は Web Worker 内で動く独立したサンドボックスで、Host本体
 
 ```bash
 npm install ubichill            # SDK（mod が import する）
-npm install -D @ubichill/cli    # ビルド・署名・公開のコマンド
+npm install -D @ubichill/cli    # 開発サーバー・ビルド・署名・公開のコマンド
 ```
 
 ## SDK: mod を書く
@@ -66,7 +66,7 @@ export default function Counter() {
 
 ## CLI: mod をビルド・配布する
 
-ビルド（`ubichill build`）・固定（`install`）・検証（`verify`）・署名と公開（`login` / `publish`）は [`@ubichill/cli`](https://www.npmjs.com/package/@ubichill/cli) にある。
+開発サーバー（`ubichill dev`）・ビルド（`build`）・固定（`install`）・検証（`verify`）・署名と公開（`login` / `publish`）は [`@ubichill/cli`](https://www.npmjs.com/package/@ubichill/cli) にある。
 このパッケージにコマンドは無い。
 
 ## ライセンス

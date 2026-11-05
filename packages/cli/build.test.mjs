@@ -16,7 +16,7 @@ describe('buildPackageJson（@ubichill/cli）', () => {
         expect(pkg.license).toBe('MIT');
         expect(pkg.main).toBeUndefined();
         expect(pkg.exports).toBeUndefined();
-        expect(pkg.files).toEqual(['cli.js', 'LICENSE', 'README.md']);
+        expect(pkg.files).toEqual(['cli.js', 'world', 'LICENSE', 'README.md']);
     });
 
     it('Go のインスタンスサーバーは os・cpu ごとの optionalDependency で、版は @ubichill/instance に完全一致', () => {

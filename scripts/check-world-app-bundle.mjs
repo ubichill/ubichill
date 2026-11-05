@@ -7,6 +7,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { worldScripts } from '../packages/cli/worldDist.mjs';
 
 const dist = fileURLToPath(new URL('../packages/frontend/dist/', import.meta.url));
 const manifestPath = `${dist}.vite/manifest.json`;
@@ -19,21 +20,7 @@ const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
 /** SNS にしか無いもの。world.html の chunk に現れたら SNS のコードが混ざっている。 */
 export const FORBIDDEN_MARKERS = ['better-auth', '/api/v1/'];
 
-/** manifest のエントリから imports / dynamicImports で辿れる全ファイル。 */
-export function reachableFiles(manifest, entry) {
-    const seen = new Set();
-    const queue = [entry];
-    while (queue.length > 0) {
-        const key = queue.shift();
-        const chunk = manifest[key];
-        if (!chunk || seen.has(key)) continue;
-        seen.add(key);
-        queue.push(...(chunk.imports ?? []), ...(chunk.dynamicImports ?? []));
-    }
-    return [...seen].map((key) => manifest[key].file);
-}
-
-const files = reachableFiles(manifest, 'world.html');
+const files = worldScripts(manifest);
 if (files.length === 0) {
     console.error('❌ manifest に world.html のエントリがありません');
     process.exit(1);

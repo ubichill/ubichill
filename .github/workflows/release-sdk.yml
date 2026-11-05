@@ -75,6 +75,7 @@ jobs:
           '
 
       # sdk が実行時に inline する ecs/shared の最新ソースを確実に見る（型検証のため）。
+      # cli は world.html（frontend のビルド）を同梱するので、turbo が frontend もビルドする
       - name: Build shared package
         run: pnpm turbo build --filter=@ubichill/shared
 
