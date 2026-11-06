@@ -83,6 +83,24 @@ backendのデプロイや設定変更ではGoを再起動しない（状態が�
 | `POD_NAME` | ノード ID の元（起動ごとの乱数を足す）。無ければホスト名。Helm は Downward API で渡す |
 | `POD_NAMESPACE` | `--pod-deletion-cost` で注釈を書く Pod の namespace。Helm は自動スケールが有効なときだけ Downward API で渡す |
 | `POD_IP` / `INSTANCE_ADVERTISE_ADDR` | 他の Pod・backend から届く自分のアドレス（`host:port`。heartbeat に書き、中継と管理 API の宛先になる）。`INSTANCE_ADVERTISE_ADDR` が優先、無ければ `POD_IP` かホスト名に待ち受けのポートを付ける |
+| `INSTANCE_LOG_FORMAT` / `INSTANCE_LOG_LEVEL` | `--log-format` / `--log-level` の既定（下の「ログ」）。フラグが優先 |
+
+## ログ
+
+ログは `log/slog` で stderr にだけ書く（stdout には書かない）。短いメッセージと属性（`room`・`err` など）の組。
+
+| フラグ（環境変数） | 値 | 既定 |
+|---|---|---|
+| `--log-format`（`INSTANCE_LOG_FORMAT`） | `auto`: stderr が端末なら色付きの text、そうでなければ JSON / `text` / `json` | `auto` |
+| `--log-level`（`INSTANCE_LOG_LEVEL`） | `debug` / `info` / `warn` / `error`。`debug` は部屋の作成・終了、入退室、中継の開始も書く | `info` |
+
+- **text**（[tint](https://github.com/lmittmann/tint)）: `17:05:03.494 INF instance runtime listening addr=127.0.0.1:3002 node=… guests=true redis=false directory=memory`。
+  色は端末のときだけ付け、`NO_COLOR` があれば付けない。`FORCE_COLOR`（`0`・`false` 以外）なら端末でなくても付ける（`pnpm dev` は `--log-format=text` で起動し、concurrently が `FORCE_COLOR` を渡す）。
+- **json**: 1 行に 1 つの JSON。キーは slog の既定の `time`（RFC 3339）・`level`（`DEBUG` / `INFO` / `WARN` / `ERROR`）・`msg` と属性（エラーは文字列）。
+  `{"time":"2026-11-06T17:04:55.662+09:00","level":"INFO","msg":"instance runtime listening","addr":"127.0.0.1:3002","node":"…","guests":true,"redis":false,"directory":"memory"}`
+  起動できないとき（フラグ・環境変数の誤り、ポートが使われている、`--world` が読めない）も `ERROR` の 1 行を書いて終わる（フラグ・ログの設定の誤りは exit 2、ほかは 1）。
+  go-redis・net/http の内部のログも同じ形で書く。`-h` の使い方と、Go のランタイムが落ちたときの panic のスタックだけは JSON でない。
+- Kubernetes（Helm）では stderr が端末でないので、既定で JSON になる。`ubichill dev` は `--log-format=json` で起動して読む。
 
 ## 状態と運用上の制約
 

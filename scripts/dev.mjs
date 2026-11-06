@@ -110,7 +110,7 @@ async function main() {
         [
             { command: 'pnpm --filter @ubichill/frontend dev', name: 'frontend', prefixColor: 'cyan' },
             { command: 'pnpm --filter @ubichill/backend dev', name: 'backend', prefixColor: 'magenta' },
-            { command: 'go -C services/instance run ./cmd/instance --origins=http://localhost:3000', name: 'instance', prefixColor: 'blue' },
+            { command: 'go -C services/instance run ./cmd/instance --origins=http://localhost:3000 --log-format=text', name: 'instance', prefixColor: 'blue' },
         ],
         {
             prefix: '[{name}]',

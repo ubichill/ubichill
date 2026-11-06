@@ -9,7 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -309,7 +309,7 @@ func (l *relayLink) switchTo(to migration) bool {
 		if up != nil {
 			up.close()
 		}
-		log.Printf("relay of %s to the new owner %s failed: %v", l.room, to.Node, err)
+		slog.Warn("relay to the new owner failed", "room", l.room, "owner", to.Node, "err", err)
 		return false
 	}
 	l.queue = nil

@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -131,6 +131,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, relayed bool) {
 		defer s.admission.Unlock()
 		if p.room != nil {
 			p.room.leave(p, s.config.Grace)
+			slog.Debug("client disconnected", "room", p.room.definition.ID, "user", p.userID)
 		}
 		if p.room == nil {
 			if s.active[p.userID] == p {
@@ -249,12 +250,14 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, relayed bool) {
 				p.reject(f.ID, err.Error())
 			} else {
 				_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+				slog.Debug("client joined", "room", id, "user", t.Subject, "relayed", relayed)
 			}
 		} else if p.room == nil {
 			p.reject(f.ID, "最初にワールドに参加する必要があります")
 		} else if f.Event == "world:leave" {
 			s.admission.Lock()
 			p.room.leave(p, 0)
+			slog.Debug("client left", "room", p.room.definition.ID, "user", p.userID)
 			p.room = nil
 			if s.active[p.userID] == p {
 				delete(s.active, p.userID)
@@ -283,7 +286,7 @@ func (s *Server) relayJoin(id string, pass relayPass, join []byte, p *peer) (*re
 	defer cancel()
 	up, err := s.dialOwner(ctx, to)
 	if err != nil {
-		log.Printf("relay to %s (%s) for %s failed: %v", to.node, to.addr, id, err)
+		slog.Warn("relay to the owner failed", "room", id, "owner", to.node, "addr", to.addr, "err", err)
 		return nil, unavailable()
 	}
 	if up.forward(join) != nil {
@@ -292,6 +295,7 @@ func (s *Server) relayJoin(id string, pass relayPass, join []byte, p *peer) (*re
 	}
 	l := &relayLink{s: s, p: p, room: id, pass: pass, up: up}
 	s.addLink(l)
+	slog.Debug("relaying a client to the owner", "room", id, "owner", to.node)
 	return l, nil
 }
 
