@@ -111,6 +111,6 @@ describe('ubichill verify <world.yaml>（署名が今の内容に対して有効
     });
 
     it('YAML 以外を渡したら使い方を示す', async () => {
-        await expect(runVerifyWorld(['w.json'])).rejects.toThrow(/usage/);
+        await expect(runVerifyWorld(['w.json'], silentLogger)).rejects.toThrow(/usage/);
     });
 });
