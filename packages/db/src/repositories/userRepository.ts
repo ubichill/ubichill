@@ -1,10 +1,43 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, ilike, inArray, isNull, lte, ne, or, type SQL, sql } from 'drizzle-orm';
-import { db } from '../index';
-import { accounts, instances, sessions, users, worlds, worldVersions } from '../schema';
+import { and, asc, eq, getTableColumns, ilike, inArray, isNull, lte, ne, or, type SQL, sql } from 'drizzle-orm';
+import { type Database, db } from '../index';
+import { accounts, instances, sessions, userProfiles, users, worlds, worldVersions } from '../schema';
 import { insertCredentialUser, type NewCredentialUser } from './credentialUser';
 
 export type UserRecord = typeof users.$inferSelect;
+
+/** プロフィールの項目（user_profiles）を足したユーザー。行が無ければ未設定（null・空の配列）。 */
+export type UserProfileRecord = UserRecord & {
+    status: string | null;
+    bannerImage: string | null;
+    links: string[];
+    languages: string[];
+};
+
+export interface ProfileFieldsInput {
+    status: string | null;
+    bio: string | null;
+    links: string[];
+    languages: string[];
+}
+
+type Executor = Database | Parameters<Parameters<Database['transaction']>[0]>[0];
+
+async function selectProfile(executor: Executor, where: SQL): Promise<UserProfileRecord | undefined> {
+    const rows = await executor
+        .select({
+            ...getTableColumns(users),
+            status: userProfiles.status,
+            bannerImage: userProfiles.bannerImage,
+            links: userProfiles.links,
+            languages: userProfiles.languages,
+        })
+        .from(users)
+        .leftJoin(userProfiles, eq(userProfiles.userId, users.id))
+        .where(where);
+    const row = rows[0];
+    return row && { ...row, links: row.links ?? [], languages: row.languages ?? [] };
+}
 
 export interface CreateUserInput {
     id: string;
@@ -93,6 +126,66 @@ export const userRepository = {
     async setBio(id: string, bio: string | null): Promise<UserRecord | undefined> {
         const results = await db.update(users).set({ bio, updatedAt: new Date() }).where(eq(users.id, id)).returning();
         return results[0];
+    },
+
+    /** プロフィール（user_profiles の項目込み）。 */
+    findProfileById(id: string): Promise<UserProfileRecord | undefined> {
+        return selectProfile(db, eq(users.id, id));
+    },
+
+    findProfileByHandle(handle: string): Promise<UserProfileRecord | undefined> {
+        return selectProfile(db, eq(users.handle, handle));
+    },
+
+    /**
+     * プロフィールの項目（ひとこと・自己紹介・リンク・言語）を置き換える。値は shared の ProfileUpdateSchema を通したもの。
+     * ユーザーがいなければ何もせず undefined。
+     */
+    async setProfile(id: string, profile: ProfileFieldsInput): Promise<UserProfileRecord | undefined> {
+        return db.transaction(async (tx) => {
+            const now = new Date();
+            const updated = await tx
+                .update(users)
+                .set({ bio: profile.bio, updatedAt: now })
+                .where(eq(users.id, id))
+                .returning({ id: users.id });
+            if (updated.length === 0) return undefined;
+            const fields = {
+                status: profile.status,
+                links: profile.links,
+                languages: profile.languages,
+                updatedAt: now,
+            };
+            await tx
+                .insert(userProfiles)
+                .values({ userId: id, ...fields })
+                .onConflictDoUpdate({ target: userProfiles.userId, set: fields });
+            return selectProfile(tx, eq(users.id, id));
+        });
+    },
+
+    /** アイコン（users.image）・バナー（user_profiles.banner_image）の URL を変える。null で外す。 */
+    async setProfileImageUrl(
+        id: string,
+        kind: 'avatar' | 'banner',
+        url: string | null,
+    ): Promise<UserProfileRecord | undefined> {
+        return db.transaction(async (tx) => {
+            const now = new Date();
+            const updated = await tx
+                .update(users)
+                .set({ ...(kind === 'avatar' ? { image: url } : {}), updatedAt: now })
+                .where(eq(users.id, id))
+                .returning({ id: users.id });
+            if (updated.length === 0) return undefined;
+            if (kind === 'banner') {
+                await tx
+                    .insert(userProfiles)
+                    .values({ userId: id, bannerImage: url, updatedAt: now })
+                    .onConflictDoUpdate({ target: userProfiles.userId, set: { bannerImage: url, updatedAt: now } });
+            }
+            return selectProfile(tx, eq(users.id, id));
+        });
     },
 
     async setPasswordChangeRequired(id: string, required: boolean): Promise<void> {

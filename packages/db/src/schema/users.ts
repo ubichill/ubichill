@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm';
-import { boolean, pgEnum, pgTable, primaryKey, text, timestamp, varchar } from 'drizzle-orm/pg-core';
+import { boolean, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, varchar } from 'drizzle-orm/pg-core';
 import { worlds } from './worlds';
 
 export const friendStatusEnum = pgEnum('friend_status', ['pending', 'accepted']);
@@ -89,6 +89,25 @@ export const userSettings = pgTable('user_settings', {
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
+/**
+ * プロフィールの項目（ひとこと・バナー・リンク・言語）。users（better-auth の表）は広げず、1 対 1 の表に分ける。
+ * 行は最初に編集したときに作る（無ければ全部未設定として扱う）。自己紹介（bio）とアイコン（image）は users にある。
+ */
+export const userProfiles = pgTable('user_profiles', {
+    userId: text('user_id')
+        .primaryKey()
+        .references(() => users.id, { onDelete: 'cascade' }),
+    /** ひとこと（任意・1 行。shared の ProfileStatusSchema） */
+    status: text('status'),
+    /** バナー画像の URL（アップロードしたもの。中身は profile_images） */
+    bannerImage: text('banner_image'),
+    /** プロフィールのリンク（正規形の https の URL の配列。shared の ProfileLinksSchema） */
+    links: jsonb('links').$type<string[]>().notNull().default([]),
+    /** 話せる言語（BCP 47 のコードの配列。shared の PROFILE_LANGUAGES から選ぶ） */
+    languages: jsonb('languages').$type<string[]>().notNull().default([]),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const userFriends = pgTable(
     'user_friends',
     {
@@ -119,6 +138,7 @@ export const userFavorites = pgTable(
 
 export const usersRelations = relations(users, ({ one, many }) => ({
     settings: one(userSettings),
+    profile: one(userProfiles),
     friends: many(userFriends, { relationName: 'userFriends' }),
     friendsOf: many(userFriends, { relationName: 'friendUsers' }),
     favorites: many(userFavorites),
@@ -128,6 +148,13 @@ export const usersRelations = relations(users, ({ one, many }) => ({
 export const userSettingsRelations = relations(userSettings, ({ one }) => ({
     user: one(users, {
         fields: [userSettings.userId],
+        references: [users.id],
+    }),
+}));
+
+export const userProfilesRelations = relations(userProfiles, ({ one }) => ({
+    user: one(users, {
+        fields: [userProfiles.userId],
         references: [users.id],
     }),
 }));
