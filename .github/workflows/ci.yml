@@ -64,7 +64,10 @@ jobs:
       # （実際に発生: "ubichill" と書いてしまい実パッケージ名 "@ubichill/sdk" と不一致）。
       # --since=origin/main で明示する: ローカルに "main" ブランチが無くても
       # (このジョブではPRブランチしかcheckoutしていない) origin/main の参照だけで解決できる。
+      # 依存の更新（dependabot）には changeset を求めない。changeset は npm に出す sdk・cli の版のためのもので、
+      # 依存だけの更新はイメージ（main のビルド）で配られる。必要なら次の sdk・cli の変更と一緒に出る
       - name: Validate changesets
+        if: github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]'
         run: pnpm exec changeset status --since=origin/main
 
   test:
