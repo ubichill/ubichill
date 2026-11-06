@@ -3,6 +3,7 @@ import { OFFICIAL_HANDLE } from '@ubichill/shared';
 import type { NextFunction, Request, Response } from 'express';
 import { auth } from '../lib/auth';
 import { bearerToken, sha256Base64Url } from '../services/cliAuth';
+import { logger } from '../utils/logger';
 
 // Extend Express Request type with user info
 declare global {
@@ -59,7 +60,7 @@ function authRequired(options: { fresh: boolean }) {
             attachSession(req, session);
             next();
         } catch (error) {
-            console.error('Auth middleware error:', error);
+            logger.error('Auth middleware error:', error);
             res.status(401).json({ error: 'Unauthorized' });
         }
     };
@@ -109,7 +110,7 @@ export async function requirePublisher(req: Request, res: Response, next: NextFu
         void authorKeyRepository.touch(env.id).catch(() => undefined);
         next();
     } catch (error) {
-        console.error('API トークンの確認に失敗しました:', error);
+        logger.error('API トークンの確認に失敗しました:', error);
         res.status(401).json({ error: 'Unauthorized' });
     }
 }

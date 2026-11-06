@@ -11,6 +11,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createTerminal, debugFromEnv, processIO } from '@ubichill/terminal';
 
 /** 中身を決めるファイル。manifest は Worker・asset の hash を、lock は Worker の hash と権限を持つ。 */
 const CONTENT_FILES = ['manifest.json', 'lock.json'];
@@ -50,19 +51,21 @@ const diskFs = {
 };
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
+    const term = createTerminal(processIO(), { debug: debugFromEnv(process.env) });
     const [built, published] = process.argv.slice(2);
     if (!built || !published) {
-        console.error('使い方: node scripts/check-published-mods.mjs <dist/mods> <公開済みの mods>');
+        term.error('使い方: node scripts/check-published-mods.mjs <dist/mods> <公開済みの mods>');
         process.exit(1);
     }
     const overwrites = findOverwrites(built, published, diskFs);
     if (overwrites.length > 0) {
         for (const { mod, version } of overwrites) {
+            // GitHub Actions の注釈（::error::）。行の頭から書式を付けずに出さないと注釈にならない
             console.error(
                 `::error::${mod}@${version} は公開済みで、ビルドした中身が違います。mods/${mod}/package.json の version を上げてください（同じ版のまま上書きすると、その版を固定しているワールドが動かなくなります）`,
             );
         }
         process.exit(1);
     }
-    console.log('✅ 公開済みの mod の版は、どれも中身が変わっていません');
+    term.success('公開済みの mod の版は、どれも中身が変わっていません');
 }

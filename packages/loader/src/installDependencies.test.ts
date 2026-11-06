@@ -12,6 +12,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ModLock } from '@ubichill/shared';
+import { recordingLogger, silentLogger } from '@ubichill/terminal';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runInstall } from './installDependencies';
 
@@ -101,7 +102,7 @@ describe('runInstall', () => {
         );
 
         const outPath = join(dir, 'world.lock.json');
-        await runInstall([worldPath, `--mods-dir=${modsDir}`, `--out=${outPath}`]);
+        await runInstall([worldPath, `--mods-dir=${modsDir}`, `--out=${outPath}`], silentLogger);
 
         const lock = JSON.parse(readFileSync(outPath, 'utf-8')) as ModLock;
         expect(Object.keys(lock.mods).sort()).toEqual(['pen', 'video-player']);
@@ -150,7 +151,7 @@ describe('runInstall', () => {
         );
 
         const outPath = join(dir, 'world.lock.json');
-        await runInstall([worldPath, `--out=${outPath}`]);
+        await runInstall([worldPath, `--out=${outPath}`], silentLogger);
 
         const lock = JSON.parse(readFileSync(outPath, 'utf-8')) as ModLock;
         expect(lock.mods.first.baseUrl).toBe(firstBase);
@@ -177,7 +178,7 @@ describe('runInstall', () => {
         );
 
         const outPath = join(dir, 'world.lock.json');
-        await runInstall([worldPath, `--out=${outPath}`]);
+        await runInstall([worldPath, `--out=${outPath}`], silentLogger);
 
         expect(process.exitCode).toBe(1);
         expect(existsSync(outPath)).toBe(false);
@@ -220,7 +221,7 @@ describe('runInstall', () => {
         );
 
         const outPath = join(dir, 'world.lock.json');
-        await runInstall([worldPath, `--mods-dir=${modsDir}`, `--out=${outPath}`]);
+        await runInstall([worldPath, `--mods-dir=${modsDir}`, `--out=${outPath}`], silentLogger);
 
         const lock = JSON.parse(readFileSync(outPath, 'utf-8')) as ModLock;
         expect(lock.mods.pen.version).toBe('1.0.0');
@@ -267,14 +268,15 @@ describe('runInstall', () => {
             writeSinglePenWorld(worldPath);
             const outPath = join(dir, 'world.lock.json');
 
-            const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-            await runInstall([worldPath, `--mods-dir=${modsDir}`, `--out=${outPath}`, '--check']);
+            const { logger, entries } = recordingLogger();
+            await runInstall([worldPath, `--mods-dir=${modsDir}`, `--out=${outPath}`, '--check'], logger);
 
             expect(process.exitCode).toBe(1);
             expect(existsSync(outPath)).toBe(false);
-            expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('install'));
+            expect(entries).toEqual([
+                { level: 'error', message: expect.stringContaining(`ubichill install ${worldPath}`) },
+            ]);
             process.exitCode = 0;
-            errorSpy.mockRestore();
         });
 
         it('現在の mod ビルドと一致していれば exitCode を立てない', async () => {
@@ -284,9 +286,9 @@ describe('runInstall', () => {
             writeSinglePenWorld(worldPath);
             const outPath = join(dir, 'world.lock.json');
 
-            await runInstall([worldPath, `--mods-dir=${modsDir}`, `--out=${outPath}`]);
+            await runInstall([worldPath, `--mods-dir=${modsDir}`, `--out=${outPath}`], silentLogger);
             process.exitCode = 0;
-            await runInstall([worldPath, `--mods-dir=${modsDir}`, `--out=${outPath}`, '--check']);
+            await runInstall([worldPath, `--mods-dir=${modsDir}`, `--out=${outPath}`, '--check'], silentLogger);
 
             expect(process.exitCode).toBe(0);
         });
@@ -298,17 +300,17 @@ describe('runInstall', () => {
             writeSinglePenWorld(worldPath);
             const outPath = join(dir, 'world.lock.json');
 
-            await runInstall([worldPath, `--mods-dir=${modsDir}`, `--out=${outPath}`]);
+            await runInstall([worldPath, `--mods-dir=${modsDir}`, `--out=${outPath}`], silentLogger);
             process.exitCode = 0;
 
             // mod を再ビルドしたが world 側の lock は再生成し忘れた、という状況を再現する。
             writeFileSync(join(modsDir, 'pen', 'v1.0.0', 'lock.json'), lockEntryJson('pen', '1.0.0-rebuilt'));
 
-            const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-            await runInstall([worldPath, `--mods-dir=${modsDir}`, `--out=${outPath}`, '--check']);
+            const { logger, entries } = recordingLogger();
+            await runInstall([worldPath, `--mods-dir=${modsDir}`, `--out=${outPath}`, '--check'], logger);
 
             expect(process.exitCode).toBe(1);
-            errorSpy.mockRestore();
+            expect(entries.map((e) => e.level)).toEqual(['error']);
         });
     });
 });

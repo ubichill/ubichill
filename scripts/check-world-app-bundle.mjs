@@ -9,20 +9,29 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { createTerminal, debugFromEnv, processIO } from '@ubichill/terminal';
 import { isWorldDistFile, WORLD_DIST_DIR, worldDistFiles } from '../packages/cli/worldDist.mjs';
 
 /** SNS にしか無いもの。world.html の JS に現れたら SNS のコードが混ざっている。 */
 export const FORBIDDEN_MARKERS = ['better-auth', '/api/v1/'];
 
-const files = worldDistFiles(WORLD_DIST_DIR);
+const term = createTerminal(processIO(), { debug: debugFromEnv(process.env) });
+const files = (() => {
+    try {
+        return worldDistFiles(WORLD_DIST_DIR);
+    } catch (err) {
+        term.failure(err);
+        return process.exit(1);
+    }
+})();
 const scripts = files.filter((file) => file.endsWith('.js'));
 const strays = files.filter((file) => !isWorldDistFile(file));
 const hits = scripts.flatMap((file) => {
     const source = readFileSync(join(WORLD_DIST_DIR, file), 'utf-8');
     return FORBIDDEN_MARKERS.filter((marker) => source.includes(marker)).map((marker) => `${file}: "${marker}"`);
 });
-for (const hit of hits) console.error(`❌ world.html の JS に SNS のコードが入っています: ${hit}`);
-for (const stray of strays) console.error(`❌ world.html の出力に置いてはいけないファイルがあります: ${stray}`);
-if (scripts.length === 0) console.error('❌ world.html の出力に JS がありません');
+for (const hit of hits) term.error(`world.html の JS に SNS のコードが入っています: ${hit}`);
+for (const stray of strays) term.error(`world.html の出力に置いてはいけないファイルがあります: ${stray}`);
+if (scripts.length === 0) term.error('world.html の出力に JS がありません');
 if (hits.length > 0 || strays.length > 0 || scripts.length === 0) process.exit(1);
-console.log(`✅ world.html の出力 ${files.length} ファイル（JS ${scripts.length}）に SNS のものは無い`);
+term.success('world.html の出力に SNS のものは無い', `${files.length} ファイル  JS ${scripts.length}`);

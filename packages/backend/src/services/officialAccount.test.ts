@@ -58,6 +58,7 @@ function fakeDeps(state: { users?: FakeUser[]; takenNames?: string[] }) {
             calls.initialize.push({ id, fields });
         },
         log: () => undefined,
+        warn: () => undefined,
     };
     return { deps, calls };
 }

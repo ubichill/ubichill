@@ -5,6 +5,7 @@
  */
 import { authorKeyRepository, userRepository } from '@ubichill/db';
 import { type AuthorKeyCheck, createAuthorKeyDirectory } from '@ubichill/shared';
+import { logger } from '../utils/logger';
 import { authorKeySources, withNormalizedKey } from './authorKeySources';
 import { selfDomain } from './authorKeys';
 import { safeFetch } from './safeFetch';
@@ -12,7 +13,7 @@ import { safeFetch } from './safeFetch';
 const { findLocalAccount, bindings, confirmedContents } = authorKeySources({
     repository: authorKeyRepository,
     findUserByHandle: (handle) => userRepository.findByHandle(handle),
-    warn: (message) => console.warn(message),
+    warn: (message) => logger.warn(message),
 });
 
 const authorKeys = createAuthorKeyDirectory({
@@ -37,7 +38,7 @@ const checkAuthorKey = withNormalizedKey(authorKeys.isAuthorKey);
  */
 export const isAuthorKey: AuthorKeyCheck = (author, publicKey, contentHash) =>
     checkAuthorKey(author, publicKey, contentHash).catch((err: unknown) => {
-        console.error(`❌ 作者の確認に失敗しました（pending として扱う）: ${author}`, err);
+        logger.error(`作者の確認に失敗しました（pending として扱う）: ${author}`, err);
         return { status: 'pending' } as const;
     });
 export const resolveAuthorDisplayName = authorKeys.displayName;

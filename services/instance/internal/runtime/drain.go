@@ -2,7 +2,7 @@ package runtime
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"sort"
 	"time"
 )
@@ -58,7 +58,7 @@ func (s *Server) scheduleMigration() {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*s.handoffTimeout)
 		defer cancel()
 		if err := s.migrate(ctx, r); err != nil {
-			log.Printf("could not move %s yet: %v", r.definition.ID, err)
+			slog.Warn("could not move the room yet", "room", r.definition.ID, "err", err)
 			s.mu.Lock()
 			s.retryAt[r] = s.now().Add(migrateRetry)
 			s.mu.Unlock()
@@ -101,7 +101,7 @@ func (s *Server) noticeDisconnect(at time.Time) {
 	for _, p := range clients {
 		p.send(f, false)
 	}
-	log.Printf("draining: told %d clients that they will be disconnected at %s", len(clients), at.Format(time.RFC3339))
+	slog.Info("draining: told the clients when they will be disconnected", "clients", len(clients), "at", at.Format(time.RFC3339))
 }
 
 // DeletionCost は Pod を消す順の重み（controller.kubernetes.io/pod-deletion-cost）。小さい Pod から消える。

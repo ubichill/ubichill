@@ -1,6 +1,7 @@
 /** 公式アカウントの初期化の実体（better-auth・DB・レビュー済みの鍵を注入する）。ロジックは officialAccount.ts。 */
 import { authorKeyRepository, externalWorkRepository, userRepository, worldRepository } from '@ubichill/db';
 import { auth, newBetterAuthId } from '../lib/auth';
+import { logger } from '../utils/logger';
 import { ensureOfficialAccount, officialAccountConfig } from './officialAccount';
 
 export async function bootstrapOfficialAccount(): Promise<void> {
@@ -45,6 +46,7 @@ export async function bootstrapOfficialAccount(): Promise<void> {
         },
         isDisplayNameTaken: async (key) => !!(await userRepository.findByDisplayNameKey(key)),
         initialize: (id, fields) => userRepository.initializeAccount(id, fields),
-        log: (message) => console.log(message),
+        log: (message) => logger.info(message),
+        warn: (message) => logger.warn(message),
     });
 }

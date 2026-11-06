@@ -9,6 +9,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { WorldDefinitionSchema } from '@ubichill/shared';
+import type { Logger } from '@ubichill/terminal';
 import yaml from 'yaml';
 import { resolveLatestVersion } from './buildWorldLock.ts';
 import { runInstall } from './installDependencies.ts';
@@ -30,7 +31,7 @@ function resolveLocalLatestVersion(modsDir: string, modId: string): string | nul
  * 使い方: `<world.yaml> [<modName>] [--mods-dir=<dir>] [--out=<path>]`。
  * `<modName>` を省略すると pin 済みの全 mod が対象になる。
  */
-export async function runUpdate(argv: string[]): Promise<void> {
+export async function runUpdate(argv: string[], log: Logger): Promise<void> {
     const positional = argv.filter((a) => !a.startsWith('--'));
     const worldPath = positional[0];
     const targetModId = positional[1];
@@ -64,14 +65,14 @@ export async function runUpdate(argv: string[]): Promise<void> {
 
     if (bumps.length > 0) {
         writeFileSync(worldPath, String(doc), 'utf-8');
-        console.log(`⬆️  ${bumps.length} mod を更新:\n  ${bumps.join('\n  ')}`);
+        log.success(`${bumps.length} 個の mod の版を上げました\n${bumps.map((bump) => `  ${bump}`).join('\n')}`);
     } else {
-        console.log('⬆️  更新対象なし（pin 済み mod はすべて最新）');
+        log.info('版を上げる mod はありません（版を固定した mod はどれも最新）');
     }
 
     // world.yaml の内容に関わらず lock は常に再生成する
     // （version 未 pin の mod の lock 断片も最新へ更新するため）。
     // argv は既にサブコマンド名を除いた引数列なので slice せず、フラグをそのまま引き継ぐ
     // （--mods-dir 等が world.yaml より前に置かれても取りこぼさない）。
-    await runInstall([worldPath, ...argv.filter((a) => a.startsWith('--'))]);
+    await runInstall([worldPath, ...argv.filter((a) => a.startsWith('--'))], log);
 }

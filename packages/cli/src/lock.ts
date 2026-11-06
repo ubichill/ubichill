@@ -4,8 +4,9 @@
  * 壊さないためだけに残す薄いエイリアス。
  */
 import { runInstall } from '@ubichill/loader/install-dependencies';
+import type { Logger } from '@ubichill/terminal';
 
-export async function runLock(argv: string[]): Promise<void> {
-    console.warn('⚠️  ubichill lock は非推奨です。ubichill install を使ってください。');
-    await runInstall(argv);
+export async function runLock(argv: string[], log: Logger): Promise<void> {
+    log.warn('ubichill lock は非推奨です。ubichill install を使ってください');
+    await runInstall(argv, log);
 }

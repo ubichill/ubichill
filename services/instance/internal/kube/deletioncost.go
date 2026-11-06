@@ -11,7 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -107,7 +107,7 @@ type warnings struct{ at time.Time }
 
 func (w *warnings) warn(err error, now time.Time) {
 	if w.at.IsZero() || now.Sub(w.at) >= warningInterval {
-		log.Printf("could not write the pod deletion cost (continuing without it): %v", err)
+		slog.Warn("could not write the pod deletion cost (continuing without it)", "err", err)
 		w.at = now
 	}
 }

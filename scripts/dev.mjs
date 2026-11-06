@@ -3,73 +3,79 @@ import { randomBytes } from 'node:crypto';
 import killPort from 'kill-port';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
+import { createTerminal, debugFromEnv, formatDuration, HintedError, messageOf, processIO } from '@ubichill/terminal';
+
+const term = createTerminal(processIO(), { debug: debugFromEnv(process.env) });
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** 1 秒おきに最大 attempts 回 check する。 */
+const waitFor = async (check, attempts) => {
+    if (check()) return true;
+    if (attempts <= 1) return false;
+    await sleep(1000);
+    return waitFor(check, attempts - 1);
+};
 
 async function main() {
     process.env.INSTANCE_ADMIN_TOKEN ||= randomBytes(32).toString('hex');
     process.env.INSTANCE_PUBLIC_URL ||= 'http://localhost:3002/realtime/v1/ws';
 
-    console.log('🧹 Checking for existing processes on ports 3000, 3001 and 3002...');
+    term.info('Checking for existing processes on ports 3000, 3001 and 3002...');
     try {
         await killPort(3000);
         await killPort(3001);
         // 残った `pnpm instance:dev`（ゲストモード）が居ると、Go が起動できないか管理トークンが食い違う
         await killPort(3002);
-        console.log('Existing processes killed or ports are free.');
+        term.success('Existing processes killed or ports are free');
     } catch (err) {
-        console.error('Error killing ports:', err);
+        term.warn(`Error killing ports: ${messageOf(err)}`);
     }
 
     // Build shared / db (依存先は turbo の ^build が解決する)
-    console.log('🏗️  Building shared & db packages...');
+    term.info('Building shared & db packages...');
     const buildDeps = spawnSync('pnpm', ['turbo', 'build', '--filter=@ubichill/shared', '--filter=@ubichill/db'], {
         stdio: 'inherit',
         shell: true,
     });
     if (buildDeps.status !== 0) {
-        console.error('Failed to build shared/db packages.');
+        term.error('Failed to build shared/db packages');
         process.exit(1);
     }
 
     // Start database
-    console.log('🗄️  Starting PostgreSQL database...');
+    term.info('Starting PostgreSQL database...');
     const startDb = spawnSync('docker', ['compose', '-f', 'packages/db/docker-compose.yml', 'up', '-d'], { stdio: 'inherit', shell: true });
     if (startDb.status !== 0) {
-        console.error('Failed to start database. Make sure Docker is running.');
+        term.failure(new HintedError('Failed to start database', 'Make sure Docker is running'));
         process.exit(1);
     }
 
     // Wait for database to be ready
-    console.log('⏳ Waiting for database to be ready...');
-    let dbReady = false;
-    for (let i = 0; i < 30; i++) {
-        const check = spawnSync('docker', ['compose', '-f', 'packages/db/docker-compose.yml', 'exec', '-T', 'db', 'pg_isready', '-U', 'ubichill'], { stdio: 'pipe', shell: true });
-        if (check.status === 0) {
-            dbReady = true;
-            break;
-        }
-        await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-    if (!dbReady) {
-        console.error('Database failed to start within timeout.');
+    term.info('Waiting for database to be ready...');
+    const waitStarted = performance.now();
+    const pgIsReady = () =>
+        spawnSync('docker', ['compose', '-f', 'packages/db/docker-compose.yml', 'exec', '-T', 'db', 'pg_isready', '-U', 'ubichill'], { stdio: 'pipe', shell: true }).status === 0;
+    if (!(await waitFor(pgIsReady, 30))) {
+        term.error('Database failed to start within timeout');
         process.exit(1);
     }
-    console.log('✅ Database is ready.');
+    term.success('Database is ready', formatDuration(performance.now() - waitStarted));
 
     // Run database migrations
-    console.log('🔄 Running database migrations...');
+    term.info('Running database migrations...');
     const migrate = spawnSync('pnpm', ['--filter', '@ubichill/db', 'push'], { stdio: 'inherit', shell: true });
     if (migrate.status !== 0) {
-        console.error('Failed to run database migrations.');
+        term.error('Failed to run database migrations');
         process.exit(1);
     }
 
     // Build mod workers and regenerate the world locks from the exact output.
     // `pnpm build:workers` is the single canonical pipeline; duplicating only the
     // worker-build half here leaves worlds/*.lock.json pointing at old hashes.
-    console.log('🔨 Building mod workers and world locks...');
+    term.info('Building mod workers and world locks...');
     const buildWorkers = spawnSync('pnpm', ['build:workers'], { stdio: 'inherit', shell: true });
     if (buildWorkers.status !== 0) {
-        console.error('Failed to build mod workers.');
+        term.error('Failed to build mod workers');
         process.exit(1);
     }
 
@@ -78,7 +84,7 @@ async function main() {
     const cleanup = () => {
         if (isCleaning) return;
         isCleaning = true;
-        console.log('🛑 Stopping database...');
+        term.info('Stopping database...');
         spawnSync('docker', ['compose', '-f', 'packages/db/docker-compose.yml', 'down'], { stdio: 'inherit', shell: true });
 
         process.exit(0);
@@ -88,7 +94,7 @@ async function main() {
     process.on('SIGTERM', cleanup);
 
     // Run dev server using concurrently
-    console.log('💻 Starting development server...');
+    term.info('Starting development server...');
 
     // shared / workers は watch のみで、終了しても frontend/backend を道連れにしない
     // .result を catch しないと unhandled rejection になるため明示的に握り潰す
@@ -104,7 +110,7 @@ async function main() {
         [
             { command: 'pnpm --filter @ubichill/frontend dev', name: 'frontend', prefixColor: 'cyan' },
             { command: 'pnpm --filter @ubichill/backend dev', name: 'backend', prefixColor: 'magenta' },
-            { command: 'go -C services/instance run ./cmd/instance --origins=http://localhost:3000', name: 'instance', prefixColor: 'blue' },
+            { command: 'go -C services/instance run ./cmd/instance --origins=http://localhost:3000 --log-format=text', name: 'instance', prefixColor: 'blue' },
         ],
         {
             prefix: '[{name}]',

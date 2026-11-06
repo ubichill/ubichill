@@ -54,7 +54,7 @@ export class InstanceReaper {
         // スイープ自体は Node の終了を妨げない
         this.timer.unref?.();
         logger.info(
-            `🧹 インスタンス reaper 起動: ${intervalMs / 1000}秒ごとにスイープ（猶予 ${appConfig.instance.emptyTimeoutMs / 1000}秒）`,
+            `インスタンス reaper 起動: ${intervalMs / 1000}秒ごとにスイープ（猶予 ${appConfig.instance.emptyTimeoutMs / 1000}秒）`,
         );
     }
 

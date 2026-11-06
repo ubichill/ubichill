@@ -2,8 +2,10 @@
 // 使い方: node scripts/check-loadtest-chart.mjs（helm が PATH にあること）
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { createTerminal, debugFromEnv, processIO } from '@ubichill/terminal';
 import { parseAllDocuments } from 'yaml';
 
+const term = createTerminal(processIO(), { debug: debugFromEnv(process.env) });
 const chart = fileURLToPath(new URL('../charts/ubichill-loadtest', import.meta.url));
 
 const render = (args, namespace = 'ubichill-dev') =>
@@ -82,7 +84,9 @@ expect(publicEnv.LT_API_BASE === 'https://dev.ubichill.com', `public の LT_API_
 expect(publicEnv.LT_WS_BASE === '', `public の LT_WS_BASE: ${publicEnv.LT_WS_BASE}`);
 
 if (failures.length > 0) {
-    console.error(`負荷試験の chart の検査に失敗:\n- ${failures.join('\n- ')}`);
+    term.error(
+        [`負荷試験の chart の検査に ${failures.length} 件失敗しました`, ...failures.map((f) => `- ${f}`)].join('\n'),
+    );
     process.exit(1);
 }
-console.log('負荷試験の chart の検査: ok');
+term.success('負荷試験の chart の検査', `拒否 ${rejected.length} 通り`);

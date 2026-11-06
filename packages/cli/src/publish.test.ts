@@ -1,4 +1,5 @@
 import type { WorldSigningKey } from '@ubichill/shared';
+import { silentLogger } from '@ubichill/terminal';
 import { describe, expect, it } from 'vitest';
 import yaml from 'yaml';
 import { confirmEnvironment, type PublishDeps, publish } from './publish.ts';
@@ -43,7 +44,7 @@ function fakeDeps(
         key,
         crypto,
         parseYaml: (t) => yaml.parse(t) as unknown,
-        log: () => undefined,
+        log: silentLogger,
     };
     return { deps, requests, files };
 }

@@ -4,6 +4,7 @@
 import { chmodSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { recordingLogger, silentLogger } from '@ubichill/terminal';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { startGo, superviseGo } from './goRuntime.ts';
 
@@ -30,6 +31,33 @@ setTimeout(() => createServer((req, res) => { res.writeHead(200); res.end('{}');
 );
 chmodSync(fakeGo, 0o755);
 
+/**
+ * ログを書く偽の Go（slog の JSONHandler の形）。1 行の JSON を 2 回に分けて書き（チャンクの境目で行が切れる）、
+ * JSON でない行（panic など）も混ぜる。受け取った引数は debug の行に載せる。
+ */
+const loggingGo = join(dir, 'fake-logging-instance');
+writeFileSync(
+    loggingGo,
+    `#!${process.execPath}
+const { createServer } = require('node:http');
+const { mkdirSync, writeFileSync } = require('node:fs');
+mkdirSync(${JSON.stringify(pidDir)}, { recursive: true });
+writeFileSync(${JSON.stringify(pidDir)} + '/' + process.pid, '');
+const [host, port] = process.argv.find((a) => a.startsWith('--listen=')).slice(9).split(':');
+const line = (o) => JSON.stringify({ time: '2026-11-06T12:01:03.123+09:00', ...o }) + '\\n';
+process.stderr.write(line({ level: 'DEBUG', msg: 'args', args: process.argv.slice(2).join(' ') }));
+process.stderr.write(line({ level: 'INFO', msg: 'listening', addr: host + ':' + port }));
+const warn = line({ level: 'WARN', msg: 'slow room', room: 'r 1', took: '1.2s', req: { id: 7 } });
+process.stderr.write(warn.slice(0, 20));
+setTimeout(() => {
+    process.stderr.write(warn.slice(20));
+    process.stdout.write('panic: 日本語の行\\n');
+    createServer((req, res) => { res.writeHead(200); res.end('{}'); }).listen(Number(port), host);
+}, 50);
+`,
+);
+chmodSync(loggingGo, 0o755);
+
 const alive = (pid: number): boolean => {
     try {
         process.kill(pid, 0);
@@ -54,7 +82,7 @@ afterAll(() => {
 describe('startGo', () => {
     it('起動して /health を待ち、stop は終わるまで待つ', async () => {
         writeFileSync(delayFile, '0');
-        const runtime = await startGo({ binary: fakeGo, origins: [], log: () => {} });
+        const runtime = await startGo({ binary: fakeGo, origins: [], log: silentLogger });
         const pid = startedPids().at(-1) as number;
         expect(alive(pid)).toBe(true);
         await runtime.stop();
@@ -65,7 +93,7 @@ describe('startGo', () => {
         writeFileSync(delayFile, '60000');
         const controller = new AbortController();
         const before = startedPids().length;
-        const starting = startGo({ binary: fakeGo, origins: [], log: () => {}, signal: controller.signal });
+        const starting = startGo({ binary: fakeGo, origins: [], log: silentLogger, signal: controller.signal });
         await vi.waitFor(() => expect(startedPids().length).toBe(before + 1), { timeout: 5000 });
         controller.abort();
         await expect(starting).rejects.toThrow('中止');
@@ -77,7 +105,7 @@ describe('superviseGo', () => {
     it('落ちたら起動し直し、起動し直しの途中で止めても子プロセスが残らない', async () => {
         writeFileSync(delayFile, '0');
         const restarted = vi.fn();
-        const go = superviseGo({ binary: fakeGo, origins: [], log: () => {}, onRestarted: restarted });
+        const go = superviseGo({ binary: fakeGo, origins: [], log: silentLogger, onRestarted: restarted });
         await go.start();
         const first = startedPids().at(-1) as number;
         expect(go.current).toBeDefined();
@@ -97,7 +125,7 @@ describe('superviseGo', () => {
     it('起動し直しが終わると onRestarted を呼ぶ。止めた後は落ちても起動し直さない', async () => {
         writeFileSync(delayFile, '0');
         const restarted = vi.fn();
-        const go = superviseGo({ binary: fakeGo, origins: [], log: () => {}, onRestarted: restarted });
+        const go = superviseGo({ binary: fakeGo, origins: [], log: silentLogger, onRestarted: restarted });
         await go.start();
         process.kill(startedPids().at(-1) as number, 'SIGKILL');
         await vi.waitFor(() => expect(restarted).toHaveBeenCalledTimes(1), { timeout: 5000 });
@@ -112,7 +140,7 @@ describe('superviseGo', () => {
 
     it('killNow は起動の途中の子プロセスにも待たずに届く（node が落ちるときの最後の砦）', async () => {
         writeFileSync(delayFile, '60000');
-        const go = superviseGo({ binary: fakeGo, origins: [], log: () => {} });
+        const go = superviseGo({ binary: fakeGo, origins: [], log: silentLogger });
         const before = startedPids().length;
         const starting = go.start().catch(() => undefined);
         await vi.waitFor(() => expect(startedPids().length).toBe(before + 1), { timeout: 5000 });
@@ -122,5 +150,32 @@ describe('superviseGo', () => {
         await go.stop();
         await starting;
         writeFileSync(delayFile, '0');
+    });
+});
+
+describe('Go のログ', () => {
+    const fromGo = (entries: readonly { message: string }[]) =>
+        entries.filter((e) => !e.message.startsWith('Go を起動します') && !e.message.startsWith('Go が応答しました'));
+
+    it('--log-format=json で起動し、warn と JSON でない行はいつも、info・debug は出さない（チャンクの境目で切れた行もまとめる）', async () => {
+        const { logger, entries } = recordingLogger();
+        const runtime = await startGo({ binary: loggingGo, origins: ['http://localhost:1'], log: logger });
+        await vi.waitFor(() => expect(fromGo(entries)).toHaveLength(2), { timeout: 5000 });
+        await runtime.stop();
+        expect(fromGo(entries)).toEqual([
+            { level: 'warn', message: 'slow room', detail: 'room="r 1" took=1.2s req.id=7' },
+            { level: 'info', message: 'panic: 日本語の行' },
+        ]);
+    });
+
+    it('--debug では Go を debug の level で起動し、info・debug の行も出す', async () => {
+        const { logger, entries } = recordingLogger();
+        const runtime = await startGo({ binary: loggingGo, origins: ['http://localhost:1'], log: logger, debug: true });
+        await vi.waitFor(() => expect(fromGo(entries)).toHaveLength(4), { timeout: 5000 });
+        await runtime.stop();
+        const args = fromGo(entries).find((e) => e.message === 'args') as { detail?: string };
+        expect(args.detail).toContain('--log-format=json');
+        expect(args.detail).toContain('--log-level=debug');
+        expect(fromGo(entries).map((e) => e.message)).toContain('listening');
     });
 });

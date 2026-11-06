@@ -33,6 +33,7 @@ COPY packages/react/package.json          ./packages/react/package.json
 COPY packages/sandbox/package.json        ./packages/sandbox/package.json
 COPY packages/sdk/package.json            ./packages/sdk/package.json
 COPY packages/shared/package.json         ./packages/shared/package.json
+COPY packages/terminal/package.json       ./packages/terminal/package.json
 COPY packages/ui-renderer/package.json    ./packages/ui-renderer/package.json
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile --ignore-scripts --store-dir=/pnpm/store

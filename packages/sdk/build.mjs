@@ -29,8 +29,17 @@
 import { generateDtsBundle } from 'dts-bundle-generator';
 import * as esbuild from 'esbuild';
 import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+    createTerminal,
+    DEBUG_ENV,
+    debugFromEnv,
+    formatBytes,
+    formatDuration,
+    HintedError,
+    processIO,
+} from '@ubichill/terminal';
 
 const sdkDir = dirname(fileURLToPath(import.meta.url));
 const sdkTsconfig = join(sdkDir, 'tsconfig.json');
@@ -124,38 +133,56 @@ export function buildPackageJson() {
     );
 }
 
-async function main() {
-    console.log('🔨 Building ubichill (npm publish package) from @ubichill/sdk...');
+/** fn を実行し、結果とかかった時間を返す。 */
+async function measure(fn) {
+    const started = performance.now();
+    const value = await fn();
+    return { value, took: formatDuration(performance.now() - started) };
+}
+
+async function main(term) {
+    const started = performance.now();
+    term.info('Building ubichill (npm publish package) from @ubichill/sdk...');
     // 前のビルドの残り（以前は cli.js もここにあった）を配らない（files の *.js は dist-npm の中身をそのまま載せる）
     rmSync(outDir, { recursive: true, force: true });
     mkdirSync(outDir, { recursive: true });
 
     for (const entry of ENTRIES) {
-        const js = await buildJs(entry);
-        writeFileSync(join(outDir, `${entry.name}.js`), js, 'utf-8');
-        console.log(`✅ ${entry.name}.js (${js.length} bytes)`);
+        const js = await measure(() => buildJs(entry));
+        writeFileSync(join(outDir, `${entry.name}.js`), js.value, 'utf-8');
+        term.success(`${entry.name}.js`, `${formatBytes(Buffer.byteLength(js.value))}  ${js.took}`);
 
-        const dts = buildDts(entry);
-        writeFileSync(join(outDir, `${entry.name}.d.ts`), dts, 'utf-8');
-        console.log(`✅ ${entry.name}.d.ts (${dts.length} bytes, 外部@ubichill参照なし)`);
+        const dts = await measure(() => buildDts(entry));
+        writeFileSync(join(outDir, `${entry.name}.d.ts`), dts.value, 'utf-8');
+        term.success(
+            `${entry.name}.d.ts`,
+            `${formatBytes(Buffer.byteLength(dts.value))}  ${dts.took}  外部@ubichill参照なし`,
+        );
     }
 
     writeFileSync(join(outDir, 'package.json'), buildPackageJson(), 'utf-8');
-    console.log(`📦 ${outDir}/package.json (name: "ubichill")`);
+    term.success('package.json', 'name: ubichill');
 
     copyFileSync(join(sdkDir, 'LICENSE'), join(outDir, 'LICENSE'));
-    console.log(`📄 ${outDir}/LICENSE (MIT)`);
+    term.success('LICENSE', 'MIT');
 
     copyFileSync(join(sdkDir, 'README.md'), join(outDir, 'README.md'));
-    console.log(`📄 ${outDir}/README.md`);
+    term.success('README.md');
 
-    console.log('🎉 SDK publish package built.');
+    term.success(
+        `SDK publish package built in ${formatDuration(performance.now() - started)}`,
+        relative(process.cwd(), outDir) || '.',
+    );
 }
 
 const isMain = process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1];
 if (isMain) {
-    main().catch((err) => {
-        console.error('❌ SDK build failed:', err);
+    const term = createTerminal(processIO(), { debug: debugFromEnv(process.env) });
+    main(term).catch((err) => {
+        term.failure(
+            err,
+            err instanceof HintedError ? {} : { debugTip: `${DEBUG_ENV}=1 を付けるとスタックトレースを表示します` },
+        );
         process.exit(1);
     });
 }

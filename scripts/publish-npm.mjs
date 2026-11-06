@@ -19,8 +19,10 @@ import { execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createTerminal, DEBUG_ENV, debugFromEnv, formatDuration, HintedError, processIO } from '@ubichill/terminal';
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
+const term = createTerminal(processIO(), { debug: debugFromEnv(process.env) });
 
 /** 指定バージョンが既にレジストリに公開済みか（`npm view` は該当バージョンが無いと非ゼロ終了する）。 */
 export function isAlreadyPublished(name, version) {
@@ -56,8 +58,10 @@ export function publishPackage(packageDir, { dryRun }) {
     const dir = resolve(repoRoot, packageDir);
     const { name, version } = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'));
 
-    console.log(`🔨 Building ${name}@${version} publish artifact...`);
+    term.info(`Building ${name}@${version} publish artifact...`);
+    const started = performance.now();
     execFileSync('pnpm', buildCommand(name), { cwd: repoRoot, stdio: 'inherit' });
+    term.success(`Built ${name}@${version} publish artifact`, formatDuration(performance.now() - started));
 
     for (const distNpmDir of publishDirs(join(dir, 'dist-npm'))) publishDir(name, version, distNpmDir, { dryRun });
 }
@@ -74,22 +78,23 @@ function publishDir(name, version, distNpmDir, { dryRun }) {
     // バージョンを上げない README 更新等でも実行される。公開済みのバージョンへの publish は常にエラーになるので skip する
     // （このバージョンのタグ/Release は直前の成功時に作成済み）。
     if (!dryRun && isAlreadyPublished(published.name, published.version)) {
-        console.log(`⏭️  ${published.name}@${published.version} は既に公開済み。npm publish をスキップする。`);
+        term.info(`${published.name}@${published.version} は既に公開済み。npm publish をスキップする`);
         return;
     }
 
     if (dryRun) {
-        console.log(`🧪 --dry-run: npm publish はスキップ（${published.name}@${published.version}）`);
+        term.info(`--dry-run: npm publish はスキップ（${published.name}@${published.version}）`);
     } else {
-        console.log(`📦 npm publish ${published.name}@${published.version} (dist-npm, OIDC trusted publishing)`);
+        term.info(`npm publish ${published.name}@${published.version}`, 'dist-npm, OIDC trusted publishing');
         execFileSync('npm', ['publish', distNpmDir, '--access', 'public'], { cwd: repoRoot, stdio: 'inherit' });
+        term.success(`Published ${published.name}@${published.version}`);
     }
 
     const changesetsOutput = process.env.CHANGESETS_OUTPUT;
     if (changesetsOutput) {
         const event = { type: 'git-tag', tag: `${published.name}@${published.version}`, packageName: name };
         appendFileSync(changesetsOutput, `${JSON.stringify(event)}\n`, 'utf-8');
-        console.log(`🏷️  ${event.tag}（${changesetsOutput} へ記録、changesets/action が git タグ/Release を作成する）`);
+        term.success(`${event.tag} を ${changesetsOutput} へ記録`, 'changesets/action が git タグ/Release を作成する');
     }
 }
 
@@ -97,7 +102,12 @@ function main() {
     const args = process.argv.slice(2);
     const dryRun = args.includes('--dry-run');
     const packageDirs = args.filter((a) => !a.startsWith('--'));
-    if (packageDirs.length === 0) throw new Error('usage: node scripts/publish-npm.mjs <packageDir>... [--dry-run]');
+    if (packageDirs.length === 0) {
+        throw new HintedError(
+            'No package directory given',
+            'usage: node scripts/publish-npm.mjs <packageDir>... [--dry-run]',
+        );
+    }
     for (const packageDir of packageDirs) publishPackage(packageDir, { dryRun });
 }
 
@@ -106,7 +116,10 @@ if (isMain) {
     try {
         main();
     } catch (err) {
-        console.error('❌ publish failed:', err);
+        term.failure(
+            err,
+            err instanceof HintedError ? {} : { debugTip: `${DEBUG_ENV}=1 を付けるとスタックトレースを表示します` },
+        );
         process.exit(1);
     }
 }

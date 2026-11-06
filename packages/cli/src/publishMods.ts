@@ -14,6 +14,7 @@ import {
     signMod,
     type WorldSigningKey,
 } from '@ubichill/shared';
+import type { Logger } from '@ubichill/terminal';
 import type { Credential } from './credentials.ts';
 import { type ModVersionDir, modVersionDirs } from './modLayout.ts';
 
@@ -26,7 +27,7 @@ export interface PublishModsDeps {
     };
     key: WorldSigningKey;
     crypto: Parameters<typeof signMod>[2];
-    log: (message: string) => void;
+    log: Logger;
 }
 
 export interface PublishModsOptions {
@@ -68,7 +69,10 @@ export async function publishMods(deps: PublishModsDeps, options: PublishModsOpt
         const signature = await signMod(entry, deps.key, deps.crypto, { author: options.credential.account });
         const sigPath = join(dir, MOD_SIGNATURE_FILE);
         deps.fs.writeText(sigPath, `${JSON.stringify(signature, null, 2)}\n`);
-        deps.log(`🔏 ${sigPath}（${entry.id}@${entry.version}、作者 @${options.credential.account}）`);
+        deps.log.success(
+            `${entry.id}@${entry.version} に署名しました`,
+            `${sigPath}  作者 @${options.credential.account}`,
+        );
         written.push({ entry, signature, path: sigPath });
     }
     return written;

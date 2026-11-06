@@ -15,6 +15,7 @@
     },
     "dependencies": {
         "@ubichill/shared": "workspace:*",
+        "@ubichill/terminal": "workspace:*",
         "yaml": "catalog:"
     },
     "devDependencies": {

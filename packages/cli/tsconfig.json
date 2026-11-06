@@ -5,6 +5,7 @@
         "types": ["node"],
         "isolatedModules": true,
         "paths": {
+            "@ubichill/terminal": ["../terminal/src/index.ts"],
             "@ubichill/sdk": ["../sdk/src/index.ts"],
             "@ubichill/ecs": ["../ecs/src/index.ts"],
             "@ubichill/runtime": ["../runtime/src/index.ts"],

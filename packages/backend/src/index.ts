@@ -98,10 +98,10 @@ app.get('/api/version', (_req, res) => {
 import { toNodeHandler } from 'better-auth/node';
 
 // 認証APIのデバッグログ（ボディはパスワード等を含むため出力しない）。
-// console.log だと本番でも全 auth リクエストを吐いてしまうため debug 時のみに絞る。
+// info だと本番でも全 auth リクエストを吐いてしまうため debug 時のみに絞る。
 if (appConfig.debug) {
     app.use('/api/auth', (req, _res, next) => {
-        logger.debug(`🔐 Auth リクエスト: ${req.method} ${req.originalUrl}`);
+        logger.debug(`Auth リクエスト: ${req.method} ${req.originalUrl}`);
         next();
     });
 }
@@ -141,7 +141,7 @@ const subscriber = redis ? connectSubscriber(redis) : null;
 // ============================================
 function setupGracefulShutdown() {
     const shutdown = (signal: string) => {
-        console.log(`⚡ ${signal} 受信 — グレースフルシャットダウン開始`);
+        logger.info(`${signal} 受信 — グレースフルシャットダウン開始`);
 
         // 定期スイープを止め、ほかの backend がすぐ引き継げるようリースを手放す
         instanceReaper.stop();
@@ -150,7 +150,7 @@ function setupGracefulShutdown() {
 
         // 新規 HTTP 接続を拒否し、既存リクエストの完了を待つ
         server.close(() => {
-            console.log('✅ HTTP サーバー停止完了');
+            logger.info('HTTP サーバー停止完了');
             void Promise.allSettled([released, backendEvents.detach(), notificationHub.detach()]).then(() => {
                 subscriber?.destroy();
                 redis?.destroy();
@@ -159,7 +159,7 @@ function setupGracefulShutdown() {
 
         // フォールバック: 一定時間内に完了しない場合は強制終了
         setTimeout(() => {
-            console.warn('⏰ シャットダウンタイムアウト — 強制終了');
+            logger.warn('シャットダウンタイムアウト — 強制終了');
             process.exit(0);
         }, 15_000).unref();
     };
@@ -199,15 +199,15 @@ async function startServer() {
             await Promise.all([
                 cliAuthRequestRepository
                     .deleteExpired()
-                    .catch((err: unknown) => console.error('CLI 認可の要求の掃除に失敗:', err)),
+                    .catch((err: unknown) => logger.error('CLI 認可の要求の掃除に失敗:', err)),
                 pendingRegistrationRepository
                     .deleteExpired()
-                    .catch((err: unknown) => console.error('仮登録の掃除に失敗:', err)),
+                    .catch((err: unknown) => logger.error('仮登録の掃除に失敗:', err)),
                 // インスタンスが消えて消せるようになった古い版を消し直す
                 worldRegistry
                     .pruneAllVersions()
-                    .catch((err: unknown) => console.error('ワールドの古い版の掃除に失敗:', err)),
-                cleanOldNotifications().catch((err: unknown) => console.error('古い通知の掃除に失敗:', err)),
+                    .catch((err: unknown) => logger.error('ワールドの古い版の掃除に失敗:', err)),
+                cleanOldNotifications().catch((err: unknown) => logger.error('古い通知の掃除に失敗:', err)),
             ]);
         });
     };
@@ -222,17 +222,10 @@ async function startServer() {
     setupGracefulShutdown();
 
     server.listen(appConfig.port, () => {
-        console.log('');
-        console.log('🚀 Ubichill サーバー起動');
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log(`   🌐 ポート ${appConfig.port} で起動中`);
-        console.log(`   📍 環境: ${appConfig.nodeEnv}`);
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('');
+        logger.info(`サーバーを起動しました ポート=${appConfig.port} 環境=${appConfig.nodeEnv}`);
     });
 }
 
-console.log('🏁 calling startServer()...');
-startServer().catch((err) => {
-    console.error('❌ Unhandled error in startServer:', err);
+startServer().catch((err: unknown) => {
+    logger.error('サーバーの起動に失敗しました:', err);
 });

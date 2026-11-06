@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { signWorld } from '@ubichill/shared';
+import { recordingLogger, silentLogger } from '@ubichill/terminal';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import yaml from 'yaml';
 import { runVerifyWorld } from './verifyWorldFile';
@@ -67,8 +68,6 @@ describe('ubichill verify <world.yaml>（署名が今の内容に対して有効
         dir.path = mkdtempSync(join(tmpdir(), 'ubichill-verify-'));
         writeFileSync(world(), VALID_WORLD_YAML);
         process.exitCode = undefined;
-        vi.spyOn(console, 'log').mockImplementation(() => undefined);
-        vi.spyOn(console, 'error').mockImplementation(() => undefined);
     });
     afterEach(() => {
         rmSync(dir.path, { recursive: true, force: true });
@@ -78,19 +77,25 @@ describe('ubichill verify <world.yaml>（署名が今の内容に対して有効
 
     it('作者付きの有効な署名は合格', async () => {
         await writeSigned('youkan@ubichill.com');
-        await runVerifyWorld([world()]);
+        const { logger, entries } = recordingLogger();
+        await runVerifyWorld([world()], logger);
         expect(process.exitCode).toBeUndefined();
+        expect(entries.map((e) => e.level)).toEqual(['success']);
     });
 
-    it('署名の後に内容が変わると不合格', async () => {
+    it('署名の後に内容が変わると不合格で、直し方（ubichill publish）を出す', async () => {
         await writeSigned('youkan@ubichill.com');
         writeFileSync(world(), VALID_WORLD_YAML.replace('displayName: A', 'displayName: B'));
-        await runVerifyWorld([world()]);
+        const { logger, entries } = recordingLogger();
+        await runVerifyWorld([world()], logger);
         expect(process.exitCode).toBe(1);
+        expect(entries).toEqual([
+            { level: 'error', message: expect.stringContaining('ubichill publish で署名し直して') },
+        ]);
     });
 
     it('署名ファイルが無ければ不合格（未署名を合格にしない）', async () => {
-        await runVerifyWorld([world()]);
+        await runVerifyWorld([world()], silentLogger);
         expect(process.exitCode).toBe(1);
     });
 
@@ -101,11 +106,11 @@ describe('ubichill verify <world.yaml>（署名が今の内容に対して有効
             unknown
         >;
         writeFileSync(sig(), JSON.stringify(withoutAuthor));
-        await runVerifyWorld([world()]);
+        await runVerifyWorld([world()], silentLogger);
         expect(process.exitCode).toBe(1);
     });
 
     it('YAML 以外を渡したら使い方を示す', async () => {
-        await expect(runVerifyWorld(['w.json'])).rejects.toThrow(/usage/);
+        await expect(runVerifyWorld(['w.json'], silentLogger)).rejects.toThrow(/usage/);
     });
 });

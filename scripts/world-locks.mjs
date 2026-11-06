@@ -10,6 +10,7 @@
 import { execFileSync } from 'node:child_process';
 import { globSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { createTerminal, debugFromEnv, processIO } from '@ubichill/terminal';
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 const cliPath = fileURLToPath(new URL('../packages/cli/src/index.ts', import.meta.url));
@@ -18,7 +19,7 @@ const check = process.argv.includes('--check');
 
 const worldFiles = globSync('worlds/*.yaml', { cwd: repoRoot });
 if (worldFiles.length === 0) {
-    console.error('❌ worlds/*.yaml が見つかりません');
+    createTerminal(processIO(), { debug: debugFromEnv(process.env) }).error('worlds/*.yaml が見つかりません');
     process.exit(1);
 }
 
@@ -31,11 +32,9 @@ const run = (args) => {
     }
 };
 
-let failed = false;
-for (const relPath of worldFiles.sort()) {
-    const installArgs = ['install', relPath, `--mods-dir=${modsDir}`];
-    if (check) installArgs.push('--check');
-    if (!run(installArgs)) failed = true;
-}
+// 1 つ失敗しても残りのワールドも確かめる（map は途中で止まらない）
+const results = worldFiles
+    .sort()
+    .map((relPath) => run(['install', relPath, `--mods-dir=${modsDir}`, ...(check ? ['--check'] : [])]));
 
-process.exit(failed ? 1 : 0);
+process.exit(results.every(Boolean) ? 0 : 1);

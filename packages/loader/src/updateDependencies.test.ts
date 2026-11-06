@@ -7,6 +7,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ModLock } from '@ubichill/shared';
+import { recordingLogger, silentLogger } from '@ubichill/terminal';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runUpdate } from './updateDependencies';
 
@@ -70,7 +71,9 @@ describe('runUpdate', () => {
     });
 
     it('pin 済みバージョンが古ければ world.yaml を最新へ書き換え、コメント/フォーマットを保持する', async () => {
-        await runUpdate([worldPath, `--mods-dir=${modsDir}`]);
+        const { logger, entries } = recordingLogger();
+        await runUpdate([worldPath, `--mods-dir=${modsDir}`], logger);
+        expect(entries[0]).toEqual({ level: 'success', message: '1 個の mod の版を上げました\n  pen: 1.0.0 → 2.0.0' });
 
         const rewritten = readFileSync(worldPath, 'utf-8');
         expect(rewritten).toMatch(/version: 2\.0\.0/);
@@ -79,7 +82,7 @@ describe('runUpdate', () => {
 
     it('書き換え後にロックも再生成され、新バージョンが反映される', async () => {
         const outPath = worldPath.replace(/\.ya?ml$/i, '.lock.json');
-        await runUpdate([worldPath, `--mods-dir=${modsDir}`]);
+        await runUpdate([worldPath, `--mods-dir=${modsDir}`], silentLogger);
 
         const lock = JSON.parse(readFileSync(outPath, 'utf-8')) as ModLock;
         expect(lock.mods.pen.version).toBe('2.0.0');
@@ -89,7 +92,7 @@ describe('runUpdate', () => {
         writeWorld(worldPath, '2.0.0');
         const before = readFileSync(worldPath, 'utf-8');
 
-        await runUpdate([worldPath, `--mods-dir=${modsDir}`]);
+        await runUpdate([worldPath, `--mods-dir=${modsDir}`], silentLogger);
 
         expect(readFileSync(worldPath, 'utf-8')).toBe(before);
     });
@@ -98,7 +101,7 @@ describe('runUpdate', () => {
         writeWorld(worldPath, 'latest');
         const before = readFileSync(worldPath, 'utf-8');
 
-        await runUpdate([worldPath, `--mods-dir=${modsDir}`]);
+        await runUpdate([worldPath, `--mods-dir=${modsDir}`], silentLogger);
 
         expect(readFileSync(worldPath, 'utf-8')).toBe(before);
     });
@@ -108,7 +111,7 @@ describe('runUpdate', () => {
         // 引数の順序を入れ替える（フラグが先）。runUpdate→runInstall の引き継ぎで
         // 落ちていないか（--mods-dir が失われて既定の process.cwd()/mods を見に行き
         // pen が見つからなくならないか）を確認する。
-        await runUpdate([`--mods-dir=${modsDir}`, worldPath]);
+        await runUpdate([`--mods-dir=${modsDir}`, worldPath], silentLogger);
 
         const lock = JSON.parse(readFileSync(outPath, 'utf-8')) as ModLock;
         expect(lock.mods.pen.version).toBe('2.0.0');
@@ -116,7 +119,7 @@ describe('runUpdate', () => {
 
     it('modName を指定すると、そのmod以外は更新対象にしない', async () => {
         // pen 以外の未 pin 依存を追加しても pen だけが対象になることを、対象外指定で確認する
-        await runUpdate([worldPath, 'other-mod', `--mods-dir=${modsDir}`]);
+        await runUpdate([worldPath, 'other-mod', `--mods-dir=${modsDir}`], silentLogger);
 
         const rewritten = readFileSync(worldPath, 'utf-8');
         expect(rewritten).toMatch(/version: 1\.0\.0/); // pen は対象外なので書き換わらない

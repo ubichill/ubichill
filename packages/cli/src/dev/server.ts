@@ -5,6 +5,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { join, resolve, sep } from 'node:path';
+import { performance } from 'node:perf_hooks';
 import type { Duplex } from 'node:stream';
 import {
     type DevEvent,
@@ -15,6 +16,7 @@ import {
     type ModLock,
     SANDBOX_WORKER_CSP,
 } from '@ubichill/shared';
+import { formatDuration, type Logger, silentLogger } from '@ubichill/terminal';
 import { findGeneration, type Generation, type GenerationState } from './generation.ts';
 import { isRealtimePath, proxyHttp, proxyUpgrade } from './proxy.ts';
 import { contentTypeOf, matchRoute, withDevMeta } from './routes.ts';
@@ -30,6 +32,8 @@ export interface DevServerDeps {
     worldDist: string;
     /** 「部屋を作り直す」ボタン。 */
     onReconfigure: () => void;
+    /** 要求ごとの 1 行（debug）を出す先。 */
+    log?: Logger;
 }
 
 export interface DevServer {
@@ -63,6 +67,10 @@ export function absolutizeLock(lock: ModLock, origin: string): ModLock {
 /** ブラウザが使ったオリジン（Host ヘッダから。TLS は dev サーバーに無い）。 */
 export const requestOrigin = (req: Pick<IncomingMessage, 'headers'>): string =>
     `http://${req.headers.host ?? 'localhost'}`;
+
+/** `GET /mods/... 200`。応答する前に切れた要求は状態の代わりに「切断」。 */
+export const formatRequestLine = (method: string | undefined, url: string | undefined, status: number | undefined) =>
+    `${method ?? '?'} ${url ?? '/'} ${status ?? '切断'}`;
 
 export function createDevServer(deps: DevServerDeps): DevServer {
     const clients = new Set<ServerResponse>();
@@ -164,10 +172,20 @@ export function createDevServer(deps: DevServerDeps): DevServer {
         }
     };
 
+    const log = deps.log ?? silentLogger;
     const server = createServer((req, res) => {
+        const started = performance.now();
+        // 閉じたときに出す（SSE は切れたとき。途中で切られた要求も残す）
+        res.once('close', () =>
+            log.debug(
+                formatRequestLine(req.method, req.url, res.writableFinished ? res.statusCode : undefined),
+                formatDuration(performance.now() - started),
+            ),
+        );
         try {
             handle(req, res);
         } catch (error) {
+            log.error(`${req.method} ${req.url} を処理できません: ${error instanceof Error ? error.message : error}`);
             res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
             res.end(error instanceof Error ? error.message : String(error));
         }
@@ -176,9 +194,11 @@ export function createDevServer(deps: DevServerDeps): DevServer {
         const pathname = new URL(req.url ?? '/', 'http://localhost').pathname;
         const port = deps.goPort();
         if (!isRealtimePath(pathname) || port === undefined) {
+            log.debug(`WS ${pathname} を断りました`, port === undefined ? 'Go が起動し直している' : '中継しない URL');
             socket.destroy();
             return;
         }
+        log.debug(`WS ${pathname} を Go に中継します`);
         upgraded.add(socket);
         socket.on('close', () => upgraded.delete(socket));
         proxyUpgrade(req, socket, head, port);

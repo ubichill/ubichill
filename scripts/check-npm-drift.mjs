@@ -19,7 +19,9 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createTerminal, DEBUG_ENV, debugFromEnv, formatDuration, HintedError, processIO } from '@ubichill/terminal';
 
+const term = createTerminal(processIO(), { debug: debugFromEnv(process.env) });
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 
 function sh(cmd, args, opts = {}) {
@@ -70,27 +72,29 @@ function workspaceNameOf(packageDir) {
 function checkPackage(relativeDir) {
     const packageDir = resolve(repoRoot, relativeDir);
     const workspaceName = workspaceNameOf(packageDir);
+    const log = term.scope(workspaceName, { clock: false });
+    const started = performance.now();
     // @ubichill/shared は dist/ 経由で解決される（package.json の main/exports 参照）ため、
     // ビルド前に必ず再ビルドしないと shared のソース変更が反映されない（これをやらないと shared だけ変えても
     // drift を検出できず、この検査自体が無意味になる）。
-    console.log(`🔨 [${workspaceName}] 現在の HEAD でビルド...`);
+    log.info('現在の HEAD でビルド...');
     sh('pnpm', ['turbo', 'build', '--filter=@ubichill/shared']);
     const publishedName = publishedNameOf(packageDir);
     const tag = latestPublishTag(publishedName);
     if (!tag) {
-        console.log(`ℹ️  [${workspaceName}] publish 済みタグ (${publishedName}@*) が無いためドリフト検査をスキップ（初回 publish 前）`);
+        log.info(`publish 済みタグ (${publishedName}@*) が無いためドリフト検査をスキップ（初回 publish 前）`);
         return;
     }
 
     const tagVersion = tag.replace(`${publishedName}@`, '');
     const { version: currentVersion } = JSON.parse(readFileSync(join(packageDir, 'package.json'), 'utf-8'));
     if (currentVersion !== tagVersion) {
-        console.log(`✅ [${workspaceName}] version は既に更新済み (${tagVersion} → ${currentVersion})。ドリフト検査は不要`);
+        log.success('version は既に更新済み。ドリフト検査は不要', `${tagVersion} → ${currentVersion}`);
         return;
     }
     const currentHash = hashDistNpm(join(packageDir, 'dist-npm'));
 
-    console.log(`🔨 [${workspaceName}] ${tag}（直近 publish 時点）を worktree でビルド...`);
+    log.info(`${tag}（直近 publish 時点）を worktree でビルド...`);
     const worktreeDir = mkdtempSync(join(tmpdir(), 'ubichill-drift-'));
     try {
         sh('git', ['worktree', 'add', '--detach', worktreeDir, tag]);
@@ -99,13 +103,16 @@ function checkPackage(relativeDir) {
         sh('pnpm', ['turbo', 'build', `--filter=${workspaceName}`], { cwd: worktreeDir });
         const publishedHash = hashDistNpm(join(worktreeDir, relativeDir, 'dist-npm'));
         if (currentHash !== publishedHash) {
-            throw new Error(
-                `${workspaceName} のビルド結果が ${tag}（現行公開バージョン ${tagVersion}）と異なりますが、` +
-                    'version は変わっていません。shared/ecs/loader 等の変更がビルド結果に影響した可能性があります。' +
-                    `\`pnpm changeset\` で ${workspaceName} 向けの changeset を追加してください。`,
+            throw new HintedError(
+                `${workspaceName} のビルド結果が ${tag}（現行公開バージョン ${tagVersion}）と異なりますが、version は変わっていません` +
+                    '\nshared/ecs/loader 等の変更がビルド結果に影響した可能性があります',
+                `\`pnpm changeset\` で ${workspaceName} 向けの changeset を追加してください`,
             );
         }
-        console.log(`✅ [${workspaceName}] ビルド結果は ${tag} と一致（変更なし、version 変更は不要）`);
+        log.success(
+            `ビルド結果は ${tag} と一致（変更なし、version 変更は不要）`,
+            formatDuration(performance.now() - started),
+        );
     } finally {
         sh('git', ['worktree', 'remove', '--force', worktreeDir]);
         rmSync(worktreeDir, { recursive: true, force: true });
@@ -114,7 +121,17 @@ function checkPackage(relativeDir) {
 
 const packageDirs = process.argv.slice(2);
 if (packageDirs.length === 0) {
-    console.error('usage: node scripts/check-npm-drift.mjs <packageDir>...');
+    term.failure(
+        new HintedError('No package directory given', 'usage: node scripts/check-npm-drift.mjs <packageDir>...'),
+    );
     process.exit(1);
 }
-for (const dir of packageDirs) checkPackage(dir);
+try {
+    for (const dir of packageDirs) checkPackage(dir);
+} catch (err) {
+    term.failure(
+        err,
+        err instanceof HintedError ? {} : { debugTip: `${DEBUG_ENV}=1 を付けるとスタックトレースを表示します` },
+    );
+    process.exit(1);
+}

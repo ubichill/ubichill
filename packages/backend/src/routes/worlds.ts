@@ -7,6 +7,7 @@ import { optionalAuth, requireAdmin, requireAuth, requirePublisher } from '../mi
 import { selfAccount } from '../services/authorKeys';
 import { bearerToken } from '../services/cliAuth';
 import { worldRegistry } from '../services/worldRegistry';
+import { logger } from '../utils/logger';
 
 const router = Router();
 
@@ -106,7 +107,7 @@ router.post('/reload', requireAuth, requireAdmin, async (_req, res) => {
         const worlds = await worldRegistry.listWorlds('local');
         res.json({ success: true, worldCount: worlds.length });
     } catch (error) {
-        console.error('ワールド再読み込みエラー:', error);
+        logger.error('ワールド再読み込みエラー:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -127,7 +128,7 @@ router.get('/', optionalAuth, async (req, res) => {
         const worlds = await worldRegistry.listWorlds(scope);
         res.json({ worlds });
     } catch (error) {
-        console.error('ワールド一覧取得エラー:', error);
+        logger.error('ワールド一覧取得エラー:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -154,7 +155,7 @@ router.get('/resolve', optionalAuth, async (req, res) => {
         res.set('Cache-Control', 'no-store');
         res.json(result.world);
     } catch (error) {
-        console.error(`外部ワールド取得エラー: ${url}`, error);
+        logger.error(`外部ワールド取得エラー: ${url}`, error);
         res.status(400).json({ error: '外部ワールドを取得できませんでした' });
     }
 });
@@ -174,7 +175,7 @@ router.put('/order', requireAuth, requireAdmin, async (req, res) => {
         await worldRegistry.reorderWorlds(order);
         res.json({ success: true });
     } catch (error) {
-        console.error('ワールド並べ替えエラー:', error);
+        logger.error('ワールド並べ替えエラー:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -194,7 +195,7 @@ router.post('/:worldId/reload', requireAuth, requireAdmin, async (req, res) => {
         const world = await worldRegistry.getWorld(worldId);
         res.json({ success: true, world: world ? { id: world.id, version: world.version } : null });
     } catch (error) {
-        console.error('ワールド再読み込みエラー:', error);
+        logger.error('ワールド再読み込みエラー:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -216,7 +217,7 @@ router.get('/:worldId', optionalAuth, async (req, res) => {
         }
         res.json(resolution.world);
     } catch (error) {
-        console.error('ワールド取得エラー:', error);
+        logger.error('ワールド取得エラー:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -241,7 +242,7 @@ router.get('/:worldId/versions', optionalAuth, async (req, res) => {
         }
         res.json(resolution.world);
     } catch (error) {
-        console.error('ワールドの版の取得エラー:', error);
+        logger.error('ワールドの版の取得エラー:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -296,7 +297,7 @@ router.put('/', requireSaver, async (req, res) => {
         await markEnvironmentUsed(claim);
         res.json({ id: result.world.id, url: result.world.url, saved: result.saved, identity: result.world.identity });
     } catch (error) {
-        console.error('ワールド保存エラー:', error);
+        logger.error('ワールド保存エラー:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -324,7 +325,7 @@ router.get('/:worldId/definition', requireAuth, async (req, res) => {
         }
         res.json(await worldRegistry.getEditorDefinition(worldId));
     } catch (error) {
-        console.error('ワールド定義取得エラー:', error);
+        logger.error('ワールド定義取得エラー:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -364,7 +365,7 @@ router.delete('/:worldId', requireAuth, async (req, res) => {
 
         res.status(204).send();
     } catch (error) {
-        console.error('ワールド削除エラー:', error);
+        logger.error('ワールド削除エラー:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

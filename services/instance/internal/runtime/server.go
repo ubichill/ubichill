@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -199,6 +200,7 @@ func (s *Server) provision(d Definition, want expectation) (*Room, error) {
 		s.discard(ctx, r, true)
 		return nil, errDirectoryUnavailable
 	}
+	slog.Debug("opened the room", "room", d.ID, "epoch", a.Epoch)
 	return r, nil
 }
 func (s *Server) room(id string) *Room { s.mu.RLock(); defer s.mu.RUnlock(); return s.rooms[id] }
@@ -544,6 +546,7 @@ func (s *Server) closeInstance(ctx context.Context, id, emptyBefore string, want
 		delete(s.rooms, id)
 	}
 	s.mu.Unlock()
+	slog.Debug("closed the room", "room", id)
 	return 204, nil
 }
 

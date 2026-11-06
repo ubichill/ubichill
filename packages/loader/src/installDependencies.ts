@@ -21,6 +21,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { type ModLockEntry, ModLockEntrySchema, requiredLockModIds, WorldDefinitionSchema } from '@ubichill/shared';
+import type { Logger } from '@ubichill/terminal';
 import yaml from 'yaml';
 import {
     buildWorldLock,
@@ -64,10 +65,9 @@ function createFsLockEntryGetter(modsDir: string): LockEntryGetter {
  *
  * `--check`: ファイルを書き換えず、現在の mod ビルドから再計算したロックと既存ファイルを
  * 比較するだけ（CI 用の drift 検出）。不一致 or ファイル不在なら `process.exitCode = 1` にして返す
- * （throw すると CLI 側の `❌` プレフィックス付きスタックトレースになり、CI ログとしては
- * ノイズになるため、意図した「検証失敗」はここで exitCode だけ立てて素直に終える）。
+ * （意図した「検証失敗」は例外にせず、理由と直し方を出して exitCode だけ立てて終える）。
  */
-export async function runInstall(argv: string[]): Promise<void> {
+export async function runInstall(argv: string[], log: Logger): Promise<void> {
     const worldPath = argv.find((a) => !a.startsWith('--'));
     if (!worldPath) {
         throw new Error(
@@ -101,10 +101,9 @@ export async function runInstall(argv: string[]): Promise<void> {
             : argv.some((a) => a.startsWith('--mods-dir='))
               ? `--mods-dir=${modsDir}`
               : '既定の ./mods';
-        console.error(
-            `❌ lock を取得できない mod: ${missing.join(', ')}。` +
-                `外部 mod は world.yaml の dependencies[].source.url を指定してください` +
-                `（現在の fallback: ${fallbackHint}）。`,
+        log.error(
+            `lock を取得できない mod: ${missing.join(', ')}\n` +
+                `外部 mod は world.yaml の dependencies[].source.url を指定してください（今の fallback: ${fallbackHint}）`,
         );
         process.exitCode = 1;
         return;
@@ -113,17 +112,17 @@ export async function runInstall(argv: string[]): Promise<void> {
     if (argv.includes('--check')) {
         const current = existsSync(outPath) ? readFileSync(outPath, 'utf-8') : null;
         if (current !== nextJson) {
-            console.error(
-                `❌ ${outPath} が現在の mod ビルドと一致しません（陳腐化 or 未生成）。` +
-                    `\`node packages/cli/src/index.ts install ${worldPath} --mods-dir=${modsDir}\` で再生成してください。`,
+            log.error(
+                `${outPath} が今の mod のビルドと一致しません（古いか、まだ作っていない）\n` +
+                    `ubichill install ${worldPath} --mods-dir=${modsDir} で作り直してください`,
             );
             process.exitCode = 1;
             return;
         }
-        console.log(`✅ ${outPath} は現在の mod ビルドと一致しています (${lockedIds.length}/${modIds.length} mods)`);
+        log.success(`${outPath} は今の mod のビルドと一致しています`, `mod ${lockedIds.length}/${modIds.length}`);
         return;
     }
 
     writeFileSync(outPath, nextJson, 'utf-8');
-    console.log(`🔒 ${outPath} (${lockedIds.length}/${modIds.length} mods)`);
+    log.success(`${outPath} に mod を固定しました`, `mod ${lockedIds.length}/${modIds.length}`);
 }

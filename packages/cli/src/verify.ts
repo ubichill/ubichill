@@ -12,6 +12,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { webWorldCrypto } from '@ubichill/loader';
 import { MOD_SIGNATURE_FILE, ModLockEntrySchema, verifyModSignature } from '@ubichill/shared';
+import type { Logger } from '@ubichill/terminal';
 import { listDirsOnDisk, type ModVersionDir, modVersionDirs } from './modLayout.ts';
 
 function sriOf(buffer: Buffer): string {
@@ -111,7 +112,7 @@ export async function verifyAllModSignatures(distDir: string, requireSignatures:
  * `--dist-dir=` 既定は `<cwd>/dist/mods`。`--require-signatures` で署名の無い mod も不合格にする。
  * エラーがあれば throw（fail-closed）。
  */
-export async function runVerify(argv: string[]): Promise<void> {
+export async function runVerify(argv: string[], log: Logger): Promise<void> {
     const distDirArg = argv.find((a) => a.startsWith('--dist-dir='))?.slice('--dist-dir='.length);
     const distDir = distDirArg ? resolve(distDirArg) : join(process.cwd(), 'dist', 'mods');
 
@@ -120,5 +121,5 @@ export async function runVerify(argv: string[]): Promise<void> {
     if (errors.length > 0) {
         throw new Error(`mod lock 検証失敗 (${errors.length} 件):\n${errors.map((e) => `  - ${e}`).join('\n')}`);
     }
-    console.log(`✅ mod lock 検証OK (${distDir}${requireSignatures ? '、署名あり' : ''})`);
+    log.success('mod の lock が配布物と一致しています', `${distDir}${requireSignatures ? '  署名あり' : ''}`);
 }

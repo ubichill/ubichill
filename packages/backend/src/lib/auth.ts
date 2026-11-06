@@ -44,13 +44,13 @@ const MAIL_FROM = process.env.MAIL_FROM ?? 'Ubichill <onboarding@resend.dev>';
  */
 export async function sendAccountNotice(to: string, subject: string, text: string): Promise<void> {
     if (process.env.SKIP_EMAIL_VERIFICATION === 'true' || !process.env.RESEND_API_KEY) {
-        console.log(`📧 通知（送信しない環境）: ${subject}`);
+        logger.info(`通知（送信しない環境）: ${subject}`);
         return;
     }
     try {
         await getResend().emails.send({ from: MAIL_FROM, to, subject: `【Ubichill】${subject}`, text });
     } catch (error) {
-        console.error(`❌ 通知メールの送信に失敗しました: ${subject}`, error);
+        logger.error(`通知メールの送信に失敗しました: ${subject}`, error);
     }
 }
 
@@ -61,6 +61,9 @@ export function generateOTP(): string {
 
 // 環境変数でメール確認を無効化できるようにする
 const SKIP_EMAIL_VERIFICATION = process.env.SKIP_EMAIL_VERIFICATION === 'true';
+
+// 本番環境ではOTPの値をログに出さない（セキュリティリスク）
+const otpForLog = (otp: string): string => (process.env.NODE_ENV === 'development' ? otp : '[REDACTED]');
 
 // 仮登録を作成してOTPを送信
 export async function createPendingRegistration(
@@ -108,7 +111,6 @@ export async function createPendingRegistration(
 
     // メール確認をスキップする場合は直接登録
     if (SKIP_EMAIL_VERIFICATION) {
-        console.log(`⚠️ メール確認をスキップして直接登録: ${email}`);
         try {
             await userRepository.createCredentialUser({
                 userId: newBetterAuthId(ctx, 'user'),
@@ -121,10 +123,10 @@ export async function createPendingRegistration(
                 now: new Date(),
             });
 
-            console.log(`✅ ユーザー登録完了（メール確認スキップ）: ${email}`);
+            logger.info(`ユーザー登録完了（メール確認スキップ）: ${email}`);
             return { success: true, skipVerification: true };
         } catch (error) {
-            console.error('Registration error:', error);
+            logger.error(`登録に失敗しました（メール確認スキップ）: ${email}`, error);
             return { success: false, error: '登録に失敗しました' };
         }
     }
@@ -145,13 +147,7 @@ export async function createPendingRegistration(
     const { id: registrationId, otp } = pending;
 
     // OTPをメールで送信
-    console.log(`📧 OTP送信: ${email}`);
-    if (process.env.NODE_ENV === 'development') {
-        console.log(`   OTP: ${otp}`);
-    } else {
-        // 本番環境ではOTPの値をログに出さない（セキュリティリスク）
-        console.log('   OTP: [REDACTED]');
-    }
+    logger.info(`OTP送信: ${email} OTP=${otpForLog(otp)}`);
     try {
         const result = await getResend().emails.send({
             from: MAIL_FROM,
@@ -169,12 +165,12 @@ ${otp}
 このメールは ${email} 宛に送信されました。
 心当たりがない場合は、このメールを無視してください。`,
         });
-        console.log(`   ✅ OTP送信成功:`, result);
+        logger.info(`OTP送信成功: ${email}`, result);
         return { success: true, registrationId };
     } catch (error) {
-        console.error(`   ❌ OTP送信失敗:`, error);
+        logger.error(`OTP送信失敗: ${email}`, error);
         await pendingRegistrations.remove(registrationId).catch((err: unknown) => {
-            console.error('仮登録の取り消しに失敗:', err);
+            logger.error('仮登録の取り消しに失敗:', err);
         });
         return { success: false, error: 'メールの送信に失敗しました' };
     }
@@ -194,11 +190,11 @@ export async function verifyAndRegister(
     otp: string,
 ): Promise<{ success: boolean; error?: string }> {
     const outcome = await (await getPendingRegistrations()).verify(registrationId, otp);
-    if (outcome.status === 'register-failed') console.error('Registration error:', outcome.error);
+    if (outcome.status === 'register-failed') logger.error('Registration error:', outcome.error);
     if (outcome.status !== 'verified') {
         return { success: false, error: VERIFY_ERRORS[outcome.status] };
     }
-    console.log(`✅ ユーザー登録完了: ${outcome.email}`);
+    logger.info(`ユーザー登録完了: ${outcome.email}`);
     return { success: true };
 }
 
@@ -212,13 +208,7 @@ export async function resendOTP(registrationId: string): Promise<{ success: bool
 
     const { email, otp } = pending;
 
-    console.log(`📧 OTP再送信: ${email}`);
-    if (process.env.NODE_ENV === 'development') {
-        console.log(`   OTP: ${otp}`);
-    } else {
-        // 本番環境ではOTPの値をログに出さない（セキュリティリスク）
-        console.log('   OTP: [REDACTED]');
-    }
+    logger.info(`OTP再送信: ${email} OTP=${otpForLog(otp)}`);
     try {
         await getResend().emails.send({
             from: MAIL_FROM,
@@ -238,17 +228,21 @@ ${otp}
         });
         return { success: true };
     } catch (error) {
-        console.error(`   ❌ OTP再送信失敗:`, error);
+        logger.error(`OTP再送信失敗: ${email}`, error);
         return { success: false, error: 'メールの送信に失敗しました' };
     }
 }
 
-// デバッグ: 起動時に設定を確認
-console.log('🔐 Better Auth 初期化中...');
-console.log(`   RESEND_API_KEY: ${process.env.RESEND_API_KEY ? '設定済み' : '❌ 未設定'}`);
-console.log(`   BETTER_AUTH_URL: ${process.env.BETTER_AUTH_URL || 'http://localhost:3001'}`);
-console.log(`   CORS_ORIGIN: ${process.env.CORS_ORIGIN || 'http://localhost:3000'}`);
-console.log(`   SKIP_EMAIL_VERIFICATION: ${SKIP_EMAIL_VERIFICATION ? '✅ 有効（メール確認スキップ）' : '無効'}`);
+// デバッグ: 起動時に設定を確認（同じ値は config の要約にも出る）
+logger.debug(
+    [
+        'Better Auth 初期化中',
+        `RESEND_API_KEY=${process.env.RESEND_API_KEY ? '設定済み' : '未設定'}`,
+        `BETTER_AUTH_URL=${process.env.BETTER_AUTH_URL || 'http://localhost:3001'}`,
+        `CORS_ORIGIN=${process.env.CORS_ORIGIN || 'http://localhost:3000'}`,
+        `SKIP_EMAIL_VERIFICATION=${SKIP_EMAIL_VERIFICATION ? '有効' : '無効'}`,
+    ].join(' '),
+);
 
 /** better-auth のレート制限を有効にするか。 */
 export const authRateLimitEnabled = appConfig.isProduction;

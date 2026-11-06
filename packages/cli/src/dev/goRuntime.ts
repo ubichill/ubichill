@@ -1,11 +1,17 @@
 /**
  * dev サーバーが子プロセスで起動する Go のインスタンスサーバー。127.0.0.1 の空きポートで `--guests` で動かし、
  * 管理 API（部屋の作成・削除）は起動ごとに作る乱数のトークンで呼ぶ。終了するときは自分が起動した PID だけを止める。
+ * Go のログ（JSON の行）は goLog.ts で `[instance]` の行にする。
  */
 import { type ChildProcess, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
+import { performance } from 'node:perf_hooks';
+import { createInterface } from 'node:readline';
+import type { Readable } from 'node:stream';
 import type { InstanceDefinition } from '@ubichill/shared';
+import { formatDuration, type Logger, silentLogger } from '@ubichill/terminal';
+import { goArgs, parseGoLogLine, reportGoLine, shouldShowGoLine } from './goLog.ts';
 
 export interface GoAdmin {
     /** 部屋を作る。Go が拒否したら ok: false と理由。 */
@@ -27,7 +33,10 @@ export interface StartGoOptions {
     onExit?: (code: number | null) => void;
     /** 中止したら、起動の途中でも子プロセスを止めて（終わるまで待って）reject する。 */
     signal?: AbortSignal;
-    log?: (line: string) => void;
+    /** `[instance]` の行を出す先。 */
+    log?: Logger;
+    /** Go の info・debug のログも出す。 */
+    debug?: boolean;
     fetchImpl?: typeof fetch;
     /** 子プロセスを作った直後に呼ぶ（起動の途中のものも、node が落ちるときに止められるように）。 */
     onSpawn?: (child: ChildProcess) => void;
@@ -90,22 +99,31 @@ async function waitForHealth(
     throw new Error('Go のインスタンスサーバーが 15 秒以内に起動しませんでした');
 }
 
+/** 子プロセスの出力を行ごとに読む（チャンクの境目で JSON の行や UTF-8 の文字が切れても 1 行にまとまる）。 */
+function forEachLine(stream: Readable | null, onLine: (line: string) => void): void {
+    if (stream) createInterface({ input: stream, crlfDelay: Number.POSITIVE_INFINITY }).on('line', onLine);
+}
+
 export async function startGo(options: StartGoOptions): Promise<GoRuntime> {
+    const started = performance.now();
     const port = await freePort();
     const token = randomBytes(32).toString('hex');
     const base = `http://127.0.0.1:${port}`;
     const fetchImpl = options.fetchImpl ?? fetch;
     if (options.signal?.aborted) throw new Error('Go のインスタンスサーバーの起動を中止しました');
-    const child = spawn(
-        options.binary,
-        ['--guests', `--listen=127.0.0.1:${port}`, `--origins=${options.origins.join(',')}`],
-        { env: { ...process.env, INSTANCE_ADMIN_TOKEN: token }, stdio: ['ignore', 'pipe', 'pipe'] },
-    );
+    const debug = options.debug ?? false;
+    const args = goArgs({ port, origins: options.origins, debug });
+    const log = options.log ?? silentLogger;
+    log.debug(`Go を起動します: ${options.binary}`, args.join(' '));
+    const child = spawn(options.binary, args, {
+        env: { ...process.env, INSTANCE_ADMIN_TOKEN: token },
+        stdio: ['ignore', 'pipe', 'pipe'],
+    });
     options.onSpawn?.(child);
-    const log = options.log ?? ((line) => console.log(line));
     for (const stream of [child.stdout, child.stderr]) {
-        stream?.on('data', (chunk: Buffer) => {
-            for (const line of chunk.toString().split('\n')) if (line.trim()) log(`[instance] ${line}`);
+        forEachLine(stream, (text) => {
+            const line = parseGoLogLine(text);
+            if (line && shouldShowGoLine(line, debug)) reportGoLine(line, log);
         });
     }
     const exited = new Promise<void>((resolve) => {
@@ -131,6 +149,7 @@ export async function startGo(options: StartGoOptions): Promise<GoRuntime> {
         await stop();
         throw error;
     }
+    log.debug(`Go が応答しました: ${base}`, `pid ${child.pid}  ${formatDuration(performance.now() - started)}`);
     return { port, ...createGoAdmin(base, token, fetchImpl), stop };
 }
 
@@ -157,7 +176,7 @@ export function superviseGo(
     },
 ): GoSupervisor {
     const controller = new AbortController();
-    const log = options.log ?? ((line) => console.log(line));
+    const log = options.log ?? silentLogger;
     const children = new Set<ChildProcess>();
     const track = (child: ChildProcess) => {
         children.add(child);
@@ -173,13 +192,16 @@ export function superviseGo(
             onExit: (code) => {
                 state.current = undefined;
                 if (controller.signal.aborted) return;
-                log(`⚠️  Go のインスタンスサーバーが終了しました (exit ${code})。起動し直します`);
+                log.warn(`Go のインスタンスサーバーが終了しました (exit ${code})。起動し直します`);
                 launch()
-                    .then(() => options.onRestarted?.())
+                    .then(() => {
+                        log.success('Go のインスタンスサーバーを起動し直しました');
+                        options.onRestarted?.();
+                    })
                     .catch((error: unknown) => {
                         if (!controller.signal.aborted)
-                            log(
-                                `❌ Go のインスタンスサーバーを起動し直せません: ${error instanceof Error ? error.message : error}`,
+                            log.error(
+                                `Go のインスタンスサーバーを起動し直せません: ${error instanceof Error ? error.message : error}`,
                             );
                     });
             },

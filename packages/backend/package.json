@@ -34,6 +34,7 @@
         "@redis/client": "^6.3.1",
         "@ubichill/db": "workspace:*",
         "@ubichill/shared": "workspace:*",
+        "@ubichill/terminal": "workspace:*",
         "bcryptjs": "^3.0.3",
         "better-auth": "catalog:",
         "cors": "^2.8.6",

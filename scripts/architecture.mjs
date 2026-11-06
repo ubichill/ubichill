@@ -28,6 +28,19 @@ export function importedModules(source) {
 
 const isTest = (path) => /\.(test|spec)\.[cm]?[jt]sx?$/.test(path) || path.includes('/test/');
 
+/** ブラウザで動くパッケージのソース（loader は既定の入口だけがブラウザ向けなので別に扱う）。 */
+const BROWSER_SOURCES = [
+    'packages/frontend/src/',
+    'packages/sandbox/src/',
+    'packages/react/src/',
+    'packages/ui-renderer/src/',
+    'packages/sdk/src/',
+    'packages/ecs/src/',
+    'packages/shared/src/',
+    'packages/core-components/src/',
+    'packages/runtime/src/',
+];
+
 /**
  * 規則の一覧。`applies` で対象のファイルを決め、`check` が違反の説明を返す（無ければ空）。
  * @param {{ loaderNodeOnly: ReadonlySet<string> }} context
@@ -88,6 +101,27 @@ export function architectureRules(context) {
                 importedModules(source)
                     .filter((m) => /^@ubichill\/(frontend|react|sandbox|loader|ui-renderer|sdk)(\/|$)/.test(m))
                     .map((m) => `${m} に依存しています`),
+        },
+        {
+            id: 'terminal-is-zero-dependency',
+            why: '@ubichill/terminal は CLI のバンドル・node で直接動かす scripts（型を剥がして読む）・backend（ビルドしたもの）の全部が読む。node: と自分のファイル（拡張子 .ts 付き）だけに依存する',
+            applies: (path) => path.startsWith('packages/terminal/src/') && !isTest(path),
+            check: (source) =>
+                importedModules(source)
+                    .filter((m) => !m.startsWith('node:') && !/^\.\.?\/.*\.ts$/.test(m))
+                    .map((m) => `${m} を読み込んでいます（node: か、拡張子 .ts 付きの相対パスだけにする）`),
+        },
+        {
+            id: 'terminal-is-node-only',
+            why: '@ubichill/terminal は端末（Node の stdout・process）への出力。ブラウザで動くコードから読まない',
+            applies: (path) =>
+                !isTest(path) &&
+                (BROWSER_SOURCES.some((prefix) => path.startsWith(prefix)) ||
+                    (path.startsWith('packages/loader/src/') && !context.loaderNodeOnly.has(path))),
+            check: (source) =>
+                importedModules(source)
+                    .filter((m) => m === '@ubichill/terminal')
+                    .map((m) => `${m} を読み込んでいます（Node 専用）`),
         },
         {
             id: 'signatures-in-one-place',

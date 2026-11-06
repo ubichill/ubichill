@@ -33,6 +33,7 @@ import {
     WorldSourceKind,
 } from '@ubichill/shared';
 import yaml from 'yaml';
+import { logger } from '../utils/logger';
 import { isAuthorKey, resolveAuthorDisplayName } from './authorKeyStore';
 import { selfDomain } from './authorKeys';
 import { type BackendEvents, backendEvents } from './backendEvents';
@@ -219,7 +220,7 @@ class WorldRegistry {
                 resolveAuthorName: resolveAuthorDisplayName,
             }),
         isIntegrityError: (err): err is WorldIntegrityError => err instanceof WorldIntegrityError,
-        onFailure: (url, err) => console.error(`❌ 外部ワールド解決失敗: ${url}`, err),
+        onFailure: (url, err) => logger.error(`外部ワールド解決失敗: ${url}`, err),
         ttlMs: WorldRegistry.REMOTE_TTL_MS,
         ttlFor: (world) =>
             world.identity?.status === 'verified' && world.identity.authorPending
@@ -286,15 +287,15 @@ class WorldRegistry {
 
     async initialize(): Promise<void> {
         if (process.env.NODE_ENV === 'production' && !process.env[ENV_KEYS.PUBLIC_BASE_URL]) {
-            console.warn(
-                `⚠ ${ENV_KEYS.PUBLIC_BASE_URL} が未設定です。ワールドの正規 URL が ${SERVER_CONFIG.DEV_URL} になり連合が壊れます。`,
+            logger.warn(
+                `${ENV_KEYS.PUBLIC_BASE_URL} が未設定です。ワールドの正規 URL が ${SERVER_CONFIG.DEV_URL} になり連合が壊れます。`,
             );
         }
         await userRepository.ensureSystemUser(SYSTEM_AUTHOR_ID);
         await this._scanLocal();
         this._startWatcher();
         await this._loadPeers();
-        console.log('👤 システムユーザーを確認しました');
+        logger.info('システムユーザーを確認しました');
     }
 
     /** フォロー中の連合ピアを DB から読み込む。環境変数 WORLDS_FEDERATION_PEERS からの新規追加も行う。 */
@@ -310,9 +311,9 @@ class WorldRegistry {
                 try {
                     const peer = await federationPeerRepository.create({ baseUrl });
                     this._peers.push(peer);
-                    console.log(`🌐 連合ピアを追加: ${baseUrl}`);
+                    logger.info(`連合ピアを追加: ${baseUrl}`);
                 } catch (err) {
-                    console.warn(`⚠ 連合ピア追加失敗 (${baseUrl}):`, err);
+                    logger.warn(`連合ピア追加失敗 (${baseUrl}):`, err);
                 }
             }
         }
@@ -365,7 +366,7 @@ class WorldRegistry {
      */
     private async _listGlobalWorlds(): Promise<WorldListItem[]> {
         if (Date.now() - this._peersLoadedAt >= WorldRegistry.PEER_LIST_TTL_MS) {
-            await this._reloadPeers().catch((err: unknown) => console.warn('⚠ 連合ピアを読み直せません:', err));
+            await this._reloadPeers().catch((err: unknown) => logger.warn('連合ピアを読み直せません:', err));
         }
         const results = await Promise.allSettled(this._peers.map((peer) => this._fetchPeerWorlds(peer)));
         const candidates = federatedCandidates(
@@ -397,7 +398,7 @@ class WorldRegistry {
                 signal: AbortSignal.timeout(5000),
             });
             if (!res.ok) {
-                console.warn(`⚠ ピア ${peer.baseUrl} からの一覧取得失敗: HTTP ${res.status}`);
+                logger.warn(`ピア ${peer.baseUrl} からの一覧取得失敗: HTTP ${res.status}`);
                 return cached?.worlds ?? [];
             }
             const data = (await res.json()) as { worlds?: WorldListItem[] };
@@ -409,7 +410,7 @@ class WorldRegistry {
             this._peerWorldCache.set(peer.baseUrl, { at: Date.now(), worlds });
             return worlds;
         } catch (err) {
-            console.warn(`⚠ ピア ${peer.baseUrl} との通信失敗:`, err);
+            logger.warn(`ピア ${peer.baseUrl} との通信失敗:`, err);
             return cached?.worlds ?? [];
         }
     }
@@ -800,7 +801,7 @@ class WorldRegistry {
         await worldRepository
             .pruneVersions(worldId, limitsFor({ id: authorId }).maxVersionsPerWorld)
             .catch((err: unknown) =>
-                console.warn(`⚠ ワールド ${worldId} の古い版を消せませんでした（あとで消し直す）`, err),
+                logger.warn(`ワールド ${worldId} の古い版を消せませんでした（あとで消し直す）`, err),
             );
     }
 
@@ -849,7 +850,7 @@ class WorldRegistry {
     private async _reloadWorldsHere(): Promise<void> {
         this._resolvedCache.clear();
         await this._scanLocal();
-        console.log('✅ ワールド定義を全件再読み込みしました');
+        logger.info('ワールド定義を全件再読み込みしました');
     }
 
     /** 特定ワールドのみリロード（API から呼ばれる）。ほかの backend にも読み直させる。 */
@@ -897,8 +898,8 @@ class WorldRegistry {
         nextOrder.sort((a, b) => (prev.get(a) ?? 999) - (prev.get(b) ?? 999));
         this._order = nextOrder;
         const served = (await Promise.all(nextOrder.map((id) => this.getWorld(id)))).filter(Boolean).length;
-        console.log(
-            `📋 worlds/ の ${nextOrder.length} ワールドのうち ${served} 個を配ります（ほかのサーバーの作者のものは配らない）`,
+        logger.info(
+            `worlds/ の ${nextOrder.length} ワールドのうち ${served} 個を配ります（ほかのサーバーの作者のものは配らない）`,
         );
     }
 
@@ -918,7 +919,7 @@ class WorldRegistry {
             this._resolvedCache.delete(name);
             return name;
         } catch (err) {
-            console.error(`❌ リポジトリのワールドを読み込めません（配信しません）: ${filePath}`, err);
+            logger.error(`リポジトリのワールドを読み込めません（配信しません）: ${filePath}`, err);
             return undefined;
         }
     }
@@ -946,7 +947,7 @@ class WorldRegistry {
         if (!author) return NOT_FOUND;
         const resolution = await this._verify(id, this.selfWorldUrl(claimed.handle, id), hosted, author.id);
         if (resolution.ok && !isOwnAuthor(resolution.world.identity)) {
-            console.warn(`↪ リポジトリのワールド ${id} は作者（@${claimed.handle}）の鍵を確かめられないため配りません`);
+            logger.warn(`リポジトリのワールド ${id} は作者（@${claimed.handle}）の鍵を確かめられないため配りません`);
             return NOT_FOUND;
         }
         return resolution;
@@ -1015,7 +1016,7 @@ class WorldRegistry {
                 }, 300),
             );
         });
-        console.log('👁  worlds/ の YAML / lock / sig を監視中（変更時に自動リロード）');
+        logger.info('worlds/ の YAML / lock / sig を監視中（変更時に自動リロード）');
     }
 
     private async _onYamlChanged(filename: string): Promise<void> {
@@ -1028,7 +1029,7 @@ class WorldRegistry {
                 this._repository.delete(id);
                 this._resolvedCache.delete(id);
                 this._order = this._order.filter((n) => n !== id);
-                console.log(`🗑  ワールド削除を検知: ${id}`);
+                logger.info(`ワールド削除を検知: ${id}`);
             }
             return;
         }
@@ -1037,10 +1038,10 @@ class WorldRegistry {
         if (!id) return;
         if (!this._order.includes(id)) this._order.push(id);
         const resolved = await this.getWorld(id);
-        console.log(
+        logger.info(
             resolved
-                ? `✅ ワールド自動リロード: ${id} (v${resolved.version})`
-                : `↪ ${id} は作者を確かめられないか、ほかのサーバーの作者のため配りません`,
+                ? `ワールド自動リロード: ${id} (v${resolved.version})`
+                : `${id} は作者を確かめられないか、ほかのサーバーの作者のため配りません`,
         );
     }
 
@@ -1083,7 +1084,7 @@ class WorldRegistry {
             return { ok: true, world: { ...resolved, id } };
         } catch (err) {
             if (err instanceof WorldIntegrityError) {
-                console.warn(`⚠ ワールド ${id} の署名が内容と一致しないため配信しません（${err.reason}）`);
+                logger.warn(`ワールド ${id} の署名が内容と一致しないため配信しません（${err.reason}）`);
                 return {
                     ok: false,
                     reason: 'integrity',
@@ -1091,7 +1092,7 @@ class WorldRegistry {
                     signatureReason: err.reason,
                 };
             }
-            console.error(`❌ ワールド ${id} を読み込めません（配信しません）`, err);
+            logger.error(`ワールド ${id} を読み込めません（配信しません）`, err);
             return { ok: false, reason: 'integrity', message: 'ワールドの定義を読み込めないため配信していません' };
         }
     }

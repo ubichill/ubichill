@@ -7,9 +7,18 @@
  * 使い方: node build.mjs [--out-dir=dist-npm]（cwd は packages/cli/ 前提）
  */
 import * as esbuild from 'esbuild';
-import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { copyFileSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+    createTerminal,
+    DEBUG_ENV,
+    debugFromEnv,
+    formatBytes,
+    formatDuration,
+    HintedError,
+    processIO,
+} from '@ubichill/terminal';
 import { INSTANCE_PLATFORMS, instancePackageName } from './src/instancePlatforms.ts';
 import { WORLD_DIST_DIR, worldDistFiles } from './worldDist.mjs';
 
@@ -85,32 +94,42 @@ export function copyWorldDist(outWorldDir, distDir = WORLD_DIST_DIR) {
         mkdirSync(dirname(target), { recursive: true });
         copyFileSync(join(distDir, file), target);
     }
-    console.log(`✅ world/ (${files.length} files)`);
     return files;
 }
 
-async function main() {
-    console.log('🔨 Building @ubichill/cli (npm publish package)...');
+async function main(term) {
+    const started = performance.now();
+    term.info('Building @ubichill/cli (npm publish package)...');
     // 前のビルドの残りを配らない（files は dist-npm の中身をそのまま載せる）
     rmSync(outDir, { recursive: true, force: true });
     mkdirSync(outDir, { recursive: true });
 
     const cliJs = await buildCliJs();
     writeFileSync(join(outDir, 'cli.js'), cliJs, { encoding: 'utf-8', mode: 0o755 });
-    console.log(`✅ cli.js (${cliJs.length} bytes)`);
+    term.success('cli.js', `${formatBytes(Buffer.byteLength(cliJs))}  ${formatDuration(performance.now() - started)}`);
 
-    copyWorldDist(join(outDir, 'world'));
+    const worldDir = join(outDir, 'world');
+    const worldFiles = copyWorldDist(worldDir);
+    const worldBytes = worldFiles.reduce((sum, file) => sum + statSync(join(worldDir, file)).size, 0);
+    term.success('world/', `${worldFiles.length} files  ${formatBytes(worldBytes)}`);
 
     writeFileSync(join(outDir, 'package.json'), buildPackageJson(), 'utf-8');
     copyFileSync(join(cliDir, 'LICENSE'), join(outDir, 'LICENSE'));
     copyFileSync(join(cliDir, 'README.md'), join(outDir, 'README.md'));
-    console.log(`📦 ${outDir}`);
+    term.success(
+        `CLI publish package built in ${formatDuration(performance.now() - started)}`,
+        relative(process.cwd(), outDir) || '.',
+    );
 }
 
 const isMain = process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1];
 if (isMain) {
-    main().catch((err) => {
-        console.error('❌ CLI build failed:', err);
+    const term = createTerminal(processIO(), { debug: debugFromEnv(process.env) });
+    main(term).catch((err) => {
+        term.failure(
+            err,
+            err instanceof HintedError ? {} : { debugTip: `${DEBUG_ENV}=1 を付けるとスタックトレースを表示します` },
+        );
         process.exit(1);
     });
 }
