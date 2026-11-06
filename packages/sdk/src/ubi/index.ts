@@ -6,6 +6,7 @@ import { CommandType, normalizeFetchLimits } from '@ubichill/shared/mod/protocol
 import type {
     FetchOptions,
     FetchResult,
+    InputFrameEvent,
     ModGuestCommand,
     ModHostEvent,
     ModWorkerMessage,
@@ -78,18 +79,8 @@ export type UbiFetchOptions = FetchOptions & {
 /** Host の制限時間が先に切れて FETCH_TIMEOUT の結果が届くよう、SDK 側はこれだけ長く待つ。 */
 const FETCH_RPC_GRACE_MS = 5_000;
 
-/** EVT_INPUT の type 文字列マッピング（毎フレーム再生成を回避） */
-const INPUT_TYPE_MAP: Readonly<Record<string, string>> = {
-    MOUSE_MOVE: EcsEventType.INPUT_MOUSE_MOVE,
-    MOUSE_DOWN: EcsEventType.INPUT_MOUSE_DOWN,
-    MOUSE_UP: EcsEventType.INPUT_MOUSE_UP,
-    KEY_DOWN: EcsEventType.INPUT_KEY_DOWN,
-    KEY_UP: EcsEventType.INPUT_KEY_UP,
-    CONTEXT_MENU: EcsEventType.INPUT_CONTEXT_MENU,
-    SCROLL: EcsEventType.INPUT_SCROLL,
-    RESIZE: EcsEventType.INPUT_RESIZE,
-    CURSOR_STYLE: EcsEventType.INPUT_CURSOR_STYLE,
-};
+/** EVT_INPUT の type（`MOUSE_MOVE` 等）→ ECS のイベント名（`input:mouse_move` 等）。 */
+const toEcsInputType = (type: InputFrameEvent['type']): string => EcsEventType[`INPUT_${type}`];
 
 type PendingRequest = {
     resolve: (data: unknown) => void;
@@ -115,8 +106,12 @@ type PendingRequest = {
  *   Ubi.log(msg, level)
  */
 export class UbiSDK {
+    // static フィールドにしない: es2020 への変換でクラス外の `__publicField(UbiSDK, ...)` 呼び出しになり、
+    // npm 版を使う mod のバンドルから UbiSDK 全体が消えなくなる（#222）
     /** fetch はドメイン初回承認でユーザー応答待ちになるため長めのタイムアウトにする（既定値）。 */
-    static readonly FETCH_RPC_TIMEOUT_MS = normalizeFetchLimits().timeoutMs + FETCH_RPC_GRACE_MS;
+    static get FETCH_RPC_TIMEOUT_MS(): number {
+        return normalizeFetchLimits().timeoutMs + FETCH_RPC_GRACE_MS;
+    }
 
     // ── RPC ──────────────────────────────────────────────────
     private _commandCounter = 0;
@@ -539,7 +534,7 @@ export class UbiSDK {
                         this.player._handleMouseMoveInput(d.viewportX, d.viewportY, now);
                     }
                     this._pendingWorkerEvents.push({
-                        type: INPUT_TYPE_MAP[inputEvent.type],
+                        type: toEcsInputType(inputEvent.type),
                         payload: inputEvent.data,
                         timestamp: now,
                     });

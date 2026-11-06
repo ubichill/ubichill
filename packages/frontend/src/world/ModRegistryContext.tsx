@@ -75,6 +75,8 @@ export const ModRegistryProvider: React.FC<{
     }, [loadCounts, onStatusChange]);
     // ロード済み（またはロード中）のエンティティタイプを追跡して重複ロードを防ぐ
     const loadingRef = useRef(new Set<string>());
+    /** 宣言の無い型を知らせた（1 つの型につき 1 回）。 */
+    const undeclaredRef = useRef(new Set<string>());
     // register() 呼び出し済みの mod id を追跡（StrictMode での二重呼び出し防止）
     const registeredRef = useRef(new Set<string>());
 
@@ -128,9 +130,15 @@ export const ModRegistryProvider: React.FC<{
                         clearRejection();
                         return true;
                     }
-                    if (result === 'data-only') {
-                        // manifest に宣言されているがworkerなし。spawn して持ち回るだけのエンティティ
-                        // (例: pen:stroke)。Worker を起動しないし、警告も出さない。
+                    if (result === 'data-only' || result === 'undeclared') {
+                        // Worker の無いデータだけの entity（例: pen:stroke）。Worker を起動しない。
+                        // 宣言の無い型は、訪れた人には何も出さず（直せないので）、作った人向けにコンソールへ 1 回だけ残す
+                        if (result === 'undeclared' && !undeclaredRef.current.has(entityType)) {
+                            undeclaredRef.current.add(entityType);
+                            console.info(
+                                `[ModRegistry] component "${entityType}" は mod の manifest に宣言されていないので、データとして扱います（コードは実行しません）。打ち間違いでなければ、mod 側で config に dataOnly: true を書いてください`,
+                            );
+                        }
                         loadingRef.current.delete(entityType);
                         clearRejection();
                         return true;
@@ -144,8 +152,8 @@ export const ModRegistryProvider: React.FC<{
                         loadingRef.current.delete(entityType);
                         return false;
                     }
-                    // 'not-found': manifest が無い or 宣言されていない。古い YAML が削除済み
-                    // mod を参照している可能性。取得失敗の理由を画面にも出す。
+                    // 'not-found': manifest・Worker が取れない（削除済みの mod・版を参照している、通信の失敗）。
+                    // 取得失敗の理由を画面にも出す。
                     console.warn(
                         `[ModRegistry] component "${entityType}" のmodが見つかりませんでした。スキップします。`,
                     );
