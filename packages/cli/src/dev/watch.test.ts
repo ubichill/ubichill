@@ -37,9 +37,11 @@ describe('planChanges', () => {
         expect([...planChanges(['/p/shared/colors.ts'], input).rebuild].sort()).toEqual(['danmaku', 'pen']);
     });
 
-    it('mod のディレクトリの追加・削除は一覧の探し直し、world.yaml はワールドの作り直し', () => {
+    it('mod のディレクトリの追加・削除は一覧の探し直し、world.yaml とその横の lock はワールドの作り直し', () => {
         expect(planChanges(['/p/mods/new-mod'], input)).toMatchObject({ rescan: true, reconfigure: false });
         expect(planChanges(['/p/world.yaml'], input)).toMatchObject({ rescan: false, reconfigure: true });
+        expect(planChanges(['/p/world.lock.json'], input)).toMatchObject({ rescan: false, reconfigure: true });
+        expect(planChanges(['/p/other.lock.json'], input).reconfigure).toBe(false);
     });
 
     it('node_modules・dist・無関係なファイルは何もしない', () => {

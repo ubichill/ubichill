@@ -4,23 +4,17 @@
  */
 import { type ModLock, ModLockSchema } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
-import {
-    type DevEvent,
-    type DevGeneration,
-    generationAction,
-    generationLockUrl,
-    parseDevEvent,
-    recordFailure,
-} from './devSession';
+import { type DevFailure, type DevGeneration, generationAction, generationLockUrl, parseDevEvent } from './devSession';
 
 export interface DevState {
     generation: (DevGeneration & { lock: ModLock }) | null;
-    failures: DevEvent[];
+    /** 今の失敗（サーバーが持つ一覧をそのまま映す）。 */
+    failures: DevFailure[];
     /** SSE が繋がっているか。 */
     connected: boolean;
 }
 
-const EVENT_NAMES = ['generation', 'build-error', 'world-error'] as const;
+const EVENT_NAMES = ['generation', 'diagnostics'] as const;
 
 export function useDevGeneration(): DevState {
     const [state, setState] = useState<DevState>({ generation: null, failures: [], connected: false });
@@ -31,8 +25,8 @@ export function useDevGeneration(): DevState {
         const onEvent = (name: string) => async (raw: MessageEvent) => {
             const event = parseDevEvent(name, String(raw.data));
             if (!event) return;
-            if (event.type !== 'generation') {
-                setState((prev) => ({ ...prev, failures: recordFailure(prev.failures, event) }));
+            if (event.type === 'diagnostics') {
+                setState((prev) => ({ ...prev, failures: event.failures }));
                 return;
             }
             const action = generationAction(adopted.current, event);

@@ -11,15 +11,22 @@ import { findGeneration, type Generation, type GenerationState } from './generat
 import { isRealtimePath, proxyHttp, proxyUpgrade } from './proxy.ts';
 import { contentTypeOf, matchRoute, withDevMeta } from './routes.ts';
 
-/** SSE で送る出来事。`generation` は接続の直後と切り替えのたび、失敗は起きたとき。 */
+/** 診断の 1 件。ビルドの失敗は mod ごと、ワールドの失敗（解決・検証・Go の拒否）は 1 件。 */
+export type DevFailure = { kind: 'build'; mod: string; message: string } | { kind: 'world'; message: string };
+
+/**
+ * SSE で送るもの。どちらも「今の状態」で、接続の直後と変わるたびに送る（出来事ではないので、遅れて開いたタブも追いつく）。
+ * `generation` は今の世代、`diagnostics` は今の失敗の一覧（空なら診断を消す）。
+ */
 export type DevEvent =
     | { type: 'generation'; buildId: string; instanceId: string }
-    | { type: 'build-error'; mod: string; message: string }
-    | { type: 'world-error'; message: string };
+    | { type: 'diagnostics'; failures: DevFailure[] };
 
 export interface DevServerDeps {
     /** 今の世代の状態を読む（pipeline が持つ）。 */
     state: () => GenerationState;
+    /** 今の診断（pipeline が持つ）。 */
+    diagnostics: () => readonly DevFailure[];
     /** Go のポート（中継先）。落ちている間は undefined。 */
     goPort: () => number | undefined;
     /** `world.html` と assets のディレクトリ。 */
@@ -88,9 +95,10 @@ export function createDevServer(deps: DevServerDeps): DevServer {
                     Connection: 'keep-alive',
                 });
                 res.write(': connected\n\n');
-                // 繋いだ直後に今の世代を送る。切断中に何回切り替わっても、繋ぎ直した時点の比較で追いつく
+                // 繋いだ直後に今の世代と診断を送る。切断中に何回切り替わっても、繋ぎ直した時点の比較で追いつく
                 const current = generationEvent(deps.state().kept[0]);
                 if (current) res.write(formatSse(current));
+                res.write(formatSse({ type: 'diagnostics', failures: [...deps.diagnostics()] }));
                 clients.add(res);
                 const heartbeat = setInterval(() => res.write(': ping\n\n'), 25000);
                 req.on('close', () => {

@@ -5,7 +5,7 @@
  * 上端に帯を敷くと `overlay: top-left` の HUD やワールドの上端が本番と違って隠れる。
  */
 import { css } from '@/styled-system/css';
-import type { DevEvent } from './devSession';
+import type { DevFailure } from './devSession';
 
 const bar = css({
     position: 'fixed',
@@ -109,18 +109,18 @@ export function DevBar({
     );
 }
 
-export function DevDiagnostics({ failures }: { failures: readonly DevEvent[] }) {
+export function DevDiagnostics({ failures }: { failures: readonly DevFailure[] }) {
     if (failures.length === 0) return null;
     return (
         <div className={diagnostics} role="log">
             {failures.map((failure) =>
-                failure.type === 'build-error' ? (
+                failure.kind === 'build' ? (
                     <div key={`build:${failure.mod}`}>
                         [{failure.mod}] {failure.message}
                     </div>
-                ) : failure.type === 'world-error' ? (
+                ) : (
                     <div key="world">[world] {failure.message}</div>
-                ) : null,
+                ),
             )}
         </div>
     );

@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { fakeMod } from './generation.test.ts';
 import { type Generation, type GenerationState, initialGenerationState, publishGeneration } from './generation.ts';
-import { absolutizeLock, createDevServer, type DevServer, formatSse } from './server.ts';
+import { absolutizeLock, createDevServer, type DevFailure, type DevServer, formatSse } from './server.ts';
 
 const gen = (buildId: string, version: string, manifest: string): Generation => {
     const mod = fakeMod('pen', version);
@@ -42,6 +42,7 @@ describe('createDevServer', () => {
     const worldDist = mkdtempSync(join(tmpdir(), 'ubichill-world-dist-'));
     const state = { current: initialGenerationState('r') as GenerationState };
     const reconfigures: number[] = [];
+    const diagnostics = { current: [{ kind: 'world', message: 'kind が違う' }] as DevFailure[] };
     const go = { port: undefined as number | undefined, server: undefined as Server | undefined };
     const dev = { current: undefined as DevServer | undefined };
     const origin = { current: '' };
@@ -59,6 +60,7 @@ describe('createDevServer', () => {
         go.port = Number((await listen(go.server)).split(':').pop());
         dev.current = createDevServer({
             state: () => state.current,
+            diagnostics: () => diagnostics.current,
             goPort: () => go.port,
             worldDist,
             onReconfigure: () => reconfigures.push(1),
@@ -114,7 +116,7 @@ describe('createDevServer', () => {
         expect((await get('/__ubichill/g/r-2/lock.json')).status).toBe(200);
     });
 
-    it('SSE は繋いだ直後に今の世代を送り、broadcast が全員に届く', async () => {
+    it('SSE は繋いだ直後に今の世代と今の診断を送り（先に起きた失敗も見える）、broadcast が全員に届く', async () => {
         const res = await get('/__ubichill/events');
         expect(res.headers.get('content-type')).toContain('text/event-stream');
         const reader = res.body?.getReader();
@@ -128,11 +130,11 @@ describe('createDevServer', () => {
             }
             return buffer.join('');
         };
-        expect(await read('event: generation')).toContain(
-            formatSse({ type: 'generation', buildId: 'r-4', instanceId: 'dev-r-4' }),
-        );
-        dev.current?.broadcast({ type: 'build-error', mod: 'pen', message: 'boom' });
-        expect(await read('build-error')).toContain('data: {"mod":"pen","message":"boom"}');
+        const first = await read('event: diagnostics');
+        expect(first).toContain(formatSse({ type: 'generation', buildId: 'r-4', instanceId: 'dev-r-4' }));
+        expect(first).toContain(formatSse({ type: 'diagnostics', failures: diagnostics.current }));
+        dev.current?.broadcast({ type: 'diagnostics', failures: [{ kind: 'build', mod: 'pen', message: 'boom' }] });
+        expect(await read('boom')).toContain('data: {"failures":[{"kind":"build","mod":"pen","message":"boom"}]}');
         await reader?.cancel();
     });
 
@@ -207,6 +209,7 @@ describe('close（WebSocket を中継しているとき）', () => {
         const goPort = Number((await listen(go)).split(':').pop());
         const dev = createDevServer({
             state: () => initialGenerationState('r'),
+            diagnostics: () => [],
             goPort: () => goPort,
             worldDist,
             onReconfigure: () => {},

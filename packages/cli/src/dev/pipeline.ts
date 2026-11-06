@@ -13,12 +13,16 @@
  *   2. 公開した世代の成果物と組み合わせ、新しい lock を作る
  *   3. 部屋を作り直すときだけ: ワールドを解決・検証し、新しい ID の部屋を Go に作る（拒否されたら中止。前の部屋はそのまま）
  *   4. 世代を公開し、SSE で知らせる。このビルドが反映した変更だけを unpublished から消す
+ * 失敗は「今の診断」（最後のビルドの失敗の一覧）として持ち、変わるたびに丸ごと送る。成功すれば空にする
+ * （壊して直したが中身が公開中と同じで公開しなかったときも、ブラウザの診断が消える）。
  *   5. 部屋を作り直したときは、前の部屋をしばらくしてから消す（読み直し中のページを切らない）
  * ビルドは 1 つずつ。ビルド中に来た変更は次のビルドにまとめる（世代は作った順に公開される）。
  *
  * 名前の区別: buildId = 配布物（lock・manifest・Worker・asset）の世代、instanceId = Go の部屋。
  * Go の owner の世代（gen / epoch）は Go の中だけのもので、ここでは扱わない。
  */
+
+import type { FetchLike } from '@ubichill/loader';
 import {
     type InstanceDefinition,
     type ModLock,
@@ -32,14 +36,16 @@ import type { ModArtifacts } from '../build.ts';
 import {
     buildGenerationLock,
     currentGeneration,
+    externalLockEntries,
     type Generation,
     type GenerationState,
     needsNewRoom,
     nextBuildId,
     publishGeneration,
+    reuseExternalEntries,
 } from './generation.ts';
 import type { GoAdmin } from './goRuntime.ts';
-import type { DevEvent } from './server.ts';
+import type { DevEvent, DevFailure } from './server.ts';
 import { componentsFromManifest, synthesizeWorld } from './synthesizedWorld.ts';
 
 export interface RebuildPlan {
@@ -54,6 +60,8 @@ export interface WorldSource {
     raw: unknown;
     /** 表示と ID に使う。 */
     url: string;
+    /** world.yaml の横の `.lock.json`（あれば）。手元に無い mod はこの版を使う（本番と同じ）。 */
+    lock?: ModLock;
 }
 
 export interface PipelineDeps {
@@ -69,15 +77,18 @@ export interface PipelineDeps {
     /** 前の部屋を消すまでの時間。 */
     retireDelayMs?: number;
     setTimeout?: (fn: () => void, ms: number) => void;
+    /** 手元に無い mod の lock を `source.url` から取る（テストで差し替える）。 */
+    fetchImpl?: FetchLike;
 }
 
 export const RETIRE_DELAY_MS = 30000;
 
-export class BuildError extends Error {
-    readonly mod: string;
-    constructor(mod: string, message: string) {
-        super(message);
-        this.mod = mod;
+/** ビルドに失敗した mod すべて（1 つ目で止めると、直した順に 1 つずつしか分からない）。 */
+export class BuildFailures extends Error {
+    readonly failures: readonly { mod: string; message: string }[];
+    constructor(failures: readonly { mod: string; message: string }[]) {
+        super(failures.map((f) => `[${f.mod}] ${f.message}`).join('\n'));
+        this.failures = failures;
     }
 }
 export class WorldError extends Error {}
@@ -94,6 +105,8 @@ export interface Pipeline {
     readonly inputsByMod: ReadonlyMap<string, ReadonlySet<string>>;
     /** Go が起動し直したあと、今の世代の部屋を作り直す。 */
     restoreRoom(): Promise<void>;
+    /** 今の診断（最後のビルドの失敗）。SSE の接続の直後に送る。 */
+    readonly diagnostics: readonly DevFailure[];
 }
 
 /** まだ公開できていない変更。値は変更の通し番号（ビルド中に同じものがもう一度変わったら、そのビルドでは消さない）。 */
@@ -146,6 +159,21 @@ export async function buildRoomDefinition(
 
 const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
+/** 手元に無い mod をどこから取ったか（lock の版か、source.url の版か）。無ければ空。 */
+export function describeExternal(
+    lock: ModLock,
+    mods: ReadonlyMap<string, ModArtifacts>,
+    pinned: ModLock | undefined,
+): string {
+    return Object.entries(lock.mods)
+        .filter(([id]) => !mods.has(id))
+        .map(([id, entry]) => {
+            const fromLock = pinned?.mods[id]?.manifestIntegrity === entry.manifestIntegrity;
+            return `${id}@${entry.version}（${fromLock ? 'lock' : 'source.url'}）`;
+        })
+        .join('、');
+}
+
 /** 成果物の中身が同じか。lock の断片は manifest（asset の hash を含む）と各 Worker の hash を持つので、それで比べる。 */
 function sameContents(a: ReadonlyMap<string, ModArtifacts>, b: ReadonlyMap<string, ModArtifacts>): boolean {
     if (a.size !== b.size) return false;
@@ -175,6 +203,14 @@ export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pi
         notified: false,
         running: null as Promise<void> | null,
     };
+    const diagnostics = { current: [] as readonly DevFailure[] };
+
+    /** 今の診断を差し替え、変わったときだけ送る。 */
+    function setDiagnostics(next: readonly DevFailure[]): void {
+        if (JSON.stringify(next) === JSON.stringify(diagnostics.current)) return;
+        diagnostics.current = next;
+        deps.broadcast({ type: 'diagnostics', failures: [...next] });
+    }
 
     /** 未反映の変更を記録する。 */
     function record(plan: RebuildPlan): void {
@@ -197,7 +233,7 @@ export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pi
         // 監視の情報は公開の成否と切り離す: 見つけた mod はビルドが失敗しても監視する
         if (taken.rescan || discovered.modDirs.size === 0) discovered.modDirs = await deps.discoverMods();
         const mods = new Map<string, ModArtifacts>();
-        const failures: BuildError[] = [];
+        const failures: { mod: string; message: string }[] = [];
         for (const [id, dir] of discovered.modDirs) {
             const kept = previous.get(id);
             if (kept && !taken.mods.has(id) && !taken.rescan) {
@@ -209,26 +245,24 @@ export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pi
                 mods.set(artifacts.id, artifacts);
                 discovered.inputsByMod.set(artifacts.id, artifacts.inputs);
             } catch (error) {
-                failures.push(new BuildError(id, errorMessage(error)));
+                failures.push({ mod: id, message: errorMessage(error) });
             }
         }
         for (const id of discovered.inputsByMod.keys())
             if (!discovered.modDirs.has(id)) discovered.inputsByMod.delete(id);
-        // 失敗した mod をすべて知らせる（1 つ目で止めると、直した順に 1 つずつしか分からない）
-        for (const failure of failures.slice(0, -1)) report(failure);
-        if (failures.length > 0) throw failures.at(-1);
+        if (failures.length > 0) throw new BuildFailures(failures);
         return mods;
     }
 
     function report(error: unknown): void {
-        if (error instanceof BuildError) {
-            deps.log(`❌ [${error.mod}] ビルドに失敗: ${error.message}`);
-            deps.broadcast({ type: 'build-error', mod: error.mod, message: error.message });
+        if (error instanceof BuildFailures) {
+            for (const f of error.failures) deps.log(`❌ [${f.mod}] ビルドに失敗: ${f.message}`);
+            setDiagnostics(error.failures.map((f) => ({ kind: 'build', mod: f.mod, message: f.message })));
             return;
         }
         const message = errorMessage(error);
         deps.log(`❌ ワールドを作れません: ${message}`);
-        deps.broadcast({ type: 'world-error', message });
+        setDiagnostics([{ kind: 'world', message }]);
     }
 
     async function run(): Promise<void> {
@@ -244,6 +278,7 @@ export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pi
             // 中身が変わっていない（保存しただけ）なら公開しない。開いているページを無駄に読み直させない
             if (previous && !taken.reconfigure && sameContents(previous.mods, mods)) {
                 settle(taken);
+                setDiagnostics([]);
                 return;
             }
             const { state, buildId } = nextBuildId(published.state);
@@ -256,7 +291,10 @@ export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pi
                 }
             })();
             const modIds = definition ? requiredLockModIds(definition.spec) : [...mods.keys()];
-            const lock = await buildGenerationLock(buildId, mods, modIds, definition?.spec.dependencies);
+            // 手元に無い mod は、ワールドを作り直すときだけ取り直す（保存のたびに外へ取りに行かない）
+            const fresh = externalLockEntries(definition?.spec.dependencies, world?.lock, deps.fetchImpl);
+            const external = previous && !taken.reconfigure ? reuseExternalEntries(previous, fresh) : fresh;
+            const lock = await buildGenerationLock(buildId, mods, modIds, external);
             // 合成したワールドは Component から初期の entity を作るので、Component が増減したら部屋を作り直す
             const newRoom = !previous || taken.reconfigure > 0 || needsNewRoom(previous, mods, { synthesized: !world });
             const instanceId = newRoom ? `dev-${buildId}` : (previous as Generation).instanceId;
@@ -274,9 +312,14 @@ export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pi
             published.room = room;
             settle(taken);
             deps.broadcast({ type: 'generation', buildId, instanceId });
+            setDiagnostics([]);
             deps.log(
                 `✅ 世代 ${buildId}（mod ${Object.keys(lock.mods).length}・うち手元 ${mods.size}、部屋 ${instanceId}${newRoom ? '・作り直し' : ''}）`,
             );
+            if (!previous || taken.reconfigure) {
+                const outside = describeExternal(lock, mods, world?.lock);
+                if (outside) deps.log(`   外の mod: ${outside}`);
+            }
             if (newRoom && previous && previous.instanceId !== instanceId) {
                 const retired = previous.instanceId;
                 later(() => void deps.go()?.deleteInstance(retired), retireDelay);
@@ -299,6 +342,9 @@ export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pi
         },
         get inputsByMod() {
             return discovered.inputsByMod;
+        },
+        get diagnostics() {
+            return diagnostics.current;
         },
         schedule(plan) {
             record(plan);

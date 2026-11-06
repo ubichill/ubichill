@@ -8,16 +8,17 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { ModLockSchema } from '@ubichill/shared';
 import yaml from 'yaml';
 import { compileMod } from '../build.ts';
 import { findInstanceBinary } from '../instanceBinary.ts';
 import { discoverModDirs } from './discover.ts';
 import { initialGenerationState } from './generation.ts';
 import { superviseGo } from './goRuntime.ts';
-import { createPipeline } from './pipeline.ts';
+import { createPipeline, type WorldSource } from './pipeline.ts';
 import { createDevServer } from './server.ts';
 import { handleShutdown } from './shutdown.ts';
-import { createWatcher, planChanges, watchTargets } from './watch.ts';
+import { createWatcher, planChanges, watchTargets, worldLockPath } from './watch.ts';
 import { findWorldDist } from './worldAssets.ts';
 
 const USAGE = 'usage: ubichill dev [world.yaml] [--port=<n>] [--mods-dir=<dir>] [--max-users=<n>]';
@@ -25,6 +26,32 @@ const DEFAULT_PORT = 3333;
 
 const argValue = (argv: string[], name: string): string | undefined =>
     argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
+
+/** world.yaml と、横に `.lock.json` があればそれも読む（壊れていればワールドの診断になる）。 */
+function readWorld(worldPath: string): WorldSource {
+    const lockPath = worldLockPath(worldPath);
+    const lock = existsSync(lockPath)
+        ? (() => {
+              const parsed = (() => {
+                  try {
+                      return ModLockSchema.safeParse(JSON.parse(readFileSync(lockPath, 'utf-8')));
+                  } catch (error) {
+                      throw new Error(
+                          `${basename(lockPath)} が読めません: ${error instanceof Error ? error.message : error}`,
+                      );
+                  }
+              })();
+              if (!parsed.success)
+                  throw new Error(`${basename(lockPath)} が lock の形ではありません: ${parsed.error.message}`);
+              return parsed.data;
+          })()
+        : undefined;
+    return {
+        raw: yaml.parse(readFileSync(worldPath, 'utf-8')) as unknown,
+        url: pathToFileURL(worldPath).href,
+        ...(lock ? { lock } : {}),
+    };
+}
 
 export async function runDev(argv: string[]): Promise<void> {
     if (argv.includes('--help')) {
@@ -68,13 +95,7 @@ export async function runDev(argv: string[]): Promise<void> {
         {
             discoverMods: async () => discoverModDirs(cwd, modsDirArg).modDirs,
             compile: compileMod,
-            loadWorld: async () =>
-                worldPath
-                    ? {
-                          raw: yaml.parse(readFileSync(worldPath, 'utf-8')) as unknown,
-                          url: pathToFileURL(worldPath).href,
-                      }
-                    : undefined,
+            loadWorld: async () => (worldPath ? readWorld(worldPath) : undefined),
             go: () => go.current,
             broadcast: (event) => server.broadcast(event),
             log,
@@ -84,6 +105,7 @@ export async function runDev(argv: string[]): Promise<void> {
     );
     const server = createDevServer({
         state: () => pipeline.state,
+        diagnostics: () => pipeline.diagnostics,
         goPort: () => go.current?.port,
         worldDist: worldDist.path,
         onReconfigure: () => pipeline.schedule({ mods: new Set(), reconfigure: true }),
@@ -114,16 +136,20 @@ export async function runDev(argv: string[]): Promise<void> {
     });
 
     try {
+        // 先にポートを開く: 使用中ならビルドの前に分かり、開いたページは最初のビルドの結果（世代か診断）を SSE で受け取る
+        await new Promise<void>((done, fail) => {
+            server.server.once('error', fail);
+            server.server.listen(port, () => {
+                server.server.off('error', fail);
+                done();
+            });
+        });
         await go.start();
         pipeline.schedule({ mods: 'all', reconfigure: true });
         await pipeline.idle();
         watcher.update(
             watchTargets({ modDirs: pipeline.modDirs, inputsByMod: pipeline.inputsByMod, modsRoot, worldPath }),
         );
-        await new Promise<void>((done, fail) => {
-            server.server.on('error', fail);
-            server.server.listen(port, () => done());
-        });
     } catch (error) {
         // 止めている途中なら、起動の中止は失敗ではない（抜けるのはシグナルの側）
         if (shutdown.started) return shutdown.trigger();

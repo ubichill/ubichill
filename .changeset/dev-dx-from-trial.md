@@ -5,8 +5,11 @@
 `ubichill dev` を videoplayer・chillwa で使ってみて分かった点を直す。
 
 - world.yaml が無いときに合成するワールドを、実際のワールドと同じ形（mod ごとの親の下に Component を 1 つずつ）にし、`defaultTransform` の位置に置く。`scope: 'siblings'` のイベントが届くようになる。
-- ワールドだけのリポジトリ（`src/` が無い）でも `ubichill dev worlds/x.yaml` で動く。mod はすべて `source.url` から取る。
+- ワールドだけのリポジトリ（`src/` が無い）でも `ubichill dev worlds/x.yaml` で動く。
 - Ctrl+C（`npm run dev` / `npx` が SIGINT を転送して 2 回届く）や、ポートが使用中で起動できないときに Go が残らない。
 - 署名の無い手元の mod の署名ファイルを 204 で返す（ブラウザのコンソールに 404 を出さない）。
 - dev の状態表示を右上の小さな札にする（上端の帯が `overlay: top-left` の HUD を隠していた）。
 - 取れない mod の診断に、手元に無いのか `source.url` から取れないのかを出す。
+- 手元でビルドした mod は `source.url` が書いてあっても手元を使う（作業中のコードが動かなかった）。手元に無い mod は world.yaml の横の `.lock.json` の版（本番と同じ）を使い、外へ取りに行くのはワールドを作り直すときだけにする。
+- 診断を「今の失敗の一覧」として送る。起動直後の失敗が画面に出ない・壊して元に戻しても診断が残る、を直す。
+- ポートを先に開く（使用中ならビルドの前に分かる）。
