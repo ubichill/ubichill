@@ -173,6 +173,51 @@ describe('acquireMod', () => {
         expect(r).toBe('data-only');
     });
 
+    it('manifest に宣言の無い型は、mod が実行中に作るデータだけの entity（pen:stroke）として data-only。Worker は取りに行かない', async () => {
+        const requested: string[] = [];
+        const good = fakeFetch(goodRoutes());
+        const r = await acquireMod(`${MOD}:stroke`, {
+            baseUrl: BASE,
+            lock: lock(),
+            ...unsignedDev,
+            fetchImpl: (url, init) => {
+                requested.push(url);
+                return good(url, init);
+            },
+        });
+        expect(r).toBe('data-only');
+        expect(requested).toEqual([manifestUrlAbs]);
+    });
+
+    it('lock が Worker を固定している型が manifest に無いときは、data-only として黙って飛ばさない', async () => {
+        const base = lock();
+        const entry = base.mods[MOD];
+        if (!entry) throw new Error('fixture');
+        const pinned = {
+            ...base,
+            mods: {
+                [MOD]: { ...entry, components: { ...entry.components, [`${MOD}:ghost`]: entry.components[TYPE] } },
+            },
+        };
+        const r = await acquireMod(`${MOD}:ghost`, {
+            baseUrl: BASE,
+            lock: pinned as typeof base,
+            ...unsignedDev,
+            fetchImpl: fakeFetch(goodRoutes()),
+        });
+        expect(r).toBe('not-found');
+    });
+
+    it('manifest が取れなければ（削除済みの版など）宣言の無い型も not-found', async () => {
+        const r = await acquireMod(`${MOD}:stroke`, {
+            baseUrl: BASE,
+            lock: lock(),
+            ...unsignedDev,
+            fetchImpl: fakeFetch({}),
+        });
+        expect(r).toBe('not-found');
+    });
+
     it('lockEntry はあるが対象 component が lock に無い → lock-missing 拒否', async () => {
         // mod（pen）の lock はあるが components が空＝この entity の hash が固定されていない。
         // manifest には entity が存在するので取得は進むが、lock 未記載として拒否されるべき。

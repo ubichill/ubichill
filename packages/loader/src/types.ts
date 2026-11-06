@@ -42,8 +42,9 @@ export interface LoadedMod {
 /**
  * {@link acquireMod} の戻り値。
  *  - LoadedMod   : 取得＋検証成功。
- *  - 'data-only' : worker を持たない純データ Component（警告不要）。
- *  - 'not-found' : manifest/worker 取得失敗・未宣言。
+ *  - 'data-only' : worker を持たない純データ Component（警告不要）。manifest に宣言の無い型も含む
+ *    （mod が実行中に作るデータだけの entity。例: pen:stroke）。
+ *  - 'not-found' : manifest/worker 取得失敗。lock が Worker を固定しているのに manifest に無い。
  *  - { rejected }: lock の照合か作者署名の確認で拒否。理由付き。
  */
 export type AcquireResult =

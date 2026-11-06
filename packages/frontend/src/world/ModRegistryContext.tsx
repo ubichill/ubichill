@@ -144,8 +144,8 @@ export const ModRegistryProvider: React.FC<{
                         loadingRef.current.delete(entityType);
                         return false;
                     }
-                    // 'not-found': manifest が無い or 宣言されていない。古い YAML が削除済み
-                    // mod を参照している可能性。取得失敗の理由を画面にも出す。
+                    // 'not-found': manifest・Worker が取れない（削除済みの mod・版を参照している、通信の失敗）。
+                    // 取得失敗の理由を画面にも出す。
                     console.warn(
                         `[ModRegistry] component "${entityType}" のmodが見つかりませんでした。スキップします。`,
                     );

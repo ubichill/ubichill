@@ -258,9 +258,12 @@ export async function acquireMod(entityType: string, opts: AcquireModOptions): P
     if (!version) return 'not-found';
 
     const fetched = await fetchManifest(baseUrl, modName, version, f);
-    const entry = fetched?.manifest.components?.[entityType];
-    if (!fetched || !entry) return 'not-found';
-    if (!entry.workerUrl) return 'data-only';
+    if (!fetched) return 'not-found';
+    const entry = fetched.manifest.components?.[entityType];
+    // Worker を持たない型は実行するコードが無い。manifest に宣言が無い型も、mod が実行中に作るデータだけの entity
+    // （pen の canvas が作る pen:stroke など。Worker のファイルが無い型は manifest に載らない）なので data-only。
+    // ただし lock がこの型の Worker を固定しているのに manifest に無いなら、黙って飛ばさない
+    if (!entry?.workerUrl) return entry || !lockEntry.components[entityType] ? 'data-only' : 'not-found';
 
     const versionedBase = `${baseUrl}/${modName}/v${version}`;
     // workerUrl は lock を優先（固定パス）。無ければ manifest 由来。
