@@ -473,7 +473,7 @@ export interface ModArtifacts {
     id: string;
     name: string;
     version: string;
-    /** Component 型（`<id>:<name>`）。 */
+    /** Worker を持つ Component 型（`<id>:<name>`）。data-only は置くものではないので含めない（manifest にだけ載る）。 */
     components: string[];
     /** `v<version>/` の下に置くファイル（POSIX 相対パス → 中身）: Worker・manifest.json・lock.json・asset。 */
     files: ReadonlyMap<string, Uint8Array>;
@@ -599,7 +599,7 @@ export async function compileMod(modDir: string): Promise<ModArtifacts> {
     files.set('lock.json', encoder.encode(JSON.stringify(lockEntry, null, 2)));
     console.log(`🔒 [${id}] lock.json (${Object.keys(lockComponents).length} components)`);
 
-    return { id, name, version, components: Object.keys(versionedComponents), files, lockEntry, inputs };
+    return { id, name, version, components: Object.keys(lockComponents), files, lockEntry, inputs };
 }
 
 export interface WriteArtifactsOptions {
