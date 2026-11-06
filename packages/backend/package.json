@@ -45,7 +45,7 @@
         "nanoid": "catalog:",
         "rate-limit-redis": "^6.0.2",
         "resend": "^6.37.0",
-        "undici": "^7.29.1",
+        "undici": "^8.12.3",
         "yaml": "catalog:",
         "zod": "catalog:"
     },
