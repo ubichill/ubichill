@@ -31,3 +31,18 @@ export function worldPagePath(world: {
     if (world.source?.kind === 'local' || !world.url) return localWorldPagePath(world);
     return `/world?url=${encodeURIComponent(world.url)}`;
 }
+
+/**
+ * 一覧から来たワールドに短い共有ページ（`/@handle/name`）があるか、問い合わせる必要があるか。
+ * 一覧の項目には付いていないので外部のワールドは問い合わせる。ただし作者を確かめられないと分かっている
+ * （署名なし・作者なし）ものは付かないので省く。確認の結果を持たない項目（一部の一覧）は問い合わせる。
+ */
+export function needsSharePathLookup(world: {
+    url?: string;
+    source?: { kind: string };
+    sharePath?: string;
+    identity?: { status: string; author?: string };
+}): world is { url: string } {
+    const authorUnknowable = !!world.identity && !(world.identity.status === 'verified' && world.identity.author);
+    return !world.sharePath && !!world.url && world.source?.kind !== 'local' && !authorUnknowable;
+}

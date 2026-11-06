@@ -75,6 +75,22 @@ describe('作者が登録した外部のワールドの共有 URL', () => {
         expect(await worldRegistry.externalSharePath(resolution.world)).toBe('/@youkan/chillwa');
     });
 
+    it('このサーバーの共有ページの URL・@handle/name のどれを貼っても同じワールドにたどり着く（ロビーの「貼って入る」）', async () => {
+        vi.spyOn(worldRegistry, 'resolveRemote').mockResolvedValue({
+            ok: true,
+            world: remoteWorld(verifiedBy(`youkan@${DOMAIN}`)),
+        });
+        for (const pasted of [
+            '@youkan/chillwa',
+            `https://${DOMAIN}/@youkan/chillwa`,
+            `${DOMAIN}/@youkan/chillwa`,
+            `https://${DOMAIN}/world?url=${encodeURIComponent(`https://${DOMAIN}/@youkan/chillwa`)}`,
+        ]) {
+            const resolution = await worldRegistry.resolveRefDetailed(pasted);
+            expect(resolution.ok && resolution.world.url, pasted).toBe(PAGES);
+        }
+    });
+
     it('別の人の署名・署名なし・名前の違うワールドが登録した URL に置かれていたら開かない', async () => {
         for (const identity of [
             verifiedBy(`mallory@${DOMAIN}`),

@@ -4,13 +4,13 @@ import { useNavigate } from 'react-router';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { createInstance, fetchInstances, fetchWorld } from '@/lib/instancesApi';
 import { useSession } from '@/lib/session';
-import { worldPagePath } from '@/lib/worldRef';
 import { css } from '@/styled-system/css';
 import { AccessTypeSelect } from './AccessTypeSelect';
 import { AuthorAccountLabel } from './AuthorAccountLabel';
 import { FavoriteButton } from './FavoriteButton';
 import { InstanceCard } from './InstanceCard';
 import { InstanceDetailOverlay } from './InstanceDetailOverlay';
+import { useWorldPagePath } from './useWorldPagePath';
 import { WorldIdentityBadge } from './WorldIdentityBadge';
 
 interface WorldDetailModalProps {
@@ -36,6 +36,7 @@ export function WorldDetailModal({
     const confirm = useConfirm();
     const { data: session } = useSession();
     const [world, setWorld] = useState<Partial<WorldListItem> | null>(initialWorld ?? null);
+    const pagePath = useWorldPagePath({ ...world, id: world?.id ?? worldId });
     const [instances, setInstances] = useState<Instance[]>([]);
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
@@ -96,7 +97,7 @@ export function WorldDetailModal({
         // ローカルワールドは window.location.origin を使い、リモートは origin サーバーの共有 URL を使う。
         // ローカルの world.url はバックエンドの PUBLIC_BASE_URL（dev では :3001）で構築されるため、
         // フロントの origin（:3000）を使うことで正しい共有 URL を生成する。
-        const url = `${window.location.origin}${world ? worldPagePath({ ...world, id: world.id ?? worldId }) : `/world/${worldId}`}`;
+        const url = `${window.location.origin}${pagePath}`;
         void navigator.clipboard.writeText(url);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
@@ -172,11 +173,7 @@ export function WorldDetailModal({
                                         <button
                                             type="button"
                                             onClick={() => {
-                                                navigate(
-                                                    world
-                                                        ? worldPagePath({ ...world, id: world.id ?? worldId })
-                                                        : `/world/${worldId}`,
-                                                );
+                                                navigate(pagePath);
                                                 onClose();
                                             }}
                                             className={css({

@@ -1,9 +1,10 @@
 import { type Instance, type WorldListItem, worldOriginDomain } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { createInstance, fetchInstances, fetchWorld } from '@/lib/instancesApi';
-import { instanceWorldRef, worldPagePath } from '@/lib/worldRef';
+import { instanceWorldRef } from '@/lib/worldRef';
 import { css } from '@/styled-system/css';
 import { FavoriteButton } from './FavoriteButton';
+import { useWorldPagePath } from './useWorldPagePath';
 
 interface InstanceDetailOverlayProps {
     instance: Instance;
@@ -29,6 +30,7 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
     const [selected, setSelected] = useState<Instance>(instance);
     // instance.world（mods/description/source を含む）を初期値にし、ローカルはフル情報で補う。
     const [world, setWorld] = useState<Partial<WorldListItem>>(instance.world);
+    const pagePath = useWorldPagePath({ ...world, id: instance.world.id });
     const [siblings, setSiblings] = useState<Instance[]>([instance]);
     const [creating, setCreating] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -70,7 +72,7 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
     };
 
     // ワールド詳細ページの共有 URL（別タブで開く）。ローカルはフロント origin、リモートは origin サーバー。
-    const shareUrl = `${window.location.origin}${worldPagePath({ ...world, id: instance.world.id })}`;
+    const shareUrl = `${window.location.origin}${pagePath}`;
     const originDomain = world.source ? worldOriginDomain(world.source) : null;
     const isCurrent = selected.id === currentInstanceId;
     const isFull = selected.status === 'full';

@@ -19,6 +19,7 @@ import {
     sendsRegistryToken,
     sigUrlFor,
     toRawGitHubUrl,
+    worldRefOf,
 } from './worldResolver';
 
 const VALID_YAML = `
@@ -319,5 +320,36 @@ describe('confirmedAuthorName（外部ワールドの作者名）', () => {
         const unknown = { ...keyOnly, author: 'nobody@ubichill.com' };
         expect(await confirmedAuthorName(unknown, names)).toBeUndefined();
         expect(await confirmedAuthorName(unknown, () => Promise.reject(new Error('down')))).toBeUndefined();
+    });
+});
+
+describe('worldRefOf（貼り付けられた共有の文字列）', () => {
+    const pages = 'https://ieyoukan.github.io/ubichill-worlds/worlds/chillwa.yaml';
+
+    it('共有ページ /world?url= からは中のワールドの URL を取り出す（どのサーバーの共有ページでも）', () => {
+        expect(worldRefOf(`https://ubichill.com/world?url=${encodeURIComponent(pages)}`)).toBe(pages);
+        expect(worldRefOf(`https://other.example/world/?url=${encodeURIComponent(pages)}`)).toBe(pages);
+        // 共有ページが共有ページを包んでいても、中までたどる
+        const twice = `https://a.example/world?url=${encodeURIComponent(`https://ubichill.com/world?url=${encodeURIComponent(pages)}`)}`;
+        expect(worldRefOf(twice)).toBe(pages);
+    });
+
+    it('@handle/name は前後の空白・先頭の / があっても読む（大文字は小文字に）', () => {
+        expect(worldRefOf('  @youkan/chillwa ')).toBe('@youkan/chillwa');
+        expect(worldRefOf('/@Youkan/chillwa/')).toBe('@youkan/chillwa');
+    });
+
+    it('https:// を省いた URL は補い、/@handle/name の URL はそのまま（normalizeWorldUrl が読む）', () => {
+        expect(worldRefOf('ubichill.com/@youkan/chillwa')).toBe('https://ubichill.com/@youkan/chillwa');
+        expect(normalizeWorldUrl(worldRefOf('ubichill.com/@youkan/chillwa'))).toBe(
+            'https://ubichill.com/api/v1/authors/youkan/worlds/chillwa.yaml',
+        );
+    });
+
+    it('それ以外（ワールドの URL・内部 ID・url の無い /world）は変えない', () => {
+        expect(worldRefOf(pages)).toBe(pages);
+        expect(worldRefOf('default')).toBe('default');
+        expect(worldRefOf('https://ubichill.com/world?x=1')).toBe('https://ubichill.com/world?x=1');
+        expect(worldRefOf('@youkan')).toBe('@youkan');
     });
 });
