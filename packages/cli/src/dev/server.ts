@@ -6,20 +6,24 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { join, resolve, sep } from 'node:path';
 import type { Duplex } from 'node:stream';
-import { isSandboxWorkerScriptPath, type ModLock, SANDBOX_WORKER_CSP } from '@ubichill/shared';
+import {
+    type DevEvent,
+    type DevFailure,
+    formatDevEvent,
+    isSandboxWorkerScriptPath,
+    MOD_SIGNATURE_FILE,
+    type ModLock,
+    SANDBOX_WORKER_CSP,
+} from '@ubichill/shared';
 import { findGeneration, type Generation, type GenerationState } from './generation.ts';
 import { isRealtimePath, proxyHttp, proxyUpgrade } from './proxy.ts';
 import { contentTypeOf, matchRoute, withDevMeta } from './routes.ts';
 
-/** SSE で送る出来事。`generation` は接続の直後と切り替えのたび、失敗は起きたとき。 */
-export type DevEvent =
-    | { type: 'generation'; buildId: string; instanceId: string }
-    | { type: 'build-error'; mod: string; message: string }
-    | { type: 'world-error'; message: string };
-
 export interface DevServerDeps {
     /** 今の世代の状態を読む（pipeline が持つ）。 */
     state: () => GenerationState;
+    /** 今の診断（pipeline が持つ）。 */
+    diagnostics: () => readonly DevFailure[];
     /** Go のポート（中継先）。落ちている間は undefined。 */
     goPort: () => number | undefined;
     /** `world.html` と assets のディレクトリ。 */
@@ -60,11 +64,6 @@ export function absolutizeLock(lock: ModLock, origin: string): ModLock {
 export const requestOrigin = (req: Pick<IncomingMessage, 'headers'>): string =>
     `http://${req.headers.host ?? 'localhost'}`;
 
-export function formatSse(event: DevEvent): string {
-    const { type, ...data } = event;
-    return `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
-}
-
 export function createDevServer(deps: DevServerDeps): DevServer {
     const clients = new Set<ServerResponse>();
     // Upgrade した WebSocket は http.Server の接続の管理から外れる（closeAllConnections では閉じない）ので自分で持つ
@@ -88,9 +87,10 @@ export function createDevServer(deps: DevServerDeps): DevServer {
                     Connection: 'keep-alive',
                 });
                 res.write(': connected\n\n');
-                // 繋いだ直後に今の世代を送る。切断中に何回切り替わっても、繋ぎ直した時点の比較で追いつく
+                // 繋いだ直後に今の世代と診断を送る。切断中に何回切り替わっても、繋ぎ直した時点の比較で追いつく
                 const current = generationEvent(deps.state().kept[0]);
-                if (current) res.write(formatSse(current));
+                if (current) res.write(formatDevEvent(current));
+                res.write(formatDevEvent({ type: 'diagnostics', failures: [...deps.diagnostics()] }));
                 clients.add(res);
                 const heartbeat = setInterval(() => res.write(': ping\n\n'), 25000);
                 req.on('close', () => {
@@ -115,7 +115,14 @@ export function createDevServer(deps: DevServerDeps): DevServer {
             case 'mod-file': {
                 const generation = findGeneration(deps.state(), route.buildId);
                 const mod = generation?.mods.get(route.modId);
-                const bytes = mod && mod.version === route.version ? mod.files.get(route.file) : undefined;
+                const known = mod && mod.version === route.version ? mod : undefined;
+                const bytes = known?.files.get(route.file);
+                // 手元のビルドに作者署名は無い。404 だとブラウザのコンソールに毎回エラーが出るので、204（中身なし = 署名なし）で答える
+                if (!bytes && known && route.file === MOD_SIGNATURE_FILE) {
+                    res.writeHead(204, { 'Cache-Control': IMMUTABLE });
+                    res.end();
+                    return;
+                }
                 if (!bytes) return notFound(res);
                 res.writeHead(200, {
                     'Content-Type': contentTypeOf(route.file),
@@ -180,7 +187,7 @@ export function createDevServer(deps: DevServerDeps): DevServer {
     return {
         server,
         broadcast(event) {
-            const payload = formatSse(event);
+            const payload = formatDevEvent(event);
             for (const client of clients) client.write(payload);
         },
         close() {
