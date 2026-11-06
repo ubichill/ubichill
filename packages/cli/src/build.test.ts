@@ -26,7 +26,7 @@ import {
 } from '@ubichill/loader';
 import { type ModLockEntry, verifyModSignature } from '@ubichill/shared';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { buildMod, mediaTargetCollisions } from './build.ts';
+import { buildMod, dataOnlyEntryFromSource, dataOnlyManifestEntry, mediaTargetCollisions } from './build.ts';
 import { listDirsOnDisk } from './modLayout.ts';
 import { publishMods } from './publishMods.ts';
 import { verifyAllModLocks, verifyAllModSignatures } from './verify.ts';
@@ -40,6 +40,8 @@ const unsignedDev = {
 };
 const repoRoot = join(__dirname, '..', '..', '..');
 const penModDir = join(repoRoot, 'mods', 'pen');
+/** pen の版（mod のコードを変えるたびに上げるので、テストに書き写さない）。 */
+const penVersion = (JSON.parse(readFileSync(join(penModDir, 'package.json'), 'utf-8')) as { version: string }).version;
 
 interface FakeFetchResponse {
     ok: boolean;
@@ -80,7 +82,7 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
     let manifest: Record<string, unknown>;
     let lockEntry: Record<string, unknown>;
     const modId = 'pen';
-    const version = '2.0.0';
+    const version = penVersion;
 
     beforeAll(async () => {
         publicDir = mkdtempSync(join(tmpdir(), 'ubichill-mod-public-'));
@@ -124,9 +126,39 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
         expect(comp.canvasTargets).toEqual(['drawing']);
     });
 
-    it('manifest に全3コンポーネント（pen:pen, pen:canvas, pen:tray）が列挙される', () => {
+    it('manifest に全コンポーネントが列挙され、Worker を持つ 3 つだけが lock に載る', () => {
         const comps = manifest.components as Record<string, unknown>;
-        expect(Object.keys(comps).sort()).toEqual(['pen:canvas', 'pen:pen', 'pen:tray']);
+        expect(Object.keys(comps).sort()).toEqual(['pen:canvas', 'pen:pen', 'pen:stroke', 'pen:tray']);
+        expect(Object.keys(lockEntry.components as Record<string, unknown>).sort()).toEqual([
+            'pen:canvas',
+            'pen:pen',
+            'pen:tray',
+        ]);
+    });
+
+    it('data-only の pen:stroke は workerUrl・capabilities を持たず、バンドルも出力しない', () => {
+        const stroke = (manifest.components as Record<string, Record<string, unknown>>)['pen:stroke'];
+        expect(stroke.dataOnly).toBe(true);
+        expect(stroke).not.toHaveProperty('workerUrl');
+        expect(stroke).not.toHaveProperty('capabilities');
+        expect(existsSync(join(publicDir, modId, `v${version}`, 'stroke'))).toBe(false);
+    });
+
+    it('Host は pen:stroke を data-only として扱う（Worker を探して not-found にしない）', async () => {
+        const lock = await buildWorldLock([modId], createHttpLockEntryGetter(publicDir, fsFetch));
+        const result = await acquireMod('pen:stroke', { baseUrl: publicDir, lock, fetchImpl: fsFetch, ...unsignedDev });
+        expect(result).toBe('data-only');
+    });
+
+    it('宣言していない型は undeclared（宣言のある data-only と取り違えない）', async () => {
+        const lock = await buildWorldLock([modId], createHttpLockEntryGetter(publicDir, fsFetch));
+        const result = await acquireMod('pen:undeclared', {
+            baseUrl: publicDir,
+            lock,
+            fetchImpl: fsFetch,
+            ...unsignedDev,
+        });
+        expect(result).toBe('undeclared');
     });
 
     it('lock.json の各コンポーネント integrity が実 worker ファイルと一致する', () => {
@@ -340,8 +372,8 @@ describe('リモート registry からのバージョン履歴マージ（CI ク
         });
 
         const versionNumbers = entry.versions.map((v) => v.version);
-        // リモート履歴 (1.9.0 / 1.8.0) + 今回ビルドした現行版 (2.0.0) が新しい順で揃う
-        expect(versionNumbers).toEqual(['2.0.0', '1.9.0', '1.8.0']);
+        // リモート履歴 (1.9.0 / 1.8.0) + 今回ビルドした現行版が新しい順で揃う
+        expect(versionNumbers).toEqual([penVersion, '1.9.0', '1.8.0']);
     });
 
     it('registryUrl への fetch が失敗しても（オフライン/404）ビルドは成功する', async () => {
@@ -355,7 +387,7 @@ describe('リモート registry からのバージョン履歴マージ（CI ク
             fetchImpl: failingFetch,
         });
 
-        expect(entry.versions.map((v) => v.version)).toEqual(['2.0.0']);
+        expect(entry.versions.map((v) => v.version)).toEqual([penVersion]);
     });
 
     it('registryUrl 未指定なら fetch を一切呼ばず、ローカル履歴のみでビルドする', async () => {
@@ -372,7 +404,68 @@ describe('リモート registry からのバージョン履歴マージ（CI ク
         });
 
         expect(called).toBe(false);
-        expect(entry.versions.map((v) => v.version)).toEqual(['2.0.0']);
+        expect(entry.versions.map((v) => v.version)).toEqual([penVersion]);
+    });
+});
+
+describe('dataOnlyManifestEntry', () => {
+    it('dataOnly: true だけを data-only にし、workerUrl・capabilities は落とす（コードを実行しないので権限を持たせない）', () => {
+        expect(
+            dataOnlyManifestEntry({
+                dataOnly: true,
+                description: 'x',
+                capabilities: ['net:fetch'],
+                workerUrl: './evil.js',
+            }),
+        ).toEqual({ dataOnly: true, description: 'x' });
+    });
+
+    it('dataOnly が true 以外（省略・false・文字列の "true"）や config 無しは null', () => {
+        expect(dataOnlyManifestEntry(null)).toBeNull();
+        expect(dataOnlyManifestEntry({})).toBeNull();
+        expect(dataOnlyManifestEntry({ dataOnly: false })).toBeNull();
+        expect(dataOnlyManifestEntry({ dataOnly: 'true' })).toBeNull();
+    });
+});
+
+describe('dataOnlyEntryFromSource', () => {
+    const source = (config: string) =>
+        `import type { ComponentConfig } from 'ubichill';\n\nexport const config: ComponentConfig = ${config};\n`;
+
+    it('リテラルで書いた dataOnly: true は data-only（pen の stroke.worker.ts と同じ形）', () => {
+        expect(
+            dataOnlyEntryFromSource('m:stroke', source("{\n    dataOnly: true,\n    description: '線',\n}")),
+        ).toEqual({ dataOnly: true, description: '線' });
+    });
+
+    it('dataOnly を書いているのに config を読めなければ、Worker として bundle せずビルドを止める', () => {
+        const unreadable = [
+            '{ dataOnly: true, description: `線` }',
+            '{ ...base, dataOnly: true }',
+            '{ dataOnly: DATA_ONLY }',
+            '{ dataOnly: !0 }',
+            'makeConfig({ dataOnly: true })',
+        ];
+        for (const config of unreadable) {
+            expect(() => dataOnlyEntryFromSource('m:stroke', source(config)), config).toThrow(
+                /\[m:stroke\] dataOnly を書いていますが、export const config をリテラルとして読めません/,
+            );
+        }
+    });
+
+    it('dataOnly を書いていなければ、config を読めなくても従来どおり Worker（ビルドは止めない）', () => {
+        expect(dataOnlyEntryFromSource('m:x', source('{ description: `x` }'))).toBeNull();
+        expect(dataOnlyEntryFromSource('m:x', 'export const foo = 1;')).toBeNull();
+    });
+
+    it('読める config で dataOnly が true 以外なら Worker のまま', () => {
+        expect(dataOnlyEntryFromSource('m:x', source('{ dataOnly: false }'))).toBeNull();
+        expect(dataOnlyEntryFromSource('m:x', source("{ dataOnly: 'true' }"))).toBeNull();
+    });
+
+    it('似た名前（dataOnlyX・isDataOnly）は dataOnly と見なさない', () => {
+        expect(dataOnlyEntryFromSource('m:x', source('{ description: dataOnlyX }'))).toBeNull();
+        expect(dataOnlyEntryFromSource('m:x', `${source('makeConfig()')}const isDataOnly = 1;`)).toBeNull();
     });
 });
 

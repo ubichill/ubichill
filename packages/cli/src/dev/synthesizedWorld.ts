@@ -195,7 +195,10 @@ export function synthesizeWorld(
     };
 }
 
-/** 成果物の manifest.json から、合成に使う Component の宣言を読む。 */
+/**
+ * 成果物の manifest.json から、合成に使う Component の宣言を読む。
+ * data-only（例: pen:stroke）は mod が中身を作って spawn するものなので置かない（空の data で置くと mod が読めない）。
+ */
 export function componentsFromManifest(
     types: readonly string[],
     manifestBytes: Uint8Array | undefined,
@@ -206,7 +209,11 @@ export function componentsFromManifest(
                 ? (JSON.parse(new TextDecoder().decode(manifestBytes)) as {
                       components?: Record<
                           string,
-                          { defaultTransform?: SynthesizedComponent['defaultTransform']; overlay?: unknown }
+                          {
+                              defaultTransform?: SynthesizedComponent['defaultTransform'];
+                              overlay?: unknown;
+                              dataOnly?: unknown;
+                          }
                       >;
                   })
                 : undefined;
@@ -214,12 +221,14 @@ export function componentsFromManifest(
             return undefined;
         }
     })();
-    return types.map((type) => {
-        const entry = manifest?.components?.[type];
-        return {
-            type,
-            ...(entry?.defaultTransform ? { defaultTransform: entry.defaultTransform } : {}),
-            ...(entry?.overlay ? { overlay: entry.overlay } : {}),
-        };
-    });
+    return types
+        .filter((type) => manifest?.components?.[type]?.dataOnly !== true)
+        .map((type) => {
+            const entry = manifest?.components?.[type];
+            return {
+                type,
+                ...(entry?.defaultTransform ? { defaultTransform: entry.defaultTransform } : {}),
+                ...(entry?.overlay ? { overlay: entry.overlay } : {}),
+            };
+        });
 }

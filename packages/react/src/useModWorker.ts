@@ -52,6 +52,8 @@ export type ModWorkerHandlers<TPayloadMap extends Record<string, unknown> = Reco
     ) => void;
     /** Worker が Ubi.canvas.commitStroke() を呼んだときに発火する */
     onCanvasCommitStroke?: (targetId: string, stroke: import('@ubichill/shared').CanvasStrokeData) => void;
+    /** Worker が Ubi.canvas.replaceStrokes() を呼んだときに発火する */
+    onCanvasReplaceStrokes?: (targetId: string, strokes: import('@ubichill/shared').CanvasStrokeData[]) => void;
     /** Worker が Ubi.media.load() を呼んだときに発火する */
     onMediaLoad?: (
         targetId: string,
@@ -217,6 +219,8 @@ export function useModWorker<TPayloadMap extends Record<string, unknown> = Recor
                     handlersRef.current.onCanvasFrame?.(targetId, activeStroke, cursors),
                 onCanvasCommitStroke: (targetId, stroke) =>
                     handlersRef.current.onCanvasCommitStroke?.(targetId, stroke),
+                onCanvasReplaceStrokes: (targetId, strokes) =>
+                    handlersRef.current.onCanvasReplaceStrokes?.(targetId, strokes),
                 onMediaLoad: (targetId, url, mediaType, kind, options) =>
                     handlersRef.current.onMediaLoad?.(targetId, url, mediaType, kind, options),
                 onMediaPlay: (targetId) => handlersRef.current.onMediaPlay?.(targetId),

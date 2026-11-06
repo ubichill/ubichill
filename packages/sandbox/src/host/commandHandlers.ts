@@ -20,6 +20,7 @@ export const CMD_TO_HANDLER = {
     [CommandType.UI_RENDER]: 'onRender',
     [CommandType.CANVAS_FRAME]: 'onCanvasFrame',
     [CommandType.CANVAS_COMMIT_STROKE]: 'onCanvasCommitStroke',
+    [CommandType.CANVAS_REPLACE_STROKES]: 'onCanvasReplaceStrokes',
     [CommandType.MEDIA_LOAD]: 'onMediaLoad',
     [CommandType.MEDIA_PLAY]: 'onMediaPlay',
     [CommandType.MEDIA_PAUSE]: 'onMediaPause',

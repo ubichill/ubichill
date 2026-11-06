@@ -56,6 +56,7 @@ export type {
     CmdAssetLoad,
     CmdCanvasCommitStroke,
     CmdCanvasFrame,
+    CmdCanvasReplaceStrokes,
     CmdIdentityToken,
     CmdLog,
     CmdNetworkBroadcast,

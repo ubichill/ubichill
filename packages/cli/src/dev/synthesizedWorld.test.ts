@@ -123,4 +123,20 @@ describe('componentsFromManifest', () => {
         expect(componentsFromManifest(['a:x'], new TextEncoder().encode('not json'))).toEqual([{ type: 'a:x' }]);
         expect(componentsFromManifest(['a:x'], undefined)).toEqual([{ type: 'a:x' }]);
     });
+
+    it('data-only の型は一覧に混ざっていても置かない（空の data で置くと mod が読めない）', () => {
+        const manifest = new TextEncoder().encode(
+            JSON.stringify({
+                components: {
+                    'a:x': { defaultTransform: { w: 10, h: 20 } },
+                    'a:stroke': { dataOnly: true, defaultTransform: { w: 1, h: 1 } },
+                    'a:loose': { dataOnly: 'true' },
+                },
+            }),
+        );
+        const components = componentsFromManifest(['a:x', 'a:stroke', 'a:loose'], manifest);
+        // dataOnly は true のときだけ。文字列の 'true' は Worker の型として扱う（build と同じ判定）
+        expect(components.map((c) => c.type)).toEqual(['a:x', 'a:loose']);
+        expect(Object.keys(flat(synthesizeWorld([{ id: 'a', components }])))).not.toContain('a:stroke');
+    });
 });

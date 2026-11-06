@@ -25,7 +25,9 @@ export type RuntimeFeature =
     /** `Ubi.event.emit` の `{ ref }` と `scope: 'referrers'`（参照フィールドでの配送）。古い Host は届けずに捨てる */
     | 'event:ref'
     /** `component: 'core:media'` の参照を `Ubi.media.*` の描画先にする。古い Host は `<video>` を作らない */
-    | 'media:surface';
+    | 'media:surface'
+    /** `Ubi.canvas` のストロークの `mode: 'erase'` と `Ubi.canvas.replaceStrokes`。古い Host は消しゴムを描き足しとして描き、描き直しを捨てる */
+    | 'canvas:erase';
 
 export type RuntimeModule = {
     /** Host のプロトコル版（`PROTOCOL_VERSION`）。 */
@@ -60,6 +62,7 @@ const HOST_FEATURE_PROTOCOL: Partial<Record<RuntimeFeature, number>> = {
     identity: 5,
     'event:ref': 6,
     'media:surface': 6,
+    'canvas:erase': 7,
 };
 
 function validates(webAssembly: typeof WebAssembly | undefined, bytes: Uint8Array<ArrayBuffer>): boolean {

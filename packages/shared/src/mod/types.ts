@@ -317,6 +317,11 @@ export type CanvasStrokeData = {
     points: Array<[number, number, number]>;
     color: string;
     size: number;
+    /**
+     * `'erase'` はなぞった部分の、それまでに描いた線を消す（`color` は使わない）。
+     * 消すのも 1 本のストロークなので、描いた順に重ねれば誰の画面でも同じ結果になる。省略時は `'draw'`。
+     */
+    mode?: 'draw' | 'erase';
 };
 
 /** shape === 'custom' 時の塗りつぶしパス定義 */
@@ -371,6 +376,19 @@ export type CmdCanvasCommitStroke = {
     payload: {
         targetId: string;
         stroke: CanvasStrokeData;
+    };
+};
+
+/**
+ * Ubi.canvas.replaceStrokes(targetId, strokes)
+ * Fire & Forget: 永続レイヤーを消し、渡したストロークをこの順で描き直す。
+ * 消すストローク（mode: 'erase'）は重ねる順で結果が変わるので、mod が順番を正したいときに使う。
+ */
+export type CmdCanvasReplaceStrokes = {
+    type: 'CANVAS_REPLACE_STROKES';
+    payload: {
+        targetId: string;
+        strokes: CanvasStrokeData[];
     };
 };
 
@@ -624,6 +642,7 @@ export type ModGuestCommand =
     | CmdSceneQueryEntities
     | CmdCanvasFrame
     | CmdCanvasCommitStroke
+    | CmdCanvasReplaceStrokes
     | CmdNetworkSendToHost
     | CmdNetworkBroadcast
     | CmdEventEmit

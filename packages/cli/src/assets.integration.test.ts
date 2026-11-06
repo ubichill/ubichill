@@ -94,8 +94,11 @@ describe('同梱アセット: build → manifest → Host の照合', () => {
     it('アセットの無い mod の manifest には assetIntegrity を出さない（既存 lock を変えない）', async () => {
         const out = mkdtempSync(join(tmpdir(), 'ubichill-assets-pen-'));
         try {
-            await buildMod(join(repoRoot, 'mods', 'pen'), { distDir: join(out, 'd'), publicDir: join(out, 'p') });
-            const penManifest = JSON.parse(readFileSync(join(out, 'd', 'v2.0.0', 'manifest.json'), 'utf-8'));
+            const pen = await buildMod(join(repoRoot, 'mods', 'pen'), {
+                distDir: join(out, 'd'),
+                publicDir: join(out, 'p'),
+            });
+            const penManifest = JSON.parse(readFileSync(join(out, 'd', `v${pen.version}`, 'manifest.json'), 'utf-8'));
             expect(penManifest.assets).toEqual([]);
             expect(penManifest).not.toHaveProperty('assetIntegrity');
         } finally {

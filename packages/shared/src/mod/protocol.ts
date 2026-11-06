@@ -35,7 +35,8 @@
 // v5: IDENTITY_TOKEN（外部サービス向けのサービストークン）を追加。
 // v6: EVENT_EMIT の `ref`（参照フィールドで配送）と `scope: 'referrers'`、core:media を指す参照を Ubi.media の描画先にする。
 //     名前は増えていないが、古い Host はこれらを黙って捨てるので版を上げる（mod は Ubi.runtime.supports で確かめる）。
-export const PROTOCOL_VERSION = 6;
+// v7: CanvasStrokeData に任意の mode（'draw' | 'erase'）、CANVAS_REPLACE_STROKES（永続レイヤーの描き直し）を追加。
+export const PROTOCOL_VERSION = 7;
 
 /**
  * これ未満のバージョンで作られた mod とは互換性がない下限。
@@ -157,6 +158,7 @@ export const CommandType = {
     // canvas
     CANVAS_FRAME: 'CANVAS_FRAME',
     CANVAS_COMMIT_STROKE: 'CANVAS_COMMIT_STROKE',
+    CANVAS_REPLACE_STROKES: 'CANVAS_REPLACE_STROKES',
     // media
     MEDIA_LOAD: 'MEDIA_LOAD',
     MEDIA_PLAY: 'MEDIA_PLAY',

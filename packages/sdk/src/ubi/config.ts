@@ -140,7 +140,12 @@ export interface ComponentConfig {
     singleton?: boolean;
     /** コンポーネントの説明 */
     description?: string;
-    /** data-only コンポーネント（Worker を持たない） */
+    /**
+     * data-only コンポーネント（Worker を持たない）。mod が spawn して持ち回るだけの Entity の型を宣言する
+     * （例: pen の `stroke.worker.ts` が `pen:stroke` を宣言する）。宣言しない型を spawn しても Host は
+     * コードを実行せずデータとして扱うが、打ち間違いと区別できないので開発者向けにコンソールへ知らせる。
+     * このファイルのコードはバンドル・実行されない。
+     */
     dataOnly?: boolean;
     /**
      * 画面固定オーバーレイ（HUD）として描画するか。角を指定すると transform.x/y をワールド座標では

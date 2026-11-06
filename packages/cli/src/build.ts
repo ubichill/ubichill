@@ -242,6 +242,38 @@ function extractConfigFromCode(code: string): Record<string, unknown> | null {
     }
 }
 
+/**
+ * `config.dataOnly: true` の Component の manifest エントリ（純粋）。data-only でなければ null。
+ *
+ * data-only は Worker を持たず、mod が spawn して持ち回るだけのデータ（例: pen:stroke）。
+ * manifest に宣言しておくと、Host はその型の Entity を「この mod のデータ」と認識して Worker を探さない。
+ * コードを実行しないので workerUrl・capabilities は持たせず、lock の components にも載せない
+ * （manifest 自体は lock の manifestIntegrity で固定されるので、宣言は改竄できない）。
+ */
+export function dataOnlyManifestEntry(config: Record<string, unknown> | null): Record<string, unknown> | null {
+    if (config?.dataOnly !== true) return null;
+    const { capabilities: _caps, workerUrl: _url, ...rest } = config;
+    return rest;
+}
+
+/**
+ * ソースから data-only の宣言を読む（純粋）。data-only でなければ null。
+ *
+ * config はコードを実行せずリテラルとしてだけ読むので、テンプレート文字列・定数・スプレッドを使うと読めない。
+ * そのとき `dataOnly` を書いていても黙って Worker として bundle すると、spawn した Entity ごとに Worker が
+ * 起動してしまうので、ビルドを止める。
+ */
+export function dataOnlyEntryFromSource(componentType: string, source: string): Record<string, unknown> | null {
+    const config = extractConfigFromCode(source);
+    if (config === null && /\bdataOnly\b/.test(source)) {
+        throw new Error(
+            `[${componentType}] dataOnly を書いていますが、export const config をリテラルとして読めません。` +
+                'テンプレート文字列・定数・スプレッド・式を使わず、JSON と同じ書き方（文字列・数・真偽値・配列・オブジェクト）で書いてください',
+        );
+    }
+    return dataOnlyManifestEntry(config);
+}
+
 function cleanOldBundles(dir: string, keepFilename: string): void {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
         if (entry.isFile() && entry.name !== keepFilename && entry.name.startsWith('index.')) {
@@ -478,7 +510,7 @@ export interface ModArtifacts {
     id: string;
     name: string;
     version: string;
-    /** Component 型（`<id>:<name>`）。 */
+    /** Worker を持つ Component 型（`<id>:<name>`）。data-only は置くものではないので含めない（manifest にだけ載る）。 */
     components: string[];
     /** `v<version>/` の下に置くファイル（POSIX 相対パス → 中身）: Worker・manifest.json・lock.json・asset。 */
     files: ReadonlyMap<string, Uint8Array>;
@@ -512,6 +544,13 @@ export async function compileMod(modDir: string): Promise<ModArtifacts> {
         // `export const config` を持つファイルのみを処理する
         if (!isWorkerFile(workerPath)) {
             console.log(`📋 [${componentType}] skipped (no export const config)`);
+            continue;
+        }
+
+        const dataOnly = dataOnlyEntryFromSource(componentType, readFileSync(workerPath, 'utf-8'));
+        if (dataOnly) {
+            versionedComponents[componentType] = dataOnly;
+            console.log(`📦 [${componentType}] data-only（Worker なし）`);
             continue;
         }
 
@@ -603,7 +642,7 @@ export async function compileMod(modDir: string): Promise<ModArtifacts> {
     files.set('lock.json', encoder.encode(JSON.stringify(lockEntry, null, 2)));
     console.log(`🔒 [${id}] lock.json (${Object.keys(lockComponents).length} components)`);
 
-    return { id, name, version, components: Object.keys(versionedComponents), files, lockEntry, inputs };
+    return { id, name, version, components: Object.keys(lockComponents), files, lockEntry, inputs };
 }
 
 export interface WriteArtifactsOptions {

@@ -65,11 +65,13 @@ describe('createRuntimeModule', () => {
         expect(createRuntimeModule(() => 5, {}).supports('identity')).toBe(true);
     });
 
-    it('参照での配送と core:media の描画先はプロトコル v6 から（古い Host は黙って捨てるので確かめられるようにする）', () => {
+    it('参照での配送と core:media の描画先は v6、消しゴムと描き直しは v7 から（古い Host は黙って捨てるので確かめられるようにする）', () => {
         expect(createRuntimeModule(() => 5, {}).supports('event:ref')).toBe(false);
         expect(createRuntimeModule(() => 5, {}).supports('media:surface')).toBe(false);
         expect(createRuntimeModule(() => 6, {}).supports('event:ref')).toBe(true);
         expect(createRuntimeModule(() => 6, {}).supports('media:surface')).toBe(true);
+        expect(createRuntimeModule(() => 6, {}).supports('canvas:erase')).toBe(false);
+        expect(createRuntimeModule(() => 7, {}).supports('canvas:erase')).toBe(true);
     });
 
     it('古い Host（プロトコル v3 以前）では asset・fetch:binary を持たない', () => {

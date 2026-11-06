@@ -72,6 +72,8 @@ export type HostHandlers<TPayloadMap extends Record<string, unknown> = Record<st
     onRideCommand?: (payload: CmdRide['payload'], senderComponentInstanceId: string | undefined) => void;
     /** Worker が Ubi.canvas.commitStroke() を呼んだときに発火する */
     onCanvasCommitStroke?: (targetId: string, stroke: CanvasStrokeData) => void;
+    /** Worker が Ubi.canvas.replaceStrokes() を呼んだときに発火する */
+    onCanvasReplaceStrokes?: (targetId: string, strokes: CanvasStrokeData[]) => void;
     /** Worker が Ubi.media.load() を呼んだときに発火する */
     onMediaLoad?: (
         targetId: string,

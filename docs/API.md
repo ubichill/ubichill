@@ -75,6 +75,7 @@ Ubi.media.setVolume(v, targetId) / Ubi.media.setVisible(visible, targetId)
 // ──── canvas 描画 ────────────────────────────────────────
 Ubi.canvas.frame(targetId, { activeStroke, cursor })
 Ubi.canvas.commitStroke(targetId, strokeData)
+Ubi.canvas.replaceStrokes(targetId, strokes)   // 永続レイヤーを消してこの順で描き直す（順番を正すとき）
 
 // ──── プレイヤー (presence) ──────────────────────────────
 Ubi.player.others() / .all() / .scroll() / .syncCursor({ throttleMs })
@@ -104,7 +105,7 @@ await Ubi.entity.spawn(entity)                     // 親を明示指定して�
 await Ubi.asset.bytes(path, { signal? })           // assets/ のファイル（manifest の integrity と照合済み）
 await Ubi.asset.text(path)                         // UTF-8 として読む
 await Ubi.asset.wasm(path)                         // WebAssembly.Module（同じパスは 1 回だけコンパイル）
-Ubi.runtime.supports(feature)                      // 'wasm' | 'wasm:simd' | 'wasm:exceptions' | 'wasm:threads' | 'wasm:jspi' | 'fetch:binary' | 'asset' | 'identity' | 'event:ref' | 'media:surface'
+Ubi.runtime.supports(feature)                      // 'wasm' | 'wasm:simd' | 'wasm:exceptions' | 'wasm:threads' | 'wasm:jspi' | 'fetch:binary' | 'asset' | 'identity' | 'event:ref' | 'media:surface' | 'canvas:erase'
 Ubi.runtime.require(feature)                       // 使えなければ UNSUPPORTED_FEATURE の UbiError
 await Ubi.identity.token(audience, { signal? })    // 外部サービスへの身元証明（短命の JWT）。→ SERVICE_TOKEN.md
 

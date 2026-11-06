@@ -45,7 +45,7 @@ export default function Counter() {
 | `Ubi.entity` | エンティティ操作。`Ubi.entity()`＝自分、`Ubi.entity(id)`＝他、`query`/`get`/`spawn` |
 | `Ubi.ui` | VNode描画（`render`）・トースト通知（`showToast`） |
 | `Ubi.grip` | 「掴む/離す」操作の宣言的ライフサイクル（ドラッグ系UIに使う） |
-| `Ubi.canvas` | 共有キャンバス描画（`frame`/`commitStroke`） |
+| `Ubi.canvas` | 共有キャンバス描画（`frame`/`commitStroke`/`replaceStrokes`） |
 | `Ubi.player` | 参加者情報・スクロール位置・カーソル同期 |
 | `Ubi.media` | 動画/音声/HLSの読み込みと再生制御 |
 | `Ubi.asset` | 同梱アセット（`assets/`）の読み込みと WASM のコンパイル。Host が manifest の integrity と照合して渡す |
