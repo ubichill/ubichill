@@ -215,6 +215,7 @@ interface Generation {
 
 - 世代は作ったら変えない。`current` の参照を差し替えることだけが「切り替え」である（Node のシングルスレッドで 1 回の代入）。
 - lock の `baseUrl` を世代の URL にするので、loader は manifest・Worker・asset をすべてその世代から取る（loader は lock の `baseUrl` を既定より優先する）。manifest の URL は `<baseUrl>/<mod>/v<version>/manifest.json` で、版が同じでも世代ごとに別の URL になる。
+- 手元でビルドした mod は、world.yaml の `source.url` に置き場所が書いてあっても手元を使う（dev は作業中のコードを動かすためのもの）。手元に無い mod は、world.yaml の横の `.lock.json` にあればその版（本番と同じ）、無ければ `source.url` から取る。外から取るのはワールドを作り直すときだけで、mod の保存では前の世代の版を使う（保存のたびに外へ取りに行かない）。
 - 世代は直近 3 つまでメモリに残す。それより古い世代の URL は 404 を返す。そのページは既に新しい世代の通知を受けているので、読み直しで追いつく（後述）。
 
 ### ルート（すべて同じオリジン）
@@ -222,7 +223,7 @@ interface Generation {
 | ルート | 内容 |
 | --- | --- |
 | `/`、`/<任意のパス>` | `world.html`（`<meta name="ubichill-dev">` を差し込む） |
-| `GET /__ubichill/events` | SSE。接続した直後に必ず `generation {buildId, instanceId}` を送り、以後は切り替えのたびに送る。失敗は `build-error {mod, message}`、`world-error {message}` |
+| `GET /__ubichill/events` | SSE。送るのはどちらも「今の状態」で、接続した直後と変わるたびに送る: `generation {buildId, instanceId}`（今の世代）と `diagnostics {failures}`（今の失敗の一覧。`{kind: 'build', mod, message}` か `{kind: 'world', message}`。成功すれば空）。出来事として送らないので、先に起きた失敗も遅れて開いたタブに見え、壊して元に戻した（公開しない）ときも診断が消える |
 | `GET /__ubichill/g/<buildId>/lock.json` | その世代の lock |
 | `GET /__ubichill/g/<buildId>/mods/<id>/v<version>/...` | その世代の成果物。中身は変わらない |
 | `/realtime/v1/*` | 子プロセスの Go へプロキシ（WebSocket を含む）。それ以外のパスは Go へ渡さない |
@@ -276,8 +277,8 @@ pipeline が持つ状態は 3 つに分ける（`packages/cli/src/dev/pipeline.t
 
 | 失敗した段階 | 結果 |
 | --- | --- |
-| 1・2（ビルド・lock） | 前の世代のまま。`build-error` を送る |
-| 3（解決・検証・Go の拒否） | 前の世代と前の部屋のまま。`world-error` を送る |
+| 1・2（ビルド・lock） | 前の世代のまま。診断に `build` を入れて送る |
+| 3（解決・検証・Go の拒否） | 前の世代と前の部屋のまま。診断に `world` を入れて送る |
 | 4 以降 | 失敗しうる処理を置かない |
 
 「失敗したら前の版が動き続ける」の保証は、この表の範囲である。保証しないもの:
@@ -295,7 +296,7 @@ mod のコードだけが変わったときは部屋を変えないので、enti
 
 ### `world.html` の dev の UI
 
-`WorldView`、上部バー（mod ごとのビルド状態、今の `buildId`、部屋を作り直すボタン）、診断パネル（`build-error`・`world-error` と `setDiagnosticHandler` の出力）の 3 つだけ。アイコンは SVG。エディタは含めず、配置は `world.yaml` を直接書き換える。部屋を作り直すボタンも、上の順序（新しい部屋を作ってから切り替える）を通る。未署名のワールドの入室確認は出さず、権限の許可はセッション中だけ記憶する。
+`WorldView`、右上の小さな状態表示（今の `buildId`・接続・部屋を作り直すボタン。上端に帯を敷くと `overlay: top-left` の HUD が本番と違って隠れる）、診断パネル（`diagnostics` と `setDiagnosticHandler` の出力）の 3 つだけ。アイコンは SVG。エディタは含めず、配置は `world.yaml` を直接書き換える。部屋を作り直すボタンも、上の順序（新しい部屋を作ってから切り替える）を通る。未署名のワールドの入室確認は出さず、権限の許可はセッション中だけ記憶する。
 
 ### 自前ホスト（#209）との関係
 
