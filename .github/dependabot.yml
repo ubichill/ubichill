@@ -42,6 +42,12 @@ updates:
           - "minor"
           - "patch"
 
+    # TypeScript 7（ネイティブ版）は JS の API（ts.factory など）を持たない。tools/protocol の
+    # openapi-typescript が使うので、対応するまで 7 以降の major には上げない（#277 で生成が落ちた）
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+
     commit-message:
       prefix: "chore(deps):"
       include: "scope"
