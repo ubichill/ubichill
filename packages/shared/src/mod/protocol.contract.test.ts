@@ -35,7 +35,7 @@ describe('protocolContractProblems', () => {
     };
 
     it('コマンドを足したのに版を上げていなければ問題', () => {
-        const problems = protocolContractProblems({ ...atV5, commands: [...current.commands, 'NEW_CMD'] }, [v5]);
+        const problems = protocolContractProblems({ ...atV5, commands: [...v5.commands, 'NEW_CMD'] }, [v5]);
         expect(problems).toEqual([expect.stringContaining('足した: NEW_CMD')]);
     });
 
@@ -64,7 +64,7 @@ describe('protocolContractProblems', () => {
     });
 
     it('同じ一覧のまま版だけ上げる（ペイロードに任意の項目を足した）のは問題ない', () => {
-        const next = { ...latest, version: nextVersion };
-        expect(protocolContractProblems({ ...current, version: nextVersion }, [latest, next])).toEqual([]);
+        const v6 = { ...v5, version: 6 };
+        expect(protocolContractProblems({ ...atV5, version: 6 }, [v5, v6])).toEqual([]);
     });
 });

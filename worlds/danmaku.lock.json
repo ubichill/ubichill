@@ -3,12 +3,12 @@
   "mods": {
     "danmaku": {
       "id": "danmaku",
-      "version": "1.0.1",
-      "manifestIntegrity": "sha256-ZQI1e9j0ypDOuyBmHcFUkXqrFoO4SXyVWHzlom1Tfa4=",
+      "version": "1.0.2",
+      "manifestIntegrity": "sha256-e9P6RLOAE2rWX+/92kWl3s/OJKppKkl9i499Wf9gg40=",
       "components": {
         "danmaku:canvas": {
-          "workerUrl": "./canvas/index.fa7d6b1a.js",
-          "integrity": "sha256-+n1rGtAg/h8+i7WofaW3wd+4aKzKf7q7fnrqL9J16sg=",
+          "workerUrl": "./canvas/index.dfb0bae9.js",
+          "integrity": "sha256-37C66QjSsrKgCsacMd2psL0bG11gnfTAfWzZB2phSQA=",
           "capabilities": [
             "canvas:draw",
             "event:emit",
@@ -16,8 +16,8 @@
           ]
         },
         "danmaku:player": {
-          "workerUrl": "./player/index.0cdf3ecd.js",
-          "integrity": "sha256-DN8+zY6vmFXy+VgXFbf8kBiEoCD9MX6zsvYjRkLg3Ng=",
+          "workerUrl": "./player/index.b0923800.js",
+          "integrity": "sha256-sJI4AHnihbe1VpFFS6HPb8fQ4gpwqwZZjXRX6tYAuNk=",
           "capabilities": [
             "event:emit",
             "scene:read",
