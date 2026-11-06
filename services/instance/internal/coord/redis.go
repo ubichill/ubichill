@@ -3,7 +3,10 @@
 package coord
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
+	"strings"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -21,5 +24,14 @@ func NewRedisClient(url, password string) (*redis.Client, error) {
 	if password != "" {
 		opts.Password = password
 	}
+	redis.SetLogger(redisLogger{slog.Default})
 	return redis.NewClient(opts), nil
+}
+
+// redisLogger は go-redis の内部のログ（接続の失敗など）を slog の警告にする。go-redis は既定で自分の形式の行を
+// stderr に直接書き、--log-format=json の行に JSON でない行が混ざる。
+type redisLogger struct{ logger func() *slog.Logger }
+
+func (l redisLogger) Printf(ctx context.Context, format string, v ...any) {
+	l.logger().WarnContext(ctx, strings.TrimPrefix(fmt.Sprintf(format, v...), "redis: "), "component", "redis")
 }
