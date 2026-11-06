@@ -1,5 +1,5 @@
 import { css } from '@/styled-system/css';
-import type { DataFieldSpec, DataFields } from '../../hooks/useAvailableEntityKinds';
+import type { DataFields } from '../../hooks/useAvailableEntityKinds';
 
 export const inputStyle = css({
     width: '100%',
@@ -34,30 +34,6 @@ export function detectType(v: unknown): 'string' | 'number' | 'boolean' | 'color
     if (typeof v === 'number') return 'number';
     if (typeof v === 'boolean') return 'boolean';
     return 'json';
-}
-
-export function defaultForType(spec: DataFieldSpec): unknown {
-    switch (spec.type) {
-        case 'string':
-        case 'url':
-            return '';
-        case 'number':
-            return 0;
-        case 'boolean':
-            return false;
-        case 'color':
-            return '#000000';
-        case 'enum':
-            return spec.options[0] ?? '';
-        case 'json':
-            return null;
-        case 'array':
-            return [];
-        case 'entityRef':
-            return null;
-        case 'entityRefArray':
-            return [];
-    }
 }
 
 /**

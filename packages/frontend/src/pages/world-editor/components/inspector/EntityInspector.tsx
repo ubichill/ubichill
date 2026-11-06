@@ -106,7 +106,8 @@ export function EntityInspector({
                 ) : (
                     entity.components.map((c, ci) => (
                         <ComponentCard
-                            key={`${c.type}-${ci}`}
+                            // 選んだ Entity が変わったら作り直す（ドロップを断った理由などの状態を別の Entity に持ち越さない）
+                            key={`${entity.id}/${c.id ?? ci}/${c.type}`}
                             component={c}
                             componentIndex={ci}
                             dataFields={availableKinds.find((k) => k.kind === c.type)?.dataFields}

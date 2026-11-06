@@ -18,9 +18,10 @@ export function EditorNotices({ messages }: { messages: readonly string[] }) {
                 bg: 'backgroundSubtle',
             })}
         >
-            {messages.map((message) => (
+            {messages.map((message, index) => (
                 <div
-                    key={message}
+                    // 同じ型の Component が 2 つあると、同じ文の知らせが並ぶ
+                    key={`${index}:${message}`}
                     className={css({ display: 'flex', gap: '6px', fontSize: '11px', color: 'text', lineHeight: '1.5' })}
                 >
                     <span className={css({ color: 'warning', flexShrink: 0, display: 'inline-flex', pt: '1px' })}>

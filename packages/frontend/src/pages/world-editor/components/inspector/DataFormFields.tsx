@@ -1,12 +1,13 @@
-import type { InitialEntity } from '@ubichill/shared';
+import { type InitialEntity, refTargets } from '@ubichill/shared';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { css } from '@/styled-system/css';
 import type { DataFieldSpec, DataFields } from '../../hooks/useAvailableEntityKinds';
 import { ENTITY_DRAG_MIME } from '../../lib/dnd';
 import { resolveEntityIdByPathKey } from '../../lib/entityTree';
 import { refTargetError } from '../../lib/referenceProblems';
+import { defaultForType, displayedFieldValue } from './fieldValues';
 import { ColorInput, NumberInput } from './primitives';
-import { defaultForType, detectType, inputStyle, textareaStyle } from './shared';
+import { detectType, inputStyle, textareaStyle } from './shared';
 
 interface DataFormFieldsProps {
     data: Record<string, unknown>;
@@ -43,7 +44,7 @@ export function DataFormFields({ data, dataFields, allEntities, onChange }: Data
                     {declaredKeys.map((key) => {
                         const spec = dataFields?.[key];
                         if (!spec) return null;
-                        const value = key in data ? data[key] : (spec.default ?? defaultForType(spec));
+                        const value = displayedFieldValue(spec, data, key);
                         return (
                             <DeclaredFieldRow
                                 key={key}
@@ -275,7 +276,8 @@ function DeclaredInput({
     if (spec.type === 'entityRefArray') {
         return (
             <EntityRefArrayField
-                value={Array.isArray(value) ? (value as unknown[]).filter((v) => typeof v === 'string') : []}
+                // 配送と同じ読み方（重複・空文字・文字列以外を除く）。重複が残ると同じ key のチップが並ぶ
+                value={refTargets(spec, value)}
                 spec={spec}
                 allEntities={allEntities ?? []}
                 onChange={onChange}

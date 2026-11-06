@@ -91,12 +91,14 @@ interface RefDataFieldBase extends BaseDataField {
 /** 他 Entity 単体への参照。値は entityId（World Editor で D&D 指定）。 */
 export interface EntityRefDataField extends RefDataFieldBase {
     type: 'entityRef';
+    /** World Editor で Component を足したときに data へ書く初期値。data に無いときの代わりの値にはならない。 */
     default?: string;
 }
 
 /** 他 Entity 複数への参照。値は entityId の配列。 */
 export interface EntityRefArrayDataField extends RefDataFieldBase {
     type: 'entityRefArray';
+    /** World Editor で Component を足したときに data へ書く初期値。data に無いときの代わりの値にはならない。 */
     default?: string[];
 }
 
