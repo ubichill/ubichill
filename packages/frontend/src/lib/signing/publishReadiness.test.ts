@@ -14,6 +14,11 @@ const account: MyAccount = {
     author: 'youkan@ubichill.com',
     signingKeys: [],
     image: null,
+    bio: null,
+    status: null,
+    bannerImage: null,
+    links: [],
+    languages: [],
 };
 
 describe('publishReadiness（ログインできる = 公開できる）', () => {

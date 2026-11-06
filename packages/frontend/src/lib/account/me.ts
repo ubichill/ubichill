@@ -3,15 +3,13 @@ import {
     keyRegistrationMessage,
     type PublishingEnvironmentKind,
     type RevokeReason,
+    type UserProfile,
     type WorldSigningKey,
 } from '@ubichill/shared';
 import { API_BASE } from '@/lib/api';
 
-/** ログイン中のアカウント（`GET /api/v1/users/me`）。 */
-export interface MyAccount {
-    id: string;
-    /** 表示名（日本語可・一意・変更可）。 */
-    name: string;
+/** ログイン中のアカウント（`GET /api/v1/users/me`）。公開プロフィールの項目に、本人だけが見る項目を足したもの。 */
+export interface MyAccount extends UserProfile {
     /** 移行時に他人と表示名が重複していた。変更を促す。 */
     displayNameConflict: boolean;
     /** 次に別の表示名へ変えられる時刻（ISO 8601）。変えたことが無ければ null。 */
@@ -22,13 +20,8 @@ export interface MyAccount {
     passwordManagedBySecret: boolean;
     /** このサーバーの管理者（公式アカウント）。 */
     isAdmin: boolean;
-    /** URL・署名用の ID（変更不可）。 */
-    handle: string;
-    /** 作者アカウント `handle@domain`。 */
-    author: string;
     /** 取り消されていない公開環境の鍵（このブラウザの鍵が登録済みかの判定に使う）。 */
     signingKeys: string[];
-    image: string | null;
 }
 
 async function errorMessage(res: Response): Promise<string> {
