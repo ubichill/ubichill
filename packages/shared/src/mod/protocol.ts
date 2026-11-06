@@ -22,7 +22,8 @@
  * ## 進化ルール（後方互換の生命線）
  * - `CommandType` / `HostEventType` / `InputEventType` の値は **削除・改名しない**（追加のみ）。
  *   値は文字列なので並べ替えは安全。ペイロードのフィールドは **optional でのみ** 追加する。
- * - 上記を守る「加算的変更」のたびに {@link PROTOCOL_VERSION} を +1 する。
+ * - 上記を守る「加算的変更」のたびに {@link PROTOCOL_VERSION} を +1 する。名前が増えなくても、ペイロードに
+ *   古い Host が黙って捨てる意味（新しい配送先など）を足したときは上げ、`Ubi.runtime` の機能を足す。
  * - やむを得ず互換を壊す変更をしたときだけ {@link MIN_COMPATIBLE_PROTOCOL_VERSION} を上げる。
  *
  * 加算的進化である限り、あるバージョン V の実装は V 以下のすべてを理解できる。
@@ -32,7 +33,9 @@
 // v3: MediaSource / MediaState / loadId と EVT_MEDIA_STATE を追加。
 // v4: バイナリ fetch（responseType / maxBytes / timeoutMs）、ASSET_LOAD、CMD_ABORT を追加。
 // v5: IDENTITY_TOKEN（外部サービス向けのサービストークン）を追加。
-export const PROTOCOL_VERSION = 5;
+// v6: EVENT_EMIT の `ref`（参照フィールドで配送）と `scope: 'referrers'`、core:media を指す参照を Ubi.media の描画先にする。
+//     名前は増えていないが、古い Host はこれらを黙って捨てるので版を上げる（mod は Ubi.runtime.supports で確かめる）。
+export const PROTOCOL_VERSION = 6;
 
 /**
  * これ未満のバージョンで作られた mod とは互換性がない下限。

@@ -55,6 +55,9 @@ Ubichill の約束ごと（プロトコル・データの形式・API）を、**
 - 足す: `PROTOCOL_VERSION` を +1 し、契約に新しい版を足す。消す・意味を変える: さらに `MIN_COMPATIBLE_PROTOCOL_VERSION` を上げる。どちらも忘れると CI が落ちる。
 - **CI が見るのはコマンド・イベントの名前の増減だけ**。ペイロードの型や意味を変えたこと（項目を必須にした・単位を変えたなど）は検知しない。
   `shared/mod/protocol.ts` と `shared/mod/types.ts` のペイロードの型を変える PR は、互換を壊していないかをレビューで確かめる。
+- 名前が増えなくても、**古い Host が黙って捨てる意味をペイロードに足したとき**（例: v6 の `EVENT_EMIT` の `ref`）は足す変更として扱い、
+  `PROTOCOL_VERSION` を +1 して契約に同じ名前の版を足す。あわせて `Ubi.runtime` の機能（`RuntimeFeature` と `HOST_FEATURE_PROTOCOL`）を足し、
+  mod が古い Host を見分けて切り替えられるようにする。
 - SDK のビルド結果が変わったのに changeset が無ければ落ちる（`scripts/check-npm-drift.mjs`）。
 
 ## C. サーバーの間の API

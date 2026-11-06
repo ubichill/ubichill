@@ -25,32 +25,40 @@ describe('Host ⇔ Worker のプロトコルの契約', () => {
 describe('protocolContractProblems', () => {
     const v5 = PROTOCOL_CONTRACTS[0];
     if (!v5) throw new Error('契約がありません');
+    // 今の版に左右されないよう、v5 の時点の定義から組み立てる
+    const atV5 = {
+        ...current,
+        version: v5.version,
+        commands: v5.commands,
+        events: v5.events,
+        inputEvents: v5.inputEvents,
+    };
 
     it('コマンドを足したのに版を上げていなければ問題', () => {
-        const problems = protocolContractProblems({ ...current, commands: [...current.commands, 'NEW_CMD'] }, [v5]);
+        const problems = protocolContractProblems({ ...atV5, commands: [...current.commands, 'NEW_CMD'] }, [v5]);
         expect(problems).toEqual([expect.stringContaining('足した: NEW_CMD')]);
     });
 
     it('版を上げたのに契約に足していなければ問題', () => {
-        expect(protocolContractProblems({ ...current, version: 6 }, [v5])).toEqual([
+        expect(protocolContractProblems({ ...atV5, version: 6 }, [v5])).toEqual([
             expect.stringContaining('契約の一覧に新しい版を足して'),
         ]);
     });
 
     it('版を上げて足せば良い', () => {
         const v6 = { ...v5, version: 6, commands: [...v5.commands, 'NEW_CMD'] };
-        expect(protocolContractProblems({ ...current, version: 6, commands: v6.commands }, [v5, v6])).toEqual([]);
+        expect(protocolContractProblems({ ...atV5, version: 6, commands: v6.commands }, [v5, v6])).toEqual([]);
     });
 
     it('消したら、互換の最小の版を上げていなければ問題（破壊的変更を黙って出さない）', () => {
         const v6 = { ...v5, version: 6, commands: v5.commands.filter((c) => c !== 'CMD_GRIP') };
-        const next = { ...current, version: 6, commands: v6.commands };
+        const next = { ...atV5, version: 6, commands: v6.commands };
         expect(protocolContractProblems(next, [v5, v6])).toEqual([expect.stringContaining('CMD_GRIP を消しています')]);
         expect(protocolContractProblems({ ...next, minCompatible: 6 }, [v5, v6])).toEqual([]);
     });
 
     it('契約の版は増えていく', () => {
-        expect(protocolContractProblems(current, [v5, { ...v5 }])).toEqual([
+        expect(protocolContractProblems(atV5, [v5, { ...v5 }])).toEqual([
             expect.stringContaining('版が増えていません'),
         ]);
     });

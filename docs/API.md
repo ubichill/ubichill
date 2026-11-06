@@ -104,7 +104,7 @@ await Ubi.entity.spawn(entity)                     // 親を明示指定して�
 await Ubi.asset.bytes(path, { signal? })           // assets/ のファイル（manifest の integrity と照合済み）
 await Ubi.asset.text(path)                         // UTF-8 として読む
 await Ubi.asset.wasm(path)                         // WebAssembly.Module（同じパスは 1 回だけコンパイル）
-Ubi.runtime.supports(feature)                      // 'wasm' | 'wasm:simd' | 'wasm:exceptions' | 'wasm:threads' | 'wasm:jspi' | 'fetch:binary' | 'asset'
+Ubi.runtime.supports(feature)                      // 'wasm' | 'wasm:simd' | 'wasm:exceptions' | 'wasm:threads' | 'wasm:jspi' | 'fetch:binary' | 'asset' | 'identity' | 'event:ref' | 'media:surface'
 Ubi.runtime.require(feature)                       // 使えなければ UNSUPPORTED_FEATURE の UbiError
 await Ubi.identity.token(audience, { signal? })    // 外部サービスへの身元証明（短命の JWT）。→ SERVICE_TOKEN.md
 
@@ -278,6 +278,8 @@ Events.emit('vp:media:state', state, { scope: 'referrers' }); // 参照で自分
   Events.on('media:stateChange', (state) => { /* state.targetId === 'screen' */ });
   ```
 - 判定は World Editor（Hierarchy の印と Inspector）・`ubichill dev`（ターミナルの「参照の問題」）・Host の配送で同じ（`@ubichill/shared` の `findReferenceProblems` / `resolveRefs`）。
+- `ref`・`scope: 'referrers'` と `core:media` の描画先はプロトコル v6 から。古い Host はエラーにせず黙って捨てるので、
+  古い Host でも動かしたい mod は `Ubi.runtime?.supports('event:ref')`・`supports('media:surface')` で確かめて、階層の `scope` や自分の枠（`mediaTargets`）に切り替える。
 - `config` はビルド時にリテラルとして読む。`component` に定数や式を書くと読めないので、文字列で書く。
 
 ### Worker 内で届くイベント
