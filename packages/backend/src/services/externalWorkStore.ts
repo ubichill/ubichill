@@ -8,7 +8,7 @@ import type { ExternalWork, ExternalWorkStatus, PublishedMod, WorldListItem } fr
 import { setBounded } from '../utils/boundedMap';
 import { isAuthorKey } from './authorKeyStore';
 import { backendEvents } from './backendEvents';
-import { confirmPublishedMod, type FetchedJson, worldConfirmation } from './externalWorks';
+import { authorSharePath, confirmPublishedMod, type FetchedJson, worldConfirmation } from './externalWorks';
 import { safeFetch } from './safeFetch';
 import { nodeWorldCrypto } from './worldCrypto';
 import { worldRegistry } from './worldRegistry';
@@ -50,8 +50,16 @@ async function confirm(record: ExternalWorkRecord, account: string, fresh: boole
             ? worldRegistry.resolveRemoteFresh(record.url)
             : worldRegistry.resolveRemote(record.url));
         const confirmed = worldConfirmation(resolution, { account, name: record.name });
+        // 確かめた登録なので、その作者の共有ページ（/@handle/name）で開ける
+        const handle = account.slice(0, account.lastIndexOf('@'));
         return confirmed.status === 'published'
-            ? { status: 'published', world: worldRegistry.listItemOf(confirmed.world) }
+            ? {
+                  status: 'published',
+                  world: {
+                      ...worldRegistry.listItemOf(confirmed.world),
+                      sharePath: authorSharePath(handle, record.name),
+                  },
+              }
             : confirmed;
     }
     if (!record.version) return { status: 'invalid' };

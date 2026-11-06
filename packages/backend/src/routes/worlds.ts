@@ -153,7 +153,8 @@ router.get('/resolve', optionalAuth, async (req, res) => {
             return;
         }
         res.set('Cache-Control', 'no-store');
-        res.json(result.world);
+        // 作者が登録していれば短い共有ページ（/@handle/name）を添える（画面はそれで共有し、URL を置き換える）
+        res.json({ ...result.world, sharePath: await worldRegistry.externalSharePath(result.world) });
     } catch (error) {
         logger.error(`外部ワールド取得エラー: ${url}`, error);
         res.status(400).json({ error: '外部ワールドを取得できませんでした' });

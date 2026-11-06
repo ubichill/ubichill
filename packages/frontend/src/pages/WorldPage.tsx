@@ -48,14 +48,16 @@ export function WorldPage() {
             .then(([worldData, instancesData]) => {
                 setWorld(worldData);
                 setInstances(instancesData);
-                // 以前の共有 URL（/world/:id）で開いたら、今の共有 URL（/@handle/name）へ移す
+                // 以前の共有 URL（/world/:id）や、作者が確かめられた外部のワールドの `/world?url=…` で開いたら、
+                // 短い共有 URL（/@handle/name）へ置き換える（アドレスバーをそのまま共有できるように）
                 const sharePath =
-                    worldData.source.kind === WorldSourceKind.Local ? localWorldPagePath(worldData) : undefined;
-                if (worldId && sharePath?.startsWith('/@')) navigate(sharePath, { replace: true });
+                    worldData.sharePath ??
+                    (worldData.source.kind === WorldSourceKind.Local ? localWorldPagePath(worldData) : undefined);
+                if ((worldId || externalUrl) && sharePath?.startsWith('/@')) navigate(sharePath, { replace: true });
             })
             .catch((e: unknown) => setError(e instanceof Error ? e.message : 'データの取得に失敗しました'))
             .finally(() => setLoading(false));
-    }, [worldRef, worldId, navigate]);
+    }, [worldRef, worldId, externalUrl, navigate]);
 
     // クライアント側メタ（タブ名 + JS 実行するクローラ向け）。
     // リンクプレビュー bot 向けの OGP は BFF が担う。

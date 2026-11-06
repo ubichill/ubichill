@@ -107,7 +107,8 @@ app.get('/world', async (req, res) => {
     }
     try {
         const { world, instances } = await fetchWorldPageData(worldRef);
-        const pageUrl = `${PUBLIC_BASE_URL}/world?url=${encodeURIComponent(worldRef)}`;
+        // 作者が確かめられ登録されたワールドは、短い共有ページ（/@handle/name）を正規の URL にする
+        const pageUrl = sharePageUrl(world) ?? `${PUBLIC_BASE_URL}/world?url=${encodeURIComponent(worldRef)}`;
         const worldId = world?.id ?? 'external-world';
         const tags = buildMetaTags({
             world,
@@ -130,8 +131,9 @@ app.get('/world', async (req, res) => {
     }
 });
 
-/** ワールドの共有 URL（`/@handle/name`）。このサーバーのワールドでなければ undefined。 */
+/** ワールドの共有 URL（`/@handle/name`）。外部のワールドは作者が登録したもの（sharePath）だけ。無ければ undefined。 */
 function sharePageUrl(world: WorldListItem | undefined): string | undefined {
+    if (world?.sharePath) return `${PUBLIC_BASE_URL}${world.sharePath}`;
     const url = world ? worldShareUrl(world.url) : undefined;
     return url?.startsWith(`${PUBLIC_BASE_URL}/@`) ? url : undefined;
 }
@@ -150,7 +152,8 @@ app.get('/@:handle/:name', async (req, res, next) => {
             worldId: world?.id ?? name,
             publicBaseUrl: PUBLIC_BASE_URL,
             pageUrl: sharePageUrl(world) ?? `${PUBLIC_BASE_URL}/@${handle}/${name}`,
-            enableCrawl: ENABLE_CRAWL,
+            // 外部のファイル（作者が登録したワールド）は、/world?url= と同じく公式の内容として検索に載せない
+            enableCrawl: ENABLE_CRAWL && world?.source.kind === 'local',
         });
         const bodyShell = renderWorldShell({
             world,

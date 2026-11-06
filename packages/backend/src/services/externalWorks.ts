@@ -180,3 +180,23 @@ export function worldConfirmation<
         identity.worldId === authorWorldIdOf(expected.account, expected.name);
     return published ? { status: 'published', world: resolution.world } : { status: 'invalid' };
 }
+
+/** 作者の共有ページのパス（`/@handle/name`）。 */
+export const authorSharePath = (handle: string, name: string): string => `/@${handle}/${name}`;
+
+/**
+ * 外部のワールドの作者が、このサーバーのアカウントだと署名で確かめられたときの、その ID とワールドの名前。
+ * 作者が別のサーバーの人・確認できていない（確認待ちを含む）・識別子が作者と食い違うなら undefined。
+ */
+export function localAuthorWorldOf(
+    identity: { status: string; worldId?: string; author?: string; authorPending?: true } | undefined,
+    domain: string,
+): { handle: string; name: string } | undefined {
+    if (identity?.status !== 'verified' || !identity.author || identity.authorPending) return undefined;
+    const at = identity.author.lastIndexOf('@');
+    const handle = identity.author.slice(0, at);
+    if (at <= 0 || identity.author.slice(at + 1).toLowerCase() !== domain.toLowerCase()) return undefined;
+    const prefix = authorWorldIdOf(identity.author, '');
+    const name = identity.worldId?.startsWith(prefix) ? identity.worldId.slice(prefix.length) : '';
+    return name && !name.includes('/') ? { handle, name } : undefined;
+}
