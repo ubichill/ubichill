@@ -75,6 +75,7 @@ interface RefDataFieldBase extends BaseDataField {
     /**
      * 参照先への操作権限: 'read'（既定・省略可）は読み取りのみ、
      * 'write' は自身への読み書きと同様に参照先への transform/data 更新も許可する。
+     * `component` を宣言していれば、読み書きできるのは参照先のその型の Component だけ。
      * 削除はこの参照からは決して許可されない（watchScope で見える Entity のみ削除可）。
      */
     access?: 'read' | 'write';

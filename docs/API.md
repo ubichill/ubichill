@@ -252,8 +252,13 @@ Events.emit('vp:media:play', {}, { ref: 'screen' });          // 作者が指し
 Events.emit('vp:media:state', state, { scope: 'referrers' }); // 参照で自分を指している Component へ返す
 ```
 
-- `ref` は作者が配線した相手にしか届かない。未設定・宣言の無いフィールド名なら誰にも届かない（mod が配線の外へ送ることはできない）。
+- `ref` は、送った時点の data の参照フィールドが指す相手に届く。未設定・宣言の無いフィールド名なら誰にも届かない。
 - `component` を宣言した参照は、その型の Component だけに届く。`targetType` で型を広げることはできない。宣言しなければ、指した Entity の全 Component に届く。
+- **配線は作者の意図を伝える仕組みで、届く範囲を守る仕組みではない**。参照フィールドは data の一部なので、mod 自身（自分の data の更新）も、
+  部屋の参加者（`entity:patch`）も書き換えられる。`scope: 'world'` を使えば配線と関係なく全 Worker に届く。受け手は、届いたイベントの中身を
+  信頼せずに検証する（送り手を確かめる必要があるなら、その仕組みを別に持つ）。
+- 参照で watchScope の外の相手を読めるのは、指した Entity の Component だけ。書けるのは `access: 'write'` のフィールドが指した相手だけ。
+  どちらも `component` を宣言していればその型の Component に限る（data の id を書き換えられても、宣言の外の型には届かない）。
 - `scope: 'referrers'` は、参照フィールドで自分の Entity を指している Component に届く。相手の参照が `component` を宣言していれば、それが自分の型のときだけ。
 - 相手は同じ Entity でも、別の木の奥でもよい。階層の形は問わない。
 - `component: 'core:media'` の参照は**動画の描画先**になる。フィールドの名前を `Ubi.media.*` の targetId に使うと、

@@ -1,35 +1,49 @@
-import type { ComponentDataFieldSpec, ComponentInstance } from '@ubichill/shared';
+import { type ComponentInstance, type DataFieldsLike, refFieldEntries, refTargets } from '@ubichill/shared';
 
 export type WatchScope = 'entity' | 'subtree' | 'parent' | 'world';
 
+/** 参照フィールドが `component` を宣言していないときの印（指した Entity の全 Component）。 */
+const ANY_COMPONENT = '*';
+
+/**
+ * 参照で許した相手。entityId（GameObject id）→ その Entity のうち許す Component 型。
+ * フィールドが `component` を宣言していればその型だけ、宣言が無ければその Entity の全 Component。
+ */
+export type DeclaredRefTargets = ReadonlyMap<string, ReadonlySet<string>>;
+
 /**
  * entityRef/entityRefArray フィールドの実値 (entity.data) から、watchScope 外でも
- * 許可する対象 GameObject id を読み取り用・書き込み用に分けて求める純関数。
+ * 許可する相手を読み取り用・書き込み用に分けて求める純関数。
  *
  * - 読み取り (`read`): access に関わらず全 entityRef/entityRefArray の参照先を含む
  *   (「Inspector で参照した」なら見えるのは自然なため)。
  * - 書き込み (`write`): `access: 'write'` を明示したフィールドの参照先のみ。
+ * - `component` を宣言したフィールドは、指した Entity のその型の Component だけを許す
+ *   （data の id を書き換えても、宣言した型以外の Component には届かない）。
  *
  * 削除はどちらの集合からも許可されない設計（呼び出し側で watchScope のみ判定すること）。
  */
 export function computeDeclaredEntityRefTargets(
-    dataFields: Record<string, ComponentDataFieldSpec> | undefined,
+    dataFields: DataFieldsLike | undefined,
     data: Record<string, unknown>,
-): { read: Set<string>; write: Set<string> } {
-    const read = new Set<string>();
-    const write = new Set<string>();
-    if (!dataFields) return { read, write };
-    for (const [key, spec] of Object.entries(dataFields)) {
-        if (spec.type !== 'entityRef' && spec.type !== 'entityRefArray') continue;
-        const v = data[key];
-        const values = spec.type === 'entityRef' ? (typeof v === 'string' ? [v] : []) : Array.isArray(v) ? v : [];
-        for (const id of values) {
-            if (typeof id !== 'string') continue;
-            read.add(id);
-            if (spec.access === 'write') write.add(id);
-        }
-    }
-    return { read, write };
+): { read: DeclaredRefTargets; write: DeclaredRefTargets } {
+    const refs = refFieldEntries(dataFields).map(([field, spec]) => ({
+        targets: refTargets(spec, data[field]),
+        component: spec.component ?? ANY_COMPONENT,
+        writable: spec.access === 'write',
+    }));
+    const collect = (list: typeof refs): DeclaredRefTargets =>
+        list.reduce(
+            (map, ref) => ref.targets.reduce((m, id) => m.set(id, new Set([...(m.get(id) ?? []), ref.component])), map),
+            new Map<string, ReadonlySet<string>>(),
+        );
+    return { read: collect(refs), write: collect(refs.filter((ref) => ref.writable)) };
+}
+
+/** 参照で許した相手に e（ComponentInstance）が含まれるか。 */
+export function isDeclaredRefTarget(e: ComponentInstance, targets: DeclaredRefTargets | undefined): boolean {
+    const types = e.entityId ? targets?.get(e.entityId) : undefined;
+    return !!types && (types.has(ANY_COMPONENT) || types.has(e.type));
 }
 
 /** entityId → parentEntityId のマップを純関数で構築する。 */
@@ -111,7 +125,7 @@ export function isVisibleInScope(
  * `Ubi.entity(id).get/update/destroy` のような、任意 id (= componentInstanceId) を直接指定できる
  * escape hatch から watchScope 外への無制限アクセスを防ぐために使う。scope 内なら常に許可、
  * scope 外でも `declaredTargets` (mod が entityRef/entityRefArray フィールドで明示的にワイヤリング
- * した GameObject id 集合、= ComponentInstance.entityId) に含まれていれば許可する。
+ * した相手。{@link computeDeclaredEntityRefTargets}) に含まれていれば許可する。
  *
  * 呼び出し側は先に `entities.get(id)` (componentInstanceId キー) で対象を解決してから渡すこと。
  * `id` 自体は ComponentInstance.entityId (GameObject id) とは別の識別子空間なので、
@@ -122,8 +136,8 @@ export function isAccessible(
     scope: WatchScope,
     rootGameObjectId: string | undefined,
     scopedIds: Set<string> | null,
-    declaredTargets?: Set<string>,
+    declaredTargets?: DeclaredRefTargets,
 ): boolean {
     if (isVisibleInScope(e, scope, rootGameObjectId, scopedIds)) return true;
-    return !!e.entityId && (declaredTargets?.has(e.entityId) ?? false);
+    return isDeclaredRefTarget(e, declaredTargets);
 }
