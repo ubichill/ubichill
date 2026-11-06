@@ -42,7 +42,13 @@ import { authorSharePath, localAuthorWorldOf, worldConfirmation } from './extern
 import { federatedCandidates, uniqueByWorldId } from './federatedWorlds';
 import { createRemoteWorldCache } from './remoteWorldCache';
 import { assertPublicUrl, safeFetch } from './safeFetch';
-import { normalizeWorldUrl, resolveBundle, resolveWorldFromUrl, WorldIntegrityError } from './worldResolver';
+import {
+    normalizeWorldUrl,
+    resolveBundle,
+    resolveWorldFromUrl,
+    WorldIntegrityError,
+    worldRefOf,
+} from './worldResolver';
 
 // ── システム定数 ──────────────────────────────────────────────────
 
@@ -456,7 +462,9 @@ class WorldRegistry {
     }
 
     /** {@link resolveRef} の失敗理由付き版。改竄（署名不正）を「見つからない」と区別して利用者に伝える。 */
-    async resolveRefDetailed(ref: string): Promise<WorldResolution> {
+    async resolveRefDetailed(input: string): Promise<WorldResolution> {
+        // 共有ページの URL（/world?url=…）・`@handle/name` などを貼られても同じワールドにたどり着く
+        const ref = worldRefOf(input);
         const authorRef = /^@([^/]+)\/([^/]+)$/.exec(ref);
         if (authorRef) return this.resolveByAuthorName(authorRef[1] as string, authorRef[2] as string);
         if (!/^https?:\/\//i.test(ref)) return this.resolveLocal(ref);

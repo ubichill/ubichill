@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { instanceWorldRef, localWorldPagePath, worldPagePath } from './worldRef';
+import { instanceWorldRef, localWorldPagePath, needsSharePathLookup, worldPagePath } from './worldRef';
 
 describe('instanceWorldRef', () => {
     it('外部ワールドは取得元の URL（id だけでは自サーバーで解決できない）', () => {
@@ -49,5 +49,30 @@ describe('worldPagePath', () => {
             }),
         ).toBe('/@youkan/my-world');
         expect(worldPagePath({ id: 'x7k2', source: { kind: 'local' } })).toBe('/world/x7k2');
+    });
+});
+
+describe('needsSharePathLookup', () => {
+    const url = 'https://ieyoukan.github.io/ubichill-worlds/worlds/chillwa.yaml';
+    const verified = { status: 'verified', author: 'youkan@ubichill.com' };
+
+    it('作者を署名で確かめられた外部のワールドと、確認の結果を持たない一覧の項目は、短い共有パスを問い合わせる', () => {
+        expect(needsSharePathLookup({ url, source: { kind: 'github' }, identity: verified })).toBe(true);
+        expect(needsSharePathLookup({ url, source: { kind: 'github' } })).toBe(true);
+    });
+
+    it('知っている・本体のワールド・作者を確かめられない・URL が無いなら問い合わせない', () => {
+        expect(
+            needsSharePathLookup({
+                url,
+                source: { kind: 'github' },
+                identity: verified,
+                sharePath: '/@youkan/chillwa',
+            }),
+        ).toBe(false);
+        expect(needsSharePathLookup({ url, source: { kind: 'local' }, identity: verified })).toBe(false);
+        expect(needsSharePathLookup({ url, source: { kind: 'github' }, identity: { status: 'verified' } })).toBe(false);
+        expect(needsSharePathLookup({ url, source: { kind: 'github' }, identity: { status: 'unsigned' } })).toBe(false);
+        expect(needsSharePathLookup({ source: { kind: 'github' }, identity: verified })).toBe(false);
     });
 });

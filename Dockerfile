@@ -52,9 +52,11 @@ RUN pnpm turbo build --filter=@ubichill/backend
 # store-dir を deps と同じキャッシュマウントに向け、deploy の再ダウンロードを防ぐ。
 # pnpm deploy はパッケージの公開対象（files / .gitignore）だけをコピーする。ビルド成果物が
 # 欠けると起動時に MODULE_NOT_FOUND で落ちるため、diff で一致を確認してビルドを止める。
+# --libc=musl: ビルドは glibc（bookworm）、実行は alpine（musl）。既定では glibc 用の sharp（@img/sharp-linux-*）しか
+# 入らず alpine で読み込めないので、実行する側の musl 用を入れる（読み込めるかは backend-runner で確かめる）。
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     printf 'inject-workspace-packages=true\nstore-dir=/pnpm/store\n' > .npmrc \
-    && pnpm --filter="@ubichill/backend" --prod deploy --ignore-scripts /app/deploy-backend \
+    && pnpm --filter="@ubichill/backend" --prod deploy --ignore-scripts --libc=musl /app/deploy-backend \
     && diff -rq packages/backend/dist /app/deploy-backend/dist
 
 # ==========================================
@@ -112,6 +114,8 @@ ENV COMMIT_HASH=${COMMIT_HASH}
 USER node
 COPY --from=builder-backend --chown=node:node /app/deploy-backend .
 COPY --from=builder-backend --chown=node:node /app/worlds ./worlds
+# 画像の作り直し（sharp）のネイティブ部分がこの OS で読み込めることを、起動時ではなくビルドの時点で確かめる
+RUN node -e "require('sharp')"
 
 # コンテナ内の絶対パス。k8s で ConfigMap/PVC をマウントする場合は WORLDS_DIR で上書きする
 ENV WORLDS_DIR=/app/worlds

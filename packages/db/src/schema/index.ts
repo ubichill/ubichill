@@ -8,6 +8,7 @@ export * from './federationPeers';
 export * from './instances';
 export * from './notifications';
 export * from './pendingRegistrations';
+export * from './profileImages';
 export * from './users';
 export * from './worlds';
 

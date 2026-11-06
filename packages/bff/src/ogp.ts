@@ -5,7 +5,7 @@
  * 値の HTML/JSON エスケープはここで完結させ、呼び出し側は結果を <head> に流すだけ。
  */
 
-import type { UserSummary, WorldListItem } from '@ubichill/shared';
+import type { UserProfile, UserSummary, WorldListItem } from '@ubichill/shared';
 import { esc, escJsonForScript } from './html';
 
 interface MetaInput {
@@ -72,8 +72,11 @@ export function buildMetaTags({ world, worldId, publicBaseUrl, pageUrl, enableCr
         .join('\n');
 }
 
+/** プロフィールの項目（ひとこと・バナー）は、backend の版によっては無い（BFF と backend は別々に更新される）。 */
+export type UserPreview = UserSummary & Partial<Pick<UserProfile, 'status' | 'bannerImage'>>;
+
 interface UserMetaInput {
-    user: UserSummary | undefined;
+    user: UserPreview | undefined;
     /** 見つからなかったときにも出す ID（`/@ID` の ID） */
     handle: string;
     /** 公開しているワールドの数（分からなければ undefined） */
@@ -84,8 +87,9 @@ interface UserMetaInput {
 }
 
 /**
- * ユーザーページ（`/@ID`）の <head>。名前・アイコン・説明を出す。説明は本人が書いた自己紹介で、
- * 書いていなければ作者アカウントと公開しているワールドの数から作る。アイコンが無ければサイトのアイコン。
+ * ユーザーページ（`/@ID`）の <head>。名前・アイコン・説明を出す。説明は本人が書いた自己紹介（無ければひとこと）で、
+ * どちらも無ければ作者アカウントと公開しているワールドの数から作る。
+ * 画像はアイコン（SNS のプロフィールと同じく小さいカード）。アイコンが無くバナーがあればバナーを大きく、どちらも無ければサイトのアイコン。
  */
 export function buildUserMetaTags({
     user,
@@ -99,14 +103,16 @@ export function buildUserMetaTags({
     const account = `@${user?.handle ?? handle}@${domain}`;
     const name = user?.name ?? account;
     const title = user ? `${name}（${account}）` : account;
-    const desc = user?.bio
-        ? user.bio.replace(/\s+/g, ' ').slice(0, 200)
+    const written = user?.bio || user?.status;
+    const desc = written
+        ? written.replace(/\s+/g, ' ').slice(0, 200)
         : user
           ? `${name}（${account}）の ubichill のプロフィール。${
                 worldCount !== undefined ? `公開しているワールド ${worldCount} 件。` : ''
             }`
           : `${account} — ubichill のユーザー`;
-    const image = user?.image ?? `${publicBaseUrl}/icon.png`;
+    const bannerOnly = !user?.image && !!user?.bannerImage;
+    const image = user?.image || user?.bannerImage || `${publicBaseUrl}/icon.png`;
     const jsonLd = escJsonForScript(
         JSON.stringify({
             '@context': 'https://schema.org',
@@ -128,7 +134,7 @@ export function buildUserMetaTags({
         `<meta property="og:image" content="${esc(image)}">`,
         `<meta property="og:image:alt" content="${esc(name)}">`,
         user ? `<meta property="profile:username" content="${esc(user.handle)}">` : '',
-        '<meta name="twitter:card" content="summary">',
+        `<meta name="twitter:card" content="${bannerOnly ? 'summary_large_image' : 'summary'}">`,
         `<meta name="twitter:title" content="${esc(title)}">`,
         `<meta name="twitter:description" content="${esc(desc)}">`,
         `<meta name="twitter:image" content="${esc(image)}">`,

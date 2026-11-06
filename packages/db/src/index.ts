@@ -37,8 +37,18 @@ export {
     type PendingRegistrationRecord,
     pendingRegistrationRepository,
 } from './repositories/pendingRegistrationRepository';
+export {
+    type ProfileImageBlob,
+    type ProfileImageRecordKind,
+    profileImageRepository,
+} from './repositories/profileImageRepository';
 export { type FriendRow, userFriendRepository } from './repositories/userFriendRepository';
-export { type UserRecord, userRepository } from './repositories/userRepository';
+export {
+    type ProfileFieldsInput,
+    type UserProfileRecord,
+    type UserRecord,
+    userRepository,
+} from './repositories/userRepository';
 export { userSettingsRepository } from './repositories/userSettingsRepository';
 export { type PublishOutcome, type WorldTarget, worldRepository } from './repositories/worldRepository';
 export { editorWorldOf, type ServedWorld, servedWorldOf, versionsToPrune } from './repositories/worldRows';

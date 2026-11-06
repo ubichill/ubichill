@@ -1,16 +1,12 @@
-import type { WorldIdentity } from '@ubichill/shared';
+import type { UserProfile, WorldIdentity } from '@ubichill/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { type ResignResult, resignAll } from '@/lib/account/resign';
 import { API_BASE } from '@/lib/api';
 import { authorSignerFor, browserFetch, signHostedWorld } from '@/lib/signing';
 import type { OwnedWorld } from './OwnedWorldCard';
 
-/** 自分のアカウント（`GET /api/v1/users/me`）。 */
-export interface MyProfile {
-    id: string;
-    name: string;
-    handle: string;
-    author: string;
+/** 自分のアカウント（`GET /api/v1/users/me`）。公開プロフィールの項目に、本人だけが見る項目を足したもの。 */
+export interface MyProfile extends UserProfile {
     signingKeys?: string[];
     displayNameConflict?: boolean;
     /** 次に別の表示名へ変えられる時刻（ISO 8601）。変えたことが無ければ null。 */
@@ -18,8 +14,6 @@ export interface MyProfile {
     passwordChangeRequired?: boolean;
     passwordManagedBySecret?: boolean;
     isAdmin?: boolean;
-    image: string | null;
-    bio?: string | null;
 }
 
 /**

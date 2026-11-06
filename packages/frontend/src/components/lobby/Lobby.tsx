@@ -389,7 +389,7 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                                                 onKeyDown={(e) => {
                                                     if (e.key === 'Enter') void handleImport();
                                                 }}
-                                                placeholder="ワールドの共有 URL を貼り付け（例: https://.../world/xxxx）"
+                                                placeholder="ワールドの共有 URL を貼り付け（例: https://ubichill.com/@youkan/chillwa）"
                                                 className={css({
                                                     flex: 1,
                                                     padding: '9px 12px',

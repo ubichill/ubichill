@@ -87,7 +87,7 @@ export function SettingsTab({
                 {current !== 'mods' && account.loading && (
                     <p className={css({ fontSize: '13px', color: 'textMuted' })}>読み込み中...</p>
                 )}
-                {current === 'profile' && <ProfileEditSection account={account} />}
+                {current === 'profile' && <ProfileEditSection account={account} onNavigate={onNavigate} />}
                 {current === 'worlds' && !account.loading && (
                     <MyWorldsSection account={account} onNavigate={onNavigate} onJoinInstance={onJoinInstance} />
                 )}

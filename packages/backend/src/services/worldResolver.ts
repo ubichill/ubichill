@@ -243,6 +243,33 @@ export async function resolveWorldFromUrl(
  * 共有 URL（`.../@handle/name`）も同じ形にする。以前の内部 ID の形（`.../world/:id`、`.../api/v1/worlds/:id`、`/yaml`・`.yaml` 付き）は
  * `.../api/v1/worlds/:id` にそろえる（自ホストなら ID で解決できる）。それ以外はそのまま返す。
  */
+/**
+ * 貼り付けられた共有の文字列を、解決できるワールドの参照にする（ロビーの「共有 URL を貼って入る」など）。
+ * - `@handle/name`・`/@handle/name` → `@handle/name`（このサーバーの作者のワールド）
+ * - 共有ページ `…/world?url=<ワールドの URL>` → 中のワールドの URL（どのサーバーの共有ページでも）
+ * - `https://` を省いた `host/…` → `https://host/…`
+ * それ以外（ワールドの URL・内部 ID）はそのまま。`…/@handle/name` などの URL の形は normalizeWorldUrl が読む。
+ */
+export function worldRefOf(input: string): string {
+    const unwrap = (value: string, depth: number): string => {
+        const s = value.trim();
+        const author = /^\/?(@[a-z0-9_]+\/[a-z0-9-]+)\/?$/i.exec(s);
+        if (author) return (author[1] as string).toLowerCase();
+        const url = /^https?:\/\//i.test(s) ? s : /^[a-z0-9.-]+\.[a-z]{2,}(?::\d+)?\//i.test(s) ? `https://${s}` : s;
+        const inner = (() => {
+            try {
+                const u = new URL(url);
+                return u.pathname.replace(/\/$/, '') === '/world' ? u.searchParams.get('url') : null;
+            } catch {
+                return null;
+            }
+        })();
+        // 共有ページが共有ページを包んでいても数段で止める
+        return inner && depth < 3 ? unwrap(inner, depth + 1) : url;
+    };
+    return unwrap(input, 0);
+}
+
 export function normalizeWorldUrl(input: string): string {
     try {
         const u = new URL(input);

@@ -1,48 +1,19 @@
-import { displayAuthorAccount, type PublishedMod } from '@ubichill/shared';
+import type { PublishedMod, UserProfile } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { WorldDetailModal } from '@/components/lobby/WorldDetailModal';
 import { UserSocialBar } from '@/components/social';
+import { fetchMyAccount, type MyAccount } from '@/lib/account/me';
 import { API_BASE } from '@/lib/api';
 import { fetchPublishedMods } from '@/lib/externalWorksApi';
+import { fetchUserProfile } from '@/lib/profile/profileApi';
 import { useSession } from '@/lib/session';
-import { css, cva } from '@/styled-system/css';
-import { BioSection } from './BioSection';
+import { css } from '@/styled-system/css';
 import { FavoriteWorldsSection } from './FavoriteWorldsSection';
 import { type OwnedWorld, OwnedWorldCard } from './OwnedWorldCard';
+import { ProfileEditor } from './ProfileEditor';
+import { ProfileHeader } from './ProfileHeader';
 import { PublishedModsSection } from './PublishedModsSection';
-
-/** 公開プロフィール（`GET /api/v1/users/:id`）。 */
-interface PublicProfile {
-    id: string;
-    name: string;
-    handle: string;
-    author: string;
-    image: string | null;
-    bio?: string | null;
-}
-
-const actionButton = cva({
-    base: {
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '1.5',
-        px: '3',
-        py: '1.5',
-        border: '1px solid',
-        borderRadius: '10px',
-        fontSize: '12px',
-        fontWeight: '600',
-        cursor: 'pointer',
-        whiteSpace: 'nowrap',
-    },
-    variants: {
-        tone: {
-            primary: { bg: 'primary', color: 'textOnPrimary', borderColor: 'primary', _hover: { opacity: 0.9 } },
-            secondary: { bg: 'surface', color: 'text', borderColor: 'border', _hover: { bg: 'surfaceHover' } },
-        },
-    },
-});
 
 interface UserProfileViewProps {
     /** 表示対象のユーザーID。省略時はログイン中の自分 */
@@ -55,21 +26,22 @@ interface UserProfileViewProps {
         worldId: string,
         worldData?: { thumbnail?: string; displayName?: string },
     ) => void;
-    /** 自分のプロフィールの「プロフィールを編集」（設定のプロフィールを開く）。省略時はボタンを出さない */
-    onEditProfile?: () => void;
 }
+
+type EditState = { kind: 'viewing' } | { kind: 'loading' } | { kind: 'editing'; account: MyAccount };
 
 /**
  * プロフィール（ほかの人に見えるとおり。自分のページでも同じ内容）。ページ（/@ID・/user/:id）と HUD のマイページで使う。
- * 自分のページには「プロフィールを編集」を出す（編集は設定で行う）。共有はページの URL（/@ID）をそのまま使う。
+ * 自分のページでは「編集」で同じ場所が編集の表示に変わる。共有はページの URL（/@ID）。
  */
-export function UserProfileView({ userId, onNavigate, onJoinInstance, onEditProfile }: UserProfileViewProps) {
+export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProfileViewProps) {
     const navigate = useNavigate();
     const { data: session, isPending } = useSession();
     const targetUserId = userId ?? session?.user.id;
     const isOwnPage = !!session && targetUserId === session.user.id;
 
-    const [profile, setProfile] = useState<PublicProfile | null>(null);
+    const [profile, setProfile] = useState<UserProfile | null>(null);
+    const [edit, setEdit] = useState<EditState>({ kind: 'viewing' });
     const [worlds, setWorlds] = useState<OwnedWorld[]>([]);
     const [selectedWorldKey, setSelectedWorldKey] = useState<string | null>(null);
     const [mods, setMods] = useState<PublishedMod[]>([]);
@@ -94,16 +66,15 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance, onEditProf
         const ctrl = { cancelled: false };
         setLoading(true);
         setError('');
-        const id = encodeURIComponent(targetUserId);
+        setEdit({ kind: 'viewing' });
         Promise.all([
-            fetch(`${API_BASE}/api/v1/users/${id}`, { credentials: 'include' }),
-            fetch(`${API_BASE}/api/v1/users/${id}/worlds`, { credentials: 'include' }),
+            fetchUserProfile(targetUserId),
+            fetch(`${API_BASE}/api/v1/users/${encodeURIComponent(targetUserId)}/worlds`, { credentials: 'include' }),
             fetchPublishedMods(targetUserId),
         ])
-            .then(async ([pRes, wRes, publishedMods]) => {
-                if (!pRes.ok) throw new Error(`プロフィール取得失敗 (${pRes.status})`);
+            .then(async ([p, wRes, publishedMods]) => {
                 if (!wRes.ok) throw new Error(`ワールド取得失敗 (${wRes.status})`);
-                const [p, w] = [(await pRes.json()) as PublicProfile, (await wRes.json()) as { worlds: OwnedWorld[] }];
+                const w = (await wRes.json()) as { worlds: OwnedWorld[] };
                 if (ctrl.cancelled) return;
                 setProfile(p);
                 setWorlds(w.worlds);
@@ -115,6 +86,22 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance, onEditProf
             ctrl.cancelled = true;
         };
     }, [isPending, targetUserId]);
+
+    // 編集は本人のアカウント（表示名の変更の制限などを含む）を読み直してから始める
+    const startEditing = () => {
+        setEdit({ kind: 'loading' });
+        setError('');
+        fetchMyAccount()
+            .then((account) => setEdit({ kind: 'editing', account }))
+            .catch((e: unknown) => {
+                setEdit({ kind: 'viewing' });
+                setError(e instanceof Error ? e.message : 'アカウントを読み込めませんでした');
+            });
+    };
+    const finishEditing = (latest: UserProfile) => {
+        setProfile(latest);
+        setEdit({ kind: 'viewing' });
+    };
 
     if (isPending || loading) {
         return (
@@ -130,79 +117,17 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance, onEditProf
 
     return (
         <div>
-            {profile && (
-                <div
-                    className={css({
-                        bg: 'surface',
-                        borderRadius: '16px',
-                        p: { base: '4', md: '6' },
-                        mb: '4',
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: '4',
-                    })}
-                >
-                    <div
-                        className={css({
-                            width: { base: '60px', md: '80px' },
-                            height: { base: '60px', md: '80px' },
-                            borderRadius: '50%',
-                            bg: 'primary',
-                            color: 'textOnPrimary',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: { base: 'xl', md: '2xl' },
-                            fontWeight: '700',
-                            overflow: 'hidden',
-                            flexShrink: 0,
-                        })}
-                    >
-                        {profile.image ? (
-                            <img
-                                src={profile.image}
-                                alt={profile.name}
-                                className={css({ width: '100%', height: '100%', objectFit: 'cover' })}
-                            />
-                        ) : (
-                            profile.name.charAt(0).toUpperCase()
-                        )}
-                    </div>
-                    <div className={css({ flex: 1, minWidth: 0 })}>
-                        <div className={css({ display: 'flex', alignItems: 'flex-start', gap: '3', flexWrap: 'wrap' })}>
-                            <div className={css({ flex: 1, minWidth: '160px' })}>
-                                <h1
-                                    className={css({
-                                        fontSize: { base: 'xl', md: '2xl' },
-                                        fontWeight: '700',
-                                        color: 'text',
-                                        mb: '1',
-                                    })}
-                                >
-                                    {profile.name}
-                                </h1>
-                                <p className={css({ fontSize: '13px', color: 'textMuted' })}>
-                                    {displayAuthorAccount(profile.author)}
-                                </p>
-                            </div>
-                            {isOwnPage && (
-                                <div className={css({ display: 'flex', gap: '2', flexWrap: 'wrap' })}>
-                                    {onEditProfile && (
-                                        <button
-                                            type="button"
-                                            className={actionButton({ tone: 'primary' })}
-                                            onClick={onEditProfile}
-                                        >
-                                            プロフィールを編集
-                                        </button>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                        <BioSection bio={profile.bio ?? null} editable={false} onChanged={() => undefined} />
-                    </div>
-                </div>
-            )}
+            {profile &&
+                (isOwnPage && edit.kind === 'editing' ? (
+                    <ProfileEditor account={edit.account} onSaved={finishEditing} onCancel={finishEditing} />
+                ) : (
+                    <ProfileHeader
+                        profile={profile}
+                        isOwner={isOwnPage}
+                        onEdit={startEditing}
+                        editPending={edit.kind === 'loading'}
+                    />
+                ))}
 
             {!isOwnPage && session && profile && <UserSocialBar userId={profile.id} name={profile.name} />}
 
