@@ -52,7 +52,7 @@ async function main(): Promise<void> {
             await runBuild(rest, term);
             return;
         case 'dev':
-            await runDev(rest);
+            await runDev(rest, term);
             return;
         case 'install':
             await runInstall(rest, term);

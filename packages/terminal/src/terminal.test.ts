@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { HintedError } from './error.ts';
-import { recordingLogger, remapLevels, silentLogger } from './logger.ts';
+import { onceLogger, recordingLogger, remapLevels, silentLogger } from './logger.ts';
 import { stripAnsi } from './paint.ts';
 import { createTerminal, type TerminalIO } from './terminal.ts';
 
@@ -119,6 +119,24 @@ describe('recordingLogger / remapLevels', () => {
         quiet.success('s');
         quiet.warn('w');
         expect(entries.map((e) => e.level)).toEqual(['debug', 'debug', 'warn']);
+    });
+
+    it('onceLogger は指定した level の同じ行を 2 回目から出さない（補足が違えば別の行）。ほかの level は毎回出す', () => {
+        const { logger, entries } = recordingLogger();
+        const once = onceLogger(logger, ['warn']);
+        once.warn('a', 'x');
+        once.warn('a', 'x');
+        once.warn('a', 'y');
+        once.warn('a');
+        once.info('i');
+        once.info('i');
+        expect(entries.map((e) => `${e.level}:${e.message}:${e.detail ?? ''}`)).toEqual([
+            'warn:a:x',
+            'warn:a:y',
+            'warn:a:',
+            'info:i:',
+            'info:i:',
+        ]);
     });
 
     it('silentLogger は何もしない', () => {

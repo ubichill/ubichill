@@ -2,12 +2,13 @@
  * 世代を確定する順序。失敗した段階で何が残るかは docs/design/world-runtime-dev.md の表の通り。
  */
 import { type DevEvent, EMPTY_ENTITY_TYPE, type InstanceDefinition } from '@ubichill/shared';
+import { recordingLogger, silentLogger } from '@ubichill/terminal';
 import { describe, expect, it, vi } from 'vitest';
 import type { ModArtifacts } from '../build.ts';
 import { fakeMod, remoteMods } from './generation.test.ts';
 import { currentGeneration, initialGenerationState } from './generation.ts';
 import type { GoAdmin } from './goRuntime.ts';
-import { buildRoomDefinition, createPipeline, type PipelineDeps, type WorldSource } from './pipeline.ts';
+import { buildRoomDefinition, createPipeline, formatNames, type PipelineDeps, type WorldSource } from './pipeline.ts';
 
 /** 最後に送った診断。 */
 const lastDiagnostics = (events: readonly DevEvent[]) =>
@@ -72,7 +73,12 @@ function harness(overrides: Partial<PipelineDeps> = {}) {
         loadWorld: async () => worldYaml(),
         go: () => go.admin,
         broadcast: (event) => events.push(event),
-        log: () => {},
+        log: { dev: silentLogger, build: silentLogger },
+        // 時間の表示を決めるため、呼ぶたびに 10 ms 進む時計
+        now: (() => {
+            const clock = { ms: 0 };
+            return () => (clock.ms += 10);
+        })(),
         maxUsers: 20,
         setTimeout: (fn, ms) => timers.push({ fn, ms }),
         ...overrides,
@@ -448,17 +454,17 @@ describe('手元に無い mod', () => {
             lockVersion: 1 as const,
             mods: { 'video-player': { ...fakeMod('video-player', '3.1.0').lockEntry, baseUrl: 'https://vp.example' } },
         };
-        const logs: string[] = [];
+        const dev = recordingLogger();
         const h = harness({
             loadWorld: async () => withRemote(pinned),
             fetchImpl: remote.fetchImpl,
-            log: (line) => logs.push(line),
+            log: { dev: dev.logger, build: silentLogger },
         });
         h.pipeline.schedule({ mods: 'all', reconfigure: true });
         await h.pipeline.idle();
         expect(currentGeneration(h.pipeline.state)?.lock.mods['video-player']?.version).toBe('3.1.0');
         expect(remote.fetched).toEqual([]);
-        expect(logs.join('\n')).toContain('video-player@3.1.0（lock）');
+        expect(dev.entries.map((e) => e.message).join('\n')).toContain('video-player@3.1.0（lock）');
     });
 });
 
@@ -475,5 +481,140 @@ describe('中身の変わらない保存', () => {
         h.pipeline.schedule({ mods: new Set(), reconfigure: true });
         await h.pipeline.idle();
         expect(currentGeneration(h.pipeline.state)?.instanceId).toBe('dev-r-2');
+    });
+});
+
+describe('端末に出す行', () => {
+    const logged = (overrides: Partial<PipelineDeps> = {}) => {
+        const dev = recordingLogger();
+        const build = recordingLogger();
+        const h = harness({ log: { dev: dev.logger, build: build.logger }, ...overrides });
+        const shown = (entries: typeof dev.entries) => entries.filter((e) => e.level !== 'debug');
+        return { ...h, dev: dev.entries, build: build.entries, shown };
+    };
+
+    it('起動のときは mod ごとの進み具合と、作った世代を出す', async () => {
+        const h = logged();
+        h.pipeline.schedule({ mods: 'all', reconfigure: true });
+        await h.pipeline.idle();
+        expect(h.shown(h.build)).toEqual([{ level: 'success', message: 'pen', detail: '10 ms' }]);
+        expect(h.shown(h.dev)).toEqual([
+            { level: 'success', message: '世代 r-1 を作りました', detail: '30 ms  部屋 dev-r-1' },
+        ]);
+    });
+
+    it('保存のたびのビルドは 1 行にまとめ、作り直した mod・時間・世代を出す（mod ごとの行は debug）', async () => {
+        const h = logged();
+        h.pipeline.schedule({ mods: 'all', reconfigure: true });
+        await h.pipeline.idle();
+        h.mods.set('pen', edited(fakeMod('pen'), 'B'));
+        h.pipeline.schedule({ mods: new Set(['pen']), reconfigure: false });
+        await h.pipeline.idle();
+        expect(h.build.at(-1)).toEqual({
+            level: 'success',
+            message: 'pen を作り直しました',
+            detail: '30 ms  世代 r-2',
+        });
+        expect(h.build.filter((e) => e.message === 'pen をビルドしました').map((e) => e.level)).toEqual(['debug']);
+    });
+
+    it('部屋を作り直したときは、状態が初期に戻ることを添える', async () => {
+        const h = logged();
+        h.pipeline.schedule({ mods: 'all', reconfigure: true });
+        await h.pipeline.idle();
+        h.pipeline.schedule({ mods: new Set(), reconfigure: true });
+        await h.pipeline.idle();
+        expect(h.dev.filter((e) => e.level === 'success').at(-1)).toEqual({
+            level: 'success',
+            message: 'ワールドを読み直しました',
+            detail: expect.stringContaining('部屋 dev-r-2（状態は初期に戻ります）'),
+        });
+    });
+
+    it('ビルドの失敗は mod の名前と、整えたメッセージ（esbuild のコードの抜き出しなど）と直し方を出す', async () => {
+        const h = logged({ describeBuildFailure: async (error) => `整えた: ${(error as Error).message}` });
+        h.compile.mockRejectedValueOnce(new Error('Could not resolve "foo"'));
+        h.pipeline.schedule({ mods: 'all', reconfigure: true });
+        await h.pipeline.idle();
+        expect(h.build.filter((e) => e.level === 'error')).toEqual([
+            {
+                level: 'error',
+                message: 'pen のビルドに失敗しました\n整えた: Could not resolve "foo"',
+                detail: '直して保存するとビルドし直します',
+            },
+        ]);
+        // ブラウザには整える前のメッセージ（端末の色の符号を混ぜない）
+        expect(h.pipeline.diagnostics).toEqual([{ kind: 'build', mod: 'pen', message: 'Could not resolve "foo"' }]);
+    });
+
+    it('失敗の後に元へ戻した（中身が公開中と同じ）ときも、ビルドが通ったことを出す', async () => {
+        const h = logged();
+        h.pipeline.schedule({ mods: 'all', reconfigure: true });
+        await h.pipeline.idle();
+        h.compile.mockRejectedValueOnce(new Error('broken'));
+        h.pipeline.schedule({ mods: new Set(['pen']), reconfigure: false });
+        await h.pipeline.idle();
+        h.pipeline.schedule({ mods: new Set(['pen']), reconfigure: false });
+        await h.pipeline.idle();
+        expect(h.build.at(-1)).toEqual({
+            level: 'success',
+            message: 'pen のビルドが通りました',
+            detail: '30 ms  中身が同じなので世代 r-1 のまま',
+        });
+        // 失敗していなければ、同じ中身の保存は何も出さない（debug だけ）
+        h.pipeline.schedule({ mods: new Set(['pen']), reconfigure: false });
+        await h.pipeline.idle();
+        expect(h.build.at(-1)?.level).toBe('debug');
+    });
+
+    it('整える処理が投げても、元のメッセージで出して止まらない', async () => {
+        const h = logged({
+            describeBuildFailure: async () => {
+                throw new Error('formatMessages が壊れた');
+            },
+        });
+        h.compile.mockRejectedValueOnce(new Error('broken'));
+        h.pipeline.schedule({ mods: 'all', reconfigure: true });
+        await h.pipeline.idle();
+        expect(h.build.find((e) => e.level === 'error')?.message).toBe('pen のビルドに失敗しました\nbroken');
+    });
+
+    it('ワールドの失敗は直し方を添える（lock に無い mod は source.url か ubichill install）', async () => {
+        const h = logged({ loadWorld: async () => worldYaml(['pen', 'ghost']) });
+        h.pipeline.schedule({ mods: 'all', reconfigure: true });
+        await h.pipeline.idle();
+        expect(h.dev.find((e) => e.level === 'error')).toEqual({
+            level: 'error',
+            message: expect.stringContaining('ワールドを作れません'),
+            detail: expect.stringContaining('ubichill install'),
+        });
+    });
+
+    it('Go が部屋を断ったら、--debug で Go のログを見るよう案内する', async () => {
+        const go = fakeGo(() => 'bad definition');
+        const h = logged({ go: () => go.admin });
+        h.pipeline.schedule({ mods: 'all', reconfigure: true });
+        await h.pipeline.idle();
+        expect(h.dev.find((e) => e.level === 'error')).toMatchObject({
+            message: 'ワールドを作れません: Go が部屋を作れません (400): bad definition',
+            detail: '--debug を付けると Go のログも出ます',
+        });
+    });
+
+    it('部屋をどうするかの判断は debug で出す', async () => {
+        const h = logged();
+        h.pipeline.schedule({ mods: 'all', reconfigure: true });
+        await h.pipeline.idle();
+        expect(h.dev.filter((e) => e.level === 'debug').map((e) => e.message)).toContain(
+            '世代 r-1: 部屋 dev-r-1 を作ります（最初の世代）',
+        );
+    });
+});
+
+describe('formatNames', () => {
+    it('3 つまでは並べ、それより多ければ 2 つと残りの数', () => {
+        expect(formatNames([])).toBe('');
+        expect(formatNames(['a', 'b', 'c'])).toBe('a、b、c');
+        expect(formatNames(['a', 'b', 'c', 'd'])).toBe('a、b ほか 2 個');
     });
 });

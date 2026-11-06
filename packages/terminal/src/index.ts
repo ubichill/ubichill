@@ -10,7 +10,15 @@ export {
 } from './error.ts';
 export { formatEvent, type Level, type LineStyle, type LogEvent } from './event.ts';
 export { formatBytes, formatClock, formatDuration } from './format.ts';
-export { type Logger, loggerFrom, type RecordedLog, recordingLogger, remapLevels, silentLogger } from './logger.ts';
+export {
+    type Logger,
+    loggerFrom,
+    onceLogger,
+    type RecordedLog,
+    recordingLogger,
+    remapLevels,
+    silentLogger,
+} from './logger.ts';
 export { ansiPaint, createPaint, type Paint, plainPaint, stripAnsi, type Tone } from './paint.ts';
 export {
     createServerLogger,

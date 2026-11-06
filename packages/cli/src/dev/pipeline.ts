@@ -23,8 +23,12 @@
  *
  * 名前の区別: buildId = 配布物（lock・manifest・Worker・asset）の世代、instanceId = Go の部屋。
  * Go の owner の世代（gen / epoch）は Go の中だけのもので、ここでは扱わない。
+ *
+ * 端末に出すもの: 公開した世代は 1 行（何をビルドし直したか・かかった時間・世代）、失敗は直し方と一緒に。
+ * 判断（どの mod をビルドし、部屋を作り直すか）と mod ごとの時間は debug。
  */
 
+import { performance } from 'node:perf_hooks';
 import type { FetchLike } from '@ubichill/loader';
 import {
     type DevEvent,
@@ -37,6 +41,7 @@ import {
     validateWorldDefinition,
     WorldSourceKind,
 } from '@ubichill/shared';
+import { formatDuration, type Logger, messageOf } from '@ubichill/terminal';
 import type { ModArtifacts } from '../build.ts';
 import {
     buildGenerationLock,
@@ -77,7 +82,15 @@ export interface PipelineDeps {
     loadWorld: () => Promise<WorldSource | undefined>;
     go: () => GoAdmin | undefined;
     broadcast: (event: DevEvent) => void;
-    log: (line: string) => void;
+    /** `[dev]`（世代・部屋・ワールド）と `[build]`（mod のビルド）の行を出す先。 */
+    log: { readonly dev: Logger; readonly build: Logger };
+    /**
+     * ビルドの失敗を端末向けの文にする（esbuild のコードの抜き出し付きなど）。ブラウザの診断には message を送る。
+     * 既定は message。
+     */
+    describeBuildFailure?: (error: unknown) => Promise<string>;
+    /** 時間を測る時計（ms）。 */
+    now?: () => number;
     maxUsers: number;
     /** 前の部屋を消すまでの時間。 */
     retireDelayMs?: number;
@@ -88,15 +101,36 @@ export interface PipelineDeps {
 
 export const RETIRE_DELAY_MS = 30000;
 
+export interface BuildFailure {
+    readonly mod: string;
+    readonly message: string;
+    /** 投げられたもの（端末に出すときに esbuild の詳しいメッセージを作る）。 */
+    readonly error?: unknown;
+}
+
 /** ビルドに失敗した mod すべて（1 つ目で止めると、直した順に 1 つずつしか分からない）。 */
 export class BuildFailures extends Error {
-    readonly failures: readonly { mod: string; message: string }[];
-    constructor(failures: readonly { mod: string; message: string }[]) {
+    readonly failures: readonly BuildFailure[];
+    constructor(failures: readonly BuildFailure[]) {
         super(failures.map((f) => `[${f.mod}] ${f.message}`).join('\n'));
         this.failures = failures;
     }
 }
-export class WorldError extends Error {}
+
+/** ワールドを作れない。hint は端末に出す直し方。 */
+export class WorldError extends Error {
+    readonly hint: string;
+    constructor(message: string, hint = 'world.yaml を直して保存すると読み直します') {
+        super(message);
+        this.hint = hint;
+    }
+}
+
+/** 名前を並べる（多ければ 2 つと残りの数）。 */
+export function formatNames(names: readonly string[]): string {
+    if (names.length <= 3) return names.join('、');
+    return `${names.slice(0, 2).join('、')} ほか ${names.length - 2} 個`;
+}
 
 export interface Pipeline {
     /** 公開した世代（ブラウザが使うもの）。 */
@@ -153,7 +187,10 @@ export async function buildRoomDefinition(
             const url = sourceOf(id);
             return url ? `${id}（${url} から取れません）` : `${id}（手元に無く、source.url もありません）`;
         });
-        throw new WorldError(`ワールドが参照している mod を lock に固定できません: ${reasons.join(', ')}`);
+        throw new WorldError(
+            `ワールドが参照している mod を lock に固定できません: ${reasons.join(', ')}`,
+            'world.yaml の dependencies[].source.url を書くか、ubichill install で横に .lock.json を作ってください',
+        );
     }
     const resolved = mapToResolved(definition, url, { kind: WorldSourceKind.Local, url }, { lock });
     return toInstanceDefinition(resolved, {
@@ -162,7 +199,7 @@ export async function buildRoomDefinition(
     });
 }
 
-const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+const errorMessage = messageOf;
 
 /** 手元に無い mod をどこから取ったか（lock の版か、source.url の版か）。無ければ空。 */
 export function describeExternal(
@@ -189,9 +226,18 @@ function sameContents(a: ReadonlyMap<string, ModArtifacts>, b: ReadonlyMap<strin
     return true;
 }
 
+/** 1 回のビルドの成果物と、そのうち今回ビルドした mod。 */
+interface Compiled {
+    readonly mods: ReadonlyMap<string, ModArtifacts>;
+    readonly rebuilt: readonly string[];
+}
+
 export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pipeline {
     const retireDelay = deps.retireDelayMs ?? RETIRE_DELAY_MS;
     const later = deps.setTimeout ?? setTimeout;
+    const now = deps.now ?? (() => performance.now());
+    const describeBuildFailure = deps.describeBuildFailure ?? (async (error: unknown) => errorMessage(error));
+    const { dev, build } = deps.log;
     const published = {
         state: initial,
         // Go が落ちて起動し直したときに作り直すために、今の部屋の定義を持つ
@@ -239,48 +285,90 @@ export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pi
         if (unpublished.reconfigure === taken.reconfigure) unpublished.reconfigure = 0;
     }
 
-    async function compileMods(taken: Unpublished): Promise<ReadonlyMap<string, ModArtifacts>> {
+    async function compileMods(taken: Unpublished, firstBuild: boolean): Promise<Compiled> {
         const previous = currentGeneration(published.state)?.mods ?? new Map<string, ModArtifacts>();
         // 監視の情報は公開の成否と切り離す: 見つけた mod はビルドが失敗しても監視する
         if (taken.rescan || discovered.modDirs.size === 0) discovered.modDirs = await deps.discoverMods();
         const mods = new Map<string, ModArtifacts>();
-        const failures: { mod: string; message: string }[] = [];
+        const rebuilt: string[] = [];
+        const failures: BuildFailure[] = [];
         for (const [id, dir] of discovered.modDirs) {
             const kept = previous.get(id);
             if (kept && !taken.mods.has(id) && !taken.rescan) {
                 mods.set(id, kept);
                 continue;
             }
+            const started = now();
             try {
                 const artifacts = await deps.compile(dir);
                 mods.set(artifacts.id, artifacts);
+                rebuilt.push(artifacts.id);
                 discovered.inputsByMod.set(artifacts.id, artifacts.inputs);
+                // 起動のときは mod ごとに進み具合を出す。保存のたびのビルドは公開の 1 行にまとめる
+                const elapsed = formatDuration(now() - started);
+                if (firstBuild) build.success(artifacts.id, elapsed);
+                else build.debug(`${artifacts.id} をビルドしました`, elapsed);
             } catch (error) {
-                failures.push({ mod: id, message: errorMessage(error) });
+                failures.push({ mod: id, message: errorMessage(error), error });
             }
         }
+        const kept = [...mods.keys()].filter((id) => !rebuilt.includes(id));
+        if (kept.length > 0) build.debug(`前の世代のまま使う mod: ${formatNames(kept)}`);
         for (const id of discovered.inputsByMod.keys())
             if (!discovered.modDirs.has(id)) discovered.inputsByMod.delete(id);
         if (failures.length > 0) throw new BuildFailures(failures);
-        return mods;
+        return { mods, rebuilt };
     }
 
-    function report(error: unknown): void {
+    async function report(error: unknown): Promise<void> {
         if (error instanceof BuildFailures) {
-            for (const f of error.failures) deps.log(`❌ [${f.mod}] ビルドに失敗: ${f.message}`);
             setDiagnostics(
                 'build',
                 error.failures.map((f) => ({ kind: 'build', mod: f.mod, message: f.message })),
             );
+            for (const f of error.failures) {
+                const described = await describeBuildFailure(f.error ?? f.message).catch(() => f.message);
+                build.error(`${f.mod} のビルドに失敗しました\n${described}`, '直して保存するとビルドし直します');
+            }
             return;
         }
         const message = errorMessage(error);
-        deps.log(`❌ ワールドを作れません: ${message}`);
         setDiagnostics('build', [{ kind: 'world', message }]);
+        const hint = error instanceof WorldError ? error.hint : 'world.yaml を直して保存すると読み直します';
+        dev.error(`ワールドを作れません: ${message}`, hint);
+    }
+
+    /** 公開した世代の 1 行。何が変わったかで文を変える。 */
+    function announce(input: {
+        readonly firstBuild: boolean;
+        readonly taken: Unpublished;
+        readonly rebuilt: readonly string[];
+        readonly modCount: number;
+        readonly buildId: string;
+        readonly instanceId: string;
+        readonly newRoom: boolean;
+        readonly elapsed: string;
+    }): void {
+        const generation = `世代 ${input.buildId}`;
+        const room = input.newRoom ? `  部屋 ${input.instanceId}（状態は初期に戻ります）` : '';
+        if (input.firstBuild) {
+            dev.success(`世代 ${input.buildId} を作りました`, `${input.elapsed}  部屋 ${input.instanceId}`);
+            return;
+        }
+        if (input.taken.reconfigure > 0) {
+            dev.success('ワールドを読み直しました', `${input.elapsed}  ${generation}${room}`);
+            return;
+        }
+        const what =
+            input.taken.rescan > 0
+                ? `mod を探し直しました（${input.modCount} 個）`
+                : `${formatNames(input.rebuilt)} を作り直しました`;
+        build.success(what, `${input.elapsed}  ${generation}${room}`);
     }
 
     async function run(): Promise<void> {
         control.notified = false;
+        const started = now();
         const taken: Unpublished = {
             mods: new Map(unpublished.mods),
             rescan: unpublished.rescan,
@@ -288,11 +376,19 @@ export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pi
         };
         const previous = currentGeneration(published.state);
         try {
-            const mods = await compileMods(taken);
+            const { mods, rebuilt } = await compileMods(taken, !previous);
             // 中身が変わっていない（保存しただけ）なら公開しない。開いているページを無駄に読み直させない
             if (previous && !taken.reconfigure && sameContents(previous.mods, mods)) {
                 settle(taken);
+                // 失敗の後に元へ戻したときは、直ったことを知らせる（最後の行が失敗のままにならないように）
+                const recovered = diagnostics.build.length > 0;
                 setDiagnostics('build', []);
+                if (recovered)
+                    build.success(
+                        `${formatNames(rebuilt)} のビルドが通りました`,
+                        `${formatDuration(now() - started)}  中身が同じなので世代 ${previous.buildId} のまま`,
+                    );
+                else build.debug('成果物が前の世代と同じなので公開しません', formatNames(rebuilt));
                 return;
             }
             const { state, buildId } = nextBuildId(published.state);
@@ -312,14 +408,27 @@ export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pi
             // 合成したワールドは Component から初期の entity を作るので、Component が増減したら部屋を作り直す
             const newRoom = !previous || taken.reconfigure > 0 || needsNewRoom(previous, mods, { synthesized: !world });
             const instanceId = newRoom ? `dev-${buildId}` : (previous as Generation).instanceId;
+            dev.debug(
+                newRoom
+                    ? `世代 ${buildId}: 部屋 ${instanceId} を作ります（${!previous ? '最初の世代' : taken.reconfigure > 0 ? 'ワールドの読み直し' : 'Component の増減・版の変更'}）`
+                    : `世代 ${buildId}: 部屋 ${instanceId} をそのまま使います（entity は残ります）`,
+            );
             const room = newRoom
                 ? await buildRoomDefinition(world, mods, lock, { instanceId, maxUsers: deps.maxUsers })
                 : published.room;
             if (newRoom && room) {
                 const go = deps.go();
-                if (!go) throw new WorldError('Go のインスタンスサーバーが動いていません');
+                if (!go)
+                    throw new WorldError(
+                        'Go のインスタンスサーバーが動いていません',
+                        'Go が起動し直すのを待つか、ubichill dev を起動し直してください',
+                    );
                 const result = await go.putInstance(room);
-                if (!result.ok) throw new WorldError(`Go が部屋を作れません (${result.status}): ${result.error}`);
+                if (!result.ok)
+                    throw new WorldError(
+                        `Go が部屋を作れません (${result.status}): ${result.error}`,
+                        '--debug を付けると Go のログも出ます',
+                    );
             }
             // ここから先は失敗しない: 公開して、反映した変更を消す
             published.state = publishGeneration(state, { buildId, mods, lock, instanceId });
@@ -328,19 +437,27 @@ export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pi
             deps.broadcast({ type: 'generation', buildId, instanceId });
             setDiagnostics('build', []);
             if (newRoom) setDiagnostics('room', []);
-            deps.log(
-                `✅ 世代 ${buildId}（mod ${Object.keys(lock.mods).length}・うち手元 ${mods.size}、部屋 ${instanceId}${newRoom ? '・作り直し' : ''}）`,
-            );
+            announce({
+                firstBuild: !previous,
+                taken,
+                rebuilt,
+                modCount: mods.size,
+                buildId,
+                instanceId,
+                newRoom: newRoom && !!previous,
+                elapsed: formatDuration(now() - started),
+            });
             if (!previous || taken.reconfigure) {
                 const outside = describeExternal(lock, mods, world?.lock);
-                if (outside) deps.log(`   外の mod: ${outside}`);
+                if (outside) dev.info(`手元に無い mod: ${outside}`);
             }
             if (newRoom && previous && previous.instanceId !== instanceId) {
                 const retired = previous.instanceId;
+                dev.debug(`前の部屋 ${retired} は ${formatDuration(retireDelay)} 後に消します`);
                 later(() => void deps.go()?.deleteInstance(retired), retireDelay);
             }
         } catch (error) {
-            report(error);
+            await report(error);
         }
     }
 
@@ -380,11 +497,11 @@ export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pi
                 (error: unknown) => `Go が部屋を作れません: ${errorMessage(error)}`,
             );
             if (!failure) {
-                deps.log(`♻️  部屋 ${room.id} を作り直しました（状態は初期に戻ります）`);
+                dev.success(`部屋 ${room.id} を作り直しました`, '状態は初期に戻ります');
                 setDiagnostics('room', []);
                 return;
             }
-            deps.log(`❌ ${failure}`);
+            dev.error(failure, 'ブラウザの「部屋を作り直す」か、保存で作り直せます');
             setDiagnostics('room', [{ kind: 'world', message: failure }]);
             // Go に部屋が無いままなので、次のビルドでは中身が同じでも新しい部屋を作る
             unpublished.reconfigure = ++control.seq;

@@ -40,6 +40,22 @@ export function recordingLogger(): { readonly logger: Logger; readonly entries: 
     return { logger, entries };
 }
 
+/**
+ * 指定した level の同じ行（本文と補足が同じ）を 2 回目から出さない。
+ * 保存のたびのビルドで、直していない警告が毎回並んで新しい出来事を埋もれさせないように。
+ */
+export function onceLogger(logger: Logger, levels: readonly Level[]): Logger {
+    const seen = new Set<string>();
+    return loggerFrom((level, message, detail) => {
+        if (levels.includes(level)) {
+            const key = JSON.stringify([level, message, detail]);
+            if (seen.has(key)) return;
+            seen.add(key);
+        }
+        logger[level](message, detail);
+    });
+}
+
 /** level を付け替える（例: dev サーバーでは、ビルドの細かい info を debug に落とす）。 */
 export function remapLevels(logger: Logger, map: Partial<Readonly<Record<Level, Level>>>): Logger {
     return loggerFrom((level, message, detail) => logger[map[level] ?? level](message, detail));

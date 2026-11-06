@@ -25,11 +25,34 @@ npx ubichill dev                # 手元の mod を、本番と同じ Go のイ�
 ## `ubichill dev`
 
 ```bash
-ubichill dev [world.yaml] [--port=3333] [--mods-dir=<dir>] [--max-users=<n>]
+ubichill dev [world.yaml] [--port=3333] [--host[=<addr>]] [--mods-dir=<dir>] [--max-users=<n>] [--debug]
 ```
 
 Docker・DB・Go のツールチェーンは要らない。`http://localhost:3333/` を開くと、本番と同じ画面（`world.html`）と同じ判定
 （lock の照合・権限・Go のロックと上限）で mod が動く。複数のタブ・ブラウザで同期する。
+
+起動の途中は mod ごとのビルドの行を出し、起動し終えたら最後に URL の案内を出す。以降は 1 件 1 行で、
+時刻・出どころ（`[dev]` 世代と部屋・`[build]` mod のビルド・`[instance]` Go）・結果を出す。画面は消さない。
+
+```
+14:02:11 [build] ✓ pen  15 ms
+14:02:11 [dev] ✓ 世代 dfab882d-1 を作りました  22 ms  部屋 dev-dfab882d-1
+
+  ubichill dev  v1.1.0  ready in 447 ms
+
+  ➜  Local:   http://localhost:3333/
+  ➜  Network: --host を付けると LAN に公開します
+  ➜  World:   mod から合成したワールド  (mod 1・手元 1)
+  ➜  Debug:   --debug でログを詳しく
+
+14:02:30 [build] ✓ pen を作り直しました  41 ms  世代 dfab882d-2
+14:02:41 [build] ✗ pen のビルドに失敗しました  直して保存するとビルドし直します
+                   ✘ [ERROR] Unexpected ";"
+                       src/tray.worker.tsx:119:15: ...
+```
+
+- **待ち受け**: 既定は手元（`127.0.0.1`）だけ。`--host` で全部の口に開き、LAN の URL を `Network:` に並べる
+  （スマートフォンなど別の端末から試すとき）。`--host=<addr>` はその口だけ。案内した URL のオリジンは Go の接続の検査にも通す。
 
 - **ワールド**: 引数か `./world.yaml`。無ければ、手元の mod ごとに親の entity を 1 つ作り、その子に Component を 1 つずつ
   （`export const config` の `defaultTransform` の位置で）置いたワールドを合成する。
@@ -45,10 +68,24 @@ Docker・DB・Go のツールチェーンは要らない。`http://localhost:333
 - **署名**: 手元のビルドは署名が無いので「署名なし・ローカル」として動かす。lock の照合・権限の確認は本番と同じ。
 - mod の外の共有コードも、import していれば監視する（その mod をビルドし直す）。
 - Go のバイナリは `@ubichill/instance-<os>-<cpu>` から探す。自分でビルドしたものを使うなら `UBICHILL_INSTANCE_BIN=<path>`。
+- **Go のログ**: Go は JSON の行（`--log-format=json`）で書き、dev サーバーが `[instance]` の行にする。ふだんは注意（warn）と失敗（error）
+  だけ、`--debug` では info・debug も出す。JSON でない行（panic など）はいつもそのまま出す。
 
 `@ubichill/cli` は Go のインスタンスサーバー（`ubichill-instance`）を optionalDependencies で持つ
 （`@ubichill/instance-<os>-<cpu>`。macOS arm64/x64・Linux x64/arm64・Windows x64 のうち合う 1 つだけが入る）。
 CI で `build` しか使わないなら `npm install --omit=optional` で外せる。
+
+## 調べるとき（`--debug`）
+
+どのコマンドにも `--debug` を付けられる（環境変数 `UBICHILL_DEBUG=1` と同じ）。
+
+- ふだんの失敗はメッセージ・原因・直し方（`➜`）だけを出す。`--debug` ではスタックトレースも出す
+- `build`: Component ごとの esbuild の時間、lock の中身の数
+- `dev`: 変わったファイルとそれで何をするか（どの mod をビルドするか・部屋を作り直すか）、mod ごとのビルドの時間、
+  使った Go のバイナリと引数、HTTP の要求ごとの行（`[http] GET /... 200  3 ms`）、Go の info・debug のログ
+
+出力は TTY のときだけ色を付ける。`NO_COLOR=1` で消し、`FORCE_COLOR=1` でパイプでも付ける。記号は `✓`（成功）・`✗`（失敗）・
+`!`（注意）・`➜`（次にすること）で、Unicode を描けない端末（Windows の古いコンソール）では `√`・`×`・`!`・`>` にする。
 
 ## コマンド
 
