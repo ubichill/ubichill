@@ -25,6 +25,7 @@ import {
     webWorldCrypto,
 } from '@ubichill/loader';
 import { type ModLockEntry, verifyModSignature } from '@ubichill/shared';
+import { silentLogger } from '@ubichill/terminal';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildMod } from './build.ts';
 import { listDirsOnDisk } from './modLayout.ts';
@@ -228,7 +229,7 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
                     },
                     key,
                     crypto: webWorldCrypto,
-                    log: () => undefined,
+                    log: silentLogger,
                 },
                 { modsDir: publicDir, credential: { account: AUTHOR } },
             );

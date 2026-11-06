@@ -86,6 +86,12 @@ describe('createTerminal', () => {
         expect(stderr).toEqual(['✗ 壊れた\n  ➜ こう直す\n']);
     });
 
+    it('next は矢印を付けて字下げし、stdout へ', () => {
+        const { io, stdout } = fakeIO();
+        createTerminal(io, { debug: false }).next('ubichill publish で公開できます');
+        expect(stdout).toEqual(['  ➜ ubichill publish で公開できます\n']);
+    });
+
     it('print は書式を付けずに stdout へ（空なら空行）', () => {
         const { io, stdout } = fakeIO({ tty: true });
         const term = createTerminal(io, { debug: false });

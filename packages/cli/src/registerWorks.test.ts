@@ -1,4 +1,5 @@
 import type { ModLockEntry } from '@ubichill/shared';
+import { recordingLogger } from '@ubichill/terminal';
 import { describe, expect, it } from 'vitest';
 import {
     compareVersions,
@@ -71,7 +72,7 @@ describe('registerExternalWorks', () => {
     const registration = { kind: 'world' as const, url: 'https://a.example/w.yaml', yaml: '', signature: {} };
 
     it('登録できた件数を返し、断られた・通信できないものは理由つきで警告して続ける', async () => {
-        const logs: string[] = [];
+        const { logger, entries } = recordingLogger();
         const answers = [
             { status: 200, body: {} },
             { status: 403, body: { error: '署名の作者がログイン中のアカウントではありません' } },
@@ -81,11 +82,9 @@ describe('registerExternalWorks', () => {
             if (!next) throw new Error('offline');
             return next;
         };
-        const registered = await registerExternalWorks(request, [registration, registration, registration], (m) =>
-            logs.push(m),
-        );
+        const registered = await registerExternalWorks(request, [registration, registration, registration], logger);
         expect(registered).toBe(1);
-        expect(logs.filter((m) => m.startsWith('⚠'))).toEqual([
+        expect(entries.filter((e) => e.level === 'warn').map((e) => e.message)).toEqual([
             expect.stringContaining('署名の作者がログイン中のアカウントではありません'),
             expect.stringContaining('通信できません'),
         ]);

@@ -6,13 +6,16 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
+import { performance } from 'node:perf_hooks';
 import {
     detectCapabilities,
     MOD_EXPORTS_GLOBAL_NAME,
     type ModLockComponent,
     type ModLockEntry,
 } from '@ubichill/shared';
+import { colorEnabled, formatBytes, formatDuration, type Logger, silentLogger } from '@ubichill/terminal';
 import * as esbuild from 'esbuild';
+import { describeBuildFailure, esbuildErrorsOf } from './buildFailure.ts';
 
 /** base からの相対パスを OS に依らず `/` 区切りで返す（manifest/lock のキーは POSIX 形式で固定する） */
 function toPosixRelative(base: string, path: string): string {
@@ -290,8 +293,10 @@ async function bundleWorker(
     entryPath: string,
     modDir: string,
     tsconfig?: string,
-): Promise<{ code: string; inputs: string[] }> {
+): Promise<{ code: string; inputs: string[]; warnings: esbuild.Message[] }> {
     const result = await esbuild.build({
+        // esbuild 自身には出させない（失敗は mod の名前を付けて呼び出し側が出す。二重に出さない）
+        logLevel: 'silent',
         entryPoints: [entryPath],
         absWorkingDir: modDir,
         bundle: true,
@@ -308,7 +313,11 @@ async function bundleWorker(
     });
     const out = result.outputFiles?.[0];
     if (!out) throw new Error(`esbuild failed for ${entryPath}`);
-    return { code: out.text, inputs: Object.keys(result.metafile.inputs).map((input) => resolve(modDir, input)) };
+    return {
+        code: out.text,
+        inputs: Object.keys(result.metafile.inputs).map((input) => resolve(modDir, input)),
+        warnings: result.warnings,
+    };
 }
 
 // ============================================================
@@ -330,6 +339,8 @@ export interface BuildOptions {
     registryUrl?: string;
     /** テスト注入用の fetch 実装。既定はグローバル `fetch`。 */
     fetchImpl?: typeof fetch;
+    /** 成果物・警告・時間を知らせる先（既定は出さない）。 */
+    log?: Logger;
 }
 
 function resolveDirs(options: BuildOptions): { distDir: string; publicDir: string } {
@@ -471,8 +482,9 @@ export interface ModArtifacts {
 /**
  * mod をビルドして成果物をメモリに作る。毎回 package.json を読み直し、Worker と asset を探し直す
  * （Worker の追加・削除・版の変更を差分で追う仕組みは持たない。1 回のビルドは十分に速い）。
+ * 出すもの: Component ごとの成果物（info）、capability の宣言と検出のずれ（warn）、かかった時間（debug）。
  */
-export async function compileMod(modDir: string): Promise<ModArtifacts> {
+export async function compileMod(modDir: string, log: Logger = silentLogger): Promise<ModArtifacts> {
     const { id, name, version } = readPackageJson(modDir);
     const rootTsconfig = join(modDir, 'tsconfig.json');
     const tsconfig = existsSync(rootTsconfig) ? rootTsconfig : undefined;
@@ -492,18 +504,26 @@ export async function compileMod(modDir: string): Promise<ModArtifacts> {
 
         // `export const config` を持つファイルのみを処理する
         if (!isWorkerFile(workerPath)) {
-            console.log(`📋 [${componentType}] skipped (no export const config)`);
+            log.info(`  ${componentType} は export const config が無いので飛ばしました`);
             continue;
         }
 
+        const bundleStarted = performance.now();
         const bundled = await bundleWorker(workerPath, modDir, tsconfig);
+        log.debug(`${componentType} を esbuild でまとめました`, formatDuration(performance.now() - bundleStarted));
+        if (bundled.warnings.length > 0) {
+            const color = colorEnabled({ isTTY: process.stderr.isTTY, env: process.env });
+            const formatted = await esbuild.formatMessages(bundled.warnings, { kind: 'warning', color });
+            log.warn(`${componentType}: esbuild の警告 ${bundled.warnings.length} 件\n${formatted.join('').trimEnd()}`);
+        }
         for (const input of bundled.inputs) inputs.add(input);
         const code = bundled.code;
 
         // コンテンツハッシュ（8文字）でキャッシュバスティング
         const hash = createHash('sha256').update(code).digest('hex').slice(0, 8);
         const outFilename = `index.${hash}.js`;
-        files.set(`${componentName}/${outFilename}`, encoder.encode(code));
+        const bytes = encoder.encode(code);
+        files.set(`${componentName}/${outFilename}`, bytes);
 
         // config からメタデータを取得
         const srcCode = readFileSync(workerPath, 'utf-8');
@@ -519,12 +539,16 @@ export async function compileMod(modDir: string): Promise<ModArtifacts> {
         const undetected = declaredCapabilities.filter((cap) => !detected.includes(cap));
         const excess = detected.filter((cap) => !declaredCapabilities.includes(cap));
         if (undetected.length > 0) {
-            console.warn(
-                `⚠️  [${componentType}] 検出されない宣言: ${undetected.join(', ')} (静的解析では検出されず。動的アクセス等の可能性)`,
+            log.warn(
+                `${componentType}: 宣言した capability がコードに見つかりません: ${undetected.join(', ')}`,
+                '静的解析で見つからないだけで、動的に使っているなら問題ありません',
             );
         }
         if (excess.length > 0) {
-            console.warn(`⚠️  [${componentType}] 過剰検出: ${excess.join(', ')} (config.capabilities に宣言なし)`);
+            log.warn(
+                `${componentType}: 宣言していない capability を使っています: ${excess.join(', ')}`,
+                'config.capabilities に足してください',
+            );
         }
 
         // マニフェスト用: 検出結果と宣言の和集合（セキュリティ的に過剰許可より安全）
@@ -536,8 +560,9 @@ export async function compileMod(modDir: string): Promise<ModArtifacts> {
         // lock: worker バイト列のフル sha256 + capability 天井を固定する。
         lockComponents[componentType] = { workerUrl, integrity: sriOf(code), capabilities };
 
-        console.log(
-            `✅ [${componentType}] ${componentName}/${outFilename} [caps: ${capabilities.join(', ') || 'none'}]`,
+        log.info(
+            `  ${componentType}`,
+            `${componentName}/${outFilename}  ${formatBytes(bytes.byteLength)}  caps: ${capabilities.join(', ') || 'none'}`,
         );
     }
 
@@ -551,7 +576,7 @@ export async function compileMod(modDir: string): Promise<ModArtifacts> {
         inputs.add(path);
         files.set(asset, readFileSync(path));
     }
-    if (assets.files.length > 0) console.log(`✅ [${id}] assets → v${version}/ (${assets.files.length} files)`);
+    if (assets.files.length > 0) log.info(`  ${id} の asset`, `${assets.files.length} files → v${version}/`);
 
     const versionedManifest = JSON.stringify(
         {
@@ -576,7 +601,7 @@ export async function compileMod(modDir: string): Promise<ModArtifacts> {
         components: lockComponents,
     };
     files.set('lock.json', encoder.encode(JSON.stringify(lockEntry, null, 2)));
-    console.log(`🔒 [${id}] lock.json (${Object.keys(lockComponents).length} components)`);
+    log.debug(`${id} の lock.json`, `component ${Object.keys(lockComponents).length}`);
 
     return { id, name, version, components: Object.keys(versionedComponents), files, lockEntry, inputs };
 }
@@ -590,6 +615,7 @@ export interface WriteArtifactsOptions {
     registryUrl?: string;
     /** テスト注入用の fetch 実装。既定はグローバル `fetch`。 */
     fetchImpl?: typeof fetch;
+    log?: Logger;
 }
 
 /**
@@ -637,8 +663,9 @@ export async function writeArtifacts(artifacts: ModArtifacts, options: WriteArti
         ? await fetchRemoteVersions(options.registryUrl, id, options.fetchImpl)
         : [];
     if (options.registryUrl && remoteVersions.length > 0) {
-        console.log(
-            `🌐 [${id}] registry からバージョン履歴を取得 (${options.registryUrl}): ${remoteVersions.length}件`,
+        (options.log ?? silentLogger).info(
+            `  ${id} の版の履歴を registry から ${remoteVersions.length} 件取りました`,
+            options.registryUrl,
         );
     }
     const existingVersions = mergeVersionArrays(localVersions, remoteVersions);
@@ -655,14 +682,48 @@ export async function writeArtifacts(artifacts: ModArtifacts, options: WriteArti
 export async function buildMod(modDir: string, options: BuildOptions = {}): Promise<ModIndexEntry> {
     const { distDir, publicDir } = resolveDirs({ ...options, modDir });
     const registryUrl = options.registryUrl ?? readPackageJson(modDir).homepage;
-    return writeArtifacts(await compileMod(modDir), { distDir, publicDir, registryUrl, fetchImpl: options.fetchImpl });
+    const log = options.log ?? silentLogger;
+    return writeArtifacts(await compileMod(modDir, log), {
+        distDir,
+        publicDir,
+        registryUrl,
+        fetchImpl: options.fetchImpl,
+        log,
+    });
 }
+
+/**
+ * esbuild の失敗に mod の名前とコードの抜き出しを付ける（失敗は stderr に出るので、色は stderr に合わせる）。
+ * ほかの失敗はそのまま投げる。
+ */
+async function explainBuildFailure<T>(name: string, work: Promise<T>): Promise<T> {
+    return work.catch(async (error: unknown) => {
+        if (!esbuildErrorsOf(error)) throw error;
+        const color = colorEnabled({ isTTY: process.stderr.isTTY, env: process.env });
+        throw new Error(`${name} のビルドに失敗しました\n${await describeBuildFailure(error, { color })}`);
+    });
+}
+
+/** 1 mod をビルドし、終わったら版とかかった時間を 1 行で出す。 */
+async function buildModReporting(modDir: string, options: BuildOptions & { log: Logger }): Promise<ModIndexEntry> {
+    const started = performance.now();
+    const entry = await explainBuildFailure(basename(modDir), buildMod(modDir, options));
+    options.log.success(`${entry.id} v${entry.version}`, formatDuration(performance.now() - started));
+    return entry;
+}
+
+/** 出力先を cwd からの相対で（cwd の外なら絶対パスのまま）。 */
+const displayPath = (path: string): string => {
+    const rel = relative(process.cwd(), path);
+    return rel === '' ? '.' : rel.startsWith('..') ? path : rel;
+};
 
 /**
  * 複数 mod を一括ビルド（モノレポ用）。`modsDir` 配下の各サブディレクトリを
  * 個別の mod として扱い、それぞれ `buildMod` する。
  */
-async function runBatchBuild(modsDirArg: string, args: string[]): Promise<void> {
+async function runBatchBuild(modsDirArg: string, args: string[], log: Logger): Promise<void> {
+    const started = performance.now();
     const argValue = (flag: string): string | undefined => args.find((a) => a.startsWith(flag))?.slice(flag.length);
 
     // esbuild は呼び出しごとに絶対パスを要求するため、相対指定を早期に解決しておく。
@@ -681,8 +742,8 @@ async function runBatchBuild(modsDirArg: string, args: string[]): Promise<void> 
         const modDistDir = join(distDir, id);
         const modPublicDir = join(publicDir, id);
 
-        console.log(`\n🔨 [${entry.name}] building...`);
-        indexEntries.push(await buildMod(modDir, { distDir: modDistDir, publicDir: modPublicDir }));
+        log.debug(`${entry.name} をビルドします`, modDir);
+        indexEntries.push(await buildModReporting(modDir, { distDir: modDistDir, publicDir: modPublicDir, log }));
     }
 
     // ── index.json（このモノレポが持つ全 mod のレジストリ一覧）───────────
@@ -692,7 +753,10 @@ async function runBatchBuild(modsDirArg: string, args: string[]): Promise<void> 
     const aggregateIndexJson = JSON.stringify(indexEntries, null, 2);
     writeFileSync(join(distDir, 'index.json'), aggregateIndexJson, 'utf-8');
     writeFileSync(join(publicDir, 'index.json'), aggregateIndexJson, 'utf-8');
-    console.log(`\n📇 index.json (${indexEntries.length} mods)`);
+    log.success(
+        `mod ${indexEntries.length} 個をビルドしました`,
+        `${formatDuration(performance.now() - started)}  → ${displayPath(distDir)}`,
+    );
 }
 
 /**
@@ -702,13 +766,13 @@ async function runBatchBuild(modsDirArg: string, args: string[]): Promise<void> 
  * `buildMod(cwd)` を実行する。`mods/` ディレクトリ（モノレポの複数 mod 構成）が
  * 存在する場合、または `--mods-dir=` が明示された場合のみ一括ビルドに切り替える。
  */
-export async function runBuild(args: string[]): Promise<void> {
+export async function runBuild(args: string[], log: Logger): Promise<void> {
     const argValue = (flag: string): string | undefined => args.find((a) => a.startsWith(flag))?.slice(flag.length);
 
     const modsDirArg = argValue('--mods-dir=');
     const modsDir = modsDirArg ?? 'mods';
     if (modsDirArg !== undefined || existsSync(modsDir)) {
-        await runBatchBuild(modsDir, args);
+        await runBatchBuild(modsDir, args, log);
         return;
     }
 
@@ -724,6 +788,14 @@ export async function runBuild(args: string[]): Promise<void> {
     const publicDir = argValue('--public-mods-dir=') ?? distDir;
     const registryUrl = argValue('--registry-url=');
 
-    console.log(`🔨 [${basename(modDir)}] building...`);
-    await buildMod(modDir, { distDir, publicDir, registryUrl });
+    log.debug(`${basename(modDir)} をビルドします`, modDir);
+    const started = performance.now();
+    const entry = await explainBuildFailure(
+        basename(modDir),
+        buildMod(modDir, { distDir, publicDir, registryUrl, log }),
+    );
+    log.success(
+        `${entry.id} v${entry.version} をビルドしました`,
+        `${formatDuration(performance.now() - started)}  → ${displayPath(distDir)}`,
+    );
 }

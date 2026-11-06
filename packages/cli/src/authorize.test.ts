@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { cliAuthProofMessage, type WorldSigningKey } from '@ubichill/shared';
+import { silentLogger } from '@ubichill/terminal';
 import { describe, expect, it } from 'vitest';
 import { type AuthorizeDeps, authorize, type HttpResponse } from './authorize.ts';
 
@@ -35,7 +36,7 @@ function fakeDeps(script: (url: string, body: Record<string, unknown>, calls: nu
             clock.t += ms;
         },
         now: () => clock.t,
-        log: () => undefined,
+        log: silentLogger,
         random: () => randoms.shift() ?? 'x',
     };
     return { deps, posts, opened, callback };

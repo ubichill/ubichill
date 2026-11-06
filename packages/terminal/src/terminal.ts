@@ -53,6 +53,8 @@ export interface Terminal extends Logger {
     scope(name: string, options?: ScopeOptions): Logger;
     /** 書式を付けずに stdout へ 1 行（引数なしで空行）。 */
     print(text?: string): void;
+    /** 次にすること（`  ➜ ubichill publish で公開できます`）。直前の結果の行に添える。 */
+    next(text: string): void;
     banner(banner: Banner): void;
     /** 失敗を stderr に出す。debug ならスタックも。 */
     failure(error: unknown, options?: { readonly hint?: string; readonly debugTip?: string }): void;
@@ -92,6 +94,7 @@ export function createTerminal(io: TerminalIO, options: TerminalOptions): Termin
         scope: (name, scopeOptions) =>
             loggerFrom((level, message, detail) => emit(level, message, detail, name, scopeOptions?.clock ?? true)),
         print: (text = '') => void io.stdout.write(`${text}\n`),
+        next: (text) => void io.stdout.write(`  ${out.paint('cyan', symbols.arrow)} ${text}\n`),
         banner: (banner) => void io.stdout.write(`${formatBanner(banner, out)}\n`),
         failure: (error, failureOptions) =>
             void io.stderr.write(`${formatError(error, { debug: options.debug, ...failureOptions }, err)}\n`),

@@ -16,6 +16,7 @@ import {
     toInstanceDefinition,
     WorldSourceKind,
 } from '@ubichill/shared';
+import type { Logger } from '@ubichill/terminal';
 import yaml from 'yaml';
 
 const USAGE = 'usage: ubichill world build <world.yaml> [--id=<instanceId>] [--max-users=<n>] [--out=<path>]';
@@ -74,7 +75,7 @@ const lockPathFor = (worldPath: string): string => worldPath.replace(/\.ya?ml$/i
 const argValue = (argv: string[], name: string): string | undefined =>
     argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
 
-export async function runWorld(argv: string[]): Promise<void> {
+export async function runWorld(argv: string[], log: Logger): Promise<void> {
     const [subcommand, ...rest] = argv;
     if (subcommand !== 'build') throw new Error(USAGE);
     const worldPath = rest.find((a) => !a.startsWith('--'));
@@ -92,10 +93,9 @@ export async function runWorld(argv: string[]): Promise<void> {
     const out = argValue(rest, 'out');
     if (out) {
         writeFileSync(out, json, 'utf-8');
-        console.error(
-            `✅ ${out} (${definition.snapshot.entities.length} entities, ${definition.snapshot.activeMods.length} mods)`,
-        );
+        log.success(out, `entity ${definition.snapshot.entities.length}、mod ${definition.snapshot.activeMods.length}`);
     } else {
+        // 定義を stdout に流す（パイプで Go に渡す）。ほかのものは stdout に書かない
         process.stdout.write(json);
     }
 }

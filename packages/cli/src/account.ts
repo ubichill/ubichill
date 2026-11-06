@@ -15,6 +15,7 @@ import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { generateSigningKeyPkcs8, importSigningKey, webWorldCrypto } from '@ubichill/loader';
 import { runInstall } from '@ubichill/loader/install-dependencies';
+import type { Terminal } from '@ubichill/terminal';
 import yaml from 'yaml';
 import { type AuthorizeDeps, authorize, type HttpResponse, type LoopbackServer } from './authorize.ts';
 import {
@@ -107,7 +108,7 @@ function startLoopback(): Promise<LoopbackServer> {
     });
 }
 
-function authorizeDeps(argv: string[]): AuthorizeDeps {
+function authorizeDeps(argv: string[], term: Terminal): AuthorizeDeps {
     const noBrowser = argv.includes('--no-browser') || !!process.env.CI;
     return {
         post: (url, body) => requestJson('POST', url, body),
@@ -119,16 +120,16 @@ function authorizeDeps(argv: string[]): AuthorizeDeps {
         startLoopback,
         sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
         now: Date.now,
-        log: (message) => console.log(message),
+        log: term,
     };
 }
 
 const serverOf = (argv: string[]) => normalizeServer(argValue(argv, 'server') ?? DEFAULT_SERVER);
 
-export async function runLogin(argv: string[]): Promise<void> {
+export async function runLogin(argv: string[], term: Terminal): Promise<void> {
     const server = serverOf(argv);
     const previous = resolveCredential({ server, env: {} });
-    const credential = await authorize(authorizeDeps(argv), {
+    const credential = await authorize(authorizeDeps(argv, term), {
         server,
         kind: 'cli',
         name: argValue(argv, 'name') ?? `ubichill CLI on ${hostname()}`,
@@ -139,25 +140,30 @@ export async function runLogin(argv: string[]): Promise<void> {
     if (previous && previous.environmentId !== credential.environmentId) {
         await requestJson('POST', `${server}/api/v1/cli-auth/logout`, {}, previous.token).catch(() => undefined);
     }
-    console.log(`✅ @${credential.account} としてログインしました（${server}）。ubichill publish で公開できます`);
+    term.success(`@${credential.account} としてログインしました`, server);
+    term.next('ubichill publish <world.yaml> で公開できます');
 }
 
-export async function runCiCreate(argv: string[]): Promise<void> {
+export async function runCiCreate(argv: string[], term: Terminal): Promise<void> {
     const name = argValue(argv, 'name');
     if (!name) throw new Error('--name=<表示名>（例: "GitHub Actions: owner/repo"）を指定してください');
-    const credential = await authorize(authorizeDeps(argv), {
+    const credential = await authorize(authorizeDeps(argv, term), {
         server: serverOf(argv),
         kind: 'ci',
         name,
         flow: argv.includes('--device') ? 'device' : 'loopback',
     });
-    console.log(`\n✅ CI 用の公開環境「${name}」を作りました（@${credential.account}）。`);
-    console.log(
-        `次の値を CI の Secret（環境変数 ${CREDENTIALS_ENV}）に設定してください。この場限りの表示で、どこにも保存しません。\n`,
+    term.print();
+    term.success(`CI 用の公開環境「${name}」を作りました`, `@${credential.account}`);
+    term.next(
+        `次の値を CI の Secret（環境変数 ${CREDENTIALS_ENV}）に設定してください。この場限りの表示で、どこにも保存しません`,
     );
-    console.log(encodeCiCredentials(credential));
-    console.log(
-        '\n漏れたら、設定の「公開」（公開できるブラウザ・CLI・CI）で取り消し、ubichill ci create で作り直してください。',
+    term.print();
+    // 写しやすいように、色も記号も付けずにそのまま出す
+    term.print(encodeCiCredentials(credential));
+    term.print();
+    term.warn(
+        '漏れたら、設定の「公開」（公開できるブラウザ・CLI・CI）で取り消し、ubichill ci create で作り直してください',
     );
 }
 
@@ -168,7 +174,7 @@ function requireCredential(argv: string[]): Credential {
     return credential;
 }
 
-export async function runWhoami(argv: string[]): Promise<void> {
+export async function runWhoami(argv: string[], term: Terminal): Promise<void> {
     const credential = requireCredential(argv);
     const me = await requestJson('GET', `${credential.server}/api/v1/users/me`, undefined, credential.token);
     if (me.status !== 200) {
@@ -176,10 +182,10 @@ export async function runWhoami(argv: string[]): Promise<void> {
             '認証情報が使えません（公開環境が取り消された可能性があります）。ubichill login し直してください',
         );
     }
-    console.log(`@${credential.account}（${credential.server}、公開環境 ${credential.environmentId}）`);
+    term.info(`@${credential.account}`, `${credential.server}  公開環境 ${credential.environmentId}`);
 }
 
-export async function runLogout(argv: string[]): Promise<void> {
+export async function runLogout(argv: string[], term: Terminal): Promise<void> {
     if (process.env[CREDENTIALS_ENV])
         throw new Error(`${CREDENTIALS_ENV} の認証情報は CI の Secret から消し、画面で取り消してください`);
     const credential = requireCredential(argv);
@@ -187,7 +193,7 @@ export async function runLogout(argv: string[]): Promise<void> {
         () => undefined,
     );
     removeCredential(credential.server);
-    console.log(`この端末の公開環境を取り消し、認証情報を消しました（${credential.server}）`);
+    term.success('この端末の公開環境を取り消し、認証情報を消しました', credential.server);
 }
 
 const isDirectory = (path: string): boolean => existsSync(path) && statSync(path).isDirectory();
@@ -205,7 +211,7 @@ function homepageOf(dir: string): string | undefined {
  * ディレクトリを渡すと mod の配布物に、world.yaml を渡すとワールドに、同じアカウント・同じ鍵で署名する。
  * CI では `worlds/*.yaml --out=<dir>` のように複数まとめて署名・書き出しできる。
  */
-export async function runPublish(argv: string[]): Promise<void> {
+export async function runPublish(argv: string[], term: Terminal): Promise<void> {
     const targets = argv.filter((a) => !a.startsWith('--'));
     const modsDirs = targets.filter(isDirectory);
     const worldPaths = targets.filter((t) => !modsDirs.includes(t));
@@ -227,13 +233,13 @@ export async function runPublish(argv: string[]): Promise<void> {
         key,
         crypto: webWorldCrypto,
         parseYaml: (text: string) => yaml.parse(text) as unknown,
-        log: (message: string) => console.log(message),
+        log: term,
     };
     // 外部ホスト向け・mod はサーバーに何も送らないので、署名の前にサーバーで公開環境とアカウントを確かめる
     const offline = argValue(argv, 'out') !== undefined || modsDirs.length > 0;
     if (offline && (await confirmEnvironment(deps, credential)) === 'unreachable') {
-        console.warn(
-            `⚠ ${credential.server} に確認できませんでした（署名は続けます。公開環境が取り消されていないか後で確かめてください）`,
+        term.warn(
+            `${credential.server} に確認できませんでした（署名は続けます。公開環境が取り消されていないか後で確かめてください）`,
         );
     }
     const signedMods: SignedMod[] = [];
@@ -275,8 +281,8 @@ export async function runPublish(argv: string[]): Promise<void> {
                 deps.log,
             );
         } else {
-            deps.log(
-                '💡 --public-url=<公開先の URL>（または package.json の homepage）を指定すると、ユーザーページに mod が出ます',
+            term.next(
+                '--public-url=<公開先の URL>（または package.json の homepage）を指定すると、ユーザーページに mod が出ます',
             );
         }
     }
@@ -284,7 +290,7 @@ export async function runPublish(argv: string[]): Promise<void> {
         if (!argv.includes('--no-install')) {
             // mod を固定する（install と同じ）。署名は下でログインしたアカウントで行う
             const passthrough = argv.filter((a) => a.startsWith('--mods-dir=') || a.startsWith('--base-url='));
-            await runInstall([worldPath, ...passthrough]);
+            await runInstall([worldPath, ...passthrough], term);
             if (process.exitCode) throw new Error(`${worldPath}: mod を固定できなかったので公開しません`);
         }
         await publish(deps, {

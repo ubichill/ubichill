@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { generateSigningKeyPkcs8, importSigningKey, webWorldCrypto } from '@ubichill/loader';
 import { type ModLockEntry, verifyModSignature } from '@ubichill/shared';
+import { silentLogger } from '@ubichill/terminal';
 import { afterEach, describe, expect, it } from 'vitest';
 import { listDirsOnDisk } from './modLayout.ts';
 import { type PublishModsDeps, publishMods } from './publishMods.ts';
@@ -39,7 +40,7 @@ function memoryFs(files: Record<string, string>): PublishModsDeps['fs'] {
 
 async function depsFor(files: Record<string, string>) {
     const key = await importSigningKey(await generateSigningKeyPkcs8());
-    const deps: PublishModsDeps = { fs: memoryFs(files), key, crypto: webWorldCrypto, log: () => undefined };
+    const deps: PublishModsDeps = { fs: memoryFs(files), key, crypto: webWorldCrypto, log: silentLogger };
     return { deps, key };
 }
 
@@ -185,7 +186,7 @@ describe('verifyAllModSignatures', () => {
                 },
                 key,
                 crypto: webWorldCrypto,
-                log: () => undefined,
+                log: silentLogger,
             },
             { modsDir: root, credential },
         );

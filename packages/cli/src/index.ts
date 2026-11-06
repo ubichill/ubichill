@@ -15,7 +15,9 @@
  *   ubichill publish <world.yaml>... [--server=<url>] [--out=<dir>] [--public-url=<url>] [--no-install]
  *   ubichill publish <mods のビルド出力>...   mod の配布物（例 dist/mods）に署名する
  *   ubichill world build <world.yaml> [--id=<instanceId>] [--max-users=<n>] [--out=<path>]   Go に渡す定義 JSON を作る
- *   ubichill dev     [world.yaml] [--port=<n>] [--mods-dir=<dir>] [--max-users=<n>]   手元の mod を本番と同じ Go で動かす開発サーバー
+ *   ubichill dev     [world.yaml] [--port=<n>] [--host[=<addr>]] [--mods-dir=<dir>] [--max-users=<n>]   手元の mod を本番と同じ Go で動かす開発サーバー
+ *
+ * どのコマンドにも `--debug`（または env UBICHILL_DEBUG=1）を付けられる。ログを詳しくし、失敗にスタックトレースを付ける。
  *
  * `login` はブラウザで承認してこの端末を公開環境にする（鍵は手元だけ）。`publish` はログインしたアカウントで署名して公開する。
  * CI は `ci create` で作った文字列を env UBICHILL_CREDENTIALS に入れて `publish` する。鍵は CLI が作って手元に持つ
@@ -31,75 +33,85 @@
 import { runCiCreate, runLogin, runLogout, runPublish, runWhoami } from './account.ts';
 import { runBuild } from './build.ts';
 import { runDev } from './dev/index.ts';
+import { formatHelp } from './help.ts';
 import { runInstall } from './install.ts';
 import { runLock } from './lock.ts';
+import { cliVersion, createCliTerminal, DEBUG_TIP, isLikelyBug, splitGlobalFlags, stderrPaint } from './output.ts';
 import { runUpdate } from './update.ts';
 import { runVerify } from './verify.ts';
 import { runVerifyWorld } from './verifyWorld.ts';
 import { runWorld } from './world.ts';
 
-const USAGE = `使い方: ubichill <dev|build|install|update|verify|world build|login|logout|whoami|publish|ci create> [...args]`;
+const { debug, args } = splitGlobalFlags(process.argv.slice(2));
+const term = createCliTerminal(debug);
 
 async function main(): Promise<void> {
-    const [subcommand, ...rest] = process.argv.slice(2);
+    const [subcommand, ...rest] = args;
     switch (subcommand) {
         case 'build':
-            await runBuild(rest);
+            await runBuild(rest, term);
             return;
         case 'dev':
             await runDev(rest);
             return;
         case 'install':
-            await runInstall(rest);
+            await runInstall(rest, term);
             return;
         case 'update':
-            await runUpdate(rest);
+            await runUpdate(rest, term);
             return;
         case 'lock': // 非推奨エイリアス
-            await runLock(rest);
+            await runLock(rest, term);
             return;
         case 'verify':
             // <world.yaml> を渡したらワールドの署名、無ければ mod のビルド
-            if (rest.some((a) => !a.startsWith('--') && /\.ya?ml$/i.test(a))) await runVerifyWorld(rest);
-            else await runVerify(rest);
+            if (rest.some((a) => !a.startsWith('--') && /\.ya?ml$/i.test(a))) await runVerifyWorld(rest, term);
+            else await runVerify(rest, term);
             return;
         case 'keygen':
         case 'sign':
-            console.error(
-                `ubichill ${subcommand} は廃止しました。署名は ubichill login（CI は ubichill ci create）のあと ubichill publish で行います。署名の確認は ubichill verify <world.yaml> です。`,
-            );
+            term.failure(new Error(`ubichill ${subcommand} は廃止しました`), {
+                hint: '署名は ubichill login（CI は ubichill ci create）のあと ubichill publish で行います。署名の確認は ubichill verify <world.yaml> です',
+            });
             process.exit(1);
             return;
         case 'login':
-            await runLogin(rest);
+            await runLogin(rest, term);
             return;
         case 'logout':
-            await runLogout(rest);
+            await runLogout(rest, term);
             return;
         case 'whoami':
-            await runWhoami(rest);
+            await runWhoami(rest, term);
             return;
         case 'publish':
-            await runPublish(rest);
+            await runPublish(rest, term);
             return;
         case 'world':
-            await runWorld(rest);
+            await runWorld(rest, term);
             return;
         case 'ci':
             if (rest[0] === 'create') {
-                await runCiCreate(rest.slice(1));
+                await runCiCreate(rest.slice(1), term);
                 return;
             }
-            console.error('使い方: ubichill ci create --name=<表示名>');
+            term.failure(new Error('使い方: ubichill ci create --name=<表示名>'));
             process.exit(1);
             return;
+        case 'help':
+        case '--help':
+        case '-h':
+            term.print(formatHelp(cliVersion(), term.paint));
+            return;
         default:
-            console.error(USAGE);
+            // 引数なし・知らないコマンドは案内を出して失敗で終わる（スクリプトの打ち間違いを成功にしない）
+            if (subcommand !== undefined) term.error(`知らないコマンドです: ${subcommand}`);
+            process.stderr.write(`${formatHelp(cliVersion(), stderrPaint())}\n`);
             process.exit(1);
     }
 }
 
-main().catch((err) => {
-    console.error('❌', err instanceof Error ? err.message : err);
+main().catch((err: unknown) => {
+    term.failure(err, isLikelyBug(err) ? { debugTip: DEBUG_TIP } : {});
     process.exit(1);
 });

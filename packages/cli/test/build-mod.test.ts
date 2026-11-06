@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { afterAll, describe, expect, it } from 'vitest';
+import { silentLogger } from '@ubichill/terminal';
 import { buildMod, type ModIndexEntry, runBuild } from '../src/build.ts';
 
 function sriOf(text: string): string {
@@ -492,7 +493,7 @@ describe('runBuild（CLI エントリポイント: 単一mod repo vs モノレ�
         tmpDirs.push(repoDir);
 
         process.chdir(repoDir);
-        await runBuild([]);
+        await runBuild([], silentLogger);
 
         const manifest = JSON.parse(readFileSync(join(repoDir, 'dist', 'v1.0.0', 'manifest.json'), 'utf-8'));
         expect(manifest.id).toBe('solo');
@@ -514,7 +515,7 @@ describe('runBuild（CLI エントリポイント: 単一mod repo vs モノレ�
         );
 
         process.chdir(workspaceDir);
-        await runBuild([]);
+        await runBuild([], silentLogger);
 
         const manifest = JSON.parse(
             readFileSync(join(workspaceDir, 'dist', 'mods', 'sub-mod', 'v1.0.0', 'manifest.json'), 'utf-8'),
@@ -545,7 +546,7 @@ describe('runBuild（CLI エントリポイント: 単一mod repo vs モノレ�
         }
 
         process.chdir(workspaceDir);
-        await runBuild([]);
+        await runBuild([], silentLogger);
 
         const index = JSON.parse(
             readFileSync(join(workspaceDir, 'dist', 'mods', 'index.json'), 'utf-8'),
@@ -559,6 +560,6 @@ describe('runBuild（CLI エントリポイント: 単一mod repo vs モノレ�
         tmpDirs.push(emptyDir);
 
         process.chdir(emptyDir);
-        await expect(runBuild([])).rejects.toThrow('package.json が見つかりません');
+        await expect(runBuild([], silentLogger)).rejects.toThrow('package.json が見つかりません');
     });
 });

@@ -9,6 +9,7 @@
  */
 import { basename, join } from 'node:path';
 import { signWorld, unpinnedModsOf, type WorldDocument, type WorldSigningKey, worldShareUrl } from '@ubichill/shared';
+import type { Logger } from '@ubichill/terminal';
 import type { Credential } from './credentials.ts';
 import { normalizePublicUrl, registerExternalWorks } from './registerWorks.ts';
 
@@ -29,7 +30,7 @@ export interface PublishDeps {
     key: WorldSigningKey;
     crypto: Parameters<typeof signWorld>[2];
     parseYaml: (text: string) => unknown;
-    log: (message: string) => void;
+    log: Logger;
 }
 
 export interface PublishOptions {
@@ -111,7 +112,7 @@ async function publishToDirectory(deps: PublishDeps, options: PublishOptions & {
     deps.fs.writeText(outWorld, bundle.yamlText);
     if (bundle.lockText !== undefined) deps.fs.writeText(lockPathFor(outWorld), bundle.lockText);
     deps.fs.writeText(outWorld.replace(/\.ya?ml$/i, '.sig.json'), `${JSON.stringify(bundle.signature, null, 2)}\n`);
-    deps.log(`🔏 ${outWorld} と .lock.json / .sig.json を書き出しました（作者 @${options.credential.account}）`);
+    deps.log.success(`${outWorld} と .lock.json / .sig.json を書き出しました`, `作者 @${options.credential.account}`);
     if (options.publicUrl) {
         const url = `${normalizePublicUrl(options.publicUrl)}/${name}`;
         await registerExternalWorks(
@@ -134,7 +135,7 @@ async function publishToServer(deps: PublishDeps, options: PublishOptions): Prom
     if (saved.status !== 200 || typeof saved.body.url !== 'string') throw errorOf(saved, '公開できませんでした');
     // 共有 URL（/@ID/名前）。名前は world.yaml の metadata.name
     const url = worldShareUrl(saved.body.url);
-    deps.log(`✅ 公開しました: ${url}（作者 @${options.credential.account}）`);
+    deps.log.success(`公開しました: ${url}`, `作者 @${options.credential.account}`);
     return url;
 }
 

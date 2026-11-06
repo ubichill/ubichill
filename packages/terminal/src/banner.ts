@@ -16,8 +16,8 @@ export interface BannerRow {
     readonly value: string;
     /** 値の後ろに薄く付ける補足。 */
     readonly note?: string;
-    /** `url` は cyan（ポートは太字）、`dim` は値ごと薄く。 */
-    readonly tone?: 'url' | 'plain' | 'dim';
+    /** `url` は cyan（ポートは太字）、`dim` は値ごと薄く、`warn` は黄色（起動はしたが直すものがある）。 */
+    readonly tone?: 'url' | 'plain' | 'dim' | 'warn';
 }
 
 export interface Banner {
@@ -40,6 +40,7 @@ export function paintUrl(url: string, paint: Paint): string {
 function paintValue(row: BannerRow, paint: Paint): string {
     if (row.tone === 'url') return paintUrl(row.value, paint);
     if (row.tone === 'dim') return paint('dim', row.value);
+    if (row.tone === 'warn') return paint('yellow', row.value);
     return row.value;
 }
 

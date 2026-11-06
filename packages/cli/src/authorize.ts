@@ -9,6 +9,7 @@
  */
 import { createHash, randomBytes } from 'node:crypto';
 import { type CliAuthKind, cliAuthProofMessage, type WorldSigningKey } from '@ubichill/shared';
+import type { Logger } from '@ubichill/terminal';
 import type { Credential } from './credentials.ts';
 
 export interface HttpResponse {
@@ -30,7 +31,7 @@ export interface AuthorizeDeps {
     startLoopback: () => Promise<LoopbackServer>;
     sleep: (ms: number) => Promise<void>;
     now: () => number;
-    log: (message: string) => void;
+    log: Logger;
     random?: (bytes: number) => string;
 }
 
@@ -85,8 +86,8 @@ export async function authorize(deps: AuthorizeDeps, options: AuthorizeOptions):
             if (created.status !== 201) throw errorOf(created, '認可の要求を作れませんでした');
             requestIdOf.value = String(created.body.requestId);
             const url = `${String(created.body.approveUrl)}&state=${encodeURIComponent(state)}`;
-            deps.log(`ブラウザで承認してください: ${url}`);
-            if (!(await deps.openBrowser(url))) deps.log('（ブラウザを開けませんでした。上の URL を開いてください）');
+            deps.log.info(`ブラウザで承認してください: ${url}`);
+            if (!(await deps.openBrowser(url))) deps.log.warn('ブラウザを開けませんでした。上の URL を開いてください');
             const callback = await loopback.waitForCallback();
             // 別の要求のリダイレクトを受け取らない（CSRF 対策の state、RFC 8252 §8.9）
             if (callback.state !== state)
@@ -114,7 +115,7 @@ export async function authorize(deps: AuthorizeDeps, options: AuthorizeOptions):
     const deviceCode = String(created.body.deviceCode);
     const intervalMs = Number(created.body.interval ?? 3) * 1000;
     const deadline = deps.now() + Number(created.body.expiresIn ?? 600) * 1000;
-    deps.log(
+    deps.log.info(
         `別の端末のブラウザで ${String(created.body.approveUrl)} を開き、コード ${String(created.body.userCode)} を確かめて承認してください`,
     );
     await deps.openBrowser(String(created.body.approveUrl));

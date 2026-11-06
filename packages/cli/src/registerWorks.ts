@@ -4,6 +4,7 @@
  * 登録に失敗しても署名は済んでいるので、公開は止めない（警告だけ出す）。
  */
 import type { ExternalWorkRegistration, ModLockEntry } from '@ubichill/shared';
+import type { Logger } from '@ubichill/terminal';
 
 export type RegisterRequest = (
     method: 'PUT',
@@ -66,7 +67,7 @@ export function latestPerMod<T extends { entry: ModLockEntry }>(signed: readonly
 export async function registerExternalWorks(
     request: RegisterRequest,
     registrations: readonly ExternalWorkRegistration[],
-    log: (message: string) => void,
+    log: Logger,
 ): Promise<number> {
     const results = await Promise.all(
         registrations.map(async (registration) => {
@@ -74,12 +75,12 @@ export async function registerExternalWorks(
             if (res?.status === 200) return true;
             const reason =
                 typeof res?.body.error === 'string' ? res.body.error : res ? `HTTP ${res.status}` : '通信できません';
-            log(`⚠ ${registration.url} をユーザーページに登録できませんでした（${reason}）。署名と公開は続けます`);
+            log.warn(`${registration.url} をユーザーページに登録できませんでした（${reason}）。署名と公開は続けます`);
             return false;
         }),
     );
     const registered = results.filter(Boolean).length;
     if (registered > 0)
-        log(`📇 ${registered} 件の作品をユーザーページに登録しました（公開先で確かめられたものから表示されます）`);
+        log.success(`${registered} 件の作品をユーザーページに登録しました`, '公開先で確かめられたものから表示されます');
     return registered;
 }
