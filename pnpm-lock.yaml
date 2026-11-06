@@ -455,16 +455,16 @@ importers:
         version: link:../shared
       drizzle-orm:
         specifier: 'catalog:'
-        version: 0.45.4(kysely@0.29.6)(postgres@3.4.9)
+        version: 0.45.4(kysely@0.29.6)(postgres@4.0.0)
       drizzle-zod:
         specifier: ^0.8.3
-        version: 0.8.3(drizzle-orm@0.45.4(kysely@0.29.6)(postgres@3.4.9))(zod@4.6.7)
+        version: 0.8.3(drizzle-orm@0.45.4(kysely@0.29.6)(postgres@4.0.0))(zod@4.6.7)
       nanoid:
         specifier: 'catalog:'
         version: 6.0.2
       postgres:
-        specifier: ^3.4.9
-        version: 3.4.9
+        specifier: ^4.0.0
+        version: 4.0.0
       zod:
         specifier: 'catalog:'
         version: 4.6.7
@@ -3393,6 +3393,10 @@ packages:
     resolution: {integrity: sha512-GD3qdB0x1z9xgFI6cdRD6xu2Sp2WCOEoe3mtnyB5Ee0XrrL5Pe+e4CCnJrRMnL1zYtRDZmQQVbvOttLnKDLnaw==}
     engines: {node: '>=12'}
 
+  postgres@4.0.0:
+    resolution: {integrity: sha512-kBh8qXtcvvIAc00DftQyOxz7M/3Zxww1tRMXZPLzipNXXl5PIzHml+9zB3Mrge2U8ldc0WF1ZdLp1iYQi7Kh3A==}
+    engines: {node: '>=20'}
+
   prettier@2.8.8:
     resolution: {integrity: sha512-tdN8qQGvNjw4CHbY+XXk0JgCXn9QiF21a55rBe5LJAU+kDyC4WQn4+awm2Xfk2lQMk5fKup9XgzTZtGkjBdP9Q==}
     engines: {node: '>=10.13.0'}
@@ -5438,9 +5442,14 @@ snapshots:
       kysely: 0.29.6
       postgres: 3.4.9
 
-  drizzle-zod@0.8.3(drizzle-orm@0.45.4(kysely@0.29.6)(postgres@3.4.9))(zod@4.6.7):
+  drizzle-orm@0.45.4(kysely@0.29.6)(postgres@4.0.0):
+    optionalDependencies:
+      kysely: 0.29.6
+      postgres: 4.0.0
+
+  drizzle-zod@0.8.3(drizzle-orm@0.45.4(kysely@0.29.6)(postgres@4.0.0))(zod@4.6.7):
     dependencies:
-      drizzle-orm: 0.45.4(kysely@0.29.6)(postgres@3.4.9)
+      drizzle-orm: 0.45.4(kysely@0.29.6)(postgres@4.0.0)
       zod: 4.6.7
 
   dts-bundle-generator@9.5.1:
@@ -6291,7 +6300,10 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  postgres@3.4.9: {}
+  postgres@3.4.9:
+    optional: true
+
+  postgres@4.0.0: {}
 
   prettier@2.8.8: {}
 
