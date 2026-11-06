@@ -1,4 +1,7 @@
-import type { InitialEntity } from '@ubichill/shared';
+import { type DataFieldsLike, type InitialEntity, remapRefs } from '@ubichill/shared';
+
+/** Component 型 → その dataFields（参照フィールドを見分けるのに使う）。mod の取得前は undefined。 */
+export type RefFieldsOf = (componentType: string) => DataFieldsLike | undefined;
 
 /** ルートからの index 列で Entity を指す path 型。例: [0] / [0, 2] */
 export type EntityPath = number[];
@@ -124,17 +127,62 @@ export function ensureUniqueName(desired: string, taken: Iterable<string>): stri
 }
 
 /**
+ * ツリーの全 Component の参照フィールドを `renames`（古い id → 新しい id）で付け替える。
+ * `fieldsOf` が知らない型（mod の取得前）の Component は、どれが参照か分からないので触らない。
+ */
+export function remapEntityRefs(
+    entities: InitialEntity[],
+    renames: ReadonlyMap<string, string>,
+    fieldsOf: RefFieldsOf,
+): InitialEntity[] {
+    if (renames.size === 0) return entities;
+    return entities.map((e) => ({
+        ...e,
+        components: e.components.map((c) => {
+            const data = remapRefs(fieldsOf(c.type), c.data, renames);
+            return data === c.data ? c : { ...c, data: { ...data } };
+        }),
+        children: remapEntityRefs(e.children ?? [], renames, fieldsOf),
+    }));
+}
+
+/**
+ * path の Entity の id を変え、ツリー中のその Entity への参照も新しい id に付け替える。
+ * `newId` は呼び出し側で一意にしておく。
+ */
+export function renameEntity(
+    entities: InitialEntity[],
+    path: EntityPath,
+    newId: string,
+    fieldsOf: RefFieldsOf,
+): InitialEntity[] {
+    const self = getEntityAt(entities, path);
+    if (!self || self.id === newId) return entities;
+    const renamed = updateEntityAt(entities, path, (e) => ({ ...e, id: newId }));
+    return remapEntityRefs(renamed, new Map([[self.id, newId]]), fieldsOf);
+}
+
+/**
  * Entity subtree をディープコピーし、自分と子孫全ての id を `taken` と衝突しないよう採番する。
  * children を含む全 entity が新 id を持つ (= 永続化したときに id 競合しない)。
  *
  * 採番は `${base}-copy` を seed にして `buildUniqueEntityId` で kebab-uniqueness を取る。
  * これで「再帰」中の中間 id も taken に積み増しながら一意性を保証する。
+ *
+ * subtree の中を指す参照はコピーの中の新しい id に付け替える（コピーの部品どうしで配線が閉じる）。
+ * subtree の外を指す参照はそのまま元の Entity を指す。
  */
-export function cloneEntitySubtree(entity: InitialEntity, taken: Iterable<string>): InitialEntity {
+export function cloneEntitySubtree(
+    entity: InitialEntity,
+    taken: Iterable<string>,
+    fieldsOf: RefFieldsOf = () => undefined,
+): InitialEntity {
     const used = new Set<string>(taken);
+    const renames = new Map<string, string>();
     const cloneRecursive = (e: InitialEntity): InitialEntity => {
         const newId = buildUniqueEntityId(`${e.id}-copy`, used);
         used.add(newId);
+        renames.set(e.id, newId);
         return {
             id: newId,
             transform: { ...e.transform },
@@ -147,7 +195,8 @@ export function cloneEntitySubtree(entity: InitialEntity, taken: Iterable<string
             children: (e.children ?? []).map(cloneRecursive),
         };
     };
-    return cloneRecursive(entity);
+    const cloned = cloneRecursive(entity);
+    return remapEntityRefs([cloned], renames, fieldsOf)[0] ?? cloned;
 }
 
 /** ツリー内の全 entity id を再帰収集する。 */

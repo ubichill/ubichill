@@ -10,6 +10,7 @@ import {
     type ReferenceProblem,
     type RefFieldSpec,
     refTargets,
+    remapRefs,
     resolveRefs,
 } from './componentRefs';
 
@@ -301,5 +302,48 @@ describe('動画面の競合（1 つの面に出力は 1 つ）', () => {
         expect(describeReferenceProblem(problems[0] as ReferenceProblem)).toBe(
             'tv2 に core:media が 2 つ以上あるため、動画を描きません。1 つにしてください',
         );
+    });
+});
+
+describe('remapRefs', () => {
+    const fields = {
+        screen: { type: 'entityRef' },
+        panels: { type: 'entityRefArray' },
+        title: { type: 'string' },
+        broken: null,
+    };
+
+    it('参照フィールドの値だけを付け替える', () => {
+        const renames = new Map([['tv', 'tv-2']]);
+        expect(remapRefs(fields, { screen: 'tv', panels: ['tv', 'x', 3], title: 'tv', broken: 'tv' }, renames)).toEqual(
+            {
+                screen: 'tv-2',
+                panels: ['tv-2', 'x', 3],
+                title: 'tv',
+                broken: 'tv',
+            },
+        );
+    });
+
+    it('変わるものが無ければ同じ data を返す', () => {
+        const data = { screen: 'a', panels: ['b'] };
+        expect(remapRefs(fields, data, new Map([['tv', 'x']]))).toBe(data);
+    });
+
+    it('付け替えは 1 回だけ（a→b, b→c で a が c にならない）', () => {
+        const renames = new Map([
+            ['a', 'b'],
+            ['b', 'c'],
+        ]);
+        expect(remapRefs(fields, { screen: 'a', panels: ['a', 'b'] }, renames)).toEqual({
+            screen: 'b',
+            panels: ['b', 'c'],
+        });
+    });
+
+    it('型の合わない値・プロトタイプの値は触らない', () => {
+        const renames = new Map([['tv', 'x']]);
+        expect(remapRefs(fields, { screen: ['tv'], panels: 'tv' }, renames)).toEqual({ screen: ['tv'], panels: 'tv' });
+        expect(remapRefs({ toString: { type: 'entityRef' } }, {}, renames)).toEqual({});
     });
 });

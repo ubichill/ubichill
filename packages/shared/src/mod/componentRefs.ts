@@ -54,6 +54,26 @@ export function refTargets(spec: RefFieldSpec, value: unknown): string[] {
     return [...new Set(values.filter((v): v is string => typeof v === 'string' && v.length > 0))];
 }
 
+/**
+ * data の参照フィールドが指す entityId を `renames`（古い id → 新しい id）で付け替える。
+ * 参照でないフィールドは、値が同じ文字列でも触らない。変わるものが無ければ同じ data を返す。
+ */
+export function remapRefs(
+    dataFields: DataFieldsLike | undefined,
+    data: Readonly<Record<string, unknown>>,
+    renames: ReadonlyMap<string, string>,
+): Readonly<Record<string, unknown>> {
+    const rename = (value: unknown): unknown => (typeof value === 'string' ? (renames.get(value) ?? value) : value);
+    const changed = refFieldEntries(dataFields).flatMap(([field, spec]): Array<[string, unknown]> => {
+        const value = data[field];
+        if (spec.type === 'entityRef') return rename(value) === value ? [] : [[field, rename(value)]];
+        if (!Array.isArray(value)) return [];
+        const next = value.map(rename);
+        return next.some((v, i) => v !== value[i]) ? [[field, next]] : [];
+    });
+    return changed.length === 0 ? data : { ...data, ...Object.fromEntries(changed) };
+}
+
 /** Component の data から、参照フィールドをすべて解決する。 */
 export function resolveRefs(
     dataFields: DataFieldsLike | undefined,
