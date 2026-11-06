@@ -40,6 +40,8 @@ const unsignedDev = {
 };
 const repoRoot = join(__dirname, '..', '..', '..');
 const penModDir = join(repoRoot, 'mods', 'pen');
+/** pen の版（mod のコードを変えるたびに上げるので、テストに書き写さない）。 */
+const penVersion = (JSON.parse(readFileSync(join(penModDir, 'package.json'), 'utf-8')) as { version: string }).version;
 
 interface FakeFetchResponse {
     ok: boolean;
@@ -80,7 +82,7 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
     let manifest: Record<string, unknown>;
     let lockEntry: Record<string, unknown>;
     const modId = 'pen';
-    const version = '2.0.0';
+    const version = penVersion;
 
     beforeAll(async () => {
         publicDir = mkdtempSync(join(tmpdir(), 'ubichill-mod-public-'));
@@ -370,8 +372,8 @@ describe('リモート registry からのバージョン履歴マージ（CI ク
         });
 
         const versionNumbers = entry.versions.map((v) => v.version);
-        // リモート履歴 (1.9.0 / 1.8.0) + 今回ビルドした現行版 (2.0.0) が新しい順で揃う
-        expect(versionNumbers).toEqual(['2.0.0', '1.9.0', '1.8.0']);
+        // リモート履歴 (1.9.0 / 1.8.0) + 今回ビルドした現行版が新しい順で揃う
+        expect(versionNumbers).toEqual([penVersion, '1.9.0', '1.8.0']);
     });
 
     it('registryUrl への fetch が失敗しても（オフライン/404）ビルドは成功する', async () => {
@@ -385,7 +387,7 @@ describe('リモート registry からのバージョン履歴マージ（CI ク
             fetchImpl: failingFetch,
         });
 
-        expect(entry.versions.map((v) => v.version)).toEqual(['2.0.0']);
+        expect(entry.versions.map((v) => v.version)).toEqual([penVersion]);
     });
 
     it('registryUrl 未指定なら fetch を一切呼ばず、ローカル履歴のみでビルドする', async () => {
@@ -402,7 +404,7 @@ describe('リモート registry からのバージョン履歴マージ（CI ク
         });
 
         expect(called).toBe(false);
-        expect(entry.versions.map((v) => v.version)).toEqual(['2.0.0']);
+        expect(entry.versions.map((v) => v.version)).toEqual([penVersion]);
     });
 });
 
