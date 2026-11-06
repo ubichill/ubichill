@@ -81,6 +81,8 @@ Ubichill の約束ごと（プロトコル・データの形式・API）を、**
 宣言しない接続には今の形を送り続ける（外部の実装・e2e の `apiSmoke` もこちら）。宣言を足すのはイベントの増減と同じ扱いで、`protocolVersion` は上げない。
 例: `cursors:batch`（カーソルを `cursors:moved` でまとめて受ける。`protocol/instance/README.md` の「受け取れる形の宣言」）。
 
+`ubichill dev` の SSE（`/__ubichill/events`）も D。dev サーバーと world.html は同じ CLI に入っていて版がずれない（形は `shared/world/devEvents.ts` だけで決める）。
+
 通知の API（`/api/v1/notifications`・SSE）も D。ただし通知の形（`shared/notification/activity.ts`）は ActivityStreams 2.0 に寄せてあり、
 ほかのサーバーと送り合うようになったら、その送り合う形は C（足すだけ）として扱う。
 
