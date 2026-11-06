@@ -104,8 +104,10 @@ lock が防ぐのは「一度承認した mod が、後から URL 乗っ取り�
 
 ### 依存関係
 
-現状 mod は自己完結で、mod → mod の依存は持たない。Component 間の連携は `Ubi.event`
-（scope / targetType）の**疎結合**で行い、相手が居なければ優雅に劣化する（ハードな依存解決はしない）。
+現状 mod は自己完結で、mod → mod の依存は持たない。Component 間の連携は `Ubi.event` の**疎結合**で行い、
+相手が居なければ優雅に劣化する（ハードな依存解決はしない）。相手は**参照フィールド**（`dataFields` の
+`entityRef` に `component: '<型>'`）で宣言し、ワールド作者が Inspector で配線する（→ [API.md](./API.md) の
+「Component の参照」）。階層の形（同じ親の下に並べる、など）を作者に暗黙に求めない。
 将来 mod → mod 依存を入れる場合も、ゼロトラストのため **capability は依存間で継承しない**
 （各 mod は独立ロード＋各自の承認＋各自の integrity 照合）。
 

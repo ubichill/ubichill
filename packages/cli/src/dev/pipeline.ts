@@ -39,6 +39,7 @@ import {
     publishGeneration,
 } from './generation.ts';
 import type { GoAdmin } from './goRuntime.ts';
+import { manifestFieldsOf, referenceWarnings } from './references.ts';
 import type { DevEvent } from './server.ts';
 import { synthesizeWorld } from './synthesizedWorld.ts';
 
@@ -110,9 +111,15 @@ export async function buildRoomDefinition(
     world: WorldSource | undefined,
     mods: ReadonlyMap<string, ModArtifacts>,
     lock: ModLock,
-    options: { instanceId: string; maxUsers: number },
+    options: { instanceId: string; maxUsers: number; warn?: (message: string) => void },
 ): Promise<InstanceDefinition> {
-    const raw = world?.raw ?? synthesizeWorld([...mods.values()].map((m) => ({ id: m.id, components: m.components })));
+    const fieldsOf = manifestFieldsOf(mods.values());
+    const raw =
+        world?.raw ??
+        synthesizeWorld(
+            [...mods.values()].map((m) => ({ id: m.id, components: m.components })),
+            fieldsOf,
+        );
     const url = world?.url ?? 'file:///dev/world.yaml';
     const definition = (() => {
         try {
@@ -121,6 +128,8 @@ export async function buildRoomDefinition(
             throw new WorldError(error instanceof Error ? error.message : String(error));
         }
     })();
+    // 参照の問題では止めない（作者が直している途中でも動かして確かめられるように）。届かない emit があることを知らせる
+    for (const message of referenceWarnings(definition.spec.initialEntities, fieldsOf)) options.warn?.(message);
     const unlocked = requiredLockModIds(definition.spec).filter((id) => !lock.mods[id]);
     if (unlocked.length > 0) {
         throw new WorldError(`ワールドが参照している mod が手元に無く、lock に固定できません: ${unlocked.join(', ')}`);
@@ -249,7 +258,11 @@ export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pi
             const newRoom = !previous || taken.reconfigure > 0 || needsNewRoom(previous, mods, { synthesized: !world });
             const instanceId = newRoom ? `dev-${buildId}` : (previous as Generation).instanceId;
             const room = newRoom
-                ? await buildRoomDefinition(world, mods, lock, { instanceId, maxUsers: deps.maxUsers })
+                ? await buildRoomDefinition(world, mods, lock, {
+                      instanceId,
+                      maxUsers: deps.maxUsers,
+                      warn: (message) => deps.log(`参照の問題: ${message}`),
+                  })
                 : published.room;
             if (newRoom && room) {
                 const go = deps.go();

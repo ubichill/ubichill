@@ -28,6 +28,7 @@ import { usePublishSetup } from './hooks/usePublishSetup';
 import { useWorldEditorApi } from './hooks/useWorldEditorApi';
 import { SNAP_STEP } from './lib/dragHelpers';
 import { flattenForStage, getEntityAt, updateEntityAt } from './lib/entityTree';
+import { editorReferenceProblems, problemsByEntity } from './lib/referenceProblems';
 import { editorButton } from './recipes/button';
 
 export function WorldEditorPage() {
@@ -64,6 +65,10 @@ export function WorldEditorPage() {
 
     const selection = useEntitySelection();
     const ops = useEntityOps({ definition, updateEntities, kinds, selection });
+    const referenceProblems = useMemo(
+        () => problemsByEntity(editorReferenceProblems(definition.spec.initialEntities, kinds)),
+        [definition.spec.initialEntities, kinds],
+    );
     const mobile = useMobilePanels();
 
     // 認証ガード
@@ -208,6 +213,7 @@ export function WorldEditorPage() {
                     onPasteEntity={ops.handlePasteEntity}
                     onDuplicateEntity={ops.handleDuplicateEntity}
                     hasClipboard={ops.hasClipboard}
+                    referenceProblems={referenceProblems}
                 />
             </DockSlot>
 

@@ -38,6 +38,30 @@ describe('createEventModule', () => {
         ]);
     });
 
+    it('ref を指定すると scope を付けずに参照フィールドの名前を送る', () => {
+        const { deps, sent } = makeDeps();
+        const mod = createEventModule(deps);
+        mod.emit('x', 1, { ref: 'screen' });
+        mod.emit('y', 2, { scope: 'referrers', targetType: 'm:c' });
+        expect(sent).toEqual([
+            { type: CommandType.EVENT_EMIT, payload: { type: 'x', data: 1, ref: 'screen', targetType: undefined } },
+            {
+                type: CommandType.EVENT_EMIT,
+                payload: { type: 'y', data: 2, scope: 'referrers', targetType: 'm:c' },
+            },
+        ]);
+    });
+
+    it('scope と ref は同時に書けない（型で弾く）', () => {
+        const { deps, sent } = makeDeps();
+        const mod = createEventModule(deps);
+        // @ts-expect-error 配送先はどちらか 1 つ
+        mod.emit('x', 1, { scope: 'world', ref: 'screen' });
+        // @ts-expect-error どちらも無いのも不可
+        mod.emit('x', 1, { targetType: 'm:c' });
+        expect(sent).toHaveLength(2);
+    });
+
     it('broadcast / sendToHost はそれぞれ対応する CommandType を送る', () => {
         const { deps, sent } = makeDeps();
         const mod = createEventModule(deps);

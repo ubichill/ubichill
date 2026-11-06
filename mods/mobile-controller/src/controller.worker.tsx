@@ -12,8 +12,8 @@
  * そのため 1 Component で「左下にスティック・右下にボタン」のように画面の複数箇所へ配置でき、
  * 画面サイズ（縦/横/タブレット）にも依存しない。
  *
- * 使い方: World Editor で操作したい Component と同じ Entity にこれを追加する
- * （`scope: 'subtree'` で同 Entity 上の Component へ配送するため）。
+ * 使い方: World Editor でこれを好きな Entity に追加し、「操作する Entity」に操作したい Entity（自機など）を
+ * Hierarchy からドロップする。イベントはその Entity 上の Component すべてに届く（型は問わない）。
  * `Ubi.hasCoarsePointer` が false（マウス/トラックパッド環境）のときは何も描画しない。
  */
 import type { ComponentConfig, UiPointerActionDetail } from 'ubichill';
@@ -26,6 +26,14 @@ export const config: ComponentConfig = {
     // 画面全体を覆う HUD レイヤー（スティックは左下・ボタンは右下に自前で配置する）。
     overlay: 'fill',
     description: 'タッチ/ペン環境で操作する画面固定コントローラ（仮想スティック + アクションボタン）。',
+    dataFields: {
+        target: {
+            type: 'entityRef',
+            required: true,
+            label: '操作する Entity',
+            help: '矢印キー相当のイベントを送る先（例: 自機）。その Entity 上の Component すべてに届く。',
+        },
+    },
 };
 
 const STICK_SIZE = 132;
@@ -33,30 +41,19 @@ const KNOB_SIZE = 56;
 const ACTION_CODE = 'KeyZ';
 
 const controller = Ubi.state.define({
-    // 送信先Component型。Inspectorで変更可能（同じEntity上に配置し、scope: 'subtree'で届く相手を指定する）。
-    targetType: Ubi.state.sync('danmaku:player', {
-        label: '操作対象のComponent型',
-        help: '矢印キー相当のイベントを送る先 (例: danmaku:player)。同じEntity上に配置すること。',
-    }),
     // ノブの表示位置（中心からのオフセット px）。同期不要なローカル状態にすることで、
     // ドラッグ中の再描画がネットワークに漏れない（素の値を渡すと local スコープになる）。
     knobX: 0,
     knobY: 0,
 });
 
+const toTarget = { ref: 'target' } as const;
+
 function emitDown(code: string): void {
-    MobileControllerEvents.emit(
-        'mobile:key_down',
-        { code },
-        { scope: 'subtree', targetType: controller.local.targetType },
-    );
+    MobileControllerEvents.emit('mobile:key_down', { code }, toTarget);
 }
 function emitUp(code: string): void {
-    MobileControllerEvents.emit(
-        'mobile:key_up',
-        { code },
-        { scope: 'subtree', targetType: controller.local.targetType },
-    );
+    MobileControllerEvents.emit('mobile:key_up', { code }, toTarget);
 }
 
 /** 直前に送ったキー集合との差分だけを key_down / key_up として送る。 */

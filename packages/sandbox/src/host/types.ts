@@ -11,6 +11,7 @@ import type {
     CmdGrip,
     CmdRide,
     ComponentInstance,
+    EmitRoute,
     EntityPatchPayload,
     FetchOptions,
     FetchResult,
@@ -19,16 +20,14 @@ import type {
     ModGuestCommand,
     ModHostEvent,
     ModWorkerMessage,
+    ResolvedRef,
     RpcIdentityTokenResult,
     VNode,
 } from '@ubichill/shared';
 import type { HostFetchContext } from './fetchHandler';
 import type { TickMetric } from './modDiagnostics';
 
-export type { FetchOptions, FetchResult } from '@ubichill/shared';
-
-/** emit のルーティング scope。ModRegistry.routeEmit と HostHandlers.onEventEmit で共有。 */
-export type EmitScope = 'siblings' | 'parent' | 'children' | 'subtree' | 'world';
+export type { EmitRoute, EmitScope, FetchOptions, FetchResult, ResolvedRef } from '@ubichill/shared';
 
 export type HostHandlers<TPayloadMap extends Record<string, unknown> = Record<string, unknown>> = {
     onGetEntity?: (id: string) => ComponentInstance | undefined;
@@ -52,7 +51,7 @@ export type HostHandlers<TPayloadMap extends Record<string, unknown> = Record<st
     onEventEmit?: (
         type: string,
         data: unknown,
-        scope: EmitScope,
+        route: EmitRoute,
         targetType: string | undefined,
         senderComponentInstanceId: string | undefined,
     ) => void;
@@ -117,6 +116,8 @@ export interface ModWorkerInfo {
     readonly entityId: string | undefined;
     readonly parentEntityId: string | undefined;
     readonly componentType: string | undefined;
+    /** 参照フィールドの今の配線。emit の `ref` と `scope: 'referrers'` の解決に使う（作者が Editor で変えると変わる）。 */
+    readonly refs: () => readonly ResolvedRef[];
     readonly startedAt: number;
     /** @internal クロス Worker emit のための直接送信ハンドル。 */
     readonly _sendEvent: (event: ModHostEvent) => void;
@@ -137,6 +138,8 @@ export interface ModHostManagerOptions<TPayloadMap extends Record<string, unknow
     parentEntityId?: string;
     /** この Worker が担当する Component 型 (`modId:componentName`)。 */
     componentType?: string;
+    /** 参照フィールドの今の配線を返す。emit の `ref` / `scope: 'referrers'` の解決に使う。 */
+    refs?: () => readonly ResolvedRef[];
     /** modアセットのベースURL（Worker で Ubi.modBase として参照可能） */
     modBase?: string;
     /** 同梱アセットの相対パス → SRI。lock で固定した manifest の assetIntegrity。Ubi.asset はこれと照合する。 */

@@ -47,19 +47,30 @@ spec:
 
 ```yaml
 initialEntities:
-  - id: screen-1
+  - id: tv
     transform: { x: 0, y: 0, z: 0, scale: 1, rotation: 0 }   # w/h は任意
     tags: [surface]                                          # 任意（kebab 系）
     components:
-      - type: video-player:screen
-        data: { url: "https://..." }
+      - type: example:screen
     children:
-      - id: controls-1
+      - id: remote
         transform: { x: 0, y: 320 }
         components:
-          - type: video-player:controls
-            data: {}
+          - type: example:remote
+            data:
+              screen: tv          # 参照フィールド: example:screen を持つ Entity の id
 ```
+
+### 参照フィールド（Component 同士の配線）
+
+Component が別の Component と連携するときは、mod が `dataFields` に参照フィールド（`entityRef` / `entityRefArray`）を
+宣言し、作者が値に **Entity の id** を書く（World Editor では Hierarchy からドロップする）。
+
+- 参照が `component: <型>` を宣言していれば、指す Entity はその型の Component を持っていなければならない。
+- `required` の参照が未設定・指す Entity が無い・型が合わないときは、World Editor（Hierarchy の印と Inspector）と
+  `ubichill dev`（ターミナル）が知らせる。ワールドは作れるが、その参照に送るイベントは届かない。
+- 相手を置く場所は自由（同じ Entity・子・別の木のどこでもよい）。親子や兄弟の形で連携を決める mod では、
+  その mod の説明に書かれた形に従う。
 
 上限（`LIMITS`）: initialEntities 最大 500、Component/Entity 最大 32、tags 最大 10、YAML 100KB。
 

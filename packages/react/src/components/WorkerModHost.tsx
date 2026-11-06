@@ -8,7 +8,7 @@
  */
 
 import { routeEmit } from '@ubichill/sandbox';
-import type { ComponentInstance, InputFrameEvent } from '@ubichill/shared';
+import { type ComponentInstance, type InputFrameEvent, resolveRefs } from '@ubichill/shared';
 import type React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { editorSchemaRegistry } from '../editorSchemaRegistry';
@@ -143,6 +143,15 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
         };
     }, [definition.dataFields, entity.data]);
 
+    const resolvedRefs = useMemo(
+        () => resolveRefs(definition.dataFields, (entity.data ?? {}) as Record<string, unknown>),
+        [definition.dataFields, entity.data],
+    );
+    const refsRef = useRef(resolvedRefs);
+    useEffect(() => {
+        refsRef.current = resolvedRefs;
+    });
+
     const worldHandlers = useModWorld(
         definition.watchScope ?? 'subtree',
         entity.entityId,
@@ -182,6 +191,7 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
         entityId: entity.entityId,
         parentEntityId: entity.parentEntityId,
         componentType: entity.type,
+        refs: () => refsRef.current,
         capabilities: definition.capabilities,
         authorizeCapability,
         enabled,
@@ -202,12 +212,12 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
             onFetch,
             onIdentityToken,
             onNetworkBroadcast: (type, data) => onNetworkBroadcastRef.current?.(type, data),
-            onEventEmit: (type, data, scope, targetType, senderId) =>
+            onEventEmit: (type, data, route, targetType, senderId) =>
                 routeEmit({
                     senderComponentInstanceId: senderId,
                     type,
                     data,
-                    scope,
+                    route,
                     targetType,
                 }),
             onGripCommand: (payload, senderId) => {

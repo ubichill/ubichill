@@ -26,9 +26,26 @@ export type DataFieldSpec =
     | { type: 'array'; default?: unknown[]; item: DataFields; label?: string; help?: string }
     // 他 Entity（単体）への参照。値は entityId。Hierarchy からの D&D で指定する。
     // access: 'read'（既定）は読み取りのみ、'write' は参照先への更新も許可する。
-    | { type: 'entityRef'; default?: string; access?: 'read' | 'write'; label?: string; help?: string }
+    // component: 参照先が持つべき Component 型。required: 未設定をワールドの問題にする。
+    | {
+          type: 'entityRef';
+          default?: string;
+          access?: 'read' | 'write';
+          component?: string;
+          required?: boolean;
+          label?: string;
+          help?: string;
+      }
     // 他 Entity（複数）への参照。値は entityId の配列。
-    | { type: 'entityRefArray'; default?: string[]; access?: 'read' | 'write'; label?: string; help?: string };
+    | {
+          type: 'entityRefArray';
+          default?: string[];
+          access?: 'read' | 'write';
+          component?: string;
+          required?: boolean;
+          label?: string;
+          help?: string;
+      };
 
 export type DataFields = Record<string, DataFieldSpec>;
 

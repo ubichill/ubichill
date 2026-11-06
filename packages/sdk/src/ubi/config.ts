@@ -70,24 +70,34 @@ export interface ArrayDataField extends BaseDataField {
     item: Record<string, DataField>;
 }
 
-/**
- * 他 Entity 単体への参照。値は entityId（World Editor で D&D 指定）。
- *
- * `access` は参照先への操作権限: 'read'（既定・省略可）は読み取りのみ、
- * 'write' は自身への読み書きと同様に参照先への transform/data 更新も許可する。
- * 削除はこの参照からは決して許可されない（watchScope で見える Entity のみ削除可）。
- */
-export interface EntityRefDataField extends BaseDataField {
-    type: 'entityRef';
-    default?: string;
+/** 参照フィールドに共通の宣言。 */
+interface RefDataFieldBase extends BaseDataField {
+    /**
+     * 参照先への操作権限: 'read'（既定・省略可）は読み取りのみ、
+     * 'write' は自身への読み書きと同様に参照先への transform/data 更新も許可する。
+     * 削除はこの参照からは決して許可されない（watchScope で見える Entity のみ削除可）。
+     */
     access?: 'read' | 'write';
+    /**
+     * 参照先の Entity が持つべき Component 型（`"modId:componentName"`）。
+     * World Editor はこの型を持つ Entity だけを受け付け、`Ubi.event.emit(type, data, { ref: <フィールド名> })` は
+     * 参照先のこの型の Component に届く。Unity の型付きフィールドと同じ考え方で、作者は相手をどこに置いてもよい。
+     */
+    component?: string;
+    /** 未設定をワールドの問題として扱う（World Editor と `ubichill dev` が知らせる）。配列は 1 つ以上。 */
+    required?: boolean;
 }
 
-/** 他 Entity 複数への参照。値は entityId の配列。`access` の意味は {@link EntityRefDataField} と同じ。 */
-export interface EntityRefArrayDataField extends BaseDataField {
+/** 他 Entity 単体への参照。値は entityId（World Editor で D&D 指定）。 */
+export interface EntityRefDataField extends RefDataFieldBase {
+    type: 'entityRef';
+    default?: string;
+}
+
+/** 他 Entity 複数への参照。値は entityId の配列。 */
+export interface EntityRefArrayDataField extends RefDataFieldBase {
     type: 'entityRefArray';
     default?: string[];
-    access?: 'read' | 'write';
 }
 
 export type DataField =

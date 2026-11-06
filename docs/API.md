@@ -41,7 +41,8 @@ const MyEvents = Ubi.event.define<{
     'mod:event:type': { payload: ... };           // type ↔ payload を 1 箇所に宣言
     'cross:user:msg':    { ... };
 }>();
-MyEvents.emit(type, data, { scope, targetType? })   // 同 tab の他 Worker に狙い撃ち
+MyEvents.emit(type, data, { ref: 'screen' })        // 参照フィールドで作者が指した相手へ（推奨。下の「Component の参照」）
+MyEvents.emit(type, data, { scope, targetType? })   // Entity の階層で相手を決める
 MyEvents.broadcast(type, data)                       // 他ユーザーの同 entity Worker へ (volatile)
 MyEvents.sendToHost(type, data)                      // 自 Host (React 側) へ
 MyEvents.on(type, (data) => {...})                   // emit / sendToHost / SDK 由来 (input:* / entity:* など) を受信
@@ -50,8 +51,9 @@ MyEvents.onBroadcast(type, (userId, data) => {...})  // broadcast を受信 (env
 // ──── トリガー (untyped escape hatch — 互換用) ──────────
 Ubi.event.sendToHost<T>(type, data)
 Ubi.event.broadcast<T>(type, data)
-Ubi.event.emit(type, data, { scope, targetType? })
-//   scope: 'siblings' | 'parent' | 'children' | 'subtree' | 'world'
+Ubi.event.emit(type, data, { ref | scope, targetType? })
+//   ref:   自分の参照フィールド（config.dataFields の entityRef / entityRefArray）の名前
+//   scope: 'siblings' | 'parent' | 'children' | 'subtree' | 'world' | 'referrers'
 //   targetType: 受信側 Component type ("modId:componentName")
 
 // ──── 自分中心の階層 CRUD ────────────────────────────────
@@ -229,6 +231,33 @@ entity.getComponent<T>(name)      // T | null
 entity.hasComponent(name)         // boolean
 entity.removeComponent(name)      // void
 ```
+
+### Component の参照（型付きの配線）
+
+別の Component と連携するときは、相手の置き場所（親子・兄弟などの階層）を作者に暗黙に求めず、
+**参照フィールド**で「どの型の相手が必要か」を宣言する。作者は World Editor の Inspector で、その枠に
+Hierarchy から Entity をドロップする（Unity の型付きフィールドに Component を入れるのと同じ）。
+
+```ts
+export const config: ComponentConfig = {
+    dataFields: {
+        // video-player:screen を持つ Entity を 1 つ。未設定ならエディタと `ubichill dev` が知らせる
+        screen: { type: 'entityRef', component: 'video-player:screen', required: true, label: 'スクリーン' },
+        // 複数なら entityRefArray（required は 1 つ以上）
+        playlists: { type: 'entityRefArray', component: 'video-player:playlist', label: 'プレイリスト' },
+    },
+};
+
+Events.emit('vp:media:play', {}, { ref: 'screen' });          // 作者が指した Entity の video-player:screen にだけ届く
+Events.emit('vp:media:state', state, { scope: 'referrers' }); // 参照で自分を指している Component へ返す
+```
+
+- `ref` は作者が配線した相手にしか届かない。未設定・宣言の無いフィールド名なら誰にも届かない（mod が配線の外へ送ることはできない）。
+- `component` を宣言した参照は、その型の Component だけに届く。`targetType` で型を広げることはできない。宣言しなければ、指した Entity の全 Component に届く。
+- `scope: 'referrers'` は、参照フィールドで自分の Entity を指している Component に届く。相手の参照が `component` を宣言していれば、それが自分の型のときだけ。
+- 相手は同じ Entity でも、別の木の奥でもよい。階層の形は問わない。
+- 判定は World Editor（Hierarchy の印と Inspector）・`ubichill dev`（ターミナルの「参照の問題」）・Host の配送で同じ（`@ubichill/shared` の `findReferenceProblems` / `resolveRefs`）。
+- `config` はビルド時にリテラルとして読む。`component` に定数や式を書くと読めないので、文字列で書く。
 
 ### Worker 内で届くイベント
 
