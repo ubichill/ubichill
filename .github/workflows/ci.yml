@@ -127,6 +127,15 @@ jobs:
       - name: Verify mod locks
         run: pnpm verify:mod-locks
 
+      # 公開済み（gh-pages）の版を、同じ版のまま別の中身にしていないか。マージすると mods-pages が上書きし、
+      # その版を固定している外部のワールドが動かなくなる。mod のコードか、mod に取り込まれる SDK・shared を変えたら版を上げる
+      - name: Verify published mod versions are not overwritten
+        run: |
+          git fetch --depth=1 origin gh-pages:refs/remotes/origin/gh-pages
+          mkdir -p "$RUNNER_TEMP/published"
+          git archive origin/gh-pages mods | tar -x -C "$RUNNER_TEMP/published"
+          node scripts/check-published-mods.mjs dist/mods "$RUNNER_TEMP/published/mods"
+
       # 再生成した worlds/*.lock.json がコミット済みの内容と一致するか（= コミットし忘れが無いか）
       # を git diff で検証する。frozen-lockfile チェックと同じパターン。
       - name: Verify world locks are committed
