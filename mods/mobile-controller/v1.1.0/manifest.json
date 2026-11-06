@@ -1,0 +1,34 @@
+{
+  "id": "mobile-controller",
+  "name": "mobile-controller",
+  "version": "1.1.0",
+  "components": {
+    "mobile-controller:controller": {
+      "defaultTransform": {
+        "x": 0,
+        "y": 0,
+        "z": 2000
+      },
+      "watchEntityTypes": [
+        "mobile-controller:controller"
+      ],
+      "overlay": "fill",
+      "description": "タッチ/ペン環境で操作する画面固定コントローラ（仮想スティック + アクションボタン）。",
+      "dataFields": {
+        "target": {
+          "type": "entityRef",
+          "label": "操作する Entity",
+          "help": "矢印キー相当のイベントを送る先（例: 自機）。その Entity 上の Component すべてに届く。未設定ならこの Entity（と子）に送る。"
+        }
+      },
+      "capabilities": [
+        "event:emit",
+        "scene:read",
+        "scene:update",
+        "ui:render"
+      ],
+      "workerUrl": "./controller/index.ba481627.js"
+    }
+  },
+  "assets": []
+}

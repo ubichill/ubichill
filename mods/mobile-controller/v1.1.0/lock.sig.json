@@ -1,0 +1,12 @@
+{
+  "format": "ubichill-signature",
+  "version": 2,
+  "kind": "mod",
+  "alg": "ed25519",
+  "publicKey": "PUlU51o_Sch92myux0fHEFuRJSxUbKiN9GC54o1fKW0",
+  "author": "ubichill@ubichill.com",
+  "subject": "mobile-controller",
+  "subjectVersion": "1.1.0",
+  "contentHash": "sha256-/i2SeKRSDk4osQ4rYOWhWQGa6GITfhO2uWLd6dMmZsk=",
+  "signature": "mZO5L9XPce2QBWXL8yqKlopA2a9RoBLmf3zt8y_3CTXEjbaXsLI8gLhXGlSmh2a2823WRFyUlKcGPvtOvDLaCQ"
+}
