@@ -1,14 +1,13 @@
 /**
  * 世代を確定する順序。失敗した段階で何が残るかは docs/design/world-runtime-dev.md の表の通り。
  */
-import { EMPTY_ENTITY_TYPE, type InstanceDefinition } from '@ubichill/shared';
+import { type DevEvent, EMPTY_ENTITY_TYPE, type InstanceDefinition } from '@ubichill/shared';
 import { describe, expect, it, vi } from 'vitest';
 import type { ModArtifacts } from '../build.ts';
 import { fakeMod, remoteMods } from './generation.test.ts';
 import { currentGeneration, initialGenerationState } from './generation.ts';
 import type { GoAdmin } from './goRuntime.ts';
 import { buildRoomDefinition, createPipeline, type PipelineDeps, type WorldSource } from './pipeline.ts';
-import type { DevEvent } from './server.ts';
 
 /** 最後に送った診断。 */
 const lastDiagnostics = (events: readonly DevEvent[]) =>
@@ -220,6 +219,53 @@ describe('createPipeline', () => {
         await h.pipeline.idle();
         await h.pipeline.restoreRoom();
         expect(h.go.puts.map((d) => d.id)).toEqual(['dev-r-1', 'dev-r-1']);
+    });
+
+    it('部屋の作り直しに失敗しても、ビルドの診断を消さずに並べ、Go が投げても落ちない', async () => {
+        const state = { mode: 'ok' as 'ok' | 'reject' | 'throw' };
+        const go = fakeGo();
+        const admin: GoAdmin = {
+            ...go.admin,
+            async putInstance(definition) {
+                if (state.mode === 'throw') throw new Error('ECONNREFUSED');
+                if (state.mode === 'reject') return { ok: false, status: 503, error: 'draining' };
+                return go.admin.putInstance(definition);
+            },
+        };
+        const h = harness({ go: () => admin });
+        h.pipeline.schedule({ mods: 'all', reconfigure: true });
+        await h.pipeline.idle();
+        h.compile.mockRejectedValueOnce(new Error('broken'));
+        h.pipeline.schedule({ mods: new Set(['pen']), reconfigure: false });
+        await h.pipeline.idle();
+
+        state.mode = 'throw';
+        await expect(h.pipeline.restoreRoom()).resolves.toBeUndefined();
+        expect(h.pipeline.diagnostics).toEqual([
+            { kind: 'build', mod: 'pen', message: 'broken' },
+            { kind: 'world', message: expect.stringContaining('ECONNREFUSED') },
+        ]);
+
+        state.mode = 'ok';
+        await h.pipeline.restoreRoom();
+        expect(h.pipeline.diagnostics).toEqual([{ kind: 'build', mod: 'pen', message: 'broken' }]);
+    });
+
+    it('部屋の作り直しに失敗したら、次の保存は中身が同じでも新しい部屋を作り、そこで診断が消える', async () => {
+        const state = { reject: false };
+        const go = fakeGo(() => (state.reject ? 'draining' : null));
+        const h = harness({ go: () => go.admin });
+        h.pipeline.schedule({ mods: 'all', reconfigure: true });
+        await h.pipeline.idle();
+        state.reject = true;
+        await h.pipeline.restoreRoom();
+        expect(h.pipeline.diagnostics).toHaveLength(1);
+
+        state.reject = false;
+        h.pipeline.schedule({ mods: new Set(['pen']), reconfigure: false });
+        await h.pipeline.idle();
+        expect(currentGeneration(h.pipeline.state)?.instanceId).toBe('dev-r-2');
+        expect(h.pipeline.diagnostics).toEqual([]);
     });
 });
 

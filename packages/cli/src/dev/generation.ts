@@ -77,7 +77,8 @@ const hostedElsewhere = (entry: ModLockEntry | undefined): entry is ModLockEntry
 
 /**
  * 手元に無い mod の取り先（ワールドを作り直すとき）。world.yaml の横の lock にあればその版（本番と同じ）、
- * 無ければ `source.url` から（`source.version` の固定か最新）。lock の版が `source.version` の固定と違えば lock は古いので使わない。
+ * 無ければ `source.url` から（`source.version` の固定か最新）。lock の版が `source.version` の固定と違う・置き場所が
+ * `source.url` と違うときは、world.yaml を書き換えて `ubichill install` をし直していない古い lock なので使わない。
  */
 export function externalLockEntries(
     dependencies: readonly Dependency[] | undefined,
@@ -85,12 +86,13 @@ export function externalLockEntries(
     fetchImpl?: FetchLike,
 ): LockEntryGetter {
     const remote = createDependencyAwareLockEntryGetter([...(dependencies ?? [])], async () => null, fetchImpl);
-    const wanted = new Map((dependencies ?? []).map((d) => [d.name, d.source.version]));
+    const sources = new Map((dependencies ?? []).map((d) => [d.name, d.source]));
     return async (modId, version) => {
         const entry = pinned?.mods[modId];
-        const want = wanted.get(modId);
-        const current = want === undefined || want === 'latest' || want === entry?.version;
-        return hostedElsewhere(entry) && current ? entry : remote(modId, version);
+        const source = sources.get(modId);
+        const sameVersion = !source || source.version === 'latest' || source.version === entry?.version;
+        const samePlace = !source?.url || source.url === entry?.baseUrl;
+        return hostedElsewhere(entry) && sameVersion && samePlace ? entry : remote(modId, version);
     };
 }
 

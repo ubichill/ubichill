@@ -6,21 +6,18 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { join, resolve, sep } from 'node:path';
 import type { Duplex } from 'node:stream';
-import { isSandboxWorkerScriptPath, MOD_SIGNATURE_FILE, type ModLock, SANDBOX_WORKER_CSP } from '@ubichill/shared';
+import {
+    type DevEvent,
+    type DevFailure,
+    formatDevEvent,
+    isSandboxWorkerScriptPath,
+    MOD_SIGNATURE_FILE,
+    type ModLock,
+    SANDBOX_WORKER_CSP,
+} from '@ubichill/shared';
 import { findGeneration, type Generation, type GenerationState } from './generation.ts';
 import { isRealtimePath, proxyHttp, proxyUpgrade } from './proxy.ts';
 import { contentTypeOf, matchRoute, withDevMeta } from './routes.ts';
-
-/** 診断の 1 件。ビルドの失敗は mod ごと、ワールドの失敗（解決・検証・Go の拒否）は 1 件。 */
-export type DevFailure = { kind: 'build'; mod: string; message: string } | { kind: 'world'; message: string };
-
-/**
- * SSE で送るもの。どちらも「今の状態」で、接続の直後と変わるたびに送る（出来事ではないので、遅れて開いたタブも追いつく）。
- * `generation` は今の世代、`diagnostics` は今の失敗の一覧（空なら診断を消す）。
- */
-export type DevEvent =
-    | { type: 'generation'; buildId: string; instanceId: string }
-    | { type: 'diagnostics'; failures: DevFailure[] };
 
 export interface DevServerDeps {
     /** 今の世代の状態を読む（pipeline が持つ）。 */
@@ -67,11 +64,6 @@ export function absolutizeLock(lock: ModLock, origin: string): ModLock {
 export const requestOrigin = (req: Pick<IncomingMessage, 'headers'>): string =>
     `http://${req.headers.host ?? 'localhost'}`;
 
-export function formatSse(event: DevEvent): string {
-    const { type, ...data } = event;
-    return `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
-}
-
 export function createDevServer(deps: DevServerDeps): DevServer {
     const clients = new Set<ServerResponse>();
     // Upgrade した WebSocket は http.Server の接続の管理から外れる（closeAllConnections では閉じない）ので自分で持つ
@@ -97,8 +89,8 @@ export function createDevServer(deps: DevServerDeps): DevServer {
                 res.write(': connected\n\n');
                 // 繋いだ直後に今の世代と診断を送る。切断中に何回切り替わっても、繋ぎ直した時点の比較で追いつく
                 const current = generationEvent(deps.state().kept[0]);
-                if (current) res.write(formatSse(current));
-                res.write(formatSse({ type: 'diagnostics', failures: [...deps.diagnostics()] }));
+                if (current) res.write(formatDevEvent(current));
+                res.write(formatDevEvent({ type: 'diagnostics', failures: [...deps.diagnostics()] }));
                 clients.add(res);
                 const heartbeat = setInterval(() => res.write(': ping\n\n'), 25000);
                 req.on('close', () => {
@@ -194,7 +186,7 @@ export function createDevServer(deps: DevServerDeps): DevServer {
     return {
         server,
         broadcast(event) {
-            const payload = formatSse(event);
+            const payload = formatDevEvent(event);
             for (const client of clients) client.write(payload);
         },
         close() {

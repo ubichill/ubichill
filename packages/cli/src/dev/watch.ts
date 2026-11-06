@@ -36,8 +36,9 @@ const within = (path: string, dir: string): boolean =>
 /** 無視するディレクトリの下か（`node_modules` の中の変更で mod をビルドし直さない）。 */
 export const isIgnoredPath = (path: string): boolean => path.split(/[\\/]/).some((segment) => IGNORED.has(segment));
 
-/** world.yaml の横の lock（`ubichill install` が書く）。 */
-export const worldLockPath = (worldPath: string): string => worldPath.replace(/\.ya?ml$/i, '.lock.json');
+/** world.yaml の横の lock（`ubichill install` が書く）。YAML でないワールドのファイルには無い。 */
+export const worldLockPath = (worldPath: string): string | undefined =>
+    /\.ya?ml$/i.test(worldPath) ? worldPath.replace(/\.ya?ml$/i, '.lock.json') : undefined;
 
 /** 変わったパス（絶対）から、することを決める。表: docs/design/world-runtime-dev.md「監視と再ビルド」。 */
 export function planChanges(paths: readonly string[], input: ChangePlanInput): ChangePlan {

@@ -13,8 +13,11 @@
  *   2. 公開した世代の成果物と組み合わせ、新しい lock を作る
  *   3. 部屋を作り直すときだけ: ワールドを解決・検証し、新しい ID の部屋を Go に作る（拒否されたら中止。前の部屋はそのまま）
  *   4. 世代を公開し、SSE で知らせる。このビルドが反映した変更だけを unpublished から消す
- * 失敗は「今の診断」（最後のビルドの失敗の一覧）として持ち、変わるたびに丸ごと送る。成功すれば空にする
- * （壊して直したが中身が公開中と同じで公開しなかったときも、ブラウザの診断が消える）。
+ * 失敗は「今の診断」として持ち、変わるたびに丸ごと送る。出どころは 2 つで、混ぜずに持つ:
+ *   - 最後のビルドの失敗（ビルドかワールド）。ビルドが成功すれば空にする（壊して直したが中身が公開中と同じで
+ *     公開しなかったときも、ブラウザの診断が消える）
+ *   - Go が起動し直したあとの部屋の作り直しの失敗。そのときは部屋を作り直す要求を残し、次のビルドで新しい部屋が
+ *     できたときか、作り直しに成功したときに消す
  *   5. 部屋を作り直したときは、前の部屋をしばらくしてから消す（読み直し中のページを切らない）
  * ビルドは 1 つずつ。ビルド中に来た変更は次のビルドにまとめる（世代は作った順に公開される）。
  *
@@ -24,6 +27,8 @@
 
 import type { FetchLike } from '@ubichill/loader';
 import {
+    type DevEvent,
+    type DevFailure,
     type InstanceDefinition,
     type ModLock,
     mapToResolved,
@@ -45,7 +50,7 @@ import {
     reuseExternalEntries,
 } from './generation.ts';
 import type { GoAdmin } from './goRuntime.ts';
-import type { DevEvent, DevFailure } from './server.ts';
+
 import { componentsFromManifest, synthesizeWorld } from './synthesizedWorld.ts';
 
 export interface RebuildPlan {
@@ -203,13 +208,19 @@ export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pi
         notified: false,
         running: null as Promise<void> | null,
     };
-    const diagnostics = { current: [] as readonly DevFailure[] };
+    const diagnostics = {
+        build: [] as readonly DevFailure[],
+        room: [] as readonly DevFailure[],
+        current: [] as readonly DevFailure[],
+    };
 
-    /** 今の診断を差し替え、変わったときだけ送る。 */
-    function setDiagnostics(next: readonly DevFailure[]): void {
-        if (JSON.stringify(next) === JSON.stringify(diagnostics.current)) return;
-        diagnostics.current = next;
-        deps.broadcast({ type: 'diagnostics', failures: [...next] });
+    /** 診断の片方を差し替え、合わせた一覧が変わったときだけ送る。 */
+    function setDiagnostics(source: 'build' | 'room', next: readonly DevFailure[]): void {
+        diagnostics[source] = next;
+        const merged = [...diagnostics.build, ...diagnostics.room];
+        if (JSON.stringify(merged) === JSON.stringify(diagnostics.current)) return;
+        diagnostics.current = merged;
+        deps.broadcast({ type: 'diagnostics', failures: merged });
     }
 
     /** 未反映の変更を記録する。 */
@@ -257,12 +268,15 @@ export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pi
     function report(error: unknown): void {
         if (error instanceof BuildFailures) {
             for (const f of error.failures) deps.log(`❌ [${f.mod}] ビルドに失敗: ${f.message}`);
-            setDiagnostics(error.failures.map((f) => ({ kind: 'build', mod: f.mod, message: f.message })));
+            setDiagnostics(
+                'build',
+                error.failures.map((f) => ({ kind: 'build', mod: f.mod, message: f.message })),
+            );
             return;
         }
         const message = errorMessage(error);
         deps.log(`❌ ワールドを作れません: ${message}`);
-        setDiagnostics([{ kind: 'world', message }]);
+        setDiagnostics('build', [{ kind: 'world', message }]);
     }
 
     async function run(): Promise<void> {
@@ -278,7 +292,7 @@ export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pi
             // 中身が変わっていない（保存しただけ）なら公開しない。開いているページを無駄に読み直させない
             if (previous && !taken.reconfigure && sameContents(previous.mods, mods)) {
                 settle(taken);
-                setDiagnostics([]);
+                setDiagnostics('build', []);
                 return;
             }
             const { state, buildId } = nextBuildId(published.state);
@@ -312,7 +326,8 @@ export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pi
             published.room = room;
             settle(taken);
             deps.broadcast({ type: 'generation', buildId, instanceId });
-            setDiagnostics([]);
+            setDiagnostics('build', []);
+            if (newRoom) setDiagnostics('room', []);
             deps.log(
                 `✅ 世代 ${buildId}（mod ${Object.keys(lock.mods).length}・うち手元 ${mods.size}、部屋 ${instanceId}${newRoom ? '・作り直し' : ''}）`,
             );
@@ -359,9 +374,20 @@ export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pi
             const room = published.room;
             const go = deps.go();
             if (!room || !go) return;
-            const result = await go.putInstance(room);
-            if (result.ok) deps.log(`♻️  部屋 ${room.id} を作り直しました（状態は初期に戻ります）`);
-            else report(new WorldError(`Go が部屋を作れません (${result.status}): ${result.error}`));
+            // 起動し直した直後にまた落ちると putInstance が投げる。投げたままにすると node ごと落ちる
+            const failure = await go.putInstance(room).then(
+                (result) => (result.ok ? null : `Go が部屋を作れません (${result.status}): ${result.error}`),
+                (error: unknown) => `Go が部屋を作れません: ${errorMessage(error)}`,
+            );
+            if (!failure) {
+                deps.log(`♻️  部屋 ${room.id} を作り直しました（状態は初期に戻ります）`);
+                setDiagnostics('room', []);
+                return;
+            }
+            deps.log(`❌ ${failure}`);
+            setDiagnostics('room', [{ kind: 'world', message: failure }]);
+            // Go に部屋が無いままなので、次のビルドでは中身が同じでも新しい部屋を作る
+            unpublished.reconfigure = ++control.seq;
         },
     };
 }

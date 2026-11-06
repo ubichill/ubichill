@@ -69,6 +69,34 @@ describe('synthesizeWorld', () => {
         expect(c['mix:hud']?.transform).toMatchObject({ x: 24, y: 24 });
     });
 
+    it('別の mod の親と子・名前の揺れ・長い名前でも entity の id が重ならず、スキーマを通る', () => {
+        const raw = synthesizeWorld([
+            { id: 'video', components: [{ type: 'video:player' }, { type: 'video:Player' }] },
+            { id: 'video-player', components: [{ type: 'video-player:screen' }] },
+            { id: 'x'.repeat(60), components: [{ type: `${'x'.repeat(60)}:${'y'.repeat(60)}` }] },
+        ]);
+        // 親（Component の無い entity）も含めて、ツリーのすべての id を集める
+        type Node = { id: string; children?: Node[] };
+        const all = (nodes: Node[]): string[] => nodes.flatMap((n) => [n.id, ...all(n.children ?? [])]);
+        const ids = all((raw as { spec: { initialEntities: Node[] } }).spec.initialEntities);
+        expect(ids).toHaveLength(7); // 親 3・子 4
+        expect(new Set(ids).size).toBe(ids.length);
+        expect(ids.every((id) => id.length <= 50)).toBe(true);
+        expect(() => resolve(raw)).not.toThrow();
+    });
+
+    it('2 つ目以降の mod の画面固定の Component も、x/y が無ければ画面の角（親のワールド座標を継がない）', () => {
+        const c = flat(
+            synthesizeWorld([
+                videoplayer,
+                { id: 'hud', components: [{ type: 'hud:bar', overlay: 'top-left', defaultTransform: { w: 100 } }] },
+                { id: 'hud2', components: [{ type: 'hud2:bar', overlay: 'bottom-right' }] },
+            ]),
+        );
+        expect(c['hud:bar']?.transform).toMatchObject({ x: 0, y: 0, w: 100 });
+        expect(c['hud2:bar']?.transform).toMatchObject({ x: 0, y: 0 });
+    });
+
     it('どれもスキーマを通り、mod が無ければ空のワールド。ワールドは置いたものより広い', () => {
         expect(resolve(synthesizeWorld([])).initialEntities).toEqual([]);
         const wide = synthesizeWorld(

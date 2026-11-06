@@ -4,8 +4,9 @@
  * 状態表示は右上の小さな札にする。ステージは画面全体（ポインタの座標は `clientY + scrollTop`）なので、
  * 上端に帯を敷くと `overlay: top-left` の HUD やワールドの上端が本番と違って隠れる。
  */
+
+import type { DevFailure } from '@ubichill/shared';
 import { css } from '@/styled-system/css';
-import type { DevFailure } from './devSession';
 
 const bar = css({
     position: 'fixed',

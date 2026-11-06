@@ -137,6 +137,13 @@ describe('externalLockEntries', () => {
         expect(remote.fetched).toEqual(['https://vp.example/video-player/v3.2.0/lock.json']);
     });
 
+    it('lock の置き場所が source.url と違えば（URL を変えて install し直していない）古い lock なので使わない', async () => {
+        const remote = remoteMods({ 'video-player': fakeMod('video-player', '4.0.0') });
+        const moved = [{ name: 'video-player', source: { url: 'https://new.example', version: 'latest' as const } }];
+        const entry = await externalLockEntries(moved, pinned, remote.fetchImpl)('video-player');
+        expect(entry).toMatchObject({ version: '4.0.0', baseUrl: 'https://new.example' });
+    });
+
     it('置き場所が相対・無しの lock の entry は dev から取れないので使わない', async () => {
         const local = { lockVersion: 1 as const, mods: { pen: { ...fakeMod('pen').lockEntry, baseUrl: undefined } } };
         expect(await externalLockEntries([], local)('pen')).toBeNull();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isIgnoredPath, planChanges, watchTargets } from './watch.ts';
+import { isIgnoredPath, planChanges, watchTargets, worldLockPath } from './watch.ts';
 
 const input = {
     modDirs: new Map([
@@ -42,6 +42,9 @@ describe('planChanges', () => {
         expect(planChanges(['/p/world.yaml'], input)).toMatchObject({ rescan: false, reconfigure: true });
         expect(planChanges(['/p/world.lock.json'], input)).toMatchObject({ rescan: false, reconfigure: true });
         expect(planChanges(['/p/other.lock.json'], input).reconfigure).toBe(false);
+        // JSON で書いたワールドに横の lock は無い（ワールドのファイル自身を lock として読まない）
+        expect(worldLockPath('/p/world.json')).toBeUndefined();
+        expect(worldLockPath('/p/World.YML')).toBe('/p/World.lock.json');
     });
 
     it('node_modules・dist・無関係なファイルは何もしない', () => {

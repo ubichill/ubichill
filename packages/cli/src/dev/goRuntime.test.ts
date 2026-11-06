@@ -109,4 +109,18 @@ describe('superviseGo', () => {
         for (const pid of startedPids()) expect(alive(pid)).toBe(false);
         expect(readFileSync(delayFile, 'utf-8')).toBe('0');
     });
+
+    it('killNow は起動の途中の子プロセスにも待たずに届く（node が落ちるときの最後の砦）', async () => {
+        writeFileSync(delayFile, '60000');
+        const go = superviseGo({ binary: fakeGo, origins: [], log: () => {} });
+        const before = startedPids().length;
+        const starting = go.start().catch(() => undefined);
+        await vi.waitFor(() => expect(startedPids().length).toBe(before + 1), { timeout: 5000 });
+        const pid = startedPids().at(-1) as number;
+        go.killNow();
+        await vi.waitFor(() => expect(alive(pid)).toBe(false), { timeout: 5000 });
+        await go.stop();
+        await starting;
+        writeFileSync(delayFile, '0');
+    });
 });

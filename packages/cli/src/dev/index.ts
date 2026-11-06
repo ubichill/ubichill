@@ -30,22 +30,23 @@ const argValue = (argv: string[], name: string): string | undefined =>
 /** world.yaml と、横に `.lock.json` があればそれも読む（壊れていればワールドの診断になる）。 */
 function readWorld(worldPath: string): WorldSource {
     const lockPath = worldLockPath(worldPath);
-    const lock = existsSync(lockPath)
-        ? (() => {
-              const parsed = (() => {
-                  try {
-                      return ModLockSchema.safeParse(JSON.parse(readFileSync(lockPath, 'utf-8')));
-                  } catch (error) {
-                      throw new Error(
-                          `${basename(lockPath)} が読めません: ${error instanceof Error ? error.message : error}`,
-                      );
-                  }
-              })();
-              if (!parsed.success)
-                  throw new Error(`${basename(lockPath)} が lock の形ではありません: ${parsed.error.message}`);
-              return parsed.data;
-          })()
-        : undefined;
+    const lock =
+        lockPath && existsSync(lockPath)
+            ? (() => {
+                  const parsed = (() => {
+                      try {
+                          return ModLockSchema.safeParse(JSON.parse(readFileSync(lockPath, 'utf-8')));
+                      } catch (error) {
+                          throw new Error(
+                              `${basename(lockPath)} が読めません: ${error instanceof Error ? error.message : error}`,
+                          );
+                      }
+                  })();
+                  if (!parsed.success)
+                      throw new Error(`${basename(lockPath)} が lock の形ではありません: ${parsed.error.message}`);
+                  return parsed.data;
+              })()
+            : undefined;
     return {
         raw: yaml.parse(readFileSync(worldPath, 'utf-8')) as unknown,
         url: pathToFileURL(worldPath).href,
@@ -134,6 +135,8 @@ export async function runDev(argv: string[]): Promise<void> {
         watcher.close();
         await Promise.all([server.close(), go.stop()]);
     });
+    // 最後の砦: どこかで捕まらない例外が出て node が落ちるときも、Go を残さない（'exit' は同期の処理しかできない）
+    process.on('exit', () => go.killNow());
 
     try {
         // 先にポートを開く: 使用中ならビルドの前に分かり、開いたページは最初のビルドの結果（世代か診断）を SSE で受け取る
@@ -144,9 +147,16 @@ export async function runDev(argv: string[]): Promise<void> {
                 done();
             });
         });
+        // 待ち受けた後のエラー（accept の EMFILE など）は、片付けてから失敗で抜ける
+        server.server.on('error', (error) => {
+            console.error('❌', error.message);
+            void shutdown.trigger().finally(() => process.exit(1));
+        });
         await go.start();
         pipeline.schedule({ mods: 'all', reconfigure: true });
         await pipeline.idle();
+        // 最初のビルドの間に止められたら、監視を開き直さず、起動したとも言わない
+        if (shutdown.started) return shutdown.trigger();
         watcher.update(
             watchTargets({ modDirs: pipeline.modDirs, inputsByMod: pipeline.inputsByMod, modsRoot, worldPath }),
         );

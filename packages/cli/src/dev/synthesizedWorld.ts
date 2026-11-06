@@ -7,7 +7,10 @@
  * - 親は左上から横に並べる（右上の dev の表示を避ける）。子は mod が `export const config` に書いた `defaultTransform`
  *   （World Editor が Component を置くときと同じ値）を親からの位置として使う。
  * - `defaultTransform` の無い Component は、宣言のある Component の下に横に並べる。
- * - 画面固定（`overlay`）の Component は、宣言どおり画面の座標に置く（Component の transform で親の位置を上書きする）。
+ * - 画面固定（`overlay`）の Component は、宣言どおり画面の座標に置く（Component の transform で親の位置を上書きする。
+ *   x/y を書かないと親のワールド座標を継いでしまうので、無ければ 0）。
+ * - entity の id はワールドの中で一意にする。親は mod の id、子は `<mod>--<Component 名>`（kebab-case は `--` を作らないので、
+ *   別の mod の親と重ならない）。それでも重なる・長すぎるときは詰めて番号を付ける。
  *
  * 戻り値は YAML をパースしたのと同じ生の定義（`definitionToResolved` に渡す）。
  */
@@ -46,6 +49,21 @@ const kebab = (value: string): string =>
         .replace(/^-|-$/g, '')
         .toLowerCase();
 
+/** entity の id の上限（KebabCaseId）。 */
+const MAX_ID = 50;
+
+/** ワールドの中で一意な id を配る。 */
+function idAllocator(): (base: string) => string {
+    const used = new Set<string>();
+    return (base) => {
+        const stem = (base || 'entity').slice(0, MAX_ID - 4);
+        const id =
+            [stem, ...Array.from({ length: 999 }, (_, i) => `${stem}-${i + 2}`)].find((c) => !used.has(c)) ?? stem;
+        used.add(id);
+        return id;
+    };
+}
+
 interface Child {
     entity: Record<string, unknown>;
     right: number;
@@ -56,8 +74,9 @@ interface Child {
 function modChildren(
     mod: SynthesizedMod,
     modKey: string,
+    allocate: (base: string) => string,
 ): { children: Record<string, unknown>[]; width: number; height: number } {
-    const childId = (type: string) => `${modKey}-${kebab(type.slice(type.indexOf(':') + 1)) || 'component'}`;
+    const childId = (type: string) => allocate(`${modKey}--${kebab(type.slice(type.indexOf(':') + 1)) || 'component'}`);
     const declared: Child[] = mod.components
         .filter((c) => c.defaultTransform && !c.overlay)
         .map((c) => {
@@ -87,7 +106,11 @@ function modChildren(
             id: childId(c.type),
             transform: { x: 0, y: 0 },
             components: [
-                { type: c.type, overlay: c.overlay, ...(c.defaultTransform ? { transform: c.defaultTransform } : {}) },
+                {
+                    type: c.type,
+                    overlay: c.overlay,
+                    transform: { ...c.defaultTransform, x: c.defaultTransform?.x ?? 0, y: c.defaultTransform?.y ?? 0 },
+                },
             ],
         }));
     const placed = [...declared, ...rest];
@@ -99,8 +122,10 @@ function modChildren(
 }
 
 export function synthesizeWorld(mods: readonly SynthesizedMod[]): Record<string, unknown> {
-    const keys = mods.map((mod, i) => kebab(mod.id) || `mod-${i}`);
-    const laid = mods.map((mod, i) => modChildren(mod, keys[i] as string));
+    const allocate = idAllocator();
+    // 親の id を先に配る（子の id は親と重ならない形だが、念のため後から配る側が番号を付ける）
+    const keys = mods.map((mod, i) => allocate(kebab(mod.id) || `mod-${i}`));
+    const laid = mods.map((mod, i) => modChildren(mod, keys[i] as string, allocate));
     const origins = laid.reduce<{ x: number; list: number[] }>(
         (acc, mod) => ({ x: acc.x + mod.width + GAP, list: [...acc.list, acc.x] }),
         { x: ORIGIN.x, list: [] },

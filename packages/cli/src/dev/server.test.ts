@@ -6,10 +6,11 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { type DevFailure, formatDevEvent } from '@ubichill/shared';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { fakeMod } from './generation.test.ts';
 import { type Generation, type GenerationState, initialGenerationState, publishGeneration } from './generation.ts';
-import { absolutizeLock, createDevServer, type DevFailure, type DevServer, formatSse } from './server.ts';
+import { absolutizeLock, createDevServer, type DevServer } from './server.ts';
 
 const gen = (buildId: string, version: string, manifest: string): Generation => {
     const mod = fakeMod('pen', version);
@@ -131,8 +132,8 @@ describe('createDevServer', () => {
             return buffer.join('');
         };
         const first = await read('event: diagnostics');
-        expect(first).toContain(formatSse({ type: 'generation', buildId: 'r-4', instanceId: 'dev-r-4' }));
-        expect(first).toContain(formatSse({ type: 'diagnostics', failures: diagnostics.current }));
+        expect(first).toContain(formatDevEvent({ type: 'generation', buildId: 'r-4', instanceId: 'dev-r-4' }));
+        expect(first).toContain(formatDevEvent({ type: 'diagnostics', failures: diagnostics.current }));
         dev.current?.broadcast({ type: 'diagnostics', failures: [{ kind: 'build', mod: 'pen', message: 'boom' }] });
         expect(await read('boom')).toContain('data: {"failures":[{"kind":"build","mod":"pen","message":"boom"}]}');
         await reader?.cancel();
