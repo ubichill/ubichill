@@ -1,0 +1,12 @@
+{
+  "format": "ubichill-signature",
+  "version": 2,
+  "kind": "mod",
+  "alg": "ed25519",
+  "publicKey": "PUlU51o_Sch92myux0fHEFuRJSxUbKiN9GC54o1fKW0",
+  "author": "ubichill@ubichill.com",
+  "subject": "danmaku",
+  "subjectVersion": "1.0.2",
+  "contentHash": "sha256-rv1draemrzQDuvOp/f03//ap/bt3XEoov8TbLHNEijQ=",
+  "signature": "8t3QyP1JnVFk3pahRzkLlXnXy2VLiygIY4PPyW3qFDi37RREYvIj3b-qZOgcsqSV4uYGKj2Yrep86ioMvuq8AA"
+}

@@ -1,0 +1,12 @@
+{
+  "format": "ubichill-signature",
+  "version": 2,
+  "kind": "mod",
+  "alg": "ed25519",
+  "publicKey": "PUlU51o_Sch92myux0fHEFuRJSxUbKiN9GC54o1fKW0",
+  "author": "ubichill@ubichill.com",
+  "subject": "pen",
+  "subjectVersion": "2.1.0",
+  "contentHash": "sha256-Jh3mPFfh+ziy8hBZ7y6n+Tx9wdtfO+G2pZIuJN1aa/o=",
+  "signature": "68pykAzmjRyZ4_CADNe0P_Lw7LwmO4YvRRUrwhlRvvdf60E2wb7I8ONqgL292vj5Ub6XOPSEmpIGKHtLhmrGAg"
+}
