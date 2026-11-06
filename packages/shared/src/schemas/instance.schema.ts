@@ -146,6 +146,14 @@ export const WorldListItemSchema = z.object({
     mods: z.array(WorldModSchema).default([]),
     /** 識別結果。連合ピアの一覧由来は自己申告で検証できないため付与しない。 */
     identity: WorldIdentitySchema.optional(),
+    /**
+     * このサーバーでの共有ページのパス（`/@handle/name`）。外部のワールドで、作者がここのアカウントだと署名で確かめられ、
+     * 作者がユーザーページに登録しているときだけ付く（本体のワールドは正規 URL から作れるので付けない）。
+     */
+    sharePath: z
+        .string()
+        .regex(/^\/@[^/]+\/[^/]+$/)
+        .optional(),
     createdAt: z.string().datetime().optional(),
     updatedAt: z.string().datetime().optional(),
 });

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
     editorWorldOf,
+    externalWorkRepository,
     type FederationPeerRecord,
     federationPeerRepository,
     type PublishOutcome,
@@ -35,8 +36,9 @@ import {
 import yaml from 'yaml';
 import { logger } from '../utils/logger';
 import { isAuthorKey, resolveAuthorDisplayName } from './authorKeyStore';
-import { selfDomain } from './authorKeys';
+import { selfAccount, selfDomain } from './authorKeys';
 import { type BackendEvents, backendEvents } from './backendEvents';
+import { authorSharePath, localAuthorWorldOf, worldConfirmation } from './externalWorks';
 import { federatedCandidates, uniqueByWorldId } from './federatedWorlds';
 import { createRemoteWorldCache } from './remoteWorldCache';
 import { assertPublicUrl, safeFetch } from './safeFetch';
@@ -469,7 +471,43 @@ class WorldRegistry {
      */
     async resolveByAuthorName(handle: string, name: string): Promise<WorldResolution> {
         const located = await this._locate(handle, name);
-        return located ? this.resolveLocal(located.id) : NOT_FOUND;
+        return located ? this.resolveLocal(located.id) : this._resolveRegisteredExternal(handle, name);
+    }
+
+    /**
+     * 作者がユーザーページに登録した外部のワールド（GitHub Pages など）。登録した URL を取得し、その作者の署名で、
+     * その名前のワールドだと確かめられたときだけ返す（ユーザーページに出す条件と同じ）。本体のワールドが優先。
+     */
+    private async _resolveRegisteredExternal(handle: string, name: string): Promise<WorldResolution> {
+        if (!HANDLE_PATTERN.test(handle)) return NOT_FOUND;
+        const user = await userRepository.findByHandle(handle);
+        if (!user) return NOT_FOUND;
+        const account = selfAccount(user.handle);
+        const urls = (await externalWorkRepository.listByUser(user.id))
+            .filter((r) => r.kind === 'world' && r.name === name)
+            .map((r) => r.url);
+        const confirmed = await Promise.all(
+            urls.map(async (url) => worldConfirmation(await this.resolveRemote(url), { account, name })),
+        );
+        const published = confirmed.find((c) => c.status === 'published');
+        return published?.status === 'published' ? { ok: true, world: published.world } : NOT_FOUND;
+    }
+
+    /**
+     * 外部のワールドの、このサーバーでの共有ページのパス（`/@handle/name`）。作者がここのアカウントだと署名で確かめられ、
+     * 作者がその URL をユーザーページに登録しているときだけ（`/@handle/name` が同じワールドに解決できるときだけ）。
+     */
+    async externalSharePath(world: ResolvedWorld): Promise<string | undefined> {
+        if (world.source.kind === WorldSourceKind.Local) return undefined;
+        const owner = localAuthorWorldOf(world.identity, selfDomain());
+        if (!owner || !HANDLE_PATTERN.test(owner.handle)) return undefined;
+        const user = await userRepository.findByHandle(owner.handle);
+        if (!user) return undefined;
+        const target = normalizeWorldUrl(world.url);
+        const registered = (await externalWorkRepository.listByUser(user.id)).some(
+            (r) => r.kind === 'world' && r.name === owner.name && normalizeWorldUrl(r.url) === target,
+        );
+        return registered ? authorSharePath(user.handle, owner.name) : undefined;
     }
 
     /** 作者の ID と名前から、リポジトリのワールドか DB のワールド（以前の名前を含む）を探す。 */

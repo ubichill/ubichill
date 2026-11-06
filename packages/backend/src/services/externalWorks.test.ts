@@ -10,8 +10,10 @@ import {
 import { describe, expect, it } from 'vitest';
 import yaml from 'yaml';
 import {
+    authorSharePath,
     confirmPublishedMod,
     type FetchedJson,
+    localAuthorWorldOf,
     type RegistrationDeps,
     verifyRegistration,
     worldConfirmation,
@@ -318,5 +320,52 @@ describe('worldConfirmation', () => {
                 expected,
             ),
         ).toEqual({ status: 'unreachable' });
+    });
+});
+
+describe('localAuthorWorldOf', () => {
+    const verified = (author: string | undefined, worldId: string, extra: { authorPending?: true } = {}) => ({
+        status: 'verified',
+        worldId,
+        ...(author ? { author } : {}),
+        ...extra,
+    });
+
+    it('このサーバーの作者だと確かめられたワールドは、作者の ID と名前を返す（ドメインの大文字小文字は問わない）', () => {
+        expect(
+            localAuthorWorldOf(verified('youkan@ubichill.com', 'acct:youkan@ubichill.com/chillwa'), 'Ubichill.com'),
+        ).toEqual({
+            handle: 'youkan',
+            name: 'chillwa',
+        });
+        expect(authorSharePath('youkan', 'chillwa')).toBe('/@youkan/chillwa');
+    });
+
+    it('別のサーバーの作者・作者を確かめられない・確認待ち・署名なしは返さない', () => {
+        expect(
+            localAuthorWorldOf(verified('alice@other.example', 'acct:alice@other.example/w'), 'ubichill.com'),
+        ).toBeUndefined();
+        expect(localAuthorWorldOf(verified(undefined, 'ed25519:abc/w'), 'ubichill.com')).toBeUndefined();
+        expect(
+            localAuthorWorldOf(
+                verified('youkan@ubichill.com', 'acct:youkan@ubichill.com/w', { authorPending: true }),
+                'ubichill.com',
+            ),
+        ).toBeUndefined();
+        expect(localAuthorWorldOf({ status: 'unsigned' }, 'ubichill.com')).toBeUndefined();
+        expect(localAuthorWorldOf(undefined, 'ubichill.com')).toBeUndefined();
+    });
+
+    it('識別子が作者と食い違う・名前が空や入れ子なら返さない（共有ページのパスに使うので）', () => {
+        expect(
+            localAuthorWorldOf(verified('youkan@ubichill.com', 'acct:mallory@ubichill.com/w'), 'ubichill.com'),
+        ).toBeUndefined();
+        expect(
+            localAuthorWorldOf(verified('youkan@ubichill.com', 'acct:youkan@ubichill.com/'), 'ubichill.com'),
+        ).toBeUndefined();
+        expect(
+            localAuthorWorldOf(verified('youkan@ubichill.com', 'acct:youkan@ubichill.com/a/b'), 'ubichill.com'),
+        ).toBeUndefined();
+        expect(localAuthorWorldOf(verified('@ubichill.com', 'acct:@ubichill.com/w'), 'ubichill.com')).toBeUndefined();
     });
 });

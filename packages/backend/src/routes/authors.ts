@@ -58,7 +58,7 @@ router.get('/:handle/worlds/:file', async (req, res) => {
             });
             return;
         }
-        res.json(resolution.world);
+        res.json({ ...resolution.world, sharePath: await worldRegistry.externalSharePath(resolution.world) });
     } catch (error) {
         logger.error('ワールド取得エラー:', error);
         res.status(500).json({ error: 'Internal server error' });

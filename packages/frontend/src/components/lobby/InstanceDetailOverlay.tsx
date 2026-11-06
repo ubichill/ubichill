@@ -1,7 +1,7 @@
-import { type Instance, type WorldListItem, worldOriginDomain, worldShareUrl } from '@ubichill/shared';
+import { type Instance, type WorldListItem, worldOriginDomain } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { createInstance, fetchInstances, fetchWorld } from '@/lib/instancesApi';
-import { instanceWorldRef, localWorldPagePath } from '@/lib/worldRef';
+import { instanceWorldRef, worldPagePath } from '@/lib/worldRef';
 import { css } from '@/styled-system/css';
 import { FavoriteButton } from './FavoriteButton';
 
@@ -70,10 +70,7 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
     };
 
     // ワールド詳細ページの共有 URL（別タブで開く）。ローカルはフロント origin、リモートは origin サーバー。
-    const shareUrl =
-        world.source?.kind === 'local' || !world.url
-            ? `${window.location.origin}${localWorldPagePath({ id: instance.world.id, url: world.url })}`
-            : worldShareUrl(world.url, window.location.origin);
+    const shareUrl = `${window.location.origin}${worldPagePath({ ...world, id: instance.world.id })}`;
     const originDomain = world.source ? worldOriginDomain(world.source) : null;
     const isCurrent = selected.id === currentInstanceId;
     const isFull = selected.status === 'full';
