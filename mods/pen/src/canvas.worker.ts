@@ -4,7 +4,8 @@
  * ペンの選択ロジックは pen:pen Worker 側で完結している。canvas は:
  *   1. ワールド全体の pen:pen を watch して「自分のユーザーが保持中のペン」を 1 本特定
  *   2. pen:pen から届くペン先座標 (pen:draw:*) で stroke を組み立て
- *   3. 完成 stroke を canvas にコミット + broadcast + pen:stroke Entity として永続化
+ *   3. 完成 stroke を canvas にコミット + pen:stroke Entity として永続化（他人には Entity として届く）。
+ *      重ねる順は pen:stroke が届いた順に揃える（strokeOrder.ts）
  *   4. canvas frame に active stroke と全ユーザーぶんのペンカーソルを描画
  *      (リモートユーザーが保持中のペンも presence の worldX/Y で位置同期される)
  *
@@ -13,14 +14,23 @@
 
 import type { CanvasStrokeData, ComponentConfig, Entity, System } from 'ubichill';
 import { PenEvents } from './events';
-import { buildStroke, extendStroke, parseStroke, type StrokePoint, strokeFingerprint } from './stroke';
+import { buildStroke, extendStroke, type PenStrokeData, parseStroke, type StrokePoint, strokeIdOf } from './stroke';
+import {
+    type CanvasUpdate,
+    confirmStroke,
+    drawPending,
+    dropPending,
+    EMPTY_STROKE_ORDER,
+    type StrokeOrder,
+    type StrokeOrderStep,
+} from './strokeOrder';
 
 export const config: ComponentConfig = {
     canvasTargets: ['drawing'],
     watchEntityTypes: ['pen:stroke', 'pen:pen'],
     watchScope: 'world',
     defaultTransform: { x: 0, y: 0, z: 5000 },
-    capabilities: ['canvas:draw', 'event:broadcast', 'event:emit', 'scene:read', 'scene:update'],
+    capabilities: ['canvas:draw', 'event:emit', 'scene:read', 'scene:update'],
 };
 
 // ────────────────────────────────────────────────────────────────
@@ -28,7 +38,6 @@ export const config: ComponentConfig = {
 // ────────────────────────────────────────────────────────────────
 
 const CANVAS_TARGET = 'drawing';
-const MAX_FINGERPRINT_CACHE = 200;
 
 // ────────────────────────────────────────────────────────────────
 // 状態 (Ubi.state)
@@ -45,6 +54,8 @@ const draw = Ubi.state.define({
     eraser: false,
     isDrawing: false,
     currentStroke: [] as StrokePoint[],
+    /** キャンバスに重ねたストロークの順。 */
+    strokes: EMPTY_STROKE_ORDER as StrokeOrder,
 });
 
 // ────────────────────────────────────────────────────────────────
@@ -59,26 +70,20 @@ interface RemotePenInfo {
 const remoteHeld = new Map<string, RemotePenInfo>();
 
 // ────────────────────────────────────────────────────────────────
-// fingerprint (重複描画防止)
+// 確定したストローク
 // ────────────────────────────────────────────────────────────────
-// 自分の stroke を即時 commit したあと、broadcast / entity:pen:stroke 経由でも届く。
-// 同じ stroke を何度も commit しないよう fingerprint で照合する。
 
-const committedFingerprints = new Set<string>();
+// watch は同じ Entity を送り直すことがある（更新・Worker の起動し直し）ので、1 つの Entity は 1 回だけ重ねる
 const drawnEntityIds = new Set<string>();
 
-const addFingerprint = (fp: string): void => {
-    if (committedFingerprints.size >= MAX_FINGERPRINT_CACHE) {
-        const oldest = committedFingerprints.values().next().value;
-        if (oldest !== undefined) committedFingerprints.delete(oldest);
-    }
-    committedFingerprints.add(fp);
+const applyCanvasUpdate = (update: CanvasUpdate): void => {
+    if (update.kind === 'append') Ubi.canvas.commitStroke(CANVAS_TARGET, update.stroke);
+    else if (update.kind === 'redraw') Ubi.canvas.replaceStrokes(CANVAS_TARGET, update.strokes);
 };
 
-const popFingerprintIfExists = (fp: string): boolean => {
-    if (!committedFingerprints.has(fp)) return false;
-    committedFingerprints.delete(fp);
-    return true;
+const applyStrokeStep = (step: StrokeOrderStep): void => {
+    draw.local.strokes = step.order;
+    applyCanvasUpdate(step.update);
 };
 
 // ────────────────────────────────────────────────────────────────
@@ -157,46 +162,38 @@ PenEvents.on('pen:draw:up', () => {
     draw.local.isDrawing = false;
 });
 
-// 他人のストロークは改造したクライアントからも届くので、検証を通ったものだけ描く
-PenEvents.onBroadcast('pen:stroke_complete', (_userId, data) => {
-    const stroke = parseStroke(data);
-    if (!stroke) return;
-    Ubi.canvas.commitStroke(CANVAS_TARGET, stroke);
-    addFingerprint(strokeFingerprint(stroke));
-});
-
+// pen:stroke の data は改造したクライアントも書けるので、検証を通ったものだけ描く
 PenEvents.on('entity:pen:stroke', (entity) => {
     if (drawnEntityIds.has(entity.id)) return;
     drawnEntityIds.add(entity.id);
     const stroke = parseStroke(entity.data);
     if (!stroke) return;
-    if (!popFingerprintIfExists(strokeFingerprint(stroke))) {
-        Ubi.canvas.commitStroke(CANVAS_TARGET, stroke);
-    }
+    applyStrokeStep(confirmStroke(draw.local.strokes, stroke, strokeIdOf(entity.data)));
 });
 
-// 確定した 1 本をコミット + 永続化
+// 確定した 1 本を先に描き、pen:stroke として保存する。保存できなければ自分の画面からも消す
 const completeStroke = (points: readonly StrokePoint[]): void => {
-    const strokeData = buildStroke(points, heldTool());
-    if (!strokeData) return;
-
-    Ubi.canvas.commitStroke(CANVAS_TARGET, strokeData);
-    addFingerprint(strokeFingerprint(strokeData));
-    PenEvents.broadcast('pen:stroke_complete', strokeData);
+    const stroke = buildStroke(points, heldTool());
+    if (!stroke) return;
+    const strokeId = crypto.randomUUID();
+    applyStrokeStep(drawPending(draw.local.strokes, { strokeId, stroke }));
 
     const parentEntityId = draw.local.heldPenEntityId ?? undefined;
-    const strokeEntityId = parentEntityId ? `stroke-${crypto.randomUUID()}` : undefined;
+    const data: PenStrokeData = { ...stroke, strokeId };
     Ubi.entity
         .spawn({
             type: 'pen:stroke',
-            entityId: strokeEntityId,
+            entityId: parentEntityId ? `stroke-${strokeId}` : undefined,
             parentEntityId,
             ownerId: null,
             lockedBy: null,
             transform: { x: 0, y: 0, z: 0, w: 0, h: 0, scale: 1, rotation: 0 },
-            data: strokeData,
+            data,
         })
-        .catch((err: unknown) => Ubi.log(`[pen:canvas] 永続化失敗: ${String(err)}`, 'warn'));
+        .catch((err: unknown) => {
+            Ubi.log(`[pen:canvas] 永続化失敗: ${String(err)}`, 'warn');
+            applyStrokeStep(dropPending(draw.local.strokes, strokeId));
+        });
 };
 
 // pen:draw:up で描き終えたら確定する

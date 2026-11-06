@@ -6,13 +6,7 @@
  * - emit / broadcast / sendToHost : 送信
  */
 
-import type {
-    CanvasStrokeData,
-    ComponentInstance,
-    InputMouseDownData,
-    InputMouseMoveData,
-    InputMouseUpData,
-} from 'ubichill';
+import type { ComponentInstance, InputMouseDownData, InputMouseMoveData, InputMouseUpData } from 'ubichill';
 
 interface PenPenData {
     color?: string;
@@ -36,8 +30,6 @@ export const PenEvents = Ubi.event.define<{
     'pen:draw:down': { x: number; y: number };
     'pen:draw:move': { x: number; y: number };
     'pen:draw:up': Record<string, never>;
-    // ── 自mod: cross-user 描画イベント (broadcast) ──
-    'pen:stroke_complete': CanvasStrokeData;
     // ── 自mod: tray クリック → ローカルのペンをトレイ上のクリック位置に置く ──
     'pen:tray:release': { x: number; y: number };
     // ── 自mod: tray で太さを変更 ──

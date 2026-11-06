@@ -2,8 +2,8 @@
  * ストロークの組み立てと検証（純関数。`Ubi` に触れないので単体テストできる）。
  *
  * ペンと消しゴムは同じ pen:pen で、違いは data.eraser だけ。消しゴムも「消すストローク」として
- * 描いた線と同じ経路（commit / pen:stroke Entity）に載せるので、順に重ねれば
- * 後から入った人の画面でも同じ絵になる。
+ * 描いた線と同じ経路（commit / pen:stroke Entity）に載せるので、同じ順に重ねれば
+ * 後から入った人の画面でも同じ絵になる（順番は strokeOrder.ts）。
  */
 
 import type { CanvasStrokeData } from 'ubichill';
@@ -102,20 +102,16 @@ export function parseStroke(value: unknown): CanvasStrokeData | null {
     };
 }
 
-/**
- * 同じストロークを二重に描かないための指紋。自分のストロークは即時に描いたあと、
- * broadcast と Entity でも届くので、これで照合して捨てる。
- * 消しゴムと線は同じ座標を通りうるので、mode を含めないと消すストロークを線と取り違えて捨てる。
- */
-export function strokeFingerprint(data: CanvasStrokeData): string {
-    const p0 = data.points[0];
-    const last = data.points[data.points.length - 1];
-    return [
-        data.mode ?? 'draw',
-        data.color,
-        data.size,
-        data.points.length,
-        `${p0?.[0] ?? 0},${p0?.[1] ?? 0}`,
-        `${last?.[0] ?? 0},${last?.[1] ?? 0}`,
-    ].join('|');
+const MAX_STROKE_ID_LENGTH = 64;
+
+/** pen:stroke の data。ストロークに、描いた人が自分の線と照合するための strokeId を足したもの。 */
+export type PenStrokeData = CanvasStrokeData & { strokeId: string };
+
+/** pen:stroke の data から strokeId を読む。無い・形が違えば undefined（照合しないだけで、線は描く）。 */
+export function strokeIdOf(value: unknown): string | undefined {
+    if (!isRecord(value)) return undefined;
+    const { strokeId } = value;
+    return typeof strokeId === 'string' && strokeId.length > 0 && strokeId.length <= MAX_STROKE_ID_LENGTH
+        ? strokeId
+        : undefined;
 }
