@@ -1,6 +1,6 @@
 {
     "name": "@ubichill/instance",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "private": true,
     "description": "Go のインスタンスサーバー（services/instance）を npm のプラットフォーム別パッケージ @ubichill/instance-<os>-<cpu> にする。この名前では公開しない。",
     "type": "module",
