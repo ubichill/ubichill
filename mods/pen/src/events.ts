@@ -28,7 +28,8 @@ export const PenEvents = Ubi.event.define<{
     'input:mouse_up': InputMouseUpData;
     // ── SDK 由来: Entity watch (entity:<componentType>) ──
     'entity:pen:pen': ComponentInstance<PenPenData> | undefined;
-    'entity:pen:stroke': ComponentInstance<CanvasStrokeData>;
+    // data は他人のクライアントが書いたもの。canvas は parseStroke で検証してから描く
+    'entity:pen:stroke': ComponentInstance<unknown>;
     // ── 自mod: ペン → canvas への描画点。座標は「ペン先の位置」で、カーソル位置ではない。
     // ペンの形状・持ち方を知っているのはペン本体だけなので、ペン先の算出はペン側の責務にし、
     // canvas は受け取った点をそのまま線にする（持ち方を変えても線はペン先から出る）。

@@ -13,7 +13,7 @@
 
 import type { CanvasStrokeData, ComponentConfig, Entity, System } from 'ubichill';
 import { PenEvents } from './events';
-import { buildStroke, type StrokePoint, strokeFingerprint } from './stroke';
+import { buildStroke, extendStroke, parseStroke, type StrokePoint, strokeFingerprint } from './stroke';
 
 export const config: ComponentConfig = {
     canvasTargets: ['drawing'],
@@ -148,32 +148,37 @@ PenEvents.on('pen:draw:down', ({ x, y }) => {
 
 PenEvents.on('pen:draw:move', ({ x, y }) => {
     if (!draw.local.isDrawing) return;
-    draw.local.currentStroke.push([x, y, 1]);
+    const { points, full } = extendStroke(draw.local.currentStroke, [x, y, 1]);
+    draw.local.currentStroke = points;
+    if (full) completeStroke(full);
 });
 
 PenEvents.on('pen:draw:up', () => {
     draw.local.isDrawing = false;
 });
 
+// 他人のストロークは改造したクライアントからも届くので、検証を通ったものだけ描く
 PenEvents.onBroadcast('pen:stroke_complete', (_userId, data) => {
-    Ubi.canvas.commitStroke(CANVAS_TARGET, data);
-    addFingerprint(strokeFingerprint(data));
+    const stroke = parseStroke(data);
+    if (!stroke) return;
+    Ubi.canvas.commitStroke(CANVAS_TARGET, stroke);
+    addFingerprint(strokeFingerprint(stroke));
 });
 
 PenEvents.on('entity:pen:stroke', (entity) => {
     if (drawnEntityIds.has(entity.id)) return;
     drawnEntityIds.add(entity.id);
-    if (!popFingerprintIfExists(strokeFingerprint(entity.data))) {
-        Ubi.canvas.commitStroke(CANVAS_TARGET, entity.data);
+    const stroke = parseStroke(entity.data);
+    if (!stroke) return;
+    if (!popFingerprintIfExists(strokeFingerprint(stroke))) {
+        Ubi.canvas.commitStroke(CANVAS_TARGET, stroke);
     }
 });
 
-// pen:draw:up で stroke が確定したらコミット + 永続化
-const flushCompletedStroke = (): void => {
-    if (draw.local.isDrawing) return;
-    const strokeData = buildStroke(draw.local.currentStroke, heldTool());
+// 確定した 1 本をコミット + 永続化
+const completeStroke = (points: readonly StrokePoint[]): void => {
+    const strokeData = buildStroke(points, heldTool());
     if (!strokeData) return;
-    draw.local.currentStroke = [];
 
     Ubi.canvas.commitStroke(CANVAS_TARGET, strokeData);
     addFingerprint(strokeFingerprint(strokeData));
@@ -192,6 +197,14 @@ const flushCompletedStroke = (): void => {
             data: strokeData,
         })
         .catch((err: unknown) => Ubi.log(`[pen:canvas] 永続化失敗: ${String(err)}`, 'warn'));
+};
+
+// pen:draw:up で描き終えたら確定する
+const flushCompletedStroke = (): void => {
+    if (draw.local.isDrawing || draw.local.currentStroke.length === 0) return;
+    const points = draw.local.currentStroke;
+    draw.local.currentStroke = [];
+    completeStroke(points);
 };
 
 // ────────────────────────────────────────────────────────────────
