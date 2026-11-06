@@ -3,6 +3,7 @@ import type { ModArtifacts } from '../build.ts';
 import {
     buildGenerationLock,
     currentGeneration,
+    externalLockEntries,
     findGeneration,
     type Generation,
     generationModsBase,
@@ -11,6 +12,7 @@ import {
     needsNewRoom,
     nextBuildId,
     publishGeneration,
+    reuseExternalEntries,
 } from './generation.ts';
 
 const integrity = `sha256-${'A'.repeat(43)}=`;
@@ -60,37 +62,114 @@ describe('publishGeneration', () => {
     });
 });
 
+/** `<url>/<mod>/mod.json` と `<url>/<mod>/v<ver>/lock.json` を返す置き場所。取りに来た URL を記録する。 */
+export function remoteMods(entries: Record<string, ModArtifacts>) {
+    const fetched: string[] = [];
+    const fetchImpl = async (input: string) => {
+        fetched.push(input);
+        const [, modId, file] = input.match(/\/([^/]+)\/(mod\.json|v[^/]+\/lock\.json)$/) ?? [];
+        const mod = modId ? entries[modId] : undefined;
+        const body = mod && (file === 'mod.json' ? { version: mod.version } : mod.lockEntry);
+        return {
+            ok: Boolean(body),
+            status: body ? 200 : 404,
+            headers: { get: () => null },
+            json: async () => body,
+            text: async () => '',
+            arrayBuffer: async () => new ArrayBuffer(0),
+        };
+    };
+    return { fetched, fetchImpl };
+}
+const none = async () => null;
+
 describe('buildGenerationLock', () => {
-    it('手元の mod の lock に世代の baseUrl を付け、無い mod は lock に入れない', async () => {
+    it('手元の mod の lock に世代の baseUrl を付け、取れない mod は lock に入れない', async () => {
         const mods = new Map([['pen', fakeMod('pen', '2.0.0')]]);
-        const lock = await buildGenerationLock('r-1', mods, ['pen', 'missing'], undefined);
+        const lock = await buildGenerationLock('r-1', mods, ['pen', 'missing'], none);
         expect(Object.keys(lock.mods)).toEqual(['pen']);
         expect(lock.mods.pen?.baseUrl).toBe(generationModsBase('r-1'));
         expect(lock.mods.pen?.version).toBe('2.0.0');
     });
 
-    it('dependencies に source.url がある mod はその置き場所から取る（手元より優先）', async () => {
-        const fetched: string[] = [];
-        const fetchImpl = async (input: string) => {
-            fetched.push(input);
-            return {
-                ok: true,
-                status: 200,
-                headers: { get: () => null },
-                json: async () => fakeMod('pen', '9.9.9').lockEntry,
-                text: async () => '',
-                arrayBuffer: async () => new ArrayBuffer(0),
-            };
-        };
+    it('source.url に置き場所が書いてあっても、手元でビルドした mod を使う（作業中のコードが動く）', async () => {
+        const remote = remoteMods({ pen: fakeMod('pen', '9.9.9') });
+        const dependencies = [{ name: 'pen', source: { url: 'https://cdn.example/mods', version: 'latest' as const } }];
         const lock = await buildGenerationLock(
             'r-1',
             new Map([['pen', fakeMod('pen')]]),
             ['pen'],
-            [{ name: 'pen', source: { url: 'https://cdn.example/mods', version: '9.9.9' } }],
-            fetchImpl,
+            externalLockEntries(dependencies, undefined, remote.fetchImpl),
         );
-        expect(fetched).toEqual(['https://cdn.example/mods/pen/v9.9.9/lock.json']);
-        expect(lock.mods.pen?.baseUrl).toBe('https://cdn.example/mods');
+        expect(lock.mods.pen).toMatchObject({ version: '1.0.0', baseUrl: generationModsBase('r-1') });
+        expect(remote.fetched).toEqual([]);
+    });
+});
+
+describe('externalLockEntries', () => {
+    const dependencies = [
+        { name: 'video-player', source: { url: 'https://vp.example', version: 'latest' as const } },
+        { name: 'pen', source: { url: 'https://pen.example', version: 'latest' as const } },
+    ];
+    const pinned = {
+        lockVersion: 1 as const,
+        mods: { 'video-player': { ...fakeMod('video-player', '3.1.0').lockEntry, baseUrl: 'https://vp.example' } },
+    };
+
+    it('world.yaml の横の lock にある mod はその版（本番と同じ）、無い mod だけ source.url の最新を取る', async () => {
+        const remote = remoteMods({ 'video-player': fakeMod('video-player', '4.0.0'), pen: fakeMod('pen', '1.2.0') });
+        const lock = await buildGenerationLock(
+            'r-1',
+            new Map(),
+            ['video-player', 'pen'],
+            externalLockEntries(dependencies, pinned, remote.fetchImpl),
+        );
+        expect(lock.mods['video-player']?.version).toBe('3.1.0');
+        expect(lock.mods.pen).toMatchObject({ version: '1.2.0', baseUrl: 'https://pen.example' });
+        expect(remote.fetched.every((url) => url.startsWith('https://pen.example/'))).toBe(true);
+    });
+
+    it('lock の版が source.version の固定と違えば古い lock なので使わず、固定の版を取る', async () => {
+        const remote = remoteMods({ 'video-player': fakeMod('video-player', '3.2.0') });
+        const fixed = [{ name: 'video-player', source: { url: 'https://vp.example', version: '3.2.0' } }];
+        const entry = await externalLockEntries(fixed, pinned, remote.fetchImpl)('video-player');
+        expect(entry?.version).toBe('3.2.0');
+        expect(remote.fetched).toEqual(['https://vp.example/video-player/v3.2.0/lock.json']);
+    });
+
+    it('lock の置き場所が source.url と違えば（URL を変えて install し直していない）古い lock なので使わない', async () => {
+        const remote = remoteMods({ 'video-player': fakeMod('video-player', '4.0.0') });
+        const moved = [{ name: 'video-player', source: { url: 'https://new.example', version: 'latest' as const } }];
+        const entry = await externalLockEntries(moved, pinned, remote.fetchImpl)('video-player');
+        expect(entry).toMatchObject({ version: '4.0.0', baseUrl: 'https://new.example' });
+    });
+
+    it('置き場所が相対・無しの lock の entry は dev から取れないので使わない', async () => {
+        const local = { lockVersion: 1 as const, mods: { pen: { ...fakeMod('pen').lockEntry, baseUrl: undefined } } };
+        expect(await externalLockEntries([], local)('pen')).toBeNull();
+    });
+});
+
+describe('reuseExternalEntries', () => {
+    it('前の世代が外から取った mod は取り直さず、前の世代の手元のビルド（相対の baseUrl）は使わない', async () => {
+        const previous: Generation = {
+            ...gen('r-1'),
+            lock: {
+                lockVersion: 1,
+                mods: {
+                    'video-player': { ...fakeMod('video-player').lockEntry, baseUrl: 'https://vp.example' },
+                    pen: { ...fakeMod('pen').lockEntry, baseUrl: generationModsBase('r-1') },
+                },
+            },
+        };
+        const asked: string[] = [];
+        const getter = reuseExternalEntries(previous, async (modId) => {
+            asked.push(modId);
+            return null;
+        });
+        expect((await getter('video-player'))?.baseUrl).toBe('https://vp.example');
+        expect(await getter('pen')).toBeNull();
+        expect(asked).toEqual(['pen']);
     });
 });
 

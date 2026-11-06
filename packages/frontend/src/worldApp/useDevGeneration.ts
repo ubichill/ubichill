@@ -2,25 +2,17 @@
  * dev サーバーの世代を SSE で受け取る。最初の `generation` でその世代の lock を取って使い始め、
  * 別の世代が届いたらページを読み直す。SSE が切れても EventSource が繋ぎ直し、サーバーは接続の直後に今の世代を送る。
  */
-import { type ModLock, ModLockSchema } from '@ubichill/shared';
+import { DEV_EVENT_NAMES, type DevFailure, type ModLock, ModLockSchema, parseDevEvent } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
-import {
-    type DevEvent,
-    type DevGeneration,
-    generationAction,
-    generationLockUrl,
-    parseDevEvent,
-    recordFailure,
-} from './devSession';
+import { type DevGeneration, generationAction, generationLockUrl } from './devSession';
 
 export interface DevState {
     generation: (DevGeneration & { lock: ModLock }) | null;
-    failures: DevEvent[];
+    /** 今の失敗（サーバーが持つ一覧をそのまま映す）。 */
+    failures: DevFailure[];
     /** SSE が繋がっているか。 */
     connected: boolean;
 }
-
-const EVENT_NAMES = ['generation', 'build-error', 'world-error'] as const;
 
 export function useDevGeneration(): DevState {
     const [state, setState] = useState<DevState>({ generation: null, failures: [], connected: false });
@@ -31,8 +23,8 @@ export function useDevGeneration(): DevState {
         const onEvent = (name: string) => async (raw: MessageEvent) => {
             const event = parseDevEvent(name, String(raw.data));
             if (!event) return;
-            if (event.type !== 'generation') {
-                setState((prev) => ({ ...prev, failures: recordFailure(prev.failures, event) }));
+            if (event.type === 'diagnostics') {
+                setState((prev) => ({ ...prev, failures: event.failures }));
                 return;
             }
             const action = generationAction(adopted.current, event);
@@ -51,7 +43,7 @@ export function useDevGeneration(): DevState {
             const lock = ModLockSchema.parse(await response.json());
             setState((prev) => ({ ...prev, generation: { ...event, lock } }));
         };
-        const listeners = EVENT_NAMES.map((name) => [name, onEvent(name)] as const);
+        const listeners = DEV_EVENT_NAMES.map((name) => [name, onEvent(name)] as const);
         for (const [name, listener] of listeners) source.addEventListener(name, listener);
         source.onopen = () => setState((prev) => ({ ...prev, connected: true }));
         source.onerror = () => setState((prev) => ({ ...prev, connected: false }));

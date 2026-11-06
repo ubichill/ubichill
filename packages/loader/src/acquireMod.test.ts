@@ -321,6 +321,21 @@ describe('作者署名', () => {
         expect(r).toEqual({ rejected: 'signature-missing' });
     });
 
+    it('204（中身なし。ubichill dev が手元のビルドに返す）は署名なし。動かしてよいかは allowUnsigned が決める', async () => {
+        const routes = { ...goodRoutes(), [sigUrlAbs]: { body: '', status: 204 } };
+        expect(
+            await acquireMod(TYPE, {
+                baseUrl: BASE,
+                lock: lock(),
+                verifySignature: hostTrusting({}),
+                fetchImpl: fakeFetch(routes),
+            }),
+        ).toEqual({ rejected: 'signature-missing' });
+        expect(
+            await acquireMod(TYPE, { baseUrl: BASE, lock: lock(), ...unsignedDev, fetchImpl: fakeFetch(routes) }),
+        ).toMatchObject({ id: TYPE });
+    });
+
     it('SPA の fallback（200 の HTML）が返っても、署名ありとは扱わない', async () => {
         const routes = {
             ...goodRoutes(),

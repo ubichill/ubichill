@@ -4,7 +4,7 @@ import type { ComponentInstance } from '@ubichill/shared';
 import { parseUiMarkup } from '@ubichill/ui-renderer';
 import type React from 'react';
 import { useMemo } from 'react';
-import { surfacePlacement } from './CoreMediaSurface';
+import { surfacePlacement } from './surfacePlacement';
 
 /** core:ui はハンドラーを持たない（on* 属性は解析で捨てる）。届いても何もしない。 */
 const ignoreAction = (): void => {};

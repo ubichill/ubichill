@@ -2,6 +2,7 @@ import type { InitialEntity } from '@ubichill/shared';
 import { css } from '@/styled-system/css';
 import type { AvailableEntityKind } from '../../hooks/useAvailableEntityKinds';
 import { ComponentCard, ComponentPicker } from './ComponentCard';
+import { EditorNotices } from './EditorNotices';
 import { EntityHeader } from './EntityHeader';
 import { NumField, Section } from './primitives';
 import { TagsEditor } from './TagsEditor';
@@ -22,6 +23,8 @@ interface EntityInspectorProps {
     onDeleteComponent: (componentIndex: number) => void;
     onDeleteEntity: () => void;
     onRenameEntity: (newId: string) => void;
+    /** この Entity の Component の参照の問題（未設定の必須参照・動画面の競合など）。 */
+    referenceProblems: readonly string[];
 }
 
 /**
@@ -40,6 +43,7 @@ export function EntityInspector({
     onDeleteComponent,
     onDeleteEntity,
     onRenameEntity,
+    referenceProblems,
 }: EntityInspectorProps) {
     const t = entity.transform;
     const updateTransform = (patch: Partial<typeof t>) =>
@@ -59,6 +63,7 @@ export function EntityInspector({
             })}
         >
             <EntityHeader entity={entity} onDelete={onDeleteEntity} onRename={onRenameEntity} />
+            <EditorNotices messages={referenceProblems} />
 
             <Section label={isChild ? 'Transform (親基準)' : 'Transform'}>
                 <div className={css({ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '2' })}>

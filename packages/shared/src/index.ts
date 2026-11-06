@@ -266,6 +266,7 @@ export * from './user/handle';
 export * from './user/limits';
 export * from './user/signingKeys';
 export * from './user/userSearch';
+export * from './world/devEvents';
 export * from './world/identity';
 export * from './world/instanceDefinition';
 export * from './world/resolve';

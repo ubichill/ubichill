@@ -82,7 +82,7 @@ Host が持つ Component。mod を読み込まずに使え、`dependencies` に�
 | 型 | 役割 | `data` |
 |---|---|---|
 | `core:collider` | 当たり判定の形 | `shape: rect`（`size: { w, h }` か `entity`）または `shape: circle`（`radius`）。`offset`・`isTrigger`・`layer`・`mask` |
-| `core:media` | 動画を描く場所（Unity の MeshRenderer に当たる）。何を再生するかは、参照フィールドでこの Entity を指した mod が決める | `fit: contain`（既定・全体を見せる）か `cover`（枠を埋める） |
+| `core:media` | 動画を描く場所（Unity の MeshRenderer に当たる）。何を再生するかは、参照フィールドでこの Entity を指した mod が決める。1 つの面を指せる出力は 1 つだけ（2 つ以上が指す・1 Entity に 2 つ置くと何も描かない） | `fit: contain`（既定・全体を見せる）か `cover`（枠を埋める） |
 | `core:ui` | 作者が書く UI（看板・説明・リンクなど）。mod を作らずに置ける | `markup`: HTML 風の文字列（2 万文字まで） |
 
 ```yaml
