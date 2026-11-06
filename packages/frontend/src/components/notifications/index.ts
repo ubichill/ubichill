@@ -1,2 +1,7 @@
 export { NotificationCard } from './NotificationCard';
-export { type NotificationsState, useNotifications } from './useNotifications';
+export {
+    isPendingFollow,
+    NotificationsProvider,
+    type NotificationsState,
+    useNotifications,
+} from './NotificationsProvider';

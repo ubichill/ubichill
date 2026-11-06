@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNotifications } from '@/components/notifications';
+import { unreadBadge } from '@/lib/notifications';
 import { css } from '@/styled-system/css';
 import { type HudNavigation, HudNavigationContext } from './HudNavigationContext';
 import { HomeTab } from './tabs/HomeTab';
@@ -208,7 +209,9 @@ export function HudTabs({
         }),
         [setActiveTab],
     );
-    const badges: Partial<Record<HudTabId, number>> = { notifications: notifications.items.length };
+    const badges: Partial<Record<HudTabId, string | null>> = {
+        notifications: unreadBadge(notifications.feed.unreadCount),
+    };
 
     const visibleTabs = TABS.filter((tab) => !tab.hidden && (!tab.instanceOnly || currentInstanceId));
 
@@ -247,9 +250,7 @@ export function HudTabs({
                         onFriendshipChange={() => void notifications.reload()}
                     />
                 )}
-                {activeTab === 'notifications' && (
-                    <NotificationsTab notifications={notifications} onNavigate={onNavigate} />
-                )}
+                {activeTab === 'notifications' && <NotificationsTab onNavigate={onNavigate} />}
                 {activeTab === 'profile' && (
                     <ProfileTab
                         onNavigate={onNavigate}
@@ -324,8 +325,10 @@ export function HudTabs({
                         >
                             <span className={css({ position: 'relative', display: 'inline-flex' })}>
                                 {tab.icon}
-                                {(badges[tab.id] ?? 0) > 0 && (
+                                {badges[tab.id] && (
                                     <span
+                                        role="status"
+                                        aria-label={`未読 ${badges[tab.id]} 件`}
                                         className={css({
                                             position: 'absolute',
                                             top: '-4px',

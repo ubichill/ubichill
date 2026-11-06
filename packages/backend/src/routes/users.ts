@@ -31,6 +31,7 @@ import {
     MAX_EXTERNAL_WORKS_PER_USER,
     needsFriendCheck,
     OFFICIAL_HANDLE,
+    parseStoredDefinition,
     RevokeReasonSchema,
     SERVER_CONFIG,
     verifyKeyRegistration,
@@ -55,6 +56,7 @@ import { backendEvents } from '../services/backendEvents';
 import { externalWorkStatuses, publishedExternalWorks } from '../services/externalWorkStore';
 import { verifyRegistration } from '../services/externalWorks';
 import { favoriteRefOf, resolveFavoriteWorlds } from '../services/favorites';
+import { notificationService, notifyInBackground } from '../services/notificationService';
 import {
     browserEnvironmentName,
     newEnvironmentNotice,
@@ -63,7 +65,6 @@ import {
 } from '../services/publishingEnvironments';
 import { nodeWorldCrypto } from '../services/worldCrypto';
 import { worldRegistry } from '../services/worldRegistry';
-import { parseStoredDefinition } from '../services/worldResolver';
 import { logger } from '../utils/logger';
 import { createTtlCache } from '../utils/ttlCache';
 
@@ -577,6 +578,13 @@ router.post('/me/favorites', requireAuth, async (req, res) => {
     }
     await favoriteRepository.add(req.user.id, parsed.ref);
     favoritesChanged(req.user.id);
+    const likerId = req.user.id;
+    notifyInBackground(
+        worldRegistry
+            .localWorldAuthor(parsed.ref)
+            .then((world) => (world ? notificationService.worldLiked(likerId, world) : undefined)),
+        'お気に入り',
+    );
     return res.status(201).json({ worldRef: parsed.ref });
 });
 

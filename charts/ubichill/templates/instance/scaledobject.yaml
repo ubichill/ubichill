@@ -13,6 +13,11 @@
 {{- if le (int $a.targetConnectionsPerPod) 0 }}
 {{- fail "instanceRuntime.autoscaling.targetConnectionsPerPod は 1 以上にします" }}
 {{- end }}
+{{- $maxConnections := int .Values.instanceRuntime.maxConnections }}
+{{- /* Go は上限の 9 割（limits.go の roomCutoff）から新しい部屋を断るので、その手前で増やす */}}
+{{- if and (gt $maxConnections 0) (ge (int $a.targetConnectionsPerPod) (sub $maxConnections (div $maxConnections 10))) }}
+{{- fail (printf "instanceRuntime.autoscaling.targetConnectionsPerPod（%v）は instanceRuntime.maxConnections（%v）の 9 割未満にします（新しい部屋を断り始めてから増やすと、増えるまでの間は新しい部屋を作れない）" $a.targetConnectionsPerPod $maxConnections) }}
+{{- end }}
 {{- $selector := $a.prometheus.selector | default (printf "namespace=%q,service=%q" .Release.Namespace (printf "%s-instance" (include "ubichill.fullname" .))) }}
 {{- /* KEDA の CRD が要る。無いクラスタでは有効にしない */}}
 apiVersion: keda.sh/v1alpha1
@@ -31,22 +36,36 @@ spec:
   advanced:
     horizontalPodAutoscalerConfig:
       behavior:
-        {{- /* HPA は消す Pod を部屋の有無で選べない。縮めるのは手動（draining）か K2 で */}}
+        {{- /*
+          消す Pod は ReplicaSet が pod-deletion-cost（Go が書く）の小さい順に選ぶ。消された Pod は部屋を引っ越し、
+          直接の接続が抜けるまで（drainTimeout）残るので、急いで減らさない。
+        */}}
         scaleDown:
+          {{- if $a.scaleDown.enabled }}
+          stabilizationWindowSeconds: {{ int $a.scaleDown.stabilizationWindowSeconds }}
+          policies:
+            - type: Pods
+              value: {{ int $a.scaleDown.podsPerPeriod }}
+              periodSeconds: {{ int $a.scaleDown.periodSeconds }}
+          {{- else }}
           selectPolicy: Disabled
+          {{- end }}
   {{- /*
     HPA は trigger ごとに台数を出して最大を取るので、指標を 1 つにまとめない。
     AverageValue なので台数は ceil(合計 / threshold)。threshold は「1 Pod に持たせたい量」。
     ignoreNullValues: false で、指標が無い（集めていない）ときは 0 とせず ScaledObject の失敗として出す。
     CPU は requests（100m）に対する割合ではなく量（AverageValue）で指定する。
+    接続数・部屋数は draining の Pod を除く。除かないと、止めている Pod に残った接続が残りの Pod の平均に足され、
+    縮めた直後に増やし直す（CPU は cAdvisor の値なので除けない）。
   */}}
+  {{- $active := printf "unless on(pod) (ubichill_instance_draining{%s} == 1)" $selector }}
   triggers:
     - type: prometheus
       name: connections
       metricType: AverageValue
       metadata:
         serverAddress: {{ $a.prometheus.serverAddress | quote }}
-        query: {{ printf "sum(ubichill_instance_websocket_connections{%s})" $selector | quote }}
+        query: {{ printf "sum(ubichill_instance_websocket_connections{%s} %s)" $selector $active | quote }}
         threshold: {{ $a.targetConnectionsPerPod | toString | quote }}
         ignoreNullValues: "false"
     - type: prometheus
@@ -54,7 +73,7 @@ spec:
       metricType: AverageValue
       metadata:
         serverAddress: {{ $a.prometheus.serverAddress | quote }}
-        query: {{ printf "sum(ubichill_instance_active_rooms{%s})" $selector | quote }}
+        query: {{ printf "sum(ubichill_instance_active_rooms{%s} %s)" $selector $active | quote }}
         threshold: {{ $a.targetRoomsPerPod | toString | quote }}
         ignoreNullValues: "false"
     {{- with $a.targetCPUPerPod }}

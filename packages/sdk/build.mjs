@@ -5,9 +5,7 @@
  * 自己完結パッケージ `ubichill`（unscoped）としてビルドする。
  *
  * 他パッケージ（shared/db 等）と同様、パッケージ自身が自分のビルド方法を持つ
- * （`pnpm --filter @ubichill/sdk build`、または `pnpm build:sdk`）。旧 scripts/build-sdk.mjs
- * から移設（CLI等の公開物を将来 sdk パッケージ内に置けるよう、repo-root の scripts/ には
- * 汎用ではない単発ロジックを置かない方針に揃えた）。
+ * （`pnpm --filter @ubichill/sdk build`、または `pnpm build:sdk`）。CLI は packages/cli（`@ubichill/cli`）。
  *
  * 設計方針:
  * - ワークスペース内の名前・全参照（mods 配下各 tsconfig の paths, sandbox.worker.ts の import,
@@ -30,7 +28,7 @@
  */
 import { generateDtsBundle } from 'dts-bundle-generator';
 import * as esbuild from 'esbuild';
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -46,9 +44,6 @@ export const ENTRIES = [
     { name: 'jsx-runtime', srcPath: join(sdkDir, 'src', 'jsx', 'jsx-runtime.ts') },
     { name: 'gripable', srcPath: join(sdkDir, 'src', 'jsx', 'Gripable.tsx') },
 ];
-
-/** `ubichill` の bin エントリ（mod開発者向け CLI）。型surfaceではないので .d.ts は生成しない。 */
-const CLI_ENTRY = { name: 'cli', srcPath: join(sdkDir, 'cli', 'index.ts') };
 
 /** ecs 全体 + shared の使用シンボルをインライン展開し、外部参照の無い単一 .d.ts を作る。 */
 export function buildDts(entry) {
@@ -94,33 +89,6 @@ export async function buildJs(entry) {
     return result.outputFiles[0].text;
 }
 
-/**
- * CLI 用バンドル（Node専用、self-contained）。
- * shebang は entry (`cli/index.ts`) 自身の先頭行を esbuild が自動的に出力先頭へ保持するため、
- * ここで banner として付け直すと二重になり Node の shebang 剥がし（先頭行のみ対象）が
- * 効かなくなって SyntaxError になる（実測済み）。banner は指定しない。
- *
- * `esbuild`/`yaml` は external 必須: 両者とも内部で CJS 由来の動的 require（`fs`/`process`
- * の require）を行うコードパスを持ち、単一 ESM ファイルへバンドルすると `Dynamic require of
- * "..." is not supported` で実行時に落ちる（実測済み）。よって CLI_RUNTIME_DEPENDENCIES として
- * 公開パッケージの `dependencies` に real dependency として残す。
- */
-const CLI_RUNTIME_DEPENDENCIES = { esbuild: '^0.28.0', yaml: '^2.5.0' };
-
-export async function buildCliJs() {
-    const result = await esbuild.build({
-        entryPoints: [CLI_ENTRY.srcPath],
-        bundle: true,
-        format: 'esm',
-        platform: 'node',
-        target: 'node22',
-        write: false,
-        minify: false,
-        external: Object.keys(CLI_RUNTIME_DEPENDENCIES),
-    });
-    return result.outputFiles[0].text;
-}
-
 export function buildPackageJson() {
     const sdkPackageJson = JSON.parse(readFileSync(join(sdkDir, 'package.json'), 'utf-8'));
 
@@ -138,21 +106,15 @@ export function buildPackageJson() {
             sideEffects: false,
             main: './index.js',
             types: './index.d.ts',
-            bin: { ubichill: './cli.js' },
-            // CLI（cli.js）は esbuild で target: 'node22' にビルドしている。import surface は
-            // それより緩い es2020 だが、同一パッケージなので engines は CLI 側の要件に揃える。
-            engines: { node: '>=22' },
             exports: {
                 '.': { types: './index.d.ts', import: './index.js' },
                 './jsx-runtime': { types: './jsx-runtime.d.ts', import: './jsx-runtime.js' },
                 './gripable': { types: './gripable.d.ts', import: './gripable.js' },
             },
             files: ['*.js', '*.d.ts', 'LICENSE', 'README.md'],
-            // import surface（index/jsx-runtime/gripable）の実行時依存はビルド時に esbuild で
-            // 完全バンドル済み（@ubichill/ecs 全体 + @ubichill/shared の一部シンボル）。
-            // bin（cli.js）だけが esbuild を external にしているため、real dependency として残す
-            // （CLI_RUNTIME_DEPENDENCIES 参照）。
-            dependencies: CLI_RUNTIME_DEPENDENCIES,
+            // 実行時依存はビルド時に esbuild で完全バンドル済み（@ubichill/ecs 全体 + @ubichill/shared の一部シンボル）。
+            // CLI は別パッケージ（@ubichill/cli）なので、ここには依存が 1 つも無い。
+            dependencies: {},
         },
         null,
         2,
@@ -161,6 +123,8 @@ export function buildPackageJson() {
 
 async function main() {
     console.log('🔨 Building ubichill (npm publish package) from @ubichill/sdk...');
+    // 前のビルドの残り（以前は cli.js もここにあった）を配らない（files の *.js は dist-npm の中身をそのまま載せる）
+    rmSync(outDir, { recursive: true, force: true });
     mkdirSync(outDir, { recursive: true });
 
     for (const entry of ENTRIES) {
@@ -172,10 +136,6 @@ async function main() {
         writeFileSync(join(outDir, `${entry.name}.d.ts`), dts, 'utf-8');
         console.log(`✅ ${entry.name}.d.ts (${dts.length} bytes, 外部@ubichill参照なし)`);
     }
-
-    const cliJs = await buildCliJs();
-    writeFileSync(join(outDir, 'cli.js'), cliJs, { encoding: 'utf-8', mode: 0o755 });
-    console.log(`✅ cli.js (${cliJs.length} bytes)`);
 
     writeFileSync(join(outDir, 'package.json'), buildPackageJson(), 'utf-8');
     console.log(`📦 ${outDir}/package.json (name: "ubichill")`);

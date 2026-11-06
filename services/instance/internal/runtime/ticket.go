@@ -29,7 +29,10 @@ type claims struct {
 }
 
 // issued は、このチケットが今の部屋（同じ世代）に向けて発行されたかを返す。
-func (r *Room) issued(c claims) bool { return c.Gen == r.gen && c.Epoch == r.epoch }
+func (r *Room) issued(c claims) bool {
+	gen, epoch, _ := r.lease()
+	return c.Gen == gen && c.Epoch == epoch
+}
 
 func newID() string {
 	b := make([]byte, 24)
@@ -67,8 +70,11 @@ func (s *Server) sign(t ticket) string { return s.signFor(s.room(t.Instance), t)
 func (s *Server) signFor(room *Room, t ticket) string {
 	c := claims{ticket: t}
 	if room != nil {
-		c.Gen, c.Epoch = room.gen, room.epoch
+		c.Gen, c.Epoch, _ = room.lease()
 	}
+	return s.signClaims(c)
+}
+func (s *Server) signClaims(c claims) string {
 	payload := base64.RawURLEncoding.EncodeToString(encoded(c))
 	mac := hmac.New(sha256.New, s.key)
 	mac.Write([]byte(payload))

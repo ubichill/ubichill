@@ -1,0 +1,53 @@
+{{- if .Values.redis.enabled }}
+{{- /* backend・instance の REDIS_URL が指す名前。Bitnami の subchart と同じ <fullname>-master のまま */}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ubichill.redis.fullname" . }}-master
+  labels:
+    {{- include "ubichill.labels" . | nindent 4 }}
+    component: redis
+spec:
+  type: ClusterIP
+  ports:
+    - name: tcp-redis
+      port: {{ include "ubichill.redis.port" . }}
+      targetPort: redis
+  selector:
+    {{- include "ubichill.redis.selectorLabels" . | nindent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ubichill.redis.fullname" . }}-headless
+  labels:
+    {{- include "ubichill.labels" . | nindent 4 }}
+    component: redis
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: tcp-redis
+      port: 6379
+      targetPort: redis
+  selector:
+    {{- include "ubichill.redis.selectorLabels" . | nindent 4 }}
+{{- if .Values.redis.metrics.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ubichill.redis.fullname" . }}-metrics
+  labels:
+    {{- include "ubichill.labels" . | nindent 4 }}
+    component: redis-metrics
+spec:
+  type: ClusterIP
+  ports:
+    - name: http-metrics
+      port: 9121
+      targetPort: metrics
+  selector:
+    {{- include "ubichill.redis.selectorLabels" . | nindent 4 }}
+{{- end }}
+{{- end }}

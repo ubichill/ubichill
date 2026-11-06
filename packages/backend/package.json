@@ -1,6 +1,6 @@
 {
     "name": "@ubichill/backend",
-    "version": "1.8.0",
+    "version": "1.9.1",
     "private": true,
     "description": "Backend server for Ubichill",
     "main": "dist/index.js",
@@ -37,7 +37,7 @@
         "bcryptjs": "^3.0.3",
         "better-auth": "catalog:",
         "cors": "^2.8.6",
-        "dotenv": "^17.4.2",
+        "dotenv": "^18.0.8",
         "drizzle-orm": "catalog:",
         "express": "catalog:",
         "express-rate-limit": "^8.7.1",

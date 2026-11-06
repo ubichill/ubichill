@@ -58,6 +58,13 @@ func ref(v any) bool { return len(str(v)) > 0 && len(str(v)) <= 200 }
 func (r *Room) handle(p *peer, f Frame) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	// 引っ越しの間（と済んだあとの元の部屋）は状態を変えない。応答の要らないもの（カーソル等）は捨てる
+	if r.migrating {
+		if f.ID != "" {
+			p.reply(f.ID, migrating())
+		}
+		return
+	}
 	m := r.members[p.userID]
 	if r.closed || !r.now().Before(r.deadline) || m == nil || m.peer != p {
 		p.reject(f.ID, "参加していません")
@@ -78,7 +85,7 @@ func (r *Room) handle(p *peer, f Frame) {
 		if held, exists := data["heldEntityId"]; exists && (held == nil || (len(str(held)) > 0 && len(str(held)) <= 64)) {
 			out["heldEntityId"] = held
 		}
-		r.broadcast("cursor:moved", out, p, true)
+		r.moveCursor(p, out)
 	case "status:update":
 		var status string
 		if json.Unmarshal(f.Data, &status) != nil || !validStatus(status) {

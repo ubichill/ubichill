@@ -3,7 +3,7 @@
  * 兄弟ファイル `<world>.lock.json` に書き出す（分離方針＝YAML には埋めない）。
  *
  * 直接実行の入口は持たない（純粋なライブラリ関数）。CLI としての実行は
- * `packages/sdk/cli`（`ubichill install` サブコマンド）に一本化されている。
+ * `packages/cli`（`ubichill install` サブコマンド）に一本化されている。
  *
  * getLockEntry の transport（mod 毎に切り替わる、`createDependencyAwareLockEntryGetter` が振り分け）:
  *   - world YAML の `dependencies[].source` に `url` がある mod → その `url` から HTTP 取得
@@ -115,7 +115,7 @@ export async function runInstall(argv: string[]): Promise<void> {
         if (current !== nextJson) {
             console.error(
                 `❌ ${outPath} が現在の mod ビルドと一致しません（陳腐化 or 未生成）。` +
-                    `\`node packages/sdk/cli/index.ts install ${worldPath} --mods-dir=${modsDir}\` で再生成してください。`,
+                    `\`node packages/cli/src/index.ts install ${worldPath} --mods-dir=${modsDir}\` で再生成してください。`,
             );
             process.exitCode = 1;
             return;

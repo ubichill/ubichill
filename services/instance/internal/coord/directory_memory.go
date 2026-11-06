@@ -157,6 +157,41 @@ func (m *MemoryDirectory) Release(_ context.Context, room, token string) (bool, 
 	return true, nil
 }
 
+func (m *MemoryDirectory) Transfer(_ context.Context, room, fromToken, toNode, toToken, gen string, ttl time.Duration) (Assignment, bool, error) {
+	if err := validateTransfer(room, fromToken, toNode, toToken, ttl); err != nil {
+		return Assignment{}, false, err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.gen == "" || m.gen != gen {
+		return Assignment{}, false, ErrGenChanged
+	}
+	now := m.now()
+	cur, ok := live(m.rooms, room, now)
+	if !ok || cur.Token != fromToken || cur.Gen != gen {
+		return Assignment{}, false, nil
+	}
+	stored, _ := live(m.epochs, room, now)
+	epoch := max(stored, cur.Epoch) + 1
+	m.epochs[room] = expiring[int64]{epoch, now.Add(epochRetention)}
+	a := Assignment{Node: toNode, Epoch: epoch, Token: toToken, Gen: gen}
+	m.rooms[room] = expiring[Assignment]{a, now.Add(ttl)}
+	return a, true, nil
+}
+
+func (m *MemoryDirectory) Nodes(context.Context) (map[string]NodeInfo, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	now := m.now()
+	out := map[string]NodeInfo{}
+	for id := range m.nodes {
+		if info, ok := live(m.nodes, id, now); ok {
+			out[id] = info
+		}
+	}
+	return out, nil
+}
+
 func (m *MemoryDirectory) PublishPresence(_ context.Context, rooms []RoomPresence, ttl time.Duration) error {
 	for _, p := range rooms {
 		if err := validateRoom(p.Room, ttl, true); err != nil {

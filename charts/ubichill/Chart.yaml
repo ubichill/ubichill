@@ -2,7 +2,7 @@ apiVersion: v2
 name: ubichill
 description: Ubichill Main Application - Frontend and Backend Platform
 type: application
-version: 0.1.7
+version: 0.2.0
 appVersion: "latest"
 
 keywords:
@@ -16,12 +16,8 @@ maintainers:
   - name: Ubichill Team
     email: pnasimonan@gmail.com
 
-# Dependencies for shared services (optional Redis, PostgreSQL, etc.)
+# Redis（Valkey）は templates/redis で chart 自身が動かす。PostgreSQL だけ subchart
 dependencies:
-  - name: redis
-    version: "20.6.1"
-    repository: "https://charts.bitnami.com/bitnami"
-    condition: redis.enabled
   - name: postgresql
     version: "16.4.3"
     repository: "https://charts.bitnami.com/bitnami"

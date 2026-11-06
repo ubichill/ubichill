@@ -96,7 +96,7 @@ Instance (Go) が受け付けるブラウザ Origin。未指定なら https://<g
 {{- end }}
 
 {{/*
-redis subchart の fullname（bitnami common.names.fullname と同じ規則。Service・Secret の名前の元）。
+同梱の Redis（Valkey）の名前の元。Bitnami の subchart と同じ規則にして、Service・Secret の名前を移行の前後で変えない。
 */}}
 {{- define "ubichill.redis.fullname" -}}
 {{- if .Values.redis.fullnameOverride }}
@@ -111,16 +111,110 @@ redis subchart の fullname（bitnami common.names.fullname と同じ規則。Se
 {{- end }}
 {{- end }}
 
+{{- define "ubichill.redis.port" -}}
+{{- dig "service" "ports" "redis" 6379 .Values.redis.master }}
+{{- end }}
+
 {{/*
-subchart の REDIS_URL。パスワードは URL に入れず REDIS_PASSWORD で渡す。
+同梱の Redis の REDIS_URL。パスワードは URL に入れず REDIS_PASSWORD で渡す。
 */}}
 {{- define "ubichill.redis.url" -}}
-{{- printf "redis://%s-master:%v" (include "ubichill.redis.fullname" .) (.Values.redis.master.service.ports.redis | default 6379) }}
+{{- printf "redis://%s-master:%v" (include "ubichill.redis.fullname" .) (include "ubichill.redis.port" .) }}
+{{- end }}
+
+{{- define "ubichill.redis.selectorLabels" -}}
+{{ include "ubichill.selectorLabels" . }}
+component: redis
+{{- end }}
+
+{{/*
+同梱の Redis のパスワードの Secret。auth.existingSecret があればそれ、無ければ chart が作る <fullname>（キー redis-password）。
+*/}}
+{{- define "ubichill.redis.secretName" -}}
+{{- if .Values.redis.auth.existingSecret }}
+{{- tpl .Values.redis.auth.existingSecret . }}
+{{- else }}
+{{- include "ubichill.redis.fullname" . }}
+{{- end }}
+{{- end }}
+
+{{- define "ubichill.redis.secretKey" -}}
+{{- if .Values.redis.auth.existingSecret }}
+{{- .Values.redis.auth.existingSecretPasswordKey | default "redis-password" }}
+{{- else }}
+{{- print "redis-password" }}
+{{- end }}
+{{- end }}
+
+{{/*
+イメージの参照。引数は dict（image: {repository, tag, digest}, key: エラーに出す values の key）。
+版を固定する（latest・空のタグは描画で失敗）。Bitnami は版付きのタグを消したので、残った values で引かないよう拒む。
+*/}}
+{{- define "ubichill.redis.imageRef" -}}
+{{- $image := .image }}
+{{- if contains "bitnami" $image.repository }}
+{{- fail (printf "%s.repository に Bitnami のイメージ（%s）は使えません。chart は Valkey と oliver006/redis_exporter を使うので、values から %s を消してください" .key $image.repository .key) }}
+{{- end }}
+{{- if $image.digest }}
+{{- if not (hasPrefix "sha256:" $image.digest) }}
+{{- fail (printf "%s.digest は sha256:<hex> の形です（%s）" .key $image.digest) }}
+{{- end }}
+{{- if $image.tag }}
+{{- printf "%s:%s@%s" $image.repository $image.tag $image.digest }}
+{{- else }}
+{{- printf "%s@%s" $image.repository $image.digest }}
+{{- end }}
+{{- else }}
+{{- if or (not $image.tag) (eq (toString $image.tag) "latest") }}
+{{- fail (printf "%s.tag は版を固定してください（latest・空は不可。digest を指定するならタグは空でも可）" .key) }}
+{{- end }}
+{{- printf "%s:%s" $image.repository (toString $image.tag) }}
+{{- end }}
+{{- end }}
+
+{{/*
+Valkey の maxmemory。redis.config.maxmemory が空なら resources.limits.memory の 75%。
+maxmemory はデータだけを数え、AOF の書き直しの fork（copy-on-write）・Pub/Sub の出力バッファ・断片化は含まないので、上限いっぱいにすると OOMKill される。
+*/}}
+{{- define "ubichill.redis.maxmemory" -}}
+{{- $explicit := dig "config" "maxmemory" "" .Values.redis | toString }}
+{{- if $explicit }}
+{{- $explicit }}
+{{- else }}
+{{- $limit := dig "resources" "limits" "memory" "" .Values.redis.master | toString }}
+{{- if regexMatch `^[0-9]+(\.[0-9]+)?Mi$` $limit }}
+{{- printf "%dmb" (int (floor (mulf (float64 (trimSuffix "Mi" $limit)) 0.75))) }}
+{{- else if regexMatch `^[0-9]+(\.[0-9]+)?Gi$` $limit }}
+{{- printf "%dmb" (int (floor (mulf (float64 (trimSuffix "Gi" $limit)) 768))) }}
+{{- else }}
+{{- fail (printf "redis.config.maxmemory を指定するか、redis.master.resources.limits.memory を Mi か Gi で指定してください（%s）" $limit) }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
+valkey.conf。パスワードは Secret から起動の引数で渡す（ConfigMap に入れない）。
+認証なし（auth.enabled: false）でも Pod の外から繋げるよう protected-mode は切る（NetworkPolicy で絞る）。
+*/}}
+{{- define "ubichill.redis.config" -}}
+{{- $cfg := .Values.redis.config | default dict -}}
+port 6379
+bind * -::*
+protected-mode no
+dir /data
+appendonly yes
+appendfsync {{ $cfg.appendfsync | default "everysec" }}
+save ""
+maxmemory {{ include "ubichill.redis.maxmemory" . }}
+maxmemory-policy {{ $cfg.maxmemoryPolicy | default "noeviction" }}
+{{- with $cfg.extra }}
+{{ . }}
+{{- end }}
 {{- end }}
 
 {{/*
 backend と instance に渡す Redis の env（REDIS_URL・REDIS_PASSWORD）。両方が同じ接続先を見るよう、ここだけで組み立てる。
-- redis.enabled: subchart。パスワードは subchart の Secret（auth.existingSecret があればそちら）
+- redis.enabled: 同梱の Valkey。パスワードは chart の Secret（auth.existingSecret があればそちら）
 - redis.external.url: 外部の Redis。パスワードは redis.external.existingSecret があれば参照する
 - どちらも無ければ何も出さない（Redis なしで動く）
 */}}
@@ -136,13 +230,8 @@ backend と instance に渡す Redis の env（REDIS_URL・REDIS_PASSWORD）。�
 - name: REDIS_PASSWORD
   valueFrom:
     secretKeyRef:
-      {{- if .Values.redis.auth.existingSecret }}
-      name: {{ tpl .Values.redis.auth.existingSecret . }}
-      key: {{ .Values.redis.auth.existingSecretPasswordKey | default "redis-password" }}
-      {{- else }}
-      name: {{ include "ubichill.redis.fullname" . }}
-      key: redis-password
-      {{- end }}
+      name: {{ include "ubichill.redis.secretName" . }}
+      key: {{ include "ubichill.redis.secretKey" . }}
 {{- end }}
 {{- else if $ext.url }}
 - name: REDIS_URL

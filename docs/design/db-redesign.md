@@ -211,6 +211,10 @@ Redis の作業との依存: backend を 2 つ以上にする前に、1（reaper
 - 消す列は、使わなくなる PR と消す PR を分ける。ロールバックで古いイメージに戻しても動くように。
 - 本番の DB は `baselineIfNeeded` の挙動に注意する。永続ボリュームが残っていると、新しいマイグレーションが適用済み扱いになることがある（検証はボリュームを作り直して行う）。
 
+## Postgres のイメージ
+
+同梱の Postgres はまだ Bitnami の subchart で、`docker.io/bitnami/postgresql:latest` に頼っている（版付きのタグが消えた。Redis は同じ理由で chart 自身の Valkey に替えた）。Redis と違ってデータを作り直せないので、ダンプと復元（または論理レプリケーション）を伴う別の作業にする。候補は CloudNativePG（公式イメージ、バックアップと PITR、メジャー版の更新を operator が扱う）。chart の README の「PostgreSQL（今後）」。
+
 ## 未決
 
 1. （決定）`handle` が NULL の既存アカウントは移行で自動で振る（0021_users_cleanup）。

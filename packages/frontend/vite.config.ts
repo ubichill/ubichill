@@ -124,7 +124,10 @@ export default defineConfig({
     },
     server: {
         port: 3000,
+        // world.html は「Go と同じオリジン」を前提にする。開発では Go（:3002）へ中継する（pnpm dev の SNS は絶対 URL で Go に繋ぐので影響しない）
+        proxy: { '/realtime': { target: 'http://127.0.0.1:3002', ws: true } },
     },
+    // SNS の画面（index.html）だけを作る。world.html は vite.world.config.ts で別にビルドする（SNS のコードと chunk・CSS を共有させない）
     build: {
         target: 'es2025',
         outDir: 'dist',

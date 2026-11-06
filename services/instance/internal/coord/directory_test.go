@@ -359,6 +359,123 @@ func runDirectoryContract(t *testing.T, newDirectory func(t *testing.T) testDire
 		}
 	})
 
+	t.Run("transfer moves the owner atomically with a new epoch and token", func(t *testing.T) {
+		d := newDirectory(t)
+		g := gen(t, d)
+		from, _ := assign(t, d, "room", "node-a")
+		to, ok, err := d.Transfer(ctx, "room", from.Token, "node-b", "token-b", g, 3*ttl)
+		if err != nil || !ok || to.Node != "node-b" || to.Token != "token-b" || to.Epoch != from.Epoch+1 || to.Gen != g {
+			t.Fatalf("transfer = %+v %v %v", to, ok, err)
+		}
+		if owner, held, _ := d.Owner(ctx, "room"); !held || owner != to {
+			t.Fatalf("owner after transfer = %+v %v", owner, held)
+		}
+		// 元の owner の token はもう効かない（延長・解放・もう一度の付け替え）
+		if ok, _ := renewOne(ctx, d, "room", from.Token, ttl); ok {
+			t.Fatal("the old owner renewed after the transfer")
+		}
+		if ok, _ := d.Release(ctx, "room", from.Token); ok {
+			t.Fatal("the old owner released after the transfer")
+		}
+		if _, ok, _ := d.Transfer(ctx, "room", from.Token, "node-c", "token-c", g, ttl); ok {
+			t.Fatal("the old token transferred again")
+		}
+		// 付け替えの TTL が効いている（元のリースの残りではない）
+		d.advance(2 * ttl)
+		if _, held, _ := d.Owner(ctx, "room"); !held {
+			t.Fatal("the transferred lease did not get the new ttl")
+		}
+		if ok, _ := renewOne(ctx, d, "room", "token-b", ttl); !ok {
+			t.Fatal("the new owner could not renew")
+		}
+		// epoch は単調に増え、解放して割り当て直しても巻き戻らない
+		if ok, _ := d.Release(ctx, "room", "token-b"); !ok {
+			t.Fatal("the new owner could not release")
+		}
+		if next, _ := assign(t, d, "room", "node-c"); next.Epoch != to.Epoch+1 {
+			t.Fatalf("epoch after transfer and release = %d (transfer %d)", next.Epoch, to.Epoch)
+		}
+	})
+
+	t.Run("transfer refuses a wrong token, an expired lease and another generation", func(t *testing.T) {
+		d := newDirectory(t)
+		g := gen(t, d)
+		a, _ := assign(t, d, "room", "node-a")
+		if _, ok, err := d.Transfer(ctx, "room", "not-the-token", "node-b", "t", g, ttl); err != nil || ok {
+			t.Fatalf("wrong token: %v %v", ok, err)
+		}
+		if _, _, err := d.Transfer(ctx, "room", a.Token, "node-b", "t", "not-the-gen", ttl); !errors.Is(err, ErrGenChanged) {
+			t.Fatalf("another generation: %v", err)
+		}
+		if owner, _, _ := d.Owner(ctx, "room"); owner != a {
+			t.Fatalf("a refused transfer changed the owner: %+v", owner)
+		}
+		if _, ok, err := d.Transfer(ctx, "missing", a.Token, "node-b", "t", g, ttl); err != nil || ok {
+			t.Fatalf("unassigned room: %v %v", ok, err)
+		}
+		d.advance(ttl + 50*time.Millisecond)
+		if _, ok, err := d.Transfer(ctx, "room", a.Token, "node-b", "t", g, ttl); err != nil || ok {
+			t.Fatalf("expired lease: %v %v", ok, err)
+		}
+		if _, held, _ := d.Owner(ctx, "room"); held {
+			t.Fatal("transfer revived an expired lease")
+		}
+		d.wipe()
+		after := gen(t, d)
+		if _, _, err := d.Transfer(ctx, "room", a.Token, "node-b", "t", g, ttl); !errors.Is(err, ErrGenChanged) {
+			t.Fatalf("generation from before the wipe: %v", err)
+		}
+		for _, args := range [][4]string{{"", "t", "node-b", "t"}, {"epoch:x", "t", "node-b", "t"}, {"room", "", "node-b", "t"}, {"room", "t", "", "t"}, {"room", "t", "node-b", ""}} {
+			if _, _, err := d.Transfer(ctx, args[0], args[1], args[2], args[3], after, ttl); err == nil {
+				t.Fatalf("transfer %q accepted", args)
+			}
+		}
+	})
+
+	t.Run("concurrent transfers have one winner", func(t *testing.T) {
+		d := newDirectory(t)
+		g := gen(t, d)
+		a, _ := assign(t, d, "room", "node-a")
+		var wg sync.WaitGroup
+		won := make([]bool, 10)
+		for i := range won {
+			wg.Go(func() {
+				_, ok, err := d.Transfer(ctx, "room", a.Token, fmt.Sprintf("node-%d", i), fmt.Sprintf("token-%d", i), g, ttl)
+				won[i] = ok && err == nil
+			})
+		}
+		// 延長も同時に走る（元の owner の maintain）。付け替えに勝っても負けても、owner は 1 つ
+		wg.Go(func() { _, _ = renewOne(ctx, d, "room", a.Token, ttl) })
+		wg.Wait()
+		winner := slices.Index(won, true)
+		if winner < 0 || slices.Index(won[winner+1:], true) >= 0 {
+			t.Fatalf("winners = %v", won)
+		}
+		owner, _, _ := d.Owner(ctx, "room")
+		if owner.Node != fmt.Sprintf("node-%d", winner) || owner.Token != fmt.Sprintf("token-%d", winner) || owner.Epoch != a.Epoch+1 {
+			t.Fatalf("owner = %+v (winner %d)", owner, winner)
+		}
+	})
+
+	t.Run("nodes lists live heartbeats", func(t *testing.T) {
+		d := newDirectory(t)
+		a := NodeInfo{Addr: "a:3002", State: NodeReady, Capacity: 10}
+		b := NodeInfo{Addr: "b:3002", State: NodeDraining, Capacity: 10}
+		if err := d.Heartbeat(ctx, "node-a", a, ttl); err != nil {
+			t.Fatal(err)
+		}
+		if err := d.Heartbeat(ctx, "node-b", b, 3*ttl); err != nil {
+			t.Fatal(err)
+		}
+		if got, err := d.Nodes(ctx); err != nil || len(got) != 2 || got["node-a"] != a || got["node-b"] != b {
+			t.Fatalf("nodes = %+v %v", got, err)
+		}
+		d.advance(ttl + 50*time.Millisecond)
+		if got, err := d.Nodes(ctx); err != nil || len(got) != 1 || got["node-b"] != b {
+			t.Fatalf("nodes after node-a expired = %+v %v", got, err)
+		}
+	})
+
 	t.Run("invalid arguments are rejected", func(t *testing.T) {
 		d := newDirectory(t)
 		g := gen(t, d)

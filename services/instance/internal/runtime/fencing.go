@@ -25,7 +25,10 @@ type Fencing struct {
 }
 
 func (f Fencing) withDefaults() Fencing {
-	def := Fencing{TTL: 15 * time.Second, Margin: 5 * time.Second, Interval: 5 * time.Second, Retry: time.Second, Timeout: 2 * time.Second}
+	// TTL 30 秒・余裕 10 秒: 最後に成功した延長から 20 秒は持つ。CPU の上限に張り付いた Pod では、延長の goroutine が
+	// 何千もの送信の goroutine の後ろに並び、往復が数秒遅れる（負荷試験で 15 秒・5 秒のときに 1 Pod の部屋が 20 個自己停止した）。
+	// 代わりに、落ちた Pod の部屋を別の Pod が作り直せるまで最長 30 秒かかる（backend の復旧の猶予 60 秒の内）。
+	def := Fencing{TTL: 30 * time.Second, Margin: 10 * time.Second, Interval: 5 * time.Second, Retry: time.Second, Timeout: 5 * time.Second}
 	if f.TTL <= 0 {
 		f.TTL = def.TTL
 	}
@@ -148,7 +151,8 @@ func (s *Server) discard(ctx context.Context, r *Room, release bool) {
 	s.mu.Unlock()
 	r.close(false)
 	if release {
-		_, _ = s.dir.Release(ctx, id, r.token)
+		_, _, token := r.lease()
+		_, _ = s.dir.Release(ctx, id, token)
 	}
 }
 
@@ -171,7 +175,8 @@ func (s *Server) maintain(ctx context.Context) bool {
 	for _, r := range rooms {
 		if r.usable() {
 			usable = append(usable, r)
-			leases = append(leases, coord.RoomLease{Room: r.definition.ID, Token: r.token})
+			_, _, token := r.lease()
+			leases = append(leases, coord.RoomLease{Room: r.definition.ID, Token: token})
 		}
 	}
 	sent := s.now()
@@ -181,8 +186,10 @@ func (s *Server) maintain(ctx context.Context) bool {
 		switch {
 		case renewal.Err != nil:
 			healthy = false
+		case !renewal.OK && r.isMigrating():
+			// 引っ越しの付け替えと延長が行き違った。接続を閉じずに、引っ越しを進めている側（handoff.go）に任せる
 		case !renewal.OK:
-			log.Printf("lost the lease of %s (epoch %d): closing it", r.definition.ID, r.epoch)
+			log.Printf("lost the lease of %s (epoch %d): closing it", r.definition.ID, r.epochNow())
 			s.discard(ctx, r, false)
 			lost[r] = true
 		default:
@@ -196,7 +203,7 @@ func (s *Server) maintain(ctx context.Context) bool {
 			continue
 		}
 		if !r.usable() {
-			log.Printf("could not renew the lease of %s (epoch %d) in time: closing it", r.definition.ID, r.epoch)
+			log.Printf("could not renew the lease of %s (epoch %d) in time: closing it", r.definition.ID, r.epochNow())
 			s.discard(ctx, r, true)
 			continue
 		}
@@ -211,9 +218,10 @@ func (s *Server) maintain(ctx context.Context) bool {
 	if s.draining.Load() {
 		state = coord.NodeDraining
 	}
+	connections += s.relayCount()
 	info := coord.NodeInfo{
 		Addr: s.config.Addr, StartedAt: s.started.UnixMilli(), State: state, Rooms: len(presence),
-		Connections: connections + s.relayCount(), Capacity: s.config.MaxRooms,
+		Connections: connections, Capacity: s.config.MaxRooms, Full: !s.admitsRooms(connections),
 	}
 	if err := s.dir.Heartbeat(ctx, s.node, info, s.fencing.TTL); err != nil {
 		healthy = false
@@ -242,7 +250,8 @@ func (s *Server) loop(ctx context.Context) {
 // presenceOf は管理 API に返す在席。owner の情報（backend が続く管理 API を送る先と、付ける世代）を足す。
 func (s *Server) presenceOf(r *Room) Presence {
 	p := r.presence()
-	p.Node, p.Gen, p.Epoch, p.Addr = s.node, r.gen, r.epoch, s.config.Addr
+	gen, epoch, _ := r.lease()
+	p.Node, p.Gen, p.Epoch, p.Addr = s.node, gen, epoch, s.config.Addr
 	return p
 }
 
@@ -262,20 +271,6 @@ func (s *Server) beginDrain() {
 	s.maintain(ctx)
 }
 
-// Drain は draining に入り、接続（部屋の参加者と中継）が無くなるか ctx が終わるまで待つ。そのあと Close で残りを閉じる。
-func (s *Server) Drain(ctx context.Context) {
-	s.beginDrain()
-	tick := time.NewTicker(200 * time.Millisecond)
-	defer tick.Stop()
-	for s.connections() > 0 {
-		select {
-		case <-ctx.Done():
-			return
-		case <-tick.C:
-		}
-	}
-}
-
 // connections は部屋の参加者の接続と、ほかの Pod の部屋へ中継している接続の数。
 func (s *Server) connections() int {
 	s.mu.RLock()
@@ -284,10 +279,10 @@ func (s *Server) connections() int {
 		rooms = append(rooms, r)
 	}
 	s.mu.RUnlock()
-	n := s.relayCount()
+	n := 0
 	for _, r := range rooms {
-		_, connected := r.occupancy()
-		n += connected
+		n += r.connected()
 	}
-	return n
+	// 中継は部屋の後に数える。引っ越しは参加者を外すのと同じロックの中で中継を足すので、この順なら 0 に見えない
+	return n + s.relayCount()
 }

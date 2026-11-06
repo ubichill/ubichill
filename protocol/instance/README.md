@@ -14,6 +14,8 @@ mod SDKのHost/Workerプロトコルとは独立したバージョンである�
 {"event":"world:join","id":"request-1","data":{"instanceId":"standalone","token":"opaque-ticket","user":{"name":"Guest","position":{"x":0,"y":0},"status":"online"}}}
 ```
 
+`data.features`（任意）はクライアントが受け取れる形の宣言で、サーバーは知らない値を読み飛ばす（下の「受け取れる形の宣言」）。
+
 チケットはURLやCookieに入れない。インスタンス・参加者・期限・種別・部屋の世代（クラスタの `gen` と owner の `epoch`）を
 HMACで検証する不透明な値として扱う。発行するのは部屋の owner で、入室時に今の部屋の世代と一致しなければ `ticket_invalid` にする。
 同じ部屋IDで作り直された部屋（owner の交代・自己停止・Redis の消失のあと）に、前の部屋のチケットを通さないため。
@@ -23,6 +25,11 @@ HMACで検証する不透明な値として扱う。発行するのは部屋の 
 SNSチケットは2分、ゲストの再接続情報は24時間有効。
 Goが複数のPodで動くとき、接続を受けたPodは部屋のownerのPodへ `world:join` から先を中継する（クライアントから見たフレームは変わらない）。
 ownerが接続を閉じたら中継も閉じるので、クライアントはいつもどおりチケットを取り直して繋ぎ直す。
+例外は scale-in の引っ越し（ownerだけを別のPodへ移す）で、接続は切れない。引っ越しの間（通常は数十ms）、変更系の要求は
+`{"success":false,"error":"…","code":"migrating"}` になり状態は変わらないので、少し待って同じ操作を送り直してよい
+（応答の要らないカーソル・ephemeral・IDの無いpatchは捨てられる）。引っ越しのあと `users:update`・`world:snapshot` がもう一度届く（入退室の通知は出ない）。
+止めるPodは、直接繋いでいるクライアントへ切断の前（既定10分前）に `{"event":"server:notice","data":{"kind":"disconnect","at":<epoch ms>}}` を送る。
+Pod間の `relay:migrate` と `POST /realtime/v1/instances/{id}/handoff` は内部の口で、クライアントとbackendの契約には含めない。
 管理APIの作成・チケット発行・終了は任意の `?gen=&epoch=` を受け、ownerの今の世代と違えば409（今のownerを付ける）にする。
 期限は入室時に検証する。既存接続の継続中にSNSの権限変更を即時反映する機能はない。
 
@@ -55,7 +62,9 @@ ownerが接続を閉じたら中継も閉じるので、クライアントはい
 `world:join` の失敗応答には復旧可能な場合だけ `code` を付ける。
 `ticket_invalid` は失効・署名鍵の変更（単体モードの再起動・管理トークンの変更）等でチケットを検証できない場合で、同じ復旧中に1回だけ取り直す。
 `ticket_invalid` は部屋の世代の不一致（チケットの発行後に owner が交代した）でも返す。
-`instance_unavailable` はチケット発行後に部屋が消えた・owner が自己停止した場合で、上記の接続上限内でチケットを取り直す。
+`instance_unavailable` はチケット発行後に部屋が消えた・owner が自己停止した場合と、繋いだ Pod か owner の Pod が接続数の上限
+（`--max-connections`）に達している場合で、上記の接続上限内でチケットを取り直す（Service が別の Pod に繋げば入れる）。
+上限で断るのは新しい参加者だけで、入室中の接続は切らず、切断の猶予中の人の戻りも断らない。
 認可・パスワード・満員等の拒否は再試行しない。
 
 切断後15秒は参加者とロックを保持する。同じIDで戻れば復帰し、期限後にロック解除と退出通知を行う。
@@ -64,6 +73,25 @@ ownerが接続を閉じたら中継も閉じるので、クライアントはい
 `instance:closing` はインスタンスの終了（リーダーの削除・空室の掃除）でのみ送る。Goプロセスの停止・owner の自己停止
 （リースを延長できない・世代が変わった）では送らずに切断し、
 クライアントは再接続して部屋を作り直す（SNSは部屋が無いと観測してから猶予を数えるので、その間に戻れば消えない）。
+
+## 受け取れる形の宣言（features）
+
+Go のインスタンスとフロントは別々にデプロイされるので、配り方を変えるときはクライアントが `world:join` の
+`data.features` で宣言し、宣言した接続にだけ新しい形で送る。宣言しない接続（古いフロント・外部の実装）には今までの形を送り続ける。
+宣言は接続ごとで、再接続のたびに送る。Pod の間の中継は中身を見ずに owner へ通し、引っ越しでは中継元が同じ宣言で入り直す。
+
+- `cursors:batch`: 他の参加者のカーソルを `cursor:moved` の代わりに `cursors:moved` で受ける。サーバーは一定の間隔
+  （`--cursor-batch-interval`、既定 50ms、0 なら宣言しても `cursor:moved`）の中の `cursor:move` を利用者ごとに最新の 1 件にし、
+  受け手ごとに 1 フレームで送る（`{"event":"cursors:moved","data":[{"userId","position","heldEntityId"?}]}`）。
+  自分の分は含まない（動いたのが自分だけなら送らない）。`heldEntityId` の付け方は `cursor:moved` と同じ（最新の move に有効な値があれば付く）。
+  揮発で、溢れたら捨てる。抜けた人の分は `user:left` の後に送らない。
+
+## その場だけの知らせ
+
+`server:notice` は保存しない知らせで、`data.kind` で種類を分ける。クライアントは知らない `kind` を読み飛ばす（種類は足していく）。
+
+- `{"event":"server:notice","data":{"kind":"disconnect","at":<epoch ms>}}`: `at` に接続を切る（Pod の入れ替えなど）。
+  クライアントは「まもなく接続が切れます」と出し、切れたあとはいつもどおり繋ぎ直す。
 
 ## 操作の制約
 

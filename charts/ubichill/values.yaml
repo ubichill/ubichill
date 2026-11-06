@@ -2,7 +2,7 @@
 
 # Global settings
 global:
-  # ⚠ ここを設定すると bitnami subchart (postgresql/redis) にも leak し、
+  # ⚠ ここを設定すると bitnami subchart (postgresql) にも leak し、
   # docker.io/bitnamilegacy/* に対して `<global>/docker.io/...` のような壊れた URL を作る。
   # ubichill 自身の image は backend.image.repository / frontend.image.repository に
   # フルパス (ghcr.io/<owner>/...) を書く方針なので、global は空のまま。
@@ -228,35 +228,48 @@ frontend:
         - ALL
 
 # backend と instance の共有状態。REDIS_URL / REDIS_PASSWORD を両方に渡す（README の「Redis」）
+# 同梱の Redis。Bitnami の subchart ではなく chart 自身のテンプレートで Valkey（Redis 7.2 互換）を動かす（templates/redis）。
+# 中身はすべて一時的（部屋の割り当て・リース・在席・レート制限・Pub/Sub）で、消えても Go が部屋を作り直す。
+# Bitnami の subchart の key のうち、ここに無いもの（architecture・commonConfiguration など）は無視される（README の「Redis」）。
 redis:
   enabled: true
-  architecture: standalone
-  # Explicitly reset registry for this subchart to avoid inheriting 'ghcr.io' from global
-  global:
-    imageRegistry: ""
-  # Bitnami は 2025-08 に docker.io/bitnami/* の **version-pinned tags** を
-  # パージしたが、`latest` rolling tag は残っている (snapshot は bitnamilegacy
-  # に退避済だが 7.2.4-debian-11 などは pull 不可)。
-  # prod が `bitnami/redis:latest` で動いているので合わせる。
   image:
-    registry: ""
-    repository: docker.io/bitnami/redis
-    tag: latest
+    repository: docker.io/valkey/valkey
+    # 版を固定する（latest は描画で失敗する）。digest（sha256:...）を指定するとそれで引く
+    tag: "8.1.11-alpine"
+    digest: ""
+    pullPolicy: IfNotPresent
   auth:
     enabled: true
+    # password か existingSecret のどちらかが要る（無いと描画で失敗する）。GitOps では existingSecret にする
     password: ""
-    # GitOps（ArgoCD 等）では指定する。空だと描画のたびにパスワードが作り直される（README の「Redis」）
     existingSecret: ""
     existingSecretPasswordKey: ""
-  # subchart を使わず外部の Redis を使うとき（redis.enabled: false にする）。backend と instance の両方に渡す
+  # 同梱の Redis を使わず外部の Redis を使うとき（redis.enabled: false にする）。backend と instance の両方に渡す
   external:
     url: ""
     existingSecret: ""
     existingSecretPasswordKey: "redis-password"
+  config:
+    # 空なら master.resources.limits.memory の 75%（AOF の書き直しの fork・Pub/Sub のバッファの分を空ける）
+    maxmemory: ""
+    # 追い出さず、満杯なら書き込みを失敗させる。リースや部屋の割り当てを追い出すと、期限より前に別の Pod が
+    # owner を取れてしまい fencing の前提（期限までは旧 owner だけ）が崩れる。失敗は「Redis が使えない」と同じ扱いになる
+    maxmemoryPolicy: noeviction
+    appendfsync: everysec
+    # valkey.conf に足す行
+    extra: ""
   master:
+    service:
+      ports:
+        redis: 6379
     persistence:
+      # AOF を PVC に置く（再起動の前後で部屋を保つため）。false なら emptyDir（Pod を作り直すと消える）
       enabled: true
+      # 空ならクラスタの既定。"-" なら storageClassName: ""
+      storageClass: ""
       size: 2Gi
+      accessModes: [ReadWriteOnce]
     resources:
       limits:
         memory: 512Mi
@@ -264,15 +277,47 @@ redis:
       requests:
         memory: 256Mi
         cpu: 100m
-  
-  # Redis configuration for production
-  commonConfiguration: |-
-    maxmemory 512mb
-    maxmemory-policy allkeys-lru
-    appendonly yes
-    save 900 1
-    save 300 10
-    save 60 10000
+    podSecurityContext:
+      # イメージの valkey ユーザー（uid 999・gid 1000）
+      runAsNonRoot: true
+      runAsUser: 999
+      runAsGroup: 1000
+      fsGroup: 1000
+      fsGroupChangePolicy: OnRootMismatch
+      seccompProfile:
+        type: RuntimeDefault
+    containerSecurityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: [ALL]
+    nodeSelector: {}
+    affinity: {}
+    tolerations: []
+  # redis_exporter を sidecar で動かす（Valkey にも対応する作者の公式イメージ）
+  metrics:
+    enabled: false
+    image:
+      repository: docker.io/oliver006/redis_exporter
+      tag: "v1.96.0"
+      digest: ""
+      pullPolicy: IfNotPresent
+    resources:
+      limits:
+        memory: 64Mi
+        cpu: 100m
+      requests:
+        memory: 32Mi
+        cpu: 10m
+    serviceMonitor:
+      # Prometheus Operator の CRD が要る
+      enabled: false
+      interval: 30s
+      labels: {}
+  # backend・instance の Pod からだけ 6379 に繋げる（metrics は metricsFrom、空なら同じ namespace から）
+  networkPolicy:
+    enabled: false
+    metricsFrom: []
 
 # Database (optional)
 postgresql:
@@ -388,10 +433,21 @@ instanceRuntime:
   replicas: 1
   # 1 Pod が持つ部屋の数の上限。backend は redis のとき、上限に達していない Pod から新しい部屋の置き場所を選ぶ。
   maxRooms: 1000
-  # SIGTERM のあと新しい部屋を断り（draining）、接続が抜けるのを待つ時間（directory: redis のときだけ。memory は待たない）。
-  # 過ぎたら残りの部屋を閉じ、クライアントは別の Pod へ繋ぎ直す。terminationGracePeriodSeconds は drainTimeout + 10 秒以上にする。
-  drainTimeout: 15s
-  terminationGracePeriodSeconds: 30
+  # 1 Pod が持つ WebSocket（部屋の参加者＋他の Pod へ中継している接続）の上限。0 なら無制限。
+  # 上限の 9 割から新しい部屋を受けず（backend は別の Pod に置く）、上限で新しい参加者の入室を断る（入室中の人は切らない）。
+  # 値の決め方は README の「Go インスタンスの自動スケール」。autoscaling の targetConnectionsPerPod は 9 割未満にする。
+  maxConnections: 0
+  # SIGTERM のあと新しい部屋を断り（draining）、この Pod に直接繋いでいるクライアントが抜けるのを待つ上限
+  # （directory: redis のときだけ。memory は待たない）。部屋は migrateAfter を過ぎたら別の Pod へ引っ越す（再接続なし）。
+  # 引っ越したあとも、直接繋いでいるクライアントはこの Pod が中継し続け、上限で切る。1 日続く部屋があるので 24h。
+  # 形式は Go の duration のうち h・m・s の組み合わせ（例: 24h, 1h30m, 15s）。
+  drainTimeout: 24h
+  # draining のとき、作ってからこれだけ経った部屋を引っ越す。若い部屋は空になるか、この時間に達するまで待つ。
+  migrateAfter: 3h
+  # drainTimeout のこれだけ前に、直接繋いでいるクライアントへ server:notice（切る時刻）を送る。
+  disconnectNotice: 10m
+  # 空なら drainTimeout + 30 秒。drainTimeout より短くすると、引っ越しや中継の途中で Pod が強制終了される。
+  terminationGracePeriodSeconds: ""
   # Go は GET /metrics（ポート realtime、認証なし、Ingress には出さない）で負荷を Prometheus 形式で出す（README の「自動スケール」）。
   metrics:
     # Prometheus Operator の ServiceMonitor を作る。CRD（monitoring.coreos.com）が無いクラスタでは有効にしない。
@@ -400,12 +456,25 @@ instanceRuntime:
       interval: 15s
       # Prometheus の serviceMonitorSelector に合わせるラベル（全件を拾う設定なら不要）
       labels: {}
-  # KEDA の ScaledObject で Go の Pod を自動で増やす（減らさない）。KEDA の CRD と、指標を集める Prometheus が要る。
+  # KEDA の ScaledObject で Go の Pod を自動で増減する。KEDA の CRD と、指標を集める Prometheus が要る。
   # directory: redis でないと描画で失敗する。有効にすると Deployment の replicas は書かず、台数は HPA が持つ。
+  # 有効にすると、Go が自分の Pod に pod-deletion-cost を書くための ServiceAccount・Role（pods の patch）・RoleBinding も作る。
   autoscaling:
     enabled: false
+    # Role は namespace の pods 全部の patch を許す（Pod 名は起動ごとに変わり resourceNames で絞れない）。
+    # ValidatingAdmissionPolicy で「instance の Pod の pod-deletion-cost の注釈だけ」に絞る。
+    # Kubernetes 1.30 以上。無いクラスタでは false にする（Role だけになる）。
+    deletionCostPolicy:
+      enabled: true
     maxReplicaCount: 5
     pollingInterval: 30
+    # 縮める速さ。消す Pod は pod-deletion-cost（直接の接続＋owner の部屋の参加者）の小さいものから選ばれ、
+    # SIGTERM のあと部屋を引っ越して直接の接続が抜けるのを待つ（drainTimeout）。enabled: false なら縮めない。
+    scaleDown:
+      enabled: true
+      stabilizationWindowSeconds: 900
+      podsPerPeriod: 1
+      periodSeconds: 600
     # 1 Pod に持たせたい接続数・部屋数・CPU。台数は trigger ごとの ceil(合計 / 閾値) の最大。
     # 接続数は websocket_connections の単位（中継は中継元と owner の両方で数える。2 Pod で利用者の約 1.5 倍）。
     # 負荷試験（#271。CPU 上限 1 コア、1 部屋 10 人・カーソル 20Hz・3 割が操作）で 1 Pod の指標が約 225 のとき
@@ -431,3 +500,7 @@ instanceRuntime:
     limits:
       cpu: 1000m
       memory: 1Gi
+  # Go の Pod の配置。負荷試験の生成器と別のノードに置く（docs/operations/load-testing.md）などに使う。
+  nodeSelector: {}
+  affinity: {}
+  tolerations: []

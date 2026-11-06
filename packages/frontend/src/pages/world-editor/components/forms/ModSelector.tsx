@@ -1,14 +1,18 @@
 import { resolveLatestVersion } from '@ubichill/loader';
 import { type Dependency, displayAuthorAccount } from '@ubichill/shared';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { HOST_MOD_SOURCE, MOD_CDN_URL } from '@/lib/modCdn';
 import { type AvailableMod, useAvailableMods } from '@/lib/mods/useAvailableMods';
 import { useModAuthor } from '@/lib/mods/useModAuthor';
 import { SETTINGS_KEYS, useSetting } from '@/lib/settings';
-import { checkModInstallation, type ModInstallationCheck } from '@/mods/modInstallation';
-import { MOD_BASE_URL } from '@/mods/modLoader';
-import { describeModRejection } from '@/mods/modRejection';
-import { fetchModAuthor, isUnsignedModAllowed } from '@/mods/modSignature';
 import { css, cx } from '@/styled-system/css';
+import {
+    checkModInstallation,
+    describeModRejection,
+    isUnsignedModAllowed,
+    type ModInstallationCheck,
+    modAuthorFetcher,
+} from '@/world';
 import { computeModDiff, type ModSelectionEntry, selectionToDependencies } from '../../lib/modSelection';
 import { editorButton } from '../../recipes/button';
 import { PanelSection } from '../PanelSection';
@@ -128,15 +132,11 @@ export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorP
         const attempt = ++attemptRef.current;
         setInstallation({ checking: true, failures: [] });
         const checks = await checkModInstallation(nextDependencies, {
-            baseUrl: MOD_BASE_URL,
+            baseUrl: MOD_CDN_URL,
             resolveLatest: resolveLatestVersion,
-            checkAuthor: fetchModAuthor,
+            checkAuthor: modAuthorFetcher(HOST_MOD_SOURCE),
             allowUnsigned: (baseUrl) =>
-                isUnsignedModAllowed({
-                    devHost: import.meta.env.DEV || import.meta.env.VITE_ENVIRONMENT === 'development',
-                    baseUrl,
-                    origin: window.location.origin,
-                }),
+                isUnsignedModAllowed({ devHost: HOST_MOD_SOURCE.devHost, baseUrl, origin: window.location.origin }),
         });
         if (attemptRef.current !== attempt) return;
         const failures = checks.filter((check) => !check.allowed);
@@ -451,7 +451,7 @@ export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorP
 }
 
 function SourceLabel({ mod }: { mod: AvailableMod }) {
-    const url = URL.parse(mod.baseUrl ?? MOD_BASE_URL, window.location.origin);
+    const url = URL.parse(mod.baseUrl ?? MOD_CDN_URL, window.location.origin);
     return (
         <div className={css({ fontSize: '11px', mt: '2px', color: 'textSubtle', overflowWrap: 'anywhere' })}>
             配信元: {url?.host ?? mod.sourceLabel}

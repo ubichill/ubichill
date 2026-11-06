@@ -1,42 +1,17 @@
-import type { ModLock } from './schemas/modLock.schema';
-
 // ゼロ依存の素朴な型（User/ComponentInstance/EntityTransform 等）は mod/entities.ts に分離。
 // barrel（このファイル）を経由せず SDK 側から直接 import できるようにするため
 // （dts-bundle-generator が schemas/* の zod スキーマまで読み込まずに済む、詳細は同ファイル参照）。
 export * from './mod/entities';
 
 import type {
-    AvailableComponent,
     ComponentInstance,
     CursorPosition,
     EntityEphemeralPayload,
     EntityPatchPayload,
     User,
     UserStatus,
-    WorldEnvironmentData,
 } from './mod/entities';
-
-// ============================================
-// World Snapshot (拡張版)
-// ============================================
-
-/**
- * ワールドスナップショットペイロード（flat ComponentInstance 単位）。
- *
- * GameObject に複数 Component が載っている場合、バックエンドが
- * 各 Component を 1 つの flat ComponentInstance に展開してから配信する。
- */
-export interface WorldSnapshotPayload {
-    entities: ComponentInstance[];
-    availableComponents: AvailableComponent[];
-    /** アクティブなmodIDのリスト */
-    activeMods: string[];
-    environment: WorldEnvironmentData;
-    /** ワールドに焼かれた mod 完全性ロック（あれば）。ロード時の hash 照合に使う。 */
-    lock?: ModLock;
-    /** ワールドの provenance kind（local/github/...）。表示用。 */
-    sourceKind?: string;
-}
+import type { WorldSnapshotPayload } from './world/instanceDefinition';
 
 // ============================================
 // 部屋の共有状態
@@ -71,6 +46,20 @@ export interface SharedStateUpdate {
 // Instance WebSocket Event Types
 // ============================================
 
+/** 他の参加者のカーソル 1 件（cursor:moved・cursors:moved の要素） */
+export interface CursorMovedPayload {
+    userId: string;
+    position: CursorPosition;
+    heldEntityId?: string | null;
+}
+
+/**
+ * world:join で宣言する、クライアントが受け取れる形。Go のインスタンスとフロントは別々にデプロイされるので、
+ * 配り方を変えるときは宣言したクライアントにだけ新しい形で送る（docs/PROTOCOLS.md の D）。
+ * - `cursors:batch`: カーソルを cursor:moved の代わりに cursors:moved でまとめて受ける
+ */
+export type InstanceFeature = 'cursors:batch';
+
 /**
  * サーバーからクライアントへ送信されるイベント
  */
@@ -85,7 +74,13 @@ export interface ServerToClientEvents {
     'user:left': (userId: string) => void;
 
     /** ユーザーのカーソル位置更新 */
-    'cursor:moved': (data: { userId: string; position: CursorPosition; heldEntityId?: string | null }) => void;
+    'cursor:moved': (data: CursorMovedPayload) => void;
+
+    /**
+     * まとめたカーソル（features に `cursors:batch` を宣言した接続だけが受ける）。利用者ごとに最新の 1 件で、自分の分は含まない。
+     * InstanceSocket が個々の cursor:moved に展開して配るので、このイベント自体は購読側に届かない。
+     */
+    'cursors:moved': (data: CursorMovedPayload[]) => void;
 
     /** ユーザーのステータス更新 */
     'status:changed': (data: { userId: string; status: UserStatus }) => void;
@@ -124,6 +119,9 @@ export interface ServerToClientEvents {
 
     /** 共有状態が他の参加者に更新された（書いた本人へは応答で返すので送らない） */
     'state:changed': (entry: SharedStateEntry) => void;
+
+    /** その場だけの知らせ（切断の予告など）。知らない種類も届くので parseServerNotice で読む */
+    'server:notice': (notice: unknown) => void;
 }
 
 /**
@@ -137,6 +135,8 @@ export interface ClientToServerEvents {
             /** 参加チケットの取得（SNS の REST）にだけ使い、インスタンスサーバーへは送らない。 */
             password?: string;
             user: Omit<User, 'id'>;
+            /** 受け取れる形の宣言。InstanceSocket が付けるので呼び出し側は指定しない。 */
+            features?: InstanceFeature[];
         },
         callback: (response: {
             success: boolean;
@@ -192,23 +192,6 @@ export interface ClientToServerEvents {
 // ============================================
 
 /**
- * デフォルト設定
- */
-export const DEFAULTS = {
-    /** ユーザーのデフォルトステータス */
-    USER_STATUS: 'online' as UserStatus,
-
-    /** カーソル位置の初期値 */
-    INITIAL_POSITION: { x: 0, y: 0 } as CursorPosition,
-
-    /** デフォルトのワールド環境 */
-    WORLD_ENVIRONMENT: {
-        backgroundColor: '#F0F8FF',
-        worldSize: { width: 2000, height: 1500 },
-    } as WorldEnvironmentData,
-} as const;
-
-/**
  * 環境変数キー定数
  * 各パッケージで散らばらないよう、ここで一元管理する
  */
@@ -258,6 +241,8 @@ export * from './mod/sandboxPolicy';
 export * from './mod/serviceToken';
 export * from './mod/types';
 export * from './mod/vnode';
+export * from './notification/activity';
+export * from './notification/serverNotice';
 export * from './schemas';
 export {
     confirmEnvelopeAuthor,
@@ -280,4 +265,7 @@ export * from './user/handle';
 export * from './user/limits';
 export * from './user/signingKeys';
 export * from './user/userSearch';
+export * from './world/devEvents';
 export * from './world/identity';
+export * from './world/instanceDefinition';
+export * from './world/resolve';

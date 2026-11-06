@@ -1,0 +1,163 @@
+{{- if .Values.redis.enabled }}
+{{- $master := .Values.redis.master }}
+{{- $persistence := $master.persistence | default dict }}
+{{- $auth := .Values.redis.auth.enabled }}
+{{- /* Bitnami の StatefulSet（<fullname>-master）とは名前を変える。selector・volumeClaimTemplates は変更できず、同じ名前では同期が失敗する */}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "ubichill.redis.fullname" . }}-valkey
+  labels:
+    {{- include "ubichill.labels" . | nindent 4 }}
+    component: redis
+spec:
+  replicas: 1
+  serviceName: {{ include "ubichill.redis.fullname" . }}-headless
+  selector:
+    matchLabels:
+      {{- include "ubichill.redis.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ubichill.redis.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include "ubichill.redis.config" . | sha256sum }}
+        {{- /* existingSecret の中身は描画から見えないので、変えたら Pod を手で再起動する（README の「Redis」） */}}
+        {{- if and $auth (not .Values.redis.auth.existingSecret) }}
+        checksum/password: {{ .Values.redis.auth.password | toString | sha256sum }}
+        {{- end }}
+    spec:
+      automountServiceAccountToken: false
+      {{- with $master.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $master.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $master.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $master.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: valkey
+          image: {{ include "ubichill.redis.imageRef" (dict "image" .Values.redis.image "key" "redis.image") }}
+          imagePullPolicy: {{ .Values.redis.image.pullPolicy | default "IfNotPresent" }}
+          {{- /* イメージの entrypoint（root で chown してから降格）を通さず、非 root のまま直接起動する */}}
+          command: [valkey-server]
+          args:
+            - /etc/valkey/valkey.conf
+            {{- if $auth }}
+            - --requirepass
+            - $(REDIS_PASSWORD)
+            {{- end }}
+          {{- if $auth }}
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ubichill.redis.secretName" . }}
+                  key: {{ include "ubichill.redis.secretKey" . }}
+            # valkey-cli（probe）が読む
+            - name: REDISCLI_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ubichill.redis.secretName" . }}
+                  key: {{ include "ubichill.redis.secretKey" . }}
+          {{- end }}
+          ports:
+            - name: redis
+              containerPort: 6379
+          readinessProbe:
+            exec:
+              command: [sh, -c, "valkey-cli -h 127.0.0.1 -p 6379 ping | grep -q PONG"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # AOF の読み込み中（LOADING）は生きているので再起動しない
+          livenessProbe:
+            exec:
+              command: [sh, -c, "valkey-cli -h 127.0.0.1 -p 6379 ping | grep -qE 'PONG|LOADING'"]
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          {{- with $master.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $master.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: config
+              mountPath: /etc/valkey
+              readOnly: true
+        {{- if .Values.redis.metrics.enabled }}
+        - name: metrics
+          image: {{ include "ubichill.redis.imageRef" (dict "image" .Values.redis.metrics.image "key" "redis.metrics.image") }}
+          imagePullPolicy: {{ .Values.redis.metrics.image.pullPolicy | default "IfNotPresent" }}
+          env:
+            - name: REDIS_ADDR
+              value: redis://127.0.0.1:6379
+            {{- if $auth }}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ubichill.redis.secretName" . }}
+                  key: {{ include "ubichill.redis.secretKey" . }}
+            {{- end }}
+          ports:
+            - name: metrics
+              containerPort: 9121
+          {{- with $master.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.redis.metrics.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "ubichill.redis.fullname" . }}-config
+        {{- if not $persistence.enabled }}
+        - name: data
+          emptyDir: {}
+        {{- end }}
+  {{- if $persistence.enabled }}
+  volumeClaimTemplates:
+    # apiVersion・kind はサーバーが補うので、書かないと Argo CD が差分として出し続ける
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: data
+        {{- /* 変更できない欄なので、chart の版のように変わるラベルは入れない */}}
+        labels:
+          {{- include "ubichill.redis.selectorLabels" . | nindent 10 }}
+      spec:
+        accessModes:
+          {{- toYaml ($persistence.accessModes | default (list "ReadWriteOnce")) | nindent 10 }}
+        {{- if $persistence.storageClass }}
+        {{- if eq "-" (toString $persistence.storageClass) }}
+        storageClassName: ""
+        {{- else }}
+        storageClassName: {{ $persistence.storageClass | quote }}
+        {{- end }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $persistence.size | default "2Gi" | quote }}
+  {{- end }}
+{{- end }}

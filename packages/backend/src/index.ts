@@ -1,6 +1,11 @@
 import http from 'node:http';
-import { cliAuthRequestRepository, pendingRegistrationRepository } from '@ubichill/db';
-import { LIMITS } from '@ubichill/shared';
+import {
+    announcementRepository,
+    cliAuthRequestRepository,
+    notificationRepository,
+    pendingRegistrationRepository,
+} from '@ubichill/db';
+import { LIMITS, NOTIFICATION_LIMITS } from '@ubichill/shared';
 import cors from 'cors';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
@@ -16,6 +21,7 @@ import { router as authorsRouter } from './routes/authors';
 import { router as cliAuthRouter } from './routes/cliAuth';
 import { router as federationRouter } from './routes/federation';
 import { router as instancesRouter } from './routes/instances';
+import { router as notificationsRouter } from './routes/notifications';
 import { router as serviceTokensRouter } from './routes/serviceTokens';
 import { router as socialRouter } from './routes/social';
 import { router as usersRouter } from './routes/users';
@@ -24,6 +30,7 @@ import { router as worldsRouter } from './routes/worlds';
 import { backendEvents, createRedisBackendBus } from './services/backendEvents';
 import { instanceReaper } from './services/instanceReaper';
 import { maintenanceGate } from './services/maintenance';
+import { createRedisNotificationBus, notificationHub } from './services/notificationHub';
 import { bootstrapOfficialAccount } from './services/officialAccountStore';
 import { worldRegistry } from './services/worldRegistry';
 import { logger } from './utils/logger';
@@ -116,6 +123,7 @@ app.use('/api/v1/worlds', worldsRouter);
 app.use('/api/v1/instances', instancesRouter);
 app.use('/api/v1/users', usersRouter);
 app.use('/api/v1/social', socialRouter);
+app.use('/api/v1/notifications', notificationsRouter);
 app.use('/api/v1/authors', authorsRouter);
 app.use('/api/v1/cli-auth', cliAuthRouter);
 app.use('/api/v1/federation', federationRouter);
@@ -138,11 +146,12 @@ function setupGracefulShutdown() {
         // 定期スイープを止め、ほかの backend がすぐ引き継げるようリースを手放す
         instanceReaper.stop();
         const released = maintenanceGate.release();
+        notificationHub.closeAll();
 
         // 新規 HTTP 接続を拒否し、既存リクエストの完了を待つ
         server.close(() => {
             console.log('✅ HTTP サーバー停止完了');
-            void Promise.allSettled([released, backendEvents.detach()]).then(() => {
+            void Promise.allSettled([released, backendEvents.detach(), notificationHub.detach()]).then(() => {
                 subscriber?.destroy();
                 redis?.destroy();
             });
@@ -171,7 +180,17 @@ async function startServer() {
         backendEvents
             .attach(createRedisBackendBus({ publisher: redis, subscriber, log: logger }))
             .catch((err: unknown) => logger.warn('キャッシュの無効化の知らせを購読できません（TTL で揃えます）:', err));
+        // 繋がるまでは、この台の SSE にだけ届ける
+        notificationHub
+            .attach(createRedisNotificationBus({ publisher: redis, subscriber, log: logger }))
+            .catch((err: unknown) => logger.warn('通知の配送を購読できません（この台の接続にだけ届けます）:', err));
     }
+
+    const cleanOldNotifications = async () => {
+        const cutoff = new Date(Date.now() - NOTIFICATION_LIMITS.RETENTION_DAYS * 24 * 60 * 60 * 1000);
+        await notificationRepository.deleteExpired(cutoff, NOTIFICATION_LIMITS.MAX_PER_RECIPIENT);
+        await announcementRepository.deleteExpired(cutoff);
+    };
 
     // 期限切れの CLI 認可の要求と仮登録を消す（どちらも認証なしで作れるので溜めない）。reaper と同じリースを持つ 1 台だけが行う
     const cleanExpiredRequests = async () => {
@@ -188,6 +207,7 @@ async function startServer() {
                 worldRegistry
                     .pruneAllVersions()
                     .catch((err: unknown) => console.error('ワールドの古い版の掃除に失敗:', err)),
+                cleanOldNotifications().catch((err: unknown) => console.error('古い通知の掃除に失敗:', err)),
             ]);
         });
     };

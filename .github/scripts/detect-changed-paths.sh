@@ -55,7 +55,7 @@ while IFS= read -r f; do
             backend=true ;;
     esac
     case "${f}" in
-        packages/react/*|packages/frontend/*|packages/bff/*|packages/shared/*|packages/sdk/*|packages/ecs/*|packages/sandbox/*|packages/ui-renderer/*|packages/loader/*|packages/runtime/*|packages/core-components/*|mods/*|scripts/build-workers.mjs|Dockerfile|pnpm-lock.yaml)
+        packages/react/*|packages/frontend/*|packages/bff/*|packages/shared/*|packages/sdk/*|packages/cli/*|packages/ecs/*|packages/sandbox/*|packages/ui-renderer/*|packages/loader/*|packages/runtime/*|packages/core-components/*|mods/*|scripts/build-workers.mjs|Dockerfile|pnpm-lock.yaml)
             frontend=true ;;
     esac
     case "${f}" in

@@ -140,16 +140,23 @@ jobs:
       - name: Verify world locks
         run: pnpm verify:world-locks
 
-      # `pnpm build:sdk` が生成する npm 公開物（ubichill パッケージ）が実際にインストール・
-      # 実行可能かを確認する fail-closed ゲート。
-      - name: Build npm publish package
-        run: pnpm build:sdk
+      # world.html（SNS 無しでワールドを動かす画面）の出力に SNS のものが入っていないか。
+      # ソースの import は check:architecture（world-app-closure）が辿る。ここは実際に配るファイルを見る
+      - name: Build world.html
+        run: pnpm --filter @ubichill/frontend build:world
 
-      - name: Smoke-test npm publish package
+      - name: Verify world.html bundle has no SNS code
+        run: node scripts/check-world-app-bundle.mjs
+
+      # npm 公開物（ubichill・@ubichill/cli）が実際にインストール・実行可能かを確認する fail-closed ゲート。
+      - name: Build npm publish packages
+        run: pnpm build:sdk && pnpm build:cli
+
+      - name: Smoke-test npm publish packages
         run: |
-          cd packages/sdk/dist-npm
+          (cd packages/sdk/dist-npm && node -e "import('./index.js').then(m => { if (!m.UbiSDK) throw new Error('UbiSDK not exported'); })")
+          cd packages/cli/dist-npm
           npm install --no-save
-          node -e "import('./index.js').then(m => { if (!m.UbiSDK) throw new Error('UbiSDK not exported'); })"
           node cli.js verify --dist-dir=../../../dist/mods
 
       # mods/* は pnpm workspace の外なので `pnpm -r exec tsc` (typecheck ジョブ) に含まれない。
@@ -170,7 +177,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          # check-drift.mjs が直近publishタグ(ubichill@*)をworktreeでビルド・比較するため、
+          # check-npm-drift.mjs が直近publishタグ(ubichill@*、@ubichill/cli@*)をworktreeでビルド・比較するため、
           # タグと履歴が必要（デフォルトのshallow checkoutでは見えない）。
           fetch-depth: 0
           fetch-tags: true
@@ -185,10 +192,53 @@ jobs:
       - name: Verify SDK type bundle
         run: pnpm verify:sdk-types
 
-      # sdk がインライン展開する shared/ecs/loader を変更して sdk 向け changeset を
+      # sdk・cli がインライン展開する shared/ecs/loader を変更して changeset を
       # 付け忘れた場合の fail-closed 検査。
-      - name: Check for undetected SDK build drift
-        run: node packages/sdk/check-drift.mjs
+      - name: Check for undetected npm build drift
+        run: node scripts/check-npm-drift.mjs packages/sdk packages/cli packages/instance
+
+  # Go のインスタンスサーバーの npm 配布（@ubichill/instance-<os>-<cpu>）が各 OS で入って起動するか。
+  # cli の optionalDependencies はレジストリの版を指すので、未公開の版でも試せるよう手元の tgz を直接入れる
+  verify-instance-npm:
+    name: Verify instance npm package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/setup
+        with:
+          install-args: --ignore-scripts
+
+      - name: Build shared
+        run: pnpm turbo build --filter=@ubichill/shared
+
+      - name: Build cli and instance packages
+        run: pnpm build:cli && pnpm build:instance
+
+      - name: Install the packed cli and this platform's instance package
+        shell: bash
+        run: |
+          set -eu
+          PLATFORM="$(node -p "process.platform + '-' + process.arch")"
+          mkdir -p "$RUNNER_TEMP/consumer" && cd "$RUNNER_TEMP/consumer"
+          npm init -y > /dev/null
+          npm pack "$GITHUB_WORKSPACE/packages/cli/dist-npm" --pack-destination . > /dev/null
+          npm pack "$GITHUB_WORKSPACE/packages/instance/dist-npm/$PLATFORM" --pack-destination . > /dev/null
+          npm install --omit=optional ./ubichill-cli-*.tgz ./ubichill-instance-*.tgz
+          # 引数なしは使い方を出して exit 1 で終わる。起動して使い方が出ることだけを確かめる
+          usage="$(node node_modules/@ubichill/cli/cli.js 2>&1 || true)"
+          echo "$usage"
+          echo "$usage" | grep -q '使い方: ubichill'
+
+      - name: Start the Go instance server from node_modules
+        shell: bash
+        run: node packages/instance/smoke.mjs --dir="$RUNNER_TEMP/consumer"
 
   # 変更検知: PR 時はパスフィルタ、push to main では全て true を返す。
   detect-changes:
@@ -232,7 +282,8 @@ jobs:
         run: .github/scripts/detect-changed-paths.sh
 
   # ── Docker ビルド（並列）────────────────────────────────────────────────
-  # push to main       → 変更のあったイメージを :latest / :sha-<sha> / :<version> で
+  # push to main       → 変更のあったイメージを :latest / :sha-<sha> / :main-<sha> / :<version> で
+  #   （:main-<sha> は dev 環境が追う。:sha-<sha> は PR のプレビューにも付くので区別する）
   # PR + preview ラベル → 全イメージを :pr-<番号> / :sha-<sha> でビルド
   #   （プレビュー環境はフルスタックが要るため detect-changes で絞らず全部作る）
   # ラベル無しの PR      → ビルドしない（lint / typecheck のみ）

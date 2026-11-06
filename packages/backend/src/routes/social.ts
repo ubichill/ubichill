@@ -22,6 +22,7 @@ import { selfDomain } from '../services/authorKeys';
 import { friendEdgesOf, friendIdsOf } from '../services/friends';
 import { instanceManager } from '../services/instanceManager';
 import { instanceRuntime } from '../services/instanceRuntime';
+import { notificationService, notifyInBackground } from '../services/notificationService';
 
 const router = Router();
 
@@ -116,7 +117,11 @@ router.post('/friends', requireAuth, async (req, res) => {
     if (!target || target.id === SYSTEM_USER_ID) return res.status(404).json({ error: 'User not found' });
     if (target.id === me) return res.status(400).json({ error: '自分には申請できません' });
     const edges = await userFriendRepository.requestOrAccept(me, target.id);
-    return res.json({ friendship: friendshipOf(edges, me, target.id) });
+    const friendship = friendshipOf(edges, me, target.id);
+    // 申請し直し・承認済みへの申請でも呼ぶ（同じ出来事は dedupeKey で 1 つにまとまる）
+    if (friendship === 'outgoing') notifyInBackground(notificationService.followRequested(me, target.id), '申請');
+    if (friendship === 'friends') notifyInBackground(notificationService.friendAccepted(me, target.id), '承認');
+    return res.json({ friendship });
 });
 
 // 自分への申請を承認する。
@@ -124,6 +129,7 @@ router.post('/friends/:userId/accept', requireAuth, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const accepted = await userFriendRepository.accept(req.user.id, String(req.params.userId));
     if (!accepted) return res.status(404).json({ error: '申請が見つかりません' });
+    notifyInBackground(notificationService.friendAccepted(req.user.id, String(req.params.userId)), '承認');
     return res.json({ friendship: 'friends' });
 });
 
@@ -132,6 +138,7 @@ router.delete('/friends/:userId', requireAuth, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const removed = await userFriendRepository.remove(req.user.id, String(req.params.userId));
     if (!removed) return res.status(404).json({ error: 'フレンド・申請が見つかりません' });
+    notifyInBackground(notificationService.friendshipRemoved(req.user.id, String(req.params.userId)), '関係の解消');
     return res.status(204).send();
 });
 

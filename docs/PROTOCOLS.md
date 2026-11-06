@@ -21,7 +21,7 @@ Ubichill の約束ごと（プロトコル・データの形式・API）を、**
 | 作者署名（ワールド） | `version: 2`・`kind: 'world'` | `shared/signature/envelope.ts`（内容のハッシュは `shared/world/identity.ts`） | `<world>.sig.json` |
 | 作者署名（mod） | `version: 2`・`kind: 'mod'` | `shared/signature/envelope.ts`（内容のハッシュは `shared/mod/modSignature.ts`） | `v<版>/lock.sig.json` |
 | サービストークン | JWT（EdDSA） | `shared/mod/serviceToken.ts` | 外部サービスへ渡す |
-| CLI・CI の認証情報 | `version: 1` | `sdk/cli/credentials.ts` | `~/.config/ubichill`・CI の Secret |
+| CLI・CI の認証情報 | `version: 1` | `cli/src/credentials.ts` | `~/.config/ubichill`・CI の Secret |
 
 ### 作者署名の形式（版 2）
 
@@ -55,7 +55,7 @@ Ubichill の約束ごと（プロトコル・データの形式・API）を、**
 - 足す: `PROTOCOL_VERSION` を +1 し、契約に新しい版を足す。消す・意味を変える: さらに `MIN_COMPATIBLE_PROTOCOL_VERSION` を上げる。どちらも忘れると CI が落ちる。
 - **CI が見るのはコマンド・イベントの名前の増減だけ**。ペイロードの型や意味を変えたこと（項目を必須にした・単位を変えたなど）は検知しない。
   `shared/mod/protocol.ts` と `shared/mod/types.ts` のペイロードの型を変える PR は、互換を壊していないかをレビューで確かめる。
-- SDK のビルド結果が変わったのに changeset が無ければ落ちる（`packages/sdk/check-drift.mjs`）。
+- SDK のビルド結果が変わったのに changeset が無ければ落ちる（`scripts/check-npm-drift.mjs`）。
 
 ## C. サーバーの間の API
 
@@ -74,6 +74,17 @@ Ubichill の約束ごと（プロトコル・データの形式・API）を、**
 
 インスタンスのプロトコル（`protocol/instance`）も D で、イベントを足す・消すときに互換の層を作らない。
 `protocolVersion` を上げると古いタブは入室そのものを確定した失敗にするので、上げるのは接続・入室の手順やフレームの形を変えたときだけにする（イベントの増減では上げない）。
+例: `server:notice`（その場だけの知らせ）はイベントを足しただけなので上げない。古いタブは知らないイベントを読み飛ばし、新しいタブも知らない `kind` を読み飛ばす。
+
+ただし Go のインスタンスはフロント・backend と別のイメージで、別々にデプロイされる（新しいフロントが古い Go に繋ぐ時間も、その逆もある）。
+`VersionSkewGuard` は backend の版しか見ないので、**今あるイベントの配り方を変えるときは `world:join` の `features` で宣言させ、宣言した接続にだけ新しい形で送る**。
+宣言しない接続には今の形を送り続ける（外部の実装・e2e の `apiSmoke` もこちら）。宣言を足すのはイベントの増減と同じ扱いで、`protocolVersion` は上げない。
+例: `cursors:batch`（カーソルを `cursors:moved` でまとめて受ける。`protocol/instance/README.md` の「受け取れる形の宣言」）。
+
+`ubichill dev` の SSE（`/__ubichill/events`）も D。dev サーバーと world.html は同じ CLI に入っていて版がずれない（形は `shared/world/devEvents.ts` だけで決める）。
+
+通知の API（`/api/v1/notifications`・SSE）も D。ただし通知の形（`shared/notification/activity.ts`）は ActivityStreams 2.0 に寄せてあり、
+ほかのサーバーと送り合うようになったら、その送り合う形は C（足すだけ）として扱う。
 
 ## 設計の規則を CI で守る
 
@@ -81,7 +92,8 @@ Ubichill の約束ごと（プロトコル・データの形式・API）を、**
 
 | 規則 | 守るもの |
 | --- | --- |
-| `host-runs-mods-without-backend` | Host は SNS backend の無い単体モードでも mod を動かす（mod の経路から Host の API を呼ばない） |
+| `host-runs-mods-without-backend` | Host は SNS backend の無い `world.html` でも mod を動かす（mod の経路から Host の API を呼ばない） |
+| `world-app-closure` | `world.html` から辿れるコード（`src/world`・`src/worldApp`）は SNS（認証・router・backend API）を読み込まない。間接の import も含めて辿る |
 | `shared-is-pure` | shared は Node・DOM・ネットワークに依存しない（ブラウザ・backend・CLI が同じ規則を使う） |
 | `loader-main-is-browser-safe` | loader の既定の入口はブラウザで読める |
 | `backend-runs-built-packages-only` | backend はソースのまま配るパッケージに依存しない |

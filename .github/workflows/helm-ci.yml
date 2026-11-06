@@ -6,6 +6,7 @@ on:
     paths:
       - "charts/**"
       - "scripts/check-chart.mjs"
+      - "scripts/check-loadtest-chart.mjs"
       - ".github/workflows/helm-ci.yml"
   workflow_dispatch:
 
@@ -60,6 +61,12 @@ jobs:
             --set postgresql.auth.password=test-app-password \
             --set redis.auth.password=test-redis-password
 
+      # 負荷試験の chart（k6 の TestRun）。本番を向いた値で描画が落ちること・対象の URL も確かめる
+      - name: Lint load test chart
+        run: |
+          helm lint charts/ubichill-loadtest --set testid=ci
+          node scripts/check-loadtest-chart.mjs
+
       - name: Render chart with dev values
         run: |
           helm template ubichill-dev charts/ubichill \
@@ -82,6 +89,6 @@ jobs:
             --set redis.auth.password=test-redis-password \
             > /tmp/ubichill-prod.yaml
 
-      # lint は書式しか見ないので、backend と instance に渡る Redis の env を描画結果で確かめる
+      # lint は書式しか見ないので、backend と instance に渡る Redis の env と同梱の Valkey を描画結果で確かめる
       - name: Check rendered Redis env
         run: pnpm check:chart

@@ -21,6 +21,9 @@
         "cursor:moved": {
           "$ref": "#/components/messages/cursor:moved"
         },
+        "cursors:moved": {
+          "$ref": "#/components/messages/cursors:moved"
+        },
         "entity:create": {
           "$ref": "#/components/messages/entity:create"
         },
@@ -50,6 +53,9 @@
         },
         "reply": {
           "$ref": "#/components/messages/reply"
+        },
+        "server:notice": {
+          "$ref": "#/components/messages/server:notice"
         },
         "session:replaced": {
           "$ref": "#/components/messages/session:replaced"
@@ -148,6 +154,9 @@
           "$ref": "#/channels/instance/messages/cursor:moved"
         },
         {
+          "$ref": "#/channels/instance/messages/cursors:moved"
+        },
+        {
           "$ref": "#/channels/instance/messages/status:changed"
         },
         {
@@ -176,6 +185,9 @@
         },
         {
           "$ref": "#/channels/instance/messages/instance:closing"
+        },
+        {
+          "$ref": "#/channels/instance/messages/server:notice"
         },
         {
           "$ref": "#/channels/instance/messages/reply"
@@ -357,7 +369,70 @@
               "type": "string",
               "maxLength": 100
             },
-            "data": {}
+            "data": {
+              "type": "object",
+              "properties": {
+                "userId": {
+                  "type": "string"
+                },
+                "position": {
+                  "type": "object",
+                  "properties": {
+                    "x": {
+                      "type": "number",
+                      "minimum": -10000000.0,
+                      "maximum": 10000000.0
+                    },
+                    "y": {
+                      "type": "number",
+                      "minimum": -10000000.0,
+                      "maximum": 10000000.0
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "additionalProperties": false
+                },
+                "heldEntityId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 64
+                }
+              },
+              "required": [
+                "userId",
+                "position"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "summary": "One cursor move of another participant. Sent to connections that did not declare the cursors:batch feature."
+      },
+      "cursors:moved": {
+        "name": "cursors:moved",
+        "summary": "Latest cursor of each participant who moved during the batch interval (server flag --cursor-batch-interval, default 50ms), excluding the receiver. Sent only to connections that declared the cursors:batch feature in world:join; they receive no cursor:moved. Volatile: may be dropped when the connection queue is full.",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event",
+            "data"
+          ],
+          "properties": {
+            "event": {
+              "const": "cursors:moved"
+            },
+            "data": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/messages/cursor:moved/payload/properties/data"
+              }
+            }
           },
           "additionalProperties": false
         }
@@ -595,6 +670,44 @@
           "additionalProperties": false
         }
       },
+      "server:notice": {
+        "name": "server:notice",
+        "summary": "Ephemeral notice (not stored). Clients ignore unknown kinds.",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event",
+            "data"
+          ],
+          "properties": {
+            "event": {
+              "const": "server:notice"
+            },
+            "data": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "kind",
+                    "at"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "disconnect"
+                    },
+                    "at": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "Epoch milliseconds when the server closes this connection. The client reconnects automatically."
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      },
       "session:replaced": {
         "name": "session:replaced",
         "payload": {
@@ -685,6 +798,13 @@
                     }
                   },
                   "additionalProperties": true
+                },
+                "features": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Delivery forms this client understands. The server ignores unknown values. cursors:batch: receive cursors:moved instead of cursor:moved."
                 }
               },
               "required": [

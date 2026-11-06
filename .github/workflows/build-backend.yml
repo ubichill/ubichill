@@ -52,8 +52,8 @@ jobs:
           fi
           pnpm turbo build --filter=@ubichill/shared
           # 公開環境が取り消されていたら、署名しても配信先で作者が付かないので先に止める
-          node packages/sdk/cli/index.ts whoami
-          node packages/sdk/cli/index.ts publish worlds/*.yaml --out=worlds --no-install
+          node packages/cli/src/index.ts whoami
+          node packages/cli/src/index.ts publish worlds/*.yaml --out=worlds --no-install
 
       - uses: docker/login-action@v4
         with:
@@ -73,6 +73,7 @@ jobs:
             COMMIT_HASH=${{ steps.versions.outputs.short-sha }}
           tags: |
             ${{ github.event_name == 'push' && format('{0}/{1}/{2}:latest', env.REGISTRY, github.repository_owner, env.IMAGE_NAME) || '' }}
+            ${{ github.event_name == 'push' && format('{0}/{1}/{2}:main-{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, steps.versions.outputs.short-sha) || '' }}
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:sha-${{ steps.versions.outputs.short-sha }}
             ${{ github.event_name == 'pull_request' && format('{0}/{1}/{2}:sha-{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, github.event.pull_request.head.sha) || '' }}
             ${{ github.event_name == 'pull_request' && format('{0}/{1}/{2}:pr-{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, github.event.pull_request.number) || '' }}

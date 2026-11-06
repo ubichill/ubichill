@@ -306,7 +306,7 @@ HTTP契約・型生成はOpenAPI、WebSocket契約はAsyncAPI。詳細は
 
 **Client → Server**: `world:join` / `cursor:move` / `entity:create` / `entity:patch` / `entity:ephemeral` / `entity:delete`
 
-**Server → Client**: `world:snapshot` / `user:joined` / `user:left` / `entity:created` / `entity:patched` / `entity:deleted`
+**Server → Client**: `world:snapshot` / `user:joined` / `user:left` / `entity:created` / `entity:patched` / `entity:deleted` / `server:notice`（その場だけの知らせ。今は切断の予告 `{kind:"disconnect",at}` だけ。知らない kind は読み飛ばす）
 
 ---
 
@@ -319,3 +319,10 @@ HTTP契約・型生成はOpenAPI、WebSocket契約はAsyncAPI。詳細は
 | `/worlds` | 一覧・詳細 | 作成 | 更新・削除（**作成者のみ**） |
 | `/instances` | 一覧・詳細 | 作成（10件/h） | 削除（**リーダーのみ**） |
 | `/users/me` | 自分の情報 | — | — |
+| `/notifications` | 一覧（`?cursor=&limit=`、お知らせを含む新しい順）・`/unread-count` | `/read`（`{ids}` か `{all:true}`） | — |
+| `/notifications/stream` | SSE（`notification`・`read`・`removed`、25 秒ごとに keep-alive、15 分で閉じる） | — | — |
+| `/notifications/announcements` | 一覧 | 作成（**公式アカウントのみ**、20件/h） | — |
+
+通知の形は ActivityStreams 2.0 に寄せる（`shared/notification/activity.ts`）。フレンド申請 = `Follow`、承認 = `Accept`、
+ワールドのお気に入り = `Like`（object は拡張の型 `World`）、運営のお知らせ = `Announce`（object は `Note`）。
+SSE は取りこぼしがあり得る（Redis の障害・切断中）ので、クライアントは繋ぎ直すたびに一覧を取り直す。
