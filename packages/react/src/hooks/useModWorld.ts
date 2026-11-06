@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import {
     collectAncestorGameObjectIds,
     collectSubtreeGameObjectIds,
+    type DeclaredRefTargets,
     isAccessible as isAccessibleInScope,
     isVisibleInScope,
     type WatchScope,
@@ -18,16 +19,16 @@ export function useModWorld(
     scope: WatchScope = 'subtree',
     entityId?: string,
     /**
-     * この Worker が entityRef/entityRefArray フィールドで明示的にワイヤリングした GameObject id 集合
-     * (access に関わらず全件)。watchScope 外でも、ここに含まれる id への読み取りだけは許可する。
+     * この Worker が entityRef/entityRefArray フィールドで明示的にワイヤリングした相手
+     * (access に関わらず全件)。watchScope 外でも、ここに含まれる相手への読み取りだけは許可する。
      */
-    declaredReadTargets?: Set<string>,
+    declaredReadTargets?: DeclaredRefTargets,
     /**
      * 上記のうち `access: 'write'` を明示したもののみのサブセット。
-     * watchScope 外でこの集合に含まれる id への書き込みを許可する。
+     * watchScope 外でここに含まれる相手への書き込みを許可する。
      * 削除はここに含まれていても許可しない (destroy は watchScope のみで判定する)。
      */
-    declaredWriteTargets?: Set<string>,
+    declaredWriteTargets?: DeclaredRefTargets,
 ): Pick<HostHandlers, 'onGetEntity' | 'onQueryEntities' | 'onCreateEntity' | 'onUpdateEntity' | 'onDestroyEntity'> {
     const { entities, createEntity, patchEntity, deleteEntity } = useWorld();
 

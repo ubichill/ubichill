@@ -11,8 +11,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { css } from '@/styled-system/css';
 import type { AvailableEntityKind, DataFields } from '../../hooks/useAvailableEntityKinds';
 import { COMPONENT_DRAG_MIME } from '../../lib/dnd';
+import { uiMarkupNotices } from '../../lib/uiMarkupNotices';
 import { ColliderDataFields } from './ColliderDataFields';
 import { DataFormFields } from './DataFormFields';
+import { EditorNotices } from './EditorNotices';
 import { Chevron, LogicOnlyBadge, MiniTab, NumField, RenderKindBadge, Section } from './primitives';
 import { inputStyle, mergeDataFields, textareaStyle } from './shared';
 
@@ -297,6 +299,9 @@ function ComponentDataEditor({
     }, [component]);
 
     const data = (component.data as Record<string, unknown> | undefined) ?? {};
+    // 入力のたびに描き直すので、markup が変わったときだけ解析する
+    const markup = component.type === CORE_COMPONENT_TYPES.ui && typeof data.markup === 'string' ? data.markup : '';
+    const markupNotices = useMemo(() => uiMarkupNotices(markup), [markup]);
     const setData = (next: Record<string, unknown>) => {
         onChange((prev) => ({
             ...prev,
@@ -315,6 +320,16 @@ function ComponentDataEditor({
             {dataTab === 'form' ? (
                 component.type === CORE_COMPONENT_TYPES.collider ? (
                     <ColliderDataFields data={data} onChange={setData} />
+                ) : component.type === CORE_COMPONENT_TYPES.ui ? (
+                    <>
+                        <DataFormFields
+                            data={data}
+                            dataFields={dataFields}
+                            allEntities={allEntities}
+                            onChange={setData}
+                        />
+                        <EditorNotices messages={markupNotices} />
+                    </>
                 ) : (
                     <DataFormFields data={data} dataFields={dataFields} allEntities={allEntities} onChange={setData} />
                 )

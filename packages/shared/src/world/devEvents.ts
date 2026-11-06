@@ -7,8 +7,14 @@
  * - `diagnostics`: 今の失敗の一覧。空なら診断を消す
  */
 
-/** 診断の 1 件。ビルドの失敗は mod ごと、ワールドの失敗（解決・検証・Go の拒否）は 1 件。 */
-export type DevFailure = { kind: 'build'; mod: string; message: string } | { kind: 'world'; message: string };
+/**
+ * 診断の 1 件。ビルドの失敗は mod ごと、ワールドの失敗（解決・検証・Go の拒否）は 1 件。
+ * 参照の問題（未設定の必須参照など）は止めない警告で、問題ごとに 1 件。
+ */
+export type DevFailure =
+    | { kind: 'build'; mod: string; message: string }
+    | { kind: 'world'; message: string }
+    | { kind: 'reference'; message: string };
 
 export type DevEvent =
     | { type: 'generation'; buildId: string; instanceId: string }
@@ -28,6 +34,7 @@ const parseFailure = (value: unknown): DevFailure[] => {
     if (typeof f.message !== 'string') return [];
     if (f.kind === 'build' && typeof f.mod === 'string') return [{ kind: 'build', mod: f.mod, message: f.message }];
     if (f.kind === 'world') return [{ kind: 'world', message: f.message }];
+    if (f.kind === 'reference') return [{ kind: 'reference', message: f.message }];
     return [];
 };
 

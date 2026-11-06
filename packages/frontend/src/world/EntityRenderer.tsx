@@ -1,9 +1,11 @@
-import { isCoreComponentType } from '@ubichill/core-components';
+import { CORE_COMPONENT_TYPES, isCoreComponentType } from '@ubichill/core-components';
 import { isWorkerMod, useHold, useSocket, useWorld, WorkerModHost } from '@ubichill/react';
 import { EMPTY_ENTITY_TYPE, OVERLAY_FILL, resolveOverlayMode } from '@ubichill/shared';
 import type React from 'react';
 import { useEffect, useRef } from 'react';
 import { Z_INDEX } from '@/styles/layers';
+import { CoreMediaSurface } from './CoreMediaSurface';
+import { CoreUiPanel } from './CoreUiPanel';
 import { HeldEntityPositionRegistry } from './HeldEntityPositionRegistry';
 import { readHeldOffset } from './heldOffset';
 import { useModRegistry } from './ModRegistryContext';
@@ -46,6 +48,8 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({ entityId }) => {
     }, [mod, entityType, loadMod]);
 
     if (!entity) return null;
+    if (entity.type === CORE_COMPONENT_TYPES.media) return <CoreMediaSurface entity={entity} />;
+    if (entity.type === CORE_COMPONENT_TYPES.ui) return <CoreUiPanel entity={entity} />;
     if (isCoreComponentType(entity.type)) return null;
     if (!mod) return null;
     if (!isWorkerMod(mod)) return null;

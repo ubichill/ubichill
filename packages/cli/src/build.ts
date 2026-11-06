@@ -7,7 +7,9 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import {
+    type DataFieldsLike,
     detectCapabilities,
+    frameMediaTargets,
     MOD_EXPORTS_GLOBAL_NAME,
     type ModLockComponent,
     type ModLockEntry,
@@ -205,6 +207,23 @@ function parseValue(src: string, pos: ParsePos): unknown {
     if (parseKeyword(src, pos, 'null')) return null;
     if (c === '-' || (c >= '0' && c <= '9')) return parseNumber(src, pos);
     throw new Error(`config: 未対応のトークン (pos ${pos.i}): ${JSON.stringify(src.slice(pos.i, pos.i + 20))}`);
+}
+
+/**
+ * `mediaTargets`（自分の枠に描く動画）と、`core:media` を指す参照フィールドで同じ名前を使っているもの。
+ * どちらも `Ubi.media.*` の targetId になるので、同じ名前だと 1 つの targetId に `<video>` が 2 つできる
+ * （Host は参照の方を使う）。ビルドで止めて名前を分けてもらう。
+ */
+export function mediaTargetCollisions(config: Record<string, unknown> | null): string[] {
+    const mediaTargets = Array.isArray(config?.mediaTargets)
+        ? config.mediaTargets.filter((t): t is string => typeof t === 'string')
+        : [];
+    const dataFields =
+        typeof config?.dataFields === 'object' && config.dataFields !== null
+            ? (config.dataFields as DataFieldsLike)
+            : undefined;
+    const framed = new Set(frameMediaTargets(mediaTargets, dataFields));
+    return mediaTargets.filter((name) => !framed.has(name));
 }
 
 /** `export const config =` の内容を JSON 互換リテラルとしてのみ抽出する（コード実行なし）。 */
@@ -508,6 +527,12 @@ export async function compileMod(modDir: string): Promise<ModArtifacts> {
         // config からメタデータを取得
         const srcCode = readFileSync(workerPath, 'utf-8');
         const config = extractConfigFromCode(srcCode);
+        const collisions = mediaTargetCollisions(config);
+        if (collisions.length > 0) {
+            throw new Error(
+                `[${componentType}] mediaTargets の ${collisions.join(', ')} は core:media を指す参照フィールドと同じ名前です。どちらも Ubi.media の targetId になるので、名前を分けてください`,
+            );
+        }
 
         // capability をコードから自動検出。
         // `export default`（ui:render の自動マウント対象）は globalName バンドル後には

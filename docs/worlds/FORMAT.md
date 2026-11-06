@@ -47,21 +47,84 @@ spec:
 
 ```yaml
 initialEntities:
-  - id: screen-1
+  - id: tv
     transform: { x: 0, y: 0, z: 0, scale: 1, rotation: 0 }   # w/h は任意
     tags: [surface]                                          # 任意（kebab 系）
     components:
-      - type: video-player:screen
-        data: { url: "https://..." }
+      - type: example:screen
     children:
-      - id: controls-1
+      - id: remote
         transform: { x: 0, y: 320 }
         components:
-          - type: video-player:controls
-            data: {}
+          - type: example:remote
+            data:
+              screen: tv          # 参照フィールド: example:screen を持つ Entity の id
 ```
 
+### 参照フィールド（Component 同士の配線）
+
+Component が別の Component と連携するときは、mod が `dataFields` に参照フィールド（`entityRef` / `entityRefArray`）を
+宣言し、作者が値に **Entity の id** を書く（World Editor では Hierarchy からドロップする）。
+
+- 参照が `component: <型>` を宣言していれば、指す Entity はその型の Component を持っていなければならない。
+- `required` の参照が未設定・指す Entity が無い・型が合わないときは、World Editor（Hierarchy の印と Inspector）と
+  `ubichill dev`（ターミナル）が知らせる。ワールドは作れるが、その参照に送るイベントは届かない。
+- 相手を置く場所は自由（同じ Entity・子・別の木のどこでもよい）。親子や兄弟の形で連携を決める mod では、
+  その mod の説明に書かれた形に従う。
+
 上限（`LIMITS`）: initialEntities 最大 500、Component/Entity 最大 32、tags 最大 10、YAML 100KB。
+
+### 組み込み Component（`core:*`）
+
+Host が持つ Component。mod を読み込まずに使え、`dependencies` にも書かない。`core:` は予約名で、ここに無い型は検証で落ちる。
+クライアントからは作成・変更できない（ワールド定義でだけ置ける）。
+
+| 型 | 役割 | `data` |
+|---|---|---|
+| `core:collider` | 当たり判定の形 | `shape: rect`（`size: { w, h }` か `entity`）または `shape: circle`（`radius`）。`offset`・`isTrigger`・`layer`・`mask` |
+| `core:media` | 動画を描く場所（Unity の MeshRenderer に当たる）。何を再生するかは、参照フィールドでこの Entity を指した mod が決める。1 つの面を指せる出力は 1 つだけ（2 つ以上が指す・1 Entity に 2 つ置くと何も描かない）。描けるのはワールド定義に置いた Component の出力だけ（部屋の中で作られた Component は数えない） | `fit: contain`（既定・全体を見せる）か `cover`（枠を埋める） |
+| `core:ui` | 作者が書く UI（看板・説明・リンクなど）。mod を作らずに置ける | `markup`: HTML 風の文字列（2 万文字まで） |
+
+```yaml
+- id: tv
+  transform: { x: 100, y: 100, w: 640, h: 360 }
+  components:
+    - type: core:media
+      data: { fit: contain }
+- id: player
+  transform: { x: 100, y: 480 }
+  components:
+    - type: video-player:controls
+      data:
+        screen: tv            # core:media を持つ Entity
+```
+
+`core:ui` の `markup` は、mod の UI と同じ描画（Shadow DOM・許可リスト）で描く。
+
+- 使えるタグ・属性は mod の UI と同じ（`div`・`p`・`h1`〜`h6`・`a`・`img`・`ul`・`table`・`svg` など）。SVG の `viewBox`・`linearGradient` など大文字を含む名前もそのまま書ける。
+- 使えないタグ（`b`・`i`・`center`・`font` など）は、タグを外して中身の文字だけを描く（太字にしたいときは `strong`）。
+- `script`・`style`・`template`・`iframe` などは中身ごと捨てる。`on*` 属性も捨てる（押しても何も動かない）。
+- 要素名でない `<`（`x<y` など）は文字として描く。
+- `style` 属性は使える。ただし外部の取得を起こす値（`url(...)` など）は描かない。
+- リンク（`a href`）と画像（`img src`）は **https だけ**（画像は `data:image/` も可）。http・相対パス・`javascript:` などは描かない（mod の UI より狭い）。
+  リンクは新しいタブで開き、参照元を送らない。
+- 画像は利用者のブラウザが置き場所に直接取りに行く。参照元（部屋の URL・名前）は送らない（`referrerpolicy` は `no-referrer` に固定し、作者の指定は使わない）が、
+  置き場所のサーバーには利用者の IP アドレスと読み込んだ時刻が見える。
+- 入れ子は 32 段・要素は 2000 個まで。深すぎる部分は中身ごと描かない（浅い部分は描く）。
+- 閉じ忘れなどの壊れた書き方でも、読める範囲で描く。World Editor の Inspector が、描かれないものを知らせる。
+
+```yaml
+- id: sign
+  transform: { x: 100, y: 100, w: 360, h: 140 }
+  components:
+    - type: core:ui
+      data:
+        markup: |
+          <div style="padding: 12px; background: #fff7e6; border-radius: 8px">
+            <h2>ようこそ</h2>
+            <p>ルールは<a href="https://example.com/rules">こちら</a></p>
+          </div>
+```
 
 ## その他の `spec` フィールド（任意）
 

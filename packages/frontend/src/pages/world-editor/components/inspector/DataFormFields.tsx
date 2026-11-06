@@ -1,11 +1,13 @@
-import type { InitialEntity } from '@ubichill/shared';
+import { type InitialEntity, refTargets } from '@ubichill/shared';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { css } from '@/styled-system/css';
 import type { DataFieldSpec, DataFields } from '../../hooks/useAvailableEntityKinds';
 import { ENTITY_DRAG_MIME } from '../../lib/dnd';
 import { resolveEntityIdByPathKey } from '../../lib/entityTree';
+import { refTargetError } from '../../lib/referenceProblems';
+import { defaultForType, displayedFieldValue } from './fieldValues';
 import { ColorInput, NumberInput } from './primitives';
-import { defaultForType, detectType, inputStyle, textareaStyle } from './shared';
+import { detectType, inputStyle, textareaStyle } from './shared';
 
 interface DataFormFieldsProps {
     data: Record<string, unknown>;
@@ -42,7 +44,7 @@ export function DataFormFields({ data, dataFields, allEntities, onChange }: Data
                     {declaredKeys.map((key) => {
                         const spec = dataFields?.[key];
                         if (!spec) return null;
-                        const value = key in data ? data[key] : (spec.default ?? defaultForType(spec));
+                        const value = displayedFieldValue(spec, data, key);
                         return (
                             <DeclaredFieldRow
                                 key={key}
@@ -264,8 +266,9 @@ function DeclaredInput({
     if (spec.type === 'entityRef') {
         return (
             <EntityRefField
-                value={typeof value === 'string' ? value : null}
-                allEntities={allEntities}
+                value={typeof value === 'string' && value ? value : null}
+                spec={spec}
+                allEntities={allEntities ?? []}
                 onChange={onChange}
             />
         );
@@ -273,8 +276,10 @@ function DeclaredInput({
     if (spec.type === 'entityRefArray') {
         return (
             <EntityRefArrayField
-                value={Array.isArray(value) ? (value as unknown[]).filter((v) => typeof v === 'string') : []}
-                allEntities={allEntities}
+                // 配送と同じ読み方（重複・空文字・文字列以外を除く）。重複が残ると同じ key のチップが並ぶ
+                value={refTargets(spec, value)}
+                spec={spec}
+                allEntities={allEntities ?? []}
                 onChange={onChange}
             />
         );
@@ -286,55 +291,88 @@ function DeclaredInput({
 // entityRef / entityRefArray: Hierarchy からの D&D で他 Entity の id を指定する
 // ============================================
 
-/** Hierarchy から D&D された Entity 行を entityId に解決し、指定された数だけ受け取る drop zone。 */
+type RefSpec = Extract<DataFieldSpec, { type: 'entityRef' | 'entityRefArray' }>;
+
+/**
+ * Hierarchy から D&D された Entity 行を entityId に解決して受け取る drop zone。
+ * `component` を宣言した参照は、その型を持たない Entity を受け付けず理由を出す。
+ */
 function EntityDropZone({
     allEntities,
+    spec,
     onDropEntityId,
     children,
 }: {
-    allEntities?: InitialEntity[];
+    allEntities: InitialEntity[];
+    spec: RefSpec;
     onDropEntityId: (entityId: string) => void;
     children: ReactNode;
 }) {
     const [dragOver, setDragOver] = useState(false);
+    const [rejected, setRejected] = useState<string | null>(null);
     return (
-        <div
-            onDragOver={(e) => {
-                if (!e.dataTransfer.types.includes(ENTITY_DRAG_MIME)) return;
-                e.preventDefault();
-                // ドラッグ元（Hierarchy の EntityNode）は effectAllowed='move' なので、
-                // 'link' を指定すると非互換となりブラウザがドロップを拒否する。'move' に合わせる。
-                e.dataTransfer.dropEffect = 'move';
-                setDragOver(true);
-            }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={(e) => {
-                const key = e.dataTransfer.getData(ENTITY_DRAG_MIME);
-                setDragOver(false);
-                if (!key || !allEntities) return;
-                e.preventDefault();
-                const entityId = resolveEntityIdByPathKey(allEntities, key);
-                if (entityId) onDropEntityId(entityId);
-            }}
-            className={css({
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '6px',
-                padding: '8px',
-                borderRadius: '6px',
-                border: '1px dashed',
-                borderColor: dragOver ? 'primary' : 'border',
-                bg: dragOver ? 'primarySubtle' : 'backgroundSubtle',
-            })}
-        >
-            {children}
+        <div className={css({ display: 'flex', flexDirection: 'column', gap: '4px' })}>
+            <div
+                onDragOver={(e) => {
+                    if (!e.dataTransfer.types.includes(ENTITY_DRAG_MIME)) return;
+                    e.preventDefault();
+                    // ドラッグ元（Hierarchy の EntityNode）は effectAllowed='move' なので、
+                    // 'link' を指定すると非互換となりブラウザがドロップを拒否する。'move' に合わせる。
+                    e.dataTransfer.dropEffect = 'move';
+                    setDragOver(true);
+                }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={(e) => {
+                    const key = e.dataTransfer.getData(ENTITY_DRAG_MIME);
+                    setDragOver(false);
+                    if (!key) return;
+                    e.preventDefault();
+                    const entityId = resolveEntityIdByPathKey(allEntities, key);
+                    if (!entityId) return;
+                    const error = refTargetError(allEntities, entityId, spec.component);
+                    setRejected(error);
+                    if (!error) onDropEntityId(entityId);
+                }}
+                className={css({
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '6px',
+                    padding: '8px',
+                    borderRadius: '6px',
+                    border: '1px dashed',
+                    borderColor: dragOver ? 'primary' : 'border',
+                    bg: dragOver ? 'primarySubtle' : 'backgroundSubtle',
+                })}
+            >
+                {children}
+            </div>
+            {rejected && <span className={css({ fontSize: '10px', color: 'errorText' })}>{rejected}</span>}
         </div>
     );
 }
 
-function EntityRefChip({ entityId, onRemove }: { entityId: string; onRemove: () => void }) {
+/** 参照先に求める型と、空のときの案内。 */
+function RefPlaceholder({ spec, multiple }: { spec: RefSpec; multiple: boolean }) {
+    const what = spec.component ? `${spec.component} を持つ Entity` : multiple ? '複数の Entity' : 'Entity';
+    return (
+        <span className={css({ fontSize: '11px', color: spec.required ? 'warning' : 'textSubtle' })}>
+            {spec.required ? '未設定（必須）: ' : ''}Hierarchy から{what}をドラッグ＆ドロップして指定
+        </span>
+    );
+}
+
+function EntityRefChip({
+    entityId,
+    error,
+    onRemove,
+}: {
+    entityId: string;
+    error: string | null;
+    onRemove: () => void;
+}) {
     return (
         <span
+            title={error ?? undefined}
             className={css({
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -345,10 +383,9 @@ function EntityRefChip({ entityId, onRemove }: { entityId: string; onRemove: () 
                 border: '1px solid',
                 borderColor: 'border',
                 fontSize: '11px',
-                color: 'text',
             })}
         >
-            {entityId}
+            <span className={css({ color: error ? 'errorText' : 'text' })}>{entityId}</span>
             <button
                 type="button"
                 onClick={onRemove}
@@ -361,40 +398,60 @@ function EntityRefChip({ entityId, onRemove }: { entityId: string; onRemove: () 
     );
 }
 
+/** 指している先の問題（作者が Entity を消した・型を外したなど）。 */
+function RefErrors({ errors }: { errors: readonly string[] }) {
+    if (errors.length === 0) return null;
+    return (
+        <div className={css({ display: 'flex', flexDirection: 'column', gap: '2px' })}>
+            {errors.map((e) => (
+                <span key={e} className={css({ fontSize: '10px', color: 'errorText' })}>
+                    {e}
+                </span>
+            ))}
+        </div>
+    );
+}
+
 function EntityRefField({
     value,
+    spec,
     allEntities,
     onChange,
 }: {
     value: string | null;
-    allEntities?: InitialEntity[];
+    spec: RefSpec;
+    allEntities: InitialEntity[];
     onChange: (v: unknown) => void;
 }) {
+    const error = value ? refTargetError(allEntities, value, spec.component) : null;
     return (
-        <EntityDropZone allEntities={allEntities} onDropEntityId={(id) => onChange(id)}>
+        <EntityDropZone allEntities={allEntities} spec={spec} onDropEntityId={(id) => onChange(id)}>
             {value ? (
-                <EntityRefChip entityId={value} onRemove={() => onChange(null)} />
+                <EntityRefChip entityId={value} error={error} onRemove={() => onChange(null)} />
             ) : (
-                <span className={css({ fontSize: '11px', color: 'textSubtle' })}>
-                    Hierarchy から Entity をドラッグ＆ドロップして指定
-                </span>
+                <RefPlaceholder spec={spec} multiple={false} />
             )}
+            <RefErrors errors={error ? [error] : []} />
         </EntityDropZone>
     );
 }
 
 function EntityRefArrayField({
     value,
+    spec,
     allEntities,
     onChange,
 }: {
     value: string[];
-    allEntities?: InitialEntity[];
+    spec: RefSpec;
+    allEntities: InitialEntity[];
     onChange: (v: unknown) => void;
 }) {
+    const errorOf = (id: string) => refTargetError(allEntities, id, spec.component);
     return (
         <EntityDropZone
             allEntities={allEntities}
+            spec={spec}
             onDropEntityId={(id) => {
                 if (value.includes(id)) return;
                 onChange([...value, id]);
@@ -406,15 +463,15 @@ function EntityRefArrayField({
                         <EntityRefChip
                             key={id}
                             entityId={id}
+                            error={errorOf(id)}
                             onRemove={() => onChange(value.filter((v) => v !== id))}
                         />
                     ))}
                 </div>
             ) : (
-                <span className={css({ fontSize: '11px', color: 'textSubtle' })}>
-                    Hierarchy から複数の Entity をドラッグ＆ドロップして指定
-                </span>
+                <RefPlaceholder spec={spec} multiple />
             )}
+            <RefErrors errors={value.map(errorOf).filter((e): e is string => e !== null)} />
         </EntityDropZone>
     );
 }

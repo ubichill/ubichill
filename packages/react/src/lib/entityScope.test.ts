@@ -36,11 +36,12 @@ describe('isAccessible', () => {
         expect(isAccessible(other, 'subtree', 'root', scopedIds)).toBe(false);
     });
 
-    it('scope 外でも declaredTargets (GameObject id 集合) に含まれていれば許可する', () => {
+    it('scope 外でも declaredTargets（参照で許した相手）に含まれていれば許可する', () => {
         const self = makeInstance({ id: 'a', entityId: 'root' });
         const other = makeInstance({ id: 'x', entityId: 'unrelated' });
         const scopedIds = collectSubtreeGameObjectIds([self, other], 'root');
-        expect(isAccessible(other, 'subtree', 'root', scopedIds, new Set(['unrelated']))).toBe(true);
+        const { read } = computeDeclaredEntityRefTargets({ target: { type: 'entityRef' } }, { target: 'unrelated' });
+        expect(isAccessible(other, 'subtree', 'root', scopedIds, read)).toBe(true);
     });
 
     it('自分自身 (self-update) は scope="entity" でも常に許可される', () => {
@@ -70,7 +71,11 @@ describe('isAccessible', () => {
         const player = makeInstance({ id: 'pl', entityId: 'player', type: 'danmaku:player' });
         const scopedIds = collectSubtreeGameObjectIds([spawner, player], 'spawner');
         expect(isAccessible(player, 'entity', 'spawner', scopedIds)).toBe(false);
-        expect(isAccessible(player, 'entity', 'spawner', scopedIds, new Set(['player']))).toBe(true);
+        const { write } = computeDeclaredEntityRefTargets(
+            { target: { type: 'entityRef', access: 'write' } },
+            { target: 'player' },
+        );
+        expect(isAccessible(player, 'entity', 'spawner', scopedIds, write)).toBe(true);
     });
 });
 
@@ -98,12 +103,12 @@ describe('computeDeclaredEntityRefTargets', () => {
             targets: { type: 'entityRefArray', access: 'write', label: '対象一覧' },
         };
         const { read, write } = computeDeclaredEntityRefTargets(fields, { targets: ['a', 'b'] });
-        expect([...read].sort()).toEqual(['a', 'b']);
-        expect([...write].sort()).toEqual(['a', 'b']);
+        expect([...read.keys()].sort()).toEqual(['a', 'b']);
+        expect([...write.keys()].sort()).toEqual(['a', 'b']);
     });
 
     it('dataFields/data が無ければ空集合を返す', () => {
-        expect(computeDeclaredEntityRefTargets(undefined, {})).toEqual({ read: new Set(), write: new Set() });
+        expect(computeDeclaredEntityRefTargets(undefined, {})).toEqual({ read: new Map(), write: new Map() });
     });
 
     it('entityRef 以外のフィールド (number 等) は無視する', () => {
@@ -111,5 +116,46 @@ describe('computeDeclaredEntityRefTargets', () => {
         const { read, write } = computeDeclaredEntityRefTargets(fields, { speed: 5 });
         expect(read.size).toBe(0);
         expect(write.size).toBe(0);
+    });
+});
+
+describe('参照の component の宣言で許す Component を絞る', () => {
+    const door = makeInstance({ id: 'door::lock', entityId: 'door', type: 'house:lock' });
+    const doorBell = makeInstance({ id: 'door::bell', entityId: 'door', type: 'house:bell' });
+    const fields: Record<string, ComponentDataFieldSpec> = {
+        lock: { type: 'entityRef', access: 'write', component: 'house:lock' },
+    };
+
+    it("access: 'write' でも、宣言した型以外の Component には書けない", () => {
+        const { write } = computeDeclaredEntityRefTargets(fields, { lock: 'door' });
+        expect(isAccessible(door, 'entity', 'me', null, write)).toBe(true);
+        expect(isAccessible(doorBell, 'entity', 'me', null, write)).toBe(false);
+    });
+
+    it('data の id を別の Entity に書き換えても、そこにある宣言外の型には届かない', () => {
+        const victim = makeInstance({ id: 'bank::vault', entityId: 'bank', type: 'bank:vault' });
+        const { read, write } = computeDeclaredEntityRefTargets(fields, { lock: 'bank' });
+        expect(isAccessible(victim, 'entity', 'me', null, read)).toBe(false);
+        expect(isAccessible(victim, 'entity', 'me', null, write)).toBe(false);
+    });
+
+    it('型を宣言しない参照と宣言した参照が同じ Entity を指すと、宣言の無い方で全 Component を許す', () => {
+        const both: Record<string, ComponentDataFieldSpec> = {
+            lock: { type: 'entityRef', component: 'house:lock' },
+            any: { type: 'entityRef' },
+        };
+        const { read } = computeDeclaredEntityRefTargets(both, { lock: 'door', any: 'door' });
+        expect(isAccessible(doorBell, 'entity', 'me', null, read)).toBe(true);
+    });
+
+    it('崩れた宣言（null）は無視する', () => {
+        const { read } = computeDeclaredEntityRefTargets({ broken: null } as never, { broken: 'door' });
+        expect(read.size).toBe(0);
+    });
+
+    it('entityId の無い Component（ランタイムに作られたもの）は参照で許さない', () => {
+        const spawned = makeInstance({ id: 'x', entityId: undefined, type: 'house:lock' });
+        const { write } = computeDeclaredEntityRefTargets(fields, { lock: 'x' });
+        expect(isAccessible(spawned, 'entity', 'me', null, write)).toBe(false);
     });
 });

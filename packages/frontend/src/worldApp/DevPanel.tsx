@@ -114,11 +114,14 @@ export function DevDiagnostics({ failures }: { failures: readonly DevFailure[] }
     if (failures.length === 0) return null;
     return (
         <div className={diagnostics} role="log">
-            {failures.map((failure) =>
+            {failures.map((failure, index) =>
                 failure.kind === 'build' ? (
                     <div key={`build:${failure.mod}`}>
                         [{failure.mod}] {failure.message}
                     </div>
+                ) : failure.kind === 'reference' ? (
+                    // 同じ型の Component が 1 つの Entity に 2 つあると、同じ文の問題が 2 件になる
+                    <div key={`reference:${index}`}>[参照] {failure.message}</div>
                 ) : (
                     <div key="world">[world] {failure.message}</div>
                 ),

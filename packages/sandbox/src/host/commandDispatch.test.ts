@@ -50,7 +50,18 @@ describe('dispatchCommand', () => {
             } as ModGuestCommand,
             makeCtx({ onEventEmit }),
         );
-        expect(onEventEmit).toHaveBeenCalledWith('x', 1, 'world', undefined, 'sender-1');
+        expect(onEventEmit).toHaveBeenCalledWith('x', 1, { scope: 'world' }, undefined, 'sender-1');
+    });
+
+    it('EVENT_EMIT の ref は scope より優先し、配送先の読めない emit は捨てる', async () => {
+        const onEventEmit = vi.fn();
+        const emit = (payload: unknown) =>
+            dispatchCommand({ type: CommandType.EVENT_EMIT, payload } as ModGuestCommand, makeCtx({ onEventEmit }));
+        await emit({ type: 'a', data: 1, ref: 'screen', scope: 'world' });
+        await emit({ type: 'b', data: 2 });
+        await emit({ type: 'c', data: 3, ref: 42 });
+        await emit({ type: 'd', data: 4, scope: '' });
+        expect(onEventEmit.mock.calls).toEqual([['a', 1, { ref: 'screen' }, undefined, 'sender-1']]);
     });
 
     it('MEDIA_LOAD はドメイン確認を含む非同期ハンドラの完了を待つ', async () => {

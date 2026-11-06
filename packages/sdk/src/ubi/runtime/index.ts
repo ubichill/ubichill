@@ -21,7 +21,11 @@ export type RuntimeFeature =
     /** `Ubi.asset`（integrity 照合つきの同梱アセット） */
     | 'asset'
     /** `Ubi.identity`（外部サービスへの身元証明。ログインしていなくても Host が対応していれば true） */
-    | 'identity';
+    | 'identity'
+    /** `Ubi.event.emit` の `{ ref }` と `scope: 'referrers'`（参照フィールドでの配送）。古い Host は届けずに捨てる */
+    | 'event:ref'
+    /** `component: 'core:media'` の参照を `Ubi.media.*` の描画先にする。古い Host は `<video>` を作らない */
+    | 'media:surface';
 
 export type RuntimeModule = {
     /** Host のプロトコル版（`PROTOCOL_VERSION`）。 */
@@ -54,6 +58,8 @@ const HOST_FEATURE_PROTOCOL: Partial<Record<RuntimeFeature, number>> = {
     'fetch:binary': 4,
     asset: 4,
     identity: 5,
+    'event:ref': 6,
+    'media:surface': 6,
 };
 
 function validates(webAssembly: typeof WebAssembly | undefined, bytes: Uint8Array<ArrayBuffer>): boolean {
