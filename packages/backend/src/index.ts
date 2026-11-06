@@ -22,6 +22,7 @@ import { router as cliAuthRouter } from './routes/cliAuth';
 import { router as federationRouter } from './routes/federation';
 import { router as instancesRouter } from './routes/instances';
 import { router as notificationsRouter } from './routes/notifications';
+import { router as profilesRouter } from './routes/profilesRouter';
 import { router as serviceTokensRouter } from './routes/serviceTokens';
 import { router as socialRouter } from './routes/social';
 import { router as usersRouter } from './routes/users';
@@ -121,6 +122,8 @@ app.use('/api/auth', toNodeHandler(auth));
 // ============================================
 app.use('/api/v1/worlds', worldsRouter);
 app.use('/api/v1/instances', instancesRouter);
+// プロフィールの編集・画像は users の `/:userId` より先に置く
+app.use('/api/v1/users', profilesRouter);
 app.use('/api/v1/users', usersRouter);
 app.use('/api/v1/social', socialRouter);
 app.use('/api/v1/notifications', notificationsRouter);

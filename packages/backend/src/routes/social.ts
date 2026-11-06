@@ -2,7 +2,13 @@
  * ソーシャル: ユーザー検索・フレンド（申請・承認・解除）・フレンドの現在地。
  * 関係と公開範囲の規則は shared の user/friends.ts（画面と同じ規則）。
  */
-import { instanceRepository, type UserRecord, userFriendRepository, userRepository } from '@ubichill/db';
+import {
+    instanceRepository,
+    type UserProfileRecord,
+    type UserRecord,
+    userFriendRepository,
+    userRepository,
+} from '@ubichill/db';
 import {
     canSeeInstance,
     type FriendsResponse,
@@ -12,13 +18,15 @@ import {
     HANDLE_PATTERN,
     type Instance,
     parseUserSearchQuery,
+    type UserProfileWithFriendship,
     type UserSearchResponse,
     type UserSummary,
     type UserWithFriendship,
+    userProfileOf,
 } from '@ubichill/shared';
 import { Router } from 'express';
 import { optionalAuth, requireAuth } from '../middleware/auth';
-import { selfDomain } from '../services/authorKeys';
+import { selfAccount, selfDomain } from '../services/authorKeys';
 import { friendEdgesOf, friendIdsOf } from '../services/friends';
 import { instanceManager } from '../services/instanceManager';
 import { instanceRuntime } from '../services/instanceRuntime';
@@ -47,9 +55,13 @@ async function summariesOf(ids: readonly string[]): Promise<UserSummary[]> {
     });
 }
 
-async function withFriendship(viewerId: string | undefined, user: UserRecord): Promise<UserWithFriendship> {
+/** プロフィール（ひとこと・リンクなど込み）と自分との関係。ユーザーページとリンクのプレビューに使う。 */
+async function profileWithFriendship(
+    viewerId: string | undefined,
+    user: UserProfileRecord,
+): Promise<UserProfileWithFriendship> {
     const friendship = viewerId ? friendshipOf(await friendEdgesOf(viewerId), viewerId, user.id) : 'none';
-    return { ...summaryOf(user), friendship };
+    return { ...userProfileOf(user, selfAccount(user.handle)), friendship };
 }
 
 // ユーザー検索（ID の前方一致・表示名の部分一致・`@handle@domain` の指定）。自分との関係付き。
@@ -77,16 +89,16 @@ router.get('/users', requireAuth, async (req, res) => {
 // ID（/@handle）でユーザーを引く（ユーザーページ）。
 router.get('/users/by-handle/:handle', optionalAuth, async (req, res) => {
     const handle = String(req.params.handle).toLowerCase();
-    const user = HANDLE_PATTERN.test(handle) ? await userRepository.findByHandle(handle) : undefined;
+    const user = HANDLE_PATTERN.test(handle) ? await userRepository.findProfileByHandle(handle) : undefined;
     if (!user) return res.status(404).json({ error: 'User not found' });
-    return res.json(await withFriendship(req.user?.id, user));
+    return res.json(await profileWithFriendship(req.user?.id, user));
 });
 
 // 内部 ID でユーザーを引く（自分との関係付き）。
 router.get('/users/:userId', optionalAuth, async (req, res) => {
-    const user = await userRepository.findById(String(req.params.userId));
+    const user = await userRepository.findProfileById(String(req.params.userId));
     if (!user || user.id === SYSTEM_USER_ID) return res.status(404).json({ error: 'User not found' });
-    return res.json(await withFriendship(req.user?.id, user));
+    return res.json(await profileWithFriendship(req.user?.id, user));
 });
 
 // 自分のフレンド・自分への申請・自分の申請。

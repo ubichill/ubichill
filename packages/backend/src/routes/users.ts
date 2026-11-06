@@ -34,6 +34,8 @@ import {
     parseStoredDefinition,
     RevokeReasonSchema,
     SERVER_CONFIG,
+    type UserProfile,
+    userProfileOf,
     verifyKeyRegistration,
 } from '@ubichill/shared';
 import { Router } from 'express';
@@ -224,15 +226,13 @@ router.get('/me', requirePublisher, async (req, res) => {
     if (!req.user) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
-    const user = await userRepository.findById(req.user.id);
+    const user = await userRepository.findProfileById(req.user.id);
     if (!user) {
         return res.status(404).json({ error: 'User not found' });
     }
     return res.json({
-        id: user.id,
-        name: user.name,
-        handle: user.handle,
-        author: selfAccount(user.handle),
+        // 公開プロフィールと同じ項目（プロフィールの編集の元にする）
+        ...userProfileOf(user, selfAccount(user.handle)),
         // 取り消されていない公開環境の鍵（このブラウザの鍵が登録済みかの判定に使う）
         signingKeys: (await authorKeyRepository.listByUser(user.id))
             .filter((e) => !e.revokedAt)
@@ -246,12 +246,10 @@ router.get('/me', requirePublisher, async (req, res) => {
         // パスワードを Secret で管理している（画面から変更できない）
         passwordManagedBySecret: user.handle === OFFICIAL_HANDLE,
         isAdmin: isAdminHandle(user.handle),
-        bio: user.bio ?? null,
         // API トークン（CLI・CI）で呼んだときの公開環境（ubichill whoami で表示する）
         ...(req.publishingEnvironment
             ? { publishingEnvironment: { id: req.publishingEnvironment.id, kind: req.publishingEnvironment.kind } }
             : {}),
-        image: user.image ?? null,
     });
 });
 
@@ -607,18 +605,11 @@ router.delete('/me/favorites', requireAuth, async (req, res) => {
 
 // 公開プロフィール（他ユーザー閲覧用）
 router.get('/:userId', async (req, res) => {
-    const user = await userRepository.findById(req.params.userId);
+    const user = await userRepository.findProfileById(req.params.userId);
     if (!user) {
         return res.status(404).json({ error: 'User not found' });
     }
-    return res.json({
-        id: user.id,
-        name: user.name,
-        handle: user.handle,
-        author: selfAccount(user.handle),
-        image: user.image ?? null,
-        bio: user.bio ?? null,
-    });
+    return res.json(userProfileOf(user, selfAccount(user.handle)) satisfies UserProfile);
 });
 
 // お気に入りの公開範囲を変更する（private / friends / public）。
