@@ -9,7 +9,7 @@
  * - InputCollector / SharedInputPool : DOM 入力を集約し Worker へ渡す入力フレームを作る。
  */
 export { InputCollector } from './InputCollector';
-export { MARKUP_LIMITS, parseUiMarkup } from './markup';
+export { analyzeUiMarkup, MARKUP_LIMITS, parseUiMarkup, type UiMarkupAnalysis } from './markup';
 export {
     acquireSharedInput,
     collectSharedInputFor,

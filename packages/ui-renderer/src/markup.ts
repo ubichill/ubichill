@@ -114,12 +114,33 @@ function readAttributes(
     return { attributes, selfClosing: false, end: source.length };
 }
 
+/** 描いても押して何かが起きることは無い要素（core:ui は操作を配送しない）。 */
+const INTERACTIVE_TAGS: ReadonlySet<string> = new Set(['button', 'input', 'select', 'textarea', 'form']);
+
+export interface UiMarkupAnalysis {
+    vnode: VNode;
+    /** 中身ごと捨てた要素（script・style など）。 */
+    droppedTags: ReadonlySet<string>;
+    /** on* 属性を捨てたか。 */
+    droppedHandlers: boolean;
+    /** 描くが押しても何も起きない要素（button・input など）。 */
+    interactiveTags: ReadonlySet<string>;
+}
+
 /** HTML 風の文字列を、Fragment を根にした VNode にする。 */
 export function parseUiMarkup(source: string): VNode {
+    return analyzeUiMarkup(source).vnode;
+}
+
+/** VNode にしつつ、捨てたもの・動かないものを数える（World Editor が作者に知らせる）。 */
+export function analyzeUiMarkup(source: string): UiMarkupAnalysis {
     const root: OpenElement = { tag: FRAGMENT, props: {}, children: [] };
     const stack: OpenElement[] = [root];
     // 読んでいる位置と、作った要素の数
     const pos = { i: 0, elements: 0 };
+    const droppedTags = new Set<string>();
+    const interactiveTags = new Set<string>();
+    const handlers = { dropped: false };
 
     const current = (): OpenElement => stack[stack.length - 1] as OpenElement;
     const closeTop = (): void => {
@@ -164,6 +185,7 @@ export function parseUiMarkup(source: string): VNode {
         pos.i = end;
 
         if (DROPPED_TAGS.has(name)) {
+            droppedTags.add(name);
             if (selfClosing) continue;
             const closing = new RegExp(`</${name}\\s*>`, 'i').exec(source.slice(pos.i));
             pos.i = closing ? pos.i + closing.index + closing[0].length : source.length;
@@ -172,6 +194,8 @@ export function parseUiMarkup(source: string): VNode {
         pos.elements += 1;
         if (pos.elements > MARKUP_LIMITS.maxElements || stack.length > MARKUP_LIMITS.maxDepth) break;
 
+        if (attributes.some(([attribute]) => attribute.startsWith('on'))) handlers.dropped = true;
+        if (INTERACTIVE_TAGS.has(name)) interactiveTags.add(name);
         const element: OpenElement = { tag: name, props: toProps(attributes), children: [] };
         if (VOID_TAGS.has(name) || selfClosing) {
             current().children.push({ type: name, props: element.props, children: [] });
@@ -180,5 +204,10 @@ export function parseUiMarkup(source: string): VNode {
         }
     }
     while (stack.length > 1) closeTop();
-    return { type: FRAGMENT, props: {}, children: root.children };
+    return {
+        vnode: { type: FRAGMENT, props: {}, children: root.children },
+        droppedTags,
+        droppedHandlers: handlers.dropped,
+        interactiveTags,
+    };
 }

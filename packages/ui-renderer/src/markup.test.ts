@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { FRAGMENT, type VNode } from '@ubichill/shared';
 import { describe, expect, it, vi } from 'vitest';
-import { decodeEntities, MARKUP_LIMITS, parseStyleAttribute, parseUiMarkup } from './markup';
+import { analyzeUiMarkup, decodeEntities, MARKUP_LIMITS, parseStyleAttribute, parseUiMarkup } from './markup';
 import { renderVNode } from './VNodeRenderer';
 
 const el = (type: string, props: VNode['props'] = {}, children: VNode['children'] = []): VNode => ({
@@ -128,5 +128,25 @@ describe('parseUiMarkup → renderVNode（描画側の検査まで通す）', ()
 
     it('入力欄にパスワードを描かせない', () => {
         expect(render('<input type="password">').querySelector('input')?.getAttribute('type')).toBeNull();
+    });
+});
+
+describe('analyzeUiMarkup（作者に知らせること）', () => {
+    it('捨てた要素・on* 属性・押しても動かない要素を挙げる', () => {
+        const result = analyzeUiMarkup(
+            '<script>x</script><STYLE/><button onclick="go()">押す</button><form><input></form><a href="https://e.x">ok</a>',
+        );
+        expect([...result.droppedTags]).toEqual(['script', 'style']);
+        expect(result.droppedHandlers).toBe(true);
+        expect([...result.interactiveTags]).toEqual(['button', 'form', 'input']);
+    });
+
+    it('看板・説明・リンクだけなら何も挙げない', () => {
+        const result = analyzeUiMarkup(
+            '<div><h2>ようこそ</h2><p><a href="https://e.x">ルール</a></p><img src="https://e.x/a.png"></div>',
+        );
+        expect(result.droppedTags.size).toBe(0);
+        expect(result.droppedHandlers).toBe(false);
+        expect(result.interactiveTags.size).toBe(0);
     });
 });

@@ -11,8 +11,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { css } from '@/styled-system/css';
 import type { AvailableEntityKind, DataFields } from '../../hooks/useAvailableEntityKinds';
 import { COMPONENT_DRAG_MIME } from '../../lib/dnd';
+import { uiMarkupNotices } from '../../lib/uiMarkupNotices';
 import { ColliderDataFields } from './ColliderDataFields';
 import { DataFormFields } from './DataFormFields';
+import { EditorNotices } from './EditorNotices';
 import { Chevron, LogicOnlyBadge, MiniTab, NumField, RenderKindBadge, Section } from './primitives';
 import { inputStyle, mergeDataFields, textareaStyle } from './shared';
 
@@ -315,6 +317,16 @@ function ComponentDataEditor({
             {dataTab === 'form' ? (
                 component.type === CORE_COMPONENT_TYPES.collider ? (
                     <ColliderDataFields data={data} onChange={setData} />
+                ) : component.type === CORE_COMPONENT_TYPES.ui ? (
+                    <>
+                        <DataFormFields
+                            data={data}
+                            dataFields={dataFields}
+                            allEntities={allEntities}
+                            onChange={setData}
+                        />
+                        <EditorNotices messages={uiMarkupNotices(typeof data.markup === 'string' ? data.markup : '')} />
+                    </>
                 ) : (
                     <DataFormFields data={data} dataFields={dataFields} allEntities={allEntities} onChange={setData} />
                 )
