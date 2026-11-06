@@ -54,6 +54,10 @@ jobs:
             git rm -rf . 2>/dev/null || true
           }
 
+      # 公開済みの版を、同じ版のまま別の中身で上書きしない（その版を固定しているワールドが動かなくなる）
+      - name: Refuse to overwrite published versions
+        run: node scripts/check-published-mods.mjs dist/mods /tmp/gh-pages/mods
+
       - name: Sync mods to gh-pages
         run: |
           # dist/mods/ を gh-pages の mods/ ディレクトリにコピー

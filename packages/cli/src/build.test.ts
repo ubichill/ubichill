@@ -148,10 +148,10 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
         expect(result).toBe('data-only');
     });
 
-    it('宣言していない型は従来どおり not-found（data-only と取り違えない）', async () => {
+    it('宣言していない型は undeclared（宣言のある data-only と取り違えない）', async () => {
         const lock = await buildWorldLock([modId], createHttpLockEntryGetter(publicDir, fsFetch));
         const result = await acquireMod('pen:undeclared', { baseUrl: publicDir, lock, fetchImpl: fsFetch, ...unsignedDev });
-        expect(result).toBe('not-found');
+        expect(result).toBe('undeclared');
     });
 
     it('lock.json の各コンポーネント integrity が実 worker ファイルと一致する', () => {

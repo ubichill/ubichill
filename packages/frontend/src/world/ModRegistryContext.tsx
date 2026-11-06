@@ -128,10 +128,15 @@ export const ModRegistryProvider: React.FC<{
                         clearRejection();
                         return true;
                     }
-                    if (result === 'data-only') {
-                        // manifest に宣言されているがworkerなし。spawn して持ち回るだけのエンティティ
-                        // (例: pen:stroke)。Worker を起動しないし、警告も出さない。
-                        // 結果は変わらないので loadingRef に残し、同じ型の Entity が増えるたびに取り直さない。
+                    if (result === 'data-only' || result === 'undeclared') {
+                        // Worker の無いデータだけの entity（例: pen:stroke）。Worker を起動しない。
+                        // 結果は変わらないので loadingRef に残し、同じ型の Entity が増えるたびに取り直さない（知らせるのも 1 回になる）。
+                        // 宣言の無い型は、訪れた人には何も出さず（直せないので）、作った人向けにコンソールへ残す
+                        if (result === 'undeclared') {
+                            console.info(
+                                `[ModRegistry] component "${entityType}" は mod の manifest に宣言されていないので、データとして扱います（コードは実行しません）。打ち間違いでなければ、mod 側で config に dataOnly: true を書いてください`,
+                            );
+                        }
                         clearRejection();
                         return true;
                     }
@@ -144,10 +149,10 @@ export const ModRegistryProvider: React.FC<{
                         loadingRef.current.delete(entityType);
                         return false;
                     }
-                    // 'not-found': mod の manifest にこの Component の宣言が無い、または manifest / Worker を
-                    // 取得できない。古い YAML が削除済みの Component を参照している可能性。取得失敗の理由を画面にも出す。
+                    // 'not-found': manifest・Worker が取れない（削除済みの mod・版を参照している、通信の失敗）。
+                    // 取得失敗の理由を画面にも出す。
                     console.warn(
-                        `[ModRegistry] component "${entityType}" を読み込めませんでした（mod の manifest に宣言が無いか、取得に失敗）。スキップします。`,
+                        `[ModRegistry] component "${entityType}" を読み込めませんでした（manifest か Worker を取得できない）。スキップします。`,
                     );
                     setRejections((prev) => new Map(prev).set(entityType, 'load-unavailable'));
                     loadingRef.current.delete(entityType);

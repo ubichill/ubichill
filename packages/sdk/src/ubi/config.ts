@@ -129,8 +129,9 @@ export interface ComponentConfig {
     description?: string;
     /**
      * data-only コンポーネント（Worker を持たない）。mod が spawn して持ち回るだけの Entity の型を宣言する
-     * （例: pen の `stroke.worker.ts` が `pen:stroke` を宣言する）。宣言しない型を spawn すると、
-     * Host はその型の Worker を探して見つからない警告を出す。このファイルのコードはバンドル・実行されない。
+     * （例: pen の `stroke.worker.ts` が `pen:stroke` を宣言する）。宣言しない型を spawn しても Host は
+     * コードを実行せずデータとして扱うが、打ち間違いと区別できないので開発者向けにコンソールへ知らせる。
+     * このファイルのコードはバンドル・実行されない。
      */
     dataOnly?: boolean;
     /**
