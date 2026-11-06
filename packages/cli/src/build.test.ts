@@ -26,7 +26,7 @@ import {
 } from '@ubichill/loader';
 import { type ModLockEntry, verifyModSignature } from '@ubichill/shared';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { buildMod, dataOnlyEntryFromSource, dataOnlyManifestEntry } from './build.ts';
+import { buildMod, dataOnlyEntryFromSource, dataOnlyManifestEntry, mediaTargetCollisions } from './build.ts';
 import { listDirsOnDisk } from './modLayout.ts';
 import { publishMods } from './publishMods.ts';
 import { verifyAllModLocks, verifyAllModSignatures } from './verify.ts';
@@ -466,5 +466,25 @@ describe('dataOnlyEntryFromSource', () => {
     it('似た名前（dataOnlyX・isDataOnly）は dataOnly と見なさない', () => {
         expect(dataOnlyEntryFromSource('m:x', source('{ description: dataOnlyX }'))).toBeNull();
         expect(dataOnlyEntryFromSource('m:x', `${source('makeConfig()')}const isDataOnly = 1;`)).toBeNull();
+    });
+});
+
+describe('mediaTargetCollisions', () => {
+    it('core:media を指す entityRef と同じ名前の mediaTargets を挙げる', () => {
+        const config = {
+            mediaTargets: ['screen', 'preview'],
+            dataFields: {
+                screen: { type: 'entityRef', component: 'core:media' },
+                preview: { type: 'entityRef', component: 'vp:screen' },
+            },
+        };
+        expect(mediaTargetCollisions(config)).toEqual(['screen']);
+    });
+
+    it('衝突が無い・config が無い・形が崩れていても投げない', () => {
+        expect(mediaTargetCollisions({ mediaTargets: ['main'] })).toEqual([]);
+        expect(mediaTargetCollisions(null)).toEqual([]);
+        expect(mediaTargetCollisions({ mediaTargets: 'screen', dataFields: null })).toEqual([]);
+        expect(mediaTargetCollisions({ mediaTargets: [1, 'screen'], dataFields: { screen: null } })).toEqual([]);
     });
 });

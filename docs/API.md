@@ -41,7 +41,8 @@ const MyEvents = Ubi.event.define<{
     'mod:event:type': { payload: ... };           // type ↔ payload を 1 箇所に宣言
     'cross:user:msg':    { ... };
 }>();
-MyEvents.emit(type, data, { scope, targetType? })   // 同 tab の他 Worker に狙い撃ち
+MyEvents.emit(type, data, { ref: 'screen' })        // 参照フィールドで作者が指した相手へ（推奨。下の「Component の参照」）
+MyEvents.emit(type, data, { scope, targetType? })   // Entity の階層で相手を決める
 MyEvents.broadcast(type, data)                       // 他ユーザーの同 entity Worker へ (volatile)
 MyEvents.sendToHost(type, data)                      // 自 Host (React 側) へ
 MyEvents.on(type, (data) => {...})                   // emit / sendToHost / SDK 由来 (input:* / entity:* など) を受信
@@ -50,8 +51,9 @@ MyEvents.onBroadcast(type, (userId, data) => {...})  // broadcast を受信 (env
 // ──── トリガー (untyped escape hatch — 互換用) ──────────
 Ubi.event.sendToHost<T>(type, data)
 Ubi.event.broadcast<T>(type, data)
-Ubi.event.emit(type, data, { scope, targetType? })
-//   scope: 'siblings' | 'parent' | 'children' | 'subtree' | 'world'
+Ubi.event.emit(type, data, { ref | scope, targetType? })
+//   ref:   自分の参照フィールド（config.dataFields の entityRef / entityRefArray）の名前
+//   scope: 'siblings' | 'parent' | 'children' | 'subtree' | 'world' | 'referrers'
 //   targetType: 受信側 Component type ("modId:componentName")
 
 // ──── 自分中心の階層 CRUD ────────────────────────────────
@@ -103,7 +105,7 @@ await Ubi.entity.spawn(entity)                     // 親を明示指定して�
 await Ubi.asset.bytes(path, { signal? })           // assets/ のファイル（manifest の integrity と照合済み）
 await Ubi.asset.text(path)                         // UTF-8 として読む
 await Ubi.asset.wasm(path)                         // WebAssembly.Module（同じパスは 1 回だけコンパイル）
-Ubi.runtime.supports(feature)                      // 'wasm' | 'wasm:simd' | 'wasm:exceptions' | 'wasm:threads' | 'wasm:jspi' | 'fetch:binary' | 'asset'
+Ubi.runtime.supports(feature)                      // 'wasm' | 'wasm:simd' | 'wasm:exceptions' | 'wasm:threads' | 'wasm:jspi' | 'fetch:binary' | 'asset' | 'identity' | 'event:ref' | 'media:surface' | 'canvas:erase'
 Ubi.runtime.require(feature)                       // 使えなければ UNSUPPORTED_FEATURE の UbiError
 await Ubi.identity.token(audience, { signal? })    // 外部サービスへの身元証明（短命の JWT）。→ SERVICE_TOKEN.md
 
@@ -230,6 +232,59 @@ entity.getComponent<T>(name)      // T | null
 entity.hasComponent(name)         // boolean
 entity.removeComponent(name)      // void
 ```
+
+### Component の参照（型付きの配線）
+
+別の Component と連携するときは、相手の置き場所（親子・兄弟などの階層）を作者に暗黙に求めず、
+**参照フィールド**で「どの型の相手が必要か」を宣言する。作者は World Editor の Inspector で、その枠に
+Hierarchy から Entity をドロップする（Unity の型付きフィールドに Component を入れるのと同じ）。
+
+```ts
+export const config: ComponentConfig = {
+    dataFields: {
+        // video-player:screen を持つ Entity を 1 つ。未設定ならエディタと `ubichill dev` が知らせる
+        screen: { type: 'entityRef', component: 'video-player:screen', required: true, label: 'スクリーン' },
+        // 複数なら entityRefArray（required は 1 つ以上）
+        playlists: { type: 'entityRefArray', component: 'video-player:playlist', label: 'プレイリスト' },
+    },
+};
+
+Events.emit('vp:media:play', {}, { ref: 'screen' });          // 作者が指した Entity の video-player:screen にだけ届く
+Events.emit('vp:media:state', state, { scope: 'referrers' }); // 参照で自分を指している Component へ返す
+```
+
+- `ref` は、送った時点の data の参照フィールドが指す相手に届く。未設定・宣言の無いフィールド名なら誰にも届かない。
+- `component` を宣言した参照は、その型の Component だけに届く。`targetType` で型を広げることはできない。宣言しなければ、指した Entity の全 Component に届く。
+- **配線は作者の意図を伝える仕組みで、届く範囲を守る仕組みではない**。参照フィールドは data の一部なので、mod 自身（自分の data の更新）も、
+  部屋の参加者（`entity:patch`）も書き換えられる。`scope: 'world'` を使えば配線と関係なく全 Worker に届く。受け手は、届いたイベントの中身を
+  信頼せずに検証する（送り手を確かめる必要があるなら、その仕組みを別に持つ）。
+- 参照で watchScope の外の相手を読めるのは、指した Entity の Component だけ。書けるのは `access: 'write'` のフィールドが指した相手だけ。
+  どちらも `component` を宣言していればその型の Component に限る（data の id を書き換えられても、宣言の外の型には届かない）。
+- `scope: 'referrers'` は、参照フィールドで自分の Entity を指している Component に届く。相手の参照が `component` を宣言していれば、それが自分の型のときだけ。
+- 相手は同じ Entity でも、別の木の奥でもよい。階層の形は問わない。
+- `component: 'core:media'` の `entityRef`（単体）は**動画の描画先**になる。フィールドの名前を `Ubi.media.*` の targetId に使うと、
+  `<video>` は参照先の `core:media` の Entity の位置・大きさで描かれる（URL の許可・同期・状態はこの mod のもの）。
+  動画を出すだけの Worker を別に作らなくてよい。`entityRefArray` は `core:media` を指しても描画先にならない（1 つのフィールドに `<video>` は 1 つ）。
+- `mediaTargets`（自分の枠に描く動画）と同じ名前のフィールドは使えない（ビルドが止まる。Host は参照の方を使う）。
+- **1 つの動画面に出力できるのは 1 つだけ**（Component のインスタンス × 参照フィールド）。同じ mod の Component が 2 つでも、
+  1 つのインスタンスの 2 つのフィールドでも競合する。競合した面（と core:media を 2 つ持つ Entity）には誰の動画も描かず、
+  World Editor と `ubichill dev` が知らせる（読み込みの順で勝ち負けを決めると、ブラウザごとに結果が変わるため）。
+  操作パネルを複数置くときは、再生を担当する Component を 1 つ決め、ほかのパネルからは参照で指示を送る。
+- 動画面に描けるのは**ワールド定義に置いた Component** の出力だけ。部屋の中で作られた Component（`Ubi.entity.spawn` や参加者の
+  `entity:create`）は、面を指しても描かず、競合にも数えない（参加者が面を指す Component を作って、ほかの人の動画を消せないように）。
+
+  ```ts
+  export const config: ComponentConfig = {
+      dataFields: { screen: { type: 'entityRef', component: 'core:media', required: true, label: 'スクリーン' } },
+  };
+  Ubi.media.setVisible(true, 'screen');
+  Ubi.media.load({ targetId: 'screen', source, sync: 'shared' });
+  Events.on('media:stateChange', (state) => { /* state.targetId === 'screen' */ });
+  ```
+- 判定は World Editor（Hierarchy の印と Inspector）・`ubichill dev`（ターミナルの「参照の問題」）・Host の配送で同じ（`@ubichill/shared` の `findReferenceProblems` / `resolveRefs`）。
+- `ref`・`scope: 'referrers'` と `core:media` の描画先はプロトコル v6 から。古い Host はエラーにせず黙って捨てるので、
+  古い Host でも動かしたい mod は `Ubi.runtime?.supports('event:ref')`・`supports('media:surface')` で確かめて、階層の `scope` や自分の枠（`mediaTargets`）に切り替える。
+- `config` はビルド時にリテラルとして読む。`component` に定数や式を書くと読めないので、文字列で書く。
 
 ### Worker 内で届くイベント
 

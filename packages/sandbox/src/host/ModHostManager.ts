@@ -117,6 +117,7 @@ export class ModHostManager<TPayloadMap extends Record<string, unknown> = Record
             entityId: options.entityId,
             parentEntityId: options.parentEntityId,
             componentType: options.componentType,
+            refs: options.refs ?? (() => []),
             startedAt: performance.now(),
             _sendEvent: (event) => this.sendEvent(event),
         });

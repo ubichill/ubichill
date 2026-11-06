@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { css } from '@/styled-system/css';
 import { COMPONENT_DRAG_MIME, ENTITY_DRAG_MIME } from '../../lib/dnd';
 import { type EntityPath, pathKey } from '../../lib/entityTree';
-import { Chevron, EyeIcon, EyeOffIcon, PlusIcon } from './hierarchyIcons';
+import { Chevron, EyeIcon, EyeOffIcon, PlusIcon, WarningIcon } from './hierarchyIcons';
 
 const INDENT_PX = 16;
 
@@ -51,6 +51,12 @@ export interface EntityNodeProps {
     onEnterChild: (path: EntityPath) => void;
     /** 右クリックで開く context menu。 `null` を渡すと無効化。 */
     onContextMenu: ((path: EntityPath, x: number, y: number) => void) | null;
+    /** entityId → その Entity の Component の参照の問題（未設定の必須参照・壊れた参照）。 */
+    referenceProblems: ReadonlyMap<string, readonly string[]>;
+}
+
+function descendantHasProblem(children: readonly InitialEntity[], problems: ReadonlyMap<string, unknown>): boolean {
+    return children.some((c) => problems.has(c.id) || descendantHasProblem(c.children ?? [], problems));
 }
 
 export function EntityNode({
@@ -73,6 +79,7 @@ export function EntityNode({
     onMoveEntity,
     onEnterChild,
     onContextMenu,
+    referenceProblems,
 }: EntityNodeProps) {
     // 初期は全エンティティ畳まれた状態にする (ユーザー操作で展開)。
     const [open, setOpen] = useState(false);
@@ -88,6 +95,14 @@ export function EntityNode({
     const h = entity.transform.h ?? 0;
     const sizeBadge = w > 0 && h > 0 ? `${w}×${h}` : '—';
     const hasChildren = (entity.children?.length ?? 0) > 0;
+    const ownProblems = referenceProblems.get(entity.id) ?? [];
+    // 子は既定で畳まれているので、奥の問題も親の行で知らせる
+    const problemTitle =
+        ownProblems.length > 0
+            ? ownProblems.join('\n')
+            : !open && descendantHasProblem(entity.children ?? [], referenceProblems)
+              ? '子の Entity に参照の問題があります'
+              : null;
 
     // ドラッグ中にこの行を「自分が target」と表明する。
     const acceptDrag = (e: React.DragEvent) => {
@@ -227,6 +242,20 @@ export function EntityNode({
                         {entity.components.length}c
                     </span>
                 </div>
+                {problemTitle && (
+                    <span
+                        role="img"
+                        aria-label={problemTitle}
+                        title={problemTitle}
+                        className={css({
+                            flexShrink: 0,
+                            display: 'inline-flex',
+                            color: selectedEntityOnly ? 'textOnPrimary' : 'warning',
+                        })}
+                    >
+                        <WarningIcon />
+                    </span>
+                )}
                 <button
                     type="button"
                     onClick={(ev) => {
@@ -294,6 +323,7 @@ export function EntityNode({
                             onMoveEntity={onMoveEntity}
                             onEnterChild={onEnterChild}
                             onContextMenu={onContextMenu}
+                            referenceProblems={referenceProblems}
                         />
                     ))}
                 </div>

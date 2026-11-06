@@ -12,20 +12,31 @@
  * そのため 1 Component で「左下にスティック・右下にボタン」のように画面の複数箇所へ配置でき、
  * 画面サイズ（縦/横/タブレット）にも依存しない。
  *
- * 使い方: World Editor で操作したい Component と同じ Entity にこれを追加する
- * （`scope: 'subtree'` で同 Entity 上の Component へ配送するため）。
+ * 使い方: World Editor でこれを好きな Entity に追加し、「操作する Entity」に操作したい Entity（自機など）を
+ * Hierarchy からドロップする。イベントはその Entity 上の Component すべてに届く（型は問わない）。
+ * 「操作する Entity」が未設定なら、自分の Entity（と子）に送る（v1.0.0 と同じ。同じ Entity に置けば動く）。
  * `Ubi.hasCoarsePointer` が false（マウス/トラックパッド環境）のときは何も描画しない。
  */
 import type { ComponentConfig, UiPointerActionDetail } from 'ubichill';
 import { MobileControllerEvents } from './events';
+import { controllerRoute } from './route';
 import { diffDirections, resolveStick } from './stick';
 
 export const config: ComponentConfig = {
     defaultTransform: { x: 0, y: 0, z: 2000 },
     capabilities: ['event:emit', 'ui:render', 'scene:read', 'scene:update'],
+    // 自分の data（target の今の値）を受け取るため。target が空なら送り先を自分の Entity に戻す。
+    watchEntityTypes: ['mobile-controller:controller'],
     // 画面全体を覆う HUD レイヤー（スティックは左下・ボタンは右下に自前で配置する）。
     overlay: 'fill',
     description: 'タッチ/ペン環境で操作する画面固定コントローラ（仮想スティック + アクションボタン）。',
+    dataFields: {
+        target: {
+            type: 'entityRef',
+            label: '操作する Entity',
+            help: '矢印キー相当のイベントを送る先（例: 自機）。その Entity 上の Component すべてに届く。未設定ならこの Entity（と子）に送る。',
+        },
+    },
 };
 
 const STICK_SIZE = 132;
@@ -33,30 +44,21 @@ const KNOB_SIZE = 56;
 const ACTION_CODE = 'KeyZ';
 
 const controller = Ubi.state.define({
-    // 送信先Component型。Inspectorで変更可能（同じEntity上に配置し、scope: 'subtree'で届く相手を指定する）。
-    targetType: Ubi.state.sync('danmaku:player', {
-        label: '操作対象のComponent型',
-        help: '矢印キー相当のイベントを送る先 (例: danmaku:player)。同じEntity上に配置すること。',
-    }),
+    // dataFields の target（参照）の今の値を読むだけ。Inspector には dataFields 側を出す。
+    target: Ubi.state.sync<string | null>('', { editable: false }),
     // ノブの表示位置（中心からのオフセット px）。同期不要なローカル状態にすることで、
     // ドラッグ中の再描画がネットワークに漏れない（素の値を渡すと local スコープになる）。
     knobX: 0,
     knobY: 0,
 });
 
+const route = () => controllerRoute(controller.local.target, Ubi.runtime?.supports('event:ref') ?? false);
+
 function emitDown(code: string): void {
-    MobileControllerEvents.emit(
-        'mobile:key_down',
-        { code },
-        { scope: 'subtree', targetType: controller.local.targetType },
-    );
+    MobileControllerEvents.emit('mobile:key_down', { code }, route());
 }
 function emitUp(code: string): void {
-    MobileControllerEvents.emit(
-        'mobile:key_up',
-        { code },
-        { scope: 'subtree', targetType: controller.local.targetType },
-    );
+    MobileControllerEvents.emit('mobile:key_up', { code }, route());
 }
 
 /** 直前に送ったキー集合との差分だけを key_down / key_up として送る。 */

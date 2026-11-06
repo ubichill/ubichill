@@ -130,7 +130,7 @@ export type { Ubi, UbiFetchOptions } from './ubi';
 export { UbiSDK } from './ubi';
 export type { AssetLoadOptions } from './ubi/asset';
 export type { ComponentConfig, DataField, DataFieldType } from './ubi/config';
-export type { EmitOptions, EmitScope, EventRegistry } from './ubi/event';
+export type { EmitOptions, EmitScope, EventRegistry, RefEmitOptions } from './ubi/event';
 export type { Grip, GripOptions } from './ubi/grip';
 export type { IdentityTokenOptions } from './ubi/identity';
 export type { Ride } from './ubi/ride';

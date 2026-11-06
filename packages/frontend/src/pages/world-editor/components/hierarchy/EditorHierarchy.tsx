@@ -31,6 +31,8 @@ interface EditorHierarchyProps {
     onDuplicateEntity: (path: EntityPath) => void;
     /** クリップボードに何か入っているか (paste メニューの有効/無効判定) */
     hasClipboard: boolean;
+    /** entityId → 参照の問題の説明。行に印を出す。 */
+    referenceProblems: ReadonlyMap<string, readonly string[]>;
 }
 
 interface ContextMenuState {
@@ -57,6 +59,7 @@ export function EditorHierarchy({
     onPasteEntity,
     onDuplicateEntity,
     hasClipboard,
+    referenceProblems,
 }: EditorHierarchyProps) {
     // ドラッグ中にハイライトする drop ターゲットの key (path-key または ROOT_DROP_KEY)。
     // 1 つだけ保持するので state が滞留しない。dragend で必ず null にする。
@@ -256,6 +259,7 @@ export function EditorHierarchy({
                             onMoveEntity={onMoveEntity}
                             onEnterChild={onEnterChild}
                             onContextMenu={openContextMenu}
+                            referenceProblems={referenceProblems}
                         />
                     ))
                 )}

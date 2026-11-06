@@ -171,18 +171,33 @@ export type CmdNetworkBroadcast = {
 };
 
 /**
- * Ubi.event.emit(type, data, { scope, targetType })
- * Fire & Forget: 同 tab 内の他 Worker (siblings / parent / children / world スコープ) に
- * Component type フィルタ付きで type 付きイベントを送る。受信側は WorkerEvent として届く。
- * capability: 'event:emit' が必要。
+ * emit の配送先を Entity の階層で決めるときの範囲。
+ * - 'siblings':  同じ parent を持つ別 Entity の Component
+ * - 'parent':    自 Entity の親 Entity の Component
+ * - 'children':  自 Entity の直接の子 Entity の Component
+ * - 'subtree':   自 Entity + 子孫の全 Component
+ * - 'world':     全 Worker
+ * - 'referrers': 参照フィールドで自分を指している Component（参照の向きと逆に返事をする）
+ */
+export type EmitScope = 'siblings' | 'parent' | 'children' | 'subtree' | 'world' | 'referrers';
+
+/**
+ * emit の配送先。階層の範囲（`scope`）か、自分の参照フィールドの名前（`ref`）のどちらか 1 つ。
+ * `ref` は作者が Inspector で配線した Entity にだけ届き、フィールドが `component` を宣言していればその型に絞る。
+ */
+export type EmitRoute = { scope: EmitScope; ref?: never } | { ref: string; scope?: never };
+
+/**
+ * Ubi.event.emit(type, data, { scope | ref, targetType })
+ * Fire & Forget: 同 tab 内の他 Worker に Component type フィルタ付きで type 付きイベントを送る。
+ * 受信側は WorkerEvent として届く。capability: 'event:emit' が必要。
  */
 export type CmdEventEmit = {
     type: 'EVENT_EMIT';
-    payload: {
+    payload: EmitRoute & {
         type: string;
         data: unknown;
-        scope: 'siblings' | 'parent' | 'children' | 'subtree' | 'world';
-        /** 受信側 Component type フィルタ ("modId:componentName")。省略時は scope 内の全 Component。 */
+        /** 受信側 Component type フィルタ ("modId:componentName")。省略時は配送先の全 Component。 */
         targetType?: string;
     };
 };
