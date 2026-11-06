@@ -85,6 +85,9 @@ export async function buildJs(entry) {
         write: false,
         minify: false,
         external: [],
+        // shared の dist は CommonJS。そのまま同梱すると `__toESM(require_x())` という top-level 呼び出しになり、
+        // mod 側のバンドラが使っていない SDK のコードを tree-shake できない（#222）。ESM のソースを直接読む。
+        alias: { '@ubichill/shared': join(sdkDir, '..', 'shared', 'src') },
     });
     return result.outputFiles[0].text;
 }

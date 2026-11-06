@@ -107,8 +107,10 @@ export function checkProtocolCompatibility(hostVersion: number, guestVersion: nu
 export const FETCH_LIMITS = {
     defaultTimeoutMs: 120_000,
     maxTimeoutMs: 300_000,
-    defaultMaxBytes: 32 * 1024 * 1024,
-    maxBytes: 256 * 1024 * 1024,
+    // 32 MiB / 256 MiB。`32 * 1024 * 1024` と書くと esbuild が副作用ありとみなし、
+    // npm 版 SDK を使う mod のバンドルに使わなくても残る（#222）
+    defaultMaxBytes: 33_554_432,
+    maxBytes: 268_435_456,
 } as const;
 
 function clampLimit(value: number | undefined, fallback: number, max: number): number {

@@ -13,7 +13,7 @@ import { browserSignatureVerifier, isUnsignedModAllowed } from './modSignature';
 import type { ModSource } from './modSource';
 
 /** loader の {@link AcquireResult} と同形（Host 側でも分岐に使う）。 */
-export type LoadResult = WorkerModDefinition | 'data-only' | 'not-found' | { rejected: string };
+export type LoadResult = WorkerModDefinition | 'data-only' | 'undeclared' | 'not-found' | { rejected: string };
 
 /** 中立 LoadedMod を Host の WorkerModDefinition にマップする。 */
 function toWorkerModDefinition(m: LoadedMod): WorkerModDefinition {

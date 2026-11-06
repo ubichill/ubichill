@@ -64,7 +64,10 @@ jobs:
       # （実際に発生: "ubichill" と書いてしまい実パッケージ名 "@ubichill/sdk" と不一致）。
       # --since=origin/main で明示する: ローカルに "main" ブランチが無くても
       # (このジョブではPRブランチしかcheckoutしていない) origin/main の参照だけで解決できる。
+      # 依存の更新（dependabot）には changeset を求めない。changeset は npm に出す sdk・cli の版のためのもので、
+      # 依存だけの更新はイメージ（main のビルド）で配られる。必要なら次の sdk・cli の変更と一緒に出る
       - name: Validate changesets
+        if: github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]'
         run: pnpm exec changeset status --since=origin/main
 
   test:
@@ -126,6 +129,15 @@ jobs:
 
       - name: Verify mod locks
         run: pnpm verify:mod-locks
+
+      # 公開済み（gh-pages）の版を、同じ版のまま別の中身にしていないか。マージすると mods-pages が上書きし、
+      # その版を固定している外部のワールドが動かなくなる。mod のコードか、mod に取り込まれる SDK・shared を変えたら版を上げる
+      - name: Verify published mod versions are not overwritten
+        run: |
+          git fetch --depth=1 origin gh-pages:refs/remotes/origin/gh-pages
+          mkdir -p "$RUNNER_TEMP/published"
+          git archive origin/gh-pages mods | tar -x -C "$RUNNER_TEMP/published"
+          node scripts/check-published-mods.mjs dist/mods "$RUNNER_TEMP/published/mods"
 
       # 再生成した worlds/*.lock.json がコミット済みの内容と一致するか（= コミットし忘れが無いか）
       # を git diff で検証する。frozen-lockfile チェックと同じパターン。

@@ -7,6 +7,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { createServer } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { findInstancePlatform, instanceBinaryName, instancePackageName } from '../cli/src/instancePlatforms.ts';
 
@@ -18,7 +19,15 @@ const packageJson = createRequire(join(dir, 'package.json')).resolve(`${name}/pa
 const binary = join(dirname(packageJson), instanceBinaryName(platform.os));
 if (!existsSync(binary)) throw new Error(`${binary} がありません`);
 
-const port = 3077 + Math.floor(Math.random() * 1000);
+// 空きポートは OS に選ばせる（乱数で選ぶと、Windows では 3389 など予約されたポートに当たって bind が拒まれる）
+const port = await new Promise((done, fail) => {
+    const server = createServer();
+    server.on('error', fail);
+    server.listen(0, '127.0.0.1', () => {
+        const address = server.address();
+        server.close(() => done(typeof address === 'object' && address ? address.port : 0));
+    });
+});
 const child = spawn(binary, ['--guests', `--listen=127.0.0.1:${port}`], { stdio: ['ignore', 'inherit', 'inherit'] });
 const stop = () => {
     if (!child.killed) child.kill();

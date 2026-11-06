@@ -43,12 +43,13 @@ export type RuntimeEnvironment = {
     crossOriginIsolated?: boolean;
 };
 
+// `@__PURE__` が無いと esbuild は `new Uint8Array` を副作用ありとみなし、使わない mod のバンドルにも残す（#222）
 /** v128 を返す関数 1 つ（i8x16.splat / i8x16.popcnt）。SIMD が無いエンジンでは validate が false。 */
-const SIMD_PROBE = new Uint8Array([
+const SIMD_PROBE = /* @__PURE__ */ new Uint8Array([
     0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98, 11,
 ]);
 /** try / catch_all を含む関数 1 つ。例外処理が無いエンジンでは validate が false。 */
-const EXCEPTIONS_PROBE = new Uint8Array([
+const EXCEPTIONS_PROBE = /* @__PURE__ */ new Uint8Array([
     0, 97, 115, 109, 1, 0, 0, 0, 1, 4, 1, 96, 0, 0, 3, 2, 1, 0, 10, 8, 1, 6, 0, 6, 64, 25, 11, 11,
 ]);
 
