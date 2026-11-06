@@ -251,16 +251,7 @@ export function HudTabs({
                     />
                 )}
                 {activeTab === 'notifications' && <NotificationsTab onNavigate={onNavigate} />}
-                {activeTab === 'profile' && (
-                    <ProfileTab
-                        onNavigate={onNavigate}
-                        onJoinInstance={onJoinInstance}
-                        onEditProfile={() => {
-                            setSettingsSection('profile');
-                            setActiveTab('settings');
-                        }}
-                    />
-                )}
+                {activeTab === 'profile' && <ProfileTab onNavigate={onNavigate} onJoinInstance={onJoinInstance} />}
                 {activeTab === 'settings' && (
                     <SettingsTab
                         section={settingsSection}
