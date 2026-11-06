@@ -115,9 +115,10 @@ export function createDevServer(deps: DevServerDeps): DevServer {
             case 'mod-file': {
                 const generation = findGeneration(deps.state(), route.buildId);
                 const mod = generation?.mods.get(route.modId);
-                const bytes = mod && mod.version === route.version ? mod.files.get(route.file) : undefined;
+                const known = mod && mod.version === route.version ? mod : undefined;
+                const bytes = known?.files.get(route.file);
                 // 手元のビルドに作者署名は無い。404 だとブラウザのコンソールに毎回エラーが出るので、204（中身なし = 署名なし）で答える
-                if (!bytes && mod && route.file === MOD_SIGNATURE_FILE) {
+                if (!bytes && known && route.file === MOD_SIGNATURE_FILE) {
                     res.writeHead(204, { 'Cache-Control': IMMUTABLE });
                     res.end();
                     return;

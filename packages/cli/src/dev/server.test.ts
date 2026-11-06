@@ -104,6 +104,7 @@ describe('createDevServer', () => {
         // 手元のビルドに署名は無い: 404（コンソールにエラー）ではなく 204（署名なし）。無い mod・無い世代は 404 のまま
         expect((await get('/__ubichill/g/r-2/mods/pen/v1.0.1/lock.sig.json')).status).toBe(204);
         expect((await get('/__ubichill/g/r-2/mods/other/v1.0.1/lock.sig.json')).status).toBe(404);
+        expect((await get('/__ubichill/g/r-2/mods/pen/v9.9.9/lock.sig.json')).status).toBe(404);
         expect((await get('/__ubichill/g/r-9/mods/pen/v1.0.1/lock.sig.json')).status).toBe(404);
         const wasm = await get('/__ubichill/g/r-2/mods/pen/v1.0.1/a.wasm');
         expect(wasm.headers.get('content-type')).toBe('application/wasm');
