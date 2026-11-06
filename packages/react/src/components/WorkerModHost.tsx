@@ -7,9 +7,14 @@
  * - definition.onHostMessage を通じたカスタムメッセージのmod側委譲
  */
 
-import { CORE_COMPONENT_TYPES } from '@ubichill/core-components';
 import { routeEmit } from '@ubichill/sandbox';
-import { type ComponentInstance, type InputFrameEvent, resolveRefs } from '@ubichill/shared';
+import {
+    type ComponentInstance,
+    frameMediaTargets,
+    type InputFrameEvent,
+    isMediaOutputField,
+    resolveRefs,
+} from '@ubichill/shared';
 import type React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { editorSchemaRegistry } from '../editorSchemaRegistry';
@@ -149,10 +154,15 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
         () => resolveRefs(definition.dataFields, (entity.data ?? {}) as Record<string, unknown>),
         [definition.dataFields, entity.data],
     );
-    // core:media を指す参照は、そのフィールド名を targetId とするメディアの描画先になる
+    // core:media を指す entityRef は、そのフィールド名を targetId とするメディアの描画先になる
     const mediaRefs = useMemo(
-        () => resolvedRefs.filter((ref) => ref.component === CORE_COMPONENT_TYPES.media),
-        [resolvedRefs],
+        () => resolvedRefs.filter((ref) => isMediaOutputField(definition.dataFields?.[ref.field])),
+        [resolvedRefs, definition.dataFields],
+    );
+    // 同じ名前の出力があれば、自分の枠には描かない（1 つの targetId に <video> を 2 つ作らない）
+    const frameTargets = useMemo(
+        () => frameMediaTargets(definition.mediaTargets, definition.dataFields),
+        [definition.mediaTargets, definition.dataFields],
     );
     const refsRef = useRef(resolvedRefs);
     useEffect(() => {
@@ -317,7 +327,7 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
                     style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
                 />
             ))}
-            {definition.mediaTargets?.map((targetId) => (
+            {frameTargets.map((targetId) => (
                 // biome-ignore lint/a11y/useMediaCaption: mod-managed video
                 <video
                     key={targetId}
@@ -343,6 +353,7 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
             {mediaRefs.map((ref) => (
                 <MediaSurfacePortal
                     key={ref.field}
+                    componentInstanceId={entityId}
                     targetId={ref.field}
                     entityId={ref.entityIds[0]}
                     videoRef={getVideoRef(ref.field)}

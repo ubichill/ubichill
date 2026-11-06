@@ -119,6 +119,11 @@ export interface RefComponentRecord {
     entityId: string;
     type: string;
     data?: Readonly<Record<string, unknown>>;
+    /**
+     * 部屋の中で作られた（ワールド定義に無い）Component。動画面への出力として数えず、描かせない。
+     * 参加者は好きな data の Component を作れるので、数えると誰でも面を「競合」にして動画を消せる。
+     */
+    spawned?: boolean;
 }
 
 /** 動画面への出力 1 つ（Component のインスタンス × core:media を指す参照フィールド）。 */
@@ -134,13 +139,31 @@ export interface MediaConflicts {
     duplicatedSurfaces: ReadonlySet<string>;
     /** 2 つ以上の出力が向いている動画面 → 向いている出力。 */
     sharedSurfaces: ReadonlyMap<string, readonly MediaOutput[]>;
+    /** 競合していない動画面 → そこに描いてよい唯一の出力。ここに無い面には誰も描かない。 */
+    owners: ReadonlyMap<string, MediaOutput>;
+}
+
+/**
+ * 動画面への出力になるフィールドか。`core:media` を宣言した `entityRef`（単体）だけ。
+ * 1 つのフィールドが持てる `<video>` は 1 つなので、`entityRefArray` は面を指しても出力にならない（描かない・数えない）。
+ */
+export function isMediaOutputField(spec: unknown): spec is RefFieldSpec {
+    return isRefField(spec) && spec.type === 'entityRef' && spec.component === CORE_COMPONENT_TYPES.media;
+}
+
+/** Ubi.media の targetId のうち、自分の枠に描くもの。動画面への出力のフィールドと同じ名前は出力の方にする。 */
+export function frameMediaTargets(
+    mediaTargets: readonly string[] | undefined,
+    dataFields: DataFieldsLike | undefined,
+): string[] {
+    return (mediaTargets ?? []).filter((name) => !isMediaOutputField(dataFields?.[name]));
 }
 
 /**
  * 動画面の競合を挙げる。1 つの動画面（core:media の Entity）に出力できるのは、Component のインスタンス × 参照フィールドの
  * 1 つだけ。同じ mod の Component が 2 つあっても競合する。競合した面には誰の動画も描かない（読み込みの順で勝ち負けを
  * 決めると、ブラウザごとに結果が変わるため）。複数の操作パネルを置くときは、再生を担当する Component を 1 つ決め、
- * ほかのパネルからは参照で指示を送る。
+ * ほかのパネルからは参照で指示を送る。部屋の中で作られた Component（`spawned`）は出力に数えない。
  */
 export function findMediaConflicts(
     components: readonly RefComponentRecord[],
@@ -149,18 +172,20 @@ export function findMediaConflicts(
     const surfaces = components.filter((c) => c.type === CORE_COMPONENT_TYPES.media).map((c) => c.entityId);
     const surfaceSet = new Set(surfaces);
     const duplicatedSurfaces = new Set(surfaces.filter((id, i) => surfaces.indexOf(id) !== i));
-    const outputs = components.flatMap((c) =>
-        refFieldEntries(fieldsOf(c.type))
-            .filter(([, spec]) => spec.component === CORE_COMPONENT_TYPES.media)
-            .flatMap(([field, spec]) =>
-                refTargets(spec, c.data?.[field])
-                    .filter((target) => surfaceSet.has(target))
-                    .map((target) => ({
-                        target,
-                        output: { key: c.key, entityId: c.entityId, componentType: c.type, field },
-                    })),
-            ),
-    );
+    const outputs = components
+        .filter((c) => !c.spawned)
+        .flatMap((c) =>
+            refFieldEntries(fieldsOf(c.type))
+                .filter(([, spec]) => isMediaOutputField(spec))
+                .flatMap(([field, spec]) =>
+                    refTargets(spec, c.data?.[field])
+                        .filter((target) => surfaceSet.has(target))
+                        .map((target) => ({
+                            target,
+                            output: { key: c.key, entityId: c.entityId, componentType: c.type, field },
+                        })),
+                ),
+        );
     const byTarget = outputs.reduce(
         (map, { target, output }) => map.set(target, [...(map.get(target) ?? []), output]),
         new Map<string, MediaOutput[]>(),
@@ -168,6 +193,12 @@ export function findMediaConflicts(
     return {
         duplicatedSurfaces,
         sharedSurfaces: new Map([...byTarget].filter(([, list]) => list.length > 1)),
+        owners: new Map(
+            [...byTarget].flatMap(
+                ([target, [only, ...rest]]): Array<[string, MediaOutput]> =>
+                    only && rest.length === 0 && !duplicatedSurfaces.has(target) ? [[target, only]] : [],
+            ),
+        ),
     };
 }
 

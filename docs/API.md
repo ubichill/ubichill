@@ -261,13 +261,16 @@ Events.emit('vp:media:state', state, { scope: 'referrers' }); // 参照で自分
   どちらも `component` を宣言していればその型の Component に限る（data の id を書き換えられても、宣言の外の型には届かない）。
 - `scope: 'referrers'` は、参照フィールドで自分の Entity を指している Component に届く。相手の参照が `component` を宣言していれば、それが自分の型のときだけ。
 - 相手は同じ Entity でも、別の木の奥でもよい。階層の形は問わない。
-- `component: 'core:media'` の参照は**動画の描画先**になる。フィールドの名前を `Ubi.media.*` の targetId に使うと、
+- `component: 'core:media'` の `entityRef`（単体）は**動画の描画先**になる。フィールドの名前を `Ubi.media.*` の targetId に使うと、
   `<video>` は参照先の `core:media` の Entity の位置・大きさで描かれる（URL の許可・同期・状態はこの mod のもの）。
-  動画を出すだけの Worker を別に作らなくてよい。
+  動画を出すだけの Worker を別に作らなくてよい。`entityRefArray` は `core:media` を指しても描画先にならない（1 つのフィールドに `<video>` は 1 つ）。
+- `mediaTargets`（自分の枠に描く動画）と同じ名前のフィールドは使えない（ビルドが止まる。Host は参照の方を使う）。
 - **1 つの動画面に出力できるのは 1 つだけ**（Component のインスタンス × 参照フィールド）。同じ mod の Component が 2 つでも、
   1 つのインスタンスの 2 つのフィールドでも競合する。競合した面（と core:media を 2 つ持つ Entity）には誰の動画も描かず、
   World Editor と `ubichill dev` が知らせる（読み込みの順で勝ち負けを決めると、ブラウザごとに結果が変わるため）。
   操作パネルを複数置くときは、再生を担当する Component を 1 つ決め、ほかのパネルからは参照で指示を送る。
+- 動画面に描けるのは**ワールド定義に置いた Component** の出力だけ。部屋の中で作られた Component（`Ubi.entity.spawn` や参加者の
+  `entity:create`）は、面を指しても描かず、競合にも数えない（参加者が面を指す Component を作って、ほかの人の動画を消せないように）。
 
   ```ts
   export const config: ComponentConfig = {

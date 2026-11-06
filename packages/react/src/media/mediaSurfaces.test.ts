@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createMediaSurfaceRegistry } from './mediaSurfaces';
+import { canDrawOnSurface, createMediaSurfaceRegistry } from './mediaSurfaces';
 
-const surface = (fit: 'contain' | 'cover' = 'contain') => ({ element: {} as HTMLElement, fit });
+const surface = (fit: 'contain' | 'cover' = 'contain') => ({
+    element: {} as HTMLElement,
+    fit,
+    output: { componentInstanceId: 'player::controls', field: 'screen' },
+});
 
 describe('createMediaSurfaceRegistry', () => {
     it('登録・取得・外すたびに購読者へ知らせる', () => {
@@ -58,5 +62,18 @@ describe('createMediaSurfaceRegistry', () => {
         unsubscribe();
         registry.register('tv', surface());
         expect(listener).not.toHaveBeenCalled();
+    });
+});
+
+describe('canDrawOnSurface', () => {
+    it('面が決めた出力（インスタンスとフィールドの両方が一致）だけが描ける', () => {
+        const tv = surface();
+        expect(canDrawOnSurface(tv, 'player::controls', 'screen')).toBe(true);
+        expect(canDrawOnSurface(tv, 'evil', 'screen')).toBe(false);
+        expect(canDrawOnSurface(tv, 'player::controls', 'sub')).toBe(false);
+    });
+
+    it('面がまだ無ければ描けない', () => {
+        expect(canDrawOnSurface(undefined, 'player::controls', 'screen')).toBe(false);
     });
 });

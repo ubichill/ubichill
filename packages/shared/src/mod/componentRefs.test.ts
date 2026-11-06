@@ -5,6 +5,8 @@ import {
     fieldLabel,
     findMediaConflicts,
     findReferenceProblems,
+    frameMediaTargets,
+    isMediaOutputField,
     isRefField,
     type RefCheckEntity,
     type ReferenceProblem,
@@ -282,6 +284,66 @@ describe('動画面の競合（1 つの面に出力は 1 つ）', () => {
         expect(conflictedMediaSurfaces(conflicts).size).toBe(0);
     });
 
+    it('競合していない面ごとに、描いてよい出力を 1 つ決める（競合した面・重複した面には無い）', () => {
+        const conflicts = findMediaConflicts(
+            [
+                record('tv::0', 'tv', 'core:media'),
+                record('tv2::0', 'tv2', 'core:media'),
+                record('tv3::0', 'tv3', 'core:media'),
+                record('tv3::1', 'tv3', 'core:media'),
+                record('a::0', 'a', 'vp:controls', { screen: 'tv' }),
+                record('b::0', 'b', 'vp:controls', { screen: 'tv2' }),
+                record('c::0', 'c', 'vp:controls', { screen: 'tv2' }),
+                record('d::0', 'd', 'vp:controls', { screen: 'tv3' }),
+            ],
+            fieldsOf,
+        );
+        expect([...conflicts.owners]).toEqual([
+            ['tv', { key: 'a::0', entityId: 'a', componentType: 'vp:controls', field: 'screen' }],
+        ]);
+    });
+
+    it('部屋の中で作られた Component（spawned）は、面を指しても競合にせず、面を奪えない', () => {
+        // 改造したクライアントが entity:create で tv を指す controls を作っても、作者の配線した出力が描き続ける
+        const conflicts = findMediaConflicts(
+            [
+                record('tv::0', 'tv', 'core:media'),
+                record('a::0', 'a', 'vp:controls', { screen: 'tv' }),
+                { ...record('evil', 'evil', 'vp:controls', { screen: 'tv' }), spawned: true },
+                { ...record('evil2', 'evil2', 'm:dual', { main: 'tv', sub: 'tv' }), spawned: true },
+            ],
+            fieldsOf,
+        );
+        expect(conflictedMediaSurfaces(conflicts).size).toBe(0);
+        expect(conflicts.owners.get('tv')?.key).toBe('a::0');
+    });
+
+    it('作者の出力が無い面を、spawned の出力が手に入れることもない', () => {
+        const conflicts = findMediaConflicts(
+            [
+                record('tv::0', 'tv', 'core:media'),
+                { ...record('evil', 'evil', 'vp:controls', { screen: 'tv' }), spawned: true },
+            ],
+            fieldsOf,
+        );
+        expect(conflicts.owners.size).toBe(0);
+    });
+
+    it('entityRefArray は core:media を指しても出力にならない（描かないので数えない）', () => {
+        const arrayFields = { 'm:wall': { screens: { type: 'entityRefArray', component: 'core:media' } } };
+        const conflicts = findMediaConflicts(
+            [
+                record('tv::0', 'tv', 'core:media'),
+                record('a::0', 'a', 'vp:controls', { screen: 'tv' }),
+                record('w::0', 'w', 'm:wall', { screens: ['tv'] }),
+            ],
+            (type) => fieldsOf(type) ?? arrayFields[type as 'm:wall'],
+        );
+        expect(conflictedMediaSurfaces(conflicts).size).toBe(0);
+        expect(conflicts.owners.get('tv')?.key).toBe('a::0');
+        expect(isMediaOutputField({ type: 'entityRefArray', component: 'core:media' })).toBe(false);
+    });
+
     it('findReferenceProblems: 競合した出力それぞれと、core:media の重複を報告する', () => {
         const world = [
             entity('tv', [{ type: 'core:media' }]),
@@ -302,6 +364,22 @@ describe('動画面の競合（1 つの面に出力は 1 つ）', () => {
         expect(describeReferenceProblem(problems[0] as ReferenceProblem)).toBe(
             'tv2 に core:media が 2 つ以上あるため、動画を描きません。1 つにしてください',
         );
+    });
+});
+
+describe('frameMediaTargets', () => {
+    it('動画面への出力のフィールドと同じ名前は、自分の枠に描かない（<video> を 2 つ作らない）', () => {
+        const fields = {
+            screen: { type: 'entityRef', component: 'core:media' },
+            preview: { type: 'entityRef', component: 'vp:screen' },
+        };
+        expect(frameMediaTargets(['screen', 'preview', 'main'], fields)).toEqual(['preview', 'main']);
+    });
+
+    it('宣言が無い・壊れていれば、mediaTargets をそのまま使う', () => {
+        expect(frameMediaTargets(['main'], undefined)).toEqual(['main']);
+        expect(frameMediaTargets(['main'], { main: null })).toEqual(['main']);
+        expect(frameMediaTargets(undefined, {})).toEqual([]);
     });
 });
 

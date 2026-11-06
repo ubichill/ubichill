@@ -10,6 +10,20 @@ import { useSyncExternalStore } from 'react';
 export interface MediaSurface {
     element: HTMLElement;
     fit: 'contain' | 'cover';
+    /**
+     * この面に描いてよい唯一の出力（Component のインスタンス × 参照フィールド）。ワールド定義の配線から決める
+     * （`findMediaConflicts` の owners）。ほかの出力が同じ面を指しても描かせない。
+     */
+    output: { componentInstanceId: string; field: string };
+}
+
+/** この面に、その Component のそのフィールドの `<video>` を付けてよいか。 */
+export function canDrawOnSurface(
+    surface: MediaSurface | undefined,
+    componentInstanceId: string,
+    field: string,
+): surface is MediaSurface {
+    return surface?.output.componentInstanceId === componentInstanceId && surface.output.field === field;
 }
 
 /**
