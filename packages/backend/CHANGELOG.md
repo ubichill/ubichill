@@ -1,5 +1,28 @@
 # @ubichill/backend
 
+## 1.9.2
+
+### Patch Changes
+
+- 4b24568: 端末への出力を作り直す（絵文字をやめ、Vite / Next.js と同じく `✓` 成功・`✗` 失敗・`!` 注意・`➜` 次にすること、TTY のときだけ色。`NO_COLOR` / `FORCE_COLOR` に従う）。
+
+  - `ubichill dev`: 起動の途中は mod ごとのビルドの行、起動し終えたら最後に URL の案内（`ready in`）を出す。以降は時刻・`[dev]` / `[build]` / `[instance]`・結果の 1 行。ビルドの失敗は mod の名前と esbuild のコードの抜き出し、ワールドの失敗は直し方を添える。
+  - `ubichill dev` は既定で手元（127.0.0.1）だけで待ち受ける。`--host`（全部の口）/ `--host=<addr>` で LAN に公開し、そのオリジンを Go にも許す。
+  - 全体の `--debug`（`UBICHILL_DEBUG=1` と同じ）: 判断・時間・HTTP の要求・Go の info / debug のログを出し、失敗にスタックトレースを付ける。ふだんの失敗はメッセージと直し方だけ。
+  - `ubichill dev` は Go を `--log-format=json` で起動し、JSON の行を `[instance]` の行にする（ふだんは warn / error だけ）。
+  - backend・db（migrate）のログは 1 件 1 行（本番は ISO 時刻・level・色なし、スタックの改行は `\n`）。
+
+- 4d98926: 依存を更新する（@redis/client 6.3.1・dotenv 18.0.9・express-rate-limit 8.7.3・rate-limit-redis 6.0.2・resend 6.37.0・better-auth 1.7.15）。
+- ddd7bc3: undici を 8 に上げる（外部 URL の取得 `safeFetch` の接続時の DNS 検査は、8 でも接続のたびに呼ばれることを確かめた）。
+- Updated dependencies [abbb4db]
+- Updated dependencies [4b24568]
+- Updated dependencies [abbb4db]
+- Updated dependencies [abbb4db]
+- Updated dependencies [04d9050]
+- Updated dependencies [04d9050]
+  - @ubichill/shared@1.12.0
+  - @ubichill/db@1.5.2
+
 ## 1.9.1
 
 ### Patch Changes
