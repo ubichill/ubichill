@@ -3,8 +3,10 @@
 // 使い方: node scripts/check-chart.mjs（helm が PATH にあり、charts/ubichill/charts に依存の tgz があること）
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { createTerminal, debugFromEnv, processIO } from '@ubichill/terminal';
 import { parseAllDocuments } from 'yaml';
 
+const term = createTerminal(processIO(), { debug: debugFromEnv(process.env) });
 const chart = fileURLToPath(new URL('../charts/ubichill', import.meta.url));
 const base = [
     '--set', 'global.domain=example.test',
@@ -569,9 +571,14 @@ for (const [label, args, message] of [
 }
 
 if (failures.length > 0) {
-    console.error(`❌ chart の Redis の env・同梱の Redis・backend の台数:\n${failures.map((f) => `  - ${f}`).join('\n')}`);
+    term.error(
+        [
+            `chart の Redis の env・同梱の Redis・backend の台数の検査に ${failures.length} 件失敗しました`,
+            ...failures.map((f) => `- ${f}`),
+        ].join('\n'),
+    );
     process.exit(1);
 }
-console.log(
-    `✅ chart の Redis の env: ${cases.length} 通り + 同梱の Valkey（Service・Secret・永続化・exporter・版の固定・描画しない条件・拒否）+ instance の Downward API・Directory の選択（Go・backend）・replicas・更新方式と drain（引っ越し・猶予の自動計算）・指標の収集と KEDA（既定・有効・scale-in・draining の除外・拒否）・pod-deletion-cost の権限 + 不正な指定の拒否、backend の台数: ${replicaCases.length} 通り + Redis なしの複数台の拒否`,
+term.success(
+    `chart の Redis の env: ${cases.length} 通り + 同梱の Valkey（Service・Secret・永続化・exporter・版の固定・描画しない条件・拒否）+ instance の Downward API・Directory の選択（Go・backend）・replicas・更新方式と drain（引っ越し・猶予の自動計算）・指標の収集と KEDA（既定・有効・scale-in・draining の除外・拒否）・pod-deletion-cost の権限 + 不正な指定の拒否、backend の台数: ${replicaCases.length} 通り + Redis なしの複数台の拒否`,
 );

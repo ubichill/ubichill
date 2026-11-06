@@ -16,6 +16,7 @@ import * as esbuild from 'esbuild';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createTerminal, debugFromEnv, processIO } from '@ubichill/terminal';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
@@ -162,6 +163,7 @@ SDK（mod）と Host（本体）は独立して更新されるため、初期化
 このとき Host は未対応コマンドを持たない恐れがあるため \`degraded\` として開発者に警告する。
 `;
 
+const term = createTerminal(processIO(), { debug: debugFromEnv(process.env) });
 const outPath = join(root, 'docs', 'CAPABILITIES.md');
 const prev = (() => {
     try {
@@ -171,9 +173,10 @@ const prev = (() => {
     }
 })();
 
+const summary = `capability ${total} 件  protocol v${PROTOCOL_VERSION}`;
 if (prev === md) {
-    console.log('docs/CAPABILITIES.md は最新です（変更なし）');
+    term.success('docs/CAPABILITIES.md は最新です（変更なし）', summary);
 } else {
     writeFileSync(outPath, md);
-    console.log(`docs/CAPABILITIES.md を生成しました（capability ${total} 件, protocol v${PROTOCOL_VERSION}）`);
+    term.success('docs/CAPABILITIES.md を生成しました', summary);
 }

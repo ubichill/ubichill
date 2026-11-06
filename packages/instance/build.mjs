@@ -9,9 +9,18 @@
  * 使い方: node build.mjs [--platform=<os>-<cpu>]（cwd は packages/instance/ 前提。省略時は全部）
  */
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { copyFileSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+    createTerminal,
+    DEBUG_ENV,
+    debugFromEnv,
+    formatBytes,
+    formatDuration,
+    HintedError,
+    processIO,
+} from '@ubichill/terminal';
 import { goTarget, INSTANCE_PLATFORMS, instanceBinaryName, instancePackageName } from '../cli/src/instancePlatforms.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -51,16 +60,46 @@ export function buildPlatform(platform) {
     return dir;
 }
 
-function main() {
-    const only = process.argv.slice(2).find((a) => a.startsWith('--platform='))?.slice('--platform='.length);
-    const targets = INSTANCE_PLATFORMS.filter((p) => !only || `${p.os}-${p.cpu}` === only);
-    if (targets.length === 0) throw new Error(`--platform=${only} は配っていません`);
-    for (const platform of targets) {
-        console.log(`🔨 ${instancePackageName(platform)}@${version}`);
-        buildPlatform(platform);
+function main(term) {
+    const only = process.argv
+        .slice(2)
+        .find((a) => a.startsWith('--platform='))
+        ?.slice('--platform='.length);
+    const platformName = (p) => `${p.os}-${p.cpu}`;
+    const targets = INSTANCE_PLATFORMS.filter((p) => !only || platformName(p) === only);
+    if (targets.length === 0) {
+        throw new HintedError(
+            `--platform=${only} は配っていません`,
+            `配っているもの: ${INSTANCE_PLATFORMS.map(platformName).join(', ')}`,
+        );
     }
-    console.log(`📦 ${outDir} (${targets.length} platforms)`);
+    const platforms = `${targets.length} platform${targets.length === 1 ? '' : 's'}`;
+    const started = performance.now();
+    term.info(`Building @ubichill/instance@${version} for ${platforms}...`);
+    for (const platform of targets) {
+        const platformStarted = performance.now();
+        const binary = join(buildPlatform(platform), instanceBinaryName(platform.os));
+        term.success(
+            `${instancePackageName(platform)}@${version}`,
+            `${formatBytes(statSync(binary).size)}  ${formatDuration(performance.now() - platformStarted)}`,
+        );
+    }
+    term.success(
+        `${platforms} built in ${formatDuration(performance.now() - started)}`,
+        relative(process.cwd(), outDir) || '.',
+    );
 }
 
 const isMain = process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1];
-if (isMain) main();
+if (isMain) {
+    const term = createTerminal(processIO(), { debug: debugFromEnv(process.env) });
+    try {
+        main(term);
+    } catch (err) {
+        term.failure(
+            err,
+            err instanceof HintedError ? {} : { debugTip: `${DEBUG_ENV}=1 を付けるとスタックトレースを表示します` },
+        );
+        process.exit(1);
+    }
+}
