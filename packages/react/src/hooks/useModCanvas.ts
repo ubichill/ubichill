@@ -73,6 +73,15 @@ function drawCursor(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingCont
 }
 
 /** ストロークを順に重ねた永続レイヤーを作り直す。 */
+/** 1 回の描き直しで受け取るストロークの上限（部屋の Entity の上限と同じ）。mod が巨大な配列でページを止めないように。 */
+export const MAX_REPLACED_STROKES = 10000;
+
+/** Worker から来た描き直しの一覧（信用しない）。配列でなければ空、多すぎれば新しい方を残す。 */
+export function acceptReplacedStrokes(strokes: unknown): CanvasStrokeData[] {
+    if (!Array.isArray(strokes)) return [];
+    return strokes.slice(-MAX_REPLACED_STROKES) as CanvasStrokeData[];
+}
+
 function paintStrokes(width: number, height: number, strokes: readonly CanvasStrokeData[]): OffscreenCanvas {
     const canvas = new OffscreenCanvas(width || 1, height || 1);
     const ctx = canvas.getContext('2d');
@@ -180,7 +189,7 @@ export function useModCanvas(
                 if (ctx) drawStroke(ctx, stroke);
             },
             onCanvasReplaceStrokes: (targetId, strokes) => {
-                const list = strokes.slice();
+                const list = acceptReplacedStrokes(strokes);
                 committedStrokesRef.current.set(targetId, list);
                 const canvas = canvasElemsRef.current.get(targetId);
                 if (!canvas) return;
