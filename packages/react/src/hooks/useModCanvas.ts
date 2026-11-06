@@ -1,13 +1,13 @@
 /**
  * useModCanvas
  *
- * Worker の canvas.*  RPC（CANVAS_FRAME / CANVAS_COMMIT_STROKE）を受け取り
+ * Worker の canvas.*  RPC（CANVAS_FRAME / CANVAS_COMMIT_STROKE / CANVAS_REPLACE_STROKES）を受け取り
  * ホスト側 HTMLCanvasElement に描画する。
  *
  * 責務:
  * - 永続レイヤー（OffscreenCanvas）へのストローク蓄積
  * - 毎フレームの合成描画（永続 + アクティブストローク + カーソル）
- * - ResizeObserver によるリサイズ追従（ストロークデータから再構築）
+ * - ResizeObserver によるリサイズ追従と、mod が順番を正したときの描き直し（どちらもストロークデータから再構築）
  * - アンマウント時のリソース解放
  *
  * カーソル描画はデータ駆動（CanvasCursorData.shape === 'custom' で
@@ -72,13 +72,21 @@ function drawCursor(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingCont
     ctx.stroke();
 }
 
+/** ストロークを順に重ねた永続レイヤーを作り直す。 */
+function paintStrokes(width: number, height: number, strokes: readonly CanvasStrokeData[]): OffscreenCanvas {
+    const canvas = new OffscreenCanvas(width || 1, height || 1);
+    const ctx = canvas.getContext('2d');
+    if (ctx) for (const s of strokes) drawStroke(ctx, s);
+    return canvas;
+}
+
 // ─────────────────────────────────────────────────────────────────
 
 export interface UseModCanvasResult {
     /** canvas 要素の ref コールバック。JSX の ref prop に直接渡す。 */
     getCanvasRef: (targetId: string) => (el: HTMLCanvasElement | null) => void;
     /** useModWorker の handlers に spread する */
-    canvasHandlers: Pick<ModWorkerHandlers, 'onCanvasFrame' | 'onCanvasCommitStroke'>;
+    canvasHandlers: Pick<ModWorkerHandlers, 'onCanvasFrame' | 'onCanvasCommitStroke' | 'onCanvasReplaceStrokes'>;
 }
 
 export function useModCanvas(
@@ -101,14 +109,10 @@ export function useModCanvas(
                     if (!canvas || (canvas.width === w && canvas.height === h)) continue;
                     canvas.width = w;
                     canvas.height = h;
-                    const newPerm = new OffscreenCanvas(w, h);
-                    const ctx = newPerm.getContext('2d');
-                    if (ctx) {
-                        for (const s of committedStrokesRef.current.get(targetId) ?? []) {
-                            drawStroke(ctx, s);
-                        }
-                    }
-                    permanentCanvasesRef.current.set(targetId, newPerm);
+                    permanentCanvasesRef.current.set(
+                        targetId,
+                        paintStrokes(w, h, committedStrokesRef.current.get(targetId) ?? []),
+                    );
                 }
             }
         });
@@ -148,33 +152,41 @@ export function useModCanvas(
         return cb;
     };
 
-    const canvasHandlers: Pick<ModWorkerHandlers, 'onCanvasFrame' | 'onCanvasCommitStroke'> = {
-        onCanvasFrame: (targetId, activeStroke, cursors) => {
-            const canvas = canvasElemsRef.current.get(targetId);
-            if (!canvas) return;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) return;
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            const perm = permanentCanvasesRef.current.get(targetId);
-            if (perm) ctx.drawImage(perm, 0, 0);
-            if (activeStroke) drawStroke(ctx, activeStroke);
-            for (const cursor of cursors) drawCursor(ctx, cursor);
-        },
-        onCanvasCommitStroke: (targetId, stroke) => {
-            const strokes = committedStrokesRef.current.get(targetId) ?? [];
-            strokes.push(stroke);
-            committedStrokesRef.current.set(targetId, strokes);
-            const canvas = canvasElemsRef.current.get(targetId);
-            if (!canvas) return;
-            let perm = permanentCanvasesRef.current.get(targetId);
-            if (!perm) {
-                perm = new OffscreenCanvas(canvas.width || 1, canvas.height || 1);
-                permanentCanvasesRef.current.set(targetId, perm);
-            }
-            const ctx = perm.getContext('2d');
-            if (ctx) drawStroke(ctx, stroke);
-        },
-    };
+    const canvasHandlers: Pick<ModWorkerHandlers, 'onCanvasFrame' | 'onCanvasCommitStroke' | 'onCanvasReplaceStrokes'> =
+        {
+            onCanvasFrame: (targetId, activeStroke, cursors) => {
+                const canvas = canvasElemsRef.current.get(targetId);
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) return;
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                const perm = permanentCanvasesRef.current.get(targetId);
+                if (perm) ctx.drawImage(perm, 0, 0);
+                if (activeStroke) drawStroke(ctx, activeStroke);
+                for (const cursor of cursors) drawCursor(ctx, cursor);
+            },
+            onCanvasCommitStroke: (targetId, stroke) => {
+                const strokes = committedStrokesRef.current.get(targetId) ?? [];
+                strokes.push(stroke);
+                committedStrokesRef.current.set(targetId, strokes);
+                const canvas = canvasElemsRef.current.get(targetId);
+                if (!canvas) return;
+                let perm = permanentCanvasesRef.current.get(targetId);
+                if (!perm) {
+                    perm = new OffscreenCanvas(canvas.width || 1, canvas.height || 1);
+                    permanentCanvasesRef.current.set(targetId, perm);
+                }
+                const ctx = perm.getContext('2d');
+                if (ctx) drawStroke(ctx, stroke);
+            },
+            onCanvasReplaceStrokes: (targetId, strokes) => {
+                const list = strokes.slice();
+                committedStrokesRef.current.set(targetId, list);
+                const canvas = canvasElemsRef.current.get(targetId);
+                if (!canvas) return;
+                permanentCanvasesRef.current.set(targetId, paintStrokes(canvas.width, canvas.height, list));
+            },
+        };
 
     return { getCanvasRef, canvasHandlers };
 }

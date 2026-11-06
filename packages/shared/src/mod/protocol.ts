@@ -32,7 +32,7 @@
 // v3: MediaSource / MediaState / loadId と EVT_MEDIA_STATE を追加。
 // v4: バイナリ fetch（responseType / maxBytes / timeoutMs）、ASSET_LOAD、CMD_ABORT を追加。
 // v5: IDENTITY_TOKEN（外部サービス向けのサービストークン）を追加。
-// v6: CanvasStrokeData に任意の mode（'draw' | 'erase'）を追加。
+// v6: CanvasStrokeData に任意の mode（'draw' | 'erase'）、CANVAS_REPLACE_STROKES（永続レイヤーの描き直し）を追加。
 export const PROTOCOL_VERSION = 6;
 
 /**
@@ -155,6 +155,7 @@ export const CommandType = {
     // canvas
     CANVAS_FRAME: 'CANVAS_FRAME',
     CANVAS_COMMIT_STROKE: 'CANVAS_COMMIT_STROKE',
+    CANVAS_REPLACE_STROKES: 'CANVAS_REPLACE_STROKES',
     // media
     MEDIA_LOAD: 'MEDIA_LOAD',
     MEDIA_PLAY: 'MEDIA_PLAY',

@@ -173,6 +173,9 @@ export async function dispatchCommand<TPayloadMap extends Record<string, unknown
         case CommandType.CANVAS_COMMIT_STROKE:
             handlers.onCanvasCommitStroke?.(command.payload.targetId, command.payload.stroke);
             return undefined;
+        case CommandType.CANVAS_REPLACE_STROKES:
+            handlers.onCanvasReplaceStrokes?.(command.payload.targetId, command.payload.strokes);
+            return undefined;
         case CommandType.MEDIA_LOAD: {
             const options =
                 command.payload.source && command.payload.loadId

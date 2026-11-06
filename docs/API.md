@@ -73,6 +73,7 @@ Ubi.media.setVolume(v, targetId) / Ubi.media.setVisible(visible, targetId)
 // ──── canvas 描画 ────────────────────────────────────────
 Ubi.canvas.frame(targetId, { activeStroke, cursor })
 Ubi.canvas.commitStroke(targetId, strokeData)
+Ubi.canvas.replaceStrokes(targetId, strokes)   // 永続レイヤーを消してこの順で描き直す（順番を正すとき）
 
 // ──── プレイヤー (presence) ──────────────────────────────
 Ubi.player.others() / .all() / .scroll() / .syncCursor({ throttleMs })

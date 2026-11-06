@@ -103,6 +103,7 @@ export const PROTOCOL_CONTRACTS: readonly ProtocolContract[] = [
             'UI_SHOW_TOAST',
             'CANVAS_FRAME',
             'CANVAS_COMMIT_STROKE',
+            'CANVAS_REPLACE_STROKES',
             'MEDIA_LOAD',
             'MEDIA_PLAY',
             'MEDIA_PAUSE',

@@ -364,6 +364,19 @@ export type CmdCanvasCommitStroke = {
     };
 };
 
+/**
+ * Ubi.canvas.replaceStrokes(targetId, strokes)
+ * Fire & Forget: 永続レイヤーを消し、渡したストロークをこの順で描き直す。
+ * 消すストローク（mode: 'erase'）は重ねる順で結果が変わるので、mod が順番を正したいときに使う。
+ */
+export type CmdCanvasReplaceStrokes = {
+    type: 'CANVAS_REPLACE_STROKES';
+    payload: {
+        targetId: string;
+        strokes: CanvasStrokeData[];
+    };
+};
+
 // ─── Media Commands (Guest → Host) ──────────────────────────────────────────
 
 /** Host がメディアを読み込む方式。provider 固有の概念は持たない。 */
@@ -614,6 +627,7 @@ export type ModGuestCommand =
     | CmdSceneQueryEntities
     | CmdCanvasFrame
     | CmdCanvasCommitStroke
+    | CmdCanvasReplaceStrokes
     | CmdNetworkSendToHost
     | CmdNetworkBroadcast
     | CmdEventEmit
