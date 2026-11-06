@@ -171,3 +171,27 @@ describe('core:media world validation', () => {
         ).toThrow();
     });
 });
+
+describe('core:ui world validation', () => {
+    const entity = (component: InitialEntity['components'][number]): InitialEntity => ({
+        id: 'sign',
+        transform: { x: 0, y: 0, z: 0, w: 320, h: 160, scale: 1, rotation: 0 },
+        components: [component],
+        tags: [],
+        children: [],
+    });
+
+    it('HTML 風の UI データを受け付け、mod 依存として収集しない', () => {
+        const input = [entity({ type: 'core:ui', data: { markup: '<h2>ようこそ</h2>' } })];
+        expect(() => InitialEntitiesSchema.parse(input)).not.toThrow();
+        expect(collectModIds(input)).toEqual([]);
+    });
+
+    it('長すぎる UI データ・文字列でない値・未知のキーは拒否する', () => {
+        const parse = (data: Record<string, unknown>) => () =>
+            InitialEntitiesSchema.parse([entity({ type: 'core:ui', data })]);
+        expect(parse({ markup: 'x'.repeat(20_001) })).toThrow();
+        expect(parse({ markup: 42 })).toThrow();
+        expect(parse({ markup: '', script: 'alert(1)' })).toThrow();
+    });
+});

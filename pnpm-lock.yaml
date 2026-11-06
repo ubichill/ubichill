@@ -523,6 +523,9 @@ importers:
       '@ubichill/shared':
         specifier: workspace:*
         version: link:../shared
+      '@ubichill/ui-renderer':
+        specifier: workspace:*
+        version: link:../ui-renderer
       better-auth:
         specifier: 'catalog:'
         version: 1.7.10(drizzle-kit@0.31.11)(drizzle-orm@0.45.3(kysely@0.29.6)(postgres@3.4.9))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(vitest@4.1.11(@types/node@26.6.5)(jsdom@29.1.1(@noble/hashes@2.4.0))(vite@8.3.1(@types/node@26.6.5)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1)))

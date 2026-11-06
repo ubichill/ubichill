@@ -83,6 +83,7 @@ Host が持つ Component。mod を読み込まずに使え、`dependencies` に�
 |---|---|---|
 | `core:collider` | 当たり判定の形 | `shape: rect`（`size: { w, h }` か `entity`）または `shape: circle`（`radius`）。`offset`・`isTrigger`・`layer`・`mask` |
 | `core:media` | 動画を描く場所（Unity の MeshRenderer に当たる）。何を再生するかは、参照フィールドでこの Entity を指した mod が決める | `fit: contain`（既定・全体を見せる）か `cover`（枠を埋める） |
+| `core:ui` | 作者が書く UI（看板・説明・リンクなど）。mod を作らずに置ける | `markup`: HTML 風の文字列（2 万文字まで） |
 
 ```yaml
 - id: tv
@@ -96,6 +97,28 @@ Host が持つ Component。mod を読み込まずに使え、`dependencies` に�
     - type: video-player:controls
       data:
         screen: tv            # core:media を持つ Entity
+```
+
+`core:ui` の `markup` は、mod の UI と同じ描画（Shadow DOM・許可リスト）で描く。
+
+- 使えるタグ・属性は mod の UI と同じ（`div`・`p`・`h1`〜`h6`・`a`・`img`・`ul`・`table` など）。許可していないものは描かない。
+- `script`・`style`・`template`・`iframe` などは中身ごと捨てる。`on*` 属性も捨てる（押しても何も動かない）。
+- `style` 属性は使える。ただし外部の取得を起こす値（`url(...)` など）は描かない。
+- リンク（`a href`）は新しいタブで開く。`javascript:` などの URL は描かない。
+- 画像（`img src`）は https のものを読み込む。利用者のブラウザが画像の置き場所に直接取りに行く（mod の UI の画像と同じ）。
+- 閉じ忘れなどの壊れた書き方でも、読める範囲で描く。
+
+```yaml
+- id: sign
+  transform: { x: 100, y: 100, w: 360, h: 140 }
+  components:
+    - type: core:ui
+      data:
+        markup: |
+          <div style="padding: 12px; background: #fff7e6; border-radius: 8px">
+            <h2>ようこそ</h2>
+            <p>ルールは<a href="https://example.com/rules">こちら</a></p>
+          </div>
 ```
 
 ## その他の `spec` フィールド（任意）

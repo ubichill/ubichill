@@ -5,9 +5,11 @@
  * framework 非依存（React 非依存）。
  *
  * - VNodeRenderer : mod が返す VNode を実 DOM に変換（タグ許可リスト / URL 検証 / innerHTML 禁止）。
+ * - parseUiMarkup : `core:ui` の HTML 風の UI データを VNode にする（安全の判定は VNodeRenderer）。
  * - InputCollector / SharedInputPool : DOM 入力を集約し Worker へ渡す入力フレームを作る。
  */
 export { InputCollector } from './InputCollector';
+export { MARKUP_LIMITS, parseUiMarkup } from './markup';
 export {
     acquireSharedInput,
     collectSharedInputFor,

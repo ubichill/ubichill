@@ -107,6 +107,22 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
         },
         viewKind: 'canvas',
     },
+    {
+        modName: 'core',
+        kind: CORE_COMPONENT_TYPES.ui,
+        suggestSize: true,
+        defaultTransform: { w: 320, h: 160 },
+        defaultData: { markup: '<div style="padding: 12px; background: #fff; border-radius: 8px">ようこそ</div>' },
+        dataFields: {
+            markup: {
+                type: 'string',
+                multiline: true,
+                label: 'UI データ（HTML 風）',
+                help: '看板・説明・リンクなど。使えるタグ・属性は mod の UI と同じ（script やイベント属性は動かない）。リンクは新しいタブで開く。',
+            },
+        },
+        viewKind: 'jsx',
+    },
 ];
 
 interface ModIndex {

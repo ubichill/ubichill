@@ -8,6 +8,7 @@
 export const CORE_COMPONENT_TYPES = {
     collider: 'core:collider',
     media: 'core:media',
+    ui: 'core:ui',
 } as const;
 
 export type CoreComponentType = (typeof CORE_COMPONENT_TYPES)[keyof typeof CORE_COMPONENT_TYPES];
