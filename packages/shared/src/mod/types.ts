@@ -171,18 +171,33 @@ export type CmdNetworkBroadcast = {
 };
 
 /**
- * Ubi.event.emit(type, data, { scope, targetType })
- * Fire & Forget: 同 tab 内の他 Worker (siblings / parent / children / world スコープ) に
- * Component type フィルタ付きで type 付きイベントを送る。受信側は WorkerEvent として届く。
- * capability: 'event:emit' が必要。
+ * emit の配送先を Entity の階層で決めるときの範囲。
+ * - 'siblings':  同じ parent を持つ別 Entity の Component
+ * - 'parent':    自 Entity の親 Entity の Component
+ * - 'children':  自 Entity の直接の子 Entity の Component
+ * - 'subtree':   自 Entity + 子孫の全 Component
+ * - 'world':     全 Worker
+ * - 'referrers': 参照フィールドで自分を指している Component（参照の向きと逆に返事をする）
+ */
+export type EmitScope = 'siblings' | 'parent' | 'children' | 'subtree' | 'world' | 'referrers';
+
+/**
+ * emit の配送先。階層の範囲（`scope`）か、自分の参照フィールドの名前（`ref`）のどちらか 1 つ。
+ * `ref` は作者が Inspector で配線した Entity にだけ届き、フィールドが `component` を宣言していればその型に絞る。
+ */
+export type EmitRoute = { scope: EmitScope; ref?: never } | { ref: string; scope?: never };
+
+/**
+ * Ubi.event.emit(type, data, { scope | ref, targetType })
+ * Fire & Forget: 同 tab 内の他 Worker に Component type フィルタ付きで type 付きイベントを送る。
+ * 受信側は WorkerEvent として届く。capability: 'event:emit' が必要。
  */
 export type CmdEventEmit = {
     type: 'EVENT_EMIT';
-    payload: {
+    payload: EmitRoute & {
         type: string;
         data: unknown;
-        scope: 'siblings' | 'parent' | 'children' | 'subtree' | 'world';
-        /** 受信側 Component type フィルタ ("modId:componentName")。省略時は scope 内の全 Component。 */
+        /** 受信側 Component type フィルタ ("modId:componentName")。省略時は配送先の全 Component。 */
         targetType?: string;
     };
 };
@@ -302,6 +317,11 @@ export type CanvasStrokeData = {
     points: Array<[number, number, number]>;
     color: string;
     size: number;
+    /**
+     * `'erase'` はなぞった部分の、それまでに描いた線を消す（`color` は使わない）。
+     * 消すのも 1 本のストロークなので、描いた順に重ねれば誰の画面でも同じ結果になる。省略時は `'draw'`。
+     */
+    mode?: 'draw' | 'erase';
 };
 
 /** shape === 'custom' 時の塗りつぶしパス定義 */
@@ -356,6 +376,19 @@ export type CmdCanvasCommitStroke = {
     payload: {
         targetId: string;
         stroke: CanvasStrokeData;
+    };
+};
+
+/**
+ * Ubi.canvas.replaceStrokes(targetId, strokes)
+ * Fire & Forget: 永続レイヤーを消し、渡したストロークをこの順で描き直す。
+ * 消すストローク（mode: 'erase'）は重ねる順で結果が変わるので、mod が順番を正したいときに使う。
+ */
+export type CmdCanvasReplaceStrokes = {
+    type: 'CANVAS_REPLACE_STROKES';
+    payload: {
+        targetId: string;
+        strokes: CanvasStrokeData[];
     };
 };
 
@@ -609,6 +642,7 @@ export type ModGuestCommand =
     | CmdSceneQueryEntities
     | CmdCanvasFrame
     | CmdCanvasCommitStroke
+    | CmdCanvasReplaceStrokes
     | CmdNetworkSendToHost
     | CmdNetworkBroadcast
     | CmdEventEmit

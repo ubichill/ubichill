@@ -88,7 +88,7 @@ export const CAPABILITY_CATALOG = {
     },
     'canvas:draw': {
         risk: 'sensitive',
-        commands: [CommandType.CANVAS_FRAME, CommandType.CANVAS_COMMIT_STROKE],
+        commands: [CommandType.CANVAS_FRAME, CommandType.CANVAS_COMMIT_STROKE, CommandType.CANVAS_REPLACE_STROKES],
         label: 'キャンバス描画',
         description: '共有キャンバスに線・図形を描く',
     },

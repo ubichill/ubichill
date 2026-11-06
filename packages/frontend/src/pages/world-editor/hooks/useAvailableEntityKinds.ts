@@ -1,4 +1,4 @@
-import { CORE_COMPONENT_TYPES } from '@ubichill/core-components';
+import { CORE_COMPONENT_TYPES, MEDIA_FITS } from '@ubichill/core-components';
 import { createDefaultColliderData } from '@ubichill/runtime';
 import type { OverlayMode, WorldDefinition } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
@@ -26,9 +26,26 @@ export type DataFieldSpec =
     | { type: 'array'; default?: unknown[]; item: DataFields; label?: string; help?: string }
     // 他 Entity（単体）への参照。値は entityId。Hierarchy からの D&D で指定する。
     // access: 'read'（既定）は読み取りのみ、'write' は参照先への更新も許可する。
-    | { type: 'entityRef'; default?: string; access?: 'read' | 'write'; label?: string; help?: string }
+    // component: 参照先が持つべき Component 型。required: 未設定をワールドの問題にする。
+    | {
+          type: 'entityRef';
+          default?: string;
+          access?: 'read' | 'write';
+          component?: string;
+          required?: boolean;
+          label?: string;
+          help?: string;
+      }
     // 他 Entity（複数）への参照。値は entityId の配列。
-    | { type: 'entityRefArray'; default?: string[]; access?: 'read' | 'write'; label?: string; help?: string };
+    | {
+          type: 'entityRefArray';
+          default?: string[];
+          access?: 'read' | 'write';
+          component?: string;
+          required?: boolean;
+          label?: string;
+          help?: string;
+      };
 
 export type DataFields = Record<string, DataFieldSpec>;
 
@@ -74,14 +91,62 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
         defaultData: { ...createDefaultColliderData() },
         viewKind: 'logic',
     },
+    {
+        modName: 'core',
+        kind: CORE_COMPONENT_TYPES.media,
+        suggestSize: true,
+        defaultTransform: { w: 640, h: 360 },
+        dataFields: {
+            fit: {
+                type: 'enum',
+                options: [...MEDIA_FITS],
+                default: 'contain',
+                label: '収め方',
+                help: 'contain は全体を見せる（黒帯が出る）、cover は枠を埋める（端が切れる）。何を再生するかは、この Entity を参照した mod が決める。',
+            },
+        },
+        viewKind: 'canvas',
+    },
+    {
+        modName: 'core',
+        kind: CORE_COMPONENT_TYPES.ui,
+        suggestSize: true,
+        defaultTransform: { w: 320, h: 160 },
+        defaultData: { markup: '<div style="padding: 12px; background: #fff; border-radius: 8px">ようこそ</div>' },
+        dataFields: {
+            markup: {
+                type: 'string',
+                multiline: true,
+                label: 'UI データ（HTML 風）',
+                help: '看板・説明・リンクなど。使えるタグ・属性は mod の UI と同じ（script やイベント属性は動かない）。リンクは新しいタブで開く。',
+            },
+        },
+        viewKind: 'jsx',
+    },
 ];
+
+/**
+ * manifest の dataFields から、エディタが読める形の宣言だけを残す。manifest は読み込み時に検証しないので、
+ * `null` などの崩れた宣言が 1 つあるだけで Inspector・参照の検査が落ちないようにする。
+ */
+export function usableDataFields(raw: unknown): DataFields | undefined {
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return undefined;
+    return Object.fromEntries(
+        Object.entries(raw).filter(
+            (entry): entry is [string, DataFieldSpec] =>
+                typeof entry[1] === 'object' &&
+                entry[1] !== null &&
+                typeof (entry[1] as { type?: unknown }).type === 'string',
+        ),
+    );
+}
 
 interface ModIndex {
     id: string;
     version: string;
 }
 
-interface VersionedManifestComponent {
+export interface VersionedManifestComponent {
     singleton?: boolean;
     canvasTargets?: string[];
     mediaTargets?: string[];
@@ -90,6 +155,8 @@ interface VersionedManifestComponent {
     dataFields?: DataFields;
     thumbnail?: string;
     overlay?: OverlayMode;
+    /** Worker を持たないデータ専用 Component（mod が spawn するだけで、エディタでは置かない） */
+    dataOnly?: boolean;
 }
 
 interface VersionedManifest {
@@ -151,6 +218,32 @@ function fetchManifest(base: string, name: string, version: string): Promise<Ver
 }
 
 /**
+ * 1 つの mod の manifest から、エディタで配置できる entity kind を作る（純粋）。
+ * データ専用 Component（例: pen:stroke）は mod が実行中に spawn するものなので並べない。
+ */
+export function entityKindsFromManifest(
+    modName: string,
+    components: Record<string, VersionedManifestComponent>,
+    versionedBase: string,
+): AvailableEntityKind[] {
+    return Object.entries(components)
+        .filter(([, meta]) => meta.dataOnly !== true)
+        .map(([kind, meta]) => ({
+            modName,
+            kind,
+            singleton: meta.singleton,
+            canvasTargets: meta.canvasTargets,
+            mediaTargets: meta.mediaTargets,
+            suggestSize: !!(meta.canvasTargets?.length || meta.mediaTargets?.length),
+            defaultTransform: meta.defaultTransform,
+            dataFields: usableDataFields(meta.dataFields),
+            thumbnailUrl: meta.thumbnail ? `${versionedBase}/${meta.thumbnail}` : undefined,
+            viewKind: deriveViewKind(meta),
+            overlay: meta.overlay,
+        }));
+}
+
+/**
  * WorldDefinition の dependencies に登録された各modの manifest を読み、
  * 配置可能な entity kind 一覧を返す。
  */
@@ -183,19 +276,7 @@ export function useAvailableEntityKinds(definition: WorldDefinition | null): {
                 const manifest = await fetchManifest(base, dep.name, idx.version);
                 const components = manifest?.components ?? {};
                 const versionedBase = `${base}/${dep.name}/v${idx.version}`;
-                return Object.entries(components).map(([kind, meta]) => ({
-                    modName: dep.name,
-                    kind,
-                    singleton: meta.singleton,
-                    canvasTargets: meta.canvasTargets,
-                    mediaTargets: meta.mediaTargets,
-                    suggestSize: !!(meta.canvasTargets?.length || meta.mediaTargets?.length),
-                    defaultTransform: meta.defaultTransform,
-                    dataFields: meta.dataFields,
-                    thumbnailUrl: meta.thumbnail ? `${versionedBase}/${meta.thumbnail}` : undefined,
-                    viewKind: deriveViewKind(meta),
-                    overlay: meta.overlay,
-                }));
+                return entityKindsFromManifest(dep.name, components, versionedBase);
             }),
         )
             .then((results) => {

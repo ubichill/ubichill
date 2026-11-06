@@ -17,9 +17,11 @@
  */
 
 import type { VNode, VNodeChild } from '@ubichill/shared';
+import { ALLOWED_TAGS, SVG_CAMEL_ATTRS, SVG_TAGS } from './elements';
 import { sanitizeHtmlAttr, sanitizeStyle, sanitizeSvgAttr } from './sanitize';
 
 const FRAGMENT = 'ubichill:fragment' as const;
+const SVG_NS = 'http://www.w3.org/2000/svg';
 
 // ============================================================
 // スタイル
@@ -73,128 +75,6 @@ function styleValue(camelProp: string, val: string | number): string {
     }
     return String(val);
 }
-
-// ============================================================
-// SVG タグ・属性の定義
-// ============================================================
-
-const SVG_TAGS = new Set([
-    'svg',
-    'path',
-    'circle',
-    'ellipse',
-    'rect',
-    'line',
-    'polyline',
-    'polygon',
-    'g',
-    'text',
-    'tspan',
-    'defs',
-    'use',
-    'clipPath',
-    'linearGradient',
-    'radialGradient',
-    'stop',
-    'pattern',
-    'symbol',
-    'marker',
-]);
-const SVG_NS = 'http://www.w3.org/2000/svg';
-
-const SVG_CAMEL_ATTRS = new Set([
-    'viewBox',
-    'preserveAspectRatio',
-    'gradientTransform',
-    'gradientUnits',
-    'patternTransform',
-    'patternUnits',
-    'clipPathUnits',
-    'markerWidth',
-    'markerHeight',
-    'refX',
-    'refY',
-    'stdDeviation',
-    'baseFrequency',
-]);
-
-// ============================================================
-// 許可タグ・属性のホワイトリスト
-// ============================================================
-
-const ALLOWED_TAGS = new Set([
-    'div',
-    'span',
-    'p',
-    'h1',
-    'h2',
-    'h3',
-    'h4',
-    'h5',
-    'h6',
-    'button',
-    'input',
-    'label',
-    'select',
-    'option',
-    'textarea',
-    'ul',
-    'ol',
-    'li',
-    'a',
-    'img',
-    'strong',
-    'em',
-    'small',
-    'br',
-    'hr',
-    'section',
-    'article',
-    'header',
-    'footer',
-    'nav',
-    'aside',
-    'main',
-    'table',
-    'thead',
-    'tbody',
-    'tr',
-    'th',
-    'td',
-    'form',
-    'fieldset',
-    'legend',
-    'pre',
-    'code',
-    'blockquote',
-    'figure',
-    'figcaption',
-    'details',
-    'summary',
-    'progress',
-    'meter',
-    // SVG
-    'svg',
-    'path',
-    'circle',
-    'ellipse',
-    'rect',
-    'line',
-    'polyline',
-    'polygon',
-    'g',
-    'text',
-    'tspan',
-    'defs',
-    'use',
-    'clipPath',
-    'linearGradient',
-    'radialGradient',
-    'stop',
-    'pattern',
-    'symbol',
-    'marker',
-]);
 
 // ============================================================
 // 差分追跡 (WeakMap — 要素が GC されると自動解放)

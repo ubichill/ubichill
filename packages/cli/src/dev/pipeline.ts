@@ -55,7 +55,7 @@ import {
     reuseExternalEntries,
 } from './generation.ts';
 import type { GoAdmin } from './goRuntime.ts';
-
+import { manifestFieldsOf, referenceWarnings } from './references.ts';
 import { componentsFromManifest, synthesizeWorld } from './synthesizedWorld.ts';
 
 export interface RebuildPlan {
@@ -157,6 +157,37 @@ interface Unpublished {
     reconfigure: number;
 }
 
+/** world.yaml が無いときのワールド（手元の mod の manifest から作る。型を宣言した参照は配線しておく）。 */
+export function synthesizeFromArtifacts(mods: ReadonlyMap<string, ModArtifacts>): Record<string, unknown> {
+    return synthesizeWorld(
+        [...mods.values()].map((m) => ({
+            id: m.id,
+            components: componentsFromManifest(m.components, m.files.get('manifest.json')),
+        })),
+        manifestFieldsOf(mods.values()),
+    );
+}
+
+const SYNTHESIZED_URL = 'file:///dev/world.yaml';
+
+/** 部屋に置くワールドを検証する（world.yaml か合成したワールド）。失敗は WorldError。 */
+function roomWorld(world: WorldSource | undefined, mods: ReadonlyMap<string, ModArtifacts>) {
+    const url = world?.url ?? SYNTHESIZED_URL;
+    try {
+        return { url, definition: validateWorldDefinition(world?.raw ?? synthesizeFromArtifacts(mods), url) };
+    } catch (error) {
+        throw new WorldError(error instanceof Error ? error.message : String(error));
+    }
+}
+
+/** ワールドの参照の問題（未設定の必須参照・無い Entity・型の違う Entity）。手元の mod の manifest で判定する。 */
+export function roomReferenceWarnings(
+    world: WorldSource | undefined,
+    mods: ReadonlyMap<string, ModArtifacts>,
+): string[] {
+    return referenceWarnings(roomWorld(world, mods).definition.spec.initialEntities, manifestFieldsOf(mods.values()));
+}
+
 /** 世代に入れる部屋の定義を作る（world.yaml か合成したワールド）。失敗は WorldError。 */
 export async function buildRoomDefinition(
     world: WorldSource | undefined,
@@ -164,22 +195,7 @@ export async function buildRoomDefinition(
     lock: ModLock,
     options: { instanceId: string; maxUsers: number },
 ): Promise<InstanceDefinition> {
-    const raw =
-        world?.raw ??
-        synthesizeWorld(
-            [...mods.values()].map((m) => ({
-                id: m.id,
-                components: componentsFromManifest(m.components, m.files.get('manifest.json')),
-            })),
-        );
-    const url = world?.url ?? 'file:///dev/world.yaml';
-    const definition = (() => {
-        try {
-            return validateWorldDefinition(raw, url);
-        } catch (error) {
-            throw new WorldError(error instanceof Error ? error.message : String(error));
-        }
-    })();
+    const { url, definition } = roomWorld(world, mods);
     const unlocked = requiredLockModIds(definition.spec).filter((id) => !lock.mods[id]);
     if (unlocked.length > 0) {
         const sourceOf = (id: string) => definition.spec.dependencies?.find((d) => d.name === id)?.source.url;
@@ -257,13 +273,14 @@ export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pi
     const diagnostics = {
         build: [] as readonly DevFailure[],
         room: [] as readonly DevFailure[],
+        references: [] as readonly DevFailure[],
         current: [] as readonly DevFailure[],
     };
 
     /** 診断の片方を差し替え、合わせた一覧が変わったときだけ送る。 */
-    function setDiagnostics(source: 'build' | 'room', next: readonly DevFailure[]): void {
+    function setDiagnostics(source: 'build' | 'room' | 'references', next: readonly DevFailure[]): void {
         diagnostics[source] = next;
-        const merged = [...diagnostics.build, ...diagnostics.room];
+        const merged = [...diagnostics.build, ...diagnostics.room, ...diagnostics.references];
         if (JSON.stringify(merged) === JSON.stringify(diagnostics.current)) return;
         diagnostics.current = merged;
         deps.broadcast({ type: 'diagnostics', failures: merged });
@@ -318,6 +335,15 @@ export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pi
             if (!discovered.modDirs.has(id)) discovered.inputsByMod.delete(id);
         if (failures.length > 0) throw new BuildFailures(failures);
         return { mods, rebuilt };
+    }
+
+    /** 参照の問題を知らせる。前と同じならターミナルには出し直さない。 */
+    function reportReferences(warnings: readonly string[]): void {
+        const next = warnings.map((message): DevFailure => ({ kind: 'reference', message }));
+        if (JSON.stringify(next) !== JSON.stringify(diagnostics.references)) {
+            for (const message of warnings) deps.log.dev.warn(`参照の問題: ${message}`);
+        }
+        setDiagnostics('references', next);
     }
 
     async function report(error: unknown): Promise<void> {
@@ -405,8 +431,18 @@ export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pi
             const fresh = externalLockEntries(definition?.spec.dependencies, world?.lock, deps.fetchImpl);
             const external = previous && !taken.reconfigure ? reuseExternalEntries(previous, fresh) : fresh;
             const lock = await buildGenerationLock(buildId, mods, modIds, external);
-            // 合成したワールドは Component から初期の entity を作るので、Component が増減したら部屋を作り直す
-            const newRoom = !previous || taken.reconfigure > 0 || needsNewRoom(previous, mods, { synthesized: !world });
+            // 合成したワールドは mod の manifest（Component・置き場所・参照の宣言）から初期の entity を作るので、
+            // 合成の結果が変わったら部屋を作り直す（版と Component が同じでも、参照を足せば配線が変わる）
+            const synthesizedChanged =
+                !world &&
+                !!previous &&
+                JSON.stringify(synthesizeFromArtifacts(previous.mods)) !==
+                    JSON.stringify(synthesizeFromArtifacts(mods));
+            const newRoom =
+                !previous ||
+                taken.reconfigure > 0 ||
+                synthesizedChanged ||
+                needsNewRoom(previous, mods, { synthesized: !world });
             const instanceId = newRoom ? `dev-${buildId}` : (previous as Generation).instanceId;
             dev.debug(
                 newRoom
@@ -430,6 +466,8 @@ export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pi
                         '--debug を付けると Go のログも出ます',
                     );
             }
+            // 参照の検査は部屋を作り直さないビルドでも毎回行う（mod の参照の宣言だけが変わることがある）。止めはしない
+            const references = roomReferenceWarnings(world, mods);
             // ここから先は失敗しない: 公開して、反映した変更を消す
             published.state = publishGeneration(state, { buildId, mods, lock, instanceId });
             published.room = room;
@@ -437,6 +475,7 @@ export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pi
             deps.broadcast({ type: 'generation', buildId, instanceId });
             setDiagnostics('build', []);
             if (newRoom) setDiagnostics('room', []);
+            reportReferences(references);
             announce({
                 firstBuild: !previous,
                 taken,

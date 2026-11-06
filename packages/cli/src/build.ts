@@ -8,7 +8,9 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFile
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import {
+    type DataFieldsLike,
     detectCapabilities,
+    frameMediaTargets,
     MOD_EXPORTS_GLOBAL_NAME,
     type ModLockComponent,
     type ModLockEntry,
@@ -210,6 +212,23 @@ function parseValue(src: string, pos: ParsePos): unknown {
     throw new Error(`config: 未対応のトークン (pos ${pos.i}): ${JSON.stringify(src.slice(pos.i, pos.i + 20))}`);
 }
 
+/**
+ * `mediaTargets`（自分の枠に描く動画）と、`core:media` を指す参照フィールドで同じ名前を使っているもの。
+ * どちらも `Ubi.media.*` の targetId になるので、同じ名前だと 1 つの targetId に `<video>` が 2 つできる
+ * （Host は参照の方を使う）。ビルドで止めて名前を分けてもらう。
+ */
+export function mediaTargetCollisions(config: Record<string, unknown> | null): string[] {
+    const mediaTargets = Array.isArray(config?.mediaTargets)
+        ? config.mediaTargets.filter((t): t is string => typeof t === 'string')
+        : [];
+    const dataFields =
+        typeof config?.dataFields === 'object' && config.dataFields !== null
+            ? (config.dataFields as DataFieldsLike)
+            : undefined;
+    const framed = new Set(frameMediaTargets(mediaTargets, dataFields));
+    return mediaTargets.filter((name) => !framed.has(name));
+}
+
 /** `export const config =` の内容を JSON 互換リテラルとしてのみ抽出する（コード実行なし）。 */
 function extractConfigFromCode(code: string): Record<string, unknown> | null {
     const startMatch = code.match(/export\s+const\s+config\s*(?::\s*[^=]+)?\s*=\s*/);
@@ -224,6 +243,38 @@ function extractConfigFromCode(code: string): Record<string, unknown> | null {
     } catch {
         return null;
     }
+}
+
+/**
+ * `config.dataOnly: true` の Component の manifest エントリ（純粋）。data-only でなければ null。
+ *
+ * data-only は Worker を持たず、mod が spawn して持ち回るだけのデータ（例: pen:stroke）。
+ * manifest に宣言しておくと、Host はその型の Entity を「この mod のデータ」と認識して Worker を探さない。
+ * コードを実行しないので workerUrl・capabilities は持たせず、lock の components にも載せない
+ * （manifest 自体は lock の manifestIntegrity で固定されるので、宣言は改竄できない）。
+ */
+export function dataOnlyManifestEntry(config: Record<string, unknown> | null): Record<string, unknown> | null {
+    if (config?.dataOnly !== true) return null;
+    const { capabilities: _caps, workerUrl: _url, ...rest } = config;
+    return rest;
+}
+
+/**
+ * ソースから data-only の宣言を読む（純粋）。data-only でなければ null。
+ *
+ * config はコードを実行せずリテラルとしてだけ読むので、テンプレート文字列・定数・スプレッドを使うと読めない。
+ * そのとき `dataOnly` を書いていても黙って Worker として bundle すると、spawn した Entity ごとに Worker が
+ * 起動してしまうので、ビルドを止める。
+ */
+export function dataOnlyEntryFromSource(componentType: string, source: string): Record<string, unknown> | null {
+    const config = extractConfigFromCode(source);
+    if (config === null && /\bdataOnly\b/.test(source)) {
+        throw new Error(
+            `[${componentType}] dataOnly を書いていますが、export const config をリテラルとして読めません。` +
+                'テンプレート文字列・定数・スプレッド・式を使わず、JSON と同じ書き方（文字列・数・真偽値・配列・オブジェクト）で書いてください',
+        );
+    }
+    return dataOnlyManifestEntry(config);
 }
 
 function cleanOldBundles(dir: string, keepFilename: string): void {
@@ -470,7 +521,7 @@ export interface ModArtifacts {
     id: string;
     name: string;
     version: string;
-    /** Component 型（`<id>:<name>`）。 */
+    /** Worker を持つ Component 型（`<id>:<name>`）。data-only は置くものではないので含めない（manifest にだけ載る）。 */
     components: string[];
     /** `v<version>/` の下に置くファイル（POSIX 相対パス → 中身）: Worker・manifest.json・lock.json・asset。 */
     files: ReadonlyMap<string, Uint8Array>;
@@ -508,6 +559,13 @@ export async function compileMod(modDir: string, log: Logger = silentLogger): Pr
             continue;
         }
 
+        const dataOnly = dataOnlyEntryFromSource(componentType, readFileSync(workerPath, 'utf-8'));
+        if (dataOnly) {
+            versionedComponents[componentType] = dataOnly;
+            log.info(`  ${componentType} はデータだけの型（Worker なし）`);
+            continue;
+        }
+
         const bundleStarted = performance.now();
         const bundled = await bundleWorker(workerPath, modDir, tsconfig);
         log.debug(`${componentType} を esbuild でまとめました`, formatDuration(performance.now() - bundleStarted));
@@ -528,6 +586,12 @@ export async function compileMod(modDir: string, log: Logger = silentLogger): Pr
         // config からメタデータを取得
         const srcCode = readFileSync(workerPath, 'utf-8');
         const config = extractConfigFromCode(srcCode);
+        const collisions = mediaTargetCollisions(config);
+        if (collisions.length > 0) {
+            throw new Error(
+                `[${componentType}] mediaTargets の ${collisions.join(', ')} は core:media を指す参照フィールドと同じ名前です。どちらも Ubi.media の targetId になるので、名前を分けてください`,
+            );
+        }
 
         // capability をコードから自動検出。
         // `export default`（ui:render の自動マウント対象）は globalName バンドル後には
@@ -603,7 +667,7 @@ export async function compileMod(modDir: string, log: Logger = silentLogger): Pr
     files.set('lock.json', encoder.encode(JSON.stringify(lockEntry, null, 2)));
     log.debug(`${id} の lock.json`, `component ${Object.keys(lockComponents).length}`);
 
-    return { id, name, version, components: Object.keys(versionedComponents), files, lockEntry, inputs };
+    return { id, name, version, components: Object.keys(lockComponents), files, lockEntry, inputs };
 }
 
 export interface WriteArtifactsOptions {

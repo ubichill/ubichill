@@ -10,6 +10,9 @@
  *  - ペン本体の状態 (color, strokeWidth) のみ永続同期
  *
  * 太さ調整 UI は pen-tray が持つ (tray.worker.tsx)。pen 自身は見た目だけ。
+ * data.eraser が true なら消しゴムとして振る舞う（見た目が変わり、canvas が消すストロークにする）。
+ * 別 Component にしないのは、grip の「1 ユーザー 1 つ」が Component type ごとなので、
+ * 分けるとペンと消しゴムを同時に持ててしまうため。
  */
 
 import type { ComponentConfig } from 'ubichill';
@@ -24,6 +27,7 @@ export const config: ComponentConfig = {
     dataFields: {
         color: { type: 'color', default: '#1a1a1a', label: 'ペンの色' },
         strokeWidth: { type: 'number', default: 4, min: 1, max: 30, step: 1, label: '線の太さ' },
+        eraser: { type: 'boolean', default: false, label: '消しゴム', help: '描く代わりに、なぞった線を消す' },
     },
     capabilities: ['event:emit', 'host:message', 'scene:read', 'scene:update', 'ui:render'],
 };
@@ -31,6 +35,7 @@ export const config: ComponentConfig = {
 const pen = Ubi.state.define({
     color: Ubi.state.sync('#1a1a1a'),
     strokeWidth: Ubi.state.sync(4),
+    eraser: Ubi.state.sync(false),
 });
 
 // 「持って書ける」宣言。クリック / hover / 追従 / 1 本ルールは全部 SDK 任せ。
@@ -105,6 +110,15 @@ const PenSvg = ({ color }: { color: string }) => (
     </svg>
 );
 
+// 消しゴム。ペンと同じ箱・同じ先端 (TIP_IN_SVG) にして、penTip の計算をそのまま使う。
+const EraserSvg = () => (
+    <svg width="18" height="32" viewBox="0 0 18 32" style={{ display: 'block' }}>
+        <rect x="4" y="2" width="10" height="17" rx="2" fill="#5b8def" stroke="rgba(0,0,0,0.2)" strokeWidth="0.8" />
+        <rect x="4" y="19" width="10" height="13" rx="2" fill="#f4c2c8" stroke="rgba(0,0,0,0.2)" strokeWidth="0.8" />
+        <rect x="6" y="4" width="2.5" height="12" rx="1" fill="rgba(255,255,255,0.35)" />
+    </svg>
+);
+
 // export default = このComponentの唯一のUI。ビルド時にバンドルされ、Sandbox が起動時に
 // 一度だけ自動で Ubi.ui.render(default) する（手動の初期呼び出しは不要）。
 // ここで読む pen.local.color / grip.isMine（内部的に Ubi.state 経由）は自動で依存追跡され、
@@ -125,7 +139,7 @@ export default function PenView() {
                     transition: 'transform 0.15s ease',
                 }}
             >
-                <PenSvg color={pen.local.color} />
+                {pen.local.eraser ? <EraserSvg /> : <PenSvg color={pen.local.color} />}
             </div>
         </Gripable>
     );

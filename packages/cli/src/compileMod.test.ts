@@ -8,6 +8,7 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildMod, compileMod, type ModArtifacts, writeArtifacts } from './build.ts';
+import { componentsFromManifest, synthesizeWorld } from './dev/synthesizedWorld.ts';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const penDir = join(repoRoot, 'mods', 'pen');
@@ -42,6 +43,17 @@ describe('compileMod', () => {
         for (const [type, component] of Object.entries(pen.lockEntry.components)) {
             expect(pen.files.has(component.workerUrl.replace(/^\.\//, '')), type).toBe(true);
         }
+    });
+
+    it('data-only の pen:stroke は manifest にだけ載り、components（置けるもの）には入らない', () => {
+        const manifest = JSON.parse(new TextDecoder().decode(pen.files.get('manifest.json')));
+        expect(manifest.components['pen:stroke']?.dataOnly).toBe(true);
+        expect(pen.components).not.toContain('pen:stroke');
+        // world.yaml の無い ubichill dev が合成するワールドにも置かない（空の data の pen:stroke を canvas が読まない）
+        const world = synthesizeWorld([
+            { id: pen.id, components: componentsFromManifest(pen.components, pen.files.get('manifest.json')) },
+        ]);
+        expect(JSON.stringify(world)).not.toContain('pen:stroke');
     });
 
     it('inputs に Worker・import した共有コード・package.json・tsconfig が入る（監視の対象）', () => {

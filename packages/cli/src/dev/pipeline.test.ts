@@ -618,3 +618,83 @@ describe('formatNames', () => {
         expect(formatNames(['a', 'b', 'c', 'd'])).toBe('a、b ほか 2 個');
     });
 });
+
+/** dataFields を manifest に持つ mod（version と Component は fakeMod と同じ。manifest の中身だけ変える）。 */
+const withFields = (base: ModArtifacts, components: Record<string, unknown>, mark: string): ModArtifacts => ({
+    ...edited(base, mark),
+    files: new Map([['manifest.json', new TextEncoder().encode(JSON.stringify({ components }))]]),
+});
+const VP_TYPES = ['vp:controls', 'vp:screen'];
+const REQUIRED_SCREEN = {
+    'vp:controls': {
+        dataFields: { screen: { type: 'entityRef', component: 'vp:screen', required: true, label: 'スクリーン' } },
+    },
+};
+
+describe('参照の宣言の変化（#297 のレビュー）', () => {
+    it('起動後に必須の参照を宣言して保存すると、合成ワールドの部屋を作り直して配線する（版と Component は同じ）', async () => {
+        const h = harness({ loadWorld: async () => undefined });
+        h.mods.clear();
+        h.mods.set('vp', withFields(fakeMod('vp', '1.0.0', VP_TYPES), {}, 'A'));
+        h.pipeline.schedule({ mods: 'all', reconfigure: true });
+        await h.pipeline.idle();
+        expect(JSON.stringify(h.go.puts[0])).not.toContain('"screen"');
+
+        h.mods.set('vp', withFields(fakeMod('vp', '1.0.0', VP_TYPES), REQUIRED_SCREEN, 'B'));
+        h.pipeline.schedule({ mods: new Set(['vp']), reconfigure: false });
+        await h.pipeline.idle();
+        expect(h.go.puts).toHaveLength(2);
+        expect(JSON.stringify(h.go.puts[1])).toContain('"screen":"vp--screen"');
+        expect(h.pipeline.diagnostics.filter((d) => d.kind === 'reference')).toEqual([]);
+    });
+
+    it('合成の結果が変わらない保存（コードだけの変更）では部屋を作り直さない', async () => {
+        const h = harness({ loadWorld: async () => undefined });
+        h.mods.clear();
+        h.mods.set('vp', withFields(fakeMod('vp', '1.0.0', VP_TYPES), REQUIRED_SCREEN, 'A'));
+        h.pipeline.schedule({ mods: 'all', reconfigure: true });
+        await h.pipeline.idle();
+        h.mods.set('vp', withFields(fakeMod('vp', '1.0.0', VP_TYPES), REQUIRED_SCREEN, 'B'));
+        h.pipeline.schedule({ mods: new Set(['vp']), reconfigure: false });
+        await h.pipeline.idle();
+        expect(h.go.puts).toHaveLength(1);
+    });
+
+    it('world.yaml のワールドでも、部屋を作り直さないビルドで参照を検査して知らせる（同じ問題はターミナルに出し直さない）', async () => {
+        const dev = recordingLogger();
+        const world: WorldSource = {
+            url: 'file:///p/world.yaml',
+            raw: {
+                apiVersion: 'ubichill.com/v1alpha1',
+                kind: 'World',
+                metadata: { name: 'home', version: '1.0.0' },
+                spec: {
+                    displayName: 'Home',
+                    dependencies: [{ name: 'vp', source: { version: 'latest' } }],
+                    initialEntities: [{ id: 'c', transform: { x: 0, y: 0 }, components: [{ type: 'vp:controls' }] }],
+                },
+            },
+        };
+        const h = harness({ loadWorld: async () => world, log: { dev: dev.logger, build: silentLogger } });
+        h.mods.clear();
+        h.mods.set('vp', withFields(fakeMod('vp', '1.0.0', VP_TYPES), {}, 'A'));
+        h.pipeline.schedule({ mods: 'all', reconfigure: true });
+        await h.pipeline.idle();
+        expect(h.pipeline.diagnostics).toEqual([]);
+
+        h.mods.set('vp', withFields(fakeMod('vp', '1.0.0', VP_TYPES), REQUIRED_SCREEN, 'B'));
+        h.pipeline.schedule({ mods: new Set(['vp']), reconfigure: false });
+        await h.pipeline.idle();
+        expect(h.go.puts).toHaveLength(1);
+        const warning = 'c の vp:controls の「スクリーン」が未設定です。vp:screen を持つ Entity を指定してください';
+        expect(h.pipeline.diagnostics).toEqual([{ kind: 'reference', message: warning }]);
+        expect(lastDiagnostics(h.events)).toEqual([{ kind: 'reference', message: warning }]);
+
+        h.mods.set('vp', withFields(fakeMod('vp', '1.0.0', VP_TYPES), REQUIRED_SCREEN, 'C'));
+        h.pipeline.schedule({ mods: new Set(['vp']), reconfigure: false });
+        await h.pipeline.idle();
+        expect(dev.entries.filter((e) => e.message.startsWith('参照の問題')).map((e) => [e.level, e.message])).toEqual([
+            ['warn', `参照の問題: ${warning}`],
+        ]);
+    });
+});

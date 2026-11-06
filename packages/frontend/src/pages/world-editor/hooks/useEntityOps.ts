@@ -6,7 +6,7 @@
  *           EnterChild / patchTransform + hasClipboard。
  */
 import type { EntityComponentDef, InitialEntity, WorldDefinition } from '@ubichill/shared';
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { DEFAULT_H, DEFAULT_W } from '../lib/dragHelpers';
 import {
     adjustPathAfterDelete,
@@ -22,8 +22,10 @@ import {
     moveEntity,
     nextRootZ,
     pathKey,
+    renameEntity,
     updateEntityAt,
 } from '../lib/entityTree';
+import { fieldsOfKinds } from '../lib/referenceProblems';
 import type { AvailableEntityKind } from './useAvailableEntityKinds';
 import { useEntityClipboard } from './useEntityClipboard';
 
@@ -62,6 +64,8 @@ export function useEntityOps({
     selection,
 }: UseEntityOpsOptions): UseEntityOpsResult {
     const clipboard = useEntityClipboard();
+    // 複製・貼り付け・改名で参照を付け替えるのに、どのフィールドが参照かを mod の宣言から引く
+    const fieldsOf = useMemo(() => fieldsOfKinds(kinds), [kinds]);
 
     const patchEntityTransform = useCallback(
         (path: EntityPath, patch: Partial<InitialEntity['transform']>) => {
@@ -184,9 +188,9 @@ export function useEntityOps({
             const self = getEntityAt(definition.spec.initialEntities, path);
             if (self) taken.delete(self.id);
             const uniqueId = ensureUniqueName(newId, taken);
-            updateEntities((prev) => updateEntityAt(prev, path, (e) => ({ ...e, id: uniqueId })));
+            updateEntities((prev) => renameEntity(prev, path, uniqueId, fieldsOf));
         },
-        [updateEntities, definition.spec.initialEntities],
+        [updateEntities, definition.spec.initialEntities, fieldsOf],
     );
 
     const handleMoveEntity = useCallback(
@@ -213,7 +217,7 @@ export function useEntityOps({
             const source = clipboard.peek();
             if (!source) return;
             const taken = collectEntityIds(definition.spec.initialEntities);
-            const cloned = cloneEntitySubtree(source, taken);
+            const cloned = cloneEntitySubtree(source, taken, fieldsOf);
             // ルートに貼り付け時のみ z をスタック頂上に持ち上げる (見えなくならないように)
             const placed = parentPath
                 ? cloned
@@ -228,7 +232,7 @@ export function useEntityOps({
             }
             selection.selectComponent(null);
         },
-        [clipboard, definition.spec.initialEntities, updateEntities, selection],
+        [clipboard, definition.spec.initialEntities, updateEntities, selection, fieldsOf],
     );
 
     // 複製 (Cmd+D 相当: subtree をクローンして自分の直後に sibling 挿入)
@@ -237,7 +241,7 @@ export function useEntityOps({
             const source = getEntityAt(definition.spec.initialEntities, path);
             if (!source) return;
             const taken = collectEntityIds(definition.spec.initialEntities);
-            const cloned = cloneEntitySubtree(source, taken);
+            const cloned = cloneEntitySubtree(source, taken, fieldsOf);
             const placed =
                 path.length === 1
                     ? { ...cloned, transform: { ...cloned.transform, z: nextRootZ(definition.spec.initialEntities) } }
@@ -247,7 +251,7 @@ export function useEntityOps({
             selection.selectEntity(newPath);
             selection.selectComponent(null);
         },
-        [definition.spec.initialEntities, updateEntities, selection],
+        [definition.spec.initialEntities, updateEntities, selection, fieldsOf],
     );
 
     const handleEnterChild = useCallback(

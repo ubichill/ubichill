@@ -139,6 +139,59 @@ describe('InputCollector: pointerType の伝播', () => {
     });
 });
 
+describe('InputCollector: Shadow DOM の中の UI の操作', () => {
+    /** Shadow DOM の中で起きたポインタ操作（window では target がホスト要素に付け替えられる）。 */
+    const pointer = (type: 'pointerdown' | 'pointerup', target: Element): void => {
+        const e = new MouseEvent(type, { bubbles: true, composed: true, clientX: 10, clientY: 10 });
+        Object.defineProperty(e, 'pointerType', { value: 'mouse' });
+        target.dispatchEvent(e);
+    };
+    const mouseEvents = (): string[] =>
+        (collector?.collectSince(0).events ?? [])
+            .map((event) => event.type)
+            .filter((type) => type === 'MOUSE_DOWN' || type === 'MOUSE_UP');
+    const inShadow = (html: string): Element => {
+        const host = setup('<div></div>');
+        const root = host.attachShadow({ mode: 'open' });
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = html;
+        root.appendChild(wrapper);
+        const target = root.querySelector('[data-target]');
+        if (!target) throw new Error('対象の要素がない');
+        return target;
+    };
+
+    it('看板（core:ui）のリンクを押しても、ワールドのクリックとして全 mod に配らない', () => {
+        const link = inShadow('<a href="https://e.x" data-target>ルール</a>');
+        pointer('pointerdown', link);
+        pointer('pointerup', link);
+        expect(mouseEvents()).toEqual([]);
+    });
+
+    it('mod の UI のボタンの中の文字を押しても配らない', () => {
+        const label = inShadow('<button type="button"><span data-target>押す</span></button>');
+        pointer('pointerdown', label);
+        pointer('pointerup', label);
+        expect(mouseEvents()).toEqual([]);
+    });
+
+    it('Shadow DOM の中でもボタン・リンクでない所はワールドへ渡す', () => {
+        const panel = inShadow('<div data-target>看板の文字</div>');
+        pointer('pointerdown', panel);
+        pointer('pointerup', panel);
+        expect(mouseEvents()).toEqual(['MOUSE_DOWN', 'MOUSE_UP']);
+    });
+
+    it('マウスの右クリックも、Shadow DOM の中のリンクでは既定のメニューを残す', () => {
+        const link = inShadow('<a href="https://e.x" data-target>ルール</a>');
+        pointer('pointerdown', link);
+        const e = new MouseEvent('contextmenu', { bubbles: true, composed: true, cancelable: true });
+        link.dispatchEvent(e);
+        expect(e.defaultPrevented).toBe(false);
+        expect(collector?.collectSince(0).events.some((event) => event.type === 'CONTEXT_MENU')).toBe(false);
+    });
+});
+
 describe('InputCollector: フォーム入力とワールドキー入力の分離', () => {
     const typedKeys = (): string =>
         (collector?.collectSince(0).events ?? [])

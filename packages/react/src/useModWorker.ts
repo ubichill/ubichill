@@ -52,6 +52,8 @@ export type ModWorkerHandlers<TPayloadMap extends Record<string, unknown> = Reco
     ) => void;
     /** Worker が Ubi.canvas.commitStroke() を呼んだときに発火する */
     onCanvasCommitStroke?: (targetId: string, stroke: import('@ubichill/shared').CanvasStrokeData) => void;
+    /** Worker が Ubi.canvas.replaceStrokes() を呼んだときに発火する */
+    onCanvasReplaceStrokes?: (targetId: string, strokes: import('@ubichill/shared').CanvasStrokeData[]) => void;
     /** Worker が Ubi.media.load() を呼んだときに発火する */
     onMediaLoad?: (
         targetId: string,
@@ -84,7 +86,7 @@ export type ModWorkerHandlers<TPayloadMap extends Record<string, unknown> = Reco
     onEventEmit?: (
         type: string,
         data: unknown,
-        scope: 'siblings' | 'parent' | 'children' | 'subtree' | 'world',
+        route: import('@ubichill/shared').EmitRoute,
         targetType: string | undefined,
         senderComponentInstanceId: string | undefined,
     ) => void;
@@ -174,6 +176,11 @@ export function useModWorker<TPayloadMap extends Record<string, unknown> = Recor
     useEffect(() => {
         initialEntitiesRef.current = options.initialEntities;
     });
+    // 参照の配線は作者が Editor で変えても Worker を作り直さず、emit のたびに最新を読む
+    const refsRef = useRef(options.refs);
+    useEffect(() => {
+        refsRef.current = options.refs;
+    });
 
     useEffect(() => {
         // enabled=false の間は実行しない（承認待ち等）。ダウンロード済みコードは modCode に
@@ -187,6 +194,7 @@ export function useModWorker<TPayloadMap extends Record<string, unknown> = Recor
             entityId: options.entityId,
             parentEntityId: options.parentEntityId,
             componentType: options.componentType,
+            refs: () => refsRef.current?.() ?? [],
             capabilities: options.capabilities,
             authorizeCapability: hasAuthorize ? stableAuthorize : undefined,
             maxExecutionTime: options.maxExecutionTime,
@@ -211,6 +219,8 @@ export function useModWorker<TPayloadMap extends Record<string, unknown> = Recor
                     handlersRef.current.onCanvasFrame?.(targetId, activeStroke, cursors),
                 onCanvasCommitStroke: (targetId, stroke) =>
                     handlersRef.current.onCanvasCommitStroke?.(targetId, stroke),
+                onCanvasReplaceStrokes: (targetId, strokes) =>
+                    handlersRef.current.onCanvasReplaceStrokes?.(targetId, strokes),
                 onMediaLoad: (targetId, url, mediaType, kind, options) =>
                     handlersRef.current.onMediaLoad?.(targetId, url, mediaType, kind, options),
                 onMediaPlay: (targetId) => handlersRef.current.onMediaPlay?.(targetId),

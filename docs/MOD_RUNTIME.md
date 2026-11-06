@@ -88,6 +88,9 @@ Ubi.runtime.require('wasm'); // 使えなければ UNSUPPORTED_FEATURE の UbiEr
 | `wasm:threads` | 共有メモリのスレッド | **現在は常に false**（ページが cross-origin isolated ではないため） |
 | `wasm:jspi` | JS Promise Integration（同期的に書かれた WASM から非同期 API を待つ） | ブラウザ |
 | `fetch:binary` / `asset` | 上記の API | Host のプロトコル版（v4 以上） |
+| `identity` | `Ubi.identity` | Host のプロトコル版（v5 以上） |
+| `event:ref` | `Ubi.event.emit` の `{ ref }` と `scope: 'referrers'`（古い Host は届けずに捨てる） | Host のプロトコル版（v6 以上） |
+| `media:surface` | `component: 'core:media'` の参照を `Ubi.media.*` の描画先にする（古い Host は描かない） | Host のプロトコル版（v6 以上） |
 
 古い Host には `Ubi.runtime` 自体が無い。古い Host でも動かしたい mod は `Ubi.runtime?.supports(...)` と書く。
 

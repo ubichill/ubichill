@@ -152,15 +152,26 @@ export async function dispatchCommand<TPayloadMap extends Record<string, unknown
         case CommandType.NETWORK_BROADCAST:
             handlers.onNetworkBroadcast?.(command.payload.type, command.payload.data);
             return undefined;
-        case CommandType.EVENT_EMIT:
-            handlers.onEventEmit?.(
-                command.payload.type,
-                command.payload.data,
-                command.payload.scope,
-                command.payload.targetType,
-                ctx.senderComponentInstanceId(),
-            );
+        case CommandType.EVENT_EMIT: {
+            // Worker は信頼しない: 配送先が読めない emit は捨てる（既定の範囲に広げない）
+            const { payload } = command;
+            const route =
+                typeof payload.ref === 'string'
+                    ? { ref: payload.ref }
+                    : payload.scope
+                      ? { scope: payload.scope }
+                      : null;
+            if (route) {
+                handlers.onEventEmit?.(
+                    payload.type,
+                    payload.data,
+                    route,
+                    payload.targetType,
+                    ctx.senderComponentInstanceId(),
+                );
+            }
             return undefined;
+        }
         case CommandType.UI_RENDER:
             handlers.onRender?.(command.payload.targetId, command.payload.vnode);
             return undefined;
@@ -172,6 +183,9 @@ export async function dispatchCommand<TPayloadMap extends Record<string, unknown
             return undefined;
         case CommandType.CANVAS_COMMIT_STROKE:
             handlers.onCanvasCommitStroke?.(command.payload.targetId, command.payload.stroke);
+            return undefined;
+        case CommandType.CANVAS_REPLACE_STROKES:
+            handlers.onCanvasReplaceStrokes?.(command.payload.targetId, command.payload.strokes);
             return undefined;
         case CommandType.MEDIA_LOAD: {
             const options =

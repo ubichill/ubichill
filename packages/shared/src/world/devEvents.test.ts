@@ -21,6 +21,7 @@ describe('dev の SSE の約束', () => {
                 failures: [
                     { kind: 'build', mod: 'pen', message: 'line 1\nline 2' },
                     { kind: 'world', message: 'kind が違う' },
+                    { kind: 'reference', message: 'c の vp:controls の「スクリーン」が未設定です' },
                 ],
             },
             { type: 'diagnostics', failures: [] },

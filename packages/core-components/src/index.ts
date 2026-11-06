@@ -1,8 +1,12 @@
 import { ColliderDataSchema } from './collider/schema.js';
+import { MediaDataSchema } from './media/schema.js';
 import { CORE_COMPONENT_TYPES, type CoreComponentType } from './public.js';
+import { UiDataSchema } from './ui/schema.js';
 
 export * from './collider/index.js';
+export * from './media/index.js';
 export * from './public.js';
+export * from './ui/index.js';
 
 export function isCoreComponentType(type: string): type is CoreComponentType {
     return Object.values(CORE_COMPONENT_TYPES).includes(type as CoreComponentType);
@@ -18,5 +22,9 @@ export function validateCoreComponentData(type: CoreComponentType, data: unknown
     switch (type) {
         case CORE_COMPONENT_TYPES.collider:
             return ColliderDataSchema.safeParse(data);
+        case CORE_COMPONENT_TYPES.media:
+            return MediaDataSchema.safeParse(data);
+        case CORE_COMPONENT_TYPES.ui:
+            return UiDataSchema.safeParse(data);
     }
 }

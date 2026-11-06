@@ -11,9 +11,13 @@
  *   x/y を書かないと親のワールド座標を継いでしまうので、無ければ 0）。
  * - entity の id はワールドの中で一意にする。親は mod の id、子は `<mod>--<Component 名>`（kebab-case は `--` を作らないので、
  *   別の mod の親と重ならない）。それでも重なる・長すぎるときは詰めて番号を付ける。
+ * - 型を宣言した参照フィールド（`entityRef` の `component`）は、その型を置いた Entity に配線しておく
+ *   （mod の開発者が world.yaml を書かずにすぐ動かせるように）。entityRef は 1 つ目、entityRefArray は全部。
  *
  * 戻り値は YAML をパースしたのと同じ生の定義（`definitionToResolved` に渡す）。
  */
+import { refFieldEntries } from '@ubichill/shared';
+import type { FieldsOf } from './references.ts';
 
 export interface SynthesizedComponent {
     /** Component 型（`<id>:<name>`）。 */
@@ -121,7 +125,44 @@ function modChildren(
     };
 }
 
-export function synthesizeWorld(mods: readonly SynthesizedMod[]): Record<string, unknown> {
+type RawEntity = {
+    id: string;
+    components: Array<{ type: string; data?: Record<string, unknown> }>;
+    children?: RawEntity[];
+};
+
+/** 型を宣言した参照フィールドを、その型の Component を置いた Entity に向ける（配置の後に付ける）。 */
+function wireTypedRefs(entities: readonly RawEntity[], fieldsOf: FieldsOf): RawEntity[] {
+    const all = (list: readonly RawEntity[]): RawEntity[] => list.flatMap((e) => [e, ...all(e.children ?? [])]);
+    const idsOfType = (type: string): string[] =>
+        all(entities)
+            .filter((e) => e.components.some((c) => c.type === type))
+            .map((e) => e.id);
+    const wire = (component: RawEntity['components'][number]): RawEntity['components'][number] => {
+        const wired = refFieldEntries(fieldsOf(component.type)).flatMap(([field, spec]): Array<[string, unknown]> => {
+            const targets = spec.component ? idsOfType(spec.component) : [];
+            if (targets.length === 0) return [];
+            if (spec.type === 'entityRef') return [[field, targets[0]]];
+            if (spec.type === 'entityRefArray') return [[field, targets]];
+            return [];
+        });
+        return wired.length > 0
+            ? { ...component, data: { ...component.data, ...Object.fromEntries(wired) } }
+            : component;
+    };
+    const walk = (list: readonly RawEntity[]): RawEntity[] =>
+        list.map((e) => ({
+            ...e,
+            components: e.components.map(wire),
+            ...(e.children ? { children: walk(e.children) } : {}),
+        }));
+    return walk(entities);
+}
+
+export function synthesizeWorld(
+    mods: readonly SynthesizedMod[],
+    fieldsOf: FieldsOf = () => undefined,
+): Record<string, unknown> {
     const allocate = idAllocator();
     // 親の id を先に配る（子の id は親と重ならない形だが、念のため後から配る側が番号を付ける）
     const keys = mods.map((mod, i) => allocate(kebab(mod.id) || `mod-${i}`));
@@ -141,17 +182,23 @@ export function synthesizeWorld(mods: readonly SynthesizedMod[]): Record<string,
             capacity: { default: 10, max: 20 },
             environment: { backgroundColor: '#F0F8FF', worldSize: { width, height } },
             dependencies: mods.map((mod) => ({ name: mod.id, source: { version: 'latest' } })),
-            initialEntities: mods.map((_, i) => ({
-                id: keys[i],
-                transform: { x: origins[i] ?? ORIGIN.x, y: ORIGIN.y },
-                components: [],
-                children: laid[i]?.children ?? [],
-            })),
+            initialEntities: wireTypedRefs(
+                mods.map((_, i) => ({
+                    id: keys[i] as string,
+                    transform: { x: origins[i] ?? ORIGIN.x, y: ORIGIN.y },
+                    components: [],
+                    children: (laid[i]?.children ?? []) as RawEntity[],
+                })),
+                fieldsOf,
+            ),
         },
     };
 }
 
-/** 成果物の manifest.json から、合成に使う Component の宣言を読む。 */
+/**
+ * 成果物の manifest.json から、合成に使う Component の宣言を読む。
+ * data-only（例: pen:stroke）は mod が中身を作って spawn するものなので置かない（空の data で置くと mod が読めない）。
+ */
 export function componentsFromManifest(
     types: readonly string[],
     manifestBytes: Uint8Array | undefined,
@@ -162,7 +209,11 @@ export function componentsFromManifest(
                 ? (JSON.parse(new TextDecoder().decode(manifestBytes)) as {
                       components?: Record<
                           string,
-                          { defaultTransform?: SynthesizedComponent['defaultTransform']; overlay?: unknown }
+                          {
+                              defaultTransform?: SynthesizedComponent['defaultTransform'];
+                              overlay?: unknown;
+                              dataOnly?: unknown;
+                          }
                       >;
                   })
                 : undefined;
@@ -170,12 +221,14 @@ export function componentsFromManifest(
             return undefined;
         }
     })();
-    return types.map((type) => {
-        const entry = manifest?.components?.[type];
-        return {
-            type,
-            ...(entry?.defaultTransform ? { defaultTransform: entry.defaultTransform } : {}),
-            ...(entry?.overlay ? { overlay: entry.overlay } : {}),
-        };
-    });
+    return types
+        .filter((type) => manifest?.components?.[type]?.dataOnly !== true)
+        .map((type) => {
+            const entry = manifest?.components?.[type];
+            return {
+                type,
+                ...(entry?.defaultTransform ? { defaultTransform: entry.defaultTransform } : {}),
+                ...(entry?.overlay ? { overlay: entry.overlay } : {}),
+            };
+        });
 }

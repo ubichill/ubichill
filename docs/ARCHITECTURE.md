@@ -94,7 +94,7 @@ ECS は `@ubichill/ecs` で完結し、ネットワーク・DOM を一切知ら�
 | `EVENT_EMIT` | Fire & Forget | 同 tab 内の他 Worker (scope + targetType) にイベント (`Ubi.event.emit`) |
 | `UI_RENDER` | Fire & Forget | VNode を Host に送って DOM 化 (`Ubi.ui.render`) |
 | `UI_SHOW_TOAST` | Fire & Forget | トースト (`Ubi.ui.showToast`) |
-| `CANVAS_FRAME` / `CANVAS_COMMIT_STROKE` | Fire & Forget | canvas 描画 (`Ubi.canvas.*`) |
+| `CANVAS_FRAME` / `CANVAS_COMMIT_STROKE` / `CANVAS_REPLACE_STROKES` | Fire & Forget | canvas 描画 (`Ubi.canvas.*`) |
 | `MEDIA_*` | Fire & Forget | video 制御 (`Ubi.media.*`) |
 | `NETWORK_FETCH` | RPC | HTTP リクエスト (`Ubi.fetch`) |
 | `CMD_LOG` | Fire & Forget | ログ (`Ubi.log`) |

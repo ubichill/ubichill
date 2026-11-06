@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { TransformSchema } from './world.schema';
+import { ComponentTypeSchema, TransformSchema } from './world.schema';
 
 // ============================================
 // Mod Manifest スキーマ
@@ -76,18 +76,25 @@ export const ComponentDataFieldSpecSchema = z.discriminatedUnion('type', [
     }),
     // 他 Entity（単体）への参照。値は entityId。World Editor で Hierarchy からの D&D で指定する。
     // access: 'read'（既定）は読み取りのみ、'write' は参照先への更新も許可する。削除は不可。
+    // component: 参照先が持つべき Component 型。Editor はこの型を持つ Entity だけを受け付け、
+    // Ubi.event.emit(..., { ref }) はこの型の Component に届く。required: 未設定をワールドの問題にする。
     z.object({
         type: z.literal('entityRef'),
         default: z.string().optional(),
         access: z.enum(['read', 'write']).optional(),
+        component: ComponentTypeSchema.optional(),
+        required: z.boolean().optional(),
         label: z.string().optional(),
         help: z.string().optional(),
     }),
-    // 他 Entity（複数）への参照。値は entityId の配列。access の意味は entityRef と同じ。
+    // 他 Entity（複数）への参照。値は entityId の配列。access・component・required の意味は entityRef と同じ
+    // （required は 1 つ以上）。
     z.object({
         type: z.literal('entityRefArray'),
         default: z.array(z.string()).optional(),
         access: z.enum(['read', 'write']).optional(),
+        component: ComponentTypeSchema.optional(),
+        required: z.boolean().optional(),
         label: z.string().optional(),
         help: z.string().optional(),
     }),
@@ -115,6 +122,8 @@ const ComponentManifestMetaSchema = z.object({
     defaultTransform: TransformSchema.partial().optional(),
     dataFields: z.record(z.string(), ComponentDataFieldSpecSchema).optional(),
     displayName: z.string().optional(),
+    /** Worker を持たないデータ専用 Component（mod が spawn して持ち回る。例: pen:stroke）。workerUrl を持たない。 */
+    dataOnly: z.boolean().optional(),
 });
 
 /**
