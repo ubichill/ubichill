@@ -16,19 +16,35 @@ describe('createMediaSurfaceRegistry', () => {
         expect(listener).toHaveBeenCalledTimes(2);
     });
 
-    it('同じ Entity の 2 つ目の面は無視し、2 つ目を外しても先の面は残る', () => {
+    it('同じ Entity に面が 2 つあるあいだはどちらも使わない（登録の順に関わらない）', () => {
         const registry = createMediaSurfaceRegistry();
-        const first = surface('contain');
-        registry.register('tv', first);
-        const unregisterSecond = registry.register('tv', surface('cover'));
-        unregisterSecond();
-        expect(registry.get('tv')).toBe(first);
+        registry.register('tv', surface('contain'));
+        registry.register('tv', surface('cover'));
+        expect(registry.get('tv')).toBeUndefined();
+    });
+
+    it('先に登録した面を外すと、残った面を使う（#298 のレビュー: 登録簿が空にならない）', () => {
+        const registry = createMediaSurfaceRegistry();
+        const unregisterFirst = registry.register('tv', surface('contain'));
+        const second = surface('cover');
+        registry.register('tv', second);
+        unregisterFirst();
+        expect(registry.get('tv')).toBe(second);
+    });
+
+    it('外す関数を 2 回呼んでも、ほかの面は外れない', () => {
+        const registry = createMediaSurfaceRegistry();
+        const unregister = registry.register('tv', surface());
+        const other = surface('cover');
+        registry.register('tv', other);
+        unregister();
+        unregister();
+        expect(registry.get('tv')).toBe(other);
     });
 
     it('外したあとに同じ Entity へ別の面を登録できる（作り直し）', () => {
         const registry = createMediaSurfaceRegistry();
         const unregister = registry.register('tv', surface());
-        unregister();
         unregister();
         const next = surface('cover');
         registry.register('tv', next);

@@ -259,6 +259,10 @@ Events.emit('vp:media:state', state, { scope: 'referrers' }); // 参照で自分
 - `component: 'core:media'` の参照は**動画の描画先**になる。フィールドの名前を `Ubi.media.*` の targetId に使うと、
   `<video>` は参照先の `core:media` の Entity の位置・大きさで描かれる（URL の許可・同期・状態はこの mod のもの）。
   動画を出すだけの Worker を別に作らなくてよい。
+- **1 つの動画面に出力できるのは 1 つだけ**（Component のインスタンス × 参照フィールド）。同じ mod の Component が 2 つでも、
+  1 つのインスタンスの 2 つのフィールドでも競合する。競合した面（と core:media を 2 つ持つ Entity）には誰の動画も描かず、
+  World Editor と `ubichill dev` が知らせる（読み込みの順で勝ち負けを決めると、ブラウザごとに結果が変わるため）。
+  操作パネルを複数置くときは、再生を担当する Component を 1 つ決め、ほかのパネルからは参照で指示を送る。
 
   ```ts
   export const config: ComponentConfig = {

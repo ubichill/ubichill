@@ -7,6 +7,7 @@
  *
  * World Editor・`ubichill dev`・Host の配送が同じ判定を使う。zod には依存しない。
  */
+import { CORE_COMPONENT_TYPES } from '@ubichill/core-components/public';
 
 /** 参照フィールドの宣言のうち、解決と検査に使う部分。 */
 export interface RefFieldSpec {
@@ -69,7 +70,74 @@ export type ReferenceProblem = ProblemLocation &
         | { kind: 'missing'; component?: string }
         | { kind: 'not-found'; target: string }
         | { kind: 'wrong-type'; target: string; component: string }
+        /** 1 つの動画面に、ほかの出力（Component のインスタンス × 参照フィールド）も向いている。 */
+        | { kind: 'media-shared'; target: string; others: number }
+        /** 1 つの Entity に core:media が 2 つ以上ある（field は空）。 */
+        | { kind: 'media-duplicate' }
     );
+
+/** 競合の判定に使う Component のインスタンス。`key` はインスタンスごとに一意（Host は flat id）。 */
+export interface RefComponentRecord {
+    key: string;
+    entityId: string;
+    type: string;
+    data?: Readonly<Record<string, unknown>>;
+}
+
+/** 動画面への出力 1 つ（Component のインスタンス × core:media を指す参照フィールド）。 */
+export interface MediaOutput {
+    key: string;
+    entityId: string;
+    componentType: string;
+    field: string;
+}
+
+export interface MediaConflicts {
+    /** core:media を 2 つ以上持つ Entity。 */
+    duplicatedSurfaces: ReadonlySet<string>;
+    /** 2 つ以上の出力が向いている動画面 → 向いている出力。 */
+    sharedSurfaces: ReadonlyMap<string, readonly MediaOutput[]>;
+}
+
+/**
+ * 動画面の競合を挙げる。1 つの動画面（core:media の Entity）に出力できるのは、Component のインスタンス × 参照フィールドの
+ * 1 つだけ。同じ mod の Component が 2 つあっても競合する。競合した面には誰の動画も描かない（読み込みの順で勝ち負けを
+ * 決めると、ブラウザごとに結果が変わるため）。複数の操作パネルを置くときは、再生を担当する Component を 1 つ決め、
+ * ほかのパネルからは参照で指示を送る。
+ */
+export function findMediaConflicts(
+    components: readonly RefComponentRecord[],
+    fieldsOf: (componentType: string) => Readonly<Record<string, RefFieldSpec>> | undefined,
+): MediaConflicts {
+    const surfaces = components.filter((c) => c.type === CORE_COMPONENT_TYPES.media).map((c) => c.entityId);
+    const surfaceSet = new Set(surfaces);
+    const duplicatedSurfaces = new Set(surfaces.filter((id, i) => surfaces.indexOf(id) !== i));
+    const outputs = components.flatMap((c) =>
+        Object.entries(fieldsOf(c.type) ?? {})
+            .filter(([, spec]) => isRefField(spec) && spec.component === CORE_COMPONENT_TYPES.media)
+            .flatMap(([field, spec]) =>
+                refTargets(spec, c.data?.[field])
+                    .filter((target) => surfaceSet.has(target))
+                    .map((target) => ({
+                        target,
+                        output: { key: c.key, entityId: c.entityId, componentType: c.type, field },
+                    })),
+            ),
+    );
+    const byTarget = outputs.reduce(
+        (map, { target, output }) => map.set(target, [...(map.get(target) ?? []), output]),
+        new Map<string, MediaOutput[]>(),
+    );
+    return {
+        duplicatedSurfaces,
+        sharedSurfaces: new Map([...byTarget].filter(([, list]) => list.length > 1)),
+    };
+}
+
+/** 競合していて動画を描かない動画面の Entity。 */
+export function conflictedMediaSurfaces(conflicts: MediaConflicts): ReadonlySet<string> {
+    return new Set([...conflicts.duplicatedSurfaces, ...conflicts.sharedSurfaces.keys()]);
+}
 
 function flattenEntities(entities: readonly RefCheckEntity[]): RefCheckEntity[] {
     return entities.flatMap((entity) => [entity, ...flattenEntities(entity.children)]);
@@ -87,8 +155,47 @@ export function findReferenceProblems(
 ): ReferenceProblem[] {
     const all = flattenEntities(entities);
     const typesOf = new Map(all.map((entity) => [entity.id, new Set(entity.components.map((c) => c.type))]));
+    const keyOf = (entityId: string, index: number): string => `${entityId}#${index}`;
+    const records = all.flatMap((entity) =>
+        entity.components.map((c, index) => ({
+            key: keyOf(entity.id, index),
+            entityId: entity.id,
+            type: c.type,
+            data: c.data,
+        })),
+    );
+    const media = findMediaConflicts(records, fieldsOf);
+    const indexOf = (key: string): number => Number(key.slice(key.lastIndexOf('#') + 1));
 
-    return all.flatMap((entity) =>
+    // 重複は Entity ごとに 1 件（2 つ目の core:media の位置で報告する）
+    const duplicates = [...media.duplicatedSurfaces].map(
+        (entityId): ReferenceProblem => ({
+            entityId,
+            componentType: CORE_COMPONENT_TYPES.media,
+            componentIndex: indexOf(
+                records.filter((r) => r.entityId === entityId && r.type === CORE_COMPONENT_TYPES.media)[1]?.key ?? '#0',
+            ),
+            field: '',
+            kind: 'media-duplicate',
+        }),
+    );
+    const shared = [...media.sharedSurfaces]
+        .filter(([target]) => !media.duplicatedSurfaces.has(target))
+        .flatMap(([target, list]) =>
+            list.map(
+                (output): ReferenceProblem => ({
+                    entityId: output.entityId,
+                    componentType: output.componentType,
+                    componentIndex: indexOf(output.key),
+                    field: output.field,
+                    kind: 'media-shared',
+                    target,
+                    others: list.length - 1,
+                }),
+            ),
+        );
+
+    const fieldProblems = all.flatMap((entity) =>
         entity.components.flatMap((component, componentIndex) =>
             Object.entries(fieldsOf(component.type) ?? {})
                 .filter(([, spec]) => isRefField(spec))
@@ -109,6 +216,7 @@ export function findReferenceProblems(
                 }),
         ),
     );
+    return [...fieldProblems, ...duplicates, ...shared];
 }
 
 /** 作者に見せる説明。`label` はフィールドの表示名（無ければフィールド名）。 */
@@ -123,5 +231,9 @@ export function describeReferenceProblem(problem: ReferenceProblem, label: strin
             return `${where}が指している Entity「${problem.target}」がありません`;
         case 'wrong-type':
             return `${where}が指している「${problem.target}」に ${problem.component} がありません`;
+        case 'media-shared':
+            return `${where}が指している動画面「${problem.target}」には、ほかに ${problem.others} 個の出力が向いているため、動画を描きません。動画面ごとに再生を担当する Component を 1 つに決め、ほかのパネルからは参照で指示を送ってください`;
+        case 'media-duplicate':
+            return `${problem.entityId} に core:media が 2 つ以上あるため、動画を描きません。1 つにしてください`;
     }
 }

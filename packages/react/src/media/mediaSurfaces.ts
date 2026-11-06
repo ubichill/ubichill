@@ -12,29 +12,35 @@ export interface MediaSurface {
     fit: 'contain' | 'cover';
 }
 
-/** 面の登録簿。テストでは個別に作る。 */
+/**
+ * 面の登録簿。テストでは個別に作る。
+ * 同じ Entity に面が 2 つ以上あるあいだは、どちらも使わない（読み込みの順で決めると、ブラウザごとに結果が変わる）。
+ * 1 つに戻れば、残った面を使う。
+ */
 export function createMediaSurfaceRegistry() {
-    const surfaces = new Map<string, MediaSurface>();
+    const surfaces = new Map<string, readonly MediaSurface[]>();
     const listeners = new Set<() => void>();
     const notify = (): void => {
         for (const listener of listeners) listener();
     };
     return {
-        /**
-         * 面を登録し、外す関数を返す。同じ Entity に 2 つ目の面が来ても先の面を残す
-         * （1 つの Entity に core:media を 2 つ付けても動画は 1 か所に描く）。
-         */
+        /** 面を登録し、外す関数を返す（2 回呼んでも 1 回だけ外す）。 */
         register(entityId: string, surface: MediaSurface): () => void {
-            if (surfaces.has(entityId)) return () => {};
-            surfaces.set(entityId, surface);
+            surfaces.set(entityId, [...(surfaces.get(entityId) ?? []), surface]);
             notify();
             return () => {
-                if (surfaces.get(entityId) !== surface) return;
-                surfaces.delete(entityId);
+                const rest = (surfaces.get(entityId) ?? []).filter((s) => s !== surface);
+                if (rest.length === surfaces.get(entityId)?.length) return;
+                if (rest.length === 0) surfaces.delete(entityId);
+                else surfaces.set(entityId, rest);
                 notify();
             };
         },
-        get: (entityId: string): MediaSurface | undefined => surfaces.get(entityId),
+        /** Entity の面。無い・2 つ以上あるときは undefined。 */
+        get: (entityId: string): MediaSurface | undefined => {
+            const list = surfaces.get(entityId);
+            return list?.length === 1 ? list[0] : undefined;
+        },
         subscribe(listener: () => void): () => void {
             listeners.add(listener);
             return () => listeners.delete(listener);

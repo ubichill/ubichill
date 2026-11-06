@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { surfacePlacement } from './CoreMediaSurface';
+import { surfacePlacement } from './surfacePlacement';
 
 const transform = { x: 10, y: 20, z: 3, w: 640, h: 360, scale: 1, rotation: 0 };
 
