@@ -63,6 +63,7 @@ export default defineConfig({
             { find: /^ubichill\/jsx-runtime$/, replacement: srcPath('./packages/sdk/src/jsx/jsx-runtime.ts') },
             { find: /^ubichill\/gripable$/, replacement: srcPath('./packages/sdk/src/jsx/Gripable.tsx') },
             { find: /^@ubichill\/ui-renderer$/, replacement: srcPath('./packages/ui-renderer/src/index.ts') },
+            { find: /^@ubichill\/terminal$/, replacement: srcPath('./packages/terminal/src/index.ts') },
         ],
     },
     test: {

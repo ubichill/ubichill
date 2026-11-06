@@ -263,6 +263,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.6
+      '@ubichill/terminal':
+        specifier: workspace:*
+        version: link:packages/terminal
       concurrently:
         specifier: ^9.2.4
         version: 9.2.4
@@ -317,6 +320,9 @@ importers:
       '@ubichill/shared':
         specifier: workspace:*
         version: link:../shared
+      '@ubichill/terminal':
+        specifier: workspace:*
+        version: link:../terminal
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3
@@ -418,6 +424,9 @@ importers:
       '@ubichill/shared':
         specifier: workspace:*
         version: link:../shared
+      '@ubichill/terminal':
+        specifier: workspace:*
+        version: link:../terminal
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
@@ -453,6 +462,9 @@ importers:
       '@ubichill/shared':
         specifier: workspace:*
         version: link:../shared
+      '@ubichill/terminal':
+        specifier: workspace:*
+        version: link:../terminal
       drizzle-orm:
         specifier: 'catalog:'
         version: 0.45.4(kysely@0.29.6)(postgres@3.4.9)
@@ -578,6 +590,9 @@ importers:
 
   packages/instance:
     devDependencies:
+      '@ubichill/terminal':
+        specifier: workspace:*
+        version: link:../terminal
       rimraf:
         specifier: 'catalog:'
         version: 6.1.3
@@ -587,6 +602,9 @@ importers:
       '@ubichill/shared':
         specifier: workspace:*
         version: link:../shared
+      '@ubichill/terminal':
+        specifier: workspace:*
+        version: link:../terminal
       yaml:
         specifier: 'catalog:'
         version: 2.9.1
@@ -681,6 +699,9 @@ importers:
         specifier: workspace:*
         version: link:../shared
     devDependencies:
+      '@ubichill/terminal':
+        specifier: workspace:*
+        version: link:../terminal
       dts-bundle-generator:
         specifier: ^9.5.1
         version: 9.5.1
@@ -709,6 +730,18 @@ importers:
       tsc-watch:
         specifier: ^7.2.1
         version: 7.2.1(typescript@7.0.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+
+  packages/terminal:
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.6
+      rimraf:
+        specifier: 'catalog:'
+        version: 6.1.3
       typescript:
         specifier: 'catalog:'
         version: 7.0.2

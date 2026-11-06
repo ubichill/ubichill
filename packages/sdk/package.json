@@ -23,6 +23,7 @@
         "typecheck": "tsc --noEmit"
     },
     "devDependencies": {
+        "@ubichill/terminal": "workspace:*",
         "dts-bundle-generator": "^9.5.1",
         "esbuild": "catalog:",
         "rimraf": "catalog:",

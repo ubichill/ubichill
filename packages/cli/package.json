@@ -8,6 +8,7 @@
     "dependencies": {
         "@ubichill/loader": "workspace:*",
         "@ubichill/shared": "workspace:*",
+        "@ubichill/terminal": "workspace:*",
         "esbuild": "catalog:",
         "yaml": "catalog:"
     },

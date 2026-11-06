@@ -76,6 +76,30 @@ describe('backend-runs-built-packages-only', () => {
     });
 });
 
+describe('terminal-is-zero-dependency', () => {
+    it('node: と拡張子付きの相対パスのほかを読むと違反（scripts が型を剥がして直接読むので、解決できないものを持てない）', () => {
+        for (const source of ["import { x } from '@ubichill/shared';", "import pc from 'picocolors';", "import { a } from './a';", "import { a } from './a.js';"]) {
+            expect(violations('packages/terminal/src/x.ts', source)).toEqual(['terminal-is-zero-dependency']);
+        }
+        expect(violations('packages/terminal/src/x.ts', "import { styleText } from 'node:util';\nimport type { Paint } from './paint.ts';")).toEqual([]);
+        expect(violations('packages/terminal/src/x.test.ts', "import { describe } from 'vitest';")).toEqual([]);
+    });
+});
+
+describe('terminal-is-node-only', () => {
+    it('ブラウザで動くコード（loader の既定の入口を含む）から読むと違反', () => {
+        for (const path of ['packages/frontend/src/world/x.ts', 'packages/sdk/src/x.ts', 'packages/shared/src/x.ts', 'packages/loader/src/acquireMod.ts']) {
+            expect(violations(path, "import { createTerminal } from '@ubichill/terminal';")).toContain('terminal-is-node-only');
+        }
+    });
+
+    it('Node のコード（CLI・backend・loader の Node 専用の入口）からは読める', () => {
+        for (const path of ['packages/cli/src/index.ts', 'packages/backend/src/utils/logger.ts', 'packages/loader/src/installDependencies.ts']) {
+            expect(violations(path, "import type { Logger } from '@ubichill/terminal';")).toEqual([]);
+        }
+    });
+});
+
 describe('signatures-in-one-place', () => {
     it('署名の部品の外で Ed25519 の照合を呼ぶと違反', () => {
         for (const path of ['packages/backend/src/routes/cliAuth.ts', 'packages/frontend/src/world/modSignature.ts', 'packages/cli/src/verify.ts']) {
