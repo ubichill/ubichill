@@ -3,7 +3,7 @@ package runtime
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/ubichill/ubichill/services/instance/internal/coord"
@@ -92,7 +92,7 @@ func (s *Server) observeGeneration(ctx context.Context) (string, error) {
 	s.gen = gen
 	s.mu.Unlock()
 	if len(dropped) > 0 {
-		log.Printf("cluster generation changed: dropping %d rooms", len(dropped))
+		slog.Warn("cluster generation changed: dropping the rooms", "rooms", len(dropped), "gen", gen)
 	}
 	for _, r := range dropped {
 		r.close(false)
@@ -189,7 +189,7 @@ func (s *Server) maintain(ctx context.Context) bool {
 		case !renewal.OK && r.isMigrating():
 			// 引っ越しの付け替えと延長が行き違った。接続を閉じずに、引っ越しを進めている側（handoff.go）に任せる
 		case !renewal.OK:
-			log.Printf("lost the lease of %s (epoch %d): closing it", r.definition.ID, r.epochNow())
+			slog.Warn("lost the lease: closing the room", "room", r.definition.ID, "epoch", r.epochNow())
 			s.discard(ctx, r, false)
 			lost[r] = true
 		default:
@@ -203,7 +203,7 @@ func (s *Server) maintain(ctx context.Context) bool {
 			continue
 		}
 		if !r.usable() {
-			log.Printf("could not renew the lease of %s (epoch %d) in time: closing it", r.definition.ID, r.epochNow())
+			slog.Warn("could not renew the lease in time: closing the room", "room", r.definition.ID, "epoch", r.epochNow())
 			s.discard(ctx, r, true)
 			continue
 		}
@@ -265,7 +265,7 @@ func (s *Server) beginDrain() {
 	if !first {
 		return
 	}
-	log.Printf("draining: refusing new rooms")
+	slog.Info("draining: refusing new rooms")
 	ctx, cancel := context.WithTimeout(context.Background(), s.fencing.Timeout)
 	defer cancel()
 	s.maintain(ctx)

@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"slices"
@@ -247,7 +247,7 @@ func (s *Server) migrate(ctx context.Context, r *Room) error {
 			Token string `json:"token"`
 		}
 		if code, err := s.sendHandoff(ctx, to, id, handoffRequest{Phase: "prepare", From: s.node, Snapshot: snapshot}, &prepared); err != nil || code != http.StatusOK || prepared.Token == "" {
-			log.Printf("handoff of %s to %s: prepare failed (%d): %v", id, to.node, code, err)
+			slog.Warn("handoff: prepare failed", "room", id, "to", to.node, "status", code, "err", err)
 			continue
 		}
 		// 準備に時間がかかったら、先が準備を捨てる頃に付け替えてしまわないよう取りやめる
@@ -262,7 +262,7 @@ func (s *Server) migrate(ctx context.Context, r *Room) error {
 		}
 		if err != nil {
 			// 付け替えたか分からない。手放して接続を閉じる（クライアントは繋ぎ直す）。付け替わっていれば先が準備の期限に引き取る
-			log.Printf("handoff of %s to %s: transfer outcome unknown: %v", id, to.node, err)
+			slog.Error("handoff: transfer outcome unknown, closing the room", "room", id, "to", to.node, "err", err)
 			s.discard(ctx, r, false)
 			return err
 		}
@@ -278,17 +278,17 @@ func (s *Server) migrate(ctx context.Context, r *Room) error {
 		if err == nil && code != http.StatusOK {
 			// 先に準備が無い（捨てた・再起動した）と分かった。先の token で取り戻して凍結を解く
 			if s.reclaim(ctx, r, a) {
-				log.Printf("handoff of %s to %s: commit refused (%d), took the room back", id, to.node, code)
+				slog.Warn("handoff: commit refused, took the room back", "room", id, "to", to.node, "status", code)
 				continue
 			}
 			s.discard(ctx, r, false)
 			return fmt.Errorf("handoff of %s: commit refused (%d)", id, code)
 		}
 		if err != nil {
-			log.Printf("handoff of %s to %s: commit unanswered (the target commits on its own): %v", id, to.node, err)
+			slog.Warn("handoff: commit unanswered (the target commits on its own)", "room", id, "to", to.node, "err", err)
 		}
 		s.handOver(r, migration{Node: a.Node, Addr: to.info.Addr, Gen: a.Gen, Epoch: a.Epoch})
-		log.Printf("moved %s to %s (epoch %d)", id, a.Node, a.Epoch)
+		slog.Info("moved the room", "room", id, "to", a.Node, "epoch", a.Epoch)
 		return nil
 	}
 	r.thaw()
@@ -510,7 +510,7 @@ func (s *Server) completeHandoffLocked(ctx context.Context, id string) (*Room, e
 	}
 	p.timer.Stop()
 	r.arrive(s.config.Grace, s.config.CursorBatch)
-	log.Printf("took over %s from %s (epoch %d)", id, p.from, owner.Epoch)
+	slog.Info("took over the room", "room", id, "from", p.from, "epoch", owner.Epoch)
 	return r, nil
 }
 
@@ -527,7 +527,7 @@ func (s *Server) expireHandoff(id string, p *pendingHandoff) {
 	_, err := s.completeHandoffLocked(ctx, id)
 	switch {
 	case err == nil:
-		log.Printf("handoff of %s was not confirmed, but it was transferred here: took it over", id)
+		slog.Warn("handoff: not confirmed, but it was transferred here: took it over", "room", id)
 	case errors.Is(err, errDirectoryUnavailable) && s.now().Sub(p.prepared) < s.handoffTimeout+s.fencing.TTL:
 		s.mu.Lock()
 		if s.pending[id] == p {
