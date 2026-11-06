@@ -1,26 +1,30 @@
 import {
+    type DataFieldsLike,
     describeReferenceProblem,
+    fieldLabel,
     findReferenceProblems,
     type InitialEntity,
     type ReferenceProblem,
-    type RefFieldSpec,
 } from '@ubichill/shared';
-import type { AvailableEntityKind, DataFields } from '../hooks/useAvailableEntityKinds';
+import type { AvailableEntityKind } from '../hooks/useAvailableEntityKinds';
 
-const labelOf = (fields: DataFields | undefined, field: string): string => fields?.[field]?.label ?? field;
+/** Component 型 → その dataFields。mod の取得前（kinds に無い型）は undefined。 */
+export type FieldsOf = (componentType: string) => DataFieldsLike | undefined;
+
+export function fieldsOfKinds(kinds: readonly AvailableEntityKind[]): FieldsOf {
+    const fieldsByType = new Map(kinds.map((kind) => [kind.kind, kind.dataFields]));
+    return (type) => fieldsByType.get(type);
+}
 
 /** ワールドの参照の問題を、作者に見せる説明付きで挙げる。mod の取得前（kinds に無い型）は検査しない。 */
 export function editorReferenceProblems(
     entities: readonly InitialEntity[],
     kinds: readonly AvailableEntityKind[],
 ): Array<ReferenceProblem & { message: string }> {
-    const fieldsByType = new Map(kinds.map((kind) => [kind.kind, kind.dataFields]));
-    return findReferenceProblems(
-        entities,
-        (type) => fieldsByType.get(type) as Readonly<Record<string, RefFieldSpec>> | undefined,
-    ).map((problem) => ({
+    const fieldsOf = fieldsOfKinds(kinds);
+    return findReferenceProblems(entities, fieldsOf).map((problem) => ({
         ...problem,
-        message: describeReferenceProblem(problem, labelOf(fieldsByType.get(problem.componentType), problem.field)),
+        message: describeReferenceProblem(problem, fieldLabel(fieldsOf(problem.componentType), problem.field)),
     }));
 }
 

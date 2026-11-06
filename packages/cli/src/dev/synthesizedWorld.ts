@@ -16,6 +16,7 @@
  *
  * 戻り値は YAML をパースしたのと同じ生の定義（`definitionToResolved` に渡す）。
  */
+import { refFieldEntries } from '@ubichill/shared';
 import type { FieldsOf } from './references.ts';
 
 export interface SynthesizedComponent {
@@ -138,15 +139,13 @@ function wireTypedRefs(entities: readonly RawEntity[], fieldsOf: FieldsOf): RawE
             .filter((e) => e.components.some((c) => c.type === type))
             .map((e) => e.id);
     const wire = (component: RawEntity['components'][number]): RawEntity['components'][number] => {
-        const wired = Object.entries(fieldsOf(component.type) ?? {}).flatMap(
-            ([field, spec]): Array<[string, unknown]> => {
-                const targets = spec.component ? idsOfType(spec.component) : [];
-                if (targets.length === 0) return [];
-                if (spec.type === 'entityRef') return [[field, targets[0]]];
-                if (spec.type === 'entityRefArray') return [[field, targets]];
-                return [];
-            },
-        );
+        const wired = refFieldEntries(fieldsOf(component.type)).flatMap(([field, spec]): Array<[string, unknown]> => {
+            const targets = spec.component ? idsOfType(spec.component) : [];
+            if (targets.length === 0) return [];
+            if (spec.type === 'entityRef') return [[field, targets[0]]];
+            if (spec.type === 'entityRefArray') return [[field, targets]];
+            return [];
+        });
         return wired.length > 0
             ? { ...component, data: { ...component.data, ...Object.fromEntries(wired) } }
             : component;

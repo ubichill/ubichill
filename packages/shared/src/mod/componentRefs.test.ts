@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
     conflictedMediaSurfaces,
     describeReferenceProblem,
+    fieldLabel,
     findMediaConflicts,
     findReferenceProblems,
+    isRefField,
     type RefCheckEntity,
     type ReferenceProblem,
     type RefFieldSpec,
@@ -58,6 +60,41 @@ describe('resolveRefs', () => {
 
     it('data のプロトタイプの値（toString など）を参照先として拾わない', () => {
         expect(resolveRefs({ toString: { type: 'entityRef' } }, {})).toEqual([{ field: 'toString', entityIds: [] }]);
+    });
+});
+
+describe('崩れた宣言（manifest は読み込み時に検証しない）', () => {
+    it('isRefField は null・プリミティブ・型の無いもので投げず false', () => {
+        for (const spec of [null, undefined, 'entityRef', 42, [], {}, { type: 1 }]) {
+            expect(isRefField(spec)).toBe(false);
+        }
+        expect(isRefField({ type: 'entityRef' })).toBe(true);
+        expect(isRefField({ type: 'entityRefArray', component: 'vp:screen' })).toBe(true);
+    });
+
+    it('component が文字列でない参照は、型を問わない参照に化けさせず参照として扱わない', () => {
+        expect(isRefField({ type: 'entityRef', component: 5 })).toBe(false);
+        expect(resolveRefs({ screen: { type: 'entityRef', component: ['x'] } }, { screen: 'tv' })).toEqual([]);
+    });
+
+    it('null の宣言が混ざっても、解決・検査・競合の判定が落ちない', () => {
+        const fields = { broken: null, screen: { type: 'entityRef', required: true } };
+        expect(resolveRefs(fields, { screen: 'tv' })).toEqual([{ field: 'screen', entityIds: ['tv'] }]);
+        const world = [entity('a', [{ type: 'm:c', data: {} }])];
+        expect(findReferenceProblems(world, () => fields).map((p) => p.kind)).toEqual(['missing']);
+        expect(() => findMediaConflicts([{ key: 'a', entityId: 'a', type: 'm:c' }], () => fields)).not.toThrow();
+    });
+
+    it('dataFields そのものが配列・文字列でも落ちない', () => {
+        expect(resolveRefs(['entityRef'] as never, {})).toEqual([]);
+        expect(resolveRefs('entityRef' as never, {})).toEqual([]);
+    });
+
+    it('fieldLabel は文字列の label だけを使う', () => {
+        expect(fieldLabel({ screen: { type: 'entityRef', label: 'スクリーン' } }, 'screen')).toBe('スクリーン');
+        expect(fieldLabel({ screen: { type: 'entityRef', label: 3 } }, 'screen')).toBe('screen');
+        expect(fieldLabel({ screen: null }, 'screen')).toBe('screen');
+        expect(fieldLabel(undefined, 'screen')).toBe('screen');
     });
 });
 

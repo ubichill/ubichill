@@ -16,7 +16,15 @@ export interface RefFieldSpec {
     component?: string;
     /** 未設定をワールドの問題として扱う。 */
     required?: boolean;
+    /** 参照先への書き込みを許すか（既定は読み取りだけ）。 */
+    access?: 'read' | 'write';
 }
+
+/**
+ * mod の `dataFields`。manifest は読み込み時に検証しないので、値は何でもありうる（`null`・文字列など）。
+ * 参照の判定は {@link isRefField} を通してから読む。
+ */
+export type DataFieldsLike = Readonly<Record<string, unknown>>;
 
 /** 1 つの参照フィールドを解決した結果。 */
 export interface ResolvedRef {
@@ -25,8 +33,19 @@ export interface ResolvedRef {
     component?: string;
 }
 
-export function isRefField(spec: RefFieldSpec): boolean {
-    return spec.type === 'entityRef' || spec.type === 'entityRefArray';
+/** 参照フィールドの宣言か。形の崩れた宣言（`null`・`component` が文字列でないなど）は参照として扱わない。 */
+export function isRefField(spec: unknown): spec is RefFieldSpec {
+    if (typeof spec !== 'object' || spec === null) return false;
+    const { type, component } = spec as { type?: unknown; component?: unknown };
+    return (
+        (type === 'entityRef' || type === 'entityRefArray') &&
+        (component === undefined || typeof component === 'string')
+    );
+}
+
+/** 参照フィールドの宣言だけを取り出す。 */
+export function refFieldEntries(dataFields: DataFieldsLike | undefined): Array<[string, RefFieldSpec]> {
+    return Object.entries(dataFields ?? {}).filter((entry): entry is [string, RefFieldSpec] => isRefField(entry[1]));
 }
 
 /** フィールドの値を参照先の entityId の列にする。型の合わない値・空文字は無視する。 */
@@ -37,16 +56,14 @@ export function refTargets(spec: RefFieldSpec, value: unknown): string[] {
 
 /** Component の data から、参照フィールドをすべて解決する。 */
 export function resolveRefs(
-    dataFields: Readonly<Record<string, RefFieldSpec>> | undefined,
+    dataFields: DataFieldsLike | undefined,
     data: Readonly<Record<string, unknown>>,
 ): ResolvedRef[] {
-    return Object.entries(dataFields ?? {})
-        .filter(([, spec]) => isRefField(spec))
-        .map(([field, spec]) => ({
-            field,
-            entityIds: refTargets(spec, data[field]),
-            ...(spec.component ? { component: spec.component } : {}),
-        }));
+    return refFieldEntries(dataFields).map(([field, spec]) => ({
+        field,
+        entityIds: refTargets(spec, data[field]),
+        ...(spec.component ? { component: spec.component } : {}),
+    }));
 }
 
 /** 検査の対象になる Entity の形（ワールド定義の `initialEntities` と同じ形）。 */
@@ -107,14 +124,14 @@ export interface MediaConflicts {
  */
 export function findMediaConflicts(
     components: readonly RefComponentRecord[],
-    fieldsOf: (componentType: string) => Readonly<Record<string, RefFieldSpec>> | undefined,
+    fieldsOf: (componentType: string) => DataFieldsLike | undefined,
 ): MediaConflicts {
     const surfaces = components.filter((c) => c.type === CORE_COMPONENT_TYPES.media).map((c) => c.entityId);
     const surfaceSet = new Set(surfaces);
     const duplicatedSurfaces = new Set(surfaces.filter((id, i) => surfaces.indexOf(id) !== i));
     const outputs = components.flatMap((c) =>
-        Object.entries(fieldsOf(c.type) ?? {})
-            .filter(([, spec]) => isRefField(spec) && spec.component === CORE_COMPONENT_TYPES.media)
+        refFieldEntries(fieldsOf(c.type))
+            .filter(([, spec]) => spec.component === CORE_COMPONENT_TYPES.media)
             .flatMap(([field, spec]) =>
                 refTargets(spec, c.data?.[field])
                     .filter((target) => surfaceSet.has(target))
@@ -151,7 +168,7 @@ function flattenEntities(entities: readonly RefCheckEntity[]): RefCheckEntity[] 
  */
 export function findReferenceProblems(
     entities: readonly RefCheckEntity[],
-    fieldsOf: (componentType: string) => Readonly<Record<string, RefFieldSpec>> | undefined,
+    fieldsOf: (componentType: string) => DataFieldsLike | undefined,
 ): ReferenceProblem[] {
     const all = flattenEntities(entities);
     const typesOf = new Map(all.map((entity) => [entity.id, new Set(entity.components.map((c) => c.type))]));
@@ -197,26 +214,31 @@ export function findReferenceProblems(
 
     const fieldProblems = all.flatMap((entity) =>
         entity.components.flatMap((component, componentIndex) =>
-            Object.entries(fieldsOf(component.type) ?? {})
-                .filter(([, spec]) => isRefField(spec))
-                .flatMap(([field, spec]): ReferenceProblem[] => {
-                    const at = { entityId: entity.id, componentType: component.type, componentIndex, field };
-                    const targets = refTargets(spec, component.data?.[field]);
-                    if (targets.length === 0) {
-                        return spec.required ? [{ ...at, kind: 'missing', component: spec.component }] : [];
+            refFieldEntries(fieldsOf(component.type)).flatMap(([field, spec]): ReferenceProblem[] => {
+                const at = { entityId: entity.id, componentType: component.type, componentIndex, field };
+                const targets = refTargets(spec, component.data?.[field]);
+                if (targets.length === 0) {
+                    return spec.required ? [{ ...at, kind: 'missing', component: spec.component }] : [];
+                }
+                return targets.flatMap((target): ReferenceProblem[] => {
+                    const types = typesOf.get(target);
+                    if (!types) return [{ ...at, kind: 'not-found', target }];
+                    if (spec.component && !types.has(spec.component)) {
+                        return [{ ...at, kind: 'wrong-type', target, component: spec.component }];
                     }
-                    return targets.flatMap((target): ReferenceProblem[] => {
-                        const types = typesOf.get(target);
-                        if (!types) return [{ ...at, kind: 'not-found', target }];
-                        if (spec.component && !types.has(spec.component)) {
-                            return [{ ...at, kind: 'wrong-type', target, component: spec.component }];
-                        }
-                        return [];
-                    });
-                }),
+                    return [];
+                });
+            }),
         ),
     );
     return [...fieldProblems, ...duplicates, ...shared];
+}
+
+/** フィールドの表示名（宣言の `label`）。無い・文字列でなければフィールド名。 */
+export function fieldLabel(dataFields: DataFieldsLike | undefined, field: string): string {
+    const spec = dataFields?.[field];
+    const label = typeof spec === 'object' && spec !== null ? (spec as { label?: unknown }).label : undefined;
+    return typeof label === 'string' && label.length > 0 ? label : field;
 }
 
 /** 作者に見せる説明。`label` はフィールドの表示名（無ければフィールド名）。 */

@@ -125,6 +125,22 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
     },
 ];
 
+/**
+ * manifest の dataFields から、エディタが読める形の宣言だけを残す。manifest は読み込み時に検証しないので、
+ * `null` などの崩れた宣言が 1 つあるだけで Inspector・参照の検査が落ちないようにする。
+ */
+export function usableDataFields(raw: unknown): DataFields | undefined {
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return undefined;
+    return Object.fromEntries(
+        Object.entries(raw).filter(
+            (entry): entry is [string, DataFieldSpec] =>
+                typeof entry[1] === 'object' &&
+                entry[1] !== null &&
+                typeof (entry[1] as { type?: unknown }).type === 'string',
+        ),
+    );
+}
+
 interface ModIndex {
     id: string;
     version: string;
@@ -240,7 +256,7 @@ export function useAvailableEntityKinds(definition: WorldDefinition | null): {
                     mediaTargets: meta.mediaTargets,
                     suggestSize: !!(meta.canvasTargets?.length || meta.mediaTargets?.length),
                     defaultTransform: meta.defaultTransform,
-                    dataFields: meta.dataFields,
+                    dataFields: usableDataFields(meta.dataFields),
                     thumbnailUrl: meta.thumbnail ? `${versionedBase}/${meta.thumbnail}` : undefined,
                     viewKind: deriveViewKind(meta),
                     overlay: meta.overlay,

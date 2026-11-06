@@ -46,6 +46,14 @@ describe('editorReferenceProblems', () => {
     });
 });
 
+describe('editorReferenceProblems: 崩れた manifest', () => {
+    it('dataFields に null の宣言があっても落ちず、読める宣言だけで検査する', () => {
+        const broken = kind('bad:mod', { ghost: null, screen: { type: 'entityRef', required: true } } as never);
+        const world = [entity('a', [{ type: 'bad:mod', data: {} }])];
+        expect(editorReferenceProblems(world, [broken]).map((p) => p.kind)).toEqual(['missing']);
+    });
+});
+
 describe('problemsByEntity', () => {
     it('同じ Entity の問題をまとめる', () => {
         const map = problemsByEntity([
