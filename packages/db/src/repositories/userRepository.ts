@@ -123,11 +123,6 @@ export const userRepository = {
         return results[0];
     },
 
-    async setBio(id: string, bio: string | null): Promise<UserRecord | undefined> {
-        const results = await db.update(users).set({ bio, updatedAt: new Date() }).where(eq(users.id, id)).returning();
-        return results[0];
-    },
-
     /** プロフィール（user_profiles の項目込み）。 */
     findProfileById(id: string): Promise<UserProfileRecord | undefined> {
         return selectProfile(db, eq(users.id, id));

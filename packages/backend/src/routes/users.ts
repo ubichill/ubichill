@@ -12,7 +12,6 @@ import {
 } from '@ubichill/db';
 import type { ResolvedWorld, WorldListItem } from '@ubichill/shared';
 import {
-    BioSchema,
     canViewFavorites,
     DISPLAY_NAME_CHANGE_COOLDOWN_DAYS,
     DisplayNameSchema,
@@ -251,17 +250,6 @@ router.get('/me', requirePublisher, async (req, res) => {
             ? { publishingEnvironment: { id: req.publishingEnvironment.id, kind: req.publishingEnvironment.kind } }
             : {}),
     });
-});
-
-// 自己紹介を書く（空にすると「書いていない」に戻る）。
-router.put('/me/bio', requireAuth, async (req, res) => {
-    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-    const parsed = BioSchema.safeParse(typeof req.body?.bio === 'string' ? req.body.bio : '');
-    if (!parsed.success) {
-        return res.status(400).json({ error: parsed.error.issues[0]?.message ?? '自己紹介が不正です' });
-    }
-    const updated = await userRepository.setBio(req.user.id, parsed.data);
-    return res.json({ bio: updated?.bio ?? null });
 });
 
 // パスワードを変更する。現在のパスワードの確認は better-auth に任せ、他の端末のセッションは無効にする。
