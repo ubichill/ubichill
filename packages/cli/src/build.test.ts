@@ -26,7 +26,7 @@ import {
 } from '@ubichill/loader';
 import { type ModLockEntry, verifyModSignature } from '@ubichill/shared';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { buildMod, dataOnlyManifestEntry } from './build.ts';
+import { buildMod, dataOnlyEntryFromSource, dataOnlyManifestEntry } from './build.ts';
 import { listDirsOnDisk } from './modLayout.ts';
 import { publishMods } from './publishMods.ts';
 import { verifyAllModLocks, verifyAllModSignatures } from './verify.ts';
@@ -150,7 +150,12 @@ describe('build → loader 結合テスト（実ビルド × 実hash照合）', 
 
     it('宣言していない型は undeclared（宣言のある data-only と取り違えない）', async () => {
         const lock = await buildWorldLock([modId], createHttpLockEntryGetter(publicDir, fsFetch));
-        const result = await acquireMod('pen:undeclared', { baseUrl: publicDir, lock, fetchImpl: fsFetch, ...unsignedDev });
+        const result = await acquireMod('pen:undeclared', {
+            baseUrl: publicDir,
+            lock,
+            fetchImpl: fsFetch,
+            ...unsignedDev,
+        });
         expect(result).toBe('undeclared');
     });
 
@@ -418,5 +423,46 @@ describe('dataOnlyManifestEntry', () => {
         expect(dataOnlyManifestEntry({})).toBeNull();
         expect(dataOnlyManifestEntry({ dataOnly: false })).toBeNull();
         expect(dataOnlyManifestEntry({ dataOnly: 'true' })).toBeNull();
+    });
+});
+
+describe('dataOnlyEntryFromSource', () => {
+    const source = (config: string) =>
+        `import type { ComponentConfig } from 'ubichill';\n\nexport const config: ComponentConfig = ${config};\n`;
+
+    it('リテラルで書いた dataOnly: true は data-only（pen の stroke.worker.ts と同じ形）', () => {
+        expect(
+            dataOnlyEntryFromSource('m:stroke', source("{\n    dataOnly: true,\n    description: '線',\n}")),
+        ).toEqual({ dataOnly: true, description: '線' });
+    });
+
+    it('dataOnly を書いているのに config を読めなければ、Worker として bundle せずビルドを止める', () => {
+        const unreadable = [
+            '{ dataOnly: true, description: `線` }',
+            '{ ...base, dataOnly: true }',
+            '{ dataOnly: DATA_ONLY }',
+            '{ dataOnly: !0 }',
+            'makeConfig({ dataOnly: true })',
+        ];
+        for (const config of unreadable) {
+            expect(() => dataOnlyEntryFromSource('m:stroke', source(config)), config).toThrow(
+                /\[m:stroke\] dataOnly を書いていますが、export const config をリテラルとして読めません/,
+            );
+        }
+    });
+
+    it('dataOnly を書いていなければ、config を読めなくても従来どおり Worker（ビルドは止めない）', () => {
+        expect(dataOnlyEntryFromSource('m:x', source('{ description: `x` }'))).toBeNull();
+        expect(dataOnlyEntryFromSource('m:x', 'export const foo = 1;')).toBeNull();
+    });
+
+    it('読める config で dataOnly が true 以外なら Worker のまま', () => {
+        expect(dataOnlyEntryFromSource('m:x', source('{ dataOnly: false }'))).toBeNull();
+        expect(dataOnlyEntryFromSource('m:x', source("{ dataOnly: 'true' }"))).toBeNull();
+    });
+
+    it('似た名前（dataOnlyX・isDataOnly）は dataOnly と見なさない', () => {
+        expect(dataOnlyEntryFromSource('m:x', source('{ description: dataOnlyX }'))).toBeNull();
+        expect(dataOnlyEntryFromSource('m:x', `${source('makeConfig()')}const isDataOnly = 1;`)).toBeNull();
     });
 });

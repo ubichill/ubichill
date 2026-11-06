@@ -237,6 +237,24 @@ export function dataOnlyManifestEntry(config: Record<string, unknown> | null): R
     return rest;
 }
 
+/**
+ * ソースから data-only の宣言を読む（純粋）。data-only でなければ null。
+ *
+ * config はコードを実行せずリテラルとしてだけ読むので、テンプレート文字列・定数・スプレッドを使うと読めない。
+ * そのとき `dataOnly` を書いていても黙って Worker として bundle すると、spawn した Entity ごとに Worker が
+ * 起動してしまうので、ビルドを止める。
+ */
+export function dataOnlyEntryFromSource(componentType: string, source: string): Record<string, unknown> | null {
+    const config = extractConfigFromCode(source);
+    if (config === null && /\bdataOnly\b/.test(source)) {
+        throw new Error(
+            `[${componentType}] dataOnly を書いていますが、export const config をリテラルとして読めません。` +
+                'テンプレート文字列・定数・スプレッド・式を使わず、JSON と同じ書き方（文字列・数・真偽値・配列・オブジェクト）で書いてください',
+        );
+    }
+    return dataOnlyManifestEntry(config);
+}
+
 function cleanOldBundles(dir: string, keepFilename: string): void {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
         if (entry.isFile() && entry.name !== keepFilename && entry.name.startsWith('index.')) {
@@ -510,7 +528,7 @@ export async function compileMod(modDir: string): Promise<ModArtifacts> {
             continue;
         }
 
-        const dataOnly = dataOnlyManifestEntry(extractConfigFromCode(readFileSync(workerPath, 'utf-8')));
+        const dataOnly = dataOnlyEntryFromSource(componentType, readFileSync(workerPath, 'utf-8'));
         if (dataOnly) {
             versionedComponents[componentType] = dataOnly;
             console.log(`📦 [${componentType}] data-only（Worker なし）`);
