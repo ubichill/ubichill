@@ -177,12 +177,14 @@ export function componentsFromManifest(
             return undefined;
         }
     })();
-    return types.filter((type) => manifest?.components?.[type]?.dataOnly !== true).map((type) => {
-        const entry = manifest?.components?.[type];
-        return {
-            type,
-            ...(entry?.defaultTransform ? { defaultTransform: entry.defaultTransform } : {}),
-            ...(entry?.overlay ? { overlay: entry.overlay } : {}),
-        };
-    });
+    return types
+        .filter((type) => manifest?.components?.[type]?.dataOnly !== true)
+        .map((type) => {
+            const entry = manifest?.components?.[type];
+            return {
+                type,
+                ...(entry?.defaultTransform ? { defaultTransform: entry.defaultTransform } : {}),
+                ...(entry?.overlay ? { overlay: entry.overlay } : {}),
+            };
+        });
 }
