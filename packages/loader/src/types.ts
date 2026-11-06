@@ -42,14 +42,16 @@ export interface LoadedMod {
 /**
  * {@link acquireMod} の戻り値。
  *  - LoadedMod   : 取得＋検証成功。
- *  - 'data-only' : worker を持たない純データ Component（警告不要）。manifest に宣言の無い型も含む
- *    （mod が実行中に作るデータだけの entity。例: pen:stroke）。
- *  - 'not-found' : manifest/worker 取得失敗。lock が Worker を固定しているのに manifest に無い。
+ *  - 'data-only' : worker を持たない純データ Component として manifest に宣言された型（警告不要。例: pen:stroke）。
+ *  - 'undeclared': lock が固定しておらず、manifest にも宣言の無い型。コードは実行しない。world.yaml の打ち間違いか、
+ *    data-only を宣言していない古い版の mod が作るデータ（例: pen 2.0.0 の pen:stroke）。
+ *  - 'not-found' : manifest/worker 取得失敗。lock が固定した型が manifest に無い。
  *  - { rejected }: lock の照合か作者署名の確認で拒否。理由付き。
  */
 export type AcquireResult =
     | LoadedMod
     | 'data-only'
+    | 'undeclared'
     | 'not-found'
     | { rejected: LockRejectReason | ModSignatureRejectReason };
 

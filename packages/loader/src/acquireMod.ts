@@ -10,6 +10,7 @@
  */
 import type { ComponentDataFieldSpec, OverlayMode } from '@ubichill/shared';
 import {
+    integrityEquals,
     MOD_SIGNATURE_FILE,
     type ModAuthorProof,
     type ModLock,
@@ -260,15 +261,19 @@ export async function acquireMod(entityType: string, opts: AcquireModOptions): P
     const fetched = await fetchManifest(baseUrl, modName, version, f);
     if (!fetched) return 'not-found';
     const entry = fetched.manifest.components?.[entityType];
-    // Worker を持たない型は実行するコードが無い。manifest に宣言が無い型も、mod が実行中に作るデータだけの entity
-    // （pen の canvas が作る pen:stroke など。Worker のファイルが無い型は manifest に載らない）なので data-only。
-    // ただし lock がこの型の Worker を固定しているのに manifest に無いなら、黙って飛ばさない
-    if (!entry?.workerUrl) return entry || !lockEntry.components[entityType] ? 'data-only' : 'not-found';
+    const pinned = lockEntry.components[entityType];
+    if (!pinned) {
+        // lock が Worker を固定していない型は、どの道でもコードを実行しない
+        if (entry?.workerUrl) return { rejected: 'lock-missing' };
+        // manifest は lock と照合してから読む（書き換えた manifest で「データだけ」と言わせない）
+        if (!integrityEquals(fetched.integrity, lockEntry.manifestIntegrity)) return { rejected: 'manifest-mismatch' };
+        // 宣言のある data-only（例: pen:stroke）か、宣言の無い型（打ち間違いか、宣言の無い古い版の mod が作るデータ）
+        return entry ? 'data-only' : 'undeclared';
+    }
 
+    // lock が固定している型は、manifest の宣言に関係なく Worker の照合まで通す（manifest を書き換えて止めさせない）
     const versionedBase = `${baseUrl}/${modName}/v${version}`;
-    // workerUrl は lock を優先（固定パス）。無ければ manifest 由来。
-    const relWorkerUrl = lockEntry.components[entityType]?.workerUrl ?? entry.workerUrl;
-    const workerUrl = `${versionedBase}/${relWorkerUrl.replace(/^\.\//, '')}`;
+    const workerUrl = `${versionedBase}/${pinned.workerUrl.replace(/^\.\//, '')}`;
 
     const fetchedWorker = await fetchWorkerBytes(workerUrl, entityType, f);
     if (!fetchedWorker) return 'not-found';
@@ -281,6 +286,8 @@ export async function acquireMod(entityType: string, opts: AcquireModOptions): P
     });
 
     if (verdict.status === 'rejected') return { rejected: verdict.reason };
+    // lock と一致した manifest に、lock が固定した型が無い（作った側の不整合）。実行の設定が読めないので動かさない
+    if (!entry) return 'not-found';
 
     const authored = await resolveAuthor(versionedBase, baseUrl, lockEntry, opts, f);
     if ('rejected' in authored) return authored;
