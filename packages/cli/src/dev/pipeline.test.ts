@@ -1,14 +1,17 @@
 /**
  * 世代を確定する順序。失敗した段階で何が残るかは docs/design/world-runtime-dev.md の表の通り。
  */
-import type { InstanceDefinition } from '@ubichill/shared';
+import { type DevEvent, EMPTY_ENTITY_TYPE, type InstanceDefinition } from '@ubichill/shared';
 import { describe, expect, it, vi } from 'vitest';
 import type { ModArtifacts } from '../build.ts';
-import { fakeMod } from './generation.test.ts';
+import { fakeMod, remoteMods } from './generation.test.ts';
 import { currentGeneration, initialGenerationState } from './generation.ts';
 import type { GoAdmin } from './goRuntime.ts';
 import { buildRoomDefinition, createPipeline, type PipelineDeps, type WorldSource } from './pipeline.ts';
-import type { DevEvent } from './server.ts';
+
+/** 最後に送った診断。 */
+const lastDiagnostics = (events: readonly DevEvent[]) =>
+    events.findLast((e): e is Extract<DevEvent, { type: 'diagnostics' }> => e.type === 'diagnostics')?.failures;
 
 /** 中身を変えた mod（lock の断片の hash が変わる）。 */
 const edited = (mod: ModArtifacts, mark: string): ModArtifacts => ({
@@ -116,7 +119,7 @@ describe('createPipeline', () => {
         expect(h.go.deletes).toEqual(['dev-r-1']);
     });
 
-    it('ビルドに失敗したら前の世代と部屋のまま、build-error だけを送る', async () => {
+    it('ビルドに失敗したら前の世代と部屋のまま、診断だけを送る', async () => {
         const h = harness();
         h.pipeline.schedule({ mods: 'all', reconfigure: true });
         await h.pipeline.idle();
@@ -124,24 +127,42 @@ describe('createPipeline', () => {
         h.pipeline.schedule({ mods: new Set(['pen']), reconfigure: false });
         await h.pipeline.idle();
         expect(currentGeneration(h.pipeline.state)?.buildId).toBe('r-1');
-        expect(h.events.at(-1)).toEqual({ type: 'build-error', mod: 'pen', message: 'syntax error in pen.worker.tsx' });
+        expect(h.events.at(-1)).toEqual({
+            type: 'diagnostics',
+            failures: [{ kind: 'build', mod: 'pen', message: 'syntax error in pen.worker.tsx' }],
+        });
+        expect(h.pipeline.diagnostics).toEqual(lastDiagnostics(h.events));
         expect(h.go.puts).toHaveLength(1);
         expect(h.go.deletes).toEqual([]);
     });
 
-    it('world.yaml が壊れている・lock に無い mod を参照していると world-error で止まり、Go には送らない', async () => {
+    it('world.yaml が壊れている・lock に無い mod を参照しているとワールドの診断で止まり、Go には送らない', async () => {
         const broken = harness({ loadWorld: async () => ({ url: 'file:///p/world.yaml', raw: { kind: 'World' } }) });
         broken.pipeline.schedule({ mods: 'all', reconfigure: true });
         await broken.pipeline.idle();
         expect(currentGeneration(broken.pipeline.state)).toBeUndefined();
-        expect(broken.events.at(-1)).toMatchObject({ type: 'world-error', message: expect.stringContaining('無効') });
+        expect(lastDiagnostics(broken.events)).toEqual([{ kind: 'world', message: expect.stringContaining('無効') }]);
         expect(broken.go.puts).toEqual([]);
 
         const missing = harness({ loadWorld: async () => worldYaml(['pen', 'ghost']) });
         missing.pipeline.schedule({ mods: 'all', reconfigure: true });
         await missing.pipeline.idle();
-        expect(missing.events.at(-1)).toMatchObject({ type: 'world-error', message: expect.stringContaining('ghost') });
+        expect(lastDiagnostics(missing.events)).toEqual([{ kind: 'world', message: expect.stringContaining('ghost') }]);
         expect(missing.go.puts).toEqual([]);
+    });
+
+    it('取れなかった mod は、手元に無いのか source.url から取れないのかを分けて知らせる', async () => {
+        const world = worldYaml(['ghost', 'remote']);
+        const spec = (world.raw as { spec: { dependencies: { name: string; source: object }[] } }).spec;
+        spec.dependencies = [
+            { name: 'ghost', source: { version: 'latest' } },
+            { name: 'remote', source: { url: 'https://mods.example/x', version: 'latest' } },
+        ];
+        await expect(
+            buildRoomDefinition(world, new Map(), { lockVersion: 1, mods: {} }, { instanceId: 'dev-1', maxUsers: 4 }),
+        ).rejects.toThrow(
+            /ghost（手元に無く、source\.url もありません）.*remote（https:\/\/mods\.example\/x から取れません）/,
+        );
     });
 
     it('Go が PUT を拒否したら前の世代と前の部屋のまま（DELETE も送らない）', async () => {
@@ -156,7 +177,7 @@ describe('createPipeline', () => {
         h2.pipeline.schedule({ mods: new Set(), reconfigure: true });
         await h2.pipeline.idle();
         expect(currentGeneration(h2.pipeline.state)).toMatchObject({ buildId: 'r-1', instanceId: 'dev-r-1' });
-        expect(h2.events.at(-1)).toMatchObject({ type: 'world-error', message: expect.stringContaining('too large') });
+        expect(lastDiagnostics(h2.events)).toEqual([{ kind: 'world', message: expect.stringContaining('too large') }]);
         expect(rejecting.deletes).toEqual([]);
         expect(h2.timers).toEqual([]);
     });
@@ -186,7 +207,9 @@ describe('createPipeline', () => {
         await h.pipeline.idle();
         const put = h.go.puts[0];
         expect(put?.name).toBe('ubichill dev');
-        expect(put?.snapshot.entities.map((e) => e.type)).toEqual(['pen:main']);
+        expect(put?.snapshot.entities.filter((e) => e.type !== EMPTY_ENTITY_TYPE).map((e) => e.type)).toEqual([
+            'pen:main',
+        ]);
         expect(put?.snapshot.activeMods).toEqual(['pen']);
     });
 
@@ -196,6 +219,53 @@ describe('createPipeline', () => {
         await h.pipeline.idle();
         await h.pipeline.restoreRoom();
         expect(h.go.puts.map((d) => d.id)).toEqual(['dev-r-1', 'dev-r-1']);
+    });
+
+    it('部屋の作り直しに失敗しても、ビルドの診断を消さずに並べ、Go が投げても落ちない', async () => {
+        const state = { mode: 'ok' as 'ok' | 'reject' | 'throw' };
+        const go = fakeGo();
+        const admin: GoAdmin = {
+            ...go.admin,
+            async putInstance(definition) {
+                if (state.mode === 'throw') throw new Error('ECONNREFUSED');
+                if (state.mode === 'reject') return { ok: false, status: 503, error: 'draining' };
+                return go.admin.putInstance(definition);
+            },
+        };
+        const h = harness({ go: () => admin });
+        h.pipeline.schedule({ mods: 'all', reconfigure: true });
+        await h.pipeline.idle();
+        h.compile.mockRejectedValueOnce(new Error('broken'));
+        h.pipeline.schedule({ mods: new Set(['pen']), reconfigure: false });
+        await h.pipeline.idle();
+
+        state.mode = 'throw';
+        await expect(h.pipeline.restoreRoom()).resolves.toBeUndefined();
+        expect(h.pipeline.diagnostics).toEqual([
+            { kind: 'build', mod: 'pen', message: 'broken' },
+            { kind: 'world', message: expect.stringContaining('ECONNREFUSED') },
+        ]);
+
+        state.mode = 'ok';
+        await h.pipeline.restoreRoom();
+        expect(h.pipeline.diagnostics).toEqual([{ kind: 'build', mod: 'pen', message: 'broken' }]);
+    });
+
+    it('部屋の作り直しに失敗したら、次の保存は中身が同じでも新しい部屋を作り、そこで診断が消える', async () => {
+        const state = { reject: false };
+        const go = fakeGo(() => (state.reject ? 'draining' : null));
+        const h = harness({ go: () => go.admin });
+        h.pipeline.schedule({ mods: 'all', reconfigure: true });
+        await h.pipeline.idle();
+        state.reject = true;
+        await h.pipeline.restoreRoom();
+        expect(h.pipeline.diagnostics).toHaveLength(1);
+
+        state.reject = false;
+        h.pipeline.schedule({ mods: new Set(['pen']), reconfigure: false });
+        await h.pipeline.idle();
+        expect(currentGeneration(h.pipeline.state)?.instanceId).toBe('dev-r-2');
+        expect(h.pipeline.diagnostics).toEqual([]);
     });
 });
 
@@ -243,7 +313,7 @@ describe('失敗の後に何を残し、何をやり直すか', () => {
         h2.pipeline.schedule({ mods: new Set(['pen', 'danmaku']), reconfigure: false });
         await h2.pipeline.idle();
         expect(currentGeneration(h2.pipeline.state)?.mods.get('pen')).toBe(firstPen);
-        expect(h2.events.at(-1)).toMatchObject({ type: 'build-error', mod: 'danmaku' });
+        expect(lastDiagnostics(h2.events)).toEqual([{ kind: 'build', mod: 'danmaku', message: 'broken danmaku' }]);
 
         // B だけを直して保存する（監視が知らせるのは danmaku だけ）
         h2.compile.mockImplementation(
@@ -252,6 +322,7 @@ describe('失敗の後に何を残し、何をやり直すか', () => {
         h2.pipeline.schedule({ mods: new Set(['danmaku']), reconfigure: false });
         await h2.pipeline.idle();
         expect(currentGeneration(h2.pipeline.state)?.mods.get('pen')).toBe(penV2);
+        expect(lastDiagnostics(h2.events)).toEqual([]);
     });
 
     it('失敗の後、次の知らせが来るまでは同じビルドを繰り返さない', async () => {
@@ -272,9 +343,8 @@ describe('失敗の後に何を残し、何をやり直すか', () => {
         h.pipeline.schedule({ mods: 'all', reconfigure: true });
         await h.pipeline.idle();
         expect(
-            h.events
-                .filter((e) => e.type === 'build-error')
-                .map((e) => (e as { mod: string }).mod)
+            lastDiagnostics(h.events)
+                ?.map((f) => (f.kind === 'build' ? f.mod : f.kind))
                 .sort(),
         ).toEqual(['danmaku', 'pen']);
     });
@@ -287,7 +357,12 @@ describe('失敗の後に何を残し、何をやり直すか', () => {
         h.pipeline.schedule({ mods: new Set(['pen']), reconfigure: false });
         await h.pipeline.idle();
         expect(currentGeneration(h.pipeline.state)?.instanceId).toBe('dev-r-2');
-        expect(h.go.puts.at(-1)?.snapshot.entities.map((e) => e.type)).toEqual(['pen:main', 'pen:tray']);
+        expect(
+            h.go.puts
+                .at(-1)
+                ?.snapshot.entities.filter((e) => e.type !== EMPTY_ENTITY_TYPE)
+                .map((e) => e.type),
+        ).toEqual(['pen:main', 'pen:tray']);
     });
 
     it('部屋の作り直しを Go が断ったら、作り直しの要求は残り、次の変更のときにもう一度試す', async () => {
@@ -304,6 +379,86 @@ describe('失敗の後に何を残し、何をやり直すか', () => {
         h.pipeline.schedule({ mods: new Set(['pen']), reconfigure: false });
         await h.pipeline.idle();
         expect(currentGeneration(h.pipeline.state)?.instanceId).toBe('dev-r-2');
+    });
+});
+
+describe('診断', () => {
+    it('壊して元に戻した（中身が公開中と同じで公開しない）ときも、診断を空にして知らせる', async () => {
+        const h = harness();
+        h.pipeline.schedule({ mods: 'all', reconfigure: true });
+        await h.pipeline.idle();
+        h.compile.mockRejectedValueOnce(new Error('broken'));
+        h.pipeline.schedule({ mods: new Set(['pen']), reconfigure: false });
+        await h.pipeline.idle();
+        expect(h.pipeline.diagnostics).toHaveLength(1);
+        h.pipeline.schedule({ mods: new Set(['pen']), reconfigure: false });
+        await h.pipeline.idle();
+        expect(currentGeneration(h.pipeline.state)?.buildId).toBe('r-1');
+        expect(h.pipeline.diagnostics).toEqual([]);
+        expect(h.events.at(-1)).toEqual({ type: 'diagnostics', failures: [] });
+    });
+
+    it('同じ失敗が続いても送り直さない', async () => {
+        const h = harness();
+        h.compile.mockRejectedValue(new Error('broken'));
+        h.pipeline.schedule({ mods: 'all', reconfigure: true });
+        await h.pipeline.idle();
+        h.pipeline.schedule({ mods: new Set(['pen']), reconfigure: false });
+        await h.pipeline.idle();
+        expect(h.events.filter((e) => e.type === 'diagnostics')).toHaveLength(1);
+    });
+});
+
+describe('手元に無い mod', () => {
+    /** pen は手元、video-player は source.url の置き場所にある。 */
+    const withRemote = (lock?: WorldSource['lock']) => {
+        const world = worldYaml(['pen', 'video-player']);
+        const spec = (world.raw as { spec: { dependencies: { name: string; source: object }[] } }).spec;
+        spec.dependencies[1] = { name: 'video-player', source: { url: 'https://vp.example', version: 'latest' } };
+        return { ...world, ...(lock ? { lock } : {}) };
+    };
+
+    it('world.yaml を作り直すときだけ外へ取りに行き、手元の mod の保存では前の世代の版を使う', async () => {
+        const remote = remoteMods({ 'video-player': fakeMod('video-player', '4.0.0') });
+        const h = harness({ loadWorld: async () => withRemote(), fetchImpl: remote.fetchImpl });
+        h.pipeline.schedule({ mods: 'all', reconfigure: true });
+        await h.pipeline.idle();
+        expect(currentGeneration(h.pipeline.state)?.lock.mods['video-player']).toMatchObject({
+            version: '4.0.0',
+            baseUrl: 'https://vp.example',
+        });
+        const fetchedAtStart = remote.fetched.length;
+        expect(fetchedAtStart).toBeGreaterThan(0);
+
+        h.mods.set('pen', edited(fakeMod('pen'), 'D'));
+        h.pipeline.schedule({ mods: new Set(['pen']), reconfigure: false });
+        await h.pipeline.idle();
+        expect(currentGeneration(h.pipeline.state)?.buildId).toBe('r-2');
+        expect(currentGeneration(h.pipeline.state)?.lock.mods['video-player']?.version).toBe('4.0.0');
+        expect(remote.fetched).toHaveLength(fetchedAtStart);
+
+        h.pipeline.schedule({ mods: new Set(), reconfigure: true });
+        await h.pipeline.idle();
+        expect(remote.fetched.length).toBeGreaterThan(fetchedAtStart);
+    });
+
+    it('world.yaml の横の lock があれば、外の mod はその版（本番と同じ）で、取りに行かない', async () => {
+        const remote = remoteMods({ 'video-player': fakeMod('video-player', '4.0.0') });
+        const pinned = {
+            lockVersion: 1 as const,
+            mods: { 'video-player': { ...fakeMod('video-player', '3.1.0').lockEntry, baseUrl: 'https://vp.example' } },
+        };
+        const logs: string[] = [];
+        const h = harness({
+            loadWorld: async () => withRemote(pinned),
+            fetchImpl: remote.fetchImpl,
+            log: (line) => logs.push(line),
+        });
+        h.pipeline.schedule({ mods: 'all', reconfigure: true });
+        await h.pipeline.idle();
+        expect(currentGeneration(h.pipeline.state)?.lock.mods['video-player']?.version).toBe('3.1.0');
+        expect(remote.fetched).toEqual([]);
+        expect(logs.join('\n')).toContain('video-player@3.1.0（lock）');
     });
 });
 
