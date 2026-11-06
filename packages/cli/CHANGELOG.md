@@ -1,5 +1,14 @@
 # @ubichill/cli
 
+## 1.1.1
+
+### Patch Changes
+
+- Updated dependencies [d6764be]
+- Updated dependencies [890dd1d]
+  - @ubichill/shared@1.13.0
+  - @ubichill/loader@1.3.7
+
 ## 1.1.0
 
 ### Minor Changes
