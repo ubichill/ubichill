@@ -120,6 +120,45 @@ describe('buildUserMetaTags', () => {
         expect(tags).toContain('<meta property="og:image" content="https://cdn.example/a.png">');
     });
 
+    it('自己紹介が無ければ、ひとことを説明にする', () => {
+        const tags = buildUserMetaTags({ ...base, user: { ...user, status: '作業中' }, worldCount: 3 });
+        expect(tags).toContain('<meta property="og:description" content="作業中">');
+        const both = buildUserMetaTags({
+            ...base,
+            user: { ...user, bio: '自己紹介', status: '作業中' },
+            worldCount: 3,
+        });
+        expect(both).toContain('<meta property="og:description" content="自己紹介">');
+    });
+
+    it('アップロードしたアイコンを小さいカードで出す（バナーがあってもアイコンを優先）', () => {
+        const tags = buildUserMetaTags({
+            ...base,
+            user: {
+                ...user,
+                image: 'https://ubichill.com/api/v1/users/u1/images/avatar/abc.webp',
+                bannerImage: 'https://ubichill.com/api/v1/users/u1/images/banner/def.webp',
+            },
+            worldCount: 0,
+        });
+        expect(tags).toContain(
+            '<meta property="og:image" content="https://ubichill.com/api/v1/users/u1/images/avatar/abc.webp">',
+        );
+        expect(tags).toContain('<meta name="twitter:card" content="summary">');
+    });
+
+    it('アイコンが無くバナーがあれば、バナーを大きいカードで出す', () => {
+        const banner = 'https://ubichill.com/api/v1/users/u1/images/banner/def.webp';
+        const tags = buildUserMetaTags({ ...base, user: { ...user, bannerImage: banner }, worldCount: 0 });
+        expect(tags).toContain(`<meta property="og:image" content="${banner}">`);
+        expect(tags).toContain('<meta name="twitter:card" content="summary_large_image">');
+    });
+
+    it('プロフィールの項目が無い（古い backend の）応答でも作れる', () => {
+        const tags = buildUserMetaTags({ ...base, user, worldCount: 1 });
+        expect(tags).toContain('<meta name="twitter:card" content="summary">');
+    });
+
     it('見つからないユーザーは ID だけを出す（ワールドの数は出さない）', () => {
         const tags = buildUserMetaTags({ ...base, user: undefined, worldCount: undefined });
         expect(tags).toContain('<meta property="og:title" content="@youkan@ubichill.com">');

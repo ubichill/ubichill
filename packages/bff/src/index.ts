@@ -5,13 +5,12 @@ import {
     HANDLE_PATTERN,
     type Instance,
     SERVER_CONFIG,
-    type UserSummary,
     type WorldListItem,
     worldShareUrl,
 } from '@ubichill/shared';
 import express from 'express';
 import { esc } from './html';
-import { buildMetaTags, buildUserMetaTags } from './ogp';
+import { buildMetaTags, buildUserMetaTags, type UserPreview } from './ogp';
 import { staticAssetHeaders } from './staticHeaders';
 import { renderWorldShell } from './worldShell';
 
@@ -169,7 +168,7 @@ app.get('/@:handle/:name', async (req, res, next) => {
 });
 
 /** ユーザーページの <head>（名前・アイコン・説明）を付けた SPA シェルを返す。 */
-async function sendUserPage(res: express.Response, user: UserSummary | undefined, handle: string): Promise<void> {
+async function sendUserPage(res: express.Response, user: UserPreview | undefined, handle: string): Promise<void> {
     const worlds = user
         ? await fetchJson<{ worlds?: unknown[] }>(`${CORE_API_URL}/api/v1/users/${encodeURIComponent(user.id)}/worlds`)
         : undefined;
@@ -193,7 +192,7 @@ app.get('/@:handle', async (req, res, next) => {
         return;
     }
     try {
-        const user = await fetchJson<UserSummary>(`${CORE_API_URL}/api/v1/social/users/by-handle/${handle}`);
+        const user = await fetchJson<UserPreview>(`${CORE_API_URL}/api/v1/social/users/by-handle/${handle}`);
         await sendUserPage(res, user, handle);
     } catch (err) {
         console.error('ユーザーページの OGP 生成失敗:', err);
@@ -204,7 +203,7 @@ app.get('/@:handle', async (req, res, next) => {
 // ユーザーページ（内部 ID）。正規の URL は /@ID
 app.get('/user/:userId', async (req, res) => {
     try {
-        const user = await fetchJson<UserSummary>(
+        const user = await fetchJson<UserPreview>(
             `${CORE_API_URL}/api/v1/social/users/${encodeURIComponent(req.params.userId)}`,
         );
         await sendUserPage(res, user, user?.handle ?? req.params.userId);
