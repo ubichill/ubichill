@@ -13,22 +13,37 @@
 
 import type { System } from '@ubichill/ecs';
 import { CommandType } from '@ubichill/shared/mod/protocol';
-import type { EmitRoute, EmitScope } from '@ubichill/shared/mod/types';
+import type { EmitScope } from '@ubichill/shared/mod/types';
 import type { SendFn } from '../types';
 
 export type { EmitScope };
 
 /**
- * emit の配送先。次のどちらか 1 つを指定する。
- *  - `{ ref: 'screen' }`: 自分の参照フィールド（`config.dataFields` の `entityRef` / `entityRefArray`）で
- *    ワールド作者が指定した Entity に届ける。フィールドが `component` を宣言していればその型の Component だけ。
- *    階層の形に依存しないので、作者はどこに置いてもよい。
- *  - `{ scope }`: Entity の階層で決める（{@link EmitScope}）。`'referrers'` は参照で自分を指している Component に返す。
+ * emit の配送先を Entity の階層で決める（{@link EmitScope}）。`'referrers'` は参照で自分を指している Component に返す。
+ * 参照フィールドで決めるときは {@link RefEmitOptions}。
  */
-export type EmitOptions = EmitRoute & {
-    /** 受信側 Component type フィルタ (`"modId:componentName"`)。省略時は配送先の全 Component。 */
+export interface EmitOptions {
+    /** どの範囲の Worker を対象にするか。 */
+    scope: EmitScope;
+    /** {@link RefEmitOptions} と同時には指定できない。 */
+    ref?: never;
+    /** 受信側 Component type フィルタ (`"modId:componentName"`)。省略時は scope 内の全 Component。 */
     targetType?: string;
-};
+}
+
+/**
+ * emit の配送先を自分の参照フィールド（`config.dataFields` の `entityRef` / `entityRefArray`）で決める。
+ * ワールド作者が指定した Entity に届け、フィールドが `component` を宣言していればその型の Component だけに届く。
+ * 階層の形に依存しないので、作者はどこに置いてもよい。古い Host は届けないので、`Ubi.runtime.supports('event:ref')` で確かめられる。
+ */
+export interface RefEmitOptions {
+    /** 参照フィールドの名前。 */
+    ref: string;
+    /** {@link EmitOptions} と同時には指定できない。 */
+    scope?: never;
+    /** 受信側 Component type フィルタ (`"modId:componentName"`)。 */
+    targetType?: string;
+}
 
 /**
  * `Ubi.event.define<TMap>()` の戻り値。
@@ -46,7 +61,7 @@ export type EmitOptions = EmitRoute & {
  * ```
  */
 export interface EventRegistry<TMap extends Record<string, unknown>> {
-    emit<K extends keyof TMap & string>(type: K, data: TMap[K], options: EmitOptions): void;
+    emit<K extends keyof TMap & string>(type: K, data: TMap[K], options: EmitOptions | RefEmitOptions): void;
     broadcast<K extends keyof TMap & string>(type: K, data: TMap[K]): void;
     sendToHost<K extends keyof TMap & string>(type: K, data: TMap[K]): void;
     /**
@@ -81,7 +96,7 @@ export type EventModule = {
      * 同 tab 内の他 Worker に Component type を狙い撃ちでイベントを送る (untyped escape hatch)。
      * 通常は `Ubi.event.define()` で型付きレジストリを作る方を推奨。
      */
-    emit(type: string, data: unknown, options: EmitOptions): void;
+    emit(type: string, data: unknown, options: EmitOptions | RefEmitOptions): void;
     /**
      * 型付きイベントレジストリを生成する。
      * emit/on/broadcast/sendToHost を 1 つの type ↔ payload 対応表で閉じこめる。
@@ -92,7 +107,7 @@ export type EventModule = {
 export function createEventModule(deps: EventModuleDeps): EventModule {
     const { send, registerSystem } = deps;
 
-    const rawEmit = (type: string, data: unknown, options: EmitOptions): void =>
+    const rawEmit = (type: string, data: unknown, options: EmitOptions | RefEmitOptions): void =>
         send({
             type: CommandType.EVENT_EMIT,
             payload:

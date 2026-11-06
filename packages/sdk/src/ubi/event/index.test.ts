@@ -2,7 +2,7 @@ import type { System } from '@ubichill/ecs';
 import { CommandType } from '@ubichill/shared/mod/protocol';
 import { describe, expect, it, vi } from 'vitest';
 import type { OmitId } from '../types';
-import { createEventModule, type EventModuleDeps } from './index';
+import { createEventModule, type EmitOptions, type EmitScope, type EventModuleDeps } from './index';
 
 type SentCommand = OmitId<Parameters<EventModuleDeps['send']>[0]>;
 
@@ -60,6 +60,18 @@ describe('createEventModule', () => {
         // @ts-expect-error どちらも無いのも不可
         mod.emit('x', 1, { targetType: 'm:c' });
         expect(sent).toHaveLength(2);
+    });
+
+    it('EmitOptions は interface のまま（extends でき、scope は必須の EmitScope として読める）', () => {
+        interface TaggedEmitOptions extends EmitOptions {
+            tag: string;
+        }
+        const options: TaggedEmitOptions = { scope: 'children', tag: 't' };
+        const scope: EmitScope = options.scope;
+        const { deps, sent } = makeDeps();
+        createEventModule(deps).emit('x', 1, options);
+        expect(scope).toBe('children');
+        expect(sent[0]?.payload).toMatchObject({ scope: 'children' });
     });
 
     it('broadcast / sendToHost はそれぞれ対応する CommandType を送る', () => {
