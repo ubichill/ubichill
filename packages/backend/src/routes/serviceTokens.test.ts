@@ -9,9 +9,10 @@ const mocks = vi.hoisted(() => ({
     isAuthorKey: vi.fn(async () => ({ status: 'unconfirmed' as const })),
 }));
 
-vi.mock('@ubichill/db', () => ({ publishingEnvironmentRepository: {}, userRepository: {} }));
+vi.mock('@ubichill/db', () => ({ authorKeyRepository: {}, userRepository: {} }));
 vi.mock('../lib/auth', () => ({ auth: { api: { getSession: mocks.getSession } } }));
 vi.mock('../utils/logger', () => ({ logger: { warn: vi.fn() } }));
+vi.mock('../lib/redis', () => ({ redis: null }));
 vi.mock('../services/authorKeyStore', () => ({ isAuthorKey: mocks.isAuthorKey }));
 vi.mock('../services/serviceTokens', async (importOriginal) => ({
     ...(await importOriginal<typeof import('../services/serviceTokens')>()),

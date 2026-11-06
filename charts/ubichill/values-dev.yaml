@@ -31,6 +31,8 @@ backend:
   
   env:
     NODE_ENV: "development"
+    # 公式ワールドの署名は main への push でしか付かないので、開発・プレビューでは署名なしのまま配る（無いと入れるワールドが無い）
+    WORLDS_SERVE_UNSIGNED_REPOSITORY: "true"
     TRUST_PROXY: "true"
     CORS_ORIGIN: "*"  # dev では全オリジン許可
   secretEnv:
@@ -66,11 +68,8 @@ frontend:
   # BACKEND_HOST / BACKEND_PORT は deployment.yaml テンプレートで自動注入
   env: {}
 
-# Use Redis for shared caching
 redis:
   enabled: true
-  global:
-    imageRegistry: ""
   master:
     persistence:
       enabled: false  # No persistence needed in dev

@@ -5,6 +5,8 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - "charts/**"
+      - "scripts/check-chart.mjs"
+      - "scripts/check-loadtest-chart.mjs"
       - ".github/workflows/helm-ci.yml"
   workflow_dispatch:
 
@@ -22,6 +24,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+
+      # check:chart（描画結果の検査）が yaml を使う
+      - uses: ./.github/actions/setup
 
       - name: Install Helm
         uses: azure/setup-helm@v4
@@ -56,6 +61,12 @@ jobs:
             --set postgresql.auth.password=test-app-password \
             --set redis.auth.password=test-redis-password
 
+      # 負荷試験の chart（k6 の TestRun）。本番を向いた値で描画が落ちること・対象の URL も確かめる
+      - name: Lint load test chart
+        run: |
+          helm lint charts/ubichill-loadtest --set testid=ci
+          node scripts/check-loadtest-chart.mjs
+
       - name: Render chart with dev values
         run: |
           helm template ubichill-dev charts/ubichill \
@@ -77,3 +88,7 @@ jobs:
             --set postgresql.auth.password=test-app-password \
             --set redis.auth.password=test-redis-password \
             > /tmp/ubichill-prod.yaml
+
+      # lint は書式しか見ないので、backend と instance に渡る Redis の env と同梱の Valkey を描画結果で確かめる
+      - name: Check rendered Redis env
+        run: pnpm check:chart

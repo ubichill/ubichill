@@ -1,6 +1,6 @@
 {
     "name": "@ubichill/backend",
-    "version": "1.8.0",
+    "version": "1.9.1",
     "private": true,
     "description": "Backend server for Ubichill",
     "main": "dist/index.js",
@@ -31,18 +31,20 @@
         "exec": "tsx src/index.ts"
     },
     "dependencies": {
+        "@redis/client": "^6.3.0",
         "@ubichill/db": "workspace:*",
         "@ubichill/shared": "workspace:*",
         "bcryptjs": "^3.0.3",
         "better-auth": "catalog:",
         "cors": "^2.8.6",
-        "dotenv": "^17.4.2",
+        "dotenv": "^18.0.8",
         "drizzle-orm": "catalog:",
         "express": "catalog:",
-        "express-rate-limit": "^8.7.0",
+        "express-rate-limit": "^8.7.1",
         "helmet": "^8.3.0",
         "nanoid": "catalog:",
-        "resend": "^6.28.1",
+        "rate-limit-redis": "^6.0.1",
+        "resend": "^6.32.1",
         "undici": "^7.29.1",
         "yaml": "catalog:",
         "zod": "catalog:"

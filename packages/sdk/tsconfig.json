@@ -12,6 +12,6 @@
             "@ubichill/core-components/public": ["../core-components/src/public.ts"]
         }
     },
-    "include": ["src", "cli"],
+    "include": ["src"],
     "exclude": ["node_modules"]
 }

@@ -1,11 +1,13 @@
 import {
+    authorKeyRepository,
     externalWorkRepository,
     favoriteRepository,
-    publishingEnvironmentRepository,
+    servedWorldOf,
     userFriendRepository,
     userRepository,
     userSettingsRepository,
     type WorldRecord,
+    type WorldState,
     worldRepository,
 } from '@ubichill/db';
 import type { ResolvedWorld, WorldListItem } from '@ubichill/shared';
@@ -25,9 +27,11 @@ import {
     HandleSchema,
     isPublishable,
     LIMITS,
+    limitsFor,
     MAX_EXTERNAL_WORKS_PER_USER,
     needsFriendCheck,
     OFFICIAL_HANDLE,
+    parseStoredDefinition,
     RevokeReasonSchema,
     SERVER_CONFIG,
     verifyKeyRegistration,
@@ -36,6 +40,8 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import yaml from 'yaml';
 import { auth, createPendingRegistration, resendOTP, sendAccountNotice, verifyAndRegister } from '../lib/auth';
+import { redis } from '../lib/redis';
+import { sharedRateLimit } from '../lib/sharedRateLimit';
 import {
     isAdminHandle,
     optionalAuth,
@@ -46,9 +52,11 @@ import {
 } from '../middleware/auth';
 import { invalidateAuthorKey, isAuthorKey } from '../services/authorKeyStore';
 import { selfAccount } from '../services/authorKeys';
+import { backendEvents } from '../services/backendEvents';
 import { externalWorkStatuses, publishedExternalWorks } from '../services/externalWorkStore';
 import { verifyRegistration } from '../services/externalWorks';
 import { favoriteRefOf, resolveFavoriteWorlds } from '../services/favorites';
+import { notificationService, notifyInBackground } from '../services/notificationService';
 import {
     browserEnvironmentName,
     newEnvironmentNotice,
@@ -57,13 +65,10 @@ import {
 } from '../services/publishingEnvironments';
 import { nodeWorldCrypto } from '../services/worldCrypto';
 import { worldRegistry } from '../services/worldRegistry';
-import { parseStoredDefinition } from '../services/worldResolver';
+import { logger } from '../utils/logger';
 import { createTtlCache } from '../utils/ttlCache';
 
 const router = Router();
-
-/** ユーザーの作者アカウント（このサーバーの handle@domain）。 */
-const authorAccountsOfUser = (handle: string | null) => (handle ? [selfAccount(handle)] : []);
 
 /** リポジトリ（worlds/）で管理しているワールドの一覧の 1 件（画面からは編集・削除できない）。 */
 const repositoryWorldView = (w: ResolvedWorld) => ({
@@ -95,6 +100,11 @@ const publicFavoritesCache = createTtlCache<Awaited<ReturnType<typeof resolveFav
     ttlMs: PUBLIC_FAVORITES_TTL_MS,
     max: 500,
 });
+backendEvents.on('favorites.changed', ({ userId }) => publicFavoritesCache.delete(userId));
+const favoritesChanged = (userId: string): void => {
+    publicFavoritesCache.delete(userId);
+    backendEvents.broadcast({ type: 'favorites.changed', userId });
+};
 
 // 仮登録（OTP送信）
 router.post('/register', async (req, res) => {
@@ -221,10 +231,10 @@ router.get('/me', requirePublisher, async (req, res) => {
     return res.json({
         id: user.id,
         name: user.name,
-        handle: user.handle ?? null,
-        author: user.handle ? selfAccount(user.handle) : null,
+        handle: user.handle,
+        author: selfAccount(user.handle),
         // 取り消されていない公開環境の鍵（このブラウザの鍵が登録済みかの判定に使う）
-        signingKeys: (await publishingEnvironmentRepository.listByUser(user.id))
+        signingKeys: (await authorKeyRepository.listByUser(user.id))
             .filter((e) => !e.revokedAt)
             .map((e) => e.publicKey),
         // 移行時に他人と表示名が重複していた（一意キー未設定）。変更を促す。
@@ -241,7 +251,7 @@ router.get('/me', requirePublisher, async (req, res) => {
         ...(req.publishingEnvironment
             ? { publishingEnvironment: { id: req.publishingEnvironment.id, kind: req.publishingEnvironment.kind } }
             : {}),
-        profileImageUrl: user.profileImageUrl ?? null,
+        image: user.image ?? null,
     });
 });
 
@@ -336,7 +346,7 @@ router.put('/me/display-name', requireAuth, async (req, res) => {
                 : res.status(404).json({ error: 'User not found' });
         }
         // ワールドの作者名は表示時にアカウントから引くので、キャッシュ済みの解決結果だけ捨てればよい
-        if (updated.handle) invalidateAuthorKey(selfAccount(updated.handle));
+        invalidateAuthorKey(selfAccount(updated.handle));
         worldRegistry.invalidateResolvedWorlds();
         return res.json({
             name: updated.name,
@@ -348,32 +358,10 @@ router.put('/me/display-name', requireAuth, async (req, res) => {
     }
 });
 
-// ID（handle）を設定する。変更不可なので未設定のときだけ受け付ける（既存ユーザーの移行用）。
-router.put('/me/handle', requireFreshAuth, async (req, res) => {
-    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-    const parsed = HandleSchema.safeParse(typeof req.body?.handle === 'string' ? req.body.handle.trim() : '');
-    if (!parsed.success) {
-        return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'ID が不正です' });
-    }
-    const current = await userRepository.findById(req.user.id);
-    if (current?.handle) return res.status(409).json({ error: 'ID は変更できません' });
-    if (await userRepository.findByHandle(parsed.data)) {
-        return res.status(409).json({ error: 'この ID は既に使用されています' });
-    }
-    try {
-        const updated = await userRepository.setHandleOnce(req.user.id, parsed.data);
-        if (!updated) return res.status(409).json({ error: 'ID は変更できません' });
-        return res.json({ handle: updated.handle, author: selfAccount(parsed.data) });
-    } catch {
-        // 一意制約違反（同時に他人が取った）
-        return res.status(409).json({ error: 'この ID は既に使用されています' });
-    }
-});
-
 // 公開環境（署名鍵）の一覧。取り消したものも含む。
 router.get('/me/publishing-environments', requireAuth, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-    const rows = await publishingEnvironmentRepository.listByUser(req.user.id);
+    const rows = await authorKeyRepository.listByUser(req.user.id);
     return res.json({ environments: rows.map((row) => publishingEnvironmentView(row)) });
 });
 
@@ -392,7 +380,7 @@ router.post('/me/publishing-environments', requireFreshAuth, async (req, res) =>
     );
     if (!verdict.ok) return res.status(422).json({ error: `鍵の所有を確認できません (${verdict.reason})` });
 
-    const existing = await publishingEnvironmentRepository.findByPublicKey(publicKey);
+    const existing = await authorKeyRepository.findLocalKey(publicKey);
     const outcome = registrationOutcome(existing, req.user.id);
     if (outcome === 'already-registered' && existing) {
         return res.json({ environment: publishingEnvironmentView(existing) });
@@ -402,7 +390,7 @@ router.post('/me/publishing-environments', requireFreshAuth, async (req, res) =>
     }
     if (outcome === 'taken') return res.status(409).json({ error: 'この鍵は登録できません', code: 'taken' });
     try {
-        const created = await publishingEnvironmentRepository.create({
+        const created = await authorKeyRepository.createLocal({
             userId: req.user.id,
             kind: 'browser',
             name: browserEnvironmentName(req.get('user-agent')),
@@ -428,7 +416,7 @@ router.post('/me/publishing-environments/:id/revoke', requireFreshAuth, async (r
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const reason = RevokeReasonSchema.safeParse(req.body?.reason);
     if (!reason.success) return res.status(400).json({ error: '取り消す理由（lost / compromised）が必要です' });
-    const revoked = await publishingEnvironmentRepository.revoke(req.user.id, String(req.params.id), reason.data);
+    const revoked = await authorKeyRepository.revoke(req.user.id, String(req.params.id), reason.data);
     if (!revoked) return res.status(404).json({ error: '有効な公開環境が見つかりません' });
     worldRegistry.invalidateResolvedWorlds();
     return res.json({ environment: publishingEnvironmentView(revoked) });
@@ -446,25 +434,27 @@ router.get('/me/worlds', requirePublisher, async (req, res) => {
     if (!req.user) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
-    const [records, me] = await Promise.all([
-        worldRepository.findByAuthorId(req.user.id),
+    const [states, me] = await Promise.all([
+        worldRepository.findStatesByAuthorId(req.user.id),
         userRepository.findById(req.user.id),
     ]);
     // 本人には未署名（非公開）も返す。署名状態を見せて署名し直せるようにする。配信できない（署名が内容と一致しない）ものは理由も返す
     const hosted = await Promise.all(
-        records.map(async (r: WorldRecord) => {
-            const resolution = await worldRegistry.resolveLocal(r.name);
-            const def = resolution.ok ? resolution.world : parseStoredDefinition(r.definition)?.spec;
+        states.map(async (state: WorldState) => {
+            const r = state.world;
+            const served = servedWorldOf(state);
+            const resolution = await worldRegistry.resolveLocal(r.id);
+            const def = resolution.ok ? resolution.world : parseStoredDefinition(served?.definition)?.spec;
             return {
-                id: r.name,
+                id: r.id,
                 displayName: def?.displayName ?? r.worldName,
                 description: def?.description ?? null,
                 thumbnail: def?.thumbnail ?? null,
-                version: r.version,
+                version: served?.version ?? '',
                 capacity: def?.capacity ?? { default: 0, max: 0 },
                 updatedAt: r.updatedAt,
                 // 配信の道筋（署名し直すときに、配信している生の値をここから取る）
-                ...(me?.handle ? { url: worldRegistry.hostedWorldUrl(me.handle, r.worldName) } : {}),
+                ...(me ? { url: worldRegistry.hostedWorldUrl(me.handle, r.worldName) } : {}),
                 identity: resolution.ok ? resolution.world.identity : undefined,
                 ...(resolution.ok
                     ? {}
@@ -475,14 +465,14 @@ router.get('/me/worlds', requirePublisher, async (req, res) => {
             };
         }),
     );
-    const repository = (await worldRegistry.repositoryWorldsByAuthor(authorAccountsOfUser(me?.handle ?? null))).map(
+    const repository = (await worldRegistry.repositoryWorldsByAuthor(me ? [selfAccount(me.handle)] : [])).map(
         repositoryWorldView,
     );
     return res.json({
         worlds: [...hosted, ...repository],
         // 作成数の上限は本体（DB）に作ったワールドだけで数える（リポジトリ管理のワールドは含めない）
-        limit: LIMITS.MAX_WORLDS_PER_USER,
-        remaining: Math.max(0, LIMITS.MAX_WORLDS_PER_USER - hosted.length),
+        limit: limitsFor(req.user).maxWorlds,
+        remaining: Math.max(0, limitsFor(req.user).maxWorlds - hosted.length),
     });
 });
 
@@ -496,7 +486,7 @@ router.put('/me/external-works', requirePublisher, async (req, res) => {
             .json({ error: parsed.error.issues[0]?.message ?? '依頼の形式が違います', code: 'invalid-request' });
     }
     const me = await userRepository.findById(req.user.id);
-    if (!me?.handle) return res.status(403).json({ error: 'ID を決めてから登録してください', code: 'no-handle' });
+    if (!me) return res.status(404).json({ error: 'User not found' });
     const verdict = await verifyRegistration(parsed.data, {
         account: selfAccount(me.handle),
         crypto: nodeWorldCrypto,
@@ -534,13 +524,14 @@ const recheckLimiter = rateLimit({
     keyGenerator: (req) => req.user?.id ?? 'anonymous',
     skip: (req) => req.query.refresh !== '1',
     message: { error: '再確認が多すぎます。少し待ってから試してください' },
+    ...sharedRateLimit('external-works-recheck', redis, logger),
 });
 
 // 登録した外部の作品（本人の設定画面）。公開先を確かめた状態つきで全部返す。?refresh=1 で確かめ直す
 router.get('/me/external-works', requireAuth, recheckLimiter, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const me = await userRepository.findById(req.user.id);
-    if (!me?.handle) return res.json({ works: [] });
+    if (!me) return res.json({ works: [] });
     const works = await externalWorkStatuses(me.id, selfAccount(me.handle), req.query.refresh === '1');
     res.set('Cache-Control', 'private, no-store');
     return res.json({ works });
@@ -586,7 +577,14 @@ router.post('/me/favorites', requireAuth, async (req, res) => {
         return res.status(409).json({ error: `お気に入りは ${LIMITS.MAX_FAVORITES_PER_USER} 件までです` });
     }
     await favoriteRepository.add(req.user.id, parsed.ref);
-    publicFavoritesCache.delete(req.user.id);
+    favoritesChanged(req.user.id);
+    const likerId = req.user.id;
+    notifyInBackground(
+        worldRegistry
+            .localWorldAuthor(parsed.ref)
+            .then((world) => (world ? notificationService.worldLiked(likerId, world) : undefined)),
+        'お気に入り',
+    );
     return res.status(201).json({ worldRef: parsed.ref });
 });
 
@@ -603,7 +601,7 @@ router.delete('/me/favorites', requireAuth, async (req, res) => {
     const parsed = favoriteRefOf(worldRef);
     await favoriteRepository.remove(req.user.id, worldRef);
     if (parsed.ok && parsed.ref !== worldRef) await favoriteRepository.remove(req.user.id, parsed.ref);
-    publicFavoritesCache.delete(req.user.id);
+    favoritesChanged(req.user.id);
     return res.status(204).send();
 });
 
@@ -616,9 +614,9 @@ router.get('/:userId', async (req, res) => {
     return res.json({
         id: user.id,
         name: user.name,
-        handle: user.handle ?? null,
-        author: user.handle ? selfAccount(user.handle) : null,
-        profileImageUrl: user.profileImageUrl ?? null,
+        handle: user.handle,
+        author: selfAccount(user.handle),
+        image: user.image ?? null,
         bio: user.bio ?? null,
     });
 });
@@ -663,7 +661,7 @@ router.get('/:userId/favorites', optionalAuth, async (req, res) => {
 // 他ユーザーが作成したワールド一覧（公開メタデータのみ。署名検証済みのワールドだけ公開する）
 router.get('/:userId/worlds', async (req, res) => {
     const records = await worldRepository.findByAuthorId(req.params.userId);
-    const resolved = await Promise.all(records.map((r: WorldRecord) => worldRegistry.getWorld(r.name)));
+    const resolved = await Promise.all(records.map((r: WorldRecord) => worldRegistry.getWorld(r.id)));
     const worlds = resolved
         .filter((w): w is ResolvedWorld => !!w && isPublishable(w.identity))
         .map((w) => ({
@@ -675,10 +673,10 @@ router.get('/:userId/worlds', async (req, res) => {
             capacity: w.capacity,
         }));
     const owner = await userRepository.findById(req.params.userId);
-    const repository = (await worldRegistry.repositoryWorldsByAuthor(authorAccountsOfUser(owner?.handle ?? null))).map(
+    const repository = (await worldRegistry.repositoryWorldsByAuthor(owner ? [selfAccount(owner.handle)] : [])).map(
         repositoryWorldView,
     );
-    const external = owner?.handle
+    const external = owner
         ? (await publishedExternalWorks(owner.id, selfAccount(owner.handle))).worlds.map(externalWorldView)
         : [];
     return res.json({ worlds: [...worlds, ...repository, ...external] });
@@ -687,7 +685,7 @@ router.get('/:userId/worlds', async (req, res) => {
 // ユーザーが公開している mod（外部に置いたもののうち、いま本人の署名付きで配られていると確かめられたもの）
 router.get('/:userId/mods', async (req, res) => {
     const owner = await userRepository.findById(req.params.userId);
-    if (!owner?.handle) return res.json({ mods: [] });
+    if (!owner) return res.json({ mods: [] });
     const { mods } = await publishedExternalWorks(owner.id, selfAccount(owner.handle));
     return res.json({ mods });
 });

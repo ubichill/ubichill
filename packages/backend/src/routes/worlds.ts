@@ -1,4 +1,4 @@
-import { publishingEnvironmentRepository, userRepository } from '@ubichill/db';
+import { authorKeyRepository, userRepository } from '@ubichill/db';
 import { LIMITS, ModLockSchema } from '@ubichill/shared';
 import type { NextFunction, Request, Response } from 'express';
 import { Router } from 'express';
@@ -55,12 +55,11 @@ async function checkAuthorClaim(
     if (claimed === undefined)
         return { error: '署名に作者アカウントがありません（作者の付かない署名では公開されません）' };
     const user = await userRepository.findById(userId);
-    const own = user?.handle ? selfAccount(user.handle) : null;
+    const own = user ? selfAccount(user.handle) : null;
     if (claimed !== own) return { error: `署名の作者（${String(claimed)}）があなたのアカウントと一致しません` };
-    const env =
-        typeof publicKey === 'string' ? await publishingEnvironmentRepository.findByPublicKey(publicKey) : undefined;
+    const env = typeof publicKey === 'string' ? await authorKeyRepository.findLocalKey(publicKey) : undefined;
     // API トークンで送る署名は、そのトークンの公開環境の鍵で署名したものに限る（盗まれたトークンで別の鍵の署名を通させない）
-    if (tokenEnvironment && (typeof publicKey !== 'string' || publicKey !== tokenEnvironment.publicKey)) {
+    if (tokenEnvironment && env?.id !== tokenEnvironment.id) {
         return { error: 'API トークンで送る署名は、そのトークンの公開環境の鍵で署名してください' };
     }
     if (!env || env.userId !== userId || env.revokedAt) {
@@ -74,7 +73,7 @@ async function checkAuthorClaim(
 /** 公開に使った公開環境の最終利用を記録する（使われなくなった環境を一覧で見分けるため）。失敗しても公開は止めない。 */
 async function markEnvironmentUsed(claim: AuthorClaim): Promise<void> {
     if ('environmentId' in claim && claim.environmentId) {
-        await publishingEnvironmentRepository.touch(claim.environmentId).catch(() => undefined);
+        await authorKeyRepository.touch(claim.environmentId).catch(() => undefined);
     }
 }
 
@@ -223,13 +222,38 @@ router.get('/:worldId', optionalAuth, async (req, res) => {
 });
 
 /**
+ * GET /api/v1/worlds/:worldId/versions?contentHash=sha256-...
+ * 本体のワールドの、残っている版を content_hash（shared の worldContentHash()）で返す（ResolvedWorld(JSON)）。
+ * 残す数を超えて消した版は 410。ワールドが無ければ 404。
+ */
+router.get('/:worldId/versions', optionalAuth, async (req, res) => {
+    const contentHash = typeof req.query.contentHash === 'string' ? req.query.contentHash : '';
+    if (!/^sha256-[A-Za-z0-9+/]+=*$/.test(contentHash)) {
+        res.status(400).json({ error: 'contentHash（sha256-<base64>）が必要です' });
+        return;
+    }
+    try {
+        const resolution = await worldRegistry.resolveVersion(req.params.worldId as string, contentHash);
+        if (!resolution.ok) {
+            const status = resolution.reason === 'gone' ? 410 : resolution.reason === 'integrity' ? 422 : 404;
+            res.status(status).json({ error: resolution.message, code: resolution.reason });
+            return;
+        }
+        res.json(resolution.world);
+    } catch (error) {
+        console.error('ワールドの版の取得エラー:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
  * PUT /api/v1/worlds
  * 作者のバンドル（`{ yaml, lock?, signature?, worldId? }`）を本体に置く（作成・更新・下書き）。外部ホストに置くのと同じく、
  * 中身は書き換えず、作者 + metadata.name でワールドを区別する（同じ作者・同じ名前なら同じワールドの更新）。
  * - 署名あり: 外部と同じ規則で検証し、通れば公開中の版として保存
  * - 署名なし: 公開中のワールドなら下書きとして保存（公開中の版は残す）、そうでなければ署名なしのまま保存（公開されない）
  * `worldId` は編集中のワールド（エディタ）。metadata.name を変えると名前の変更（URL も変わり、以前の URL からもたどれる）。
- * 自分の別のワールドと同じ名前なら上書きせず 409。保存には ID（作者アカウント）が要る（無ければ 409 handle-required）。
+ * 自分の別のワールドと同じ名前なら上書きせず 409。同じ metadata.version で中身の違う公開も 409（version-conflict）。
  * 返り値: `{ id, url, saved, identity }`
  */
 router.put('/', requireSaver, async (req, res) => {
@@ -261,9 +285,11 @@ router.put('/', requireSaver, async (req, res) => {
                     ? 403
                     : result.reason === 'invalid-definition'
                       ? 400
-                      : result.reason === 'name-taken' || result.reason === 'handle-required'
+                      : result.reason === 'name-taken' || result.reason === 'version-conflict'
                         ? 409
-                        : 422;
+                        : result.reason === 'author-not-found'
+                          ? 404
+                          : 422;
             res.status(status).json({ error: saveFailureMessage(result.reason, result.message), code: result.reason });
             return;
         }

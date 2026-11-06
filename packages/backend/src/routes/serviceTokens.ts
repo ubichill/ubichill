@@ -2,6 +2,8 @@ import { ENV_KEYS, ModLockEntrySchema, normalizeServiceAudience, SERVER_CONFIG }
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
+import { redis } from '../lib/redis';
+import { sharedRateLimit } from '../lib/sharedRateLimit';
 import { requireFreshAuth } from '../middleware/auth';
 import { isAuthorKey } from '../services/authorKeyStore';
 import { modAuthorForToken, type ServiceTokenIssuer, serviceTokenIssuerFromEnv } from '../services/serviceTokens';
@@ -35,6 +37,7 @@ const issueLimiter = rateLimit({
     legacyHeaders: false,
     keyGenerator: (req) => req.user?.id ?? 'anonymous',
     message: { error: 'サービストークンの発行が多すぎます。しばらくしてから再試行してください。' },
+    ...sharedRateLimit('service-tokens', redis, logger),
 });
 
 router.get('/keys', (_req, res) => {

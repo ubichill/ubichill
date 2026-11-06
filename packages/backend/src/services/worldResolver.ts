@@ -3,6 +3,7 @@
  *
  * URL（または YAML テキスト）を検証済み {@link ResolvedWorld} に変換する。
  * official / 外部 / 他インスタンスを engine から同一視するための単一の入口。
+ * 定義の検証と写像そのもの（definitionToResolved）は @ubichill/shared にあり、CLI と共有する。
  *
  * - 直 YAML URL（.yaml / .yml）
  * - GitHub blob URL → raw 変換
@@ -14,26 +15,22 @@
 
 import {
     type AuthorKeyCheck,
-    collectModIds,
-    DEFAULTS,
-    type InitialEntity,
+    definitionToResolved,
     LIMITS,
-    type ModLock,
     ModLockSchema,
+    mapToResolved,
     type ResolvedWorld,
+    validateWorldDefinition,
     verifyWorldSignature,
     type WorldDefinition,
-    WorldDefinitionSchema,
     type WorldDocument,
     type WorldIdentity,
-    type WorldMod,
     type WorldSignatureInvalidReason,
     type WorldSource,
 } from '@ubichill/shared';
 import yaml from 'yaml';
 import { safeFetch } from './safeFetch';
 import { nodeWorldCrypto } from './worldCrypto';
-import { migrateLegacyWorldYaml } from './worldMigration';
 
 const GITHUB_BLOB_RE = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/;
 
@@ -73,22 +70,6 @@ async function fetchText(url: string): Promise<string> {
         throw new Error(`ワールド定義が大きすぎます (${text.length} > ${LIMITS.MAX_YAML_SIZE}): ${url}`);
     }
     return text;
-}
-
-/** 検証済みワールド定義を ResolvedWorld へ写像する（DB 非依存）。 */
-export function definitionToResolved(
-    parsed: unknown,
-    url: string,
-    source: WorldSource,
-    extra?: ResolveExtra,
-): ResolvedWorld {
-    return mapToResolved(validateWorldDefinition(parsed, url), url, source, extra);
-}
-
-interface ResolveExtra {
-    authorId?: string;
-    lock?: ModLock;
-    identity?: WorldIdentity;
 }
 
 type SiblingKind = 'lock' | 'sig';
@@ -155,78 +136,6 @@ export class WorldIntegrityError extends Error {
         super(`ワールドの署名検証に失敗しました (${reason}): ${url}`);
         this.name = 'WorldIntegrityError';
     }
-}
-
-/** unknown をパース・マイグレーション・検証して WorldDefinition にする（不正は throw）。 */
-export function validateWorldDefinition(parsed: unknown, url: string): WorldDefinition {
-    const result = WorldDefinitionSchema.safeParse(migrateLegacyWorldYaml(parsed));
-    if (!result.success) {
-        const issue = result.error.issues[0];
-        throw new Error(`ワールド定義が無効です (${url}): ${issue?.path.join('.') ?? ''} ${issue?.message ?? ''}`);
-    }
-    return result.data;
-}
-
-/** 保存した生の定義をスキーマに通す（既定値を補う）。読めなければ undefined。 */
-export function parseStoredDefinition(raw: unknown): WorldDefinition | undefined {
-    const result = WorldDefinitionSchema.safeParse(migrateLegacyWorldYaml(raw));
-    return result.success ? result.data : undefined;
-}
-
-/** 検証済み WorldDefinition を ResolvedWorld に写像する（純粋）。 */
-function mapToResolved(def: WorldDefinition, url: string, source: WorldSource, extra?: ResolveExtra): ResolvedWorld {
-    const env = def.spec.environment ?? {
-        backgroundColor: DEFAULTS.WORLD_ENVIRONMENT.backgroundColor,
-        worldSize: DEFAULTS.WORLD_ENVIRONMENT.worldSize,
-    };
-    // 省略可能フィールドの既定値を埋めるだけの正規化。フィールドを列挙して組み直すと
-    // スキーマに増えた項目(overlay 等)を黙って捨ててしまうため、必ずスプレッドで引き継ぐ。
-    const normalizeEntity = (e: InitialEntity): InitialEntity => ({
-        ...e,
-        components: e.components.map((c) => ({ ...c, data: c.data ?? {} })),
-        tags: e.tags ?? [],
-        children: (e.children ?? []).map(normalizeEntity),
-    });
-    const initialEntities = def.spec.initialEntities.map(normalizeEntity);
-    return {
-        url,
-        source,
-        id: def.metadata.name,
-        authorId: extra?.authorId,
-        authorName: def.metadata.author?.name,
-        version: def.metadata.version,
-        displayName: def.spec.displayName,
-        description: def.spec.description,
-        thumbnail: def.spec.thumbnail,
-        environment: {
-            backgroundColor: env.backgroundColor ?? DEFAULTS.WORLD_ENVIRONMENT.backgroundColor,
-            worldSize: env.worldSize ?? DEFAULTS.WORLD_ENVIRONMENT.worldSize,
-        },
-        capacity: def.spec.capacity,
-        dependencies: def.spec.dependencies?.map((d) => ({ name: d.name, source: d.source })),
-        initialEntities,
-        mods: collectMods(initialEntities, def.spec.dependencies),
-        // 別配信の lock（兄弟ファイル / DB カラム）を優先し、無ければ埋め込みフォールバック。
-        lock: extra?.lock ?? def.spec.lock,
-        identity: extra?.identity,
-    };
-}
-
-/**
- * 初期エンティティの component 型（modId:name）と dependencies から使用 mod を重複なく集める。
- * version は dependency 宣言（source.version）由来。component 由来のみだと version は不明。
- */
-function collectMods(
-    entities: InitialEntity[],
-    dependencies?: Array<{ name: string; source?: { version?: string } }>,
-): WorldMod[] {
-    const versionByName = new Map<string, string | undefined>();
-    for (const d of dependencies ?? []) versionByName.set(d.name, d.source?.version);
-
-    // entity 走査は shared の collectModIds に一本化。dependency 宣言分を足す。
-    const ids = new Set<string>([...Array.from(collectModIds(entities)), ...Array.from(versionByName.keys())]);
-
-    return Array.from(ids).map((id) => ({ id, version: versionByName.get(id) }));
 }
 
 /** YAML テキストから ResolvedWorld を作る。 */

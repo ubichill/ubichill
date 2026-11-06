@@ -1,11 +1,29 @@
 import { randomBytes, randomInt } from 'node:crypto';
-import { accounts, db, sessions, users, verifications } from '@ubichill/db';
+import {
+    accounts,
+    db,
+    pendingRegistrationRepository,
+    sessions,
+    userRepository,
+    users,
+    verifications,
+} from '@ubichill/db';
 import { displayNameKey } from '@ubichill/shared';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { eq } from 'drizzle-orm';
 import { Resend } from 'resend';
-import { createPendingRegistrationStore } from '../services/pendingRegistrations';
+import { z } from 'zod';
+import { appConfig } from '../config';
+import {
+    createOtpHasher,
+    createPendingRegistrations,
+    normalizeEmail,
+    type PendingRegistrations,
+} from '../services/pendingRegistrations';
+import { logger } from '../utils/logger';
+import { createAuthRateLimitStorage } from './authRateLimit';
+import { redis } from './redis';
 
 // SKIP_EMAIL_VERIFICATION=true の場合はAPIキー不要なので遅延初期化
 let _resend: Resend | null = null;
@@ -36,16 +54,6 @@ export async function sendAccountNotice(to: string, subject: string, text: strin
     }
 }
 
-// 仮登録（メモリ内。複数レプリカでは共有されない）
-const pendingRegistrations = createPendingRegistrationStore({
-    now: Date.now,
-    newId: () => randomBytes(24).toString('base64url'),
-    newOtp: () => generateOTP(),
-});
-
-// 期限切れエントリを定期削除（メモリリーク防止）
-setInterval(() => pendingRegistrations.sweep(), 60_000).unref();
-
 // OTPを生成（暗号学的に安全な乱数を使用）
 export function generateOTP(): string {
     return randomInt(100000, 1000000).toString();
@@ -56,11 +64,25 @@ const SKIP_EMAIL_VERIFICATION = process.env.SKIP_EMAIL_VERIFICATION === 'true';
 
 // 仮登録を作成してOTPを送信
 export async function createPendingRegistration(
-    email: string,
+    rawEmail: string,
     password: string,
     displayName: string,
     handle: string,
 ): Promise<{ success: boolean; error?: string; skipVerification?: boolean; registrationId?: string }> {
+    const email = normalizeEmail(rawEmail);
+    // 本登録は signUpEmail を通らないので、signUpEmail がしていた入力の確認をここでする
+    if (!z.email().safeParse(email).success) {
+        return { success: false, error: 'メールアドレスの形式が正しくありません' };
+    }
+    const ctx = await auth.$context;
+    const { minPasswordLength, maxPasswordLength } = ctx.password.config;
+    if (password.length < minPasswordLength || password.length > maxPasswordLength) {
+        return {
+            success: false,
+            error: `パスワードは${minPasswordLength}文字以上${maxPasswordLength}文字以下で入力してください`,
+        };
+    }
+
     // 既存ユーザーチェック
     const existingUser = await db.query.users.findFirst({
         where: eq(users.email, email),
@@ -88,23 +110,16 @@ export async function createPendingRegistration(
     if (SKIP_EMAIL_VERIFICATION) {
         console.log(`⚠️ メール確認をスキップして直接登録: ${email}`);
         try {
-            const result = await auth.api.signUpEmail({
-                body: {
-                    email,
-                    password,
-                    name: displayName,
-                },
+            await userRepository.createCredentialUser({
+                userId: newBetterAuthId(ctx, 'user'),
+                accountId: newBetterAuthId(ctx, 'account'),
+                email,
+                name: displayName,
+                handle,
+                displayNameKey: nameKey,
+                passwordHash: await ctx.password.hash(password),
+                now: new Date(),
             });
-
-            if (!result) {
-                return { success: false, error: '登録に失敗しました' };
-            }
-
-            // メール確認済みに設定
-            await db
-                .update(users)
-                .set({ emailVerified: true, handle, displayNameKey: nameKey })
-                .where(eq(users.email, email));
 
             console.log(`✅ ユーザー登録完了（メール確認スキップ）: ${email}`);
             return { success: true, skipVerification: true };
@@ -114,7 +129,13 @@ export async function createPendingRegistration(
         }
     }
 
-    const pending = pendingRegistrations.add({ email, password, displayName, handle });
+    const pendingRegistrations = await getPendingRegistrations();
+    const pending = await pendingRegistrations.add({
+        email,
+        passwordHash: await ctx.password.hash(password),
+        displayName,
+        handle,
+    });
     if ('error' in pending) {
         return {
             success: false,
@@ -152,7 +173,9 @@ ${otp}
         return { success: true, registrationId };
     } catch (error) {
         console.error(`   ❌ OTP送信失敗:`, error);
-        pendingRegistrations.remove(registrationId);
+        await pendingRegistrations.remove(registrationId).catch((err: unknown) => {
+            console.error('仮登録の取り消しに失敗:', err);
+        });
         return { success: false, error: 'メールの送信に失敗しました' };
     }
 }
@@ -162,6 +185,7 @@ const VERIFY_ERRORS = {
     expired: '認証コードの有効期限が切れました。もう一度登録してください。',
     'wrong-code': '認証コードが正しくありません',
     'too-many-failures': '認証コードを何度も間違えたため、この登録は無効になりました。もう一度登録してください。',
+    'register-failed': '登録に失敗しました',
 } as const;
 
 // OTPを検証して本登録。仮登録は申し込んだ本人に返した registrationId で引く。
@@ -169,45 +193,18 @@ export async function verifyAndRegister(
     registrationId: string,
     otp: string,
 ): Promise<{ success: boolean; error?: string }> {
-    const outcome = pendingRegistrations.verify(registrationId, otp);
+    const outcome = await (await getPendingRegistrations()).verify(registrationId, otp);
+    if (outcome.status === 'register-failed') console.error('Registration error:', outcome.error);
     if (outcome.status !== 'verified') {
         return { success: false, error: VERIFY_ERRORS[outcome.status] };
     }
-    const pending = outcome.registration;
-
-    // 本登録実行
-    try {
-        const result = await auth.api.signUpEmail({
-            body: {
-                email: pending.email,
-                password: pending.password,
-                name: pending.displayName,
-            },
-        });
-
-        if (!result) {
-            pendingRegistrations.restore(registrationId, pending, otp);
-            return { success: false, error: '登録に失敗しました' };
-        }
-
-        // メール確認済みに設定
-        await db
-            .update(users)
-            .set({ emailVerified: true, handle: pending.handle, displayNameKey: displayNameKey(pending.displayName) })
-            .where(eq(users.email, pending.email));
-
-        console.log(`✅ ユーザー登録完了: ${pending.email}`);
-        return { success: true };
-    } catch (error) {
-        console.error('Registration error:', error);
-        pendingRegistrations.restore(registrationId, pending, otp);
-        return { success: false, error: '登録に失敗しました' };
-    }
+    console.log(`✅ ユーザー登録完了: ${outcome.email}`);
+    return { success: true };
 }
 
 // OTPを再送信
 export async function resendOTP(registrationId: string): Promise<{ success: boolean; error?: string }> {
-    const pending = pendingRegistrations.reissue(registrationId);
+    const pending = await (await getPendingRegistrations()).reissue(registrationId);
 
     if (!pending) {
         return { success: false, error: '仮登録が見つかりません。もう一度登録してください。' };
@@ -253,6 +250,9 @@ console.log(`   BETTER_AUTH_URL: ${process.env.BETTER_AUTH_URL || 'http://localh
 console.log(`   CORS_ORIGIN: ${process.env.CORS_ORIGIN || 'http://localhost:3000'}`);
 console.log(`   SKIP_EMAIL_VERIFICATION: ${SKIP_EMAIL_VERIFICATION ? '✅ 有効（メール確認スキップ）' : '無効'}`);
 
+/** better-auth のレート制限を有効にするか。 */
+export const authRateLimitEnabled = appConfig.isProduction;
+
 export const auth = betterAuth({
     database: drizzleAdapter(db, {
         provider: 'pg',
@@ -278,25 +278,46 @@ export const auth = betterAuth({
         },
     },
     rateLimit: {
+        // better-auth の既定と同じ（本番だけ）。ログインを Redis 障害で止めるか（index.ts）もこれに合わせる
+        enabled: authRateLimitEnabled,
         window: 60,
         max: 100,
+        // secondaryStorage ではなくこちらで共有する（secondaryStorage はセッション・検証トークンの保存先も Redis に移す）
+        ...(redis ? { customStorage: createAuthRateLimitStorage(redis, logger) } : {}),
     },
     user: {
-        // どちらもサーバーだけが書く。input を許すと /update-user から任意の値（外部の画像 URL など）を入れられ、
-        // 公開のプロフィール・OGP に出てしまう
         additionalFields: {
-            username: {
-                type: 'string',
-                required: false,
-                input: false,
-            },
-            profileImageUrl: {
-                type: 'string',
-                required: false,
-                input: false,
-            },
+            // drizzle adapter は「better-auth が書かない NOT NULL・既定値なしの列」があると schema mismatch で止まる。
+            // 書くのはサーバーだけ（users は userRepository.createCredentialUser で handle ごと作る）なので input は許さない。
+            // required なので、handle を渡せない signUpEmail は users を作る前に失敗する（handle の無い行を作らない）。
+            handle: { type: 'string', required: true, input: false },
         },
     },
 });
 
 export type Session = typeof auth.$Infer.Session;
+
+/** users・accounts を better-auth の adapter を通さずに作るときの ID（better-auth と同じ作り方）。 */
+export function newBetterAuthId(ctx: Awaited<typeof auth.$context>, model: 'user' | 'account'): string {
+    const id = ctx.generateId({ model });
+    if (typeof id !== 'string') throw new Error(`better-auth が ${model} の ID を DB に任せる設定になっている`);
+    return id;
+}
+
+/** 仮登録。コードの HMAC の鍵とユーザー ID の作り方は better-auth と同じもの（auth.$context）を使う。 */
+export const getPendingRegistrations = (() => {
+    const cache: { ready?: Promise<PendingRegistrations> } = {};
+    return (): Promise<PendingRegistrations> => {
+        cache.ready ??= auth.$context.then((ctx) =>
+            createPendingRegistrations({
+                repository: pendingRegistrationRepository,
+                now: () => new Date(),
+                newId: () => randomBytes(24).toString('base64url'),
+                newOtp: generateOTP,
+                hashOtp: createOtpHasher(ctx.secret),
+                newRecordId: (model) => newBetterAuthId(ctx, model),
+            }),
+        );
+        return cache.ready;
+    };
+})();

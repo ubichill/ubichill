@@ -1,10 +1,9 @@
 /**
- * フロントと backend の版がずれたら読み込み直す（判定は lib/versionSkew）。単体モード（SNS backend なし）では何もしない。
+ * フロントと backend の版がずれたら読み込み直す（判定は lib/versionSkew）。
  * 自動で読み込み直すのは失うものが無い画面だけ、同じ backend の版のためにはタブごとに 1 回だけ。ほかは知らせる。
  */
 import { useEffect, useRef } from 'react';
 import { API_BASE } from '@/lib/api';
-import { STANDALONE_RUNTIME } from '@/lib/instanceConnection';
 import { pushToast } from '@/lib/toast';
 import {
     fetchServerCommit,
@@ -19,7 +18,6 @@ const FRONT_COMMIT = import.meta.env.VITE_COMMIT_HASH;
 export function VersionSkewGuard() {
     const notified = useRef(false);
     useEffect(() => {
-        if (STANDALONE_RUNTIME) return;
         const memory = reloadMemory(() => window.sessionStorage);
         const check = async () => {
             const serverCommit = await fetchServerCommit(API_BASE);

@@ -13,10 +13,24 @@ const ids = { a: `fr-a-${stamp}`, b: `fr-b-${stamp}`, c: `fr-c-${stamp}` };
 
 describe.skipIf(!RUN)('userFriendRepository / userRepository.search (DB統合)', () => {
     beforeAll(async () => {
-        await userRepository.create({ id: ids.a, name: `あいう_${stamp}`, email: `${ids.a}@example.com` });
-        await userRepository.create({ id: ids.b, name: `b100%_${stamp}`, email: `${ids.b}@example.com` });
-        await userRepository.create({ id: ids.c, name: `Charlie_${stamp}`, email: `${ids.c}@example.com` });
-        await userRepository.setHandleOnce(ids.c, `ch${stamp}`.slice(0, 30));
+        await userRepository.create({
+            id: ids.a,
+            name: `あいう_${stamp}`,
+            email: `${ids.a}@example.com`,
+            handle: `fra_${stamp}`,
+        });
+        await userRepository.create({
+            id: ids.b,
+            name: `b100%_${stamp}`,
+            email: `${ids.b}@example.com`,
+            handle: `frb_${stamp}`,
+        });
+        await userRepository.create({
+            id: ids.c,
+            name: `Charlie_${stamp}`,
+            email: `${ids.c}@example.com`,
+            handle: `ch${stamp}`.slice(0, 30),
+        });
     });
 
     afterAll(async () => {
@@ -82,7 +96,7 @@ describe.skipIf(!RUN)('userFriendRepository / userRepository.search (DB統合)',
         expect((await search(`100%_${stamp}`, { limit: 5 })).map((u) => u.id)).toEqual([ids.b]);
         const percent = await search('%', { limit: 1000 });
         expect(percent.map((u) => u.id)).toContain(ids.b);
-        expect(percent.every((u) => u.name.includes('%') || u.handle?.startsWith('%'))).toBe(true);
+        expect(percent.every((u) => u.name.includes('%') || u.handle.startsWith('%'))).toBe(true);
     });
 
     it('除外した ID は出さない', async () => {
@@ -108,7 +122,7 @@ describe.skipIf(!RUN)('userRepository.setDisplayName の変更制限 (DB統合)'
     const t0 = new Date('2026-01-01T00:00:00Z');
 
     beforeAll(async () => {
-        await userRepository.create({ id, name: `dn_${stamp}`, email: `${id}@example.com` });
+        await userRepository.create({ id, name: `dn_${stamp}`, email: `${id}@example.com`, handle: `dn_${stamp}` });
     });
     afterAll(async () => {
         await userRepository.deleteById(id);

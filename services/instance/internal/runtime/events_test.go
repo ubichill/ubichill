@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"encoding/json"
-	"math"
 	"strings"
 	"testing"
 	"time"
@@ -46,7 +45,7 @@ func putEntity(s *Server, room string, e Object) {
 func expectNone(t *testing.T, c *websocket.Conn, event string) {
 	t.Helper()
 	id := "barrier-" + newID()
-	if err := c.WriteJSON(Frame{Event: "media:timeline:get", ID: id, Data: encoded(Object{"sessionId": "barrier"})}); err != nil {
+	if err := c.WriteJSON(Frame{Event: "state:get", ID: id, Data: encoded(Object{"key": "barrier"})}); err != nil {
 		t.Fatal(err)
 	}
 	_ = c.SetReadDeadline(time.Now().Add(2 * time.Second))
@@ -281,110 +280,4 @@ func TestEphemeralCursorAndStatus(t *testing.T) {
 	if user["status"] != "busy" || user["position"].(map[string]any)["y"] != float64(4) {
 		t.Fatalf("user state not stored: %v", user)
 	}
-}
-
-func TestMediaTimelineTransitions(t *testing.T) {
-	s, _ := start(t, false)
-	r := s.room("a")
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	update := func(v Object) (Object, error) { return r.media(v, "alice") }
-	if _, err := update(Object{"sessionId": "v", "mediaId": "one", "action": "play"}); err == nil {
-		t.Fatal("play before load accepted")
-	}
-	if _, err := update(Object{"sessionId": "v", "mediaId": "one", "action": "load", "duration": float64(10), "playbackRate": float64(1.5)}); err != nil {
-		t.Fatal(err)
-	}
-	playing, err := update(Object{"sessionId": "v", "mediaId": "one", "action": "play"})
-	if err != nil || playing["phase"] != "playing" || playing["revision"] != float64(2) {
-		t.Fatalf("play: %v %v", playing, err)
-	}
-	r.timelines["v"]["anchorServerTime"] = num(playing["anchorServerTime"]) - 2000
-	paused, _ := update(Object{"sessionId": "v", "mediaId": "one", "action": "pause"})
-	if got := num(paused["anchorTime"]); math.Abs(got-3) > 0.1 {
-		t.Fatalf("position after 2s at 1.5x = %v, want 3", got)
-	}
-	if paused["playbackRate"] != float64(1.5) {
-		t.Fatal("playback rate was not carried over")
-	}
-	_, _ = update(Object{"sessionId": "v", "mediaId": "one", "action": "play"})
-	r.timelines["v"]["anchorServerTime"] = num(r.timelines["v"]["anchorServerTime"]) - 60000
-	clamped, _ := update(Object{"sessionId": "v", "mediaId": "one", "action": "pause"})
-	if clamped["anchorTime"] != float64(10) {
-		t.Fatalf("position must stop at duration: %v", clamped["anchorTime"])
-	}
-	ended, _ := update(Object{"sessionId": "v", "mediaId": "one", "action": "ended"})
-	if ended["phase"] != "ended" || ended["anchorTime"] != float64(10) {
-		t.Fatalf("ended: %v", ended)
-	}
-	meta, _ := update(Object{"sessionId": "v", "mediaId": "one", "action": "metadata", "duration": float64(20)})
-	if meta["duration"] != float64(20) {
-		t.Fatalf("metadata: %v", meta)
-	}
-	revision := num(meta["revision"])
-	for name, v := range map[string]Object{
-		"other media":         {"sessionId": "v", "mediaId": "two", "action": "play"},
-		"fractional revision": {"sessionId": "v", "mediaId": "one", "action": "play", "expectedRevision": revision + 0.5},
-		"negative position":   {"sessionId": "v", "mediaId": "one", "action": "seek", "position": float64(-1)},
-		"zero rate":           {"sessionId": "v", "mediaId": "one", "action": "play", "playbackRate": float64(0)},
-		"too fast":            {"sessionId": "v", "mediaId": "one", "action": "play", "playbackRate": float64(5)},
-		"string position":     {"sessionId": "v", "mediaId": "one", "action": "seek", "position": "1"},
-		"unknown action":      {"sessionId": "v", "mediaId": "one", "action": "rewind"},
-		"missing session":     {"mediaId": "one", "action": "load"},
-		"long session":        {"sessionId": strings.Repeat("s", 257), "mediaId": "one", "action": "load"},
-		"nil payload":         nil,
-	} {
-		if _, err := update(v); err == nil {
-			t.Errorf("%s: accepted", name)
-		}
-	}
-	if num(r.timelines["v"]["revision"]) != revision {
-		t.Fatal("rejected updates changed the timeline")
-	}
-	reloaded, _ := update(Object{"sessionId": "v", "mediaId": "two", "action": "load"})
-	if reloaded["phase"] != "paused" || reloaded["anchorTime"] != float64(0) || num(reloaded["revision"]) != revision+1 {
-		t.Fatalf("loading other media must restart at a new revision: %v", reloaded)
-	}
-}
-
-func TestMediaConflictReturnsCurrentTimeline(t *testing.T) {
-	s, h := start(t, false)
-	alice := connect(t, s, h, "a", "alice")
-	bob := connect(t, s, h, "a", "bob")
-	loaded := request(t, alice, "media:timeline:update", "load", Object{"sessionId": "v", "mediaId": "one", "action": "load"})
-	if loaded["success"] != true {
-		t.Fatal(loaded)
-	}
-	receive(t, bob, "media:timeline")
-	_ = request(t, bob, "media:timeline:update", "play", Object{"sessionId": "v", "mediaId": "one", "action": "play", "expectedRevision": float64(1)})
-	stale := request(t, alice, "media:timeline:update", "stale", Object{"sessionId": "v", "mediaId": "one", "action": "pause", "expectedRevision": float64(1)})
-	current, _ := stale["timeline"].(map[string]any)
-	if stale["success"] != false || current == nil || current["revision"] != float64(2) || current["phase"] != "playing" {
-		t.Fatalf("conflict must return the authoritative timeline: %v", stale)
-	}
-	if out := request(t, alice, "media:timeline:update", "null", nil); out["success"] != false {
-		t.Fatal("null media update accepted")
-	}
-}
-
-func TestMediaStateResponseStaysInRoom(t *testing.T) {
-	s, h := start(t, false)
-	alice := connect(t, s, h, "a", "alice")
-	bob := connect(t, s, h, "a", "bob")
-	other := connect(t, s, h, "b", "other")
-	_ = bob.WriteJSON(Frame{Event: "media:state-request", Data: encoded(Object{})})
-	asked, _ := object(receive(t, alice, "media:state-request").Data)
-	s.admission.Lock()
-	otherSocket := s.active["other"].id
-	s.admission.Unlock()
-	_ = alice.WriteJSON(Frame{Event: "media:state-response", Data: encoded(Object{"toSocketId": otherSocket, "state": "x"})})
-	_ = alice.WriteJSON(Frame{Event: "media:state-response", Data: encoded(Object{"toSocketId": asked["fromSocketId"], "state": "y"})})
-	response, _ := object(receive(t, bob, "media:state-response").Data)
-	if response["state"] != "y" {
-		t.Fatalf("response not delivered: %v", response)
-	}
-	if _, leaked := response["toSocketId"]; leaked {
-		t.Fatal("routing field was relayed")
-	}
-	expectNone(t, other, "media:state-response")
 }

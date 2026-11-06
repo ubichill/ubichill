@@ -170,7 +170,7 @@ async function sendUserPage(res: express.Response, user: UserSummary | undefined
     const worlds = user
         ? await fetchJson<{ worlds?: unknown[] }>(`${CORE_API_URL}/api/v1/users/${encodeURIComponent(user.id)}/worlds`)
         : undefined;
-    const pageUrl = `${PUBLIC_BASE_URL}${user?.handle ? `/@${user.handle}` : user ? `/user/${encodeURIComponent(user.id)}` : `/@${handle}`}`;
+    const pageUrl = `${PUBLIC_BASE_URL}/@${user?.handle ?? handle}`;
     const tags = buildUserMetaTags({
         user,
         handle,
@@ -198,7 +198,7 @@ app.get('/@:handle', async (req, res, next) => {
     }
 });
 
-// ユーザーページ（内部 ID）。正規の URL は ID があれば /@ID
+// ユーザーページ（内部 ID）。正規の URL は /@ID
 app.get('/user/:userId', async (req, res) => {
     try {
         const user = await fetchJson<UserSummary>(

@@ -1,0 +1,36 @@
+{{- if and .Values.redis.enabled .Values.redis.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ubichill.redis.fullname" . }}
+  labels:
+    {{- include "ubichill.labels" . | nindent 4 }}
+    component: redis
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "ubichill.redis.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "ubichill.selectorLabels" . | nindent 14 }}
+            matchExpressions:
+              - key: component
+                operator: In
+                values: [backend, instance]
+      ports:
+        - port: redis
+    {{- if .Values.redis.metrics.enabled }}
+    - from:
+        {{- with .Values.redis.networkPolicy.metricsFrom }}
+        {{- toYaml . | nindent 8 }}
+        {{- else }}
+        - namespaceSelector: {}
+        {{- end }}
+      ports:
+        - port: metrics
+    {{- end }}
+{{- end }}

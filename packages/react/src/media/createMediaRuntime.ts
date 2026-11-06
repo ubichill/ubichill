@@ -7,15 +7,29 @@ import type {
     MediaSource,
     MediaState,
     MediaTimeline,
-    MediaTimelineIntent,
-    MediaTimelineResult,
     ModHostEvent,
+    SharedStateEntry,
 } from '@ubichill/shared';
 import Hls from 'hls.js';
 import type { ExternalUrlAccess } from '../lib/externalUrlAuthorization';
-import type { InstanceSocket } from '../lib/instanceSocket';
+import { getSharedState, type SharedStateReply, type SharedStateSocket, updateSharedState } from '../lib/sharedState';
 import type { ModWorkerHandlers } from '../useModWorker';
+import {
+    estimateServerNow,
+    estimateServerWriteTime,
+    INITIAL_SERVER_CLOCK,
+    type MediaTimelineAction,
+    measureServerClock,
+    mediaStateKey,
+    planMediaTimelineUpdate,
+    type ServerClock,
+    timelineFromEntry,
+    timelinePosition,
+} from './mediaTimeline';
 import { planTimelinePlaybackCorrection } from './timelineSync';
+
+/** load の競合は別の人が先に読み込んだだけなので、今の値に対して決め直す（同じメディアなら書かない）。 */
+const LOAD_CONFLICT_RETRIES = 2;
 
 type ResolvedLoad = MediaLoadOptions & { targetId: string; loadId: string };
 
@@ -30,7 +44,9 @@ interface MediaEntry {
     ready: boolean;
     destroyed: boolean;
     cleanupListeners: (() => void) | null;
-    serverOffsetMs: number;
+    serverClock: ServerClock;
+    /** このメディアのキーの最新の共有状態（別のメディアの値でも revision を知るために持つ）。 */
+    sharedEntry: SharedStateEntry | null;
     timelineQueue: Promise<void>;
 }
 
@@ -55,6 +71,9 @@ export type MediaHandlers = Pick<
     | 'onMediaSetDeviceControl'
 >;
 
+/** メディアが使う接続の一部（InstanceSocket が満たす）。 */
+export type MediaSocket = SharedStateSocket & { readonly connected: boolean };
+
 export interface CreateMediaRuntimeOptions {
     definitionId: string;
     syncScopeId: string;
@@ -62,7 +81,7 @@ export interface CreateMediaRuntimeOptions {
     /** 許可の対象（作者＋mod の ID）。拒否トーストの「許可」が記録する先。 */
     permissionSubject: string;
     mediaVisibility: Map<string, boolean>;
-    getSocket: () => InstanceSocket | null;
+    getSocket: () => MediaSocket | null;
     authorizeUrl: (url: string) => Promise<ExternalUrlAccess>;
     sendEvent: (event: ModHostEvent) => void;
 }
@@ -70,7 +89,7 @@ export interface CreateMediaRuntimeOptions {
 export interface MediaRuntime {
     getVideoRef: (targetId: string) => (el: HTMLVideoElement | null) => void;
     mediaHandlers: MediaHandlers;
-    acceptTimeline: (timeline: MediaTimeline) => void;
+    acceptSharedState: (entry: SharedStateEntry) => void;
     refreshTimelines: () => void;
     tick: () => void;
     destroy: () => void;
@@ -157,11 +176,7 @@ export function createMediaRuntime({
 
     const timelineTime = (entry: MediaEntry, now = Date.now()): number | null => {
         const timeline = entry.state.timeline;
-        if (!timeline) return null;
-        const serverNow = now + entry.serverOffsetMs;
-        const elapsed = timeline.phase === 'playing' ? Math.max(0, serverNow - timeline.anchorServerTime) / 1000 : 0;
-        const value = timeline.anchorTime + elapsed * timeline.playbackRate;
-        return timeline.duration === null ? Math.max(0, value) : Math.min(timeline.duration, Math.max(0, value));
+        return timeline ? timelinePosition(timeline, estimateServerNow(entry.serverClock, now)) : null;
     };
 
     const emitState = (entry: MediaEntry, patch: Partial<MediaState> = {}): void => {
@@ -281,17 +296,10 @@ export function createMediaRuntime({
         }
     };
 
-    const acceptTimeline = (
-        entry: MediaEntry,
-        timeline: MediaTimeline,
-        serverTime?: number,
-        midpoint?: number,
-    ): void => {
-        if (entry.state.sync !== 'shared' || timeline.sessionId !== sessionIdFor(entry.state.targetId)) return;
+    const acceptTimeline = (entry: MediaEntry, timeline: MediaTimeline): void => {
+        if (entry.state.sync !== 'shared') return;
         const mediaId = entry.state.source?.id ?? entry.state.source?.url;
         if (!mediaId || timeline.mediaId !== mediaId) return;
-        if (serverTime !== undefined && midpoint !== undefined) entry.serverOffsetMs = serverTime - midpoint;
-        if (entry.state.timeline && timeline.revision < entry.state.timeline.revision) return;
         entry.state = { ...entry.state, timeline };
         if (entry.ready) {
             if (timeline.phase === 'playing') applyPlay(entry);
@@ -301,82 +309,71 @@ export function createMediaRuntime({
         emitState(entry, timeline.phase === 'ended' ? { status: 'ended' } : {});
     };
 
+    /**
+     * authoritative は取得の応答。同じ接続の応答と通知はサーバーの処理順に届くので、取得の結果は revision が
+     * 小さくても今の値として受け入れる（部屋が作り直されて revision が戻ったときに古い値に固まらないため）。
+     */
+    const acceptSharedEntry = (entry: MediaEntry, shared: SharedStateEntry | null, authoritative: boolean): void => {
+        const sessionId = sessionIdFor(entry.state.targetId);
+        if (shared && shared.key !== mediaStateKey(sessionId)) return;
+        if (!authoritative && (!shared || (entry.sharedEntry && shared.revision <= entry.sharedEntry.revision))) return;
+        entry.sharedEntry = shared;
+        const timeline = timelineFromEntry(sessionId, shared);
+        if (timeline) acceptTimeline(entry, timeline);
+    };
+
+    const acceptReply = (entry: MediaEntry, reply: SharedStateReply | null, authoritative: boolean): void => {
+        if (!reply || entry.destroyed) return;
+        const { result } = reply;
+        if (result.serverTime !== undefined) {
+            entry.serverClock = measureServerClock(reply.sentAt, reply.receivedAt, result.serverTime);
+        }
+        if (result.success) acceptSharedEntry(entry, result.entry, authoritative);
+        else if (result.code === 'conflict' && result.entry !== undefined) acceptSharedEntry(entry, result.entry, true);
+    };
+
+    const enqueue = (entry: MediaEntry, task: () => Promise<void>): void => {
+        entry.timelineQueue = entry.timelineQueue.then(task).catch(() => undefined);
+    };
+
+    const writeTimeline = async (entry: MediaEntry, action: MediaTimelineAction, retries: number): Promise<void> => {
+        const socket = getSocket();
+        if (!socket?.connected || entry.destroyed) return;
+        const sessionId = sessionIdFor(entry.state.targetId);
+        const plan = planMediaTimelineUpdate(
+            sessionId,
+            entry.sharedEntry,
+            action,
+            estimateServerWriteTime(entry.serverClock, Date.now()),
+        );
+        if (plan.kind !== 'write') return;
+        const reply = await updateSharedState(socket, {
+            key: mediaStateKey(sessionId),
+            value: plan.value,
+            expectedRevision: plan.expectedRevision,
+        });
+        acceptReply(entry, reply, false);
+        const conflicted = reply !== null && !reply.result.success && reply.result.code === 'conflict';
+        if (conflicted && action.action === 'load' && retries > 0) await writeTimeline(entry, action, retries - 1);
+    };
+
     const publishTimeline = (
         entry: MediaEntry,
-        action: MediaTimelineIntent['action'],
-        extra: Partial<MediaTimelineIntent> = {},
+        action: MediaTimelineAction['action'],
+        extra: Partial<Omit<MediaTimelineAction, 'action' | 'mediaId'>> = {},
     ): void => {
         if (entry.state.sync !== 'shared' || !entry.state.source) return;
         const mediaId = entry.state.source.id ?? entry.state.source.url;
-        entry.timelineQueue = entry.timelineQueue.then(
-            () =>
-                new Promise<void>((resolve) => {
-                    const activeSocket = getSocket();
-                    if (!activeSocket?.connected || entry.destroyed) {
-                        resolve();
-                        return;
-                    }
-                    const sentAt = Date.now();
-                    const intent: MediaTimelineIntent = {
-                        sessionId: sessionIdFor(entry.state.targetId),
-                        mediaId,
-                        action,
-                        ...(action !== 'load' && entry.state.timeline
-                            ? { expectedRevision: entry.state.timeline.revision }
-                            : {}),
-                        ...extra,
-                    };
-                    let settled = false;
-                    const timer = setTimeout(() => {
-                        if (settled) return;
-                        settled = true;
-                        resolve();
-                    }, 5_000);
-                    activeSocket.emit('media:timeline:update', intent, (result: MediaTimelineResult) => {
-                        if (settled) return;
-                        settled = true;
-                        clearTimeout(timer);
-                        const receivedAt = Date.now();
-                        if (result.timeline)
-                            acceptTimeline(entry, result.timeline, result.serverTime, (sentAt + receivedAt) / 2);
-                        resolve();
-                    });
-                }),
-        );
+        enqueue(entry, () => writeTimeline(entry, { mediaId, action, ...extra }, LOAD_CONFLICT_RETRIES));
     };
 
     const requestTimeline = (entry: MediaEntry): void => {
         if (entry.state.sync !== 'shared') return;
-        entry.timelineQueue = entry.timelineQueue.then(
-            () =>
-                new Promise<void>((resolve) => {
-                    const activeSocket = getSocket();
-                    if (!activeSocket?.connected || entry.destroyed) {
-                        resolve();
-                        return;
-                    }
-                    const sentAt = Date.now();
-                    let settled = false;
-                    const timer = setTimeout(() => {
-                        if (settled) return;
-                        settled = true;
-                        resolve();
-                    }, 5_000);
-                    activeSocket.emit(
-                        'media:timeline:get',
-                        { sessionId: sessionIdFor(entry.state.targetId) },
-                        (result: MediaTimelineResult) => {
-                            if (settled) return;
-                            settled = true;
-                            clearTimeout(timer);
-                            const receivedAt = Date.now();
-                            if (result.timeline)
-                                acceptTimeline(entry, result.timeline, result.serverTime, (sentAt + receivedAt) / 2);
-                            resolve();
-                        },
-                    );
-                }),
-        );
+        enqueue(entry, async () => {
+            const socket = getSocket();
+            if (!socket?.connected || entry.destroyed) return;
+            acceptReply(entry, await getSharedState(socket, mediaStateKey(sessionIdFor(entry.state.targetId))), true);
+        });
     };
     const attachListeners = (entry: MediaEntry): void => {
         entry.cleanupListeners?.();
@@ -467,7 +464,8 @@ export function createMediaRuntime({
             ready: false,
             destroyed: false,
             cleanupListeners: null,
-            serverOffsetMs: 0,
+            serverClock: INITIAL_SERVER_CLOCK,
+            sharedEntry: null,
             timelineQueue: Promise.resolve(),
         };
         attachListeners(entry);
@@ -572,8 +570,8 @@ export function createMediaRuntime({
         entry.video.load();
     };
 
-    const acceptTimelineForAll = (timeline: MediaTimeline): void => {
-        for (const entry of mediaEntries.values()) acceptTimeline(entry, timeline);
+    const acceptSharedState = (shared: SharedStateEntry): void => {
+        for (const entry of mediaEntries.values()) acceptSharedEntry(entry, shared, false);
     };
     const tick = (): void => {
         for (const entry of mediaEntries.values()) {
@@ -722,5 +720,5 @@ export function createMediaRuntime({
         mediaEntries.clear();
     };
 
-    return { getVideoRef, mediaHandlers, acceptTimeline: acceptTimelineForAll, refreshTimelines, tick, destroy };
+    return { getVideoRef, mediaHandlers, acceptSharedState, refreshTimelines, tick, destroy };
 }

@@ -1,4 +1,7 @@
 {{- if .Values.backend.enabled }}
+{{- if and (gt (int .Values.backend.replicaCount) 1) (not .Values.redis.enabled) (not (.Values.redis.external | default dict).url) }}
+{{- fail "backend.replicaCount を 2 以上にするには Redis（redis.enabled または redis.external.url）が要ります。無いと reaper が台数分動き、レート制限も台数分に緩みます" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -122,7 +125,7 @@ spec:
           ── 環境変数 ──
           通常 env は ConfigMap (backend-config) と Secret (backend-secrets / existingSecret)
           にまとめて envFrom で一括 mount する。
-          DATABASE_URL と WORLDS_REGISTRY_TOKEN だけは valueFrom や動的組立が要るので
+          DATABASE_URL・REDIS_URL/REDIS_PASSWORD・WORLDS_REGISTRY_TOKEN だけは valueFrom や動的組立が要るので
           env: に inline で残す。
         */}}
         envFrom:
@@ -141,6 +144,9 @@ spec:
             secretKeyRef:
               name: {{ .Values.instanceRuntime.existingSecret | default .Values.backend.existingSecret | default (printf "%s-backend-secrets" (include "ubichill.fullname" .)) }}
               key: {{ .Values.instanceRuntime.secretKey }}
+        {{- with include "ubichill.redis.env" . }}
+        {{- . | nindent 8 }}
+        {{- end }}
         {{- /* PostgreSQL: DATABASE_URL は postgres password を含むため inline で組み立てる */}}
         {{- if .Values.postgresql.enabled }}
         {{- /*

@@ -23,6 +23,6 @@ export const cliAuthRequests = pgTable('cli_auth_requests', {
     userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
     /** pending / approved / consumed */
     status: text('status').notNull(),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    expiresAt: timestamp('expires_at').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
 });

@@ -7,15 +7,18 @@ const mocks = vi.hoisted(() => ({
     presence: vi.fn(),
     provision: vi.fn(),
     ticket: vi.fn(),
+    close: vi.fn(),
+    deleteByLeader: vi.fn(),
 }));
-vi.mock('@ubichill/db', () => ({ instanceRepository: { findById: mocks.findById } }));
+vi.mock('@ubichill/db', () => ({
+    instanceRepository: { findById: mocks.findById, deleteByLeader: mocks.deleteByLeader },
+}));
 vi.mock('../config', () => ({ appConfig: { runtime: { publicUrl: '/realtime/v1/ws' } } }));
 vi.mock('./worldRegistry', () => ({ worldRegistry: { getWorldByUrl: mocks.getWorldByUrl } }));
 vi.mock('./friends', () => ({ friendIdsOf: mocks.friendIdsOf }));
 vi.mock('./instanceRuntime', () => ({
-    instanceRuntime: { presence: mocks.presence, provision: mocks.provision, ticket: mocks.ticket },
+    instanceRuntime: { presence: mocks.presence, provision: mocks.provision, ticket: mocks.ticket, close: mocks.close },
 }));
-vi.mock('./instanceReaper', () => ({ instanceReaper: { markCreated: vi.fn() } }));
 
 import { InstanceJoinRejected, instanceManager, ticketName } from './instanceManager';
 
@@ -25,8 +28,9 @@ const record = {
     accessType: 'friend_only',
     worldRef: 'https://world.test/room.yaml',
     maxUsers: 10,
-    hasPassword: false,
+    passwordHash: null,
 };
+const owner = { base: 'http://10.0.0.7:3002', gen: 'g1', epoch: 2 };
 
 describe('GoインスタンスへのSNS参加受付', () => {
     beforeEach(() => {
@@ -36,6 +40,7 @@ describe('GoインスタンスへのSNS参加受付', () => {
         mocks.presence.mockResolvedValue(new Map());
         mocks.getWorldByUrl.mockResolvedValue({ id: 'world' });
         mocks.ticket.mockResolvedValue({ token: 'ticket' });
+        mocks.provision.mockResolvedValue(owner);
     });
     it('フレンド条件を満たさない参加者にはチケットを発行しない', async () => {
         await expect(instanceManager.join('room', { id: 'stranger', name: 'Stranger' })).rejects.toThrow(
@@ -51,10 +56,11 @@ describe('GoインスタンスへのSNS参加受付', () => {
         await expect(instanceManager.join('room', { id: 'visitor', name: 'Visitor' })).resolves.toEqual({
             token: 'ticket',
         });
-        expect(mocks.ticket).toHaveBeenCalledWith('room', 'visitor', 'Visitor');
+        // チケットは割り当てた owner の Pod へ、その世代で発行する
+        expect(mocks.ticket).toHaveBeenCalledWith('room', 'visitor', 'Visitor', owner);
     });
     it('所有者でも部屋のパスワード確認を省略しない', async () => {
-        mocks.findById.mockResolvedValue({ ...record, hasPassword: true });
+        mocks.findById.mockResolvedValue({ ...record, passwordHash: 'x' });
         await expect(instanceManager.join('room', { id: 'owner', name: 'Owner' })).rejects.toThrow(
             InstanceJoinRejected,
         );
@@ -73,7 +79,7 @@ describe('GoインスタンスへのSNS参加受付', () => {
         );
     });
     it('パスワード違いは拒否として扱い、チケットを発行しない', async () => {
-        mocks.findById.mockResolvedValue({ ...record, hasPassword: true, passwordHash: 'x' });
+        mocks.findById.mockResolvedValue({ ...record, passwordHash: 'x' });
         await expect(instanceManager.join('room', { id: 'owner', name: 'Owner' }, 'wrong')).rejects.toThrow(
             InstanceJoinRejected,
         );
@@ -99,5 +105,39 @@ describe('ticketName', () => {
         expect(ticketName('   ')).toBeUndefined();
         // 絵文字などサロゲートペアは 1 文字として数える（Go の rune 数と揃える）
         expect(ticketName('😀'.repeat(30))).toBe('😀'.repeat(30));
+    });
+});
+
+describe('インスタンスの終了', () => {
+    beforeEach(() => {
+        vi.resetAllMocks();
+        mocks.findById.mockResolvedValue(record);
+        mocks.deleteByLeader.mockResolvedValue(true);
+    });
+
+    it('Go 側で閉じられたと確かめてから DB を消す', async () => {
+        mocks.close.mockResolvedValue(true);
+        await expect(instanceManager.closeInstance('room', 'owner')).resolves.toEqual({ success: true });
+        expect(mocks.deleteByLeader).toHaveBeenCalledWith('room', 'owner');
+    });
+
+    it('閉じられなければ（owner が止まっている・世代が合わない）DB を残して失敗を返す', async () => {
+        mocks.close.mockResolvedValue(false);
+        await expect(instanceManager.closeInstance('room', 'owner')).resolves.toMatchObject({
+            success: false,
+            reason: 'runtime-unavailable',
+        });
+        expect(mocks.deleteByLeader).not.toHaveBeenCalled();
+    });
+
+    it('Go への問い合わせが失敗したら DB を残す', async () => {
+        mocks.close.mockRejectedValue(new Error('Instance runtime: 503'));
+        await expect(instanceManager.closeInstance('room', 'owner')).rejects.toThrow();
+        expect(mocks.deleteByLeader).not.toHaveBeenCalled();
+    });
+
+    it('リーダー以外は Go に問い合わせる前に拒否する', async () => {
+        await expect(instanceManager.closeInstance('room', 'someone')).resolves.toMatchObject({ reason: 'forbidden' });
+        expect(mocks.close).not.toHaveBeenCalled();
     });
 });

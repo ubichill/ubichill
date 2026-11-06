@@ -3,35 +3,22 @@
  * どの作者も同じ規則で確かめる（公式アカウントも、リポジトリの記録で特別に信用しない）。
  * 規則は @ubichill/shared の authorKeyDirectory（ブラウザの Host と同じ。DB 非依存でテストできる）。
  */
-import { authorBindingRepository, publishingEnvironmentRepository, userRepository } from '@ubichill/db';
+import { authorKeyRepository, userRepository } from '@ubichill/db';
 import { type AuthorKeyCheck, createAuthorKeyDirectory } from '@ubichill/shared';
+import { authorKeySources, withNormalizedKey } from './authorKeySources';
 import { selfDomain } from './authorKeys';
-import { signingKeyEntryOf } from './publishingEnvironments';
 import { safeFetch } from './safeFetch';
 
+const { findLocalAccount, bindings, confirmedContents } = authorKeySources({
+    repository: authorKeyRepository,
+    findUserByHandle: (handle) => userRepository.findByHandle(handle),
+    warn: (message) => console.warn(message),
+});
+
 const authorKeys = createAuthorKeyDirectory({
-    local: {
-        domain: selfDomain,
-        findAccount: async (handle) => {
-            const user = await userRepository.findByHandle(handle);
-            if (!user) return undefined;
-            const environments = await publishingEnvironmentRepository.listByUser(user.id);
-            return { keys: environments.map(signingKeyEntryOf), displayName: user.name };
-        },
-    },
-    bindings: {
-        find: async (account) => {
-            const record = await authorBindingRepository.find(account);
-            return record
-                ? { keys: record.keys, displayName: record.displayName ?? undefined, fetchedAt: record.fetchedAt }
-                : undefined;
-        },
-        save: (account, profile) => authorBindingRepository.save(account, [...profile.keys], profile.displayName),
-    },
-    confirmedContents: {
-        record: (account, contentHash) => authorBindingRepository.recordConfirmedContent(account, contentHash),
-        has: (account, contentHash) => authorBindingRepository.hasConfirmedContent(account, contentHash),
-    },
+    local: { domain: selfDomain, findAccount: findLocalAccount },
+    bindings,
+    confirmedContents,
     fetchJson: async (url) => {
         const res = await safeFetch(url, {
             headers: { Accept: 'application/jrd+json, application/json' },
@@ -42,12 +29,14 @@ const authorKeys = createAuthorKeyDirectory({
     allowHttp: process.env.WORLDS_FETCH_ALLOW_PRIVATE === 'true',
 });
 
+const checkAuthorKey = withNormalizedKey(authorKeys.isAuthorKey);
+
 /**
  * 署名検証で使う作者の確認。DB エラーなどの例外は pending として扱われ、30 秒ごとに確認し直し続けるので、
  * 障害に気付けるようログを出す。
  */
 export const isAuthorKey: AuthorKeyCheck = (author, publicKey, contentHash) =>
-    authorKeys.isAuthorKey(author, publicKey, contentHash).catch((err: unknown) => {
+    checkAuthorKey(author, publicKey, contentHash).catch((err: unknown) => {
         console.error(`❌ 作者の確認に失敗しました（pending として扱う）: ${author}`, err);
         return { status: 'pending' } as const;
     });

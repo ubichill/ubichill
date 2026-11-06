@@ -4,46 +4,81 @@ import { z } from 'zod';
 // 環境変数を読み込む
 config();
 
+export const INSTANCE_CREATE_LIMIT_DEFAULT = 10;
+
+const emptyToUndefined = (value: unknown): unknown => (value === '' ? undefined : value);
+
 // 環境変数のバリデーションスキーマ
-const envSchema = z.object({
-    PORT: z.coerce.number().int().min(1).max(65535).default(3001),
-    NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-    CORS_ORIGIN: z.string().default('http://localhost:3000'),
-    RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().finite().default(900000),
-    // SPA は1画面の表示でも複数のAPIを呼ぶため、100/15分では即座に枯渇する。
-    // 認証・バージョン・ヘルスは limiter から除外した上で、上限を現実的な値に引き上げる。
-    RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().finite().default(10000),
-    INSTANCE_EMPTY_TIMEOUT_MS: z.coerce.number().int().nonnegative().default(5000),
-    // Go再起動で部屋が消えたときは、通常の空室より長く再接続を待つ。
-    INSTANCE_RECOVERY_GRACE_MS: z.coerce.number().int().nonnegative().default(60000),
-    // 空インスタンス掃除（reaper）の実行間隔。再起動耐性のため定期スイープ方式を採る。
-    INSTANCE_REAP_INTERVAL_MS: z.coerce.number().int().positive().default(1000),
-    DEBUG: z
-        .string()
-        .optional()
-        .transform((val) => {
-            if (val === 'true') return true;
-            if (val === 'false') return false;
-            // 未指定時は production 以外（development/test）で true にする賢いロジック
-            return process.env.NODE_ENV !== 'production';
-        }),
-    INSTANCE_RUNTIME_URL: z.url().default('http://127.0.0.1:3002'),
-    INSTANCE_PUBLIC_URL: z.string().default('/realtime/v1/ws'),
-    INSTANCE_ADMIN_TOKEN: z.string().min(32),
-    DATABASE_URL: z.string().min(1),
-    REDIS_URL: z.string().default('redis://127.0.0.1:6379'),
-    BETTER_AUTH_SECRET: z.string().min(1),
-    BETTER_AUTH_URL: z.string().default('http://localhost:3001'),
-    RESEND_API_KEY: z.string().optional(),
-    SKIP_EMAIL_VERIFICATION: z
-        .string()
-        .default('false')
-        .transform((val) => val === 'true'),
-    TRUST_PROXY: z
-        .string()
-        .default('false')
-        .transform((val) => val === 'true'),
-});
+const envSchema = z
+    .object({
+        PORT: z.coerce.number().int().min(1).max(65535).default(3001),
+        NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+        CORS_ORIGIN: z.string().default('http://localhost:3000'),
+        RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().finite().default(900000),
+        // SPA は1画面の表示でも複数のAPIを呼ぶため、100/15分では即座に枯渇する。
+        // 認証・バージョン・ヘルスは limiter から除外した上で、上限を現実的な値に引き上げる。
+        RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().finite().default(10000),
+        // 1 IP・1 時間あたりのインスタンス作成の上限。負荷試験（k6 の Pod は IP が少ない）で dev だけ上げる。本番では既定より緩められない
+        INSTANCE_CREATE_LIMIT_PER_HOUR: z.preprocess(
+            emptyToUndefined,
+            z.coerce.number().int().positive().default(INSTANCE_CREATE_LIMIT_DEFAULT),
+        ),
+        INSTANCE_EMPTY_TIMEOUT_MS: z.coerce.number().int().nonnegative().default(5000),
+        // Go再起動で部屋が消えたときは、通常の空室より長く再接続を待つ。
+        INSTANCE_RECOVERY_GRACE_MS: z.coerce.number().int().nonnegative().default(60000),
+        // 空インスタンス掃除（reaper）の実行間隔。再起動耐性のため定期スイープ方式を採る。
+        INSTANCE_REAP_INTERVAL_MS: z.coerce.number().int().positive().default(1000),
+        DEBUG: z
+            .string()
+            .optional()
+            .transform((val) => {
+                if (val === 'true') return true;
+                if (val === 'false') return false;
+                // 未指定時は production 以外（development/test）で true にする賢いロジック
+                return process.env.NODE_ENV !== 'production';
+            }),
+        INSTANCE_RUNTIME_URL: z.url().default('http://127.0.0.1:3002'),
+        INSTANCE_PUBLIC_URL: z.string().default('/realtime/v1/ws'),
+        INSTANCE_ADMIN_TOKEN: z.string().min(32),
+        // Go の INSTANCE_DIRECTORY と同じ値にする。redis なら部屋ごとの owner の Pod へ管理 API を送り、在席は Redis から読む
+        INSTANCE_DIRECTORY: z.preprocess(emptyToUndefined, z.enum(['memory', 'redis']).default('memory')),
+        DATABASE_URL: z.string().min(1),
+        // 未設定なら Redis に接続しない（単体・開発・テストは Redis なしで動く）。空文字は chart や .env の未設定として扱う。
+        REDIS_URL: z.preprocess(emptyToUndefined, z.url({ protocol: /^rediss?$/ }).optional()),
+        REDIS_PASSWORD: z.preprocess(emptyToUndefined, z.string().optional()),
+        BETTER_AUTH_SECRET: z.string().min(1),
+        BETTER_AUTH_URL: z.string().default('http://localhost:3001'),
+        RESEND_API_KEY: z.string().optional(),
+        SKIP_EMAIL_VERIFICATION: z
+            .string()
+            .default('false')
+            .transform((val) => val === 'true'),
+        TRUST_PROXY: z
+            .string()
+            .default('false')
+            .transform((val) => val === 'true'),
+        // 開発・プレビュー用。署名の無い同梱ワールド（worlds/）を「署名なし」として配る（services/worldRegistry.ts）
+        WORLDS_SERVE_UNSIGNED_REPOSITORY: z
+            .string()
+            .default('false')
+            .transform((val) => val === 'true'),
+    })
+    .refine((env) => !(env.NODE_ENV === 'production' && env.WORLDS_SERVE_UNSIGNED_REPOSITORY), {
+        message:
+            'WORLDS_SERVE_UNSIGNED_REPOSITORY は本番（NODE_ENV=production）では使えません（署名の無いワールドを公式として配ってしまう）',
+        path: ['WORLDS_SERVE_UNSIGNED_REPOSITORY'],
+    })
+    .refine(
+        (env) => !(env.NODE_ENV === 'production' && env.INSTANCE_CREATE_LIMIT_PER_HOUR > INSTANCE_CREATE_LIMIT_DEFAULT),
+        {
+            message: `INSTANCE_CREATE_LIMIT_PER_HOUR は本番（NODE_ENV=production）では ${INSTANCE_CREATE_LIMIT_DEFAULT} より大きくできません（負荷試験用の緩和）`,
+            path: ['INSTANCE_CREATE_LIMIT_PER_HOUR'],
+        },
+    )
+    .refine((env) => env.INSTANCE_DIRECTORY !== 'redis' || env.REDIS_URL !== undefined, {
+        message: 'INSTANCE_DIRECTORY=redis には REDIS_URL が要ります',
+        path: ['INSTANCE_DIRECTORY'],
+    });
 
 // 環境変数をパースして検証
 const parsedEnv = envSchema.safeParse(process.env);
@@ -73,6 +108,7 @@ export const appConfig = {
     rateLimit: {
         windowMs: parsedEnv.data.RATE_LIMIT_WINDOW_MS,
         maxRequests: parsedEnv.data.RATE_LIMIT_MAX_REQUESTS,
+        instanceCreatePerHour: parsedEnv.data.INSTANCE_CREATE_LIMIT_PER_HOUR,
     },
     instance: {
         emptyTimeoutMs: parsedEnv.data.INSTANCE_EMPTY_TIMEOUT_MS,
@@ -83,10 +119,14 @@ export const appConfig = {
         url: parsedEnv.data.INSTANCE_RUNTIME_URL,
         publicUrl: parsedEnv.data.INSTANCE_PUBLIC_URL,
         token: parsedEnv.data.INSTANCE_ADMIN_TOKEN,
+        directory: parsedEnv.data.INSTANCE_DIRECTORY,
     },
     db: {
         databaseUrl: parsedEnv.data.DATABASE_URL,
-        redisUrl: parsedEnv.data.REDIS_URL,
+    },
+    redis: {
+        url: parsedEnv.data.REDIS_URL,
+        password: parsedEnv.data.REDIS_PASSWORD,
     },
     auth: {
         secret: parsedEnv.data.BETTER_AUTH_SECRET,
@@ -118,11 +158,13 @@ console.log(
     `   CORS許可オリジン: ${Array.isArray(appConfig.cors.origin) ? appConfig.cors.origin.join(', ') : appConfig.cors.origin}`,
 );
 console.log(`   レート制限: ${appConfig.rateLimit.maxRequests}リクエスト/${appConfig.rateLimit.windowMs / 1000}秒`);
+console.log(`   インスタンス作成の上限: ${appConfig.rateLimit.instanceCreatePerHour}件/時（1 IP）`);
 console.log(`   デバッグモード: ${appConfig.debug ? '有効' : '無効'}`);
 console.log(`   空インスタンス自動削除: ${appConfig.instance.emptyTimeoutMs / 1000}秒`);
 console.log('📦 DB設定:');
 console.log(`   DATABASE_URL: ${maskUrl(appConfig.db.databaseUrl)}`);
-console.log(`   REDIS_URL: ${maskUrl(appConfig.db.redisUrl)}`);
+console.log(`   REDIS_URL: ${appConfig.redis.url ? maskUrl(appConfig.redis.url) : '未設定（Redis なしで動く）'}`);
+console.log(`   INSTANCE_DIRECTORY: ${appConfig.runtime.directory}`);
 console.log('🔐 認証設定:');
 console.log(`   BETTER_AUTH_URL: ${appConfig.auth.url}`);
 console.log(`   BETTER_AUTH_SECRET: ${appConfig.auth.secret ? '設定済み' : '未設定'}`);

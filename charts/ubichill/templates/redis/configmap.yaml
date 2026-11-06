@@ -1,0 +1,12 @@
+{{- if .Values.redis.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ubichill.redis.fullname" . }}-config
+  labels:
+    {{- include "ubichill.labels" . | nindent 4 }}
+    component: redis
+data:
+  valkey.conf: |
+    {{- include "ubichill.redis.config" . | nindent 4 }}
+{{- end }}

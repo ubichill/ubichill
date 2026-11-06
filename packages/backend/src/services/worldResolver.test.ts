@@ -1,11 +1,17 @@
 import { generateKeyPairSync, sign } from 'node:crypto';
-import { signWorld, WorldDefinitionSchema, type WorldSigningKey, WorldSourceKind, worldIdOf } from '@ubichill/shared';
+import {
+    definitionToResolved,
+    signWorld,
+    WorldDefinitionSchema,
+    type WorldSigningKey,
+    WorldSourceKind,
+    worldIdOf,
+} from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
 import yaml from 'yaml';
 import { nodeWorldCrypto } from './worldCrypto';
 import {
     confirmedAuthorName,
-    definitionToResolved,
     identifyWorld,
     lockUrlFor,
     normalizeWorldUrl,

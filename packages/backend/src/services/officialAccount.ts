@@ -35,7 +35,7 @@ export function officialAccountConfig(env: NodeJS.ProcessEnv): OfficialAccountCo
 
 interface ExistingUser {
     id: string;
-    handle: string | null;
+    handle: string;
     emailVerified: boolean;
     passwordChangeRequired: boolean;
 }
@@ -43,8 +43,16 @@ interface ExistingUser {
 export interface OfficialAccountDeps {
     findByHandle: (handle: string) => Promise<ExistingUser | undefined>;
     findByEmail: (email: string) => Promise<ExistingUser | undefined>;
-    /** パスワード付きでアカウントを作り、ID を返す（better-auth のパスワードハッシュを使う）。 */
-    signUp: (email: string, password: string, name: string) => Promise<string>;
+    /** ID・表示名を決めた確認済みのアカウントをパスワード付きで作り、ユーザー ID を返す（better-auth のパスワードハッシュを使う）。 */
+    signUp: (account: {
+        email: string;
+        password: string;
+        name: string;
+        handle: string;
+        displayNameKey: string | null;
+    }) => Promise<string>;
+    /** その ID で鍵の登録・ワールドの公開・外部の作品の登録をしたことがあるか（取り消した鍵も数える）。 */
+    hasPublished: (userId: string) => Promise<boolean>;
     /** 保存済みのパスワードと一致するか（パスワードが無ければ false）。 */
     passwordMatches: (userId: string, password: string) => Promise<boolean>;
     /** パスワードを置き換え、既存のログインをすべて無効にする。 */
@@ -105,10 +113,14 @@ export async function ensureOfficialAccount(
     // 同じメールのアカウントが既にあれば（手動で作った等）、それを公式アカウントにする。
     // 公式は管理者を兼ねるので、メールの持ち主が作ったと確かめられたアカウントだけを使い、
     // 昇格前に付いたログインと鍵は持ち越さない（先に作っておいたアカウントを後から昇格させる乗っ取りを防ぐ）。
+    // ID は変更不可だが、その ID で署名・公開したことが無ければ外に出た参照（署名の作者・ワールドの URL）が無いので
+    // ubichill に付け替えてよい。handle が NULL だった頃の「ID 未設定なら昇格できる」と同じ線引き。
     const byEmail = await deps.findByEmail(config.email);
     if (byEmail) {
-        if (byEmail.handle) {
-            deps.log(`⚠ ${config.email} は別の ID（${byEmail.handle}）で登録済みのため公式アカウントにできません`);
+        if (await deps.hasPublished(byEmail.id)) {
+            deps.log(
+                `⚠ ${config.email} は別の ID（${byEmail.handle}）で公開に使われているため公式アカウントにできません`,
+            );
             return 'skipped';
         }
         if (!byEmail.emailVerified) {
@@ -134,13 +146,13 @@ export async function ensureOfficialAccount(
         );
         return 'skipped';
     }
-    const id = await deps.signUp(config.email, config.password, OFFICIAL_DISPLAY_NAME);
-    await deps.initialize(id, {
+    const id = await deps.signUp({
+        email: config.email,
+        password: config.password,
         handle: OFFICIAL_HANDLE,
         ...nameFields,
-        emailVerified: true,
-        passwordChangeRequired: config.usingDevDefault,
     });
+    if (config.usingDevDefault) await deps.initialize(id, { passwordChangeRequired: true });
     deps.log(`👑 公式アカウント（ID ${OFFICIAL_HANDLE}、ログイン用メール ${config.email}）を作成しました`);
     return 'created';
 }

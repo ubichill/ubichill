@@ -52,6 +52,8 @@ export default defineConfig({
                 find: /^@ubichill\/loader\/sign-world$/,
                 replacement: srcPath('./packages/loader/src/signWorldFile.ts'),
             },
+            // backend の結合テストは実際の DB に繋ぐ。CI のテストジョブは db をビルドしないのでソースを読む
+            { find: /^@ubichill\/db$/, replacement: srcPath('./packages/db/src/index.ts') },
             { find: /^@ubichill\/ecs$/, replacement: srcPath('./packages/ecs/src/index.ts') },
             { find: /^@ubichill\/runtime$/, replacement: srcPath('./packages/runtime/src/index.ts') },
             { find: /^@ubichill\/sdk$/, replacement: srcPath('./packages/sdk/src/index.ts') },
@@ -66,9 +68,15 @@ export default defineConfig({
     test: {
         environment: 'node',
         // packages 配下はどこにテストファイルがあっても拾う（src/ 限定にしない。
-        // 例: packages/sdk/build.test.mjs, packages/sdk/cli/build.test.ts はビルドツール自身の
+        // 例: packages/sdk/build.test.mjs, packages/cli/build.test.mjs はビルドツール自身の
         // テストで src/ 配下ではない）。
-        include: ['packages/**/*.test.{ts,tsx,mjs}', 'mods/**/*.test.{ts,tsx,mjs}', 'scripts/**/*.test.mjs'],
+        include: [
+            'packages/**/*.test.{ts,tsx,mjs}',
+            'mods/**/*.test.{ts,tsx,mjs}',
+            'scripts/**/*.test.mjs',
+            // k6 の負荷試験の script のうち、k6 のモジュールに依存しない部分
+            'charts/ubichill-loadtest/scripts/*.test.ts',
+        ],
         exclude: ['**/node_modules/**', '**/dist/**', '**/dist-npm/**'],
     },
 });

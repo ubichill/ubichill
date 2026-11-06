@@ -8,6 +8,7 @@ node_modules/
 # Build outputs
 dist/
 dist-npm/
+dist-world/
 .next/
 out/
 styled-system/
@@ -57,3 +58,6 @@ CODE_STUDY.md
 
 # 公式ワールドの署名は main の CI が付けてイメージに同梱する（リポジトリには置かない）
 worlds/*.sig.json
+
+# スモーク（packages/e2e）の結果・スクリーンショット
+packages/e2e/smoke-results/

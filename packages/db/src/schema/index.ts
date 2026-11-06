@@ -1,13 +1,13 @@
-import { ModLockSchema, WorldDefinitionSchema } from '@ubichill/shared';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { z } from 'zod';
 
-export * from './authorBindings';
+export * from './authorKeys';
 export * from './cliAuthRequests';
 export * from './externalWorks';
 export * from './federationPeers';
 export * from './instances';
-export * from './publishingEnvironments';
+export * from './notifications';
+export * from './pendingRegistrations';
 export * from './users';
 export * from './worlds';
 
@@ -15,7 +15,6 @@ export * from './worlds';
 import { federationPeers } from './federationPeers';
 import { instances } from './instances';
 import { userFavorites, userFriends, userSettings, users } from './users';
-import { worlds } from './worlds';
 
 // users
 export const insertUserSchema = createInsertSchema(users);
@@ -36,17 +35,6 @@ export const selectUserFavoriteSchema = createSelectSchema(userFavorites);
 // federation_peers
 export const insertFederationPeerSchema = createInsertSchema(federationPeers);
 export const selectFederationPeerSchema = createSelectSchema(federationPeers);
-
-// worlds
-export const insertWorldSchema = createInsertSchema(worlds, {
-    definition: WorldDefinitionSchema,
-    lock: ModLockSchema.optional().nullable(),
-});
-
-export const selectWorldSchema = createSelectSchema(worlds, {
-    definition: WorldDefinitionSchema,
-    lock: ModLockSchema.nullable(),
-});
 
 // instances
 export const insertInstanceSchema = createInsertSchema(instances, {

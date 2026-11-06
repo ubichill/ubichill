@@ -2,12 +2,22 @@ import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from './schema';
 
-export { type AuthorBindingRecord, authorBindingRepository } from './repositories/authorBindingRepository';
+export { type AnnouncementRecord, announcementRepository } from './repositories/announcementRepository';
+export {
+    type AuthorKeyRepository,
+    authorKeyRepository,
+    type CreateLocalAuthorKeyInput,
+    createAuthorKeyRepository,
+    type RemoteAuthorKeyRecord,
+    type RemoteAuthorRecord,
+} from './repositories/authorKeyRepository';
+export type { FetchedSigningKey, LocalAuthorKeyRecord } from './repositories/authorKeyRows';
 export {
     type CliAuthRequestRecord,
     type CreateCliAuthRequestInput,
     cliAuthRequestRepository,
 } from './repositories/cliAuthRequestRepository';
+export type { NewCredentialUser } from './repositories/credentialUser';
 export {
     type ExternalWorkKey,
     type ExternalWorkRecord,
@@ -17,20 +27,37 @@ export { favoriteRepository } from './repositories/favoriteRepository';
 export { federationPeerRepository } from './repositories/federationPeerRepository';
 export { instanceRepository } from './repositories/instanceRepository';
 export {
-    type CreatePublishingEnvironmentInput,
-    type PublishingEnvironmentRecord,
-    publishingEnvironmentRepository,
-} from './repositories/publishingEnvironmentRepository';
+    type CreateNotificationInput,
+    type NotificationRecord,
+    notificationRepository,
+} from './repositories/notificationRepository';
+export {
+    type LockedPendingRegistration,
+    type PendingRegistrationEmailScope,
+    type PendingRegistrationRecord,
+    pendingRegistrationRepository,
+} from './repositories/pendingRegistrationRepository';
 export { type FriendRow, userFriendRepository } from './repositories/userFriendRepository';
 export { type UserRecord, userRepository } from './repositories/userRepository';
 export { userSettingsRepository } from './repositories/userSettingsRepository';
-export { worldRepository } from './repositories/worldRepository';
+export { type PublishOutcome, type WorldTarget, worldRepository } from './repositories/worldRepository';
+export { editorWorldOf, type ServedWorld, servedWorldOf, versionsToPrune } from './repositories/worldRows';
+export { backfillWorldContentHashes, versionContentHash } from './worldContentHashBackfill';
 
 const connectionString = process.env.DATABASE_URL || 'postgresql://ubichill:password@127.0.0.1:5433/ubichill';
 
-// Disable prefetch as it is not supported for "Transaction" pool mode
-export const client = postgres(connectionString, { prepare: false });
-export const db: PostgresJsDatabase<typeof schema> = drizzle(client, { schema });
+export type Database = PostgresJsDatabase<typeof schema>;
+
+/** 接続を作る（既定の db とは別の DB を使うテスト・ツール用。使い終わったら client.end() する）。 */
+export function createDatabase(url: string): { client: postgres.Sql; db: Database } {
+    // Disable prefetch as it is not supported for "Transaction" pool mode
+    const client = postgres(url, { prepare: false });
+    return { client, db: drizzle(client, { schema }) };
+}
+
+const defaultDatabase = createDatabase(connectionString);
+export const client = defaultDatabase.client;
+export const db: Database = defaultDatabase.db;
 
 export type {
     CreateFederationPeerInput,
@@ -38,11 +65,11 @@ export type {
 } from './repositories/federationPeerRepository';
 export type { CreateInstanceInput, InstanceRecord, UpdateInstanceInput } from './repositories/instanceRepository';
 export type {
-    CreateWorldInput,
-    InsertWorldRecord,
-    UpdateWorldInput,
+    WorldDraftRecord,
     WorldRecord,
-} from './repositories/worldRepository';
+    WorldState,
+    WorldVersionRecord,
+} from './repositories/worldRows';
 export {
     accounts,
     friendStatusEnum,
@@ -51,15 +78,14 @@ export {
     insertUserFriendSchema,
     insertUserSchema,
     insertUserSettingsSchema,
-    insertWorldSchema,
     instances,
     instancesRelations,
+    pendingRegistrations,
     selectInstanceSchema,
     selectUserFavoriteSchema,
     selectUserFriendSchema,
     selectUserSchema,
     selectUserSettingsSchema,
-    selectWorldSchema,
     sessions,
     userFavorites,
     userFavoritesRelations,
@@ -70,6 +96,8 @@ export {
     users,
     usersRelations,
     verifications,
+    worldDrafts,
     worlds,
     worldsRelations,
+    worldVersions,
 } from './schema';

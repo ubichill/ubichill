@@ -150,9 +150,14 @@ async function fetchWorkerBytes(workerUrl: string, entityType: string, f: FetchL
     }
 }
 
-/** 404・SPA fallback は署名なし。通信障害を署名なしと誤判定しない。 */
+/**
+ * 404・204（中身なし）・SPA fallback は署名なし。通信障害を署名なしと誤判定しない。
+ * 204 は ubichill dev が手元のビルドに返す（配信元は 404 でも同じことを言えるので、受け入れても許すものは増えない。
+ * 署名なしの mod を動かしてよいかは allowUnsigned が決める）。
+ */
 async function fetchSignature(versionedBase: string, f: FetchLike): Promise<unknown> {
     const res = await f(`${versionedBase}/${MOD_SIGNATURE_FILE}`, { cache: 'no-store' });
+    if (res.status === 204) return undefined;
     if (!res.ok) {
         if (res.status === 404 || res.status === undefined) return undefined;
         throw new Error(`署名ファイルを取得できません (${res.status})`);

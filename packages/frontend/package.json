@@ -7,6 +7,7 @@
         "prepare": "pnpm run prepare:panda",
         "dev": "pnpm run prepare:panda && vite",
         "build": "pnpm run prepare:panda && vite build",
+        "build:world": "pnpm run prepare:panda && vite build --config vite.world.config.ts",
         "preview": "vite preview",
         "lint": "biome check .",
         "lint:fix": "biome check --write .",
@@ -26,7 +27,7 @@
         "perfect-freehand": "^1.2.3",
         "react": "catalog:",
         "react-dom": "catalog:",
-        "react-router": "8.3.0",
+        "react-router": "8.4.0",
         "upng-js": "^2.1.0",
         "yaml": "catalog:"
     },

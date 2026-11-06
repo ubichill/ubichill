@@ -24,14 +24,8 @@ const avatar = cva({
 });
 
 /** プロフィール画像（無ければ表示名の頭文字）。 */
-export function UserAvatar({
-    user,
-    size,
-}: {
-    user: Pick<UserSummary, 'name' | 'profileImageUrl'>;
-    size?: 'sm' | 'md';
-}) {
-    if (user.profileImageUrl) return <img src={user.profileImageUrl} alt="" className={avatar({ size })} />;
+export function UserAvatar({ user, size }: { user: Pick<UserSummary, 'name' | 'image'>; size?: 'sm' | 'md' }) {
+    if (user.image) return <img src={user.image} alt="" className={avatar({ size })} />;
     return (
         <span className={avatar({ size })} aria-hidden>
             {Array.from(user.name)[0] ?? '?'}

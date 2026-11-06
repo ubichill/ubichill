@@ -1,0 +1,10 @@
+{
+    "extends": "../../tsconfig.bundler.json",
+    "compilerOptions": {
+        "lib": ["ES2025", "DOM"],
+        "types": ["node"],
+        "erasableSyntaxOnly": true,
+        "verbatimModuleSyntax": true
+    },
+    "include": ["src/**/*.ts"]
+}

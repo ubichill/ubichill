@@ -1,66 +1,64 @@
-import type { ModLock } from './schemas/modLock.schema';
-
 // ゼロ依存の素朴な型（User/ComponentInstance/EntityTransform 等）は mod/entities.ts に分離。
 // barrel（このファイル）を経由せず SDK 側から直接 import できるようにするため
 // （dts-bundle-generator が schemas/* の zod スキーマまで読み込まずに済む、詳細は同ファイル参照）。
 export * from './mod/entities';
 
 import type {
-    AvailableComponent,
     ComponentInstance,
     CursorPosition,
     EntityEphemeralPayload,
     EntityPatchPayload,
     User,
     UserStatus,
-    WorldEnvironmentData,
 } from './mod/entities';
-import type { MediaTimeline, MediaTimelineIntent, MediaTimelineResult } from './mod/types';
+import type { WorldSnapshotPayload } from './world/instanceDefinition';
 
 // ============================================
-// World Snapshot (拡張版)
+// 部屋の共有状態
 // ============================================
 
 /**
- * ワールドスナップショットペイロード（flat ComponentInstance 単位）。
- *
- * GameObject に複数 Component が載っている場合、バックエンドが
- * 各 Component を 1 つの flat ComponentInstance に展開してから配信する。
+ * 部屋の共有状態の 1 件。インスタンスサーバーは値を解釈せず、revision による比較と交換と、
+ * 書き込みの時刻（updatedAt・サーバー時刻の ms）・書いた参加者（updatedBy）だけを付ける。
+ * キーの名前空間と値の意味は Host が決める（例: メディアのタイムラインは `media:<session>`）。
  */
-export interface WorldSnapshotPayload {
-    entities: ComponentInstance[];
-    availableComponents: AvailableComponent[];
-    /** アクティブなmodIDのリスト */
-    activeMods: string[];
-    environment: WorldEnvironmentData;
-    /** ワールドに焼かれた mod 完全性ロック（あれば）。ロード時の hash 照合に使う。 */
-    lock?: ModLock;
-    /** ワールドの provenance kind（local/github/...）。表示用。 */
-    sourceKind?: string;
+export interface SharedStateEntry {
+    key: string;
+    value: unknown;
+    revision: number;
+    updatedAt: number;
+    updatedBy: string;
 }
 
-// ============================================
-// Media sync
-// ============================================
+/** `state:get` / `state:update` の応答。競合（code: 'conflict'）では今の entry を返す。 */
+export type SharedStateResult =
+    | { success: true; entry: SharedStateEntry | null; serverTime: number }
+    | { success: false; error: string; code?: 'conflict'; entry?: SharedStateEntry | null; serverTime?: number };
 
-/**
- * メディアの再生状態を peer 間で同期するための状態。
- * 旧 `{ currentIndex, isPlaying, currentTime }` は動画プレイリスト前提だったため、
- * 「何を再生しているか」を mod 定義の mediaId で一般化し、動画/音声/配信を問わず扱える。
- * @deprecated revision 競合を解決できないため MediaTimeline / media:timeline:* を使用する。
- */
-export interface MediaSyncState {
-    /** 再生対象メディアの識別子（プレイリスト index を一般化。mod が内容ごとに決める）。 */
-    mediaId: string;
-    isPlaying: boolean;
-    currentTime: number;
-    duration?: number;
-    playbackRate?: number;
+export interface SharedStateUpdate {
+    key: string;
+    value: unknown;
+    /** 今の revision（無いキーは 0）。一致しなければ書かずに競合を返す。 */
+    expectedRevision: number;
 }
 
 // ============================================
 // Instance WebSocket Event Types
 // ============================================
+
+/** 他の参加者のカーソル 1 件（cursor:moved・cursors:moved の要素） */
+export interface CursorMovedPayload {
+    userId: string;
+    position: CursorPosition;
+    heldEntityId?: string | null;
+}
+
+/**
+ * world:join で宣言する、クライアントが受け取れる形。Go のインスタンスとフロントは別々にデプロイされるので、
+ * 配り方を変えるときは宣言したクライアントにだけ新しい形で送る（docs/PROTOCOLS.md の D）。
+ * - `cursors:batch`: カーソルを cursor:moved の代わりに cursors:moved でまとめて受ける
+ */
+export type InstanceFeature = 'cursors:batch';
 
 /**
  * サーバーからクライアントへ送信されるイベント
@@ -76,7 +74,13 @@ export interface ServerToClientEvents {
     'user:left': (userId: string) => void;
 
     /** ユーザーのカーソル位置更新 */
-    'cursor:moved': (data: { userId: string; position: CursorPosition; heldEntityId?: string | null }) => void;
+    'cursor:moved': (data: CursorMovedPayload) => void;
+
+    /**
+     * まとめたカーソル（features に `cursors:batch` を宣言した接続だけが受ける）。利用者ごとに最新の 1 件で、自分の分は含まない。
+     * InstanceSocket が個々の cursor:moved に展開して配るので、このイベント自体は購読側に届かない。
+     */
+    'cursors:moved': (data: CursorMovedPayload[]) => void;
 
     /** ユーザーのステータス更新 */
     'status:changed': (data: { userId: string; status: UserStatus }) => void;
@@ -113,22 +117,11 @@ export interface ServerToClientEvents {
     /** インスタンス終了通知 */
     'instance:closing': (reason: string) => void;
 
-    // ============================================
-    // Media (video / audio etc.) ピア間同期 (Server -> Client)
-    // 任意のメディア系modの「再生状態を peer 間で揃える」ためのルーム broadcast。
-    // ============================================
+    /** 共有状態が他の参加者に更新された（書いた本人へは応答で返すので送らない） */
+    'state:changed': (entry: SharedStateEntry) => void;
 
-    /** @deprecated media:timeline を使用する。 */
-    'media:sync': (data: MediaSyncState) => void;
-
-    /** @deprecated media:timeline:get を使用する。 */
-    'media:state-request': (data: { fromSocketId: string }) => void;
-
-    /** @deprecated media:timeline:get の callback を使用する。 */
-    'media:state-response': (data: MediaSyncState) => void;
-
-    /** revision 付き正規タイムラインの更新通知。 */
-    'media:timeline': (data: MediaTimeline) => void;
+    /** その場だけの知らせ（切断の予告など）。知らない種類も届くので parseServerNotice で読む */
+    'server:notice': (notice: unknown) => void;
 }
 
 /**
@@ -142,6 +135,8 @@ export interface ClientToServerEvents {
             /** 参加チケットの取得（SNS の REST）にだけ使い、インスタンスサーバーへは送らない。 */
             password?: string;
             user: Omit<User, 'id'>;
+            /** 受け取れる形の宣言。InstanceSocket が付けるので呼び出し側は指定しない。 */
+            features?: InstanceFeature[];
         },
         callback: (response: {
             success: boolean;
@@ -182,45 +177,19 @@ export interface ClientToServerEvents {
     'entity:delete': (entityId: string) => void;
 
     // ============================================
-    // Media (video / audio etc.) ピア間同期 (Client -> Server)
+    // 部屋の共有状態 (Client -> Server)
     // ============================================
 
-    /** @deprecated media:timeline:update を使用する。 */
-    'media:sync': (data: MediaSyncState) => void;
+    /** 共有状態の今の値を取得する（入室・再接続の直後に使う） */
+    'state:get': (data: { key: string }, callback: (result: SharedStateResult) => void) => void;
 
-    /** @deprecated media:timeline:get を使用する。 */
-    'media:state-request': () => void;
-
-    /** @deprecated media:timeline:get の callback を使用する。 */
-    'media:state-response': (data: MediaSyncState & { toSocketId: string }) => void;
-
-    /** 再生意図を Server の正規タイムラインへ適用。 */
-    'media:timeline:update': (data: MediaTimelineIntent, callback: (result: MediaTimelineResult) => void) => void;
-
-    /** 遅参加/再接続時に現在の正規タイムラインを取得。 */
-    'media:timeline:get': (data: { sessionId: string }, callback: (result: MediaTimelineResult) => void) => void;
+    /** expectedRevision が一致したときだけ共有状態を書き換える */
+    'state:update': (data: SharedStateUpdate, callback: (result: SharedStateResult) => void) => void;
 }
 
 // ============================================
 // Constants
 // ============================================
-
-/**
- * デフォルト設定
- */
-export const DEFAULTS = {
-    /** ユーザーのデフォルトステータス */
-    USER_STATUS: 'online' as UserStatus,
-
-    /** カーソル位置の初期値 */
-    INITIAL_POSITION: { x: 0, y: 0 } as CursorPosition,
-
-    /** デフォルトのワールド環境 */
-    WORLD_ENVIRONMENT: {
-        backgroundColor: '#F0F8FF',
-        worldSize: { width: 2000, height: 1500 },
-    } as WorldEnvironmentData,
-} as const;
 
 /**
  * 環境変数キー定数
@@ -272,6 +241,8 @@ export * from './mod/sandboxPolicy';
 export * from './mod/serviceToken';
 export * from './mod/types';
 export * from './mod/vnode';
+export * from './notification/activity';
+export * from './notification/serverNotice';
 export * from './schemas';
 export {
     confirmEnvelopeAuthor,
@@ -291,6 +262,10 @@ export * from './user/externalWorks';
 export * from './user/favoritesVisibility';
 export * from './user/friends';
 export * from './user/handle';
+export * from './user/limits';
 export * from './user/signingKeys';
 export * from './user/userSearch';
+export * from './world/devEvents';
 export * from './world/identity';
+export * from './world/instanceDefinition';
+export * from './world/resolve';

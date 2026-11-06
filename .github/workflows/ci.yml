@@ -140,16 +140,23 @@ jobs:
       - name: Verify world locks
         run: pnpm verify:world-locks
 
-      # `pnpm build:sdk` が生成する npm 公開物（ubichill パッケージ）が実際にインストール・
-      # 実行可能かを確認する fail-closed ゲート。
-      - name: Build npm publish package
-        run: pnpm build:sdk
+      # world.html（SNS 無しでワールドを動かす画面）の出力に SNS のものが入っていないか。
+      # ソースの import は check:architecture（world-app-closure）が辿る。ここは実際に配るファイルを見る
+      - name: Build world.html
+        run: pnpm --filter @ubichill/frontend build:world
 
-      - name: Smoke-test npm publish package
+      - name: Verify world.html bundle has no SNS code
+        run: node scripts/check-world-app-bundle.mjs
+
+      # npm 公開物（ubichill・@ubichill/cli）が実際にインストール・実行可能かを確認する fail-closed ゲート。
+      - name: Build npm publish packages
+        run: pnpm build:sdk && pnpm build:cli
+
+      - name: Smoke-test npm publish packages
         run: |
-          cd packages/sdk/dist-npm
+          (cd packages/sdk/dist-npm && node -e "import('./index.js').then(m => { if (!m.UbiSDK) throw new Error('UbiSDK not exported'); })")
+          cd packages/cli/dist-npm
           npm install --no-save
-          node -e "import('./index.js').then(m => { if (!m.UbiSDK) throw new Error('UbiSDK not exported'); })"
           node cli.js verify --dist-dir=../../../dist/mods
 
       # mods/* は pnpm workspace の外なので `pnpm -r exec tsc` (typecheck ジョブ) に含まれない。
@@ -170,7 +177,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          # check-drift.mjs が直近publishタグ(ubichill@*)をworktreeでビルド・比較するため、
+          # check-npm-drift.mjs が直近publishタグ(ubichill@*、@ubichill/cli@*)をworktreeでビルド・比較するため、
           # タグと履歴が必要（デフォルトのshallow checkoutでは見えない）。
           fetch-depth: 0
           fetch-tags: true
@@ -185,10 +192,53 @@ jobs:
       - name: Verify SDK type bundle
         run: pnpm verify:sdk-types
 
-      # sdk がインライン展開する shared/ecs/loader を変更して sdk 向け changeset を
+      # sdk・cli がインライン展開する shared/ecs/loader を変更して changeset を
       # 付け忘れた場合の fail-closed 検査。
-      - name: Check for undetected SDK build drift
-        run: node packages/sdk/check-drift.mjs
+      - name: Check for undetected npm build drift
+        run: node scripts/check-npm-drift.mjs packages/sdk packages/cli packages/instance
+
+  # Go のインスタンスサーバーの npm 配布（@ubichill/instance-<os>-<cpu>）が各 OS で入って起動するか。
+  # cli の optionalDependencies はレジストリの版を指すので、未公開の版でも試せるよう手元の tgz を直接入れる
+  verify-instance-npm:
+    name: Verify instance npm package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/setup
+        with:
+          install-args: --ignore-scripts
+
+      - name: Build shared
+        run: pnpm turbo build --filter=@ubichill/shared
+
+      - name: Build cli and instance packages
+        run: pnpm build:cli && pnpm build:instance
+
+      - name: Install the packed cli and this platform's instance package
+        shell: bash
+        run: |
+          set -eu
+          PLATFORM="$(node -p "process.platform + '-' + process.arch")"
+          mkdir -p "$RUNNER_TEMP/consumer" && cd "$RUNNER_TEMP/consumer"
+          npm init -y > /dev/null
+          npm pack "$GITHUB_WORKSPACE/packages/cli/dist-npm" --pack-destination . > /dev/null
+          npm pack "$GITHUB_WORKSPACE/packages/instance/dist-npm/$PLATFORM" --pack-destination . > /dev/null
+          npm install --omit=optional ./ubichill-cli-*.tgz ./ubichill-instance-*.tgz
+          # 引数なしは使い方を出して exit 1 で終わる。起動して使い方が出ることだけを確かめる
+          usage="$(node node_modules/@ubichill/cli/cli.js 2>&1 || true)"
+          echo "$usage"
+          echo "$usage" | grep -q '使い方: ubichill'
+
+      - name: Start the Go instance server from node_modules
+        shell: bash
+        run: node packages/instance/smoke.mjs --dir="$RUNNER_TEMP/consumer"
 
   # 変更検知: PR 時はパスフィルタ、push to main では全て true を返す。
   detect-changes:
@@ -217,7 +267,7 @@ jobs:
             IFS='.' read -r major minor patch <<< "${LATEST#v}"
             NEXT="v${major}.${minor}.$((patch + 1))"
           fi
-          echo "tag=${NEXT}" >> $GITHUB_OUTPUT
+          echo "tag=${NEXT}" >> "$GITHUB_OUTPUT"
 
       # ── 変更検知 ───────────────────────────────────────────────
       # 実装は .github/scripts/detect-changed-paths.sh を参照。
@@ -232,219 +282,189 @@ jobs:
         run: .github/scripts/detect-changed-paths.sh
 
   # ── Docker ビルド（並列）────────────────────────────────────────────────
-  # push to main       → 変更のあったイメージを :latest / :sha-<sha> / :<version> で
+  # push to main       → 変更のあったイメージを :latest / :sha-<sha> / :main-<sha> / :<version> で
+  #   （:main-<sha> は dev 環境が追う。:sha-<sha> は PR のプレビューにも付くので区別する）
   # PR + preview ラベル → 全イメージを :pr-<番号> / :sha-<sha> でビルド
   #   （プレビュー環境はフルスタックが要るため detect-changes で絞らず全部作る）
   # ラベル無しの PR      → ビルドしない（lint / typecheck のみ）
   #   いずれも immutable な :sha-<sha> を付与。共有の可変 :dev タグは廃止し、
   #   デプロイ（PR ごとの環境など）は GitOps 側がこれらのタグを参照する。
 
+  # 本番は品質検査の完了を待つ。プレビューは typecheck と変更検出だけを待つ。
   build-backend:
     name: Build and push Backend image
-    # verify-mods / verify-sdk は SDK npm 公開物の検証であり、Docker イメージには不要。
-    # これらを待たずに lint/test/typecheck 通過後すぐイメージビルドを開始する（並列化）。
     needs: [lint, test, typecheck, detect-changes]
-    if: >
-      github.event.pull_request.user.login != 'dependabot[bot]' &&
-      (
-        (github.event_name == 'push' && needs.detect-changes.outputs.backend == 'true') ||
-        (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'preview'))
-      )
-    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && needs.detect-changes.outputs.backend == 'true'
     permissions:
+      contents: read
       packages: write
-    env:
-      REGISTRY: ghcr.io
-      IMAGE_NAME: ubichill-backend
+    uses: ./.github/workflows/build-backend.yml
+    with:
+      next-version: ${{ needs.detect-changes.outputs.next-version }}
+    secrets:
+      UBICHILL_CREDENTIALS: ${{ secrets.UBICHILL_CREDENTIALS }}
 
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+  preview-backend:
+    name: Build preview Backend image
+    needs: [typecheck, detect-changes]
+    if: >
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      contains(github.event.pull_request.labels.*.name, 'preview')
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/build-backend.yml
+    with:
+      next-version: ${{ needs.detect-changes.outputs.next-version }}
 
-      - name: Extract versions
-        id: versions
-        run: |
-          SHA="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
-          echo "short-sha=$(echo "$SHA" | cut -c1-7)" >> $GITHUB_OUTPUT
-          echo "next-version=${{ needs.detect-changes.outputs.next-version }}" >> $GITHUB_OUTPUT
-
-      # 公式ワールドに公式アカウント（ubichill@ubichill.com）で署名し、イメージに同梱する（main だけ。マージ = 公式としての確認）。
-      # 署名はリポジトリに置かない。CI 用の公開環境は公式アカウントで `ubichill ci create` して Secret UBICHILL_CREDENTIALS に入れる。
-      # ほかの作者のリポジトリも同じ方法で公開できる（docs/worlds/FORMAT.md）。プレビューは署名しない（公式ワールドは ubichill.com だけが配る）。
-      - uses: ./.github/actions/setup
-        if: github.event_name == 'push'
-
-      - name: Sign official worlds
-        if: github.event_name == 'push'
-        env:
-          UBICHILL_CREDENTIALS: ${{ secrets.UBICHILL_CREDENTIALS }}
-        run: |
-          if [ -z "$UBICHILL_CREDENTIALS" ]; then
-            echo "::error::Secret UBICHILL_CREDENTIALS がありません。公式アカウントで 'ubichill ci create --name=\"GitHub Actions: ubichill/ubichill\"' を実行して設定してください。"
-            exit 1
-          fi
-          pnpm turbo build --filter=@ubichill/shared
-          # 公開環境が取り消されていたら、署名しても配信先で作者が付かないので先に止める
-          node packages/sdk/cli/index.ts whoami
-          node packages/sdk/cli/index.ts publish worlds/*.yaml --out=worlds --no-install
-
-      - uses: docker/login-action@v4
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: docker/setup-buildx-action@v4
-
-      - uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./Dockerfile
-          target: backend-runner
-          push: true
-          build-args: |
-            COMMIT_HASH=${{ steps.versions.outputs.short-sha }}
-          tags: |
-            ${{ github.event_name == 'push' && format('{0}/{1}/{2}:latest', env.REGISTRY, github.repository_owner, env.IMAGE_NAME) || '' }}
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:sha-${{ steps.versions.outputs.short-sha }}
-            ${{ github.event_name == 'pull_request' && format('{0}/{1}/{2}:sha-{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, github.event.pull_request.head.sha) || '' }}
-            ${{ github.event_name == 'pull_request' && format('{0}/{1}/{2}:pr-{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, github.event.pull_request.number) || '' }}
-            ${{ github.event_name == 'push' && format('{0}/{1}/{2}:{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, steps.versions.outputs.next-version) || '' }}
-          cache-from: type=gha,scope=backend
-          cache-to: type=gha,mode=max,scope=backend
-          provenance: false
-
+  # 本番は品質検査の完了を待つ。プレビューは typecheck と変更検出だけを待つ。
   build-frontend:
     name: Build and push Frontend image
     needs: [lint, test, typecheck, detect-changes]
-    if: >
-      github.event.pull_request.user.login != 'dependabot[bot]' &&
-      (
-        (github.event_name == 'push' && needs.detect-changes.outputs.frontend == 'true') ||
-        (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'preview'))
-      )
-    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && needs.detect-changes.outputs.frontend == 'true'
     permissions:
+      contents: read
       packages: write
-    env:
-      REGISTRY: ghcr.io
-      IMAGE_NAME: ubichill-frontend
+    uses: ./.github/workflows/build-frontend.yml
+    with:
+      next-version: ${{ needs.detect-changes.outputs.next-version }}
+    secrets:
+      UBICHILL_CREDENTIALS: ${{ secrets.UBICHILL_CREDENTIALS }}
 
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+  preview-frontend:
+    name: Build preview Frontend image
+    needs: [typecheck, detect-changes]
+    if: >
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      contains(github.event.pull_request.labels.*.name, 'preview')
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/build-frontend.yml
+    with:
+      next-version: ${{ needs.detect-changes.outputs.next-version }}
 
-      - name: Extract versions
-        id: versions
-        run: |
-          SHA="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
-          echo "short-sha=$(echo "$SHA" | cut -c1-7)" >> $GITHUB_OUTPUT
-          echo "next-version=${{ needs.detect-changes.outputs.next-version }}" >> $GITHUB_OUTPUT
-
-      # 同梱する mod に公式アカウント（ubichill@ubichill.com）で署名する（main だけ。マージ = 公式としての確認）。ワールドの署名と同じ
-      # Secret UBICHILL_CREDENTIALS を使い、署名はリポジトリに置かない。署名（lock.sig.json）は packages/frontend/public/mods に書き、
-      # イメージのビルドがそのまま取り込む（イメージ内の再ビルドと内容が違えば REQUIRE_MOD_SIGNATURES でビルドが止まる）。
-      # プレビューは署名しない（開発用の Host として、自分のオリジンの未署名 mod だけを動かす）。
-      - uses: ./.github/actions/setup
-        if: github.event_name == 'push'
-
-      - name: Sign bundled mods
-        if: github.event_name == 'push'
-        env:
-          UBICHILL_CREDENTIALS: ${{ secrets.UBICHILL_CREDENTIALS }}
-        run: |
-          if [ -z "$UBICHILL_CREDENTIALS" ]; then
-            echo "::error::Secret UBICHILL_CREDENTIALS がありません。公式アカウントで 'ubichill ci create --name=\"GitHub Actions: ubichill/ubichill\"' を実行して設定してください。"
-            exit 1
-          fi
-          pnpm turbo build --filter=@ubichill/shared
-          pnpm build:workers
-          # 公開環境が取り消されていたら、署名しても Host で作者を確認できないので先に止める
-          node packages/sdk/cli/index.ts whoami
-          node packages/sdk/cli/index.ts publish packages/frontend/public/mods
-          node packages/sdk/cli/index.ts verify --dist-dir=packages/frontend/public/mods --require-signatures
-
-      - uses: docker/login-action@v4
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: docker/setup-buildx-action@v4
-
-      - uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./Dockerfile
-          target: frontend-runner
-          push: true
-          build-args: |
-            COMMIT_HASH=${{ steps.versions.outputs.short-sha }}
-            VITE_COMMIT_HASH=${{ steps.versions.outputs.short-sha }}
-            VITE_ENVIRONMENT=${{ github.event_name == 'push' && 'production' || 'development' }}
-            REQUIRE_MOD_SIGNATURES=${{ github.event_name == 'push' && 'true' || 'false' }}
-          tags: |
-            ${{ github.event_name == 'push' && format('{0}/{1}/{2}:latest', env.REGISTRY, github.repository_owner, env.IMAGE_NAME) || '' }}
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:sha-${{ steps.versions.outputs.short-sha }}
-            ${{ github.event_name == 'pull_request' && format('{0}/{1}/{2}:sha-{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, github.event.pull_request.head.sha) || '' }}
-            ${{ github.event_name == 'pull_request' && format('{0}/{1}/{2}:pr-{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, github.event.pull_request.number) || '' }}
-            ${{ github.event_name == 'push' && format('{0}/{1}/{2}:{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, steps.versions.outputs.next-version) || '' }}
-          cache-from: type=gha,scope=frontend
-          cache-to: type=gha,mode=max,scope=frontend
-          provenance: false
-
+  # 本番は品質検査の完了を待つ。プレビューは typecheck と変更検出だけを待つ。
   build-instance:
     name: Build and push Instance image
     needs: [lint, test, typecheck, detect-changes]
-    if: >
-      github.event.pull_request.user.login != 'dependabot[bot]' &&
-      (
-        (github.event_name == 'push' && needs.detect-changes.outputs.instance == 'true') ||
-        (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'preview'))
-      )
-    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && needs.detect-changes.outputs.instance == 'true'
     permissions:
+      contents: read
       packages: write
-    env:
-      REGISTRY: ghcr.io
-      IMAGE_NAME: ubichill-instance
+    uses: ./.github/workflows/build-instance.yml
+    with:
+      next-version: ${{ needs.detect-changes.outputs.next-version }}
+    secrets:
+      UBICHILL_CREDENTIALS: ${{ secrets.UBICHILL_CREDENTIALS }}
 
+  preview-instance:
+    name: Build preview Instance image
+    needs: [typecheck, detect-changes]
+    if: >
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      contains(github.event.pull_request.labels.*.name, 'preview')
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/build-instance.yml
+    with:
+      next-version: ${{ needs.detect-changes.outputs.next-version }}
+
+  # ── プレビューの状態を PR に知らせる ─────────────────────────────────────────
+  # イメージを作れたか、テストが通ったか、プレビューが新しいコミットで立ち上がったか、スモーク（packages/e2e）が通ったかを
+  # 1 つのコメントにまとめて更新する。スモークは今は情報だけ（continue-on-error）で、落ちてもマージは止めない。
+  preview-status:
+    name: Preview status
+    needs: [lint, test, typecheck, preview-backend, preview-frontend, preview-instance]
+    if: >
+      always() && !cancelled() &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      contains(github.event.pull_request.labels.*.name, 'preview')
+    runs-on: ubuntu-latest
+    # 立ち上がりを待つ 15 分 + スモーク（目安 2〜4 分）
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      LINT: ${{ needs.lint.result }}
+      TEST: ${{ needs.test.result }}
+      TYPECHECK: ${{ needs.typecheck.result }}
+      BUILD_BACKEND: ${{ needs.preview-backend.result }}
+      BUILD_FRONTEND: ${{ needs.preview-frontend.result }}
+      BUILD_INSTANCE: ${{ needs.preview-instance.result }}
     steps:
       - uses: actions/checkout@v5
+
+      - name: Wait for preview
+        id: wait
+        if: >
+          needs.preview-backend.result == 'success' &&
+          needs.preview-frontend.result == 'success' &&
+          needs.preview-instance.result == 'success'
+        run: .github/scripts/wait-preview.sh
+
+      - name: Report preview status (smoke running)
+        if: steps.wait.outputs.deployed == 'true'
+        env:
+          DEPLOYED: "true"
+          SMOKE: running
+        run: .github/scripts/preview-status.sh
+
+      # e2e の依存（Playwright）だけを入れる
+      - uses: ./.github/actions/setup
+        if: steps.wait.outputs.deployed == 'true'
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          install-args: --filter @ubichill/e2e
 
-      - name: Extract versions
-        id: versions
-        run: |
-          SHA="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
-          echo "short-sha=$(echo "$SHA" | cut -c1-7)" >> $GITHUB_OUTPUT
-          echo "next-version=${{ needs.detect-changes.outputs.next-version }}" >> $GITHUB_OUTPUT
-
-      - uses: docker/login-action@v4
+      - name: Cache Playwright browsers
+        if: steps.wait.outputs.deployed == 'true'
+        uses: actions/cache@v6
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          path: ~/.cache/ms-playwright
+          # Playwright の版は packages/e2e/package.json で固定している
+          key: playwright-${{ runner.os }}-${{ hashFiles('packages/e2e/package.json') }}
 
-      - uses: docker/setup-buildx-action@v4
+      # chromium の headless shell だけを入れる（フルの chromium・ほかのブラウザは入れない）
+      - name: Install Playwright chromium
+        if: steps.wait.outputs.deployed == 'true'
+        run: pnpm --filter @ubichill/e2e exec playwright install --with-deps --only-shell chromium
 
-      # Go のテストは Dockerfile の build ステージで実行される（落ちたら push しない）
-      - uses: docker/build-push-action@v7
+      - name: Smoke test preview
+        id: smoke
+        if: steps.wait.outputs.deployed == 'true'
+        continue-on-error: true
+        timeout-minutes: 10
+        run: >
+          pnpm smoke "https://pr-${PR_NUMBER}.ubichill.com"
+          --report="$RUNNER_TEMP/smoke-report.json"
+          --artifacts="$RUNNER_TEMP/smoke-results"
+
+      - name: Upload smoke artifacts
+        if: always() && steps.smoke.outcome == 'failure'
+        uses: actions/upload-artifact@v7
         with:
-          context: services/instance
-          push: true
-          tags: |
-            ${{ github.event_name == 'push' && format('{0}/{1}/{2}:latest', env.REGISTRY, github.repository_owner, env.IMAGE_NAME) || '' }}
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:sha-${{ steps.versions.outputs.short-sha }}
-            ${{ github.event_name == 'pull_request' && format('{0}/{1}/{2}:sha-{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, github.event.pull_request.head.sha) || '' }}
-            ${{ github.event_name == 'pull_request' && format('{0}/{1}/{2}:pr-{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, github.event.pull_request.number) || '' }}
-            ${{ github.event_name == 'push' && format('{0}/{1}/{2}:{3}', env.REGISTRY, github.repository_owner, env.IMAGE_NAME, steps.versions.outputs.next-version) || '' }}
-          cache-from: type=gha,scope=instance
-          cache-to: type=gha,mode=max,scope=instance
-          provenance: false
+          name: smoke-results
+          path: ${{ runner.temp }}/smoke-results
+          retention-days: 14
+
+      - name: Report preview status
+        if: always()
+        env:
+          DEPLOYED: ${{ steps.wait.outputs.deployed == 'true' }}
+          SMOKE: ${{ (steps.smoke.outcome == 'success' || steps.smoke.outcome == 'failure') && 'done' || 'skipped' }}
+          SMOKE_REPORT: ${{ runner.temp }}/smoke-report.json
+        run: .github/scripts/preview-status.sh
 
   # ── git タグ付け（push to main のビルド完了後）──────────────────────────────
 

@@ -1,8 +1,12 @@
 import { CreateInstanceRequestSchema, ListInstancesQuerySchema } from '@ubichill/shared';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
+import { appConfig } from '../config';
+import { redis } from '../lib/redis';
+import { sharedRateLimit } from '../lib/sharedRateLimit';
 import { optionalAuth, requireAuth } from '../middleware/auth';
 import { InstanceJoinRejected, instanceManager } from '../services/instanceManager';
+import { logger } from '../utils/logger';
 
 const router = Router();
 
@@ -34,10 +38,11 @@ router.get('/', optionalAuth, async (req, res) => {
 
 const createInstanceLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, // 1時間
-    limit: 10, // 1IPあたり10件まで
+    limit: appConfig.rateLimit.instanceCreatePerHour, // 1IPあたり（既定 10 件）
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Too many instances created from this IP, please try again after an hour' },
+    ...sharedRateLimit('instances-create', redis, logger),
 });
 
 /**
@@ -129,7 +134,10 @@ router.delete('/:id', requireAuth, async (req, res) => {
         const result = await instanceManager.closeInstance(id, userId);
 
         if (!result.success) {
-            res.status(result.error === 'Instance not found' ? 404 : 403).json({ error: result.error });
+            const status = { 'not-found': 404, forbidden: 403, 'runtime-unavailable': 503, 'delete-failed': 500 }[
+                result.reason
+            ];
+            res.status(status).json({ error: result.error });
             return;
         }
 

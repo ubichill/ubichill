@@ -16,9 +16,9 @@ import { PublishedModsSection } from './PublishedModsSection';
 interface PublicProfile {
     id: string;
     name: string;
-    handle: string | null;
-    author: string | null;
-    profileImageUrl: string | null;
+    handle: string;
+    author: string;
+    image: string | null;
     bio?: string | null;
 }
 
@@ -158,9 +158,9 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance, onEditProf
                             flexShrink: 0,
                         })}
                     >
-                        {profile.profileImageUrl ? (
+                        {profile.image ? (
                             <img
-                                src={profile.profileImageUrl}
+                                src={profile.image}
                                 alt={profile.name}
                                 className={css({ width: '100%', height: '100%', objectFit: 'cover' })}
                             />
@@ -181,11 +181,9 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance, onEditProf
                                 >
                                     {profile.name}
                                 </h1>
-                                {profile.author && (
-                                    <p className={css({ fontSize: '13px', color: 'textMuted' })}>
-                                        {displayAuthorAccount(profile.author)}
-                                    </p>
-                                )}
+                                <p className={css({ fontSize: '13px', color: 'textMuted' })}>
+                                    {displayAuthorAccount(profile.author)}
+                                </p>
                             </div>
                             {isOwnPage && (
                                 <div className={css({ display: 'flex', gap: '2', flexWrap: 'wrap' })}>

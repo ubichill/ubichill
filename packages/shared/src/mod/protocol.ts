@@ -46,7 +46,7 @@ export const MIN_COMPATIBLE_PROTOCOL_VERSION = 0;
 
 /**
  * Worker バンドル (`format: 'iife', globalName: MOD_EXPORTS_GLOBAL_NAME`、
- * `packages/sdk/cli/build.ts`) が mod の `export` をまとめて公開するグローバル変数名。
+ * `packages/cli/src/build.ts`) が mod の `export` をまとめて公開するグローバル変数名。
  *
  * sandbox.worker.ts はmodコード実行後にこの変数の `.default` が関数であれば、
  * 「UIコンポーネントの既定エクスポート」として自動的に `Ubi.ui.render()` する

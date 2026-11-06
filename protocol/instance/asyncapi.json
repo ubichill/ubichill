@@ -21,6 +21,9 @@
         "cursor:moved": {
           "$ref": "#/components/messages/cursor:moved"
         },
+        "cursors:moved": {
+          "$ref": "#/components/messages/cursors:moved"
+        },
         "entity:create": {
           "$ref": "#/components/messages/entity:create"
         },
@@ -48,29 +51,23 @@
         "instance:closing": {
           "$ref": "#/components/messages/instance:closing"
         },
-        "media:state-request": {
-          "$ref": "#/components/messages/media:state-request"
-        },
-        "media:state-response": {
-          "$ref": "#/components/messages/media:state-response"
-        },
-        "media:sync": {
-          "$ref": "#/components/messages/media:sync"
-        },
-        "media:timeline": {
-          "$ref": "#/components/messages/media:timeline"
-        },
-        "media:timeline:get": {
-          "$ref": "#/components/messages/media:timeline:get"
-        },
-        "media:timeline:update": {
-          "$ref": "#/components/messages/media:timeline:update"
-        },
         "reply": {
           "$ref": "#/components/messages/reply"
         },
+        "server:notice": {
+          "$ref": "#/components/messages/server:notice"
+        },
         "session:replaced": {
           "$ref": "#/components/messages/session:replaced"
+        },
+        "state:changed": {
+          "$ref": "#/components/messages/state:changed"
+        },
+        "state:get": {
+          "$ref": "#/components/messages/state:get"
+        },
+        "state:update": {
+          "$ref": "#/components/messages/state:update"
         },
         "status:changed": {
           "$ref": "#/components/messages/status:changed"
@@ -131,19 +128,10 @@
           "$ref": "#/channels/instance/messages/entity:ephemeral"
         },
         {
-          "$ref": "#/channels/instance/messages/media:sync"
+          "$ref": "#/channels/instance/messages/state:get"
         },
         {
-          "$ref": "#/channels/instance/messages/media:state-request"
-        },
-        {
-          "$ref": "#/channels/instance/messages/media:state-response"
-        },
-        {
-          "$ref": "#/channels/instance/messages/media:timeline:get"
-        },
-        {
-          "$ref": "#/channels/instance/messages/media:timeline:update"
+          "$ref": "#/channels/instance/messages/state:update"
         }
       ]
     },
@@ -166,6 +154,9 @@
           "$ref": "#/channels/instance/messages/cursor:moved"
         },
         {
+          "$ref": "#/channels/instance/messages/cursors:moved"
+        },
+        {
           "$ref": "#/channels/instance/messages/status:changed"
         },
         {
@@ -184,16 +175,7 @@
           "$ref": "#/channels/instance/messages/entity:ephemeral"
         },
         {
-          "$ref": "#/channels/instance/messages/media:sync"
-        },
-        {
-          "$ref": "#/channels/instance/messages/media:state-request"
-        },
-        {
-          "$ref": "#/channels/instance/messages/media:state-response"
-        },
-        {
-          "$ref": "#/channels/instance/messages/media:timeline"
+          "$ref": "#/channels/instance/messages/state:changed"
         },
         {
           "$ref": "#/channels/instance/messages/error"
@@ -205,6 +187,9 @@
           "$ref": "#/channels/instance/messages/instance:closing"
         },
         {
+          "$ref": "#/channels/instance/messages/server:notice"
+        },
+        {
           "$ref": "#/channels/instance/messages/reply"
         }
       ]
@@ -212,26 +197,6 @@
   },
   "components": {
     "messages": {
-      "media:state-response": {
-        "name": "media:state-response",
-        "payload": {
-          "type": "object",
-          "required": [
-            "event"
-          ],
-          "properties": {
-            "event": {
-              "const": "media:state-response"
-            },
-            "id": {
-              "type": "string",
-              "maxLength": 100
-            },
-            "data": {}
-          },
-          "additionalProperties": false
-        }
-      },
       "user:joined": {
         "name": "user:joined",
         "payload": {
@@ -404,7 +369,70 @@
               "type": "string",
               "maxLength": 100
             },
-            "data": {}
+            "data": {
+              "type": "object",
+              "properties": {
+                "userId": {
+                  "type": "string"
+                },
+                "position": {
+                  "type": "object",
+                  "properties": {
+                    "x": {
+                      "type": "number",
+                      "minimum": -10000000.0,
+                      "maximum": 10000000.0
+                    },
+                    "y": {
+                      "type": "number",
+                      "minimum": -10000000.0,
+                      "maximum": 10000000.0
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "additionalProperties": false
+                },
+                "heldEntityId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 64
+                }
+              },
+              "required": [
+                "userId",
+                "position"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "summary": "One cursor move of another participant. Sent to connections that did not declare the cursors:batch feature."
+      },
+      "cursors:moved": {
+        "name": "cursors:moved",
+        "summary": "Latest cursor of each participant who moved during the batch interval (server flag --cursor-batch-interval, default 50ms), excluding the receiver. Sent only to connections that declared the cursors:batch feature in world:join; they receive no cursor:moved. Volatile: may be dropped when the connection queue is full.",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event",
+            "data"
+          ],
+          "properties": {
+            "event": {
+              "const": "cursors:moved"
+            },
+            "data": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/messages/cursor:moved/payload/properties/data"
+              }
+            }
           },
           "additionalProperties": false
         }
@@ -529,46 +557,6 @@
           "additionalProperties": false
         }
       },
-      "media:sync": {
-        "name": "media:sync",
-        "payload": {
-          "type": "object",
-          "required": [
-            "event"
-          ],
-          "properties": {
-            "event": {
-              "const": "media:sync"
-            },
-            "id": {
-              "type": "string",
-              "maxLength": 100
-            },
-            "data": {}
-          },
-          "additionalProperties": false
-        }
-      },
-      "media:timeline:update": {
-        "name": "media:timeline:update",
-        "payload": {
-          "type": "object",
-          "required": [
-            "event"
-          ],
-          "properties": {
-            "event": {
-              "const": "media:timeline:update"
-            },
-            "id": {
-              "type": "string",
-              "maxLength": 100
-            },
-            "data": {}
-          },
-          "additionalProperties": false
-        }
-      },
       "world:leave": {
         "name": "world:leave",
         "payload": {
@@ -589,26 +577,6 @@
           "additionalProperties": false
         }
       },
-      "media:state-request": {
-        "name": "media:state-request",
-        "payload": {
-          "type": "object",
-          "required": [
-            "event"
-          ],
-          "properties": {
-            "event": {
-              "const": "media:state-request"
-            },
-            "id": {
-              "type": "string",
-              "maxLength": 100
-            },
-            "data": {}
-          },
-          "additionalProperties": false
-        }
-      },
       "entity:patched": {
         "name": "entity:patched",
         "payload": {
@@ -619,26 +587,6 @@
           "properties": {
             "event": {
               "const": "entity:patched"
-            },
-            "id": {
-              "type": "string",
-              "maxLength": 100
-            },
-            "data": {}
-          },
-          "additionalProperties": false
-        }
-      },
-      "media:timeline": {
-        "name": "media:timeline",
-        "payload": {
-          "type": "object",
-          "required": [
-            "event"
-          ],
-          "properties": {
-            "event": {
-              "const": "media:timeline"
             },
             "id": {
               "type": "string",
@@ -722,22 +670,40 @@
           "additionalProperties": false
         }
       },
-      "media:timeline:get": {
-        "name": "media:timeline:get",
+      "server:notice": {
+        "name": "server:notice",
+        "summary": "Ephemeral notice (not stored). Clients ignore unknown kinds.",
         "payload": {
           "type": "object",
           "required": [
-            "event"
+            "event",
+            "data"
           ],
           "properties": {
             "event": {
-              "const": "media:timeline:get"
+              "const": "server:notice"
             },
-            "id": {
-              "type": "string",
-              "maxLength": 100
-            },
-            "data": {}
+            "data": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "kind",
+                    "at"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "disconnect"
+                    },
+                    "at": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "Epoch milliseconds when the server closes this connection. The client reconnects automatically."
+                    }
+                  }
+                }
+              ]
+            }
           },
           "additionalProperties": false
         }
@@ -832,6 +798,13 @@
                     }
                   },
                   "additionalProperties": true
+                },
+                "features": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Delivery forms this client understands. The server ignores unknown values. cursors:batch: receive cursors:moved instead of cursor:moved."
                 }
               },
               "required": [
@@ -880,14 +853,172 @@
             "data": {
               "type": "object",
               "properties": {
-                "success": { "type": "boolean" },
-                "error": { "type": "string" },
+                "success": {
+                  "type": "boolean"
+                },
+                "error": {
+                  "type": "string"
+                },
                 "code": {
                   "type": "string",
-                  "enum": ["ticket_invalid", "instance_unavailable"],
-                  "description": "Recoverable world:join failure. Refresh the ticket at most once for ticket_invalid; all retries share a finite connection budget."
+                  "enum": [
+                    "ticket_invalid",
+                    "instance_unavailable",
+                    "conflict"
+                  ],
+                  "description": "ticket_invalid / instance_unavailable: recoverable world:join failure. Refresh the ticket at most once for ticket_invalid; all retries share a finite connection budget. conflict: state:update did not match expectedRevision; entry carries the current value."
+                },
+                "entry": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/messages/state:changed/payload/properties/data"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "state:get / state:update の応答。キーが無ければ null。"
+                },
+                "serverTime": {
+                  "type": "integer",
+                  "format": "int64",
+                  "description": "応答を作ったサーバー時刻（epoch ms）。state:get / state:update の応答に付く。"
                 }
               }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "state:get": {
+        "name": "state:get",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event",
+            "id",
+            "data"
+          ],
+          "properties": {
+            "event": {
+              "const": "state:get"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512,
+                  "description": "UTF-8 で 512 バイト以内。名前空間（mod・メディアのセッションなど）は Host が付け、サーバーは解釈しない。"
+                }
+              },
+              "required": [
+                "key"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "state:update": {
+        "name": "state:update",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event",
+            "id",
+            "data"
+          ],
+          "properties": {
+            "event": {
+              "const": "state:update"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512,
+                  "description": "UTF-8 で 512 バイト以内。名前空間（mod・メディアのセッションなど）は Host が付け、サーバーは解釈しない。"
+                },
+                "value": {
+                  "description": "任意の JSON（詰めた表現で 32KiB 以内）。サーバーは解釈しない。"
+                },
+                "expectedRevision": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991,
+                  "description": "今の revision（無いキーは 0）。一致しなければ書かずに code: conflict と今の entry を返す。"
+                }
+              },
+              "required": [
+                "key",
+                "value",
+                "expectedRevision"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "state:changed": {
+        "name": "state:changed",
+        "payload": {
+          "type": "object",
+          "required": [
+            "event"
+          ],
+          "properties": {
+            "event": {
+              "const": "state:changed"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "data": {
+              "type": "object",
+              "description": "部屋の共有状態の 1 件。",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "value": {
+                  "description": "任意の JSON（詰めた表現で 32KiB 以内）。サーバーは解釈しない。"
+                },
+                "revision": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "updatedAt": {
+                  "type": "integer",
+                  "format": "int64",
+                  "description": "書き込みを受けたサーバー時刻（epoch ms）"
+                },
+                "updatedBy": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "key",
+                "value",
+                "revision",
+                "updatedAt",
+                "updatedBy"
+              ],
+              "additionalProperties": false
             }
           },
           "additionalProperties": false

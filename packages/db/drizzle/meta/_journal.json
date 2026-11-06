@@ -127,6 +127,69 @@
       "when": 1791843679401,
       "tag": "0017_external_works",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792083621351,
+      "tag": "0018_timestamptz",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792085836323,
+      "tag": "0019_pending_registrations",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1792105891539,
+      "tag": "0020_author_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1792241467043,
+      "tag": "0021_users_cleanup",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1792241468043,
+      "tag": "0022_users_drop_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1792297158813,
+      "tag": "0023_world_versions",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1792380519840,
+      "tag": "0024_db_cleanup_stop_using",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1792389357320,
+      "tag": "0025_db_cleanup_drop_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1792737398270,
+      "tag": "0026_notifications",
+      "breakpoints": true
     }
   ]
 }

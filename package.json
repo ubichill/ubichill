@@ -8,19 +8,23 @@
   "devEngines": {
     "runtime": {
       "name": "node",
-      "version": "26.10.0",
+      "version": "26.12.1",
       "onFail": "download"
     }
   },
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "build:workers": "node packages/sdk/cli/index.ts build --mods-dir=mods --public-mods-dir=packages/frontend/public/mods --dist-dir=dist/mods && pnpm gen:world-locks",
+    "build:workers": "node packages/cli/src/index.ts build --mods-dir=mods --public-mods-dir=packages/frontend/public/mods --dist-dir=dist/mods && pnpm gen:world-locks",
     "build:sdk": "turbo build --filter=@ubichill/sdk",
-    "gen:install": "node packages/sdk/cli/index.ts install --mods-dir=packages/frontend/public/mods",
+    "build:cli": "turbo build --filter=@ubichill/cli",
+    "build:instance": "turbo build --filter=@ubichill/instance",
+    "gen:install": "node packages/cli/src/index.ts install --mods-dir=packages/frontend/public/mods",
     "gen:world-locks": "node scripts/world-locks.mjs",
-    "verify:mod-locks": "node packages/sdk/cli/index.ts verify --dist-dir=dist/mods",
+    "verify:mod-locks": "node packages/cli/src/index.ts verify --dist-dir=dist/mods",
     "verify:world-locks": "node scripts/world-locks.mjs --check",
     "check:architecture": "node scripts/check-architecture.mjs",
+    "check:chart": "node scripts/check-chart.mjs",
+    "check:loadtest-chart": "node scripts/check-loadtest-chart.mjs",
     "verify:sdk-types": "vitest run --config vitest.sdk-verify.config.ts",
     "docs:capabilities": "node scripts/gen-capability-docs.mjs",
     "build": "turbo build --filter=@ubichill/shared && pnpm build:workers && turbo build",
@@ -31,6 +35,7 @@
     "db:migrate": "pnpm --filter @ubichill/db migrate:dev",
     "clean": "pnpm --filter \"./packages/*\" clean",
     "test": "vitest run",
+    "smoke": "pnpm --filter @ubichill/e2e smoke",
     "test:watch": "vitest",
     "instance:dev": "go -C services/instance run ./cmd/instance --guests --world=examples/empty.json --origins=http://localhost:3000",
     "instance:test": "go -C services/instance test -race ./...",
@@ -50,6 +55,7 @@
     "nodemon": "catalog:",
     "turbo": "^2.11.3",
     "typescript": "catalog:",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.11",
+    "yaml": "catalog:"
   }
 }

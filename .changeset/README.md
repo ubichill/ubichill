@@ -13,20 +13,20 @@ We have a quick list of common questions to get you started engaging with this p
 自動的にバージョン管理・公開の対象外になる。`config.json` の `ignore` にはそれに加えて
 frontend/sandbox/react（`@ubichill/sdk` に依存し `updateInternalDependencies` で
 連鎖バージョンアップされてしまうため明示的に除外）を指定している。
-結果、バージョン管理・npm公開の対象は**`packages/sdk`（npm公開名は `ubichill`）だけ**。
+結果、バージョン管理・npm公開の対象は**`packages/sdk`（npm公開名は `ubichill`）と `packages/cli`（`@ubichill/cli`）**。
 
 このリポジトリ全体の Docker image リリースタグ（`v0.0.N`、`.github/workflows/ci.yml`の
 `Tag release`ジョブが push to main で自動採番）とは**完全に無関係**。混同しないこと。
 
-1. `packages/sdk` に変更を加えたPRに `pnpm changeset` で changeset を追加する
+1. `packages/sdk`・`packages/cli` に変更を加えたPRに `pnpm changeset` で changeset を追加する
    （対話式で変更内容とバージョン種別 patch/minor/major を選ぶ、`.changeset/*.md` が生成される）
 2. PRをmainにマージすると `.github/workflows/release-sdk.yml` が自動で
-   「Version Packages」PR（`packages/sdk/package.json` の version bump + CHANGELOG.md）を開く
-3. その「Version Packages」PRをマージすると、同ワークフローが `packages/sdk/publish.mjs`
-   （`pnpm build:sdk` で `dist-npm/` を最新バージョンで再生成し `npm publish` する自前
+   「Version Packages」PR（各 package.json の version bump + CHANGELOG.md）を開く
+3. その「Version Packages」PRをマージすると、同ワークフローが `scripts/publish-npm.mjs`
+   （各パッケージの `dist-npm/` を最新バージョンで再生成し `npm publish` する自前
    スクリプト）で npm registry へ公開する。`changeset publish` の `publishConfig.directory`
    ルーティングは使わない（pnpmがworkspace内の @ubichill/sdk 参照先を全てdist-npmに固定して
-   しまい開発時のソース解決が壊れるため。詳細は `packages/sdk/publish.mjs` 冒頭コメント参照）
+   しまい開発時のソース解決が壊れるため。詳細は `scripts/publish-npm.mjs` 冒頭コメント参照）
 
 ### 認証: npm trusted publishing（OIDC、長期トークン不要）
 

@@ -1,5 +1,6 @@
 import { isPublishable } from '@ubichill/shared';
 import { MyWorldsSection, ProfileEditSection, useMyAccount } from '@/components/profile';
+import { AnnouncementSection } from '@/components/profile/AnnouncementSection';
 import { FederationSection } from '@/components/profile/FederationSection';
 import { PasswordSection } from '@/components/profile/PasswordSection';
 import { PublishingSection } from '@/components/profile/PublishingSection';
@@ -7,7 +8,7 @@ import { css } from '@/styled-system/css';
 import { ModPermissionsSettings } from './settings/ModPermissionsSettings';
 import { cardStyle, type JoinInstanceHandler, sectionHeading, tabPanel } from './shared';
 
-export type SettingsSection = 'profile' | 'worlds' | 'publishing' | 'account' | 'federation' | 'mods';
+export type SettingsSection = 'profile' | 'worlds' | 'publishing' | 'account' | 'federation' | 'announcements' | 'mods';
 
 const SECTIONS: ReadonlyArray<{ id: SettingsSection; label: string; adminOnly?: boolean }> = [
     { id: 'profile', label: 'プロフィール' },
@@ -15,6 +16,7 @@ const SECTIONS: ReadonlyArray<{ id: SettingsSection; label: string; adminOnly?: 
     { id: 'publishing', label: '公開' },
     { id: 'account', label: 'アカウント' },
     { id: 'federation', label: '連合', adminOnly: true },
+    { id: 'announcements', label: 'お知らせ', adminOnly: true },
     { id: 'mods', label: 'mod の権限' },
 ];
 
@@ -116,6 +118,7 @@ export function SettingsTab({
                     />
                 )}
                 {current === 'federation' && profile?.isAdmin && <FederationSection />}
+                {current === 'announcements' && profile?.isAdmin && <AnnouncementSection />}
             </div>
             {current === 'mods' && <ModPermissionsSettings />}
         </div>

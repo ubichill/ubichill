@@ -17,6 +17,8 @@ type Frame struct {
 	Data    json.RawMessage `json:"data,omitempty"`
 	ID      string          `json:"id,omitempty"`
 	ReplyTo string          `json:"replyTo,omitempty"`
+	// raw は符号化済みのバイト列。中継で owner から届いたフレーム、broadcast で 1 回だけ符号化したフレーム。
+	raw []byte
 }
 
 func encoded(v any) json.RawMessage { b, _ := json.Marshal(v); return b }

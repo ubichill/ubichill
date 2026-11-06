@@ -5,6 +5,7 @@ import yaml from 'yaml';
 import { fetchMyAccount } from '@/lib/account/me';
 import { API_BASE } from '@/lib/api';
 import { createInstance as createInstanceApi } from '@/lib/instancesApi';
+import { MOD_CDN_URL } from '@/lib/modCdn';
 import {
     authorSignerFor,
     browserFetch,
@@ -13,7 +14,7 @@ import {
     type SavedWorld,
     saveWorldBundle,
 } from '@/lib/signing';
-import { buildWorldLock } from '@/mods/buildWorldLock';
+import { buildWorldLock } from '@/world';
 import type { PublishState } from './useDefinition';
 import type { PublishDecision } from './usePublishSetup';
 
@@ -38,7 +39,7 @@ interface UseWorldEditorApiArgs {
  * サーバ側の別カラムに保存する（YAML はクリーンに保つ）。読む側はこの lock と hash 照合して差し替え mod を拒否する。
  */
 async function buildSaveBody(definition: WorldDefinition, worldId: string | undefined) {
-    const { lock, unpinned } = await buildWorldLock(definition);
+    const { lock, unpinned } = await buildWorldLock(definition, MOD_CDN_URL);
     return { body: { yaml: yaml.stringify(definition), lock, worldId }, unpinned };
 }
 
@@ -90,14 +91,11 @@ export function useWorldEditorApi({
     const saveDraft = useCallback(
         () =>
             withSaving(async () => {
-                // 下書きにも ID が要る（ワールドの URL は /@ID/名前）。無ければその場で決めてもらう
+                // ワールドの URL は /@ID/名前 なので、アカウントを取れなければ保存先が決まらない
                 const account = await fetchMyAccount().catch(() => null);
-                if (!account?.author) {
-                    const decision = await requestPublishSetup(
-                        account ? { kind: 'needs-handle', account } : { kind: 'no-account' },
-                        'save',
-                    );
-                    if (decision.kind === 'cancel') return false;
+                if (!account) {
+                    await requestPublishSetup({ kind: 'no-account' }, 'save');
+                    return false;
                 }
                 const { body } = await buildSaveBody(definition, isEdit ? worldId : undefined);
                 const saved = await saveWorldBundle(body, null, deps);

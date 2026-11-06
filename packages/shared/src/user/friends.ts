@@ -116,8 +116,9 @@ export function groupFriendLocations<I extends { id: string }>(
 export interface UserSummary {
     id: string;
     name: string;
-    handle: string | null;
-    profileImageUrl: string | null;
+    handle: string;
+    /** プロフィール画像の URL（無ければ null） */
+    image: string | null;
     /** 自己紹介（書いていなければ null） */
     bio: string | null;
 }

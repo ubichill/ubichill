@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, eq, ilike, inArray, isNull, lte, ne, or, type SQL, sql } from 'drizzle-orm';
 import { db } from '../index';
-import { accounts, sessions, users } from '../schema';
+import { accounts, instances, sessions, users, worlds, worldVersions } from '../schema';
+import { insertCredentialUser, type NewCredentialUser } from './credentialUser';
 
 export type UserRecord = typeof users.$inferSelect;
 
@@ -9,11 +10,13 @@ export interface CreateUserInput {
     id: string;
     name: string;
     email: string;
+    handle: string;
     emailVerified?: boolean;
     image?: string;
-    username?: string;
-    profileImageUrl?: string;
 }
+
+/** システムユーザーの handle。予約語なので一般の登録と重ならない。 */
+const SYSTEM_USER_HANDLE = 'system';
 
 export const userRepository = {
     async findById(id: string): Promise<UserRecord | undefined> {
@@ -41,13 +44,17 @@ export const userRepository = {
                 id: input.id,
                 name: input.name,
                 email: input.email,
+                handle: input.handle,
                 emailVerified: input.emailVerified ?? false,
                 image: input.image,
-                username: input.username,
-                profileImageUrl: input.profileImageUrl,
             })
             .returning();
         return results[0];
+    },
+
+    /** パスワードでログインできるユーザーを作る（users と accounts を 1 トランザクションで）。 */
+    async createCredentialUser(user: NewCredentialUser): Promise<void> {
+        await db.transaction((tx) => insertCredentialUser(tx, user));
     },
 
     async findByDisplayNameKey(key: string): Promise<UserRecord | undefined> {
@@ -92,7 +99,7 @@ export const userRepository = {
         await db.update(users).set({ passwordChangeRequired: required, updatedAt: new Date() }).where(eq(users.id, id));
     },
 
-    /** 公式アカウントの初期化用: ID・表示名・確認済みなどをまとめて設定する。 */
+    /** 公式アカウントの初期化用: ID・表示名・確認済みなどをまとめて設定する（ID を書き換えてよいのは昇格のときだけ）。 */
     async initializeAccount(
         id: string,
         fields: Partial<Pick<UserRecord, 'handle' | 'name' | 'displayNameKey' | 'emailVerified'>> & {
@@ -149,7 +156,7 @@ export const userRepository = {
     },
 
     /**
-     * ID（前方一致）・表示名（部分一致）でユーザーを探す。大文字小文字は区別しない。ID の無いユーザーも表示名で見つかる。
+     * ID（前方一致）・表示名（部分一致）でユーザーを探す。大文字小文字は区別しない。
      * `excludeIds` はシステムユーザーなど検索に出さないもの。
      */
     /**
@@ -187,21 +194,26 @@ export const userRepository = {
     },
 
     /**
-     * handle を設定する。変更不可なので未設定のときだけ書き込む（同時リクエストでも上書きしない）。
-     * 一意制約違反（他人が同時に取った）は呼び出し側で扱う。
+     * ユーザーを削除する（ワールド・お気に入り等は FK の cascade で消える）。ほかの人のインスタンスが
+     * このユーザーのワールドの版を指していると版を消せない（RESTRICT）ので、先に参照を外す。
      */
-    async setHandleOnce(id: string, handle: string): Promise<UserRecord | undefined> {
-        const results = await db
-            .update(users)
-            .set({ handle, updatedAt: new Date() })
-            .where(and(eq(users.id, id), isNull(users.handle)))
-            .returning();
-        return results[0];
-    },
-
-    /** ユーザーを削除する（ワールド・お気に入り等は FK の cascade で消える）。 */
     async deleteById(id: string): Promise<void> {
-        await db.delete(users).where(eq(users.id, id));
+        await db.transaction(async (tx) => {
+            await tx
+                .update(instances)
+                .set({ worldVersionId: null })
+                .where(
+                    inArray(
+                        instances.worldVersionId,
+                        tx
+                            .select({ id: worldVersions.id })
+                            .from(worldVersions)
+                            .innerJoin(worlds, eq(worlds.id, worldVersions.worldId))
+                            .where(eq(worlds.authorId, id)),
+                    ),
+                );
+            await tx.delete(users).where(eq(users.id, id));
+        });
     },
 
     async ensureSystemUser(systemUserId: string): Promise<UserRecord> {
@@ -214,6 +226,7 @@ export const userRepository = {
             id: systemUserId,
             name: 'System',
             email: 'system@ubichill.local',
+            handle: SYSTEM_USER_HANDLE,
             emailVerified: true,
         });
     },

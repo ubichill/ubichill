@@ -1,64 +1,94 @@
 import { useState } from 'react';
-import { NotificationCard, type NotificationsState } from '@/components/notifications';
+import { isPendingFollow, NotificationCard, useNotifications } from '@/components/notifications';
 import { NOTIFICATION_TABS, type NotificationKind } from '@/lib/notifications';
-import { css } from '@/styled-system/css';
+import { css, cva } from '@/styled-system/css';
 import { cardStyle, sectionHeading, tabPanel } from './shared';
 
 const EMPTY: Record<NotificationKind, string> = {
     invite: '招待はありません。',
-    'friend-request': 'フレンドリクエストはありません。',
+    'friend-request': 'フレンドの通知はありません。',
     other: 'その他の通知はありません。',
 };
 
-/** 通知タブ。種類（招待・フレンドリクエスト・その他）ごとのタブに分ける。 */
-export function NotificationsTab({
-    notifications,
-    onNavigate,
-}: {
-    notifications: NotificationsState;
-    onNavigate?: () => void;
-}) {
-    const firstWithItems = NOTIFICATION_TABS.find((t) => notifications.groups[t.kind].length > 0)?.kind;
-    const [kind, setKind] = useState<NotificationKind>(firstWithItems ?? 'invite');
-    const items = notifications.groups[kind];
+const tab = cva({
+    base: {
+        flex: 1,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '1.5',
+        py: '2',
+        bg: 'transparent',
+        borderWidth: '0 0 3px 0',
+        borderStyle: 'solid',
+        fontSize: '13px',
+        fontWeight: '700',
+        cursor: 'pointer',
+    },
+    variants: {
+        active: {
+            true: { borderColor: 'primary', color: 'text' },
+            false: { borderColor: 'transparent', color: 'textMuted' },
+        },
+    },
+});
+
+const textButton = cva({
+    base: {
+        px: '3',
+        py: '1.5',
+        borderRadius: '8px',
+        border: '1px solid',
+        borderColor: 'border',
+        bg: 'surface',
+        color: 'text',
+        fontSize: '12px',
+        fontWeight: '700',
+        cursor: 'pointer',
+        _hover: { bg: 'surfaceHover' },
+        _disabled: { opacity: 0.5, cursor: 'not-allowed' },
+    },
+});
+
+/** 通知タブ。種類（招待・フレンド・その他）ごとのタブに分ける。未読は強調し、押すと既読にする。 */
+export function NotificationsTab({ onNavigate }: { onNavigate?: () => void }) {
+    const { feed, groups, error, incomingIds, markRead, loadMore, reload } = useNotifications();
+    const firstWithUnread = NOTIFICATION_TABS.find((t) => groups[t.kind].some((n) => !n.read))?.kind;
+    const [kind, setKind] = useState<NotificationKind>(firstWithUnread ?? 'friend-request');
+    const items = groups[kind];
 
     return (
         <div className={tabPanel} onClick={(e) => e.stopPropagation()}>
             <div className={cardStyle}>
-                <h2 className={sectionHeading}>通知</h2>
+                <div className={css({ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' })}>
+                    <h2 className={sectionHeading}>通知</h2>
+                    <button
+                        type="button"
+                        className={textButton()}
+                        disabled={feed.unreadCount === 0}
+                        onClick={() => void markRead({ all: true })}
+                    >
+                        すべて既読にする
+                    </button>
+                </div>
                 <div
                     role="tablist"
                     className={css({ display: 'flex', borderBottom: '1px solid', borderColor: 'border', mb: '3' })}
                 >
                     {NOTIFICATION_TABS.map((t) => {
-                        const count = notifications.groups[t.kind].length;
-                        const active = t.kind === kind;
+                        const unread = groups[t.kind].filter((n) => !n.read).length;
                         return (
                             <button
                                 key={t.kind}
                                 type="button"
                                 role="tab"
-                                aria-selected={active}
+                                aria-selected={t.kind === kind}
                                 onClick={() => setKind(t.kind)}
-                                className={css({
-                                    flex: 1,
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    gap: '1.5',
-                                    py: '2',
-                                    bg: 'transparent',
-                                    borderWidth: '0 0 3px 0',
-                                    borderStyle: 'solid',
-                                    borderColor: active ? 'primary' : 'transparent',
-                                    color: active ? 'text' : 'textMuted',
-                                    fontSize: '13px',
-                                    fontWeight: '700',
-                                    cursor: 'pointer',
-                                })}
+                                className={tab({ active: t.kind === kind })}
                             >
-                                {t.label}（{count}）
-                                {count > 0 && (
+                                {t.label}
+                                {unread > 0 && `（${unread}）`}
+                                {unread > 0 && (
                                     <span
                                         className={css({
                                             width: '8px',
@@ -72,9 +102,10 @@ export function NotificationsTab({
                         );
                     })}
                 </div>
+                {error && <p className={css({ fontSize: '12px', color: 'errorText', mb: '2' })}>{error}</p>}
                 {items.length === 0 ? (
                     <p className={css({ fontSize: '13px', color: 'textMuted', py: '4', textAlign: 'center' })}>
-                        {EMPTY[kind]}
+                        {feed.loaded ? EMPTY[kind] : '読み込み中…'}
                     </p>
                 ) : (
                     <ul className={css({ display: 'flex', flexDirection: 'column', gap: '2' })}>
@@ -82,11 +113,22 @@ export function NotificationsTab({
                             <NotificationCard
                                 key={n.id}
                                 notification={n}
-                                onDone={() => void notifications.reload()}
+                                pendingFollow={isPendingFollow(n, incomingIds)}
+                                onRead={() => {
+                                    if (!n.read) void markRead({ ids: [n.id] });
+                                }}
+                                onFriendshipChange={() => void reload()}
                                 onNavigate={onNavigate}
                             />
                         ))}
                     </ul>
+                )}
+                {feed.nextCursor && (
+                    <div className={css({ display: 'flex', justifyContent: 'center', mt: '3' })}>
+                        <button type="button" className={textButton()} onClick={() => void loadMore()}>
+                            もっと見る
+                        </button>
+                    </div>
                 )}
             </div>
         </div>

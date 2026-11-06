@@ -1,4 +1,4 @@
-import { publishingEnvironmentRepository, userRepository } from '@ubichill/db';
+import { authorKeyRepository, userRepository } from '@ubichill/db';
 import { OFFICIAL_HANDLE } from '@ubichill/shared';
 import type { NextFunction, Request, Response } from 'express';
 import { auth } from '../lib/auth';
@@ -89,7 +89,7 @@ export async function requirePublisher(req: Request, res: Response, next: NextFu
         return;
     }
     try {
-        const env = await publishingEnvironmentRepository.findActiveByTokenHash(sha256Base64Url(token));
+        const env = await authorKeyRepository.findActiveByTokenHash(sha256Base64Url(token));
         const user = env ? await userRepository.findById(env.userId) : undefined;
         if (!env || !user) {
             res.status(401).json({
@@ -106,7 +106,7 @@ export async function requirePublisher(req: Request, res: Response, next: NextFu
             image: user.image,
         };
         req.publishingEnvironment = { id: env.id, publicKey: env.publicKey, kind: env.kind };
-        void publishingEnvironmentRepository.touch(env.id).catch(() => undefined);
+        void authorKeyRepository.touch(env.id).catch(() => undefined);
         next();
     } catch (error) {
         console.error('API トークンの確認に失敗しました:', error);
@@ -161,7 +161,7 @@ export function toWebHeaders(req: Request): Headers {
 }
 
 /** このサーバーの管理者か（公式アカウント `ubichill` が管理者を兼ねる）。 */
-export function isAdminHandle(handle: string | null | undefined): boolean {
+export function isAdminHandle(handle: string | undefined): boolean {
     return handle === OFFICIAL_HANDLE;
 }
 

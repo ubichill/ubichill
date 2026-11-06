@@ -1,4 +1,22 @@
 {{- if .Values.instanceRuntime.enabled }}
+{{- $directory := .Values.instanceRuntime.directory | default "memory" }}
+{{- if not (has $directory (list "memory" "redis")) }}
+{{- fail (printf "instanceRuntime.directory は memory か redis です（%s）" $directory) }}
+{{- end }}
+{{- if and (eq $directory "redis") (not .Values.redis.enabled) (not (and .Values.redis.external .Values.redis.external.url)) }}
+{{- fail "instanceRuntime.directory: redis には Redis（redis.enabled か redis.external.url）が要ります" }}
+{{- end }}
+{{- $replicas := 1 }}
+{{- if hasKey .Values.instanceRuntime "replicas" }}
+{{- $replicas = int .Values.instanceRuntime.replicas }}
+{{- end }}
+{{- /* メモリの Directory は Pod ごとに別なので、2 Pod 以上では同じ部屋の owner が Pod ごとにできてしまう */}}
+{{- if and (ge $replicas 2) (ne $directory "redis") }}
+{{- fail (printf "instanceRuntime.replicas を 2 以上（%d）にするには instanceRuntime.directory: redis が要ります（memory では Pod の間で部屋を共有できません）" $replicas) }}
+{{- end }}
+{{- if lt (int .Values.instanceRuntime.maxConnections) 0 }}
+{{- fail (printf "instanceRuntime.maxConnections は 0（無制限）以上にします（%v）" .Values.instanceRuntime.maxConnections) }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -6,10 +24,24 @@ metadata:
   labels:
     {{- include "ubichill.labels" . | nindent 4 }}
 spec:
-  # State has one owner. Multiple replicas require instance-aware routing.
-  replicas: 1
+  # 部屋ごとの owner は Directory が決め、別の Pod に来た WebSocket は owner へ中継する（Ingress・Service はそのまま）
+  {{- /* KEDA（HPA）が台数を持つときは書かない。書くと同期のたびに HPA の決めた台数を戻してしまう */}}
+  {{- if not .Values.instanceRuntime.autoscaling.enabled }}
+  replicas: {{ $replicas }}
+  {{- end }}
+  {{- /*
+    memory は Pod ごとに Directory が別なので、新旧の Pod が並ぶと同じ部屋の owner が 2 つできる。Recreate で必ず入れ替える。
+    redis は owner が 1 つに決まる（fencing）ので、新しい Pod が ready になってから古い Pod を 1 つずつ draining で止める。
+  */}}
   strategy:
+    {{- if eq $directory "redis" }}
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    {{- else }}
     type: Recreate
+    {{- end }}
   selector:
     matchLabels:
       {{- include "ubichill.selectorLabels" . | nindent 6 }}
@@ -29,6 +61,27 @@ spec:
         checksum/admin-token: {{ get .Values.backend.secretEnv .Values.instanceRuntime.secretKey | toString | sha256sum }}
       {{- end }}
     spec:
+      {{- $drainTimeout := ternary .Values.instanceRuntime.drainTimeout "0s" (eq $directory "redis") }}
+      {{- $drainSeconds := include "ubichill.durationSeconds" $drainTimeout | int }}
+      {{- $grace := .Values.instanceRuntime.terminationGracePeriodSeconds }}
+      # SIGTERM のあと drainTimeout まで部屋を引っ越し・直接の接続が抜けるのを待ち、残りを閉じてから HTTP を止める（最大 10 秒）
+      terminationGracePeriodSeconds: {{ if or (eq (toString $grace) "") (eq $grace nil) }}{{ add $drainSeconds 30 }}{{ else }}{{ int $grace }}{{ end }}
+      {{- if .Values.instanceRuntime.autoscaling.enabled }}
+      # 自分の Pod に pod-deletion-cost を書く（templates/instance/rbac.yaml）
+      serviceAccountName: {{ include "ubichill.serviceAccountName.instance" . }}
+      {{- end }}
+      {{- with .Values.instanceRuntime.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.instanceRuntime.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.instanceRuntime.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: instance
           image: {{ include "ubichill.instance.image" . }}
@@ -36,6 +89,15 @@ spec:
           args:
             - --origins={{ include "ubichill.instance.origins" . }}
             - --disconnect-grace={{ .Values.instanceRuntime.disconnectGrace }}
+            - --max-rooms={{ .Values.instanceRuntime.maxRooms }}
+            - --max-connections={{ int .Values.instanceRuntime.maxConnections }}
+            {{- /* memory（1 Pod・Recreate）では部屋を移せる先が無く、待つほど止まっている時間が延びるだけなので待たない */}}
+            - --drain-timeout={{ $drainTimeout }}
+            - --migrate-after={{ .Values.instanceRuntime.migrateAfter }}
+            - --disconnect-notice={{ .Values.instanceRuntime.disconnectNotice }}
+            {{- if .Values.instanceRuntime.autoscaling.enabled }}
+            - --pod-deletion-cost=true
+            {{- end }}
           ports:
             - name: realtime
               containerPort: 3002
@@ -45,6 +107,27 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.instanceRuntime.existingSecret | default .Values.backend.existingSecret | default (printf "%s-backend-secrets" (include "ubichill.fullname" .)) }}
                   key: {{ .Values.instanceRuntime.secretKey }}
+            # ノード ID（Pod 名＋起動ごとの乱数）と、Directory に書く自分のアドレス
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            {{- if .Values.instanceRuntime.autoscaling.enabled }}
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            {{- end }}
+            # 部屋の割り当てを Redis で共有するか（memory / redis）。replicas を 2 以上にするときだけ redis
+            - name: INSTANCE_DIRECTORY
+              value: {{ $directory | quote }}
+            {{- with include "ubichill.redis.env" . }}
+            {{- . | nindent 12 }}
+            {{- end }}
           securityContext:
             runAsNonRoot: true
             runAsUser: 1000
@@ -52,9 +135,10 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+          # draining（SIGTERM のあと）は /ready が 503 になり、Service から外れる。生存は /health のまま
           readinessProbe:
             httpGet:
-              path: /health
+              path: /ready
               port: realtime
           livenessProbe:
             httpGet:
@@ -67,6 +151,9 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "ubichill.fullname" . }}-instance
+  labels:
+    {{- include "ubichill.labels" . | nindent 4 }}
+    component: instance
 spec:
   ports:
     - name: realtime

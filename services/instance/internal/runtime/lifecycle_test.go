@@ -116,11 +116,11 @@ func TestOnlyDeliberateCloseAnnouncesClosing(t *testing.T) {
 
 func TestAdmissionReportsRecoverableFailureCodes(t *testing.T) {
 	s, h := start(t, false)
-	previous := New(Config{})
+	other := New(Config{AdminToken: strings.Repeat("b", 32)})
 	cases := []struct {
 		name, room, token, code string
 	}{
-		{"server restarted", "a", previous.sign(ticket{"a", "alice", time.Now().Add(time.Minute).Unix(), "member", ""}), "ticket_invalid"},
+		{"signed with another key", "a", other.sign(ticket{"a", "alice", time.Now().Add(time.Minute).Unix(), "member", ""}), "ticket_invalid"},
 		{"ticket expired", "a", s.sign(ticket{"a", "alice", time.Now().Add(-time.Minute).Unix(), "member", ""}), "ticket_invalid"},
 		{"room disappeared", "missing", s.sign(ticket{"missing", "alice", time.Now().Add(time.Minute).Unix(), "member", ""}), "instance_unavailable"},
 	}
@@ -182,7 +182,7 @@ func TestRateLimitRejectsWithoutDisconnecting(t *testing.T) {
 	alice := connect(t, s, h, "a", "alice")
 	const total = 300
 	for i := range total {
-		_ = alice.WriteJSON(Frame{Event: "media:timeline:get", ID: fmt.Sprintf("r%d", i), Data: encoded(Object{"sessionId": "v"})})
+		_ = alice.WriteJSON(Frame{Event: "state:get", ID: fmt.Sprintf("r%d", i), Data: encoded(Object{"key": "v"})})
 	}
 	limited := 0
 	for i := range total {
@@ -196,7 +196,7 @@ func TestRateLimitRejectsWithoutDisconnecting(t *testing.T) {
 		t.Fatalf("limited %d of %d frames", limited, total)
 	}
 	time.Sleep(1100 * time.Millisecond)
-	if out := request(t, alice, "media:timeline:get", "after", Object{"sessionId": "v"}); out["success"] != true {
+	if out := request(t, alice, "state:get", "after", Object{"key": "v"}); out["success"] != true {
 		t.Fatal("rate limit did not reset")
 	}
 }

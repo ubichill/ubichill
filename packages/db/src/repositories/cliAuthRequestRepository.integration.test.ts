@@ -21,7 +21,12 @@ describe.skipIf(!RUN)('cliAuthRequestRepository (DB統合)', () => {
 
     it('承認は承認待ちのものだけ、引き換えは承認済みのものを 1 回だけ（同時に送っても 1 つしか通らない）', async () => {
         const userId = `cli-it-${stamp}`;
-        await userRepository.create({ id: userId, name: userId, email: `${userId}@example.com` });
+        await userRepository.create({
+            id: userId,
+            name: userId,
+            email: `${userId}@example.com`,
+            handle: `cli_${stamp}`,
+        });
         try {
             const id = `req-${stamp}`;
             await cliAuthRequestRepository.create(base(id, new Date(Date.now() + 60_000)));

@@ -20,7 +20,7 @@ export const externalWorks = pgTable(
         name: text('name').notNull(),
         /** mod の版（最後に登録した版）。 */
         version: text('version'),
-        registeredAt: timestamp('registered_at').defaultNow().notNull(),
+        registeredAt: timestamp('registered_at', { withTimezone: true }).defaultNow().notNull(),
     },
     (table) => [
         primaryKey({ columns: [table.userId, table.kind, table.url, table.name] }),

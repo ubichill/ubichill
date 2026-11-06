@@ -9,8 +9,8 @@ import type { OwnedWorld } from './OwnedWorldCard';
 export interface MyProfile {
     id: string;
     name: string;
-    handle: string | null;
-    author: string | null;
+    handle: string;
+    author: string;
     signingKeys?: string[];
     displayNameConflict?: boolean;
     /** 次に別の表示名へ変えられる時刻（ISO 8601）。変えたことが無ければ null。 */
@@ -18,7 +18,7 @@ export interface MyProfile {
     passwordChangeRequired?: boolean;
     passwordManagedBySecret?: boolean;
     isAdmin?: boolean;
-    profileImageUrl: string | null;
+    image: string | null;
     bio?: string | null;
 }
 
@@ -66,10 +66,8 @@ export function useMyAccount() {
      */
     const signWorlds = async (worldIds: readonly string[]): Promise<ResignResult<WorldIdentity>> => {
         setError('');
-        if (!profile?.author) {
-            setError('公開するには、「公開」で ID を設定してください。');
-            return { done: [], failed: worldIds.map((id) => ({ id, error: 'ID が未設定です' })) };
-        }
+        if (!profile)
+            return { done: [], failed: worldIds.map((id) => ({ id, error: 'アカウントを読み込めていません' })) };
         try {
             const signingKeys = profile.signingKeys ?? [];
             const signer = await authorSignerFor({ id: profile.id, author: profile.author, signingKeys });

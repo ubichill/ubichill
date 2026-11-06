@@ -47,6 +47,28 @@ export const SigningKeyListSchema = z.object({
 });
 export type SigningKeyList = z.infer<typeof SigningKeyListSchema>;
 
+/** 署名鍵のアルゴリズム（今は ed25519 だけ）。 */
+export const SIGNING_KEY_ALGORITHM = 'ed25519';
+
+const BASE64URL_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+const toBase64UrlChars = (text: string): string => text.replace(/\+/g, '-').replace(/\//g, '_');
+
+/**
+ * ed25519 公開鍵の書き方を 1 つに揃える。保存・照合の前に通す。読めなければ undefined。
+ * `ed25519:` の接頭辞の有無、base64 / base64url、パディングの有無を受け、接頭辞無し・パディング無しの base64url を返す。
+ *
+ * 43 文字目の下位 2 bit は 32 byte に入らない余りで、復号する側（node・WebCrypto・Postgres の decode）は無視する。
+ * {@link Ed25519PublicKeySchema} は文字の形しか見ないので、0 に揃えないと同じ鍵が 4 通りの文字列になり、一意の確認をすり抜ける。
+ * DB のマイグレーション（0020_author_keys）が SQL で同じ規則を再現している。
+ */
+export function normalizeEd25519PublicKey(value: string): string | undefined {
+    const body = value.startsWith('ed25519:') ? value.slice('ed25519:'.length) : value;
+    const match = /^([A-Za-z0-9+/_-]{42})([A-Za-z0-9+/_-])=?$/.exec(body);
+    if (!match) return undefined;
+    const last = BASE64URL_ALPHABET.indexOf(toBase64UrlChars(match[2]));
+    return `${toBase64UrlChars(match[1])}${BASE64URL_ALPHABET[last - (last % 4)]}`;
+}
+
 export type SigningKeyStatus = 'active' | 'revoked' | 'unknown';
 
 /** 同じ鍵が複数あれば、どれか 1 つでも取り消されていれば取り消し扱い（取り消しは覆らない）。 */

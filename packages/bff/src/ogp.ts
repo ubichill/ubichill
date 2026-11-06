@@ -106,7 +106,7 @@ export function buildUserMetaTags({
                 worldCount !== undefined ? `公開しているワールド ${worldCount} 件。` : ''
             }`
           : `${account} — ubichill のユーザー`;
-    const image = user?.profileImageUrl ?? `${publicBaseUrl}/icon.png`;
+    const image = user?.image ?? `${publicBaseUrl}/icon.png`;
     const jsonLd = escJsonForScript(
         JSON.stringify({
             '@context': 'https://schema.org',
@@ -127,7 +127,7 @@ export function buildUserMetaTags({
         `<meta property="og:url" content="${esc(pageUrl)}">`,
         `<meta property="og:image" content="${esc(image)}">`,
         `<meta property="og:image:alt" content="${esc(name)}">`,
-        user?.handle ? `<meta property="profile:username" content="${esc(user.handle)}">` : '',
+        user ? `<meta property="profile:username" content="${esc(user.handle)}">` : '',
         '<meta name="twitter:card" content="summary">',
         `<meta name="twitter:title" content="${esc(title)}">`,
         `<meta name="twitter:description" content="${esc(desc)}">`,

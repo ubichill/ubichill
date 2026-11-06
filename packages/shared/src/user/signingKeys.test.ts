@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activeSigningKeys, parseSigningKeyList, signingKeyStatus } from './signingKeys';
+import { activeSigningKeys, normalizeEd25519PublicKey, parseSigningKeyList, signingKeyStatus } from './signingKeys';
 
 const K1 = 'A'.repeat(43);
 const K2 = 'B'.repeat(43);
@@ -41,5 +41,54 @@ describe('parseSigningKeyList', () => {
         ).toBeUndefined();
         expect(parseSigningKeyList({ account: list.account, keys: [] }, 'youkan@ubichill.com')).toBeUndefined();
         expect(parseSigningKeyList(null, 'youkan@ubichill.com')).toBeUndefined();
+    });
+});
+
+describe('normalizeEd25519PublicKey', () => {
+    // 実際の鍵（node の generateKeyPairSync('ed25519') の x）。43 文字目 g は下位 2 bit が 0
+    const KEY = 'zrAOWmvHfxcn2wxizz6yonJ_OmzgO6eIdPdTFgBUwng';
+    const STANDARD = 'zrAOWmvHfxcn2wxizz6yonJ/OmzgO6eIdPdTFgBUwng=';
+
+    it('正規形はそのまま返す', () => {
+        expect(normalizeEd25519PublicKey(KEY)).toBe(KEY);
+        expect(normalizeEd25519PublicKey('A'.repeat(43))).toBe('A'.repeat(43));
+    });
+
+    it('接頭辞・標準の base64・パディングの違いは同じ鍵に揃える', () => {
+        for (const variant of [`ed25519:${KEY}`, STANDARD, `ed25519:${STANDARD}`, `${KEY}=`, STANDARD.slice(0, -1)]) {
+            expect(normalizeEd25519PublicKey(variant)).toBe(KEY);
+        }
+    });
+
+    it('32 byte に入らない余りの bit が違うだけの書き方は同じ鍵にする（復号すると同じ鍵になる）', () => {
+        for (const last of ['g', 'h', 'i', 'j']) {
+            expect(normalizeEd25519PublicKey(`${KEY.slice(0, 42)}${last}`)).toBe(KEY);
+        }
+        expect(normalizeEd25519PublicKey(`${KEY.slice(0, 42)}k`)).not.toBe(KEY);
+        expect(normalizeEd25519PublicKey('B'.repeat(43))).toBe(`${'B'.repeat(42)}A`);
+        expect(normalizeEd25519PublicKey(`${'A'.repeat(42)}_`)).toBe(`${'A'.repeat(42)}8`);
+    });
+
+    it('長さ・文字・接頭辞の形が違うものは読めない', () => {
+        for (const bad of [
+            '',
+            'A'.repeat(42),
+            'A'.repeat(44),
+            `${'A'.repeat(43)}==`,
+            `${'A'.repeat(42)}=`,
+            `${'A'.repeat(42)}.`,
+            `ED25519:${KEY}`,
+            `ed25519:ed25519:${KEY}`,
+            ` ${KEY}`,
+            `${KEY}\n`,
+        ]) {
+            expect(normalizeEd25519PublicKey(bad)).toBeUndefined();
+        }
+    });
+
+    it('正規化した値は何度通しても変わらない', () => {
+        const once = normalizeEd25519PublicKey(`${STANDARD.slice(0, 42)}/`);
+        expect(once).toBeDefined();
+        expect(normalizeEd25519PublicKey(once ?? '')).toBe(once);
     });
 });

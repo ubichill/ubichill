@@ -9,7 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, watch } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildMod } from '../packages/sdk/cli/build.ts';
+import { buildMod } from '../packages/cli/src/build.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');

@@ -11,15 +11,30 @@ const (
 	AdminTokenScopes = "adminToken.Scopes"
 )
 
+// Defines values for ConflictSuccess.
+const (
+	ConflictSuccessFalse ConflictSuccess = false
+)
+
 // Defines values for ErrorSuccess.
 const (
-	False ErrorSuccess = false
+	ErrorSuccessFalse ErrorSuccess = false
 )
 
 // Defines values for InstanceGrantProtocolVersion.
 const (
 	N1 InstanceGrantProtocolVersion = 1
 )
+
+// Conflict owner が別のノードのときは owner を付ける。
+type Conflict struct {
+	Error   string          `json:"error"`
+	Owner   *InstanceOwner  `json:"owner,omitempty"`
+	Success ConflictSuccess `json:"success"`
+}
+
+// ConflictSuccess defines model for Conflict.Success.
+type ConflictSuccess bool
 
 // Error defines model for Error.
 type Error struct {
@@ -55,14 +70,38 @@ type InstanceGrant struct {
 // InstanceGrantProtocolVersion defines model for InstanceGrant.ProtocolVersion.
 type InstanceGrantProtocolVersion int
 
+// InstanceOwner defines model for InstanceOwner.
+type InstanceOwner struct {
+	// Addr owner の内部アドレス。owner の heartbeat が切れていれば無い。
+	Addr string `json:"addr,omitempty"`
+
+	// Alive owner の heartbeat が期限内か。
+	Alive bool   `json:"alive"`
+	Epoch int64  `json:"epoch"`
+	Gen   string `json:"gen"`
+	Node  string `json:"node"`
+}
+
 // RuntimePresence defines model for RuntimePresence.
 type RuntimePresence struct {
+	// Addr owner の内部アドレス（host:port）。管理 API と Pod 間の中継はここへ送る。単体モードのゲスト向けには返さない。
+	Addr string `json:"addr,omitempty"`
+
 	// EmptySince Epoch milliseconds; 0 while occupied, includes reconnect grace.
-	EmptySince int64    `json:"emptySince"`
-	ID         string   `json:"id"`
-	MaxUsers   int      `json:"maxUsers"`
-	MemberIDs  []string `json:"memberIds"`
-	Name       string   `json:"name"`
+	EmptySince int64 `json:"emptySince"`
+
+	// Epoch owner の世代。owner が交代するたびに増える。(gen, epoch) の組で比べる。
+	Epoch int64 `json:"epoch,omitempty"`
+
+	// Gen 割り当てた時点のクラスタの世代。
+	Gen       string   `json:"gen,omitempty"`
+	ID        string   `json:"id"`
+	MaxUsers  int      `json:"maxUsers"`
+	MemberIDs []string `json:"memberIds"`
+	Name      string   `json:"name"`
+
+	// Node owner のノード ID（Pod 名＋起動ごとの乱数）。単体モードのゲスト向けには返さない。
+	Node string `json:"node,omitempty"`
 }
 
 // Snapshot defines model for Snapshot.
@@ -82,10 +121,43 @@ type TicketRequest struct {
 	UserId string  `json:"userId"`
 }
 
+// ExpectedEpoch defines model for ExpectedEpoch.
+type ExpectedEpoch = int64
+
+// ExpectedGen defines model for ExpectedGen.
+type ExpectedGen = string
+
 // CloseInstanceParams defines parameters for CloseInstance.
 type CloseInstanceParams struct {
 	// EmptyBefore Atomically reject if occupied or emptied after this epoch millisecond timestamp.
 	EmptyBefore *int64 `form:"emptyBefore,omitempty" json:"emptyBefore,omitempty"`
+
+	// Gen 呼び出し側が知っている部屋の世代（クラスタの gen）。epoch と組で指定する。今の部屋の世代と違えば 409。
+	Gen *ExpectedGen `form:"gen,omitempty" json:"gen,omitempty"`
+
+	// Epoch 呼び出し側が知っている owner の epoch。gen と組で指定する。
+	Epoch *ExpectedEpoch `form:"epoch,omitempty" json:"epoch,omitempty"`
+
+	// Absent With true, close only if no owner exists; cannot be combined with gen or epoch. Used by reaper after observing absence.
+	Absent *bool `form:"absent,omitempty" json:"absent,omitempty"`
+}
+
+// ProvisionInstanceParams defines parameters for ProvisionInstance.
+type ProvisionInstanceParams struct {
+	// Gen 呼び出し側が知っている部屋の世代（クラスタの gen）。epoch と組で指定する。今の部屋の世代と違えば 409。
+	Gen *ExpectedGen `form:"gen,omitempty" json:"gen,omitempty"`
+
+	// Epoch 呼び出し側が知っている owner の epoch。gen と組で指定する。
+	Epoch *ExpectedEpoch `form:"epoch,omitempty" json:"epoch,omitempty"`
+}
+
+// IssueTicketParams defines parameters for IssueTicket.
+type IssueTicketParams struct {
+	// Gen 呼び出し側が知っている部屋の世代（クラスタの gen）。epoch と組で指定する。今の部屋の世代と違えば 409。
+	Gen *ExpectedGen `form:"gen,omitempty" json:"gen,omitempty"`
+
+	// Epoch 呼び出し側が知っている owner の epoch。gen と組で指定する。
+	Epoch *ExpectedEpoch `form:"epoch,omitempty" json:"epoch,omitempty"`
 }
 
 // ProvisionInstanceJSONRequestBody defines body for ProvisionInstance for application/json ContentType.

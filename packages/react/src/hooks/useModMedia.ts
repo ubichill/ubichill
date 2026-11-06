@@ -1,5 +1,5 @@
 /** React adapter for the framework-independent media runtime. */
-import type { MediaTimeline, ModHostEvent } from '@ubichill/shared';
+import type { ModHostEvent, SharedStateEntry } from '@ubichill/shared';
 import type React from 'react';
 import { useEffect, useMemo, useRef } from 'react';
 import { createMediaRuntime, type MediaHandlers } from '../media/createMediaRuntime';
@@ -45,13 +45,13 @@ export function useModMedia(
 
     useEffect(() => {
         if (!socket) return;
-        const onTimeline = (timeline: MediaTimeline): void => runtime.acceptTimeline(timeline);
+        const onSharedState = (entry: SharedStateEntry): void => runtime.acceptSharedState(entry);
         const refreshTimelines = (): void => runtime.refreshTimelines();
-        socket.on('media:timeline', onTimeline);
+        socket.on('state:changed', onSharedState);
         socket.on('connect', refreshTimelines);
         if (socket.connected) refreshTimelines();
         return () => {
-            socket.off('media:timeline', onTimeline);
+            socket.off('state:changed', onSharedState);
             socket.off('connect', refreshTimelines);
         };
     }, [runtime, socket]);

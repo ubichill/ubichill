@@ -1,5 +1,5 @@
 # package.json の devEngines.runtime.version と揃える（base ステージで一致を検証し、ズレたらビルドを落とす）
-ARG NODE_VERSION=26.10.0
+ARG NODE_VERSION=26.12.1
 
 # ==========================================
 # base: pnpm + bookworm-slim
@@ -65,10 +65,6 @@ WORKDIR /app
 COPY . .
 
 # Vite ビルド時に埋め込まれる環境変数
-ARG VITE_INSTANCE_SERVER_URL
-ENV VITE_INSTANCE_SERVER_URL=${VITE_INSTANCE_SERVER_URL}
-ARG VITE_INSTANCE_ID
-ENV VITE_INSTANCE_ID=${VITE_INSTANCE_ID}
 ARG VITE_BACKEND_URL
 ENV VITE_BACKEND_URL=${VITE_BACKEND_URL}
 
@@ -91,7 +87,7 @@ ARG REQUIRE_MOD_SIGNATURES=false
 # public/ を dist/ へコピーする。順序が重要。
 RUN pnpm turbo build --filter=@ubichill/shared \
     && pnpm build:workers \
-    && node packages/sdk/cli/index.ts verify --dist-dir=packages/frontend/public/mods \
+    && node packages/cli/src/index.ts verify --dist-dir=packages/frontend/public/mods \
         $([ "$REQUIRE_MOD_SIGNATURES" = "true" ] && echo --require-signatures) \
     && pnpm --filter @ubichill/frontend build \
     && pnpm --filter @ubichill/bff build
