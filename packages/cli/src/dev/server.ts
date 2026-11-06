@@ -6,7 +6,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { join, resolve, sep } from 'node:path';
 import type { Duplex } from 'node:stream';
-import { isSandboxWorkerScriptPath, type ModLock, SANDBOX_WORKER_CSP } from '@ubichill/shared';
+import { isSandboxWorkerScriptPath, MOD_SIGNATURE_FILE, type ModLock, SANDBOX_WORKER_CSP } from '@ubichill/shared';
 import { findGeneration, type Generation, type GenerationState } from './generation.ts';
 import { isRealtimePath, proxyHttp, proxyUpgrade } from './proxy.ts';
 import { contentTypeOf, matchRoute, withDevMeta } from './routes.ts';
@@ -116,6 +116,12 @@ export function createDevServer(deps: DevServerDeps): DevServer {
                 const generation = findGeneration(deps.state(), route.buildId);
                 const mod = generation?.mods.get(route.modId);
                 const bytes = mod && mod.version === route.version ? mod.files.get(route.file) : undefined;
+                // 手元のビルドに作者署名は無い。404 だとブラウザのコンソールに毎回エラーが出るので、204（中身なし = 署名なし）で答える
+                if (!bytes && mod && route.file === MOD_SIGNATURE_FILE) {
+                    res.writeHead(204, { 'Cache-Control': IMMUTABLE });
+                    res.end();
+                    return;
+                }
                 if (!bytes) return notFound(res);
                 res.writeHead(200, {
                     'Content-Type': contentTypeOf(route.file),

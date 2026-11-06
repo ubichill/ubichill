@@ -1,21 +1,25 @@
 /**
- * `ubichill dev` の上部バーと診断。世代・部屋・接続の状態、「部屋を作り直す」、ビルドとワールドの失敗。
+ * `ubichill dev` の状態表示と診断。世代・部屋・接続の状態、「部屋を作り直す」、ビルドとワールドの失敗。
+ *
+ * 状態表示は右上の小さな札にする。ステージは画面全体（ポインタの座標は `clientY + scrollTop`）なので、
+ * 上端に帯を敷くと `overlay: top-left` の HUD やワールドの上端が本番と違って隠れる。
  */
 import { css } from '@/styled-system/css';
 import type { DevEvent } from './devSession';
 
 const bar = css({
     position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
+    top: '8px',
+    right: '8px',
     zIndex: 10010,
     display: 'flex',
     alignItems: 'center',
-    gap: '12px',
-    px: '12px',
-    py: '6px',
-    fontSize: '12px',
+    gap: '8px',
+    pl: '10px',
+    pr: '4px',
+    py: '4px',
+    borderRadius: '999px',
+    fontSize: '11px',
     fontFamily: 'monospace',
     color: 'hudText',
     backgroundColor: 'hudBg',
@@ -23,15 +27,13 @@ const bar = css({
 });
 const label = css({ color: 'hudTextMuted' });
 const button = css({
-    marginLeft: 'auto',
     display: 'inline-flex',
     alignItems: 'center',
-    gap: '6px',
-    px: '10px',
-    py: '4px',
-    border: '1px solid',
-    borderColor: 'hudTextSubtle',
-    borderRadius: '8px',
+    justifyContent: 'center',
+    width: '22px',
+    height: '22px',
+    border: 'none',
+    borderRadius: '50%',
     color: 'hudTextAction',
     backgroundColor: 'transparent',
     cursor: 'pointer',
@@ -83,21 +85,25 @@ export function DevBar({
     onReconfigure: () => void;
 }) {
     return (
-        <div className={bar} data-build-id={buildId ?? ''} data-instance-id={instanceId ?? ''}>
+        <div
+            className={bar}
+            data-build-id={buildId ?? ''}
+            data-instance-id={instanceId ?? ''}
+            title={instanceId ? `部屋 ${instanceId}` : undefined}
+        >
             <span className={`${dot} ${connected ? dotState.connected : dotState.disconnected}`} />
             <span>
-                <span className={label}>ubichill dev </span>
+                <span className={label}>dev </span>
                 {buildId ?? 'ビルドを待っています'}
             </span>
-            {instanceId && (
-                <span>
-                    <span className={label}>部屋 </span>
-                    {instanceId}
-                </span>
-            )}
-            <button type="button" className={button} onClick={onReconfigure}>
+            <button
+                type="button"
+                className={button}
+                onClick={onReconfigure}
+                aria-label="部屋を作り直す"
+                title="部屋を作り直す（状態を初期に戻す）"
+            >
                 <RefreshIcon />
-                部屋を作り直す
             </button>
         </div>
     );

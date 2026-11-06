@@ -40,7 +40,7 @@ import {
 } from './generation.ts';
 import type { GoAdmin } from './goRuntime.ts';
 import type { DevEvent } from './server.ts';
-import { synthesizeWorld } from './synthesizedWorld.ts';
+import { componentsFromManifest, synthesizeWorld } from './synthesizedWorld.ts';
 
 export interface RebuildPlan {
     /** ビルドし直す mod の id。`'all'` は全部（最初・mod の一覧が変わったとき）。 */
@@ -112,7 +112,14 @@ export async function buildRoomDefinition(
     lock: ModLock,
     options: { instanceId: string; maxUsers: number },
 ): Promise<InstanceDefinition> {
-    const raw = world?.raw ?? synthesizeWorld([...mods.values()].map((m) => ({ id: m.id, components: m.components })));
+    const raw =
+        world?.raw ??
+        synthesizeWorld(
+            [...mods.values()].map((m) => ({
+                id: m.id,
+                components: componentsFromManifest(m.components, m.files.get('manifest.json')),
+            })),
+        );
     const url = world?.url ?? 'file:///dev/world.yaml';
     const definition = (() => {
         try {
@@ -123,7 +130,12 @@ export async function buildRoomDefinition(
     })();
     const unlocked = requiredLockModIds(definition.spec).filter((id) => !lock.mods[id]);
     if (unlocked.length > 0) {
-        throw new WorldError(`ワールドが参照している mod が手元に無く、lock に固定できません: ${unlocked.join(', ')}`);
+        const sourceOf = (id: string) => definition.spec.dependencies?.find((d) => d.name === id)?.source.url;
+        const reasons = unlocked.map((id) => {
+            const url = sourceOf(id);
+            return url ? `${id}（${url} から取れません）` : `${id}（手元に無く、source.url もありません）`;
+        });
+        throw new WorldError(`ワールドが参照している mod を lock に固定できません: ${reasons.join(', ')}`);
     }
     const resolved = mapToResolved(definition, url, { kind: WorldSourceKind.Local, url }, { lock });
     return toInstanceDefinition(resolved, {
@@ -262,7 +274,9 @@ export function createPipeline(deps: PipelineDeps, initial: GenerationState): Pi
             published.room = room;
             settle(taken);
             deps.broadcast({ type: 'generation', buildId, instanceId });
-            deps.log(`✅ 世代 ${buildId}（mod ${mods.size}、部屋 ${instanceId}${newRoom ? '・作り直し' : ''}）`);
+            deps.log(
+                `✅ 世代 ${buildId}（mod ${Object.keys(lock.mods).length}・うち手元 ${mods.size}、部屋 ${instanceId}${newRoom ? '・作り直し' : ''}）`,
+            );
             if (newRoom && previous && previous.instanceId !== instanceId) {
                 const retired = previous.instanceId;
                 later(() => void deps.go()?.deleteInstance(retired), retireDelay);

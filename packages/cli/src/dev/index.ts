@@ -5,16 +5,18 @@
  * サーバーは node:http と esbuild だけで動き、Vite・Docker・DB は使わない。複数タブ・複数ブラウザの同期は最初から動く。
  */
 import { randomBytes } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import yaml from 'yaml';
 import { compileMod } from '../build.ts';
 import { findInstanceBinary } from '../instanceBinary.ts';
+import { discoverModDirs } from './discover.ts';
 import { initialGenerationState } from './generation.ts';
 import { superviseGo } from './goRuntime.ts';
 import { createPipeline } from './pipeline.ts';
 import { createDevServer } from './server.ts';
+import { handleShutdown } from './shutdown.ts';
 import { createWatcher, planChanges, watchTargets } from './watch.ts';
 import { findWorldDist } from './worldAssets.ts';
 
@@ -23,35 +25,6 @@ const DEFAULT_PORT = 3333;
 
 const argValue = (argv: string[], name: string): string | undefined =>
     argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
-
-/** mod の id は package.json から（`ubichill build` と同じ規則）。 */
-function readModId(modDir: string): string {
-    const pkg = JSON.parse(readFileSync(join(modDir, 'package.json'), 'utf-8')) as {
-        name?: string;
-        ubichill?: { id?: string };
-    };
-    return pkg.ubichill?.id ?? pkg.name?.replace(/^@ubichill\/(?:mod-)?/, '') ?? basename(modDir);
-}
-
-/** `ubichill build` と同じ: `mods/`（か --mods-dir）があればその下の各ディレクトリ、無ければ cwd が 1 つの mod。 */
-export function discoverModDirs(
-    cwd: string,
-    modsDirArg: string | undefined,
-): { modsRoot?: string; modDirs: Map<string, string> } {
-    const modsRoot = modsDirArg !== undefined ? resolve(cwd, modsDirArg) : join(cwd, 'mods');
-    if (modsDirArg !== undefined || existsSync(modsRoot)) {
-        const modDirs = new Map<string, string>();
-        for (const entry of readdirSync(modsRoot, { withFileTypes: true })) {
-            if (!entry.isDirectory() || !existsSync(join(modsRoot, entry.name, 'package.json'))) continue;
-            modDirs.set(readModId(join(modsRoot, entry.name)), join(modsRoot, entry.name));
-        }
-        return { modsRoot, modDirs };
-    }
-    if (!existsSync(join(cwd, 'package.json'))) {
-        throw new Error('package.json が見つかりません。mod のルートで実行するか、--mods-dir=<dir> を指定してください');
-    }
-    return { modDirs: new Map([[readModId(cwd), cwd]]) };
-}
 
 export async function runDev(argv: string[]): Promise<void> {
     if (argv.includes('--help')) {
@@ -70,6 +43,12 @@ export async function runDev(argv: string[]): Promise<void> {
           ? join(cwd, 'world.yaml')
           : undefined;
     if (worldArg && !existsSync(worldPath as string)) throw new Error(`${worldArg} が見つかりません`);
+    const { modsRoot, modDirs } = discoverModDirs(cwd, modsDirArg);
+    if (modDirs.size === 0 && !worldPath) {
+        throw new Error(
+            'mod も world.yaml も見つかりません。mod のルート（package.json と src/）で実行するか、world.yaml を指定してください',
+        );
+    }
 
     const worldDist = findWorldDist();
     if ('error' in worldDist) throw new Error(worldDist.error);
@@ -110,7 +89,6 @@ export async function runDev(argv: string[]): Promise<void> {
         onReconfigure: () => pipeline.schedule({ mods: new Set(), reconfigure: true }),
     });
 
-    const { modsRoot } = discoverModDirs(cwd, modsDirArg);
     const watcher = createWatcher((paths) => {
         const plan = planChanges(paths, {
             modDirs: pipeline.modDirs,
@@ -129,26 +107,32 @@ export async function runDev(argv: string[]): Promise<void> {
             );
     });
 
-    await go.start();
-    pipeline.schedule({ mods: 'all', reconfigure: true });
-    await pipeline.idle();
-    watcher.update(watchTargets({ modDirs: pipeline.modDirs, inputsByMod: pipeline.inputsByMod, modsRoot, worldPath }));
-
-    await new Promise<void>((done, fail) => {
-        server.server.on('error', fail);
-        server.server.listen(port, () => done());
-    });
-    log(
-        `\n🌐 http://localhost:${port}/  （${worldPath ? basename(worldPath) : 'mod から合成したワールド'}、mod ${pipeline.modDirs.size}）`,
-    );
-    log('   保存すると自動でビルドして読み直します。Ctrl+C で止めます\n');
-
-    // 再起動を止め、起動の途中のものも含めて Go が終わるのを待ってから抜ける（子プロセスを残さない）
-    const shutdown = async () => {
+    // 再起動を止め、起動の途中のものも含めて Go が終わるのを待ってから抜ける（子プロセスを残さない）。起動の途中の Ctrl+C も受ける
+    const shutdown = handleShutdown(async () => {
         watcher.close();
         await Promise.all([server.close(), go.stop()]);
-        process.exit(0);
-    };
-    process.once('SIGINT', () => void shutdown());
-    process.once('SIGTERM', () => void shutdown());
+    });
+
+    try {
+        await go.start();
+        pipeline.schedule({ mods: 'all', reconfigure: true });
+        await pipeline.idle();
+        watcher.update(
+            watchTargets({ modDirs: pipeline.modDirs, inputsByMod: pipeline.inputsByMod, modsRoot, worldPath }),
+        );
+        await new Promise<void>((done, fail) => {
+            server.server.on('error', fail);
+            server.server.listen(port, () => done());
+        });
+    } catch (error) {
+        // 止めている途中なら、起動の中止は失敗ではない（抜けるのはシグナルの側）
+        if (shutdown.started) return shutdown.trigger();
+        // ポートが使用中などで起動できないときも、起動した Go を残さない
+        await shutdown.trigger().catch(() => undefined);
+        throw error;
+    }
+    log(
+        `\n🌐 http://localhost:${port}/  （${worldPath ? basename(worldPath) : 'mod から合成したワールド'}、手元の mod ${pipeline.modDirs.size}）`,
+    );
+    log('   保存すると自動でビルドして読み直します。Ctrl+C で止めます\n');
 }

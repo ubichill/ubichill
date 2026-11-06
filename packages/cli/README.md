@@ -31,7 +31,10 @@ ubichill dev [world.yaml] [--port=3333] [--mods-dir=<dir>] [--max-users=<n>]
 Docker・DB・Go のツールチェーンは要らない。`http://localhost:3333/` を開くと、本番と同じ画面（`world.html`）と同じ判定
 （lock の照合・権限・Go のロックと上限）で mod が動く。複数のタブ・ブラウザで同期する。
 
-- **ワールド**: 引数か `./world.yaml`。無ければ、手元の mod の Component を 1 つずつ中央に置いたワールドを合成する。
+- **ワールド**: 引数か `./world.yaml`。無ければ、手元の mod ごとに親の entity を 1 つ作り、その子に Component を 1 つずつ
+  （`export const config` の `defaultTransform` の位置で）置いたワールドを合成する。
+- **mod**: `mods/`（か `--mods-dir`）があればその下の各 mod、無ければ cwd（`package.json` と `src/` があるとき）。
+  ワールドだけのリポジトリ（`src/` が無い）でも `ubichill dev worlds/x.yaml` で動き、mod はすべて `dependencies[].source.url` から取る。
 - **保存すると**: その mod だけビルドし直し、全部そろったら「世代」（lock・manifest・Worker・asset）を切り替えて、
   開いているページを読み直す。entity と共有状態は Go にあるので残る（消えるのは Worker の中のローカルな状態だけ）。
   ビルドに失敗したら前の世代が動き続け、失敗は画面の診断に出る。

@@ -1,7 +1,7 @@
 /**
  * 世代を確定する順序。失敗した段階で何が残るかは docs/design/world-runtime-dev.md の表の通り。
  */
-import type { InstanceDefinition } from '@ubichill/shared';
+import { EMPTY_ENTITY_TYPE, type InstanceDefinition } from '@ubichill/shared';
 import { describe, expect, it, vi } from 'vitest';
 import type { ModArtifacts } from '../build.ts';
 import { fakeMod } from './generation.test.ts';
@@ -144,6 +144,20 @@ describe('createPipeline', () => {
         expect(missing.go.puts).toEqual([]);
     });
 
+    it('取れなかった mod は、手元に無いのか source.url から取れないのかを分けて知らせる', async () => {
+        const world = worldYaml(['ghost', 'remote']);
+        const spec = (world.raw as { spec: { dependencies: { name: string; source: object }[] } }).spec;
+        spec.dependencies = [
+            { name: 'ghost', source: { version: 'latest' } },
+            { name: 'remote', source: { url: 'https://mods.example/x', version: 'latest' } },
+        ];
+        await expect(
+            buildRoomDefinition(world, new Map(), { lockVersion: 1, mods: {} }, { instanceId: 'dev-1', maxUsers: 4 }),
+        ).rejects.toThrow(
+            /ghost（手元に無く、source\.url もありません）.*remote（https:\/\/mods\.example\/x から取れません）/,
+        );
+    });
+
     it('Go が PUT を拒否したら前の世代と前の部屋のまま（DELETE も送らない）', async () => {
         const h = harness();
         h.pipeline.schedule({ mods: 'all', reconfigure: true });
@@ -186,7 +200,9 @@ describe('createPipeline', () => {
         await h.pipeline.idle();
         const put = h.go.puts[0];
         expect(put?.name).toBe('ubichill dev');
-        expect(put?.snapshot.entities.map((e) => e.type)).toEqual(['pen:main']);
+        expect(put?.snapshot.entities.filter((e) => e.type !== EMPTY_ENTITY_TYPE).map((e) => e.type)).toEqual([
+            'pen:main',
+        ]);
         expect(put?.snapshot.activeMods).toEqual(['pen']);
     });
 
@@ -287,7 +303,12 @@ describe('失敗の後に何を残し、何をやり直すか', () => {
         h.pipeline.schedule({ mods: new Set(['pen']), reconfigure: false });
         await h.pipeline.idle();
         expect(currentGeneration(h.pipeline.state)?.instanceId).toBe('dev-r-2');
-        expect(h.go.puts.at(-1)?.snapshot.entities.map((e) => e.type)).toEqual(['pen:main', 'pen:tray']);
+        expect(
+            h.go.puts
+                .at(-1)
+                ?.snapshot.entities.filter((e) => e.type !== EMPTY_ENTITY_TYPE)
+                .map((e) => e.type),
+        ).toEqual(['pen:main', 'pen:tray']);
     });
 
     it('部屋の作り直しを Go が断ったら、作り直しの要求は残り、次の変更のときにもう一度試す', async () => {
