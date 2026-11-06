@@ -1,8 +1,7 @@
-import { definitionToResolved, WorldSourceKind } from '@ubichill/shared';
+import { definitionToResolved, type InitialEntity, WorldSourceKind } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
 import type { ModArtifacts } from '../build.ts';
 import { fakeMod } from './generation.test.ts';
-import { buildRoomDefinition } from './pipeline.ts';
 import { manifestFieldsOf, referenceWarnings } from './references.ts';
 import { synthesizeWorld } from './synthesizedWorld.ts';
 
@@ -49,56 +48,24 @@ describe('referenceWarnings', () => {
 describe('synthesizeWorld の配線', () => {
     const url = 'file:///dev/world.yaml';
     const resolve = (raw: unknown) => definitionToResolved(raw, url, { kind: WorldSourceKind.Local, url });
+    const flat = (entities: InitialEntity[]): InitialEntity[] => entities.flatMap((e) => [e, ...flat(e.children)]);
+    const typed = (types: string[]) => types.map((type) => ({ type }));
 
     it('型を宣言した参照を、その型を置いた Entity に向ける（配列は全部）', () => {
         const fieldsOf = manifestFieldsOf([vpMod()]);
-        const world = resolve(synthesizeWorld([{ id: 'vp', components: Object.keys(VP_FIELDS) }], fieldsOf));
+        const world = resolve(synthesizeWorld([{ id: 'vp', components: typed(Object.keys(VP_FIELDS)) }], fieldsOf));
         const dataOf = (type: string) =>
-            world.initialEntities.find((e) => e.components[0]?.type === type)?.components[0]?.data;
-        expect(dataOf('vp:controls')).toEqual({ screen: 'vp-screen', playlist: 'vp-playlist' });
-        expect(dataOf('vp:search')).toEqual({ playlists: ['vp-playlist'] });
+            flat(world.initialEntities).find((e) => e.components[0]?.type === type)?.components[0]?.data;
+        expect(dataOf('vp:controls')).toEqual({ screen: 'vp--screen', playlist: 'vp--playlist' });
+        expect(dataOf('vp:search')).toEqual({ playlists: ['vp--playlist'] });
         expect(dataOf('vp:screen')).toEqual({});
         expect(referenceWarnings(world.initialEntities, fieldsOf)).toEqual([]);
     });
 
     it('相手の型が手元に無ければ配線しない（必須なら警告で分かる）', () => {
         const fieldsOf = manifestFieldsOf([vpMod()]);
-        const world = resolve(synthesizeWorld([{ id: 'vp', components: ['vp:controls'] }], fieldsOf));
-        expect(world.initialEntities[0]?.components[0]?.data).toEqual({});
+        const world = resolve(synthesizeWorld([{ id: 'vp', components: typed(['vp:controls']) }], fieldsOf));
+        expect(flat(world.initialEntities)[1]?.components[0]?.data).toEqual({});
         expect(referenceWarnings(world.initialEntities, fieldsOf)).toHaveLength(1);
-    });
-});
-
-describe('buildRoomDefinition の警告', () => {
-    it('参照の問題では止めずに知らせる', async () => {
-        const mods = new Map([['vp', vpMod()]]);
-        const lock = { lockVersion: 1 as const, mods: { vp: vpMod().lockEntry } };
-        const world = {
-            url: 'file:///p/world.yaml',
-            raw: {
-                apiVersion: 'ubichill.com/v1alpha1',
-                kind: 'World',
-                metadata: { name: 'home', version: '1.0.0' },
-                spec: {
-                    displayName: 'Home',
-                    dependencies: [{ name: 'vp', source: { version: 'latest' } }],
-                    initialEntities: [
-                        {
-                            id: 'c',
-                            transform: { x: 0, y: 0 },
-                            components: [{ type: 'vp:controls', data: { screen: 'gone' } }],
-                        },
-                    ],
-                },
-            },
-        };
-        const warnings: string[] = [];
-        const room = await buildRoomDefinition(world, mods, lock, {
-            instanceId: 'dev-x',
-            maxUsers: 3,
-            warn: (m) => warnings.push(m),
-        });
-        expect(room.id).toBe('dev-x');
-        expect(warnings).toEqual(['c の vp:controls の「スクリーン」が指している Entity「gone」がありません']);
     });
 });

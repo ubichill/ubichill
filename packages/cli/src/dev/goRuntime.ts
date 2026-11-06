@@ -29,6 +29,8 @@ export interface StartGoOptions {
     signal?: AbortSignal;
     log?: (line: string) => void;
     fetchImpl?: typeof fetch;
+    /** 子プロセスを作った直後に呼ぶ（起動の途中のものも、node が落ちるときに止められるように）。 */
+    onSpawn?: (child: ChildProcess) => void;
 }
 
 /** 止めるときに SIGTERM で終わるのを待つ時間。過ぎたら SIGKILL。 */
@@ -99,6 +101,7 @@ export async function startGo(options: StartGoOptions): Promise<GoRuntime> {
         ['--guests', `--listen=127.0.0.1:${port}`, `--origins=${options.origins.join(',')}`],
         { env: { ...process.env, INSTANCE_ADMIN_TOKEN: token }, stdio: ['ignore', 'pipe', 'pipe'] },
     );
+    options.onSpawn?.(child);
     const log = options.log ?? ((line) => console.log(line));
     for (const stream of [child.stdout, child.stderr]) {
         stream?.on('data', (chunk: Buffer) => {
@@ -140,6 +143,11 @@ export interface GoSupervisor {
     readonly current: GoRuntime | undefined;
     start(): Promise<void>;
     stop(): Promise<void>;
+    /**
+     * 今ある子プロセス（起動の途中のものも）にすぐ SIGKILL を送る。待たない。
+     * node が落ちるとき（`process.on('exit')`。捕まらない例外でも呼ばれる）の最後の砦で、ふだんは stop を使う。
+     */
+    killNow(): void;
 }
 
 export function superviseGo(
@@ -150,12 +158,18 @@ export function superviseGo(
 ): GoSupervisor {
     const controller = new AbortController();
     const log = options.log ?? ((line) => console.log(line));
+    const children = new Set<ChildProcess>();
+    const track = (child: ChildProcess) => {
+        children.add(child);
+        child.once('exit', () => children.delete(child));
+    };
     const state = { current: undefined as GoRuntime | undefined, starting: null as Promise<void> | null };
 
     const launch = (): Promise<void> => {
         const starting = startGo({
             ...options,
             signal: controller.signal,
+            onSpawn: track,
             onExit: (code) => {
                 state.current = undefined;
                 if (controller.signal.aborted) return;
@@ -172,9 +186,13 @@ export function superviseGo(
         }).then((runtime) => {
             state.current = runtime;
         });
-        const tracked: Promise<void> = starting.finally(() => {
-            if (state.starting === tracked) state.starting = null;
-        });
+        // stop が待つのは終わることだけ。失敗は start の呼び出し側に返す（起動し直しで置き換わった前の起動の失敗を、
+        // 誰も受け取らない Promise に残さない）
+        const tracked: Promise<void> = starting
+            .catch(() => undefined)
+            .finally(() => {
+                if (state.starting === tracked) state.starting = null;
+            });
         state.starting = tracked;
         return starting;
     };
@@ -190,6 +208,10 @@ export function superviseGo(
             await state.starting?.catch(() => undefined);
             await state.current?.stop();
             state.current = undefined;
+        },
+        killNow() {
+            controller.abort(); // 起動し直さない
+            for (const child of children) child.kill('SIGKILL');
         },
     };
 }
