@@ -1,5 +1,16 @@
 # @ubichill/bff
 
+## 1.0.14
+
+### Patch Changes
+
+- Updated dependencies [abbb4db]
+- Updated dependencies [abbb4db]
+- Updated dependencies [abbb4db]
+- Updated dependencies [04d9050]
+- Updated dependencies [04d9050]
+  - @ubichill/shared@1.12.0
+
 ## 1.0.13
 
 ### Patch Changes
