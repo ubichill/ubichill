@@ -71,6 +71,7 @@ export interface OfficialAccountDeps {
         },
     ) => Promise<void>;
     log: (message: string) => void;
+    warn: (message: string) => void;
 }
 
 export type OfficialAccountOutcome = 'unchanged' | 'synced' | 'created' | 'attached' | 'skipped';
@@ -82,12 +83,12 @@ async function syncPassword(
     deps: OfficialAccountDeps,
 ): Promise<boolean> {
     if (!config.password) {
-        deps.log('⚠ OFFICIAL_ACCOUNT_PASSWORD が未設定のため、公式アカウントのパスワードを同期しません');
+        deps.warn('OFFICIAL_ACCOUNT_PASSWORD が未設定のため、公式アカウントのパスワードを同期しません');
         return false;
     }
     if (await deps.passwordMatches(user.id, config.password)) return false;
     await deps.replacePassword(user.id, config.password);
-    deps.log('🔑 公式アカウントのパスワードを Secret の値に合わせました（既存のログインは無効にしました）');
+    deps.log('公式アカウントのパスワードを Secret の値に合わせました（既存のログインは無効にしました）');
     return true;
 }
 
@@ -118,17 +119,17 @@ export async function ensureOfficialAccount(
     const byEmail = await deps.findByEmail(config.email);
     if (byEmail) {
         if (await deps.hasPublished(byEmail.id)) {
-            deps.log(
-                `⚠ ${config.email} は別の ID（${byEmail.handle}）で公開に使われているため公式アカウントにできません`,
+            deps.warn(
+                `${config.email} は別の ID（${byEmail.handle}）で公開に使われているため公式アカウントにできません`,
             );
             return 'skipped';
         }
         if (!byEmail.emailVerified) {
-            deps.log(`⚠ ${config.email} のアカウントはメールアドレスが確認されていないため公式アカウントにできません`);
+            deps.warn(`${config.email} のアカウントはメールアドレスが確認されていないため公式アカウントにできません`);
             return 'skipped';
         }
         const revoked = await deps.revokeCredentials(byEmail.id);
-        if (revoked > 0) deps.log(`🔒 昇格前のアカウントに付いていた公開環境 ${revoked} 件を取り消しました`);
+        if (revoked > 0) deps.log(`昇格前のアカウントに付いていた公開環境 ${revoked} 件を取り消しました`);
         await deps.initialize(byEmail.id, {
             handle: OFFICIAL_HANDLE,
             ...nameFields,
@@ -136,13 +137,13 @@ export async function ensureOfficialAccount(
             passwordChangeRequired: config.usingDevDefault,
         });
         await syncPassword(byEmail, config, deps);
-        deps.log(`👑 既存のアカウント ${config.email} を公式アカウント（${OFFICIAL_HANDLE}）にしました`);
+        deps.log(`既存のアカウント ${config.email} を公式アカウント（${OFFICIAL_HANDLE}）にしました`);
         return 'attached';
     }
 
     if (!config.password) {
-        deps.log(
-            `⚠ OFFICIAL_ACCOUNT_PASSWORD が未設定のため公式アカウント（${OFFICIAL_HANDLE}）を作成しません。設定して再起動してください`,
+        deps.warn(
+            `OFFICIAL_ACCOUNT_PASSWORD が未設定のため公式アカウント（${OFFICIAL_HANDLE}）を作成しません。設定して再起動してください`,
         );
         return 'skipped';
     }
@@ -153,6 +154,6 @@ export async function ensureOfficialAccount(
         ...nameFields,
     });
     if (config.usingDevDefault) await deps.initialize(id, { passwordChangeRequired: true });
-    deps.log(`👑 公式アカウント（ID ${OFFICIAL_HANDLE}、ログイン用メール ${config.email}）を作成しました`);
+    deps.log(`公式アカウント（ID ${OFFICIAL_HANDLE}、ログイン用メール ${config.email}）を作成しました`);
     return 'created';
 }

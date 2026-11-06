@@ -4,6 +4,7 @@ import { Router } from 'express';
 import { selfAccount } from '../services/authorKeys';
 import { signingKeyListOf } from '../services/publishingEnvironments';
 import { worldRegistry } from '../services/worldRegistry';
+import { logger } from '../utils/logger';
 
 /**
  * GET /api/v1/authors/:handle/signing-keys
@@ -59,7 +60,7 @@ router.get('/:handle/worlds/:file', async (req, res) => {
         }
         res.json(resolution.world);
     } catch (error) {
-        console.error('ワールド取得エラー:', error);
+        logger.error('ワールド取得エラー:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

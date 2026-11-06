@@ -1,26 +1,9 @@
-import { appConfig } from '../config';
+import { createServerLogger } from '@ubichill/terminal';
+import { debugFromEnv } from '../config/debug';
 
 /**
- * ロガーユーティリティ
- * 全ログに ISO 8601 タイムスタンプを前置する (K8s ログ集約で時系列が追えるように)。
- * DEBUG=true の時のみ debug ログを出力。
+ * backend のロガー。1 つの出来事を 1 行にし（本番は ISO 時刻・色なし、手元の端末は短い時刻・色付き）、level を残す。
+ * debug を出すかは appConfig.debug と同じ規則で、呼ぶたびに env を読む（.env を読み込んだ後の値に従う）。
+ * 設定（config）は読み込まない: 読み込むと、ロガーを使うだけのモジュールのテストでも設定の検証が走る。
  */
-
-const ts = (): string => new Date().toISOString();
-
-export const logger = {
-    debug: (...args: unknown[]) => {
-        if (appConfig.debug) {
-            console.log(`[${ts()}] [DEBUG]`, ...args);
-        }
-    },
-    info: (...args: unknown[]) => {
-        console.log(`[${ts()}] [INFO]`, ...args);
-    },
-    warn: (...args: unknown[]) => {
-        console.warn(`[${ts()}] [WARN]`, ...args);
-    },
-    error: (...args: unknown[]) => {
-        console.error(`[${ts()}] [ERROR]`, ...args);
-    },
-};
+export const logger = createServerLogger({ debug: () => debugFromEnv(process.env.DEBUG, process.env.NODE_ENV) });

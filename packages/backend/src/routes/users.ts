@@ -214,7 +214,7 @@ router.get('/check-handle', async (req, res) => {
         const existing = await userRepository.findByHandle(parsed.data);
         return res.json({ available: !existing, error: existing ? 'この ID は既に使用されています' : null });
     } catch (error) {
-        console.error('Handle check error:', error);
+        logger.error('Handle check error:', error);
         return res.status(500).json({ error: 'Internal server error' });
     }
 });

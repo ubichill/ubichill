@@ -42,5 +42,5 @@ export function remoteKeyEntriesOf(keys: readonly StoredRemoteKey[], fetchedAt: 
 /** 他サーバーが自サーバーの公開環境の鍵を名乗ってきたときの警告（無ければ undefined）。 */
 export function claimedLocalKeysWarning(account: string, publicKeys: readonly string[]): string | undefined {
     if (publicKeys.length === 0) return undefined;
-    return `⚠️ 他サーバーの作者 ${account} が、このサーバーの公開環境の鍵を名乗っています（署名の確認では使いません）: ${publicKeys.join(', ')}`;
+    return `他サーバーの作者 ${account} が、このサーバーの公開環境の鍵を名乗っています（署名の確認では使いません）: ${publicKeys.join(', ')}`;
 }

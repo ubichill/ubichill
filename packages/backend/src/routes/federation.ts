@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAdmin, requireAuth } from '../middleware/auth';
 import { worldRegistry } from '../services/worldRegistry';
+import { logger } from '../utils/logger';
 
 const router = Router();
 
@@ -13,7 +14,7 @@ router.get('/peers', requireAuth, async (_req, res) => {
         const peers = await worldRegistry.listPeers();
         res.json({ peers });
     } catch (error) {
-        console.error('ピア一覧取得エラー:', error);
+        logger.error('ピア一覧取得エラー:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -52,7 +53,7 @@ router.delete('/peers/:peerId', requireAuth, requireAdmin, async (req, res) => {
         }
         res.status(204).send();
     } catch (error) {
-        console.error('ピア削除エラー:', error);
+        logger.error('ピア削除エラー:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

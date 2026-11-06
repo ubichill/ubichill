@@ -129,7 +129,7 @@ function generatePkcs8(): Uint8Array {
 export function serviceTokenIssuerFromEnv(
     env: NodeJS.ProcessEnv,
     issuer: string,
-    warn: (message: string) => void = console.warn,
+    warn: (message: string) => void,
 ): ServiceTokenIssuer | null {
     const source = serviceTokenKeySource(env);
     if (source.kind === 'disabled') {

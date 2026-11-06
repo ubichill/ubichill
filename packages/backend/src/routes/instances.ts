@@ -31,7 +31,7 @@ router.get('/', optionalAuth, async (req, res) => {
 
         res.json({ instances });
     } catch (error) {
-        console.error('インスタンス一覧取得エラー:', error);
+        logger.error('インスタンス一覧取得エラー:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -73,7 +73,7 @@ router.post('/', requireAuth, createInstanceLimiter, async (req, res) => {
 
         res.status(201).json(result);
     } catch (error) {
-        console.error('インスタンス作成エラー:', error);
+        logger.error('インスタンス作成エラー:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -97,7 +97,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
 
         res.json(instance);
     } catch (error) {
-        console.error('インスタンス取得エラー:', error);
+        logger.error('インスタンス取得エラー:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -112,7 +112,7 @@ router.post('/:id/join', requireAuth, async (req, res) => {
         );
     } catch (error) {
         if (error instanceof InstanceJoinRejected) return res.status(403).json({ error: error.message });
-        console.error('インスタンス参加エラー:', error);
+        logger.error('インスタンス参加エラー:', error);
         return res.status(503).json({ error: 'インスタンスに接続できません' });
     }
 });
@@ -143,7 +143,7 @@ router.delete('/:id', requireAuth, async (req, res) => {
 
         res.status(204).send();
     } catch (error) {
-        console.error('インスタンス削除エラー:', error);
+        logger.error('インスタンス削除エラー:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

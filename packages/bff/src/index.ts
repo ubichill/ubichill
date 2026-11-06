@@ -307,5 +307,5 @@ app.use((_req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`🌐 BFF listening on :${PORT} (dist=${DIST}, core=${CORE_API_URL})`);
+    console.log(`BFF listening on :${PORT} (dist=${DIST}, core=${CORE_API_URL})`);
 });
