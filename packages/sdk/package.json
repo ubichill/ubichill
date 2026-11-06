@@ -1,6 +1,6 @@
 {
     "name": "@ubichill/sdk",
-    "version": "3.3.2",
+    "version": "4.0.0",
     "description": "ubichill mod SDK (UbiSDK runtime + public API) for mod developers.",
     "type": "module",
     "sideEffects": false,

@@ -1,5 +1,15 @@
 # @ubichill/loader
 
+## 1.3.5
+
+### Patch Changes
+
+- 24578ca: CLI を `ubichill` から分け、`@ubichill/cli` として公開する。`ubichill` は mod が import する SDK だけになり、bin と `esbuild`・`yaml` への依存が無くなる（mod 開発者は `npm i ubichill` に加えて `npm i -D @ubichill/cli` を入れる。`ubichill` コマンドの名前と使い方は変わらない）。
+- Updated dependencies [24578ca]
+- Updated dependencies [b4c63fa]
+- Updated dependencies [24578ca]
+  - @ubichill/shared@1.11.0
+
 ## 1.3.4
 
 ### Patch Changes
