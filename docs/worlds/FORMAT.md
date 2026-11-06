@@ -74,6 +74,30 @@ Component が別の Component と連携するときは、mod が `dataFields` �
 
 上限（`LIMITS`）: initialEntities 最大 500、Component/Entity 最大 32、tags 最大 10、YAML 100KB。
 
+### 組み込み Component（`core:*`）
+
+Host が持つ Component。mod を読み込まずに使え、`dependencies` にも書かない。`core:` は予約名で、ここに無い型は検証で落ちる。
+クライアントからは作成・変更できない（ワールド定義でだけ置ける）。
+
+| 型 | 役割 | `data` |
+|---|---|---|
+| `core:collider` | 当たり判定の形 | `shape: rect`（`size: { w, h }` か `entity`）または `shape: circle`（`radius`）。`offset`・`isTrigger`・`layer`・`mask` |
+| `core:media` | 動画を描く場所（Unity の MeshRenderer に当たる）。何を再生するかは、参照フィールドでこの Entity を指した mod が決める | `fit: contain`（既定・全体を見せる）か `cover`（枠を埋める） |
+
+```yaml
+- id: tv
+  transform: { x: 100, y: 100, w: 640, h: 360 }
+  components:
+    - type: core:media
+      data: { fit: contain }
+- id: player
+  transform: { x: 100, y: 480 }
+  components:
+    - type: video-player:controls
+      data:
+        screen: tv            # core:media を持つ Entity
+```
+
 ## その他の `spec` フィールド（任意）
 
 - `dependencies[]`：`{ name, source: { url?, version? } }`。`url` があれば外部 mod（GitHub Pages 等）をその URL から取得し、無ければローカル（public mods）から解決する。mod の入手元ヒント。

@@ -145,3 +145,29 @@ describe('core:collider world validation', () => {
         ).toThrow();
     });
 });
+
+describe('core:media world validation', () => {
+    const entity = (component: InitialEntity['components'][number]): InitialEntity => ({
+        id: 'tv',
+        transform: { x: 0, y: 0, z: 0, w: 640, h: 360, scale: 1, rotation: 0 },
+        components: [component],
+        tags: [],
+        children: [],
+    });
+
+    it('data が空でも受け付け、mod 依存として収集しない', () => {
+        const input = [entity({ type: 'core:media', data: {} })];
+        expect(() => InitialEntitiesSchema.parse(input)).not.toThrow();
+        expect(collectModIds(input)).toEqual([]);
+    });
+
+    it('fit は contain / cover だけ。未知のキー（URL など再生の中身）は持てない', () => {
+        expect(() =>
+            InitialEntitiesSchema.parse([entity({ type: 'core:media', data: { fit: 'cover' } })]),
+        ).not.toThrow();
+        expect(() => InitialEntitiesSchema.parse([entity({ type: 'core:media', data: { fit: 'stretch' } })])).toThrow();
+        expect(() =>
+            InitialEntitiesSchema.parse([entity({ type: 'core:media', data: { url: 'https://example.com/a.mp4' } })]),
+        ).toThrow();
+    });
+});

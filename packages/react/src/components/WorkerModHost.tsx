@@ -7,6 +7,7 @@
  * - definition.onHostMessage を通じたカスタムメッセージのmod側委譲
  */
 
+import { CORE_COMPONENT_TYPES } from '@ubichill/core-components';
 import { routeEmit } from '@ubichill/sandbox';
 import { type ComponentInstance, type InputFrameEvent, resolveRefs } from '@ubichill/shared';
 import type React from 'react';
@@ -36,6 +37,7 @@ import { modPermissionSubject, type WorkerModDefinition } from '../types';
 import { useModWorker } from '../useModWorker';
 import { useWorkerLoading } from '../WorkerLoadingContext';
 import { useHold } from './HoldContext';
+import { MediaSurfacePortal } from './MediaSurfacePortal';
 import { ModUIMount } from './ModUIMount';
 import { useUbiPermissions } from './PermissionContext';
 import { filterRideInput, useRide } from './RideContext';
@@ -146,6 +148,11 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
     const resolvedRefs = useMemo(
         () => resolveRefs(definition.dataFields, (entity.data ?? {}) as Record<string, unknown>),
         [definition.dataFields, entity.data],
+    );
+    // core:media を指す参照は、そのフィールド名を targetId とするメディアの描画先になる
+    const mediaRefs = useMemo(
+        () => resolvedRefs.filter((ref) => ref.component === CORE_COMPONENT_TYPES.media),
+        [resolvedRefs],
     );
     const refsRef = useRef(resolvedRefs);
     useEffect(() => {
@@ -331,6 +338,14 @@ export const WorkerModHost: React.FC<WorkerModHostProps> = ({ entityId, entity, 
                         display: 'none',
                         pointerEvents: 'none',
                     }}
+                />
+            ))}
+            {mediaRefs.map((ref) => (
+                <MediaSurfacePortal
+                    key={ref.field}
+                    targetId={ref.field}
+                    entityId={ref.entityIds[0]}
+                    videoRef={getVideoRef(ref.field)}
                 />
             ))}
             {Array.from(vnodes.entries()).map(([targetId, vnode]) => (

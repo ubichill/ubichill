@@ -256,6 +256,18 @@ Events.emit('vp:media:state', state, { scope: 'referrers' }); // 参照で自分
 - `component` を宣言した参照は、その型の Component だけに届く。`targetType` で型を広げることはできない。宣言しなければ、指した Entity の全 Component に届く。
 - `scope: 'referrers'` は、参照フィールドで自分の Entity を指している Component に届く。相手の参照が `component` を宣言していれば、それが自分の型のときだけ。
 - 相手は同じ Entity でも、別の木の奥でもよい。階層の形は問わない。
+- `component: 'core:media'` の参照は**動画の描画先**になる。フィールドの名前を `Ubi.media.*` の targetId に使うと、
+  `<video>` は参照先の `core:media` の Entity の位置・大きさで描かれる（URL の許可・同期・状態はこの mod のもの）。
+  動画を出すだけの Worker を別に作らなくてよい。
+
+  ```ts
+  export const config: ComponentConfig = {
+      dataFields: { screen: { type: 'entityRef', component: 'core:media', required: true, label: 'スクリーン' } },
+  };
+  Ubi.media.setVisible(true, 'screen');
+  Ubi.media.load({ targetId: 'screen', source, sync: 'shared' });
+  Events.on('media:stateChange', (state) => { /* state.targetId === 'screen' */ });
+  ```
 - 判定は World Editor（Hierarchy の印と Inspector）・`ubichill dev`（ターミナルの「参照の問題」）・Host の配送で同じ（`@ubichill/shared` の `findReferenceProblems` / `resolveRefs`）。
 - `config` はビルド時にリテラルとして読む。`component` に定数や式を書くと読めないので、文字列で書く。
 

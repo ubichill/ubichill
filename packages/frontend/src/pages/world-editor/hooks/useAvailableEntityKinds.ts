@@ -1,4 +1,4 @@
-import { CORE_COMPONENT_TYPES } from '@ubichill/core-components';
+import { CORE_COMPONENT_TYPES, MEDIA_FITS } from '@ubichill/core-components';
 import { createDefaultColliderData } from '@ubichill/runtime';
 import type { OverlayMode, WorldDefinition } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
@@ -90,6 +90,22 @@ export const CORE_ENTITY_KINDS: AvailableEntityKind[] = [
         suggestSize: true,
         defaultData: { ...createDefaultColliderData() },
         viewKind: 'logic',
+    },
+    {
+        modName: 'core',
+        kind: CORE_COMPONENT_TYPES.media,
+        suggestSize: true,
+        defaultTransform: { w: 640, h: 360 },
+        dataFields: {
+            fit: {
+                type: 'enum',
+                options: [...MEDIA_FITS],
+                default: 'contain',
+                label: '収め方',
+                help: 'contain は全体を見せる（黒帯が出る）、cover は枠を埋める（端が切れる）。何を再生するかは、この Entity を参照した mod が決める。',
+            },
+        },
+        viewKind: 'canvas',
     },
 ];
 
