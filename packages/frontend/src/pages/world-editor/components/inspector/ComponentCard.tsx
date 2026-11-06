@@ -299,6 +299,9 @@ function ComponentDataEditor({
     }, [component]);
 
     const data = (component.data as Record<string, unknown> | undefined) ?? {};
+    // 入力のたびに描き直すので、markup が変わったときだけ解析する
+    const markup = component.type === CORE_COMPONENT_TYPES.ui && typeof data.markup === 'string' ? data.markup : '';
+    const markupNotices = useMemo(() => uiMarkupNotices(markup), [markup]);
     const setData = (next: Record<string, unknown>) => {
         onChange((prev) => ({
             ...prev,
@@ -325,7 +328,7 @@ function ComponentDataEditor({
                             allEntities={allEntities}
                             onChange={setData}
                         />
-                        <EditorNotices messages={uiMarkupNotices(typeof data.markup === 'string' ? data.markup : '')} />
+                        <EditorNotices messages={markupNotices} />
                     </>
                 ) : (
                     <DataFormFields data={data} dataFields={dataFields} allEntities={allEntities} onChange={setData} />
