@@ -29,6 +29,9 @@ type peer struct {
 	pass *relayPass
 	// batchCursors は入室で cursors:batch を宣言した接続（cursors.go）。部屋の r.mu の下で読む。
 	batchCursors bool
+	// origin・served は接続したときの Origin と、それがこのサーバー自身の画面か（連合の来訪者のチケットの確認に使う）。
+	origin string
+	served bool
 }
 
 func (p *peer) stop()          { p.once.Do(func() { close(p.done); _ = p.conn.Close() }) }
@@ -114,7 +117,9 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, relayed bool) {
 	if err != nil {
 		return
 	}
-	p := &peer{id: newID(), conn: conn, out: make(chan Frame, 256), done: make(chan struct{}), relayed: relayed}
+	// 中継された接続は、中継元の Pod が Origin とチケットの結び付きを確かめてある
+	p := &peer{id: newID(), conn: conn, out: make(chan Frame, 256), done: make(chan struct{}), relayed: relayed,
+		origin: r.Header.Get("Origin"), served: relayed || s.originServed(r)}
 	go p.write()
 	defer p.stop()
 	if !relayed {
@@ -196,7 +201,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, relayed bool) {
 			id := str(data["instanceId"])
 			t, err := s.verify(str(data["token"]), id)
 			room := s.room(id)
-			if err != nil {
+			if err != nil || !relayed && !ticketOriginMatches(t.ticket, p.origin, p.served) {
 				p.reply(f.ID, ticketInvalid())
 				continue
 			}

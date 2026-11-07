@@ -18,6 +18,10 @@ type ticket struct {
 	Kind     string `json:"kind"`
 	// Name is the display name the SNS vouches for. When present it replaces the name the client sends.
 	Name string `json:"name,omitempty"`
+	// Origin binds the ticket to the browser origin of a visitor from another ubichill server (federation).
+	// Such a ticket is accepted only from a connection with exactly that Origin, and a connection from an origin
+	// this server does not serve can join only with such a ticket.
+	Origin string `json:"origin,omitempty"`
 }
 
 // claims は署名する値。部屋の世代 (Gen, Epoch) を入れ、同じ部屋 ID で作り直された部屋に前の部屋のチケットを通さない

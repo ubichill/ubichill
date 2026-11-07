@@ -238,12 +238,24 @@ export function createInstanceRuntime(options: InstanceRuntimeOptions) {
             return again.status === 204;
         },
         /** owner の Pod でチケットを発行する。その間に owner が替わっていたら、新しい owner へ 1 回だけ送り直す。 */
-        async ticket(id: string, userId: string, name: string | undefined, owner: RuntimeOwner): Promise<RuntimeGrant> {
+        /**
+         * 参加チケット。origin を渡すと、ほかのサーバーの画面から来る連合の来訪者用に、その origin の接続でだけ使えるチケットにする。
+         */
+        async ticket(
+            id: string,
+            userId: string,
+            name: string | undefined,
+            owner: RuntimeOwner,
+            origin?: string,
+        ): Promise<RuntimeGrant> {
             const issue = (to: RuntimeOwner) =>
                 request(
                     to.base,
                     `/instances/${encodeURIComponent(id)}/tickets`,
-                    { method: 'POST', body: JSON.stringify({ userId, ...(name ? { name } : {}) }) },
+                    {
+                        method: 'POST',
+                        body: JSON.stringify({ userId, ...(name ? { name } : {}), ...(origin ? { origin } : {}) }),
+                    },
                     generation(to),
                 );
             const first = await issue(owner);
