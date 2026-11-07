@@ -1,6 +1,7 @@
 import { type AccessType, type Instance, type WorldListItem, worldSourceLabel } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { SetHomeControl } from '@/components/home/SetHomeControl';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { createInstance, fetchInstances, fetchWorld } from '@/lib/instancesApi';
 import { useSession } from '@/lib/session';
@@ -320,6 +321,8 @@ export function WorldDetailModal({
                                         </button>
                                     )}
                                 </div>
+
+                                <SetHomeControl world={{ id: world?.id ?? worldId, url: world?.url }} />
 
                                 <div>
                                     <h3 className={css({ fontSize: 'md', fontWeight: 'bold', color: 'text', mb: '3' })}>

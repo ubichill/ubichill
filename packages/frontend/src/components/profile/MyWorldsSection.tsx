@@ -1,8 +1,8 @@
 import { isPublishable, LIMITS } from '@ubichill/shared';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { WorldDetailModal } from '@/components/lobby/WorldDetailModal';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
+import { WorldDetailModal } from '@/components/worlds/WorldDetailModal';
 import { isResignable } from '@/lib/account/worldProblems';
 import { css } from '@/styled-system/css';
 import { ExternalWorksSection } from './ExternalWorksSection';

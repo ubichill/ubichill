@@ -1,20 +1,19 @@
 import type { Instance } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
-import { InstanceCard } from '@/components/lobby/InstanceCard';
-import { InstanceDetailOverlay } from '@/components/lobby/InstanceDetailOverlay';
-import { useInstances } from '@/components/lobby/useInstances';
+import { InstanceCard } from '@/components/worlds/InstanceCard';
+import { InstanceDetailOverlay } from '@/components/worlds/InstanceDetailOverlay';
+import { useInstances } from '@/components/worlds/useInstances';
 import { css } from '@/styled-system/css';
 import { cardStyle, type JoinInstanceHandler, sectionHeading, tabPanel } from './shared';
 
-interface HomeTabProps {
+interface InstancesTabProps {
     onJoinInstance: JoinInstanceHandler;
     /** 現在参加中のインスタンスID（一覧で「参加中」表示にする） */
     currentInstanceId?: string;
-    /** ロビーへ戻る操作（インスタンス内のみ表示） */
-    onReturnToLobby?: () => void;
 }
 
-export function HomeTab({ onJoinInstance, currentInstanceId, onReturnToLobby }: HomeTabProps) {
+/** 入れるアクティブなインスタンスの一覧（ランチパッドの「インスタンス」）。 */
+export function InstancesTab({ onJoinInstance, currentInstanceId }: InstancesTabProps) {
     const { instances, loading, error, refreshInstances } = useInstances();
     const [detailInstance, setDetailInstance] = useState<Instance | null>(null);
 
@@ -24,34 +23,6 @@ export function HomeTab({ onJoinInstance, currentInstanceId, onReturnToLobby }: 
 
     return (
         <div className={tabPanel} onClick={(e) => e.stopPropagation()}>
-            {onReturnToLobby && (
-                <button
-                    type="button"
-                    onClick={onReturnToLobby}
-                    className={css({
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        alignSelf: 'flex-start',
-                        px: '14px',
-                        py: '9px',
-                        bg: 'surfaceAccent',
-                        color: 'text',
-                        border: 'none',
-                        borderRadius: '12px',
-                        fontSize: '13px',
-                        fontWeight: '600',
-                        cursor: 'pointer',
-                        boxShadow: 'card',
-                        _hover: { opacity: 0.9 },
-                    })}
-                >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M15 18l-6-6 6-6" />
-                    </svg>
-                    ロビーへ戻る
-                </button>
-            )}
             <div className={cardStyle}>
                 <h2 className={sectionHeading}>アクティブなインスタンス</h2>
                 {loading && instances.length === 0 ? (

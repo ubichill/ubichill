@@ -1,26 +1,27 @@
 import { useSocket } from '@ubichill/react';
 import { useState } from 'react';
 import { useParams } from 'react-router';
+import { useNotifications } from '@/components/notifications';
 import { css } from '@/styled-system/css';
+import { HudIcon } from './HudIcon';
 import { HudOverlay } from './HudOverlay';
 
 /**
- * インスタンス内の常時表示 HUD。
- * Mac の Launchpad のようなグリッドアイコン1つで、押すとタブ付きオーバーレイを開く。
- * ロビーへ戻る等の操作はオーバーレイ内のタブ（ホーム/現在地）に集約している。
+ * インスタンス内の常時表示 HUD。ボタン 1 つで、ランチパッド（ホーム・リスポーンなどの操作とドックの画面）を開く。
  */
 export function InstanceHUD() {
     const { id: instanceId } = useParams<{ id: string }>();
     const { isConnected } = useSocket();
     const [open, setOpen] = useState(false);
+    const unread = useNotifications().feed.unreadCount > 0;
 
     return (
         <>
-            {/* Launchpad ボタン（右下固定） */}
+            {/* ランチパッドを開くボタン（PC は右上・スマホは右下） */}
             <button
                 type="button"
                 onClick={() => setOpen(true)}
-                aria-label="メニューを開く"
+                aria-label={unread ? 'ランチパッドを開く（未読の通知あり）' : 'ランチパッドを開く'}
                 className={css({
                     position: 'fixed',
                     top: { base: 'auto', md: '20px' },
@@ -43,12 +44,7 @@ export function InstanceHUD() {
                     _hover: { backgroundColor: 'hudBgHover', transform: 'translateY(-2px)' },
                 })}
             >
-                {/* 3x3 グリッドの Launchpad 風アイコン */}
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                    {[4, 10.5, 17].flatMap((y) =>
-                        [4, 10.5, 17].map((x) => <rect key={`${x}-${y}`} x={x} y={y} width="3" height="3" rx="1" />),
-                    )}
-                </svg>
+                <HudIcon name="rocket" size={24} />
                 {/* 接続インジケーター */}
                 <span
                     className={css({
@@ -63,12 +59,24 @@ export function InstanceHUD() {
                         backgroundColor: isConnected ? 'hudStatusOn' : 'hudStatusOff',
                     })}
                 />
+                {/* 未読の通知 */}
+                {unread && (
+                    <span
+                        aria-hidden="true"
+                        className={css({
+                            position: 'absolute',
+                            bottom: '6px',
+                            right: '6px',
+                            width: '8px',
+                            height: '8px',
+                            borderRadius: '50%',
+                            backgroundColor: 'warning',
+                        })}
+                    />
+                )}
             </button>
 
-            {/* タブ付きオーバーレイ（ホーム / 現在地 / ワールド / ソーシャル / 通知 / 設定。マイページは自分のユーザー名から） */}
-            {open && instanceId && (
-                <HudOverlay currentInstanceId={instanceId} initialTab="home" onClose={() => setOpen(false)} />
-            )}
+            {open && instanceId && <HudOverlay currentInstanceId={instanceId} onClose={() => setOpen(false)} />}
         </>
     );
 }

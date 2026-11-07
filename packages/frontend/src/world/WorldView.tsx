@@ -3,7 +3,7 @@
  *
  * 入室の流れ（インスタンスの取得 → 作者を確認できないワールドの確認 → world:join）、ロード画面、
  * mod の取得と確認（ModRegistry）、描画（WorldStage）、カーソル、サーバーからの知らせをまとめる。
- * SNS に固有のもの（認証・ロビーへの導線・HUD）は持たず、props で受け取る。
+ * SNS に固有のもの（認証・ホームへの導線・HUD）は持たず、props で受け取る。
  */
 import { useSocket, useWorld, WorkerLoadingProvider } from '@ubichill/react';
 import type { Instance, ModLock } from '@ubichill/shared';
@@ -39,7 +39,7 @@ export interface WorldViewProps {
     preview?: { displayName?: string; thumbnail?: string };
     /** 失敗したとき・入室を断ったときの導線。 */
     recovery: { label: string; run: () => void };
-    /** 読み込みの失敗が確定したとき（SNS はしばらくしてロビーへ戻す）。 */
+    /** 読み込みの失敗が確定したとき（SNS はしばらくしてホームへ戻す）。 */
     onFailed?: (message: string) => void;
     /** 入室できたあとに重ねる UI（HUD など）。 */
     children?: ReactNode;

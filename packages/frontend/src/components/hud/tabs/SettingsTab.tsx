@@ -1,4 +1,5 @@
 import { isPublishable } from '@ubichill/shared';
+import { HomeSettingsSection } from '@/components/home/HomeSettingsSection';
 import { MyWorldsSection, ProfileEditSection, useMyAccount } from '@/components/profile';
 import { AnnouncementSection } from '@/components/profile/AnnouncementSection';
 import { FederationSection } from '@/components/profile/FederationSection';
@@ -8,10 +9,19 @@ import { css } from '@/styled-system/css';
 import { ModPermissionsSettings } from './settings/ModPermissionsSettings';
 import { cardStyle, type JoinInstanceHandler, sectionHeading, tabPanel } from './shared';
 
-export type SettingsSection = 'profile' | 'worlds' | 'publishing' | 'account' | 'federation' | 'announcements' | 'mods';
+export type SettingsSection =
+    | 'profile'
+    | 'home'
+    | 'worlds'
+    | 'publishing'
+    | 'account'
+    | 'federation'
+    | 'announcements'
+    | 'mods';
 
 const SECTIONS: ReadonlyArray<{ id: SettingsSection; label: string; adminOnly?: boolean }> = [
     { id: 'profile', label: 'プロフィール' },
+    { id: 'home', label: 'ホーム' },
     { id: 'worlds', label: 'ワールド' },
     { id: 'publishing', label: '公開' },
     { id: 'account', label: 'アカウント' },
@@ -21,7 +31,7 @@ const SECTIONS: ReadonlyArray<{ id: SettingsSection; label: string; adminOnly?: 
 ];
 
 /**
- * 設定タブ。プロフィールの編集・ワールドの管理・公開（公開環境）・アカウント（パスワード）・連合（管理者）・mod の権限を
+ * 設定タブ。プロフィールの編集・ホーム・ワールドの管理・公開（公開環境）・アカウント（パスワード）・連合（管理者）・mod の権限を
  * タブで分ける。プロフィールの表示は自分のユーザー名から開くマイページ。
  */
 export function SettingsTab({
@@ -81,13 +91,14 @@ export function SettingsTab({
                         </button>
                     ))}
                 </div>
-                {account.error && current !== 'mods' && (
+                {account.error && current !== 'mods' && current !== 'home' && (
                     <p className={css({ fontSize: '13px', color: 'errorText', mb: '3' })}>{account.error}</p>
                 )}
-                {current !== 'mods' && account.loading && (
+                {current !== 'mods' && current !== 'home' && account.loading && (
                     <p className={css({ fontSize: '13px', color: 'textMuted' })}>読み込み中...</p>
                 )}
                 {current === 'profile' && <ProfileEditSection account={account} onNavigate={onNavigate} />}
+                {current === 'home' && <HomeSettingsSection />}
                 {current === 'worlds' && !account.loading && (
                     <MyWorldsSection account={account} onNavigate={onNavigate} onJoinInstance={onJoinInstance} />
                 )}

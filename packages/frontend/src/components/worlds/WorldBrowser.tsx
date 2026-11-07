@@ -54,19 +54,18 @@ function sortWorlds(worlds: WorldListItem[], key: SortKey): WorldListItem[] {
     });
 }
 
-interface LobbyProps {
+interface WorldBrowserProps {
     onJoinInstance: (
         instanceId: string,
         worldId: string,
         worldData?: { thumbnail?: string; displayName?: string },
     ) => void;
-    /** モーダル表示モード。省略時は 'lobby' */
-    mode?: 'lobby' | 'modal';
-    /** モーダルモード時、現在参加中のインスタンスID */
+    /** 現在参加中のインスタンスID */
     currentInstanceId?: string;
 }
 
-export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
+/** ワールドを探す一覧（ランチパッドの「ワールド」）。お気に入り・自サーバー・連合のワールドを並べる。 */
+export function WorldBrowser({ onJoinInstance, currentInstanceId }: WorldBrowserProps) {
     const navigate = useNavigate();
     const confirm = useConfirm();
 
@@ -83,7 +82,7 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
     const [selectedWorldUrl, setSelectedWorldUrl] = useState<string | null>(null);
 
     // ソートキーを localStorage で永続化
-    const [sortKey, handleSortChange] = useSetting<SortKey>(SETTINGS_KEYS.lobbySortKey, DEFAULT_SORT, isSortKey);
+    const [sortKey, handleSortChange] = useSetting<SortKey>(SETTINGS_KEYS.worldSortKey, DEFAULT_SORT, isSortKey);
 
     // お気に入りはサーバーが URL から解決する（ローカル・グローバルの一覧に無い外部ワールドも出す）
     const favoriteWorlds = useFavoriteWorlds(tab === 'favorites');

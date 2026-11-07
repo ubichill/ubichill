@@ -4,7 +4,7 @@ import { fetchMyAccount } from '@/lib/account/me';
 import { useSession } from '@/lib/session';
 import { css } from '@/styled-system/css';
 
-/** 公式アカウントが公開済みの開発用既定パスワードのままなら、ロビーで知らせる（Secret の設定を促す）。 */
+/** 公式アカウントが公開済みの開発用既定パスワードのままなら、ワールド一覧で知らせる（Secret の設定を促す）。 */
 export function PasswordChangeNotice() {
     const navigate = useNavigate();
     const { data: session } = useSession();

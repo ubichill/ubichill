@@ -1,8 +1,8 @@
 import type { PublishedMod, UserProfile } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { WorldDetailModal } from '@/components/lobby/WorldDetailModal';
 import { UserSocialBar } from '@/components/social';
+import { WorldDetailModal } from '@/components/worlds/WorldDetailModal';
 import { fetchMyAccount, type MyAccount } from '@/lib/account/me';
 import { API_BASE } from '@/lib/api';
 import { fetchPublishedMods } from '@/lib/externalWorksApi';

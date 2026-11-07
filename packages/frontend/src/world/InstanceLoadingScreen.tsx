@@ -84,7 +84,7 @@ const labelColorClass: Record<StageStatus, string> = {
 
 /**
  * インスタンス接続のロード画面。段階別ステータスと総合進捗バーを表示し、
- * 失敗時はロビーへ戻る導線を出す。
+ * 失敗時はホームへ戻る導線を出す。
  */
 export function InstanceLoadingScreen({
     worldName,

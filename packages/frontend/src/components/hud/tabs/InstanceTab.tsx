@@ -2,10 +2,10 @@ import { useSocket } from '@ubichill/react';
 import { type Instance, worldOriginDomain } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { FavoriteButton } from '@/components/lobby/FavoriteButton';
-import { useInstances } from '@/components/lobby/useInstances';
-import { WorldDetailModal } from '@/components/lobby/WorldDetailModal';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
+import { FavoriteButton } from '@/components/worlds/FavoriteButton';
+import { useInstances } from '@/components/worlds/useInstances';
+import { WorldDetailModal } from '@/components/worlds/WorldDetailModal';
 import { fetchInstance } from '@/lib/instancesApi';
 import { instanceWorldRef } from '@/lib/worldRef';
 import { css } from '@/styled-system/css';
@@ -14,7 +14,6 @@ import { cardStyle, sectionHeading, tabPanel } from './shared';
 interface InstanceTabProps {
     currentInstanceId: string;
     onNavigate?: () => void;
-    onReturnToLobby?: () => void;
 }
 
 const actionButtonBase = {
@@ -36,9 +35,9 @@ const actionButtonBase = {
 
 /**
  * 現在参加中のインスタンスの詳細タブ。
- * 入り直し / 新規インスタンス作成 / (作者のみ)編集 / ロビーへ戻る と、参加者一覧を表示する。
+ * 入り直し / 新規インスタンス作成 / (作者のみ)編集 と、参加者一覧を表示する。
  */
-export function InstanceTab({ currentInstanceId, onNavigate, onReturnToLobby }: InstanceTabProps) {
+export function InstanceTab({ currentInstanceId, onNavigate }: InstanceTabProps) {
     const navigate = useNavigate();
     const confirm = useConfirm();
     const { users, currentUser } = useSocket();
@@ -299,25 +298,6 @@ export function InstanceTab({ currentInstanceId, onNavigate, onReturnToLobby }: 
                                 <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
                             </svg>
                             編集
-                        </button>
-                    )}
-                    {onReturnToLobby && (
-                        <button
-                            type="button"
-                            onClick={onReturnToLobby}
-                            className={css(actionButtonBase, { bg: 'secondary', color: 'text' })}
-                        >
-                            <svg
-                                width="16"
-                                height="16"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                            >
-                                <path d="M15 18l-6-6 6-6" />
-                            </svg>
-                            ロビーへ戻る
                         </button>
                     )}
                 </div>
