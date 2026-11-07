@@ -53,6 +53,14 @@ export { type UseWorldModOptions, useWorldMod } from './hooks/useWorldMod';
 export { collectColliders, useWorldSimulation } from './hooks/useWorldSimulation';
 export type { InstanceGrant, ResolveInstance } from './lib/instanceSocket';
 export { InstanceJoinRejected } from './lib/instanceSocket';
+export {
+    createMediaOutputStore,
+    DEFAULT_MEDIA_OUTPUT,
+    type MediaOutputLevel,
+    type MediaOutputStore,
+    mediaOutput,
+    normalizeMediaOutput,
+} from './media/mediaOutput';
 export { type MediaSurface, mediaSurfaces } from './media/mediaSurfaces';
 export { ridingSyncRef } from './ridingSyncRef';
 export type { WidgetDefinition, WorkerModDefinition } from './types';

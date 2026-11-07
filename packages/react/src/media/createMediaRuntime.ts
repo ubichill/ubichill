@@ -14,6 +14,7 @@ import Hls from 'hls.js';
 import type { ExternalUrlAccess } from '../lib/externalUrlAuthorization';
 import { getSharedState, type SharedStateReply, type SharedStateSocket, updateSharedState } from '../lib/sharedState';
 import type { ModWorkerHandlers } from '../useModWorker';
+import { effectiveVolume, type MediaOutputStore, mediaOutput } from './mediaOutput';
 import {
     estimateServerNow,
     estimateServerWriteTime,
@@ -48,6 +49,8 @@ interface MediaEntry {
     /** このメディアのキーの最新の共有状態（別のメディアの値でも revision を知るために持つ）。 */
     sharedEntry: SharedStateEntry | null;
     timelineQueue: Promise<void>;
+    /** mod が決めた音量（全体の音量を掛ける前）。 */
+    requestedVolume: number;
 }
 
 interface PendingMedia {
@@ -84,6 +87,8 @@ export interface CreateMediaRuntimeOptions {
     getSocket: () => MediaSocket | null;
     authorizeUrl: (url: string) => Promise<ExternalUrlAccess>;
     sendEvent: (event: ModHostEvent) => void;
+    /** 全体の音量・ミュート。省略時は host 全体の {@link mediaOutput}。 */
+    output?: MediaOutputStore;
 }
 
 export interface MediaRuntime {
@@ -165,6 +170,7 @@ export function createMediaRuntime({
     getSocket,
     authorizeUrl,
     sendEvent,
+    output = mediaOutput,
 }: CreateMediaRuntimeOptions): MediaRuntime {
     const mediaEntries = new Map<string, MediaEntry>();
     const pending = new Map<string, PendingMedia>();
@@ -190,7 +196,7 @@ export function createMediaRuntime({
                 ? (patch.duration ?? null)
                 : (durationOf(video) ?? entry.state.duration),
             playbackRate: video.playbackRate,
-            volume: video.volume,
+            volume: entry.requestedVolume,
             muted: video.muted,
             seekable: rangesOf(video.seekable),
             buffered: rangesOf(video.buffered),
@@ -452,6 +458,17 @@ export function createMediaRuntime({
         };
     };
 
+    const applyVolume = (entry: MediaEntry): void => {
+        const level = output.get();
+        entry.video.volume = effectiveVolume(entry.requestedVolume, level);
+        entry.video.muted = level.muted;
+    };
+
+    const setRequestedVolume = (entry: MediaEntry, volume: number): void => {
+        entry.requestedVolume = Math.max(0, Math.min(1, volume));
+        applyVolume(entry);
+    };
+
     const createEntry = (targetId: string, video: HTMLVideoElement): MediaEntry => {
         const entry: MediaEntry = {
             video,
@@ -467,7 +484,9 @@ export function createMediaRuntime({
             serverClock: INITIAL_SERVER_CLOCK,
             sharedEntry: null,
             timelineQueue: Promise.resolve(),
+            requestedVolume: 1,
         };
+        applyVolume(entry);
         attachListeners(entry);
         applyDeviceControl(entry, false);
         return entry;
@@ -492,7 +511,7 @@ export function createMediaRuntime({
             presentation: request.presentation ?? 'video',
             sync: request.sync ?? 'local',
             status: 'loading',
-            volume: entry.video.volume,
+            volume: entry.requestedVolume,
             muted: entry.video.muted,
         };
         applyDeviceControl(entry, request.deviceControl ?? entry.state.presentation === 'audio');
@@ -545,9 +564,7 @@ export function createMediaRuntime({
         pending.delete(targetId);
         if (pendingEntry.load) applyLoad(entry, pendingEntry.load);
         if (pendingEntry.seek !== undefined) applySeek(entry, pendingEntry.seek);
-        if (pendingEntry.volume !== undefined) {
-            entry.video.volume = Math.max(0, Math.min(1, pendingEntry.volume));
-        }
+        if (pendingEntry.volume !== undefined) setRequestedVolume(entry, pendingEntry.volume);
         if (pendingEntry.visible !== undefined) {
             entry.visible = pendingEntry.visible;
             entry.video.style.display = pendingEntry.visible ? 'block' : 'none';
@@ -683,7 +700,7 @@ export function createMediaRuntime({
                 getPending(targetId).volume = volume;
                 return;
             }
-            entry.video.volume = Math.max(0, Math.min(1, volume));
+            setRequestedVolume(entry, volume);
         },
         onMediaDestroy: (targetId) => {
             loadRevisions.set(targetId, (loadRevisions.get(targetId) ?? 0) + 1);
@@ -715,7 +732,12 @@ export function createMediaRuntime({
         },
     };
 
+    const unsubscribeOutput = output.subscribe(() => {
+        for (const entry of mediaEntries.values()) applyVolume(entry);
+    });
+
     const destroy = (): void => {
+        unsubscribeOutput();
         for (const entry of mediaEntries.values()) destroyEntry(entry);
         mediaEntries.clear();
     };
