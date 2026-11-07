@@ -8,7 +8,7 @@ import {
     SIGNING_KEYS_WEBFINGER_REL,
 } from '@ubichill/shared';
 import { Router } from 'express';
-import { selfDomain } from '../services/authorKeys';
+import { selfDomain } from '../services/authors/authorKeys';
 
 /**
  * GET /.well-known/webfinger?resource=acct:handle@domain（RFC 7033）

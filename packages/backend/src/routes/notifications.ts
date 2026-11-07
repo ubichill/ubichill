@@ -1,5 +1,5 @@
 /**
- * 通知: 一覧（カーソル）・未読数・既読・SSE・運営のお知らせ。規則は services/notifications.ts。
+ * 通知: 一覧（カーソル）・未読数・既読・SSE・運営のお知らせ。規則は services/notifications/notifications.ts。
  */
 import { announcementRepository, userRepository } from '@ubichill/db';
 import {
@@ -13,9 +13,9 @@ import rateLimit from 'express-rate-limit';
 import { redis } from '../lib/redis';
 import { sharedRateLimit } from '../lib/sharedRateLimit';
 import { requireAdmin, requireAuth } from '../middleware/auth';
-import { notificationHub } from '../services/notificationHub';
-import { notificationService } from '../services/notificationService';
-import { openNotificationStream } from '../services/notificationStream';
+import { notificationHub } from '../services/notifications/notificationHub';
+import { notificationService } from '../services/notifications/notificationService';
+import { openNotificationStream } from '../services/notifications/notificationStream';
 import { logger } from '../utils/logger';
 
 const router = Router();

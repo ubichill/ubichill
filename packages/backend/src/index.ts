@@ -29,12 +29,12 @@ import { router as socialRouter } from './routes/social';
 import { router as usersRouter } from './routes/users';
 import { router as webfingerRouter } from './routes/webfinger';
 import { router as worldsRouter } from './routes/worlds';
-import { backendEvents, createRedisBackendBus } from './services/backendEvents';
-import { instanceReaper } from './services/instanceReaper';
-import { maintenanceGate } from './services/maintenance';
-import { createRedisNotificationBus, notificationHub } from './services/notificationHub';
-import { bootstrapOfficialAccount } from './services/officialAccountStore';
-import { worldRegistry } from './services/worldRegistry';
+import { bootstrapOfficialAccount } from './services/authors/officialAccountStore';
+import { backendEvents, createRedisBackendBus } from './services/cluster/backendEvents';
+import { maintenanceGate } from './services/cluster/maintenance';
+import { instanceReaper } from './services/instances/instanceReaper';
+import { createRedisNotificationBus, notificationHub } from './services/notifications/notificationHub';
+import { worldRegistry } from './services/worlds/worldRegistry';
 import { logger } from './utils/logger';
 
 // Expressアプリを初期化

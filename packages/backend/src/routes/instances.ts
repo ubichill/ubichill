@@ -5,7 +5,7 @@ import { appConfig } from '../config';
 import { redis } from '../lib/redis';
 import { sharedRateLimit } from '../lib/sharedRateLimit';
 import { optionalAuth, requireAuth } from '../middleware/auth';
-import { InstanceJoinRejected, instanceManager } from '../services/instanceManager';
+import { InstanceJoinRejected, instanceManager } from '../services/instances/instanceManager';
 import { logger } from '../utils/logger';
 
 const router = Router();

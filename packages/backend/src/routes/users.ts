@@ -51,21 +51,21 @@ import {
     requirePublisher,
     toWebHeaders,
 } from '../middleware/auth';
-import { invalidateAuthorKey, isAuthorKey } from '../services/authorKeyStore';
-import { selfAccount } from '../services/authorKeys';
-import { backendEvents } from '../services/backendEvents';
-import { externalWorkStatuses, publishedExternalWorks } from '../services/externalWorkStore';
-import { verifyRegistration } from '../services/externalWorks';
-import { favoriteRefOf, resolveFavoriteWorlds } from '../services/favorites';
-import { notificationService, notifyInBackground } from '../services/notificationService';
+import { invalidateAuthorKey, isAuthorKey } from '../services/authors/authorKeyStore';
+import { selfAccount } from '../services/authors/authorKeys';
 import {
     browserEnvironmentName,
     newEnvironmentNotice,
     publishingEnvironmentView,
     registrationOutcome,
-} from '../services/publishingEnvironments';
-import { nodeWorldCrypto } from '../services/worldCrypto';
-import { worldRegistry } from '../services/worldRegistry';
+} from '../services/authors/publishingEnvironments';
+import { backendEvents } from '../services/cluster/backendEvents';
+import { notificationService, notifyInBackground } from '../services/notifications/notificationService';
+import { externalWorkStatuses, publishedExternalWorks } from '../services/worlds/externalWorkStore';
+import { verifyRegistration } from '../services/worlds/externalWorks';
+import { favoriteRefOf, resolveFavoriteWorlds } from '../services/worlds/favorites';
+import { nodeWorldCrypto } from '../services/worlds/worldCrypto';
+import { worldRegistry } from '../services/worlds/worldRegistry';
 import { logger } from '../utils/logger';
 import { createTtlCache } from '../utils/ttlCache';
 

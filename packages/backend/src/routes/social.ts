@@ -26,11 +26,11 @@ import {
 } from '@ubichill/shared';
 import { Router } from 'express';
 import { optionalAuth, requireAuth } from '../middleware/auth';
-import { selfAccount, selfDomain } from '../services/authorKeys';
-import { friendEdgesOf, friendIdsOf } from '../services/friends';
-import { instanceManager } from '../services/instanceManager';
-import { instanceRuntime } from '../services/instanceRuntime';
-import { notificationService, notifyInBackground } from '../services/notificationService';
+import { selfAccount, selfDomain } from '../services/authors/authorKeys';
+import { instanceManager } from '../services/instances/instanceManager';
+import { instanceRuntime } from '../services/instances/instanceRuntime';
+import { notificationService, notifyInBackground } from '../services/notifications/notificationService';
+import { friendEdgesOf, friendIdsOf } from '../services/social/friends';
 
 const router = Router();
 

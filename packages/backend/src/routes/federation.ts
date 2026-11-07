@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireAdmin, requireAuth } from '../middleware/auth';
-import { worldRegistry } from '../services/worldRegistry';
+import { worldRegistry } from '../services/worlds/worldRegistry';
 import { logger } from '../utils/logger';
 
 const router = Router();

@@ -5,9 +5,9 @@ import { z } from 'zod';
 import { redis } from '../lib/redis';
 import { sharedRateLimit } from '../lib/sharedRateLimit';
 import { requireFreshAuth } from '../middleware/auth';
-import { isAuthorKey } from '../services/authorKeyStore';
-import { modAuthorForToken, type ServiceTokenIssuer, serviceTokenIssuerFromEnv } from '../services/serviceTokens';
-import { nodeWorldCrypto } from '../services/worldCrypto';
+import { modAuthorForToken, type ServiceTokenIssuer, serviceTokenIssuerFromEnv } from '../services/auth/serviceTokens';
+import { isAuthorKey } from '../services/authors/authorKeyStore';
+import { nodeWorldCrypto } from '../services/worlds/worldCrypto';
 import { logger } from '../utils/logger';
 
 /**

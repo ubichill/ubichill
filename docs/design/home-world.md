@@ -24,7 +24,7 @@
 | `PUT /me/home` | `{worldRef?: string \| null, accessType?}`。省略した項目は変えない。null で既定に戻す |
 | `POST /me/home/instance` | ホームの部屋を新しく作る。`?fallback=default` で設定を無視して既定のワールド |
 
-`POST /me/home/instance`（`services/homeInstance.ts`）:
+`POST /me/home/instance`（`services/instances/homeInstance.ts`）:
 
 1. 設定のワールドを解決する。開けなければ既定のワールドにして `fallback: 'unresolvable'` を付ける。既定も開けなければ 502。
 2. 呼ぶたびに新しい部屋を作る（自分がリーダー・設定の公開範囲）。使い回さない。
