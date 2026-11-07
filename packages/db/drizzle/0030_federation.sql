@@ -60,6 +60,7 @@ CREATE TABLE "remote_friendships" (
 	"offer_id" text NOT NULL,
 	"relationship_id" text NOT NULL,
 	"accept_id" text,
+	"peer_offer_id" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "remote_friendships_pk" PRIMARY KEY("user_id","actor_id"),
@@ -109,4 +110,5 @@ CREATE INDEX "federation_deliveries_host_idx" ON "federation_deliveries" USING b
 CREATE INDEX "federation_seen_expires_idx" ON "federation_seen" USING btree ("expires_at");--> statement-breakpoint
 CREATE INDEX "remote_actors_domain_idx" ON "remote_actors" USING btree ("domain");--> statement-breakpoint
 CREATE INDEX "remote_friendships_actor_idx" ON "remote_friendships" USING btree ("actor_id");--> statement-breakpoint
-CREATE INDEX "remote_friendships_offer_idx" ON "remote_friendships" USING btree ("offer_id");
+CREATE INDEX "remote_friendships_offer_idx" ON "remote_friendships" USING btree ("offer_id");--> statement-breakpoint
+CREATE INDEX "remote_friendships_peer_offer_idx" ON "remote_friendships" USING btree ("peer_offer_id");

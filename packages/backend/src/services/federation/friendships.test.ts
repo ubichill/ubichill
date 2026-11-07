@@ -39,6 +39,7 @@ function setup(options: { policy?: DomainPolicy } = {}) {
                     offerId: input.offerId,
                     relationshipId: input.relationshipId,
                     acceptId: input.acceptId ?? null,
+                    peerOfferId: input.peerOfferId ?? null,
                     createdAt: existing?.createdAt ?? now,
                     updatedAt: now,
                 };
@@ -56,7 +57,7 @@ function setup(options: { policy?: DomainPolicy } = {}) {
                 for (const r of hit) rows.splice(rows.indexOf(r), 1);
                 return hit;
             },
-            findByOffer: async (offerId) => rows.filter((r) => r.offerId === offerId),
+            findByOffer: async (offerId) => rows.filter((r) => r.offerId === offerId || r.peerOfferId === offerId),
             findByAccept: async (acceptId) => rows.filter((r) => r.acceptId === acceptId),
             countIncoming: async (userId) => rows.filter((r) => r.userId === userId && r.state === 'incoming').length,
         },
@@ -225,6 +226,29 @@ describe('相手から申請が来る', () => {
 });
 
 describe('取り消し・解除', () => {
+    it('お互いに申請してフレンドになったら、相手が自分の申請の Undo で解除しても消え、こちらの解除は自分の申請の Undo', async () => {
+        const crossed = setup();
+        await crossed.friendships.request('alice', BOB);
+        const ourOffer = String(crossed.sent[0]?.activity.id);
+        await crossed.friendships.onOffer(BOB, offerFrom(BOB, 'https://c.example/ap/activities/o1'));
+        // 相手も同じく、こちらの Offer を承認する（すれ違いの承認は、もうフレンドなので何もしない）
+        await crossed.friendships.onAccept(BOB, {
+            id: 'https://c.example/ap/activities/acc',
+            object: { id: ourOffer, type: 'Offer' },
+        });
+        await crossed.friendships.onUndo(BOB, { object: { id: 'https://c.example/ap/activities/o1', type: 'Offer' } });
+        expect(crossed.find('alice', BOB.id)).toBeUndefined();
+        expect(crossed.notes.at(-1)).toBe(`removed alice × ${BOB.id}`);
+
+        const ours = setup();
+        await ours.friendships.request('alice', BOB);
+        const offerId = String(ours.sent[0]?.activity.id);
+        await ours.friendships.onOffer(BOB, offerFrom(BOB, 'https://c.example/ap/activities/o1'));
+        await ours.friendships.remove('alice', BOB);
+        // 相手の側では、この id が相手の Offer（peerOfferId）として残っている
+        expect(ours.sent.at(-1)?.activity).toMatchObject({ type: 'Undo', object: { id: offerId, type: 'Offer' } });
+    });
+
     it('こちらの申請でフレンドになった関係を解除すると Undo{Offer}、相手の申請なら Undo{Accept}', async () => {
         const mine = setup();
         await mine.friendships.request('alice', BOB);

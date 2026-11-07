@@ -1,5 +1,5 @@
 {
-  "id": "b8ab9e93-345f-4f5e-aa76-f96a0cc994a3",
+  "id": "d7481933-9a97-436e-a85d-b74fa9bb2f45",
   "prevId": "905bb3d4-65c2-4fe2-b4e2-b012721f8006",
   "version": "7",
   "dialect": "postgresql",
@@ -972,6 +972,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "peer_offer_id": {
+          "name": "peer_offer_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -1008,6 +1014,21 @@
           "columns": [
             {
               "expression": "offer_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "remote_friendships_peer_offer_idx": {
+          "name": "remote_friendships_peer_offer_idx",
+          "columns": [
+            {
+              "expression": "peer_offer_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

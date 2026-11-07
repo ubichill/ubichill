@@ -87,6 +87,33 @@ describe.skipIf(!RUN)('連合の保存（DB統合）', () => {
             );
         });
 
+        it('お互いに申請した関係は、相手の Offer の id でも引ける', async () => {
+            await remoteActorRepository.upsert(actor(5));
+            await remoteFriendshipRepository.put(
+                {
+                    userId,
+                    actorId: actorId(5),
+                    state: 'accepted',
+                    offerId: `o5-${stamp}`,
+                    relationshipId: 'r5',
+                    acceptId: 'a5',
+                    peerOfferId: `p5-${stamp}`,
+                },
+                T0,
+            );
+            expect((await remoteFriendshipRepository.findByOffer(`p5-${stamp}`)).map((r) => r.actorId)).toEqual([
+                actorId(5),
+            ]);
+            expect((await remoteFriendshipRepository.findByOffer(`o5-${stamp}`)).map((r) => r.actorId)).toEqual([
+                actorId(5),
+            ]);
+            await remoteFriendshipRepository.put(
+                { userId, actorId: actorId(5), state: 'outgoing', offerId: `o5b-${stamp}`, relationshipId: 'r5' },
+                at(1000),
+            );
+            expect(await remoteFriendshipRepository.findByOffer(`p5-${stamp}`)).toEqual([]);
+        });
+
         it('受けたまま 30 日の申請と、冷却期間の過ぎた断った記録を消す', async () => {
             await remoteActorRepository.upsert(actor(5));
             await remoteActorRepository.upsert(actor(6));

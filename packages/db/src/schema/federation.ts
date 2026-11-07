@@ -95,6 +95,8 @@ export const remoteFriendships = pgTable(
         relationshipId: text('relationship_id').notNull(),
         /** 承認の Accept の id（承認した側の Undo に使う） */
         acceptId: text('accept_id'),
+        /** お互いに申請したときの、相手の Offer の id（相手は解除をこの Offer の Undo で送ってくる） */
+        peerOfferId: text('peer_offer_id'),
         createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
         updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     },
@@ -106,6 +108,7 @@ export const remoteFriendships = pgTable(
         ),
         index('remote_friendships_actor_idx').on(table.actorId),
         index('remote_friendships_offer_idx').on(table.offerId),
+        index('remote_friendships_peer_offer_idx').on(table.peerOfferId),
     ],
 );
 

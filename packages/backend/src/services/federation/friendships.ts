@@ -5,6 +5,7 @@
  * - Accept・Reject は「自分が出した Offer を、その相手から」だけ受ける（偽の承認を受けない）
  * - 断ったら 7 日は同じ相手からの申請を受けない。受けた申請は 1 人 100 件まで（失効は 30 日）
  * - 取り消し（Undo）した Offer の id は 14 日覚え、遅れて届いた申請を無視する
+ * - お互いに申請したときは、相手の Offer の id も持つ（双方が自分の Offer の Undo で解除するので、どちらからでも消せる）
  * - 送るのは相手の個人の inbox（送り手のユーザーの鍵で署名）
  */
 import type { RemoteFriendshipRecord, RemoteFriendshipState } from '@ubichill/db';
@@ -39,11 +40,13 @@ export interface FriendshipDeps {
                 offerId: string;
                 relationshipId: string;
                 acceptId?: string | null;
+                peerOfferId?: string | null;
             },
             now: Date,
         ): Promise<RemoteFriendshipRecord>;
         remove(userId: string, actorId: string): Promise<RemoteFriendshipRecord | undefined>;
         removeAllFor(actorId: string): Promise<RemoteFriendshipRecord[]>;
+        /** 申請の Offer か、相手の Offer（peerOfferId）がその id の関係 */
         findByOffer(offerId: string): Promise<RemoteFriendshipRecord[]>;
         findByAccept(acceptId: string): Promise<RemoteFriendshipRecord[]>;
         countIncoming(userId: string): Promise<number>;
@@ -203,9 +206,9 @@ export function createRemoteFriendships(deps: FriendshipDeps) {
             }
             if (!acceptsNewContact(deps.policyOf(actor.domain))) return;
             if (row?.state === 'outgoing') {
-                // お互いに申請した: 相手の申請を承認してフレンドにする
+                // お互いに申請した: 相手の申請を承認してフレンドにする。相手は自分の Offer の Undo で解除してくるので、その id も持つ
                 const acceptId = deps.identity.newActivityId();
-                await deps.repo.put({ ...row, state: 'accepted', acceptId }, now());
+                await deps.repo.put({ ...row, state: 'accepted', acceptId, peerOfferId: activity.id }, now());
                 await send(
                     userId,
                     actor,

@@ -32,10 +32,16 @@ export const remoteFriendshipRepository = {
             offerId: string;
             relationshipId: string;
             acceptId?: string | null;
+            peerOfferId?: string | null;
         },
         now: Date,
     ): Promise<RemoteFriendshipRecord> {
-        const values = { ...input, acceptId: input.acceptId ?? null, updatedAt: now };
+        const values = {
+            ...input,
+            acceptId: input.acceptId ?? null,
+            peerOfferId: input.peerOfferId ?? null,
+            updatedAt: now,
+        };
         const [row] = await db
             .insert(remoteFriendships)
             .values({ ...values, createdAt: now })
@@ -59,8 +65,12 @@ export const remoteFriendshipRepository = {
         return db.delete(remoteFriendships).where(eq(remoteFriendships.actorId, actorId)).returning();
     },
 
+    /** その Offer の関係（申請の Offer か、お互いに申請したときの相手の Offer）。 */
     async findByOffer(offerId: string): Promise<RemoteFriendshipRecord[]> {
-        return db.select().from(remoteFriendships).where(eq(remoteFriendships.offerId, offerId));
+        return db
+            .select()
+            .from(remoteFriendships)
+            .where(or(eq(remoteFriendships.offerId, offerId), eq(remoteFriendships.peerOfferId, offerId)));
     },
 
     async findByAccept(acceptId: string): Promise<RemoteFriendshipRecord[]> {
