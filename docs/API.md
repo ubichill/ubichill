@@ -377,7 +377,9 @@ HTTP契約・型生成はOpenAPI、WebSocket契約はAsyncAPI。詳細は
 | リソース | GET | POST | PUT / DELETE |
 |---|---|---|---|
 | `/worlds` | 一覧・詳細 | 作成 | 更新・削除（**作成者のみ**） |
-| `/instances` | 一覧・詳細 | 作成（10件/h） | 削除（**リーダーのみ**） |
+| `/instances` | 一覧・詳細（見る人が入れるかを `canJoin` に付ける） | 作成（10件/h） | 削除（**リーダーのみ**） |
+| `/instances/:id/invites` | `/instances/:id/invite-candidates`: 招待の画面に出すフレンド（送れるか・どこかにいるか） | 招待（`{userIds, message?}`、1 人ずつの結果。30回/分/人） | — |
+| `/social/invite-requests` | — | リクエストインバイト（`{userId}`）・`/:userId/accept`（招待で答える） | DELETE `/:userId`: 断る（どれも 20回/分/人） |
 | `/users/me` | 自分の情報 | — | — |
 | `/users/me/home` | ホームの設定とワールド | `/instance`: ホームの部屋を新しく作る（`?fallback=default` で既定のワールド。10回/分/人） | PUT: `{worldRef?: string\|null, accessType?}`（20回/分/人） |
 | `/notifications` | 一覧（`?cursor=&limit=`、お知らせを含む新しい順）・`/unread-count` | `/read`（`{ids}` か `{all:true}`） | — |
@@ -385,5 +387,6 @@ HTTP契約・型生成はOpenAPI、WebSocket契約はAsyncAPI。詳細は
 | `/notifications/announcements` | 一覧 | 作成（**公式アカウントのみ**、20件/h） | — |
 
 通知の形は ActivityStreams 2.0 に寄せる（`shared/notification/activity.ts`）。フレンド申請 = `Follow`、承認 = `Accept`、
-ワールドのお気に入り = `Like`（object は拡張の型 `World`）、運営のお知らせ = `Announce`（object は `Note`）。
+ワールドのお気に入り = `Like`（object は拡張の型 `World`）、招待 = `Invite`（object は拡張の型 `Instance`、content は一言、
+endTime は期限）、リクエストインバイト = `Join`（object は頼まれた人、endTime は答えられる期限）、運営のお知らせ = `Announce`（object は `Note`）。
 SSE は取りこぼしがあり得る（Redis の障害・切断中）ので、クライアントは繋ぎ直すたびに一覧を取り直す。
