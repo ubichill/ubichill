@@ -78,6 +78,8 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
     const originDomain = world.source ? worldOriginDomain(world.source) : null;
     const isCurrent = selected.id === currentInstanceId;
     const isFull = selected.status === 'full';
+    // 招待のみの部屋がフレンドに見えているだけ（入るには中にいるフレンドへのリクエストか招待が要る）
+    const needsInvite = selected.canJoin === false;
     const accessLabel = selected.access.type === 'public' ? '公開' : '限定';
 
     // ワールド情報は副次。由来はドメインで名前下に出すので detail 行からは除外。
@@ -252,7 +254,7 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
                             <button
                                 type="button"
                                 onClick={() => onJoin(selected.id)}
-                                disabled={isFull}
+                                disabled={isFull || needsInvite}
                                 className={css({
                                     py: '3',
                                     bg: 'primary',
@@ -265,7 +267,7 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
                                     _disabled: { opacity: 0.5, cursor: 'not-allowed' },
                                 })}
                             >
-                                {isFull ? '満員' : 'このインスタンスに入る'}
+                                {isFull ? '満員' : needsInvite ? '招待が必要です' : 'このインスタンスに入る'}
                             </button>
                         )}
 

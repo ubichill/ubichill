@@ -2,7 +2,8 @@ import type { FriendsResponse, Instance, UserSummary } from '@ubichill/shared';
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { HudIcon } from '@/components/hud/HudIcon';
 import { FriendTile, PlaceCard, UserRow, UserSearch, useFriendLocations } from '@/components/social';
-import { arrangeFriendPresence } from '@/components/social/friendPresence';
+import { arrangeFriendPresence, requestTargetOf } from '@/components/social/friendPresence';
+import { useInviteActions } from '@/components/social/useInviteActions';
 import { fetchFriends } from '@/lib/socialApi';
 import { css, cva } from '@/styled-system/css';
 import { type JoinInstanceHandler, tabPanel } from './shared';
@@ -21,6 +22,8 @@ export function SocialTab({
     onFriendshipChange?: () => void;
 }) {
     const locations = useFriendLocations();
+    const { request } = useInviteActions();
+    const [requested, setRequested] = useState<ReadonlySet<string>>(new Set());
     const [friends, setFriends] = useState<FriendsResponse | null>(null);
     const loadFriends = useCallback(() => {
         fetchFriends()
@@ -60,15 +63,24 @@ export function SocialTab({
 
             {presence && !noFriends && (
                 <Group label="オンライン" count={presence.onlineCount} tone="online">
-                    {presence.places.map((place) => (
-                        <PlaceCard
-                            key={place.instance.id}
-                            instance={place.instance}
-                            onJoin={() => join(place.instance)}
-                        >
-                            <FriendGrid users={place.friends} />
-                        </PlaceCard>
-                    ))}
+                    {presence.places.map((place) => {
+                        const target = requestTargetOf(place);
+                        const ask = async () => {
+                            if (target && (await request(target)))
+                                setRequested((prev) => new Set([...prev, place.instance.id]));
+                        };
+                        return (
+                            <PlaceCard
+                                key={place.instance.id}
+                                instance={place.instance}
+                                onJoin={() => join(place.instance)}
+                                onRequest={target ? () => void ask() : undefined}
+                                requested={requested.has(place.instance.id)}
+                            >
+                                <FriendGrid users={place.friends} />
+                            </PlaceCard>
+                        );
+                    })}
                     {presence.hidden.length > 0 && (
                         <div className={css({ display: 'flex', flexDirection: 'column', gap: '1' })}>
                             <h3 className={subheading}>

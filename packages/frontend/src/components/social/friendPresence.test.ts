@@ -1,6 +1,6 @@
 import type { Instance, UserSummary } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
-import { arrangeFriendPresence, onlineFriends } from './friendPresence';
+import { arrangeFriendPresence, onlineFriends, requestTargetOf } from './friendPresence';
 
 const user = (id: string, name = id): UserSummary => ({ id, name, handle: id, image: null, bio: null });
 const room = (id: string, name: string, currentUsers = 1): Instance =>
@@ -62,5 +62,16 @@ describe('onlineFriends', () => {
             'a:room',
             'f:hidden',
         ]);
+    });
+});
+
+describe('requestTargetOf', () => {
+    it('作成者がフレンドなら作成者に頼む（どの公開範囲でも招待できる）。いなければ最初のフレンド', () => {
+        const instance = { ...room('r', 'カフェ'), leaderId: 'b' } as Instance;
+        expect(requestTargetOf({ instance, friends: [user('a'), user('b')] })?.id).toBe('b');
+        expect(requestTargetOf({ instance: { ...instance, leaderId: 'x' }, friends: [user('a'), user('b')] })?.id).toBe(
+            'a',
+        );
+        expect(requestTargetOf({ instance, friends: [] })).toBeUndefined();
     });
 });

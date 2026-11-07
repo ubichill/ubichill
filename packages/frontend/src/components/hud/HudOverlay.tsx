@@ -26,6 +26,7 @@ import {
 import { LaunchpadHome } from './LaunchpadHome';
 import { AudioTab } from './tabs/AudioTab';
 import { InstanceTab } from './tabs/InstanceTab';
+import { InviteTab } from './tabs/InviteTab';
 import { NotificationsTab } from './tabs/NotificationsTab';
 import { ProfileTab } from './tabs/ProfileTab';
 import { type SettingsSection, SettingsTab } from './tabs/SettingsTab';
@@ -73,14 +74,16 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
 
     const navigation = useMemo<HudNavigation>(
         () => ({
+            currentInstanceId,
             openSettings: (section) => {
                 setSettingsSection(section);
                 setView(selectDock('settings'));
             },
             openUser: (userId) =>
                 setView((v) => openPage(v, userId === selfId ? { kind: 'profile' } : { kind: 'user', userId })),
+            joinInstance: actions.joinInstance,
         }),
-        [selfId],
+        [currentInstanceId, selfId, actions.joinInstance],
     );
     const open = (page: HudPage) => setView((v) => openPage(v, page));
 
@@ -105,6 +108,15 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
                         onFriendshipChange={() => void notifications.reload()}
                     />
                 );
+            case 'invite':
+                return (
+                    <InviteTab
+                        instance={instance}
+                        currentInstanceId={currentInstanceId}
+                        onCopyLink={() => void actions.copyInvite()}
+                        onFindFriends={() => open({ kind: 'social' })}
+                    />
+                );
             case 'profile':
                 return <ProfileTab onNavigate={onClose} onJoinInstance={actions.joinInstance} />;
             case 'user':
@@ -122,7 +134,7 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
                         isHome={isHome}
                         goingHome={actions.goingHome}
                         onGoHome={() => void actions.goHome()}
-                        onCopyInvite={() => void actions.copyInvite()}
+                        onInvite={() => open({ kind: 'invite' })}
                         onOpenInstance={() => setView(selectDock('instance'))}
                         onOpenPage={open}
                         onCreateWorld={() => void createWorld()}

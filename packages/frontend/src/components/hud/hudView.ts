@@ -1,12 +1,17 @@
 /**
  * ランチパッド（インスタンスの中の HUD）の表示状態。下のドックで画面を切り替え、その上に画面を重ねて進む
- * （ワールド一覧・ソーシャル・プロフィール）。戻ると 1 枚ずつ外し、ドックを押すと重ねた画面は忘れる。
+ * （ワールド一覧・ソーシャル・招待・プロフィール）。戻ると 1 枚ずつ外し、ドックを押すと重ねた画面は忘れる。
  */
 
 export type DockTab = 'launchpad' | 'notifications' | 'instance' | 'audio' | 'settings';
 
 /** ドックの画面の上に重ねて開く画面。 */
-export type HudPage = { kind: 'worlds' } | { kind: 'social' } | { kind: 'profile' } | { kind: 'user'; userId: string };
+export type HudPage =
+    | { kind: 'worlds' }
+    | { kind: 'social' }
+    | { kind: 'invite' }
+    | { kind: 'profile' }
+    | { kind: 'user'; userId: string };
 
 export interface HudView {
     dock: DockTab;
@@ -45,6 +50,8 @@ export function pageTitle(page: HudPage): string | null {
             return 'ワールド';
         case 'social':
             return 'ソーシャル';
+        case 'invite':
+            return '招待';
         default:
             return null;
     }
