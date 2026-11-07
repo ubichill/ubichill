@@ -54,7 +54,7 @@ func benchFanout(b *testing.B, members, movers int, mode string) {
 			b.Fatal(err)
 		}
 		b.Cleanup(func() { _ = c.Close() })
-		data := Object{"instanceId": "bench", "token": s.sign(ticket{"bench", fmt.Sprintf("u%02d", i), time.Now().Add(time.Hour).Unix(), "member", ""}),
+		data := Object{"instanceId": "bench", "token": s.sign(ticket{"bench", fmt.Sprintf("u%02d", i), time.Now().Add(time.Hour).Unix(), "member", "", ""}),
 			"user": Object{"name": "u", "status": "online", "position": Object{"x": 0, "y": 0}}}
 		if features != nil {
 			data["features"] = features

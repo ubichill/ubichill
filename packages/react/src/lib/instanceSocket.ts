@@ -1,4 +1,10 @@
-import type { ClientToServerEvents, InstanceAPI, InstanceFeature, ServerToClientEvents } from '@ubichill/shared';
+import {
+    type ClientToServerEvents,
+    type InstanceAPI,
+    type InstanceFeature,
+    roomIdOf,
+    type ServerToClientEvents,
+} from '@ubichill/shared';
 
 type Events = ServerToClientEvents & {
     connect: () => void;
@@ -152,40 +158,46 @@ export class InstanceSocket {
             ws.onopen = () => {
                 if (generation !== this.generation) return;
                 const { instanceId, user } = joined.data;
-                this.send('world:join', { instanceId, user, token: grant.token, features: FEATURES }, (value) => {
-                    if (generation !== this.generation) return;
-                    clearTimeout(handshake);
-                    const result = value as JoinReply;
-                    if (
-                        !result.success &&
-                        (result.error === '接続が切れています' || result.error === '応答がタイムアウトしました')
-                    ) {
-                        if (ws.readyState < 2) ws.close();
-                        return;
-                    }
-                    if (!result.success) {
-                        if (result.code === 'ticket_invalid' && recovery.ticketRefreshes < 1) {
-                            recovery.ticketRefreshes++;
-                            ws.close();
-                        } else if (result.code === 'instance_unavailable') {
-                            ws.close();
-                        } else {
-                            this.failJoin(result.error ?? 'インスタンスに参加できません');
+                // ほかのサーバーの部屋（`<ID>@<ドメイン>`）は、部屋のサーバーでの ID で入る
+                const roomId = roomIdOf(instanceId);
+                this.send(
+                    'world:join',
+                    { instanceId: roomId, user, token: grant.token, features: FEATURES },
+                    (value) => {
+                        if (generation !== this.generation) return;
+                        clearTimeout(handshake);
+                        const result = value as JoinReply;
+                        if (
+                            !result.success &&
+                            (result.error === '接続が切れています' || result.error === '応答がタイムアウトしました')
+                        ) {
+                            if (ws.readyState < 2) ws.close();
+                            return;
                         }
-                        return;
-                    }
-                    this.connected = true;
-                    this.connecting = false;
-                    this.joinedOnce = true;
-                    this.id = result.userId;
-                    clearTimeout(this.deadlineTimer);
-                    // Brief successful joins must not reset an endlessly flapping connection.
-                    this.stableTimer = setTimeout(() => {
-                        if (generation === this.generation && this.connected) this.recovery = null;
-                    }, STABLE_CONNECTION_MS);
-                    joined.callback(result);
-                    if (generation === this.generation && this.connected) this.dispatch('connect');
-                });
+                        if (!result.success) {
+                            if (result.code === 'ticket_invalid' && recovery.ticketRefreshes < 1) {
+                                recovery.ticketRefreshes++;
+                                ws.close();
+                            } else if (result.code === 'instance_unavailable') {
+                                ws.close();
+                            } else {
+                                this.failJoin(result.error ?? 'インスタンスに参加できません');
+                            }
+                            return;
+                        }
+                        this.connected = true;
+                        this.connecting = false;
+                        this.joinedOnce = true;
+                        this.id = result.userId;
+                        clearTimeout(this.deadlineTimer);
+                        // Brief successful joins must not reset an endlessly flapping connection.
+                        this.stableTimer = setTimeout(() => {
+                            if (generation === this.generation && this.connected) this.recovery = null;
+                        }, STABLE_CONNECTION_MS);
+                        joined.callback(result);
+                        if (generation === this.generation && this.connected) this.dispatch('connect');
+                    },
+                );
             };
             ws.onmessage = (event) => {
                 if (generation !== this.generation) return;

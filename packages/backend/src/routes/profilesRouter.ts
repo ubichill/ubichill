@@ -5,6 +5,7 @@ import { redis } from '../lib/redis';
 import { sharedRateLimit } from '../lib/sharedRateLimit';
 import { requireAuth } from '../middleware/auth';
 import { selfAccount } from '../services/authors/authorKeys';
+import { federation } from '../services/federation';
 import { processProfileImage } from '../services/profiles/images/processImage';
 import { createSharpCodec } from '../services/profiles/images/sharpCodec';
 import { createProfileService } from '../services/profiles/profiles';
@@ -52,4 +53,5 @@ export const router = createProfilesRouter({
         publicBaseUrl: process.env[ENV_KEYS.PUBLIC_BASE_URL] || SERVER_CONFIG.DEV_URL,
         authorOf: selfAccount,
     }),
+    onChanged: (userId) => federation?.profileChanged(userId),
 });

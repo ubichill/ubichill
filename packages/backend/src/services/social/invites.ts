@@ -10,6 +10,7 @@ import {
     type InviteRequestRefusal,
     inviteRefusal,
     inviteRequestRefusal,
+    isRemoteUserId,
     type SendInviteResult,
 } from '@ubichill/shared';
 
@@ -55,7 +56,34 @@ export interface InviteServiceDeps {
         inviteRequested(input: { requesterId: string; targetId: string; expiresAt: Date }): Promise<unknown>;
         inviteRequestAnswered(targetId: string, requesterId: string): Promise<unknown>;
     };
+    /** 連合（ほかのサーバーの部屋・ほかのサーバーの人）。無ければこのサーバーの中だけ */
+    federation?: InviteFederation;
     now(): Date;
+}
+
+/** 招待の連合の口（federation/invites.ts）。ほかのサーバーの部屋は、画面の住所（`<ID>@<ドメイン>`）で指す。 */
+export interface InviteFederation {
+    /** ほかのサーバーの部屋の住所か */
+    isRemoteRoom(roomRef: string): boolean;
+    /** 来訪中のほかのサーバーの部屋の住所 */
+    visitingRoom(userId: string): Promise<string | undefined>;
+    /** このサーバーの部屋への招待を、ほかのサーバーの人へ届ける。届けられなければ false */
+    deliverInvite(input: {
+        inviterId: string;
+        inviteeId: string;
+        instanceId: string;
+        message: string | null;
+        expiresAt: Date;
+    }): Promise<boolean>;
+    /** 来訪中のほかのサーバーの部屋へ招待する。その部屋にいなければ null */
+    sendFromRemoteRoom(
+        inviterId: string,
+        roomAddress: string,
+        inviteeIds: readonly string[],
+        message: string | null,
+    ): Promise<SendInviteResult[] | null>;
+    /** ほかのサーバーのフレンドにリクエストインバイトを送る */
+    requestRemote(requesterId: string, targetId: string): Promise<RequestOutcome>;
 }
 
 export type SendInvitesOutcome = { ok: true; results: SendInviteResult[] } | { ok: false; error: 'not-found' };
@@ -104,8 +132,19 @@ export function createInviteService(deps: InviteServiceDeps) {
         if (refusal) return { userId: inviteeId, ok: false, reason: refusal };
         const expiresAt = new Date(deps.now().getTime() + INVITE_LIMITS.INVITE_TTL_MS);
         await deps.invites.upsert({ instanceId: instance.id, inviterId, inviteeId, message, expiresAt });
-        await deps.notify.invited({ inviterId, inviteeId, instance, message, expiresAt });
-        return { userId: inviteeId, ok: true };
+        if (!isRemoteUserId(inviteeId)) {
+            await deps.notify.invited({ inviterId, inviteeId, instance, message, expiresAt });
+            return { userId: inviteeId, ok: true };
+        }
+        // ほかのサーバーの人: 権利はこのサーバーが持ち、知らせは相手のサーバーへ届ける
+        const delivered = await deps.federation?.deliverInvite({
+            inviterId,
+            inviteeId,
+            instanceId: instance.id,
+            message,
+            expiresAt,
+        });
+        return delivered ? { userId: inviteeId, ok: true } : { userId: inviteeId, ok: false, reason: 'unavailable' };
     };
 
     const friendsFor = async (audience: InstanceAudience, inviterId: string) => {
@@ -114,14 +153,46 @@ export function createInviteService(deps: InviteServiceDeps) {
         return { inviter, leader };
     };
 
+    /** inviterId が今いる部屋（このサーバーの部屋か、来訪中のほかのサーバーの部屋）へ 1 人招待する。どこにもいなければ undefined。 */
+    const inviteToWhereIAm = async (inviterId: string, inviteeId: string): Promise<SendInviteResult | undefined> => {
+        const presence = await deps.presence();
+        const roomId = roomOf(presence, inviterId);
+        if (!roomId) {
+            const address = await deps.federation?.visitingRoom(inviterId);
+            const results =
+                address && (await deps.federation?.sendFromRemoteRoom(inviterId, address, [inviteeId], null));
+            return results ? results[0] : undefined;
+        }
+        const audience = await audienceOf(roomId, presence);
+        const look = audience ? await deps.rooms.describe(roomId) : undefined;
+        if (!audience || !look) return undefined;
+        return sendOne(
+            audience,
+            { id: roomId, ...look },
+            inviterId,
+            inviteeId,
+            await friendsFor(audience, inviterId),
+            null,
+        );
+    };
+
     return {
-        /** inviterId が今いる部屋（instanceId）に、相手を招待する。 */
+        /** inviterId が今いる部屋（このサーバーの部屋の ID か、ほかのサーバーの部屋の住所）に、相手を招待する。 */
         async sendInvites(
             inviterId: string,
             instanceId: string,
             inviteeIds: readonly string[],
             message: string | null,
         ): Promise<SendInvitesOutcome> {
+            if (deps.federation?.isRemoteRoom(instanceId)) {
+                const results = await deps.federation.sendFromRemoteRoom(
+                    inviterId,
+                    instanceId,
+                    inviteeIds,
+                    message || null,
+                );
+                return results ? { ok: true, results } : { ok: false, error: 'not-found' };
+            }
             const presence = await deps.presence();
             const audience = await audienceOf(instanceId, presence);
             const look = audience ? await deps.rooms.describe(instanceId) : undefined;
@@ -138,6 +209,15 @@ export function createInviteService(deps: InviteServiceDeps) {
         /** 招待の画面に出すフレンド（送れるか・どこかにいるか）。部屋が無ければ undefined。 */
         async candidates(inviterId: string, instanceId: string): Promise<InviteCandidate[] | undefined> {
             const presence = await deps.presence();
+            if (deps.federation?.isRemoteRoom(instanceId)) {
+                // ほかのサーバーの部屋の規則は部屋のサーバーが確かめる（送ってみるまで分からない）
+                if ((await deps.federation.visitingRoom(inviterId)) !== instanceId) return undefined;
+                return [...(await deps.friendIdsOf(inviterId))].map((userId) => ({
+                    userId,
+                    refusal: null,
+                    online: roomOf(presence, userId) !== undefined,
+                }));
+            }
             const audience = await audienceOf(instanceId, presence);
             if (!audience) return undefined;
             const friends = await friendsFor(audience, inviterId);
@@ -150,11 +230,17 @@ export function createInviteService(deps: InviteServiceDeps) {
 
         /** requesterId が targetId に「あなたのいる部屋に入れて」と頼む。期限内のリクエストがあれば送り直さない。 */
         async requestInvite(requesterId: string, targetId: string): Promise<RequestOutcome> {
+            if (isRemoteUserId(targetId)) {
+                return deps.federation
+                    ? deps.federation.requestRemote(requesterId, targetId)
+                    : { ok: false, reason: 'not-friend' };
+            }
             const now = deps.now();
             const [presence, requesterFriends] = await Promise.all([deps.presence(), deps.friendIdsOf(requesterId)]);
             const roomId = roomOf(presence, targetId);
             const audience = roomId ? await audienceOf(roomId, presence) : undefined;
-            const refusal = inviteRequestRefusal(requesterId, targetId, requesterFriends, audience ?? null);
+            const visiting = !audience && (await deps.federation?.visitingRoom(targetId)) ? 'remote' : null;
+            const refusal = inviteRequestRefusal(requesterId, targetId, requesterFriends, audience ?? visiting);
             if (refusal) return { ok: false, reason: refusal };
             // もう招待をもらっているなら、頼まずに入ればよい
             if (roomId && audience && (await deps.invites.findValid(roomId, requesterId, now))) {
@@ -180,19 +266,8 @@ export function createInviteService(deps: InviteServiceDeps) {
                 return { ok: false, reason: 'no-request' };
             }
             if (accept) {
-                const presence = await deps.presence();
-                const roomId = roomOf(presence, targetId);
-                const audience = roomId ? await audienceOf(roomId, presence) : undefined;
-                const look = roomId && audience ? await deps.rooms.describe(roomId) : undefined;
-                if (!roomId || !audience || !look) return { ok: false, reason: 'offline' };
-                const result = await sendOne(
-                    audience,
-                    { id: roomId, ...look },
-                    targetId,
-                    requesterId,
-                    await friendsFor(audience, targetId),
-                    null,
-                );
+                const result = await inviteToWhereIAm(targetId, requesterId);
+                if (!result) return { ok: false, reason: 'offline' };
                 // もう同じ部屋にいるなら、招待しなくても済んでいる
                 if (!result.ok && result.reason !== 'already-inside') return { ok: false, reason: result.reason };
             }

@@ -9,6 +9,7 @@ import {
 } from '@ubichill/shared';
 import { Router } from 'express';
 import { selfDomain } from '../services/authors/authorKeys';
+import { federation } from '../services/federation';
 
 /**
  * GET /.well-known/webfinger?resource=acct:handle@domain（RFC 7033）
@@ -41,6 +42,21 @@ router.get('/', async (req, res) => {
             subject: `acct:${formatAuthorAccount(account)}`,
             properties: { [DISPLAY_NAME_WEBFINGER_PROPERTY]: user.name },
             links: [
+                // 連合の actor（FEP-fe34: actor の id はオリジンで信頼する）とプロフィールの画面
+                ...(federation
+                    ? [
+                          {
+                              rel: 'self',
+                              type: 'application/activity+json',
+                              href: federation.identity.actorUrl(user.id),
+                          },
+                          {
+                              rel: 'http://webfinger.net/rel/profile-page',
+                              type: 'text/html',
+                              href: `${federation.frontendOrigin}/@${user.handle}`,
+                          },
+                      ]
+                    : []),
                 {
                     rel: SIGNING_KEYS_WEBFINGER_REL,
                     type: 'application/json',

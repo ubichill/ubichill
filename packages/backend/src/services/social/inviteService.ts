@@ -1,10 +1,21 @@
-/** 招待とリクエストインバイトの実体（DB・Go の在室・通知をつなぐ）。規則は invites.ts と shared の instanceAccess.ts。 */
+/** 招待とリクエストインバイトの実体（DB・Go の在室・通知・連合をつなぐ）。規則は invites.ts と shared の instanceAccess.ts。 */
 import { instanceRepository, inviteRepository } from '@ubichill/db';
+import { type Federation, federation } from '../federation';
 import { instanceRuntime } from '../instances/instanceRuntime';
 import { notificationService } from '../notifications/notificationService';
 import { worldRegistry } from '../worlds/worldRegistry';
 import { friendIdsOf } from './friends';
-import { createInviteService } from './invites';
+import { createInviteService, type InviteFederation } from './invites';
+
+/** 招待の連合の口（ほかのサーバーの部屋は、来訪の記録から部屋の URL を引く）。 */
+const inviteFederationOf = (f: Federation): InviteFederation => ({
+    isRemoteRoom: (roomRef) => f.remoteAddressOf(roomRef) !== null,
+    visitingRoom: (userId) => f.invites.visitingRoom(userId),
+    deliverInvite: (input) => f.invites.deliverInvite(input),
+    sendFromRemoteRoom: (inviterId, roomAddress, inviteeIds, message) =>
+        f.invites.sendFromRemoteRoom(inviterId, roomAddress, inviteeIds, message),
+    requestRemote: (requesterId, targetId) => f.invites.requestRemote(requesterId, targetId),
+});
 
 export const inviteService = createInviteService({
     rooms: {
@@ -22,5 +33,6 @@ export const inviteService = createInviteService({
     friendIdsOf,
     invites: inviteRepository,
     notify: notificationService,
+    federation: federation ? inviteFederationOf(federation) : undefined,
     now: () => new Date(),
 });

@@ -68,7 +68,7 @@ function ServerIcon() {
  * 連合（このサーバーの管理者 = 公式アカウントだけ）。フォローしたサーバーの公開ワールドが、ワールド一覧の「グローバル」に出る。
  * ほかのサーバーの作者のワールドは写しを配らないので、たとえば公式ワールドを出すには https://ubichill.com をフォローする。
  */
-export function FederationSection() {
+export function WorldPeersSection() {
     const confirm = useConfirm();
     const [peers, setPeers] = useState<FederationPeer[] | null>(null);
     const [draft, setDraft] = useState('');

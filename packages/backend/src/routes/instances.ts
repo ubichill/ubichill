@@ -1,14 +1,74 @@
 import { CreateInstanceRequestSchema, ListInstancesQuerySchema } from '@ubichill/shared';
-import { Router } from 'express';
+import { type Request, type Response, Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { appConfig } from '../config';
 import { redis } from '../lib/redis';
 import { sharedRateLimit } from '../lib/sharedRateLimit';
 import { optionalAuth, requireAuth } from '../middleware/auth';
+import { type Federation, federation } from '../services/federation';
+import { remoteInstanceOf } from '../services/federation/remoteInstance';
+import type { TravelError } from '../services/federation/travel';
 import { InstanceJoinRejected, instanceManager } from '../services/instances/instanceManager';
+import { worldRegistry } from '../services/worlds/worldRegistry';
 import { logger } from '../utils/logger';
 
 const router = Router();
+
+// ── ほかのサーバーの部屋（連合。住所は `<部屋の ID>@<ドメイン>`） ──
+
+const TRAVEL_ERRORS: Record<TravelError, { status: number; error: string }> = {
+    blocked: { status: 404, error: 'このサーバーの部屋には入れません' },
+    'not-found': { status: 404, error: 'インスタンスが見つからないか、入れる人が限られています（フレンドのみなど）' },
+    'invite-required': { status: 403, error: 'このインスタンスに入るには招待が要ります' },
+    full: { status: 403, error: '満員です' },
+    rejected: { status: 403, error: 'このインスタンスには入れません' },
+    unavailable: { status: 503, error: '部屋のサーバーにつながりません' },
+};
+
+/** ブラウザの origin（チケットを結び付ける）。許した画面の origin だけを使い、ほかは既定の画面の origin。 */
+function clientOriginOf(req: Request, f: Federation): string {
+    const origin = req.get('origin');
+    const allowed = Array.isArray(appConfig.cors.origin) ? appConfig.cors.origin : [];
+    return origin && (allowed.includes(origin) || origin === f.identity.origin || origin === f.frontendOrigin)
+        ? origin
+        : f.frontendOrigin;
+}
+
+/** ワールドを見る人のサーバーで確かめる（入る前の確認に使う。確かめられなければ作者を確認できないワールドとして扱う）。 */
+async function checkedWorld(url: string) {
+    const resolved = await Promise.race([
+        worldRegistry.resolveRef(url).catch(() => undefined),
+        new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 5000).unref()),
+    ]);
+    return resolved ?? undefined;
+}
+
+/** ほかのサーバーの部屋なら連合で答える（答えたら true）。 */
+async function remoteInstance(req: Request, res: Response, id: string): Promise<boolean> {
+    const address = federation?.remoteAddressOf(id);
+    if (!federation || !address) return false;
+    if (!req.user) {
+        res.status(404).json({ error: TRAVEL_ERRORS['not-found'].error });
+        return true;
+    }
+    const described = await federation.travel.describe(req.user.id, address);
+    if (!described.ok) {
+        const { status, error } = TRAVEL_ERRORS[described.error];
+        res.status(status === 403 ? 404 : status).json({ error });
+        return true;
+    }
+    const world = await checkedWorld(described.room.world.url);
+    res.json(
+        remoteInstanceOf(described.room, {
+            address: id,
+            domain: address.domain,
+            canJoin: described.canJoin,
+            world,
+            seenAt: new Date(),
+        }),
+    );
+    return true;
+}
 
 /**
  * GET /api/v1/instances
@@ -85,6 +145,7 @@ router.post('/', requireAuth, createInstanceLimiter, async (req, res) => {
 router.get('/:id', optionalAuth, async (req, res) => {
     try {
         const id = req.params.id as string;
+        if (await remoteInstance(req, res, id)) return;
         // 公開範囲で入れない人には、インスタンスがあることも伏せる
         const instance = await instanceManager.getInstanceFor(id, req.user?.id ?? null);
 
@@ -105,6 +166,24 @@ router.get('/:id', optionalAuth, async (req, res) => {
 /** SNSの認証・公開範囲を確認し、インスタンスへの接続情報を返す。 */
 router.post('/:id/join', requireAuth, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    const id = String(req.params.id);
+    const address = federation?.remoteAddressOf(id);
+    if (federation && address) {
+        // ホームとして部屋のサーバーに頼み、ブラウザの origin に結び付いたチケットを受け取る
+        const joined = await federation.travel
+            .join(req.user.id, address, clientOriginOf(req, federation))
+            .catch((error: unknown) => {
+                logger.error('ほかのサーバーの部屋に入れません:', error);
+                return { ok: false as const, error: 'unavailable' as const };
+            });
+        if (!joined.ok) {
+            const { status, error } = TRAVEL_ERRORS[joined.error];
+            return res.status(status).json({ error });
+        }
+        return res.json(joined.grant);
+    }
+    // このサーバーの部屋に入るなら、ほかのサーバーへの来訪は終わり
+    if (federation) void federation.travel.leave(req.user.id).catch(() => undefined);
     try {
         const password = typeof req.body?.password === 'string' ? req.body.password : undefined;
         return res.json(
@@ -115,6 +194,28 @@ router.post('/:id/join', requireAuth, async (req, res) => {
         logger.error('インスタンス参加エラー:', error);
         return res.status(503).json({ error: 'インスタンスに接続できません' });
     }
+});
+
+/**
+ * 来訪を続けている（ほかのサーバーの部屋にいる間、画面から 30 秒ごと）。フレンドの現在地の答えに使う。
+ * DELETE で来訪をやめる（部屋を出た）。
+ */
+router.post('/:id/visit', requireAuth, async (req, res) => {
+    if (!req.user || !federation) return res.status(404).json({ error: 'Not found' });
+    const visit = await federation.visitOf(req.user.id);
+    const current = visit && federation.identity.roomAddressOf(visit.roomUrl) === String(req.params.id);
+    if (!visit || !current) return res.status(404).json({ error: 'この部屋への来訪の記録がありません' });
+    await federation.travel.heartbeat(req.user.id, visit.roomUrl);
+    return res.status(204).send();
+});
+
+router.delete('/:id/visit', requireAuth, async (req, res) => {
+    if (!req.user || !federation) return res.status(204).send();
+    const visit = await federation.visitOf(req.user.id);
+    if (visit && federation.identity.roomAddressOf(visit.roomUrl) === String(req.params.id)) {
+        await federation.travel.leave(req.user.id);
+    }
+    return res.status(204).send();
 });
 
 /**

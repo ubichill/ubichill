@@ -54,7 +54,23 @@ describe('notificationOf', () => {
         expect(notificationOf(record({ type: 'Like' }))).toBeUndefined();
         expect(notificationOf(record({ type: 'Delete' }))).toBeUndefined();
         expect(notificationOf(record({ actorName: null }))).toBeUndefined();
-        expect(notificationOf(record({ actorUserId: null, actorUri: 'https://r.example/u' }))).toBeUndefined();
+        // ほかのサーバーの actor のキャッシュが消えた（名前が引けない）
+        expect(
+            notificationOf(record({ actorUserId: null, actorUri: 'https://r.example/u', actorName: null })),
+        ).toBeUndefined();
+    });
+
+    it('ほかのサーバーの actor は、actor の URL を id にして、キャッシュの名前とアカウントで出す', () => {
+        expect(
+            notificationOf(
+                record({
+                    actorUserId: null,
+                    actorUri: 'https://r.example/ap/users/u',
+                    actorName: 'U',
+                    actorHandle: 'u@r.example',
+                }),
+            ),
+        ).toMatchObject({ actor: { id: 'https://r.example/ap/users/u', name: 'U', preferredUsername: 'u@r.example' } });
     });
 });
 

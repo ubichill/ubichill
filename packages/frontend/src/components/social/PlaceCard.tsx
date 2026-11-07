@@ -47,6 +47,12 @@ export function PlaceCard({
                             <HudIcon name="user" size={14} />
                             {stats.currentUsers}/{stats.maxUsers}
                         </span>
+                        {instance.remote && (
+                            <span className={metaItem} title="部屋のサーバー">
+                                <HudIcon name="globe" size={14} />
+                                {instance.remote.domain}
+                            </span>
+                        )}
                     </p>
                 </div>
                 {!here && !needsInvite && onJoin && (

@@ -31,6 +31,7 @@ func main() {
 	world := flag.String("world", "", "instance definition JSON (no SNS or database required)")
 	guests := flag.Bool("guests", false, "allow server-issued guest identities")
 	origins := flag.String("origins", os.Getenv("CORS_ORIGIN"), "comma-separated browser origins")
+	federatedVisits := flag.Bool("federated-visits", envOr("INSTANCE_FEDERATED_VISITS", "true") == "true", "accept WebSocket connections from other ubichill servers' pages; they can join only with a ticket bound to their origin (env INSTANCE_FEDERATED_VISITS)")
 	grace := flag.Duration("disconnect-grace", 15*time.Second, "reconnect grace period")
 	maxRooms := flag.Int("max-rooms", 1000, "rooms this node holds at most (advertised as its capacity)")
 	drainTimeout := flag.Duration("drain-timeout", 0, "on SIGTERM, refuse new rooms and wait up to this long for connections to end before closing the rest")
@@ -92,7 +93,7 @@ func main() {
 	}
 	node := coord.NewNodeID(os.Getenv("POD_NAME"))
 	s := runtime.New(runtime.Config{
-		AdminToken: token, TicketKey: ticketKey, Guests: *guests, Origins: allowedOrigins, Grace: *grace,
+		AdminToken: token, TicketKey: ticketKey, Guests: *guests, Origins: allowedOrigins, FederatedVisits: *federatedVisits, Grace: *grace,
 		Directory: coord.DirectoryFor(directoryClient, nil), Node: node, Addr: advertiseAddr(*addr), MaxRooms: *maxRooms,
 		MigrateAfter: *migrateAfter, DisconnectNotice: *disconnectNotice, CursorBatch: *cursorBatch, MaxConnections: *maxConnections,
 	})

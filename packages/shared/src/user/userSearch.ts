@@ -3,7 +3,7 @@
  *
  * `@bob@other.example` のようにサーバーまで書いたものはアカウントの指定として扱う。
  * このサーバーのアカウントなら ID の完全一致で引き、ほかのサーバーのアカウントは
- * 連合のフレンド（#200）でそのサーバーに問い合わせて解決するので、ここでは種類だけ分ける。
+ * そのサーバーに WebFinger で問い合わせて引く（連合）ので、ここでは種類だけ分ける。
  */
 import type { UserWithFriendship } from './friends';
 import { displayNameKey, formatAuthorAccount, parseAuthorAccount } from './handle';
@@ -46,9 +46,6 @@ export function parseUserSearchQuery(input: string, localDomain: string): UserSe
 /** `GET /api/v1/social/users` の応答。 */
 export interface UserSearchResponse {
     users: UserWithFriendship[];
-    /**
-     * ほかのサーバーのアカウントが指定された（`handle@domain`）。このサーバーの検索では見つからないので、
-     * 画面は連合のフレンド（#200）に対応するまで、その旨を出す。
-     */
+    /** ほかのサーバーのアカウント（`handle@domain`）が指定された。見つからなければ users は空 */
     remoteAccount?: string;
 }

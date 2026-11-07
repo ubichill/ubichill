@@ -11,7 +11,15 @@ import { PencilIcon, ShareIcon } from './profileIcons';
 import { avatarRow, profileBody, profileButton, profileCard, roundIconButton } from './profileStyles';
 import { StatusPill } from './StatusPill';
 
-const accountDomain = (author: string): string => author.slice(author.lastIndexOf('@'));
+/** アカウント（`handle@domain`）を ID とドメインに分ける。ほかのサーバーの人は handle にもドメインが付いている。 */
+const accountParts = (profile: Pick<UserProfile, 'handle' | 'author'>): { handle: string; domain: string } => {
+    const at = profile.author.lastIndexOf('@');
+    const domain = profile.author.slice(at);
+    return {
+        handle: profile.handle.endsWith(domain) ? profile.handle.slice(0, -domain.length) : profile.handle,
+        domain,
+    };
+};
 
 async function copyProfileUrl(profile: UserProfile): Promise<void> {
     const url = new URL(userPagePath(profile), window.location.origin).href;
@@ -39,6 +47,7 @@ function ShareButton({ profile }: { profile: UserProfile }) {
 
 /** 名前と ID。ID のうちドメインの部分は薄くする（同じ名前の別サーバーの人と区別するための部分）。 */
 export function ProfileIdentity({ profile }: { profile: Pick<UserProfile, 'name' | 'handle' | 'author'> }) {
+    const account = accountParts(profile);
     return (
         <div className={css({ flex: 1, minW: 0 })}>
             <h1
@@ -53,8 +62,8 @@ export function ProfileIdentity({ profile }: { profile: Pick<UserProfile, 'name'
                 {profile.name}
             </h1>
             <p className={css({ fontSize: '14px', color: 'textMuted', overflowWrap: 'anywhere' })}>
-                @{profile.handle}
-                <span className={css({ color: 'textSubtle' })}>{accountDomain(profile.author)}</span>
+                @{account.handle}
+                <span className={css({ color: 'textSubtle' })}>{account.domain}</span>
             </p>
         </div>
     );

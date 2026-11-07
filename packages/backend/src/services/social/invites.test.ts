@@ -5,7 +5,14 @@ import { createInviteService, type InviteRoom, type InviteServiceDeps } from './
 const START = new Date('2026-11-07T00:00:00.000Z');
 
 /** DB・在室・通知のメモリの偽物。フレンドは双方向の組で持つ。 */
-function setup(options: { friends?: Array<[string, string]>; rooms?: Array<InviteRoom & { members: string[] }> }) {
+function setup(options: {
+    friends?: Array<[string, string]>;
+    rooms?: Array<InviteRoom & { members: string[] }>;
+    /** 連合: 来訪中のほかのサーバーの部屋（ユーザー → 住所） */
+    visiting?: Record<string, string>;
+    /** 連合: ほかのサーバーの人へ届けられるか */
+    deliverable?: boolean;
+}) {
     const clock = { now: START };
     const rooms = new Map((options.rooms ?? []).map((r) => [r.id, r]));
     const pairs = options.friends ?? [];
@@ -61,6 +68,24 @@ function setup(options: { friends?: Array<[string, string]>; rooms?: Array<Invit
                 void sent.push({ kind: 'request', to: input.targetId, from: input.requesterId }),
             inviteRequestAnswered: async (targetId, requesterId) =>
                 void sent.push({ kind: 'answered', to: targetId, from: requesterId }),
+        },
+        federation: {
+            isRemoteRoom: (ref) => ref.includes('@'),
+            visitingRoom: async (userId) => options.visiting?.[userId],
+            deliverInvite: async (input) => {
+                if (options.deliverable === false) return false;
+                sent.push({ kind: 'deliver', to: input.inviteeId, from: input.inviterId, detail: input });
+                return true;
+            },
+            sendFromRemoteRoom: async (inviterId, roomAddress, inviteeIds) => {
+                if (options.visiting?.[inviterId] !== roomAddress) return null;
+                sent.push({ kind: 'remote-room', to: inviteeIds.join(','), from: inviterId, detail: roomAddress });
+                return inviteeIds.map((userId) => ({ userId, ok: true }));
+            },
+            requestRemote: async (requesterId, targetId) => {
+                sent.push({ kind: 'remote-request', to: targetId, from: requesterId });
+                return { ok: true, alreadyRequested: false };
+            },
         },
         now: () => clock.now,
     };
@@ -260,5 +285,93 @@ describe('リクエストインバイト', () => {
         expect(await service.answerRequest('friend', 'me', true)).toEqual({ ok: false, reason: 'no-request' });
         expect(sent.at(-1)).toEqual({ kind: 'answered', to: 'friend', from: 'me' });
         expect(await service.answerRequest('friend', 'nobody', false)).toEqual({ ok: false, reason: 'no-request' });
+    });
+});
+
+describe('連合（ほかのサーバーの人・部屋）', () => {
+    const BOB = 'https://b.example/ap/users/bob';
+
+    it('このサーバーの部屋へ、ほかのサーバーのフレンドを招待する: 権利はここに作り、知らせは相手のサーバーへ', async () => {
+        const { service, invites, sent } = setup({
+            friends: [['leader', BOB]],
+            rooms: [room('r1', 'invite_only', 'leader', ['leader'])],
+        });
+        expect(await service.sendInvites('leader', 'r1', [BOB], null)).toEqual({
+            ok: true,
+            results: [{ userId: BOB, ok: true }],
+        });
+        expect(invites[0]).toMatchObject({ instanceId: 'r1', inviteeId: BOB });
+        expect(sent).toEqual([expect.objectContaining({ kind: 'deliver', to: BOB })]);
+    });
+
+    it('相手のサーバーへ届けられなければ unavailable', async () => {
+        const { service } = setup({
+            friends: [['leader', BOB]],
+            rooms: [room('r1', 'public', 'leader', ['leader'])],
+            deliverable: false,
+        });
+        expect(await service.sendInvites('leader', 'r1', [BOB], null)).toEqual({
+            ok: true,
+            results: [{ userId: BOB, ok: false, reason: 'unavailable' }],
+        });
+    });
+
+    it('フレンドでないほかのサーバーの人には送らない（届ける前に断る）', async () => {
+        const { service, sent } = setup({ rooms: [room('r1', 'public', 'leader', ['leader'])] });
+        expect(await service.sendInvites('leader', 'r1', [BOB], null)).toEqual({
+            ok: true,
+            results: [{ userId: BOB, ok: false, reason: 'not-friend' }],
+        });
+        expect(sent).toEqual([]);
+    });
+
+    it('来訪中のほかのサーバーの部屋（住所）からの招待は、部屋のサーバーに任せる。別の部屋の住所なら not-found', async () => {
+        const { service, sent } = setup({ friends: [['alice', 'bob']], visiting: { alice: 'r9@b.example' } });
+        expect(await service.sendInvites('alice', 'r9@b.example', ['bob'], null)).toEqual({
+            ok: true,
+            results: [{ userId: 'bob', ok: true }],
+        });
+        expect(await service.sendInvites('alice', 'r8@b.example', ['bob'], null)).toEqual({
+            ok: false,
+            error: 'not-found',
+        });
+        expect(sent.map((s) => s.kind)).toEqual(['remote-room']);
+    });
+
+    it('招待の候補: 来訪中の部屋ならフレンド全員（規則は部屋のサーバーが確かめる）、ほかの部屋なら undefined', async () => {
+        const { service } = setup({
+            friends: [
+                ['alice', 'bob'],
+                ['alice', BOB],
+            ],
+            visiting: { alice: 'r9@b.example' },
+        });
+        expect((await service.candidates('alice', 'r9@b.example'))?.map((c) => [c.userId, c.refusal])).toEqual([
+            ['bob', null],
+            [BOB, null],
+        ]);
+        expect(await service.candidates('alice', 'r8@b.example')).toBeUndefined();
+    });
+
+    it('ほかのサーバーのフレンドへのリクエストは、相手のサーバーへ送る', async () => {
+        const { service, sent } = setup({ friends: [['alice', BOB]] });
+        expect(await service.requestInvite('alice', BOB)).toEqual({ ok: true, alreadyRequested: false });
+        expect(sent).toEqual([{ kind: 'remote-request', to: BOB, from: 'alice' }]);
+    });
+
+    it('ほかのサーバーの部屋に来訪中のフレンドにも頼め、答えるとその部屋へ招待する', async () => {
+        const { service, sent } = setup({ friends: [['alice', 'bob']], visiting: { bob: 'r9@b.example' } });
+        expect(await service.requestInvite('alice', 'bob')).toEqual({ ok: true, alreadyRequested: false });
+        expect(await service.answerRequest('bob', 'alice', true)).toEqual({ ok: true });
+        expect(sent.map((s) => [s.kind, s.to, s.from])).toEqual([
+            ['request', 'bob', 'alice'],
+            ['remote-room', 'alice', 'bob'],
+            ['answered', 'bob', 'alice'],
+        ]);
+    });
+
+    it('どこにもいなければ、リクエストは offline で断る', async () => {
+        const { service } = setup({ friends: [['alice', 'bob']] });
+        expect(await service.requestInvite('alice', 'bob')).toEqual({ ok: false, reason: 'offline' });
     });
 });

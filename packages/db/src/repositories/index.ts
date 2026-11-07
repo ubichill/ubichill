@@ -2,6 +2,7 @@ export * from './authorKeyRepository';
 export * from './authorKeyRows';
 export * from './cliAuthRequestRepository';
 export * from './externalWorkRepository';
+export * from './federation';
 export * from './federationPeerRepository';
 export * from './instanceRepository';
 export * from './inviteRepository';

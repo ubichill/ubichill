@@ -251,23 +251,29 @@ func TestRateLimitIsCountedOnlyWhereTheClientConnects(t *testing.T) {
 	a, b := c.pod(t, "node-a"), c.pod(t, "node-b")
 	provision(t, a, "room")
 	a.maintain()
+	// 少しずつ送って返事を読む。まとめて送ると、レート制限の無い中継の接続では owner の送信の待ち行列（256）が
+	// 書き出しより先に埋まり、遅い相手として切られる（CPU の少ない環境で起きる）。窓は 1 秒なので数え方は同じ
 	burst := func(conn *websocket.Conn, n int) (limited int) {
 		t.Helper()
-		for i := range n {
-			if err := conn.WriteJSON(Frame{Event: "state:get", ID: fmt.Sprint("r", i), Data: encoded(Object{"key": "s"})}); err != nil {
-				t.Fatal(err)
-			}
-		}
-		for range n {
-			var f Frame
-			for f.ReplyTo == "" {
-				_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-				if err := conn.ReadJSON(&f); err != nil {
+		const chunk = 32
+		for start := 0; start < n; start += chunk {
+			end := min(start+chunk, n)
+			for i := start; i < end; i++ {
+				if err := conn.WriteJSON(Frame{Event: "state:get", ID: fmt.Sprint("r", i), Data: encoded(Object{"key": "s"})}); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if out, _ := object(f.Data); out["error"] == "rate limit exceeded" {
-				limited++
+			for range end - start {
+				var f Frame
+				for f.ReplyTo == "" {
+					_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+					if err := conn.ReadJSON(&f); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if out, _ := object(f.Data); out["error"] == "rate limit exceeded" {
+					limited++
+				}
 			}
 		}
 		return limited

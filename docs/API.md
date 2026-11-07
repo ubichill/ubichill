@@ -385,6 +385,16 @@ HTTP契約・型生成はOpenAPI、WebSocket契約はAsyncAPI。詳細は
 | `/notifications` | 一覧（`?cursor=&limit=`、お知らせを含む新しい順）・`/unread-count` | `/read`（`{ids}` か `{all:true}`） | — |
 | `/notifications/stream` | SSE（`notification`・`read`・`removed`、25 秒ごとに keep-alive、15 分で閉じる） | — | — |
 | `/notifications/announcements` | 一覧 | 作成（**公式アカウントのみ**、20件/h） | — |
+| `/instances/:id/visit` | — | ほかのサーバーの部屋（`<部屋 ID>@<ドメイン>`）にいる間の知らせ（30 秒ごと） | DELETE: 来訪をやめる |
+| `/federation` | 連合しているか・このサーバーのドメイン（誰でも） | — | — |
+| `/federation/servers` | 知っているほかのサーバーと配送の調子（**管理者**） | — | — |
+| `/federation/policies` | ほかのサーバーとの付き合い方（**管理者**） | — | PUT `/:domain`（`{policy: 'limit'\|'block'}`）・DELETE `/:domain` |
+
+ほかのサーバーの部屋・人（連合）は、このサーバーのものと同じ API で扱う。部屋の ID の代わりに住所（`<部屋 ID>@<ドメイン>`）を、
+ユーザー ID の代わりに actor の URL を渡す（`/instances/:id`・`/instances/:id/join`・`/instances/:id/invites`・`/social/friends`・
+`/social/users/:id`・`/social/invite-requests`）。ほかのサーバーの部屋は `Instance.remote`（`{domain, url}`）、
+ほかのサーバーの人は `UserSummary.domain` が付く。検索は `@ID@ドメイン` で、そのサーバーに WebFinger で問い合わせる。
+サーバー間の API は [design/federation.md](design/federation.md)。
 
 通知の形は ActivityStreams 2.0 に寄せる（`shared/notification/activity.ts`）。フレンド申請 = `Follow`、承認 = `Accept`、
 ワールドのお気に入り = `Like`（object は拡張の型 `World`）、招待 = `Invite`（object は拡張の型 `Instance`、content は一言、

@@ -8,7 +8,7 @@ import (
 )
 
 func memberTicket(instance string) ticket {
-	return ticket{instance, "alice", time.Now().Add(time.Minute).Unix(), "member", ""}
+	return ticket{instance, "alice", time.Now().Add(time.Minute).Unix(), "member", "", ""}
 }
 
 func TestTicketKeyIsSharedBetweenServersWithTheSameAdminToken(t *testing.T) {
@@ -23,7 +23,7 @@ func TestTicketKeyIsSharedBetweenServersWithTheSameAdminToken(t *testing.T) {
 	}
 	// 再起動しても同じ鍵になり、ゲストの再接続情報（24 時間）が無効にならない
 	restarted := New(Config{AdminToken: token, Guests: true})
-	if _, err := restarted.verify(podA.sign(ticket{"a", "guest", time.Now().Add(24 * time.Hour).Unix(), "guest", ""}), "a"); err != nil {
+	if _, err := restarted.verify(podA.sign(ticket{"a", "guest", time.Now().Add(24 * time.Hour).Unix(), "guest", "", ""}), "a"); err != nil {
 		t.Fatalf("restarted server rejected a guest ticket: %v", err)
 	}
 }

@@ -14,6 +14,8 @@ export interface ProfilesRouterDeps {
     /** 画像のアップロード（作り直しが重いので別に絞る） */
     uploadLimiter: RequestHandler;
     profiles: ProfileService;
+    /** プロフィールが変わったあと（ほかのサーバーのフレンドに知らせる） */
+    onChanged?: (userId: string) => void;
 }
 
 /** 内容のハッシュ入りの URL なので、同じ URL の中身は変わらない */
@@ -21,9 +23,10 @@ const IMMUTABLE = 'public, max-age=31536000, immutable';
 /** 画像の URL を直接開かれても、文書として何も実行させない */
 const IMAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
 
-const send = (res: Response, outcome: ProfileOutcome): void => {
+const send = (res: Response, outcome: ProfileOutcome, onChanged?: () => void): void => {
     if (outcome.ok) {
         res.set('Cache-Control', 'no-store').json(outcome.profile);
+        onChanged?.();
         return;
     }
     res.status(outcome.status).json({ error: outcome.error, code: outcome.code });
@@ -59,7 +62,8 @@ export function createProfilesRouter(deps: ProfilesRouterDeps): Router {
 
     router.put('/me/profile', deps.requireAuth, deps.writeLimiter, async (req, res) => {
         if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-        send(res, await deps.profiles.update(req.user.id, req.body));
+        const userId = req.user.id;
+        send(res, await deps.profiles.update(userId, req.body), () => deps.onChanged?.(userId));
     });
 
     router.put(
@@ -81,7 +85,8 @@ export function createProfilesRouter(deps: ProfilesRouterDeps): Router {
             if (!req.user || !isProfileImageKind(kind)) return res.status(401).json({ error: 'Unauthorized' });
             const body: unknown = req.body;
             const input = Buffer.isBuffer(body) ? body : Buffer.alloc(0);
-            send(res, await deps.profiles.replaceImage(req.user.id, kind, input));
+            const userId = req.user.id;
+            send(res, await deps.profiles.replaceImage(userId, kind, input), () => deps.onChanged?.(userId));
         },
     );
 
@@ -91,7 +96,8 @@ export function createProfilesRouter(deps: ProfilesRouterDeps): Router {
         if (!isProfileImageKind(kind)) {
             return res.status(404).json({ error: '画像の種類は avatar か banner です', code: 'not-found' });
         }
-        send(res, await deps.profiles.removeImage(req.user.id, kind));
+        const userId = req.user.id;
+        send(res, await deps.profiles.removeImage(userId, kind), () => deps.onChanged?.(userId));
     });
 
     router.get('/:userId/images/:kind/:file', async (req, res) => {

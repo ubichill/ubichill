@@ -3,9 +3,9 @@ import type {
     Friendship,
     FriendsResponse,
     Instance,
+    UserProfileWithFriendship,
     UserSearchResponse,
     UserSummary,
-    UserWithFriendship,
 } from '@ubichill/shared';
 import { API_BASE } from './api';
 
@@ -34,11 +34,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const searchUsers = (q: string, signal?: AbortSignal) =>
     request<UserSearchResponse>(`/users?q=${encodeURIComponent(q)}`, { signal });
 
+/** ID（`handle` か、ほかのサーバーの人は `handle@domain`）でプロフィールを引く。 */
 export const fetchUserByHandle = (handle: string) =>
-    request<UserWithFriendship>(`/users/by-handle/${encodeURIComponent(handle)}`);
+    request<UserProfileWithFriendship>(`/users/by-handle/${encodeURIComponent(handle)}`);
 
+/** ユーザー ID（ほかのサーバーの人は actor の URL）でプロフィールを引く。 */
 export const fetchUserWithFriendship = (userId: string) =>
-    request<UserWithFriendship>(`/users/${encodeURIComponent(userId)}`);
+    request<UserProfileWithFriendship>(`/users/${encodeURIComponent(userId)}`);
 
 export const fetchFriends = () => request<FriendsResponse>('/friends');
 

@@ -60,6 +60,7 @@ import {
     registrationOutcome,
 } from '../services/authors/publishingEnvironments';
 import { backendEvents } from '../services/cluster/backendEvents';
+import { federation } from '../services/federation';
 import { notificationService, notifyInBackground } from '../services/notifications/notificationService';
 import { externalWorkStatuses, publishedExternalWorks } from '../services/worlds/externalWorkStore';
 import { verifyRegistration } from '../services/worlds/externalWorks';
@@ -334,6 +335,7 @@ router.put('/me/display-name', requireAuth, async (req, res) => {
         // ワールドの作者名は表示時にアカウントから引くので、キャッシュ済みの解決結果だけ捨てればよい
         invalidateAuthorKey(selfAccount(updated.handle));
         worldRegistry.invalidateResolvedWorlds();
+        federation?.profileChanged(req.user.id);
         return res.json({
             name: updated.name,
             displayNameConflict: false,
