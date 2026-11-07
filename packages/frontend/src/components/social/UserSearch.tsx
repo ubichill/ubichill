@@ -11,7 +11,7 @@ const SEARCH_DELAY_MS = 300;
 export function UserSearch({ onFriendshipChange }: { onFriendshipChange?: () => void }) {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<UserWithFriendship[] | null>(null);
-    /** ほかのサーバーのアカウントが指定された（連合のフレンドに対応するまで見つけられない） */
+    /** ほかのサーバーのアカウントを指定したが、見つからなかった（そのサーバーが答えない・ubichill でない） */
     const [remoteAccount, setRemoteAccount] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
@@ -30,7 +30,7 @@ export function UserSearch({ onFriendshipChange }: { onFriendshipChange?: () => 
                 .then((response) => {
                     if (controller.signal.aborted) return;
                     setResults(response.users);
-                    setRemoteAccount(response.remoteAccount ?? null);
+                    setRemoteAccount(response.users.length === 0 ? (response.remoteAccount ?? null) : null);
                 })
                 .catch((e: unknown) => {
                     if (!controller.signal.aborted) setError(e instanceof Error ? e.message : '検索できませんでした');
@@ -63,8 +63,8 @@ export function UserSearch({ onFriendshipChange }: { onFriendshipChange?: () => 
             {error && <p className={css({ fontSize: '13px', color: 'errorText', mt: '2' })}>{error}</p>}
             {remoteAccount && (
                 <p className={css({ fontSize: '13px', color: 'textMuted', mt: '2' })}>
-                    @{remoteAccount}{' '}
-                    はほかのサーバーのアカウントです。ほかのサーバーのユーザーとのフレンドには、まだ対応していません。
+                    @{remoteAccount} が見つかりませんでした。サーバーとつながらないか、ubichill
+                    のアカウントではありません。
                 </p>
             )}
             {!remoteAccount && results && results.length === 0 && (

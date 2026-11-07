@@ -1,8 +1,8 @@
 import { isPublishable } from '@ubichill/shared';
+import { ServerPoliciesSection, WorldPeersSection } from '@/components/federation';
 import { HomeSettingsSection } from '@/components/home/HomeSettingsSection';
 import { MyWorldsSection, ProfileEditSection, useMyAccount } from '@/components/profile';
 import { AnnouncementSection } from '@/components/profile/AnnouncementSection';
-import { FederationSection } from '@/components/profile/FederationSection';
 import { PasswordSection } from '@/components/profile/PasswordSection';
 import { PublishingSection } from '@/components/profile/PublishingSection';
 import { css } from '@/styled-system/css';
@@ -130,7 +130,12 @@ export function SettingsTab({
                     />
                 )}
                 {current === 'account' && <LogoutSection />}
-                {current === 'federation' && profile?.isAdmin && <FederationSection />}
+                {current === 'federation' && profile?.isAdmin && (
+                    <>
+                        <ServerPoliciesSection />
+                        <WorldPeersSection />
+                    </>
+                )}
                 {current === 'announcements' && profile?.isAdmin && <AnnouncementSection />}
             </div>
             {current === 'mods' && <ModPermissionsSettings />}

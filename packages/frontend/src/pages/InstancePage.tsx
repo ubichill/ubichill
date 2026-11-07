@@ -7,6 +7,7 @@ import { fetchInstance } from '@/lib/instancesApi';
 import { HOST_MOD_SOURCE } from '@/lib/modCdn';
 import { useSession } from '@/lib/session';
 import { pushToast } from '@/lib/toast';
+import { useRemoteVisit } from '@/lib/useRemoteVisit';
 import { WorldView } from '@/world';
 import type { InstanceFailure } from '@/world/WorldView';
 
@@ -55,6 +56,9 @@ export function InstancePage() {
         pushToast(entry.notice, 'warn');
         navigate(location.pathname, { replace: true, state: { ...entry, notice: undefined } });
     }, [entry, location.pathname, navigate]);
+
+    // ほかのサーバーの部屋にいる間は、ホームに来訪を知らせ続ける
+    useRemoteVisit(id, !failure);
 
     const userName = session?.user.name ?? new URLSearchParams(location.search).get('name') ?? 'Guest';
     const preview = useMemo(
