@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatRoomAddress, isRemoteRoom, parseRoomAddress } from './roomAddress';
+import { formatRoomAddress, isRemoteRoom, parseRoomAddress, roomIdOf } from './roomAddress';
 
 const SELF = 'home.example';
 
@@ -40,5 +40,13 @@ describe('formatRoomAddress', () => {
         }
         expect(isRemoteRoom({ id: 'a', domain: 'x.example' })).toBe(true);
         expect(isRemoteRoom({ id: 'a', domain: null })).toBe(false);
+    });
+});
+
+describe('roomIdOf', () => {
+    it('部屋のサーバーでの ID（住所の @ より前）', () => {
+        expect(roomIdOf('r1@b.example')).toBe('r1');
+        expect(roomIdOf('r1@localhost:3201')).toBe('r1');
+        expect(roomIdOf('r1')).toBe('r1');
     });
 });

@@ -10,6 +10,11 @@ const USERS: Record<string, { name: string; handle: string; createdAt: Date }> =
     newcomer: { name: 'New', handle: 'newcomer', createdAt: new Date('2026-10-10T00:00:00Z') },
 };
 
+/** ほかのサーバーの actor のキャッシュ（remote_actors）。 */
+const REMOTE: Record<string, { name: string; account: string }> = {
+    'https://c.example/ap/users/bob': { name: 'Bob@C', account: 'bob@c.example' },
+};
+
 const olderThan = (at: Date, id: string, before?: FeedPosition) =>
     !before || at.getTime() < before.publishedMs || (at.getTime() === before.publishedMs && id < before.id);
 
@@ -21,7 +26,13 @@ function memoryStores() {
     const seq = { n: 0 };
     const notifications = {
         async create(input: CreateNotificationInput, now = new Date()) {
-            const actor = USERS[input.actorUserId];
+            const local = input.actorUserId ? USERS[input.actorUserId] : undefined;
+            const remote = input.actorUri ? REMOTE[input.actorUri] : undefined;
+            const actor = local
+                ? { name: local.name, handle: local.handle }
+                : remote
+                  ? { name: remote.name, handle: remote.account }
+                  : undefined;
             if (!actor || !USERS[input.recipientId]) return undefined;
             if (rows.some((r) => r.recipientId === input.recipientId && r.dedupeKey === input.dedupeKey))
                 return undefined;
@@ -30,8 +41,8 @@ function memoryStores() {
                 id: `n${seq.n.toString().padStart(3, '0')}`,
                 recipientId: input.recipientId,
                 type: input.type,
-                actorUserId: input.actorUserId,
-                actorUri: null,
+                actorUserId: input.actorUserId ?? null,
+                actorUri: input.actorUri ?? null,
                 actorName: actor.name,
                 actorHandle: actor.handle,
                 actorImage: null,
@@ -67,6 +78,13 @@ function memoryStores() {
         async markReadByKey(recipientId: string, key: string, now = new Date()) {
             const hit = rows.filter((r) => r.recipientId === recipientId && r.dedupeKey === key && !r.readAt);
             for (const r of hit) r.readAt = now;
+            return hit.map((r) => r.id);
+        },
+        async removeFromActorUri(recipientId: string, actorUri: string, types: readonly string[]) {
+            const hit = rows.filter(
+                (r) => r.recipientId === recipientId && r.actorUri === actorUri && types.includes(r.type),
+            );
+            for (const r of hit) rows.splice(rows.indexOf(r), 1);
             return hit.map((r) => r.id);
         },
         async removeByKey(recipientId: string, key: string) {
@@ -285,6 +303,49 @@ describe('招待・リクエストインバイトの通知', () => {
         });
         await service.inviteRequested({ requesterId: 'alice', targetId: 'alice', expiresAt: clock.now });
         expect(rows).toEqual([]);
+    });
+});
+
+describe('ほかのサーバーの actor からの通知（連合）', () => {
+    const BOB = 'https://c.example/ap/users/bob';
+
+    it('申請・承認・招待・リクエストが、ほかのサーバーの actor の名前とアカウントで届く', async () => {
+        const { service, clock } = setup();
+        expect(await service.remoteFriendRequested(BOB, 'alice')).toMatchObject({
+            type: 'Follow',
+            actor: { id: BOB, name: 'Bob@C', preferredUsername: 'bob@c.example' },
+        });
+        expect(await service.remoteFriendAccepted(BOB, 'alice')).toMatchObject({
+            type: 'Accept',
+            object: { type: 'Follow', actor: 'alice', object: BOB },
+        });
+        const invite = await service.remoteInvited({
+            from: { actorUri: BOB },
+            inviteeId: 'alice',
+            room: { address: 'r1@b.example', url: 'https://b.example/ap/instances/r1', name: '森', image: null },
+            message: 'おいで',
+            expiresAt: clock.now,
+        });
+        expect(invite).toMatchObject({ type: 'Invite', object: { id: 'r1@b.example', name: '森' }, content: 'おいで' });
+        expect(
+            await service.remoteInviteRequested({ actorUri: BOB, targetId: 'alice', expiresAt: clock.now }),
+        ).toMatchObject({
+            type: 'Join',
+        });
+    });
+
+    it('関係が消えたら、その actor からの申請・承認・招待・リクエストの通知だけを消す', async () => {
+        const { service, rows, clock } = setup();
+        await service.remoteFriendRequested(BOB, 'alice');
+        await service.remoteInviteRequested({ actorUri: BOB, targetId: 'alice', expiresAt: clock.now });
+        await service.followRequested('bob', 'alice');
+        await service.remoteFriendshipRemoved('alice', BOB);
+        expect(rows.map((r) => r.actorUserId ?? r.actorUri)).toEqual(['bob']);
+    });
+
+    it('キャッシュの無い actor（知らない・消えた）からは作らない', async () => {
+        const { service } = setup();
+        expect(await service.remoteFriendRequested('https://ghost.example/ap/users/x', 'alice')).toBeUndefined();
     });
 });
 

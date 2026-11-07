@@ -125,7 +125,7 @@ export function architectureRules(context) {
         },
         {
             id: 'signatures-in-one-place',
-            why: '署名の照合は shared の 1 か所で行う（作者署名は signature/envelope.ts、鍵の所有の証明は world/identity.ts と user/cliAuth.ts）。各所で照合すると、署名する値や照合の順番がずれる（docs/PROTOCOLS.md）',
+            why: '署名の照合は shared の 1 か所で行う（作者署名は signature/envelope.ts、鍵の所有の証明は world/identity.ts と user/cliAuth.ts、サーバー間の HTTP の署名は federation/httpSignature.ts）。各所で照合すると、署名する値や照合の順番がずれる（docs/PROTOCOLS.md）',
             applies: (path) =>
                 !isTest(path) &&
                 path.startsWith('packages/') &&
@@ -133,6 +133,7 @@ export function architectureRules(context) {
                     'packages/shared/src/signature/envelope.ts',
                     'packages/shared/src/world/identity.ts',
                     'packages/shared/src/user/cliAuth.ts',
+                    'packages/shared/src/federation/httpSignature.ts',
                 ].includes(path),
             check: (source) =>
                 [...stripComments(source).matchAll(/\.verifyEd25519\s*\(/g)].map(

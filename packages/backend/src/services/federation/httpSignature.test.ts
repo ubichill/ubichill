@@ -13,8 +13,10 @@ import {
     signatureBase,
     signatureParamsList,
     signMessage,
+    verifySignature,
 } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
+import { nodeWorldCrypto } from '../worlds/worldCrypto';
 
 // RFC 9421 Appendix B.1.4（test-key-ed25519）
 const RFC_PRIVATE = createPrivateKey(
@@ -143,7 +145,7 @@ describe('readSignature（受け手の確かめ）', () => {
         expect(read.ok).toBe(true);
         if (!read.ok) return;
         expect(read.value.keyid).toBe('https://a.example/ap/users/7Fq2aL#ed25519-1');
-        expect(verify(null, read.value.base, publicKey, read.value.signature)).toBe(true);
+        expect(verify(null, Buffer.from(read.value.base, 'utf8'), publicKey, read.value.signature)).toBe(true);
     });
 
     it('宛先（@target-uri）が違えば、組み立て直した文字列で検証が通らない（別のサーバーへの転用を防ぐ）', async () => {
@@ -154,14 +156,18 @@ describe('readSignature（受け手の確かめ）', () => {
             header: (name) => headers[name],
         };
         const read = readSignature(elsewhere, { required: REQUIRED_COMPONENTS.post, now: NOW });
-        expect(read.ok && verify(null, read.value.base, publicKey, read.value.signature)).toBe(false);
+        expect(read.ok && verify(null, Buffer.from(read.value.base, 'utf8'), publicKey, read.value.signature)).toBe(
+            false,
+        );
     });
 
     it('本文の要約を差し替えると検証が通らない', async () => {
         const { message, headers, publicKey } = await signedPost();
         headers['content-digest'] = contentDigest(createHash('sha256').update('{"type":"Undo"}').digest());
         const read = readSignature(message, { required: REQUIRED_COMPONENTS.post, now: NOW });
-        expect(read.ok && verify(null, read.value.base, publicKey, read.value.signature)).toBe(false);
+        expect(read.ok && verify(null, Buffer.from(read.value.base, 'utf8'), publicKey, read.value.signature)).toBe(
+            false,
+        );
     });
 
     it('署名のヘッダーが無ければ missing、崩れていれば malformed', async () => {
@@ -268,5 +274,44 @@ describe('Multikey', () => {
         expect(parseEd25519Multikey('u6Mk')).toBeNull();
         expect(parseEd25519Multikey('z0OIl')).toBeNull();
         expect(() => ed25519Multikey(new Uint8Array(31))).toThrow();
+    });
+});
+
+describe('verifySignature（actor の文書の鍵で確かめる）', () => {
+    const KEYID = 'https://a.example/ap/users/7Fq2aL#ed25519-1';
+    const keysOf = (publicKey: ReturnType<typeof createPublicKey>, id = KEYID) => [
+        {
+            id,
+            publicKeyMultibase: ed25519Multikey(
+                Uint8Array.from(Buffer.from(String(publicKey.export({ format: 'jwk' }).x), 'base64url')),
+            ),
+        },
+    ];
+
+    it('keyid が同じ鍵で通る', async () => {
+        const { message, publicKey } = await signedPost();
+        const read = readSignature(message, { required: REQUIRED_COMPONENTS.post, now: NOW });
+        expect(read.ok && (await verifySignature(read.value, keysOf(publicKey), nodeWorldCrypto))).toBe(true);
+    });
+
+    it('文書に keyid の鍵が無い・別の鍵・書き換えた文字列では通らない', async () => {
+        const { message, publicKey } = await signedPost();
+        const read = readSignature(message, { required: REQUIRED_COMPONENTS.post, now: NOW });
+        if (!read.ok) throw new Error('読めません');
+        const other = createPublicKey(
+            createPrivateKey({
+                key: Buffer.concat([Buffer.from('302e020100300506032b657004220420', 'hex'), Buffer.alloc(32, 9)]),
+                format: 'der',
+                type: 'pkcs8',
+            }),
+        );
+        expect(await verifySignature(read.value, keysOf(publicKey, `${KEYID}x`), nodeWorldCrypto)).toBe(false);
+        expect(await verifySignature(read.value, keysOf(other), nodeWorldCrypto)).toBe(false);
+        expect(
+            await verifySignature({ ...read.value, base: `${read.value.base} ` }, keysOf(publicKey), nodeWorldCrypto),
+        ).toBe(false);
+        expect(await verifySignature(read.value, [{ id: KEYID, publicKeyMultibase: 'zBroken' }], nodeWorldCrypto)).toBe(
+            false,
+        );
     });
 });

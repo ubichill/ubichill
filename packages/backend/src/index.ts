@@ -20,7 +20,7 @@ import { sharedRateLimit } from './lib/sharedRateLimit';
 import { blockOfficialPasswordChange } from './middleware/auth';
 import { router as authorsRouter } from './routes/authors';
 import { router as cliAuthRouter } from './routes/cliAuth';
-import { router as federationRouter } from './routes/federation';
+import { federationApiRouter, isFederationInboundPath, mountFederationInbound } from './routes/federation';
 import { router as homeRouter } from './routes/homeRouter';
 import { router as instancesRouter } from './routes/instances';
 import { router as invitesRouter } from './routes/invitesRouter';
@@ -34,6 +34,7 @@ import { router as worldsRouter } from './routes/worlds';
 import { bootstrapOfficialAccount } from './services/authors/officialAccountStore';
 import { backendEvents, createRedisBackendBus } from './services/cluster/backendEvents';
 import { maintenanceGate } from './services/cluster/maintenance';
+import { federation } from './services/federation';
 import { instanceReaper } from './services/instances/instanceReaper';
 import { createRedisNotificationBus, notificationHub } from './services/notifications/notificationHub';
 import { worldRegistry } from './services/worlds/worldRegistry';
@@ -75,10 +76,18 @@ const limiter = rateLimit({
     message: { error: 'このIPからのリクエストが多すぎます。しばらくしてから再試行してください。' },
     standardHeaders: true,
     legacyHeaders: false,
-    skip: (req) => req.path === '/health' || req.path === '/api/version' || req.path.startsWith('/api/auth'),
+    // ほかのサーバーからの要求は 1 つの IP から多く来るので、署名したサーバーごとに絞る（routes/federation）
+    skip: (req) =>
+        req.path === '/health' ||
+        req.path === '/api/version' ||
+        req.path.startsWith('/api/auth') ||
+        isFederationInboundPath(req.path),
     ...sharedRateLimit('global', redis, logger),
 });
 app.use(limiter);
+
+// ほかのサーバーからの要求（本文を生のまま受けるので JSON パーサーより前）
+mountFederationInbound(app);
 
 // JSONボディパーサー
 // ワールドを送る依頼（yaml・lock・署名）は既定の上限（100KB）を超え得るので、受け付けるワールドの大きさに合わせる
@@ -134,7 +143,7 @@ app.use('/api/v1', invitesRouter);
 app.use('/api/v1/notifications', notificationsRouter);
 app.use('/api/v1/authors', authorsRouter);
 app.use('/api/v1/cli-auth', cliAuthRouter);
-app.use('/api/v1/federation', federationRouter);
+app.use('/api/v1/federation', federationApiRouter);
 app.use('/api/v1/service-tokens', serviceTokensRouter);
 app.use('/.well-known/webfinger', webfingerRouter);
 
@@ -153,6 +162,7 @@ function setupGracefulShutdown() {
 
         // 定期スイープを止め、ほかの backend がすぐ引き継げるようリースを手放す
         instanceReaper.stop();
+        federation?.worker.stop();
         const released = maintenanceGate.release();
         notificationHub.closeAll();
 
@@ -219,6 +229,7 @@ async function startServer() {
                 inviteRepository
                     .deleteExpired()
                     .catch((err: unknown) => logger.error('期限切れの招待の掃除に失敗:', err)),
+                federation?.sweep().catch((err: unknown) => logger.error('連合の記録の掃除に失敗:', err)),
             ]);
         });
     };
@@ -229,6 +240,16 @@ async function startServer() {
     // 作成から猶予経過した instance を削除する。インメモリのタイマー状態に依存しないため、
     // 再起動をまたいでも孤児 instance（closing のまま残る行）が確実に回収される。
     instanceReaper.start();
+
+    // 連合の配送（何台で動かしても同じ予定を 2 度送らない）
+    if (federation) {
+        federation.worker.start();
+        logger.info(
+            `連合: ${federation.identity.domain}（鍵の種: ${federation.config.seedSource}${federation.config.allowHttp ? '・http の相手を受ける' : ''}）`,
+        );
+    } else {
+        logger.info('連合: 無効（FEDERATION_KEY_SEED がありません）');
+    }
 
     setupGracefulShutdown();
 

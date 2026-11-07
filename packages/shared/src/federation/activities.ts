@@ -20,6 +20,9 @@ import { sameOrigin } from './urls';
 
 export const FRIEND_OF = 'http://purl.org/vocab/relationship/friendOf';
 
+/** 送る activity（JSON-LD の文書。id は必ず持つ）。 */
+export type ActivityDocument = Record<string, unknown> & { id: string };
+
 export interface ActivityRef {
     id: string;
     type: string;
@@ -40,7 +43,7 @@ export function buildFriendOffer(input: {
     target: string;
     relationshipId: string;
     published: string;
-}): Record<string, unknown> {
+}): ActivityDocument {
     return {
         ...base(input.id, 'Offer', input.actor, [input.target]),
         target: input.target,
@@ -59,7 +62,7 @@ export function buildFriendOffer(input: {
 export function buildResponse(
     type: 'Accept' | 'Reject' | 'Undo',
     input: { id: string; actor: string; to: string; object: ActivityRef },
-): Record<string, unknown> {
+): ActivityDocument {
     return { ...base(input.id, type, input.actor, [input.to]), object: { ...input.object } };
 }
 
@@ -71,7 +74,7 @@ export function buildInvite(input: {
     content: string | null;
     endTime: string;
     inReplyTo?: string;
-}): Record<string, unknown> {
+}): ActivityDocument {
     return {
         ...base(input.id, 'Invite', input.actor, [input.target]),
         target: input.target,
@@ -97,7 +100,7 @@ export function buildRequestInvite(input: {
     target: string;
     content: string | null;
     endTime: string;
-}): Record<string, unknown> {
+}): ActivityDocument {
     return {
         ...base(input.id, 'RequestInvite', input.actor, [input.target]),
         object: input.target,
@@ -106,7 +109,7 @@ export function buildRequestInvite(input: {
     };
 }
 
-export function buildDeleteActor(input: { id: string; actor: string; to: readonly string[] }): Record<string, unknown> {
+export function buildDeleteActor(input: { id: string; actor: string; to: readonly string[] }): ActivityDocument {
     return { ...base(input.id, 'Delete', input.actor, input.to), object: input.actor };
 }
 
@@ -115,7 +118,7 @@ export function buildUpdateActor(input: {
     actor: string;
     to: readonly string[];
     object: Record<string, unknown>;
-}): Record<string, unknown> {
+}): ActivityDocument {
     return { ...base(input.id, 'Update', input.actor, input.to), object: input.object };
 }
 

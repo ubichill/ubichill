@@ -42,8 +42,14 @@ describe('NotificationSchema', () => {
         expect(NotificationSchema.safeParse(remote).success).toBe(true);
     });
 
+    it('開発の localhost の http は受ける（手元で 2 台を動かすとき）', () => {
+        const local = { ...follow, actor: { ...actor, id: 'http://localhost:3201/ap/users/carol' } };
+        expect(NotificationSchema.safeParse(local).success).toBe(true);
+    });
+
     it.each([
         ['http の URI', 'http://other.example/users/carol'],
+        ['localhost に見せかけた http の URI', 'http://localhost.evil.example/u'],
         ['認証情報入りの URI', 'https://user:pass@other.example/u'],
         ['javascript: の URI', 'javascript:alert(1)'],
         ['空', ''],

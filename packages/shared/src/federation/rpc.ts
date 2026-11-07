@@ -37,6 +37,8 @@ export const JoinResponseSchema = z.object({
     room: RoomCardSchema,
     /** Go の参加者の ID（来訪者の actor の id） */
     participant: z.object({ id: Url, name: z.string() }),
+    /** 部屋のサーバーの Go の通信の版（来訪者の画面が対応していなければ入らない） */
+    protocolVersion: z.number().int().min(1),
 });
 export type JoinResponse = z.infer<typeof JoinResponseSchema>;
 

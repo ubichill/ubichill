@@ -29,6 +29,12 @@ export function formatRoomAddress({ id, domain }: RoomAddress): string {
     return domain ? `${id}@${domain}` : id;
 }
 
+/** 部屋のサーバーでの部屋の ID（住所の `@` より前）。部屋のサーバーへの入室（WebSocket）はこの ID で行う。 */
+export function roomIdOf(address: string): string {
+    const at = address.lastIndexOf('@');
+    return at < 0 ? address : address.slice(0, at);
+}
+
 /** ほかのサーバーの部屋か。 */
 export const isRemoteRoom = (address: RoomAddress): address is RoomAddress & { domain: string } =>
     address.domain !== null;

@@ -9,6 +9,8 @@
  *
  * 暗号（SHA-256・Ed25519）は呼び手が渡す（shared は Web Crypto・URL を使わない）。
  */
+import type { WorldCrypto } from '../signature/primitives';
+import { parseEd25519Multikey } from './multikey';
 import {
     bytesToBase64,
     type InnerList,
@@ -159,7 +161,7 @@ export interface ReadSignature {
     expires?: number;
     nonce?: string;
     /** 署名する文字列（受け手が組み立て直したもの） */
-    base: Uint8Array;
+    base: string;
     signature: Uint8Array;
 }
 
@@ -226,10 +228,28 @@ export function readSignature(
             created: created.value,
             ...(expires?.type === 'integer' ? { expires: expires.value } : {}),
             ...(nonce?.type === 'string' ? { nonce: nonce.value } : {}),
-            base: utf8(base),
+            base,
             signature: sig.value.value,
         },
     };
+}
+
+const base64url = (bytes: Uint8Array): string =>
+    bytesToBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+/**
+ * 読んだ署名を、actor の文書にある鍵（keyid が同じもの）で確かめる。HTTP の署名の照合はこの 1 か所で行う
+ * （docs/PROTOCOLS.md の「署名の照合は shared の 1 か所」）。暗号は呼び手が渡す。
+ */
+export async function verifySignature(
+    read: Pick<ReadSignature, 'keyid' | 'base' | 'signature'>,
+    keys: ReadonlyArray<{ id: string; publicKeyMultibase: string }>,
+    crypto: Pick<WorldCrypto, 'verifyEd25519'>,
+): Promise<boolean> {
+    const entry = keys.find((k) => k.id === read.keyid);
+    const key = entry ? parseEd25519Multikey(entry.publicKeyMultibase) : null;
+    if (!key) return false;
+    return crypto.verifyEd25519(base64url(key), read.base, base64url(read.signature)).catch(() => false);
 }
 
 /** Content-Digest の値（`sha-256=:…:`）。 */

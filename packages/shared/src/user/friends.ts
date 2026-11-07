@@ -66,7 +66,12 @@ export interface UserSummary {
     image: string | null;
     /** 自己紹介（書いていなければ null） */
     bio: string | null;
+    /** ほかのサーバーの人ならそのドメイン（id は actor の URL、handle は `handle@domain`） */
+    domain?: string;
 }
+
+/** ほかのサーバーの人の ID（actor の URL）か。このサーバーのユーザー ID は URL にならない。 */
+export const isRemoteUserId = (id: string): boolean => id.startsWith('https://') || id.startsWith('http://');
 
 /** 検索結果・プロフィール（自分との関係付き）。 */
 export interface UserWithFriendship extends UserSummary {
