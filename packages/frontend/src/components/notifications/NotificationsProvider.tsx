@@ -1,5 +1,7 @@
 import type { AppNotification } from '@ubichill/shared';
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router';
+import { acceptInviteRequest } from '@/lib/inviteApi';
 import {
     EMPTY_FEED,
     type FeedState,
@@ -11,7 +13,7 @@ import {
     withStreamEvent,
     withUnreadCount,
 } from '@/lib/notificationFeed';
-import { groupNotifications, notificationText } from '@/lib/notifications';
+import { groupNotifications, notificationText, toastActionOf } from '@/lib/notifications';
 import { fetchNotifications, markNotificationsRead, openNotificationStream } from '@/lib/notificationsApi';
 import { useSession } from '@/lib/session';
 import { fetchFriends } from '@/lib/socialApi';
@@ -21,6 +23,7 @@ import { pushToast } from '@/lib/toast';
 const FALLBACK_POLL_MS = 60_000;
 
 function useNotificationFeed(enabled: boolean) {
+    const navigate = useNavigate();
     const [feed, setFeed] = useState<FeedState>(EMPTY_FEED);
     const [incomingIds, setIncomingIds] = useState<ReadonlySet<string>>(new Set());
     const [error, setError] = useState<string | null>(null);
@@ -57,8 +60,19 @@ function useNotificationFeed(enabled: boolean) {
             onEvent: (event) => {
                 setFeed((s) => withStreamEvent(s, event));
                 if (event.type === 'notification' && !event.notification.read) {
-                    pushToast(notificationText(event.notification));
-                    if (event.notification.type === 'Follow') void refreshFriends();
+                    const n = event.notification;
+                    // 招待はトーストからそのまま入れる（部屋を移ると前の部屋からは抜ける）。リクエストはそのまま招待で答えられる
+                    const action = toastActionOf(n, {
+                        enter: (to, state) => navigate(to, { state }),
+                        acceptRequest: (userId) =>
+                            acceptInviteRequest(userId).then(
+                                () => pushToast('招待を送りました'),
+                                (e: unknown) =>
+                                    pushToast(e instanceof Error ? e.message : '招待を送れませんでした', 'error'),
+                            ),
+                    });
+                    pushToast(notificationText(n), 'info', action);
+                    if (n.type === 'Follow') void refreshFriends();
                 }
             },
         });
@@ -69,7 +83,7 @@ function useNotificationFeed(enabled: boolean) {
             clearInterval(state.poll);
             window.removeEventListener('focus', onFocus);
         };
-    }, [enabled, reload, refreshFriends]);
+    }, [enabled, reload, refreshFriends, navigate]);
 
     const loadMore = useCallback(async () => {
         if (!feed.nextCursor || loadingMore.current) return;

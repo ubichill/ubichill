@@ -3,7 +3,7 @@ import { check, index, jsonb, pgTable, text, timestamp, uniqueIndex } from 'driz
 import { users } from './users';
 
 /**
- * 本人に関わる出来事の通知（ActivityStreams 2.0 の Follow・Accept・Like）。object の形は種類ごとに shared のスキーマで確かめる。
+ * 本人に関わる出来事の通知（ActivityStreams 2.0 の Follow・Accept・Like・Invite・Join）。object の形は種類ごとに shared のスキーマで確かめる。
  * actor はこのサーバーのユーザー（actor_user_id、消えたら通知も消える）か、将来のリモートの actor の URI（actor_uri）のどちらか 1 つ。
  */
 export const notifications = pgTable(
@@ -17,13 +17,17 @@ export const notifications = pgTable(
         actorUserId: text('actor_user_id').references(() => users.id, { onDelete: 'cascade' }),
         actorUri: text('actor_uri'),
         object: jsonb('object').notNull(),
+        /** 添えた一言（招待） */
+        content: text('content'),
+        /** 期限（招待で入れる・リクエストに答えられる時刻）。期限の無い種類は NULL */
+        expiresAt: timestamp('expires_at', { withTimezone: true }),
         /** 同じ出来事を 2 回作らないためのキー（受け手ごとに一意。例: `Like:<actor>:<world>`） */
         dedupeKey: text('dedupe_key').notNull(),
         createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
         readAt: timestamp('read_at', { withTimezone: true }),
     },
     (table) => [
-        check('notifications_type_check', sql`${table.type} IN ('Follow', 'Accept', 'Like')`),
+        check('notifications_type_check', sql`${table.type} IN ('Follow', 'Accept', 'Like', 'Invite', 'Join')`),
         check('notifications_actor_check', sql`num_nonnulls(${table.actorUserId}, ${table.actorUri}) = 1`),
         uniqueIndex('notifications_recipient_dedupe_idx').on(table.recipientId, table.dedupeKey),
         index('notifications_recipient_created_idx').on(table.recipientId, table.createdAt.desc(), table.id.desc()),

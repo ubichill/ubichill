@@ -264,6 +264,7 @@ export * from './user/favoritesVisibility';
 export * from './user/friends';
 export * from './user/handle';
 export * from './user/home';
+export * from './user/instanceAccess';
 export * from './user/limits';
 export * from './user/profile';
 export * from './user/profileLanguages';

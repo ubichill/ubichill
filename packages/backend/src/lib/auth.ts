@@ -20,7 +20,7 @@ import {
     createPendingRegistrations,
     normalizeEmail,
     type PendingRegistrations,
-} from '../services/pendingRegistrations';
+} from '../services/auth/pendingRegistrations';
 import { logger } from '../utils/logger';
 import { createAuthRateLimitStorage } from './authRateLimit';
 import { redis } from './redis';

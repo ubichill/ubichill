@@ -3,15 +3,24 @@
  * - Follow: フレンド申請（object は申請された人）
  * - Accept: 申請の承認（object は承認された Follow）
  * - Like: ワールドのお気に入り（object はワールド。`World` は ubichill の拡張の型）
+ * - Invite: 部屋への招待（object は部屋。`Instance` は ubichill の拡張の型。content は一言、endTime は期限）
+ * - Join: リクエストインバイト（「あなたのいる部屋に入れて」。object は頼まれた人、endTime は答えられる期限）
  * - Announce: 運営からのお知らせ（object は Note）
  */
 import { z } from 'zod';
+import { INVITE_LIMITS } from '../user/instanceAccess';
 
-export const NOTIFICATION_TYPES = ['Follow', 'Accept', 'Like', 'Announce'] as const;
+export const NOTIFICATION_TYPES = ['Follow', 'Accept', 'Like', 'Invite', 'Join', 'Announce'] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 /** 保存（notifications の表）する種類。Announce はお知らせの表から読むので行を作らない。 */
-export const STORED_NOTIFICATION_TYPES = ['Follow', 'Accept', 'Like'] as const satisfies readonly NotificationType[];
+export const STORED_NOTIFICATION_TYPES = [
+    'Follow',
+    'Accept',
+    'Like',
+    'Invite',
+    'Join',
+] as const satisfies readonly NotificationType[];
 export type StoredNotificationType = (typeof STORED_NOTIFICATION_TYPES)[number];
 
 export const NOTIFICATION_LIMITS = {
@@ -65,6 +74,17 @@ export const LikeObjectSchema = z
         name: z.string().min(1).max(200),
     })
     .strict();
+/** 部屋（招待の object）。id はこのサーバーのインスタンス ID。name・image はワールドの名前とサムネイル。 */
+export const InstanceObjectSchema = z
+    .object({
+        type: z.literal('Instance'),
+        id: z.string().min(1).max(2048),
+        name: z.string().min(1).max(200),
+        image: z.string().max(2048).nullable(),
+    })
+    .strict();
+export const InviteObjectSchema = InstanceObjectSchema;
+export const JoinObjectSchema = PersonRefSchema;
 export const AnnounceObjectSchema = z
     .object({
         type: z.literal('Note'),
@@ -79,6 +99,8 @@ export const NOTIFICATION_OBJECT_SCHEMAS = {
     Follow: FollowObjectSchema,
     Accept: AcceptObjectSchema,
     Like: LikeObjectSchema,
+    Invite: InviteObjectSchema,
+    Join: JoinObjectSchema,
     Announce: AnnounceObjectSchema,
 } as const satisfies Record<NotificationType, z.ZodType>;
 
@@ -96,6 +118,26 @@ export const NotificationSchema = z.discriminatedUnion('type', [
     z.object({ ...base, type: z.literal('Follow'), object: FollowObjectSchema }).strict(),
     z.object({ ...base, type: z.literal('Accept'), object: AcceptObjectSchema }).strict(),
     z.object({ ...base, type: z.literal('Like'), object: LikeObjectSchema }).strict(),
+    z
+        .object({
+            ...base,
+            type: z.literal('Invite'),
+            object: InviteObjectSchema,
+            /** 招待に添えた一言 */
+            content: z.string().max(INVITE_LIMITS.MESSAGE_MAX).nullable(),
+            /** この時刻まで招待で入れる（ISO 8601） */
+            endTime: z.string().datetime({ offset: true }),
+        })
+        .strict(),
+    z
+        .object({
+            ...base,
+            type: z.literal('Join'),
+            object: JoinObjectSchema,
+            /** この時刻まで答えられる（ISO 8601） */
+            endTime: z.string().datetime({ offset: true }),
+        })
+        .strict(),
     z.object({ ...base, type: z.literal('Announce'), object: AnnounceObjectSchema }).strict(),
 ]);
 export type AppNotification = z.infer<typeof NotificationSchema>;

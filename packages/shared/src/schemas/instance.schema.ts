@@ -81,6 +81,8 @@ export const InstanceSchema = z.object({
     access: InstanceAccessSchema,
     stats: InstanceStatsSchema,
     connection: InstanceConnectionSchema,
+    /** 見ている人がそのまま入れるか。招待のみの部屋がフレンドに見えているだけなら false（入るには招待が要る） */
+    canJoin: z.boolean().optional(),
 });
 
 export type Instance = z.infer<typeof InstanceSchema>;

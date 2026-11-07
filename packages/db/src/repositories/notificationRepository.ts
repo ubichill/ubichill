@@ -15,6 +15,8 @@ export interface NotificationRecord {
     actorHandle: string | null;
     actorImage: string | null;
     object: unknown;
+    content: string | null;
+    expiresAt: Date | null;
     createdAt: Date;
     readAt: Date | null;
 }
@@ -25,6 +27,8 @@ export interface CreateNotificationInput {
     actorUserId: string;
     object: unknown;
     dedupeKey: string;
+    content?: string | null;
+    expiresAt?: Date | null;
 }
 
 const selection = {
@@ -37,6 +41,8 @@ const selection = {
     actorHandle: users.handle,
     actorImage: users.image,
     object: notifications.object,
+    content: notifications.content,
+    expiresAt: notifications.expiresAt,
     createdAt: notifications.createdAt,
     readAt: notifications.readAt,
 };
@@ -146,6 +152,15 @@ export const notificationRepository = {
                     isNull(notifications.readAt),
                 ),
             )
+            .returning({ id: notifications.id });
+        return rows.map((r) => r.id);
+    },
+
+    /** 受け手の、この dedupeKey の通知を消す（送り直した招待を新しく作り直す・答えたリクエストを片付ける）。消した ID。 */
+    async removeByKey(recipientId: string, dedupeKey: string): Promise<string[]> {
+        const rows = await db
+            .delete(notifications)
+            .where(and(eq(notifications.recipientId, recipientId), eq(notifications.dedupeKey, dedupeKey)))
             .returning({ id: notifications.id });
         return rows.map((r) => r.id);
     },

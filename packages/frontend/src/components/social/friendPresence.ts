@@ -54,3 +54,11 @@ export function onlineFriends(presence: FriendPresence): Array<{ user: UserSumma
         ...presence.hidden.map((user) => ({ user, where: { kind: 'hidden' } as const })),
     ];
 }
+
+/**
+ * 招待が要る部屋に入れてもらうよう頼む相手。作成者がフレンドなら作成者（どの公開範囲でも招待できる）、
+ * そうでなければその部屋にいるフレンドの最初の人。フレンドがいなければ undefined。
+ */
+export function requestTargetOf(place: FriendPlace): UserSummary | undefined {
+    return place.friends.find((f) => f.id === place.instance.leaderId) ?? place.friends[0];
+}

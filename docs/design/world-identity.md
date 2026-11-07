@@ -77,7 +77,7 @@
 - `@ubichill/shared`: `WorldSignatureSchema` / `WorldIdentitySchema`、`canonicalJson`、`signWorld` / `verifyWorldSignature`。
   暗号プリミティブは `WorldCrypto` / `WorldSigningKey` として注入（shared は Node/DOM 非依存を維持）。
 - `@ubichill/loader`: WebCrypto 実装 `webWorldCrypto` / `importSigningKeyPair`（取り出し不可）、CLI の確認 `ubichill verify <world.yaml>`（subpath `verify-world`。署名は `ubichill publish`）。
-- backend: node:crypto の検証専用実装（`services/worldCrypto.ts`）。外部ワールドは YAML・lock・sig を並行取得して検証し、
+- backend: node:crypto の検証専用実装（`services/worlds/worldCrypto.ts`）。外部ワールドは YAML・lock・sig を並行取得して検証し、
   不正は `WorldIntegrityError`（`/worlds/resolve` は 422、キャッシュへのフォールバック無し）。
   本体ワールドはファイル/DB の生の値を `/api/v1/authors/<handle>/worlds/<name>.yaml` / `.lock.json` / `.sig.json` で配信する。
   保存は `PUT /api/v1/worlds`（内容と署名を一緒に検証して保存）。

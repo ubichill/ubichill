@@ -8,7 +8,7 @@ import { sharedRateLimit } from './sharedRateLimit';
 
 /**
  * 2 つの backend（別々の接続）が同じ Redis で数を合算することを確かめる。REDIS_URL がある時だけ走る。
- * 実行例は services/lease.integration.test.ts を参照。
+ * 実行例は services/cluster/lease.integration.test.ts を参照。
  */
 const RUN = !!process.env.REDIS_URL;
 const connect = () => createClient({ url: process.env.REDIS_URL, password: process.env.REDIS_PASSWORD || undefined });

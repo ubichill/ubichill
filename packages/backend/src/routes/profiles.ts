@@ -5,7 +5,7 @@ import {
     profileImageHashOf,
 } from '@ubichill/shared';
 import express, { type ErrorRequestHandler, type RequestHandler, type Response, Router } from 'express';
-import type { ProfileOutcome, ProfileService } from '../services/profiles';
+import type { ProfileOutcome, ProfileService } from '../services/profiles/profiles';
 
 export interface ProfilesRouterDeps {
     requireAuth: RequestHandler;
