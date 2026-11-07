@@ -104,7 +104,11 @@ export type PresenceResponse = z.infer<typeof PresenceResponseSchema>;
 export type PresenceEntry = PresenceResponse['presence'][number];
 
 /** 2 人がフレンドか（ずれを直すため。Application actor で）。 */
+/**
+ * 2 人がフレンドか（user のホームが答える）。尋ねてよいのは other のホームと、user が来訪中の部屋のサーバー。
+ */
 export const FriendshipCheckRequestSchema = z.object({ user: Url, other: Url });
+export type FriendshipCheckRequest = z.infer<typeof FriendshipCheckRequestSchema>;
 export const FriendshipCheckResponseSchema = z.object({ friends: z.boolean() });
 
 /** RPC のエラーの種類（problem+json の code）。 */

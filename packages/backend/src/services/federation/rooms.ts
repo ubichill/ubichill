@@ -6,6 +6,7 @@
  *   一度入れた来訪者は、部屋が続く間は入り直しに招待を求めない
  * - 招待の権利: 部屋にいるほかのサーバーの人が頼む（相手がその人のフレンドかは、その人のホームが保証する）
  * - 見えるか: 中にいる人のホームが、その人のフレンドについて尋ねる（Application actor の署名。viewers はフレンドだという保証）
+ * - 部屋の作り・入室で、見る人が中にいるほかのサーバーの人のフレンドかは、その人のホームに尋ねる（このサーバーは知らない）
  */
 import {
     type AccessType,
@@ -22,6 +23,7 @@ import {
     type InstanceAudience,
     inviteRefusal,
     isBrowserOrigin,
+    isRemoteUserId,
     type JoinRequest,
     type JoinResponse,
     parseFederationUrl,
@@ -52,6 +54,8 @@ export interface RoomsDeps {
     presence(): Promise<ReadonlyMap<string, { memberIds: readonly string[] }>>;
     /** その人のフレンド（このサーバーが知っている分。ほかのサーバーの actor なら、その actor とフレンドのこのサーバーのユーザー） */
     friendsOf(id: string): Promise<ReadonlySet<string>>;
+    /** 中にいるほかのサーバーの人（member）のホームに、viewer がそのフレンドかを尋ねる（friendshipCheck.ask） */
+    askFriendship(member: string, viewer: string): Promise<boolean>;
     invites: {
         findValid(instanceId: string, inviteeId: string, now: Date): Promise<unknown | undefined>;
         upsert(input: {
@@ -123,20 +127,45 @@ export function createRooms(deps: RoomsDeps) {
         !!(await deps.invites.findValid(instanceId, actorId, now())) ||
         (await deps.admissions.isAdmitted(instanceId, actorId));
 
-    /** 見る人にとって、見えるか・入れるか。extraFriends は、ほかのサーバーが保証したフレンド。 */
+    /**
+     * 中にいる人のフレンドに見える部屋（フレンド+・招待のみ）で、このサーバーが知らない関係を、中にいるほかのサーバーの人の
+     * ホームに尋ねる。現在地の表示（そのホームが visibility で保証した関係）と、部屋の作り・入室で同じ関係を使うため。
+     */
+    const confirmedFriendsInside = async (
+        audience: InstanceAudience,
+        viewer: string,
+        known: ReadonlySet<string>,
+    ): Promise<string[]> => {
+        if (audience.accessType !== 'friend_plus' && audience.accessType !== 'invite_only') return [];
+        const asked = audience.memberIds
+            .filter((member) => isRemoteUserId(member) && member !== viewer && !known.has(member))
+            .slice(0, FEDERATION_LIMITS.MAX_FRIENDSHIP_CHECKS);
+        const answers = await Promise.all(
+            asked.map(async (member) => ((await deps.askFriendship(member, viewer)) ? [member] : [])),
+        );
+        return answers.flat();
+    };
+
+    /**
+     * 見る人にとって、見えるか・入れるか。extraFriends は、ほかのサーバーが保証したフレンド。
+     * askHomes なら、知っている関係で見えないときに、中にいるほかのサーバーの人のホームへ尋ねる。
+     */
     const accessFor = async (
         record: RoomRecord,
         audience: InstanceAudience,
         viewer: string,
-        extraFriends: readonly string[] = [],
+        { extraFriends = [], askHomes = false }: { extraFriends?: readonly string[]; askHomes?: boolean } = {},
     ) => {
-        const known = await deps.friendsOf(viewer);
-        const friends = new Set([...known, ...extraFriends]);
+        const known = new Set([...(await deps.friendsOf(viewer)), ...extraFriends]);
         const invited = await invitedOrAdmitted(record.id, viewer);
-        return {
+        const judge = (friends: ReadonlySet<string>) => ({
             visible: canSeeInstance(audience, viewer, friends),
             joinable: canJoinInstance(audience, viewer, friends, { invited }),
-        };
+        });
+        const first = judge(known);
+        if (first.visible || !askHomes) return first;
+        const confirmed = await confirmedFriendsInside(audience, viewer, known);
+        return confirmed.length > 0 ? judge(new Set([...known, ...confirmed])) : first;
     };
 
     const findLocal = async (roomUrl: string) => {
@@ -158,7 +187,7 @@ export function createRooms(deps: RoomsDeps) {
             if (!record) return undefined;
             const presence = await deps.presence();
             const audience = audienceOf(record, presence);
-            const access = await accessFor(record, audience, viewer);
+            const access = await accessFor(record, audience, viewer, { askHomes: true });
             if (!access.visible && !access.joinable) return undefined;
             const room = await cardOf(record, audience.memberIds.length);
             return room && { room, canJoin: access.joinable };
@@ -178,7 +207,7 @@ export function createRooms(deps: RoomsDeps) {
             }
             const presence = await deps.presence();
             const audience = audienceOf(record, presence);
-            const access = await accessFor(record, audience, visitor.id);
+            const access = await accessFor(record, audience, visitor.id, { askHomes: true });
             const admitted = await deps.admissions.isAdmitted(record.id, visitor.id);
             if (!acceptsNewContact(deps.policyOf(visitor.domain)) && !admitted) {
                 return fail(403, 'domain-limited', 'このサーバーからの来訪は受けていません');
@@ -282,9 +311,9 @@ export function createRooms(deps: RoomsDeps) {
             const results: VisibilityResponse['results'] = [];
             for (const viewer of new Set(request.viewers)) {
                 // viewers は member のフレンドだという保証（member のホームが署名している）
-                const access = await accessFor(record, audience, deps.identity.localUserIdOf(viewer) ?? viewer, [
-                    request.member,
-                ]);
+                const access = await accessFor(record, audience, deps.identity.localUserIdOf(viewer) ?? viewer, {
+                    extraFriends: [request.member],
+                });
                 results.push({ viewer, visible: access.visible, joinable: access.joinable });
             }
             const room = await cardOf(record, audience.memberIds.length);

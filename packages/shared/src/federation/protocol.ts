@@ -115,6 +115,8 @@ export const FEDERATION_LIMITS = {
     MAX_PRESENCE_SUBJECTS: 100,
     MAX_VISIBILITY_VIEWERS: 50,
     MAX_GRANT_INVITEES: 20,
+    /** 部屋の作り・入室 1 回で、中にいるほかのサーバーの人のホームへ尋ねるフレンドの確認の数 */
+    MAX_FRIENDSHIP_CHECKS: 10,
     /** 受けたフレンド申請の上限（1 人あたり）と、失効までの時間 */
     MAX_PENDING_FRIEND_REQUESTS: 100,
     FRIEND_REQUEST_EXPIRE_MS: 30 * 24 * 60 * 60 * 1000,

@@ -29,6 +29,7 @@ import { createActorDirectory } from './actors';
 import { type FederationConfig, federationConfigFromEnv } from './config';
 import { createLocalActors } from './documents';
 import { createDomainPolicies } from './domains';
+import { createFriendshipCheck } from './friendshipCheck';
 import { createRemoteFriendships } from './friendships';
 import { createFederationIdentity } from './identity';
 import { createInbox } from './inbox';
@@ -115,6 +116,7 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
         policyOf,
         now,
     });
+    const friendshipCheck = createFriendshipCheck({ identity, transport, policyOf, isFriend, visitOf, now });
     const rooms = createRooms({
         identity,
         allowHttp: config.allowHttp,
@@ -144,6 +146,7 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
         },
         presence: () => instanceRuntime.presence(),
         friendsOf: (id) => friendIdsOf(id),
+        askFriendship: (member, viewer) => friendshipCheck.ask(member, viewer),
         invites: {
             findValid: (instanceId, inviteeId, at) => inviteRepository.findValid(instanceId, inviteeId, at),
             upsert: (input) => inviteRepository.upsert(input),
@@ -238,6 +241,7 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
         outbox,
         worker,
         friendships,
+        friendshipCheck,
         rooms,
         travel,
         presence,

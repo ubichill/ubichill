@@ -1,4 +1,4 @@
-import type { AccessType, DomainPolicy } from '@ubichill/shared';
+import { type AccessType, type DomainPolicy, FEDERATION_LIMITS } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
 import { createFederationIdentity } from './identity';
 import { createRooms, type RoomRecord, type Visitor } from './rooms';
@@ -25,6 +25,8 @@ interface Setup {
     policy?: Record<string, DomainPolicy>;
     otherRooms?: Record<string, string[]>;
     allowHttp?: boolean;
+    /** 中にいるほかのサーバーの人（キー）のホームが、フレンドだと答える人 */
+    homes?: Record<string, string[]>;
 }
 
 function setup(options: Setup = {}) {
@@ -42,6 +44,7 @@ function setup(options: Setup = {}) {
     const invites: Array<{ instanceId: string; inviterId: string; inviteeId: string; expiresAt: Date }> = [];
     const admitted = new Set<string>();
     const tickets: Array<{ instanceId: string; participant: { id: string; name: string }; origin: string }> = [];
+    const asked: string[] = [];
     const rooms = createRooms({
         identity,
         allowHttp: options.allowHttp ?? false,
@@ -52,6 +55,10 @@ function setup(options: Setup = {}) {
         },
         presence: async () => presence,
         friendsOf: async (id) => new Set(options.friends?.[id] ?? []),
+        askFriendship: async (member, viewer) => {
+            asked.push(`${member}|${viewer}`);
+            return options.homes?.[member]?.includes(viewer) ?? false;
+        },
         invites: {
             findValid: async (instanceId, inviteeId, now) =>
                 invites.find((i) => i.instanceId === instanceId && i.inviteeId === inviteeId && i.expiresAt > now),
@@ -68,7 +75,7 @@ function setup(options: Setup = {}) {
         wsUrl: 'wss://b.example/realtime/v1/ws',
         now: () => NOW,
     });
-    return { rooms, room, presence, invites, admitted, tickets };
+    return { rooms, room, presence, invites, admitted, tickets, asked };
 }
 
 const ROOM_URL = identity.instanceUrl('room1');
@@ -100,6 +107,65 @@ describe('部屋の作り（describe）', () => {
         // フレンドでなければ、無い部屋と同じ（あることを伏せる）
         expect(await rooms.describe(MALLORY.id, 'room1')).toBeUndefined();
         expect(await rooms.describe(MALLORY.id, 'nope')).toBeUndefined();
+    });
+
+    it('フレンド+: 中にいるほかのサーバーの人のフレンドは、その人のホームが答えれば見えて入れる（このサーバーは関係を知らない）', async () => {
+        const CAROL = visitor('carol', 'c.example');
+        const DAVE = visitor('dave', 'd.example');
+        const { rooms, tickets } = setup({
+            accessType: 'friend_plus',
+            members: ['leader', CAROL.id],
+            homes: { [CAROL.id]: [DAVE.id] },
+        });
+        expect(await rooms.describe(DAVE.id, 'room1')).toMatchObject({ canJoin: true });
+        const joined = await rooms.join(DAVE, { room: ROOM_URL, clientOrigin: 'https://d.example' });
+        expect(joined.ok).toBe(true);
+        expect(tickets.map((t) => t.participant.id)).toEqual([DAVE.id]);
+        // ホームがフレンドだと答えない人には、あることも伏せる
+        expect(await rooms.describe(MALLORY.id, 'room1')).toBeUndefined();
+        expect(await rooms.join(MALLORY, { room: ROOM_URL, clientOrigin: 'https://evil.example' })).toMatchObject({
+            ok: false,
+            problem: { status: 404 },
+        });
+    });
+
+    it('招待のみ: ホームが答えたフレンドにも見えるが、入るには招待が要る', async () => {
+        const CAROL = visitor('carol', 'c.example');
+        const { rooms } = setup({
+            accessType: 'invite_only',
+            members: ['leader', CAROL.id],
+            homes: { [CAROL.id]: [ALICE.id] },
+        });
+        expect(await rooms.describe(ALICE.id, 'room1')).toMatchObject({ canJoin: false });
+        expect(await rooms.join(ALICE, join)).toMatchObject({ ok: false, problem: { code: 'invite-required' } });
+    });
+
+    it('ホームに尋ねるのは、知っている関係で見えないとき・中にいる人のフレンドで決まる部屋・ほかのサーバーの人だけ', async () => {
+        const CAROL = visitor('carol', 'c.example');
+        const known = setup({
+            accessType: 'friend_plus',
+            members: ['leader', CAROL.id],
+            friends: { [ALICE.id]: ['leader'] },
+        });
+        await known.rooms.describe(ALICE.id, 'room1');
+        expect(known.asked).toEqual([]);
+
+        const leaderOnly = setup({
+            accessType: 'friend_only',
+            members: ['leader', CAROL.id],
+            homes: { [CAROL.id]: [ALICE.id] },
+        });
+        expect(await leaderOnly.rooms.describe(ALICE.id, 'room1')).toBeUndefined();
+        expect(leaderOnly.asked).toEqual([]);
+
+        const many = Array.from(
+            { length: FEDERATION_LIMITS.MAX_FRIENDSHIP_CHECKS + 5 },
+            (_, i) => visitor(`v${i}`, `h${i}.example`).id,
+        );
+        const crowded = setup({ accessType: 'friend_plus', members: ['leader', 'local-member', ...many] });
+        await crowded.rooms.describe(ALICE.id, 'room1');
+        expect(crowded.asked).toHaveLength(FEDERATION_LIMITS.MAX_FRIENDSHIP_CHECKS);
+        expect(crowded.asked.every((a) => a.endsWith(`|${ALICE.id}`) && !a.startsWith('local-member'))).toBe(true);
     });
 
     it('招待があれば、見えない部屋でも入れる', async () => {

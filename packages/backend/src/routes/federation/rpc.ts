@@ -7,7 +7,6 @@ import type { RemoteActorRecord } from '@ubichill/db';
 import {
     FriendshipCheckRequestSchema,
     GrantRequestSchema,
-    hostOf,
     JoinRequestSchema,
     PresenceRequestSchema,
     VisibilityRequestSchema,
@@ -117,11 +116,14 @@ export function createRpcRouter(federation: Federation): Router {
         async (req, res) => {
             const body = readBody(FriendshipCheckRequestSchema, req, res);
             if (!body) return;
-            const userId = federation.identity.localUserIdOf(body.user);
-            // 尋ねられるのは、署名したサーバーの人との関係だけ
-            if (!userId || hostOf(body.other) !== signerOf(res).host)
-                return sendProblem(res, 403, 'forbidden', '尋ねられません');
-            res.json({ friends: await federation.isFriend(userId, body.other) });
+            try {
+                const outcome = await federation.friendshipCheck.answer(signerOf(res).host, body);
+                if (!outcome.ok)
+                    return sendProblem(res, outcome.problem.status, outcome.problem.code, outcome.problem.title);
+                res.json(outcome.value);
+            } catch (error) {
+                fail(res, error);
+            }
         },
     );
 
