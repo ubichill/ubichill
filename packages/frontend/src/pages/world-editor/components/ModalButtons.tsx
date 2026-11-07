@@ -28,6 +28,7 @@ export function ModalPrimaryButton({
                 borderRadius: '8px',
                 fontSize: '13px',
                 fontWeight: '600',
+                whiteSpace: 'nowrap',
                 cursor: 'pointer',
                 _disabled: { opacity: 0.5, cursor: 'not-allowed' },
                 _hover: { opacity: 0.9 },
@@ -64,6 +65,7 @@ export function ModalSecondaryButton({
                 borderRadius: '8px',
                 fontSize: '13px',
                 fontWeight: '600',
+                whiteSpace: 'nowrap',
                 cursor: 'pointer',
                 _hover: { borderColor: 'borderStrong' },
             })}

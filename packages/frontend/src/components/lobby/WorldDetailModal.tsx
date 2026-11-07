@@ -128,7 +128,7 @@ export function WorldDetailModal({
                         width: '100%',
                         maxWidth: '500px',
                         maxHeight: '100%',
-                        borderRadius: '24px',
+                        borderRadius: '12px',
                         boxShadow: 'modal',
                         display: 'flex',
                         flexDirection: 'column',
@@ -155,7 +155,7 @@ export function WorldDetailModal({
                                             width: '100%',
                                             height: '200px',
                                             objectFit: 'cover',
-                                            borderRadius: '16px',
+                                            borderRadius: '8px',
                                         })}
                                     />
                                 )}
@@ -186,6 +186,9 @@ export function WorldDetailModal({
                                                 fontSize: 'xl',
                                                 fontWeight: 'bold',
                                                 color: 'text',
+                                                minW: 0,
+                                                overflowWrap: 'anywhere',
+                                                wordBreak: 'auto-phrase',
                                                 _hover: { textDecoration: 'underline' },
                                             })}
                                         >
@@ -194,7 +197,15 @@ export function WorldDetailModal({
                                         {world?.url && <FavoriteButton worldRef={world.url} />}
                                     </div>
                                     {world?.description && (
-                                        <p className={css({ color: 'textMuted', fontSize: 'sm', lineHeight: '1.5' })}>
+                                        <p
+                                            className={css({
+                                                color: 'textMuted',
+                                                fontSize: 'sm',
+                                                lineHeight: '1.6',
+                                                overflowWrap: 'anywhere',
+                                                wordBreak: 'auto-phrase',
+                                            })}
+                                        >
                                             {world.description}
                                         </p>
                                     )}
@@ -209,6 +220,7 @@ export function WorldDetailModal({
                                                 borderRadius: '4px',
                                                 fontSize: '11px',
                                                 color: 'textMuted',
+                                                overflowWrap: 'anywhere',
                                             })}
                                             title={world.source.originInstance ?? world.source.url}
                                         >

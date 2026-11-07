@@ -56,8 +56,8 @@ export default defineConfig({
                     
                     // テキスト色
                     text: { value: '#1b2a44' },
-                    textMuted: { value: '#5e6a82' },
-                    textSubtle: { value: '#8a7e6d' },
+                    textMuted: { value: '#56627a' },
+                    textSubtle: { value: '#70624f' },
                     textOnPrimary: { value: '#f8f3ea' },
                     
                     // ボーダー
@@ -102,8 +102,8 @@ export default defineConfig({
                     hudBorder: { value: 'rgba(255, 255, 255, 0.10)' },
                     hudDivider: { value: 'rgba(255, 255, 255, 0.08)' },
                     hudText: { value: 'rgba(255, 255, 255, 0.90)' },
-                    hudTextMuted: { value: 'rgba(255, 255, 255, 0.45)' },
-                    hudTextSubtle: { value: 'rgba(255, 255, 255, 0.35)' },
+                    hudTextMuted: { value: 'rgba(255, 255, 255, 0.65)' },
+                    hudTextSubtle: { value: 'rgba(255, 255, 255, 0.55)' },
                     hudTextBody: { value: 'rgba(255, 255, 255, 0.85)' },
                     hudTextAction: { value: 'rgba(255, 255, 255, 0.80)' },
                     hudScrollThumb: { value: 'rgba(255, 255, 255, 0.15)' },

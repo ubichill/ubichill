@@ -1,5 +1,12 @@
 @layer reset, base, tokens, recipes, utilities;
 
+@layer base {
+    :where(button, a, input, select, textarea, [tabindex]):focus-visible {
+        outline: 2px solid var(--colors-primary-highlight);
+        outline-offset: 3px;
+    }
+}
+
 /* ────────────────────────────────────────────────────────────────────────────
    mod 描画面 (ワールド + 画面固定 HUD) の長押しジェスチャ抑止
    ────────────────────────────────────────────────────────────────────────────

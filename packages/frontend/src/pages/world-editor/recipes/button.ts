@@ -14,6 +14,7 @@ export const editorButton = cva({
         border: '1px solid',
         borderRadius: '8px',
         fontWeight: '600',
+        whiteSpace: 'nowrap',
         cursor: 'pointer',
         userSelect: 'none',
         _disabled: { opacity: 0.5, cursor: 'not-allowed' },

@@ -54,7 +54,7 @@ export function LobbyPage() {
             style={{
                 display: 'flex',
                 flexDirection: 'column',
-                height: '100vh',
+                height: '100dvh',
                 overflow: 'hidden',
             }}
         >
@@ -67,14 +67,8 @@ export function LobbyPage() {
                     display: 'flex',
                     alignItems: 'center',
                     gap: '8px',
-                    px: '12px',
+                    px: '4px',
                     py: '7px',
-                    bg: 'glassBg',
-                    backdropFilter: 'blur(12px)',
-                    border: '1px solid',
-                    borderColor: 'border',
-                    borderRadius: 'full',
-                    boxShadow: 'card',
                     color: 'text',
                 })}
             >
@@ -84,7 +78,7 @@ export function LobbyPage() {
                     className={css({
                         width: '24px',
                         height: '24px',
-                        borderRadius: '7px',
+                        borderRadius: '4px',
                         objectFit: 'cover',
                         flexShrink: 0,
                     })}

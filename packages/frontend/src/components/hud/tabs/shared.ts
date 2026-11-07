@@ -21,12 +21,20 @@ export const tabPanel = css({
 });
 
 export const cardBase = {
-    bg: 'surfaceAccent',
-    borderRadius: '24px',
+    bg: 'surface',
+    border: '1px solid',
+    borderColor: 'border',
+    borderRadius: '12px',
     p: { base: '4', md: '6' },
-    boxShadow: 'card',
 };
 
 export const cardStyle = css(cardBase);
 
-export const sectionHeading = css({ fontSize: 'xl', fontWeight: 'bold', mb: '4', color: 'text' });
+export const sectionHeading = css({
+    fontSize: { base: 'lg', md: 'xl' },
+    fontWeight: 'bold',
+    mb: '4',
+    color: 'text',
+    wordBreak: 'auto-phrase',
+    overflowWrap: 'anywhere',
+});

@@ -6,9 +6,7 @@ const frame = css({
     width: 'full',
     aspectRatio: '3 / 1',
     overflow: 'hidden',
-    bgGradient: 'to-br',
-    gradientFrom: 'surfaceAccent',
-    gradientTo: 'secondary',
+    bg: 'secondary',
 });
 const image = css({ width: 'full', height: 'full', objectFit: 'cover', display: 'block' });
 

@@ -35,9 +35,10 @@ export function InstanceCard({ instance, isCurrent = false, onOpenDetail }: Inst
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
+                gap: '3',
                 padding: { base: '12px', md: '16px' },
                 backgroundColor: isCurrent ? 'successBg' : 'surface',
-                borderRadius: '14px',
+                borderRadius: '8px',
                 border: '1px solid',
                 borderColor: isCurrent ? 'success' : 'border',
                 transition: 'background-color 0.16s ease',
@@ -91,6 +92,8 @@ export function InstanceCard({ instance, isCurrent = false, onOpenDetail }: Inst
                             fontWeight: '600',
                             color: 'text',
                             marginBottom: '4px',
+                            overflowWrap: 'anywhere',
+                            wordBreak: 'auto-phrase',
                         })}
                     >
                         {instance.world.displayName}
@@ -168,6 +171,7 @@ export function InstanceCard({ instance, isCurrent = false, onOpenDetail }: Inst
                         fontSize: '13px',
                         fontWeight: '600',
                         whiteSpace: 'nowrap',
+                        flexShrink: 0,
                     })}
                 >
                     参加中

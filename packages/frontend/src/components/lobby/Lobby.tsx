@@ -156,11 +156,12 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                 <UnsignedWorldsNotice />
                 <div
                     className={css({
-                        bg: 'surfaceAccent',
-                        borderRadius: '24px',
+                        bg: 'surface',
+                        border: '1px solid',
+                        borderColor: 'border',
+                        borderRadius: '12px',
                         px: { base: '4', md: '8' },
                         py: { base: '5', md: '6' },
-                        boxShadow: 'card',
                         flex: 1,
                         display: 'flex',
                         flexDirection: 'column',
@@ -170,8 +171,10 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                     <div
                         className={css({
                             display: 'flex',
+                            flexWrap: 'wrap',
                             alignItems: 'center',
                             justifyContent: 'space-between',
+                            gap: '3',
                             mb: '4',
                             flexShrink: 0,
                         })}
@@ -181,6 +184,8 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                                 fontSize: { base: 'lg', sm: 'xl', md: 'xl' },
                                 fontWeight: '700',
                                 color: 'text',
+                                whiteSpace: 'nowrap',
+                                flexShrink: 0,
                             })}
                         >
                             ワールド一覧
@@ -188,12 +193,14 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                         <div
                             className={css({
                                 display: 'flex',
+                                flexWrap: 'wrap',
                                 gap: '4px',
-                                bg: 'surface',
-                                p: '4px',
-                                borderRadius: '10px',
-                                border: '1px solid',
-                                borderColor: 'border',
+                                maxW: 'full',
+                                '& > button': {
+                                    whiteSpace: 'nowrap',
+                                    flexShrink: 0,
+                                    minH: '40px',
+                                },
                             })}
                         >
                             <button
@@ -202,7 +209,7 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                                 className={css({
                                     px: '12px',
                                     py: '6px',
-                                    borderRadius: '8px',
+                                    borderRadius: '6px',
                                     border: 'none',
                                     fontSize: '13px',
                                     fontWeight: '600',
@@ -219,7 +226,7 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                                 className={css({
                                     px: '12px',
                                     py: '6px',
-                                    borderRadius: '8px',
+                                    borderRadius: '6px',
                                     border: 'none',
                                     fontSize: '13px',
                                     fontWeight: '600',
@@ -239,7 +246,7 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                                     gap: '4px',
                                     px: '12px',
                                     py: '6px',
-                                    borderRadius: '8px',
+                                    borderRadius: '6px',
                                     border: 'none',
                                     fontSize: '13px',
                                     fontWeight: '600',
@@ -319,6 +326,8 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                                         fontSize: '14px',
                                         color: 'textMuted',
                                         marginBottom: '16px',
+                                        lineHeight: '1.7',
+                                        wordBreak: 'auto-phrase',
                                     })}
                                 >
                                     {tab === 'local'
@@ -351,7 +360,7 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                                                     backgroundColor: 'primary',
                                                     color: 'textOnPrimary',
                                                     border: 'none',
-                                                    borderRadius: '10px',
+                                                    borderRadius: '6px',
                                                     fontSize: '13px',
                                                     fontWeight: '600',
                                                     cursor: 'pointer',
@@ -393,7 +402,7 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                                                 className={css({
                                                     flex: 1,
                                                     padding: '9px 12px',
-                                                    borderRadius: '10px',
+                                                    borderRadius: '6px',
                                                     border: '1.5px solid',
                                                     borderColor: importState === 'error' ? 'errorText' : 'border',
                                                     backgroundColor: 'surface',
@@ -446,6 +455,7 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'space-between',
+                                        flexWrap: 'wrap',
                                         gap: '2',
                                         marginBottom: '12px',
                                     })}
@@ -502,7 +512,7 @@ export function Lobby({ onJoinInstance, currentInstanceId }: LobbyProps) {
                                 <div
                                     className={css({
                                         display: 'grid',
-                                        gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+                                        gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 240px), 1fr))',
                                         gap: '16px',
                                     })}
                                 >

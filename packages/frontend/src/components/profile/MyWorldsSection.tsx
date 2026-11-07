@@ -9,7 +9,11 @@ import { ExternalWorksSection } from './ExternalWorksSection';
 import { OwnedWorldCard } from './OwnedWorldCard';
 import type { MyAccountState } from './useMyAccount';
 
-const grid = css({ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '4' });
+const grid = css({
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 240px), 1fr))',
+    gap: '4',
+});
 
 /**
  * 設定の「ワールド」: 作成したワールドの新規作成・編集・署名して公開・削除と、リポジトリで管理しているワールド。

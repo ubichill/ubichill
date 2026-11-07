@@ -106,6 +106,7 @@ export function Modal({ open, onClose, title, children, width = '640px', height,
                     <div
                         className={css({
                             display: 'flex',
+                            flexWrap: 'wrap',
                             gap: '8px',
                             justifyContent: 'flex-end',
                             padding: '12px 16px',

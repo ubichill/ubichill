@@ -17,10 +17,11 @@ const cardStyle = css({
     backgroundColor: 'surface',
     border: '1px solid',
     borderColor: 'border',
-    borderRadius: '14px',
+    borderRadius: '8px',
     cursor: 'pointer',
     transition: 'background-color 0.16s ease, border-color 0.16s ease',
     width: '100%',
+    minW: 0,
     textAlign: 'left',
     _hover: {
         borderColor: 'borderStrong',
@@ -33,26 +34,32 @@ const titleStyle = css({
     fontWeight: '600',
     color: 'text',
     marginBottom: '4px',
+    overflowWrap: 'anywhere',
+    wordBreak: 'auto-phrase',
 });
 
 const descriptionStyle = css({
     fontSize: '13px',
     color: 'textMuted',
-    lineHeight: '1.4',
+    lineHeight: '1.6',
+    overflowWrap: 'anywhere',
 });
 
 const metaStyle = css({
     display: 'flex',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: '8px',
     marginTop: '8px',
     fontSize: '12px',
     color: 'textSubtle',
+    width: 'full',
+    '& > span': { whiteSpace: 'nowrap', minW: 0, maxW: 'full' },
 });
 
 export function WorldCard({ world, onSelect }: WorldCardProps) {
     return (
-        <div className={css({ position: 'relative', width: '100%' })}>
+        <div className={css({ position: 'relative', width: '100%', minW: 0 })}>
             {/* カード（button）の外側に置く。button の入れ子は不正なため兄弟として重ねる。 */}
             <div className={css({ position: 'absolute', top: '10px', right: '10px', zIndex: 1 })}>
                 <FavoriteButton worldRef={world.url} />

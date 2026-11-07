@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { useNotifications } from '@/components/notifications';
 import { unreadBadge } from '@/lib/notifications';
 import { css } from '@/styled-system/css';
@@ -197,6 +197,7 @@ export function HudTabs({
 }: HudTabsProps) {
     const [internalTab, setInternalTab] = useState<HudTabId>(initialTab);
     const activeTab = controlledTab ?? internalTab;
+    const contentId = useId();
     const setActiveTab = onTabChange ?? setInternalTab;
     const notifications = useNotifications();
     const [settingsSection, setSettingsSection] = useState<SettingsSection>('profile');
@@ -218,12 +219,15 @@ export function HudTabs({
     return (
         <HudNavigationContext.Provider value={navigation}>
             <div
+                id={contentId}
+                role="region"
+                aria-label={TABS.find((tab) => tab.id === activeTab)?.label}
                 className={css({
                     flex: 1,
                     minH: 0,
                     overflow: 'hidden',
-                    pb: { base: '100px', md: '24px' },
-                    pt: { base: '0', md: '96px' },
+                    pb: { base: 'calc(100px + env(safe-area-inset-bottom, 0px))', md: '24px' },
+                    pt: { base: '0', md: currentInstanceId ? '96px' : '132px' },
                 })}
             >
                 {activeTab === 'instance' && currentInstanceId && (
@@ -262,7 +266,8 @@ export function HudTabs({
                 )}
             </div>
 
-            <div
+            <nav
+                aria-label="メインメニュー"
                 className={css({
                     position: 'fixed',
                     left: '50%',
@@ -270,18 +275,16 @@ export function HudTabs({
                     zIndex: 100,
                     width: 'calc(100% - 32px)',
                     maxWidth: '730px',
-                    bottom: { base: '20px', md: 'auto' },
-                    top: { base: 'auto', md: '16px' },
+                    bottom: { base: 'calc(20px + env(safe-area-inset-bottom, 0px))', md: 'auto' },
+                    top: { base: 'auto', md: currentInstanceId ? '16px' : '64px' },
                 })}
                 onClick={(e) => e.stopPropagation()}
             >
                 <div
                     className={css({
                         display: 'flex',
-                        bg: 'hudPanel',
-                        backdropFilter: 'blur(12px)',
-                        borderRadius: '24px',
-                        boxShadow: 'modal',
+                        bg: 'primary',
+                        borderRadius: '12px',
                         border: '1px solid',
                         borderColor: 'hudBorder',
                         overflow: 'hidden',
@@ -293,6 +296,8 @@ export function HudTabs({
                         <button
                             key={tab.id}
                             type="button"
+                            aria-pressed={activeTab === tab.id}
+                            aria-controls={contentId}
                             onClick={() => setActiveTab(tab.id)}
                             className={css({
                                 flex: 1,
@@ -302,10 +307,10 @@ export function HudTabs({
                                 justifyContent: 'center',
                                 gap: '4px',
                                 py: '8px',
-                                borderRadius: '18px',
+                                borderRadius: '6px',
                                 border: 'none',
                                 cursor: 'pointer',
-                                transition: 'all 0.2s ease',
+                                transition: 'background-color 0.16s ease, color 0.16s ease',
                                 bg: activeTab === tab.id ? 'rgba(255, 255, 255, 0.15)' : 'transparent',
                                 color: activeTab === tab.id ? 'hudText' : 'hudTextMuted',
                                 _hover: {
@@ -353,7 +358,7 @@ export function HudTabs({
                         </button>
                     ))}
                 </div>
-            </div>
+            </nav>
         </HudNavigationContext.Provider>
     );
 }

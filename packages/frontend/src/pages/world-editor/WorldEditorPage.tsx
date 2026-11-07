@@ -161,7 +161,7 @@ export function WorldEditorPage() {
                 inset: 0,
                 display: 'grid',
                 gridTemplateRows: { base: 'auto 1fr 140px', md: 'auto 1fr 220px' },
-                gridTemplateColumns: { base: '1fr', md: '240px 1fr 320px' },
+                gridTemplateColumns: { base: 'minmax(0, 1fr)', md: '240px minmax(0, 1fr) 320px' },
                 gridTemplateAreas: {
                     base: `"header" "center" "bottom"`,
                     md: `"header header header" "left center right" "bottom bottom bottom"`,
@@ -171,7 +171,7 @@ export function WorldEditorPage() {
                 overflow: 'hidden',
             })}
         >
-            <div className={css({ gridArea: 'header' })}>
+            <div className={css({ gridArea: 'header', minW: 0 })}>
                 <EditorHeader
                     title={title}
                     dirty={dirty}
@@ -320,7 +320,15 @@ export function WorldEditorPage() {
                 width="960px"
                 height="680px"
                 footer={
-                    <div className={css({ display: 'flex', width: '100%', justifyContent: 'space-between' })}>
+                    <div
+                        className={css({
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: '2',
+                            width: '100%',
+                            justifyContent: 'space-between',
+                        })}
+                    >
                         <div>
                             {isEdit && !dirty && (
                                 <button
@@ -334,7 +342,14 @@ export function WorldEditorPage() {
                                 </button>
                             )}
                         </div>
-                        <div className={css({ display: 'flex', gap: '8px' })}>
+                        <div
+                            className={css({
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                gap: '8px',
+                                justifyContent: 'flex-end',
+                            })}
+                        >
                             {isEdit ? (
                                 <>
                                     <ModalSecondaryButton onClick={handleCloseControlPanel}>
@@ -418,7 +433,7 @@ export function WorldEditorPage() {
                 title="未保存の変更があります"
                 width="440px"
                 footer={
-                    <div className={css({ display: 'flex', gap: '8px', width: '100%' })}>
+                    <div className={css({ display: 'flex', flexWrap: 'wrap', gap: '8px', width: '100%' })}>
                         <button
                             type="button"
                             onClick={() => setLeaveConfirmOpen(false)}

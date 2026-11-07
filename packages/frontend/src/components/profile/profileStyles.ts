@@ -3,10 +3,11 @@ import { css, cva } from '@/styled-system/css';
 /** プロフィールのカード（バナー・アイコン・本文）。表示と編集で同じ骨組みにする。 */
 export const profileCard = css({
     bg: 'surface',
-    borderRadius: '20px',
+    borderRadius: '12px',
+    border: '1px solid',
+    borderColor: 'border',
     overflow: 'hidden',
     mb: '4',
-    boxShadow: 'card',
 });
 
 export const profileBody = css({

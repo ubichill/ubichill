@@ -17,6 +17,7 @@ export function AccessTypeSelect({ value, onChange }: { value: AccessType; onCha
             className={css({
                 display: 'flex',
                 flexDirection: 'column',
+                minW: 0,
                 gap: '1',
                 fontSize: '12px',
                 color: 'textMuted',
@@ -27,6 +28,8 @@ export function AccessTypeSelect({ value, onChange }: { value: AccessType; onCha
                 value={value}
                 onChange={(e) => onChange(e.target.value as AccessType)}
                 className={css({
+                    width: 'full',
+                    minW: 0,
                     px: '3',
                     py: '2',
                     border: '1px solid',

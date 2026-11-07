@@ -173,7 +173,7 @@ export function ModSelector({ dependencies, onCommitDependencies }: ModSelectorP
                 <div
                     className={css({
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                        gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 220px), 1fr))',
                         gap: '8px',
                     })}
                 >

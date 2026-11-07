@@ -18,6 +18,7 @@ export function ControlPanelTabs({ active, onChange }: ControlPanelTabsProps) {
         <div
             className={css({
                 display: 'flex',
+                flexWrap: 'wrap',
                 gap: '4px',
                 borderBottom: '1px solid',
                 borderColor: 'border',
@@ -41,6 +42,7 @@ export function ControlPanelTabs({ active, onChange }: ControlPanelTabsProps) {
                             borderBottom: '2px solid',
                             borderColor: isActive ? 'primary' : 'transparent',
                             cursor: 'pointer',
+                            whiteSpace: 'nowrap',
                             marginBottom: '-1px',
                             _hover: { color: 'text' },
                         })}

@@ -16,6 +16,7 @@ export function AuthPage() {
     const [mode, setMode] = useState<AuthMode>('login');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const [displayName, setDisplayName] = useState('');
     const [handle, setHandle] = useState('');
     const [error, setError] = useState('');
@@ -192,6 +193,10 @@ export function AuthPage() {
                             <input
                                 id="otp"
                                 type="text"
+                                inputMode="numeric"
+                                pattern="[0-9]{6}"
+                                aria-invalid={!!error}
+                                aria-describedby={error ? 'auth-error' : undefined}
                                 value={otp}
                                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
                                 placeholder="000000"
@@ -201,8 +206,16 @@ export function AuthPage() {
                             />
                         </div>
 
-                        {error && <p className={errorStyle}>{error}</p>}
-                        {success && <p className={successStyle}>{success}</p>}
+                        {error && (
+                            <p id="auth-error" role="alert" className={errorStyle}>
+                                {error}
+                            </p>
+                        )}
+                        {success && (
+                            <p role="status" className={successStyle}>
+                                {success}
+                            </p>
+                        )}
 
                         <button type="submit" className={buttonStyle} disabled={isLoading || otp.length !== 6}>
                             {isLoading ? '確認中...' : '確認する'}
@@ -239,26 +252,40 @@ export function AuthPage() {
             <div className={cardStyle}>
                 <img src="/icon.png" alt="Ubichill" width={64} height={64} className={iconStyle} />
                 <h1 className={titleStyle}>Ubichill</h1>
-                <p className={subtitleStyle}>2Dメタバーススタイルのコラボレーションスペース</p>
+                <p className={subtitleStyle}>同じ空間で、作業も会話もいっしょに。</p>
 
-                <div className={tabContainerStyle}>
+                <div className={tabContainerStyle} role="group" aria-label="アカウントへのアクセス">
                     <button
                         type="button"
                         className={mode === 'login' ? tabActiveStyle : tabStyle}
-                        onClick={() => setMode('login')}
+                        onClick={() => {
+                            setMode('login');
+                            setError('');
+                            setSuccess('');
+                            setShowPassword(false);
+                        }}
+                        aria-pressed={mode === 'login'}
+                        disabled={isLoading}
                     >
                         ログイン
                     </button>
                     <button
                         type="button"
                         className={mode === 'register' ? tabActiveStyle : tabStyle}
-                        onClick={() => setMode('register')}
+                        onClick={() => {
+                            setMode('register');
+                            setError('');
+                            setSuccess('');
+                            setShowPassword(false);
+                        }}
+                        aria-pressed={mode === 'register'}
+                        disabled={isLoading}
                     >
                         新規登録
                     </button>
                 </div>
 
-                <form onSubmit={handleSubmit} className={formStyle}>
+                <form onSubmit={handleSubmit} className={formStyle} aria-busy={isLoading}>
                     {mode === 'register' && (
                         <>
                             <div className={fieldStyle}>
@@ -267,6 +294,9 @@ export function AuthPage() {
                                 </label>
                                 <input
                                     id="displayName"
+                                    autoComplete="nickname"
+                                    aria-invalid={'error' in displayNameStatus}
+                                    aria-describedby="display-name-status display-name-hint"
                                     type="text"
                                     value={displayName}
                                     onChange={(e) => setDisplayName(e.target.value.slice(0, 30))}
@@ -278,14 +308,16 @@ export function AuthPage() {
                                     }
                                     required
                                 />
-                                {displayNameStatus.state === 'checking' && <p className={hintStyle}>確認中...</p>}
-                                {'error' in displayNameStatus && (
-                                    <p className={fieldErrorStyle}>{displayNameStatus.error}</p>
-                                )}
-                                {displayNameStatus.state === 'available' && (
-                                    <p className={fieldSuccessStyle}>この表示名は使用できます</p>
-                                )}
-                                <p className={hintStyle}>
+                                <div id="display-name-status" role="status">
+                                    {displayNameStatus.state === 'checking' && <p className={hintStyle}>確認中...</p>}
+                                    {'error' in displayNameStatus && (
+                                        <p className={fieldErrorStyle}>{displayNameStatus.error}</p>
+                                    )}
+                                    {displayNameStatus.state === 'available' && (
+                                        <p className={fieldSuccessStyle}>この表示名は使用できます</p>
+                                    )}
+                                </div>
+                                <p id="display-name-hint" className={hintStyle}>
                                     日本語も使えます。他の人と同じ名前は使えません（あとから変更できます）
                                 </p>
                             </div>
@@ -295,6 +327,9 @@ export function AuthPage() {
                                 </label>
                                 <input
                                     id="handle"
+                                    autoComplete="off"
+                                    aria-invalid={'error' in handleStatus}
+                                    aria-describedby="handle-status handle-hint"
                                     type="text"
                                     value={handle}
                                     onChange={(e) => setHandle(e.target.value.toLowerCase().slice(0, 30))}
@@ -308,12 +343,14 @@ export function AuthPage() {
                                     }
                                     required
                                 />
-                                {handleStatus.state === 'checking' && <p className={hintStyle}>確認中...</p>}
-                                {'error' in handleStatus && <p className={fieldErrorStyle}>{handleStatus.error}</p>}
-                                {handleStatus.state === 'available' && (
-                                    <p className={fieldSuccessStyle}>この ID は使用できます</p>
-                                )}
-                                <p className={hintStyle}>
+                                <div id="handle-status" role="status">
+                                    {handleStatus.state === 'checking' && <p className={hintStyle}>確認中...</p>}
+                                    {'error' in handleStatus && <p className={fieldErrorStyle}>{handleStatus.error}</p>}
+                                    {handleStatus.state === 'available' && (
+                                        <p className={fieldSuccessStyle}>この ID は使用できます</p>
+                                    )}
+                                </div>
+                                <p id="handle-hint" className={hintStyle}>
                                     英小文字・数字・_ の 3〜30 文字。URL
                                     や作者署名（@ID@サーバー）に使われ、あとから変更できません
                                 </p>
@@ -328,6 +365,9 @@ export function AuthPage() {
                         <input
                             id="email"
                             type="email"
+                            inputMode="email"
+                            autoCapitalize="none"
+                            spellCheck={false}
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             placeholder="example@email.com"
@@ -341,21 +381,42 @@ export function AuthPage() {
                         <label htmlFor="password" className={labelStyle}>
                             パスワード
                         </label>
-                        <input
-                            id="password"
-                            type="password"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder="8文字以上"
-                            className={inputStyle}
-                            autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                            minLength={8}
-                            required
-                        />
+                        <div className={css({ position: 'relative', w: 'full' })}>
+                            <input
+                                id="password"
+                                type={showPassword ? 'text' : 'password'}
+                                data-password
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                placeholder="8文字以上"
+                                className={inputStyle}
+                                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                                minLength={8}
+                                required
+                            />
+                            <button
+                                type="button"
+                                className={passwordToggleStyle}
+                                aria-label={showPassword ? 'パスワードを隠す' : 'パスワードを表示'}
+                                aria-controls="password"
+                                aria-pressed={showPassword}
+                                onClick={() => setShowPassword((value) => !value)}
+                            >
+                                {showPassword ? '隠す' : '表示'}
+                            </button>
+                        </div>
                     </div>
 
-                    {error && <p className={errorStyle}>{error}</p>}
-                    {success && <p className={successStyle}>{success}</p>}
+                    {error && (
+                        <p role="alert" className={errorStyle}>
+                            {error}
+                        </p>
+                    )}
+                    {success && (
+                        <p role="status" className={successStyle}>
+                            {success}
+                        </p>
+                    )}
 
                     <button
                         type="submit"
@@ -376,7 +437,9 @@ export function AuthPage() {
 
 // Styles — Beige/Navy palette (from pencil-new.pen mockup)
 const containerStyle = flex({
-    minH: 'screen',
+    minH: '100dvh',
+    px: { base: '4', sm: '6' },
+    py: '6',
     alignItems: 'center',
     justifyContent: 'center',
     bg: 'background',
@@ -384,10 +447,11 @@ const containerStyle = flex({
 
 const cardStyle = vstack({
     gap: '6',
-    p: '8',
+    p: { base: '6', sm: '8' },
     bg: 'white',
-    rounded: 'xl',
-    shadow: 'card',
+    rounded: 'lg',
+    border: '1px solid',
+    borderColor: 'border',
     w: 'full',
     maxW: '400px',
 });
@@ -397,15 +461,19 @@ const iconStyle = css({
 });
 
 const titleStyle = css({
-    fontSize: '3xl',
+    fontSize: { base: '2xl', sm: '3xl' },
     fontWeight: 'bold',
     color: 'text',
+    wordBreak: 'auto-phrase',
 });
 
 const subtitleStyle = css({
     fontSize: 'sm',
     color: 'textMuted',
     textAlign: 'center',
+    lineHeight: '1.7',
+    wordBreak: 'auto-phrase',
+    overflowWrap: 'anywhere',
 });
 
 const tabContainerStyle = flex({
@@ -418,6 +486,8 @@ const tabContainerStyle = flex({
 
 const tabStyle = css({
     flex: 1,
+    whiteSpace: 'nowrap',
+    minH: '44px',
     py: '2',
     px: '4',
     fontSize: 'sm',
@@ -431,6 +501,8 @@ const tabStyle = css({
 
 const tabActiveStyle = css({
     flex: 1,
+    whiteSpace: 'nowrap',
+    minH: '44px',
     py: '2',
     px: '4',
     fontSize: 'sm',
@@ -460,9 +532,10 @@ const labelStyle = css({
 
 const inputStyle = css({
     w: 'full',
+    minH: '44px',
     py: '2.5',
     px: '3',
-    fontSize: 'sm',
+    fontSize: 'md',
     color: 'text',
     bg: 'surfaceHover',
     borderWidth: '1px',
@@ -472,13 +545,15 @@ const inputStyle = css({
     transition: 'all 0.2s',
     _placeholder: { color: 'textSubtle' },
     _focus: { borderColor: 'primaryHover', ring: '2', ringColor: 'primarySubtle' },
+    '&[data-password]': { pr: '16' },
 });
 
 const inputErrorStyle = css({
     w: 'full',
+    minH: '44px',
     py: '2.5',
     px: '3',
-    fontSize: 'sm',
+    fontSize: 'md',
     color: 'text',
     bg: 'surfaceHover',
     borderWidth: '1px',
@@ -503,6 +578,9 @@ const fieldSuccessStyle = css({
 const hintStyle = css({
     fontSize: 'xs',
     color: 'textSubtle',
+    lineHeight: '1.6',
+    wordBreak: 'auto-phrase',
+    overflowWrap: 'anywhere',
 });
 
 const otpInputStyle = css({
@@ -525,6 +603,7 @@ const otpInputStyle = css({
 
 const buttonStyle = css({
     w: 'full',
+    minH: '44px',
     py: '2.5',
     px: '4',
     fontSize: 'sm',
@@ -539,6 +618,7 @@ const buttonStyle = css({
 });
 
 const linkButtonStyle = css({
+    minH: '44px',
     py: '2',
     fontSize: 'sm',
     color: 'textMuted',
@@ -547,6 +627,22 @@ const linkButtonStyle = css({
     cursor: 'pointer',
     transition: 'all 0.2s',
     _hover: { color: 'text' },
+});
+
+const passwordToggleStyle = css({
+    position: 'absolute',
+    right: '1',
+    top: '0',
+    bottom: '0',
+    minW: '48px',
+    px: '2',
+    color: 'text',
+    fontSize: 'sm',
+    fontWeight: 'medium',
+    cursor: 'pointer',
+    rounded: 'md',
+    _hover: { bg: 'surfaceAccent' },
+    _focusVisible: { outline: '2px solid token(colors.primary)', outlineOffset: '2px' },
 });
 
 const errorStyle = css({

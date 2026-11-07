@@ -12,7 +12,7 @@ export function AuthorAccountLabel({ author, className }: { author: string; clas
     return (
         <span
             title={`${account.domain} がこの作者の署名鍵を証明しています`}
-            className={cx(css({ fontSize: '12px', color: 'textMuted', whiteSpace: 'nowrap' }), className)}
+            className={cx(css({ fontSize: '12px', color: 'textMuted', overflowWrap: 'anywhere' }), className)}
         >
             <span className={css({ color: 'text', fontWeight: '600' })}>@{account.handle}</span>
             <span>@{account.domain}</span>
