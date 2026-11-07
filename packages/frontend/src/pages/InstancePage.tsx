@@ -2,12 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { InstanceHUD } from '@/components/hud/InstanceHUD';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
-import type { HomeEntryState, InstanceEntryState } from '@/lib/home';
+import { afterInstanceFailure, readInstanceEntryState } from '@/lib/home';
 import { fetchInstance } from '@/lib/instancesApi';
 import { HOST_MOD_SOURCE } from '@/lib/modCdn';
 import { useSession } from '@/lib/session';
 import { pushToast } from '@/lib/toast';
 import { WorldView } from '@/world';
+import type { InstanceFailure } from '@/world/WorldView';
 
 /** 失敗したら一定時間後に自動でホームへ戻す（ロード画面で詰まらないように）。 */
 const RETURN_HOME_MS = 5000;
@@ -27,31 +28,47 @@ export function InstancePage() {
         if (!isPending && !session) navigate('/auth');
     }, [isPending, session, navigate]);
 
-    // どの部屋で失敗したかを渡す。ホームの部屋そのものが壊れていても、ホーム ⇄ 失敗を繰り返さない
+    // 部屋を移ってもこのページは作り直されないので、入った部屋ごとに読む
+    const entry = useMemo(() => readInstanceEntryState(location.state), [location.state]);
+    const [failed, setFailed] = useState<{ instanceId: string; failure: InstanceFailure } | null>(null);
+    const failure = failed && failed.instanceId === id ? failed.failure : null;
+    const handleFailed = useCallback(
+        (next: InstanceFailure) => {
+            if (id) setFailed({ instanceId: id, failure: next });
+        },
+        [id],
+    );
     const toHome = useCallback(() => {
-        const state: HomeEntryState = id ? { homeFailed: id } : {};
-        navigate('/', { state });
-    }, [id, navigate]);
-    const [failure, setFailure] = useState<string | null>(null);
+        const next = afterInstanceFailure(failure ?? { replaced: false }, entry);
+        navigate('/', { state: next.kind === 'home' ? next.state : {} });
+    }, [entry, failure, navigate]);
     useEffect(() => {
-        if (!failure) return;
-        console.warn('[InstancePage] load failed → returning home:', failure);
+        if (!failure || afterInstanceFailure(failure, entry).kind === 'stay') return;
+        console.warn('[InstancePage] load failed → returning home:', failure.message);
         const timer = setTimeout(toHome, RETURN_HOME_MS);
         return () => clearTimeout(timer);
-    }, [failure, toHome]);
+    }, [entry, failure, toHome]);
 
-    const notice = (location.state as InstanceEntryState | null)?.notice;
+    // お知らせは 1 度だけ（読み込み直しで履歴の state からまた出さない）
     useEffect(() => {
-        if (notice) pushToast(notice, 'warn');
-    }, [notice]);
+        if (!entry.notice) return;
+        pushToast(entry.notice, 'warn');
+        navigate(location.pathname, { replace: true, state: { ...entry, notice: undefined } });
+    }, [entry, location.pathname, navigate]);
 
     const userName = session?.user.name ?? new URLSearchParams(location.search).get('name') ?? 'Guest';
-    const stateWorldData = (location.state as InstanceEntryState | null)?.worldData;
     const preview = useMemo(
-        () => ({ displayName: stateWorldData?.displayName, thumbnail: stateWorldData?.thumbnail }),
-        [stateWorldData?.displayName, stateWorldData?.thumbnail],
+        () => ({ displayName: entry.worldData?.displayName, thumbnail: entry.worldData?.thumbnail }),
+        [entry.worldData?.displayName, entry.worldData?.thumbnail],
     );
-    const recovery = useMemo(() => ({ label: 'ホームに戻る', run: toHome }), [toHome]);
+    // 別のタブに切られたときは、ここで入り直すかを本人が選ぶ（自動で戻すとタブ同士で取り合う）
+    const recovery = useMemo(
+        () =>
+            failure?.replaced
+                ? { label: 'このタブで入り直す', run: () => window.location.reload() }
+                : { label: 'ホームに戻る', run: toHome },
+        [failure?.replaced, toHome],
+    );
 
     if (!id) return null;
     return (
@@ -65,7 +82,7 @@ export function InstancePage() {
             selfId={session?.user?.id}
             preview={preview}
             recovery={recovery}
-            onFailed={setFailure}
+            onFailed={handleFailed}
         >
             <InstanceHUD />
         </WorldView>

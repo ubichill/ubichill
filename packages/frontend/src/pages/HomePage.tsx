@@ -1,56 +1,48 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { signOut } from '@/lib/auth-client';
-import { decideHomeEntry, readHomeEntryState } from '@/lib/home';
+import { homeInstanceEntry, readHomeEntryState } from '@/lib/home';
 import { ensureHomeInstance } from '@/lib/homeApi';
 import { resetHome } from '@/lib/homeStore';
 import { css, cva } from '@/styled-system/css';
 import { InstanceLoadingScreen } from '@/world/InstanceLoadingScreen';
 
-type Phase =
-    | { kind: 'loading' }
-    /** 直前に入れなかったホームの部屋がまた返ってきた */
-    | { kind: 'blocked' }
-    | { kind: 'error'; message: string };
-
 const PREPARING_STAGES = [{ id: 'auth' as const, label: 'ホームを用意しています', status: 'active' as const }];
 
 /**
- * `/`。ロビーは無く、ログインしたらホームの部屋（あれば使い回し、無ければ作る）へそのまま移る。
- * 部屋に入れずに戻ってきたときは、同じ部屋へ自動で戻し続けず、選んでもらう。
+ * `/`。ロビーは無く、ログインしたらホームの部屋を新しく作ってそのまま移る。
+ * ホームの部屋に入れずに戻ってきたときは、自動ではもう作らず選んでもらう（作っては失敗するのを繰り返さない）。
  */
 export function HomePage() {
     const navigate = useNavigate();
     const location = useLocation();
-    // 入ってきたときの状態だけを見る（試し直しで読み直さない）
-    const [entry] = useState(() => readHomeEntryState(location.state));
-    const [phase, setPhase] = useState<Phase>({ kind: 'loading' });
-    const [attempt, setAttempt] = useState<{ useDefault: boolean; ignoreFailure: boolean }>({
-        useDefault: false,
-        ignoreFailure: false,
-    });
+    // null は選んでもらうのを待っている
+    const [attempt, setAttempt] = useState<{ useDefault: boolean } | null>(() =>
+        readHomeEntryState(location.state).homeFailed ? null : { useDefault: false },
+    );
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
+        if (!attempt) return;
         const ctrl = { cancelled: false };
-        setPhase({ kind: 'loading' });
-        ensureHomeInstance({ useDefault: attempt.useDefault })
+        setError(null);
+        ensureHomeInstance(attempt)
             .then((response) => {
-                if (ctrl.cancelled) return;
-                const decision = decideHomeEntry(response, entry, { ignoreFailure: attempt.ignoreFailure });
-                if (decision.kind === 'blocked') {
-                    setPhase({ kind: 'blocked' });
-                    return;
-                }
-                navigate(`/instance/${decision.instanceId}`, { replace: true, state: decision.state });
+                if (!ctrl.cancelled)
+                    navigate(`/instance/${response.instance.id}`, {
+                        replace: true,
+                        state: homeInstanceEntry(response),
+                    });
             })
             .catch((e: unknown) => {
-                if (!ctrl.cancelled)
-                    setPhase({ kind: 'error', message: e instanceof Error ? e.message : 'ホームを用意できません' });
+                if (ctrl.cancelled) return;
+                setError(e instanceof Error ? e.message : 'ホームを用意できません');
+                setAttempt(null);
             });
         return () => {
             ctrl.cancelled = true;
         };
-    }, [attempt, entry, navigate]);
+    }, [attempt, navigate]);
 
     const handleLogout = useCallback(async () => {
         await signOut();
@@ -58,7 +50,7 @@ export function HomePage() {
         navigate('/auth', { replace: true });
     }, [navigate]);
 
-    if (phase.kind === 'loading') {
+    if (attempt) {
         return (
             <InstanceLoadingScreen
                 progress={5}
@@ -77,24 +69,20 @@ export function HomePage() {
             <h1 className={css({ fontSize: '22px', fontWeight: 'bold', textAlign: 'center' })}>
                 ホームに入れませんでした
             </h1>
-            <p className={css({ color: 'hudTextMuted', fontSize: '14px', textAlign: 'center', maxW: '420px' })}>
-                {phase.kind === 'blocked'
-                    ? 'ホームの部屋に接続できませんでした。同じアカウントで別のタブ・端末から入っているときは、そちらを使ってください。'
-                    : phase.message}
-            </p>
+            {error && (
+                <p className={css({ color: 'hudTextMuted', fontSize: '14px', textAlign: 'center', maxW: '420px' })}>
+                    {error}
+                </p>
+            )}
             <div className={css({ display: 'flex', flexWrap: 'wrap', gap: '3', justifyContent: 'center' })}>
                 <button
                     type="button"
                     className={action({ tone: 'primary' })}
-                    onClick={() => setAttempt({ useDefault: false, ignoreFailure: true })}
+                    onClick={() => setAttempt({ useDefault: false })}
                 >
                     もう一度試す
                 </button>
-                <button
-                    type="button"
-                    className={action()}
-                    onClick={() => setAttempt({ useDefault: true, ignoreFailure: true })}
-                >
+                <button type="button" className={action()} onClick={() => setAttempt({ useDefault: true })}>
                     既定のワールドで入る
                 </button>
                 <button type="button" className={action({ tone: 'quiet' })} onClick={() => void handleLogout()}>

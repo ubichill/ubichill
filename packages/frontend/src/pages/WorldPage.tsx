@@ -322,7 +322,7 @@ function HeroSection({ world, instances, onCreate, creating }: HeroSectionProps)
                         border: 'none',
                         boxShadow: 'card',
                         transition: 'transform 0.15s ease',
-                        _hover: { transform: 'translateY(-2px)', bg: 'primaryHover' },
+                        _hover: { bg: 'primaryHover' },
                         _disabled: { opacity: 0.6, cursor: 'not-allowed', transform: 'none' },
                     })}
                 >
