@@ -40,7 +40,7 @@ export function remoteInstanceOf(
             mods: world?.mods ?? [],
             ...(world?.identity ? { identity: world.identity } : {}),
         },
-        access: { type: room.accessType, tags: [], password: false },
+        access: { type: room.accessType, tags: [] },
         stats: { currentUsers: room.members, maxUsers: room.capacity },
         connection: { url: '', namespace: '' },
         canJoin: input.canJoin,
