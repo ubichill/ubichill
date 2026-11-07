@@ -36,12 +36,11 @@ export interface HomeView extends HomeSettings {
 }
 
 /**
- * `POST /users/me/home/instance`。fallback は、ホームのワールドを開けず既定のワールドで入ったとき。
- * reused は既にあった自分のホームの部屋を返したとき。
+ * `POST /users/me/home/instance`。呼ぶたびに新しい部屋を作る（ホームは一人で入る場所）。
+ * fallback は、ホームのワールドを開けず既定のワールドで入ったとき。
  */
 export interface HomeInstanceResponse {
     instance: Instance;
-    reused: boolean;
     fallback?: 'unresolvable';
 }
 

@@ -1,12 +1,10 @@
-import { instanceRepository, userSettingsRepository } from '@ubichill/db';
+import { userSettingsRepository } from '@ubichill/db';
 import rateLimit from 'express-rate-limit';
-import { appConfig } from '../config';
 import { redis } from '../lib/redis';
 import { sharedRateLimit } from '../lib/sharedRateLimit';
 import { requireAuth } from '../middleware/auth';
 import { createHomeService } from '../services/homeInstance';
 import { instanceManager } from '../services/instanceManager';
-import { instanceRuntime } from '../services/instanceRuntime';
 import { worldRegistry } from '../services/worldRegistry';
 import { logger } from '../utils/logger';
 import { createHomeRouter } from './home';
@@ -30,20 +28,14 @@ export const router = createHomeRouter({
         settings: {
             get: (userId) => userSettingsRepository.getHome(userId),
             set: (userId, home) => userSettingsRepository.setHome(userId, home),
-            withLock: (userId, fn) => userSettingsRepository.withHomeLock(userId, fn),
         },
         worlds: {
             resolve: (ref) => worldRegistry.resolveRefDetailed(ref),
             listItemOf: (world) => worldRegistry.listItemOf(world),
         },
         instances: {
-            findByLeader: (userId) => instanceRepository.findByLeaderId(userId),
             create: (worldRef, accessType, leaderId) =>
                 instanceManager.createInstance({ worldId: worldRef, access: { type: accessType } }, leaderId),
-            get: (id) => instanceManager.getInstance(id),
         },
-        presence: () => instanceRuntime.presence(),
-        now: () => Date.now(),
-        emptyTimeoutMs: appConfig.instance.emptyTimeoutMs,
     }),
 });

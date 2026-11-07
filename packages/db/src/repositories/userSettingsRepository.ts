@@ -4,7 +4,7 @@ import {
     type FavoritesVisibility,
     type HomeSettings,
 } from '@ubichill/shared';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '../index';
 import { userSettings } from '../schema';
 
@@ -47,16 +47,5 @@ export const userSettingsRepository = {
             .insert(userSettings)
             .values({ userId, ...values, createdAt: now, updatedAt: now })
             .onConflictDoUpdate({ target: userSettings.userId, set: { ...values, updatedAt: now } });
-    },
-
-    /**
-     * ユーザーごとに 1 つずつ実行する（ホームの部屋を同時に 2 つ作らないため）。backend が複数台でも効くよう Postgres の
-     * advisory lock を使い、fn が終わるまで持つ。
-     */
-    async withHomeLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
-        return db.transaction(async (tx) => {
-            await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`home:${userId}`}))`);
-            return fn();
-        });
     },
 };
