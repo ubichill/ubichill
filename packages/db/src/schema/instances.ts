@@ -1,16 +1,11 @@
 import { relations } from 'drizzle-orm';
 import { index, integer, jsonb, pgEnum, pgTable, text, timestamp, varchar } from 'drizzle-orm/pg-core';
 import { nanoid } from 'nanoid';
+import { instanceAccessTypeEnum } from './instanceAccessType';
 import { users } from './users';
 import { worldVersions } from './worlds';
 
 export const instanceStatusEnum = pgEnum('instance_status', ['active', 'full', 'closing']);
-export const instanceAccessTypeEnum = pgEnum('instance_access_type', [
-    'public',
-    'friend_plus',
-    'friend_only',
-    'invite_only',
-]);
 
 export const instances = pgTable(
     'instances',

@@ -20,6 +20,7 @@ import { blockOfficialPasswordChange } from './middleware/auth';
 import { router as authorsRouter } from './routes/authors';
 import { router as cliAuthRouter } from './routes/cliAuth';
 import { router as federationRouter } from './routes/federation';
+import { router as homeRouter } from './routes/homeRouter';
 import { router as instancesRouter } from './routes/instances';
 import { router as notificationsRouter } from './routes/notifications';
 import { router as profilesRouter } from './routes/profilesRouter';
@@ -124,6 +125,7 @@ app.use('/api/v1/worlds', worldsRouter);
 app.use('/api/v1/instances', instancesRouter);
 // プロフィールの編集・画像は users の `/:userId` より先に置く
 app.use('/api/v1/users', profilesRouter);
+app.use('/api/v1/users', homeRouter);
 app.use('/api/v1/users', usersRouter);
 app.use('/api/v1/social', socialRouter);
 app.use('/api/v1/notifications', notificationsRouter);
