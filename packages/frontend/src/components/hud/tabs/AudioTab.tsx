@@ -2,7 +2,7 @@ import { useId } from 'react';
 import { useMediaOutput } from '@/lib/mediaOutputSetting';
 import { css, cva } from '@/styled-system/css';
 import { HudIcon } from '../HudIcon';
-import { cardStyle, sectionHeading, tabPanel } from './shared';
+import { tabPanel, tabSection } from './shared';
 
 /** 音声タブ: ワールドの動画・音楽の全体の音量とミュート。mod が決めた音量に掛け合わせる。 */
 export function AudioTab() {
@@ -12,8 +12,7 @@ export function AudioTab() {
 
     return (
         <div className={tabPanel}>
-            <div className={cardStyle}>
-                <h2 className={sectionHeading}>音声</h2>
+            <div className={tabSection}>
                 <div className={css({ display: 'flex', alignItems: 'center', gap: '4' })}>
                     <button
                         type="button"
@@ -52,10 +51,6 @@ export function AudioTab() {
                         />
                     </div>
                 </div>
-                <p className={css({ mt: '4', fontSize: '13px', color: 'textMuted', lineHeight: '1.7' })}>
-                    ワールドで流れる動画・音楽すべての音量です。mod
-                    の中の音量にさらに掛かります。この端末に保存され、ほかの人には影響しません。
-                </p>
             </div>
         </div>
     );

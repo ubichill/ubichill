@@ -1,5 +1,6 @@
 import type { Friendship, UserWithFriendship } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
+import { HudIcon } from '@/components/hud/HudIcon';
 import { searchUsers } from '@/lib/socialApi';
 import { css } from '@/styled-system/css';
 import { UserRow } from './UserRow';
@@ -48,37 +49,29 @@ export function UserSearch({ onFriendshipChange }: { onFriendshipChange?: () => 
 
     return (
         <div>
-            <input
-                type="search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="ID・表示名・@ID@サーバー で探す"
-                aria-label="ユーザーを検索"
-                className={css({
-                    width: 'full',
-                    px: '3',
-                    py: '2',
-                    border: '1px solid',
-                    borderColor: 'border',
-                    borderRadius: '10px',
-                    fontSize: '14px',
-                    bg: 'background',
-                    color: 'text',
-                    mb: '3',
-                })}
-            />
-            {error && <p className={css({ fontSize: '13px', color: 'errorText', mb: '2' })}>{error}</p>}
+            <label className={searchField}>
+                <HudIcon name="search" size={18} />
+                <input
+                    type="search"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="名前・ID で探す"
+                    aria-label="ユーザーを探す"
+                    className={searchInput}
+                />
+            </label>
+            {error && <p className={css({ fontSize: '13px', color: 'errorText', mt: '2' })}>{error}</p>}
             {remoteAccount && (
-                <p className={css({ fontSize: '13px', color: 'textMuted' })}>
+                <p className={css({ fontSize: '13px', color: 'textMuted', mt: '2' })}>
                     @{remoteAccount}{' '}
                     はほかのサーバーのアカウントです。ほかのサーバーのユーザーとのフレンドには、まだ対応していません。
                 </p>
             )}
             {!remoteAccount && results && results.length === 0 && (
-                <p className={css({ fontSize: '13px', color: 'textMuted' })}>見つかりませんでした。</p>
+                <p className={css({ fontSize: '13px', color: 'textMuted', mt: '2', px: '2' })}>見つかりませんでした</p>
             )}
             {results && results.length > 0 && (
-                <ul className={css({ display: 'flex', flexDirection: 'column', gap: '2' })}>
+                <ul className={css({ display: 'flex', flexDirection: 'column', gap: '1', mt: '2' })}>
                     {results.map((u) => (
                         <UserRow key={u.id} user={u} friendship={u.friendship} onChange={(f) => update(u.id, f)} />
                     ))}
@@ -87,3 +80,30 @@ export function UserSearch({ onFriendshipChange }: { onFriendshipChange?: () => 
         </div>
     );
 }
+
+const searchField = css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: '2',
+    px: '3',
+    h: '42px',
+    bg: 'surface',
+    border: '1px solid',
+    borderColor: 'transparent',
+    borderRadius: '10px',
+    color: 'textMuted',
+    transition: 'border-color 0.16s ease',
+    _focusWithin: { borderColor: 'primary' },
+});
+
+const searchInput = css({
+    flex: 1,
+    minW: 0,
+    h: 'full',
+    bg: 'transparent',
+    border: 'none',
+    outline: 'none',
+    fontSize: '14px',
+    color: 'text',
+    _placeholder: { color: 'textSubtle' },
+});

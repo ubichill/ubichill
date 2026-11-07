@@ -9,7 +9,7 @@ import { WorldDetailModal } from '@/components/worlds/WorldDetailModal';
 import { fetchInstance } from '@/lib/instancesApi';
 import { instanceWorldRef } from '@/lib/worldRef';
 import { css } from '@/styled-system/css';
-import { cardStyle, sectionHeading, tabPanel } from './shared';
+import { sectionHeading, tabPanel, tabSection } from './shared';
 
 interface InstanceTabProps {
     currentInstanceId: string;
@@ -123,7 +123,7 @@ export function InstanceTab({ currentInstanceId, onNavigate }: InstanceTabProps)
     return (
         <div className={tabPanel} onClick={(e) => e.stopPropagation()}>
             {/* インスタンス概要 + アクション */}
-            <div className={cardStyle}>
+            <div className={tabSection}>
                 <div
                     className={css({
                         display: 'flex',
@@ -173,18 +173,6 @@ export function InstanceTab({ currentInstanceId, onNavigate }: InstanceTabProps)
                         )}
                     </div>
                     <div className={css({ minW: 0, flex: 1 })}>
-                        <p
-                            className={css({
-                                fontSize: '11px',
-                                fontWeight: '700',
-                                color: 'textSubtle',
-                                textTransform: 'uppercase',
-                                letterSpacing: '0.08em',
-                                mb: '1',
-                            })}
-                        >
-                            現在のインスタンス
-                        </p>
                         <h2
                             className={css({
                                 fontSize: { base: 'lg', md: 'xl' },
@@ -305,8 +293,8 @@ export function InstanceTab({ currentInstanceId, onNavigate }: InstanceTabProps)
 
             {/* ワールド詳細（説明・情報・使用 mod）。リモートワールドでも instance.world から表示できる */}
             {world && (world.description || detailRows.length > 0 || (world.mods && world.mods.length > 0)) && (
-                <div className={cardStyle}>
-                    <h2 className={sectionHeading}>ワールド詳細</h2>
+                <div className={tabSection}>
+                    <h2 className={sectionHeading}>ワールド</h2>
                     <div className={css({ display: 'flex', flexDirection: 'column', gap: '3' })}>
                         {world.description && (
                             <p className={css({ color: 'textMuted', fontSize: '13px', lineHeight: '1.7' })}>
@@ -360,8 +348,13 @@ export function InstanceTab({ currentInstanceId, onNavigate }: InstanceTabProps)
             )}
 
             {/* 参加者一覧 */}
-            <div className={cardStyle}>
-                <h2 className={sectionHeading}>参加者一覧</h2>
+            <div className={tabSection}>
+                <h2 className={sectionHeading}>
+                    参加者
+                    <span className={css({ ml: '2', color: 'textSubtle', fontWeight: '700' })}>
+                        {participants.length}
+                    </span>
+                </h2>
                 <ul
                     className={css({
                         listStyle: 'none',

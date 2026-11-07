@@ -3,7 +3,7 @@ import { type ReactNode, useEffect, useId, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useNotifications } from '@/components/notifications';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
-import { isHomeWorld } from '@/lib/home';
+import { isHomeInstance } from '@/lib/home';
 import { useHome } from '@/lib/homeStore';
 import { fetchInstance } from '@/lib/instancesApi';
 import { useMediaOutput } from '@/lib/mediaOutputSetting';
@@ -12,10 +12,19 @@ import { useSession } from '@/lib/session';
 import { css, cva } from '@/styled-system/css';
 import { HudIcon, type HudIconName } from './HudIcon';
 import { type HudNavigation, HudNavigationContext } from './HudNavigationContext';
-import { type DockTab, type HudView, LAUNCHPAD_PAGE_TITLES } from './hudView';
+import {
+    currentPage,
+    type DockTab,
+    goBack,
+    type HudPage,
+    type HudView,
+    INITIAL_HUD_VIEW,
+    openPage,
+    pageTitle,
+    selectDock,
+} from './hudView';
 import { LaunchpadHome } from './LaunchpadHome';
 import { AudioTab } from './tabs/AudioTab';
-import { InstancesTab } from './tabs/InstancesTab';
 import { InstanceTab } from './tabs/InstanceTab';
 import { NotificationsTab } from './tabs/NotificationsTab';
 import { ProfileTab } from './tabs/ProfileTab';
@@ -29,10 +38,17 @@ interface HudOverlayProps {
     currentInstanceId: string;
 }
 
+const DOCK_ITEMS: ReadonlyArray<{ id: DockTab; label: string; icon: HudIconName }> = [
+    { id: 'launchpad', label: 'ランチパッド', icon: 'rocket' },
+    { id: 'notifications', label: '通知', icon: 'bell' },
+    { id: 'instance', label: '現在地', icon: 'pin' },
+    { id: 'audio', label: '音声', icon: 'volume' },
+    { id: 'settings', label: '設定', icon: 'gear' },
+];
+
 /**
- * インスタンスの中で開くランチパッド。ページを移らずに、下のドックで画面を切り替える。
- * ランチパッドのトップには現在地・よく使う画面への入口・クイックアクション（ホーム・リスポーンなど）を置く。
- * 背景（パネルの外）を押すか Esc で閉じる。
+ * インスタンスの中で開くランチパッド。ページを移らずに、下のドックで画面を切り替え、その上に画面を重ねて進む。
+ * 背景（パネルの外）を押すか Esc（InstanceHUD）で閉じる。
  */
 export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
     const navigate = useNavigate();
@@ -41,50 +57,32 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
     const { data: session } = useSession();
     const { home } = useHome();
     const [audio] = useMediaOutput();
-    const actions = useHudActions({ currentInstanceId, onClose });
-    const [view, setView] = useState<HudView>({ dock: 'launchpad' });
+    const [view, setView] = useState<HudView>(INITIAL_HUD_VIEW);
     const [settingsSection, setSettingsSection] = useState<SettingsSection>('profile');
     const [visible, setVisible] = useState(false);
     const instance = useCurrentInstance(currentInstanceId);
+    const isHome = !!instance && isHomeInstance(instance, home, session?.user.id);
+    const actions = useHudActions({ currentInstanceId, isHome, onClose });
     const contentId = useId();
+    const selfId = session?.user.id;
 
     useEffect(() => {
         const frame = requestAnimationFrame(() => setVisible(true));
         return () => cancelAnimationFrame(frame);
     }, []);
 
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [onClose]);
-
     const navigation = useMemo<HudNavigation>(
         () => ({
             openSettings: (section) => {
                 setSettingsSection(section);
-                setView({ dock: 'settings' });
+                setView(selectDock('settings'));
             },
+            openUser: (userId) =>
+                setView((v) => openPage(v, userId === selfId ? { kind: 'profile' } : { kind: 'user', userId })),
         }),
-        [],
+        [selfId],
     );
-
-    const isHome =
-        !!instance &&
-        !!home &&
-        instance.leaderId === session?.user.id &&
-        instance.access.type === home.accessType &&
-        isHomeWorld(instance.world, home);
-
-    const dockItems: Array<{ id: DockTab; label: string; icon: HudIconName; badge?: string | null }> = [
-        { id: 'launchpad', label: 'ランチパッド', icon: 'rocket' },
-        { id: 'notifications', label: '通知', icon: 'bell', badge: unreadBadge(notifications.feed.unreadCount) },
-        { id: 'instance', label: '現在地', icon: 'pin' },
-        { id: 'audio', label: '音声', icon: audio.muted ? 'mute' : 'volume' },
-        { id: 'settings', label: '設定', icon: 'gear' },
-    ];
+    const open = (page: HudPage) => setView((v) => openPage(v, page));
 
     const createWorld = async () => {
         if (!(await confirm('ワールドの作成画面に移動しますか？現在のインスタンスから退出します。'))) return;
@@ -92,47 +90,45 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
         onClose();
     };
 
-    const content = (): ReactNode => {
+    const page = currentPage(view);
+    const title = page ? pageTitle(page) : null;
+
+    const pageContent = (p: HudPage): ReactNode => {
+        switch (p.kind) {
+            case 'worlds':
+                return <WorldsTab onJoinInstance={actions.joinInstance} currentInstanceId={currentInstanceId} />;
+            case 'social':
+                return (
+                    <SocialTab
+                        currentInstance={instance}
+                        onJoinInstance={actions.joinInstance}
+                        onFriendshipChange={() => void notifications.reload()}
+                    />
+                );
+            case 'profile':
+                return <ProfileTab onNavigate={onClose} onJoinInstance={actions.joinInstance} />;
+            case 'user':
+                return <ProfileTab userId={p.userId} onNavigate={onClose} onJoinInstance={actions.joinInstance} />;
+        }
+    };
+
+    const dockContent = (): ReactNode => {
         switch (view.dock) {
             case 'launchpad':
-                switch (view.page) {
-                    case 'worlds':
-                        return (
-                            <WorldsTab onJoinInstance={actions.joinInstance} currentInstanceId={currentInstanceId} />
-                        );
-                    case 'instances':
-                        return (
-                            <InstancesTab onJoinInstance={actions.joinInstance} currentInstanceId={currentInstanceId} />
-                        );
-                    case 'social':
-                        return (
-                            <SocialTab
-                                currentInstanceId={currentInstanceId}
-                                onJoinInstance={actions.joinInstance}
-                                onFriendshipChange={() => void notifications.reload()}
-                            />
-                        );
-                    case 'profile':
-                        return <ProfileTab onNavigate={onClose} onJoinInstance={actions.joinInstance} />;
-                    default:
-                        return (
-                            <LaunchpadHome
-                                instance={instance}
-                                isHome={isHome}
-                                onOpenPage={(page) => setView({ dock: 'launchpad', page })}
-                                onOpenInstance={() => setView({ dock: 'instance' })}
-                                onCreateWorld={() => void createWorld()}
-                                onOpenHomeSettings={() => navigation.openSettings('home')}
-                                actions={{
-                                    goHome: () => void actions.goHome(),
-                                    goingHome: actions.goingHome,
-                                    respawn: actions.respawn,
-                                    copyInvite: () => void actions.copyInvite(),
-                                    logout: () => void actions.logout(),
-                                }}
-                            />
-                        );
-                }
+                return (
+                    <LaunchpadHome
+                        instance={instance}
+                        currentInstanceId={currentInstanceId}
+                        isHome={isHome}
+                        goingHome={actions.goingHome}
+                        onGoHome={() => void actions.goHome()}
+                        onCopyInvite={() => void actions.copyInvite()}
+                        onOpenInstance={() => setView(selectDock('instance'))}
+                        onOpenPage={open}
+                        onCreateWorld={() => void createWorld()}
+                        onJoinInstance={actions.joinInstance}
+                    />
+                );
             case 'notifications':
                 return <NotificationsTab onNavigate={onClose} />;
             case 'instance':
@@ -153,27 +149,32 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
 
     const userName = session?.user.name ?? '';
     const avatar = session?.user.image;
+    const unread = unreadBadge(notifications.feed.unreadCount);
 
     return (
         <HudNavigationContext.Provider value={navigation}>
             <div className={backdrop} data-open={visible} onClick={onClose}>
                 <div className={frame} onClick={(e) => e.stopPropagation()}>
-                    <section className={panel} role="dialog" aria-modal="true" aria-label="ランチパッド">
+                    <section
+                        className={panel}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label="ランチパッド"
+                        data-launchpad=""
+                    >
                         <header className={header}>
                             <button
                                 type="button"
                                 className={accountChip}
-                                onClick={() => setView({ dock: 'launchpad', page: 'profile' })}
+                                onClick={() => open({ kind: 'profile' })}
+                                aria-label={`${userName}（プロフィール）`}
                             >
                                 {avatar ? (
                                     <img src={avatar} alt="" className={avatarStyle} />
                                 ) : (
                                     <span className={avatarStyle}>{[...userName][0] ?? ''}</span>
                                 )}
-                                <span className={css({ display: 'flex', flexDirection: 'column', minW: 0 })}>
-                                    <span className={accountName}>{userName}</span>
-                                    <span className={css({ fontSize: '11px', color: 'hudTextMuted' })}>マイページ</span>
-                                </span>
+                                <span className={accountName}>{userName}</span>
                             </button>
                             <Clock />
                             <button type="button" className={iconButton} aria-label="閉じる" onClick={onClose}>
@@ -182,30 +183,30 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
                         </header>
 
                         <div className={body}>
-                            {view.dock === 'launchpad' && view.page && (
+                            {page && (
                                 <div className={pageHeader}>
                                     <button
                                         type="button"
                                         className={backButton}
-                                        onClick={() => setView({ dock: 'launchpad' })}
+                                        aria-label="戻る"
+                                        onClick={() => setView(goBack)}
                                     >
-                                        <HudIcon name="back" size={16} />
-                                        ランチパッド
+                                        <HudIcon name="back" size={20} />
                                     </button>
-                                    <h2 className={css({ fontSize: '17px', fontWeight: '800', color: 'text' })}>
-                                        {LAUNCHPAD_PAGE_TITLES[view.page]}
-                                    </h2>
+                                    {title && <h2 className={pageTitleStyle}>{title}</h2>}
                                 </div>
                             )}
                             <div id={contentId} className={contentArea}>
-                                {content()}
+                                {page ? pageContent(page) : dockContent()}
                             </div>
                         </div>
                     </section>
 
                     <nav className={dock} aria-label="メインメニュー">
-                        {dockItems.map((item) => {
+                        {DOCK_ITEMS.map((item) => {
                             const active = view.dock === item.id;
+                            const icon = item.id === 'audio' && audio.muted ? 'mute' : item.icon;
+                            const badge = item.id === 'notifications' ? unread : null;
                             return (
                                 <button
                                     key={item.id}
@@ -213,13 +214,13 @@ export function HudOverlay({ onClose, currentInstanceId }: HudOverlayProps) {
                                     aria-pressed={active}
                                     aria-controls={contentId}
                                     className={dockButton({ active })}
-                                    onClick={() => setView({ dock: item.id })}
+                                    onClick={() => setView(selectDock(item.id))}
                                 >
                                     <span className={css({ position: 'relative', display: 'inline-flex' })}>
-                                        <HudIcon name={item.icon} />
-                                        {item.badge && (
-                                            <span role="status" aria-label={`未読 ${item.badge} 件`} className={badge}>
-                                                {item.badge}
+                                        <HudIcon name={icon} />
+                                        {badge && (
+                                            <span role="status" aria-label={`未読 ${badge} 件`} className={badgeStyle}>
+                                                {badge}
                                             </span>
                                         )}
                                     </span>
@@ -322,17 +323,17 @@ const accountChip = css({
     gap: '2.5',
     minW: 0,
     maxW: 'full',
-    py: '1.5',
-    pl: '1.5',
+    py: '1',
+    pl: '1',
     pr: '3',
-    bg: 'hudActionHover',
-    border: '1px solid',
-    borderColor: 'hudBorder',
-    borderRadius: '12px',
+    bg: 'transparent',
+    border: 'none',
+    borderRadius: '10px',
     color: 'textOnPrimary',
     textAlign: 'left',
     cursor: 'pointer',
-    _hover: { bg: 'hudActive' },
+    transition: 'background-color 0.16s ease',
+    _hover: { bg: 'hudActionHover' },
 });
 
 const avatarStyle = css({
@@ -389,24 +390,24 @@ const body = css({
     p: { base: '3', md: '5' },
 });
 
-const pageHeader = css({ display: 'flex', alignItems: 'center', gap: '3', flexShrink: 0 });
+const pageHeader = css({ display: 'flex', alignItems: 'center', gap: '1.5', flexShrink: 0, ml: '-2' });
 
 const backButton = css({
     display: 'inline-flex',
     alignItems: 'center',
-    gap: '1',
-    px: '3',
-    py: '1.5',
-    bg: 'surface',
-    border: '1px solid',
-    borderColor: 'border',
-    borderRadius: 'full',
-    color: 'textMuted',
-    fontSize: '12px',
-    fontWeight: '700',
+    justifyContent: 'center',
+    w: '36px',
+    h: '36px',
+    bg: 'transparent',
+    border: 'none',
+    borderRadius: '8px',
+    color: 'text',
     cursor: 'pointer',
-    _hover: { color: 'text', borderColor: 'borderStrong' },
+    transition: 'background-color 0.16s ease',
+    _hover: { bg: 'surfaceHover' },
 });
+
+const pageTitleStyle = css({ fontSize: '18px', fontWeight: '800', color: 'text' });
 
 const contentArea = css({ flex: 1, minH: 0 });
 
@@ -449,7 +450,7 @@ const dockLabel = css({
     whiteSpace: 'nowrap',
 });
 
-const badge = css({
+const badgeStyle = css({
     position: 'absolute',
     top: '-4px',
     right: '-8px',

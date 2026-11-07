@@ -18,13 +18,14 @@ const avatar = cva({
         size: {
             sm: { width: '32px', height: '32px', fontSize: '13px' },
             md: { width: '40px', height: '40px', fontSize: '16px' },
+            lg: { width: '52px', height: '52px', fontSize: '20px' },
         },
     },
     defaultVariants: { size: 'md' },
 });
 
 /** プロフィール画像（無ければ表示名の頭文字）。 */
-export function UserAvatar({ user, size }: { user: Pick<UserSummary, 'name' | 'image'>; size?: 'sm' | 'md' }) {
+export function UserAvatar({ user, size }: { user: Pick<UserSummary, 'name' | 'image'>; size?: 'sm' | 'md' | 'lg' }) {
     if (user.image) return <img src={user.image} alt="" className={avatar({ size })} />;
     return (
         <span className={avatar({ size })} aria-hidden>

@@ -6,8 +6,9 @@ import { FederationSection } from '@/components/profile/FederationSection';
 import { PasswordSection } from '@/components/profile/PasswordSection';
 import { PublishingSection } from '@/components/profile/PublishingSection';
 import { css } from '@/styled-system/css';
+import { LogoutSection } from './settings/LogoutSection';
 import { ModPermissionsSettings } from './settings/ModPermissionsSettings';
-import { cardStyle, type JoinInstanceHandler, sectionHeading, tabPanel } from './shared';
+import { type JoinInstanceHandler, tabPanel, tabSection } from './shared';
 
 export type SettingsSection =
     | 'profile'
@@ -31,8 +32,8 @@ const SECTIONS: ReadonlyArray<{ id: SettingsSection; label: string; adminOnly?: 
 ];
 
 /**
- * 設定タブ。プロフィールの編集・ホーム・ワールドの管理・公開（公開環境）・アカウント（パスワード）・連合（管理者）・mod の権限を
- * タブで分ける。プロフィールの表示は自分のユーザー名から開くマイページ。
+ * 設定タブ。プロフィールの編集・ホーム・ワールドの管理・公開（公開環境）・アカウント（パスワード・ログアウト）・連合（管理者）・
+ * mod の権限をタブで分ける。プロフィールの表示はランチパッドの上の自分の名前から。
  */
 export function SettingsTab({
     section,
@@ -53,16 +54,16 @@ export function SettingsTab({
 
     return (
         <div className={tabPanel} onClick={(e) => e.stopPropagation()}>
-            <div className={cardStyle}>
-                <h2 className={sectionHeading}>設定</h2>
+            <div className={tabSection}>
                 <div
                     role="tablist"
                     className={css({
                         display: 'flex',
                         flexWrap: 'wrap',
                         gap: '1',
-                        borderBottom: '1px solid',
-                        borderColor: 'border',
+                        borderBottomWidth: '1px',
+                        borderBottomStyle: 'solid',
+                        borderBottomColor: 'border',
                         mb: '4',
                     })}
                 >
@@ -128,6 +129,7 @@ export function SettingsTab({
                         onChanged={() => account.setProfile({ ...profile, passwordChangeRequired: false })}
                     />
                 )}
+                {current === 'account' && <LogoutSection />}
                 {current === 'federation' && profile?.isAdmin && <FederationSection />}
                 {current === 'announcements' && profile?.isAdmin && <AnnouncementSection />}
             </div>

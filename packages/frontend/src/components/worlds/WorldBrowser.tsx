@@ -1,10 +1,11 @@
 import type { WorldListItem } from '@ubichill/shared';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { HudIcon } from '@/components/hud/HudIcon';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { createInstance } from '@/lib/instancesApi';
 import { SETTINGS_KEYS, useSetting } from '@/lib/settings';
-import { css } from '@/styled-system/css';
+import { css, cva } from '@/styled-system/css';
 import { PasswordChangeNotice } from './PasswordChangeNotice';
 import { UnavailableFavorites } from './UnavailableFavorites';
 import { UnsignedWorldsNotice } from './UnsignedWorldsNotice';
@@ -77,7 +78,7 @@ export function WorldBrowser({ onJoinInstance, currentInstanceId }: WorldBrowser
     );
     const { worlds, globalWorlds, loading, error, refreshGlobalWorlds } = useInstances();
     const { toggle: toggleFavorite } = useFavorites();
-    const [tab, setTab] = useState<'local' | 'global' | 'favorites'>('local');
+    const [tab, setTab] = useState<BrowserTab>('local');
     // 選択はワールドの URL で持つ（id はサーバーをまたぐと重複し得る）
     const [selectedWorldUrl, setSelectedWorldUrl] = useState<string | null>(null);
 
@@ -88,8 +89,6 @@ export function WorldBrowser({ onJoinInstance, currentInstanceId }: WorldBrowser
     const favoriteWorlds = useFavoriteWorlds(tab === 'favorites');
     const activeWorlds = tab === 'local' ? worlds : tab === 'global' ? globalWorlds : favoriteWorlds.worlds;
     const sortedWorlds = useMemo(() => sortWorlds(activeWorlds, sortKey), [activeWorlds, sortKey]);
-
-    const scrollRef = useRef<HTMLDivElement>(null);
 
     const selectedWorld = useMemo(
         () => sortedWorlds.find((world) => world.url === selectedWorldUrl) ?? undefined,
@@ -125,135 +124,22 @@ export function WorldBrowser({ onJoinInstance, currentInstanceId }: WorldBrowser
     }, [importUrl, navigate]);
 
     return (
-        <div
-            className={css({
-                width: 'full',
-                maxWidth: '5xl',
-                margin: '0 auto',
-                padding: { base: '8px 0 0', md: '16px 0 0' },
-                display: 'flex',
-                flexDirection: 'column',
-                height: '100%',
-                overflow: 'hidden',
-            })}
-        >
-            <div
-                className={css({
-                    width: 'full',
-                    maxW: '730px',
-                    mx: 'auto',
-                    mb: '4',
-                    px: { base: '2', md: '0' },
-                    display: 'flex',
-                    flexDirection: 'column',
-                    flex: 1,
-                    minH: 0,
-                })}
-                onClick={(e) => e.stopPropagation()}
-            >
-                <PasswordChangeNotice />
-                <UnsignedWorldsNotice />
-                <div
-                    className={css({
-                        bg: 'surface',
-                        border: '1px solid',
-                        borderColor: 'border',
-                        borderRadius: '12px',
-                        px: { base: '4', md: '8' },
-                        py: { base: '5', md: '6' },
-                        flex: 1,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        minH: 0,
-                    })}
-                >
-                    <div
-                        className={css({
-                            display: 'flex',
-                            flexWrap: 'wrap',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            gap: '3',
-                            mb: '4',
-                            flexShrink: 0,
-                        })}
-                    >
-                        <h1
-                            className={css({
-                                fontSize: { base: 'lg', sm: 'xl', md: 'xl' },
-                                fontWeight: '700',
-                                color: 'text',
-                                whiteSpace: 'nowrap',
-                                flexShrink: 0,
-                            })}
+        <div className={root} onClick={(e) => e.stopPropagation()}>
+            <PasswordChangeNotice />
+            <UnsignedWorldsNotice />
+
+            <div className={toolbar}>
+                <div role="tablist" aria-label="ワールドの種類" className={segmented}>
+                    {BROWSER_TABS.map((t) => (
+                        <button
+                            key={t.id}
+                            type="button"
+                            role="tab"
+                            aria-selected={tab === t.id}
+                            className={segment({ active: tab === t.id })}
+                            onClick={() => setTab(t.id)}
                         >
-                            ワールド一覧
-                        </h1>
-                        <div
-                            className={css({
-                                display: 'flex',
-                                flexWrap: 'wrap',
-                                gap: '4px',
-                                maxW: 'full',
-                                '& > button': {
-                                    whiteSpace: 'nowrap',
-                                    flexShrink: 0,
-                                    minH: '40px',
-                                },
-                            })}
-                        >
-                            <button
-                                type="button"
-                                onClick={() => setTab('local')}
-                                className={css({
-                                    px: '12px',
-                                    py: '6px',
-                                    borderRadius: '6px',
-                                    border: 'none',
-                                    fontSize: '13px',
-                                    fontWeight: '600',
-                                    cursor: 'pointer',
-                                    bg: tab === 'local' ? 'primary' : 'transparent',
-                                    color: tab === 'local' ? 'textOnPrimary' : 'textMuted',
-                                })}
-                            >
-                                ローカル
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setTab('global')}
-                                className={css({
-                                    px: '12px',
-                                    py: '6px',
-                                    borderRadius: '6px',
-                                    border: 'none',
-                                    fontSize: '13px',
-                                    fontWeight: '600',
-                                    cursor: 'pointer',
-                                    bg: tab === 'global' ? 'primary' : 'transparent',
-                                    color: tab === 'global' ? 'textOnPrimary' : 'textMuted',
-                                })}
-                            >
-                                グローバル
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setTab('favorites')}
-                                className={css({
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '4px',
-                                    px: '12px',
-                                    py: '6px',
-                                    borderRadius: '6px',
-                                    border: 'none',
-                                    fontSize: '13px',
-                                    fontWeight: '600',
-                                    cursor: 'pointer',
-                                    bg: tab === 'favorites' ? 'primary' : 'transparent',
-                                    color: tab === 'favorites' ? 'textOnPrimary' : 'textMuted',
-                                })}
-                            >
+                            {t.id === 'favorites' && (
                                 <svg
                                     width="14"
                                     height="14"
@@ -265,281 +151,245 @@ export function WorldBrowser({ onJoinInstance, currentInstanceId }: WorldBrowser
                                 >
                                     <path d="M11.48 3.5a.56.56 0 0 1 1.04 0l2.36 5.14 5.6.62c.5.05.7.68.32 1.02l-4.17 3.8 1.15 5.5a.56.56 0 0 1-.83.6L12 17.9l-4.94 2.88a.56.56 0 0 1-.83-.6l1.15-5.5-4.17-3.8a.56.56 0 0 1 .32-1.02l5.6-.62 2.35-5.14Z" />
                                 </svg>
-                                お気に入り
-                            </button>
-                        </div>
-                    </div>
-
-                    {error && (
-                        <div
-                            className={css({
-                                padding: '10px 14px',
-                                backgroundColor: 'errorBg',
-                                color: 'errorText',
-                                borderRadius: '8px',
-                                marginBottom: '12px',
-                                fontSize: '13px',
-                                flexShrink: 0,
-                            })}
-                        >
-                            {error}
-                        </div>
-                    )}
-
-                    <div
-                        ref={scrollRef}
-                        className={css({
-                            flex: 1,
-                            minH: 0,
-                            overflowY: 'auto',
-                            overflowX: 'hidden',
-                            paddingBottom: '20px',
-                            '&::-webkit-scrollbar': {
-                                width: '6px',
-                            },
-                            '&::-webkit-scrollbar-track': {
-                                backgroundColor: 'transparent',
-                            },
-                            '&::-webkit-scrollbar-thumb': {
-                                backgroundColor: 'primarySubtle',
-                                borderRadius: '3px',
-                            },
-                        })}
+                            )}
+                            {t.label}
+                        </button>
+                    ))}
+                </div>
+                <div className={css({ display: 'flex', alignItems: 'center', gap: '1' })}>
+                    <select
+                        value={sortKey}
+                        onChange={(e) => handleSortChange(e.target.value as SortKey)}
+                        aria-label="並び順"
+                        className={sortSelect}
                     >
-                        {loading && (
-                            <div
-                                className={css({
-                                    textAlign: 'center',
-                                    padding: '40px',
-                                    color: 'textMuted',
-                                })}
-                            >
-                                読み込み中...
-                            </div>
+                        {(Object.keys(SORT_LABELS) as SortKey[]).map((key) => (
+                            <option key={key} value={key}>
+                                {SORT_LABELS[key]}
+                            </option>
+                        ))}
+                    </select>
+                    <button
+                        type="button"
+                        className={iconButton}
+                        aria-label="ワールドを作る"
+                        title="ワールドを作る"
+                        onClick={() => void goConfirmed('/worlds/new', 'ワールド作成画面に移動しますか？')}
+                    >
+                        <HudIcon name="plus" size={18} />
+                    </button>
+                </div>
+            </div>
+
+            {tab === 'local' && (
+                <div className={css({ display: 'flex', flexDirection: 'column', gap: '1.5', flexShrink: 0 })}>
+                    <div className={css({ display: 'flex', gap: '2' })}>
+                        <label className={urlField} data-error={importState === 'error' || undefined}>
+                            <HudIcon name="link" size={16} />
+                            <input
+                                type="url"
+                                value={importUrl}
+                                onChange={(e) => {
+                                    setImportUrl(e.target.value);
+                                    setImportState('idle');
+                                }}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') void handleImport();
+                                }}
+                                placeholder="ワールドの共有 URL を貼って入る"
+                                aria-label="ワールドの共有 URL"
+                                className={urlInput}
+                            />
+                        </label>
+                        <button
+                            type="button"
+                            onClick={() => void handleImport()}
+                            disabled={importState === 'loading' || !importUrl.trim()}
+                            className={primaryButton}
+                        >
+                            {importState === 'loading' ? '入室中...' : '入る'}
+                        </button>
+                    </div>
+                    {importState === 'error' && (
+                        <p className={css({ fontSize: '12px', color: 'errorText' })}>{importError}</p>
+                    )}
+                </div>
+            )}
+
+            {error && <p className={errorBox}>{error}</p>}
+
+            <div className={scrollArea}>
+                {loading ? (
+                    <p className={emptyText}>読み込み中...</p>
+                ) : (
+                    <>
+                        {tab === 'favorites' && sortedWorlds.length === 0 && (
+                            <p className={emptyText}>
+                                {favoriteWorlds.loading
+                                    ? '読み込み中...'
+                                    : (favoriteWorlds.error ?? 'お気に入りはまだありません')}
+                            </p>
                         )}
-
-                        {!loading && (
-                            <div>
-                                <p
-                                    className={css({
-                                        fontSize: '14px',
-                                        color: 'textMuted',
-                                        marginBottom: '16px',
-                                        lineHeight: '1.7',
-                                        wordBreak: 'auto-phrase',
-                                    })}
-                                >
-                                    {tab === 'local'
-                                        ? 'このサーバーのワールドを選択して、インスタンスを作成または参加してください'
-                                        : tab === 'global'
-                                          ? 'フォロー中の他サーバーのワールドを選択して遊びましょう'
-                                          : 'お気に入りに追加したワールドの一覧です'}
-                                </p>
-
-                                {tab === 'local' && (
-                                    <>
-                                        <div
-                                            className={css({
-                                                display: 'flex',
-                                                gap: '8px',
-                                                marginBottom: '16px',
-                                                flexWrap: 'wrap',
-                                            })}
-                                        >
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    void goConfirmed('/worlds/new', 'ワールド作成画面に移動しますか？')
-                                                }
-                                                className={css({
-                                                    display: 'inline-flex',
-                                                    alignItems: 'center',
-                                                    gap: '6px',
-                                                    padding: '9px 16px',
-                                                    backgroundColor: 'primary',
-                                                    color: 'textOnPrimary',
-                                                    border: 'none',
-                                                    borderRadius: '6px',
-                                                    fontSize: '13px',
-                                                    fontWeight: '600',
-                                                    cursor: 'pointer',
-                                                    _hover: { opacity: 0.9 },
-                                                })}
-                                            >
-                                                <svg
-                                                    width="14"
-                                                    height="14"
-                                                    viewBox="0 0 24 24"
-                                                    fill="none"
-                                                    stroke="currentColor"
-                                                    strokeWidth="2"
-                                                >
-                                                    <path d="M12 5v14M5 12h14" />
-                                                </svg>
-                                                自分でワールドを作る
-                                            </button>
-                                        </div>
-
-                                        <div
-                                            className={css({
-                                                display: 'flex',
-                                                gap: '8px',
-                                                marginBottom: '20px',
-                                            })}
-                                        >
-                                            <input
-                                                type="url"
-                                                value={importUrl}
-                                                onChange={(e) => {
-                                                    setImportUrl(e.target.value);
-                                                    setImportState('idle');
-                                                }}
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter') void handleImport();
-                                                }}
-                                                placeholder="ワールドの共有 URL を貼り付け（例: https://ubichill.com/@youkan/chillwa）"
-                                                className={css({
-                                                    flex: 1,
-                                                    padding: '9px 12px',
-                                                    borderRadius: '6px',
-                                                    border: '1.5px solid',
-                                                    borderColor: importState === 'error' ? 'errorText' : 'border',
-                                                    backgroundColor: 'surface',
-                                                    color: 'text',
-                                                    fontSize: '13px',
-                                                    outline: 'none',
-                                                    minW: 0,
-                                                    _focus: { borderColor: 'primary' },
-                                                    _placeholder: { color: 'textSubtle' },
-                                                })}
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() => void handleImport()}
-                                                disabled={importState === 'loading' || !importUrl.trim()}
-                                                className={css({
-                                                    padding: '9px 16px',
-                                                    backgroundColor: 'primary',
-                                                    color: 'textOnPrimary',
-                                                    border: 'none',
-                                                    borderRadius: '10px',
-                                                    fontSize: '13px',
-                                                    fontWeight: '600',
-                                                    cursor: 'pointer',
-                                                    whiteSpace: 'nowrap',
-                                                    _disabled: { opacity: 0.5, cursor: 'not-allowed' },
-                                                })}
-                                            >
-                                                {importState === 'loading' ? '入室中...' : 'URL で入る'}
-                                            </button>
-                                        </div>
-                                        {importState === 'error' && (
-                                            <p
-                                                className={css({
-                                                    fontSize: '12px',
-                                                    color: 'errorText',
-                                                    marginBottom: '12px',
-                                                    marginTop: '-12px',
-                                                })}
-                                            >
-                                                {importError}
-                                            </p>
-                                        )}
-                                    </>
-                                )}
-
-                                {/* ワールドカードの直上にソートを配置 */}
-                                <div
-                                    className={css({
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between',
-                                        flexWrap: 'wrap',
-                                        gap: '2',
-                                        marginBottom: '12px',
-                                    })}
-                                >
-                                    <span className={css({ fontSize: '13px', fontWeight: '600', color: 'text' })}>
-                                        ワールド一覧
-                                    </span>
-                                    <select
-                                        id="world-sort-select"
-                                        value={sortKey}
-                                        onChange={(e) => handleSortChange(e.target.value as SortKey)}
-                                        aria-label="ソート条件"
-                                        className={css({
-                                            fontSize: '12px',
-                                            color: 'textMuted',
-                                            bg: 'surface',
-                                            border: '1px solid',
-                                            borderColor: 'border',
-                                            borderRadius: '8px',
-                                            px: '8px',
-                                            py: '5px',
-                                            cursor: 'pointer',
-                                            outline: 'none',
-                                            flexShrink: 0,
-                                            _hover: { borderColor: 'borderStrong' },
-                                            _focus: { borderColor: 'primary' },
-                                        })}
-                                    >
-                                        {(Object.keys(SORT_LABELS) as SortKey[]).map((key) => (
-                                            <option key={key} value={key}>
-                                                {SORT_LABELS[key]}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                {tab === 'favorites' && sortedWorlds.length === 0 && (
-                                    <p
-                                        className={css({
-                                            textAlign: 'center',
-                                            py: '32px',
-                                            color: 'textSubtle',
-                                            fontSize: '13px',
-                                        })}
-                                    >
-                                        {favoriteWorlds.loading
-                                            ? '読み込み中...'
-                                            : favoriteWorlds.error
-                                              ? favoriteWorlds.error
-                                              : 'お気に入りはまだありません。ワールドの星マーク（入室中は「現在地」）から追加できます。'}
-                                    </p>
-                                )}
-
-                                <div
-                                    className={css({
-                                        display: 'grid',
-                                        gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 240px), 1fr))',
-                                        gap: '16px',
-                                    })}
-                                >
-                                    {sortedWorlds.map((world) => (
-                                        <WorldCard key={world.url} world={world} onSelect={handleSelectWorld} />
-                                    ))}
-                                </div>
-
-                                {tab === 'favorites' && favoriteWorlds.unavailable.length > 0 && (
-                                    <UnavailableFavorites
-                                        refs={favoriteWorlds.unavailable}
-                                        onRemove={(ref) => void toggleFavorite(ref)}
-                                    />
-                                )}
-                            </div>
-                        )}
-                        {selectedWorld && (
-                            <WorldDetailModal
-                                worldId={selectedWorld.id}
-                                onClose={() => setSelectedWorldUrl(null)}
-                                onJoinInstance={onJoinInstance}
-                                currentInstanceId={currentInstanceId}
-                                initialWorld={selectedWorld}
+                        <div className={grid}>
+                            {sortedWorlds.map((world) => (
+                                <WorldCard key={world.url} world={world} onSelect={handleSelectWorld} />
+                            ))}
+                        </div>
+                        {tab === 'favorites' && favoriteWorlds.unavailable.length > 0 && (
+                            <UnavailableFavorites
+                                refs={favoriteWorlds.unavailable}
+                                onRemove={(ref) => void toggleFavorite(ref)}
                             />
                         )}
-                    </div>
-                </div>
+                    </>
+                )}
+                {selectedWorld && (
+                    <WorldDetailModal
+                        worldId={selectedWorld.id}
+                        onClose={() => setSelectedWorldUrl(null)}
+                        onJoinInstance={onJoinInstance}
+                        currentInstanceId={currentInstanceId}
+                        initialWorld={selectedWorld}
+                    />
+                )}
             </div>
         </div>
     );
 }
+
+type BrowserTab = 'local' | 'global' | 'favorites';
+
+const BROWSER_TABS: ReadonlyArray<{ id: BrowserTab; label: string }> = [
+    { id: 'local', label: 'ローカル' },
+    { id: 'global', label: 'グローバル' },
+    { id: 'favorites', label: 'お気に入り' },
+];
+
+const root = css({ display: 'flex', flexDirection: 'column', gap: '3', h: 'full', minH: 0 });
+
+const toolbar = css({
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '2',
+    flexShrink: 0,
+});
+
+const segmented = css({ display: 'flex', gap: '1', p: '1', bg: 'surface', borderRadius: '10px' });
+
+const segment = cva({
+    base: {
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '1',
+        px: '3',
+        py: '1.5',
+        border: 'none',
+        borderRadius: '7px',
+        fontSize: '13px',
+        fontWeight: '700',
+        whiteSpace: 'nowrap',
+        cursor: 'pointer',
+        transition: 'background-color 0.16s ease, color 0.16s ease',
+    },
+    variants: {
+        active: {
+            true: { bg: 'primary', color: 'textOnPrimary' },
+            false: { bg: 'transparent', color: 'textMuted', _hover: { color: 'text' } },
+        },
+    },
+});
+
+const sortSelect = css({
+    h: '34px',
+    px: '2',
+    fontSize: '12px',
+    color: 'textMuted',
+    bg: 'transparent',
+    border: 'none',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    _hover: { bg: 'surfaceHover', color: 'text' },
+});
+
+const iconButton = css({
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    w: '34px',
+    h: '34px',
+    bg: 'transparent',
+    border: 'none',
+    borderRadius: '8px',
+    color: 'textMuted',
+    cursor: 'pointer',
+    transition: 'background-color 0.16s ease, color 0.16s ease',
+    _hover: { bg: 'surfaceHover', color: 'text' },
+});
+
+const urlField = css({
+    flex: 1,
+    minW: 0,
+    display: 'flex',
+    alignItems: 'center',
+    gap: '2',
+    px: '3',
+    h: '40px',
+    bg: 'surface',
+    border: '1px solid',
+    borderColor: 'transparent',
+    borderRadius: '10px',
+    color: 'textMuted',
+    transition: 'border-color 0.16s ease',
+    _focusWithin: { borderColor: 'primary' },
+    '&[data-error]': { borderColor: 'errorText' },
+});
+
+const urlInput = css({
+    flex: 1,
+    minW: 0,
+    h: 'full',
+    bg: 'transparent',
+    border: 'none',
+    outline: 'none',
+    fontSize: '13px',
+    color: 'text',
+    _placeholder: { color: 'textSubtle' },
+});
+
+const primaryButton = css({
+    flexShrink: 0,
+    px: '4',
+    bg: 'primary',
+    color: 'textOnPrimary',
+    border: 'none',
+    borderRadius: '10px',
+    fontSize: '13px',
+    fontWeight: '700',
+    whiteSpace: 'nowrap',
+    cursor: 'pointer',
+    transition: 'background-color 0.16s ease',
+    _hover: { bg: 'primaryHover' },
+    _disabled: { opacity: 0.4, cursor: 'default', _hover: { bg: 'primary' } },
+});
+
+const errorBox = css({
+    px: '3.5',
+    py: '2.5',
+    bg: 'errorBg',
+    color: 'errorText',
+    borderRadius: '8px',
+    fontSize: '13px',
+    flexShrink: 0,
+});
+
+const scrollArea = css({ flex: 1, minH: 0, overflowY: 'auto', overflowX: 'hidden', pb: '5' });
+
+const emptyText = css({ textAlign: 'center', py: '8', color: 'textSubtle', fontSize: '13px' });
+
+const grid = css({
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 200px), 1fr))',
+    gap: '3',
+});

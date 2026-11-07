@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { SetHomeControl } from '@/components/home/SetHomeControl';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
+import { useDialogLayer } from '@/components/ui/dialogLayer';
 import { createInstance, fetchInstances, fetchWorld } from '@/lib/instancesApi';
 import { useSession } from '@/lib/session';
 import { css } from '@/styled-system/css';
@@ -44,6 +45,7 @@ export function WorldDetailModal({
     const [error, setError] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
     const [detailInstance, setDetailInstance] = useState<Instance | null>(null);
+    useDialogLayer(onClose);
 
     useEffect(() => {
         let cancelled = false;
@@ -124,6 +126,9 @@ export function WorldDetailModal({
                 onClick={onClose}
             >
                 <div
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label={world?.displayName ?? initialWorld?.displayName ?? 'ワールド'}
                     className={css({
                         bg: 'surface',
                         width: '100%',

@@ -2,18 +2,25 @@ import { useSocket } from '@ubichill/react';
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
-import { signOut } from '@/lib/auth-client';
-import { FALLBACK_NOTICE, type InstanceEntryState, instanceEntryState, instanceInviteUrl } from '@/lib/home';
+import { homeInstanceEntry, type InstanceEntryState, instanceInviteUrl } from '@/lib/home';
 import { ensureHomeInstance } from '@/lib/homeApi';
-import { resetHome } from '@/lib/homeStore';
 import { pushToast } from '@/lib/toast';
 import type { JoinInstanceHandler } from './tabs/shared';
 
 /**
- * ランチパッドの操作（別の部屋へ移る・ホーム・リスポーン・招待のコピー・ログアウト）。
+ * ランチパッドの操作（別の部屋へ移る・ホーム・招待のコピー）。
  * 部屋を移るときは、古い部屋から確実に抜けてから移る。
  */
-export function useHudActions({ currentInstanceId, onClose }: { currentInstanceId: string; onClose: () => void }) {
+export function useHudActions({
+    currentInstanceId,
+    isHome,
+    onClose,
+}: {
+    currentInstanceId: string;
+    /** 今いる部屋が自分のホーム（ホームを押しても新しく作らない） */
+    isHome: boolean;
+    onClose: () => void;
+}) {
     const navigate = useNavigate();
     const confirm = useConfirm();
     const { leaveWorld, users, currentUser } = useSocket();
@@ -43,31 +50,22 @@ export function useHudActions({ currentInstanceId, onClose }: { currentInstanceI
 
     const goHome = useCallback(async () => {
         if (goingHome) return;
+        if (isHome) {
+            pushToast('いまホームにいます');
+            return;
+        }
+        // ひとりなら確認しない。ほかの人がいるときだけ、うっかり抜けないよう確かめる
+        if (othersHere && !(await confirm('ホームに移動しますか？現在のインスタンスから退出します。'))) return;
         setGoingHome(true);
         try {
             const response = await ensureHomeInstance();
-            if (response.instance.id === currentInstanceId) {
-                pushToast('いまホームにいます');
-                onClose();
-                return;
-            }
-            // ひとりなら確認しない。ほかの人がいるときだけ、うっかり抜けないよう確かめる
-            if (othersHere && !(await confirm('ホームに移動しますか？現在のインスタンスから退出します。'))) return;
-            const notice = response.fallback === 'unresolvable' ? FALLBACK_NOTICE : undefined;
-            await moveTo(response.instance.id, instanceEntryState(response.instance, notice));
+            await moveTo(response.instance.id, homeInstanceEntry(response));
         } catch (e: unknown) {
             pushToast(e instanceof Error ? e.message : 'ホームに移動できません', 'error');
         } finally {
             setGoingHome(false);
         }
-    }, [confirm, currentInstanceId, goingHome, moveTo, onClose, othersHere]);
-
-    /** 同じ部屋に入り直す（接続・mod・持ち物・乗り物をすべて最初の状態に戻す）。 */
-    const respawn = useCallback(() => {
-        // 入ったときのお知らせ（既定のワールドに切り替えた等）を読み込み直しでもう一度出さない
-        window.history.replaceState(null, '', window.location.href);
-        window.location.reload();
-    }, []);
+    }, [confirm, goingHome, isHome, moveTo, othersHere]);
 
     const copyInvite = useCallback(async () => {
         try {
@@ -78,13 +76,5 @@ export function useHudActions({ currentInstanceId, onClose }: { currentInstanceI
         }
     }, [currentInstanceId]);
 
-    const logout = useCallback(async () => {
-        if (!(await confirm('ログアウトしますか？'))) return;
-        await leaveWorld();
-        await signOut();
-        resetHome();
-        navigate('/auth');
-    }, [confirm, leaveWorld, navigate]);
-
-    return { joinInstance, goHome, goingHome, respawn, copyInvite, logout };
+    return { joinInstance, goHome, goingHome, copyInvite };
 }
