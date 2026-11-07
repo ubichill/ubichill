@@ -200,7 +200,7 @@ jobs:
       - name: Build shared
         run: pnpm turbo build --filter=@ubichill/shared
 
-      # SDK型定義バンドルの検証（buildDts = TS Compiler API フルコンパイル、実測20秒級）。
+      # SDK型定義バンドルの検証（buildDts = TS Compiler API フルコンパイル、CI で 90 秒前後）。
       - name: Verify SDK type bundle
         run: pnpm verify:sdk-types
 
