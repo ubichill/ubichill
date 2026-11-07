@@ -35,7 +35,6 @@
         "@ubichill/db": "workspace:*",
         "@ubichill/shared": "workspace:*",
         "@ubichill/terminal": "workspace:*",
-        "bcryptjs": "^3.0.3",
         "better-auth": "catalog:",
         "cors": "^2.8.6",
         "dotenv": "^18.0.9",

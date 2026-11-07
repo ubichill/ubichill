@@ -132,8 +132,6 @@ export interface ClientToServerEvents {
     'world:join': (
         data: {
             instanceId: string;
-            /** 参加チケットの取得（SNS の REST）にだけ使い、インスタンスサーバーへは送らない。 */
-            password?: string;
             user: Omit<User, 'id'>;
             /** 受け取れる形の宣言。InstanceSocket が付けるので呼び出し側は指定しない。 */
             features?: InstanceFeature[];

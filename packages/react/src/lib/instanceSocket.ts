@@ -16,7 +16,7 @@ type Listener = (...args: unknown[]) => void;
 type Join = Parameters<ClientToServerEvents['world:join']>[0];
 type JoinReply = Parameters<Parameters<ClientToServerEvents['world:join']>[1]>[0];
 export type InstanceGrant = InstanceAPI['schemas']['InstanceGrant'];
-export type ResolveInstance = (instanceId: string, password?: string, signal?: AbortSignal) => Promise<InstanceGrant>;
+export type ResolveInstance = (instanceId: string, signal?: AbortSignal) => Promise<InstanceGrant>;
 /** 認可・パスワード・プロトコル不一致による入室拒否。再試行しても変わらないので、自動再接続を止めて参加失敗として返す。 */
 export class InstanceJoinRejected extends Error {}
 interface Frame {
@@ -146,7 +146,7 @@ export class InstanceSocket {
         const abort = new AbortController();
         this.attemptAbort = abort;
         try {
-            const grant = await this.resolveInstance(joined.data.instanceId, joined.data.password, abort.signal);
+            const grant = await this.resolveInstance(joined.data.instanceId, abort.signal);
             if (generation !== this.generation) return;
             if (grant.protocolVersion !== 1) throw new InstanceJoinRejected('非対応の通信バージョンです');
             const url = new URL(grant.url, window.location.href);

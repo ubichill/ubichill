@@ -588,7 +588,6 @@ function InstancesSection({ instances, onJoin }: InstancesSectionProps) {
                                     : i.access.type === 'friend_only'
                                       ? 'フレンド限定'
                                       : '招待制'}
-                                {i.access.password ? ' · パスワードあり' : ''}
                             </span>
                         </div>
                         <span className={css({ fontSize: 'sm', color: 'textMuted', fontWeight: '500' })}>

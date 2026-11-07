@@ -16,7 +16,6 @@ export interface CreateInstanceInput {
     accessType?: 'public' | 'friend_plus' | 'friend_only' | 'invite_only';
     accessTags?: string[];
     maxUsers?: number;
-    passwordHash?: string;
 }
 
 export interface UpdateInstanceInput {
@@ -70,7 +69,6 @@ export const instanceRepository = {
                 accessType: input.accessType ?? 'public',
                 accessTags: input.accessTags ?? [],
                 maxUsers: input.maxUsers ?? 10,
-                passwordHash: input.passwordHash,
             })
             .returning();
         return results[0];

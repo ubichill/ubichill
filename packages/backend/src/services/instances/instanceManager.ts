@@ -8,20 +8,17 @@ import type {
     WorldSource,
 } from '@ubichill/shared';
 import { canJoinInstance, canSeeInstance, type InstanceAudience, isPublishable } from '@ubichill/shared';
-import bcrypt from 'bcryptjs';
 import { appConfig } from '../../config';
 import { logger } from '../../utils/logger';
 import { friendIdsOf } from '../social/friends';
 import { worldRegistry } from '../worlds/worldRegistry';
 import { instanceRuntime, type RoomPresence } from './instanceRuntime';
 
-const hasPassword = (record: Pick<InstanceRecord, 'passwordHash'>): boolean => record.passwordHash !== null;
-
-/** 認可・パスワードによる入室拒否。再試行しても結果は変わらない（障害による失敗と区別する）。 */
 export type CloseInstanceResult =
     | { success: true }
     | { success: false; reason: 'not-found' | 'forbidden' | 'runtime-unavailable' | 'delete-failed'; error: string };
 
+/** 公開範囲による入室拒否。再試行しても結果は変わらない（障害による失敗と区別する）。 */
 export class InstanceJoinRejected extends Error {}
 
 /**
@@ -46,12 +43,6 @@ class InstanceManager {
         const maxUsers = request.settings?.maxUsers ?? world.capacity.default;
         const cappedMaxUsers = Math.min(maxUsers, world.capacity.max);
 
-        // パスワードがある場合はハッシュ化
-        let passwordHash: string | undefined;
-        if (request.access?.password) {
-            passwordHash = await bcrypt.hash(request.access.password, 10);
-        }
-
         // DBにインスタンスを作成（ワールドは URL で参照する。official/外部ワールドも instance 化可）
         const dbInstance = await instanceRepository.create({
             worldRef: world.url,
@@ -62,7 +53,6 @@ class InstanceManager {
             accessType: request.access?.type ?? 'public',
             accessTags: request.access?.tags ?? [],
             maxUsers: cappedMaxUsers,
-            passwordHash,
         });
 
         try {
@@ -150,17 +140,6 @@ class InstanceManager {
     }
 
     /**
-     * インスタンスのパスワードを検証
-     */
-    async verifyInstancePassword(instanceId: string, password: string): Promise<boolean> {
-        const dbInstance = await instanceRepository.findById(instanceId);
-        if (!dbInstance?.passwordHash) {
-            return false;
-        }
-        return bcrypt.compare(password, dbInstance.passwordHash);
-    }
-
-    /**
      * インスタンスを取得 (公開用 Instance。world 解決が必要)。
      * world が解決できない場合は undefined を返す。
      */
@@ -229,7 +208,7 @@ class InstanceManager {
      * SNSの入室可否を確認し、Go用の短期チケットを発行する。
      * 表示名もチケットに入れ、Go はクライアントが送る名前より優先する（ほかの参加者になりすませないように）。
      */
-    async join(instanceId: string, participant: { id: string; name: string }, password?: string) {
+    async join(instanceId: string, participant: { id: string; name: string }) {
         const userId = participant.id;
         const record = await instanceRepository.findById(instanceId);
         if (!record) throw new InstanceJoinRejected('このインスタンスには入れません');
@@ -238,9 +217,6 @@ class InstanceManager {
             throw new InstanceJoinRejected(
                 access.canSee ? 'このインスタンスに入るには招待が要ります' : 'このインスタンスには入れません',
             );
-        }
-        if (hasPassword(record) && (!password || !(await this.verifyInstancePassword(instanceId, password)))) {
-            throw new InstanceJoinRejected('パスワードが正しくありません');
         }
         const world = await worldRegistry.getWorldByUrl(record.worldRef);
         if (!world) throw new Error('ワールドを取得できません');
@@ -328,7 +304,6 @@ class InstanceManager {
         const access: InstanceAccess = {
             type: dbInstance.accessType,
             tags: dbInstance.accessTags ?? [],
-            password: hasPassword(dbInstance),
         };
 
         const presence = knownPresence ?? (await instanceRuntime.presence());

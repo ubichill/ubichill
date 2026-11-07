@@ -226,10 +226,7 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
                             </div>
                             <div className={css({ display: 'flex', justifyContent: 'space-between', fontSize: 'sm' })}>
                                 <span className={css({ color: 'textSubtle' })}>アクセス</span>
-                                <span className={css({ color: 'text' })}>
-                                    {accessLabel}
-                                    {selected.access.password ? ' · パスワードあり' : ''}
-                                </span>
+                                <span className={css({ color: 'text' })}>{accessLabel}</span>
                             </div>
                             <div className={css({ display: 'flex', justifyContent: 'space-between', fontSize: 'sm' })}>
                                 <span className={css({ color: 'textSubtle' })}>状態</span>
@@ -433,7 +430,6 @@ export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstan
                                     <div className={css({ display: 'flex', flexDir: 'column', minW: 0 })}>
                                         <span className={css({ fontSize: 'xs', color: 'textMuted' })}>
                                             {i.access.type === 'public' ? '公開' : '限定'}
-                                            {i.access.password ? ' · パスワードあり' : ''}
                                         </span>
                                         <span className={css({ fontSize: 'xs', color: 'textSubtle' })}>
                                             {i.stats.currentUsers} / {i.stats.maxUsers} 人

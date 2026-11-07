@@ -108,7 +108,7 @@ function instancesFragment(instances: Instance[]): string {
                 <div style="display:flex;align-items:center;justify-content:space-between;padding:16px;background:${C.surface};border:1px solid ${C.border};border-radius:16px;">
                     <div style="display:flex;flex-direction:column;gap:4px;">
                         <span style="font-size:14px;font-weight:600;color:${C.text};">${i.status === 'full' ? '満員' : '参加可能'}</span>
-                        <span style="font-size:12px;color:${C.textMuted};">${i.access.type === 'public' ? '公開' : '限定'}${i.access.password ? ' · パスワードあり' : ''}</span>
+                        <span style="font-size:12px;color:${C.textMuted};">${i.access.type === 'public' ? '公開' : '限定'}</span>
                     </div>
                     <span style="font-size:14px;color:${C.textMuted};font-weight:500;">${i.stats.currentUsers} / ${i.stats.maxUsers} 人</span>
                 </div>`,

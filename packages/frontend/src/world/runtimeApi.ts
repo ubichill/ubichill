@@ -23,7 +23,7 @@ export const presenceToInstance = (presence: RuntimePresence, runtimeOrigin = ''
     createdAt: '',
     expiresAt: null,
     world: { id: presence.id, version: '1', displayName: presence.name, authorId: '', mods: [] },
-    access: { type: 'public', tags: [], password: false },
+    access: { type: 'public', tags: [] },
     stats: { currentUsers: presence.memberIds.length, maxUsers: presence.maxUsers },
     connection: { url: `${runtimeOrigin}/realtime/v1/ws`, namespace: '' },
 });
@@ -38,7 +38,7 @@ export interface GuestTokenStore {
  * 同じタブの再接続では同じゲスト ID を引き継ぐ。
  */
 export function createGuestResolver(runtimeOrigin: string, store: GuestTokenStore): ResolveInstance {
-    return async (instanceId, _password, signal) => {
+    return async (instanceId, signal) => {
         const key = `ubichill:guest:${runtimeOrigin}:${instanceId}`;
         const response = await fetch(`${runtimeOrigin}/realtime/v1/instances/${encodeURIComponent(instanceId)}/guest`, {
             method: 'POST',

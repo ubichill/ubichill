@@ -23,7 +23,6 @@ export type InstanceStatus = z.infer<typeof InstanceStatus>;
 export const InstanceAccessSchema = z.object({
     type: AccessType.default('public'),
     tags: z.array(z.string().max(20)).max(10).default([]),
-    password: z.boolean().default(false),
 });
 
 export type InstanceAccess = z.infer<typeof InstanceAccessSchema>;
@@ -106,7 +105,6 @@ export const CreateInstanceRequestSchema = z.object({
         .object({
             type: AccessType.optional(),
             tags: z.array(z.string().max(20)).max(10).optional(),
-            password: z.string().max(100).optional(),
         })
         .optional(),
     settings: z

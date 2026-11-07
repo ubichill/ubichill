@@ -84,13 +84,6 @@ describe('GoインスタンスへのSNS参加受付', () => {
         });
         expect(mocks.findValidInvite).toHaveBeenCalledWith('room', 'guest');
     });
-    it('所有者でも部屋のパスワード確認を省略しない', async () => {
-        mocks.findById.mockResolvedValue({ ...record, passwordHash: 'x' });
-        await expect(instanceManager.join('room', { id: 'owner', name: 'Owner' })).rejects.toThrow(
-            InstanceJoinRejected,
-        );
-        expect(mocks.ticket).not.toHaveBeenCalled();
-    });
     it('Goに接続できない場合に公開範囲を迂回しない', async () => {
         mocks.presence.mockRejectedValue(new Error('runtime unavailable'));
         const error = await instanceManager.join('room', { id: 'owner', name: 'Owner' }).catch((e: unknown) => e);
@@ -102,13 +95,6 @@ describe('GoインスタンスへのSNS参加受付', () => {
         await expect(instanceManager.join('gone', { id: 'owner', name: 'Owner' })).rejects.toThrow(
             InstanceJoinRejected,
         );
-    });
-    it('パスワード違いは拒否として扱い、チケットを発行しない', async () => {
-        mocks.findById.mockResolvedValue({ ...record, passwordHash: 'x' });
-        await expect(instanceManager.join('room', { id: 'owner', name: 'Owner' }, 'wrong')).rejects.toThrow(
-            InstanceJoinRejected,
-        );
-        expect(mocks.ticket).not.toHaveBeenCalled();
     });
     it('ワールドが解決できなければ参加チケットを発行しない（取得元の障害かもしれないので拒否扱いにしない）', async () => {
         mocks.getWorldByUrl.mockResolvedValue(null);
