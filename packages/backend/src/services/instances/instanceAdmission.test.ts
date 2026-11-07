@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
     findById: vi.fn(),
+    findValidInvite: vi.fn(),
     friendIdsOf: vi.fn(),
     getWorldByUrl: vi.fn(),
     presence: vi.fn(),
@@ -12,6 +13,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('@ubichill/db', () => ({
     instanceRepository: { findById: mocks.findById, deleteByLeader: mocks.deleteByLeader },
+    inviteRepository: { findValid: mocks.findValidInvite },
 }));
 vi.mock('../../config', () => ({ appConfig: { runtime: { publicUrl: '/realtime/v1/ws' } } }));
 vi.mock('../worlds/worldRegistry', () => ({ worldRegistry: { getWorldByUrl: mocks.getWorldByUrl } }));
@@ -58,6 +60,29 @@ describe('GoインスタンスへのSNS参加受付', () => {
         });
         // チケットは割り当てた owner の Pod へ、その世代で発行する
         expect(mocks.ticket).toHaveBeenCalledWith('room', 'visitor', 'Visitor', owner);
+    });
+    it('招待のみ: 作成者のフレンドでも招待が無ければ入れず、招待が要ると伝える', async () => {
+        mocks.findById.mockResolvedValue({ ...record, accessType: 'invite_only' });
+        mocks.friendIdsOf.mockResolvedValue(new Set(['owner']));
+        await expect(instanceManager.join('room', { id: 'friend', name: 'Friend' })).rejects.toThrow(
+            'このインスタンスに入るには招待が要ります',
+        );
+        expect(mocks.ticket).not.toHaveBeenCalled();
+    });
+    it('招待のみ: フレンドでない人には、部屋があることも伝えない', async () => {
+        mocks.findById.mockResolvedValue({ ...record, accessType: 'invite_only' });
+        await expect(instanceManager.join('room', { id: 'stranger', name: 'S' })).rejects.toThrow(
+            'このインスタンスには入れません',
+        );
+        await expect(instanceManager.getInstanceFor('room', 'stranger')).resolves.toBeUndefined();
+    });
+    it('招待された人は、期限内なら公開範囲にかかわらず入れる', async () => {
+        mocks.findById.mockResolvedValue({ ...record, accessType: 'invite_only' });
+        mocks.findValidInvite.mockResolvedValue({ id: 'inv' });
+        await expect(instanceManager.join('room', { id: 'guest', name: 'Guest' })).resolves.toEqual({
+            token: 'ticket',
+        });
+        expect(mocks.findValidInvite).toHaveBeenCalledWith('room', 'guest');
     });
     it('所有者でも部屋のパスワード確認を省略しない', async () => {
         mocks.findById.mockResolvedValue({ ...record, passwordHash: 'x' });

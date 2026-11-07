@@ -2,13 +2,7 @@
  * ソーシャル: ユーザー検索・フレンド（申請・承認・解除）・フレンドの現在地。
  * 関係と公開範囲の規則は shared の user/friends.ts（画面と同じ規則）。
  */
-import {
-    instanceRepository,
-    type UserProfileRecord,
-    type UserRecord,
-    userFriendRepository,
-    userRepository,
-} from '@ubichill/db';
+import { instanceRepository, type UserProfileRecord, userFriendRepository, userRepository } from '@ubichill/db';
 import {
     canSeeInstance,
     type FriendsResponse,
@@ -16,11 +10,9 @@ import {
     friendshipOf,
     groupFriendLocations,
     HANDLE_PATTERN,
-    type Instance,
     parseUserSearchQuery,
     type UserProfileWithFriendship,
     type UserSearchResponse,
-    type UserSummary,
     type UserWithFriendship,
     userProfileOf,
 } from '@ubichill/shared';
@@ -31,29 +23,13 @@ import { instanceManager } from '../services/instances/instanceManager';
 import { instanceRuntime } from '../services/instances/instanceRuntime';
 import { notificationService, notifyInBackground } from '../services/notifications/notificationService';
 import { friendEdgesOf, friendIdsOf } from '../services/social/friends';
+import { summariesOf, summaryOf } from '../services/social/userSummaries';
 
 const router = Router();
 
 /** システムユーザーは検索・フレンドに出さない。 */
 const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000';
 const SEARCH_LIMIT = 20;
-
-const summaryOf = (u: UserRecord): UserSummary => ({
-    id: u.id,
-    name: u.name,
-    handle: u.handle,
-    image: u.image ?? null,
-    bio: u.bio ?? null,
-});
-
-async function summariesOf(ids: readonly string[]): Promise<UserSummary[]> {
-    const users = await userRepository.findByIds(ids);
-    const byId = new Map(users.map((u) => [u.id, u]));
-    return ids.flatMap((id) => {
-        const u = byId.get(id);
-        return u ? [summaryOf(u)] : [];
-    });
-}
 
 /** プロフィール（ひとこと・リンクなど込み）と自分との関係。ユーザーページとリンクのプレビューに使う。 */
 async function profileWithFriendship(
@@ -178,14 +154,21 @@ router.get('/locations', requireAuth, async (req, res) => {
         (userId) => recordById.get(locationsByUser.get(userId) ?? ''),
         (record) => canSeeInstance(instanceManager.audienceOf(record, presence), me, myFriends),
     );
+    const instances = (
+        await Promise.all(grouped.locations.map((l) => instanceManager.getInstance(l.instance.id)))
+    ).flatMap((i) => (i ? [i] : []));
+    // 招待のみの部屋は見えても入れない（画面は「入る」ではなく「リクエスト」を出す）
+    const withAccess = new Map(
+        (await instanceManager.withViewerAccess(instances, me, myFriends, presence)).map((i) => [i.id, i]),
+    );
     const locations = await Promise.all(
-        grouped.locations.map(async (l) => ({
-            instance: await instanceManager.getInstance(l.instance.id),
-            friends: await summariesOf(l.friendIds),
-        })),
+        grouped.locations.flatMap((l) => {
+            const instance = withAccess.get(l.instance.id);
+            return instance ? [summariesOf(l.friendIds).then((friends) => ({ instance, friends }))] : [];
+        }),
     );
     return res.json({
-        locations: locations.filter((l): l is { instance: Instance; friends: UserSummary[] } => !!l.instance),
+        locations,
         private: await summariesOf(grouped.privateFriendIds),
         elsewhere: await summariesOf(grouped.elsewhereIds),
     });

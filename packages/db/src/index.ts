@@ -26,6 +26,7 @@ export {
 export { favoriteRepository } from './repositories/favoriteRepository';
 export { federationPeerRepository } from './repositories/federationPeerRepository';
 export { instanceRepository } from './repositories/instanceRepository';
+export { type InviteRecord, inviteRepository } from './repositories/inviteRepository';
 export {
     type CreateNotificationInput,
     type NotificationRecord,

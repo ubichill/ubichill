@@ -36,6 +36,8 @@ function memoryStores() {
                 actorHandle: actor.handle,
                 actorImage: null,
                 object: input.object,
+                content: input.content ?? null,
+                expiresAt: input.expiresAt ?? null,
                 createdAt: now,
                 readAt: null,
                 dedupeKey: input.dedupeKey,
@@ -65,6 +67,11 @@ function memoryStores() {
         async markReadByKey(recipientId: string, key: string, now = new Date()) {
             const hit = rows.filter((r) => r.recipientId === recipientId && r.dedupeKey === key && !r.readAt);
             for (const r of hit) r.readAt = now;
+            return hit.map((r) => r.id);
+        },
+        async removeByKey(recipientId: string, key: string) {
+            const hit = rows.filter((r) => r.recipientId === recipientId && r.dedupeKey === key);
+            for (const r of hit) rows.splice(rows.indexOf(r), 1);
             return hit.map((r) => r.id);
         },
         async removeBetween(a: string, b: string, types: readonly string[]) {
@@ -194,6 +201,90 @@ describe('通知を作る規則', () => {
         expect(delivered.at(-1)).toEqual({ to: 'bob', event: { type: 'removed', ids: [follow?.id] } });
         tick();
         expect(await service.followRequested('alice', 'bob')).toBeDefined();
+    });
+});
+
+describe('招待・リクエストインバイトの通知', () => {
+    const room = { id: 'room-1', name: 'カフェ', image: null };
+
+    it('招待は一言と期限付きで届く', async () => {
+        const { service, delivered, clock } = setup();
+        const expiresAt = new Date(clock.now.getTime() + 60_000);
+        const n = await service.invited({
+            inviterId: 'alice',
+            inviteeId: 'bob',
+            instance: room,
+            message: 'おいで',
+            expiresAt,
+        });
+        expect(n).toMatchObject({
+            type: 'Invite',
+            object: { type: 'Instance', id: 'room-1', name: 'カフェ', image: null },
+            content: 'おいで',
+            endTime: expiresAt.toISOString(),
+            read: false,
+        });
+        expect(delivered).toEqual([{ to: 'bob', event: { type: 'notification', notification: n } }]);
+    });
+
+    it('同じ部屋に送り直すと、前の通知を消して未読の新しい通知にする（既読のまま埋もれない）', async () => {
+        const { service, delivered, rows, tick, clock } = setup();
+        const first = await service.invited({
+            inviterId: 'alice',
+            inviteeId: 'bob',
+            instance: room,
+            message: null,
+            expiresAt: clock.now,
+        });
+        await service.markRead('bob', { ids: [first?.id ?? ''] });
+        tick();
+        const second = await service.invited({
+            inviterId: 'alice',
+            inviteeId: 'bob',
+            instance: room,
+            message: 'もう一度',
+            expiresAt: clock.now,
+        });
+        expect(second?.id).not.toBe(first?.id);
+        expect(rows.filter((r) => r.recipientId === 'bob')).toHaveLength(1);
+        expect(delivered.some((d) => d.event.type === 'removed' && d.event.ids.includes(first?.id ?? ''))).toBe(true);
+        expect(second).toMatchObject({ read: false, content: 'もう一度' });
+    });
+
+    it('リクエストに答えたら、頼まれた人の手元の通知を片付ける', async () => {
+        const { service, delivered, rows, clock } = setup();
+        const n = await service.inviteRequested({ requesterId: 'alice', targetId: 'bob', expiresAt: clock.now });
+        expect(n).toMatchObject({ type: 'Join', object: { type: 'Person', id: 'bob' } });
+        await service.inviteRequestAnswered('bob', 'alice');
+        expect(rows).toEqual([]);
+        expect(delivered.at(-1)).toEqual({ to: 'bob', event: { type: 'removed', ids: [n?.id] } });
+    });
+
+    it('フレンドでなくなったら、2 人の間の招待・リクエストの通知も消す', async () => {
+        const { service, rows, clock } = setup();
+        await service.invited({
+            inviterId: 'alice',
+            inviteeId: 'bob',
+            instance: room,
+            message: null,
+            expiresAt: clock.now,
+        });
+        await service.inviteRequested({ requesterId: 'bob', targetId: 'alice', expiresAt: clock.now });
+        await service.friendshipRemoved('bob', 'alice');
+        expect(rows).toEqual([]);
+    });
+
+    it('自分を招待・自分に頼むことはできない（通知を作らない）', async () => {
+        const { service, rows, clock } = setup();
+        await service.invited({
+            inviterId: 'alice',
+            inviteeId: 'alice',
+            instance: room,
+            message: null,
+            expiresAt: clock.now,
+        });
+        await service.inviteRequested({ requesterId: 'alice', targetId: 'alice', expiresAt: clock.now });
+        expect(rows).toEqual([]);
     });
 });
 

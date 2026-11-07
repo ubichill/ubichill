@@ -81,6 +81,32 @@ describe('NotificationSchema', () => {
         expect(NotificationSchema.safeParse({ ...follow, published: '昨日' }).success).toBe(false);
     });
 
+    it('招待: 部屋と一言と期限を持つ。一言は 80 字まで、期限が無ければ落とす', () => {
+        const invite = {
+            ...follow,
+            type: 'Invite',
+            object: { type: 'Instance', id: 'room-1', name: 'カフェ', image: null },
+            content: 'おいでよ',
+            endTime: '2026-10-02T00:00:00.000Z',
+        };
+        expect(NotificationSchema.safeParse(invite).success).toBe(true);
+        expect(NotificationSchema.safeParse({ ...invite, content: null }).success).toBe(true);
+        expect(NotificationSchema.safeParse({ ...invite, content: 'あ'.repeat(81) }).success).toBe(false);
+        const { endTime: _, ...noEnd } = invite;
+        expect(NotificationSchema.safeParse(noEnd).success).toBe(false);
+        // ほかの種類に一言・期限を付けても通さない（種類ごとに形が決まっている）
+        expect(NotificationSchema.safeParse({ ...follow, content: 'x' }).success).toBe(false);
+    });
+
+    it('リクエストインバイト: 頼まれた人と答えられる期限を持つ', () => {
+        const join = { ...follow, type: 'Join', endTime: '2026-10-01T01:00:00.000Z' };
+        expect(NotificationSchema.safeParse(join).success).toBe(true);
+        expect(
+            NotificationSchema.safeParse({ ...join, object: { type: 'Instance', id: 'r', name: 'n', image: null } })
+                .success,
+        ).toBe(false);
+    });
+
     it('Like の object の URL が URL でなければ落とす', () => {
         expect(parseNotificationObject('Like', { type: 'World', id: 'not a url', name: 'w' })).toBeUndefined();
     });

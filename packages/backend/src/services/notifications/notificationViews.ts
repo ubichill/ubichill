@@ -35,10 +35,24 @@ export function notificationOf(record: NotificationRecord): AppNotification | un
             icon: record.actorImage,
         },
         object: record.object,
+        ...activityExtras(record),
         published: record.createdAt.toISOString(),
         read: record.readAt !== null,
     });
     return parsed.success ? parsed.data : undefined;
+}
+
+/** 種類ごとの、object 以外の項目（招待の一言と期限・リクエストの期限）。期限が無ければ形に合わず出さない。 */
+function activityExtras(record: NotificationRecord): Record<string, unknown> {
+    const endTime = record.expiresAt?.toISOString();
+    switch (record.type) {
+        case 'Invite':
+            return { content: record.content, endTime };
+        case 'Join':
+            return { endTime };
+        default:
+            return {};
+    }
 }
 
 /** お知らせを、読む人の既読の位置に合わせた通知にする（位置以前に出したものは既読）。 */

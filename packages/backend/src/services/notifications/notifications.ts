@@ -20,7 +20,14 @@ import { announcementNotificationOf, mergeFeedPage, notificationOf } from './not
 
 type NotificationStore = Pick<
     typeof notificationRepository,
-    'create' | 'listPage' | 'countUnread' | 'markRead' | 'markAllRead' | 'markReadByKey' | 'removeBetween'
+    | 'create'
+    | 'listPage'
+    | 'countUnread'
+    | 'markRead'
+    | 'markAllRead'
+    | 'markReadByKey'
+    | 'removeBetween'
+    | 'removeByKey'
 >;
 type AnnouncementStore = Pick<
     typeof announcementRepository,
@@ -33,6 +40,8 @@ export const dedupeKeys = {
     follow: (actorId: string) => `Follow:${actorId}`,
     accept: (actorId: string) => `Accept:${actorId}`,
     like: (actorId: string, worldUrl: string) => `Like:${actorId}:${worldUrl}`,
+    invite: (inviterId: string, instanceId: string) => `Invite:${inviterId}:${instanceId}`,
+    inviteRequest: (requesterId: string) => `Join:${requesterId}`,
 };
 
 export type FeedResult =
@@ -56,12 +65,27 @@ export function createNotificationService(deps: {
         actorUserId: string;
         object: unknown;
         dedupeKey: string;
+        content?: string | null;
+        expiresAt?: Date;
     }): Promise<AppNotification | undefined> => {
         if (input.recipientId === input.actorUserId) return undefined;
         const record = await deps.notifications.create(input, now());
         const notification = record ? notificationOf(record) : undefined;
         if (notification) await deps.hub.deliver(input.recipientId, { type: 'notification', notification });
         return notification;
+    };
+
+    /** 受け手の、このキーの通知を消して画面にも知らせる。 */
+    const removeByKey = async (recipientId: string, dedupeKey: string): Promise<void> => {
+        const ids = await deps.notifications.removeByKey(recipientId, dedupeKey);
+        if (ids.length > 0) await deps.hub.deliver(recipientId, { type: 'removed', ids });
+    };
+
+    /** 送り直したら作り直す（前の通知を消し、未読の新しい通知として届ける）。 */
+    const replace = async (input: Parameters<typeof notify>[0]): Promise<AppNotification | undefined> => {
+        if (input.recipientId === input.actorUserId) return undefined;
+        await removeByKey(input.recipientId, input.dedupeKey);
+        return notify(input);
     };
 
     const announcementReadUntil = async (userId: string): Promise<Date> =>
@@ -100,9 +124,9 @@ export function createNotificationService(deps: {
             });
         },
 
-        /** 2 人の関係が消えた（解除・取り消し・拒否）。 */
+        /** 2 人の関係が消えた（解除・取り消し・拒否）。招待・リクエストの通知も、もう使えないので消す。 */
         async friendshipRemoved(a: string, b: string): Promise<void> {
-            const removed = await deps.notifications.removeBetween(a, b, ['Follow', 'Accept']);
+            const removed = await deps.notifications.removeBetween(a, b, ['Follow', 'Accept', 'Invite', 'Join']);
             const byRecipient = Map.groupBy(removed, (r) => r.recipientId);
             await Promise.all(
                 [...byRecipient].map(([recipientId, rows]) =>
@@ -120,6 +144,39 @@ export function createNotificationService(deps: {
                 object: { type: 'World', id: world.url, name: world.name },
                 dedupeKey: dedupeKeys.like(likerId, world.url),
             }),
+
+        /** inviterId が inviteeId を部屋に招待した（送り直すと作り直す）。 */
+        invited: (input: {
+            inviterId: string;
+            inviteeId: string;
+            instance: { id: string; name: string; image: string | null };
+            message: string | null;
+            expiresAt: Date;
+        }) =>
+            replace({
+                recipientId: input.inviteeId,
+                type: 'Invite',
+                actorUserId: input.inviterId,
+                object: { type: 'Instance', ...input.instance },
+                dedupeKey: dedupeKeys.invite(input.inviterId, input.instance.id),
+                content: input.message,
+                expiresAt: input.expiresAt,
+            }),
+
+        /** requesterId が targetId に「部屋に入れて」と頼んだ。 */
+        inviteRequested: (input: { requesterId: string; targetId: string; expiresAt: Date }) =>
+            replace({
+                recipientId: input.targetId,
+                type: 'Join',
+                actorUserId: input.requesterId,
+                object: { type: 'Person', id: input.targetId },
+                dedupeKey: dedupeKeys.inviteRequest(input.requesterId),
+                expiresAt: input.expiresAt,
+            }),
+
+        /** targetId がリクエストに答えた（招待した・断った）。答えたリクエストの通知は片付ける。 */
+        inviteRequestAnswered: (targetId: string, requesterId: string) =>
+            removeByKey(targetId, dedupeKeys.inviteRequest(requesterId)),
 
         /** 運営のお知らせを出す。出せるのは公式アカウントだけ。全員の SSE に届ける。 */
         async publishAnnouncement(

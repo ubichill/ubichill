@@ -13,6 +13,8 @@ const record = (over: Partial<NotificationRecord> = {}): NotificationRecord => (
     actorHandle: 'alice',
     actorImage: null,
     object: { type: 'Person', id: 'bob' },
+    content: null,
+    expiresAt: null,
     createdAt: new Date('2026-10-01T00:00:00.000Z'),
     readAt: null,
     ...over,
@@ -25,6 +27,27 @@ describe('notificationOf', () => {
             actor: { type: 'Person', id: 'alice', preferredUsername: 'alice' },
             read: false,
         });
+    });
+
+    it('招待は一言と期限を付けて出す。期限の無い招待の行は出さない（入れる時刻が分からない）', () => {
+        const invite = record({
+            type: 'Invite',
+            object: { type: 'Instance', id: 'room', name: 'カフェ', image: null },
+            content: 'おいで',
+            expiresAt: new Date('2026-10-02T00:00:00.000Z'),
+        });
+        expect(notificationOf(invite)).toMatchObject({
+            type: 'Invite',
+            content: 'おいで',
+            endTime: '2026-10-02T00:00:00.000Z',
+        });
+        expect(notificationOf({ ...invite, expiresAt: null })).toBeUndefined();
+        expect(notificationOf(record({ type: 'Join', expiresAt: new Date('2026-10-01T01:00:00.000Z') }))).toMatchObject(
+            {
+                type: 'Join',
+                endTime: '2026-10-01T01:00:00.000Z',
+            },
+        );
     });
 
     it('種類と object を取り違えた行・知らない種類・actor の消えた行は出さない', () => {

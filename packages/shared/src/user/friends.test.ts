@@ -1,13 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-    canJoinInstance,
-    canSeeInstance,
-    type FriendEdge,
-    friendGroupsOf,
-    friendshipOf,
-    groupFriendLocations,
-    type InstanceAudience,
-} from './friends';
+import { type FriendEdge, friendGroupsOf, friendshipOf, groupFriendLocations } from './friends';
 
 const edge = (userId: string, friendId: string, status: FriendEdge['status'] = 'pending'): FriendEdge => ({
     userId,
@@ -37,48 +29,6 @@ describe('friendGroupsOf', () => {
     it('フレンド・自分への申請・自分の申請に分ける', () => {
         const edges = [edge('me', 'f1', 'accepted'), edge('f2', 'me', 'accepted'), edge('in', 'me'), edge('me', 'out')];
         expect(friendGroupsOf(edges, 'me')).toEqual({ friends: ['f1', 'f2'], incoming: ['in'], outgoing: ['out'] });
-    });
-});
-
-const audience = (accessType: InstanceAudience['accessType'], memberIds: string[] = []): InstanceAudience => ({
-    accessType,
-    leaderId: 'leader',
-    memberIds,
-});
-
-describe('canSeeInstance / canJoinInstance', () => {
-    const none = new Set<string>();
-    const friendOfLeader = new Set(['leader']);
-    const friendOfMember = new Set(['m1']);
-
-    it('パブリックはログインしていなくても見える。ほかはログインが要る', () => {
-        expect(canSeeInstance(audience('public'), null, none)).toBe(true);
-        expect(canSeeInstance(audience('friend_plus', ['m1']), null, friendOfMember)).toBe(false);
-        expect(canJoinInstance(audience('public'), null, none)).toBe(false);
-    });
-
-    it('フレンドのみ: 作成者のフレンドだけ。参加者のフレンドでは見えない', () => {
-        expect(canSeeInstance(audience('friend_only', ['m1']), 'v', friendOfLeader)).toBe(true);
-        expect(canSeeInstance(audience('friend_only', ['m1']), 'v', friendOfMember)).toBe(false);
-    });
-
-    it('フレンド+: 作成者か参加者の誰かのフレンド', () => {
-        expect(canSeeInstance(audience('friend_plus', ['m1']), 'v', friendOfMember)).toBe(true);
-        expect(canSeeInstance(audience('friend_plus', ['m1']), 'v', none)).toBe(false);
-    });
-
-    it('招待のみ: 一覧には出ないが、URL を受け取った人は入れる', () => {
-        expect(canSeeInstance(audience('invite_only'), 'v', friendOfLeader)).toBe(false);
-        expect(canJoinInstance(audience('invite_only'), 'v', none)).toBe(true);
-    });
-
-    it('作成者と参加している人にはいつも見える（フレンドでなくても）', () => {
-        expect(canSeeInstance(audience('invite_only'), 'leader', none)).toBe(true);
-        expect(canSeeInstance(audience('friend_only', ['v']), 'v', none)).toBe(true);
-    });
-
-    it('フレンドのみに入れないのは見えない人と同じ', () => {
-        expect(canJoinInstance(audience('friend_only'), 'v', none)).toBe(false);
     });
 });
 

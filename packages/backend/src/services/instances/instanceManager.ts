@@ -1,4 +1,4 @@
-import { type InstanceRecord, instanceRepository } from '@ubichill/db';
+import { type InstanceRecord, instanceRepository, inviteRepository } from '@ubichill/db';
 import type {
     CreateInstanceRequest,
     Instance,
@@ -95,7 +95,12 @@ class InstanceManager {
         const presence = await instanceRuntime.presence();
         const visible = (db: InstanceRecord) => canSeeInstance(this.audienceOf(db, presence), viewerId, friends);
         if (options?.worldId) {
-            return this.findInstancesByWorld(options.worldId, visible, presence);
+            return this.withViewerAccess(
+                await this.findInstancesByWorld(options.worldId, visible, presence),
+                viewerId,
+                friends,
+                presence,
+            );
         }
         const dbInstances = (await instanceRepository.findAll({ tag: options?.tag, includeFull: true })).filter(
             visible,
@@ -110,7 +115,38 @@ class InstanceManager {
         const instances: Instance[] = mapped.filter(
             (i: Instance | null): i is Instance => i !== null && isPublishable(i.world.identity),
         );
-        return options?.includeFull ? instances : instances.filter((i: Instance) => i.status === 'active');
+        const shown = options?.includeFull ? instances : instances.filter((i: Instance) => i.status === 'active');
+        return this.withViewerAccess(shown, viewerId, friends, presence);
+    }
+
+    /**
+     * 見る人がそれぞれの部屋にそのまま入れるかを付ける（招待のみの部屋がフレンドに見えているだけなら false）。
+     * 画面は false の部屋に「入る」ではなく「リクエスト」を出す。
+     */
+    async withViewerAccess(
+        instances: Instance[],
+        viewerId: string | null,
+        friends: ReadonlySet<string>,
+        presence: Map<string, RoomPresence>,
+    ): Promise<Instance[]> {
+        const audienceOf = (instance: Instance) => ({
+            accessType: instance.access.type,
+            leaderId: instance.leaderId,
+            memberIds: presence.get(instance.id)?.memberIds ?? [],
+        });
+        // 招待を引くのは、招待が無いと入れない部屋だけ（ほとんどの部屋は引かずに済む）
+        const needsInvite = instances.filter((i) => !canJoinInstance(audienceOf(i), viewerId, friends));
+        const invited =
+            viewerId && needsInvite.length > 0
+                ? await inviteRepository.validInstanceIdsFor(
+                      viewerId,
+                      needsInvite.map((i) => i.id),
+                  )
+                : new Set<string>();
+        return instances.map((instance) => ({
+            ...instance,
+            canJoin: canJoinInstance(audienceOf(instance), viewerId, friends, { invited: invited.has(instance.id) }),
+        }));
     }
 
     /**
@@ -145,34 +181,36 @@ class InstanceManager {
     }
 
     /**
-     * 見る人がインスタンスに入れるときだけ返す（公開範囲。招待のみは URL を受け取った人なら入れる）。
-     * 入れなければ存在も伏せる（undefined）。
+     * 見る人に見える・入れるインスタンスだけを返す（入れるかは canJoin）。見えなければ、あることも伏せる（undefined）。
+     * 招待のみの部屋は、中にいる人のフレンドには見えるが、招待が無ければ canJoin が false。
      */
     async getInstanceFor(instanceId: string, viewerId: string | null): Promise<Instance | undefined> {
         const dbInstance = await instanceRepository.findById(instanceId);
         if (!dbInstance) return undefined;
-        if (
-            !canJoinInstance(
-                this.audienceOf(dbInstance, await instanceRuntime.presence()),
-                viewerId,
-                await friendIdsOf(viewerId),
-            )
-        )
-            return undefined;
-        return this.getInstance(instanceId);
+        const access = await this.accessFor(dbInstance, viewerId);
+        if (!access.canSee && !access.canJoin) return undefined;
+        const instance = await this.getInstance(instanceId);
+        return instance && { ...instance, canJoin: access.canJoin };
     }
 
-    /** 見る人がインスタンスに入れるか（公開範囲）。 */
+    /** 見る人がインスタンスに入れるか（公開範囲と招待）。 */
     async canJoin(instanceId: string, viewerId: string): Promise<boolean> {
         const dbInstance = await instanceRepository.findById(instanceId);
-        return (
-            !!dbInstance &&
-            canJoinInstance(
-                this.audienceOf(dbInstance, await instanceRuntime.presence()),
-                viewerId,
-                await friendIdsOf(viewerId),
-            )
-        );
+        return !!dbInstance && (await this.accessFor(dbInstance, viewerId)).canJoin;
+    }
+
+    /** 見えるか・入れるか。招待は期限内のものだけ効く。 */
+    private async accessFor(
+        dbInstance: Pick<InstanceRecord, 'id' | 'accessType' | 'leaderId'>,
+        viewerId: string | null,
+    ): Promise<{ canSee: boolean; canJoin: boolean }> {
+        const [presence, friends] = await Promise.all([instanceRuntime.presence(), friendIdsOf(viewerId)]);
+        const audience = this.audienceOf(dbInstance, presence);
+        const canSee = canSeeInstance(audience, viewerId, friends);
+        if (canJoinInstance(audience, viewerId, friends)) return { canSee, canJoin: true };
+        // 公開範囲で入れないときだけ招待を引く
+        const invited = viewerId ? (await inviteRepository.findValid(dbInstance.id, viewerId)) !== undefined : false;
+        return { canSee, canJoin: canJoinInstance(audience, viewerId, friends, { invited }) };
     }
 
     /** 公開範囲の判定に要る情報（参加している人は Go runtime が真）。 */
@@ -194,8 +232,13 @@ class InstanceManager {
     async join(instanceId: string, participant: { id: string; name: string }, password?: string) {
         const userId = participant.id;
         const record = await instanceRepository.findById(instanceId);
-        if (!record || !(await this.canJoin(instanceId, userId)))
-            throw new InstanceJoinRejected('このインスタンスには入れません');
+        if (!record) throw new InstanceJoinRejected('このインスタンスには入れません');
+        const access = await this.accessFor(record, userId);
+        if (!access.canJoin) {
+            throw new InstanceJoinRejected(
+                access.canSee ? 'このインスタンスに入るには招待が要ります' : 'このインスタンスには入れません',
+            );
+        }
         if (hasPassword(record) && (!password || !(await this.verifyInstancePassword(instanceId, password)))) {
             throw new InstanceJoinRejected('パスワードが正しくありません');
         }
