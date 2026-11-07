@@ -29,4 +29,7 @@ CREATE INDEX "instance_invites_invitee_idx" ON "instance_invites" USING btree ("
 CREATE INDEX "instance_invites_expires_idx" ON "instance_invites" USING btree ("expires_at");--> statement-breakpoint
 CREATE INDEX "invite_requests_target_idx" ON "invite_requests" USING btree ("target_id");--> statement-breakpoint
 CREATE INDEX "invite_requests_expires_idx" ON "invite_requests" USING btree ("expires_at");--> statement-breakpoint
-ALTER TABLE "notifications" ADD CONSTRAINT "notifications_type_check" CHECK ("notifications"."type" IN ('Follow', 'Accept', 'Like', 'Invite', 'Join'));
+ALTER TABLE "notifications" ADD CONSTRAINT "notifications_type_check" CHECK ("notifications"."type" IN ('Follow', 'Accept', 'Like', 'Invite', 'Join'));--> statement-breakpoint
+-- 部屋のパスワードは廃止した（招待のみ・フレンドで足りる）。パスワード付きの部屋を、知らない人が入れない「招待のみ」に移す。
+-- password_hash は使わないが、デプロイ中の古い Pod が読み書きするので列は次の PR で消す。
+UPDATE "instances" SET "access_type" = 'invite_only' WHERE "password_hash" IS NOT NULL;

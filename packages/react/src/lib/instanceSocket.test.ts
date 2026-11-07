@@ -76,14 +76,13 @@ describe('InstanceSocket', () => {
         expect(connected).toHaveBeenCalledOnce();
         socket.disconnect();
     });
-    it('パスワードはチケット取得にだけ使い、インスタンスサーバーへ送らない', async () => {
+    it('最初のフレームはチケット・部屋・ユーザー・受け取れる形だけ', async () => {
         const resolve = vi.fn<ResolveInstance>(async () => grant);
         const socket = new InstanceSocket(resolve);
-        socket.emit('world:join', { instanceId: 'room', password: 'secret-pw', user: { ...user } }, vi.fn());
+        socket.emit('world:join', { instanceId: 'room', user: { ...user } }, vi.fn());
         await flush();
         latest().open();
-        expect(resolve).toHaveBeenCalledWith('room', 'secret-pw', expect.any(AbortSignal));
-        expect(latest().frames[0]?.data).not.toHaveProperty('password');
+        expect(resolve).toHaveBeenCalledWith('room', expect.any(AbortSignal));
         expect(Object.keys(latest().frames[0]?.data as object).sort()).toEqual([
             'features',
             'instanceId',
@@ -283,7 +282,7 @@ describe('InstanceSocket', () => {
         const joined = vi.fn();
         socket.emit('world:join', { instanceId: 'room', user }, joined);
         await flush();
-        const signal = resolve.mock.calls[0]?.[2];
+        const signal = resolve.mock.calls[0]?.[1];
         await vi.advanceTimersByTimeAsync(29999);
         expect(joined).not.toHaveBeenCalled();
         await vi.advanceTimersByTimeAsync(1);
@@ -360,7 +359,7 @@ describe('InstanceSocket', () => {
         const joined = vi.fn();
         socket.emit('world:join', { instanceId: 'room', user }, joined);
         await flush();
-        const signal = resolve.mock.calls[0]?.[2];
+        const signal = resolve.mock.calls[0]?.[1];
         socket.disconnect();
         expect(signal?.aborted).toBe(true);
         await vi.advanceTimersByTimeAsync(120000);

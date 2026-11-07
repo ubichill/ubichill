@@ -106,10 +106,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
 router.post('/:id/join', requireAuth, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     try {
-        const password = typeof req.body?.password === 'string' ? req.body.password : undefined;
-        return res.json(
-            await instanceManager.join(String(req.params.id), { id: req.user.id, name: req.user.name }, password),
-        );
+        return res.json(await instanceManager.join(String(req.params.id), { id: req.user.id, name: req.user.name }));
     } catch (error) {
         if (error instanceof InstanceJoinRejected) return res.status(403).json({ error: error.message });
         logger.error('インスタンス参加エラー:', error);

@@ -3,7 +3,6 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:f
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { signWorld, type WorldSigningKey } from '@ubichill/shared';
-import bcrypt from 'bcryptjs';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import yaml from 'yaml';
@@ -28,7 +27,6 @@ const MIGRATIONS = path.resolve(__dirname, '../../../../db/drizzle');
 const BASE = 'http://db-cleanup.test';
 const HANDLE = 'cleanup_alice';
 const AUTHOR_ID = 'cleanup-alice';
-const PASSWORD = 'correct horse';
 
 function migrationsUpTo(tag: string): string {
     const dir = mkdtempSync(path.join(tmpdir(), 'ubichill-migrations-'));
@@ -106,6 +104,8 @@ function defineCleanupSuite(from: string): void {
             return kind === 'yaml' ? (yaml.parse(file.body) as unknown) : (JSON.parse(file.body) as unknown);
         };
 
+        const withoutLocked = <T extends { id: string }>(list: T[]) => list.filter((i) => i.id !== instanceIds.locked);
+
         /** 読み取りの API の応答（ワールドの取得・一覧・配信・エディタ、インスタンスの一覧・取得）。 */
         const observe = async () => {
             const { worldRegistry, instanceManager } = m();
@@ -122,9 +122,14 @@ function defineCleanupSuite(from: string): void {
             return {
                 worlds,
                 list: await worldRegistry.listWorlds('local'),
-                instances: await instanceManager.listInstances({ includeFull: true, viewerId: AUTHOR_ID }),
-                instancesByWorld: await instanceManager.listInstances({ worldId: urlOf('pub'), viewerId: AUTHOR_ID }),
-                instance: await instanceManager.getInstance(instanceIds.locked),
+                // パスワード付きだった部屋は 0029 で招待のみに変わるので、比べる対象から外して別に確かめる
+                instances: withoutLocked(
+                    await instanceManager.listInstances({ includeFull: true, viewerId: AUTHOR_ID }),
+                ),
+                instancesByWorld: withoutLocked(
+                    await instanceManager.listInstances({ worldId: urlOf('pub'), viewerId: AUTHOR_ID }),
+                ),
+                instance: await instanceManager.getInstance(instanceIds.open),
             };
         };
 
@@ -199,7 +204,8 @@ function defineCleanupSuite(from: string): void {
             // 本番と同じく、版の content_hash は migrate.js の埋め戻しで入れる
             await db.backfillWorldContentHashes(database);
 
-            const passwordHash = await bcrypt.hash(PASSWORD, 4);
+            // 中身は確かめない（部屋のパスワードは廃止した）。0029 が招待のみに移すかだけを見る
+            const passwordHash = 'legacy-bcrypt-hash';
             // current_users は Go の在籍と食い違う値（今のコードは読まない）
             await database.execute(sql`
                 INSERT INTO instances (id, world_ref, leader_id, access_type, has_password, password_hash, current_users,
@@ -287,45 +293,24 @@ function defineCleanupSuite(from: string): void {
                 editor: { hasDraft: false, published: false },
             });
             expect(before.list.map((w) => w.id).sort()).toEqual([ids.drafted, ids.pub].sort());
-            const access = Object.fromEntries(before.instances.map((i) => [i.id, i.access.password]));
-            expect(access).toEqual({ [instanceIds.open]: false, [instanceIds.locked]: true });
+            expect(before.instances.map((i) => i.id)).toEqual([instanceIds.open]);
             expect(before.instances.every((i) => i.stats.currentUsers === 0)).toBe(true);
-            expect(before.instancesByWorld).toHaveLength(2);
-            expect(before.instance?.access.password).toBe(true);
+            expect(before.instancesByWorld).toHaveLength(1);
+            expect(before.instance?.id).toBe(instanceIds.open);
         });
 
-        it('入室: パスワードなしは入れ、パスワード付きは正しいパスワードのときだけ入れる', async () => {
+        it('パスワード付きだった部屋は招待のみになり、作った人は入れて、知らない人は入れない', async () => {
             const { instanceManager, InstanceJoinRejected } = m();
-            const alice = { id: AUTHOR_ID, name: 'Alice' };
-            await expect(instanceManager.join(instanceIds.open, alice)).resolves.toEqual({
+            expect((await instanceManager.getInstance(instanceIds.locked))?.access.type).toBe('invite_only');
+            await expect(instanceManager.join(instanceIds.open, { id: AUTHOR_ID, name: 'Alice' })).resolves.toEqual({
                 token: `ticket:${instanceIds.open}:${AUTHOR_ID}`,
             });
-            await expect(instanceManager.join(instanceIds.locked, alice)).rejects.toThrow(InstanceJoinRejected);
-            await expect(instanceManager.join(instanceIds.locked, alice, 'wrong')).rejects.toThrow(
-                InstanceJoinRejected,
-            );
-            await expect(instanceManager.join(instanceIds.locked, alice, PASSWORD)).resolves.toEqual({
+            await expect(instanceManager.join(instanceIds.locked, { id: AUTHOR_ID, name: 'Alice' })).resolves.toEqual({
                 token: `ticket:${instanceIds.locked}:${AUTHOR_ID}`,
             });
-        });
-
-        it('作成: パスワードの有無が一覧の hasPassword（access.password）と入室に出る', async () => {
-            const { instanceManager, InstanceJoinRejected } = m();
-            const locked = await instanceManager.createInstance(
-                { worldId: urlOf('pub'), access: { type: 'public', tags: [], password: PASSWORD } },
-                AUTHOR_ID,
+            await expect(instanceManager.join(instanceIds.locked, { id: 'stranger', name: 'S' })).rejects.toThrow(
+                InstanceJoinRejected,
             );
-            const open = await instanceManager.createInstance({ worldId: urlOf('pub') }, AUTHOR_ID);
-            if ('error' in locked || 'error' in open) throw new Error('作成に失敗しました');
-            expect(locked.access.password).toBe(true);
-            expect(open.access.password).toBe(false);
-            const listed = await instanceManager.listInstances({ includeFull: true, viewerId: AUTHOR_ID });
-            expect(listed.find((i) => i.id === locked.id)?.access.password).toBe(true);
-            expect(listed.find((i) => i.id === open.id)?.access.password).toBe(false);
-            const alice = { id: AUTHOR_ID, name: 'Alice' };
-            await expect(instanceManager.join(locked.id, alice)).rejects.toThrow(InstanceJoinRejected);
-            await expect(instanceManager.join(locked.id, alice, PASSWORD)).resolves.toBeDefined();
-            await expect(instanceManager.join(open.id, alice)).resolves.toBeDefined();
         });
 
         it('保存: 下書き・公開・新規作成が通り、結果が読める', async () => {
