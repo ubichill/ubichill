@@ -9,3 +9,10 @@ export function orderCandidates(candidates: readonly InviteCandidate[]): InviteC
             a.user.name.localeCompare(b.user.name, 'ja'),
     );
 }
+
+/** 選ぶ・外す。一度に送れる人数（API の上限）を超えて選ばせない（超えるとリクエスト全体が 400 になる）。 */
+export function toggleInvitee(selected: ReadonlySet<string>, userId: string, max: number): ReadonlySet<string> {
+    const next = new Set(selected);
+    if (next.delete(userId)) return next;
+    return next.size < max ? next.add(userId) : selected;
+}

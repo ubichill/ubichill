@@ -11,7 +11,7 @@ import { fetchInviteCandidates, sendInvites } from '@/lib/inviteApi';
 import { pushToast } from '@/lib/toast';
 import { css, cva } from '@/styled-system/css';
 import { HudIcon } from '../HudIcon';
-import { orderCandidates } from '../inviteCandidates';
+import { orderCandidates, toggleInvitee } from '../inviteCandidates';
 import { tabPanel } from './shared';
 
 const REFUSAL_LABELS: Record<InviteRefusal, string> = {
@@ -54,12 +54,8 @@ export function InviteTab({
     }, [currentInstanceId]);
 
     const ordered = useMemo(() => (candidates ? orderCandidates(candidates) : []), [candidates]);
-    const toggle = (userId: string) =>
-        setSelected((prev) => {
-            const next = new Set(prev);
-            if (!next.delete(userId)) next.add(userId);
-            return next;
-        });
+    const toggle = (userId: string) => setSelected((prev) => toggleInvitee(prev, userId, INVITE_LIMITS.MAX_INVITEES));
+    const full = selected.size >= INVITE_LIMITS.MAX_INVITEES;
 
     const send = async () => {
         if (selected.size === 0) return;
@@ -126,7 +122,7 @@ export function InviteTab({
                                     type="button"
                                     className={row({ blocked })}
                                     aria-pressed={on}
-                                    disabled={blocked}
+                                    disabled={blocked || (full && !on)}
                                     onClick={() => toggle(user.id)}
                                 >
                                     <span
@@ -165,6 +161,7 @@ export function InviteTab({
                 ) : (
                     <span />
                 )}
+                {full && <span className={muted}>一度に {INVITE_LIMITS.MAX_INVITEES} 人まで</span>}
                 <button
                     type="button"
                     className={sendButton}
