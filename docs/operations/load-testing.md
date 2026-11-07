@@ -9,7 +9,7 @@ dev 環境に、実際の利用者と同じ経路（ログイン → インス�
 1 回の iteration が 1 人の利用者。`scenario.rampSeconds` の間に `rooms × usersPerRoom` 人を均等に始め、各自が「開始 + ramp + hold」まで部屋に居て退室する。
 
 1. アカウント `loadtest_<n>`（`loadtest+<n>@example.com`）でログインする。無ければ `POST /api/v1/users/register` で登録してからログインする（dev は `SKIP_EMAIL_VERIFICATION=true` で即時）。dev の DB は消えないので、次の走りでは使い回す。
-2. 部屋の 1 人目が、ワールド（既定 `default`）で `POST /api/v1/instances` を作る。部屋の印（`access.tags` の `lt<走りの名前のハッシュ>r<部屋番号>`）を付ける。2 人目以降は、ロビーでワールドを選んだときと同じ `GET /api/v1/instances?worldId=` から印で探す（1 人目が作るまで 1 秒ごとに、最大 60 秒）。
+2. 部屋の 1 人目が、ワールド（既定 `default`）で `POST /api/v1/instances` を作る。部屋の印（`access.tags` の `lt<走りの名前のハッシュ>r<部屋番号>`）を付ける。2 人目以降は、ワールドの詳細を開いたときと同じ `GET /api/v1/instances?worldId=` から印で探す（1 人目が作るまで 1 秒ごとに、最大 60 秒）。
 3. `POST /api/v1/instances/:id/join` で `{token, url}` を取り、WebSocket で `world:join` → `world:snapshot`。一時的な失敗（参加情報の通信の失敗・429・5xx、入室の `ticket_invalid`・`instance_unavailable`・繋がらない・応答なし）は、Host の一度入れた後の繋ぎ直しと同じく 1, 2, 4, 8, 10 … 秒の間隔で 60 秒まで取り直す（部屋のリース TTL 30 秒 + backend の作り直し）。試験の途中にサーバーから切られたら 1 秒後に繋ぎ直す。
 4. 部屋の中:
    - `activeRatio`（既定 3 割）の人が `cursorHz`（既定 20Hz）で `cursor:move`。1 人目は x に時刻、y に印（-1）を入れ、2 人目が `cursor:moved`（`cursorBatch` なら `cursors:moved` のまとめ送りも）で受けて遅延を測る。同じ部屋の人は同じ runner（Pod）に置くので、同じ時計で測れる。
@@ -19,7 +19,7 @@ dev 環境に、実際の利用者と同じ経路（ログイン → インス�
 
 管理 API・管理トークンは使わない。
 
-`browser.enabled=true` なら、別の `TestRun`（Chromium、runner 1 つ）で 1〜2 人が画面で「ログイン → ロビーにワールドが出る → インスタンスを作って入る → pen の Worker が描画する」を繰り返し、各段の時間と web vitals を指標にする（手順とセレクタは [packages/e2e](../../packages/e2e/README.md) のブラウザのスモークと同じ）。
+`browser.enabled=true` なら、別の `TestRun`（Chromium、runner 1 つ）で 1〜2 人が画面で「ログイン → ホームの部屋へ自動で入る → pen の Worker が描画する」を繰り返し（始める前に API でそのアカウントのホームを試験のワールドにする）、各段の時間と web vitals を指標にする（手順とセレクタは [packages/e2e](../../packages/e2e/README.md) のブラウザのスモークと同じ）。
 
 ## 前提
 
@@ -104,7 +104,7 @@ helm install lt-1000 charts/ubichill-loadtest "${COMMON[@]}" \
   --set browser.enabled=true
 ```
 
-比べる相手として、負荷の無いときに同じ設定で `scenario.rooms=1 --set scenario.usersPerRoom=1 --set browser.enabled=true --set browser.startSeconds=0` を走らせておく。各段の時間が目に見えて伸びない（目安: 2 倍以内）ことを見る。`render`（入室から描画まで）だけ伸びるなら Go、`login`・`lobby` も伸びるなら backend・frontend を疑う。
+比べる相手として、負荷の無いときに同じ設定で `scenario.rooms=1 --set scenario.usersPerRoom=1 --set browser.enabled=true --set browser.startSeconds=0` を走らせておく。各段の時間が目に見えて伸びない（目安: 2 倍以内）ことを見る。`render`（入室から描画まで）だけ伸びるなら Go、`login`・`home`（ホームの部屋を用意して移るまで）も伸びるなら backend・frontend を疑う。
 
 ## 見方
 
@@ -165,7 +165,7 @@ remote write では名前の前に `k6_` が付く。Counter は `_total`、Rate
 | `k6_ubichill_reconnects_total` | counter | 途中で切られて繋ぎ直した。`code` |
 | `k6_ubichill_notices_total` | counter | `kind` = `server:notice` の kind（`disconnect` など）/ `session_replaced` / `instance_closing` |
 | `k6_ubichill_instance_ops_total` | counter | `op` = `create` / `delete`、`result` = `ok` / `rate_limited` / `not_found` / `error` |
-| `k6_ubichill_browser_step_duration_{p50,p95,p99,max}` | trend | 画面の各段。`step` = `login` / `lobby` / `enter` / `render` |
+| `k6_ubichill_browser_step_duration_{p50,p95,p99,max}` | trend | 画面の各段。`step` = `login` / `home` / `render` |
 | `k6_ubichill_browser_journey_duration_{p50,p95,p99,max}` | trend | ログインの画面を開いてから描画まで |
 | `k6_ubichill_browser_failures_total` | counter | 画面の通しの失敗。`step`（`account` を含む） |
 

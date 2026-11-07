@@ -375,6 +375,7 @@ HTTP契約・型生成はOpenAPI、WebSocket契約はAsyncAPI。詳細は
 | `/worlds` | 一覧・詳細 | 作成 | 更新・削除（**作成者のみ**） |
 | `/instances` | 一覧・詳細 | 作成（10件/h） | 削除（**リーダーのみ**） |
 | `/users/me` | 自分の情報 | — | — |
+| `/users/me/home` | ホームの設定とワールド | `/instance`: ホームの部屋（あれば使い回し・無ければ作る。`?fallback=default` で既定のワールド。10回/分/人） | PUT: `{worldRef?: string\|null, accessType?}`（20回/分/人） |
 | `/notifications` | 一覧（`?cursor=&limit=`、お知らせを含む新しい順）・`/unread-count` | `/read`（`{ids}` か `{all:true}`） | — |
 | `/notifications/stream` | SSE（`notification`・`read`・`removed`、25 秒ごとに keep-alive、15 分で閉じる） | — | — |
 | `/notifications/announcements` | 一覧 | 作成（**公式アカウントのみ**、20件/h） | — |

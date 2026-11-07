@@ -12,7 +12,7 @@ export interface ApiTarget {
 }
 
 interface Call {
-    readonly method: 'GET' | 'POST' | 'DELETE';
+    readonly method: 'GET' | 'POST' | 'PUT' | 'DELETE';
     readonly path: string;
     /** 指標の name タグ（インスタンス ID を含めない） */
     readonly name: string;
@@ -117,7 +117,7 @@ export function createInstance(
 }
 
 /**
- * ロビーでワールドを選んだときと同じ一覧（GET /api/v1/instances?worldId=）から、部屋の印の付いたインスタンスを探す。
+ * ワールドの詳細を開いたときと同じ一覧（GET /api/v1/instances?worldId=）から、部屋の印の付いたインスタンスを探す。
  * 1 人目が作るまで、期限まで待ちながら探し直す。
  */
 export function discoverInstance(
@@ -168,6 +168,18 @@ export function deleteInstance(target: ApiTarget, cookie: string, instanceId: st
     });
     if (response.status === 204) return 'ok';
     return response.status === 404 ? 'not_found' : 'error';
+}
+
+/** ログインしたら入るホームのワールドを決める（画面の確認で、試験のワールドに入るため）。 */
+export function setHomeWorld(target: ApiTarget, cookie: string, worldId: string): boolean {
+    const response = call(target, {
+        method: 'PUT',
+        path: '/api/v1/users/me/home',
+        name: 'PUT /api/v1/users/me/home',
+        cookie,
+        body: { worldRef: worldId, accessType: 'invite_only' },
+    });
+    return response.status === 200;
 }
 
 export function getJson(target: ApiTarget, path: string): { readonly status: number; readonly body: unknown } {

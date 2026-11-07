@@ -1,7 +1,7 @@
 // k6 の入口。LT_SCENARIO=users（利用者の負荷）か browser（画面の体験の確認）。設定は env（LT_*）で渡す（config.ts）。
 // k6-operator は parallelism の数だけ runner を立て、setup() は runner ごとに走る。setup では確かめるだけにする。
 import { getJson } from './api.ts';
-import { type BrowserSetup, runBrowserJourney } from './browser.ts';
+import { runBrowserJourney } from './browser.ts';
 import { buildOptions, parseConfig, validateConfig } from './config.ts';
 import { capacityProblem, findWorld, isRecord } from './protocol.ts';
 import { runnerSplitProblem, runUser } from './users.ts';
@@ -12,7 +12,7 @@ if (problems.length > 0) throw new Error(`負荷試験の設定が不正です:\
 
 export const options = buildOptions(config);
 
-export function setup(): BrowserSetup {
+export function setup(): void {
     const target = { origin: config.origin, apiBase: config.apiBase };
     const version = getJson(target, '/api/version');
     if (version.status !== 200 || !isRecord(version.body)) {
@@ -33,13 +33,12 @@ export function setup(): BrowserSetup {
     console.log(
         `負荷試験 ${config.testId}: ${config.scenario}・commit ${String(version.body.commitHash)}・ワールド ${world.id}`,
     );
-    return { worldDisplayName: world.displayName };
 }
 
 export async function users(): Promise<void> {
     await runUser(config);
 }
 
-export async function browserJourney(data: BrowserSetup): Promise<void> {
-    await runBrowserJourney(config, data);
+export async function browserJourney(): Promise<void> {
+    await runBrowserJourney(config);
 }

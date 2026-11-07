@@ -60,7 +60,7 @@ Go は共有する状態を預かる同期係で、mod のコードは実行し�
 ```mermaid
 flowchart TB
     subgraph entry[入口]
-        sns["本番: index.html（SNS）<br/>ログイン・ロビー・HUD を足す<br/>チケット: backend 経由<br/>mod: public/mods・CDN"]
+        sns["本番: index.html（SNS）<br/>ログイン・ホーム・HUD を足す<br/>チケット: backend 経由<br/>mod: public/mods・CDN"]
         self["自前ホスト（#209）: world.html<br/>認証・router を持たない<br/>チケット: Go の /guest<br/>mod: 同じオリジンの /mods"]
         dev["ubichill dev（#236）: world.html + dev の meta<br/>世代を SSE で受け取る<br/>lock・mod の URL を buildId に固定<br/>新しい世代が来たら読み直す"]
     end
@@ -88,7 +88,7 @@ frontend に `src/world/` を作り、エントリを `index.html`（SNS）と `
 | --- | --- | --- |
 | `frontend/src/world/` | `WorldView`（`InstanceRenderer` + `EntityRenderer`）、`ModRegistryProvider`、`modLoader`、入室の流れ（取得 → 未署名の確認 → join） | `src/instance/`、`src/mods/`、`InstancePage` |
 | `frontend/src/worldApp/` + `world.html` | ランタイム専用のエントリ。認証・router・backend API を持たない | 新設 |
-| `frontend/src/pages/InstancePage.tsx` | SNS 版。`WorldView` に `InstanceHUD` とログイン・ロビーへの導線を足すだけ | 縮小 |
+| `frontend/src/pages/InstancePage.tsx` | SNS 版。`WorldView` に `InstanceHUD` とログイン・ホームへの導線を足すだけ | 縮小 |
 | `@ubichill/shared` | `flattenGameObject`、`toInstanceDefinition(world, { id, maxUsers })` | backend から移動・追加 |
 
 ### 外から渡すもの

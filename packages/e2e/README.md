@@ -5,7 +5,7 @@
 | 段 | 中身 | 目安 |
 |---|---|---|
 | API と WebSocket（`--suite=api`） | 2 人が登録・ログイン → ワールドの一覧に `default` がある → インスタンスを作る → 2 人が `world:join` して `world:snapshot` を受け取る → `cursor:move` が相手に `cursor:moved` で届く（双方向）→ 共有状態（`state:update` → 相手に `state:changed`、`state:get`、古い revision の書き込みが競合になる）→ インスタンスを消す | 数秒 |
-| ブラウザ（`--suite=browser`、Playwright の chromium） | ログイン画面から登録・ログイン → ロビーの「ワールド」に `default` のカードが出る → インスタンスを作って入る（署名の無いワールドの確認を通す）→ pen の Worker が初期化を終え、描画する → mod の検証（lock・作者署名）・Worker のエラー・捕まえられなかった例外がコンソールに出ていない | 10〜30 秒 |
+| ブラウザ（`--suite=browser`、Playwright の chromium） | ログイン画面から登録・ログイン → ロビーを通らずホームの部屋（既定 `default`）へ自動で入る（署名の無いワールドの確認を通す。`--world` が `default` 以外なら API でホームを変えて `/` を開き直す）→ pen の Worker が初期化を終え、描画する → mod の検証（lock・作者署名）・Worker のエラー・捕まえられなかった例外がコンソールに出ていない | 10〜30 秒 |
 
 ## 走らせ方
 
@@ -25,7 +25,7 @@ mise exec -- pnpm smoke http://localhost:3200 --api=http://localhost:3201 --suit
 | 引数 | 既定 | 意味 |
 |---|---|---|
 | `--suite` | `all` | `api`・`browser`・`all` |
-| `--world` | `default` | 入るワールドの ID |
+| `--world` | `default` | 入るワールドの ID（ブラウザの段ではホームにする） |
 | `--api` | 画面と同じ（localhost は :3001） | API（backend）の URL |
 | `--report` | なし | 結果の JSON（CI はこれをプレビューのコメントに載せる） |
 | `--artifacts` | `packages/e2e/smoke-results` | スクリーンショット・トレース・コンソールのログ |
@@ -34,7 +34,7 @@ mise exec -- pnpm smoke http://localhost:3200 --api=http://localhost:3201 --suit
 
 ## 後片付け
 
-作ったインスタンスは最後に消す（途中で落ちても消す）。アカウントは消さない（プレビューは DB ごと消える）。ID・表示名・メールアドレスはどれも `smoke` で始まり、走りごとの ID（`smoke_<run>_a` など）が付く。
+作ったインスタンス（ホームの部屋を含む）は最後に消す（途中で落ちても消す）。アカウントは消さない（プレビューは DB ごと消える）。ID・表示名・メールアドレスはどれも `smoke` で始まり、走りごとの ID（`smoke_<run>_a` など）が付く。
 
 ## CI
 
