@@ -1,6 +1,6 @@
 import type { WorldIdentity } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
-import { WorldIdentityBadge } from '@/components/lobby/WorldIdentityBadge';
+import { WorldIdentityBadge } from '@/components/worlds/WorldIdentityBadge';
 import { isResignable } from '@/lib/account/worldProblems';
 import { css } from '@/styled-system/css';
 

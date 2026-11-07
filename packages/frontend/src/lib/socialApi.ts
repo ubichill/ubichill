@@ -13,7 +13,7 @@ export interface FriendLocationsResponse {
     locations: Array<{ instance: Instance; friends: UserSummary[] }>;
     /** 自分に見えないインスタンスにいるフレンド（どこかは出さない） */
     private: UserSummary[];
-    /** インスタンスにいないフレンド（オフラインかロビー） */
+    /** インスタンスにいないフレンド（オフラインか、部屋の外） */
     elsewhere: UserSummary[];
 }
 

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { isPendingFollow, NotificationCard, useNotifications } from '@/components/notifications';
 import { NOTIFICATION_TABS, type NotificationKind } from '@/lib/notifications';
 import { css, cva } from '@/styled-system/css';
-import { cardStyle, sectionHeading, tabPanel } from './shared';
+import { tabPanel, tabSection } from './shared';
 
 const EMPTY: Record<NotificationKind, string> = {
     invite: '招待はありません。',
@@ -35,19 +35,33 @@ const tab = cva({
 
 const textButton = cva({
     base: {
-        px: '3',
+        flexShrink: 0,
+        px: '2.5',
         py: '1.5',
         borderRadius: '8px',
-        border: '1px solid',
-        borderColor: 'border',
-        bg: 'surface',
-        color: 'text',
+        border: 'none',
+        bg: 'transparent',
+        color: 'textMuted',
         fontSize: '12px',
         fontWeight: '700',
+        whiteSpace: 'nowrap',
         cursor: 'pointer',
-        _hover: { bg: 'surfaceHover' },
-        _disabled: { opacity: 0.5, cursor: 'not-allowed' },
+        transition: 'background-color 0.16s ease, color 0.16s ease',
+        _hover: { bg: 'surfaceHover', color: 'text' },
+        _disabled: { opacity: 0.4, cursor: 'default', _hover: { bg: 'transparent', color: 'textMuted' } },
     },
+});
+
+const countBadge = css({
+    minW: '18px',
+    h: '18px',
+    px: '1',
+    borderRadius: 'full',
+    bg: 'errorText',
+    color: 'white',
+    fontSize: '11px',
+    lineHeight: '18px',
+    textAlign: 'center',
 });
 
 /** 通知タブ。種類（招待・フレンド・その他）ごとのタブに分ける。未読は強調し、押すと既読にする。 */
@@ -59,48 +73,49 @@ export function NotificationsTab({ onNavigate }: { onNavigate?: () => void }) {
 
     return (
         <div className={tabPanel} onClick={(e) => e.stopPropagation()}>
-            <div className={cardStyle}>
-                <div className={css({ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' })}>
-                    <h2 className={sectionHeading}>通知</h2>
+            <div className={tabSection}>
+                <div
+                    className={css({
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '2',
+                        borderBottomWidth: '1px',
+                        borderBottomStyle: 'solid',
+                        borderBottomColor: 'border',
+                        mb: '3',
+                    })}
+                >
+                    <div role="tablist" className={css({ display: 'flex', flex: 1, minW: 0 })}>
+                        {NOTIFICATION_TABS.map((t) => {
+                            const unread = groups[t.kind].filter((n) => !n.read).length;
+                            return (
+                                <button
+                                    key={t.kind}
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={t.kind === kind}
+                                    onClick={() => setKind(t.kind)}
+                                    className={tab({ active: t.kind === kind })}
+                                >
+                                    {t.label}
+                                    {unread > 0 && (
+                                        <span className={countBadge}>
+                                            <span className={css({ srOnly: true })}>未読 </span>
+                                            {unread}
+                                        </span>
+                                    )}
+                                </button>
+                            );
+                        })}
+                    </div>
                     <button
                         type="button"
                         className={textButton()}
                         disabled={feed.unreadCount === 0}
                         onClick={() => void markRead({ all: true })}
                     >
-                        すべて既読にする
+                        すべて既読
                     </button>
-                </div>
-                <div
-                    role="tablist"
-                    className={css({ display: 'flex', borderBottom: '1px solid', borderColor: 'border', mb: '3' })}
-                >
-                    {NOTIFICATION_TABS.map((t) => {
-                        const unread = groups[t.kind].filter((n) => !n.read).length;
-                        return (
-                            <button
-                                key={t.kind}
-                                type="button"
-                                role="tab"
-                                aria-selected={t.kind === kind}
-                                onClick={() => setKind(t.kind)}
-                                className={tab({ active: t.kind === kind })}
-                            >
-                                {t.label}
-                                {unread > 0 && `（${unread}）`}
-                                {unread > 0 && (
-                                    <span
-                                        className={css({
-                                            width: '8px',
-                                            height: '8px',
-                                            borderRadius: 'full',
-                                            bg: 'errorText',
-                                        })}
-                                    />
-                                )}
-                            </button>
-                        );
-                    })}
                 </div>
                 {error && <p className={css({ fontSize: '12px', color: 'errorText', mb: '2' })}>{error}</p>}
                 {items.length === 0 ? (

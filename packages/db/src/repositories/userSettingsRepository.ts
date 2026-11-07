@@ -1,4 +1,9 @@
-import { DEFAULT_FAVORITES_VISIBILITY, type FavoritesVisibility } from '@ubichill/shared';
+import {
+    DEFAULT_FAVORITES_VISIBILITY,
+    DEFAULT_HOME_SETTINGS,
+    type FavoritesVisibility,
+    type HomeSettings,
+} from '@ubichill/shared';
 import { eq } from 'drizzle-orm';
 import { db } from '../index';
 import { userSettings } from '../schema';
@@ -23,5 +28,24 @@ export const userSettingsRepository = {
                 target: userSettings.userId,
                 set: { favoritesVisibility: visibility, updatedAt: now },
             });
+    },
+
+    /** ホームの設定。設定の行が無いユーザーは初期値（既定のワールド・招待のみ）。 */
+    async getHome(userId: string): Promise<HomeSettings> {
+        const rows = await db
+            .select({ worldRef: userSettings.homeWorldRef, accessType: userSettings.homeAccessType })
+            .from(userSettings)
+            .where(eq(userSettings.userId, userId));
+        return rows[0] ?? DEFAULT_HOME_SETTINGS;
+    },
+
+    /** ホームの設定を置き換える（設定の行が無ければ作る）。 */
+    async setHome(userId: string, home: HomeSettings): Promise<void> {
+        const now = new Date();
+        const values = { homeWorldRef: home.worldRef, homeAccessType: home.accessType };
+        await db
+            .insert(userSettings)
+            .values({ userId, ...values, createdAt: now, updatedAt: now })
+            .onConflictDoUpdate({ target: userSettings.userId, set: { ...values, updatedAt: now } });
     },
 };

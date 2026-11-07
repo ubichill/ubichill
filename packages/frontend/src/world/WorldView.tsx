@@ -3,7 +3,7 @@
  *
  * 入室の流れ（インスタンスの取得 → 作者を確認できないワールドの確認 → world:join）、ロード画面、
  * mod の取得と確認（ModRegistry）、描画（WorldStage）、カーソル、サーバーからの知らせをまとめる。
- * SNS に固有のもの（認証・ロビーへの導線・HUD）は持たず、props で受け取る。
+ * SNS に固有のもの（認証・ホームへの導線・HUD）は持たず、props で受け取る。
  */
 import { useSocket, useWorld, WorkerLoadingProvider } from '@ubichill/react';
 import type { Instance, ModLock } from '@ubichill/shared';
@@ -39,10 +39,16 @@ export interface WorldViewProps {
     preview?: { displayName?: string; thumbnail?: string };
     /** 失敗したとき・入室を断ったときの導線。 */
     recovery: { label: string; run: () => void };
-    /** 読み込みの失敗が確定したとき（SNS はしばらくしてロビーへ戻す）。 */
-    onFailed?: (message: string) => void;
+    /** 読み込みの失敗が確定したとき（SNS はしばらくしてホームへ戻す）。 */
+    onFailed?: (failure: InstanceFailure) => void;
     /** 入室できたあとに重ねる UI（HUD など）。 */
     children?: ReactNode;
+}
+
+/** 入れなかった理由。replaced は同じアカウントが別のタブ・端末で入り、この接続が切られたとき。 */
+export interface InstanceFailure {
+    message: string;
+    replaced: boolean;
 }
 
 export function WorldView({
@@ -59,7 +65,7 @@ export function WorldView({
     onFailed,
     children,
 }: WorldViewProps) {
-    const { isConnected, isConnecting, error, currentUser, joinWorld, leaveWorld } = useSocket();
+    const { isConnected, isConnecting, error, sessionReplaced, currentUser, joinWorld, leaveWorld } = useSocket();
     const { resetWorld, modLock } = useWorld();
 
     const joinedIdRef = useRef<string | null>(null);
@@ -145,8 +151,9 @@ export function WorldView({
     });
 
     useEffect(() => {
-        if (loading.failed && loading.failureMessage) onFailed?.(loading.failureMessage);
-    }, [loading.failed, loading.failureMessage, onFailed]);
+        if (loading.failed && loading.failureMessage)
+            onFailed?.({ message: loading.failureMessage, replaced: sessionReplaced });
+    }, [loading.failed, loading.failureMessage, sessionReplaced, onFailed]);
 
     return (
         <>

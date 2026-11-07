@@ -5,6 +5,7 @@ export * from './authorKeys';
 export * from './cliAuthRequests';
 export * from './externalWorks';
 export * from './federationPeers';
+export * from './instanceAccessType';
 export * from './instances';
 export * from './notifications';
 export * from './pendingRegistrations';

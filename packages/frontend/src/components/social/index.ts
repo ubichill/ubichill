@@ -1,7 +1,9 @@
 export { FriendButton } from './FriendButton';
-export { FriendLists } from './FriendLists';
-export { FriendLocations } from './FriendLocations';
+export { FriendTile } from './FriendTile';
+export { PlaceCard } from './PlaceCard';
 export { UserAvatar } from './UserAvatar';
+export { UserRow } from './UserRow';
 export { UserSearch } from './UserSearch';
 export { UserSocialBar } from './UserSocialBar';
 export { useFriendLocations } from './useFriendLocations';
+export { useOpenUser } from './useOpenUser';

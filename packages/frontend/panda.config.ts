@@ -111,6 +111,10 @@ export default defineConfig({
                     hudAvatar: { value: 'rgba(99, 102, 241, 0.70)' },
                     hudStatusOn: { value: '#40c057' },
                     hudStatusOff: { value: '#fa5252' },
+                    hudActive: { value: 'rgba(255, 255, 255, 0.15)' },
+                    hudBackdrop: { value: 'rgba(0, 0, 0, 0.6)' },
+                    // ランチパッドの現在地バナー（サムネイルの上に文字を載せる影）
+                    bannerShade: { value: 'rgba(27, 42, 68, 0.85)' },
                 },
                 fonts: {
                     body: { value: 'var(--font-inter), system-ui, sans-serif' },

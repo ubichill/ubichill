@@ -1,5 +1,6 @@
 import { type Instance, type WorldListItem, worldOriginDomain } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
+import { useDialogLayer } from '@/components/ui/dialogLayer';
 import { createInstance, fetchInstances, fetchWorld } from '@/lib/instancesApi';
 import { instanceWorldRef } from '@/lib/worldRef';
 import { css } from '@/styled-system/css';
@@ -25,6 +26,7 @@ interface InstanceDetailOverlayProps {
  * mod/説明は instance.world から表示するのでリモートワールドでも見れる。
  */
 export function InstanceDetailOverlay({ instance, onClose, onJoin, currentInstanceId }: InstanceDetailOverlayProps) {
+    useDialogLayer(onClose);
     const worldRef = instanceWorldRef(instance.world);
     // 詳細の主役インスタンス（右の一覧で切り替わる）。
     const [selected, setSelected] = useState<Instance>(instance);

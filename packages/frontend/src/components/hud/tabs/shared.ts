@@ -11,7 +11,6 @@ export const tabPanel = css({
     width: 'full',
     maxWidth: '730px',
     mx: 'auto',
-    px: { base: '2', md: '0' },
     display: 'flex',
     flexDirection: 'column',
     gap: '6',
@@ -20,20 +19,20 @@ export const tabPanel = css({
     pb: '20px',
 });
 
-export const cardBase = {
-    bg: 'surface',
-    border: '1px solid',
-    borderColor: 'border',
-    borderRadius: '12px',
-    p: { base: '4', md: '6' },
-};
-
-export const cardStyle = css(cardBase);
+/**
+ * タブの中の 1 まとまり。ランチパッドの面にそのまま置き、枠では囲まない（ランチパッド自体がパネルなので二重になる）。
+ * まとまりの間は細い線で区切る。
+ */
+export const tabSection = css({
+    display: 'flex',
+    flexDirection: 'column',
+    '& + &': { borderTopWidth: '1px', borderTopStyle: 'solid', borderTopColor: 'border', pt: '6' },
+});
 
 export const sectionHeading = css({
-    fontSize: { base: 'lg', md: 'xl' },
-    fontWeight: 'bold',
-    mb: '4',
+    fontSize: '15px',
+    fontWeight: '800',
+    mb: '3',
     color: 'text',
     wordBreak: 'auto-phrase',
     overflowWrap: 'anywhere',

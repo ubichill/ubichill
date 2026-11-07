@@ -1,4 +1,4 @@
-import { Lobby } from '@/components/lobby/Lobby';
+import { WorldBrowser } from '@/components/worlds/WorldBrowser';
 import type { JoinInstanceHandler } from './shared';
 
 interface WorldsTabProps {
@@ -7,5 +7,5 @@ interface WorldsTabProps {
 }
 
 export function WorldsTab({ onJoinInstance, currentInstanceId }: WorldsTabProps) {
-    return <Lobby onJoinInstance={onJoinInstance} mode="modal" currentInstanceId={currentInstanceId} />;
+    return <WorldBrowser onJoinInstance={onJoinInstance} currentInstanceId={currentInstanceId} />;
 }

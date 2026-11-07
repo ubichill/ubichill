@@ -24,7 +24,7 @@ export const left = new Counter('ubichill_left');
 /** インスタンスの作成・削除。タグ op = create / delete、result = ok / rate_limited / not_found / error */
 export const instanceOps = new Counter('ubichill_instance_ops');
 
-/** 画面の体験の各段の時間。タグ step = login / lobby / enter / render */
+/** 画面の体験の各段の時間。タグ step = login / home / render */
 export const browserStep = new Trend('ubichill_browser_step_duration', true);
 /** ログインの画面を開いてから描画まで */
 export const browserJourney = new Trend('ubichill_browser_journey_duration', true);
