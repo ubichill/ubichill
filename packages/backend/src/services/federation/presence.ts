@@ -12,6 +12,7 @@
 import {
     type DomainPolicy,
     exchanges,
+    FEDERATION_FEATURES,
     FEDERATION_LIMITS,
     FEDERATION_PATHS,
     hostOf,
@@ -39,6 +40,8 @@ export interface PresenceDeps {
     describeRoom(viewer: string, instanceId: string): Promise<{ room: RoomCard; canJoin: boolean } | undefined>;
     /** 来訪中のほかのサーバーの部屋（途切れていないもの） */
     visitsOf(userIds: readonly string[]): Promise<Array<{ userId: string; roomUrl: string; room: RoomCard }>>;
+    /** 相手のサーバーがその機能を持たないと分かっているか（現在地に答えないサーバーには尋ねない） */
+    lacks(domain: string, feature: string): Promise<boolean>;
     now(): number;
 }
 
@@ -190,11 +193,20 @@ export function createFederatedPresence(deps: PresenceDeps) {
             friends: { remote: readonly string[]; localVisiting: readonly string[] },
         ): Promise<FriendPresence[]> {
             const viewer = deps.identity.actorUrl(viewerId);
+            const hosts = [...new Set(friends.remote.flatMap((id) => hostOf(id) ?? []))];
+            const answering = new Set(
+                (
+                    await Promise.all(
+                        hosts.map(async (host) =>
+                            exchanges(deps.policyOf(host)) && !(await deps.lacks(host, FEDERATION_FEATURES.presence))
+                                ? [host]
+                                : [],
+                        ),
+                    )
+                ).flat(),
+            );
             const byOrigin = Map.groupBy(
-                friends.remote.filter((id) => {
-                    const host = hostOf(id);
-                    return !!host && exchanges(deps.policyOf(host));
-                }),
+                friends.remote.filter((id) => answering.has(hostOf(id) ?? '')),
                 (id) => originOf(id) ?? '',
             );
             const chunks = [...byOrigin].flatMap(([origin, ids]) =>

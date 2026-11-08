@@ -11,6 +11,7 @@ import { createInviteService, type InviteFederation } from './invites';
 const inviteFederationOf = (f: Federation): InviteFederation => ({
     isRemoteRoom: (roomRef) => f.remoteAddressOf(roomRef) !== null,
     visitingRoom: (userId) => f.invites.visitingRoom(userId),
+    cannotReceiveInvites: (userId) => f.invites.cannotReceiveInvites(userId),
     deliverInvite: (input) => f.invites.deliverInvite(input),
     sendFromRemoteRoom: (inviterId, roomAddress, inviteeIds, message) =>
         f.invites.sendFromRemoteRoom(inviterId, roomAddress, inviteeIds, message),

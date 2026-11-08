@@ -67,6 +67,8 @@ export interface InviteFederation {
     isRemoteRoom(roomRef: string): boolean;
     /** 来訪中のほかのサーバーの部屋の住所 */
     visitingRoom(userId: string): Promise<string | undefined>;
+    /** ほかのサーバーの人で、そのサーバーが招待に対応していないと分かっているか */
+    cannotReceiveInvites(userId: string): Promise<boolean>;
     /** このサーバーの部屋への招待を、ほかのサーバーの人へ届ける。届けられなければ false */
     deliverInvite(input: {
         inviterId: string;
@@ -119,6 +121,16 @@ export function createInviteService(deps: InviteServiceDeps) {
     const roomOf = (presence: ReadonlyMap<string, { memberIds: readonly string[] }>, userId: string) =>
         [...presence].find(([, room]) => room.memberIds.includes(userId))?.[0];
 
+    /** 部屋の規則で送れない理由か、相手のサーバーが招待に対応していない（送る前に分かる） */
+    const refusalFor = async (
+        audience: InstanceAudience,
+        inviterId: string,
+        inviteeId: string,
+        friends: { inviter: ReadonlySet<string>; leader: ReadonlySet<string> },
+    ): Promise<InviteRefusal | null> =>
+        inviteRefusal(audience, inviterId, inviteeId, friends) ??
+        (isRemoteUserId(inviteeId) && (await deps.federation?.cannotReceiveInvites(inviteeId)) ? 'unsupported' : null);
+
     /** 送れる相手に招待を保存して通知する。送れない相手は理由を返す（ほかの相手には送る）。 */
     const sendOne = async (
         audience: InstanceAudience,
@@ -128,7 +140,7 @@ export function createInviteService(deps: InviteServiceDeps) {
         friends: { inviter: ReadonlySet<string>; leader: ReadonlySet<string> },
         message: string | null,
     ): Promise<SendInviteResult> => {
-        const refusal = inviteRefusal(audience, inviterId, inviteeId, friends);
+        const refusal = await refusalFor(audience, inviterId, inviteeId, friends);
         if (refusal) return { userId: inviteeId, ok: false, reason: refusal };
         const expiresAt = new Date(deps.now().getTime() + INVITE_LIMITS.INVITE_TTL_MS);
         await deps.invites.upsert({ instanceId: instance.id, inviterId, inviteeId, message, expiresAt });
@@ -212,20 +224,28 @@ export function createInviteService(deps: InviteServiceDeps) {
             if (deps.federation?.isRemoteRoom(instanceId)) {
                 // ほかのサーバーの部屋の規則は部屋のサーバーが確かめる（送ってみるまで分からない）
                 if ((await deps.federation.visitingRoom(inviterId)) !== instanceId) return undefined;
-                return [...(await deps.friendIdsOf(inviterId))].map((userId) => ({
-                    userId,
-                    refusal: null,
-                    online: roomOf(presence, userId) !== undefined,
-                }));
+                const federated = deps.federation;
+                return Promise.all(
+                    [...(await deps.friendIdsOf(inviterId))].map(async (userId) => ({
+                        userId,
+                        refusal:
+                            isRemoteUserId(userId) && (await federated.cannotReceiveInvites(userId))
+                                ? ('unsupported' as const)
+                                : null,
+                        online: roomOf(presence, userId) !== undefined,
+                    })),
+                );
             }
             const audience = await audienceOf(instanceId, presence);
             if (!audience) return undefined;
             const friends = await friendsFor(audience, inviterId);
-            return [...friends.inviter].map((userId) => ({
-                userId,
-                refusal: inviteRefusal(audience, inviterId, userId, friends),
-                online: roomOf(presence, userId) !== undefined,
-            }));
+            return Promise.all(
+                [...friends.inviter].map(async (userId) => ({
+                    userId,
+                    refusal: await refusalFor(audience, inviterId, userId, friends),
+                    online: roomOf(presence, userId) !== undefined,
+                })),
+            );
         },
 
         /** requesterId が targetId に「あなたのいる部屋に入れて」と頼む。期限内のリクエストがあれば送り直さない。 */

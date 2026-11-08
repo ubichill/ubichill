@@ -10,6 +10,16 @@
 
 export const FEDERATION_VERSION = 1;
 
+/**
+ * 部屋（Go）の通信の版（InstanceGrant.protocolVersion）。この画面と backend が話せる版。
+ * ほかのサーバーの部屋は、部屋の作りの protocolVersion で入る前に確かめる（無ければ 1）。
+ */
+export const INSTANCE_PROTOCOL_VERSION = 1;
+
+/** その部屋の版に、この画面がつなげるか（部屋の作りに版が無ければ 1）。 */
+export const speaksInstanceProtocol = (version: number | undefined): boolean =>
+    (version ?? 1) === INSTANCE_PROTOCOL_VERSION;
+
 export const AS_CONTEXT = 'https://www.w3.org/ns/activitystreams';
 export const UBICHILL_NS = 'https://ubichill.com/ns#';
 
@@ -145,4 +155,6 @@ export interface RoomCard {
     leader: string;
     /** ワールドの正規 URL（読み込みは来訪者のサーバーが行う） */
     world: { url: string; name: string };
+    /** 部屋（Go）の通信の版（無ければ 1。来訪者のホームが、入る前に話せる版かを確かめる） */
+    protocolVersion?: number;
 }

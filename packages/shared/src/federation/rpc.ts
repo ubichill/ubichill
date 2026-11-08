@@ -17,6 +17,7 @@ export const RoomCardSchema: z.ZodType<RoomCard> = z.object({
     capacity: z.number().int().min(1).max(10_000),
     leader: Url,
     world: z.object({ url: Url, name: z.string().min(1).max(200) }),
+    protocolVersion: z.number().int().min(1).max(1000).optional(),
 });
 
 /** 入室（来訪者のホームが、来訪者の鍵で部屋のサーバーへ）。 */

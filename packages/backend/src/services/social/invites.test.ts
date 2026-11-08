@@ -12,6 +12,8 @@ function setup(options: {
     visiting?: Record<string, string>;
     /** 連合: ほかのサーバーの人へ届けられるか */
     deliverable?: boolean;
+    /** 連合: 招待に対応していないと分かっているサーバーの人 */
+    noInvites?: string[];
 }) {
     const clock = { now: START };
     const rooms = new Map((options.rooms ?? []).map((r) => [r.id, r]));
@@ -72,6 +74,7 @@ function setup(options: {
         federation: {
             isRemoteRoom: (ref) => ref.includes('@'),
             visitingRoom: async (userId) => options.visiting?.[userId],
+            cannotReceiveInvites: async (userId) => (options.noInvites ?? []).includes(userId),
             deliverInvite: async (input) => {
                 if (options.deliverable === false) return false;
                 sent.push({ kind: 'deliver', to: input.inviteeId, from: input.inviterId, detail: input });
@@ -314,6 +317,23 @@ describe('連合（ほかのサーバーの人・部屋）', () => {
             ok: true,
             results: [{ userId: BOB, ok: false, reason: 'unavailable' }],
         });
+    });
+
+    it('招待に対応していないサーバーの人は、候補の一覧で先に分かり、送っても権利を作らず届けない', async () => {
+        const { service, invites, sent } = setup({
+            friends: [['leader', BOB]],
+            rooms: [room('r1', 'public', 'leader', ['leader'])],
+            noInvites: [BOB],
+        });
+        expect(await service.candidates('leader', 'r1')).toEqual([
+            { userId: BOB, refusal: 'unsupported', online: false },
+        ]);
+        expect(await service.sendInvites('leader', 'r1', [BOB], null)).toEqual({
+            ok: true,
+            results: [{ userId: BOB, ok: false, reason: 'unsupported' }],
+        });
+        expect(invites).toEqual([]);
+        expect(sent).toEqual([]);
     });
 
     it('フレンドでないほかのサーバーの人には送らない（届ける前に断る）', async () => {

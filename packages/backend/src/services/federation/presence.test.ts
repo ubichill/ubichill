@@ -1,4 +1,4 @@
-import type { PresenceEntry, RoomCard } from '@ubichill/shared';
+import { FEDERATION_FEATURES, type PresenceEntry, type RoomCard } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
 import { createFederationIdentity } from './identity';
 import { createFederatedPresence } from './presence';
@@ -31,6 +31,8 @@ interface Setup {
     visible?: Record<string, boolean>;
     visits?: Record<string, RoomCard>;
     reply?: (url: string, body: unknown) => FederationResponse;
+    /** 現在地に答えないと分かっているサーバー */
+    noPresence?: string[];
 }
 
 function setup(options: Setup = {}) {
@@ -52,6 +54,8 @@ function setup(options: Setup = {}) {
             },
         },
         policyOf: (domain) => (domain === 'evil.example' ? 'block' : 'allow'),
+        lacks: async (domain, feature) =>
+            feature === FEDERATION_FEATURES.presence && (options.noPresence ?? []).includes(domain),
         isFriend: async (userId, actorId) => (options.friends?.[userId] ?? []).includes(actorId),
         localRoomOf: async (userId) => options.localRooms?.[userId],
         describeRoom: async (_viewer, instanceId) =>
@@ -178,6 +182,13 @@ describe('フレンドの現在地を尋ねる（見る人のホームとして�
         clock.now += 16_000;
         await presence.locate('alice', { remote: [bob], localVisiting: [] });
         expect(calls).toHaveLength(2);
+    });
+
+    it('現在地に答えないと分かっているサーバーには尋ねない', async () => {
+        const bob = 'https://b.example/ap/users/bob';
+        const { presence, calls } = setup({ noPresence: ['b.example'] });
+        expect(await presence.locate('alice', { remote: [bob], localVisiting: [] })).toEqual([]);
+        expect(calls).toEqual([]);
     });
 
     it('部屋の無い in_room は private として扱う', async () => {

@@ -1,4 +1,4 @@
-import type { DomainPolicy, RoomCard } from '@ubichill/shared';
+import { type DomainPolicy, FEDERATION_FEATURES, INSTANCE_PROTOCOL_VERSION, type RoomCard } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
 import { createFederationIdentity } from './identity';
 import type { FederationResponse, SignAs } from './transport';
@@ -27,7 +27,12 @@ const JOINED = {
 type Call = { method: 'GET' | 'POST'; url: string; body?: unknown; signAs: SignAs; nonce?: boolean };
 
 function setup(
-    options: { reply?: (call: Call) => FederationResponse | Error; policy?: DomainPolicy; allowHttp?: boolean } = {},
+    options: {
+        reply?: (call: Call) => FederationResponse | Error;
+        policy?: DomainPolicy;
+        allowHttp?: boolean;
+        lacking?: string[];
+    } = {},
 ) {
     const calls: Call[] = [];
     const visits = new Map<string, { roomUrl: string; room: RoomCard }>();
@@ -49,6 +54,7 @@ function setup(
             post: (url, body, o) => respond({ method: 'POST', url, body, signAs: o.signAs, nonce: o.nonce }),
         },
         policyOf: () => options.policy ?? 'allow',
+        lacks: async (_domain, feature) => (options.lacking ?? []).includes(feature),
         visits: {
             set: async (userId, roomUrl, room) => void visits.set(userId, { roomUrl, room }),
             touch: async (userId, roomUrl) => visits.get(userId)?.roomUrl === roomUrl,
@@ -76,7 +82,12 @@ const ADDRESS = { id: 'room1', domain: 'b.example' };
 describe('ほかのサーバーの部屋を見る（describe）', () => {
     it('ユーザーの鍵で部屋のサーバーに尋ねる', async () => {
         const { travel, calls } = setup({ reply: () => ok({ room: ROOM, canJoin: true }) });
-        expect(await travel.describe('alice', ADDRESS)).toEqual({ ok: true, room: ROOM, canJoin: true });
+        expect(await travel.describe('alice', ADDRESS)).toEqual({
+            ok: true,
+            room: ROOM,
+            canJoin: true,
+            incompatible: false,
+        });
         expect(calls).toEqual([
             { method: 'GET', url: 'https://b.example/ap/instances/room1', signAs: { kind: 'user', userId: 'alice' } },
         ]);
@@ -186,6 +197,33 @@ describe('ほかのサーバーの部屋に入る（join）', () => {
             expect(await travel.join('alice', ADDRESS, 'https://a.example')).toEqual({ ok: false, error });
             expect(visits.size).toBe(0);
         }
+    });
+});
+
+describe('対応していない部屋のサーバー・版の合わない部屋', () => {
+    it('来訪に対応していないと分かっていれば、尋ねも入りもせず unsupported', async () => {
+        const { travel, calls } = setup({ lacking: [FEDERATION_FEATURES.visit] });
+        expect(await travel.describe('alice', ADDRESS)).toEqual({ ok: false, error: 'unsupported' });
+        expect(await travel.join('alice', ADDRESS, 'https://a.example')).toEqual({ ok: false, error: 'unsupported' });
+        expect(calls).toEqual([]);
+    });
+
+    it('版の合わない部屋は、見せるが入れない（移動する前に分かる）。入室で版が合わなければ来訪として覚えない', async () => {
+        const newer = { ...ROOM, protocolVersion: INSTANCE_PROTOCOL_VERSION + 1 };
+        const { travel, visits } = setup({
+            reply: (call) =>
+                call.method === 'GET'
+                    ? ok({ room: newer, canJoin: true })
+                    : ok({ ...JOINED, room: newer, protocolVersion: INSTANCE_PROTOCOL_VERSION + 1 }),
+        });
+        expect(await travel.describe('alice', ADDRESS)).toEqual({
+            ok: true,
+            room: newer,
+            canJoin: false,
+            incompatible: true,
+        });
+        expect(await travel.join('alice', ADDRESS, 'https://a.example')).toEqual({ ok: false, error: 'incompatible' });
+        expect(visits.size).toBe(0);
     });
 });
 

@@ -4,6 +4,7 @@ import {
     type InstanceFeature,
     roomIdOf,
     type ServerToClientEvents,
+    speaksInstanceProtocol,
 } from '@ubichill/shared';
 
 type Events = ServerToClientEvents & {
@@ -148,7 +149,8 @@ export class InstanceSocket {
         try {
             const grant = await this.resolveInstance(joined.data.instanceId, abort.signal);
             if (generation !== this.generation) return;
-            if (grant.protocolVersion !== 1) throw new InstanceJoinRejected('非対応の通信バージョンです');
+            if (!speaksInstanceProtocol(grant.protocolVersion))
+                throw new InstanceJoinRejected('非対応の通信バージョンです');
             const url = new URL(grant.url, window.location.href);
             url.protocol = url.protocol === 'https:' || url.protocol === 'wss:' ? 'wss:' : 'ws:';
             const ws = new WebSocket(url);

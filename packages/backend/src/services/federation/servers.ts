@@ -45,6 +45,11 @@ export interface ServerDirectory {
     describe(domain: string): Promise<RemoteServerRecord | null>;
     /** 相手が機能を告知しているか */
     supports(domain: string, feature: string): Promise<boolean>;
+    /**
+     * 相手がその機能を持たないと分かっているか（告知を読めたうえで載っていない）。読めていなければ false
+     * （一時的に読めないだけで送るのをやめない）。送る・移動する前に、非対応を先に知らせるのに使う。
+     */
+    lacks(domain: string, feature: string): Promise<boolean>;
     /** いま送らないホスト（続けて失敗して止めている・到達できない） */
     pausedHosts(): Promise<string[]>;
     recordSuccess(domain: string): Promise<void>;
@@ -75,7 +80,9 @@ export function createServerDirectory(deps: ServerDirectoryDeps): ServerDirector
             const appUrl = appLink.success
                 ? appLink.data.links.find((l) => l.rel === APPLICATION_ACTOR_REL)?.href
                 : undefined;
-            const features = appUrl ? ((await deps.appFeatures(appUrl).catch(() => null)) ?? []) : [];
+            const features = appUrl ? await deps.appFeatures(appUrl).catch(() => null) : [];
+            // Application actor を読めなかった: 機能が無いとは記録しない（次に取り直す）
+            if (!features) return;
             await deps.repo.setInfo(
                 domain,
                 {
@@ -101,6 +108,10 @@ export function createServerDirectory(deps: ServerDirectoryDeps): ServerDirector
         describe,
         async supports(domain, feature) {
             return (await describe(domain))?.features.includes(feature) ?? false;
+        },
+        async lacks(domain, feature) {
+            const known = await describe(domain);
+            return !!known?.nodeInfoFetchedAt && !known.features.includes(feature);
         },
         async pausedHosts() {
             const now = deps.now();

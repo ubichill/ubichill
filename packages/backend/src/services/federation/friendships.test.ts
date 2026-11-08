@@ -1,5 +1,5 @@
 import type { RemoteFriendshipInput, RemoteFriendshipRecord } from '@ubichill/db';
-import { type DomainPolicy, FEDERATION_LIMITS } from '@ubichill/shared';
+import { type DomainPolicy, FEDERATION_FEATURES, FEDERATION_LIMITS } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
 import { createRemoteFriendships, type FriendshipActor, friendshipViewOf } from './friendships';
 import { createFederationIdentity } from './identity';
@@ -18,7 +18,7 @@ const CAROL: FriendshipActor = {
 };
 const ALICE_URL = identity.actorUrl('alice');
 
-function setup(options: { policy?: DomainPolicy; failSend?: boolean } = {}) {
+function setup(options: { policy?: DomainPolicy; failSend?: boolean; lacking?: string[] } = {}) {
     const clock = { now: Date.parse('2026-11-07T00:00:00Z') };
     const rows: RemoteFriendshipRecord[] = [];
     const sent: Array<{ to: string; activity: Record<string, unknown> }> = [];
@@ -117,6 +117,7 @@ function setup(options: { policy?: DomainPolicy; failSend?: boolean } = {}) {
             has: async (k, now) => (seen.get(k) ?? 0) > now.getTime(),
         },
         policyOf: () => options.policy ?? 'allow',
+        lacks: async (_domain, feature) => (options.lacking ?? []).includes(feature),
         now: () => clock.now,
     });
     const tick = (ms: number) => {
@@ -175,6 +176,13 @@ describe('こちらから申請する', () => {
             object: { id: 'https://c.example/ap/activities/o1' },
         });
         expect(notes).toEqual([`accepted ${BOB.id} → alice`]);
+    });
+
+    it('フレンドに対応していないと分かっているサーバーの人には、申請を送らず unsupported（申請中のままにしない）', async () => {
+        const { friendships, sent, rows } = setup({ lacking: [FEDERATION_FEATURES.friends] });
+        expect(await friendships.request('alice', BOB)).toEqual({ ok: false, reason: 'unsupported' });
+        expect(sent).toEqual([]);
+        expect(rows).toEqual([]);
     });
 
     it('つながりを受けないドメイン・消えた actor には申請しない', async () => {

@@ -8,6 +8,7 @@
 import {
     type DomainPolicy,
     exchanges,
+    FEDERATION_FEATURES,
     FEDERATION_PATHS,
     type GrantResponse,
     GrantResponseSchema,
@@ -19,6 +20,7 @@ import {
     type RoomCard,
     RoomCardSchema,
     SIGNATURE_TIMING,
+    speaksInstanceProtocol,
 } from '@ubichill/shared';
 import { z } from 'zod';
 import type { FederationIdentity } from './identity';
@@ -29,6 +31,8 @@ export interface TravelDeps {
     allowHttp: boolean;
     transport: Pick<Transport, 'get' | 'post'>;
     policyOf(domain: string): DomainPolicy;
+    /** 相手のサーバーがその機能を持たないと分かっているか */
+    lacks(domain: string, feature: string): Promise<boolean>;
     visits: {
         set(userId: string, roomUrl: string, room: RoomCard, now: Date): Promise<void>;
         touch(userId: string, roomUrl: string, now: Date): Promise<boolean>;
@@ -39,7 +43,16 @@ export interface TravelDeps {
 
 const DescribeSchema = z.object({ room: RoomCardSchema, canJoin: z.boolean() });
 
-export type TravelError = 'blocked' | 'not-found' | 'invite-required' | 'full' | 'unavailable' | 'rejected';
+/** unsupported は部屋のサーバーが来訪に対応していない、incompatible は部屋の通信の版にこの画面がつなげない。 */
+export type TravelError =
+    | 'blocked'
+    | 'not-found'
+    | 'invite-required'
+    | 'full'
+    | 'unavailable'
+    | 'rejected'
+    | 'unsupported'
+    | 'incompatible';
 
 /** 画面へ返す入室の権利（このサーバーの部屋の InstanceGrant と同じ形）。 */
 export interface RemoteGrant {
@@ -89,8 +102,11 @@ export function createTravel(deps: TravelDeps) {
         userId: string,
         address: RoomAddress & { domain: string },
         via: readonly string[] = [],
-    ): Promise<{ ok: true; room: RoomCard; canJoin: boolean } | { ok: false; error: TravelError }> => {
+    ): Promise<
+        { ok: true; room: RoomCard; canJoin: boolean; incompatible: boolean } | { ok: false; error: TravelError }
+    > => {
         if (!exchanges(deps.policyOf(address.domain))) return { ok: false, error: 'blocked' };
+        if (await deps.lacks(address.domain, FEDERATION_FEATURES.visit)) return { ok: false, error: 'unsupported' };
         for (const origin of originsOf(address.domain)) {
             const response = await deps.transport
                 .get(`${origin}${FEDERATION_PATHS.instance(address.id)}${viaQuery(via)}`, {
@@ -103,7 +119,9 @@ export function createTravel(deps: TravelDeps) {
             const parsed = DescribeSchema.safeParse(response.json);
             if (!parsed.success || hostOf(parsed.data.room.id) !== address.domain)
                 return { ok: false, error: 'unavailable' };
-            return { ok: true, room: parsed.data.room, canJoin: parsed.data.canJoin };
+            // 版の合わない部屋は、見せるが入れない（入る前に分かるように。移動してから断られない）
+            const incompatible = !speaksInstanceProtocol(parsed.data.room.protocolVersion);
+            return { ok: true, room: parsed.data.room, canJoin: parsed.data.canJoin && !incompatible, incompatible };
         }
         return { ok: false, error: 'unavailable' };
     };
@@ -122,6 +140,7 @@ export function createTravel(deps: TravelDeps) {
             via: readonly string[] = [],
         ): Promise<{ ok: true; grant: RemoteGrant; room: RoomCard } | { ok: false; error: TravelError }> {
             if (!exchanges(deps.policyOf(address.domain))) return { ok: false, error: 'blocked' };
+            if (await deps.lacks(address.domain, FEDERATION_FEATURES.visit)) return { ok: false, error: 'unsupported' };
             for (const origin of originsOf(address.domain)) {
                 const room = `${origin}${FEDERATION_PATHS.instance(address.id)}`;
                 const response = await deps.transport
@@ -147,6 +166,7 @@ export function createTravel(deps: TravelDeps) {
                 if (!wsUrlOf(parsed.data.wsUrl, address.domain) || hostOf(parsed.data.room.id) !== address.domain) {
                     return { ok: false, error: 'unavailable' };
                 }
+                if (!speaksInstanceProtocol(parsed.data.protocolVersion)) return { ok: false, error: 'incompatible' };
                 await deps.visits.set(userId, parsed.data.room.id, parsed.data.room, new Date(deps.now()));
                 return {
                     ok: true,

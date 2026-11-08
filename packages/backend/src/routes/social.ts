@@ -201,11 +201,13 @@ router.post('/friends', requireAuth, async (req, res) => {
         if (!actor || !federation) return remoteUnavailable(res);
         const outcome = await federation.friendships.request(me, actor);
         if (!outcome.ok) {
-            return res.status(outcome.reason === 'gone' ? 404 : 403).json({
+            return res.status(outcome.reason === 'gone' ? 404 : outcome.reason === 'unsupported' ? 422 : 403).json({
                 error:
                     outcome.reason === 'gone'
                         ? 'このアカウントは消えています'
-                        : 'このサーバーの人とは、いまつながれません',
+                        : outcome.reason === 'unsupported'
+                          ? 'このサーバーはフレンドに対応していません'
+                          : 'このサーバーの人とは、いまつながれません',
             });
         }
         return res.json({ friendship: outcome.friendship });

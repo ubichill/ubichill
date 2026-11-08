@@ -16,6 +16,7 @@ import {
     buildFriendOffer,
     buildResponse,
     type DomainPolicy,
+    FEDERATION_FEATURES,
     FEDERATION_LIMITS,
     sameOrigin,
 } from '@ubichill/shared';
@@ -62,6 +63,8 @@ export interface FriendshipDeps {
         has(key: string, now: Date): Promise<boolean>;
     };
     policyOf(domain: string): DomainPolicy;
+    /** 相手のサーバーがその機能を持たないと分かっているか */
+    lacks(domain: string, feature: string): Promise<boolean>;
     now(): number;
 }
 
@@ -73,7 +76,7 @@ export const friendshipViewOf = (row: Pick<RemoteFriendshipRecord, 'state'> | un
 
 export type RequestOutcome =
     | { ok: true; friendship: FriendshipView }
-    | { ok: false; reason: 'domain-limited' | 'gone' };
+    | { ok: false; reason: 'domain-limited' | 'gone' | 'unsupported' };
 
 export function createRemoteFriendships(deps: FriendshipDeps) {
     const now = () => new Date(deps.now());
@@ -145,6 +148,9 @@ export function createRemoteFriendships(deps: FriendshipDeps) {
         async request(userId: string, actor: FriendshipActor): Promise<RequestOutcome> {
             if (actor.deletedAt) return { ok: false, reason: 'gone' };
             if (!acceptsNewContact(deps.policyOf(actor.domain))) return { ok: false, reason: 'domain-limited' };
+            // 申請を受けないサーバーに送ると、相手は捨てて、こちらは申請中のままになる
+            if (await deps.lacks(actor.domain, FEDERATION_FEATURES.friends))
+                return { ok: false, reason: 'unsupported' };
             return withPair(userId, actor, async (row, pair): Promise<RequestOutcome> => {
                 if (row?.state === 'accepted') return { ok: true, friendship: 'friends' };
                 if (row?.state === 'outgoing') return { ok: true, friendship: 'outgoing' };

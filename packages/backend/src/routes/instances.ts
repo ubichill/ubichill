@@ -28,6 +28,8 @@ const TRAVEL_ERRORS: Record<TravelError, { status: number; error: string }> = {
     full: { status: 403, error: '満員です' },
     rejected: { status: 403, error: 'このインスタンスには入れません' },
     unavailable: { status: 503, error: '部屋のサーバーにつながりません' },
+    unsupported: { status: 422, error: '部屋のサーバーは、ほかのサーバーからの来訪に対応していません' },
+    incompatible: { status: 422, error: '部屋のサーバーの通信の版に、この画面は対応していません' },
 };
 
 /** ブラウザの origin（チケットを結び付ける）。許した画面の origin だけを使い、ほかは既定の画面の origin。 */

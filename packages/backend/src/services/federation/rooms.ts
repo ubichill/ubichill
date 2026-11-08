@@ -19,6 +19,7 @@ import {
     type GrantRequest,
     type GrantResponse,
     hostOf,
+    INSTANCE_PROTOCOL_VERSION,
     INVITE_LIMITS,
     type InstanceAudience,
     inviteRefusal,
@@ -119,6 +120,7 @@ export function createRooms(deps: RoomsDeps) {
             capacity: record.maxUsers,
             leader: deps.identity.actorUrl(record.leaderId),
             world: { url: record.worldRef, name: look.name },
+            protocolVersion: INSTANCE_PROTOCOL_VERSION,
         };
     };
 

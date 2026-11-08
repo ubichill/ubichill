@@ -94,7 +94,9 @@ export type InviteRefusal =
     /** 作成者でない人は、フレンドのみ・招待のみの部屋には作成者のフレンドにしか送れない */
     | 'needs-leader'
     /** 相手のサーバー・部屋のサーバーとやり取りできない（連合） */
-    | 'unavailable';
+    | 'unavailable'
+    /** 相手のサーバーが招待に対応していない（連合） */
+    | 'unsupported';
 
 export const INVITE_REFUSAL_MESSAGES: Record<InviteRefusal, string> = {
     self: '自分には送れません',
@@ -103,6 +105,7 @@ export const INVITE_REFUSAL_MESSAGES: Record<InviteRefusal, string> = {
     'already-inside': 'もうこの部屋にいます',
     'needs-leader': '部屋を作った人に招待してもらってください',
     unavailable: '相手のサーバーとやり取りできません',
+    unsupported: '相手のサーバーは招待に対応していません',
 };
 
 /**
@@ -135,13 +138,14 @@ export function inviteRefusal(
 }
 
 /** リクエストインバイトを送れない理由。 */
-export type InviteRequestRefusal = 'self' | 'not-friend' | 'offline' | 'can-join';
+export type InviteRequestRefusal = 'self' | 'not-friend' | 'offline' | 'can-join' | 'unsupported';
 
 export const INVITE_REQUEST_REFUSAL_MESSAGES: Record<InviteRequestRefusal, string> = {
     self: '自分には送れません',
     'not-friend': 'フレンドにだけ送れます',
     offline: 'いま部屋にいません',
     'can-join': 'そのまま入れます',
+    unsupported: '相手のサーバーはリクエストに対応していません',
 };
 
 /**

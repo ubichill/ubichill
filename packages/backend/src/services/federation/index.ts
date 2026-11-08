@@ -107,6 +107,9 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
     const visitOf = async (userId: string) =>
         remoteVisitRepository.get(userId, new Date(now() - FEDERATION_LIMITS.VISIT_STALE_MS));
 
+    /** 相手のサーバーがその機能を持たないと分かっているか（送る・移動する前に、非対応を先に知らせる） */
+    const lacks = (domain: string, feature: string) => servers.lacks(domain, feature);
+
     const friendships = createRemoteFriendships({
         identity,
         repo: remoteFriendshipRepository,
@@ -115,6 +118,7 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
         notify: notificationService,
         seen: federationSeenRepository,
         policyOf,
+        lacks,
         now,
     });
     const friendshipCheck = createFriendshipCheck({ identity, transport, policyOf, isFriend, visitOf, now });
@@ -162,6 +166,7 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
         allowHttp: config.allowHttp,
         transport,
         policyOf,
+        lacks,
         visits: remoteVisitRepository,
         now,
     });
@@ -176,6 +181,7 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
         },
         describeRoom: (viewer, instanceId) => rooms.describe(viewer, instanceId),
         visitsOf,
+        lacks,
         now,
     });
     const invites = createFederatedInvites({
@@ -189,6 +195,7 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
         friendIdsOf: (userId) => friendIdsOf(userId),
         visitOf,
         userExists,
+        lacks,
         requests: inviteRepository,
         notify: notificationService,
         now,

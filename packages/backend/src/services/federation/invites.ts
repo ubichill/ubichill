@@ -14,6 +14,8 @@
 import {
     buildInvite,
     buildRequestInvite,
+    FEDERATION_FEATURES,
+    hostOf,
     INVITE_LIMITS,
     type InviteRefusal,
     type InviteRequestRefusal,
@@ -39,6 +41,8 @@ export interface FederatedInvitesDeps {
     friendIdsOf(userId: string): Promise<ReadonlySet<string>>;
     visitOf(userId: string): Promise<{ roomUrl: string; room: RoomCard } | undefined>;
     userExists(userId: string): Promise<boolean>;
+    /** 相手のサーバーがその機能を持たないと分かっているか（ServerDirectory.lacks） */
+    lacks(domain: string, feature: string): Promise<boolean>;
     requests: {
         createRequest(
             input: { requesterId: string; targetId: string; expiresAt: Date; activityId?: string | null },
@@ -98,7 +102,16 @@ export function createFederatedInvites(deps: FederatedInvitesDeps) {
         return true;
     };
 
+    /** その人のサーバーが、その機能を持たないと分かっているか（ほかのサーバーの人だけ）。 */
+    const lacksFor = async (userId: string, feature: string) => {
+        const host = isRemoteUserId(userId) ? hostOf(userId) : null;
+        return !!host && (await deps.lacks(host, feature));
+    };
+
     return {
+        /** ほかのサーバーの人で、そのサーバーが招待に対応していないと分かっているか（送る前・候補の一覧で出す）。 */
+        cannotReceiveInvites: (userId: string) => lacksFor(userId, FEDERATION_FEATURES.invites),
+
         /** このサーバーの部屋への招待を、ほかのサーバーの人へ届ける（権利は作ってある）。 */
         async deliverInvite(input: {
             inviterId: string;
@@ -132,10 +145,23 @@ export function createFederatedInvites(deps: FederatedInvitesDeps) {
             const roomUrl = visit.roomUrl;
             const friends = await deps.friendIdsOf(inviterId);
             const unique = [...new Set(inviteeIds)];
+            const unsupported = new Set(
+                (
+                    await Promise.all(
+                        unique.map(async (id) => ((await lacksFor(id, FEDERATION_FEATURES.invites)) ? [id] : [])),
+                    )
+                ).flat(),
+            );
             const refusals = new Map(
                 unique.flatMap(
                     (id): Array<[string, InviteRefusal]> =>
-                        id === inviterId ? [[id, 'self']] : friends.has(id) ? [] : [[id, 'not-friend']],
+                        id === inviterId
+                            ? [[id, 'self']]
+                            : !friends.has(id)
+                              ? [[id, 'not-friend']]
+                              : unsupported.has(id)
+                                ? [[id, 'unsupported']]
+                                : [],
                 ),
             );
             const asked = unique.filter((id) => !refusals.has(id));
@@ -188,6 +214,8 @@ export function createFederatedInvites(deps: FederatedInvitesDeps) {
             targetId: string,
         ): Promise<{ ok: true; alreadyRequested: boolean } | { ok: false; reason: InviteRequestRefusal }> {
             if (!(await deps.isFriend(requesterId, targetId))) return { ok: false, reason: 'not-friend' };
+            if (await lacksFor(targetId, FEDERATION_FEATURES.requestInvite))
+                return { ok: false, reason: 'unsupported' };
             const actor = await deps.actors.get(targetId);
             if (!actor || actor.deletedAt) return { ok: false, reason: 'offline' };
             const expiresAt = new Date(deps.now() + INVITE_LIMITS.REQUEST_TTL_MS);

@@ -1,5 +1,5 @@
 import type { RemoteActorRecord } from '@ubichill/db';
-import type { GrantResponse, RoomCard } from '@ubichill/shared';
+import { FEDERATION_FEATURES, type GrantResponse, type RoomCard } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
 import { createFederationIdentity } from './identity';
 import { createFederatedInvites } from './invites';
@@ -43,6 +43,8 @@ interface Setup {
     visits?: Record<string, RoomCard>;
     grant?: (invitees: string[]) => GrantResponse | null;
     knownActors?: string[];
+    /** 機能を持たないと分かっているサーバー（ドメイン → 機能の URI） */
+    lacking?: Record<string, string[]>;
 }
 
 function setup(options: Setup = {}) {
@@ -70,6 +72,7 @@ function setup(options: Setup = {}) {
         roomCard: async (instanceId) =>
             instanceId === 'local1' ? { ...ROOM, id: identity.instanceUrl('local1') } : undefined,
         isFriend: async (userId, actorId) => friendsOf(userId).has(actorId),
+        lacks: async (domain, feature) => (options.lacking?.[domain] ?? []).includes(feature),
         friendIdsOf: async (userId) => friendsOf(userId),
         visitOf: async (userId) => {
             const room = options.visits?.[userId];
@@ -305,5 +308,30 @@ describe('ほかのサーバーのフレンドへリクエストを送る', () =
             actor: identity.actorUrl('alice'),
             object: BOB,
         });
+    });
+});
+
+describe('相手のサーバーが対応していない機能', () => {
+    it('リクエストインバイトに対応していないサーバーの人には送らず、送る前に unsupported', async () => {
+        const { invites, sent } = setup({
+            friends: { alice: [BOB] },
+            lacking: { 'b.example': [FEDERATION_FEATURES.requestInvite] },
+        });
+        expect(await invites.requestRemote('alice', BOB)).toEqual({ ok: false, reason: 'unsupported' });
+        expect(sent).toEqual([]);
+    });
+
+    it('招待に対応していないサーバーの人は、部屋のサーバーに権利を頼む前に unsupported', async () => {
+        const { invites, grants } = setup({
+            friends: { alice: [CAROL] },
+            visits: { alice: ROOM },
+            lacking: { 'c.example': [FEDERATION_FEATURES.invites] },
+        });
+        expect(await invites.sendFromRemoteRoom('alice', 'r1@b.example', [CAROL], null)).toEqual([
+            { userId: CAROL, ok: false, reason: 'unsupported' },
+        ]);
+        expect(grants).toEqual([]);
+        expect(await invites.cannotReceiveInvites(CAROL)).toBe(true);
+        expect(await invites.cannotReceiveInvites('alice')).toBe(false);
     });
 });

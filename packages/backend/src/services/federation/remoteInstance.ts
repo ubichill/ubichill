@@ -2,7 +2,14 @@
  * ほかのサーバーの部屋（RoomCard）を、画面の Instance の形にする。部屋の一覧・フレンドの現在地・入室の画面を、
  * このサーバーの部屋と同じ部品で出すため。ワールドの確認（作者の署名）は、見る人のサーバーが URL から行ったものだけを載せる。
  */
-import type { Instance, RoomCard, WorldIdentity, WorldMod, WorldSource } from '@ubichill/shared';
+import {
+    type Instance,
+    type RoomCard,
+    speaksInstanceProtocol,
+    type WorldIdentity,
+    type WorldMod,
+    type WorldSource,
+} from '@ubichill/shared';
 
 export interface CheckedWorld {
     id: string;
@@ -43,7 +50,8 @@ export function remoteInstanceOf(
         access: { type: room.accessType, tags: [] },
         stats: { currentUsers: room.members, maxUsers: room.capacity },
         connection: { url: '', namespace: '' },
-        canJoin: input.canJoin,
+        // 版の合わない部屋は入れない（移動してから断られないように、ここで出さない）
+        canJoin: input.canJoin && speaksInstanceProtocol(room.protocolVersion),
         remote: { domain: input.domain, url: room.id },
     };
 }

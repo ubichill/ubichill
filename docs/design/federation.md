@@ -53,6 +53,9 @@
 - `/.well-known/webfinger`: 人の `self`（`application/activity+json`）とプロフィールの画面。
 - `/.well-known/nodeinfo` → `/nodeinfo/2.1`: ubichill のサーバーか（`metadata.ubichill.federation.version`）。
 - 機能は Application actor の `implements`（FEP-844e）で告知する。使う前に相手が告知しているかを見る（NodeInfo の列挙は機能の判定に使わない）。
+  - 告知を読めたうえで載っていない機能は、送る・移動する前に断る（フレンドの申請・招待・リクエストインバイト・部屋の作りの取得と入室）。招待の候補の一覧にも「対応していません」と出す。現在地は答えないサーバーに尋ねない。
+  - 告知を読めなかった（Application actor を取れない）ときは「持たない」と記録しない。一時的な失敗で送るのをやめないため。
+- 部屋の作り（RoomCard）は部屋（Go）の通信の版 `protocolVersion` を載せる（無ければ 1）。来訪者のホームは、画面が話せない版の部屋を「入れない」として見せ、入室も断る（移動してから断られないように）。
 - 知っているサーバーは、連絡がつくたびに自動で記録する（`remote_servers`）。管理者が手で登録する必要はない。
 
 ## AP 面の activity
