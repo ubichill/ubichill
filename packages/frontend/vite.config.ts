@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig, mergeConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
@@ -66,7 +66,23 @@ const sandboxWorkerCsp = () => {
     };
 };
 
-export default defineConfig({
+/** 読み込み直して得られる画面の版。API の版とは独立して、配信アセットと一緒に更新する。 */
+const frontendVersion = (): Plugin => {
+    let commitHash = 'unknown';
+    return {
+        name: 'frontend-version',
+        apply: 'build',
+        configResolved(config) {
+            commitHash = config.env.VITE_COMMIT_HASH || 'unknown';
+        },
+        generateBundle() {
+            this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ commitHash }) });
+        },
+    };
+};
+
+/** SNS と world.html で共有する設定。SNS だけの配信物はここへ足さない。 */
+export const baseConfig = defineConfig({
     // 注意: `plugins` は Vite の予約キー（Vite プラグイン配列）なので mod にリネームしない。
     plugins: [react(), serveSourceModJson(), sandboxWorkerCsp()],
     resolve: {
@@ -133,3 +149,5 @@ export default defineConfig({
         outDir: 'dist',
     },
 });
+
+export default mergeConfig(baseConfig, { plugins: [frontendVersion()] });

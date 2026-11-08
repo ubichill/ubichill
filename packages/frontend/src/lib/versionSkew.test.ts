@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fetchServerCommit, isVersionSkewed, reloadMemory, skewAction } from './versionSkew';
+import { fetchFrontendCommit, isVersionSkewed, reloadMemory, skewAction } from './versionSkew';
 
 describe('isVersionSkewed', () => {
-    it('フロントと backend の版が違えばずれている', () => {
+    it('開いているフロントと配信中のフロントの版が違えばずれている', () => {
         expect(isVersionSkewed('abc1234', 'def5678')).toBe(true);
         expect(isVersionSkewed('abc1234', 'abc1234')).toBe(false);
     });
@@ -42,9 +42,9 @@ describe('skewAction', () => {
         expect(skewAction('/world/abc/settings', SERVER, null)).toBe('prompt');
     });
 
-    it('同じ backend の版のために一度読み込み直したタブは、もう自動では読み込み直さない（デプロイの途中で繰り返さない）', () => {
+    it('同じ配信版のために一度読み込み直したタブは、もう自動では読み込み直さない（デプロイの途中で繰り返さない）', () => {
         expect(skewAction('/', SERVER, SERVER)).toBe('prompt');
-        // backend がさらに新しくなったら、もう一度だけ読み込み直してよい
+        // 配信中のフロントがさらに新しくなったら、もう一度だけ読み込み直してよい
         expect(skewAction('/', 'newer99', SERVER)).toBe('reload');
     });
 });
@@ -72,19 +72,49 @@ describe('reloadMemory', () => {
     });
 });
 
-describe('fetchServerCommit', () => {
+describe('fetchFrontendCommit', () => {
     it('取得できなければ undefined（ずれていないとみなされる）', async () => {
         const failing = vi.fn(async () => {
             throw new Error('offline');
         }) as unknown as typeof fetch;
-        expect(await fetchServerCommit('https://api.example', failing)).toBeUndefined();
+        expect(await fetchFrontendCommit('https://app.example', failing)).toBeUndefined();
         const notOk = vi.fn(async () => new Response('', { status: 502 })) as unknown as typeof fetch;
-        expect(await fetchServerCommit('https://api.example', notOk)).toBeUndefined();
+        expect(await fetchFrontendCommit('https://app.example', notOk)).toBeUndefined();
     });
 
-    it('backend の版を読む（キャッシュさせない）', async () => {
+    it('配信中のフロントの版を読む（ブラウザ・中間キャッシュを使わない）', async () => {
+        const now = vi.spyOn(Date, 'now').mockReturnValue(12345);
         const ok = vi.fn(async () => Response.json({ commitHash: 'def5678' })) as unknown as typeof fetch;
-        expect(await fetchServerCommit('https://api.example', ok)).toBe('def5678');
-        expect(ok).toHaveBeenCalledWith('https://api.example/api/version', { cache: 'no-store' });
+        try {
+            expect(await fetchFrontendCommit('https://app.example/', ok)).toBe('def5678');
+            expect(ok).toHaveBeenCalledWith('https://app.example/version.json?t=12345', { cache: 'no-store' });
+        } finally {
+            now.mockRestore();
+        }
+    });
+
+    it('API が別のコミットでも、配信中のフロントと同じなら再読み込みを求めない', async () => {
+        const fetcher = vi.fn(async (url: string) =>
+            Response.json({ commitHash: url.includes('/api/version') ? '422227f' : '976fb86' }),
+        ) as unknown as typeof fetch;
+        const published = await fetchFrontendCommit('/', fetcher);
+        expect(isVersionSkewed('976fb86', published)).toBe(false);
+        expect(fetcher).toHaveBeenCalledTimes(1);
+        expect(fetcher).toHaveBeenCalledWith(expect.stringMatching(/^\/version\.json\?t=\d+$/), {
+            cache: 'no-store',
+        });
+    });
+
+    it('フロントだけが更新された場合も更新を検出し、再読み込み後は一致する', async () => {
+        const fetcher = vi.fn(async () => Response.json({ commitHash: 'next123' })) as unknown as typeof fetch;
+        const published = await fetchFrontendCommit('/', fetcher);
+        expect(isVersionSkewed('976fb86', published)).toBe(true);
+        expect(skewAction('/auth', 'next123', null)).toBe('prompt');
+        expect(isVersionSkewed('next123', published)).toBe(false);
+    });
+
+    it('移行前の配信先が HTML を返しても、更新の有無を断定しない', async () => {
+        const html = vi.fn(async () => new Response('<html></html>')) as unknown as typeof fetch;
+        expect(await fetchFrontendCommit('/', html)).toBeUndefined();
     });
 });
