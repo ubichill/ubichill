@@ -80,29 +80,31 @@ export function createTravel(deps: TravelDeps) {
                   ? 'unavailable'
                   : 'rejected';
 
+    /** ほかのサーバーの部屋の作り（見えなければ not-found）。 */
+    const describe = async (
+        userId: string,
+        address: RoomAddress & { domain: string },
+    ): Promise<{ ok: true; room: RoomCard; canJoin: boolean } | { ok: false; error: TravelError }> => {
+        if (!exchanges(deps.policyOf(address.domain))) return { ok: false, error: 'blocked' };
+        for (const origin of originsOf(address.domain)) {
+            const response = await deps.transport
+                .get(`${origin}${FEDERATION_PATHS.instance(address.id)}`, {
+                    signAs: { kind: 'user', userId },
+                    maxBytes: 64 * 1024,
+                })
+                .catch(() => null);
+            if (!response) continue;
+            if (response.status !== 200) return { ok: false, error: errorOf(response.status, undefined) };
+            const parsed = DescribeSchema.safeParse(response.json);
+            if (!parsed.success || hostOf(parsed.data.room.id) !== address.domain)
+                return { ok: false, error: 'unavailable' };
+            return { ok: true, room: parsed.data.room, canJoin: parsed.data.canJoin };
+        }
+        return { ok: false, error: 'unavailable' };
+    };
+
     return {
-        /** ほかのサーバーの部屋の作り（見えなければ not-found）。 */
-        async describe(
-            userId: string,
-            address: RoomAddress & { domain: string },
-        ): Promise<{ ok: true; room: RoomCard; canJoin: boolean } | { ok: false; error: TravelError }> {
-            if (!exchanges(deps.policyOf(address.domain))) return { ok: false, error: 'blocked' };
-            for (const origin of originsOf(address.domain)) {
-                const response = await deps.transport
-                    .get(`${origin}${FEDERATION_PATHS.instance(address.id)}`, {
-                        signAs: { kind: 'user', userId },
-                        maxBytes: 64 * 1024,
-                    })
-                    .catch(() => null);
-                if (!response) continue;
-                if (response.status !== 200) return { ok: false, error: errorOf(response.status, undefined) };
-                const parsed = DescribeSchema.safeParse(response.json);
-                if (!parsed.success || hostOf(parsed.data.room.id) !== address.domain)
-                    return { ok: false, error: 'unavailable' };
-                return { ok: true, room: parsed.data.room, canJoin: parsed.data.canJoin };
-            }
-            return { ok: false, error: 'unavailable' };
-        },
+        describe,
 
         /**
          * 入る。部屋のサーバーへユーザーの鍵（nonce 付き）で頼み、チケットを受け取る。
@@ -153,6 +155,17 @@ export function createTravel(deps: TravelDeps) {
                 };
             }
             return { ok: false, error: 'unavailable' };
+        },
+
+        /**
+         * 来訪の記録が途切れた（通信が切れていた・backend が知らせを受けられなかった）後に、続けている知らせが来た。
+         * 部屋のサーバーに部屋を尋ね直して、来訪を記録し直す（部屋にいるかは、現在地を尋ねたときに部屋のサーバーが確かめる）。
+         */
+        async resume(userId: string, address: RoomAddress & { domain: string }): Promise<boolean> {
+            const described = await describe(userId, address);
+            if (!described.ok) return false;
+            await deps.visits.set(userId, described.room.id, described.room, new Date(deps.now()));
+            return true;
         },
 
         /** 来訪を続けている（画面から 30 秒ごと）。 */

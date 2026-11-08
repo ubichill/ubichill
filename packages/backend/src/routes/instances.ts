@@ -199,10 +199,16 @@ router.post('/:id/join', requireAuth, async (req, res) => {
  */
 router.post('/:id/visit', requireAuth, async (req, res) => {
     if (!req.user || !federation) return res.status(404).json({ error: 'Not found' });
+    const id = String(req.params.id);
     const visit = await federation.visitOf(req.user.id);
-    const current = visit && federation.identity.roomAddressOf(visit.roomUrl) === String(req.params.id);
-    if (!visit || !current) return res.status(404).json({ error: 'この部屋への来訪の記録がありません' });
-    await federation.travel.heartbeat(req.user.id, visit.roomUrl);
+    if (visit && federation.identity.roomAddressOf(visit.roomUrl) === id) {
+        await federation.travel.heartbeat(req.user.id, visit.roomUrl);
+        return res.status(204).send();
+    }
+    // 記録が途切れていた（通信が戻った）: 部屋のサーバーに尋ね直して記録し直す
+    const address = federation.remoteAddressOf(id);
+    const resumed = address && (await federation.travel.resume(req.user.id, address).catch(() => false));
+    if (!resumed) return res.status(404).json({ error: 'この部屋への来訪の記録がありません' });
     return res.status(204).send();
 });
 

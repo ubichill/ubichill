@@ -189,6 +189,29 @@ describe('ほかのサーバーの部屋に入る（join）', () => {
     });
 });
 
+describe('来訪の記録が途切れた後（resume）', () => {
+    it('通信が戻ったら、部屋のサーバーに尋ね直して来訪を記録し直す', async () => {
+        const down = { now: true };
+        const { travel, visits } = setup({
+            reply: () => (down.now ? new Error('ECONNRESET') : ok({ room: ROOM, canJoin: true })),
+        });
+        expect(await travel.resume('alice', ADDRESS)).toBe(false);
+        expect(visits.has('alice')).toBe(false);
+        down.now = false;
+        expect(await travel.resume('alice', ADDRESS)).toBe(true);
+        expect(visits.get('alice')).toEqual({ roomUrl: ROOM.id, room: ROOM });
+        expect(await travel.heartbeat('alice', ROOM.id)).toBe(true);
+    });
+
+    it('見えなくなった部屋・連合しないサーバーの部屋は記録し直さない', async () => {
+        const hidden = setup({ reply: () => fail(404) });
+        expect(await hidden.travel.resume('alice', ADDRESS)).toBe(false);
+        const blocked = setup({ policy: 'block', reply: () => ok({ room: ROOM, canJoin: true }) });
+        expect(await blocked.travel.resume('alice', ADDRESS)).toBe(false);
+        expect([...hidden.visits.keys(), ...blocked.visits.keys()]).toEqual([]);
+    });
+});
+
 describe('来訪中の部屋に招待する（grant）', () => {
     it('部屋のサーバーに、招く人の鍵と nonce で権利を頼む', async () => {
         const { travel, calls } = setup({
