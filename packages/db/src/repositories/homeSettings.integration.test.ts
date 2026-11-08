@@ -31,11 +31,24 @@ describe.skipIf(!RUN)('userSettingsRepository: ホーム (DB統合)', () => {
         expect(await userSettingsRepository.getHome(ids.b)).toEqual({ worldRef: null, accessType: 'invite_only' });
     });
 
-    it('置き換えて読み戻せ、null で既定に戻せる。ほかの設定は消さない', async () => {
-        await userSettingsRepository.setHome(ids.b, { worldRef: URL_A, accessType: 'friend_plus' });
-        expect(await userSettingsRepository.getHome(ids.b)).toEqual({ worldRef: URL_A, accessType: 'friend_plus' });
-        await userSettingsRepository.setHome(ids.b, { worldRef: null, accessType: 'public' });
+    it('渡した項目だけ変えて読み戻せ、null で既定に戻せる。ほかの設定は消さない', async () => {
+        expect(await userSettingsRepository.updateHome(ids.b, { worldRef: URL_A, accessType: 'friend_plus' })).toEqual({
+            worldRef: URL_A,
+            accessType: 'friend_plus',
+        });
+        expect(await userSettingsRepository.updateHome(ids.b, { accessType: 'public' })).toEqual({
+            worldRef: URL_A,
+            accessType: 'public',
+        });
+        await userSettingsRepository.updateHome(ids.b, { worldRef: null });
         expect(await userSettingsRepository.getHome(ids.b)).toEqual({ worldRef: null, accessType: 'public' });
         expect(await userSettingsRepository.getFavoritesVisibility(ids.b)).toBe('public');
+    });
+
+    it('行が無いユーザーの片方だけの変更は、もう片方を既定で作る', async () => {
+        expect(await userSettingsRepository.updateHome(ids.a, { worldRef: URL_A })).toEqual({
+            worldRef: URL_A,
+            accessType: 'invite_only',
+        });
     });
 });

@@ -1,6 +1,5 @@
 import {
     type AccessType,
-    applyHomeUpdate,
     DEFAULT_HOME_WORLD_REF,
     type HomeInstanceResponse,
     type HomeSettings,
@@ -15,7 +14,8 @@ import type { WorldResolution } from './worldRegistry';
 export interface HomeServiceDeps {
     settings: {
         get(userId: string): Promise<HomeSettings>;
-        set(userId: string, home: HomeSettings): Promise<void>;
+        /** 渡した項目だけ変え、変えた後の設定を返す */
+        update(userId: string, changes: Partial<HomeSettings>): Promise<HomeSettings>;
     };
     worlds: {
         resolve(ref: string): Promise<WorldResolution>;
@@ -63,15 +63,14 @@ export function createHomeService(deps: HomeServiceDeps): HomeService {
         },
 
         async update(userId, update) {
-            const next = applyHomeUpdate(await deps.settings.get(userId), update);
-            if (update.worldRef) {
-                const resolution = await deps.worlds.resolve(update.worldRef);
-                if (!resolution.ok) return { ok: false, status: 400, error: resolution.message };
+            const resolution = update.worldRef ? await deps.worlds.resolve(update.worldRef) : undefined;
+            if (resolution && !resolution.ok) return { ok: false, status: 400, error: resolution.message };
+            const saved = await deps.settings.update(userId, {
                 // 貼られた共有ページの URL なども正規 URL にそろえて持つ（今いる部屋がホームかを URL で比べるため）
-                next.worldRef = resolution.world.url;
-            }
-            await deps.settings.set(userId, next);
-            return { ok: true, value: await viewOf(next) };
+                ...(update.worldRef !== undefined ? { worldRef: resolution ? resolution.world.url : null } : {}),
+                ...(update.accessType !== undefined ? { accessType: update.accessType } : {}),
+            });
+            return { ok: true, value: await viewOf(saved) };
         },
 
         async ensureInstance(userId, options) {
