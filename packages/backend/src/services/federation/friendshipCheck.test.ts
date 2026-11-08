@@ -7,6 +7,7 @@ const identity = createFederationIdentity('https://a.example');
 const ALICE = identity.actorUrl('alice');
 const BOB = 'https://b.example/ap/users/bob';
 const DAVE = 'https://d.example/ap/users/dave';
+const CAROL = 'https://b.example/ap/users/carol';
 const ROOM_ON_C = 'https://c.example/ap/instances/r1';
 
 const response = (status: number, json?: unknown): FederationResponse => ({
@@ -28,7 +29,12 @@ function setup(options: { visits?: Record<string, string>; reply?: (body: unknow
             },
         },
         policyOf: (domain) => (domain === 'evil.example' ? 'block' : 'allow'),
-        isFriend: async (userId, actorId) => userId === 'alice' && (actorId === BOB || actorId === DAVE),
+        stateOf: async (userId, actorId) =>
+            userId === 'alice' && (actorId === BOB || actorId === DAVE)
+                ? 'friends'
+                : userId === 'alice' && actorId === CAROL
+                  ? 'incoming'
+                  : 'none',
         visitOf: async (userId) => {
             const roomUrl = options.visits?.[userId];
             return roomUrl ? { roomUrl } : undefined;
@@ -39,11 +45,15 @@ function setup(options: { visits?: Record<string, string>; reply?: (body: unknow
 }
 
 describe('答える（user のホームとして）', () => {
-    it('other のホームには、そのサーバーの人との関係を答える', async () => {
+    it('other のホームには、そのサーバーの人との関係を向き（申請中など）まで答える（届かなかった知らせの埋め合わせ）', async () => {
         const { check } = setup();
         expect(await check.answer('b.example', { user: ALICE, other: BOB })).toEqual({
             ok: true,
-            value: { friends: true },
+            value: { friends: true, state: 'friends' },
+        });
+        expect(await check.answer('b.example', { user: ALICE, other: CAROL })).toEqual({
+            ok: true,
+            value: { friends: false, state: 'incoming' },
         });
     });
 

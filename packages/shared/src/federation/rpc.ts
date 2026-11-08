@@ -115,7 +115,17 @@ export type PresenceEntry = PresenceResponse['presence'][number];
  */
 export const FriendshipCheckRequestSchema = z.object({ user: Url, other: Url });
 export type FriendshipCheckRequest = z.infer<typeof FriendshipCheckRequestSchema>;
-export const FriendshipCheckResponseSchema = z.object({ friends: z.boolean() });
+/**
+ * user から見た other との関係。other のホームが尋ねたときだけ付ける（届かなかった承認・解除の埋め合わせに使う。
+ * 来訪中の部屋のサーバーには friends だけ）。古いサーバーは付けない。
+ */
+export const FriendshipStateSchema = z.enum(['friends', 'outgoing', 'incoming', 'none']);
+export type FriendshipState = z.infer<typeof FriendshipStateSchema>;
+export const FriendshipCheckResponseSchema = z.object({
+    friends: z.boolean(),
+    state: FriendshipStateSchema.optional(),
+});
+export type FriendshipCheckResponse = z.infer<typeof FriendshipCheckResponseSchema>;
 
 /** RPC のエラーの種類（problem+json の code）。 */
 export type FederationErrorCode =

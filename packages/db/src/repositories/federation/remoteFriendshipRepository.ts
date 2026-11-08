@@ -181,6 +181,33 @@ export const remoteFriendshipRepository = {
         return rows.map((r) => r.actorId);
     },
 
+    /**
+     * 相手のホームに確かめる時期の来た関係（確かめていない・before より前に確かめた）。確かめていないものから。
+     * 断った記録は確かめない（冷却の印で、相手とそろえるものではない）。
+     */
+    async dueForCheck(before: Date, limit: number): Promise<RemoteFriendshipRecord[]> {
+        return db
+            .select()
+            .from(remoteFriendships)
+            .where(
+                and(
+                    inArray(remoteFriendships.state, ['accepted', 'outgoing', 'incoming']),
+                    or(isNull(remoteFriendships.checkedAt), lt(remoteFriendships.checkedAt, before)),
+                ),
+            )
+            .orderBy(sql`${remoteFriendships.checkedAt} ASC NULLS FIRST`)
+            .limit(limit);
+    },
+
+    async markChecked(userId: string, actorId: string, at: Date): Promise<void> {
+        await db.update(remoteFriendships).set({ checkedAt: at }).where(pairOf(userId, actorId));
+    },
+
+    /** 早く確かめる（その相手への知らせを届けられなかった）。 */
+    async markUnchecked(userId: string, actorId: string): Promise<void> {
+        await db.update(remoteFriendships).set({ checkedAt: null }).where(pairOf(userId, actorId));
+    },
+
     async countIncoming(userId: string): Promise<number> {
         return countIncomingOf(db, userId);
     },

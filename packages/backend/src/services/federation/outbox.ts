@@ -84,6 +84,8 @@ export interface DeliveryWorkerDeps {
     now(): number;
     random?: () => number;
     log?: (message: string) => void;
+    /** 届けられずに諦めた（断られた・期限を過ぎた）。関係の確かめ直しを早めるのに使う */
+    gaveUp?: (delivery: DeliveryRecord) => Promise<void>;
 }
 
 /** 1 つの予定を送り、結果で消す・送り直す。 */
@@ -102,7 +104,10 @@ async function deliverOne(deps: DeliveryWorkerDeps, delivery: DeliveryRecord): P
         await deps.repo.remove(delivery.id);
         // 応答があった（受けない・もういない、も含めて）ので、相手のサーバーは動いている
         await deps.servers.recordSuccess(delivery.host);
-        if (outcome.kind === 'rejected') deps.log?.(`配送を断られました (${status}): ${delivery.inbox}`);
+        if (outcome.kind === 'rejected') {
+            deps.log?.(`配送を断られました (${status}): ${delivery.inbox}`);
+            await deps.gaveUp?.(delivery);
+        }
         return;
     }
     await deps.servers.recordFailure(delivery.host);
@@ -112,6 +117,7 @@ async function deliverOne(deps: DeliveryWorkerDeps, delivery: DeliveryRecord): P
     if (next > delivery.deadlineAt.getTime()) {
         await deps.repo.remove(delivery.id);
         deps.log?.(`配送を諦めました（${attempts} 回）: ${delivery.inbox}`);
+        await deps.gaveUp?.(delivery);
         return;
     }
     await deps.repo.reschedule(delivery.id, new Date(next), status === null ? 'network' : `HTTP ${status}`);

@@ -155,6 +155,40 @@ describe.skipIf(!RUN)('連合の保存（DB統合）', () => {
             expect(await deliveryRepository.countPending()).toBe(pending);
         });
 
+        it('確かめる時期の来た関係: 確かめていないものから。確かめたら外れ、届けられなかったら早める。断った記録は確かめない', async () => {
+            await remoteActorRepository.upsert(actor(11));
+            await remoteActorRepository.upsert(actor(12));
+            await remoteFriendshipRepository.put(
+                { userId, actorId: actorId(11), state: 'accepted', offerId: `o11-${stamp}`, relationshipId: 'r' },
+                T0,
+            );
+            await remoteFriendshipRepository.put(
+                { userId, actorId: actorId(12), state: 'rejected', offerId: `o12-${stamp}`, relationshipId: 'r' },
+                T0,
+            );
+            const due = async () =>
+                (await remoteFriendshipRepository.dueForCheck(at(1000), 1000))
+                    .filter((r) => r.userId === userId)
+                    .map((r) => r.actorId);
+            expect(await due()).toContain(actorId(11));
+            expect(await due()).not.toContain(actorId(12));
+            await remoteFriendshipRepository.markChecked(userId, actorId(11), at(2000));
+            expect(await due()).not.toContain(actorId(11));
+            await remoteFriendshipRepository.markUnchecked(userId, actorId(11));
+            expect(await due()).toContain(actorId(11));
+            // 関係を書き換えても、確かめた時刻は消さない（put は checked_at を触らない）
+            await remoteFriendshipRepository.markChecked(userId, actorId(11), at(2000));
+            await remoteFriendshipRepository.put(
+                { userId, actorId: actorId(11), state: 'accepted', offerId: `o11-${stamp}`, relationshipId: 'r' },
+                at(3000),
+            );
+            expect((await remoteFriendshipRepository.get(userId, actorId(11)))?.checkedAt?.getTime()).toBe(
+                at(2000).getTime(),
+            );
+            await remoteFriendshipRepository.remove(userId, actorId(11));
+            await remoteFriendshipRepository.remove(userId, actorId(12));
+        });
+
         it('消えた actor との関係を掃除で消す（消えていない actor はそのまま）', async () => {
             await remoteActorRepository.upsert(actor(9));
             await remoteActorRepository.upsert(actor(10));

@@ -7,6 +7,7 @@
  * - 取り消し（Undo）した Offer の id は 14 日覚え、遅れて届いた申請を無視する
  * - お互いに申請したときは、相手の Offer の id も持つ（双方が自分の Offer の Undo で解除するので、どちらからでも消せる）
  * - 送るのは相手の個人の inbox（送り手のユーザーの鍵で署名）
+ * - 届かなかった承認・解除・取り消しは、相手のホームに関係を確かめて埋め合わせる（reconcile。定期の掃除から）
  * - 読んでから書くまでは 2 人の関係ごとにロックする（同時の申請・承認・解除で片方が消えないように。送る順も揃う）
  */
 import type { RemoteFriendshipRecord, RemoteFriendshipWriter } from '@ubichill/db';
@@ -15,9 +16,11 @@ import {
     acceptsNewContact,
     buildFriendOffer,
     buildResponse,
+    DELIVERY_LIMITS,
     type DomainPolicy,
     FEDERATION_FEATURES,
     FEDERATION_LIMITS,
+    type FriendshipCheckResponse,
     sameOrigin,
 } from '@ubichill/shared';
 import type { FederationIdentity } from './identity';
@@ -315,6 +318,60 @@ export function createRemoteFriendships(deps: FriendshipDeps) {
                     pair.later(() => deps.notify.remoteFriendshipRemoved(userId, actor.id));
                 });
             }
+        },
+
+        /**
+         * 相手のホームに確かめた関係（peer: 相手から見た、このサーバーのユーザーとの関係）で、こちらの記録のずれを直す。
+         * - こちらはフレンド・相手は関係なし: 相手の解除が届かなかった → 消す
+         * - こちらはフレンド・相手は申請中: こちらの承認が届かなかった → 承認を送り直す
+         * - こちらは申請中・相手はフレンド: 相手の承認が届かなかった → フレンドにする
+         * - こちらは申請中・相手は関係なし（送り直しの期限を過ぎた）: 申請か断りが届かなかった → 消す（申請し直せる）
+         * - 相手から申請が来ている・相手は関係なし: 取り消しが届かなかった → 消す
+         * 古いサーバー（state を答えない）なら承認の送り直しだけ（関係なしと申請中を見分けられないので消さない）。
+         */
+        async reconcile(
+            userId: string,
+            actor: Pick<FriendshipActor, 'id' | 'inbox'>,
+            peer: FriendshipCheckResponse,
+        ): Promise<'kept' | 'removed' | 'accepted' | 'resent'> {
+            return withPair(userId, actor, async (row, pair) => {
+                if (!row) return 'kept';
+                const theirs = peer.state;
+                if (row.state === 'accepted') {
+                    if (theirs === 'friends' || (!theirs && peer.friends)) return 'kept';
+                    if (theirs === 'none') {
+                        await pair.remove();
+                        pair.later(() => deps.notify.remoteFriendshipRemoved(userId, actor.id));
+                        return 'removed';
+                    }
+                    // 相手は申請中のまま（か、古いサーバーで分からない）: 相手の申請への承認を送り直す
+                    const theirOffer =
+                        row.peerOfferId ?? (sameOrigin(row.offerId, deps.identity.origin) ? null : row.offerId);
+                    if (theirs === 'incoming' || !theirOffer) return 'kept';
+                    const acceptId = row.acceptId ?? deps.identity.newActivityId();
+                    if (!row.acceptId) await pair.put({ ...row, acceptId }, now());
+                    await pair.send(
+                        buildResponse('Accept', {
+                            id: acceptId,
+                            actor: actorOf(userId),
+                            to: actor.id,
+                            object: { id: theirOffer, type: 'Offer', actor: actor.id },
+                        }),
+                    );
+                    return 'resent';
+                }
+                if (row.state === 'outgoing' && (theirs === 'friends' || (!theirs && peer.friends))) {
+                    await pair.put({ ...row, state: 'accepted' }, now());
+                    pair.later(() => deps.notify.remoteFriendAccepted(actor.id, userId));
+                    return 'accepted';
+                }
+                const settled = now().getTime() - row.updatedAt.getTime() > DELIVERY_LIMITS.GIVE_UP_MS;
+                if (theirs === 'none' && (row.state === 'incoming' || (row.state === 'outgoing' && settled))) {
+                    await pair.remove();
+                    return 'removed';
+                }
+                return 'kept';
+            });
         },
 
         /** actor が消えた: 関係をすべて消す。 */

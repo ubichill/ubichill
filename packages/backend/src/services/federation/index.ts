@@ -15,7 +15,7 @@ import {
     remoteVisitRepository,
     userRepository,
 } from '@ubichill/db';
-import { FEDERATION_LIMITS, parseRoomAddress } from '@ubichill/shared';
+import { FEDERATION_FEATURES, FEDERATION_LIMITS, parseRoomAddress } from '@ubichill/shared';
 import { appConfig } from '../../config';
 import { safeFetch } from '../../lib/safeFetch';
 import { logger } from '../../utils/logger';
@@ -101,7 +101,18 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
         now,
     });
     const outbox = createOutbox({ identity, repo: deliveryRepository, policyOf, now });
-    const worker = createDeliveryWorker({ repo: deliveryRepository, transport, servers, now, log });
+    const worker = createDeliveryWorker({
+        repo: deliveryRepository,
+        transport,
+        servers,
+        now,
+        log,
+        // 届けられなかった相手との関係は、次の掃除で相手のホームに確かめる（orderKey は `<送った actor>|<相手>`）
+        gaveUp: async (delivery) => {
+            const to = delivery.orderKey.split('|')[1];
+            if (delivery.senderUserId && to) await remoteFriendshipRepository.markUnchecked(delivery.senderUserId, to);
+        },
+    });
     const userExists = async (userId: string) =>
         userId !== SYSTEM_USER_ID && (await userRepository.findById(userId)) !== undefined;
     const isFriend = async (userId: string, actorId: string) =>
@@ -125,7 +136,46 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
         lacks,
         now,
     });
-    const friendshipCheck = createFriendshipCheck({ identity, transport, policyOf, isFriend, visitOf, now });
+    const friendshipCheck = createFriendshipCheck({
+        identity,
+        transport,
+        policyOf,
+        async stateOf(userId, actorId) {
+            const row = await remoteFriendshipRepository.get(userId, actorId);
+            return row?.state === 'accepted'
+                ? 'friends'
+                : row?.state === 'outgoing' || row?.state === 'incoming'
+                  ? row.state
+                  : 'none';
+        },
+        visitOf,
+        now,
+    });
+
+    /**
+     * 関係を相手のホームに確かめ直す（届かなかった承認・解除・取り消しの埋め合わせ）。確かめていないもの・1 日たったものから。
+     * つながらなければ確かめたことにしない（次の掃除でまた試す）。
+     */
+    const recheckFriendships = async (at: Date) => {
+        const due = await remoteFriendshipRepository.dueForCheck(
+            new Date(at.getTime() - FEDERATION_LIMITS.FRIENDSHIP_RECHECK_MS),
+            FEDERATION_LIMITS.FRIENDSHIP_RECHECK_BATCH,
+        );
+        for (const row of due) {
+            const actor = await actors.get(row.actorId).catch(() => null);
+            if (!actor || actor.deletedAt) continue;
+            if (await lacks(actor.domain, FEDERATION_FEATURES.friends)) {
+                await remoteFriendshipRepository.markChecked(row.userId, row.actorId, at);
+                continue;
+            }
+            const peer = await friendshipCheck.relationOf(row.actorId, identity.actorUrl(row.userId));
+            if (!peer) continue;
+            const result = await friendships.reconcile(row.userId, actor, peer);
+            if (result !== 'kept')
+                log(`フレンドの関係を相手とそろえました（${result}）: ${row.userId} ⇔ ${row.actorId}`);
+            await remoteFriendshipRepository.markChecked(row.userId, row.actorId, at);
+        }
+    };
     const rooms = createRooms({
         identity,
         allowHttp: config.allowHttp,
@@ -286,6 +336,9 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
                 ...(await Promise.all(blocked.map((p) => remoteFriendshipRepository.removeForDomain(p.domain)))).flat(),
             ];
             await notifyFriendshipsRemoved(removed);
+            await recheckFriendships(at).catch((error: unknown) =>
+                log(`フレンドの関係を確かめられません: ${String(error)}`),
+            );
             await Promise.all([
                 federationSeenRepository.deleteExpired(at),
                 remoteVisitRepository.deleteStale(new Date(at.getTime() - FEDERATION_LIMITS.VISIT_STALE_MS)),

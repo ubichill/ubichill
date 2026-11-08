@@ -1,5 +1,5 @@
 {
-  "id": "d7481933-9a97-436e-a85d-b74fa9bb2f45",
+  "id": "78e2c02e-9d01-409e-a012-1b724f2b4037",
   "prevId": "905bb3d4-65c2-4fe2-b4e2-b012721f8006",
   "version": "7",
   "dialect": "postgresql",
@@ -978,6 +978,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "checked_at": {
+          "name": "checked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -994,6 +1000,21 @@
         }
       },
       "indexes": {
+        "remote_friendships_checked_idx": {
+          "name": "remote_friendships_checked_idx",
+          "columns": [
+            {
+              "expression": "checked_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "remote_friendships_actor_idx": {
           "name": "remote_friendships_actor_idx",
           "columns": [

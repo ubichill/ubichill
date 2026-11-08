@@ -1,5 +1,5 @@
 import type { RemoteFriendshipInput, RemoteFriendshipRecord } from '@ubichill/db';
-import { type DomainPolicy, FEDERATION_FEATURES, FEDERATION_LIMITS } from '@ubichill/shared';
+import { DELIVERY_LIMITS, type DomainPolicy, FEDERATION_FEATURES, FEDERATION_LIMITS } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
 import { createRemoteFriendships, type FriendshipActor, friendshipViewOf } from './friendships';
 import { createFederationIdentity } from './identity';
@@ -37,6 +37,7 @@ function setup(options: { policy?: DomainPolicy; failSend?: boolean; lacking?: s
             relationshipId: input.relationshipId,
             acceptId: input.acceptId ?? null,
             peerOfferId: input.peerOfferId ?? null,
+            checkedAt: existing?.checkedAt ?? null,
             createdAt: existing?.createdAt ?? now,
             updatedAt: now,
         };
@@ -408,5 +409,58 @@ describe('同時に起きる（2 人の関係ごとに順番に処理する）',
         await expect(friendships.accept('alice', BOB)).rejects.toThrow();
         expect(rows).toMatchObject([{ state: 'incoming' }]);
         expect(notes).toEqual([`requested ${BOB.id} → alice`]);
+    });
+});
+
+describe('相手のホームに確かめて、届かなかった知らせを埋め合わせる（reconcile）', () => {
+    const o1 = 'https://c.example/ap/activities/o1';
+
+    it('こちらはフレンド・相手は関係なし（解除が届かなかった）なら消して知らせる', async () => {
+        const { friendships, rows, notes } = setup();
+        await friendships.onOffer(BOB, offerFrom(BOB, o1));
+        await friendships.accept('alice', BOB);
+        expect(await friendships.reconcile('alice', BOB, { friends: false, state: 'none' })).toBe('removed');
+        expect(rows).toEqual([]);
+        expect(notes.at(-1)).toBe(`removed alice × ${BOB.id}`);
+    });
+
+    it('こちらはフレンド・相手は申請中（承認が届かなかった）なら、相手の申請への承認を同じ id で送り直す', async () => {
+        const { friendships, sent } = setup();
+        await friendships.onOffer(BOB, offerFrom(BOB, o1));
+        await friendships.accept('alice', BOB);
+        const accept = sent.at(-1)?.activity;
+        expect(await friendships.reconcile('alice', BOB, { friends: false, state: 'outgoing' })).toBe('resent');
+        expect(sent.at(-1)?.activity).toMatchObject({ type: 'Accept', id: accept?.id, object: { id: o1 } });
+    });
+
+    it('こちらは申請中・相手はフレンド（相手の承認が届かなかった）ならフレンドにする', async () => {
+        const { friendships, find } = setup();
+        await friendships.request('alice', BOB);
+        expect(await friendships.reconcile('alice', BOB, { friends: true, state: 'friends' })).toBe('accepted');
+        expect(find('alice', BOB.id)?.state).toBe('accepted');
+    });
+
+    it('申請中・相手は関係なし: 送り直しの期限（48 時間）が過ぎるまでは消さない（申請がまだ届く途中かもしれない）', async () => {
+        const { friendships, rows, tick } = setup();
+        await friendships.request('alice', BOB);
+        expect(await friendships.reconcile('alice', BOB, { friends: false, state: 'none' })).toBe('kept');
+        tick(DELIVERY_LIMITS.GIVE_UP_MS + 1);
+        expect(await friendships.reconcile('alice', BOB, { friends: false, state: 'none' })).toBe('removed');
+        expect(rows).toEqual([]);
+    });
+
+    it('相手から申請が来ている・相手は関係なし（取り消しが届かなかった）なら消す', async () => {
+        const { friendships, rows } = setup();
+        await friendships.onOffer(BOB, offerFrom(BOB, o1));
+        expect(await friendships.reconcile('alice', BOB, { friends: false, state: 'none' })).toBe('removed');
+        expect(rows).toEqual([]);
+    });
+
+    it('古いサーバー（state を答えない）がフレンドでないと答えても消さず、承認の送り直しだけ', async () => {
+        const { friendships, find } = setup();
+        await friendships.onOffer(BOB, offerFrom(BOB, o1));
+        await friendships.accept('alice', BOB);
+        expect(await friendships.reconcile('alice', BOB, { friends: false })).toBe('resent');
+        expect(find('alice', BOB.id)?.state).toBe('accepted');
     });
 });

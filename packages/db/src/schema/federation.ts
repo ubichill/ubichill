@@ -97,11 +97,14 @@ export const remoteFriendships = pgTable(
         acceptId: text('accept_id'),
         /** お互いに申請したときの、相手の Offer の id（相手は解除をこの Offer の Undo で送ってくる） */
         peerOfferId: text('peer_offer_id'),
+        /** 相手のホームに関係を確かめた時刻（届かなかった知らせの埋め合わせ。null は早く確かめる） */
+        checkedAt: timestamp('checked_at', { withTimezone: true }),
         createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
         updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     },
     (table) => [
         primaryKey({ name: 'remote_friendships_pk', columns: [table.userId, table.actorId] }),
+        index('remote_friendships_checked_idx').on(table.checkedAt),
         check(
             'remote_friendships_state_check',
             sql`${table.state} IN ('outgoing', 'incoming', 'accepted', 'rejected')`,
