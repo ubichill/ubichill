@@ -6,19 +6,24 @@ import { accessIcon } from './accessIcon';
 
 /**
  * 部屋 1 つ（サムネイル・ワールド名・公開範囲・人数）と、そこにいるフレンド。
- * here は自分がいる部屋（入る操作を出さず「ここにいます」の印）。
+ * here は自分がいる部屋（入る操作を出さず「ここにいます」の印）。招待が要る部屋（canJoin が false）は「入る」の代わりに「リクエスト」。
  */
 export function PlaceCard({
     instance,
     here,
     onJoin,
+    onRequest,
+    requested,
     children,
 }: {
     instance: Instance;
     here?: boolean;
     onJoin?: () => void;
+    onRequest?: () => void;
+    requested?: boolean;
     children?: ReactNode;
 }) {
+    const needsInvite = instance.canJoin === false;
     const { world, stats, access } = instance;
     return (
         <article className={card} data-here={here || undefined}>
@@ -44,10 +49,16 @@ export function PlaceCard({
                         </span>
                     </p>
                 </div>
-                {!here && onJoin && (
+                {!here && !needsInvite && onJoin && (
                     <button type="button" className={joinButton} onClick={onJoin}>
                         <HudIcon name="enter" size={16} />
                         入る
+                    </button>
+                )}
+                {!here && needsInvite && onRequest && (
+                    <button type="button" className={joinButton} onClick={onRequest} disabled={requested}>
+                        <HudIcon name="userPlus" size={16} />
+                        {requested ? 'リクエスト済み' : 'リクエスト'}
                     </button>
                 )}
             </div>
@@ -126,4 +137,5 @@ const joinButton = css({
     cursor: 'pointer',
     transition: 'background-color 0.16s ease',
     _hover: { bg: 'primaryHover' },
+    _disabled: { opacity: 0.5, cursor: 'default', _hover: { bg: 'primary' } },
 });

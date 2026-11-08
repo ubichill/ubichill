@@ -23,7 +23,6 @@ export type InstanceStatus = z.infer<typeof InstanceStatus>;
 export const InstanceAccessSchema = z.object({
     type: AccessType.default('public'),
     tags: z.array(z.string().max(20)).max(10).default([]),
-    password: z.boolean().default(false),
 });
 
 export type InstanceAccess = z.infer<typeof InstanceAccessSchema>;
@@ -81,6 +80,8 @@ export const InstanceSchema = z.object({
     access: InstanceAccessSchema,
     stats: InstanceStatsSchema,
     connection: InstanceConnectionSchema,
+    /** 見ている人がそのまま入れるか。招待のみの部屋がフレンドに見えているだけなら false（入るには招待が要る） */
+    canJoin: z.boolean().optional(),
 });
 
 export type Instance = z.infer<typeof InstanceSchema>;
@@ -98,7 +99,6 @@ export const CreateInstanceRequestSchema = z.object({
         .object({
             type: AccessType.optional(),
             tags: z.array(z.string().max(20)).max(10).optional(),
-            password: z.string().max(100).optional(),
         })
         .optional(),
     settings: z

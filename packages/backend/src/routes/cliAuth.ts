@@ -11,7 +11,6 @@ import {
 import { Router } from 'express';
 import { sendAccountNotice } from '../lib/auth';
 import { requireFreshAuth, requirePublisher } from '../middleware/auth';
-import { selfAccount } from '../services/authorKeys';
 import {
     exchangeOutcome,
     loopbackRedirect,
@@ -20,10 +19,11 @@ import {
     randomSecret,
     requestFlowOf,
     sha256Base64Url,
-} from '../services/cliAuth';
-import { newEnvironmentNotice, publishingEnvironmentView } from '../services/publishingEnvironments';
-import { nodeWorldCrypto } from '../services/worldCrypto';
-import { worldRegistry } from '../services/worldRegistry';
+} from '../services/auth/cliAuth';
+import { selfAccount } from '../services/authors/authorKeys';
+import { newEnvironmentNotice, publishingEnvironmentView } from '../services/authors/publishingEnvironments';
+import { nodeWorldCrypto } from '../services/worlds/worldCrypto';
+import { worldRegistry } from '../services/worlds/worldRegistry';
 
 /**
  * CLI・CI の認可（`ubichill login` / `ubichill ci create`）。手順は docs/design/author-publishing.md §9。

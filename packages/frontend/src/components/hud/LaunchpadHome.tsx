@@ -20,7 +20,7 @@ interface LaunchpadHomeProps {
     isHome: boolean;
     goingHome: boolean;
     onGoHome: () => void;
-    onCopyInvite: () => void;
+    onInvite: () => void;
     onOpenInstance: () => void;
     onOpenPage: (page: HudPage) => void;
     onCreateWorld: () => void;
@@ -46,7 +46,7 @@ export function LaunchpadHome(props: LaunchpadHomeProps) {
     );
 }
 
-function CurrentPlace({ instance, isHome, goingHome, onGoHome, onCopyInvite, onOpenInstance }: LaunchpadHomeProps) {
+function CurrentPlace({ instance, isHome, goingHome, onGoHome, onInvite, onOpenInstance }: LaunchpadHomeProps) {
     return (
         <section className={banner} aria-label="現在地">
             {instance?.world.thumbnail && <img src={instance.world.thumbnail} alt="" className={bannerImage} />}
@@ -78,9 +78,9 @@ function CurrentPlace({ instance, isHome, goingHome, onGoHome, onCopyInvite, onO
                     <HudIcon name="home" size={16} />
                     ホーム
                 </button>
-                <button type="button" className={pill} onClick={onCopyInvite}>
-                    <HudIcon name="link" size={16} />
-                    招待リンク
+                <button type="button" className={pill} onClick={onInvite}>
+                    <HudIcon name="userPlus" size={16} />
+                    招待
                 </button>
             </div>
         </section>

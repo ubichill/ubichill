@@ -3,9 +3,9 @@ import rateLimit from 'express-rate-limit';
 import { redis } from '../lib/redis';
 import { sharedRateLimit } from '../lib/sharedRateLimit';
 import { requireAuth } from '../middleware/auth';
-import { createHomeService } from '../services/homeInstance';
-import { instanceManager } from '../services/instanceManager';
-import { worldRegistry } from '../services/worldRegistry';
+import { createHomeService } from '../services/instances/homeInstance';
+import { instanceManager } from '../services/instances/instanceManager';
+import { worldRegistry } from '../services/worlds/worldRegistry';
 import { logger } from '../utils/logger';
 import { createHomeRouter } from './home';
 

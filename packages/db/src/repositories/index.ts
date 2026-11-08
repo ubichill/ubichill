@@ -4,6 +4,7 @@ export * from './cliAuthRequestRepository';
 export * from './externalWorkRepository';
 export * from './federationPeerRepository';
 export * from './instanceRepository';
+export * from './inviteRepository';
 export * from './userFriendRepository';
 export * from './userRepository';
 export * from './userSettingsRepository';

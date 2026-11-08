@@ -70,7 +70,7 @@ pending_registrations
   INDEX (email), INDEX (expires_at)
 ```
 
-- 規則は #242 のメモリ版（`services/pendingRegistrations.ts`）と同じにする。ID で引く、同じアドレスは同時に 3 件まで、5 回間違えたら捨てる、再送信で失敗回数を戻さない。
+- 規則は #242 のメモリ版（`services/auth/pendingRegistrations.ts`）と同じにする。ID で引く、同じアドレスは同時に 3 件まで、5 回間違えたら捨てる、再送信で失敗回数を戻さない。
 - **「同じアドレスは 3 件まで」は、数えてから足す（`SELECT COUNT` → `INSERT`）だけでは同時の申し込みで超える。** トランザクションの最初に `pg_advisory_xact_lock(hashtextextended(lower(email), 0))` でアドレスごとに直列にしてから、数えて足す。
 - **確認と本登録は 1 つのトランザクションにする。**
   1. `SELECT ... FROM pending_registrations WHERE id_hash = $1 FOR UPDATE` で行を押さえる。

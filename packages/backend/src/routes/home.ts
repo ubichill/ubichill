@@ -1,6 +1,6 @@
 import { HomeSettingsUpdateSchema } from '@ubichill/shared';
 import { type RequestHandler, type Response, Router } from 'express';
-import type { HomeOutcome, HomeService } from '../services/homeInstance';
+import type { HomeOutcome, HomeService } from '../services/instances/homeInstance';
 import { logger } from '../utils/logger';
 
 export interface HomeRouterDeps {

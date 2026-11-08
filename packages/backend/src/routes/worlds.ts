@@ -4,9 +4,9 @@ import type { NextFunction, Request, Response } from 'express';
 import { Router } from 'express';
 import yaml from 'yaml';
 import { optionalAuth, requireAdmin, requireAuth, requirePublisher } from '../middleware/auth';
-import { selfAccount } from '../services/authorKeys';
-import { bearerToken } from '../services/cliAuth';
-import { worldRegistry } from '../services/worldRegistry';
+import { bearerToken } from '../services/auth/cliAuth';
+import { selfAccount } from '../services/authors/authorKeys';
+import { worldRegistry } from '../services/worlds/worldRegistry';
 import { logger } from '../utils/logger';
 
 const router = Router();

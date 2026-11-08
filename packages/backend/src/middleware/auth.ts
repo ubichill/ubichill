@@ -2,7 +2,7 @@ import { authorKeyRepository, userRepository } from '@ubichill/db';
 import { OFFICIAL_HANDLE } from '@ubichill/shared';
 import type { NextFunction, Request, Response } from 'express';
 import { auth } from '../lib/auth';
-import { bearerToken, sha256Base64Url } from '../services/cliAuth';
+import { bearerToken, sha256Base64Url } from '../services/auth/cliAuth';
 import { logger } from '../utils/logger';
 
 // Extend Express Request type with user info

@@ -56,7 +56,7 @@ const envSchema = z
             .string()
             .default('false')
             .transform((val) => val === 'true'),
-        // 開発・プレビュー用。署名の無い同梱ワールド（worlds/）を「署名なし」として配る（services/worldRegistry.ts）
+        // 開発・プレビュー用。署名の無い同梱ワールド（worlds/）を「署名なし」として配る（services/worlds/worldRegistry.ts）
         WORLDS_SERVE_UNSIGNED_REPOSITORY: z
             .string()
             .default('false')

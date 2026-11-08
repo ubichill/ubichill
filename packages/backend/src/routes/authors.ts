@@ -1,9 +1,9 @@
 import { authorKeyRepository, userRepository } from '@ubichill/db';
 import { HANDLE_PATTERN } from '@ubichill/shared';
 import { Router } from 'express';
-import { selfAccount } from '../services/authorKeys';
-import { signingKeyListOf } from '../services/publishingEnvironments';
-import { worldRegistry } from '../services/worldRegistry';
+import { selfAccount } from '../services/authors/authorKeys';
+import { signingKeyListOf } from '../services/authors/publishingEnvironments';
+import { worldRegistry } from '../services/worlds/worldRegistry';
 import { logger } from '../utils/logger';
 
 /**

@@ -1,7 +1,7 @@
 import type { AppNotification, ServerNotice } from '@ubichill/shared';
 
 /**
- * 通知の種類。通知タブの中のタブに対応する（招待は #199 で足す）。
+ * 通知の種類。通知タブの中のタブに対応する。
  */
 export type NotificationKind = 'invite' | 'friend-request' | 'other';
 
@@ -12,8 +12,18 @@ export const NOTIFICATION_TABS: ReadonlyArray<{ kind: NotificationKind; label: s
     { kind: 'other', label: 'その他' },
 ];
 
-export const kindOf = (n: AppNotification): NotificationKind =>
-    n.type === 'Follow' || n.type === 'Accept' ? 'friend-request' : 'other';
+export const kindOf = (n: AppNotification): NotificationKind => {
+    switch (n.type) {
+        case 'Invite':
+        case 'Join':
+            return 'invite';
+        case 'Follow':
+        case 'Accept':
+            return 'friend-request';
+        default:
+            return 'other';
+    }
+};
 
 /** 種類ごとに分ける（どの種類も空の配列を持つ。並びは保つ）。 */
 export function groupNotifications(items: readonly AppNotification[]): Record<NotificationKind, AppNotification[]> {
@@ -32,9 +42,41 @@ export function notificationText(n: AppNotification): string {
             return `${who} さんがフレンドリクエストを承認しました`;
         case 'Like':
             return `${who} さんがワールド「${n.object.name}」をお気に入りにしました`;
+        case 'Invite':
+            return `${who} さんが「${n.object.name}」に招待しています`;
+        case 'Join':
+            return `${who} さんが招待をリクエストしています`;
         case 'Announce':
             return `お知らせ: ${n.object.summary}`;
     }
+}
+
+/**
+ * 届いた通知のトーストに付ける操作。招待は「入る」（その部屋へ移る）、リクエストは「招待する」（いまいる部屋へ）。
+ */
+export function toastActionOf(
+    n: AppNotification,
+    run: {
+        enter: (to: string, state: { worldData: { displayName: string; thumbnail?: string } }) => void;
+        acceptRequest: (userId: string) => void;
+    },
+): { label: string; run: () => void } | undefined {
+    switch (n.type) {
+        case 'Invite': {
+            const { id, name, image } = n.object;
+            const state = { worldData: { displayName: name, thumbnail: image ?? undefined } };
+            return { label: '入る', run: () => run.enter(`/instance/${encodeURIComponent(id)}`, state) };
+        }
+        case 'Join':
+            return { label: '招待する', run: () => run.acceptRequest(n.actor.id) };
+        default:
+            return undefined;
+    }
+}
+
+/** 招待で入れる・リクエストに答えられる期限が過ぎたか。期限の無い種類は過ぎない。 */
+export function isExpired(n: AppNotification, now: number): boolean {
+    return (n.type === 'Invite' || n.type === 'Join') && Date.parse(n.endTime) <= now;
 }
 
 /** ベルの件数（多すぎる数は丸める）。0 なら出さない。 */

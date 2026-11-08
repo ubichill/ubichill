@@ -90,6 +90,14 @@ const PATHS = {
     ),
     back: <path d="m15 18-6-6 6-6" />,
     chevron: <path d="m9 18 6-6-6-6" />,
+    userPlus: (
+        <>
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M19 8v6M22 11h-6" />
+        </>
+    ),
+    check: <path d="M20 6 9 17l-5-5" />,
     search: (
         <>
             <circle cx="11" cy="11" r="7" />

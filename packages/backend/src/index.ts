@@ -2,6 +2,7 @@ import http from 'node:http';
 import {
     announcementRepository,
     cliAuthRequestRepository,
+    inviteRepository,
     notificationRepository,
     pendingRegistrationRepository,
 } from '@ubichill/db';
@@ -22,6 +23,7 @@ import { router as cliAuthRouter } from './routes/cliAuth';
 import { router as federationRouter } from './routes/federation';
 import { router as homeRouter } from './routes/homeRouter';
 import { router as instancesRouter } from './routes/instances';
+import { router as invitesRouter } from './routes/invitesRouter';
 import { router as notificationsRouter } from './routes/notifications';
 import { router as profilesRouter } from './routes/profilesRouter';
 import { router as serviceTokensRouter } from './routes/serviceTokens';
@@ -29,12 +31,12 @@ import { router as socialRouter } from './routes/social';
 import { router as usersRouter } from './routes/users';
 import { router as webfingerRouter } from './routes/webfinger';
 import { router as worldsRouter } from './routes/worlds';
-import { backendEvents, createRedisBackendBus } from './services/backendEvents';
-import { instanceReaper } from './services/instanceReaper';
-import { maintenanceGate } from './services/maintenance';
-import { createRedisNotificationBus, notificationHub } from './services/notificationHub';
-import { bootstrapOfficialAccount } from './services/officialAccountStore';
-import { worldRegistry } from './services/worldRegistry';
+import { bootstrapOfficialAccount } from './services/authors/officialAccountStore';
+import { backendEvents, createRedisBackendBus } from './services/cluster/backendEvents';
+import { maintenanceGate } from './services/cluster/maintenance';
+import { instanceReaper } from './services/instances/instanceReaper';
+import { createRedisNotificationBus, notificationHub } from './services/notifications/notificationHub';
+import { worldRegistry } from './services/worlds/worldRegistry';
 import { logger } from './utils/logger';
 
 // Expressアプリを初期化
@@ -128,6 +130,7 @@ app.use('/api/v1/users', profilesRouter);
 app.use('/api/v1/users', homeRouter);
 app.use('/api/v1/users', usersRouter);
 app.use('/api/v1/social', socialRouter);
+app.use('/api/v1', invitesRouter);
 app.use('/api/v1/notifications', notificationsRouter);
 app.use('/api/v1/authors', authorsRouter);
 app.use('/api/v1/cli-auth', cliAuthRouter);
@@ -213,6 +216,9 @@ async function startServer() {
                     .pruneAllVersions()
                     .catch((err: unknown) => logger.error('ワールドの古い版の掃除に失敗:', err)),
                 cleanOldNotifications().catch((err: unknown) => logger.error('古い通知の掃除に失敗:', err)),
+                inviteRepository
+                    .deleteExpired()
+                    .catch((err: unknown) => logger.error('期限切れの招待の掃除に失敗:', err)),
             ]);
         });
     };
