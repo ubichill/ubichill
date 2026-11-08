@@ -1,25 +1,21 @@
-// 画面の体験の確認（Chromium）。負荷の最中に 1〜2 人が実際の画面で「ログイン → ロビー → インスタンスを作って入る → 描画」を通す。
+// 画面の体験の確認（Chromium）。負荷の最中に 1〜2 人が実際の画面で「ログイン → ホームの部屋へ自動で入る → 描画」を通す。
 // 手順とセレクタは packages/e2e/src/browser/smoke.spec.ts と同じ（画面を変えたら両方を直す）。
 import { sleep } from 'k6';
-import { browser, type Locator, type Page } from 'k6/browser';
+import { browser, type Page } from 'k6/browser';
 import { vu } from 'k6/execution';
 import { setTimeout } from 'k6/timers';
-import { type ApiTarget, deleteInstance, ensureSession } from './api.ts';
+import { type ApiTarget, deleteInstance, ensureSession, setHomeWorld } from './api.ts';
 import type { LoadTestConfig } from './config.ts';
 import { browserFailures, browserJourney, browserStep, instanceOps } from './metrics.ts';
 import { loadtestAccount } from './plan.ts';
 import { instanceIdFromUrl } from './protocol.ts';
 
-export interface BrowserSetup {
-    readonly worldDisplayName: string;
-}
-
 const STEP_TIMEOUT_MS = 30_000;
 const POLL_MS = 250;
 
-type Step = 'account' | 'login' | 'lobby' | 'enter' | 'render';
+type Step = 'account' | 'login' | 'home' | 'render';
 
-export async function runBrowserJourney(config: LoadTestConfig, setup: BrowserSetup): Promise<void> {
+export async function runBrowserJourney(config: LoadTestConfig): Promise<void> {
     const target: ApiTarget = { origin: config.origin, apiBase: config.apiBase };
     const account = loadtestAccount('web', config.accountOffset + vu.idInInstance, config.accountPassword);
     const progress: { step: Step; instanceId: string | null } = { step: 'account', instanceId: null };
@@ -28,6 +24,13 @@ export async function runBrowserJourney(config: LoadTestConfig, setup: BrowserSe
     if (!session.ok) {
         browserFailures.add(1, { step: 'account' });
         console.error(`アカウントを用意できません（${account.handle}）: ${session.reason}`);
+        sleep(config.browserPauseSeconds);
+        return;
+    }
+    // ログインしたらホームへ入る。試験のワールドで測るため、ホームをそのワールドにしておく
+    if (!setHomeWorld(target, session.cookie, config.worldId)) {
+        browserFailures.add(1, { step: 'account' });
+        console.error(`ホームを ${config.worldId} にできません（${account.handle}）`);
         sleep(config.browserPauseSeconds);
         return;
     }
@@ -43,8 +46,7 @@ export async function runBrowserJourney(config: LoadTestConfig, setup: BrowserSe
     const journeyStartedAt = Date.now();
     try {
         await timed('login', () => logIn(page, config.origin, account));
-        const card = await timed('lobby', () => openLobby(page, setup.worldDisplayName));
-        progress.instanceId = await timed('enter', () => enterNewInstance(page, card));
+        progress.instanceId = await timed('home', () => enterHome(page));
         await timed('render', () => waitForRender(page));
         browserJourney.add(Date.now() - journeyStartedAt);
     } catch (error) {
@@ -69,22 +71,14 @@ async function logIn(
     const submit = page.locator('form').getByRole('button', { name: 'ログイン', exact: true });
     await submit.waitFor({ state: 'visible', timeout: STEP_TIMEOUT_MS });
     await page.getByLabel('メールアドレス').fill(account.email);
-    await page.getByLabel('パスワード').fill(account.password);
+    await page.getByLabel('パスワード', { exact: true }).fill(account.password);
     await submit.click();
-    await page.waitForURL(`${origin}/`, { timeout: STEP_TIMEOUT_MS });
+    // ログインのあとは `/`（ホームを用意する）を経てホームの部屋へ移る。速いと `/` を見られないので、どちらでもよい
+    await page.waitForURL(/\/(instance\/[^/]+)?$/, { timeout: STEP_TIMEOUT_MS });
 }
 
-/** ロビーのワールドの一覧に、対象のワールドのカードが出るまで。カードは表示名の見出しで見分ける。 */
-async function openLobby(page: Page, worldDisplayName: string): Promise<Locator> {
-    await page.getByRole('button', { name: 'ワールド', exact: true }).click();
-    const card = page.getByRole('heading', { name: worldDisplayName, exact: true });
-    await card.waitFor({ state: 'visible', timeout: STEP_TIMEOUT_MS });
-    return card;
-}
-
-async function enterNewInstance(page: Page, card: Locator): Promise<string> {
-    await card.click();
-    await page.getByRole('button', { name: '新しくインスタンス作成' }).click();
+/** ログインすると `/` がホームの部屋（無ければ作る）を用意して移る。その部屋の URL になるまで。 */
+async function enterHome(page: Page): Promise<string> {
     await page.waitForURL(/\/instance\/[^/]+$/, { timeout: STEP_TIMEOUT_MS });
     const id = instanceIdFromUrl(page.url());
     if (id === null) throw new Error(`インスタンスの URL ではありません: ${page.url()}`);

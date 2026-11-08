@@ -1,19 +1,24 @@
 import { UserProfileView } from '@/components/profile';
-import { cardStyle, type JoinInstanceHandler, tabPanel } from './shared';
+import { type JoinInstanceHandler, tabPanel } from './shared';
 
-/** マイページ: 自分のプロフィール（ほかの人に見えるとおり）。「編集」でその場で編集できる。 */
+/** プロフィール（ほかの人に見えるとおり）。userId が無ければ自分のもの（「編集」でその場で編集できる）。 */
 export function ProfileTab({
+    userId,
     onNavigate,
     onJoinInstance,
 }: {
+    userId?: string;
     onNavigate?: () => void;
     onJoinInstance: JoinInstanceHandler;
 }) {
     return (
         <div className={tabPanel} onClick={(e) => e.stopPropagation()}>
-            <div className={cardStyle}>
-                <UserProfileView onNavigate={onNavigate} onJoinInstance={onJoinInstance} />
-            </div>
+            <UserProfileView
+                key={userId ?? 'me'}
+                userId={userId}
+                onNavigate={onNavigate}
+                onJoinInstance={onJoinInstance}
+            />
         </div>
     );
 }

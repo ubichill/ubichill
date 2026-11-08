@@ -2,19 +2,18 @@ import { useSocket } from '@ubichill/react';
 import { type Instance, worldOriginDomain } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { FavoriteButton } from '@/components/lobby/FavoriteButton';
-import { useInstances } from '@/components/lobby/useInstances';
-import { WorldDetailModal } from '@/components/lobby/WorldDetailModal';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
+import { FavoriteButton } from '@/components/worlds/FavoriteButton';
+import { useInstances } from '@/components/worlds/useInstances';
+import { WorldDetailModal } from '@/components/worlds/WorldDetailModal';
 import { fetchInstance } from '@/lib/instancesApi';
 import { instanceWorldRef } from '@/lib/worldRef';
 import { css } from '@/styled-system/css';
-import { cardStyle, sectionHeading, tabPanel } from './shared';
+import { sectionHeading, tabPanel, tabSection } from './shared';
 
 interface InstanceTabProps {
     currentInstanceId: string;
     onNavigate?: () => void;
-    onReturnToLobby?: () => void;
 }
 
 const actionButtonBase = {
@@ -36,9 +35,9 @@ const actionButtonBase = {
 
 /**
  * 現在参加中のインスタンスの詳細タブ。
- * 入り直し / 新規インスタンス作成 / (作者のみ)編集 / ロビーへ戻る と、参加者一覧を表示する。
+ * 入り直し / 新規インスタンス作成 / (作者のみ)編集 と、参加者一覧を表示する。
  */
-export function InstanceTab({ currentInstanceId, onNavigate, onReturnToLobby }: InstanceTabProps) {
+export function InstanceTab({ currentInstanceId, onNavigate }: InstanceTabProps) {
     const navigate = useNavigate();
     const confirm = useConfirm();
     const { users, currentUser } = useSocket();
@@ -124,7 +123,7 @@ export function InstanceTab({ currentInstanceId, onNavigate, onReturnToLobby }: 
     return (
         <div className={tabPanel} onClick={(e) => e.stopPropagation()}>
             {/* インスタンス概要 + アクション */}
-            <div className={cardStyle}>
+            <div className={tabSection}>
                 <div
                     className={css({
                         display: 'flex',
@@ -174,18 +173,6 @@ export function InstanceTab({ currentInstanceId, onNavigate, onReturnToLobby }: 
                         )}
                     </div>
                     <div className={css({ minW: 0, flex: 1 })}>
-                        <p
-                            className={css({
-                                fontSize: '11px',
-                                fontWeight: '700',
-                                color: 'textSubtle',
-                                textTransform: 'uppercase',
-                                letterSpacing: '0.08em',
-                                mb: '1',
-                            })}
-                        >
-                            現在のインスタンス
-                        </p>
                         <h2
                             className={css({
                                 fontSize: { base: 'lg', md: 'xl' },
@@ -301,32 +288,13 @@ export function InstanceTab({ currentInstanceId, onNavigate, onReturnToLobby }: 
                             編集
                         </button>
                     )}
-                    {onReturnToLobby && (
-                        <button
-                            type="button"
-                            onClick={onReturnToLobby}
-                            className={css(actionButtonBase, { bg: 'secondary', color: 'text' })}
-                        >
-                            <svg
-                                width="16"
-                                height="16"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                            >
-                                <path d="M15 18l-6-6 6-6" />
-                            </svg>
-                            ロビーへ戻る
-                        </button>
-                    )}
                 </div>
             </div>
 
             {/* ワールド詳細（説明・情報・使用 mod）。リモートワールドでも instance.world から表示できる */}
             {world && (world.description || detailRows.length > 0 || (world.mods && world.mods.length > 0)) && (
-                <div className={cardStyle}>
-                    <h2 className={sectionHeading}>ワールド詳細</h2>
+                <div className={tabSection}>
+                    <h2 className={sectionHeading}>ワールド</h2>
                     <div className={css({ display: 'flex', flexDirection: 'column', gap: '3' })}>
                         {world.description && (
                             <p className={css({ color: 'textMuted', fontSize: '13px', lineHeight: '1.7' })}>
@@ -380,8 +348,13 @@ export function InstanceTab({ currentInstanceId, onNavigate, onReturnToLobby }: 
             )}
 
             {/* 参加者一覧 */}
-            <div className={cardStyle}>
-                <h2 className={sectionHeading}>参加者一覧</h2>
+            <div className={tabSection}>
+                <h2 className={sectionHeading}>
+                    参加者
+                    <span className={css({ ml: '2', color: 'textSubtle', fontWeight: '700' })}>
+                        {participants.length}
+                    </span>
+                </h2>
                 <ul
                     className={css({
                         listStyle: 'none',

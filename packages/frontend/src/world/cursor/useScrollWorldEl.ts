@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
  * DOM ツリーから動的に検出して返す hook。
  *
  * - InstancePage 等でマウント後に出てくるので route 切替で生え変わる
- * - 見つからない (= ロビーや editor 外) ときは null
+ * - 見つからない (= インスタンスや editor の外) ときは null
  * - MutationObserver で document.body の subtree 変化を購読するが、
  *   mod の VNode レンダリングで頻繁に発火するので **rAF でデバウンス** している。
  *   1 フレーム内の連続変化は 1 回の querySelector に集約され、同じ要素なら

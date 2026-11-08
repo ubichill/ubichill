@@ -12,6 +12,8 @@ export interface SocketContextValue {
     users: Map<string, User>;
     currentUser: User | null;
     error: string | null;
+    /** 同じアカウントが別のタブ・端末で入ったため、この接続が切られた（自動で入り直すと取り合いになる） */
+    sessionReplaced: boolean;
     joinWorld: JoinWorld;
     leaveWorld: () => Promise<void>;
     updatePosition: (position: CursorPosition, heldEntityId?: string | null) => void;
@@ -35,6 +37,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode; resolveInstan
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const currentUserRef = useRef<User | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [sessionReplaced, setSessionReplaced] = useState(false);
     const isInitializedRef = useRef(false);
 
     /**
@@ -44,6 +47,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode; resolveInstan
     const sendJoin = useCallback(
         (socket: InstanceSocket, instanceId: string, user: Omit<User, 'id'>, onError?: (error: string) => void) => {
             setError(null);
+            setSessionReplaced(false);
             socket.emit('world:join', { instanceId, user }, (response) => {
                 if (response.success && response.userId) {
                     const newUser = { ...user, id: response.userId };
@@ -97,6 +101,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode; resolveInstan
             setIsConnecting(false);
             setCurrentUser(null);
             currentUserRef.current = null;
+            setSessionReplaced(true);
             setError('同じアカウントが別のタブ・端末でインスタンスに参加したため、こちらの接続は切れました');
         });
 
@@ -240,6 +245,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode; resolveInstan
             setCurrentUser(null);
             currentUserRef.current = null;
             setIsConnecting(false);
+            setSessionReplaced(false);
             if (!socket || !isConnected) {
                 socket?.disconnect();
                 resolve();
@@ -277,6 +283,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode; resolveInstan
         users,
         currentUser,
         error,
+        sessionReplaced,
         joinWorld,
         leaveWorld,
         updatePosition,

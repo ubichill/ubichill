@@ -3,12 +3,15 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { PermissionRoot } from './components/permissions/PermissionRoot';
 import { resolveInstance } from './lib/instanceConnection';
+import { restoreMediaOutput } from './lib/mediaOutputSetting';
 import { requestServiceToken } from './lib/serviceTokens';
 import { AppRouter } from './router';
 import './styles/globals.css';
 
 const rootEl = document.getElementById('root');
 if (!rootEl) throw new Error('Root element not found');
+
+restoreMediaOutput();
 
 createRoot(rootEl).render(
     <StrictMode>

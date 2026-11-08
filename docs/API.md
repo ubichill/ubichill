@@ -295,7 +295,7 @@ Events.emit('vp:media:state', state, { scope: 'referrers' }); // 参照で自分
 | `input:mouse_move` | `{ x, y, viewportX, viewportY, buttons }` | DOM mousemove |
 | `input:mouse_down` | `{ x, y, button }` | DOM mousedown |
 | `input:mouse_up` | `{ x, y, button }` | DOM mouseup |
-| `input:key_down` | `{ key, code }` | DOM keydown |
+| `input:key_down` | `{ key, code }` | DOM keydown（Esc はホストがランチパッドにも使う。下の注意） |
 | `input:key_up` | `{ key, code }` | DOM keyup |
 | `input:cursor_style` | `{ style: string }` | カーソル CSS 変化 |
 | `input:scroll` | `{ x, y }` | ワールドスクロール |
@@ -310,6 +310,10 @@ Events.emit('vp:media:state', state, { scope: 'referrers' }); // 参照で自分
 | `media:ended` | `{ targetId }` | `<video>` ended |
 | `media:error` | `{ targetId, message }` | `<video>` error |
 | `<custom>` (emit/sendToWorker で指定した type) | 指定した payload | `Ubi.event.emit` / Host の `sendToWorker` |
+
+Esc はホスト（ubichill の SNS）がランチパッドの開け閉めに使う。`input:key_down` の Escape は mod にも届くので、
+Esc で何かを閉じる mod は、ランチパッドも同時に開くことがある。乗り物（`Ubi.ride`）に乗っている間だけは
+ホストが Esc を譲り、ランチパッドを開かない（「Esc で降りる」を先に通す）。
 
 `onBroadcast(type, (userId, data) => ...)` 専用:
 
@@ -375,6 +379,7 @@ HTTP契約・型生成はOpenAPI、WebSocket契約はAsyncAPI。詳細は
 | `/worlds` | 一覧・詳細 | 作成 | 更新・削除（**作成者のみ**） |
 | `/instances` | 一覧・詳細 | 作成（10件/h） | 削除（**リーダーのみ**） |
 | `/users/me` | 自分の情報 | — | — |
+| `/users/me/home` | ホームの設定とワールド | `/instance`: ホームの部屋を新しく作る（`?fallback=default` で既定のワールド。10回/分/人） | PUT: `{worldRef?: string\|null, accessType?}`（20回/分/人） |
 | `/notifications` | 一覧（`?cursor=&limit=`、お知らせを含む新しい順）・`/unread-count` | `/read`（`{ids}` か `{all:true}`） | — |
 | `/notifications/stream` | SSE（`notification`・`read`・`removed`、25 秒ごとに keep-alive、15 分で閉じる） | — | — |
 | `/notifications/announcements` | 一覧 | 作成（**公式アカウントのみ**、20件/h） | — |

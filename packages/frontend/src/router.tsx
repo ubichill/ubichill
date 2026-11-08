@@ -7,8 +7,8 @@ import { VersionSkewGuard } from './components/VersionSkewGuard';
 import { SessionProvider } from './lib/session';
 import { AuthPage } from './pages/AuthPage';
 import { CliAuthorizePage } from './pages/CliAuthorizePage';
+import { HomePage } from './pages/HomePage';
 import { InstancePage } from './pages/InstancePage';
-import { LobbyPage } from './pages/LobbyPage';
 import { UserPage } from './pages/UserPage';
 import { WorldPage } from './pages/WorldPage';
 import { WorldEditorPage } from './pages/world-editor';
@@ -21,11 +21,12 @@ export function AppRouter() {
                     <ConfirmProvider>
                         <Routes>
                             <Route path="/auth" element={<AuthPage />} />
+                            {/* ロビーは無い。ログインしたらホームの部屋へそのまま移る */}
                             <Route
                                 path="/"
                                 element={
                                     <ProtectedRoute>
-                                        <LobbyPage />
+                                        <HomePage />
                                     </ProtectedRoute>
                                 }
                             />

@@ -1,11 +1,10 @@
 import type { Friendship, UserSummary } from '@ubichill/shared';
-import { useNavigate } from 'react-router';
-import { userPagePath } from '@/lib/userPath';
 import { css } from '@/styled-system/css';
 import { FriendButton } from './FriendButton';
 import { UserAvatar } from './UserAvatar';
+import { useOpenUser } from './useOpenUser';
 
-/** ユーザー 1 人の行（クリックでユーザーページ、右にフレンドの操作）。 */
+/** ユーザー 1 人の行（押すとプロフィール、右にフレンドの操作）。 */
 export function UserRow({
     user,
     friendship,
@@ -15,24 +14,23 @@ export function UserRow({
     friendship: Friendship;
     onChange: (next: Friendship) => void;
 }) {
-    const navigate = useNavigate();
+    const openUser = useOpenUser();
     return (
         <li
             className={css({
                 display: 'flex',
                 alignItems: 'center',
                 gap: '3',
-                px: '3',
-                py: '2',
-                bg: 'surface',
-                border: '1px solid',
-                borderColor: 'border',
-                borderRadius: '12px',
+                px: '2',
+                py: '1.5',
+                borderRadius: '10px',
+                transition: 'background-color 0.16s ease',
+                _hover: { bg: 'surfaceHover' },
             })}
         >
             <button
                 type="button"
-                onClick={() => navigate(userPagePath(user))}
+                onClick={() => openUser(user)}
                 className={css({
                     display: 'flex',
                     alignItems: 'center',

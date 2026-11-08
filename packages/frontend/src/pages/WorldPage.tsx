@@ -116,7 +116,7 @@ export function WorldPage() {
         }
     };
 
-    // /:at/:name は共有 URL（/@handle/name）だけ。それ以外の 2 段のパスはロビーへ
+    // /:at/:name は共有 URL（/@handle/name）だけ。それ以外の 2 段のパスはホームへ
     if (at !== undefined && !authorRef) return <Navigate to="/" replace />;
 
     if (loading) {
@@ -162,7 +162,7 @@ export function WorldPage() {
                         border: 'none',
                     })}
                 >
-                    ロビーへ
+                    ホームへ
                 </button>
             </div>
         );
@@ -322,7 +322,7 @@ function HeroSection({ world, instances, onCreate, creating }: HeroSectionProps)
                         border: 'none',
                         boxShadow: 'card',
                         transition: 'transform 0.15s ease',
-                        _hover: { transform: 'translateY(-2px)', bg: 'primaryHover' },
+                        _hover: { bg: 'primaryHover' },
                         _disabled: { opacity: 0.6, cursor: 'not-allowed', transform: 'none' },
                     })}
                 >
@@ -345,7 +345,7 @@ function HeroSection({ world, instances, onCreate, creating }: HeroSectionProps)
                         _hover: { bg: 'surfaceHover' },
                     })}
                 >
-                    ロビーへ戻る
+                    ホームへ
                 </a>
             </div>
         </section>

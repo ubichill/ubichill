@@ -1,6 +1,6 @@
 /**
  * `world.html` の画面。同じオリジンの Go にゲストとして入り、同じオリジンの `/mods` から mod を取る。
- * ログイン・ロビー・router は無い。入るインスタンスは URL のパスで決まる（`/` は `default`）。
+ * ログイン・ホーム・router は無い。入るインスタンスは URL のパスで決まる（`/` は `default`）。
  *
  * dev サーバー（`ubichill dev`）が配るときは `<meta name="ubichill-dev">` が付き、世代（lock・部屋）を SSE から受け取る。
  */

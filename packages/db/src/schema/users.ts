@@ -1,5 +1,6 @@
 import { relations } from 'drizzle-orm';
 import { boolean, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, varchar } from 'drizzle-orm/pg-core';
+import { instanceAccessTypeEnum } from './instanceAccessType';
 import { worlds } from './worlds';
 
 export const friendStatusEnum = pgEnum('friend_status', ['pending', 'accepted']);
@@ -85,6 +86,10 @@ export const userSettings = pgTable('user_settings', {
     disableExternalUrls: boolean('disable_external_urls').default(false).notNull(),
     /** お気に入り一覧の公開範囲。初期値は本人だけ（行が無いユーザーも private として扱う）。 */
     favoritesVisibility: favoritesVisibilityEnum('favorites_visibility').default('private').notNull(),
+    /** ホームワールドの正規 URL。NULL は公式の既定ワールド（shared の DEFAULT_HOME_WORLD_REF）。 */
+    homeWorldRef: text('home_world_ref'),
+    /** ホームの部屋の公開範囲。初期値は招待のみ。 */
+    homeAccessType: instanceAccessTypeEnum('home_access_type').default('invite_only').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });

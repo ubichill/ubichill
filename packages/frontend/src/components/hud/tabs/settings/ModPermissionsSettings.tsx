@@ -13,7 +13,7 @@
 import { type CapabilityRisk, describeCapability, type TierMode, useUbiPermissions } from '@ubichill/react';
 import { displayAuthorAccount, parsePermissionSubject } from '@ubichill/shared';
 import { css } from '@/styled-system/css';
-import { cardStyle, sectionHeading } from '../shared';
+import { sectionHeading, tabSection } from '../shared';
 
 type ShieldLevelId = 'none' | 'standard' | 'strict' | 'block';
 
@@ -106,7 +106,7 @@ export function ModPermissionsSettings() {
 
     if (!permissions) {
         return (
-            <div className={cardStyle}>
+            <div className={tabSection}>
                 <p className={css({ color: 'textMuted' })}>権限設定を利用できません。</p>
             </div>
         );
@@ -122,7 +122,7 @@ export function ModPermissionsSettings() {
     return (
         <>
             {/* ── シールドレベル ── */}
-            <div className={cardStyle}>
+            <div className={tabSection}>
                 <h2 className={sectionHeading}>modの安全レベル</h2>
                 <p className={css({ fontSize: '13px', color: 'textMuted', mb: '5', lineHeight: '1.6' })}>
                     modが権限を使うときの確認の厳しさです。厳しくするほど、modが権限を使う前に確認します。
@@ -190,7 +190,7 @@ export function ModPermissionsSettings() {
             </div>
 
             {/* ── modごとの許可 ── */}
-            <div className={cardStyle}>
+            <div className={tabSection}>
                 <h2 className={sectionHeading}>modごとの許可</h2>
                 {modIds.length === 0 ? (
                     <div

@@ -208,6 +208,7 @@ export function EditorPreview({
             users: new Map(),
             currentUser: null,
             error: null,
+            sessionReplaced: false,
             joinWorld: () => {
                 /* no-op */
             },

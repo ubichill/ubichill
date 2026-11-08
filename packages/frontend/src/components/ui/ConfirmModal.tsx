@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { css } from '@/styled-system/css';
+import { useDialogLayer } from './dialogLayer';
 
 interface ConfirmModalProps {
     isOpen: boolean;
@@ -22,17 +23,7 @@ export function ConfirmModal({ isOpen, message, onConfirm, onCancel }: ConfirmMo
         }
     }, [isOpen]);
 
-    // ESC キーでモーダルを閉じる
-    useEffect(() => {
-        if (!isOpen) return;
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') {
-                onCancel();
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen, onCancel]);
+    useDialogLayer(onCancel, isOpen);
 
     if (!isOpen) return null;
 
@@ -73,6 +64,8 @@ export function ConfirmModal({ isOpen, message, onConfirm, onCancel }: ConfirmMo
                     opacity: visible ? 1 : 0,
                     transform: visible ? 'scale(1)' : 'scale(0.96)',
                 }}
+                role="alertdialog"
+                aria-modal="true"
                 onClick={(e) => e.stopPropagation()}
             >
                 <p

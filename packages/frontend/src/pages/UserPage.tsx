@@ -36,7 +36,7 @@ export function UserPage() {
         };
     }, [routeUserId, navigate]);
 
-    // /:at は /@ID だけ。それ以外の 1 段のパスはロビーへ
+    // /:at は /@ID だけ。それ以外の 1 段のパスはホームへ
     if (at !== undefined && !handle) return <Navigate to="/" replace />;
     const handleState = handle && resolved?.handle === handle ? resolved : null;
     const userId = handle ? handleState?.userId : routeUserId;
@@ -80,7 +80,7 @@ export function UserPage() {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M15 18l-6-6 6-6" />
                     </svg>
-                    ロビーへ
+                    ホームへ
                 </button>
             </div>
 

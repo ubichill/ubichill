@@ -1,7 +1,7 @@
 import type { FavoritesVisibility, WorldListItem } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
-import { WorldCard } from '@/components/lobby/WorldCard';
-import { WorldDetailModal } from '@/components/lobby/WorldDetailModal';
+import { WorldCard } from '@/components/worlds/WorldCard';
+import { WorldDetailModal } from '@/components/worlds/WorldDetailModal';
 import { setMyFavoritesVisibility } from '@/lib/account/me';
 import { fetchUserFavorites } from '@/lib/favoritesApi';
 import { css } from '@/styled-system/css';

@@ -1,3 +1,3 @@
 export { InstanceCard } from './InstanceCard';
-export { Lobby } from './Lobby';
+export { WorldBrowser } from './WorldBrowser';
 export { WorldCard } from './WorldCard';

@@ -84,7 +84,7 @@ const labelColorClass: Record<StageStatus, string> = {
 
 /**
  * インスタンス接続のロード画面。段階別ステータスと総合進捗バーを表示し、
- * 失敗時はロビーへ戻る導線を出す。
+ * 失敗時はホームへ戻る導線を出す。
  */
 export function InstanceLoadingScreen({
     worldName,
@@ -185,16 +185,6 @@ export function InstanceLoadingScreen({
                             _hover: { opacity: 0.85 },
                         })}
                     >
-                        <svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                        >
-                            <path d="M15 18l-6-6 6-6" />
-                        </svg>
                         {recoveryLabel}
                     </button>
                 </div>

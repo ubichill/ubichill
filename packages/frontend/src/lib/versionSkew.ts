@@ -19,7 +19,7 @@ export function isVersionSkewed(frontCommit: string | undefined, serverCommit: u
  * CLI の承認など、今後増える画面を含む）は、知らせて利用者が選んだときに読み込み直す。
  */
 const SAFE_TO_RELOAD: readonly RegExp[] = [
-    /^\/$/, // ロビー
+    /^\/$/, // ホームへの入口（部屋を用意してすぐ移る）
     /^\/@[^/]+\/?$/, // ユーザーページ（/@ID）
     /^\/user\/[^/]+\/?$/,
     /^\/world\/?$/, // ワールドの詳細（編集は除く）
