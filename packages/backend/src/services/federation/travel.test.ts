@@ -189,6 +189,21 @@ describe('ほかのサーバーの部屋に入る（join）', () => {
     });
 });
 
+describe('会いに行くフレンド（via）', () => {
+    it('部屋の作りの取得には問い合わせに、入室には本文に付けて部屋のサーバーへ渡す', async () => {
+        const dave = 'https://c.example/ap/users/dave';
+        const { travel, calls } = setup({
+            reply: (call) => (call.method === 'GET' ? ok({ room: ROOM, canJoin: true }) : ok(JOINED)),
+        });
+        await travel.describe('alice', ADDRESS, [dave]);
+        await travel.join('alice', ADDRESS, 'https://a.example', [dave]);
+        expect(calls[0]?.url).toBe(`https://b.example/ap/instances/room1?via=${encodeURIComponent(dave)}`);
+        expect(calls[1]?.body).toMatchObject({ via: [dave] });
+        await travel.join('alice', ADDRESS, 'https://a.example');
+        expect(calls[2]?.body).not.toHaveProperty('via');
+    });
+});
+
 describe('来訪の記録が途切れた後（resume）', () => {
     it('通信が戻ったら、部屋のサーバーに尋ね直して来訪を記録し直す', async () => {
         const down = { now: true };

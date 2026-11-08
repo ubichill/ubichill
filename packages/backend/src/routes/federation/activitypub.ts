@@ -82,7 +82,11 @@ export function createActivityPubRouter(federation: Federation): Router {
         signed(federation, { kind: 'person' }),
         perHostLimit('rooms', 600),
         async (req, res) => {
-            const described = await federation.rooms.describe(signerOf(res).actor.id, String(req.params.id));
+            const via = ([] as unknown[])
+                .concat(req.query.via ?? [])
+                .filter((v): v is string => typeof v === 'string')
+                .slice(0, FEDERATION_LIMITS.MAX_FRIENDSHIP_CHECKS);
+            const described = await federation.rooms.describe(signerOf(res).actor.id, String(req.params.id), via);
             if (!described) return sendProblem(res, 404, 'not-found', '部屋が見つかりません');
             res.set('Cache-Control', 'no-store').json(described);
         },

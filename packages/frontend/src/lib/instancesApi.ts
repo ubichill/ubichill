@@ -6,6 +6,7 @@
  */
 import type { CreateInstanceRequest, Instance, WorldListItem } from '@ubichill/shared';
 import { API_BASE } from './api';
+import { viaOf } from './joinVia';
 
 async function readErrorMessage(res: Response, fallback: string): Promise<string> {
     const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -41,7 +42,9 @@ export async function fetchInstances(worldId?: string): Promise<Instance[]> {
 }
 
 export async function fetchInstance(instanceId: string): Promise<Instance> {
-    const res = await fetch(`${API_BASE}/api/v1/instances/${encodeURIComponent(instanceId)}`, {
+    const via = viaOf(instanceId);
+    const query = via.length > 0 ? `?${new URLSearchParams(via.map((v) => ['via', v])).toString()}` : '';
+    const res = await fetch(`${API_BASE}/api/v1/instances/${encodeURIComponent(instanceId)}${query}`, {
         credentials: 'include',
     });
     if (!res.ok) throw new Error(await readErrorMessage(res, 'インスタンスが見つかりません'));

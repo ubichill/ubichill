@@ -1,4 +1,9 @@
-import { CreateInstanceRequestSchema, ListInstancesQuerySchema } from '@ubichill/shared';
+import {
+    CreateInstanceRequestSchema,
+    FEDERATION_LIMITS,
+    isRemoteUserId,
+    ListInstancesQuerySchema,
+} from '@ubichill/shared';
 import { type Request, type Response, Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { appConfig } from '../config';
@@ -34,6 +39,18 @@ function clientOriginOf(req: Request, f: Federation): string {
         : f.frontendOrigin;
 }
 
+/**
+ * 会いに行くフレンド（画面が現在地で見た、その部屋にいるフレンドの ID）を actor の URL にする。
+ * 部屋のサーバーが、中にいる人の多い部屋でもこの人たちとの関係から先に確かめるため。関係そのものはホームに確かめる。
+ */
+function viaOf(raw: unknown, f: Federation): string[] {
+    return ([] as unknown[])
+        .concat(raw ?? [])
+        .filter((v): v is string => typeof v === 'string' && v.length > 0 && v.length <= 2048)
+        .slice(0, FEDERATION_LIMITS.MAX_FRIENDSHIP_CHECKS)
+        .map((id) => (isRemoteUserId(id) ? id : f.identity.actorUrl(id)));
+}
+
 /** ワールドを見る人のサーバーで確かめる（入る前の確認に使う。確かめられなければ作者を確認できないワールドとして扱う）。 */
 async function checkedWorld(url: string) {
     const resolved = await Promise.race([
@@ -51,7 +68,7 @@ async function remoteInstance(req: Request, res: Response, id: string): Promise<
         res.status(404).json({ error: TRAVEL_ERRORS['not-found'].error });
         return true;
     }
-    const described = await federation.travel.describe(req.user.id, address);
+    const described = await federation.travel.describe(req.user.id, address, viaOf(req.query.via, federation));
     if (!described.ok) {
         const { status, error } = TRAVEL_ERRORS[described.error];
         res.status(status === 403 ? 404 : status).json({ error });
@@ -171,7 +188,7 @@ router.post('/:id/join', requireAuth, async (req, res) => {
     if (federation && address) {
         // ホームとして部屋のサーバーに頼み、ブラウザの origin に結び付いたチケットを受け取る
         const joined = await federation.travel
-            .join(req.user.id, address, clientOriginOf(req, federation))
+            .join(req.user.id, address, clientOriginOf(req, federation), viaOf(req.body?.via, federation))
             .catch((error: unknown) => {
                 logger.error('ほかのサーバーの部屋に入れません:', error);
                 return { ok: false as const, error: 'unavailable' as const };

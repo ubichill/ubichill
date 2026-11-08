@@ -168,6 +168,27 @@ describe('部屋の作り（describe）', () => {
         expect(crowded.asked.every((a) => a.endsWith(`|${ALICE.id}`) && !a.startsWith('local-member'))).toBe(true);
     });
 
+    it('会いに行く人（via）との関係から確かめるので、その人の参加の順・部屋の人数で入れたり入れなかったりしない', async () => {
+        const others = Array.from({ length: 10 }, (_, i) => visitor(`v${i}`, `h${i}.example`).id);
+        const FRIEND = visitor('friend', 'f.example');
+        // 12 人の部屋で、唯一のフレンドが 11 番目のほかのサーバーの来訪者
+        const options = {
+            accessType: 'friend_plus' as const,
+            maxUsers: 16,
+            members: ['leader', ...others, FRIEND.id],
+            homes: { [FRIEND.id]: [ALICE.id] },
+        };
+        const withVia = setup(options);
+        expect(await withVia.rooms.describe(ALICE.id, 'room1', [FRIEND.id])).toMatchObject({ canJoin: true });
+        expect((await withVia.rooms.join(ALICE, { ...join, via: [FRIEND.id] })).ok).toBe(true);
+        expect(withVia.asked[0]).toBe(`${FRIEND.id}|${ALICE.id}`);
+        // 部屋にいない人を via に入れても、尋ねる数は増えず、入れることにもならない
+        const outside = setup({ ...options, members: ['leader', ...others] });
+        expect(await outside.rooms.describe(ALICE.id, 'room1', [FRIEND.id])).toBeUndefined();
+        expect(outside.asked).toHaveLength(FEDERATION_LIMITS.MAX_FRIENDSHIP_CHECKS);
+        expect(outside.asked.some((a) => a.startsWith(FRIEND.id))).toBe(false);
+    });
+
     it('招待があれば、見えない部屋でも入れる', async () => {
         const { rooms, invites } = setup({ accessType: 'invite_only' });
         invites.push({

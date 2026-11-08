@@ -80,15 +80,20 @@ export function createTravel(deps: TravelDeps) {
                   ? 'unavailable'
                   : 'rejected';
 
-    /** ほかのサーバーの部屋の作り（見えなければ not-found）。 */
+    /** 会いに行くフレンド（部屋のサーバーがその人との関係から先に確かめる）の問い合わせの形。 */
+    const viaQuery = (via: readonly string[]) =>
+        via.length > 0 ? `?${new URLSearchParams(via.map((v) => ['via', v])).toString()}` : '';
+
+    /** ほかのサーバーの部屋の作り（見えなければ not-found）。via は会いに行くフレンドの actor の URL。 */
     const describe = async (
         userId: string,
         address: RoomAddress & { domain: string },
+        via: readonly string[] = [],
     ): Promise<{ ok: true; room: RoomCard; canJoin: boolean } | { ok: false; error: TravelError }> => {
         if (!exchanges(deps.policyOf(address.domain))) return { ok: false, error: 'blocked' };
         for (const origin of originsOf(address.domain)) {
             const response = await deps.transport
-                .get(`${origin}${FEDERATION_PATHS.instance(address.id)}`, {
+                .get(`${origin}${FEDERATION_PATHS.instance(address.id)}${viaQuery(via)}`, {
                     signAs: { kind: 'user', userId },
                     maxBytes: 64 * 1024,
                 })
@@ -114,6 +119,7 @@ export function createTravel(deps: TravelDeps) {
             userId: string,
             address: RoomAddress & { domain: string },
             clientOrigin: string,
+            via: readonly string[] = [],
         ): Promise<{ ok: true; grant: RemoteGrant; room: RoomCard } | { ok: false; error: TravelError }> {
             if (!exchanges(deps.policyOf(address.domain))) return { ok: false, error: 'blocked' };
             for (const origin of originsOf(address.domain)) {
@@ -121,7 +127,7 @@ export function createTravel(deps: TravelDeps) {
                 const response = await deps.transport
                     .post(
                         `${origin}${FEDERATION_PATHS.rpc.join}`,
-                        { room, clientOrigin },
+                        { room, clientOrigin, ...(via.length > 0 ? { via } : {}) },
                         {
                             signAs: { kind: 'user', userId },
                             ttlSec: SIGNATURE_TIMING.RPC_TTL_SEC,

@@ -135,11 +135,18 @@ export function createRooms(deps: RoomsDeps) {
         audience: InstanceAudience,
         viewer: string,
         known: ReadonlySet<string>,
+        via: readonly string[],
     ): Promise<string[]> => {
         if (audience.accessType !== 'friend_plus' && audience.accessType !== 'invite_only') return [];
-        const asked = audience.memberIds
-            .filter((member) => isRemoteUserId(member) && member !== viewer && !known.has(member))
-            .slice(0, FEDERATION_LIMITS.MAX_FRIENDSHIP_CHECKS);
+        const candidates = audience.memberIds.filter(
+            (member) => isRemoteUserId(member) && member !== viewer && !known.has(member),
+        );
+        // 会いに行く人を先に（数の上限で、参加の順によって入れたり入れなかったりしないように）
+        const preferred = new Set(via);
+        const asked = [
+            ...candidates.filter((member) => preferred.has(member)),
+            ...candidates.filter((member) => !preferred.has(member)),
+        ].slice(0, FEDERATION_LIMITS.MAX_FRIENDSHIP_CHECKS);
         const answers = await Promise.all(
             asked.map(async (member) => ((await deps.askFriendship(member, viewer)) ? [member] : [])),
         );
@@ -148,13 +155,17 @@ export function createRooms(deps: RoomsDeps) {
 
     /**
      * 見る人にとって、見えるか・入れるか。extraFriends は、ほかのサーバーが保証したフレンド。
-     * askHomes なら、知っている関係で見えないときに、中にいるほかのサーバーの人のホームへ尋ねる。
+     * askHomes なら、知っている関係で見えないときに、中にいるほかのサーバーの人のホームへ尋ねる（via の人から先に）。
      */
     const accessFor = async (
         record: RoomRecord,
         audience: InstanceAudience,
         viewer: string,
-        { extraFriends = [], askHomes = false }: { extraFriends?: readonly string[]; askHomes?: boolean } = {},
+        {
+            extraFriends = [],
+            askHomes = false,
+            via = [],
+        }: { extraFriends?: readonly string[]; askHomes?: boolean; via?: readonly string[] } = {},
     ) => {
         const known = new Set([...(await deps.friendsOf(viewer)), ...extraFriends]);
         const invited = await invitedOrAdmitted(record.id, viewer);
@@ -164,7 +175,7 @@ export function createRooms(deps: RoomsDeps) {
         });
         const first = judge(known);
         if (first.visible || !askHomes) return first;
-        const confirmed = await confirmedFriendsInside(audience, viewer, known);
+        const confirmed = await confirmedFriendsInside(audience, viewer, known, via);
         return confirmed.length > 0 ? judge(new Set([...known, ...confirmed])) : first;
     };
 
@@ -182,12 +193,16 @@ export function createRooms(deps: RoomsDeps) {
         },
 
         /** `GET /ap/instances/:id`（署名した人が見る人）。見えなければ undefined（あることも伏せる）。 */
-        async describe(viewer: string, instanceId: string): Promise<{ room: RoomCard; canJoin: boolean } | undefined> {
+        async describe(
+            viewer: string,
+            instanceId: string,
+            via: readonly string[] = [],
+        ): Promise<{ room: RoomCard; canJoin: boolean } | undefined> {
             const record = await deps.rooms.find(instanceId);
             if (!record) return undefined;
             const presence = await deps.presence();
             const audience = audienceOf(record, presence);
-            const access = await accessFor(record, audience, viewer, { askHomes: true });
+            const access = await accessFor(record, audience, viewer, { askHomes: true, via });
             if (!access.visible && !access.joinable) return undefined;
             const room = await cardOf(record, audience.memberIds.length);
             return room && { room, canJoin: access.joinable };
@@ -207,7 +222,7 @@ export function createRooms(deps: RoomsDeps) {
             }
             const presence = await deps.presence();
             const audience = audienceOf(record, presence);
-            const access = await accessFor(record, audience, visitor.id, { askHomes: true });
+            const access = await accessFor(record, audience, visitor.id, { askHomes: true, via: request.via });
             const admitted = await deps.admissions.isAdmitted(record.id, visitor.id);
             if (!acceptsNewContact(deps.policyOf(visitor.domain)) && !admitted) {
                 return fail(403, 'domain-limited', 'このサーバーからの来訪は受けていません');

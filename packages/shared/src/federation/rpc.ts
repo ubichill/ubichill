@@ -26,6 +26,11 @@ export const JoinRequestSchema = z.object({
     invite: Url.optional(),
     /** 来訪者のブラウザの origin（Go のチケットをこの origin の接続に結び付ける） */
     clientOrigin: Url,
+    /**
+     * 会いに行くフレンド（中にいる人の actor の URL）。部屋のサーバーは、この人たちとの関係から先に確かめる
+     * （中にいる人が多くても、現在地で「入れる」と出た人との関係で入れるように）。関係そのものはホームに確かめる。
+     */
+    via: z.array(Url).max(FEDERATION_LIMITS.MAX_FRIENDSHIP_CHECKS).optional(),
 });
 export type JoinRequest = z.infer<typeof JoinRequestSchema>;
 
