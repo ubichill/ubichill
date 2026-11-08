@@ -18,6 +18,10 @@ export interface FederationConfig {
     seed: Uint8Array | null;
     /** 種をどこから得たか（起動時のログ用） */
     seedSource: 'configured' | 'derived' | 'none';
+    /** 鍵の世代（FEDERATION_KEY_GENERATION。既定 1）。種を差し替えるときに 1 上げる */
+    keyGeneration: number;
+    /** 鍵の移行の間だけ: 前の世代の種（FEDERATION_KEY_SEED_PREVIOUS） */
+    previousSeed: Uint8Array | null;
 }
 
 /** base64 か 16 進の 32 バイト以上。読めなければ null。 */
@@ -42,6 +46,16 @@ export function federationConfigFromEnv(env: NodeJS.ProcessEnv): FederationConfi
               )
             : null;
     const seed = configured ?? derived;
+    const keyGeneration = env.FEDERATION_KEY_GENERATION ? Number(env.FEDERATION_KEY_GENERATION) : 1;
+    if (!Number.isInteger(keyGeneration) || keyGeneration < 1)
+        throw new Error('FEDERATION_KEY_GENERATION は 1 以上の整数です');
+    const previousSeed = env.FEDERATION_KEY_SEED_PREVIOUS ? parseSeed(env.FEDERATION_KEY_SEED_PREVIOUS) : null;
+    if (env.FEDERATION_KEY_SEED_PREVIOUS && !previousSeed)
+        throw new Error('FEDERATION_KEY_SEED_PREVIOUS は 32 バイト以上の base64 か 16 進です');
+    if (previousSeed && keyGeneration < 2)
+        throw new Error(
+            'FEDERATION_KEY_SEED_PREVIOUS を置くときは、FEDERATION_KEY_GENERATION を 2 以上に上げてください',
+        );
     return {
         enabled: seed !== null && env.FEDERATION_ENABLED !== 'false',
         origin: base.origin,
@@ -49,5 +63,7 @@ export function federationConfigFromEnv(env: NodeJS.ProcessEnv): FederationConfi
         allowHttp: !production && env.FEDERATION_ALLOW_HTTP === 'true',
         seed,
         seedSource: configured ? 'configured' : derived ? 'derived' : 'none',
+        keyGeneration,
+        previousSeed,
     };
 }

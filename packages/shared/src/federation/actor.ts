@@ -26,6 +26,8 @@ export interface LocalActorInput {
     sharedInbox: string;
     keyId: string;
     publicKeyMultibase: string;
+    /** 鍵の移行の間だけ一緒に載せる前の鍵（前の鍵で署名して送った分を、相手が確かめられるように） */
+    previousKeys?: ReadonlyArray<{ keyId: string; publicKeyMultibase: string }>;
     /** `handle@domain`（FEP-2c59） */
     webfinger?: string;
     /** 告知する機能（FEP-844e）。Application actor に付ける */
@@ -50,13 +52,14 @@ export function buildActorDocument(input: LocalActorInput): Record<string, unkno
         // フレンドは承認制（片方向の Follow はまだ使わない）
         manuallyApprovesFollowers: true,
         assertionMethod: [
-            {
-                id: input.keyId,
-                type: 'Multikey',
-                controller: input.id,
-                publicKeyMultibase: input.publicKeyMultibase,
-            },
-        ],
+            { keyId: input.keyId, publicKeyMultibase: input.publicKeyMultibase },
+            ...(input.previousKeys ?? []),
+        ].map((key) => ({
+            id: key.keyId,
+            type: 'Multikey',
+            controller: input.id,
+            publicKeyMultibase: key.publicKeyMultibase,
+        })),
         ...(input.implements
             ? { implements: input.implements.map((href) => ({ href, name: featureName(href) })) }
             : {}),

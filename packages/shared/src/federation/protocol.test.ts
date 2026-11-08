@@ -321,6 +321,8 @@ describe('delivery', () => {
         expect(classifyDelivery(202)).toEqual({ kind: 'delivered' });
         expect(classifyDelivery(410)).toEqual({ kind: 'rejected', gone: true });
         expect(classifyDelivery(404)).toEqual({ kind: 'rejected', gone: false });
+        // 相手が古い鍵を覚えているだけのことがある（鍵の差し替え直後）。取り直せば通るので送り直す
+        expect(classifyDelivery(401)).toEqual({ kind: 'retry' });
         expect(classifyDelivery(503)).toEqual({ kind: 'retry' });
         expect(classifyDelivery(null)).toEqual({ kind: 'retry' });
         expect(classifyDelivery(429, '120', 0)).toEqual({ kind: 'retry', retryAfterMs: 120_000 });

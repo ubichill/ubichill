@@ -116,6 +116,8 @@ export const FEDERATION_LIMITS = {
     ACTOR_MAX_MS: 24 * 60 * 60 * 1000,
     /** 署名が通らなかったとき、鍵を取り直してよい間隔（actor ごと） */
     KEY_REFETCH_MS: 5 * 60 * 1000,
+    /** 知らない keyid（鍵の世代が上がった）の署名なら、この間隔で取り直す */
+    UNKNOWN_KEY_REFETCH_MS: 30 * 1000,
     /** フレンドの現在地の答えを使い回す時間（秒） */
     PRESENCE_TTL_SEC: 15,
     /** 来訪中の現在地の知らせの間隔と、途切れたら消すまでの時間 */

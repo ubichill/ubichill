@@ -96,9 +96,15 @@ export function createVerifier<A extends VerifiableActor>(deps: VerifierDeps<A>)
             // 受けた keyid と同じ鍵で確かめる（keyid は正規形にしたもの）
             const signed = { keyid: keyUrl.href, base, signature };
             const passes = (actor: A) => verifySignature(signed, actor.keys, deps.crypto);
+            // 通らなければ鍵を取り直す（取り直しすぎない。知らない keyid なら鍵の世代が上がったので早めに）
+            const knownKey = cached.keys.some((k) => k.id === keyUrl.href);
+            const sinceFetch = now - cached.fetchedAt.getTime();
+            const refetch =
+                sinceFetch > FEDERATION_LIMITS.KEY_REFETCH_MS ||
+                (!knownKey && sinceFetch > FEDERATION_LIMITS.UNKNOWN_KEY_REFETCH_MS);
             const actor = (await passes(cached))
                 ? cached
-                : now - cached.fetchedAt.getTime() > FEDERATION_LIMITS.KEY_REFETCH_MS
+                : refetch
                   ? await deps.actors.get(actorId, { refresh: true })
                   : null;
             if (!actor || actor.deletedAt || !(await passes(actor))) return fail(401, 'signature');

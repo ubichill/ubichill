@@ -66,7 +66,11 @@ function frontendOriginOf(origin: string): string {
 function createFederation(config: FederationConfig & { seed: Uint8Array }) {
     const now = () => Date.now();
     const identity = createFederationIdentity(config.origin);
-    const keyring = createKeyring(config.seed);
+    const keyring = createKeyring({
+        seed: config.seed,
+        generation: config.keyGeneration,
+        previousSeed: config.previousSeed,
+    });
     const policies = createDomainPolicies({ list: () => domainPolicyRepository.list(), now });
     const policyOf = (domain: string) => policies.policyOf(domain);
     const transport = createTransport({ identity, keyring, fetch: safeFetch, now });

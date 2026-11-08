@@ -24,9 +24,14 @@
 | 人の actor | `https://<domain>/ap/users/<ユーザー ID>`（handle を入れない。改名しても変わらない） |
 | サーバーの actor（Application） | `https://<domain>/ap/actor`（アカウントはホスト名） |
 | 部屋 | `https://<domain>/ap/instances/<部屋 ID>`。画面の住所は `<部屋 ID>@<domain>`（`/instance/:住所` でどのサーバーの部屋にも入る） |
-| 鍵 | Ed25519。actor ごとに `FEDERATION_KEY_SEED` から HKDF で導く（秘密鍵は保存しない）。文書には FEP-521a の Multikey（`assertionMethod`）で載せ、keyid は `<actor>#ed25519-1` |
+| 鍵 | Ed25519。actor ごとに `FEDERATION_KEY_SEED` から HKDF で導く（秘密鍵は保存しない）。文書には FEP-521a の Multikey（`assertionMethod`）で載せ、keyid は `<actor>#ed25519-<世代>`（既定 1） |
 
 鍵の種を差し替えると全員の鍵が変わるだけで、ほかのサーバーは文書を取り直して追従する（鍵を固定しない）。
+
+鍵の移行（種の差し替え）の手順:
+1. `FEDERATION_KEY_SEED_PREVIOUS` に今の種、`FEDERATION_KEY_SEED` に新しい種を置き、`FEDERATION_KEY_GENERATION` を 1 上げる。keyid が変わるので、受け手は知らない keyid として 30 秒あけてすぐ文書を取り直す（同じ keyid のまま署名が通らないときの取り直しは 5 分ごと）。
+2. 移行の間は前の世代の鍵も文書に載せる（前の鍵で署名して送った分も通る）。相手の 401 は送り直す（古い鍵を覚えているだけのことがあるため）。
+3. 送り直しの期限（48 時間）と相手のキャッシュ（24 時間）が過ぎたら `FEDERATION_KEY_SEED_PREVIOUS` を外す。
 サービストークンの鍵（`SERVICE_TOKEN`）とは別の鍵（用途ごとに分け、片方の漏えいがもう片方に広がらない）。
 
 ## 署名（RFC 9421 の ubichill プロファイル）
@@ -135,7 +140,7 @@ B: 見える・入れる・満員でない・A からの来訪者が 20 人未�
 - 同じ 2 人の間は出した順に届ける（申請 → 取り消しが逆に届かない）。1 つのホストへは同時に 4 つまで。
 - 送り直し: 30 秒から 24 時間まで間隔を延ばす（±20% のゆらぎ）。48 時間か activity の期限を過ぎたら諦める。
 - 続けて失敗するホストは止め（サーキットブレーカー）、3 日届かなければ到達できないとして 6 時間ごとにだけ試す。
-- 400・401・403・404・413・422 は送り直さない（相手が受けないと決めた）。410 は相手が消えたとして諦める。429 は `Retry-After`（最長 1 時間）に従う。
+- 400・403・404・413・422 は送り直さない（相手が受けないと決めた）。401 は送り直す（鍵を差し替えた直後に、相手が古い鍵を覚えているだけのことがある）。410 は相手が消えたとして諦める。429 は `Retry-After`（最長 1 時間）に従う。
 
 ## 付き合い方（管理者）
 
@@ -154,6 +159,8 @@ B: 見える・入れる・満員でない・A からの来訪者が 20 人未�
 | 環境変数 | 意味 |
 |---|---|
 | `FEDERATION_KEY_SEED` | 鍵の種（32 バイト以上の base64 か 16 進）。本番は必須（無ければ連合しない）。開発では `BETTER_AUTH_SECRET` から導く |
+| `FEDERATION_KEY_GENERATION` | 鍵の世代（既定 1）。種を差し替えるときに 1 上げる |
+| `FEDERATION_KEY_SEED_PREVIOUS` | 鍵の移行の間だけ、前の世代の種（世代が 2 以上のときだけ置ける） |
 | `FEDERATION_ENABLED=false` | 連合を止める |
 | `FEDERATION_ALLOW_HTTP=true` | 開発で http の相手を受ける（本番では効かない）。手元で 2 台を試すときは `WORLDS_FETCH_ALLOW_PRIVATE=true` も |
 | `INSTANCE_FEDERATED_VISITS`（Go） | ほかのサーバーの画面からの接続を受ける（既定 true） |

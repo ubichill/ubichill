@@ -38,6 +38,7 @@ export function createLocalActors(deps: {
                 sharedInbox: deps.identity.sharedInboxUrl,
                 keyId: signer.keyId,
                 publicKeyMultibase: signer.publicKeyMultibase,
+                previousKeys: deps.keyring.previousKeysFor(id),
                 webfinger: `${user.handle}@${deps.identity.domain}`,
             });
         },
@@ -55,6 +56,7 @@ export function createLocalActors(deps: {
                 sharedInbox: deps.identity.sharedInboxUrl,
                 keyId: signer.keyId,
                 publicKeyMultibase: signer.publicKeyMultibase,
+                previousKeys: deps.keyring.previousKeysFor(id),
                 implements: Object.values(FEDERATION_FEATURES),
             });
         },

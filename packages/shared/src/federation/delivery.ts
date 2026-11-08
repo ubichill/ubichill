@@ -62,7 +62,8 @@ export type DeliveryOutcome =
 export function classifyDelivery(status: number | null, retryAfter?: string | null, now = Date.now()): DeliveryOutcome {
     if (status !== null && status >= 200 && status < 300) return { kind: 'delivered' };
     if (status === 410) return { kind: 'rejected', gone: true };
-    if (status === 400 || status === 401 || status === 403 || status === 404 || status === 413 || status === 422) {
+    // 401 は送り直す: 相手が古い鍵を覚えている（鍵を差し替えた直後）だけのことがあり、取り直せば通る
+    if (status === 400 || status === 403 || status === 404 || status === 413 || status === 422) {
         return { kind: 'rejected', gone: false };
     }
     if (status === 429 && retryAfter) {
