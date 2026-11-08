@@ -1,4 +1,4 @@
-import type { RemoteFriendshipRecord } from '@ubichill/db';
+import type { RemoteFriendshipInput, RemoteFriendshipRecord } from '@ubichill/db';
 import { type DomainPolicy, FEDERATION_LIMITS } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
 import { createRemoteFriendships, type FriendshipActor, friendshipViewOf } from './friendships';
@@ -26,31 +26,49 @@ function setup(options: { policy?: DomainPolicy } = {}) {
     const seen = new Map<string, number>();
     const key = (r: { userId: string; actorId: string }) => `${r.userId}|${r.actorId}`;
     const find = (userId: string, actorId: string) => rows.find((r) => key(r) === `${userId}|${actorId}`);
+    const locks = new Map<string, Promise<void>>();
+    const put = (input: RemoteFriendshipInput & { userId: string; actorId: string }, now: Date) => {
+        const existing = find(input.userId, input.actorId);
+        const row: RemoteFriendshipRecord = {
+            userId: input.userId,
+            actorId: input.actorId,
+            state: input.state,
+            offerId: input.offerId,
+            relationshipId: input.relationshipId,
+            acceptId: input.acceptId ?? null,
+            peerOfferId: input.peerOfferId ?? null,
+            createdAt: existing?.createdAt ?? now,
+            updatedAt: now,
+        };
+        if (existing) rows.splice(rows.indexOf(existing), 1, row);
+        else rows.push(row);
+        return row;
+    };
     const friendships = createRemoteFriendships({
         identity,
         repo: {
-            get: async (userId, actorId) => find(userId, actorId),
-            put: async (input, now) => {
-                const existing = find(input.userId, input.actorId);
-                const row: RemoteFriendshipRecord = {
-                    userId: input.userId,
-                    actorId: input.actorId,
-                    state: input.state,
-                    offerId: input.offerId,
-                    relationshipId: input.relationshipId,
-                    acceptId: input.acceptId ?? null,
-                    peerOfferId: input.peerOfferId ?? null,
-                    createdAt: existing?.createdAt ?? now,
-                    updatedAt: now,
-                };
-                if (existing) rows.splice(rows.indexOf(existing), 1, row);
-                else rows.push(row);
-                return row;
-            },
-            remove: async (userId, actorId) => {
-                const row = find(userId, actorId);
-                if (row) rows.splice(rows.indexOf(row), 1);
-                return row;
+            // 2 人ごとに順番に実行する（DB の advisory lock の代わり）。中で一度待つので、ロックが無ければ処理が交ざる
+            locked: (userId, actorId, fn) => {
+                const k = `${userId}|${actorId}`;
+                const run = (locks.get(k) ?? Promise.resolve()).then(async () => {
+                    const current = find(userId, actorId);
+                    await new Promise((r) => setTimeout(r, 0));
+                    return fn(current, {
+                        put: async (input, now) => put({ ...input, userId, actorId }, now),
+                        remove: async () => {
+                            const row = find(userId, actorId);
+                            if (row) rows.splice(rows.indexOf(row), 1);
+                        },
+                    });
+                });
+                locks.set(
+                    k,
+                    run.then(
+                        () => undefined,
+                        () => undefined,
+                    ),
+                );
+                return run;
             },
             removeAllFor: async (actorId) => {
                 const hit = rows.filter((r) => r.actorId === actorId);
@@ -300,5 +318,58 @@ describe('取り消し・解除', () => {
         await friendships.onActorDeleted(BOB.id);
         expect(rows).toEqual([]);
         expect(notes.filter((n) => n.startsWith('removed'))).toHaveLength(2);
+    });
+});
+
+describe('同時に起きる（2 人の関係ごとに順番に処理する）', () => {
+    it('申請と相手からの申請が同時なら、どちらが先でもフレンドになり、相手の申請に承認を返す', async () => {
+        const requestFirst = setup();
+        await Promise.all([
+            requestFirst.friendships.request('alice', BOB),
+            requestFirst.friendships.onOffer(BOB, offerFrom(BOB, 'https://c.example/ap/activities/o1')),
+        ]);
+        expect(requestFirst.find('alice', BOB.id)).toMatchObject({
+            state: 'accepted',
+            peerOfferId: 'https://c.example/ap/activities/o1',
+        });
+
+        const offerFirst = setup();
+        await Promise.all([
+            offerFirst.friendships.onOffer(BOB, offerFrom(BOB, 'https://c.example/ap/activities/o1')),
+            offerFirst.friendships.request('alice', BOB),
+        ]);
+        expect(offerFirst.find('alice', BOB.id)?.state).toBe('accepted');
+
+        for (const { sent } of [requestFirst, offerFirst]) {
+            expect(sent.at(-1)?.activity).toMatchObject({
+                type: 'Accept',
+                object: { id: 'https://c.example/ap/activities/o1' },
+            });
+        }
+    });
+
+    it('申請を取り消すのと承認が届くのが同時でも、取り消した関係は生き返らない', async () => {
+        const { friendships, sent, rows } = setup();
+        await friendships.request('alice', BOB);
+        const offerId = String(sent[0]?.activity.id);
+        await Promise.all([
+            friendships.remove('alice', BOB),
+            friendships.onAccept(BOB, {
+                id: 'https://c.example/ap/activities/acc',
+                object: { id: offerId, type: 'Offer' },
+            }),
+        ]);
+        expect(rows).toEqual([]);
+        expect(sent.at(-1)?.activity).toMatchObject({ type: 'Undo', object: { id: offerId, type: 'Offer' } });
+    });
+
+    it('承認するのと相手の取り消しが届くのが同時でも、取り消された申請は残らない', async () => {
+        const { friendships, rows } = setup();
+        await friendships.onOffer(BOB, offerFrom(BOB, 'https://c.example/ap/activities/o1'));
+        await Promise.all([
+            friendships.accept('alice', BOB),
+            friendships.onUndo(BOB, { object: { id: 'https://c.example/ap/activities/o1', type: 'Offer' } }),
+        ]);
+        expect(rows).toEqual([]);
     });
 });

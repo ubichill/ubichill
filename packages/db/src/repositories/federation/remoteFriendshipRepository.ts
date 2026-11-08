@@ -1,9 +1,47 @@
 import { and, count, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { db } from '../../index';
 import { remoteActors, remoteFriendships } from '../../schema';
+import type { Tx } from '../credentialUser';
 
 export type RemoteFriendshipState = 'outgoing' | 'incoming' | 'accepted' | 'rejected';
 export type RemoteFriendshipRecord = typeof remoteFriendships.$inferSelect;
+
+export interface RemoteFriendshipInput {
+    state: RemoteFriendshipState;
+    offerId: string;
+    relationshipId: string;
+    acceptId?: string | null;
+    peerOfferId?: string | null;
+}
+
+/** ロック中の 2 人の関係の書き込み（`locked` の中だけで使う）。 */
+export interface RemoteFriendshipWriter {
+    put(input: RemoteFriendshipInput, now: Date): Promise<RemoteFriendshipRecord>;
+    remove(): Promise<void>;
+}
+
+async function putRow(
+    q: typeof db | Tx,
+    input: RemoteFriendshipInput & { userId: string; actorId: string },
+    now: Date,
+): Promise<RemoteFriendshipRecord> {
+    const values = {
+        ...input,
+        acceptId: input.acceptId ?? null,
+        peerOfferId: input.peerOfferId ?? null,
+        updatedAt: now,
+    };
+    const [row] = await q
+        .insert(remoteFriendships)
+        .values({ ...values, createdAt: now })
+        .onConflictDoUpdate({ target: [remoteFriendships.userId, remoteFriendships.actorId], set: values })
+        .returning();
+    if (!row) throw new Error('フレンドの関係を保存できません');
+    return row;
+}
+
+const pairOf = (userId: string, actorId: string) =>
+    and(eq(remoteFriendships.userId, userId), eq(remoteFriendships.actorId, actorId));
 
 export interface RemoteFriendshipWithActor extends RemoteFriendshipRecord {
     account: string;
@@ -16,47 +54,45 @@ export interface RemoteFriendshipWithActor extends RemoteFriendshipRecord {
 /** このサーバーのユーザーと、ほかのサーバーの actor のフレンドの関係。規則は backend の federation/friendships.ts。 */
 export const remoteFriendshipRepository = {
     async get(userId: string, actorId: string): Promise<RemoteFriendshipRecord | undefined> {
-        const [row] = await db
-            .select()
-            .from(remoteFriendships)
-            .where(and(eq(remoteFriendships.userId, userId), eq(remoteFriendships.actorId, actorId)));
+        const [row] = await db.select().from(remoteFriendships).where(pairOf(userId, actorId));
         return row;
     },
 
     /** 関係を置き換える（無ければ作る）。 */
     async put(
-        input: {
-            userId: string;
-            actorId: string;
-            state: RemoteFriendshipState;
-            offerId: string;
-            relationshipId: string;
-            acceptId?: string | null;
-            peerOfferId?: string | null;
-        },
+        input: RemoteFriendshipInput & { userId: string; actorId: string },
         now: Date,
     ): Promise<RemoteFriendshipRecord> {
-        const values = {
-            ...input,
-            acceptId: input.acceptId ?? null,
-            peerOfferId: input.peerOfferId ?? null,
-            updatedAt: now,
-        };
-        const [row] = await db
-            .insert(remoteFriendships)
-            .values({ ...values, createdAt: now })
-            .onConflictDoUpdate({ target: [remoteFriendships.userId, remoteFriendships.actorId], set: values })
-            .returning();
-        if (!row) throw new Error('フレンドの関係を保存できません');
-        return row;
+        return putRow(db, input, now);
+    },
+
+    /**
+     * 2 人の関係をロックし、今の行を読んで `fn` を実行する（1 トランザクション。`fn` が投げたら書き込みは戻る）。
+     * 申請と相手からの申請の受け取りが同時に走ると、どちらも「関係なし」と読んで片方の書き込みが消えるため。
+     * 行がまだ無くても押さえられるよう、行ではなく 2 人の組でロックする。
+     */
+    async locked<T>(
+        userId: string,
+        actorId: string,
+        fn: (current: RemoteFriendshipRecord | undefined, write: RemoteFriendshipWriter) => Promise<T>,
+    ): Promise<T> {
+        return db.transaction(async (tx) => {
+            await tx.execute(
+                sql`select pg_advisory_xact_lock(hashtextextended(${`remote_friendships:${userId}\n${actorId}`}, 0))`,
+            );
+            const [current] = await tx.select().from(remoteFriendships).where(pairOf(userId, actorId));
+            return fn(current, {
+                put: (input, now) => putRow(tx, { ...input, userId, actorId }, now),
+                remove: async () => {
+                    await tx.delete(remoteFriendships).where(pairOf(userId, actorId));
+                },
+            });
+        });
     },
 
     /** 関係を消す。消した行を返す（無ければ undefined）。 */
     async remove(userId: string, actorId: string): Promise<RemoteFriendshipRecord | undefined> {
-        const [row] = await db
-            .delete(remoteFriendships)
-            .where(and(eq(remoteFriendships.userId, userId), eq(remoteFriendships.actorId, actorId)))
-            .returning();
+        const [row] = await db.delete(remoteFriendships).where(pairOf(userId, actorId)).returning();
         return row;
     },
 

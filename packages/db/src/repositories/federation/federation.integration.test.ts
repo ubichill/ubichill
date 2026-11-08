@@ -114,6 +114,33 @@ describe.skipIf(!RUN)('連合の保存（DB統合）', () => {
             expect(await remoteFriendshipRepository.findByOffer(`p5-${stamp}`)).toEqual([]);
         });
 
+        it('同じ 2 人の locked は順番に走り、後のほうは先のほうの書き込みを読む', async () => {
+            await remoteActorRepository.upsert(actor(7));
+            const order: string[] = [];
+            const first = remoteFriendshipRepository.locked(userId, actorId(7), async (current, write) => {
+                order.push(`first:${current?.state ?? 'none'}`);
+                await new Promise((r) => setTimeout(r, 100));
+                await write.put({ state: 'outgoing', offerId: `o7-${stamp}`, relationshipId: 'r7' }, T0);
+            });
+            await new Promise((r) => setTimeout(r, 20));
+            const second = remoteFriendshipRepository.locked(userId, actorId(7), async (current) => {
+                order.push(`second:${current?.state ?? 'none'}`);
+            });
+            await Promise.all([first, second]);
+            expect(order).toEqual(['first:none', 'second:outgoing']);
+        });
+
+        it('locked の中で失敗したら、書き込みは戻る', async () => {
+            await remoteActorRepository.upsert(actor(8));
+            await expect(
+                remoteFriendshipRepository.locked(userId, actorId(8), async (_current, write) => {
+                    await write.put({ state: 'incoming', offerId: `o8-${stamp}`, relationshipId: 'r8' }, T0);
+                    throw new Error('送れない');
+                }),
+            ).rejects.toThrow('送れない');
+            expect(await remoteFriendshipRepository.get(userId, actorId(8))).toBeUndefined();
+        });
+
         it('受けたまま 30 日の申請と、冷却期間の過ぎた断った記録を消す', async () => {
             await remoteActorRepository.upsert(actor(5));
             await remoteActorRepository.upsert(actor(6));
