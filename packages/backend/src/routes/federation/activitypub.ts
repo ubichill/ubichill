@@ -58,6 +58,10 @@ export function createActivityPubRouter(federation: Federation): Router {
             try {
                 const outcome = await federation.inbox.receive(signerOf(res).actor, json);
                 if (outcome === 'accepted') return res.status(202).end();
+                if (outcome === 'busy') {
+                    res.set('Retry-After', '10');
+                    return sendProblem(res, 503, 'unavailable', '同じ activity を処理しています');
+                }
                 return sendProblem(
                     res,
                     outcome === 'forbidden' ? 403 : 400,

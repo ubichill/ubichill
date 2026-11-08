@@ -316,7 +316,11 @@ describe.skipIf(!RUN)('連合の保存（DB統合）', () => {
             await remoteVisitRepository.set(userId, room.id, room, T0);
             expect((await remoteVisitRepository.get(userId, at(-1000)))?.room.name).toBe('森');
             expect(await remoteVisitRepository.get(userId, at(1000))).toBeUndefined();
-            await remoteVisitRepository.clear(userId);
+            // ほかの部屋への来訪の取り消しでは消えない（移った後に前の部屋の取り消しが届いた）
+            await remoteVisitRepository.clear(userId, `https://${host}/ap/instances/r0`);
+            expect(await remoteVisitRepository.get(userId, at(-1000))).toBeDefined();
+            await remoteVisitRepository.clear(userId, room.id);
+            expect(await remoteVisitRepository.get(userId, at(-1000))).toBeUndefined();
         });
 
         it('覚えた id を忘れると、もう一度覚えられる（処理に失敗したとき）', async () => {

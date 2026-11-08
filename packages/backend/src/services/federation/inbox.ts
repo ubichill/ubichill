@@ -2,7 +2,8 @@
  * 受けた activity を振り分ける（署名を確かめたあと）。
  *
  * - activity.actor は署名した actor と同じ（ほかの人を名乗らせない）。id と actor は同じオリジン（readActivity）
- * - 同じ id の activity は 2 度目を何もしない（7 日覚える）。処理に失敗したら忘れて、相手の送り直しを受ける
+ * - 同じ id の activity は 2 度目を何もしない（処理し終えたら 7 日覚える）。処理に失敗したら、相手の送り直しを受ける
+ * - 処理中に同じ id が届いたら busy（503）で送り直してもらう（受けたことにすると、1 度目が失敗したとき失われる）
  * - 知らない型は受けて捨てる（相手の版が新しくても壊れない）
  */
 import { FEDERATION_LIMITS, readActivity } from '@ubichill/shared';
@@ -12,6 +13,7 @@ import type { FederatedInvites } from './invites';
 export interface InboxDeps {
     seen: {
         remember(key: string, expiresAt: Date, now: Date): Promise<boolean>;
+        has(key: string, now: Date): Promise<boolean>;
         forget(key: string): Promise<void>;
     };
     friendships: Pick<RemoteFriendships, 'onOffer' | 'onAccept' | 'onReject' | 'onUndo' | 'onActorDeleted'>;
@@ -24,8 +26,11 @@ export interface InboxDeps {
     now(): number;
 }
 
-/** 受けた結果（HTTP の答え: accepted は 202、forbidden は 403、malformed は 400）。 */
-export type InboxOutcome = 'accepted' | 'forbidden' | 'malformed';
+/** 受けた結果（HTTP の答え: accepted は 202、forbidden は 403、malformed は 400、busy は 503）。 */
+export type InboxOutcome = 'accepted' | 'forbidden' | 'malformed' | 'busy';
+
+/** 処理中の印を持つ時間（backend が処理中に落ちても、この後は送り直しを受ける） */
+const PROCESSING_MS = 60_000;
 
 export function createInbox(deps: InboxDeps) {
     return {
@@ -36,11 +41,13 @@ export function createInbox(deps: InboxDeps) {
             if (activity.actor !== actor.id) return 'forbidden';
 
             const now = deps.now();
-            const key = `activity|${activity.id}`;
-            if (!(await deps.seen.remember(key, new Date(now + FEDERATION_LIMITS.SEEN_ACTIVITY_MS), new Date(now)))) {
-                return 'accepted';
-            }
+            const done = `activity|${activity.id}`;
+            const processing = `inbox-processing|${activity.id}`;
+            if (await deps.seen.has(done, new Date(now))) return 'accepted';
+            if (!(await deps.seen.remember(processing, new Date(now + PROCESSING_MS), new Date(now)))) return 'busy';
             try {
+                // 印を取る間に、ほかの backend が処理し終えていた
+                if (await deps.seen.has(done, new Date(now))) return 'accepted';
                 switch (activity.type) {
                     case 'friend-offer':
                         await deps.friendships.onOffer(actor, activity);
@@ -70,11 +77,11 @@ export function createInbox(deps: InboxDeps) {
                     case 'unknown':
                         break;
                 }
-            } catch (error) {
-                await deps.seen.forget(key);
-                throw error;
+                await deps.seen.remember(done, new Date(now + FEDERATION_LIMITS.SEEN_ACTIVITY_MS), new Date(now));
+                return 'accepted';
+            } finally {
+                await deps.seen.forget(processing);
             }
-            return 'accepted';
         },
     };
 }

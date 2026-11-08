@@ -38,8 +38,16 @@ export const remoteVisitRepository = {
         return row && { ...row, room: row.room as RoomCard };
     },
 
-    async clear(userId: string): Promise<void> {
-        await db.delete(remoteVisits).where(eq(remoteVisits.userId, userId));
+    /** 来訪の記録を消す。roomUrl を渡せば、その部屋への来訪のときだけ（ほかの部屋へ移った後の取り消しで消さない）。 */
+    async clear(userId: string, roomUrl?: string): Promise<void> {
+        await db
+            .delete(remoteVisits)
+            .where(
+                and(
+                    eq(remoteVisits.userId, userId),
+                    roomUrl === undefined ? undefined : eq(remoteVisits.roomUrl, roomUrl),
+                ),
+            );
     },
 
     /** since より後に知らせのあった来訪。 */

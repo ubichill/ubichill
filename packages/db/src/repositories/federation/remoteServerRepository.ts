@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../../index';
 import { remoteServers } from '../../schema';
 
@@ -58,7 +58,13 @@ export const remoteServerRepository = {
             .returning({ failures: remoteServers.consecutiveFailures });
         const failures = row?.failures ?? 1;
         const until = pausedUntil?.(failures) ?? null;
-        if (until) await db.update(remoteServers).set({ pausedUntil: until }).where(eq(remoteServers.domain, domain));
+        // 数えた後にほかの配送が成功（数が 0 に戻った）・失敗（その配送が自分で止める）していれば、止めない
+        if (until) {
+            await db
+                .update(remoteServers)
+                .set({ pausedUntil: until })
+                .where(and(eq(remoteServers.domain, domain), eq(remoteServers.consecutiveFailures, failures)));
+        }
         return failures;
     },
 

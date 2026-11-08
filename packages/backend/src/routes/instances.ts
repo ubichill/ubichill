@@ -210,7 +210,7 @@ router.delete('/:id/visit', requireAuth, async (req, res) => {
     if (!req.user || !federation) return res.status(204).send();
     const visit = await federation.visitOf(req.user.id);
     if (visit && federation.identity.roomAddressOf(visit.roomUrl) === String(req.params.id)) {
-        await federation.travel.leave(req.user.id);
+        await federation.travel.leave(req.user.id, visit.roomUrl);
     }
     return res.status(204).send();
 });

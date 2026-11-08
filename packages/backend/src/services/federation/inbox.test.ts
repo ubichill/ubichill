@@ -24,7 +24,7 @@ const offer = (id = 'https://b.example/ap/activities/1', actor = BOB.id) => ({
     },
 });
 
-function setup(options: { failOffer?: boolean } = {}) {
+function setup(options: { failOffer?: boolean; offerGate?: Promise<void> } = {}) {
     const calls: string[] = [];
     const seen = new Set<string>();
     const inbox = createInbox({
@@ -34,10 +34,12 @@ function setup(options: { failOffer?: boolean } = {}) {
                 seen.add(key);
                 return true;
             },
+            has: async (key) => seen.has(key),
             forget: async (key) => void seen.delete(key),
         },
         friendships: {
             onOffer: async (_actor, activity) => {
+                await options.offerGate;
                 if (options.failOffer) throw new Error('DB down');
                 calls.push(`offer ${activity.id}`);
             },
@@ -93,6 +95,19 @@ describe('受信箱', () => {
         const failing = setup({ failOffer: true });
         await expect(failing.inbox.receive(BOB, offer())).rejects.toThrow('DB down');
         expect(failing.seen.size).toBe(0);
+    });
+
+    it('処理中に同じ activity が届いたら busy で送り直してもらい、1 度目が失敗しても失われない', async () => {
+        const gate = Promise.withResolvers<void>();
+        const options = { failOffer: true, offerGate: gate.promise };
+        const { inbox, calls } = setup(options);
+        const first = inbox.receive(BOB, offer());
+        expect(await inbox.receive(BOB, offer())).toBe('busy');
+        gate.resolve();
+        await expect(first).rejects.toThrow('DB down');
+        options.failOffer = false;
+        expect(await inbox.receive(BOB, offer())).toBe('accepted');
+        expect(calls).toEqual(['offer https://b.example/ap/activities/1']);
     });
 
     it('招待・リクエスト・更新・削除を振り分ける', async () => {

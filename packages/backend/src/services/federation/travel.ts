@@ -32,7 +32,7 @@ export interface TravelDeps {
     visits: {
         set(userId: string, roomUrl: string, room: RoomCard, now: Date): Promise<void>;
         touch(userId: string, roomUrl: string, now: Date): Promise<boolean>;
-        clear(userId: string): Promise<void>;
+        clear(userId: string, roomUrl?: string): Promise<void>;
     };
     now(): number;
 }
@@ -158,8 +158,8 @@ export function createTravel(deps: TravelDeps) {
         /** 来訪を続けている（画面から 30 秒ごと）。 */
         heartbeat: (userId: string, roomUrl: string) => deps.visits.touch(userId, roomUrl, new Date(deps.now())),
 
-        /** 来訪をやめた。 */
-        leave: (userId: string) => deps.visits.clear(userId),
+        /** 来訪をやめた（roomUrl を渡せば、その部屋への来訪のときだけ）。 */
+        leave: (userId: string, roomUrl?: string) => deps.visits.clear(userId, roomUrl),
 
         /**
          * 来訪中の部屋に招待する権利を、部屋のサーバーに作ってもらう（招く人の鍵・nonce 付き）。
