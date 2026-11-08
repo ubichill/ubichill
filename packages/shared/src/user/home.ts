@@ -43,11 +43,3 @@ export interface HomeInstanceResponse {
     instance: Instance;
     fallback?: 'unresolvable';
 }
-
-/** 設定の変更を今の設定に当てる（省略した項目はそのまま）。 */
-export function applyHomeUpdate(current: HomeSettings, update: HomeSettingsUpdate): HomeSettings {
-    return {
-        worldRef: update.worldRef === undefined ? current.worldRef : update.worldRef,
-        accessType: update.accessType ?? current.accessType,
-    };
-}

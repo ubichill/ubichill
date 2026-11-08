@@ -33,12 +33,16 @@ function fakeDeps(options: { worlds?: Record<string, ResolvedWorld>; home?: Home
         home: options.home ?? DEFAULT_HOME_SETTINGS,
         created: [] as Array<{ id: string; worldRef: string; accessType: AccessType; leaderId: string }>,
         failCreate: false,
+        /** ワールドの書き込みを待たせる（解決に時間がかかった） */
+        worldWriteGate: undefined as Promise<void> | undefined,
     };
     const deps: HomeServiceDeps = {
         settings: {
             get: async () => state.home,
-            set: async (_userId, home) => {
-                state.home = home;
+            update: async (_userId, changes) => {
+                if (changes.worldRef !== undefined) await state.worldWriteGate;
+                state.home = { ...state.home, ...changes };
+                return state.home;
             },
         },
         worlds: {
@@ -139,6 +143,18 @@ describe('createHomeService', () => {
         const reset = await service.update(ME, { worldRef: null });
         expect(state.home).toEqual({ worldRef: null, accessType: 'public' });
         expect(reset).toMatchObject({ ok: true, value: { world: { url: DEFAULT_URL } } });
+    });
+
+    it('ワールドを変えている間に公開範囲を変えても、公開範囲は戻らない', async () => {
+        const { deps, state } = fakeDeps({ home: { worldRef: null, accessType: 'public' } });
+        const service = createHomeService(deps);
+        const slow = Promise.withResolvers<void>();
+        state.worldWriteGate = slow.promise;
+        const changingWorld = service.update(ME, { worldRef: '@youkan/cafe' });
+        await service.update(ME, { accessType: 'invite_only' });
+        slow.resolve();
+        await changingWorld;
+        expect(state.home).toEqual({ worldRef: HOME_URL, accessType: 'invite_only' });
     });
 
     it('公開範囲を変えたら、次に作る部屋から使われる', async () => {

@@ -27,7 +27,7 @@ export const router = createHomeRouter({
     home: createHomeService({
         settings: {
             get: (userId) => userSettingsRepository.getHome(userId),
-            set: (userId, home) => userSettingsRepository.setHome(userId, home),
+            update: (userId, changes) => userSettingsRepository.updateHome(userId, changes),
         },
         worlds: {
             resolve: (ref) => worldRegistry.resolveRefDetailed(ref),

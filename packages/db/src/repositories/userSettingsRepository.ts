@@ -39,13 +39,29 @@ export const userSettingsRepository = {
         return rows[0] ?? DEFAULT_HOME_SETTINGS;
     },
 
-    /** ホームの設定を置き換える（設定の行が無ければ作る）。 */
-    async setHome(userId: string, home: HomeSettings): Promise<void> {
+    /**
+     * ホームの設定のうち、渡した項目だけを変える（設定の行が無ければ初期値で作る）。変えた後の設定を返す。
+     * 読んでから全体を書き戻すと、同時に変えたほかの項目（ワールドを解決している間の公開範囲など）を戻してしまうため。
+     */
+    async updateHome(userId: string, changes: Partial<HomeSettings>): Promise<HomeSettings> {
         const now = new Date();
-        const values = { homeWorldRef: home.worldRef, homeAccessType: home.accessType };
-        await db
+        const set = {
+            ...(changes.worldRef !== undefined ? { homeWorldRef: changes.worldRef } : {}),
+            ...(changes.accessType !== undefined ? { homeAccessType: changes.accessType } : {}),
+        };
+        const [row] = await db
             .insert(userSettings)
-            .values({ userId, ...values, createdAt: now, updatedAt: now })
-            .onConflictDoUpdate({ target: userSettings.userId, set: { ...values, updatedAt: now } });
+            .values({
+                userId,
+                homeWorldRef: DEFAULT_HOME_SETTINGS.worldRef,
+                homeAccessType: DEFAULT_HOME_SETTINGS.accessType,
+                ...set,
+                createdAt: now,
+                updatedAt: now,
+            })
+            .onConflictDoUpdate({ target: userSettings.userId, set: { ...set, updatedAt: now } })
+            .returning({ worldRef: userSettings.homeWorldRef, accessType: userSettings.homeAccessType });
+        if (!row) throw new Error('ホームの設定を保存できません');
+        return row;
     },
 };
