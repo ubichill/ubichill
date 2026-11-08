@@ -3,6 +3,10 @@ import { describe, expect, it } from 'vitest';
 import { staticAssetHeaders } from './staticHeaders';
 
 describe('staticAssetHeaders', () => {
+    it('フロントの更新確認はキャッシュさせない', () => {
+        expect(staticAssetHeaders('/app/frontend-dist/version.json')).toEqual({ 'Cache-Control': 'no-store' });
+    });
+
     it('Vite が出力した Sandbox Worker には Worker 専用の CSP を付ける', () => {
         expect(staticAssetHeaders('/app/frontend/dist/assets/sandbox.worker-DEgCgfkx.js')).toEqual({
             'Content-Security-Policy': SANDBOX_WORKER_CSP,

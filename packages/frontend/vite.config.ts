@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
@@ -66,9 +66,24 @@ const sandboxWorkerCsp = () => {
     };
 };
 
+/** 読み込み直して得られる画面の版。API の版とは独立して、配信アセットと一緒に更新する。 */
+const frontendVersion = (): Plugin => {
+    let commitHash = 'unknown';
+    return {
+        name: 'frontend-version',
+        apply: 'build',
+        configResolved(config) {
+            commitHash = config.env.VITE_COMMIT_HASH || 'unknown';
+        },
+        generateBundle() {
+            this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ commitHash }) });
+        },
+    };
+};
+
 export default defineConfig({
     // 注意: `plugins` は Vite の予約キー（Vite プラグイン配列）なので mod にリネームしない。
-    plugins: [react(), serveSourceModJson(), sandboxWorkerCsp()],
+    plugins: [react(), serveSourceModJson(), sandboxWorkerCsp(), frontendVersion()],
     resolve: {
         // monorepo の他パッケージが node_modules/react を別途持っていると build 時に
         // React が 2 つ bundle され、フックが null になる ("Cannot read properties of null (reading 'useRef')").

@@ -1,12 +1,11 @@
 /**
- * フロントと backend の版がずれたら読み込み直す（判定は lib/versionSkew）。
- * 自動で読み込み直すのは失うものが無い画面だけ、同じ backend の版のためにはタブごとに 1 回だけ。ほかは知らせる。
+ * 配信中のフロントに更新があれば読み込み直す（判定は lib/versionSkew）。
+ * 自動で読み込み直すのは失うものが無い画面だけ、同じ配信版のためにはタブごとに 1 回だけ。ほかは知らせる。
  */
 import { useEffect, useRef } from 'react';
-import { API_BASE } from '@/lib/api';
 import { pushToast } from '@/lib/toast';
 import {
-    fetchServerCommit,
+    fetchFrontendCommit,
     isVersionSkewed,
     reloadMemory,
     skewAction,
@@ -18,12 +17,16 @@ const FRONT_COMMIT = import.meta.env.VITE_COMMIT_HASH;
 export function VersionSkewGuard() {
     const notified = useRef(false);
     useEffect(() => {
+        let cancelled = false;
         const memory = reloadMemory(() => window.sessionStorage);
         const check = async () => {
-            const serverCommit = await fetchServerCommit(API_BASE);
-            if (!isVersionSkewed(FRONT_COMMIT, serverCommit) || typeof serverCommit !== 'string') return;
-            if (skewAction(window.location.pathname, serverCommit, memory.reloadedFor(serverCommit)) === 'reload') {
-                memory.remember(serverCommit);
+            const publishedCommit = await fetchFrontendCommit(import.meta.env.BASE_URL);
+            if (cancelled || !isVersionSkewed(FRONT_COMMIT, publishedCommit) || typeof publishedCommit !== 'string')
+                return;
+            if (
+                skewAction(window.location.pathname, publishedCommit, memory.reloadedFor(publishedCommit)) === 'reload'
+            ) {
+                memory.remember(publishedCommit);
                 window.location.reload();
                 return;
             }
@@ -41,6 +44,7 @@ export function VersionSkewGuard() {
         document.addEventListener('visibilitychange', onVisible);
         void check();
         return () => {
+            cancelled = true;
             clearInterval(timer);
             document.removeEventListener('visibilitychange', onVisible);
         };
