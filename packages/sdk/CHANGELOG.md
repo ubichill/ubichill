@@ -1,5 +1,14 @@
 # @ubichill/sdk
 
+## 4.1.2
+
+### Patch Changes
+
+- Updated dependencies [6ba0785]
+- Updated dependencies [787dfc4]
+- Updated dependencies [4424709]
+  - @ubichill/shared@1.14.0
+
 ## 4.1.1
 
 ### Patch Changes

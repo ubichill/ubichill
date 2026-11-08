@@ -1,6 +1,6 @@
 {
     "name": "@ubichill/cli",
-    "version": "1.1.1",
+    "version": "1.2.0",
     "description": "ubichill CLI for mod developers: dev server, build, install, verify, publish.",
     "type": "module",
     "sideEffects": false,
