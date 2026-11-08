@@ -2,7 +2,7 @@
  * activity を相手の inbox へ送る。送る予定は DB に置き（backend が落ちても失われない）、配送役が取り出して送る。
  * 送り直し・諦める・相手のサーバーを止める規則は shared の delivery.ts。
  */
-import type { DeliveryRecord } from '@ubichill/db';
+import type { DeliveryRecord, NewDelivery } from '@ubichill/db';
 import {
     ACTIVITY_CONTENT_TYPE,
     classifyDelivery,
@@ -22,53 +22,47 @@ import type { SignAs, Transport } from './transport';
 export interface OutboxDeps {
     identity: FederationIdentity;
     repo: {
-        enqueue(
-            input: {
-                id: string;
-                senderUserId: string | null;
-                inbox: string;
-                host: string;
-                body: unknown;
-                orderKey: string;
-                deadlineAt: Date;
-            },
-            now: Date,
-        ): Promise<void>;
+        enqueue(input: NewDelivery, now: Date): Promise<void>;
     };
     policyOf(domain: string): DomainPolicy;
     now(): number;
 }
 
+export interface OutboxMessage {
+    activity: Record<string, unknown> & { id: string };
+    from: SignAs;
+    to: { id: string; inbox: string };
+    endTime?: Date;
+}
+
 export interface Outbox {
     /** activity を相手へ送る予定に入れる（from の鍵で署名する）。期限のある activity は期限で諦める */
-    send(input: {
-        activity: Record<string, unknown> & { id: string };
-        from: SignAs;
-        to: { id: string; inbox: string };
-        endTime?: Date;
-    }): Promise<void>;
+    send(message: OutboxMessage): Promise<void>;
+    /** 送る予定の行を作るだけ（入れるのは呼ぶ側。状態の書き込みと同じトランザクションに入れるとき）。送らない相手なら null */
+    prepare(message: OutboxMessage): NewDelivery | null;
 }
 
 export function createOutbox(deps: OutboxDeps): Outbox {
+    const prepare = ({ activity, from, to, endTime }: OutboxMessage): NewDelivery | null => {
+        const host = hostOf(to.inbox);
+        if (!host || !exchanges(deps.policyOf(host))) return null;
+        const sender = from.kind === 'app' ? deps.identity.appActorUrl : deps.identity.actorUrl(from.userId);
+        return {
+            id: nanoid(),
+            senderUserId: from.kind === 'user' ? from.userId : null,
+            inbox: to.inbox,
+            host,
+            body: activity,
+            // 同じ 2 人の間は、出した順に届ける（申請 → 取り消しが逆に届かないように）
+            orderKey: `${sender}|${to.id}`,
+            deadlineAt: new Date(deliveryDeadline(deps.now(), endTime?.getTime())),
+        };
+    };
     return {
-        async send({ activity, from, to, endTime }) {
-            const host = hostOf(to.inbox);
-            if (!host || !exchanges(deps.policyOf(host))) return;
-            const sender = from.kind === 'app' ? deps.identity.appActorUrl : deps.identity.actorUrl(from.userId);
-            const now = deps.now();
-            await deps.repo.enqueue(
-                {
-                    id: nanoid(),
-                    senderUserId: from.kind === 'user' ? from.userId : null,
-                    inbox: to.inbox,
-                    host,
-                    body: activity,
-                    // 同じ 2 人の間は、出した順に届ける（申請 → 取り消しが逆に届かないように）
-                    orderKey: `${sender}|${to.id}`,
-                    deadlineAt: new Date(deliveryDeadline(now, endTime?.getTime())),
-                },
-                new Date(now),
-            );
+        prepare,
+        async send(message) {
+            const delivery = prepare(message);
+            if (delivery) await deps.repo.enqueue(delivery, new Date(deps.now()));
         },
     };
 }

@@ -130,15 +130,45 @@ describe.skipIf(!RUN)('連合の保存（DB統合）', () => {
             expect(order).toEqual(['first:none', 'second:outgoing']);
         });
 
-        it('locked の中で失敗したら、書き込みは戻る', async () => {
+        it('locked の中で失敗したら、関係の書き込みも送る予定も戻る', async () => {
             await remoteActorRepository.upsert(actor(8));
+            const pending = await deliveryRepository.countPending();
             await expect(
                 remoteFriendshipRepository.locked(userId, actorId(8), async (_current, write) => {
                     await write.put({ state: 'incoming', offerId: `o8-${stamp}`, relationshipId: 'r8' }, T0);
+                    await write.enqueue(
+                        {
+                            id: `${stamp}-rollback`,
+                            senderUserId: userId,
+                            inbox: `${actorId(8)}/inbox`,
+                            host,
+                            body: { id: 'x' },
+                            orderKey: `${userId}|${actorId(8)}`,
+                            deadlineAt: at(60_000),
+                        },
+                        T0,
+                    );
                     throw new Error('送れない');
                 }),
             ).rejects.toThrow('送れない');
             expect(await remoteFriendshipRepository.get(userId, actorId(8))).toBeUndefined();
+            expect(await deliveryRepository.countPending()).toBe(pending);
+        });
+
+        it('消えた actor との関係を掃除で消す（消えていない actor はそのまま）', async () => {
+            await remoteActorRepository.upsert(actor(9));
+            await remoteActorRepository.upsert(actor(10));
+            for (const n of [9, 10]) {
+                await remoteFriendshipRepository.put(
+                    { userId, actorId: actorId(n), state: 'accepted', offerId: `o${n}-${stamp}`, relationshipId: 'r' },
+                    T0,
+                );
+            }
+            await remoteActorRepository.markDeleted(actorId(9), T0);
+            const removed = await remoteFriendshipRepository.removeForDeletedActors();
+            expect(removed.map((r) => r.actorId)).toContain(actorId(9));
+            expect(await remoteFriendshipRepository.get(userId, actorId(9))).toBeUndefined();
+            expect(await remoteFriendshipRepository.get(userId, actorId(10))).toBeDefined();
         });
 
         it('受けたまま 30 日の申請と、冷却期間の過ぎた断った記録を消す', async () => {

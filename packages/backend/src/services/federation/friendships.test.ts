@@ -18,7 +18,7 @@ const CAROL: FriendshipActor = {
 };
 const ALICE_URL = identity.actorUrl('alice');
 
-function setup(options: { policy?: DomainPolicy } = {}) {
+function setup(options: { policy?: DomainPolicy; failSend?: boolean } = {}) {
     const clock = { now: Date.parse('2026-11-07T00:00:00Z') };
     const rows: RemoteFriendshipRecord[] = [];
     const sent: Array<{ to: string; activity: Record<string, unknown> }> = [];
@@ -53,12 +53,23 @@ function setup(options: { policy?: DomainPolicy } = {}) {
                 const run = (locks.get(k) ?? Promise.resolve()).then(async () => {
                     const current = find(userId, actorId);
                     await new Promise((r) => setTimeout(r, 0));
+                    // トランザクションの代わり: 投げたら行を戻す
+                    const before = rows.map((r) => ({ ...r }));
                     return fn(current, {
                         put: async (input, now) => put({ ...input, userId, actorId }, now),
                         remove: async () => {
                             const row = find(userId, actorId);
                             if (row) rows.splice(rows.indexOf(row), 1);
                         },
+                        countIncoming: async () =>
+                            rows.filter((r) => r.userId === userId && r.state === 'incoming').length,
+                        enqueue: async (delivery) => {
+                            if (options.failSend) throw new Error('送る予定に入れられない');
+                            sent.push({ to: delivery.orderKey, activity: delivery.body as Record<string, unknown> });
+                        },
+                    }).catch((error: unknown) => {
+                        rows.splice(0, rows.length, ...before);
+                        throw error;
                     });
                 });
                 locks.set(
@@ -77,10 +88,19 @@ function setup(options: { policy?: DomainPolicy } = {}) {
             },
             findByOffer: async (offerId) => rows.filter((r) => r.offerId === offerId || r.peerOfferId === offerId),
             findByAccept: async (acceptId) => rows.filter((r) => r.acceptId === acceptId),
-            countIncoming: async (userId) => rows.filter((r) => r.userId === userId && r.state === 'incoming').length,
         },
         userExists: async (userId) => userId === 'alice' || userId.startsWith('user'),
-        outbox: { send: async (input) => void sent.push({ to: input.to.id, activity: input.activity }) },
+        outbox: {
+            prepare: (message) => ({
+                id: message.activity.id,
+                senderUserId: null,
+                inbox: message.to.inbox,
+                host: 'c.example',
+                body: message.activity,
+                orderKey: message.to.id,
+                deadlineAt: new Date(0),
+            }),
+        },
         notify: {
             remoteFriendRequested: async (actor, user) => void notes.push(`requested ${actor} → ${user}`),
             remoteFriendAccepted: async (actor, user) => void notes.push(`accepted ${actor} → ${user}`),
@@ -371,5 +391,14 @@ describe('同時に起きる（2 人の関係ごとに順番に処理する）',
             friendships.onUndo(BOB, { object: { id: 'https://c.example/ap/activities/o1', type: 'Offer' } }),
         ]);
         expect(rows).toEqual([]);
+    });
+
+    it('送る予定に入れられなければ、関係の書き込みは戻り、通知も出ない', async () => {
+        const { friendships, rows, notes } = setup({ failSend: true });
+        await expect(friendships.request('alice', BOB)).rejects.toThrow();
+        await friendships.onOffer(BOB, offerFrom(BOB, 'https://c.example/ap/activities/o1'));
+        await expect(friendships.accept('alice', BOB)).rejects.toThrow();
+        expect(rows).toMatchObject([{ state: 'incoming' }]);
+        expect(notes).toEqual([`requested ${BOB.id} → alice`]);
     });
 });

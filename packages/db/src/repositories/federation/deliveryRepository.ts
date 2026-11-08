@@ -1,24 +1,26 @@
 import { count, eq, inArray, lt, sql } from 'drizzle-orm';
 import { db } from '../../index';
 import { federationDeliveries } from '../../schema';
+import type { Tx } from '../credentialUser';
 
 export type DeliveryRecord = typeof federationDeliveries.$inferSelect;
 
+/** 送る予定の行（入れる前）。 */
+export interface NewDelivery {
+    id: string;
+    senderUserId: string | null;
+    inbox: string;
+    host: string;
+    body: unknown;
+    orderKey: string;
+    deadlineAt: Date;
+}
+
 /** 送る activity の予定。取り出しは SKIP LOCKED で、backend が何台あっても同じものを 2 度送らない。 */
 export const deliveryRepository = {
-    async enqueue(
-        input: {
-            id: string;
-            senderUserId: string | null;
-            inbox: string;
-            host: string;
-            body: unknown;
-            orderKey: string;
-            deadlineAt: Date;
-        },
-        now: Date,
-    ): Promise<void> {
-        await db.insert(federationDeliveries).values({ ...input, nextAttemptAt: now, createdAt: now });
+    /** 送る予定に入れる。q にトランザクションを渡すと、状態の書き込みと一緒に確定する。 */
+    async enqueue(input: NewDelivery, now: Date, q: typeof db | Tx = db): Promise<void> {
+        await q.insert(federationDeliveries).values({ ...input, nextAttemptAt: now, createdAt: now });
     },
 
     /**

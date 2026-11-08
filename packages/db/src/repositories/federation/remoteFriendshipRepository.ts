@@ -1,7 +1,8 @@
-import { and, count, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, count, eq, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
 import { db } from '../../index';
 import { remoteActors, remoteFriendships } from '../../schema';
 import type { Tx } from '../credentialUser';
+import { deliveryRepository, type NewDelivery } from './deliveryRepository';
 
 export type RemoteFriendshipState = 'outgoing' | 'incoming' | 'accepted' | 'rejected';
 export type RemoteFriendshipRecord = typeof remoteFriendships.$inferSelect;
@@ -14,10 +15,14 @@ export interface RemoteFriendshipInput {
     peerOfferId?: string | null;
 }
 
-/** ロック中の 2 人の関係の書き込み（`locked` の中だけで使う）。 */
+/** ロック中の 2 人の関係の読み書き（`locked` の中だけで使う。すべて同じトランザクション）。 */
 export interface RemoteFriendshipWriter {
     put(input: RemoteFriendshipInput, now: Date): Promise<RemoteFriendshipRecord>;
     remove(): Promise<void>;
+    /** このユーザーが受けたままの申請の数 */
+    countIncoming(): Promise<number>;
+    /** activity を送る予定に入れる（関係の書き込みと一緒に確定する） */
+    enqueue(delivery: NewDelivery, now: Date): Promise<void>;
 }
 
 async function putRow(
@@ -38,6 +43,14 @@ async function putRow(
         .returning();
     if (!row) throw new Error('フレンドの関係を保存できません');
     return row;
+}
+
+async function countIncomingOf(q: typeof db | Tx, userId: string): Promise<number> {
+    const [row] = await q
+        .select({ n: count() })
+        .from(remoteFriendships)
+        .where(and(eq(remoteFriendships.userId, userId), eq(remoteFriendships.state, 'incoming')));
+    return row?.n ?? 0;
 }
 
 const pairOf = (userId: string, actorId: string) =>
@@ -70,6 +83,7 @@ export const remoteFriendshipRepository = {
      * 2 人の関係をロックし、今の行を読んで `fn` を実行する（1 トランザクション。`fn` が投げたら書き込みは戻る）。
      * 申請と相手からの申請の受け取りが同時に走ると、どちらも「関係なし」と読んで片方の書き込みが消えるため。
      * 行がまだ無くても押さえられるよう、行ではなく 2 人の組でロックする。
+     * `fn` の中では `write` だけで DB に触る（別の接続を待つと、接続を使い切ったときに全員が止まる）。
      */
     async locked<T>(
         userId: string,
@@ -86,6 +100,8 @@ export const remoteFriendshipRepository = {
                 remove: async () => {
                     await tx.delete(remoteFriendships).where(pairOf(userId, actorId));
                 },
+                countIncoming: () => countIncomingOf(tx, userId),
+                enqueue: (delivery, now) => deliveryRepository.enqueue(delivery, now, tx),
             });
         });
     },
@@ -166,11 +182,13 @@ export const remoteFriendshipRepository = {
     },
 
     async countIncoming(userId: string): Promise<number> {
-        const [row] = await db
-            .select({ n: count() })
-            .from(remoteFriendships)
-            .where(and(eq(remoteFriendships.userId, userId), eq(remoteFriendships.state, 'incoming')));
-        return row?.n ?? 0;
+        return countIncomingOf(db, userId);
+    },
+
+    /** 消えた actor との関係を消す（消えた知らせの処理と行き違って書かれたもの）。消した関係を返す。 */
+    async removeForDeletedActors(): Promise<RemoteFriendshipRecord[]> {
+        const gone = db.select({ id: remoteActors.id }).from(remoteActors).where(isNotNull(remoteActors.deletedAt));
+        return db.delete(remoteFriendships).where(inArray(remoteFriendships.actorId, gone)).returning();
     },
 
     /**

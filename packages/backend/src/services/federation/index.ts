@@ -19,6 +19,7 @@ import { FEDERATION_LIMITS, parseRoomAddress } from '@ubichill/shared';
 import { appConfig } from '../../config';
 import { safeFetch } from '../../lib/safeFetch';
 import { logger } from '../../utils/logger';
+import { backendEvents } from '../cluster/backendEvents';
 import { instanceManager } from '../instances/instanceManager';
 import { instanceRuntime } from '../instances/instanceRuntime';
 import { notificationService } from '../notifications/notificationService';
@@ -262,8 +263,18 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
             const address = parseRoomAddress(roomRef, identity.domain);
             return address?.domain ? { id: address.id, domain: address.domain } : null;
         },
-        /** 期限の切れた記録を消す（10 分ごとの掃除から）。 */
+        /**
+         * 期限の切れた記録を消す（10 分ごとの掃除から）。
+         * block したドメイン・消えた actor との関係も消し直す（ほかの backend が古い方針のまま受けた申請や、
+         * 消えた知らせと行き違って書かれた関係が残らないように）。
+         */
         async sweep(at = new Date()) {
+            const blocked = (await domainPolicyRepository.list()).filter((p) => p.policy === 'block');
+            const removed = [
+                ...(await remoteFriendshipRepository.removeForDeletedActors()),
+                ...(await Promise.all(blocked.map((p) => remoteFriendshipRepository.removeForDomain(p.domain)))).flat(),
+            ];
+            await notifyFriendshipsRemoved(removed);
             await Promise.all([
                 federationSeenRepository.deleteExpired(at),
                 remoteVisitRepository.deleteStale(new Date(at.getTime() - FEDERATION_LIMITS.VISIT_STALE_MS)),
@@ -278,8 +289,28 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
 
 export type Federation = ReturnType<typeof createFederation>;
 
+/** 消したほかのサーバーの人とのフレンドを、このサーバーの人に知らせる（失敗しても残りは知らせる）。 */
+async function notifyFriendshipsRemoved(rows: ReadonlyArray<{ userId: string; actorId: string }>): Promise<void> {
+    await Promise.all(
+        rows.map((r) =>
+            notificationService
+                .remoteFriendshipRemoved(r.userId, r.actorId)
+                .catch((error: unknown) => logger.warn('通知の片付けに失敗:', error)),
+        ),
+    );
+}
+
+/** ドメインとの付き合い方を変えた（block ならフレンドを切り、ほかの backend にも読み直させる）。 */
+export async function domainPolicyChanged(domain: string, policy: string | null): Promise<void> {
+    await federation?.policies.reload();
+    backendEvents.broadcast({ type: 'federation.policies.changed' });
+    if (policy === 'block') await notifyFriendshipsRemoved(await remoteFriendshipRepository.removeForDomain(domain));
+}
+
 const config = federationConfigFromEnv(process.env);
 
 /** 連合（種が無い・FEDERATION_ENABLED=false なら null）。 */
 export const federation: Federation | null =
     config.enabled && config.seed ? createFederation({ ...config, seed: config.seed }) : null;
+
+backendEvents.on('federation.policies.changed', () => federation?.policies.reload());

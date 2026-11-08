@@ -5,14 +5,12 @@
  *   block にしたら、そのドメインの人とのフレンドも切る
  * - `GET /servers`: 知っているほかのサーバーと配送の調子（管理者）
  */
-import { domainPolicyRepository, remoteFriendshipRepository, remoteServerRepository } from '@ubichill/db';
+import { domainPolicyRepository, remoteServerRepository } from '@ubichill/db';
 import { isServerDomain } from '@ubichill/shared';
 import { Router } from 'express';
 import { z } from 'zod';
 import { requireAdmin, requireAuth } from '../../middleware/auth';
-import type { Federation } from '../../services/federation';
-import { notificationService } from '../../services/notifications/notificationService';
-import { logger } from '../../utils/logger';
+import { domainPolicyChanged, type Federation } from '../../services/federation';
 
 const PolicyBodySchema = z
     .object({ policy: z.enum(['limit', 'block']), reason: z.string().trim().max(200).optional() })
@@ -42,24 +40,15 @@ export function createFederationAdminRouter(federation: Federation | null): Rout
             reason: parsed.data.reason || null,
             createdBy: req.user?.id ?? null,
         });
-        await federation?.policies.reload();
-        if (parsed.data.policy === 'block') {
-            const removed = await remoteFriendshipRepository.removeForDomain(domain);
-            await Promise.all(
-                removed.map((r) =>
-                    notificationService
-                        .remoteFriendshipRemoved(r.userId, r.actorId)
-                        .catch((error: unknown) => logger.warn('通知の片付けに失敗:', error)),
-                ),
-            );
-        }
+        await domainPolicyChanged(domain, parsed.data.policy);
         res.status(204).send();
     });
 
     router.delete('/policies/:domain', requireAuth, requireAdmin, async (req, res) => {
-        const removed = await domainPolicyRepository.remove(String(req.params.domain).toLowerCase());
+        const domain = String(req.params.domain).toLowerCase();
+        const removed = await domainPolicyRepository.remove(domain);
         if (!removed) return void res.status(404).json({ error: '決めた方針がありません' });
-        await federation?.policies.reload();
+        await domainPolicyChanged(domain, null);
         res.status(204).send();
     });
 
