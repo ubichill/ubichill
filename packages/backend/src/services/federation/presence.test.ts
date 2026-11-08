@@ -180,14 +180,67 @@ describe('フレンドの現在地を尋ねる（見る人のホームとして�
         expect(calls).toHaveLength(2);
     });
 
-    it('部屋の無い in_room は private として扱う。つながらないホームの人は答えに入れない', async () => {
+    it('部屋の無い in_room は private として扱う', async () => {
         const bob = 'https://b.example/ap/users/bob';
         const { presence } = setup({ reply: () => remoteAnswer([{ subject: bob, status: 'in_room' }]) });
         expect(await presence.locate('alice', { remote: [bob], localVisiting: [] })).toEqual([
             { friendId: bob, status: 'private' },
         ]);
-        const down = setup();
-        expect(await down.presence.locate('alice', { remote: [bob], localVisiting: [] })).toEqual([]);
+    });
+
+    it('つながらないホームの人は、いないとは言わず unreachable にし、最後に確かめた現在地（1 時間以内）を添える', async () => {
+        const bob = 'https://b.example/ap/users/bob';
+        const net = { up: true };
+        const { presence, clock } = setup({
+            reply: () =>
+                net.up
+                    ? remoteAnswer([{ subject: bob, status: 'in_room', room: REMOTE_ROOM, joinable: true }])
+                    : { status: 503, contentType: undefined, json: undefined, retryAfter: null },
+        });
+        await presence.locate('alice', { remote: [bob], localVisiting: [] });
+        const seenAt = clock.now;
+        net.up = false;
+        clock.now += 20_000;
+        expect(await presence.locate('alice', { remote: [bob], localVisiting: [] })).toEqual([
+            {
+                friendId: bob,
+                status: 'unreachable',
+                lastKnown: { status: 'in_room', room: REMOTE_ROOM, at: seenAt },
+            },
+        ]);
+        clock.now += 60 * 60 * 1000;
+        expect(await presence.locate('alice', { remote: [bob], localVisiting: [] })).toEqual([
+            { friendId: bob, status: 'unreachable' },
+        ]);
+    });
+
+    it('ホームが答えない（403 など）なら offline（つながらないのとは分ける）', async () => {
+        const bob = 'https://b.example/ap/users/bob';
+        const { presence } = setup({
+            reply: () => ({ status: 403, contentType: undefined, json: undefined, retryAfter: null }),
+        });
+        expect(await presence.locate('alice', { remote: [bob], localVisiting: [] })).toEqual([]);
+    });
+
+    it('来訪中のフレンドの部屋のサーバーにつながらなければ unreachable、部屋にいなければ offline', async () => {
+        const down = setup({ visits: { dave: REMOTE_ROOM } });
+        expect(await down.presence.locate('alice', { remote: [], localVisiting: ['dave'] })).toEqual([
+            { friendId: 'dave', status: 'unreachable' },
+        ]);
+        const left = setup({
+            visits: { dave: REMOTE_ROOM },
+            reply: () => ({ status: 409, contentType: undefined, json: { code: 'not-inside' }, retryAfter: null }),
+        });
+        expect(await left.presence.locate('alice', { remote: [], localVisiting: ['dave'] })).toEqual([
+            { friendId: 'dave', status: 'offline' },
+        ]);
+    });
+
+    it('答える側では、来訪先の部屋のサーバーにつながらなければ private（約束の状態に unreachable は無い）', async () => {
+        const { presence } = setup({ friends: { dave: [VIEWER] }, visits: { dave: REMOTE_ROOM } });
+        expect((await presence.answer(VIEWER, [identity.actorUrl('dave')])).presence).toEqual([
+            { subject: identity.actorUrl('dave'), status: 'private' },
+        ]);
     });
 
     it('このサーバーのフレンドが来訪中なら、部屋のサーバーに見る人として尋ねる', async () => {

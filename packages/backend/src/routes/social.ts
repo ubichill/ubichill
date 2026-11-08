@@ -34,6 +34,7 @@ import { optionalAuth, requireAuth } from '../middleware/auth';
 import { selfAccount, selfDomain } from '../services/authors/authorKeys';
 import { federation } from '../services/federation';
 import { friendshipViewOf } from '../services/federation/friendships';
+import type { FriendPresence } from '../services/federation/presence';
 import { remoteInstanceOf } from '../services/federation/remoteInstance';
 import { instanceManager } from '../services/instances/instanceManager';
 import { instanceRuntime } from '../services/instances/instanceRuntime';
@@ -260,6 +261,7 @@ router.delete('/friends/:userId', requireAuth, async (req, res) => {
  * フレンドの現在地。インスタンスごとにまとめ、フレンドの多い順。
  * 自分に見えないインスタンス（フレンドのみ・招待のみなど）にいるフレンドは、どこにいるかを出さず `private` にまとめる。
  * インスタンスにいないフレンドは `elsewhere`（オフラインかロビー）。
+ * ほかのサーバーにつながらず確かめられないフレンドは `unreachable`（最後に確かめた場所と時刻を添える。いないとは言わない）。
  */
 router.get('/locations', requireAuth, async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
@@ -302,14 +304,40 @@ router.get('/locations', requireAuth, async (req, res) => {
         ),
         private: await summariesOf([...grouped.privateFriendIds, ...remote.privateIds]),
         elsewhere: await summariesOf(elsewhere),
+        unreachable: await unreachableOf(remote.unreachable),
     });
 });
+
+/** 確かめられなかったフレンドと、最後に確かめた場所（ワールドの名前）と時刻。 */
+async function unreachableOf(found: readonly FriendPresence[]) {
+    const users = new Map((await summariesOf(found.map((f) => f.friendId))).map((u) => [u.id, u]));
+    return found.flatMap((f) => {
+        const user = users.get(f.friendId);
+        if (!user) return [];
+        const last = f.lastKnown;
+        return [
+            {
+                user,
+                ...(last
+                    ? {
+                          lastKnown: {
+                              at: new Date(last.at).toISOString(),
+                              status: last.status,
+                              ...(last.room ? { place: last.room.world.name } : {}),
+                          },
+                      }
+                    : {}),
+            },
+        ];
+    });
+}
 
 /** このサーバーの部屋の外にいるフレンドの現在地（連合）。尋ねられなかった人は elsewhere のまま。 */
 async function remoteLocations(me: string, elsewhereIds: readonly string[]) {
     const empty = {
         rooms: [] as Array<Promise<{ instance: Instance; friends: UserSummary[] }>>,
         privateIds: [] as string[],
+        unreachable: [] as FriendPresence[],
         placed: new Set<string>(),
     };
     if (!federation || elsewhereIds.length === 0) return empty;
@@ -340,10 +368,14 @@ async function remoteLocations(me: string, elsewhereIds: readonly string[]) {
         return [summariesOf(group.map((f) => f.friendId)).then((friends) => ({ instance, friends }))];
     });
     const privateIds = found.filter((f) => f.status === 'private').map((f) => f.friendId);
+    const unreachable = found.filter((f) => f.status === 'unreachable');
     return {
         rooms,
         privateIds,
-        placed: new Set([...inRooms, ...found.filter((f) => f.status === 'private')].map((f) => f.friendId)),
+        unreachable,
+        placed: new Set(
+            [...inRooms, ...found.filter((f) => f.status === 'private'), ...unreachable].map((f) => f.friendId),
+        ),
     };
 }
 

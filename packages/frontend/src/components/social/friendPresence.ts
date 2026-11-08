@@ -2,7 +2,8 @@
  * フレンドの現在地の並べ方（ソーシャルとランチパッドで共有する純粋な関数）。
  */
 import type { Instance, UserSummary } from '@ubichill/shared';
-import type { FriendLocationsResponse } from '@/lib/socialApi';
+import { relativeTime } from '@/lib/notifications';
+import type { FriendLocationsResponse, UnreachableFriend } from '@/lib/socialApi';
 
 export interface FriendPlace {
     instance: Instance;
@@ -17,6 +18,8 @@ export interface FriendPresence {
     /** 自分に見えない部屋にいるフレンド（どこかは出さない） */
     hidden: UserSummary[];
     offline: UserSummary[];
+    /** ほかのサーバーにつながらず確かめられない（いないとは言わない） */
+    unreachable: UnreachableFriend[];
     onlineCount: number;
 }
 
@@ -40,8 +43,24 @@ export function arrangeFriendPresence(data: FriendLocationsResponse, current: In
         );
     const hidden = [...data.private].sort(byName);
     const offline = [...data.elsewhere].sort(byName);
+    const unreachable = [...(data.unreachable ?? [])].sort((a, b) => byName(a.user, b.user));
     const onlineCount = (here?.friends.length ?? 0) + places.reduce((n, p) => n + p.friends.length, 0) + hidden.length;
-    return { here, places, hidden, offline, onlineCount };
+    return { here, places, hidden, offline, unreachable, onlineCount };
+}
+
+/** 確かめられないフレンドの、最後に確かめた様子（「5 分前は森」）。確かめたことが無ければ undefined。 */
+export function lastKnownOf(friend: UnreachableFriend, now: number): string | undefined {
+    const last = friend.lastKnown;
+    if (!last) return undefined;
+    const where =
+        last.status === 'in_room'
+            ? (last.place ?? '部屋')
+            : last.status === 'private'
+              ? '非公開の部屋'
+              : last.status === 'online'
+                ? 'オンライン'
+                : 'オフライン';
+    return `${relativeTime(last.at, now)}は${where}`;
 }
 
 /** オンラインのフレンドを 1 列に（同じ部屋 → ほかの部屋 → 見えない部屋）。ランチパッドの顔の列に使う。 */

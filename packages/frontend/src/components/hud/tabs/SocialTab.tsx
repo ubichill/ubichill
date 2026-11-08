@@ -2,7 +2,7 @@ import type { FriendsResponse, Instance, UserSummary } from '@ubichill/shared';
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { HudIcon } from '@/components/hud/HudIcon';
 import { FriendTile, PlaceCard, UserRow, UserSearch, useFriendLocations } from '@/components/social';
-import { arrangeFriendPresence, requestTargetOf } from '@/components/social/friendPresence';
+import { arrangeFriendPresence, lastKnownOf, requestTargetOf } from '@/components/social/friendPresence';
 import { useInviteActions } from '@/components/social/useInviteActions';
 import { fetchFriends } from '@/lib/socialApi';
 import { css, cva } from '@/styled-system/css';
@@ -90,6 +90,21 @@ export function SocialTab({
                             <FriendGrid users={presence.hidden} />
                         </div>
                     )}
+                </Group>
+            )}
+
+            {presence && presence.unreachable.length > 0 && (
+                <Group label="確認できない" count={presence.unreachable.length}>
+                    <div className={friendGrid}>
+                        {presence.unreachable.map((f) => (
+                            <FriendTile
+                                key={f.user.id}
+                                user={f.user}
+                                presence="offline"
+                                status={lastKnownOf(f, Date.now())}
+                            />
+                        ))}
+                    </div>
                 </Group>
             )}
 

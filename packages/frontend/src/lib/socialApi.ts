@@ -15,6 +15,13 @@ export interface FriendLocationsResponse {
     private: UserSummary[];
     /** インスタンスにいないフレンド（オフラインか、部屋の外） */
     elsewhere: UserSummary[];
+    /** ほかのサーバーにつながらず確かめられないフレンド（最後に確かめた場所と時刻。古い backend は返さない） */
+    unreachable?: UnreachableFriend[];
+}
+
+export interface UnreachableFriend {
+    user: UserSummary;
+    lastKnown?: { at: string; status: 'offline' | 'online' | 'private' | 'in_room'; place?: string };
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

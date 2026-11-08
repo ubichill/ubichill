@@ -1,6 +1,6 @@
 import type { Instance, UserSummary } from '@ubichill/shared';
 import { describe, expect, it } from 'vitest';
-import { arrangeFriendPresence, onlineFriends, requestTargetOf } from './friendPresence';
+import { arrangeFriendPresence, lastKnownOf, onlineFriends, requestTargetOf } from './friendPresence';
 
 const user = (id: string, name = id): UserSummary => ({ id, name, handle: id, image: null, bio: null });
 const room = (id: string, name: string, currentUsers = 1): Instance =>
@@ -48,6 +48,34 @@ describe('arrangeFriendPresence', () => {
         const p = arrangeFriendPresence(data, null);
         expect(p.offline.map((f) => f.id)).toEqual(['g', 'h']);
         expect(p.hidden.map((f) => f.id)).toEqual(['f']);
+    });
+});
+
+describe('確かめられないフレンド', () => {
+    const NOW = Date.parse('2026-11-08T12:00:00Z');
+    const ago = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString();
+
+    it('オフラインにも、オンラインの数にも混ぜない（いないとは言わない）', () => {
+        const p = arrangeFriendPresence({ ...data, unreachable: [{ user: user('z', 'ぜん') }] }, null);
+        expect(p.unreachable.map((f) => f.user.id)).toEqual(['z']);
+        expect(p.offline.map((f) => f.id)).not.toContain('z');
+        expect(p.onlineCount).toBe(6);
+    });
+
+    it('古い backend（unreachable を返さない）でも並べられる', () => {
+        expect(arrangeFriendPresence(data, null).unreachable).toEqual([]);
+    });
+
+    it('最後に確かめた場所と時刻を添える。部屋の名前が無ければ「部屋」、確かめたことが無ければ何も添えない', () => {
+        const at = (status: 'in_room' | 'private' | 'offline', place?: string) => ({
+            user: user('z'),
+            lastKnown: { at: ago(5), status, ...(place ? { place } : {}) },
+        });
+        expect(lastKnownOf(at('in_room', '森'), NOW)).toBe('5 分前は森');
+        expect(lastKnownOf(at('in_room'), NOW)).toBe('5 分前は部屋');
+        expect(lastKnownOf(at('private'), NOW)).toBe('5 分前は非公開の部屋');
+        expect(lastKnownOf(at('offline'), NOW)).toBe('5 分前はオフライン');
+        expect(lastKnownOf({ user: user('z') }, NOW)).toBeUndefined();
     });
 });
 
