@@ -43,11 +43,17 @@ const LOCAL_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 /** 認証情報（`user@`）・空白を含まない https の URI。 */
 const HTTPS_URI_PATTERN = /^https:\/\/[A-Za-z0-9.-]+(?::\d{1,5})?(?:[/?#][^\s]*)?$/;
 
+/** 開発で 2 台のサーバーを手元で動かすときの http（localhost だけ。ほかのホストの http は受けない）。 */
+const LOOPBACK_HTTP_URI_PATTERN = /^http:\/\/(?:localhost|127\.0\.0\.1)(?::\d{1,5})?(?:[/?#][^\s]*)?$/;
+
 /** actor・object の id。このサーバーのユーザー ID か、ほかのサーバーの actor の URI（https）。 */
 export const ActorIdSchema = z
     .string()
     .max(2048)
-    .refine((v) => LOCAL_ID_PATTERN.test(v) || HTTPS_URI_PATTERN.test(v), 'ユーザー ID か https の URI ではありません');
+    .refine(
+        (v) => LOCAL_ID_PATTERN.test(v) || HTTPS_URI_PATTERN.test(v) || LOOPBACK_HTTP_URI_PATTERN.test(v),
+        'ユーザー ID か https の URI ではありません',
+    );
 
 export const NotificationActorSchema = z
     .object({

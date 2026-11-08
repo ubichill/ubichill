@@ -28,6 +28,7 @@ type NotificationStore = Pick<
     | 'markReadByKey'
     | 'removeBetween'
     | 'removeByKey'
+    | 'removeFromActorUri'
 >;
 type AnnouncementStore = Pick<
     typeof announcementRepository,
@@ -62,7 +63,10 @@ export function createNotificationService(deps: {
     const notify = async (input: {
         recipientId: string;
         type: StoredNotificationType;
-        actorUserId: string;
+        /** このサーバーのユーザー（actorUri とどちらか 1 つ） */
+        actorUserId?: string;
+        /** ほかのサーバーの actor（連合） */
+        actorUri?: string;
         object: unknown;
         dedupeKey: string;
         content?: string | null;
@@ -177,6 +181,80 @@ export function createNotificationService(deps: {
         /** targetId がリクエストに答えた（招待した・断った）。答えたリクエストの通知は片付ける。 */
         inviteRequestAnswered: (targetId: string, requesterId: string) =>
             removeByKey(targetId, dedupeKeys.inviteRequest(requesterId)),
+
+        // ── ほかのサーバーの actor から（連合）。dedupeKey は actor の URL で作る（このサーバーのユーザー ID と取り違えない） ──
+
+        /** ほかのサーバーの actor から、フレンドの申請が来た。 */
+        remoteFriendRequested: (actorUri: string, userId: string) =>
+            notify({
+                recipientId: userId,
+                type: 'Follow',
+                actorUri,
+                object: { type: 'Person', id: userId },
+                dedupeKey: dedupeKeys.follow(actorUri),
+            }),
+
+        /** ほかのサーバーの actor が、こちらの申請を承認した。 */
+        remoteFriendAccepted: (actorUri: string, userId: string) =>
+            notify({
+                recipientId: userId,
+                type: 'Accept',
+                actorUri,
+                object: { type: 'Follow', actor: userId, object: actorUri },
+                dedupeKey: dedupeKeys.accept(actorUri),
+            }),
+
+        /** こちらがほかのサーバーの actor の申請を承認した（手元の申請の通知は既読にする）。 */
+        async remoteFriendshipConfirmed(userId: string, actorUri: string): Promise<void> {
+            const read = await deps.notifications.markReadByKey(userId, dedupeKeys.follow(actorUri), now());
+            if (read.length > 0) await deps.hub.deliver(userId, { type: 'read', ids: read });
+        },
+
+        /** ほかのサーバーの actor との関係が消えた。2 人の間の申請・承認・招待・リクエストの通知を消す。 */
+        async remoteFriendshipRemoved(userId: string, actorUri: string): Promise<void> {
+            const ids = await deps.notifications.removeFromActorUri(userId, actorUri, [
+                'Follow',
+                'Accept',
+                'Invite',
+                'Join',
+            ]);
+            if (ids.length > 0) await deps.hub.deliver(userId, { type: 'removed', ids });
+        },
+
+        /**
+         * 連合の招待が届いた: ほかのサーバーの actor からの招待か、このサーバーの人がほかのサーバーの部屋へ招待した。
+         * object の id は画面の部屋の住所（このサーバーの部屋は ID、ほかは `<ID>@<ドメイン>`）。
+         */
+        remoteInvited: (input: {
+            from: { userId: string } | { actorUri: string };
+            inviteeId: string;
+            room: { address: string; url: string; name: string; image: string | null };
+            message: string | null;
+            expiresAt: Date;
+        }) =>
+            replace({
+                recipientId: input.inviteeId,
+                type: 'Invite',
+                ...('userId' in input.from ? { actorUserId: input.from.userId } : { actorUri: input.from.actorUri }),
+                object: { type: 'Instance', id: input.room.address, name: input.room.name, image: input.room.image },
+                dedupeKey: dedupeKeys.invite(
+                    'userId' in input.from ? input.from.userId : input.from.actorUri,
+                    input.room.url,
+                ),
+                content: input.message,
+                expiresAt: input.expiresAt,
+            }),
+
+        /** ほかのサーバーの actor から、リクエストインバイトが来た。 */
+        remoteInviteRequested: (input: { actorUri: string; targetId: string; expiresAt: Date }) =>
+            replace({
+                recipientId: input.targetId,
+                type: 'Join',
+                actorUri: input.actorUri,
+                object: { type: 'Person', id: input.targetId },
+                dedupeKey: dedupeKeys.inviteRequest(input.actorUri),
+                expiresAt: input.expiresAt,
+            }),
 
         /** 運営のお知らせを出す。出せるのは公式アカウントだけ。全員の SSE に届ける。 */
         async publishAnnouncement(

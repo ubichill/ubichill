@@ -6,6 +6,7 @@
  */
 import type { CreateInstanceRequest, Instance, WorldListItem } from '@ubichill/shared';
 import { API_BASE } from './api';
+import { viaOf } from './joinVia';
 
 async function readErrorMessage(res: Response, fallback: string): Promise<string> {
     const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -41,7 +42,11 @@ export async function fetchInstances(worldId?: string): Promise<Instance[]> {
 }
 
 export async function fetchInstance(instanceId: string): Promise<Instance> {
-    const res = await fetch(`${API_BASE}/api/v1/instances/${instanceId}`, { credentials: 'include' });
+    const via = viaOf(instanceId);
+    const query = via.length > 0 ? `?${new URLSearchParams(via.map((v) => ['via', v])).toString()}` : '';
+    const res = await fetch(`${API_BASE}/api/v1/instances/${encodeURIComponent(instanceId)}${query}`, {
+        credentials: 'include',
+    });
     if (!res.ok) throw new Error(await readErrorMessage(res, 'インスタンスが見つかりません'));
     return res.json() as Promise<Instance>;
 }
@@ -57,4 +62,25 @@ export async function createInstance(request: string | CreateInstanceRequest): P
     });
     if (!res.ok) throw new Error(await readErrorMessage(res, 'インスタンスの作成に失敗しました'));
     return res.json() as Promise<Instance>;
+}
+
+/** ほかのサーバーの部屋の住所か（`<部屋の ID>@<ドメイン>`。このサーバーの部屋の ID は `@` を含まない）。 */
+export const isRemoteRoomAddress = (instanceId: string): boolean => instanceId.includes('@');
+
+/** ほかのサーバーの部屋にいる間の知らせ（ホームがフレンドの現在地に答えるのに使う）。記録が無ければ false。 */
+export async function keepVisiting(instanceId: string): Promise<boolean> {
+    const res = await fetch(`${API_BASE}/api/v1/instances/${encodeURIComponent(instanceId)}/visit`, {
+        method: 'POST',
+        credentials: 'include',
+    });
+    return res.ok;
+}
+
+/** 来訪をやめる（ページを閉じるときも届くよう keepalive）。 */
+export function endVisit(instanceId: string): void {
+    void fetch(`${API_BASE}/api/v1/instances/${encodeURIComponent(instanceId)}/visit`, {
+        method: 'DELETE',
+        credentials: 'include',
+        keepalive: true,
+    }).catch(() => undefined);
 }

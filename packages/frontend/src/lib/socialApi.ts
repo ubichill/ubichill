@@ -3,9 +3,9 @@ import type {
     Friendship,
     FriendsResponse,
     Instance,
+    UserProfileWithFriendship,
     UserSearchResponse,
     UserSummary,
-    UserWithFriendship,
 } from '@ubichill/shared';
 import { API_BASE } from './api';
 
@@ -15,6 +15,13 @@ export interface FriendLocationsResponse {
     private: UserSummary[];
     /** インスタンスにいないフレンド（オフラインか、部屋の外） */
     elsewhere: UserSummary[];
+    /** ほかのサーバーにつながらず確かめられないフレンド（最後に確かめた場所と時刻。古い backend は返さない） */
+    unreachable?: UnreachableFriend[];
+}
+
+export interface UnreachableFriend {
+    user: UserSummary;
+    lastKnown?: { at: string; status: 'offline' | 'online' | 'private' | 'in_room'; place?: string };
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -34,11 +41,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const searchUsers = (q: string, signal?: AbortSignal) =>
     request<UserSearchResponse>(`/users?q=${encodeURIComponent(q)}`, { signal });
 
+/** ID（`handle` か、ほかのサーバーの人は `handle@domain`）でプロフィールを引く。 */
 export const fetchUserByHandle = (handle: string) =>
-    request<UserWithFriendship>(`/users/by-handle/${encodeURIComponent(handle)}`);
+    request<UserProfileWithFriendship>(`/users/by-handle/${encodeURIComponent(handle)}`);
 
+/** ユーザー ID（ほかのサーバーの人は actor の URL）でプロフィールを引く。 */
 export const fetchUserWithFriendship = (userId: string) =>
-    request<UserWithFriendship>(`/users/${encodeURIComponent(userId)}`);
+    request<UserProfileWithFriendship>(`/users/${encodeURIComponent(userId)}`);
 
 export const fetchFriends = () => request<FriendsResponse>('/friends');
 

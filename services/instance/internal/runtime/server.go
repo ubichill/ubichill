@@ -25,7 +25,11 @@ type Config struct {
 	TicketKey string
 	Guests    bool
 	Origins   []string
-	Grace     time.Duration
+	// FederatedVisits accepts WebSocket connections from origins of other ubichill servers. Those connections can
+	// join only with a ticket bound to their origin (ticket.Origin), which the backend issues to visitors whose home
+	// server vouched for them. Tickets are bearer credentials in the first frame, so no cookie is exposed cross-site.
+	FederatedVisits bool
+	Grace           time.Duration
 	// Directory は部屋の割り当て。nil ならメモリ（単体モード）。Redis を設定したら Redis だけを使う。
 	Directory coord.Directory
 	// Node はこのプロセスのノード ID（coord.NewNodeID）。空なら起動ごとに作る。
@@ -239,7 +243,9 @@ func (s *Server) owned(id string) *Room {
 	}
 	return nil
 }
-func (s *Server) originAllowed(r *http.Request) bool {
+
+// originServed は、この部屋のサーバー自身の画面（同じ host か設定した origin）からの接続か。
+func (s *Server) originServed(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
 	if origin == "" {
 		return true
@@ -254,6 +260,21 @@ func (s *Server) originAllowed(r *http.Request) bool {
 		}
 	}
 	return false
+}
+
+// originAllowed は WebSocket の接続を受けるか。ほかの ubichill サーバーの画面からの接続は、FederatedVisits のときだけ
+// 受け、入室で origin に結び付いたチケットを求める（ticketOriginMatches）。
+func (s *Server) originAllowed(r *http.Request) bool {
+	return s.originServed(r) || s.config.FederatedVisits && validOrigin(r.Header.Get("Origin"))
+}
+
+// ticketOriginMatches は、チケットの origin と接続の origin が合うか。自分の画面からの接続は origin の無いチケットだけ、
+// ほかのサーバーの画面からの接続は、その origin に結び付いたチケットだけで入れる（チケットを持ち出して別の画面で使わせない）。
+func ticketOriginMatches(t ticket, connOrigin string, served bool) bool {
+	if served {
+		return t.Origin == ""
+	}
+	return t.Origin != "" && t.Origin == connOrigin
 }
 func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -383,6 +404,7 @@ func (s *Server) Handler() http.Handler {
 		var body struct {
 			UserID string `json:"userId"`
 			Name   string `json:"name"`
+			Origin string `json:"origin"`
 		}
 		if !decode(w, r, &body) {
 			return
@@ -396,11 +418,12 @@ func (s *Server) Handler() http.Handler {
 			writeJSON(w, 409, s.staleGeneration(r.Context(), r.PathValue("id")))
 			return
 		}
-		if body.UserID == "" || len(body.UserID) > 200 || room == nil || body.Name != "" && !validName(body.Name) {
+		if body.UserID == "" || len(body.UserID) > 200 || room == nil || body.Name != "" && !validName(body.Name) ||
+			body.Origin != "" && !validOrigin(body.Origin) {
 			writeJSON(w, 400, failure("invalid participant or instance"))
 			return
 		}
-		s.grant(w, r, room, body.UserID, body.Name, "member", time.Minute*2)
+		s.grantFor(w, room, ticket{r.PathValue("id"), body.UserID, time.Now().Add(time.Minute * 2).Unix(), "member", body.Name, body.Origin})
 	})
 	mux.HandleFunc("POST /realtime/v1/instances/{id}/guest", func(w http.ResponseWriter, r *http.Request) {
 		if !s.config.Guests {
@@ -456,12 +479,24 @@ func (s *Server) authorize(w http.ResponseWriter, r *http.Request) bool {
 
 // grant はチケットを発行する。発行するのは owner 自身なので、部屋の今の世代を入れる。
 func (s *Server) grant(w http.ResponseWriter, r *http.Request, room *Room, id, name, kind string, ttl time.Duration) {
+	s.grantFor(w, room, ticket{r.PathValue("id"), id, time.Now().Add(ttl).Unix(), kind, name, ""})
+}
+func (s *Server) grantFor(w http.ResponseWriter, room *Room, t ticket) {
 	if room == nil {
 		writeJSON(w, 404, failure("instance not found"))
 		return
 	}
-	t := ticket{r.PathValue("id"), id, time.Now().Add(ttl).Unix(), kind, name}
-	writeJSON(w, 200, Object{"token": s.signFor(room, t), "userId": id, "expiresAt": t.Expires * 1000, "url": "/realtime/v1/ws", "protocolVersion": 1})
+	writeJSON(w, 200, Object{"token": s.signFor(room, t), "userId": t.Subject, "expiresAt": t.Expires * 1000, "url": "/realtime/v1/ws", "protocolVersion": 1})
+}
+
+// validOrigin は `scheme://host[:port]` だけ（パス・資格情報・クエリを持たない）の origin。
+func validOrigin(origin string) bool {
+	if len(origin) > 200 {
+		return false
+	}
+	u, err := url.Parse(origin)
+	return err == nil && (u.Scheme == "https" || u.Scheme == "http") && u.Host != "" && u.User == nil &&
+		u.Path == "" && u.RawQuery == "" && u.Fragment == "" && u.String() == origin
 }
 
 // closeInstance は自分が今の owner のときだけ部屋を閉じ、割り当てを token で解放する。

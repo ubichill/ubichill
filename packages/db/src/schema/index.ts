@@ -4,6 +4,7 @@ import { z } from 'zod';
 export * from './authorKeys';
 export * from './cliAuthRequests';
 export * from './externalWorks';
+export * from './federation';
 export * from './federationPeers';
 export * from './instanceAccessType';
 export * from './instances';

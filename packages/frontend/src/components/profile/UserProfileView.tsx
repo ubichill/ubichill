@@ -1,4 +1,4 @@
-import type { PublishedMod, UserProfile } from '@ubichill/shared';
+import { isRemoteUserId, type PublishedMod, type UserProfile } from '@ubichill/shared';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { UserSocialBar } from '@/components/social';
@@ -8,6 +8,7 @@ import { API_BASE } from '@/lib/api';
 import { fetchPublishedMods } from '@/lib/externalWorksApi';
 import { fetchUserProfile } from '@/lib/profile/profileApi';
 import { useSession } from '@/lib/session';
+import { fetchUserWithFriendship } from '@/lib/socialApi';
 import { css } from '@/styled-system/css';
 import { FavoriteWorldsSection } from './FavoriteWorldsSection';
 import { type OwnedWorld, OwnedWorldCard } from './OwnedWorldCard';
@@ -67,19 +68,25 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
         setLoading(true);
         setError('');
         setEdit({ kind: 'viewing' });
-        Promise.all([
-            fetchUserProfile(targetUserId),
-            fetch(`${API_BASE}/api/v1/users/${encodeURIComponent(targetUserId)}/worlds`, { credentials: 'include' }),
-            fetchPublishedMods(targetUserId),
-        ])
-            .then(async ([p, wRes, publishedMods]) => {
-                if (!wRes.ok) throw new Error(`ワールド取得失敗 (${wRes.status})`);
-                const w = (await wRes.json()) as { worlds: OwnedWorld[] };
-                if (ctrl.cancelled) return;
-                setProfile(p);
-                setWorlds(w.worlds);
-                setMods(publishedMods);
-            })
+        // ほかのサーバーの人: プロフィールはこのサーバーが問い合わせたもの。ワールド・mod・お気に入りは相手のサーバーにある
+        const load = isRemoteUserId(targetUserId)
+            ? fetchUserWithFriendship(targetUserId).then((p) => ({ p, worlds: [], mods: [] }))
+            : Promise.all([
+                  fetchUserProfile(targetUserId),
+                  fetch(`${API_BASE}/api/v1/users/${encodeURIComponent(targetUserId)}/worlds`, {
+                      credentials: 'include',
+                  }),
+                  fetchPublishedMods(targetUserId),
+              ]).then(async ([p, wRes, mods]) => {
+                  if (!wRes.ok) throw new Error(`ワールド取得失敗 (${wRes.status})`);
+                  return { p, worlds: ((await wRes.json()) as { worlds: OwnedWorld[] }).worlds, mods };
+              });
+        load.then(({ p, worlds: owned, mods: publishedMods }) => {
+            if (ctrl.cancelled) return;
+            setProfile(p);
+            setWorlds(owned);
+            setMods(publishedMods);
+        })
             .catch((e: unknown) => !ctrl.cancelled && setError(e instanceof Error ? e.message : '読み込み失敗'))
             .finally(() => !ctrl.cancelled && setLoading(false));
         return () => {
@@ -111,6 +118,7 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
         );
     }
 
+    const remote = !!targetUserId && isRemoteUserId(targetUserId);
     // 外部のワールドは本体のワールドと id が重なり得るので URL で区別する
     const keyOf = (w: OwnedWorld) => w.url ?? w.id;
     const selectedWorld = worlds.find((w) => keyOf(w) === selectedWorldKey);
@@ -146,45 +154,49 @@ export function UserProfileView({ userId, onNavigate, onJoinInstance }: UserProf
                 </div>
             )}
 
-            <section>
-                <h2 className={css({ fontSize: 'lg', fontWeight: '700', color: 'text', mb: '3' })}>作成したワールド</h2>
-                {worlds.length === 0 ? (
-                    <div
-                        className={css({
-                            textAlign: 'center',
-                            padding: '40px 20px',
-                            bg: 'surface',
-                            borderRadius: '12px',
-                            color: 'textMuted',
-                            fontSize: '14px',
-                        })}
-                    >
-                        まだワールドがありません
-                    </div>
-                ) : (
-                    <div
-                        className={css({
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 240px), 1fr))',
-                            gap: '4',
-                        })}
-                    >
-                        {worlds.map((w) => (
-                            <OwnedWorldCard
-                                key={keyOf(w)}
-                                world={w}
-                                editable={false}
-                                onEdit={() => undefined}
-                                onOpen={() => setSelectedWorldKey(keyOf(w))}
-                            />
-                        ))}
-                    </div>
-                )}
-            </section>
+            {!remote && (
+                <section>
+                    <h2 className={css({ fontSize: 'lg', fontWeight: '700', color: 'text', mb: '3' })}>
+                        作成したワールド
+                    </h2>
+                    {worlds.length === 0 ? (
+                        <div
+                            className={css({
+                                textAlign: 'center',
+                                padding: '40px 20px',
+                                bg: 'surface',
+                                borderRadius: '12px',
+                                color: 'textMuted',
+                                fontSize: '14px',
+                            })}
+                        >
+                            まだワールドがありません
+                        </div>
+                    ) : (
+                        <div
+                            className={css({
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 240px), 1fr))',
+                                gap: '4',
+                            })}
+                        >
+                            {worlds.map((w) => (
+                                <OwnedWorldCard
+                                    key={keyOf(w)}
+                                    world={w}
+                                    editable={false}
+                                    onEdit={() => undefined}
+                                    onOpen={() => setSelectedWorldKey(keyOf(w))}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </section>
+            )}
 
             {mods.length > 0 && <PublishedModsSection mods={mods} />}
 
-            {targetUserId && (
+            {targetUserId && !remote && (
                 <FavoriteWorldsSection userId={targetUserId} isOwnPage={false} onJoinInstance={joinInstance} />
             )}
 

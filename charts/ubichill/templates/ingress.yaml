@@ -72,7 +72,7 @@ spec:
           {{- end }}
     {{- end }}
     {{- else if .Values.global.domain }}
-    {{- /* /api・/.well-known/webfinger → backend、/realtime/v1/ws → instance（管理APIは公開しない）、/ → frontend */}}
+    {{- /* /api・/.well-known/webfinger・連合（/ap・/federation・NodeInfo） → backend、/realtime/v1/ws → instance（管理APIは公開しない）、/ → frontend */}}
     - host: {{ .Values.global.domain | quote }}
       http:
         paths:
@@ -83,7 +83,7 @@ spec:
                 name: {{ $fullName }}-backend
                 port:
                   number: {{ $svcPortBackend }}
-          # 作者アカウント（handle@domain）の署名公開鍵を他サーバーへ公開する（RFC 7033）
+          # 作者アカウント（handle@domain）の署名公開鍵と連合の actor を他サーバーへ公開する（RFC 7033）
           - path: /.well-known/webfinger
             pathType: Prefix
             backend:
@@ -91,6 +91,16 @@ spec:
                 name: {{ $fullName }}-backend
                 port:
                   number: {{ $svcPortBackend }}
+          # サーバー間の連合（docs/design/federation.md）: actor・inbox・部屋 RPC・NodeInfo
+          {{- range list "/ap" "/federation" "/.well-known/nodeinfo" "/nodeinfo" }}
+          - path: {{ . }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullName }}-backend
+                port:
+                  number: {{ $svcPortBackend }}
+          {{- end }}
           {{- if .Values.instanceRuntime.enabled }}
           - path: /realtime/v1/ws
             pathType: Prefix

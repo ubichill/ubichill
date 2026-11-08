@@ -25,7 +25,7 @@ func joinAs(t *testing.T, s *Server, url string, tk ticket, user Object) (*webso
 func TestJoinUsesVouchedNameAndDropsUnknownFields(t *testing.T) {
 	s, h := start(t, false)
 	watcher := connect(t, s, h, "a", "watcher")
-	tk := ticket{"a", "mallory", time.Now().Add(time.Minute).Unix(), "member", "Mallory"}
+	tk := ticket{"a", "mallory", time.Now().Add(time.Minute).Unix(), "member", "Mallory", ""}
 	_, out := joinAs(t, s, h.URL, tk, Object{
 		"name":      "Ubichill",
 		"status":    "online",
@@ -53,7 +53,7 @@ func TestJoinUsesVouchedNameAndDropsUnknownFields(t *testing.T) {
 
 func TestGuestKeepsClientName(t *testing.T) {
 	s, h := start(t, true)
-	tk := ticket{"a", "guest:x", time.Now().Add(time.Minute).Unix(), "guest", ""}
+	tk := ticket{"a", "guest:x", time.Now().Add(time.Minute).Unix(), "guest", "", ""}
 	c, out := joinAs(t, s, h.URL, tk, Object{"name": "Visitor", "status": "online", "position": Object{"x": 0, "y": 0}})
 	if out["success"] != true {
 		t.Fatalf("join: %v", out)

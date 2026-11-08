@@ -228,6 +228,7 @@ export const SERVER_CONFIG = {
 // Re-export Schemas and Mods
 // ============================================
 
+export * from './federation';
 export type { components as InstanceAPI } from './generated/instance';
 export * from './mod/capability';
 export * from './mod/componentRefs';

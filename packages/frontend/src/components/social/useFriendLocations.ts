@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { rememberFriendLocations } from '@/lib/joinVia';
 import { type FriendLocationsResponse, fetchFriendLocations } from '@/lib/socialApi';
 
 /**
@@ -11,7 +12,9 @@ export function useFriendLocations(intervalMs = 15000) {
 
     const reload = useCallback(async () => {
         try {
-            setData(await fetchFriendLocations());
+            const located = await fetchFriendLocations();
+            rememberFriendLocations(located.locations);
+            setData(located);
             setError(null);
         } catch (e) {
             setError(e instanceof Error ? e.message : '読み込めませんでした');

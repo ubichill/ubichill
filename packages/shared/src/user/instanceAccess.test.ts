@@ -129,6 +129,17 @@ describe('inviteRequestRefusal', () => {
         expect(inviteRequestRefusal('me', 'f', friendsOfMe, audience('public', ['f']))).toBe('can-join');
     });
 
+    it('ほかのサーバーの部屋にいるフレンドには頼める（入れるかは部屋のサーバーが決める）。フレンドでなければ頼めない', () => {
+        expect(inviteRequestRefusal('me', 'f', friendsOfMe, 'remote')).toBeNull();
+        expect(inviteRequestRefusal('me', 'x', friendsOfMe, 'remote')).toBe('not-friend');
+    });
+
+    it('ほかのサーバーのフレンドの actor の URL も ID として扱う', () => {
+        const remote = 'https://b.example/ap/users/f';
+        expect(inviteRequestRefusal('me', remote, new Set([remote]), 'remote')).toBeNull();
+        expect(SendInvitesRequestSchema.safeParse({ userIds: [remote] }).success).toBe(true);
+    });
+
     it('部屋にいない・フレンドでない・自分自身には頼めない', () => {
         expect(inviteRequestRefusal('me', 'f', friendsOfMe, null)).toBe('offline');
         expect(inviteRequestRefusal('me', 'x', friendsOfMe, audience('invite_only', ['x']))).toBe('not-friend');

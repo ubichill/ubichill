@@ -92,7 +92,11 @@ export type InviteRefusal =
     /** 相手がもう部屋にいる */
     | 'already-inside'
     /** 作成者でない人は、フレンドのみ・招待のみの部屋には作成者のフレンドにしか送れない */
-    | 'needs-leader';
+    | 'needs-leader'
+    /** 相手のサーバー・部屋のサーバーとやり取りできない（連合） */
+    | 'unavailable'
+    /** 相手のサーバーが招待に対応していない（連合） */
+    | 'unsupported';
 
 export const INVITE_REFUSAL_MESSAGES: Record<InviteRefusal, string> = {
     self: '自分には送れません',
@@ -100,6 +104,8 @@ export const INVITE_REFUSAL_MESSAGES: Record<InviteRefusal, string> = {
     'not-friend': 'フレンドにだけ送れます',
     'already-inside': 'もうこの部屋にいます',
     'needs-leader': '部屋を作った人に招待してもらってください',
+    unavailable: '相手のサーバーとやり取りできません',
+    unsupported: '相手のサーバーは招待に対応していません',
 };
 
 /**
@@ -132,13 +138,14 @@ export function inviteRefusal(
 }
 
 /** リクエストインバイトを送れない理由。 */
-export type InviteRequestRefusal = 'self' | 'not-friend' | 'offline' | 'can-join';
+export type InviteRequestRefusal = 'self' | 'not-friend' | 'offline' | 'can-join' | 'unsupported';
 
 export const INVITE_REQUEST_REFUSAL_MESSAGES: Record<InviteRequestRefusal, string> = {
     self: '自分には送れません',
     'not-friend': 'フレンドにだけ送れます',
     offline: 'いま部屋にいません',
     'can-join': 'そのまま入れます',
+    unsupported: '相手のサーバーはリクエストに対応していません',
 };
 
 /**
@@ -149,12 +156,13 @@ export function inviteRequestRefusal(
     requesterId: string,
     targetId: string,
     requesterFriendIds: ReadonlySet<string>,
-    targetRoom: InstanceAudience | null,
+    /** 相手のいる部屋。'remote' はほかのサーバーの部屋（入れるかは部屋のサーバーが決めるので、頼むのは止めない） */
+    targetRoom: InstanceAudience | 'remote' | null,
 ): InviteRequestRefusal | null {
     if (requesterId === targetId) return 'self';
     if (!requesterFriendIds.has(targetId)) return 'not-friend';
     if (!targetRoom) return 'offline';
-    if (canJoinInstance(targetRoom, requesterId, requesterFriendIds)) return 'can-join';
+    if (targetRoom !== 'remote' && canJoinInstance(targetRoom, requesterId, requesterFriendIds)) return 'can-join';
     return null;
 }
 
@@ -163,7 +171,8 @@ export function inviteRequestRefusal(
 /** `POST /instances/:id/invites`。 */
 export const SendInvitesRequestSchema = z
     .object({
-        userIds: z.array(z.string().min(1).max(64)).min(1).max(INVITE_LIMITS.MAX_INVITEES),
+        /** このサーバーのユーザー ID か、ほかのサーバーの人の actor の URL */
+        userIds: z.array(z.string().min(1).max(2048)).min(1).max(INVITE_LIMITS.MAX_INVITEES),
         message: z.string().trim().max(INVITE_LIMITS.MESSAGE_MAX).optional(),
     })
     .strict();
@@ -190,7 +199,7 @@ export interface InviteCandidatesResponse {
 }
 
 /** `POST /social/invite-requests`。 */
-export const InviteRequestBodySchema = z.object({ userId: z.string().min(1).max(64) }).strict();
+export const InviteRequestBodySchema = z.object({ userId: z.string().min(1).max(2048) }).strict();
 
 export interface InviteRequestResponse {
     /** 期限内のリクエストがあったので、送り直さなかった */

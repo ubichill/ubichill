@@ -20,6 +20,8 @@ const BackendEventSchema = z.discriminatedUnion('type', [
     z.object({ type: z.literal('remote.changed'), url: z.string().min(1) }),
     /** 連合のフォローが変わった（DB から読み直す）。 */
     z.object({ type: z.literal('peers.changed') }),
+    /** ほかのサーバーとの付き合い方（block・limit）が変わった（DB から読み直す）。 */
+    z.object({ type: z.literal('federation.policies.changed') }),
     /** 公開のお気に入りが変わった。 */
     z.object({ type: z.literal('favorites.changed'), userId: z.string().min(1) }),
 ]);

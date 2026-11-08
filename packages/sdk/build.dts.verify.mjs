@@ -1,5 +1,5 @@
 /**
- * SDK 型定義バンドルの重い検証（buildDts = TS Compiler API フルコンパイル、実測20秒級）。
+ * SDK 型定義バンドルの重い検証（buildDts = TS Compiler API フルコンパイル。2026-11 の実測で手元 40 秒前後・CI 90 秒前後）。
  *
  * なぜ遅いのか調査済み: zod スキーマの混入が原因ではない（shared の barrel を分離しても
  * 速度は変わらなかった）。実際の原因は dts-bundle-generator が SDK の公開API全体
@@ -33,7 +33,8 @@ let indexDts;
 beforeAll(async () => {
     indexJs = await buildJs(INDEX_ENTRY);
     indexDts = buildDts(INDEX_ENTRY);
-}, 90000);
+    // CI では 86 秒（#313）まで延びて 90 秒の上限すれすれだった。shared が育つほど延びるので余裕を持たせる
+}, 240_000);
 
 describe('buildDts（型定義バンドル・fail-closed）', () => {
     it('@ubichill/ecs, @ubichill/shared への import/export 文が残らない', () => {

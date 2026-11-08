@@ -211,6 +211,13 @@
       "when": 1794049716253,
       "tag": "0029_invites",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1794141051626,
+      "tag": "0030_federation",
+      "breakpoints": true
     }
   ]
 }

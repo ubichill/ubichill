@@ -2,7 +2,7 @@ import type { FeedPosition, StoredNotificationType } from '@ubichill/shared';
 import { and, count, desc, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from '../index';
-import { notifications, users } from '../schema';
+import { notifications, remoteActors, users } from '../schema';
 
 /** 通知の行と、actor（このサーバーのユーザー）の表示に要る項目。 */
 export interface NotificationRecord {
@@ -24,22 +24,26 @@ export interface NotificationRecord {
 export interface CreateNotificationInput {
     recipientId: string;
     type: StoredNotificationType;
-    actorUserId: string;
+    /** このサーバーのユーザー（actorUri とどちらか 1 つ） */
+    actorUserId?: string;
+    /** ほかのサーバーの actor（連合） */
+    actorUri?: string;
     object: unknown;
     dedupeKey: string;
     content?: string | null;
     expiresAt?: Date | null;
 }
 
+/** actor の表示の情報（このサーバーのユーザーか、ほかのサーバーの actor のキャッシュ）。 */
 const selection = {
     id: notifications.id,
     recipientId: notifications.recipientId,
     type: notifications.type,
     actorUserId: notifications.actorUserId,
     actorUri: notifications.actorUri,
-    actorName: users.name,
-    actorHandle: users.handle,
-    actorImage: users.image,
+    actorName: sql<string | null>`coalesce(${users.name}, ${remoteActors.name}, ${remoteActors.account})`,
+    actorHandle: sql<string | null>`coalesce(${users.handle}, ${remoteActors.account})`,
+    actorImage: sql<string | null>`coalesce(${users.image}, ${remoteActors.icon})`,
     object: notifications.object,
     content: notifications.content,
     expiresAt: notifications.expiresAt,
@@ -86,6 +90,7 @@ export const notificationRepository = {
             .select(selection)
             .from(notifications)
             .leftJoin(users, eq(users.id, notifications.actorUserId))
+            .leftJoin(remoteActors, eq(remoteActors.id, notifications.actorUri))
             .where(and(eq(notifications.recipientId, recipientId), eq(notifications.id, id)));
         return row;
     },
@@ -99,6 +104,7 @@ export const notificationRepository = {
             .select(selection)
             .from(notifications)
             .leftJoin(users, eq(users.id, notifications.actorUserId))
+            .leftJoin(remoteActors, eq(remoteActors.id, notifications.actorUri))
             .where(
                 and(eq(notifications.recipientId, recipientId), options.before ? olderThan(options.before) : undefined),
             )
@@ -161,6 +167,25 @@ export const notificationRepository = {
         const rows = await db
             .delete(notifications)
             .where(and(eq(notifications.recipientId, recipientId), eq(notifications.dedupeKey, dedupeKey)))
+            .returning({ id: notifications.id });
+        return rows.map((r) => r.id);
+    },
+
+    /** このサーバーのユーザーと、ほかのサーバーの actor の間の、この種類の通知を消す（ユーザー側に届いたものだけ）。 */
+    async removeFromActorUri(
+        recipientId: string,
+        actorUri: string,
+        types: readonly StoredNotificationType[],
+    ): Promise<string[]> {
+        const rows = await db
+            .delete(notifications)
+            .where(
+                and(
+                    eq(notifications.recipientId, recipientId),
+                    eq(notifications.actorUri, actorUri),
+                    inArray(notifications.type, [...types]),
+                ),
+            )
             .returning({ id: notifications.id });
         return rows.map((r) => r.id);
     },

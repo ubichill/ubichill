@@ -8,6 +8,12 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import yaml from 'yaml';
 import { nodeWorldCrypto } from '../worlds/worldCrypto';
 
+// フレンドはこの試験の対象（ワールドとインスタンスの列の後片付け）の外。古いスキーマには連合のフレンドの表が無い
+vi.mock('../social/friends', () => ({
+    friendIdsOf: vi.fn(async () => new Set<string>()),
+    friendEdgesOf: vi.fn(async () => []),
+}));
+
 vi.mock('./instanceRuntime', () => ({
     instanceRuntime: {
         provision: vi.fn(async () => ({ base: 'http://runtime.test', gen: 'g1', epoch: 1 })),

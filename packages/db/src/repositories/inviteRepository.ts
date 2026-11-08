@@ -72,7 +72,8 @@ export const inviteRepository = {
      * 期限の過ぎたものがあれば作り直す。
      */
     async createRequest(
-        input: { requesterId: string; targetId: string; expiresAt: Date },
+        /** activityId: ほかのサーバーから届いた RequestInvite の id（連合） */
+        input: { requesterId: string; targetId: string; expiresAt: Date; activityId?: string | null },
         now = new Date(),
     ): Promise<'created' | 'exists'> {
         const rows = await db
@@ -80,7 +81,7 @@ export const inviteRepository = {
             .values({ ...input, createdAt: now })
             .onConflictDoUpdate({
                 target: [inviteRequests.requesterId, inviteRequests.targetId],
-                set: { createdAt: now, expiresAt: input.expiresAt },
+                set: { createdAt: now, expiresAt: input.expiresAt, activityId: input.activityId ?? null },
                 setWhere: lte(inviteRequests.expiresAt, now),
             })
             .returning({ requesterId: inviteRequests.requesterId });

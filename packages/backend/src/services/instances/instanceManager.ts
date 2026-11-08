@@ -225,6 +225,19 @@ class InstanceManager {
     }
 
     /**
+     * ほかのサーバーの来訪者のチケット（連合）。入れるかは呼び手（federation/rooms.ts）が確かめてある。
+     * チケットは来訪者のブラウザの origin に結び付ける（その origin の画面からの接続でだけ使える）。
+     */
+    async visitorTicket(instanceId: string, participant: { id: string; name: string }, origin: string) {
+        const record = await instanceRepository.findById(instanceId);
+        if (!record) throw new InstanceJoinRejected('このインスタンスには入れません');
+        const world = await worldRegistry.getWorldByUrl(record.worldRef);
+        if (!world) throw new Error('ワールドを取得できません');
+        const owner = await instanceRuntime.provision(record.id, record.maxUsers, world);
+        return instanceRuntime.ticket(record.id, participant.id, ticketName(participant.name), owner, origin);
+    }
+
+    /**
      * インスタンスを終了する。Go 側の部屋を閉じられたと確かめてから DB を消す（確かめられなければ DB を残して失敗を返す。
      * 先に DB だけ消すと、Go に部屋が残ったまま誰からも見えなくなる）。
      */

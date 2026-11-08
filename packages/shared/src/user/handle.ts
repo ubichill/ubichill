@@ -60,6 +60,11 @@ export const HandleSchema = z
 /** domain は小文字ホスト名（開発用にポート可）。 */
 const DOMAIN_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:\d{1,5})?$/;
 
+/** サーバーのドメイン（小文字のホスト名。開発用にポート可）として正しいか。アカウント・部屋の住所で共通。 */
+export function isServerDomain(domain: string): boolean {
+    return domain.length <= 253 && DOMAIN_PATTERN.test(domain);
+}
+
 export const AuthorAccountSchema = z
     .string()
     .max(300)

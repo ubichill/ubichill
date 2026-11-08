@@ -54,7 +54,8 @@ export type InstanceConnection = z.infer<typeof InstanceConnectionSchema>;
 // ============================================
 
 export const InstanceSchema = z.object({
-    id: z.string().uuid(),
+    /** このサーバーの部屋は ID、ほかのサーバーの部屋は住所（`<部屋の ID>@<ドメイン>`） */
+    id: z.string(),
     status: InstanceStatus,
     leaderId: z.string(),
     createdAt: z.string().datetime(),
@@ -82,6 +83,11 @@ export const InstanceSchema = z.object({
     connection: InstanceConnectionSchema,
     /** 見ている人がそのまま入れるか。招待のみの部屋がフレンドに見えているだけなら false（入るには招待が要る） */
     canJoin: z.boolean().optional(),
+    /**
+     * ほかのサーバーの部屋（連合）。部屋のことはそのサーバーが決め、ワールドの確認は見る人のサーバーが行う。
+     * leaderId は作成者の actor の URL。connection は使わない（入るときに部屋のサーバーの WebSocket を受け取る）
+     */
+    remote: z.object({ domain: z.string(), url: z.string() }).optional(),
 });
 
 export type Instance = z.infer<typeof InstanceSchema>;

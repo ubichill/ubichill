@@ -22,14 +22,15 @@ const OPERATOR_ACTOR = {
 
 export function notificationOf(record: NotificationRecord): AppNotification | undefined {
     if (!isNotificationType(record.type)) return undefined;
-    // actor の行が無い（消えた直後の読み取り）・リモートの actor（まだ表示の情報を持たない）は出さない
-    if (!record.actorUserId || record.actorName === null) return undefined;
+    // actor の行が無い（消えた直後の読み取り・ほかのサーバーの actor のキャッシュが消えた）なら出さない
+    const actorId = record.actorUserId ?? record.actorUri;
+    if (!actorId || record.actorName === null) return undefined;
     const parsed = NotificationSchema.safeParse({
         id: record.id,
         type: record.type,
         actor: {
             type: 'Person',
-            id: record.actorUserId,
+            id: actorId,
             name: record.actorName,
             preferredUsername: record.actorHandle,
             icon: record.actorImage,

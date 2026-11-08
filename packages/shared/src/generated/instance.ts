@@ -176,6 +176,8 @@ export interface components {
             userId: string;
             /** @description SNS が保証する表示名。指定すると、クライアントが入室時に送る名前より優先する。 */
             name?: string;
+            /** @description 連合で、ほかの ubichill サーバーの画面から来る来訪者のブラウザの origin（scheme://host[:port]）。指定したチケットはその origin の接続でだけ使え、ほかのサーバーの画面からの接続はこのチケットでだけ入れる。 */
+            origin?: string;
         };
         Error: {
             /** @enum {boolean} */
