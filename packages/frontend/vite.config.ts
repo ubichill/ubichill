@@ -1,4 +1,4 @@
-import { defineConfig, type Plugin } from 'vite';
+import { defineConfig, mergeConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
@@ -81,9 +81,10 @@ const frontendVersion = (): Plugin => {
     };
 };
 
-export default defineConfig({
+/** SNS と world.html で共有する設定。SNS だけの配信物はここへ足さない。 */
+export const baseConfig = defineConfig({
     // 注意: `plugins` は Vite の予約キー（Vite プラグイン配列）なので mod にリネームしない。
-    plugins: [react(), serveSourceModJson(), sandboxWorkerCsp(), frontendVersion()],
+    plugins: [react(), serveSourceModJson(), sandboxWorkerCsp()],
     resolve: {
         // monorepo の他パッケージが node_modules/react を別途持っていると build 時に
         // React が 2 つ bundle され、フックが null になる ("Cannot read properties of null (reading 'useRef')").
@@ -148,3 +149,5 @@ export default defineConfig({
         outDir: 'dist',
     },
 });
+
+export default mergeConfig(baseConfig, { plugins: [frontendVersion()] });

@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import pandacss from '@pandacss/dev/postcss';
 import { mergeConfig, type Plugin, type UserConfig } from 'vite';
-import base from './vite.config';
+import { baseConfig } from './vite.config';
 
 /** Vite が受け取る postcss のプラグインの型。 */
 type VitePostcssPlugin = NonNullable<Exclude<NonNullable<UserConfig['css']>['postcss'], string | undefined>['plugins']>[number];
@@ -40,4 +40,4 @@ const world: UserConfig = {
     },
 };
 
-export default mergeConfig(base as UserConfig, world);
+export default mergeConfig(baseConfig, world);
