@@ -8,6 +8,8 @@ export interface SplitTabItem<T extends string> {
     icon: HudIconName;
     /** 名前の右に出す数（読み込む前は出さない） */
     count?: number;
+    /** ほかの欄と色を変えて目立たせる（一覧ではなく操作の欄。ソーシャルのユーザー検索） */
+    accent?: boolean;
 }
 
 /**
@@ -43,7 +45,7 @@ export function SplitTab<T extends string>({
                             key={item.id}
                             type="button"
                             aria-current={active ? 'page' : undefined}
-                            className={navItem({ active })}
+                            className={navItem({ active, accent: !!item.accent })}
                             onClick={() => onSelect(item.id)}
                         >
                             <HudIcon name={item.icon} size={18} />
@@ -103,7 +105,19 @@ const navItem = cva({
             true: { bg: 'primary', color: 'textOnPrimary' },
             false: { bg: 'transparent', color: 'textMuted', _hover: { bg: 'surfaceHover', color: 'text' } },
         },
+        accent: { true: {}, false: {} },
     },
+    compoundVariants: [
+        {
+            active: false,
+            accent: true,
+            css: {
+                bg: 'primarySubtle',
+                color: 'primary',
+                _hover: { bg: 'primarySubtle', color: 'primary', opacity: 0.85 },
+            },
+        },
+    ],
 });
 
 const navLabel = css({ flex: 1, minW: 0, overflow: 'hidden', textOverflow: 'ellipsis' });
