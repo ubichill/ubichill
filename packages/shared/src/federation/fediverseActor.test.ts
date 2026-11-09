@@ -6,7 +6,7 @@ import { buildResponse, readActivity } from './activities';
 import { buildActorDocument, plainTextToHtml, readActorDocument } from './actor';
 import { ed25519Multikey } from './multikey';
 import { keyIdOf, rsaKeyIdOf } from './protocol';
-import { displayText } from './text';
+import { displayMultilineText, displayText } from './text';
 
 const PEM =
     '-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAu1SU1LfVLPHCozMxH2Mo\n-----END PUBLIC KEY-----';
@@ -39,7 +39,8 @@ describe('ほかの実装の actor の文書を読む', () => {
         if (!read.ok) return;
         expect(read.actor.keys).toEqual([]);
         expect(read.actor.rsaKeys).toEqual([{ id: `${MISSKEY}#main-key`, publicKeyPem: PEM }]);
-        expect(read.actor.summary).toBe('みすきー つくってます & ねこ');
+        // 自己紹介の改行は残す（ほかの実装の自己紹介は長い。Misskey は 1500 文字まで）
+        expect(read.actor.summary).toBe('みすきー\nつくってます & ねこ');
         expect(read.actor.sharedInbox).toBe('https://misskey.example/inbox');
     });
 
@@ -98,11 +99,11 @@ describe('このサーバーの actor の文書（ほかの実装向け）', () 
         expect(plainTextToHtml('"a" & \'b\'')).toBe('<p>&quot;a&quot; &amp; &#39;b&#39;</p>');
     });
 
-    it('自分の文書を ubichill が読み直すと、Ed25519 と RSA の両方の鍵が取れ、自己紹介は平文に戻る', () => {
+    it('自分の文書を ubichill が読み直すと、Ed25519 と RSA の両方の鍵が取れ、自己紹介は改行ごと平文に戻る', () => {
         const read = readActorDocument(doc, 'https://a.example/ap/users/alice');
         expect(read.ok && read.actor.keys).toHaveLength(1);
         expect(read.ok && read.actor.rsaKeys).toHaveLength(1);
-        expect(read.ok && read.actor.summary).toBe('1 行目 <b>太字</b> 2 行目 段落');
+        expect(read.ok && read.actor.summary).toBe('1 行目 <b>太字</b>\n2 行目\n\n段落');
     });
 });
 
@@ -113,6 +114,15 @@ describe('displayText（ほかのサーバーの文字列）', () => {
             '<script> &lt; \u{1F431} 中 &unknown;',
         );
         expect(displayText('&#0; &#x110000;', 100)).toBe('&#0; &#x110000;');
+    });
+
+    it('改行を残す版: <br> は改行、段落の区切りは空行。行ごとに空白を詰め、空行は 1 つまで', () => {
+        expect(displayMultilineText('<p>a<br>b</p><p>c</p>', 100)).toBe('a\nb\n\nc');
+        expect(displayMultilineText('<p class="x">a</p>\n<p>b</p>', 100)).toBe('a\n\nb');
+        expect(displayMultilineText('a\n\n\n\n  b \t c\u0007', 100)).toBe('a\n\nb c');
+        expect(displayMultilineText('<p></p><p>  </p>', 100)).toBeNull();
+        // 切ったあとに改行・空白で終わらない
+        expect(displayMultilineText('ab\ncd', 3)).toBe('ab');
     });
 });
 

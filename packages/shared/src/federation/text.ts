@@ -17,16 +17,9 @@ function decodeEntities(text: string): string {
     });
 }
 
-/**
- * ほかのサーバーから来た文字列を表示に使う形にする（タグと制御文字を除き、前後の空白を落とし、max 文字に切る）。
- * ほかの実装の自己紹介は HTML なので、段落と改行は空白にしてから除き、実体参照は文字に戻す（表示はテキストとして行う）。
- */
-export function displayText(text: string | null | undefined, max: number): string | null {
-    const withoutTags =
-        text === null || text === undefined
-            ? undefined
-            : decodeEntities(text.replace(/<br\s*\/?>|<\/p>/gi, ' ').replace(/<[^>]*>/g, ''));
-    const clean = Array.from(withoutTags ?? '')
+/** 制御文字を除き、空白を詰めて前後を落とす（1 行）。 */
+const cleanLine = (text: string): string =>
+    Array.from(text)
         .filter((c) => {
             const code = c.charCodeAt(0);
             return code >= 0x20 && code !== 0x7f;
@@ -34,5 +27,36 @@ export function displayText(text: string | null | undefined, max: number): strin
         .join('')
         .replace(/\s+/g, ' ')
         .trim();
-    return clean ? Array.from(clean).slice(0, max).join('') : null;
+
+const truncate = (text: string, max: number): string | null =>
+    text ? Array.from(text).slice(0, max).join('').trim() || null : null;
+
+/**
+ * ほかのサーバーから来た文字列を表示に使う形にする（タグと制御文字を除き、前後の空白を落とし、max 文字に切る）。
+ * ほかの実装の自己紹介は HTML なので、段落と改行は空白にしてから除き、実体参照は文字に戻す（表示はテキストとして行う）。
+ */
+export function displayText(text: string | null | undefined, max: number): string | null {
+    if (text === null || text === undefined) return null;
+    return truncate(cleanLine(decodeEntities(text.replace(/<br\s*\/?>|<\/p>/gi, ' ').replace(/<[^>]*>/g, ''))), max);
+}
+
+/**
+ * 改行を残す版（自己紹介）。`<br>` は改行、段落の区切りは空行にする。行ごとに {@link displayText} と同じく整え、空行は 1 つまで。
+ */
+export function displayMultilineText(text: string | null | undefined, max: number): string | null {
+    if (text === null || text === undefined) return null;
+    const plain = decodeEntities(
+        text
+            .replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<\/p>\s*<p(?:\s[^>]*)?>/gi, '\n\n')
+            .replace(/<[^>]*>/g, ''),
+    );
+    const lines = plain.split(/\r\n?|\n/).map(cleanLine);
+    return truncate(
+        lines
+            .join('\n')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim(),
+        max,
+    );
 }

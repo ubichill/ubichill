@@ -23,6 +23,7 @@ import {
     isRemoteUserId,
     parseAuthorAccount,
     parseUserSearchQuery,
+    remoteProfileView,
     type UserProfileWithFriendship,
     type UserSearchResponse,
     type UserSummary,
@@ -68,18 +69,18 @@ const remoteFriendshipOf = async (viewerId: string | undefined, actorId: string)
 const personOf = (actor: RemoteActorRecord | null | undefined): RemoteActorRecord | null =>
     actor && !actor.deletedAt && actor.type === 'Person' ? actor : null;
 
-/** ほかのサーバーの人のプロフィール（ひとこと・バナー・リンクは持たない）。 */
+/** ほかのサーバーの人のプロフィール（バナー・項目の表は取りに行った actor の文書から）。 */
 async function remoteProfileWithFriendship(
     viewerId: string | undefined,
     actor: RemoteActorRecord,
 ): Promise<UserProfileWithFriendship> {
+    const { fields, ...profile } = remoteProfileView(actor.profile);
     return {
         ...remoteSummaryOf(actor),
         author: actor.account,
-        status: null,
-        bannerImage: null,
-        links: [],
-        languages: [],
+        bannerImage: actor.banner,
+        ...profile,
+        ...(fields.length > 0 ? { fields } : {}),
         friendship: await remoteFriendshipOf(viewerId, actor.id),
     };
 }

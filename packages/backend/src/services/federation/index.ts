@@ -27,6 +27,8 @@ import {
     type FediverseSettingsUpdate,
     isPublishable,
     parseRoomAddress,
+    profileLanguagesView,
+    profileLinksView,
     worldPagePath,
 } from '@ubichill/shared';
 import { appConfig } from '../../config';
@@ -325,7 +327,7 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
         profileOrigin: frontendOrigin,
         async findUser(userId) {
             if (userId === SYSTEM_USER_ID) return undefined;
-            const user = await userRepository.findById(userId);
+            const user = await userRepository.findProfileById(userId);
             return (
                 user && {
                     id: user.id,
@@ -333,6 +335,13 @@ function createFederation(config: FederationConfig & { seed: Uint8Array }) {
                     name: user.name,
                     bio: user.bio ?? null,
                     image: user.image ?? null,
+                    banner: user.bannerImage,
+                    createdAt: user.createdAt,
+                    profile: {
+                        status: user.status,
+                        links: profileLinksView(user.links),
+                        languages: profileLanguagesView(user.languages),
+                    },
                 }
             );
         },

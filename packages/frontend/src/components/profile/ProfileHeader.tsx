@@ -5,6 +5,7 @@ import { css } from '@/styled-system/css';
 import { ProfileAbout } from './ProfileAbout';
 import { ProfileAvatar } from './ProfileAvatar';
 import { ProfileBanner } from './ProfileBanner';
+import { ProfileFieldsTable } from './ProfileFieldsTable';
 import { ProfileLanguageChips } from './ProfileLanguageChips';
 import { ProfileLinkButtons } from './ProfileLinkButtons';
 import { PencilIcon, ShareIcon } from './profileIcons';
@@ -110,6 +111,7 @@ export function ProfileHeader({
                 <ProfileAbout bio={profile.bio} />
                 <ProfileLinkButtons links={profile.links} />
                 <ProfileLanguageChips languages={profile.languages} />
+                <ProfileFieldsTable fields={profile.fields} />
             </div>
         </article>
     );

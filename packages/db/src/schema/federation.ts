@@ -11,6 +11,13 @@ import { users } from './users';
 /** actor の鍵（ubichill 同士の Ed25519 か、Mastodon・Misskey などの RSA）。 */
 export type RemoteActorKeyRecord = { id: string; publicKeyMultibase: string } | { id: string; publicKeyPem: string };
 
+/** ほかのサーバーの人のプロフィールの項目（remote_actors.profile）。 */
+export interface RemoteActorProfileRecord {
+    fields?: Array<{ name: string; value: string; href: string | null }>;
+    status?: string | null;
+    languages?: string[];
+}
+
 /** ほかのサーバーの actor（取りに行った文書のキャッシュ。WebFinger の往復で確かめたものだけ）。 */
 export const remoteActors = pgTable(
     'remote_actors',
@@ -25,6 +32,10 @@ export const remoteActors = pgTable(
         name: text('name'),
         summary: text('summary'),
         icon: text('icon'),
+        /** バナー（ヘッダー画像） */
+        banner: text('banner'),
+        /** 項目の表・ひとこと・話せる言語（読んだ形のまま。表示の前に shared で確かめ直す） */
+        profile: jsonb('profile').$type<RemoteActorProfileRecord>().notNull().default({}),
         /** プロフィールの画面 */
         url: text('url'),
         inbox: text('inbox').notNull(),

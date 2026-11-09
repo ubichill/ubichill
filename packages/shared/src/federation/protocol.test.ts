@@ -7,7 +7,7 @@ import {
     FRIEND_OF,
     readActivity,
 } from './activities';
-import { actorKey, buildActorDocument, readActorDocument, webfingerActorUrl } from './actor';
+import { actorKey, buildActorDocument, REMOTE_SUMMARY_MAX_LENGTH, readActorDocument, webfingerActorUrl } from './actor';
 import {
     circuitPauseMs,
     classifyDelivery,
@@ -99,11 +99,11 @@ describe('readActorDocument', () => {
 
     it('表示の文字列はタグと制御文字を除き、長さを切る。知らない項目は無視する', () => {
         const read = readActorDocument(
-            aliceDoc({ name: '<b>Al\u0007ice</b>', summary: 'x'.repeat(1000), extra: { anything: true } }),
+            aliceDoc({ name: '<b>Al\u0007ice</b>', summary: 'x'.repeat(5000), extra: { anything: true } }),
             ALICE,
         );
         expect(read.ok && read.actor.name).toBe('Alice');
-        expect(read.ok && read.actor.summary?.length).toBe(300);
+        expect(read.ok && read.actor.summary?.length).toBe(REMOTE_SUMMARY_MAX_LENGTH);
     });
 
     it('icon・url が URL でなければ捨てる', () => {

@@ -117,6 +117,8 @@ export function createActorDirectory(deps: ActorDirectoryDeps): ActorDirectory {
             name: doc.name,
             summary: doc.summary,
             icon: doc.icon,
+            banner: doc.banner,
+            profile: { fields: doc.fields, status: doc.statusMessage, languages: doc.spokenLanguages },
             url: doc.url,
             inbox: doc.inbox,
             sharedInbox: doc.sharedInbox,

@@ -167,6 +167,25 @@ ubichill のユーザーは、Mastodon・Misskey などから `@<handle>@<domain
   `followers`・`following`・`manuallyApprovesFollowers`・`discoverable`／`indexable`（Mastodon）を載せ、自己紹介は段落と改行だけの HTML にする。
 - 設定とフォロワーの管理は `GET /api/v1/fediverse`・`PUT /api/v1/fediverse/settings`・`POST /api/v1/fediverse/followers/{approve,reject}`。
 
+### プロフィール
+
+ubichill のプロフィールに出しているものは、すべて actor の文書に載せる（ほかの実装で同じに見えるように）。
+
+| ubichill | actor の文書 | ほかの実装での見え方 |
+|---|---|---|
+| 表示名・アイコン・自己紹介 | `name`・`icon`・`summary`（段落と改行だけの HTML） | そのまま |
+| バナー | `image` | ヘッダー画像 |
+| 作った日 | `published` | 登録日 |
+| リンク | `attachment` の `PropertyValue`（値は `rel="me"` のリンク。名前はサービス名、Web サイトはホスト名） | 補足情報の表 |
+| 話せる言語・ひとこと | `attachment` の `PropertyValue`（「話せる言語」「ひとこと」）と、拡張の語 `statusMessage`・`spokenLanguages` | 補足情報の表 |
+
+- ubichill どうしは拡張の語でひとことと言語を元の形に戻し、同じ名前の `PropertyValue` は表に重ねて出さない。
+  拡張の語の無い相手（Misskey など）が「ひとこと」という名前の項目を書いていれば、表に残す。
+- ほかのサーバーの人を読むときは、`image` をバナーに、`attachment` の `PropertyValue` を 16 件まで読む。https のリンクを持つ項目は
+  プロフィールのリンク（5 件まで。同じリンクは 1 つ）にし、ほかの項目とあふれたリンクは補足情報の表に出す。自己紹介は改行を残して 1500 文字まで読む。
+- 読んだ形は `remote_actors.banner`・`remote_actors.profile` に置き、出す前に shared の `remoteProfileView` で確かめ直す。
+  変わったことは相手からの `Update{Person}`、または actor を取り直したときに分かる。
+
 ### 固定ノート（`featured`）
 
 プロフィールに載っている公開の情報から、固定ノートを作る（本人が書いたノートではない）。ほかの実装は 5 件まで読むので、

@@ -12,6 +12,8 @@ const actor = (id: string, sharedInbox: string | null, deletedAt: Date | null = 
     name: null,
     summary: null,
     icon: null,
+    banner: null,
+    profile: {},
     url: null,
     inbox: `${id}/inbox`,
     sharedInbox,

@@ -10,8 +10,16 @@
  */
 import { z } from 'zod';
 import { parseEd25519Multikey } from './multikey';
+import {
+    type LocalProfileFields,
+    profileAttachment,
+    profileExtensions,
+    type RemoteProfileField,
+    readProfileAttachment,
+    readProfileExtensions,
+} from './profileFields';
 import { ACTOR_CONTEXT, AP_ACCEPT, FEDERATION_FEATURES, isActivityMediaType } from './protocol';
-import { displayText, escapeHtml } from './text';
+import { displayMultilineText, displayText, escapeHtml } from './text';
 import { parseFederationUrl, sameOrigin } from './urls';
 
 export interface LocalActorInput {
@@ -23,6 +31,12 @@ export interface LocalActorInput {
     /** プロフィールの画面 */
     url?: string;
     icon?: string | null;
+    /** バナー（ヘッダー画像） */
+    banner?: string | null;
+    /** アカウントを作った時刻（ISO 8601。ほかの実装の「登録日」） */
+    published?: string;
+    /** リンク・話せる言語・ひとこと */
+    profile?: LocalProfileFields;
     inbox: string;
     outbox?: string;
     sharedInbox: string;
@@ -68,6 +82,9 @@ export function buildActorDocument(input: LocalActorInput): Record<string, unkno
         ...(input.url ? { url: input.url } : {}),
         ...(input.webfinger ? { webfinger: input.webfinger } : {}),
         ...(input.icon ? { icon: { type: 'Image', url: input.icon } } : {}),
+        ...(input.banner ? { image: { type: 'Image', url: input.banner } } : {}),
+        ...(input.published ? { published: input.published } : {}),
+        ...(input.profile ? profileDocument(input.profile) : {}),
         inbox: input.inbox,
         ...(input.outbox ? { outbox: input.outbox } : {}),
         ...(input.followers ? { followers: input.followers } : {}),
@@ -96,6 +113,11 @@ export function buildActorDocument(input: LocalActorInput): Record<string, unkno
     };
 }
 
+function profileDocument(profile: LocalProfileFields): Record<string, unknown> {
+    const attachment = profileAttachment(profile);
+    return { ...(attachment.length > 0 ? { attachment } : {}), ...profileExtensions(profile) };
+}
+
 const featureName = (href: string): string =>
     Object.entries(FEDERATION_FEATURES).find(([, v]) => v === href)?.[0] ?? href;
 
@@ -119,6 +141,7 @@ const RemoteActorSchema = z
         summary: z.string().nullish(),
         url: z.union([LinkSchema, z.array(LinkSchema)]).nullish(),
         icon: z.union([ImageSchema, z.array(ImageSchema)]).nullish(),
+        image: z.union([ImageSchema, z.array(ImageSchema)]).nullish(),
         inbox: z.string(),
         endpoints: z.object({ sharedInbox: z.string().optional() }).passthrough().nullish(),
         assertionMethod: z.union([MultikeySchema, z.array(MultikeySchema)]).optional(),
@@ -148,6 +171,13 @@ export interface RemoteActor {
     /** プロフィールの画面（https） */
     url: string | null;
     icon: string | null;
+    /** バナー（https） */
+    banner: string | null;
+    /** 項目の表（ほかの実装の PropertyValue） */
+    fields: RemoteProfileField[];
+    /** ubichill のひとことと話せる言語（ほかの実装には無い） */
+    statusMessage: string | null;
+    spokenLanguages: string[];
     inbox: string;
     sharedInbox: string | null;
     keys: RemoteActorKey[];
@@ -167,6 +197,9 @@ const first = <T>(value: T | readonly T[] | null | undefined): T | undefined =>
 
 const hrefOf = (link: z.infer<typeof LinkSchema> | undefined): string | undefined =>
     typeof link === 'string' ? link : link?.href;
+
+/** ほかの実装の自己紹介を読む長さ（Misskey は 1500 文字まで書ける）。 */
+export const REMOTE_SUMMARY_MAX_LENGTH = 1500;
 
 /**
  * 取りに行った actor の文書を読む。fetchedUrl は実際に取りに行った URL（リダイレクトの前）。
@@ -205,8 +238,11 @@ export function readActorDocument(
         return [{ id: k.id, publicKeyPem: k.publicKeyPem.trim() }];
     });
 
-    const iconRaw = first(doc.icon);
-    const icon = typeof iconRaw === 'string' ? iconRaw : hrefOf(iconRaw?.url);
+    const imageUrl = (value: typeof doc.icon) => {
+        const raw = first(value);
+        const url = typeof raw === 'string' ? raw : hrefOf(raw?.url);
+        return url && parseFederationUrl(url, options) ? url : null;
+    };
     const urlRaw = hrefOf(first(doc.url));
     const features = [...(doc.implements ?? []), ...(doc.generator?.implements ?? [])].map((i) => i.href);
     return {
@@ -216,9 +252,12 @@ export function readActorDocument(
             type: doc.type,
             preferredUsername: displayText(doc.preferredUsername, 100),
             name: displayText(doc.name, 100),
-            summary: displayText(doc.summary, 300),
+            summary: displayMultilineText(doc.summary, REMOTE_SUMMARY_MAX_LENGTH),
             url: urlRaw && parseFederationUrl(urlRaw, options) ? urlRaw : null,
-            icon: icon && parseFederationUrl(icon, options) ? icon : null,
+            icon: imageUrl(doc.icon),
+            banner: imageUrl(doc.image),
+            fields: readProfileAttachment(doc.attachment),
+            ...readProfileExtensions(doc),
             inbox: inbox.href,
             sharedInbox: sharedInbox?.href ?? null,
             keys,

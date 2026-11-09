@@ -34,7 +34,10 @@ export const ACTIVITY_CONTEXT = [
     },
 ] as const;
 
-/** actor の @context（FEP-521a の Multikey・FEP-844e の implements・ほかの実装の publicKey と discoverable） */
+/**
+ * actor の @context（FEP-521a の Multikey・FEP-844e の implements・ほかの実装の publicKey と discoverable・
+ * 項目の表の PropertyValue・ubichill のひとことと話せる言語）
+ */
 export const ACTOR_CONTEXT = [
     AS_CONTEXT,
     'https://w3id.org/security/v1',
@@ -47,6 +50,11 @@ export const ACTOR_CONTEXT = [
         discoverable: 'toot:discoverable',
         indexable: 'toot:indexable',
         featured: { '@id': 'toot:featured', '@type': '@id' },
+        schema: 'http://schema.org#',
+        PropertyValue: 'schema:PropertyValue',
+        value: 'schema:value',
+        statusMessage: 'ubichill:statusMessage',
+        spokenLanguages: 'ubichill:spokenLanguages',
     },
 ] as const;
 

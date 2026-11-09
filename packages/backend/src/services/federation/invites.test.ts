@@ -28,6 +28,8 @@ const actorRecord = (id: string): RemoteActorRecord => ({
     name: null,
     summary: null,
     icon: null,
+    banner: null,
+    profile: {},
     url: null,
     inbox: `${id}/inbox`,
     sharedInbox: null,

@@ -25,6 +25,8 @@ const actor = (n: number, account = `user${n}@${host}`) => ({
     name: `User ${n}`,
     summary: null,
     icon: null,
+    banner: null,
+    profile: {},
     url: null,
     inbox: `${actorId(n)}/inbox`,
     sharedInbox: `https://${host}/ap/inbox`,
@@ -60,6 +62,22 @@ describe.skipIf(!RUN)('連合の保存（DB統合）', () => {
             expect((await remoteActorRepository.findById(actorId(3)))?.deletedAt).not.toBeNull();
             await remoteActorRepository.upsert(actor(3));
             expect((await remoteActorRepository.findById(actorId(3)))?.deletedAt).toBeNull();
+        });
+
+        it('バナーと項目の表は取り直すたびに置き換える（消したバナー・項目を残さない）', async () => {
+            const profile = {
+                fields: [{ name: 'Web', value: 'x.example', href: 'https://x.example/' }],
+                status: 'ねむい',
+                languages: ['ja'],
+            };
+            await remoteActorRepository.upsert({ ...actor(50), banner: 'https://peer.example/b.webp', profile });
+            const saved = await remoteActorRepository.findById(actorId(50));
+            expect(saved?.banner).toBe('https://peer.example/b.webp');
+            expect(saved?.profile).toEqual(profile);
+            await remoteActorRepository.upsert(actor(50));
+            const refetched = await remoteActorRepository.findById(actorId(50));
+            expect(refetched?.banner).toBeNull();
+            expect(refetched?.profile).toEqual({});
         });
     });
 
