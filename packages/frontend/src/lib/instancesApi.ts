@@ -5,6 +5,7 @@
  * ここは純粋な fetch ラッパーのみで、React の状態は持たない（呼び出し側の hooks/component が持つ）。
  */
 import type { CreateInstanceRequest, Instance, WorldListItem } from '@ubichill/shared';
+import { InstanceNotFoundError } from '@/world';
 import { API_BASE } from './api';
 import { viaOf } from './joinVia';
 
@@ -47,6 +48,8 @@ export async function fetchInstance(instanceId: string): Promise<Instance> {
     const res = await fetch(`${API_BASE}/api/v1/instances/${encodeURIComponent(instanceId)}${query}`, {
         credentials: 'include',
     });
+    if (res.status === 404)
+        throw new InstanceNotFoundError(await readErrorMessage(res, 'インスタンスが見つかりません'));
     if (!res.ok) throw new Error(await readErrorMessage(res, 'インスタンスが見つかりません'));
     return res.json() as Promise<Instance>;
 }
